@@ -1417,7 +1417,19 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(
 	base core.Authorization,
 	challengeIndex int,
 	_ core.Challenge) (core.Authorization, error) {
-	return ra.PerformValidation(ctx, base, challengeIndex)
+	authzPB, err := bgrpc.AuthzToPB(base)
+	if err != nil {
+		return core.Authorization{}, err
+	}
+	challIndex := int64(challengeIndex)
+	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: &challIndex,
+	})
+	if err != nil {
+		return core.Authorization{}, err
+	}
+	return bgrpc.PBToAuthz(authzPB)
 }
 
 // PerformValidation initiates validation for a specific challenge associated
@@ -1425,19 +1437,25 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(
 // updated based on the results.
 func (ra *RegistrationAuthorityImpl) PerformValidation(
 	ctx context.Context,
-	base core.Authorization,
-	challengeIndex int) (core.Authorization, error) {
+	req *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
+	base, err := bgrpc.PBToAuthz(req.Authz)
+	if err != nil {
+		return nil, err
+	}
+
 	// Refuse to update expired authorizations
 	if base.Expires == nil || base.Expires.Before(ra.clk.Now()) {
-		return core.Authorization{}, berrors.MalformedError("expired authorization")
+		return nil, berrors.MalformedError("expired authorization")
 	}
 
 	authz := base
-	if challengeIndex >= len(authz.Challenges) {
-		return core.Authorization{}, berrors.MalformedError("invalid challenge index '%d'", challengeIndex)
+	challIndex := int(*req.ChallengeIndex)
+	if challIndex >= len(authz.Challenges) {
+		return nil,
+			berrors.MalformedError("invalid challenge index '%d'", challIndex)
 	}
 
-	ch := &authz.Challenges[challengeIndex]
+	ch := &authz.Challenges[challIndex]
 
 	// If TLSSNIRevalidation is enabled, find out whether this was a revalidation
 	// (previous certificate existed) or not. If it is a revalidation, we can
@@ -1449,10 +1467,11 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			RegID:  &authz.RegistrationID,
 		})
 		if err != nil {
-			return core.Authorization{}, err
+			return nil, err
 		}
 		if !*existsResp.Exists {
-			return core.Authorization{}, berrors.MalformedError("challenge type %q no longer allowed", ch.Type)
+			return nil,
+				berrors.MalformedError("challenge type %q no longer allowed", ch.Type)
 		}
 	}
 
@@ -1463,23 +1482,23 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// case and return early.
 	if ra.reuseValidAuthz && authz.Status == core.StatusValid {
 		ra.stats.Inc("ReusedValidAuthzChallenge", 1)
-		return authz, nil
+		return req.Authz, nil
 	}
 
 	if authz.Status != core.StatusPending {
-		return core.Authorization{}, berrors.WrongAuthorizationStateError("authorization must be pending")
+		return nil, berrors.WrongAuthorizationStateError("authorization must be pending")
 	}
 
 	// Look up the account key for this authorization
 	reg, err := ra.SA.GetRegistration(ctx, authz.RegistrationID)
 	if err != nil {
-		return core.Authorization{}, berrors.InternalServerError(err.Error())
+		return nil, berrors.InternalServerError(err.Error())
 	}
 
 	// Compute the key authorization field based on the registration key
 	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization(reg.Key)
 	if err != nil {
-		return core.Authorization{}, berrors.InternalServerError("could not compute expected key authorization value")
+		return nil, berrors.InternalServerError("could not compute expected key authorization value")
 	}
 
 	// Populate the ProvidedKeyAuthorization such that the VA can confirm the
@@ -1492,7 +1511,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 
 	// Double check before sending to VA
 	if cErr := ch.CheckConsistencyForValidation(); cErr != nil {
-		return core.Authorization{}, berrors.MalformedError(cErr.Error())
+		return nil, berrors.MalformedError(cErr.Error())
 	}
 
 	ra.stats.Inc("NewPendingAuthorizations", 1)
@@ -1507,7 +1526,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		copy(challenges, authz.Challenges)
 		authz.Challenges = challenges
 
-		records, err := ra.VA.PerformValidation(vaCtx, authz.Identifier.Value, authz.Challenges[challengeIndex], authz)
+		records, err := ra.VA.PerformValidation(vaCtx, authz.Identifier.Value, authz.Challenges[challIndex], authz)
 		var prob *probs.ProblemDetails
 		if p, ok := err.(*probs.ProblemDetails); ok {
 			prob = p
@@ -1517,7 +1536,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		}
 
 		// Save the updated records
-		challenge := &authz.Challenges[challengeIndex]
+		challenge := &authz.Challenges[challIndex]
 		challenge.ValidationRecord = records
 
 		if !challenge.RecordsSane() && prob == nil {
@@ -1530,7 +1549,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		} else {
 			challenge.Status = core.StatusValid
 		}
-		authz.Challenges[challengeIndex] = *challenge
+		authz.Challenges[challIndex] = *challenge
 
 		err = ra.onValidationUpdate(vaCtx, authz)
 		if err != nil {
@@ -1539,7 +1558,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		}
 	}(authz)
 	ra.stats.Inc("UpdatedPendingAuthorizations", 1)
-	return authz, nil
+	return bgrpc.AuthzToPB(authz)
 }
 
 func revokeEvent(state, serial, cn string, names []string, revocationCode revocation.Reason) string {

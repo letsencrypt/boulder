@@ -74,7 +74,7 @@ type RegistrationAuthority interface {
 	UpdateAuthorization(ctx context.Context, authz Authorization, challengeIndex int, response Challenge) (Authorization, error)
 
 	// [WebFrontEnd]
-	PerformValidation(ctx context.Context, authz Authorization, challengeIndex int) (Authorization, error)
+	PerformValidation(ctx context.Context, req *rapb.PerformValidationRequest) (*corepb.Authorization, error)
 
 	// [WebFrontEnd]
 	RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, code revocation.Reason, regID int64) error

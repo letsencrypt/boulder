@@ -236,8 +236,8 @@ func (ra *MockRegistrationAuthority) UpdateAuthorization(ctx context.Context, au
 	return authz, nil
 }
 
-func (ra *MockRegistrationAuthority) PerformValidation(_ context.Context, authz core.Authorization, _ int) (core.Authorization, error) {
-	return authz, nil
+func (ra *MockRegistrationAuthority) PerformValidation(_ context.Context, _ *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
+	return nil, nil
 }
 
 func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, reason revocation.Reason, reg int64) error {

@@ -36,6 +36,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	sagrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -642,16 +643,25 @@ func TestReuseValidAuthorization(t *testing.T) {
 
 	// Sending an update to this authz for an already valid challenge should do
 	// nothing (but produce no error), since it is already a valid authz
-	secondAuthz, err = ra.PerformValidation(ctx, secondAuthz, httpIndex)
+	authzPB, err := bgrpc.AuthzToPB(secondAuthz)
+	test.AssertNotError(t, err, "Failed to serialize secondAuthz")
+	challIndex := int64(httpIndex)
+	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: &challIndex})
 	test.AssertNotError(t, err, "PerformValidation on secondAuthz http failed")
+	secondAuthz, err = bgrpc.PBToAuthz(authzPB)
+	test.AssertNotError(t, err, "Failed to deserialize PerformValidation result for secondAuthz")
 	test.AssertEquals(t, finalAuthz.ID, secondAuthz.ID)
 	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
 
-	// Similarly, sending an update to this authz for a pending challenge should do
-	// nothing (but produce no error), since the overall authz is already valid
-	test.AssertNotError(t, err, "Unable to construct response to secondAuthz sni challenge")
-	secondAuthz, err = ra.PerformValidation(ctx, secondAuthz, sniIndex)
+	challIndex = int64(sniIndex)
+	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: &challIndex})
 	test.AssertNotError(t, err, "PerformValidation on secondAuthz sni failed")
+	secondAuthz, err = bgrpc.PBToAuthz(authzPB)
+	test.AssertNotError(t, err, "Failed to deserialize PerformValidation result for secondAuthz")
 	test.AssertEquals(t, finalAuthz.ID, secondAuthz.ID)
 	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
 }
@@ -827,8 +837,18 @@ func TestPerformValidation(t *testing.T) {
 	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
-	authz, err = ra.PerformValidation(ctx, authz, ResponseIndex)
+	authzPB, err := bgrpc.AuthzToPB(authz)
+	test.AssertNotError(t, err, "AuthzToPB for known OK authz failed")
+
+	challIndex := int64(ResponseIndex)
+	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: &challIndex,
+	})
 	test.AssertNotError(t, err, "PerformValidation failed")
+	authz, err = bgrpc.PBToAuthz(authzPB)
+	test.AssertNotError(t, err, "PBToAuthz failed for PerformValidation result")
+
 	var vaAuthz core.Authorization
 	select {
 	case a := <-va.argument:
@@ -854,9 +874,14 @@ func TestPerformValidation(t *testing.T) {
 	authz, err = ra.NewAuthorization(ctx, newAR, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
+	authzPB, err = bgrpc.AuthzToPB(authz)
+	test.AssertNotError(t, err, "AuthzToPB failed")
+
 	// Update it with an empty challenge, no key authorization
 	// This should work as well based on modern key authorization semantics
-	authz, err = ra.PerformValidation(ctx, authz, ResponseIndex)
+	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: &challIndex})
 	test.AssertNotError(t, err, "PerformValidation failed")
 	select {
 	case a := <-va.argument:
@@ -864,6 +889,8 @@ func TestPerformValidation(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
 	}
+	authz, err = bgrpc.PBToAuthz(authzPB)
+	test.AssertNotError(t, err, "PBToAuthz failed")
 
 	// Verify that returned authz same as DB
 	dbAuthz, err = sa.GetAuthorization(ctx, authz.ID)
@@ -887,7 +914,13 @@ func TestPerformValidationExpired(t *testing.T) {
 	expiry := fc.Now().Add(-2 * time.Hour)
 	authz.Expires = &expiry
 
-	authz, err = ra.PerformValidation(ctx, authz, ResponseIndex)
+	authzPB, err := bgrpc.AuthzToPB(authz)
+	test.AssertNotError(t, err, "AuthzToPB failed")
+
+	challIndex := int64(ResponseIndex)
+	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: &challIndex})
 	test.AssertError(t, err, "Updated expired authorization")
 }
 
@@ -913,8 +946,15 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 		{Hostname: "example.com"}}
 	va.ProblemReturn = nil
 
+	authzPB, err := bgrpc.AuthzToPB(finalAuthz)
+	test.AssertNotError(t, err, "AuthzToPB failed")
+
 	// A subsequent call to perform validation should return the expected error
-	_, err = ra.PerformValidation(ctx, finalAuthz, ResponseIndex)
+	challIndex := int64(ResponseIndex)
+	_, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: &challIndex,
+	})
 	test.Assert(t, berrors.Is(err, berrors.WrongAuthorizationState),
 		"PerformValidation of valid authz (with reuseValidAuthz disabled) didn't return a berrors.WrongAuthorizationState")
 }
@@ -932,8 +972,18 @@ func TestPerformValidationNewRPC(t *testing.T) {
 		{Hostname: "example.com"}}
 	va.ProblemReturn = nil
 
-	authz, err = ra.PerformValidation(ctx, authz, ResponseIndex)
+	authzPB, err := bgrpc.AuthzToPB(authz)
+	test.AssertNotError(t, err, "AuthzToPB failed")
+
+	challIndex := int64(ResponseIndex)
+	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: &challIndex,
+	})
 	test.AssertNotError(t, err, "PerformValidation failed")
+	authz, err = bgrpc.PBToAuthz(authzPB)
+	test.AssertNotError(t, err, "PBToAuthz failed")
+
 	var vaAuthz core.Authorization
 	select {
 	case a := <-va.argument:
@@ -3449,7 +3499,22 @@ func TestPerformValidationBadChallengeType(t *testing.T) {
 	ra.PA = pa
 
 	exp := fc.Now().Add(10 * time.Hour)
-	_, err = ra.PerformValidation(context.Background(), core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeTLSSNI01}}, Expires: &exp}, 0)
+	authz := core.Authorization{
+		Challenges: []core.Challenge{
+			core.Challenge{
+				Status: core.StatusValid,
+				Type:   core.ChallengeTypeTLSSNI01},
+		},
+		Expires: &exp,
+	}
+	authzPB, err := bgrpc.AuthzToPB(authz)
+	test.AssertNotError(t, err, "AuthzToPB failed")
+
+	var challIndex int64
+	_, err = ra.PerformValidation(context.Background(), &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: &challIndex,
+	})
 	test.AssertError(t, err, "ra.PerformValidation allowed a update to a authorization")
 	test.AssertEquals(t, err.Error(), "challenge type \"tls-sni-01\" no longer allowed")
 }

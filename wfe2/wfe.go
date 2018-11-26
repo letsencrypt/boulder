@@ -1003,15 +1003,27 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			return
 		}
 
-		// Send the authorization to the RA for validation (the name of this RPC is somewhat
-		// misleading, the RA sends the authorization to the VA for validation. Once the validation
-		// is complete the VA returns back to the RA to finalize the authorization)
-		var err error
-		returnAuthz, err = wfe.RA.PerformValidation(ctx, authz, challengeIndex)
+		authzPB, err := bgrpc.AuthzToPB(authz)
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to serialize authz"), err)
+			return
+		}
+		challIndex := int64(challengeIndex)
+
+		authzPB, err = wfe.RA.PerformValidation(ctx, &rapb.PerformValidationRequest{
+			Authz:          authzPB,
+			ChallengeIndex: &challIndex,
+		})
 		if err != nil {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
 			return
 		}
+		updatedAuthz, err := bgrpc.PBToAuthz(authzPB)
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to deserialize authz"), err)
+			return
+		}
+		returnAuthz = updatedAuthz
 	}
 
 	// assumption: PerformValidation does not modify order of challenges
