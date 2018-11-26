@@ -403,9 +403,10 @@ func (updater *OCSPUpdater) revokedCertificatesTick(ctx context.Context, batchSi
 	var allPurgeURLs []string
 	for _, status := range statuses {
 		// It's possible that, if our ticks are fast enough (mainly in tests), we
-		// will get a status where the ocspLastUpdated == revokedDate and has already
-		// been revoked. In order to avoid generating a new response and purging the
-		// existing response, quickly check the actual response in this rare case.
+		// will get a certificate status where the ocspLastUpdated == revokedDate
+		// and the certificate has already been revoked. In order to avoid
+		// generating a new response and purging the existing response, quickly
+		// check the actual response in this rare case.
 		if status.OCSPLastUpdated.Equal(status.RevokedDate) {
 			resp, err := ocsp.ParseResponse(status.OCSPResponse, nil)
 			if err != nil {

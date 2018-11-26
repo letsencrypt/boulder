@@ -22,33 +22,33 @@ func main() {
 	v2Purges := [][]string{}
 	v3Purges := [][]string{}
 	mu := sync.Mutex{}
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/debug/get-purges" && r.Method == http.MethodGet {
-			mu.Lock()
-			defer mu.Unlock()
-			body, err := json.Marshal(struct {
-				V2 [][]string
-				V3 [][]string
-			}{V2: v2Purges, V3: v3Purges})
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			w.Write(body)
+
+	http.HandleFunc("/debug/get-purges", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		body, err := json.Marshal(struct {
+			V2 [][]string
+			V3 [][]string
+		}{V2: v2Purges, V3: v3Purges})
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		if r.URL.Path == "/debug/reset-purges" && r.Method == http.MethodPost {
-			mu.Lock()
-			defer mu.Unlock()
-			v2Purges, v3Purges = [][]string{}, [][]string{}
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		if r.URL.Path != "/ccu/v2/queues/default" && r.URL.Path != "/ccu/v3/delete/url/staging" {
-			w.WriteHeader(http.StatusNotFound)
-			fmt.Println("Bad path:", r.URL.Path)
-			return
-		}
+		w.Write(body)
+		return
+	})
+
+	http.HandleFunc("/debug/reset-purges", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		v2Purges, v3Purges = [][]string{}, [][]string{}
+		w.WriteHeader(http.StatusOK)
+		return
+	})
+
+	// Since v2 and v3 APIs share a bunch of logic just mash them into a single
+	// handler.
+	http.HandleFunc("/ccu/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			fmt.Println("Wrong method:", r.Method)
@@ -67,14 +67,12 @@ func main() {
 			fmt.Println("Can't read body:", err)
 			return
 		}
-		err = akamai.CheckSignature(*secret, "http://"+*listenAddr, r, body)
-		if err != nil {
+		if err = akamai.CheckSignature(*secret, "http://"+*listenAddr, r, body); err != nil {
 			w.WriteHeader(http.StatusUnauthorized)
 			fmt.Println("Bad signature:", err)
 			return
 		}
-		err = json.Unmarshal(body, &purgeRequest)
-		if err != nil {
+		if err = json.Unmarshal(body, &purgeRequest); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			fmt.Println("Can't unmarshal:", err)
 			return
