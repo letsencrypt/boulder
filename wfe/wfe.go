@@ -23,6 +23,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
@@ -1096,20 +1097,26 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		}
 		challIndex := int64(challengeIndex)
 
-		// Ask the RA to update this authorization
-		authzPB, err = wfe.RA.PerformValidation(ctx, &rapb.PerformValidationRequest{
-			Authz:          authzPB,
-			ChallengeIndex: &challIndex})
-		if err != nil {
-			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
-			return
+		// Ask the RA to update this authorization. Use the RA's PerformValidation
+		// RPC if the feature flag is enabled, otherwise use the legacy
+		// UpdateAuthorization RPC.
+		if features.Enabled(features.PerformValidationRPC) {
+			authzPB, err = wfe.RA.PerformValidation(ctx, &rapb.PerformValidationRequest{
+				Authz:          authzPB,
+				ChallengeIndex: &challIndex})
+			if err != nil {
+				wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
+				return
+			}
+			updatedAuthz, err := bgrpc.PBToAuthz(authzPB)
+			if err != nil {
+				wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to deserialize authz"), err)
+				return
+			}
+			returnAuthz = updatedAuthz
+		} else {
+			returnAuthz, err = wfe.RA.UpdateAuthorization(ctx, authz, challengeIndex, challengeUpdate)
 		}
-		updatedAuthz, err := bgrpc.PBToAuthz(authzPB)
-		if err != nil {
-			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to deserialize authz"), err)
-			return
-		}
-		returnAuthz = updatedAuthz
 	}
 
 	// assumption: PerformValidation does not modify order of challenges
