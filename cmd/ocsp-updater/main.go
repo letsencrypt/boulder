@@ -402,6 +402,22 @@ func (updater *OCSPUpdater) revokedCertificatesTick(ctx context.Context, batchSi
 
 	var allPurgeURLs []string
 	for _, status := range statuses {
+		// It's possible that, if our ticks are fast enough (mainly in tests), we
+		// will get a certificate status where the ocspLastUpdated == revokedDate
+		// and the certificate has already been revoked. In order to avoid
+		// generating a new response and purging the existing response, quickly
+		// check the actual response in this rare case.
+		if status.OCSPLastUpdated.Equal(status.RevokedDate) {
+			resp, err := ocsp.ParseResponse(status.OCSPResponse, nil)
+			if err != nil {
+				updater.log.AuditErrf("Failed to parse OCSP response: %s", err)
+				return err
+			}
+			if resp.Status == ocsp.Revoked {
+				// We already generated a revoked response, don't bother doing it again
+				continue
+			}
+		}
 		meta, purgeURLs, err := updater.generateRevokedResponse(ctx, status)
 		if err != nil {
 			updater.log.AuditErrf("Failed to generate revoked OCSP response: %s", err)
@@ -417,7 +433,7 @@ func (updater *OCSPUpdater) revokedCertificatesTick(ctx context.Context, batchSi
 		}
 	}
 
-	if updater.ccu != nil {
+	if updater.ccu != nil && len(allPurgeURLs) > 0 {
 		err = updater.ccu.Purge(allPurgeURLs)
 		if err != nil {
 			updater.log.AuditErrf("Failed to purge OCSP response from CDN: %s", err)

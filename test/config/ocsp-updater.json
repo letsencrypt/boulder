@@ -17,6 +17,10 @@
     "signFailureBackoffFactor": 1.2,
     "signFailureBackoffMax": "30m",
     "debugAddr": ":8006",
+    "akamaiBaseURL": "http://localhost:6789",
+    "akamaiClientToken": "its-a-token",
+    "akamaiClientSecret": "its-a-secret",
+    "akamaiAccessToken": "idk-how-this-is-different-from-client-token-but-okay",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/ocsp-updater.boulder/cert.pem",
