@@ -920,7 +920,8 @@ func TestPerformValidationExpired(t *testing.T) {
 	challIndex := int64(ResponseIndex)
 	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
-		ChallengeIndex: &challIndex})
+		ChallengeIndex: &challIndex,
+	})
 	test.AssertError(t, err, "Updated expired authorization")
 }
 
