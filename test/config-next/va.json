@@ -36,7 +36,8 @@
       "VAChecksGSB": true,
       "IPv6First": true,
       "CAAValidationMethods": true,
-      "CAAAccountURI": true
+      "CAAAccountURI": true,
+      "SimplifiedVAHTTP": true
     },
     "remoteVAs": [
       {

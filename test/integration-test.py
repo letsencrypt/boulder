@@ -164,6 +164,24 @@ def wait_for_ocsp_good(cert_file, issuer_file, url):
 def wait_for_ocsp_revoked(cert_file, issuer_file, url):
     fetch_until(cert_file, issuer_file, url, ": good", ": revoked")
 
+def reset_akamai_purges():
+    requests.post("http://localhost:6789/debug/reset-purges")
+
+def verify_akamai_purge():
+    response = requests.get("http://localhost:6789/debug/get-purges")
+    purgeData = response.json()
+    if os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):
+        if len(purgeData["V3"]) is not 1:
+            raise Exception("Unexpected number of Akamai v3 purges")
+        if len(purgeData["V2"]) is not 0:
+            raise Exception("Unexpected number of Akamai v2 purges")
+    else:
+        if len(purgeData["V2"]) is not 1:
+            raise Exception("Unexpected number of Akamai v2 purges")
+        if len(purgeData["V3"]) is not 0:
+            raise Exception("Unexpected number of Akamai v3 purges")
+    reset_akamai_purges()
+
 def test_dns_challenge():
     auth_and_issue([random_domain(), random_domain()], chall_type="dns-01")
 
@@ -297,6 +315,7 @@ def test_expiration_mailer():
 def test_revoke_by_account():
     client = chisel.make_client()
     cert, _ = auth_and_issue([random_domain()], client=client)
+    reset_akamai_purges()
     client.revoke(cert.body, 0)
 
     cert_file_pem = os.path.join(tempdir, "revokeme.pem")
@@ -305,6 +324,7 @@ def test_revoke_by_account():
             OpenSSL.crypto.FILETYPE_PEM, cert.body.wrapped).decode())
     ee_ocsp_url = "http://localhost:4002"
     wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    verify_akamai_purge()
     return 0
 
 def test_caa():
@@ -518,11 +538,13 @@ def test_admin_revoker_cert():
     cert, _ = auth_and_issue([random_domain()], cert_output=cert_file_pem)
     serial = "%x" % cert.body.get_serial_number()
     # Revoke certificate by serial
+    reset_akamai_purges()
     run("./bin/admin-revoker serial-revoke --config %s/admin-revoker.json %s %d" % (
         default_config_dir, serial, 1))
     # Wait for OCSP response to indicate revocation took place
     ee_ocsp_url = "http://localhost:4002"
     wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    verify_akamai_purge()
 
 def test_admin_revoker_authz():
     # Make an authz, but don't attempt its challenges.

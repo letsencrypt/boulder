@@ -299,3 +299,34 @@ func (cpc *CachePurgeClient) Purge(urls []string) error {
 	}
 	return nil
 }
+
+// CheckSignature is used for tests, it exported so that it can be used in akamai-test-srv
+func CheckSignature(secret string, url string, r *http.Request, body []byte) error {
+	bodyHash := sha256.Sum256(body)
+	bodyHashB64 := base64.StdEncoding.EncodeToString(bodyHash[:])
+
+	authorization := r.Header.Get("Authorization")
+	authValues := make(map[string]string)
+	for _, v := range strings.Split(authorization, ";") {
+		splitValue := strings.Split(v, "=")
+		authValues[splitValue[0]] = splitValue[1]
+	}
+	headerTimestamp := authValues["timestamp"]
+	splitHeader := strings.Split(authorization, "signature=")
+	shortenedHeader, signature := splitHeader[0], splitHeader[1]
+	hostPort := strings.Split(url, "://")[1]
+	h := hmac.New(sha256.New, signingKey(secret, headerTimestamp))
+	input := []byte(fmt.Sprintf("POST\thttp\t%s\t%s\t\t%s\t%s",
+		hostPort,
+		r.URL.Path,
+		bodyHashB64,
+		shortenedHeader,
+	))
+	h.Write(input)
+	expectedSignature := base64.StdEncoding.EncodeToString(h.Sum(nil))
+	if signature != expectedSignature {
+		return fmt.Errorf("Wrong signature %q in %q. Expected %q\n",
+			signature, authorization, expectedSignature)
+	}
+	return nil
+}

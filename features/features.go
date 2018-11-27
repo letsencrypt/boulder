@@ -38,6 +38,11 @@ const (
 	ACME13KeyRollover
 	// ProbeCTLogs enables HTTP probes to CT logs from the publisher
 	ProbeCTLogs
+	// SimplifiedVAHTTP enables the simplified VA http-01 rewrite that doesn't use
+	// a custom dialer.
+	SimplifiedVAHTTP
+	// PerformValidationRPC enables the WFE/WFE2 to use the RA's PerformValidation
+	// RPC instead of the deprecated UpdateAuthorization RPC.
 	PerformValidationRPC
 )
 
@@ -63,6 +68,7 @@ var features = map[FeatureFlag]bool{
 	CAAAccountURI:               false,
 	ACME13KeyRollover:           false,
 	ProbeCTLogs:                 false,
+	SimplifiedVAHTTP:            false,
 	PerformValidationRPC:        false,
 }
 

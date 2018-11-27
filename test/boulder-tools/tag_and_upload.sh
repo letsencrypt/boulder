@@ -4,7 +4,7 @@ cd $(dirname $0)
 
 DATESTAMP=$(date +%Y-%m-%d)
 BASE_TAG_NAME="letsencrypt/boulder-tools"
-GO_VERSIONS=( "1.10.3" "1.11.1" )
+GO_VERSIONS=( "1.10.3" "1.11.2" )
 
 # Build a tagged image for each GO_VERSION
 for GO_VERSION in "${GO_VERSIONS[@]}"
