@@ -62,8 +62,6 @@ def setup_twenty_days_ago():
     # Issue a certificate with the clock set back, and save the authzs to check
     # later that they are valid (200). They should however require rechecking for
     # CAA purposes.
-    global caa_client
-    caa_client = chisel.make_client()
     global caa_authzs
     _, caa_authzs = auth_and_issue(["recheck.good-caa-reserved.com"], client=caa_client)
 
@@ -621,34 +619,51 @@ def main():
                         help="run load-generator")
     parser.add_argument('--filter', dest="test_case_filter", action="store",
                         help="Regex filter for test cases")
+    parser.add_argument('--skip-setup', dest="skip_setup", action="store_true",
+                        help="skip integration test setup")
     # allow any ACME client to run custom command for integration
     # testing (without having to implement its own busy-wait loop)
     parser.add_argument('--custom', metavar="CMD", help="run custom command")
     parser.set_defaults(run_all=False, run_certbot=False, run_chisel=False,
-        run_loadtest=False, test_case_filter="")
+        run_loadtest=False, test_case_filter="", skip_setup=False)
     args = parser.parse_args()
 
     if not (args.run_all or args.run_certbot or args.run_chisel or args.run_loadtest or args.custom is not None):
         raise Exception("must run at least one of the letsencrypt or chisel tests with --all, --certbot, --chisel, --load or --custom")
 
-    now = datetime.datetime.utcnow()
-    seventy_days_ago = now+datetime.timedelta(days=-70)
-    if not startservers.start(race_detection=True, fakeclock=fakeclock(seventy_days_ago)):
-        raise Exception("startservers failed (mocking seventy days ago)")
-    setup_seventy_days_ago()
-    startservers.stop()
+    if not args.skip_setup:
 
-    now = datetime.datetime.utcnow()
-    twenty_days_ago = now+datetime.timedelta(days=-20)
-    if not startservers.start(race_detection=True, fakeclock=fakeclock(twenty_days_ago)):
-        raise Exception("startservers failed (mocking twenty days ago)")
-    setup_twenty_days_ago()
-    startservers.stop()
+        now = datetime.datetime.utcnow()
+        seventy_days_ago = now+datetime.timedelta(days=-70)
+        if not startservers.start(race_detection=True, fakeclock=fakeclock(seventy_days_ago)):
+            raise Exception("startservers failed (mocking seventy days ago)")
+        global caa_client
+        caa_client = chisel.make_client()
+        setup_seventy_days_ago()
+        startservers.stop()
+
+        now = datetime.datetime.utcnow()
+        twenty_days_ago = now+datetime.timedelta(days=-20)
+        if not startservers.start(race_detection=True, fakeclock=fakeclock(twenty_days_ago)):
+            raise Exception("startservers failed (mocking twenty days ago)")
+        setup_twenty_days_ago()
+        startservers.stop()
+
+    
+    if caa_client is None:
+        # start boulder without a account_uri so we can create an account then tear
+        # it down so it can be restarted with the account_uri arg set... this is
+        # high grade hacky.
+        if not startservers.start(race_detection=True):
+            raise Exception("startservers failed")
+        caa_client = chisel.make_client()
+        startservers.stop()
 
     if not startservers.start(race_detection=True, account_uri=caa_client.account.uri):
         raise Exception("startservers failed")
 
-    setup_zero_days_ago()
+    if not args.skip_setup:
+        setup_zero_days_ago()
 
     if args.run_all or args.run_chisel:
         run_chisel(args.test_case_filter)
