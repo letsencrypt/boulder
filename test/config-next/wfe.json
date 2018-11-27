@@ -32,7 +32,7 @@
     },
     "features": {
       "RPCHeadroom": true,
-      "PerformValidationRPC": true,
+      "PerformValidationRPC": true
     }
   },
 
