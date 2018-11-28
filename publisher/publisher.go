@@ -112,11 +112,27 @@ func NewLog(uri, b64PK string, logger blog.Logger) (*Log, error) {
 		Logger:    logAdaptor{logger},
 		PublicKey: pemPK,
 	}
-	// We set the HTTP client timeout to about half of what we expect
-	// the gRPC timeout to be set to. This allows us to retry the
-	// request at least twice in the case where the server we are
-	// talking to is simply hanging indefinitely.
-	httpClient := &http.Client{Timeout: time.Minute*2 + time.Second*30}
+	httpClient := &http.Client{
+		// We set the HTTP client timeout to about half of what we expect
+		// the gRPC timeout to be set to. This allows us to retry the
+		// request at least twice in the case where the server we are
+		// talking to is simply hanging indefinitely.
+		Timeout: time.Minute*2 + time.Second*30,
+		// We provide a new Transport for each Client so that different logs don't
+		// share a connection pool. This shouldn't matter, but we occasionally see a
+		// strange bug where submission to all logs hangs for about fifteen minutes.
+		// One possibility is that there is a strange bug in the locking on
+		// connection pools (possibly triggered by timed-out TCP connections). If
+		// that's the case, separate connection pools should prevent cross-log impact.
+		// We set some fields like TLSHandshakeTimeout to the values from
+		// DefaultTransport because the zero value for these fields means
+		// "unlimited," which would be bad.
+		Transport: &http.Transport{
+			MaxIdleConns:        http.DefaultTransport.(*http.Transport).MaxIdleConns,
+			IdleConnTimeout:     http.DefaultTransport.(*http.Transport).IdleConnTimeout,
+			TLSHandshakeTimeout: http.DefaultTransport.(*http.Transport).TLSHandshakeTimeout,
+		},
+	}
 	client, err := ctClient.New(url.String(), httpClient, opts)
 	if err != nil {
 		return nil, fmt.Errorf("making CT client: %s", err)
