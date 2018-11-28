@@ -632,14 +632,13 @@ def main():
         raise Exception("must run at least one of the letsencrypt or chisel tests with --all, --certbot, --chisel, --load or --custom")
 
     if not args.skip_setup:
-
         now = datetime.datetime.utcnow()
         seventy_days_ago = now+datetime.timedelta(days=-70)
         if not startservers.start(race_detection=True, fakeclock=fakeclock(seventy_days_ago)):
             raise Exception("startservers failed (mocking seventy days ago)")
+        setup_seventy_days_ago()
         global caa_client
         caa_client = chisel.make_client()
-        setup_seventy_days_ago()
         startservers.stop()
 
         now = datetime.datetime.utcnow()
@@ -649,17 +648,8 @@ def main():
         setup_twenty_days_ago()
         startservers.stop()
 
-    
-    if caa_client is None:
-        # start boulder without a account_uri so we can create an account then tear
-        # it down so it can be restarted with the account_uri arg set... this is
-        # high grade hacky.
-        if not startservers.start(race_detection=True):
-            raise Exception("startservers failed")
-        caa_client = chisel.make_client()
-        startservers.stop()
-
-    if not startservers.start(race_detection=True, account_uri=caa_client.account.uri):
+    caa_acount_uri = caa_client.account.uri if caa_client is not None else None
+    if not startservers.start(race_detection=True, account_uri=caa_acount_uri):
         raise Exception("startservers failed")
 
     if not args.skip_setup:
