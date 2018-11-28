@@ -122,6 +122,21 @@ func (rac RegistrationAuthorityClientWrapper) UpdateAuthorization(ctx context.Co
 	return PBToAuthz(response)
 }
 
+func (rac RegistrationAuthorityClientWrapper) PerformValidation(
+	ctx context.Context,
+	req *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
+	authz, err := rac.inner.PerformValidation(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if authz == nil || !authorizationValid(authz) {
+		return nil, errIncompleteResponse
+	}
+
+	return authz, nil
+}
+
 func (rac RegistrationAuthorityClientWrapper) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, code revocation.Reason, regID int64) error {
 	reason := int64(code)
 	_, err := rac.inner.RevokeCertificateWithReg(ctx, &rapb.RevokeCertificateWithRegRequest{
@@ -290,6 +305,15 @@ func (ras *RegistrationAuthorityServerWrapper) UpdateAuthorization(ctx context.C
 		return nil, err
 	}
 	return AuthzToPB(newAuthz)
+}
+
+func (ras *RegistrationAuthorityServerWrapper) PerformValidation(
+	ctx context.Context,
+	request *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
+	if request == nil || !authorizationValid(request.Authz) || request.ChallengeIndex == nil {
+		return nil, errIncompleteRequest
+	}
+	return ras.inner.PerformValidation(ctx, request)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) RevokeCertificateWithReg(ctx context.Context, request *rapb.RevokeCertificateWithRegRequest) (*corepb.Empty, error) {

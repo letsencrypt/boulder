@@ -41,6 +41,9 @@ const (
 	// SimplifiedVAHTTP enables the simplified VA http-01 rewrite that doesn't use
 	// a custom dialer.
 	SimplifiedVAHTTP
+	// PerformValidationRPC enables the WFE/WFE2 to use the RA's PerformValidation
+	// RPC instead of the deprecated UpdateAuthorization RPC.
+	PerformValidationRPC
 )
 
 // List of features and their default value, protected by fMu
@@ -66,6 +69,7 @@ var features = map[FeatureFlag]bool{
 	ACME13KeyRollover:           false,
 	ProbeCTLogs:                 false,
 	SimplifiedVAHTTP:            false,
+	PerformValidationRPC:        false,
 }
 
 var fMu = new(sync.RWMutex)

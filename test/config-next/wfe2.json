@@ -38,7 +38,8 @@
     "features": {
       "EnforceV2ContentType": true,
       "RPCHeadroom": true,
-      "ACME13KeyRollover": true
+      "ACME13KeyRollover": true,
+      "PerformValidationRPC": true
     }
   },
 
