@@ -52,35 +52,68 @@ func TestHTTPValidationURL(t *testing.T) {
 		IP          string
 		Path        string
 		Port        int
+		UseHTTPS    bool
 		ExpectedURL string
 	}{
 		{
-			Name:        "IPv4 Standard port",
+			Name:        "IPv4 Standard HTTP port",
 			IP:          "10.10.10.10",
 			Path:        egPath,
 			Port:        80,
 			ExpectedURL: fmt.Sprintf("http://10.10.10.10%s", egPath),
 		},
 		{
-			Name:        "IPv4 Non-standard port",
+			Name:        "IPv4 Non-standard HTTP port",
 			IP:          "15.15.15.15",
 			Path:        egPath,
 			Port:        8080,
 			ExpectedURL: fmt.Sprintf("http://15.15.15.15:8080%s", egPath),
 		},
 		{
-			Name:        "IPv6 Standard port",
+			Name:        "IPv6 Standard HTTP port",
 			IP:          "::1",
 			Path:        egPath,
 			Port:        80,
 			ExpectedURL: fmt.Sprintf("http://[::1]%s", egPath),
 		},
 		{
-			Name:        "IPv6 Non-standard port",
+			Name:        "IPv6 Non-standard HTTP port",
 			IP:          "::1",
 			Path:        egPath,
 			Port:        8080,
 			ExpectedURL: fmt.Sprintf("http://[::1]:8080%s", egPath),
+		},
+		{
+			Name:        "IPv4 Standard HTTPS port",
+			IP:          "10.10.10.10",
+			Path:        egPath,
+			Port:        443,
+			UseHTTPS:    true,
+			ExpectedURL: fmt.Sprintf("https://10.10.10.10%s", egPath),
+		},
+		{
+			Name:        "IPv4 Non-standard HTTPS port",
+			IP:          "15.15.15.15",
+			Path:        egPath,
+			Port:        4443,
+			UseHTTPS:    true,
+			ExpectedURL: fmt.Sprintf("https://15.15.15.15:4443%s", egPath),
+		},
+		{
+			Name:        "IPv6 Standard HTTPS port",
+			IP:          "::1",
+			Path:        egPath,
+			Port:        443,
+			UseHTTPS:    true,
+			ExpectedURL: fmt.Sprintf("https://[::1]%s", egPath),
+		},
+		{
+			Name:        "IPv6 Non-standard HTTPS port",
+			IP:          "::1",
+			Path:        egPath,
+			Port:        4443,
+			UseHTTPS:    true,
+			ExpectedURL: fmt.Sprintf("https://[::1]:4443%s", egPath),
 		},
 	}
 
@@ -90,7 +123,7 @@ func TestHTTPValidationURL(t *testing.T) {
 			if ipAddr == nil {
 				t.Fatalf("Failed to parse test case %q IP %q", tc.Name, tc.IP)
 			}
-			url := httpValidationURL(ipAddr, tc.Path, tc.Port)
+			url := httpValidationURL(ipAddr, tc.Path, tc.Port, tc.UseHTTPS)
 			test.AssertEquals(t, url.String(), tc.ExpectedURL)
 		})
 	}
@@ -281,9 +314,13 @@ func TestSetupHTTPValidation(t *testing.T) {
 		return target
 	}
 
-	inputURL, err := url.Parse("http://ipv4.and.ipv6.localhost/yellow/brick/road")
+	httpInputURL, err := url.Parse("http://ipv4.and.ipv6.localhost/yellow/brick/road")
 	if err != nil {
-		t.Fatalf("Failed to construct test inputURL")
+		t.Fatalf("Failed to construct test httpInputURL")
+	}
+	httpsInputURL, err := url.Parse("https://ipv4.and.ipv6.localhost/yellow/brick/road")
+	if err != nil {
+		t.Fatalf("Failed to construct test httpsInputURL")
 	}
 
 	testCases := []struct {
@@ -328,10 +365,10 @@ func TestSetupHTTPValidation(t *testing.T) {
 			},
 		},
 		{
-			Name:        "non-nil input req",
+			Name:        "non-nil non-standard port input req",
 			InputTarget: mustTarget(t, "ipv4.and.ipv6.localhost", 808, "/yellow/brick/road"),
 			InputReq: &http.Request{
-				URL: inputURL,
+				URL: httpInputURL,
 			},
 			ExpectedRequestHost: "ipv4.and.ipv6.localhost",
 			ExpectedRequestURL:  "http://[::1]:808/yellow/brick/road",
@@ -339,6 +376,38 @@ func TestSetupHTTPValidation(t *testing.T) {
 				Hostname:          "ipv4.and.ipv6.localhost",
 				Port:              "808",
 				URL:               "http://[::1]:808/yellow/brick/road",
+				AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
+				AddressUsed:       net.ParseIP("::1"),
+			},
+		},
+		{
+			Name:        "non-nil HTTP input req",
+			InputTarget: mustTarget(t, "ipv4.and.ipv6.localhost", va.httpPort, "/yellow/brick/road"),
+			InputReq: &http.Request{
+				URL: httpInputURL,
+			},
+			ExpectedRequestHost: "ipv4.and.ipv6.localhost",
+			ExpectedRequestURL:  "http://[::1]/yellow/brick/road",
+			ExpectedRecord: core.ValidationRecord{
+				Hostname:          "ipv4.and.ipv6.localhost",
+				Port:              strconv.Itoa(va.httpPort),
+				URL:               "http://[::1]/yellow/brick/road",
+				AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
+				AddressUsed:       net.ParseIP("::1"),
+			},
+		},
+		{
+			Name:        "non-nil HTTPS input req",
+			InputTarget: mustTarget(t, "ipv4.and.ipv6.localhost", va.httpsPort, "/yellow/brick/road"),
+			InputReq: &http.Request{
+				URL: httpsInputURL,
+			},
+			ExpectedRequestHost: "ipv4.and.ipv6.localhost",
+			ExpectedRequestURL:  "https://[::1]/yellow/brick/road",
+			ExpectedRecord: core.ValidationRecord{
+				Hostname:          "ipv4.and.ipv6.localhost",
+				Port:              strconv.Itoa(va.httpsPort),
+				URL:               "https://[::1]/yellow/brick/road",
 				AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("::1"),
 			},
