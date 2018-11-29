@@ -17,6 +17,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 import chisel2
+from helpers import *
 
 from acme.messages import Status, CertificateRequest, Directory
 from acme import crypto_util as acme_crypto_util
@@ -24,6 +25,16 @@ from acme import client as acme_client
 from acme import messages
 
 import josepy
+
+import tempfile
+import shutil
+import atexit
+
+tempdir = tempfile.mkdtemp()
+
+@atexit.register
+def stop():
+    shutil.rmtree(tempdir)
 
 def random_domain():
     """Generate a random domain for testing (to avoid rate limiting)."""
@@ -227,7 +238,16 @@ def test_revoke_by_issuer():
     order = chisel2.auth_and_issue([random_domain()], client=client)
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    reset_akamai_purges()
     client.revoke(josepy.ComparableX509(cert), 0)
+
+    cert_file_pem = os.path.join(tempdir, "revokeme.pem")
+    with open(cert_file_pem, "w") as f:
+        f.write(OpenSSL.crypto.dump_certificate(
+            OpenSSL.crypto.FILETYPE_PEM, cert).decode())
+    ee_ocsp_url = "http://localhost:4002"
+    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    verify_akamai_purge()
 
 def test_revoke_by_authz():
     domains = [random_domain()]
@@ -238,7 +258,16 @@ def test_revoke_by_authz():
     chisel2.auth_and_issue(domains, client=client)
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    reset_akamai_purges()
     client.revoke(josepy.ComparableX509(cert), 0)
+
+    cert_file_pem = os.path.join(tempdir, "revokeme.pem")
+    with open(cert_file_pem, "w") as f:
+        f.write(OpenSSL.crypto.dump_certificate(
+            OpenSSL.crypto.FILETYPE_PEM, cert).decode())
+    ee_ocsp_url = "http://localhost:4002"
+    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    verify_akamai_purge()
 
 def test_revoke_by_privkey():
     client = chisel2.make_client(None)
@@ -262,7 +291,16 @@ def test_revoke_by_privkey():
     new_client = acme_client.ClientV2(directory, net)
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    reset_akamai_purges()
     client.revoke(josepy.ComparableX509(cert), 0)
+
+    cert_file_pem = os.path.join(tempdir, "revokeme.pem")
+    with open(cert_file_pem, "w") as f:
+        f.write(OpenSSL.crypto.dump_certificate(
+            OpenSSL.crypto.FILETYPE_PEM, cert).decode())
+    ee_ocsp_url = "http://localhost:4002"
+    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    verify_akamai_purge()
 
 def test_sct_embedding():
     if not os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):
