@@ -23,7 +23,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
+	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	ct "github.com/google/certificate-transparency-go"
 	"github.com/google/certificate-transparency-go/client/configpb"
@@ -106,7 +106,7 @@ func NewTemporalLogClient(cfg configpb.TemporalLogConfig, hc *http.Client) (*Tem
 	}
 	clients := make([]*LogClient, 0, len(cfg.Shard))
 	for i, shard := range cfg.Shard {
-		opts := jsonclient.Options{}
+		opts := jsonclient.Options{UserAgent: "ct-go-multilog/1.0"}
 		opts.PublicKeyDER = shard.GetPublicKeyDer()
 		c, err := New(shard.Uri, hc, opts)
 		if err != nil {

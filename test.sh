@@ -173,9 +173,17 @@ if [[ "$RUN" =~ "integration" ]] ; then
   # Set context to integration, and force a pending state
   start_context "integration"
 
+  args=("--chisel")
+  if [[ "$INT_FILTER" != "" ]]; then
+    args+=("--filter" "$INT_FILTER")
+  fi
+  if [[ "$INT_SKIP_SETUP" =~ "true" ]]; then
+    args+=("--skip-setup")
+  fi
+
   source ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv}/bin/activate
   DIRECTORY=http://boulder:4000/directory \
-    run python2 test/integration-test.py --chisel
+    run python2 test/integration-test.py "${args[@]}"
   end_context #integration
 fi
 

@@ -242,7 +242,7 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 			return nil, err
 		}
 		var body string
-		if respErr, ok := err.(ctClient.RspError); ok && respErr.StatusCode < 500 {
+		if respErr, ok := err.(jsonclient.RspError); ok && respErr.StatusCode < 500 {
 			body = string(respErr.Body)
 		}
 		pub.log.AuditErrf("Failed to submit certificate to CT log at %s: %s Body=%q",
