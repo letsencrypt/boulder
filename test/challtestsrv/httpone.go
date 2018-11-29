@@ -37,11 +37,46 @@ func (s *ChallSrv) GetHTTPOneChallenge(token string) (string, bool) {
 	return content, present
 }
 
+// AddHTTPRedirect adds a redirect for the given path to the given URL.
+func (s *ChallSrv) AddHTTPRedirect(path, targetURL string) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	s.redirects[path] = targetURL
+}
+
+// DeletedHTTPRedirect deletes a redirect for the given path.
+func (s *ChallSrv) DeleteHTTPRedirect(path string) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	if _, ok := s.redirects[path]; ok {
+		delete(s.redirects, path)
+	}
+}
+
+// GetHTTPRedirect returns the redirect target for the given path
+// (if it exists) and a true bool. If the path does not have a redirect target
+// then an empty string and a false bool are returned.
+func (s *ChallSrv) GetHTTPRedirect(path string) (string, bool) {
+	s.challMu.RLock()
+	defer s.challMu.RUnlock()
+	targetURL, present := s.redirects[path]
+	return targetURL, present
+}
+
 // ServeHTTP handles an HTTP request. If the request path has the ACME HTTP-01
 // challenge well known prefix as a prefix and the token specified is known,
 // then the challenge response contents are returned.
 func (s *ChallSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestPath := r.URL.Path
+
+	// If the request was not over HTTPS and we have a redirect, serve it.
+	// Redirects are ignored over HTTPS so we can easily do an HTTP->HTTPS
+	// redirect for a token path without creating a loop.
+	if redirectTarget, found := s.GetHTTPRedirect(requestPath); found && r.TLS == nil {
+		http.Redirect(w, r, redirectTarget, http.StatusFound)
+		return
+	}
+
 	if strings.HasPrefix(requestPath, wellKnownPath) {
 		token := requestPath[len(wellKnownPath):]
 		if auth, found := s.GetHTTPOneChallenge(token); found {

@@ -36,6 +36,11 @@ type ChallSrv struct {
 	// tlsALPNOne is a map of token values to key authorizations used for TLS-ALPN-01
 	// responses
 	tlsALPNOne map[string]string
+
+	// redirects is a map of paths to URLs. When an HTTP challenge server receives
+	// a GET request matching a path key in this map a 301 HTTP redirect to the
+	// key value will be sent to the client.
+	redirects map[string]string
 }
 
 // Config holds challenge server configuration
@@ -78,6 +83,7 @@ func New(config Config) (*ChallSrv, error) {
 		httpOne:    make(map[string]string),
 		dnsOne:     make(map[string][]string),
 		tlsALPNOne: make(map[string]string),
+		redirects:  make(map[string]string),
 	}
 
 	// If there are HTTP-01 addresses configured, create HTTP-01 servers

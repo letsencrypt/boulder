@@ -11,12 +11,50 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"fmt"
+	"math"
 	"math/big"
 	"net/http"
 	"time"
 
 	"github.com/letsencrypt/boulder/va"
 )
+
+var cert = selfSignedCert()
+
+func selfSignedCert() tls.Certificate {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		panic(fmt.Sprintf("Unable to generate HTTPS ECDSA key: %v", err))
+	}
+
+	serial, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
+	if err != nil {
+		panic(fmt.Sprintf("Unable to generate HTTPS cert serial number: %v", err))
+	}
+
+	template := &x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "challenge test server",
+		},
+		SerialNumber:          serial,
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().AddDate(1, 0, 0),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
+	if err != nil {
+		panic(fmt.Sprintf("Unable to issue HTTPS cert: %v", err))
+	}
+
+	return tls.Certificate{
+		Certificate: [][]byte{der},
+		PrivateKey:  key,
+	}
+}
 
 // AddTLSALPNChallenge adds a new TLS-ALPN-01 key authorization for the given host
 func (s *ChallSrv) AddTLSALPNChallenge(host, content string) {
@@ -47,7 +85,7 @@ func (s *ChallSrv) GetTLSALPNChallenge(host string) (string, bool) {
 func (s *ChallSrv) ServeChallengeCertFunc(k *ecdsa.PrivateKey) func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 	return func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 		if len(hello.SupportedProtos) != 1 || hello.SupportedProtos[0] != va.ACMETLS1Protocol {
-			return nil, fmt.Errorf("ALPN failed, ClientHelloInfo.SupportedProtos: %s", hello.SupportedProtos)
+			return &cert, nil
 		}
 
 		ka, found := s.GetTLSALPNChallenge(hello.ServerName)
@@ -104,6 +142,7 @@ func tlsALPNOneServer(address string, challSrv *ChallSrv) challengeServer {
 	}
 	srv := &http.Server{
 		Addr:         address,
+		Handler:      challSrv,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
 		TLSConfig: &tls.Config{
