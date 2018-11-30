@@ -75,14 +75,15 @@ func newHTTPClient(checkRedirect redirectChecker) http.Client {
 
 // httpValidationURL constructs a URL for the given IP address, path and port
 // combination. The port is omitted from the URL if it is the default HTTP
-// port. It is only used for constructing initial HTTP-01 validation requests
-// and so does not need to support constructing a URL with an HTTPS scheme.
-func httpValidationURL(validationIP net.IP, path string, port int) *url.URL {
+// port or the default HTTPS port. The protocol scheme of the URL is HTTP unless
+// useHTTPS is true. UseHTTPS should only be true when constructing validation
+// URLs based on a redirect from an initial HTTP validation request.
+func httpValidationURL(validationIP net.IP, path string, port int, useHTTPS bool) *url.URL {
 	urlHost := validationIP.String()
 
-	// If the port is something other than the conventional HTTP port, put it in
-	// the URL.
-	if port != 80 {
+	// If the port is something other than the conventional HTTP or HTTPS port,
+	// put it in the URL explicitly using `net.JoinHostPort`.
+	if port != 80 && port != 443 {
 		urlHost = net.JoinHostPort(validationIP.String(), strconv.Itoa(port))
 	}
 
@@ -90,12 +91,17 @@ func httpValidationURL(validationIP net.IP, path string, port int) *url.URL {
 	// `net.JoinHostPort` then we have to manually surround the IPv6 address
 	// with square brackets to make a valid IPv6 URL (e.g "http://[::1]/foo" not
 	// "http://::1/foo")
-	if port == 80 && validationIP.To4() == nil {
+	if (port == 80 || port == 443) && validationIP.To4() == nil {
 		urlHost = fmt.Sprintf("[%s]", urlHost)
 	}
 
+	scheme := "http"
+	if useHTTPS {
+		scheme = "https"
+	}
+
 	return &url.URL{
-		Scheme: "http",
+		Scheme: scheme,
 		Host:   urlHost,
 		Path:   path,
 	}
@@ -287,8 +293,17 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 			"host %q has no IP addresses remaining to use",
 			target.host)
 	}
+
+	var useHTTPS bool
+	// If we are mutating an existing redirected request and the original request
+	// URL uses HTTPS then we must construct a validation URL using HTTPS. In all
+	// other cases we construct an HTTP URL.
+	if req != nil && req.URL.Scheme == "https" {
+		useHTTPS = true
+	}
+
 	record.AddressUsed = targetIP
-	url := httpValidationURL(targetIP, target.path, target.port)
+	url := httpValidationURL(targetIP, target.path, target.port, useHTTPS)
 	record.URL = url.String()
 
 	// If there's no provided HTTP request to mutate (e.g. a redirect request
