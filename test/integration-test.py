@@ -274,7 +274,7 @@ def test_http_challenge_badproto_redirect():
         "gopher://{0}{1}".format(d, challengePath))
 
     # Issuing for the name should cause a connection error because the redirect
-    # domain name is an IP address.
+    # URL an invalid protocol scheme.
     chisel.expect_problem("urn:acme:error:connection",
         lambda: auth_and_issue([d], client=client, chall_type="http-01"))
 
