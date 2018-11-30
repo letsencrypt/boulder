@@ -215,9 +215,7 @@ def test_http_challenge_loop_redirect():
     chisel.expect_problem("urn:acme:error:connection",
         lambda: auth_and_issue([d], client=client, chall_type="http-01"))
 
-    def cleanup():
-        remove_http_redirect(challengePath)
-    return cleanup
+    remove_http_redirect(challengePath)
 
 def test_http_challenge_badport_redirect():
     client = chisel.make_client()
@@ -238,9 +236,7 @@ def test_http_challenge_badport_redirect():
     chisel.expect_problem("urn:acme:error:connection",
         lambda: auth_and_issue([d], client=client, chall_type="http-01"))
 
-    def cleanup():
-        remove_http_redirect(challengePath)
-    return cleanup
+    remove_http_redirect(challengePath)
 
 def test_http_challenge_badhost_redirect():
     client = chisel.make_client()
@@ -261,9 +257,7 @@ def test_http_challenge_badhost_redirect():
     chisel.expect_problem("urn:acme:error:connection",
         lambda: auth_and_issue([d], client=client, chall_type="http-01"))
 
-    def cleanup():
-        remove_http_redirect(challengePath)
-    return cleanup
+    remove_http_redirect(challengePath)
 
 def test_http_challenge_badproto_redirect():
     client = chisel.make_client()
@@ -284,9 +278,7 @@ def test_http_challenge_badproto_redirect():
     chisel.expect_problem("urn:acme:error:connection",
         lambda: auth_and_issue([d], client=client, chall_type="http-01"))
 
-    def cleanup():
-        remove_http_redirect(challengePath)
-    return cleanup
+    remove_http_redirect(challengePath)
 
 def test_http_challenge_http_redirect():
     client = chisel.make_client()
@@ -309,10 +301,8 @@ def test_http_challenge_http_redirect():
 
     auth_and_issue([d], client=client, chall_type="http-01")
 
-    def cleanup():
-        remove_http_redirect(challengePath)
-        remove_http01_response("http-redirect")
-    return cleanup
+    remove_http_redirect(challengePath)
+    remove_http01_response("http-redirect")
 
 def test_http_challenge_https_redirect():
     client = chisel.make_client()
@@ -330,9 +320,7 @@ def test_http_challenge_https_redirect():
 
     auth_and_issue([d], client=client, chall_type="http-01")
 
-    def cleanup():
-        remove_http_redirect(challengePath)
-    return cleanup
+    remove_http_redirect(challengePath)
 
 def test_tls_alpn_challenge():
     # TODO(@mdebski): Once the tls-alpn-01 challenge is enabled in pa.challenges
