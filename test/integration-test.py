@@ -210,7 +210,7 @@ def test_http_challenge_loop_redirect():
         challengePath,
         "http://{0}{1}".format(d, challengePath))
 
-    # Authorizing the domain should fail because of the challenge domains's
+    # Issuing for the the name should fail because of the challenge domains's
     # redirect loop.
     chisel.expect_problem("urn:acme:error:connection",
         lambda: auth_and_issue([d], client=client, chall_type="http-01"))
@@ -231,7 +231,7 @@ def test_http_challenge_badport_redirect():
         challengePath,
         "http://{0}:1337{1}".format(d, challengePath))
 
-    # Authorizing the domain should fail because of the challenge domain's
+    # Issuing for the name should fail because of the challenge domain's
     # invalid port redirect.
     chisel.expect_problem("urn:acme:error:connection",
         lambda: auth_and_issue([d], client=client, chall_type="http-01"))

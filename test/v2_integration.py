@@ -57,21 +57,17 @@ def test_http_challenge_loop_redirect():
     token = chall.encode("token")
 
     # Create a HTTP redirect from the challenge's validation path to itself
-    # We can use anything as the domain name here because it will be resolved to
-    # FAKE_DNS and directed to the challtestsrv. We use HTTP not HTTPS for the
-    # target so the redirect will always be served.
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
     add_http_redirect(
         challengePath,
-        "http://challtestsrv{0}".format(challengePath))
+        "http://{0}{1}".format(d, challengePath))
 
-    # Authorizing the domain should fail because of the invalid port.
+    # Issuing for the the name should fail because of the challenge domains's
+    # redirect loop.
     chisel2.expect_problem("urn:acme:error:connection",
         lambda: auth_and_issue([d], client=client, chall_type="http-01"))
 
-    def cleanup():
-        remove_http_redirect(challengePath)
-    return cleanup
+    remove_http_redirect(challengePath)
 
 def test_http_challenge_badport_redirect():
     client = chisel2.make_client()
@@ -85,16 +81,14 @@ def test_http_challenge_badport_redirect():
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
     add_http_redirect(
         challengePath,
-        "http://challtestsrv:1337{0}".format(challengePath))
+        "http://{0}:1337{1}".format(d, challengePath))
 
-    # Issuing for the name should cause a connection error from reaching too
-    # many redirects
+    # Issuing for the name should fail because of the challenge domain's
+    # invalid port redirect.
     chisel2.expect_problem("urn:acme:error:connection",
         lambda: auth_and_issue([d], client=client, chall_type="http-01"))
 
-    def cleanup():
-        remove_http_redirect(challengePath)
-    return cleanup
+    remove_http_redirect(challengePath)
 
 def test_http_challenge_badhost_redirect():
     client = chisel2.make_client()
@@ -115,9 +109,7 @@ def test_http_challenge_badhost_redirect():
     chisel2.expect_problem("urn:acme:error:connection",
         lambda: auth_and_issue([d], client=client, chall_type="http-01"))
 
-    def cleanup():
-        remove_http_redirect(challengePath)
-    return cleanup
+    remove_http_redirect(challengePath)
 
 def test_http_challenge_badproto_redirect():
     client = chisel2.make_client()
@@ -131,16 +123,14 @@ def test_http_challenge_badproto_redirect():
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
     add_http_redirect(
         challengePath,
-        "gopher://challtestsrv{0}".format(challengePath))
+        "gopher://{0}{1}".format(d, challengePath))
 
     # Issuing for the name should cause a connection error because the redirect
     # domain name is an IP address.
     chisel2.expect_problem("urn:acme:error:connection",
         lambda: auth_and_issue([d], client=client, chall_type="http-01"))
 
-    def cleanup():
-        remove_http_redirect(challengePath)
-    return cleanup
+    remove_http_redirect(challengePath)
 
 def test_http_challenge_http_redirect():
     client = chisel2.make_client()
@@ -155,18 +145,16 @@ def test_http_challenge_http_redirect():
     add_http01_response("http-redirect", keyauth)
 
     # Create a HTTP redirect from the challenge's validation path to some other
-    # token path where we'll register the key authorization.
+    # token path where we have registered the key authorization.
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
     add_http_redirect(
         challengePath,
-        "http://challtestsrv/.well-known/acme-challenge/http-redirect")
+        "http://{0}/.well-known/acme-challenge/http-redirect".format(d))
 
     auth_and_issue([d], client=client, chall_type="http-01")
 
-    def cleanup():
-        remove_http_redirect(challengePath)
-        remove_http01_response("http-redirect")
-    return cleanup
+    remove_http_redirect(challengePath)
+    remove_http01_response("http-redirect")
 
 def test_http_challenge_https_redirect():
     client = chisel2.make_client()
@@ -176,19 +164,15 @@ def test_http_challenge_https_redirect():
     token = chall.encode("token")
 
     # Create a HTTP redirect from the challenge's validation path to an HTTPS
-    # address with the same path. We can use anything as the domain name here
-    # because it will be resolved to FAKE_DNS and directed to the challtestsrv
+    # address with the same path.
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
     add_http_redirect(
         challengePath,
-        "https://challtestsrv{0}".format(challengePath))
+        "https://{0}{1}".format(d, challengePath))
 
     auth_and_issue([d], client=client, chall_type="http-01")
 
-    def cleanup():
-        remove_http_redirect(challengePath)
-    return cleanup
-
+    remove_http_redirect(challengePath)
 
 def test_tls_alpn_challenge():
     if not default_config_dir.startswith("test/config-next"):
