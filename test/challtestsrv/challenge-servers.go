@@ -37,9 +37,8 @@ type ChallSrv struct {
 	// responses
 	tlsALPNOne map[string]string
 
-	// redirects is a map of paths to URLs. When an HTTP challenge server receives
-	// a GET request matching a path key in this map a 301 HTTP redirect to the
-	// key value will be sent to the client.
+	// redirects is a map of paths to URLs. HTTP challenge servers respond to
+	// requests for these paths with a 301 to the corresponding URL.
 	redirects map[string]string
 }
 
