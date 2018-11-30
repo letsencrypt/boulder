@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-// addHTTP01 handles a HTTP POST request to add a new HTTP-01 challenge
+// addHTTP01 handles an HTTP POST request to add a new HTTP-01 challenge
 // response for a given token.
 func (srv *managementServer) addHTTP01(w http.ResponseWriter, r *http.Request) {
 	// Read the request body
@@ -40,7 +40,7 @@ func (srv *managementServer) addHTTP01(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// delHTTP01 handles a HTTP POST request to delete an existing HTTP-01
+// delHTTP01 handles an HTTP POST request to delete an existing HTTP-01
 // challenge response for a given token.
 func (srv *managementServer) delHTTP01(w http.ResponseWriter, r *http.Request) {
 	// Read the request body
@@ -72,7 +72,7 @@ func (srv *managementServer) delHTTP01(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// addHTTPRedirect handles a HTTP POST request to add a new 301 redirect to be
+// addHTTPRedirect handles an HTTP POST request to add a new 301 redirect to be
 // served for the given path to the given target URL.
 func (srv *managementServer) addHTTPRedirect(w http.ResponseWriter, r *http.Request) {
 	// Read the request body
@@ -106,7 +106,7 @@ func (srv *managementServer) addHTTPRedirect(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusOK)
 }
 
-// delHTTPRedirect handles a HTTP POST request to delete an existing HTTP
+// delHTTPRedirect handles an HTTP POST request to delete an existing HTTP
 // redirect for a given path.
 func (srv *managementServer) delHTTPRedirect(w http.ResponseWriter, r *http.Request) {
 	// Read the request body
