@@ -448,6 +448,12 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 			req.Header["User-Agent"] = []string{va.userAgent}
 		}
 
+		if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
+			return berrors.ConnectionFailureError(
+				"Invalid protocol scheme in redirect target. "+
+					`Only "http" and "https" protocol schemes are supported, not %q`, req.URL.Scheme)
+		}
+
 		urlHost = req.URL.Host
 		reqHost := req.URL.Host
 		var reqPort int
@@ -466,6 +472,13 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 			reqPort = va.httpsPort
 		} else {
 			reqPort = va.httpPort
+		}
+
+		// We do not want to redirect to any bare IP addresses. Only domain names
+		if net.ParseIP(reqHost) != nil {
+			return berrors.ConnectionFailureError(
+				"Invalid host in redirect target %q. "+
+					"Only domain names are supported, not IP addresses", reqHost)
 		}
 
 		// Since we've used dialer.DialContext we need to drain the address info

@@ -54,6 +54,12 @@ func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 		s.log.Printf("Query -- [%s] %s\n", q.Name, dns.TypeToString[q.Qtype])
 		switch q.Qtype {
 		case dns.TypeA:
+			// Don't answer any questions for IP addresses with a fakeDNS response.
+			// These queries are invalid!
+			if ip := net.ParseIP(q.Name); ip != nil {
+				continue
+			}
+
 			record := new(dns.A)
 			record.Hdr = dns.RR_Header{
 				Name:   q.Name,

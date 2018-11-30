@@ -59,7 +59,7 @@ func main() {
 	dnsOneBind := flag.String("dns01", ":8053",
 		"Comma separated bind addresses/ports for DNS-01 challenges and fake DNS data. Set empty to disable.")
 	tlsAlpnOneBind := flag.String("tlsalpn01", ":5001",
-		"Comma separated bind addresses/ports for TLS-ALPN-01 challenges. Set empty to disable.")
+		"Comma separated bind addresses/ports for TLS-ALPN-01 challenges and HTTPS HTTP-01 challenges. Set empty to disable.")
 	managementBind := flag.String("management", ":8055",
 		"Bind address/port for management HTTP interface")
 
@@ -93,6 +93,8 @@ func main() {
 	if *httpOneBind != "" {
 		http.HandleFunc("/add-http01", oobSrv.addHTTP01)
 		http.HandleFunc("/del-http01", oobSrv.delHTTP01)
+		http.HandleFunc("/add-redirect", oobSrv.addHTTPRedirect)
+		http.HandleFunc("/del-redirect", oobSrv.delHTTPRedirect)
 	}
 	if *dnsOneBind != "" {
 		http.HandleFunc("/set-txt", oobSrv.addDNS01)
