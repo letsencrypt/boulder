@@ -1,5 +1,6 @@
 {
   "publisher": {
+    "blockProfileRate": 1000000000,
     "maxConcurrentRPCServerRequests": 100000,
     "submissionTimeout": "5s",
     "debugAddr": ":8009",
