@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"runtime"
 	"time"
 
 	ct "github.com/google/certificate-transparency-go"
@@ -19,6 +20,10 @@ type config struct {
 	Publisher struct {
 		cmd.ServiceConfig
 		Features map[string]bool
+		// If this is non-zero, profile blocking events such that one even is
+		// sampled every N nanoseconds.
+		// https://golang.org/pkg/runtime/#SetBlockProfileRate
+		BlockProfileRate int
 	}
 
 	Syslog cmd.SyslogConfig
@@ -45,6 +50,8 @@ func main() {
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 	err = features.Set(c.Publisher.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
+
+	runtime.SetBlockProfileRate(c.Publisher.BlockProfileRate)
 
 	if *grpcAddr != "" {
 		c.Publisher.GRPC.Address = *grpcAddr

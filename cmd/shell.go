@@ -194,8 +194,6 @@ func newScope(addr string, logger blog.Logger) metrics.Scope {
 	// These handlers are defined in runtime/pprof instead of net/http/pprof, and
 	// have to be accessed through net/http/pprof's Handler func.
 	mux.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
-	// Sample an average of one blocking event per second spent blocked (1e9 ns)
-	runtime.SetBlockProfileRate(1e9)
 	mux.Handle("/debug/pprof/block", pprof.Handler("block"))
 	mux.Handle("/debug/pprof/heap", pprof.Handler("heap"))
 	mux.Handle("/debug/pprof/mutex", pprof.Handler("mutex"))
