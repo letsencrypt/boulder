@@ -120,6 +120,7 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGr
 	for i := 0; i < len(group.Logs); i++ {
 		select {
 		case <-ctx.Done():
+			ctp.winnerCounter.With(prometheus.Labels{"log": "canceled", "group": group.Name}).Inc()
 			return nil, ctx.Err()
 		case res := <-results:
 			if res.sct != nil {
