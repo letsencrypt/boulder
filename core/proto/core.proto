@@ -62,6 +62,16 @@ message Authorization {
         optional int64 expires = 5; // Unix timestamp (nanoseconds)
         repeated core.Challenge challenges = 6;
         optional bytes combinations = 7;
+
+        // authz2 specific fields
+        // TODO: these fields are not currently populated by anything
+        optional bool v2 = 8;
+        optional bytes token = 9;
+        repeated string challengeTypes = 10;
+        optional string attempted = 11;
+        optional bytes validationError = 12;
+        optional bytes validationRecord = 13;
+        optional string identifierType = 14;
 }
 
 message Order {

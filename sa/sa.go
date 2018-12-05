@@ -2104,3 +2104,31 @@ func (ssa *SQLStorageAuthority) getChallengesImpl(db dbSelector, authID string) 
 	}
 	return challs, nil
 }
+
+// NewAuthorization adds a new authz2 style authorization to the database and returns
+// either the ID or an error. It will only process corepb.Authorization objects if the
+// V2 field is set.
+func (ssa *SQLStorageAuthority) NewAuthorization(authz *corepb.Authorization) (int64, error) {
+	am, err := authzPBToModel(authz)
+	if err != nil {
+		return 0, err
+	}
+	err = ssa.dbMap.Insert(am)
+	if err != nil {
+		return 0, err
+	}
+	return am.ID, nil
+}
+
+// GetAuthz2 returns the authz2 style authorization identified by the provided ID or an error.
+// If no authorization is found matching the ID a berrors.NotFound type error is returned.
+func (ssa *SQLStorageAuthority) GetAuthz2(id int64) (*corepb.Authorization, error) {
+	obj, err := ssa.dbMap.Get(authz2Model{}, id)
+	if err != nil {
+		return nil, err
+	}
+	if obj == nil {
+		return nil, berrors.NotFoundError("authorization not found")
+	}
+	return modelToAuthzPB(obj.(*authz2Model)), nil
+}

@@ -3,6 +3,7 @@ package sa
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net"
@@ -395,4 +396,81 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 		order.Error = &problem
 	}
 	return order, nil
+}
+
+var challTypeToBit = map[string]uint{
+	"http-01":     0,
+	"tls-sni-01":  1,
+	"dns-01":      2,
+	"tls-alpn-01": 3,
+}
+
+var bitToChallType = map[uint]string{
+	0: "http-01",
+	1: "tls-sni-01",
+	2: "dns-01",
+	3: "tls-alpn-01",
+}
+
+type authz2Model struct {
+	ID               int64
+	IdentifierType   string
+	IdentifierValue  string
+	RegistrationID   int64
+	Status           string
+	Expires          *time.Time
+	Challenges       byte
+	Attempted        string
+	Token            []byte
+	ValidationError  []byte
+	ValidationRecord []byte
+}
+
+func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
+	if authz.V2 == nil || !*authz.V2 {
+		return nil, errors.New("authorization is not v2")
+	}
+	expires := time.Unix(0, *authz.Expires)
+	am := &authz2Model{
+		IdentifierType:   *authz.IdentifierType,
+		IdentifierValue:  *authz.Identifier,
+		RegistrationID:   *authz.RegistrationID,
+		Status:           *authz.Status,
+		Expires:          &expires,
+		Attempted:        *authz.Attempted,
+		Token:            authz.Token,
+		ValidationError:  authz.ValidationError,
+		ValidationRecord: authz.ValidationRecord,
+	}
+	for _, challType := range authz.ChallengeTypes {
+		am.Challenges |= 1 << challTypeToBit[challType]
+	}
+
+	return am, nil
+}
+
+func modelToAuthzPB(am *authz2Model) *corepb.Authorization {
+	v2 := true
+	expires := am.Expires.UnixNano()
+	id := fmt.Sprintf("%d", am.ID)
+	pb := &corepb.Authorization{
+		V2:               &v2,
+		Id:               &id,
+		IdentifierType:   &am.IdentifierType,
+		Identifier:       &am.IdentifierValue,
+		RegistrationID:   &am.RegistrationID,
+		Expires:          &expires,
+		Token:            am.Token,
+		ValidationError:  am.ValidationError,
+		ValidationRecord: am.ValidationRecord,
+	}
+	if am.Attempted != "" {
+		pb.Attempted = &am.Attempted
+	}
+	for pos := uint(0); pos < 8; pos++ {
+		if (am.Challenges>>pos)&1 == 1 {
+			pb.ChallengeTypes = append(pb.ChallengeTypes, bitToChallType[pos])
+		}
+	}
+	return pb
 }
