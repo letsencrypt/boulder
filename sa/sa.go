@@ -2130,5 +2130,5 @@ func (ssa *SQLStorageAuthority) GetAuthz2(id int64) (*corepb.Authorization, erro
 	if obj == nil {
 		return nil, berrors.NotFoundError("authorization not found")
 	}
-	return modelToAuthzPB(obj.(*authz2Model)), nil
+	return modelToAuthzPB(obj.(*authz2Model))
 }

@@ -2,17 +2,20 @@ package sa
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"net"
+	"strconv"
 	"time"
 
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 )
@@ -428,49 +431,121 @@ type authz2Model struct {
 
 func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 	if authz.V2 == nil || !*authz.V2 {
-		return nil, errors.New("authorization is not v2")
+		return nil, errors.New("authorization is not v2 format")
 	}
 	expires := time.Unix(0, *authz.Expires)
-	am := &authz2Model{
-		IdentifierType:   *authz.IdentifierType,
-		IdentifierValue:  *authz.Identifier,
-		RegistrationID:   *authz.RegistrationID,
-		Status:           *authz.Status,
-		Expires:          &expires,
-		Attempted:        *authz.Attempted,
-		Token:            authz.Token,
-		ValidationError:  authz.ValidationError,
-		ValidationRecord: authz.ValidationRecord,
+	id, err := strconv.Atoi(*authz.Id)
+	if err != nil {
+		return nil, err
 	}
-	for _, challType := range authz.ChallengeTypes {
-		am.Challenges |= 1 << challTypeToBit[challType]
+	am := &authz2Model{
+		ID:              int64(id),
+		IdentifierValue: *authz.Identifier,
+		RegistrationID:  *authz.RegistrationID,
+		Status:          *authz.Status,
+		Expires:         &expires,
+	}
+	var tokenStr string
+	for _, chall := range authz.Challenges {
+		am.Challenges |= 1 << challTypeToBit[*chall.Type]
+		tokenStr = *chall.Token
+		if *chall.Status == string(core.StatusValid) || *chall.Status == string(core.StatusInvalid) {
+			if am.Attempted != "" || am.ValidationRecord != nil || am.ValidationError != nil {
+				return nil, errors.New("multiple challenges are non-pending")
+			}
+			am.Attempted = *chall.Type
+			records := make([]core.ValidationRecord, len(chall.Validationrecords))
+			for i, recordPB := range chall.Validationrecords {
+				var err error
+				records[i], err = grpc.PBToValidationRecord(recordPB)
+				if err != nil {
+					return nil, err
+				}
+			}
+			var err error
+			am.ValidationRecord, err = json.Marshal(records)
+			if err != nil {
+				return nil, err
+			}
+			if chall.Error != nil {
+				prob, err := grpc.PBToProblemDetails(chall.Error)
+				if err != nil {
+					return nil, err
+				}
+				am.ValidationError, err = json.Marshal(prob)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		token, err := base64.StdEncoding.DecodeString(tokenStr)
+		if err != nil {
+			return nil, err
+		}
+		am.Token = token
 	}
 
 	return am, nil
 }
 
-func modelToAuthzPB(am *authz2Model) *corepb.Authorization {
-	v2 := true
+func modelToAuthzPB(am *authz2Model) (*corepb.Authorization, error) {
 	expires := am.Expires.UnixNano()
 	id := fmt.Sprintf("%d", am.ID)
+	v2 := true
 	pb := &corepb.Authorization{
-		V2:               &v2,
-		Id:               &id,
-		IdentifierType:   &am.IdentifierType,
-		Identifier:       &am.IdentifierValue,
-		RegistrationID:   &am.RegistrationID,
-		Expires:          &expires,
-		Token:            am.Token,
-		ValidationError:  am.ValidationError,
-		ValidationRecord: am.ValidationRecord,
+		V2:             &v2,
+		Id:             &id,
+		Status:         &am.Status,
+		Identifier:     &am.IdentifierValue,
+		RegistrationID: &am.RegistrationID,
+		Expires:        &expires,
 	}
-	if am.Attempted != "" {
-		pb.Attempted = &am.Attempted
-	}
+	challenges := int64(0)
 	for pos := uint(0); pos < 8; pos++ {
 		if (am.Challenges>>pos)&1 == 1 {
-			pb.ChallengeTypes = append(pb.ChallengeTypes, bitToChallType[pos])
+			challType := bitToChallType[pos]
+			status := string(core.StatusPending)
+			id := challenges
+			challenges++
+			token := base64.StdEncoding.EncodeToString(am.Token)
+			challenge := &corepb.Challenge{
+				Id:     &id,
+				Type:   &challType,
+				Status: &status,
+				Token:  &token,
+			}
+			if am.Attempted != "" && am.Attempted == challType {
+				if len(am.ValidationError) != 0 {
+					status := string(core.StatusInvalid)
+					challenge.Status = &status
+					var prob probs.ProblemDetails
+					err := json.Unmarshal(am.ValidationError, &prob)
+					if err != nil {
+						return nil, err
+					}
+					challenge.Error, err = grpc.ProblemDetailsToPB(&prob)
+					if err != nil {
+						return nil, err
+					}
+				} else {
+					status := string(core.StatusValid)
+					challenge.Status = &status
+				}
+				var records []core.ValidationRecord
+				err := json.Unmarshal(am.ValidationRecord, &records)
+				if err != nil {
+					return nil, err
+				}
+				challenge.Validationrecords = make([]*corepb.ValidationRecord, len(records))
+				for i, r := range records {
+					challenge.Validationrecords[i], err = grpc.ValidationRecordToPB(r)
+					if err != nil {
+						return nil, err
+					}
+				}
+			}
+			pb.Challenges = append(pb.Challenges, challenge)
 		}
 	}
-	return pb
+	return pb, nil
 }
