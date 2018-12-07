@@ -1154,9 +1154,9 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	// missed. In such a case logging explicitly at this layer in addition to
 	// erroring at the RPC layer is preferred.
 	if _, err := bgrpc.ValidationResultToPB(records, prob); err != nil {
-		va.log.AuditErr(fmt.Sprintf(
+		va.log.Errf(
 			"failed to marshal records %#v and prob %#v to protocol buffer: %v",
-			records, prob, err))
+			records, prob, err)
 	}
 
 	if prob == nil {
