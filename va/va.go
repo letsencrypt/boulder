@@ -29,6 +29,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
@@ -563,6 +564,9 @@ func certNames(cert *x509.Certificate) []string {
 	}
 	names = append(names, cert.DNSNames...)
 	names = core.UniqueLowerNames(names)
+	for i, n := range names {
+		names[i] = replaceInvalidUTF8([]byte(n))
+	}
 	return names
 }
 
@@ -1141,6 +1145,17 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 
 	va.log.AuditObject("Validation result", logEvent)
 	va.log.Infof("Validations: %+v", authz)
+
+	// Try to marshal the validation results and prob (if any) to protocol
+	// buffers. We log at this layer instead of leaving it up to gRPC because gRPC
+	// doesn't log the actual contents that failed to marshal, making it hard to
+	// figure out what's broken.
+	if _, err := bgrpc.ValidationResultToPB(records, prob); err != nil {
+		va.log.Errf(
+			"failed to marshal records %#v and prob %#v to protocol buffer: %v",
+			records, prob, err)
+	}
+
 	if prob == nil {
 		// This is necessary because if we just naively returned prob, it would be a
 		// non-nil interface value containing a nil pointer, rather than a nil
