@@ -1147,12 +1147,9 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	va.log.Infof("Validations: %+v", authz)
 
 	// Try to marshal the validation results and prob (if any) to protocol
-	// buffers. We do this later in the VA wrapper but we also want to try this
-	// proactively in the VA such that we can log anytime there is a failure to
-	// marshal. This is typically the result of invalid UTF-8 in user supplied
-	// data that we intended to escape with `replaceInvalidUTF8` but may have
-	// missed. In such a case logging explicitly at this layer in addition to
-	// erroring at the RPC layer is preferred.
+	// buffers. We log at this layer instead of leaving it up to gRPC because gRPC
+	// doesn't log the actual contents that failed to marshal, making it hard to
+	// figure out what's broken.
 	if _, err := bgrpc.ValidationResultToPB(records, prob); err != nil {
 		va.log.Errf(
 			"failed to marshal records %#v and prob %#v to protocol buffer: %v",
