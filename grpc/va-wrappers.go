@@ -35,7 +35,7 @@ func (s *ValidationAuthorityGRPCServer) PerformValidation(ctx context.Context, i
 	if !ok && err != nil {
 		return nil, err
 	}
-	return validationResultToPB(records, prob)
+	return ValidationResultToPB(records, prob)
 }
 
 func (s *ValidationAuthorityGRPCServer) IsSafeDomain(ctx context.Context, in *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {

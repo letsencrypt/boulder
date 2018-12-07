@@ -29,6 +29,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
@@ -563,6 +564,9 @@ func certNames(cert *x509.Certificate) []string {
 	}
 	names = append(names, cert.DNSNames...)
 	names = core.UniqueLowerNames(names)
+	for i, n := range names {
+		names[i] = replaceInvalidUTF8([]byte(n))
+	}
 	return names
 }
 
@@ -1141,6 +1145,20 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 
 	va.log.AuditObject("Validation result", logEvent)
 	va.log.Infof("Validations: %+v", authz)
+
+	// Try to marshal the validation results and prob (if any) to protocol
+	// buffers. We do this later in the VA wrapper but we also want to try this
+	// proactively in the VA such that we can log anytime there is a failure to
+	// marshal. This is typically the result of invalid UTF-8 in user supplied
+	// data that we intended to escape with `replaceInvalidUTF8` but may have
+	// missed. In such a case logging explicitly at this layer in addition to
+	// erroring at the RPC layer is preferred.
+	if _, err := bgrpc.ValidationResultToPB(records, prob); err != nil {
+		va.log.AuditErr(fmt.Sprintf(
+			"failed to marshal records %#v and prob %#v to protocol buffer: %v",
+			records, prob, err))
+	}
+
 	if prob == nil {
 		// This is necessary because if we just naively returned prob, it would be a
 		// non-nil interface value containing a nil pointer, rather than a nil
