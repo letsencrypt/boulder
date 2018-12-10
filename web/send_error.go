@@ -29,7 +29,7 @@ func SendError(
 	// Record details to the log event
 	logEvent.Error = fmt.Sprintf("%d :: %s :: %s", prob.HTTPStatus, prob.Type, prob.Detail)
 	if ierr != nil {
-		logEvent.AddError(fmt.Sprintf("%#v", ierr))
+		logEvent.AddError(fmt.Sprintf("%s", ierr))
 	}
 
 	// Only audit log internal errors so users cannot purposefully cause
