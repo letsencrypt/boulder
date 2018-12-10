@@ -256,6 +256,11 @@ func (sa *StorageAuthority) GetAuthorization(_ context.Context, id string) (core
 		authz.Expires = &exp
 		authz.Challenges[0].URI = "http://localhost:4300/acme/challenge/valid/23"
 		return authz, nil
+	} else if id == "pending" {
+		exp := sa.clk.Now().AddDate(100, 0, 0)
+		authz.Expires = &exp
+		authz.Status = core.StatusPending
+		return authz, nil
 	} else if id == "expired" {
 		exp := sa.clk.Now().AddDate(0, -1, 0)
 		authz.Expires = &exp
