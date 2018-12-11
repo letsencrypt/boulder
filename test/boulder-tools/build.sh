@@ -23,6 +23,7 @@ export GOBIN=/usr/local/bin GOPATH=/tmp/gopath
 
 # Job %2 - Install protobuf and testing/dev tools.
 go get \
+  github.com/letsencrypt/pebble/cmd/pebble-challtestsrv \
   bitbucket.org/liamstask/goose/cmd/goose \
   golang.org/x/lint/golint \
   github.com/golang/mock/mockgen \

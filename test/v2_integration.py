@@ -30,6 +30,8 @@ import tempfile
 import shutil
 import atexit
 
+challsrv_url_base = "http://localhost:8055"
+
 tempdir = tempfile.mkdtemp()
 
 @atexit.register
@@ -181,6 +183,14 @@ def test_http_challenge_https_redirect():
         challengePath,
         "https://{0}{1}".format(d, challengePath))
 
+    # Also add an A record for the domain pointing to the interface that the
+    # HTTPS HTTP-01 challtestsrv is bound.
+    urllib2.urlopen("{0}/add-a".format(challsrv_url_base),
+        data=json.dumps({
+            "host": d,
+            "addresses": ["10.77.77.77"],
+        })).read()
+
     auth_and_issue([d], client=client, chall_type="http-01")
 
     remove_http_redirect(challengePath)
@@ -188,7 +198,20 @@ def test_http_challenge_https_redirect():
 def test_tls_alpn_challenge():
     if not default_config_dir.startswith("test/config-next"):
         return
-    chisel2.auth_and_issue([random_domain(), random_domain()], chall_type="tls-alpn-01")
+    # Pick two random domains
+    domains = [random_domain(),random_domain()]
+
+    # Add A records for these domains to ensure the VA's requests are directed
+    # to the interface that the challtestsrv has bound for TLS-ALPN-01 challenge
+    # responses
+    for host in domains:
+        urllib2.urlopen("{0}/add-a".format(challsrv_url_base),
+                data=json.dumps({
+                    "host": host,
+                    "addresses": ["10.88.88.88"],
+                })).read()
+
+    chisel2.auth_and_issue(domains, chall_type="tls-alpn-01")
 
 def test_overlapping_wildcard():
     """

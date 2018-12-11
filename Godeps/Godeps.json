@@ -222,6 +222,11 @@
 			"Rev": "648daed35d49dac24a4bff253b190a80da3ab6a5"
 		},
 		{
+			"ImportPath": "github.com/letsencrypt/challtestsrv",
+			"Comment": "v1.0.0",
+			"Rev": "495441a8880035dedbee2b7286e805deda093260"
+		},
+		{
 			"ImportPath": "github.com/letsencrypt/pkcs11key",
 			"Comment": "v1.0.0",
 			"Rev": "c47dab18ddd8c4d4267661870d3ba331cddc57c9"
@@ -384,7 +389,19 @@
 			"Rev": "0709b304e793a5edb4a2c0145f281ecdc20838a4"
 		},
 		{
+			"ImportPath": "golang.org/x/net/bpf",
+			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
+		},
+		{
 			"ImportPath": "golang.org/x/net/context",
+			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
+		},
+		{
+			"ImportPath": "golang.org/x/net/internal/iana",
+			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
+		},
+		{
+			"ImportPath": "golang.org/x/net/internal/socket",
 			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
 		},
 		{
@@ -409,6 +426,14 @@
 		},
 		{
 			"ImportPath": "golang.org/x/net/internal/timeseries",
+			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
+		},
+		{
+			"ImportPath": "golang.org/x/net/ipv4",
+			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
+		},
+		{
+			"ImportPath": "golang.org/x/net/ipv6",
 			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
 		},
 		{
