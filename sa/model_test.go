@@ -3,6 +3,9 @@ package sa
 import (
 	"testing"
 
+	"github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/probs"
+
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -98,4 +101,20 @@ func TestV2AuthzModel(t *testing.T) {
 	authzPBOut, err := modelToAuthzPB(model)
 	test.AssertNotError(t, err, "modelToAuthzPB failed")
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
+
+	status = string(core.StatusInvalid)
+	validationErr := probs.ConnectionFailure("weewoo")
+	authzPB.Challenges[0].Status = &status
+	authzPB.Challenges[0].Error, err = grpc.ProblemDetailsToPB(validationErr)
+	test.AssertNotError(t, err, "grpc.ProblemDetailsToPB failed")
+	model, err = authzPBToModel(authzPB)
+	test.AssertNotError(t, err, "authzPBToModel failed")
+
+	authzPBOut, err = modelToAuthzPB(model)
+	test.AssertNotError(t, err, "modelToAuthzPB failed")
+	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
+
+	authzPB.Challenges[1].Status = &status
+	_, err = authzPBToModel(authzPB)
+	test.AssertError(t, err, "authzPBToModel didn't fail with multiple non-pending challenges")
 }
