@@ -7,7 +7,7 @@ package mock_metrics
 import (
 	gomock "github.com/golang/mock/gomock"
 	metrics "github.com/letsencrypt/boulder/metrics"
-	prometheus "github.com/prometheus/client_golang/prometheus"
+	prometheus "github.com/letsencrypt/boulder/vendor/github.com/prometheus/client_golang/prometheus"
 	reflect "reflect"
 	time "time"
 )
@@ -37,36 +37,43 @@ func (m *MockScope) EXPECT() *MockScopeMockRecorder {
 
 // Gauge mocks base method
 func (m *MockScope) Gauge(arg0 string, arg1 int64) {
+	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Gauge", arg0, arg1)
 }
 
 // Gauge indicates an expected call of Gauge
 func (mr *MockScopeMockRecorder) Gauge(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Gauge", reflect.TypeOf((*MockScope)(nil).Gauge), arg0, arg1)
 }
 
 // GaugeDelta mocks base method
 func (m *MockScope) GaugeDelta(arg0 string, arg1 int64) {
+	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "GaugeDelta", arg0, arg1)
 }
 
 // GaugeDelta indicates an expected call of GaugeDelta
 func (mr *MockScopeMockRecorder) GaugeDelta(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GaugeDelta", reflect.TypeOf((*MockScope)(nil).GaugeDelta), arg0, arg1)
 }
 
 // Inc mocks base method
 func (m *MockScope) Inc(arg0 string, arg1 int64) {
+	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Inc", arg0, arg1)
 }
 
 // Inc indicates an expected call of Inc
 func (mr *MockScopeMockRecorder) Inc(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Inc", reflect.TypeOf((*MockScope)(nil).Inc), arg0, arg1)
 }
 
 // MustRegister mocks base method
 func (m *MockScope) MustRegister(arg0 ...prometheus.Collector) {
+	m.ctrl.T.Helper()
 	varargs := []interface{}{}
 	for _, a := range arg0 {
 		varargs = append(varargs, a)
@@ -76,11 +83,13 @@ func (m *MockScope) MustRegister(arg0 ...prometheus.Collector) {
 
 // MustRegister indicates an expected call of MustRegister
 func (mr *MockScopeMockRecorder) MustRegister(arg0 ...interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MustRegister", reflect.TypeOf((*MockScope)(nil).MustRegister), arg0...)
 }
 
 // NewScope mocks base method
 func (m *MockScope) NewScope(arg0 ...string) metrics.Scope {
+	m.ctrl.T.Helper()
 	varargs := []interface{}{}
 	for _, a := range arg0 {
 		varargs = append(varargs, a)
@@ -92,35 +101,42 @@ func (m *MockScope) NewScope(arg0 ...string) metrics.Scope {
 
 // NewScope indicates an expected call of NewScope
 func (mr *MockScopeMockRecorder) NewScope(arg0 ...interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewScope", reflect.TypeOf((*MockScope)(nil).NewScope), arg0...)
 }
 
 // SetInt mocks base method
 func (m *MockScope) SetInt(arg0 string, arg1 int64) {
+	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "SetInt", arg0, arg1)
 }
 
 // SetInt indicates an expected call of SetInt
 func (mr *MockScopeMockRecorder) SetInt(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetInt", reflect.TypeOf((*MockScope)(nil).SetInt), arg0, arg1)
 }
 
 // Timing mocks base method
 func (m *MockScope) Timing(arg0 string, arg1 int64) {
+	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Timing", arg0, arg1)
 }
 
 // Timing indicates an expected call of Timing
 func (mr *MockScopeMockRecorder) Timing(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Timing", reflect.TypeOf((*MockScope)(nil).Timing), arg0, arg1)
 }
 
 // TimingDuration mocks base method
 func (m *MockScope) TimingDuration(arg0 string, arg1 time.Duration) {
+	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "TimingDuration", arg0, arg1)
 }
 
 // TimingDuration indicates an expected call of TimingDuration
 func (mr *MockScopeMockRecorder) TimingDuration(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TimingDuration", reflect.TypeOf((*MockScope)(nil).TimingDuration), arg0, arg1)
 }

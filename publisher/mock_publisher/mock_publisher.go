@@ -36,6 +36,7 @@ func (m *MockPublisher) EXPECT() *MockPublisherMockRecorder {
 
 // SubmitToSingleCTWithResult mocks base method
 func (m *MockPublisher) SubmitToSingleCTWithResult(arg0 context.Context, arg1 *proto.Request) (*proto.Result, error) {
+	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SubmitToSingleCTWithResult", arg0, arg1)
 	ret0, _ := ret[0].(*proto.Result)
 	ret1, _ := ret[1].(error)
@@ -44,5 +45,6 @@ func (m *MockPublisher) SubmitToSingleCTWithResult(arg0 context.Context, arg1 *p
 
 // SubmitToSingleCTWithResult indicates an expected call of SubmitToSingleCTWithResult
 func (mr *MockPublisherMockRecorder) SubmitToSingleCTWithResult(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubmitToSingleCTWithResult", reflect.TypeOf((*MockPublisher)(nil).SubmitToSingleCTWithResult), arg0, arg1)
 }
