@@ -662,8 +662,8 @@ def test_sct_embedding():
 
 def setup_mock_dns(caa_account_uri=None):
     """
-    setup_mock_dns adds mock DNS entries to the running pebble-challtestsrv that
-    integration tests depend on.
+    setup_mock_dns adds mock DNS entries to the running pebble-challtestsrv.
+    Integration tests depend on this mock data.
     """
 
     if caa_account_uri is None:
