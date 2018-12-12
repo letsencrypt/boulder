@@ -45,6 +45,8 @@ class ProcInfo:
         self.cmd = cmd
         self.proc = proc
 
+challsrv_url_base = "http://localhost:8055"
+
 caa_client = None
 caa_authzs = []
 old_authzs = []
@@ -211,6 +213,14 @@ def test_http_challenge_https_redirect():
         challengePath,
         "https://{0}{1}".format(d, challengePath))
 
+    # Also add an A record for the domain pointing to the interface that the
+    # HTTPS HTTP-01 challtestsrv is bound.
+    urllib2.urlopen("{0}/add-a".format(challsrv_url_base),
+        data=json.dumps({
+            "host": d,
+            "addresses": ["10.77.77.77"],
+        })).read()
+
     auth_and_issue([d], client=client, chall_type="http-01")
 
     remove_http_redirect(challengePath)
@@ -220,7 +230,21 @@ def test_tls_alpn_challenge():
     # by default, delete this early return.
     if not default_config_dir.startswith("test/config-next"):
         return
-    auth_and_issue([random_domain(), random_domain()], chall_type="tls-alpn-01")
+
+    # Pick two random domains
+    domains = [random_domain(), random_domain()]
+
+    # Add A records for these domains to ensure the VA's requests are directed
+    # to the interface that the challtestsrv has bound for TLS-ALPN-01 challenge
+    # responses
+    for host in domains:
+        urllib2.urlopen("{0}/add-a".format(challsrv_url_base),
+                data=json.dumps({
+                    "host": host,
+                    "addresses": ["10.88.88.88"],
+                })).read()
+
+    auth_and_issue(domains, chall_type="tls-alpn-01")
 
 def test_issuer():
     """
@@ -636,6 +660,53 @@ def test_sct_embedding():
             raise Exception("Delta between SCT timestamp and now was too great "
                 "%s vs %s (%s)" % (sct.timestamp, datetime.datetime.now(), delta))
 
+def setup_mock_dns(caa_account_uri=None):
+    """
+    setup_mock_dns adds mock DNS entries to the running pebble-challtestsrv.
+    Integration tests depend on this mock data.
+    """
+
+    if caa_account_uri is None:
+      caa_account_uri = os.environ.get("ACCOUNT_URI")
+
+    # Set the default IPv4 address for A queries to the FAKE_DNS env var value.
+    fakeDNS = os.environ.get("FAKE_DNS")
+    default_ipv4_url = "{0}/set-default-ipv4".format(challsrv_url_base)
+    urllib2.urlopen(default_ipv4_url,
+            data=json.dumps({
+                "ip": fakeDNS,
+            })).read()
+    # Disable the default IPv6 address so there are no AAAA records. Docker
+    # makes IPv6 annoying.
+    default_ipv6_url = "{0}/set-default-ipv6".format(challsrv_url_base)
+    urllib2.urlopen(default_ipv6_url,
+            data=json.dumps({
+                "ip": "",
+            })).read()
+
+    goodCAA = "happy-hacker-ca.invalid"
+    badCAA = "sad-hacker-ca.invalid"
+
+    caa_records = [
+        {"domain": "bad-caa-reserved.com", "value": badCAA},
+        {"domain": "good-caa-reserved.com", "value": goodCAA},
+        {"domain": "accounturi.good-caa-reserved.com", "value":"{0}; accounturi={1}".format(goodCAA, caa_account_uri)},
+        {"domain": "recheck.good-caa-reserved.com", "value":badCAA},
+        {"domain": "dns-01-only.good-caa-reserved.com", "value": "{0}; validationmethods=dns-01".format(goodCAA)},
+        {"domain": "http-01-only.good-caa-reserved.com", "value": "{0}; validationmethods=http-01".format(goodCAA)},
+        {"domain": "dns-01-or-http01.good-caa-reserved.com", "value": "{0}; validationmethods=dns-01,http-01".format(goodCAA)},
+    ]
+    set_caa_url  = "{0}/add-caa".format(challsrv_url_base)
+    for policy in caa_records:
+        urllib2.urlopen(set_caa_url,
+                data=json.dumps({
+                    "host": policy["domain"],
+                    "policies": [{
+                        "tag": "issue",
+                        "value": policy["value"],
+                    }],
+                })).read()
+
 exit_status = 1
 tempdir = tempfile.mkdtemp()
 
@@ -680,12 +751,14 @@ def main():
         setup_twenty_days_ago()
         startservers.stop()
 
-    caa_acount_uri = caa_client.account.uri if caa_client is not None else None
-    if not startservers.start(race_detection=True, account_uri=caa_acount_uri):
+    caa_account_uri = caa_client.account.uri if caa_client is not None else None
+    if not startservers.start(race_detection=True, account_uri=caa_account_uri):
         raise Exception("startservers failed")
 
     if not args.skip_setup:
         setup_zero_days_ago()
+
+    setup_mock_dns(caa_account_uri)
 
     if args.run_all or args.run_chisel:
         run_chisel(args.test_case_filter)

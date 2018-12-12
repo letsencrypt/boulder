@@ -112,13 +112,13 @@
 		},
 		{
 			"ImportPath": "github.com/golang/mock/gomock",
-			"Comment": "v1.0.0-83-gb3e60bc",
-			"Rev": "b3e60bcdc577185fce3cf625fc96b62857ce5574"
+			"Comment": "v1.2.0",
+			"Rev": "51421b967af1f557f93a59e0057aaf15ca02e29c"
 		},
 		{
 			"ImportPath": "github.com/golang/mock/mockgen/model",
-			"Comment": "v1.0.0-83-gb3e60bc",
-			"Rev": "b3e60bcdc577185fce3cf625fc96b62857ce5574"
+			"Comment": "v1.2.0",
+			"Rev": "51421b967af1f557f93a59e0057aaf15ca02e29c"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/proto",
@@ -220,6 +220,11 @@
 		{
 			"ImportPath": "github.com/kisielk/sqlstruct",
 			"Rev": "648daed35d49dac24a4bff253b190a80da3ab6a5"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/challtestsrv",
+			"Comment": "v1.0.0",
+			"Rev": "495441a8880035dedbee2b7286e805deda093260"
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/pkcs11key",
@@ -384,6 +389,10 @@
 			"Rev": "0709b304e793a5edb4a2c0145f281ecdc20838a4"
 		},
 		{
+			"ImportPath": "golang.org/x/net/bpf",
+			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
+		},
+		{
 			"ImportPath": "golang.org/x/net/context",
 			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
 		},
@@ -408,7 +417,23 @@
 			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
 		},
 		{
+			"ImportPath": "golang.org/x/net/internal/iana",
+			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
+		},
+		{
+			"ImportPath": "golang.org/x/net/internal/socket",
+			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
+		},
+		{
 			"ImportPath": "golang.org/x/net/internal/timeseries",
+			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
+		},
+		{
+			"ImportPath": "golang.org/x/net/ipv4",
+			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
+		},
+		{
+			"ImportPath": "golang.org/x/net/ipv6",
 			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
 		},
 		{

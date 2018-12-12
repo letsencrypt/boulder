@@ -28,7 +28,7 @@ import (
 	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/test/challtestsrv"
+	"github.com/letsencrypt/challtestsrv"
 )
 
 // RatePeriod describes how long a certain throughput should be maintained
