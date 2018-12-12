@@ -112,13 +112,13 @@
 		},
 		{
 			"ImportPath": "github.com/golang/mock/gomock",
-			"Comment": "v1.0.0-83-gb3e60bc",
-			"Rev": "b3e60bcdc577185fce3cf625fc96b62857ce5574"
+			"Comment": "v1.2.0",
+			"Rev": "51421b967af1f557f93a59e0057aaf15ca02e29c"
 		},
 		{
 			"ImportPath": "github.com/golang/mock/mockgen/model",
-			"Comment": "v1.0.0-83-gb3e60bc",
-			"Rev": "b3e60bcdc577185fce3cf625fc96b62857ce5574"
+			"Comment": "v1.2.0",
+			"Rev": "51421b967af1f557f93a59e0057aaf15ca02e29c"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/proto",
