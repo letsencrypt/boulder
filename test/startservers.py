@@ -70,6 +70,7 @@ def start(race_detection, fakeclock=None, account_uri=None):
     signal.signal(signal.SIGINT, lambda _, __: stop())
     if not install(race_detection):
         return False
+
     # Processes are in order of dependency: Each process should be started
     # before any services that intend to send it RPCs. On shutdown they will be
     # killed in reverse order.
@@ -97,7 +98,7 @@ def start(race_detection, fakeclock=None, account_uri=None):
         # interface and TLS-ALPN-01 responses on 5001 for another interface. The
         # choice of which is used is controlled by mock DNS data added by the
         # relevant integration tests.
-        [8053, 'pebble-challtestsrv --dns01 :8053,:8054 --management :8055 --http01 :5002 -https01 10.77.77.77:5001 --tlsalpn01 10.88.88.88:5001'],
+        [8053, 'pebble-challtestsrv --defaultIPv4 %s --defaultIPv6 "" --dns01 :8053,:8054 --management :8055 --http01 :5002 -https01 10.77.77.77:5001 --tlsalpn01 10.88.88.88:5001' % os.environ.get("FAKE_DNS")],
         [8004, './bin/boulder-va --config %s --addr va1.boulder:9092 --debug-addr :8004' % os.path.join(default_config_dir, "va.json")],
         [8104, './bin/boulder-va --config %s --addr va2.boulder:9092 --debug-addr :8104' % os.path.join(default_config_dir, "va.json")],
         [8001, './bin/boulder-ca --config %s --ca-addr ca1.boulder:9093 --ocsp-addr ca1.boulder:9096 --debug-addr :8001' % os.path.join(default_config_dir, "ca-a.json")],

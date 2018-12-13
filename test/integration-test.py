@@ -669,21 +669,6 @@ def setup_mock_dns(caa_account_uri=None):
     if caa_account_uri is None:
       caa_account_uri = os.environ.get("ACCOUNT_URI")
 
-    # Set the default IPv4 address for A queries to the FAKE_DNS env var value.
-    fakeDNS = os.environ.get("FAKE_DNS")
-    default_ipv4_url = "{0}/set-default-ipv4".format(challsrv_url_base)
-    urllib2.urlopen(default_ipv4_url,
-            data=json.dumps({
-                "ip": fakeDNS,
-            })).read()
-    # Disable the default IPv6 address so there are no AAAA records. Docker
-    # makes IPv6 annoying.
-    default_ipv6_url = "{0}/set-default-ipv6".format(challsrv_url_base)
-    urllib2.urlopen(default_ipv6_url,
-            data=json.dumps({
-                "ip": "",
-            })).read()
-
     goodCAA = "happy-hacker-ca.invalid"
     badCAA = "sad-hacker-ca.invalid"
 
