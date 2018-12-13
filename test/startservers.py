@@ -70,7 +70,6 @@ def start(race_detection, fakeclock=None, account_uri=None):
     signal.signal(signal.SIGINT, lambda _, __: stop())
     if not install(race_detection):
         return False
-
     # Processes are in order of dependency: Each process should be started
     # before any services that intend to send it RPCs. On shutdown they will be
     # killed in reverse order.
