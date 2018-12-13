@@ -41,11 +41,7 @@ func (c *LogClient) GetRawEntries(ctx context.Context, start, end int64) (*ct.Ge
 	}
 
 	var resp ct.GetEntriesResponse
-	httpRsp, body, err := c.GetAndParse(ctx, ct.GetEntriesPath, params, &resp)
-	if err != nil {
-		if httpRsp != nil {
-			return nil, RspError{Err: err, StatusCode: httpRsp.StatusCode, Body: body}
-		}
+	if _, _, err := c.GetAndParse(ctx, ct.GetEntriesPath, params, &resp); err != nil {
 		return nil, err
 	}
 
@@ -66,7 +62,7 @@ func (c *LogClient) GetEntries(ctx context.Context, start, end int64) ([]ct.LogE
 	for i, entry := range resp.Entries {
 		index := start + int64(i)
 		logEntry, err := ct.LogEntryFromLeaf(index, &entry)
-		if _, ok := err.(x509.NonFatalErrors); !ok && err != nil {
+		if x509.IsFatal(err) {
 			return nil, err
 		}
 		entries[i] = *logEntry

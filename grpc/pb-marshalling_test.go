@@ -187,8 +187,8 @@ func TestValidationResult(t *testing.T) {
 	result := []core.ValidationRecord{vrA, vrB}
 	prob := &probs.ProblemDetails{Type: probs.TLSProblem, Detail: "asd", HTTPStatus: 200}
 
-	pb, err := validationResultToPB(result, prob)
-	test.AssertNotError(t, err, "validationResultToPB failed")
+	pb, err := ValidationResultToPB(result, prob)
+	test.AssertNotError(t, err, "ValidationResultToPB failed")
 	test.Assert(t, pb != nil, "Returned vapb.ValidationResult is nil")
 
 	reconResult, reconProb, err := pbToValidationResult(pb)

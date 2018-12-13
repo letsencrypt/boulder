@@ -1116,6 +1116,10 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			returnAuthz = updatedAuthz
 		} else {
 			returnAuthz, err = wfe.RA.UpdateAuthorization(ctx, authz, challengeIndex, challengeUpdate)
+			if err != nil {
+				wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
+				return
+			}
 		}
 	}
 

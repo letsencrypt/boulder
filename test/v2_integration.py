@@ -17,6 +17,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 import chisel2
+from helpers import *
 
 from acme.messages import Status, CertificateRequest, Directory
 from acme import crypto_util as acme_crypto_util
@@ -24,6 +25,18 @@ from acme import client as acme_client
 from acme import messages
 
 import josepy
+
+import tempfile
+import shutil
+import atexit
+
+challsrv_url_base = "http://localhost:8055"
+
+tempdir = tempfile.mkdtemp()
+
+@atexit.register
+def stop():
+    shutil.rmtree(tempdir)
 
 def random_domain():
     """Generate a random domain for testing (to avoid rate limiting)."""
@@ -41,10 +54,164 @@ def test_wildcardmultidomain():
 def test_http_challenge():
     chisel2.auth_and_issue([random_domain(), random_domain()], chall_type="http-01")
 
+def rand_http_chall(client):
+    d = random_domain()
+    authz = client.request_domain_challenges(d)
+    for c in authz.body.challenges:
+        if isinstance(c.chall, challenges.HTTP01):
+            return d, c.chall
+    raise Exception("No HTTP-01 challenge found for random domain authz")
+
+def test_http_challenge_loop_redirect():
+    client = chisel2.make_client()
+
+    # Create an authz for a random domain and get its HTTP-01 challenge token
+    d, chall = rand_http_chall(client)
+    token = chall.encode("token")
+
+    # Create a HTTP redirect from the challenge's validation path to itself
+    challengePath = "/.well-known/acme-challenge/{0}".format(token)
+    add_http_redirect(
+        challengePath,
+        "http://{0}{1}".format(d, challengePath))
+
+    # Issuing for the the name should fail because of the challenge domains's
+    # redirect loop.
+    chisel2.expect_problem("urn:acme:error:connection",
+        lambda: auth_and_issue([d], client=client, chall_type="http-01"))
+
+    remove_http_redirect(challengePath)
+
+def test_http_challenge_badport_redirect():
+    client = chisel2.make_client()
+
+    # Create an authz for a random domain and get its HTTP-01 challenge token
+    d, chall = rand_http_chall(client)
+    token = chall.encode("token")
+
+    # Create a HTTP redirect from the challenge's validation path to a host with
+    # an invalid port.
+    challengePath = "/.well-known/acme-challenge/{0}".format(token)
+    add_http_redirect(
+        challengePath,
+        "http://{0}:1337{1}".format(d, challengePath))
+
+    # Issuing for the name should fail because of the challenge domain's
+    # invalid port redirect.
+    chisel2.expect_problem("urn:acme:error:connection",
+        lambda: auth_and_issue([d], client=client, chall_type="http-01"))
+
+    remove_http_redirect(challengePath)
+
+def test_http_challenge_badhost_redirect():
+    client = chisel2.make_client()
+
+    # Create an authz for a random domain and get its HTTP-01 challenge token
+    d, chall = rand_http_chall(client)
+    token = chall.encode("token")
+
+    # Create a HTTP redirect from the challenge's validation path to a bare IP
+    # hostname.
+    challengePath = "/.well-known/acme-challenge/{0}".format(token)
+    add_http_redirect(
+        challengePath,
+        "https://127.0.0.1{0}".format(challengePath))
+
+    # Issuing for the name should cause a connection error because the redirect
+    # domain name is an IP address.
+    chisel2.expect_problem("urn:acme:error:connection",
+        lambda: auth_and_issue([d], client=client, chall_type="http-01"))
+
+    remove_http_redirect(challengePath)
+
+def test_http_challenge_badproto_redirect():
+    client = chisel2.make_client()
+
+    # Create an authz for a random domain and get its HTTP-01 challenge token
+    d, chall = rand_http_chall(client)
+    token = chall.encode("token")
+
+    # Create a HTTP redirect from the challenge's validation path to whacky
+    # non-http/https protocol URL.
+    challengePath = "/.well-known/acme-challenge/{0}".format(token)
+    add_http_redirect(
+        challengePath,
+        "gopher://{0}{1}".format(d, challengePath))
+
+    # Issuing for the name should cause a connection error because the redirect
+    # domain name is an IP address.
+    chisel2.expect_problem("urn:acme:error:connection",
+        lambda: auth_and_issue([d], client=client, chall_type="http-01"))
+
+    remove_http_redirect(challengePath)
+
+def test_http_challenge_http_redirect():
+    client = chisel2.make_client()
+
+    # Create an authz for a random domain and get its HTTP-01 challenge token
+    d, chall = rand_http_chall(client)
+    token = chall.encode("token")
+    # Calculate its keyauth so we can add it in a special non-standard location
+    # for the redirect result
+    resp = chall.response(client.net.key)
+    keyauth = resp.key_authorization
+    add_http01_response("http-redirect", keyauth)
+
+    # Create a HTTP redirect from the challenge's validation path to some other
+    # token path where we have registered the key authorization.
+    challengePath = "/.well-known/acme-challenge/{0}".format(token)
+    add_http_redirect(
+        challengePath,
+        "http://{0}/.well-known/acme-challenge/http-redirect".format(d))
+
+    auth_and_issue([d], client=client, chall_type="http-01")
+
+    remove_http_redirect(challengePath)
+    remove_http01_response("http-redirect")
+
+def test_http_challenge_https_redirect():
+    client = chisel2.make_client()
+
+    # Create an authz for a random domain and get its HTTP-01 challenge token
+    d, chall = rand_http_chall(client)
+    token = chall.encode("token")
+
+    # Create a HTTP redirect from the challenge's validation path to an HTTPS
+    # address with the same path.
+    challengePath = "/.well-known/acme-challenge/{0}".format(token)
+    add_http_redirect(
+        challengePath,
+        "https://{0}{1}".format(d, challengePath))
+
+    # Also add an A record for the domain pointing to the interface that the
+    # HTTPS HTTP-01 challtestsrv is bound.
+    urllib2.urlopen("{0}/add-a".format(challsrv_url_base),
+        data=json.dumps({
+            "host": d,
+            "addresses": ["10.77.77.77"],
+        })).read()
+
+    auth_and_issue([d], client=client, chall_type="http-01")
+
+    remove_http_redirect(challengePath)
+
 def test_tls_alpn_challenge():
     if not default_config_dir.startswith("test/config-next"):
         return
-    chisel2.auth_and_issue([random_domain(), random_domain()], chall_type="tls-alpn-01")
+    # Pick two random domains
+    domains = [random_domain(),random_domain()]
+
+    # Add A records for these domains to ensure the VA's requests are directed
+    # to the interface that the challtestsrv has bound for TLS-ALPN-01 challenge
+    # responses
+    for host in domains:
+        urllib2.urlopen("{0}/add-a".format(challsrv_url_base),
+                data=json.dumps({
+                    "host": host,
+                    "addresses": ["10.88.88.88"],
+                })).read()
+
+    chisel2.auth_and_issue(domains, chall_type="tls-alpn-01")
 
 def test_overlapping_wildcard():
     """
@@ -227,7 +394,16 @@ def test_revoke_by_issuer():
     order = chisel2.auth_and_issue([random_domain()], client=client)
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    reset_akamai_purges()
     client.revoke(josepy.ComparableX509(cert), 0)
+
+    cert_file_pem = os.path.join(tempdir, "revokeme.pem")
+    with open(cert_file_pem, "w") as f:
+        f.write(OpenSSL.crypto.dump_certificate(
+            OpenSSL.crypto.FILETYPE_PEM, cert).decode())
+    ee_ocsp_url = "http://localhost:4002"
+    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    verify_akamai_purge()
 
 def test_revoke_by_authz():
     domains = [random_domain()]
@@ -238,7 +414,16 @@ def test_revoke_by_authz():
     chisel2.auth_and_issue(domains, client=client)
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    reset_akamai_purges()
     client.revoke(josepy.ComparableX509(cert), 0)
+
+    cert_file_pem = os.path.join(tempdir, "revokeme.pem")
+    with open(cert_file_pem, "w") as f:
+        f.write(OpenSSL.crypto.dump_certificate(
+            OpenSSL.crypto.FILETYPE_PEM, cert).decode())
+    ee_ocsp_url = "http://localhost:4002"
+    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    verify_akamai_purge()
 
 def test_revoke_by_privkey():
     client = chisel2.make_client(None)
@@ -262,7 +447,16 @@ def test_revoke_by_privkey():
     new_client = acme_client.ClientV2(directory, net)
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    reset_akamai_purges()
     client.revoke(josepy.ComparableX509(cert), 0)
+
+    cert_file_pem = os.path.join(tempdir, "revokeme.pem")
+    with open(cert_file_pem, "w") as f:
+        f.write(OpenSSL.crypto.dump_certificate(
+            OpenSSL.crypto.FILETYPE_PEM, cert).decode())
+    ee_ocsp_url = "http://localhost:4002"
+    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    verify_akamai_purge()
 
 def test_sct_embedding():
     if not os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):

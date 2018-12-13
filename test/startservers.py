@@ -35,7 +35,7 @@ def run(cmd, race_detection, fakeclock, account_uri):
     if account_uri:
         e.setdefault("ACCOUNT_URI", account_uri)
     # Note: Must use exec here so that killing this process kills the command.
-    cmd = """exec ./bin/%s""" % cmd
+    cmd = """exec %s""" % cmd
     p = subprocess.Popen(cmd, shell=True, env=e)
     p.cmd = cmd
     return p
@@ -77,32 +77,37 @@ def start(race_detection, fakeclock=None, account_uri=None):
     if default_config_dir.startswith("test/config-next"):
         # Run the two 'remote' VAs
         progs.extend([
-            [8011, 'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-a.json")],
-            [8012, 'boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-b.json")],
+            [8011, './bin/boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-a.json")],
+            [8012, './bin/boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-b.json")],
         ])
     progs.extend([
-        [53, 'sd-test-srv --listen :53'], # Service discovery DNS server
-        [8003, 'boulder-sa --config %s --addr sa1.boulder:9095 --debug-addr :8003' % os.path.join(default_config_dir, "sa.json")],
-        [8103, 'boulder-sa --config %s --addr sa2.boulder:9095 --debug-addr :8103' % os.path.join(default_config_dir, "sa.json")],
-        [4500, 'ct-test-srv --config test/ct-test-srv/ct-test-srv.json'],
-        [8009, 'boulder-publisher --config %s --addr publisher1.boulder:9091 --debug-addr :8009' % os.path.join(default_config_dir, "publisher.json")],
-        [8109, 'boulder-publisher --config %s --addr publisher2.boulder:9091 --debug-addr :8109' % os.path.join(default_config_dir, "publisher.json")],
-        [9380, 'mail-test-srv --closeFirst 5 --cert test/mail-test-srv/localhost/cert.pem --key test/mail-test-srv/localhost/key.pem'],
-        [8005, 'ocsp-responder --config %s' % os.path.join(default_config_dir, "ocsp-responder.json")],
+        [53, './bin/sd-test-srv --listen :53'], # Service discovery DNS server
+        [8003, './bin/boulder-sa --config %s --addr sa1.boulder:9095 --debug-addr :8003' % os.path.join(default_config_dir, "sa.json")],
+        [8103, './bin/boulder-sa --config %s --addr sa2.boulder:9095 --debug-addr :8103' % os.path.join(default_config_dir, "sa.json")],
+        [4500, './bin/ct-test-srv --config test/ct-test-srv/ct-test-srv.json'],
+        [8009, './bin/boulder-publisher --config %s --addr publisher1.boulder:9091 --debug-addr :8009' % os.path.join(default_config_dir, "publisher.json")],
+        [8109, './bin/boulder-publisher --config %s --addr publisher2.boulder:9091 --debug-addr :8109' % os.path.join(default_config_dir, "publisher.json")],
+        [9380, './bin/mail-test-srv --closeFirst 5 --cert test/mail-test-srv/localhost/cert.pem --key test/mail-test-srv/localhost/key.pem'],
+        [8005, './bin/ocsp-responder --config %s' % os.path.join(default_config_dir, "ocsp-responder.json")],
         # The gsb-test-srv needs to be started before the VA or its intial DB
         # update will fail and all subsequent lookups will be invalid
-        [6000, 'gsb-test-srv -apikey my-voice-is-my-passport'],
-        [8053, 'challtestsrv --dns01 :8053,:8054 --management :8055 --http01 "" --tlsalpn01 :5001'],
-        [8004, 'boulder-va --config %s --addr va1.boulder:9092 --debug-addr :8004' % os.path.join(default_config_dir, "va.json")],
-        [8104, 'boulder-va --config %s --addr va2.boulder:9092 --debug-addr :8104' % os.path.join(default_config_dir, "va.json")],
-        [8001, 'boulder-ca --config %s --ca-addr ca1.boulder:9093 --ocsp-addr ca1.boulder:9096 --debug-addr :8001' % os.path.join(default_config_dir, "ca-a.json")],
-        [8101, 'boulder-ca --config %s --ca-addr ca2.boulder:9093 --ocsp-addr ca2.boulder:9096 --debug-addr :8101' % os.path.join(default_config_dir, "ca-b.json")],
-        [6789, 'akamai-test-srv --listen localhost:6789 --secret its-a-secret'],
-        [8006, 'ocsp-updater --config %s' % os.path.join(default_config_dir, "ocsp-updater.json")],
-        [8002, 'boulder-ra --config %s --addr ra1.boulder:9094 --debug-addr :8002' % os.path.join(default_config_dir, "ra.json")],
-        [8102, 'boulder-ra --config %s --addr ra2.boulder:9094 --debug-addr :8102' % os.path.join(default_config_dir, "ra.json")],
-        [4431, 'boulder-wfe2 --config %s' % os.path.join(default_config_dir, "wfe2.json")],
-        [4000, 'boulder-wfe --config %s' % os.path.join(default_config_dir, "wfe.json")],
+        [6000, './bin/gsb-test-srv -apikey my-voice-is-my-passport'],
+        # NOTE(@cpu): We specify explicit bind addresses for -https01 and
+        # --tlsalpn01 here to allow HTTPS HTTP-01 responses on 5001 for one
+        # interface and TLS-ALPN-01 responses on 5001 for another interface. The
+        # choice of which is used is controlled by mock DNS data added by the
+        # relevant integration tests.
+        [8053, 'pebble-challtestsrv --defaultIPv4 %s --defaultIPv6 "" --dns01 :8053,:8054 --management :8055 --http01 :5002 -https01 10.77.77.77:5001 --tlsalpn01 10.88.88.88:5001' % os.environ.get("FAKE_DNS")],
+        [8004, './bin/boulder-va --config %s --addr va1.boulder:9092 --debug-addr :8004' % os.path.join(default_config_dir, "va.json")],
+        [8104, './bin/boulder-va --config %s --addr va2.boulder:9092 --debug-addr :8104' % os.path.join(default_config_dir, "va.json")],
+        [8001, './bin/boulder-ca --config %s --ca-addr ca1.boulder:9093 --ocsp-addr ca1.boulder:9096 --debug-addr :8001' % os.path.join(default_config_dir, "ca-a.json")],
+        [8101, './bin/boulder-ca --config %s --ca-addr ca2.boulder:9093 --ocsp-addr ca2.boulder:9096 --debug-addr :8101' % os.path.join(default_config_dir, "ca-b.json")],
+        [6789, './bin/akamai-test-srv --listen localhost:6789 --secret its-a-secret'],
+        [8006, './bin/ocsp-updater --config %s' % os.path.join(default_config_dir, "ocsp-updater.json")],
+        [8002, './bin/boulder-ra --config %s --addr ra1.boulder:9094 --debug-addr :8002' % os.path.join(default_config_dir, "ra.json")],
+        [8102, './bin/boulder-ra --config %s --addr ra2.boulder:9094 --debug-addr :8102' % os.path.join(default_config_dir, "ra.json")],
+        [4431, './bin/boulder-wfe2 --config %s' % os.path.join(default_config_dir, "wfe2.json")],
+        [4000, './bin/boulder-wfe --config %s' % os.path.join(default_config_dir, "wfe.json")],
     ])
     for (port, prog) in progs:
         try:

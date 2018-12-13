@@ -186,7 +186,6 @@ type OCSPUpdaterConfig struct {
 	SignFailureBackoffFactor float64
 	SignFailureBackoffMax    ConfigDuration
 
-	Publisher            *GRPCClientConfig
 	SAService            *GRPCClientConfig
 	OCSPGeneratorService *GRPCClientConfig
 

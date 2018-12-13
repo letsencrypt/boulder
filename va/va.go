@@ -29,6 +29,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
@@ -448,6 +449,12 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 			req.Header["User-Agent"] = []string{va.userAgent}
 		}
 
+		if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
+			return berrors.ConnectionFailureError(
+				"Invalid protocol scheme in redirect target. "+
+					`Only "http" and "https" protocol schemes are supported, not %q`, req.URL.Scheme)
+		}
+
 		urlHost = req.URL.Host
 		reqHost := req.URL.Host
 		var reqPort int
@@ -466,6 +473,13 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 			reqPort = va.httpsPort
 		} else {
 			reqPort = va.httpPort
+		}
+
+		// We do not want to redirect to any bare IP addresses. Only domain names
+		if net.ParseIP(reqHost) != nil {
+			return berrors.ConnectionFailureError(
+				"Invalid host in redirect target %q. "+
+					"Only domain names are supported, not IP addresses", reqHost)
 		}
 
 		// Since we've used dialer.DialContext we need to drain the address info
@@ -550,6 +564,9 @@ func certNames(cert *x509.Certificate) []string {
 	}
 	names = append(names, cert.DNSNames...)
 	names = core.UniqueLowerNames(names)
+	for i, n := range names {
+		names[i] = replaceInvalidUTF8([]byte(n))
+	}
 	return names
 }
 
@@ -1128,6 +1145,17 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 
 	va.log.AuditObject("Validation result", logEvent)
 	va.log.Infof("Validations: %+v", authz)
+
+	// Try to marshal the validation results and prob (if any) to protocol
+	// buffers. We log at this layer instead of leaving it up to gRPC because gRPC
+	// doesn't log the actual contents that failed to marshal, making it hard to
+	// figure out what's broken.
+	if _, err := bgrpc.ValidationResultToPB(records, prob); err != nil {
+		va.log.Errf(
+			"failed to marshal records %#v and prob %#v to protocol buffer: %v",
+			records, prob, err)
+	}
+
 	if prob == nil {
 		// This is necessary because if we just naively returned prob, it would be a
 		// non-nil interface value containing a nil pointer, rather than a nil

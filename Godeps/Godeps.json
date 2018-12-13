@@ -112,13 +112,13 @@
 		},
 		{
 			"ImportPath": "github.com/golang/mock/gomock",
-			"Comment": "v1.0.0-83-gb3e60bc",
-			"Rev": "b3e60bcdc577185fce3cf625fc96b62857ce5574"
+			"Comment": "v1.2.0",
+			"Rev": "51421b967af1f557f93a59e0057aaf15ca02e29c"
 		},
 		{
 			"ImportPath": "github.com/golang/mock/mockgen/model",
-			"Comment": "v1.0.0-83-gb3e60bc",
-			"Rev": "b3e60bcdc577185fce3cf625fc96b62857ce5574"
+			"Comment": "v1.2.0",
+			"Rev": "51421b967af1f557f93a59e0057aaf15ca02e29c"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/proto",
@@ -151,43 +151,43 @@
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go",
-			"Comment": "v1.0.9-13-g5ab67e5",
-			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
+			"Comment": "v1.0.21-106-gc25855a",
+			"Rev": "c25855a82c757ba69d84b68c1a6706df6dbb5cee"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/asn1",
-			"Comment": "v1.0.9-13-g5ab67e5",
-			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
+			"Comment": "v1.0.21-106-gc25855a",
+			"Rev": "c25855a82c757ba69d84b68c1a6706df6dbb5cee"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/client",
-			"Comment": "v1.0.9-13-g5ab67e5",
-			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
+			"Comment": "v1.0.21-106-gc25855a",
+			"Rev": "c25855a82c757ba69d84b68c1a6706df6dbb5cee"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/client/configpb",
-			"Comment": "v1.0.9-13-g5ab67e5",
-			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
+			"Comment": "v1.0.21-106-gc25855a",
+			"Rev": "c25855a82c757ba69d84b68c1a6706df6dbb5cee"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/jsonclient",
-			"Comment": "v1.0.9-13-g5ab67e5",
-			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
+			"Comment": "v1.0.21-106-gc25855a",
+			"Rev": "c25855a82c757ba69d84b68c1a6706df6dbb5cee"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/tls",
-			"Comment": "v1.0.9-13-g5ab67e5",
-			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
+			"Comment": "v1.0.21-106-gc25855a",
+			"Rev": "c25855a82c757ba69d84b68c1a6706df6dbb5cee"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/x509",
-			"Comment": "v1.0.9-13-g5ab67e5",
-			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
+			"Comment": "v1.0.21-106-gc25855a",
+			"Rev": "c25855a82c757ba69d84b68c1a6706df6dbb5cee"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency-go/x509/pkix",
-			"Comment": "v1.0.9-13-g5ab67e5",
-			"Rev": "5ab67e519c93568ac3ee50fd6772a5bcf8aa460d"
+			"Comment": "v1.0.21-106-gc25855a",
+			"Rev": "c25855a82c757ba69d84b68c1a6706df6dbb5cee"
 		},
 		{
 			"ImportPath": "github.com/google/safebrowsing",
@@ -220,6 +220,11 @@
 		{
 			"ImportPath": "github.com/kisielk/sqlstruct",
 			"Rev": "648daed35d49dac24a4bff253b190a80da3ab6a5"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/challtestsrv",
+			"Comment": "v1.0.0",
+			"Rev": "495441a8880035dedbee2b7286e805deda093260"
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/pkcs11key",
@@ -384,6 +389,10 @@
 			"Rev": "0709b304e793a5edb4a2c0145f281ecdc20838a4"
 		},
 		{
+			"ImportPath": "golang.org/x/net/bpf",
+			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
+		},
+		{
 			"ImportPath": "golang.org/x/net/context",
 			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
 		},
@@ -408,7 +417,23 @@
 			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
 		},
 		{
+			"ImportPath": "golang.org/x/net/internal/iana",
+			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
+		},
+		{
+			"ImportPath": "golang.org/x/net/internal/socket",
+			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
+		},
+		{
 			"ImportPath": "golang.org/x/net/internal/timeseries",
+			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
+		},
+		{
+			"ImportPath": "golang.org/x/net/ipv4",
+			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
+		},
+		{
+			"ImportPath": "golang.org/x/net/ipv6",
 			"Rev": "d11bb6cd8e3c4e60239c9cb20ef68586d74500d0"
 		},
 		{
