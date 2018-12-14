@@ -31,6 +31,8 @@ from acme import errors as acme_errors
 from acme import messages
 from acme import standalone
 
+from challtestsrv import ChallTestServer
+
 logger = logging.getLogger()
 logging.basicConfig()
 logger.setLevel(int(os.getenv('LOGLEVEL', 20)))
@@ -39,68 +41,7 @@ DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4000/directory')
 
 os.environ.setdefault('REQUESTS_CA_BUNDLE', 'test/wfe-tls/minica.pem')
 
-# URLs for management interface of challtestsrv
-CHALLSRV_MANAGE = "http://localhost:8055"
-SET_TXT = CHALLSRV_MANAGE + "/set-txt"
-CLEAR_TXT = CHALLSRV_MANAGE + "/clear-txt"
-ADD_ALPN = CHALLSRV_MANAGE + "/add-tlsalpn01"
-DEL_ALPN = CHALLSRV_MANAGE + "/del-tlsalpn01"
-ADD_HTTP01 = CHALLSRV_MANAGE + "/add-http01"
-DEL_HTTP01 = CHALLSRV_MANAGE + "/del-http01"
-ADD_REDIRECT = CHALLSRV_MANAGE + "/add-redirect"
-DEL_REDIRECT = CHALLSRV_MANAGE + "/del-redirect"
-
-def add_http_redirect(path, targetURL):
-    urllib2.urlopen(ADD_REDIRECT,
-            data=json.dumps({
-                "path": path,
-                "targetURL": targetURL,
-            })).read()
-
-def remove_http_redirect(path):
-    urllib2.urlopen(DEL_REDIRECT,
-            data=json.dumps({
-                "path": path,
-            })).read()
-
-def add_http01_response(token, keyauth):
-    urllib2.urlopen(ADD_HTTP01,
-            data=json.dumps({
-                "token": token,
-                "content": keyauth,
-            })).read()
-
-def remove_http01_response(token):
-    urllib2.urlopen(DEL_HTTP01,
-            data=json.dumps({
-                "token": token,
-                })).read()
-
-def add_dns01_response(host, value):
-    urllib2.urlopen(SET_TXT,
-        data=json.dumps({
-            "host": host+ ".",
-            "value": value,
-        })).read()
-
-def remove_dns01_response(host):
-    urllib2.urlopen(CLEAR_TXT,
-        data=json.dumps({
-            "host": host + ".",
-        })).read()
-
-def add_tlsalpn01_response(host, value):
-    urllib2.urlopen(ADD_ALPN,
-        data=json.dumps({
-            "host": host,
-            "content": value,
-        })).read()
-
-def remove_tlsalpn01_response(host):
-    urllib2.urlopen(DEL_ALPN,
-        data=json.dumps({
-            "host": host,
-        })).read()
+challSrv = ChallTestServer()
 
 def make_client(email=None):
     """Build an acme.Client and register a new account with a random key."""
@@ -215,11 +156,11 @@ def do_dns_challenges(client, authzs):
         name, value = (c.validation_domain_name(a.body.identifier.value),
             c.validation(client.key))
         cleanup_hosts.append(name)
-        add_dns01_response(name, value)
+        challSrv.add_dns01_response(name, value)
         client.answer_challenge(c, c.response(client.key))
     def cleanup():
         for host in cleanup_hosts:
-            remove_dns01_response(name)
+            challSrv.remove_dns01_response(host)
     return cleanup
 
 def do_http_challenges(client, authzs):
@@ -234,7 +175,7 @@ def do_http_challenges(client, authzs):
 
         # Add the HTTP-01 challenge response for this token/key auth to the
         # challtestsrv
-        add_http01_response(token, keyauth)
+        challSrv.add_http01_response(token, keyauth)
         cleanup_tokens.append(token)
 
         # Then proceed initiating the challenges with the ACME server
@@ -244,7 +185,7 @@ def do_http_challenges(client, authzs):
         # Cleanup requires removing each of the HTTP-01 challenge responses for
         # the tokens we added.
         for token in cleanup_tokens:
-            remove_http01_response(token)
+            challSrv.remove_http01_response(token)
     return cleanup
 
 def do_tlsalpn_challenges(client, authzs):
@@ -253,11 +194,11 @@ def do_tlsalpn_challenges(client, authzs):
         c = get_chall(a, challenges.TLSALPN01)
         name, value = (a.body.identifier.value, c.key_authorization(client.key))
         cleanup_hosts.append(name)
-        add_tlsalpn01_response(name, value)
+        challSrv.add_tlsalpn01_response(name, value)
         client.answer_challenge(c, c.response(client.key))
     def cleanup():
         for host in cleanup_hosts:
-            remove_tlsalpn01_response(host)
+            challSrv.remove_tlsalpn01_response(host)
     return cleanup
 
 def load_example_cert():

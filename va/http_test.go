@@ -47,20 +47,30 @@ func TestNewHTTPClient(t *testing.T) {
 
 func TestHTTPValidationURL(t *testing.T) {
 	egPath := "/.well-known/.less-known/.obscure"
+	egQuery := "true=false&up=down&left=right"
 	testCases := []struct {
 		Name        string
 		IP          string
-		Path        string
 		Port        int
+		Path        string
+		Query       string
 		UseHTTPS    bool
 		ExpectedURL string
 	}{
 		{
 			Name:        "IPv4 Standard HTTP port",
 			IP:          "10.10.10.10",
-			Path:        egPath,
 			Port:        80,
+			Path:        egPath,
 			ExpectedURL: fmt.Sprintf("http://10.10.10.10%s", egPath),
+		},
+		{
+			Name:        "IPv4 Standard HTTP port with query",
+			IP:          "10.10.10.10",
+			Port:        80,
+			Path:        egPath,
+			Query:       egQuery,
+			ExpectedURL: fmt.Sprintf("http://10.10.10.10%s?%s", egPath, egQuery),
 		},
 		{
 			Name:        "IPv4 Non-standard HTTP port",
@@ -70,50 +80,110 @@ func TestHTTPValidationURL(t *testing.T) {
 			ExpectedURL: fmt.Sprintf("http://15.15.15.15:8080%s", egPath),
 		},
 		{
+			Name:        "IPv4 Non-standard HTTP port with query",
+			IP:          "15.15.15.15",
+			Port:        8080,
+			Path:        egPath,
+			Query:       egQuery,
+			ExpectedURL: fmt.Sprintf("http://15.15.15.15:8080%s?%s", egPath, egQuery),
+		},
+		{
 			Name:        "IPv6 Standard HTTP port",
 			IP:          "::1",
-			Path:        egPath,
 			Port:        80,
+			Path:        egPath,
 			ExpectedURL: fmt.Sprintf("http://[::1]%s", egPath),
+		},
+		{
+			Name:        "IPv6 Standard HTTP port with query",
+			IP:          "::1",
+			Port:        80,
+			Path:        egPath,
+			Query:       egQuery,
+			ExpectedURL: fmt.Sprintf("http://[::1]%s?%s", egPath, egQuery),
 		},
 		{
 			Name:        "IPv6 Non-standard HTTP port",
 			IP:          "::1",
-			Path:        egPath,
 			Port:        8080,
+			Path:        egPath,
 			ExpectedURL: fmt.Sprintf("http://[::1]:8080%s", egPath),
+		},
+		{
+			Name:        "IPv6 Non-standard HTTP port with query",
+			IP:          "::1",
+			Port:        8080,
+			Path:        egPath,
+			Query:       egQuery,
+			ExpectedURL: fmt.Sprintf("http://[::1]:8080%s?%s", egPath, egQuery),
 		},
 		{
 			Name:        "IPv4 Standard HTTPS port",
 			IP:          "10.10.10.10",
-			Path:        egPath,
 			Port:        443,
+			Path:        egPath,
 			UseHTTPS:    true,
 			ExpectedURL: fmt.Sprintf("https://10.10.10.10%s", egPath),
 		},
 		{
+			Name:        "IPv4 Standard HTTPS port with query",
+			IP:          "10.10.10.10",
+			Port:        443,
+			Path:        egPath,
+			Query:       egQuery,
+			UseHTTPS:    true,
+			ExpectedURL: fmt.Sprintf("https://10.10.10.10%s?%s", egPath, egQuery),
+		},
+		{
 			Name:        "IPv4 Non-standard HTTPS port",
 			IP:          "15.15.15.15",
-			Path:        egPath,
 			Port:        4443,
+			Path:        egPath,
 			UseHTTPS:    true,
 			ExpectedURL: fmt.Sprintf("https://15.15.15.15:4443%s", egPath),
 		},
 		{
+			Name:        "IPv4 Non-standard HTTPS port with query",
+			IP:          "15.15.15.15",
+			Port:        4443,
+			Path:        egPath,
+			Query:       egQuery,
+			UseHTTPS:    true,
+			ExpectedURL: fmt.Sprintf("https://15.15.15.15:4443%s?%s", egPath, egQuery),
+		},
+		{
 			Name:        "IPv6 Standard HTTPS port",
 			IP:          "::1",
-			Path:        egPath,
 			Port:        443,
+			Path:        egPath,
 			UseHTTPS:    true,
 			ExpectedURL: fmt.Sprintf("https://[::1]%s", egPath),
 		},
 		{
+			Name:        "IPv6 Standard HTTPS port with query",
+			IP:          "::1",
+			Port:        443,
+			Path:        egPath,
+			Query:       egQuery,
+			UseHTTPS:    true,
+			ExpectedURL: fmt.Sprintf("https://[::1]%s?%s", egPath, egQuery),
+		},
+		{
 			Name:        "IPv6 Non-standard HTTPS port",
 			IP:          "::1",
-			Path:        egPath,
 			Port:        4443,
+			Path:        egPath,
 			UseHTTPS:    true,
 			ExpectedURL: fmt.Sprintf("https://[::1]:4443%s", egPath),
+		},
+		{
+			Name:        "IPv6 Non-standard HTTPS port with query",
+			IP:          "::1",
+			Port:        4443,
+			Path:        egPath,
+			Query:       egQuery,
+			UseHTTPS:    true,
+			ExpectedURL: fmt.Sprintf("https://[::1]:4443%s?%s", egPath, egQuery),
 		},
 	}
 
@@ -123,7 +193,7 @@ func TestHTTPValidationURL(t *testing.T) {
 			if ipAddr == nil {
 				t.Fatalf("Failed to parse test case %q IP %q", tc.Name, tc.IP)
 			}
-			url := httpValidationURL(ipAddr, tc.Path, tc.Port, tc.UseHTTPS)
+			url := httpValidationURL(ipAddr, tc.Port, tc.Path, tc.Query, tc.UseHTTPS)
 			test.AssertEquals(t, url.String(), tc.ExpectedURL)
 		})
 	}
@@ -162,8 +232,9 @@ func TestHTTPValidationTarget(t *testing.T) {
 	}
 
 	const (
-		examplePort = 1234
-		examplePath = "/.well-known/path/i/took"
+		examplePort  = 1234
+		examplePath  = "/.well-known/path/i/took"
+		exampleQuery = "my-path=was&my=own"
 	)
 
 	va, _ := setup(nil, 0)
@@ -173,7 +244,8 @@ func TestHTTPValidationTarget(t *testing.T) {
 				context.Background(),
 				tc.Host,
 				examplePort,
-				examplePath)
+				examplePath,
+				exampleQuery)
 			if err != nil && tc.ExpectedError == nil {
 				t.Fatalf("Unexpected error from NewHTTPValidationTarget: %v", err)
 			} else if err != nil && tc.ExpectedError != nil {
@@ -306,7 +378,8 @@ func TestSetupHTTPValidation(t *testing.T) {
 			context.Background(),
 			host,
 			port,
-			path)
+			path,
+			"")
 		if err != nil {
 			t.Fatalf("Failed to construct httpValidationTarget for %q", host)
 			return nil

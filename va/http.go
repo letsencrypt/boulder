@@ -78,7 +78,7 @@ func newHTTPClient(checkRedirect redirectChecker) http.Client {
 // port or the default HTTPS port. The protocol scheme of the URL is HTTP unless
 // useHTTPS is true. UseHTTPS should only be true when constructing validation
 // URLs based on a redirect from an initial HTTP validation request.
-func httpValidationURL(validationIP net.IP, path string, port int, useHTTPS bool) *url.URL {
+func httpValidationURL(validationIP net.IP, port int, path, query string, useHTTPS bool) *url.URL {
 	urlHost := validationIP.String()
 
 	// If the port is something other than the conventional HTTP or HTTPS port,
@@ -101,9 +101,10 @@ func httpValidationURL(validationIP net.IP, path string, port int, useHTTPS bool
 	}
 
 	return &url.URL{
-		Scheme: scheme,
-		Host:   urlHost,
-		Path:   path,
+		Scheme:   scheme,
+		Host:     urlHost,
+		Path:     path,
+		RawQuery: query,
 	}
 }
 
@@ -116,6 +117,9 @@ type httpValidationTarget struct {
 	port int
 	// the path for the validation request
 	path string
+	// query data for validation request (potentially populated when
+	// following redirects)
+	query string
 	// all of the IP addresses available for the host
 	available []net.IP
 	// the IP addresses that were tried for validation previously that were cycled
@@ -157,7 +161,8 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	ctx context.Context,
 	host string,
 	port int,
-	path string) (*httpValidationTarget, error) {
+	path string,
+	query string) (*httpValidationTarget, error) {
 	// Resolve IP addresses for the hostname
 	addrs, err := va.getAddrs(ctx, host)
 	if err != nil {
@@ -170,6 +175,7 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 		host:      host,
 		port:      port,
 		path:      path,
+		query:     query,
 		available: addrs,
 	}
 
@@ -303,7 +309,7 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 	}
 
 	record.AddressUsed = targetIP
-	url := httpValidationURL(targetIP, target.path, target.port, useHTTPS)
+	url := httpValidationURL(targetIP, target.port, target.path, target.query, useHTTPS)
 	record.URL = url.String()
 
 	// If there's no provided HTTP request to mutate (e.g. a redirect request
@@ -385,8 +391,8 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	host string,
 	path string) ([]byte, []core.ValidationRecord, error) {
 
-	// Create a target for the host, port and path
-	target, err := va.newHTTPValidationTarget(ctx, host, va.httpPort, path)
+	// Create a target for the host, port and path with no query parameters
+	target, err := va.newHTTPValidationTarget(ctx, host, va.httpPort, path, "")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -422,9 +428,16 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		}
 
 		redirPath := req.URL.Path
+		// If the redirect URL has query parameters we need to preserve
+		// those in the redirect path
+		redirQuery := ""
+		if req.URL.RawQuery != "" {
+			redirQuery = req.URL.RawQuery
+		}
+
 		// Setup a validation target for the redirect host. This will resolve IP
 		// addresses for the host explicitly.
-		redirTarget, err := va.newHTTPValidationTarget(ctx, redirHost, redirPort, redirPath)
+		redirTarget, err := va.newHTTPValidationTarget(ctx, redirHost, redirPort, redirPath, redirQuery)
 		if err != nil {
 			return err
 		}
