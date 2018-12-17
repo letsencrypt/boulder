@@ -401,29 +401,51 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 	return order, nil
 }
 
-var challTypeToBit = map[string]uint{
+var challTypeToUint = map[string]uint{
 	"http-01":     0,
 	"tls-sni-01":  1,
 	"dns-01":      2,
 	"tls-alpn-01": 3,
 }
 
-var bitToChallType = map[uint]string{
+var uintToChallType = map[uint]string{
 	0: "http-01",
 	1: "tls-sni-01",
 	2: "dns-01",
 	3: "tls-alpn-01",
 }
 
+var identifierTypeToUint = map[string]uint{
+	"dns": 0,
+}
+
+var uintToIdentifierType = map[uint]string{
+	0: "dns",
+}
+
+var statusToUint = map[string]uint{
+	"pending":     0,
+	"valid":       1,
+	"invalid":     2,
+	"deactivated": 3,
+}
+
+var uintToStatus = map[uint]string{
+	0: "pending",
+	1: "valid",
+	2: "invalid",
+	3: "deactivated",
+}
+
 type authz2Model struct {
 	ID               int64
-	IdentifierType   string
+	IdentifierType   uint
 	IdentifierValue  string
 	RegistrationID   int64
-	Status           string
+	Status           uint
 	Expires          *time.Time
 	Challenges       byte
-	Attempted        string
+	Attempted        *uint
 	Token            []byte
 	ValidationError  []byte
 	ValidationRecord []byte
@@ -458,7 +480,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 		ID:              int64(id),
 		IdentifierValue: *authz.Identifier,
 		RegistrationID:  *authz.RegistrationID,
-		Status:          *authz.Status,
+		Status:          statusToUint[*authz.Status],
 		Expires:         &expires,
 	}
 	if hasMultipleNonPendingChallenges(authz.Challenges) {
@@ -477,12 +499,13 @@ func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 	var tokenStr string
 	for _, chall := range authz.Challenges {
 		// Set the challenge type bit in the bitmap
-		am.Challenges |= 1 << challTypeToBit[*chall.Type]
+		am.Challenges |= 1 << challTypeToUint[*chall.Type]
 		tokenStr = *chall.Token
 		// If the challenge status is not core.StatusPending we assume it was the 'attempted'
 		// challenge and extract the relevant fields we need.
 		if *chall.Status == string(core.StatusValid) || *chall.Status == string(core.StatusInvalid) {
-			am.Attempted = *chall.Type
+			attemptedType := challTypeToUint[*chall.Type]
+			am.Attempted = &attemptedType
 			// Marshal corepb.ValidationRecords to core.ValidationRecords so that we
 			// can marshal them to JSON.
 			records := make([]core.ValidationRecord, len(chall.Validationrecords))
@@ -561,10 +584,11 @@ func modelToAuthzPB(am *authz2Model) (*corepb.Authorization, error) {
 	expires := am.Expires.UnixNano()
 	id := fmt.Sprintf("%d", am.ID)
 	v2 := true
+	status := uintToStatus[am.Status]
 	pb := &corepb.Authorization{
 		V2:             &v2,
 		Id:             &id,
-		Status:         &am.Status,
+		Status:         &status,
 		Identifier:     &am.IdentifierValue,
 		RegistrationID: &am.RegistrationID,
 		Expires:        &expires,
@@ -580,7 +604,7 @@ func modelToAuthzPB(am *authz2Model) (*corepb.Authorization, error) {
 	challenges := int64(0)
 	for pos := uint(0); pos < 8; pos++ {
 		if (am.Challenges>>pos)&1 == 1 {
-			challType := bitToChallType[pos]
+			challType := uintToChallType[pos]
 			status := string(core.StatusPending)
 			id := challenges
 			challenges++
@@ -593,7 +617,7 @@ func modelToAuthzPB(am *authz2Model) (*corepb.Authorization, error) {
 			}
 			// If the challenge type matches the attempted type it must be either
 			// valid or invalid and we need to populate extra fields.
-			if am.Attempted != "" && am.Attempted == challType {
+			if am.Attempted != nil && uintToChallType[*am.Attempted] == challType {
 				if err := populateAttemptedFields(am, challenge); err != nil {
 					return nil, err
 				}
