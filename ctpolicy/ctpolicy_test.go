@@ -145,6 +145,15 @@ func (mp *failOne) SubmitToSingleCTWithResult(_ context.Context, req *pubpb.Requ
 	return &pubpb.Result{Sct: []byte{0}}, nil
 }
 
+type slowPublisher struct {
+	mockPub
+}
+
+func (sp *slowPublisher) SubmitToSingleCTWithResult(_ context.Context, req *pubpb.Request) (*pubpb.Result, error) {
+	time.Sleep(time.Second)
+	return &pubpb.Result{Sct: []byte{0}}, nil
+}
+
 func TestGetSCTsMetrics(t *testing.T) {
 	ctp := New(&failOne{badURL: "abc"}, []cmd.CTGroup{
 		{
@@ -166,6 +175,42 @@ func TestGetSCTsMetrics(t *testing.T) {
 	test.AssertNotError(t, err, "GetSCTs failed")
 	test.AssertEquals(t, test.CountCounter(ctp.winnerCounter.With(prometheus.Labels{"log": "ghi", "group": "a"})), 1)
 	test.AssertEquals(t, test.CountCounter(ctp.winnerCounter.With(prometheus.Labels{"log": "ghi", "group": "b"})), 1)
+}
+
+func TestGetSCTsFailMetrics(t *testing.T) {
+	// When an entire log group fails, we should increment the "winner of SCT
+	// race" stat for that group under the fictional log "all_failed".
+	ctp := New(&failOne{badURL: "abc"}, []cmd.CTGroup{
+		{
+			Name: "a",
+			Logs: []cmd.LogDescription{
+				{URI: "abc", Key: "def"},
+			},
+		},
+	}, nil, blog.NewMock(), metrics.NewNoopScope())
+	_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
+	if err == nil {
+		t.Fatal("GetSCTs should have failed")
+	}
+	test.AssertEquals(t, test.CountCounter(ctp.winnerCounter.With(prometheus.Labels{"log": "all_failed", "group": "a"})), 1)
+
+	// Same thing, but for when an entire log group times out.
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	ctp = New(&slowPublisher{}, []cmd.CTGroup{
+		{
+			Name: "a",
+			Logs: []cmd.LogDescription{
+				{URI: "abc", Key: "def"},
+			},
+		},
+	}, nil, blog.NewMock(), metrics.NewNoopScope())
+	_, err = ctp.GetSCTs(ctx, []byte{0}, time.Time{})
+	if err == nil {
+		t.Fatal("GetSCTs should have failed")
+	}
+	test.AssertEquals(t, test.CountCounter(ctp.winnerCounter.With(prometheus.Labels{"log": "timeout", "group": "a"})), 1)
 }
 
 // A mock publisher that counts submissions
