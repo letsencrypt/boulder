@@ -429,6 +429,22 @@ type authz2Model struct {
 	ValidationRecord []byte
 }
 
+// hasMultipleNonPendingChallenges checks if a slice of challenges contains
+// more than one non-pending challenges
+func hasMultipleNonPendingChallenges(challenges []*corepb.Challenge) bool {
+	nonPending := false
+	for _, c := range challenges {
+		if *c.Status == string(core.StatusValid) || *c.Status == string(core.StatusInvalid) {
+			if !nonPending {
+				nonPending = true
+			} else {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 	if authz.V2 == nil || !*authz.V2 {
 		return nil, errors.New("authorization is not v2 format")
@@ -444,6 +460,9 @@ func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 		RegistrationID:  *authz.RegistrationID,
 		Status:          *authz.Status,
 		Expires:         &expires,
+	}
+	if hasMultipleNonPendingChallenges(authz.Challenges) {
+		return nil, errors.New("multiple challenges are non-pending")
 	}
 	// In the v2 authorization style we don't store invididual challenges with their own
 	// token, validation errors/records, etc. Instead we store a single token/error/record
@@ -463,9 +482,6 @@ func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 		// If the challenge status is not core.StatusPending we assume it was the 'attempted'
 		// challenge and extract the relevant fields we need.
 		if *chall.Status == string(core.StatusValid) || *chall.Status == string(core.StatusInvalid) {
-			if am.Attempted != "" || am.ValidationRecord != nil || am.ValidationError != nil {
-				return nil, errors.New("multiple challenges are non-pending")
-			}
 			am.Attempted = *chall.Type
 			// Marshal corepb.ValidationRecords to core.ValidationRecords so that we
 			// can marshal them to JSON.
@@ -505,6 +521,42 @@ func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 	return am, nil
 }
 
+// populateAttemptedFields populates a challenge from a authz2Model with the
+// relevant required fields if it was attempted
+func populateAttemptedFields(am *authz2Model, challenge *corepb.Challenge) error {
+	if len(am.ValidationError) != 0 {
+		// If the error is non-empty the challenge must be invalid.
+		status := string(core.StatusInvalid)
+		challenge.Status = &status
+		var prob probs.ProblemDetails
+		err := json.Unmarshal(am.ValidationError, &prob)
+		if err != nil {
+			return err
+		}
+		challenge.Error, err = grpc.ProblemDetailsToPB(&prob)
+		if err != nil {
+			return err
+		}
+	} else {
+		// If the error is empty the challenge must be valid.
+		status := string(core.StatusValid)
+		challenge.Status = &status
+	}
+	var records []core.ValidationRecord
+	err := json.Unmarshal(am.ValidationRecord, &records)
+	if err != nil {
+		return err
+	}
+	challenge.Validationrecords = make([]*corepb.ValidationRecord, len(records))
+	for i, r := range records {
+		challenge.Validationrecords[i], err = grpc.ValidationRecordToPB(r)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func modelToAuthzPB(am *authz2Model) (*corepb.Authorization, error) {
 	expires := am.Expires.UnixNano()
 	id := fmt.Sprintf("%d", am.ID)
@@ -520,7 +572,7 @@ func modelToAuthzPB(am *authz2Model) (*corepb.Authorization, error) {
 	// Populate authorization challenge array. We do this by iterating through
 	// the challenge type bitmap and creating a challenge of each type if its
 	// bit is set. Each of these challenges has the token from the authorization
-	// model and has its status set to core.StatusPending by Default. If the
+	// model and has its status set to core.StatusPending by default. If the
 	// challenge type is equal to that in the 'attempted' row we set the status
 	// to core.StatusValid or core.StatusInvalid depending on if there is anything
 	// in ValidationError and populate the ValidationRecord and ValidationError
@@ -539,38 +591,11 @@ func modelToAuthzPB(am *authz2Model) (*corepb.Authorization, error) {
 				Status: &status,
 				Token:  &token,
 			}
-			// If the challenge type is the attempted type it must be either valid
-			// or invalid and we need to populate extra fields.
+			// If the challenge type matches the attempted type it must be either
+			// valid or invalid and we need to populate extra fields.
 			if am.Attempted != "" && am.Attempted == challType {
-				if len(am.ValidationError) != 0 {
-					// If the error is non-empty the challenge must be invalid.
-					status := string(core.StatusInvalid)
-					challenge.Status = &status
-					var prob probs.ProblemDetails
-					err := json.Unmarshal(am.ValidationError, &prob)
-					if err != nil {
-						return nil, err
-					}
-					challenge.Error, err = grpc.ProblemDetailsToPB(&prob)
-					if err != nil {
-						return nil, err
-					}
-				} else {
-					// If the error is empty the challenge must be valid.
-					status := string(core.StatusValid)
-					challenge.Status = &status
-				}
-				var records []core.ValidationRecord
-				err := json.Unmarshal(am.ValidationRecord, &records)
-				if err != nil {
+				if err := populateAttemptedFields(am, challenge); err != nil {
 					return nil, err
-				}
-				challenge.Validationrecords = make([]*corepb.ValidationRecord, len(records))
-				for i, r := range records {
-					challenge.Validationrecords[i], err = grpc.ValidationRecordToPB(r)
-					if err != nil {
-						return nil, err
-					}
 				}
 			}
 			pb.Challenges = append(pb.Challenges, challenge)
