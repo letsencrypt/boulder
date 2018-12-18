@@ -155,12 +155,12 @@ func TestValidationRecord(t *testing.T) {
 		AddressesTried:    []net.IP{ip},
 	}
 
-	pb, err := validationRecordToPB(vr)
-	test.AssertNotError(t, err, "validationRecordToPB failed")
+	pb, err := ValidationRecordToPB(vr)
+	test.AssertNotError(t, err, "ValidationRecordToPB failed")
 	test.Assert(t, pb != nil, "Return core.ValidationRecord is nil")
 
-	recon, err := pbToValidationRecord(pb)
-	test.AssertNotError(t, err, "pbToValidationRecord failed")
+	recon, err := PBToValidationRecord(pb)
+	test.AssertNotError(t, err, "PBToValidationRecord failed")
 	test.AssertDeepEquals(t, recon, vr)
 }
 

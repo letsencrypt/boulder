@@ -62,6 +62,7 @@ message Authorization {
         optional int64 expires = 5; // Unix timestamp (nanoseconds)
         repeated core.Challenge challenges = 6;
         optional bytes combinations = 7;
+        optional bool v2 = 8;
 }
 
 message Order {

@@ -95,7 +95,7 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 	}
 	recordAry := make([]*corepb.ValidationRecord, len(challenge.ValidationRecord))
 	for i, v := range challenge.ValidationRecord {
-		recordAry[i], err = validationRecordToPB(v)
+		recordAry[i], err = ValidationRecordToPB(v)
 		if err != nil {
 			return nil, err
 		}
@@ -122,7 +122,7 @@ func pbToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 	if len(in.Validationrecords) > 0 {
 		recordAry = make([]core.ValidationRecord, len(in.Validationrecords))
 		for i, v := range in.Validationrecords {
-			recordAry[i], err = pbToValidationRecord(v)
+			recordAry[i], err = PBToValidationRecord(v)
 			if err != nil {
 				return core.Challenge{}, err
 			}
@@ -143,7 +143,7 @@ func pbToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 	}, nil
 }
 
-func validationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecord, error) {
+func ValidationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecord, error) {
 	addrs := make([][]byte, len(record.AddressesResolved))
 	addrsTried := make([][]byte, len(record.AddressesTried))
 	var err error
@@ -168,7 +168,7 @@ func validationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecor
 	}, nil
 }
 
-func pbToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRecord, err error) {
+func PBToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRecord, err error) {
 	if in == nil {
 		return core.ValidationRecord{}, ErrMissingParameters
 	}
@@ -203,7 +203,7 @@ func ValidationResultToPB(records []core.ValidationRecord, prob *probs.ProblemDe
 	recordAry := make([]*corepb.ValidationRecord, len(records))
 	var err error
 	for i, v := range records {
-		recordAry[i], err = validationRecordToPB(v)
+		recordAry[i], err = ValidationRecordToPB(v)
 		if err != nil {
 			return nil, err
 		}
@@ -225,7 +225,7 @@ func pbToValidationResult(in *vapb.ValidationResult) ([]core.ValidationRecord, *
 	recordAry := make([]core.ValidationRecord, len(in.Records))
 	var err error
 	for i, v := range in.Records {
-		recordAry[i], err = pbToValidationRecord(v)
+		recordAry[i], err = PBToValidationRecord(v)
 		if err != nil {
 			return nil, nil, err
 		}
