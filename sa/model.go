@@ -452,7 +452,7 @@ type authz2Model struct {
 }
 
 // hasMultipleNonPendingChallenges checks if a slice of challenges contains
-// more than one non-pending challenges
+// more than one non-pending challenge
 func hasMultipleNonPendingChallenges(challenges []*corepb.Challenge) bool {
 	nonPending := false
 	for _, c := range challenges {
@@ -544,8 +544,8 @@ func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 	return am, nil
 }
 
-// populateAttemptedFields populates a challenge from a authz2Model with the
-// relevant required fields if it was attempted
+// populateAttemptedFields takes a challenge and populates it with the validation fields status,
+// validation records, and error (the latter only if the validation failed) from a authz2Model.
 func populateAttemptedFields(am *authz2Model, challenge *corepb.Challenge) error {
 	if len(am.ValidationError) != 0 {
 		// If the error is non-empty the challenge must be invalid.
