@@ -161,8 +161,14 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 	pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
 
+	if (len(c.RA.CTLogGroups2) == 0) {
+		cmd.FailOnError(fmt.Errorf("CTLogGroups2 needs to be provided."), "")
+	}
 	for _, g := range c.RA.CTLogGroups2 {
 		for _, l := range g.Logs {
+			if (g.Logs == nil || len(g.Logs) == 0) {
+				cmd.FailOnError(fmt.Errorf("CTLogGroups2.logs needs to be provided."), "")
+			}
 			if l.TemporalSet != nil {
 				err := l.Setup()
 				cmd.FailOnError(err, "Failed to setup a temporal log set")
