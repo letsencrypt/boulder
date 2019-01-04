@@ -22,7 +22,6 @@ import startservers
 
 import chisel
 from chisel import auth_and_issue
-from chisel import add_http_redirect, remove_http_redirect, add_http01_response, remove_http01_response
 from v2_integration import *
 from helpers import *
 
@@ -45,12 +44,14 @@ class ProcInfo:
         self.cmd = cmd
         self.proc = proc
 
-challsrv_url_base = "http://localhost:8055"
+import challtestsrv
+challSrv = challtestsrv.ChallTestServer()
 
 caa_client = None
 caa_authzs = []
 old_authzs = []
 new_authzs = []
+
 
 def setup_seventy_days_ago():
     """Do any setup that needs to happen 70 days in the past, for tests that
@@ -101,7 +102,7 @@ def test_http_challenge_loop_redirect():
 
     # Create a HTTP redirect from the challenge's validation path to itself
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
-    add_http_redirect(
+    challSrv.add_http_redirect(
         challengePath,
         "http://{0}{1}".format(d, challengePath))
 
@@ -110,7 +111,7 @@ def test_http_challenge_loop_redirect():
     chisel.expect_problem("urn:acme:error:connection",
         lambda: auth_and_issue([d], client=client, chall_type="http-01"))
 
-    remove_http_redirect(challengePath)
+    challSrv.remove_http_redirect(challengePath)
 
 def test_http_challenge_badport_redirect():
     client = chisel.make_client()
@@ -122,7 +123,7 @@ def test_http_challenge_badport_redirect():
     # Create a HTTP redirect from the challenge's validation path to a host with
     # an invalid port.
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
-    add_http_redirect(
+    challSrv.add_http_redirect(
         challengePath,
         "http://{0}:1337{1}".format(d, challengePath))
 
@@ -131,7 +132,7 @@ def test_http_challenge_badport_redirect():
     chisel.expect_problem("urn:acme:error:connection",
         lambda: auth_and_issue([d], client=client, chall_type="http-01"))
 
-    remove_http_redirect(challengePath)
+    challSrv.remove_http_redirect(challengePath)
 
 def test_http_challenge_badhost_redirect():
     client = chisel.make_client()
@@ -143,7 +144,7 @@ def test_http_challenge_badhost_redirect():
     # Create a HTTP redirect from the challenge's validation path to a bare IP
     # hostname.
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
-    add_http_redirect(
+    challSrv.add_http_redirect(
         challengePath,
         "https://127.0.0.1{0}".format(challengePath))
 
@@ -152,7 +153,7 @@ def test_http_challenge_badhost_redirect():
     chisel.expect_problem("urn:acme:error:connection",
         lambda: auth_and_issue([d], client=client, chall_type="http-01"))
 
-    remove_http_redirect(challengePath)
+    challSrv.remove_http_redirect(challengePath)
 
 def test_http_challenge_badproto_redirect():
     client = chisel.make_client()
@@ -164,7 +165,7 @@ def test_http_challenge_badproto_redirect():
     # Create a HTTP redirect from the challenge's validation path to whacky
     # non-http/https protocol URL.
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
-    add_http_redirect(
+    challSrv.add_http_redirect(
         challengePath,
         "gopher://{0}{1}".format(d, challengePath))
 
@@ -173,7 +174,7 @@ def test_http_challenge_badproto_redirect():
     chisel.expect_problem("urn:acme:error:connection",
         lambda: auth_and_issue([d], client=client, chall_type="http-01"))
 
-    remove_http_redirect(challengePath)
+    challSrv.remove_http_redirect(challengePath)
 
 def test_http_challenge_http_redirect():
     client = chisel.make_client()
@@ -185,19 +186,55 @@ def test_http_challenge_http_redirect():
     # for the redirect result
     resp = chall.response(client.key)
     keyauth = resp.key_authorization
-    add_http01_response("http-redirect", keyauth)
+    challSrv.add_http01_response("http-redirect", keyauth)
 
     # Create a HTTP redirect from the challenge's validation path to some other
     # token path where we have registered the key authorization.
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
-    add_http_redirect(
+    redirectPath = "/.well-known/acme-challenge/http-redirect?params=are&important=to&not=lose"
+    challSrv.add_http_redirect(
         challengePath,
-        "http://{0}/.well-known/acme-challenge/http-redirect".format(d))
+        "http://{0}{1}".format(d, redirectPath))
 
+    # Issuing should succeed
     auth_and_issue([d], client=client, chall_type="http-01")
 
-    remove_http_redirect(challengePath)
-    remove_http01_response("http-redirect")
+    # Cleanup the redirects
+    challSrv.remove_http_redirect(challengePath)
+    challSrv.remove_http01_response("http-redirect")
+
+    history = challSrv.http_request_history(d)
+    challSrv.clear_http_request_history(d)
+
+    # There should have been at least two GET requests made to the
+    # challtestsrv. There may have been more if remote VAs were configured.
+    if len(history) < 2:
+        raise Exception("Expected at least 2 HTTP request events on challtestsrv, found {1}".format(len(history)))
+
+    initialRequests = []
+    redirectedRequests = []
+
+    for request in history:
+      # All requests should have been over HTTP
+      if request['HTTPS'] is True:
+        raise Exception("Expected all requests to be HTTP")
+      # Initial requests should have the expected initial HTTP-01 URL for the challenge
+      if request['URL'] == challengePath:
+        initialRequests.append(request)
+      # Redirected requests should have the expected redirect path URL with all
+      # its parameters
+      elif request['URL'] == redirectPath:
+        redirectedRequests.append(request)
+      else:
+        raise Exception("Unexpected request URL {0} in challtestsrv history: {1}".format(request['URL'], request))
+
+    # There should have been at least 1 initial HTTP-01 validation request.
+    if len(initialRequests) < 1:
+        raise Exception("Expected {0} initial HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(initialRequests)))
+
+    # There should have been at least 1 redirected HTTP request for each VA
+    if len(redirectedRequests) < 1:
+        raise Exception("Expected {0} redirected HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(redirectedRequests)))
 
 def test_http_challenge_https_redirect():
     client = chisel.make_client()
@@ -205,25 +242,73 @@ def test_http_challenge_https_redirect():
     # Create an authz for a random domain and get its HTTP-01 challenge token
     d, chall = rand_http_chall(client)
     token = chall.encode("token")
+    # Calculate its keyauth so we can add it in a special non-standard location
+    # for the redirect result
+    resp = chall.response(client.key)
+    keyauth = resp.key_authorization
+    challSrv.add_http01_response("https-redirect", keyauth)
 
     # Create a HTTP redirect from the challenge's validation path to an HTTPS
-    # address with the same path.
+    # path with some parameters
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
-    add_http_redirect(
+    redirectPath = "/.well-known/acme-challenge/https-redirect?params=are&important=to&not=lose"
+    challSrv.add_http_redirect(
         challengePath,
-        "https://{0}{1}".format(d, challengePath))
+        "https://{0}{1}".format(d, redirectPath))
+
 
     # Also add an A record for the domain pointing to the interface that the
     # HTTPS HTTP-01 challtestsrv is bound.
-    urllib2.urlopen("{0}/add-a".format(challsrv_url_base),
-        data=json.dumps({
-            "host": d,
-            "addresses": ["10.77.77.77"],
-        })).read()
+    challSrv.add_a_record(d, ["10.77.77.77"])
 
     auth_and_issue([d], client=client, chall_type="http-01")
 
-    remove_http_redirect(challengePath)
+    challSrv.remove_http_redirect(challengePath)
+    challSrv.remove_a_record(d)
+
+    history = challSrv.http_request_history(d)
+    challSrv.clear_http_request_history(d)
+
+    # There should have been at least two GET requests made to the challtestsrv by the VA
+    if len(history) < 2:
+        raise Exception("Expected 2 HTTP request events on challtestsrv, found {0}".format(len(history)))
+
+    initialRequests = []
+    redirectedRequests = []
+
+    for request in history:
+      # Initial requests should have the expected initial HTTP-01 URL for the challenge
+      if request['URL'] == challengePath:
+        initialRequests.append(request)
+      # Redirected requests should have the expected redirect path URL with all
+      # its parameters
+      elif request['URL'] == redirectPath:
+        redirectedRequests.append(request)
+      else:
+        raise Exception("Unexpected request URL {0} in challtestsrv history: {1}".format(request['URL'], request))
+
+    # There should have been at least 1 initial HTTP-01 validation request.
+    if len(initialRequests) < 1:
+        raise Exception("Expected {0} initial HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(initialRequests)))
+     # All initial requests should have been over HTTP
+    for r in initialRequests:
+      if r['HTTPS'] is True:
+        raise Exception("Expected all initial requests to be HTTP")
+
+    # There should have been at least 1 redirected HTTP request for each VA
+    if len(redirectedRequests) < 1:
+        raise Exception("Expected {0} redirected HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(redirectedRequests)))
+    # All the redirected requests should have been over HTTPS with the correct
+    # SNI value
+    for r in redirectedRequests:
+      if r['HTTPS'] is False:
+        raise Exception("Expected all redirected requests to be HTTPS")
+      # TODO(@cpu): The following ServerName test will fail with config-next
+      # until https://github.com/letsencrypt/boulder/issues/3969 is fixed.
+      if default_config_dir.startswith("test/config-next"):
+        return
+      elif r['ServerName'] != d:
+        raise Exception("Expected all redirected requests to have ServerName {0} got \"{1}\"".format(d, r['ServerName']))
 
 def test_tls_alpn_challenge():
     # TODO(@mdebski): Once the tls-alpn-01 challenge is enabled in pa.challenges
@@ -238,13 +323,12 @@ def test_tls_alpn_challenge():
     # to the interface that the challtestsrv has bound for TLS-ALPN-01 challenge
     # responses
     for host in domains:
-        urllib2.urlopen("{0}/add-a".format(challsrv_url_base),
-                data=json.dumps({
-                    "host": host,
-                    "addresses": ["10.88.88.88"],
-                })).read()
+        challSrv.add_a_record(host, ["10.88.88.88"])
 
     auth_and_issue(domains, chall_type="tls-alpn-01")
+
+    for host in domains:
+        challSrv.remove_a_record(host)
 
 def test_issuer():
     """
@@ -681,16 +765,8 @@ def setup_mock_dns(caa_account_uri=None):
         {"domain": "http-01-only.good-caa-reserved.com", "value": "{0}; validationmethods=http-01".format(goodCAA)},
         {"domain": "dns-01-or-http01.good-caa-reserved.com", "value": "{0}; validationmethods=dns-01,http-01".format(goodCAA)},
     ]
-    set_caa_url  = "{0}/add-caa".format(challsrv_url_base)
     for policy in caa_records:
-        urllib2.urlopen(set_caa_url,
-                data=json.dumps({
-                    "host": policy["domain"],
-                    "policies": [{
-                        "tag": "issue",
-                        "value": policy["value"],
-                    }],
-                })).read()
+        challSrv.add_caa_issue(policy["domain"], policy["value"])
 
 exit_status = 1
 tempdir = tempfile.mkdtemp()
