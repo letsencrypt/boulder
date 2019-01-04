@@ -107,7 +107,7 @@ class ChallTestServer:
 
     def remove_aaaa_record(self, host):
         """
-        remove_aaaa_record removes mock AAAA response form the challenge server's DNS
+        remove_aaaa_record removes mock AAAA response from the challenge server's DNS
         interface for the given host.
         """
         return self._postURL(
@@ -173,7 +173,7 @@ class ChallTestServer:
         """
         add_http01_response adds an ACME HTTP-01 challenge response for the
         provided token under the /.well-known/acme-challenge/ path of the
-        chalenge test server's HTTP interfaces. The given keyauth will be
+        challenge test server's HTTP interfaces. The given keyauth will be
         returned as the HTTP response body for requests to the challenge token.
         """
         return self._postURL(
