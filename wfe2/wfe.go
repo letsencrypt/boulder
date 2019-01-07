@@ -431,11 +431,13 @@ func (wfe *WebFrontEndImpl) Nonce(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	statusCode := http.StatusOK
+	statusCode := http.StatusNoContent
 	// The ACME specification says GET requets should receive http.StatusNoContent
-	// and HEAD requests should receive http.StatusOK.
-	if request.Method == "GET" {
-		statusCode = http.StatusNoContent
+	// and HEAD requests should receive http.StatusOK. We gate this with the
+	// HeadNonceStatusOK feature flag because it may break clients that are
+	// programmed to expect StatusOK.
+	if features.Enabled(features.HeadNonceStatusOK) && request.Method == "HEAD" {
+		statusCode = http.StatusOK
 	}
 	response.WriteHeader(statusCode)
 }
