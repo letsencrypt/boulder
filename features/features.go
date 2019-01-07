@@ -44,6 +44,9 @@ const (
 	// PerformValidationRPC enables the WFE/WFE2 to use the RA's PerformValidation
 	// RPC instead of the deprecated UpdateAuthorization RPC.
 	PerformValidationRPC
+	// HEAD requests to the WFE2 new-nonce endpoint should return HTTP StatusOK
+	// instead of HTTP StatusNoContent.
+	HeadNonceStatusOK
 )
 
 // List of features and their default value, protected by fMu
@@ -70,6 +73,7 @@ var features = map[FeatureFlag]bool{
 	ProbeCTLogs:                 false,
 	SimplifiedVAHTTP:            false,
 	PerformValidationRPC:        false,
+	HeadNonceStatusOK:           false,
 }
 
 var fMu = new(sync.RWMutex)

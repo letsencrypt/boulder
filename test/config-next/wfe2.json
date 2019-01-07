@@ -39,7 +39,8 @@
       "EnforceV2ContentType": true,
       "RPCHeadroom": true,
       "ACME13KeyRollover": true,
-      "PerformValidationRPC": true
+      "PerformValidationRPC": true,
+      "HeadNonceStatusOK": true
     }
   },
 

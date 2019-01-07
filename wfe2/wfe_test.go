@@ -825,24 +825,56 @@ func TestRelativeDirectory(t *testing.T) {
 	}
 }
 
-// TestNonceEndpoint tests the WFE2's new-nonce endpoint
-func TestNonceEndpoint(t *testing.T) {
+// TestNonceEndpoint tests requests to the WFE2's new-nonce endpoint
+func TestNonceEndpointGET(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 
-	responseWriter := httptest.NewRecorder()
+	testCases := []struct {
+		Name              string
+		Method            string
+		ExpectedStatus    int
+		HeadNonceStatusOK bool
+	}{
+		{
+			Name:           "GET new-nonce request",
+			Method:         "GET",
+			ExpectedStatus: http.StatusNoContent,
+		},
+		{
+			Name:           "HEAD new-nonce request (legacy)",
+			Method:         "HEAD",
+			ExpectedStatus: http.StatusNoContent,
+		},
+		{
+			Name:              "HEAD new-nonce request (feature flag)",
+			Method:            "HEAD",
+			ExpectedStatus:    http.StatusOK,
+			HeadNonceStatusOK: true,
+		},
+	}
 
-	mux.ServeHTTP(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    mustParseURL(newNoncePath),
-	})
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			if tc.HeadNonceStatusOK {
+				if err := features.Set(map[string]bool{"HeadNonceStatusOK": true}); err != nil {
+					t.Fatalf("Failed to enable HeadNonceStatusOK feature: %v", err)
+				}
+				defer features.Reset()
+			}
 
-	// Sending a GET request to the nonce endpoint should produce a HTTP response
-	// with the correct status code
-	test.AssertEquals(t, responseWriter.Code, http.StatusNoContent)
-	// And the response should contain a valid nonce in the Replay-Nonce header
-	nonce := responseWriter.Header().Get("Replay-Nonce")
-	test.AssertEquals(t, wfe.nonceService.Valid(nonce), true)
+			responseWriter := httptest.NewRecorder()
+			mux.ServeHTTP(responseWriter, &http.Request{
+				Method: tc.Method,
+				URL:    mustParseURL(newNoncePath),
+			})
+			// The response should have the expected HTTP status code
+			test.AssertEquals(t, responseWriter.Code, tc.ExpectedStatus)
+			// And the response should contain a valid nonce in the Replay-Nonce header
+			nonce := responseWriter.Header().Get("Replay-Nonce")
+			test.AssertEquals(t, wfe.nonceService.Valid(nonce), true)
+		})
+	}
 }
 
 func TestHTTPMethods(t *testing.T) {
