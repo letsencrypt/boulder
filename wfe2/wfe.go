@@ -424,14 +424,20 @@ func (wfe *WebFrontEndImpl) Directory(
 }
 
 // Nonce is an endpoint for getting a fresh nonce with an HTTP GET or HEAD
-// request. This endpoint only returns a no content header - the `HandleFunc`
+// request. This endpoint only returns a status code header - the `HandleFunc`
 // wrapper ensures that a nonce is written in the correct response header.
 func (wfe *WebFrontEndImpl) Nonce(
 	ctx context.Context,
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	response.WriteHeader(http.StatusNoContent)
+	statusCode := http.StatusOK
+	// The ACME specification says GET requets should receive http.StatusNoContent
+	// and HEAD requests should receive http.StatusOK.
+	if request.Method == "GET" {
+		statusCode = http.StatusNoContent
+	}
+	response.WriteHeader(statusCode)
 }
 
 // sendError wraps web.SendError
