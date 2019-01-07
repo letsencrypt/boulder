@@ -25,6 +25,7 @@ const (
 	EnforceV2ContentType
 	EnforceOverlappingWildcards
 	OrderReadyStatus
+	PerformValidationRPC
 
 	//   Currently in-use features
 	AllowRenewalFirstRL
@@ -41,9 +42,6 @@ const (
 	// SimplifiedVAHTTP enables the simplified VA http-01 rewrite that doesn't use
 	// a custom dialer.
 	SimplifiedVAHTTP
-	// PerformValidationRPC enables the WFE/WFE2 to use the RA's PerformValidation
-	// RPC instead of the deprecated UpdateAuthorization RPC.
-	PerformValidationRPC
 	// HEAD requests to the WFE2 new-nonce endpoint should return HTTP StatusOK
 	// instead of HTTP StatusNoContent.
 	HeadNonceStatusOK

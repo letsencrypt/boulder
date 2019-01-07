@@ -27,7 +27,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/ctpolicy"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -232,10 +231,6 @@ func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, reg
 		reg.Key = updated.Key
 	}
 	return reg, nil
-}
-
-func (ra *MockRegistrationAuthority) UpdateAuthorization(ctx context.Context, authz core.Authorization, foo int, challenge core.Challenge) (core.Authorization, error) {
-	return authz, nil
 }
 
 func (ra *MockRegistrationAuthority) PerformValidation(_ context.Context, _ *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
@@ -1172,17 +1167,13 @@ func TestChallenge(t *testing.T) {
 
 }
 
-// MockRAUpdateAuthorizationError is a mock RA that just returns an error on
-// UpdateAuthorization or PerformValidation.
-type MockRAUpdateAuthorizationError struct {
+// MockRAPerformValidationError is a mock RA that just returns an error on
+// PerformValidation.
+type MockRAPerformValidationError struct {
 	MockRegistrationAuthority
 }
 
-func (ra *MockRAUpdateAuthorizationError) UpdateAuthorization(_ context.Context, authz core.Authorization, _ int, _ core.Challenge) (core.Authorization, error) {
-	return core.Authorization{}, errors.New("broken on purpose")
-}
-
-func (ra *MockRAUpdateAuthorizationError) PerformValidation(_ context.Context, _ *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
+func (ra *MockRAPerformValidationError) PerformValidation(_ context.Context, _ *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
 	return nil, errors.New("broken on purpose")
 }
 
@@ -1191,7 +1182,7 @@ func (ra *MockRAUpdateAuthorizationError) PerformValidation(_ context.Context, _
 // the RA.
 func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.RA = &MockRAUpdateAuthorizationError{}
+	wfe.RA = &MockRAPerformValidationError{}
 	responseWriter := httptest.NewRecorder()
 
 	path := "valid/23"
@@ -1207,12 +1198,12 @@ func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 }
 
 // TestUpdateChallengeRAError tests that when the RA returns an error from
-// UpdateAuthorization (or PerformValidation) that the WFE returns an internal
-// server error as expected and does not panic or otherwise bug out.
+// PerformValidation that the WFE returns an internal server error as expected
+// and does not panic or otherwise bug out.
 func TestUpdateChallengeRAError(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	// Mock the RA to always fail UpdateAuthorization/PerformValidation
-	wfe.RA = &MockRAUpdateAuthorizationError{}
+	// Mock the RA to always fail PerformValidation
+	wfe.RA = &MockRAPerformValidationError{}
 
 	// Update a pending challenge
 	path := "pending/23"
@@ -1225,26 +1216,7 @@ func TestUpdateChallengeRAError(t *testing.T) {
 	body := responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `{
 		"type": "urn:acme:error:serverInternal",
-	  "detail": "Unable to update challenge",
-		"status": 500
-	}`)
-
-	// Doing the same with the PerformValidationRPC feature flag enabled should
-	// have the same result
-	if err := features.Set(map[string]bool{"PerformValidationRPC": true}); err != nil {
-		t.Fatalf("Failed to enable feature: %v", err)
-	}
-	defer features.Reset()
-
-	responseWriter = httptest.NewRecorder()
-	wfe.Challenge(ctx, newRequestEvent(), responseWriter,
-		makePostRequestWithPath(path,
-			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
-
-	body = responseWriter.Body.String()
-	test.AssertUnmarshaledEquals(t, body, `{
-		"type": "urn:acme:error:serverInternal",
-	  "detail": "Unable to update challenge",
+	  "detail": "Unable to perform validation for challenge",
 		"status": 500
 	}`)
 }

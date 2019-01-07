@@ -704,12 +704,8 @@ def test_stats():
     expect_stat(8000, "\ngo_goroutines ")
     expect_stat(8000, '\ngrpc_client_handling_seconds_count{grpc_method="NewRegistration",grpc_service="ra.RegistrationAuthority",grpc_type="unary"} ')
 
-    # Expect the PerformValidation RPC to be used with config-next and the
-    # legacy UpdateAuthorization RPC to be used otherwise.
-    if os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):
-        expect_stat(8002, '\ngrpc_server_handling_seconds_sum{grpc_method="PerformValidation",grpc_service="ra.RegistrationAuthority",grpc_type="unary"} ')
-    else:
-        expect_stat(8002, '\ngrpc_server_handling_seconds_sum{grpc_method="UpdateAuthorization",grpc_service="ra.RegistrationAuthority",grpc_type="unary"} ')
+    expect_stat(8002, '\ngrpc_server_handling_seconds_sum{grpc_method="PerformValidation",grpc_service="ra.RegistrationAuthority",grpc_type="unary"} ')
+
     expect_stat(8001, "\ngo_goroutines ")
 
 def test_sct_embedding():

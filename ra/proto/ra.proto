@@ -10,9 +10,6 @@ service RegistrationAuthority {
         rpc NewAuthorization(NewAuthorizationRequest) returns (core.Authorization) {}
         rpc NewCertificate(NewCertificateRequest) returns (core.Certificate) {}
         rpc UpdateRegistration(UpdateRegistrationRequest) returns (core.Registration) {}
-        // TODO(@cpu): Remove UpdateAuthorization. It is deprecated in favour of
-        // PerformValidation. See https://github.com/letsencrypt/boulder/issues/3947
-        rpc UpdateAuthorization(UpdateAuthorizationRequest) returns (core.Authorization) {}
         rpc PerformValidation(PerformValidationRequest) returns (core.Authorization) {}
         rpc RevokeCertificateWithReg(RevokeCertificateWithRegRequest) returns (core.Empty) {}
         rpc DeactivateRegistration(core.Registration) returns (core.Empty) {}

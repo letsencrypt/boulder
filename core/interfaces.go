@@ -69,11 +69,6 @@ type RegistrationAuthority interface {
 	UpdateRegistration(ctx context.Context, base, updates Registration) (Registration, error)
 
 	// [WebFrontEnd]
-	// TODO(@cpu): Remove UpdateAuthorization - it is replaced by
-	// PerformValidation. See https://github.com/letsencrypt/boulder/issues/3947
-	UpdateAuthorization(ctx context.Context, authz Authorization, challengeIndex int, response Challenge) (Authorization, error)
-
-	// [WebFrontEnd]
 	PerformValidation(ctx context.Context, req *rapb.PerformValidationRequest) (*corepb.Authorization, error)
 
 	// [WebFrontEnd]
