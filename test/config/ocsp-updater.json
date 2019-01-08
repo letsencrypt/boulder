@@ -21,6 +21,7 @@
     "akamaiClientToken": "its-a-token",
     "akamaiClientSecret": "its-a-secret",
     "akamaiAccessToken": "idk-how-this-is-different-from-client-token-but-okay",
+    "akamaiV3Network": "staging",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/ocsp-updater.boulder/cert.pem",

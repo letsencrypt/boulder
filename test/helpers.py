@@ -115,14 +115,6 @@ def reset_akamai_purges():
 def verify_akamai_purge():
     response = requests.get("http://localhost:6789/debug/get-purges")
     purgeData = response.json()
-    if os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):
-        if len(purgeData["V3"]) is not 1:
-            raise Exception("Unexpected number of Akamai v3 purges")
-        if len(purgeData["V2"]) is not 0:
-            raise Exception("Unexpected number of Akamai v2 purges")
-    else:
-        if len(purgeData["V2"]) is not 1:
-            raise Exception("Unexpected number of Akamai v2 purges")
-        if len(purgeData["V3"]) is not 0:
-            raise Exception("Unexpected number of Akamai v3 purges")
+    if len(purgeData["V3"]) is not 1:
+        raise Exception("Unexpected number of Akamai v3 purges")
     reset_akamai_purges()
