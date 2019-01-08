@@ -18,8 +18,6 @@ func main() {
 	secret := flag.String("secret", "", "Akamai client secret")
 	flag.Parse()
 
-	// v2
-	v2Purges := [][]string{}
 	v3Purges := [][]string{}
 	mu := sync.Mutex{}
 
@@ -27,9 +25,8 @@ func main() {
 		mu.Lock()
 		defer mu.Unlock()
 		body, err := json.Marshal(struct {
-			V2 [][]string
 			V3 [][]string
-		}{V2: v2Purges, V3: v3Purges})
+		}{V3: v3Purges})
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -41,13 +38,11 @@ func main() {
 	http.HandleFunc("/debug/reset-purges", func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
-		v2Purges, v3Purges = [][]string{}, [][]string{}
+		v3Purges = [][]string{}
 		w.WriteHeader(http.StatusOK)
 		return
 	})
 
-	// Since v2 and v3 APIs share a bunch of logic just mash them into a single
-	// handler.
 	http.HandleFunc("/ccu/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -58,8 +53,6 @@ func main() {
 		defer mu.Unlock()
 		var purgeRequest struct {
 			Objects []string `json:"objects"`
-			Type    string   `json:"type"`
-			Action  string   `json:"action"`
 		}
 		body, err := ioutil.ReadAll(r.Body)
 		if err != nil {
@@ -77,21 +70,12 @@ func main() {
 			fmt.Println("Can't unmarshal:", err)
 			return
 		}
-		if r.URL.Path == "/ccu/v2/queues/default" {
-			if purgeRequest.Type != "arl" || purgeRequest.Action != "remove" || len(purgeRequest.Objects) == 0 {
-				w.WriteHeader(http.StatusBadRequest)
-				fmt.Println("Bad parameters:", purgeRequest)
-				return
-			}
-			v2Purges = append(v2Purges, purgeRequest.Objects)
-		} else if r.URL.Path == "/ccu/v3/delete/url/staging" {
-			if len(purgeRequest.Objects) == 0 || purgeRequest.Type != "" || purgeRequest.Action != "" {
-				w.WriteHeader(http.StatusBadRequest)
-				fmt.Println("Bad parameters:", purgeRequest)
-				return
-			}
-			v3Purges = append(v3Purges, purgeRequest.Objects)
+		if len(purgeRequest.Objects) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Println("Bad parameters:", purgeRequest)
+			return
 		}
+		v3Purges = append(v3Purges, purgeRequest.Objects)
 
 		respObj := struct {
 			PurgeID          string

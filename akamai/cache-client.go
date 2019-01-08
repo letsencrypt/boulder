@@ -21,16 +21,9 @@ import (
 )
 
 const (
-	v2PurgePath     = "/ccu/v2/queues/default"
 	v3PurgePath     = "/ccu/v3/delete/url/"
 	timestampFormat = "20060102T15:04:05-0700"
 )
-
-type v2PurgeRequest struct {
-	Objects []string `json:"objects"`
-	Type    string   `json:"type"`
-	Action  string   `json:"action"`
-}
 
 type v3PurgeRequest struct {
 	Objects []string `json:"objects"`
@@ -44,9 +37,7 @@ type purgeResponse struct {
 }
 
 // CachePurgeClient talks to the Akamai CCU REST API. It is safe to make concurrent
-// purge requests. If the v3Network field is "" the legacy CCU v2 API is used.
-// If the v3Network field is either "staging" or "production" then the CCU v3
-// API is used.
+// purge requests.
 type CachePurgeClient struct {
 	client       *http.Client
 	apiEndpoint  string
@@ -95,9 +86,8 @@ func NewCachePurgeClient(
 	if err != nil {
 		return nil, err
 	}
-	// If there is a network provided, we're using the V3 API and the network
-	// string must be either "production" or "staging".
-	if v3Network != "" && v3Network != "production" && v3Network != "staging" {
+	// The network string must be either "production" or "staging".
+	if v3Network != "production" && v3Network != "staging" {
 		return nil, fmt.Errorf(
 			"Invalid CCU v3 network: %q. Must be \"staging\" or \"production\"", v3Network)
 	}
@@ -121,7 +111,7 @@ func NewCachePurgeClient(
 // Akamai uses a special authorization header to identify clients to their EdgeGrid
 // APIs, their docs (https://developer.akamai.com/introduction/Client_Auth.html)
 // provide a  description of the required generation process.
-func (cpc *CachePurgeClient) constructAuthHeader(request *http.Request, body []byte, apiPath string, nonce string) (string, error) {
+func (cpc *CachePurgeClient) constructAuthHeader(body []byte, apiPath string, nonce string) (string, error) {
 	// The akamai API is very time sensitive (recommending reliance on a stratum 2
 	// or better time source) and, although it doesn't say it anywhere, really wants
 	// the timestamp to be in the UTC timezone for some reason.
@@ -169,23 +159,11 @@ func signingKey(clientSecret string, timestamp string) []byte {
 // purge actually sends the individual requests to the Akamai endpoint and checks
 // if they are successful
 func (cpc *CachePurgeClient) purge(urls []string) error {
-	var purgeReq interface{}
-	var endpoint, purgePath string
-	if cpc.v3Network == "" {
-		purgeReq = v2PurgeRequest{
-			Objects: urls,
-			Action:  "remove",
-			Type:    "arl",
-		}
-		purgePath = v2PurgePath
-		endpoint = fmt.Sprintf("%s%s", cpc.apiEndpoint, purgePath)
-	} else {
-		purgeReq = v3PurgeRequest{
-			Objects: urls,
-		}
-		purgePath = v3PurgePath
-		endpoint = fmt.Sprintf("%s%s%s", cpc.apiEndpoint, purgePath, cpc.v3Network)
+	purgeReq := v3PurgeRequest{
+		Objects: urls,
 	}
+	endpoint := fmt.Sprintf("%s%s%s", cpc.apiEndpoint, v3PurgePath, cpc.v3Network)
+
 	reqJSON, err := json.Marshal(purgeReq)
 	if err != nil {
 		return errFatal(err.Error())
@@ -201,9 +179,8 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 
 	// Create authorization header for request
 	authHeader, err := cpc.constructAuthHeader(
-		req,
 		reqJSON,
-		purgePath+cpc.v3Network,
+		v3PurgePath+cpc.v3Network,
 		core.RandomString(16),
 	)
 	if err != nil {

@@ -1,7 +1,6 @@
 package akamai
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -38,16 +37,8 @@ func TestConstructAuthHeader(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to parse timestamp")
 	fc.Set(wantedTimestamp)
 
-	req, err := http.NewRequest(
-		"POST",
-		fmt.Sprintf("%s%s", cpc.apiEndpoint, v2PurgePath),
-		bytes.NewBuffer([]byte{0}),
-	)
-	test.AssertNotError(t, err, "Failed to create request")
-
 	expectedHeader := "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=hXm4iCxtpN22m4cbZb4lVLW5rhX8Ca82vCFqXzSTPe4="
 	authHeader, err := cpc.constructAuthHeader(
-		req,
 		[]byte("datadatadatadatadatadatadatadata"),
 		"/testapi/v1/t3",
 		"nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
@@ -58,7 +49,6 @@ func TestConstructAuthHeader(t *testing.T) {
 
 type akamaiServer struct {
 	responseCode int
-	v3           bool
 	*httptest.Server
 }
 
@@ -74,9 +64,7 @@ func (as *akamaiServer) sendResponse(w http.ResponseWriter, resp purgeResponse) 
 }
 
 func (as *akamaiServer) akamaiHandler(w http.ResponseWriter, r *http.Request) {
-	// Enforce the request path based on the API version we're emulating
-	if (as.v3 == false && r.URL.Path != v2PurgePath) ||
-		(as.v3 == true && !strings.HasPrefix(r.URL.Path, v3PurgePath)) {
+	if !strings.HasPrefix(r.URL.Path, v3PurgePath) {
 		resp := purgeResponse{
 			HTTPStatus: http.StatusNotFound,
 			Detail:     fmt.Sprintf("Invalid path: %q", r.URL.Path),
@@ -87,8 +75,6 @@ func (as *akamaiServer) akamaiHandler(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Objects []string
-		Type    string
-		Action  string
 	}
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -101,17 +87,6 @@ func (as *akamaiServer) akamaiHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Printf("Error checking signature: %s\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	// Enforce that a V3 request is well formed and does not include the "Type"
-	// and "Action" fields used by the V2 api.
-	if as.v3 == true && (req.Type != "" || req.Action != "") {
-		resp := purgeResponse{
-			HTTPStatus: http.StatusBadRequest,
-			Detail:     fmt.Sprintf("Invalid request body: included V2 Type %q and Action %q\n", req.Type, req.Action),
-		}
-		as.sendResponse(w, resp)
 		return
 	}
 
@@ -137,60 +112,19 @@ func (as *akamaiServer) akamaiHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	as.sendResponse(w, resp)
 }
-func newAkamaiServer(code int, v3 bool) *akamaiServer {
+func newAkamaiServer(code int) *akamaiServer {
 	m := http.NewServeMux()
 	as := akamaiServer{
 		responseCode: code,
-		v3:           v3,
 		Server:       httptest.NewServer(m),
 	}
 	m.HandleFunc("/", as.akamaiHandler)
 	return &as
 }
 
-// TestV2Purge tests the legacy CCU v2 Akamai API used when the v3Network
-// parameter to NewCachePurgeClient is "".
-func TestV2Purge(t *testing.T) {
-	log := blog.NewMock()
-
-	as := newAkamaiServer(http.StatusCreated, false)
-	defer as.Close()
-
-	client, err := NewCachePurgeClient(
-		as.URL,
-		"token",
-		"secret",
-		"accessToken",
-		"",
-		3,
-		time.Second,
-		log,
-		metrics.NewNoopScope(),
-	)
-	test.AssertNotError(t, err, "Failed to create CachePurgeClient")
-	fc := clock.NewFake()
-	client.clk = fc
-
-	err = client.Purge([]string{"http://test.com"})
-	test.AssertNotError(t, err, "Purge failed with 201 response")
-
-	started := fc.Now()
-	as.responseCode = http.StatusInternalServerError
-	err = client.Purge([]string{"http://test.com"})
-	test.AssertError(t, err, "Purge didn't fail with 400 response")
-	test.Assert(t, fc.Since(started) > (time.Second*4), "Retries should've taken at least 4.4 seconds")
-
-	started = fc.Now()
-	as.responseCode = http.StatusCreated
-	err = client.Purge([]string{"http:/test.com"})
-	test.AssertError(t, err, "Purge didn't fail with 403 response from malformed URL")
-	test.Assert(t, fc.Since(started) < time.Second, "Purge should've failed out immediately")
-}
-
-// TestV3Purge tests the Akamai CCU v3 purge API by setting the v3Network
-// parameter to "production".
+// TestV3Purge tests the Akamai CCU v3 purge API
 func TestV3Purge(t *testing.T) {
-	as := newAkamaiServer(http.StatusCreated, true)
+	as := newAkamaiServer(http.StatusCreated)
 	defer as.Close()
 
 	// Client is a purge client with a "production" v3Network parameter
@@ -275,7 +209,6 @@ func TestBigBatchPurge(t *testing.T) {
 	m := http.NewServeMux()
 	as := akamaiServer{
 		responseCode: http.StatusCreated,
-		v3:           true,
 		Server:       httptest.NewUnstartedServer(m),
 	}
 	m.HandleFunc("/", as.akamaiHandler)
