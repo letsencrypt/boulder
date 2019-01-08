@@ -1409,29 +1409,6 @@ func mergeUpdate(r *core.Registration, input core.Registration) bool {
 	return changed
 }
 
-// UpdateAuthorization is a legacy function in the process of being replaced by
-// PerformValidation.
-// TODO(@cpu): Remove this. https://github.com/letsencrypt/boulder/issues/3947
-func (ra *RegistrationAuthorityImpl) UpdateAuthorization(
-	ctx context.Context,
-	base core.Authorization,
-	challengeIndex int,
-	_ core.Challenge) (core.Authorization, error) {
-	authzPB, err := bgrpc.AuthzToPB(base)
-	if err != nil {
-		return core.Authorization{}, err
-	}
-	challIndex := int64(challengeIndex)
-	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
-		Authz:          authzPB,
-		ChallengeIndex: &challIndex,
-	})
-	if err != nil {
-		return core.Authorization{}, err
-	}
-	return bgrpc.PBToAuthz(authzPB)
-}
-
 // PerformValidation initiates validation for a specific challenge associated
 // with the given base authorization. The authorization and challenge are
 // updated based on the results.

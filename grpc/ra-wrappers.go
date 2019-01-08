@@ -94,34 +94,6 @@ func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Con
 	return pbToRegistration(response)
 }
 
-func (rac RegistrationAuthorityClientWrapper) UpdateAuthorization(ctx context.Context, authz core.Authorization, challengeIndex int, chall core.Challenge) (core.Authorization, error) {
-	authzPB, err := AuthzToPB(authz)
-	if err != nil {
-		return core.Authorization{}, err
-	}
-	challPB, err := ChallengeToPB(chall)
-	if err != nil {
-		return core.Authorization{}, err
-	}
-
-	ind := int64(challengeIndex)
-
-	response, err := rac.inner.UpdateAuthorization(ctx, &rapb.UpdateAuthorizationRequest{
-		Authz:          authzPB,
-		ChallengeIndex: &ind,
-		Response:       challPB,
-	})
-	if err != nil {
-		return core.Authorization{}, err
-	}
-
-	if response == nil || !authorizationValid(response) {
-		return core.Authorization{}, errIncompleteResponse
-	}
-
-	return PBToAuthz(response)
-}
-
 func (rac RegistrationAuthorityClientWrapper) PerformValidation(
 	ctx context.Context,
 	req *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
@@ -286,25 +258,6 @@ func (ras *RegistrationAuthorityServerWrapper) UpdateRegistration(ctx context.Co
 		return nil, err
 	}
 	return registrationToPB(newReg)
-}
-
-func (ras *RegistrationAuthorityServerWrapper) UpdateAuthorization(ctx context.Context, request *rapb.UpdateAuthorizationRequest) (*corepb.Authorization, error) {
-	if request == nil || !authorizationValid(request.Authz) || request.ChallengeIndex == nil || request.Response == nil {
-		return nil, errIncompleteRequest
-	}
-	authz, err := PBToAuthz(request.Authz)
-	if err != nil {
-		return nil, err
-	}
-	chall, err := pbToChallenge(request.Response)
-	if err != nil {
-		return nil, err
-	}
-	newAuthz, err := ras.inner.UpdateAuthorization(ctx, authz, int(*request.ChallengeIndex), chall)
-	if err != nil {
-		return nil, err
-	}
-	return AuthzToPB(newAuthz)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) PerformValidation(

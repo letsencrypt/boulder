@@ -232,10 +232,6 @@ func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, acc
 	return acct, nil
 }
 
-func (ra *MockRegistrationAuthority) UpdateAuthorization(ctx context.Context, authz core.Authorization, foo int, challenge core.Challenge) (core.Authorization, error) {
-	return authz, nil
-}
-
 func (ra *MockRegistrationAuthority) PerformValidation(_ context.Context, _ *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
 	return nil, nil
 }
@@ -1134,17 +1130,13 @@ func TestChallenge(t *testing.T) {
 	}
 }
 
-// MockRAUpdateAuthorizationError is a mock RA that just returns an error on
-// UpdateAuthorization or PerformValidation.
-type MockRAUpdateAuthorizationError struct {
+// MockRAPerformValidationError is a mock RA that just returns an error on
+// PerformValidation.
+type MockRAPerformValidationError struct {
 	MockRegistrationAuthority
 }
 
-func (ra *MockRAUpdateAuthorizationError) UpdateAuthorization(_ context.Context, authz core.Authorization, _ int, _ core.Challenge) (core.Authorization, error) {
-	return core.Authorization{}, errors.New("broken on purpose")
-}
-
-func (ra *MockRAUpdateAuthorizationError) PerformValidation(_ context.Context, _ *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
+func (ra *MockRAPerformValidationError) PerformValidation(_ context.Context, _ *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
 	return nil, errors.New("broken on purpose")
 }
 
@@ -1153,7 +1145,7 @@ func (ra *MockRAUpdateAuthorizationError) PerformValidation(_ context.Context, _
 // the RA.
 func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.RA = &MockRAUpdateAuthorizationError{}
+	wfe.RA = &MockRAPerformValidationError{}
 	responseWriter := httptest.NewRecorder()
 
 	signedURL := "http://localhost/valid/23"
@@ -1169,12 +1161,12 @@ func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 }
 
 // TestUpdateChallengeRAError tests that when the RA returns an error from
-// UpdateAuthorization (or PerformValidation) that the WFE returns an internal
-// server error as expected and does not panic or otherwise bug out.
+// PerformValidation that the WFE returns an internal server error as expected
+// and does not panic or otherwise bug out.
 func TestUpdateChallengeRAError(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	// Mock the RA to always fail UpdateAuthorization/PerformValidation
-	wfe.RA = &MockRAUpdateAuthorizationError{}
+	// Mock the RA to always fail PerformValidation
+	wfe.RA = &MockRAPerformValidationError{}
 
 	// Update a pending challenge
 	signedURL := "http://localhost/pending/23"
@@ -1186,25 +1178,6 @@ func TestUpdateChallengeRAError(t *testing.T) {
 
 	// The result should be an internal server error problem.
 	body := responseWriter.Body.String()
-	test.AssertUnmarshaledEquals(t, body, `{
-		"type": "urn:ietf:params:acme:error:serverInternal",
-	  "detail": "Unable to update challenge",
-		"status": 500
-	}`)
-
-	// Doing the same with the PerformValidationRPC feature flag enabled should
-	// have the same result
-	if err := features.Set(map[string]bool{"PerformValidationRPC": true}); err != nil {
-		t.Fatalf("Failed to enable feature: %v", err)
-	}
-	defer features.Reset()
-
-	responseWriter = httptest.NewRecorder()
-	_, _, jwsBody = signRequestKeyID(t, 1, nil, signedURL, `{}`, wfe.nonceService)
-	request = makePostRequestWithPath("pending/23", jwsBody)
-	wfe.Challenge(ctx, newRequestEvent(), responseWriter, request)
-
-	body = responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `{
 		"type": "urn:ietf:params:acme:error:serverInternal",
 	  "detail": "Unable to update challenge",
