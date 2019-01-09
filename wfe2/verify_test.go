@@ -1098,7 +1098,7 @@ func TestLookupJWK(t *testing.T) {
 				test.AssertDeepEquals(t, inThumb, outThumb)
 				test.AssertMarshaledEquals(t, acct, tc.ExpectedAccount)
 				test.AssertEquals(t, inputLogEvent.Requester, acct.ID)
-				test.AssertEquals(t, inputLogEvent.Contacts, acct.Contact)
+				test.AssertEquals(t, fmt.Sprint(inputLogEvent.Contacts), fmt.Sprint(*acct.Contact))
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
