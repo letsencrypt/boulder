@@ -669,7 +669,9 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling JSON"), err)
 		return
 	}
-	logEvent.Extra["Identifier"] = init.Identifier
+	if init.Identifier.Type == core.IdentifierDNS {
+		logEvent.DNSName = init.Identifier.Value
+	}
 
 	// Create new authz and return
 	authz, err := wfe.RA.NewAuthorization(ctx, init, currReg.ID)
@@ -971,15 +973,17 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 	challenge := authz.Challenges[challengeIndex]
 
-	logEvent.Extra["ChallengeType"] = challenge.Type
-	logEvent.Extra["Identifier"] = authz.Identifier
-	logEvent.Extra["AuthorizationStatus"] = authz.Status
+	if authz.Identifier.Type == core.IdentifierDNS {
+		logEvent.DNSName = authz.Identifier.Value
+	}
+	logEvent.Status = string(authz.Status)
 
 	switch request.Method {
 	case "GET", "HEAD":
 		wfe.getChallenge(ctx, response, request, authz, &challenge, logEvent)
 
 	case "POST":
+		logEvent.ChallengeType = challenge.Type
 		wfe.postChallenge(ctx, response, request, authz, challengeIndex, logEvent)
 	}
 }
@@ -1280,8 +1284,11 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 		}
 		return
 	}
-	logEvent.Extra["Identifier"] = authz.Identifier
-	logEvent.Extra["AuthorizationStatus"] = authz.Status
+
+	if authz.Identifier.Type == core.IdentifierDNS {
+		logEvent.DNSName = authz.Identifier.Value
+	}
+	logEvent.Status = string(authz.Status)
 
 	// After expiring, authorizations are inaccessible
 	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {
