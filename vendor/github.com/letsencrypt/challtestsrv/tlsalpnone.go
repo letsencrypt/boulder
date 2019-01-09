@@ -50,6 +50,10 @@ func (s *ChallSrv) GetTLSALPNChallenge(host string) (string, bool) {
 
 func (s *ChallSrv) ServeChallengeCertFunc(k *ecdsa.PrivateKey) func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 	return func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		s.AddRequestEvent(TLSALPNRequestEvent{
+			ServerName:      hello.ServerName,
+			SupportedProtos: hello.SupportedProtos,
+		})
 		if len(hello.SupportedProtos) != 1 || hello.SupportedProtos[0] != ACMETLS1Protocol {
 			return nil, fmt.Errorf(
 				"ALPN failed, ClientHelloInfo.SupportedProtos: %s",

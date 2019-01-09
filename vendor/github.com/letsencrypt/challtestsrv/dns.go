@@ -142,6 +142,10 @@ func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 
 	// For each question, add answers based on the type of question
 	for _, q := range r.Question {
+		s.AddRequestEvent(DNSRequestEvent{
+			Question: q,
+		})
+
 		var answerFunc dnsAnswerFunc
 		switch q.Qtype {
 		case dns.TypeTXT:
@@ -152,7 +156,14 @@ func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 			answerFunc = s.aaaaAnswers
 		case dns.TypeCAA:
 			answerFunc = s.caaAnswers
+		default:
+			m.SetRcode(r, dns.RcodeNotImplemented)
 		}
+
+		if answerFunc == nil {
+			break
+		}
+
 		if records := answerFunc(q); len(records) > 0 {
 			m.Answer = append(m.Answer, records...)
 		}

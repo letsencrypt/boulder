@@ -223,8 +223,8 @@
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/challtestsrv",
-			"Comment": "v1.0.0",
-			"Rev": "495441a8880035dedbee2b7286e805deda093260"
+			"Comment": "v1.0.2",
+			"Rev": "37390bc3ad8f92bd8a94e367ee0f07060a841c3c"
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/pkcs11key",

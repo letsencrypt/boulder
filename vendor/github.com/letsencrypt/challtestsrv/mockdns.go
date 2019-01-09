@@ -1,7 +1,7 @@
 package challtestsrv
 
 import (
-	"strings"
+	"github.com/miekg/dns"
 )
 
 // SetDefaultDNSIPv4 sets the default IPv4 address used for A query responses
@@ -43,9 +43,7 @@ func (s *ChallSrv) GetDefaultDNSIPv6() string {
 func (s *ChallSrv) AddDNSARecord(host string, addresses []string) {
 	s.challMu.Lock()
 	defer s.challMu.Unlock()
-	if !strings.HasSuffix(host, ".") {
-		host = host + "."
-	}
+	host = dns.Fqdn(host)
 	s.dnsMocks.aRecords[host] = append(s.dnsMocks.aRecords[host], addresses...)
 }
 
@@ -54,9 +52,7 @@ func (s *ChallSrv) AddDNSARecord(host string, addresses []string) {
 func (s *ChallSrv) DeleteDNSARecord(host string) {
 	s.challMu.Lock()
 	defer s.challMu.Unlock()
-	if !strings.HasSuffix(host, ".") {
-		host = host + "."
-	}
+	host = dns.Fqdn(host)
 	delete(s.dnsMocks.aRecords, host)
 }
 
@@ -64,9 +60,7 @@ func (s *ChallSrv) DeleteDNSARecord(host string) {
 // returned when querying for A records for the given host.
 func (s *ChallSrv) GetDNSARecord(host string) []string {
 	s.challMu.RLock()
-	if !strings.HasSuffix(host, ".") {
-		host = host + "."
-	}
+	host = dns.Fqdn(host)
 	defer s.challMu.RUnlock()
 	return s.dnsMocks.aRecords[host]
 }
@@ -76,9 +70,7 @@ func (s *ChallSrv) GetDNSARecord(host string) []string {
 func (s *ChallSrv) AddDNSAAAARecord(host string, addresses []string) {
 	s.challMu.Lock()
 	defer s.challMu.Unlock()
-	if !strings.HasSuffix(host, ".") {
-		host = host + "."
-	}
+	host = dns.Fqdn(host)
 	s.dnsMocks.aaaaRecords[host] = append(s.dnsMocks.aaaaRecords[host], addresses...)
 }
 
@@ -87,9 +79,7 @@ func (s *ChallSrv) AddDNSAAAARecord(host string, addresses []string) {
 func (s *ChallSrv) DeleteDNSAAAARecord(host string) {
 	s.challMu.Lock()
 	defer s.challMu.Unlock()
-	if !strings.HasSuffix(host, ".") {
-		host = host + "."
-	}
+	host = dns.Fqdn(host)
 	delete(s.dnsMocks.aaaaRecords, host)
 }
 
@@ -98,9 +88,7 @@ func (s *ChallSrv) DeleteDNSAAAARecord(host string) {
 func (s *ChallSrv) GetDNSAAAARecord(host string) []string {
 	s.challMu.RLock()
 	defer s.challMu.RUnlock()
-	if !strings.HasSuffix(host, ".") {
-		host = host + "."
-	}
+	host = dns.Fqdn(host)
 	return s.dnsMocks.aaaaRecords[host]
 }
 
@@ -109,9 +97,7 @@ func (s *ChallSrv) GetDNSAAAARecord(host string) []string {
 func (s *ChallSrv) AddDNSCAARecord(host string, policies []MockCAAPolicy) {
 	s.challMu.Lock()
 	defer s.challMu.Unlock()
-	if !strings.HasSuffix(host, ".") {
-		host = host + "."
-	}
+	host = dns.Fqdn(host)
 	s.dnsMocks.caaRecords[host] = append(s.dnsMocks.caaRecords[host], policies...)
 }
 
@@ -120,9 +106,7 @@ func (s *ChallSrv) AddDNSCAARecord(host string, policies []MockCAAPolicy) {
 func (s *ChallSrv) DeleteDNSCAARecord(host string) {
 	s.challMu.Lock()
 	defer s.challMu.Unlock()
-	if !strings.HasSuffix(host, ".") {
-		host = host + "."
-	}
+	host = dns.Fqdn(host)
 	delete(s.dnsMocks.caaRecords, host)
 }
 
@@ -131,8 +115,6 @@ func (s *ChallSrv) DeleteDNSCAARecord(host string) {
 func (s *ChallSrv) GetDNSCAARecord(host string) []MockCAAPolicy {
 	s.challMu.RLock()
 	defer s.challMu.RUnlock()
-	if !strings.HasSuffix(host, ".") {
-		host = host + "."
-	}
+	host = dns.Fqdn(host)
 	return s.dnsMocks.caaRecords[host]
 }
