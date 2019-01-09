@@ -506,7 +506,9 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 		// If the lookup was successful, use that key.
 		key = reg.Key
 		logEvent.Requester = reg.ID
-		logEvent.Contacts = reg.Contact
+		if reg.Contact != nil {
+			logEvent.Contacts = *reg.Contact
+		}
 	}
 
 	// Only check for validity if we are actually checking the registration
@@ -626,7 +628,9 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *web.R
 	}
 	logEvent.Requester = reg.ID
 	addRequesterHeader(response, reg.ID)
-	logEvent.Contacts = reg.Contact
+	if reg.Contact != nil {
+		logEvent.Contacts = *reg.Contact
+	}
 
 	// Use an explicitly typed variable. Otherwise `go vet' incorrectly complains
 	// that reg.ID is a string being passed to %d.
@@ -679,7 +683,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
 		return
 	}
-	logEvent.Extra["AuthzID"] = authz.ID
+	logEvent.Created = authz.ID
 
 	// Make a URL for this authz, then blow away the ID and RegID before serializing
 	authzURL := web.RelativeEndpoint(request, authzPath+string(authz.ID))

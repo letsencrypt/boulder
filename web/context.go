@@ -27,10 +27,13 @@ type RequestEvent struct {
 	Slug           string                 `json:",omitempty"`
 	InternalErrors []string               `json:",omitempty"`
 	Error          string                 `json:",omitempty"`
-	Contacts       *[]string              `json:",omitempty"`
+	Contacts       []string               `json:",omitempty"`
 	UserAgent      string                 `json:"ua,omitempty"`
 	Payload        string                 `json:",omitempty"`
 	Extra          map[string]interface{} `json:",omitempty"`
+
+	// For endpoints that create objects, the ID of the newly created object.
+	Created string `json:",omitempty"`
 
 	// For challenge and authorization GETs and POSTs:
 	// the status of the authorization at the time the request began.

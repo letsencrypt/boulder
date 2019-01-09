@@ -534,7 +534,9 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 	logEvent.Requester = acct.ID
 	addRequesterHeader(response, acct.ID)
-	logEvent.Contacts = acct.Contact
+	if acct.Contact != nil {
+		logEvent.Contacts = *acct.Contact
+	}
 
 	// We populate the account Agreement field when creating a new response to
 	// track which terms-of-service URL was in effect when an account with
