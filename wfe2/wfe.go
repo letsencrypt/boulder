@@ -860,8 +860,10 @@ func (wfe *WebFrontEndImpl) Challenge(
 	challenge := authz.Challenges[challengeIndex]
 
 	logEvent.Extra["ChallengeType"] = challenge.Type
-	logEvent.Extra["Identifier"] = authz.Identifier
-	logEvent.Extra["AuthorizationStatus"] = authz.Status
+	if authz.Identifier.Type == core.IdentifierDNS {
+		logEvent.DNSName = authz.Identifier.Value
+	}
+	logEvent.Status = string(authz.Status)
 
 	switch request.Method {
 	case "GET", "HEAD":
@@ -1244,8 +1246,10 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 		}
 		return
 	}
-	logEvent.Extra["Identifier"] = authz.Identifier
-	logEvent.Extra["AuthorizationStatus"] = authz.Status
+	if authz.Identifier.Type == core.IdentifierDNS {
+		logEvent.DNSName = authz.Identifier.Value
+	}
+	logEvent.Status = string(authz.Status)
 
 	// After expiring, authorizations are inaccessible
 	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {

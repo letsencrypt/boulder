@@ -17,12 +17,12 @@ type RequestEvent struct {
 	// whitespace-separated ahead of the JSON. This saves bytes in the logs since
 	// we don't have to include field names, quotes, or commas -- all of these
 	// fields are known to not include whitespace.
-	Method    string  `json:"-,omitempty"`
-	Endpoint  string  `json:"-,omitempty"`
-	Requester int64   `json:"-,omitempty"`
-	Code      int     `json:"-,omitempty"`
-	Latency   float64 `json:"-,omitempty"`
-	RealIP    string  `json:"-,omitempty"`
+	Method    string  `json:"-"`
+	Endpoint  string  `json:"-"`
+	Requester int64   `json:"-"`
+	Code      int     `json:"-"`
+	Latency   float64 `json:"-"`
+	RealIP    string  `json:"-"`
 
 	Slug           string                 `json:",omitempty"`
 	InternalErrors []string               `json:",omitempty"`
