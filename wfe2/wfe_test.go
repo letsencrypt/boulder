@@ -1761,7 +1761,7 @@ func TestGetCertificate(t *testing.T) {
 				test.Assert(t, bytes.Compare(bodyBytes, tc.ExpectedCert) == 0, "Certificates don't match")
 
 				// Successful requests should be logged as such
-				reqlogs := mockLog.GetAllMatching(`INFO: JSON=.*"Code":200.*`)
+				reqlogs := mockLog.GetAllMatching(`INFO: [^ ]+ [^ ]+ [^ ]+ 200 .*`)
 				if len(reqlogs) != 1 {
 					t.Errorf("Didn't find info logs with code 200. Instead got:\n%s\n",
 						strings.Join(mockLog.GetAllMatching(`.*`), "\n"))
@@ -1772,7 +1772,7 @@ func TestGetCertificate(t *testing.T) {
 				test.AssertUnmarshaledEquals(t, body, tc.ExpectedBody)
 
 				// Unsuccessful requests should be logged as such
-				reqlogs := mockLog.GetAllMatching(fmt.Sprintf(`INFO: JSON=.*"Code":%d.*`, tc.ExpectedStatus))
+				reqlogs := mockLog.GetAllMatching(fmt.Sprintf(`INFO: [^ ]+ [^ ]+ [^ ]+ %d .*`, tc.ExpectedStatus))
 				if len(reqlogs) != 1 {
 					t.Errorf("Didn't find info logs with code %d. Instead got:\n%s\n",
 						tc.ExpectedStatus, strings.Join(mockLog.GetAllMatching(`.*`), "\n"))

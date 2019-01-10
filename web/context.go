@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
@@ -12,19 +13,36 @@ import (
 )
 
 type RequestEvent struct {
-	RealIP         string    `json:",omitempty"`
-	Endpoint       string    `json:",omitempty"`
-	Slug           string    `json:",omitempty"`
-	Method         string    `json:",omitempty"`
-	InternalErrors []string  `json:",omitempty"`
-	Error          string    `json:",omitempty"`
-	Requester      int64     `json:",omitempty"`
-	Contacts       *[]string `json:",omitempty"`
-	UserAgent      string    `json:",omitempty"`
-	Latency        float64
-	Code           int
+	// These fields are not rendered in JSON; instead, they are rendered
+	// whitespace-separated ahead of the JSON. This saves bytes in the logs since
+	// we don't have to include field names, quotes, or commas -- all of these
+	// fields are known to not include whitespace.
+	Method    string  `json:"-"`
+	Endpoint  string  `json:"-"`
+	Requester int64   `json:"-"`
+	Code      int     `json:"-"`
+	Latency   float64 `json:"-"`
+	RealIP    string  `json:"-"`
+
+	Slug           string                 `json:",omitempty"`
+	InternalErrors []string               `json:",omitempty"`
+	Error          string                 `json:",omitempty"`
+	Contacts       []string               `json:",omitempty"`
+	UserAgent      string                 `json:"ua,omitempty"`
 	Payload        string                 `json:",omitempty"`
 	Extra          map[string]interface{} `json:",omitempty"`
+
+	// For endpoints that create objects, the ID of the newly created object.
+	Created string `json:",omitempty"`
+
+	// For challenge and authorization GETs and POSTs:
+	// the status of the authorization at the time the request began.
+	Status string `json:",omitempty"`
+	// The DNS name, if applicable
+	DNSName string `json:",omitempty"`
+
+	// For challenge POSTs, the challenge type.
+	ChallengeType string `json:",omitempty"`
 }
 
 func (e *RequestEvent) AddError(msg string, args ...interface{}) {
@@ -68,8 +86,14 @@ func (r *responseWriterWithStatus) WriteHeader(code int) {
 }
 
 func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Check that this header is well-formed, since we assume it is when logging.
+	realIP := r.Header.Get("X-Real-IP")
+	if net.ParseIP(realIP) == nil {
+		realIP = "0.0.0.0"
+	}
+
 	logEvent := &RequestEvent{
-		RealIP:    r.Header.Get("X-Real-IP"),
+		RealIP:    realIP,
 		Method:    r.Method,
 		UserAgent: r.Header.Get("User-Agent"),
 		Extra:     make(map[string]interface{}, 0),
@@ -79,7 +103,7 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rwws := &responseWriterWithStatus{w, 0}
 	defer func() {
 		logEvent.Code = rwws.code
-		logEvent.Latency = time.Since(begin).Round(time.Millisecond).Seconds()
+		logEvent.Latency = time.Since(begin).Seconds()
 		th.logEvent(logEvent)
 	}()
 	th.wfe.ServeHTTP(logEvent, rwws, r)
@@ -92,7 +116,9 @@ func (th *TopHandler) logEvent(logEvent *RequestEvent) {
 		th.log.AuditErrf("failed to marshal logEvent - %s - %#v", msg, err)
 		return
 	}
-	th.log.Infof("JSON=%s", jsonEvent)
+	th.log.Infof("%s %s %d %d %d %s JSON=%s",
+		logEvent.Method, logEvent.Endpoint, logEvent.Requester, logEvent.Code,
+		int(logEvent.Latency*1000), logEvent.RealIP, jsonEvent)
 }
 
 // Comma-separated list of HTTP clients involved in making this

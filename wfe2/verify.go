@@ -450,7 +450,9 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 
 	// Update the logEvent with the account information and return the JWK
 	logEvent.Requester = account.ID
-	logEvent.Contacts = account.Contact
+	if account.Contact != nil {
+		logEvent.Contacts = *account.Contact
+	}
 	return account.Key, &account, nil
 }
 
