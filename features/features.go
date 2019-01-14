@@ -45,6 +45,8 @@ const (
 	// HEAD requests to the WFE2 new-nonce endpoint should return HTTP StatusOK
 	// instead of HTTP StatusNoContent.
 	HeadNonceStatusOK
+	// NewAuthorizationSchema enables usage of the new authorization storage schema
+	NewAuthorizationSchema
 )
 
 // List of features and their default value, protected by fMu
@@ -72,6 +74,7 @@ var features = map[FeatureFlag]bool{
 	SimplifiedVAHTTP:            false,
 	PerformValidationRPC:        false,
 	HeadNonceStatusOK:           false,
+	NewAuthorizationSchema:      false,
 }
 
 var fMu = new(sync.RWMutex)

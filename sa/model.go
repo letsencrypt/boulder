@@ -404,15 +404,21 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 var challTypeToUint = map[string]uint{
 	"http-01":     0,
 	"tls-sni-01":  1,
-	"dns-01":      2,
-	"tls-alpn-01": 3,
+	"tls-alpn-01": 2,
+	"dns-01":      3,
 }
 
+// uintToChallType is used to map bit position in the challenges bitmap
+// to challenge type. *WARNING* it is important that the order of this map
+// (and the map above) matches the order in which challenges are added to
+// the challenge slice in policy/pa.go:ChallengesFor. This is necessary
+// so that we have a consistent ID for each challenge when we pass between
+// the storage layer boundary.
 var uintToChallType = map[uint]string{
 	0: "http-01",
 	1: "tls-sni-01",
-	2: "dns-01",
-	3: "tls-alpn-01",
+	2: "tls-alpn-01",
+	3: "dns-01",
 }
 
 var identifierTypeToUint = map[string]uint{
