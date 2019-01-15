@@ -2233,13 +2233,6 @@ func TestKeyRollover(t *testing.T) {
 	existingKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "Error creating random 2048 RSA key")
 
-	existingJWK := &jose.JSONWebKey{
-		Key:       &existingKey.PublicKey,
-		Algorithm: keyAlgForKey(t, existingKey),
-	}
-	existingJWKJSON, err := existingJWK.MarshalJSON()
-	test.AssertNotError(t, err, "Error marshaling random JWK")
-
 	newKeyBytes, err := ioutil.ReadFile("../test/test-key-5.der")
 	test.AssertNotError(t, err, "Failed to read ../test/test-key-5.der")
 	newKeyPriv, err := x509.ParsePKCS1PrivateKey(newKeyBytes)
@@ -2257,57 +2250,37 @@ func TestKeyRollover(t *testing.T) {
 		}`)
 
 	testCases := []struct {
-		Name              string
-		ACME13KeyRollover bool
-		Payload           string
-		ExpectedResponse  string
-		NewKey            crypto.Signer
-		ErrorStatType     string
+		Name             string
+		Payload          string
+		ExpectedResponse string
+		NewKey           crypto.Signer
+		ErrorStatType    string
 	}{
 		{
 			Name:    "Missing account URL",
-			Payload: `{"newKey":` + string(existingJWKJSON) + `}`,
+			Payload: `{"oldKey":` + test1KeyPublicJSON + `}`,
 			ExpectedResponse: `{
 		     "type": "` + probs.V2ErrorNS + `malformed",
 		     "detail": "Inner key rollover request specified Account \"\", but outer JWS has Key ID \"http://localhost/acme/acct/1\"",
 		     "status": 400
 		   }`,
-			NewKey:        existingKey,
+			NewKey:        newKeyPriv,
 			ErrorStatType: "KeyRolloverMismatchedAccount",
 		},
 		{
-			Name:    "Missing new key from inner payload",
-			Payload: `{"account":"http://localhost/acme/acct/1"}`,
+			Name:    "incorrect old key",
+			Payload: `{"oldKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
 		     "type": "` + probs.V2ErrorNS + `malformed",
-		     "detail": "Inner JWS does not verify with specified new key",
+		     "detail": "Inner JWS does not contain old key field matching current account key",
 		     "status": 400
 		   }`,
-			ErrorStatType: "KeyRolloverJWSNewKeyVerifyFailed",
-		},
-		{
-			Name:    "New key is the same as the old key",
-			Payload: `{"newKey":{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"},"account":"http://localhost/acme/acct/1"}`,
-			ExpectedResponse: `{
-		     "type": "` + probs.V2ErrorNS + `malformed",
-		     "detail": "New key specified by rollover request is the same as the old key",
-		     "status": 400
-		   }`,
-			ErrorStatType: "KeyRolloverUnchangedKey",
-		},
-		{
-			Name:    "Inner JWS signed by the wrong key",
-			Payload: `{"newKey":` + string(existingJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
-			ExpectedResponse: `{
-		     "type": "` + probs.V2ErrorNS + `malformed",
-		     "detail": "Inner JWS does not verify with specified new key",
-		     "status": 400
-		   }`,
-			ErrorStatType: "KeyRolloverJWSNewKeyVerifyFailed",
+			NewKey:        newKeyPriv,
+			ErrorStatType: "KeyRolloverWrongOldKey",
 		},
 		{
 			Name:    "Valid key rollover request, key exists",
-			Payload: `{"newKey":` + string(existingJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
+			Payload: `{"oldKey":` + test1KeyPublicJSON + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
                           "type": "urn:ietf:params:acme:error:malformed",
                           "detail": "New key is already in use for a different account",
@@ -2317,104 +2290,7 @@ func TestKeyRollover(t *testing.T) {
 		},
 		{
 			Name:    "Valid key rollover request",
-			Payload: `{"newKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
-			ExpectedResponse: `{
-		     "id": 1,
-		     "key": ` + string(newJWKJSON) + `,
-		     "contact": [
-		       "mailto:person@mail.com"
-		     ],
-		     "agreement": "http://example.invalid/terms",
-		     "initialIp": "",
-		     "createdAt": "0001-01-01T00:00:00Z",
-		     "status": "valid"
-		   }`,
-			NewKey: newKeyPriv,
-		},
-		{
-			Name:    "Valid key rollover request, added ACME13KeyRollover compat",
-			Payload: `{"newKey":` + string(newJWKJSON) + `, "oldKey":` + test1KeyPublicJSON + `, "account":"http://localhost/acme/acct/1"}`,
-			ExpectedResponse: `{
-		     "id": 1,
-		     "key": ` + string(newJWKJSON) + `,
-		     "contact": [
-		       "mailto:person@mail.com"
-		     ],
-		     "agreement": "http://example.invalid/terms",
-		     "initialIp": "",
-		     "createdAt": "0001-01-01T00:00:00Z",
-		     "status": "valid"
-		   }`,
-			NewKey: newKeyPriv,
-		},
-		{
-			Name:              "ACME13KeyRollover, legacy rollover request",
-			ACME13KeyRollover: true,
-			Payload:           `{"newKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
-			ExpectedResponse: `{
-		     "type": "` + probs.V2ErrorNS + `malformed",
-		     "detail": "Inner JWS does not contain old key field matching current account key",
-		     "status": 400
-		   }`,
-			NewKey:        newKeyPriv,
-			ErrorStatType: "KeyRolloverWrongOldKey",
-		},
-		{
-			Name:              "ACME13KeyRollover, Missing account URL",
-			ACME13KeyRollover: true,
-			Payload:           `{"oldKey":` + test1KeyPublicJSON + `}`,
-			ExpectedResponse: `{
-		     "type": "` + probs.V2ErrorNS + `malformed",
-		     "detail": "Inner key rollover request specified Account \"\", but outer JWS has Key ID \"http://localhost/acme/acct/1\"",
-		     "status": 400
-		   }`,
-			NewKey:        newKeyPriv,
-			ErrorStatType: "KeyRolloverMismatchedAccount",
-		},
-		{
-			Name:              "ACME13KeyRollover, incorrect old key",
-			ACME13KeyRollover: true,
-			Payload:           `{"oldKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
-			ExpectedResponse: `{
-		     "type": "` + probs.V2ErrorNS + `malformed",
-		     "detail": "Inner JWS does not contain old key field matching current account key",
-		     "status": 400
-		   }`,
-			NewKey:        newKeyPriv,
-			ErrorStatType: "KeyRolloverWrongOldKey",
-		},
-		{
-			Name:              "ACME13KeyRollover, Valid key rollover request, key exists",
-			ACME13KeyRollover: true,
-			Payload:           `{"oldKey":` + test1KeyPublicJSON + `,"account":"http://localhost/acme/acct/1"}`,
-			ExpectedResponse: `{
-                          "type": "urn:ietf:params:acme:error:malformed",
-                          "detail": "New key is already in use for a different account",
-                          "status": 409
-                        }`,
-			NewKey: existingKey,
-		},
-		{
-			Name:              "ACME13KeyRollover, Valid key rollover request",
-			ACME13KeyRollover: true,
-			Payload:           `{"oldKey":` + test1KeyPublicJSON + `,"account":"http://localhost/acme/acct/1"}`,
-			ExpectedResponse: `{
-		     "id": 1,
-		     "key": ` + string(newJWKJSON) + `,
-		     "contact": [
-		       "mailto:person@mail.com"
-		     ],
-		     "agreement": "http://example.invalid/terms",
-		     "initialIp": "",
-		     "createdAt": "0001-01-01T00:00:00Z",
-		     "status": "valid"
-		   }`,
-			NewKey: newKeyPriv,
-		},
-		{
-			Name:              "ACME13KeyRollover, Valid key rollover request, legacy compat",
-			ACME13KeyRollover: true,
-			Payload:           `{"oldKey":` + test1KeyPublicJSON + `, "newKey":` + string(newJWKJSON) + `, "account":"http://localhost/acme/acct/1"}`,
+			Payload: `{"oldKey":` + test1KeyPublicJSON + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
 		     "id": 1,
 		     "key": ` + string(newJWKJSON) + `,
@@ -2432,10 +2308,6 @@ func TestKeyRollover(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			if tc.ACME13KeyRollover {
-				_ = features.Set(map[string]bool{"ACME13KeyRollover": true})
-				defer features.Reset()
-			}
 			wfe.stats.joseErrorCount.Reset()
 			responseWriter.Body.Reset()
 			_, _, inner := signRequestEmbed(t, tc.NewKey, "http://localhost/key-change", tc.Payload, wfe.nonceService)
