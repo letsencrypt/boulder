@@ -26,6 +26,7 @@ const (
 	EnforceOverlappingWildcards
 	OrderReadyStatus
 	PerformValidationRPC
+	ACME13KeyRollover
 
 	//   Currently in-use features
 	AllowRenewalFirstRL
@@ -35,8 +36,6 @@ const (
 	CAAValidationMethods
 	// Check CAA and respect accounturi parameter.
 	CAAAccountURI
-	// Honour draft-ietf-acme-13's keyrollover
-	ACME13KeyRollover
 	// ProbeCTLogs enables HTTP probes to CT logs from the publisher
 	ProbeCTLogs
 	// SimplifiedVAHTTP enables the simplified VA http-01 rewrite that doesn't use
