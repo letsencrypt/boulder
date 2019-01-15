@@ -12,19 +12,6 @@ type FeatureFlag int
 const (
 	unused FeatureFlag = iota // unused is used for testing
 	//   Deprecated features, these can be removed once stripped from production configs
-	ReusePendingAuthz
-	CancelCTSubmissions
-	CountCertificatesExact
-	IPv6First
-	EnforceChallengeDisable
-	EmbedSCTs
-	WildcardDomains
-	ForceConsistentStatus
-	RPCHeadroom
-	VAChecksGSB
-	EnforceV2ContentType
-	EnforceOverlappingWildcards
-	OrderReadyStatus
 	PerformValidationRPC
 
 	//   Currently in-use features
@@ -49,29 +36,16 @@ const (
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                      false,
-	ReusePendingAuthz:           false,
-	CountCertificatesExact:      false,
-	IPv6First:                   false,
-	AllowRenewalFirstRL:         false,
-	WildcardDomains:             false,
-	EnforceChallengeDisable:     false,
-	RPCHeadroom:                 false,
-	TLSSNIRevalidation:          false,
-	EmbedSCTs:                   false,
-	CancelCTSubmissions:         true,
-	VAChecksGSB:                 false,
-	EnforceV2ContentType:        false,
-	ForceConsistentStatus:       false,
-	EnforceOverlappingWildcards: false,
-	OrderReadyStatus:            false,
-	CAAValidationMethods:        false,
-	CAAAccountURI:               false,
-	ACME13KeyRollover:           false,
-	ProbeCTLogs:                 false,
-	SimplifiedVAHTTP:            false,
-	PerformValidationRPC:        false,
-	HeadNonceStatusOK:           false,
+	unused:               false,
+	AllowRenewalFirstRL:  false,
+	TLSSNIRevalidation:   false,
+	CAAValidationMethods: false,
+	CAAAccountURI:        false,
+	ACME13KeyRollover:    false,
+	ProbeCTLogs:          false,
+	SimplifiedVAHTTP:     false,
+	PerformValidationRPC: false,
+	HeadNonceStatusOK:    false,
 }
 
 var fMu = new(sync.RWMutex)
