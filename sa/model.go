@@ -408,12 +408,6 @@ var challTypeToUint = map[string]uint{
 	"dns-01":      3,
 }
 
-// uintToChallType is used to map bit position in the challenges bitmap
-// to challenge type. *WARNING* it is important that the order of this map
-// (and the map above) matches the order in which challenges are added to
-// the challenge slice in policy/pa.go:ChallengesFor. This is necessary
-// so that we have a consistent ID for each challenge when we pass between
-// the storage layer boundary.
 var uintToChallType = map[uint]string{
 	0: "http-01",
 	1: "tls-sni-01",
@@ -607,16 +601,12 @@ func modelToAuthzPB(am *authz2Model) (*corepb.Authorization, error) {
 	// to core.StatusValid or core.StatusInvalid depending on if there is anything
 	// in ValidationError and populate the ValidationRecord and ValidationError
 	// fields.
-	challenges := int64(0)
 	for pos := uint(0); pos < 8; pos++ {
 		if (am.Challenges>>pos)&1 == 1 {
 			challType := uintToChallType[pos]
 			status := string(core.StatusPending)
-			id := challenges
-			challenges++
 			token := base64.StdEncoding.EncodeToString(am.Token)
 			challenge := &corepb.Challenge{
-				Id:     &id,
 				Type:   &challType,
 				Status: &status,
 				Token:  &token,

@@ -469,12 +469,6 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int
 	pa.rngMu.Lock()
 	defer pa.rngMu.Unlock()
 	for i, challIdx := range pa.pseudoRNG.Perm(len(challenges)) {
-		// If we are using the new authorization storage schema we need to give
-		// each challenge a sequential ID. This order is determined by the order
-		// they are added to the challenge slice above.
-		if features.Enabled(features.NewAuthorizationSchema) {
-			challenges[i].ID = int64(i)
-		}
 		shuffled[i] = challenges[challIdx]
 		combinations[i] = []int{i}
 	}
