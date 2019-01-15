@@ -110,7 +110,7 @@ func (m *mailer) run() error {
 	startTime := m.clk.Now()
 
 	for i, dest := range destinations {
-		m.printStatus(dest, i, len(destinations), startTime)
+		m.printStatus(dest, i, len(destinations)-1, startTime)
 		if strings.TrimSpace(dest) == "" {
 			continue
 		}
