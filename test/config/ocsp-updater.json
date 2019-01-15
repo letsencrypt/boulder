@@ -28,11 +28,11 @@
       "keyFile": "test/grpc-creds/ocsp-updater.boulder/key.pem"
     },
     "saService": {
-      "serverAddresses": ["sa.boulder:9095"],
+      "serverAddress": "sa.boulder:9095",
       "timeout": "15s"
     },
     "ocspGeneratorService": {
-      "serverAddresses": ["ca.boulder:9096"],
+      "serverAddress": "ca.boulder:9096",
       "timeout": "15s"
     },
     "features": {

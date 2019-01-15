@@ -11,7 +11,7 @@
       "keyFile": "test/grpc-creds/ca.boulder/key.pem"
     },
     "saService": {
-      "serverAddresses": ["sa.boulder:9095"],
+      "serverAddress": "sa.boulder:9095",
       "timeout": "15s"
     },
     "grpcCA": {
@@ -130,6 +130,7 @@
       }
     },
     "maxConcurrentRPCServerRequests": 100000,
+    "orphanQueueDir": "/tmp/orphaned-certificates-a",
     "features": {
         "RPCHeadroom": true,
         "WildcardDomains": true
@@ -140,7 +141,8 @@
     "challenges": {
       "http-01": true,
       "tls-sni-01": true,
-      "dns-01": true
+      "dns-01": true,
+      "tls-alpn-01": true
     }
   },
 

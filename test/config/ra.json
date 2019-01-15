@@ -3,11 +3,6 @@
     "rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
     "maxConcurrentRPCServerRequests": 100000,
     "maxContactsPerRegistration": 100,
-    "dnsTries": 3,
-    "dnsResolvers": [
-      "127.0.0.1:8053",
-      "127.0.0.1:8054"
-    ],
     "debugAddr": ":8002",
     "hostnamePolicyFile": "test/hostname-policy.json",
     "maxNames": 100,
@@ -22,19 +17,19 @@
       "keyFile": "test/grpc-creds/ra.boulder/key.pem"
     },
     "vaService": {
-      "serverAddresses": ["va.boulder:9092"],
+      "serverAddress": "va.boulder:9092",
       "timeout": "20s"
     },
     "caService": {
-      "serverAddresses": ["ca.boulder:9093"],
+      "serverAddress": "ca.boulder:9093",
       "timeout": "15s"
     },
     "publisherService": {
-      "serverAddresses": ["publisher.boulder:9091"],
+      "serverAddress": "publisher.boulder:9091",
       "timeout": "300s"
     },
     "saService": {
-      "serverAddresses": ["sa.boulder:9095"],
+      "serverAddress": "sa.boulder:9095",
       "timeout": "15s"
     },
     "grpc": {
@@ -56,6 +51,7 @@
     "CTLogGroups2": [
       {
         "name": "a",
+        "stagger": "500ms",
         "logs": [
           {
             "uri": "http://boulder:4500",
@@ -71,6 +67,7 @@
       },
       {
         "name": "b",
+        "stagger": "500ms",
         "logs": [
           {
             "uri": "http://boulder:4510",
@@ -78,8 +75,27 @@
             "submitFinalCert": true
           },
           {
-            "uri": "http://boulder:4511",
-            "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
+            "name": "temporal test set",
+            "shards": [
+              {
+                "uri": "http://boulder:4511",
+                "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
+                "windowStart": "2006-01-02T15:04:05Z",
+                "windowEnd": "2017-01-02T15:04:05Z"
+              },
+              {
+                "uri": "http://boulder:4511",
+                "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
+                "windowStart": "2017-01-02T15:04:05Z",
+                "windowEnd": "2022-01-02T15:04:05Z"
+              },
+              {
+                "uri": "http://boulder:4511",
+                "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
+                "windowStart": "2022-01-02T15:04:05Z",
+                "windowEnd": "2050-01-02T15:04:05Z"
+              }
+            ],
             "submitFinalCert": true
           }
         ]
@@ -98,7 +114,8 @@
     "challenges": {
       "http-01": true,
       "tls-sni-01": true,
-      "dns-01": true
+      "dns-01": true,
+      "tls-alpn-01": true
     },
     "challengesWhitelistFile": "test/challenges-whitelist.json"
   },

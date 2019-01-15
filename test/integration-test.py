@@ -311,11 +311,6 @@ def test_http_challenge_https_redirect():
         raise Exception("Expected all redirected requests to have ServerName {0} got \"{1}\"".format(d, r['ServerName']))
 
 def test_tls_alpn_challenge():
-    # TODO(@mdebski): Once the tls-alpn-01 challenge is enabled in pa.challenges
-    # by default, delete this early return.
-    if not default_config_dir.startswith("test/config-next"):
-        return
-
     # Pick two random domains
     domains = [random_domain(), random_domain()]
 
@@ -608,12 +603,6 @@ def test_renewal_exemption():
     and we are testing what we think we are testing. See
     https://letsencrypt.org/docs/rate-limits/ for more details.
     """
-
-    # TODO(@cpu): Once the `AllowRenewalFirstRL` feature flag is enabled by
-    # default, delete this early return.
-    if not default_config_dir.startswith("test/config-next"):
-        return
-
     base_domain = random_domain()
     # First issuance
     auth_and_issue(["www." + base_domain])
@@ -709,8 +698,6 @@ def test_stats():
     expect_stat(8001, "\ngo_goroutines ")
 
 def test_sct_embedding():
-    if not os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):
-        return
     certr, authzs = auth_and_issue([random_domain()])
     certBytes = urllib2.urlopen(certr.uri).read()
     cert = x509.load_der_x509_certificate(certBytes, default_backend())
