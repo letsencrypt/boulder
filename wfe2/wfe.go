@@ -485,6 +485,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	if err == nil {
 		response.Header().Set("Location",
 			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
+		logEvent.Requester = existingAcct.ID
 
 		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, existingAcct)
 		if err != nil {
@@ -1675,6 +1676,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		return
 	}
+	logEvent.Created = fmt.Sprintf("%d", *order.Id)
 
 	orderURL := web.RelativeEndpoint(request,
 		fmt.Sprintf("%s%d/%d", orderPath, acct.ID, *order.Id))

@@ -2072,6 +2072,17 @@ func TestNewOrder(t *testing.T) {
 			}
 		})
 	}
+
+	// Test that we log the "Created" field.
+	responseWriter.Body.Reset()
+	responseWriter.HeaderMap = http.Header{}
+	request := signAndPost(t, targetPath, signedURL, validOrderBody, 1, wfe.nonceService)
+	requestEvent := newRequestEvent()
+	wfe.NewOrder(ctx, requestEvent, responseWriter, request)
+
+	if requestEvent.Created != "1" {
+		t.Errorf("Expected to log Created field when creating Order: %#v", requestEvent)
+	}
 }
 
 func TestFinalizeOrder(t *testing.T) {
