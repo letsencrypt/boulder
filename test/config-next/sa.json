@@ -2,7 +2,6 @@
   "sa": {
     "dbConnectFile": "test/secrets/sa_dburl",
     "maxDBConns": 100,
-    "maxIdleDBConns": 10,
     "maxConcurrentRPCServerRequests": 100000,
     "ParallelismPerRPC": 20,
     "debugAddr": ":8003",
