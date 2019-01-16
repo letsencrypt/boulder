@@ -12,20 +12,8 @@ type FeatureFlag int
 const (
 	unused FeatureFlag = iota // unused is used for testing
 	//   Deprecated features, these can be removed once stripped from production configs
-	ReusePendingAuthz
-	CancelCTSubmissions
-	CountCertificatesExact
-	IPv6First
-	EnforceChallengeDisable
-	EmbedSCTs
-	WildcardDomains
-	ForceConsistentStatus
-	RPCHeadroom
-	VAChecksGSB
-	EnforceV2ContentType
-	EnforceOverlappingWildcards
-	OrderReadyStatus
 	PerformValidationRPC
+	ACME13KeyRollover
 
 	//   Currently in-use features
 	AllowRenewalFirstRL
@@ -35,8 +23,6 @@ const (
 	CAAValidationMethods
 	// Check CAA and respect accounturi parameter.
 	CAAAccountURI
-	// Honour draft-ietf-acme-13's keyrollover
-	ACME13KeyRollover
 	// ProbeCTLogs enables HTTP probes to CT logs from the publisher
 	ProbeCTLogs
 	// SimplifiedVAHTTP enables the simplified VA http-01 rewrite that doesn't use
@@ -51,30 +37,17 @@ const (
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                      false,
-	ReusePendingAuthz:           false,
-	CountCertificatesExact:      false,
-	IPv6First:                   false,
-	AllowRenewalFirstRL:         false,
-	WildcardDomains:             false,
-	EnforceChallengeDisable:     false,
-	RPCHeadroom:                 false,
-	TLSSNIRevalidation:          false,
-	EmbedSCTs:                   false,
-	CancelCTSubmissions:         true,
-	VAChecksGSB:                 false,
-	EnforceV2ContentType:        false,
-	ForceConsistentStatus:       false,
-	EnforceOverlappingWildcards: false,
-	OrderReadyStatus:            false,
-	CAAValidationMethods:        false,
-	CAAAccountURI:               false,
-	ACME13KeyRollover:           false,
-	ProbeCTLogs:                 false,
-	SimplifiedVAHTTP:            false,
-	PerformValidationRPC:        false,
-	HeadNonceStatusOK:           false,
-	NewAuthorizationSchema:      false,
+	unused:                 false,
+	AllowRenewalFirstRL:    false,
+	TLSSNIRevalidation:     false,
+	CAAValidationMethods:   false,
+	CAAAccountURI:          false,
+	ACME13KeyRollover:      false,
+	ProbeCTLogs:            false,
+	SimplifiedVAHTTP:       false,
+	PerformValidationRPC:   false,
+	HeadNonceStatusOK:      false,
+	NewAuthorizationSchema: false,
 }
 
 var fMu = new(sync.RWMutex)

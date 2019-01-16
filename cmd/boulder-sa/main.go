@@ -70,9 +70,6 @@ func main() {
 	scope.MustRegister(dbConnStat)
 	dbConnStat.Set(float64(saConf.DBConfig.MaxDBConns))
 
-	if saConf.DBConfig.MaxIdleDBConns != 0 {
-		dbMap.Db.SetMaxIdleConns(saConf.DBConfig.MaxIdleDBConns)
-	}
 	go sa.ReportDbConnCount(dbMap, scope)
 
 	clk := cmd.Clock()

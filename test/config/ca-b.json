@@ -131,8 +131,6 @@
     },
     "maxConcurrentRPCServerRequests": 100000,
     "features": {
-        "RPCHeadroom": true,
-        "WildcardDomains": true
     }
   },
 

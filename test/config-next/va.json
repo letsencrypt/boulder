@@ -32,9 +32,6 @@
       "ServerURL": "http://va1.boulder:6000"
     },
     "features": {
-      "RPCHeadroom": true,
-      "VAChecksGSB": true,
-      "IPv6First": true,
       "CAAValidationMethods": true,
       "CAAAccountURI": true,
       "SimplifiedVAHTTP": true

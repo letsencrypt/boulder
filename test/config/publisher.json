@@ -17,7 +17,6 @@
       "keyFile": "test/grpc-creds/publisher.boulder/key.pem"
     },
     "features": {
-      "RPCHeadroom": true
     }
   },
 
