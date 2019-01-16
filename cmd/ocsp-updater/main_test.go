@@ -80,13 +80,9 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, cloc
 		&mockCA{},
 		sa,
 		cmd.OCSPUpdaterConfig{
-			NewCertificateBatchSize:     1,
 			OldOCSPBatchSize:            1,
-			MissingSCTBatchSize:         1,
 			RevokedCertificateBatchSize: 1,
-			NewCertificateWindow:        cmd.ConfigDuration{Duration: time.Second},
 			OldOCSPWindow:               cmd.ConfigDuration{Duration: time.Second},
-			MissingSCTWindow:            cmd.ConfigDuration{Duration: time.Second},
 			RevokedCertificateWindow:    cmd.ConfigDuration{Duration: time.Second},
 		},
 		"",
@@ -304,26 +300,6 @@ func TestFindRevokedCertificatesToUpdate(t *testing.T) {
 	statuses, err = updater.findRevokedCertificatesToUpdate(10)
 	test.AssertNotError(t, err, "Failed to find revoked certificates")
 	test.AssertEquals(t, len(statuses), 1)
-}
-
-func TestNewCertificateTick(t *testing.T) {
-	updater, sa, _, fc, cleanUp := setup(t)
-	defer cleanUp()
-
-	reg := satest.CreateWorkingRegistration(t, sa)
-	parsedCert, err := core.LoadCert("test-cert.pem")
-	test.AssertNotError(t, err, "Couldn't read test certificate")
-	issued := fc.Now()
-	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID, nil, &issued)
-	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
-
-	prev := fc.Now().Add(-time.Hour)
-	err = updater.newCertificateTick(ctx, 10)
-	test.AssertNotError(t, err, "Couldn't run newCertificateTick")
-
-	certs, err := updater.findStaleOCSPResponses(prev, 10)
-	test.AssertNotError(t, err, "Failed to find stale responses")
-	test.AssertEquals(t, len(certs), 0)
 }
 
 func TestOldOCSPResponsesTick(t *testing.T) {

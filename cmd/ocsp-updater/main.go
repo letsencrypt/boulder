@@ -74,13 +74,11 @@ func newUpdater(
 	issuerPath string,
 	log blog.Logger,
 ) (*OCSPUpdater, error) {
-	if config.NewCertificateBatchSize == 0 ||
-		config.OldOCSPBatchSize == 0 ||
+	if config.OldOCSPBatchSize == 0 ||
 		config.RevokedCertificateBatchSize == 0 {
 		return nil, fmt.Errorf("Loop batch sizes must be non-zero")
 	}
-	if config.NewCertificateWindow.Duration == 0 ||
-		config.OldOCSPWindow.Duration == 0 ||
+	if config.OldOCSPWindow.Duration == 0 ||
 		config.RevokedCertificateWindow.Duration == 0 {
 		return nil, fmt.Errorf("Loop window sizes must be non-zero")
 	}
@@ -107,16 +105,6 @@ func newUpdater(
 
 	// Setup loops
 	updater.loops = []*looper{
-		{
-			clk:                  clk,
-			stats:                stats.NewScope("NewCertificates"),
-			batchSize:            config.NewCertificateBatchSize,
-			tickDur:              config.NewCertificateWindow.Duration,
-			tickFunc:             updater.newCertificateTick,
-			name:                 "NewCertificates",
-			failureBackoffFactor: config.SignFailureBackoffFactor,
-			failureBackoffMax:    config.SignFailureBackoffMax.Duration,
-		},
 		{
 			clk:                  clk,
 			stats:                stats.NewScope("OldOCSPResponses"),
@@ -358,24 +346,6 @@ func (updater *OCSPUpdater) markExpired(status core.CertificateStatus) error {
 		status.Serial,
 	)
 	return err
-}
-
-// newCertificateTick checks for certificates issued since the last tick and
-// generates and stores OCSP responses for these certs
-func (updater *OCSPUpdater) newCertificateTick(ctx context.Context, batchSize int) error {
-	// Check for anything issued between now and previous tick and generate first
-	// OCSP responses
-	statuses, err := updater.getCertificatesWithMissingResponses(batchSize)
-	if err != nil {
-		updater.stats.Inc("Errors.FindMissingResponses", 1)
-		updater.log.AuditErrf("Failed to find certificates with missing OCSP responses: %s", err)
-		return err
-	}
-	if len(statuses) == batchSize {
-		updater.stats.Inc("newCertificateTick.FullTick", 1)
-	}
-
-	return updater.generateOCSPResponses(ctx, statuses, updater.stats.NewScope("newCertificateTick"))
 }
 
 func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]core.CertificateStatus, error) {
