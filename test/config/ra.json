@@ -46,12 +46,7 @@
       ]
     },
     "features": {
-      "RPCHeadroom": true,
-      "WildcardDomains": true,
-      "TLSSNIRevalidation": true,
-      "ReusePendingAuthz": true,
-      "EnforceOverlappingWildcards": true,
-      "VAChecksGSB": true
+      "TLSSNIRevalidation": true
     },
     "CTLogGroups2": [
       {
