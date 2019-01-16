@@ -79,7 +79,7 @@ func (m *mailer) ok() error {
 
 func (m *mailer) printStatus(to string, cur, total int, start time.Time) {
 	// Should never happen
-	if total <= 0 || cur < 0 || cur > total {
+	if total <= 0 || cur < 1 || cur > total {
 		m.log.AuditErrf("invalid cur (%d) or total (%d)", cur, total)
 	}
 	completion := (float32(cur) / float32(total)) * 100
@@ -110,7 +110,7 @@ func (m *mailer) run() error {
 	startTime := m.clk.Now()
 
 	for i, dest := range destinations {
-		m.printStatus(dest, i, len(destinations)-1, startTime)
+		m.printStatus(dest, i+1, len(destinations), startTime)
 		if strings.TrimSpace(dest) == "" {
 			continue
 		}
