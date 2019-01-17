@@ -303,10 +303,6 @@ def test_http_challenge_https_redirect():
     for r in redirectedRequests:
       if r['HTTPS'] is False:
         raise Exception("Expected all redirected requests to be HTTPS")
-      # TODO(@cpu): The following ServerName test will fail with config-next
-      # until https://github.com/letsencrypt/boulder/issues/3969 is fixed.
-      if default_config_dir.startswith("test/config-next"):
-        return
       elif r['ServerName'] != d:
         raise Exception("Expected all redirected requests to have ServerName {0} got \"{1}\"".format(d, r['ServerName']))
 
