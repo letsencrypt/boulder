@@ -93,13 +93,13 @@ func (m *mailer) printStatus(to string, cur, total int, start time.Time) {
 // duplicates removed. It preserves the ordering of the input slice.
 func uniq(input []string) []string {
 	var output []string
-	uniqMap := map[string]struct{}{}
+	uniqMap := map[string]bool{}
 	for _, s := range input {
 		// Only append to the output items that have not been seen.
 		if _, ok := uniqMap[s]; !ok {
 			output = append(output, s)
 		}
-		uniqMap[s] = struct{}{}
+		uniqMap[s] = true
 	}
 	return output
 }

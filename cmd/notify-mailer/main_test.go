@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"reflect"
 	"testing"
 	"time"
 
@@ -17,9 +18,9 @@ import (
 
 func TestUniq(t *testing.T) {
 	input := []string{"c", "d", "c", "c", "e", "d", "e", "e"}
-	expected := "[c d e]"
+	expected := []string{"c", "d", "e"}
 	output := uniq(input)
-	if fmt.Sprintf("%s", output) != expected {
+	if !reflect.DeepEqual(output, expected) {
 		t.Errorf("Expected %s, got %s", expected, output)
 	}
 }
