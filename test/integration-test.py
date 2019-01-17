@@ -311,11 +311,6 @@ def test_http_challenge_https_redirect():
         raise Exception("Expected all redirected requests to have ServerName {0} got \"{1}\"".format(d, r['ServerName']))
 
 def test_tls_alpn_challenge():
-    # TODO(@mdebski): Once the tls-alpn-01 challenge is enabled in pa.challenges
-    # by default, delete this early return.
-    if not default_config_dir.startswith("test/config-next"):
-        return
-
     # Pick two random domains
     domains = [random_domain(), random_domain()]
 
