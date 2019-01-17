@@ -378,7 +378,7 @@ type Authorization struct {
 	// final authorizations, they describe the evidence that
 	// the server used in support of granting the authorization.
 	//
-	// There should only ever be on challenge of each type in this
+	// There should only ever be one challenge of each type in this
 	// slice and the order of these challenges may not be predictable.
 	Challenges []Challenge `json:"challenges,omitempty" db:"-"`
 
