@@ -15,6 +15,15 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
+func TestUniq(t *testing.T) {
+	input := []string{"c", "d", "c", "c", "e", "d", "e", "e"}
+	expected := "[c d e]"
+	output := uniq(input)
+	if fmt.Sprintf("%s", output) != expected {
+		t.Errorf("Expected %s, got %s", expected, output)
+	}
+}
+
 func TestCheckpointIntervalOK(t *testing.T) {
 	// Test a number of intervals know to be OK, ensure that no error is
 	// produced when calling `ok()`.
