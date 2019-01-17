@@ -89,6 +89,21 @@ func (m *mailer) printStatus(to string, cur, total int, start time.Time) {
 		to, cur, total, completion, elapsed)
 }
 
+// uniq returns a slice of strings consisting of the input slice with all
+// duplicates removed. It preserves the ordering of the input slice.
+func uniq(input []string) []string {
+	var output []string
+	uniqMap := map[string]bool{}
+	for _, s := range input {
+		// Only append to the output items that have not been seen.
+		if _, ok := uniqMap[s]; !ok {
+			output = append(output, s)
+		}
+		uniqMap[s] = true
+	}
+	return output
+}
+
 func (m *mailer) run() error {
 	if err := m.ok(); err != nil {
 		return err
@@ -98,6 +113,12 @@ func (m *mailer) run() error {
 	if err != nil {
 		return err
 	}
+
+	lenBefore := len(destinations)
+
+	destinations = uniq(destinations)
+	m.log.Infof("Before de-duping: %d email addresses. After de-duping: %d email addresses",
+		lenBefore, len(destinations))
 
 	err = m.mailer.Connect()
 	if err != nil {
@@ -231,6 +252,12 @@ specifies which registration ID of the -toFile to start processing at.
 Similarly, the -end flag specifies which registration ID of the -toFile to end
 processing at. In combination these can be used to process only a fixed number
 of recipients at a time, and to resume mailing after early termination.
+
+Notify-mailer will de-duplicate email addresses, but only within the range given
+by the -start and -end arguments. For instance, if you split up an email job into
+five batches using -start and -end, there's a possibility that a given email address
+may receive up to five emails, if that email address is registered across multiple
+accounts.
 
 During mailing the -sleep argument is used to space out individual messages.
 This can be used to ensure that the mailing happens at a steady pace with ample
