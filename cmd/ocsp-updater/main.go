@@ -236,19 +236,6 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	return statuses, err
 }
 
-func (updater *OCSPUpdater) getCertificatesWithMissingResponses(batchSize int) ([]core.CertificateStatus, error) {
-	const query = "WHERE ocspLastUpdated = 0 LIMIT ?"
-	statuses, err := sa.SelectCertificateStatuses(
-		updater.dbMap,
-		query,
-		batchSize,
-	)
-	if err == sql.ErrNoRows {
-		return statuses, nil
-	}
-	return statuses, err
-}
-
 type responseMeta struct {
 	*core.OCSPResponse
 	*core.CertificateStatus

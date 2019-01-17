@@ -263,22 +263,6 @@ func TestFindStaleOCSPResponsesStaleMaxAge(t *testing.T) {
 	test.AssertEquals(t, certs[0].Serial, core.SerialToString(parsedCertA.SerialNumber))
 }
 
-func TestGetCertificatesWithMissingResponses(t *testing.T) {
-	updater, sa, _, fc, cleanUp := setup(t)
-	defer cleanUp()
-
-	reg := satest.CreateWorkingRegistration(t, sa)
-	cert, err := core.LoadCert("test-cert.pem")
-	test.AssertNotError(t, err, "Couldn't read test certificate")
-	issued := fc.Now()
-	_, err = sa.AddCertificate(ctx, cert.Raw, reg.ID, nil, &issued)
-	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
-
-	statuses, err := updater.getCertificatesWithMissingResponses(10)
-	test.AssertNotError(t, err, "Couldn't get status")
-	test.AssertEquals(t, len(statuses), 1)
-}
-
 func TestFindRevokedCertificatesToUpdate(t *testing.T) {
 	updater, sa, _, fc, cleanUp := setup(t)
 	defer cleanUp()
