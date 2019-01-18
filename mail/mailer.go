@@ -274,6 +274,16 @@ func (m *MailerImpl) sendOne(to []string, subject, msg string) error {
 	return nil
 }
 
+// InvalidRcptError is returned by SendMail when the server rejects a recipient
+// address as invalid.
+type InvalidRcptError struct {
+	Message string
+}
+
+func (e InvalidRcptError) Error() string {
+	return e.Message
+}
+
 // SendMail sends an email to the provided list of recipients. The email body
 // is simple text.
 func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
@@ -312,6 +322,11 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 				m.stats.Inc("SendMail.Errors.SMTP.421", 1)
 				m.reconnect()
 				m.stats.Inc("SendMail.Reconnects", 1)
+			} else if ok && protoErr.Code == 401 && strings.HasPrefix(protoErr.Msg, "4.1.3") {
+				// Error 401 4.1.3 is returned when we send an invalid email address in
+				// a RCPT TO command. Return an identifyable error to the client.
+				m.stats.Inc("SendMail.Errors.SMTP.401", 1)
+				return InvalidRcptError{protoErr.Msg}
 			} else {
 				// If it wasn't an EOF error or a SMTP 421 it is unexpected and we
 				// return from SendMail() with an error
