@@ -177,7 +177,11 @@ func (m *mailer) resolveDestinations() ([]string, error) {
 			if strings.TrimSpace(email) == "" {
 				continue
 			}
-			contactsList = append(contactsList, email)
+			parsedEmail, err := mail.ParseAddress(email)
+			if err != nil {
+				continue
+			}
+			contactsList = append(contactsList, parsedEmail.Address)
 		}
 	}
 	return contactsList, nil
