@@ -18,7 +18,7 @@ import (
 )
 
 // preresolvedDialer is a struct type that provides a DialContext function which
-// will use connect to the provided IP and port instead of letting DNS resolve
+// will connect to the provided IP and port instead of letting DNS resolve
 // The hostname of the preresolvedDialer is used to ensure the dial only completes
 // using the pre-resolved IP/port when used for the correct host.
 type preresolvedDialer struct {
@@ -55,7 +55,7 @@ func (e *dialerMismatchError) Error() string {
 // connect and timeouts after connect.
 //
 // Using preresolved information for the host argument given to the real
-// transport dial lets us have fine grain control over IP address resolution for
+// transport dial lets us have fine grained control over IP address resolution for
 // domain names.
 func (d *preresolvedDialer) DialContext(
 	ctx context.Context,
@@ -116,7 +116,7 @@ func (d *preresolvedDialer) DialContext(
 // a http.Transport.DialContext handler.
 type dialerFunc func(ctx context.Context, network, addr string) (net.Conn, error)
 
-// httpTransport constructs a HTTP Transport with settings appropraite for
+// httpTransport constructs a HTTP Transport with settings appropriate for
 // HTTP-01 validation. The provided dialerFunc is used as the Transport's
 // DialContext handler.
 func httpTransport(df dialerFunc) *http.Transport {
