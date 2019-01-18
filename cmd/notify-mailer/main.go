@@ -179,6 +179,7 @@ func (m *mailer) resolveDestinations() ([]string, error) {
 			}
 			parsedEmail, err := mail.ParseAddress(email)
 			if err != nil {
+				m.log.Errf("unparseable email for reg ID %d : %q", c.ID, email)
 				continue
 			}
 			contactsList = append(contactsList, parsedEmail.Address)
