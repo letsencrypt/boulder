@@ -397,8 +397,12 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	}
 
 	// Create an initial GET Request
-	initialURL := fmt.Sprintf("http://%s%s", host, path)
-	initialReq, err := http.NewRequest("GET", initialURL, nil)
+	initialURL := url.URL{
+		Scheme: "http",
+		Host:   host,
+		Path:   path,
+	}
+	initialReq, err := http.NewRequest("GET", initialURL.String(), nil)
 	if err != nil {
 		return nil, nil, err
 	}
