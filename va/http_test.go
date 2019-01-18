@@ -20,6 +20,29 @@ import (
 	"testing"
 )
 
+// TestDialerMismatchError tests that using a preresolvedDialer for one host for
+// a dial to another host produces the expected dialerMismatchError.
+func TestDialerMismatchError(t *testing.T) {
+	d := preresolvedDialer{
+		ip:       net.ParseIP("127.0.0.1"),
+		port:     1337,
+		hostname: "letsencrypt.org",
+	}
+
+	expectedErr := dialerMismatchError{
+		dialerHost: d.hostname,
+		dialerIP:   d.ip.String(),
+		dialerPort: d.port,
+		host:       "lettuceencrypt.org",
+	}
+
+	_, err := d.DialContext(
+		context.Background(),
+		"tincan-and-string",
+		"lettuceencrypt.org:80")
+	test.AssertEquals(t, err.Error(), expectedErr.Error())
+}
+
 func TestHTTPTransport(t *testing.T) {
 	dummyDialerFunc := func(_ context.Context, _, _ string) (net.Conn, error) {
 		return nil, nil

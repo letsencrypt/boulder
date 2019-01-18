@@ -19,15 +19,37 @@ import (
 
 // preresolvedDialer is a struct type that provides a DialContext function which
 // will use connect to the provided IP and port instead of letting DNS resolve
-// the hostname.
+// The hostname of the preresolvedDialer is used to ensure the dial only completes
+// using the pre-resolved IP/port when used for the correct host.
 type preresolvedDialer struct {
-	ip   net.IP
-	port int
+	ip       net.IP
+	port     int
+	hostname string
+}
+
+// a dialerMismatchError is produced when a preresolvedDialer is used to dial
+// a host other than the dialer's specified hostname.
+type dialerMismatchError struct {
+	// The original dialer information
+	dialerHost string
+	dialerIP   string
+	dialerPort int
+	// The host that the dialer was incorrectly used with
+	host string
+}
+
+func (e *dialerMismatchError) Error() string {
+	return fmt.Sprintf(
+		"preresolvedDialer mismatch: dialer is for %q (ip: %q port: %d) not %q",
+		e.dialerHost, e.dialerIP, e.dialerPort, e.host)
 }
 
 // DialContext for a preresolvedDialer shaves 10ms off of the context it was
 // given before calling the default transport DialContext using the pre-resolved
-// IP and port as the host.
+// IP and port as the host. If the original host being dialed by DialContext
+// does not match the expected hostname in the preresolvedDialer an error will
+// be returned instead. This helps prevents a bug that might use
+// a preresolvedDialer for the wrong host.
 //
 // Shaving the context helps us be able to differentiate between timeouts during
 // connect and timeouts after connect.
@@ -38,7 +60,7 @@ type preresolvedDialer struct {
 func (d *preresolvedDialer) DialContext(
 	ctx context.Context,
 	network,
-	originalAddr string) (net.Conn, error) {
+	origAddr string) (net.Conn, error) {
 	deadline, ok := ctx.Deadline()
 	if !ok {
 		// Shouldn't happen: All requests should have a deadline by this point.
@@ -51,6 +73,32 @@ func (d *preresolvedDialer) DialContext(
 	}
 	ctx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
+
+	// NOTE(@cpu): I don't capture and check the origPort here because using
+	// `net.SplitHostPort` and also supporting the va's custom httpPort and
+	// httpsPort is cumbersome. The initial origAddr may be "example.com:80"
+	// if the URL used for the dial input was "http://example.com" without an
+	// explicit port. Checking for equality here will fail unless we add
+	// special case logic for converting 80/443 -> httpPort/httpsPort when
+	// configured. This seems more likely to cause bugs than catch them so I'm
+	// ignoring this for now. In the future if we remove the httpPort/httpsPort
+	// (we should!) we can also easily enforce that the preresolved dialer port
+	// matches expected here.
+	origHost, _, err := net.SplitHostPort(origAddr)
+	if err != nil {
+		return nil, err
+	}
+	// If the hostname we're dialing isn't equal to the hostname the dialer was
+	// constructed for then a bug has occurred where we've mismatched the
+	// preresolved dialer.
+	if origHost != d.hostname {
+		return nil, &dialerMismatchError{
+			dialerHost: d.hostname,
+			dialerIP:   d.ip.String(),
+			dialerPort: d.port,
+			host:       origHost,
+		}
+	}
 
 	// Make a new dial address using the pre-resolved IP and port.
 	targetAddr := net.JoinHostPort(d.ip.String(), strconv.Itoa(d.port))
@@ -288,8 +336,9 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 	record.AddressUsed = targetIP
 
 	dialer := &preresolvedDialer{
-		ip:   targetIP,
-		port: target.port,
+		ip:       targetIP,
+		port:     target.port,
+		hostname: target.host,
 	}
 	return dialer, record, nil
 }
