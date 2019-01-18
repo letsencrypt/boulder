@@ -420,6 +420,13 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int64, revalidation bool) ([]core.Challenge, [][]int, error) {
 	challenges := []core.Challenge{}
 
+	// If we are using the new authorization storage schema we only use a single
+	// token for all challenges rather than a unique token per challenge.
+	var token string
+	if features.Enabled(features.NewAuthorizationSchema) {
+		token = core.NewToken()
+	}
+
 	// If the identifier is for a DNS wildcard name we only
 	// provide a DNS-01 challenge as a matter of CA policy.
 	if strings.HasPrefix(identifier.Value, "*.") {
@@ -431,26 +438,26 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int
 					"challenge type is not enabled")
 		}
 		// Only provide a DNS-01-Wildcard challenge
-		challenges = []core.Challenge{core.DNSChallenge01()}
+		challenges = []core.Challenge{core.DNSChallenge01(token)}
 	} else {
 		// Otherwise we collect up challenges based on what is enabled.
 		if pa.ChallengeTypeEnabled(core.ChallengeTypeHTTP01, regID) {
-			challenges = append(challenges, core.HTTPChallenge01())
+			challenges = append(challenges, core.HTTPChallenge01(token))
 		}
 
 		// Add a TLS-SNI challenge, if either (a) the challenge is enabled, or (b)
 		// the TLSSNIRevalidation feature flag is on and this is a revalidation.
 		if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSSNI01, regID) ||
 			(features.Enabled(features.TLSSNIRevalidation) && revalidation) {
-			challenges = append(challenges, core.TLSSNIChallenge01())
+			challenges = append(challenges, core.TLSSNIChallenge01(token))
 		}
 
 		if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSALPN01, regID) {
-			challenges = append(challenges, core.TLSALPNChallenge01())
+			challenges = append(challenges, core.TLSALPNChallenge01(token))
 		}
 
 		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01, regID) {
-			challenges = append(challenges, core.DNSChallenge01())
+			challenges = append(challenges, core.DNSChallenge01(token))
 		}
 	}
 

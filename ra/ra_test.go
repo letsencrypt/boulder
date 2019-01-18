@@ -3193,9 +3193,9 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 			Value: domain,
 		}
 		// Create challenges
-		httpChal := core.HTTPChallenge01()
-		dnsChal := core.DNSChallenge01()
-		tlsChal := core.TLSSNIChallenge01()
+		httpChal := core.HTTPChallenge01("")
+		dnsChal := core.DNSChallenge01("")
+		tlsChal := core.TLSSNIChallenge01("")
 		// Set the selected challenge to valid
 		switch chalType {
 		case "http-01":
@@ -3687,7 +3687,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			Value: domain,
 		}
 		// Create one valid HTTP challenge
-		httpChal := core.HTTPChallenge01()
+		httpChal := core.HTTPChallenge01("")
 		httpChal.Status = core.StatusValid
 		// Set the template's challenges
 		template.Challenges = []core.Challenge{httpChal}

@@ -215,6 +215,11 @@ func looksLikeKeyAuthorization(str string) error {
 // challenge, we just throw all the elements into one bucket,
 // together with the common metadata elements.
 type Challenge struct {
+	// ID was previously used to uniquely identify a challenge in the database and
+	// by users in the WFE. The ID is only populated when a challenge is added to
+	// the database. When features.NewAuthorizationSchema is enabled it is no
+	// longer populated at all and must not be relied upon in order to uniquely
+	// identify a challenge when transiting the RPC or storage layers.
 	ID int64 `json:"id,omitempty"`
 
 	// The type of challenge
@@ -372,6 +377,9 @@ type Authorization struct {
 	// in process, these are challenges to be fulfilled; for
 	// final authorizations, they describe the evidence that
 	// the server used in support of granting the authorization.
+	//
+	// There should only ever be one challenge of each type in this
+	// slice and the order of these challenges may not be predictable.
 	Challenges []Challenge `json:"challenges,omitempty" db:"-"`
 
 	// The server may suggest combinations of challenges if it

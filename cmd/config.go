@@ -156,19 +156,14 @@ type OCSPUpdaterConfig struct {
 	ServiceConfig
 	DBConfig
 
-	NewCertificateWindow     ConfigDuration
 	OldOCSPWindow            ConfigDuration
-	MissingSCTWindow         ConfigDuration
 	RevokedCertificateWindow ConfigDuration
 
-	NewCertificateBatchSize     int
 	OldOCSPBatchSize            int
-	MissingSCTBatchSize         int
 	RevokedCertificateBatchSize int
 
 	OCSPMinTimeToExpiry          ConfigDuration
 	OCSPStaleMaxAge              ConfigDuration
-	OldestIssuedSCT              ConfigDuration
 	ParallelGenerateOCSPRequests int
 
 	AkamaiBaseURL           string
