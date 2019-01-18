@@ -338,6 +338,10 @@ func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...inte
 			ID:      6,
 			Contact: []byte(`["mailto:mail@example.com"]`),
 		},
+		{
+			ID:      7,
+			Contact: []byte(`["mailto:***********"]`),
+		},
 	}
 
 	// Play the type cast game so that we can dig into the arguments map and get
@@ -390,6 +394,11 @@ func TestResolveEmails(t *testing.T) {
 		// sure this case is handled gracefully
 		{
 			ID: 999,
+		},
+		// This registration ID deliberately returns an invalid email to make sure any
+		// invalid contact info that slipped into the DB once upon a time will be ignored
+		{
+			ID: 7,
 		},
 	}
 	contactsJSON, err := json.Marshal(regs)
