@@ -420,7 +420,6 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 
 	// Set up the initial validation request and a base validation record
 	dialer, baseRecord, err := va.setupHTTPValidation(ctx, initialReq.URL.String(), target)
-	fmt.Printf("Setup err: %s %#v\n", err, err)
 	if err != nil {
 		return nil, []core.ValidationRecord{}, err
 	}
