@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/big"
@@ -71,7 +70,7 @@ func expect(t *testing.T, buf *bufio.Reader, expected string) error {
 	}
 	if string(line) != expected {
 		t.Errorf("Expected %s, got %s", expected, line)
-		return errors.New("")
+		return fmt.Errorf("Expected %s, got %s", expected, line)
 	}
 	return nil
 }
@@ -170,6 +169,30 @@ func disconnectHandler(closeFirst int, goodbyeMsg string) connHandler {
 	}
 }
 
+func badEmailHandler(messagesToProcess int) connHandler {
+	return func(_ int, t *testing.T, conn net.Conn) {
+		defer func() {
+			err := conn.Close()
+			if err != nil {
+				t.Errorf("conn.Close: %s", err)
+			}
+		}()
+		authenticateClient(t, conn)
+
+		buf := bufio.NewReader(conn)
+		if err := expect(t, buf, "MAIL FROM:<<you-are-a-winner@example.com>> BODY=8BITMIME"); err != nil {
+			return
+		}
+
+		_, _ = conn.Write([]byte("250 Sure. Go on. \r\n"))
+
+		if err := expect(t, buf, "RCPT TO:<hi@bye.com>"); err != nil {
+			return
+		}
+		_, _ = conn.Write([]byte("401 4.1.3 Bad recipient address syntax\r\n"))
+	}
+}
+
 func setup(t *testing.T) (*MailerImpl, net.Listener, func()) {
 	stats := metrics.NewNoopScope()
 	fromAddress, _ := mail.ParseAddress("you-are-a-winner@example.com")
@@ -256,6 +279,30 @@ func TestReconnectSuccess(t *testing.T) {
 	err = m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
 	if err != nil {
 		t.Errorf("Expected SendMail() to not fail. Got err: %s", err)
+	}
+}
+
+func TestBadEmailError(t *testing.T) {
+	m, l, cleanUp := setup(t)
+	defer cleanUp()
+	const messages = 3
+
+	go listenForever(l, t, badEmailHandler(messages))
+
+	err := m.Connect()
+	if err != nil {
+		t.Errorf("Failed to connect: %s", err)
+	}
+
+	err = m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
+	// We expect there to be an error
+	if err == nil {
+		t.Errorf("Expected SendMail() to return an InvalidRcptError, got nil")
+	}
+	if rcptErr, ok := err.(InvalidRcptError); !ok {
+		t.Errorf("Expected SendMail() to return an InvalidRcptError, got a %T error: %v", err, err)
+	} else if rcptErr.Message != "4.1.3 Bad recipient address syntax" {
+		t.Errorf("SendMail() returned InvalidRcptError with wrong message: %q\n", rcptErr.Message)
 	}
 }
 
