@@ -137,7 +137,13 @@ func (m *mailer) run() error {
 		}
 		err := m.mailer.SendMail([]string{dest}, m.subject, m.emailTemplate)
 		if err != nil {
-			return err
+			switch err.(type) {
+			case bmail.InvalidRcptError:
+				m.log.Errf("address %q was rejected by server: %s", dest, err)
+				continue
+			default:
+				return err
+			}
 		}
 		m.clk.Sleep(m.sleepInterval)
 	}
