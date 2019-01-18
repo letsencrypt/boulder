@@ -49,12 +49,10 @@ func TestV2AuthzModel(t *testing.T) {
 	reg := int64(1)
 	status := string(core.StatusValid)
 	expires := int64(1234)
-	challID := int64(0)
 	challType := string(core.ChallengeTypeHTTP01)
 	token := "MTIz"
 	hostname := "hostname"
 	port := "port"
-	challID2 := int64(1)
 	challType2 := string(core.ChallengeTypeDNS01)
 	statusPending := string(core.StatusPending)
 	url := "url"
@@ -66,7 +64,6 @@ func TestV2AuthzModel(t *testing.T) {
 		Expires:        &expires,
 		Challenges: []*corepb.Challenge{
 			&corepb.Challenge{
-				Id:     &challID,
 				Type:   &challType,
 				Status: &status,
 				Token:  &token,
@@ -82,7 +79,6 @@ func TestV2AuthzModel(t *testing.T) {
 				},
 			},
 			&corepb.Challenge{
-				Id:     &challID2,
 				Type:   &challType2,
 				Status: &statusPending,
 				Token:  &token,

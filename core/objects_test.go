@@ -94,9 +94,9 @@ func TestJSONBufferUnmarshal(t *testing.T) {
 }
 
 func TestAuthorizationSolvedBy(t *testing.T) {
-	validHTTP01 := HTTPChallenge01()
+	validHTTP01 := HTTPChallenge01("")
 	validHTTP01.Status = StatusValid
-	validDNS01 := DNSChallenge01()
+	validDNS01 := DNSChallenge01("")
 	validDNS01.Status = StatusValid
 	testCases := []struct {
 		Name           string
@@ -112,7 +112,7 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 		{
 			Name: "All non-valid challenges",
 			Authz: Authorization{
-				Challenges: []Challenge{HTTPChallenge01(), DNSChallenge01()},
+				Challenges: []Challenge{HTTPChallenge01(""), DNSChallenge01("")},
 			},
 		},
 		// An authz with one valid HTTP01 challenge amongst other challenges should
@@ -120,7 +120,7 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 		{
 			Name: "Valid HTTP01 challenge",
 			Authz: Authorization{
-				Challenges: []Challenge{HTTPChallenge01(), validHTTP01, DNSChallenge01()},
+				Challenges: []Challenge{HTTPChallenge01(""), validHTTP01, DNSChallenge01("")},
 			},
 			ExpectedResult: "http-01",
 		},
@@ -130,7 +130,7 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 		{
 			Name: "Valid HTTP01 and DNS01 challenge",
 			Authz: Authorization{
-				Challenges: []Challenge{validDNS01, HTTPChallenge01(), validHTTP01, DNSChallenge01()},
+				Challenges: []Challenge{validDNS01, HTTPChallenge01(""), validHTTP01, DNSChallenge01("")},
 			},
 			ExpectedResult: "dns-01",
 		},

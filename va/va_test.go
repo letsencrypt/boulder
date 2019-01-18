@@ -271,7 +271,7 @@ func tlsalpn01Srv(t *testing.T, chall core.Challenge, oid asn1.ObjectIdentifier,
 }
 
 func TestHTTPBadPort(t *testing.T) {
-	chall := core.HTTPChallenge01()
+	chall := core.HTTPChallenge01("")
 	setChallengeToken(&chall, expectedToken)
 
 	hs := httpSrv(t, chall.Token)
@@ -296,7 +296,7 @@ func TestHTTPBadPort(t *testing.T) {
 }
 
 func TestHTTP(t *testing.T) {
-	chall := core.HTTPChallenge01()
+	chall := core.HTTPChallenge01("")
 	setChallengeToken(&chall, expectedToken)
 
 	// NOTE: We do not attempt to shut down the server. The problem is that the
@@ -371,7 +371,7 @@ func TestHTTP(t *testing.T) {
 }
 
 func TestHTTPTimeout(t *testing.T) {
-	chall := core.HTTPChallenge01()
+	chall := core.HTTPChallenge01("")
 	setChallengeToken(&chall, expectedToken)
 
 	hs := httpSrv(t, chall.Token)
@@ -437,7 +437,7 @@ func TestHTTPDialTimeout(t *testing.T) {
 	// that, just retry until we get something other than "Network unreachable".
 	var prob *probs.ProblemDetails
 	for i := 0; i < 20; i++ {
-		_, prob = va.validateHTTP01(ctx, dnsi("unroutable.invalid"), core.HTTPChallenge01())
+		_, prob = va.validateHTTP01(ctx, dnsi("unroutable.invalid"), core.HTTPChallenge01(""))
 		if prob != nil && strings.Contains(prob.Detail, "Network unreachable") {
 			continue
 		} else {
@@ -466,7 +466,7 @@ func TestHTTPDialTimeout(t *testing.T) {
 }
 
 func TestHTTPRedirectLookup(t *testing.T) {
-	chall := core.HTTPChallenge01()
+	chall := core.HTTPChallenge01("")
 	setChallengeToken(&chall, expectedToken)
 
 	hs := httpSrv(t, expectedToken)
@@ -529,7 +529,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 }
 
 func TestHTTPRedirectLoop(t *testing.T) {
-	chall := core.HTTPChallenge01()
+	chall := core.HTTPChallenge01("")
 	setChallengeToken(&chall, "looper")
 
 	hs := httpSrv(t, expectedToken)
@@ -543,7 +543,7 @@ func TestHTTPRedirectLoop(t *testing.T) {
 }
 
 func TestHTTPRedirectUserAgent(t *testing.T) {
-	chall := core.HTTPChallenge01()
+	chall := core.HTTPChallenge01("")
 	setChallengeToken(&chall, expectedToken)
 
 	hs := httpSrv(t, expectedToken)
@@ -916,7 +916,7 @@ func TestSNIErrInvalidChain(t *testing.T) {
 }
 
 func TestValidateHTTP(t *testing.T) {
-	chall := core.HTTPChallenge01()
+	chall := core.HTTPChallenge01("")
 	setChallengeToken(&chall, core.NewToken())
 
 	hs := httpSrv(t, chall.Token)
@@ -929,7 +929,7 @@ func TestValidateHTTP(t *testing.T) {
 }
 
 func TestGSBAtValidation(t *testing.T) {
-	chall := core.HTTPChallenge01()
+	chall := core.HTTPChallenge01("")
 	setChallengeToken(&chall, core.NewToken())
 
 	hs := httpSrv(t, chall.Token)
@@ -1182,7 +1182,7 @@ func TestPerformValidationValid(t *testing.T) {
 	va, mockLog := setup(nil, 0)
 
 	// create a challenge with well known token
-	chalDNS := core.DNSChallenge01()
+	chalDNS := core.DNSChallenge01("")
 	chalDNS.Token = expectedToken
 	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
 	_, prob := va.PerformValidation(context.Background(), "good-dns01.com", chalDNS, core.Authorization{})
@@ -1211,7 +1211,7 @@ func TestPerformValidationWildcard(t *testing.T) {
 	va, mockLog := setup(nil, 0)
 
 	// create a challenge with well known token
-	chalDNS := core.DNSChallenge01()
+	chalDNS := core.DNSChallenge01("")
 	chalDNS.Token = expectedToken
 	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
 	// perform a validation for a wildcard name
@@ -1258,7 +1258,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 		Value: "790DB180-A274-47A4-855F-31C428CB1072",
 	}
 
-	chalDNS := core.DNSChallenge01()
+	chalDNS := core.DNSChallenge01("")
 	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
 
 	va, _ := setup(nil, 0)
@@ -1271,13 +1271,13 @@ func TestDNSValidationInvalid(t *testing.T) {
 func TestDNSValidationNotSane(t *testing.T) {
 	va, _ := setup(nil, 0)
 
-	chal0 := core.DNSChallenge01()
+	chal0 := core.DNSChallenge01("")
 	chal0.Token = ""
 
-	chal1 := core.DNSChallenge01()
+	chal1 := core.DNSChallenge01("")
 	chal1.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_"
 
-	chal2 := core.DNSChallenge01()
+	chal2 := core.DNSChallenge01("")
 	chal2.ProvidedKeyAuthorization = "a"
 
 	var authz = core.Authorization{
@@ -1329,7 +1329,7 @@ func TestDNSValidationOK(t *testing.T) {
 	va, _ := setup(nil, 0)
 
 	// create a challenge with well known token
-	chalDNS := core.DNSChallenge01()
+	chalDNS := core.DNSChallenge01("")
 	chalDNS.Token = expectedToken
 	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
 
@@ -1342,7 +1342,7 @@ func TestDNSValidationNoAuthorityOK(t *testing.T) {
 	va, _ := setup(nil, 0)
 
 	// create a challenge with well known token
-	chalDNS := core.DNSChallenge01()
+	chalDNS := core.DNSChallenge01("")
 	chalDNS.Token = expectedToken
 
 	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
@@ -1353,7 +1353,7 @@ func TestDNSValidationNoAuthorityOK(t *testing.T) {
 }
 
 func TestLimitedReader(t *testing.T) {
-	chall := core.HTTPChallenge01()
+	chall := core.HTTPChallenge01("")
 	setChallengeToken(&chall, core.NewToken())
 
 	hs := httpSrv(t, "012345\xff67890123456789012345678901234567890123456789012345678901234567890123456789")
@@ -1481,7 +1481,7 @@ func TestAvailableAddresses(t *testing.T) {
 // subsequent IPv4 request get a new dialer each.
 func TestHTTP01DialerFallback(t *testing.T) {
 	// Create a new challenge to use for the httpSrv
-	chall := core.HTTPChallenge01()
+	chall := core.HTTPChallenge01("")
 	setChallengeToken(&chall, core.NewToken())
 
 	// Create an IPv4 test server
@@ -1518,7 +1518,7 @@ func TestHTTP01DialerFallback(t *testing.T) {
 
 func TestFallbackDialer(t *testing.T) {
 	// Create a new challenge to use for the httpSrv
-	chall := core.HTTPChallenge01()
+	chall := core.HTTPChallenge01("")
 	setChallengeToken(&chall, core.NewToken())
 
 	// Create an IPv4 test server
@@ -1656,7 +1656,7 @@ func (v cancelledVA) IsSafeDomain(_ context.Context, _ *vaPB.IsSafeDomainRequest
 
 func TestPerformRemoteValidation(t *testing.T) {
 	// Create a new challenge to use for the httpSrv
-	chall := core.HTTPChallenge01()
+	chall := core.HTTPChallenge01("")
 	setChallengeToken(&chall, core.NewToken())
 
 	// Create an IPv4 test server
@@ -1846,7 +1846,7 @@ func (b *brokenRemoteVA) IsSafeDomain(
 
 func TestPerformRemoteValidationFailure(t *testing.T) {
 	// Create a new challenge to use for the httpSrv
-	chall := core.HTTPChallenge01()
+	chall := core.HTTPChallenge01("")
 	setChallengeToken(&chall, core.NewToken())
 
 	// Create an IPv4 test server
