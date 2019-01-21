@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"html/template"
 	"io"
 	"io/ioutil"
 	"net/mail"
@@ -15,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -40,6 +40,7 @@ type mailer struct {
 
 // interval defines a range of email addresses to send to, alphabetically.
 // The "start" field is inclusive and the "end" field is exclusive.
+// To include everything, set "end" to "\xFF".
 type interval struct {
 	start string
 	end   string
@@ -57,7 +58,7 @@ type contactJSON struct {
 func (i *interval) ok() error {
 	if i.start > i.end {
 		return fmt.Errorf(
-			"interval start value (%d) is greater than end value (%d)",
+			"interval start value (%s) is greater than end value (%s)",
 			i.start, i.end)
 	}
 
@@ -129,6 +130,7 @@ func (m *mailer) run() error {
 
 	sortedAddresses := sortAddresses(addressesToRecipients)
 
+	var sent int
 	for i, address := range sortedAddresses {
 		if !m.targetRange.includes(address) {
 			m.log.Debugf("skipping %q: out of target range")
@@ -149,7 +151,11 @@ func (m *mailer) run() error {
 		if err != nil {
 			return err
 		}
+		sent++
 		m.clk.Sleep(m.sleepInterval)
+	}
+	if sent == 0 {
+		return fmt.Errorf("skipped all addresses. bad interval?")
 	}
 	return nil
 }
