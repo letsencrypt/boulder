@@ -194,7 +194,7 @@ func TestMailIntervals(t *testing.T) {
 	}, mc.Messages[1])
 }
 
-func TestMessageContent(t *testing.T) {
+func TestMessageContentStatic(t *testing.T) {
 	// Create a mailer with fixed content
 	const (
 		testSubject = "Test Subject"
@@ -222,6 +222,106 @@ func TestMessageContent(t *testing.T) {
 		To:      "example@example.com",
 		Subject: testSubject,
 		Body:    "an email body",
+	}, mc.Messages[0])
+}
+
+// Send mail with a variable interpolated.
+func TestMessageContentInterpolated(t *testing.T) {
+	recipients := []recipient{
+		{
+			id: 1,
+			Extra: map[string]string{
+				"validationMethod": "eyeballing it",
+			},
+		},
+	}
+	dbMap := mockEmailResolver{}
+	mc := &mocks.Mailer{}
+	m := &mailer{
+		log:          blog.UseMock(),
+		mailer:       mc,
+		dbMap:        dbMap,
+		subject:      "Test Subject",
+		destinations: recipients,
+		emailTemplate: template.Must(template.New("letter").Parse(
+			`issued by {{range .}}{{ .Extra.validationMethod }}{{end}}`)),
+		targetRange:   interval{end: "\xFF"},
+		sleepInterval: 0,
+		clk:           newFakeClock(t),
+	}
+
+	// Run the mailer, one message should have been created with the content
+	// expected
+	err := m.run()
+	test.AssertNotError(t, err, "error calling mailer run()")
+	test.AssertEquals(t, len(mc.Messages), 1)
+	test.AssertEquals(t, mocks.MailerMessage{
+		To:      "example@example.com",
+		Subject: "Test Subject",
+		Body:    "issued by eyeballing it",
+	}, mc.Messages[0])
+}
+
+// Send mail with a variable interpolated multiple times for accounts that share
+// an email address.
+func TestMessageContentInterpolatedMultiple(t *testing.T) {
+	recipients := []recipient{
+		{
+			id: 200,
+			Extra: map[string]string{
+				"domain": "blog.example.com",
+			},
+		},
+		{
+			id: 201,
+			Extra: map[string]string{
+				"domain": "nas.example.net",
+			},
+		},
+		{
+			id: 202,
+			Extra: map[string]string{
+				"domain": "mail.example.org",
+			},
+		},
+		{
+			id: 203,
+			Extra: map[string]string{
+				"domain": "panel.example.net",
+			},
+		},
+	}
+	dbMap := mockEmailResolver{}
+	mc := &mocks.Mailer{}
+	m := &mailer{
+		log:          blog.UseMock(),
+		mailer:       mc,
+		dbMap:        dbMap,
+		subject:      "Test Subject",
+		destinations: recipients,
+		emailTemplate: template.Must(template.New("letter").Parse(
+			`issued for:
+{{range .}}{{ .Extra.domain }}
+{{end}}Thanks`)),
+		targetRange:   interval{end: "\xFF"},
+		sleepInterval: 0,
+		clk:           newFakeClock(t),
+	}
+
+	// Run the mailer, one message should have been created with the content
+	// expected
+	err := m.run()
+	test.AssertNotError(t, err, "error calling mailer run()")
+	test.AssertEquals(t, len(mc.Messages), 1)
+	test.AssertEquals(t, mocks.MailerMessage{
+		To:      "gotta.lotta.accounts@example.net",
+		Subject: "Test Subject",
+		Body: `issued for:
+blog.example.com
+nas.example.net
+mail.example.org
+panel.example.net
+Thanks`,
 	}, mc.Messages[0])
 }
 
@@ -263,6 +363,26 @@ func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...inte
 			ID:      7,
 			Contact: []byte(`["mailto:***********"]`),
 		},
+		{
+			ID:      200,
+			Contact: []byte(`["mailto:gotta.lotta.accounts@example.net"]`),
+		},
+		{
+			ID:      201,
+			Contact: []byte(`["mailto:gotta.lotta.accounts@example.net"]`),
+		},
+		{
+			ID:      202,
+			Contact: []byte(`["mailto:gotta.lotta.accounts@example.net"]`),
+		},
+		{
+			ID:      203,
+			Contact: []byte(`["mailto:gotta.lotta.accounts@example.net"]`),
+		},
+		{
+			ID:      204,
+			Contact: []byte(`["mailto:gotta.lotta.accounts@example.net"]`),
+		},
 	}
 
 	// Play the type cast game so that we can dig into the arguments map and get
@@ -285,12 +405,12 @@ func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...inte
 		return fmt.Errorf("incorrect output type %T", output)
 	}
 
-	// If the ID (shifted by 1 to account for zero indexing) is within the range
-	// of the DB list, return the DB entry by assigning to the `outputPtr`.
-	// Otherwise, return that no rows were found
-	if (id-1) >= 0 && int(id-1) < len(db) {
-		*outputPtr = db[id-1]
-	} else {
+	for _, v := range db {
+		if v.ID == id {
+			*outputPtr = v
+		}
+	}
+	if outputPtr.ID == 0 {
 		return sql.ErrNoRows
 	}
 	return nil
@@ -321,6 +441,21 @@ func TestResolveEmails(t *testing.T) {
 		{
 			id: 7,
 		},
+		{
+			id: 200,
+		},
+		{
+			id: 201,
+		},
+		{
+			id: 202,
+		},
+		{
+			id: 203,
+		},
+		{
+			id: 204,
+		},
 	}
 
 	tmpl := template.Must(template.New("letter").Parse("an email body"))
@@ -346,6 +481,7 @@ func TestResolveEmails(t *testing.T) {
 		"example@example.com",
 		"test-example-updated@example.com",
 		"test-test-test@example.com",
+		"gotta.lotta.accounts@example.net",
 	}
 
 	test.AssertEquals(t, len(addressesToRecipients), len(expected))
