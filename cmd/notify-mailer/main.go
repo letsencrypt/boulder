@@ -172,7 +172,6 @@ func (m *mailer) resolveDestinations() error {
 				continue
 			}
 			m.destinations[i].address = parsedEmail.Address
-			return nil
 		}
 	}
 	return nil

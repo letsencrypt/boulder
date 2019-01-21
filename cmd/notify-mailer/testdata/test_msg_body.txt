@@ -1,15 +1,1 @@
 This is a test message body regarding {{ .domainName }}
-
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus non est in enim
-tincidunt accumsan. Aenean maximus placerat malesuada. Sed semper arcu ac eros
-vulputate, sed scelerisque arcu mollis. Ut ullamcorper odio odio, ut congue
-magna malesuada at. Etiam maximus eros dui, eget efficitur mi condimentum vitae.
-Praesent tincidunt aliquet eros vel sodales. Pellentesque sollicitudin eu quam
-sed tincidunt. Integer id auctor nisl, et porta turpis. In imperdiet non justo
-ut ultrices. Cras fermentum justo volutpat, fringilla diam at, laoreet felis.
-Vestibulum vestibulum erat a pellentesque vehicula. Proin velit risus, porta
-eget eleifend non, tincidunt sit amet nunc. Duis blandit lobortis justo, quis
-interdum sapien.
-
-Sincerely,
-  Let's Encrypt
