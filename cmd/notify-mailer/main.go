@@ -124,7 +124,13 @@ func (m *mailer) run() error {
 			continue
 		}
 		var mailBody bytes.Buffer
-		m.emailTemplate.Execute(&mailBody, dest.extra)
+		err = m.emailTemplate.Execute(&mailBody, dest.extra)
+		if err != nil {
+			return err
+		}
+		if mailBody.Len() == 0 {
+			return fmt.Errorf("email body was empty after interpolation.")
+		}
 		err := m.mailer.SendMail([]string{dest.address}, m.subject, mailBody.String())
 		if err != nil {
 			return err
@@ -134,9 +140,10 @@ func (m *mailer) run() error {
 	return nil
 }
 
-// Resolves each reg ID to the most up-to-date contact email, and
-// add that to the recipient data structure. Note that we only
-// allow one email per account.
+// Resolves each reg ID to its contact emails, picks one of them, and adds that
+// to the recipient data structure. Note that ACME and Boulder support multiple
+// contact emails, but for the purpose of this mailing tool we only send to one
+// email per account.
 func (m *mailer) resolveDestinations() error {
 	// If there is no endpoint specified, use the total # of destinations
 	if m.checkpoint.end == 0 || m.checkpoint.end > len(m.destinations) {
@@ -159,15 +166,12 @@ func (m *mailer) resolveDestinations() error {
 		}
 
 		for _, email := range emails {
-			if strings.TrimSpace(email) == "" {
-				continue
-			}
-			_, err := mail.ParseAddress(email)
+			parsedEmail, err := mail.ParseAddress(email)
 			if err != nil {
 				m.log.Errf("unparseable email for reg ID %d : %q", r.id, email)
 				continue
 			}
-			m.destinations[i].address = email
+			m.destinations[i].address = parsedEmail.Address
 			return nil
 		}
 	}
@@ -219,6 +223,9 @@ type recipient struct {
 	extra   map[string]string
 }
 
+// readRecipientsList reads a CSV filename and parses that file into a list of
+// recipient structs. Columns after the first are parsed into a per-recipient
+// map from column name -> value.
 func readRecipientsList(filename string) ([]recipient, error) {
 	f, err := os.Open(filename)
 	if err != nil {
@@ -232,7 +239,10 @@ func readRecipientsList(filename string) ([]recipient, error) {
 	if record[0] != "id" {
 		return nil, fmt.Errorf("First field of CSV input must be an ID.")
 	}
-	columnNames := record[1:]
+	var columnNames []string
+	for _, v := range record[1:] {
+		columnNames = append(columnNames, strings.TrimSpace(v))
+	}
 
 	results := []recipient{}
 	for {
@@ -367,7 +377,8 @@ func main() {
 	}
 
 	flag.Parse()
-	if *from == "" || *subject == "" || *bodyFile == "" || *configFile == "" {
+	if *from == "" || *subject == "" || *bodyFile == "" || *configFile == "" ||
+		*recipientListFile == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
