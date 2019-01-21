@@ -151,7 +151,13 @@ func (m *mailer) run() error {
 		var mailBody bytes.Buffer
 		err = m.emailTemplate.Execute(&mailBody, recipients)
 		if err != nil {
-			return err
+			switch err.(type) {
+			case bmail.InvalidRcptError:
+				m.log.Errf("address %q was rejected by server: %s", dest, err)
+				continue
+			default:
+				return err
+			}
 		}
 		if mailBody.Len() == 0 {
 			return fmt.Errorf("email body was empty after interpolation.")
