@@ -17,13 +17,50 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 )
 
-// shavedDialContext shaves 10ms off of the context it was given before
-// calling the default DialContext. This helps us be able to differentiate
-// between timeouts during connect and timeouts after connect.
-func shavedDialContext(
+// preresolvedDialer is a struct type that provides a DialContext function which
+// will connect to the provided IP and port instead of letting DNS resolve
+// The hostname of the preresolvedDialer is used to ensure the dial only completes
+// using the pre-resolved IP/port when used for the correct host.
+type preresolvedDialer struct {
+	ip       net.IP
+	port     int
+	hostname string
+}
+
+// a dialerMismatchError is produced when a preresolvedDialer is used to dial
+// a host other than the dialer's specified hostname.
+type dialerMismatchError struct {
+	// The original dialer information
+	dialerHost string
+	dialerIP   string
+	dialerPort int
+	// The host that the dialer was incorrectly used with
+	host string
+}
+
+func (e *dialerMismatchError) Error() string {
+	return fmt.Sprintf(
+		"preresolvedDialer mismatch: dialer is for %q (ip: %q port: %d) not %q",
+		e.dialerHost, e.dialerIP, e.dialerPort, e.host)
+}
+
+// DialContext for a preresolvedDialer shaves 10ms off of the context it was
+// given before calling the default transport DialContext using the pre-resolved
+// IP and port as the host. If the original host being dialed by DialContext
+// does not match the expected hostname in the preresolvedDialer an error will
+// be returned instead. This helps prevents a bug that might use
+// a preresolvedDialer for the wrong host.
+//
+// Shaving the context helps us be able to differentiate between timeouts during
+// connect and timeouts after connect.
+//
+// Using preresolved information for the host argument given to the real
+// transport dial lets us have fine grained control over IP address resolution for
+// domain names.
+func (d *preresolvedDialer) DialContext(
 	ctx context.Context,
 	network,
-	addr string) (net.Conn, error) {
+	origAddr string) (net.Conn, error) {
 	deadline, ok := ctx.Deadline()
 	if !ok {
 		// Shouldn't happen: All requests should have a deadline by this point.
@@ -37,74 +74,64 @@ func shavedDialContext(
 	ctx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 
+	// NOTE(@cpu): I don't capture and check the origPort here because using
+	// `net.SplitHostPort` and also supporting the va's custom httpPort and
+	// httpsPort is cumbersome. The initial origAddr may be "example.com:80"
+	// if the URL used for the dial input was "http://example.com" without an
+	// explicit port. Checking for equality here will fail unless we add
+	// special case logic for converting 80/443 -> httpPort/httpsPort when
+	// configured. This seems more likely to cause bugs than catch them so I'm
+	// ignoring this for now. In the future if we remove the httpPort/httpsPort
+	// (we should!) we can also easily enforce that the preresolved dialer port
+	// matches expected here.
+	origHost, _, err := net.SplitHostPort(origAddr)
+	if err != nil {
+		return nil, err
+	}
+	// If the hostname we're dialing isn't equal to the hostname the dialer was
+	// constructed for then a bug has occurred where we've mismatched the
+	// preresolved dialer.
+	if origHost != d.hostname {
+		return nil, &dialerMismatchError{
+			dialerHost: d.hostname,
+			dialerIP:   d.ip.String(),
+			dialerPort: d.port,
+			host:       origHost,
+		}
+	}
+
+	// Make a new dial address using the pre-resolved IP and port.
+	targetAddr := net.JoinHostPort(d.ip.String(), strconv.Itoa(d.port))
+
 	// Invoke the default transport's original DialContext function using the
 	// reconstructed context.
 	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
 		return nil, fmt.Errorf("DefaultTransport was not an http.Transport")
 	}
-	return defaultTransport.DialContext(ctx, network, addr)
+	return defaultTransport.DialContext(ctx, network, targetAddr)
 }
 
-// redirectChecker is a function that can be used for an HTTP Client's
-// checkRedirect function.
-type redirectChecker func(*http.Request, []*http.Request) error
+// a dialerFunc meets the function signature requirements of
+// a http.Transport.DialContext handler.
+type dialerFunc func(ctx context.Context, network, addr string) (net.Conn, error)
 
-// newHTTPClient constructs a HTTP client with a custom transport suitable for
-// HTTP-01 validation. The provided checkRedirect function is used as the
-// client's checkRedirect handler.
-func newHTTPClient(checkRedirect redirectChecker) http.Client {
-	// Construct a one-off HTTP client with a custom transport.
-	return http.Client{
-		Transport: &http.Transport{
-			DialContext: shavedDialContext,
-			// We are talking to a client that does not yet have a certificate,
-			// so we accept a temporary, invalid one.
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			// We don't expect to make multiple requests to a client, so close
-			// connection immediately.
-			DisableKeepAlives: true,
-			// We don't want idle connections, but 0 means "unlimited," so we pick 1.
-			MaxIdleConns:        1,
-			IdleConnTimeout:     time.Second,
-			TLSHandshakeTimeout: 10 * time.Second,
-		},
-		CheckRedirect: checkRedirect,
-	}
-}
-
-// httpValidationURL constructs a URL for the given IP address, path and port
-// combination. The port is omitted from the URL if it is the default HTTP
-// port or the default HTTPS port. The protocol scheme of the URL is HTTP unless
-// useHTTPS is true. UseHTTPS should only be true when constructing validation
-// URLs based on a redirect from an initial HTTP validation request.
-func httpValidationURL(validationIP net.IP, port int, path, query string, useHTTPS bool) *url.URL {
-	urlHost := validationIP.String()
-
-	// If the port is something other than the conventional HTTP or HTTPS port,
-	// put it in the URL explicitly using `net.JoinHostPort`.
-	if port != 80 && port != 443 {
-		urlHost = net.JoinHostPort(validationIP.String(), strconv.Itoa(port))
-	}
-
-	// if the validation IP is an IPv6 address, and we aren't using
-	// `net.JoinHostPort` then we have to manually surround the IPv6 address
-	// with square brackets to make a valid IPv6 URL (e.g "http://[::1]/foo" not
-	// "http://::1/foo")
-	if (port == 80 || port == 443) && validationIP.To4() == nil {
-		urlHost = fmt.Sprintf("[%s]", urlHost)
-	}
-
-	scheme := "http"
-	if useHTTPS {
-		scheme = "https"
-	}
-
-	return &url.URL{
-		Scheme:   scheme,
-		Host:     urlHost,
-		Path:     path,
-		RawQuery: query,
+// httpTransport constructs a HTTP Transport with settings appropriate for
+// HTTP-01 validation. The provided dialerFunc is used as the Transport's
+// DialContext handler.
+func httpTransport(df dialerFunc) *http.Transport {
+	return &http.Transport{
+		DialContext: df,
+		// We are talking to a client that does not yet have a certificate,
+		// so we accept a temporary, invalid one.
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		// We don't expect to make multiple requests to a client, so close
+		// connection immediately.
+		DisableKeepAlives: true,
+		// We don't want idle connections, but 0 means "unlimited," so we pick 1.
+		MaxIdleConns:        1,
+		IdleConnTimeout:     time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
 	}
 }
 
@@ -267,16 +294,19 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 	return reqHost, reqPort, nil
 }
 
-// setupHTTPValidation can be used in two ways:
-// 1) To create and setup the initial validation request for a target by
-//    providing a nil req.
-// 2) To mutate an existing HTTP request to use a URL/Host based on resolved IP
-//    addresses.
-// The second is helpful when processing redirect requests.
+// setupHTTPValidation sets up a preresolvedDialer and a validation record for
+// the given request URL and httpValidationTarget. If the req URL is empty, or
+// the validation target is nil or has no available IP addresses, an error will
+// be returned.
 func (va *ValidationAuthorityImpl) setupHTTPValidation(
 	ctx context.Context,
-	req *http.Request,
-	target *httpValidationTarget) (*http.Request, core.ValidationRecord, error) {
+	reqURL string,
+	target *httpValidationTarget) (*preresolvedDialer, core.ValidationRecord, error) {
+	if reqURL == "" {
+		return nil,
+			core.ValidationRecord{},
+			fmt.Errorf("reqURL can not be nil")
+	}
 	if target == nil {
 		// This is the only case where returning an empty validation record makes
 		// sense - we can't construct a better one, something has gone quite wrong.
@@ -285,63 +315,32 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 			fmt.Errorf("httpValidationTarget can not be nil")
 	}
 
-	// Construct a base validation record with the target's information.
+	// Construct a base validation record with the validation target's
+	// information.
 	record := core.ValidationRecord{
 		Hostname:          target.host,
 		Port:              strconv.Itoa(target.port),
 		AddressesResolved: target.available,
+		URL:               reqURL,
 	}
 
-	// Build a URL with the target's IP address and port
+	// Get the target IP to build a preresolved dialer with
 	targetIP := target.ip()
 	if targetIP == nil {
-		return nil, record, fmt.Errorf(
-			"host %q has no IP addresses remaining to use",
-			target.host)
+		return nil,
+			record,
+			fmt.Errorf(
+				"host %q has no IP addresses remaining to use",
+				target.host)
 	}
-
-	var useHTTPS bool
-	// If we are mutating an existing redirected request and the original request
-	// URL uses HTTPS then we must construct a validation URL using HTTPS. In all
-	// other cases we construct an HTTP URL.
-	if req != nil && req.URL.Scheme == "https" {
-		useHTTPS = true
-	}
-
 	record.AddressUsed = targetIP
-	url := httpValidationURL(targetIP, target.port, target.path, target.query, useHTTPS)
-	record.URL = url.String()
 
-	// If there's no provided HTTP request to mutate (e.g. a redirect request
-	// we're following as part of a validation) then construct a new initial HTTP
-	// GET request for the validation.
-	if req == nil {
-		var err error
-		req, err = http.NewRequest("GET", url.String(), nil)
-		if err != nil {
-			return nil, record, err
-		}
-		// Immediately reconstruct the request using the validation context
-		req = req.WithContext(ctx)
-		if va.userAgent != "" {
-			req.Header.Set("User-Agent", va.userAgent)
-		}
-		// Some of our users use mod_security. Mod_security sees a lack of Accept
-		// headers as bot behavior and rejects requests. While this is a bug in
-		// mod_security's rules (given that the HTTP specs disagree with that
-		// requirement), we add the Accept header now in order to fix our
-		// mod_security users' mysterious breakages. See
-		// <https://github.com/SpiderLabs/owasp-modsecurity-crs/issues/265> and
-		// <https://github.com/letsencrypt/boulder/issues/1019>. This was done
-		// because it's a one-line fix with no downside. We're not likely to want to
-		// do many more things to satisfy misunderstandings around HTTP.
-		req.Header.Set("Accept", "*/*")
+	dialer := &preresolvedDialer{
+		ip:       targetIP,
+		port:     target.port,
+		hostname: target.host,
 	}
-
-	// Override the request's target URL and Host
-	req.URL = url
-	req.Host = target.host
-	return req, record, nil
+	return dialer, record, nil
 }
 
 // fetchHTTPSimple invokes processHTTPValidation and if an error result is
@@ -397,11 +396,41 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		return nil, nil, err
 	}
 
+	// Create an initial GET Request
+	initialURL := url.URL{
+		Scheme: "http",
+		Host:   host,
+		Path:   path,
+	}
+	initialReq, err := http.NewRequest("GET", initialURL.String(), nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	// Immediately reconstruct the request using the validation context
+	initialReq = initialReq.WithContext(ctx)
+	if va.userAgent != "" {
+		initialReq.Header.Set("User-Agent", va.userAgent)
+	}
+	// Some of our users use mod_security. Mod_security sees a lack of Accept
+	// headers as bot behavior and rejects requests. While this is a bug in
+	// mod_security's rules (given that the HTTP specs disagree with that
+	// requirement), we add the Accept header now in order to fix our
+	// mod_security users' mysterious breakages. See
+	// <https://github.com/SpiderLabs/owasp-modsecurity-crs/issues/265> and
+	// <https://github.com/letsencrypt/boulder/issues/1019>. This was done
+	// because it's a one-line fix with no downside. We're not likely to want to
+	// do many more things to satisfy misunderstandings around HTTP.
+	initialReq.Header.Set("Accept", "*/*")
+
 	// Set up the initial validation request and a base validation record
-	initialReq, baseRecord, err := va.setupHTTPValidation(ctx, nil, target)
+	dialer, baseRecord, err := va.setupHTTPValidation(ctx, initialReq.URL.String(), target)
 	if err != nil {
 		return nil, []core.ValidationRecord{}, err
 	}
+
+	// Build a transport for this validation that will use the preresolvedDialer's
+	// DialContext function
+	transport := httpTransport(dialer.DialContext)
 
 	va.log.AuditInfof("Attempting to validate HTTP-01 for %q with GET to %q",
 		initialReq.Host, initialReq.URL.String())
@@ -435,28 +464,34 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 			redirQuery = req.URL.RawQuery
 		}
 
-		// Setup a validation target for the redirect host. This will resolve IP
+		// Create a validation target for the redirect host. This will resolve IP
 		// addresses for the host explicitly.
 		redirTarget, err := va.newHTTPValidationTarget(ctx, redirHost, redirPort, redirPath, redirQuery)
 		if err != nil {
 			return err
 		}
 
-		// Mutate the existing redirect request to use a URL and Host based on the
-		// explicitly resolved target IPs. This will also give us a validationRecord
-		// for the redirect which we should append to the records.
-		_, redirRecord, err := va.setupHTTPValidation(ctx, req, redirTarget)
+		// Setup validation for the target. This will produce a preresolved dialer we can
+		// assign to the client transport in order to connect to the redirect target using
+		// the IP address we selected.
+		redirDialer, redirRecord, err := va.setupHTTPValidation(ctx, req.URL.String(), redirTarget)
 		records = append(records, redirRecord)
 		if err != nil {
 			return err
 		}
 		va.log.Debugf("following redirect to host %q url %q\n", req.Host, req.URL.String())
+		// Replace the transport's DialContext with the new preresolvedDialer for
+		// the redirect.
+		transport.DialContext = redirDialer.DialContext
 		return nil
 	}
 
-	// Create a new HTTP client and check HTTP redirects it encounters with
-	// processRedirect
-	client := newHTTPClient(processRedirect)
+	// Create a new HTTP client configured to use the customized transport and
+	// to check HTTP redirects encountered with processRedirect
+	client := http.Client{
+		Transport:     transport,
+		CheckRedirect: processRedirect,
+	}
 
 	// Make the initial validation request. This may result in redirects being
 	// followed.
@@ -472,15 +507,18 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 
 		// setup another validation to retry the target with the new IP and append
 		// the retry record.
-		retryReq, retryRecord, err := va.setupHTTPValidation(ctx, nil, target)
+		retryDialer, retryRecord, err := va.setupHTTPValidation(ctx, initialReq.URL.String(), target)
 		records = append(records, retryRecord)
 		if err != nil {
 			return nil, records, err
 		}
 		va.metrics.http01Fallbacks.Inc()
+		// Replace the transport's dialer with the preresolvedDialer for the retry
+		// host.
+		transport.DialContext = retryDialer.DialContext
 
 		// Perform the retry
-		httpResponse, err = client.Do(retryReq)
+		httpResponse, err = client.Do(initialReq)
 		// If the retry still failed there isn't anything more to do, return the
 		// error immediately.
 		if err != nil {
