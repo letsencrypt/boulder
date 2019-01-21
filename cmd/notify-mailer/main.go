@@ -110,13 +110,22 @@ func (m *mailer) run() error {
 		return err
 	}
 
-	m.log.Infof("Resolving destination %d destination addresses", len(m.destinations))
+	m.log.Infof("Resolving %d destination addresses", len(m.destinations))
 	addressesToRecipients, err := m.resolveEmailAddresses()
 	if err != nil {
 		return err
 	}
 	m.log.Infof("Resolved destination addresses. %d accounts became %d addresses.",
 		len(m.destinations), len(addressesToRecipients))
+	var biggest int
+	var biggestAddress string
+	for k, v := range addressesToRecipients {
+		if len(v) > biggest {
+			biggest = len(v)
+			biggestAddress = k
+		}
+	}
+	m.log.Infof("Most frequent address %q had %d accounts", biggestAddress, biggest)
 
 	err = m.mailer.Connect()
 	if err != nil {
@@ -235,7 +244,7 @@ type recipient struct {
 type emailToRecipientMap map[string][]recipient
 
 // readRecipientsList reads a CSV filename and parses that file into a list of
-// recipient structs. Columns after the first are parsed into a per-recipient
+// recipient structs. It puts any columns after the first into a per-recipient
 // map from column name -> value.
 func readRecipientsList(filename string) ([]recipient, error) {
 	f, err := os.Open(filename)
@@ -298,7 +307,7 @@ fields to be interpolated into the email template:
 The additional fields will be interpolated with Golang templating, e.g.:
 
   Your last issuance on each account was:
-		{{ range . }} {{ .Extra.domainName }}
+		{{ range . }} {{ .Extra.lastIssuance }}
 		{{ end }}
 
 To help the operator gain confidence in the mailing run before committing fully
@@ -341,8 +350,7 @@ Examples:
   notify-mailer -config test/config/notify-mailer.json
     -body cmd/notify-mailer/testdata/test_msg_body.txt -from hello@goodbye.com
     -recipientList cmd/notify-mailer/testdata/test_msg_recipients.csv -subject "Hello!"
-    -sleep 10s
-		-start example@example.com -end example@example.comX
+    -start example@example.com -end example@example.comX
 
   Send the message starting with example@example.com and emailing every address that's
 	alphabetically higher:
@@ -350,8 +358,7 @@ Examples:
   notify-mailer -config test/config/notify-mailer.json 
     -body cmd/notify-mailer/testdata/test_msg_body.txt -from hello@goodbye.com 
     -recipientList cmd/notify-mailer/testdata/test_msg_recipients.csv -subject "Hello!"
-    -sleep 10s
-		-start example@example.com
+    -start example@example.com
 
 Required arguments:
 - body
