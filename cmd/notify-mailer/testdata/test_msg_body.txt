@@ -1,4 +1,4 @@
-This is a test message body.
+This is a test message body regarding {{ .domainName }}
 
 Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus non est in enim
 tincidunt accumsan. Aenean maximus placerat malesuada. Sed semper arcu ac eros
