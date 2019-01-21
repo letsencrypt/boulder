@@ -99,7 +99,7 @@ func (m *mailer) run() error {
 		return err
 	}
 
-	err := m.resolveDestinations()
+	addressesToRecipients, err := m.resolveEmailAddresses()
 	if err != nil {
 		return err
 	}
@@ -114,24 +114,19 @@ func (m *mailer) run() error {
 
 	startTime := m.clk.Now()
 
-	for i, dest := range m.destinations {
-		if dest.address == "" {
-			m.log.Infof("Skipping %d; no address", dest.id)
-			continue
-		}
-		m.printStatus(dest.address, i+1, len(m.destinations), startTime)
-		if strings.TrimSpace(dest.address) == "" {
-			continue
-		}
+	var i int
+	for address, recipients := range addressesToRecipients {
+		i += 1
+		m.printStatus(address, i, len(addressesToRecipients), startTime)
 		var mailBody bytes.Buffer
-		err = m.emailTemplate.Execute(&mailBody, dest.extra)
+		err = m.emailTemplate.Execute(&mailBody, recipients)
 		if err != nil {
 			return err
 		}
 		if mailBody.Len() == 0 {
 			return fmt.Errorf("email body was empty after interpolation.")
 		}
-		err := m.mailer.SendMail([]string{dest.address}, m.subject, mailBody.String())
+		err := m.mailer.SendMail([]string{address}, m.subject, mailBody.String())
 		if err != nil {
 			return err
 		}
@@ -140,11 +135,14 @@ func (m *mailer) run() error {
 	return nil
 }
 
-// Resolves each reg ID to its contact emails, picks one of them, and adds that
-// to the recipient data structure. Note that ACME and Boulder support multiple
-// contact emails, but for the purpose of this mailing tool we only send to one
-// email per account.
-func (m *mailer) resolveDestinations() error {
+// emailToRecipientMap maps from an email address to a list of recipients with
+// that email address.
+type emailToRecipientMap map[string][]recipient
+
+// resolveEmailAddresses looks up the id of each recipient to find that
+// account's email addresses, then adds that recipient to a map from address to
+// recipient struct.
+func (m *mailer) resolveEmailAddresses() (emailToRecipientMap, error) {
 	// If there is no endpoint specified, use the total # of destinations
 	if m.checkpoint.end == 0 || m.checkpoint.end > len(m.destinations) {
 		m.checkpoint.end = len(m.destinations)
@@ -152,17 +150,19 @@ func (m *mailer) resolveDestinations() error {
 
 	// Do not allow a start larger than the # of destinations
 	if m.checkpoint.start > len(m.destinations) {
-		return fmt.Errorf(
+		return nil, fmt.Errorf(
 			"interval start value (%d) is greater than number of destinations (%d)",
 			m.checkpoint.start,
 			len(m.destinations))
 	}
 
-	for i, r := range m.destinations[m.checkpoint.start:m.checkpoint.end] {
+	result := make(emailToRecipientMap, len(m.destinations))
+
+	for _, r := range m.destinations[m.checkpoint.start:m.checkpoint.end] {
 		// Get the email address for the reg ID
 		emails, err := emailsForReg(r.id, m.dbMap)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		for _, email := range emails {
@@ -171,10 +171,11 @@ func (m *mailer) resolveDestinations() error {
 				m.log.Errf("unparseable email for reg ID %d : %q", r.id, email)
 				continue
 			}
-			m.destinations[i].address = parsedEmail.Address
+			addr := parsedEmail.Address
+			result[addr] = append(result[addr], r)
 		}
 	}
-	return nil
+	return result, nil
 }
 
 // Since the only thing we use from gorp is the SelectOne method on the
@@ -217,9 +218,8 @@ func emailsForReg(id int, dbMap dbSelector) ([]string, error) {
 }
 
 type recipient struct {
-	id      int
-	address string
-	extra   map[string]string
+	id    int
+	Extra map[string]string
 }
 
 // readRecipientsList reads a CSV filename and parses that file into a list of
@@ -258,10 +258,10 @@ func readRecipientsList(filename string) ([]recipient, error) {
 		}
 		recip := recipient{
 			id:    id,
-			extra: make(map[string]string),
+			Extra: make(map[string]string),
 		}
 		for i, v := range record[1:] {
-			recip.extra[columnNames[i]] = v
+			recip.Extra[columnNames[i]] = v
 		}
 		results = append(results, recip)
 	}
