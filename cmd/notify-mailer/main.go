@@ -153,7 +153,7 @@ func (m *mailer) run() error {
 		if err != nil {
 			switch err.(type) {
 			case bmail.InvalidRcptError:
-				m.log.Errf("address %q was rejected by server: %s", dest, err)
+				m.log.Errf("address %q was rejected by server: %s", address, err)
 				continue
 			default:
 				return err
