@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"net/mail"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -33,13 +34,15 @@ type mailer struct {
 	subject       string
 	emailTemplate *template.Template
 	destinations  []recipient
-	checkpoint    interval
+	targetRange   interval
 	sleepInterval time.Duration
 }
 
+// interval defines a range of email addresses to send to, alphabetically.
+// The "start" field is inclusive and the "end" field is exclusive.
 type interval struct {
-	start int
-	end   int
+	start string
+	end   string
 }
 
 type regID struct {
@@ -52,13 +55,7 @@ type contactJSON struct {
 }
 
 func (i *interval) ok() error {
-	if i.start < 0 || i.end < 0 {
-		return fmt.Errorf(
-			"interval start (%d) and end (%d) must both be positive integers",
-			i.start, i.end)
-	}
-
-	if i.start > i.end && i.end != 0 {
+	if i.start > i.end {
 		return fmt.Errorf(
 			"interval start value (%d) is greater than end value (%d)",
 			i.start, i.end)
@@ -67,9 +64,13 @@ func (i *interval) ok() error {
 	return nil
 }
 
+func (i *interval) includes(s string) bool {
+	return s >= i.start && s < i.end
+}
+
 func (m *mailer) ok() error {
 	// Make sure the checkpoint range is OK
-	if checkpointErr := m.checkpoint.ok(); checkpointErr != nil {
+	if checkpointErr := m.targetRange.ok(); checkpointErr != nil {
 		return checkpointErr
 	}
 
@@ -94,15 +95,27 @@ func (m *mailer) printStatus(to string, cur, total int, start time.Time) {
 		to, cur, total, completion, elapsed)
 }
 
+func sortAddresses(input emailToRecipientMap) []string {
+	var addresses []string
+	for k, _ := range input {
+		addresses = append(addresses, k)
+	}
+	sort.Strings(addresses)
+	return addresses
+}
+
 func (m *mailer) run() error {
 	if err := m.ok(); err != nil {
 		return err
 	}
 
+	m.log.Infof("Resolving destination %d destination addresses", len(m.destinations))
 	addressesToRecipients, err := m.resolveEmailAddresses()
 	if err != nil {
 		return err
 	}
+	m.log.Infof("Resolved destination addresses. %d accounts became %d addresses.",
+		len(m.destinations), len(addressesToRecipients))
 
 	err = m.mailer.Connect()
 	if err != nil {
@@ -114,8 +127,14 @@ func (m *mailer) run() error {
 
 	startTime := m.clk.Now()
 
-	var i int
-	for address, recipients := range addressesToRecipients {
+	sortedAddresses := sortAddresses(addressesToRecipients)
+
+	for i, address := range sortedAddresses {
+		if !m.targetRange.includes(address) {
+			m.log.Debugf("skipping %q: out of target range")
+			continue
+		}
+		recipients := addressesToRecipients[address]
 		i += 1
 		m.printStatus(address, i, len(addressesToRecipients), startTime)
 		var mailBody bytes.Buffer
@@ -135,30 +154,13 @@ func (m *mailer) run() error {
 	return nil
 }
 
-// emailToRecipientMap maps from an email address to a list of recipients with
-// that email address.
-type emailToRecipientMap map[string][]recipient
-
 // resolveEmailAddresses looks up the id of each recipient to find that
 // account's email addresses, then adds that recipient to a map from address to
 // recipient struct.
 func (m *mailer) resolveEmailAddresses() (emailToRecipientMap, error) {
-	// If there is no endpoint specified, use the total # of destinations
-	if m.checkpoint.end == 0 || m.checkpoint.end > len(m.destinations) {
-		m.checkpoint.end = len(m.destinations)
-	}
-
-	// Do not allow a start larger than the # of destinations
-	if m.checkpoint.start > len(m.destinations) {
-		return nil, fmt.Errorf(
-			"interval start value (%d) is greater than number of destinations (%d)",
-			m.checkpoint.start,
-			len(m.destinations))
-	}
-
 	result := make(emailToRecipientMap, len(m.destinations))
 
-	for _, r := range m.destinations[m.checkpoint.start:m.checkpoint.end] {
+	for _, r := range m.destinations {
 		// Get the email address for the reg ID
 		emails, err := emailsForReg(r.id, m.dbMap)
 		if err != nil {
@@ -221,6 +223,10 @@ type recipient struct {
 	id    int
 	Extra map[string]string
 }
+
+// emailToRecipientMap maps from an email address to a list of recipients with
+// that email address.
+type emailToRecipientMap map[string][]recipient
 
 // readRecipientsList reads a CSV filename and parses that file into a list of
 // recipient structs. Columns after the first are parsed into a per-recipient
@@ -285,28 +291,27 @@ fields to be interpolated into the email template:
 
 The additional fields will be interpolated with Golang templating, e.g.:
 
-  Your last issuance was {{ .lastIssuance }}
+  Your last issuance on each account was:
+		{{ range . }} {{ .Extra.domainName }}
+		{{ end }}
 
 To help the operator gain confidence in the mailing run before committing fully
-three safety features are supported: dry runs, checkpointing and a sleep
-interval.
+three safety features are supported: dry runs, intervals and a sleep between emails.
 
 The -dryRun=true flag will use a mock mailer that prints message content to
 stdout instead of performing an SMTP transaction with a real mailserver. This
 can be used when the initial parameters are being tweaked to ensure no real
 emails are sent. Using -dryRun=false will send real email.
 
-Checkpointing is supported via the -start and -end arguments. The -start flag
-specifies which registration ID of the -toFile to start processing at.
-Similarly, the -end flag specifies which registration ID of the -toFile to end
-processing at. In combination these can be used to process only a fixed number
-of recipients at a time, and to resume mailing after early termination.
+Intervals supported via the -start and -end arguments. Only email addresses that
+are alphabetically between the -start and -end strings will be sent. This can be used
+to break up sending into batches, or more likely to resume sending if a batch is killed,
+without resending messages that have already been sent. The -start flag is inclusive and
+the -end flag is exclusive.
 
-Notify-mailer will de-duplicate email addresses, but only within the range given
-by the -start and -end arguments. For instance, if you split up an email job into
-five batches using -start and -end, there's a possibility that a given email address
-may receive up to five emails, if that email address is registered across multiple
-accounts.
+Notify-mailer de-duplicates email addresses and groups together the resulting recipient
+structs, so a person who has multiple accounts using the same address will only receive
+one email.
 
 During mailing the -sleep argument is used to space out individual messages.
 This can be used to ensure that the mailing happens at a steady pace with ample
@@ -325,20 +330,22 @@ Examples:
     -recipientList cmd/notify-mailer/testdata/test_msg_recipients.csv -subject "Hello!"
     -sleep 10s -dryRun=false
 
-  Do the same, but only to the first 100 recipient IDs:
+  Do the same, but only to example@example.com:
 
   notify-mailer -config test/config/notify-mailer.json
     -body cmd/notify-mailer/testdata/test_msg_body.txt -from hello@goodbye.com
     -recipientList cmd/notify-mailer/testdata/test_msg_recipients.csv -subject "Hello!"
-    -sleep 10s -end 100 -dryRun=false
+    -sleep 10s
+		-start example@example.com -end example@example.comX
 
-  Send the message, but start at the 200th ID of the recipients file, ending after
-  100 registration IDs, and as a dry-run:
+  Send the message starting with example@example.com and emailing every address that's
+	alphabetically higher:
 
   notify-mailer -config test/config/notify-mailer.json 
     -body cmd/notify-mailer/testdata/test_msg_body.txt -from hello@goodbye.com 
     -recipientList cmd/notify-mailer/testdata/test_msg_recipients.csv -subject "Hello!"
-    -sleep 10s -start 200 -end 300 -dryRun=true
+    -sleep 10s
+		-start example@example.com
 
 Required arguments:
 - body
@@ -353,9 +360,9 @@ func main() {
 	recipientListFile := flag.String("recipientList", "", "File containing a CSV list of registration IDs and extra info.")
 	bodyFile := flag.String("body", "", "File containing the email body in Golang template format.")
 	dryRun := flag.Bool("dryRun", true, "Whether to do a dry run.")
-	sleep := flag.Duration("sleep", 60*time.Second, "How long to sleep between emails.")
-	start := flag.Int("start", 0, "Line of input file to start from.")
-	end := flag.Int("end", 99999999, "Line of input file to end before.")
+	sleep := flag.Duration("sleep", 500*time.Millisecond, "How long to sleep between emails.")
+	start := flag.String("start", "", "Alphabetically lowest email address to include.")
+	end := flag.String("end", "\xFF", "Alphabetically highest email address (exclusive).")
 	reconnBase := flag.Duration("reconnectBase", 1*time.Second, "Base sleep duration between reconnect attempts")
 	reconnMax := flag.Duration("reconnectMax", 5*60*time.Second, "Max sleep duration between reconnect attempts after exponential backoff")
 	type config struct {
@@ -410,13 +417,14 @@ func main() {
 	recipients, err := readRecipientsList(*recipientListFile)
 	cmd.FailOnError(err, fmt.Sprintf("Reading %q", *recipientListFile))
 
-	checkpointRange := interval{
+	targetRange := interval{
 		start: *start,
 		end:   *end,
 	}
 
 	var mailClient bmail.Mailer
 	if *dryRun {
+		log.Infof("Doing a dry run.")
 		mailClient = bmail.NewDryRun(*address, log)
 	} else {
 		smtpPassword, err := cfg.NotifyMailer.PasswordConfig.Pass()
@@ -442,7 +450,7 @@ func main() {
 		subject:       *subject,
 		destinations:  recipients,
 		emailTemplate: template,
-		checkpoint:    checkpointRange,
+		targetRange:   targetRange,
 		sleepInterval: *sleep,
 	}
 
