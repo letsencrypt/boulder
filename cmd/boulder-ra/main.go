@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -120,7 +119,7 @@ func main() {
 	cmd.FailOnError(err, "Couldn't create PA")
 
 	if c.RA.HostnamePolicyFile == "" {
-		cmd.FailOnError(fmt.Errorf("HostnamePolicyFile must be provided."), "")
+		cmd.Fail("HostnamePolicyFile must be provided.")
 	}
 	err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
@@ -165,14 +164,14 @@ func main() {
 	// enviromnent Boulder is built for. Exit early if there is no CTLogGroups2
 	// configured.
 	if len(c.RA.CTLogGroups2) == 0 {
-		cmd.FailOnError(errors.New("CTLogGroups2 must not be empty"), "")
+		cmd.Fail("CTLogGroups2 must not be empty")
 	}
 
 	for i, g := range c.RA.CTLogGroups2 {
 		// Exit early if any of the log groups specify no logs
 		if len(g.Logs) == 0 {
-			cmd.FailOnError(
-				fmt.Errorf("CTLogGroups2 index %d specifies no logs", i), "")
+			cmd.Fail(
+				fmt.Sprintf("CTLogGroups2 index %d specifies no logs", i))
 		}
 		for _, l := range g.Logs {
 			if l.TemporalSet != nil {
