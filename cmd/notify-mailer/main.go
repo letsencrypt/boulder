@@ -153,11 +153,11 @@ func (m *mailer) run() error {
 		m.printStatus(address, i, len(addressesToRecipients), startTime)
 		var mailBody bytes.Buffer
 		err = m.emailTemplate.Execute(&mailBody, recipients)
-		if mailBody.Len() == 0 {
-			return fmt.Errorf("email body was empty after interpolation.")
-		}
 		if err != nil {
 			return err
+		}
+		if mailBody.Len() == 0 {
+			return fmt.Errorf("email body was empty after interpolation.")
 		}
 		err := m.mailer.SendMail([]string{address}, m.subject, mailBody.String())
 		if err != nil {
