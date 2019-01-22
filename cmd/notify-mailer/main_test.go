@@ -3,6 +3,8 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"testing"
 	"text/template"
 	"time"
@@ -33,6 +35,39 @@ func TestIntervalOK(t *testing.T) {
 	badInterval := interval{start: "bb", end: "aa"}
 	if err := badInterval.ok(); err == nil {
 		t.Errorf("Bad interval %#v was considered ok", badInterval)
+	}
+}
+
+// makeFile writes the given content into a temporary file, returning
+// the filename (which should be deleted when done).
+func makeFile(content string) (string, error) {
+	tmpfile, err := ioutil.TempFile("", "")
+	if err != nil {
+		return "", err
+	}
+
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		return "", err
+	}
+	if err := tmpfile.Close(); err != nil {
+		return "", err
+	}
+	return tmpfile.Name(), nil
+}
+
+func TestReadRecipientsListMismatchedColumns(t *testing.T) {
+	bad := `id, domainName, date
+10,example.com,2018-11-21
+23,example.net`
+	badFileName, err := makeFile(bad)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(badFileName)
+	recipients, err := readRecipientsList(badFileName)
+	if err == nil {
+		t.Fatalf("reading bad CSV file should have errored, but got %v",
+			recipients)
 	}
 }
 

@@ -141,6 +141,7 @@ func (m *mailer) run() error {
 	startTime := m.clk.Now()
 
 	sortedAddresses := sortAddresses(addressesToRecipients)
+	numAddresses := len(addressesToRecipients)
 
 	var sent int
 	for i, address := range sortedAddresses {
@@ -149,8 +150,7 @@ func (m *mailer) run() error {
 			continue
 		}
 		recipients := addressesToRecipients[address]
-		i++
-		m.printStatus(address, i, len(addressesToRecipients), startTime)
+		m.printStatus(address, i+1, numAddresses, startTime)
 		var mailBody bytes.Buffer
 		err = m.emailTemplate.Execute(&mailBody, recipients)
 		if err != nil {
@@ -292,6 +292,10 @@ func readRecipientsList(filename string) ([]recipient, error) {
 		}
 		if len(record) == 0 {
 			return nil, fmt.Errorf("empty line in CSV")
+		}
+		if len(record) != len(columnNames)+1 {
+			return nil, fmt.Errorf("Number of columns in CSV line didn't match header columns."+
+				" Got %d, expected %d. Line: %v", len(record), len(columnNames)+1, record)
 		}
 		id, err := strconv.Atoi(record[0])
 		if err != nil {
