@@ -115,6 +115,9 @@ func (m *mailer) run() error {
 	if err != nil {
 		return err
 	}
+	if len(addressesToRecipients) == 0 {
+		return fmt.Errorf("zero recipients after looking up addresses?")
+	}
 	m.log.Infof("Resolved destination addresses. %d accounts became %d addresses.",
 		len(m.destinations), len(addressesToRecipients))
 	var biggest int
@@ -125,7 +128,7 @@ func (m *mailer) run() error {
 			biggestAddress = k
 		}
 	}
-	m.log.Infof("Most frequent address %q had %d accounts", biggestAddress, biggest)
+	m.log.Infof("Most frequent address %q had %d associated accounts", biggestAddress, biggest)
 
 	err = m.mailer.Connect()
 	if err != nil {
@@ -146,10 +149,17 @@ func (m *mailer) run() error {
 			continue
 		}
 		recipients := addressesToRecipients[address]
-		i += 1
+		i++
 		m.printStatus(address, i, len(addressesToRecipients), startTime)
 		var mailBody bytes.Buffer
 		err = m.emailTemplate.Execute(&mailBody, recipients)
+		if mailBody.Len() == 0 {
+			return fmt.Errorf("email body was empty after interpolation.")
+		}
+		if err != nil {
+			return err
+		}
+		err := m.mailer.SendMail([]string{address}, m.subject, mailBody.String())
 		if err != nil {
 			switch err.(type) {
 			case bmail.InvalidRcptError:
@@ -159,18 +169,11 @@ func (m *mailer) run() error {
 				return err
 			}
 		}
-		if mailBody.Len() == 0 {
-			return fmt.Errorf("email body was empty after interpolation.")
-		}
-		err := m.mailer.SendMail([]string{address}, m.subject, mailBody.String())
-		if err != nil {
-			return err
-		}
 		sent++
 		m.clk.Sleep(m.sleepInterval)
 	}
 	if sent == 0 {
-		return fmt.Errorf("skipped all addresses. bad interval?")
+		return fmt.Errorf("sent zero messages. Check recipients and configured interval")
 	}
 	return nil
 }
@@ -240,6 +243,8 @@ func emailsForReg(id int, dbMap dbSelector) ([]string, error) {
 	return addresses, nil
 }
 
+// recipient represents one line in the input CSV, containing an account and
+// (optionally) some extra fields related to that account.
 type recipient struct {
 	id    int
 	Extra map[string]string
@@ -262,8 +267,11 @@ func readRecipientsList(filename string) ([]recipient, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(record) == 0 {
+		return nil, fmt.Errorf("no entries in CSV")
+	}
 	if record[0] != "id" {
-		return nil, fmt.Errorf("First field of CSV input must be an ID.")
+		return nil, fmt.Errorf("first field of CSV input must be an ID.")
 	}
 	var columnNames []string
 	for _, v := range record[1:] {
@@ -278,6 +286,9 @@ func readRecipientsList(filename string) ([]recipient, error) {
 		}
 		if err != nil {
 			return nil, err
+		}
+		if len(record) == 0 {
+			return nil, fmt.Errorf("empty line in CSV")
 		}
 		id, err := strconv.Atoi(record[0])
 		if err != nil {
@@ -428,7 +439,7 @@ func main() {
 	body, err := ioutil.ReadFile(*bodyFile)
 	cmd.FailOnError(err, fmt.Sprintf("Reading %q", *bodyFile))
 	template, err := template.New("email").Parse(string(body))
-	cmd.FailOnError(err, "Parsing template")
+	cmd.FailOnError(err, fmt.Sprintf("Parsing template %q", *bodyFile))
 
 	address, err := mail.ParseAddress(*from)
 	cmd.FailOnError(err, fmt.Sprintf("Parsing %q", *from))
