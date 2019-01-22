@@ -69,8 +69,6 @@ type config struct {
 		// in a group and the first SCT returned will be used. This allows
 		// us to comply with Chrome CT policy which requires one SCT from a
 		// Google log and one SCT from any other log included in their policy.
-		// NOTE: CTLogGroups is depreciated in favor of CTLogGroups2.
-		CTLogGroups  [][]cmd.LogDescription
 		CTLogGroups2 []cmd.CTGroup
 		// InformationalCTLogs are a set of CT logs we will always submit to
 		// but won't ever use the SCTs from. This may be because we want to
@@ -121,7 +119,7 @@ func main() {
 	cmd.FailOnError(err, "Couldn't create PA")
 
 	if c.RA.HostnamePolicyFile == "" {
-		cmd.FailOnError(fmt.Errorf("HostnamePolicyFile must be provided."), "")
+		cmd.Fail("HostnamePolicyFile must be provided.")
 	}
 	err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
@@ -161,7 +159,20 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 	pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
 
-	for _, g := range c.RA.CTLogGroups2 {
+	// Boulder's components assume that there will always be CT logs configured.
+	// Issuing a certificate without SCTs embedded is a miss-issuance event in the
+	// enviromnent Boulder is built for. Exit early if there is no CTLogGroups2
+	// configured.
+	if len(c.RA.CTLogGroups2) == 0 {
+		cmd.Fail("CTLogGroups2 must not be empty")
+	}
+
+	for i, g := range c.RA.CTLogGroups2 {
+		// Exit early if any of the log groups specify no logs
+		if len(g.Logs) == 0 {
+			cmd.Fail(
+				fmt.Sprintf("CTLogGroups2 index %d specifies no logs", i))
+		}
 		for _, l := range g.Logs {
 			if l.TemporalSet != nil {
 				err := l.Setup()
