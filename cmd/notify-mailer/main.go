@@ -282,6 +282,9 @@ func readRecipientsList(filename string) ([]recipient, error) {
 	for {
 		record, err := reader.Read()
 		if err == io.EOF {
+			if len(results) == 0 {
+				return nil, fmt.Errorf("no entries after the header in CSV")
+			}
 			return results, nil
 		}
 		if err != nil {
