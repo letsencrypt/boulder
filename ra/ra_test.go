@@ -293,6 +293,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra.VA = va
 	ra.CA = ca
 	ra.PA = pa
+	ra.reuseValidAuthz = true
 
 	AuthzInitial.RegistrationID = Registration.ID
 
@@ -732,6 +733,7 @@ func TestReuseAuthorizationFaultySA(t *testing.T) {
 func TestReuseAuthorizationDisabled(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
+	ra.reuseValidAuthz = false
 
 	// Create one finalized authorization
 	finalAuthz := AuthzInitial
@@ -928,6 +930,7 @@ func TestPerformValidationExpired(t *testing.T) {
 func TestPerformValidationAlreadyValid(t *testing.T) {
 	va, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
+	ra.reuseValidAuthz = false
 
 	// Create a finalized authorization
 	finalAuthz := AuthzInitial
@@ -2363,6 +2366,27 @@ func (sa *mockSAUnsafeAuthzReuse) GetAuthorizations(
 				},
 			},
 		},
+		"zombo.com": &core.Authorization{
+			// A static fake ID we can check for in a unit test
+			ID:             "reused-valid-authz",
+			Identifier:     core.AcmeIdentifier{Type: "dns", Value: "zombo.com"},
+			RegistrationID: *req.RegistrationID,
+			Combinations:   [][]int{{0}, {1}},
+			// Authz is valid
+			Status: "valid",
+			Challenges: []core.Challenge{
+				// TLS-SNI-01 challenge is valid
+				core.Challenge{
+					Type:   core.ChallengeTypeTLSSNI01,
+					Status: core.StatusValid,
+				},
+				// DNS-01 challenge is pending
+				core.Challenge{
+					Type:   core.ChallengeTypeDNS01,
+					Status: core.StatusPending,
+				},
+			},
+		},
 	}
 	// We can't easily access sa.authzMapToPB so we "inline" it for the mock :-)
 	resp := &sapb.Authorizations{}
@@ -2423,6 +2447,37 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 	test.AssertEquals(t, len(order.Authorizations), 1)
 	// It should *not* be the bad authorization!
 	test.AssertNotEquals(t, order.Authorizations[0], "bad-bad-not-good")
+}
+
+func TestNewOrderAuthzReuseDisabled(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ctx := context.Background()
+	regA := int64(1)
+	names := []string{"zombo.com"}
+
+	// Use a mock SA that always returns a valid TLS-SNI-01 authz for the name
+	// "zombo.com"
+	ra.SA = &mockSAUnsafeAuthzReuse{}
+
+	// Disable authz reuse
+	ra.reuseValidAuthz = false
+
+	// Create an initial request with regA and names
+	orderReq := &rapb.NewOrderRequest{
+		RegistrationID: &regA,
+		Names:          names,
+	}
+
+	// Create an order for that request
+	order, err := ra.NewOrder(ctx, orderReq)
+	// It shouldn't fail
+	test.AssertNotError(t, err, "Adding an initial order for regA failed")
+	// There should be one authorization
+	test.AssertEquals(t, len(order.Authorizations), 1)
+	// It should *not* be the bad authorization that indicates reuse!
+	test.AssertNotEquals(t, order.Authorizations[0], "reused-valid-authz")
 }
 
 func TestNewOrderWildcard(t *testing.T) {
