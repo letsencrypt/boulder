@@ -2,6 +2,12 @@
 
 apt-get update
 
+# Install Go.
+url="https://dl.google.com/go/go${GO_VERSION_TO_INSTALL}.linux-amd64.tar.gz"
+wget -O go.tgz "$url"; \
+tar -C /usr/local -xzf go.tgz; \
+rm go.tgz;
+
 # Job %1 - Start a background job to install system deps
 apt-get install -y --no-install-recommends \
   libltdl-dev \
