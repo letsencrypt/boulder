@@ -2,11 +2,11 @@ package main
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"reflect"
+	"os"
 	"testing"
+	"text/template"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -16,88 +16,97 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestUniq(t *testing.T) {
-	input := []string{"c", "d", "c", "c", "e", "d", "e", "e"}
-	expected := []string{"c", "d", "e"}
-	output := uniq(input)
-	if !reflect.DeepEqual(output, expected) {
-		t.Errorf("Expected %s, got %s", expected, output)
-	}
-}
-
-func TestCheckpointIntervalOK(t *testing.T) {
+func TestIntervalOK(t *testing.T) {
 	// Test a number of intervals know to be OK, ensure that no error is
 	// produced when calling `ok()`.
 	okCases := []struct {
 		testInterval interval
 	}{
 		{interval{}},
-		{interval{start: 10}},
-		{interval{end: 10}},
-		{interval{start: 10, end: 15}},
+		{interval{start: "aa", end: "\xFF"}},
+		{interval{end: "aa"}},
+		{interval{start: "aa", end: "bb"}},
 	}
 	for _, testcase := range okCases {
 		err := testcase.testInterval.ok()
 		test.AssertNotError(t, err, "valid interval produced ok() error")
 	}
 
-	// Test a number of intervals known to be invalid, ensure that the produced
-	// error has the expected message.
-	failureCases := []struct {
-		testInterval  interval
-		expectedError string
-	}{
-		{interval{start: -1}, "interval start (-1) and end (0) must both be positive integers"},
-		{interval{end: -1}, "interval start (0) and end (-1) must both be positive integers"},
-		{interval{start: -1, end: -1}, "interval start (-1) and end (-1) must both be positive integers"},
-		{interval{start: 999, end: 10}, "interval start value (999) is greater than end value (10)"},
+	badInterval := interval{start: "bb", end: "aa"}
+	if err := badInterval.ok(); err == nil {
+		t.Errorf("Bad interval %#v was considered ok", badInterval)
 	}
-	for _, testcase := range failureCases {
-		err := testcase.testInterval.ok()
-		test.AssertNotNil(t, err, fmt.Sprintf("Invalid interval %#v was ok", testcase.testInterval))
-		test.AssertEquals(t, err.Error(), testcase.expectedError)
+}
+
+// makeFile writes the given content into a temporary file, returning
+// the filename (which should be deleted when done).
+func makeFile(content string) (string, error) {
+	tmpfile, err := ioutil.TempFile("", "")
+	if err != nil {
+		return "", err
+	}
+
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		return "", err
+	}
+	if err := tmpfile.Close(); err != nil {
+		return "", err
+	}
+	return tmpfile.Name(), nil
+}
+
+func TestReadRecipientsListMismatchedColumns(t *testing.T) {
+	bad := `id, domainName, date
+10,example.com,2018-11-21
+23,example.net`
+	badFileName, err := makeFile(bad)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(badFileName)
+	recipients, err := readRecipientsList(badFileName)
+	if err == nil {
+		t.Fatalf("reading bad CSV file should have errored, but got %v",
+			recipients)
 	}
 }
 
 func TestSleepInterval(t *testing.T) {
 	const sleepLen = 10
-	const numMessages = 3
 	mc := &mocks.Mailer{}
 	dbMap := mockEmailResolver{}
-
-	testDestinationsBody, err := ioutil.ReadFile("testdata/test_msg_recipients.txt")
-	test.AssertNotError(t, err, "failed to read testdata/test_msg_recipients.txt")
-
+	tmpl := template.Must(template.New("letter").Parse("an email body"))
+	recipients := []recipient{{id: 1}, {id: 2}, {id: 3}}
 	// Set up a mock mailer that sleeps for `sleepLen` seconds
 	m := &mailer{
 		log:           blog.UseMock(),
 		mailer:        mc,
-		emailTemplate: "",
+		emailTemplate: tmpl,
 		sleepInterval: sleepLen * time.Second,
-		checkpoint:    interval{start: 0, end: numMessages},
+		targetRange:   interval{start: "", end: "\xFF"},
 		clk:           newFakeClock(t),
-		destinations:  testDestinationsBody,
+		destinations:  recipients,
 		dbMap:         dbMap,
 	}
 
 	// Call run() - this should sleep `sleepLen` per destination address
 	// After it returns, we expect (sleepLen * number of destinations) seconds has
 	// elapsed
-	err = m.run()
+	err := m.run()
 	test.AssertNotError(t, err, "error calling mailer run()")
 	expectedEnd := newFakeClock(t)
-	expectedEnd.Add(time.Second * time.Duration(sleepLen*numMessages))
+	expectedEnd.Add(time.Second * time.Duration(sleepLen*len(recipients)))
 	test.AssertEquals(t, m.clk.Now(), expectedEnd.Now())
 
 	// Set up a mock mailer that doesn't sleep at all
 	m = &mailer{
 		log:           blog.UseMock(),
 		mailer:        mc,
-		emailTemplate: "",
+		emailTemplate: tmpl,
 		sleepInterval: 0,
-		checkpoint:    interval{start: 0, end: 3},
+		targetRange:   interval{end: "\xFF"},
 		clk:           newFakeClock(t),
-		destinations:  testDestinationsBody,
+		destinations:  recipients,
 		dbMap:         dbMap,
 	}
 
@@ -109,36 +118,33 @@ func TestSleepInterval(t *testing.T) {
 	test.AssertEquals(t, m.clk.Now(), expectedEnd.Now())
 }
 
-func TestMailCheckpointing(t *testing.T) {
+func TestMailIntervals(t *testing.T) {
 	const testSubject = "Test Subject"
 	dbMap := mockEmailResolver{}
 
-	testDestinationsBody, err := ioutil.ReadFile("testdata/test_msg_recipients.txt")
-	test.AssertNotError(t, err, "failed to read testdata/test_msg_recipients.txt")
+	tmpl := template.Must(template.New("letter").Parse("an email body"))
+	recipients := []recipient{{id: 1}, {id: 2}, {id: 3}}
 
-	testBody, err := ioutil.ReadFile("testdata/test_msg_body.txt")
-	test.AssertNotError(t, err, "failed to read testdata/test_msg_body.txt")
 	mc := &mocks.Mailer{}
 
-	// Create a mailer with a checkpoint interval larger than the number of
-	// destinations
+	// Create a mailer with a checkpoint interval larger than any of the
+	// destination email addresses.
 	m := &mailer{
 		log:           blog.UseMock(),
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
-		destinations:  testDestinationsBody,
-		emailTemplate: string(testBody),
-		checkpoint:    interval{start: 99999, end: 900000},
+		destinations:  recipients,
+		emailTemplate: tmpl,
+		targetRange:   interval{start: "\xFF", end: "\xFF\xFF"},
 		sleepInterval: 0,
 		clk:           newFakeClock(t),
 	}
 
 	// Run the mailer. It should produce an error about the interval start
 	mc.Clear()
-	err = m.run()
+	err := m.run()
 	test.AssertEquals(t, len(mc.Messages), 0)
-	test.AssertEquals(t, err.Error(), "interval start value (99999) is greater than number of destinations (7)")
 
 	// Create a mailer with a negative sleep interval
 	m = &mailer{
@@ -146,9 +152,9 @@ func TestMailCheckpointing(t *testing.T) {
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
-		destinations:  testDestinationsBody,
-		emailTemplate: string(testBody),
-		checkpoint:    interval{},
+		destinations:  recipients,
+		emailTemplate: tmpl,
+		targetRange:   interval{},
 		sleepInterval: -10,
 		clk:           newFakeClock(t),
 	}
@@ -159,96 +165,54 @@ func TestMailCheckpointing(t *testing.T) {
 	test.AssertEquals(t, len(mc.Messages), 0)
 	test.AssertEquals(t, err.Error(), "sleep interval (-10) is < 0")
 
-	// Create a mailer with a checkpoint interval starting after 4 destinations from
-	// the start of the file
+	// Create a mailer with an interval starting with a specific email address.
+	// It should send email to that address and others alphabetically higher.
 	m = &mailer{
 		log:           blog.UseMock(),
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
-		destinations:  testDestinationsBody,
-		emailTemplate: string(testBody),
-		checkpoint:    interval{start: 4},
-		sleepInterval: 0,
-		clk:           newFakeClock(t),
-	}
-
-	// Run the mailer. Three messages should have been produced, one to
-	// you've.got.mail@example.com (id 5 of the fake DB), one to
-	// mail@example.com (id 6), and one to example-example-example@example.com (id 4).
-	mc.Clear()
-	err = m.run()
-	test.AssertNotError(t, err, "run() produced an error")
-	test.AssertEquals(t, len(mc.Messages), 3)
-	test.AssertEquals(t, mocks.MailerMessage{
-		To:      "youve.got.mail@example.com",
-		Subject: testSubject,
-		Body:    string(testBody),
-	}, mc.Messages[0])
-	test.AssertEquals(t, mocks.MailerMessage{
-		To:      "mail@example.com",
-		Subject: testSubject,
-		Body:    string(testBody),
-	}, mc.Messages[1])
-	test.AssertEquals(t, mocks.MailerMessage{
-		To:      "example-example-example@example.com",
-		Subject: testSubject,
-		Body:    string(testBody),
-	}, mc.Messages[2])
-
-	// Create a mailer with a checkpoint interval ending after 3 destinations
-	m = &mailer{
-		log:           blog.UseMock(),
-		mailer:        mc,
-		dbMap:         dbMap,
-		subject:       testSubject,
-		destinations:  testDestinationsBody,
-		emailTemplate: string(testBody),
-		checkpoint:    interval{end: 3},
-		sleepInterval: 0,
-		clk:           newFakeClock(t),
-	}
-
-	// Run the mailer. Three messages should have been produced, one to
-	// example@example.com (ID 1), one to test-example-updated@example.com (ID 2),
-	// and one to test-test-test@example.com (ID 3)
-	mc.Clear()
-	err = m.run()
-	test.AssertNotError(t, err, "run() produced an error")
-	test.AssertEquals(t, len(mc.Messages), 3)
-	test.AssertEquals(t, mocks.MailerMessage{
-		To:      "example@example.com",
-		Subject: testSubject,
-		Body:    string(testBody),
-	}, mc.Messages[0])
-	test.AssertEquals(t, mocks.MailerMessage{
-		To:      "test-example-updated@example.com",
-		Subject: testSubject,
-		Body:    string(testBody),
-	}, mc.Messages[1])
-	test.AssertEquals(t, mocks.MailerMessage{
-		To:      "test-test-test@example.com",
-		Subject: testSubject,
-		Body:    string(testBody),
-	}, mc.Messages[2])
-
-	// Create a mailer with a checkpoint interval covering 2 destinations from the
-	// middle of the file
-	m = &mailer{
-		log:           blog.UseMock(),
-		mailer:        mc,
-		dbMap:         dbMap,
-		subject:       testSubject,
-		destinations:  testDestinationsBody,
-		emailTemplate: string(testBody),
-		checkpoint:    interval{start: 3, end: 5},
+		destinations:  []recipient{{id: 1}, {id: 2}, {id: 3}, {id: 4}},
+		emailTemplate: tmpl,
+		targetRange:   interval{start: "test-example-updated@example.com", end: "\xFF"},
 		sleepInterval: 0,
 		clk:           newFakeClock(t),
 	}
 
 	// Run the mailer. Two messages should have been produced, one to
-	// example-example-example@example.com (ID 4) and another
-	// one destined to youve.got.mail@example.com (ID 5)
+	// test-example-updated@example.com (beginning of the range),
+	// and one to test-test-test@example.com.
+	mc.Clear()
+	err = m.run()
+	test.AssertNotError(t, err, "run() produced an error")
+	test.AssertEquals(t, len(mc.Messages), 2)
+	test.AssertEquals(t, mocks.MailerMessage{
+		To:      "test-example-updated@example.com",
+		Subject: testSubject,
+		Body:    "an email body",
+	}, mc.Messages[0])
+	test.AssertEquals(t, mocks.MailerMessage{
+		To:      "test-test-test@example.com",
+		Subject: testSubject,
+		Body:    "an email body",
+	}, mc.Messages[1])
+
+	// Create a mailer with a checkpoint interval ending before
+	// "test-example-updated@example.com"
+	m = &mailer{
+		log:           blog.UseMock(),
+		mailer:        mc,
+		dbMap:         dbMap,
+		subject:       testSubject,
+		destinations:  []recipient{{id: 1}, {id: 2}, {id: 3}, {id: 4}},
+		emailTemplate: tmpl,
+		targetRange:   interval{end: "test-example-updated@example.com"},
+		sleepInterval: 0,
+		clk:           newFakeClock(t),
+	}
+
+	// Run the mailer. Two messages should have been produced, one to
+	// example@example.com (ID 1), one to example-example-example@example.com (ID 2)
 	mc.Clear()
 	err = m.run()
 	test.AssertNotError(t, err, "run() produced an error")
@@ -256,28 +220,20 @@ func TestMailCheckpointing(t *testing.T) {
 	test.AssertEquals(t, mocks.MailerMessage{
 		To:      "example-example-example@example.com",
 		Subject: testSubject,
-		Body:    string(testBody),
+		Body:    "an email body",
 	}, mc.Messages[0])
 	test.AssertEquals(t, mocks.MailerMessage{
-		To:      "youve.got.mail@example.com",
+		To:      "example@example.com",
 		Subject: testSubject,
-		Body:    string(testBody),
+		Body:    "an email body",
 	}, mc.Messages[1])
-
 }
 
-func TestMessageContent(t *testing.T) {
+func TestMessageContentStatic(t *testing.T) {
 	// Create a mailer with fixed content
 	const (
-		testSubject     = "Test Subject"
-		testDestination = "example@example.com"
+		testSubject = "Test Subject"
 	)
-	testDestinationsBody, err := ioutil.ReadFile("testdata/test_msg_recipients.txt")
-	test.AssertNotError(t, err, "failed to read testdata/test_msg_recipients.txt")
-
-	testBody, err := ioutil.ReadFile("testdata/test_msg_body.txt")
-	test.AssertNotError(t, err, "failed to read testdata/test_msg_body.txt")
-
 	dbMap := mockEmailResolver{}
 	mc := &mocks.Mailer{}
 	m := &mailer{
@@ -285,22 +241,122 @@ func TestMessageContent(t *testing.T) {
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
-		destinations:  testDestinationsBody,
-		emailTemplate: string(testBody),
-		checkpoint:    interval{start: 0, end: 1},
+		destinations:  []recipient{{id: 1}},
+		emailTemplate: template.Must(template.New("letter").Parse("an email body")),
+		targetRange:   interval{end: "\xFF"},
 		sleepInterval: 0,
 		clk:           newFakeClock(t),
 	}
 
 	// Run the mailer, one message should have been created with the content
 	// expected
-	err = m.run()
+	err := m.run()
 	test.AssertNotError(t, err, "error calling mailer run()")
 	test.AssertEquals(t, len(mc.Messages), 1)
 	test.AssertEquals(t, mocks.MailerMessage{
-		To:      testDestination,
+		To:      "example@example.com",
 		Subject: testSubject,
-		Body:    string(testBody),
+		Body:    "an email body",
+	}, mc.Messages[0])
+}
+
+// Send mail with a variable interpolated.
+func TestMessageContentInterpolated(t *testing.T) {
+	recipients := []recipient{
+		{
+			id: 1,
+			Extra: map[string]string{
+				"validationMethod": "eyeballing it",
+			},
+		},
+	}
+	dbMap := mockEmailResolver{}
+	mc := &mocks.Mailer{}
+	m := &mailer{
+		log:          blog.UseMock(),
+		mailer:       mc,
+		dbMap:        dbMap,
+		subject:      "Test Subject",
+		destinations: recipients,
+		emailTemplate: template.Must(template.New("letter").Parse(
+			`issued by {{range .}}{{ .Extra.validationMethod }}{{end}}`)),
+		targetRange:   interval{end: "\xFF"},
+		sleepInterval: 0,
+		clk:           newFakeClock(t),
+	}
+
+	// Run the mailer, one message should have been created with the content
+	// expected
+	err := m.run()
+	test.AssertNotError(t, err, "error calling mailer run()")
+	test.AssertEquals(t, len(mc.Messages), 1)
+	test.AssertEquals(t, mocks.MailerMessage{
+		To:      "example@example.com",
+		Subject: "Test Subject",
+		Body:    "issued by eyeballing it",
+	}, mc.Messages[0])
+}
+
+// Send mail with a variable interpolated multiple times for accounts that share
+// an email address.
+func TestMessageContentInterpolatedMultiple(t *testing.T) {
+	recipients := []recipient{
+		{
+			id: 200,
+			Extra: map[string]string{
+				"domain": "blog.example.com",
+			},
+		},
+		{
+			id: 201,
+			Extra: map[string]string{
+				"domain": "nas.example.net",
+			},
+		},
+		{
+			id: 202,
+			Extra: map[string]string{
+				"domain": "mail.example.org",
+			},
+		},
+		{
+			id: 203,
+			Extra: map[string]string{
+				"domain": "panel.example.net",
+			},
+		},
+	}
+	dbMap := mockEmailResolver{}
+	mc := &mocks.Mailer{}
+	m := &mailer{
+		log:          blog.UseMock(),
+		mailer:       mc,
+		dbMap:        dbMap,
+		subject:      "Test Subject",
+		destinations: recipients,
+		emailTemplate: template.Must(template.New("letter").Parse(
+			`issued for:
+{{range .}}{{ .Extra.domain }}
+{{end}}Thanks`)),
+		targetRange:   interval{end: "\xFF"},
+		sleepInterval: 0,
+		clk:           newFakeClock(t),
+	}
+
+	// Run the mailer, one message should have been created with the content
+	// expected
+	err := m.run()
+	test.AssertNotError(t, err, "error calling mailer run()")
+	test.AssertEquals(t, len(mc.Messages), 1)
+	test.AssertEquals(t, mocks.MailerMessage{
+		To:      "gotta.lotta.accounts@example.net",
+		Subject: "Test Subject",
+		Body: `issued for:
+blog.example.com
+nas.example.net
+mail.example.org
+panel.example.net
+Thanks`,
 	}, mc.Messages[0])
 }
 
@@ -342,6 +398,26 @@ func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...inte
 			ID:      7,
 			Contact: []byte(`["mailto:***********"]`),
 		},
+		{
+			ID:      200,
+			Contact: []byte(`["mailto:gotta.lotta.accounts@example.net"]`),
+		},
+		{
+			ID:      201,
+			Contact: []byte(`["mailto:gotta.lotta.accounts@example.net"]`),
+		},
+		{
+			ID:      202,
+			Contact: []byte(`["mailto:gotta.lotta.accounts@example.net"]`),
+		},
+		{
+			ID:      203,
+			Contact: []byte(`["mailto:gotta.lotta.accounts@example.net"]`),
+		},
+		{
+			ID:      204,
+			Contact: []byte(`["mailto:gotta.lotta.accounts@example.net"]`),
+		},
 	}
 
 	// Play the type cast game so that we can dig into the arguments map and get
@@ -364,12 +440,12 @@ func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...inte
 		return fmt.Errorf("incorrect output type %T", output)
 	}
 
-	// If the ID (shifted by 1 to account for zero indexing) is within the range
-	// of the DB list, return the DB entry by assigning to the `outputPtr`.
-	// Otherwise, return that no rows were found
-	if (id-1) >= 0 && int(id-1) < len(db) {
-		*outputPtr = db[id-1]
-	} else {
+	for _, v := range db {
+		if v.ID == id {
+			*outputPtr = v
+		}
+	}
+	if outputPtr.ID == 0 {
 		return sql.ErrNoRows
 	}
 	return nil
@@ -380,29 +456,44 @@ func TestResolveEmails(t *testing.T) {
 	// results in the `db` slice in `mockEmailResolver`'s `SelectOne`. If you add
 	// more test cases here you must also add the corresponding DB result in the
 	// mock.
-	regs := []regID{
+	recipients := []recipient{
 		{
-			ID: 1,
+			id: 1,
 		},
 		{
-			ID: 2,
+			id: 2,
 		},
 		{
-			ID: 3,
+			id: 3,
 		},
 		// This registration ID deliberately doesn't exist in the mock data to make
 		// sure this case is handled gracefully
 		{
-			ID: 999,
+			id: 999,
 		},
 		// This registration ID deliberately returns an invalid email to make sure any
 		// invalid contact info that slipped into the DB once upon a time will be ignored
 		{
-			ID: 7,
+			id: 7,
+		},
+		{
+			id: 200,
+		},
+		{
+			id: 201,
+		},
+		{
+			id: 202,
+		},
+		{
+			id: 203,
+		},
+		{
+			id: 204,
 		},
 	}
-	contactsJSON, err := json.Marshal(regs)
-	test.AssertNotError(t, err, "failed to marshal test regs")
+
+	tmpl := template.Must(template.New("letter").Parse("an email body"))
 
 	dbMap := mockEmailResolver{}
 	mc := &mocks.Mailer{}
@@ -411,25 +502,28 @@ func TestResolveEmails(t *testing.T) {
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       "Test",
-		destinations:  contactsJSON,
-		emailTemplate: "Hi",
-		checkpoint:    interval{start: 0},
+		destinations:  recipients,
+		emailTemplate: tmpl,
+		targetRange:   interval{end: "\xFF"},
 		sleepInterval: 0,
 		clk:           newFakeClock(t),
 	}
 
-	destinations, err := m.resolveDestinations()
-	test.AssertNotError(t, err, "failed to resolveDestinations")
+	addressesToRecipients, err := m.resolveEmailAddresses()
+	test.AssertNotError(t, err, "failed to resolveEmailAddresses")
 
 	expected := []string{
 		"example@example.com",
 		"test-example-updated@example.com",
 		"test-test-test@example.com",
+		"gotta.lotta.accounts@example.net",
 	}
 
-	test.AssertEquals(t, len(destinations), len(expected))
-	for i := range expected {
-		test.AssertEquals(t, destinations[i], expected[i])
+	test.AssertEquals(t, len(addressesToRecipients), len(expected))
+	for _, address := range expected {
+		if _, ok := addressesToRecipients[address]; !ok {
+			t.Errorf("missing entry in addressesToRecipients: %q", address)
+		}
 	}
 }
 
