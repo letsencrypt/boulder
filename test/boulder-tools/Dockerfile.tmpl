@@ -1,7 +1,6 @@
 FROM buildpack-deps:stretch-scm
 
-ENV GO_VERSION_TO_INSTALL 1.10.8
-#ENV GO_VERSION_TO_INSTALL %%GO_VERSION%%
+ENV GO_VERSION_TO_INSTALL %%GO_VERSION%%
 
 # Copied from https://github.com/docker-library/golang/blob/master/Dockerfile-debian.template
 ENV GOPATH /go
