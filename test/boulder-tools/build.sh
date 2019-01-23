@@ -2,7 +2,13 @@
 
 apt-get update
 
-# Job %1 - Start a background job to install system deps
+# Install Go.
+url="https://dl.google.com/go/go${GO_VERSION_TO_INSTALL}.linux-amd64.tar.gz"
+wget -O go.tgz "$url"; \
+tar -C /usr/local -xzf go.tgz; \
+rm go.tgz;
+
+# Install system deps
 apt-get install -y --no-install-recommends \
   libltdl-dev \
   mariadb-client-core-10.1 \
@@ -16,12 +22,12 @@ apt-get install -y --no-install-recommends \
   cmake \
   libssl-dev \
   libseccomp-dev \
-  opensc &
+  opensc
 
 # Override default GOBIN and GOPATH
 export GOBIN=/usr/local/bin GOPATH=/tmp/gopath
 
-# Job %2 - Install protobuf and testing/dev tools.
+# Install protobuf and testing/dev tools.
 go get \
   github.com/letsencrypt/pebble/cmd/pebble-challtestsrv \
   bitbucket.org/liamstask/goose/cmd/goose \
@@ -34,12 +40,7 @@ go get \
   github.com/modocache/gover \
   github.com/tools/godep \
   golang.org/x/tools/cover \
-  golang.org/x/tools/cmd/stringer &
-
-# Wait for all the background jobs to finish, capture their error codes, then
-# if bad, exit early rather than build an incomplete image.
-wait %1 || exit $?
-wait %2 || exit $?
+  golang.org/x/tools/cmd/stringer
 
 # grpc uses a version attestation variable of the form grpc.SupportPackageIsVersionN
 # where N is the generated code version shared between protoc-gen-go and grpc-go
@@ -79,7 +80,7 @@ gem install fpm
 
 # We can't remove libseccomp-dev as it contains a shared object that is required
 # for pkcs11-proxy to run properly
-apt-get autoremove -y build-essential cmake libssl-dev ruby-dev
+apt-get autoremove -y libssl-dev ruby-dev
 apt-get clean -y
 
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
