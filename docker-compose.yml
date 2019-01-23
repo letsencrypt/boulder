@@ -51,7 +51,7 @@ services:
         working_dir: /go/src/github.com/letsencrypt/boulder
     bhsm:
         # To minimize fetching this should be the same version used above
-        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.11.4}:2019-01-23
+        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.11.5}:2019-01-23
         environment:
             PKCS11_DAEMON_SOCKET: tcp://0.0.0.0:5657
         command: /usr/local/bin/pkcs11-daemon /usr/lib/softhsm/libsofthsm2.so
