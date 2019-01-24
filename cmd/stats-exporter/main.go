@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -19,19 +20,22 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	rows, err := db.Query(`SELECT reversedName FROM issuedNames`)
+	outFile, err := os.OpenFile(os.Args[2], os.O_RDWR|os.O_CREATE, 0600)
+	if err != nil {
+		log.Fatal(err)
+	}
+	rows, err := db.Query(`SELECT id,reversedName,notBefore,serial FROM issuedNames`)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var (
-			rname string
+			id, rname, notBefore, serial string
 		)
-		if err := rows.Scan(&rname); err != nil {
+		if err := rows.Scan(&id, &rname, &notBefore, &serial); err != nil {
 			log.Fatal(err)
 		}
-		log.Printf("reversedName is %s\n", rname)
+		fmt.Fprintf(outFile, "%s\t%s\t%s\t%s\n", id, rname, notBefore, serial)
 	}
-	log.Println("Hello LE Team")
 }
