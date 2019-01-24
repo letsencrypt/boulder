@@ -7,11 +7,18 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 )
 
 func main() {
+	now := time.Now()
+	yesterday := now.Add(-24 * time.Hour)
+	yesterdayDateStamp := yesterday.Format("2006-01-02")
+	endDateStamp := now.Format("2006-01-02")
+	outputFileName := fmt.Sprintf("results-%s.tsv", yesterday.Format("2006-01-02"))
+
 	dbDSN, err := ioutil.ReadFile(os.Args[1])
 	if err != nil {
 		log.Fatal(err)
@@ -20,11 +27,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	outFile, err := os.OpenFile(os.Args[2], os.O_RDWR|os.O_CREATE, 0600)
+	outFile, err := os.OpenFile(outputFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		log.Fatal(err)
 	}
-	rows, err := db.Query(`SELECT id,reversedName,notBefore,serial FROM issuedNames`)
+	rows, err := db.Query(`SELECT id,reversedName,notBefore,serial FROM issuedNames where notBefore between ? and ?`, yesterdayDateStamp, endDateStamp)
 	if err != nil {
 		log.Fatal(err)
 	}
