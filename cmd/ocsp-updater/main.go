@@ -336,7 +336,7 @@ func (updater *OCSPUpdater) markExpired(status core.CertificateStatus) error {
 }
 
 func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]core.CertificateStatus, error) {
-	const query = "WHERE status = ? AND ocspLastUpdated <= revokedDate LIMIT ?"
+	const query = "WHERE NOT isExpired AND status = ? AND ocspLastUpdated <= revokedDate LIMIT ?"
 	statuses, err := sa.SelectCertificateStatuses(
 		updater.dbMap,
 		query,
