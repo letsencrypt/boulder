@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -44,5 +45,10 @@ func main() {
 			log.Fatal(err)
 		}
 		fmt.Fprintf(outFile, "%s\t%s\t%s\t%s\n", id, rname, notBefore, serial)
+	}
+	outFile.Close()
+	err = exec.Command("/usr/bin/scp", outputFileName, os.Args[2]).Run()
+	if err != nil {
+		log.Fatal(err)
 	}
 }
