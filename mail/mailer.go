@@ -249,9 +249,9 @@ func (di *dialerImpl) Dial() (smtpClient, error) {
 	return client, nil
 }
 
-// resetAndError resets the connection and then returns its argument as an error.
-// If the reset command also errors, it combines both errors and returns them.
-// Without this we would get a `nested MAIL command` error.
+// resetAndError resets the current mail transaction and then returns its
+// argument as an error. If the reset command also errors, it combines both
+// errors and returns them. Without this we would get `nested MAIL command`.
 // https://github.com/letsencrypt/boulder/issues/3191
 func (m *MailerImpl) resetAndError(err error) error {
 
