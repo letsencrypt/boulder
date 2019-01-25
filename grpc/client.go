@@ -19,12 +19,7 @@ import (
 // It dials the remote service and returns a grpc.ClientConn if successful.
 func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientMetrics, clk clock.Clock) (*grpc.ClientConn, error) {
 	if c.ServerAddress == "" {
-		if len(c.ServerAddresses) == 0 {
-			return nil, errors.New("Both ServerAddress and ServerAddresses are empty")
-		} else if len(c.ServerAddresses) != 1 {
-			return nil, errors.New("If ServerAddress is empty ServerAddresses can only contain one address")
-		}
-		c.ServerAddress = c.ServerAddresses[0]
+		return nil, errors.New("ServerAddress must not be empty")
 	}
 	if tlsConfig == nil {
 		return nil, errNilTLS

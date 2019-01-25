@@ -8,11 +8,11 @@
       "keyFile": "test/grpc-creds/admin-revoker.boulder/key.pem"
     },
     "raService": {
-      "serverAddresses": ["ra.boulder:9094"],
+      "serverAddress": "ra.boulder:9094",
       "timeout": "15s"
     },
     "saService": {
-      "serverAddresses": ["sa.boulder:9095"],
+      "serverAddress": "sa.boulder:9095",
       "timeout": "15s"
     }
   },
