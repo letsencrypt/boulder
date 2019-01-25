@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -14,13 +15,18 @@ import (
 )
 
 func main() {
+	dbConnection := flag.String("dbConnection", "issued_names_exporter_dburl", "Path to the DB URL")
+	scpLocation := flag.String("destination", "localhost:/tmp", "Location to SCP the TSV output to")
+	flag.Parse()
+
 	now := time.Now()
 	yesterday := now.Add(-24 * time.Hour)
 	yesterdayDateStamp := yesterday.Format("2006-01-02")
 	endDateStamp := now.Format("2006-01-02")
 	outputFileName := fmt.Sprintf("results-%s.tsv", yesterday.Format("2006-01-02"))
+	outputGZIPName := outputFileName + ".gz"
 
-	dbDSN, err := ioutil.ReadFile(os.Args[1])
+	dbDSN, err := ioutil.ReadFile(*dbConnection)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -47,7 +53,11 @@ func main() {
 		fmt.Fprintf(outFile, "%s\t%s\t%s\t%s\n", id, rname, notBefore, serial)
 	}
 	outFile.Close()
-	err = exec.Command("/usr/bin/scp", outputFileName, os.Args[2]).Run()
+	err = exec.Command("/usr/bin/gzip", outputFileName).Run()
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = exec.Command("/usr/bin/scp", outputGZIPName, *scpLocation).Run()
 	if err != nil {
 		log.Fatal(err)
 	}
