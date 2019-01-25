@@ -249,6 +249,19 @@ func (di *dialerImpl) Dial() (smtpClient, error) {
 	return client, nil
 }
 
+// resetAndError resets the connection and then returns its argument as an error.
+// If the reset command also errors, it combines both errors and returns them.
+// Without this we would get a `nested MAIL command` error.
+// https://github.com/letsencrypt/boulder/issues/3191
+func (m *MailerImpl) resetAndError(err error) error {
+
+	err2 := m.client.Reset()
+	if err2 != nil {
+		return fmt.Errorf("%s (also, on sending RSET: %s)", err, err2)
+	}
+	return err
+}
+
 func (m *MailerImpl) sendOne(to []string, subject, msg string) error {
 	if m.client == nil {
 		return errors.New("call Connect before SendMail")
@@ -257,31 +270,25 @@ func (m *MailerImpl) sendOne(to []string, subject, msg string) error {
 	if err != nil {
 		return err
 	}
-	// Reset the connection proactively, in case a previous message errored out in
-	// the middle. Without this we would get a `nested MAIL command` error.
-	// https://github.com/letsencrypt/boulder/issues/3191
-	if err = m.client.Reset(); err != nil {
-		return err
-	}
 	if err = m.client.Mail(m.from.String()); err != nil {
 		return err
 	}
 	for _, t := range to {
 		if err = m.client.Rcpt(t); err != nil {
-			return err
+			return m.resetAndError(err)
 		}
 	}
 	w, err := m.client.Data()
 	if err != nil {
-		return err
+		return m.resetAndError(err)
 	}
 	_, err = w.Write(body)
 	if err != nil {
-		return err
+		return m.resetAndError(err)
 	}
 	err = w.Close()
 	if err != nil {
-		return err
+		return m.resetAndError(err)
 	}
 	return nil
 }

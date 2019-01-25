@@ -139,10 +139,6 @@ func disconnectHandler(closeFirst int, goodbyeMsg string) connHandler {
 		authenticateClient(t, conn)
 
 		buf := bufio.NewReader(conn)
-		if err := expect(t, buf, "RSET"); err != nil {
-			return
-		}
-		_, _ = conn.Write([]byte("250 Got your RSET thanks\r\n"))
 		if err := expect(t, buf, "MAIL FROM:<<you-are-a-winner@example.com>> BODY=8BITMIME"); err != nil {
 			return
 		}
@@ -184,10 +180,6 @@ func badEmailHandler(messagesToProcess int) connHandler {
 		authenticateClient(t, conn)
 
 		buf := bufio.NewReader(conn)
-		if err := expect(t, buf, "RSET"); err != nil {
-			return
-		}
-		_, _ = conn.Write([]byte("250 Got your RSET thanks\r\n"))
 		if err := expect(t, buf, "MAIL FROM:<<you-are-a-winner@example.com>> BODY=8BITMIME"); err != nil {
 			return
 		}
@@ -198,6 +190,10 @@ func badEmailHandler(messagesToProcess int) connHandler {
 			return
 		}
 		_, _ = conn.Write([]byte("401 4.1.3 Bad recipient address syntax\r\n"))
+		if err := expect(t, buf, "RSET"); err != nil {
+			return
+		}
+		_, _ = conn.Write([]byte("250 Ok yr rset now\r\n"))
 	}
 }
 
@@ -307,10 +303,12 @@ func TestBadEmailError(t *testing.T) {
 	if err == nil {
 		t.Errorf("Expected SendMail() to return an InvalidRcptError, got nil")
 	}
+	expected := "4.1.3 Bad recipient address syntax"
 	if rcptErr, ok := err.(InvalidRcptError); !ok {
 		t.Errorf("Expected SendMail() to return an InvalidRcptError, got a %T error: %v", err, err)
-	} else if rcptErr.Message != "4.1.3 Bad recipient address syntax" {
-		t.Errorf("SendMail() returned InvalidRcptError with wrong message: %q\n", rcptErr.Message)
+	} else if rcptErr.Message != expected {
+		t.Errorf("SendMail() returned InvalidRcptError with wrong message. Got %q, expected %q\n",
+			rcptErr.Message, expected)
 	}
 }
 
