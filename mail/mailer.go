@@ -71,6 +71,7 @@ type smtpClient interface {
 	Mail(string) error
 	Rcpt(string) error
 	Data() (io.WriteCloser, error)
+	Reset() error
 	Close() error
 }
 
@@ -103,6 +104,11 @@ func (d dryRunClient) Data() (io.WriteCloser, error) {
 func (d dryRunClient) Write(p []byte) (n int, err error) {
 	d.log.Debugf("data: %s", string(p))
 	return len(p), nil
+}
+
+func (d dryRunClient) Reset() (err error) {
+	d.log.Debugf("RESET")
+	return nil
 }
 
 // New constructs a Mailer to represent an account on a particular mail
@@ -243,6 +249,17 @@ func (di *dialerImpl) Dial() (smtpClient, error) {
 	return client, nil
 }
 
+// resetAndError resets the current mail transaction and then returns its
+// argument as an error. If the reset command also errors, it combines both
+// errors and returns them. Without this we would get `nested MAIL command`.
+// https://github.com/letsencrypt/boulder/issues/3191
+func (m *MailerImpl) resetAndError(err error) error {
+	if err2 := m.client.Reset(); err2 != nil {
+		return fmt.Errorf("%s (also, on sending RSET: %s)", err, err2)
+	}
+	return err
+}
+
 func (m *MailerImpl) sendOne(to []string, subject, msg string) error {
 	if m.client == nil {
 		return errors.New("call Connect before SendMail")
@@ -256,20 +273,20 @@ func (m *MailerImpl) sendOne(to []string, subject, msg string) error {
 	}
 	for _, t := range to {
 		if err = m.client.Rcpt(t); err != nil {
-			return err
+			return m.resetAndError(err)
 		}
 	}
 	w, err := m.client.Data()
 	if err != nil {
-		return err
+		return m.resetAndError(err)
 	}
 	_, err = w.Write(body)
 	if err != nil {
-		return err
+		return m.resetAndError(err)
 	}
 	err = w.Close()
 	if err != nil {
-		return err
+		return m.resetAndError(err)
 	}
 	return nil
 }
