@@ -139,6 +139,10 @@ func disconnectHandler(closeFirst int, goodbyeMsg string) connHandler {
 		authenticateClient(t, conn)
 
 		buf := bufio.NewReader(conn)
+		if err := expect(t, buf, "RSET"); err != nil {
+			return
+		}
+		_, _ = conn.Write([]byte("250 Got your RSET thanks\r\n"))
 		if err := expect(t, buf, "MAIL FROM:<<you-are-a-winner@example.com>> BODY=8BITMIME"); err != nil {
 			return
 		}
@@ -180,6 +184,10 @@ func badEmailHandler(messagesToProcess int) connHandler {
 		authenticateClient(t, conn)
 
 		buf := bufio.NewReader(conn)
+		if err := expect(t, buf, "RSET"); err != nil {
+			return
+		}
+		_, _ = conn.Write([]byte("250 Got your RSET thanks\r\n"))
 		if err := expect(t, buf, "MAIL FROM:<<you-are-a-winner@example.com>> BODY=8BITMIME"); err != nil {
 			return
 		}

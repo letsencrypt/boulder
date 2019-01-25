@@ -71,6 +71,7 @@ type smtpClient interface {
 	Mail(string) error
 	Rcpt(string) error
 	Data() (io.WriteCloser, error)
+	Reset() error
 	Close() error
 }
 
@@ -103,6 +104,11 @@ func (d dryRunClient) Data() (io.WriteCloser, error) {
 func (d dryRunClient) Write(p []byte) (n int, err error) {
 	d.log.Debugf("data: %s", string(p))
 	return len(p), nil
+}
+
+func (d dryRunClient) Reset() (err error) {
+	d.log.Debugf("RESET")
+	return nil
 }
 
 // New constructs a Mailer to represent an account on a particular mail
@@ -249,6 +255,12 @@ func (m *MailerImpl) sendOne(to []string, subject, msg string) error {
 	}
 	body, err := m.generateMessage(to, subject, msg)
 	if err != nil {
+		return err
+	}
+	// Reset the connection proactively, in case a previous message errored out in
+	// the middle. Without this we would get a `nested MAIL command` error.
+	// https://github.com/letsencrypt/boulder/issues/3191
+	if err = m.client.Reset(); err != nil {
 		return err
 	}
 	if err = m.client.Mail(m.from.String()); err != nil {
