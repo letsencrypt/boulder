@@ -254,9 +254,7 @@ func (di *dialerImpl) Dial() (smtpClient, error) {
 // errors and returns them. Without this we would get `nested MAIL command`.
 // https://github.com/letsencrypt/boulder/issues/3191
 func (m *MailerImpl) resetAndError(err error) error {
-
-	err2 := m.client.Reset()
-	if err2 != nil {
+	if err2 := m.client.Reset(); err2 != nil {
 		return fmt.Errorf("%s (also, on sending RSET: %s)", err, err2)
 	}
 	return err
