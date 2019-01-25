@@ -1,8 +1,8 @@
 {
   "notifyMailer": {
-    "server": "ubuntu",
-    "port": "465",
-    "username": "jsha",
+    "server": "localhost",
+    "port": "9380",
+    "username": "cert-master@example.com",
     "passwordFile": "test/secrets/smtp_password",
     "dbConnectFile": "test/secrets/mailer_dburl",
     "maxDBConns": 10
