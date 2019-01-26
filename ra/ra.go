@@ -368,6 +368,7 @@ var forbiddenMailDomains = map[string]bool{
 	"example.com": true,
 	"example.net": true,
 	"example.org": true,
+	"localhost":   true,
 }
 
 // validateEmail returns an error if the given address is not parseable as an

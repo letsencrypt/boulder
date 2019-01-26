@@ -365,6 +365,9 @@ func TestValidateContacts(t *testing.T) {
 
 	err = ra.validateContacts(context.Background(), &[]string{forbidden})
 	test.AssertError(t, err, "Forbidden email")
+
+	err = ra.validateContacts(context.Background(), &[]string{"mailto:admin@localhost"})
+	test.AssertError(t, err, "Forbidden email")
 }
 
 func TestNewRegistration(t *testing.T) {
