@@ -144,3 +144,15 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 		})
 	}
 }
+
+func TestFindChallengeByType(t *testing.T) {
+	authz := Authorization{
+		Challenges: []Challenge{
+			{Type: ChallengeTypeDNS01},
+			{Type: ChallengeTypeHTTP01},
+		},
+	}
+	test.AssertEquals(t, 0, authz.FindChallengeByType(ChallengeTypeDNS01))
+	test.AssertEquals(t, 1, authz.FindChallengeByType(ChallengeTypeHTTP01))
+	test.AssertEquals(t, -1, authz.FindChallengeByType("hello"))
+}

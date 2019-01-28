@@ -406,6 +406,18 @@ func (authz *Authorization) FindChallenge(challengeID int64) int {
 	return -1
 }
 
+// FindChallengeByType will look for the given challenge type inside this authorization. If
+// found, it will return the index of that challenge within the Authorization's
+// Challenges array. Otherwise it will return -1.
+func (authz *Authorization) FindChallengeByType(challType string) int {
+	for i, c := range authz.Challenges {
+		if c.Type == challType {
+			return i
+		}
+	}
+	return -1
+}
+
 // SolvedBy will look through the Authorizations challenges, returning the type
 // of the *first* challenge it finds with Status: valid, or "" if no challenge
 // is valid.

@@ -23,6 +23,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
@@ -946,10 +947,16 @@ func (wfe *WebFrontEndImpl) Challenge(
 		return
 	}
 	authorizationID := slug[0]
-	challengeID, err := strconv.ParseInt(slug[1], 10, 64)
-	if err != nil {
-		notFound()
-		return
+	var challengeID interface{}
+	if features.Enabled(features.NewAuthorizationSchema) {
+		challengeID = slug[1]
+	} else {
+		var err error
+		challengeID, err = strconv.ParseInt(slug[1], 10, 64)
+		if err != nil {
+			notFound()
+			return
+		}
 	}
 
 	authz, err := wfe.SA.GetAuthorization(ctx, authorizationID)
@@ -969,7 +976,12 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 
 	// Check that the requested challenge exists within the authorization
-	challengeIndex := authz.FindChallenge(challengeID)
+	var challengeIndex int
+	if features.Enabled(features.NewAuthorizationSchema) {
+		challengeIndex = authz.FindChallengeByType(challengeID.(string))
+	} else {
+		challengeIndex = authz.FindChallenge(challengeID.(int64))
+	}
 	if challengeIndex == -1 {
 		notFound()
 		return
@@ -995,7 +1007,13 @@ func (wfe *WebFrontEndImpl) Challenge(
 // the client by filling in its URI field and clearing its ID field.
 func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
 	// Update the challenge URI to be relative to the HTTP request Host
-	challenge.URI = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
+	var challID string
+	if features.Enabled(features.NewAuthorizationSchema) {
+		challID = challenge.Type
+	} else {
+		challID = fmt.Sprintf("%d", challenge.ID)
+	}
+	challenge.URI = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", challengePath, authz.ID, challID))
 	// Ensure the challenge ID isn't written. 0 is considered "empty" for the purpose of the JSON omitempty tag.
 	challenge.ID = 0
 
