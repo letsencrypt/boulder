@@ -162,7 +162,7 @@ func (m *mailer) run() error {
 		err := m.mailer.SendMail([]string{address}, m.subject, mailBody.String())
 		if err != nil {
 			switch err.(type) {
-			case bmail.InvalidRcptError:
+			case bmail.RecoverableSMTPError:
 				m.log.Errf("address %q was rejected by server: %s", address, err)
 				continue
 			default:

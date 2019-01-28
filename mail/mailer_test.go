@@ -301,13 +301,13 @@ func TestBadEmailError(t *testing.T) {
 	err = m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
 	// We expect there to be an error
 	if err == nil {
-		t.Errorf("Expected SendMail() to return an InvalidRcptError, got nil")
+		t.Errorf("Expected SendMail() to return an RecoverableSMTPError, got nil")
 	}
-	expected := "4.1.3 Bad recipient address syntax"
-	if rcptErr, ok := err.(InvalidRcptError); !ok {
-		t.Errorf("Expected SendMail() to return an InvalidRcptError, got a %T error: %v", err, err)
+	expected := "401: 4.1.3 Bad recipient address syntax"
+	if rcptErr, ok := err.(RecoverableSMTPError); !ok {
+		t.Errorf("Expected SendMail() to return an RecoverableSMTPError, got a %T error: %v", err, err)
 	} else if rcptErr.Message != expected {
-		t.Errorf("SendMail() returned InvalidRcptError with wrong message. Got %q, expected %q\n",
+		t.Errorf("SendMail() returned RecoverableSMTPError with wrong message. Got %q, expected %q\n",
 			rcptErr.Message, expected)
 	}
 }
