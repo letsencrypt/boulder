@@ -289,7 +289,7 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 	}
 
 	// Names must end in an ICANN TLD, but they must not be equal to an ICANN TLD.
-	icannTLD, err := iana.ExtractDomainIANASuffix(domain)
+	icannTLD, err := iana.ExtractSuffix(domain)
 	if err != nil {
 		return errNonPublic
 	}
@@ -342,7 +342,7 @@ func (pa *AuthorityImpl) WillingToIssueWildcard(ident core.AcmeIdentifier) error
 		// The base domain is the wildcard request with the `*.` prefix removed
 		baseDomain := strings.TrimPrefix(rawDomain, "*.")
 		// Names must end in an ICANN TLD, but they must not be equal to an ICANN TLD.
-		icannTLD, err := iana.ExtractDomainIANASuffix(baseDomain)
+		icannTLD, err := iana.ExtractSuffix(baseDomain)
 		if err != nil {
 			return errNonPublic
 		}

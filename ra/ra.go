@@ -23,6 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/iana"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
@@ -385,7 +386,7 @@ func validateEmail(address string) error {
 			"invalid contact domain. Contact emails @%s are forbidden",
 			domain)
 	}
-	if _, err := iana.ExtractDomainIANASuffix(domain); err != nil {
+	if _, err := iana.ExtractSuffix(domain); err != nil {
 		return berrors.InvalidEmailError("invalid contact domain, domain does not end in a IANA suffix")
 	}
 	return nil
