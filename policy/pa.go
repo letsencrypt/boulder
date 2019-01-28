@@ -289,7 +289,7 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 	}
 
 	// Names must end in an ICANN TLD, but they must not be equal to an ICANN TLD.
-	icannTLD, err := extractDomainIANASuffix(domain)
+	icannTLD, err := ExtractDomainIANASuffix(domain)
 	if err != nil {
 		return errNonPublic
 	}
@@ -342,7 +342,7 @@ func (pa *AuthorityImpl) WillingToIssueWildcard(ident core.AcmeIdentifier) error
 		// The base domain is the wildcard request with the `*.` prefix removed
 		baseDomain := strings.TrimPrefix(rawDomain, "*.")
 		// Names must end in an ICANN TLD, but they must not be equal to an ICANN TLD.
-		icannTLD, err := extractDomainIANASuffix(baseDomain)
+		icannTLD, err := ExtractDomainIANASuffix(baseDomain)
 		if err != nil {
 			return errNonPublic
 		}
@@ -485,7 +485,7 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int
 // section of the Public Suffix List database.
 // If the domain does not end in a suffix that belongs to an IANA-assigned
 // domain, ExtractDomainIANASuffix returns an error.
-func extractDomainIANASuffix(name string) (string, error) {
+func ExtractDomainIANASuffix(name string) (string, error) {
 	if name == "" {
 		return "", fmt.Errorf("Blank name argument passed to ExtractDomainIANASuffix")
 	}

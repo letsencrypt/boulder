@@ -437,7 +437,7 @@ func TestExtractDomainIANASuffix_Valid(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		got, err := extractDomainIANASuffix(tc.domain)
+		got, err := ExtractDomainIANASuffix(tc.domain)
 		if err != nil {
 			t.Errorf("%q: returned error", tc.domain)
 			continue
@@ -456,7 +456,7 @@ func TestExtractDomainIANASuffix_Invalid(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		_, err := extractDomainIANASuffix(tc)
+		_, err := ExtractDomainIANASuffix(tc)
 		if err == nil {
 			t.Errorf("%q: expected err, got none", tc)
 		}
