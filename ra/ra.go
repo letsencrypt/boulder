@@ -387,7 +387,7 @@ func validateEmail(address string) error {
 			domain)
 	}
 	if _, err := iana.ExtractSuffix(domain); err != nil {
-		return berrors.InvalidEmailError("invalid contact domain, domain does not end in a IANA suffix")
+		return berrors.InvalidEmailError("email domain name does not end in a IANA suffix")
 	}
 	return nil
 }
