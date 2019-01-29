@@ -305,7 +305,7 @@ func (e RecoverableSMTPError) Error() string {
 
 // Based on reading of various SMTP documents these are a handful
 // of errors we are likely to be able to continue sending mail after
-// recieving. The majority of these errors boil down to 'bad address'.
+// receiving. The majority of these errors boil down to 'bad address'.
 var recoverableErrorCodes = map[int]bool{
 	401: true, // Invalid recipient
 	422: true, // Recipient mailbox is full
