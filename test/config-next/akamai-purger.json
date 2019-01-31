@@ -1,0 +1,33 @@
+{
+    "akamaiPurger": {
+        "debugAddr": ":9666",
+        "purgeInterval": "1s",
+        "baseURL": "http://localhost:6789",
+        "clientToken": "its-a-token",
+        "clientSecret": "its-a-secret",
+        "accessToken": "idk-how-this-is-different-from-client-token-but-okay",
+        "v3Network": "staging",
+        "tls": {
+          "caCertfile": "test/grpc-creds/minica.pem",
+          "certFile": "test/grpc-creds/akamai-purger.boulder/cert.pem",
+          "keyFile": "test/grpc-creds/akamai-purger.boulder/key.pem"
+        },
+        "grpc": {
+          "address": ":9099",
+          "maxConcurrentStreams": 2000,
+          "clientNames": [
+            "ocsp-updater.boulder"
+          ]
+        }
+    },
+  
+    "syslog": {
+      "stdoutlevel": 6,
+      "sysloglevel": 4
+    },
+  
+    "common": {
+      "issuerCert": "test/test-ca2.pem"
+    }
+  }
+  

@@ -1,0 +1,14 @@
+syntax = "proto2";
+
+package akamai;
+option go_package = "proto";
+
+import "core/proto/core.proto";
+
+service AkamaiPurger {
+    rpc Purge(PurgeRequest) returns (core.Empty) {}
+}
+
+message PurgeRequest {
+    repeated string urls = 1;
+}

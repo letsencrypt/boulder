@@ -113,8 +113,14 @@ def reset_akamai_purges():
     requests.post("http://localhost:6789/debug/reset-purges")
 
 def verify_akamai_purge():
-    response = requests.get("http://localhost:6789/debug/get-purges")
-    purgeData = response.json()
-    if len(purgeData["V3"]) is not 1:
-        raise Exception("Unexpected number of Akamai v3 purges")
+    timeout = time.time() + 5
+    while True:
+        time.sleep(0.25)
+        if time.time() > timeout:
+            raise Exception("Timed out waiting for Akamai purge")
+        response = requests.get("http://localhost:6789/debug/get-purges")
+        purgeData = response.json()
+        if len(purgeData["V3"]) is not 1:
+            continue
+        break
     reset_akamai_purges()
