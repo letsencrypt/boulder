@@ -63,7 +63,8 @@ type OCSPUpdater struct {
 
 	ccu           *akamai.CachePurgeClient
 	purgerService akamaipb.AkamaiPurgerClient
-	issuer        *x509.Certificate
+	// issuer is used to generate OCSP request URLs to purge
+	issuer *x509.Certificate
 }
 
 func newUpdater(

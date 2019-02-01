@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"os"
 	"sync"
@@ -19,6 +20,7 @@ type config struct {
 	AkamaiPurger struct {
 		cmd.ServiceConfig
 
+		// PurgeInterval is how often we will send a purge request
 		PurgeInterval cmd.ConfigDuration
 
 		BaseURL           string
@@ -54,13 +56,20 @@ func (ap *akamaiPurger) purge() {
 		ap.mu.Lock()
 		ap.toPurge = append(urls, ap.toPurge...)
 		ap.mu.Unlock()
-		ap.log.Errf("Failed to purge URLs: %s", err)
+		ap.log.Errf("Failed to purge %d URLs: %s", len(urls), err)
 	}
 }
+
+// maxQueueSize is used to reject Purge requests if the queue contains
+// >= the number of URLs to purge so that it can catch up.
+var maxQueueSize = 1000000
 
 func (ap *akamaiPurger) Purge(ctx context.Context, req *akamaipb.PurgeRequest) (*corepb.Empty, error) {
 	ap.mu.Lock()
 	defer ap.mu.Unlock()
+	if len(ap.toPurge) >= maxQueueSize {
+		return nil, errors.New("Akamai purge queue too large")
+	}
 	ap.toPurge = append(ap.toPurge, req.Urls...)
 	return &corepb.Empty{}, nil
 }
@@ -117,11 +126,12 @@ func main() {
 		log:    logger,
 	}
 
+	stopped := make(chan bool, 1)
+	ticker := time.NewTicker(c.AkamaiPurger.PurgeInterval.Duration)
 	go func() {
-		t := time.NewTicker(c.AkamaiPurger.PurgeInterval.Duration)
 		for {
 			select {
-			case <-t.C:
+			case <-ticker.C:
 				ap.purge()
 			}
 		}
@@ -136,4 +146,12 @@ func main() {
 
 	err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
 	cmd.FailOnError(err, "Akamai purger gRPC service failed")
+
+	ticker.Stop()
+	timer := time.NewTimer(time.Second * 15)
+	select {
+	case <-timer.C:
+		cmd.Fail("Timed out waiting for purger to finish working")
+	case <-stopped:
+	}
 }
