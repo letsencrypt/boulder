@@ -12,10 +12,11 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/letsencrypt/boulder/cmd"
 )
 
 func main() {
-	dbConnection := flag.String("dbConnection", "issued_names_exporter_dburl", "Path to the DB URL")
+	dbConnection := flag.String("dbConnection", "", "Path to the DB URL")
 	scpLocation := flag.String("destination", "localhost:/tmp", "Location to SCP the TSV output to")
 	flag.Parse()
 
@@ -27,21 +28,17 @@ func main() {
 	outputGZIPName := outputFileName + ".gz"
 
 	dbDSN, err := ioutil.ReadFile(*dbConnection)
-	if err != nil {
-		log.Fatal(err)
-	}
+	cmd.FailOnError(err, "Could not open database connection file")
+
 	db, err := sql.Open("mysql", strings.TrimSpace(string(dbDSN)))
-	if err != nil {
-		log.Fatal(err)
-	}
+	cmd.FailOnError(err, "Could not establish database connection")
+
 	outFile, err := os.OpenFile(outputFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
-	if err != nil {
-		log.Fatal(err)
-	}
+	cmd.FailOnError(err, "Could not write to results file")
+
 	rows, err := db.Query(`SELECT id,reversedName,notBefore,serial FROM issuedNames where notBefore between ? and ?`, yesterdayDateStamp, endDateStamp)
-	if err != nil {
-		log.Fatal(err)
-	}
+	cmd.FailOnError(err, "Could not reach database and run query")
+
 	defer rows.Close()
 	for rows.Next() {
 		var (
@@ -54,11 +51,8 @@ func main() {
 	}
 	outFile.Close()
 	err = exec.Command("/usr/bin/gzip", outputFileName).Run()
-	if err != nil {
-		log.Fatal(err)
-	}
+	cmd.FailOnError(err, "Could not gzip file")
+
 	err = exec.Command("/usr/bin/scp", outputGZIPName, *scpLocation).Run()
-	if err != nil {
-		log.Fatal(err)
-	}
+	cmd.FailOnError(err, "Could not SCP file")
 }
