@@ -148,11 +148,11 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 func TestFindChallengeByType(t *testing.T) {
 	authz := Authorization{
 		Challenges: []Challenge{
-			{Type: ChallengeTypeDNS01},
-			{Type: ChallengeTypeHTTP01},
+			{Token: "woo", Type: ChallengeTypeDNS01},
+			{Token: "woo", Type: ChallengeTypeHTTP01},
 		},
 	}
-	test.AssertEquals(t, 0, authz.FindChallengeByType(ChallengeTypeDNS01))
-	test.AssertEquals(t, 1, authz.FindChallengeByType(ChallengeTypeHTTP01))
-	test.AssertEquals(t, -1, authz.FindChallengeByType("hello"))
+	test.AssertEquals(t, 0, authz.FindChallengeByTypeID(authz.Challenges[0].GenerateID()))
+	test.AssertEquals(t, 1, authz.FindChallengeByTypeID(authz.Challenges[1].GenerateID()))
+	test.AssertEquals(t, -1, authz.FindChallengeByTypeID("hello"))
 }

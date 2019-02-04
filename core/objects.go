@@ -2,6 +2,7 @@ package core
 
 import (
 	"crypto"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -347,6 +348,13 @@ func (ch Challenge) checkConsistency() error {
 	return nil
 }
 
+func (ch Challenge) GenerateID() string {
+	h := sha256.New()
+	h.Write([]byte(ch.Token))
+	h.Write([]byte(ch.Type))
+	return base64.URLEncoding.EncodeToString(h.Sum(nil)[0:4])
+}
+
 // Authorization represents the authorization of an account key holder
 // to act on behalf of a domain.  This struct is intended to be used both
 // internally and for JSON marshaling on the wire.  Any fields that should be
@@ -406,12 +414,12 @@ func (authz *Authorization) FindChallenge(challengeID int64) int {
 	return -1
 }
 
-// FindChallengeByType will look for the given challenge type inside this authorization. If
+// FindChallengeByTypeID will look for the given challenge inside this authorization. If
 // found, it will return the index of that challenge within the Authorization's
 // Challenges array. Otherwise it will return -1.
-func (authz *Authorization) FindChallengeByType(challType string) int {
+func (authz *Authorization) FindChallengeByTypeID(id string) int {
 	for i, c := range authz.Challenges {
-		if c.Type == challType {
+		if c.GenerateID() == id {
 			return i
 		}
 	}

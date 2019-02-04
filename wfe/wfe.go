@@ -948,12 +948,15 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 	authorizationID := slug[0]
 	var challengeID interface{}
-	if features.Enabled(features.NewAuthorizationSchema) {
-		challengeID = slug[1]
-	} else {
-		var err error
-		challengeID, err = strconv.ParseInt(slug[1], 10, 64)
-		if err != nil {
+	var err error
+	challengeID, err = strconv.ParseInt(slug[1], 10, 64)
+	if err != nil {
+		if features.Enabled(features.NewAuthorizationSchema) {
+			// If the ID isn't an int and features.NewAuthorizationSchema is
+			// enabled this may be a new style challenge ID. Assume it's valid
+			// and we'll check when we get to FindChallengeByTypeID.
+			challengeID = slug[1]
+		} else {
 			notFound()
 			return
 		}
@@ -978,7 +981,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	// Check that the requested challenge exists within the authorization
 	var challengeIndex int
 	if features.Enabled(features.NewAuthorizationSchema) {
-		challengeIndex = authz.FindChallengeByType(challengeID.(string))
+		challengeIndex = authz.FindChallengeByTypeID(challengeID.(string))
 	} else {
 		challengeIndex = authz.FindChallenge(challengeID.(int64))
 	}
@@ -1009,7 +1012,7 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 	// Update the challenge URI to be relative to the HTTP request Host
 	var challID string
 	if features.Enabled(features.NewAuthorizationSchema) {
-		challID = challenge.Type
+		challID = challenge.GenerateID()
 	} else {
 		challID = fmt.Sprintf("%d", challenge.ID)
 	}

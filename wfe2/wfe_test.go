@@ -2790,6 +2790,14 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	// We also expect the ProvidedKeyAuthorization is not echoed back in the
 	// challenge
 	test.AssertEquals(t, chal.ProvidedKeyAuthorization, "")
+
+	features.Set(map[string]bool{"NewAuthorizationSchema": true})
+	defer features.Reset()
+	authz.ID = "12345"
+	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
+	chal = authz.Challenges[0]
+	test.AssertEquals(t, chal.URL, "http://localhost/acme/challenge/12345/3XWp1g==")
+	test.AssertEquals(t, chal.URI, "")
 }
 
 // noSCTMockRA is a mock RA that always returns a `berrors.MissingSCTsError` from `FinalizeOrder`

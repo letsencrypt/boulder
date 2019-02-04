@@ -27,6 +27,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/ctpolicy"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -2507,8 +2508,11 @@ func TestPrepChallengeForDisplay(t *testing.T) {
 	}
 	chall := &core.Challenge{
 		Status: core.AcmeStatus("pending"),
+		Token:  "asd",
+		Type:   core.ChallengeTypeDNS01,
 	}
 	authz := core.Authorization{
+		ID:     "eyup",
 		Status: core.AcmeStatus("invalid"),
 	}
 
@@ -2517,6 +2521,12 @@ func TestPrepChallengeForDisplay(t *testing.T) {
 	if chall.Status != "invalid" {
 		t.Errorf("Expected challenge status to be forced to invalid, got %#v", chall)
 	}
+	test.AssertEquals(t, chall.URI, "http://example.com/acme/challenge/eyup/0")
+
+	features.Set(map[string]bool{"NewAuthorizationSchema": true})
+	defer features.Reset()
+	wfe.prepChallengeForDisplay(req, authz, chall)
+	test.AssertEquals(t, chall.URI, "http://example.com/acme/challenge/eyup/rPBQwA==")
 }
 
 // noSCTMockRA is a mock RA that always returns a `berrors.MissingSCTsError` from `NewCertificate`
