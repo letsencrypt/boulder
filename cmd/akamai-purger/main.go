@@ -138,6 +138,10 @@ func main() {
 				break loop
 			}
 		}
+		// As we may have missed a tick by calling ticker.Stop() and
+		// writing to the stop channel call ap.purge one last time just
+		// in case there is anything that still needs to be purged.
+		ap.purge()
 		stopped <- true
 	}()
 
@@ -151,6 +155,9 @@ func main() {
 	err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
 	cmd.FailOnError(err, "Akamai purger gRPC service failed")
 
+	// Stop the ticker and signal that we want to shutdown by writing to the
+	// stop channel. We wait 15 seconds for any remaining URLs to be emptied
+	// from the current queue, if we pass that deadline we exit early.
 	ticker.Stop()
 	stop <- true
 	select {
