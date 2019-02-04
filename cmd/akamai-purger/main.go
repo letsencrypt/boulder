@@ -126,15 +126,19 @@ func main() {
 		log:    logger,
 	}
 
-	stopped := make(chan bool, 1)
+	stop, stopped := make(chan bool, 1), make(chan bool, 1)
 	ticker := time.NewTicker(c.AkamaiPurger.PurgeInterval.Duration)
 	go func() {
+	loop:
 		for {
 			select {
 			case <-ticker.C:
 				ap.purge()
+			case <-stop:
+				break loop
 			}
 		}
+		stopped <- true
 	}()
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
@@ -148,10 +152,10 @@ func main() {
 	cmd.FailOnError(err, "Akamai purger gRPC service failed")
 
 	ticker.Stop()
-	timer := time.NewTimer(time.Second * 15)
+	stop <- true
 	select {
-	case <-timer.C:
-		cmd.Fail("Timed out waiting for purger to finish working")
+	case <-time.After(time.Second * 15):
+		cmd.Fail("Timed out waiting for purger to finish work")
 	case <-stopped:
 	}
 }
