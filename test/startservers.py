@@ -103,6 +103,7 @@ def start(race_detection, fakeclock=None, account_uri=None):
         [8001, './bin/boulder-ca --config %s --ca-addr ca1.boulder:9093 --ocsp-addr ca1.boulder:9096 --debug-addr :8001' % os.path.join(default_config_dir, "ca-a.json")],
         [8101, './bin/boulder-ca --config %s --ca-addr ca2.boulder:9093 --ocsp-addr ca2.boulder:9096 --debug-addr :8101' % os.path.join(default_config_dir, "ca-b.json")],
         [6789, './bin/akamai-test-srv --listen localhost:6789 --secret its-a-secret'],
+        [9666, './bin/akamai-purger --config %s' % os.path.join(default_config_dir, "akamai-purger.json")],
         [8006, './bin/ocsp-updater --config %s' % os.path.join(default_config_dir, "ocsp-updater.json")],
         [8002, './bin/boulder-ra --config %s --addr ra1.boulder:9094 --debug-addr :8002' % os.path.join(default_config_dir, "ra.json")],
         [8102, './bin/boulder-ra --config %s --addr ra2.boulder:9094 --debug-addr :8102' % os.path.join(default_config_dir, "ra.json")],

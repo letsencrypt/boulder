@@ -15,6 +15,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/akamai"
+	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -60,7 +61,9 @@ type OCSPUpdater struct {
 
 	loops []*looper
 
-	ccu    *akamai.CachePurgeClient
+	ccu           *akamai.CachePurgeClient
+	purgerService akamaipb.AkamaiPurgerClient
+	// issuer is used to generate OCSP request URLs to purge
 	issuer *x509.Certificate
 }
 
@@ -70,6 +73,7 @@ func newUpdater(
 	dbMap ocspDB,
 	ca core.CertificateAuthority,
 	sac core.StorageAuthority,
+	apc akamaipb.AkamaiPurgerClient,
 	config cmd.OCSPUpdaterConfig,
 	issuerPath string,
 	log blog.Logger,
@@ -129,6 +133,9 @@ func newUpdater(
 
 	if config.AkamaiBaseURL != "" {
 		issuer, err := core.LoadCert(issuerPath)
+		if err != nil {
+			return nil, err
+		}
 		ccu, err := akamai.NewCachePurgeClient(
 			config.AkamaiBaseURL,
 			config.AkamaiClientToken,
@@ -145,6 +152,13 @@ func newUpdater(
 		}
 		updater.ccu = ccu
 		updater.issuer = issuer
+	} else if apc != nil {
+		issuer, err := core.LoadCert(issuerPath)
+		if err != nil {
+			return nil, err
+		}
+		updater.issuer = issuer
+		updater.purgerService = apc
 	}
 
 	return &updater, nil
@@ -296,7 +310,7 @@ func (updater *OCSPUpdater) generateRevokedResponse(ctx context.Context, status 
 
 	// If cache client is populated generate purge URLs
 	var purgeURLs []string
-	if updater.ccu != nil {
+	if updater.ccu != nil || updater.purgerService != nil {
 		purgeURLs, err = updater.generatePurgeURLs(cert.DER)
 		if err != nil {
 			return nil, nil, err
@@ -390,11 +404,22 @@ func (updater *OCSPUpdater) revokedCertificatesTick(ctx context.Context, batchSi
 		}
 	}
 
-	if updater.ccu != nil && len(allPurgeURLs) > 0 {
-		err = updater.ccu.Purge(allPurgeURLs)
-		if err != nil {
-			updater.log.AuditErrf("Failed to purge OCSP response from CDN: %s", err)
-			return err
+	if len(allPurgeURLs) > 0 {
+		if updater.ccu != nil {
+			err = updater.ccu.Purge(allPurgeURLs)
+			if err != nil {
+				updater.log.AuditErrf("Failed to purge OCSP response from CDN: %s", err)
+				return err
+			}
+		} else if updater.purgerService != nil {
+			go func() {
+				_, err = updater.purgerService.Purge(context.Background(), &akamaipb.PurgeRequest{
+					Urls: allPurgeURLs,
+				})
+				if err != nil {
+					updater.log.Errf("Request to Akamai purger service failed: %s", err)
+				}
+			}()
 		}
 	}
 
@@ -538,6 +563,7 @@ type config struct {
 func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope, clk clock.Clock) (
 	core.CertificateAuthority,
 	core.StorageAuthority,
+	akamaipb.AkamaiPurgerClient,
 ) {
 	var tls *tls.Config
 	var err error
@@ -557,7 +583,14 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope, clk clock.Clock)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
-	return cac, sac
+	var apc akamaipb.AkamaiPurgerClient
+	if c.AkamaiPurgerService != nil {
+		conn, err := bgrpc.ClientSetup(c.AkamaiPurgerService, tls, clientMetrics, clk)
+		cmd.FailOnError(err, "Failed ot load credentials and create gRPC connection to Akamai Purger service")
+		apc = akamaipb.NewAkamaiPurgerClient(conn)
+	}
+
+	return cac, sac, apc
 }
 
 func main() {
@@ -588,7 +621,7 @@ func main() {
 	go sa.ReportDbConnCount(dbMap, scope)
 
 	clk := cmd.Clock()
-	cac, sac := setupClients(conf, scope, clk)
+	cac, sac, apc := setupClients(conf, scope, clk)
 
 	updater, err := newUpdater(
 		scope,
@@ -596,12 +629,12 @@ func main() {
 		dbMap,
 		cac,
 		sac,
+		apc,
 		// Necessary evil for now
 		conf,
 		c.Common.IssuerCert,
 		logger,
 	)
-
 	cmd.FailOnError(err, "Failed to create updater")
 
 	for _, l := range updater.loops {

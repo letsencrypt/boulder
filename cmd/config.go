@@ -179,6 +179,7 @@ type OCSPUpdaterConfig struct {
 
 	SAService            *GRPCClientConfig
 	OCSPGeneratorService *GRPCClientConfig
+	AkamaiPurgerService  *GRPCClientConfig
 
 	Features map[string]bool
 }
