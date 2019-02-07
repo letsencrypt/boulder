@@ -1100,7 +1100,7 @@ func TestGetChallenge(t *testing.T) {
 		if method == "GET" {
 			test.AssertUnmarshaledEquals(
 				t, resp.Body.String(),
-				`{"type":"dns","uri":"http://localhost/acme/challenge/valid/23"}`)
+				`{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`)
 		}
 	}
 }
@@ -1134,7 +1134,7 @@ func TestChallenge(t *testing.T) {
 		`<http://localhost/acme/authz/valid>;rel="up"`)
 	test.AssertUnmarshaledEquals(
 		t, responseWriter.Body.String(),
-		`{"type":"dns","uri":"http://localhost/acme/challenge/valid/23"}`)
+		`{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`)
 
 	// Expired challenges should be inaccessible
 	challengeURL = "expired/23"
@@ -1194,6 +1194,7 @@ func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 	body := responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `{
 		"type": "dns",
+		"token":"token",
 		"uri": "http://localhost/acme/challenge/valid/23"
 	  }`)
 }
@@ -2339,7 +2340,8 @@ func TestDeactivateAuthorization(t *testing.T) {
 		  "expires": "2070-01-01T00:00:00Z",
 		  "challenges": [
 		    {
-		      "type": "dns",
+			  "type": "dns",
+			  "token":"token",
 		      "uri": "http://localhost/acme/challenge/valid/23"
 		    }
 		  ]
@@ -2591,5 +2593,73 @@ func TestNewRegistrationGetKeyBroken(t *testing.T) {
 	test.AssertNotError(t, err, "unmarshalling response")
 	if prob.Type != probs.V1ErrorNS+probs.ServerInternalProblem {
 		t.Errorf("Wrong type for returned problem: %#v", prob.Type)
+	}
+}
+
+func TestChallengeNewIDScheme(t *testing.T) {
+	features.Set(map[string]bool{"NewAuthorizationSchema": true})
+	defer features.Reset()
+	wfe, _ := setupWFE(t)
+
+	for _, tc := range []struct {
+		path     string
+		location string
+		expected string
+	}{
+		{
+			path:     "valid/23",
+			location: "http://localhost/acme/challenge/valid/ROx1Hw==",
+			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/ROx1Hw=="}`,
+		},
+		{
+			path:     "valid/ROx1Hw==",
+			location: "http://localhost/acme/challenge/valid/ROx1Hw==",
+			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/ROx1Hw=="}`,
+		},
+	} {
+		resp := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", tc.path, nil)
+		test.AssertNotError(t, err, "http.NewRequest failed")
+
+		wfe.Challenge(context.Background(), newRequestEvent(), resp, req)
+		test.AssertEquals(t,
+			resp.Code,
+			http.StatusAccepted)
+		test.AssertEquals(t,
+			resp.Header().Get("Location"),
+			tc.location)
+		test.AssertUnmarshaledEquals(
+			t, resp.Body.String(),
+			tc.expected)
+	}
+
+	for _, tc := range []struct {
+		path     string
+		location string
+		expected string
+	}{
+		{
+			path:     "valid/23",
+			location: "http://localhost/acme/challenge/valid/ROx1Hw==",
+			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/ROx1Hw=="}`,
+		},
+		{
+			path:     "valid/ROx1Hw==",
+			location: "http://localhost/acme/challenge/valid/ROx1Hw==",
+			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/ROx1Hw=="}`,
+		},
+	} {
+		resp := httptest.NewRecorder()
+		wfe.Challenge(ctx, newRequestEvent(), resp, makePostRequestWithPath(
+			tc.path, signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
+		test.AssertEquals(t,
+			resp.Code,
+			http.StatusAccepted)
+		test.AssertEquals(t,
+			resp.Header().Get("Location"),
+			tc.location)
+		test.AssertUnmarshaledEquals(
+			t, resp.Body.String(),
+			tc.expected)
 	}
 }

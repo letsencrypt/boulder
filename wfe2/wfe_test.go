@@ -1045,7 +1045,7 @@ func TestGetChallenge(t *testing.T) {
 		if method == "GET" {
 			test.AssertUnmarshaledEquals(
 				t, resp.Body.String(),
-				`{"type":"dns","url":"http://localhost/acme/challenge/valid/23"}`)
+				`{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/23"}`)
 		}
 	}
 }
@@ -1080,7 +1080,7 @@ func TestChallenge(t *testing.T) {
 				"Location": "http://localhost/acme/challenge/valid/23",
 				"Link":     `<http://localhost/acme/authz/valid>;rel="up"`,
 			},
-			ExpectedBody: `{"type":"dns","url":"http://localhost/acme/challenge/valid/23"}`,
+			ExpectedBody: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/23"}`,
 		},
 		{
 			Name:           "Expired challenge",
@@ -1110,7 +1110,7 @@ func TestChallenge(t *testing.T) {
 			Name:           "Valid POST-as-GET",
 			Request:        postAsGet(1, "valid/23", ""),
 			ExpectedStatus: http.StatusOK,
-			ExpectedBody:   `{"type":"dns", "url": "http://localhost/acme/challenge/valid/23"}`,
+			ExpectedBody:   `{"type":"dns", "token":"token", "url": "http://localhost/acme/challenge/valid/23"}`,
 		},
 	}
 
@@ -1156,6 +1156,7 @@ func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 	body := responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `{
 		"type": "dns",
+		"token":"token",
 		"url": "http://localhost/acme/challenge/valid/23"
 	  }`)
 }
@@ -1445,6 +1446,7 @@ func TestGetAuthorization(t *testing.T) {
 		"challenges": [
 			{
 				"type": "dns",
+				"token":"token",
 				"url": "http://localhost/acme/challenge/valid/23"
 			}
 		]
@@ -1881,7 +1883,8 @@ func TestDeactivateAuthorization(t *testing.T) {
 		  "expires": "2070-01-01T00:00:00Z",
 		  "challenges": [
 		    {
-		      "type": "dns",
+			  "type": "dns",
+			  "token":"token",
 		      "url": "http://localhost/acme/challenge/valid/23"
 		    }
 		  ]
@@ -2837,4 +2840,74 @@ func TestFinalizeSCTError(t *testing.T) {
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V2ErrorNS+`serverInternal","detail":"Error finalizing order :: Unable to meet CA SCT embedding requirements","status":500}`)
+}
+
+func TestChallengeNewIDScheme(t *testing.T) {
+	features.Set(map[string]bool{"NewAuthorizationSchema": true})
+	defer features.Reset()
+	wfe, _ := setupWFE(t)
+
+	for _, tc := range []struct {
+		path     string
+		location string
+		expected string
+	}{
+		{
+			path:     "valid/23",
+			location: "http://localhost/acme/challenge/valid/ROx1Hw==",
+			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/ROx1Hw=="}`,
+		},
+		{
+			path:     "valid/ROx1Hw==",
+			location: "http://localhost/acme/challenge/valid/ROx1Hw==",
+			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/ROx1Hw=="}`,
+		},
+	} {
+		resp := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", tc.path, nil)
+		test.AssertNotError(t, err, "http.NewRequest failed")
+
+		wfe.Challenge(context.Background(), newRequestEvent(), resp, req)
+		test.AssertEquals(t,
+			resp.Code,
+			http.StatusOK)
+		test.AssertEquals(t,
+			resp.Header().Get("Location"),
+			tc.location)
+		test.AssertUnmarshaledEquals(
+			t, resp.Body.String(),
+			tc.expected)
+	}
+
+	for _, tc := range []struct {
+		path     string
+		location string
+		expected string
+	}{
+		{
+			path:     "valid/23",
+			location: "http://localhost/acme/challenge/valid/ROx1Hw==",
+			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/ROx1Hw=="}`,
+		},
+		{
+			path:     "valid/ROx1Hw==",
+			location: "http://localhost/acme/challenge/valid/ROx1Hw==",
+			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/ROx1Hw=="}`,
+		},
+	} {
+		resp := httptest.NewRecorder()
+
+		_, _, jwsBody := signRequestKeyID(t, 1, nil, "http://localhost/"+tc.path, `{"resource":"challenge"}`, wfe.nonceService)
+		wfe.Challenge(ctx, newRequestEvent(), resp, makePostRequestWithPath(
+			tc.path, jwsBody))
+		test.AssertEquals(t,
+			resp.Code,
+			http.StatusOK)
+		test.AssertEquals(t,
+			resp.Header().Get("Location"),
+			tc.location)
+		test.AssertUnmarshaledEquals(
+			t, resp.Body.String(),
+			tc.expected)
+	}
 }

@@ -872,7 +872,12 @@ func (wfe *WebFrontEndImpl) Challenge(
 	// Check that the requested challenge exists within the authorization
 	var challengeIndex int
 	if features.Enabled(features.NewAuthorizationSchema) {
-		challengeIndex = authz.FindChallengeByTypeID(challengeID.(string))
+		switch challengeID.(type) {
+		case int64:
+			challengeIndex = authz.FindChallenge(challengeID.(int64))
+		case string:
+			challengeIndex = authz.FindChallengeByTypeID(challengeID.(string))
+		}
 	} else {
 		challengeIndex = authz.FindChallenge(challengeID.(int64))
 	}
