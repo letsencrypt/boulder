@@ -2794,7 +2794,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	// challenge
 	test.AssertEquals(t, chal.ProvidedKeyAuthorization, "")
 
-	features.Set(map[string]bool{"NewAuthorizationSchema": true})
+	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
 	defer features.Reset()
 	authz.ID = "12345"
 	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
@@ -2843,7 +2843,7 @@ func TestFinalizeSCTError(t *testing.T) {
 }
 
 func TestChallengeNewIDScheme(t *testing.T) {
-	features.Set(map[string]bool{"NewAuthorizationSchema": true})
+	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
 	defer features.Reset()
 	wfe, _ := setupWFE(t)
 

@@ -2525,7 +2525,7 @@ func TestPrepChallengeForDisplay(t *testing.T) {
 	}
 	test.AssertEquals(t, chall.URI, "http://example.com/acme/challenge/eyup/0")
 
-	features.Set(map[string]bool{"NewAuthorizationSchema": true})
+	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
 	defer features.Reset()
 	wfe.prepChallengeForDisplay(req, authz, chall)
 	test.AssertEquals(t, chall.URI, "http://example.com/acme/challenge/eyup/rPBQwA==")
@@ -2597,7 +2597,7 @@ func TestNewRegistrationGetKeyBroken(t *testing.T) {
 }
 
 func TestChallengeNewIDScheme(t *testing.T) {
-	features.Set(map[string]bool{"NewAuthorizationSchema": true})
+	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
 	defer features.Reset()
 	wfe, _ := setupWFE(t)
 
