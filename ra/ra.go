@@ -1553,9 +1553,50 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 	)
 }
 
+func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason) error {
+	now := time.Now()
+	signRequest := core.OCSPSigningRequest{
+		CertDER:   cert.DER,
+		Status:    string(core.OCSPStatusRevoked),
+		Reason:    code,
+		RevokedAt: now,
+	}
+	ocspResponse, err := ra.CA.GenerateOCSP(ctx, signRequest)
+	if err != nil {
+		return err
+	}
+	status, err := ra.SA.GetCertificateStatus(ctx, core.SerialStoString(cert.SerialNumber))
+	if err != nil {
+		return err
+	}
+	status.OCSPLastUpdated = now
+	status.OCSPResponse = ocspResponse
+	err = ra.SA.UpdateCertificateStatus(ctx, status)
+	if err != nil {
+		return err
+	}
+	purgeURLs, err := ra.generatePurgeURLs(cert.DER)
+	if err != nil {
+		return err
+	}
+	err = ra.purger.Purge(purgeURLs)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // RevokeCertificateWithReg terminates trust in the certificate provided.
 func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, regID int64) error {
 	serialString := core.SerialToString(cert.SerialNumber)
+
+	if features.Enabled(features.RevokeAtRA) {
+		err := ra.revokeCertificate(ctx, cert, revocationCode)
+		if err != nil {
+			return err
+		}
+	}
+
 	err := ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
 
 	state := "Failure"
@@ -1586,6 +1627,14 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 // called from the admin-revoker tool.
 func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, user string) error {
 	serialString := core.SerialToString(cert.SerialNumber)
+
+	if features.Enabled(features.RevokeAtRA) {
+		err := ra.revokeCertificate(ctx, cert, revocationCode)
+		if err != nil {
+			return err
+		}
+	}
+
 	err := ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
 
 	state := "Failure"

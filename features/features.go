@@ -33,6 +33,8 @@ const (
 	HeadNonceStatusOK
 	// NewAuthorizationSchema enables usage of the new authorization storage schema
 	NewAuthorizationSchema
+	// RevokeAtRA enables revocation in the RA instead of ocsp-updater
+	RevokeAtRA
 )
 
 // List of features and their default value, protected by fMu
@@ -48,6 +50,7 @@ var features = map[FeatureFlag]bool{
 	PerformValidationRPC:   false,
 	HeadNonceStatusOK:      false,
 	NewAuthorizationSchema: false,
+	RevokeAtRA:             false,
 }
 
 var fMu = new(sync.RWMutex)
