@@ -254,6 +254,9 @@ func (di *dialerImpl) Dial() (smtpClient, error) {
 // errors and returns them. Without this we would get `nested MAIL command`.
 // https://github.com/letsencrypt/boulder/issues/3191
 func (m *MailerImpl) resetAndError(err error) error {
+	if err == io.EOF {
+		return err
+	}
 	if err2 := m.client.Reset(); err2 != nil {
 		return fmt.Errorf("%s (also, on sending RSET: %s)", err, err2)
 	}
@@ -338,34 +341,36 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			m.stats.Inc("SendMail.Reconnects", 1)
 			continue
 		} else if err != nil {
-			/*
-			 *  If the error is an instance of `textproto.Error` with a SMTP error code,
-			 *  and that error code is 421 then treat this as a reconnect-able event.
-			 *
-			 *  The SMTP RFC defines this error code as:
-			 *   421 <domain> Service not available, closing transmission channel
-			 *   (This may be a reply to any command if the service knows it
-			 *   must shut down)
-			 *
-			 * In practice we see this code being used by our production SMTP server
-			 * when the connection has gone idle for too long. For more information
-			 * see issue #2249[0].
-			 *
-			 * [0] - https://github.com/letsencrypt/boulder/issues/2249
-			 */
-			if protoErr, ok := err.(*textproto.Error); ok && protoErr.Code == 421 {
-				m.stats.Inc("SendMail.Errors.SMTP.421", 1)
-				m.reconnect()
-				m.stats.Inc("SendMail.Reconnects", 1)
-			} else if _, ok := recoverableErrorCodes[protoErr.Code]; ok {
-				m.stats.Inc(fmt.Sprintf("SendMail.Errors.SMTP.%d", protoErr.Code), 1)
-				return RecoverableSMTPError{fmt.Sprintf("%d: %s", protoErr.Code, protoErr.Msg)}
-			} else {
-				// If it wasn't an EOF error or a recoverable SMTP error it is unexpected and we
-				// return from SendMail() with the error
-				m.stats.Inc("SendMail.Errors", 1)
-				return err
+			if protoErr, ok := err.(*textproto.Error); ok {
+				/*
+				 *  If the error is an instance of `textproto.Error` with a SMTP error code,
+				 *  and that error code is 421 then treat this as a reconnect-able event.
+				 *
+				 *  The SMTP RFC defines this error code as:
+				 *   421 <domain> Service not available, closing transmission channel
+				 *   (This may be a reply to any command if the service knows it
+				 *   must shut down)
+				 *
+				 * In practice we see this code being used by our production SMTP server
+				 * when the connection has gone idle for too long. For more information
+				 * see issue #2249[0].
+				 *
+				 * [0] - https://github.com/letsencrypt/boulder/issues/2249
+				 */
+				if protoErr.Code == 421 {
+					m.stats.Inc("SendMail.Errors.SMTP.421", 1)
+					m.reconnect()
+					m.stats.Inc("SendMail.Reconnects", 1)
+				} else if _, ok := recoverableErrorCodes[protoErr.Code]; ok {
+					m.stats.Inc(fmt.Sprintf("SendMail.Errors.SMTP.%d", protoErr.Code), 1)
+					return RecoverableSMTPError{fmt.Sprintf("%d: %s", protoErr.Code, protoErr.Msg)}
+				}
 			}
+
+			// If it wasn't an EOF error or a recoverable SMTP error it is unexpected and we
+			// return from SendMail() with the error
+			m.stats.Inc("SendMail.Errors", 1)
+			return err
 		}
 	}
 
