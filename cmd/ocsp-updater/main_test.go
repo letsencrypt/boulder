@@ -471,21 +471,3 @@ func TestLoopTickBackoff(t *testing.T) {
 	test.AssertEquals(t, l.failures, 0)
 	test.AssertEquals(t, l.clk.Now(), start)
 }
-
-func TestReverseBytes(t *testing.T) {
-	a := []byte{0, 1, 2, 3}
-	test.AssertDeepEquals(t, reverseBytes(a), []byte{3, 2, 1, 0})
-}
-
-func TestGenerateOCSPCacheKeys(t *testing.T) {
-	der := []byte{105, 239, 255}
-	test.AssertDeepEquals(
-		t,
-		generateOCSPCacheKeys(der, "ocsp.invalid/"),
-		[]string{
-			"ocsp.invalid/?body-md5=d6101198a9d9f1f6",
-			"ocsp.invalid/ae/",
-			"ocsp.invalid/ae%2F%2F",
-		},
-	)
-}

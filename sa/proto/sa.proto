@@ -46,6 +46,7 @@ service StorageAuthority {
         rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
         rpc GetAuthorizations(GetAuthorizationsRequest) returns (Authorizations) {}
         rpc AddPendingAuthorizations(AddPendingAuthorizationsRequest) returns (AuthorizationIDs) {}
+        rpc UpdateCertificateStatus(CertificateStatus) returns (core.Empty) {}
 }
 
 message RegistrationID {

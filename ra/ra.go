@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/akamai"
+	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -79,6 +81,9 @@ type RegistrationAuthorityImpl struct {
 	forceCNFromSAN               bool
 	reuseValidAuthz              bool
 	orderLifetime                time.Duration
+
+	issuer *x509.Certificate
+	purger akamaipb.AkamaiPurgerClient
 
 	regByIPStats           metrics.Scope
 	regByIPRangeStats      metrics.Scope
@@ -1556,7 +1561,7 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason) error {
 	now := time.Now()
 	signRequest := core.OCSPSigningRequest{
-		CertDER:   cert.DER,
+		CertDER:   cert.Raw,
 		Status:    string(core.OCSPStatusRevoked),
 		Reason:    code,
 		RevokedAt: now,
@@ -1565,7 +1570,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	if err != nil {
 		return err
 	}
-	status, err := ra.SA.GetCertificateStatus(ctx, core.SerialStoString(cert.SerialNumber))
+	status, err := ra.SA.GetCertificateStatus(ctx, core.SerialToString(cert.SerialNumber))
 	if err != nil {
 		return err
 	}
@@ -1575,11 +1580,11 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	if err != nil {
 		return err
 	}
-	purgeURLs, err := ra.generatePurgeURLs(cert.DER)
+	purgeURLs, err := akamai.GeneratePurgeURLs(cert.Raw, ra.issuer)
 	if err != nil {
 		return err
 	}
-	err = ra.purger.Purge(purgeURLs)
+	_, err = ra.purger.Purge(ctx, &akamaipb.PurgeRequest{Urls: purgeURLs})
 	if err != nil {
 		return err
 	}

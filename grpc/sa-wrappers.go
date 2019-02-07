@@ -582,6 +582,11 @@ func (sas StorageAuthorityClientWrapper) AddPendingAuthorizations(ctx context.Co
 	return resp, nil
 }
 
+func (sas StorageAuthorityClientWrapper) UpdateCertificateStatus(ctx context.Context, status *sapb.CertificateStatus) error {
+	_, err := sas.inner.UpdateCertificateStatus(ctx, status)
+	return err
+}
+
 // StorageAuthorityServerWrapper is the gRPC version of a core.ServerAuthority server
 type StorageAuthorityServerWrapper struct {
 	// TODO(#3119): Don't use core.StorageAuthority
@@ -1110,4 +1115,11 @@ func (sas StorageAuthorityServerWrapper) AddPendingAuthorizations(ctx context.Co
 	}
 
 	return sas.inner.AddPendingAuthorizations(ctx, request)
+}
+
+func (sas StorageAuthorityServerWrapper) UpdateCertificateStatus(ctx context.Context, status *sapb.CertificateStatus) (*corepb.Empty, error) {
+	if status == nil {
+		return nil, errIncompleteRequest
+	}
+	return nil, sas.inner.UpdateCertificateStatus(ctx, status)
 }
