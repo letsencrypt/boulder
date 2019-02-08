@@ -2254,3 +2254,52 @@ func TestUpdateChallengesPendingOnly(t *testing.T) {
 		t.Errorf("challenge status was updated when it should not have been allowed to be changed.")
 	}
 }
+
+func TestRevokeCertificate(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	// Add a cert to the DB to test with.
+	certDER, err := ioutil.ReadFile("www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't read example cert DER")
+	issued := sa.clk.Now()
+	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
+	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+
+	serial := "000000000000000000000000000000021bd4"
+
+	status, err := sa.GetCertificateStatus(ctx, serial)
+	test.AssertNotError(t, err, "GetCertificateStatus failed")
+	test.AssertEquals(t, status.Status, core.OCSPStatusGood)
+
+	fc.Add(1 * time.Hour)
+
+	now := fc.Now()
+	dateUnix := now.UnixNano()
+	reason := int64(1)
+	response := []byte{1, 2, 3}
+	err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		Serial:   &serial,
+		Date:     &dateUnix,
+		Reason:   &reason,
+		Response: response,
+	})
+	test.AssertNotError(t, err, "RevokeCertificate failed")
+
+	status, err = sa.GetCertificateStatus(ctx, serial)
+	test.AssertNotError(t, err, "GetCertificateStatus failed")
+	test.AssertEquals(t, status.Status, core.OCSPStatusRevoked)
+	test.AssertEquals(t, status.RevokedReason, revocation.Reason(reason))
+	test.AssertEquals(t, status.RevokedDate, now)
+	test.AssertEquals(t, status.OCSPLastUpdated, now)
+	test.AssertDeepEquals(t, status.OCSPResponse, response)
+
+	err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		Serial:   &serial,
+		Date:     &dateUnix,
+		Reason:   &reason,
+		Response: response,
+	})
+	test.AssertError(t, err, "RevokeCertificate should've failed when certificate already revoked")
+}
