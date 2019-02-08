@@ -254,6 +254,9 @@ func (di *dialerImpl) Dial() (smtpClient, error) {
 // errors and returns them. Without this we would get `nested MAIL command`.
 // https://github.com/letsencrypt/boulder/issues/3191
 func (m *MailerImpl) resetAndError(err error) error {
+	if err == io.EOF {
+		return err
+	}
 	if err2 := m.client.Reset(); err2 != nil {
 		return fmt.Errorf("%s (also, on sending RSET: %s)", err, err2)
 	}
@@ -337,7 +340,7 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			// After reconnecting, loop around and try `sendOne` again.
 			m.stats.Inc("SendMail.Reconnects", 1)
 			continue
-		} else if err != nil {
+		} else if protoErr, ok := err.(*textproto.Error); ok && protoErr.Code == 421 {
 			/*
 			 *  If the error is an instance of `textproto.Error` with a SMTP error code,
 			 *  and that error code is 421 then treat this as a reconnect-able event.
@@ -353,19 +356,17 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			 *
 			 * [0] - https://github.com/letsencrypt/boulder/issues/2249
 			 */
-			if protoErr, ok := err.(*textproto.Error); ok && protoErr.Code == 421 {
-				m.stats.Inc("SendMail.Errors.SMTP.421", 1)
-				m.reconnect()
-				m.stats.Inc("SendMail.Reconnects", 1)
-			} else if _, ok := recoverableErrorCodes[protoErr.Code]; ok {
-				m.stats.Inc(fmt.Sprintf("SendMail.Errors.SMTP.%d", protoErr.Code), 1)
-				return RecoverableSMTPError{fmt.Sprintf("%d: %s", protoErr.Code, protoErr.Msg)}
-			} else {
-				// If it wasn't an EOF error or a recoverable SMTP error it is unexpected and we
-				// return from SendMail() with the error
-				m.stats.Inc("SendMail.Errors", 1)
-				return err
-			}
+			m.stats.Inc("SendMail.Errors.SMTP.421", 1)
+			m.reconnect()
+			m.stats.Inc("SendMail.Reconnects", 1)
+		} else if protoErr, ok := err.(*textproto.Error); ok && recoverableErrorCodes[protoErr.Code] {
+			m.stats.Inc(fmt.Sprintf("SendMail.Errors.SMTP.%d", protoErr.Code), 1)
+			return RecoverableSMTPError{fmt.Sprintf("%d: %s", protoErr.Code, protoErr.Msg)}
+		} else {
+			// If it wasn't an EOF error or a recoverable SMTP error it is unexpected and we
+			// return from SendMail() with the error
+			m.stats.Inc("SendMail.Errors", 1)
+			return err
 		}
 	}
 
