@@ -1,13 +1,16 @@
 package main
 
 import (
+	"crypto/x509"
 	"flag"
 	"fmt"
 	"os"
 	"time"
 
+	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -32,10 +35,11 @@ type config struct {
 		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
 		UseIsSafeDomain bool // TODO: remove after va IsSafeDomain deploy
 
-		SAService        *cmd.GRPCClientConfig
-		VAService        *cmd.GRPCClientConfig
-		CAService        *cmd.GRPCClientConfig
-		PublisherService *cmd.GRPCClientConfig
+		SAService           *cmd.GRPCClientConfig
+		VAService           *cmd.GRPCClientConfig
+		CAService           *cmd.GRPCClientConfig
+		PublisherService    *cmd.GRPCClientConfig
+		AkamaiPurgerService *cmd.GRPCClientConfig
 
 		MaxNames     int
 		DoNotForceCN bool
@@ -75,6 +79,11 @@ type config struct {
 		// test them or because they are not yet approved by a browser/root
 		// program but we still want our certs to end up there.
 		InformationalCTLogs []cmd.LogDescription
+
+		// IssuerCertPath is the path to the intermediate used to issue certificates.
+		// It is required if the RevokeAtRA feature is enabled and is used to
+		// generate OCSP URLs to purge at revocation time.
+		IssuerCertPath string
 
 		Features map[string]bool
 	}
@@ -131,6 +140,10 @@ func main() {
 		logger.Info("No challengesWhitelistFile given, not loading")
 	}
 
+	if features.Enabled(features.RevokeAtRA) && (c.RA.AkamaiPurgerService == nil || c.RA.IssuerCertPath == "") {
+		cmd.Fail("If the RevokeAtRA feature is enabled the AkamaiPurgerService and IssuerCertPath config fields must be populated")
+	}
+
 	tlsConfig, err := c.RA.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
@@ -145,9 +158,6 @@ func main() {
 
 	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Unable to create CA client")
-	// Build a CA client that is only capable of issuing certificates, not
-	// signing OCSP. TODO(jsha): Once we've fully moved to gRPC, replace this
-	// with a plain caPB.NewCertificateAuthorityClient.
 	cac := bgrpc.NewCertificateAuthorityClient(caPB.NewCertificateAuthorityClient(caConn), nil)
 
 	raConn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics, clk)
@@ -158,6 +168,17 @@ func main() {
 	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 	pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
+
+	var apc akamaipb.AkamaiPurgerClient
+	var issuerCert *x509.Certificate
+	if features.Enabled(features.RevokeAtRA) {
+		apConn, err := bgrpc.ClientSetup(c.RA.AkamaiPurgerService, tlsConfig, clientMetrics, clk)
+		cmd.FailOnError(err, "Unable to create a Akamai Purger client")
+		apc = akamaipb.NewAkamaiPurgerClient(apConn)
+
+		issuerCert, err = core.LoadCert(c.RA.IssuerCertPath)
+		cmd.FailOnError(err, "Failed to load issuer certificate")
+	}
 
 	// Boulder's components assume that there will always be CT logs configured.
 	// Issuing a certificate without SCTs embedded is a miss-issuance event in the
@@ -220,6 +241,8 @@ func main() {
 		caaClient,
 		c.RA.OrderLifetime.Duration,
 		ctp,
+		apc,
+		issuerCert,
 	)
 
 	policyErr := rai.SetRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)

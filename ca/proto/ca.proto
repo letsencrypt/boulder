@@ -10,6 +10,7 @@ service CertificateAuthority {
   rpc IssueCertificate(IssueCertificateRequest) returns (core.Certificate) {}
   rpc IssuePrecertificate(IssueCertificateRequest) returns (IssuePrecertificateResponse) {}
   rpc IssueCertificateForPrecertificate(IssueCertificateForPrecertificateRequest) returns (core.Certificate) {}
+  rpc GenerateOCSP(GenerateOCSPRequest) returns (OCSPResponse) {}
 }
 
 // OCSPGenerator generates OCSP. We separate this out from

@@ -1121,5 +1121,5 @@ func (sas StorageAuthorityServerWrapper) RevokeCertificate(ctx context.Context, 
 	if req == nil || req.Serial == nil || req.Reason == nil || req.Date == nil || req.Response == nil {
 		return nil, errIncompleteRequest
 	}
-	return nil, sas.inner.RevokeCertificate(ctx, req)
+	return &corepb.Empty{}, sas.inner.RevokeCertificate(ctx, req)
 }

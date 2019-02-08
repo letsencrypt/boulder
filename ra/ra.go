@@ -112,6 +112,8 @@ func NewRegistrationAuthorityImpl(
 	caaClient caaChecker,
 	orderLifetime time.Duration,
 	ctp *ctpolicy.CTPolicy,
+	purger akamaipb.AkamaiPurgerClient,
+	issuer *x509.Certificate,
 ) *RegistrationAuthorityImpl {
 	ctpolicyResults := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -146,6 +148,8 @@ func NewRegistrationAuthorityImpl(
 		orderLifetime:                orderLifetime,
 		ctpolicy:                     ctp,
 		ctpolicyResults:              ctpolicyResults,
+		purger:                       purger,
+		issuer:                       issuer,
 	}
 	return ra
 }

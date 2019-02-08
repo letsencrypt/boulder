@@ -2139,6 +2139,7 @@ func (ssa *SQLStorageAuthority) GetAuthz2(id int64) (*corepb.Authorization, erro
 func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
+		fmt.Println("DEBUGDEBUG setup...")
 		return err
 	}
 	txWithCtx := tx.WithContext(ctx)
@@ -2147,9 +2148,10 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 		txWithCtx,
 		"WHERE serial = ? AND status != ?",
 		*req.Serial,
-		core.OCSPStatusRevoked,
+		string(core.OCSPStatusRevoked),
 	)
 	if err != nil {
+		fmt.Println("DEBUGDEBUG up here", err)
 		if err == sql.ErrNoRows {
 			// InternalServerError because we expected this certificate status to exist
 			return Rollback(tx, berrors.InternalServerError("no certificate with serial %s", *req.Serial))
@@ -2164,13 +2166,20 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 	status.OCSPLastUpdated = revokedDate
 	status.OCSPResponse = req.Response
 
-	n, err := txWithCtx.Update(status)
+	n, err := txWithCtx.Update(&status)
 	if err != nil {
+		fmt.Println("DEBUGDEBUG update")
 		return Rollback(tx, err)
 	}
 	if n == 0 {
+		fmt.Println("DEBUGDEBUG here?", n)
 		return Rollback(tx, berrors.InternalServerError("no certificate updated"))
 	}
 
-	return tx.Commit()
+	err = tx.Commit()
+	if err != nil {
+		fmt.Println("DEBUGDEBUG commit")
+		return err
+	}
+	return nil
 }

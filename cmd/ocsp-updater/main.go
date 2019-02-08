@@ -115,16 +115,20 @@ func newUpdater(
 			failureBackoffFactor: config.SignFailureBackoffFactor,
 			failureBackoffMax:    config.SignFailureBackoffMax.Duration,
 		},
-		{
-			clk:                  clk,
-			stats:                stats.NewScope("RevokedCertificates"),
-			batchSize:            config.RevokedCertificateBatchSize,
-			tickDur:              config.RevokedCertificateWindow.Duration,
-			tickFunc:             updater.revokedCertificatesTick,
-			name:                 "RevokedCertificates",
-			failureBackoffFactor: config.SignFailureBackoffFactor,
-			failureBackoffMax:    config.SignFailureBackoffMax.Duration,
-		},
+	}
+
+	if !features.Enabled(features.RevokeAtRA) {
+		updater.loops = append(updater.loops,
+			&looper{
+				clk:                  clk,
+				stats:                stats.NewScope("RevokedCertificates"),
+				batchSize:            config.RevokedCertificateBatchSize,
+				tickDur:              config.RevokedCertificateWindow.Duration,
+				tickFunc:             updater.revokedCertificatesTick,
+				name:                 "RevokedCertificates",
+				failureBackoffFactor: config.SignFailureBackoffFactor,
+				failureBackoffMax:    config.SignFailureBackoffMax.Duration,
+			})
 	}
 
 	if config.AkamaiBaseURL != "" {
@@ -514,6 +518,7 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope, clk clock.Clock)
 		cmd.FailOnError(err, "TLS config")
 	}
 	clientMetrics := bgrpc.NewClientMetrics(stats)
+
 	caConn, err := bgrpc.ClientSetup(c.OCSPGeneratorService, tls, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
 	// Make a CA client that is only capable of signing OCSP.
