@@ -2132,3 +2132,45 @@ func (ssa *SQLStorageAuthority) GetAuthz2(id int64) (*corepb.Authorization, erro
 	}
 	return modelToAuthzPB(obj.(*authz2Model))
 }
+
+// RevokeCertificate stores revocation information about a certificate. It will only store this
+// information if the certificate is not alreay marked as revoked. This method is meant as a
+// replacement for MarkCertificateRevoked and the ocsp-updater database methods.
+func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error {
+	tx, err := ssa.dbMap.Begin()
+	if err != nil {
+		return err
+	}
+	txWithCtx := tx.WithContext(ctx)
+
+	status, err := SelectCertificateStatus(
+		txWithCtx,
+		"WHERE serial = ? AND status != ?",
+		*req.Serial,
+		core.OCSPStatusRevoked,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// InternalServerError because we expected this certificate status to exist
+			return Rollback(tx, berrors.InternalServerError("no certificate with serial %s", *req.Serial))
+		}
+		return Rollback(tx, err)
+	}
+
+	revokedDate := time.Unix(0, *req.Date)
+	status.Status = core.OCSPStatusRevoked
+	status.RevokedReason = revocation.Reason(*req.Reason)
+	status.RevokedDate = revokedDate
+	status.OCSPLastUpdated = revokedDate
+	status.OCSPResponse = req.Response
+
+	n, err := txWithCtx.Update(status)
+	if err != nil {
+		return Rollback(tx, err)
+	}
+	if n == 0 {
+		return Rollback(tx, berrors.InternalServerError("no certificate updated"))
+	}
+
+	return tx.Commit()
+}

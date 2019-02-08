@@ -46,7 +46,7 @@ service StorageAuthority {
         rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
         rpc GetAuthorizations(GetAuthorizationsRequest) returns (Authorizations) {}
         rpc AddPendingAuthorizations(AddPendingAuthorizationsRequest) returns (AuthorizationIDs) {}
-        rpc UpdateCertificateStatus(CertificateStatus) returns (core.Empty) {}
+        rpc RevokeCertificate(RevokeCertificateRequest) returns (core.Empty) {}
 }
 
 message RegistrationID {
@@ -222,4 +222,11 @@ message AddPendingAuthorizationsRequest {
 
 message AuthorizationIDs {
         repeated string ids = 1;
+}
+
+message RevokeCertificateRequest {
+        optional string serial = 1;
+        optional int64 reason = 2;
+        optional int64 date = 3; // Unix timestamp (nanoseconds)
+        optional bytes response = 4;
 }

@@ -582,8 +582,8 @@ func (sas StorageAuthorityClientWrapper) AddPendingAuthorizations(ctx context.Co
 	return resp, nil
 }
 
-func (sas StorageAuthorityClientWrapper) UpdateCertificateStatus(ctx context.Context, status *sapb.CertificateStatus) error {
-	_, err := sas.inner.UpdateCertificateStatus(ctx, status)
+func (sas StorageAuthorityClientWrapper) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error {
+	_, err := sas.inner.RevokeCertificate(ctx, req)
 	return err
 }
 
@@ -1117,9 +1117,9 @@ func (sas StorageAuthorityServerWrapper) AddPendingAuthorizations(ctx context.Co
 	return sas.inner.AddPendingAuthorizations(ctx, request)
 }
 
-func (sas StorageAuthorityServerWrapper) UpdateCertificateStatus(ctx context.Context, status *sapb.CertificateStatus) (*corepb.Empty, error) {
-	if status == nil {
+func (sas StorageAuthorityServerWrapper) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*corepb.Empty, error) {
+	if req == nil || req.Serial == nil || req.Reason == nil || req.Date == nil || req.Response == nil {
 		return nil, errIncompleteRequest
 	}
-	return nil, sas.inner.UpdateCertificateStatus(ctx, status)
+	return nil, sas.inner.RevokeCertificate(ctx, req)
 }

@@ -154,7 +154,7 @@ type StorageAdder interface {
 	FinalizeOrder(ctx context.Context, order *corepb.Order) error
 	AddPendingAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error)
 	SetOrderError(ctx context.Context, order *corepb.Order) error
-	UpdateCertificateStatus(ctx context.Context, status *sapb.CertificateStatus) error
+	RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error
 }
 
 // StorageAuthority interface represents a simple key/value

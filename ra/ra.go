@@ -1558,6 +1558,8 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 	)
 }
 
+// revokeCertificate generates a revoked OCSP response for the given certificate, stores
+// the revocation information, and purges OCSP request URLs from Akamai.
 func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason) error {
 	now := time.Now()
 	signRequest := core.OCSPSigningRequest{
@@ -1570,13 +1572,15 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	if err != nil {
 		return err
 	}
-	status, err := ra.SA.GetCertificateStatus(ctx, core.SerialToString(cert.SerialNumber))
-	if err != nil {
-		return err
-	}
-	status.OCSPLastUpdated = now
-	status.OCSPResponse = ocspResponse
-	err = ra.SA.UpdateCertificateStatus(ctx, status)
+	serial := core.SerialToString(cert.SerialNumber)
+	nowUnix := now.UnixNano()
+	reason := int64(code)
+	err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
+		Serial:   &serial,
+		Reason:   &reason,
+		Date:     &nowUnix,
+		Response: ocspResponse,
+	})
 	if err != nil {
 		return err
 	}
@@ -1596,10 +1600,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 	serialString := core.SerialToString(cert.SerialNumber)
 
 	if features.Enabled(features.RevokeAtRA) {
-		err := ra.revokeCertificate(ctx, cert, revocationCode)
-		if err != nil {
-			return err
-		}
+		return ra.revokeCertificate(ctx, cert, revocationCode)
 	}
 
 	err := ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
@@ -1634,10 +1635,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	serialString := core.SerialToString(cert.SerialNumber)
 
 	if features.Enabled(features.RevokeAtRA) {
-		err := ra.revokeCertificate(ctx, cert, revocationCode)
-		if err != nil {
-			return err
-		}
+		return ra.revokeCertificate(ctx, cert, revocationCode)
 	}
 
 	err := ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
