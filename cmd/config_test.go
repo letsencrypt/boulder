@@ -18,12 +18,12 @@ func TestDBConfigURL(t *testing.T) {
 		{
 			// Test with one config file that has no trailing newline
 			conf:     DBConfig{DBConnectFile: "testdata/test_dburl"},
-			expected: "mysql+tcp://test@testhost:3306/testDB?readTimeout=800ms&writeTimeout=800ms",
+			expected: "test@tcp(testhost:3306)/testDB?readTimeout=800ms&writeTimeout=800ms",
 		},
 		{
 			// Test with a config file that *has* a trailing newline
 			conf:     DBConfig{DBConnectFile: "testdata/test_dburl_newline"},
-			expected: "mysql+tcp://test@testhost:3306/testDB?readTimeout=800ms&writeTimeout=800ms",
+			expected: "test@tcp(testhost:3306)/testDB?readTimeout=800ms&writeTimeout=800ms",
 		},
 	}
 
