@@ -3,8 +3,6 @@ package sa
 import (
 	"database/sql"
 	"fmt"
-	"net/url"
-	"strings"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
