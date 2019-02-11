@@ -103,13 +103,14 @@ func (d *preresolvedDialer) DialContext(
 	// Make a new dial address using the pre-resolved IP and port.
 	targetAddr := net.JoinHostPort(d.ip.String(), strconv.Itoa(d.port))
 
-	// Invoke the default transport's original DialContext function using the
-	// reconstructed context.
-	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
-	if !ok {
-		return nil, fmt.Errorf("DefaultTransport was not an http.Transport")
+	// Create a throw-away dialer using default values and the VA
+	// singleDialTimeout
+	throwAwayDialer := &net.Dialer{
+		Timeout: singleDialTimeout,
+		// Default KeepAlive - see Golang src/net/http/transport.go DefaultTransport
+		KeepAlive: 30 * time.Second,
 	}
-	return defaultTransport.DialContext(ctx, network, targetAddr)
+	return throwAwayDialer.DialContext(ctx, network, targetAddr)
 }
 
 // a dialerFunc meets the function signature requirements of
