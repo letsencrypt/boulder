@@ -54,12 +54,8 @@ go install ./
 
 git clone https://github.com/certbot/certbot /certbot
 cd /certbot
-# Checkout a specific commit of Certbot prior to PR 6144[0] landing. This is
-# required for the config-next integration tests for TLS-ALPN-01 to function.
-# [0] - https://github.com/certbot/certbot/pull/6144
-git checkout 87e1912bf91cf91e8ff1d3e4d5928353ae1a294c
 ./letsencrypt-auto --os-packages-only
-./tools/venv.sh
+./tools/venv.py
 cd -
 
 # Install pkcs11-proxy. Checked out commit was master HEAD at time
