@@ -15,6 +15,17 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 )
 
+func writeTSVData(rows *sql.Rows, outFile *os.File) {
+	for rows.Next() {
+		var (
+			id, rname, notBefore, serial string
+		)
+		if err := rows.Scan(&id, &rname, &notBefore, &serial); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Fprintf(outFile, "%s\t%s\t%s\t%s\n", id, rname, notBefore, serial)
+	}
+}
 func main() {
 	dbConnection := flag.String("dbConnection", "", "Path to the DB URL")
 	scpLocation := flag.String("destination", "localhost:/tmp", "Location to SCP the TSV output to")
@@ -36,19 +47,13 @@ func main() {
 	outFile, err := os.OpenFile(outputFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	cmd.FailOnError(err, "Could not write to results file")
 
+	// this query needs to be fixed because it gets the 00:00:00 minute of the first and last date
 	rows, err := db.Query(`SELECT id,reversedName,notBefore,serial FROM issuedNames where notBefore between ? and ?`, yesterdayDateStamp, endDateStamp)
 	cmd.FailOnError(err, "Could not reach database and run query")
 
 	defer rows.Close()
-	for rows.Next() {
-		var (
-			id, rname, notBefore, serial string
-		)
-		if err := rows.Scan(&id, &rname, &notBefore, &serial); err != nil {
-			log.Fatal(err)
-		}
-		fmt.Fprintf(outFile, "%s\t%s\t%s\t%s\n", id, rname, notBefore, serial)
-	}
+	writeTSVData(rows, outFile)
+
 	outFile.Close()
 	err = exec.Command("/usr/bin/gzip", outputFileName).Run()
 	cmd.FailOnError(err, "Could not gzip file")
