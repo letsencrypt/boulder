@@ -17,9 +17,11 @@ package util
 import (
 	"bytes"
 	"encoding/asn1"
+	"errors"
 	"regexp"
 	"strings"
 	"unicode"
+	"unicode/utf16"
 
 	"github.com/zmap/zcrypto/x509/pkix"
 )
@@ -114,4 +116,21 @@ var emptyASN1Sequence = []byte{0x30, 0x00}
 
 func IsEmptyASN1Sequence(input []byte) bool {
 	return len(input) < 2 || bytes.Equal(input, emptyASN1Sequence)
+}
+
+// ParseBMPString returns a uint16 encoded string following the specification for a BMPString type
+func ParseBMPString(bmpString []byte) (string, error) {
+	if len(bmpString)%2 != 0 {
+		return "", errors.New("odd-length BMP string")
+	}
+	// strip terminator if present
+	if l := len(bmpString); l >= 2 && bmpString[l-1] == 0 && bmpString[l-2] == 0 {
+		bmpString = bmpString[:l-2]
+	}
+	s := make([]uint16, 0, len(bmpString)/2)
+	for len(bmpString) > 0 {
+		s = append(s, uint16(bmpString[0])<<8+uint16(bmpString[1]))
+		bmpString = bmpString[2:]
+	}
+	return string(utf16.Decode(s)), nil
 }

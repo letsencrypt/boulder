@@ -71,7 +71,7 @@ func (p GTLDPeriod) Valid(when time.Time) error {
 // HasValidTLD checks that a domain ends in a valid TLD that was delegated in
 // the root DNS at the time specified.
 func HasValidTLD(domain string, when time.Time) bool {
-	labels := strings.Split(domain, ".")
+	labels := strings.Split(strings.ToLower(domain), ".")
 	rightLabel := labels[len(labels)-1]
 	// if the rightmost label is not present in the tldMap, it isn't valid and
 	// never was.
