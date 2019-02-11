@@ -37,7 +37,7 @@ func TestMaxOpenConns(t *testing.T) {
 }
 
 func TestNewDbMap(t *testing.T) {
-	const mysqlConnectURL = "mysql+tcp://policy:password@boulder-mysql:3306/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
+	const mysqlConnectURL = "policy:password@tcp(boulder-mysql:3306)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
 	const expected = "policy:password@tcp(boulder-mysql:3306)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&writeTimeout=800ms&long_query_time=0.6400000000000001&max_statement_time=0.76&sql_mode=STRICT_ALL_TABLES"
 	oldSQLOpen := sqlOpen
 	defer func() {
@@ -52,7 +52,7 @@ func TestNewDbMap(t *testing.T) {
 
 	dbMap, err := NewDbMap(mysqlConnectURL, 0)
 	if err != errExpected {
-		t.Errorf("got incorrect error: %v", err)
+		t.Errorf("got incorrect error. Got %v, expected %v", err, errExpected)
 	}
 	if dbMap != nil {
 		t.Errorf("expected nil, got %v", dbMap)

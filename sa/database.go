@@ -3,8 +3,6 @@ package sa
 import (
 	"database/sql"
 	"fmt"
-	"net/url"
-	"strings"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -22,12 +20,6 @@ import (
 func NewDbMap(dbConnect string, maxOpenConns int) (*gorp.DbMap, error) {
 	var err error
 	var config *mysql.Config
-	if strings.HasPrefix(dbConnect, "mysql+tcp://") {
-		dbConnect, err = recombineCustomMySQLURL(dbConnect)
-		if err != nil {
-			return nil, err
-		}
-	}
 
 	config, err = mysql.ParseDSN(dbConnect)
 	if err != nil {
@@ -102,49 +94,6 @@ func adjustMySQLConfig(conf *mysql.Config) *mysql.Config {
 	}
 
 	return conf
-}
-
-// recombineCustomMySQLURL transforms the legacy database URLs into the
-// URL-like strings expected by the mysql database driver.
-//
-// In the past, changes to the connection string were achieved by passing it
-// into url.Parse and editing the query string that way, so the string had to
-// be a valid URL. The mysql driver needs the Host data to be wrapped in
-// "tcp()" but url.Parse will escape the parentheses and the mysql driver
-// doesn't understand them. So, we couldn't have "tcp()" in the configs, but
-// couldn't leave it out before passing it to the mysql driver.  Similarly, the
-// driver needs the password and username unescaped. The compromise was to do
-// the leg work if the connection string's scheme is a fake one called
-// "mysql+tcp://".
-//
-// Upon the addition of
-// https://godoc.org/github.com/go-sql-driver/mysql#Config, this was no longer
-// necessary, as the changes could be made on the decomposed struct version of
-// the connection url. This method converts the old format into the format
-// expected by the library.
-func recombineCustomMySQLURL(dbConnect string) (string, error) {
-	dbConnect = strings.TrimSpace(dbConnect)
-	dbURL, err := url.Parse(dbConnect)
-	if err != nil {
-		return "", err
-	}
-
-	if dbURL.Scheme != "mysql+tcp" {
-		format := "given database connection string was not a mysql+tcp:// URL, was %#v"
-		return "", fmt.Errorf(format, dbURL.Scheme)
-	}
-
-	user := dbURL.User.Username()
-	passwd, hasPass := dbURL.User.Password()
-	dbConn := ""
-	if user != "" {
-		dbConn = url.QueryEscape(user)
-	}
-	if hasPass {
-		dbConn += ":" + passwd
-	}
-	dbConn += "@tcp(" + dbURL.Host + ")"
-	return dbConn + dbURL.EscapedPath() + "?" + dbURL.RawQuery, nil
 }
 
 // SetSQLDebug enables GORP SQL-level Debugging
