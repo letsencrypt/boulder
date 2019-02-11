@@ -11,10 +11,18 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/letsencrypt/boulder/cmd"
 )
 
+func databaseWork(dbConnection string, beginTimeStamp string, endTimeStamp string) (rowResults *sql.Rows) {
+	dbDSN, err := ioutil.ReadFile(dbConnection)
+	cmd.FailOnError(err, "Could not open database connection file")
+	db, err := sql.Open("mysql", strings.TrimSpace(string(dbDSN)))
+	cmd.FailOnError(err, "Could not establish database connection")
+	rows, err := db.Query(`SELECT id,reversedName,notBefore,serial FROM issuedNames where notBefore between ? and ?`, beginTimeStamp, endTimeStamp)
+	cmd.FailOnError(err, "Could not reach database and run query")
+	return rows
+}
 func writeTSVData(rows *sql.Rows, outFile *os.File) {
 	for rows.Next() {
 		var (
@@ -28,7 +36,7 @@ func writeTSVData(rows *sql.Rows, outFile *os.File) {
 }
 func main() {
 	dbConnection := flag.String("dbConnection", "", "Path to the DB URL")
-	scpLocation := flag.String("destination", "localhost:/tmp", "Location to SCP the TSV output to")
+	scpLocation := flag.String("destination", "localhost:/tmp", "Location to SCP the TSV result file to")
 	flag.Parse()
 
 	now := time.Now()
@@ -38,19 +46,11 @@ func main() {
 	outputFileName := fmt.Sprintf("results-%s.tsv", yesterday.Format("2006-01-02"))
 	outputGZIPName := outputFileName + ".gz"
 
-	dbDSN, err := ioutil.ReadFile(*dbConnection)
-	cmd.FailOnError(err, "Could not open database connection file")
-
-	db, err := sql.Open("mysql", strings.TrimSpace(string(dbDSN)))
-	cmd.FailOnError(err, "Could not establish database connection")
-
 	outFile, err := os.OpenFile(outputFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	cmd.FailOnError(err, "Could not write to results file")
 
-	// this query needs to be fixed because it gets the 00:00:00 minute of the first and last date
-	rows, err := db.Query(`SELECT id,reversedName,notBefore,serial FROM issuedNames where notBefore between ? and ?`, yesterdayDateStamp, endDateStamp)
-	cmd.FailOnError(err, "Could not reach database and run query")
-
+	rows := databaseWork(*dbConnection, yesterdayDateStamp, endDateStamp)
+	// is this where the defer goes?
 	defer rows.Close()
 	writeTSVData(rows, outFile)
 
