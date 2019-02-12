@@ -50,12 +50,6 @@ const (
 	ACMETLS1Protocol = "acme-tls/1"
 )
 
-// singleDialTimeout specifies how long an individual `DialContext` operation may take
-// before timing out. This timeout ignores the base RPC timeout and is strictly
-// used for the DialContext operations that take place during an
-// HTTP-01/TLS-SNI-[01|02] challenge validation.
-const singleDialTimeout = time.Second * 10
-
 // NOTE: unfortunately another document claimed the OID we were using in draft-ietf-acme-tls-alpn-01
 // for their own extension and IANA chose to assign it early. Because of this we had to increment
 // the id-pe-acmeIdentifier OID. Since there are in the wild implementations that use the original
@@ -154,6 +148,7 @@ type ValidationAuthorityImpl struct {
 	remoteVAs          []RemoteVA
 	maxRemoteFailures  int
 	accountURIPrefixes []string
+	singleDialTimeout  time.Duration
 
 	metrics *vaMetrics
 }
@@ -201,6 +196,11 @@ func NewValidationAuthorityImpl(
 		remoteVAs:          remoteVAs,
 		maxRemoteFailures:  maxRemoteFailures,
 		accountURIPrefixes: accountURIPrefixes,
+		// singleDialTimeout specifies how long an individual `DialContext` operation may take
+		// before timing out. This timeout ignores the base RPC timeout and is strictly
+		// used for the DialContext operations that take place during an
+		// HTTP-01/TLS-SNI-[01|02] challenge validation.
+		singleDialTimeout: 10 * time.Second,
 	}, nil
 }
 
@@ -249,6 +249,7 @@ type http01Dialer struct {
 	port        string
 	stats       metrics.Scope
 	dialerCount int
+	timeout     time.Duration
 
 	addrInfoChan chan addrRecord
 }
@@ -260,7 +261,7 @@ type http01Dialer struct {
 func (d *http01Dialer) realDialer() *net.Dialer {
 	// Record that we created a new instance of a real net.Dialer
 	d.dialerCount++
-	return &net.Dialer{Timeout: singleDialTimeout}
+	return &net.Dialer{Timeout: d.timeout}
 }
 
 // DialContext processes the IP addresses from the inner validation record, using
@@ -348,6 +349,7 @@ func (va *ValidationAuthorityImpl) newHTTP01Dialer(host string, port int, addrs 
 		port:         strconv.Itoa(port),
 		addrs:        addrs,
 		stats:        va.stats,
+		timeout:      va.singleDialTimeout,
 		addrInfoChan: make(chan addrRecord, 1),
 	}
 }
@@ -691,7 +693,7 @@ func (va *ValidationAuthorityImpl) getTLSCerts(
 // tlsDial does the equivalent of tls.Dial, but obeying a context. Once
 // tls.DialContextWithDialer is available, switch to that.
 func (va *ValidationAuthorityImpl) tlsDial(ctx context.Context, hostPort string, config *tls.Config) (*tls.Conn, error) {
-	ctx, cancel := context.WithTimeout(ctx, singleDialTimeout)
+	ctx, cancel := context.WithTimeout(ctx, va.singleDialTimeout)
 	defer cancel()
 	dialer := &net.Dialer{}
 	netConn, err := dialer.DialContext(ctx, "tcp", hostPort)

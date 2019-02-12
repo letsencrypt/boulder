@@ -9,9 +9,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/probs"
@@ -41,6 +44,57 @@ func TestDialerMismatchError(t *testing.T) {
 		"tincan-and-string",
 		"lettuceencrypt.org:80")
 	test.AssertEquals(t, err.Error(), expectedErr.Error())
+}
+
+// TestPreresolvedDialerTimeout tests that the preresolvedDialer's DialContext
+// will timeout after the expected singleDialTimeout. This ensures timeouts at
+// the TCP level are handled correctly.
+func TestPreresolvedDialerTimeout(t *testing.T) {
+	va, _ := setup(nil, 0)
+	// Timeouts below 50ms tend to be flaky.
+	va.singleDialTimeout = 50 * time.Millisecond
+
+	// The context timeout needs to be larger than the singleDialTimeout
+	ctxTimeout := 500 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+
+	started := time.Now()
+
+	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockDNSClient{}}
+	// NOTE(@jsha): The only method I've found so far to trigger a connect timeout
+	// is to connect to an unrouteable IP address. This usually generates
+	// a connection timeout, but will rarely return "Network unreachable" instead.
+	// If we get that, just retry until we get something other than "Network unreachable".
+	var prob *probs.ProblemDetails
+	for i := 0; i < 20; i++ {
+		_, _, prob = va.fetchHTTPSimple(ctx, "unroutable.invalid", "/.well-known/acme-challenge/whatever")
+		if prob != nil && strings.Contains(prob.Detail, "Network unreachable") {
+			continue
+		} else {
+			break
+		}
+	}
+	if prob == nil {
+		t.Fatalf("Connection should've timed out")
+	}
+	took := time.Since(started)
+
+	// Check that the HTTP connection doesn't return too fast, and times
+	// out after the expected time
+	if took < va.singleDialTimeout {
+		t.Fatalf("fetch returned before %s (%s) with %#v", va.singleDialTimeout, took, prob)
+	}
+	if took > 2*va.singleDialTimeout {
+		t.Fatalf("fetch didn't timeout after %s", va.singleDialTimeout)
+	}
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+	expectMatch := regexp.MustCompile(
+		"Fetching http://unroutable.invalid/.well-known/acme-challenge/.*: Timeout during connect")
+	if !expectMatch.MatchString(prob.Detail) {
+		t.Errorf("Problem details incorrect. Got %q, expected to match %q",
+			prob.Detail, expectMatch)
+	}
 }
 
 func TestHTTPTransport(t *testing.T) {
@@ -294,8 +348,9 @@ func TestSetupHTTPValidation(t *testing.T) {
 				AddressUsed:       net.ParseIP("::1"),
 			},
 			ExpectedDialer: &preresolvedDialer{
-				ip:   net.ParseIP("::1"),
-				port: va.httpPort,
+				ip:      net.ParseIP("::1"),
+				port:    va.httpPort,
+				timeout: va.singleDialTimeout,
 			},
 		},
 		{
@@ -310,8 +365,9 @@ func TestSetupHTTPValidation(t *testing.T) {
 				AddressUsed:       net.ParseIP("::1"),
 			},
 			ExpectedDialer: &preresolvedDialer{
-				ip:   net.ParseIP("::1"),
-				port: va.httpsPort,
+				ip:      net.ParseIP("::1"),
+				port:    va.httpsPort,
+				timeout: va.singleDialTimeout,
 			},
 		},
 	}

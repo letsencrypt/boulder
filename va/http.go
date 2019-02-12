@@ -25,6 +25,7 @@ type preresolvedDialer struct {
 	ip       net.IP
 	port     int
 	hostname string
+	timeout  time.Duration
 }
 
 // a dialerMismatchError is produced when a preresolvedDialer is used to dial
@@ -103,10 +104,10 @@ func (d *preresolvedDialer) DialContext(
 	// Make a new dial address using the pre-resolved IP and port.
 	targetAddr := net.JoinHostPort(d.ip.String(), strconv.Itoa(d.port))
 
-	// Create a throw-away dialer using default values and the VA
-	// singleDialTimeout
+	// Create a throw-away dialer using default values and the dialer timeout
+	// (populated from the VA singleDialTimeout).
 	throwAwayDialer := &net.Dialer{
-		Timeout: singleDialTimeout,
+		Timeout: d.timeout,
 		// Default KeepAlive - see Golang src/net/http/transport.go DefaultTransport
 		KeepAlive: 30 * time.Second,
 	}
@@ -340,6 +341,7 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 		ip:       targetIP,
 		port:     target.port,
 		hostname: target.host,
+		timeout:  va.singleDialTimeout,
 	}
 	return dialer, record, nil
 }
