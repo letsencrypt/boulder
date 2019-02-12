@@ -18,13 +18,20 @@ type sqlRows interface {
 	Next() bool
 	Scan(dest ...interface{}) error
 }
+type dbQueryable interface {
+	Query(string, ...interface{}) (*sql.Rows, error)
+}
 
-func databaseWork(dbConnection string, beginTimeStamp string, endTimeStamp string) (*sql.Rows, error) {
-	dbDSN, err := ioutil.ReadFile(dbConnection)
+var sqlOpen = func(driver, dsn string) (dbQueryable, error) {
+	return sql.Open(driver, dsn)
+}
+
+func queryDB(dbConnect string, beginTimeStamp string, endTimeStamp string) (*sql.Rows, error) {
+	dbDSN, err := ioutil.ReadFile(dbConnect)
 	if err != nil {
 		return nil, fmt.Errorf("Could not open database connection file: %s", err)
 	}
-	db, err := sql.Open("mysql", strings.TrimSpace(string(dbDSN)))
+	db, err := sqlOpen("mysql", strings.TrimSpace(string(dbDSN)))
 	if err != nil {
 		return nil, fmt.Errorf("Could not establish database connection: %s", err)
 	}
@@ -50,8 +57,8 @@ func writeTSVData(rows sqlRows, outFile io.Writer) error {
 	return nil
 }
 func main() {
-	dbConnection := flag.String("dbConnection", "", "Path to the DB URL")
-	scpLocation := flag.String("destination", "localhost:/tmp", "Location to SCP the TSV result file to")
+	dbConnect := flag.String("dbConnect", "", "Path to the DB URL")
+	destination := flag.String("destination", "localhost:/tmp", "Location to SCP the TSV result file to")
 	flag.Parse()
 
 	now := time.Now()
@@ -64,15 +71,15 @@ func main() {
 	outFile, err := os.OpenFile(outputFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	cmd.FailOnError(err, "Could not write to results file")
 	defer outFile.Close()
-	rows, err := databaseWork(*dbConnection, yesterdayDateStamp, endDateStamp)
+	rows, err := queryDB(*dbConnect, yesterdayDateStamp, endDateStamp)
 	cmd.FailOnError(err, "Could not complete database work")
 
-	if err = writeTSVData(rows, outFile); err != nil {
-		cmd.FailOnError(err, "Could not write TSV data")
-	}
+	err = writeTSVData(rows, outFile)
+	cmd.FailOnError(err, "Could not write TSV data")
+
 	err = exec.Command("/usr/bin/gzip", outputFileName).Run()
 	cmd.FailOnError(err, "Could not gzip file")
 
-	err = exec.Command("/usr/bin/scp", outputGZIPName, *scpLocation).Run()
+	err = exec.Command("/usr/bin/scp", outputGZIPName, *destination).Run()
 	cmd.FailOnError(err, "Could not SCP file")
 }

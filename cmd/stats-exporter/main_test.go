@@ -2,7 +2,10 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"strings"
 	"testing"
 )
@@ -116,4 +119,48 @@ func TestWriterError(t *testing.T) {
 	if !strings.Contains(err.Error(), "this is actually an error") {
 		t.Errorf("wrong error. got: %q", err)
 	}
+}
+
+type simpleDB struct {
+}
+
+func (s *simpleDB) Query(string, ...interface{}) (*sql.Rows, error) {
+	return nil, nil
+}
+func TestQueryDB(t *testing.T) {
+	content := []byte("some@tcp(fake:3306)/DSN data")
+	tmpfile, err := ioutil.TempFile("", "")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatal(err)
+	}
+	checkedSQLOpen := func(driver, dsn string) (dbQueryable, error) {
+		if driver != "mysql" {
+			return nil, fmt.Errorf("wrong driver %s", driver)
+		}
+		if dsn != string(content) {
+			return nil, fmt.Errorf("wrong dsn %s", dsn)
+		}
+		return &simpleDB{}, nil
+	}
+	savedSQLOpen := sqlOpen
+	sqlOpen = checkedSQLOpen
+	defer func() {
+		sqlOpen = savedSQLOpen
+	}()
+
+	_, err = queryDB(tmpfile.Name(), "2019-01-01", "2019-01-02")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 }
