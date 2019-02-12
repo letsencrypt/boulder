@@ -399,9 +399,9 @@ func TestHTTPTimeout(t *testing.T) {
 				err := features.Set(map[string]bool{"SimplifiedVAHTTP": true})
 				test.AssertNotError(t, err, "Failed to set SimplifiedVAHTTP feature flag")
 				defer features.Reset()
-				// Simplified VA HTTP error messages don't include the port # when it is
-				// == to the va http port since it is implied by the http:// protocol
-				// prefix.
+				// Simplified VA HTTP error messages don't include the port number when
+				// it is equal to the va http port since it is implied by the `http://`
+				// protocol prefix.
 				expectMatch = regexp.MustCompile(
 					"Fetching http://localhost/.well-known/acme-challenge/wait-long: Timeout after connect")
 			}
