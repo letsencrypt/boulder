@@ -592,6 +592,7 @@ func TestCountCertificatesByNames(t *testing.T) {
 
 	// Time range including now should find the cert
 	counts, err = sa.CountCertificatesByNames(ctx, []string{"example.com"}, yesterday, now)
+	test.AssertNotError(t, err, "sa.CountCertificatesByName failed")
 	test.AssertEquals(t, len(counts), 1)
 	test.AssertEquals(t, *counts[0].Name, "example.com")
 	test.AssertEquals(t, *counts[0].Count, int64(1))
@@ -664,6 +665,7 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	const ocspResponse = "this is a fake OCSP response"
 
 	certificateStatusObj, err := sa.GetCertificateStatus(ctx, serial)
+	test.AssertNotError(t, err, "sa.GetCertificateStatus failed")
 	test.AssertEquals(t, certificateStatusObj.Status, core.OCSPStatusGood)
 
 	fc.Add(1 * time.Hour)
@@ -2028,6 +2030,7 @@ func TestStatusForOrder(t *testing.T) {
 
 	// Create a valid authz
 	validAuthz, err := sa.NewPendingAuthorization(ctx, newAuthz)
+	test.AssertNotError(t, err, "sa.NewPendingAuthorization failed")
 	validAuthz.Status = core.StatusValid
 	validAuthz.Identifier.Value = "valid.your.order.is.up"
 	err = sa.FinalizeAuthorization(ctx, validAuthz)

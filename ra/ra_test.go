@@ -932,7 +932,7 @@ func TestPerformValidationExpired(t *testing.T) {
 	test.AssertNotError(t, err, "AuthzToPB failed")
 
 	challIndex := int64(ResponseIndex)
-	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+	_, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: &challIndex,
 	})

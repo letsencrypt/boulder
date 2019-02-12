@@ -1617,10 +1617,6 @@ func TestFallbackTLS(t *testing.T) {
 	ident = dnsi("ipv6.localhost")
 	va.stats = metrics.NewNoopScope()
 	records, prob = va.validateChallenge(ctx, ident, chall)
-
-	// The validation is expected to fail since there is no IPv4 to fall back to
-	// and a broken IPv6
-	records, prob = va.validateChallenge(ctx, ident, chall)
 	test.Assert(t, prob != nil, "validation succeeded with broken IPv6 and no IPv4 fallback")
 	// We expect that the problem has the correct error message about nothing to fallback to
 	test.AssertEquals(t, prob.Detail,

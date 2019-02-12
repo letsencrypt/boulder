@@ -174,10 +174,10 @@ func TestLogInfo(t *testing.T) {
 
 	fc := clock.NewFake()
 	ld.TemporalSet = &TemporalSet{}
-	uri, key, err = ld.Info(fc.Now())
+	_, _, err = ld.Info(fc.Now())
 	test.AssertError(t, err, "Info should fail with a TemporalSet with no viable shards")
 	ld.TemporalSet.Shards = []LogShard{{WindowStart: fc.Now().Add(time.Hour), WindowEnd: fc.Now().Add(time.Hour * 2)}}
-	uri, key, err = ld.Info(fc.Now())
+	_, _, err = ld.Info(fc.Now())
 	test.AssertError(t, err, "Info should fail with a TemporalSet with no viable shards")
 
 	fc.Add(time.Hour * 4)

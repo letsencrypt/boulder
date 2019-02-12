@@ -34,11 +34,13 @@ func TestLoadCertificateChains(t *testing.T) {
 	crlfPEM, _ := ioutil.TempFile("", "crlf.pem")
 	crlfPEMBytes := []byte(strings.Replace(string(certBytesB), "\n", "\r\n", -1))
 	err = ioutil.WriteFile(crlfPEM.Name(), crlfPEMBytes, 0640)
+	test.AssertNotError(t, err, "ioutil.WriteFile failed")
 
 	// Make a .pem file that is test-ca.pem but with no trailing newline
 	abruptPEM, _ := ioutil.TempFile("", "abrupt.pem")
 	abruptPEMBytes := certBytesA[:len(certBytesA)-1]
 	err = ioutil.WriteFile(abruptPEM.Name(), abruptPEMBytes, 0640)
+	test.AssertNotError(t, err, "ioutil.WriteFile failed")
 
 	testCases := []struct {
 		Name           string

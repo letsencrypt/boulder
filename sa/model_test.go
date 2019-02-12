@@ -86,12 +86,12 @@ func TestV2AuthzModel(t *testing.T) {
 		},
 	}
 
-	model, err := authzPBToModel(authzPB)
+	_, err := authzPBToModel(authzPB)
 	test.AssertError(t, err, "authzPBToModel didn't fail when V2 wasn't set")
 
 	v2 := true
 	authzPB.V2 = &v2
-	model, err = authzPBToModel(authzPB)
+	model, err := authzPBToModel(authzPB)
 	test.AssertNotError(t, err, "authzPBToModel failed")
 
 	authzPBOut, err := modelToAuthzPB(model)

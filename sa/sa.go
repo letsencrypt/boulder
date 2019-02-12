@@ -2063,6 +2063,9 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(
 	// Fetch each of the authorizations' associated challenges
 	for _, authz := range authzMap {
 		authz.Challenges, err = ssa.getChallenges(ssa.dbMap.WithContext(ctx), authz.ID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return authzMapToPB(authzMap)
 }

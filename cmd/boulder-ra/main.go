@@ -150,14 +150,10 @@ func main() {
 	// with a plain caPB.NewCertificateAuthorityClient.
 	cac := bgrpc.NewCertificateAuthorityClient(caPB.NewCertificateAuthorityClient(caConn), nil)
 
-	raConn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics, clk)
-	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
-	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(raConn))
-
 	var ctp *ctpolicy.CTPolicy
 	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
-	pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
+	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
 
 	// Boulder's components assume that there will always be CT logs configured.
 	// Issuing a certificate without SCTs embedded is a miss-issuance event in the

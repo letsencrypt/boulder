@@ -81,6 +81,9 @@ func parseCMS(body []byte) (*x509.Certificate, error) {
 	}
 	var msg cms
 	_, err := asn1.Unmarshal(body, &msg)
+	if err != nil {
+		return nil, fmt.Errorf("parsing CMS: %s", err)
+	}
 	cert, err := x509.ParseCertificate(msg.SignedData.Certificates.Bytes)
 	if err != nil {
 		return nil, fmt.Errorf("parsing CMS: %s", err)
