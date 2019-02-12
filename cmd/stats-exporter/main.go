@@ -43,7 +43,9 @@ func writeTSVData(rows sqlRows, outFile io.Writer) error {
 		if err := rows.Scan(&id, &rname, &notBefore, &serial); err != nil {
 			return err
 		}
-		fmt.Fprintf(outFile, "%s\t%s\t%s\t%s\n", id, rname, notBefore, serial)
+		if _, err := fmt.Fprintf(outFile, "%s\t%s\t%s\t%s\n", id, rname, notBefore, serial); err != nil {
+			return err
+		}
 	}
 	return nil
 }

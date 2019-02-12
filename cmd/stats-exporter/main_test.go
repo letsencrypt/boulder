@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -87,5 +88,32 @@ func TestWriteTSVDataError(t *testing.T) {
 	err := writeTSVData(&errorRows{}, &buf)
 	if err == nil {
 		t.Errorf("expected error")
+	}
+}
+
+type errorWriter struct {
+}
+
+func (e *errorWriter) Write(p []byte) (int, error) {
+	return 0, fmt.Errorf("this is actually an error")
+}
+
+func TestWriterError(t *testing.T) {
+	var testData = &myRows{
+		rows: []oneRow{
+			oneRow{
+				id:        "1",
+				rname:     "com.example",
+				notBefore: "2019-01-01 01:00:00",
+				serial:    "abc",
+			},
+		},
+	}
+	err := writeTSVData(testData, &errorWriter{})
+	if err == nil {
+		t.Errorf("expected error")
+	}
+	if !strings.Contains(err.Error(), "this is actually an error") {
+		t.Errorf("wrong error. got: %q", err)
 	}
 }
