@@ -52,6 +52,9 @@ caa_authzs = []
 old_authzs = []
 new_authzs = []
 
+default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
+if default_config_dir == '':
+    default_config_dir = 'test/config'
 
 def setup_seventy_days_ago():
     """Do any setup that needs to happen 70 days in the past, for tests that
@@ -449,7 +452,10 @@ def test_revoke_by_account():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert.body.wrapped).decode())
     ee_ocsp_url = "http://localhost:4002"
-    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    if default_config_dir.startswith("test/config-next"):
+        verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    else:
+        wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
     verify_akamai_purge()
     return 0
 
@@ -652,10 +658,6 @@ def test_oversized_csr():
     chisel.expect_problem("urn:acme:error:malformed",
             lambda: auth_and_issue(domains))
 
-default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
-if default_config_dir == '':
-    default_config_dir = 'test/config'
-
 def test_admin_revoker_cert():
     cert_file_pem = os.path.join(tempdir, "ar-cert.pem")
     cert, _ = auth_and_issue([random_domain()], cert_output=cert_file_pem)
@@ -666,7 +668,10 @@ def test_admin_revoker_cert():
         default_config_dir, serial, 1))
     # Wait for OCSP response to indicate revocation took place
     ee_ocsp_url = "http://localhost:4002"
-    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    if default_config_dir.startswith("test/config-next"):
+        verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    else:
+        wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
     verify_akamai_purge()
 
 def test_admin_revoker_authz():
