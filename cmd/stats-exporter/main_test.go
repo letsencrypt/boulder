@@ -164,3 +164,22 @@ func TestQueryDB(t *testing.T) {
 	}
 
 }
+
+/*
+type errorReadFile struct {
+}
+
+func (e *errorReadFile) Reader(p []byte) (int, error) {
+	return 0, fmt.Errorf("this is an expected readFile Error")
+}
+*/
+func TestQueryDBConnectError(t *testing.T) {
+
+	_, err := queryDB("nonExistentFile", "2019-01-01", "2019-01-02")
+	if err == nil {
+		t.Errorf("expected error")
+	}
+	if !strings.Contains(err.Error(), "Could not open database connection file:") {
+		t.Errorf("wrong error. got: %q", err)
+	}
+}
