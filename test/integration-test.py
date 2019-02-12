@@ -306,6 +306,65 @@ def test_http_challenge_https_redirect():
       elif r['ServerName'] != d:
         raise Exception("Expected all redirected requests to have ServerName {0} got \"{1}\"".format(d, r['ServerName']))
 
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class SlowHTTPRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        try:
+            # Sleeptime needs to be larger than the RA->VA timeout (20s at the
+            # time of writing)
+            sleeptime = 40
+            print("SlowHTTPRequestHandler: sleeping for {0}s\n".format(sleeptime))
+            time.sleep(sleeptime)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'this is not an ACME key authorization')
+        except:
+            pass
+
+def test_http_challenge_timeout():
+    """
+    test_http_challenge_timeout tests that the VA times out challenge requests
+    to a slow HTTP server appropriately.
+    """
+    # Start a simple python HTTP server on port 5002 in its own thread.
+    # NOTE(@cpu): The pebble-challtestsrv binds 10.77.77.77:5002 for HTTP-01
+    # challenges so we must use the 10.88.88.88 address for the throw away
+    # server for this test and add a mock DNS entry that directs the VA to it.
+    httpd = HTTPServer(('10.88.88.88', 5002), SlowHTTPRequestHandler)
+    thread = threading.Thread(target = httpd.serve_forever)
+    thread.daemon = False
+    thread.start()
+
+    # Pick a random domains
+    hostname = random_domain()
+
+    # Add A record for the domains to ensure the VA's requests are directed
+    # to the interface that we bound the HTTPServer to.
+    challSrv.add_a_record(hostname, ["10.88.88.88"])
+
+    start = datetime.datetime.utcnow()
+    end = 0
+
+    try:
+        # We expect a connection timeout error to occur
+        chisel.expect_problem("urn:acme:error:connection",
+            lambda: auth_and_issue([hostname], chall_type="http-01"))
+        end = datetime.datetime.utcnow()
+    finally:
+        # Shut down the HTTP server gracefully and join on its thread.
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join()
+
+    delta = end - start
+    # Expected duration should be the RA->VA timeout plus some padding (At
+    # present the timeout is 20s so adding 10s of padding = 30s)
+    expectedDuration = 30
+    if delta.total_seconds() == 0 or delta.total_seconds() > expectedDuration:
+        raise Exception("expected timeout to occur in under {0} seconds. Took {1}".format(expectedDuration, delta.total_seconds()))
+
 def test_tls_alpn_challenge():
     # Pick two random domains
     domains = [random_domain(), random_domain()]
