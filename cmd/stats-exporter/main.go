@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -14,25 +14,38 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 )
 
-func databaseWork(dbConnection string, beginTimeStamp string, endTimeStamp string) (rowResults *sql.Rows) {
-	dbDSN, err := ioutil.ReadFile(dbConnection)
-	cmd.FailOnError(err, "Could not open database connection file")
-	db, err := sql.Open("mysql", strings.TrimSpace(string(dbDSN)))
-	cmd.FailOnError(err, "Could not establish database connection")
-	rows, err := db.Query(`SELECT id,reversedName,notBefore,serial FROM issuedNames where notBefore between ? and ?`, beginTimeStamp, endTimeStamp)
-	cmd.FailOnError(err, "Could not reach database and run query")
-	return rows
+type sqlRows interface {
+	Next() bool
+	Scan(dest ...interface{}) error
 }
-func writeTSVData(rows *sql.Rows, outFile *os.File) {
+
+func databaseWork(dbConnection string, beginTimeStamp string, endTimeStamp string) (*sql.Rows, error) {
+	dbDSN, err := ioutil.ReadFile(dbConnection)
+	if err != nil {
+		return nil, fmt.Errorf("Could not open database connection file: %s", err)
+	}
+	db, err := sql.Open("mysql", strings.TrimSpace(string(dbDSN)))
+	if err != nil {
+		return nil, fmt.Errorf("Could not establish database connection: %s", err)
+	}
+	rows, err := db.Query(`SELECT id,reversedName,notBefore,serial FROM issuedNames where notBefore >= ? and notBefore < ?`, beginTimeStamp, endTimeStamp)
+	if err != nil {
+		return nil, fmt.Errorf("Could not reach database and run query: %s", err)
+	}
+	return rows, nil
+}
+
+func writeTSVData(rows sqlRows, outFile io.Writer) error {
 	for rows.Next() {
 		var (
 			id, rname, notBefore, serial string
 		)
 		if err := rows.Scan(&id, &rname, &notBefore, &serial); err != nil {
-			log.Fatal(err)
+			return err
 		}
 		fmt.Fprintf(outFile, "%s\t%s\t%s\t%s\n", id, rname, notBefore, serial)
 	}
+	return nil
 }
 func main() {
 	dbConnection := flag.String("dbConnection", "", "Path to the DB URL")
@@ -48,13 +61,13 @@ func main() {
 
 	outFile, err := os.OpenFile(outputFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	cmd.FailOnError(err, "Could not write to results file")
+	defer outFile.Close()
+	rows, err := databaseWork(*dbConnection, yesterdayDateStamp, endDateStamp)
+	cmd.FailOnError(err, "Could not complete database work")
 
-	rows := databaseWork(*dbConnection, yesterdayDateStamp, endDateStamp)
-	// is this where the defer goes?
-	defer rows.Close()
-	writeTSVData(rows, outFile)
-
-	outFile.Close()
+	if err = writeTSVData(rows, outFile); err != nil {
+		cmd.FailOnError(err, "Could not write TSV data")
+	}
 	err = exec.Command("/usr/bin/gzip", outputFileName).Run()
 	cmd.FailOnError(err, "Could not gzip file")
 
