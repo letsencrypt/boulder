@@ -1596,18 +1596,19 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
 // RevokeCertificateWithReg terminates trust in the certificate provided.
 func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, regID int64) error {
 	serialString := core.SerialToString(cert.SerialNumber)
-
+	var err error
 	if features.Enabled(features.RevokeAtRA) {
-		return ra.revokeCertificate(ctx, cert, revocationCode)
+		err = ra.revokeCertificate(ctx, cert, revocationCode)
+	} else {
+		err = ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
 	}
-
-	err := ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
 
 	state := "Failure"
 	defer func() {
@@ -1629,6 +1630,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 	}
 
 	state = "Success"
+	ra.stats.Inc("RevokedCertificates", 1)
 	return nil
 }
 
@@ -1637,12 +1639,12 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 // called from the admin-revoker tool.
 func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, user string) error {
 	serialString := core.SerialToString(cert.SerialNumber)
-
+	var err error
 	if features.Enabled(features.RevokeAtRA) {
-		return ra.revokeCertificate(ctx, cert, revocationCode)
+		err = ra.revokeCertificate(ctx, cert, revocationCode)
+	} else {
+		err = ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
 	}
-
-	err := ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
 
 	state := "Failure"
 	defer func() {

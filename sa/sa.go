@@ -612,6 +612,7 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, reg core.Re
 
 // MarkCertificateRevoked stores the fact that a certificate is revoked, along
 // with a timestamp and a reason.
+// TODO(#4048): This method has been deprecated and replaced by RevokeCertificate.
 func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, serial string, reasonCode revocation.Reason) error {
 	var err error
 	if _, err = ssa.GetCertificate(ctx, serial); err != nil {
