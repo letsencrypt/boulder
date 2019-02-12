@@ -33,6 +33,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/metrics/mock_metrics"
@@ -378,33 +379,58 @@ func TestHTTPTimeout(t *testing.T) {
 	// TODO(#1989): close hs
 
 	va, _ := setup(hs, 0)
-
 	setChallengeToken(&chall, pathWaitLong)
-	started := time.Now()
 
-	timeout := 50 * time.Millisecond
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	testCases := []struct {
+		Name             string
+		SimplifiedVAHTTP bool
+	}{
+		{"Legacy VA HTTP", false},
+		{"Simplified VA HTTP", true},
+	}
 
-	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
-	if prob == nil {
-		t.Fatalf("Connection should've timed out")
-	}
-	took := time.Since(started)
-	// Check that the HTTP connection doesn't return before a timeout, and times
-	// out after the expected time
-	if took < timeout {
-		t.Fatalf("HTTP timed out before %s: %s with %s", timeout, took, prob)
-	}
-	if took > 2*timeout {
-		t.Fatalf("HTTP connection didn't timeout after %s", timeout)
-	}
-	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-	expectMatch := regexp.MustCompile(
-		"Fetching http://localhost:\\d+/.well-known/acme-challenge/wait-long: Timeout after connect")
-	if !expectMatch.MatchString(prob.Detail) {
-		t.Errorf("Problem details incorrect. Got %q, expected to match %q",
-			prob.Detail, expectMatch)
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			var expectMatch *regexp.Regexp
+			expectMatch = regexp.MustCompile(
+				"Fetching http://localhost:\\d+/.well-known/acme-challenge/wait-long: Timeout after connect")
+
+			if tc.SimplifiedVAHTTP {
+				err := features.Set(map[string]bool{"SimplifiedVAHTTP": true})
+				test.AssertNotError(t, err, "Failed to set SimplifiedVAHTTP feature flag")
+				defer features.Reset()
+				// Simplified VA HTTP error messages don't include the port number when
+				// it is equal to the va http port since it is implied by the `http://`
+				// protocol prefix.
+				expectMatch = regexp.MustCompile(
+					"Fetching http://localhost/.well-known/acme-challenge/wait-long: Timeout after connect")
+			}
+
+			started := time.Now()
+			timeout := 50 * time.Millisecond
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			defer cancel()
+			_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
+			if prob == nil {
+				t.Fatalf("Connection should've timed out")
+			}
+
+			took := time.Since(started)
+			// Check that the HTTP connection doesn't return before a timeout, and times
+			// out after the expected time
+			if took < timeout {
+				t.Fatalf("HTTP timed out before %s: %s with %s", timeout, took, prob)
+			}
+			if took > 2*timeout {
+				t.Fatalf("HTTP connection didn't timeout after %s", timeout)
+			}
+			test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+
+			if !expectMatch.MatchString(prob.Detail) {
+				t.Errorf("Problem details incorrect. Got %q, expected to match %q",
+					prob.Detail, expectMatch)
+			}
+		})
 	}
 }
 
