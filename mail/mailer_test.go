@@ -279,7 +279,7 @@ func TestReconnectSuccess(t *testing.T) {
 	// attempts.
 	err := m.Connect()
 	if err != nil {
-		t.Errorf("Failed to connect: %s", err)
+		t.Fatalf("Failed to connect: %s", err)
 	}
 	err = m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
 	if err != nil {
@@ -296,7 +296,7 @@ func TestBadEmailError(t *testing.T) {
 
 	err := m.Connect()
 	if err != nil {
-		t.Errorf("Failed to connect: %s", err)
+		t.Fatalf("Failed to connect: %s", err)
 	}
 
 	err = m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
@@ -311,6 +311,20 @@ func TestBadEmailError(t *testing.T) {
 		t.Errorf("SendMail() returned RecoverableSMTPError with wrong message. Got %q, expected %q\n",
 			rcptErr.Message, expected)
 	}
+}
+
+// TestNonProtoErr tests that `sendOne` returning a non-textproto error to
+// `SendMail` results in the expected behaviour. The easiest way to solicit
+// a non-textproto error from `sendOne` is to deliberately call `SendMail`
+// before having called `Connect`. This should not panic in `SendMail` and
+// should instead return the expected error given by `sendOne`.
+func TestNonProtoErr(t *testing.T) {
+	m, _, cleanUp := setup(t)
+	defer cleanUp()
+
+	err := m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
+	test.AssertError(t, err, "expected SendMail to return an error")
+	test.AssertEquals(t, err.Error(), "call Connect before SendMail")
 }
 
 func TestReconnectSMTP421(t *testing.T) {
@@ -331,7 +345,7 @@ func TestReconnectSMTP421(t *testing.T) {
 	// attempts.
 	err := m.Connect()
 	if err != nil {
-		t.Errorf("Failed to connect: %s", err)
+		t.Fatalf("Failed to connect: %s", err)
 	}
 	err = m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
 	if err != nil {

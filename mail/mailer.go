@@ -340,33 +340,46 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			// After reconnecting, loop around and try `sendOne` again.
 			m.stats.Inc("SendMail.Reconnects", 1)
 			continue
-		} else if protoErr, ok := err.(*textproto.Error); ok && protoErr.Code == 421 {
-			/*
-			 *  If the error is an instance of `textproto.Error` with a SMTP error code,
-			 *  and that error code is 421 then treat this as a reconnect-able event.
-			 *
-			 *  The SMTP RFC defines this error code as:
-			 *   421 <domain> Service not available, closing transmission channel
-			 *   (This may be a reply to any command if the service knows it
-			 *   must shut down)
-			 *
-			 * In practice we see this code being used by our production SMTP server
-			 * when the connection has gone idle for too long. For more information
-			 * see issue #2249[0].
-			 *
-			 * [0] - https://github.com/letsencrypt/boulder/issues/2249
-			 */
-			m.stats.Inc("SendMail.Errors.SMTP.421", 1)
-			m.reconnect()
-			m.stats.Inc("SendMail.Reconnects", 1)
-		} else if protoErr, ok := err.(*textproto.Error); ok && recoverableErrorCodes[protoErr.Code] {
-			m.stats.Inc(fmt.Sprintf("SendMail.Errors.SMTP.%d", protoErr.Code), 1)
-			return RecoverableSMTPError{fmt.Sprintf("%d: %s", protoErr.Code, protoErr.Msg)}
-		} else {
-			// If it wasn't an EOF error or a recoverable SMTP error it is unexpected and we
-			// return from SendMail() with the error
-			m.stats.Inc("SendMail.Errors", 1)
-			return err
+		} else if err != nil {
+			// Check if the err is a textProto.Error. If it is we can handle
+			// the error differently based on its SMTP code.
+			if protoErr, ok := err.(*textproto.Error); ok {
+				/*
+				 *  If the error has a SMTP error code of 421 then treat this as
+				 *  a reconnect-able event.
+				 *
+				 *  The SMTP RFC defines this error code as:
+				 *   421 <domain> Service not available, closing transmission channel
+				 *   (This may be a reply to any command if the service knows it
+				 *   must shut down)
+				 *
+				 * In practice we see this code being used by our production SMTP server
+				 * when the connection has gone idle for too long. For more information
+				 * see issue #2249[0].
+				 *
+				 * [0] - https://github.com/letsencrypt/boulder/issues/2249
+				 */
+				if protoErr.Code == 421 {
+					m.stats.Inc("SendMail.Errors.SMTP.421", 1)
+					m.reconnect()
+					m.stats.Inc("SendMail.Reconnects", 1)
+				} else if _, ok := recoverableErrorCodes[protoErr.Code]; ok {
+					// Otherwise, if the error code isn't 421 but it is a code we
+					// considerable recoverable, then return a recoverable smtp error.
+					m.stats.Inc(fmt.Sprintf("SendMail.Errors.SMTP.%d", protoErr.Code), 1)
+					return RecoverableSMTPError{fmt.Sprintf("%d: %s", protoErr.Code, protoErr.Msg)}
+				} else {
+					// The error was a textproto error but its code isn't
+					// a recoverableErrorCode.
+					m.stats.Inc("SendMail.Errors", 1)
+					return err
+				}
+			} else {
+				// If it wasn't a textproto error just return from SendMail() with the
+				// error
+				m.stats.Inc("SendMail.Errors", 1)
+				return err
+			}
 		}
 	}
 
