@@ -356,7 +356,7 @@ func TestIssueCertificate(t *testing.T) {
 
 				issueReq := &caPB.IssueCertificateRequest{Csr: testCase.csr, RegistrationID: &arbitraryRegID}
 
-				certDER := []byte{}
+				var certDER []byte
 				if mode.issuePrecertificate {
 					response, err := ca.IssuePrecertificate(ctx, issueReq)
 
