@@ -518,7 +518,6 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope, clk clock.Clock)
 		cmd.FailOnError(err, "TLS config")
 	}
 	clientMetrics := bgrpc.NewClientMetrics(stats)
-
 	caConn, err := bgrpc.ClientSetup(c.OCSPGeneratorService, tls, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
 	// Make a CA client that is only capable of signing OCSP.
