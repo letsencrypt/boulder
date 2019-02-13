@@ -35,7 +35,7 @@ env:
     #
     # Current Go version build tasks:
     #
-    - RUN="vet fmt migrations integration errcheck generate dashlint rpm"
+    - RUN="vet fmt migrations integration errcheck ineffassign generate dashlint rpm"
     # Config changes that have landed in master but not yet been applied to
     # production can be made in boulder-config-next.json.
     - RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
