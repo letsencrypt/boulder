@@ -443,7 +443,7 @@ func issueCertificateSubTestValidityUsesCAClock(t *testing.T, i *TestCertificate
 	test.AssertEquals(t, i.cert.NotAfter, i.cert.NotBefore.Add(i.ca.validityPeriod))
 }
 
-// Test issuing when multiple issuers are present.
+// TestMultipleIssuers tests issuing when multiple issuers are present.
 func TestMultipleIssuers(t *testing.T) {
 	testCtx := setup(t)
 	// Load multiple issuers, and ensure the first one in the list is used.

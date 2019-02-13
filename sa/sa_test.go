@@ -294,7 +294,7 @@ func CreateDomainAuthWithRegID(t *testing.T, domainName string, sa *SQLStorageAu
 	return
 }
 
-// Ensure we get only valid authorization with correct RegID
+// TestGetValidAuthorizationsBasic ensures we get only valid authorization with correct RegID
 func TestGetValidAuthorizationsBasic(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
@@ -388,7 +388,7 @@ func TestCountInvalidAuthorizations(t *testing.T) {
 	}
 }
 
-// Ensure we get the latest valid authorization for an ident
+// TestGetValidAuthorizationsDuplicate ensures we get the latest valid authorization for an ident
 func TestGetValidAuthorizationsDuplicate(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
@@ -443,7 +443,7 @@ func TestGetValidAuthorizationsDuplicate(t *testing.T) {
 	test.AssertEquals(t, result2.ID, newAuthz.ID)
 }
 
-// Fetch multiple authzs at once. Check that
+// TestGetValidAuthorizationsMultiple: Fetch multiple authzs at once. Check that
 func TestGetValidAuthorizationsMultiple(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
@@ -2151,7 +2151,7 @@ func TestStatusForOrder(t *testing.T) {
 
 }
 
-// Check that getAuthorizations is fast enough; that is, it shouldn't retrieve
+// TestGetAuthorizationsFast checks that getAuthorizations is fast enough; that is, it shouldn't retrieve
 // challenges for authorizations it won't return (which has been a cause of
 // slowness when there are many authorizations for the same domain name).
 func TestGetAuthorizationsFast(t *testing.T) {

@@ -1383,7 +1383,7 @@ type mockSADifferentStoredKey struct {
 	core.StorageGetter
 }
 
-// mockSADifferentStoredKey has a GetRegistration that will always return an
+// GetRegistration: has a GetRegistration that will always return an
 // account with the test 2 key, no matter the provided ID
 func (sa mockSADifferentStoredKey) GetRegistration(_ context.Context, _ int64) (core.Registration, error) {
 	keyJSON := []byte(test2KeyPublicJSON)

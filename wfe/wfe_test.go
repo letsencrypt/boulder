@@ -1279,7 +1279,7 @@ func TestNewECDSARegistration(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 409)
 }
 
-// Test that the WFE handling of the "empty update" POST is correct. The ACME
+// TestEmptyRegistration tests that the WFE handling of the "empty update" POST is correct. The ACME
 // spec describes how when clients wish to query the server for information
 // about a registration an empty registration update should be sent, and
 // a populated reg object will be returned.
@@ -1482,7 +1482,7 @@ func (msa mockSANoSuchRegistration) GetRegistrationByKey(ctx context.Context, jw
 	return core.Registration{}, berrors.NotFoundError("reg not found")
 }
 
-// Valid revocation request for existing, non-revoked cert, signed with cert
+// TestRevokeCertificateCertKey: Valid revocation request for existing, non-revoked cert, signed with cert
 // key.
 func TestRevokeCertificateCertKey(t *testing.T) {
 	wfe, fc := setupWFE(t)
@@ -1572,7 +1572,7 @@ func TestRevokeCertificateReasons(t *testing.T) {
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"unsupported revocation reason code provided","status":400}`)
 }
 
-// Valid revocation request for existing, non-revoked cert, signed with account
+// TestRevokeCertificateAccountKey: Valid revocation request for existing, non-revoked cert, signed with account
 // key.
 func TestRevokeCertificateAccountKey(t *testing.T) {
 	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
@@ -1593,7 +1593,7 @@ func TestRevokeCertificateAccountKey(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Body.String(), "")
 }
 
-// A revocation request signed by an unauthorized key.
+// TestRevokeCertificateWrongKey: A revocation request signed by an unauthorized key.
 func TestRevokeCertificateWrongKey(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
@@ -1612,7 +1612,7 @@ func TestRevokeCertificateWrongKey(t *testing.T) {
 		`{"type":"`+probs.V1ErrorNS+`unauthorized","detail":"Revocation request must be signed by private key of cert to be revoked, by the account key of the account that issued it, or by the account key of an account that holds valid authorizations for all names in the certificate.","status":403}`)
 }
 
-// Valid revocation request for already-revoked cert
+// TestRevokeCertificateAlreadyRevoked: Valid revocation request for already-revoked cert
 func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	wfe, fc := setupWFE(t)
 	keyPemBytes, err := ioutil.ReadFile("test/178.key")
@@ -2113,7 +2113,7 @@ func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(ctx context.Context, jwk 
 	return core.Registration{}, fmt.Errorf("whoops")
 }
 
-// When SA.GetRegistrationByKey errors (e.g. gRPC timeout), verifyPOST should
+// TestVerifyPOSTWhenGetRegByKeyFails: When SA.GetRegistrationByKey errors (e.g. gRPC timeout), verifyPOST should
 // return internal server errors.
 func TestVerifyPOSTWhenGetRegByKeyFails(t *testing.T) {
 	wfe, fc := setupWFE(t)
@@ -2130,7 +2130,7 @@ func TestVerifyPOSTWhenGetRegByKeyFails(t *testing.T) {
 	}
 }
 
-// When SA.GetRegistrationByKey errors (e.g. gRPC timeout), NewRegistration should
+// TestNewRegWhenGetRegByKeyFails: When SA.GetRegistrationByKey errors (e.g. gRPC timeout), NewRegistration should
 // return internal server errors.
 func TestNewRegWhenGetRegByKeyFails(t *testing.T) {
 	wfe, fc := setupWFE(t)
@@ -2155,7 +2155,7 @@ func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(ctx context.Context, j
 	return core.Registration{}, berrors.NotFoundError("not found")
 }
 
-// When SA.GetRegistrationByKey returns berrors.NotFound, verifyPOST with
+// TestVerifyPOSTWhenGetRegByKeyNotFound: When SA.GetRegistrationByKey returns berrors.NotFound, verifyPOST with
 // regCheck = false (i.e. during a NewRegistration) should succeed.
 func TestVerifyPOSTWhenGetRegByKeyNotFound(t *testing.T) {
 	wfe, fc := setupWFE(t)
@@ -2169,7 +2169,7 @@ func TestVerifyPOSTWhenGetRegByKeyNotFound(t *testing.T) {
 	}
 }
 
-// When SA.GetRegistrationByKey returns NotFound, NewRegistration should
+// TestNewRegWhenGetRegByKeyNotFound: When SA.GetRegistrationByKey returns NotFound, NewRegistration should
 // succeed.
 func TestNewRegWhenGetRegByKeyNotFound(t *testing.T) {
 	wfe, fc := setupWFE(t)
@@ -2242,7 +2242,7 @@ func TestBadKeyCSR(t *testing.T) {
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Invalid key in certificate request :: key too small: 512","status":400}`)
 }
 
-// This uses httptest.NewServer because ServeMux.ServeHTTP won't prevent the
+// TestGetCertificateHEADHasCorrectBodyLength: This uses httptest.NewServer because ServeMux.ServeHTTP won't prevent the
 // body from being sent like the net/http Server's actually do.
 func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	wfe, _ := setupWFE(t)
@@ -2566,7 +2566,7 @@ func (sa *mockSAGetRegByKeyNotFoundAfterVerify) GetRegistrationByKey(ctx context
 	return core.Registration{}, errors.New("broke")
 }
 
-// If GetRegistrationByKey returns a non berrors.NotFound error NewRegistration should fail
+// TestNewRegistrationGetKeyBroken: If GetRegistrationByKey returns a non berrors.NotFound error NewRegistration should fail
 // out with an internal server error instead of continuing on and attempting to create a new
 // account.
 func TestNewRegistrationGetKeyBroken(t *testing.T) {

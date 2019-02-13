@@ -260,7 +260,7 @@ func TestMessageContentStatic(t *testing.T) {
 	}, mc.Messages[0])
 }
 
-// Send mail with a variable interpolated.
+// TestMessageContentInterpolated: Send mail with a variable interpolated.
 func TestMessageContentInterpolated(t *testing.T) {
 	recipients := []recipient{
 		{
@@ -297,7 +297,7 @@ func TestMessageContentInterpolated(t *testing.T) {
 	}, mc.Messages[0])
 }
 
-// Send mail with a variable interpolated multiple times for accounts that share
+// TestMessageContentInterpolatedMultiple: Send mail with a variable interpolated multiple times for accounts that share
 // an email address.
 func TestMessageContentInterpolatedMultiple(t *testing.T) {
 	recipients := []recipient{
@@ -365,7 +365,7 @@ Thanks`,
 // database
 type mockEmailResolver struct{}
 
-// the `mockEmailResolver` select method treats the requested reg ID as an index
+// SelectOne: The `mockEmailResolver` select method treats the requested reg ID as an index
 // into a list of anonymous structs
 func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...interface{}) error {
 	// The "db" is just a list in memory

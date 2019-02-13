@@ -142,7 +142,7 @@ func New(
 	}
 }
 
-// New constructs a Mailer suitable for doing a dry run. It simply logs each
+// NewDryRun: New constructs a Mailer suitable for doing a dry run. It simply logs each
 // command that would have been run, at debug level.
 func NewDryRun(from mail.Address, logger blog.Logger) *MailerImpl {
 	stats := metrics.NewNoopScope()

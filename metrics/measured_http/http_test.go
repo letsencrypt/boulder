@@ -82,7 +82,7 @@ func TestMeasuring(t *testing.T) {
 	}
 }
 
-// Make an HTTP request with an unknown method and ensure we use the appropriate
+// TestUnknownMethod: Make an HTTP request with an unknown method and ensure we use the appropriate
 // label value.
 func TestUnknownMethod(t *testing.T) {
 	clk := clock.NewFake()

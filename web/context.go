@@ -121,7 +121,7 @@ func (th *TopHandler) logEvent(logEvent *RequestEvent) {
 		int(logEvent.Latency*1000), logEvent.RealIP, jsonEvent)
 }
 
-// Comma-separated list of HTTP clients involved in making this
+// GetClientAddr: Comma-separated list of HTTP clients involved in making this
 // request, starting with the original requestor and ending with the
 // remote end of our TCP connection (which is typically our own
 // proxy).

@@ -821,7 +821,7 @@ func TestRelativeDirectory(t *testing.T) {
 	}
 }
 
-// TestNonceEndpoint tests requests to the WFE2's new-nonce endpoint
+// TestNonceEndpointGET: TestNonceEndpointGET tests requests to the WFE2's new-nonce endpoint
 func TestNonceEndpointGET(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
@@ -1253,7 +1253,7 @@ func TestNewECDSAAccount(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 200)
 }
 
-// Test that the WFE handling of the "empty update" POST is correct. The ACME
+// TestEmptyAccount tests that the WFE handling of the "empty update" POST is correct. The ACME
 // spec describes how when clients wish to query the server for information
 // about an account an empty account update should be sent, and
 // a populated acct object will be returned.
@@ -1782,7 +1782,7 @@ func TestGetCertificate(t *testing.T) {
 	}
 }
 
-// This uses httptest.NewServer because ServeMux.ServeHTTP won't prevent the
+// TestGetCertificateHEADHasCorrectBodyLength: This uses httptest.NewServer because ServeMux.ServeHTTP won't prevent the
 // body from being sent like the net/http Server's actually do.
 func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	wfe, _ := setupWFE(t)
@@ -2446,7 +2446,7 @@ func (msa mockSANoSuchRegistration) GetRegistrationByKey(ctx context.Context, jw
 	return core.Registration{}, berrors.NotFoundError("reg not found")
 }
 
-// Valid revocation request for existing, non-revoked cert, signed with cert
+// TestRevokeCertificateCertKey: Valid revocation request for existing, non-revoked cert, signed with cert
 // key.
 func TestRevokeCertificateCertKey(t *testing.T) {
 	wfe, fc := setupWFE(t)
@@ -2540,7 +2540,7 @@ func TestRevokeCertificateReasons(t *testing.T) {
 	}
 }
 
-// Valid revocation request for existing, non-revoked cert, signed with account
+// TestRevokeCertificateIssuingAccount: Valid revocation request for existing, non-revoked cert, signed with account
 // that issued the cert.
 func TestRevokeCertificateIssuingAccount(t *testing.T) {
 	wfe, _ := setupWFE(t)
@@ -2559,7 +2559,7 @@ func TestRevokeCertificateIssuingAccount(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Body.String(), "")
 }
 
-// Valid revocation request for existing, non-revoked cert, signed with account
+// TestRevokeCertificateWithAuthorizations: Valid revocation request for existing, non-revoked cert, signed with account
 // that has authorizations for names in cert
 func TestRevokeCertificateWithAuthorizations(t *testing.T) {
 	wfe, _ := setupWFE(t)
@@ -2578,7 +2578,7 @@ func TestRevokeCertificateWithAuthorizations(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Body.String(), "")
 }
 
-// A revocation request signed by an unauthorized key.
+// TestRevokeCertificateWrongKey: A revocation request signed by an unauthorized key.
 func TestRevokeCertificateWrongKey(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
@@ -2595,7 +2595,7 @@ func TestRevokeCertificateWrongKey(t *testing.T) {
 		`{"type":"`+probs.V2ErrorNS+`unauthorized","detail":"The key ID specified in the revocation request does not hold valid authorizations for all names in the certificate to be revoked","status":403}`)
 }
 
-// Valid revocation request for already-revoked cert
+// TestRevokeCertificateAlreadyRevoked: Valid revocation request for already-revoked cert
 func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	wfe, fc := setupWFE(t)
 	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
@@ -2686,7 +2686,7 @@ func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(ctx context.Context, jwk 
 	return core.Registration{}, fmt.Errorf("whoops")
 }
 
-// When SA.GetRegistrationByKey errors (e.g. gRPC timeout), NewAccount should
+// TestNewAccountWhenGetRegByKeyFails: When SA.GetRegistrationByKey errors (e.g. gRPC timeout), NewAccount should
 // return internal server errors.
 func TestNewAccountWhenGetRegByKeyFails(t *testing.T) {
 	wfe, fc := setupWFE(t)

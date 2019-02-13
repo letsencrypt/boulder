@@ -1633,7 +1633,7 @@ func (m mockSAWithFQDNSet) addFQDNSet(names []string) {
 	m.fqdnSet[hash] = true
 }
 
-// Search for a set of domain names in the FQDN set map
+// FQDNSetExists: Search for a set of domain names in the FQDN set map
 func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, names []string) (bool, error) {
 	hash := m.hashNames(names)
 	if _, exists := m.fqdnSet[hash]; exists {
@@ -1642,7 +1642,7 @@ func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, names []string) (boo
 	return false, nil
 }
 
-// Return a map of domain -> certificate count.
+// CountCertificatesByNames returns a map of domain -> certificate count.
 func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, names []string, earliest, latest time.Time) (ret []*sapb.CountByNames_MapElement, err error) {
 	var results []*sapb.CountByNames_MapElement
 	for _, name := range names {
@@ -1663,7 +1663,7 @@ func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, _ time.Duration, nam
 	return count, nil
 }
 
-// Tests for boulder issue 1925[0] - that the `checkCertificatesPerNameLimit`
+// TestCheckFQDNSetRateLimitOverride tests for boulder issue 1925[0] - that the `checkCertificatesPerNameLimit`
 // properly honours the FQDNSet exemption. E.g. that if a set of domains has
 // reached the certificates per name rate limit policy threshold but the exact
 // same set of FQDN's was previously issued, then it should not be considered
@@ -1925,7 +1925,7 @@ func (m *mockSAWithRecentAndOlder) GetValidAuthorizations(
 	}, nil
 }
 
-// Test that the right set of domain names have their CAA rechecked, based on
+// TestRecheckCAADates tests that the right set of domain names have their CAA rechecked, based on
 // expiration time.
 func TestRecheckCAADates(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
@@ -3470,7 +3470,7 @@ func (ms *mockSAPreexistingCertificate) GetPendingAuthorization(ctx context.Cont
 	return nil, berrors.NotFoundError("no pending authorization found")
 }
 
-// With TLS-SNI-01 disabled, an account that previously issued a certificate for
+// TestNewAuthzTLSSNIRevalidation: With TLS-SNI-01 disabled, an account that previously issued a certificate for
 // example.com should still be able to get a new authorization.
 func TestNewAuthzTLSSNIRevalidation(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)

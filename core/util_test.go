@@ -14,7 +14,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-// challenges.go
+// TestNewToken: challenges.go
 func TestNewToken(t *testing.T) {
 	token := NewToken()
 	fmt.Println(token)

@@ -119,7 +119,7 @@ func (list safebrowsingList) bytes() []byte {
 	return buf
 }
 
-// safebrowsingList implements the interface required for Sorting & Search
+// Len: implements the interface required for Sorting & Search
 func (list safebrowsingList) Len() int           { return len(list) }
 func (list safebrowsingList) Less(i, j int) bool { return list[i].hash < list[j].hash }
 func (list safebrowsingList) Swap(i, j int)      { list[i], list[j] = list[j], list[i] }
