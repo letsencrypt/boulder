@@ -2154,7 +2154,7 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 		if err == sql.ErrNoRows {
 			// InternalServerError because we expected this certificate status to exist and
 			// not be revoked.
-			return Rollback(tx, berrors.InternalServerError("no certificate with serial %s", *req.Serial))
+			return Rollback(tx, berrors.InternalServerError("no certificate with serial %s and status %s", *req.Serial, string(core.OCSPStatusRevoked)))
 		}
 		return Rollback(tx, err)
 	}
