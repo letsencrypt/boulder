@@ -206,11 +206,10 @@ func NewValidationAuthorityImpl(
 
 // Used for audit logging
 type verificationRequestEvent struct {
-	ID                string                  `json:",omitempty"`
-	Requester         int64                   `json:",omitempty"`
-	Hostname          string                  `json:",omitempty"`
-	ValidationRecords []core.ValidationRecord `json:",omitempty"`
-	Challenge         core.Challenge          `json:",omitempty"`
+	ID                string         `json:",omitempty"`
+	Requester         int64          `json:",omitempty"`
+	Hostname          string         `json:",omitempty"`
+	Challenge         core.Challenge `json:",omitempty"`
 	ValidationLatency float64
 	Error             string `json:",omitempty"`
 }
@@ -1102,7 +1101,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 
 	records, prob := va.validate(ctx, core.AcmeIdentifier{Type: "dns", Value: domain}, challenge, authz)
 
-	logEvent.ValidationRecords = records
 	challenge.ValidationRecord = records
 
 	// Check for malformed ValidationRecords
