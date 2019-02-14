@@ -979,7 +979,26 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		return "", Rollback(tx, err)
 	}
 
-	err = addIssuedNames(txWithCtx, parsedCertificate)
+	// If the SetIssuedNamesRenewalBit feature flag is enabled then we need to
+	// determine if the certificate being added is a renewal of a previously
+	// issued certificate in order to set the renewal bit of the issued names rows
+	// correctly with `addIssuedNames`.
+	var isRenewal bool
+	if features.Enabled(features.SetIssuedNamesRenewalBit) {
+		// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
+		// that it is a renewal) we use just the DNSNames from the certificate and
+		// ignore the Subject Common Name (if any). This is a safe assumption because
+		// if a certificate we issued were to have a Subj. CN not present as a SAN it
+		// would be a misissuance and miscalculating whether the cert is a renewal or
+		// not for the purpose of rate limiting is the least of our troubles.
+		prevCertExists, err := ssa.checkFQDNSetExists(txWithCtx, parsedCertificate.DNSNames)
+		if err != nil {
+			return "", Rollback(tx, err)
+		}
+		isRenewal = prevCertExists
+	}
+
+	err = addIssuedNames(txWithCtx, parsedCertificate, isRenewal)
 	if err != nil {
 		return "", Rollback(tx, err)
 	}
@@ -1130,17 +1149,18 @@ func deleteOrderFQDNSet(
 	return nil
 }
 
-func addIssuedNames(db dbExecer, cert *x509.Certificate) error {
+func addIssuedNames(db dbExecer, cert *x509.Certificate, isRenewal bool) error {
 	var qmarks []string
 	var values []interface{}
 	for _, name := range cert.DNSNames {
 		values = append(values,
 			ReverseName(name),
 			core.SerialToString(cert.SerialNumber),
-			cert.NotBefore)
-		qmarks = append(qmarks, "(?, ?, ?)")
+			cert.NotBefore,
+			isRenewal)
+		qmarks = append(qmarks, "(?, ?, ?, ?)")
 	}
-	query := `INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES ` + strings.Join(qmarks, ", ") + `;`
+	query := `INSERT INTO issuedNames (reversedName, serial, notBefore, renewal) VALUES ` + strings.Join(qmarks, ", ") + `;`
 	_, err := db.Exec(query, values...)
 	return err
 }
@@ -1280,8 +1300,26 @@ func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(
 // FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
 // exists in the database
 func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []string) (bool, error) {
+	tx, err := ssa.dbMap.Begin()
+	if err != nil {
+		return false, err
+	}
+	txWithCtx := tx.WithContext(ctx)
+	exists, err := ssa.checkFQDNSetExists(txWithCtx, names)
+	if err != nil {
+		return false, Rollback(tx, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+// checkFQDNSetExists uses the given transaction to check whether an fqdnSet for
+// the given names exists.
+func (ssa *SQLStorageAuthority) checkFQDNSetExists(tx gorp.SqlExecutor, names []string) (bool, error) {
 	var count int64
-	err := ssa.dbMap.WithContext(ctx).SelectOne(
+	err := tx.SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM fqdnSets
 		WHERE setHash = ?

@@ -24,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/revocation"
@@ -914,32 +915,104 @@ func (e *execRecorder) Exec(query string, args ...interface{}) (sql.Result, erro
 }
 
 func TestAddIssuedNames(t *testing.T) {
-	var e execRecorder
-	err := addIssuedNames(&e, &x509.Certificate{
-		DNSNames: []string{
-			"example.co.uk",
-			"example.xyz",
+	serial := big.NewInt(1)
+	expectedSerial := "000000000000000000000000000000000001"
+	notBefore := time.Date(2018, 2, 14, 12, 0, 0, 0, time.UTC)
+	placeholdersPerName := "(?, ?, ?, ?)"
+	baseQuery := "INSERT INTO issuedNames (reversedName, serial, notBefore, renewal) VALUES"
+
+	testCases := []struct {
+		Name         string
+		IssuedNames  []string
+		SerialNumber *big.Int
+		NotBefore    time.Time
+		Renewal      bool
+		ExpectedArgs []interface{}
+	}{
+		{
+			Name:         "One domain, not a renewal",
+			IssuedNames:  []string{"example.co.uk"},
+			SerialNumber: serial,
+			NotBefore:    notBefore,
+			Renewal:      false,
+			ExpectedArgs: []interface{}{
+				"uk.co.example",
+				expectedSerial,
+				notBefore,
+				false,
+			},
 		},
-		SerialNumber: big.NewInt(1),
-		NotBefore:    time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC),
-	})
-	if err != nil {
-		t.Fatal(err)
+		{
+			Name:         "Two domains, not a renewal",
+			IssuedNames:  []string{"example.co.uk", "example.xyz"},
+			SerialNumber: serial,
+			NotBefore:    notBefore,
+			Renewal:      false,
+			ExpectedArgs: []interface{}{
+				"uk.co.example",
+				expectedSerial,
+				notBefore,
+				false,
+				"xyz.example",
+				expectedSerial,
+				notBefore,
+				false,
+			},
+		},
+		{
+			Name:         "One domain, renewal",
+			IssuedNames:  []string{"example.co.uk"},
+			SerialNumber: serial,
+			NotBefore:    notBefore,
+			Renewal:      true,
+			ExpectedArgs: []interface{}{
+				"uk.co.example",
+				expectedSerial,
+				notBefore,
+				true,
+			},
+		},
+		{
+			Name:         "Two domains, renewal",
+			IssuedNames:  []string{"example.co.uk", "example.xyz"},
+			SerialNumber: serial,
+			NotBefore:    notBefore,
+			Renewal:      true,
+			ExpectedArgs: []interface{}{
+				"uk.co.example",
+				expectedSerial,
+				notBefore,
+				true,
+				"xyz.example",
+				expectedSerial,
+				notBefore,
+				true,
+			},
+		},
 	}
-	expected := "INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?, ?, ?), (?, ?, ?);"
-	if e.query != expected {
-		t.Errorf("Wrong query: got %q, expected %q", e.query, expected)
-	}
-	expectedArgs := []interface{}{
-		"uk.co.example",
-		"000000000000000000000000000000000001",
-		time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC),
-		"xyz.example",
-		"000000000000000000000000000000000001",
-		time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC),
-	}
-	if !reflect.DeepEqual(e.args, expectedArgs) {
-		t.Errorf("Wrong args: got\n%#v, expected\n%#v", e.args, expectedArgs)
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			var e execRecorder
+			err := addIssuedNames(
+				&e,
+				&x509.Certificate{
+					DNSNames:     tc.IssuedNames,
+					SerialNumber: tc.SerialNumber,
+					NotBefore:    tc.NotBefore,
+				},
+				tc.Renewal)
+			test.AssertNotError(t, err, "addIssuedNames failed")
+			expectedPlaceholders := placeholdersPerName
+			for i := 0; i < len(tc.IssuedNames)-1; i++ {
+				expectedPlaceholders = fmt.Sprintf("%s, %s", expectedPlaceholders, placeholdersPerName)
+			}
+			expectedQuery := fmt.Sprintf("%s %s;", baseQuery, expectedPlaceholders)
+			test.AssertEquals(t, e.query, expectedQuery)
+			if !reflect.DeepEqual(e.args, tc.ExpectedArgs) {
+				t.Errorf("Wrong args: got\n%#v, expected\n%#v", e.args, tc.ExpectedArgs)
+			}
+		})
 	}
 }
 
@@ -2255,5 +2328,72 @@ func TestUpdateChallengesPendingOnly(t *testing.T) {
 
 	if result.Challenges[0].Status != core.StatusValid {
 		t.Errorf("challenge status was updated when it should not have been allowed to be changed.")
+	}
+}
+
+func TestAddCertificateRenewalBit(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	err := features.Set(map[string]bool{"SetIssuedNamesRenewalBit": true})
+	test.AssertNotError(t, err, "Failed to enable SetIssuedNamesRenewalBit feature flag")
+	defer features.Reset()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	// An example cert taken from EFF's website
+	certDER, err := ioutil.ReadFile("www.eff.org.der")
+	test.AssertNotError(t, err, "Unexpected error reading www.eff.org.der test file")
+	cert, err := x509.ParseCertificate(certDER)
+	test.AssertNotError(t, err, "Unexpected error parsing www.eff.org.der test file")
+	names := cert.DNSNames
+
+	expires := fc.Now().Add(time.Hour * 2).UTC()
+	issued := fc.Now()
+	serial := "thrilla"
+
+	// Add a FQDN set for the names so that it will be considered a renewal
+	tx, err := sa.dbMap.Begin()
+	test.AssertNotError(t, err, "Failed to open transaction")
+	err = addFQDNSet(tx, names, serial, issued, expires)
+	test.AssertNotError(t, err, "Failed to add name set")
+	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
+
+	// Add the certificate with the same names.
+	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
+	test.AssertNotError(t, err, "Failed to add certificate")
+
+	assertIsRenewal := func(t *testing.T, name string, expected bool) {
+		var count int
+		err := sa.dbMap.SelectOne(
+			&count,
+			`SELECT COUNT(1) FROM issuedNames
+		WHERE reversedName = ?
+		AND renewal = ?`,
+			ReverseName(name),
+			expected,
+		)
+		test.AssertNotError(t, err, "Unexpected error from SelectOne on issuedNames")
+		test.AssertEquals(t, count, 1)
+	}
+
+	// All of the names should have a issuedNames row marking it as a renewal.
+	for _, name := range names {
+		assertIsRenewal(t, name, true)
+	}
+
+	// Add a certificate with different names.
+	certDER, err = ioutil.ReadFile("test-cert.der")
+	test.AssertNotError(t, err, "Unexpected error reading test-cert.der test file")
+	cert, err = x509.ParseCertificate(certDER)
+	test.AssertNotError(t, err, "Unexpected error parsing test-cert.der test file")
+	names = cert.DNSNames
+
+	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
+	test.AssertNotError(t, err, "Failed to add certificate")
+
+	// None of the names should have a issuedNames row marking it as a renewal.
+	for _, name := range names {
+		assertIsRenewal(t, name, false)
 	}
 }

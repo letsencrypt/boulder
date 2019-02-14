@@ -33,21 +33,25 @@ const (
 	HeadNonceStatusOK
 	// NewAuthorizationSchema enables usage of the new authorization storage schema
 	NewAuthorizationSchema
+	// SetIssuedNamesRenewalBit enables the SA setting the renewal bit for
+	// issuedNames entries during AddCertificate.
+	SetIssuedNamesRenewalBit
 )
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                 false,
-	AllowRenewalFirstRL:    false,
-	TLSSNIRevalidation:     false,
-	CAAValidationMethods:   false,
-	CAAAccountURI:          false,
-	ACME13KeyRollover:      false,
-	ProbeCTLogs:            false,
-	SimplifiedVAHTTP:       false,
-	PerformValidationRPC:   false,
-	HeadNonceStatusOK:      false,
-	NewAuthorizationSchema: false,
+	unused:                   false,
+	AllowRenewalFirstRL:      false,
+	TLSSNIRevalidation:       false,
+	CAAValidationMethods:     false,
+	CAAAccountURI:            false,
+	ACME13KeyRollover:        false,
+	ProbeCTLogs:              false,
+	SimplifiedVAHTTP:         false,
+	PerformValidationRPC:     false,
+	HeadNonceStatusOK:        false,
+	NewAuthorizationSchema:   false,
+	SetIssuedNamesRenewalBit: false,
 }
 
 var fMu = new(sync.RWMutex)
