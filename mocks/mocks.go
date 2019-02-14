@@ -554,6 +554,11 @@ func (sa *StorageAuthority) AddPendingAuthorizations(ctx context.Context, req *s
 	return &sapb.AuthorizationIDs{}, nil
 }
 
+// RevokeCertificate is a mock
+func (sa *StorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error {
+	return nil
+}
+
 // Publisher is a mock
 type Publisher struct {
 	// empty

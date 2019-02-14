@@ -922,6 +922,8 @@ func TestIssueCertificate(t *testing.T) {
 		noopCAA{},
 		0,
 		ctp,
+		nil,
+		nil,
 	)
 	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &mocks.MockCA{

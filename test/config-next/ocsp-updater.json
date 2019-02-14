@@ -33,6 +33,7 @@
       "timeout": "15s"
     },
     "features": {
+      "RevokeAtRA": true
     }
   },
 

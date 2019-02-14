@@ -16,7 +16,10 @@
           "address": ":9099",
           "maxConcurrentStreams": 2000,
           "clientNames": [
-            "ocsp-updater.boulder"
+            "ocsp-updater.boulder",
+            "ra.boulder",
+            "ra1.boulder",
+            "ra2.boulder"
           ]
         }
     },

@@ -33,6 +33,8 @@ const (
 	HeadNonceStatusOK
 	// NewAuthorizationSchema enables usage of the new authorization storage schema
 	NewAuthorizationSchema
+	// RevokeAtRA enables revocation in the RA instead of ocsp-updater
+	RevokeAtRA
 	// SetIssuedNamesRenewalBit enables the SA setting the renewal bit for
 	// issuedNames entries during AddCertificate.
 	SetIssuedNamesRenewalBit
@@ -51,6 +53,7 @@ var features = map[FeatureFlag]bool{
 	PerformValidationRPC:     false,
 	HeadNonceStatusOK:        false,
 	NewAuthorizationSchema:   false,
+	RevokeAtRA:               false,
 	SetIssuedNamesRenewalBit: false,
 }
 
