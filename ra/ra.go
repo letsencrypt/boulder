@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/akamai"
+	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -80,6 +82,9 @@ type RegistrationAuthorityImpl struct {
 	reuseValidAuthz              bool
 	orderLifetime                time.Duration
 
+	issuer *x509.Certificate
+	purger akamaipb.AkamaiPurgerClient
+
 	regByIPStats           metrics.Scope
 	regByIPRangeStats      metrics.Scope
 	pendAuthByRegIDStats   metrics.Scope
@@ -107,6 +112,8 @@ func NewRegistrationAuthorityImpl(
 	caaClient caaChecker,
 	orderLifetime time.Duration,
 	ctp *ctpolicy.CTPolicy,
+	purger akamaipb.AkamaiPurgerClient,
+	issuer *x509.Certificate,
 ) *RegistrationAuthorityImpl {
 	ctpolicyResults := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -141,6 +148,8 @@ func NewRegistrationAuthorityImpl(
 		orderLifetime:                orderLifetime,
 		ctpolicy:                     ctp,
 		ctpolicyResults:              ctpolicyResults,
+		purger:                       purger,
+		issuer:                       issuer,
 	}
 	return ra
 }
@@ -1553,10 +1562,53 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 	)
 }
 
+// revokeCertificate generates a revoked OCSP response for the given certificate, stores
+// the revocation information, and purges OCSP request URLs from Akamai.
+func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason) error {
+	now := time.Now()
+	signRequest := core.OCSPSigningRequest{
+		CertDER:   cert.Raw,
+		Status:    string(core.OCSPStatusRevoked),
+		Reason:    code,
+		RevokedAt: now,
+	}
+	ocspResponse, err := ra.CA.GenerateOCSP(ctx, signRequest)
+	if err != nil {
+		return err
+	}
+	serial := core.SerialToString(cert.SerialNumber)
+	nowUnix := now.UnixNano()
+	reason := int64(code)
+	err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
+		Serial:   &serial,
+		Reason:   &reason,
+		Date:     &nowUnix,
+		Response: ocspResponse,
+	})
+	if err != nil {
+		return err
+	}
+	purgeURLs, err := akamai.GeneratePurgeURLs(cert.Raw, ra.issuer)
+	if err != nil {
+		return err
+	}
+	_, err = ra.purger.Purge(ctx, &akamaipb.PurgeRequest{Urls: purgeURLs})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // RevokeCertificateWithReg terminates trust in the certificate provided.
 func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, regID int64) error {
 	serialString := core.SerialToString(cert.SerialNumber)
-	err := ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
+	var err error
+	if features.Enabled(features.RevokeAtRA) {
+		err = ra.revokeCertificate(ctx, cert, revocationCode)
+	} else {
+		err = ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
+	}
 
 	state := "Failure"
 	defer func() {
@@ -1578,6 +1630,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 	}
 
 	state = "Success"
+	ra.stats.Inc("RevokedCertificates", 1)
 	return nil
 }
 
@@ -1586,7 +1639,12 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 // called from the admin-revoker tool.
 func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, user string) error {
 	serialString := core.SerialToString(cert.SerialNumber)
-	err := ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
+	var err error
+	if features.Enabled(features.RevokeAtRA) {
+		err = ra.revokeCertificate(ctx, cert, revocationCode)
+	} else {
+		err = ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
+	}
 
 	state := "Failure"
 	defer func() {

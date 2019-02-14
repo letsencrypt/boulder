@@ -1,16 +1,12 @@
 package main
 
 import (
-	"crypto/md5"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
-	"encoding/base64"
 	"flag"
 	"fmt"
-	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -119,16 +115,20 @@ func newUpdater(
 			failureBackoffFactor: config.SignFailureBackoffFactor,
 			failureBackoffMax:    config.SignFailureBackoffMax.Duration,
 		},
-		{
-			clk:                  clk,
-			stats:                stats.NewScope("RevokedCertificates"),
-			batchSize:            config.RevokedCertificateBatchSize,
-			tickDur:              config.RevokedCertificateWindow.Duration,
-			tickFunc:             updater.revokedCertificatesTick,
-			name:                 "RevokedCertificates",
-			failureBackoffFactor: config.SignFailureBackoffFactor,
-			failureBackoffMax:    config.SignFailureBackoffMax.Duration,
-		},
+	}
+
+	if !features.Enabled(features.RevokeAtRA) {
+		updater.loops = append(updater.loops,
+			&looper{
+				clk:                  clk,
+				stats:                stats.NewScope("RevokedCertificates"),
+				batchSize:            config.RevokedCertificateBatchSize,
+				tickDur:              config.RevokedCertificateWindow.Duration,
+				tickFunc:             updater.revokedCertificatesTick,
+				name:                 "RevokedCertificates",
+				failureBackoffFactor: config.SignFailureBackoffFactor,
+				failureBackoffMax:    config.SignFailureBackoffMax.Duration,
+			})
 	}
 
 	if config.AkamaiBaseURL != "" {
@@ -162,60 +162,6 @@ func newUpdater(
 	}
 
 	return &updater, nil
-}
-
-func reverseBytes(b []byte) []byte {
-	for i, j := 0, len(b)-1; i < j; i, j = i+1, j-1 {
-		b[i], b[j] = b[j], b[i]
-	}
-	return b
-}
-
-func generateOCSPCacheKeys(req []byte, ocspServer string) []string {
-	hash := md5.Sum(req)
-	encReq := base64.StdEncoding.EncodeToString(req)
-	return []string{
-		// Generate POST key, format is the URL that was POST'd to with a query string with
-		// the parameter 'body-md5' and the value of the first two uint32s in little endian
-		// order in hex of the MD5 hash of the OCSP request body.
-		//
-		// There is no public documentation of this feature that has been published by Akamai
-		// as far as we are aware.
-		fmt.Sprintf("%s?body-md5=%x%x", ocspServer, reverseBytes(hash[0:4]), reverseBytes(hash[4:8])),
-		// RFC 2560 and RFC 5019 state OCSP GET URLs 'MUST properly url-encode the base64
-		// encoded' request but a large enough portion of tools do not properly do this
-		// (~10% of GET requests we receive) such that we must purge both the encoded
-		// and un-encoded URLs.
-		//
-		// Due to Akamai proxy/cache behavior which collapses '//' -> '/' we also
-		// collapse double slashes in the un-encoded URL so that we properly purge
-		// what is stored in the cache.
-		fmt.Sprintf("%s%s", ocspServer, strings.Replace(encReq, "//", "/", -1)),
-		fmt.Sprintf("%s%s", ocspServer, url.QueryEscape(encReq)),
-	}
-}
-
-func (updater *OCSPUpdater) generatePurgeURLs(der []byte) ([]string, error) {
-	cert, err := x509.ParseCertificate(der)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := ocsp.CreateRequest(cert, updater.issuer, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create a GET and special Akamai POST style OCSP url for each endpoint in cert.OCSPServer
-	urls := []string{}
-	for _, ocspServer := range cert.OCSPServer {
-		if !strings.HasSuffix(ocspServer, "/") {
-			ocspServer += "/"
-		}
-		// Generate GET url
-		urls = append(generateOCSPCacheKeys(req, ocspServer))
-	}
-	return urls, nil
 }
 
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
@@ -311,7 +257,7 @@ func (updater *OCSPUpdater) generateRevokedResponse(ctx context.Context, status 
 	// If cache client is populated generate purge URLs
 	var purgeURLs []string
 	if updater.ccu != nil || updater.purgerService != nil {
-		purgeURLs, err = updater.generatePurgeURLs(cert.DER)
+		purgeURLs, err = akamai.GeneratePurgeURLs(cert.DER, updater.issuer)
 		if err != nil {
 			return nil, nil, err
 		}
