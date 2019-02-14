@@ -40,7 +40,8 @@ go get \
   github.com/modocache/gover \
   github.com/tools/godep \
   golang.org/x/tools/cover \
-  golang.org/x/tools/cmd/stringer
+  golang.org/x/tools/cmd/stringer \
+  github.com/gordonklaus/ineffassign
 
 # grpc uses a version attestation variable of the form grpc.SupportPackageIsVersionN
 # where N is the generated code version shared between protoc-gen-go and grpc-go
