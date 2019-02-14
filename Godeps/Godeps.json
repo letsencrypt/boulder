@@ -350,15 +350,15 @@
 		},
 		{
 			"ImportPath": "github.com/zmap/zlint",
-			"Rev": "bb32118ad3ab29c4d9a697aa1d8faa71c07e7500"
+			"Rev": "fbc0b698c5777242bf84986e8a52ebece97720d7"
 		},
 		{
 			"ImportPath": "github.com/zmap/zlint/lints",
-			"Rev": "bb32118ad3ab29c4d9a697aa1d8faa71c07e7500"
+			"Rev": "fbc0b698c5777242bf84986e8a52ebece97720d7"
 		},
 		{
 			"ImportPath": "github.com/zmap/zlint/util",
-			"Rev": "bb32118ad3ab29c4d9a697aa1d8faa71c07e7500"
+			"Rev": "fbc0b698c5777242bf84986e8a52ebece97720d7"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/cryptobyte",
