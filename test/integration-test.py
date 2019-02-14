@@ -312,9 +312,9 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 class SlowHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
-            # Sleeptime needs to be larger than the RA->VA timeout (2s at the
+            # Sleeptime needs to be larger than the RA->VA timeout (8s at the
             # time of writing)
-            sleeptime = 5
+            sleeptime = 12
             print("SlowHTTPRequestHandler: sleeping for {0}s\n".format(sleeptime))
             time.sleep(sleeptime)
             self.send_response(200)
@@ -360,8 +360,8 @@ def test_http_challenge_timeout():
 
     delta = end - start
     # Expected duration should be the RA->VA timeout plus some padding (At
-    # present the timeout is 2s so adding 4s of padding = 6s)
-    expectedDuration = 6
+    # present the timeout is 8s so adding 4s of padding = 12s)
+    expectedDuration = 12
     if delta.total_seconds() == 0 or delta.total_seconds() > expectedDuration:
         raise Exception("expected timeout to occur in under {0} seconds. Took {1}".format(expectedDuration, delta.total_seconds()))
 

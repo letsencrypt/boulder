@@ -18,7 +18,7 @@
     },
     "vaService": {
       "serverAddress": "va.boulder:9092",
-      "timeout": "2s"
+      "timeout": "8s"
     },
     "caService": {
       "serverAddress": "ca.boulder:9093",
