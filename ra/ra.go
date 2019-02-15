@@ -1273,7 +1273,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 	}
 
 	if len(badNames) > 0 {
-		// check if there is already a existing certificate for
+		// check if there is already an existing certificate for
 		// the exact name set we are issuing for. If so bypass the
 		// the certificatesPerName limit.
 		exists, err := ra.SA.FQDNSetExists(ctx, names)

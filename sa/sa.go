@@ -453,47 +453,72 @@ func ReverseName(domain string) string {
 	return strings.Join(labels, ".")
 }
 
+// TODO(@cpu): This query can be removed when UseRenewalFirstRL is the default.
 const countCertificatesSelect = `
 		 SELECT serial from issuedNames
 		 WHERE (reversedName = :reversedDomain OR
 			      reversedName LIKE CONCAT(:reversedDomain, ".%"))
 		 AND notBefore > :earliest AND notBefore <= :latest;`
 
+const countCertificatesSelectNoRenewals = `
+		 SELECT serial from issuedNames
+		 WHERE (reversedName = :reversedDomain OR
+			      reversedName LIKE CONCAT(:reversedDomain, ".%"))
+		 AND NOT renewal AND notBefore > :earliest AND notBefore <= :latest;`
+
+// TODO(@cpu): This query can be removed when UseRenewalFirstRL is the default.
 const countCertificatesExactSelect = `
 		 SELECT serial from issuedNames
 		 WHERE reversedName = :reversedDomain
 		 AND notBefore > :earliest AND notBefore <= :latest;`
 
+const countCertificatesExactSelectNoRenewals = `
+		 SELECT serial from issuedNames
+		 WHERE reversedName = :reversedDomain
+		 AND NOT renewal AND notBefore > :earliest AND notBefore <= :latest;`
+
 // countCertificatesByNames returns, for a single domain, the count of
 // certificates issued in the given time range for that domain and its
-// subdomains.
+// subdomains. If the AllowRenewalFirstRL feature flag is enabled then the count
+// of certificates returned will not include any certificates that were
+// a renewal of a previous certificate.
 func (ssa *SQLStorageAuthority) countCertificatesByNameImpl(
 	db dbSelector,
 	domain string,
 	earliest,
 	latest time.Time,
 ) (int, error) {
-	return ssa.countCertificates(db, domain, earliest, latest, countCertificatesSelect)
+	if features.Enabled(features.AllowRenewalFirstRL) {
+		return ssa.countCertificates(db, domain, earliest, latest, countCertificatesSelectNoRenewals)
+	} else {
+		return ssa.countCertificates(db, domain, earliest, latest, countCertificatesSelect)
+	}
 }
 
 // countCertificatesByExactNames returns, for a single domain, the count of
 // certificates issued in the given time range for that domain. In contrast to
-// countCertificatesByNames subdomains are NOT considered.
+// countCertificatesByNames subdomains are NOT considered. If the
+// AllowRenewalFirstRL feature flag is enabled then the count of certificates
+// returned will not include any certificates that were a renewal of a previous
+// certificate.
 func (ssa *SQLStorageAuthority) countCertificatesByExactName(
 	db dbSelector,
 	domain string,
 	earliest,
 	latest time.Time,
 ) (int, error) {
-	return ssa.countCertificates(db, domain, earliest, latest, countCertificatesExactSelect)
+	if features.Enabled(features.AllowRenewalFirstRL) {
+		return ssa.countCertificates(db, domain, earliest, latest, countCertificatesExactSelectNoRenewals)
+	} else {
+		return ssa.countCertificates(db, domain, earliest, latest, countCertificatesExactSelect)
+	}
 }
 
-// countCertificates returns, for a single domain, the count of
-// non-renewal certificate issuances in the given time range for that domain using the
-// provided query, assumed to be either `countCertificatesExactSelect` or
-// `countCertificatesSelect`. If the `AllowRenewalFirstRL` feature flag is set,
-// renewals of certificates issued within the same window are considered "free"
-// and are not counted.
+// countCertificates returns, for a single domain, the count of certificate
+// issuances in the given time range for that domain using the
+// provided query assumed to be either `countCertificatesExactSelect`,
+// `countCertificatesExactSelectNoRenewals`, `countCertificatesSelect` or
+// `countCertificatesSelectNoRenewals`
 func (ssa *SQLStorageAuthority) countCertificates(db dbSelector, domain string, earliest, latest time.Time, query string) (int, error) {
 	var serials []string
 	_, err := db.Select(
@@ -510,39 +535,12 @@ func (ssa *SQLStorageAuthority) countCertificates(db dbSelector, domain string, 
 		return 0, err
 	}
 
-	// If the `AllowRenewalFirstRL` feature flag is enabled then do the work
-	// required to discount renewals
-	if features.Enabled(features.AllowRenewalFirstRL) {
-		// If there are no serials found, short circuit since there isn't subsequent
-		// work to do
-		if len(serials) == 0 {
-			return 0, nil
-		}
-
-		// Find all FQDN Set Hashes with the serials from the issuedNames table that
-		// were visible within our search window
-		fqdnSets, err := ssa.getFQDNSetsBySerials(db, serials)
-		if err != nil {
-			return 0, err
-		}
-
-		// Using those FQDN Set Hashes, we can then find all of the non-renewal
-		// issuances with a second query against the fqdnSets table using the set
-		// hashes we know about
-		nonRenewalIssuances, err := ssa.getNewIssuancesByFQDNSet(db, fqdnSets, earliest)
-		if err != nil {
-			return 0, err
-		}
-		return nonRenewalIssuances, nil
-	} else {
-		// Otherwise, use the preexisting behaviour and deduplicate by serials
-		// returning a count of unique serials qignoring any potential renewals
-		serialMap := make(map[string]struct{}, len(serials))
-		for _, s := range serials {
-			serialMap[s] = struct{}{}
-		}
-		return len(serialMap), nil
+	// Deduplicate serials returning a count of unique serials
+	serialMap := make(map[string]struct{}, len(serials))
+	for _, s := range serials {
+		serialMap[s] = struct{}{}
 	}
+	return len(serialMap), nil
 }
 
 // GetCertificate takes a serial number and returns the corresponding
