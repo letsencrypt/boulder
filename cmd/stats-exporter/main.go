@@ -27,7 +27,11 @@ var sqlOpen = func(driver, dsn string) (dbQueryable, error) {
 	return sql.Open(driver, dsn)
 }
 
-func queryDB(dbConnect string, beginTimeStamp string, endTimeStamp string) (*sql.Rows, error) {
+var execRun = func(c *exec.Cmd) error {
+	return c.Run()
+}
+
+func queryDB(dbConnect, beginTimeStamp, endTimeStamp string) (*sql.Rows, error) {
 	dbDSN, err := ioutil.ReadFile(dbConnect)
 	if err != nil {
 		return nil, fmt.Errorf("Could not open database connection file: %s", err)
@@ -58,24 +62,28 @@ func writeTSVData(rows sqlRows, outFile io.Writer) error {
 	return nil
 }
 
-// is this the correct way to use string and *string
-func compressAndSend(outputFileName, destination string) error {
-	outputGZIPName := outputFileName + ".gz"
-
-	err := exec.Command("/usr/bin/gzip", outputFileName).Run()
+func compress(outputFileName string) error {
+	gzipCmd := exec.Command("/usr/bin/gzip", outputFileName)
+	err := execRun(gzipCmd)
 	if err != nil {
 		return fmt.Errorf("Could not gzip result file: %s", err)
 	}
-	err = exec.Command("/usr/bin/scp", outputGZIPName, destination).Run()
+	return nil
+}
+
+func scp(outputFileName, destination, key string) error {
+	outputGZIPName := outputFileName + ".gz"
+	scpCmd := exec.Command("/usr/bin/scp", "-i", key, outputGZIPName, destination)
+	err := execRun(scpCmd)
 	if err != nil {
 		return fmt.Errorf("Could not scp result file: %s", err)
 	}
 	return nil
 }
-
 func main() {
 	dbConnect := flag.String("dbConnect", "", "Path to the DB URL")
 	destination := flag.String("destination", "localhost:/tmp", "Location to SCP the TSV result file to")
+	key := flag.String("key", "id_rsa", "Identity key for SCP")
 	flag.Parse()
 
 	now := time.Now()
@@ -85,7 +93,7 @@ func main() {
 	outputFileName := fmt.Sprintf("results-%s.tsv", yesterday.Format("2006-01-02"))
 
 	outFile, err := os.OpenFile(outputFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
-	cmd.FailOnError(err, "Could not write to results file")
+	cmd.FailOnError(err, "Could not create results file")
 
 	defer outFile.Close()
 	rows, err := queryDB(*dbConnect, yesterdayDateStamp, endDateStamp)
@@ -94,6 +102,9 @@ func main() {
 	err = writeTSVData(rows, outFile)
 	cmd.FailOnError(err, "Could not write TSV data")
 
-	err = compressAndSend(outputFileName, *destination)
-	cmd.FailOnError(err, "Could not compress and send results")
+	// this needs to have a pubkey argument for the scp
+	err = compress(outputFileName)
+	cmd.FailOnError(err, "Could not compress results")
+	err = scp(outputFileName, *destination, *key)
+	cmd.FailOnError(err, "Could not send results")
 }

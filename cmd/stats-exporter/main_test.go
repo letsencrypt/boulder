@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -165,6 +166,45 @@ func TestQueryDB(t *testing.T) {
 
 }
 
+type errorDB struct {
+}
+
+func (s *errorDB) Query(string, ...interface{}) (*sql.Rows, error) {
+	return nil, fmt.Errorf("this is actually an error")
+}
+
+func TestQueryDBError(t *testing.T) {
+	content := []byte("some@tcp(fake:3306)/DSN data")
+	tmpfile, err := ioutil.TempFile("", "")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer os.Remove(tmpfile.Name())
+	if _, err := tmpfile.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatal(err)
+	}
+	checkedSQLOpen := func(driver, dsn string) (dbQueryable, error) {
+		return &errorDB{}, nil
+	}
+	savedSQLOpen := sqlOpen
+	sqlOpen = checkedSQLOpen
+	defer func() {
+		sqlOpen = savedSQLOpen
+	}()
+	_, err = queryDB(tmpfile.Name(), "2019-01-01", "2019-01-02")
+	if err == nil {
+		t.Errorf("expected error")
+	}
+	if !strings.Contains(err.Error(), "this is actually an error") {
+		t.Errorf("wrong error. got: %q", err)
+	}
+}
+
 /*
 type errorReadFile struct {
 }
@@ -174,12 +214,61 @@ func (e *errorReadFile) Reader(p []byte) (int, error) {
 }
 */
 func TestQueryDBConnectError(t *testing.T) {
-
 	_, err := queryDB("nonExistentFile", "2019-01-01", "2019-01-02")
 	if err == nil {
 		t.Errorf("expected error")
 	}
+	// Do I want to pull the error message that is used in the function, or should
+	// the function be re-written to take a io.Reader as an input and then mock
+	// the reader like the Writer above?
 	if !strings.Contains(err.Error(), "Could not open database connection file:") {
 		t.Errorf("wrong error. got: %q", err)
+	}
+}
+
+func TestCompress(t *testing.T) {
+	outputFileName := "fakeFile.tsv"
+
+	checkedArgs := func(c *exec.Cmd) error {
+		expected := "/usr/bin/gzip fakeFile.tsv"
+		args := strings.Join(c.Args, " ")
+		if args != expected {
+			return fmt.Errorf("wrong argument string. Got %q expected %q", args, expected)
+		}
+		return nil
+	}
+	savedExecRun := execRun
+	execRun = checkedArgs
+	defer func() {
+		execRun = savedExecRun
+	}()
+	err := compress(outputFileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+}
+
+func TestScp(t *testing.T) {
+	outputFileName := "fakeFile.tsv"
+	destination := "localhost:/tmp"
+	key := "id_rsa"
+
+	checkedArgs := func(c *exec.Cmd) error {
+		expected := "/usr/bin/scp -i id_rsa fakeFile.tsv.gz localhost:/tmp"
+		args := strings.Join(c.Args, " ")
+		if args != expected {
+			return fmt.Errorf("wrong argument string. Got %q expected %q", args, expected)
+		}
+		return nil
+	}
+	savedExecRun := execRun
+	execRun = checkedArgs
+	defer func() {
+		execRun = savedExecRun
+	}()
+	err := scp(outputFileName, destination, key)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
