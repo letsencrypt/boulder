@@ -95,7 +95,12 @@ func main() {
 	outFile, err := os.OpenFile(outputFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	cmd.FailOnError(err, "Could not create results file")
 
-	defer outFile.Close()
+	defer func() {
+		if err := outFile.Close(); err != nil {
+			cmd.FailOnError(err, "Could not close file")
+		}
+	}()
+
 	rows, err := queryDB(*dbConnect, yesterdayDateStamp, endDateStamp)
 	cmd.FailOnError(err, "Could not complete database work")
 
