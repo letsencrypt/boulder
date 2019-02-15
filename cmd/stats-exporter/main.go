@@ -102,7 +102,6 @@ func main() {
 	err = writeTSVData(rows, outFile)
 	cmd.FailOnError(err, "Could not write TSV data")
 
-	// this needs to have a pubkey argument for the scp
 	err = compress(outputFileName)
 	cmd.FailOnError(err, "Could not compress results")
 	err = scp(outputFileName, *destination, *key)

@@ -205,22 +205,14 @@ func TestQueryDBError(t *testing.T) {
 	}
 }
 
-/*
 type errorReadFile struct {
 }
 
-func (e *errorReadFile) Reader(p []byte) (int, error) {
-	return 0, fmt.Errorf("this is an expected readFile Error")
-}
-*/
 func TestQueryDBConnectError(t *testing.T) {
 	_, err := queryDB("nonExistentFile", "2019-01-01", "2019-01-02")
 	if err == nil {
 		t.Errorf("expected error")
 	}
-	// Do I want to pull the error message that is used in the function, or should
-	// the function be re-written to take a io.Reader as an input and then mock
-	// the reader like the Writer above?
 	if !strings.Contains(err.Error(), "Could not open database connection file:") {
 		t.Errorf("wrong error. got: %q", err)
 	}
