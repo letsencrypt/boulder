@@ -35,6 +35,10 @@ challSrv = challtestsrv.ChallTestServer()
 
 tempdir = tempfile.mkdtemp()
 
+default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
+if default_config_dir == '':
+    default_config_dir = 'test/config'
+
 @atexit.register
 def stop():
     shutil.rmtree(tempdir)
@@ -471,7 +475,10 @@ def test_revoke_by_issuer():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
     ee_ocsp_url = "http://localhost:4002"
-    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    if default_config_dir.startswith("test/config-next"):
+        verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    else:
+        wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
     verify_akamai_purge()
 
 def test_revoke_by_authz():
@@ -491,7 +498,10 @@ def test_revoke_by_authz():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
     ee_ocsp_url = "http://localhost:4002"
-    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    if default_config_dir.startswith("test/config-next"):
+        verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    else:
+        wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
     verify_akamai_purge()
 
 def test_revoke_by_privkey():
@@ -524,7 +534,10 @@ def test_revoke_by_privkey():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
     ee_ocsp_url = "http://localhost:4002"
-    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    if default_config_dir.startswith("test/config-next"):
+        verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    else:
+        wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
     verify_akamai_purge()
 
 def test_sct_embedding():

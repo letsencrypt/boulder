@@ -173,3 +173,7 @@ func (sa *mockInvalidAuthorizationsAuthority) SetOrderError(ctx context.Context,
 func (sa *mockInvalidAuthorizationsAuthority) FinalizeOrder(ctx context.Context, in *core.Order, opts ...grpc.CallOption) (*core.Empty, error) {
 	return nil, nil
 }
+
+func (sa *mockInvalidAuthorizationsAuthority) RevokeCertificate(_ context.Context, _ *sapb.RevokeCertificateRequest, opts ...grpc.CallOption) (*core.Empty, error) {
+	return nil, nil
+}

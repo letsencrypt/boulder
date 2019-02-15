@@ -124,3 +124,21 @@ def verify_akamai_purge():
             continue
         break
     reset_akamai_purges()
+
+def verify_revocation(cert_file, issuer_file, url):
+    ocsp_request = make_ocsp_req(cert_file, issuer_file)
+    responses = fetch_ocsp(ocsp_request, url)
+
+    # Verify all responses are the same
+    for resp in responses:
+        if resp != responses[0]:
+            raise Exception("OCSP responses differed: %s vs %s" %(
+                base64.b64encode(responses[0]), base64.b64encode(resp)))
+
+    # Check response is for the correct certificate and is revoked
+    resp = responses[0]
+    verify_output = ocsp_verify(cert_file, issuer_file, resp)
+    if not re.search(": revoked", verify_output):
+        print verify_output
+        raise Exception("OCSP response didn't match '%s'" %(
+            final))

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
@@ -70,12 +71,17 @@ func (cac CertificateAuthorityClientWrapper) IssueCertificateForPrecertificate(c
 }
 
 func (cac CertificateAuthorityClientWrapper) GenerateOCSP(ctx context.Context, ocspReq core.OCSPSigningRequest) ([]byte, error) {
+	var inner interface {
+		GenerateOCSP(context.Context, *caPB.GenerateOCSPRequest, ...grpc.CallOption) (*caPB.OCSPResponse, error)
+	}
 	if cac.innerOCSP == nil {
-		return nil, errors.New("this CA client does not support generating OCSP")
+		inner = cac.inner
+	} else {
+		inner = cac.innerOCSP
 	}
 	reason := int32(ocspReq.Reason)
 	revokedAt := ocspReq.RevokedAt.UnixNano()
-	res, err := cac.innerOCSP.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
+	res, err := inner.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
 		CertDER:   ocspReq.CertDER,
 		Status:    &ocspReq.Status,
 		Reason:    &reason,
