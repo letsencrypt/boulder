@@ -992,7 +992,9 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		// if a certificate we issued were to have a Subj. CN not present as a SAN it
 		// would be a misissuance and miscalculating whether the cert is a renewal or
 		// not for the purpose of rate limiting is the least of our troubles.
-		prevCertExists, err := ssa.checkFQDNSetExists(txWithCtx, parsedCertificate.DNSNames)
+		prevCertExists, err := ssa.checkFQDNSetExists(
+			txWithCtx.SelectOne,
+			parsedCertificate.DNSNames)
 		if err != nil {
 			return "", Rollback(tx, err)
 		}
@@ -1301,26 +1303,24 @@ func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(
 // FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
 // exists in the database
 func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []string) (bool, error) {
-	tx, err := ssa.dbMap.Begin()
+	exists, err := ssa.checkFQDNSetExists(
+		ssa.dbMap.WithContext(ctx).SelectOne,
+		names)
 	if err != nil {
-		return false, err
-	}
-	txWithCtx := tx.WithContext(ctx)
-	exists, err := ssa.checkFQDNSetExists(txWithCtx, names)
-	if err != nil {
-		return false, Rollback(tx, err)
-	}
-	if err := tx.Commit(); err != nil {
 		return false, err
 	}
 	return exists, nil
 }
 
-// checkFQDNSetExists uses the given transaction to check whether an fqdnSet for
-// the given names exists.
-func (ssa *SQLStorageAuthority) checkFQDNSetExists(tx gorp.SqlExecutor, names []string) (bool, error) {
+// oneSelectorFunc is a func type that matches both gorp.Transaction.SelectOne
+// and gorp.DbMap.SelectOne.
+type oneSelectorFunc func(holder interface{}, query string, args ...interface{}) error
+
+// checkFQDNSetExists uses the given oneSelectorFunc to check whether an fqdnSet
+// for the given names exists.
+func (ssa *SQLStorageAuthority) checkFQDNSetExists(selector oneSelectorFunc, names []string) (bool, error) {
 	var count int64
-	err := tx.SelectOne(
+	err := selector(
 		&count,
 		`SELECT COUNT(1) FROM fqdnSets
 		WHERE setHash = ?
