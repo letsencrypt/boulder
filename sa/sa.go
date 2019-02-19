@@ -453,7 +453,7 @@ func ReverseName(domain string) string {
 	return strings.Join(labels, ".")
 }
 
-// TODO(@cpu): This query can be removed when UseRenewalFirstRL is the default.
+// TODO(@cpu): This query can be removed when AllowRenewalFirstRL is the default.
 const countCertificatesSelect = `
 		 SELECT serial from issuedNames
 		 WHERE (reversedName = :reversedDomain OR
@@ -466,7 +466,7 @@ const countCertificatesSelectNoRenewals = `
 			      reversedName LIKE CONCAT(:reversedDomain, ".%"))
 		 AND NOT renewal AND notBefore > :earliest AND notBefore <= :latest;`
 
-// TODO(@cpu): This query can be removed when UseRenewalFirstRL is the default.
+// TODO(@cpu): This query can be removed when AllowRenewalFirstRL is the default.
 const countCertificatesExactSelect = `
 		 SELECT serial from issuedNames
 		 WHERE reversedName = :reversedDomain
