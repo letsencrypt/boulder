@@ -35,22 +35,26 @@ const (
 	NewAuthorizationSchema
 	// RevokeAtRA enables revocation in the RA instead of ocsp-updater
 	RevokeAtRA
+	// SetIssuedNamesRenewalBit enables the SA setting the renewal bit for
+	// issuedNames entries during AddCertificate.
+	SetIssuedNamesRenewalBit
 )
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                 false,
-	AllowRenewalFirstRL:    false,
-	TLSSNIRevalidation:     false,
-	CAAValidationMethods:   false,
-	CAAAccountURI:          false,
-	ACME13KeyRollover:      false,
-	ProbeCTLogs:            false,
-	SimplifiedVAHTTP:       false,
-	PerformValidationRPC:   false,
-	HeadNonceStatusOK:      false,
-	NewAuthorizationSchema: false,
-	RevokeAtRA:             false,
+	unused:                   false,
+	AllowRenewalFirstRL:      false,
+	TLSSNIRevalidation:       false,
+	CAAValidationMethods:     false,
+	CAAAccountURI:            false,
+	ACME13KeyRollover:        false,
+	ProbeCTLogs:              false,
+	SimplifiedVAHTTP:         false,
+	PerformValidationRPC:     false,
+	HeadNonceStatusOK:        false,
+	NewAuthorizationSchema:   false,
+	RevokeAtRA:               false,
+	SetIssuedNamesRenewalBit: false,
 }
 
 var fMu = new(sync.RWMutex)

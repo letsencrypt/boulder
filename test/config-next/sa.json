@@ -25,7 +25,8 @@
       ]
     },
     "features": {
-      "AllowRenewalFirstRL": true
+      "AllowRenewalFirstRL": true,
+      "SetIssuedNamesRenewalBit": true
     }
   },
 
