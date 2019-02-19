@@ -2,6 +2,7 @@ package sa
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"database/sql"
@@ -2445,4 +2446,130 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	for _, name := range names {
 		assertIsRenewal(t, name, false)
 	}
+}
+
+func TestCountCertificatesRenewalBit(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Set feature flags required for this test. We need to set both the
+	// renewal bit with the SetIssuedRenewalBit flag and use it with the
+	// AllowRenewalFirstRL flag.
+	err := features.Set(map[string]bool{
+		"SetIssuedNamesRenewalBit": true,
+		"AllowRenewalFirstRL":      true,
+	})
+	test.AssertNotError(t, err, "Failed to enable required features flag")
+	defer features.Reset()
+
+	// Create a test registration
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	// Create a small throw away key for the test certificates.
+	testKey, err := rsa.GenerateKey(rand.Reader, 512)
+	test.AssertNotError(t, err, "error generating test key")
+
+	// Create an initial test certificate for a set of domain names, issued an
+	// hour ago.
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1337),
+		DNSNames:              []string{"www.not-example.com", "not-example.com", "admin.not-example.com"},
+		NotBefore:             fc.Now().Add(-time.Hour),
+		BasicConstraintsValid: true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+	}
+	certADER, err := x509.CreateCertificate(rand.Reader, template, template, testKey.Public(), testKey)
+	test.AssertNotError(t, err, "Failed to create test cert A")
+	certA, _ := x509.ParseCertificate(certADER)
+
+	// Update the template with a new serial number and a not before of now and
+	// create a second test cert for the same names. This will be a renewal.
+	template.SerialNumber = big.NewInt(7331)
+	template.NotBefore = fc.Now()
+	certBDER, err := x509.CreateCertificate(rand.Reader, template, template, testKey.Public(), testKey)
+	test.AssertNotError(t, err, "Failed to create test cert B")
+	certB, _ := x509.ParseCertificate(certBDER)
+
+	// Update the template with a third serial number and a partially overlapping
+	// set of names. This will not be a renewal but will help test the exact name
+	// counts.
+	template.SerialNumber = big.NewInt(0xC0FFEE)
+	template.DNSNames = []string{"www.not-example.com"}
+	certCDER, err := x509.CreateCertificate(rand.Reader, template, template, testKey.Public(), testKey)
+	test.AssertNotError(t, err, "Failed to create test cert C")
+
+	countName := func(t *testing.T, name string) int64 {
+		counts, err := sa.CountCertificatesByNames(
+			context.Background(),
+			[]string{name},
+			fc.Now().Add(-5*time.Hour),
+			fc.Now().Add(5*time.Hour))
+		test.AssertNotError(t, err, "Unexpected err from CountCertificatesByNames")
+		for _, elem := range counts {
+			if *elem.Name == name {
+				return *elem.Count
+			}
+		}
+		return 0
+	}
+	countNameExact := func(t *testing.T, name string) int64 {
+		counts, err := sa.CountCertificatesByExactNames(
+			context.Background(),
+			[]string{name},
+			fc.Now().Add(-5*time.Hour),
+			fc.Now().Add(5*time.Hour))
+		test.AssertNotError(t, err, "Unexpected err from CountCertificatesByExactNames")
+		for _, elem := range counts {
+			if *elem.Name == name {
+				return *elem.Count
+			}
+		}
+		return 0
+	}
+
+	// Add the first certificate - it won't be considered a renewal.
+	issued := certA.NotBefore
+	_, err = sa.AddCertificate(ctx, certADER, reg.ID, nil, &issued)
+	test.AssertNotError(t, err, "Failed to add CertA test certificate")
+
+	// The count for the base domain should be 1 - just certA has been added.
+	test.AssertEquals(t, countName(t, "not-example.com"), int64(1))
+
+	// Add the second certificate - it should be considered a renewal
+	issued = certB.NotBefore
+	_, err = sa.AddCertificate(ctx, certBDER, reg.ID, nil, &issued)
+	test.AssertNotError(t, err, "Failed to add CertB test certificate")
+
+	// The count for the base domain should still be 1, just certA. CertB should
+	// be ignored.
+	test.AssertEquals(t, countName(t, "not-example.com"), int64(1))
+
+	// Add the third certificate - it should not be considered a renewal
+	_, err = sa.AddCertificate(ctx, certCDER, reg.ID, nil, &issued)
+	test.AssertNotError(t, err, "Failed to add CertC test certificate")
+
+	// The count for the base domain should be 2 now: certA and certC.
+	// CertB should be ignored.
+	test.AssertEquals(t, countName(t, "not-example.com"), int64(2))
+
+	// The exact name count for the base domain should be 1: certA. CertB should
+	// be ignored as a renewal and CertC should be ignored because it isn't an
+	// exact match.
+	test.AssertEquals(t, countNameExact(t, "not-example.com"), int64(1))
+
+	// Disable the AllowRenewalFirstRL feature flag and check the counts for the
+	// names in the certificate again.
+	err = features.Set(map[string]bool{
+		"AllowRenewalFirstRL": false,
+	})
+	test.AssertNotError(t, err, "Unexpected err clearing AllowRenewalFirstRL feature flag")
+
+	// The count for the base domain should be 3 now - certA, certB, and certC
+	// should all count. CertB is not ignored as a renewal because the feature
+	// flag is disabled.
+	test.AssertEquals(t, countName(t, "not-example.com"), int64(3))
+
+	// The exact name count for the base domain should be 2 now: certA and certB.
+	// CertB is not ignored as a renewal because the feature flag is disabled.
+	test.AssertEquals(t, countNameExact(t, "not-example.com"), int64(2))
 }
