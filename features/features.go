@@ -38,6 +38,9 @@ const (
 	// SetIssuedNamesRenewalBit enables the SA setting the renewal bit for
 	// issuedNames entries during AddCertificate.
 	SetIssuedNamesRenewalBit
+	// EarlyOrderRateLimit enables the RA applying certificate per name/per FQDN
+	// set rate limits in NewOrder in addition to FinalizeOrder.
+	EarlyOrderRateLimit
 )
 
 // List of features and their default value, protected by fMu
@@ -55,6 +58,7 @@ var features = map[FeatureFlag]bool{
 	NewAuthorizationSchema:   false,
 	RevokeAtRA:               false,
 	SetIssuedNamesRenewalBit: false,
+	EarlyOrderRateLimit:      false,
 }
 
 var fMu = new(sync.RWMutex)

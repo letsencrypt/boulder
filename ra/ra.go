@@ -1779,6 +1779,15 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
+	if features.Enabled(features.EarlyOrderRateLimit) {
+		// Check if there is rate limit space for issuing a certificate for the new
+		// order's names. If there isn't then it doesn't make sense to allow creating
+		// an order - it will just fail when finalization checks the same limits.
+		if err := ra.checkLimits(ctx, order.Names, *order.RegistrationID); err != nil {
+			return nil, err
+		}
+	}
+
 	// An order's lifetime is effectively bound by the shortest remaining lifetime
 	// of its associated authorizations. For that reason it would be Uncool if
 	// `sa.GetAuthorizations` returned an authorization that was very close to
