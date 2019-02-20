@@ -381,6 +381,10 @@
 			"Rev": "0709b304e793a5edb4a2c0145f281ecdc20838a4"
 		},
 		{
+			"ImportPath": "golang.org/x/crypto/pbkdf2",
+			"Rev": "0709b304e793a5edb4a2c0145f281ecdc20838a4"
+		},
+		{
 			"ImportPath": "golang.org/x/crypto/pkcs12",
 			"Rev": "0709b304e793a5edb4a2c0145f281ecdc20838a4"
 		},
@@ -601,18 +605,18 @@
 		},
 		{
 			"ImportPath": "gopkg.in/square/go-jose.v2",
-			"Comment": "v2.1.4",
-			"Rev": "6ee92191fea850cdcab9a18867abf5f521cdbadb"
+			"Comment": "v2.2.2",
+			"Rev": "e94fb177d3668d35ab39c61cbb2f311550557e83"
 		},
 		{
 			"ImportPath": "gopkg.in/square/go-jose.v2/cipher",
-			"Comment": "v2.1.4",
-			"Rev": "6ee92191fea850cdcab9a18867abf5f521cdbadb"
+			"Comment": "v2.2.2",
+			"Rev": "e94fb177d3668d35ab39c61cbb2f311550557e83"
 		},
 		{
 			"ImportPath": "gopkg.in/square/go-jose.v2/json",
-			"Comment": "v2.1.4",
-			"Rev": "6ee92191fea850cdcab9a18867abf5f521cdbadb"
+			"Comment": "v2.2.2",
+			"Rev": "e94fb177d3668d35ab39c61cbb2f311550557e83"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
