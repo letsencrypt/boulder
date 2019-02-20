@@ -441,7 +441,7 @@ func certToPB(cert core.Certificate) *corepb.Certificate {
 
 func pbToCert(pb *corepb.Certificate) (core.Certificate, error) {
 	if pb == nil || pb.RegistrationID == nil || pb.Serial == nil || pb.Digest == nil || pb.Der == nil || pb.Issued == nil || pb.Expires == nil {
-		return core.Certificate{}, errIncompleteResponse
+		return core.Certificate{}, ErrIncompleteResponse
 	}
 	return core.Certificate{
 		RegistrationID: *pb.RegistrationID,

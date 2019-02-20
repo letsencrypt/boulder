@@ -38,7 +38,7 @@ func (rac RegistrationAuthorityClientWrapper) NewRegistration(ctx context.Contex
 	}
 
 	if response == nil || !registrationValid(response) {
-		return core.Registration{}, errIncompleteResponse
+		return core.Registration{}, ErrIncompleteResponse
 	}
 
 	r, err := pbToRegistration(response)
@@ -57,7 +57,7 @@ func (rac RegistrationAuthorityClientWrapper) NewAuthorization(ctx context.Conte
 	}
 
 	if response == nil || !authorizationValid(response) {
-		return core.Authorization{}, errIncompleteResponse
+		return core.Authorization{}, ErrIncompleteResponse
 	}
 
 	return PBToAuthz(response)
@@ -88,7 +88,7 @@ func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Con
 	}
 
 	if response == nil || !registrationValid(response) {
-		return core.Registration{}, errIncompleteResponse
+		return core.Registration{}, ErrIncompleteResponse
 	}
 
 	return pbToRegistration(response)
@@ -103,7 +103,7 @@ func (rac RegistrationAuthorityClientWrapper) PerformValidation(
 	}
 
 	if authz == nil || !authorizationValid(authz) {
-		return nil, errIncompleteResponse
+		return nil, ErrIncompleteResponse
 	}
 
 	return authz, nil
@@ -171,7 +171,7 @@ func (ras *RegistrationAuthorityClientWrapper) NewOrder(ctx context.Context, req
 		return nil, err
 	}
 	if resp == nil || !orderValid(resp) {
-		return nil, errIncompleteResponse
+		return nil, ErrIncompleteResponse
 	}
 	return resp, nil
 }
@@ -182,7 +182,7 @@ func (ras *RegistrationAuthorityClientWrapper) FinalizeOrder(ctx context.Context
 		return nil, err
 	}
 	if resp == nil || !orderValid(resp) {
-		return nil, errIncompleteResponse
+		return nil, ErrIncompleteResponse
 	}
 	return resp, nil
 }
@@ -198,7 +198,7 @@ func NewRegistrationAuthorityServer(inner core.RegistrationAuthority) *Registrat
 
 func (ras *RegistrationAuthorityServerWrapper) NewRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Registration, error) {
 	if request == nil || !registrationValid(request) {
-		return nil, errIncompleteRequest
+		return nil, ErrIncompleteRequest
 	}
 	reg, err := pbToRegistration(request)
 	if err != nil {
@@ -213,7 +213,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewRegistration(ctx context.Conte
 
 func (ras *RegistrationAuthorityServerWrapper) NewAuthorization(ctx context.Context, request *rapb.NewAuthorizationRequest) (*corepb.Authorization, error) {
 	if request == nil || !authorizationValid(request.Authz) || request.RegID == nil {
-		return nil, errIncompleteRequest
+		return nil, ErrIncompleteRequest
 	}
 	authz, err := PBToAuthz(request.Authz)
 	if err != nil {
@@ -228,7 +228,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewAuthorization(ctx context.Cont
 
 func (ras *RegistrationAuthorityServerWrapper) NewCertificate(ctx context.Context, request *rapb.NewCertificateRequest) (*corepb.Certificate, error) {
 	if request == nil || request.Csr == nil || request.RegID == nil {
-		return nil, errIncompleteRequest
+		return nil, ErrIncompleteRequest
 	}
 	csr, err := x509.ParseCertificateRequest(request.Csr)
 	if err != nil {
@@ -243,7 +243,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewCertificate(ctx context.Contex
 
 func (ras *RegistrationAuthorityServerWrapper) UpdateRegistration(ctx context.Context, request *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
 	if request == nil || !registrationValid(request.Base) || !registrationValid(request.Update) {
-		return nil, errIncompleteRequest
+		return nil, ErrIncompleteRequest
 	}
 	base, err := pbToRegistration(request.Base)
 	if err != nil {
@@ -264,14 +264,14 @@ func (ras *RegistrationAuthorityServerWrapper) PerformValidation(
 	ctx context.Context,
 	request *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
 	if request == nil || !authorizationValid(request.Authz) || request.ChallengeIndex == nil {
-		return nil, errIncompleteRequest
+		return nil, ErrIncompleteRequest
 	}
 	return ras.inner.PerformValidation(ctx, request)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) RevokeCertificateWithReg(ctx context.Context, request *rapb.RevokeCertificateWithRegRequest) (*corepb.Empty, error) {
 	if request == nil || request.Cert == nil || request.Code == nil || request.RegID == nil {
-		return nil, errIncompleteRequest
+		return nil, ErrIncompleteRequest
 	}
 	cert, err := x509.ParseCertificate(request.Cert)
 	if err != nil {
@@ -286,7 +286,7 @@ func (ras *RegistrationAuthorityServerWrapper) RevokeCertificateWithReg(ctx cont
 
 func (ras *RegistrationAuthorityServerWrapper) DeactivateRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Empty, error) {
 	if request == nil || !registrationValid(request) {
-		return nil, errIncompleteRequest
+		return nil, ErrIncompleteRequest
 	}
 	reg, err := pbToRegistration(request)
 	if err != nil {
@@ -301,7 +301,7 @@ func (ras *RegistrationAuthorityServerWrapper) DeactivateRegistration(ctx contex
 
 func (ras *RegistrationAuthorityServerWrapper) DeactivateAuthorization(ctx context.Context, request *corepb.Authorization) (*corepb.Empty, error) {
 	if request == nil || !authorizationValid(request) {
-		return nil, errIncompleteRequest
+		return nil, ErrIncompleteRequest
 	}
 	authz, err := PBToAuthz(request)
 	if err != nil {
@@ -316,7 +316,7 @@ func (ras *RegistrationAuthorityServerWrapper) DeactivateAuthorization(ctx conte
 
 func (ras *RegistrationAuthorityServerWrapper) AdministrativelyRevokeCertificate(ctx context.Context, request *rapb.AdministrativelyRevokeCertificateRequest) (*corepb.Empty, error) {
 	if request == nil || request.Cert == nil || request.Code == nil || request.AdminName == nil {
-		return nil, errIncompleteRequest
+		return nil, ErrIncompleteRequest
 	}
 	cert, err := x509.ParseCertificate(request.Cert)
 	if err != nil {
@@ -331,14 +331,14 @@ func (ras *RegistrationAuthorityServerWrapper) AdministrativelyRevokeCertificate
 
 func (ras *RegistrationAuthorityServerWrapper) NewOrder(ctx context.Context, request *rapb.NewOrderRequest) (*corepb.Order, error) {
 	if request == nil || request.RegistrationID == nil {
-		return nil, errIncompleteRequest
+		return nil, ErrIncompleteRequest
 	}
 	return ras.inner.NewOrder(ctx, request)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) FinalizeOrder(ctx context.Context, request *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
 	if request == nil || request.Order == nil || request.Csr == nil {
-		return nil, errIncompleteRequest
+		return nil, ErrIncompleteRequest
 	}
 
 	return ras.inner.FinalizeOrder(ctx, request)

@@ -19,6 +19,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/web"
 )
@@ -177,7 +178,7 @@ func (wfe *WebFrontEndImpl) validPOSTRequest(request *http.Request) *probs.Probl
 // nonceService knows about, otherwise a bad nonce problem is returned.
 // NOTE: this function assumes the JWS has already been verified with the
 // correct public key.
-func (wfe *WebFrontEndImpl) validNonce(jws *jose.JSONWebSignature) *probs.ProblemDetails {
+func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, jws *jose.JSONWebSignature) *probs.ProblemDetails {
 	// validNonce is called after validPOSTRequest() and parseJWS() which
 	// defend against the incorrect number of signatures.
 	header := jws.Signatures[0].Header
@@ -185,7 +186,18 @@ func (wfe *WebFrontEndImpl) validNonce(jws *jose.JSONWebSignature) *probs.Proble
 	if len(nonce) == 0 {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMissingNonce"}).Inc()
 		return probs.BadNonce("JWS has no anti-replay nonce")
-	} else if !wfe.nonceService.Valid(nonce) {
+	}
+	var nonceValid bool
+	if wfe.remoteNonceService != nil {
+		validMsg, err := wfe.remoteNonceService.Valid(ctx, &noncepb.NonceMessage{Nonce: &nonce})
+		if err != nil {
+			return probs.ServerInternal("Failed to check nonce validity: %s", err)
+		}
+		nonceValid = *validMsg.Valid
+	} else {
+		nonceValid = wfe.nonceService.Valid(nonce)
+	}
+	if !nonceValid {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSInvalidNonce"}).Inc()
 		return probs.BadNonce("JWS has an invalid anti-replay nonce: %q", nonce)
 	}
@@ -462,6 +474,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 // done. If the JWS signature validates correctly then the JWS nonce value
 // and the JWS URL are verified to ensure that they are correct.
 func (wfe *WebFrontEndImpl) validJWSForKey(
+	ctx context.Context,
 	jws *jose.JSONWebSignature,
 	jwk *jose.JSONWebKey,
 	request *http.Request,
@@ -488,7 +501,7 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	logEvent.Payload = string(payload)
 
 	// Check that the JWS contains a correct Nonce header
-	if prob := wfe.validNonce(jws); prob != nil {
+	if prob := wfe.validNonce(ctx, jws); prob != nil {
 		return nil, prob
 	}
 
@@ -530,7 +543,7 @@ func (wfe *WebFrontEndImpl) validJWSForAccount(
 	}
 
 	// Verify the JWS with the JWK from the SA
-	payload, prob := wfe.validJWSForKey(jws, pubKey, request, logEvent)
+	payload, prob := wfe.validJWSForKey(ctx, jws, pubKey, request, logEvent)
 	if prob != nil {
 		return nil, nil, nil, prob
 	}
@@ -590,6 +603,7 @@ func (wfe *WebFrontEndImpl) validPOSTAsGETForAccount(
 // the JWK that was embedded in the JWS. Otherwise if the valid JWS conditions
 // are not met or an error occurs only a problem is returned
 func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
+	ctx context.Context,
 	jws *jose.JSONWebSignature,
 	request *http.Request,
 	logEvent *web.RequestEvent) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
@@ -606,7 +620,7 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
 	}
 
 	// Verify the JWS with the embedded JWK
-	payload, prob := wfe.validJWSForKey(jws, pubKey, request, logEvent)
+	payload, prob := wfe.validJWSForKey(ctx, jws, pubKey, request, logEvent)
 	if prob != nil {
 		return nil, nil, prob
 	}
@@ -617,6 +631,7 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
 // validSelfAuthenticatedPOST checks that a given POST request has a valid JWS
 // using `validSelfAuthenticatedJWS`.
 func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
+	ctx context.Context,
 	request *http.Request,
 	logEvent *web.RequestEvent) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
 	// Parse the JWS from the POST request
@@ -625,7 +640,7 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 		return nil, nil, prob
 	}
 	// Extract and validate the embedded JWK from the parsed JWS
-	return wfe.validSelfAuthenticatedJWS(jws, request, logEvent)
+	return wfe.validSelfAuthenticatedJWS(ctx, jws, request, logEvent)
 }
 
 // rolloverRequest is a client request to change the key for the account ID

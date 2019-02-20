@@ -54,7 +54,7 @@ func (cac CertificateAuthorityClientWrapper) IssuePrecertificate(ctx context.Con
 		return nil, err
 	}
 	if resp.DER == nil {
-		return nil, errIncompleteResponse
+		return nil, ErrIncompleteResponse
 	}
 	return resp, nil
 }
@@ -112,21 +112,21 @@ func (cas *CertificateAuthorityServerWrapper) IssueCertificate(ctx context.Conte
 
 func (cas *CertificateAuthorityServerWrapper) IssuePrecertificate(ctx context.Context, request *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
 	if request == nil || request.Csr == nil || request.OrderID == nil || request.RegistrationID == nil {
-		return nil, errIncompleteRequest
+		return nil, ErrIncompleteRequest
 	}
 	resp, err := cas.inner.IssuePrecertificate(ctx, request)
 	if err != nil {
 		return nil, err
 	}
 	if resp.DER == nil {
-		return nil, errIncompleteRequest
+		return nil, ErrIncompleteRequest
 	}
 	return resp, nil
 }
 
 func (cas *CertificateAuthorityServerWrapper) IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
 	if req == nil || req.DER == nil || req.OrderID == nil || req.RegistrationID == nil || req.SCTs == nil {
-		return nil, errIncompleteRequest
+		return nil, ErrIncompleteRequest
 	}
 	cert, err := cas.inner.IssueCertificateForPrecertificate(ctx, req)
 	if err != nil {

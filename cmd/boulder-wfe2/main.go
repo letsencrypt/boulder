@@ -19,6 +19,7 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/wfe2"
@@ -44,8 +45,9 @@ type config struct {
 
 		TLS cmd.TLSConfig
 
-		RAService *cmd.GRPCClientConfig
-		SAService *cmd.GRPCClientConfig
+		RAService    *cmd.GRPCClientConfig
+		SAService    *cmd.GRPCClientConfig
+		Nonceservice *cmd.GRPCClientConfig
 
 		// CertificateChains maps AIA issuer URLs to certificate filenames.
 		// Certificates are read into the chain in the order they are defined in the
@@ -192,7 +194,14 @@ func setupWFE(c config, logger blog.Logger, stats metrics.Scope, clk clock.Clock
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
 
-	return rac, sac
+	var rns *noncepb.NonceServiceClient
+	if c.WFE.Nonceservice != nil {
+		rnsConn, err := bgrpc.ClientSetup(c.WFE.Nonceservice, tlsConfig, clientMetrics, clk)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Nonce service")
+		rns = noncepb.NewNonceServiceClient(rnsConn)
+	}
+
+	return rac, sac, rns
 }
 
 func main() {
@@ -221,9 +230,9 @@ func main() {
 
 	kp, err := goodkey.NewKeyPolicy("") // don't load any weak keys
 	cmd.FailOnError(err, "Unable to create key policy")
-	wfe, err := wfe2.NewWebFrontEndImpl(scope, clk, kp, certChains, logger)
+	rac, sac, rns := setupWFE(c, logger, scope, clk)
+	wfe, err := wfe2.NewWebFrontEndImpl(scope, clk, kp, certChains, rns, logger)
 	cmd.FailOnError(err, "Unable to create WFE")
-	rac, sac := setupWFE(c, logger, scope, clk)
 	wfe.RA = rac
 	wfe.SA = sac
 
