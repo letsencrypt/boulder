@@ -837,8 +837,10 @@ func (wfe *WebFrontEndImpl) Challenge(
 		wfe.sendError(response, logEvent, probs.NotFound("No such challenge"), nil)
 	}
 
-	// Challenge URLs are of the form /acme/challenge/<auth id>/<challenge id>.
-	// Here we parse out the id components.
+	// Challenge URIs are of the form /acme/challenge/<auth id>/<challenge id>
+	// or /acme/challenge/v2/<auth id>/<challenge id> depending on the authorization
+	// version. Here we parse out the authorization and challenge IDs and retrieve
+	// the authorization.
 	slug := strings.Split(request.URL.Path, "/")
 	if len(slug) != 2 && len(slug) != 3 {
 		notFound()

@@ -1747,6 +1747,9 @@ func TestAuthorization(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 
+	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
+	defer features.Reset()
+
 	responseWriter := httptest.NewRecorder()
 
 	// GET instead of POST should be rejected
@@ -1836,6 +1839,30 @@ func TestAuthorization(t *testing.T) {
 	})
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"No such authorization","status":404}`)
+
+	// Test retrieving a v2 style authorization
+	responseWriter = httptest.NewRecorder()
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
+		URL:    mustParseURL("/v2/1"),
+		Method: "GET",
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `
+	{
+		"identifier": {
+			"type": "dns",
+			"value": "not-an-example.com"
+		},
+		"status": "valid",
+		"expires": "2070-01-01T00:00:00Z",
+		"challenges": [
+			{
+				"type": "dns",
+				"token":"token",
+				"uri": "http://localhost/acme/challenge/v2/1/ROx1Hw=="
+			}
+		]
+	}`)
 }
 
 // TestAuthorizationChallengeNamespace tests that the runtime prefixing of
@@ -2532,8 +2559,9 @@ func TestPrepChallengeForDisplay(t *testing.T) {
 
 	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
 	defer features.Reset()
+	authz.V2 = true
 	wfe.prepChallengeForDisplay(req, authz, chall)
-	test.AssertEquals(t, chall.URI, "http://example.com/acme/challenge/eyup/rPBQwA==")
+	test.AssertEquals(t, chall.URI, "http://example.com/acme/challenge/v2/eyup/rPBQwA==")
 }
 
 // noSCTMockRA is a mock RA that always returns a `berrors.MissingSCTsError` from `NewCertificate`
@@ -2613,13 +2641,13 @@ func TestChallengeNewIDScheme(t *testing.T) {
 	}{
 		{
 			path:     "valid/23",
-			location: "http://localhost/acme/challenge/valid/ROx1Hw==",
-			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/ROx1Hw=="}`,
+			location: "http://localhost/acme/challenge/valid/23",
+			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`,
 		},
 		{
-			path:     "valid/ROx1Hw==",
-			location: "http://localhost/acme/challenge/valid/ROx1Hw==",
-			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/ROx1Hw=="}`,
+			path:     "v2/1/ROx1Hw==",
+			location: "http://localhost/acme/challenge/v2/1/ROx1Hw==",
+			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/v2/1/ROx1Hw=="}`,
 		},
 	} {
 		resp := httptest.NewRecorder()
@@ -2645,13 +2673,13 @@ func TestChallengeNewIDScheme(t *testing.T) {
 	}{
 		{
 			path:     "valid/23",
-			location: "http://localhost/acme/challenge/valid/ROx1Hw==",
-			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/ROx1Hw=="}`,
+			location: "http://localhost/acme/challenge/valid/23",
+			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`,
 		},
 		{
-			path:     "valid/ROx1Hw==",
-			location: "http://localhost/acme/challenge/valid/ROx1Hw==",
-			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/ROx1Hw=="}`,
+			path:     "v2/1/ROx1Hw==",
+			location: "http://localhost/acme/challenge/v2/1/ROx1Hw==",
+			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/v2/1/ROx1Hw=="}`,
 		},
 	} {
 		resp := httptest.NewRecorder()
