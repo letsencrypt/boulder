@@ -135,6 +135,7 @@ type StorageGetter interface {
 	GetValidOrderAuthorizations(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (map[string]*Authorization, error)
 	CountInvalidAuthorizations(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (count *sapb.Count, err error)
 	GetAuthorizations(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error)
+	GetAuthz2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Authorization, error)
 }
 
 // StorageAdder are the Boulder SA's write/update methods

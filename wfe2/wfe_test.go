@@ -985,6 +985,7 @@ func TestHTTPMethods(t *testing.T) {
 			// case path
 			for _, method := range allMethods {
 				responseWriter.Body.Reset()
+				fmt.Println(tc.Path)
 				mux.ServeHTTP(responseWriter, &http.Request{
 					Method: method,
 					URL:    mustParseURL(tc.Path),
@@ -1407,6 +1408,9 @@ func TestNewAccount(t *testing.T) {
 func TestGetAuthorization(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
+	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
+	defer features.Reset()
+
 	// Expired authorizations should be inaccessible
 	authzURL := "expired"
 	responseWriter := httptest.NewRecorder()
@@ -1448,6 +1452,53 @@ func TestGetAuthorization(t *testing.T) {
 				"type": "dns",
 				"token":"token",
 				"url": "http://localhost/acme/challenge/valid/23"
+			}
+		]
+	}`)
+
+	responseWriter = httptest.NewRecorder()
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
+		URL:    mustParseURL("/v2/1"),
+		Method: "GET",
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	body = responseWriter.Body.String()
+	test.AssertUnmarshaledEquals(t, body, `
+	{
+		"identifier": {
+			"type": "dns",
+			"value": "not-an-example.com"
+		},
+		"status": "valid",
+		"expires": "2070-01-01T00:00:00Z",
+		"challenges": [
+			{
+				"type": "dns",
+				"token":"token",
+				"url": "http://localhost/acme/challenge/v2/1/ROx1Hw=="
+			}
+		]
+	}`)
+
+	responseWriter = httptest.NewRecorder()
+	_, _, jwsBody = signRequestKeyID(t, 1, nil, "http://localhost/v2/1", "", wfe.nonceService)
+	postAsGet = makePostRequestWithPath("http://localhost/v2/1", jwsBody)
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, postAsGet)
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	body = responseWriter.Body.String()
+	test.AssertUnmarshaledEquals(t, body, `
+	{
+		"identifier": {
+			"type": "dns",
+			"value": "not-an-example.com"
+		},
+		"status": "valid",
+		"expires": "2070-01-01T00:00:00Z",
+		"challenges": [
+			{
+				"type": "dns",
+				"token":"token",
+				"url": "http://localhost/acme/challenge/v2/1/ROx1Hw=="
 			}
 		]
 	}`)
@@ -2797,9 +2848,10 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
 	defer features.Reset()
 	authz.ID = "12345"
+	authz.V2 = true
 	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
 	chal = authz.Challenges[0]
-	test.AssertEquals(t, chal.URL, "http://localhost/acme/challenge/12345/3XWp1g==")
+	test.AssertEquals(t, chal.URL, "http://localhost/acme/challenge/v2/12345/3XWp1g==")
 	test.AssertEquals(t, chal.URI, "")
 }
 
@@ -2854,19 +2906,20 @@ func TestChallengeNewIDScheme(t *testing.T) {
 	}{
 		{
 			path:     "valid/23",
-			location: "http://localhost/acme/challenge/valid/ROx1Hw==",
-			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/ROx1Hw=="}`,
+			location: "http://localhost/acme/challenge/valid/23",
+			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/23"}`,
 		},
 		{
-			path:     "valid/ROx1Hw==",
-			location: "http://localhost/acme/challenge/valid/ROx1Hw==",
-			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/ROx1Hw=="}`,
+			path:     "v2/1/ROx1Hw==",
+			location: "http://localhost/acme/challenge/v2/1/ROx1Hw==",
+			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/v2/1/ROx1Hw=="}`,
 		},
 	} {
 		resp := httptest.NewRecorder()
 		req, err := http.NewRequest("GET", tc.path, nil)
 		test.AssertNotError(t, err, "http.NewRequest failed")
 
+		fmt.Println("ok?")
 		wfe.Challenge(context.Background(), newRequestEvent(), resp, req)
 		test.AssertEquals(t,
 			resp.Code,
@@ -2886,13 +2939,13 @@ func TestChallengeNewIDScheme(t *testing.T) {
 	}{
 		{
 			path:     "valid/23",
-			location: "http://localhost/acme/challenge/valid/ROx1Hw==",
-			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/ROx1Hw=="}`,
+			location: "http://localhost/acme/challenge/valid/23",
+			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/23"}`,
 		},
 		{
-			path:     "valid/ROx1Hw==",
-			location: "http://localhost/acme/challenge/valid/ROx1Hw==",
-			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/ROx1Hw=="}`,
+			path:     "v2/1/ROx1Hw==",
+			location: "http://localhost/acme/challenge/v2/1/ROx1Hw==",
+			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/v2/1/ROx1Hw=="}`,
 		},
 	} {
 		resp := httptest.NewRecorder()

@@ -17,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/revocation"
@@ -553,6 +554,60 @@ func (sa *StorageAuthority) CountInvalidAuthorizations(ctx context.Context, req 
 // AddPendingAuthorizations is a mock
 func (sa *StorageAuthority) AddPendingAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
 	return &sapb.AuthorizationIDs{}, nil
+}
+
+var (
+	authzIdValid       = int64(1)
+	authzIdPending     = int64(2)
+	authzIdExpired     = int64(3)
+	authzIdErrorResult = int64(4)
+	authzIdDiffAccount = int64(5)
+)
+
+// GetAuthz2 is a mock
+func (sa *StorageAuthority) GetAuthz2(ctx context.Context, id *sapb.AuthorizationID2) (*corepb.Authorization, error) {
+	authz := core.Authorization{
+		Status:         core.StatusValid,
+		RegistrationID: 1,
+		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-an-example.com"},
+		V2:             true,
+		Challenges: []core.Challenge{
+			{
+				ID:    23,
+				Token: "token",
+				Type:  "dns",
+			},
+		},
+	}
+
+	switch *id.Id {
+	case authzIdValid:
+		exp := sa.clk.Now().AddDate(100, 0, 0)
+		authz.Expires = &exp
+		authz.ID = fmt.Sprintf("%d", authzIdValid)
+		return bgrpc.AuthzToPB(authz)
+	case authzIdPending:
+		exp := sa.clk.Now().AddDate(100, 0, 0)
+		authz.Expires = &exp
+		authz.ID = fmt.Sprintf("%d", authzIdPending)
+		authz.Status = core.StatusPending
+		return bgrpc.AuthzToPB(authz)
+	case authzIdExpired:
+		exp := sa.clk.Now().AddDate(0, -1, 0)
+		authz.Expires = &exp
+		authz.ID = fmt.Sprintf("%d", authzIdExpired)
+		return bgrpc.AuthzToPB(authz)
+	case authzIdErrorResult:
+		return nil, fmt.Errorf("Unspecified database error")
+	case authzIdDiffAccount:
+		exp := sa.clk.Now().AddDate(100, 0, 0)
+		authz.RegistrationID = 2
+		authz.Expires = &exp
+		authz.ID = fmt.Sprintf("%d", authzIdDiffAccount)
+		return bgrpc.AuthzToPB(authz)
+	}
+
+	return nil, berrors.NotFoundError("no authorization found with id %q", id)
 }
 
 // Publisher is a mock

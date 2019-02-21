@@ -400,6 +400,10 @@ type Authorization struct {
 	// Authorization with the identifier `example.com` and one DNS-01 challenge
 	// corresponds to a name `*.example.com` from an associated order.
 	Wildcard bool `json:"wildcard,omitempty" db:"-"`
+
+	// v2 is used to indicate if the backing storage for this authorization is
+	// the new v2 style. It is not exposed to users.
+	V2 bool `json:"-" db:"-"`
 }
 
 // FindChallenge will look for the given challenge inside this authorization. If
