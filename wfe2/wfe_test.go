@@ -2165,7 +2165,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order is already finalized",
 			// mocks/mocks.go's StorageAuthority's GetOrder mock treats ID 1 as an Order with a Serial
 			Request:      signAndPost(t, "1/1", "http://localhost/1/1", goodCertCSRPayload, 1, wfe.nonceService),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order's status (\"valid\") is not acceptable for finalization","status":400}`,
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `orderNotReady","detail":"Order's status (\"valid\") is not acceptable for finalization","status":403}`,
 		},
 		{
 			Name: "Order is expired",
@@ -2176,7 +2176,7 @@ func TestFinalizeOrder(t *testing.T) {
 		{
 			Name:         "Good CSR, Pending Order",
 			Request:      signAndPost(t, "1/4", "http://localhost/1/4", goodCertCSRPayload, 1, wfe.nonceService),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order's status (\"pending\") is not acceptable for finalization","status":400}`,
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `orderNotReady","detail":"Order's status (\"pending\") is not acceptable for finalization","status":403}`,
 		},
 		{
 			Name:            "Good CSR, Ready Order",

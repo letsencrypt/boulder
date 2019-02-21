@@ -1808,7 +1808,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	// Only ready orders can be finalized.
 	if *order.Status != string(core.StatusReady) {
 		wfe.sendError(response, logEvent,
-			probs.Malformed(
+			probs.OrderNotReady(
 				"Order's status (%q) is not acceptable for finalization",
 				*order.Status),
 			nil)
