@@ -175,6 +175,13 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 					logEvent.AddError("unable to make nonce: %s", err)
 				}
 			}
+			// Per section 7.1 "Resources":
+			//   The "index" link relation is present on all resources other than the
+			//   directory and indicates the URL of the directory.
+			if pattern != directoryPath {
+				directoryURL := web.RelativeEndpoint(request, "index")
+				response.Header().Add("Link", link(directoryURL, "index"))
+			}
 
 			logEvent.Endpoint = pattern
 			if request.URL != nil {

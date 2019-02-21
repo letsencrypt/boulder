@@ -448,6 +448,7 @@ func TestHandleFunc(t *testing.T) {
 		{[]string{"GET"}, "POST", false, false, "/test"},
 		{[]string{"GET"}, "OPTIONS", false, true, "/test"},
 		{[]string{"GET"}, "MAKE-COFFEE", false, false, "/test"}, // 405, or 418?
+		{[]string{"GET"}, "GET", true, true, directoryPath},
 	} {
 		runWrappedHandler(&http.Request{Method: c.reqMethod}, c.pattern, c.allowed...)
 		test.AssertEquals(t, stubCalled, c.shouldCallStub)
@@ -468,6 +469,14 @@ func TestHandleFunc(t *testing.T) {
 			test.AssertNotEquals(t, nonce, lastNonce)
 			test.AssertNotEquals(t, nonce, "")
 			lastNonce = nonce
+		}
+		linkHeader := rw.Header().Get("Link")
+		if c.pattern != directoryPath {
+			// If the pattern wasn't the directory there should be a Link header for the index
+			test.AssertEquals(t, linkHeader, `<http://localhost/index>;rel="index"`)
+		} else {
+			// The directory resource shouldn't get a link header
+			test.AssertEquals(t, linkHeader, "")
 		}
 	}
 
