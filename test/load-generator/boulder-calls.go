@@ -991,7 +991,7 @@ func revokeCertificate(s *State, ctx *context) error {
 	resp, err = s.post(fmt.Sprintf("%s%s", s.apiBase, revokeCertPath), requestPayload, ctx.ns)
 	finished := time.Now()
 	state := "good"
-	s.callLatency.Add("POST /acme/revoke-cert", started, finished, state)
+	defer func() { s.callLatency.Add("POST /acme/revoke-cert", started, finished, state) }()
 	if err != nil {
 		state = "error"
 		return err

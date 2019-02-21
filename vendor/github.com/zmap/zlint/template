@@ -16,7 +16,6 @@ package lints
 
 import (
 	"github.com/zmap/zcrypto/x509"
-	"github.com/zmap/zlint/util"
 )
 
 type SUBST struct{}
@@ -29,17 +28,17 @@ func (l *SUBST) CheckApplies(c *x509.Certificate) bool {
 	// Add conditions for application here
 }
 
-func (l *SUBST) RunTest(c *x509.Certificate) (ResultStruct, error) {
+func (l *SUBST) Execute(c *x509.Certificate) *LintResult {
 	// Add actual lint here
 }
 
 func init() {
-	registerLint(&Lint{
+	RegisterLint(&Lint{
 		Name:          "SUBTEST",
 		Description:   "Fill this in...",
 		Citation:      "Fill this in...",
-		Source:         UnknownLintSource,
+		Source:        UnknownLintSource,
 		EffectiveDate: "Change this...",
-		Test:           &SUBST{},
+		Lint:          &SUBST{},
 	})
 }

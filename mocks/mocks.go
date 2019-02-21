@@ -517,10 +517,10 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 		validOrder.RegistrationID = &six
 	}
 
-	// Order ID 7 is expired
+	// Order ID 7 is ready, but expired
 	if *req.Id == 7 {
-		pending := string(core.StatusPending)
-		validOrder.Status = &pending
+		ready := string(core.StatusReady)
+		validOrder.Status = &ready
 		exp = sa.clk.Now().AddDate(-30, 0, 0).Unix()
 		validOrder.Expires = &exp
 	}
@@ -608,6 +608,11 @@ func (sa *StorageAuthority) GetAuthz2(ctx context.Context, id *sapb.Authorizatio
 	}
 
 	return nil, berrors.NotFoundError("no authorization found with id %q", id)
+}
+
+// RevokeCertificate is a mock
+func (sa *StorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error {
+	return nil
 }
 
 // Publisher is a mock

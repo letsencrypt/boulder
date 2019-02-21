@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"net"
 	"net/mail"
+	"net/textproto"
 	"strconv"
 	"strings"
 	"testing"
@@ -301,13 +302,13 @@ func TestBadEmailError(t *testing.T) {
 	err = m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
 	// We expect there to be an error
 	if err == nil {
-		t.Errorf("Expected SendMail() to return an InvalidRcptError, got nil")
+		t.Errorf("Expected SendMail() to return an RecoverableSMTPError, got nil")
 	}
-	expected := "4.1.3 Bad recipient address syntax"
-	if rcptErr, ok := err.(InvalidRcptError); !ok {
-		t.Errorf("Expected SendMail() to return an InvalidRcptError, got a %T error: %v", err, err)
+	expected := "401: 4.1.3 Bad recipient address syntax"
+	if rcptErr, ok := err.(RecoverableSMTPError); !ok {
+		t.Errorf("Expected SendMail() to return an RecoverableSMTPError, got a %T error: %v", err, err)
 	} else if rcptErr.Message != expected {
-		t.Errorf("SendMail() returned InvalidRcptError with wrong message. Got %q, expected %q\n",
+		t.Errorf("SendMail() returned RecoverableSMTPError with wrong message. Got %q, expected %q\n",
 			rcptErr.Message, expected)
 	}
 }
@@ -336,4 +337,98 @@ func TestReconnectSMTP421(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expected SendMail() to not fail. Got err: %s", err)
 	}
+}
+
+func TestOtherError(t *testing.T) {
+	m, l, cleanUp := setup(t)
+	defer cleanUp()
+	const messages = 3
+
+	go listenForever(l, t, func(_ int, t *testing.T, conn net.Conn) {
+		defer func() {
+			err := conn.Close()
+			if err != nil {
+				t.Errorf("conn.Close: %s", err)
+			}
+		}()
+		authenticateClient(t, conn)
+
+		buf := bufio.NewReader(conn)
+		if err := expect(t, buf, "MAIL FROM:<<you-are-a-winner@example.com>> BODY=8BITMIME"); err != nil {
+			return
+		}
+
+		_, _ = conn.Write([]byte("250 Sure. Go on. \r\n"))
+
+		if err := expect(t, buf, "RCPT TO:<hi@bye.com>"); err != nil {
+			return
+		}
+
+		_, _ = conn.Write([]byte("999 1.1.1 This would probably be bad?\r\n"))
+
+		if err := expect(t, buf, "RSET"); err != nil {
+			return
+		}
+
+		_, _ = conn.Write([]byte("250 Ok yr rset now\r\n"))
+	})
+
+	err := m.Connect()
+	if err != nil {
+		t.Errorf("Failed to connect: %s", err)
+	}
+
+	err = m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
+	// We expect there to be an error
+	if err == nil {
+		t.Errorf("Expected SendMail() to return an error, got nil")
+	}
+	expected := "999 1.1.1 This would probably be bad?"
+	if rcptErr, ok := err.(*textproto.Error); !ok {
+		t.Errorf("Expected SendMail() to return an textproto.Error, got a %T error: %v", err, err)
+	} else if rcptErr.Error() != expected {
+		t.Errorf("SendMail() returned textproto.Error with wrong message. Got %q, expected %q\n",
+			rcptErr.Error(), expected)
+	}
+
+	m, l, cleanUp = setup(t)
+	defer cleanUp()
+
+	go listenForever(l, t, func(_ int, t *testing.T, conn net.Conn) {
+		defer func() {
+			err := conn.Close()
+			if err != nil {
+				t.Errorf("conn.Close: %s", err)
+			}
+		}()
+		authenticateClient(t, conn)
+
+		buf := bufio.NewReader(conn)
+		if err := expect(t, buf, "MAIL FROM:<<you-are-a-winner@example.com>> BODY=8BITMIME"); err != nil {
+			return
+		}
+
+		_, _ = conn.Write([]byte("250 Sure. Go on. \r\n"))
+
+		if err := expect(t, buf, "RCPT TO:<hi@bye.com>"); err != nil {
+			return
+		}
+
+		_, _ = conn.Write([]byte("999 1.1.1 This would probably be bad?\r\n"))
+
+		if err := expect(t, buf, "RSET"); err != nil {
+			return
+		}
+
+		_, _ = conn.Write([]byte("nop\r\n"))
+	})
+	err = m.Connect()
+	if err != nil {
+		t.Errorf("Failed to connect: %s", err)
+	}
+
+	err = m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
+	// We expect there to be an error
+	test.AssertError(t, err, "SendMail didn't fail as expected")
+	test.AssertEquals(t, err.Error(), "999 1.1.1 This would probably be bad? (also, on sending RSET: short response: nop)")
 }

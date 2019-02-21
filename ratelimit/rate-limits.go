@@ -187,14 +187,29 @@ func (rlp *RateLimitPolicy) Enabled() bool {
 }
 
 // GetThreshold returns the threshold for this rate limit, taking into account
-// any overrides for `key`.
+// any overrides for `key` or `regID`. If both `key` and `regID` have an
+// override the largest of the two will be used.
 func (rlp *RateLimitPolicy) GetThreshold(key string, regID int64) int {
-	if override, ok := rlp.RegistrationOverrides[regID]; ok {
-		return override
+	regOverride, regOverrideExists := rlp.RegistrationOverrides[regID]
+	keyOverride, keyOverrideExists := rlp.Overrides[key]
+
+	if regOverrideExists && !keyOverrideExists {
+		// If there is a regOverride and no keyOverride use the regOverride
+		return regOverride
+	} else if !regOverrideExists && keyOverrideExists {
+		// If there is a keyOverride and no regOverride use the keyOverride
+		return keyOverride
+	} else if regOverrideExists && keyOverrideExists {
+		// If there is both a regOverride and a keyOverride use whichever is larger.
+		if regOverride > keyOverride {
+			return regOverride
+		} else {
+			return keyOverride
+		}
 	}
-	if override, ok := rlp.Overrides[key]; ok {
-		return override
-	}
+
+	// Otherwise there was no regOverride and no keyOverride, use the base
+	// Threshold
 	return rlp.Threshold
 }
 

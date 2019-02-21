@@ -377,6 +377,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	}
 
 	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	test.AssertNotError(t, err, "sa.NewDbMap failed")
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "Couldn't add certA")
 	err = setupDBMap.Insert(certB)
@@ -604,6 +605,7 @@ func TestLifetimeOfACert(t *testing.T) {
 	}
 
 	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	test.AssertNotError(t, err, "sa.NewDbMap failed")
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "unable to insert Certificate")
 	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, status, notAfter, lastExpirationNagSent, ocspLastUpdated, revokedDate, revokedReason, LockCol, subscriberApproved) VALUES (?,?,?,?,?,?,?,?,?)", serial1String, string(core.OCSPStatusGood), rawCertA.NotAfter, time.Time{}, time.Time{}, time.Time{}, 0, 0, false)
@@ -704,6 +706,7 @@ func TestDontFindRevokedCert(t *testing.T) {
 	}
 
 	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	test.AssertNotError(t, err, "sa.NewDbMap failed")
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "unable to insert Certificate")
 	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial,status, lastExpirationNagSent, ocspLastUpdated, revokedDate, revokedReason, LockCol, subscriberApproved) VALUES (?,?,?,?,?,?,?,?)", serial1String, string(core.OCSPStatusRevoked), time.Time{}, time.Time{}, time.Time{}, 0, 0, false)
@@ -765,6 +768,7 @@ func TestDedupOnRegistration(t *testing.T) {
 	}
 
 	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	test.AssertNotError(t, err, "sa.NewDbMap failed")
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "Couldn't add certA")
 	err = setupDBMap.Insert(certB)

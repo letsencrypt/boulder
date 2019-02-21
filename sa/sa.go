@@ -453,47 +453,72 @@ func ReverseName(domain string) string {
 	return strings.Join(labels, ".")
 }
 
+// TODO(@cpu): This query can be removed when AllowRenewalFirstRL is the default.
 const countCertificatesSelect = `
 		 SELECT serial from issuedNames
 		 WHERE (reversedName = :reversedDomain OR
 			      reversedName LIKE CONCAT(:reversedDomain, ".%"))
 		 AND notBefore > :earliest AND notBefore <= :latest;`
 
+const countCertificatesSelectNoRenewals = `
+		 SELECT serial from issuedNames
+		 WHERE (reversedName = :reversedDomain OR
+			      reversedName LIKE CONCAT(:reversedDomain, ".%"))
+		 AND NOT renewal AND notBefore > :earliest AND notBefore <= :latest;`
+
+// TODO(@cpu): This query can be removed when AllowRenewalFirstRL is the default.
 const countCertificatesExactSelect = `
 		 SELECT serial from issuedNames
 		 WHERE reversedName = :reversedDomain
 		 AND notBefore > :earliest AND notBefore <= :latest;`
 
+const countCertificatesExactSelectNoRenewals = `
+		 SELECT serial from issuedNames
+		 WHERE reversedName = :reversedDomain
+		 AND NOT renewal AND notBefore > :earliest AND notBefore <= :latest;`
+
 // countCertificatesByNames returns, for a single domain, the count of
 // certificates issued in the given time range for that domain and its
-// subdomains.
+// subdomains. If the AllowRenewalFirstRL feature flag is enabled then the count
+// of certificates returned will not include any certificates that were
+// a renewal of a previous certificate.
 func (ssa *SQLStorageAuthority) countCertificatesByNameImpl(
 	db dbSelector,
 	domain string,
 	earliest,
 	latest time.Time,
 ) (int, error) {
-	return ssa.countCertificates(db, domain, earliest, latest, countCertificatesSelect)
+	if features.Enabled(features.AllowRenewalFirstRL) {
+		return ssa.countCertificates(db, domain, earliest, latest, countCertificatesSelectNoRenewals)
+	} else {
+		return ssa.countCertificates(db, domain, earliest, latest, countCertificatesSelect)
+	}
 }
 
 // countCertificatesByExactNames returns, for a single domain, the count of
 // certificates issued in the given time range for that domain. In contrast to
-// countCertificatesByNames subdomains are NOT considered.
+// countCertificatesByNames subdomains are NOT considered. If the
+// AllowRenewalFirstRL feature flag is enabled then the count of certificates
+// returned will not include any certificates that were a renewal of a previous
+// certificate.
 func (ssa *SQLStorageAuthority) countCertificatesByExactName(
 	db dbSelector,
 	domain string,
 	earliest,
 	latest time.Time,
 ) (int, error) {
-	return ssa.countCertificates(db, domain, earliest, latest, countCertificatesExactSelect)
+	if features.Enabled(features.AllowRenewalFirstRL) {
+		return ssa.countCertificates(db, domain, earliest, latest, countCertificatesExactSelectNoRenewals)
+	} else {
+		return ssa.countCertificates(db, domain, earliest, latest, countCertificatesExactSelect)
+	}
 }
 
-// countCertificates returns, for a single domain, the count of
-// non-renewal certificate issuances in the given time range for that domain using the
-// provided query, assumed to be either `countCertificatesExactSelect` or
-// `countCertificatesSelect`. If the `AllowRenewalFirstRL` feature flag is set,
-// renewals of certificates issued within the same window are considered "free"
-// and are not counted.
+// countCertificates returns, for a single domain, the count of certificate
+// issuances in the given time range for that domain using the
+// provided query assumed to be either `countCertificatesExactSelect`,
+// `countCertificatesExactSelectNoRenewals`, `countCertificatesSelect` or
+// `countCertificatesSelectNoRenewals`
 func (ssa *SQLStorageAuthority) countCertificates(db dbSelector, domain string, earliest, latest time.Time, query string) (int, error) {
 	var serials []string
 	_, err := db.Select(
@@ -510,39 +535,12 @@ func (ssa *SQLStorageAuthority) countCertificates(db dbSelector, domain string, 
 		return 0, err
 	}
 
-	// If the `AllowRenewalFirstRL` feature flag is enabled then do the work
-	// required to discount renewals
-	if features.Enabled(features.AllowRenewalFirstRL) {
-		// If there are no serials found, short circuit since there isn't subsequent
-		// work to do
-		if len(serials) == 0 {
-			return 0, nil
-		}
-
-		// Find all FQDN Set Hashes with the serials from the issuedNames table that
-		// were visible within our search window
-		fqdnSets, err := ssa.getFQDNSetsBySerials(db, serials)
-		if err != nil {
-			return 0, err
-		}
-
-		// Using those FQDN Set Hashes, we can then find all of the non-renewal
-		// issuances with a second query against the fqdnSets table using the set
-		// hashes we know about
-		nonRenewalIssuances, err := ssa.getNewIssuancesByFQDNSet(db, fqdnSets, earliest)
-		if err != nil {
-			return 0, err
-		}
-		return nonRenewalIssuances, nil
-	} else {
-		// Otherwise, use the preexisting behaviour and deduplicate by serials
-		// returning a count of unique serials qignoring any potential renewals
-		serialMap := make(map[string]struct{}, len(serials))
-		for _, s := range serials {
-			serialMap[s] = struct{}{}
-		}
-		return len(serialMap), nil
+	// Deduplicate serials returning a count of unique serials
+	serialMap := make(map[string]struct{}, len(serials))
+	for _, s := range serials {
+		serialMap[s] = struct{}{}
 	}
+	return len(serialMap), nil
 }
 
 // GetCertificate takes a serial number and returns the corresponding
@@ -612,6 +610,7 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, reg core.Re
 
 // MarkCertificateRevoked stores the fact that a certificate is revoked, along
 // with a timestamp and a reason.
+// TODO(#4048): This method has been deprecated and replaced by RevokeCertificate.
 func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, serial string, reasonCode revocation.Reason) error {
 	var err error
 	if _, err = ssa.GetCertificate(ctx, serial); err != nil {
@@ -979,7 +978,28 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		return "", Rollback(tx, err)
 	}
 
-	err = addIssuedNames(txWithCtx, parsedCertificate)
+	// If the SetIssuedNamesRenewalBit feature flag is enabled then we need to
+	// determine if the certificate being added is a renewal of a previously
+	// issued certificate in order to set the renewal bit of the issued names rows
+	// correctly with `addIssuedNames`.
+	var isRenewal bool
+	if features.Enabled(features.SetIssuedNamesRenewalBit) {
+		// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
+		// that it is a renewal) we use just the DNSNames from the certificate and
+		// ignore the Subject Common Name (if any). This is a safe assumption because
+		// if a certificate we issued were to have a Subj. CN not present as a SAN it
+		// would be a misissuance and miscalculating whether the cert is a renewal or
+		// not for the purpose of rate limiting is the least of our troubles.
+		prevCertExists, err := ssa.checkFQDNSetExists(
+			txWithCtx.SelectOne,
+			parsedCertificate.DNSNames)
+		if err != nil {
+			return "", Rollback(tx, err)
+		}
+		isRenewal = prevCertExists
+	}
+
+	err = addIssuedNames(txWithCtx, parsedCertificate, isRenewal)
 	if err != nil {
 		return "", Rollback(tx, err)
 	}
@@ -1130,17 +1150,18 @@ func deleteOrderFQDNSet(
 	return nil
 }
 
-func addIssuedNames(db dbExecer, cert *x509.Certificate) error {
+func addIssuedNames(db dbExecer, cert *x509.Certificate, isRenewal bool) error {
 	var qmarks []string
 	var values []interface{}
 	for _, name := range cert.DNSNames {
 		values = append(values,
 			ReverseName(name),
 			core.SerialToString(cert.SerialNumber),
-			cert.NotBefore)
-		qmarks = append(qmarks, "(?, ?, ?)")
+			cert.NotBefore,
+			isRenewal)
+		qmarks = append(qmarks, "(?, ?, ?, ?)")
 	}
-	query := `INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES ` + strings.Join(qmarks, ", ") + `;`
+	query := `INSERT INTO issuedNames (reversedName, serial, notBefore, renewal) VALUES ` + strings.Join(qmarks, ", ") + `;`
 	_, err := db.Exec(query, values...)
 	return err
 }
@@ -1280,8 +1301,24 @@ func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(
 // FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
 // exists in the database
 func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []string) (bool, error) {
+	exists, err := ssa.checkFQDNSetExists(
+		ssa.dbMap.WithContext(ctx).SelectOne,
+		names)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+// oneSelectorFunc is a func type that matches both gorp.Transaction.SelectOne
+// and gorp.DbMap.SelectOne.
+type oneSelectorFunc func(holder interface{}, query string, args ...interface{}) error
+
+// checkFQDNSetExists uses the given oneSelectorFunc to check whether an fqdnSet
+// for the given names exists.
+func (ssa *SQLStorageAuthority) checkFQDNSetExists(selector oneSelectorFunc, names []string) (bool, error) {
 	var count int64
-	err := ssa.dbMap.WithContext(ctx).SelectOne(
+	err := selector(
 		&count,
 		`SELECT COUNT(1) FROM fqdnSets
 		WHERE setHash = ?
@@ -2063,6 +2100,9 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(
 	// Fetch each of the authorizations' associated challenges
 	for _, authz := range authzMap {
 		authz.Challenges, err = ssa.getChallenges(ssa.dbMap.WithContext(ctx), authz.ID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return authzMapToPB(authzMap)
 }
@@ -2131,4 +2171,47 @@ func (ssa *SQLStorageAuthority) GetAuthz2(ctx context.Context, id *sapb.Authoriz
 		return nil, berrors.NotFoundError("authorization %d not found", id)
 	}
 	return modelToAuthzPB(obj.(*authz2Model))
+}
+
+// RevokeCertificate stores revocation information about a certificate. It will only store this
+// information if the certificate is not alreay marked as revoked. This method is meant as a
+// replacement for MarkCertificateRevoked and the ocsp-updater database methods.
+func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error {
+	tx, err := ssa.dbMap.Begin()
+	if err != nil {
+		return err
+	}
+	txWithCtx := tx.WithContext(ctx)
+
+	status, err := SelectCertificateStatus(
+		txWithCtx,
+		"WHERE serial = ? AND status != ?",
+		*req.Serial,
+		string(core.OCSPStatusRevoked),
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// InternalServerError because we expected this certificate status to exist and
+			// not be revoked.
+			return Rollback(tx, berrors.InternalServerError("no certificate with serial %s and status %s", *req.Serial, string(core.OCSPStatusRevoked)))
+		}
+		return Rollback(tx, err)
+	}
+
+	revokedDate := time.Unix(0, *req.Date)
+	status.Status = core.OCSPStatusRevoked
+	status.RevokedReason = revocation.Reason(*req.Reason)
+	status.RevokedDate = revokedDate
+	status.OCSPLastUpdated = revokedDate
+	status.OCSPResponse = req.Response
+
+	n, err := txWithCtx.Update(&status)
+	if err != nil {
+		return Rollback(tx, err)
+	}
+	if n == 0 {
+		return Rollback(tx, berrors.InternalServerError("no certificate updated"))
+	}
+
+	return tx.Commit()
 }

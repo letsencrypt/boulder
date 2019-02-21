@@ -923,6 +923,8 @@ func TestIssueCertificate(t *testing.T) {
 		noopCAA{},
 		0,
 		ctp,
+		nil,
+		nil,
 	)
 	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &mocks.MockCA{
@@ -1404,6 +1406,7 @@ func TestNewRegistration(t *testing.T) {
 
 	responseWriter := httptest.NewRecorder()
 	result, err := signer.Sign([]byte(`{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`))
+	test.AssertNotError(t, err, "signer.Sign failed")
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
 
@@ -1940,6 +1943,7 @@ func TestRegistration(t *testing.T) {
 
 	// Test POST valid JSON with registration up in the mock (with incorrect agreement URL)
 	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"https://letsencrypt.org/im-bad"}`))
+	test.AssertNotError(t, err, "signer.Sign failed")
 
 	// Test POST valid JSON with registration up in the mock
 	wfe.Registration(ctx, newRequestEvent(), responseWriter,
@@ -2302,6 +2306,7 @@ func TestHeaderBoulderRequester(t *testing.T) {
 
 	// requests that do not call sendError() have the requester header
 	result, err := signer.Sign([]byte(`{"resource":"reg","agreement":"` + agreementURL + `"}`))
+	test.AssertNotError(t, err, "signer.Sign failed")
 	request := makePostRequestWithPath(regPath+"1", result.FullSerialize())
 	mux.ServeHTTP(responseWriter, request)
 	test.AssertEquals(t, responseWriter.Header().Get("Boulder-Requester"), "1")

@@ -448,6 +448,7 @@ func TestHandleFunc(t *testing.T) {
 		{[]string{"GET"}, "POST", false, false, "/test"},
 		{[]string{"GET"}, "OPTIONS", false, true, "/test"},
 		{[]string{"GET"}, "MAKE-COFFEE", false, false, "/test"}, // 405, or 418?
+		{[]string{"GET"}, "GET", true, true, directoryPath},
 	} {
 		runWrappedHandler(&http.Request{Method: c.reqMethod}, c.pattern, c.allowed...)
 		test.AssertEquals(t, stubCalled, c.shouldCallStub)
@@ -468,6 +469,14 @@ func TestHandleFunc(t *testing.T) {
 			test.AssertNotEquals(t, nonce, lastNonce)
 			test.AssertNotEquals(t, nonce, "")
 			lastNonce = nonce
+		}
+		linkHeader := rw.Header().Get("Link")
+		if c.pattern != directoryPath {
+			// If the pattern wasn't the directory there should be a Link header for the index
+			test.AssertEquals(t, linkHeader, `<http://localhost/index>;rel="index"`)
+		} else {
+			// The directory resource shouldn't get a link header
+			test.AssertEquals(t, linkHeader, "")
 		}
 	}
 
@@ -1250,7 +1259,7 @@ func TestNewECDSAAccount(t *testing.T) {
 	responseWriter = httptest.NewRecorder()
 	// POST, Valid JSON, Key already in use
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
-	responseBody = responseWriter.Body.String()
+	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"id\": 3,\n  \"key\": {\n    \"kty\": \"EC\",\n    \"crv\": \"P-256\",\n    \"x\": \"FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao\",\n    \"y\": \"S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk\"\n  },\n  \"agreement\": \"http://example.invalid/terms\",\n  \"initialIp\": \"\",\n  \"createdAt\": \"0001-01-01T00:00:00Z\",\n  \"status\": \"\"\n}")
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/3")
 	test.AssertEquals(t, responseWriter.Code, 200)
 }
@@ -2219,7 +2228,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order is already finalized",
 			// mocks/mocks.go's StorageAuthority's GetOrder mock treats ID 1 as an Order with a Serial
 			Request:      signAndPost(t, "1/1", "http://localhost/1/1", goodCertCSRPayload, 1, wfe.nonceService),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order's status (\"valid\") is not acceptable for finalization","status":400}`,
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `orderNotReady","detail":"Order's status (\"valid\") is not acceptable for finalization","status":403}`,
 		},
 		{
 			Name: "Order is expired",
@@ -2228,21 +2237,9 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order 7 is expired","status":404}`,
 		},
 		{
-			Name:            "Good CSR, Pending Order",
-			Request:         signAndPost(t, "1/4", "http://localhost/1/4", goodCertCSRPayload, 1, wfe.nonceService),
-			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1/4"},
-			ExpectedBody: `
-{
-  "status": "processing",
-  "expires": "1970-01-01T00:00:00.9466848Z",
-  "identifiers": [
-    {"type":"dns","value":"example.com"}
-  ],
-  "authorizations": [
-    "http://localhost/acme/authz/hello"
-  ],
-  "finalize": "http://localhost/acme/finalize/1/4"
-}`,
+			Name:         "Good CSR, Pending Order",
+			Request:      signAndPost(t, "1/4", "http://localhost/1/4", goodCertCSRPayload, 1, wfe.nonceService),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `orderNotReady","detail":"Order's status (\"pending\") is not acceptable for finalization","status":403}`,
 		},
 		{
 			Name:            "Good CSR, Ready Order",
@@ -2283,7 +2280,7 @@ func TestFinalizeOrder(t *testing.T) {
 	// to match the whole response body because the "detail" of a bad CSR problem
 	// contains a verbose Go error message that can change between versions (e.g.
 	// Go 1.10.4 to 1.11 changed the expected format)
-	badCSRReq := signAndPost(t, "1/4", "http://localhost/1/4", `{"CSR": "ABCD"}`, 1, wfe.nonceService)
+	badCSRReq := signAndPost(t, "1/8", "http://localhost/1/8", `{"CSR": "ABCD"}`, 1, wfe.nonceService)
 	responseWriter.Body.Reset()
 	responseWriter.HeaderMap = http.Header{}
 	wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, badCSRReq)
@@ -2882,7 +2879,7 @@ func TestFinalizeSCTError(t *testing.T) {
 	}`
 
 	// Create a finalization request with the above payload
-	request := signAndPost(t, "1/4", "http://localhost/1/4", goodCertCSRPayload, 1, wfe.nonceService)
+	request := signAndPost(t, "1/8", "http://localhost/1/8", goodCertCSRPayload, 1, wfe.nonceService)
 
 	// POST the finalize order request.
 	wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, request)

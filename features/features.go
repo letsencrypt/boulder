@@ -33,21 +33,32 @@ const (
 	HeadNonceStatusOK
 	// NewAuthorizationSchema enables usage of the new authorization storage schema
 	NewAuthorizationSchema
+	// RevokeAtRA enables revocation in the RA instead of ocsp-updater
+	RevokeAtRA
+	// SetIssuedNamesRenewalBit enables the SA setting the renewal bit for
+	// issuedNames entries during AddCertificate.
+	SetIssuedNamesRenewalBit
+	// EarlyOrderRateLimit enables the RA applying certificate per name/per FQDN
+	// set rate limits in NewOrder in addition to FinalizeOrder.
+	EarlyOrderRateLimit
 )
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                 false,
-	AllowRenewalFirstRL:    false,
-	TLSSNIRevalidation:     false,
-	CAAValidationMethods:   false,
-	CAAAccountURI:          false,
-	ACME13KeyRollover:      false,
-	ProbeCTLogs:            false,
-	SimplifiedVAHTTP:       false,
-	PerformValidationRPC:   false,
-	HeadNonceStatusOK:      false,
-	NewAuthorizationSchema: false,
+	unused:                   false,
+	AllowRenewalFirstRL:      false,
+	TLSSNIRevalidation:       false,
+	CAAValidationMethods:     false,
+	CAAAccountURI:            false,
+	ACME13KeyRollover:        false,
+	ProbeCTLogs:              false,
+	SimplifiedVAHTTP:         false,
+	PerformValidationRPC:     false,
+	HeadNonceStatusOK:        false,
+	NewAuthorizationSchema:   false,
+	RevokeAtRA:               false,
+	SetIssuedNamesRenewalBit: false,
+	EarlyOrderRateLimit:      false,
 }
 
 var fMu = new(sync.RWMutex)

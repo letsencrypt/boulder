@@ -18,12 +18,12 @@ func TestDBConfigURL(t *testing.T) {
 		{
 			// Test with one config file that has no trailing newline
 			conf:     DBConfig{DBConnectFile: "testdata/test_dburl"},
-			expected: "mysql+tcp://test@testhost:3306/testDB?readTimeout=800ms&writeTimeout=800ms",
+			expected: "test@tcp(testhost:3306)/testDB?readTimeout=800ms&writeTimeout=800ms",
 		},
 		{
 			// Test with a config file that *has* a trailing newline
 			conf:     DBConfig{DBConnectFile: "testdata/test_dburl_newline"},
-			expected: "mysql+tcp://test@testhost:3306/testDB?readTimeout=800ms&writeTimeout=800ms",
+			expected: "test@tcp(testhost:3306)/testDB?readTimeout=800ms&writeTimeout=800ms",
 		},
 	}
 
@@ -174,10 +174,10 @@ func TestLogInfo(t *testing.T) {
 
 	fc := clock.NewFake()
 	ld.TemporalSet = &TemporalSet{}
-	uri, key, err = ld.Info(fc.Now())
+	_, _, err = ld.Info(fc.Now())
 	test.AssertError(t, err, "Info should fail with a TemporalSet with no viable shards")
 	ld.TemporalSet.Shards = []LogShard{{WindowStart: fc.Now().Add(time.Hour), WindowEnd: fc.Now().Add(time.Hour * 2)}}
-	uri, key, err = ld.Info(fc.Now())
+	_, _, err = ld.Info(fc.Now())
 	test.AssertError(t, err, "Info should fail with a TemporalSet with no viable shards")
 
 	fc.Add(time.Hour * 4)

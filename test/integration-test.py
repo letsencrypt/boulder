@@ -52,6 +52,9 @@ caa_authzs = []
 old_authzs = []
 new_authzs = []
 
+default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
+if default_config_dir == '':
+    default_config_dir = 'test/config'
 
 def setup_seventy_days_ago():
     """Do any setup that needs to happen 70 days in the past, for tests that
@@ -306,6 +309,65 @@ def test_http_challenge_https_redirect():
       elif r['ServerName'] != d:
         raise Exception("Expected all redirected requests to have ServerName {0} got \"{1}\"".format(d, r['ServerName']))
 
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class SlowHTTPRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        try:
+            # Sleeptime needs to be larger than the RA->VA timeout (8s at the
+            # time of writing)
+            sleeptime = 12
+            print("SlowHTTPRequestHandler: sleeping for {0}s\n".format(sleeptime))
+            time.sleep(sleeptime)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'this is not an ACME key authorization')
+        except:
+            pass
+
+def test_http_challenge_timeout():
+    """
+    test_http_challenge_timeout tests that the VA times out challenge requests
+    to a slow HTTP server appropriately.
+    """
+    # Start a simple python HTTP server on port 5002 in its own thread.
+    # NOTE(@cpu): The pebble-challtestsrv binds 10.77.77.77:5002 for HTTP-01
+    # challenges so we must use the 10.88.88.88 address for the throw away
+    # server for this test and add a mock DNS entry that directs the VA to it.
+    httpd = HTTPServer(('10.88.88.88', 5002), SlowHTTPRequestHandler)
+    thread = threading.Thread(target = httpd.serve_forever)
+    thread.daemon = False
+    thread.start()
+
+    # Pick a random domains
+    hostname = random_domain()
+
+    # Add A record for the domains to ensure the VA's requests are directed
+    # to the interface that we bound the HTTPServer to.
+    challSrv.add_a_record(hostname, ["10.88.88.88"])
+
+    start = datetime.datetime.utcnow()
+    end = 0
+
+    try:
+        # We expect a connection timeout error to occur
+        chisel.expect_problem("urn:acme:error:connection",
+            lambda: auth_and_issue([hostname], chall_type="http-01"))
+        end = datetime.datetime.utcnow()
+    finally:
+        # Shut down the HTTP server gracefully and join on its thread.
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join()
+
+    delta = end - start
+    # Expected duration should be the RA->VA timeout plus some padding (At
+    # present the timeout is 8s so adding 4s of padding = 12s)
+    expectedDuration = 12
+    if delta.total_seconds() == 0 or delta.total_seconds() > expectedDuration:
+        raise Exception("expected timeout to occur in under {0} seconds. Took {1}".format(expectedDuration, delta.total_seconds()))
+
 def test_tls_alpn_challenge():
     # Pick two random domains
     domains = [random_domain(), random_domain()]
@@ -418,7 +480,7 @@ def random_domain():
     return "rand.%x.xyz" % random.randrange(2**32)
 
 def test_expiration_mailer():
-    email_addr = "integration.%x@boulder" % random.randrange(2**16)
+    email_addr = "integration.%x@letsencrypt.org" % random.randrange(2**16)
     cert, _ = auth_and_issue([random_domain()], email=email_addr)
     # Check that the expiration mailer sends a reminder
     expiry = datetime.datetime.strptime(cert.body.get_notAfter(), '%Y%m%d%H%M%SZ')
@@ -449,7 +511,10 @@ def test_revoke_by_account():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert.body.wrapped).decode())
     ee_ocsp_url = "http://localhost:4002"
-    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    if default_config_dir.startswith("test/config-next"):
+        verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    else:
+        wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
     verify_akamai_purge()
     return 0
 
@@ -652,10 +717,6 @@ def test_oversized_csr():
     chisel.expect_problem("urn:acme:error:malformed",
             lambda: auth_and_issue(domains))
 
-default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
-if default_config_dir == '':
-    default_config_dir = 'test/config'
-
 def test_admin_revoker_cert():
     cert_file_pem = os.path.join(tempdir, "ar-cert.pem")
     cert, _ = auth_and_issue([random_domain()], cert_output=cert_file_pem)
@@ -666,7 +727,10 @@ def test_admin_revoker_cert():
         default_config_dir, serial, 1))
     # Wait for OCSP response to indicate revocation took place
     ee_ocsp_url = "http://localhost:4002"
-    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    if default_config_dir.startswith("test/config-next"):
+        verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    else:
+        wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
     verify_akamai_purge()
 
 def test_admin_revoker_authz():

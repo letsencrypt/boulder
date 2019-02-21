@@ -113,8 +113,32 @@ def reset_akamai_purges():
     requests.post("http://localhost:6789/debug/reset-purges")
 
 def verify_akamai_purge():
-    response = requests.get("http://localhost:6789/debug/get-purges")
-    purgeData = response.json()
-    if len(purgeData["V3"]) is not 1:
-        raise Exception("Unexpected number of Akamai v3 purges")
+    deadline = time.time() + 5
+    while True:
+        time.sleep(0.25)
+        if time.time() > deadline:
+            raise Exception("Timed out waiting for Akamai purge")
+        response = requests.get("http://localhost:6789/debug/get-purges")
+        purgeData = response.json()
+        if len(purgeData["V3"]) is not 1:
+            continue
+        break
     reset_akamai_purges()
+
+def verify_revocation(cert_file, issuer_file, url):
+    ocsp_request = make_ocsp_req(cert_file, issuer_file)
+    responses = fetch_ocsp(ocsp_request, url)
+
+    # Verify all responses are the same
+    for resp in responses:
+        if resp != responses[0]:
+            raise Exception("OCSP responses differed: %s vs %s" %(
+                base64.b64encode(responses[0]), base64.b64encode(resp)))
+
+    # Check response is for the correct certificate and is revoked
+    resp = responses[0]
+    verify_output = ocsp_verify(cert_file, issuer_file, resp)
+    if not re.search(": revoked", verify_output):
+        print verify_output
+        raise Exception("OCSP response didn't match '%s'" %(
+            final))

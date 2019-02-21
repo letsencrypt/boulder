@@ -288,7 +288,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,
-		1, testKeyPolicy, 100, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0, ctp)
+		1, testKeyPolicy, 100, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0, ctp, nil, nil)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca
@@ -364,6 +364,18 @@ func TestValidateContacts(t *testing.T) {
 	test.AssertError(t, err, "Unparseable email")
 
 	err = ra.validateContacts(context.Background(), &[]string{forbidden})
+	test.AssertError(t, err, "Forbidden email")
+
+	err = ra.validateContacts(context.Background(), &[]string{"mailto:admin@localhost"})
+	test.AssertError(t, err, "Forbidden email")
+
+	err = ra.validateContacts(context.Background(), &[]string{"mailto:admin@example.not.a.iana.suffix"})
+	test.AssertError(t, err, "Forbidden email")
+
+	err = ra.validateContacts(context.Background(), &[]string{"mailto:admin@1.2.3.4"})
+	test.AssertError(t, err, "Forbidden email")
+
+	err = ra.validateContacts(context.Background(), &[]string{"mailto:admin@[1.2.3.4]"})
 	test.AssertError(t, err, "Forbidden email")
 }
 
@@ -920,7 +932,7 @@ func TestPerformValidationExpired(t *testing.T) {
 	test.AssertNotError(t, err, "AuthzToPB failed")
 
 	challIndex := int64(ResponseIndex)
-	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+	_, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: &challIndex,
 	})
@@ -1185,6 +1197,69 @@ func TestNewOrderRateLimiting(t *testing.T) {
 	fc.Add(2 * rateLimitDuration)
 	_, err = ra.NewOrder(ctx, orderTwo)
 	test.AssertNotError(t, err, "NewOrder for orderTwo failed after advancing clock")
+}
+
+// TestEarlyOrderRateLimiting tests that the EarlyOrderRateLimiting flag results
+// in NewOrder applying the certificates per name/per FQDN rate limits against
+// the order names.
+func TestEarlyOrderRateLimiting(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ra.orderLifetime = 5 * 24 * time.Hour
+
+	rateLimitDuration := 5 * time.Minute
+
+	domain := "early-ratelimit-example.com"
+
+	// Set a mock RL policy with a CertificatesPerName threshold for the domain
+	// name so low if it were enforced it would prevent a new order for any names.
+	ra.rlPolicies = &dummyRateLimitConfig{
+		CertificatesPerNamePolicy: ratelimit.RateLimitPolicy{
+			Threshold: 10,
+			Window:    cmd.ConfigDuration{Duration: rateLimitDuration},
+			// Setting the Threshold to 0 skips applying the rate limit. Setting an
+			// override to 0 does the trick.
+			Overrides: map[string]int{
+				domain: 0,
+			},
+		},
+		NewOrdersPerAccountPolicy: ratelimit.RateLimitPolicy{
+			Threshold: 10,
+			Window:    cmd.ConfigDuration{Duration: rateLimitDuration},
+		},
+	}
+
+	// Start with the feature flag enabled.
+	err := features.Set(map[string]bool{"EarlyOrderRateLimit": true})
+	test.AssertNotError(t, err, "Failed to set EarlyOrderRateLimit feature flag")
+	defer features.Reset()
+
+	// Request an order for the test domain
+	newOrder := &rapb.NewOrderRequest{
+		RegistrationID: &Registration.ID,
+		Names:          []string{domain},
+	}
+
+	// With the feature flag enabled the NewOrder request should fail because of
+	// the CertificatesPerNamePolicy.
+	_, err = ra.NewOrder(ctx, newOrder)
+	test.AssertError(t, err, "NewOrder did not apply cert rate limits with feature flag enabled")
+
+	// The err should be the expected rate limit error
+	expectedErrPrefix := "too many certificates already issued for: " +
+		"early-ratelimit-example.com"
+	test.Assert(t,
+		strings.HasPrefix(err.Error(), expectedErrPrefix),
+		fmt.Sprintf("expected error to have prefix %q got %q", expectedErrPrefix, err))
+
+	// Reset the feature flags explicitly to disable EarlyOrderRateLimit
+	features.Reset()
+
+	// The same NewOrder request should now succeed because EarlyOrderRateLimit
+	// isn't enabled and the CertificatesPerNamePolicy won't be enforced until
+	// finalization time.
+	_, err = ra.NewOrder(ctx, newOrder)
+	test.AssertNotError(t, err, "NewOrder applied cert rate limits with feature flag disabled")
 }
 
 func TestAuthzFailedRateLimiting(t *testing.T) {
@@ -3601,7 +3676,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,
-		1, testKeyPolicy, 0, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0, ctp)
+		1, testKeyPolicy, 0, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0, ctp, nil, nil)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca

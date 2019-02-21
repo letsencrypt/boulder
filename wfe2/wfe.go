@@ -175,6 +175,13 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 					logEvent.AddError("unable to make nonce: %s", err)
 				}
 			}
+			// Per section 7.1 "Resources":
+			//   The "index" link relation is present on all resources other than the
+			//   directory and indicates the URL of the directory.
+			if pattern != directoryPath {
+				directoryURL := web.RelativeEndpoint(request, "index")
+				response.Header().Add("Link", link(directoryURL, "index"))
+			}
 
 			logEvent.Endpoint = pattern
 			if request.URL != nil {
@@ -1874,15 +1881,10 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	// Prior to ACME draft-10 the "ready" status did not exist and orders in
-	// a pending status with valid authzs were finalizable. We accept both states
-	// here for deployability ease. In the future we will only allow ready orders
-	// to be finalized.
-	// TODO(@cpu): Forbid finalizing "Pending" orders
-	if *order.Status != string(core.StatusPending) &&
-		*order.Status != string(core.StatusReady) {
+	// Only ready orders can be finalized.
+	if *order.Status != string(core.StatusReady) {
 		wfe.sendError(response, logEvent,
-			probs.Malformed(
+			probs.OrderNotReady(
 				"Order's status (%q) is not acceptable for finalization",
 				*order.Status),
 			nil)

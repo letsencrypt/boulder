@@ -21,6 +21,7 @@ const (
 	CAAProblem                 = ProblemType("caa")
 	DNSProblem                 = ProblemType("dns")
 	AlreadyRevokedProblem      = ProblemType("alreadyRevoked")
+	OrderNotReadyProblem       = ProblemType("orderNotReady")
 
 	V1ErrorNS = "urn:acme:error:"
 	V2ErrorNS = "urn:ietf:params:acme:error:"
@@ -260,5 +261,14 @@ func DNS(detail string, a ...interface{}) *ProblemDetails {
 		Type:       DNSProblem,
 		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// OrderNotReady returns a ProblemDetails representing a OrderNotReadyProblem
+func OrderNotReady(detail string, a ...interface{}) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       OrderNotReadyProblem,
+		Detail:     fmt.Sprintf(detail, a...),
+		HTTPStatus: http.StatusForbidden,
 	}
 }

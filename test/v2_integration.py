@@ -35,6 +35,10 @@ challSrv = challtestsrv.ChallTestServer()
 
 tempdir = tempfile.mkdtemp()
 
+default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
+if default_config_dir == '':
+    default_config_dir = 'test/config'
+
 @atexit.register
 def stop():
     shutil.rmtree(tempdir)
@@ -436,27 +440,9 @@ def test_order_finalize_early():
 
     deadline = datetime.datetime.now() + datetime.timedelta(seconds=5)
 
-    # Finalizing an order early should generate an unauthorized error and we
-    # should check that the order is invalidated.
-    chisel2.expect_problem("urn:ietf:params:acme:error:unauthorized",
+    # Finalizing an order early should generate an orderNotReady error.
+    chisel2.expect_problem("urn:ietf:params:acme:error:orderNotReady",
         lambda: client.finalize_order(order, deadline))
-
-    # Poll for a fixed amount of time checking for the order to become invalid
-    # from the early finalization attempt initiated above failing
-    while datetime.datetime.now() < deadline:
-        time.sleep(1)
-        updatedOrder = requests.get(order.uri).json()
-        if updatedOrder['status'] == "invalid":
-            break
-
-    # If the loop ended and the status isn't invalid then we reached the
-    # deadline waiting for the order to become invalid, fail the test
-    if updatedOrder['status'] != "invalid":
-        raise Exception("timed out waiting for order %s to become invalid" % order.uri)
-
-    # The order should have an error with the expected type
-    if updatedOrder['error']['type'] != 'urn:ietf:params:acme:error:unauthorized':
-        raise Exception("order %s has incorrect error field type: \"%s\"" % (order.uri, updatedOrder['error']['type']))
 
 def test_revoke_by_issuer():
     client = chisel2.make_client(None)
@@ -471,7 +457,10 @@ def test_revoke_by_issuer():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
     ee_ocsp_url = "http://localhost:4002"
-    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    if default_config_dir.startswith("test/config-next"):
+        verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    else:
+        wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
     verify_akamai_purge()
 
 def test_revoke_by_authz():
@@ -491,7 +480,10 @@ def test_revoke_by_authz():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
     ee_ocsp_url = "http://localhost:4002"
-    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    if default_config_dir.startswith("test/config-next"):
+        verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    else:
+        wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
     verify_akamai_purge()
 
 def test_revoke_by_privkey():
@@ -524,7 +516,10 @@ def test_revoke_by_privkey():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
     ee_ocsp_url = "http://localhost:4002"
-    wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    if default_config_dir.startswith("test/config-next"):
+        verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    else:
+        wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
     verify_akamai_purge()
 
 def test_sct_embedding():

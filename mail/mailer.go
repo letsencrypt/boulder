@@ -254,6 +254,9 @@ func (di *dialerImpl) Dial() (smtpClient, error) {
 // errors and returns them. Without this we would get `nested MAIL command`.
 // https://github.com/letsencrypt/boulder/issues/3191
 func (m *MailerImpl) resetAndError(err error) error {
+	if err == io.EOF {
+		return err
+	}
 	if err2 := m.client.Reset(); err2 != nil {
 		return fmt.Errorf("%s (also, on sending RSET: %s)", err, err2)
 	}
@@ -291,14 +294,32 @@ func (m *MailerImpl) sendOne(to []string, subject, msg string) error {
 	return nil
 }
 
-// InvalidRcptError is returned by SendMail when the server rejects a recipient
-// address as invalid.
-type InvalidRcptError struct {
+// RecoverableSMTPError is returned by SendMail when the server rejects a message
+// but for a reason that doesn't prevent us from continuing to send mail. The
+// error message contains the error code and the error message returned from the
+// server.
+type RecoverableSMTPError struct {
 	Message string
 }
 
-func (e InvalidRcptError) Error() string {
+func (e RecoverableSMTPError) Error() string {
 	return e.Message
+}
+
+// Based on reading of various SMTP documents these are a handful
+// of errors we are likely to be able to continue sending mail after
+// receiving. The majority of these errors boil down to 'bad address'.
+var recoverableErrorCodes = map[int]bool{
+	401: true, // Invalid recipient
+	422: true, // Recipient mailbox is full
+	441: true, // Recipient server is not responding
+	450: true, // User's mailbox is not available
+	510: true, // Invalid recipient
+	511: true, // Invalid recipient
+	513: true, // Address type invalid
+	541: true, // Recipient rejected message
+	550: true, // Non-existent address
+	553: true, // Non-existent address
 }
 
 // SendMail sends an email to the provided list of recipients. The email body
@@ -319,7 +340,7 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			// After reconnecting, loop around and try `sendOne` again.
 			m.stats.Inc("SendMail.Reconnects", 1)
 			continue
-		} else if err != nil {
+		} else if protoErr, ok := err.(*textproto.Error); ok && protoErr.Code == 421 {
 			/*
 			 *  If the error is an instance of `textproto.Error` with a SMTP error code,
 			 *  and that error code is 421 then treat this as a reconnect-able event.
@@ -335,21 +356,17 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			 *
 			 * [0] - https://github.com/letsencrypt/boulder/issues/2249
 			 */
-			if protoErr, ok := err.(*textproto.Error); ok && protoErr.Code == 421 {
-				m.stats.Inc("SendMail.Errors.SMTP.421", 1)
-				m.reconnect()
-				m.stats.Inc("SendMail.Reconnects", 1)
-			} else if ok && protoErr.Code == 401 && strings.HasPrefix(protoErr.Msg, "4.1.3") {
-				// Error 401 4.1.3 is returned when we send an invalid email address in
-				// a RCPT TO command. Return an identifyable error to the client.
-				m.stats.Inc("SendMail.Errors.SMTP.401", 1)
-				return InvalidRcptError{protoErr.Msg}
-			} else {
-				// If it wasn't an EOF error or a SMTP 421 it is unexpected and we
-				// return from SendMail() with an error
-				m.stats.Inc("SendMail.Errors", 1)
-				return err
-			}
+			m.stats.Inc("SendMail.Errors.SMTP.421", 1)
+			m.reconnect()
+			m.stats.Inc("SendMail.Reconnects", 1)
+		} else if protoErr, ok := err.(*textproto.Error); ok && recoverableErrorCodes[protoErr.Code] {
+			m.stats.Inc(fmt.Sprintf("SendMail.Errors.SMTP.%d", protoErr.Code), 1)
+			return RecoverableSMTPError{fmt.Sprintf("%d: %s", protoErr.Code, protoErr.Msg)}
+		} else {
+			// If it wasn't an EOF error or a recoverable SMTP error it is unexpected and we
+			// return from SendMail() with the error
+			m.stats.Inc("SendMail.Errors", 1)
+			return err
 		}
 	}
 
