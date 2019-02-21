@@ -46,7 +46,8 @@
       ]
     },
     "features": {
-      "RevokeAtRA": true
+      "RevokeAtRA": true,
+      "EarlyOrderRateLimit": true
     },
     "CTLogGroups2": [
       {
