@@ -515,10 +515,10 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 		validOrder.RegistrationID = &six
 	}
 
-	// Order ID 7 is expired
+	// Order ID 7 is ready, but expired
 	if *req.Id == 7 {
-		pending := string(core.StatusPending)
-		validOrder.Status = &pending
+		ready := string(core.StatusReady)
+		validOrder.Status = &ready
 		exp = sa.clk.Now().AddDate(-30, 0, 0).Unix()
 		validOrder.Expires = &exp
 	}
