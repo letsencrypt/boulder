@@ -23,4 +23,4 @@ CREATE TABLE `authz2` (
 -- +goose Down
 -- SQL section 'Down' is executed when this migration is rolled back
 
-DROP TABLE `authz`;
+DROP TABLE `authz2`;
