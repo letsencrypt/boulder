@@ -2,11 +2,11 @@ package core
 
 import (
 	"crypto"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"net"
 	"strings"
 	"time"
@@ -348,8 +348,8 @@ func (ch Challenge) checkConsistency() error {
 	return nil
 }
 
-func (ch Challenge) GenerateID() string {
-	h := sha256.New()
+func (ch Challenge) StringID() string {
+	h := fnv.New128a()
 	h.Write([]byte(ch.Token))
 	h.Write([]byte(ch.Type))
 	return base64.URLEncoding.EncodeToString(h.Sum(nil)[0:4])
@@ -418,12 +418,12 @@ func (authz *Authorization) FindChallenge(challengeID int64) int {
 	return -1
 }
 
-// FindChallengeByTypeID will look for the given challenge inside this authorization. If
+// FindChallengeByStringID will look for the given challenge inside this authorization. If
 // found, it will return the index of that challenge within the Authorization's
 // Challenges array. Otherwise it will return -1.
-func (authz *Authorization) FindChallengeByTypeID(id string) int {
+func (authz *Authorization) FindChallengeByStringID(id string) int {
 	for i, c := range authz.Challenges {
-		if c.GenerateID() == id {
+		if c.StringID() == id {
 			return i
 		}
 	}

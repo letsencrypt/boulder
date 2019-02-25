@@ -994,7 +994,6 @@ func TestHTTPMethods(t *testing.T) {
 			// case path
 			for _, method := range allMethods {
 				responseWriter.Body.Reset()
-				fmt.Println(tc.Path)
 				mux.ServeHTTP(responseWriter, &http.Request{
 					Method: method,
 					URL:    mustParseURL(tc.Path),
@@ -1484,7 +1483,7 @@ func TestGetAuthorization(t *testing.T) {
 			{
 				"type": "dns",
 				"token":"token",
-				"url": "http://localhost/acme/challenge/v2/1/ROx1Hw=="
+				"url": "http://localhost/acme/challenge/v2/1/-ZfxEw=="
 			}
 		]
 	}`)
@@ -1507,7 +1506,7 @@ func TestGetAuthorization(t *testing.T) {
 			{
 				"type": "dns",
 				"token":"token",
-				"url": "http://localhost/acme/challenge/v2/1/ROx1Hw=="
+				"url": "http://localhost/acme/challenge/v2/1/-ZfxEw=="
 			}
 		]
 	}`)
@@ -2848,7 +2847,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	authz.V2 = true
 	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
 	chal = authz.Challenges[0]
-	test.AssertEquals(t, chal.URL, "http://localhost/acme/challenge/v2/12345/3XWp1g==")
+	test.AssertEquals(t, chal.URL, "http://localhost/acme/challenge/v2/12345/po1V2w==")
 	test.AssertEquals(t, chal.URI, "")
 }
 
@@ -2907,16 +2906,15 @@ func TestChallengeNewIDScheme(t *testing.T) {
 			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/23"}`,
 		},
 		{
-			path:     "v2/1/ROx1Hw==",
-			location: "http://localhost/acme/challenge/v2/1/ROx1Hw==",
-			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/v2/1/ROx1Hw=="}`,
+			path:     "v2/1/-ZfxEw==",
+			location: "http://localhost/acme/challenge/v2/1/-ZfxEw==",
+			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/v2/1/-ZfxEw=="}`,
 		},
 	} {
 		resp := httptest.NewRecorder()
 		req, err := http.NewRequest("GET", tc.path, nil)
 		test.AssertNotError(t, err, "http.NewRequest failed")
 
-		fmt.Println("ok?")
 		wfe.Challenge(context.Background(), newRequestEvent(), resp, req)
 		test.AssertEquals(t,
 			resp.Code,
@@ -2940,9 +2938,9 @@ func TestChallengeNewIDScheme(t *testing.T) {
 			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/23"}`,
 		},
 		{
-			path:     "v2/1/ROx1Hw==",
-			location: "http://localhost/acme/challenge/v2/1/ROx1Hw==",
-			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/v2/1/ROx1Hw=="}`,
+			path:     "v2/1/-ZfxEw==",
+			location: "http://localhost/acme/challenge/v2/1/-ZfxEw==",
+			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/v2/1/-ZfxEw=="}`,
 		},
 	} {
 		resp := httptest.NewRecorder()

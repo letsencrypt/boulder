@@ -1859,7 +1859,7 @@ func TestAuthorization(t *testing.T) {
 			{
 				"type": "dns",
 				"token":"token",
-				"uri": "http://localhost/acme/challenge/v2/1/ROx1Hw=="
+				"uri": "http://localhost/acme/challenge/v2/1/-ZfxEw=="
 			}
 		]
 	}`)
@@ -2561,7 +2561,7 @@ func TestPrepChallengeForDisplay(t *testing.T) {
 	defer features.Reset()
 	authz.V2 = true
 	wfe.prepChallengeForDisplay(req, authz, chall)
-	test.AssertEquals(t, chall.URI, "http://example.com/acme/challenge/v2/eyup/rPBQwA==")
+	test.AssertEquals(t, chall.URI, "http://example.com/acme/challenge/v2/eyup/iFVMwA==")
 }
 
 // noSCTMockRA is a mock RA that always returns a `berrors.MissingSCTsError` from `NewCertificate`
@@ -2645,9 +2645,9 @@ func TestChallengeNewIDScheme(t *testing.T) {
 			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`,
 		},
 		{
-			path:     "v2/1/ROx1Hw==",
-			location: "http://localhost/acme/challenge/v2/1/ROx1Hw==",
-			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/v2/1/ROx1Hw=="}`,
+			path:     "v2/1/-ZfxEw==",
+			location: "http://localhost/acme/challenge/v2/1/-ZfxEw==",
+			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/v2/1/-ZfxEw=="}`,
 		},
 	} {
 		resp := httptest.NewRecorder()
@@ -2677,9 +2677,9 @@ func TestChallengeNewIDScheme(t *testing.T) {
 			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`,
 		},
 		{
-			path:     "v2/1/ROx1Hw==",
-			location: "http://localhost/acme/challenge/v2/1/ROx1Hw==",
-			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/v2/1/ROx1Hw=="}`,
+			path:     "v2/1/-ZfxEw==",
+			location: "http://localhost/acme/challenge/v2/1/-ZfxEw==",
+			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/v2/1/-ZfxEw=="}`,
 		},
 	} {
 		resp := httptest.NewRecorder()

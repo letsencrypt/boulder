@@ -908,7 +908,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	// Check that the requested challenge exists within the authorization
 	var challengeIndex int
 	if authz.V2 {
-		challengeIndex = authz.FindChallengeByTypeID(challengeID.(string))
+		challengeIndex = authz.FindChallengeByStringID(challengeID.(string))
 	} else {
 		challengeIndex = authz.FindChallenge(challengeID.(int64))
 	}
@@ -938,7 +938,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
 	// Update the challenge URL to be relative to the HTTP request Host
 	if authz.V2 {
-		challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%sv2/%s/%s", challengePath, authz.ID, challenge.GenerateID()))
+		challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%sv2/%s/%s", challengePath, authz.ID, challenge.StringID()))
 	} else {
 		challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
 	}

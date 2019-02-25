@@ -152,7 +152,7 @@ func TestFindChallengeByType(t *testing.T) {
 			{Token: "woo", Type: ChallengeTypeHTTP01},
 		},
 	}
-	test.AssertEquals(t, 0, authz.FindChallengeByTypeID(authz.Challenges[0].GenerateID()))
-	test.AssertEquals(t, 1, authz.FindChallengeByTypeID(authz.Challenges[1].GenerateID()))
-	test.AssertEquals(t, -1, authz.FindChallengeByTypeID("hello"))
+	test.AssertEquals(t, 0, authz.FindChallengeByStringID(authz.Challenges[0].StringID()))
+	test.AssertEquals(t, 1, authz.FindChallengeByStringID(authz.Challenges[1].StringID()))
+	test.AssertEquals(t, -1, authz.FindChallengeByStringID("hello"))
 }

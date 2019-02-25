@@ -266,7 +266,7 @@ func TestRegistration(t *testing.T) {
 }
 
 func TestAuthz(t *testing.T) {
-	exp := time.Now().AddDate(0, 0, 1)
+	exp := time.Now().AddDate(0, 0, 1).UTC()
 	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.com"}
 	combos := make([][]int, 1)
 	combos[0] = []int{0, 1}
