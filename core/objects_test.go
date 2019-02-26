@@ -145,6 +145,14 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 	}
 }
 
+func TestChallengeStringID(t *testing.T) {
+	ch := Challenge{
+		Token: "asd",
+		Type:  ChallengeTypeDNS01,
+	}
+	test.AssertEquals(t, ch.StringID(), "iFVMwA==")
+}
+
 func TestFindChallengeByType(t *testing.T) {
 	authz := Authorization{
 		Challenges: []Challenge{
