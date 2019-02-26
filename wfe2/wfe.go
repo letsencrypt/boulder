@@ -837,28 +837,66 @@ func (wfe *WebFrontEndImpl) Challenge(
 		wfe.sendError(response, logEvent, probs.NotFound("No such challenge"), nil)
 	}
 
-	// Challenge URLs are of the form /acme/challenge/<auth id>/<challenge id>.
-	// Here we parse out the id components.
+	// Challenge URIs are of the form /acme/challenge/<auth id>/<challenge id>
+	// or /acme/challenge/v2/<auth id>/<challenge id> depending on the authorization
+	// version. Here we parse out the authorization and challenge IDs and retrieve
+	// the authorization.
 	slug := strings.Split(request.URL.Path, "/")
-	if len(slug) != 2 {
+	if len(slug) != 2 && len(slug) != 3 {
 		notFound()
 		return
 	}
-	authorizationID := slug[0]
-	challengeID, err := strconv.ParseInt(slug[1], 10, 64)
-	if err != nil {
-		notFound()
-		return
+	var authorizationID string
+	var challengeID interface{}
+	var err error
+	var v2 bool
+	if len(slug) == 3 {
+		if !features.Enabled(features.NewAuthorizationSchema) || slug[0] != "v2" {
+			notFound()
+			return
+		}
+		v2 = true
+		authorizationID, challengeID = slug[1], slug[2]
+	} else {
+		authorizationID = slug[0]
+		challengeID, err = strconv.ParseInt(slug[1], 10, 64)
+		if err != nil {
+			notFound()
+			return
+		}
 	}
 
-	authz, err := wfe.SA.GetAuthorization(ctx, authorizationID)
-	if err != nil {
-		if berrors.Is(err, berrors.NotFound) {
+	var authz core.Authorization
+	if v2 {
+		id, err := strconv.ParseInt(authorizationID, 10, 64)
+		if err != nil {
 			notFound()
-		} else {
-			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+			return
 		}
-		return
+		authzPB, err := wfe.SA.GetAuthz2(ctx, &sapb.AuthorizationID2{Id: &id})
+		if err != nil {
+			if berrors.Is(err, berrors.NotFound) {
+				notFound()
+			} else {
+				wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+			}
+			return
+		}
+		authz, err = bgrpc.PBToAuthz(authzPB)
+		if err != nil {
+			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+			return
+		}
+	} else {
+		authz, err = wfe.SA.GetAuthorization(ctx, authorizationID)
+		if err != nil {
+			if berrors.Is(err, berrors.NotFound) {
+				notFound()
+			} else {
+				wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+			}
+			return
+		}
 	}
 
 	// After expiring, challenges are inaccessible
@@ -868,7 +906,12 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 
 	// Check that the requested challenge exists within the authorization
-	challengeIndex := authz.FindChallenge(challengeID)
+	var challengeIndex int
+	if authz.V2 {
+		challengeIndex = authz.FindChallengeByStringID(challengeID.(string))
+	} else {
+		challengeIndex = authz.FindChallenge(challengeID.(int64))
+	}
 	if challengeIndex == -1 {
 		notFound()
 		return
@@ -894,7 +937,11 @@ func (wfe *WebFrontEndImpl) Challenge(
 // the client by filling in its URL field and clearing its ID and URI fields.
 func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
 	// Update the challenge URL to be relative to the HTTP request Host
-	challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
+	if authz.V2 {
+		challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%sv2/%s/%s", challengePath, authz.ID, challenge.StringID()))
+	} else {
+		challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
+	}
 	// Ensure the challenge URI and challenge ID aren't written by setting them to
 	// values that the JSON omitempty tag considers empty
 	challenge.URI = ""
@@ -1242,14 +1289,38 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 
 	// Requests to this handler should have a path that leads to a known authz
 	id := request.URL.Path
-	authz, err := wfe.SA.GetAuthorization(ctx, id)
-	if err != nil {
-		if berrors.Is(err, berrors.NotFound) {
+	var authz core.Authorization
+	var err error
+	if features.Enabled(features.NewAuthorizationSchema) && strings.HasPrefix(id, "/v2/") {
+		authzID, err := strconv.ParseInt(id[4:], 10, 64)
+		if err != nil {
 			wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
-		} else {
-			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+			return
 		}
-		return
+		authzPB, err := wfe.SA.GetAuthz2(ctx, &sapb.AuthorizationID2{Id: &authzID})
+		if err != nil {
+			if berrors.Is(err, berrors.NotFound) {
+				wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
+			} else {
+				wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+			}
+			return
+		}
+		authz, err = bgrpc.PBToAuthz(authzPB)
+		if err != nil {
+			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+			return
+		}
+	} else {
+		authz, err = wfe.SA.GetAuthorization(ctx, id)
+		if err != nil {
+			if berrors.Is(err, berrors.NotFound) {
+				wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
+			} else {
+				wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+			}
+			return
+		}
 	}
 	if authz.Identifier.Type == core.IdentifierDNS {
 		logEvent.DNSName = authz.Identifier.Value

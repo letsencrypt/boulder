@@ -2162,8 +2162,8 @@ func (ssa *SQLStorageAuthority) NewAuthorization(authz *corepb.Authorization) (i
 
 // GetAuthz2 returns the authz2 style authorization identified by the provided ID or an error.
 // If no authorization is found matching the ID a berrors.NotFound type error is returned.
-func (ssa *SQLStorageAuthority) GetAuthz2(id int64) (*corepb.Authorization, error) {
-	obj, err := ssa.dbMap.Get(authz2Model{}, id)
+func (ssa *SQLStorageAuthority) GetAuthz2(ctx context.Context, id *sapb.AuthorizationID2) (*corepb.Authorization, error) {
+	obj, err := ssa.dbMap.Get(authz2Model{}, id.Id)
 	if err != nil {
 		return nil, err
 	}
