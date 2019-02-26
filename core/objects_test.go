@@ -151,6 +151,8 @@ func TestChallengeStringID(t *testing.T) {
 		Type:  ChallengeTypeDNS01,
 	}
 	test.AssertEquals(t, ch.StringID(), "iFVMwA==")
+	ch.Type = ChallengeTypeHTTP01
+	test.AssertEquals(t, ch.StringID(), "0Gexug==")
 }
 
 func TestFindChallengeByType(t *testing.T) {
