@@ -2,7 +2,6 @@ language: go
 
 go:
   - "1.11.5"
-  - "1.10.8"
 
 go_import_path: github.com/letsencrypt/boulder
 
