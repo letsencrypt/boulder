@@ -182,3 +182,11 @@ func (sa *mockInvalidAuthorizationsAuthority) RevokeCertificate(_ context.Contex
 func (sa *mockInvalidAuthorizationsAuthority) GetAuthz2(_ context.Context, _ *sapb.AuthorizationID2, opts ...grpc.CallOption) (*corepb.Authorization, error) {
 	return nil, nil
 }
+
+func (sa *mockInvalidAuthorizationsAuthority) NewAuthorization(ctx context.Context, req *corepb.Authorization, opts ...grpc.CallOption) (*sapb.AuthorizationID, error) {
+	return nil, nil
+}
+
+func (sa *mockInvalidAuthorizationsAuthority) NewAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest, opts ...grpc.CallOption) (*sapb.AuthorizationIDs, error) {
+	return nil, nil
+}

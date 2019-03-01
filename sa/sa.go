@@ -2148,16 +2148,32 @@ func (ssa *SQLStorageAuthority) getChallengesImpl(db dbSelector, authID string) 
 // NewAuthorization adds a new authz2 style authorization to the database and returns
 // either the ID or an error. It will only process corepb.Authorization objects if the
 // V2 field is set.
-func (ssa *SQLStorageAuthority) NewAuthorization(authz *corepb.Authorization) (int64, error) {
+func (ssa *SQLStorageAuthority) NewAuthorization(ctx context.Context, authz *corepb.Authorization) (*sapb.AuthorizationID, error) {
 	am, err := authzPBToModel(authz)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	err = ssa.dbMap.Insert(am)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return am.ID, nil
+	id := fmt.Sprintf("%d", am.ID)
+	return &sapb.AuthorizationID{Id: &id}, nil
+}
+
+// NewAuthorizations adds a set of new style authorizations to the database and returns
+// either the IDs of the authorizations or an error. It will only process corepb.Authorization
+// objects if the V2 field is set. This method is intended to deprecate AddPendingAuthorizations
+func (ssa *SQLStorageAuthority) NewAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
+	ids := &sapb.AuthorizationIDs{}
+	for _, authz := range req.Authz {
+		id, err := ssa.NewAuthorization(ctx, authz)
+		if err != nil {
+			return nil, err
+		}
+		ids.Ids = append(ids.Ids, fmt.Sprintf("%d", id))
+	}
+	return ids, nil
 }
 
 // GetAuthz2 returns the authz2 style authorization identified by the provided ID or an error.

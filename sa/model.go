@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"net"
 	"strconv"
 	"time"
@@ -401,36 +402,36 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 	return order, nil
 }
 
-var challTypeToUint = map[string]uint{
+var challTypeToUint = map[string]uint8{
 	"http-01":     0,
 	"tls-sni-01":  1,
 	"dns-01":      2,
 	"tls-alpn-01": 3,
 }
 
-var uintToChallType = map[uint]string{
+var uintToChallType = map[uint8]string{
 	0: "http-01",
 	1: "tls-sni-01",
 	2: "dns-01",
 	3: "tls-alpn-01",
 }
 
-var identifierTypeToUint = map[string]uint{
+var identifierTypeToUint = map[string]uint8{
 	"dns": 0,
 }
 
-var uintToIdentifierType = map[uint]string{
+var uintToIdentifierType = map[uint8]string{
 	0: "dns",
 }
 
-var statusToUint = map[string]uint{
+var statusToUint = map[string]uint8{
 	"pending":     0,
 	"valid":       1,
 	"invalid":     2,
 	"deactivated": 3,
 }
 
-var uintToStatus = map[uint]string{
+var uintToStatus = map[uint8]string{
 	0: "pending",
 	1: "valid",
 	2: "invalid",
@@ -439,13 +440,13 @@ var uintToStatus = map[uint]string{
 
 type authz2Model struct {
 	ID               int64
-	IdentifierType   uint
+	IdentifierType   uint8
 	IdentifierValue  string
 	RegistrationID   int64
-	Status           uint
+	Status           uint8
 	Expires          *time.Time
-	Challenges       byte
-	Attempted        *uint
+	Challenges       uint8
+	Attempted        *uint8
 	Token            []byte
 	ValidationError  []byte
 	ValidationRecord []byte
@@ -472,16 +473,18 @@ func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 		return nil, errors.New("authorization is not v2 format")
 	}
 	expires := time.Unix(0, *authz.Expires)
-	id, err := strconv.Atoi(*authz.Id)
-	if err != nil {
-		return nil, err
-	}
 	am := &authz2Model{
-		ID:              int64(id),
 		IdentifierValue: *authz.Identifier,
 		RegistrationID:  *authz.RegistrationID,
 		Status:          statusToUint[*authz.Status],
 		Expires:         &expires,
+	}
+	if authz.Id != nil {
+		id, err := strconv.Atoi(*authz.Id)
+		if err != nil {
+			return nil, err
+		}
+		am.ID = int64(id)
 	}
 	if hasMultipleNonPendingChallenges(authz.Challenges) {
 		return nil, errors.New("multiple challenges are non-pending")
@@ -534,7 +537,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 				}
 			}
 		}
-		token, err := base64.StdEncoding.DecodeString(tokenStr)
+		token, err := base64.RawURLEncoding.DecodeString(tokenStr)
 		if err != nil {
 			return nil, err
 		}
@@ -601,11 +604,11 @@ func modelToAuthzPB(am *authz2Model) (*corepb.Authorization, error) {
 	// to core.StatusValid or core.StatusInvalid depending on if there is anything
 	// in ValidationError and populate the ValidationRecord and ValidationError
 	// fields.
-	for pos := uint(0); pos < 8; pos++ {
+	for pos := uint8(0); pos < 8; pos++ {
 		if (am.Challenges>>pos)&1 == 1 {
 			challType := uintToChallType[pos]
 			status := string(core.StatusPending)
-			token := base64.StdEncoding.EncodeToString(am.Token)
+			token := base64.RawURLEncoding.EncodeToString(am.Token)
 			challenge := &corepb.Challenge{
 				Type:   &challType,
 				Status: &status,
@@ -620,6 +623,16 @@ func modelToAuthzPB(am *authz2Model) (*corepb.Authorization, error) {
 			}
 			pb.Challenges = append(pb.Challenges, challenge)
 		}
+	}
+	// Populate combinations
+	combos := make([][]int, len(pb.Challenges))
+	for i, idx := range rand.Perm(len(pb.Challenges)) {
+		combos[i] = []int{idx}
+	}
+	var err error
+	pb.Combinations, err = json.Marshal(combos)
+	if err != nil {
+		return nil, err
 	}
 	return pb, nil
 }

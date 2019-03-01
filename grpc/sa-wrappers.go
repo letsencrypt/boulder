@@ -598,6 +598,28 @@ func (sas StorageAuthorityClientWrapper) RevokeCertificate(ctx context.Context, 
 	return err
 }
 
+func (sas StorageAuthorityClientWrapper) NewAuthorization(ctx context.Context, req *corepb.Authorization) (*sapb.AuthorizationID, error) {
+	resp, err := sas.inner.NewAuthorization(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.Id == nil {
+		return nil, errIncompleteResponse
+	}
+	return resp, nil
+}
+
+func (sas StorageAuthorityClientWrapper) NewAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
+	resp, err := sas.inner.NewAuthorizations(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.Ids == nil {
+		return nil, errIncompleteResponse
+	}
+	return resp, nil
+}
+
 // StorageAuthorityServerWrapper is the gRPC version of a core.ServerAuthority server
 type StorageAuthorityServerWrapper struct {
 	// TODO(#3119): Don't use core.StorageAuthority
@@ -1141,4 +1163,19 @@ func (sas StorageAuthorityServerWrapper) RevokeCertificate(ctx context.Context, 
 		return nil, errIncompleteRequest
 	}
 	return &corepb.Empty{}, sas.inner.RevokeCertificate(ctx, req)
+}
+
+func (sas StorageAuthorityServerWrapper) NewAuthorization(ctx context.Context, req *corepb.Authorization) (*sapb.AuthorizationID, error) {
+	if req == nil {
+		return nil, errIncompleteRequest
+	}
+	return sas.inner.NewAuthorization(ctx, req)
+}
+
+func (sas StorageAuthorityServerWrapper) NewAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
+	if req == nil || req.Authz == nil {
+		return nil, errIncompleteRequest
+	}
+
+	return sas.inner.NewAuthorizations(ctx, req)
 }

@@ -561,20 +561,28 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	if err != nil {
 		return core.Authorization{}, err
 	}
+
+	if features.Enabled(features.NewAuthorizationSchema) {
+		resultPB, err := ra.SA.NewAuthorization(ctx, authzPB)
+		if err != nil {
+			return core.Authorization{}, err
+		}
+		authzPB.Id = resultPB.Id
+		return bgrpc.PBToAuthz(authzPB)
+	}
+
 	authz, err := bgrpc.PBToAuthz(authzPB)
 	if err != nil {
 		return core.Authorization{}, err
 	}
-
 	result, err := ra.SA.NewPendingAuthorization(ctx, authz)
 	if err != nil {
 		// berrors.InternalServerError since the user-data was validated before being
 		// passed to the SA.
-		err = berrors.InternalServerError("invalid authorization request: %s", err)
+		err = berrors.InternalServerError("failed to store new pending authorization: %s", err)
 		return core.Authorization{}, err
 	}
-
-	return result, err
+	return result, nil
 }
 
 // MatchesCSR tests the contents of a generated certificate to make sure
@@ -1905,7 +1913,12 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// If new authorizations are needed, call AddPendingAuthorizations. Also check
 	// whether the newly created pending authz's have an expiry lower than minExpiry
 	if len(newAuthzs) > 0 {
-		authzIDs, err := ra.SA.AddPendingAuthorizations(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: newAuthzs})
+		var authzIDs *sapb.AuthorizationIDs
+		if features.Enabled(features.NewAuthorizationSchema) {
+			authzIDs, err = ra.SA.NewAuthorizations(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: newAuthzs})
+		} else {
+			authzIDs, err = ra.SA.AddPendingAuthorizations(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: newAuthzs})
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -1941,6 +1954,10 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 		RegistrationID: &reg,
 		Status:         &status,
 		Expires:        &expires,
+	}
+	if features.Enabled(features.NewAuthorizationSchema) {
+		v2 := true
+		authz.V2 = &v2
 	}
 
 	// If TLSSNIRevalidation is enabled, find out whether this was a revalidation
