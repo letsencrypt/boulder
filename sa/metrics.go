@@ -38,49 +38,49 @@ func InitDBMetrics(dbMap *gorp.DbMap, scope metrics.Scope) {
 // newDbMetrics constructs a dbMetrics instance by registering prometheus stats.
 func newDbMetrics(dbMap *gorp.DbMap, scope metrics.Scope) *dbMetrics {
 	maxOpenConns := prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "max_open_connections",
+		Name: "db_max_open_connections",
 		Help: "Maximum number of DB connections allowed.",
 	})
 	scope.MustRegister(maxOpenConns)
 
 	openConns := prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "open_connections",
+		Name: "db_open_connections",
 		Help: "Number of established DB connections (in-use and idle).",
 	})
 	scope.MustRegister(openConns)
 
 	inUse := prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "inuse",
+		Name: "db_inuse",
 		Help: "Number of DB connections currently in use.",
 	})
 	scope.MustRegister(inUse)
 
 	idle := prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "idle",
+		Name: "db_idle",
 		Help: "Number of idle DB connections.",
 	})
 	scope.MustRegister(idle)
 
 	waitCount := prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "wait_count",
+		Name: "db_wait_count",
 		Help: "Total number of DB connections waited for.",
 	})
 	scope.MustRegister(waitCount)
 
 	waitDuration := prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name: "wait_duration",
+		Name: "db_wait_duration_seconds",
 		Help: "The total time blocked waiting for a new connection.",
 	})
 	scope.MustRegister(waitDuration)
 
 	maxIdleClosed := prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "max_idle_closed",
+		Name: "db_max_idle_closed",
 		Help: "Total number of connections closed due to SetMaxIdleConns.",
 	})
 	scope.MustRegister(maxIdleClosed)
 
 	maxLifetimeClosed := prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "max_lifetime_closed",
+		Name: "db_max_lifetime_closed",
 		Help: "Total number of connections closed due to SetConnMaxLifetime.",
 	})
 	scope.MustRegister(maxLifetimeClosed)
