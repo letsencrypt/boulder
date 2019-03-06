@@ -18,7 +18,7 @@ type dbMetrics struct {
 	inUse              prometheus.Gauge
 	idle               prometheus.Gauge
 	waitCount          prometheus.Counter
-	waitDuration       prometheus.Histogram
+	waitDuration       prometheus.Counter
 	maxIdleClosed      prometheus.Counter
 	maxLifetimeClosed  prometheus.Counter
 }
@@ -67,7 +67,7 @@ func newDbMetrics(dbMap *gorp.DbMap, scope metrics.Scope) *dbMetrics {
 	})
 	scope.MustRegister(waitCount)
 
-	waitDuration := prometheus.NewHistogram(prometheus.HistogramOpts{
+	waitDuration := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "db_wait_duration_seconds",
 		Help: "The total time blocked waiting for a new connection.",
 	})
@@ -108,7 +108,7 @@ func (dbm *dbMetrics) updateFrom(dbStats sql.DBStats) {
 	dbm.inUse.Set(float64(dbStats.InUse))
 	dbm.idle.Set(float64(dbStats.InUse))
 	dbm.waitCount.Set(float64(dbStats.WaitCount))
-	dbm.waitDuration.Observe(dbStats.WaitDuration.Seconds())
+	dbm.waitDuration.Set(float64(dbStats.WaitDuration.Seconds()))
 	dbm.maxIdleClosed.Set(float64(dbStats.MaxIdleClosed))
 	dbm.maxLifetimeClosed.Set(float64(dbStats.MaxLifetimeClosed))
 }
