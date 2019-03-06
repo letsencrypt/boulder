@@ -2,7 +2,7 @@ version: '3'
 services:
     boulder:
         # To minimize fetching this should be the same version used below
-        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.11.5}:2019-02-13
+        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.12}:2019-02-13
         environment:
             FAKE_DNS: 10.77.77.77
             PKCS11_PROXY_SOCKET: tcp://boulder-hsm:5657
@@ -51,7 +51,7 @@ services:
         working_dir: /go/src/github.com/letsencrypt/boulder
     bhsm:
         # To minimize fetching this should be the same version used above
-        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.11.5}:2019-02-13
+        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.12}:2019-02-13
         environment:
             PKCS11_DAEMON_SOCKET: tcp://0.0.0.0:5657
         command: /usr/local/bin/pkcs11-daemon /usr/lib/softhsm/libsofthsm2.so
@@ -73,7 +73,7 @@ services:
         logging:
             driver: none
     netaccess:
-        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.11.5}:2019-02-13
+        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.12}:2019-02-13
         networks:
           - bluenet
         volumes:
