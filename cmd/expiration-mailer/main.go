@@ -473,7 +473,9 @@ func main() {
 	dbMap, err := sa.NewDbMap(dbURL, c.Mailer.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Could not connect to database")
 	sa.SetSQLDebug(dbMap, logger)
-	go sa.ReportDbConnCount(dbMap, scope)
+
+	// Collect and periodically report DB metrics using the DBMap and prometheus scope.
+	sa.InitDBMetrics(dbMap, scope)
 
 	tlsConfig, err := c.Mailer.TLS.Load()
 	cmd.FailOnError(err, "TLS config")

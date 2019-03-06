@@ -36,7 +36,6 @@ type SQLStorageAuthority struct {
 	dbMap *gorp.DbMap
 	clk   clock.Clock
 	log   blog.Logger
-	scope metrics.Scope
 
 	// For RPCs that generate multiple, parallelizable SQL queries, this is the
 	// max parallelism they will use (to avoid consuming too many MariaDB
@@ -103,7 +102,6 @@ func NewSQLStorageAuthority(
 		dbMap:             dbMap,
 		clk:               clk,
 		log:               logger,
-		scope:             scope,
 		parallelismPerRPC: parallelismPerRPC,
 	}
 
@@ -779,7 +777,6 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization(
 	} else if err == nil {
 		// We found an authz, but we still need to fetch its challenges. To
 		// simplify things, just call GetAuthorization, which takes care of that.
-		ssa.scope.Inc("reused_authz", 1)
 		authz, err := ssa.GetAuthorization(ctx, pa.ID)
 		return &authz, err
 	} else {
