@@ -135,7 +135,7 @@ type StorageGetter interface {
 	GetValidOrderAuthorizations(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (map[string]*Authorization, error)
 	CountInvalidAuthorizations(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (count *sapb.Count, err error)
 	GetAuthorizations(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error)
-	GetAuthz2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Authorization, error)
+	GetAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Authorization, error)
 }
 
 // StorageAdder are the Boulder SA's write/update methods
@@ -156,7 +156,7 @@ type StorageAdder interface {
 	AddPendingAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error)
 	SetOrderError(ctx context.Context, order *corepb.Order) error
 	RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error
-	NewAuthorization(ctx context.Context, req *corepb.Authorization) (*sapb.AuthorizationID, error)
+	NewAuthorization(ctx context.Context, req *corepb.Authorization) (*sapb.AuthorizationID2, error)
 	NewAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error)
 }
 

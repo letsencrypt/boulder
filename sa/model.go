@@ -438,18 +438,20 @@ var uintToStatus = map[uint8]string{
 	3: "deactivated",
 }
 
+const authz2Fields = "id, identifierType, identifierValue, registrationID, status, expires, challenges, attempted, token, validationError, validationRecord"
+
 type authz2Model struct {
-	ID               int64
-	IdentifierType   uint8
-	IdentifierValue  string
-	RegistrationID   int64
-	Status           uint8
-	Expires          *time.Time
-	Challenges       uint8
-	Attempted        *uint8
-	Token            []byte
-	ValidationError  []byte
-	ValidationRecord []byte
+	ID               int64      `db:"id"`
+	IdentifierType   uint8      `db:"identifierType"`
+	IdentifierValue  string     `db:"identifierValue"`
+	RegistrationID   int64      `db:"registrationID"`
+	Status           uint8      `db:"status"`
+	Expires          *time.Time `db:"expires"`
+	Challenges       uint8      `db:"challenges"`
+	Attempted        *uint8     `db:"attempted"`
+	Token            []byte     `db:"token"`
+	ValidationError  []byte     `db:"validationError"`
+	ValidationRecord []byte     `db:"validationRecord"`
 }
 
 // hasMultipleNonPendingChallenges checks if a slice of challenges contains
@@ -472,14 +474,14 @@ func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 	if authz.V2 == nil || !*authz.V2 {
 		return nil, errors.New("authorization is not v2 format")
 	}
-	expires := time.Unix(0, *authz.Expires)
+	expires := time.Unix(0, *authz.Expires).UTC()
 	am := &authz2Model{
 		IdentifierValue: *authz.Identifier,
 		RegistrationID:  *authz.RegistrationID,
 		Status:          statusToUint[*authz.Status],
 		Expires:         &expires,
 	}
-	if authz.Id != nil {
+	if authz.Id != nil && *authz.Id != "" {
 		id, err := strconv.Atoi(*authz.Id)
 		if err != nil {
 			return nil, err
@@ -584,7 +586,7 @@ func populateAttemptedFields(am *authz2Model, challenge *corepb.Challenge) error
 }
 
 func modelToAuthzPB(am *authz2Model) (*corepb.Authorization, error) {
-	expires := am.Expires.UnixNano()
+	expires := am.Expires.UTC().UnixNano()
 	id := fmt.Sprintf("%d", am.ID)
 	v2 := true
 	status := uintToStatus[am.Status]

@@ -567,7 +567,8 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		if err != nil {
 			return core.Authorization{}, err
 		}
-		authzPB.Id = resultPB.Id
+		id := fmt.Sprintf("%d", *resultPB.Id)
+		authzPB.Id = &id
 		return bgrpc.PBToAuthz(authzPB)
 	}
 

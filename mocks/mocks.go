@@ -557,8 +557,8 @@ func (sa *StorageAuthority) AddPendingAuthorizations(ctx context.Context, req *s
 }
 
 // NewAuthorization is a mock
-func (sa *StorageAuthority) NewAuthorization(ctx context.Context, req *corepb.Authorization) (*sapb.AuthorizationID, error) {
-	return &sapb.AuthorizationID{}, nil
+func (sa *StorageAuthority) NewAuthorization(ctx context.Context, req *corepb.Authorization) (*sapb.AuthorizationID2, error) {
+	return &sapb.AuthorizationID2{}, nil
 }
 
 // NewAuthorizations is a mock
@@ -574,8 +574,8 @@ var (
 	authzIdDiffAccount = int64(5)
 )
 
-// GetAuthz2 is a mock
-func (sa *StorageAuthority) GetAuthz2(ctx context.Context, id *sapb.AuthorizationID2) (*corepb.Authorization, error) {
+// GetAuthorization2 is a mock
+func (sa *StorageAuthority) GetAuthorization2(ctx context.Context, id *sapb.AuthorizationID2) (*corepb.Authorization, error) {
 	authz := core.Authorization{
 		Status:         core.StatusValid,
 		RegistrationID: 1,

@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -2148,7 +2149,7 @@ func (ssa *SQLStorageAuthority) getChallengesImpl(db dbSelector, authID string) 
 // NewAuthorization adds a new authz2 style authorization to the database and returns
 // either the ID or an error. It will only process corepb.Authorization objects if the
 // V2 field is set.
-func (ssa *SQLStorageAuthority) NewAuthorization(ctx context.Context, authz *corepb.Authorization) (*sapb.AuthorizationID, error) {
+func (ssa *SQLStorageAuthority) NewAuthorization(ctx context.Context, authz *corepb.Authorization) (*sapb.AuthorizationID2, error) {
 	am, err := authzPBToModel(authz)
 	if err != nil {
 		return nil, err
@@ -2157,8 +2158,7 @@ func (ssa *SQLStorageAuthority) NewAuthorization(ctx context.Context, authz *cor
 	if err != nil {
 		return nil, err
 	}
-	id := fmt.Sprintf("%d", am.ID)
-	return &sapb.AuthorizationID{Id: &id}, nil
+	return &sapb.AuthorizationID2{Id: &am.ID}, nil
 }
 
 // NewAuthorizations adds a set of new style authorizations to the database and returns
@@ -2176,17 +2176,134 @@ func (ssa *SQLStorageAuthority) NewAuthorizations(ctx context.Context, req *sapb
 	return ids, nil
 }
 
-// GetAuthz2 returns the authz2 style authorization identified by the provided ID or an error.
-// If no authorization is found matching the ID a berrors.NotFound type error is returned.
-func (ssa *SQLStorageAuthority) GetAuthz2(ctx context.Context, id *sapb.AuthorizationID2) (*corepb.Authorization, error) {
-	obj, err := ssa.dbMap.Get(authz2Model{}, id.Id)
+// GetAuthorization2 returns the authz2 style authorization identified by the provided ID or an error.
+// If no authorization is found matching the ID a berrors.NotFound type error is returned. This method
+// is intended to deprecate GetAuthorization.
+func (ssa *SQLStorageAuthority) GetAuthorization2(ctx context.Context, id *sapb.AuthorizationID2) (*corepb.Authorization, error) {
+	obj, err := ssa.dbMap.Get(authz2Model{}, *id.Id)
 	if err != nil {
 		return nil, err
 	}
 	if obj == nil {
-		return nil, berrors.NotFoundError("authorization %d not found", id)
+		return nil, berrors.NotFoundError("authorization %d not found", *id.Id)
 	}
 	return modelToAuthzPB(obj.(*authz2Model))
+}
+
+func authzPBMapToPB(m map[string]*corepb.Authorization) (*sapb.Authorizations, error) {
+	resp := &sapb.Authorizations{}
+	for k, v := range m {
+		// Make a copy of k because it will be reassigned with each loop.
+		kCopy := k
+		resp.Authz = append(resp.Authz, &sapb.Authorizations_MapElement{Domain: &kCopy, Authz: v})
+	}
+	return resp, nil
+}
+
+// GetAuthorizations2 returns any valid or pending authorizations that exist for the list of domains
+// provided. If both a valid and pending authorization exist only the valid one will be returned. This
+// method is intended to deprecate GetAuthorizations.
+func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
+	qmarks := make([]string, len(req.Domains))
+	for i := range req.Domains {
+		qmarks[i] = "?"
+	}
+
+	queryPrefix := fmt.Sprintf("SELECT %s FROM authz2", authz2Fields)
+	if *req.RequireV2Authzs {
+		queryPrefix += ` JOIN orderToAuthz
+			ON id = authzID`
+	}
+	query := fmt.Sprintf(
+		`%s WHERE
+		registrationID = ? AND
+		expires > ? AND
+		status IN (?,?) AND
+		identifierValue IN (%s)`,
+		queryPrefix,
+		strings.Join(qmarks, ","),
+	)
+
+	var authzModels []authz2Model
+	params := []interface{}{
+		*req.RegistrationID,
+		time.Unix(0, *req.Now),
+		statusToUint[string(core.StatusValid)],
+		statusToUint[string(core.StatusPending)],
+	}
+	for _, n := range req.Domains {
+		params = append(params, n)
+	}
+	_, err := ssa.dbMap.Select(
+		&authzModels,
+		query,
+		params...,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	authzPBMap := make(map[string]*corepb.Authorization, len(req.Domains))
+	for _, am := range authzModels {
+		if existing, present := authzPBMap[am.IdentifierValue]; !present ||
+			present && *existing.Status == string(core.StatusPending) && uintToStatus[am.Status] == string(core.StatusValid) {
+			var err error
+			authzPBMap[am.IdentifierValue], err = modelToAuthzPB(&am)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return authzPBMapToPB(authzPBMap)
+}
+
+// FinalizeAuthorization2 moves a pending authorization to either the valid or invalid status. If
+// the authorization is being moved to invalid the validationError field must be set. If the
+// authorization is being moved to valid the validationRecord and expires fields must be set.
+// This method is intended to deprecate the FinalizeAuthorization method.
+func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) error {
+	query := `UPDATE authz2 SET status = ?, attempted = ?, validationRecord = ?, `
+	var validationRecords []core.ValidationRecord
+	for _, recordPB := range req.ValidationRecords {
+		record, err := bgrpc.PBToValidationRecord(recordPB)
+		if err != nil {
+			return err
+		}
+		validationRecords = append(validationRecords, record)
+	}
+	vrJSON, err := json.Marshal(validationRecords)
+	if err != nil {
+		return err
+	}
+	params := []interface{}{statusToUint[*req.Status], challTypeToUint[*req.Attempted], vrJSON}
+	if *req.Status == string(core.StatusValid) {
+		query += "expires = ?"
+		params = append(params, time.Unix(0, *req.Expires).UTC())
+	} else {
+		query += "validationError = ?"
+		validationError, err := bgrpc.PBToProblemDetails(req.ValidationError)
+		if err != nil {
+			return err
+		}
+		veJSON, err := json.Marshal(validationError)
+		params = append(params, veJSON)
+	}
+	query += " WHERE id = ?"
+	params = append(params, *req.Id)
+
+	res, err := ssa.dbMap.Exec(query, params...)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return errors.New("bad")
+	}
+	return nil
 }
 
 // RevokeCertificate stores revocation information about a certificate. It will only store this

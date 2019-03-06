@@ -976,7 +976,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 			notFound()
 			return
 		}
-		authzPB, err := wfe.SA.GetAuthz2(ctx, &sapb.AuthorizationID2{Id: &id})
+		authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &id})
 		if err != nil {
 			if berrors.Is(err, berrors.NotFound) {
 				notFound()
@@ -1328,7 +1328,7 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 			wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
 			return
 		}
-		authzPB, err := wfe.SA.GetAuthz2(ctx, &sapb.AuthorizationID2{Id: &authzID})
+		authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID})
 		if err != nil {
 			if berrors.Is(err, berrors.NotFound) {
 				wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)

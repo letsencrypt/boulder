@@ -26,7 +26,7 @@ service StorageAuthority {
         rpc CountFQDNSets(CountFQDNSetsRequest) returns (Count) {}
         rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
         rpc PreviousCertificateExists(PreviousCertificateExistsRequest) returns (Exists) {}
-        rpc GetAuthz2(AuthorizationID2) returns (core.Authorization) {}
+        rpc GetAuthorization2(AuthorizationID2) returns (core.Authorization) {}
         // Adders
         rpc NewRegistration(core.Registration) returns (core.Registration) {}
         rpc UpdateRegistration(core.Registration) returns (core.Empty) {}
@@ -48,7 +48,7 @@ service StorageAuthority {
         rpc GetAuthorizations(GetAuthorizationsRequest) returns (Authorizations) {}
         rpc AddPendingAuthorizations(AddPendingAuthorizationsRequest) returns (AuthorizationIDs) {}
         rpc RevokeCertificate(RevokeCertificateRequest) returns (core.Empty) {}
-        rpc NewAuthorization(core.Authorization) returns (AuthorizationID) {}
+        rpc NewAuthorization(core.Authorization) returns (AuthorizationID2) {}
         rpc NewAuthorizations(AddPendingAuthorizationsRequest) returns (AuthorizationIDs) {}
 }
 
@@ -236,4 +236,13 @@ message RevokeCertificateRequest {
         optional int64 reason = 2;
         optional int64 date = 3; // Unix timestamp (nanoseconds)
         optional bytes response = 4;
+}
+
+message FinalizeAuthorizationRequest {
+        optional int64 id = 1;
+        optional string status = 2;
+        optional int64 expires = 3; // Unix timestamp (nanoseconds)
+        optional string attempted = 4;
+        repeated core.ValidationRecord validationRecords = 5;
+        optional core.ProblemDetails validationError = 6;
 }

@@ -179,7 +179,7 @@ func (sa *mockInvalidAuthorizationsAuthority) RevokeCertificate(_ context.Contex
 	return nil, nil
 }
 
-func (sa *mockInvalidAuthorizationsAuthority) GetAuthz2(_ context.Context, _ *sapb.AuthorizationID2, opts ...grpc.CallOption) (*corepb.Authorization, error) {
+func (sa *mockInvalidAuthorizationsAuthority) GetAuthorization2(_ context.Context, _ *sapb.AuthorizationID2, opts ...grpc.CallOption) (*corepb.Authorization, error) {
 	return nil, nil
 }
 
