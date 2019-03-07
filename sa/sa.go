@@ -36,7 +36,6 @@ type SQLStorageAuthority struct {
 	dbMap *gorp.DbMap
 	clk   clock.Clock
 	log   blog.Logger
-	scope metrics.Scope
 
 	// For RPCs that generate multiple, parallelizable SQL queries, this is the
 	// max parallelism they will use (to avoid consuming too many MariaDB
@@ -103,7 +102,6 @@ func NewSQLStorageAuthority(
 		dbMap:             dbMap,
 		clk:               clk,
 		log:               logger,
-		scope:             scope,
 		parallelismPerRPC: parallelismPerRPC,
 	}
 
@@ -779,7 +777,6 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization(
 	} else if err == nil {
 		// We found an authz, but we still need to fetch its challenges. To
 		// simplify things, just call GetAuthorization, which takes care of that.
-		ssa.scope.Inc("reused_authz", 1)
 		authz, err := ssa.GetAuthorization(ctx, pa.ID)
 		return &authz, err
 	} else {
@@ -787,49 +784,6 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization(
 		return nil, err
 	}
 
-}
-
-// UpdatePendingAuthorization updates a Pending Authorization's Challenges.
-// Despite what the name "UpdatePendingAuthorization" (preserved for legacy
-// reasons) may indicate, the pending authorization table row is not changed,
-// only the associated challenges by way of `sa.updateChallenges`.
-func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, authz core.Authorization) error {
-	tx, err := ssa.dbMap.Begin()
-	if err != nil {
-		return err
-	}
-	txWithCtx := tx.WithContext(ctx)
-
-	if !statusIsPending(authz.Status) {
-		err = berrors.WrongAuthorizationStateError("authorization is not pending")
-		return Rollback(tx, err)
-	}
-
-	if existingFinal(txWithCtx, authz.ID) {
-		err = berrors.WrongAuthorizationStateError("cannot update a finalized authorization")
-		return Rollback(tx, err)
-	}
-
-	if !existingPending(txWithCtx, authz.ID) {
-		err = berrors.InternalServerError("authorization with ID '%s' not found", authz.ID)
-		return Rollback(tx, err)
-	}
-
-	_, err = selectPendingAuthz(txWithCtx, "WHERE id = ?", authz.ID)
-	if err == sql.ErrNoRows {
-		err = berrors.InternalServerError("authorization with ID '%s' not found", authz.ID)
-		return Rollback(tx, err)
-	}
-	if err != nil {
-		return Rollback(tx, err)
-	}
-
-	err = updateChallenges(txWithCtx, authz.ID, authz.Challenges)
-	if err != nil {
-		return Rollback(tx, err)
-	}
-
-	return tx.Commit()
 }
 
 // FinalizeAuthorization converts a Pending Authorization to a final one. If the

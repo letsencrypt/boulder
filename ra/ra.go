@@ -3,7 +3,6 @@ package ra
 import (
 	"crypto/x509"
 	"encoding/json"
-	"expvar"
 	"fmt"
 	"net"
 	"net/mail"
@@ -41,12 +40,6 @@ import (
 	"golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
 )
-
-// Note: the issuanceExpvar must be a global. If it is a member of the RA, or
-// initialized with everything else in NewRegistrationAuthority() then multiple
-// invocations of the constructor (e.g from unit tests) will panic with a "Reuse
-// of exported var name:" error from the expvar package.
-var issuanceExpvar = expvar.NewInt("lastIssuance")
 
 type caaChecker interface {
 	IsCAAValid(
@@ -994,7 +987,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 		logEvent.Error = err.Error()
 		result = "error"
 	} else {
-		issuanceExpvar.Set(ra.clk.Now().Unix())
 		result = "successful"
 	}
 	logEvent.ResponseTime = ra.clk.Now()

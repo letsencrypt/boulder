@@ -564,7 +564,9 @@ func main() {
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL, conf.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Could not connect to database")
-	go sa.ReportDbConnCount(dbMap, scope)
+
+	// Collect and periodically report DB metrics using the DBMap and prometheus scope.
+	sa.InitDBMetrics(dbMap, scope)
 
 	clk := cmd.Clock()
 	cac, sac, apc := setupClients(conf, scope, clk)

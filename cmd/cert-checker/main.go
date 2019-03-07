@@ -370,7 +370,9 @@ func main() {
 	saDbMap, err := sa.NewDbMap(saDbURL, config.CertChecker.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Could not connect to database")
 	scope := metrics.NewPromScope(prometheus.DefaultRegisterer)
-	go sa.ReportDbConnCount(saDbMap, scope)
+
+	// Collect and periodically report DB metrics using the DBMap and prometheus scope.
+	sa.InitDBMetrics(saDbMap, scope)
 
 	pa, err := policy.New(config.PA.Challenges)
 	cmd.FailOnError(err, "Failed to create PA")

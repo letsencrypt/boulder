@@ -368,20 +368,6 @@ func (sac StorageAuthorityClientWrapper) NewPendingAuthorization(ctx context.Con
 	return PBToAuthz(response)
 }
 
-func (sac StorageAuthorityClientWrapper) UpdatePendingAuthorization(ctx context.Context, authz core.Authorization) error {
-	authPB, err := AuthzToPB(authz)
-	if err != nil {
-		return err
-	}
-
-	_, err = sac.inner.UpdatePendingAuthorization(ctx, authPB)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (sac StorageAuthorityClientWrapper) FinalizeAuthorization(ctx context.Context, authz core.Authorization) error {
 	authPB, err := AuthzToPB(authz)
 	if err != nil {
@@ -943,24 +929,6 @@ func (sas StorageAuthorityServerWrapper) NewPendingAuthorization(ctx context.Con
 	}
 
 	return AuthzToPB(newAuthz)
-}
-
-func (sas StorageAuthorityServerWrapper) UpdatePendingAuthorization(ctx context.Context, request *corepb.Authorization) (*corepb.Empty, error) {
-	if request == nil || !authorizationValid(request) {
-		return nil, errIncompleteRequest
-	}
-
-	authz, err := PBToAuthz(request)
-	if err != nil {
-		return nil, err
-	}
-
-	err = sas.inner.UpdatePendingAuthorization(ctx, authz)
-	if err != nil {
-		return nil, err
-	}
-
-	return &corepb.Empty{}, nil
 }
 
 func (sas StorageAuthorityServerWrapper) FinalizeAuthorization(ctx context.Context, request *corepb.Authorization) (*corepb.Empty, error) {

@@ -111,10 +111,6 @@ func (sa *mockInvalidAuthorizationsAuthority) NewPendingAuthorization(ctx contex
 	return nil, nil
 }
 
-func (sa *mockInvalidAuthorizationsAuthority) UpdatePendingAuthorization(ctx context.Context, in *core.Authorization, opts ...grpc.CallOption) (*core.Empty, error) {
-	return nil, nil
-}
-
 func (sa *mockInvalidAuthorizationsAuthority) FinalizeAuthorization(ctx context.Context, in *core.Authorization, opts ...grpc.CallOption) (*core.Empty, error) {
 	return nil, nil
 }

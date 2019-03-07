@@ -349,11 +349,6 @@ func (sa *StorageAuthority) NewRegistration(_ context.Context, reg core.Registra
 	return
 }
 
-// UpdatePendingAuthorization is a mock
-func (sa *StorageAuthority) UpdatePendingAuthorization(_ context.Context, authz core.Authorization) (err error) {
-	return
-}
-
 // UpdateRegistration is a mock
 func (sa *StorageAuthority) UpdateRegistration(_ context.Context, reg core.Registration) (err error) {
 	return
