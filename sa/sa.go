@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -1446,6 +1445,29 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 	return tx.Commit()
 }
 
+// DeactivateAuthorization2 deactivates a currently valid or pending authorization.
+// This method is intended to deprecate DeactivateAuthorization.
+func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) error {
+	res, err := ssa.dbMap.Exec(
+		`UPDATE authz2 SET status = ? WHERE id = ? and status IN (?,?)`,
+		statusToUint[string(core.StatusDeactivated)],
+		*req.Id,
+		statusToUint[string(core.StatusValid)],
+		statusToUint[string(core.StatusPending)],
+	)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return berrors.NotFoundError("valid/pending authorization with id %d not found", *req.Id)
+	}
+	return nil
+}
+
 // NewOrder adds a new v2 style order to the database
 func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order) (*corepb.Order, error) {
 	order := &orderModel{
@@ -2301,7 +2323,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 		return err
 	}
 	if rows != 1 {
-		return errors.New("bad")
+		return berrors.NotFoundError("authorization with id %d not found", *req.Id)
 	}
 	return nil
 }

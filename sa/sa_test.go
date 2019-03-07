@@ -12,7 +12,6 @@ import (
 	"math/big"
 	"net"
 	"reflect"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1122,6 +1121,71 @@ func TestDeactivateAuthorization(t *testing.T) {
 	test.Assert(t, pendingObj == nil, "Deactivated authorization still in pending table")
 }
 
+func TestDeactivateAuthorization2(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	// deactivate a pending authorization
+	v2 := true
+	ident := "aaa"
+	pending := string(core.StatusPending)
+	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
+	challType := string(core.ChallengeTypeDNS01)
+	token := "YXNk"
+	id, err := sa.NewAuthorization(context.Background(), &corepb.Authorization{
+		V2:             &v2,
+		Identifier:     &ident,
+		RegistrationID: &reg.ID,
+		Status:         &pending,
+		Expires:        &expires,
+		Challenges: []*corepb.Challenge{
+			{
+				Status: &pending,
+				Type:   &challType,
+				Token:  &token,
+			},
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewAuthorization failed")
+	err = sa.DeactivateAuthorization2(context.Background(), id)
+	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
+
+	// deactivate a valid authorization
+	token = "Zmdo"
+	id, err = sa.NewAuthorization(context.Background(), &corepb.Authorization{
+		V2:             &v2,
+		Identifier:     &ident,
+		RegistrationID: &reg.ID,
+		Status:         &pending,
+		Expires:        &expires,
+		Challenges: []*corepb.Challenge{
+			{
+				Status: &pending,
+				Type:   &challType,
+				Token:  &token,
+			},
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewAuthorization failed")
+	valid := string(core.StatusValid)
+	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id:                id.Id,
+		Status:            &valid,
+		Attempted:         &challType,
+		ValidationRecords: []*corepb.ValidationRecord{},
+		Expires:           &expires,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	err = sa.DeactivateAuthorization2(context.Background(), id)
+	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
+
+	// attempt to deactivate an already deactivated authorization
+	err = sa.DeactivateAuthorization2(context.Background(), id)
+	test.AssertError(t, err, "sa.DeactivateAuthorization2 didn't fail when authorization is already deactivated")
+}
+
 func TestDeactivateAccount(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
@@ -1763,10 +1827,6 @@ func TestGetAuthorizations2(t *testing.T) {
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 	exp := fc.Now().AddDate(0, 0, 10).UTC()
-
-	defer func() {
-		fmt.Println(strings.Join(log.GetAll(), "\n"))
-	}()
 
 	identA := "aaa"
 	identB := "bbb"
