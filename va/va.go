@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -1010,7 +1011,8 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization, result chan *probs.ProblemDetails) {
 	s := va.clk.Now()
 	errors := make(chan error, len(va.remoteVAs))
-	for _, remoteVA := range va.remoteVAs {
+	for _, i := range rand.Perm(len(va.remoteVAs)) {
+		remoteVA := va.remoteVAs[i]
 		go func(rva RemoteVA) {
 			_, err := rva.PerformValidation(ctx, domain, challenge, authz)
 			if err != nil {
