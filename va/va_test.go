@@ -1909,16 +1909,8 @@ func TestPerformRemoteValidationFailure(t *testing.T) {
 			"return a problem")
 	}
 
-	// The problem returned should be a server internal problem with the correct
-	// user facing detail message.
-	if prob.Type != "serverInternal" {
-		t.Errorf("performRemoteValidation with a broken remote VA did not " +
-			"return a serverInternal problem")
-	}
-	if prob.Detail != "Remote PerformValidation RPCs failed" {
-		t.Errorf("performRemoteValidation with a broken remote VA did not " +
-			"return a serverInternal problem with the correct detail")
-	}
+	expected := probs.ServerInternal("Remote PerformValidation RPCs failed")
+	test.AssertDeepEquals(t, prob, expected)
 
 	// The mock logger should have an audit err log line that includes the true
 	// underlying error that caused the server internal problem.
