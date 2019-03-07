@@ -407,7 +407,7 @@ func TestHTTPTimeout(t *testing.T) {
 			}
 
 			started := time.Now()
-			timeout := 50 * time.Millisecond
+			timeout := 250 * time.Millisecond
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
 			_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
@@ -418,7 +418,7 @@ func TestHTTPTimeout(t *testing.T) {
 			took := time.Since(started)
 			// Check that the HTTP connection doesn't return before a timeout, and times
 			// out after the expected time
-			if took < timeout-10*time.Millisecond {
+			if took < timeout-200*time.Millisecond {
 				t.Fatalf("HTTP timed out before %s: %s with %s", timeout, took, prob)
 			}
 			if took > 2*timeout {
