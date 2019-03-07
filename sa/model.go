@@ -429,6 +429,7 @@ var statusToUint = map[string]uint8{
 	"valid":       1,
 	"invalid":     2,
 	"deactivated": 3,
+	"revoked":     4,
 }
 
 var uintToStatus = map[uint8]string{
@@ -436,6 +437,7 @@ var uintToStatus = map[uint8]string{
 	1: "valid",
 	2: "invalid",
 	3: "deactivated",
+	4: "revoked",
 }
 
 const authz2Fields = "id, identifierType, identifierValue, registrationID, status, expires, challenges, attempted, token, validationError, validationRecord"

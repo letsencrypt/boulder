@@ -828,6 +828,113 @@ func TestRevokeAuthorizationsByDomain(t *testing.T) {
 	test.AssertEquals(t, FA.Status, core.StatusRevoked)
 }
 
+func TestRevokeAuthorizationsByDomain2(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	// Create four authorizations, leave one pending, finalize one, deactivate
+	// one, and make one expired
+	fc.Add(time.Hour * 2)
+	v2 := true
+	ident := "aaa"
+	pending := string(core.StatusPending)
+	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
+	challType := string(core.ChallengeTypeDNS01)
+	token := "YXNk"
+	_, err := sa.NewAuthorization(context.Background(), &corepb.Authorization{
+		V2:             &v2,
+		Identifier:     &ident,
+		RegistrationID: &reg.ID,
+		Status:         &pending,
+		Expires:        &expires,
+		Challenges: []*corepb.Challenge{
+			{
+				Status: &pending,
+				Type:   &challType,
+				Token:  &token,
+			},
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewAuthorization failed")
+	token = "Zmdo"
+	idB, err := sa.NewAuthorization(context.Background(), &corepb.Authorization{
+		V2:             &v2,
+		Identifier:     &ident,
+		RegistrationID: &reg.ID,
+		Status:         &pending,
+		Expires:        &expires,
+		Challenges: []*corepb.Challenge{
+			{
+				Status: &pending,
+				Type:   &challType,
+				Token:  &token,
+			},
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewAuthorization failed")
+	valid := string(core.StatusValid)
+	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id:                idB.Id,
+		Status:            &valid,
+		Attempted:         &challType,
+		ValidationRecords: []*corepb.ValidationRecord{},
+		Expires:           &expires,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	token = "enhj"
+	idC, err := sa.NewAuthorization(context.Background(), &corepb.Authorization{
+		V2:             &v2,
+		Identifier:     &ident,
+		RegistrationID: &reg.ID,
+		Status:         &pending,
+		Expires:        &expires,
+		Challenges: []*corepb.Challenge{
+			{
+				Status: &pending,
+				Type:   &challType,
+				Token:  &token,
+			},
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewAuthorization failed")
+	err = sa.DeactivateAuthorization2(context.Background(), idC)
+	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
+	token = "cXdl"
+	expires = fc.Now().Add(-time.Hour).UTC().UnixNano()
+	idD, err := sa.NewAuthorization(context.Background(), &corepb.Authorization{
+		V2:             &v2,
+		Identifier:     &ident,
+		RegistrationID: &reg.ID,
+		Status:         &pending,
+		Expires:        &expires,
+		Challenges: []*corepb.Challenge{
+			{
+				Status: &pending,
+				Type:   &challType,
+				Token:  &token,
+			},
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewAuthorization failed")
+
+	// Only the non-expired pending and valid authorizations should've been revoked
+	resp, err := sa.RevokeAuthorizationsByDomain2(context.Background(), &sapb.RevokeAuthorizationsByDomainRequest{
+		Domain: &ident,
+	})
+	test.AssertNotError(t, err, "sa.RevokeAuthorizationsByDomain2")
+	test.AssertEquals(t, *resp.Finalized, int64(1))
+	test.AssertEquals(t, *resp.Pending, int64(1))
+
+	authzPB, err := sa.GetAuthorization2(context.Background(), idC)
+	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
+	test.AssertEquals(t, *authzPB.Status, string(core.StatusDeactivated))
+	authzPB, err = sa.GetAuthorization2(context.Background(), idD)
+	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
+	test.AssertEquals(t, *authzPB.Status, string(core.StatusPending))
+}
+
 func TestFQDNSets(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()

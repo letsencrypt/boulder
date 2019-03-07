@@ -915,6 +915,60 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context
 	return results[0], results[1], nil
 }
 
+// RevokeAuthorizationsByDomain2 invalidates all pending or valid authorizations for a
+// specific domain. This method is intended to deprecate RevokeAuthorizationsByDomain.
+func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*sapb.RevokeAuthorizationsByDomainResponse, error) {
+	revokedPending, revokedValid := int64(0), int64(0)
+	for {
+		var ids []struct {
+			ID     int64
+			Status uint8
+		}
+		_, err := ssa.dbMap.Select(
+			&ids,
+			`SELECT id, status FROM authz2 WHERE identifierValue = ? AND status IN (?,?) AND expires > ? LIMIT ?`,
+			*req.Domain,
+			statusToUint[string(core.StatusPending)],
+			statusToUint[string(core.StatusValid)],
+			ssa.clk.Now(),
+			getAuthorizationIDsMax,
+		)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				break
+			}
+			return nil, err
+		}
+		if len(ids) == 0 {
+			break
+		}
+
+		qmarks := []string{}
+		params := []interface{}{statusToUint[string(core.StatusRevoked)]}
+		for _, id := range ids {
+			qmarks = append(qmarks, "?")
+			params = append(params, id.ID)
+			switch uintToStatus[id.Status] {
+			case string(core.StatusValid):
+				revokedValid++
+			case string(core.StatusPending):
+				revokedPending++
+			}
+		}
+		_, err = ssa.dbMap.Exec(
+			fmt.Sprintf(`UPDATE authz2 SET status = ? WHERE id IN (%s)`, strings.Join(qmarks, ",")),
+			params...,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &sapb.RevokeAuthorizationsByDomainResponse{
+		Finalized: &revokedValid,
+		Pending:   &revokedPending,
+	}, nil
+}
+
 // AddCertificate stores an issued certificate and returns the digest as
 // a string, or an error if any occurred.
 func (ssa *SQLStorageAuthority) AddCertificate(
