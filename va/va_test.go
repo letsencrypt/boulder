@@ -33,7 +33,6 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/metrics/mock_metrics"
@@ -346,7 +345,9 @@ func TestHTTP(t *testing.T) {
 	if prob != nil {
 		t.Fatalf("Failed to follow 301 redirect")
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
+	redirectValid := `following redirect to host "" url "http://localhost/.well-known/acme-challenge/` + pathValid + `"`
+	matchedValidRedirect := log.GetAllMatching(redirectValid)
+	test.AssertEquals(t, len(matchedValidRedirect), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, pathFound)
@@ -354,8 +355,10 @@ func TestHTTP(t *testing.T) {
 	if prob != nil {
 		t.Fatalf("Failed to follow 302 redirect")
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathFound+`" to ".*/`+pathMoved+`"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
+	redirectMoved := `following redirect to host "" url "http://localhost/.well-known/acme-challenge/` + pathMoved + `"`
+	matchedMovedRedirect := log.GetAllMatching(redirectMoved)
+	test.AssertEquals(t, len(matchedValidRedirect), 1)
+	test.AssertEquals(t, len(matchedMovedRedirect), 1)
 
 	ipIdentifier := core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}
 	_, prob = va.validateHTTP01(ctx, ipIdentifier, chall)
@@ -368,7 +371,7 @@ func TestHTTP(t *testing.T) {
 	if prob == nil {
 		t.Fatalf("Domain name is invalid.")
 	}
-	test.AssertEquals(t, prob.Type, probs.UnknownHostProblem)
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 }
 
 func TestHTTPTimeout(t *testing.T) {
@@ -381,56 +384,32 @@ func TestHTTPTimeout(t *testing.T) {
 	va, _ := setup(hs, 0)
 	setChallengeToken(&chall, pathWaitLong)
 
-	testCases := []struct {
-		Name             string
-		SimplifiedVAHTTP bool
-	}{
-		{"Legacy VA HTTP", false},
-		{"Simplified VA HTTP", true},
+	expectMatch := regexp.MustCompile(
+		"Fetching http://localhost/.well-known/acme-challenge/wait-long: Timeout after connect")
+
+	started := time.Now()
+	timeout := 50 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	if prob == nil {
+		t.Fatalf("Connection should've timed out")
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.Name, func(t *testing.T) {
-			var expectMatch *regexp.Regexp
-			expectMatch = regexp.MustCompile(
-				"Fetching http://localhost:\\d+/.well-known/acme-challenge/wait-long: Timeout after connect")
+	took := time.Since(started)
+	// Check that the HTTP connection doesn't return before a timeout, and times
+	// out after the expected time
+	if took < timeout {
+		t.Fatalf("HTTP timed out before %s: %s with %s", timeout, took, prob)
+	}
+	if took > 2*timeout {
+		t.Fatalf("HTTP connection didn't timeout after %s", timeout)
+	}
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 
-			if tc.SimplifiedVAHTTP {
-				err := features.Set(map[string]bool{"SimplifiedVAHTTP": true})
-				test.AssertNotError(t, err, "Failed to set SimplifiedVAHTTP feature flag")
-				defer features.Reset()
-				// Simplified VA HTTP error messages don't include the port number when
-				// it is equal to the va http port since it is implied by the `http://`
-				// protocol prefix.
-				expectMatch = regexp.MustCompile(
-					"Fetching http://localhost/.well-known/acme-challenge/wait-long: Timeout after connect")
-			}
-
-			started := time.Now()
-			timeout := 50 * time.Millisecond
-			ctx, cancel := context.WithTimeout(context.Background(), timeout)
-			defer cancel()
-			_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
-			if prob == nil {
-				t.Fatalf("Connection should've timed out")
-			}
-
-			took := time.Since(started)
-			// Check that the HTTP connection doesn't return before a timeout, and times
-			// out after the expected time
-			if took < timeout {
-				t.Fatalf("HTTP timed out before %s: %s with %s", timeout, took, prob)
-			}
-			if took > 2*timeout {
-				t.Fatalf("HTTP connection didn't timeout after %s", timeout)
-			}
-			test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-
-			if !expectMatch.MatchString(prob.Detail) {
-				t.Errorf("Problem details incorrect. Got %q, expected to match %q",
-					prob.Detail, expectMatch)
-			}
-		})
+	if !expectMatch.MatchString(prob.Detail) {
+		t.Errorf("Problem details incorrect. Got %q, expected to match %q",
+			prob.Detail, expectMatch)
 	}
 }
 
@@ -504,7 +483,9 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	if prob != nil {
 		t.Fatalf("Unexpected failure in redirect (%s): %s", pathMoved, prob)
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
+	redirectValid := `following redirect to host "" url "http://localhost/.well-known/acme-challenge/` + pathValid + `"`
+	matchedValidRedirect := log.GetAllMatching(redirectValid)
+	test.AssertEquals(t, len(matchedValidRedirect), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 2)
 
 	log.Clear()
@@ -513,8 +494,9 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	if prob != nil {
 		t.Fatalf("Unexpected failure in redirect (%s): %s", pathFound, prob)
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathFound+`" to ".*/`+pathMoved+`"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
+	redirectMoved := `following redirect to host "" url "http://localhost/.well-known/acme-challenge/` + pathMoved + `"`
+	matchedMovedRedirect := log.GetAllMatching(redirectMoved)
+	test.AssertEquals(t, len(matchedMovedRedirect), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 3)
 
 	log.Clear()
@@ -522,7 +504,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	_, err := va.validateHTTP01(ctx, dnsi("localhost"), chall)
 	test.AssertError(t, err, chall.Token)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`No valid IP addresses found for invalid.invalid`)), 1)
+	test.AssertDeepEquals(t, err, probs.ConnectionFailure("Fetching http://invalid.invalid/path: unknownHost :: No valid IP addresses found for invalid.invalid"))
 
 	log.Clear()
 	setChallengeToken(&chall, pathReLookup)
@@ -530,7 +512,8 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	if prob != nil {
 		t.Fatalf("Unexpected error in redirect (%s): %s", pathReLookup, prob)
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathReLookup+`" to ".*other.valid:\d+/path"`)), 1)
+	redirectPattern := `following redirect to host "" url "http://other.valid:\d+/path"`
+	test.AssertEquals(t, len(log.GetAllMatching(redirectPattern)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid: \[127.0.0.1\]`)), 1)
 
@@ -549,9 +532,10 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	setChallengeToken(&chall, pathRedirectToFailingURL)
 	_, prob = va.validateHTTP01(ctx, dnsi("localhost"), chall)
 	test.AssertNotNil(t, prob, "Problem Details should not be nil")
-	test.AssertEquals(t, prob.Detail, fmt.Sprintf(
-		"Invalid response from http://localhost:%d/.well-known/acme-challenge/re-to-failing-url [127.0.0.1]: 500",
-		va.httpPort))
+	test.AssertDeepEquals(t, prob,
+		probs.Unauthorized(
+			fmt.Sprintf("Invalid response from http://other.valid:%d/500 [127.0.0.1]: 500",
+				va.httpPort)))
 }
 
 func TestHTTPRedirectLoop(t *testing.T) {
@@ -1500,81 +1484,6 @@ func TestAvailableAddresses(t *testing.T) {
 				fmt.Sprintf("Wrong v6 result index %d: expected %q got %q", i, v6addr.String(), v6result[i].String()))
 		}
 	}
-}
-
-// TestHTTP01DialerFallback tests the underlying dialer used by HTTP01
-// challenges. In particular it ensures that both the first IPv6 request and the
-// subsequent IPv4 request get a new dialer each.
-func TestHTTP01DialerFallback(t *testing.T) {
-	// Create a new challenge to use for the httpSrv
-	chall := core.HTTPChallenge01("")
-	setChallengeToken(&chall, core.NewToken())
-
-	// Create an IPv4 test server
-	hs := httpSrv(t, chall.Token)
-	defer hs.Close()
-
-	// Create a test VA
-	va, _ := setup(hs, 0)
-
-	// Create a test dialer for the dual homed host. There is only an IPv4 httpSrv
-	// so the IPv6 address returned in the AAAA record will always fail.
-	addrs, _ := va.getAddrs(context.Background(), "ipv4.and.ipv6.localhost")
-	d := va.newHTTP01Dialer("ipv4.and.ipv6.localhost", va.httpPort, addrs)
-
-	// Try to dial the dialer
-	_, dialProb := d.DialContext(context.Background(), "", "ipv4.and.ipv6.localhost")
-
-	// There shouldn't be a problem from this dial
-	test.AssertEquals(t, dialProb, nil)
-
-	// We should have constructed two inner dialers, one for each connection
-	test.AssertEquals(t, d.dialerCount, 2)
-
-	// We expect one validation record to be present
-	test.Assert(t, len(d.addrInfoChan) == 1, "there should be one address info struct in the dialer.addrInfoChan chan")
-	addrInfo := <-d.addrInfoChan
-	// We expect that the address used was the IPv4 localhost address
-	test.AssertEquals(t, addrInfo.used.String(), "127.0.0.1")
-	// We expect that one address was tried before the address used
-	test.AssertEquals(t, len(addrInfo.tried), 1)
-	// We expect that IPv6 address was tried before the address used
-	test.AssertEquals(t, addrInfo.tried[0].String(), "::1")
-}
-
-func TestFallbackDialer(t *testing.T) {
-	// Create a new challenge to use for the httpSrv
-	chall := core.HTTPChallenge01("")
-	setChallengeToken(&chall, core.NewToken())
-
-	// Create an IPv4 test server
-	hs := httpSrv(t, chall.Token)
-	defer hs.Close()
-
-	// Create a test VA
-	va, _ := setup(hs, 0)
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	scope := mock_metrics.NewMockScope(ctrl)
-	va.stats = scope
-
-	// We expect the IPV4 Fallback stat to be incremented
-	scope.EXPECT().Inc("IPv4Fallback", int64(1))
-
-	// The validation is expected to succeed even though the V6 server
-	// doesn't exist because we fallback to the IPv4 address.
-	ident := dnsi("ipv4.and.ipv6.localhost")
-	records, prob := va.validateChallenge(ctx, ident, chall)
-	test.Assert(t, prob == nil, "validation failed with IPv6 fallback to IPv4")
-	// We expect one validation record to be present
-	test.AssertEquals(t, len(records), 1)
-	// We expect that the address used was the IPv4 localhost address
-	test.AssertEquals(t, records[0].AddressUsed.String(), "127.0.0.1")
-	// We expect that one address was tried before the address used
-	test.AssertEquals(t, len(records[0].AddressesTried), 1)
-	// We expect that IPv6 address was tried before the address used
-	test.AssertEquals(t, records[0].AddressesTried[0].String(), "::1")
 }
 
 func TestFallbackTLS(t *testing.T) {
