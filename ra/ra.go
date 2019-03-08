@@ -119,9 +119,9 @@ func NewRegistrationAuthorityImpl(
 	stats.MustRegister(ctpolicyResults)
 
 	ra := &RegistrationAuthorityImpl{
-		stats: stats,
-		clk:   clk,
-		log:   logger,
+		stats:                        stats,
+		clk:                          clk,
+		log:                          logger,
 		authorizationLifetime:        authorizationLifetime,
 		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
 		rlPolicies:                   ratelimit.New(),

@@ -346,10 +346,10 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 	return dialer, record, nil
 }
 
-// fetchHTTPSimple invokes processHTTPValidation and if an error result is
+// fetchHTTP invokes processHTTPValidation and if an error result is
 // returned, converts it to a problem. Otherwise the results from
 // processHTTPValidation are returned.
-func (va *ValidationAuthorityImpl) fetchHTTPSimple(
+func (va *ValidationAuthorityImpl) fetchHTTP(
 	ctx context.Context,
 	host string,
 	path string) ([]byte, []core.ValidationRecord, *probs.ProblemDetails) {

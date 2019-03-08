@@ -68,7 +68,7 @@ func TestPreresolvedDialerTimeout(t *testing.T) {
 	// If we get that, just retry until we get something other than "Network unreachable".
 	var prob *probs.ProblemDetails
 	for i := 0; i < 20; i++ {
-		_, _, prob = va.fetchHTTPSimple(ctx, "unroutable.invalid", "/.well-known/acme-challenge/whatever")
+		_, _, prob = va.fetchHTTP(ctx, "unroutable.invalid", "/.well-known/acme-challenge/whatever")
 		if prob != nil && strings.Contains(prob.Detail, "Network unreachable") {
 			continue
 		} else {
@@ -586,7 +586,7 @@ func TestFallbackErr(t *testing.T) {
 	}
 }
 
-func TestFetchHTTPSimple(t *testing.T) {
+func TestFetchHTTP(t *testing.T) {
 	// Create a test server
 	testSrv := httpTestSrv(t)
 	defer testSrv.Close()
@@ -814,7 +814,7 @@ func TestFetchHTTPSimple(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
 			defer cancel()
-			body, records, prob := va.fetchHTTPSimple(ctx, tc.Host, tc.Path)
+			body, records, prob := va.fetchHTTP(ctx, tc.Host, tc.Path)
 			if prob != nil && tc.ExpectedProblem == nil {
 				t.Errorf("expected nil prob, got %#v\n", prob)
 			} else if prob == nil && tc.ExpectedProblem != nil {

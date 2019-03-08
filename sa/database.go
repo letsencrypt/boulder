@@ -3,14 +3,12 @@ package sa
 import (
 	"database/sql"
 	"fmt"
-	"time"
 
 	"github.com/go-sql-driver/mysql"
 	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 )
 
 // NewDbMap creates the root gorp mapping object. Create one of these for each
@@ -109,14 +107,6 @@ type SQLLogger struct {
 // Printf adapts the AuditLogger to GORP's interface
 func (log *SQLLogger) Printf(format string, v ...interface{}) {
 	log.Debugf(format, v...)
-}
-
-func ReportDbConnCount(dbMap *gorp.DbMap, statter metrics.Scope) {
-	db := dbMap.Db
-	for {
-		statter.Gauge("OpenConnections", int64(db.Stats().OpenConnections))
-		time.Sleep(1 * time.Second)
-	}
 }
 
 // initTables constructs the table map for the ORM.

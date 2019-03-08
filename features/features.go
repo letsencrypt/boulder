@@ -14,6 +14,7 @@ const (
 	//   Deprecated features, these can be removed once stripped from production configs
 	PerformValidationRPC
 	ACME13KeyRollover
+	SimplifiedVAHTTP
 
 	//   Currently in-use features
 	AllowRenewalFirstRL
@@ -25,9 +26,6 @@ const (
 	CAAAccountURI
 	// ProbeCTLogs enables HTTP probes to CT logs from the publisher
 	ProbeCTLogs
-	// SimplifiedVAHTTP enables the simplified VA http-01 rewrite that doesn't use
-	// a custom dialer.
-	SimplifiedVAHTTP
 	// HEAD requests to the WFE2 new-nonce endpoint should return HTTP StatusOK
 	// instead of HTTP StatusNoContent.
 	HeadNonceStatusOK
