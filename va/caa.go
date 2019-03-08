@@ -176,7 +176,7 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 // checkCAARecords fetches the CAA records for the given identifier and then
 // validates them. If the identifier argument's value has a wildcard prefix then
 // the prefix is stripped and validation will be performed against the base
-// domain, honouring any issueWild CAA records encountered as apppropriate.
+// domain, honouring any issueWild CAA records encountered as appropriate.
 // checkCAARecords returns four values: the first is a bool indicating whether
 // CAA records were present after filtering for known/supported CAA tags. The
 // second is a bool indicating whether issuance for the identifier is valid. The
