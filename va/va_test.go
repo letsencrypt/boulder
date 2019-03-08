@@ -1595,7 +1595,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 	// defer ms.Close()
 
 	// Create a local test VA and two 'remote' VAs
-	localVA, _ := setup(ms.Server, 0)
+	localVA, mockLog := setup(ms.Server, 0)
 	localVA.userAgent = "local"
 	remoteVA1, _ := setup(ms.Server, 0)
 	remoteVA1.userAgent = "remote 1"
@@ -1618,7 +1618,6 @@ func TestPerformRemoteValidation(t *testing.T) {
 	ms.mu.Lock()
 	delete(ms.allowedUAs, "remote 1")
 	ms.mu.Unlock()
-	mockLog := blog.NewMock()
 	localVA.performRemoteValidation(context.Background(), "localhost", chall, core.Authorization{}, probCh)
 	prob = <-probCh
 	if prob == nil {
@@ -1676,7 +1675,6 @@ func TestPerformRemoteValidation(t *testing.T) {
 	}
 
 	// Local and remote 2 working, should fail
-	localVA.log = mockLog
 	ms.mu.Lock()
 	ms.allowedUAs["local"] = struct{}{}
 	delete(ms.allowedUAs, "remote 1")
