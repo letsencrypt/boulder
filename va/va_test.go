@@ -74,7 +74,11 @@ func dnsi(hostname string) core.AcmeIdentifier {
 	return core.AcmeIdentifier{Type: core.IdentifierDNS, Value: hostname}
 }
 
-var ctx = context.Background()
+var ctx context.Context
+
+func init() {
+	ctx, _ = context.WithTimeout(context.Background(), 10*time.Minute)
+}
 
 var accountURIPrefixes = []string{"http://boulder:4000/acme/reg/"}
 
@@ -388,7 +392,7 @@ func TestHTTPTimeout(t *testing.T) {
 		"Fetching http://localhost/.well-known/acme-challenge/wait-long: Timeout after connect")
 
 	started := time.Now()
-	timeout := 50 * time.Millisecond
+	timeout := 250 * time.Millisecond
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
@@ -399,7 +403,7 @@ func TestHTTPTimeout(t *testing.T) {
 	took := time.Since(started)
 	// Check that the HTTP connection doesn't return before a timeout, and times
 	// out after the expected time
-	if took < timeout {
+	if took < timeout-200*time.Millisecond {
 		t.Fatalf("HTTP timed out before %s: %s with %s", timeout, took, prob)
 	}
 	if took > 2*timeout {
@@ -431,7 +435,7 @@ func TestHTTPDialTimeout(t *testing.T) {
 	va, _ := setup(nil, 0)
 
 	started := time.Now()
-	timeout := 50 * time.Millisecond
+	timeout := 250 * time.Millisecond
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -455,7 +459,7 @@ func TestHTTPDialTimeout(t *testing.T) {
 	took := time.Since(started)
 	// Check that the HTTP connection doesn't return too fast, and times
 	// out after the expected time
-	if took < timeout/2 {
+	if took < (timeout-200*time.Millisecond)/2 {
 		t.Fatalf("HTTP returned before %s (%s) with %#v", timeout, took, prob)
 	}
 	if took > 2*timeout {
@@ -1595,7 +1599,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 	// defer ms.Close()
 
 	// Create a local test VA and two 'remote' VAs
-	localVA, _ := setup(ms.Server, 0)
+	localVA, mockLog := setup(ms.Server, 0)
 	localVA.userAgent = "local"
 	remoteVA1, _ := setup(ms.Server, 0)
 	remoteVA1.userAgent = "remote 1"
@@ -1608,7 +1612,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 
 	// Both remotes working, should succeed
 	probCh := make(chan *probs.ProblemDetails, 1)
-	localVA.performRemoteValidation(context.Background(), "localhost", chall, core.Authorization{}, probCh)
+	localVA.performRemoteValidation(ctx, "localhost", chall, core.Authorization{}, probCh)
 	prob := <-probCh
 	if prob != nil {
 		t.Errorf("performRemoteValidation failed: %s", prob)
@@ -1618,8 +1622,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 	ms.mu.Lock()
 	delete(ms.allowedUAs, "remote 1")
 	ms.mu.Unlock()
-	mockLog := blog.NewMock()
-	localVA.performRemoteValidation(context.Background(), "localhost", chall, core.Authorization{}, probCh)
+	localVA.performRemoteValidation(ctx, "localhost", chall, core.Authorization{}, probCh)
 	prob = <-probCh
 	if prob == nil {
 		t.Error("performRemoteValidation didn't fail when one 'remote' validation failed")
@@ -1637,7 +1640,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 	}
 
 	// One remote cancelled, should return no err
-	localVA.performRemoteValidation(context.Background(), "localhost", chall, core.Authorization{}, probCh)
+	localVA.performRemoteValidation(ctx, "localhost", chall, core.Authorization{}, probCh)
 	prob = <-probCh
 	if prob != nil {
 		t.Errorf("performRemoteValidation returned unexpected err from cancelled context: %s", prob)
@@ -1649,7 +1652,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 	}
 
 	// Both remotes cancelled, should return no err
-	localVA.performRemoteValidation(context.Background(), "localhost", chall, core.Authorization{}, probCh)
+	localVA.performRemoteValidation(ctx, "localhost", chall, core.Authorization{}, probCh)
 	prob = <-probCh
 	if prob != nil {
 		t.Errorf("performRemoteValidation returned unexpected err from cancelled context: %s", prob)
@@ -1661,7 +1664,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 	}
 
 	// Both local and remotes working, should succeed
-	_, err := localVA.PerformValidation(context.Background(), "localhost", chall, core.Authorization{})
+	_, err := localVA.PerformValidation(ctx, "localhost", chall, core.Authorization{})
 	if err != nil {
 		t.Errorf("PerformValidation failed: %s", err)
 	}
@@ -1670,18 +1673,17 @@ func TestPerformRemoteValidation(t *testing.T) {
 	ms.mu.Lock()
 	delete(ms.allowedUAs, "local")
 	ms.mu.Unlock()
-	_, err = localVA.PerformValidation(context.Background(), "localhost", chall, core.Authorization{})
+	_, err = localVA.PerformValidation(ctx, "localhost", chall, core.Authorization{})
 	if err == nil {
 		t.Error("PerformValidation didn't fail when local validation failed")
 	}
 
 	// Local and remote 2 working, should fail
-	localVA.log = mockLog
 	ms.mu.Lock()
 	ms.allowedUAs["local"] = struct{}{}
 	delete(ms.allowedUAs, "remote 1")
 	ms.mu.Unlock()
-	_, err = localVA.PerformValidation(context.Background(), "localhost", chall, core.Authorization{})
+	_, err = localVA.PerformValidation(ctx, "localhost", chall, core.Authorization{})
 	if err == nil {
 		t.Error("PerformValidation didn't fail when one 'remote' validation failed")
 	}
@@ -1701,7 +1703,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 		{remoteVA1, "remote 1"},
 		{remoteVA2, "remote 2"},
 	}
-	_, err = localVA.PerformValidation(context.Background(), "localhost", chall, core.Authorization{})
+	_, err = localVA.PerformValidation(ctx, "localhost", chall, core.Authorization{})
 	if err != nil {
 		t.Errorf("PerformValidation failed when one 'remote' validation failed but maxRemoteFailures is 1: %s", err)
 	}
@@ -1710,7 +1712,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 	ms.mu.Lock()
 	delete(ms.allowedUAs, "remote 2")
 	ms.mu.Unlock()
-	_, err = localVA.PerformValidation(context.Background(), "localhost", chall, core.Authorization{})
+	_, err = localVA.PerformValidation(ctx, "localhost", chall, core.Authorization{})
 	if err == nil {
 		t.Error("PerformValidation didn't fail when both 'remote' validations failed")
 	}
@@ -1721,7 +1723,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 	ms.mu.Unlock()
 	remoteVA2.userAgent = "slow remote"
 	s := time.Now()
-	_, err = localVA.PerformValidation(context.Background(), "localhost", chall, core.Authorization{})
+	_, err = localVA.PerformValidation(ctx, "localhost", chall, core.Authorization{})
 	if err != nil {
 		t.Errorf("PerformValidation failed when one 'remote' validation failed but maxRemoteFailures is 1: %s", err)
 	}
@@ -1741,7 +1743,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 		{remoteVA2, "remote 2"},
 	}
 	s = time.Now()
-	_, err = localVA.PerformValidation(context.Background(), "localhost", chall, core.Authorization{})
+	_, err = localVA.PerformValidation(ctx, "localhost", chall, core.Authorization{})
 	if err == nil {
 		t.Error("PerformValidation didn't fail when two validations failed")
 	}
@@ -1807,7 +1809,7 @@ func TestPerformRemoteValidationFailure(t *testing.T) {
 	// the broken remote VA.
 	probCh := make(chan *probs.ProblemDetails, 1)
 	localVA.performRemoteValidation(
-		context.Background(),
+		ctx,
 		"localhost",
 		chall,
 		core.Authorization{},
