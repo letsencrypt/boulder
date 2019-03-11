@@ -835,7 +835,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	order := req.Order
 
 	if *order.Status != string(core.StatusReady) {
-		return nil, berrors.MalformedError(
+		return nil, berrors.OrderNotReadyError(
 			"Order's status (%q) is not acceptable for finalization",
 			*order.Status)
 	}
