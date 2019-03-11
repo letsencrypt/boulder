@@ -179,7 +179,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 			//   The "index" link relation is present on all resources other than the
 			//   directory and indicates the URL of the directory.
 			if pattern != directoryPath {
-				directoryURL := web.RelativeEndpoint(request, "index")
+				directoryURL := web.RelativeEndpoint(request, directoryPath)
 				response.Header().Add("Link", link(directoryURL, "index"))
 			}
 

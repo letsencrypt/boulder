@@ -473,7 +473,7 @@ func TestHandleFunc(t *testing.T) {
 		linkHeader := rw.Header().Get("Link")
 		if c.pattern != directoryPath {
 			// If the pattern wasn't the directory there should be a Link header for the index
-			test.AssertEquals(t, linkHeader, `<http://localhost/index>;rel="index"`)
+			test.AssertEquals(t, linkHeader, `<http://localhost/directory>;rel="index"`)
 		} else {
 			// The directory resource shouldn't get a link header
 			test.AssertEquals(t, linkHeader, "")
