@@ -1161,7 +1161,7 @@ func TestValidJWSForKey(t *testing.T) {
 			JWS:  wrongAlgJWS,
 			JWK:  goodJWK,
 			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
+				Type:       probs.BadSignatureAlgorithmProblem,
 				Detail:     "signature type 'HS256' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
 				HTTPStatus: http.StatusBadRequest,
 			},
