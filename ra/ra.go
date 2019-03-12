@@ -834,14 +834,8 @@ func (ra *RegistrationAuthorityImpl) failOrder(
 func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
 	order := req.Order
 
-	// Prior to ACME draft-10 the "ready" status did not exist and orders in
-	// a pending status with valid authzs were finalizable. We accept both states
-	// here for deployability ease. In the future we will only allow ready orders
-	// to be finalized.
-	// TODO(@cpu): Forbid finalizing "Pending" orders
-	if *order.Status != string(core.StatusPending) &&
-		*order.Status != string(core.StatusReady) {
-		return nil, berrors.MalformedError(
+	if *order.Status != string(core.StatusReady) {
+		return nil, berrors.OrderNotReadyError(
 			"Order's status (%q) is not acceptable for finalization",
 			*order.Status)
 	}

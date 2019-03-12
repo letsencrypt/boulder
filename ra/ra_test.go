@@ -2836,6 +2836,7 @@ func TestFinalizeOrder(t *testing.T) {
 	ra.orderLifetime = time.Hour
 
 	validStatus := string(core.StatusValid)
+	pendingStatus := string(core.StatusPending)
 	readyStatus := string(core.StatusReady)
 	processingStatus := false
 
@@ -2896,20 +2897,9 @@ func TestFinalizeOrder(t *testing.T) {
 	err = sa.FinalizeAuthorization(ctx, finalAuthzB)
 	test.AssertNotError(t, err, "Could not finalize 2nd test pending authorization")
 
-	// Create a new order referencing both of the above finalized authzs
-	pendingStatus := "pending"
-	expUnix := exp.UnixNano()
-	finalOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
-		RegistrationID: &Registration.ID,
-		Expires:        &expUnix,
-		Names:          []string{"not-example.com", "www.not-example.com"},
-		Authorizations: []string{finalAuthz.ID, finalAuthzB.ID},
-		Status:         &validStatus,
-	})
-	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
-
 	// Create an order with valid authzs, it should end up status ready in the
 	// resulting returned order
+	expUnix := exp.UnixNano()
 	modernFinalOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
 		RegistrationID:  &Registration.ID,
 		Expires:         &expUnix,
@@ -2965,7 +2955,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "No names in order",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status: &pendingStatus,
+					Status: &readyStatus,
 					Names:  []string{},
 				},
 			},
@@ -2979,13 +2969,25 @@ func TestFinalizeOrder(t *testing.T) {
 					Names:  []string{"example.com"},
 				},
 			},
-			ExpectedErrMsg: "Order's status (\"valid\") is not acceptable for finalization",
+			ExpectedErrMsg: `Order's status ("valid") is not acceptable for finalization`,
+		},
+		{
+			Name: "Wrong order state (pending)",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: &corepb.Order{
+					Status: &pendingStatus,
+					Names:  []string{"example.com"},
+				},
+				Csr: validCSR.Raw,
+			},
+			ExpectIssuance: false,
+			ExpectedErrMsg: `Order's status ("pending") is not acceptable for finalization`,
 		},
 		{
 			Name: "Invalid CSR",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status: &pendingStatus,
+					Status: &readyStatus,
 					Names:  []string{"example.com"},
 				},
 				Csr: []byte{0xC0, 0xFF, 0xEE},
@@ -2996,7 +2998,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "CSR and Order with diff number of names",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:         &pendingStatus,
+					Status:         &readyStatus,
 					Names:          []string{"example.com", "example.org"},
 					RegistrationID: &fakeRegID,
 				},
@@ -3008,7 +3010,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "CSR missing an order name",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:         &pendingStatus,
+					Status:         &readyStatus,
 					Names:          []string{"foobar.com"},
 					RegistrationID: &fakeRegID,
 				},
@@ -3020,7 +3022,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "CSR with policy forbidden name",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:            &pendingStatus,
+					Status:            &readyStatus,
 					Names:             []string{"example.org"},
 					RegistrationID:    &Registration.ID,
 					Id:                emptyOrder.Id,
@@ -3036,7 +3038,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order with missing registration",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:            &pendingStatus,
+					Status:            &readyStatus,
 					Names:             []string{"a.com", "a.org"},
 					Id:                fakeRegOrder.Id,
 					RegistrationID:    &fakeRegID,
@@ -3053,7 +3055,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order with missing authorizations",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:            &pendingStatus,
+					Status:            &readyStatus,
 					Names:             []string{"a.com", "a.org", "b.com"},
 					Id:                missingAuthzOrder.Id,
 					RegistrationID:    &Registration.ID,
@@ -3065,14 +3067,6 @@ func TestFinalizeOrder(t *testing.T) {
 				Csr: threeDomainCSR,
 			},
 			ExpectedErrMsg: "authorizations for these names not found or expired: a.com, a.org, b.com",
-		},
-		{
-			Name: "Order with correct authorizations, pending status",
-			OrderReq: &rapb.FinalizeOrderRequest{
-				Order: finalOrder,
-				Csr:   validCSR.Raw,
-			},
-			ExpectIssuance: true,
 		},
 		{
 			Name: "Order with correct authorizations, ready status",
@@ -3264,7 +3258,8 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	test.AssertNotError(t, err, "Could not finalize test pending authorization")
 
 	// Finalizing the order should *not* work since the existing validated authz
-	// is not a special DNS-01-Wildcard challenge authz
+	// is not a special DNS-01-Wildcard challenge authz, so the order will be
+	// "pending" not "ready".
 	finalizeReq := &rapb.FinalizeOrderRequest{
 		Order: order,
 		Csr:   wildcardCSR,
@@ -3272,8 +3267,8 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	_, err = ra.FinalizeOrder(context.Background(), finalizeReq)
 	test.AssertError(t, err, "FinalizeOrder did not fail for unauthorized "+
 		"wildcard order")
-	test.AssertEquals(t, err.Error(), "authorizations for these names not "+
-		"found or expired: *.zombo.com")
+	test.AssertEquals(t, err.Error(),
+		`Order's status ("pending") is not acceptable for finalization`)
 
 	// Creating another order for the wildcard name
 	validOrder, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
@@ -3289,6 +3284,12 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	authz.Challenges[0].Status = "valid"
 	err = sa.FinalizeAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Could not finalize order's pending authorization")
+
+	// Refresh the order so the SA sets its status
+	validOrder, err = sa.GetOrder(ctx, &sapb.OrderRequest{
+		Id: validOrder.Id,
+	})
+	test.AssertNotError(t, err, "Could not refresh valid order from SA")
 
 	// Now it should be possible to finalize the order
 	finalizeReq = &rapb.FinalizeOrderRequest{
