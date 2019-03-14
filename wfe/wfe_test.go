@@ -269,7 +269,7 @@ func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, _ *rapb.
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier, registrationID int64, revalidation bool) (challenges []core.Challenge, combinations [][]int, err error) {
+func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int, err error) {
 	return
 }
 
@@ -281,7 +281,7 @@ func (pa *mockPA) WillingToIssueWildcard(id core.AcmeIdentifier) error {
 	return nil
 }
 
-func (pa *mockPA) ChallengeTypeEnabled(t string, registrationID int64) bool {
+func (pa *mockPA) ChallengeTypeEnabled(t string) bool {
 	return true
 }
 

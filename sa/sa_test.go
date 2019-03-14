@@ -35,7 +35,7 @@ import (
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
-var log = blog.UseMock()
+var log = blog.Get()
 var ctx = context.Background()
 
 // initSA constructs a SQLStorageAuthority and a clean up function
@@ -53,6 +53,8 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
+
+	SetSQLDebug(dbMap, log)
 
 	cleanUp := test.ResetSATestDatabase(t)
 	return sa, fc, cleanUp
@@ -2387,6 +2389,9 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Failed to enable required features flag")
 	defer features.Reset()
+	if !features.Enabled(features.AllowRenewalFirstRL) {
+		panic("WTAF")
+	}
 
 	// Create a test registration
 	reg := satest.CreateWorkingRegistration(t, sa)

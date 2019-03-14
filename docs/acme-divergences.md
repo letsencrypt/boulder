@@ -108,10 +108,6 @@ Boulder uses an HTTP status code 202 (Accepted) response for correct challenge r
 
 Boulder does not implement the ability to retry challenges or the `Retry-After` header.
 
-## [Section 8.4](https://tools.ietf.org/html/draft-ietf-acme-acme-07#section-8.4)
-
-Boulder implements `tls-sni-01` from [draft-ietf-acme-01 Section 7.3](https://tools.ietf.org/html/draft-ietf-acme-acme-01#section-7.3) instead of the `tls-sni-02` validation method.
-
 ## [Section 8.6](https://tools.ietf.org/html/draft-ietf-acme-acme-07#section-8.6)
 
 Boulder does not implement the `oob-01` validation method.
