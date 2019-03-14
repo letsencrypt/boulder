@@ -489,7 +489,6 @@ func (ssa *SQLStorageAuthority) countCertificatesByNameImpl(
 	if features.Enabled(features.AllowRenewalFirstRL) {
 		return ssa.countCertificates(db, domain, earliest, latest, countCertificatesSelectNoRenewals)
 	} else {
-		panic("WTF")
 		return ssa.countCertificates(db, domain, earliest, latest, countCertificatesSelect)
 	}
 }

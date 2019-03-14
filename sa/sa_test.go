@@ -35,7 +35,7 @@ import (
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
-var log = blog.Get()
+var log = blog.UseMock()
 var ctx = context.Background()
 
 // initSA constructs a SQLStorageAuthority and a clean up function
@@ -53,8 +53,6 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
-
-	SetSQLDebug(dbMap, log)
 
 	cleanUp := test.ResetSATestDatabase(t)
 	return sa, fc, cleanUp
