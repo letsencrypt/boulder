@@ -2201,7 +2201,7 @@ func (ssa *SQLStorageAuthority) NewAuthorizations(ctx context.Context, req *sapb
 		if err != nil {
 			return nil, err
 		}
-		ids.Ids = append(ids.Ids, fmt.Sprintf("%d", id))
+		ids.Ids = append(ids.Ids, fmt.Sprintf("%d", *id.Id))
 	}
 	return ids, nil
 }
@@ -2220,12 +2220,16 @@ func (ssa *SQLStorageAuthority) GetAuthorization2(ctx context.Context, id *sapb.
 	return modelToAuthzPB(obj.(*authz2Model))
 }
 
-func authzPBMapToPB(m map[string]*corepb.Authorization) (*sapb.Authorizations, error) {
+func authz2ModelMapToPB(m map[string]authz2Model) (*sapb.Authorizations, error) {
 	resp := &sapb.Authorizations{}
 	for k, v := range m {
 		// Make a copy of k because it will be reassigned with each loop.
 		kCopy := k
-		resp.Authz = append(resp.Authz, &sapb.Authorizations_MapElement{Domain: &kCopy, Authz: v})
+		authzPB, err := modelToAuthzPB(&v)
+		if err != nil {
+			return nil, err
+		}
+		resp.Authz = append(resp.Authz, &sapb.Authorizations_MapElement{Domain: &kCopy, Authz: authzPB})
 	}
 	return resp, nil
 }
@@ -2242,7 +2246,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 	queryPrefix := fmt.Sprintf("SELECT %s FROM authz2", authz2Fields)
 	if *req.RequireV2Authzs {
 		queryPrefix += ` JOIN orderToAuthz
-			ON id = authzID`
+			ON id = CONVERT(authzID, INTEGER)`
 	}
 	query := fmt.Sprintf(
 		`%s WHERE
@@ -2273,19 +2277,15 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 		return nil, err
 	}
 
-	authzPBMap := make(map[string]*corepb.Authorization, len(req.Domains))
+	authzModelMap := make(map[string]authz2Model)
 	for _, am := range authzModels {
-		if existing, present := authzPBMap[am.IdentifierValue]; !present ||
-			present && *existing.Status == string(core.StatusPending) && uintToStatus[am.Status] == string(core.StatusValid) {
-			var err error
-			authzPBMap[am.IdentifierValue], err = modelToAuthzPB(&am)
-			if err != nil {
-				return nil, err
-			}
+		if existing, present := authzModelMap[am.IdentifierValue]; !present ||
+			uintToStatus[existing.Status] == string(core.StatusPending) && uintToStatus[am.Status] == string(core.StatusValid) {
+			authzModelMap[am.IdentifierValue] = am
 		}
 	}
 
-	return authzPBMapToPB(authzPBMap)
+	return authz2ModelMapToPB(authzModelMap)
 }
 
 // FinalizeAuthorization2 moves a pending authorization to either the valid or invalid status. If
@@ -2377,4 +2377,154 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 	}
 
 	return tx.Commit()
+}
+
+// GetPendingAuthorization2 returns the most recent Pending authorization with
+// the given identifier, if available. This method is intended to deprecate
+// GetPendingAuthorization.
+func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
+	var am authz2Model
+	err := ssa.dbMap.WithContext(ctx).SelectOne(
+		&am,
+		fmt.Sprintf(`SELECT %s FROM authz2 WHERE
+			registrationID = ? AND
+			identifierValue = ? AND
+			status = ? AND
+			expires > ?
+			ORDER BY expires ASC
+			LIMIT 1 `, authz2Fields),
+		*req.RegistrationID,
+		*req.IdentifierValue,
+		statusToUint[string(core.StatusPending)],
+		time.Unix(0, *req.ValidUntil),
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, berrors.NotFoundError("pending authz not found")
+		}
+		return nil, err
+	}
+	return modelToAuthzPB(&am)
+}
+
+// CountPendingAuthorizations2 returns the number of pending, unexpired authorizations
+// for the given registration. This method is intended to deprecate CountPendingAuthorizations.
+func (ssa *SQLStorageAuthority) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error) {
+	var count int64
+	err := ssa.dbMap.WithContext(ctx).SelectOne(&count,
+		`SELECT COUNT(1) FROM authz2 WHERE
+		registrationID = ? AND
+		expires > ? AND
+		status = ?`,
+		*req.Id,
+		ssa.clk.Now(),
+		statusToUint[string(core.StatusPending)],
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &sapb.Count{Count: &count}, nil
+}
+
+// GetValidOrderAuthorizations2 is used to find the valid, unexpired authorizations
+// associated with a specific order and account ID. This method is intended to
+// deprecate GetValidOrderAuthorizations.
+func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
+	var ams []authz2Model
+	_, err := ssa.dbMap.WithContext(ctx).Select(
+		&ams,
+		fmt.Sprintf(`SELECT %s FROM authz2
+			LEFT JOIN orderToAuthz ON authz2.ID = CONVERT(orderToAuthz.authzID, INTEGER)
+			WHERE authz2.registrationID = ? AND
+			authz2.expires > ? AND
+			authz2.status = ? AND
+			orderToAuthz.orderID = ?`,
+			authz2Fields,
+		),
+		*req.AcctID,
+		ssa.clk.Now(),
+		statusToUint[string(core.StatusValid)],
+		*req.Id,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	byName := make(map[string]authz2Model)
+	for _, am := range ams {
+		if uintToIdentifierType[am.IdentifierType] != string(core.IdentifierDNS) {
+			return nil, fmt.Errorf("unknown identifier type: %q on authz id %d", am.IdentifierType, am.ID)
+		}
+		existing, present := byName[am.IdentifierValue]
+		if !present || am.Expires.After(existing.Expires) {
+			byName[am.IdentifierValue] = am
+		}
+	}
+
+	return authz2ModelMapToPB(byName)
+}
+
+// CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
+// in a given time range. This method is intended to deprecate CountInvalidAuthorizations.
+func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
+	var count int64
+	err := ssa.dbMap.WithContext(ctx).SelectOne(
+		&count,
+		`SELECT COUNT(1) FROM authz2 WHERE
+		registrationID = ? AND
+		identifierValue = ? AND
+		expires > ? AND
+		expires <= ? AND
+		status = ?`,
+		*req.RegistrationID,
+		*req.Hostname,
+		time.Unix(0, *req.Range.Earliest),
+		time.Unix(0, *req.Range.Latest),
+		statusToUint[string(core.StatusInvalid)],
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &sapb.Count{Count: &count}, nil
+}
+
+// GetValidAuthorizations2 returns the latest authorization for all
+// domain names from the parameters that the account has authorizations for.
+func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
+	qmarks := make([]string, len(req.Domains))
+	for i := range req.Domains {
+		qmarks[i] = "?"
+	}
+
+	var authzModels []authz2Model
+	params := []interface{}{
+		*req.RegistrationID,
+		time.Unix(0, *req.Now),
+		statusToUint[string(core.StatusValid)],
+	}
+	for _, n := range req.Domains {
+		params = append(params, n)
+	}
+	_, err := ssa.dbMap.Select(
+		&authzModels,
+		fmt.Sprintf(
+			`SELECT %s from authz2 WHERE
+			registrationID = ? AND
+			expires > ? AND
+			status = ? AND
+			identifierValue IN (%s)`,
+			authz2Fields,
+			strings.Join(qmarks, ","),
+		),
+		params...,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	authzMap := make(map[string]authz2Model, len(authzModels))
+	for _, am := range authzModels {
+		authzMap[am.IdentifierValue] = am
+	}
+	return authz2ModelMapToPB(authzMap)
 }

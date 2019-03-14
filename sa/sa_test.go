@@ -12,9 +12,12 @@ import (
 	"math/big"
 	"net"
 	"reflect"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/letsencrypt/boulder/probs"
 
 	"golang.org/x/net/context"
 
@@ -2824,4 +2827,289 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	// The exact name count for the base domain should be 2 now: certA and certB.
 	// CertB is not ignored as a renewal because the feature flag is disabled.
 	test.AssertEquals(t, countNameExact(t, "not-example.com"), int64(2))
+}
+
+func TestNewAuthorization(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	v2 := true
+	ident := "aaa"
+	pending := string(core.StatusPending)
+	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
+	challType := string(core.ChallengeTypeDNS01)
+	token := "YXNkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	apb := &corepb.Authorization{
+		V2:             &v2,
+		Identifier:     &ident,
+		RegistrationID: &reg.ID,
+		Status:         &pending,
+		Expires:        &expires,
+		Challenges: []*corepb.Challenge{
+			{
+				Status: &pending,
+				Type:   &challType,
+				Token:  &token,
+			},
+		},
+	}
+	id, err := sa.NewAuthorization(context.Background(), apb)
+	test.AssertNotError(t, err, "sa.NewAuthorization failed")
+
+	dbVer, err := sa.GetAuthorization2(context.Background(), id)
+	test.AssertNotError(t, err, "sa.GetAuthorization failed")
+	// Everything but ID and combos should match
+	apb.Id = dbVer.Id
+	apb.Combinations = dbVer.Combinations
+	test.AssertDeepEquals(t, apb, dbVer)
+}
+
+func TestNewAuthorizations(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	v2 := true
+	ident := "aaa"
+	pending := string(core.StatusPending)
+	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
+	challType := string(core.ChallengeTypeDNS01)
+	tokenA := "YXNkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	apbA := &corepb.Authorization{
+		V2:             &v2,
+		Identifier:     &ident,
+		RegistrationID: &reg.ID,
+		Status:         &pending,
+		Expires:        &expires,
+		Challenges: []*corepb.Challenge{
+			{
+				Status: &pending,
+				Type:   &challType,
+				Token:  &tokenA,
+			},
+		},
+	}
+	tokenB := "ZmdoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	apbB := &corepb.Authorization{
+		V2:             &v2,
+		Identifier:     &ident,
+		RegistrationID: &reg.ID,
+		Status:         &pending,
+		Expires:        &expires,
+		Challenges: []*corepb.Challenge{
+			{
+				Status: &pending,
+				Type:   &challType,
+				Token:  &tokenB,
+			},
+		},
+	}
+	req := &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{apbA, apbB}}
+	ids, err := sa.NewAuthorizations(context.Background(), req)
+	test.AssertNotError(t, err, "sa.NewAuthorizations failed")
+	test.AssertEquals(t, len(ids.Ids), 2)
+	for i, id := range ids.Ids {
+		idInt, err := strconv.ParseInt(id, 10, 64)
+		test.AssertNotError(t, err, "strconv.Atoi failed")
+		dbVer, err := sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: &idInt})
+		test.AssertNotError(t, err, "sa.GetAuthorization failed")
+		// Everything but ID should match
+		req.Authz[i].Id = dbVer.Id
+		req.Authz[i].Combinations = dbVer.Combinations
+		test.AssertDeepEquals(t, req.Authz[i], dbVer)
+	}
+}
+
+func TestFinalizeAuthorization2(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	v2 := true
+	ident := "aaa"
+	pending := string(core.StatusPending)
+	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
+	challType := string(core.ChallengeTypeDNS01)
+	token := "YXNkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	apb := &corepb.Authorization{
+		V2:             &v2,
+		Identifier:     &ident,
+		RegistrationID: &reg.ID,
+		Status:         &pending,
+		Expires:        &expires,
+		Challenges: []*corepb.Challenge{
+			{
+				Status: &pending,
+				Type:   &challType,
+				Token:  &token,
+			},
+		},
+	}
+	id, err := sa.NewAuthorization(context.Background(), apb)
+	test.AssertNotError(t, err, "sa.NewAuthorization failed")
+
+	valid := string(core.StatusValid)
+	expires = fc.Now().Add(time.Hour * 2).UTC().UnixNano()
+	port := "123"
+	url := "http://asd"
+	ip, _ := net.ParseIP("1.1.1.1").MarshalText()
+	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id: id.Id,
+		ValidationRecords: []*corepb.ValidationRecord{
+			{
+				Hostname:    &ident,
+				Port:        &port,
+				Url:         &url,
+				AddressUsed: ip,
+			},
+		},
+		Status:    &valid,
+		Expires:   &expires,
+		Attempted: &challType,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+
+	dbVer, err := sa.GetAuthorization2(context.Background(), id)
+	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
+	test.AssertEquals(t, *dbVer.Status, string(core.StatusValid))
+	test.AssertEquals(t, time.Unix(0, *dbVer.Expires).UTC(), fc.Now().Add(time.Hour*2).UTC())
+	test.AssertEquals(t, *dbVer.Challenges[0].Status, string(core.StatusValid))
+	test.AssertEquals(t, len(dbVer.Challenges[0].Validationrecords), 1)
+
+	token = "ZmdoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	id, err = sa.NewAuthorization(context.Background(), apb)
+	test.AssertNotError(t, err, "sa.NewAuthorization failed")
+	invalid := string(core.StatusInvalid)
+	prob, _ := bgrpc.ProblemDetailsToPB(probs.ConnectionFailure("it went bad captain"))
+	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id: id.Id,
+		ValidationRecords: []*corepb.ValidationRecord{
+			{
+				Hostname:    &ident,
+				Port:        &port,
+				Url:         &url,
+				AddressUsed: ip,
+			},
+		},
+		ValidationError: prob,
+		Status:          &invalid,
+		Attempted:       &challType,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+
+	dbVer, err = sa.GetAuthorization2(context.Background(), id)
+	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
+	test.AssertEquals(t, *dbVer.Status, string(core.StatusInvalid))
+	test.AssertEquals(t, *dbVer.Challenges[0].Status, string(core.StatusInvalid))
+	test.AssertEquals(t, len(dbVer.Challenges[0].Validationrecords), 1)
+	test.AssertDeepEquals(t, dbVer.Challenges[0].Error, prob)
+}
+
+func TestGetPendingAuthorization2(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	v2 := true
+	ident := "aaa"
+	pending := string(core.StatusPending)
+	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
+	challType := string(core.ChallengeTypeDNS01)
+	token := "YXNkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	apb := &corepb.Authorization{
+		V2:             &v2,
+		Identifier:     &ident,
+		RegistrationID: &reg.ID,
+		Status:         &pending,
+		Expires:        &expires,
+		Challenges: []*corepb.Challenge{
+			{
+				Status: &pending,
+				Type:   &challType,
+				Token:  &token,
+			},
+		},
+	}
+	idA, err := sa.NewAuthorization(context.Background(), apb)
+	test.AssertNotError(t, err, "sa.NewAuthorization failed")
+	token = "ZmdoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	expires = fc.Now().Add(time.Hour * 3).UTC().UnixNano()
+	idB, err := sa.NewAuthorization(context.Background(), apb)
+	test.AssertNotError(t, err, "sa.NewAuthorization failed")
+
+	validUntil := fc.Now().Add(time.Hour * 2).UTC().UnixNano()
+	dbVer, err := sa.GetPendingAuthorization2(context.Background(), &sapb.GetPendingAuthorizationRequest{
+		RegistrationID:  &reg.ID,
+		IdentifierValue: &ident,
+		ValidUntil:      &validUntil,
+	})
+	test.AssertNotError(t, err, "sa.GetPendingAuthorization2 failed")
+	test.AssertEquals(t, fmt.Sprintf("%d", *idB.Id), *dbVer.Id)
+
+	validUntil = fc.Now().UTC().UnixNano()
+	dbVer, err = sa.GetPendingAuthorization2(context.Background(), &sapb.GetPendingAuthorizationRequest{
+		RegistrationID:  &reg.ID,
+		IdentifierValue: &ident,
+		ValidUntil:      &validUntil,
+	})
+	test.AssertNotError(t, err, "sa.GetPendingAuthorization2 failed")
+	test.AssertEquals(t, fmt.Sprintf("%d", *idA.Id), *dbVer.Id)
+}
+
+func TestCountPendingAuthorizations2(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	v2 := true
+	ident := "aaa"
+	pending := string(core.StatusPending)
+	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
+	challType := string(core.ChallengeTypeDNS01)
+	token := "YXNkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	apb := &corepb.Authorization{
+		V2:             &v2,
+		Identifier:     &ident,
+		RegistrationID: &reg.ID,
+		Status:         &pending,
+		Expires:        &expires,
+		Challenges: []*corepb.Challenge{
+			{
+				Status: &pending,
+				Type:   &challType,
+				Token:  &token,
+			},
+		},
+	}
+	_, err := sa.NewAuthorization(context.Background(), apb)
+	test.AssertNotError(t, err, "sa.NewAuthorization failed")
+	token = "ZmdoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	expires = fc.Now().Add(time.Hour * 3).UTC().UnixNano()
+	_, err = sa.NewAuthorization(context.Background(), apb)
+	test.AssertNotError(t, err, "sa.NewAuthorization failed")
+
+	count, err := sa.CountPendingAuthorizations2(context.Background(), &sapb.RegistrationID{
+		Id: &reg.ID,
+	})
+	test.AssertNotError(t, err, "sa.CountPendingAuthorizations2 failed")
+	test.AssertEquals(t, *count.Count, int64(2))
+	noReg := int64(20)
+	count, err = sa.CountPendingAuthorizations2(context.Background(), &sapb.RegistrationID{
+		Id: &noReg,
+	})
+	test.AssertNotError(t, err, "sa.CountPendingAuthorizations2 failed")
+	test.AssertEquals(t, *count.Count, int64(0))
+}
+
+func TestGetValidOrderAuthorizations2(t *testing.T) {
+
+}
+
+func TestCountInvalidAuthorizations2(t *testing.T) {
+
+}
+
+func TestGetValidAuthorizations2(t *testing.T) {
+
 }

@@ -443,17 +443,17 @@ var uintToStatus = map[uint8]string{
 const authz2Fields = "id, identifierType, identifierValue, registrationID, status, expires, challenges, attempted, token, validationError, validationRecord"
 
 type authz2Model struct {
-	ID               int64      `db:"id"`
-	IdentifierType   uint8      `db:"identifierType"`
-	IdentifierValue  string     `db:"identifierValue"`
-	RegistrationID   int64      `db:"registrationID"`
-	Status           uint8      `db:"status"`
-	Expires          *time.Time `db:"expires"`
-	Challenges       uint8      `db:"challenges"`
-	Attempted        *uint8     `db:"attempted"`
-	Token            []byte     `db:"token"`
-	ValidationError  []byte     `db:"validationError"`
-	ValidationRecord []byte     `db:"validationRecord"`
+	ID               int64     `db:"id"`
+	IdentifierType   uint8     `db:"identifierType"`
+	IdentifierValue  string    `db:"identifierValue"`
+	RegistrationID   int64     `db:"registrationID"`
+	Status           uint8     `db:"status"`
+	Expires          time.Time `db:"expires"`
+	Challenges       uint8     `db:"challenges"`
+	Attempted        *uint8    `db:"attempted"`
+	Token            []byte    `db:"token"`
+	ValidationError  []byte    `db:"validationError"`
+	ValidationRecord []byte    `db:"validationRecord"`
 }
 
 // hasMultipleNonPendingChallenges checks if a slice of challenges contains
@@ -481,7 +481,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 		IdentifierValue: *authz.Identifier,
 		RegistrationID:  *authz.RegistrationID,
 		Status:          statusToUint[*authz.Status],
-		Expires:         &expires,
+		Expires:         expires,
 	}
 	if authz.Id != nil && *authz.Id != "" {
 		id, err := strconv.Atoi(*authz.Id)
