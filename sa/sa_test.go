@@ -2387,9 +2387,6 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Failed to enable required features flag")
 	defer features.Reset()
-	if !features.Enabled(features.AllowRenewalFirstRL) {
-		panic("WTAF")
-	}
 
 	// Create a test registration
 	reg := satest.CreateWorkingRegistration(t, sa)
