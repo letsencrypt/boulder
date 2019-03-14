@@ -89,9 +89,6 @@ def start(race_detection, fakeclock=None, account_uri=None):
         [8109, './bin/boulder-publisher --config %s --addr publisher2.boulder:9091 --debug-addr :8109' % os.path.join(default_config_dir, "publisher.json")],
         [9380, './bin/mail-test-srv --closeFirst 5 --cert test/mail-test-srv/localhost/cert.pem --key test/mail-test-srv/localhost/key.pem'],
         [8005, './bin/ocsp-responder --config %s' % os.path.join(default_config_dir, "ocsp-responder.json")],
-        # The gsb-test-srv needs to be started before the VA or its intial DB
-        # update will fail and all subsequent lookups will be invalid
-        [6000, './bin/gsb-test-srv -apikey my-voice-is-my-passport'],
         # NOTE(@cpu): We specify explicit bind addresses for -https01 and
         # --tlsalpn01 here to allow HTTPS HTTP-01 responses on 5001 for one
         # interface and TLS-ALPN-01 responses on 5001 for another interface. The

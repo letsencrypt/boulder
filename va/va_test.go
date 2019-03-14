@@ -38,7 +38,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics/mock_metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
-	vaPB "github.com/letsencrypt/boulder/va/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 	"gopkg.in/square/go-jose.v2"
@@ -942,41 +941,6 @@ func TestValidateHTTP(t *testing.T) {
 	test.Assert(t, prob == nil, "validation failed")
 }
 
-func TestGSBAtValidation(t *testing.T) {
-	chall := core.HTTPChallenge01("")
-	setChallengeToken(&chall, core.NewToken())
-
-	hs := httpSrv(t, chall.Token)
-	defer hs.Close()
-
-	va, _ := setup(hs, 0)
-
-	ctrl := gomock.NewController(t)
-	sbc := NewMockSafeBrowsing(ctrl)
-	sbc.EXPECT().IsListed(gomock.Any(), "good.com").Return("", nil)
-	sbc.EXPECT().IsListed(gomock.Any(), "bad.com").Return("bad", nil)
-	sbc.EXPECT().IsListed(gomock.Any(), "errorful.com").Return("", fmt.Errorf("welp"))
-	va.safeBrowsing = sbc
-
-	_, prob := va.validate(ctx, dnsi("bad.com"), chall, core.Authorization{})
-	if prob == nil {
-		t.Fatalf("Expected rejection for bad.com, got success")
-	}
-	if !strings.Contains(prob.Error(), "unsafe domain") {
-		t.Errorf("Got error %q, expected an unsafe domain error.", prob.Error())
-	}
-
-	_, prob = va.validate(ctx, dnsi("errorful.com"), chall, core.Authorization{})
-	if prob != nil {
-		t.Fatalf("Expected success for errorful.com, got error")
-	}
-
-	_, prob = va.validate(ctx, dnsi("good.com"), chall, core.Authorization{})
-	if prob != nil {
-		t.Fatalf("Expected success for good.com, got %s", prob)
-	}
-}
-
 // challengeType == "tls-sni-00" or "dns-00", since they're the same
 func createChallenge(challengeType string) core.Challenge {
 	chall := core.Challenge{
@@ -1399,7 +1363,6 @@ func setup(srv *httptest.Server, maxRemoteFailures int) (*ValidationAuthorityImp
 	va, err := NewValidationAuthorityImpl(
 		// Use the test server's port as both the HTTPPort and the TLSPort for the VA
 		&portConfig,
-		nil,
 		&bdns.MockDNSClient{},
 		nil,
 		maxRemoteFailures,
@@ -1578,14 +1541,10 @@ func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]struct{}) *m
 }
 
 // cancelledVA is a mock that always returns context.Canceled for
-// PerformValidation or IsSafeDomain calls
+// PerformValidation calls
 type cancelledVA struct{}
 
 func (v cancelledVA) PerformValidation(_ context.Context, _ string, _ core.Challenge, _ core.Authorization) ([]core.ValidationRecord, error) {
-	return nil, context.Canceled
-}
-
-func (v cancelledVA) IsSafeDomain(_ context.Context, _ *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
 	return nil, context.Canceled
 }
 
@@ -1758,7 +1717,7 @@ func TestPerformRemoteValidation(t *testing.T) {
 type brokenRemoteVA struct{}
 
 // brokenRemoteVAError is the error returned by a brokenRemoteVA's
-// PerformValidation and IsSafeDomain functions.
+// PerformValidation function.
 var brokenRemoteVAError = errors.New("brokenRemoteVA is broken")
 
 // PerformValidation returns brokenRemoteVAError unconditionally
@@ -1767,13 +1726,6 @@ func (b *brokenRemoteVA) PerformValidation(
 	_ string,
 	_ core.Challenge,
 	_ core.Authorization) ([]core.ValidationRecord, error) {
-	return nil, brokenRemoteVAError
-}
-
-// IsSafeDomain returns brokenRemoteVAError unconditionally
-func (b *brokenRemoteVA) IsSafeDomain(
-	_ context.Context,
-	_ *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
 	return nil, brokenRemoteVAError
 }
 

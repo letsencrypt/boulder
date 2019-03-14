@@ -136,7 +136,6 @@ type ValidationAuthorityImpl struct {
 	log                blog.Logger
 	dnsClient          bdns.DNSClient
 	issuerDomain       string
-	safeBrowsing       SafeBrowsing
 	httpPort           int
 	httpsPort          int
 	tlsPort            int
@@ -154,7 +153,6 @@ type ValidationAuthorityImpl struct {
 // NewValidationAuthorityImpl constructs a new VA
 func NewValidationAuthorityImpl(
 	pc *cmd.PortConfig,
-	sbc SafeBrowsing,
 	resolver bdns.DNSClient,
 	remoteVAs []RemoteVA,
 	maxRemoteFailures int,
@@ -183,7 +181,6 @@ func NewValidationAuthorityImpl(
 		log:                logger,
 		dnsClient:          resolver,
 		issuerDomain:       issuerDomain,
-		safeBrowsing:       sbc,
 		httpPort:           pc.HTTPPort,
 		httpsPort:          pc.HTTPSPort,
 		tlsPort:            pc.TLSPort,
@@ -640,21 +637,13 @@ func (va *ValidationAuthorityImpl) validate(
 	// va.checkCAA accepts wildcard identifiers and handles them appropriately so
 	// we can dispatch `checkCAA` with the provided `identifier` instead of
 	// `baseIdentifier`
-	ch := make(chan *probs.ProblemDetails, 2)
+	ch := make(chan *probs.ProblemDetails, 1)
 	go func() {
 		params := &caaParams{
 			accountURIID:     &authz.RegistrationID,
 			validationMethod: &challenge.Type,
 		}
 		ch <- va.checkCAA(ctx, identifier, params)
-	}()
-	go func() {
-		if !va.isSafeDomain(ctx, baseIdentifier.Value) {
-			ch <- probs.Unauthorized("%q was considered an unsafe domain by a third-party API",
-				baseIdentifier.Value)
-		} else {
-			ch <- nil
-		}
 	}()
 
 	// TODO(#1292): send into another goroutine
