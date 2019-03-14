@@ -64,6 +64,9 @@ func AssertError(t *testing.T, err error, message string) {
 // AssertEquals uses the equality operator (==) to measure one and two
 func AssertEquals(t *testing.T, one interface{}, two interface{}) {
 	t.Helper()
+	if reflect.TypeOf(one) != reflect.TypeOf(two) {
+		t.Fatalf("cannot test equality of different types: %T != %T", one, two)
+	}
 	if one != two {
 		t.Fatalf("%#v != %#v", one, two)
 	}
