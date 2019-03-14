@@ -31,10 +31,9 @@ type AuthorityImpl struct {
 	wildcardExactBlacklist map[string]bool
 	blacklistMu            sync.RWMutex
 
-	enabledChallenges          map[string]bool
-	enabledChallengesWhitelist map[string]map[int64]bool
-	pseudoRNG                  *rand.Rand
-	rngMu                      sync.Mutex
+	enabledChallenges map[string]bool
+	pseudoRNG         *rand.Rand
+	rngMu             sync.Mutex
 }
 
 // New constructs a Policy Authority.
@@ -108,42 +107,6 @@ func (pa *AuthorityImpl) loadHostnamePolicy(b []byte) error {
 	pa.exactBlacklist = exactNameMap
 	pa.wildcardExactBlacklist = wildcardNameMap
 	pa.blacklistMu.Unlock()
-	return nil
-}
-
-// SetChallengesWhitelistFile will load the given whitelist file, returning error if it
-// fails. It will also start a reloader in case the file changes.
-func (pa *AuthorityImpl) SetChallengesWhitelistFile(f string) error {
-	_, err := reloader.New(f, pa.loadChallengesWhitelist, pa.challengesWhitelistLoadError)
-	return err
-}
-
-func (pa *AuthorityImpl) challengesWhitelistLoadError(err error) {
-	pa.log.AuditErrf("error loading challenges whitelist: %s", err)
-}
-
-func (pa *AuthorityImpl) loadChallengesWhitelist(b []byte) error {
-	hash := sha256.Sum256(b)
-	pa.log.Infof("loading challenges whitelist, sha256: %s", hex.EncodeToString(hash[:]))
-	var wl map[string][]int64
-	err := json.Unmarshal(b, &wl)
-	if err != nil {
-		return err
-	}
-
-	chalWl := make(map[string]map[int64]bool)
-
-	for k, v := range wl {
-		chalWl[k] = make(map[int64]bool)
-		for _, i := range v {
-			chalWl[k][i] = true
-		}
-	}
-
-	pa.blacklistMu.Lock()
-	pa.enabledChallengesWhitelist = chalWl
-	pa.blacklistMu.Unlock()
-
 	return nil
 }
 
