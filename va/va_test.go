@@ -27,7 +27,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/golang/mock/gomock"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
