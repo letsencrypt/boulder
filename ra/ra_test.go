@@ -58,24 +58,14 @@ import (
 )
 
 type DummyValidationAuthority struct {
-	argument        chan core.Authorization
-	RecordsReturn   []core.ValidationRecord
-	ProblemReturn   *probs.ProblemDetails
-	IsNotSafe       bool
-	IsSafeDomainErr error
+	argument      chan core.Authorization
+	RecordsReturn []core.ValidationRecord
+	ProblemReturn *probs.ProblemDetails
 }
 
 func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
 	dva.argument <- authz
 	return dva.RecordsReturn, dva.ProblemReturn
-}
-
-func (dva *DummyValidationAuthority) IsSafeDomain(ctx context.Context, req *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
-	if dva.IsSafeDomainErr != nil {
-		return nil, dva.IsSafeDomainErr
-	}
-	ret := !dva.IsNotSafe
-	return &vaPB.IsDomainSafe{IsSafe: &ret}, nil
 }
 
 var (

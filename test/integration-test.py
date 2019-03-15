@@ -412,21 +412,6 @@ def test_issuer():
     store_ctx = OpenSSL.crypto.X509StoreContext(store, parsed_cert)
     store_ctx.verify_certificate()
 
-def test_gsb_lookups():
-    """Attempt issuances for a GSB-blocked domain, and expect it to fail. Also
-       check the gsb-test-srv's count of received queries to ensure it got a
-       request."""
-    hostname = "honest.achmeds.discount.hosting.com"
-    chisel.expect_problem("urn:acme:error:unauthorized",
-        lambda: auth_and_issue([hostname]))
-
-    hits_map = json.loads(urllib2.urlopen("http://localhost:6000/hits").read())
-
-    # The GSB test server tracks hits with a trailing / on the URL
-    hits = hits_map.get(hostname + "/", 0)
-    if hits != 1:
-        raise Exception("Expected %d Google Safe Browsing lookups for %s, found %d" % (1, url, actual))
-
 def test_ocsp():
     cert_file_pem = os.path.join(tempdir, "cert.pem")
     auth_and_issue([random_domain()], cert_output=cert_file_pem)

@@ -32,9 +32,6 @@ type config struct {
 
 		MaxContactsPerRegistration int
 
-		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
-		UseIsSafeDomain bool // TODO: remove after va IsSafeDomain deploy
-
 		SAService           *cmd.GRPCClientConfig
 		VAService           *cmd.GRPCClientConfig
 		CAService           *cmd.GRPCClientConfig
