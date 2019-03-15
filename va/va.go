@@ -197,7 +197,7 @@ func NewValidationAuthorityImpl(
 		// singleDialTimeout specifies how long an individual `DialContext` operation may take
 		// before timing out. This timeout ignores the base RPC timeout and is strictly
 		// used for the DialContext operations that take place during an
-		// HTTP-01/TLS-SNI-[01|02] challenge validation.
+		// HTTP-01 challenge validation.
 		singleDialTimeout: 10 * time.Second,
 	}, nil
 }
@@ -321,28 +321,6 @@ func (va *ValidationAuthorityImpl) tryGetTLSCerts(ctx context.Context,
 	return certs, cs, validationRecords, err
 }
 
-func (va *ValidationAuthorityImpl) validateTLSSNI01WithZName(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	certs, _, validationRecords, problem := va.tryGetTLSCerts(ctx, identifier, challenge, &tls.Config{ServerName: zName})
-	if problem != nil {
-		return validationRecords, problem
-	}
-
-	leafCert := certs[0]
-	for _, name := range leafCert.DNSNames {
-		if subtle.ConstantTimeCompare([]byte(name), []byte(zName)) == 1 {
-			return validationRecords, nil
-		}
-	}
-
-	hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
-	names := certNames(leafCert)
-	problem = probs.Unauthorized("Incorrect validation certificate for %s challenge. "+
-		"Requested %s from %s. Received %d certificate(s), first certificate had names %q",
-		challenge.Type, zName, hostPort, len(certs), strings.Join(names, ", "))
-	va.log.Infof("Remote host failed to give %s challenge name. host: %s", challenge.Type, identifier)
-	return validationRecords, problem
-}
-
 func (va *ValidationAuthorityImpl) getTLSCerts(
 	ctx context.Context,
 	hostPort string,
@@ -426,20 +404,6 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 	return validationRecords, nil
 }
 
-func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	if identifier.Type != "dns" {
-		va.log.Infof("Identifier type for TLS-SNI-01 was not DNS: %s", identifier)
-		return nil, probs.Malformed("Identifier type for TLS-SNI-01 was not DNS")
-	}
-
-	// Compute the digest that will appear in the certificate
-	h := sha256.Sum256([]byte(challenge.ProvidedKeyAuthorization))
-	Z := hex.EncodeToString(h[:])
-	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.TLSSNISuffix)
-
-	return va.validateTLSSNI01WithZName(ctx, identifier, challenge, ZName)
-}
-
 func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	if identifier.Type != "dns" {
 		va.log.Info(fmt.Sprintf("Identifier type for TLS-ALPN-01 was not DNS: %s", identifier))
@@ -519,7 +483,7 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 var badTLSHeader = []byte{0x48, 0x54, 0x54, 0x50, 0x2f}
 
 // detailedError returns a ProblemDetails corresponding to an error
-// that occurred during HTTP-01 or TLS-SNI domain validation. Specifically it
+// that occurred during HTTP-01 or TLS-ALPN domain validation. Specifically it
 // tries to unwrap known Go error types and present something a little more
 // meaningful. It additionally handles `berrors.ConnectionFailure` errors by
 // passing through the detailed message.
@@ -678,8 +642,6 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 	switch challenge.Type {
 	case core.ChallengeTypeHTTP01:
 		return va.validateHTTP01(ctx, identifier, challenge)
-	case core.ChallengeTypeTLSSNI01:
-		return va.validateTLSSNI01(ctx, identifier, challenge)
 	case core.ChallengeTypeDNS01:
 		return va.validateDNS01(ctx, identifier, challenge)
 	case core.ChallengeTypeTLSALPN01:

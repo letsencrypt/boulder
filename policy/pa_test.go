@@ -15,9 +15,8 @@ import (
 var log = blog.UseMock()
 
 var enabledChallenges = map[string]bool{
-	core.ChallengeTypeHTTP01:   true,
-	core.ChallengeTypeTLSSNI01: true,
-	core.ChallengeTypeDNS01:    true,
+	core.ChallengeTypeHTTP01: true,
+	core.ChallengeTypeDNS01:  true,
 }
 
 const (
@@ -313,7 +312,7 @@ var accountKeyJSON = `{
 func TestChallengesFor(t *testing.T) {
 	pa := paImpl(t)
 
-	challenges, combinations, err := pa.ChallengesFor(core.AcmeIdentifier{}, testRegID, false)
+	challenges, combinations, err := pa.ChallengesFor(core.AcmeIdentifier{})
 	test.AssertNotError(t, err, "ChallengesFor failed")
 
 	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
@@ -321,7 +320,7 @@ func TestChallengesFor(t *testing.T) {
 
 	seenChalls := make(map[string]bool)
 	// Expected only if the pseudo-RNG is seeded with 99.
-	expectedCombos := [][]int{{1}, {2}, {0}}
+	expectedCombos := [][]int{{1}, {0}}
 	for _, challenge := range challenges {
 		test.Assert(t, !seenChalls[challenge.Type], "should not already have seen this type")
 		seenChalls[challenge.Type] = true
@@ -331,35 +330,6 @@ func TestChallengesFor(t *testing.T) {
 	test.AssertEquals(t, len(seenChalls), len(enabledChallenges))
 	test.AssertDeepEquals(t, expectedCombos, combinations)
 
-}
-
-func TestChallengesForWhitelist(t *testing.T) {
-	enabledChallenges[core.ChallengeTypeTLSSNI01] = false
-
-	var enabledChallengesWhitelist = map[string][]int64{
-		core.ChallengeTypeHTTP01:   []int64{},
-		core.ChallengeTypeTLSSNI01: []int64{testRegIDWhitelisted},
-		core.ChallengeTypeDNS01:    []int64{},
-	}
-
-	pa := paImpl(t)
-
-	wlBytes, err := json.Marshal(enabledChallengesWhitelist)
-	test.AssertNotError(t, err, "Couldn't serialize whitelist")
-	f, _ := ioutil.TempFile("", "test-challenges-whitelist.json")
-	defer os.Remove(f.Name())
-	err = ioutil.WriteFile(f.Name(), wlBytes, 0640)
-	test.AssertNotError(t, err, "Couldn't write serialized whitelist to file")
-	err = pa.SetChallengesWhitelistFile(f.Name())
-	test.AssertNotError(t, err, "Couldn't load policy contents from file")
-
-	challenges, _, err := pa.ChallengesFor(core.AcmeIdentifier{}, testRegID, false)
-	test.AssertNotError(t, err, "ChallengesFor failed")
-	test.Assert(t, len(challenges) == len(enabledChallenges)-1, "Wrong number of challenges returned")
-
-	challenges, _, err = pa.ChallengesFor(core.AcmeIdentifier{}, testRegIDWhitelisted, false)
-	test.AssertNotError(t, err, "ChallengesFor failed")
-	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
 }
 
 func TestChallengesForWildcard(t *testing.T) {
@@ -378,12 +348,11 @@ func TestChallengesForWildcard(t *testing.T) {
 	// First try to get a challenge for the wildcard ident without the
 	// DNS-01 challenge type enabled. This should produce an error
 	var enabledChallenges = map[string]bool{
-		core.ChallengeTypeHTTP01:   true,
-		core.ChallengeTypeTLSSNI01: true,
-		core.ChallengeTypeDNS01:    false,
+		core.ChallengeTypeHTTP01: true,
+		core.ChallengeTypeDNS01:  false,
 	}
 	pa := mustConstructPA(t, enabledChallenges)
-	_, _, err := pa.ChallengesFor(wildcardIdent, testRegID, false)
+	_, _, err := pa.ChallengesFor(wildcardIdent)
 	test.AssertError(t, err, "ChallengesFor did not error for a wildcard ident "+
 		"when DNS-01 was disabled")
 	test.AssertEquals(t, err.Error(), "Challenges requested for wildcard "+
@@ -393,7 +362,7 @@ func TestChallengesForWildcard(t *testing.T) {
 	// should return only one DNS-01 type challenge
 	enabledChallenges[core.ChallengeTypeDNS01] = true
 	pa = mustConstructPA(t, enabledChallenges)
-	challenges, combinations, err := pa.ChallengesFor(wildcardIdent, testRegID, false)
+	challenges, combinations, err := pa.ChallengesFor(wildcardIdent)
 	test.AssertNotError(t, err, "ChallengesFor errored for a wildcard ident "+
 		"unexpectedly")
 	test.AssertEquals(t, len(combinations), 1)

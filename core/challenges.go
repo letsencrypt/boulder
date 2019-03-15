@@ -17,12 +17,6 @@ func HTTPChallenge01(token string) Challenge {
 	return newChallenge(ChallengeTypeHTTP01, token)
 }
 
-// TLSSNIChallenge01 constructs a random tls-sni-01 challenge. If token is empty a random token
-// will be generated, otherwise the provided token is used.
-func TLSSNIChallenge01(token string) Challenge {
-	return newChallenge(ChallengeTypeTLSSNI01, token)
-}
-
 // DNSChallenge01 constructs a random dns-01 challenge. If token is empty a random token
 // will be generated, otherwise the provided token is used.
 func DNSChallenge01(token string) Challenge {

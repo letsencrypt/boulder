@@ -15,11 +15,10 @@ const (
 	PerformValidationRPC
 	ACME13KeyRollover
 	SimplifiedVAHTTP
+	TLSSNIRevalidation
 
 	//   Currently in-use features
 	AllowRenewalFirstRL
-	// Allow TLS-SNI in new-authz that are revalidating for previous issuance
-	TLSSNIRevalidation
 	// Check CAA and respect validationmethods parameter.
 	CAAValidationMethods
 	// Check CAA and respect accounturi parameter.

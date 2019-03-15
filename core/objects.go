@@ -70,7 +70,6 @@ const (
 // These types are the available challenges
 const (
 	ChallengeTypeHTTP01    = "http-01"
-	ChallengeTypeTLSSNI01  = "tls-sni-01"
 	ChallengeTypeDNS01     = "dns-01"
 	ChallengeTypeTLSALPN01 = "tls-alpn-01"
 )
@@ -79,7 +78,6 @@ const (
 func ValidChallenge(name string) bool {
 	switch name {
 	case ChallengeTypeHTTP01,
-		ChallengeTypeTLSSNI01,
 		ChallengeTypeDNS01,
 		ChallengeTypeTLSALPN01:
 		return true
@@ -87,9 +85,6 @@ func ValidChallenge(name string) bool {
 		return false
 	}
 }
-
-// TLSSNISuffix is appended to pseudo-domain names in DVSNI challenges
-const TLSSNISuffix = "acme.invalid"
 
 // DNSPrefix is attached to DNS names in DNS challenges
 const DNSPrefix = "_acme-challenge"
@@ -284,7 +279,7 @@ func (ch Challenge) RecordsSane() bool {
 				return false
 			}
 		}
-	case ChallengeTypeTLSSNI01, ChallengeTypeTLSALPN01:
+	case ChallengeTypeTLSALPN01:
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}

@@ -583,8 +583,8 @@ func TestIsCAAValidErrMessage(t *testing.T) {
 }
 
 func TestCAAFailure(t *testing.T) {
-	chall := createChallenge(core.ChallengeTypeTLSSNI01)
-	hs := tlssni01Srv(t, chall)
+	chall := createChallenge(core.ChallengeTypeHTTP01)
+	hs := httpSrv(t, chall.Token)
 	defer hs.Close()
 
 	va, _ := setup(hs, 0)
