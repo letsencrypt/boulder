@@ -14,6 +14,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/probs"
 )
 
@@ -285,12 +286,21 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 		return "", 0, fmt.Errorf("unable to determine redirect HTTP request port")
 	}
 
+	if reqHost == "" {
+		return "", 0, berrors.ConnectionFailureError("Invalid empty hostname in redirect target")
+	}
+
 	// Check that the request host isn't a bare IP address. We only follow
 	// redirects to hostnames.
 	if net.ParseIP(reqHost) != nil {
 		return "", 0, berrors.ConnectionFailureError(
 			"Invalid host in redirect target %q. "+
 				"Only domain names are supported, not IP addresses", reqHost)
+	}
+
+	if _, err := iana.ExtractSuffix(reqHost); err != nil {
+		return "", 0, berrors.ConnectionFailureError(
+			"Invalid hostname in redirect target, must end in IANA registered TLD")
 	}
 
 	return reqHost, reqPort, nil

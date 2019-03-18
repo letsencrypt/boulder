@@ -135,21 +135,21 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 				currentToken = pathReLookup
 			}
 			port := getPort(server)
-			http.Redirect(w, r, fmt.Sprintf("http://other.valid:%d/path", port), 302)
+			http.Redirect(w, r, fmt.Sprintf("http://other.valid.com:%d/path", port), 302)
 		} else if strings.HasSuffix(r.URL.Path, pathReLookupInvalid) {
 			t.Logf("HTTPSRV: Got a redirect req to an invalid hostname\n")
 			http.Redirect(w, r, "http://invalid.invalid/path", 302)
 		} else if strings.HasSuffix(r.URL.Path, pathRedirectToFailingURL) {
 			t.Logf("HTTPSRV: Redirecting to a URL that will fail\n")
 			port := getPort(server)
-			http.Redirect(w, r, fmt.Sprintf("http://other.valid:%d/%s", port, path500), 301)
+			http.Redirect(w, r, fmt.Sprintf("http://other.valid.com:%d/%s", port, path500), 301)
 		} else if strings.HasSuffix(r.URL.Path, pathLooper) {
 			t.Logf("HTTPSRV: Got a loop req\n")
 			http.Redirect(w, r, r.URL.String(), 301)
 		} else if strings.HasSuffix(r.URL.Path, pathRedirectInvalidPort) {
 			t.Logf("HTTPSRV: Got a port redirect req\n")
 			// Port 8080 is not the VA's httpPort or httpsPort and should be rejected
-			http.Redirect(w, r, "http://other.valid:8080/path", 302)
+			http.Redirect(w, r, "http://other.valid.com:8080/path", 302)
 		} else if r.Header.Get("User-Agent") == rejectUserAgent {
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte("found trap User-Agent"))
@@ -306,7 +306,7 @@ func TestHTTP(t *testing.T) {
 
 	log.Clear()
 	t.Logf("Trying to validate: %+v\n", chall)
-	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	_, prob := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	if prob != nil {
 		t.Errorf("Unexpected failure in HTTP validation: %s", prob)
 	}
@@ -314,7 +314,7 @@ func TestHTTP(t *testing.T) {
 
 	log.Clear()
 	setChallengeToken(&chall, path404)
-	_, prob = va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	if prob == nil {
 		t.Fatalf("Should have found a 404 for the challenge.")
 	}
@@ -325,7 +325,7 @@ func TestHTTP(t *testing.T) {
 	setChallengeToken(&chall, pathWrongToken)
 	// The "wrong token" will actually be the expectedToken.  It's wrong
 	// because it doesn't match pathWrongToken.
-	_, prob = va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	if prob == nil {
 		t.Fatalf("Should have found the wrong token value.")
 	}
@@ -334,21 +334,21 @@ func TestHTTP(t *testing.T) {
 
 	log.Clear()
 	setChallengeToken(&chall, pathMoved)
-	_, prob = va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	if prob != nil {
 		t.Fatalf("Failed to follow 301 redirect")
 	}
-	redirectValid := `following redirect to host "" url "http://localhost/.well-known/acme-challenge/` + pathValid + `"`
+	redirectValid := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathValid + `"`
 	matchedValidRedirect := log.GetAllMatching(redirectValid)
 	test.AssertEquals(t, len(matchedValidRedirect), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, pathFound)
-	_, prob = va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	if prob != nil {
 		t.Fatalf("Failed to follow 302 redirect")
 	}
-	redirectMoved := `following redirect to host "" url "http://localhost/.well-known/acme-challenge/` + pathMoved + `"`
+	redirectMoved := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathMoved + `"`
 	matchedMovedRedirect := log.GetAllMatching(redirectMoved)
 	test.AssertEquals(t, len(matchedValidRedirect), 1)
 	test.AssertEquals(t, len(matchedMovedRedirect), 1)
@@ -472,50 +472,50 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	va, log := setup(hs, 0)
 
 	setChallengeToken(&chall, pathMoved)
-	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	_, prob := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	if prob != nil {
 		t.Fatalf("Unexpected failure in redirect (%s): %s", pathMoved, prob)
 	}
-	redirectValid := `following redirect to host "" url "http://localhost/.well-known/acme-challenge/` + pathValid + `"`
+	redirectValid := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathValid + `"`
 	matchedValidRedirect := log.GetAllMatching(redirectValid)
 	test.AssertEquals(t, len(matchedValidRedirect), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 2)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 2)
 
 	log.Clear()
 	setChallengeToken(&chall, pathFound)
-	_, prob = va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	if prob != nil {
 		t.Fatalf("Unexpected failure in redirect (%s): %s", pathFound, prob)
 	}
-	redirectMoved := `following redirect to host "" url "http://localhost/.well-known/acme-challenge/` + pathMoved + `"`
+	redirectMoved := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathMoved + `"`
 	matchedMovedRedirect := log.GetAllMatching(redirectMoved)
 	test.AssertEquals(t, len(matchedMovedRedirect), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 3)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 3)
 
 	log.Clear()
 	setChallengeToken(&chall, pathReLookupInvalid)
-	_, err := va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	_, err := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	test.AssertError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 1)
-	test.AssertDeepEquals(t, err, probs.ConnectionFailure("Fetching http://invalid.invalid/path: unknownHost :: No valid IP addresses found for invalid.invalid"))
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 1)
+	test.AssertDeepEquals(t, err, probs.ConnectionFailure("Fetching http://invalid.invalid/path: Invalid hostname in redirect target, must end in IANA registered TLD"))
 
 	log.Clear()
 	setChallengeToken(&chall, pathReLookup)
-	_, prob = va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	if prob != nil {
 		t.Fatalf("Unexpected error in redirect (%s): %s", pathReLookup, prob)
 	}
-	redirectPattern := `following redirect to host "" url "http://other.valid:\d+/path"`
+	redirectPattern := `following redirect to host "" url "http://other.valid.com:\d+/path"`
 	test.AssertEquals(t, len(log.GetAllMatching(redirectPattern)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid.com: \[127.0.0.1\]`)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, pathRedirectInvalidPort)
-	_, prob = va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	test.AssertNotNil(t, prob, "Problem details for pathRedirectInvalidPort should not be nil")
 	test.AssertEquals(t, prob.Detail, fmt.Sprintf(
-		"Fetching http://other.valid:8080/path: Invalid port in redirect target. "+
+		"Fetching http://other.valid.com:8080/path: Invalid port in redirect target. "+
 			"Only ports %d and %d are supported, not 8080", va.httpPort, va.httpsPort))
 
 	// This case will redirect from a valid host to a host that is throwing
@@ -523,11 +523,11 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	// is referencing the redirected to host, instead of the original host.
 	log.Clear()
 	setChallengeToken(&chall, pathRedirectToFailingURL)
-	_, prob = va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	test.AssertNotNil(t, prob, "Problem Details should not be nil")
 	test.AssertDeepEquals(t, prob,
 		probs.Unauthorized(
-			fmt.Sprintf("Invalid response from http://other.valid:%d/500 [127.0.0.1]: 500",
+			fmt.Sprintf("Invalid response from http://other.valid.com:%d/500 [127.0.0.1]: 500",
 				va.httpPort)))
 }
 
