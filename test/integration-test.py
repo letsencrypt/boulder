@@ -1,4 +1,5 @@
 #!/usr/bin/env python2.7
+# -*- coding: utf-8 -*-
 import argparse
 import atexit
 import base64
@@ -32,6 +33,10 @@ import OpenSSL
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
+
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
 
 class ProcInfo:
     """
@@ -309,9 +314,6 @@ def test_http_challenge_https_redirect():
       elif r['ServerName'] != d:
         raise Exception("Expected all redirected requests to have ServerName {0} got \"{1}\"".format(d, r['ServerName']))
 
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
-
 class SlowHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
@@ -340,7 +342,7 @@ def test_http_challenge_timeout():
     thread.daemon = False
     thread.start()
 
-    # Pick a random domains
+    # Pick a random domain
     hostname = random_domain()
 
     # Add A record for the domains to ensure the VA's requests are directed
@@ -367,6 +369,159 @@ def test_http_challenge_timeout():
     expectedDuration = 22
     if delta.total_seconds() == 0 or delta.total_seconds() > expectedDuration:
         raise Exception("expected timeout to occur in under {0} seconds. Took {1}".format(expectedDuration, delta.total_seconds()))
+
+def BouncerHTTPRequestHandler(redirect, vips=1):
+    """
+    BouncerHTTPRequestHandler returns a BouncerHandler class that acts like
+    a club bouncer in front of another server. The bouncer will respond to the
+    first VIP GET requests by sending an HTTP redirect to the real
+    server. After all the VIP requests have been received all other requests
+    get a bogus result and have to stand outside in the cold 
+    """
+    class BouncerHandler(BaseHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            BaseHTTPRequestHandler.__init__(self, *args, **kwargs)
+
+        def do_HEAD(self):
+            # Return a 200 status OK for any HEAD requests.
+            # This is used by wait_for_server
+            self.send_response(200)
+            self.end_headers()
+
+        def do_GET(self):
+            # If less than vips requests have been received, decrement vips and 
+            # redirect the VIP request to the redirect URL
+            if BouncerHandler.vips > 0:
+                BouncerHandler.vips = BouncerHandler.vips - 1
+                self.log_message("BouncerHandler redirecting VIP request to the venue")
+                self.send_response(302)
+                self.send_header("Location", BouncerHandler.redirect)
+                self.end_headers()
+            # Otherwise return a bogus result
+            else:
+                self.log_message("BouncerHandler sending non-VIP request to the curb")
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'(• ◡ •) <( VIPs only! )')
+
+    BouncerHandler.vips = vips
+    BouncerHandler.redirect = redirect
+    return BouncerHandler
+
+def wait_for_server(addr):
+    try:
+        # NOTE(@cpu): Using HEAD here instead of GET because the
+        # BouncerHandler modifies its state for GET requests.
+        if requests.head(addr).status_code == 200:
+            return
+    except requests.exceptions.ConnectionError:
+        pass
+    time.sleep(0.5)
+
+def multiva_setup(client, bounceFirst=1):
+    # Create an authz for a random domain and get its HTTP-01 challenge token
+    hostname, chall = rand_http_chall(client)
+    token = chall.encode("token")
+
+    # Calculate the challenge's keyauth so we can add a good keyauth response on
+    # the real challtestsrv that we redirect to when being honest.
+    resp = chall.response(client.key)
+    keyauth = resp.key_authorization
+    challSrv.add_http01_response(token, keyauth)
+
+    # Add an A record for the domains to ensure the VA's requests are directed
+    # to the interface that we bound the HTTPServer to.
+    challSrv.add_a_record(hostname, ["10.88.88.88"])
+
+    # Add an A record for the redirect target that sends it to the real chall
+    # test srv for a valid HTTP-01 response.
+    redirHostname = "pebble-challtestsrv.example.com"
+    challSrv.add_a_record(redirHostname, ["10.77.77.77"])
+
+    # Start a simple python HTTP server on port 5002 in its own thread.
+    # NOTE(@cpu): The pebble-challtestsrv binds 10.77.77.77:5002 for HTTP-01
+    # challenges so we must use the 10.88.88.88 address for the throw away
+    # server for this test and add a mock DNS entry that directs the VA to it.
+    redirect = "http://{0}/.well-known/acme-challenge/{1}".format(
+            redirHostname, token)
+    httpd = HTTPServer(('10.88.88.88', 5002), BouncerHTTPRequestHandler(redirect, bounceFirst))
+    thread = threading.Thread(target = httpd.serve_forever)
+    thread.daemon = False
+    thread.start()
+
+    def cleanup():
+        # Remove the challtestsrv mocks
+        challSrv.remove_a_record(hostname)
+        challSrv.remove_a_record(redirHostname)
+        challSrv.remove_http01_response(token)
+        # Shut down the HTTP server gracefully and join on its thread.
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join()
+
+    # Wait for the server to be ready before returning
+    wait_for_server("http://10.88.88.88/up")
+    return hostname, cleanup
+
+def test_http_multiva_threshold_pass():
+    # Only config-next has remote VAs configured and is appropriate for this
+    # integration test.
+    if not default_config_dir.startswith("test/config-next"):
+        return
+
+    client = chisel.make_client()
+
+    # These values should match the config in `config-next/va.json`
+    remoteVAs = 2
+    maxFailures = 1
+
+    # Configure a bounceFirst value that will pass the multiVA threshold test.
+    bounceFirst = (remoteVAs - maxFailures) + 1
+
+    # Create a testing hostname and the multiva server setup. This will block
+    # until the server is ready. The returned cleanup function should be used to
+    # stop the server. The first bounceFirst requests to the server will be sent
+    # to the real challtestsrv for a good answer, the rest will get a bad
+    # answer.
+    hostname, cleanup = multiva_setup(client, bounceFirst)
+
+    try:
+        # With the maximum number of allowed remote VA failures the overall
+        # challenge should still succeed.
+        auth_and_issue([hostname], client=client, chall_type="http-01")
+    finally:
+        cleanup()
+
+def test_http_multiva_threshold_fail():
+    # Only config-next has remote VAs configured and is appropriate for this
+    # integration test.
+    if not default_config_dir.startswith("test/config-next"):
+        return
+
+    client = chisel.make_client()
+
+    # Configure a bounceFirst value that will fail the multiVA threshold test by
+    # only redirecting the primary VA.
+    bounceFirst = 1
+
+    # Create a testing hostname and the multiva server setup. This will block
+    # until the server is ready. The returned cleanup function should be used to
+    # stop the server.
+
+    # Create a testing hostname and the multiva server setup. This will block
+    # until the server is ready. The returned cleanup function should be used to
+    # stop the server. The first bounceFirst requests to the server will be sent
+    # to the real challtestsrv for a good answer, the rest will get a bad
+    # answer.
+    hostname, cleanup = multiva_setup(client, bounceFirst)
+
+    # Because of the configured honesty value the issuance should fail.
+    try:
+        chisel.expect_problem("urn:acme:error:unauthorized",
+            lambda: auth_and_issue([hostname], client=client, chall_type="http-01"))
+    finally:
+        cleanup()
+
 
 def test_tls_alpn_challenge():
     # Pick two random domains

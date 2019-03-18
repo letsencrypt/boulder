@@ -9,6 +9,7 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -639,23 +640,35 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 	return nil, probs.Malformed("invalid challenge type %s", challenge.Type)
 }
 
-func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization, result chan *probs.ProblemDetails) {
-	s := va.clk.Now()
-	errors := make(chan error, len(va.remoteVAs))
+// performRemoteValidation calls `PerformValidation` for each of the configured
+// remoteVAs in a random order. The provided `results` chan should have an equal
+// size to the number of remote VAs. The validations will be peformed in
+// separate go-routines. If the result `error` from a remote
+// `PerformValidation` RPC is nil or a nil `ProblemDetails` instance it is
+// written directly to the `results` chan. If the err is a cancelled error it is
+// treated as a nil error. Otherwise the error/problem is written to the results
+// channel as-is.
+func (va *ValidationAuthorityImpl) performRemoteValidation(
+	ctx context.Context,
+	domain string,
+	challenge core.Challenge,
+	authz core.Authorization,
+	results chan error) {
+	va.log.Infof("Performing remote validations")
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]
-		go func(rva RemoteVA) {
+		go func(rva RemoteVA, index int) {
 			_, err := rva.PerformValidation(ctx, domain, challenge, authz)
 			if err != nil {
 				// returned error can be a nil *probs.ProblemDetails which breaks the
 				// err != nil check so do a slightly more complicated unwrap check to
 				// make sure we don't choke on that.
-				if p, ok := err.(*probs.ProblemDetails); ok || p != nil {
+				if p, ok := err.(*probs.ProblemDetails); ok && p != (*probs.ProblemDetails)(nil) {
 					// If the non-nil err was a non-nil *probs.ProblemDetails then we can
 					// log it at an info level. It's a normal non-success validation
 					// result and the remote VA will have logged more detail.
 					va.log.Infof("Remote VA %q.PerformValidation returned problem: %s", rva.Addresses, err)
-				} else if ok && p == nil {
+				} else if ok && p == (*probs.ProblemDetails)(nil) {
 					// If the non-nil err was a nil *probs.ProblemDetails then we don't need to do
 					// anything. There isn't really an error here.
 					err = nil
@@ -673,49 +686,165 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(ctx context.Context, 
 					va.log.Errf("Remote VA %q.PerformValidation failed: %s", rva.Addresses, err)
 				}
 			}
-			errors <- err
-		}(remoteVA)
+			va.log.Infof("nremote VA %d returned %#v", index, err)
+			results <- err
+		}(remoteVA, i)
 	}
+}
+
+// processRemoteResults evaluates a primary VA result, and a channel of remote
+// VA errors to produce a single overall validation result based on configured
+// feature flags. The overall result is calculated based on the VA's configured
+// `maxRemoteFailures` value.
+//
+// If the `MultiVAFullResults` feature is enabled then `processRemoteResults`
+// will expect to read a result from the `remoteErrors` channel for each VA and
+// will not produce an overall result until all remote VAs have responded. In
+// this case `logRemoteFailureDifferentials` will also be called to describe the
+// differential between the primary and all of the remote VAs.
+//
+// If the `MultiVAFullResults` feature flag is not enabled then
+// `processRemoteResults` will potentially return before all remote VAs have had
+// a chance to respond. This happens if the success or failure threshold is met.
+// This doesn't allow for logging the differential between the primary and
+// remote VAs but is more performant.
+func (va *ValidationAuthorityImpl) processRemoteResults(
+	domain string,
+	challengeType string,
+	primaryResult *probs.ProblemDetails,
+	remoteErrors chan error) *probs.ProblemDetails {
+
+	state := "failure"
+	start := va.clk.Now()
+
+	defer func() {
+		va.metrics.remoteValidationTime.With(prometheus.Labels{
+			"type":   challengeType,
+			"result": state,
+		}).Observe(va.clk.Since(start).Seconds())
+	}()
 
 	required := len(va.remoteVAs) - va.maxRemoteFailures
 	good := 0
 	bad := 0
-	state := "failure"
+
+	// probOrInternalError returns err if err is a *probs.ProblemDetails,
+	// otherwise it returns an InternalServerError problem.
+	probOrInternalError := func(err error) *probs.ProblemDetails {
+		if err == nil {
+			return nil
+		} else if prob, ok := err.(*probs.ProblemDetails); ok {
+			// The overall error returned is whichever error happened to tip the
+			// threshold. This is fine since we expect that any remote validation
+			// failures will typically be the same across instances.
+			return prob
+		} else {
+			// Otherwise the error was not an expected non-sucess problem result and
+			// represents an internal error. The real error has already been logged
+			// so return a server internal problem result without detail.
+			return probs.ServerInternal("Remote PerformValidation RPC failed")
+		}
+	}
+
 	// Due to channel behavior this could block indefinitely and we rely on gRPC
 	// honoring the context deadline used in client calls to prevent that from
 	// happening.
-	for err := range errors {
-		if err == nil {
+	var remoteProbs []*probs.ProblemDetails
+	var firstProb *probs.ProblemDetails
+	for err := range remoteErrors {
+		prob := probOrInternalError(err)
+		// Add the problem to the slice
+		remoteProbs = append(remoteProbs, prob)
+		if prob == nil {
 			good++
 		} else {
 			bad++
 		}
-		if good >= required {
-			result <- nil
-			state = "success"
-			break
-		} else if bad > va.maxRemoteFailures {
-			if prob, ok := err.(*probs.ProblemDetails); ok {
-				// The overall error returned is whichever error
-				// happened to tip the threshold. This is fine
-				// since we expect that any remote validation
-				// failures will typically be the same across
-				// instances.
-				result <- prob
-			} else {
-				// Otherwise the error was not an expected non-sucess problem result and
-				// represents an internal error. The real error has already been logged
-				// so return a server internal problem result without detail.
-				result <- probs.ServerInternal("Remote PerformValidation RPCs failed")
+
+		// If this is the first problem, put it asside so that when
+		// `features.MultiVAFullResults` is enabled we can use it as the returned
+		// problem.
+		if firstProb == nil && prob != nil {
+			firstProb = prob
+		}
+
+		// If MultiVAFullResults isn't enabled then return early whenever the
+		// success or failure threshold is met.
+		if !features.Enabled(features.MultiVAFullResults) {
+			if good >= required {
+				state = "success"
+				return nil
+			} else if bad > va.maxRemoteFailures {
+				return prob
 			}
+		}
+
+		// If we haven't returned early because of MultiVAFullResults being enabled
+		// we need to break the loop once all of the VAs have returned a result.
+		if len(remoteProbs) == len(va.remoteVAs) {
 			break
 		}
 	}
 
-	va.metrics.remoteValidationTime.With(prometheus.Labels{
-		"type":   string(challenge.Type),
-		"result": state,
-	}).Observe(va.clk.Since(s).Seconds())
+	// If we are using `features.MultiVAFullResults` then we haven't returned
+	// early and can now log the differential between what the primary VA saw and
+	// what all of the remote VAs saw.
+	va.logRemoteValidationDifferentials(domain, primaryResult, remoteProbs)
+
+	// Based on the threshold of good/bad return nil or a problem.
+	if good >= required {
+		state = "success"
+		return nil
+	} else if bad > va.maxRemoteFailures {
+		return firstProb
+	}
+
+	// This condition should not occur - it indicates the good/bad counts didn't
+	// meet either the required threshold or the maxRemoteFailures threshold.
+	return probs.ServerInternal("Too few remote PerformValidation RPC results")
+}
+
+// logRemoteValidationDifferentials is called by `processRemoteResults` when the
+// `MultiVAFullResults` feature flag is enabled. It produces a JSON log line
+// that contains the primary VA result and the results each remote VA returned.
+func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
+	domain string,
+	primaryResult *probs.ProblemDetails,
+	remoteProbs []*probs.ProblemDetails) {
+
+	allEqual := true
+	for _, e := range remoteProbs {
+		if e != primaryResult {
+			allEqual = false
+			break
+		}
+	}
+	if allEqual {
+		// There's no point logging a differential line if the primary VA and remote
+		// VAs all agree.
+		return
+	}
+
+	logOb := struct {
+		Domain        string
+		PrimaryResult *probs.ProblemDetails
+		RemoteResults []*probs.ProblemDetails
+	}{
+		Domain:        domain,
+		PrimaryResult: primaryResult,
+		RemoteResults: remoteProbs,
+	}
+
+	logJSON, err := json.Marshal(logOb)
+	if err != nil {
+		// log a warning - a marshaling failure isn't expected given the data and
+		// isn't critical enough to break validation for by returning an error to
+		// the caller.
+		va.log.Warningf("Could not marshal log object in "+
+			"logRemoteValidationDifferentials: %s", err)
+	}
+
+	va.log.Infof("remoteVADifferentials JSON=%s", string(logJSON))
 }
 
 // PerformValidation validates the given challenge. It always returns a list of
@@ -728,14 +857,13 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	}
 	vStart := va.clk.Now()
 
-	var remoteError chan *probs.ProblemDetails
-	if len(va.remoteVAs) > 0 {
-		remoteError = make(chan *probs.ProblemDetails, 1)
-		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteError)
+	var remoteErrors chan error
+	if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
+		remoteErrors = make(chan error, remoteVACount)
+		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteErrors)
 	}
 
 	records, prob := va.validate(ctx, core.AcmeIdentifier{Type: "dns", Value: domain}, challenge, authz)
-
 	challenge.ValidationRecord = records
 
 	// Check for malformed ValidationRecords
@@ -749,14 +877,15 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		challenge.Status = core.StatusInvalid
 		challenge.Error = prob
 		logEvent.Error = prob.Error()
-	} else if remoteError != nil {
-		prob = <-remoteError
-		if prob != nil {
+	} else if remoteErrors != nil {
+		remoteProb := va.processRemoteResults(domain, string(challenge.Type), prob, remoteErrors)
+		if features.Enabled(features.EnforceMultiVA) && remoteProb != nil {
+			prob = remoteProb
 			challenge.Status = core.StatusInvalid
-			challenge.Error = prob
-			logEvent.Error = prob.Error()
+			challenge.Error = remoteProb
+			logEvent.Error = remoteProb.Error()
 			va.log.Infof("Validation failed due to remote failures: identifier=%v err=%s",
-				authz.Identifier, prob)
+				domain, remoteProb)
 			va.metrics.remoteValidationFailures.Inc()
 		} else {
 			challenge.Status = core.StatusValid

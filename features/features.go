@@ -38,6 +38,13 @@ const (
 	// EarlyOrderRateLimit enables the RA applying certificate per name/per FQDN
 	// set rate limits in NewOrder in addition to FinalizeOrder.
 	EarlyOrderRateLimit
+	// EnforceMultiVA causes the VA to block on remote VA PerformValidation
+	// requests in order to make a valid/invalid decision with the results.
+	EnforceMultiVA
+	// MultiVAFullResults when paired with EnforceMultiVA will cause the main VA
+	// to wait for all of the remote VA results, not just the threshold required
+	// to make a decision.
+	MultiVAFullResults
 )
 
 // List of features and their default value, protected by fMu
@@ -56,6 +63,8 @@ var features = map[FeatureFlag]bool{
 	RevokeAtRA:               false,
 	SetIssuedNamesRenewalBit: false,
 	EarlyOrderRateLimit:      false,
+	EnforceMultiVA:           false,
+	MultiVAFullResults:       false,
 }
 
 var fMu = new(sync.RWMutex)
