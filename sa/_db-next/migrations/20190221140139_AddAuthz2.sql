@@ -20,7 +20,16 @@ CREATE TABLE `authz2` (
 
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
+CREATE TABLE `orderToAuthz2` (
+    `orderID` BIGINNT(20) NOT NULL,
+    `authzID` BIGINNT(20) NOT NULL,
+    PRIMARY KEY order_authz (`orderID`, `authzID`),
+    KEY `authzID` (`authzID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
 -- +goose Down
 -- SQL section 'Down' is executed when this migration is rolled back
 
 DROP TABLE `authz2`;
+
+DROP TABLE `orderToAuthz2`;

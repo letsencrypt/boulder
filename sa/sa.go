@@ -1648,6 +1648,27 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 
 func (ssa *SQLStorageAuthority) authzForOrder(ctx context.Context, orderID int64) ([]string, error) {
 	var ids []string
+	if features.Enabled(features.NewAuthorizationSchema) {
+		// TODO: I think this is probably the wrong way to do this...
+		// things like statusForOrder etc end up taking a slice of IDs
+		// from this method and then use them to retrieve authorizations.
+		// Since this doesn't differentiate the v1/v2 authorizations
+		// this makes that much more complicated. It also breaks GetOrder
+		// since we'll need to stick `v2/` in front of v2 authorizationn IDs
+		// so that users can actually retrieve them.
+		//
+		// Probably this should instead return two different slices and those
+		// should be acted upon accordingly. I haven't done this now because
+		// I'm being lazy, but future me will... probably.
+		_, err := ssa.dbMap.WithContext(ctx).Select(
+			&ids,
+			"SELECT authzID FROM orderToAuthz2 WHERE orderID = ?",
+			orderID,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
 	_, err := ssa.dbMap.WithContext(ctx).Select(
 		&ids, "SELECT authzID FROM orderToAuthz WHERE orderID = ?", orderID)
 	if err != nil {
@@ -2285,7 +2306,45 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 		}
 	}
 
-	return authz2ModelMapToPB(authzModelMap)
+	authzsPB, err := authz2ModelMapToPB(authzModelMap)
+	if err != nil {
+		return nil, err
+	}
+
+	// If we still need more authorizations look for them in the old
+	// style authorization tables.
+	//
+	// TODO: In theory, we don't _need_ to do this. Instead we could
+	// just ignore the old authorizations and require the RA to create
+	// fresh new style authorizations. This would promote the flushing
+	// of the old stuff down the toilet in favor of the new stuff but
+	// would (in the short term) cause an increased use of resources.
+	// I'd be in favor of this approach, but for now here is this code
+	// in case we want to go down the other path.
+	if len(authzModelMap) != len(req.Domains) {
+		// Get the authorizations for names we don't already have
+		leftOverMap := make(map[string]bool, len(req.Domains))
+		for _, name := range req.Domains {
+			leftOverMap[name] = true
+		}
+		for name := range authzModelMap {
+			delete(leftOverMap, name)
+		}
+		var remaining []string
+		for name := range leftOverMap {
+			remaining = append(remaining, name)
+		}
+		req.Domains = remaining
+		authz, err := ssa.GetAuthorizations(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		for _, authzPB := range authz.Authz {
+			authzsPB.Authz = append(authzsPB.Authz, authzPB)
+		}
+	}
+
+	return authzsPB, nil
 }
 
 // FinalizeAuthorization2 moves a pending authorization to either the valid or invalid status. If
@@ -2400,7 +2459,12 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, re
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, berrors.NotFoundError("pending authz not found")
+			// there may be an old style pending authorization so look for that
+			authz, err := ssa.GetPendingAuthorization(ctx, req)
+			if err != nil {
+				return nil, err
+			}
+			return bgrpc.AuthzToPB(*authz)
 		}
 		return nil, err
 	}
@@ -2423,6 +2487,13 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations2(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	// also count old style authorizations and add those to the count of
+	// new authorizations
+	oldCount, err := ssa.CountPendingAuthorizations(ctx, *req.Id)
+	if err != nil {
+		return nil, err
+	}
+	count += int64(oldCount)
 	return &sapb.Count{Count: &count}, nil
 }
 
@@ -2434,7 +2505,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 	_, err := ssa.dbMap.WithContext(ctx).Select(
 		&ams,
 		fmt.Sprintf(`SELECT %s FROM authz2
-			LEFT JOIN orderToAuthz ON authz2.ID = CONVERT(orderToAuthz.authzID, INTEGER)
+			LEFT JOIN orderToAuthz2 ON authz2.ID = orderToAuthz2.authzID
 			WHERE authz2.registrationID = ? AND
 			authz2.expires > ? AND
 			authz2.status = ? AND
@@ -2461,7 +2532,29 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 		}
 	}
 
-	return authz2ModelMapToPB(byName)
+	authzsPB, err := authz2ModelMapToPB(byName)
+	if err != nil {
+		return nil, err
+	}
+
+	// also get any older style authorizations, as far as I can tell
+	// there is no easy way to tell if this is needed or not as
+	// an order may be all one style, all the other, or a mix
+	oldAuthzMap, err := ssa.GetValidOrderAuthorizations(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if len(oldAuthzMap) > 0 {
+		oldAuthzsPB, err := authzMapToPB(oldAuthzMap)
+		if err != nil {
+			return nil, err
+		}
+		for _, authzPB := range oldAuthzsPB.Authz {
+			authzsPB.Authz = append(authzsPB.Authz, authzPB)
+		}
+	}
+
+	return authzsPB, nil
 }
 
 // CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
@@ -2485,6 +2578,13 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	// Also count old authorizations and add those to the new style
+	// style count
+	oldCount, err := ssa.CountInvalidAuthorizations(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	count += *oldCount.Count
 	return &sapb.Count{Count: &count}, nil
 }
 
@@ -2526,5 +2626,44 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 	for _, am := range authzModels {
 		authzMap[am.IdentifierValue] = am
 	}
-	return authz2ModelMapToPB(authzMap)
+	authzsPB, err := authz2ModelMapToPB(authzMap)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(authzsPB.Authz) != len(req.Domains) {
+		// We may still have valid old style authorizations
+		// we want for names in the list, so we have to look
+		// for them.
+		leftOverMap := make(map[string]bool, len(req.Domains))
+		for _, name := range req.Domains {
+			leftOverMap[name] = true
+		}
+		for name := range authzMap {
+			delete(leftOverMap, name)
+		}
+		remaining := make([]string, len(leftOverMap))
+		req.Domains = remaining
+		now := time.Unix(0, *req.Now)
+		oldAuthzs, err := ssa.GetValidAuthorizations(
+			ctx,
+			*req.RegistrationID,
+			req.Domains,
+			now,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if len(oldAuthzs) > 0 {
+			oldAuthzsPB, err := authzMapToPB(oldAuthzs)
+			if err != nil {
+				return nil, err
+			}
+			for _, authzPB := range oldAuthzsPB.Authz {
+				authzsPB.Authz = append(authzsPB.Authz, authzPB)
+			}
+		}
+	}
+
+	return authzsPB, nil
 }
