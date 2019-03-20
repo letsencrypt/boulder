@@ -54,6 +54,8 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
 
+	features.Reset()
+
 	cleanUp := test.ResetSATestDatabase(t)
 	return sa, fc, cleanUp
 }
@@ -2313,7 +2315,6 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 
 	err := features.Set(map[string]bool{"SetIssuedNamesRenewalBit": true})
 	test.AssertNotError(t, err, "Failed to enable SetIssuedNamesRenewalBit feature flag")
-	defer features.Reset()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 
@@ -2386,7 +2387,6 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 		"AllowRenewalFirstRL":      true,
 	})
 	test.AssertNotError(t, err, "Failed to enable required features flag")
-	defer features.Reset()
 
 	// Create a test registration
 	reg := satest.CreateWorkingRegistration(t, sa)

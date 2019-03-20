@@ -295,6 +295,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	AuthzFinal.Expires = &exp
 	AuthzFinal.Challenges[0].Status = "valid"
 
+	features.Reset()
+
 	return va, ssa, ra, fc, cleanUp
 }
 
@@ -1207,7 +1209,6 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 	// Start with the feature flag enabled.
 	err := features.Set(map[string]bool{"EarlyOrderRateLimit": true})
 	test.AssertNotError(t, err, "Failed to set EarlyOrderRateLimit feature flag")
-	defer features.Reset()
 
 	// Request an order for the test domain
 	newOrder := &rapb.NewOrderRequest{

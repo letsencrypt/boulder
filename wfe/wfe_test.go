@@ -385,6 +385,8 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = mocks.NewStorageAuthority(fc)
 
+	features.Reset()
+
 	return wfe, fc
 }
 
@@ -1748,7 +1750,6 @@ func TestAuthorization(t *testing.T) {
 	mux := wfe.Handler()
 
 	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
-	defer features.Reset()
 
 	responseWriter := httptest.NewRecorder()
 
@@ -2558,7 +2559,6 @@ func TestPrepChallengeForDisplay(t *testing.T) {
 	test.AssertEquals(t, chall.URI, "http://example.com/acme/challenge/eyup/0")
 
 	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
-	defer features.Reset()
 	authz.V2 = true
 	wfe.prepChallengeForDisplay(req, authz, chall)
 	test.AssertEquals(t, chall.URI, "http://example.com/acme/challenge/v2/eyup/iFVMwA==")
@@ -2631,7 +2631,6 @@ func TestNewRegistrationGetKeyBroken(t *testing.T) {
 
 func TestChallengeNewIDScheme(t *testing.T) {
 	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
-	defer features.Reset()
 	wfe, _ := setupWFE(t)
 
 	for _, tc := range []struct {

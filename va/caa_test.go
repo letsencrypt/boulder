@@ -199,11 +199,6 @@ func TestCAATimeout(t *testing.T) {
 }
 
 func TestCAAChecking(t *testing.T) {
-	if err := features.Set(map[string]bool{"CAAValidationMethods": true, "CAAAccountURI": true}); err != nil {
-		t.Fatalf("Failed to enable feature: %v", err)
-	}
-	defer features.Reset()
-
 	testCases := []struct {
 		Name    string
 		Domain  string
@@ -403,6 +398,10 @@ func TestCAAChecking(t *testing.T) {
 	params := &caaParams{accountURIID: &accountURIID, validationMethod: &method}
 
 	va, _ := setup(nil, 0)
+	if err := features.Set(map[string]bool{"CAAValidationMethods": true, "CAAAccountURI": true}); err != nil {
+		t.Fatalf("Failed to enable feature: %v", err)
+	}
+
 	va.dnsClient = caaMockDNS{}
 	va.accountURIPrefixes = []string{"https://letsencrypt.org/acct/reg/"}
 	for _, caaTest := range testCases {
