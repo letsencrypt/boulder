@@ -408,14 +408,16 @@ def BouncerHTTPRequestHandler(redirect, vips=1):
     return BouncerHandler
 
 def wait_for_server(addr):
-    try:
-        # NOTE(@cpu): Using HEAD here instead of GET because the
-        # BouncerHandler modifies its state for GET requests.
-        if requests.head(addr).status_code == 200:
-            return
-    except requests.exceptions.ConnectionError:
-        pass
-    time.sleep(0.5)
+    while True:
+        try:
+            # NOTE(@cpu): Using HEAD here instead of GET because the
+            # BouncerHandler modifies its state for GET requests.
+            status = requests.head(addr).status_code
+            if status == 200:
+                return
+        except requests.exceptions.ConnectionError:
+            pass
+        time.sleep(0.5)
 
 def multiva_setup(client, bounceFirst=1):
     # Create an authz for a random domain and get its HTTP-01 challenge token
@@ -459,7 +461,7 @@ def multiva_setup(client, bounceFirst=1):
         thread.join()
 
     # Wait for the server to be ready before returning
-    wait_for_server("http://10.88.88.88/up")
+    wait_for_server("http://10.88.88.88:5002/up")
     return hostname, cleanup
 
 def test_http_multiva_threshold_pass():
