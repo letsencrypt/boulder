@@ -383,7 +383,6 @@ def BouncerHTTPRequestHandler(redirect, vips=1):
             BaseHTTPRequestHandler.__init__(self, *args, **kwargs)
 
         def do_HEAD(self):
-            # Return a 200 status OK for any HEAD requests.
             # This is used by wait_for_server
             self.send_response(200)
             self.end_headers()
