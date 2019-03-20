@@ -685,7 +685,6 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 					va.log.Errf("Remote VA %q.PerformValidation failed: %s", rva.Addresses, err)
 				}
 			}
-			va.log.Infof("remote VA %d returned %#v", index, err)
 			results <- err
 		}(remoteVA, i)
 	}
