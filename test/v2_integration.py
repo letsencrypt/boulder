@@ -73,7 +73,7 @@ def rand_http_chall(client):
     raise Exception("No HTTP-01 challenge found for random domain authz")
 
 def test_http_challenge_loop_redirect():
-    client = ch2isel2.make_client()
+    client = chisel2.make_client()
 
     # Create an authz for a random domain and get its HTTP-01 challenge token
     d, chall = rand_http_chall(client)
@@ -733,7 +733,7 @@ def test_http_multiva_threshold_fail():
 
     try:
         # Because of the configured bounceFirst value the issuance should fail.
-        chisel2.expect_problem("urn:acme:error:unauthorized",
+        chisel2.expect_problem("urn:ietf:params:acme:error:unauthorized",
             lambda: chisel2.auth_and_issue([hostname], client=client, chall_type="http-01"))
     finally:
         cleanup()
