@@ -425,7 +425,7 @@ def multiva_setup(client, bounceFirst=1):
     token = chall.encode("token")
 
     # Calculate the challenge's keyauth so we can add a good keyauth response on
-    # the real challtestsrv that we redirect to when being honest.
+    # the real challtestsrv that we redirect VIP requests to.
     resp = chall.response(client.key)
     keyauth = resp.key_authorization
     challSrv.add_http01_response(token, keyauth)
