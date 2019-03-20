@@ -420,6 +420,13 @@ def wait_for_server(addr):
         time.sleep(0.5)
 
 def multiva_setup(client, bounceFirst=1):
+    """
+    Create a testing hostname and the multiva server setup. This will block
+    until the server is ready. The returned cleanup function should be used to
+    stop the server. The first bounceFirst requests to the server will be sent
+    to the real challtestsrv for a good answer, the rest will get a bad
+    answer.
+    """
     # Create an authz for a random domain and get its HTTP-01 challenge token
     hostname, chall = rand_http_chall(client)
     token = chall.encode("token")
@@ -479,11 +486,6 @@ def test_http_multiva_threshold_pass():
     # Configure a bounceFirst value that will pass the multiVA threshold test.
     bounceFirst = (remoteVAs - maxFailures) + 1
 
-    # Create a testing hostname and the multiva server setup. This will block
-    # until the server is ready. The returned cleanup function should be used to
-    # stop the server. The first bounceFirst requests to the server will be sent
-    # to the real challtestsrv for a good answer, the rest will get a bad
-    # answer.
     hostname, cleanup = multiva_setup(client, bounceFirst)
 
     try:
@@ -505,19 +507,10 @@ def test_http_multiva_threshold_fail():
     # only redirecting the primary VA.
     bounceFirst = 1
 
-    # Create a testing hostname and the multiva server setup. This will block
-    # until the server is ready. The returned cleanup function should be used to
-    # stop the server.
-
-    # Create a testing hostname and the multiva server setup. This will block
-    # until the server is ready. The returned cleanup function should be used to
-    # stop the server. The first bounceFirst requests to the server will be sent
-    # to the real challtestsrv for a good answer, the rest will get a bad
-    # answer.
     hostname, cleanup = multiva_setup(client, bounceFirst)
 
-    # Because of the configured honesty value the issuance should fail.
     try:
+        # Because of the configured bounceFirst value the issuance should fail.
         chisel.expect_problem("urn:acme:error:unauthorized",
             lambda: auth_and_issue([hostname], client=client, chall_type="http-01"))
     finally:
