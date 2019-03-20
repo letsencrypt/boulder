@@ -40,6 +40,7 @@ $(CMD_BINS): build_cmds
 
 build_cmds: | $(OBJDIR)
 	GOBIN=$(OBJDIR) go install $(GO_BUILD_FLAGS) ./...
+	cp $(OBJDIR)/boulder-va $(OBJDIR)/boulder-remoteva
 
 clean:
 	rm -f $(OBJDIR)/*
