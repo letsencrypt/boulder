@@ -754,9 +754,8 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 			bad++
 		}
 
-		// If this is the first problem, put it asside so that when
-		// `features.MultiVAFullResults` is enabled we can use it as the returned
-		// problem.
+		// Store the first non-nil problem to return later (if `MultiVAFullResults`
+		// is enabled).
 		if firstProb == nil && prob != nil {
 			firstProb = prob
 		}
