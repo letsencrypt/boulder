@@ -77,8 +77,8 @@ def start(race_detection, fakeclock=None, account_uri=None):
     if default_config_dir.startswith("test/config-next"):
         # Run the two 'remote' VAs
         progs.extend([
-            [8011, './bin/boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-a.json")],
-            [8012, './bin/boulder-va --config %s' % os.path.join(default_config_dir, "va-remote-b.json")],
+            [8011, './bin/boulder-remoteva --config %s' % os.path.join(default_config_dir, "va-remote-a.json")],
+            [8012, './bin/boulder-remoteva --config %s' % os.path.join(default_config_dir, "va-remote-b.json")],
         ])
     progs.extend([
         [53, './bin/sd-test-srv --listen :53'], # Service discovery DNS server
