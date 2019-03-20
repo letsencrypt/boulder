@@ -733,14 +733,8 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 		if err == nil {
 			return nil
 		} else if prob, ok := err.(*probs.ProblemDetails); ok {
-			// The overall error returned is whichever error happened to tip the
-			// threshold. This is fine since we expect that any remote validation
-			// failures will typically be the same across instances.
 			return prob
 		} else {
-			// Otherwise the error was not an expected non-sucess problem result and
-			// represents an internal error. The real error has already been logged
-			// so return a server internal problem result without detail.
 			return probs.ServerInternal("Remote PerformValidation RPC failed")
 		}
 	}
