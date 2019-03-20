@@ -654,7 +654,6 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	challenge core.Challenge,
 	authz core.Authorization,
 	results chan error) {
-	va.log.Infof("Performing remote validations")
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]
 		go func(rva RemoteVA, index int) {
