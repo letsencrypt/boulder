@@ -739,11 +739,11 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 		}
 	}
 
+	var remoteProbs []*probs.ProblemDetails
+	var firstProb *probs.ProblemDetails
 	// Due to channel behavior this could block indefinitely and we rely on gRPC
 	// honoring the context deadline used in client calls to prevent that from
 	// happening.
-	var remoteProbs []*probs.ProblemDetails
-	var firstProb *probs.ProblemDetails
 	for err := range remoteErrors {
 		prob := probOrInternalError(err)
 		// Add the problem to the slice
