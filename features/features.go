@@ -41,9 +41,8 @@ const (
 	// EnforceMultiVA causes the VA to block on remote VA PerformValidation
 	// requests in order to make a valid/invalid decision with the results.
 	EnforceMultiVA
-	// MultiVAFullResults when paired with EnforceMultiVA will cause the main VA
-	// to wait for all of the remote VA results, not just the threshold required
-	// to make a decision.
+	// MultiVAFullResults will cause the main VA to wait for all of the remote VA
+	// results, not just the threshold required to make a decision.
 	MultiVAFullResults
 )
 
