@@ -2630,8 +2630,8 @@ func TestNewRegistrationGetKeyBroken(t *testing.T) {
 }
 
 func TestChallengeNewIDScheme(t *testing.T) {
-	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
 	wfe, _ := setupWFE(t)
+	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
 
 	for _, tc := range []struct {
 		path     string
