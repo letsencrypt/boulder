@@ -653,7 +653,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	domain string,
 	challenge core.Challenge,
 	authz core.Authorization,
-	results chan error) {
+	results chan *probs.ProblemDetails) {
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]
 		go func(rva RemoteVA, index int) {
@@ -687,13 +687,19 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 					va.log.Errf("Remote VA %q.PerformValidation failed: %s", rva.Addresses, err)
 				}
 			}
-			results <- err
+			if err == nil {
+				results <- nil
+			} else if prob, ok := err.(*probs.ProblemDetails); ok {
+				results <- prob
+			} else {
+				results <- probs.ServerInternal("Remote PerformValidation RPC failed")
+			}
 		}(remoteVA, i)
 	}
 }
 
 // processRemoteResults evaluates a primary VA result, and a channel of remote
-// VA errors to produce a single overall validation result based on configured
+// VA problems to produce a single overall validation result based on configured
 // feature flags. The overall result is calculated based on the VA's configured
 // `maxRemoteFailures` value.
 //
@@ -712,7 +718,7 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 	domain string,
 	challengeType string,
 	primaryResult *probs.ProblemDetails,
-	remoteErrors chan error) *probs.ProblemDetails {
+	remoteErrors chan *probs.ProblemDetails) *probs.ProblemDetails {
 
 	state := "failure"
 	start := va.clk.Now()
@@ -728,25 +734,12 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 	good := 0
 	bad := 0
 
-	// probOrInternalError returns err if err is a *probs.ProblemDetails,
-	// otherwise it returns an InternalServerError problem.
-	probOrInternalError := func(err error) *probs.ProblemDetails {
-		if err == nil {
-			return nil
-		} else if prob, ok := err.(*probs.ProblemDetails); ok {
-			return prob
-		} else {
-			return probs.ServerInternal("Remote PerformValidation RPC failed")
-		}
-	}
-
 	var remoteProbs []*probs.ProblemDetails
 	var firstProb *probs.ProblemDetails
 	// Due to channel behavior this could block indefinitely and we rely on gRPC
 	// honoring the context deadline used in client calls to prevent that from
 	// happening.
-	for err := range remoteErrors {
-		prob := probOrInternalError(err)
+	for prob := range remoteErrors {
 		// Add the problem to the slice
 		remoteProbs = append(remoteProbs, prob)
 		if prob == nil {
@@ -850,10 +843,10 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	}
 	vStart := va.clk.Now()
 
-	var remoteErrors chan error
+	var remoteProbs chan *probs.ProblemDetails
 	if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
-		remoteErrors = make(chan error, remoteVACount)
-		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteErrors)
+		remoteProbs = make(chan *probs.ProblemDetails, remoteVACount)
+		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteProbs)
 	}
 
 	records, prob := va.validate(ctx, core.AcmeIdentifier{Type: "dns", Value: domain}, challenge, authz)
@@ -870,16 +863,16 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		challenge.Status = core.StatusInvalid
 		challenge.Error = prob
 		logEvent.Error = prob.Error()
-	} else if remoteErrors != nil {
+	} else if remoteProbs != nil {
 		if !features.Enabled(features.EnforceMultiVA) && features.Enabled(features.MultiVAFullResults) {
 			// If we're not going to enforce multi VA but we are logging the
 			// differentials then collect and log the remote results in a separate go
 			// routine to avoid blocking the primary VA.
 			go func() {
-				_ = va.processRemoteResults(domain, string(challenge.Type), prob, remoteErrors)
+				_ = va.processRemoteResults(domain, string(challenge.Type), prob, remoteProbs)
 			}()
 		} else if features.Enabled(features.EnforceMultiVA) {
-			remoteProb := va.processRemoteResults(domain, string(challenge.Type), prob, remoteErrors)
+			remoteProb := va.processRemoteResults(domain, string(challenge.Type), prob, remoteProbs)
 			if remoteProb != nil {
 				prob = remoteProb
 				challenge.Status = core.StatusInvalid
