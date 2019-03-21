@@ -798,11 +798,18 @@ func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 	primaryResult *probs.ProblemDetails,
 	remoteProbs []*probs.ProblemDetails) {
 
+	var successes []*probs.ProblemDetails
+	var failures []*probs.ProblemDetails
+
 	allEqual := true
 	for _, e := range remoteProbs {
 		if e != primaryResult {
 			allEqual = false
-			break
+		}
+		if e == nil {
+			successes = append(successes, nil)
+		} else {
+			failures = append(failures, e)
 		}
 	}
 	if allEqual {
@@ -812,13 +819,15 @@ func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 	}
 
 	logOb := struct {
-		Domain        string
-		PrimaryResult *probs.ProblemDetails
-		RemoteResults []*probs.ProblemDetails
+		Domain          string
+		PrimaryResult   *probs.ProblemDetails
+		RemoteSuccesses []*probs.ProblemDetails
+		RemoteFailures  []*probs.ProblemDetails
 	}{
-		Domain:        domain,
-		PrimaryResult: primaryResult,
-		RemoteResults: remoteProbs,
+		Domain:          domain,
+		PrimaryResult:   primaryResult,
+		RemoteSuccesses: successes,
+		RemoteFailures:  failures,
 	}
 
 	logJSON, err := json.Marshal(logOb)
