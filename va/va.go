@@ -836,12 +836,12 @@ func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 	logOb := struct {
 		Domain          string
 		PrimaryResult   *probs.ProblemDetails
-		RemoteSuccesses []*probs.ProblemDetails
+		RemoteSuccesses int
 		RemoteFailures  []*probs.ProblemDetails
 	}{
 		Domain:          domain,
 		PrimaryResult:   primaryResult,
-		RemoteSuccesses: successes,
+		RemoteSuccesses: len(successes),
 		RemoteFailures:  failures,
 	}
 
