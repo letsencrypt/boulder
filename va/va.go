@@ -70,12 +70,13 @@ type RemoteVA struct {
 }
 
 type vaMetrics struct {
-	validationTime           *prometheus.HistogramVec
-	remoteValidationTime     *prometheus.HistogramVec
-	remoteValidationFailures prometheus.Counter
-	tlsALPNOIDCounter        *prometheus.CounterVec
-	http01Fallbacks          prometheus.Counter
-	http01Redirects          prometheus.Counter
+	validationTime                      *prometheus.HistogramVec
+	remoteValidationTime                *prometheus.HistogramVec
+	remoteValidationFailures            prometheus.Counter
+	prospectiveRemoteValidationFailures prometheus.Counter
+	tlsALPNOIDCounter                   *prometheus.CounterVec
+	http01Fallbacks                     prometheus.Counter
+	http01Redirects                     prometheus.Counter
 }
 
 func initMetrics(stats metrics.Scope) *vaMetrics {
@@ -98,9 +99,15 @@ func initMetrics(stats metrics.Scope) *vaMetrics {
 	remoteValidationFailures := prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "remote_validation_failures",
-			Help: "Number of validations failed due to remote VAs returning failure",
+			Help: "Number of validations failed due to remote VAs returning failure when consensus is enforced",
 		})
 	stats.MustRegister(remoteValidationFailures)
+	prospectiveRemoteValidationFailures := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "prospective_remote_validation_failures",
+			Help: "Number of validations that would have failed due to remote VAs returning failure if consesus were enforced",
+		})
+	stats.MustRegister(prospectiveRemoteValidationFailures)
 	tlsALPNOIDCounter := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "tls_alpn_oid_usage",
@@ -123,12 +130,13 @@ func initMetrics(stats metrics.Scope) *vaMetrics {
 	stats.MustRegister(http01Redirects)
 
 	return &vaMetrics{
-		validationTime:           validationTime,
-		remoteValidationTime:     remoteValidationTime,
-		remoteValidationFailures: remoteValidationFailures,
-		tlsALPNOIDCounter:        tlsALPNOIDCounter,
-		http01Fallbacks:          http01Fallbacks,
-		http01Redirects:          http01Redirects,
+		validationTime:                      validationTime,
+		remoteValidationTime:                remoteValidationTime,
+		remoteValidationFailures:            remoteValidationFailures,
+		prospectiveRemoteValidationFailures: prospectiveRemoteValidationFailures,
+		tlsALPNOIDCounter:                   tlsALPNOIDCounter,
+		http01Fallbacks:                     http01Fallbacks,
+		http01Redirects:                     http01Redirects,
 	}
 }
 
@@ -816,6 +824,13 @@ func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 		// There's no point logging a differential line if the primary VA and remote
 		// VAs all agree.
 		return
+	}
+
+	// If the primary result was OK and there were more failures than the allowed
+	// threshold increment a stat that indicates this overall validation will have
+	// failed if features.EnforceMultiVA is enabled.
+	if primaryResult == nil && len(failures) > va.maxRemoteFailures {
+		va.metrics.prospectiveRemoteValidationFailures.Inc()
 	}
 
 	logOb := struct {
