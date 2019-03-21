@@ -4,6 +4,7 @@ import atexit
 import base64
 import datetime
 import errno
+import inspect
 import json
 import os
 import random
@@ -22,7 +23,7 @@ import startservers
 
 import chisel
 from chisel import auth_and_issue
-from v2_integration import *
+import v2_integration
 from helpers import *
 
 from acme import challenges
@@ -880,6 +881,9 @@ def main():
     exit_status = 0
 
 def run_chisel(test_case_filter):
+    for key, value in inspect.getmembers(v2_integration):
+      if callable(value) and key.startswith('test_') and re.search(test_case_filter, key):
+        value()
     for key, value in globals().items():
       if callable(value) and key.startswith('test_') and re.search(test_case_filter, key):
         value()
