@@ -828,6 +828,7 @@ func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 		// the caller.
 		va.log.Warningf("Could not marshal log object in "+
 			"logRemoteValidationDifferentials: %s", err)
+		return
 	}
 
 	va.log.Infof("remoteVADifferentials JSON=%s", string(logJSON))
