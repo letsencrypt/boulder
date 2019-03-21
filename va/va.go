@@ -662,6 +662,8 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 				// returned error can be a nil *probs.ProblemDetails which breaks the
 				// err != nil check so do a slightly more complicated unwrap check to
 				// make sure we don't choke on that.
+				// TODO(@cpu): Clean this up once boulder issue 2254[0] is resolved
+				// [0] https://github.com/letsencrypt/boulder/issues/2254
 				if p, ok := err.(*probs.ProblemDetails); ok && p != (*probs.ProblemDetails)(nil) {
 					// If the non-nil err was a non-nil *probs.ProblemDetails then we can
 					// log it at an info level. It's a normal non-success validation
