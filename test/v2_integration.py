@@ -27,6 +27,7 @@ from acme import crypto_util as acme_crypto_util
 from acme import client as acme_client
 from acme import messages
 from acme import challenges
+from acme import errors
 
 import josepy
 
@@ -68,10 +69,13 @@ def test_http_challenge():
 
 def rand_http_chall(client):
     d = random_domain()
-    authz = client.request_domain_challenges(d)
-    for c in authz.body.challenges:
-        if isinstance(c.chall, challenges.HTTP01):
-            return d, c.chall
+    csr_pem = chisel2.make_csr([d])
+    order = client.new_order(csr_pem)
+    authzs = order.authorizations
+    for a in authzs:
+        for c in a.body.challenges:
+            if isinstance(c.chall, challenges.HTTP01):
+                return d, c.chall
     raise Exception("No HTTP-01 challenge found for random domain authz")
 
 def test_http_challenge_loop_redirect():
@@ -89,8 +93,8 @@ def test_http_challenge_loop_redirect():
 
     # Issuing for the the name should fail because of the challenge domains's
     # redirect loop.
-    chisel2.expect_problem("urn:acme:error:connection",
-        lambda: auth_and_issue([d], client=client, chall_type="http-01"))
+    chisel2.expect_problem("urn:ietf:params:acme:error:connection",
+        lambda: chisel2.auth_and_issue([d], client=client, chall_type="http-01"))
 
     challSrv.remove_http_redirect(challengePath)
 
@@ -110,8 +114,8 @@ def test_http_challenge_badport_redirect():
 
     # Issuing for the name should fail because of the challenge domain's
     # invalid port redirect.
-    chisel2.expect_problem("urn:acme:error:connection",
-        lambda: auth_and_issue([d], client=client, chall_type="http-01"))
+    chisel2.expect_problem("urn:ietf:params:acme:error:connection",
+        lambda: chisel2.auth_and_issue([d], client=client, chall_type="http-01"))
 
     challSrv.remove_http_redirect(challengePath)
 
@@ -131,8 +135,8 @@ def test_http_challenge_badhost_redirect():
 
     # Issuing for the name should cause a connection error because the redirect
     # domain name is an IP address.
-    chisel2.expect_problem("urn:acme:error:connection",
-        lambda: auth_and_issue([d], client=client, chall_type="http-01"))
+    chisel2.expect_problem("urn:ietf:params:acme:error:connection",
+        lambda: chisel2.auth_and_issue([d], client=client, chall_type="http-01"))
 
     challSrv.remove_http_redirect(challengePath)
 
@@ -152,8 +156,8 @@ def test_http_challenge_badproto_redirect():
 
     # Issuing for the name should cause a connection error because the redirect
     # domain name is an IP address.
-    chisel2.expect_problem("urn:acme:error:connection",
-        lambda: auth_and_issue([d], client=client, chall_type="http-01"))
+    chisel2.expect_problem("urn:ietf:params:acme:error:connection",
+        lambda: chisel2.auth_and_issue([d], client=client, chall_type="http-01"))
 
     challSrv.remove_http_redirect(challengePath)
 
@@ -172,11 +176,12 @@ def test_http_challenge_http_redirect():
     # Create a HTTP redirect from the challenge's validation path to some other
     # token path where we have registered the key authorization.
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
+    redirectPath = "/.well-known/acme-challenge/http-redirect?params=are&important=to&not=lose"
     challSrv.add_http_redirect(
         challengePath,
-        "http://{0}/.well-known/acme-challenge/http-redirect".format(d))
+        "http://{0}{1}".format(d, redirectPath))
 
-    auth_and_issue([d], client=client, chall_type="http-01")
+    chisel2.auth_and_issue([d], client=client, chall_type="http-01")
 
     challSrv.remove_http_redirect(challengePath)
     challSrv.remove_http01_response("http-redirect")
@@ -220,22 +225,40 @@ def test_http_challenge_https_redirect():
     # Create an authz for a random domain and get its HTTP-01 challenge token
     d, chall = rand_http_chall(client)
     token = chall.encode("token")
+    # Calculate its keyauth so we can add it in a special non-standard location
+    # for the redirect result
+    resp = chall.response(client.net.key)
+    keyauth = resp.key_authorization
+    challSrv.add_http01_response("https-redirect", keyauth)
 
     # Create a HTTP redirect from the challenge's validation path to an HTTPS
-    # address with the same path.
+    # path with some parameters
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
+    redirectPath = "/.well-known/acme-challenge/https-redirect?params=are&important=to&not=lose"
     challSrv.add_http_redirect(
         challengePath,
-        "https://{0}{1}".format(d, challengePath))
+        "https://{0}{1}".format(d, redirectPath))
 
     # Also add an A record for the domain pointing to the interface that the
     # HTTPS HTTP-01 challtestsrv is bound.
     challSrv.add_a_record(d, ["10.77.77.77"])
 
-    auth_and_issue([d], client=client, chall_type="http-01")
+    try:
+        chisel2.auth_and_issue([d], client=client, chall_type="http-01")
+    except errors.ValidationError as e:
+        problems = []
+        for authzr in e.failed_authzrs:
+            for chall in authzr.body.challenges:
+                error = chall.error
+                if error:
+                    problems.append(error.__str__())
+        raise Exception("validation problem: %s" % "; ".join(problems))
 
     challSrv.remove_http_redirect(challengePath)
     challSrv.remove_a_record(d)
+
+    history = challSrv.http_request_history(d)
+    challSrv.clear_http_request_history(d)
 
     # There should have been at least two GET requests made to the challtestsrv by the VA
     if len(history) < 2:
@@ -261,7 +284,7 @@ def test_http_challenge_https_redirect():
      # All initial requests should have been over HTTP
     for r in initialRequests:
       if r['HTTPS'] is True:
-        raise Exception("Expected all initial requests to be HTTP")
+        raise Exception("Expected all initial requests to be HTTP, got %s" % r)
 
     # There should have been at least 1 redirected HTTP request for each VA
     if len(redirectedRequests) < 1:
@@ -362,8 +385,6 @@ def test_wildcard_authz_reuse():
                     ((domains), str(authz.body.status)))
 
 def test_bad_overlap_wildcard():
-    if not os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):
-        return
     chisel2.expect_problem("urn:ietf:params:acme:error:malformed",
         lambda: chisel2.auth_and_issue(["*.example.com", "www.example.com"]))
 

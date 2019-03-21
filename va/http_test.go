@@ -224,6 +224,20 @@ func TestExtractRequestTarget(t *testing.T) {
 				"and 443 are supported, not 9999"),
 		},
 		{
+			Name: "invalid empty hostname",
+			Req: &http.Request{
+				URL: mustURL(t, "https:///who/needs/a/hostname?not=me"),
+			},
+			ExpectedError: errors.New("Invalid empty hostname in redirect target"),
+		},
+		{
+			Name: "invalid non-iana hostname",
+			Req: &http.Request{
+				URL: mustURL(t, "https://my.tld.is.cpu/pretty/cool/right?yeah=Ithoughtsotoo"),
+			},
+			ExpectedError: errors.New("Invalid hostname in redirect target, must end in IANA registered TLD"),
+		},
+		{
 			Name: "bare IP",
 			Req: &http.Request{
 				URL: mustURL(t, "https://10.10.10.10"),
