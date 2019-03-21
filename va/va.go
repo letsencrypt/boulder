@@ -726,7 +726,8 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 	domain string,
 	challengeType string,
 	primaryResult *probs.ProblemDetails,
-	remoteErrors chan *probs.ProblemDetails) *probs.ProblemDetails {
+	remoteErrors chan *probs.ProblemDetails,
+	numRemoteVAs int) *probs.ProblemDetails {
 
 	state := "failure"
 	start := va.clk.Now()
@@ -738,7 +739,7 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 		}).Observe(va.clk.Since(start).Seconds())
 	}()
 
-	required := len(va.remoteVAs) - va.maxRemoteFailures
+	required := numRemoteVAs - va.maxRemoteFailures
 	good := 0
 	bad := 0
 
@@ -775,7 +776,7 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 
 		// If we haven't returned early because of MultiVAFullResults being enabled
 		// we need to break the loop once all of the VAs have returned a result.
-		if len(remoteProbs) == len(va.remoteVAs) {
+		if len(remoteProbs) == numRemoteVAs {
 			break
 		}
 	}
@@ -894,10 +895,10 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 			// differentials then collect and log the remote results in a separate go
 			// routine to avoid blocking the primary VA.
 			go func() {
-				_ = va.processRemoteResults(domain, string(challenge.Type), prob, remoteProbs)
+				_ = va.processRemoteResults(domain, string(challenge.Type), prob, remoteProbs, len(va.remoteVAs))
 			}()
 		} else if features.Enabled(features.EnforceMultiVA) {
-			remoteProb := va.processRemoteResults(domain, string(challenge.Type), prob, remoteProbs)
+			remoteProb := va.processRemoteResults(domain, string(challenge.Type), prob, remoteProbs, len(va.remoteVAs))
 			if remoteProb != nil {
 				prob = remoteProb
 				challenge.Status = core.StatusInvalid
