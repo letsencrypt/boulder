@@ -869,17 +869,26 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		challenge.Error = prob
 		logEvent.Error = prob.Error()
 	} else if remoteErrors != nil {
-		remoteProb := va.processRemoteResults(domain, string(challenge.Type), prob, remoteErrors)
-		if features.Enabled(features.EnforceMultiVA) && remoteProb != nil {
-			prob = remoteProb
-			challenge.Status = core.StatusInvalid
-			challenge.Error = remoteProb
-			logEvent.Error = remoteProb.Error()
-			va.log.Infof("Validation failed due to remote failures: identifier=%v err=%s",
-				domain, remoteProb)
-			va.metrics.remoteValidationFailures.Inc()
-		} else {
-			challenge.Status = core.StatusValid
+		if !features.Enabled(features.EnforceMultiVA) && features.Enabled(features.MultiVAFullResults) {
+			// If we're not going to enforce multi VA but we are logging the
+			// differentials then collect and log the remote results in a separate go
+			// routine to avoid blocking the primary VA.
+			go func() {
+				_ = va.processRemoteResults(domain, string(challenge.Type), prob, remoteErrors)
+			}()
+		} else if features.Enabled(features.EnforceMultiVA) {
+			remoteProb := va.processRemoteResults(domain, string(challenge.Type), prob, remoteErrors)
+			if remoteProb != nil {
+				prob = remoteProb
+				challenge.Status = core.StatusInvalid
+				challenge.Error = remoteProb
+				logEvent.Error = remoteProb.Error()
+				va.log.Infof("Validation failed due to remote failures: identifier=%v err=%s",
+					domain, remoteProb)
+				va.metrics.remoteValidationFailures.Inc()
+			} else {
+				challenge.Status = core.StatusValid
+			}
 		}
 	} else {
 		challenge.Status = core.StatusValid

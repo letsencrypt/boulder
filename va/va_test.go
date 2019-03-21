@@ -9,7 +9,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -1414,33 +1413,17 @@ func TestMultiVA(t *testing.T) {
 
 	internalErr := probs.ServerInternal("Remote PerformValidation RPC failed")
 
-	expectedDifferential := func(domain string, primary, remoteA, remoteB *probs.ProblemDetails) string {
-		logOb := struct {
-			Domain        string
-			PrimaryResult *probs.ProblemDetails
-			RemoteResults []*probs.ProblemDetails
-		}{
-			Domain:        domain,
-			PrimaryResult: primary,
-			RemoteResults: []*probs.ProblemDetails{remoteA, remoteB},
-		}
-
-		logJSON, _ := json.Marshal(logOb)
-		return fmt.Sprintf("INFO: remoteVADifferentials JSON=%s", string(logJSON))
-	}
-
 	expectedInternalErrLine := fmt.Sprintf(
 		`ERR: \[AUDIT\] Remote VA "broken".PerformValidation failed: %s`,
 		brokenRemoteVAError.Error())
 
 	testCases := []struct {
-		Name                    string
-		RemoteVAs               []RemoteVA
-		AllowedUAs              map[string]bool
-		Features                map[string]bool
-		ExpectedProb            *probs.ProblemDetails
-		ExpectedDifferentialLog string
-		ExpectedLog             string
+		Name         string
+		RemoteVAs    []RemoteVA
+		AllowedUAs   map[string]bool
+		Features     map[string]bool
+		ExpectedProb *probs.ProblemDetails
+		ExpectedLog  string
 	}{
 		{
 			// With local and both remote VAs working there should be no problem.
@@ -1539,24 +1522,21 @@ func TestMultiVA(t *testing.T) {
 		},
 		{
 			// With the local and remote VAs seeing diff problems and the full results
-			// feature flag on but multi VA enforcement off we expect a logged
-			// differential but no problem.
-			Name:                    "Local and remove VA differential, full results, no enforce multi VA",
-			RemoteVAs:               remoteVAs,
-			AllowedUAs:              map[string]bool{localUA: true},
-			Features:                noEnforceMultiVAFullResults,
-			ExpectedDifferentialLog: expectedDifferential("localhost", nil, unauthorized, unauthorized),
+			// feature flag on but multi VA enforcement off we expect
+			// no problem.
+			Name:       "Local and remove VA differential, full results, no enforce multi VA",
+			RemoteVAs:  remoteVAs,
+			AllowedUAs: map[string]bool{localUA: true},
+			Features:   noEnforceMultiVAFullResults,
 		},
 		{
 			// With the local and remote VAs seeing diff problems and the full results
-			// feature flag on and multi VA enforcement on we expect a logged
-			// differential and a problem.
-			Name:                    "Local and remove VA differential, full results, enforce multi VA",
-			RemoteVAs:               remoteVAs,
-			AllowedUAs:              map[string]bool{localUA: true},
-			Features:                enforceMultiVAFullResults,
-			ExpectedProb:            unauthorized,
-			ExpectedDifferentialLog: expectedDifferential("localhost", nil, unauthorized, unauthorized),
+			// feature flag on and multi VA enforcement on we expect a problem.
+			Name:         "Local and remove VA differential, full results, enforce multi VA",
+			RemoteVAs:    remoteVAs,
+			AllowedUAs:   map[string]bool{localUA: true},
+			Features:     enforceMultiVAFullResults,
+			ExpectedProb: unauthorized,
 		},
 	}
 
@@ -1581,15 +1561,6 @@ func TestMultiVA(t *testing.T) {
 			} else if prob != nil {
 				// That result should match expected.
 				test.AssertDeepEquals(t, prob, tc.ExpectedProb)
-			}
-
-			differentialLines := mockLog.GetAllMatching("remoteVADifferentials JSON")
-			if tc.ExpectedDifferentialLog == "" && len(differentialLines) > 0 {
-				t.Errorf("Expected no remoteVADifferentials logged, got %q\n", differentialLines[0])
-			} else if tc.ExpectedDifferentialLog != "" && len(differentialLines) == 0 {
-				t.Error("Expected remoteVADifferentials logged, got none")
-			} else if tc.ExpectedDifferentialLog != "" {
-				test.AssertEquals(t, tc.ExpectedDifferentialLog, differentialLines[0])
 			}
 
 			if tc.ExpectedLog != "" {
