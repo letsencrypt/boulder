@@ -1551,7 +1551,9 @@ func TestMultiVA(t *testing.T) {
 			}
 
 			// Configure the primary VA with the testcase remote VAs.
+			localVA.remoteVAMu.Lock()
 			localVA.remoteVAs = tc.RemoteVAs
+			localVA.remoteVAMu.Unlock()
 			// Configure the test server with the testcase allowed UAs.
 			ms.setAllowedUAs(tc.AllowedUAs)
 			// Perform all validations

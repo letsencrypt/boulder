@@ -18,6 +18,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -152,6 +153,7 @@ type ValidationAuthorityImpl struct {
 	stats              metrics.Scope
 	clk                clock.Clock
 	remoteVAs          []RemoteVA
+	remoteVAMu         *sync.RWMutex
 	maxRemoteFailures  int
 	accountURIPrefixes []string
 	singleDialTimeout  time.Duration
@@ -198,6 +200,7 @@ func NewValidationAuthorityImpl(
 		clk:                clk,
 		metrics:            initMetrics(stats),
 		remoteVAs:          remoteVAs,
+		remoteVAMu:         new(sync.RWMutex),
 		maxRemoteFailures:  maxRemoteFailures,
 		accountURIPrefixes: accountURIPrefixes,
 		// singleDialTimeout specifies how long an individual `DialContext` operation may take
@@ -662,6 +665,8 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	challenge core.Challenge,
 	authz core.Authorization,
 	results chan *probs.ProblemDetails) {
+	va.remoteVAMu.RLock()
+	defer va.remoteVAMu.RUnlock()
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]
 		go func(rva RemoteVA, index int) {
@@ -870,7 +875,10 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	vStart := va.clk.Now()
 
 	var remoteProbs chan *probs.ProblemDetails
-	if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
+	va.remoteVAMu.RLock()
+	numVAs := len(va.remoteVAs)
+	va.remoteVAMu.RUnlock()
+	if remoteVACount := numVAs; remoteVACount > 0 {
 		remoteProbs = make(chan *probs.ProblemDetails, remoteVACount)
 		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteProbs)
 	}
@@ -895,10 +903,10 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 			// differentials then collect and log the remote results in a separate go
 			// routine to avoid blocking the primary VA.
 			go func() {
-				_ = va.processRemoteResults(domain, string(challenge.Type), prob, remoteProbs, len(va.remoteVAs))
+				_ = va.processRemoteResults(domain, string(challenge.Type), prob, remoteProbs, numVAs)
 			}()
 		} else if features.Enabled(features.EnforceMultiVA) {
-			remoteProb := va.processRemoteResults(domain, string(challenge.Type), prob, remoteProbs, len(va.remoteVAs))
+			remoteProb := va.processRemoteResults(domain, string(challenge.Type), prob, remoteProbs, numVAs)
 			if remoteProb != nil {
 				prob = remoteProb
 				challenge.Status = core.StatusInvalid
