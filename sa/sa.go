@@ -1535,7 +1535,7 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 
 	// Calculate the order status before returning it. Since it may have reused all
 	// valid authorizations the order may be "born" in a ready status.
-	status, err := ssa.statusForOrder(ctx, req)
+	status, err := ssa.statusForOrder(ctx, req, nil) // TODO: fix this for v2 ID ints
 	if err != nil {
 		return nil, err
 	}
@@ -1646,35 +1646,28 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 	return tx.Commit()
 }
 
-func (ssa *SQLStorageAuthority) authzForOrder(ctx context.Context, orderID int64) ([]string, error) {
-	var ids []string
+// authzForOrder retrieves the authorization IDs for an order, it returns these
+// IDs in two slices, one for original style authorizations, and another for
+// v2 style authorizations.
+func (ssa *SQLStorageAuthority) authzForOrder(ctx context.Context, orderID int64) ([]string, []int, error) {
+	var v1IDs []string
+	var v2IDs []int
 	if features.Enabled(features.NewAuthorizationSchema) {
-		// TODO: I think this is probably the wrong way to do this...
-		// things like statusForOrder etc end up taking a slice of IDs
-		// from this method and then use them to retrieve authorizations.
-		// Since this doesn't differentiate the v1/v2 authorizations
-		// this makes that much more complicated. It also breaks GetOrder
-		// since we'll need to stick `v2/` in front of v2 authorizationn IDs
-		// so that users can actually retrieve them.
-		//
-		// Probably this should instead return two different slices and those
-		// should be acted upon accordingly. I haven't done this now because
-		// I'm being lazy, but future me will... probably.
 		_, err := ssa.dbMap.WithContext(ctx).Select(
-			&ids,
+			&v2IDs,
 			"SELECT authzID FROM orderToAuthz2 WHERE orderID = ?",
 			orderID,
 		)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	_, err := ssa.dbMap.WithContext(ctx).Select(
-		&ids, "SELECT authzID FROM orderToAuthz WHERE orderID = ?", orderID)
+		&v1IDs, "SELECT authzID FROM orderToAuthz WHERE orderID = ?", orderID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return ids, nil
+	return v1IDs, v2IDs, nil
 }
 
 // namesForOrder finds all of the requested names associated with an order. The
@@ -1706,12 +1699,15 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	if err != nil {
 		return nil, err
 	}
-	authzIDs, err := ssa.authzForOrder(ctx, *order.Id)
+	v1AuthzIDs, v2AuthzIDs, err := ssa.authzForOrder(ctx, *order.Id)
 	if err != nil {
 		return nil, err
 	}
-	for _, authzID := range authzIDs {
+	for _, authzID := range v1AuthzIDs {
 		order.Authorizations = append(order.Authorizations, authzID)
+	}
+	for _, authzID := range v2AuthzIDs {
+		order.Authorizations = append(order.Authorizations, fmt.Sprintf("v2/%s", authzID))
 	}
 
 	names, err := ssa.namesForOrder(ctx, *order.Id)
@@ -1728,7 +1724,7 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	order.Names = reversedNames
 
 	// Calculate the status for the order
-	status, err := ssa.statusForOrder(ctx, order)
+	status, err := ssa.statusForOrder(ctx, order, v2AuthzIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -1751,7 +1747,7 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 //   * If all of the order's authorizations are valid, and we haven't begun
 //     processing, then the order is status ready.
 // An error is returned for any other case.
-func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corepb.Order) (string, error) {
+func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corepb.Order, v2AuthzIDs []int) (string, error) {
 	// Without any further work we know an order with an error is invalid
 	if order.Error != nil {
 		return string(core.StatusInvalid), nil
@@ -1770,20 +1766,20 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 	}
 
 	// Get the full Authorization objects for the order
-	authzs, err := ssa.getAllOrderAuthorizations(ctx, *order.Id, *order.RegistrationID)
+	authzStatuses, err := ssa.getAllOrderAuthorizationStatuses(ctx, *order.Id, *order.RegistrationID, v2AuthzIDs)
 	// If there was an error getting the authorizations, return it immediately
 	if err != nil {
 		return "", err
 	}
 
-	// If getAllOrderAuthorizations returned a different number of authorization
+	// If getAllOrderAuthorizationStatuses returned a different number of authorization
 	// objects than the order's slice of authorization IDs something has gone
 	// wrong worth raising an internal error about.
-	if len(authzs) != len(order.Authorizations) {
+	if len(authzStatuses) != len(order.Authorizations) {
 		return "", berrors.InternalServerError(
-			"getAllOrderAuthorizations returned the wrong number of authorizations "+
+			"getAllOrderAuthorizationStatuses returned the wrong number of authorization statuses "+
 				"(%d vs expected %d) for order %d",
-			len(authzs), len(order.Authorizations), *order.Id)
+			len(authzStatuses), len(order.Authorizations), *order.Id)
 	}
 
 	// Keep a count of the authorizations seen
@@ -1794,8 +1790,8 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 	validAuthzs := 0
 
 	// Loop over each of the order's authorization objects to examine the authz status
-	for _, authz := range authzs {
-		switch authz.Status {
+	for _, status := range authzStatuses {
+		switch core.AcmeStatus(status) {
 		case core.StatusInvalid:
 			invalidAuthzs++
 		case core.StatusDeactivated:
@@ -1866,47 +1862,66 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 			"authorizations", *order.Id)
 }
 
-func (ssa *SQLStorageAuthority) getAllOrderAuthorizations(
+type authzStatus struct {
+	ID      int64
+	Status  string
+	Expires time.Time
+}
+
+func (ssa *SQLStorageAuthority) getAuthorizationStatuses(ctx context.Context, ids []int) ([]authzStatus, error) {
+	// having to do this is super annoying :/
+	var qmarks []string
+	var params []interface{}
+	for _, id := range ids {
+		qmarks = append(qmarks, "?")
+		params = append(params, id)
+	}
+	var statuses []authzStatus
+	_, err := ssa.dbMap.WithContext(ctx).Select(
+		&statuses,
+		fmt.Sprintf("SELECT id, status, expires FROM authz2 WHERE id IN (%s)", strings.Join(qmarks, ",")),
+		params...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return statuses, nil
+}
+
+func (ssa *SQLStorageAuthority) getAllOrderAuthorizationStatuses(
 	ctx context.Context,
-	orderID, acctID int64) (map[string]*core.Authorization, error) {
-	var allAuthzs []*core.Authorization
+	orderID, acctID int64,
+	v2AuthzIDs []int) ([]string, error) {
+	var allAuthzStatuses []string
+
+	if len(v2AuthzIDs) > 0 {
+		statuses, err := ssa.getAuthorizationStatuses(ctx, v2AuthzIDs)
+		if err != nil {
+			return nil, err
+		}
+		allAuthzStatuses = append(allAuthzStatuses, statuses...)
+	}
 
 	for _, table := range authorizationTables {
-		var authzs []*core.Authorization
+		var statuses []string
 		_, err := ssa.dbMap.WithContext(ctx).Select(
-			&authzs,
-			fmt.Sprintf(`SELECT %s from %s AS authz
+			&statuses,
+			fmt.Sprintf(`SELECT status from %s AS authz
 		INNER JOIN orderToAuthz
 		ON authz.ID = orderToAuthz.authzID
 		WHERE authz.registrationID = ? AND
-		orderToAuthz.orderID = ?`, authzFields, table),
+		orderToAuthz.orderID = ?`, table),
 			acctID,
-			orderID)
+			orderID,
+		)
 		if err != nil {
 			return nil, err
 		}
 
-		allAuthzs = append(allAuthzs, authzs...)
+		allAuthzStatuses = append(allAuthzStatuses, statuses...)
 	}
 
-	// Collapse the returned authorizations into a mapping from name to
-	// authorization
-	byName := make(map[string]*core.Authorization)
-	for _, auth := range allAuthzs {
-		// We only expect to get back DNS identifiers
-		if auth.Identifier.Type != core.IdentifierDNS {
-			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
-		}
-		// We don't expect there to be multiple authorizations for the same name
-		// within the same order
-		if _, present := byName[auth.Identifier.Value]; present {
-			return nil, berrors.InternalServerError(
-				"Found multiple authorizations within one order for identifier %q",
-				auth.Identifier.Value)
-		}
-		byName[auth.Identifier.Value] = auth
-	}
-	return byName, nil
+	return allAuthzStatuses, nil
 }
 
 // GetValidOrderAuthorizations is used to find the valid, unexpired authorizations
