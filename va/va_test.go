@@ -271,7 +271,7 @@ func TestHTTPBadPort(t *testing.T) {
 	hs := httpSrv(t, chall.Token)
 	defer hs.Close()
 
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	// Pick a random port between 40000 and 65000 - with great certainty we won't
 	// have an HTTP server listening on this port and the test will fail as
@@ -303,7 +303,7 @@ func TestHTTP(t *testing.T) {
 	// TODO(#1989): close hs
 	hs := httpSrv(t, chall.Token)
 
-	va, log := setup(hs, 0)
+	va, log := setup(hs, 0, "", nil)
 
 	log.Clear()
 	t.Logf("Trying to validate: %+v\n", chall)
@@ -375,7 +375,7 @@ func TestHTTPTimeout(t *testing.T) {
 	hs := httpSrv(t, chall.Token)
 	// TODO(#1989): close hs
 
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 	setChallengeToken(&chall, pathWaitLong)
 
 	expectMatch := regexp.MustCompile(
@@ -422,7 +422,7 @@ func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname stri
 // error when dial fails. We do this by using a mock DNS client that resolves
 // everything to an unroutable IP address.
 func TestHTTPDialTimeout(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	started := time.Now()
 	timeout := 250 * time.Millisecond
@@ -470,7 +470,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
-	va, log := setup(hs, 0)
+	va, log := setup(hs, 0, "", nil)
 
 	setChallengeToken(&chall, pathMoved)
 	_, prob := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
@@ -538,7 +538,7 @@ func TestHTTPRedirectLoop(t *testing.T) {
 
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
 	if prob == nil {
@@ -552,7 +552,7 @@ func TestHTTPRedirectUserAgent(t *testing.T) {
 
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 	va.userAgent = rejectUserAgent
 
 	setChallengeToken(&chall, pathMoved)
@@ -587,7 +587,7 @@ func getPort(hs *httptest.Server) int {
 func TestTLSALPN01FailIP(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, "localhost")
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	port := getPort(hs)
 	_, prob := va.validateTLSALPN01(ctx, core.AcmeIdentifier{
@@ -615,7 +615,7 @@ func slowTLSSrv() *httptest.Server {
 func TestTLSALPNTimeoutAfterConnect(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := slowTLSSrv()
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	timeout := 50 * time.Millisecond
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -651,7 +651,7 @@ func TestTLSALPNTimeoutAfterConnect(t *testing.T) {
 func TestTLSALPN01DialTimeout(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := slowTLSSrv()
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockDNSClient{}}
 	started := time.Now()
 
@@ -700,7 +700,7 @@ func TestTLSALPN01DialTimeout(t *testing.T) {
 func TestTLSALPN01Refused(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, "localhost")
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 	// Take down validation server and check that validation fails.
 	hs.Close()
 	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
@@ -717,7 +717,7 @@ func TestTLSALPN01Refused(t *testing.T) {
 func TestTLSALPN01TalkingToHTTP(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, "localhost")
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 	httpOnly := httpSrv(t, "")
 	va.tlsPort = getPort(httpOnly)
 
@@ -744,7 +744,7 @@ func TestTLSError(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := brokenTLSSrv()
 
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
 	if prob == nil {
@@ -800,7 +800,7 @@ func TestValidateHTTP(t *testing.T) {
 	hs := httpSrv(t, chall.Token)
 	defer hs.Close()
 
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
 	test.Assert(t, prob == nil, "validation failed")
@@ -830,7 +830,7 @@ func TestTLSALPN01Success(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, "localhost")
 
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
 	if prob != nil {
@@ -842,7 +842,7 @@ func TestTLSALPN01Success(t *testing.T) {
 	chall = createChallenge(core.ChallengeTypeTLSALPN01)
 	hs = tlsalpn01Srv(t, chall, IdPeAcmeIdentifierV1Obsolete, "localhost")
 
-	va, _ = setup(hs, 0)
+	va, _ = setup(hs, 0, "", nil)
 
 	_, prob = va.validateChallenge(ctx, dnsi("localhost"), chall)
 	if prob != nil {
@@ -857,7 +857,7 @@ func TestValidateTLSALPN01BadChallenge(t *testing.T) {
 	setChallengeToken(&chall2, "bad token")
 
 	hs := tlsalpn01Srv(t, chall2, IdPeAcmeIdentifier, "localhost")
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
 
@@ -871,7 +871,7 @@ func TestValidateTLSALPN01BrokenSrv(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := brokenTLSSrv()
 
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
 	if prob == nil {
@@ -884,7 +884,7 @@ func TestValidateTLSALPN01UnawareSrv(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := tlssniSrvWithNames(t, chall, "localhost")
 
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
 	if prob == nil {
@@ -900,7 +900,7 @@ func TestValidateTLSALPN01BadUTFSrv(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, "localhost", "\xf0\x28\x8c\xbc")
 	port := getPort(hs)
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
 	if prob == nil {
@@ -915,7 +915,7 @@ func TestValidateTLSALPN01BadUTFSrv(t *testing.T) {
 }
 
 func TestPerformValidationInvalid(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(context.Background(), "foo.com", chalDNS, core.Authorization{})
@@ -932,7 +932,7 @@ func TestPerformValidationInvalid(t *testing.T) {
 }
 
 func TestDNSValidationEmpty(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(
@@ -953,7 +953,7 @@ func TestDNSValidationEmpty(t *testing.T) {
 }
 
 func TestDNSValidationWrong(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(
@@ -968,7 +968,7 @@ func TestDNSValidationWrong(t *testing.T) {
 }
 
 func TestDNSValidationWrongMany(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(
@@ -983,7 +983,7 @@ func TestDNSValidationWrongMany(t *testing.T) {
 }
 
 func TestDNSValidationWrongLong(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(
@@ -998,7 +998,7 @@ func TestDNSValidationWrongLong(t *testing.T) {
 }
 
 func TestPerformValidationValid(t *testing.T) {
-	va, mockLog := setup(nil, 0)
+	va, mockLog := setup(nil, 0, "", nil)
 
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01("")
@@ -1027,7 +1027,7 @@ func TestPerformValidationValid(t *testing.T) {
 // TestPerformValidationWildcard tests that the VA properly strips the `*.`
 // prefix from a wildcard name provided to the PerformValidation function.
 func TestPerformValidationWildcard(t *testing.T) {
-	va, mockLog := setup(nil, 0)
+	va, mockLog := setup(nil, 0, "", nil)
 
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01("")
@@ -1062,7 +1062,7 @@ func TestPerformValidationWildcard(t *testing.T) {
 }
 
 func TestDNSValidationFailure(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 
@@ -1080,7 +1080,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 	chalDNS := core.DNSChallenge01("")
 	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
 
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	_, prob := va.validateChallenge(ctx, notDNS, chalDNS)
 
@@ -1088,7 +1088,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 }
 
 func TestDNSValidationNotSane(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	chal0 := core.DNSChallenge01("")
 	chal0.Token = ""
@@ -1119,7 +1119,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 }
 
 func TestDNSValidationServFail(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 
@@ -1129,7 +1129,7 @@ func TestDNSValidationServFail(t *testing.T) {
 }
 
 func TestDNSValidationNoServer(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 	va.dnsClient = bdns.NewTestDNSClientImpl(
 		time.Second*5,
 		nil,
@@ -1145,7 +1145,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 }
 
 func TestDNSValidationOK(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01("")
@@ -1158,7 +1158,7 @@ func TestDNSValidationOK(t *testing.T) {
 }
 
 func TestDNSValidationNoAuthorityOK(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01("")
@@ -1176,7 +1176,7 @@ func TestLimitedReader(t *testing.T) {
 	setChallengeToken(&chall, core.NewToken())
 
 	hs := httpSrv(t, "012345\xff67890123456789012345678901234567890123456789012345678901234567890123456789")
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 	defer hs.Close()
 
 	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
@@ -1190,8 +1190,16 @@ func TestLimitedReader(t *testing.T) {
 	}
 }
 
-func setup(srv *httptest.Server, maxRemoteFailures int) (*ValidationAuthorityImpl, *blog.Mock) {
+func setup(
+	srv *httptest.Server,
+	maxRemoteFailures int,
+	userAgent string,
+	remoteVAs []RemoteVA) (*ValidationAuthorityImpl, *blog.Mock) {
 	logger := blog.NewMock()
+
+	if userAgent == "" {
+		userAgent = "user agent 1.0"
+	}
 
 	var portConfig cmd.PortConfig
 	if srv != nil {
@@ -1207,7 +1215,7 @@ func setup(srv *httptest.Server, maxRemoteFailures int) (*ValidationAuthorityImp
 		&bdns.MockDNSClient{},
 		nil,
 		maxRemoteFailures,
-		"user agent 1.0",
+		userAgent,
 		"letsencrypt.org",
 		metrics.NewNoopScope(),
 		clock.Default(),
@@ -1215,6 +1223,9 @@ func setup(srv *httptest.Server, maxRemoteFailures int) (*ValidationAuthorityImp
 		accountURIPrefixes)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
+	}
+	if remoteVAs != nil {
+		va.remoteVAs = remoteVAs
 	}
 	return va, logger
 }
@@ -1379,13 +1390,8 @@ func TestMultiVA(t *testing.T) {
 	ms := httpMultiSrv(t, chall.Token, allowedUAs)
 	defer ms.Close()
 
-	// Create a local test VA and two 'remote' VAs
-	localVA, mockLog := setup(ms.Server, 0)
-	localVA.userAgent = localUA
-	remoteVA1, _ := setup(ms.Server, 0)
-	remoteVA1.userAgent = remoteUA1
-	remoteVA2, _ := setup(ms.Server, 0)
-	remoteVA2.userAgent = remoteUA2
+	remoteVA1, _ := setup(ms.Server, 0, remoteUA1, nil)
+	remoteVA2, _ := setup(ms.Server, 0, remoteUA2, nil)
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -1542,7 +1548,11 @@ func TestMultiVA(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			mockLog.Clear()
+			// Configure the test server with the testcase allowed UAs.
+			ms.setAllowedUAs(tc.AllowedUAs)
+
+			// Configure a primary VA with testcase remote VAs.
+			localVA, mockLog := setup(ms.Server, 0, localUA, tc.RemoteVAs)
 
 			if tc.Features != nil {
 				err := features.Set(tc.Features)
@@ -1550,10 +1560,6 @@ func TestMultiVA(t *testing.T) {
 				defer features.Reset()
 			}
 
-			// Configure the primary VA with the testcase remote VAs.
-			localVA.remoteVAs = tc.RemoteVAs
-			// Configure the test server with the testcase allowed UAs.
-			ms.setAllowedUAs(tc.AllowedUAs)
 			// Perform all validations
 			_, prob := localVA.PerformValidation(ctx, "localhost", chall, core.Authorization{})
 			if prob == nil && tc.ExpectedProb != nil {
@@ -1589,18 +1595,16 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 	ms := httpMultiSrv(t, chall.Token, allowedUAs)
 	defer ms.Close()
 
-	// Create a local test VA and two 'remote' VAs
-	localVA, mockLog := setup(ms.Server, 0)
-	localVA.userAgent = localUA
-	remoteVA1, _ := setup(ms.Server, 0)
-	remoteVA1.userAgent = remoteUA1
-	remoteVA2, _ := setup(ms.Server, 0)
-	remoteVA2.userAgent = remoteUA2
+	remoteVA1, _ := setup(ms.Server, 0, remoteUA1, nil)
+	remoteVA2, _ := setup(ms.Server, 0, remoteUA2, nil)
 
-	localVA.remoteVAs = []RemoteVA{
+	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
 		{remoteVA2, remoteUA2},
 	}
+
+	// Create a local test VA with the two remote VAs
+	localVA, mockLog := setup(ms.Server, 0, localUA, remoteVAs)
 
 	testCases := []struct {
 		Name        string

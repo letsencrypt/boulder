@@ -50,7 +50,7 @@ func TestDialerMismatchError(t *testing.T) {
 // will timeout after the expected singleDialTimeout. This ensures timeouts at
 // the TCP level are handled correctly.
 func TestPreresolvedDialerTimeout(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 	// Timeouts below 50ms tend to be flaky.
 	va.singleDialTimeout = 50 * time.Millisecond
 
@@ -150,7 +150,7 @@ func TestHTTPValidationTarget(t *testing.T) {
 		exampleQuery = "my-path=was&my=own"
 	)
 
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			target, err := va.newHTTPValidationTarget(
@@ -279,7 +279,7 @@ func TestExtractRequestTarget(t *testing.T) {
 		},
 	}
 
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			host, port, err := va.extractRequestTarget(tc.Req)
@@ -298,7 +298,7 @@ func TestExtractRequestTarget(t *testing.T) {
 }
 
 func TestSetupHTTPValidation(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	mustTarget := func(t *testing.T, host string, port int, path string) *httpValidationTarget {
 		target, err := va.newHTTPValidationTarget(
@@ -607,7 +607,7 @@ func TestFetchHTTP(t *testing.T) {
 
 	// Setup a VA. By providing the testSrv to setup the VA will use the testSrv's
 	// randomly assigned port as its HTTP port.
-	va, _ := setup(testSrv, 0)
+	va, _ := setup(testSrv, 0, "", nil)
 
 	// We need to know the randomly assigned HTTP port for testcases as well
 	httpPort := getPort(testSrv)
