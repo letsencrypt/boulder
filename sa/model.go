@@ -355,6 +355,11 @@ type orderToAuthzModel struct {
 	AuthzID string
 }
 
+type orderToAuthz2Model struct {
+	OrderID int64
+	AuthzID int64
+}
+
 func orderToModel(order *corepb.Order) (*orderModel, error) {
 	om := &orderModel{
 		ID:              *order.Id,
