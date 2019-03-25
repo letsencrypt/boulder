@@ -1,20 +1,22 @@
 {
     "plan": {
         "actions": [
-            "newRegistration",
-            "newAuthorization",
-            "solveHTTPOne",
-            "newCertificate"
+            "newAccount",
+            "newOrder",
+            "fulfillOrder",
+            "finalizeOrder"
         ],
         "rate": 1,
         "runtime": "10s",
         "rateDelta": "5/1m"
     },
-    "apiBase": "http://boulder:4000",
+    "apiBase": "http://boulder:4001",
     "domainBase": "com",
     "httpOneAddr": "localhost:5002",
-    "tlsOneAddr": "localhost:5001",
     "regKeySize": 2048,
     "certKeySize": 2048,
-    "regEmail": "loadtesting@letsencrypt.org"
+    "regEmail": "loadtesting@letsencrypt.org",
+    "maxRegs": 20,
+    "maxNamesPerCert": 20,
+    "dontSaveState": true
 }
