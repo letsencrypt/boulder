@@ -889,15 +889,10 @@ def run_chisel(test_case_filter):
         value()
 
 def run_loadtest():
-    """Run the load generator for v1 and v2."""
+    """Run the ACME v2 load generator."""
     latency_data_file = "%s/integration-test-latency.json" % tempdir
     run("./bin/load-generator \
             -config test/load-generator/config/integration-test-config.json\
-            -results %s" % latency_data_file)
-
-    latency_data_file = "%s/v2-integration-test-latency.json" % tempdir
-    run("./bin/load-generator \
-            -config test/load-generator/config/v2-integration-test-config.json\
             -results %s" % latency_data_file)
 
 def check_balance():
