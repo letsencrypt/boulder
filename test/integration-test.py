@@ -1,4 +1,5 @@
 #!/usr/bin/env python2.7
+# -*- coding: utf-8 -*-
 import argparse
 import atexit
 import base64
@@ -33,6 +34,10 @@ import OpenSSL
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
+
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
 
 class ProcInfo:
     """
@@ -310,9 +315,6 @@ def test_http_challenge_https_redirect():
       elif r['ServerName'] != d:
         raise Exception("Expected all redirected requests to have ServerName {0} got \"{1}\"".format(d, r['ServerName']))
 
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
-
 class SlowHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
@@ -341,7 +343,7 @@ def test_http_challenge_timeout():
     thread.daemon = False
     thread.start()
 
-    # Pick a random domains
+    # Pick a random domain
     hostname = random_domain()
 
     # Add A record for the domains to ensure the VA's requests are directed

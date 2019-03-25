@@ -186,7 +186,7 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 }
 
 func TestCAATimeout(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 	va.dnsClient = caaMockDNS{}
 	err := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"}, nil)
 	if err.Type != probs.DNSProblem {
@@ -402,7 +402,7 @@ func TestCAAChecking(t *testing.T) {
 	method := "http-01"
 	params := &caaParams{accountURIID: &accountURIID, validationMethod: &method}
 
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 	va.dnsClient = caaMockDNS{}
 	va.accountURIPrefixes = []string{"https://letsencrypt.org/acct/reg/"}
 	for _, caaTest := range testCases {
@@ -468,7 +468,7 @@ func TestCAAChecking(t *testing.T) {
 }
 
 func TestCAALogging(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 	va.dnsClient = caaMockDNS{}
 
 	httpChal := core.ChallengeTypeHTTP01
@@ -562,7 +562,7 @@ func TestCAALogging(t *testing.T) {
 // TestIsCAAValidErrMessage tests that an error result from `va.IsCAAValid`
 // includes the domain name that was being checked in the failure detail.
 func TestIsCAAValidErrMessage(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 	va.dnsClient = caaMockDNS{}
 
 	// Call IsCAAValid with a domain we know fails with a generic error from the
@@ -587,7 +587,7 @@ func TestCAAFailure(t *testing.T) {
 	hs := httpSrv(t, chall.Token)
 	defer hs.Close()
 
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 	va.dnsClient = caaMockDNS{}
 
 	_, prob := va.validate(ctx, dnsi("reserved.com"), chall, core.Authorization{})
