@@ -23,7 +23,7 @@ type Config struct {
 	}
 	ExternalState   string // path to file to load/save registrations etc to/from
 	DontSaveState   bool   // don't save changes to external state
-	APIBase         string // ACME API address to send requests to
+	DirectoryURL    string // ACME server directory URL
 	DomainBase      string // base domain name to create authorizations for
 	HTTPOneAddr     string // address to listen for http-01 validation requests on
 	RealIP          string // value of the Real-IP header to use when bypassing CDN
@@ -41,6 +41,11 @@ func main() {
 	runtimeArg := flag.String("runtime", "", "")
 	deltaArg := flag.String("delta", "", "")
 	flag.Parse()
+
+	if *configPath == "" {
+		fmt.Fprintf(os.Stderr, "-config argument must not be empty\n")
+		os.Exit(1)
+	}
 
 	configBytes, err := ioutil.ReadFile(*configPath)
 	if err != nil {
@@ -68,7 +73,7 @@ func main() {
 	}
 
 	s, err := New(
-		config.APIBase,
+		config.DirectoryURL,
 		config.CertKeySize,
 		config.DomainBase,
 		config.RealIP,

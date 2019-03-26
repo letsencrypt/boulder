@@ -10,7 +10,7 @@
         "runtime": "10s",
         "rateDelta": "5/1m"
     },
-    "apiBase": "http://boulder:4001",
+    "directoryURL": "http://boulder:4001/directory",
     "domainBase": "com",
     "httpOneAddr": "localhost:5002",
     "regKeySize": 2048,

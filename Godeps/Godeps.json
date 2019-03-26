@@ -215,8 +215,8 @@
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/challtestsrv",
-			"Comment": "v1.0.2",
-			"Rev": "37390bc3ad8f92bd8a94e367ee0f07060a841c3c"
+			"Comment": "v1.1.0",
+			"Rev": "285efd6fac122954c72d2f32bf1f6e3f7c50ffb5"
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/pkcs11key",
@@ -609,6 +609,51 @@
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
 			"Rev": "7ad95dd0798a40da1ccdff6dff35fd177b5edf40"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/challtestsrv/vendor/github.com/miekg/dns",
+			"Comment": "v1.1.0",
+			"Rev": "285efd6fac122954c72d2f32bf1f6e3f7c50ffb5"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/challtestsrv/vendor/golang.org/x/crypto/ed25519",
+			"Comment": "v1.1.0",
+			"Rev": "285efd6fac122954c72d2f32bf1f6e3f7c50ffb5"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/challtestsrv/vendor/golang.org/x/net/ipv4",
+			"Comment": "v1.1.0",
+			"Rev": "285efd6fac122954c72d2f32bf1f6e3f7c50ffb5"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/challtestsrv/vendor/golang.org/x/net/ipv6",
+			"Comment": "v1.1.0",
+			"Rev": "285efd6fac122954c72d2f32bf1f6e3f7c50ffb5"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/challtestsrv/vendor/golang.org/x/sys/unix",
+			"Comment": "v1.1.0",
+			"Rev": "285efd6fac122954c72d2f32bf1f6e3f7c50ffb5"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/challtestsrv/vendor/golang.org/x/crypto/ed25519/internal/edwards25519",
+			"Comment": "v1.1.0",
+			"Rev": "285efd6fac122954c72d2f32bf1f6e3f7c50ffb5"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/challtestsrv/vendor/golang.org/x/net/bpf",
+			"Comment": "v1.1.0",
+			"Rev": "285efd6fac122954c72d2f32bf1f6e3f7c50ffb5"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/challtestsrv/vendor/golang.org/x/net/internal/iana",
+			"Comment": "v1.1.0",
+			"Rev": "285efd6fac122954c72d2f32bf1f6e3f7c50ffb5"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/challtestsrv/vendor/golang.org/x/net/internal/socket",
+			"Comment": "v1.1.0",
+			"Rev": "285efd6fac122954c72d2f32bf1f6e3f7c50ffb5"
 		}
 	]
 }

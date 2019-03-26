@@ -123,12 +123,14 @@ func (s *ChallSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		serverName = r.TLS.ServerName
 	}
 
-	s.AddRequestEvent(HTTPRequestEvent{
+	e := HTTPRequestEvent{
 		URL:        r.URL.String(),
 		Host:       r.Host,
 		HTTPS:      r.TLS != nil,
 		ServerName: serverName,
-	})
+	}
+	fmt.Printf("\n\n e: %#v \n\n", e)
+	s.AddRequestEvent(e)
 
 	// If the request was not over HTTPS and we have a redirect, serve it.
 	// Redirects are ignored over HTTPS so we can easily do an HTTP->HTTPS
