@@ -3,10 +3,10 @@
 
 package publicsuffix
 
-const defaultListVersion = "PSL version 0e2a40 (Thu Feb 21 09:23:55 2019)"
+const defaultListVersion = "PSL version e2e4e0 (Thu Mar 28 17:38:33 2019)"
 
 func init() {
-	r := [8671]Rule{
+	r := [8678]Rule{
 		{1, "ac", 1, false},
 		{1, "com.ac", 2, false},
 		{1, "edu.ac", 2, false},
@@ -137,6 +137,11 @@ func init() {
 		{1, "net.al", 2, false},
 		{1, "org.al", 2, false},
 		{1, "am", 1, false},
+		{1, "co.am", 2, false},
+		{1, "com.am", 2, false},
+		{1, "commune.am", 2, false},
+		{1, "net.am", 2, false},
+		{1, "org.am", 2, false},
 		{1, "ao", 1, false},
 		{1, "ed.ao", 2, false},
 		{1, "gv.ao", 2, false},
@@ -771,14 +776,13 @@ func init() {
 		{1, "fm", 1, false},
 		{1, "fo", 1, false},
 		{1, "fr", 1, false},
-		{1, "com.fr", 2, false},
 		{1, "asso.fr", 2, false},
+		{1, "com.fr", 2, false},
+		{1, "gouv.fr", 2, false},
 		{1, "nom.fr", 2, false},
 		{1, "prd.fr", 2, false},
-		{1, "presse.fr", 2, false},
 		{1, "tm.fr", 2, false},
 		{1, "aeroport.fr", 2, false},
-		{1, "assedic.fr", 2, false},
 		{1, "avocat.fr", 2, false},
 		{1, "avoues.fr", 2, false},
 		{1, "cci.fr", 2, false},
@@ -786,7 +790,6 @@ func init() {
 		{1, "chirurgiens-dentistes.fr", 2, false},
 		{1, "experts-comptables.fr", 2, false},
 		{1, "geometre-expert.fr", 2, false},
-		{1, "gouv.fr", 2, false},
 		{1, "greta.fr", 2, false},
 		{1, "huissier-justice.fr", 2, false},
 		{1, "medecin.fr", 2, false},
@@ -7440,6 +7443,7 @@ func init() {
 		{1, "sweetpepper.org", 2, true},
 		{1, "myasustor.com", 2, true},
 		{1, "go-vip.co", 2, true},
+		{1, "go-vip.net", 2, true},
 		{1, "wpcomstaging.com", 2, true},
 		{1, "myfritz.net", 2, true},
 		{2, "awdev.ca", 3, true},
@@ -7506,6 +7510,7 @@ func init() {
 		{1, "cloudaccess.net", 2, true},
 		{1, "cloudcontrolled.com", 2, true},
 		{1, "cloudcontrolapp.com", 2, true},
+		{1, "workers.dev", 2, true},
 		{1, "co.ca", 2, true},
 		{2, "otap.co", 3, true},
 		{1, "co.cz", 2, true},
@@ -8528,6 +8533,7 @@ func init() {
 		{1, "wellbeingzone.eu", 2, true},
 		{1, "ptplus.fit", 2, true},
 		{1, "wellbeingzone.co.uk", 3, true},
+		{1, "git-pages.rit.edu", 3, true},
 		{1, "sandcats.io", 2, true},
 		{1, "logoip.de", 2, true},
 		{1, "logoip.com", 2, true},
@@ -8677,6 +8683,7 @@ func init() {
 		{1, "za.org", 2, true},
 		{1, "now.sh", 2, true},
 		{1, "bss.design", 2, true},
+		{1, "site.builder.nu", 3, true},
 		{1, "zone.id", 2, true},
 	}
 	for i := range r {
