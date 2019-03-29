@@ -116,7 +116,8 @@ func pbToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 	if in == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
-	if (in.Id == nil && !features.Enabled(features.NewAuthorizationSchema)) || in.Type == nil || in.Status == nil || in.Token == nil || in.KeyAuthorization == nil && !features.Enabled(features.NewAuthorizationSchema) {
+	newAuthzSchema := features.Enabled(features.NewAuthorizationSchema)
+	if (in.Id == nil && !newAuthzSchema) || in.Type == nil || in.Status == nil || in.Token == nil || in.KeyAuthorization == nil && !newAuthzSchema {
 		return core.Challenge{}, ErrMissingParameters
 	}
 	var recordAry []core.ValidationRecord
