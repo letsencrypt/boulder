@@ -873,7 +873,14 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context
 // RevokeAuthorizationsByDomain2 invalidates all pending or valid authorizations for a
 // specific domain. This method is intended to deprecate RevokeAuthorizationsByDomain.
 func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*sapb.RevokeAuthorizationsByDomainResponse, error) {
-	revokedPending, revokedValid := int64(0), int64(0)
+	revokedValid, revokedPending, err := ssa.RevokeAuthorizationsByDomain(ctx, core.AcmeIdentifier{
+		Type:  core.IdentifierDNS,
+		Value: *req.Domain,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	for {
 		var ids []struct {
 			ID     int64
