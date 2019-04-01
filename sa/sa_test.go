@@ -839,7 +839,7 @@ func TestRevokeAuthorizationsByDomain2(t *testing.T) {
 	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
 	challType := string(core.ChallengeTypeDNS01)
 	token := "YXNk"
-	_, err := sa.NewAuthorization(context.Background(), &corepb.Authorization{
+	idA, err := sa.NewAuthorization(context.Background(), &corepb.Authorization{
 		V2:             &v2,
 		Identifier:     &ident,
 		RegistrationID: &reg.ID,
@@ -914,6 +914,17 @@ func TestRevokeAuthorizationsByDomain2(t *testing.T) {
 		},
 	})
 	test.AssertNotError(t, err, "sa.NewAuthorization failed")
+	exp := fc.Now().Add(time.Hour)
+	oldPending, err := sa.NewPendingAuthorization(context.Background(), core.Authorization{
+		Status:         core.StatusPending,
+		RegistrationID: reg.ID,
+		Identifier: core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: ident,
+		},
+		Expires: &exp,
+	})
+	test.AssertNotError(t, err, "sa.NewPendingAuthorization failed")
 
 	// Only the non-expired pending and valid authorizations should've been revoked
 	resp, err := sa.RevokeAuthorizationsByDomain2(context.Background(), &sapb.RevokeAuthorizationsByDomainRequest{
@@ -921,14 +932,24 @@ func TestRevokeAuthorizationsByDomain2(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "sa.RevokeAuthorizationsByDomain2")
 	test.AssertEquals(t, *resp.Finalized, int64(1))
-	test.AssertEquals(t, *resp.Pending, int64(1))
+	test.AssertEquals(t, *resp.Pending, int64(2))
 
-	authzPB, err := sa.GetAuthorization2(context.Background(), idC)
+	authzPB, err := sa.GetAuthorization2(context.Background(), idA)
+	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
+	test.AssertEquals(t, *authzPB.Status, string(core.StatusRevoked))
+	authzPB, err = sa.GetAuthorization2(context.Background(), idB)
+	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
+	test.AssertEquals(t, *authzPB.Status, string(core.StatusRevoked))
+	authzPB, err = sa.GetAuthorization2(context.Background(), idC)
 	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 	test.AssertEquals(t, *authzPB.Status, string(core.StatusDeactivated))
 	authzPB, err = sa.GetAuthorization2(context.Background(), idD)
 	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 	test.AssertEquals(t, *authzPB.Status, string(core.StatusPending))
+	oldPendingDB, err := sa.GetAuthorization(context.Background(), oldPending.ID)
+	test.AssertNotError(t, err, "sa.GetAuthorization failed")
+	test.AssertEquals(t, oldPendingDB.Status, core.StatusRevoked)
+
 }
 
 func TestFQDNSets(t *testing.T) {
@@ -1924,6 +1945,7 @@ func TestGetAuthorizations(t *testing.T) {
 	test.AssertEquals(t, *authz.Authz[0].Authz.Id, paA.ID)
 }
 
+// TODO: needs to test also getting old style authorizations
 func TestGetAuthorizations2(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
@@ -3055,6 +3077,32 @@ func TestGetPendingAuthorization2(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "sa.GetPendingAuthorization2 failed")
 	test.AssertEquals(t, fmt.Sprintf("%d", *idA.Id), *dbVer.Id)
+
+	// Test Getting an old style authorization if there isn't a good new one
+	fc.Add(time.Hour * 5)
+	exp := fc.Now().Add(time.Hour * 2).UTC()
+	oldPA, err := sa.NewPendingAuthorization(context.Background(), core.Authorization{
+		Status:         core.StatusPending,
+		Expires:        &exp,
+		RegistrationID: reg.ID,
+		Identifier: core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: ident,
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewPendingAuthorization failed")
+
+	validUntil = fc.Now().UTC().UnixNano()
+	identType := string(core.IdentifierDNS)
+	dbVer, err = sa.GetPendingAuthorization2(context.Background(), &sapb.GetPendingAuthorizationRequest{
+		RegistrationID:  &reg.ID,
+		IdentifierValue: &ident,
+		IdentifierType:  &identType,
+		ValidUntil:      &validUntil,
+	})
+
+	test.AssertNotError(t, err, "sa.GetPendingAuthorization2 failed")
+	test.AssertEquals(t, oldPA.ID, *dbVer.Id)
 }
 
 func TestCountPendingAuthorizations2(t *testing.T) {
@@ -3089,11 +3137,37 @@ func TestCountPendingAuthorizations2(t *testing.T) {
 	_, err = sa.NewAuthorization(context.Background(), apb)
 	test.AssertNotError(t, err, "sa.NewAuthorization failed")
 
+	// Registration has two new style pending authorizations
 	count, err := sa.CountPendingAuthorizations2(context.Background(), &sapb.RegistrationID{
 		Id: &reg.ID,
 	})
 	test.AssertNotError(t, err, "sa.CountPendingAuthorizations2 failed")
 	test.AssertEquals(t, *count.Count, int64(2))
+
+	// Registration has two new style pending authorizations, one of which has expired
+	fc.Add(time.Hour * 2)
+	count, err = sa.CountPendingAuthorizations2(context.Background(), &sapb.RegistrationID{
+		Id: &reg.ID,
+	})
+	test.AssertNotError(t, err, "sa.CountPendingAuthorizations2 failed")
+	test.AssertEquals(t, *count.Count, int64(1))
+
+	// Registration has two  new style pending authorizations, one of which has expired
+	// and one old style pending authorization
+	pExp := fc.Now().Add(time.Hour)
+	_, err = sa.NewPendingAuthorization(ctx, core.Authorization{
+		RegistrationID: reg.ID,
+		Expires:        &pExp,
+		Status:         core.StatusPending,
+	})
+	test.AssertNotError(t, err, "sa.NewPendingAuthorization failed")
+	count, err = sa.CountPendingAuthorizations2(context.Background(), &sapb.RegistrationID{
+		Id: &reg.ID,
+	})
+	test.AssertNotError(t, err, "sa.CountPendingAuthorizations2 failed")
+	test.AssertEquals(t, *count.Count, int64(2))
+
+	// Registration with no authorizations should be 0
 	noReg := int64(20)
 	count, err = sa.CountPendingAuthorizations2(context.Background(), &sapb.RegistrationID{
 		Id: &noReg,
@@ -3102,14 +3176,17 @@ func TestCountPendingAuthorizations2(t *testing.T) {
 	test.AssertEquals(t, *count.Count, int64(0))
 }
 
+// TOOD: needs to test getting old stuff also
 func TestGetValidOrderAuthorizations2(t *testing.T) {
 
 }
 
+// TODO: needs to test counting old stuff
 func TestCountInvalidAuthorizations2(t *testing.T) {
 
 }
 
+// TODO: needs to test getting old stuff also
 func TestGetValidAuthorizations2(t *testing.T) {
 
 }
