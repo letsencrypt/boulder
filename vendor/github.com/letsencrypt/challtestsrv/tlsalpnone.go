@@ -20,10 +20,9 @@ import (
 // https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-01#section-5.2
 const ACMETLS1Protocol = "acme-tls/1"
 
-// IDPeAcmeIdentifier is the identifier defined in
-// https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-04#section-5.1
+// As defined in https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-04#section-5.1
 // id-pe OID + 31 (acmeIdentifier)
-var IDPeAcmeIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
+var IdPeAcmeIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
 
 // AddTLSALPNChallenge adds a new TLS-ALPN-01 key authorization for the given host
 func (s *ChallSrv) AddTLSALPNChallenge(host, content string) {
@@ -76,7 +75,7 @@ func (s *ChallSrv) ServeChallengeCertFunc(k *ecdsa.PrivateKey) func(*tls.ClientH
 			DNSNames:     []string{hello.ServerName},
 			ExtraExtensions: []pkix.Extension{
 				{
-					Id:       IDPeAcmeIdentifier,
+					Id:       IdPeAcmeIdentifier,
 					Critical: true,
 					Value:    extValue,
 				},

@@ -38,33 +38,6 @@ func (s *ChallSrv) GetDefaultDNSIPv6() string {
 	return s.dnsMocks.defaultIPv6
 }
 
-// AddDNSCNAMERecord sets a CNAME record that will be used like an alias when
-// querying for other DNS records for the given host.
-func (s *ChallSrv) AddDNSCNAMERecord(host string, value string) {
-	s.challMu.Lock()
-	defer s.challMu.Unlock()
-	host = dns.Fqdn(host)
-	value = dns.Fqdn(value)
-	s.dnsMocks.cnameRecords[host] = value
-}
-
-// GetDNSCNAMERecord returns a target host if a CNAME is set for the querying
-// host and an empty string otherwise.
-func (s *ChallSrv) GetDNSCNAMERecord(host string) string {
-	s.challMu.RLock()
-	host = dns.Fqdn(host)
-	defer s.challMu.RUnlock()
-	return s.dnsMocks.cnameRecords[host]
-}
-
-// DeleteDNSCAMERecord deletes any CNAME alias set for the given host.
-func (s *ChallSrv) DeleteDNSCNAMERecord(host string) {
-	s.challMu.Lock()
-	defer s.challMu.Unlock()
-	host = dns.Fqdn(host)
-	delete(s.dnsMocks.cnameRecords, host)
-}
-
 // AddDNSARecord adds IPv4 addresses that will be returned when querying for
 // A records for the given host.
 func (s *ChallSrv) AddDNSARecord(host string, addresses []string) {

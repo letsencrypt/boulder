@@ -1,23 +1,14 @@
 language: go
 go:
-  - "stable"
+  - "1.11.x"
 env:
   - GO111MODULE=on
 
 # Override the base install phase so that the project can be installed using
 # `-mod=vendor` to use the vendored dependencies
 install:
-  # Install `golangci-lint` using their installer script
-  - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.13.2
-  # Install `cover` and `goveralls` without `GO111MODULE` enabled so that we
-  # don't download project dependencies and just put the tools in $GOPATH/bin
-  - GO111MODULE=off go get golang.org/x/tools/cmd/cover
-  - GO111MODULE=off go get github.com/mattn/goveralls
   - go install -mod=vendor -v -race ./...
 
 script:
-  - set -e
-  - go mod download
-  - golangci-lint run
-  - go test -mod=vendor -v -race -covermode=atomic -coverprofile=coverage.out ./...
-  - goveralls -coverprofile=coverage.out -service=travis-ci
+  - go vet -mod=vendor -v ./...
+  - go test -mod=vendor -v -race ./...

@@ -28,28 +28,6 @@ func mockSOA() *dns.SOA {
 // more RRs for the response.
 type dnsAnswerFunc func(question dns.Question) []dns.RR
 
-// cnameAnswers is a dnsAnswerFunc that creates CNAME RR's for the given question
-// using the ChallSrv's dns mock data. If there is no mock CNAME data for the
-// given hostname in the question no RR's will be returned.
-func (s *ChallSrv) cnameAnswers(q dns.Question) []dns.RR {
-	var records []dns.RR
-
-	if value := s.GetDNSCNAMERecord(q.Name); value != "" {
-		record := &dns.CNAME{
-			Hdr: dns.RR_Header{
-				Name:   q.Name,
-				Rrtype: dns.TypeCNAME,
-				Class:  dns.ClassINET,
-			},
-			Target: value,
-		}
-
-		records = append(records, record)
-	}
-
-	return records
-}
-
 // txtAnswers is a dnsAnswerFunc that creates TXT RR's for the given question
 // using the ChallSrv's dns mock data. If there is no mock TXT data for the
 // given hostname in the question no RR's will be returned.
@@ -155,10 +133,8 @@ func (s *ChallSrv) caaAnswers(q dns.Question) []dns.RR {
 }
 
 // dnsHandler is a miekg/dns handler that can process a dns.Msg request and
-// write a response to the provided dns.ResponseWriter. TXT, A, AAAA, CNAME,
-// and CAA queries types are supported and answered using the ChallSrv's mock
-// DNS data. A host that is aliased by a CNAME record will follow that alias
-// one level and return the requested record types for that alias' target
+// write a response to the provided dns.ResponseWriter. TXT, A, AAAA, and CAA
+// queries types are supported and answered using the ChallSrv's mock DNS data.
 func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 	m := new(dns.Msg)
 	m.SetReply(r)
@@ -170,19 +146,8 @@ func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 			Question: q,
 		})
 
-		// If a CNAME exists for the question include the CNAME record and modify
-		// the question to instead lookup based on that CNAME's target
-		if cname := s.GetDNSCNAMERecord(q.Name); cname != "" {
-			cnameRecords := s.cnameAnswers(q)
-			m.Answer = append(m.Answer, cnameRecords...)
-
-			q = dns.Question{Name: cname, Qtype: q.Qtype}
-		}
-
 		var answerFunc dnsAnswerFunc
 		switch q.Qtype {
-		case dns.TypeCNAME:
-			answerFunc = s.cnameAnswers
 		case dns.TypeTXT:
 			answerFunc = s.txtAnswers
 		case dns.TypeA:
