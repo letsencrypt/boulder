@@ -21,8 +21,8 @@ CREATE TABLE `authz2` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `orderToAuthz2` (
-    `orderID` BIGINNT(20) NOT NULL,
-    `authzID` BIGINNT(20) NOT NULL,
+    `orderID` BIGINT(20) NOT NULL,
+    `authzID` BIGINT(20) NOT NULL,
     PRIMARY KEY order_authz (`orderID`, `authzID`),
     KEY `authzID` (`authzID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;

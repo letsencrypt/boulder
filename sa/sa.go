@@ -1504,8 +1504,8 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 
 	var v2Authzs []int64
 	for _, id := range req.Authorizations {
-		if strings.HasPrefix("v2/", id) {
-			idInt, err := strconv.ParseInt(id, 10, 64)
+		if strings.HasPrefix(id, "v2/") {
+			idInt, err := strconv.ParseInt(id[3:], 10, 64)
 			if err != nil {
 				return nil, Rollback(tx, err)
 			}
@@ -1899,7 +1899,10 @@ func (ssa *SQLStorageAuthority) getAuthorizationStatuses(ctx context.Context, id
 		qmarks = append(qmarks, "?")
 		params = append(params, id)
 	}
-	var statuses []authzStatus
+	var statuses []struct {
+		Status  uint8
+		Expires time.Time
+	}
 	_, err := ssa.dbMap.WithContext(ctx).Select(
 		&statuses,
 		fmt.Sprintf("SELECT status, expires FROM authz2 WHERE id IN (%s)", strings.Join(qmarks, ",")),
@@ -1908,7 +1911,15 @@ func (ssa *SQLStorageAuthority) getAuthorizationStatuses(ctx context.Context, id
 	if err != nil {
 		return nil, err
 	}
-	return statuses, nil
+
+	allAuthzStatuses := make([]authzStatus, len(statuses))
+	for i, status := range statuses {
+		allAuthzStatuses[i] = authzStatus{
+			Status:  uintToStatus[status.Status],
+			Expires: status.Expires,
+		}
+	}
+	return allAuthzStatuses, nil
 }
 
 func (ssa *SQLStorageAuthority) getAllOrderAuthorizationStatuses(
@@ -1940,7 +1951,6 @@ func (ssa *SQLStorageAuthority) getAllOrderAuthorizationStatuses(
 		if err != nil {
 			return nil, err
 		}
-
 		allAuthzStatuses = append(allAuthzStatuses, statuses...)
 	}
 
@@ -2547,7 +2557,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 			WHERE authz2.registrationID = ? AND
 			authz2.expires > ? AND
 			authz2.status = ? AND
-			orderToAuthz.orderID = ?`,
+			orderToAuthz2.orderID = ?`,
 			authz2Fields,
 		),
 		*req.AcctID,
