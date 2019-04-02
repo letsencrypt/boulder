@@ -1195,6 +1195,8 @@ func setup(
 	maxRemoteFailures int,
 	userAgent string,
 	remoteVAs []RemoteVA) (*ValidationAuthorityImpl, *blog.Mock) {
+	features.Reset()
+
 	logger := blog.NewMock()
 
 	if userAgent == "" {
@@ -1224,9 +1226,6 @@ func setup(
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
 	}
-
-	features.Reset()
-
 	if remoteVAs != nil {
 		va.remoteVAs = remoteVAs
 	}

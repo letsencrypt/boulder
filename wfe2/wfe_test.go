@@ -342,6 +342,8 @@ var testKeyPolicy = goodkey.KeyPolicy{
 var ctx = context.Background()
 
 func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
+	features.Reset()
+
 	fc := clock.NewFake()
 	stats := metrics.NewNoopScope()
 
@@ -359,8 +361,6 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = mocks.NewStorageAuthority(fc)
-
-	features.Reset()
 
 	return wfe, fc
 }

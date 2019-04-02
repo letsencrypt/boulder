@@ -218,6 +218,8 @@ func (r *dummyRateLimitConfig) LoadPolicies(contents []byte) error {
 }
 
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
+	features.Reset()
+
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	err = json.Unmarshal(AccountKeyJSONB, &AccountKeyB)
@@ -294,8 +296,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	exp := time.Now().Add(365 * 24 * time.Hour)
 	AuthzFinal.Expires = &exp
 	AuthzFinal.Challenges[0].Status = "valid"
-
-	features.Reset()
 
 	return va, ssa, ra, fc, cleanUp
 }
