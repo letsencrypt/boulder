@@ -1195,6 +1195,8 @@ func setup(
 	maxRemoteFailures int,
 	userAgent string,
 	remoteVAs []RemoteVA) (*ValidationAuthorityImpl, *blog.Mock) {
+	features.Reset()
+
 	logger := blog.NewMock()
 
 	if userAgent == "" {

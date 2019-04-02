@@ -41,6 +41,8 @@ var ctx = context.Background()
 // initSA constructs a SQLStorageAuthority and a clean up function
 // that should be defer'ed to the end of the test.
 func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
+	features.Reset()
+
 	dbMap, err := NewDbMap(vars.DBConnSA, 0)
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
@@ -2313,7 +2315,6 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 
 	err := features.Set(map[string]bool{"SetIssuedNamesRenewalBit": true})
 	test.AssertNotError(t, err, "Failed to enable SetIssuedNamesRenewalBit feature flag")
-	defer features.Reset()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 
@@ -2386,7 +2387,6 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 		"AllowRenewalFirstRL":      true,
 	})
 	test.AssertNotError(t, err, "Failed to enable required features flag")
-	defer features.Reset()
 
 	// Create a test registration
 	reg := satest.CreateWorkingRegistration(t, sa)

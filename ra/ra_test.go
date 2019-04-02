@@ -218,6 +218,8 @@ func (r *dummyRateLimitConfig) LoadPolicies(contents []byte) error {
 }
 
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
+	features.Reset()
+
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	err = json.Unmarshal(AccountKeyJSONB, &AccountKeyB)
@@ -1207,7 +1209,6 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 	// Start with the feature flag enabled.
 	err := features.Set(map[string]bool{"EarlyOrderRateLimit": true})
 	test.AssertNotError(t, err, "Failed to set EarlyOrderRateLimit feature flag")
-	defer features.Reset()
 
 	// Request an order for the test domain
 	newOrder := &rapb.NewOrderRequest{
