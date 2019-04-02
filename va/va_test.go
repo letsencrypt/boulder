@@ -271,7 +271,7 @@ func TestHTTPBadPort(t *testing.T) {
 	hs := httpSrv(t, chall.Token)
 	defer hs.Close()
 
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	// Pick a random port between 40000 and 65000 - with great certainty we won't
 	// have an HTTP server listening on this port and the test will fail as
@@ -303,7 +303,7 @@ func TestHTTP(t *testing.T) {
 	// TODO(#1989): close hs
 	hs := httpSrv(t, chall.Token)
 
-	va, log := setup(hs, 0)
+	va, log := setup(hs, 0, "", nil)
 
 	log.Clear()
 	t.Logf("Trying to validate: %+v\n", chall)
@@ -375,7 +375,7 @@ func TestHTTPTimeout(t *testing.T) {
 	hs := httpSrv(t, chall.Token)
 	// TODO(#1989): close hs
 
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 	setChallengeToken(&chall, pathWaitLong)
 
 	expectMatch := regexp.MustCompile(
@@ -422,7 +422,7 @@ func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname stri
 // error when dial fails. We do this by using a mock DNS client that resolves
 // everything to an unroutable IP address.
 func TestHTTPDialTimeout(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	started := time.Now()
 	timeout := 250 * time.Millisecond
@@ -470,7 +470,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
-	va, log := setup(hs, 0)
+	va, log := setup(hs, 0, "", nil)
 
 	setChallengeToken(&chall, pathMoved)
 	_, prob := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
@@ -538,7 +538,7 @@ func TestHTTPRedirectLoop(t *testing.T) {
 
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
 	if prob == nil {
@@ -552,7 +552,7 @@ func TestHTTPRedirectUserAgent(t *testing.T) {
 
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 	va.userAgent = rejectUserAgent
 
 	setChallengeToken(&chall, pathMoved)
@@ -587,7 +587,7 @@ func getPort(hs *httptest.Server) int {
 func TestTLSALPN01FailIP(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, "localhost")
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	port := getPort(hs)
 	_, prob := va.validateTLSALPN01(ctx, core.AcmeIdentifier{
@@ -615,7 +615,7 @@ func slowTLSSrv() *httptest.Server {
 func TestTLSALPNTimeoutAfterConnect(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := slowTLSSrv()
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	timeout := 50 * time.Millisecond
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -651,7 +651,7 @@ func TestTLSALPNTimeoutAfterConnect(t *testing.T) {
 func TestTLSALPN01DialTimeout(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := slowTLSSrv()
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockDNSClient{}}
 	started := time.Now()
 
@@ -700,7 +700,7 @@ func TestTLSALPN01DialTimeout(t *testing.T) {
 func TestTLSALPN01Refused(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, "localhost")
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 	// Take down validation server and check that validation fails.
 	hs.Close()
 	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
@@ -717,7 +717,7 @@ func TestTLSALPN01Refused(t *testing.T) {
 func TestTLSALPN01TalkingToHTTP(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, "localhost")
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 	httpOnly := httpSrv(t, "")
 	va.tlsPort = getPort(httpOnly)
 
@@ -744,7 +744,7 @@ func TestTLSError(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := brokenTLSSrv()
 
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
 	if prob == nil {
@@ -800,7 +800,7 @@ func TestValidateHTTP(t *testing.T) {
 	hs := httpSrv(t, chall.Token)
 	defer hs.Close()
 
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
 	test.Assert(t, prob == nil, "validation failed")
@@ -830,7 +830,7 @@ func TestTLSALPN01Success(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, "localhost")
 
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
 	if prob != nil {
@@ -842,7 +842,7 @@ func TestTLSALPN01Success(t *testing.T) {
 	chall = createChallenge(core.ChallengeTypeTLSALPN01)
 	hs = tlsalpn01Srv(t, chall, IdPeAcmeIdentifierV1Obsolete, "localhost")
 
-	va, _ = setup(hs, 0)
+	va, _ = setup(hs, 0, "", nil)
 
 	_, prob = va.validateChallenge(ctx, dnsi("localhost"), chall)
 	if prob != nil {
@@ -857,7 +857,7 @@ func TestValidateTLSALPN01BadChallenge(t *testing.T) {
 	setChallengeToken(&chall2, "bad token")
 
 	hs := tlsalpn01Srv(t, chall2, IdPeAcmeIdentifier, "localhost")
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
 
@@ -871,7 +871,7 @@ func TestValidateTLSALPN01BrokenSrv(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := brokenTLSSrv()
 
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
 	if prob == nil {
@@ -884,7 +884,7 @@ func TestValidateTLSALPN01UnawareSrv(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := tlssniSrvWithNames(t, chall, "localhost")
 
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
 	if prob == nil {
@@ -900,7 +900,7 @@ func TestValidateTLSALPN01BadUTFSrv(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
 	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, "localhost", "\xf0\x28\x8c\xbc")
 	port := getPort(hs)
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 
 	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
 	if prob == nil {
@@ -915,7 +915,7 @@ func TestValidateTLSALPN01BadUTFSrv(t *testing.T) {
 }
 
 func TestPerformValidationInvalid(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(context.Background(), "foo.com", chalDNS, core.Authorization{})
@@ -932,7 +932,7 @@ func TestPerformValidationInvalid(t *testing.T) {
 }
 
 func TestDNSValidationEmpty(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(
@@ -953,7 +953,7 @@ func TestDNSValidationEmpty(t *testing.T) {
 }
 
 func TestDNSValidationWrong(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(
@@ -968,7 +968,7 @@ func TestDNSValidationWrong(t *testing.T) {
 }
 
 func TestDNSValidationWrongMany(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(
@@ -983,7 +983,7 @@ func TestDNSValidationWrongMany(t *testing.T) {
 }
 
 func TestDNSValidationWrongLong(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(
@@ -998,7 +998,7 @@ func TestDNSValidationWrongLong(t *testing.T) {
 }
 
 func TestPerformValidationValid(t *testing.T) {
-	va, mockLog := setup(nil, 0)
+	va, mockLog := setup(nil, 0, "", nil)
 
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01("")
@@ -1027,7 +1027,7 @@ func TestPerformValidationValid(t *testing.T) {
 // TestPerformValidationWildcard tests that the VA properly strips the `*.`
 // prefix from a wildcard name provided to the PerformValidation function.
 func TestPerformValidationWildcard(t *testing.T) {
-	va, mockLog := setup(nil, 0)
+	va, mockLog := setup(nil, 0, "", nil)
 
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01("")
@@ -1062,7 +1062,7 @@ func TestPerformValidationWildcard(t *testing.T) {
 }
 
 func TestDNSValidationFailure(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 
@@ -1080,7 +1080,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 	chalDNS := core.DNSChallenge01("")
 	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
 
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	_, prob := va.validateChallenge(ctx, notDNS, chalDNS)
 
@@ -1088,7 +1088,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 }
 
 func TestDNSValidationNotSane(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	chal0 := core.DNSChallenge01("")
 	chal0.Token = ""
@@ -1119,7 +1119,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 }
 
 func TestDNSValidationServFail(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 
@@ -1129,7 +1129,7 @@ func TestDNSValidationServFail(t *testing.T) {
 }
 
 func TestDNSValidationNoServer(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 	va.dnsClient = bdns.NewTestDNSClientImpl(
 		time.Second*5,
 		nil,
@@ -1145,7 +1145,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 }
 
 func TestDNSValidationOK(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01("")
@@ -1158,7 +1158,7 @@ func TestDNSValidationOK(t *testing.T) {
 }
 
 func TestDNSValidationNoAuthorityOK(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01("")
@@ -1176,7 +1176,7 @@ func TestLimitedReader(t *testing.T) {
 	setChallengeToken(&chall, core.NewToken())
 
 	hs := httpSrv(t, "012345\xff67890123456789012345678901234567890123456789012345678901234567890123456789")
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 	defer hs.Close()
 
 	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
@@ -1190,8 +1190,16 @@ func TestLimitedReader(t *testing.T) {
 	}
 }
 
-func setup(srv *httptest.Server, maxRemoteFailures int) (*ValidationAuthorityImpl, *blog.Mock) {
+func setup(
+	srv *httptest.Server,
+	maxRemoteFailures int,
+	userAgent string,
+	remoteVAs []RemoteVA) (*ValidationAuthorityImpl, *blog.Mock) {
 	logger := blog.NewMock()
+
+	if userAgent == "" {
+		userAgent = "user agent 1.0"
+	}
 
 	var portConfig cmd.PortConfig
 	if srv != nil {
@@ -1207,7 +1215,7 @@ func setup(srv *httptest.Server, maxRemoteFailures int) (*ValidationAuthorityImp
 		&bdns.MockDNSClient{},
 		nil,
 		maxRemoteFailures,
-		"user agent 1.0",
+		userAgent,
 		"letsencrypt.org",
 		metrics.NewNoopScope(),
 		clock.Default(),
@@ -1219,6 +1227,9 @@ func setup(srv *httptest.Server, maxRemoteFailures int) (*ValidationAuthorityImp
 
 	features.Reset()
 
+	if remoteVAs != nil {
+		va.remoteVAs = remoteVAs
+	}
 	return va, logger
 }
 
@@ -1301,10 +1312,16 @@ type multiSrv struct {
 	*httptest.Server
 
 	mu         sync.Mutex
-	allowedUAs map[string]struct{}
+	allowedUAs map[string]bool
 }
 
-func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]struct{}) *multiSrv {
+func (s *multiSrv) setAllowedUAs(allowedUAs map[string]bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.allowedUAs = allowedUAs
+}
+
+func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]bool) *multiSrv {
 	m := http.NewServeMux()
 
 	server := httptest.NewUnstartedServer(m)
@@ -1316,10 +1333,9 @@ func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]struct{}) *m
 		}
 		ms.mu.Lock()
 		defer ms.mu.Unlock()
-		if _, ok := ms.allowedUAs[r.UserAgent()]; ok {
+		if ms.allowedUAs[r.UserAgent()] {
 			ch := core.Challenge{Token: token}
 			keyAuthz, _ := ch.ExpectedKeyAuthorization(accountKey)
-			t.Logf("HTTPSRV: Key Authz = '%s%s'\n", keyAuthz, "\\n\\r \\t")
 			fmt.Fprint(w, keyAuthz, "\n\r \t")
 		} else {
 			fmt.Fprint(w, "???")
@@ -1338,176 +1354,12 @@ func (v cancelledVA) PerformValidation(_ context.Context, _ string, _ core.Chall
 	return nil, context.Canceled
 }
 
-func TestPerformRemoteValidation(t *testing.T) {
-	// Create a new challenge to use for the httpSrv
-	chall := core.HTTPChallenge01("")
-	setChallengeToken(&chall, core.NewToken())
-
-	// Create an IPv4 test server
-	ms := httpMultiSrv(t, chall.Token, map[string]struct{}{"remote 1": {}, "remote 2": {}})
-	// defer ms.Close()
-
-	// Create a local test VA and two 'remote' VAs
-	localVA, mockLog := setup(ms.Server, 0)
-	localVA.userAgent = "local"
-	remoteVA1, _ := setup(ms.Server, 0)
-	remoteVA1.userAgent = "remote 1"
-	remoteVA2, _ := setup(ms.Server, 0)
-	remoteVA2.userAgent = "remote 2"
-	localVA.remoteVAs = []RemoteVA{
-		{remoteVA1, "remote 1"},
-		{remoteVA2, "remote 2"},
-	}
-
-	// Both remotes working, should succeed
-	probCh := make(chan *probs.ProblemDetails, 1)
-	localVA.performRemoteValidation(ctx, "localhost", chall, core.Authorization{}, probCh)
-	prob := <-probCh
-	if prob != nil {
-		t.Errorf("performRemoteValidation failed: %s", prob)
-	}
-
-	// Only remote 1 working, should fail
-	ms.mu.Lock()
-	delete(ms.allowedUAs, "remote 1")
-	ms.mu.Unlock()
-	localVA.performRemoteValidation(ctx, "localhost", chall, core.Authorization{}, probCh)
-	prob = <-probCh
-	if prob == nil {
-		t.Error("performRemoteValidation didn't fail when one 'remote' validation failed")
-	}
-
-	ms.mu.Lock()
-	ms.allowedUAs["local"] = struct{}{}
-	ms.allowedUAs["remote 1"] = struct{}{}
-	ms.allowedUAs["remote 2"] = struct{}{}
-	ms.mu.Unlock()
-
-	localVA.remoteVAs = []RemoteVA{
-		{remoteVA1, "remote 1"},
-		{cancelledVA{}, "remote 2"},
-	}
-
-	// One remote cancelled, should return no err
-	localVA.performRemoteValidation(ctx, "localhost", chall, core.Authorization{}, probCh)
-	prob = <-probCh
-	if prob != nil {
-		t.Errorf("performRemoteValidation returned unexpected err from cancelled context: %s", prob)
-	}
-
-	localVA.remoteVAs = []RemoteVA{
-		{cancelledVA{}, "remote 1"},
-		{cancelledVA{}, "remote 2"},
-	}
-
-	// Both remotes cancelled, should return no err
-	localVA.performRemoteValidation(ctx, "localhost", chall, core.Authorization{}, probCh)
-	prob = <-probCh
-	if prob != nil {
-		t.Errorf("performRemoteValidation returned unexpected err from cancelled context: %s", prob)
-	}
-
-	localVA.remoteVAs = []RemoteVA{
-		{remoteVA1, "remote 1"},
-		{remoteVA2, "remote 2"},
-	}
-
-	// Both local and remotes working, should succeed
-	_, err := localVA.PerformValidation(ctx, "localhost", chall, core.Authorization{})
-	if err != nil {
-		t.Errorf("PerformValidation failed: %s", err)
-	}
-
-	// Only remotes working, should fail
-	ms.mu.Lock()
-	delete(ms.allowedUAs, "local")
-	ms.mu.Unlock()
-	_, err = localVA.PerformValidation(ctx, "localhost", chall, core.Authorization{})
-	if err == nil {
-		t.Error("PerformValidation didn't fail when local validation failed")
-	}
-
-	// Local and remote 2 working, should fail
-	ms.mu.Lock()
-	ms.allowedUAs["local"] = struct{}{}
-	delete(ms.allowedUAs, "remote 1")
-	ms.mu.Unlock()
-	_, err = localVA.PerformValidation(ctx, "localhost", chall, core.Authorization{})
-	if err == nil {
-		t.Error("PerformValidation didn't fail when one 'remote' validation failed")
-	}
-	failLogs := mockLog.GetAllMatching(`Validation failed due to remote failures`)
-	if len(failLogs) == 0 {
-		t.Error("Expected log line about failure due to remote failures, didn't get it")
-	}
-	remoteFailMetric := test.CountCounter(localVA.metrics.remoteValidationFailures)
-	if remoteFailMetric != 1 {
-		t.Errorf("Expected remote_validation_failures to be incremented, but it wasn't")
-	}
-
-	// Local and remote 2 working with maxRemoteFailures == 1, should succeed
-	localVA, _ = setup(ms.Server, 1)
-	localVA.userAgent = "local"
-	localVA.remoteVAs = []RemoteVA{
-		{remoteVA1, "remote 1"},
-		{remoteVA2, "remote 2"},
-	}
-	_, err = localVA.PerformValidation(ctx, "localhost", chall, core.Authorization{})
-	if err != nil {
-		t.Errorf("PerformValidation failed when one 'remote' validation failed but maxRemoteFailures is 1: %s", err)
-	}
-
-	// Only local working, should fail
-	ms.mu.Lock()
-	delete(ms.allowedUAs, "remote 2")
-	ms.mu.Unlock()
-	_, err = localVA.PerformValidation(ctx, "localhost", chall, core.Authorization{})
-	if err == nil {
-		t.Error("PerformValidation didn't fail when both 'remote' validations failed")
-	}
-
-	// Local and remote 1 working, should succeed and return early
-	ms.mu.Lock()
-	ms.allowedUAs["remote 1"] = struct{}{}
-	ms.mu.Unlock()
-	remoteVA2.userAgent = "slow remote"
-	s := time.Now()
-	_, err = localVA.PerformValidation(ctx, "localhost", chall, core.Authorization{})
-	if err != nil {
-		t.Errorf("PerformValidation failed when one 'remote' validation failed but maxRemoteFailures is 1: %s", err)
-	}
-	took := time.Since(s)
-	if took >= (time.Second * 5) {
-		t.Errorf("PerformValidation didn't return early on success: took %s, expected <5s", took)
-	}
-
-	// Only local working, should fail and return early
-	ms.mu.Lock()
-	delete(ms.allowedUAs, "remote 1")
-	ms.mu.Unlock()
-	localVA, _ = setup(ms.Server, 0)
-	localVA.userAgent = "local"
-	localVA.remoteVAs = []RemoteVA{
-		{remoteVA1, "remote 1"},
-		{remoteVA2, "remote 2"},
-	}
-	s = time.Now()
-	_, err = localVA.PerformValidation(ctx, "localhost", chall, core.Authorization{})
-	if err == nil {
-		t.Error("PerformValidation didn't fail when two validations failed")
-	}
-	took = time.Since(s)
-	if took >= (time.Second * 5) {
-		t.Errorf("PerformValidation didn't return early on failure: took %s, expected <5s", took)
-	}
-}
-
 // brokenRemoteVA is a mock for the core.ValidationAuthority interface mocked to
 // always return errors.
 type brokenRemoteVA struct{}
 
 // brokenRemoteVAError is the error returned by a brokenRemoteVA's
-// PerformValidation function.
+// PerformValidation and IsSafeDomain functions.
 var brokenRemoteVAError = errors.New("brokenRemoteVA is broken")
 
 // PerformValidation returns brokenRemoteVAError unconditionally
@@ -1519,60 +1371,300 @@ func (b *brokenRemoteVA) PerformValidation(
 	return nil, brokenRemoteVAError
 }
 
-func TestPerformRemoteValidationFailure(t *testing.T) {
+func TestMultiVA(t *testing.T) {
 	// Create a new challenge to use for the httpSrv
 	chall := core.HTTPChallenge01("")
 	setChallengeToken(&chall, core.NewToken())
+	expectedKeyAuthorization, err := chall.ExpectedKeyAuthorization(accountKey)
+	test.AssertNotError(t, err, "could not compute expected key auth value")
+
+	const (
+		remoteUA1 = "remote 1"
+		remoteUA2 = "remote 2"
+		localUA   = "local 1"
+	)
+	allowedUAs := map[string]bool{
+		localUA:   true,
+		remoteUA1: true,
+		remoteUA2: true,
+	}
 
 	// Create an IPv4 test server
-	ms := httpMultiSrv(t, chall.Token, map[string]struct{}{"remote 1": {}, "remote 2": {}})
+	ms := httpMultiSrv(t, chall.Token, allowedUAs)
 	defer ms.Close()
 
-	// Create a local test VA configured with a mock logger
-	mockLog := blog.NewMock()
-	localVA, _ := setup(ms.Server, 0)
-	localVA.userAgent = "local"
-	localVA.log = mockLog
+	remoteVA1, _ := setup(ms.Server, 0, remoteUA1, nil)
+	remoteVA2, _ := setup(ms.Server, 0, remoteUA2, nil)
 
-	// Create a remote test VA
-	remoteVA, _ := setup(ms.Server, 0)
-
-	// Create a broken remote test VA
-	brokenVA := &brokenRemoteVA{}
-	brokenVAAddr := "broken"
-
-	// Set the local VA to use the two remotes
-	localVA.remoteVAs = []RemoteVA{
-		{remoteVA, "good"},
-		{brokenVA, brokenVAAddr},
+	remoteVAs := []RemoteVA{
+		{remoteVA1, remoteUA1},
+		{remoteVA2, remoteUA2},
 	}
 
-	// Performing a validation should return a problem on the channel because of
-	// the broken remote VA.
-	probCh := make(chan *probs.ProblemDetails, 1)
-	localVA.performRemoteValidation(
-		ctx,
-		"localhost",
-		chall,
-		core.Authorization{},
-		probCh)
-	prob := <-probCh
-	if prob == nil {
-		t.Fatalf("performRemoteValidation with a broken remote VA did not " +
-			"return a problem")
+	enforceMultiVA := map[string]bool{
+		"EnforceMultiVA": true,
+	}
+	enforceMultiVAFullResults := map[string]bool{
+		"EnforceMultiVA":     true,
+		"MultiVAFullResults": true,
+	}
+	noEnforceMultiVA := map[string]bool{
+		"EnforceMultiVA": false,
+	}
+	noEnforceMultiVAFullResults := map[string]bool{
+		"EnforceMultiVA":     false,
+		"MultiVAFullResults": true,
 	}
 
-	expected := probs.ServerInternal("Remote PerformValidation RPCs failed")
-	test.AssertDeepEquals(t, prob, expected)
+	unauthorized := probs.Unauthorized(
+		"The key authorization file from the server did not match this challenge [%s] != [???]",
+		expectedKeyAuthorization)
 
-	// The mock logger should have an audit err log line that includes the true
-	// underlying error that caused the server internal problem.
-	expectedLine := fmt.Sprintf(
-		`ERR: \[AUDIT\] Remote VA %q.PerformValidation failed: %s`,
-		brokenVAAddr, brokenRemoteVAError.Error())
-	failLogs := mockLog.GetAllMatching(expectedLine)
-	if len(failLogs) == 0 {
-		t.Error("Expected log line with broken remote VA error message. Found none")
+	internalErr := probs.ServerInternal("Remote PerformValidation RPC failed")
+
+	expectedInternalErrLine := fmt.Sprintf(
+		`ERR: \[AUDIT\] Remote VA "broken".PerformValidation failed: %s`,
+		brokenRemoteVAError.Error())
+
+	testCases := []struct {
+		Name         string
+		RemoteVAs    []RemoteVA
+		AllowedUAs   map[string]bool
+		Features     map[string]bool
+		ExpectedProb *probs.ProblemDetails
+		ExpectedLog  string
+	}{
+		{
+			// With local and both remote VAs working there should be no problem.
+			Name:       "Local and remote VAs OK, enforce multi VA",
+			RemoteVAs:  remoteVAs,
+			AllowedUAs: allowedUAs,
+			Features:   enforceMultiVA,
+		},
+		{
+			// Ditto if multi VA enforcement is disabled
+			Name:       "Local and remote VAs OK, no enforce multi VA",
+			RemoteVAs:  remoteVAs,
+			AllowedUAs: allowedUAs,
+			Features:   noEnforceMultiVA,
+		},
+		{
+			// If the local VA fails everything should fail
+			Name:         "Local VA bad, remote VAs OK, no enforce multi VA",
+			RemoteVAs:    remoteVAs,
+			AllowedUAs:   map[string]bool{remoteUA1: true, remoteUA2: true},
+			Features:     noEnforceMultiVA,
+			ExpectedProb: unauthorized,
+		},
+		{
+			// Ditto when enforcing remote VA
+			Name:         "Local VA bad, remote VAs OK, enforce multi VA",
+			RemoteVAs:    remoteVAs,
+			AllowedUAs:   map[string]bool{remoteUA1: true, remoteUA2: true},
+			Features:     enforceMultiVA,
+			ExpectedProb: unauthorized,
+		},
+		{
+			// If a remote VA fails with an internal err it should fail when enforcing multi VA
+			Name: "Local VA ok, remote VA internal err, enforce multi VA",
+			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{&brokenRemoteVA{}, "broken"},
+			},
+			AllowedUAs:   allowedUAs,
+			Features:     enforceMultiVA,
+			ExpectedProb: internalErr,
+			// The real failure cause should be logged
+			ExpectedLog: expectedInternalErrLine,
+		},
+		{
+			// If a remote VA fails with an internal err it should not fail when not
+			// enforcing multi VA
+			Name: "Local VA ok, remote VA internal err, no enforce multi VA",
+			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{&brokenRemoteVA{}, "broken"},
+			},
+			AllowedUAs: allowedUAs,
+			Features:   noEnforceMultiVA,
+			// The real failure cause should be logged
+			ExpectedLog: expectedInternalErrLine,
+		},
+		{
+			// With only one working remote VA there should *not* be a validation
+			// failure when not enforcing multi VA.
+			Name:       "Local VA and one remote VA OK, no enforce multi VA",
+			RemoteVAs:  remoteVAs,
+			AllowedUAs: map[string]bool{localUA: true, remoteUA2: true},
+			Features:   noEnforceMultiVA,
+		},
+		{
+			// With only one working remote VA there should be a validation failure
+			// when enforcing multi VA.
+			Name:         "Local VA and one remote VA OK, enforce multi VA",
+			RemoteVAs:    remoteVAs,
+			AllowedUAs:   map[string]bool{localUA: true, remoteUA2: true},
+			Features:     enforceMultiVA,
+			ExpectedProb: unauthorized,
+		},
+		{
+			// With one remote VA cancelled there should not be a validation failure
+			// when enforcing multi VA.
+			Name: "Local VA and one remote VA OK, one cancelled VA, enforce multi VA",
+			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{cancelledVA{}, remoteUA2},
+			},
+			AllowedUAs: allowedUAs,
+			Features:   enforceMultiVA,
+		},
+		{
+			// With two remote VAs cancelled there should not be a validation failure
+			// when enforcing multi VA
+			Name: "Local VA and one remote VA OK, one cancelled VA, enforce multi VA",
+			RemoteVAs: []RemoteVA{
+				{cancelledVA{}, remoteUA1},
+				{cancelledVA{}, remoteUA2},
+			},
+			AllowedUAs: allowedUAs,
+			Features:   enforceMultiVA,
+		},
+		{
+			// With the local and remote VAs seeing diff problems and the full results
+			// feature flag on but multi VA enforcement off we expect
+			// no problem.
+			Name:       "Local and remove VA differential, full results, no enforce multi VA",
+			RemoteVAs:  remoteVAs,
+			AllowedUAs: map[string]bool{localUA: true},
+			Features:   noEnforceMultiVAFullResults,
+		},
+		{
+			// With the local and remote VAs seeing diff problems and the full results
+			// feature flag on and multi VA enforcement on we expect a problem.
+			Name:         "Local and remove VA differential, full results, enforce multi VA",
+			RemoteVAs:    remoteVAs,
+			AllowedUAs:   map[string]bool{localUA: true},
+			Features:     enforceMultiVAFullResults,
+			ExpectedProb: unauthorized,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			// Configure the test server with the testcase allowed UAs.
+			ms.setAllowedUAs(tc.AllowedUAs)
+
+			// Configure a primary VA with testcase remote VAs.
+			localVA, mockLog := setup(ms.Server, 0, localUA, tc.RemoteVAs)
+
+			if tc.Features != nil {
+				err := features.Set(tc.Features)
+				test.AssertNotError(t, err, "Failed to set feature flags")
+				defer features.Reset()
+			}
+
+			// Perform all validations
+			_, prob := localVA.PerformValidation(ctx, "localhost", chall, core.Authorization{})
+			if prob == nil && tc.ExpectedProb != nil {
+				t.Errorf("expected prob %v, got nil", tc.ExpectedProb)
+			} else if prob != nil {
+				// That result should match expected.
+				test.AssertDeepEquals(t, prob, tc.ExpectedProb)
+			}
+
+			if tc.ExpectedLog != "" {
+				lines := mockLog.GetAllMatching(tc.ExpectedLog)
+				test.AssertEquals(t, len(lines), 1)
+			}
+		})
+	}
+}
+
+func TestMultiVAEarlyReturn(t *testing.T) {
+	chall := core.HTTPChallenge01("")
+	setChallengeToken(&chall, core.NewToken())
+
+	const (
+		remoteUA1 = "remote 1"
+		remoteUA2 = "slow remote"
+		localUA   = "local 1"
+	)
+	allowedUAs := map[string]bool{
+		localUA:   true,
+		remoteUA1: false, // forbid UA 1 to provoke early return
+		remoteUA2: true,
+	}
+
+	ms := httpMultiSrv(t, chall.Token, allowedUAs)
+	defer ms.Close()
+
+	remoteVA1, _ := setup(ms.Server, 0, remoteUA1, nil)
+	remoteVA2, _ := setup(ms.Server, 0, remoteUA2, nil)
+
+	remoteVAs := []RemoteVA{
+		{remoteVA1, remoteUA1},
+		{remoteVA2, remoteUA2},
+	}
+
+	// Create a local test VA with the two remote VAs
+	localVA, mockLog := setup(ms.Server, 0, localUA, remoteVAs)
+
+	testCases := []struct {
+		Name        string
+		EarlyReturn bool
+	}{
+		{
+			Name: "One slow remote VA, no early return",
+		},
+		{
+			Name:        "One slow remote VA, early return",
+			EarlyReturn: true,
+		},
+	}
+
+	earlyReturnFeatures := map[string]bool{
+		"EnforceMultiVA":     true,
+		"MultiVAFullResults": false,
+	}
+	noEarlyReturnFeatures := map[string]bool{
+		"EnforceMultiVA":     true,
+		"MultiVAFullResults": true,
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			mockLog.Clear()
+
+			var err error
+			if tc.EarlyReturn {
+				err = features.Set(earlyReturnFeatures)
+			} else {
+				err = features.Set(noEarlyReturnFeatures)
+			}
+			test.AssertNotError(t, err, "Failed to set MultiVAFullResults feature flag")
+			defer features.Reset()
+
+			start := time.Now()
+
+			// Perform all validations
+			_, prob := localVA.PerformValidation(ctx, "localhost", chall, core.Authorization{})
+			// It should always fail
+			if prob == nil {
+				t.Error("expected prob from PerformValidation, got nil")
+			}
+
+			elapsed := time.Since(start).Round(time.Millisecond).Seconds()
+
+			// The slow UA should sleep for 5 seconds. In the early return case the
+			// first remote VA should fail the overall validation and a prob should be
+			// returned quickly. In the non-early return case we don't expect
+			// a problem for 5s.
+			if tc.EarlyReturn && elapsed > 4.0 {
+				t.Errorf(
+					"Expected an early return from PerformValidation in < 4.0s, took %f",
+					elapsed)
+			}
+		})
 	}
 }
 

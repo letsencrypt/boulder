@@ -1,9 +1,11 @@
 #!/usr/bin/env python2.7
+# -*- coding: utf-8 -*-
 import argparse
 import atexit
 import base64
 import datetime
 import errno
+import inspect
 import json
 import os
 import random
@@ -22,7 +24,7 @@ import startservers
 
 import chisel
 from chisel import auth_and_issue
-from v2_integration import *
+import v2_integration
 from helpers import *
 
 from acme import challenges
@@ -32,6 +34,10 @@ import OpenSSL
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
+
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
 
 class ProcInfo:
     """
@@ -309,9 +315,6 @@ def test_http_challenge_https_redirect():
       elif r['ServerName'] != d:
         raise Exception("Expected all redirected requests to have ServerName {0} got \"{1}\"".format(d, r['ServerName']))
 
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
-
 class SlowHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
@@ -340,7 +343,7 @@ def test_http_challenge_timeout():
     thread.daemon = False
     thread.start()
 
-    # Pick a random domains
+    # Pick a random domain
     hostname = random_domain()
 
     # Add A record for the domains to ensure the VA's requests are directed
@@ -880,20 +883,18 @@ def main():
     exit_status = 0
 
 def run_chisel(test_case_filter):
+    for key, value in inspect.getmembers(v2_integration):
+      if callable(value) and key.startswith('test_') and re.search(test_case_filter, key):
+        value()
     for key, value in globals().items():
       if callable(value) and key.startswith('test_') and re.search(test_case_filter, key):
         value()
 
 def run_loadtest():
-    """Run the load generator for v1 and v2."""
+    """Run the ACME v2 load generator."""
     latency_data_file = "%s/integration-test-latency.json" % tempdir
     run("./bin/load-generator \
             -config test/load-generator/config/integration-test-config.json\
-            -results %s" % latency_data_file)
-
-    latency_data_file = "%s/v2-integration-test-latency.json" % tempdir
-    run("./bin/load-generator \
-            -config test/load-generator/config/v2-integration-test-config.json\
             -results %s" % latency_data_file)
 
 def check_balance():

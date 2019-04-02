@@ -67,6 +67,11 @@ func (vac ValidationAuthorityGRPCClient) PerformValidation(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
+	if prob != nil {
+		return records, prob
+	}
 
-	return records, prob
+	// We return nil explicitly to avoid "typed nil" problems.
+	// https://golang.org/doc/faq#nil_error
+	return records, nil
 }
