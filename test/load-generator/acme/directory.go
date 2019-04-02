@@ -28,16 +28,23 @@ const (
 )
 
 var (
-	// ErrEmptyDirectory is returned if New is provided and empty directory URL.
+	// ErrEmptyDirectory is returned if NewDirectory is provided and empty directory URL.
 	ErrEmptyDirectory = errors.New("directoryURL must not be empty")
-	// ErrInvalidDirectoryURL is returned if New is provided an invalid directory URL.
+	// ErrInvalidDirectoryURL is returned if NewDirectory is provided an invalid directory URL.
 	ErrInvalidDirectoryURL = errors.New("directoryURL is not a valid URL")
-	// ErrInvalidDirectoryHTTPCode is returned if New is provided a directory URL
+	// ErrInvalidDirectoryHTTPCode is returned if NewDirectory is provided a directory URL
 	// that returns something other than HTTP Status OK to a GET request.
 	ErrInvalidDirectoryHTTPCode = errors.New("GET request to directoryURL did not result in HTTP Status 200")
-	// ErrInvalidDirectoryJSON is returned if New is provided a directory URL
+	// ErrInvalidDirectoryJSON is returned if NewDirectory is provided a directory URL
 	// that returns invalid JSON.
 	ErrInvalidDirectoryJSON = errors.New("GET request to directoryURL returned invalid JSON")
+	// ErrInvalidDirectoryMeta is returned if NewDirectory is provided a directory
+	// URL that returns a directory resource with an invalid or  missing "meta" key.
+	ErrInvalidDirectoryMeta = errors.New(`server's directory resource had invalid or missing "meta" key`)
+	// ErrInvalidTermsOfSerivce is returned if NewDirectory is provided
+	// a directory URL that returns a directory resource with an invalid or
+	// missing "termsOfService" key in the "meta" map.
+	ErrInvalidTermsOfService = errors.New(`server's directory resource had invalid or missing "meta.termsOfService" key`)
 
 	// RequiredEndpoints is a slice of Endpoint keys that must be present in the
 	// ACME server's directory. The load-generator uses each of these endpoints
@@ -94,6 +101,9 @@ func (e ErrInvalidEndpointURL) Error() string {
 //
 // Its public API is read-only and therefore it is safe for concurrent access.
 type Directory struct {
+	// TermsOfService is the URL identifying the current terms of service found in
+	// the ACME server's directory resource's "meta" field.
+	TermsOfService string
 	// endpointURLs is a map from endpoint name to URL.
 	endpointURLs map[Endpoint]string
 }
@@ -148,6 +158,31 @@ func getRawDirectory(directoryURL string) ([]byte, error) {
 	return rawDirectory, nil
 }
 
+// termsOfService reads the termsOfService key from the meta key of the raw
+// directory resource.
+func termsOfService(rawDirectory map[string]interface{}) (string, error) {
+	var directoryMeta map[string]interface{}
+
+	if rawDirectoryMeta, ok := rawDirectory["meta"]; !ok {
+		return "", ErrInvalidDirectoryMeta
+	} else if directoryMetaMap, ok := rawDirectoryMeta.(map[string]interface{}); !ok {
+		return "", ErrInvalidDirectoryMeta
+	} else {
+		directoryMeta = directoryMetaMap
+	}
+
+	rawToSURL, ok := directoryMeta["termsOfService"]
+	if !ok {
+		return "", ErrInvalidTermsOfService
+	}
+
+	tosURL, ok := rawToSURL.(string)
+	if !ok {
+		return "", ErrInvalidTermsOfService
+	}
+	return tosURL, nil
+}
+
 // NewDirectory creates a Directory populated from the ACME directory resource
 // returned by a GET request to the provided directoryURL. It also checks that
 // the fetched directory contains each of the RequiredEndpoints.
@@ -191,6 +226,13 @@ func NewDirectory(directoryURL string) (*Directory, error) {
 		}
 		directory.endpointURLs[endpointName] = url.String()
 	}
+
+	// Populate the terms-of-service
+	tos, err := termsOfService(dirResource)
+	if err != nil {
+		return nil, err
+	}
+	directory.TermsOfService = tos
 	return directory, nil
 }
 

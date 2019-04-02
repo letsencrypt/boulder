@@ -13,11 +13,13 @@ import (
 
 // Path constants for test cases and mockDirectoryServer handlers.
 const (
-	wrongStatusCodePath    = "/dir-wrong-status"
-	invalidJSONPath        = "/dir-bad-json"
-	missingEndpointPath    = "/dir-missing-endpoint"
-	invalidEndpointURLPath = "/dir-invalid-endpoint"
-	validDirectoryPath     = "/dir-valid"
+	wrongStatusCodePath         = "/dir-wrong-status"
+	invalidJSONPath             = "/dir-bad-json"
+	missingEndpointPath         = "/dir-missing-endpoint"
+	invalidEndpointURLPath      = "/dir-invalid-endpoint"
+	validDirectoryPath          = "/dir-valid"
+	invalidMetaDirectoryPath    = "/dir-valid-meta-invalid"
+	invalidMetaDirectoryToSPath = "/dir-valid-meta-valid-tos-invalid"
 )
 
 // mockDirectoryServer is an httptest.Server that returns mock data for ACME
@@ -52,6 +54,31 @@ func newMockDirectoryServer() *mockDirectoryServer {
 			 "revokeCert": ""
 		}`, "http://"+string([]byte{0x7F}))
 		fmt.Fprint(w, invalidURLDir)
+	})
+
+	m.HandleFunc(invalidMetaDirectoryPath, func(w http.ResponseWriter, r *http.Request) {
+		noMetaDir := `{
+			 "keyChange": "https://localhost:14000/rollover-account-key",
+			 "newAccount": "https://localhost:14000/sign-me-up",
+			 "newNonce": "https://localhost:14000/nonce-plz",
+			 "newOrder": "https://localhost:14000/order-plz",
+			 "revokeCert": "https://localhost:14000/revoke-cert"
+		}`
+		fmt.Fprint(w, noMetaDir)
+	})
+
+	m.HandleFunc(invalidMetaDirectoryToSPath, func(w http.ResponseWriter, r *http.Request) {
+		noToSDir := `{
+			 "keyChange": "https://localhost:14000/rollover-account-key",
+			 "meta": {
+				 "chaos": "reigns"
+			 },
+			 "newAccount": "https://localhost:14000/sign-me-up",
+			 "newNonce": "https://localhost:14000/nonce-plz",
+			 "newOrder": "https://localhost:14000/order-plz",
+			 "revokeCert": "https://localhost:14000/revoke-cert"
+		}`
+		fmt.Fprint(w, noToSDir)
 	})
 
 	m.HandleFunc(validDirectoryPath, func(w http.ResponseWriter, r *http.Request) {
@@ -106,6 +133,10 @@ func TestNew(t *testing.T) {
 		value:    "http://" + string([]byte{0x7F}),
 	}
 
+	invalidDirectoryMetaURL := testURL(invalidMetaDirectoryPath)
+
+	invalidDirectoryToSURL := testURL(invalidMetaDirectoryToSPath)
+
 	validDirectoryURL := testURL(validDirectoryPath)
 
 	testCases := []struct {
@@ -146,6 +177,16 @@ func TestNew(t *testing.T) {
 			Name:          "directory JSON with invalid endpoint URL",
 			DirectoryURL:  invalidEndpointURL,
 			ExpectedError: invalidEndpointErr.Error(),
+		},
+		{
+			Name:          "directory JSON missing meta key",
+			DirectoryURL:  invalidDirectoryMetaURL,
+			ExpectedError: ErrInvalidDirectoryMeta.Error(),
+		},
+		{
+			Name:          "directory JSON missing meta TermsOfService key",
+			DirectoryURL:  invalidDirectoryToSURL,
+			ExpectedError: ErrInvalidTermsOfService.Error(),
 		},
 		{
 			Name:         "valid directory",
