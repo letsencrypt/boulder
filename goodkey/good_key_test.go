@@ -22,6 +22,12 @@ func TestUnknownKeyType(t *testing.T) {
 	test.AssertError(t, testingPolicy.GoodKey(notAKey), "Should have rejected a key of unknown type")
 }
 
+func TestNilKey(t *testing.T) {
+	e := testingPolicy.GoodKey(nil)
+	test.AssertError(t, e, "Should have rejected a nil key")
+	test.AssertNotContains(t, e.Error(), "%!")
+}
+
 func TestSmallModulus(t *testing.T) {
 	pubKey := rsa.PublicKey{
 		N: big.NewInt(0),
