@@ -1372,17 +1372,17 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 		if authz.Status != core.StatusPending {
 			return Rollback(tx, berrors.WrongAuthorizationStateError("authorization not pending"))
 		}
+		authz.Status = core.StatusDeactivated
+		err = txWithCtx.Insert(&authzModel{authz.Authorization})
+		if err != nil {
+			return Rollback(tx, err)
+		}
 		result, err := txWithCtx.Delete(authzObj)
 		if err != nil {
 			return Rollback(tx, err)
 		}
 		if result != 1 {
 			return Rollback(tx, berrors.InternalServerError("wrong number of rows deleted: expected 1, got %d", result))
-		}
-		authz.Status = core.StatusDeactivated
-		err = txWithCtx.Insert(&authzModel{authz.Authorization})
-		if err != nil {
-			return Rollback(tx, err)
 		}
 	} else {
 		_, err = txWithCtx.Exec(
