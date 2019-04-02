@@ -149,10 +149,8 @@ func getRawDirectory(directoryURL string) ([]byte, error) {
 }
 
 // NewDirectory creates a Directory populated from the ACME directory resource
-// returned by a GET request to the provided directoryURL. An error is returned
-// if the directory URL is invalid, or if there is a problem connecting to the
-// directory URL, unmarshaling the JSON directory resource, or if the directory
-// is missing required endpoints (see RequiredEndpoints).
+// returned by a GET request to the provided directoryURL. It also checks that
+// the fetched directory contains each of the RequiredEndpoints.
 func NewDirectory(directoryURL string) (*Directory, error) {
 	// Fetch the raw directory JSON
 	dirContents, err := getRawDirectory(directoryURL)
