@@ -94,8 +94,8 @@ func (e ErrInvalidEndpointURL) Error() string {
 //
 // Its public API is read-only and therefore it is safe for concurrent access.
 type Directory struct {
-	// endpointURLs is a map from endpoint name to
-	endpointURLs map[Endpoint]*url.URL
+	// endpointURLs is a map from endpoint name to URL.
+	endpointURLs map[Endpoint]string
 }
 
 // getRawDirectory validates the provided directoryURL and makes a GET request
@@ -180,7 +180,7 @@ func NewDirectory(directoryURL string) (*Directory, error) {
 
 	// Create an empty directory to populate
 	directory := &Directory{
-		endpointURLs: make(map[Endpoint]*url.URL),
+		endpointURLs: make(map[Endpoint]string),
 	}
 
 	// Every required endpoint must have a valid URL populated from the directory
@@ -189,7 +189,7 @@ func NewDirectory(directoryURL string) (*Directory, error) {
 		if err != nil {
 			return nil, err
 		}
-		directory.endpointURLs[endpointName] = url
+		directory.endpointURLs[endpointName] = url.String()
 	}
 	return directory, nil
 }
@@ -199,7 +199,7 @@ func NewDirectory(directoryURL string) (*Directory, error) {
 // returned.
 func (d *Directory) EndpointURL(ep Endpoint) string {
 	if url, ok := d.endpointURLs[ep]; ok {
-		return url.String()
+		return url
 	}
 
 	return ""
