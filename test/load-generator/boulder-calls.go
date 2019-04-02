@@ -326,7 +326,7 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 	// Add the challenge response to the state's test server
 	s.challSrv.AddHTTPOneChallenge(chalToSolve.Token, authStr)
 	// Clean up after we're done
-	//defer s.challSrv.DeleteHTTPOneChallenge(chalToSolve.Token)
+	defer s.challSrv.DeleteHTTPOneChallenge(chalToSolve.Token)
 
 	// Prepare the Challenge POST body
 	update := fmt.Sprintf(`{"keyAuthorization":"%s"}`, authStr)
