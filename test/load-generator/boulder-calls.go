@@ -7,6 +7,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
@@ -301,18 +302,11 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 		return nil
 	}
 
-	// Find a challenge to solve from the pending authorization. For now, we only
-	// process HTTP-01 challenges and must error if there isn't a HTTP-01
-	// challenge to solve.
-	var chalToSolve *core.Challenge
-	for _, challenge := range authz.Challenges {
-		if challenge.Type == core.ChallengeTypeHTTP01 {
-			chalToSolve = &challenge
-			break
-		}
-	}
-	if chalToSolve == nil {
-		return errors.New("no http-01 challenges to complete")
+	// Find a challenge to solve from the pending authorization using the
+	// challenge selection strategy from the load-generator state.
+	chalToSolve, err := s.challStrat.PickChallenge(authz)
+	if err != nil {
+		return err
 	}
 
 	// Compute the key authorization from the context account's key
@@ -323,10 +317,25 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 	}
 	authStr := fmt.Sprintf("%s.%s", chalToSolve.Token, base64.RawURLEncoding.EncodeToString(thumbprint))
 
-	// Add the challenge response to the state's test server
-	s.challSrv.AddHTTPOneChallenge(chalToSolve.Token, authStr)
-	// Clean up after we're done
-	defer s.challSrv.DeleteHTTPOneChallenge(chalToSolve.Token)
+	// Add the challenge response to the state's test server and defer a clean-up.
+	switch chalToSolve.Type {
+	case core.ChallengeTypeHTTP01:
+		s.challSrv.AddHTTPOneChallenge(chalToSolve.Token, authStr)
+		defer s.challSrv.DeleteHTTPOneChallenge(chalToSolve.Token)
+	case core.ChallengeTypeDNS01:
+		// Compute the digest of the key authorization
+		h := sha256.New()
+		h.Write([]byte(authStr))
+		authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+		domain := "_acme-challenge." + authz.Identifier.Value + "."
+		s.challSrv.AddDNSOneChallenge(domain, authorizedKeysDigest)
+		defer s.challSrv.DeleteDNSOneChallenge(domain)
+	case core.ChallengeTypeTLSALPN01:
+		s.challSrv.AddTLSALPNChallenge(authz.Identifier.Value, authStr)
+		defer s.challSrv.DeleteTLSALPNChallenge(authz.Identifier.Value)
+	default:
+		return fmt.Errorf("challenge strategy picked challenge with unknown type: %q", chalToSolve.Type)
+	}
 
 	// Prepare the Challenge POST body
 	update := fmt.Sprintf(`{"keyAuthorization":"%s"}`, authStr)
