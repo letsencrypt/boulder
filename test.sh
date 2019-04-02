@@ -169,6 +169,7 @@ if [[ "$RUN" =~ "integration" ]] ; then
   start_context "integration"
 
   args=("--chisel")
+  args+=("--load")
   if [[ "$INT_FILTER" != "" ]]; then
     args+=("--filter" "$INT_FILTER")
   fi

@@ -329,13 +329,17 @@ func New(
 }
 
 // Run runs the WFE load-generator
-func (s *State) Run(httpOneAddr string, p Plan) error {
+func (s *State) Run(httpOneAddr string, dnsAddrs []string, fakeDNS string, p Plan) error {
 	// Create a new challenge server for HTTP-01 challenges
 	challSrv, err := challtestsrv.New(challtestsrv.Config{
 		HTTPOneAddrs: []string{httpOneAddr},
+		DNSOneAddrs:  dnsAddrs,
 		// Use a logger that has a load-generator prefix
 		Log: log.New(os.Stdout, "load-generator challsrv - ", log.LstdFlags),
 	})
+	challSrv.SetDefaultDNSIPv4(fakeDNS)
+	challSrv.SetDefaultDNSIPv6("")
+
 	if err != nil {
 		return err
 	}
