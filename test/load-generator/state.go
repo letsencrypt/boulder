@@ -27,6 +27,7 @@ import (
 
 	"gopkg.in/square/go-jose.v2"
 
+	"github.com/letsencrypt/boulder/test/load-generator/acme"
 	"github.com/letsencrypt/challtestsrv"
 )
 
@@ -166,7 +167,6 @@ type respCode struct {
 
 // State holds *all* the stuff
 type State struct {
-	apiBase         string
 	domainBase      string
 	email           string
 	maxRegs         int
@@ -183,7 +183,9 @@ type State struct {
 
 	challSrv    *challtestsrv.ChallSrv
 	callLatency latencyWriter
-	client      *http.Client
+
+	directory  *acme.Directory
+	httpClient *http.Client
 
 	getTotal  int64
 	postTotal int64
@@ -265,7 +267,7 @@ func (s *State) Restore(filename string) error {
 
 // New returns a pointer to a new State struct or an error
 func New(
-	apiBase string,
+	directoryURL string,
 	keySize int,
 	domainBase string,
 	realIP string,
@@ -277,7 +279,11 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	client := &http.Client{
+	directory, err := acme.NewDirectory(directoryURL)
+	if err != nil {
+		return nil, err
+	}
+	httpClient := &http.Client{
 		Transport: &http.Transport{
 			DialContext: (&net.Dialer{
 				Timeout:   10 * time.Second,
@@ -297,8 +303,8 @@ func New(
 		return nil, err
 	}
 	s := &State{
-		client:          client,
-		apiBase:         apiBase,
+		httpClient:      httpClient,
+		directory:       directory,
 		certKey:         certKey,
 		domainBase:      domainBase,
 		callLatency:     latencyFile,
@@ -466,7 +472,7 @@ func (s *State) post(endpoint string, payload []byte, ns *nonceSource) (*http.Re
 	req.Header.Add("User-Agent", userAgent)
 	req.Header.Add("Content-Type", "application/jose+json")
 	atomic.AddInt64(&s.postTotal, 1)
-	resp, err := s.client.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -485,7 +491,7 @@ func (s *State) get(path string) (*http.Response, error) {
 	req.Header.Add("X-Real-IP", s.realIP)
 	req.Header.Add("User-Agent", userAgent)
 	atomic.AddInt64(&s.getTotal, 1)
-	resp, err := s.client.Get(path)
+	resp, err := s.httpClient.Get(path)
 	if err != nil {
 		return nil, err
 	}
@@ -510,8 +516,9 @@ type nonceSource struct {
 }
 
 func (ns *nonceSource) getNonce() (string, error) {
+	directoryURL := ns.s.directory.EndpointURL(acme.NewNonceEndpoint)
 	started := time.Now()
-	resp, err := ns.s.client.Head(fmt.Sprintf("%s/directory", ns.s.apiBase))
+	resp, err := ns.s.httpClient.Head(directoryURL)
 	finished := time.Now()
 	state := "good"
 	defer func() { ns.s.callLatency.Add("HEAD /directory", started, finished, state) }()

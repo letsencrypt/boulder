@@ -16,11 +16,11 @@ import (
 	"io/ioutil"
 	mrand "math/rand"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/test/load-generator/acme"
 
 	"gopkg.in/square/go-jose.v2"
 )
@@ -35,17 +35,6 @@ var (
 		"fulfillOrder":  fulfillOrder,
 		"finalizeOrder": finalizeOrder,
 	}
-)
-
-// API path constants
-const (
-	newAcctPath    = "/acme/new-acct"
-	newOrderPath   = "/acme/new-order"
-	newRegPath     = "/acme/new-reg"
-	newAuthzPath   = "/acme/new-authz"
-	challengePath  = "/acme/challenge"
-	newCertPath    = "/acme/new-cert"
-	revokeCertPath = "/acme/revoke-cert"
 )
 
 // It's awkward to work with core.Order or corepb.Order when the API returns
@@ -123,7 +112,8 @@ func newAccount(s *State, ctx *context) error {
 
 	// Sign the new account registration body using a JWS with an embedded JWK
 	// because we do not have a key ID from the server yet.
-	jws, err := ctx.signEmbeddedV2Request(reqBodyStr, fmt.Sprintf("%s%s", s.apiBase, newAcctPath))
+	newAccountURL := s.directory.EndpointURL(acme.NewAccountEndpoint)
+	jws, err := ctx.signEmbeddedV2Request(reqBodyStr, newAccountURL)
 	if err != nil {
 		return err
 	}
@@ -131,15 +121,15 @@ func newAccount(s *State, ctx *context) error {
 
 	// POST the account creation request to the server
 	nStarted := time.Now()
-	resp, err := s.post(fmt.Sprintf("%s%s", s.apiBase, newAcctPath), bodyBuf, ctx.ns)
+	resp, err := s.post(newAccountURL, bodyBuf, ctx.ns)
 	nFinished := time.Now()
 	nState := "error"
 	defer func() {
 		s.callLatency.Add(
-			fmt.Sprintf("POST %s", newAcctPath), nStarted, nFinished, nState)
+			fmt.Sprintf("POST %s", acme.NewAccountEndpoint), nStarted, nFinished, nState)
 	}()
 	if err != nil {
-		return fmt.Errorf("%s, post failed: %s", newAcctPath, err)
+		return fmt.Errorf("%s, post failed: %s", newAccountURL, err)
 	}
 	defer resp.Body.Close()
 
@@ -147,16 +137,16 @@ func newAccount(s *State, ctx *context) error {
 	if resp.StatusCode != http.StatusCreated {
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			return fmt.Errorf("%s, bad response: %s", newAcctPath, body)
+			return fmt.Errorf("%s, bad response: %s", newAccountURL, body)
 		}
-		return fmt.Errorf("%s, bad response status %d: %s", newAcctPath, resp.StatusCode, body)
+		return fmt.Errorf("%s, bad response status %d: %s", newAccountURL, resp.StatusCode, body)
 	}
 
 	// Populate the context account's key ID with the Location header returned by
 	// the server
 	locHeader := resp.Header.Get("Location")
 	if locHeader == "" {
-		return fmt.Errorf("%s, bad response - no Location header with account ID", newAcctPath)
+		return fmt.Errorf("%s, bad response - no Location header with account ID", newAccountURL)
 	}
 	ctx.acct.id = locHeader
 
@@ -205,8 +195,8 @@ func newOrder(s *State, ctx *context) error {
 	}
 
 	// Sign the new order request with the context account's key/key ID
-	url := fmt.Sprintf("%s%s", s.apiBase, newOrderPath)
-	jws, err := ctx.signKeyIDV2Request(initOrderStr, url)
+	newOrderURL := s.directory.EndpointURL(acme.NewOrderEndpoint)
+	jws, err := ctx.signKeyIDV2Request(initOrderStr, newOrderURL)
 	if err != nil {
 		return err
 	}
@@ -214,25 +204,25 @@ func newOrder(s *State, ctx *context) error {
 
 	// POST the new-order endpoint
 	nStarted := time.Now()
-	resp, err := s.post(url, bodyBuf, ctx.ns)
+	resp, err := s.post(newOrderURL, bodyBuf, ctx.ns)
 	nFinished := time.Now()
 	nState := "error"
 	defer func() {
 		s.callLatency.Add(
-			fmt.Sprintf("POST %s", newOrderPath), nStarted, nFinished, nState)
+			fmt.Sprintf("POST %s", acme.NewOrderEndpoint), nStarted, nFinished, nState)
 	}()
 	if err != nil {
-		return fmt.Errorf("%s, post failed: %s", newOrderPath, err)
+		return fmt.Errorf("%s, post failed: %s", newOrderURL, err)
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("%s, bad response: %s", newOrderPath, body)
+		return fmt.Errorf("%s, bad response: %s", newOrderURL, body)
 	}
 
 	// We expect that the result is a created order
 	if resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("%s, bad response status %d: %s", newOrderPath, resp.StatusCode, body)
+		return fmt.Errorf("%s, bad response status %d: %s", newOrderURL, resp.StatusCode, body)
 	}
 
 	// Unmarshal the Order object
@@ -245,7 +235,7 @@ func newOrder(s *State, ctx *context) error {
 	// Populate the URL of the order from the Location header
 	orderURL := resp.Header.Get("Location")
 	if orderURL == "" {
-		return fmt.Errorf("%s, bad response - no Location header with order ID", newOrderPath)
+		return fmt.Errorf("%s, bad response - no Location header with order ID", newOrderURL)
 	}
 	orderJSON.URL = orderURL
 
@@ -294,10 +284,9 @@ func getAuthorization(s *State, url string) (*core.Authorization, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s response: %s", url, body)
 	}
-	// The Authorization ID is not set in the response so we populate it based on
-	// the URL
-	paths := strings.Split(url, "/")
-	authz.ID = paths[len(paths)-1]
+	// The Authorization ID is not set in the response so we populate it using the
+	// URL
+	authz.ID = url
 	aState = "good"
 	return &authz, nil
 }
@@ -389,7 +378,7 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 // correct authorization state an error is returned. If no error is returned
 // then the authorization is valid and ready.
 func pollAuthorization(authz *core.Authorization, s *State, ctx *context) error {
-	authzURL := fmt.Sprintf("%s/acme/authz/%s", s.apiBase, authz.ID)
+	authzURL := authz.ID
 	for i := 0; i < 3; i++ {
 		// Fetch the authz by its URL
 		authz, err := getAuthorization(s, authzURL)
@@ -461,12 +450,12 @@ func getOrder(s *State, url string) (*OrderJSON, error) {
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("%s, bad response: %s", newOrderPath, body)
+		return nil, fmt.Errorf("%s, bad response: %s", url, body)
 	}
 
 	// We expect a HTTP status OK response
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s, bad response status %d: %s", newOrderPath, resp.StatusCode, body)
+		return nil, fmt.Errorf("%s, bad response status %d: %s", url, resp.StatusCode, body)
 	}
 
 	// Unmarshal the Order object from the response body
