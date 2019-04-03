@@ -11,12 +11,10 @@ import os
 import random
 import re
 import requests
-import shutil
 import subprocess
 import signal
 import struct
 import sys
-import tempfile
 import time
 import urllib2
 
@@ -57,10 +55,6 @@ caa_client = None
 caa_authzs = []
 old_authzs = []
 new_authzs = []
-
-default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
-if default_config_dir == '':
-    default_config_dir = 'test/config'
 
 def setup_seventy_days_ago():
     """Do any setup that needs to happen 70 days in the past, for tests that
@@ -426,46 +420,35 @@ def test_ocsp():
     wait_for_ocsp_good(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
 
 def test_ct_submission():
-    # When testing config-next we use a mismatching set of CT logs in the boulder-publisher
-    # and ocsp-updater configuration files. The ocsp-updater config has an extra log which the
-    # publisher does not. When the publisher does the initial submission it will only submit
-    # the certificate to a single log, when the ocsp-updater then runs looking for missing SCTs
-    # it will think we failed to retrieve an SCT for the extra log it is configured with and
-    # attempt to submit it to just that log instead of all of the logs it knows about (which
-    # is just the one it already has submitted to).
-    url_a = "http://boulder:4500/submissions"
-    url_b = "http://boulder:4501/submissions"
-    submissions_a = urllib2.urlopen(url_a).read()
-    submissions_b = urllib2.urlopen(url_b).read()
-    expected_a_submissions = int(submissions_a)+1
-    expected_b_submissions = int(submissions_b)+1
-    auth_and_issue([random_domain()])
-    submissions_a = urllib2.urlopen(url_a).read()
-    # Presently the CA and the ocsp-updater can race on the initial submission
-    # of a certificate to the configured logs. This results in over submitting
-    # certificates. This is expected to be fixed in the future by a planned
-    # redesign so for now we do not error when the number of submissions falls
-    # between the expected value and two times the expected. See Boulder #2610
-    # for more information: https://github.com/letsencrypt/boulder/issues/2610
-    if (int(submissions_a) < expected_a_submissions or
-        int(submissions_a) > 2 * expected_a_submissions):
-        raise Exception("Expected %d CT submissions to boulder:4500, found %s" % (expected_a_submissions, submissions_a))
-    for _ in range(0, 10):
-        submissions_a = urllib2.urlopen(url_a).read()
-        submissions_b = urllib2.urlopen(url_b).read()
-        if (int(submissions_a) < expected_a_submissions or
-            int(submissions_a) > 2 * expected_a_submissions):
-            raise Exception("Expected no change in submissions to boulder:4500: expected %s, got %s" % (expected_a_submissions, submissions_a))
-        if (int(submissions_b) >= expected_b_submissions and
-            int(submissions_b) < 2 * expected_b_submissions + 1):
-            return
-        time.sleep(1)
-    raise Exception("Expected %d CT submissions to boulder:4501, found %s" % (expected_b_submissions, submissions_b))
+    hostname = random_domain()
 
+    # These should correspond to the configured logs in ra.json.
+    log_groups = [
+        ["http://boulder:4500/submissions", "http://boulder:4501/submissions"],
+        ["http://boulder:4510/submissions", "http://boulder:4511/submissions"],
+        ["http://boulder:4512/submissions"]
+    ]
+    def submissions(group):
+        count = 0
+        for log in group:
+            count += int(urllib2.urlopen(log + "?hostnames=%s" % hostname).read())
+        return count
 
-def random_domain():
-    """Generate a random domain for testing (to avoid rate limiting)."""
-    return "rand.%x.xyz" % random.randrange(2**32)
+    auth_and_issue([hostname])
+
+    got = [
+        submissions(log_groups[0]),
+        submissions(log_groups[1]),
+        submissions(log_groups[2])
+    ]
+    expected = [ 1, 2, 1 ]
+
+    time.sleep(3)
+
+    for i in range(len(log_groups)):
+        if got[i] < expected[i]:
+            raise Exception("For log group %d, got %d submissions, expected %d." %
+                (i, got[i], expected[i]))
 
 def test_expiration_mailer():
     email_addr = "integration.%x@letsencrypt.org" % random.randrange(2**16)
@@ -499,10 +482,7 @@ def test_revoke_by_account():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert.body.wrapped).decode())
     ee_ocsp_url = "http://localhost:4002"
-    if default_config_dir.startswith("test/config-next"):
-        verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
-    else:
-        wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
     verify_akamai_purge()
     return 0
 
@@ -518,6 +498,8 @@ def test_caa():
             raise Exception("Unexpected response for CAA authz: ",
                 response.status_code)
 
+    # We include a random domain so we don't hit the "exact match" rate limit
+    # when testing locally with a persistent database.
     auth_and_issue(["good-caa-reserved.com"])
 
     # Request issuance for recheck.good-caa-reserved.com, which should
@@ -529,7 +511,7 @@ def test_caa():
 
     # TODO(@4a6f656c): Once the `CAAValidationMethods` feature flag is enabled by
     # default, remove this early return.
-    if not default_config_dir.startswith("test/config-next"):
+    if not CONFIG_NEXT:
         return
 
     chisel.expect_problem("urn:acme:error:caa",
@@ -600,12 +582,6 @@ def test_single_ocsp():
     p.send_signal(signal.SIGTERM)
     p.wait()
 
-def fakeclock(date):
-    return date.strftime("%a %b %d %H:%M:%S UTC %Y")
-
-def get_future_output(cmd, date):
-    return run(cmd, env={'FAKECLOCK': fakeclock(date)})
-
 def run_expired_authz_purger():
     # Note: This test must be run after all other tests that depend on
     # authorizations added to the database during setup
@@ -655,7 +631,7 @@ def test_renewal_exemption():
 
     # TODO(@cpu): Once the `AllowRenewalFirstRL` feature flag is enabled by
     # default, delete this early return.
-    if not default_config_dir.startswith("test/config-next"):
+    if not CONFIG_NEXT:
         return
 
     base_domain = random_domain()
@@ -715,10 +691,7 @@ def test_admin_revoker_cert():
         default_config_dir, serial, 1))
     # Wait for OCSP response to indicate revocation took place
     ee_ocsp_url = "http://localhost:4002"
-    if default_config_dir.startswith("test/config-next"):
-        verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
-    else:
-        wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
     verify_akamai_purge()
 
 def test_admin_revoker_authz():
@@ -752,8 +725,6 @@ def test_stats():
     expect_stat(8001, "\ngo_goroutines ")
 
 def test_sct_embedding():
-    if not os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):
-        return
     certr, authzs = auth_and_issue([random_domain()])
     certBytes = urllib2.urlopen(certr.uri).read()
     cert = x509.load_der_x509_certificate(certBytes, default_backend())
@@ -808,7 +779,6 @@ def setup_mock_dns(caa_account_uri=None):
         challSrv.add_caa_issue(policy["domain"], policy["value"])
 
 exit_status = 1
-tempdir = tempfile.mkdtemp()
 
 def main():
     parser = argparse.ArgumentParser(description='Run integration tests')
@@ -873,7 +843,11 @@ def main():
         run(args.custom)
 
     run_cert_checker()
-    check_balance()
+    # Skip load-balancing check when test case filter is on, since that usually
+    # means there's a single issuance and we don't expect every RPC backend to get
+    # traffic.
+    if not args.test_case_filter:
+        check_balance()
     run_expired_authz_purger()
 
     if not startservers.check():
@@ -932,8 +906,6 @@ if __name__ == "__main__":
 
 @atexit.register
 def stop():
-    import shutil
-    shutil.rmtree(tempdir)
     if exit_status == 0:
         print("\n\nSUCCESS")
     else:
