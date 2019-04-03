@@ -426,7 +426,6 @@ def test_ct_submission():
     log_groups = [
         ["http://boulder:4500/submissions", "http://boulder:4501/submissions"],
         ["http://boulder:4510/submissions", "http://boulder:4511/submissions"],
-        ["http://boulder:4512/submissions"]
     ]
     def submissions(group):
         count = 0
@@ -436,14 +435,8 @@ def test_ct_submission():
 
     auth_and_issue([hostname])
 
-    got = [
-        submissions(log_groups[0]),
-        submissions(log_groups[1]),
-        submissions(log_groups[2])
-    ]
-    expected = [ 1, 2, 1 ]
-
-    time.sleep(3)
+    got = [ submissions(log_groups[0]), submissions(log_groups[1]) ]
+    expected = [ 1, 2 ]
 
     for i in range(len(log_groups)):
         if got[i] < expected[i]:
