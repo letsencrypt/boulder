@@ -31,7 +31,6 @@
       "timeout": "15s"
     },
     "features": {
-      "NewAuthorizationSchema": true
     }
   },
 

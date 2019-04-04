@@ -1547,7 +1547,7 @@ func TestNewOrder(t *testing.T) {
 		RegistrationID: &reg.ID,
 		Expires:        &i,
 		Names:          []string{"example.com", "just.another.example.com"},
-		Authorizations: []string{"a", "b", "c"},
+		Authorizations: []string{"a", "b", "c", "v2/1"},
 		Status:         &status,
 	})
 	test.AssertNotError(t, err, "sa.NewOrder failed")
@@ -1558,6 +1558,11 @@ func TestNewOrder(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to count orderToAuthz entries")
 	test.AssertEquals(t, len(authzIDs), 3)
 	test.AssertDeepEquals(t, authzIDs, []string{"a", "b", "c"})
+	var v2AuthzsIDs []string
+	_, err = sa.dbMap.Select(&v2AuthzsIDs, "SELECT authzID FROM orderToAuthz2 WHERE orderID = ?;", *order.Id)
+	test.AssertNotError(t, err, "Failed to count orderToAuthz entries")
+	test.AssertEquals(t, len(v2AuthzsIDs), 1)
+	test.AssertDeepEquals(t, v2AuthzsIDs, []string{"1"})
 
 	names, err := sa.namesForOrder(context.Background(), *order.Id)
 	test.AssertNotError(t, err, "namesForOrder errored")
@@ -2043,7 +2048,6 @@ func TestGetAuthorizations2(t *testing.T) {
 	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
 	// We should get back two authorizations since one of the three authorizations
 	// created above expires too soon.
-	fmt.Println(authz.Authz[0])
 	test.AssertEquals(t, len(authz.Authz), 2)
 
 	// Get authorizations for the names used above, and one name that doesn't exist
