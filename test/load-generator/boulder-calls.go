@@ -257,10 +257,16 @@ func popPendingOrder(ctx *context) *OrderJSON {
 
 // getAuthorization fetches an authorization by GETing the provided URL. It
 // records the latency and result of the GET operation in the state.
-func getAuthorization(s *State, url string) (*core.Authorization, error) {
+func getAuthorization(s *State, ctx *context, url string) (*core.Authorization, error) {
 	// GET the provided URL, tracking elapsed time
 	aStarted := time.Now()
-	resp, err := s.get(url)
+	var resp *http.Response
+	var err error
+	if !s.postAsGet {
+		resp, err = s.get(url)
+	} else {
+		resp, err = postAsGet(s, ctx, url)
+	}
 	aFinished := time.Now()
 	aState := "error"
 	// Defer logging the latency and result
@@ -338,8 +344,7 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 	}
 
 	// Prepare the Challenge POST body
-	update := fmt.Sprintf(`{"keyAuthorization":"%s"}`, authStr)
-	jws, err := ctx.signKeyIDV2Request([]byte(update), chalToSolve.URL)
+	jws, err := ctx.signKeyIDV2Request([]byte(`{}`), chalToSolve.URL)
 	if err != nil {
 		return err
 	}
@@ -390,7 +395,7 @@ func pollAuthorization(authz *core.Authorization, s *State, ctx *context) error 
 	authzURL := authz.ID
 	for i := 0; i < 3; i++ {
 		// Fetch the authz by its URL
-		authz, err := getAuthorization(s, authzURL)
+		authz, err := getAuthorization(s, ctx, authzURL)
 		if err != nil {
 			return nil
 		}
@@ -424,7 +429,7 @@ func fulfillOrder(s *State, ctx *context) error {
 	// Each of its authorizations need to be processed
 	for _, url := range order.Authorizations {
 		// Fetch the authz by its URL
-		authz, err := getAuthorization(s, url)
+		authz, err := getAuthorization(s, ctx, url)
 		if err != nil {
 			return err
 		}
@@ -443,10 +448,16 @@ func fulfillOrder(s *State, ctx *context) error {
 
 // getOrder GETs an order by URL, returning an OrderJSON object. It tracks the
 // latency of the GET operation in the provided state.
-func getOrder(s *State, url string) (*OrderJSON, error) {
+func getOrder(s *State, ctx *context, url string) (*OrderJSON, error) {
 	// GET the order URL
 	aStarted := time.Now()
-	resp, err := s.get(url)
+	var resp *http.Response
+	var err error
+	if !s.postAsGet {
+		resp, err = s.get(url)
+	} else {
+		resp, err = postAsGet(s, ctx, url)
+	}
 	aFinished := time.Now()
 	aState := "error"
 	// Track the latency and result
@@ -489,7 +500,7 @@ func getOrder(s *State, url string) (*OrderJSON, error) {
 func pollOrderForCert(order *OrderJSON, s *State, ctx *context) (*OrderJSON, error) {
 	for i := 0; i < 3; i++ {
 		// Fetch the order by its URL
-		order, err := getOrder(s, order.URL)
+		order, err := getOrder(s, ctx, order.URL)
 		if err != nil {
 			return nil, err
 		}
@@ -524,15 +535,21 @@ func popFulfilledOrder(ctx *context) string {
 func finalizeOrder(s *State, ctx *context) error {
 	// There must be at least one fulfilled order in the context
 	if len(ctx.fulfilledOrders) < 1 {
-		return fmt.Errorf("No fulfilled orders in the context ready to be finalized")
+		return errors.New("No fulfilled orders in the context ready to be finalized")
 	}
 
 	// Pop a fulfilled order to process, and then GET its contents
 	orderID := popFulfilledOrder(ctx)
-	order, err := getOrder(s, orderID)
+	order, err := getOrder(s, ctx, orderID)
 	if err != nil {
 		return err
 	}
+
+	if order.Status != core.StatusReady {
+		return fmt.Errorf("order %s was status %q, expected %q",
+			orderID, order.Status, core.StatusReady)
+	}
+
 	// Mark down the finalization URL for the order
 	finalizeURL := order.Finalize
 
@@ -555,7 +572,7 @@ func finalizeOrder(s *State, ctx *context) error {
 	// Create the finalization request body with the encoded CSR
 	request := fmt.Sprintf(
 		`{"csr":"%s"}`,
-		base64.URLEncoding.EncodeToString(csr),
+		base64.RawURLEncoding.EncodeToString(csr),
 	)
 
 	// Sign the request body with the context's account key/keyID
@@ -578,14 +595,15 @@ func finalizeOrder(s *State, ctx *context) error {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad response, status %d", resp.StatusCode)
-	}
 	// Read the body to ensure there isn't an error. We don't need the actual
 	// contents.
-	_, err = ioutil.ReadAll(resp.Body)
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("\n Resp: %s\n", string(bodyBytes))
+		return fmt.Errorf("bad response, status %d", resp.StatusCode)
 	}
 
 	// Poll the order waiting for the certificate to be ready
@@ -613,4 +631,33 @@ func min(a, b int) int {
 		return b
 	}
 	return a
+}
+
+// postAsGet performs a POST-as-GET request to the provided URL authenticated by
+// the context's account. A HTTP status code other than StatusOK (200)
+// in response to a POST-as-GET request is considered an error. The caller is
+// responsible for closing the HTTP response body.
+//
+// See RFC 8555 Section 6.3 for more information on POST-as-GET requests.
+func postAsGet(s *State, ctx *context, url string) (*http.Response, error) {
+	// Create the POST-as-GET request JWS
+	jws, err := ctx.signKeyIDV2Request([]byte(""), url)
+	if err != nil {
+		return nil, err
+	}
+	requestPayload := []byte(jws.FullSerialize())
+
+	resp, err := s.post(url, requestPayload, ctx.ns)
+	if err != nil {
+		return nil, err
+	}
+
+	// Expect a status OK response or consider the POST-as-GET failed.
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf(
+			"bad POST-as-GET response from %s, expected status %d got %d",
+			url, http.StatusOK, resp.StatusCode)
+	}
+
+	return resp, nil
 }

@@ -25,6 +25,7 @@ type Config struct {
 	DontSaveState     bool     // don't save changes to external state
 	DirectoryURL      string   // ACME server directory URL
 	DomainBase        string   // base domain name to create authorizations for
+	PostAsGet         bool     // Use RFC 8555 POST-as-GET instead of GET requests to fetch resources.
 	HTTPOneAddrs      []string // addresses to listen for http-01 validation requests on
 	TLSALPNOneAddrs   []string // addresses to listen for tls-alpn-01 validation requests on
 	DNSAddrs          []string // addresses to listen for DNS requests on
@@ -87,6 +88,7 @@ func main() {
 		config.RegEmail,
 		config.Plan.Actions,
 		config.ChallengeStrategy,
+		config.PostAsGet,
 	)
 	cmd.FailOnError(err, "Failed to create load generator")
 

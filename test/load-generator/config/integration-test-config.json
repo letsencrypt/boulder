@@ -13,6 +13,7 @@
     "directoryURL": "http://boulder:4001/directory",
     "domainBase": "com",
     "challengeStrategy": "random",
+    "postAsGet": false,
     "httpOneAddrs": [":5002"],
     "tlsAlpnOneAddrs": [":5001"],
     "dnsAddrs": [":8053", ":8054"],
