@@ -470,7 +470,7 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	// Check that the public key and JWS algorithms match expected
 	if err := checkAlgorithm(jwk, jws); err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSAlgorithmCheckFailed"}).Inc()
-		return nil, probs.Malformed(err.Error())
+		return nil, probs.BadSignatureAlgorithm(err.Error())
 	}
 
 	// Verify the JWS signature with the public key.
@@ -602,7 +602,7 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
 	// If the key doesn't meet the GoodKey policy return a problem immediately
 	if err := wfe.keyPolicy.GoodKey(pubKey.Key); err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWKRejectedByGoodKey"}).Inc()
-		return nil, nil, probs.Malformed(err.Error())
+		return nil, nil, probs.BadPublicKey(err.Error())
 	}
 
 	// Verify the JWS with the embedded JWK
@@ -676,7 +676,7 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 	// If the key doesn't meet the GoodKey policy return a problem immediately
 	if err := wfe.keyPolicy.GoodKey(jwk.Key); err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverJWKRejectedByGoodKey"}).Inc()
-		return nil, probs.Malformed(err.Error())
+		return nil, probs.BadPublicKey(err.Error())
 	}
 
 	// Check that the public key and JWS algorithms match expected

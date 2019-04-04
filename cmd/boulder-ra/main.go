@@ -32,9 +32,6 @@ type config struct {
 
 		MaxContactsPerRegistration int
 
-		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
-		UseIsSafeDomain bool // TODO: remove after va IsSafeDomain deploy
-
 		SAService           *cmd.GRPCClientConfig
 		VAService           *cmd.GRPCClientConfig
 		CAService           *cmd.GRPCClientConfig
@@ -132,13 +129,6 @@ func main() {
 	}
 	err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
-
-	if c.PA.ChallengesWhitelistFile != "" {
-		err = pa.SetChallengesWhitelistFile(c.PA.ChallengesWhitelistFile)
-		cmd.FailOnError(err, "Couldn't load challenges whitelist file")
-	} else {
-		logger.Info("No challengesWhitelistFile given, not loading")
-	}
 
 	if features.Enabled(features.RevokeAtRA) && (c.RA.AkamaiPurgerService == nil || c.RA.IssuerCertPath == "") {
 		cmd.Fail("If the RevokeAtRA feature is enabled the AkamaiPurgerService and IssuerCertPath config fields must be populated")

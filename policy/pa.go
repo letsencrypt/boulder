@@ -31,10 +31,9 @@ type AuthorityImpl struct {
 	wildcardExactBlacklist map[string]bool
 	blacklistMu            sync.RWMutex
 
-	enabledChallenges          map[string]bool
-	enabledChallengesWhitelist map[string]map[int64]bool
-	pseudoRNG                  *rand.Rand
-	rngMu                      sync.Mutex
+	enabledChallenges map[string]bool
+	pseudoRNG         *rand.Rand
+	rngMu             sync.Mutex
 }
 
 // New constructs a Policy Authority.
@@ -108,42 +107,6 @@ func (pa *AuthorityImpl) loadHostnamePolicy(b []byte) error {
 	pa.exactBlacklist = exactNameMap
 	pa.wildcardExactBlacklist = wildcardNameMap
 	pa.blacklistMu.Unlock()
-	return nil
-}
-
-// SetChallengesWhitelistFile will load the given whitelist file, returning error if it
-// fails. It will also start a reloader in case the file changes.
-func (pa *AuthorityImpl) SetChallengesWhitelistFile(f string) error {
-	_, err := reloader.New(f, pa.loadChallengesWhitelist, pa.challengesWhitelistLoadError)
-	return err
-}
-
-func (pa *AuthorityImpl) challengesWhitelistLoadError(err error) {
-	pa.log.AuditErrf("error loading challenges whitelist: %s", err)
-}
-
-func (pa *AuthorityImpl) loadChallengesWhitelist(b []byte) error {
-	hash := sha256.Sum256(b)
-	pa.log.Infof("loading challenges whitelist, sha256: %s", hex.EncodeToString(hash[:]))
-	var wl map[string][]int64
-	err := json.Unmarshal(b, &wl)
-	if err != nil {
-		return err
-	}
-
-	chalWl := make(map[string]map[int64]bool)
-
-	for k, v := range wl {
-		chalWl[k] = make(map[int64]bool)
-		for _, i := range v {
-			chalWl[k][i] = true
-		}
-	}
-
-	pa.blacklistMu.Lock()
-	pa.enabledChallengesWhitelist = chalWl
-	pa.blacklistMu.Unlock()
-
 	return nil
 }
 
@@ -414,10 +377,8 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 }
 
 // ChallengesFor makes a decision of what challenges, and combinations, are
-// acceptable for the given identifier. If the TLSSNIRevalidation feature flag
-// is set, create TLS-SNI-01 challenges for revalidation requests even if
-// TLS-SNI-01 is not among the configured challenges.
-func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int64, revalidation bool) ([]core.Challenge, [][]int, error) {
+// acceptable for the given identifier.
+func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.Challenge, [][]int, error) {
 	challenges := []core.Challenge{}
 
 	// If we are using the new authorization storage schema we only use a single
@@ -432,7 +393,7 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int
 	if strings.HasPrefix(identifier.Value, "*.") {
 		// We must have the DNS-01 challenge type enabled to create challenges for
 		// a wildcard identifier per LE policy.
-		if !pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01, regID) {
+		if !pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01) {
 			return nil, nil, fmt.Errorf(
 				"Challenges requested for wildcard identifier but DNS-01 " +
 					"challenge type is not enabled")
@@ -441,22 +402,15 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int
 		challenges = []core.Challenge{core.DNSChallenge01(token)}
 	} else {
 		// Otherwise we collect up challenges based on what is enabled.
-		if pa.ChallengeTypeEnabled(core.ChallengeTypeHTTP01, regID) {
+		if pa.ChallengeTypeEnabled(core.ChallengeTypeHTTP01) {
 			challenges = append(challenges, core.HTTPChallenge01(token))
 		}
 
-		// Add a TLS-SNI challenge, if either (a) the challenge is enabled, or (b)
-		// the TLSSNIRevalidation feature flag is on and this is a revalidation.
-		if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSSNI01, regID) ||
-			(features.Enabled(features.TLSSNIRevalidation) && revalidation) {
-			challenges = append(challenges, core.TLSSNIChallenge01(token))
-		}
-
-		if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSALPN01, regID) {
+		if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSALPN01) {
 			challenges = append(challenges, core.TLSALPNChallenge01(token))
 		}
 
-		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01, regID) {
+		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01) {
 			challenges = append(challenges, core.DNSChallenge01(token))
 		}
 	}
@@ -482,9 +436,8 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, regID int
 }
 
 // ChallengeTypeEnabled returns whether the specified challenge type is enabled
-func (pa *AuthorityImpl) ChallengeTypeEnabled(t string, regID int64) bool {
+func (pa *AuthorityImpl) ChallengeTypeEnabled(t string) bool {
 	pa.blacklistMu.RLock()
 	defer pa.blacklistMu.RUnlock()
-	return pa.enabledChallenges[t] ||
-		(pa.enabledChallengesWhitelist[t] != nil && pa.enabledChallengesWhitelist[t][regID])
+	return pa.enabledChallenges[t]
 }

@@ -342,6 +342,8 @@ var testKeyPolicy = goodkey.KeyPolicy{
 var ctx = context.Background()
 
 func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
+	features.Reset()
+
 	fc := clock.NewFake()
 	stats := metrics.NewNoopScope()
 
@@ -473,7 +475,7 @@ func TestHandleFunc(t *testing.T) {
 		linkHeader := rw.Header().Get("Link")
 		if c.pattern != directoryPath {
 			// If the pattern wasn't the directory there should be a Link header for the index
-			test.AssertEquals(t, linkHeader, `<http://localhost/index>;rel="index"`)
+			test.AssertEquals(t, linkHeader, `<http://localhost/directory>;rel="index"`)
 		} else {
 			// The directory resource shouldn't get a link header
 			test.AssertEquals(t, linkHeader, "")
@@ -1417,7 +1419,6 @@ func TestGetAuthorization(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
 	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
-	defer features.Reset()
 
 	// Expired authorizations should be inaccessible
 	authzURL := "expired"
@@ -2842,7 +2843,6 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	test.AssertEquals(t, chal.ProvidedKeyAuthorization, "")
 
 	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
-	defer features.Reset()
 	authz.ID = "12345"
 	authz.V2 = true
 	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
@@ -2891,9 +2891,8 @@ func TestFinalizeSCTError(t *testing.T) {
 }
 
 func TestChallengeNewIDScheme(t *testing.T) {
-	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
-	defer features.Reset()
 	wfe, _ := setupWFE(t)
+	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
 
 	for _, tc := range []struct {
 		path     string

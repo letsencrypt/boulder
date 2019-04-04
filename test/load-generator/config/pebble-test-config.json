@@ -7,10 +7,10 @@
             "finalizeOrder"
         ],
         "rate": 1,
-        "runtime": "10s",
-        "rateDelta": "5/1m"
+        "runtime": "1s",
+        "rateDelta": "1/1m"
     },
-    "apiBase": "http://boulder:4001",
+    "directoryURL": "https://localhost:14000/dir",
     "domainBase": "com",
     "httpOneAddr": "localhost:5002",
     "regKeySize": 2048,

@@ -38,10 +38,6 @@ func (s *ValidationAuthorityGRPCServer) PerformValidation(ctx context.Context, i
 	return ValidationResultToPB(records, prob)
 }
 
-func (s *ValidationAuthorityGRPCServer) IsSafeDomain(ctx context.Context, in *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
-	return s.impl.IsSafeDomain(ctx, in)
-}
-
 func RegisterValidationAuthorityGRPCServer(s *ggrpc.Server, impl core.ValidationAuthority) error {
 	rpcSrv := &ValidationAuthorityGRPCServer{impl}
 	vaPB.RegisterVAServer(s, rpcSrv)
@@ -71,12 +67,11 @@ func (vac ValidationAuthorityGRPCClient) PerformValidation(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
+	if prob != nil {
+		return records, prob
+	}
 
-	return records, prob
-}
-
-// IsSafeDomain returns true if the domain given is determined to be safe by an
-// third-party safe browsing API.
-func (vac ValidationAuthorityGRPCClient) IsSafeDomain(ctx context.Context, req *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
-	return vac.gc.IsSafeDomain(ctx, req)
+	// We return nil explicitly to avoid "typed nil" problems.
+	// https://golang.org/doc/faq#nil_error
+	return records, nil
 }

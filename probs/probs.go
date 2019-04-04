@@ -7,21 +7,23 @@ import (
 
 // Error types that can be used in ACME payloads
 const (
-	ConnectionProblem          = ProblemType("connection")
-	MalformedProblem           = ProblemType("malformed")
-	ServerInternalProblem      = ProblemType("serverInternal")
-	TLSProblem                 = ProblemType("tls")
-	UnauthorizedProblem        = ProblemType("unauthorized")
-	UnknownHostProblem         = ProblemType("unknownHost")
-	RateLimitedProblem         = ProblemType("rateLimited")
-	BadNonceProblem            = ProblemType("badNonce")
-	InvalidEmailProblem        = ProblemType("invalidEmail")
-	RejectedIdentifierProblem  = ProblemType("rejectedIdentifier")
-	AccountDoesNotExistProblem = ProblemType("accountDoesNotExist")
-	CAAProblem                 = ProblemType("caa")
-	DNSProblem                 = ProblemType("dns")
-	AlreadyRevokedProblem      = ProblemType("alreadyRevoked")
-	OrderNotReadyProblem       = ProblemType("orderNotReady")
+	ConnectionProblem            = ProblemType("connection")
+	MalformedProblem             = ProblemType("malformed")
+	ServerInternalProblem        = ProblemType("serverInternal")
+	TLSProblem                   = ProblemType("tls")
+	UnauthorizedProblem          = ProblemType("unauthorized")
+	UnknownHostProblem           = ProblemType("unknownHost")
+	RateLimitedProblem           = ProblemType("rateLimited")
+	BadNonceProblem              = ProblemType("badNonce")
+	InvalidEmailProblem          = ProblemType("invalidEmail")
+	RejectedIdentifierProblem    = ProblemType("rejectedIdentifier")
+	AccountDoesNotExistProblem   = ProblemType("accountDoesNotExist")
+	CAAProblem                   = ProblemType("caa")
+	DNSProblem                   = ProblemType("dns")
+	AlreadyRevokedProblem        = ProblemType("alreadyRevoked")
+	OrderNotReadyProblem         = ProblemType("orderNotReady")
+	BadSignatureAlgorithmProblem = ProblemType("badSignatureAlgorithm")
+	BadPublicKeyProblem          = ProblemType("badPublicKey")
 
 	V1ErrorNS = "urn:acme:error:"
 	V2ErrorNS = "urn:ietf:params:acme:error:"
@@ -59,6 +61,8 @@ func ProblemDetailsToStatusCode(prob *ProblemDetails) int {
 	case
 		ConnectionProblem,
 		MalformedProblem,
+		BadSignatureAlgorithmProblem,
+		BadPublicKeyProblem,
 		TLSProblem,
 		UnknownHostProblem,
 		BadNonceProblem,
@@ -124,6 +128,26 @@ func AlreadyRevoked(detail string, a ...interface{}) *ProblemDetails {
 func Malformed(detail string, a ...interface{}) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       MalformedProblem,
+		Detail:     fmt.Sprintf(detail, a...),
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// BadSignatureAlgorithm returns a ProblemDetails with a BadSignatureAlgorithmProblem
+// and a 400 Bad Request status code.
+func BadSignatureAlgorithm(detail string, a ...interface{}) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       BadSignatureAlgorithmProblem,
+		Detail:     fmt.Sprintf(detail, a...),
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// BadPublicKey returns a ProblemDetails with a BadPublicKeyProblem and a 400 Bad
+// Request status code.
+func BadPublicKey(detail string, a ...interface{}) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       BadPublicKeyProblem,
 		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusBadRequest,
 	}

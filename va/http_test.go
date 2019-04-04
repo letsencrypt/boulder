@@ -50,7 +50,7 @@ func TestDialerMismatchError(t *testing.T) {
 // will timeout after the expected singleDialTimeout. This ensures timeouts at
 // the TCP level are handled correctly.
 func TestPreresolvedDialerTimeout(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 	// Timeouts below 50ms tend to be flaky.
 	va.singleDialTimeout = 50 * time.Millisecond
 
@@ -68,7 +68,7 @@ func TestPreresolvedDialerTimeout(t *testing.T) {
 	// If we get that, just retry until we get something other than "Network unreachable".
 	var prob *probs.ProblemDetails
 	for i := 0; i < 20; i++ {
-		_, _, prob = va.fetchHTTPSimple(ctx, "unroutable.invalid", "/.well-known/acme-challenge/whatever")
+		_, _, prob = va.fetchHTTP(ctx, "unroutable.invalid", "/.well-known/acme-challenge/whatever")
 		if prob != nil && strings.Contains(prob.Detail, "Network unreachable") {
 			continue
 		} else {
@@ -150,7 +150,7 @@ func TestHTTPValidationTarget(t *testing.T) {
 		exampleQuery = "my-path=was&my=own"
 	)
 
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			target, err := va.newHTTPValidationTarget(
@@ -224,6 +224,20 @@ func TestExtractRequestTarget(t *testing.T) {
 				"and 443 are supported, not 9999"),
 		},
 		{
+			Name: "invalid empty hostname",
+			Req: &http.Request{
+				URL: mustURL(t, "https:///who/needs/a/hostname?not=me"),
+			},
+			ExpectedError: errors.New("Invalid empty hostname in redirect target"),
+		},
+		{
+			Name: "invalid non-iana hostname",
+			Req: &http.Request{
+				URL: mustURL(t, "https://my.tld.is.cpu/pretty/cool/right?yeah=Ithoughtsotoo"),
+			},
+			ExpectedError: errors.New("Invalid hostname in redirect target, must end in IANA registered TLD"),
+		},
+		{
 			Name: "bare IP",
 			Req: &http.Request{
 				URL: mustURL(t, "https://10.10.10.10"),
@@ -265,7 +279,7 @@ func TestExtractRequestTarget(t *testing.T) {
 		},
 	}
 
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			host, port, err := va.extractRequestTarget(tc.Req)
@@ -284,7 +298,7 @@ func TestExtractRequestTarget(t *testing.T) {
 }
 
 func TestSetupHTTPValidation(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 
 	mustTarget := func(t *testing.T, host string, port int, path string) *httpValidationTarget {
 		target, err := va.newHTTPValidationTarget(
@@ -586,14 +600,14 @@ func TestFallbackErr(t *testing.T) {
 	}
 }
 
-func TestFetchHTTPSimple(t *testing.T) {
+func TestFetchHTTP(t *testing.T) {
 	// Create a test server
 	testSrv := httpTestSrv(t)
 	defer testSrv.Close()
 
 	// Setup a VA. By providing the testSrv to setup the VA will use the testSrv's
 	// randomly assigned port as its HTTP port.
-	va, _ := setup(testSrv, 0)
+	va, _ := setup(testSrv, 0, "", nil)
 
 	// We need to know the randomly assigned HTTP port for testcases as well
 	httpPort := getPort(testSrv)
@@ -814,7 +828,7 @@ func TestFetchHTTPSimple(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
 			defer cancel()
-			body, records, prob := va.fetchHTTPSimple(ctx, tc.Host, tc.Path)
+			body, records, prob := va.fetchHTTP(ctx, tc.Host, tc.Path)
 			if prob != nil && tc.ExpectedProblem == nil {
 				t.Errorf("expected nil prob, got %#v\n", prob)
 			} else if prob == nil && tc.ExpectedProblem != nil {

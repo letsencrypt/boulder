@@ -269,7 +269,7 @@ func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, _ *rapb.
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier, registrationID int64, revalidation bool) (challenges []core.Challenge, combinations [][]int, err error) {
+func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int, err error) {
 	return
 }
 
@@ -281,7 +281,7 @@ func (pa *mockPA) WillingToIssueWildcard(id core.AcmeIdentifier) error {
 	return nil
 }
 
-func (pa *mockPA) ChallengeTypeEnabled(t string, registrationID int64) bool {
+func (pa *mockPA) ChallengeTypeEnabled(t string) bool {
 	return true
 }
 
@@ -374,6 +374,8 @@ var testKeyPolicy = goodkey.KeyPolicy{
 var ctx = context.Background()
 
 func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
+	features.Reset()
+
 	fc := clock.NewFake()
 	stats := metrics.NewNoopScope()
 
@@ -1748,7 +1750,6 @@ func TestAuthorization(t *testing.T) {
 	mux := wfe.Handler()
 
 	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
-	defer features.Reset()
 
 	responseWriter := httptest.NewRecorder()
 
@@ -2558,7 +2559,6 @@ func TestPrepChallengeForDisplay(t *testing.T) {
 	test.AssertEquals(t, chall.URI, "http://example.com/acme/challenge/eyup/0")
 
 	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
-	defer features.Reset()
 	authz.V2 = true
 	wfe.prepChallengeForDisplay(req, authz, chall)
 	test.AssertEquals(t, chall.URI, "http://example.com/acme/challenge/v2/eyup/iFVMwA==")
@@ -2630,9 +2630,8 @@ func TestNewRegistrationGetKeyBroken(t *testing.T) {
 }
 
 func TestChallengeNewIDScheme(t *testing.T) {
-	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
-	defer features.Reset()
 	wfe, _ := setupWFE(t)
+	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
 
 	for _, tc := range []struct {
 		path     string

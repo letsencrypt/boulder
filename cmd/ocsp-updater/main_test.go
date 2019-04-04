@@ -11,7 +11,6 @@ import (
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/revocation"
@@ -312,12 +311,6 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 // that are expired but whose certificate status rows do not have `IsExpired`
 // set.
 func TestOldOCSPResponsesTickIsExpired(t *testing.T) {
-	// Explicitly enable the CertStatusOptimizationsMigrated feature so the OCSP
-	// updater can use the `IsExpired` field. This must be done before `setup()`
-	// so the correct dbMap associations are used
-	_ = features.Set(map[string]bool{"CertStatusOptimizationsMigrated": true})
-	defer features.Reset()
-
 	updater, sa, dbMap, fc, cleanUp := setup(t)
 	defer cleanUp()
 

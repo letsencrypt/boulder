@@ -58,11 +58,9 @@ import (
 )
 
 type DummyValidationAuthority struct {
-	argument        chan core.Authorization
-	RecordsReturn   []core.ValidationRecord
-	ProblemReturn   *probs.ProblemDetails
-	IsNotSafe       bool
-	IsSafeDomainErr error
+	argument      chan core.Authorization
+	RecordsReturn []core.ValidationRecord
+	ProblemReturn *probs.ProblemDetails
 }
 
 func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
@@ -70,19 +68,10 @@ func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, doma
 	return dva.RecordsReturn, dva.ProblemReturn
 }
 
-func (dva *DummyValidationAuthority) IsSafeDomain(ctx context.Context, req *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
-	if dva.IsSafeDomainErr != nil {
-		return nil, dva.IsSafeDomainErr
-	}
-	ret := !dva.IsNotSafe
-	return &vaPB.IsDomainSafe{IsSafe: &ret}, nil
-}
-
 var (
 	SupportedChallenges = map[string]bool{
-		core.ChallengeTypeHTTP01:   true,
-		core.ChallengeTypeTLSSNI01: true,
-		core.ChallengeTypeDNS01:    true,
+		core.ChallengeTypeHTTP01: true,
+		core.ChallengeTypeDNS01:  true,
 	}
 
 	// These values we simulate from the client
@@ -229,6 +218,8 @@ func (r *dummyRateLimitConfig) LoadPolicies(contents []byte) error {
 }
 
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
+	features.Reset()
+
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	err = json.Unmarshal(AccountKeyJSONB, &AccountKeyB)
@@ -296,7 +287,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	AuthzInitial.RegistrationID = Registration.ID
 
-	challenges, combinations, _ := pa.ChallengesFor(AuthzInitial.Identifier, Registration.ID, false)
+	challenges, combinations, _ := pa.ChallengesFor(AuthzInitial.Identifier)
 	AuthzInitial.Challenges = challenges
 	AuthzInitial.Combinations = combinations
 
@@ -647,12 +638,6 @@ func TestReuseValidAuthorization(t *testing.T) {
 	test.AssertEquals(t, httpChallenge.Type, core.ChallengeTypeHTTP01)
 	test.AssertEquals(t, httpChallenge.Status, core.StatusValid)
 
-	// It should have one SNI challenge that is pending
-	sniIndex := httpIndex + 1
-	sniChallenge := secondAuthz.Challenges[sniIndex]
-	test.AssertEquals(t, sniChallenge.Type, core.ChallengeTypeTLSSNI01)
-	test.AssertEquals(t, sniChallenge.Status, core.StatusPending)
-
 	// Sending an update to this authz for an already valid challenge should do
 	// nothing (but produce no error), since it is already a valid authz
 	authzPB, err := bgrpc.AuthzToPB(secondAuthz)
@@ -667,7 +652,7 @@ func TestReuseValidAuthorization(t *testing.T) {
 	test.AssertEquals(t, finalAuthz.ID, secondAuthz.ID)
 	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
 
-	challIndex = int64(sniIndex)
+	challIndex = int64(httpIndex)
 	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: &challIndex})
@@ -1224,7 +1209,6 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 	// Start with the feature flag enabled.
 	err := features.Set(map[string]bool{"EarlyOrderRateLimit": true})
 	test.AssertNotError(t, err, "Failed to set EarlyOrderRateLimit feature flag")
-	defer features.Reset()
 
 	// Request an order for the test domain
 	newOrder := &rapb.NewOrderRequest{
@@ -2399,13 +2383,13 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 }
 
 // mockSAUnsafeAuthzReuse has a GetAuthorizations implementation that returns
-// a TLS-SNI-01 validated wildcard authz.
+// an HTTP-01 validated wildcard authz.
 type mockSAUnsafeAuthzReuse struct {
 	mocks.StorageAuthority
 }
 
 // GetAuthorizations returns a _bizarre_ authorization for "*.zombo.com" that
-// was validated by TLS-SNI-01. This should never happen in real life since the
+// was validated by HTTP-01. This should never happen in real life since the
 // name is a wildcard. We use this mock to test that we reject this bizarre
 // situation correctly.
 func (sa *mockSAUnsafeAuthzReuse) GetAuthorizations(
@@ -2421,9 +2405,9 @@ func (sa *mockSAUnsafeAuthzReuse) GetAuthorizations(
 			// Authz is valid
 			Status: "valid",
 			Challenges: []core.Challenge{
-				// TLS-SNI-01 challenge is valid
+				// HTTP-01 challenge is valid
 				core.Challenge{
-					Type:   core.ChallengeTypeTLSSNI01, // The dreaded TLS-SNI-01! X__X
+					Type:   core.ChallengeTypeHTTP01, // The dreaded HTTP-01! X__X
 					Status: core.StatusValid,
 				},
 				// DNS-01 challenge is pending
@@ -2442,9 +2426,9 @@ func (sa *mockSAUnsafeAuthzReuse) GetAuthorizations(
 			// Authz is valid
 			Status: "valid",
 			Challenges: []core.Challenge{
-				// TLS-SNI-01 challenge is valid
+				// HTTP-01 challenge is valid
 				core.Challenge{
-					Type:   core.ChallengeTypeTLSSNI01,
+					Type:   core.ChallengeTypeHTTP01,
 					Status: core.StatusValid,
 				},
 				// DNS-01 challenge is pending
@@ -2496,7 +2480,7 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 	regA := int64(1)
 	names := []string{"*.zombo.com"}
 
-	// Use a mock SA that always returns a valid TLS-SNI-01 authz for the name
+	// Use a mock SA that always returns a valid HTTP-01 authz for the name
 	// "zombo.com"
 	ra.SA = &mockSAUnsafeAuthzReuse{}
 
@@ -2524,7 +2508,7 @@ func TestNewOrderAuthzReuseDisabled(t *testing.T) {
 	regA := int64(1)
 	names := []string{"zombo.com"}
 
-	// Use a mock SA that always returns a valid TLS-SNI-01 authz for the name
+	// Use a mock SA that always returns a valid HTTP-01 authz for the name
 	// "zombo.com"
 	ra.SA = &mockSAUnsafeAuthzReuse{}
 
@@ -2563,9 +2547,8 @@ func TestNewOrderWildcard(t *testing.T) {
 	// global `SupportedChallenges` used by `initAuthorities` does not include
 	// DNS-01
 	supportedChallenges := map[string]bool{
-		core.ChallengeTypeHTTP01:   true,
-		core.ChallengeTypeTLSSNI01: true,
-		core.ChallengeTypeDNS01:    true,
+		core.ChallengeTypeHTTP01: true,
+		core.ChallengeTypeDNS01:  true,
 	}
 	pa, err := policy.New(supportedChallenges)
 	test.AssertNotError(t, err, "Couldn't create PA")
@@ -2606,7 +2589,7 @@ func TestNewOrderWildcard(t *testing.T) {
 			test.AssertEquals(t, authz.Challenges[0].Type, core.ChallengeTypeDNS01)
 		case "example.com":
 			// If the authz is for example.com, we expect it has normal challenges
-			test.AssertEquals(t, len(authz.Challenges), 3)
+			test.AssertEquals(t, len(authz.Challenges), 2)
 		default:
 			t.Fatalf("Received an authorization for a name not requested: %q", name)
 		}
@@ -2644,7 +2627,7 @@ func TestNewOrderWildcard(t *testing.T) {
 		case "zombo.com":
 			// We expect that the base domain identifier auth has the normal number of
 			// challenges
-			test.AssertEquals(t, len(authz.Challenges), 3)
+			test.AssertEquals(t, len(authz.Challenges), 2)
 		case "*.zombo.com":
 			// We expect that the wildcard identifier auth has only a pending
 			// DNS-01 type challenge
@@ -2677,7 +2660,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	// We expect the authz is for the identifier the correct domain
 	test.AssertEquals(t, authz.Identifier.Value, "everything.is.possible.zombo.com")
 	// We expect the authz has the normal # of challenges
-	test.AssertEquals(t, len(authz.Challenges), 3)
+	test.AssertEquals(t, len(authz.Challenges), 2)
 
 	// Now submit an order request for a wildcard of the domain we just created an
 	// order for. We should **NOT** reuse the authorization from the previous
@@ -2836,6 +2819,7 @@ func TestFinalizeOrder(t *testing.T) {
 	ra.orderLifetime = time.Hour
 
 	validStatus := string(core.StatusValid)
+	pendingStatus := string(core.StatusPending)
 	readyStatus := string(core.StatusReady)
 	processingStatus := false
 
@@ -2896,20 +2880,9 @@ func TestFinalizeOrder(t *testing.T) {
 	err = sa.FinalizeAuthorization(ctx, finalAuthzB)
 	test.AssertNotError(t, err, "Could not finalize 2nd test pending authorization")
 
-	// Create a new order referencing both of the above finalized authzs
-	pendingStatus := "pending"
-	expUnix := exp.UnixNano()
-	finalOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
-		RegistrationID: &Registration.ID,
-		Expires:        &expUnix,
-		Names:          []string{"not-example.com", "www.not-example.com"},
-		Authorizations: []string{finalAuthz.ID, finalAuthzB.ID},
-		Status:         &validStatus,
-	})
-	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
-
 	// Create an order with valid authzs, it should end up status ready in the
 	// resulting returned order
+	expUnix := exp.UnixNano()
 	modernFinalOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
 		RegistrationID:  &Registration.ID,
 		Expires:         &expUnix,
@@ -2965,7 +2938,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "No names in order",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status: &pendingStatus,
+					Status: &readyStatus,
 					Names:  []string{},
 				},
 			},
@@ -2979,13 +2952,25 @@ func TestFinalizeOrder(t *testing.T) {
 					Names:  []string{"example.com"},
 				},
 			},
-			ExpectedErrMsg: "Order's status (\"valid\") is not acceptable for finalization",
+			ExpectedErrMsg: `Order's status ("valid") is not acceptable for finalization`,
+		},
+		{
+			Name: "Wrong order state (pending)",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: &corepb.Order{
+					Status: &pendingStatus,
+					Names:  []string{"example.com"},
+				},
+				Csr: validCSR.Raw,
+			},
+			ExpectIssuance: false,
+			ExpectedErrMsg: `Order's status ("pending") is not acceptable for finalization`,
 		},
 		{
 			Name: "Invalid CSR",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status: &pendingStatus,
+					Status: &readyStatus,
 					Names:  []string{"example.com"},
 				},
 				Csr: []byte{0xC0, 0xFF, 0xEE},
@@ -2996,7 +2981,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "CSR and Order with diff number of names",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:         &pendingStatus,
+					Status:         &readyStatus,
 					Names:          []string{"example.com", "example.org"},
 					RegistrationID: &fakeRegID,
 				},
@@ -3008,7 +2993,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "CSR missing an order name",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:         &pendingStatus,
+					Status:         &readyStatus,
 					Names:          []string{"foobar.com"},
 					RegistrationID: &fakeRegID,
 				},
@@ -3020,7 +3005,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "CSR with policy forbidden name",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:            &pendingStatus,
+					Status:            &readyStatus,
 					Names:             []string{"example.org"},
 					RegistrationID:    &Registration.ID,
 					Id:                emptyOrder.Id,
@@ -3036,7 +3021,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order with missing registration",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:            &pendingStatus,
+					Status:            &readyStatus,
 					Names:             []string{"a.com", "a.org"},
 					Id:                fakeRegOrder.Id,
 					RegistrationID:    &fakeRegID,
@@ -3053,7 +3038,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order with missing authorizations",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:            &pendingStatus,
+					Status:            &readyStatus,
 					Names:             []string{"a.com", "a.org", "b.com"},
 					Id:                missingAuthzOrder.Id,
 					RegistrationID:    &Registration.ID,
@@ -3065,14 +3050,6 @@ func TestFinalizeOrder(t *testing.T) {
 				Csr: threeDomainCSR,
 			},
 			ExpectedErrMsg: "authorizations for these names not found or expired: a.com, a.org, b.com",
-		},
-		{
-			Name: "Order with correct authorizations, pending status",
-			OrderReq: &rapb.FinalizeOrderRequest{
-				Order: finalOrder,
-				Csr:   validCSR.Raw,
-			},
-			ExpectIssuance: true,
 		},
 		{
 			Name: "Order with correct authorizations, ready status",
@@ -3199,9 +3176,8 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	// global `SupportedChallenges` used by `initAuthorities` does not include
 	// DNS-01 or DNS-01-Wildcard
 	supportedChallenges := map[string]bool{
-		core.ChallengeTypeHTTP01:   true,
-		core.ChallengeTypeTLSSNI01: true,
-		core.ChallengeTypeDNS01:    true,
+		core.ChallengeTypeHTTP01: true,
+		core.ChallengeTypeDNS01:  true,
 	}
 	pa, err := policy.New(supportedChallenges)
 	test.AssertNotError(t, err, "Couldn't create PA")
@@ -3264,7 +3240,8 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	test.AssertNotError(t, err, "Could not finalize test pending authorization")
 
 	// Finalizing the order should *not* work since the existing validated authz
-	// is not a special DNS-01-Wildcard challenge authz
+	// is not a special DNS-01-Wildcard challenge authz, so the order will be
+	// "pending" not "ready".
 	finalizeReq := &rapb.FinalizeOrderRequest{
 		Order: order,
 		Csr:   wildcardCSR,
@@ -3272,8 +3249,8 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	_, err = ra.FinalizeOrder(context.Background(), finalizeReq)
 	test.AssertError(t, err, "FinalizeOrder did not fail for unauthorized "+
 		"wildcard order")
-	test.AssertEquals(t, err.Error(), "authorizations for these names not "+
-		"found or expired: *.zombo.com")
+	test.AssertEquals(t, err.Error(),
+		`Order's status ("pending") is not acceptable for finalization`)
 
 	// Creating another order for the wildcard name
 	validOrder, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
@@ -3289,6 +3266,12 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	authz.Challenges[0].Status = "valid"
 	err = sa.FinalizeAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Could not finalize order's pending authorization")
+
+	// Refresh the order so the SA sets its status
+	validOrder, err = sa.GetOrder(ctx, &sapb.OrderRequest{
+		Id: validOrder.Id,
+	})
+	test.AssertNotError(t, err, "Could not refresh valid order from SA")
 
 	// Now it should be possible to finalize the order
 	finalizeReq = &rapb.FinalizeOrderRequest{
@@ -3317,20 +3300,17 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 		// Create challenges
 		httpChal := core.HTTPChallenge01("")
 		dnsChal := core.DNSChallenge01("")
-		tlsChal := core.TLSSNIChallenge01("")
 		// Set the selected challenge to valid
 		switch chalType {
 		case "http-01":
 			httpChal.Status = core.StatusValid
 		case "dns-01":
 			dnsChal.Status = core.StatusValid
-		case "tls-sni-01":
-			tlsChal.Status = core.StatusValid
 		default:
 			t.Fatalf("Invalid challenge type used with authzForChalType: %q", chalType)
 		}
 		// Set the template's challenges
-		template.Challenges = []core.Challenge{httpChal, dnsChal, tlsChal}
+		template.Challenges = []core.Challenge{httpChal, dnsChal}
 		// Set the overall authz to valid
 		template.Status = "valid"
 		template.Expires = &exp
@@ -3350,7 +3330,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 
 	// Make some valid authorizations for some names using different challenge types
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
-	chalTypes := []string{"http-01", "dns-01", "tls-sni-01", "dns-01"}
+	chalTypes := []string{"http-01", "dns-01", "http-01", "dns-01"}
 	var authzs []core.Authorization
 	var authzIDs []string
 	for i, name := range names {
@@ -3525,93 +3505,18 @@ func (ms *mockSAPreexistingCertificate) GetPendingAuthorization(ctx context.Cont
 	return nil, berrors.NotFoundError("no pending authorization found")
 }
 
-// With TLS-SNI-01 disabled, an account that previously issued a certificate for
-// example.com should still be able to get a new authorization.
-func TestNewAuthzTLSSNIRevalidation(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	challenges := map[string]bool{
-		core.ChallengeTypeHTTP01: true,
-	}
-	_ = features.Set(map[string]bool{
-		"TLSSNIRevalidation": true,
-	})
-	pa, err := policy.New(challenges)
-	test.AssertNotError(t, err, "Couldn't create PA")
-	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
-	test.AssertNotError(t, err, "Couldn't set hostname policy")
-	ra.PA = pa
-
-	ra.SA = &mockSAPreexistingCertificate{}
-
-	// Test with a reg ID and hostname that have a previous issuance, expect to
-	// see TLS-SNI-01.
-	authz, err := ra.NewAuthorization(context.Background(),
-		core.Authorization{
-			Identifier: core.AcmeIdentifier{
-				Type:  core.IdentifierDNS,
-				Value: previousIssuanceDomain,
-			},
-		}, previousIssuanceRegId)
-	test.AssertNotError(t, err, "creating authz with domain for revalidation")
-
-	hasTLSSNI := func(challenges []core.Challenge) bool {
-		var foundTLSSNI bool
-		for _, c := range challenges {
-			if c.Type == core.ChallengeTypeTLSSNI01 {
-				foundTLSSNI = true
-			}
-		}
-		return foundTLSSNI
-	}
-	if !hasTLSSNI(authz.Challenges) {
-		t.Errorf("TLS-SNI challenge was not created during revalidation.")
-	}
-
-	// Test with a different reg ID, expect no TLS-SNI-01.
-	authz, err = ra.NewAuthorization(context.Background(),
-		core.Authorization{
-			Identifier: core.AcmeIdentifier{
-				Type:  core.IdentifierDNS,
-				Value: previousIssuanceDomain,
-			},
-		}, 1234)
-	test.AssertNotError(t, err, "creating authz with domain for revalidation")
-	if hasTLSSNI(authz.Challenges) {
-		t.Errorf("TLS-SNI challenge was created during non-revalidation new-authz " +
-			"(different regID).")
-	}
-
-	// Test with a different domain, expect no TLS-SNI-01.
-	authz, err = ra.NewAuthorization(context.Background(),
-		core.Authorization{
-			Identifier: core.AcmeIdentifier{
-				Type:  core.IdentifierDNS,
-				Value: "not.example.com",
-			},
-		}, previousIssuanceRegId)
-	test.AssertNotError(t, err, "creating authz with domain for revalidation")
-	if hasTLSSNI(authz.Challenges) {
-		t.Errorf("TLS-SNI challenge was created during non-revalidation new-authz " +
-			"(different domain).")
-	}
-}
-
 func TestValidChallengeStillGood(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	pa, err := policy.New(map[string]bool{
-		core.ChallengeTypeTLSSNI01: true,
+		core.ChallengeTypeHTTP01: true,
 	})
 	test.AssertNotError(t, err, "Couldn't create PA")
 	ra.PA = pa
 
 	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{}), "ra.authzValidChallengeEnabled didn't fail with empty authorization")
 	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusPending}}}), "ra.authzValidChallengeEnabled didn't fail with no valid challenges")
-	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}}}), "ra.authzValidChallengeEnabled didn't fail with disabled challenge")
-
-	test.Assert(t, ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeTLSSNI01}}}), "ra.authzValidChallengeEnabled failed with enabled challenge")
+	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeDNS01}}}), "ra.authzValidChallengeEnabled didn't fail with disabled challenge")
 }
 
 func TestPerformValidationBadChallengeType(t *testing.T) {
@@ -3626,7 +3531,7 @@ func TestPerformValidationBadChallengeType(t *testing.T) {
 		Challenges: []core.Challenge{
 			core.Challenge{
 				Status: core.StatusValid,
-				Type:   core.ChallengeTypeTLSSNI01},
+				Type:   core.ChallengeTypeHTTP01},
 		},
 		Expires: &exp,
 	}
@@ -3639,7 +3544,7 @@ func TestPerformValidationBadChallengeType(t *testing.T) {
 		ChallengeIndex: &challIndex,
 	})
 	test.AssertError(t, err, "ra.PerformValidation allowed a update to a authorization")
-	test.AssertEquals(t, err.Error(), "challenge type \"tls-sni-01\" no longer allowed")
+	test.AssertEquals(t, err.Error(), "challenge type \"http-01\" no longer allowed")
 }
 
 type timeoutPub struct {

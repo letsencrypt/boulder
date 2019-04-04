@@ -16,46 +16,25 @@ import (
 	"io/ioutil"
 	mrand "math/rand"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/test/load-generator/acme"
 
 	"gopkg.in/square/go-jose.v2"
 )
 
 var (
 	// stringToOperation maps a configured plan action to a function that can
-	// operate on a state/context. V2 and V1 operations can **not** be intermixed
-	// in the same plan.
+	// operate on a state/context.
 	stringToOperation = map[string]func(*State, *context) error{
-		/* ACME v1 Operations */
-		"newRegistration":   newRegistration,
-		"getRegistration":   getRegistration,
-		"newAuthorization":  newAuthorization,
-		"solveHTTPOne":      solveHTTPOne,
-		"newCertificate":    newCertificate,
-		"revokeCertificate": revokeCertificate,
-
-		/* ACME v2 Operations */
 		"newAccount":    newAccount,
 		"getAccount":    getAccount,
 		"newOrder":      newOrder,
 		"fulfillOrder":  fulfillOrder,
 		"finalizeOrder": finalizeOrder,
 	}
-)
-
-// API path constants
-const (
-	newAcctPath    = "/acme/new-acct"
-	newOrderPath   = "/acme/new-order"
-	newRegPath     = "/acme/new-reg"
-	newAuthzPath   = "/acme/new-authz"
-	challengePath  = "/acme/challenge"
-	newCertPath    = "/acme/new-cert"
-	revokeCertPath = "/acme/revoke-cert"
 )
 
 // It's awkward to work with core.Order or corepb.Order when the API returns
@@ -89,23 +68,6 @@ func getAccount(s *State, ctx *context) error {
 
 	// Select a random account from the state and put it into the context
 	ctx.acct = s.accts[mrand.Intn(len(s.accts))]
-	ctx.ns = &nonceSource{s: s}
-	return nil
-}
-
-// getRegistration takes an existing v1 account from `state.regs` and puts it
-// into `ctx.reg`. The context `nonceSource` is also populated as convenience.
-func getRegistration(s *State, ctx *context) error {
-	s.rMu.RLock()
-	defer s.rMu.RUnlock()
-
-	// There must be an existing v1 registration in the state
-	if len(s.regs) == 0 {
-		return errors.New("no registrations to return")
-	}
-
-	// Select a random registration from the state and put it into the context
-	ctx.reg = s.regs[mrand.Intn(len(s.regs))]
 	ctx.ns = &nonceSource{s: s}
 	return nil
 }
@@ -150,7 +112,8 @@ func newAccount(s *State, ctx *context) error {
 
 	// Sign the new account registration body using a JWS with an embedded JWK
 	// because we do not have a key ID from the server yet.
-	jws, err := ctx.signEmbeddedV2Request(reqBodyStr, fmt.Sprintf("%s%s", s.apiBase, newAcctPath))
+	newAccountURL := s.directory.EndpointURL(acme.NewAccountEndpoint)
+	jws, err := ctx.signEmbeddedV2Request(reqBodyStr, newAccountURL)
 	if err != nil {
 		return err
 	}
@@ -158,15 +121,15 @@ func newAccount(s *State, ctx *context) error {
 
 	// POST the account creation request to the server
 	nStarted := time.Now()
-	resp, err := s.post(fmt.Sprintf("%s%s", s.apiBase, newAcctPath), bodyBuf, ctx.ns)
+	resp, err := s.post(newAccountURL, bodyBuf, ctx.ns)
 	nFinished := time.Now()
 	nState := "error"
 	defer func() {
 		s.callLatency.Add(
-			fmt.Sprintf("POST %s", newAcctPath), nStarted, nFinished, nState)
+			fmt.Sprintf("POST %s", acme.NewAccountEndpoint), nStarted, nFinished, nState)
 	}()
 	if err != nil {
-		return fmt.Errorf("%s, post failed: %s", newAcctPath, err)
+		return fmt.Errorf("%s, post failed: %s", newAccountURL, err)
 	}
 	defer resp.Body.Close()
 
@@ -174,127 +137,22 @@ func newAccount(s *State, ctx *context) error {
 	if resp.StatusCode != http.StatusCreated {
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			return fmt.Errorf("%s, bad response: %s", newAcctPath, body)
+			return fmt.Errorf("%s, bad response: %s", newAccountURL, body)
 		}
-		return fmt.Errorf("%s, bad response status %d: %s", newAcctPath, resp.StatusCode, body)
+		return fmt.Errorf("%s, bad response status %d: %s", newAccountURL, resp.StatusCode, body)
 	}
 
 	// Populate the context account's key ID with the Location header returned by
 	// the server
 	locHeader := resp.Header.Get("Location")
 	if locHeader == "" {
-		return fmt.Errorf("%s, bad response - no Location header with account ID", newAcctPath)
+		return fmt.Errorf("%s, bad response - no Location header with account ID", newAccountURL)
 	}
 	ctx.acct.id = locHeader
 
 	// Add the account to the state
 	nState = "good"
 	s.addAccount(ctx.acct)
-	return nil
-}
-
-// newRegistration puts a V1 registration into the provided context. If the
-// state provided has too many registrations already (based on `state.NumAccts`
-// and `state.maxRegs`) then `newRegistration` puts an existing registration
-// from the state into the context otherwise it creates a new registration and
-// puts it into both the state and the context.
-func newRegistration(s *State, ctx *context) error {
-	// if we have generated the max number of registrations just become getRegistration
-	if s.maxRegs != 0 && s.numRegs() >= s.maxRegs {
-		return getRegistration(s, ctx)
-	}
-	signKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return err
-	}
-	ns := &nonceSource{s: s}
-	ctx.ns = ns
-	signer, err := jose.NewSigner(
-		jose.SigningKey{
-			Key:       signKey,
-			Algorithm: jose.ES256,
-		},
-		&jose.SignerOptions{
-			NonceSource: ns,
-			EmbedJWK:    true,
-		})
-	if err != nil {
-		return err
-	}
-
-	// create the registration object
-	var regStr []byte
-	if s.email != "" {
-		regStr = []byte(fmt.Sprintf(`{"resource":"new-reg","contact":["mailto:%s"]}`, s.email))
-	} else {
-		regStr = []byte(`{"resource":"new-reg"}`)
-	}
-	// build the JWS object
-	requestPayload, err := s.signWithNonce(regStr, signer)
-	if err != nil {
-		return fmt.Errorf("/acme/new-reg, sign failed: %s", err)
-	}
-
-	nStarted := time.Now()
-	resp, err := s.post(fmt.Sprintf("%s%s", s.apiBase, newRegPath), requestPayload, ctx.ns)
-	nFinished := time.Now()
-	nState := "good"
-	defer func() { s.callLatency.Add("POST /acme/new-reg", nStarted, nFinished, nState) }()
-	if err != nil {
-		nState = "error"
-		return fmt.Errorf("/acme/new-reg, post failed: %s", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 201 {
-		body, err := ioutil.ReadAll(resp.Body)
-		nState = "error"
-		if err != nil {
-			return fmt.Errorf("/acme/new-reg, bad response: %s", body)
-		}
-		return fmt.Errorf("/acme/new-reg, bad response status %d: %s", resp.StatusCode, body)
-	}
-
-	// get terms
-	links := resp.Header[http.CanonicalHeaderKey("link")]
-	terms := ""
-	for _, l := range links {
-		if strings.HasSuffix(l, ">;rel=\"terms-of-service\"") {
-			terms = l[1 : len(l)-len(">;rel=\"terms-of-service\"")]
-			break
-		}
-	}
-
-	// agree to terms
-	regStr = []byte(fmt.Sprintf(`{"resource":"reg","agreement":"%s"}`, terms))
-
-	// build the JWS object
-	requestPayload, err = s.signWithNonce(regStr, signer)
-	if err != nil {
-		return fmt.Errorf("/acme/reg, sign failed: %s", err)
-	}
-
-	tStarted := time.Now()
-	resp, err = s.post(resp.Header.Get("Location"), requestPayload, ctx.ns)
-	tFinished := time.Now()
-	tState := "good"
-	defer func() { s.callLatency.Add("POST /acme/reg/{ID}", tStarted, tFinished, tState) }()
-	if err != nil {
-		tState = "error"
-		return fmt.Errorf("/acme/reg, post failed: %s", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusAccepted {
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			tState = "error"
-			return err
-		}
-		tState = "error"
-		return fmt.Errorf("/acme/reg, bad response status %d: %s", resp.StatusCode, body)
-	}
-
-	ctx.reg = &registration{key: signKey, signer: signer}
-	s.addRegistration(ctx.reg)
 	return nil
 }
 
@@ -337,8 +195,8 @@ func newOrder(s *State, ctx *context) error {
 	}
 
 	// Sign the new order request with the context account's key/key ID
-	url := fmt.Sprintf("%s%s", s.apiBase, newOrderPath)
-	jws, err := ctx.signKeyIDV2Request(initOrderStr, url)
+	newOrderURL := s.directory.EndpointURL(acme.NewOrderEndpoint)
+	jws, err := ctx.signKeyIDV2Request(initOrderStr, newOrderURL)
 	if err != nil {
 		return err
 	}
@@ -346,25 +204,25 @@ func newOrder(s *State, ctx *context) error {
 
 	// POST the new-order endpoint
 	nStarted := time.Now()
-	resp, err := s.post(url, bodyBuf, ctx.ns)
+	resp, err := s.post(newOrderURL, bodyBuf, ctx.ns)
 	nFinished := time.Now()
 	nState := "error"
 	defer func() {
 		s.callLatency.Add(
-			fmt.Sprintf("POST %s", newOrderPath), nStarted, nFinished, nState)
+			fmt.Sprintf("POST %s", acme.NewOrderEndpoint), nStarted, nFinished, nState)
 	}()
 	if err != nil {
-		return fmt.Errorf("%s, post failed: %s", newOrderPath, err)
+		return fmt.Errorf("%s, post failed: %s", newOrderURL, err)
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("%s, bad response: %s", newOrderPath, body)
+		return fmt.Errorf("%s, bad response: %s", newOrderURL, body)
 	}
 
 	// We expect that the result is a created order
 	if resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("%s, bad response status %d: %s", newOrderPath, resp.StatusCode, body)
+		return fmt.Errorf("%s, bad response status %d: %s", newOrderURL, resp.StatusCode, body)
 	}
 
 	// Unmarshal the Order object
@@ -377,68 +235,13 @@ func newOrder(s *State, ctx *context) error {
 	// Populate the URL of the order from the Location header
 	orderURL := resp.Header.Get("Location")
 	if orderURL == "" {
-		return fmt.Errorf("%s, bad response - no Location header with order ID", newOrderPath)
+		return fmt.Errorf("%s, bad response - no Location header with order ID", newOrderURL)
 	}
 	orderJSON.URL = orderURL
 
 	// Store the pending order in the context
 	ctx.pendingOrders = append(ctx.pendingOrders, &orderJSON)
 	nState = "good"
-	return nil
-}
-
-// newAuthorization creates a new authz for a random domain name using the
-// context's registration. The resulting pending authorization is stored in the
-// context's list of pending authorizations.
-func newAuthorization(s *State, ctx *context) error {
-	// generate a random(-ish) domain name,  will cause some multiples but not enough to make rate limits annoying!
-	randomDomain := randDomain(s.domainBase)
-
-	// create the new-authz object
-	initAuth := fmt.Sprintf(`{"resource":"new-authz","identifier":{"type":"dns","value":"%s"}}`, randomDomain)
-
-	// build the JWS object
-	requestPayload, err := s.signWithNonce([]byte(initAuth), ctx.reg.signer)
-	if err != nil {
-		return err
-	}
-
-	started := time.Now()
-	resp, err := s.post(fmt.Sprintf("%s/acme/new-authz", s.apiBase), requestPayload, ctx.ns)
-	finished := time.Now()
-	state := "good"
-	defer func() { s.callLatency.Add("POST /acme/new-authz", started, finished, state) }()
-	if err != nil {
-		state = "error"
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 201 {
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			state = "error"
-			return err
-		}
-		state = "error"
-		return fmt.Errorf("bad response, status %d: %s", resp.StatusCode, body)
-	}
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		state = "error"
-		return err
-	}
-
-	var authz core.Authorization
-	err = json.Unmarshal(body, &authz)
-	if err != nil {
-		state = "error"
-		return err
-	}
-	// populate authz ID from location header because we strip it
-	paths := strings.Split(resp.Header.Get("Location"), "/")
-	authz.ID = paths[len(paths)-1]
-
-	ctx.pendingAuthz = append(ctx.pendingAuthz, &authz)
 	return nil
 }
 
@@ -481,10 +284,9 @@ func getAuthorization(s *State, url string) (*core.Authorization, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s response: %s", url, body)
 	}
-	// The Authorization ID is not set in the response so we populate it based on
-	// the URL
-	paths := strings.Split(url, "/")
-	authz.ID = paths[len(paths)-1]
+	// The Authorization ID is not set in the response so we populate it using the
+	// URL
+	authz.ID = url
 	aState = "good"
 	return &authz, nil
 }
@@ -576,7 +378,7 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 // correct authorization state an error is returned. If no error is returned
 // then the authorization is valid and ready.
 func pollAuthorization(authz *core.Authorization, s *State, ctx *context) error {
-	authzURL := fmt.Sprintf("%s/acme/authz/%s", s.apiBase, authz.ID)
+	authzURL := authz.ID
 	for i := 0; i < 3; i++ {
 		// Fetch the authz by its URL
 		authz, err := getAuthorization(s, authzURL)
@@ -628,103 +430,6 @@ func fulfillOrder(s *State, ctx *context) error {
 	return nil
 }
 
-// popPending **removes** a random pending authorization from the context,
-// returning it.
-func popPending(ctx *context) *core.Authorization {
-	authzIndex := mrand.Intn(len(ctx.pendingAuthz))
-	authz := ctx.pendingAuthz[authzIndex]
-	ctx.pendingAuthz = append(ctx.pendingAuthz[:authzIndex], ctx.pendingAuthz[authzIndex+1:]...)
-	return authz
-}
-
-// solveHTTPOne solves a pending authorization's HTTP-01 challenge. It polls the
-// authorization waiting for the status to change to valid.
-func solveHTTPOne(s *State, ctx *context) error {
-	if len(ctx.pendingAuthz) == 0 {
-		return errors.New("no pending authorizations to complete")
-	}
-	authz := popPending(ctx)
-	var chall *core.Challenge
-	for _, c := range authz.Challenges {
-		if c.Type == "http-01" {
-			chall = &c
-			break
-		}
-	}
-	if chall == nil {
-		return errors.New("no http-01 challenges to complete")
-	}
-
-	jwk := &jose.JSONWebKey{Key: &ctx.reg.key.PublicKey}
-	thumbprint, err := jwk.Thumbprint(crypto.SHA256)
-	if err != nil {
-		return err
-	}
-	authStr := fmt.Sprintf("%s.%s", chall.Token, base64.RawURLEncoding.EncodeToString(thumbprint))
-	s.challSrv.AddHTTPOneChallenge(chall.Token, authStr)
-	defer s.challSrv.DeleteHTTPOneChallenge(chall.Token)
-
-	update := fmt.Sprintf(`{"resource":"challenge","keyAuthorization":"%s"}`, authStr)
-	requestPayload, err := s.signWithNonce([]byte(update), ctx.reg.signer)
-	if err != nil {
-		return err
-	}
-
-	cStarted := time.Now()
-	resp, err := s.post(chall.URI, requestPayload, ctx.ns)
-	cFinished := time.Now()
-	cState := "good"
-	defer func() { s.callLatency.Add("POST /acme/challenge/{ID}", cStarted, cFinished, cState) }()
-	if err != nil {
-		cState = "error"
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusAccepted {
-		cState = "error"
-		return fmt.Errorf("Unexpected error code")
-	}
-	// Sit and spin until status valid or invalid, replicating Certbot behavior
-	ident := ""
-	for i := 0; i < 3; i++ {
-		aStarted := time.Now()
-		resp, err = s.get(fmt.Sprintf("%s/acme/authz/%s", s.apiBase, authz.ID))
-		aFinished := time.Now()
-		aState := "good"
-		defer func() { s.callLatency.Add("GET /acme/authz/{ID}", aStarted, aFinished, aState) }()
-		if err != nil {
-			aState = "error"
-			return fmt.Errorf("/acme/authz bad response: %s", err)
-		}
-		defer resp.Body.Close()
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			aState = "error"
-			return err
-		}
-		var newAuthz core.Authorization
-		err = json.Unmarshal(body, &newAuthz)
-		if err != nil {
-			aState = "error"
-			return fmt.Errorf("/acme/authz bad response: %s", body)
-		}
-		if newAuthz.Status == "valid" {
-			ident = newAuthz.Identifier.Value
-			break
-		}
-		if newAuthz.Status == "invalid" {
-			return fmt.Errorf("HTTP-01 challenge invalid: %s", string(body))
-		}
-		time.Sleep(3 * time.Second)
-	}
-	if ident == "" {
-		return errors.New("HTTP-01 challenge validation timed out")
-	}
-
-	ctx.finalizedAuthz = append(ctx.finalizedAuthz, ident)
-	return nil
-}
-
 // getOrder GETs an order by URL, returning an OrderJSON object. It tracks the
 // latency of the GET operation in the provided state.
 func getOrder(s *State, url string) (*OrderJSON, error) {
@@ -745,12 +450,12 @@ func getOrder(s *State, url string) (*OrderJSON, error) {
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("%s, bad response: %s", newOrderPath, body)
+		return nil, fmt.Errorf("%s, bad response: %s", url, body)
 	}
 
 	// We expect a HTTP status OK response
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s, bad response status %d: %s", newOrderPath, resp.StatusCode, body)
+		return nil, fmt.Errorf("%s, bad response status %d: %s", url, resp.StatusCode, body)
 	}
 
 	// Unmarshal the Order object from the response body
@@ -897,115 +602,4 @@ func min(a, b int) int {
 		return b
 	}
 	return a
-}
-
-// newCertificate POST's the v1 new-cert endpoint with a CSR for a random subset
-// of domains that have finalized authz's in the context (Up to
-// `state.maxNamesPerCert` domains). The CSR's private key is the
-// `state.certKey`. The context's `certs` list is updated with the URL of the
-// certificate produced.
-func newCertificate(s *State, ctx *context) error {
-	authsLen := len(ctx.finalizedAuthz)
-	num := min(mrand.Intn(authsLen), s.maxNamesPerCert)
-	dnsNames := []string{}
-	for i := 0; i <= num; i++ {
-		dnsNames = append(dnsNames, ctx.finalizedAuthz[mrand.Intn(authsLen)])
-	}
-	csr, err := x509.CreateCertificateRequest(
-		rand.Reader,
-		&x509.CertificateRequest{DNSNames: dnsNames},
-		s.certKey,
-	)
-	if err != nil {
-		return err
-	}
-
-	request := fmt.Sprintf(
-		`{"resource":"new-cert","csr":"%s"}`,
-		base64.URLEncoding.EncodeToString(csr),
-	)
-
-	// build the JWS object
-	requestPayload, err := s.signWithNonce([]byte(request), ctx.reg.signer)
-	if err != nil {
-		return err
-	}
-
-	started := time.Now()
-	resp, err := s.post(fmt.Sprintf("%s%s", s.apiBase, newCertPath), requestPayload, ctx.ns)
-	finished := time.Now()
-	state := "good"
-	defer func() { s.callLatency.Add("POST /acme/new-cert", started, finished, state) }()
-	if err != nil {
-		state = "error"
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 201 {
-		state = "error"
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return err
-		}
-		return fmt.Errorf("bad response, status %d: %s", resp.StatusCode, body)
-	}
-
-	if certLoc := resp.Header.Get("Location"); certLoc != "" {
-		ctx.certs = append(ctx.certs, certLoc)
-	}
-
-	return nil
-}
-
-// revokeCertificate revokes a random certificate from the context's list of
-// certificates. Presently it always uses the context's registration and the V1
-// style of revocation. The certificate is removed from the context's `certs`
-// list.
-//
-// TODO(@cpu): Write a V2 version of `revokeCertificate` that uses the context's
-// account and a key ID JWS.
-func revokeCertificate(s *State, ctx *context) error {
-	// randomly select a cert to revoke
-	if len(ctx.certs) == 0 {
-		return errors.New("no certificates to revoke")
-	}
-
-	index := mrand.Intn(len(ctx.certs))
-	resp, err := s.get(ctx.certs[index])
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	request := fmt.Sprintf(`{"resource":"revoke-cert","certificate":"%s"}`, base64.URLEncoding.EncodeToString(body))
-	requestPayload, err := s.signWithNonce([]byte(request), ctx.reg.signer)
-	if err != nil {
-		return err
-	}
-
-	started := time.Now()
-	resp, err = s.post(fmt.Sprintf("%s%s", s.apiBase, revokeCertPath), requestPayload, ctx.ns)
-	finished := time.Now()
-	state := "good"
-	defer func() { s.callLatency.Add("POST /acme/revoke-cert", started, finished, state) }()
-	if err != nil {
-		state = "error"
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		state = "error"
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return err
-		}
-		return fmt.Errorf("bad response, status %d: %s", resp.StatusCode, body)
-	}
-
-	ctx.certs = append(ctx.certs[:index], ctx.certs[index+1:]...)
-	return nil
 }
