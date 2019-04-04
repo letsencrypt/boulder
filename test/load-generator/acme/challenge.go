@@ -19,17 +19,10 @@ const (
 	// RandomChallengeStrategy is the name for a random challenge selection
 	// strategy that will choose one of the authorization's challenges at random.
 	RandomChallengeStrategy = "RANDOM"
-	// HTTP01ChallengeStrategy is the name for a challenge selection strategy that
-	// will always choose the authorization's HTTP-01 challenge. If there is no
-	// HTTP-01 challenge an error is returned.
-	HTTP01ChallengeStrategy = "HTTP-01"
-	// DNS01ChallengeStrategy is the name for a challenge selection strategy that
-	// will always choose the authorization's DNS-01 challenge. If there is no
-	// DNS-01 challenge an error is returned.
-	DNS01ChallengeStrategy = "DNS-01"
-	// TLSALP01ChallengeStrategy is the name for a challenge selection strategy that
-	// will always choose the authorization's TLS-ALPN-01 challenge. If there is
-	// no TLS-ALPN-01 challenge an error is returned.
+	// The following challenge strategies will always pick the named challenge
+	// type or return an error if there isn't a challenge of that type to pick.
+	HTTP01ChallengeStrategy    = "HTTP-01"
+	DNS01ChallengeStrategy     = "DNS-01"
 	TLSALPN01ChallengeStrategy = "TLS-ALPN-01"
 )
 
