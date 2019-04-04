@@ -3343,7 +3343,71 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 	test.AssertEquals(t, *count.Count, int64(2))
 }
 
-// TODO: needs to test getting old stuff also
 func TestGetValidAuthorizations2(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
 
+	// Create a valid old style authorization and a valid
+	// new style authorization
+	reg := satest.CreateWorkingRegistration(t, sa)
+	exp := fc.Now().Add(time.Hour).UTC()
+	oldPA, err := sa.NewPendingAuthorization(ctx, core.Authorization{
+		RegistrationID: reg.ID,
+		Expires:        &exp,
+		Status:         core.StatusPending,
+		Identifier: core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: "bbb",
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewPendingAuthorization failed")
+	oldPA.Status = core.StatusValid
+	err = sa.FinalizeAuthorization(context.Background(), oldPA)
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization failed")
+	v2 := true
+	ident := "aaa"
+	pending := string(core.StatusPending)
+	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
+	challType := string(core.ChallengeTypeDNS01)
+	token := "YXNk"
+	id, err := sa.NewAuthorization(context.Background(), &corepb.Authorization{
+		V2:             &v2,
+		Identifier:     &ident,
+		RegistrationID: &reg.ID,
+		Status:         &pending,
+		Expires:        &expires,
+		Challenges: []*corepb.Challenge{
+			{
+				Status: &pending,
+				Type:   &challType,
+				Token:  &token,
+			},
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewAuthorization failed")
+	valid := string(core.StatusValid)
+	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id:                id.Id,
+		Status:            &valid,
+		Attempted:         &challType,
+		ValidationRecords: []*corepb.ValidationRecord{},
+		Expires:           &expires,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+
+	now := fc.Now().UTC().UnixNano()
+	authzs, err := sa.GetValidAuthorizations2(context.Background(), &sapb.GetValidAuthorizationsRequest{
+		Domains: []string{
+			"aaa",
+			"bbb",
+		},
+		RegistrationID: &reg.ID,
+		Now:            &now,
+	})
+	test.AssertNotError(t, err, "sa.GetValidAuthorizations2 failed")
+	test.AssertEquals(t, len(authzs.Authz), 2)
+	test.AssertEquals(t, *authzs.Authz[0].Domain, "aaa")
+	test.AssertEquals(t, *authzs.Authz[0].Authz.Id, fmt.Sprintf("%d", *id.Id))
+	test.AssertEquals(t, *authzs.Authz[1].Domain, "bbb")
+	test.AssertEquals(t, *authzs.Authz[1].Authz.Id, oldPA.ID)
 }

@@ -2637,7 +2637,8 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context,
 }
 
 // GetValidAuthorizations2 returns the latest authorization for all
-// domain names from the parameters that the account has authorizations for.
+// domain names that the account has authorizations for. This method is
+// intended to deprecate GetValidAuthorizations.
 func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
 	qmarks := make([]string, len(req.Domains))
 	for i := range req.Domains {
@@ -2690,7 +2691,10 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 		for name := range authzMap {
 			delete(leftOverMap, name)
 		}
-		remaining := make([]string, len(leftOverMap))
+		var remaining []string
+		for name := range leftOverMap {
+			remaining = append(remaining, name)
+		}
 		req.Domains = remaining
 		now := time.Unix(0, *req.Now)
 		oldAuthzs, err := ssa.GetValidAuthorizations(
