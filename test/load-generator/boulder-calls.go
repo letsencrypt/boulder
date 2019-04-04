@@ -426,11 +426,13 @@ func fulfillOrder(s *State, ctx *context) error {
 		// Fetch the authz by its URL
 		authz, err := getAuthorization(s, url)
 		if err != nil {
-			return nil
+			return err
 		}
 
 		// Complete the authorization by solving a challenge
-		completeAuthorization(authz, s, ctx)
+		if err := completeAuthorization(authz, s, ctx); err != nil {
+			return err
+		}
 	}
 
 	// Once all of the authorizations have been fulfilled the order is fulfilled
