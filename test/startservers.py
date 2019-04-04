@@ -152,7 +152,7 @@ def startChallSrv():
     """
     global challSrvProcess
     if challSrvProcess is not None:
-        return
+        raise Exception("startChallSrv called more than once")
 
     # NOTE(@cpu): We specify explicit bind addresses for -https01 and
     # --tlsalpn01 here to allow HTTPS HTTP-01 responses on 5001 for on interface
