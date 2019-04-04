@@ -415,8 +415,8 @@ func (s *State) Run(
 				curTotal-lastTotal,
 				atomic.LoadInt64(&p.Rate),
 				(curGet+curPost)-(lastGet+lastPost),
-				curGet-lastGet,
 				curPost-lastPost,
+				curGet-lastGet,
 				s.respCodeString(),
 			)
 			lastTotal = curTotal
