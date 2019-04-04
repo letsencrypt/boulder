@@ -185,6 +185,7 @@ type State struct {
 	callLatency latencyWriter
 
 	directory  *acme.Directory
+	challStrat acme.ChallengeStrategy
 	httpClient *http.Client
 
 	getTotal  int64
@@ -274,12 +275,17 @@ func New(
 	maxRegs, maxNamesPerCert int,
 	latencyPath string,
 	userEmail string,
-	operations []string) (*State, error) {
+	operations []string,
+	challStrat string) (*State, error) {
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
 	}
 	directory, err := acme.NewDirectory(directoryURL)
+	if err != nil {
+		return nil, err
+	}
+	strat, err := acme.NewChallengeStrategy(challStrat)
 	if err != nil {
 		return nil, err
 	}
@@ -305,6 +311,7 @@ func New(
 	s := &State{
 		httpClient:      httpClient,
 		directory:       directory,
+		challStrat:      strat,
 		certKey:         certKey,
 		domainBase:      domainBase,
 		callLatency:     latencyFile,
@@ -329,13 +336,25 @@ func New(
 }
 
 // Run runs the WFE load-generator
-func (s *State) Run(httpOneAddr string, p Plan) error {
-	// Create a new challenge server for HTTP-01 challenges
+func (s *State) Run(
+	httpOneAddrs []string,
+	tlsALPNOneAddrs []string,
+	dnsAddrs []string,
+	fakeDNS string,
+	p Plan) error {
+	// Create a new challenge server binding the requested addrs.
 	challSrv, err := challtestsrv.New(challtestsrv.Config{
-		HTTPOneAddrs: []string{httpOneAddr},
+		HTTPOneAddrs:    httpOneAddrs,
+		TLSALPNOneAddrs: tlsALPNOneAddrs,
+		DNSOneAddrs:     dnsAddrs,
 		// Use a logger that has a load-generator prefix
 		Log: log.New(os.Stdout, "load-generator challsrv - ", log.LstdFlags),
 	})
+	// Setup the challenge server to return the mock "fake DNS" IP address
+	challSrv.SetDefaultDNSIPv4(fakeDNS)
+	// Disable returning any AAAA records.
+	challSrv.SetDefaultDNSIPv6("")
+
 	if err != nil {
 		return err
 	}
@@ -344,7 +363,6 @@ func (s *State) Run(httpOneAddr string, p Plan) error {
 
 	// Start the Challenge server in its own Go routine
 	go s.challSrv.Run()
-	fmt.Printf("[+] Started http-01 challenge server: %q\n", httpOneAddr)
 
 	if p.Delta != nil {
 		go func() {
