@@ -487,8 +487,13 @@ func (s *State) respCodeString() string {
 
 var userAgent = "boulder load-generator -- heyo ^_^"
 
-func (s *State) post(endpoint string, payload []byte, ns *nonceSource) (*http.Response, error) {
-	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(payload))
+func (s *State) post(
+	url string,
+	payload []byte,
+	ns *nonceSource,
+	latencyTag string,
+	expectedCode int) (*http.Response, error) {
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, err
 	}
@@ -496,7 +501,14 @@ func (s *State) post(endpoint string, payload []byte, ns *nonceSource) (*http.Re
 	req.Header.Add("User-Agent", userAgent)
 	req.Header.Add("Content-Type", "application/jose+json")
 	atomic.AddInt64(&s.postTotal, 1)
+	started := time.Now()
 	resp, err := s.httpClient.Do(req)
+	finished := time.Now()
+	state := "error"
+	// Defer logging the latency and result
+	defer func() {
+		s.callLatency.Add(latencyTag, started, finished, state)
+	}()
 	if err != nil {
 		return nil, err
 	}
@@ -504,22 +516,41 @@ func (s *State) post(endpoint string, payload []byte, ns *nonceSource) (*http.Re
 	if newNonce := resp.Header.Get("Replay-Nonce"); newNonce != "" {
 		ns.addNonce(newNonce)
 	}
+	if resp.StatusCode != expectedCode {
+		return nil, fmt.Errorf("POST %q returned HTTP status %d, expected %d",
+			url, resp.StatusCode, expectedCode)
+	}
+	state = "good"
 	return resp, nil
 }
 
-func (s *State) get(path string) (*http.Response, error) {
-	req, err := http.NewRequest("GET", path, nil)
+func (s *State) get(
+	url string,
+	latencyTag string,
+	expectedCode int) (*http.Response, error) {
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Add("X-Real-IP", s.realIP)
 	req.Header.Add("User-Agent", userAgent)
 	atomic.AddInt64(&s.getTotal, 1)
-	resp, err := s.httpClient.Get(path)
+	started := time.Now()
+	resp, err := s.httpClient.Get(url)
+	finished := time.Now()
+	state := "error"
+	// Defer logging the latency and result
+	defer func() {
+		s.callLatency.Add(latencyTag, started, finished, state)
+	}()
 	if err != nil {
 		return nil, err
 	}
 	go s.addRespCode(resp.StatusCode)
+	if resp.StatusCode != expectedCode {
+		return nil, fmt.Errorf("GET %q returned HTTP status %d, expected %d",
+			url, resp.StatusCode, expectedCode)
+	}
 	return resp, nil
 }
 
