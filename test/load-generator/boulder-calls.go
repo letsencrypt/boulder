@@ -237,13 +237,7 @@ func popPendingOrder(ctx *context) *OrderJSON {
 // records the latency and result of the GET operation in the state.
 func getAuthorization(s *State, ctx *context, url string) (*core.Authorization, error) {
 	latencyTag := "/acme/authz/{ID}"
-	var resp *http.Response
-	var err error
-	if !s.postAsGet {
-		resp, err = s.get(url, latencyTag, http.StatusOK)
-	} else {
-		resp, err = postAsGet(s, ctx, url, latencyTag)
-	}
+	resp, err := postAsGet(s, ctx, url, latencyTag)
 	// If there was an error, note the state and return
 	if err != nil {
 		return nil, fmt.Errorf("%s bad response: %s", url, err)
@@ -413,14 +407,8 @@ func fulfillOrder(s *State, ctx *context) error {
 // latency of the GET operation in the provided state.
 func getOrder(s *State, ctx *context, url string) (*OrderJSON, error) {
 	latencyTag := "/acme/order/{ID}"
-	// GET the order URL
-	var resp *http.Response
-	var err error
-	if !s.postAsGet {
-		resp, err = s.get(url, latencyTag, http.StatusOK)
-	} else {
-		resp, err = postAsGet(s, ctx, url, latencyTag)
-	}
+	// POST-as-GET the order URL
+	resp, err := postAsGet(s, ctx, url, latencyTag)
 	// If there was an error, track that result
 	if err != nil {
 		return nil, fmt.Errorf("%s bad response: %s", url, err)

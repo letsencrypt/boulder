@@ -13,7 +13,6 @@
     "directoryURL": "https://localhost:14000/dir",
     "domainBase": "com",
     "challengeStrategy": "random",
-    "postAsGet": true,
     "httpOneAddrs": ["127.0.0.1:5002"],
     "tlsAlpnOneAddrs": ["127.0.0.1:5001"],
     "dnsAddrs": [":8053"],

@@ -188,10 +188,6 @@ type State struct {
 	challStrat acme.ChallengeStrategy
 	httpClient *http.Client
 
-	// Use POST-as-GET requests to fetch ACME resources instead of GET.
-	// See RFC 8555 Section 6.3
-	postAsGet bool
-
 	getTotal  int64
 	postTotal int64
 	respCodes map[int]*respCode
@@ -280,8 +276,7 @@ func New(
 	latencyPath string,
 	userEmail string,
 	operations []string,
-	challStrat string,
-	postAsGet bool) (*State, error) {
+	challStrat string) (*State, error) {
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
@@ -325,7 +320,6 @@ func New(
 		maxRegs:         maxRegs,
 		maxNamesPerCert: maxNamesPerCert,
 		email:           userEmail,
-		postAsGet:       postAsGet,
 		respCodes:       make(map[int]*respCode),
 	}
 
