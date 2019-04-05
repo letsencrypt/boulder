@@ -120,9 +120,6 @@ func newAccount(s *State, ctx *context) error {
 	}
 	bodyBuf := []byte(jws.FullSerialize())
 
-	// POST the account creation request to the server, tagging the latency of the
-	// request as a POST to the NewAccountEndpoint. Treat an HTTP Status Code
-	// other than StatusCreated as an error.
 	resp, err := s.post(
 		newAccountURL,
 		bodyBuf,
@@ -193,9 +190,6 @@ func newOrder(s *State, ctx *context) error {
 	}
 	bodyBuf := []byte(jws.FullSerialize())
 
-	// POST the new order request to the server, tagging the latency of the
-	// request as a POST to the NewOrderEndpoint. Treat an HTTP Status Code
-	// other than StatusCreated as an error.
 	resp, err := s.post(
 		newOrderURL,
 		bodyBuf,
@@ -326,9 +320,6 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 	}
 	requestPayload := []byte(jws.FullSerialize())
 
-	// POST the challenge initiation request to the server, tagging the latency of
-	// the request as a POST to a challenge ID. Treat an HTTP Status Code other
-	// than StatusOK as an error.
 	resp, err := s.post(
 		chalToSolve.URL,
 		requestPayload,
@@ -542,9 +533,6 @@ func finalizeOrder(s *State, ctx *context) error {
 	}
 	requestPayload := []byte(jws.FullSerialize())
 
-	// POST the order finalization request to the server, tagging the latency of the
-	// request as a POST to an order finalize URL. Treat an HTTP Status Code
-	// other than StatusOK as an error.
 	resp, err := s.post(
 		finalizeURL,
 		requestPayload,
