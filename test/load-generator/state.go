@@ -188,8 +188,7 @@ type State struct {
 	challStrat acme.ChallengeStrategy
 	httpClient *http.Client
 
-	getTotal  int64
-	postTotal int64
+	reqTotal  int64
 	respCodes map[int]*respCode
 	cMu       sync.Mutex
 
@@ -396,26 +395,21 @@ func (s *State) Run(
 	}()
 	go func() {
 		lastTotal := int64(0)
-		lastGet := int64(0)
-		lastPost := int64(0)
+		lastReqTotal := int64(0)
 		for {
 			time.Sleep(time.Second)
 			curTotal := atomic.LoadInt64(&i)
-			curGet := atomic.LoadInt64(&s.getTotal)
-			curPost := atomic.LoadInt64(&s.postTotal)
+			curReqTotal := atomic.LoadInt64(&s.reqTotal)
 			fmt.Printf(
-				"%s Action rate: %d/s [expected: %d/s], Request rate: %d/s [POST: %d/s, GET: %d/s], Responses: [%s]\n",
+				"%s Action rate: %d/s [expected: %d/s], Request rate: %d/s, Responses: [%s]\n",
 				time.Now().Format("2006-01-02 15:04:05"),
 				curTotal-lastTotal,
 				atomic.LoadInt64(&p.Rate),
-				(curGet+curPost)-(lastGet+lastPost),
-				curPost-lastPost,
-				curGet-lastGet,
+				curReqTotal-lastReqTotal,
 				s.respCodeString(),
 			)
 			lastTotal = curTotal
-			lastGet = curGet
-			lastPost = curPost
+			lastReqTotal = curReqTotal
 		}
 	}()
 
@@ -494,7 +488,7 @@ func (s *State) post(
 	req.Header.Add("X-Real-IP", s.realIP)
 	req.Header.Add("User-Agent", userAgent)
 	req.Header.Add("Content-Type", "application/jose+json")
-	atomic.AddInt64(&s.postTotal, 1)
+	atomic.AddInt64(&s.reqTotal, 1)
 	started := time.Now()
 	resp, err := s.httpClient.Do(req)
 	finished := time.Now()
@@ -515,36 +509,6 @@ func (s *State) post(
 			url, resp.StatusCode, expectedCode)
 	}
 	state = "good"
-	return resp, nil
-}
-
-func (s *State) get(
-	url string,
-	latencyTag string,
-	expectedCode int) (*http.Response, error) {
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Add("X-Real-IP", s.realIP)
-	req.Header.Add("User-Agent", userAgent)
-	atomic.AddInt64(&s.getTotal, 1)
-	started := time.Now()
-	resp, err := s.httpClient.Get(url)
-	finished := time.Now()
-	state := "error"
-	// Defer logging the latency and result
-	defer func() {
-		s.callLatency.Add(latencyTag, started, finished, state)
-	}()
-	if err != nil {
-		return nil, err
-	}
-	go s.addRespCode(resp.StatusCode)
-	if resp.StatusCode != expectedCode {
-		return nil, fmt.Errorf("GET %q returned HTTP status %d, expected %d",
-			url, resp.StatusCode, expectedCode)
-	}
 	return resp, nil
 }
 
