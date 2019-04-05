@@ -188,8 +188,7 @@ type State struct {
 	challStrat acme.ChallengeStrategy
 	httpClient *http.Client
 
-	getTotal  int64
-	postTotal int64
+	reqTotal  int64
 	respCodes map[int]*respCode
 	cMu       sync.Mutex
 
@@ -396,26 +395,21 @@ func (s *State) Run(
 	}()
 	go func() {
 		lastTotal := int64(0)
-		lastGet := int64(0)
-		lastPost := int64(0)
+		lastReqTotal := int64(0)
 		for {
 			time.Sleep(time.Second)
 			curTotal := atomic.LoadInt64(&i)
-			curGet := atomic.LoadInt64(&s.getTotal)
-			curPost := atomic.LoadInt64(&s.postTotal)
+			curReqTotal := atomic.LoadInt64(&s.reqTotal)
 			fmt.Printf(
-				"%s Action rate: %d/s [expected: %d/s], Request rate: %d/s [POST: %d/s, GET: %d/s], Responses: [%s]\n",
+				"%s Action rate: %d/s [expected: %d/s], Request rate: %d/s, Responses: [%s]\n",
 				time.Now().Format("2006-01-02 15:04:05"),
 				curTotal-lastTotal,
 				atomic.LoadInt64(&p.Rate),
-				(curGet+curPost)-(lastGet+lastPost),
-				curPost-lastPost,
-				curGet-lastGet,
+				curReqTotal-lastReqTotal,
 				s.respCodeString(),
 			)
 			lastTotal = curTotal
-			lastGet = curGet
-			lastPost = curPost
+			lastReqTotal = curReqTotal
 		}
 	}()
 
@@ -494,7 +488,7 @@ func (s *State) post(
 	req.Header.Add("X-Real-IP", s.realIP)
 	req.Header.Add("User-Agent", userAgent)
 	req.Header.Add("Content-Type", "application/jose+json")
-	atomic.AddInt64(&s.postTotal, 1)
+	atomic.AddInt64(&s.reqTotal, 1)
 	started := time.Now()
 	resp, err := s.httpClient.Do(req)
 	finished := time.Now()
@@ -518,36 +512,6 @@ func (s *State) post(
 	return resp, nil
 }
 
-func (s *State) get(
-	url string,
-	latencyTag string,
-	expectedCode int) (*http.Response, error) {
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Add("X-Real-IP", s.realIP)
-	req.Header.Add("User-Agent", userAgent)
-	atomic.AddInt64(&s.getTotal, 1)
-	started := time.Now()
-	resp, err := s.httpClient.Get(url)
-	finished := time.Now()
-	state := "error"
-	// Defer logging the latency and result
-	defer func() {
-		s.callLatency.Add(latencyTag, started, finished, state)
-	}()
-	if err != nil {
-		return nil, err
-	}
-	go s.addRespCode(resp.StatusCode)
-	if resp.StatusCode != expectedCode {
-		return nil, fmt.Errorf("GET %q returned HTTP status %d, expected %d",
-			url, resp.StatusCode, expectedCode)
-	}
-	return resp, nil
-}
-
 // signWithNonce signs the provided message with the provided signer, returning
 // the raw JWS bytes or an error. signWithNonce is not compatible with ACME v2
 func (s *State) signWithNonce(payload []byte, signer jose.Signer) ([]byte, error) {
@@ -565,21 +529,24 @@ type nonceSource struct {
 }
 
 func (ns *nonceSource) getNonce() (string, error) {
-	directoryURL := ns.s.directory.EndpointURL(acme.NewNonceEndpoint)
+	nonceURL := ns.s.directory.EndpointURL(acme.NewNonceEndpoint)
+	latencyTag := string(acme.NewNonceEndpoint)
 	started := time.Now()
-	resp, err := ns.s.httpClient.Head(directoryURL)
+	resp, err := ns.s.httpClient.Head(nonceURL)
 	finished := time.Now()
-	state := "good"
-	defer func() { ns.s.callLatency.Add("HEAD /directory", started, finished, state) }()
+	state := "error"
+	defer func() {
+		ns.s.callLatency.Add(fmt.Sprintf("HEAD %s", latencyTag),
+			started, finished, state)
+	}()
 	if err != nil {
-		state = "error"
 		return "", err
 	}
 	defer resp.Body.Close()
 	if nonce := resp.Header.Get("Replay-Nonce"); nonce != "" {
+		state = "good"
 		return nonce, nil
 	}
-	state = "error"
 	return "", errors.New("'Replay-Nonce' header not supplied")
 }
 
