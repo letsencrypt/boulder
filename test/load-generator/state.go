@@ -237,11 +237,24 @@ func (s *State) Snapshot(filename string) error {
 
 // Restore previously generated accounts
 func (s *State) Restore(filename string) error {
-	fmt.Printf("[+] Loading accounts from %s\n", filename)
-	content, err := ioutil.ReadFile(filename)
+	fmt.Printf("[+] Loading accounts from %q\n", filename)
+	// NOTE(@cpu): Using os.O_CREATE here explicitly to create the file if it does
+	// not exist.
+	f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		return err
 	}
+
+	content, err := ioutil.ReadAll(f)
+	if err != nil {
+		return err
+	}
+	// If the file's content is the empty string it was probably just created.
+	// Avoid an unmarshaling error by assuming an empty file is an empty snapshot.
+	if string(content) == "" {
+		content = []byte("{}")
+	}
+
 	snap := snapshot{}
 	err = json.Unmarshal(content, &snap)
 	if err != nil {
