@@ -529,21 +529,24 @@ type nonceSource struct {
 }
 
 func (ns *nonceSource) getNonce() (string, error) {
-	directoryURL := ns.s.directory.EndpointURL(acme.NewNonceEndpoint)
+	nonceURL := ns.s.directory.EndpointURL(acme.NewNonceEndpoint)
+	latencyTag := string(acme.NewNonceEndpoint)
 	started := time.Now()
-	resp, err := ns.s.httpClient.Head(directoryURL)
+	resp, err := ns.s.httpClient.Head(nonceURL)
 	finished := time.Now()
-	state := "good"
-	defer func() { ns.s.callLatency.Add("HEAD /directory", started, finished, state) }()
+	state := "error"
+	defer func() {
+		ns.s.callLatency.Add(fmt.Sprintf("HEAD %s", latencyTag),
+			started, finished, state)
+	}()
 	if err != nil {
-		state = "error"
 		return "", err
 	}
 	defer resp.Body.Close()
 	if nonce := resp.Header.Get("Replay-Nonce"); nonce != "" {
+		state = "good"
 		return nonce, nil
 	}
-	state = "error"
 	return "", errors.New("'Replay-Nonce' header not supplied")
 }
 
