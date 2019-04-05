@@ -561,6 +561,42 @@ func (sa *StorageAuthority) NewAuthorizations(ctx context.Context, req *sapb.Add
 	return &sapb.AuthorizationIDs{}, nil
 }
 
+func (sa *StorageAuthority) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) error {
+	return nil
+}
+
+func (sa *StorageAuthority) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Empty, error) {
+	return nil, nil
+}
+
+func (sa *StorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*sapb.RevokeAuthorizationsByDomainResponse, error) {
+	return nil, nil
+}
+
+func (sa *StorageAuthority) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error) {
+	return nil, nil
+}
+
+func (sa *StorageAuthority) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
+	return nil, nil
+}
+
+func (sa *StorageAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
+	return nil, nil
+}
+
+func (sa *StorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
+	return nil, nil
+}
+
+func (sa *StorageAuthority) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
+	return nil, nil
+}
+
+func (sa *StorageAuthority) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
+	return nil, nil
+}
+
 var (
 	authzIdValid       = int64(1)
 	authzIdPending     = int64(2)

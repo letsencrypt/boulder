@@ -166,7 +166,7 @@ type StorageAdder interface {
 	NewAuthorization(ctx context.Context, req *corepb.Authorization) (*sapb.AuthorizationID2, error)
 	NewAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error)
 	FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) error
-	DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) error
+	DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Empty, error)
 	RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*sapb.RevokeAuthorizationsByDomainResponse, error)
 }
 

@@ -666,9 +666,9 @@ func (sas StorageAuthorityClientWrapper) GetValidAuthorizations2(ctx context.Con
 	return sas.inner.GetValidAuthorizations2(ctx, req)
 }
 
-func (sas StorageAuthorityClientWrapper) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) error {
+func (sas StorageAuthorityClientWrapper) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Empty, error) {
 	_, err := sas.inner.DeactivateAuthorization2(ctx, req)
-	return err
+	return nil, err
 }
 
 func (sas StorageAuthorityClientWrapper) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*sapb.RevokeAuthorizationsByDomainResponse, error) {
@@ -1285,7 +1285,7 @@ func (sas StorageAuthorityServerWrapper) DeactivateAuthorization2(ctx context.Co
 		return nil, errIncompleteRequest
 	}
 
-	return nil, sas.inner.DeactivateAuthorization2(ctx, req)
+	return sas.inner.DeactivateAuthorization2(ctx, req)
 }
 
 func (sas StorageAuthorityServerWrapper) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*sapb.RevokeAuthorizationsByDomainResponse, error) {

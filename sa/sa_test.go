@@ -897,7 +897,7 @@ func TestRevokeAuthorizationsByDomain2(t *testing.T) {
 		},
 	})
 	test.AssertNotError(t, err, "sa.NewAuthorization failed")
-	err = sa.DeactivateAuthorization2(context.Background(), idC)
+	_, err = sa.DeactivateAuthorization2(context.Background(), idC)
 	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
 	token = "cXdl"
 	expires = fc.Now().Add(-time.Hour).UTC().UnixNano()
@@ -1275,7 +1275,7 @@ func TestDeactivateAuthorization2(t *testing.T) {
 		},
 	})
 	test.AssertNotError(t, err, "sa.NewAuthorization failed")
-	err = sa.DeactivateAuthorization2(context.Background(), id)
+	_, err = sa.DeactivateAuthorization2(context.Background(), id)
 	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
 
 	// deactivate a valid authorization
@@ -1304,11 +1304,11 @@ func TestDeactivateAuthorization2(t *testing.T) {
 		Expires:           &expires,
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
-	err = sa.DeactivateAuthorization2(context.Background(), id)
+	_, err = sa.DeactivateAuthorization2(context.Background(), id)
 	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
 
 	// attempt to deactivate an already deactivated authorization
-	err = sa.DeactivateAuthorization2(context.Background(), id)
+	_, err = sa.DeactivateAuthorization2(context.Background(), id)
 	test.AssertError(t, err, "sa.DeactivateAuthorization2 didn't fail when authorization is already deactivated")
 }
 
