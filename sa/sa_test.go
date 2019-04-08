@@ -829,7 +829,7 @@ func TestRevokeAuthorizationsByDomain(t *testing.T) {
 }
 
 func TestRevokeAuthorizationsByDomain2(t *testing.T) {
-	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
 		return
 	}
 
@@ -1254,7 +1254,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 }
 
 func TestDeactivateAuthorization2(t *testing.T) {
-	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
 		return
 	}
 
@@ -1575,7 +1575,7 @@ func TestNewOrder(t *testing.T) {
 	test.AssertEquals(t, len(names), 2)
 	test.AssertDeepEquals(t, names, []string{"com.example", "com.example.another.just"})
 
-	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
 		return
 	}
 
@@ -1990,7 +1990,7 @@ func TestGetAuthorizations(t *testing.T) {
 
 // TODO: needs to test also getting old style authorizations
 func TestGetAuthorizations2(t *testing.T) {
-	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
 		return
 	}
 
@@ -2896,7 +2896,7 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 }
 
 func TestNewAuthorization(t *testing.T) {
-	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
 		return
 	}
 
@@ -2936,7 +2936,7 @@ func TestNewAuthorization(t *testing.T) {
 }
 
 func TestNewAuthorizations(t *testing.T) {
-	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
 		return
 	}
 
@@ -2996,7 +2996,7 @@ func TestNewAuthorizations(t *testing.T) {
 }
 
 func TestFinalizeAuthorization2(t *testing.T) {
-	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
 		return
 	}
 
@@ -3085,7 +3085,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 }
 
 func TestGetPendingAuthorization2(t *testing.T) {
-	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
 		return
 	}
 
@@ -3166,7 +3166,7 @@ func TestGetPendingAuthorization2(t *testing.T) {
 }
 
 func TestCountPendingAuthorizations2(t *testing.T) {
-	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
 		return
 	}
 
@@ -3241,7 +3241,7 @@ func TestCountPendingAuthorizations2(t *testing.T) {
 }
 
 func TestGetValidOrderAuthorizations2(t *testing.T) {
-	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
 		return
 	}
 
@@ -3339,7 +3339,7 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 }
 
 func TestCountInvalidAuthorizations2(t *testing.T) {
-	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
 		return
 	}
 
@@ -3416,7 +3416,7 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 }
 
 func TestGetValidAuthorizations2(t *testing.T) {
-	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
 		return
 	}
 
