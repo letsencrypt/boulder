@@ -2424,6 +2424,9 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 			return err
 		}
 		veJSON, err := json.Marshal(validationError)
+		if err != nil {
+			return err
+		}
 		params = append(params, veJSON)
 	}
 	query += " WHERE id = ?"
