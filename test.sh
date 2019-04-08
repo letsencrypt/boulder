@@ -146,7 +146,7 @@ fi
 # Run ineffassign, to check for ineffectual assignments.
 #
 if [[ "$RUN" =~ "ineffassign" ]] ; then
-  run_and_expect_silence ineffassign $(go list -f '{{ .Dir }}' ./...)
+  ineffassign .
 fi
 
 # Run generate to make sure all our generated code can be re-generated with
