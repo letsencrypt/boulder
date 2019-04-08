@@ -239,8 +239,8 @@ if [[ "$RUN" =~ "generate" ]] ; then
   #   stringer: checking package: grpc/bcodes.go:6:2: could not import
   #     github.com/letsencrypt/boulder/probs (can't find import:
   #     github.com/letsencrypt/boulder/probs)
-  go install ./probs
-  go install google.golang.org/grpc/codes
+  run go install ./probs
+  run go install ./vendor/google.golang.org/grpc/codes
   run_and_expect_silence go generate ./...
   # Because the `mock` package we use to generate mocks does not properly
   # support vendored dependencies[0] we are forced to sed out any references to
