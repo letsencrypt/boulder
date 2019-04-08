@@ -11,8 +11,10 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net"
+	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -827,6 +829,10 @@ func TestRevokeAuthorizationsByDomain(t *testing.T) {
 }
 
 func TestRevokeAuthorizationsByDomain2(t *testing.T) {
+	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -1248,6 +1254,10 @@ func TestDeactivateAuthorization(t *testing.T) {
 }
 
 func TestDeactivateAuthorization2(t *testing.T) {
+	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -1543,11 +1553,12 @@ func TestNewOrder(t *testing.T) {
 
 	i := int64(1)
 	status := string(core.StatusPending)
+
 	order, err := sa.NewOrder(context.Background(), &corepb.Order{
 		RegistrationID: &reg.ID,
 		Expires:        &i,
 		Names:          []string{"example.com", "just.another.example.com"},
-		Authorizations: []string{"a", "b", "c", "v2/1"},
+		Authorizations: []string{"a", "b", "c"},
 		Status:         &status,
 	})
 	test.AssertNotError(t, err, "sa.NewOrder failed")
@@ -1558,13 +1569,38 @@ func TestNewOrder(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to count orderToAuthz entries")
 	test.AssertEquals(t, len(authzIDs), 3)
 	test.AssertDeepEquals(t, authzIDs, []string{"a", "b", "c"})
+
+	names, err := sa.namesForOrder(context.Background(), *order.Id)
+	test.AssertNotError(t, err, "namesForOrder errored")
+	test.AssertEquals(t, len(names), 2)
+	test.AssertDeepEquals(t, names, []string{"com.example", "com.example.another.just"})
+
+	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	order, err = sa.NewOrder(context.Background(), &corepb.Order{
+		RegistrationID: &reg.ID,
+		Expires:        &i,
+		Names:          []string{"example.com", "just.another.example.com"},
+		Authorizations: []string{"a", "b", "c", "v2/1"},
+		Status:         &status,
+	})
+	test.AssertNotError(t, err, "sa.NewOrder failed")
+	test.AssertEquals(t, *order.Id, int64(2))
+
+	authzIDs = []string{}
+	_, err = sa.dbMap.Select(&authzIDs, "SELECT authzID FROM orderToAuthz WHERE orderID = ?;", *order.Id)
+	test.AssertNotError(t, err, "Failed to count orderToAuthz entries")
+	test.AssertEquals(t, len(authzIDs), 3)
+	test.AssertDeepEquals(t, authzIDs, []string{"a", "b", "c"})
 	var v2AuthzsIDs []string
 	_, err = sa.dbMap.Select(&v2AuthzsIDs, "SELECT authzID FROM orderToAuthz2 WHERE orderID = ?;", *order.Id)
 	test.AssertNotError(t, err, "Failed to count orderToAuthz entries")
 	test.AssertEquals(t, len(v2AuthzsIDs), 1)
 	test.AssertDeepEquals(t, v2AuthzsIDs, []string{"1"})
 
-	names, err := sa.namesForOrder(context.Background(), *order.Id)
+	names, err = sa.namesForOrder(context.Background(), *order.Id)
 	test.AssertNotError(t, err, "namesForOrder errored")
 	test.AssertEquals(t, len(names), 2)
 	test.AssertDeepEquals(t, names, []string{"com.example", "com.example.another.just"})
@@ -1954,6 +1990,10 @@ func TestGetAuthorizations(t *testing.T) {
 
 // TODO: needs to test also getting old style authorizations
 func TestGetAuthorizations2(t *testing.T) {
+	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
@@ -2856,6 +2896,10 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 }
 
 func TestNewAuthorization(t *testing.T) {
+	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -2892,6 +2936,10 @@ func TestNewAuthorization(t *testing.T) {
 }
 
 func TestNewAuthorizations(t *testing.T) {
+	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -2948,6 +2996,10 @@ func TestNewAuthorizations(t *testing.T) {
 }
 
 func TestFinalizeAuthorization2(t *testing.T) {
+	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -3033,6 +3085,10 @@ func TestFinalizeAuthorization2(t *testing.T) {
 }
 
 func TestGetPendingAuthorization2(t *testing.T) {
+	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -3110,6 +3166,10 @@ func TestGetPendingAuthorization2(t *testing.T) {
 }
 
 func TestCountPendingAuthorizations2(t *testing.T) {
+	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -3181,6 +3241,10 @@ func TestCountPendingAuthorizations2(t *testing.T) {
 }
 
 func TestGetValidOrderAuthorizations2(t *testing.T) {
+	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
@@ -3275,6 +3339,10 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 }
 
 func TestCountInvalidAuthorizations2(t *testing.T) {
+	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -3348,6 +3416,10 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 }
 
 func TestGetValidAuthorizations2(t *testing.T) {
+	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
