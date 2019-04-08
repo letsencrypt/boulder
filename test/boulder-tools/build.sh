@@ -17,6 +17,7 @@ apt-get install -y --no-install-recommends \
   ruby-dev \
   rsyslog \
   protobuf-compiler \
+  python3-venv \
   softhsm \
   build-essential \
   cmake \
@@ -56,7 +57,7 @@ go install ./
 git clone https://github.com/certbot/certbot /certbot
 cd /certbot
 ./letsencrypt-auto --os-packages-only
-./tools/venv.py
+./tools/venv3.py
 cd -
 
 # Install pkcs11-proxy. Checked out commit was master HEAD at time
