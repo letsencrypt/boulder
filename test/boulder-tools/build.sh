@@ -16,14 +16,17 @@ apt-get install -y --no-install-recommends \
   ruby \
   ruby-dev \
   rsyslog \
-  protobuf-compiler \
   python3-venv \
   softhsm \
   build-essential \
   cmake \
   libssl-dev \
   libseccomp-dev \
-  opensc
+  opensc \
+  unzip
+
+curl -L https://github.com/google/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip -o /tmp/protoc.zip
+unzip /tmp/protoc.zip -d /usr/local/protoc
 
 # Override default GOBIN and GOPATH
 export GOBIN=/usr/local/bin GOPATH=/tmp/gopath
@@ -43,16 +46,6 @@ go get \
   golang.org/x/tools/cover \
   golang.org/x/tools/cmd/stringer \
   github.com/gordonklaus/ineffassign
-
-# grpc uses a version attestation variable of the form grpc.SupportPackageIsVersionN
-# where N is the generated code version shared between protoc-gen-go and grpc-go
-# and is used to keep their mappings in sync. Check out the specific version
-# we used to generate the checked-in protobuf mappings so that we get the
-# same mappings + version number even if protoc-gen-go bumps the generated code
-# version
-cd $GOPATH/src/github.com/golang/protobuf/protoc-gen-go
-git checkout c9c7427a2a70d2eb3bafa0ab2dc163e45f143317
-go install ./
 
 git clone https://github.com/certbot/certbot /certbot
 cd /certbot
