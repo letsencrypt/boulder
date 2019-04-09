@@ -4,6 +4,28 @@ package features
 
 import "strconv"
 
+func _() {
+	// An "invalid array index" compiler error signifies that the constant values have changed.
+	// Re-run the stringer command to generate them again.
+	var x [1]struct{}
+	_ = x[unused-0]
+	_ = x[PerformValidationRPC-1]
+	_ = x[ACME13KeyRollover-2]
+	_ = x[SimplifiedVAHTTP-3]
+	_ = x[TLSSNIRevalidation-4]
+	_ = x[AllowRenewalFirstRL-5]
+	_ = x[CAAValidationMethods-6]
+	_ = x[CAAAccountURI-7]
+	_ = x[ProbeCTLogs-8]
+	_ = x[HeadNonceStatusOK-9]
+	_ = x[NewAuthorizationSchema-10]
+	_ = x[RevokeAtRA-11]
+	_ = x[SetIssuedNamesRenewalBit-12]
+	_ = x[EarlyOrderRateLimit-13]
+	_ = x[EnforceMultiVA-14]
+	_ = x[MultiVAFullResults-15]
+}
+
 const _FeatureFlag_name = "unusedPerformValidationRPCACME13KeyRolloverSimplifiedVAHTTPTLSSNIRevalidationAllowRenewalFirstRLCAAValidationMethodsCAAAccountURIProbeCTLogsHeadNonceStatusOKNewAuthorizationSchemaRevokeAtRASetIssuedNamesRenewalBitEarlyOrderRateLimitEnforceMultiVAMultiVAFullResults"
 
 var _FeatureFlag_index = [...]uint16{0, 6, 26, 43, 59, 77, 96, 116, 129, 140, 157, 179, 189, 213, 232, 246, 264}
