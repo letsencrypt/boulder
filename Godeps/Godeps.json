@@ -1,6 +1,6 @@
 {
 	"ImportPath": "github.com/letsencrypt/boulder",
-	"GoVersion": "go1.11",
+	"GoVersion": "go1.12",
 	"GodepVersion": "v80",
 	"Packages": [
 		"./..."
@@ -122,28 +122,28 @@
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/proto",
-			"Comment": "v1.1.0",
-			"Rev": "b4deda0973fb4c70b50d226b1af49f3da59f5265"
+			"Comment": "v1.3.1",
+			"Rev": "b5d812f8a3706043e23a9cd5babf2e5423744d30"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/ptypes",
-			"Comment": "v1.1.0",
-			"Rev": "b4deda0973fb4c70b50d226b1af49f3da59f5265"
+			"Comment": "v1.3.1",
+			"Rev": "b5d812f8a3706043e23a9cd5babf2e5423744d30"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/ptypes/any",
-			"Comment": "v1.1.0",
-			"Rev": "b4deda0973fb4c70b50d226b1af49f3da59f5265"
+			"Comment": "v1.3.1",
+			"Rev": "b5d812f8a3706043e23a9cd5babf2e5423744d30"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/ptypes/duration",
-			"Comment": "v1.1.0",
-			"Rev": "b4deda0973fb4c70b50d226b1af49f3da59f5265"
+			"Comment": "v1.3.1",
+			"Rev": "b5d812f8a3706043e23a9cd5babf2e5423744d30"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/ptypes/timestamp",
-			"Comment": "v1.1.0",
-			"Rev": "b4deda0973fb4c70b50d226b1af49f3da59f5265"
+			"Comment": "v1.3.1",
+			"Rev": "b5d812f8a3706043e23a9cd5babf2e5423744d30"
 		},
 		{
 			"ImportPath": "github.com/golang/snappy",
@@ -225,12 +225,13 @@
 		},
 		{
 			"ImportPath": "github.com/matttproud/golang_protobuf_extensions/pbutil",
-			"Comment": "v1.0.0-2-gc12348c",
+			"Comment": "v1.0.1",
 			"Rev": "c12348ce28de40eed0136aa2b644d0ee0650e56c"
 		},
 		{
 			"ImportPath": "github.com/miekg/dns",
-			"Rev": "031fad65fea12748347cbb2a30f190b6257fc844"
+			"Comment": "v1.1.8",
+			"Rev": "73601d4aed9d844322611759d7f3619110b7c88e"
 		},
 		{
 			"ImportPath": "github.com/miekg/pkcs11",

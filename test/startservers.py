@@ -17,6 +17,11 @@ if default_config_dir == '':
 
 processes = []
 
+# NOTE(@cpu): We manage the challSrvProcess separately from the other global
+# processes because we want integration tests to be able to stop/start it (e.g.
+# to run the load-generator).
+challSrvProcess = None
+
 def install(race_detection):
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
     # build cache with new BUILD_TIMEs, or invalidating it on merges with a new
@@ -70,6 +75,11 @@ def start(race_detection, fakeclock=None, account_uri=None):
     signal.signal(signal.SIGINT, lambda _, __: stop())
     if not install(race_detection):
         return False
+
+    # Start the pebble-challtestsrv first so it can be used to resolve DNS for
+    # gRPC.
+    startChallSrv()
+
     # Processes are in order of dependency: Each process should be started
     # before any services that intend to send it RPCs. On shutdown they will be
     # killed in reverse order.
@@ -89,12 +99,6 @@ def start(race_detection, fakeclock=None, account_uri=None):
         [8109, './bin/boulder-publisher --config %s --addr publisher2.boulder:9091 --debug-addr :8109' % os.path.join(default_config_dir, "publisher.json")],
         [9380, './bin/mail-test-srv --closeFirst 5 --cert test/mail-test-srv/localhost/cert.pem --key test/mail-test-srv/localhost/key.pem'],
         [8005, './bin/ocsp-responder --config %s' % os.path.join(default_config_dir, "ocsp-responder.json")],
-        # NOTE(@cpu): We specify explicit bind addresses for -https01 and
-        # --tlsalpn01 here to allow HTTPS HTTP-01 responses on 5001 for one
-        # interface and TLS-ALPN-01 responses on 5001 for another interface. The
-        # choice of which is used is controlled by mock DNS data added by the
-        # relevant integration tests.
-        [8053, 'pebble-challtestsrv --defaultIPv4 %s --defaultIPv6 "" --dns01 :8053,:8054 --management :8055 --http01 10.77.77.77:5002 -https01 10.77.77.77:5001 --tlsalpn01 10.88.88.88:5001' % os.environ.get("FAKE_DNS")],
         [8004, './bin/boulder-va --config %s --addr va1.boulder:9092 --debug-addr :8004' % os.path.join(default_config_dir, "va.json")],
         [8104, './bin/boulder-va --config %s --addr va2.boulder:9092 --debug-addr :8104' % os.path.join(default_config_dir, "va.json")],
         [8001, './bin/boulder-ca --config %s --ca-addr ca1.boulder:9093 --ocsp-addr ca1.boulder:9096 --debug-addr :8001' % os.path.join(default_config_dir, "ca-a.json")],
@@ -116,13 +120,15 @@ def start(race_detection, fakeclock=None, account_uri=None):
         except Exception as e:
             print(e)
             return False
+
     print "All servers running. Hit ^C to kill."
     return True
 
 def check():
     """Return true if all started processes are still alive.
 
-    Log about anything that died.
+    Log about anything that died. The pebble-challtestsrv is not considered when
+    checking processes.
     """
     global processes
     busted = []
@@ -139,6 +145,42 @@ def check():
     processes = stillok
     return not busted
 
+def startChallSrv():
+    """
+    Start the pebble-challtestsrv and wait for it to become available. See also
+    stopChallSrv.
+    """
+    global challSrvProcess
+    if challSrvProcess is not None:
+        raise Exception("startChallSrv called more than once")
+
+    # NOTE(@cpu): We specify explicit bind addresses for -https01 and
+    # --tlsalpn01 here to allow HTTPS HTTP-01 responses on 5001 for on interface
+    # and TLS-ALPN-01 responses on 5001 for another interface. The choice of
+    # which is used is controlled by mock DNS data added by the relevant
+    # integration tests.
+    prog = 'pebble-challtestsrv --defaultIPv4 %s --defaultIPv6 "" --dns01 :8053,:8054 --management :8055 --http01 10.77.77.77:5002 -https01 10.77.77.77:5001 --tlsalpn01 10.88.88.88:5001' % os.environ.get("FAKE_DNS")
+    try:
+        challSrvProcess = run(prog, False, None, None)
+        # Wait for the pebble-challtestsrv management port.
+        if not waitport(8055, prog):
+            return False
+    except Exception as e:
+        print(e)
+        return False
+
+def stopChallSrv():
+    """
+    Stop the running pebble-challtestsrv (if any) and wait for it to terminate.
+    See also startChallSrv.
+    """
+    global challSrvProcess
+    if challSrvProcess is None:
+        return
+    if challSrvProcess.poll() is None:
+        challSrvProcess.send_signal(signal.SIGTERM)
+        challSrvProcess.wait()
+    challSrvProcess = None
 
 @atexit.register
 def stop():
@@ -151,3 +193,6 @@ def stop():
             p.send_signal(signal.SIGTERM)
             p.wait()
     processes = []
+
+    # Also stop the challenge test server
+    stopChallSrv()

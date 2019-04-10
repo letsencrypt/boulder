@@ -185,10 +185,10 @@ type State struct {
 	callLatency latencyWriter
 
 	directory  *acme.Directory
+	challStrat acme.ChallengeStrategy
 	httpClient *http.Client
 
-	getTotal  int64
-	postTotal int64
+	reqTotal  int64
 	respCodes map[int]*respCode
 	cMu       sync.Mutex
 
@@ -237,11 +237,24 @@ func (s *State) Snapshot(filename string) error {
 
 // Restore previously generated accounts
 func (s *State) Restore(filename string) error {
-	fmt.Printf("[+] Loading accounts from %s\n", filename)
-	content, err := ioutil.ReadFile(filename)
+	fmt.Printf("[+] Loading accounts from %q\n", filename)
+	// NOTE(@cpu): Using os.O_CREATE here explicitly to create the file if it does
+	// not exist.
+	f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		return err
 	}
+
+	content, err := ioutil.ReadAll(f)
+	if err != nil {
+		return err
+	}
+	// If the file's content is the empty string it was probably just created.
+	// Avoid an unmarshaling error by assuming an empty file is an empty snapshot.
+	if string(content) == "" {
+		content = []byte("{}")
+	}
+
 	snap := snapshot{}
 	err = json.Unmarshal(content, &snap)
 	if err != nil {
@@ -274,12 +287,17 @@ func New(
 	maxRegs, maxNamesPerCert int,
 	latencyPath string,
 	userEmail string,
-	operations []string) (*State, error) {
+	operations []string,
+	challStrat string) (*State, error) {
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
 	}
 	directory, err := acme.NewDirectory(directoryURL)
+	if err != nil {
+		return nil, err
+	}
+	strat, err := acme.NewChallengeStrategy(challStrat)
 	if err != nil {
 		return nil, err
 	}
@@ -305,6 +323,7 @@ func New(
 	s := &State{
 		httpClient:      httpClient,
 		directory:       directory,
+		challStrat:      strat,
 		certKey:         certKey,
 		domainBase:      domainBase,
 		callLatency:     latencyFile,
@@ -329,13 +348,25 @@ func New(
 }
 
 // Run runs the WFE load-generator
-func (s *State) Run(httpOneAddr string, p Plan) error {
-	// Create a new challenge server for HTTP-01 challenges
+func (s *State) Run(
+	httpOneAddrs []string,
+	tlsALPNOneAddrs []string,
+	dnsAddrs []string,
+	fakeDNS string,
+	p Plan) error {
+	// Create a new challenge server binding the requested addrs.
 	challSrv, err := challtestsrv.New(challtestsrv.Config{
-		HTTPOneAddrs: []string{httpOneAddr},
+		HTTPOneAddrs:    httpOneAddrs,
+		TLSALPNOneAddrs: tlsALPNOneAddrs,
+		DNSOneAddrs:     dnsAddrs,
 		// Use a logger that has a load-generator prefix
 		Log: log.New(os.Stdout, "load-generator challsrv - ", log.LstdFlags),
 	})
+	// Setup the challenge server to return the mock "fake DNS" IP address
+	challSrv.SetDefaultDNSIPv4(fakeDNS)
+	// Disable returning any AAAA records.
+	challSrv.SetDefaultDNSIPv6("")
+
 	if err != nil {
 		return err
 	}
@@ -344,7 +375,6 @@ func (s *State) Run(httpOneAddr string, p Plan) error {
 
 	// Start the Challenge server in its own Go routine
 	go s.challSrv.Run()
-	fmt.Printf("[+] Started http-01 challenge server: %q\n", httpOneAddr)
 
 	if p.Delta != nil {
 		go func() {
@@ -378,26 +408,21 @@ func (s *State) Run(httpOneAddr string, p Plan) error {
 	}()
 	go func() {
 		lastTotal := int64(0)
-		lastGet := int64(0)
-		lastPost := int64(0)
+		lastReqTotal := int64(0)
 		for {
 			time.Sleep(time.Second)
 			curTotal := atomic.LoadInt64(&i)
-			curGet := atomic.LoadInt64(&s.getTotal)
-			curPost := atomic.LoadInt64(&s.postTotal)
+			curReqTotal := atomic.LoadInt64(&s.reqTotal)
 			fmt.Printf(
-				"%s Action rate: %d/s [expected: %d/s], Request rate: %d/s [POST: %d/s, GET: %d/s], Responses: [%s]\n",
+				"%s Action rate: %d/s [expected: %d/s], Request rate: %d/s, Responses: [%s]\n",
 				time.Now().Format("2006-01-02 15:04:05"),
 				curTotal-lastTotal,
 				atomic.LoadInt64(&p.Rate),
-				(curGet+curPost)-(lastGet+lastPost),
-				curGet-lastGet,
-				curPost-lastPost,
+				curReqTotal-lastReqTotal,
 				s.respCodeString(),
 			)
 			lastTotal = curTotal
-			lastGet = curGet
-			lastPost = curPost
+			lastReqTotal = curReqTotal
 		}
 	}()
 
@@ -463,16 +488,28 @@ func (s *State) respCodeString() string {
 
 var userAgent = "boulder load-generator -- heyo ^_^"
 
-func (s *State) post(endpoint string, payload []byte, ns *nonceSource) (*http.Response, error) {
-	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(payload))
+func (s *State) post(
+	url string,
+	payload []byte,
+	ns *nonceSource,
+	latencyTag string,
+	expectedCode int) (*http.Response, error) {
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Add("X-Real-IP", s.realIP)
 	req.Header.Add("User-Agent", userAgent)
 	req.Header.Add("Content-Type", "application/jose+json")
-	atomic.AddInt64(&s.postTotal, 1)
+	atomic.AddInt64(&s.reqTotal, 1)
+	started := time.Now()
 	resp, err := s.httpClient.Do(req)
+	finished := time.Now()
+	state := "error"
+	// Defer logging the latency and result
+	defer func() {
+		s.callLatency.Add(latencyTag, started, finished, state)
+	}()
 	if err != nil {
 		return nil, err
 	}
@@ -480,22 +517,11 @@ func (s *State) post(endpoint string, payload []byte, ns *nonceSource) (*http.Re
 	if newNonce := resp.Header.Get("Replay-Nonce"); newNonce != "" {
 		ns.addNonce(newNonce)
 	}
-	return resp, nil
-}
-
-func (s *State) get(path string) (*http.Response, error) {
-	req, err := http.NewRequest("GET", path, nil)
-	if err != nil {
-		return nil, err
+	if resp.StatusCode != expectedCode {
+		return nil, fmt.Errorf("POST %q returned HTTP status %d, expected %d",
+			url, resp.StatusCode, expectedCode)
 	}
-	req.Header.Add("X-Real-IP", s.realIP)
-	req.Header.Add("User-Agent", userAgent)
-	atomic.AddInt64(&s.getTotal, 1)
-	resp, err := s.httpClient.Get(path)
-	if err != nil {
-		return nil, err
-	}
-	go s.addRespCode(resp.StatusCode)
+	state = "good"
 	return resp, nil
 }
 
@@ -516,21 +542,24 @@ type nonceSource struct {
 }
 
 func (ns *nonceSource) getNonce() (string, error) {
-	directoryURL := ns.s.directory.EndpointURL(acme.NewNonceEndpoint)
+	nonceURL := ns.s.directory.EndpointURL(acme.NewNonceEndpoint)
+	latencyTag := string(acme.NewNonceEndpoint)
 	started := time.Now()
-	resp, err := ns.s.httpClient.Head(directoryURL)
+	resp, err := ns.s.httpClient.Head(nonceURL)
 	finished := time.Now()
-	state := "good"
-	defer func() { ns.s.callLatency.Add("HEAD /directory", started, finished, state) }()
+	state := "error"
+	defer func() {
+		ns.s.callLatency.Add(fmt.Sprintf("HEAD %s", latencyTag),
+			started, finished, state)
+	}()
 	if err != nil {
-		state = "error"
 		return "", err
 	}
 	defer resp.Body.Close()
 	if nonce := resp.Header.Get("Replay-Nonce"); nonce != "" {
+		state = "good"
 		return nonce, nil
 	}
-	state = "error"
 	return "", errors.New("'Replay-Nonce' header not supplied")
 }
 

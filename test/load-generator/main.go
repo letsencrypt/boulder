@@ -21,17 +21,21 @@ type Config struct {
 		RateDelta string   // requests / s^2
 		Runtime   string   // how long to run for
 	}
-	ExternalState   string // path to file to load/save registrations etc to/from
-	DontSaveState   bool   // don't save changes to external state
-	DirectoryURL    string // ACME server directory URL
-	DomainBase      string // base domain name to create authorizations for
-	HTTPOneAddr     string // address to listen for http-01 validation requests on
-	RealIP          string // value of the Real-IP header to use when bypassing CDN
-	CertKeySize     int    // size of the key to use when creating CSRs
-	RegEmail        string // email to use in registrations
-	Results         string // path to save metrics to
-	MaxRegs         int    // maximum number of registrations to create
-	MaxNamesPerCert int    // maximum number of names on one certificate/order
+	ExternalState     string   // path to file to load/save registrations etc to/from
+	DontSaveState     bool     // don't save changes to external state
+	DirectoryURL      string   // ACME server directory URL
+	DomainBase        string   // base domain name to create authorizations for
+	HTTPOneAddrs      []string // addresses to listen for http-01 validation requests on
+	TLSALPNOneAddrs   []string // addresses to listen for tls-alpn-01 validation requests on
+	DNSAddrs          []string // addresses to listen for DNS requests on
+	FakeDNS           string   // IPv6 address to use for all DNS A requests
+	RealIP            string   // value of the Real-IP header to use when bypassing CDN
+	CertKeySize       int      // size of the key to use when creating CSRs
+	RegEmail          string   // email to use in registrations
+	Results           string   // path to save metrics to
+	MaxRegs           int      // maximum number of registrations to create
+	MaxNamesPerCert   int      // maximum number of names on one certificate/order
+	ChallengeStrategy string   // challenge selection strategy ("random", "http-01", "dns-01", "tls-alpn-01")
 }
 
 func main() {
@@ -82,6 +86,7 @@ func main() {
 		config.Results,
 		config.RegEmail,
 		config.Plan.Actions,
+		config.ChallengeStrategy,
 	)
 	cmd.FailOnError(err, "Failed to create load generator")
 
@@ -107,13 +112,25 @@ func main() {
 		delta = &RateDelta{Inc: int64(rate), Period: period}
 	}
 
+	if len(config.HTTPOneAddrs) == 0 &&
+		len(config.TLSALPNOneAddrs) == 0 &&
+		len(config.DNSAddrs) == 0 {
+		cmd.Fail("There must be at least one bind address in " +
+			"HTTPOneAddrs, TLSALPNOneAddrs or DNSAddrs\n")
+	}
+
 	go cmd.CatchSignals(nil, nil)
 
-	err = s.Run(config.HTTPOneAddr, Plan{
-		Runtime: runtime,
-		Rate:    config.Plan.Rate,
-		Delta:   delta,
-	})
+	err = s.Run(
+		config.HTTPOneAddrs,
+		config.TLSALPNOneAddrs,
+		config.DNSAddrs,
+		config.FakeDNS,
+		Plan{
+			Runtime: runtime,
+			Rate:    config.Plan.Rate,
+			Delta:   delta,
+		})
 	cmd.FailOnError(err, "Failed to run load generator")
 
 	if config.ExternalState != "" && !config.DontSaveState {
