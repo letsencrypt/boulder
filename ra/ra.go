@@ -550,16 +550,20 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		return *pendingAuth, nil
 	}
 
-	authzPB, err := ra.createPendingAuthz(ctx, regID, identifier)
+	v2 := features.Enabled(features.NewAuthorizationSchema)
+	authzPB, err := ra.createPendingAuthz(ctx, regID, identifier, v2)
 	if err != nil {
 		return core.Authorization{}, err
 	}
 
-	if features.Enabled(features.NewAuthorizationSchema) {
+	if v2 {
 		resultPB, err := ra.SA.NewAuthorization(ctx, authzPB)
 		if err != nil {
 			return core.Authorization{}, err
 		}
+		// The current internal authorization objects use a string for the ID, the new
+		// storage format uses a integer ID. In order to maintain compatibility we
+		// convert the integer ID to a string.
 		id := fmt.Sprintf("%d", *resultPB.Id)
 		authzPB.Id = &id
 		return bgrpc.PBToAuthz(authzPB)
@@ -1848,6 +1852,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Loop through each of the names missing authzs and create a new pending
 	// authorization for each.
 	var newAuthzs []*corepb.Authorization
+	v2 := features.Enabled(features.NewAuthorizationSchema)
 	for _, name := range missingAuthzNames {
 		// TODO(#3069): Batch this check
 		if err := ra.checkInvalidAuthorizationLimit(ctx, *order.RegistrationID, name); err != nil {
@@ -1856,7 +1861,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		pb, err := ra.createPendingAuthz(ctx, *order.RegistrationID, core.AcmeIdentifier{
 			Type:  core.IdentifierDNS,
 			Value: name,
-		})
+		}, v2)
 		if err != nil {
 			return nil, err
 		}
@@ -1888,10 +1893,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// whether the newly created pending authz's have an expiry lower than minExpiry
 	if len(newAuthzs) > 0 {
 		var authzIDs *sapb.AuthorizationIDs
-		if features.Enabled(features.NewAuthorizationSchema) {
-			authzIDs, err = ra.SA.NewAuthorizations(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: newAuthzs})
+		req := sapb.AddPendingAuthorizationsRequest{Authz: newAuthzs}
+		if v2 {
+			authzIDs, err = ra.SA.NewAuthorizations(ctx, &req)
 		} else {
-			authzIDs, err = ra.SA.AddPendingAuthorizations(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: newAuthzs})
+			authzIDs, err = ra.SA.AddPendingAuthorizations(ctx, &req)
 		}
 		if err != nil {
 			return nil, err
@@ -1920,7 +1926,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 // createPendingAuthz checks that a name is allowed for issuance and creates the
 // necessary challenges for it and puts this and all of the relevant information
 // into a corepb.Authorization for transmission to the SA to be stored
-func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg int64, identifier core.AcmeIdentifier) (*corepb.Authorization, error) {
+func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg int64, identifier core.AcmeIdentifier, v2 bool) (*corepb.Authorization, error) {
 	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second).UnixNano()
 	status := string(core.StatusPending)
 	authz := &corepb.Authorization{
@@ -1928,10 +1934,7 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 		RegistrationID: &reg,
 		Status:         &status,
 		Expires:        &expires,
-	}
-	if features.Enabled(features.NewAuthorizationSchema) {
-		v2 := true
-		authz.V2 = &v2
+		V2:             &v2,
 	}
 
 	// Create challenges. The WFE will update them with URIs before sending them out.
