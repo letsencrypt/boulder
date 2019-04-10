@@ -15,7 +15,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
@@ -116,8 +115,7 @@ func pbToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 	if in == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
-	newAuthzSchema := features.Enabled(features.NewAuthorizationSchema)
-	if (in.Id == nil && !newAuthzSchema) || in.Type == nil || in.Status == nil || in.Token == nil || in.KeyAuthorization == nil && !newAuthzSchema {
+	if in.Type == nil || in.Status == nil || in.Token == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
 	var recordAry []core.ValidationRecord
