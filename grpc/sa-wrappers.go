@@ -584,8 +584,8 @@ func (sas StorageAuthorityClientWrapper) RevokeCertificate(ctx context.Context, 
 	return err
 }
 
-func (sas StorageAuthorityClientWrapper) NewAuthorization(ctx context.Context, req *corepb.Authorization) (*sapb.AuthorizationID2, error) {
-	resp, err := sas.inner.NewAuthorization(ctx, req)
+func (sas StorageAuthorityClientWrapper) NewAuthorization2(ctx context.Context, req *corepb.Authorization) (*sapb.AuthorizationID2, error) {
+	resp, err := sas.inner.NewAuthorization2(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -595,8 +595,8 @@ func (sas StorageAuthorityClientWrapper) NewAuthorization(ctx context.Context, r
 	return resp, nil
 }
 
-func (sas StorageAuthorityClientWrapper) NewAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
-	resp, err := sas.inner.NewAuthorizations(ctx, req)
+func (sas StorageAuthorityClientWrapper) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
+	resp, err := sas.inner.NewAuthorizations2(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -1209,19 +1209,19 @@ func (sas StorageAuthorityServerWrapper) RevokeCertificate(ctx context.Context, 
 	return &corepb.Empty{}, sas.inner.RevokeCertificate(ctx, req)
 }
 
-func (sas StorageAuthorityServerWrapper) NewAuthorization(ctx context.Context, req *corepb.Authorization) (*sapb.AuthorizationID2, error) {
+func (sas StorageAuthorityServerWrapper) NewAuthorization2(ctx context.Context, req *corepb.Authorization) (*sapb.AuthorizationID2, error) {
 	if req == nil {
 		return nil, errIncompleteRequest
 	}
-	return sas.inner.NewAuthorization(ctx, req)
+	return sas.inner.NewAuthorization2(ctx, req)
 }
 
-func (sas StorageAuthorityServerWrapper) NewAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
+func (sas StorageAuthorityServerWrapper) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
 	if req == nil || req.Authz == nil {
 		return nil, errIncompleteRequest
 	}
 
-	return sas.inner.NewAuthorizations(ctx, req)
+	return sas.inner.NewAuthorizations2(ctx, req)
 }
 
 func (sas StorageAuthorityServerWrapper) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {

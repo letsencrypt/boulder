@@ -847,7 +847,7 @@ func TestRevokeAuthorizationsByDomain2(t *testing.T) {
 	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
 	challType := string(core.ChallengeTypeDNS01)
 	token := "YXNk"
-	idA, err := sa.NewAuthorization(context.Background(), &corepb.Authorization{
+	idA, err := sa.NewAuthorization2(context.Background(), &corepb.Authorization{
 		V2:             &v2,
 		Identifier:     &ident,
 		RegistrationID: &reg.ID,
@@ -863,7 +863,7 @@ func TestRevokeAuthorizationsByDomain2(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "sa.NewAuthorization failed")
 	token = "Zmdo"
-	idB, err := sa.NewAuthorization(context.Background(), &corepb.Authorization{
+	idB, err := sa.NewAuthorization2(context.Background(), &corepb.Authorization{
 		V2:             &v2,
 		Identifier:     &ident,
 		RegistrationID: &reg.ID,
@@ -888,7 +888,7 @@ func TestRevokeAuthorizationsByDomain2(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 	token = "enhj"
-	idC, err := sa.NewAuthorization(context.Background(), &corepb.Authorization{
+	idC, err := sa.NewAuthorization2(context.Background(), &corepb.Authorization{
 		V2:             &v2,
 		Identifier:     &ident,
 		RegistrationID: &reg.ID,
@@ -907,7 +907,7 @@ func TestRevokeAuthorizationsByDomain2(t *testing.T) {
 	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
 	token = "cXdl"
 	expires = fc.Now().Add(-time.Hour).UTC().UnixNano()
-	idD, err := sa.NewAuthorization(context.Background(), &corepb.Authorization{
+	idD, err := sa.NewAuthorization2(context.Background(), &corepb.Authorization{
 		V2:             &v2,
 		Identifier:     &ident,
 		RegistrationID: &reg.ID,
@@ -1270,7 +1270,7 @@ func TestDeactivateAuthorization2(t *testing.T) {
 	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
 	challType := string(core.ChallengeTypeDNS01)
 	token := "YXNk"
-	id, err := sa.NewAuthorization(context.Background(), &corepb.Authorization{
+	id, err := sa.NewAuthorization2(context.Background(), &corepb.Authorization{
 		V2:             &v2,
 		Identifier:     &ident,
 		RegistrationID: &reg.ID,
@@ -1290,7 +1290,7 @@ func TestDeactivateAuthorization2(t *testing.T) {
 
 	// deactivate a valid authorization
 	token = "Zmdo"
-	id, err = sa.NewAuthorization(context.Background(), &corepb.Authorization{
+	id, err = sa.NewAuthorization2(context.Background(), &corepb.Authorization{
 		V2:             &v2,
 		Identifier:     &ident,
 		RegistrationID: &reg.ID,
@@ -2026,7 +2026,7 @@ func TestGetAuthorizations2(t *testing.T) {
 	authzPB, err := bgrpc.AuthzToPB(pa)
 	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
 	authzPB.V2 = &v2
-	paA, err := sa.NewAuthorization(ctx, authzPB)
+	paA, err := sa.NewAuthorization2(ctx, authzPB)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	test.Assert(t, paA.Id != nil, "ID shouldn't be blank")
 
@@ -2037,7 +2037,7 @@ func TestGetAuthorizations2(t *testing.T) {
 	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
 	authzPB.V2 = &v2
 	// Create pending authorization B
-	paB, err := sa.NewAuthorization(ctx, authzPB)
+	paB, err := sa.NewAuthorization2(ctx, authzPB)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	test.Assert(t, paB.Id != nil, "ID shouldn't be blank")
 
@@ -2063,7 +2063,7 @@ func TestGetAuthorizations2(t *testing.T) {
 	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
 	authzPB.V2 = &v2
 	// Add the template to create pending authorization C
-	paC, err := sa.NewAuthorization(ctx, authzPB)
+	paC, err := sa.NewAuthorization2(ctx, authzPB)
 	// There should be no error
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	test.Assert(t, paC.Id != nil, "ID shouldn't be blank")
@@ -2895,7 +2895,7 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	test.AssertEquals(t, countNameExact(t, "not-example.com"), int64(2))
 }
 
-func TestNewAuthorization(t *testing.T) {
+func TestNewAuthorization2(t *testing.T) {
 	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
 		return
 	}
@@ -2924,7 +2924,7 @@ func TestNewAuthorization(t *testing.T) {
 			},
 		},
 	}
-	id, err := sa.NewAuthorization(context.Background(), apb)
+	id, err := sa.NewAuthorization2(context.Background(), apb)
 	test.AssertNotError(t, err, "sa.NewAuthorization failed")
 
 	dbVer, err := sa.GetAuthorization2(context.Background(), id)
@@ -2935,7 +2935,7 @@ func TestNewAuthorization(t *testing.T) {
 	test.AssertDeepEquals(t, apb, dbVer)
 }
 
-func TestNewAuthorizations(t *testing.T) {
+func TestNewAuthorizations2(t *testing.T) {
 	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
 		return
 	}
@@ -2980,7 +2980,7 @@ func TestNewAuthorizations(t *testing.T) {
 		},
 	}
 	req := &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{apbA, apbB}}
-	ids, err := sa.NewAuthorizations(context.Background(), req)
+	ids, err := sa.NewAuthorizations2(context.Background(), req)
 	test.AssertNotError(t, err, "sa.NewAuthorizations failed")
 	test.AssertEquals(t, len(ids.Ids), 2)
 	for i, id := range ids.Ids {
@@ -3024,7 +3024,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 			},
 		},
 	}
-	id, err := sa.NewAuthorization(context.Background(), apb)
+	id, err := sa.NewAuthorization2(context.Background(), apb)
 	test.AssertNotError(t, err, "sa.NewAuthorization failed")
 
 	valid := string(core.StatusValid)
@@ -3056,7 +3056,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	test.AssertEquals(t, len(dbVer.Challenges[0].Validationrecords), 1)
 
 	token = "ZmdoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-	id, err = sa.NewAuthorization(context.Background(), apb)
+	id, err = sa.NewAuthorization2(context.Background(), apb)
 	test.AssertNotError(t, err, "sa.NewAuthorization failed")
 	invalid := string(core.StatusInvalid)
 	prob, _ := bgrpc.ProblemDetailsToPB(probs.ConnectionFailure("it went bad captain"))
@@ -3113,11 +3113,11 @@ func TestGetPendingAuthorization2(t *testing.T) {
 			},
 		},
 	}
-	idA, err := sa.NewAuthorization(context.Background(), apb)
+	idA, err := sa.NewAuthorization2(context.Background(), apb)
 	test.AssertNotError(t, err, "sa.NewAuthorization failed")
 	token = "ZmdoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	expires = fc.Now().Add(time.Hour * 3).UTC().UnixNano()
-	idB, err := sa.NewAuthorization(context.Background(), apb)
+	idB, err := sa.NewAuthorization2(context.Background(), apb)
 	test.AssertNotError(t, err, "sa.NewAuthorization failed")
 
 	validUntil := fc.Now().Add(time.Hour * 2).UTC().UnixNano()
@@ -3194,11 +3194,11 @@ func TestCountPendingAuthorizations2(t *testing.T) {
 			},
 		},
 	}
-	_, err := sa.NewAuthorization(context.Background(), apb)
+	_, err := sa.NewAuthorization2(context.Background(), apb)
 	test.AssertNotError(t, err, "sa.NewAuthorization failed")
 	token = "ZmdoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	expires = fc.Now().Add(time.Hour * 3).UTC().UnixNano()
-	_, err = sa.NewAuthorization(context.Background(), apb)
+	_, err = sa.NewAuthorization2(context.Background(), apb)
 	test.AssertNotError(t, err, "sa.NewAuthorization failed")
 
 	// Registration has two new style pending authorizations
@@ -3277,7 +3277,7 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 			},
 		},
 	}
-	id, err := sa.NewAuthorization(context.Background(), apb)
+	id, err := sa.NewAuthorization2(context.Background(), apb)
 	test.AssertNotError(t, err, "sa.NewAuthorization failed")
 	valid := string(core.StatusValid)
 	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
@@ -3370,11 +3370,11 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 			},
 		},
 	}
-	_, err := sa.NewAuthorization(context.Background(), apb)
+	_, err := sa.NewAuthorization2(context.Background(), apb)
 	test.AssertNotError(t, err, "sa.NewAuthorization failed")
 	token = "ZmdoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	expires = fc.Now().Add(time.Hour * 3).UTC().UnixNano()
-	idB, err := sa.NewAuthorization(context.Background(), apb)
+	idB, err := sa.NewAuthorization2(context.Background(), apb)
 	test.AssertNotError(t, err, "sa.NewAuthorization failed")
 	invalid := string(core.StatusInvalid)
 	prob, _ := bgrpc.ProblemDetailsToPB(probs.ConnectionFailure("it went bad captain"))
@@ -3446,7 +3446,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
 	challType := string(core.ChallengeTypeDNS01)
 	token := "YXNk"
-	id, err := sa.NewAuthorization(context.Background(), &corepb.Authorization{
+	id, err := sa.NewAuthorization2(context.Background(), &corepb.Authorization{
 		V2:             &v2,
 		Identifier:     &ident,
 		RegistrationID: &reg.ID,

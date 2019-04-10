@@ -557,7 +557,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	}
 
 	if v2 {
-		resultPB, err := ra.SA.NewAuthorization(ctx, authzPB)
+		resultPB, err := ra.SA.NewAuthorization2(ctx, authzPB)
 		if err != nil {
 			return core.Authorization{}, err
 		}
@@ -1895,7 +1895,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		var authzIDs *sapb.AuthorizationIDs
 		req := sapb.AddPendingAuthorizationsRequest{Authz: newAuthzs}
 		if v2 {
-			authzIDs, err = ra.SA.NewAuthorizations(ctx, &req)
+			authzIDs, err = ra.SA.NewAuthorizations2(ctx, &req)
 		} else {
 			authzIDs, err = ra.SA.AddPendingAuthorizations(ctx, &req)
 		}

@@ -53,8 +53,8 @@ service StorageAuthority {
         rpc GetAuthorizations(GetAuthorizationsRequest) returns (Authorizations) {}
         rpc AddPendingAuthorizations(AddPendingAuthorizationsRequest) returns (AuthorizationIDs) {}
         rpc RevokeCertificate(RevokeCertificateRequest) returns (core.Empty) {}
-        rpc NewAuthorization(core.Authorization) returns (AuthorizationID2) {}
-        rpc NewAuthorizations(AddPendingAuthorizationsRequest) returns (AuthorizationIDs) {}
+        rpc NewAuthorization2(core.Authorization) returns (AuthorizationID2) {}
+        rpc NewAuthorizations2(AddPendingAuthorizationsRequest) returns (AuthorizationIDs) {}
         rpc FinalizeAuthorization2(FinalizeAuthorizationRequest) returns (core.Empty) {}
         rpc DeactivateAuthorization2(AuthorizationID2) returns (core.Empty) {}
         rpc RevokeAuthorizationsByDomain2(RevokeAuthorizationsByDomainRequest) returns (RevokeAuthorizationsByDomainResponse) {}
