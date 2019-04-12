@@ -7,7 +7,7 @@ Presently the following protocol features are not implemented:
 - Pre-authorization. This is an optional feature and we have no plans to implement it. V2 clients should use order based issuance without pre-authorization.
 - The `orders` field on account objects. We intend to support this non-essential feature in the near future. Please follow Boulder Issue [#3335](https://github.com/letsencrypt/boulder/issues/3335).
 
-POST-as-GET: We support POST-as-GET but do not yet mandate it. We (plan to mandate)[https://community.letsencrypt.org/t/acme-v2-scheduled-deprecation-of-unauthenticated-resource-gets/74380] POST-as-GET for all ACMEv2 requests in late 2019.
+POST-as-GET: We support POST-as-GET but do not yet mandate it. We [plan to mandate](https://community.letsencrypt.org/t/acme-v2-scheduled-deprecation-of-unauthenticated-resource-gets/74380) POST-as-GET for all ACMEv2 requests in late 2019.
 
 ## [Section 6.6](https://tools.ietf.org/html/rfc8555#section-6.6)
 
