@@ -1466,7 +1466,7 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 // DeactivateAuthorization2 deactivates a currently valid or pending authorization.
 // This method is intended to deprecate DeactivateAuthorization.
 func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Empty, error) {
-	res, err := ssa.dbMap.Exec(
+	_, err := ssa.dbMap.Exec(
 		`UPDATE authz2 SET status = :deactivated WHERE id = :id and status IN (:valid,:pending)`,
 		map[string]interface{}{
 			"deactivated": statusToUint[string(core.StatusDeactivated)],
@@ -1477,13 +1477,6 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 	)
 	if err != nil {
 		return nil, err
-	}
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return nil, err
-	}
-	if rows != 1 {
-		return nil, berrors.NotFoundError("valid/pending authorization with id %d not found", *req.Id)
 	}
 	return nil, nil
 }
