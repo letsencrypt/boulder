@@ -557,14 +557,14 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	}
 
 	if v2 {
-		resultPB, err := ra.SA.NewAuthorization2(ctx, authzPB)
+		authzID, err := ra.SA.NewAuthorization2(ctx, authzPB)
 		if err != nil {
 			return core.Authorization{}, err
 		}
 		// The current internal authorization objects use a string for the ID, the new
 		// storage format uses a integer ID. In order to maintain compatibility we
 		// convert the integer ID to a string.
-		id := fmt.Sprintf("%d", *resultPB.Id)
+		id := fmt.Sprintf("%d", *authzID.Id)
 		authzPB.Id = &id
 		return bgrpc.PBToAuthz(authzPB)
 	}
