@@ -5,6 +5,9 @@ if type realpath >/dev/null 2>&1 ; then
   cd $(realpath $(dirname $0))
 fi
 
+set -ex pipefail
+TRAVIS=${TRAVIS:-false}
+
 # The list of segments to run. To run only some of these segments, pre-set the
 # RUN variable with the ones you want (see .travis.yml for an example).
 # Order doesn't matter. Note: godep-restore is specifically left out of the
@@ -13,42 +16,6 @@ fi
 # artifacts on disk that aren't needed.
 RUN=${RUN:-vet fmt migrations unit integration errcheck ineffassign dashlint}
 
-# The list of segments to hard fail on, as opposed to continuing to the end of
-# the unit tests before failing.
-HARDFAIL=${HARDFAIL:-fmt godep-restore}
-
-FAILURE=0
-
-start_context() {
-  CONTEXT="$1"
-  printf "[%16s] Starting\n" ${CONTEXT}
-}
-
-end_context() {
-  printf "[%16s] Done\n" ${CONTEXT}
-  if [ ${FAILURE} != 0 ] && [[ ${HARDFAIL} =~ ${CONTEXT} ]]; then
-    echo "--------------------------------------------------"
-    echo "---        A unit test or tool failed.         ---"
-    echo "---   Stopping before running further tests.   ---"
-    echo "--------------------------------------------------"
-    exit ${FAILURE}
-  fi
-  CONTEXT=""
-}
-
-function run() {
-  echo "$@"
-  "$@" 2>&1
-  local status=$?
-
-  if [ "${status}" != 0 ]; then
-    FAILURE=1
-    echo "[!] FAILURE: $@"
-  fi
-
-  return ${status}
-}
-
 function run_and_expect_silence() {
   echo "$@"
   result_file=$(mktemp -t bouldertestXXXX)
@@ -56,7 +23,8 @@ function run_and_expect_silence() {
 
   # Fail if result_file is nonempty.
   if [ -s ${result_file} ]; then
-    FAILURE=1
+    rm ${result_file}
+    exit 1
   fi
   rm ${result_file}
 }
@@ -66,7 +34,7 @@ function run_unit_tests() {
     # Run the full suite of tests once with the -race flag. Since this isn't
     # running tests individually we can't collect coverage information.
     echo "running test suite with race detection"
-    run go test -race -p 1 ./...
+    go test -race -p 1 ./...
   else
     # When running locally, we skip the -race flag for speedier test runs. We
     # also pass -p 1 to require the tests to run serially instead of in
@@ -75,7 +43,7 @@ function run_unit_tests() {
     # spuriously because one test is modifying a table (especially
     # registrations) while another test is reading it.
     # https://github.com/letsencrypt/boulder/issues/1499
-    run go test -p 1 $GOTESTFLAGS ./...
+    go test -p 1 ./...
   fi
 }
 
@@ -85,10 +53,10 @@ function run_test_coverage() {
   # -race in `run_unit_tests` and it adds substantial overhead to run every
   # test with -race independently
   echo "running test suite with coverage enabled and without race detection"
-  run go test -p 1 -cover -coverprofile=${dir}.coverprofile ./...
+  go test -p 1 -cover -coverprofile=${dir}.coverprofile ./...
 
   # Gather all the coverprofiles
-  run gover
+  gover
 
   # We don't use the run function here because sometimes goveralls fails to
   # contact the server and exits with non-zero status, but we don't want to
@@ -100,43 +68,18 @@ function run_test_coverage() {
 # Run Go Vet, a correctness-focused static analysis tool
 #
 if [[ "$RUN" =~ "vet" ]] ; then
-  start_context "vet"
   run_and_expect_silence go vet ./...
-  end_context #vet
 fi
 
 #
 # Ensure all files are formatted per the `go fmt` tool
 #
 if [[ "$RUN" =~ "fmt" ]] ; then
-  start_context "fmt"
-  check_gofmt() {
-    unformatted=$(find . -name "*.go" -not -path "./vendor/*" -print | xargs -n1 gofmt -l)
-    if [ "x${unformatted}" == "x" ] ; then
-      return 0
-    else
-      V="Unformatted files found.
-      Please run 'go fmt' on each of these files and amend your commit to continue."
-
-      for f in ${unformatted}; do
-        V=$(printf "%s\n - %s" "${V}" "${f}")
-      done
-
-      # Print to stdout
-      printf "%s\n\n" "${V}"
-      [ "${TRAVIS}" == "true" ] || exit 1 # Stop here if running locally
-      return 1
-    fi
-  }
-
-  run_and_expect_silence check_gofmt
-  end_context #fmt
+  run_and_expect_silence go fmt ./...
 fi
 
 if [[ "$RUN" =~ "migrations" ]] ; then
-  start_context "migrations"
   run_and_expect_silence ./test/test-no-outdated-migrations.sh
-  end_context #"migrations"
 fi
 
 #
@@ -144,14 +87,6 @@ fi
 #
 if [[ "$RUN" =~ "unit" ]] ; then
   run_unit_tests
-  # If the unittests failed, exit before trying to run the integration test.
-  if [ ${FAILURE} != 0 ]; then
-    echo "--------------------------------------------------"
-    echo "---        A unit test or tool failed.         ---"
-    echo "--- Stopping before running integration tests. ---"
-    echo "--------------------------------------------------"
-    exit ${FAILURE}
-  fi
 fi
 
 #
@@ -165,28 +100,23 @@ fi
 # Integration tests
 #
 if [[ "$RUN" =~ "integration" ]] ; then
-  # Set context to integration, and force a pending state
-  start_context "integration"
-
   args=("--chisel")
   args+=("--load")
-  if [[ "$INT_FILTER" != "" ]]; then
-    args+=("--filter" "$INT_FILTER")
+  if [[ "${INT_FILTER:-}" != "" ]]; then
+    args+=("--filter" "${INT_FILTER}")
   fi
-  if [[ "$INT_SKIP_SETUP" =~ "true" ]]; then
+  if [[ "${INT_SKIP_SETUP:-}" =~ "true" ]]; then
     args+=("--skip-setup")
   fi
 
   source ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv}/bin/activate
   DIRECTORY=http://boulder:4000/directory \
-    run python2 test/integration-test.py "${args[@]}"
-  end_context #integration
+    python2 test/integration-test.py "${args[@]}"
 fi
 
 # Run godep-restore (happens only in Travis) to check that the hashes in
 # Godeps.json really exist in the remote repo and match what we have.
 if [[ "$RUN" =~ "godep-restore" ]] ; then
-  start_context "godep-restore"
   run_and_expect_silence godep restore
   # Run godep save and do a diff, to ensure that the version we got from
   # `godep restore` matched what was in the remote repo.
@@ -197,7 +127,6 @@ if [[ "$RUN" =~ "godep-restore" ]] ; then
     <(sed '/GodepVersion/d;/Comment/d;/GoVersion/d;' /tmp/Godeps.json.head) \
     <(sed '/GodepVersion/d;/Comment/d;/GoVersion/d;' Godeps/Godeps.json)
   run_and_expect_silence git diff --exit-code -- ./vendor/
-  end_context #godep-restore
 fi
 
 #
@@ -208,20 +137,16 @@ fi
 # packages present in #GOPATH.
 #
 if [[ "$RUN" =~ "errcheck" ]] ; then
-  start_context "errcheck"
   run_and_expect_silence errcheck \
     -ignore fmt:Fprintf,fmt:Fprintln,fmt:Fprint,io:Write,os:Remove,net/http:Write \
     $(go list -f '{{ .ImportPath }}' ./... | grep -v test)
-  end_context #errcheck
 fi
 
 #
 # Run ineffassign, to check for ineffectual assignments.
 #
 if [[ "$RUN" =~ "ineffassign" ]] ; then
-  start_context "ineffassign"
-  run_and_expect_silence ineffassign $(go list -f '{{ .Dir }}' ./...)
-  end_context #ineffassign
+  ineffassign .
 fi
 
 # Run generate to make sure all our generated code can be re-generated with
@@ -230,7 +155,6 @@ fi
 # so will fail if imports are not available in $GOPATH. So, in travis, this
 # always needs to run after `godep restore`.
 if [[ "$RUN" =~ "generate" ]] ; then
-  start_context "generate"
   # Additionally, we need to run go install before go generate because the stringer command
   # (using in ./grpc/) checks imports, and depends on the presence of a built .a
   # file to determine an import really exists. See
@@ -240,28 +164,15 @@ if [[ "$RUN" =~ "generate" ]] ; then
   #     github.com/letsencrypt/boulder/probs (can't find import:
   #     github.com/letsencrypt/boulder/probs)
   go install ./probs
-  go install google.golang.org/grpc/codes
+  go install ./vendor/google.golang.org/grpc/codes
   run_and_expect_silence go generate ./...
-  # Because the `mock` package we use to generate mocks does not properly
-  # support vendored dependencies[0] we are forced to sed out any references to
-  # the vendor directory that sneak into generated resources.
-  # [0] - https://github.com/golang/mock/issues/30
-  goSrcFiles=$(find . -name "*.go" -not -path "./vendor/*" -print)
-  run_and_expect_silence sed -i 's/github.com\/letsencrypt\/boulder\/vendor\///g' ${goSrcFiles}
   run_and_expect_silence git diff --exit-code $(ls | grep -v Godeps)
-  end_context #"generate"
 fi
 
 if [[ "$RUN" =~ "rpm" ]]; then
-  start_context "rpm"
-  run make rpm
-  end_context #"rpm"
+  make rpm
 fi
 
 if [[ "$RUN" =~ "dashlint" ]]; then
-  start_context "dashlint"
-  run python test/grafana/lint.py
-  end_context #"dashlint"
+  python test/grafana/lint.py
 fi
-
-exit ${FAILURE}

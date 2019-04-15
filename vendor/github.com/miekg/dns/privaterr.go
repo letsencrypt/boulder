@@ -39,11 +39,12 @@ func mkPrivateRR(rrtype uint16) *PrivateRR {
 	}
 
 	anyrr := rrfunc()
-	switch rr := anyrr.(type) {
-	case *PrivateRR:
-		return rr
+	rr, ok := anyrr.(*PrivateRR)
+	if !ok {
+		panic(fmt.Sprintf("dns: RR is not a PrivateRR, TypeToRR[%d] generator returned %T", rrtype, anyrr))
 	}
-	panic(fmt.Sprintf("dns: RR is not a PrivateRR, TypeToRR[%d] generator returned %T", rrtype, anyrr))
+
+	return rr
 }
 
 // Header return the RR header of r.
@@ -52,12 +53,16 @@ func (r *PrivateRR) Header() *RR_Header { return &r.Hdr }
 func (r *PrivateRR) String() string { return r.Hdr.String() + r.Data.String() }
 
 // Private len and copy parts to satisfy RR interface.
-func (r *PrivateRR) len() int { return r.Hdr.len() + r.Data.Len() }
+func (r *PrivateRR) len(off int, compression map[string]struct{}) int {
+	l := r.Hdr.len(off, compression)
+	l += r.Data.Len()
+	return l
+}
+
 func (r *PrivateRR) copy() RR {
 	// make new RR like this:
 	rr := mkPrivateRR(r.Hdr.Rrtype)
-	newh := r.Hdr.copyHeader()
-	rr.Hdr = *newh
+	rr.Hdr = r.Hdr
 
 	err := r.Data.Copy(rr.Data)
 	if err != nil {
@@ -65,6 +70,46 @@ func (r *PrivateRR) copy() RR {
 	}
 	return rr
 }
+
+func (r *PrivateRR) pack(msg []byte, off int, compression compressionMap, compress bool) (int, error) {
+	n, err := r.Data.Pack(msg[off:])
+	if err != nil {
+		return len(msg), err
+	}
+	off += n
+	return off, nil
+}
+
+func (r *PrivateRR) unpack(msg []byte, off int) (int, error) {
+	off1, err := r.Data.Unpack(msg[off:])
+	off += off1
+	return off, err
+}
+
+func (r *PrivateRR) parse(c *zlexer, origin, file string) *ParseError {
+	var l lex
+	text := make([]string, 0, 2) // could be 0..N elements, median is probably 1
+Fetch:
+	for {
+		// TODO(miek): we could also be returning _QUOTE, this might or might not
+		// be an issue (basically parsing TXT becomes hard)
+		switch l, _ = c.Next(); l.value {
+		case zNewline, zEOF:
+			break Fetch
+		case zString:
+			text = append(text, l.token)
+		}
+	}
+
+	err := r.Data.Parse(text)
+	if err != nil {
+		return &ParseError{file, err.Error(), l}
+	}
+
+	return nil
+}
+
+func (r1 *PrivateRR) isDuplicate(r2 RR) bool { return false }
 
 // PrivateHandle registers a private resource record type. It requires
 // string and numeric representation of private RR type and generator function as argument.
@@ -74,44 +119,14 @@ func PrivateHandle(rtypestr string, rtype uint16, generator func() PrivateRdata)
 	TypeToRR[rtype] = func() RR { return &PrivateRR{RR_Header{}, generator()} }
 	TypeToString[rtype] = rtypestr
 	StringToType[rtypestr] = rtype
-
-	setPrivateRR := func(h RR_Header, c chan lex, o, f string) (RR, *ParseError, string) {
-		rr := mkPrivateRR(h.Rrtype)
-		rr.Hdr = h
-
-		var l lex
-		text := make([]string, 0, 2) // could be 0..N elements, median is probably 1
-	FETCH:
-		for {
-			// TODO(miek): we could also be returning _QUOTE, this might or might not
-			// be an issue (basically parsing TXT becomes hard)
-			switch l = <-c; l.value {
-			case zNewline, zEOF:
-				break FETCH
-			case zString:
-				text = append(text, l.token)
-			}
-		}
-
-		err := rr.Data.Parse(text)
-		if err != nil {
-			return nil, &ParseError{f, err.Error(), l}, ""
-		}
-
-		return rr, nil, ""
-	}
-
-	typeToparserFunc[rtype] = parserFunc{setPrivateRR, true}
 }
 
-// PrivateHandleRemove removes defenitions required to support private RR type.
+// PrivateHandleRemove removes definitions required to support private RR type.
 func PrivateHandleRemove(rtype uint16) {
 	rtypestr, ok := TypeToString[rtype]
 	if ok {
 		delete(TypeToRR, rtype)
 		delete(TypeToString, rtype)
-		delete(typeToparserFunc, rtype)
 		delete(StringToType, rtypestr)
 	}
-	return
 }
