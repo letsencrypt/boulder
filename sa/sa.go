@@ -2318,25 +2318,23 @@ func authz2ModelMapToPB(m map[string]authz2Model) (*sapb.Authorizations, error) 
 // GetAuthorizations2 returns any valid or pending authorizations that exist for the list of domains
 // provided. If both a valid and pending authorization exist only the valid one will be returned.
 // This method will look in both the v2 and v1 authorizations tables for authorizations but will
-// always prefer v2 authorizations. This method is intended to deprecate GetAuthorizations.
+// always prefer v2 authorizations. This method will only return authorizations created using the
+// WFE v2 API (in GetAuthorizations this feature was, now somewhat confusingly, called RequireV2Authzs).
+// This method is intended to deprecate GetAuthorizations.
 func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
 	qmarks := make([]string, len(req.Domains))
 	for i := range req.Domains {
 		qmarks[i] = "?"
 	}
-
-	queryPrefix := fmt.Sprintf("SELECT %s FROM authz2", authz2Fields)
-	if *req.RequireV2Authzs {
-		queryPrefix += ` JOIN orderToAuthz
-			ON id = CONVERT(authzID, INTEGER)`
-	}
 	query := fmt.Sprintf(
-		`%s WHERE
-		registrationID = ? AND
+		`SELECT %s FROM authz2
+		JOIN orderToAuthz
+		ON id = CONVERT(authzID, INTEGER)
+		WHERE registrationID = ? AND
 		expires > ? AND
 		status IN (?,?) AND
 		identifierValue IN (%s)`,
-		queryPrefix,
+		authz2Fields,
 		strings.Join(qmarks, ","),
 	)
 
