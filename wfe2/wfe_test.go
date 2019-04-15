@@ -279,7 +279,7 @@ func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, req *rap
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int, err error) {
+func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, err error) {
 	return
 }
 
