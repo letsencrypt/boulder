@@ -475,6 +475,11 @@ func hasMultipleNonPendingChallenges(challenges []*corepb.Challenge) bool {
 	return false
 }
 
+// authzPBToModel converts a protobuf authorization representation to the
+// authz2Model storage representation. This method should only be used to
+// convert protobuf authorizations generated from core.Authorizations that
+// were constructed using the new authorization storage concepts (i.e.
+// authorizations that have the V2 field set).
 func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 	if authz.V2 == nil || !*authz.V2 {
 		return nil, errors.New("authorization is not v2 format")
@@ -487,7 +492,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 		Expires:         expires,
 	}
 	if authz.Id != nil && *authz.Id != "" {
-		// The current internal authorization objects use a string for the ID, the new
+		// The original internal authorization objects use a string for the ID, the v2
 		// storage format uses a integer ID. In order to maintain compatibility we
 		// convert the integer ID to a string.
 		id, err := strconv.Atoi(*authz.Id)
@@ -504,7 +509,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 	// set, a bitmap of available challenge types, and a row indicating which challenge type
 	// was 'attempted'.
 	//
-	// Since we don't currently have the singluar token/error/record set abstracted out to
+	// Since we don't currently have the singular token/error/record set abstracted out to
 	// the core authorization type yet we need to extract these from the challenges array.
 	// We assume that the token in each challenge is the same and that if any of the challenges
 	// has a non-pending status that it should be considered the 'attempted' challenge and
