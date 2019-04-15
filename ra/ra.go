@@ -1647,15 +1647,13 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 func (ra *RegistrationAuthorityImpl) onValidationUpdate(ctx context.Context, authz core.Authorization) error {
 	// Consider validation successful if any of the challenges
 	// specified in the authorization has been fulfilled
-	validated := map[int]bool{}
-	for i, ch := range authz.Challenges {
+	for _, ch := range authz.Challenges {
 		if ch.Status == core.StatusValid {
-			validated[i] = true
+			authz.Status = core.StatusValid
 		}
 	}
 
 	// If no validation succeeded, then the authorization is invalid
-	// NOTE: This only works because we only ever do one validation
 	if authz.Status != core.StatusValid {
 		authz.Status = core.StatusInvalid
 	} else {
