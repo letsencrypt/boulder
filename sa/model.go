@@ -492,7 +492,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 		Expires:         expires,
 	}
 	if authz.Id != nil && *authz.Id != "" {
-		// The original internal authorization objects use a string for the ID, the v2
+		// The v1 internal authorization objects use a string for the ID, the v2
 		// storage format uses a integer ID. In order to maintain compatibility we
 		// convert the integer ID to a string.
 		id, err := strconv.Atoi(*authz.Id)
