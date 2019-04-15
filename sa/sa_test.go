@@ -1314,10 +1314,6 @@ func TestDeactivateAuthorization2(t *testing.T) {
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 	_, err = sa.DeactivateAuthorization2(context.Background(), id)
 	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
-
-	// attempt to deactivate an already deactivated authorization
-	_, err = sa.DeactivateAuthorization2(context.Background(), id)
-	test.AssertError(t, err, "sa.DeactivateAuthorization2 didn't fail when authorization is already deactivated")
 }
 
 func TestDeactivateAccount(t *testing.T) {
