@@ -2316,8 +2316,9 @@ func authz2ModelMapToPB(m map[string]authz2Model) (*sapb.Authorizations, error) 
 }
 
 // GetAuthorizations2 returns any valid or pending authorizations that exist for the list of domains
-// provided. If both a valid and pending authorization exist only the valid one will be returned. This
-// method is intended to deprecate GetAuthorizations.
+// provided. If both a valid and pending authorization exist only the valid one will be returned.
+// This method will look in both the v2 and v1 authorizations tables for authorizations but will
+// always prefer v2 authorizations. This method is intended to deprecate GetAuthorizations.
 func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
 	qmarks := make([]string, len(req.Domains))
 	for i := range req.Domains {
@@ -2373,14 +2374,6 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 
 	// If we still need more authorizations look for them in the old
 	// style authorization tables.
-	//
-	// TODO: In theory, we don't _need_ to do this. Instead we could
-	// just ignore the old authorizations and require the RA to create
-	// fresh new style authorizations. This would promote the flushing
-	// of the old stuff down the toilet in favor of the new stuff but
-	// would (in the short term) cause an increased use of resources.
-	// I'd be in favor of this approach, but for now here is this code
-	// in case we want to go down the other path.
 	if len(authzModelMap) != len(req.Domains) {
 		// Get the authorizations for names we don't already have
 		leftOverMap := make(map[string]bool, len(req.Domains))
