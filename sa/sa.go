@@ -872,8 +872,8 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context
 
 // RevokeAuthorizationsByDomain2 invalidates all pending or valid authorizations for a
 // specific domain. This method is intended to deprecate RevokeAuthorizationsByDomain.
-func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*sapb.RevokeAuthorizationsByDomainResponse, error) {
-	revokedValid, revokedPending, err := ssa.RevokeAuthorizationsByDomain(ctx, core.AcmeIdentifier{
+func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*corepb.Empty, error) {
+	_, _, err := ssa.RevokeAuthorizationsByDomain(ctx, core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
 		Value: *req.Domain,
 	})
@@ -912,12 +912,6 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Contex
 		for _, id := range ids {
 			qmarks = append(qmarks, "?")
 			params = append(params, id.ID)
-			switch uintToStatus[id.Status] {
-			case string(core.StatusValid):
-				revokedValid++
-			case string(core.StatusPending):
-				revokedPending++
-			}
 		}
 		_, err = ssa.dbMap.Exec(
 			fmt.Sprintf(`UPDATE authz2 SET status = ? WHERE id IN (%s)`, strings.Join(qmarks, ",")),
@@ -927,10 +921,7 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Contex
 			return nil, err
 		}
 	}
-	return &sapb.RevokeAuthorizationsByDomainResponse{
-		Finalized: &revokedValid,
-		Pending:   &revokedPending,
-	}, nil
+	return nil, nil
 }
 
 // AddCertificate stores an issued certificate and returns the digest as

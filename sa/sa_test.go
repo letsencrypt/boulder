@@ -935,12 +935,10 @@ func TestRevokeAuthorizationsByDomain2(t *testing.T) {
 	test.AssertNotError(t, err, "sa.NewPendingAuthorization failed")
 
 	// Only the non-expired pending and valid authorizations should've been revoked
-	resp, err := sa.RevokeAuthorizationsByDomain2(context.Background(), &sapb.RevokeAuthorizationsByDomainRequest{
+	_, err = sa.RevokeAuthorizationsByDomain2(context.Background(), &sapb.RevokeAuthorizationsByDomainRequest{
 		Domain: &ident,
 	})
 	test.AssertNotError(t, err, "sa.RevokeAuthorizationsByDomain2")
-	test.AssertEquals(t, *resp.Finalized, int64(1))
-	test.AssertEquals(t, *resp.Pending, int64(2))
 
 	authzPB, err := sa.GetAuthorization2(context.Background(), idA)
 	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")

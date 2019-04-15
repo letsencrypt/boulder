@@ -671,15 +671,8 @@ func (sas StorageAuthorityClientWrapper) DeactivateAuthorization2(ctx context.Co
 	return nil, err
 }
 
-func (sas StorageAuthorityClientWrapper) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*sapb.RevokeAuthorizationsByDomainResponse, error) {
-	resp, err := sas.inner.RevokeAuthorizationsByDomain2(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil || resp.Finalized == nil || resp.Pending == nil {
-		return nil, errIncompleteResponse
-	}
-	return resp, nil
+func (sas StorageAuthorityClientWrapper) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*corepb.Empty, error) {
+	return sas.inner.RevokeAuthorizationsByDomain2(ctx, req)
 }
 
 // StorageAuthorityServerWrapper is the gRPC version of a core.ServerAuthority server
@@ -1288,7 +1281,7 @@ func (sas StorageAuthorityServerWrapper) DeactivateAuthorization2(ctx context.Co
 	return sas.inner.DeactivateAuthorization2(ctx, req)
 }
 
-func (sas StorageAuthorityServerWrapper) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*sapb.RevokeAuthorizationsByDomainResponse, error) {
+func (sas StorageAuthorityServerWrapper) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*corepb.Empty, error) {
 	if req == nil || req.Domain == nil {
 		return nil, errIncompleteRequest
 	}

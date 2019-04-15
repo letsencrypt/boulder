@@ -569,7 +569,7 @@ func (sa *StorageAuthority) DeactivateAuthorization2(ctx context.Context, req *s
 	return nil, nil
 }
 
-func (sa *StorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*sapb.RevokeAuthorizationsByDomainResponse, error) {
+func (sa *StorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*corepb.Empty, error) {
 	return nil, nil
 }
 

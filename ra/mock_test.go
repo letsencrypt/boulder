@@ -195,7 +195,7 @@ func (sa *mockInvalidAuthorizationsAuthority) DeactivateAuthorization2(ctx conte
 	return nil, nil
 }
 
-func (sa *mockInvalidAuthorizationsAuthority) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest, opts ...grpc.CallOption) (*sapb.RevokeAuthorizationsByDomainResponse, error) {
+func (sa *mockInvalidAuthorizationsAuthority) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest, opts ...grpc.CallOption) (*corepb.Empty, error) {
 	return nil, nil
 }
 
