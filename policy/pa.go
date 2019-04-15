@@ -376,8 +376,8 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 	return nil
 }
 
-// ChallengesFor makes a decision of what challenges are
-// acceptable for the given identifier.
+// ChallengesFor makes a decision of what challenges are acceptable for
+// the given identifier.
 func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.Challenge, error) {
 	challenges := []core.Challenge{}
 
@@ -415,8 +415,8 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.C
 		}
 	}
 
-	// We shuffle the challenges to prevent ACME clients from
-	// relying on the specific order that boulder returns them in.
+	// We shuffle the challenges to prevent ACME clients from relying on the
+	// specific order that boulder returns them in.
 	shuffled := make([]core.Challenge, len(challenges))
 
 	pa.rngMu.Lock()
