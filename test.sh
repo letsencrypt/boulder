@@ -5,7 +5,7 @@ if type realpath >/dev/null 2>&1 ; then
   cd $(realpath $(dirname $0))
 fi
 
-set -ex pipefail
+set -exo pipefail
 TRAVIS=${TRAVIS:-false}
 
 # The list of segments to run. To run only some of these segments, pre-set the
