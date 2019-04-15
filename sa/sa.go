@@ -888,12 +888,14 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Contex
 		}
 		_, err := ssa.dbMap.Select(
 			&ids,
-			`SELECT id, status FROM authz2 WHERE identifierValue = ? AND status IN (?,?) AND expires > ? LIMIT ?`,
-			*req.Domain,
-			statusToUint[string(core.StatusPending)],
-			statusToUint[string(core.StatusValid)],
-			ssa.clk.Now(),
-			getAuthorizationIDsMax,
+			`SELECT id, status FROM authz2 WHERE identifierValue = :ident AND status IN (:pending,:valid) AND expires > :expires LIMIT :limit`,
+			map[string]interface{}{
+				"ident":   *req.Domain,
+				"pending": statusToUint[string(core.StatusPending)],
+				"valid":   statusToUint[string(core.StatusValid)],
+				"expires": ssa.clk.Now(),
+				"limit":   getAuthorizationIDsMax,
+			},
 		)
 		if err != nil {
 			if err == sql.ErrNoRows {
@@ -1465,11 +1467,13 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id 
 // This method is intended to deprecate DeactivateAuthorization.
 func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Empty, error) {
 	res, err := ssa.dbMap.Exec(
-		`UPDATE authz2 SET status = ? WHERE id = ? and status IN (?,?)`,
-		statusToUint[string(core.StatusDeactivated)],
-		*req.Id,
-		statusToUint[string(core.StatusValid)],
-		statusToUint[string(core.StatusPending)],
+		`UPDATE authz2 SET status = :deactivated WHERE id = :id and status IN (:valid,:pending)`,
+		map[string]interface{}{
+			"deactivated": statusToUint[string(core.StatusDeactivated)],
+			"id":          *req.Id,
+			"valid":       statusToUint[string(core.StatusValid)],
+			"pending":     statusToUint[string(core.StatusPending)],
+		},
 	)
 	if err != nil {
 		return nil, err
@@ -1892,7 +1896,6 @@ type authzStatus struct {
 }
 
 func (ssa *SQLStorageAuthority) getAuthorizationStatuses(ctx context.Context, ids []int64) ([]authzStatus, error) {
-	// having to do this is super annoying :/
 	var qmarks []string
 	var params []interface{}
 	for _, id := range ids {
@@ -2400,7 +2403,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 // authorization is being moved to valid the validationRecord and expires fields must be set.
 // This method is intended to deprecate the FinalizeAuthorization method.
 func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) error {
-	query := `UPDATE authz2 SET status = ?, attempted = ?, validationRecord = ?, `
+	query := `UPDATE authz2 SET status = :status, attempted = :attempted, validationRecord = :validationRecord, `
 	var validationRecords []core.ValidationRecord
 	for _, recordPB := range req.ValidationRecords {
 		record, err := bgrpc.PBToValidationRecord(recordPB)
@@ -2413,12 +2416,16 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 	if err != nil {
 		return err
 	}
-	params := []interface{}{statusToUint[*req.Status], challTypeToUint[*req.Attempted], vrJSON}
+	params := map[string]interface{}{
+		"status":           statusToUint[*req.Status],
+		"attempted":        challTypeToUint[*req.Attempted],
+		"validationRecord": vrJSON,
+	}
 	if *req.Status == string(core.StatusValid) {
-		query += "expires = ?"
-		params = append(params, time.Unix(0, *req.Expires).UTC())
+		query += "expires = :expires"
+		params["expires"] = time.Unix(0, *req.Expires).UTC()
 	} else {
-		query += "validationError = ?"
+		query += "validationError = :validationError"
 		validationError, err := bgrpc.PBToProblemDetails(req.ValidationError)
 		if err != nil {
 			return err
@@ -2427,12 +2434,12 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 		if err != nil {
 			return err
 		}
-		params = append(params, veJSON)
+		params["validationError"] = veJSON
 	}
-	query += " WHERE id = ?"
-	params = append(params, *req.Id)
+	query += " WHERE id = :id"
+	params["id"] = *req.Id
 
-	res, err := ssa.dbMap.Exec(query, params...)
+	res, err := ssa.dbMap.Exec(query, params)
 	if err != nil {
 		return err
 	}
@@ -2497,16 +2504,18 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, re
 	err := ssa.dbMap.WithContext(ctx).SelectOne(
 		&am,
 		fmt.Sprintf(`SELECT %s FROM authz2 WHERE
-			registrationID = ? AND
-			identifierValue = ? AND
-			status = ? AND
-			expires > ?
+			registrationID = :regID AND
+			identifierValue = :ident AND
+			status = :status AND
+			expires > :validUntil
 			ORDER BY expires ASC
 			LIMIT 1 `, authz2Fields),
-		*req.RegistrationID,
-		*req.IdentifierValue,
-		statusToUint[string(core.StatusPending)],
-		time.Unix(0, *req.ValidUntil),
+		map[string]interface{}{
+			"regID":      *req.RegistrationID,
+			"ident":      *req.IdentifierValue,
+			"status":     statusToUint[string(core.StatusPending)],
+			"validUntil": time.Unix(0, *req.ValidUntil),
+		},
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -2528,12 +2537,14 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations2(ctx context.Context,
 	var count int64
 	err := ssa.dbMap.WithContext(ctx).SelectOne(&count,
 		`SELECT COUNT(1) FROM authz2 WHERE
-		registrationID = ? AND
-		expires > ? AND
-		status = ?`,
-		*req.Id,
-		ssa.clk.Now(),
-		statusToUint[string(core.StatusPending)],
+		registrationID = :regID AND
+		expires > :expires AND
+		status = :status`,
+		map[string]interface{}{
+			"regID":   *req.Id,
+			"expires": ssa.clk.Now(),
+			"status":  statusToUint[string(core.StatusPending)],
+		},
 	)
 	if err != nil {
 		return nil, err
@@ -2557,16 +2568,18 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 		&ams,
 		fmt.Sprintf(`SELECT %s FROM authz2
 			LEFT JOIN orderToAuthz2 ON authz2.ID = orderToAuthz2.authzID
-			WHERE authz2.registrationID = ? AND
-			authz2.expires > ? AND
-			authz2.status = ? AND
-			orderToAuthz2.orderID = ?`,
+			WHERE authz2.registrationID = :regID AND
+			authz2.expires > :expires AND
+			authz2.status = :status AND
+			orderToAuthz2.orderID = :orderID`,
 			authz2Fields,
 		),
-		*req.AcctID,
-		ssa.clk.Now(),
-		statusToUint[string(core.StatusValid)],
-		*req.Id,
+		map[string]interface{}{
+			"regID":   *req.AcctID,
+			"expires": ssa.clk.Now(),
+			"status":  statusToUint[string(core.StatusValid)],
+			"orderID": *req.Id,
+		},
 	)
 	if err != nil {
 		return nil, err
@@ -2615,16 +2628,18 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context,
 	err := ssa.dbMap.WithContext(ctx).SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM authz2 WHERE
-		registrationID = ? AND
-		identifierValue = ? AND
-		expires > ? AND
-		expires <= ? AND
-		status = ?`,
-		*req.RegistrationID,
-		*req.Hostname,
-		time.Unix(0, *req.Range.Earliest),
-		time.Unix(0, *req.Range.Latest),
-		statusToUint[string(core.StatusInvalid)],
+		registrationID = :regID AND
+		identifierValue = :ident AND
+		expires > :expiresEarliest AND
+		expires <= :expiresLatest AND
+		status = :status`,
+		map[string]interface{}{
+			"regID":           *req.RegistrationID,
+			"ident":           *req.Hostname,
+			"expiresEarliest": time.Unix(0, *req.Range.Earliest),
+			"expiresLatest":   time.Unix(0, *req.Range.Latest),
+			"status":          statusToUint[string(core.StatusInvalid)],
+		},
 	)
 	if err != nil {
 		return nil, err
