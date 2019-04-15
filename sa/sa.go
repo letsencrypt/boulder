@@ -2312,7 +2312,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 	}
 	query := fmt.Sprintf(
 		`SELECT %s FROM authz2
-		JOIN orderToAuthz
+		JOIN orderToAuthz2
 		ON id = CONVERT(authzID, INTEGER)
 		WHERE registrationID = ? AND
 		expires > ? AND
@@ -2370,6 +2370,8 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 			remaining = append(remaining, name)
 		}
 		req.Domains = remaining
+		reqV2 := true
+		req.RequireV2Authzs = &reqV2
 		authz, err := ssa.GetAuthorizations(ctx, req)
 		if err != nil {
 			return nil, err

@@ -2062,10 +2062,23 @@ func TestGetAuthorizations2(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	test.Assert(t, paC.Id != nil, "ID shouldn't be blank")
 
-	// Don't require V2 authorizations because the above pending authorizations
-	// aren't associated with orders, and therefore are seen as legacy V1
-	// authorizations.
-	requireV2Authzs := false
+	// Associate authorizations with an order so that GetAuthorizations2 thinks
+	// they are WFE2 authorizations.
+	err = sa.dbMap.Insert(&orderToAuthz2Model{
+		OrderID: 1,
+		AuthzID: *paA.Id,
+	})
+	test.AssertNotError(t, err, "sa.dbMap.Insert failed")
+	err = sa.dbMap.Insert(&orderToAuthz2Model{
+		OrderID: 1,
+		AuthzID: *paB.Id,
+	})
+	test.AssertNotError(t, err, "sa.dbMap.Insert failed")
+	err = sa.dbMap.Insert(&orderToAuthz2Model{
+		OrderID: 1,
+		AuthzID: *paC.Id,
+	})
+	test.AssertNotError(t, err, "sa.dbMap.Insert failed")
 
 	// Set an expiry cut off of 1 day in the future similar to `RA.NewOrder`. This
 	// should exclude pending authorization C based on its nearbyExpires expiry
@@ -2073,10 +2086,9 @@ func TestGetAuthorizations2(t *testing.T) {
 	expiryCutoff := fc.Now().AddDate(0, 0, 1).UnixNano()
 	// Get authorizations for the names used above.
 	authz, err := sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
-		RegistrationID:  &reg.ID,
-		Domains:         idents,
-		Now:             &expiryCutoff,
-		RequireV2Authzs: &requireV2Authzs,
+		RegistrationID: &reg.ID,
+		Domains:        idents,
+		Now:            &expiryCutoff,
 	})
 	// It should not fail
 	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
@@ -2086,57 +2098,14 @@ func TestGetAuthorizations2(t *testing.T) {
 
 	// Get authorizations for the names used above, and one name that doesn't exist
 	authz, err = sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
-		RegistrationID:  &reg.ID,
-		Domains:         append(idents, identD),
-		Now:             &expiryCutoff,
-		RequireV2Authzs: &requireV2Authzs,
+		RegistrationID: &reg.ID,
+		Domains:        append(idents, identD),
+		Now:            &expiryCutoff,
 	})
 	// It should not fail
 	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
 	// It should still return only two authorizations
 	test.AssertEquals(t, len(authz.Authz), 2)
-
-	// Get authorizations for the names used above, but this time enforce that no
-	// V2 authorizations are returned.
-	requireV2Authzs = true
-	authz, err = sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
-		RegistrationID:  &reg.ID,
-		Domains:         idents,
-		Now:             &expiryCutoff,
-		RequireV2Authzs: &requireV2Authzs,
-	})
-	// It should not fail
-	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
-	// It should return no authorizations
-	test.AssertEquals(t, len(authz.Authz), 0)
-
-	// Create a new pending order that references one of the pending authorizations
-	orderExpiry := exp.Unix()
-	_, err = sa.NewOrder(ctx, &corepb.Order{
-		RegistrationID: &reg.ID,
-		Expires:        &orderExpiry,
-		Names:          []string{identA},
-		Authorizations: []string{fmt.Sprintf("%d", *paA.Id)},
-	})
-	// It should not fail
-	test.AssertNotError(t, err, "Couldn't create new pending order")
-
-	// Calling get authorizations for the names used above with requireV2Authzs true should now find an authz
-	requireV2Authzs = true
-	authz, err = sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
-		RegistrationID:  &reg.ID,
-		Domains:         idents,
-		Now:             &expiryCutoff,
-		RequireV2Authzs: &requireV2Authzs,
-	})
-	// It should not fail
-	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
-	// It should find the one authz we associated with an order above
-	test.AssertEquals(t, len(authz.Authz), 1)
-	test.AssertEquals(t, *authz.Authz[0].Authz.Id, fmt.Sprintf("%d", *paA.Id))
-
-	// TODO: also need to add a test case where there is both a pending and a valid authz
-	// (this shouldn't really happen, but just in case) to test overwriting with the valid
 }
 
 func TestAddPendingAuthorizations(t *testing.T) {
