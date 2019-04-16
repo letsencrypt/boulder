@@ -443,6 +443,10 @@ var uintToStatus = map[uint8]string{
 	4: "revoked",
 }
 
+func statusUnit(status core.AcmeStatus) uint8 {
+	return statusToUint[string(status)]
+}
+
 const authz2Fields = "id, identifierType, identifierValue, registrationID, status, expires, challenges, attempted, token, validationError, validationRecord"
 
 type authz2Model struct {

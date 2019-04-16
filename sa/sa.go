@@ -891,8 +891,8 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Contex
 			`SELECT id, status FROM authz2 WHERE identifierValue = :ident AND status IN (:pending,:valid) AND expires > :expires LIMIT :limit`,
 			map[string]interface{}{
 				"ident":   *req.Domain,
-				"pending": statusToUint[string(core.StatusPending)],
-				"valid":   statusToUint[string(core.StatusValid)],
+				"pending": statusUnit(core.StatusPending),
+				"valid":   statusUnit(core.StatusValid),
 				"expires": ssa.clk.Now(),
 				"limit":   getAuthorizationIDsMax,
 			},
@@ -908,7 +908,7 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Contex
 		}
 
 		qmarks := []string{}
-		params := []interface{}{statusToUint[string(core.StatusRevoked)]}
+		params := []interface{}{statusUnit(core.StatusRevoked)}
 		for _, id := range ids {
 			qmarks = append(qmarks, "?")
 			params = append(params, id.ID)
@@ -1460,10 +1460,10 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 	_, err := ssa.dbMap.Exec(
 		`UPDATE authz2 SET status = :deactivated WHERE id = :id and status IN (:valid,:pending)`,
 		map[string]interface{}{
-			"deactivated": statusToUint[string(core.StatusDeactivated)],
+			"deactivated": statusUnit(core.StatusDeactivated),
 			"id":          *req.Id,
-			"valid":       statusToUint[string(core.StatusValid)],
-			"pending":     statusToUint[string(core.StatusPending)],
+			"valid":       statusUnit(core.StatusValid),
+			"pending":     statusUnit(core.StatusPending),
 		},
 	)
 	if err != nil {
@@ -2315,8 +2315,8 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 	params := []interface{}{
 		*req.RegistrationID,
 		time.Unix(0, *req.Now),
-		statusToUint[string(core.StatusValid)],
-		statusToUint[string(core.StatusPending)],
+		statusUnit(core.StatusValid),
+		statusUnit(core.StatusPending),
 	}
 	for _, n := range req.Domains {
 		params = append(params, n)
@@ -2488,7 +2488,7 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, re
 		map[string]interface{}{
 			"regID":      *req.RegistrationID,
 			"ident":      *req.IdentifierValue,
-			"status":     statusToUint[string(core.StatusPending)],
+			"status":     statusUnit(core.StatusPending),
 			"validUntil": time.Unix(0, *req.ValidUntil),
 		},
 	)
@@ -2518,7 +2518,7 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations2(ctx context.Context,
 		map[string]interface{}{
 			"regID":   *req.Id,
 			"expires": ssa.clk.Now(),
-			"status":  statusToUint[string(core.StatusPending)],
+			"status":  statusUnit(core.StatusPending),
 		},
 	)
 	if err != nil {
@@ -2552,7 +2552,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 		map[string]interface{}{
 			"regID":   *req.AcctID,
 			"expires": ssa.clk.Now(),
-			"status":  statusToUint[string(core.StatusValid)],
+			"status":  statusUnit(core.StatusValid),
 			"orderID": *req.Id,
 		},
 	)
@@ -2613,7 +2613,7 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context,
 			"ident":           *req.Hostname,
 			"expiresEarliest": time.Unix(0, *req.Range.Earliest),
 			"expiresLatest":   time.Unix(0, *req.Range.Latest),
-			"status":          statusToUint[string(core.StatusInvalid)],
+			"status":          statusUnit(core.StatusInvalid),
 		},
 	)
 	if err != nil {
@@ -2642,7 +2642,7 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 	params := []interface{}{
 		*req.RegistrationID,
 		time.Unix(0, *req.Now),
-		statusToUint[string(core.StatusValid)],
+		statusUnit(core.StatusValid),
 	}
 	for _, n := range req.Domains {
 		params = append(params, n)
