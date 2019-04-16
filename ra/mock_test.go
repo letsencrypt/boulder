@@ -179,11 +179,7 @@ func (sa *mockInvalidAuthorizationsAuthority) GetAuthorization2(_ context.Contex
 	return nil, nil
 }
 
-func (sa *mockInvalidAuthorizationsAuthority) NewAuthorization2(ctx context.Context, req *corepb.Authorization, opts ...grpc.CallOption) (*sapb.AuthorizationID2, error) {
-	return nil, nil
-}
-
-func (sa *mockInvalidAuthorizationsAuthority) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest, opts ...grpc.CallOption) (*sapb.AuthorizationIDs, error) {
+func (sa *mockInvalidAuthorizationsAuthority) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest, opts ...grpc.CallOption) (*sapb.Authorization2IDs, error) {
 	return nil, nil
 }
 

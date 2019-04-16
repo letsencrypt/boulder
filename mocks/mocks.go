@@ -551,14 +551,9 @@ func (sa *StorageAuthority) AddPendingAuthorizations(ctx context.Context, req *s
 	return &sapb.AuthorizationIDs{}, nil
 }
 
-// NewAuthorization is a mock
-func (sa *StorageAuthority) NewAuthorization2(ctx context.Context, req *corepb.Authorization) (*sapb.AuthorizationID2, error) {
-	return &sapb.AuthorizationID2{}, nil
-}
-
 // NewAuthorizations is a mock
-func (sa *StorageAuthority) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
-	return &sapb.AuthorizationIDs{}, nil
+func (sa *StorageAuthority) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
+	return &sapb.Authorization2IDs{}, nil
 }
 
 func (sa *StorageAuthority) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) error {

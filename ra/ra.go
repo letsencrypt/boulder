@@ -557,14 +557,19 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	}
 
 	if v2 {
-		authzID, err := ra.SA.NewAuthorization2(ctx, authzPB)
+		authzIDs, err := ra.SA.NewAuthorizations2(ctx, &sapb.AddPendingAuthorizationsRequest{
+			Authz: []*corepb.Authorization{authzPB},
+		})
 		if err != nil {
 			return core.Authorization{}, err
+		}
+		if len(authzIDs.Ids) != 1 {
+			return core.Authorization{}, berrors.InternalServerError("unexpected number of authorization IDs returned from NewAuthorizations2: expected 1, got %d", len(authzIDs.Ids))
 		}
 		// The current internal authorization objects use a string for the ID, the new
 		// storage format uses a integer ID. In order to maintain compatibility we
 		// convert the integer ID to a string.
-		id := fmt.Sprintf("%d", *authzID.Id)
+		id := fmt.Sprintf("%d", authzIDs.Ids[0])
 		authzPB.Id = &id
 		return bgrpc.PBToAuthz(authzPB)
 	}
@@ -1892,17 +1897,24 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// If new authorizations are needed, call AddPendingAuthorizations. Also check
 	// whether the newly created pending authz's have an expiry lower than minExpiry
 	if len(newAuthzs) > 0 {
-		var authzIDs *sapb.AuthorizationIDs
+		var ids []string
 		req := sapb.AddPendingAuthorizationsRequest{Authz: newAuthzs}
 		if v2 {
-			authzIDs, err = ra.SA.NewAuthorizations2(ctx, &req)
+			authzIDs, err := ra.SA.NewAuthorizations2(ctx, &req)
+			if err != nil {
+				return nil, err
+			}
+			for _, id := range authzIDs.Ids {
+				ids = append(ids, fmt.Sprintf("%d", id))
+			}
 		} else {
-			authzIDs, err = ra.SA.AddPendingAuthorizations(ctx, &req)
+			authzIDs, err := ra.SA.AddPendingAuthorizations(ctx, &req)
+			if err != nil {
+				return nil, err
+			}
+			ids = authzIDs.Ids
 		}
-		if err != nil {
-			return nil, err
-		}
-		order.Authorizations = append(order.Authorizations, authzIDs.Ids...)
+		order.Authorizations = append(order.Authorizations, ids...)
 
 		// If the newly created pending authz's have an expiry closer than the
 		// minExpiry the minExpiry is the pending authz expiry.

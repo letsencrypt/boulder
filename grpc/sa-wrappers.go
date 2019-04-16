@@ -584,18 +584,7 @@ func (sas StorageAuthorityClientWrapper) RevokeCertificate(ctx context.Context, 
 	return err
 }
 
-func (sas StorageAuthorityClientWrapper) NewAuthorization2(ctx context.Context, req *corepb.Authorization) (*sapb.AuthorizationID2, error) {
-	resp, err := sas.inner.NewAuthorization2(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil || resp.Id == nil {
-		return nil, errIncompleteResponse
-	}
-	return resp, nil
-}
-
-func (sas StorageAuthorityClientWrapper) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
+func (sas StorageAuthorityClientWrapper) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
 	resp, err := sas.inner.NewAuthorizations2(ctx, req)
 	if err != nil {
 		return nil, err
@@ -1202,14 +1191,7 @@ func (sas StorageAuthorityServerWrapper) RevokeCertificate(ctx context.Context, 
 	return &corepb.Empty{}, sas.inner.RevokeCertificate(ctx, req)
 }
 
-func (sas StorageAuthorityServerWrapper) NewAuthorization2(ctx context.Context, req *corepb.Authorization) (*sapb.AuthorizationID2, error) {
-	if req == nil {
-		return nil, errIncompleteRequest
-	}
-	return sas.inner.NewAuthorization2(ctx, req)
-}
-
-func (sas StorageAuthorityServerWrapper) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
+func (sas StorageAuthorityServerWrapper) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
 	if req == nil || req.Authz == nil {
 		return nil, errIncompleteRequest
 	}
