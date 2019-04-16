@@ -482,6 +482,11 @@
 			"Rev": "236199dd5f8031d698fb64091194aecd1c3895b2"
 		},
 		{
+			"ImportPath": "google.golang.org/grpc/binarylog/grpc_binarylog_v1",
+			"Comment": "v1.20.0",
+			"Rev": "236199dd5f8031d698fb64091194aecd1c3895b2"
+		},
+		{
 			"ImportPath": "google.golang.org/grpc/codes",
 			"Comment": "v1.20.0",
 			"Rev": "236199dd5f8031d698fb64091194aecd1c3895b2"
@@ -493,6 +498,11 @@
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/credentials",
+			"Comment": "v1.20.0",
+			"Rev": "236199dd5f8031d698fb64091194aecd1c3895b2"
+		},
+		{
+			"ImportPath": "google.golang.org/grpc/credentials/internal",
 			"Comment": "v1.20.0",
 			"Rev": "236199dd5f8031d698fb64091194aecd1c3895b2"
 		},
@@ -522,6 +532,16 @@
 			"Rev": "236199dd5f8031d698fb64091194aecd1c3895b2"
 		},
 		{
+			"ImportPath": "google.golang.org/grpc/internal/balancerload",
+			"Comment": "v1.20.0",
+			"Rev": "236199dd5f8031d698fb64091194aecd1c3895b2"
+		},
+		{
+			"ImportPath": "google.golang.org/grpc/internal/binarylog",
+			"Comment": "v1.20.0",
+			"Rev": "236199dd5f8031d698fb64091194aecd1c3895b2"
+		},
+		{
 			"ImportPath": "google.golang.org/grpc/internal/channelz",
 			"Comment": "v1.20.0",
 			"Rev": "236199dd5f8031d698fb64091194aecd1c3895b2"
@@ -533,6 +553,16 @@
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/internal/grpcrand",
+			"Comment": "v1.20.0",
+			"Rev": "236199dd5f8031d698fb64091194aecd1c3895b2"
+		},
+		{
+			"ImportPath": "google.golang.org/grpc/internal/grpcsync",
+			"Comment": "v1.20.0",
+			"Rev": "236199dd5f8031d698fb64091194aecd1c3895b2"
+		},
+		{
+			"ImportPath": "google.golang.org/grpc/internal/syscall",
 			"Comment": "v1.20.0",
 			"Rev": "236199dd5f8031d698fb64091194aecd1c3895b2"
 		},
@@ -614,36 +644,6 @@
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
 			"Rev": "7ad95dd0798a40da1ccdff6dff35fd177b5edf40"
-		},
-		{
-			"ImportPath": "google.golang.org/grpc/internal/balancerload",
-			"Comment": "v1.20.0",
-			"Rev": "236199dd5f8031d698fb64091194aecd1c3895b2"
-		},
-		{
-			"ImportPath": "google.golang.org/grpc/internal/binarylog",
-			"Comment": "v1.20.0",
-			"Rev": "236199dd5f8031d698fb64091194aecd1c3895b2"
-		},
-		{
-			"ImportPath": "google.golang.org/grpc/internal/grpcsync",
-			"Comment": "v1.20.0",
-			"Rev": "236199dd5f8031d698fb64091194aecd1c3895b2"
-		},
-		{
-			"ImportPath": "google.golang.org/grpc/credentials/internal",
-			"Comment": "v1.20.0",
-			"Rev": "236199dd5f8031d698fb64091194aecd1c3895b2"
-		},
-		{
-			"ImportPath": "google.golang.org/grpc/binarylog/grpc_binarylog_v1",
-			"Comment": "v1.20.0",
-			"Rev": "236199dd5f8031d698fb64091194aecd1c3895b2"
-		},
-		{
-			"ImportPath": "google.golang.org/grpc/internal/syscall",
-			"Comment": "v1.20.0",
-			"Rev": "236199dd5f8031d698fb64091194aecd1c3895b2"
 		}
 	]
 }
