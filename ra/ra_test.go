@@ -138,7 +138,6 @@ var (
 		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-example.com"},
 		RegistrationID: 1,
 		Status:         "pending",
-		Combinations:   [][]int{{0}, {1}},
 	}
 	AuthzFinal = core.Authorization{}
 
@@ -287,9 +286,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	AuthzInitial.RegistrationID = Registration.ID
 
-	challenges, combinations, _ := pa.ChallengesFor(AuthzInitial.Identifier)
+	challenges, _ := pa.ChallengesFor(AuthzInitial.Identifier)
 	AuthzInitial.Challenges = challenges
-	AuthzInitial.Combinations = combinations
 
 	AuthzFinal = AuthzInitial
 	AuthzFinal.Status = "valid"
@@ -2401,7 +2399,6 @@ func (sa *mockSAUnsafeAuthzReuse) GetAuthorizations(
 			ID:             "bad-bad-not-good",
 			Identifier:     core.AcmeIdentifier{Type: "dns", Value: "*.zombo.com"},
 			RegistrationID: *req.RegistrationID,
-			Combinations:   [][]int{{0}, {1}},
 			// Authz is valid
 			Status: "valid",
 			Challenges: []core.Challenge{
@@ -2422,7 +2419,6 @@ func (sa *mockSAUnsafeAuthzReuse) GetAuthorizations(
 			ID:             "reused-valid-authz",
 			Identifier:     core.AcmeIdentifier{Type: "dns", Value: "zombo.com"},
 			RegistrationID: *req.RegistrationID,
-			Combinations:   [][]int{{0}, {1}},
 			// Authz is valid
 			Status: "valid",
 			Challenges: []core.Challenge{
@@ -2731,7 +2727,6 @@ func (sa *mockSANearExpiredAuthz) GetAuthorizations(
 					Status: core.StatusValid,
 				},
 			},
-			Combinations: [][]int{{0}, {1}},
 		},
 	}
 	// We can't easily access sa.authzMapToPB so we "inline" it for the mock :-)
