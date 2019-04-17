@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math/big"
 	"net"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1490,29 +1489,22 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		return nil, Rollback(tx, err)
 	}
 
-	var v2Authzs []int64
 	for _, id := range req.Authorizations {
-		if strings.HasPrefix(id, "v2/") {
-			idInt, err := strconv.ParseInt(id[3:], 10, 64)
-			if err != nil {
-				return nil, Rollback(tx, err)
-			}
-			otoa := &orderToAuthz2Model{
-				OrderID: order.ID,
-				AuthzID: idInt,
-			}
-			if err := txWithCtx.Insert(otoa); err != nil {
-				return nil, Rollback(tx, err)
-			}
-			v2Authzs = append(v2Authzs, idInt)
-		} else {
-			otoa := &orderToAuthzModel{
-				OrderID: order.ID,
-				AuthzID: id,
-			}
-			if err := txWithCtx.Insert(otoa); err != nil {
-				return nil, Rollback(tx, err)
-			}
+		otoa := &orderToAuthzModel{
+			OrderID: order.ID,
+			AuthzID: id,
+		}
+		if err := txWithCtx.Insert(otoa); err != nil {
+			return nil, Rollback(tx, err)
+		}
+	}
+	for _, id := range req.V2Authorizations {
+		otoa := &orderToAuthz2Model{
+			OrderID: order.ID,
+			AuthzID: id,
+		}
+		if err := txWithCtx.Insert(otoa); err != nil {
+			return nil, Rollback(tx, err)
 		}
 	}
 
@@ -1547,7 +1539,7 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 
 	// Calculate the order status before returning it. Since it may have reused all
 	// valid authorizations the order may be "born" in a ready status.
-	status, err := ssa.statusForOrder(ctx, req, v2Authzs)
+	status, err := ssa.statusForOrder(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -1715,12 +1707,7 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	if err != nil {
 		return nil, err
 	}
-	for _, authzID := range v1AuthzIDs {
-		order.Authorizations = append(order.Authorizations, authzID)
-	}
-	for _, authzID := range v2AuthzIDs {
-		order.Authorizations = append(order.Authorizations, fmt.Sprintf("v2/%d", authzID))
-	}
+	order.Authorizations, order.V2Authorizations = v1AuthzIDs, v2AuthzIDs
 
 	names, err := ssa.namesForOrder(ctx, *order.Id)
 	if err != nil {
@@ -1736,7 +1723,7 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	order.Names = reversedNames
 
 	// Calculate the status for the order
-	status, err := ssa.statusForOrder(ctx, order, v2AuthzIDs)
+	status, err := ssa.statusForOrder(ctx, order)
 	if err != nil {
 		return nil, err
 	}
@@ -1764,9 +1751,9 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 // needs to lookup authorizations using both the authz/pendingAuthorizations and authz2
 // tables. Since, if there are any v2 authorizations, we already have their IDs we don't
 // need to consult the orderToAuthz2 table a second time. We cannot do this as easily
-// for the v1 authorizations as we only have their IDs which can refer to one of two
-// tables, whereas all v2 authorizations exist in a single table.
-func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corepb.Order, v2AuthzIDs []int64) (string, error) {
+// for the v1 authorizations as their IDs can refer to one of two tables, whereas all
+// v2 authorizations exist in a single table.
+func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corepb.Order) (string, error) {
 	// Without any further work we know an order with an error is invalid
 	if order.Error != nil {
 		return string(core.StatusInvalid), nil
@@ -1785,16 +1772,16 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 	}
 
 	// Get the full Authorization objects for the order
-	authzValidityInfo, err := ssa.getAllOrderAuthorizationStatuses(ctx, *order.Id, *order.RegistrationID, v2AuthzIDs)
+	authzValidityInfo, err := ssa.getAllOrderAuthorizationStatuses(ctx, *order.Id, *order.RegistrationID, order.V2Authorizations)
 	// If there was an error getting the authorizations, return it immediately
 	if err != nil {
 		return "", err
 	}
 
 	// If getAllOrderAuthorizationStatuses returned a different number of authorization
-	// objects than the order's slice of authorization IDs something has gone
+	// objects than the order's slices of v1 and v2 authorization IDs something has gone
 	// wrong worth raising an internal error about.
-	if len(authzValidityInfo) != len(order.Authorizations) {
+	if len(authzValidityInfo) != len(order.Authorizations)+len(order.V2Authorizations) {
 		return "", berrors.InternalServerError(
 			"getAllOrderAuthorizationStatuses returned the wrong number of authorization statuses "+
 				"(%d vs expected %d) for order %d",

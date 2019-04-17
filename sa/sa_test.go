@@ -1583,11 +1583,12 @@ func TestNewOrder(t *testing.T) {
 	}
 
 	order, err = sa.NewOrder(context.Background(), &corepb.Order{
-		RegistrationID: &reg.ID,
-		Expires:        &i,
-		Names:          []string{"example.com", "just.another.example.com"},
-		Authorizations: []string{"a", "b", "c", "v2/1"},
-		Status:         &status,
+		RegistrationID:   &reg.ID,
+		Expires:          &i,
+		Names:            []string{"example.com", "just.another.example.com"},
+		Authorizations:   []string{"a", "b", "c"},
+		V2Authorizations: []int64{1},
+		Status:           &status,
 	})
 	test.AssertNotError(t, err, "sa.NewOrder failed")
 	test.AssertEquals(t, *order.Id, int64(2))
@@ -3247,14 +3248,12 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 	i := fc.Now().Truncate(time.Second).UnixNano()
 	status := string(core.StatusPending)
 	order := &corepb.Order{
-		RegistrationID: &reg.ID,
-		Expires:        &i,
-		Names:          []string{"a.example.com", "b.example.com"},
-		Authorizations: []string{
-			oldAuthz.ID,
-			fmt.Sprintf("v2/%d", ids.Ids[0]),
-		},
-		Status: &status,
+		RegistrationID:   &reg.ID,
+		Expires:          &i,
+		Names:            []string{"a.example.com", "b.example.com"},
+		Authorizations:   []string{oldAuthz.ID},
+		V2Authorizations: []int64{ids.Ids[0]},
+		Status:           &status,
 	}
 	order, err = sa.NewOrder(context.Background(), order)
 	test.AssertNotError(t, err, "AddOrder failed")

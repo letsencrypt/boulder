@@ -1667,11 +1667,10 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 	finalizeURL := web.RelativeEndpoint(request,
 		fmt.Sprintf("%s%d/%d", finalizeOrderPath, *order.RegistrationID, *order.Id))
 	respObj := orderJSON{
-		Status:         core.AcmeStatus(*order.Status),
-		Expires:        time.Unix(0, *order.Expires).UTC(),
-		Identifiers:    idents,
-		Authorizations: make([]string, len(order.Authorizations)),
-		Finalize:       finalizeURL,
+		Status:      core.AcmeStatus(*order.Status),
+		Expires:     time.Unix(0, *order.Expires).UTC(),
+		Identifiers: idents,
+		Finalize:    finalizeURL,
 	}
 	// If there is an order error, prefix its type with the V2 namespace
 	if order.Error != nil {
@@ -1683,8 +1682,11 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		respObj.Error = prob
 		respObj.Error.Type = probs.V2ErrorNS + respObj.Error.Type
 	}
-	for i, authzID := range order.Authorizations {
-		respObj.Authorizations[i] = web.RelativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authzID))
+	for _, authzID := range order.Authorizations {
+		respObj.Authorizations = append(respObj.Authorizations, web.RelativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authzID)))
+	}
+	for _, v2ID := range order.V2Authorizations {
+		respObj.Authorizations = append(respObj.Authorizations, web.RelativeEndpoint(request, fmt.Sprintf("%sv2/%d", authzPath, v2ID)))
 	}
 	if respObj.Status == core.StatusValid {
 		certURL := web.RelativeEndpoint(request,

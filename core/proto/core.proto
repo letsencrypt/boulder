@@ -71,11 +71,16 @@ message Order {
         optional int64 expires = 3;
         optional ProblemDetails error = 4;
         optional string certificateSerial = 5;
+        // contains only v1 authorization IDs, should be
+        // deprecated once fully switched to v2 authorizations
+        // in favor of v2Authorizations.
         repeated string authorizations = 6;
         optional string status = 7;
         repeated string names = 8;
         optional bool beganProcessing = 9;
         optional int64 created = 10;
+        // contains only v2 authorization IDs.
+        repeated int64 v2Authorizations = 11;
 }
 
 message Empty {}
