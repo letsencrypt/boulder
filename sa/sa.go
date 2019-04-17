@@ -1068,6 +1068,8 @@ func deleteOrderFQDNSet(
 	return nil
 }
 
+// addIssuedNames adds an entry to issuedNames and certificatesPerName for the
+// given certificate. It must be run inside a transaction.
 func addIssuedNames(db dbExecer, cert *x509.Certificate, isRenewal bool) error {
 	var qmarks []string
 	var values []interface{}
@@ -1080,6 +1082,9 @@ func addIssuedNames(db dbExecer, cert *x509.Certificate, isRenewal bool) error {
 		qmarks = append(qmarks, "(?, ?, ?, ?)")
 	}
 	query := `INSERT INTO issuedNames (reversedName, serial, notBefore, renewal) VALUES ` + strings.Join(qmarks, ", ") + `;`
+
+	query2 := `INSERT INTO certificatesPerName (eTLDPlusOne, time, count) values (:name, :time, 1) ON DUPLICATE KEY UPDATE count=count+1;`
+
 	_, err := db.Exec(query, values...)
 	return err
 }
