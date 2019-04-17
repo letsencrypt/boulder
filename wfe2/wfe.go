@@ -494,6 +494,11 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
 		logEvent.Requester = existingAcct.ID
 
+		if features.Enabled(features.RemoveWFE2AccountID) {
+			// Zero out the account ID so that it isn't marshalled
+			existingAcct.ID = 0
+		}
+
 		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, existingAcct)
 		if err != nil {
 			// ServerInternal because we just created this account, and it
@@ -567,6 +572,11 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	response.Header().Add("Location", acctURL)
 	if len(wfe.SubscriberAgreementURL) > 0 {
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
+	}
+
+	if features.Enabled(features.RemoveWFE2AccountID) {
+		// Zero out the account ID so that it isn't marshalled
+		acct.ID = 0
 	}
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, acct)

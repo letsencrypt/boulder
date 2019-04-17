@@ -24,11 +24,12 @@ func _() {
 	_ = x[EarlyOrderRateLimit-13]
 	_ = x[EnforceMultiVA-14]
 	_ = x[MultiVAFullResults-15]
+	_ = x[RemoveWFE2AccountID-16]
 }
 
-const _FeatureFlag_name = "unusedPerformValidationRPCACME13KeyRolloverSimplifiedVAHTTPTLSSNIRevalidationAllowRenewalFirstRLCAAValidationMethodsCAAAccountURIProbeCTLogsHeadNonceStatusOKNewAuthorizationSchemaRevokeAtRASetIssuedNamesRenewalBitEarlyOrderRateLimitEnforceMultiVAMultiVAFullResults"
+const _FeatureFlag_name = "unusedPerformValidationRPCACME13KeyRolloverSimplifiedVAHTTPTLSSNIRevalidationAllowRenewalFirstRLCAAValidationMethodsCAAAccountURIProbeCTLogsHeadNonceStatusOKNewAuthorizationSchemaRevokeAtRASetIssuedNamesRenewalBitEarlyOrderRateLimitEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountID"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 26, 43, 59, 77, 96, 116, 129, 140, 157, 179, 189, 213, 232, 246, 264}
+var _FeatureFlag_index = [...]uint16{0, 6, 26, 43, 59, 77, 96, 116, 129, 140, 157, 179, 189, 213, 232, 246, 264, 283}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {
