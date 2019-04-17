@@ -2,7 +2,6 @@ package ra
 
 import (
 	"crypto/x509"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/mail"
@@ -1646,29 +1645,15 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 // onValidationUpdate saves a validation's new status after receiving an
 // authorization back from the VA.
 func (ra *RegistrationAuthorityImpl) onValidationUpdate(ctx context.Context, authz core.Authorization) error {
-	// Consider validation successful if any of the combinations
+	// Consider validation successful if any of the challenges
 	// specified in the authorization has been fulfilled
-	validated := map[int]bool{}
-	for i, ch := range authz.Challenges {
+	for _, ch := range authz.Challenges {
 		if ch.Status == core.StatusValid {
-			validated[i] = true
-		}
-	}
-	for _, combo := range authz.Combinations {
-		comboValid := true
-		for _, i := range combo {
-			if !validated[i] {
-				comboValid = false
-				break
-			}
-		}
-		if comboValid {
 			authz.Status = core.StatusValid
 		}
 	}
 
 	// If no validation succeeded, then the authorization is invalid
-	// NOTE: This only works because we only ever do one validation
 	if authz.Status != core.StatusValid {
 		authz.Status = core.StatusInvalid
 	} else {
@@ -1917,7 +1902,7 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 	}
 
 	// Create challenges. The WFE will update them with URIs before sending them out.
-	challenges, combinations, err := ra.PA.ChallengesFor(identifier)
+	challenges, err := ra.PA.ChallengesFor(identifier)
 	if err != nil {
 		// The only time ChallengesFor errors it is a fatal configuration error
 		// where challenges required by policy for an identifier are not enabled. We
@@ -1938,11 +1923,6 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 		}
 		authz.Challenges = append(authz.Challenges, challPB)
 	}
-	comboBytes, err := json.Marshal(combinations)
-	if err != nil {
-		return nil, err
-	}
-	authz.Combinations = comboBytes
 	return authz, nil
 }
 

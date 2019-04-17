@@ -70,13 +70,13 @@ func selectPendingAuthz(s dbOneSelector, q string, args ...interface{}) (*pendin
 	var model pendingauthzModel
 	err := s.SelectOne(
 		&model,
-		"SELECT id, identifier, registrationID, status, expires, combinations, LockCol FROM pendingAuthorizations "+q,
+		"SELECT id, identifier, registrationID, status, expires, LockCol FROM pendingAuthorizations "+q,
 		args...,
 	)
 	return &model, err
 }
 
-const authzFields = "id, identifier, registrationID, status, expires, combinations"
+const authzFields = "id, identifier, registrationID, status, expires"
 
 // selectAuthz selects all fields of one authorization model
 func selectAuthz(s dbOneSelector, q string, args ...interface{}) (*authzModel, error) {

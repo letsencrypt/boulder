@@ -312,15 +312,12 @@ var accountKeyJSON = `{
 func TestChallengesFor(t *testing.T) {
 	pa := paImpl(t)
 
-	challenges, combinations, err := pa.ChallengesFor(core.AcmeIdentifier{})
+	challenges, err := pa.ChallengesFor(core.AcmeIdentifier{})
 	test.AssertNotError(t, err, "ChallengesFor failed")
 
 	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
-	test.Assert(t, len(combinations) == len(enabledChallenges), "Wrong number of combinations returned")
 
 	seenChalls := make(map[string]bool)
-	// Expected only if the pseudo-RNG is seeded with 99.
-	expectedCombos := [][]int{{1}, {0}}
 	for _, challenge := range challenges {
 		test.Assert(t, !seenChalls[challenge.Type], "should not already have seen this type")
 		seenChalls[challenge.Type] = true
@@ -328,7 +325,6 @@ func TestChallengesFor(t *testing.T) {
 		test.Assert(t, enabledChallenges[challenge.Type], "Unsupported challenge returned")
 	}
 	test.AssertEquals(t, len(seenChalls), len(enabledChallenges))
-	test.AssertDeepEquals(t, expectedCombos, combinations)
 
 }
 
@@ -352,7 +348,7 @@ func TestChallengesForWildcard(t *testing.T) {
 		core.ChallengeTypeDNS01:  false,
 	}
 	pa := mustConstructPA(t, enabledChallenges)
-	_, _, err := pa.ChallengesFor(wildcardIdent)
+	_, err := pa.ChallengesFor(wildcardIdent)
 	test.AssertError(t, err, "ChallengesFor did not error for a wildcard ident "+
 		"when DNS-01 was disabled")
 	test.AssertEquals(t, err.Error(), "Challenges requested for wildcard "+
@@ -362,10 +358,9 @@ func TestChallengesForWildcard(t *testing.T) {
 	// should return only one DNS-01 type challenge
 	enabledChallenges[core.ChallengeTypeDNS01] = true
 	pa = mustConstructPA(t, enabledChallenges)
-	challenges, combinations, err := pa.ChallengesFor(wildcardIdent)
+	challenges, err := pa.ChallengesFor(wildcardIdent)
 	test.AssertNotError(t, err, "ChallengesFor errored for a wildcard ident "+
 		"unexpectedly")
-	test.AssertEquals(t, len(combinations), 1)
 	test.AssertEquals(t, len(challenges), 1)
 	test.AssertEquals(t, challenges[0].Type, core.ChallengeTypeDNS01)
 }

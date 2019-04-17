@@ -193,12 +193,9 @@ func TestAddAuthorization(t *testing.T) {
 	expectedPa := core.Authorization{ID: PA.ID}
 	test.AssertMarshaledEquals(t, dbPa.ID, expectedPa.ID)
 
-	combos := make([][]int, 1)
-	combos[0] = []int{0, 1}
-
 	exp := time.Now().AddDate(0, 0, 1)
 	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}
-	newPa := core.Authorization{ID: PA.ID, Identifier: identifier, RegistrationID: reg.ID, Status: core.StatusPending, Expires: &exp, Combinations: combos}
+	newPa := core.Authorization{ID: PA.ID, Identifier: identifier, RegistrationID: reg.ID, Status: core.StatusPending, Expires: &exp}
 
 	newPa.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, newPa)
@@ -271,9 +268,6 @@ func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) 
 func CreateDomainAuthWithRegID(t *testing.T, domainName string, sa *SQLStorageAuthority, regID int64) (authz core.Authorization) {
 	exp := sa.clk.Now().AddDate(0, 0, 1) // expire in 1 day
 
-	combos := make([][]int, 1)
-	combos[0] = []int{0, 1}
-
 	// create pending auth
 	authz, err := sa.NewPendingAuthorization(ctx, core.Authorization{
 		Status:         core.StatusPending,
@@ -281,7 +275,6 @@ func CreateDomainAuthWithRegID(t *testing.T, domainName string, sa *SQLStorageAu
 		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domainName},
 		RegistrationID: regID,
 		Challenges:     []core.Challenge{{Type: "simpleHttp", Status: core.StatusValid, URI: domainName, Token: "THISWOULDNTBEAGOODTOKEN"}},
-		Combinations:   combos,
 	})
 	if err != nil {
 		t.Fatalf("Couldn't create new pending authorization: %s", err)
@@ -1070,9 +1063,6 @@ func TestDeactivateAuthorization(t *testing.T) {
 	expectedPa := core.Authorization{ID: PA.ID}
 	test.AssertMarshaledEquals(t, dbPa.ID, expectedPa.ID)
 
-	combos := make([][]int, 1)
-	combos[0] = []int{0, 1}
-
 	exp := time.Now().AddDate(0, 0, 1)
 	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}
 	newPa := core.Authorization{
@@ -1081,7 +1071,6 @@ func TestDeactivateAuthorization(t *testing.T) {
 		RegistrationID: reg.ID,
 		Status:         core.StatusPending,
 		Expires:        &exp,
-		Combinations:   combos,
 	}
 
 	newPa.Status = core.StatusValid
@@ -1646,7 +1635,6 @@ func TestGetAuthorizations(t *testing.T) {
 		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: identA},
 		Status:         core.StatusPending,
 		Expires:        &exp,
-		Combinations:   [][]int{[]int{0, 1}},
 	}
 
 	// Add the template to create pending authorization A
@@ -1758,7 +1746,6 @@ func TestAddPendingAuthorizations(t *testing.T) {
 	expires := fc.Now().Add(time.Hour).UnixNano()
 	identA := `a`
 	identB := `a`
-	combo := []byte(`[[0]]`)
 	status := string(core.StatusPending)
 	empty := ""
 	authz := []*corepb.Authorization{
@@ -1768,7 +1755,6 @@ func TestAddPendingAuthorizations(t *testing.T) {
 			RegistrationID: &reg.ID,
 			Status:         &status,
 			Expires:        &expires,
-			Combinations:   combo,
 		},
 		&corepb.Authorization{
 			Id:             &empty,
@@ -1776,7 +1762,6 @@ func TestAddPendingAuthorizations(t *testing.T) {
 			RegistrationID: &reg.ID,
 			Status:         &status,
 			Expires:        &expires,
-			Combinations:   combo,
 		},
 	}
 
@@ -2313,9 +2298,6 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	err := features.Set(map[string]bool{"SetIssuedNamesRenewalBit": true})
-	test.AssertNotError(t, err, "Failed to enable SetIssuedNamesRenewalBit feature flag")
-
 	reg := satest.CreateWorkingRegistration(t, sa)
 
 	// An example cert taken from EFF's website
@@ -2378,15 +2360,6 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 func TestCountCertificatesRenewalBit(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
-
-	// Set feature flags required for this test. We need to set both the
-	// renewal bit with the SetIssuedRenewalBit flag and use it with the
-	// AllowRenewalFirstRL flag.
-	err := features.Set(map[string]bool{
-		"SetIssuedNamesRenewalBit": true,
-		"AllowRenewalFirstRL":      true,
-	})
-	test.AssertNotError(t, err, "Failed to enable required features flag")
 
 	// Create a test registration
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -2482,20 +2455,4 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	// be ignored as a renewal and CertC should be ignored because it isn't an
 	// exact match.
 	test.AssertEquals(t, countNameExact(t, "not-example.com"), int64(1))
-
-	// Disable the AllowRenewalFirstRL feature flag and check the counts for the
-	// names in the certificate again.
-	err = features.Set(map[string]bool{
-		"AllowRenewalFirstRL": false,
-	})
-	test.AssertNotError(t, err, "Unexpected err clearing AllowRenewalFirstRL feature flag")
-
-	// The count for the base domain should be 3 now - certA, certB, and certC
-	// should all count. CertB is not ignored as a renewal because the feature
-	// flag is disabled.
-	test.AssertEquals(t, countName(t, "not-example.com"), int64(3))
-
-	// The exact name count for the base domain should be 2 now: certA and certB.
-	// CertB is not ignored as a renewal because the feature flag is disabled.
-	test.AssertEquals(t, countNameExact(t, "not-example.com"), int64(2))
 }
