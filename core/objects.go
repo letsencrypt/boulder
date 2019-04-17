@@ -140,7 +140,7 @@ func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
 // to account keys.
 type Registration struct {
 	// Unique identifier
-	ID int64 `json:"id" db:"id"`
+	ID int64 `json:"id,omitempty" db:"id"`
 
 	// Account key to which the details are attached
 	Key *jose.JSONWebKey `json:"key"`
