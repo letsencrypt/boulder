@@ -198,12 +198,9 @@ func TestAddAuthorization(t *testing.T) {
 	expectedPa := core.Authorization{ID: PA.ID}
 	test.AssertMarshaledEquals(t, dbPa.ID, expectedPa.ID)
 
-	combos := make([][]int, 1)
-	combos[0] = []int{0, 1}
-
 	exp := time.Now().AddDate(0, 0, 1)
 	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}
-	newPa := core.Authorization{ID: PA.ID, Identifier: identifier, RegistrationID: reg.ID, Status: core.StatusPending, Expires: &exp, Combinations: combos}
+	newPa := core.Authorization{ID: PA.ID, Identifier: identifier, RegistrationID: reg.ID, Status: core.StatusPending, Expires: &exp}
 
 	newPa.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(ctx, newPa)
@@ -276,9 +273,6 @@ func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) 
 func CreateDomainAuthWithRegID(t *testing.T, domainName string, sa *SQLStorageAuthority, regID int64) (authz core.Authorization) {
 	exp := sa.clk.Now().AddDate(0, 0, 1) // expire in 1 day
 
-	combos := make([][]int, 1)
-	combos[0] = []int{0, 1}
-
 	// create pending auth
 	authz, err := sa.NewPendingAuthorization(ctx, core.Authorization{
 		Status:         core.StatusPending,
@@ -286,7 +280,6 @@ func CreateDomainAuthWithRegID(t *testing.T, domainName string, sa *SQLStorageAu
 		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domainName},
 		RegistrationID: regID,
 		Challenges:     []core.Challenge{{Type: "simpleHttp", Status: core.StatusValid, URI: domainName, Token: "THISWOULDNTBEAGOODTOKEN"}},
-		Combinations:   combos,
 	})
 	if err != nil {
 		t.Fatalf("Couldn't create new pending authorization: %s", err)
@@ -1210,9 +1203,6 @@ func TestDeactivateAuthorization(t *testing.T) {
 	expectedPa := core.Authorization{ID: PA.ID}
 	test.AssertMarshaledEquals(t, dbPa.ID, expectedPa.ID)
 
-	combos := make([][]int, 1)
-	combos[0] = []int{0, 1}
-
 	exp := time.Now().AddDate(0, 0, 1)
 	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}
 	newPa := core.Authorization{
@@ -1221,7 +1211,6 @@ func TestDeactivateAuthorization(t *testing.T) {
 		RegistrationID: reg.ID,
 		Status:         core.StatusPending,
 		Expires:        &exp,
-		Combinations:   combos,
 	}
 
 	newPa.Status = core.StatusValid
@@ -1888,7 +1877,6 @@ func TestGetAuthorizations(t *testing.T) {
 		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: identA},
 		Status:         core.StatusPending,
 		Expires:        &exp,
-		Combinations:   [][]int{[]int{0, 1}},
 	}
 
 	// Add the template to create pending authorization A
@@ -2116,7 +2104,6 @@ func TestAddPendingAuthorizations(t *testing.T) {
 	expires := fc.Now().Add(time.Hour).UnixNano()
 	identA := `a`
 	identB := `a`
-	combo := []byte(`[[0]]`)
 	status := string(core.StatusPending)
 	empty := ""
 	authz := []*corepb.Authorization{
@@ -2126,7 +2113,6 @@ func TestAddPendingAuthorizations(t *testing.T) {
 			RegistrationID: &reg.ID,
 			Status:         &status,
 			Expires:        &expires,
-			Combinations:   combo,
 		},
 		&corepb.Authorization{
 			Id:             &empty,
@@ -2134,7 +2120,6 @@ func TestAddPendingAuthorizations(t *testing.T) {
 			RegistrationID: &reg.ID,
 			Status:         &status,
 			Expires:        &expires,
-			Combinations:   combo,
 		},
 	}
 

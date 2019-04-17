@@ -376,9 +376,9 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 	return nil
 }
 
-// ChallengesFor makes a decision of what challenges, and combinations, are
-// acceptable for the given identifier.
-func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.Challenge, [][]int, error) {
+// ChallengesFor makes a decision of what challenges are acceptable for
+// the given identifier.
+func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.Challenge, error) {
 	challenges := []core.Challenge{}
 
 	// If we are using the new authorization storage schema we only use a single
@@ -394,7 +394,7 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.C
 		// We must have the DNS-01 challenge type enabled to create challenges for
 		// a wildcard identifier per LE policy.
 		if !pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01) {
-			return nil, nil, fmt.Errorf(
+			return nil, fmt.Errorf(
 				"Challenges requested for wildcard identifier but DNS-01 " +
 					"challenge type is not enabled")
 		}
@@ -415,24 +415,17 @@ func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.C
 		}
 	}
 
-	// We shuffle the challenges and combinations to prevent ACME clients from
-	// relying on the specific order that boulder returns them in.
+	// We shuffle the challenges to prevent ACME clients from relying on the
+	// specific order that boulder returns them in.
 	shuffled := make([]core.Challenge, len(challenges))
-	combinations := make([][]int, len(challenges))
 
 	pa.rngMu.Lock()
 	defer pa.rngMu.Unlock()
 	for i, challIdx := range pa.pseudoRNG.Perm(len(challenges)) {
 		shuffled[i] = challenges[challIdx]
-		combinations[i] = []int{i}
 	}
 
-	shuffledCombos := make([][]int, len(combinations))
-	for i, comboIdx := range pa.pseudoRNG.Perm(len(combinations)) {
-		shuffledCombos[i] = combinations[comboIdx]
-	}
-
-	return shuffled, shuffledCombos, nil
+	return shuffled, nil
 }
 
 // ChallengeTypeEnabled returns whether the specified challenge type is enabled

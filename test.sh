@@ -5,7 +5,7 @@ if type realpath >/dev/null 2>&1 ; then
   cd $(realpath $(dirname $0))
 fi
 
-set -ex pipefail
+set -exo pipefail
 TRAVIS=${TRAVIS:-false}
 
 # The list of segments to run. To run only some of these segments, pre-set the
@@ -14,7 +14,7 @@ TRAVIS=${TRAVIS:-false}
 # defaults, because we don't want to run it locally (would be too disruptive to
 # GOPATH). We also omit coverage by default on local runs because it generates
 # artifacts on disk that aren't needed.
-RUN=${RUN:-vet fmt migrations unit integration errcheck ineffassign dashlint}
+RUN=${RUN:-lints unit integration}
 
 function run_and_expect_silence() {
   echo "$@"
@@ -67,19 +67,12 @@ function run_test_coverage() {
 #
 # Run Go Vet, a correctness-focused static analysis tool
 #
-if [[ "$RUN" =~ "vet" ]] ; then
+if [[ "$RUN" =~ "lints" ]] ; then
   run_and_expect_silence go vet ./...
-fi
-
-#
-# Ensure all files are formatted per the `go fmt` tool
-#
-if [[ "$RUN" =~ "fmt" ]] ; then
   run_and_expect_silence go fmt ./...
-fi
-
-if [[ "$RUN" =~ "migrations" ]] ; then
   run_and_expect_silence ./test/test-no-outdated-migrations.sh
+  ineffassign .
+  python test/grafana/lint.py
 fi
 
 #
@@ -142,13 +135,6 @@ if [[ "$RUN" =~ "errcheck" ]] ; then
     $(go list -f '{{ .ImportPath }}' ./... | grep -v test)
 fi
 
-#
-# Run ineffassign, to check for ineffectual assignments.
-#
-if [[ "$RUN" =~ "ineffassign" ]] ; then
-  ineffassign .
-fi
-
 # Run generate to make sure all our generated code can be re-generated with
 # current tools.
 # Note: Some of the tools we use seemingly don't understand ./vendor yet, and
@@ -171,8 +157,4 @@ fi
 
 if [[ "$RUN" =~ "rpm" ]]; then
   make rpm
-fi
-
-if [[ "$RUN" =~ "dashlint" ]]; then
-  python test/grafana/lint.py
 fi

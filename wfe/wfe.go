@@ -1070,6 +1070,7 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, authz *core.Authorization) {
 	for i := range authz.Challenges {
 		wfe.prepChallengeForDisplay(request, *authz, &authz.Challenges[i])
+		authz.Combinations = append(authz.Combinations, []int{i})
 	}
 	authz.ID = ""
 	authz.RegistrationID = 0

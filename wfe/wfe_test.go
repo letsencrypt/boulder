@@ -269,7 +269,7 @@ func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, _ *rapb.
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int, err error) {
+func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, err error) {
 	return
 }
 
@@ -1856,6 +1856,7 @@ func TestAuthorization(t *testing.T) {
 		},
 		"status": "valid",
 		"expires": "2070-01-01T00:00:00Z",
+		"combinations": [[0]],
 		"challenges": [
 			{
 				"type": "dns",
@@ -2371,6 +2372,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 		  },
 		  "status": "deactivated",
 		  "expires": "2070-01-01T00:00:00Z",
+			"combinations": [[0]],
 		  "challenges": [
 		    {
 			  "type": "dns",

@@ -61,7 +61,7 @@ message Authorization {
         optional string status = 4;
         optional int64 expires = 5; // Unix timestamp (nanoseconds)
         repeated core.Challenge challenges = 6;
-        optional bytes combinations = 7;
+        optional bytes combinations = 7; // deprecated
         optional bool v2 = 8;
 }
 

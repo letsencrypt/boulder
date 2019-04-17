@@ -140,7 +140,7 @@ func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
 // to account keys.
 type Registration struct {
 	// Unique identifier
-	ID int64 `json:"id" db:"id"`
+	ID int64 `json:"id,omitempty" db:"id"`
 
 	// Account key to which the details are attached
 	Key *jose.JSONWebKey `json:"key"`
@@ -389,8 +389,7 @@ type Authorization struct {
 	// slice and the order of these challenges may not be predictable.
 	Challenges []Challenge `json:"challenges,omitempty" db:"-"`
 
-	// The server may suggest combinations of challenges if it
-	// requires more than one challenge to be completed.
+	// This field is deprecated. It's filled in by WFE for the ACMEv1 API.
 	Combinations [][]int `json:"combinations,omitempty" db:"combinations"`
 
 	// Wildcard is a Boulder-specific Authorization field that indicates the

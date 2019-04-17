@@ -211,6 +211,7 @@ type MockRegistrationAuthority struct {
 }
 
 func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, acct core.Registration) (core.Registration, error) {
+	acct.ID = 1
 	return acct, nil
 }
 
@@ -279,7 +280,7 @@ func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, req *rap
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int, err error) {
+func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, err error) {
 	return
 }
 
@@ -1247,7 +1248,7 @@ func TestNewECDSAAccount(t *testing.T) {
 	test.AssertEquals(t, acct.Agreement, "")
 	test.AssertEquals(t, acct.InitialIP.String(), "1.1.1.1")
 
-	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/0")
+	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/1")
 
 	key = loadKey(t, []byte(testE1KeyPrivatePEM))
 	_, ok = key.(*ecdsa.PrivateKey)
@@ -1393,7 +1394,7 @@ func TestNewAccount(t *testing.T) {
 
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
-		"http://localhost/acme/acct/0")
+		"http://localhost/acme/acct/1")
 
 	// Load an existing key
 	key = loadKey(t, []byte(test1KeyPrivatePEM))
@@ -1413,6 +1414,41 @@ func TestNewAccount(t *testing.T) {
 		"http://localhost/acme/acct/1")
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"id\": 1,\n  \"key\": {\n    \"kty\": \"RSA\",\n    \"n\": \"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ\",\n    \"e\": \"AQAB\"\n  },\n  \"contact\": [\n    \"mailto:person@mail.com\"\n  ],\n  \"agreement\": \"http://example.invalid/terms\",\n  \"initialIp\": \"\",\n  \"createdAt\": \"0001-01-01T00:00:00Z\",\n  \"status\": \"valid\"\n}")
+}
+
+func TestNewAccountNoID(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	key := loadKey(t, []byte(test2KeyPrivatePEM))
+	_, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load test2 key")
+	path := newAcctPath
+	signedURL := fmt.Sprintf("http://localhost%s", path)
+
+	_ = features.Set(map[string]bool{
+		"RemoveWFE2AccountID": true,
+	})
+
+	payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
+	_, _, body := signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
+	request := makePostRequestWithPath(path, body)
+
+	responseWriter := httptest.NewRecorder()
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
+
+	responseBody := responseWriter.Body.String()
+	test.AssertUnmarshaledEquals(t, responseBody, `{
+		"key": {
+			"kty": "RSA",
+			"n": "qnARLrT7Xz4gRcKyLdydmCr-ey9OuPImX4X40thk3on26FkMznR3fRjs66eLK7mmPcBZ6uOJseURU6wAaZNmemoYx1dMvqvWWIyiQleHSD7Q8vBrhR6uIoO4jAzJZR-ChzZuSDt7iHN-3xUVspu5XGwXU_MVJZshTwp4TaFx5elHIT_ObnTvTOU3Xhish07AbgZKmWsVbXh5s-CrIicU4OexJPgunWZ_YJJueOKmTvnLlTV4MzKR2oZlBKZ27S0-SfdV_QDx_ydle5oMAyKVtlAV35cyPMIsYNwgUGBCdY_2Uzi5eX0lTc7MPRwz6qR1kip-i59VcGcUQgqHV6Fyqw",
+			"e": "AQAB"
+		},
+		"contact": [
+			"mailto:person@mail.com"
+		],
+		"initialIp": "1.1.1.1",
+		"createdAt": "0001-01-01T00:00:00Z",
+		"status": ""
+	}`)
 }
 
 func TestGetAuthorization(t *testing.T) {

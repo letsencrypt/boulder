@@ -6,7 +6,6 @@
 package grpc
 
 import (
-	"encoding/json"
 	"net"
 	"time"
 
@@ -357,10 +356,6 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 		}
 		challs[i] = pbChall
 	}
-	comboBytes, err := json.Marshal(authz.Combinations)
-	if err != nil {
-		return nil, err
-	}
 	status := string(authz.Status)
 	var expires int64
 	if authz.Expires != nil {
@@ -373,7 +368,6 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 		Status:         &status,
 		Expires:        &expires,
 		Challenges:     challs,
-		Combinations:   comboBytes,
 		V2:             &authz.V2,
 	}, nil
 }
@@ -387,11 +381,6 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		}
 		challs[i] = chall
 	}
-	var combos [][]int
-	err := json.Unmarshal(pb.Combinations, &combos)
-	if err != nil {
-		return core.Authorization{}, err
-	}
 	expires := time.Unix(0, *pb.Expires).UTC()
 	v2 := false
 	if pb.V2 != nil {
@@ -403,7 +392,6 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		Status:         core.AcmeStatus(*pb.Status),
 		Expires:        &expires,
 		Challenges:     challs,
-		Combinations:   combos,
 		V2:             v2,
 	}
 	if pb.Id != nil {
