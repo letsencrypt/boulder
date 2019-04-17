@@ -6,8 +6,7 @@ CREATE TABLE `certificatesPerName` (
     `eTLDPlusOne` VARCHAR(255) NOT NULL,
     `time` DATETIME NOT NULL,
     `count` INTEGER NOT NULL,
-    KEY `eTLDPlusOne_time_idx` (`eTLDPlusOne`, `time`),
-
+    KEY `eTLDPlusOne_time_idx` (`eTLDPlusOne`, `time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 -- +goose Down
