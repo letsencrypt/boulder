@@ -2298,9 +2298,6 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	err := features.Set(map[string]bool{"SetIssuedNamesRenewalBit": true})
-	test.AssertNotError(t, err, "Failed to enable SetIssuedNamesRenewalBit feature flag")
-
 	reg := satest.CreateWorkingRegistration(t, sa)
 
 	// An example cert taken from EFF's website
@@ -2363,15 +2360,6 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 func TestCountCertificatesRenewalBit(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
-
-	// Set feature flags required for this test. We need to set both the
-	// renewal bit with the SetIssuedRenewalBit flag and use it with the
-	// AllowRenewalFirstRL flag.
-	err := features.Set(map[string]bool{
-		"SetIssuedNamesRenewalBit": true,
-		"AllowRenewalFirstRL":      true,
-	})
-	test.AssertNotError(t, err, "Failed to enable required features flag")
 
 	// Create a test registration
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -2467,20 +2455,4 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	// be ignored as a renewal and CertC should be ignored because it isn't an
 	// exact match.
 	test.AssertEquals(t, countNameExact(t, "not-example.com"), int64(1))
-
-	// Disable the AllowRenewalFirstRL feature flag and check the counts for the
-	// names in the certificate again.
-	err = features.Set(map[string]bool{
-		"AllowRenewalFirstRL": false,
-	})
-	test.AssertNotError(t, err, "Unexpected err clearing AllowRenewalFirstRL feature flag")
-
-	// The count for the base domain should be 3 now - certA, certB, and certC
-	// should all count. CertB is not ignored as a renewal because the feature
-	// flag is disabled.
-	test.AssertEquals(t, countName(t, "not-example.com"), int64(3))
-
-	// The exact name count for the base domain should be 2 now: certA and certB.
-	// CertB is not ignored as a renewal because the feature flag is disabled.
-	test.AssertEquals(t, countNameExact(t, "not-example.com"), int64(2))
 }

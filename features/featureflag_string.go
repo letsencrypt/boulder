@@ -14,21 +14,21 @@ func _() {
 	_ = x[SimplifiedVAHTTP-3]
 	_ = x[TLSSNIRevalidation-4]
 	_ = x[AllowRenewalFirstRL-5]
-	_ = x[CAAValidationMethods-6]
-	_ = x[CAAAccountURI-7]
-	_ = x[ProbeCTLogs-8]
-	_ = x[HeadNonceStatusOK-9]
-	_ = x[NewAuthorizationSchema-10]
-	_ = x[RevokeAtRA-11]
-	_ = x[SetIssuedNamesRenewalBit-12]
+	_ = x[SetIssuedNamesRenewalBit-6]
+	_ = x[CAAValidationMethods-7]
+	_ = x[CAAAccountURI-8]
+	_ = x[ProbeCTLogs-9]
+	_ = x[HeadNonceStatusOK-10]
+	_ = x[NewAuthorizationSchema-11]
+	_ = x[RevokeAtRA-12]
 	_ = x[EarlyOrderRateLimit-13]
 	_ = x[EnforceMultiVA-14]
 	_ = x[MultiVAFullResults-15]
 }
 
-const _FeatureFlag_name = "unusedPerformValidationRPCACME13KeyRolloverSimplifiedVAHTTPTLSSNIRevalidationAllowRenewalFirstRLCAAValidationMethodsCAAAccountURIProbeCTLogsHeadNonceStatusOKNewAuthorizationSchemaRevokeAtRASetIssuedNamesRenewalBitEarlyOrderRateLimitEnforceMultiVAMultiVAFullResults"
+const _FeatureFlag_name = "unusedPerformValidationRPCACME13KeyRolloverSimplifiedVAHTTPTLSSNIRevalidationAllowRenewalFirstRLSetIssuedNamesRenewalBitCAAValidationMethodsCAAAccountURIProbeCTLogsHeadNonceStatusOKNewAuthorizationSchemaRevokeAtRAEarlyOrderRateLimitEnforceMultiVAMultiVAFullResults"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 26, 43, 59, 77, 96, 116, 129, 140, 157, 179, 189, 213, 232, 246, 264}
+var _FeatureFlag_index = [...]uint16{0, 6, 26, 43, 59, 77, 96, 120, 140, 153, 164, 181, 203, 213, 232, 246, 264}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

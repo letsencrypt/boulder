@@ -16,9 +16,10 @@ const (
 	ACME13KeyRollover
 	SimplifiedVAHTTP
 	TLSSNIRevalidation
+	AllowRenewalFirstRL
+	SetIssuedNamesRenewalBit
 
 	//   Currently in-use features
-	AllowRenewalFirstRL
 	// Check CAA and respect validationmethods parameter.
 	CAAValidationMethods
 	// Check CAA and respect accounturi parameter.
@@ -32,9 +33,6 @@ const (
 	NewAuthorizationSchema
 	// RevokeAtRA enables revocation in the RA instead of ocsp-updater
 	RevokeAtRA
-	// SetIssuedNamesRenewalBit enables the SA setting the renewal bit for
-	// issuedNames entries during AddCertificate.
-	SetIssuedNamesRenewalBit
 	// EarlyOrderRateLimit enables the RA applying certificate per name/per FQDN
 	// set rate limits in NewOrder in addition to FinalizeOrder.
 	EarlyOrderRateLimit
