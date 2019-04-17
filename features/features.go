@@ -42,6 +42,9 @@ const (
 	// MultiVAFullResults will cause the main VA to wait for all of the remote VA
 	// results, not just the threshold required to make a decision.
 	MultiVAFullResults
+	// RemoveWFE2AccountID will remove the account ID from account objects returned
+	// from the new-account endpoint if enabled.
+	RemoveWFE2AccountID
 )
 
 // List of features and their default value, protected by fMu
@@ -62,6 +65,7 @@ var features = map[FeatureFlag]bool{
 	EarlyOrderRateLimit:      false,
 	EnforceMultiVA:           false,
 	MultiVAFullResults:       false,
+	RemoveWFE2AccountID:      false,
 }
 
 var fMu = new(sync.RWMutex)
