@@ -1824,9 +1824,9 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations(
 	return byName, nil
 }
 
-// GetOrderForNames tries to find a **pending** order with the exact set of
-// names requested, associated with the given accountID. Only unexpired orders
-// with status pending are considered. If no order meeting these requirements is
+// GetOrderForNames tries to find a **pending** or **ready** order with the
+// exact set of names requested, associated with the given accountID. Only
+// unexpired orders are considered. If no order meeting these requirements is
 // found a nil corepb.Order pointer is returned.
 func (ssa *SQLStorageAuthority) GetOrderForNames(
 	ctx context.Context,
@@ -1858,8 +1858,9 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	if err != nil {
 		return nil, err
 	}
-	// Only return a pending order
-	if *order.Status != string(core.StatusPending) {
+	// Only return a pending or ready order
+	if *order.Status != string(core.StatusPending) &&
+		*order.Status != string(core.StatusReady) {
 		return nil, berrors.NotFoundError("no order matching request found")
 	}
 	return order, nil
