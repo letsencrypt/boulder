@@ -873,7 +873,7 @@ func (ssa *SQLStorageAuthority) getAuthorizationIDsByDomain2(ctx context.Context
 	var ids []int64
 	_, err := ssa.dbMap.Select(
 		&ids,
-		`SELECT id, status FROM authz2 WHERE identifierValue = :ident AND status IN (:pending,:valid) AND expires > :expires LIMIT :limit`,
+		`SELECT id FROM authz2 WHERE identifierValue = :ident AND status IN (:pending,:valid) AND expires > :expires LIMIT :limit`,
 		map[string]interface{}{
 			"ident":   domain,
 			"pending": statusUnit(core.StatusPending),
@@ -1662,10 +1662,10 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 // authzForOrder retrieves the authorization IDs for an order. It returns these
 // IDs in two slices: one for v1 style authorizations, and another for
 // v2 style authorizations.
-func (ssa *SQLStorageAuthority) authzForOrder(ctx context.Context, orderID int64) ([]string, []int64, error) {
+func (ssa *SQLStorageAuthority) authzForOrder(ctx context.Context, orderID int64, lookForV2 bool) ([]string, []int64, error) {
 	var v1IDs []string
 	var v2IDs []int64
-	if features.Enabled(features.NewAuthorizationSchema) {
+	if lookForV2 {
 		_, err := ssa.dbMap.WithContext(ctx).Select(
 			&v2IDs,
 			"SELECT authzID FROM orderToAuthz2 WHERE orderID = ?",
@@ -1712,7 +1712,11 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	if err != nil {
 		return nil, err
 	}
-	v1AuthzIDs, v2AuthzIDs, err := ssa.authzForOrder(ctx, *order.Id)
+	var useV2Authzs bool
+	if req.UseV2Authorizations != nil {
+		useV2Authzs = *req.UseV2Authorizations
+	}
+	v1AuthzIDs, v2AuthzIDs, err := ssa.authzForOrder(ctx, *order.Id, useV2Authzs)
 	if err != nil {
 		return nil, err
 	}
@@ -2026,7 +2030,7 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	}
 
 	// Get the order
-	order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
+	order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID, UseV2Authorizations: req.UseV2Authorizations})
 	if err != nil {
 		return nil, err
 	}

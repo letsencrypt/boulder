@@ -1734,9 +1734,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	// See if there is an existing, pending, unexpired order that can be reused
 	// for this account
+	useV2Authzs := features.Enabled(features.NewAuthorizationSchema)
 	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
-		AcctID: order.RegistrationID,
-		Names:  order.Names,
+		AcctID:              order.RegistrationID,
+		Names:               order.Names,
+		UseV2Authorizations: &useV2Authzs,
 	})
 	// If there was an error and it wasn't an acceptable "NotFound" error, return
 	// immediately

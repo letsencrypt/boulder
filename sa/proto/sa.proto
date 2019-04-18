@@ -199,6 +199,7 @@ message RevokeAuthorizationsByDomainResponse {
 
 message OrderRequest {
         optional int64 id = 1;
+        optional bool useV2Authorizations = 2;
 }
 
 message GetValidOrderAuthorizationsRequest {
@@ -209,6 +210,7 @@ message GetValidOrderAuthorizationsRequest {
 message GetOrderForNamesRequest {
         optional int64 acctID = 1;
         repeated string names = 2;
+        optional bool useV2Authorizations = 3;
 }
 
 message GetAuthorizationsRequest {

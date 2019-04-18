@@ -1811,7 +1811,8 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
-	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
+	useV2Authzs := features.Enabled(features.NewAuthorizationSchema)
+	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID, UseV2Authorizations: &useV2Authzs})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("No order for ID %d", orderID), err)
@@ -1873,7 +1874,8 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
+	useV2Authzs := features.Enabled(features.NewAuthorizationSchema)
+	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID, UseV2Authorizations: &useV2Authzs})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("No order for ID %d", orderID), err)
