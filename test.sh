@@ -94,7 +94,9 @@ fi
 #
 if [[ "$RUN" =~ "integration" ]] ; then
   args=("--chisel")
-  args+=("--load")
+  if [[ "${INT_SKIP_LOAD}:-}" == "" ]]; then
+    args+=("--load")
+  fi
   if [[ "${INT_FILTER:-}" != "" ]]; then
     args+=("--filter" "${INT_FILTER}")
   fi
