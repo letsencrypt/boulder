@@ -869,6 +869,39 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context
 	return results[0], results[1], nil
 }
 
+func (ssa *SQLStorageAuthority) getAuthorizationIDsByDomain2(ctx context.Context, domain string) ([]int64, error) {
+	var ids []int64
+	_, err := ssa.dbMap.Select(
+		&ids,
+		`SELECT id, status FROM authz2 WHERE identifierValue = :ident AND status IN (:pending,:valid) AND expires > :expires LIMIT :limit`,
+		map[string]interface{}{
+			"ident":   domain,
+			"pending": statusUnit(core.StatusPending),
+			"valid":   statusUnit(core.StatusValid),
+			"expires": ssa.clk.Now(),
+			"limit":   getAuthorizationIDsMax,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+func (ssa *SQLStorageAuthority) revokeAuthorizations2(ctx context.Context, ids []int64) error {
+	qmarks := []string{}
+	params := []interface{}{statusUnit(core.StatusRevoked)}
+	for _, id := range ids {
+		qmarks = append(qmarks, "?")
+		params = append(params, id)
+	}
+	_, err := ssa.dbMap.Exec(
+		fmt.Sprintf(`UPDATE authz2 SET status = ? WHERE id IN (%s)`, strings.Join(qmarks, ",")),
+		params...,
+	)
+	return err
+}
+
 // RevokeAuthorizationsByDomain2 invalidates all pending or valid authorizations for a
 // specific domain. This method is intended to deprecate RevokeAuthorizationsByDomain.
 func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*corepb.Empty, error) {
@@ -881,21 +914,8 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Contex
 	}
 
 	for {
-		var ids []struct {
-			ID     int64
-			Status uint8
-		}
-		_, err := ssa.dbMap.Select(
-			&ids,
-			`SELECT id, status FROM authz2 WHERE identifierValue = :ident AND status IN (:pending,:valid) AND expires > :expires LIMIT :limit`,
-			map[string]interface{}{
-				"ident":   *req.Domain,
-				"pending": statusUnit(core.StatusPending),
-				"valid":   statusUnit(core.StatusValid),
-				"expires": ssa.clk.Now(),
-				"limit":   getAuthorizationIDsMax,
-			},
-		)
+		var ids []int64
+		ids, err := ssa.getAuthorizationIDsByDomain2(ctx, *req.Domain)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				break
@@ -905,18 +925,7 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Contex
 		if len(ids) == 0 {
 			break
 		}
-
-		qmarks := []string{}
-		params := []interface{}{statusUnit(core.StatusRevoked)}
-		for _, id := range ids {
-			qmarks = append(qmarks, "?")
-			params = append(params, id.ID)
-		}
-		_, err = ssa.dbMap.Exec(
-			fmt.Sprintf(`UPDATE authz2 SET status = ? WHERE id IN (%s)`, strings.Join(qmarks, ",")),
-			params...,
-		)
-		if err != nil {
+		if err = ssa.revokeAuthorizations2(ctx, ids); err != nil {
 			return nil, err
 		}
 	}
