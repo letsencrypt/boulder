@@ -36,6 +36,8 @@ import atexit
 
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import socketserver
+import socket
 
 import challtestsrv
 challSrv = challtestsrv.ChallTestServer()
@@ -728,8 +730,6 @@ def multiva_setup(client, guestlist):
         httpd.server_close()
         thread.join()
 
-    # Wait for the server to be ready before returning
-    wait_for_server("http://10.88.88.88:5002/up")
     return hostname, cleanup
 
 def test_http_multiva_threshold_pass():
@@ -786,6 +786,72 @@ def test_http_multiva_threshold_fail():
             raise Exception("expected unauthorized prob, found {0}".format(httpChall.error.typ))
     finally:
         cleanup()
+
+class FakeH2ServerHandler(socketserver.BaseRequestHandler):
+    """
+    FakeH2ServerHandler is a TCP socket handler that writes data representing an
+    initial HTTP/2 SETTINGS frame as a response to all received data.
+    """
+    def handle(self):
+        # Read whatever the HTTP request was so that the response isn't seen as
+        # unsolicited.
+        self.data = self.request.recv(1024).strip()
+        # Blast some HTTP/2 bytes onto the socket
+        # Truncated example data from taken from the community forum:
+        # https://community.letsencrypt.org/t/le-validation-error-if-server-is-in-google-infrastructure/51841
+        self.request.sendall(b'\x00\x00\x12\x04\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x80\x00')
+
+def wait_for_tcp_server(addr, port):
+    """
+    wait_for_tcp_server attempts to make a TCP connection to the given
+    address/port every 0.5s until it succeeds.
+    """
+    while True:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.connect((addr, port))
+            sock.sendall("\n")
+            return
+        except socket.error:
+            time.sleep(0.5)
+            pass
+
+def test_http2_http01_challenge():
+    """
+    test_http2_http01_challenge tests that an HTTP-01 challenge made to a HTTP/2
+    server fails with a specific error message for this case.
+    """
+    client = chisel2.make_client()
+    hostname = "fake.h2.example.com"
+
+    # Add an A record for the test server to ensure the VA's requests are directed
+    # to the interface that we bind the FakeH2ServerHandler to.
+    challSrv.add_a_record(hostname, ["10.88.88.88"])
+
+    # Create, start, and wait for a fake HTTP/2 server.
+    server = socketserver.TCPServer(('10.88.88.88', 5002), FakeH2ServerHandler)
+    thread = threading.Thread(target = server.serve_forever)
+    thread.daemon = False
+    thread.start()
+    wait_for_tcp_server('10.88.88.88', 5002)
+
+    # Issuing an HTTP-01 challenge for this hostname should produce a connection
+    # problem with an error specific to the HTTP/2 misconfiguration.
+    expectedError = "Server is speaking HTTP/2 over HTTP"
+    try:
+        chisel2.auth_and_issue([hostname], client=client, chall_type="http-01")
+    except acme_errors.ValidationError as e:
+        for authzr in e.failed_authzrs:
+            c = chisel2.get_chall(authzr, challenges.HTTP01)
+            error = c.error
+            if error is None or error.typ != "urn:ietf:params:acme:error:connection":
+                raise Exception("Expected connection prob, got %s" % (error.__str__()))
+            if not error.detail.endswith(expectedError):
+                raise Exception("Expected prob detail ending in %s, got %s" % (expectedError, error.detail))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
 
 def run(cmd, **kwargs):
     return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)

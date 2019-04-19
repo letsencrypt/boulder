@@ -557,6 +557,9 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// Make the initial validation request. This may result in redirects being
 	// followed.
 	httpResponse, err := client.Do(initialReq)
+	if urlErr, ok := err.(*url.Error); ok {
+		fmt.Printf("\n\n\n\nerr: %#v\n\n\n\n", urlErr.Err)
+	}
 	// If there was an error and its a kind of error we consider a fallback error,
 	// then try to fallback.
 	if err != nil && fallbackErr(err) {

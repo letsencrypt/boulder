@@ -35,10 +35,6 @@ var (
 	// As defined in https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-04#section-5.1
 	// id-pe OID + 31 (acmeIdentifier)
 	IdPeAcmeIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
-
-	// badTLSHeader contains the string 'HTTP /' which is returned when
-	// we try to talk TLS to a server that only talks HTTP
-	badTLSHeader = []byte{0x48, 0x54, 0x54, 0x50, 0x2f}
 )
 
 // certNames collects up all of a certificate's subject names (Subject CN and
