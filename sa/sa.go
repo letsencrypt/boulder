@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/context"
 	"gopkg.in/go-gorp/gorp.v2"
 	jose "gopkg.in/square/go-jose.v2"
@@ -20,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -1073,7 +1075,13 @@ func deleteOrderFQDNSet(
 func addIssuedNames(db dbExecer, cert *x509.Certificate, isRenewal bool) error {
 	var qmarks []string
 	var values []interface{}
+	timeToTheHour := cert.NotBefore.Round(time.Hour)
 	for _, name := range cert.DNSNames {
+		err := addCertificatesPerName(db, name, timeToTheHour)
+		if err != nil {
+			return err
+		}
+		// Accumulate values and question marks to be inserted into issuedNames.
 		values = append(values,
 			ReverseName(name),
 			core.SerialToString(cert.SerialNumber),
@@ -1081,12 +1089,38 @@ func addIssuedNames(db dbExecer, cert *x509.Certificate, isRenewal bool) error {
 			isRenewal)
 		qmarks = append(qmarks, "(?, ?, ?, ?)")
 	}
-	query := `INSERT INTO issuedNames (reversedName, serial, notBefore, renewal) VALUES ` + strings.Join(qmarks, ", ") + `;`
 
-	query2 := `INSERT INTO certificatesPerName (eTLDPlusOne, time, count) values (:name, :time, 1) ON DUPLICATE KEY UPDATE count=count+1;`
-
-	_, err := db.Exec(query, values...)
+	issuedNamesInsert := `INSERT INTO issuedNames (reversedName, serial, notBefore, renewal) VALUES ` + strings.Join(qmarks, ", ") + `;`
+	_, err := db.Exec(issuedNamesInsert, values...)
 	return err
+}
+
+func addCertificatesPerName(db dbExecer, name string, timeToTheHour time.Time) error {
+	if !features.Enabled(features.FasterRateLimit) {
+		return nil
+	}
+	eTLDPlusOne, err := publicsuffix.Domain(name)
+	if err != nil {
+		// publicsuffix.Domain will return an error if the input name is itself a
+		// public suffix. In that case we use the input name as the key for rate
+		// limiting. Since all of its subdomains will have separate keys for rate
+		// limiting (e.g. "foo.bar.publicsuffix.com" will have
+		// "bar.publicsuffix.com", this means that domains exactly equal to a
+		// public suffix get their own rate limit bucket. This is important
+		// because otherwise they might be perpetually unable to issue, assuming
+		// the rate of issuance from their subdomains was high enough.
+		eTLDPlusOne = name
+	}
+
+	_, err = db.Exec(`INSERT INTO certificatesPerName (eTLDPlusOne, time, count)
+					   VALUES (?, ?, 1)
+						 ON DUPLICATE KEY UPDATE count=count+1;`,
+		eTLDPlusOne,
+		timeToTheHour)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // CountFQDNSets returns the number of sets with hash |setHash| within the window
