@@ -37,13 +37,6 @@ import (
 )
 
 const (
-	maxRedirect      = 10
-	whitespaceCutset = "\n\r\t "
-	// Payload should be ~87 bytes. Since it may be padded by whitespace which we previously
-	// allowed accept up to 128 bytes before rejecting a response
-	// (32 byte b64 encoded token + . + 32 byte b64 encoded key fingerprint)
-	maxResponseSize = 128
-
 	// ALPN protocol ID for TLS-ALPN-01 challenge
 	// https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-01#section-5.2
 	ACMETLS1Protocol = "acme-tls/1"
@@ -383,31 +376,6 @@ func (va *ValidationAuthorityImpl) tlsDial(ctx context.Context, hostPort string,
 		return nil, err
 	}
 	return conn, nil
-}
-
-func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	if identifier.Type != core.IdentifierDNS {
-		va.log.Infof("Got non-DNS identifier for HTTP validation: %s", identifier)
-		return nil, probs.Malformed("Identifier type for HTTP validation was not DNS")
-	}
-
-	// Perform the fetch
-	path := fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Token)
-	body, validationRecords, prob := va.fetchHTTP(ctx, identifier.Value, "/"+path)
-	if prob != nil {
-		return validationRecords, prob
-	}
-
-	payload := strings.TrimRight(string(body), whitespaceCutset)
-
-	if payload != challenge.ProvidedKeyAuthorization {
-		problem := probs.Unauthorized("The key authorization file from the server did not match this challenge [%v] != [%v]",
-			challenge.ProvidedKeyAuthorization, payload)
-		va.log.Infof("%s for %s", problem.Detail, identifier)
-		return validationRecords, problem
-	}
-
-	return validationRecords, nil
 }
 
 func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
