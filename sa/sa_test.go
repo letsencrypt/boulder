@@ -1925,22 +1925,55 @@ func TestGetOrderForNames(t *testing.T) {
 	// to return expired orders
 	test.Assert(t, result == nil, "sa.GetOrderForNames returned non-nil result for expired order case")
 
-	// Add a fresh order for a different of names.
+	// Create two valid authorizations (by first creating pending authorizations)
+	authzExpires = fc.Now().Add(time.Hour)
+	validAuthzA, err := sa.NewPendingAuthorization(ctx, core.Authorization{
+		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "zombo.com"},
+		RegistrationID: regA.ID,
+		Status:         core.StatusPending,
+		Expires:        &authzExpires,
+	})
+	test.AssertNotError(t, err, "unexpected error creating pending authorization")
+	validAuthzB, err := sa.NewPendingAuthorization(ctx, core.Authorization{
+		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "welcome.to.zombo.com"},
+		RegistrationID: regA.ID,
+		Status:         core.StatusPending,
+		Expires:        &authzExpires,
+	})
+	test.AssertNotError(t, err, "unexpected error creating pending authorization")
+	// Update both pending authz to be valid
+	validAuthzA.Status = core.StatusValid
+	err = sa.FinalizeAuthorization(ctx, validAuthzA)
+	test.AssertNotError(t, err, "unexpected error finalizing pending authorization")
+	validAuthzB.Status = core.StatusValid
+	err = sa.FinalizeAuthorization(ctx, validAuthzB)
+	test.AssertNotError(t, err, "unexpected error finalizing pending authorization")
+
+	// Add a fresh order that uses the authorizations created above
 	expires = fc.Now().Add(orderLifetime).UnixNano()
 	names = []string{"zombo.com", "welcome.to.zombo.com"}
 	order, err = sa.NewOrder(ctx, &corepb.Order{
 		RegistrationID: &regA.ID,
 		Expires:        &expires,
-		// We can use the same pending authz's as above - it doesn't matter that
-		// they are for different names for this test, we just need some authz IDs
-		// that exist.
-		Authorizations: []string{pendingAuthzA.ID, pendingAuthzB.ID},
+		Authorizations: []string{validAuthzA.ID, validAuthzB.ID},
 		Names:          names,
 	})
 	// It shouldn't error
 	test.AssertNotError(t, err, "sa.NewOrder failed")
 	// The order ID shouldn't be nil
 	test.AssertNotNil(t, *order.Id, "NewOrder returned with a nil Id")
+
+	// Call GetOrderForNames with the same account ID and set of names as
+	// the earlier NewOrder call
+	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
+		AcctID: &regA.ID,
+		Names:  names,
+	})
+	// It should not error since a ready order can be reused.
+	test.AssertNotError(t, err, "sa.GetOrderForNames returned an unexpected error for ready order reuse")
+	// The order returned should have the same ID as the order we created above
+	test.AssertEquals(t, result != nil, true)
+	test.AssertEquals(t, *result.Id, *order.Id)
 
 	// Set the order processing so it can be finalized
 	err = sa.SetOrderProcessing(ctx, order)
@@ -1953,12 +1986,12 @@ func TestGetOrderForNames(t *testing.T) {
 	test.AssertNotError(t, err, "sa.FinalizeOrder failed")
 
 	// Call GetOrderForNames with the same account ID and set of names as
-	// the above NewOrder call
+	// the earlier NewOrder call
 	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID: &regA.ID,
 		Names:  names,
 	})
-	// It should error since there is no result
+	// It should error since a valid order should not be reused.
 	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
 	// The error should be a notfound error
 	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)

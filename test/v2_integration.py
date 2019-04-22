@@ -579,13 +579,16 @@ def test_only_return_existing_reg():
     chisel2.expect_problem("urn:ietf:params:acme:error:accountDoesNotExist",
         lambda: other_client.net.post(other_client.directory['newAccount'], newAcct, acme_version=2))
 
-def BouncerHTTPRequestHandler(redirect, vips=1):
+def BouncerHTTPRequestHandler(redirect, guestlist):
     """
     BouncerHTTPRequestHandler returns a BouncerHandler class that acts like
-    a club bouncer in front of another server. The bouncer will respond to the
-    first VIP GET requests by sending an HTTP redirect to the real
-    server. After all the VIP requests have been received all other requests
-    get a bogus result and have to stand outside in the cold 
+    a club bouncer in front of another server. The bouncer will respond to
+    GET requests by looking up the allowed number of requests in the guestlist
+    for the User-Agent making the request. If there is at least one guestlist
+    spot for that UA it will be redirected to the real server and the
+    guestlist will be decremented. Once the guestlist spots for a UA are
+    expended requests will get a bogus result and have to stand outside in the
+    cold 
     """
     class BouncerHandler(BaseHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
@@ -597,22 +600,24 @@ def BouncerHTTPRequestHandler(redirect, vips=1):
             self.end_headers()
 
         def do_GET(self):
-            # If less than vips requests have been received, decrement vips and 
-            # redirect the VIP request to the redirect URL
-            if BouncerHandler.vips > 0:
-                BouncerHandler.vips = BouncerHandler.vips - 1
-                self.log_message("BouncerHandler redirecting VIP request to the venue")
+            ua = self.headers['User-Agent']
+            guestlistAllows = BouncerHandler.guestlist.get(ua, 0)
+            # If there is still space on the guestlist for this UA then redirect
+            # the request and decrement the guestlist.
+            if guestlistAllows > 0:
+                BouncerHandler.guestlist[ua] -= 1
+                self.log_message("BouncerHandler UA {0} is on the Guestlist. {1} requests remaining.".format(ua, BouncerHandler.guestlist[ua]))
                 self.send_response(302)
                 self.send_header("Location", BouncerHandler.redirect)
                 self.end_headers()
             # Otherwise return a bogus result
             else:
-                self.log_message("BouncerHandler sending non-VIP request to the curb")
+                self.log_message("BouncerHandler UA {0} has no requests on the Guestlist. Sending request to the curb".format(ua))
                 self.send_response(200)
                 self.end_headers()
                 self.wfile.write(b'(• ◡ •) <( VIPs only! )')
 
-    BouncerHandler.vips = vips
+    BouncerHandler.guestlist = guestlist
     BouncerHandler.redirect = redirect
     return BouncerHandler
 
@@ -628,7 +633,7 @@ def wait_for_server(addr):
             pass
         time.sleep(0.5)
 
-def multiva_setup(client, bounceFirst=1):
+def multiva_setup(client, guestlist):
     """
     Create a testing hostname and the multiva server setup. This will block
     until the server is ready. The returned cleanup function should be used to
@@ -671,7 +676,7 @@ def multiva_setup(client, bounceFirst=1):
     # server for this test and add a mock DNS entry that directs the VA to it.
     redirect = "http://{0}/.well-known/acme-challenge/{1}".format(
             redirHostname, token)
-    httpd = HTTPServer(('10.88.88.88', 5002), BouncerHTTPRequestHandler(redirect, bounceFirst))
+    httpd = HTTPServer(('10.88.88.88', 5002), BouncerHTTPRequestHandler(redirect, guestlist))
     thread = threading.Thread(target = httpd.serve_forever)
     thread.daemon = False
     thread.start()
@@ -698,14 +703,11 @@ def test_http_multiva_threshold_pass():
 
     client = chisel2.make_client()
 
-    # These values should match the config in `config-next/va.json`
-    remoteVAs = 2
-    maxFailures = 1
+    # Configure a guestlist that will pass the multiVA threshold test by
+    # allowing the primary VA and one remote.
+    guestlist = {"boulder": 1, "boulder-remote-b": 1}
 
-    # Configure a bounceFirst value that will pass the multiVA threshold test.
-    bounceFirst = (remoteVAs - maxFailures) + 1
-
-    hostname, cleanup = multiva_setup(client, bounceFirst)
+    hostname, cleanup = multiva_setup(client, guestlist)
 
     try:
         # With the maximum number of allowed remote VA failures the overall
@@ -722,11 +724,11 @@ def test_http_multiva_threshold_fail():
 
     client = chisel2.make_client()
 
-    # Configure a bounceFirst value that will fail the multiVA threshold test by
-    # only redirecting the primary VA.
-    bounceFirst = 1
+    # Configure a guestlist that will fail the multiVA threshold test by
+    # only allowing the primary VA.
+    guestlist = {"boulder": 1}
 
-    hostname, cleanup = multiva_setup(client, bounceFirst)
+    hostname, cleanup = multiva_setup(client, guestlist)
 
     try:
         chisel2.auth_and_issue([hostname], client=client, chall_type="http-01")
