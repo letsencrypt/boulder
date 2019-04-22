@@ -9,7 +9,6 @@ import (
 	"math/big"
 	"net"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -21,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -365,58 +365,17 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context,
 // Queries will be run in parallel. If any of them error, only one error will
 // be returned.
 func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) ([]*sapb.CountByNames_MapElement, error) {
-	work := make(chan string, len(domains))
-	type result struct {
-		err    error
-		count  int
-		domain string
+	countFunc := func(ctx context.Context, domain string) (int, error) {
+		return ssa.countCertificatesByName(ssa.dbMap.WithContext(ctx), domain, earliest, latest)
 	}
-	results := make(chan result, len(domains))
-	for _, domain := range domains {
-		work <- domain
+	counts, err := doParallel(ctx, ssa.parallelismPerRPC, domains, countFunc)
+	if err != nil {
+		return nil, err
 	}
-	close(work)
-	var wg sync.WaitGroup
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	// We may perform up to 100 queries, depending on what's in the certificate
-	// request. Parallelize them so we don't hit our timeout, but limit the
-	// parallelism so we don't consume too many threads on the database.
-	for i := 0; i < ssa.parallelismPerRPC; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for domain := range work {
-				select {
-				case <-ctx.Done():
-					results <- result{err: ctx.Err()}
-					return
-				default:
-				}
-				currentCount, err := ssa.countCertificatesByName(
-					ssa.dbMap.WithContext(ctx), domain, earliest, latest)
-				if err != nil {
-					results <- result{err: err}
-					// Skip any further work
-					cancel()
-					return
-				}
-				results <- result{
-					count:  currentCount,
-					domain: domain,
-				}
-			}
-		}()
-	}
-	wg.Wait()
-	close(results)
 	var ret []*sapb.CountByNames_MapElement
-	for r := range results {
-		if r.err != nil {
-			return nil, r.err
-		}
-		name := string(r.domain)
-		pbCount := int64(r.count)
+	for _, c := range counts {
+		name := string(c.domain)
+		pbCount := int64(c.count)
 		ret = append(ret, &sapb.CountByNames_MapElement{
 			Name:  &name,
 			Count: &pbCount,
@@ -923,6 +882,16 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		return "", Rollback(tx, err)
 	}
 
+	// Don't add to the rate limit table for renewals, since they don't count
+	// against the certificatesPerName limit.
+	if !isRenewal {
+		timeToTheHour := parsedCertificate.NotBefore.Round(time.Hour)
+		err = ssa.addCertificatesPerName(ctx, txWithCtx, parsedCertificate.DNSNames, timeToTheHour)
+		if err != nil {
+			return "", Rollback(tx, err)
+		}
+	}
+
 	err = addFQDNSet(
 		txWithCtx,
 		parsedCertificate.DNSNames,
@@ -1074,12 +1043,8 @@ func deleteOrderFQDNSet(
 func addIssuedNames(db dbExecer, cert *x509.Certificate, isRenewal bool) error {
 	var qmarks []string
 	var values []interface{}
-	timeToTheHour := cert.NotBefore.Round(time.Hour)
+
 	for _, name := range cert.DNSNames {
-		err := addCertificatesPerName(db, name, timeToTheHour)
-		if err != nil {
-			return err
-		}
 		// Accumulate values and question marks to be inserted into issuedNames.
 		values = append(values,
 			ReverseName(name),
@@ -1094,28 +1059,49 @@ func addIssuedNames(db dbExecer, cert *x509.Certificate, isRenewal bool) error {
 	return err
 }
 
-func addCertificatesPerName(db dbExecer, name string, timeToTheHour time.Time) error {
+func (ssa *SQLStorageAuthority) addCertificatesPerName(
+	ctx context.Context,
+	db dbExecer,
+	names []string,
+	timeToTheHour time.Time,
+) error {
 	if !features.Enabled(features.FasterRateLimit) {
 		return nil
 	}
-	eTLDPlusOne, err := publicsuffix.Domain(name)
-	if err != nil {
-		// publicsuffix.Domain will return an error if the input name is itself a
-		// public suffix. In that case we use the input name as the key for rate
-		// limiting. Since all of its subdomains will have separate keys for rate
-		// limiting (e.g. "foo.bar.publicsuffix.com" will have
-		// "bar.publicsuffix.com", this means that domains exactly equal to a
-		// public suffix get their own rate limit bucket. This is important
-		// because otherwise they might be perpetually unable to issue, assuming
-		// the rate of issuance from their subdomains was high enough.
-		eTLDPlusOne = name
+	baseDomainsMap := map[string]bool{}
+	var baseDomains []string
+	for _, name := range names {
+		eTLDPlusOne, err := publicsuffix.Domain(name)
+		if err != nil {
+			// publicsuffix.Domain will return an error if the input name is itself a
+			// public suffix. In that case we use the input name as the key for rate
+			// limiting. Since all of its subdomains will have separate keys for rate
+			// limiting (e.g. "foo.bar.publicsuffix.com" will have
+			// "bar.publicsuffix.com", this means that domains exactly equal to a
+			// public suffix get their own rate limit bucket. This is important
+			// because otherwise they might be perpetually unable to issue, assuming
+			// the rate of issuance from their subdomains was high enough.
+			eTLDPlusOne = name
+		}
+		if !baseDomainsMap[eTLDPlusOne] {
+			baseDomainsMap[eTLDPlusOne] = true
+			baseDomains = append(baseDomains, eTLDPlusOne)
+		}
 	}
 
-	_, err = db.Exec(`INSERT INTO certificatesPerName (eTLDPlusOne, time, count)
+	addDomain := func(_ context.Context, domain string) (int, error) {
+		_, err := db.Exec(`INSERT INTO certificatesPerName (eTLDPlusOne, time, count)
 					   VALUES (?, ?, 1)
 						 ON DUPLICATE KEY UPDATE count=count+1;`,
-		eTLDPlusOne,
-		timeToTheHour)
+			domain,
+			timeToTheHour)
+		if err != nil {
+			return 0, err
+		}
+		return 0, nil
+	}
+
+	_, err := doParallel(ctx, ssa.parallelismPerRPC, baseDomains, addDomain)
 	if err != nil {
 		return err
 	}

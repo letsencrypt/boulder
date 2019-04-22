@@ -25,6 +25,7 @@
       ]
     },
     "features": {
+      "FasterRateLimit": true
     }
   },
 
