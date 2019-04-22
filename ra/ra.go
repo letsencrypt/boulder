@@ -1222,6 +1222,18 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(
 }
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
+	// check if there is already an existing certificate for
+	// the exact name set we are issuing for. If so bypass the
+	// the certificatesPerName limit.
+	exists, err := ra.SA.FQDNSetExists(ctx, names)
+	if err != nil {
+		return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
+	}
+	if exists {
+		ra.certsForDomainStats.Inc("FQDNSetBypass", 1)
+		return nil
+	}
+
 	tldNames, err := domainsForRateLimiting(names)
 	if err != nil {
 		return err
@@ -1258,17 +1270,6 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 	}
 
 	if len(badNames) > 0 {
-		// check if there is already an existing certificate for
-		// the exact name set we are issuing for. If so bypass the
-		// the certificatesPerName limit.
-		exists, err := ra.SA.FQDNSetExists(ctx, names)
-		if err != nil {
-			return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
-		}
-		if exists {
-			ra.certsForDomainStats.Inc("FQDNSetBypass", 1)
-			return nil
-		}
 		domains := strings.Join(badNames, ", ")
 		ra.certsForDomainStats.Inc("Exceeded", 1)
 		ra.log.Infof("Rate limit exceeded, CertificatesForDomain, regID: %d, domains: %s", regID, domains)
