@@ -257,9 +257,27 @@ func deleteAuthorization(db eapDB, table, id string) error {
 	// Delete challenges + authorization. We delete challenges first and fail out
 	// if that doesn't succeed so that we don't ever orphan challenges which would
 	// require a relatively expensive join to then find.
-	_, err := db.Exec("DELETE FROM challenges WHERE authorizationID = ?", id)
+	// When deleting challenges, we first SELECT by authorizationID then delete
+	// individual challenges by challenge ID. This works around an issue we saw
+	// where sometimess the DELETE would do a full table scan. In theory deleting
+	// by the primary key (id) should never do a table scan.
+	var challengeIDs []int64
+	_, err := db.Select(
+		&challengeIDs,
+		`SELECT id FROM challenges
+		 FORCE INDEX (authorizationID_challenges_idx)
+		 WHERE authorizationID=:authorizationID;`,
+		map[string]interface{}{
+			"authorizationID": id,
+		})
 	if err != nil {
 		return err
+	}
+	for _, challengeID := range challengeIDs {
+		_, err := db.Exec("DELETE FROM challenges WHERE id = ?", challengeID)
+		if err != nil {
+			return err
+		}
 	}
 	var query string
 	switch table {
