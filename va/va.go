@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -27,6 +28,34 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
+)
+
+var (
+	// badTLSHeader contains the string 'HTTP /' which is returned when
+	// we try to talk TLS to a server that only talks HTTP
+	badTLSHeader = []byte{0x48, 0x54, 0x54, 0x50, 0x2f}
+	// h2SettingsFrameErrRegex is a regex against a net/http error indicating
+	// a malformed HTTP response that matches the initial SETTINGS frame of an
+	// HTTP/2 connection. This happens when a server configures HTTP/2 on port
+	// :80, failing HTTP-01 challenges.
+	//
+	// The regex first matches the error string prefix and then matches the raw
+	// bytes of an arbitrarily sized HTTP/2 SETTINGS frame:
+	//   0x00 0x00 0x?? 0x04 0x00 0x00 0x00 0x00
+	//
+	// The third byte is variable and indicates the frame size. Typically
+	// this will be 0x12.
+	// The 0x04 in the fourth byte indicates that the frame is SETTINGS type.
+	//
+	// See:
+	//   * https://tools.ietf.org/html/rfc7540#section-4.1
+	//   * https://tools.ietf.org/html/rfc7540#section-6.5
+	//
+	// NOTE(@cpu): Using a regex is a hack but unfortunately for this case
+	// http.Client.Do() will return a url.Error err that wraps
+	// a errors.ErrorString instance. There isn't much else to do with one of
+	// those except match the encoded byte string with a regex. :-X
+	h2SettingsFrameErrRegex = regexp.MustCompile(`net\/http\: HTTP\/1\.x transport connection broken: malformed HTTP response \"\\x00\\x00\\x[a-f0-9]{2}\\x04\\x00\\x00\\x00\\x00\\x00.*"`)
 )
 
 // RemoteVA wraps the core.ValidationAuthority interface and adds a field containing the addresses
@@ -231,6 +260,10 @@ func detailedError(err error) *probs.ProblemDetails {
 	}
 	if berrors.Is(err, berrors.Unauthorized) {
 		return probs.Unauthorized(err.Error())
+	}
+
+	if h2SettingsFrameErrRegex.MatchString(err.Error()) {
+		return probs.ConnectionFailure("Server is speaking HTTP/2 over HTTP")
 	}
 
 	return probs.ConnectionFailure("Error getting validation data")

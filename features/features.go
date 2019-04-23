@@ -48,6 +48,9 @@ const (
 	// FasterRateLimit enables use of a separate table for counting the
 	// Certificates Per Name rate limit.
 	FasterRateLimit
+	// CheckRenewalFirst will check whether an issuance is a renewal before
+	// checking the "certificates per name" rate limit.
+	CheckRenewalFirst
 )
 
 // List of features and their default value, protected by fMu
@@ -70,6 +73,7 @@ var features = map[FeatureFlag]bool{
 	MultiVAFullResults:       false,
 	RemoveWFE2AccountID:      false,
 	FasterRateLimit:          false,
+	CheckRenewalFirst:        false,
 }
 
 var fMu = new(sync.RWMutex)
