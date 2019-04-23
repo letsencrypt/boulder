@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"math/rand"
 	"net"
 	"strconv"
 	"time"
@@ -443,7 +442,7 @@ var uintToStatus = map[uint8]string{
 	4: "revoked",
 }
 
-func statusUnit(status core.AcmeStatus) uint8 {
+func statusUint(status core.AcmeStatus) uint8 {
 	return statusToUint[string(status)]
 }
 
@@ -642,16 +641,6 @@ func modelToAuthzPB(am *authz2Model) (*corepb.Authorization, error) {
 			}
 			pb.Challenges = append(pb.Challenges, challenge)
 		}
-	}
-	// Populate combinations
-	combos := make([][]int, len(pb.Challenges))
-	for i, idx := range rand.Perm(len(pb.Challenges)) {
-		combos[i] = []int{idx}
-	}
-	var err error
-	pb.Combinations, err = json.Marshal(combos)
-	if err != nil {
-		return nil, err
 	}
 	return pb, nil
 }
