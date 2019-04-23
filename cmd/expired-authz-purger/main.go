@@ -278,8 +278,7 @@ func deleteAuthorization(db eapDB, table, id string) error {
 		return err
 	}
 	for _, challengeID := range challengeIDs {
-		_, err := db.Exec("DELETE FROM challenges WHERE id = ?", challengeID)
-		if err != nil {
+		if _, err := db.Exec("DELETE FROM challenges WHERE id = ?", challengeID); err != nil {
 			return err
 		}
 	}
