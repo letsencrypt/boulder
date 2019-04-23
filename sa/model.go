@@ -180,11 +180,6 @@ type certStatusModel struct {
 	OCSPResponse          []byte            `db:"ocspResponse"`
 	NotAfter              time.Time         `db:"notAfter"`
 	IsExpired             bool              `db:"isExpired"`
-
-	// TODO(#856, #873): Deprecated, remove once #2882 has been deployed
-	// to production
-	SubscribedApproved bool `db:"subscriberApproved"`
-	LockCol            int
 }
 
 // challModel is the description of a core.Challenge in the database
