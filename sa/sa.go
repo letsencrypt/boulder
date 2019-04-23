@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/jmhodges/clock"
 	"golang.org/x/net/context"
 	"gopkg.in/go-gorp/gorp.v2"
@@ -2354,11 +2353,13 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 				remaining = append(remaining, name)
 			}
 		}
-		newReq := proto.Clone(req).(*sapb.GetAuthorizationsRequest)
-		newReq.Domains = remaining
 		reqV2 := true
-		newReq.RequireV2Authzs = &reqV2
-		authz, err := ssa.GetAuthorizations(ctx, newReq)
+		authz, err := ssa.GetAuthorizations(ctx, &sapb.GetAuthorizationsRequest{
+			RegistrationID:  req.RegistrationID,
+			Domains:         remaining,
+			Now:             req.Now,
+			RequireV2Authzs: &reqV2,
+		})
 		if err != nil {
 			return nil, err
 		}
