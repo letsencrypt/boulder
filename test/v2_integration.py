@@ -63,6 +63,43 @@ def rand_http_chall(client):
                 return d, c.chall
     raise Exception("No HTTP-01 challenge found for random domain authz")
 
+def test_http_challenge_broken_redirect():
+    """
+    test_http_challenge_broken_redirect tests that a common webserver
+    mis-configuration receives the correct specialized error message when attempting
+    an HTTP-01 challenge.
+    """
+    client = chisel2.make_client()
+
+    # Create an authz for a random domain and get its HTTP-01 challenge token
+    d, chall = rand_http_chall(client)
+    token = chall.encode("token")
+
+    # Create a broken HTTP redirect similar to a sort we see frequently "in the wild"
+    challengePath = "/.well-known/acme-challenge/{0}".format(token)
+    redirect = "http://{0}.well-known/acme-challenge/bad-bad-bad".format(d)
+    challSrv.add_http_redirect(
+        challengePath,
+        redirect)
+
+    # Expect the specialized error message
+    expectedError = "Fetching {0}: Invalid host in redirect target \"{1}.well-known\". Check webserver config for missing '/' in redirect target.".format(redirect, d)
+
+    # NOTE(@cpu): Can't use chisel2.expect_problem here because it doesn't let
+    # us interrogate the detail message easily.
+    try:
+        chisel2.auth_and_issue([d], client=client, chall_type="http-01")
+    except acme_errors.ValidationError as e:
+        for authzr in e.failed_authzrs:
+            c = chisel2.get_chall(authzr, challenges.HTTP01)
+            error = c.error
+            if error is None or error.typ != "urn:ietf:params:acme:error:connection":
+                raise Exception("Expected connection prob, got %s" % (error.__str__()))
+            if error.detail != expectedError:
+                raise Exception("Expected prob detail %s, got %s" % (expectedError, error.detail))
+
+    challSrv.remove_http_redirect(challengePath)
+
 def test_http_challenge_loop_redirect():
     client = chisel2.make_client()
 
