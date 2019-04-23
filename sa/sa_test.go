@@ -2979,6 +2979,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 		ValidationError: prob,
 		Status:          &invalid,
 		Attempted:       &challType,
+		Expires:         &expires,
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 

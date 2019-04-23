@@ -2383,7 +2383,8 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 		status = :status,
 		attempted = :attempted,
 		validationRecord = :validationRecord,
-		%s
+		validationError = :validationError,
+		expires = :expires
 		WHERE id = :id AND status = :pending`
 	var validationRecords []core.ValidationRecord
 	for _, recordPB := range req.ValidationRecords {
@@ -2397,31 +2398,31 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 	if err != nil {
 		return err
 	}
+	var veJSON []byte
+	if req.ValidationError != nil {
+		validationError, err := bgrpc.PBToProblemDetails(req.ValidationError)
+		if err != nil {
+			return err
+		}
+		j, err := json.Marshal(validationError)
+		if err != nil {
+			return err
+		}
+		veJSON = j
+	}
 	params := map[string]interface{}{
 		"status":           statusToUint[*req.Status],
 		"attempted":        challTypeToUint[*req.Attempted],
 		"validationRecord": vrJSON,
 		"id":               *req.Id,
 		"pending":          statusUint(core.StatusPending),
-	}
-	var extraField string
-	if *req.Status == string(core.StatusValid) {
-		extraField = "expires = :expires"
-		params["expires"] = time.Unix(0, *req.Expires).UTC()
-	} else {
-		extraField = "validationError = :validationError"
-		validationError, err := bgrpc.PBToProblemDetails(req.ValidationError)
-		if err != nil {
-			return err
-		}
-		veJSON, err := json.Marshal(validationError)
-		if err != nil {
-			return err
-		}
-		params["validationError"] = veJSON
+		"expires":          time.Unix(0, *req.Expires).UTC(),
+		// if req.ValidationError is nil veJSON should also be nil
+		// which should result in a NULL field
+		"validationError": veJSON,
 	}
 
-	res, err := ssa.dbMap.Exec(fmt.Sprintf(query, extraField), params)
+	res, err := ssa.dbMap.Exec(query, params)
 	if err != nil {
 		return err
 	}
