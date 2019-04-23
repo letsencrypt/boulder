@@ -258,9 +258,13 @@ func deleteAuthorization(db eapDB, table, id string) error {
 	// if that doesn't succeed so that we don't ever orphan challenges which would
 	// require a relatively expensive join to then find.
 	// When deleting challenges, we first SELECT by authorizationID then delete
-	// individual challenges by challenge ID. This works around an issue we saw
-	// where sometimess the DELETE would do a full table scan. In theory deleting
-	// by the primary key (id) should never do a table scan.
+	// individual challenges by challenge ID. This is an attempt to work around an
+	// issue we saw where sometimess the DELETE would do a full table scan,
+	// effectively hanging forever. Because this is intermittent and doesn't
+	// reproduce locally, it's hard to know whether this will definitively fix the
+	// issue. In theory deleting by the primary key (id) should never do a table
+	// scan, and we can force use of an index on the SELECT (which we can't do on
+	// a DELETE).
 	var challengeIDs []int64
 	_, err := db.Select(
 		&challengeIDs,
