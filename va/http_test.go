@@ -233,6 +233,13 @@ func TestExtractRequestTarget(t *testing.T) {
 			ExpectedError: errors.New("Invalid empty hostname in redirect target"),
 		},
 		{
+			Name: "invalid .well-known hostname",
+			Req: &http.Request{
+				URL: mustURL(t, "https://my.webserver.is.misconfigured.well-known/acme-challenge/xxx"),
+			},
+			ExpectedError: errors.New(`Invalid host in redirect target "my.webserver.is.misconfigured.well-known". Check webserver config for missing '/' in redirect target.`),
+		},
+		{
 			Name: "invalid non-iana hostname",
 			Req: &http.Request{
 				URL: mustURL(t, "https://my.tld.is.cpu/pretty/cool/right?yeah=Ithoughtsotoo"),

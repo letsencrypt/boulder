@@ -314,6 +314,22 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 				"Only domain names are supported, not IP addresses", reqHost)
 	}
 
+	// Often folks will misconfigure their webserver to send an HTTP redirect
+	// missing a `/' between the FQDN and the path. E.g. in Apache using:
+	//   Redirect / https://bad-redirect.org
+	// Instead of
+	//   Redirect / https://bad-redirect.org/
+	// Will produce an invalid HTTP-01 redirect target like:
+	//   https://bad-redirect.org.well-known/acme-challenge/xxxx
+	// This happens frequently enough we want to return a distinct error message
+	// for this case by detecting the reqHost ending in ".well-known".
+	if strings.HasSuffix(reqHost, ".well-known") {
+		return "", 0, berrors.ConnectionFailureError(
+			"Invalid host in redirect target %q. Check webserver config for missing '/' in redirect target.",
+			reqHost,
+		)
+	}
+
 	if _, err := iana.ExtractSuffix(reqHost); err != nil {
 		return "", 0, berrors.ConnectionFailureError(
 			"Invalid hostname in redirect target, must end in IANA registered TLD")
