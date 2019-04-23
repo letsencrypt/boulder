@@ -334,7 +334,6 @@ def test_tls_alpn_challenge():
     # responses
     for host in domains:
         challSrv.add_a_record(host, ["10.88.88.88"])
-
     chisel2.auth_and_issue(domains, chall_type="tls-alpn-01")
 
     for host in domains:
@@ -828,6 +827,13 @@ def test_http2_http01_challenge():
     # to the interface that we bind the FakeH2ServerHandler to.
     challSrv.add_a_record(hostname, ["10.88.88.88"])
 
+    # Allow socket address reuse on the base TCPServer class. Failing to do this
+    # causes subsequent integration tests to fail with "Address in use" errors even
+    # though this test _does_ call shutdown() and server_close(). Even though the
+    # server was shut-down Python's socket will be in TIME_WAIT because of prev. client
+    # connections. Having the TCPServer set SO_REUSEADDR on the socket solves
+    # the problem.
+    socketserver.TCPServer.allow_reuse_address = True
     # Create, start, and wait for a fake HTTP/2 server.
     server = socketserver.TCPServer(('10.88.88.88', 5002), FakeH2ServerHandler)
     thread = threading.Thread(target = server.serve_forever)
