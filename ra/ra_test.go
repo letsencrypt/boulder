@@ -1679,9 +1679,15 @@ func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, names []string) (boo
 	return false, nil
 }
 
-// This should never be called
+// Return a map of domain -> certificate count.
 func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, names []string, earliest, latest time.Time) (ret []*sapb.CountByNames_MapElement, err error) {
-	return nil, fmt.Errorf("During renewals, CountCertificatesByNames was called, but it should have been short-circuited by the renewal exemption")
+	var results []*sapb.CountByNames_MapElement
+	for _, name := range names {
+		if entry, ok := m.nameCounts[name]; ok {
+			results = append(results, entry)
+		}
+	}
+	return results, nil
 }
 
 func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, _ time.Duration, names []string) (int64, error) {
