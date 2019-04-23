@@ -2,13 +2,7 @@ package va
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"crypto/subtle"
 	"crypto/tls"
-	"crypto/x509"
-	"encoding/asn1"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,7 +10,7 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"strconv"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -36,30 +30,33 @@ import (
 	"golang.org/x/net/context"
 )
 
-const (
-	maxRedirect      = 10
-	whitespaceCutset = "\n\r\t "
-	// Payload should be ~87 bytes. Since it may be padded by whitespace which we previously
-	// allowed accept up to 128 bytes before rejecting a response
-	// (32 byte b64 encoded token + . + 32 byte b64 encoded key fingerprint)
-	maxResponseSize = 128
-
-	// ALPN protocol ID for TLS-ALPN-01 challenge
-	// https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-01#section-5.2
-	ACMETLS1Protocol = "acme-tls/1"
+var (
+	// badTLSHeader contains the string 'HTTP /' which is returned when
+	// we try to talk TLS to a server that only talks HTTP
+	badTLSHeader = []byte{0x48, 0x54, 0x54, 0x50, 0x2f}
+	// h2SettingsFrameErrRegex is a regex against a net/http error indicating
+	// a malformed HTTP response that matches the initial SETTINGS frame of an
+	// HTTP/2 connection. This happens when a server configures HTTP/2 on port
+	// :80, failing HTTP-01 challenges.
+	//
+	// The regex first matches the error string prefix and then matches the raw
+	// bytes of an arbitrarily sized HTTP/2 SETTINGS frame:
+	//   0x00 0x00 0x?? 0x04 0x00 0x00 0x00 0x00
+	//
+	// The third byte is variable and indicates the frame size. Typically
+	// this will be 0x12.
+	// The 0x04 in the fourth byte indicates that the frame is SETTINGS type.
+	//
+	// See:
+	//   * https://tools.ietf.org/html/rfc7540#section-4.1
+	//   * https://tools.ietf.org/html/rfc7540#section-6.5
+	//
+	// NOTE(@cpu): Using a regex is a hack but unfortunately for this case
+	// http.Client.Do() will return a url.Error err that wraps
+	// a errors.ErrorString instance. There isn't much else to do with one of
+	// those except match the encoded byte string with a regex. :-X
+	h2SettingsFrameErrRegex = regexp.MustCompile(`net\/http\: HTTP\/1\.x transport connection broken: malformed HTTP response \"\\x00\\x00\\x[a-f0-9]{2}\\x04\\x00\\x00\\x00\\x00\\x00.*"`)
 )
-
-// NOTE: unfortunately another document claimed the OID we were using in draft-ietf-acme-tls-alpn-01
-// for their own extension and IANA chose to assign it early. Because of this we had to increment
-// the id-pe-acmeIdentifier OID. Since there are in the wild implementations that use the original
-// OID we still need to support it until everyone is switched over to the new one.
-// As defined in https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-01#section-5.1
-// id-pe OID + 30 (acmeIdentifier) + 1 (v1)
-var IdPeAcmeIdentifierV1Obsolete = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 30, 1}
-
-// As defined in https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-04#section-5.1
-// id-pe OID + 31 (acmeIdentifier)
-var IdPeAcmeIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
 
 // RemoteVA wraps the core.ValidationAuthority interface and adds a field containing the addresses
 // of the remote gRPC server since the interface (and the underlying gRPC client) doesn't
@@ -218,276 +215,6 @@ type verificationRequestEvent struct {
 	Error             string `json:",omitempty"`
 }
 
-// getAddr will query for all A/AAAA records associated with hostname and return
-// the preferred address, the first net.IP in the addrs slice, and all addresses
-// resolved. This is the same choice made by the Go internal resolution library
-// used by net/http.
-func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]net.IP, *probs.ProblemDetails) {
-	addrs, err := va.dnsClient.LookupHost(ctx, hostname)
-	if err != nil {
-		problem := probs.DNS("%v", err)
-		return nil, problem
-	}
-
-	if len(addrs) == 0 {
-		return nil, probs.UnknownHost("No valid IP addresses found for %s", hostname)
-	}
-	va.log.Debugf("Resolved addresses for %s: %s", hostname, addrs)
-	return addrs, nil
-}
-
-// availableAddresses takes a ValidationRecord and splits the AddressesResolved
-// into a list of IPv4 and IPv6 addresses.
-func availableAddresses(allAddrs []net.IP) (v4 []net.IP, v6 []net.IP) {
-	for _, addr := range allAddrs {
-		if addr.To4() != nil {
-			v4 = append(v4, addr)
-		} else {
-			v6 = append(v6, addr)
-		}
-	}
-	return
-}
-
-// certNames collects up all of a certificate's subject names (Subject CN and
-// Subject Alternate Names) and reduces them to a unique, sorted set, typically for an
-// error message
-func certNames(cert *x509.Certificate) []string {
-	var names []string
-	if cert.Subject.CommonName != "" {
-		names = append(names, cert.Subject.CommonName)
-	}
-	names = append(names, cert.DNSNames...)
-	names = core.UniqueLowerNames(names)
-	for i, n := range names {
-		names[i] = replaceInvalidUTF8([]byte(n))
-	}
-	return names
-}
-
-func (va *ValidationAuthorityImpl) tryGetTLSCerts(ctx context.Context,
-	identifier core.AcmeIdentifier, challenge core.Challenge,
-	tlsConfig *tls.Config) ([]*x509.Certificate, *tls.ConnectionState, []core.ValidationRecord, *probs.ProblemDetails) {
-
-	allAddrs, problem := va.getAddrs(ctx, identifier.Value)
-	validationRecords := []core.ValidationRecord{
-		{
-			Hostname:          identifier.Value,
-			AddressesResolved: allAddrs,
-			Port:              strconv.Itoa(va.tlsPort),
-		},
-	}
-	if problem != nil {
-		return nil, nil, validationRecords, problem
-	}
-	thisRecord := &validationRecords[0]
-
-	// Split the available addresses into v4 and v6 addresses
-	v4, v6 := availableAddresses(allAddrs)
-	addresses := append(v4, v6...)
-
-	// This shouldn't happen, but be defensive about it anyway
-	if len(addresses) < 1 {
-		return nil, nil, validationRecords, probs.Malformed("no IP addresses found for %q", identifier.Value)
-	}
-
-	// If there is at least one IPv6 address then try it first
-	if len(v6) > 0 {
-		address := net.JoinHostPort(v6[0].String(), thisRecord.Port)
-		thisRecord.AddressUsed = v6[0]
-
-		certs, cs, err := va.getTLSCerts(ctx, address, identifier, challenge, tlsConfig)
-
-		// If there is no error, return immediately
-		if err == nil {
-			return certs, cs, validationRecords, err
-		}
-
-		// Otherwise, we note that we tried an address and fall back to trying IPv4
-		thisRecord.AddressesTried = append(thisRecord.AddressesTried, thisRecord.AddressUsed)
-		va.stats.Inc("IPv4Fallback", 1)
-	}
-
-	// If there are no IPv4 addresses and we tried an IPv6 address return
-	// an error - there's nothing left to try
-	if len(v4) == 0 && len(thisRecord.AddressesTried) > 0 {
-		return nil, nil, validationRecords, probs.Malformed("Unable to contact %q at %q, no IPv4 addresses to try as fallback",
-			thisRecord.Hostname, thisRecord.AddressesTried[0])
-	} else if len(v4) == 0 && len(thisRecord.AddressesTried) == 0 {
-		// It shouldn't be possible that there are no IPv4 addresses and no previous
-		// attempts at an IPv6 address connection but be defensive about it anyway
-		return nil, nil, validationRecords, probs.Malformed("No IP addresses found for %q", thisRecord.Hostname)
-	}
-
-	// Otherwise if there are no IPv6 addresses, or there was an error
-	// talking to the first IPv6 address, try the first IPv4 address
-	thisRecord.AddressUsed = v4[0]
-	certs, cs, err := va.getTLSCerts(ctx, net.JoinHostPort(v4[0].String(), thisRecord.Port),
-		identifier, challenge, tlsConfig)
-	return certs, cs, validationRecords, err
-}
-
-func (va *ValidationAuthorityImpl) getTLSCerts(
-	ctx context.Context,
-	hostPort string,
-	identifier core.AcmeIdentifier,
-	challenge core.Challenge,
-	config *tls.Config,
-) ([]*x509.Certificate, *tls.ConnectionState, *probs.ProblemDetails) {
-	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", challenge.Type, identifier, hostPort, config.ServerName))
-	// We expect a self-signed challenge certificate, do not verify it here.
-	config.InsecureSkipVerify = true
-	conn, err := va.tlsDial(ctx, hostPort, config)
-
-	if err != nil {
-		va.log.Infof("%s connection failure for %s. err=[%#v] errStr=[%s]", challenge.Type, identifier, err, err)
-		return nil, nil, detailedError(err)
-	}
-	// close errors are not important here
-	defer func() {
-		_ = conn.Close()
-	}()
-
-	cs := conn.ConnectionState()
-	certs := cs.PeerCertificates
-	if len(certs) == 0 {
-		va.log.Infof("%s challenge for %s resulted in no certificates", challenge.Type, identifier.Value)
-		return nil, nil, probs.Unauthorized("No certs presented for %s challenge", challenge.Type)
-	}
-	for i, cert := range certs {
-		va.log.AuditInfof("%s challenge for %s received certificate (%d of %d): cert=[%s]",
-			challenge.Type, identifier.Value, i+1, len(certs), hex.EncodeToString(cert.Raw))
-	}
-	return certs, &cs, nil
-}
-
-// tlsDial does the equivalent of tls.Dial, but obeying a context. Once
-// tls.DialContextWithDialer is available, switch to that.
-func (va *ValidationAuthorityImpl) tlsDial(ctx context.Context, hostPort string, config *tls.Config) (*tls.Conn, error) {
-	ctx, cancel := context.WithTimeout(ctx, va.singleDialTimeout)
-	defer cancel()
-	dialer := &net.Dialer{}
-	netConn, err := dialer.DialContext(ctx, "tcp", hostPort)
-	if err != nil {
-		return nil, err
-	}
-	deadline, ok := ctx.Deadline()
-	if !ok {
-		va.log.AuditErr("tlsDial was called without a deadline")
-		return nil, fmt.Errorf("tlsDial was called without a deadline")
-	}
-	_ = netConn.SetDeadline(deadline)
-	conn := tls.Client(netConn, config)
-	err = conn.Handshake()
-	if err != nil {
-		return nil, err
-	}
-	return conn, nil
-}
-
-func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	if identifier.Type != core.IdentifierDNS {
-		va.log.Infof("Got non-DNS identifier for HTTP validation: %s", identifier)
-		return nil, probs.Malformed("Identifier type for HTTP validation was not DNS")
-	}
-
-	// Perform the fetch
-	path := fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Token)
-	body, validationRecords, prob := va.fetchHTTP(ctx, identifier.Value, "/"+path)
-	if prob != nil {
-		return validationRecords, prob
-	}
-
-	payload := strings.TrimRight(string(body), whitespaceCutset)
-
-	if payload != challenge.ProvidedKeyAuthorization {
-		problem := probs.Unauthorized("The key authorization file from the server did not match this challenge [%v] != [%v]",
-			challenge.ProvidedKeyAuthorization, payload)
-		va.log.Infof("%s for %s", problem.Detail, identifier)
-		return validationRecords, problem
-	}
-
-	return validationRecords, nil
-}
-
-func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	if identifier.Type != "dns" {
-		va.log.Info(fmt.Sprintf("Identifier type for TLS-ALPN-01 was not DNS: %s", identifier))
-		return nil, probs.Malformed("Identifier type for TLS-ALPN-01 was not DNS")
-	}
-
-	certs, cs, validationRecords, problem := va.tryGetTLSCerts(ctx, identifier, challenge, &tls.Config{
-		NextProtos: []string{ACMETLS1Protocol},
-		ServerName: identifier.Value,
-	})
-	if problem != nil {
-		return validationRecords, problem
-	}
-
-	if !cs.NegotiatedProtocolIsMutual || cs.NegotiatedProtocol != ACMETLS1Protocol {
-		errText := fmt.Sprintf(
-			"Cannot negotiate ALPN protocol %q for %s challenge",
-			ACMETLS1Protocol,
-			core.ChallengeTypeTLSALPN01,
-		)
-		return validationRecords, probs.Unauthorized(errText)
-	}
-
-	leafCert := certs[0]
-
-	// Verify SNI - certificate returned must be issued only for the domain we are verifying.
-	if len(leafCert.DNSNames) != 1 || !strings.EqualFold(leafCert.DNSNames[0], identifier.Value) {
-		hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
-		names := certNames(leafCert)
-		errText := fmt.Sprintf(
-			"Incorrect validation certificate for %s challenge. "+
-				"Requested %s from %s. Received %d certificate(s), "+
-				"first certificate had names %q",
-			challenge.Type, identifier.Value, hostPort, len(certs), strings.Join(names, ", "))
-		return validationRecords, probs.Unauthorized(errText)
-	}
-
-	// Verify key authorization in acmeValidation extension
-	h := sha256.Sum256([]byte(challenge.ProvidedKeyAuthorization))
-	for _, ext := range leafCert.Extensions {
-		if IdPeAcmeIdentifier.Equal(ext.Id) || IdPeAcmeIdentifierV1Obsolete.Equal(ext.Id) {
-			if IdPeAcmeIdentifier.Equal(ext.Id) {
-				va.metrics.tlsALPNOIDCounter.WithLabelValues(IdPeAcmeIdentifier.String()).Inc()
-			} else {
-				va.metrics.tlsALPNOIDCounter.WithLabelValues(IdPeAcmeIdentifierV1Obsolete.String()).Inc()
-			}
-			if !ext.Critical {
-				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-					"acmeValidationV1 extension not critical.", core.ChallengeTypeTLSALPN01)
-				return validationRecords, probs.Unauthorized(errText)
-			}
-			var extValue []byte
-			rest, err := asn1.Unmarshal(ext.Value, &extValue)
-			if err != nil || len(rest) > 0 {
-				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-					"Malformed acmeValidationV1 extension value.", core.ChallengeTypeTLSALPN01)
-				return validationRecords, probs.Unauthorized(errText)
-			}
-			if subtle.ConstantTimeCompare(h[:], extValue) != 1 {
-				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-					"Invalid acmeValidationV1 extension value.", core.ChallengeTypeTLSALPN01)
-				return validationRecords, probs.Unauthorized(errText)
-			}
-			return validationRecords, nil
-		}
-	}
-
-	errText := fmt.Sprintf(
-		"Incorrect validation certificate for %s challenge. "+
-			"Missing acmeValidationV1 extension.",
-		core.ChallengeTypeTLSALPN01)
-	return validationRecords, probs.Unauthorized(errText)
-}
-
-// badTLSHeader contains the string 'HTTP /' which is returned when
-// we try to talk TLS to a server that only talks HTTP
-var badTLSHeader = []byte{0x48, 0x54, 0x54, 0x50, 0x2f}
-
 // detailedError returns a ProblemDetails corresponding to an error
 // that occurred during HTTP-01 or TLS-ALPN domain validation. Specifically it
 // tries to unwrap known Go error types and present something a little more
@@ -535,56 +262,11 @@ func detailedError(err error) *probs.ProblemDetails {
 		return probs.Unauthorized(err.Error())
 	}
 
+	if h2SettingsFrameErrRegex.MatchString(err.Error()) {
+		return probs.ConnectionFailure("Server is speaking HTTP/2 over HTTP")
+	}
+
 	return probs.ConnectionFailure("Error getting validation data")
-}
-
-func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	if identifier.Type != core.IdentifierDNS {
-		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", identifier)
-		return nil, probs.Malformed("Identifier type for DNS was not itself DNS")
-	}
-
-	// Compute the digest of the key authorization file
-	h := sha256.New()
-	h.Write([]byte(challenge.ProvidedKeyAuthorization))
-	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
-
-	// Look for the required record in the DNS
-	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, identifier.Value)
-	txts, authorities, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
-
-	if err != nil {
-		va.log.Infof("Failed to lookup TXT records for %s. err=[%#v] errStr=[%s]", identifier, err, err)
-		return nil, probs.DNS(err.Error())
-	}
-
-	// If there weren't any TXT records return a distinct error message to allow
-	// troubleshooters to differentiate between no TXT records and
-	// invalid/incorrect TXT records.
-	if len(txts) == 0 {
-		return nil, probs.Unauthorized("No TXT record found at %s", challengeSubdomain)
-	}
-
-	for _, element := range txts {
-		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
-			// Successful challenge validation
-			return []core.ValidationRecord{{
-				Authorities: authorities,
-				Hostname:    identifier.Value,
-			}}, nil
-		}
-	}
-
-	invalidRecord := txts[0]
-	if len(invalidRecord) > 100 {
-		invalidRecord = invalidRecord[0:100] + "..."
-	}
-	var andMore string
-	if len(txts) > 1 {
-		andMore = fmt.Sprintf(" (and %d more)", len(txts)-1)
-	}
-	return nil, probs.Unauthorized("Incorrect TXT record %q%s found at %s",
-		replaceInvalidUTF8([]byte(invalidRecord)), andMore, challengeSubdomain)
 }
 
 // validate performs a challenge validation and, in parallel,

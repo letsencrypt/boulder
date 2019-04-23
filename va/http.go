@@ -10,12 +10,28 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/probs"
+)
+
+const (
+	// maxRedirect is the maximum number of redirects the VA will follow
+	// processing an HTTP-01 challenge.
+	maxRedirect = 10
+	// maxResponseSize holds the maximum number of bytes that will be read from an
+	// HTTP-01 challenge response. The expected payload should be ~87 bytes. Since
+	// it may be padded by whitespace which we previously allowed accept up to 128
+	// bytes before rejecting a response (32 byte b64 encoded token + . + 32 byte
+	// b64 encoded key fingerprint)
+	maxResponseSize = 128
+	// whitespaceCutset is the set of characters trimmed from the right of an
+	// HTTP-01 key authorization response.
+	whitespaceCutset = "\n\r\t "
 )
 
 // preresolvedDialer is a struct type that provides a DialContext function which
@@ -296,6 +312,22 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 		return "", 0, berrors.ConnectionFailureError(
 			"Invalid host in redirect target %q. "+
 				"Only domain names are supported, not IP addresses", reqHost)
+	}
+
+	// Often folks will misconfigure their webserver to send an HTTP redirect
+	// missing a `/' between the FQDN and the path. E.g. in Apache using:
+	//   Redirect / https://bad-redirect.org
+	// Instead of
+	//   Redirect / https://bad-redirect.org/
+	// Will produce an invalid HTTP-01 redirect target like:
+	//   https://bad-redirect.org.well-known/acme-challenge/xxxx
+	// This happens frequently enough we want to return a distinct error message
+	// for this case by detecting the reqHost ending in ".well-known".
+	if strings.HasSuffix(reqHost, ".well-known") {
+		return "", 0, berrors.ConnectionFailureError(
+			"Invalid host in redirect target %q. Check webserver config for missing '/' in redirect target.",
+			reqHost,
+		)
 	}
 
 	if _, err := iana.ExtractSuffix(reqHost); err != nil {
@@ -579,4 +611,29 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 			records[len(records)-1].URL, records[len(records)-1].AddressUsed, httpResponse.StatusCode)
 	}
 	return body, records, nil
+}
+
+func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+	if identifier.Type != core.IdentifierDNS {
+		va.log.Infof("Got non-DNS identifier for HTTP validation: %s", identifier)
+		return nil, probs.Malformed("Identifier type for HTTP validation was not DNS")
+	}
+
+	// Perform the fetch
+	path := fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Token)
+	body, validationRecords, prob := va.fetchHTTP(ctx, identifier.Value, "/"+path)
+	if prob != nil {
+		return validationRecords, prob
+	}
+
+	payload := strings.TrimRight(string(body), whitespaceCutset)
+
+	if payload != challenge.ProvidedKeyAuthorization {
+		problem := probs.Unauthorized("The key authorization file from the server did not match this challenge [%v] != [%v]",
+			challenge.ProvidedKeyAuthorization, payload)
+		va.log.Infof("%s for %s", problem.Detail, identifier)
+		return validationRecords, problem
+	}
+
+	return validationRecords, nil
 }

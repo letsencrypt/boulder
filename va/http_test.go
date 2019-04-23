@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	mrand "math/rand"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
@@ -229,6 +231,13 @@ func TestExtractRequestTarget(t *testing.T) {
 				URL: mustURL(t, "https:///who/needs/a/hostname?not=me"),
 			},
 			ExpectedError: errors.New("Invalid empty hostname in redirect target"),
+		},
+		{
+			Name: "invalid .well-known hostname",
+			Req: &http.Request{
+				URL: mustURL(t, "https://my.webserver.is.misconfigured.well-known/acme-challenge/xxx"),
+			},
+			ExpectedError: errors.New(`Invalid host in redirect target "my.webserver.is.misconfigured.well-known". Check webserver config for missing '/' in redirect target.`),
 		},
 		{
 			Name: "invalid non-iana hostname",
@@ -841,5 +850,449 @@ func TestFetchHTTP(t *testing.T) {
 			// in all cases we expect validation records to be present and matching expected
 			test.AssertMarshaledEquals(t, records, tc.ExpectedRecords)
 		})
+	}
+}
+
+// All paths that get assigned to tokens MUST be valid tokens
+const expectedToken = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
+const expectedKeyAuthorization = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
+const pathWrongToken = "i6lNAC4lOOLYCl-A08VJt9z_tKYvVk63Dumo8icsBjQ"
+const path404 = "404"
+const path500 = "500"
+const pathFound = "GBq8SwWq3JsbREFdCamk5IX3KLsxW5ULeGs98Ajl_UM"
+const pathMoved = "5J4FIMrWNfmvHZo-QpKZngmuhqZGwRm21-oEgUDstJM"
+const pathRedirectInvalidPort = "port-redirect"
+const pathWait = "wait"
+const pathWaitLong = "wait-long"
+const pathReLookup = "7e-P57coLM7D3woNTp_xbJrtlkDYy6PWf3mSSbLwCr4"
+const pathReLookupInvalid = "re-lookup-invalid"
+const pathRedirectToFailingURL = "re-to-failing-url"
+const pathLooper = "looper"
+const pathValid = "valid"
+const rejectUserAgent = "rejectMe"
+
+func httpSrv(t *testing.T, token string) *httptest.Server {
+	m := http.NewServeMux()
+
+	server := httptest.NewUnstartedServer(m)
+
+	defaultToken := token
+	currentToken := defaultToken
+
+	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, path404) {
+			t.Logf("HTTPSRV: Got a 404 req\n")
+			http.NotFound(w, r)
+		} else if strings.HasSuffix(r.URL.Path, path500) {
+			t.Logf("HTTPSRV: Got a 500 req\n")
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		} else if strings.HasSuffix(r.URL.Path, pathMoved) {
+			t.Logf("HTTPSRV: Got a 301 redirect req\n")
+			if currentToken == defaultToken {
+				currentToken = pathMoved
+			}
+			http.Redirect(w, r, pathValid, 301)
+		} else if strings.HasSuffix(r.URL.Path, pathFound) {
+			t.Logf("HTTPSRV: Got a 302 redirect req\n")
+			if currentToken == defaultToken {
+				currentToken = pathFound
+			}
+			http.Redirect(w, r, pathMoved, 302)
+		} else if strings.HasSuffix(r.URL.Path, pathWait) {
+			t.Logf("HTTPSRV: Got a wait req\n")
+			time.Sleep(time.Second * 3)
+		} else if strings.HasSuffix(r.URL.Path, pathWaitLong) {
+			t.Logf("HTTPSRV: Got a wait-long req\n")
+			time.Sleep(time.Second * 10)
+		} else if strings.HasSuffix(r.URL.Path, pathReLookup) {
+			t.Logf("HTTPSRV: Got a redirect req to a valid hostname\n")
+			if currentToken == defaultToken {
+				currentToken = pathReLookup
+			}
+			port := getPort(server)
+			http.Redirect(w, r, fmt.Sprintf("http://other.valid.com:%d/path", port), 302)
+		} else if strings.HasSuffix(r.URL.Path, pathReLookupInvalid) {
+			t.Logf("HTTPSRV: Got a redirect req to an invalid hostname\n")
+			http.Redirect(w, r, "http://invalid.invalid/path", 302)
+		} else if strings.HasSuffix(r.URL.Path, pathRedirectToFailingURL) {
+			t.Logf("HTTPSRV: Redirecting to a URL that will fail\n")
+			port := getPort(server)
+			http.Redirect(w, r, fmt.Sprintf("http://other.valid.com:%d/%s", port, path500), 301)
+		} else if strings.HasSuffix(r.URL.Path, pathLooper) {
+			t.Logf("HTTPSRV: Got a loop req\n")
+			http.Redirect(w, r, r.URL.String(), 301)
+		} else if strings.HasSuffix(r.URL.Path, pathRedirectInvalidPort) {
+			t.Logf("HTTPSRV: Got a port redirect req\n")
+			// Port 8080 is not the VA's httpPort or httpsPort and should be rejected
+			http.Redirect(w, r, "http://other.valid.com:8080/path", 302)
+		} else if r.Header.Get("User-Agent") == rejectUserAgent {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("found trap User-Agent"))
+		} else {
+			t.Logf("HTTPSRV: Got a valid req\n")
+			t.Logf("HTTPSRV: Path = %s\n", r.URL.Path)
+
+			ch := core.Challenge{Token: currentToken}
+			keyAuthz, _ := ch.ExpectedKeyAuthorization(accountKey)
+			t.Logf("HTTPSRV: Key Authz = '%s%s'\n", keyAuthz, "\\n\\r \\t")
+
+			fmt.Fprint(w, keyAuthz, "\n\r \t")
+			currentToken = defaultToken
+		}
+	})
+
+	server.Start()
+	return server
+}
+
+func TestHTTPBadPort(t *testing.T) {
+	chall := core.HTTPChallenge01("")
+	setChallengeToken(&chall, expectedToken)
+
+	hs := httpSrv(t, chall.Token)
+	defer hs.Close()
+
+	va, _ := setup(hs, 0, "", nil)
+
+	// Pick a random port between 40000 and 65000 - with great certainty we won't
+	// have an HTTP server listening on this port and the test will fail as
+	// intended
+	badPort := 40000 + mrand.Intn(25000)
+	va.httpPort = badPort
+
+	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	if prob == nil {
+		t.Fatalf("Server's down; expected refusal. Where did we connect?")
+	}
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+	if !strings.Contains(prob.Detail, "Connection refused") {
+		t.Errorf("Expected a connection refused error, got %q", prob.Detail)
+	}
+}
+
+func TestHTTP(t *testing.T) {
+	chall := core.HTTPChallenge01("")
+	setChallengeToken(&chall, expectedToken)
+
+	// NOTE: We do not attempt to shut down the server. The problem is that the
+	// "wait-long" handler sleeps for ten seconds, but this test finishes in less
+	// than that. So if we try to call hs.Close() at the end of the test, we'll be
+	// closing the test server while a request is still pending. Unfortunately,
+	// there appears to be an issue in httptest that trips Go's race detector when
+	// that happens, failing the test. So instead, we live with leaving the server
+	// around till the process exits.
+	// TODO(#1989): close hs
+	hs := httpSrv(t, chall.Token)
+
+	va, log := setup(hs, 0, "", nil)
+
+	log.Clear()
+	t.Logf("Trying to validate: %+v\n", chall)
+	_, prob := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	if prob != nil {
+		t.Errorf("Unexpected failure in HTTP validation: %s", prob)
+	}
+	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
+
+	log.Clear()
+	setChallengeToken(&chall, path404)
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	if prob == nil {
+		t.Fatalf("Should have found a 404 for the challenge.")
+	}
+	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
+	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
+
+	log.Clear()
+	setChallengeToken(&chall, pathWrongToken)
+	// The "wrong token" will actually be the expectedToken.  It's wrong
+	// because it doesn't match pathWrongToken.
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	if prob == nil {
+		t.Fatalf("Should have found the wrong token value.")
+	}
+	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
+	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
+
+	log.Clear()
+	setChallengeToken(&chall, pathMoved)
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	if prob != nil {
+		t.Fatalf("Failed to follow 301 redirect")
+	}
+	redirectValid := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathValid + `"`
+	matchedValidRedirect := log.GetAllMatching(redirectValid)
+	test.AssertEquals(t, len(matchedValidRedirect), 1)
+
+	log.Clear()
+	setChallengeToken(&chall, pathFound)
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	if prob != nil {
+		t.Fatalf("Failed to follow 302 redirect")
+	}
+	redirectMoved := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathMoved + `"`
+	matchedMovedRedirect := log.GetAllMatching(redirectMoved)
+	test.AssertEquals(t, len(matchedValidRedirect), 1)
+	test.AssertEquals(t, len(matchedMovedRedirect), 1)
+
+	ipIdentifier := core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}
+	_, prob = va.validateHTTP01(ctx, ipIdentifier, chall)
+	if prob == nil {
+		t.Fatalf("IdentifierType IP shouldn't have worked.")
+	}
+	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
+
+	_, prob = va.validateHTTP01(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
+	if prob == nil {
+		t.Fatalf("Domain name is invalid.")
+	}
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+}
+
+func TestHTTPTimeout(t *testing.T) {
+	chall := core.HTTPChallenge01("")
+	setChallengeToken(&chall, expectedToken)
+
+	hs := httpSrv(t, chall.Token)
+	// TODO(#1989): close hs
+
+	va, _ := setup(hs, 0, "", nil)
+	setChallengeToken(&chall, pathWaitLong)
+
+	expectMatch := regexp.MustCompile(
+		"Fetching http://localhost/.well-known/acme-challenge/wait-long: Timeout after connect")
+
+	started := time.Now()
+	timeout := 250 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	if prob == nil {
+		t.Fatalf("Connection should've timed out")
+	}
+
+	took := time.Since(started)
+	// Check that the HTTP connection doesn't return before a timeout, and times
+	// out after the expected time
+	if took < timeout-200*time.Millisecond {
+		t.Fatalf("HTTP timed out before %s: %s with %s", timeout, took, prob)
+	}
+	if took > 2*timeout {
+		t.Fatalf("HTTP connection didn't timeout after %s", timeout)
+	}
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+
+	if !expectMatch.MatchString(prob.Detail) {
+		t.Errorf("Problem details incorrect. Got %q, expected to match %q",
+			prob.Detail, expectMatch)
+	}
+}
+
+// dnsMockReturnsUnroutable is a DNSClient mock that always returns an
+// unroutable address for LookupHost. This is useful in testing connect
+// timeouts.
+type dnsMockReturnsUnroutable struct {
+	*bdns.MockDNSClient
+}
+
+func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
+	return []net.IP{net.ParseIP("198.51.100.1")}, nil
+}
+
+// TestHTTPDialTimeout tests that we give the proper "Timeout during connect"
+// error when dial fails. We do this by using a mock DNS client that resolves
+// everything to an unroutable IP address.
+func TestHTTPDialTimeout(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil)
+
+	started := time.Now()
+	timeout := 250 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockDNSClient{}}
+	// The only method I've found so far to trigger a connect timeout is to
+	// connect to an unrouteable IP address. This usuall generates a connection
+	// timeout, but will rarely return "Network unreachable" instead. If we get
+	// that, just retry until we get something other than "Network unreachable".
+	var prob *probs.ProblemDetails
+	for i := 0; i < 20; i++ {
+		_, prob = va.validateHTTP01(ctx, dnsi("unroutable.invalid"), core.HTTPChallenge01(""))
+		if prob != nil && strings.Contains(prob.Detail, "Network unreachable") {
+			continue
+		} else {
+			break
+		}
+	}
+	if prob == nil {
+		t.Fatalf("Connection should've timed out")
+	}
+	took := time.Since(started)
+	// Check that the HTTP connection doesn't return too fast, and times
+	// out after the expected time
+	if took < (timeout-200*time.Millisecond)/2 {
+		t.Fatalf("HTTP returned before %s (%s) with %#v", timeout, took, prob)
+	}
+	if took > 2*timeout {
+		t.Fatalf("HTTP connection didn't timeout after %s seconds", timeout)
+	}
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+	expectMatch := regexp.MustCompile(
+		"Fetching http://unroutable.invalid/.well-known/acme-challenge/.*: Timeout during connect")
+	if !expectMatch.MatchString(prob.Detail) {
+		t.Errorf("Problem details incorrect. Got %q, expected to match %q",
+			prob.Detail, expectMatch)
+	}
+}
+
+func TestHTTPRedirectLookup(t *testing.T) {
+	chall := core.HTTPChallenge01("")
+	setChallengeToken(&chall, expectedToken)
+
+	hs := httpSrv(t, expectedToken)
+	defer hs.Close()
+	va, log := setup(hs, 0, "", nil)
+
+	setChallengeToken(&chall, pathMoved)
+	_, prob := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	if prob != nil {
+		t.Fatalf("Unexpected failure in redirect (%s): %s", pathMoved, prob)
+	}
+	redirectValid := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathValid + `"`
+	matchedValidRedirect := log.GetAllMatching(redirectValid)
+	test.AssertEquals(t, len(matchedValidRedirect), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 2)
+
+	log.Clear()
+	setChallengeToken(&chall, pathFound)
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	if prob != nil {
+		t.Fatalf("Unexpected failure in redirect (%s): %s", pathFound, prob)
+	}
+	redirectMoved := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathMoved + `"`
+	matchedMovedRedirect := log.GetAllMatching(redirectMoved)
+	test.AssertEquals(t, len(matchedMovedRedirect), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 3)
+
+	log.Clear()
+	setChallengeToken(&chall, pathReLookupInvalid)
+	_, err := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	test.AssertError(t, err, chall.Token)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 1)
+	test.AssertDeepEquals(t, err, probs.ConnectionFailure("Fetching http://invalid.invalid/path: Invalid hostname in redirect target, must end in IANA registered TLD"))
+
+	log.Clear()
+	setChallengeToken(&chall, pathReLookup)
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	if prob != nil {
+		t.Fatalf("Unexpected error in redirect (%s): %s", pathReLookup, prob)
+	}
+	redirectPattern := `following redirect to host "" url "http://other.valid.com:\d+/path"`
+	test.AssertEquals(t, len(log.GetAllMatching(redirectPattern)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid.com: \[127.0.0.1\]`)), 1)
+
+	log.Clear()
+	setChallengeToken(&chall, pathRedirectInvalidPort)
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	test.AssertNotNil(t, prob, "Problem details for pathRedirectInvalidPort should not be nil")
+	test.AssertEquals(t, prob.Detail, fmt.Sprintf(
+		"Fetching http://other.valid.com:8080/path: Invalid port in redirect target. "+
+			"Only ports %d and %d are supported, not 8080", va.httpPort, va.httpsPort))
+
+	// This case will redirect from a valid host to a host that is throwing
+	// HTTP 500 errors. The test case is ensuring that the connection error
+	// is referencing the redirected to host, instead of the original host.
+	log.Clear()
+	setChallengeToken(&chall, pathRedirectToFailingURL)
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	test.AssertNotNil(t, prob, "Problem Details should not be nil")
+	test.AssertDeepEquals(t, prob,
+		probs.Unauthorized(
+			fmt.Sprintf("Invalid response from http://other.valid.com:%d/500 [127.0.0.1]: 500",
+				va.httpPort)))
+}
+
+func TestHTTPRedirectLoop(t *testing.T) {
+	chall := core.HTTPChallenge01("")
+	setChallengeToken(&chall, "looper")
+
+	hs := httpSrv(t, expectedToken)
+	defer hs.Close()
+	va, _ := setup(hs, 0, "", nil)
+
+	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	if prob == nil {
+		t.Fatalf("Challenge should have failed for %s", chall.Token)
+	}
+}
+
+func TestHTTPRedirectUserAgent(t *testing.T) {
+	chall := core.HTTPChallenge01("")
+	setChallengeToken(&chall, expectedToken)
+
+	hs := httpSrv(t, expectedToken)
+	defer hs.Close()
+	va, _ := setup(hs, 0, "", nil)
+	va.userAgent = rejectUserAgent
+
+	setChallengeToken(&chall, pathMoved)
+	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	if prob == nil {
+		t.Fatalf("Challenge with rejectUserAgent should have failed (%s).", pathMoved)
+	}
+
+	setChallengeToken(&chall, pathFound)
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	if prob == nil {
+		t.Fatalf("Challenge with rejectUserAgent should have failed (%s).", pathFound)
+	}
+}
+
+func getPort(hs *httptest.Server) int {
+	url, err := url.Parse(hs.URL)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to parse hs URL: %q - %s", hs.URL, err.Error()))
+	}
+	_, portString, err := net.SplitHostPort(url.Host)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to split hs URL host: %q - %s", url.Host, err.Error()))
+	}
+	port, err := strconv.ParseInt(portString, 10, 64)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to parse hs URL port: %q - %s", portString, err.Error()))
+	}
+	return int(port)
+}
+
+func TestValidateHTTP(t *testing.T) {
+	chall := core.HTTPChallenge01("")
+	setChallengeToken(&chall, core.NewToken())
+
+	hs := httpSrv(t, chall.Token)
+	defer hs.Close()
+
+	va, _ := setup(hs, 0, "", nil)
+
+	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
+	test.Assert(t, prob == nil, "validation failed")
+}
+
+func TestLimitedReader(t *testing.T) {
+	chall := core.HTTPChallenge01("")
+	setChallengeToken(&chall, core.NewToken())
+
+	hs := httpSrv(t, "012345\xff67890123456789012345678901234567890123456789012345678901234567890123456789")
+	va, _ := setup(hs, 0, "", nil)
+	defer hs.Close()
+
+	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
+
+	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
+	test.Assert(t, strings.HasPrefix(prob.Detail, "Invalid response from "),
+		"Expected failure due to truncation")
+
+	if !utf8.ValidString(prob.Detail) {
+		t.Errorf("Problem Detail contained an invalid UTF-8 string")
 	}
 }

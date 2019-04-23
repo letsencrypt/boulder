@@ -2283,22 +2283,55 @@ func TestGetOrderForNames(t *testing.T) {
 	// to return expired orders
 	test.Assert(t, result == nil, "sa.GetOrderForNames returned non-nil result for expired order case")
 
-	// Add a fresh order for a different of names.
+	// Create two valid authorizations (by first creating pending authorizations)
+	authzExpires = fc.Now().Add(time.Hour)
+	validAuthzA, err := sa.NewPendingAuthorization(ctx, core.Authorization{
+		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "zombo.com"},
+		RegistrationID: regA.ID,
+		Status:         core.StatusPending,
+		Expires:        &authzExpires,
+	})
+	test.AssertNotError(t, err, "unexpected error creating pending authorization")
+	validAuthzB, err := sa.NewPendingAuthorization(ctx, core.Authorization{
+		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "welcome.to.zombo.com"},
+		RegistrationID: regA.ID,
+		Status:         core.StatusPending,
+		Expires:        &authzExpires,
+	})
+	test.AssertNotError(t, err, "unexpected error creating pending authorization")
+	// Update both pending authz to be valid
+	validAuthzA.Status = core.StatusValid
+	err = sa.FinalizeAuthorization(ctx, validAuthzA)
+	test.AssertNotError(t, err, "unexpected error finalizing pending authorization")
+	validAuthzB.Status = core.StatusValid
+	err = sa.FinalizeAuthorization(ctx, validAuthzB)
+	test.AssertNotError(t, err, "unexpected error finalizing pending authorization")
+
+	// Add a fresh order that uses the authorizations created above
 	expires = fc.Now().Add(orderLifetime).UnixNano()
 	names = []string{"zombo.com", "welcome.to.zombo.com"}
 	order, err = sa.NewOrder(ctx, &corepb.Order{
 		RegistrationID: &regA.ID,
 		Expires:        &expires,
-		// We can use the same pending authz's as above - it doesn't matter that
-		// they are for different names for this test, we just need some authz IDs
-		// that exist.
-		Authorizations: []string{pendingAuthzA.ID, pendingAuthzB.ID},
+		Authorizations: []string{validAuthzA.ID, validAuthzB.ID},
 		Names:          names,
 	})
 	// It shouldn't error
 	test.AssertNotError(t, err, "sa.NewOrder failed")
 	// The order ID shouldn't be nil
 	test.AssertNotNil(t, *order.Id, "NewOrder returned with a nil Id")
+
+	// Call GetOrderForNames with the same account ID and set of names as
+	// the earlier NewOrder call
+	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
+		AcctID: &regA.ID,
+		Names:  names,
+	})
+	// It should not error since a ready order can be reused.
+	test.AssertNotError(t, err, "sa.GetOrderForNames returned an unexpected error for ready order reuse")
+	// The order returned should have the same ID as the order we created above
+	test.AssertEquals(t, result != nil, true)
+	test.AssertEquals(t, *result.Id, *order.Id)
 
 	// Set the order processing so it can be finalized
 	err = sa.SetOrderProcessing(ctx, order)
@@ -2311,12 +2344,12 @@ func TestGetOrderForNames(t *testing.T) {
 	test.AssertNotError(t, err, "sa.FinalizeOrder failed")
 
 	// Call GetOrderForNames with the same account ID and set of names as
-	// the above NewOrder call
+	// the earlier NewOrder call
 	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID: &regA.ID,
 		Names:  names,
 	})
-	// It should error since there is no result
+	// It should error since a valid order should not be reused.
 	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
 	// The error should be a notfound error
 	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
@@ -2656,9 +2689,6 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	err := features.Set(map[string]bool{"SetIssuedNamesRenewalBit": true})
-	test.AssertNotError(t, err, "Failed to enable SetIssuedNamesRenewalBit feature flag")
-
 	reg := satest.CreateWorkingRegistration(t, sa)
 
 	// An example cert taken from EFF's website
@@ -2721,15 +2751,6 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 func TestCountCertificatesRenewalBit(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
-
-	// Set feature flags required for this test. We need to set both the
-	// renewal bit with the SetIssuedRenewalBit flag and use it with the
-	// AllowRenewalFirstRL flag.
-	err := features.Set(map[string]bool{
-		"SetIssuedNamesRenewalBit": true,
-		"AllowRenewalFirstRL":      true,
-	})
-	test.AssertNotError(t, err, "Failed to enable required features flag")
 
 	// Create a test registration
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -2825,22 +2846,6 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	// be ignored as a renewal and CertC should be ignored because it isn't an
 	// exact match.
 	test.AssertEquals(t, countNameExact(t, "not-example.com"), int64(1))
-
-	// Disable the AllowRenewalFirstRL feature flag and check the counts for the
-	// names in the certificate again.
-	err = features.Set(map[string]bool{
-		"AllowRenewalFirstRL": false,
-	})
-	test.AssertNotError(t, err, "Unexpected err clearing AllowRenewalFirstRL feature flag")
-
-	// The count for the base domain should be 3 now - certA, certB, and certC
-	// should all count. CertB is not ignored as a renewal because the feature
-	// flag is disabled.
-	test.AssertEquals(t, countName(t, "not-example.com"), int64(3))
-
-	// The exact name count for the base domain should be 2 now: certA and certB.
-	// CertB is not ignored as a renewal because the feature flag is disabled.
-	test.AssertEquals(t, countNameExact(t, "not-example.com"), int64(2))
 }
 
 func TestNewAuthorizations2(t *testing.T) {

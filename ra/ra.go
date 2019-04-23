@@ -1240,6 +1240,19 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(
 }
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
+	if features.Enabled(features.CheckRenewalFirst) {
+		// check if there is already an existing certificate for
+		// the exact name set we are issuing for. If so bypass the
+		// the certificatesPerName limit.
+		exists, err := ra.SA.FQDNSetExists(ctx, names)
+		if err != nil {
+			return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
+		}
+		if exists {
+			ra.certsForDomainStats.Inc("FQDNSetBypass", 1)
+			return nil
+		}
+	}
 	tldNames, err := domainsForRateLimiting(names)
 	if err != nil {
 		return err
@@ -1276,16 +1289,18 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 	}
 
 	if len(badNames) > 0 {
-		// check if there is already an existing certificate for
-		// the exact name set we are issuing for. If so bypass the
-		// the certificatesPerName limit.
-		exists, err := ra.SA.FQDNSetExists(ctx, names)
-		if err != nil {
-			return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
-		}
-		if exists {
-			ra.certsForDomainStats.Inc("FQDNSetBypass", 1)
-			return nil
+		if !features.Enabled(features.CheckRenewalFirst) {
+			// check if there is already an existing certificate for
+			// the exact name set we are issuing for. If so bypass the
+			// the certificatesPerName limit.
+			exists, err := ra.SA.FQDNSetExists(ctx, names)
+			if err != nil {
+				return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
+			}
+			if exists {
+				ra.certsForDomainStats.Inc("FQDNSetBypass", 1)
+				return nil
+			}
 		}
 		domains := strings.Join(badNames, ", ")
 		ra.certsForDomainStats.Inc("Exceeded", 1)
@@ -1732,7 +1747,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	// See if there is an existing, pending, unexpired order that can be reused
+	// See if there is an existing unexpired pending (or ready) order that can be reused
 	// for this account
 	useV2Authzs := features.Enabled(features.NewAuthorizationSchema)
 	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{

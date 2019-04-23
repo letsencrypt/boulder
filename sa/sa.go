@@ -20,7 +20,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -451,72 +450,45 @@ func ReverseName(domain string) string {
 	return strings.Join(labels, ".")
 }
 
-// TODO(@cpu): This query can be removed when AllowRenewalFirstRL is the default.
 const countCertificatesSelect = `
-		 SELECT serial from issuedNames
-		 WHERE (reversedName = :reversedDomain OR
-			      reversedName LIKE CONCAT(:reversedDomain, ".%"))
-		 AND notBefore > :earliest AND notBefore <= :latest;`
-
-const countCertificatesSelectNoRenewals = `
 		 SELECT serial from issuedNames
 		 WHERE (reversedName = :reversedDomain OR
 			      reversedName LIKE CONCAT(:reversedDomain, ".%"))
 		 AND NOT renewal AND notBefore > :earliest AND notBefore <= :latest;`
 
-// TODO(@cpu): This query can be removed when AllowRenewalFirstRL is the default.
 const countCertificatesExactSelect = `
-		 SELECT serial from issuedNames
-		 WHERE reversedName = :reversedDomain
-		 AND notBefore > :earliest AND notBefore <= :latest;`
-
-const countCertificatesExactSelectNoRenewals = `
 		 SELECT serial from issuedNames
 		 WHERE reversedName = :reversedDomain
 		 AND NOT renewal AND notBefore > :earliest AND notBefore <= :latest;`
 
 // countCertificatesByNames returns, for a single domain, the count of
 // certificates issued in the given time range for that domain and its
-// subdomains. If the AllowRenewalFirstRL feature flag is enabled then the count
-// of certificates returned will not include any certificates that were
-// a renewal of a previous certificate.
+// subdomains.
 func (ssa *SQLStorageAuthority) countCertificatesByNameImpl(
 	db dbSelector,
 	domain string,
 	earliest,
 	latest time.Time,
 ) (int, error) {
-	if features.Enabled(features.AllowRenewalFirstRL) {
-		return ssa.countCertificates(db, domain, earliest, latest, countCertificatesSelectNoRenewals)
-	} else {
-		return ssa.countCertificates(db, domain, earliest, latest, countCertificatesSelect)
-	}
+	return ssa.countCertificates(db, domain, earliest, latest, countCertificatesSelect)
 }
 
 // countCertificatesByExactNames returns, for a single domain, the count of
 // certificates issued in the given time range for that domain. In contrast to
-// countCertificatesByNames subdomains are NOT considered. If the
-// AllowRenewalFirstRL feature flag is enabled then the count of certificates
-// returned will not include any certificates that were a renewal of a previous
-// certificate.
+// countCertificatesByNames subdomains are NOT considered.
 func (ssa *SQLStorageAuthority) countCertificatesByExactName(
 	db dbSelector,
 	domain string,
 	earliest,
 	latest time.Time,
 ) (int, error) {
-	if features.Enabled(features.AllowRenewalFirstRL) {
-		return ssa.countCertificates(db, domain, earliest, latest, countCertificatesExactSelectNoRenewals)
-	} else {
-		return ssa.countCertificates(db, domain, earliest, latest, countCertificatesExactSelect)
-	}
+	return ssa.countCertificates(db, domain, earliest, latest, countCertificatesExactSelect)
 }
 
 // countCertificates returns, for a single domain, the count of certificate
 // issuances in the given time range for that domain using the
 // provided query assumed to be either `countCertificatesExactSelect`,
-// `countCertificatesExactSelectNoRenewals`, `countCertificatesSelect` or
-// `countCertificatesSelectNoRenewals`
+// or `countCertificatesSelect`.
 func (ssa *SQLStorageAuthority) countCertificates(db dbSelector, domain string, earliest, latest time.Time, query string) (int, error) {
 	var serials []string
 	_, err := db.Select(
@@ -995,25 +967,17 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		return "", Rollback(tx, err)
 	}
 
-	// If the SetIssuedNamesRenewalBit feature flag is enabled then we need to
-	// determine if the certificate being added is a renewal of a previously
-	// issued certificate in order to set the renewal bit of the issued names rows
-	// correctly with `addIssuedNames`.
-	var isRenewal bool
-	if features.Enabled(features.SetIssuedNamesRenewalBit) {
-		// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
-		// that it is a renewal) we use just the DNSNames from the certificate and
-		// ignore the Subject Common Name (if any). This is a safe assumption because
-		// if a certificate we issued were to have a Subj. CN not present as a SAN it
-		// would be a misissuance and miscalculating whether the cert is a renewal or
-		// not for the purpose of rate limiting is the least of our troubles.
-		prevCertExists, err := ssa.checkFQDNSetExists(
-			txWithCtx.SelectOne,
-			parsedCertificate.DNSNames)
-		if err != nil {
-			return "", Rollback(tx, err)
-		}
-		isRenewal = prevCertExists
+	// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
+	// that it is a renewal) we use just the DNSNames from the certificate and
+	// ignore the Subject Common Name (if any). This is a safe assumption because
+	// if a certificate we issued were to have a Subj. CN not present as a SAN it
+	// would be a misissuance and miscalculating whether the cert is a renewal or
+	// not for the purpose of rate limiting is the least of our troubles.
+	isRenewal, err := ssa.checkFQDNSetExists(
+		txWithCtx.SelectOne,
+		parsedCertificate.DNSNames)
+	if err != nil {
+		return "", Rollback(tx, err)
 	}
 
 	err = addIssuedNames(txWithCtx, parsedCertificate, isRenewal)
@@ -2000,9 +1964,9 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations(
 	return byName, nil
 }
 
-// GetOrderForNames tries to find a **pending** order with the exact set of
-// names requested, associated with the given accountID. Only unexpired orders
-// with status pending are considered. If no order meeting these requirements is
+// GetOrderForNames tries to find a **pending** or **ready** order with the
+// exact set of names requested, associated with the given accountID. Only
+// unexpired orders are considered. If no order meeting these requirements is
 // found a nil corepb.Order pointer is returned.
 func (ssa *SQLStorageAuthority) GetOrderForNames(
 	ctx context.Context,
@@ -2034,8 +1998,9 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	if err != nil {
 		return nil, err
 	}
-	// Only return a pending order
-	if *order.Status != string(core.StatusPending) {
+	// Only return a pending or ready order
+	if *order.Status != string(core.StatusPending) &&
+		*order.Status != string(core.StatusReady) {
 		return nil, berrors.NotFoundError("no order matching request found")
 	}
 	return order, nil
