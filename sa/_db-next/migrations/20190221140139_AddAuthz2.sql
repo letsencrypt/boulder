@@ -4,23 +4,32 @@
 
 CREATE TABLE `authz2` (
     `id` BIGINT(20) PRIMARY KEY AUTO_INCREMENT,
-    `identifierType` SMALLINT NOT NULL,
+    `identifierType` TINYINT NOT NULL,
     `identifierValue` VARCHAR(255) NOT NULL,
     `registrationID` BIGINT(20) NOT NULL,
-    `status` SMALLINT NOT NULL,
+    `status` TINYINT NOT NULL,
     `expires` DATETIME NOT NULL,
-    `challenges` BIT(8) NOT NULL,
-    `attempted` SMALLINT DEFAULT NULL,
+    `challenges` TINYINT NOT NULL,
+    `attempted` TINYINT DEFAULT NULL,
     `attemptedAt` DATETIME DEFAULT NULL,
     `token` BINARY(32) UNIQUE NOT NULL,
-    `validationError` MEDIUMBLOB NOT NULL,
-    `validationRecord` MEDIUMBLOB NOT NULL,
+    `validationError` MEDIUMBLOB DEFAULT NULL,
+    `validationRecord` MEDIUMBLOB DEFAULT NULL,
     KEY `regID_expires_idx` (`registrationID`, `status`, `expires`),
     KEY `regID_identifier_status_expires_idx` (`registrationID`, `identifierType`, `identifierValue`, `status`, `expires`)
 
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE `orderToAuthz2` (
+    `orderID` BIGINT(20) NOT NULL,
+    `authzID` BIGINT(20) NOT NULL,
+    PRIMARY KEY order_authz (`orderID`, `authzID`),
+    KEY `authzID` (`authzID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 -- +goose Down
 -- SQL section 'Down' is executed when this migration is rolled back
 
 DROP TABLE `authz2`;
+
+DROP TABLE `orderToAuthz2`;

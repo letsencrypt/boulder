@@ -11,10 +11,14 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net"
+	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/letsencrypt/boulder/probs"
 
 	"golang.org/x/net/context"
 
@@ -26,6 +30,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/revocation"
@@ -815,6 +820,141 @@ func TestRevokeAuthorizationsByDomain(t *testing.T) {
 	test.AssertEquals(t, FA.Status, core.StatusRevoked)
 }
 
+func TestRevokeAuthorizationsByDomain2(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	// Create four authorizations, leave one pending, finalize one, deactivate
+	// one, and make one expired
+	fc.Add(time.Hour * 2)
+	v2 := true
+	ident := "aaa"
+	pending := string(core.StatusPending)
+	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
+	challType := string(core.ChallengeTypeDNS01)
+	tokenA := "YXNk"
+	tokenB := "Zmdo"
+	tokenC := "enhj"
+	tokenD := "cXdl"
+	oldExpires := fc.Now().Add(-time.Hour).UTC().UnixNano()
+	ids, err := sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{
+		Authz: []*corepb.Authorization{
+			&corepb.Authorization{ // pending
+				V2:             &v2,
+				Identifier:     &ident,
+				RegistrationID: &reg.ID,
+				Status:         &pending,
+				Expires:        &expires,
+				Challenges: []*corepb.Challenge{
+					{
+						Status: &pending,
+						Type:   &challType,
+						Token:  &tokenA,
+					},
+				},
+			},
+			&corepb.Authorization{ // finalized
+				V2:             &v2,
+				Identifier:     &ident,
+				RegistrationID: &reg.ID,
+				Status:         &pending,
+				Expires:        &expires,
+				Challenges: []*corepb.Challenge{
+					{
+						Status: &pending,
+						Type:   &challType,
+						Token:  &tokenB,
+					},
+				},
+			},
+			&corepb.Authorization{ // deactivated
+				V2:             &v2,
+				Identifier:     &ident,
+				RegistrationID: &reg.ID,
+				Status:         &pending,
+				Expires:        &expires,
+				Challenges: []*corepb.Challenge{
+					{
+						Status: &pending,
+						Type:   &challType,
+						Token:  &tokenC,
+					},
+				},
+			},
+			&corepb.Authorization{ // expired
+				V2:             &v2,
+				Identifier:     &ident,
+				RegistrationID: &reg.ID,
+				Status:         &pending,
+				Expires:        &oldExpires,
+				Challenges: []*corepb.Challenge{
+					{
+						Status: &pending,
+						Type:   &challType,
+						Token:  &tokenD,
+					},
+				},
+			},
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
+	test.AssertEquals(t, len(ids.Ids), 4)
+
+	valid := string(core.StatusValid)
+	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id:                &ids.Ids[1],
+		Status:            &valid,
+		Attempted:         &challType,
+		ValidationRecords: []*corepb.ValidationRecord{},
+		Expires:           &expires,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	_, err = sa.DeactivateAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: &ids.Ids[2]})
+	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
+
+	// Create one v1 style authorization
+	exp := fc.Now().Add(time.Hour)
+	oldPending, err := sa.NewPendingAuthorization(context.Background(), core.Authorization{
+		Status:         core.StatusPending,
+		RegistrationID: reg.ID,
+		Identifier: core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: ident,
+		},
+		Expires: &exp,
+	})
+	test.AssertNotError(t, err, "sa.NewPendingAuthorization failed")
+
+	// Only the non-expired pending and valid authorizations should've been revoked
+	_, err = sa.RevokeAuthorizationsByDomain2(context.Background(), &sapb.RevokeAuthorizationsByDomainRequest{
+		Domain: &ident,
+	})
+	test.AssertNotError(t, err, "sa.RevokeAuthorizationsByDomain2")
+
+	authzPB, err := sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: &ids.Ids[0]})
+	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
+	test.AssertEquals(t, *authzPB.Status, string(core.StatusRevoked))
+	authzPB, err = sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: &ids.Ids[1]})
+	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
+	test.AssertEquals(t, *authzPB.Status, string(core.StatusRevoked))
+	authzPB, err = sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: &ids.Ids[2]})
+	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
+	test.AssertEquals(t, *authzPB.Status, string(core.StatusDeactivated))
+	authzPB, err = sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: &ids.Ids[3]})
+	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
+	test.AssertEquals(t, *authzPB.Status, string(core.StatusPending))
+	oldPendingDB, err := sa.GetAuthorization(context.Background(), oldPending.ID)
+	test.AssertNotError(t, err, "sa.GetAuthorization failed")
+	test.AssertEquals(t, oldPendingDB.Status, core.StatusRevoked)
+
+}
+
 func TestFQDNSets(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
@@ -1104,6 +1244,76 @@ func TestDeactivateAuthorization(t *testing.T) {
 	test.Assert(t, pendingObj == nil, "Deactivated authorization still in pending table")
 }
 
+func TestDeactivateAuthorization2(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	// deactivate a pending authorization
+	v2 := true
+	ident := "aaa"
+	pending := string(core.StatusPending)
+	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
+	challType := string(core.ChallengeTypeDNS01)
+	tokenA := "YXNk"
+	tokenB := "Zmdo"
+	ids, err := sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{
+		Authz: []*corepb.Authorization{
+			&corepb.Authorization{
+				V2:             &v2,
+				Identifier:     &ident,
+				RegistrationID: &reg.ID,
+				Status:         &pending,
+				Expires:        &expires,
+				Challenges: []*corepb.Challenge{
+					{
+						Status: &pending,
+						Type:   &challType,
+						Token:  &tokenA,
+					},
+				},
+			},
+			&corepb.Authorization{
+				V2:             &v2,
+				Identifier:     &ident,
+				RegistrationID: &reg.ID,
+				Status:         &pending,
+				Expires:        &expires,
+				Challenges: []*corepb.Challenge{
+					{
+						Status: &pending,
+						Type:   &challType,
+						Token:  &tokenB,
+					},
+				},
+			},
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
+	test.AssertEquals(t, len(ids.Ids), 2)
+
+	_, err = sa.DeactivateAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: &ids.Ids[0]})
+	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
+
+	// deactivate a valid authorization
+	valid := string(core.StatusValid)
+	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id:                &ids.Ids[1],
+		Status:            &valid,
+		Attempted:         &challType,
+		ValidationRecords: []*corepb.ValidationRecord{},
+		Expires:           &expires,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	_, err = sa.DeactivateAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: &ids.Ids[1]})
+	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
+}
+
 func TestDeactivateAccount(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
@@ -1335,6 +1545,7 @@ func TestNewOrder(t *testing.T) {
 
 	i := int64(1)
 	status := string(core.StatusPending)
+
 	order, err := sa.NewOrder(context.Background(), &corepb.Order{
 		RegistrationID: &reg.ID,
 		Expires:        &i,
@@ -1352,6 +1563,37 @@ func TestNewOrder(t *testing.T) {
 	test.AssertDeepEquals(t, authzIDs, []string{"a", "b", "c"})
 
 	names, err := sa.namesForOrder(context.Background(), *order.Id)
+	test.AssertNotError(t, err, "namesForOrder errored")
+	test.AssertEquals(t, len(names), 2)
+	test.AssertDeepEquals(t, names, []string{"com.example", "com.example.another.just"})
+
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	order, err = sa.NewOrder(context.Background(), &corepb.Order{
+		RegistrationID:   &reg.ID,
+		Expires:          &i,
+		Names:            []string{"example.com", "just.another.example.com"},
+		Authorizations:   []string{"a", "b", "c"},
+		V2Authorizations: []int64{1},
+		Status:           &status,
+	})
+	test.AssertNotError(t, err, "sa.NewOrder failed")
+	test.AssertEquals(t, *order.Id, int64(2))
+
+	authzIDs = []string{}
+	_, err = sa.dbMap.Select(&authzIDs, "SELECT authzID FROM orderToAuthz WHERE orderID = ?;", *order.Id)
+	test.AssertNotError(t, err, "Failed to count orderToAuthz entries")
+	test.AssertEquals(t, len(authzIDs), 3)
+	test.AssertDeepEquals(t, authzIDs, []string{"a", "b", "c"})
+	var v2AuthzsIDs []string
+	_, err = sa.dbMap.Select(&v2AuthzsIDs, "SELECT authzID FROM orderToAuthz2 WHERE orderID = ?;", *order.Id)
+	test.AssertNotError(t, err, "Failed to count orderToAuthz entries")
+	test.AssertEquals(t, len(v2AuthzsIDs), 1)
+	test.AssertDeepEquals(t, v2AuthzsIDs, []string{"1"})
+
+	names, err = sa.namesForOrder(context.Background(), *order.Id)
 	test.AssertNotError(t, err, "namesForOrder errored")
 	test.AssertEquals(t, len(names), 2)
 	test.AssertDeepEquals(t, names, []string{"com.example", "com.example.another.just"})
@@ -1736,6 +1978,122 @@ func TestGetAuthorizations(t *testing.T) {
 	// It should find the one authz we associated with an order above
 	test.AssertEquals(t, len(authz.Authz), 1)
 	test.AssertEquals(t, *authz.Authz[0].Authz.Id, paA.ID)
+}
+
+// TODO: needs to test also getting old style authorizations
+func TestGetAuthorizations2(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	exp := fc.Now().AddDate(0, 0, 10).UTC()
+
+	identA := "aaa"
+	identB := "bbb"
+	identC := "ccc"
+	identD := "ddd"
+	idents := []string{identA, identB, identC}
+
+	// Create an authorization template for a pending authorization with a dummy identifier
+	pa := core.Authorization{
+		RegistrationID: reg.ID,
+		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: identA},
+		Status:         core.StatusPending,
+		Expires:        &exp,
+		Challenges: []core.Challenge{
+			{
+				Token:  "YXNk",
+				Type:   core.ChallengeTypeDNS01,
+				Status: core.StatusPending,
+			},
+		},
+	}
+	v2 := true
+
+	authzPBA, err := bgrpc.AuthzToPB(pa)
+	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
+	authzPBA.V2 = &v2
+	pa.Identifier.Value = identB
+	pa.Challenges[0].Token = "Zmdo"
+	authzPBB, err := bgrpc.AuthzToPB(pa)
+	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
+	authzPBB.V2 = &v2
+	nearbyExpires := fc.Now().UTC().Add(time.Hour)
+	pa.Expires = &nearbyExpires
+	pa.Identifier.Value = identC
+	pa.Challenges[0].Token = "enhj"
+	authzPBC, err := bgrpc.AuthzToPB(pa)
+	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
+	authzPBC.V2 = &v2
+
+	// Create pending authorizations
+	ids, err := sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{
+		Authz: []*corepb.Authorization{authzPBA, authzPBB, authzPBC},
+	})
+	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
+	test.AssertEquals(t, len(ids.Ids), 3)
+
+	// Set pending authorization A's status to valid
+	valid := string(core.StatusValid)
+	expires := exp.UnixNano()
+	attempted := string(core.ChallengeTypeDNS01)
+	err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
+		Id:                &ids.Ids[0],
+		Status:            &valid,
+		Expires:           &expires,
+		ValidationRecords: []*corepb.ValidationRecord{},
+		Attempted:         &attempted,
+	})
+	test.AssertNotError(t, err, fmt.Sprintf("Couldn't finalize pending authorization with ID %d", ids.Ids[0]))
+
+	// Associate authorizations with an order so that GetAuthorizations2 thinks
+	// they are WFE2 authorizations.
+	err = sa.dbMap.Insert(&orderToAuthz2Model{
+		OrderID: 1,
+		AuthzID: ids.Ids[0],
+	})
+	test.AssertNotError(t, err, "sa.dbMap.Insert failed")
+	err = sa.dbMap.Insert(&orderToAuthz2Model{
+		OrderID: 1,
+		AuthzID: ids.Ids[1],
+	})
+	test.AssertNotError(t, err, "sa.dbMap.Insert failed")
+	err = sa.dbMap.Insert(&orderToAuthz2Model{
+		OrderID: 1,
+		AuthzID: ids.Ids[2],
+	})
+	test.AssertNotError(t, err, "sa.dbMap.Insert failed")
+
+	// Set an expiry cut off of 1 day in the future similar to `RA.NewOrder`. This
+	// should exclude pending authorization C based on its nearbyExpires expiry
+	// value.
+	expiryCutoff := fc.Now().AddDate(0, 0, 1).UnixNano()
+	// Get authorizations for the names used above.
+	authz, err := sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
+		RegistrationID: &reg.ID,
+		Domains:        idents,
+		Now:            &expiryCutoff,
+	})
+	// It should not fail
+	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
+	// We should get back two authorizations since one of the three authorizations
+	// created above expires too soon.
+	test.AssertEquals(t, len(authz.Authz), 2)
+
+	// Get authorizations for the names used above, and one name that doesn't exist
+	authz, err = sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
+		RegistrationID: &reg.ID,
+		Domains:        append(idents, identD),
+		Now:            &expiryCutoff,
+	})
+	// It should not fail
+	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
+	// It should still return only two authorizations
+	test.AssertEquals(t, len(authz.Authz), 2)
 }
 
 func TestAddPendingAuthorizations(t *testing.T) {
@@ -2488,4 +2846,611 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	// be ignored as a renewal and CertC should be ignored because it isn't an
 	// exact match.
 	test.AssertEquals(t, countNameExact(t, "not-example.com"), int64(1))
+}
+
+func TestNewAuthorizations2(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	v2 := true
+	ident := "aaa"
+	pending := string(core.StatusPending)
+	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
+	challType := string(core.ChallengeTypeDNS01)
+	tokenA := "YXNkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	apbA := &corepb.Authorization{
+		V2:             &v2,
+		Identifier:     &ident,
+		RegistrationID: &reg.ID,
+		Status:         &pending,
+		Expires:        &expires,
+		Challenges: []*corepb.Challenge{
+			{
+				Status: &pending,
+				Type:   &challType,
+				Token:  &tokenA,
+			},
+		},
+	}
+	tokenB := "ZmdoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	apbB := &corepb.Authorization{
+		V2:             &v2,
+		Identifier:     &ident,
+		RegistrationID: &reg.ID,
+		Status:         &pending,
+		Expires:        &expires,
+		Challenges: []*corepb.Challenge{
+			{
+				Status: &pending,
+				Type:   &challType,
+				Token:  &tokenB,
+			},
+		},
+	}
+	req := &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{apbA, apbB}}
+	ids, err := sa.NewAuthorizations2(context.Background(), req)
+	test.AssertNotError(t, err, "sa.NewAuthorizations failed")
+	test.AssertEquals(t, len(ids.Ids), 2)
+	for i, id := range ids.Ids {
+		dbVer, err := sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: &id})
+		test.AssertNotError(t, err, "sa.GetAuthorization failed")
+		// Everything but ID should match
+		req.Authz[i].Id = dbVer.Id
+		req.Authz[i].Combinations = dbVer.Combinations
+		test.AssertDeepEquals(t, req.Authz[i], dbVer)
+	}
+}
+
+func TestFinalizeAuthorization2(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	v2 := true
+	ident := "aaa"
+	pending := string(core.StatusPending)
+	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
+	challType := string(core.ChallengeTypeDNS01)
+	token := "YXNkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	apb := &corepb.Authorization{
+		V2:             &v2,
+		Identifier:     &ident,
+		RegistrationID: &reg.ID,
+		Status:         &pending,
+		Expires:        &expires,
+		Challenges: []*corepb.Challenge{
+			{
+				Status: &pending,
+				Type:   &challType,
+				Token:  &token,
+			},
+		},
+	}
+	ids, err := sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{apb}})
+	test.AssertNotError(t, err, "sa.NewAuthorization failed")
+
+	valid := string(core.StatusValid)
+	expires = fc.Now().Add(time.Hour * 2).UTC().UnixNano()
+	port := "123"
+	url := "http://asd"
+	ip, _ := net.ParseIP("1.1.1.1").MarshalText()
+	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id: &ids.Ids[0],
+		ValidationRecords: []*corepb.ValidationRecord{
+			{
+				Hostname:    &ident,
+				Port:        &port,
+				Url:         &url,
+				AddressUsed: ip,
+			},
+		},
+		Status:    &valid,
+		Expires:   &expires,
+		Attempted: &challType,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+
+	dbVer, err := sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: &ids.Ids[0]})
+	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
+	test.AssertEquals(t, *dbVer.Status, string(core.StatusValid))
+	test.AssertEquals(t, time.Unix(0, *dbVer.Expires).UTC(), fc.Now().Add(time.Hour*2).UTC())
+	test.AssertEquals(t, *dbVer.Challenges[0].Status, string(core.StatusValid))
+	test.AssertEquals(t, len(dbVer.Challenges[0].Validationrecords), 1)
+
+	token = "ZmdoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	ids, err = sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{apb}})
+	test.AssertNotError(t, err, "sa.NewAuthorization failed")
+	invalid := string(core.StatusInvalid)
+	prob, _ := bgrpc.ProblemDetailsToPB(probs.ConnectionFailure("it went bad captain"))
+	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id: &ids.Ids[0],
+		ValidationRecords: []*corepb.ValidationRecord{
+			{
+				Hostname:    &ident,
+				Port:        &port,
+				Url:         &url,
+				AddressUsed: ip,
+			},
+		},
+		ValidationError: prob,
+		Status:          &invalid,
+		Attempted:       &challType,
+		Expires:         &expires,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+
+	dbVer, err = sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: &ids.Ids[0]})
+	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
+	test.AssertEquals(t, *dbVer.Status, string(core.StatusInvalid))
+	test.AssertEquals(t, *dbVer.Challenges[0].Status, string(core.StatusInvalid))
+	test.AssertEquals(t, len(dbVer.Challenges[0].Validationrecords), 1)
+	test.AssertDeepEquals(t, dbVer.Challenges[0].Error, prob)
+}
+
+func TestGetPendingAuthorization2(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	v2 := true
+	ident := "aaa"
+	pending := string(core.StatusPending)
+	expiresA := fc.Now().Add(time.Hour).UTC().UnixNano()
+	expiresB := fc.Now().Add(time.Hour * 3).UTC().UnixNano()
+	challType := string(core.ChallengeTypeDNS01)
+	tokenA := "YXNkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	tokenB := "ZmdoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	ids, err := sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{
+		Authz: []*corepb.Authorization{
+			&corepb.Authorization{
+				V2:             &v2,
+				Identifier:     &ident,
+				RegistrationID: &reg.ID,
+				Status:         &pending,
+				Expires:        &expiresA,
+				Challenges: []*corepb.Challenge{
+					{
+						Status: &pending,
+						Type:   &challType,
+						Token:  &tokenA,
+					},
+				},
+			},
+			&corepb.Authorization{
+				V2:             &v2,
+				Identifier:     &ident,
+				RegistrationID: &reg.ID,
+				Status:         &pending,
+				Expires:        &expiresB,
+				Challenges: []*corepb.Challenge{
+					{
+						Status: &pending,
+						Type:   &challType,
+						Token:  &tokenB,
+					},
+				},
+			},
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
+	test.AssertEquals(t, len(ids.Ids), 2)
+
+	validUntil := fc.Now().Add(time.Hour * 2).UTC().UnixNano()
+	dbVer, err := sa.GetPendingAuthorization2(context.Background(), &sapb.GetPendingAuthorizationRequest{
+		RegistrationID:  &reg.ID,
+		IdentifierValue: &ident,
+		ValidUntil:      &validUntil,
+	})
+	test.AssertNotError(t, err, "sa.GetPendingAuthorization2 failed")
+	test.AssertEquals(t, fmt.Sprintf("%d", ids.Ids[1]), *dbVer.Id)
+
+	validUntil = fc.Now().UTC().UnixNano()
+	dbVer, err = sa.GetPendingAuthorization2(context.Background(), &sapb.GetPendingAuthorizationRequest{
+		RegistrationID:  &reg.ID,
+		IdentifierValue: &ident,
+		ValidUntil:      &validUntil,
+	})
+	test.AssertNotError(t, err, "sa.GetPendingAuthorization2 failed")
+	test.AssertEquals(t, fmt.Sprintf("%d", ids.Ids[0]), *dbVer.Id)
+
+	// Test Getting an old style authorization if there isn't a good new one
+	fc.Add(time.Hour * 5)
+	exp := fc.Now().Add(time.Hour * 2).UTC()
+	oldPA, err := sa.NewPendingAuthorization(context.Background(), core.Authorization{
+		Status:         core.StatusPending,
+		Expires:        &exp,
+		RegistrationID: reg.ID,
+		Identifier: core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: ident,
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewPendingAuthorization failed")
+
+	validUntil = fc.Now().UTC().UnixNano()
+	identType := string(core.IdentifierDNS)
+	dbVer, err = sa.GetPendingAuthorization2(context.Background(), &sapb.GetPendingAuthorizationRequest{
+		RegistrationID:  &reg.ID,
+		IdentifierValue: &ident,
+		IdentifierType:  &identType,
+		ValidUntil:      &validUntil,
+	})
+
+	test.AssertNotError(t, err, "sa.GetPendingAuthorization2 failed")
+	test.AssertEquals(t, oldPA.ID, *dbVer.Id)
+}
+
+func TestCountPendingAuthorizations2(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	v2 := true
+	ident := "aaa"
+	pending := string(core.StatusPending)
+	expiresA := fc.Now().Add(time.Hour).UTC().UnixNano()
+	expiresB := fc.Now().Add(time.Hour * 3).UTC().UnixNano()
+	challType := string(core.ChallengeTypeDNS01)
+	tokenA := "YXNkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	tokenB := "ZmdoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	ids, err := sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{
+		Authz: []*corepb.Authorization{
+			&corepb.Authorization{
+				V2:             &v2,
+				Identifier:     &ident,
+				RegistrationID: &reg.ID,
+				Status:         &pending,
+				Expires:        &expiresA,
+				Challenges: []*corepb.Challenge{
+					{
+						Status: &pending,
+						Type:   &challType,
+						Token:  &tokenA,
+					},
+				},
+			},
+			&corepb.Authorization{
+				V2:             &v2,
+				Identifier:     &ident,
+				RegistrationID: &reg.ID,
+				Status:         &pending,
+				Expires:        &expiresB,
+				Challenges: []*corepb.Challenge{
+					{
+						Status: &pending,
+						Type:   &challType,
+						Token:  &tokenB,
+					},
+				},
+			},
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
+	test.AssertEquals(t, len(ids.Ids), 2)
+
+	// Registration has two new style pending authorizations
+	count, err := sa.CountPendingAuthorizations2(context.Background(), &sapb.RegistrationID{
+		Id: &reg.ID,
+	})
+	test.AssertNotError(t, err, "sa.CountPendingAuthorizations2 failed")
+	test.AssertEquals(t, *count.Count, int64(2))
+
+	// Registration has two new style pending authorizations, one of which has expired
+	fc.Add(time.Hour * 2)
+	count, err = sa.CountPendingAuthorizations2(context.Background(), &sapb.RegistrationID{
+		Id: &reg.ID,
+	})
+	test.AssertNotError(t, err, "sa.CountPendingAuthorizations2 failed")
+	test.AssertEquals(t, *count.Count, int64(1))
+
+	// Registration has two  new style pending authorizations, one of which has expired
+	// and one old style pending authorization
+	pExp := fc.Now().Add(time.Hour)
+	_, err = sa.NewPendingAuthorization(ctx, core.Authorization{
+		RegistrationID: reg.ID,
+		Expires:        &pExp,
+		Status:         core.StatusPending,
+	})
+	test.AssertNotError(t, err, "sa.NewPendingAuthorization failed")
+	count, err = sa.CountPendingAuthorizations2(context.Background(), &sapb.RegistrationID{
+		Id: &reg.ID,
+	})
+	test.AssertNotError(t, err, "sa.CountPendingAuthorizations2 failed")
+	test.AssertEquals(t, *count.Count, int64(2))
+
+	// Registration with no authorizations should be 0
+	noReg := int64(20)
+	count, err = sa.CountPendingAuthorizations2(context.Background(), &sapb.RegistrationID{
+		Id: &noReg,
+	})
+	test.AssertNotError(t, err, "sa.CountPendingAuthorizations2 failed")
+	test.AssertEquals(t, *count.Count, int64(0))
+}
+
+func TestGetValidOrderAuthorizations2(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	// Create a new valid authorization and an old valid authorization
+	reg := satest.CreateWorkingRegistration(t, sa)
+	oldAuthz := CreateDomainAuthWithRegID(t, "a.example.com", sa, reg.ID)
+	exp := fc.Now().Add(time.Hour * 24 * 7)
+	oldAuthz.Expires = &exp
+	oldAuthz.Status = core.StatusValid
+	err := sa.FinalizeAuthorization(ctx, oldAuthz)
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization failed")
+
+	v2 := true
+	ident := "b.example.com"
+	pending := string(core.StatusPending)
+	expires := exp.UTC().UnixNano()
+	challType := string(core.ChallengeTypeDNS01)
+	token := "YXNkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	ids, err := sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{
+		Authz: []*corepb.Authorization{
+			&corepb.Authorization{
+				V2:             &v2,
+				Identifier:     &ident,
+				RegistrationID: &reg.ID,
+				Status:         &pending,
+				Expires:        &expires,
+				Challenges: []*corepb.Challenge{
+					{
+						Status: &pending,
+						Type:   &challType,
+						Token:  &token,
+					},
+				},
+			},
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
+	valid := string(core.StatusValid)
+	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id:                &ids.Ids[0],
+		Status:            &valid,
+		Attempted:         &challType,
+		ValidationRecords: []*corepb.ValidationRecord{},
+		Expires:           &expires,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+
+	i := fc.Now().Truncate(time.Second).UnixNano()
+	status := string(core.StatusPending)
+	order := &corepb.Order{
+		RegistrationID:   &reg.ID,
+		Expires:          &i,
+		Names:            []string{"a.example.com", "b.example.com"},
+		Authorizations:   []string{oldAuthz.ID},
+		V2Authorizations: []int64{ids.Ids[0]},
+		Status:           &status,
+	}
+	order, err = sa.NewOrder(context.Background(), order)
+	test.AssertNotError(t, err, "AddOrder failed")
+
+	authzMap, err := sa.GetValidOrderAuthorizations2(
+		context.Background(),
+		&sapb.GetValidOrderAuthorizationsRequest{
+			Id:     order.Id,
+			AcctID: &reg.ID,
+		})
+	test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
+	test.AssertNotNil(t, authzMap, "sa.GetValidOrderAuthorizations result was nil")
+	test.AssertEquals(t, len(authzMap.Authz), 2)
+
+	// Getting the order authorizations for an order that doesn't exist should return nothing
+	missingID := int64(0xC0FFEEEEEEE)
+	authzMap, err = sa.GetValidOrderAuthorizations2(
+		context.Background(),
+		&sapb.GetValidOrderAuthorizationsRequest{
+			Id:     &missingID,
+			AcctID: &reg.ID,
+		})
+	test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
+	test.AssertEquals(t, len(authzMap.Authz), 0)
+
+	// Getting the order authorizations for an order that does exist, but for the
+	// wrong acct ID should return nothing
+	wrongAcctID := int64(0xDEADDA7ABA5E)
+	authzMap, err = sa.GetValidOrderAuthorizations2(
+		context.Background(),
+		&sapb.GetValidOrderAuthorizationsRequest{
+			Id:     order.Id,
+			AcctID: &wrongAcctID,
+		})
+	test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
+	test.AssertEquals(t, len(authzMap.Authz), 0)
+}
+
+func TestCountInvalidAuthorizations2(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Create three authorizations, one new pending, one new invalid, and one
+	// old invalid
+	fc.Add(time.Hour)
+	reg := satest.CreateWorkingRegistration(t, sa)
+	v2 := true
+	ident := "aaa"
+	pending := string(core.StatusPending)
+	expiresA := fc.Now().Add(time.Hour).UTC().UnixNano()
+	expiresB := fc.Now().Add(time.Hour * 3).UTC().UnixNano()
+	challType := string(core.ChallengeTypeDNS01)
+	tokenA := "YXNkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	tokenB := "ZmdoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	ids, err := sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{
+		Authz: []*corepb.Authorization{
+			&corepb.Authorization{
+				V2:             &v2,
+				Identifier:     &ident,
+				RegistrationID: &reg.ID,
+				Status:         &pending,
+				Expires:        &expiresA,
+				Challenges: []*corepb.Challenge{
+					{
+						Status: &pending,
+						Type:   &challType,
+						Token:  &tokenA,
+					},
+				},
+			},
+			&corepb.Authorization{
+				V2:             &v2,
+				Identifier:     &ident,
+				RegistrationID: &reg.ID,
+				Status:         &pending,
+				Expires:        &expiresB,
+				Challenges: []*corepb.Challenge{
+					{
+						Status: &pending,
+						Type:   &challType,
+						Token:  &tokenB,
+					},
+				},
+			},
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
+	test.AssertEquals(t, len(ids.Ids), 2)
+
+	invalid := string(core.StatusInvalid)
+	prob, _ := bgrpc.ProblemDetailsToPB(probs.ConnectionFailure("it went bad captain"))
+	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id:                &ids.Ids[1],
+		Status:            &invalid,
+		Attempted:         &challType,
+		ValidationRecords: []*corepb.ValidationRecord{},
+		Expires:           &expiresB,
+		ValidationError:   prob,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	exp := fc.Now().Add(time.Hour)
+	oldPA, err := sa.NewPendingAuthorization(ctx, core.Authorization{
+		RegistrationID: reg.ID,
+		Expires:        &exp,
+		Status:         core.StatusPending,
+		Identifier: core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: ident,
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewPendingAuthorization failed")
+	oldPA.Status = core.StatusInvalid
+	err = sa.FinalizeAuthorization(context.Background(), oldPA)
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization failed")
+
+	earliest, latest := fc.Now().Add(-time.Hour).UTC().UnixNano(), fc.Now().Add(time.Hour*5).UTC().UnixNano()
+	count, err := sa.CountInvalidAuthorizations2(context.Background(), &sapb.CountInvalidAuthorizationsRequest{
+		RegistrationID: &reg.ID,
+		Hostname:       &ident,
+		Range: &sapb.Range{
+			Earliest: &earliest,
+			Latest:   &latest,
+		},
+	})
+	test.AssertNotError(t, err, "sa.CountInvalidAuthorizations2 failed")
+	test.AssertEquals(t, *count.Count, int64(2))
+}
+
+func TestGetValidAuthorizations2(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Create a valid old style authorization and a valid
+	// new style authorization
+	reg := satest.CreateWorkingRegistration(t, sa)
+	exp := fc.Now().Add(time.Hour).UTC()
+	oldPA, err := sa.NewPendingAuthorization(ctx, core.Authorization{
+		RegistrationID: reg.ID,
+		Expires:        &exp,
+		Status:         core.StatusPending,
+		Identifier: core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: "bbb",
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewPendingAuthorization failed")
+	oldPA.Status = core.StatusValid
+	err = sa.FinalizeAuthorization(context.Background(), oldPA)
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization failed")
+	v2 := true
+	ident := "aaa"
+	pending := string(core.StatusPending)
+	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
+	challType := string(core.ChallengeTypeDNS01)
+	token := "YXNk"
+	ids, err := sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{
+		Authz: []*corepb.Authorization{
+			&corepb.Authorization{
+				V2:             &v2,
+				Identifier:     &ident,
+				RegistrationID: &reg.ID,
+				Status:         &pending,
+				Expires:        &expires,
+				Challenges: []*corepb.Challenge{
+					{
+						Status: &pending,
+						Type:   &challType,
+						Token:  &token,
+					},
+				},
+			},
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
+	test.AssertEquals(t, len(ids.Ids), 1)
+	valid := string(core.StatusValid)
+	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id:                &ids.Ids[0],
+		Status:            &valid,
+		Attempted:         &challType,
+		ValidationRecords: []*corepb.ValidationRecord{},
+		Expires:           &expires,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+
+	now := fc.Now().UTC().UnixNano()
+	authzs, err := sa.GetValidAuthorizations2(context.Background(), &sapb.GetValidAuthorizationsRequest{
+		Domains: []string{
+			"aaa",
+			"bbb",
+		},
+		RegistrationID: &reg.ID,
+		Now:            &now,
+	})
+	test.AssertNotError(t, err, "sa.GetValidAuthorizations2 failed")
+	test.AssertEquals(t, len(authzs.Authz), 2)
+	test.AssertEquals(t, *authzs.Authz[0].Domain, "aaa")
+	test.AssertEquals(t, *authzs.Authz[0].Authz.Id, fmt.Sprintf("%d", ids.Ids[0]))
+	test.AssertEquals(t, *authzs.Authz[1].Domain, "bbb")
+	test.AssertEquals(t, *authzs.Authz[1].Authz.Id, oldPA.ID)
 }

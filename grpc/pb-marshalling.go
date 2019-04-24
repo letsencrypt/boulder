@@ -114,7 +114,7 @@ func pbToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 	if in == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
-	if in.Id == nil || in.Type == nil || in.Status == nil || in.Token == nil || in.KeyAuthorization == nil {
+	if in.Type == nil || in.Status == nil || in.Token == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
 	var recordAry []core.ValidationRecord
@@ -131,15 +131,20 @@ func pbToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 	if err != nil {
 		return core.Challenge{}, err
 	}
-	return core.Challenge{
-		ID:                       *in.Id,
-		Type:                     *in.Type,
-		Status:                   core.AcmeStatus(*in.Status),
-		Token:                    *in.Token,
-		ProvidedKeyAuthorization: *in.KeyAuthorization,
-		Error:                    prob,
-		ValidationRecord:         recordAry,
-	}, nil
+	ch := core.Challenge{
+		Type:             *in.Type,
+		Status:           core.AcmeStatus(*in.Status),
+		Token:            *in.Token,
+		Error:            prob,
+		ValidationRecord: recordAry,
+	}
+	if in.Id != nil {
+		ch.ID = *in.Id
+	}
+	if in.KeyAuthorization != nil {
+		ch.ProvidedKeyAuthorization = *in.KeyAuthorization
+	}
+	return ch, nil
 }
 
 func ValidationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecord, error) {
