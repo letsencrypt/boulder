@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rsa"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -317,6 +319,17 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*jose.JSONWebSignature, *prob
 	if len(parsedJWS.Signatures) == 1 && len(parsedJWS.Signatures[0].Signature) == 0 {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSEmptySignature"}).Inc()
 		return nil, probs.Malformed("POST JWS not signed")
+	}
+
+	// if the protected header contains a JWK and it's a EC key verify that it has
+	// proper field lengths in a goroutine as the caller doesn't care about the
+	// result of this check
+	if parsedJWS.Signatures[0].Header.JSONWebKey != nil {
+		switch parsedJWS.Signatures[0].Header.JSONWebKey.Key.(type) {
+		case *ecdsa.PublicKey:
+			fmt.Println("hello@")
+			go wfe.verifyECFieldLengths(body)
+		}
 	}
 
 	return parsedJWS, nil
@@ -734,4 +747,60 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 		},
 		NewKey: *jwk,
 	}, nil
+}
+
+func bitSizeToByteSize(bitSize int) int {
+	byteSize := (bitSize / 8)
+	if bitSize%8 > 0 {
+		return byteSize + 1
+	}
+	return byteSize
+}
+
+var curvesToSize = map[string]int{
+	"P-256": bitSizeToByteSize(elliptic.P256().Params().BitSize),
+	"P-384": bitSizeToByteSize(elliptic.P384().Params().BitSize),
+	"P-521": bitSizeToByteSize(elliptic.P521().Params().BitSize),
+}
+
+func (wfe *WebFrontEndImpl) verifyECFieldLengths(body []byte) {
+	var request struct {
+		Protected string
+	}
+	if err := json.Unmarshal(body, &request); err != nil {
+		return
+	}
+	b, err := base64.RawURLEncoding.DecodeString(request.Protected)
+	if err != nil {
+		return
+	}
+	var keyData struct {
+		JWK struct {
+			X   string
+			Y   string
+			Crv string
+		}
+	}
+	if err := json.Unmarshal(b, &keyData); err != nil {
+		// this really shouldn't happen as we've already done this once before
+		// successfully, in order to avoid a headache just return and pretend
+		// it didn't happen
+		return
+	}
+	x, err := base64.RawURLEncoding.DecodeString(keyData.JWK.X)
+	if err != nil {
+		return
+	}
+	y, err := base64.RawURLEncoding.DecodeString(keyData.JWK.Y)
+	if err != nil {
+		return
+	}
+	xLen, yLen := len(x), len(y)
+	curveSize, present := curvesToSize[keyData.JWK.Crv]
+	if !present {
+		return
+	}
+	if xLen != curveSize || yLen != curveSize {
+		wfe.stats.improperECFieldLengths.Inc()
+	}
 }
