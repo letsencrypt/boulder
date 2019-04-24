@@ -65,7 +65,7 @@ func (ssa *SQLStorageAuthority) addCertificatesPerName(
 // countCertificatesFaster returns, for a single domain, the count of
 // certificates issued in the given time range for that domain's eTLD+1 (aka
 // base domain). It uses the certificatesPerName table to make this lookup fast.
-// This functioncan replace both countCertificatesByName and
+// This function can replace both countCertificatesByName and
 // countCertificatesByExactName because domains that are exactly equal to an
 // public suffix have their issuances counted under a separate bucket from their
 // subdomains.
