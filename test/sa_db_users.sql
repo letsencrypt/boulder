@@ -34,7 +34,7 @@ GRANT SELECT(id,Lockcol) ON pendingAuthorizations TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON certificates TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON certificateStatus TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON issuedNames TO 'sa'@'localhost';
-GRANT SELECT,INSERT,UPDATE ON certificatesPerName TO 'sa'@'localhost';
+GRANT SELECT,INSERT,DELETE ON certificatesPerName TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON sctReceipts TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON registrations TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON challenges TO 'sa'@'localhost';

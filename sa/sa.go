@@ -44,8 +44,9 @@ type SQLStorageAuthority struct {
 
 	// We use function types here so we can mock out this internal function in
 	// unittests.
-	countCertificatesByName certCountFunc
-	getChallenges           getChallengesFunc
+	countCertificatesByName      certCountFunc
+	countCertificatesByExactName certCountFunc
+	getChallenges                getChallengesFunc
 }
 
 func digest256(data []byte) []byte {
@@ -106,6 +107,11 @@ func NewSQLStorageAuthority(
 	}
 
 	ssa.countCertificatesByName = ssa.countCertificatesByNameImpl
+	ssa.countCertificatesByExactName = ssa.countCertificatesByExactNameImpl
+	if features.Enabled(features.FasterRateLimit) {
+		ssa.countCertificatesByName = ssa.countCertificatesFaster
+		ssa.countCertificatesByExactName = ssa.countCertificatesFaster
+	}
 	ssa.getChallenges = ssa.getChallengesImpl
 
 	return ssa, nil
@@ -436,13 +442,51 @@ func (ssa *SQLStorageAuthority) countCertificatesByNameImpl(
 // countCertificatesByExactNames returns, for a single domain, the count of
 // certificates issued in the given time range for that domain. In contrast to
 // countCertificatesByNames subdomains are NOT considered.
-func (ssa *SQLStorageAuthority) countCertificatesByExactName(
+func (ssa *SQLStorageAuthority) countCertificatesByExactNameImpl(
 	db dbSelector,
 	domain string,
 	earliest,
 	latest time.Time,
 ) (int, error) {
 	return ssa.countCertificates(db, domain, earliest, latest, countCertificatesExactSelect)
+}
+
+// countCertificatesFaster returns, for a single domain, the count of
+// certificates issued in the given time range for that domain's eTLD+1 (aka
+// base domain). It uses the certificatesPerName table to make this lookup fast.
+// This functioncan replace both countCertificatesByName and
+// countCertificatesByExactName because domains that are exactly equal to an
+// public suffix have their issuances counted under a separate bucket from their
+// subdomains.
+func (ssa *SQLStorageAuthority) countCertificatesFaster(
+	db dbSelector,
+	domain string,
+	earliest,
+	latest time.Time,
+) (int, error) {
+	base := baseDomain(domain)
+	var counts []int
+	_, err := db.Select(
+		&counts,
+		`SELECT count FROM certificatesPerName
+		 WHERE eTLDPlusOne = :baseDomain AND
+		 time > :earliest AND
+		 time <= :latest`,
+		map[string]interface{}{
+			"baseDomain": base,
+			"earliest":   earliest,
+			"latest":     latest,
+		})
+	if err == sql.ErrNoRows {
+		return 0, nil
+	} else if err != nil {
+		return 0, err
+	}
+	var total int
+	for _, count := range counts {
+		total += count
+	}
+	return total, nil
 }
 
 // countCertificates returns, for a single domain, the count of certificate
@@ -1059,52 +1103,82 @@ func addIssuedNames(db dbExecer, cert *x509.Certificate, isRenewal bool) error {
 	return err
 }
 
+// baseDomain returns the eTLD+1 of a domain name for the purpose of rate
+// limiting. For a domain name that is itself an eTLD, it returns its input.
+func baseDomain(name string) string {
+	eTLDPlusOne, err := publicsuffix.Domain(name)
+	if err != nil {
+		// publicsuffix.Domain will return an error if the input name is itself a
+		// public suffix. In that case we use the input name as the key for rate
+		// limiting. Since all of its subdomains will have separate keys for rate
+		// limiting (e.g. "foo.bar.publicsuffix.com" will have
+		// "bar.publicsuffix.com", this means that domains exactly equal to a
+		// public suffix get their own rate limit bucket. This is important
+		// because otherwise they might be perpetually unable to issue, assuming
+		// the rate of issuance from their subdomains was high enough.
+		return name
+	}
+	return eTLDPlusOne
+}
+
 func (ssa *SQLStorageAuthority) addCertificatesPerName(
 	ctx context.Context,
-	db dbExecer,
+	db dbSelectExecer,
 	names []string,
 	timeToTheHour time.Time,
 ) error {
 	if !features.Enabled(features.FasterRateLimit) {
 		return nil
 	}
-	baseDomainsMap := map[string]bool{}
-	var baseDomains []string
+	// This maps from a base domain to the issuance count that it should have
+	// for this hour.
+	baseDomainsMap := map[string]int{}
+	var baseDomains []interface{}
+	var qmarks []string
 	for _, name := range names {
-		eTLDPlusOne, err := publicsuffix.Domain(name)
-		if err != nil {
-			// publicsuffix.Domain will return an error if the input name is itself a
-			// public suffix. In that case we use the input name as the key for rate
-			// limiting. Since all of its subdomains will have separate keys for rate
-			// limiting (e.g. "foo.bar.publicsuffix.com" will have
-			// "bar.publicsuffix.com", this means that domains exactly equal to a
-			// public suffix get their own rate limit bucket. This is important
-			// because otherwise they might be perpetually unable to issue, assuming
-			// the rate of issuance from their subdomains was high enough.
-			eTLDPlusOne = name
-		}
-		if !baseDomainsMap[eTLDPlusOne] {
-			baseDomainsMap[eTLDPlusOne] = true
-			baseDomains = append(baseDomains, eTLDPlusOne)
+		base := baseDomain(name)
+		if baseDomainsMap[base] == 0 {
+			baseDomainsMap[base] = 1
+			baseDomains = append(baseDomains, base)
+			qmarks = append(qmarks, "?")
 		}
 	}
 
-	addDomain := func(_ context.Context, domain string) (int, error) {
-		_, err := db.Exec(`INSERT INTO certificatesPerName (eTLDPlusOne, time, count)
-					   VALUES (?, ?, 1)
-						 ON DUPLICATE KEY UPDATE count=count+1;`,
-			domain,
-			timeToTheHour)
-		if err != nil {
-			return 0, err
-		}
-		return 0, nil
+	// Look up any existing entries and add their counts to the total.
+	type nameAndCount struct {
+		ETLDPlusOne string
+		Count       int
+	}
+	var counts []nameAndCount
+	_, err := db.Select(
+		&counts,
+		`SELECT eTLDPlusOne, count
+		 FROM certificatesPerName
+		 WHERE time = ?
+		 AND eTLDPlusOne IN (`+strings.Join(qmarks, ", ")+`)`,
+		append([]interface{}{timeToTheHour}, baseDomains...)...)
+	if err != nil && err != sql.ErrNoRows {
+		return err
 	}
 
-	_, err := doParallel(ctx, ssa.parallelismPerRPC, baseDomains, addDomain)
+	for _, c := range counts {
+		baseDomainsMap[c.ETLDPlusOne] += c.Count
+	}
+
+	// Write out the resulting counts.
+	var outputQmarks []string
+	var values []interface{}
+	for base, count := range baseDomainsMap {
+		values = append(values, base, count, timeToTheHour)
+		outputQmarks = append(outputQmarks, "(?, ?, ?)")
+	}
+	_, err = db.Exec(`REPLACE INTO certificatesPerName (eTLDPlusOne, count, time)
+					   VALUES `+strings.Join(outputQmarks, ", ")+`;`,
+		values...)
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
