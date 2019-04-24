@@ -28,6 +28,8 @@ func baseDomain(name string) string {
 	return eTLDPlusOne
 }
 
+// addCertificatesPerName adds 1 to the rate limit count for the provided domains,
+// in a specific time bucket. It must be executed in a transaction.
 func (ssa *SQLStorageAuthority) addCertificatesPerName(
 	ctx context.Context,
 	db dbSelectExecer,
@@ -38,7 +40,7 @@ func (ssa *SQLStorageAuthority) addCertificatesPerName(
 		return nil
 	}
 	// This maps from a base domain to the issuance count that it should have
-	// for this hour.
+	// for this hour. It also de-duplicates base domains.
 	baseDomainsMap := map[string]int{}
 	var baseDomains []interface{}
 	var qmarks []string
