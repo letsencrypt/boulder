@@ -39,18 +39,19 @@ func (ssa *SQLStorageAuthority) addCertificatesPerName(
 	if !features.Enabled(features.FasterRateLimit) {
 		return nil
 	}
-	// De-duplicate base domains.
+	// De-duplicte the base domains.
 	baseDomainsMap := map[string]bool{}
-	for _, name := range names {
-		baseDomainsMap[baseDomain(name)] = true
-	}
-
 	var qmarks []string
 	var values []interface{}
-	for base := range baseDomainsMap {
-		values = append(values, base, timeToTheHour, 1)
-		qmarks = append(qmarks, "(?, ?, ?)")
+	for _, name := range names {
+		base := baseDomain(name)
+		if !baseDomainsMap[base] {
+			baseDomainsMap[base] = true
+			values = append(values, base, timeToTheHour, 1)
+			qmarks = append(qmarks, "(?, ?, ?)")
+		}
 	}
+
 	_, err := db.Exec(`INSERT INTO certificatesPerName (eTLDPlusOne, time, count)
 					   VALUES `+strings.Join(qmarks, ", ")+` ON DUPLICATE KEY UPDATE count=count+1;`,
 		values...)
