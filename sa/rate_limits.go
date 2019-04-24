@@ -28,9 +28,8 @@ func baseDomain(name string) string {
 	return eTLDPlusOne
 }
 
-// addCertificatesPerName adds 1 to the rate limit count for the base domain
-// corresponding to each provided domains, in a specific time bucket.
-// It must be executed in a transaction.
+// addCertificatesPerName adds 1 to the rate limit count for the provided domains,
+// in a specific time bucket. It must be executed in a transaction.
 func (ssa *SQLStorageAuthority) addCertificatesPerName(
 	ctx context.Context,
 	db dbSelectExecer,
@@ -40,50 +39,20 @@ func (ssa *SQLStorageAuthority) addCertificatesPerName(
 	if !features.Enabled(features.FasterRateLimit) {
 		return nil
 	}
-	// This maps from a base domain to the issuance count that it should have
-	// for this hour. It also de-duplicates base domains.
-	baseDomainsMap := map[string]int{}
-	var baseDomains []interface{}
-	var qmarks []string
+	// De-duplicate base domains.
+	baseDomainsMap := map[string]bool{}
 	for _, name := range names {
-		base := baseDomain(name)
-		if baseDomainsMap[base] == 0 {
-			baseDomainsMap[base] = 1
-			baseDomains = append(baseDomains, base)
-			qmarks = append(qmarks, "?")
-		}
+		baseDomainsMap[baseDomain(name)] = true
 	}
 
-	// Look up any existing entries and add their counts to the total.
-	type nameAndCount struct {
-		ETLDPlusOne string
-		Count       int
-	}
-	var counts []nameAndCount
-	_, err := db.Select(
-		&counts,
-		`SELECT eTLDPlusOne, count
-		 FROM certificatesPerName
-		 WHERE time = ?
-		 AND eTLDPlusOne IN (`+strings.Join(qmarks, ", ")+`)`,
-		append([]interface{}{timeToTheHour}, baseDomains...)...)
-	if err != nil && err != sql.ErrNoRows {
-		return err
-	}
-
-	for _, c := range counts {
-		baseDomainsMap[c.ETLDPlusOne] += c.Count
-	}
-
-	// Write out the resulting counts.
-	var outputQmarks []string
+	var qmarks []string
 	var values []interface{}
-	for base, count := range baseDomainsMap {
-		values = append(values, base, count, timeToTheHour)
-		outputQmarks = append(outputQmarks, "(?, ?, ?)")
+	for base := range baseDomainsMap {
+		values = append(values, base, timeToTheHour, 1)
+		qmarks = append(qmarks, "(?, ?, ?)")
 	}
-	_, err = db.Exec(`REPLACE INTO certificatesPerName (eTLDPlusOne, count, time)
-					   VALUES `+strings.Join(outputQmarks, ", ")+`;`,
+	_, err := db.Exec(`INSERT INTO certificatesPerName (eTLDPlusOne, time, count)
+					   VALUES `+strings.Join(qmarks, ", ")+` ON DUPLICATE KEY UPDATE count=count+1;`,
 		values...)
 	if err != nil {
 		return err
