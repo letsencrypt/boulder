@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/context"
 	"gopkg.in/go-gorp/gorp.v2"
 	jose "gopkg.in/square/go-jose.v2"
@@ -930,8 +929,8 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		return "", Rollback(tx, err)
 	}
 
-	// Don't add to the rate limit table for renewals, since they don't count
-	// against the certificatesPerName limit.
+	// Add to the rate limit table, but only for new certificates. Renewals
+	// don't count against the certificatesPerName limit.
 	if !isRenewal {
 		timeToTheHour := parsedCertificate.NotBefore.Round(time.Hour)
 		err = ssa.addCertificatesPerName(ctx, txWithCtx, parsedCertificate.DNSNames, timeToTheHour)
@@ -1086,14 +1085,10 @@ func deleteOrderFQDNSet(
 	return nil
 }
 
-// addIssuedNames adds an entry to issuedNames and certificatesPerName for the
-// given certificate. It must be run inside a transaction.
 func addIssuedNames(db dbExecer, cert *x509.Certificate, isRenewal bool) error {
 	var qmarks []string
 	var values []interface{}
-
 	for _, name := range cert.DNSNames {
-		// Accumulate values and question marks to be inserted into issuedNames.
 		values = append(values,
 			ReverseName(name),
 			core.SerialToString(cert.SerialNumber),
@@ -1101,9 +1096,8 @@ func addIssuedNames(db dbExecer, cert *x509.Certificate, isRenewal bool) error {
 			isRenewal)
 		qmarks = append(qmarks, "(?, ?, ?, ?)")
 	}
-
-	issuedNamesInsert := `INSERT INTO issuedNames (reversedName, serial, notBefore, renewal) VALUES ` + strings.Join(qmarks, ", ") + `;`
-	_, err := db.Exec(issuedNamesInsert, values...)
+	query := `INSERT INTO issuedNames (reversedName, serial, notBefore, renewal) VALUES ` + strings.Join(qmarks, ", ") + `;`
+	_, err := db.Exec(query, values...)
 	return err
 }
 
