@@ -1107,24 +1107,6 @@ func addIssuedNames(db dbExecer, cert *x509.Certificate, isRenewal bool) error {
 	return err
 }
 
-// baseDomain returns the eTLD+1 of a domain name for the purpose of rate
-// limiting. For a domain name that is itself an eTLD, it returns its input.
-func baseDomain(name string) string {
-	eTLDPlusOne, err := publicsuffix.Domain(name)
-	if err != nil {
-		// publicsuffix.Domain will return an error if the input name is itself a
-		// public suffix. In that case we use the input name as the key for rate
-		// limiting. Since all of its subdomains will have separate keys for rate
-		// limiting (e.g. "foo.bar.publicsuffix.com" will have
-		// "bar.publicsuffix.com", this means that domains exactly equal to a
-		// public suffix get their own rate limit bucket. This is important
-		// because otherwise they might be perpetually unable to issue, assuming
-		// the rate of issuance from their subdomains was high enough.
-		return name
-	}
-	return eTLDPlusOne
-}
-
 // CountFQDNSets returns the number of sets with hash |setHash| within the window
 // |window|
 func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, window time.Duration, names []string) (int64, error) {
