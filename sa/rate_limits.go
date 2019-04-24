@@ -39,7 +39,7 @@ func (ssa *SQLStorageAuthority) addCertificatesPerName(
 	if !features.Enabled(features.FasterRateLimit) {
 		return nil
 	}
-	// De-duplicte the base domains.
+	// De-duplicate the base domains.
 	baseDomainsMap := map[string]bool{}
 	var qmarks []string
 	var values []interface{}
