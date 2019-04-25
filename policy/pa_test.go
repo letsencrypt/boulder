@@ -106,20 +106,20 @@ func TestWillingToIssue(t *testing.T) {
 		`foo.bd`,
 	}
 
-	shouldBeBlacklisted := []string{
+	shouldBeBlocked := []string{
 		`highvalue.website1.org`,
 		`website2.co.uk`,
 		`www.website3.com`,
 		`lots.of.labels.website4.com`,
 	}
-	blacklistContents := []string{
+	blocklistContents := []string{
 		`website2.com`,
 		`website2.org`,
 		`website2.co.uk`,
 		`website3.com`,
 		`website4.com`,
 	}
-	exactBlacklistContents := []string{
+	exactBlocklistContents := []string{
 		`www.website1.org`,
 		`highvalue.website1.org`,
 		`dl.website1.org`,
@@ -138,15 +138,15 @@ func TestWillingToIssue(t *testing.T) {
 
 	pa := paImpl(t)
 
-	blacklistBytes, err := json.Marshal(blacklistJSON{
-		Blacklist:      blacklistContents,
-		ExactBlacklist: exactBlacklistContents,
+	blocklistBytes, err := json.Marshal(blockedNamesPolicy{
+		BlockedNames:      blocklistContents,
+		ExactBlockedNames: exactBlocklistContents,
 	})
-	test.AssertNotError(t, err, "Couldn't serialize blacklist")
-	f, _ := ioutil.TempFile("", "test-blacklist.txt")
+	test.AssertNotError(t, err, "Couldn't serialize blocklist")
+	f, _ := ioutil.TempFile("", "test-blocklist.txt")
 	defer os.Remove(f.Name())
-	err = ioutil.WriteFile(f.Name(), blacklistBytes, 0640)
-	test.AssertNotError(t, err, "Couldn't write blacklist")
+	err = ioutil.WriteFile(f.Name(), blocklistBytes, 0640)
+	test.AssertNotError(t, err, "Couldn't write blocklist")
 	err = pa.SetHostnamePolicyFile(f.Name())
 	test.AssertNotError(t, err, "Couldn't load rules")
 
@@ -186,11 +186,11 @@ func TestWillingToIssue(t *testing.T) {
 		}
 	}
 
-	// Test blacklisting
-	for _, domain := range shouldBeBlacklisted {
+	// Test expected blocked domains
+	for _, domain := range shouldBeBlocked {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
 		err := pa.WillingToIssue(identifier)
-		if err != errBlacklisted {
+		if err != errPolicyForbidden {
 			t.Error("Identifier was not correctly forbidden: ", identifier, err)
 		}
 	}
@@ -213,9 +213,9 @@ func TestWillingToIssueWildcard(t *testing.T) {
 	}
 	pa := paImpl(t)
 
-	bannedBytes, err := json.Marshal(blacklistJSON{
-		Blacklist:      bannedDomains,
-		ExactBlacklist: exactBannedDomains,
+	bannedBytes, err := json.Marshal(blockedNamesPolicy{
+		BlockedNames:      bannedDomains,
+		ExactBlockedNames: exactBannedDomains,
 	})
 	test.AssertNotError(t, err, "Couldn't serialize banned list")
 	f, _ := ioutil.TempFile("", "test-wildcard-banlist.txt")
@@ -265,26 +265,26 @@ func TestWillingToIssueWildcard(t *testing.T) {
 		{
 			Name:        "Forbidden base domain",
 			Ident:       makeDNSIdent("*.zombo.gov.us"),
-			ExpectedErr: errBlacklisted,
+			ExpectedErr: errPolicyForbidden,
 		},
 		// We should not allow getting a wildcard for that would cover an exact
 		// blocklist domain
 		{
-			Name:        "Wildcard for ExactBlacklist base domain",
+			Name:        "Wildcard for ExactBlocklist base domain",
 			Ident:       makeDNSIdent("*.letsdecrypt.org"),
-			ExpectedErr: errBlacklisted,
+			ExpectedErr: errPolicyForbidden,
 		},
 		// We should allow a wildcard for a domain that doesn't match the exact
-		// blacklist domain
+		// blocklist domain
 		{
-			Name:        "Wildcard for non-matching subdomain of ExactBlacklist domain",
+			Name:        "Wildcard for non-matching subdomain of ExactBlocklist domain",
 			Ident:       makeDNSIdent("*.lowvalue.letsdecrypt.org"),
 			ExpectedErr: nil,
 		},
-		// We should allow getting a wildcard for an exact blacklist domain since it
+		// We should allow getting a wildcard for an exact blocklist domain since it
 		// only covers subdomains, not the exact name.
 		{
-			Name:        "Wildcard for ExactBlacklist domain",
+			Name:        "Wildcard for ExactBlocklist domain",
 			Ident:       makeDNSIdent("*.highvalue.letsdecrypt.org"),
 			ExpectedErr: nil,
 		},
@@ -365,9 +365,9 @@ func TestChallengesForWildcard(t *testing.T) {
 	test.AssertEquals(t, challenges[0].Type, core.ChallengeTypeDNS01)
 }
 
-// TestMalformedExactBlacklist tests that loading a JSON policy file with an
-// invalid exact blacklist entry will fail as expected.
-func TestMalformedExactBlacklist(t *testing.T) {
+// TestMalformedExactBlocklist tests that loading a JSON policy file with an
+// invalid exact blocklist entry will fail as expected.
+func TestMalformedExactBlocklist(t *testing.T) {
 	pa := paImpl(t)
 
 	exactBannedDomains := []string{
@@ -379,22 +379,22 @@ func TestMalformedExactBlacklist(t *testing.T) {
 	}
 
 	// Create JSON for the exactBannedDomains
-	bannedBytes, err := json.Marshal(blacklistJSON{
-		Blacklist:      bannedDomains,
-		ExactBlacklist: exactBannedDomains,
+	bannedBytes, err := json.Marshal(blockedNamesPolicy{
+		BlockedNames:      bannedDomains,
+		ExactBlockedNames: exactBannedDomains,
 	})
 	test.AssertNotError(t, err, "Couldn't serialize banned list")
 
 	// Create a temp file for the JSON contents
-	f, _ := ioutil.TempFile("", "test-invalid-exactblacklist.json")
+	f, _ := ioutil.TempFile("", "test-invalid-exactblocklist.json")
 	defer os.Remove(f.Name())
 	// Write the JSON to the temp file
 	err = ioutil.WriteFile(f.Name(), bannedBytes, 0640)
 	test.AssertNotError(t, err, "Couldn't write serialized banned list to file")
 
 	// Try to use the JSON tempfile as the hostname policy. It should produce an
-	// error since the exact blacklist contents are malformed.
+	// error since the exact blocklist contents are malformed.
 	err = pa.SetHostnamePolicyFile(f.Name())
-	test.AssertError(t, err, "Loaded invalid exact blacklist content without error")
-	test.AssertEquals(t, err.Error(), "Malformed exact blacklist entry, only one label: \"com\"")
+	test.AssertError(t, err, "Loaded invalid exact blocklist content without error")
+	test.AssertEquals(t, err.Error(), "Malformed ExactBlockedNames entry, only one label: \"com\"")
 }
