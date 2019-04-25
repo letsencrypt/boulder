@@ -25,3 +25,8 @@ BlockedNames:
   - "local"
   - "localhost"
   - "test"
+
+# SDNNames are the same as BlockedNames but change more frequently and so are
+# separated into their own list.
+SDNNames:
+  - "sealand"
