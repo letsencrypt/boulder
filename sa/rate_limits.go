@@ -29,7 +29,8 @@ func baseDomain(name string) string {
 }
 
 // addCertificatesPerName adds 1 to the rate limit count for the provided domains,
-// in a specific time bucket. It must be executed in a transaction.
+// in a specific time bucket. It must be executed in a transaction, and the
+// input timeToTheHour must be a time rounded to an hour.
 func (ssa *SQLStorageAuthority) addCertificatesPerName(
 	ctx context.Context,
 	db dbSelectExecer,
@@ -40,7 +41,7 @@ func (ssa *SQLStorageAuthority) addCertificatesPerName(
 		return nil
 	}
 	// De-duplicate the base domains.
-	baseDomainsMap := map[string]bool{}
+	baseDomainsMap := make(map[string]bool)
 	var qmarks []string
 	var values []interface{}
 	for _, name := range names {
@@ -52,8 +53,8 @@ func (ssa *SQLStorageAuthority) addCertificatesPerName(
 		}
 	}
 
-	_, err := db.Exec(`INSERT INTO certificatesPerName (eTLDPlusOne, time, count)
-					   VALUES `+strings.Join(qmarks, ", ")+` ON DUPLICATE KEY UPDATE count=count+1;`,
+	_, err := db.Exec(`INSERT INTO certificatesPerName (eTLDPlusOne, time, count) VALUES `+
+		strings.Join(qmarks, ", ")+` ON DUPLICATE KEY UPDATE count=count+1;`,
 		values...)
 	if err != nil {
 		return err
