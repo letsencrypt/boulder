@@ -20,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/iana"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/reloader"
+	"gopkg.in/yaml.v2"
 )
 
 // AuthorityImpl enforces CA policy decisions.
@@ -58,44 +59,80 @@ type blockedNamesPolicy struct {
 	// `mail.example.com`).
 	//
 	// TODO(@cpu): Remove the JSON tag when data is updated to use the new field names
-	ExactBlockedNames []string `json:"exactBlacklist"`
+	ExactBlockedNames []string `json:"exactBlacklist" yaml:"ExactBlockedNames"`
 	// BlockedNames is like ExactBlockedNames except that issuance is blocked for
 	// subdomains as well. (e.g. BlockedNames containing `example.com` will block
 	// `www.example.com`).
 	//
 	// TODO(@cpu): Remove the JSON tag when data is updated to use the new field names
-	BlockedNames []string `json:"blacklist"`
+	BlockedNames []string `json:"blacklist" yaml:"BlockedNames"`
 }
 
 // SetHostnamePolicyFile will load the given policy file, returning error if it
-// fails. It will also start a reloader in case the file changes.
+// fails. It will also start a reloader in case the file changes. It supports
+// YAML and JSON serialization formats and chooses the correct unserialization
+// method based on the file extension which must be ".yaml", ".yml", or ".json".
 func (pa *AuthorityImpl) SetHostnamePolicyFile(f string) error {
-	_, err := reloader.New(f, pa.loadHostnamePolicy, pa.hostnamePolicyLoadError)
-	return err
+	var loadHandler func([]byte) error
+	if strings.HasSuffix(f, ".json") {
+		loadHandler = pa.loadHostnamePolicy(json.Unmarshal)
+	} else if strings.HasSuffix(f, ".yml") || strings.HasSuffix(f, ".yaml") {
+		loadHandler = pa.loadHostnamePolicy(yaml.Unmarshal)
+	} else {
+		return fmt.Errorf(
+			"Hostname policy file %q has unknown extension. Supported: .yml,.yaml,.json",
+			f)
+	}
+	if _, err := reloader.New(f, loadHandler, pa.hostnamePolicyLoadError); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (pa *AuthorityImpl) hostnamePolicyLoadError(err error) {
 	pa.log.AuditErrf("error loading hostname policy: %s", err)
 }
 
-func (pa *AuthorityImpl) loadHostnamePolicy(b []byte) error {
-	hash := sha256.Sum256(b)
-	pa.log.Infof("loading hostname policy, sha256: %s", hex.EncodeToString(hash[:]))
-	var bl blockedNamesPolicy
-	err := json.Unmarshal(b, &bl)
-	if err != nil {
-		return err
+// unmarshalHandler is a function type that abstracts away a choice between
+// json.Unmarshal and yaml.Unmarshal, both of which take a byte slice, an
+// interface to unmarshal to, and return an error.
+type unmarshalHandler func([]byte, interface{}) error
+
+// loadHostnamePolicy returns a reloader dataCallback function that uses the
+// unmarshalHandler to load a hostname policy. The returned callback is suitable
+// for use with reloader.New()
+func (pa *AuthorityImpl) loadHostnamePolicy(unmarshal unmarshalHandler) func([]byte) error {
+	// Return a reloader dataCallback that uses the provided unmarshalHandler.
+	return func(contents []byte) error {
+		hash := sha256.Sum256(contents)
+		pa.log.Infof("loading hostname policy, sha256: %s", hex.EncodeToString(hash[:]))
+		var policy blockedNamesPolicy
+		err := unmarshal(contents, &policy)
+		if err != nil {
+			return err
+		}
+		if len(policy.BlockedNames) == 0 {
+			return fmt.Errorf("No entries in BlockedNames.")
+		}
+		if len(policy.ExactBlockedNames) == 0 {
+			return fmt.Errorf("No entries in ExactBlockedNames.")
+		}
+		return pa.processHostnamePolicy(policy)
 	}
-	if len(bl.BlockedNames) == 0 {
-		return fmt.Errorf("No entries in BlockedNames.")
-	}
+}
+
+// processHostnamePolicy handles loading a new blockedNamesPolicy into the PA.
+// All of the policy.ExactBlockedNames will be added to the
+// wildcardExactBlocklist by processHostnamePolicy to ensure that wildcards for
+// exact blocked names entries are forbidden.
+func (pa *AuthorityImpl) processHostnamePolicy(policy blockedNamesPolicy) error {
 	nameMap := make(map[string]bool)
-	for _, v := range bl.BlockedNames {
+	for _, v := range policy.BlockedNames {
 		nameMap[v] = true
 	}
 	exactNameMap := make(map[string]bool)
 	wildcardNameMap := make(map[string]bool)
-	for _, v := range bl.ExactBlockedNames {
+	for _, v := range policy.ExactBlockedNames {
 		exactNameMap[v] = true
 		// Remove the leftmost label of the exact blocked names entry to make an exact
 		// wildcard block list entry that will prevent issuing a wildcard that would

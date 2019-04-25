@@ -2,6 +2,7 @@ package policy
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
+	"gopkg.in/yaml.v2"
 )
 
 var log = blog.UseMock()
@@ -136,71 +138,92 @@ func TestWillingToIssue(t *testing.T) {
 		"www.web-site2.com",
 	}
 
-	pa := paImpl(t)
-
-	blocklistBytes, err := json.Marshal(blockedNamesPolicy{
+	policy := blockedNamesPolicy{
 		BlockedNames:      blocklistContents,
 		ExactBlockedNames: exactBlocklistContents,
-	})
-	test.AssertNotError(t, err, "Couldn't serialize blocklist")
-	f, _ := ioutil.TempFile("", "test-blocklist.txt")
-	defer os.Remove(f.Name())
-	err = ioutil.WriteFile(f.Name(), blocklistBytes, 0640)
-	test.AssertNotError(t, err, "Couldn't write blocklist")
-	err = pa.SetHostnamePolicyFile(f.Name())
-	test.AssertNotError(t, err, "Couldn't load rules")
-
-	// Test for invalid identifier type
-	identifier := core.AcmeIdentifier{Type: "ip", Value: "example.com"}
-	err = pa.WillingToIssue(identifier)
-	if err != errInvalidIdentifier {
-		t.Error("Identifier was not correctly forbidden: ", identifier)
 	}
 
-	// Test syntax errors
-	for _, tc := range testCases {
-		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: tc.domain}
-		err := pa.WillingToIssue(identifier)
-		if err != tc.err {
-			t.Errorf("WillingToIssue(%q) = %q, expected %q", tc.domain, err, tc.err)
+	jsonPolicyBytes, err := json.Marshal(policy)
+	test.AssertNotError(t, err, "Couldn't JSON serialize blocklist")
+	jsonPolicyFile, _ := ioutil.TempFile("", "test-blocklist.*.json")
+	defer os.Remove(jsonPolicyFile.Name())
+	err = ioutil.WriteFile(jsonPolicyFile.Name(), jsonPolicyBytes, 0640)
+	test.AssertNotError(t, err, "Couldn't write JSON blocklist")
+
+	yamlPolicyBytes, err := yaml.Marshal(policy)
+	test.AssertNotError(t, err, "Couldn't YAML serialize blocklist")
+	yamlPolicyFile, _ := ioutil.TempFile("", "test-blocklist.*.yaml")
+	defer os.Remove(yamlPolicyFile.Name())
+	err = ioutil.WriteFile(yamlPolicyFile.Name(), yamlPolicyBytes, 0640)
+	test.AssertNotError(t, err, "Couldn't write YAML blocklist")
+
+	testPolicyFile := func(f string) {
+		pa := paImpl(t)
+
+		err = pa.SetHostnamePolicyFile(f)
+		test.AssertNotError(t, err, "Couldn't load rules")
+
+		// Test for invalid identifier type
+		identifier := core.AcmeIdentifier{Type: "ip", Value: "example.com"}
+		err = pa.WillingToIssue(identifier)
+		if err != errInvalidIdentifier {
+			t.Error("Identifier was not correctly forbidden: ", identifier)
+		}
+
+		// Test syntax errors
+		for _, tc := range testCases {
+			identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: tc.domain}
+			err := pa.WillingToIssue(identifier)
+			if err != tc.err {
+				t.Errorf("WillingToIssue(%q) = %q, expected %q", tc.domain, err, tc.err)
+			}
+		}
+
+		// Invalid encoding
+		err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "www.xn--m.com"})
+		test.AssertError(t, err, "WillingToIssue didn't fail on a malformed IDN")
+		// Valid encoding
+		err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "www.xn--mnich-kva.com"})
+		test.AssertNotError(t, err, "WillingToIssue failed on a properly formed IDN")
+		// IDN TLD
+		err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "xn--example--3bhk5a.xn--p1ai"})
+		test.AssertNotError(t, err, "WillingToIssue failed on a properly formed domain with IDN TLD")
+		features.Reset()
+
+		// Test domains that are equal to public suffixes
+		for _, domain := range shouldBeTLDError {
+			identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
+			err := pa.WillingToIssue(identifier)
+			if err != errICANNTLD {
+				t.Error("Identifier was not correctly forbidden: ", identifier, err)
+			}
+		}
+
+		// Test expected blocked domains
+		for _, domain := range shouldBeBlocked {
+			identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
+			err := pa.WillingToIssue(identifier)
+			if err != errPolicyForbidden {
+				t.Error("Identifier was not correctly forbidden: ", identifier, err)
+			}
+		}
+
+		// Test acceptance of good names
+		for _, domain := range shouldBeAccepted {
+			identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
+			if err := pa.WillingToIssue(identifier); err != nil {
+				t.Error("Identifier was incorrectly forbidden: ", identifier, err)
+			}
 		}
 	}
 
-	// Invalid encoding
-	err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "www.xn--m.com"})
-	test.AssertError(t, err, "WillingToIssue didn't fail on a malformed IDN")
-	// Valid encoding
-	err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "www.xn--mnich-kva.com"})
-	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed IDN")
-	// IDN TLD
-	err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "xn--example--3bhk5a.xn--p1ai"})
-	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed domain with IDN TLD")
-	features.Reset()
-
-	// Test domains that are equal to public suffixes
-	for _, domain := range shouldBeTLDError {
-		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		err := pa.WillingToIssue(identifier)
-		if err != errICANNTLD {
-			t.Error("Identifier was not correctly forbidden: ", identifier, err)
-		}
-	}
-
-	// Test expected blocked domains
-	for _, domain := range shouldBeBlocked {
-		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		err := pa.WillingToIssue(identifier)
-		if err != errPolicyForbidden {
-			t.Error("Identifier was not correctly forbidden: ", identifier, err)
-		}
-	}
-
-	// Test acceptance of good names
-	for _, domain := range shouldBeAccepted {
-		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		if err := pa.WillingToIssue(identifier); err != nil {
-			t.Error("Identifier was incorrectly forbidden: ", identifier, err)
-		}
+	// Both the JSON and the YAML policy files should behave the exact same way
+	// when tested.
+	for _, f := range []string{
+		jsonPolicyFile.Name(),
+		yamlPolicyFile.Name(),
+	} {
+		testPolicyFile(f)
 	}
 }
 
@@ -218,7 +241,7 @@ func TestWillingToIssueWildcard(t *testing.T) {
 		ExactBlockedNames: exactBannedDomains,
 	})
 	test.AssertNotError(t, err, "Couldn't serialize banned list")
-	f, _ := ioutil.TempFile("", "test-wildcard-banlist.txt")
+	f, _ := ioutil.TempFile("", "test-wildcard-banlist.*.json")
 	defer os.Remove(f.Name())
 	err = ioutil.WriteFile(f.Name(), bannedBytes, 0640)
 	test.AssertNotError(t, err, "Couldn't write serialized banned list to file")
@@ -386,7 +409,7 @@ func TestMalformedExactBlocklist(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't serialize banned list")
 
 	// Create a temp file for the JSON contents
-	f, _ := ioutil.TempFile("", "test-invalid-exactblocklist.json")
+	f, _ := ioutil.TempFile("", "test-invalid-exactblocklist.*.json")
 	defer os.Remove(f.Name())
 	// Write the JSON to the temp file
 	err = ioutil.WriteFile(f.Name(), bannedBytes, 0640)
@@ -397,4 +420,18 @@ func TestMalformedExactBlocklist(t *testing.T) {
 	err = pa.SetHostnamePolicyFile(f.Name())
 	test.AssertError(t, err, "Loaded invalid exact blocklist content without error")
 	test.AssertEquals(t, err.Error(), "Malformed ExactBlockedNames entry, only one label: \"com\"")
+}
+
+func TestSetHostnamePolicyFileExtension(t *testing.T) {
+	filename := "hostname.policy.json.j2"
+	expectedErrMsg := fmt.Sprintf(
+		`Hostname policy file %q has unknown extension. Supported: .yml,.yaml,.json`,
+		filename)
+
+	pa := paImpl(t)
+	if err := pa.SetHostnamePolicyFile(filename); err != nil && err.Error() != expectedErrMsg {
+		t.Errorf("expected SetHostnamePolicyFile error %q got %q", expectedErrMsg, err.Error())
+	} else if err == nil {
+		t.Errorf("expected SetHostnamePolicyFile error %q got nil", expectedErrMsg)
+	}
 }

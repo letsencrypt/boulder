@@ -2,7 +2,7 @@
   "certChecker": {
     "dbConnectFile": "test/secrets/cert_checker_dburl",
     "maxDBConns": 10,
-    "hostnamePolicyFile": "test/hostname-policy.json"
+    "hostnamePolicyFile": "test/hostname-policy.yaml"
   },
 
   "pa": {
