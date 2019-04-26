@@ -70,7 +70,7 @@ type blockedNamesPolicy struct {
 	// TODO(@cpu): Remove the JSON tag when data is updated to use the new field names
 	BlockedNames []string `json:"blacklist" yaml:"BlockedNames"`
 
-	// RevokedNames operate the same as BlockedNames but are change with more
+	// RevokedNames operate the same as BlockedNames but are changed with more
 	// frequency based on administrative blocks/revocations that are added over
 	// time above and beyond high-value domains. Managing these entries separately
 	// from BlockedNames makes it easier to vet changes accurately.
