@@ -2994,3 +2994,26 @@ func TestChallengeNewIDScheme(t *testing.T) {
 			tc.expected)
 	}
 }
+
+func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
+	wfe, fc := setupWFE(t)
+
+	id := int64(1)
+	status := string(core.StatusPending)
+	expires := fc.Now().UnixNano()
+	orderJSON := wfe.orderToOrderJSON(&http.Request{}, &corepb.Order{
+		Id:               &id,
+		RegistrationID:   &id,
+		Names:            []string{"a"},
+		Status:           &status,
+		Expires:          &expires,
+		Authorizations:   []string{"a", "b"},
+		V2Authorizations: []int64{1, 2},
+	})
+	test.AssertDeepEquals(t, orderJSON.Authorizations, []string{
+		"http://localhost/acme/authz/a",
+		"http://localhost/acme/authz/b",
+		"http://localhost/acme/authz/v2/1",
+		"http://localhost/acme/authz/v2/2",
+	})
+}
