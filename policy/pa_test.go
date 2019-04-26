@@ -128,7 +128,7 @@ func TestWillingToIssue(t *testing.T) {
 		`highvalue.website1.org`,
 		`dl.website1.org`,
 	}
-	sdnNamesContents := []string{
+	revokedNamesContents := []string{
 		`banned.in.dc.com`,
 	}
 
@@ -146,7 +146,7 @@ func TestWillingToIssue(t *testing.T) {
 	policy := blockedNamesPolicy{
 		BlockedNames:      blocklistContents,
 		ExactBlockedNames: exactBlocklistContents,
-		SDNNames:          sdnNamesContents,
+		RevokedNames:      revokedNamesContents,
 	}
 
 	jsonPolicyBytes, err := json.Marshal(policy)

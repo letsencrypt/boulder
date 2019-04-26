@@ -70,11 +70,11 @@ type blockedNamesPolicy struct {
 	// TODO(@cpu): Remove the JSON tag when data is updated to use the new field names
 	BlockedNames []string `json:"blacklist" yaml:"BlockedNames"`
 
-	// SDNNames operate the same as BlockedNames but change with greater
-	// frequency based on the Treasury department's Specially Designated Nationals
-	// list. Because of the rate of change and the importance of careful
-	// management of these names we separate them from the BlockedNames list.
-	SDNNames []string `yaml:"SDNNames"`
+	// RevokedNames operate the same as BlockedNames but are change with more
+	// frequency based on administrative blocks/revocations that are added over
+	// time above and beyond high-value domains. Managing these entries separately
+	// from BlockedNames makes it easier to vet changes accurately.
+	RevokedNames []string `yaml:"RevokedNames"`
 }
 
 // SetHostnamePolicyFile will load the given policy file, returning error if it
@@ -139,7 +139,7 @@ func (pa *AuthorityImpl) processHostnamePolicy(policy blockedNamesPolicy) error 
 	for _, v := range policy.BlockedNames {
 		nameMap[v] = true
 	}
-	for _, v := range policy.SDNNames {
+	for _, v := range policy.RevokedNames {
 		nameMap[v] = true
 	}
 	exactNameMap := make(map[string]bool)

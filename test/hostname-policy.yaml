@@ -26,7 +26,8 @@ BlockedNames:
   - "localhost"
   - "test"
 
-# SDNNames are the same as BlockedNames but change more frequently and so are
+# RevokedNames are treated the same as BlockedNames by Boulder but since they
+# change more frequently based on administrative action over time they are
 # separated into their own list.
-SDNNames:
+RevokedNames:
   - "sealand"
