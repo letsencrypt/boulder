@@ -128,7 +128,7 @@ func TestWillingToIssue(t *testing.T) {
 		`highvalue.website1.org`,
 		`dl.website1.org`,
 	}
-	revokedNamesContents := []string{
+	adminBlockedContents := []string{
 		`banned.in.dc.com`,
 	}
 
@@ -144,9 +144,9 @@ func TestWillingToIssue(t *testing.T) {
 	}
 
 	policy := blockedNamesPolicy{
-		BlockedNames:      blocklistContents,
-		ExactBlockedNames: exactBlocklistContents,
-		RevokedNames:      revokedNamesContents,
+		HighRiskBlockedNames: blocklistContents,
+		ExactBlockedNames:    exactBlocklistContents,
+		AdminBlockedNames:    adminBlockedContents,
 	}
 
 	jsonPolicyBytes, err := json.Marshal(policy)
@@ -243,8 +243,8 @@ func TestWillingToIssueWildcard(t *testing.T) {
 	pa := paImpl(t)
 
 	bannedBytes, err := json.Marshal(blockedNamesPolicy{
-		BlockedNames:      bannedDomains,
-		ExactBlockedNames: exactBannedDomains,
+		HighRiskBlockedNames: bannedDomains,
+		ExactBlockedNames:    exactBannedDomains,
 	})
 	test.AssertNotError(t, err, "Couldn't serialize banned list")
 	f, _ := ioutil.TempFile("", "test-wildcard-banlist.*.json")
@@ -409,8 +409,8 @@ func TestMalformedExactBlocklist(t *testing.T) {
 
 	// Create JSON for the exactBannedDomains
 	bannedBytes, err := json.Marshal(blockedNamesPolicy{
-		BlockedNames:      bannedDomains,
-		ExactBlockedNames: exactBannedDomains,
+		HighRiskBlockedNames: bannedDomains,
+		ExactBlockedNames:    exactBannedDomains,
 	})
 	test.AssertNotError(t, err, "Couldn't serialize banned list")
 

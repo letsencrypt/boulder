@@ -10,9 +10,9 @@ ExactBlockedNames:
   - "highrisk.le-test.hoffman-andrews.com"
   - "exactblacklist.letsencrypt.org"
 
-# BlockedNames prevent issuance for the exact names listed as well as all
-# subdomains/wildcards.
-BlockedNames:
+# HighRiskBlockedNames prevent issuance for the exact names listed as well as
+# all subdomains/wildcards.
+HighRiskBlockedNames:
   # See RFC 3152
   - "ipv6.arpa"
   # See RFC 2317
@@ -26,8 +26,8 @@ BlockedNames:
   - "localhost"
   - "test"
 
-# RevokedNames are treated the same as BlockedNames by Boulder but since they
-# change more frequently based on administrative action over time they are
-# separated into their own list.
-RevokedNames:
+# AdminBlockedNames are treated the same as HighRiskBlockedNames by Boulder but
+# since they change more frequently based on administrative action over time
+# they are separated into their own list.
+AdminBlockedNames:
   - "sealand"

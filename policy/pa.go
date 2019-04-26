@@ -60,21 +60,20 @@ type blockedNamesPolicy struct {
 	//
 	// TODO(@cpu): Remove the JSON tag when data is updated to use the new field names
 	ExactBlockedNames []string `json:"exactBlacklist" yaml:"ExactBlockedNames"`
-	// BlockedNames is like ExactBlockedNames except that issuance is blocked for
-	// subdomains as well. (e.g. BlockedNames containing `example.com` will block
-	// `www.example.com`).
+	// HighRiskBlockedNames is like ExactBlockedNames except that issuance is
+	// blocked for subdomains as well. (e.g. BlockedNames containing `example.com`
+	// will block `www.example.com`).
 	//
-	// This list typically holds high-value domain names and doesn't change with
-	// much regularity.
+	// This list typically doesn't change with much regularity.
 	//
 	// TODO(@cpu): Remove the JSON tag when data is updated to use the new field names
-	BlockedNames []string `json:"blacklist" yaml:"BlockedNames"`
+	HighRiskBlockedNames []string `json:"blacklist" yaml:"HighRiskBlockedNames"`
 
-	// RevokedNames operate the same as BlockedNames but are changed with more
+	// AdminBlockedNames operates the same as BlockedNames but is changed with more
 	// frequency based on administrative blocks/revocations that are added over
-	// time above and beyond high-value domains. Managing these entries separately
-	// from BlockedNames makes it easier to vet changes accurately.
-	RevokedNames []string `yaml:"RevokedNames"`
+	// time above and beyond the high-risk domains. Managing these entries separately
+	// from HighRiskBlockedNames makes it easier to vet changes accurately.
+	AdminBlockedNames []string `yaml:"AdminBlockedNames"`
 }
 
 // SetHostnamePolicyFile will load the given policy file, returning error if it
@@ -120,8 +119,8 @@ func (pa *AuthorityImpl) loadHostnamePolicy(unmarshal unmarshalHandler) func([]b
 		if err != nil {
 			return err
 		}
-		if len(policy.BlockedNames) == 0 {
-			return fmt.Errorf("No entries in BlockedNames.")
+		if len(policy.HighRiskBlockedNames) == 0 {
+			return fmt.Errorf("No entries in HighRiskBlockedNames.")
 		}
 		if len(policy.ExactBlockedNames) == 0 {
 			return fmt.Errorf("No entries in ExactBlockedNames.")
@@ -136,10 +135,10 @@ func (pa *AuthorityImpl) loadHostnamePolicy(unmarshal unmarshalHandler) func([]b
 // exact blocked names entries are forbidden.
 func (pa *AuthorityImpl) processHostnamePolicy(policy blockedNamesPolicy) error {
 	nameMap := make(map[string]bool)
-	for _, v := range policy.BlockedNames {
+	for _, v := range policy.HighRiskBlockedNames {
 		nameMap[v] = true
 	}
-	for _, v := range policy.RevokedNames {
+	for _, v := range policy.AdminBlockedNames {
 		nameMap[v] = true
 	}
 	exactNameMap := make(map[string]bool)
