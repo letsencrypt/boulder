@@ -20,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -43,8 +44,9 @@ type SQLStorageAuthority struct {
 
 	// We use function types here so we can mock out this internal function in
 	// unittests.
-	countCertificatesByName certCountFunc
-	getChallenges           getChallengesFunc
+	countCertificatesByName      certCountFunc
+	countCertificatesByExactName certCountFunc
+	getChallenges                getChallengesFunc
 }
 
 func digest256(data []byte) []byte {
@@ -105,6 +107,11 @@ func NewSQLStorageAuthority(
 	}
 
 	ssa.countCertificatesByName = ssa.countCertificatesByNameImpl
+	ssa.countCertificatesByExactName = ssa.countCertificatesByExactNameImpl
+	if features.Enabled(features.FasterRateLimit) {
+		ssa.countCertificatesByName = ssa.countCertificatesFaster
+		ssa.countCertificatesByExactName = ssa.countCertificatesFaster
+	}
 	ssa.getChallenges = ssa.getChallengesImpl
 
 	return ssa, nil
@@ -476,7 +483,7 @@ func (ssa *SQLStorageAuthority) countCertificatesByNameImpl(
 // countCertificatesByExactNames returns, for a single domain, the count of
 // certificates issued in the given time range for that domain. In contrast to
 // countCertificatesByNames subdomains are NOT considered.
-func (ssa *SQLStorageAuthority) countCertificatesByExactName(
+func (ssa *SQLStorageAuthority) countCertificatesByExactNameImpl(
 	db dbSelector,
 	domain string,
 	earliest,
@@ -983,6 +990,16 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 	err = addIssuedNames(txWithCtx, parsedCertificate, isRenewal)
 	if err != nil {
 		return "", Rollback(tx, err)
+	}
+
+	// Add to the rate limit table, but only for new certificates. Renewals
+	// don't count against the certificatesPerName limit.
+	if !isRenewal {
+		timeToTheHour := parsedCertificate.NotBefore.Round(time.Hour)
+		err = ssa.addCertificatesPerName(ctx, txWithCtx, parsedCertificate.DNSNames, timeToTheHour)
+		if err != nil {
+			return "", Rollback(tx, err)
+		}
 	}
 
 	err = addFQDNSet(
