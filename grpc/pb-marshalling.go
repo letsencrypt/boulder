@@ -15,6 +15,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/probs"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
@@ -450,4 +451,16 @@ func pbToCert(pb *corepb.Certificate) (core.Certificate, error) {
 		Issued:         time.Unix(0, *pb.Issued),
 		Expires:        time.Unix(0, *pb.Expires),
 	}, nil
+}
+
+func PBToAuthzMap(pb *sapb.Authorizations) (map[string]*core.Authorization, error) {
+	m := make(map[string]*core.Authorization, len(pb.Authz))
+	for _, v := range pb.Authz {
+		authz, err := PBToAuthz(v.Authz)
+		if err != nil {
+			return nil, err
+		}
+		m[*v.Domain] = &authz
+	}
+	return m, nil
 }
