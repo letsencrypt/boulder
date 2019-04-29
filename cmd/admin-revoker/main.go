@@ -226,11 +226,14 @@ func main() {
 	case command == "auth-revoke" && len(args) == 1:
 		domain := args[0]
 		_, logger, _, sac := setupContext(c)
-		ident := core.AcmeIdentifier{Value: domain, Type: core.IdentifierDNS}
-		authsRevoked, pendingAuthsRevoked, err := sac.RevokeAuthorizationsByDomain(ctx, ident)
-		cmd.FailOnError(err, fmt.Sprintf("Failed to revoke authorizations for %s", ident.Value))
-		logger.Infof("Revoked %d pending authorizations and %d final authorizations",
-			pendingAuthsRevoked, authsRevoked)
+		req := &sapb.RevokeAuthorizationsByDomainRequest{
+			Domain: &domain,
+		}
+		_, err := sac.RevokeAuthorizationsByDomain2(ctx, req)
+		cmd.FailOnError(err, fmt.Sprintf(
+			"Failed to revoke authorizations for %s", domain))
+		logger.Infof(
+			"Revoked pending and final authorizations for %s", domain)
 
 	default:
 		usage()
