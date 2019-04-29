@@ -1668,6 +1668,10 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 				ValidationRecords: vr.Records,
 				ValidationError:   vr.Problems,
 			})
+			if err != nil {
+				ra.log.AuditErrf("Could not record updated validation: err=[%s] regID=[%d] authzID=[%s]",
+					err, authz.RegistrationID, authz.ID)
+			}
 		} else {
 			err = ra.onValidationUpdate(vaCtx, authz)
 			if err != nil {
