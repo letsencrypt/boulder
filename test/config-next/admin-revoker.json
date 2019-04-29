@@ -16,7 +16,7 @@
       "timeout": "15s"
     },
     "features": {
-      "AdminRevokeV2": true
+      "NewAuthorizationSchema": true
     }
   },
 

@@ -227,7 +227,7 @@ func main() {
 		domain := args[0]
 		_, logger, _, sac := setupContext(c)
 		var err error
-		if features.Enabled(features.AdminRevokeV2) {
+		if features.Enabled(features.NewAuthorizationSchema) {
 			req := &sapb.RevokeAuthorizationsByDomainRequest{
 				Domain: &domain,
 			}
