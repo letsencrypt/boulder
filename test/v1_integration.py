@@ -559,11 +559,6 @@ def test_admin_revoker_cert():
     verify_akamai_purge()
 
 def test_admin_revoker_authz():
-    # Only config-next has the DB migrations required for the authz purger
-    # to use `sa.RevokeAuthorizationsByDomain2`.
-    if not CONFIG_NEXT:
-        return
-
     # Make an authz, but don't attempt its challenges.
     authz_resource = chisel.make_client().request_domain_challenges("ar-auth-test.com")
     url = authz_resource.uri

@@ -226,10 +226,16 @@ func main() {
 	case command == "auth-revoke" && len(args) == 1:
 		domain := args[0]
 		_, logger, _, sac := setupContext(c)
-		req := &sapb.RevokeAuthorizationsByDomainRequest{
-			Domain: &domain,
+		var err error
+		if features.Enabled(features.AdminRevokeV2) {
+			req := &sapb.RevokeAuthorizationsByDomainRequest{
+				Domain: &domain,
+			}
+			_, err = sac.RevokeAuthorizationsByDomain2(ctx, req)
+		} else {
+			ident := core.AcmeIdentifier{Value: domain, Type: core.IdentifierDNS}
+			_, _, err = sac.RevokeAuthorizationsByDomain(ctx, ident)
 		}
-		_, err := sac.RevokeAuthorizationsByDomain2(ctx, req)
 		cmd.FailOnError(err, fmt.Sprintf(
 			"Failed to revoke authorizations for %s", domain))
 		logger.Infof(

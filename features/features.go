@@ -51,6 +51,10 @@ const (
 	// CheckRenewalFirst will check whether an issuance is a renewal before
 	// checking the "certificates per name" rate limit.
 	CheckRenewalFirst
+	// AdminRevokeV2 will control whether the admin-revoker uses the newer
+	// SA.RevokeAuthorizationsByDomain2 RPC or the older
+	// SA.RevokeAuthorizationsByDomain RPC.
+	AdminRevokeV2
 )
 
 // List of features and their default value, protected by fMu
@@ -74,6 +78,7 @@ var features = map[FeatureFlag]bool{
 	RemoveWFE2AccountID:      false,
 	FasterRateLimit:          false,
 	CheckRenewalFirst:        false,
+	AdminRevokeV2:            false,
 }
 
 var fMu = new(sync.RWMutex)
