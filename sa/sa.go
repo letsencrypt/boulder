@@ -908,7 +908,7 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Contex
 			return nil, err
 		}
 	}
-	return nil, nil
+	return &corepb.Empty{}, nil
 }
 
 // AddCertificate stores an issued certificate and returns the digest as
@@ -1458,7 +1458,7 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 	if err != nil {
 		return nil, err
 	}
-	return nil, nil
+	return &corepb.Empty{}, nil
 }
 
 // NewOrder adds a new v2 style order to the database
