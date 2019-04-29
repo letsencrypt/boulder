@@ -26,11 +26,6 @@
         "ra.boulder"
       ]
     },
-    "GoogleSafeBrowsing": {
-      "APIKey": "my-voice-is-my-passport",
-      "DataDir": "/tmp",
-      "ServerURL": "http://va1.boulder:6000"
-    },
     "features": {
     }
   },
