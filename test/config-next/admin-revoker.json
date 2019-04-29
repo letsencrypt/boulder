@@ -16,7 +16,7 @@
       "timeout": "15s"
     },
     "features": {
-      "adminRevokeV2": true
+      "AdminRevokeV2": true
     }
   },
 
