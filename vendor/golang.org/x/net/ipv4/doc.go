@@ -239,7 +239,7 @@
 // IGMPv1 or IGMPv2 and starts to listen to multicast traffic.
 // In the fallback case, ExcludeSourceSpecificGroup and
 // IncludeSourceSpecificGroup may return an error.
-package ipv4
+package ipv4 // import "golang.org/x/net/ipv4"
 
 // BUG(mikio): This package is not implemented on AIX, JS, NaCl and
 // Plan 9.
