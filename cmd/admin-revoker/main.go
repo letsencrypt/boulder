@@ -227,6 +227,7 @@ func main() {
 		domain := args[0]
 		_, logger, _, sac := setupContext(c)
 		var err error
+		var authsRevoked, pendingAuthsRevoked int64
 		if features.Enabled(features.NewAuthorizationSchema) {
 			req := &sapb.RevokeAuthorizationsByDomainRequest{
 				Domain: &domain,
@@ -234,8 +235,24 @@ func main() {
 			_, err = sac.RevokeAuthorizationsByDomain2(ctx, req)
 		} else {
 			ident := core.AcmeIdentifier{Value: domain, Type: core.IdentifierDNS}
-			_, _, err = sac.RevokeAuthorizationsByDomain(ctx, ident)
+			authsRevoked, pendingAuthsRevoked, err = sac.RevokeAuthorizationsByDomain(ctx, ident)
+			// For the legacy RevokeAuthorizationsByDomain RPC synthesize
+			// a berrors.NotFound err when there were no revocations. This makes it
+			// easier to handle the error case the same for the new and old RPC.
+			if authsRevoked == 0 && pendingAuthsRevoked == 0 {
+				err = berrors.NotFoundError(
+					"No pending or final authorizations were found to revoke for domain %q",
+					domain)
+			}
 		}
+		// If there were no authorizations revoked then treat exit non-zero with
+		// a distinct message so the operator can check the domain name.
+		if berrors.Is(err, berrors.NotFound) {
+			cmd.Fail(fmt.Sprintf(
+				"No pending or final authorizations were found to revoke for domain %q",
+				domain))
+		}
+		// All other errors should exit non-zero with a more generic error message.
 		cmd.FailOnError(err, fmt.Sprintf(
 			"Failed to revoke authorizations for %s", domain))
 		logger.Infof(
