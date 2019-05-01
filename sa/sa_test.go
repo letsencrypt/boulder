@@ -953,6 +953,17 @@ func TestRevokeAuthorizationsByDomain2(t *testing.T) {
 	test.AssertNotError(t, err, "sa.GetAuthorization failed")
 	test.AssertEquals(t, oldPendingDB.Status, core.StatusRevoked)
 
+	// Revoke authorizations for a domain that doesn't exist
+	fakeIdent := "there.are.no.authorizations.for.this.domain"
+	_, err = sa.RevokeAuthorizationsByDomain2(
+		context.Background(),
+		&sapb.RevokeAuthorizationsByDomainRequest{
+			Domain: &fakeIdent,
+		})
+	// An error should be produced because no authorizations were revoked
+	test.AssertError(t, err, "sa.RevokeAuthorizationsByDomain2 for non-existent domain did not error")
+	// The error should be a NotFound berror.
+	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
 }
 
 func TestFQDNSets(t *testing.T) {
