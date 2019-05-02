@@ -491,16 +491,6 @@ type Certificate struct {
 	Expires time.Time `db:"expires"`
 }
 
-// IdentifierData holds information about what certificates are known for a
-// given identifier. This is used to present Proof of Possession challenges in
-// the case where a certificate already exists. The DB table holding
-// IdentifierData rows contains information about certs issued by Boulder and
-// also information about certs observed from third parties.
-type IdentifierData struct {
-	ReversedName string `db:"reversedName"` // The label-wise reverse of an identifier, e.g. com.example or com.example.*
-	CertSHA1     string `db:"certSHA1"`     // The hex encoding of the SHA-1 hash of a cert containing the identifier
-}
-
 // CertificateStatus structs are internal to the server. They represent the
 // latest data about the status of the certificate, required for OCSP updating
 // and for validating that the subscriber has accepted the certificate.
