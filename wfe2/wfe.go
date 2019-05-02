@@ -490,6 +490,14 @@ func (wfe *WebFrontEndImpl) NewAccount(
 
 	existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, key)
 	if err == nil {
+		if existingAcct.Status == core.StatusDeactivated {
+			// If there is an existing, but deactivated account, then return an unauthorized
+			// problem informing the user that this account was deactivated
+			wfe.sendError(response, logEvent, probs.Unauthorized(
+				"An account with the provided public key exists but is deactivated"), nil)
+			return
+		}
+
 		response.Header().Set("Location",
 			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
 		logEvent.Requester = existingAcct.ID

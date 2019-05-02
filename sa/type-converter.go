@@ -48,7 +48,13 @@ func (tc BoulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 				return errors.New("FromDb: Unable to convert *string")
 			}
 			b := []byte(*s)
-			return json.Unmarshal(b, target)
+			if err := json.Unmarshal(b, target); err != nil {
+				return badJSONError(
+					fmt.Sprintf("binder failed to unmarshal %T", target),
+					b,
+					err)
+			}
+			return nil
 		}
 		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
 	case *jose.JSONWebKey:
@@ -65,7 +71,13 @@ func (tc BoulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 			if !ok {
 				return fmt.Errorf("FromDb: Unable to convert %T to *jose.JSONWebKey", target)
 			}
-			return k.UnmarshalJSON(b)
+			if err := k.UnmarshalJSON(b); err != nil {
+				return badJSONError(
+					"binder failed to unmarshal JWK",
+					b,
+					err)
+			}
+			return nil
 		}
 		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
 	case *core.AcmeStatus:

@@ -122,10 +122,5 @@
   "syslog": {
     "stdoutlevel": 6,
     "sysloglevel": 4
-  },
-
-  "common": {
-    "dnsTimeout": "1s",
-    "dnsAllowLoopbackAddresses": true
   }
 }
