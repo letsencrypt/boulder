@@ -526,20 +526,15 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	ip := net.ParseIP(request.Header.Get("X-Real-IP"))
-	if ip == nil {
-		host, _, err := net.SplitHostPort(request.RemoteAddr)
-		if err == nil {
-			ip = net.ParseIP(host)
-		} else {
-			wfe.sendError(
-				response,
-				logEvent,
-				probs.ServerInternal("couldn't parse the remote (that is, the client's) address"),
-				fmt.Errorf("Couldn't parse RemoteAddr: %s", request.RemoteAddr),
-			)
-			return
-		}
+	ip, err := extractRequesterIP(request)
+	if err != nil {
+		wfe.sendError(
+			response,
+			logEvent,
+			probs.ServerInternal("couldn't parse the remote (that is, the client's) address"),
+			fmt.Errorf("Couldn't parse RemoteAddr: %s", request.RemoteAddr),
+		)
+		return
 	}
 
 	acct, err := wfe.RA.NewRegistration(ctx, core.Registration{
@@ -1960,4 +1955,16 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to write finalize order response"), err)
 		return
 	}
+}
+
+func extractRequesterIP(req *http.Request) (net.IP, error) {
+	ip := net.ParseIP(req.Header.Get("X-Real-IP"))
+	if ip != nil {
+		return ip, nil
+	}
+	host, _, err := net.SplitHostPort(req.RemoteAddr)
+	if err != nil {
+		return nil, err
+	}
+	return net.ParseIP(host), nil
 }
