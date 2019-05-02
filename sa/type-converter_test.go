@@ -38,6 +38,18 @@ func TestAcmeIdentifier(t *testing.T) {
 	test.AssertMarshaledEquals(t, ai, out)
 }
 
+func TestAcmeIdentifierBadJSON(t *testing.T) {
+	badJSON := `{`
+	tc := BoulderTypeConverter{}
+	out := core.AcmeIdentifier{}
+	scanner, ok := tc.FromDb(&out)
+	err := scanner.Binder(&badJSON, &out)
+	test.AssertError(t, err, "expected error from scanner.Binder")
+	badJSONErr, ok := err.(errBadJSON)
+	test.AssertEquals(t, ok, true)
+	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
+}
+
 func TestJSONWebKey(t *testing.T) {
 	tc := BoulderTypeConverter{}
 
@@ -61,6 +73,18 @@ func TestJSONWebKey(t *testing.T) {
 	err = scanner.Binder(&marshaled, &out)
 	test.AssertNotError(t, err, "failed to scanner.Binder")
 	test.AssertMarshaledEquals(t, jwk, out)
+}
+
+func TestJSONWebKeyBadJSON(t *testing.T) {
+	badJSON := `{`
+	tc := BoulderTypeConverter{}
+	out := jose.JSONWebKey{}
+	scanner, ok := tc.FromDb(&out)
+	err := scanner.Binder(&badJSON, &out)
+	test.AssertError(t, err, "expected error from scanner.Binder")
+	badJSONErr, ok := err.(errBadJSON)
+	test.AssertEquals(t, ok, true)
+	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 }
 
 func TestAcmeStatus(t *testing.T) {
