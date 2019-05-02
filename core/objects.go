@@ -23,9 +23,6 @@ type AcmeStatus string
 // AcmeResource values identify different types of ACME resources
 type AcmeResource string
 
-// Buffer is a variable-length collection of bytes
-type Buffer []byte
-
 // IdentifierType defines the available identification mechanisms for domains
 type IdentifierType string
 
@@ -492,16 +489,6 @@ type Certificate struct {
 	DER     []byte    `db:"der"`
 	Issued  time.Time `db:"issued"`
 	Expires time.Time `db:"expires"`
-}
-
-// IdentifierData holds information about what certificates are known for a
-// given identifier. This is used to present Proof of Possession challenges in
-// the case where a certificate already exists. The DB table holding
-// IdentifierData rows contains information about certs issued by Boulder and
-// also information about certs observed from third parties.
-type IdentifierData struct {
-	ReversedName string `db:"reversedName"` // The label-wise reverse of an identifier, e.g. com.example or com.example.*
-	CertSHA1     string `db:"certSHA1"`     // The hex encoding of the SHA-1 hash of a cert containing the identifier
 }
 
 // CertificateStatus structs are internal to the server. They represent the
