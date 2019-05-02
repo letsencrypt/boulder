@@ -1596,7 +1596,7 @@ func TestVerifyECFieldLengths(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.improperECFieldLengths.Set(0)
-			wfe.verifyECFieldLengths([]byte(tc.Body))
+			wfe.verifyECFieldLengths([]byte(tc.Body), &http.Request{})
 			test.AssertEquals(t, test.CountCounter(wfe.stats.improperECFieldLengths), tc.ExpectedStat)
 		})
 	}

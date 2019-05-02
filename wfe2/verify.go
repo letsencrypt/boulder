@@ -321,17 +321,6 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*jose.JSONWebSignature, *prob
 		return nil, probs.Malformed("POST JWS not signed")
 	}
 
-	// if the protected header contains a JWK and it's a EC key verify that it has
-	// proper field lengths in a goroutine as the caller doesn't care about the
-	// result of this check
-	if parsedJWS.Signatures[0].Header.JSONWebKey != nil {
-		switch parsedJWS.Signatures[0].Header.JSONWebKey.Key.(type) {
-		case *ecdsa.PublicKey:
-			fmt.Println("hello@")
-			go wfe.verifyECFieldLengths(body)
-		}
-	}
-
 	return parsedJWS, nil
 }
 
@@ -350,7 +339,22 @@ func (wfe *WebFrontEndImpl) parseJWSRequest(request *http.Request) (*jose.JSONWe
 		return nil, probs.ServerInternal("unable to read request body")
 	}
 
-	return wfe.parseJWS(bodyBytes)
+	jws, prob := wfe.parseJWS(bodyBytes)
+	if prob != nil {
+		return nil, prob
+	}
+
+	// if the protected header contains a JWK and it's a EC key verify that it has
+	// proper field lengths in a goroutine as the caller doesn't care about the
+	// result of this check
+	if jws.Signatures[0].Header.JSONWebKey != nil {
+		switch jws.Signatures[0].Header.JSONWebKey.Key.(type) {
+		case *ecdsa.PublicKey:
+			go wfe.verifyECFieldLengths(bodyBytes, request)
+		}
+	}
+
+	return jws, nil
 }
 
 // extractJWK extracts a JWK from a provided JWS or returns a problem. It
@@ -763,14 +767,14 @@ var curvesToSize = map[string]int{
 	"P-521": bitSizeToByteSize(elliptic.P521().Params().BitSize),
 }
 
-func (wfe *WebFrontEndImpl) verifyECFieldLengths(body []byte) {
-	var request struct {
+func (wfe *WebFrontEndImpl) verifyECFieldLengths(body []byte, request *http.Request) {
+	var payload struct {
 		Protected string
 	}
-	if err := json.Unmarshal(body, &request); err != nil {
+	if err := json.Unmarshal(body, &payload); err != nil {
 		return
 	}
-	b, err := base64.RawURLEncoding.DecodeString(request.Protected)
+	b, err := base64.RawURLEncoding.DecodeString(payload.Protected)
 	if err != nil {
 		return
 	}
@@ -802,5 +806,6 @@ func (wfe *WebFrontEndImpl) verifyECFieldLengths(body []byte) {
 	}
 	if xLen != curveSize || yLen != curveSize {
 		wfe.stats.improperECFieldLengths.Inc()
+		wfe.log.Infof("Incorrectly padded EC JWK key from UA=%q", request.UserAgent())
 	}
 }
