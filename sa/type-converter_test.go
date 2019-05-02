@@ -42,7 +42,7 @@ func TestAcmeIdentifierBadJSON(t *testing.T) {
 	badJSON := `{`
 	tc := BoulderTypeConverter{}
 	out := core.AcmeIdentifier{}
-	scanner, ok := tc.FromDb(&out)
+	scanner, _ := tc.FromDb(&out)
 	err := scanner.Binder(&badJSON, &out)
 	test.AssertError(t, err, "expected error from scanner.Binder")
 	badJSONErr, ok := err.(errBadJSON)
@@ -79,7 +79,7 @@ func TestJSONWebKeyBadJSON(t *testing.T) {
 	badJSON := `{`
 	tc := BoulderTypeConverter{}
 	out := jose.JSONWebKey{}
-	scanner, ok := tc.FromDb(&out)
+	scanner, _ := tc.FromDb(&out)
 	err := scanner.Binder(&badJSON, &out)
 	test.AssertError(t, err, "expected error from scanner.Binder")
 	badJSONErr, ok := err.(errBadJSON)
