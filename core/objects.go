@@ -23,9 +23,6 @@ type AcmeStatus string
 // AcmeResource values identify different types of ACME resources
 type AcmeResource string
 
-// Buffer is a variable-length collection of bytes
-type Buffer []byte
-
 // IdentifierType defines the available identification mechanisms for domains
 type IdentifierType string
 
