@@ -453,6 +453,8 @@ func pbToCert(pb *corepb.Certificate) (core.Certificate, error) {
 	}, nil
 }
 
+// PBToAuthzMap converts a protobuf map of domains mapped to protobuf authorizations to a
+// golang map[string]*core.Authorization.
 func PBToAuthzMap(pb *sapb.Authorizations) (map[string]*core.Authorization, error) {
 	m := make(map[string]*core.Authorization, len(pb.Authz))
 	for _, v := range pb.Authz {

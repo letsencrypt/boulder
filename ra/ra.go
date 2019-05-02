@@ -1537,6 +1537,38 @@ func mergeUpdate(r *core.Registration, input core.Registration) bool {
 	return changed
 }
 
+// recordValidation update records an authorization validation event,
+// it should only be used on v2 style authorizations.
+func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authID string, authExpires *time.Time, challenge *core.Challenge) error {
+	authzID, err := strconv.ParseInt(authID, 10, 64)
+	if err != nil {
+		return err
+	}
+	status := string(challenge.Status)
+	var expires int64
+	if challenge.Status == core.StatusInvalid {
+		expires = authExpires.UnixNano()
+	} else {
+		expires = authExpires.Add(ra.authorizationLifetime).UnixNano()
+	}
+	vr, err := bgrpc.ValidationResultToPB(challenge.ValidationRecord, challenge.Error)
+	if err != nil {
+		return err
+	}
+	err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
+		Id:                &authzID,
+		Status:            &status,
+		Expires:           &expires,
+		Attempted:         &challenge.Type,
+		ValidationRecords: vr.Records,
+		ValidationError:   vr.Problems,
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // PerformValidation initiates validation for a specific challenge associated
 // with the given base authorization. The authorization and challenge are
 // updated based on the results.
@@ -1644,31 +1676,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		authz.Challenges[challIndex] = *challenge
 
 		if authz.V2 {
-			authzID, err := strconv.ParseInt(authz.ID, 10, 64)
-			if err != nil {
-				ra.log.AuditErrf("Could not record updated validation, couldn't parse authorization ID: %s", err)
-				return
-			}
-			status := string(challenge.Status)
-			var expires int64
-			if challenge.Status == core.StatusInvalid {
-				expires = authz.Expires.UnixNano()
-			} else {
-				expires = authz.Expires.Add(ra.authorizationLifetime).UnixNano()
-			}
-			vr, err := bgrpc.ValidationResultToPB(records, prob)
-			if err != nil {
-				ra.log.AuditErrf("Could not record updated validation, couldn't marshal validation result: %s", err)
-			}
-			err = ra.SA.FinalizeAuthorization2(vaCtx, &sapb.FinalizeAuthorizationRequest{
-				Id:                &authzID,
-				Status:            &status,
-				Expires:           &expires,
-				Attempted:         &challenge.Type,
-				ValidationRecords: vr.Records,
-				ValidationError:   vr.Problems,
-			})
-			if err != nil {
+			if err := ra.recordValidation(vaCtx, authz.ID, authz.Expires, challenge); err != nil {
 				ra.log.AuditErrf("Could not record updated validation: err=[%s] regID=[%d] authzID=[%s]",
 					err, authz.RegistrationID, authz.ID)
 			}
@@ -1848,7 +1856,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 	if auth.Status != core.StatusValid && auth.Status != core.StatusPending {
 		return berrors.MalformedError("only valid and pending authorizations can be deactivated")
 	}
-	if features.Enabled(features.NewAuthorizationSchema) {
+	if auth.V2 {
 		authzID, err := strconv.ParseInt(auth.ID, 10, 64)
 		if err != nil {
 			return err
