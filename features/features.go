@@ -30,6 +30,7 @@ const (
 	// instead of HTTP StatusNoContent.
 	HeadNonceStatusOK
 	// NewAuthorizationSchema enables usage of the new authorization storage schema
+	// and associated RPCs.
 	NewAuthorizationSchema
 	// RevokeAtRA enables revocation in the RA instead of ocsp-updater
 	RevokeAtRA
