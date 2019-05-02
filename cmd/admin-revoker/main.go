@@ -245,7 +245,7 @@ func main() {
 					domain)
 			}
 		}
-		// If there were no authorizations revoked then treat exit non-zero with
+		// If there were no authorizations revoked then exit non-zero with
 		// a distinct message so the operator can check the domain name.
 		if berrors.Is(err, berrors.NotFound) {
 			cmd.Fail(fmt.Sprintf(
