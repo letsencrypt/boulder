@@ -825,81 +825,6 @@ func TestNewAuthorizationInvalidName(t *testing.T) {
 	}
 }
 
-func TestPerformValidation(t *testing.T) {
-	va, sa, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// We know this is OK because of TestNewAuthorization
-	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
-	test.AssertNotError(t, err, "NewAuthorization failed")
-
-	authzPB, err := bgrpc.AuthzToPB(authz)
-	test.AssertNotError(t, err, "AuthzToPB for known OK authz failed")
-
-	challIndex := int64(ResponseIndex)
-	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
-		Authz:          authzPB,
-		ChallengeIndex: &challIndex,
-	})
-	test.AssertNotError(t, err, "PerformValidation failed")
-	authz, err = bgrpc.PBToAuthz(authzPB)
-	test.AssertNotError(t, err, "PBToAuthz failed for PerformValidation result")
-
-	var vaAuthz core.Authorization
-	select {
-	case a := <-va.argument:
-		vaAuthz = a
-	case <-time.After(time.Second):
-		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
-	}
-
-	// Verify that returned authz same as DB
-	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
-	test.AssertNotError(t, err, "Could not fetch authorization from database")
-	assertAuthzEqual(t, authz, dbAuthz)
-
-	// Verify that the VA got the authz, and it's the same as the others
-	assertAuthzEqual(t, authz, vaAuthz)
-
-	// Verify that the responses are reflected
-	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
-
-	// Create another authorization
-	newAR := AuthzRequest
-	newAR.Identifier.Value = "not-not-example.com" // Identifier needs to be different to bypass authorization reuse
-	authz, err = ra.NewAuthorization(ctx, newAR, Registration.ID)
-	test.AssertNotError(t, err, "NewAuthorization failed")
-
-	authzPB, err = bgrpc.AuthzToPB(authz)
-	test.AssertNotError(t, err, "AuthzToPB failed")
-
-	// Update it with an empty challenge, no key authorization
-	// This should work as well based on modern key authorization semantics
-	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
-		Authz:          authzPB,
-		ChallengeIndex: &challIndex})
-	test.AssertNotError(t, err, "PerformValidation failed")
-	select {
-	case a := <-va.argument:
-		vaAuthz = a
-	case <-time.After(time.Second):
-		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
-	}
-	authz, err = bgrpc.PBToAuthz(authzPB)
-	test.AssertNotError(t, err, "PBToAuthz failed")
-
-	// Verify that returned authz same as DB
-	dbAuthz, err = sa.GetAuthorization(ctx, authz.ID)
-	test.AssertNotError(t, err, "Could not fetch authorization from database")
-	assertAuthzEqual(t, authz, dbAuthz)
-
-	// Verify that the VA got the authz, and it's the same as the others
-	assertAuthzEqual(t, authz, vaAuthz)
-
-	// Verify that the responses are reflected
-	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
-}
-
 func TestPerformValidationExpired(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -957,7 +882,7 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 		"PerformValidation of valid authz (with reuseValidAuthz disabled) didn't return a berrors.WrongAuthorizationState")
 }
 
-func TestPerformValidationNewRPC(t *testing.T) {
+func TestPerformValidationSuccess(t *testing.T) {
 	va, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
