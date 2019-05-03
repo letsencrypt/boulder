@@ -1537,7 +1537,7 @@ func mergeUpdate(r *core.Registration, input core.Registration) bool {
 	return changed
 }
 
-// recordValidation update records an authorization validation event,
+// recordValidation records an authorization validation event,
 // it should only be used on v2 style authorizations.
 func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authID string, authExpires *time.Time, challenge *core.Challenge) error {
 	authzID, err := strconv.ParseInt(authID, 10, 64)
