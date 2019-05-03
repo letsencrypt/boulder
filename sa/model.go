@@ -20,6 +20,35 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 )
 
+// errBadJSON is an error type returned when a json.Unmarshal performed by the
+// SA fails. It includes both the Unmarshal error and the original JSON data in
+// its error message to make it easier to track down the bad JSON data.
+type errBadJSON struct {
+	msg  string
+	json []byte
+	err  error
+}
+
+// Error returns an error message that includes the json.Unmarshal error as well
+// as the bad JSON data.
+func (e errBadJSON) Error() string {
+	return fmt.Sprintf(
+		"%s: error unmarshaling JSON %q: %s",
+		e.msg,
+		string(e.json),
+		e.err)
+}
+
+// badJSONError is a convenience function for constructing a errBadJSON instance
+// with the provided args.
+func badJSONError(msg string, jsonData []byte, err error) error {
+	return errBadJSON{
+		msg:  msg,
+		json: jsonData,
+		err:  err,
+	}
+}
+
 // By convention, any function that takes a dbOneSelector, dbSelector,
 // dbInserter, dbExecer, or dbSelectExecer as as an argument expects
 // that a context has already been applied to the relevant DbMap or
@@ -244,8 +273,11 @@ func modelToRegistration(reg *regModel) (core.Registration, error) {
 	k := &jose.JSONWebKey{}
 	err := json.Unmarshal(reg.Key, k)
 	if err != nil {
-		err = fmt.Errorf("unable to unmarshal JSONWebKey in db: %s", err)
-		return core.Registration{}, err
+		return core.Registration{},
+			badJSONError(
+				"failed to unmarshal registration model's key",
+				reg.Key,
+				err)
 	}
 	var contact *[]string
 	// Contact can be nil when the DB contains the literal string "null". We
@@ -313,7 +345,10 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 		var problem probs.ProblemDetails
 		err := json.Unmarshal(cm.Error, &problem)
 		if err != nil {
-			return core.Challenge{}, err
+			return core.Challenge{}, badJSONError(
+				"failed to unmarshal challenge model's error",
+				cm.Error,
+				err)
 		}
 		c.Error = &problem
 	}
@@ -321,7 +356,10 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 		var vr []core.ValidationRecord
 		err := json.Unmarshal(cm.ValidationRecord, &vr)
 		if err != nil {
-			return core.Challenge{}, err
+			return core.Challenge{}, badJSONError(
+				"failed to unmarshal challenge model's validation record",
+				cm.ValidationRecord,
+				err)
 		}
 		c.ValidationRecord = vr
 	}
@@ -394,7 +432,10 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 		var problem corepb.ProblemDetails
 		err := json.Unmarshal(om.Error, &problem)
 		if err != nil {
-			return &corepb.Order{}, err
+			return &corepb.Order{}, badJSONError(
+				"failed to unmarshal order model's error",
+				om.Error,
+				err)
 		}
 		order.Error = &problem
 	}
@@ -570,7 +611,10 @@ func populateAttemptedFields(am *authz2Model, challenge *corepb.Challenge) error
 		var prob probs.ProblemDetails
 		err := json.Unmarshal(am.ValidationError, &prob)
 		if err != nil {
-			return err
+			return badJSONError(
+				"failed to unmarshal authz2 model's validation error",
+				am.ValidationError,
+				err)
 		}
 		challenge.Error, err = grpc.ProblemDetailsToPB(&prob)
 		if err != nil {
@@ -584,7 +628,10 @@ func populateAttemptedFields(am *authz2Model, challenge *corepb.Challenge) error
 	var records []core.ValidationRecord
 	err := json.Unmarshal(am.ValidationRecord, &records)
 	if err != nil {
-		return err
+		return badJSONError(
+			"failed to unmarshal authz2 model's validation record",
+			am.ValidationRecord,
+			err)
 	}
 	challenge.Validationrecords = make([]*corepb.ValidationRecord, len(records))
 	for i, r := range records {

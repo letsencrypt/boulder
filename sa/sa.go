@@ -884,14 +884,17 @@ func (ssa *SQLStorageAuthority) revokeAuthorizations2(ctx context.Context, ids [
 // RevokeAuthorizationsByDomain2 invalidates all pending or valid authorizations for a
 // specific domain. This method is intended to deprecate RevokeAuthorizationsByDomain.
 func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*corepb.Empty, error) {
-	_, _, err := ssa.RevokeAuthorizationsByDomain(ctx, core.AcmeIdentifier{
-		Type:  core.IdentifierDNS,
-		Value: *req.Domain,
-	})
+	finalRevoked, pendingRevoked, err := ssa.RevokeAuthorizationsByDomain(
+		ctx,
+		core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: *req.Domain,
+		})
 	if err != nil {
 		return nil, err
 	}
 
+	var revokedTotal int64 = finalRevoked + pendingRevoked
 	for {
 		var ids []int64
 		ids, err := ssa.getAuthorizationIDsByDomain2(ctx, *req.Domain)
@@ -907,8 +910,16 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Contex
 		if err = ssa.revokeAuthorizations2(ctx, ids); err != nil {
 			return nil, err
 		}
+		revokedTotal += int64(len(ids))
 	}
-	return nil, nil
+	// If no authorizations were revoked return a NotFoundError so that the caller
+	// can decide whether that was an expected result or not. Some callers (e.g.
+	// the admin-revoker tool) may wish to handle this case specifically.
+	if revokedTotal == 0 {
+		return nil, berrors.NotFoundError(
+			"no authorizations to revoke for %q", *req.Domain)
+	}
+	return &corepb.Empty{}, nil
 }
 
 // AddCertificate stores an issued certificate and returns the digest as
@@ -1458,7 +1469,7 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 	if err != nil {
 		return nil, err
 	}
-	return nil, nil
+	return &corepb.Empty{}, nil
 }
 
 // NewOrder adds a new v2 style order to the database

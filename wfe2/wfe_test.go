@@ -1264,6 +1264,23 @@ func TestNewECDSAAccount(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"id\": 3,\n  \"key\": {\n    \"kty\": \"EC\",\n    \"crv\": \"P-256\",\n    \"x\": \"FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao\",\n    \"y\": \"S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk\"\n  },\n  \"agreement\": \"http://example.invalid/terms\",\n  \"initialIp\": \"\",\n  \"createdAt\": \"0001-01-01T00:00:00Z\",\n  \"status\": \"\"\n}")
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/3")
 	test.AssertEquals(t, responseWriter.Code, 200)
+
+	// test3KeyPrivatePEM is a private key corresponding to a deactivated account in the mock SA's GetRegistration test data.
+	key = loadKey(t, []byte(test3KeyPrivatePEM))
+	_, ok = key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load test3 key")
+
+	// Reset the body and status code
+	responseWriter = httptest.NewRecorder()
+
+	// Test POST valid JSON with deactivated account
+	payload = `{}`
+	path = "1"
+	signedURL = "http://localhost/1"
+	_, _, body = signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
+	request = makePostRequestWithPath(path, body)
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
+	test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
 }
 
 // Test that the WFE handling of the "empty update" POST is correct. The ACME
@@ -1414,6 +1431,24 @@ func TestNewAccount(t *testing.T) {
 		"http://localhost/acme/acct/1")
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"id\": 1,\n  \"key\": {\n    \"kty\": \"RSA\",\n    \"n\": \"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ\",\n    \"e\": \"AQAB\"\n  },\n  \"contact\": [\n    \"mailto:person@mail.com\"\n  ],\n  \"agreement\": \"http://example.invalid/terms\",\n  \"initialIp\": \"\",\n  \"createdAt\": \"0001-01-01T00:00:00Z\",\n  \"status\": \"valid\"\n}")
+}
+
+func TestNewAccountWhenAccountHasBeenDeactivated(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	signedURL := fmt.Sprintf("http://localhost%s", newAcctPath)
+	// test3KeyPrivatePEM is a private key corresponding to a deactivated account in the mock SA's GetRegistration test data.
+	k := loadKey(t, []byte(test3KeyPrivatePEM))
+	_, ok := k.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load test3 key")
+
+	payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
+	_, _, body := signRequestEmbed(t, k, signedURL, payload, wfe.nonceService)
+	request := makePostRequestWithPath(newAcctPath, body)
+
+	responseWriter := httptest.NewRecorder()
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
+
+	test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
 }
 
 func TestNewAccountNoID(t *testing.T) {
