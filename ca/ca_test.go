@@ -326,20 +326,18 @@ func TestIssueCertificate(t *testing.T) {
 	testCases := []struct {
 		name    string
 		csr     []byte
-		setup   func(t *testing.T) (*CertificateAuthorityImpl, *mockSA)
 		subTest func(t *testing.T, i *TestCertificateIssuance)
 	}{
-		{"IssueCertificate", CNandSANCSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestIssueCertificate},
-		{"ValidityUsesCAClock", CNandSANCSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestValidityUsesCAClock},
-		{"AllowNoCN", NoCNCSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestAllowNoCN},
-		{"ProfileSelectionRSA", CNandSANCSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestProfileSelectionRSA},
-		{"ProfileSelectionECDSA", ECDSACSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestProfileSelectionECDSA},
-		{"MustStapleWhenDisabled", MustStapleCSR, issueCertificateSubTestMustStapleDisabledSetup, issueCertificateSubTestMustStapleWhenDisabled},
-		{"MustStapleWhenEnabled", MustStapleCSR, issueCertificateSubTestMustStapleEnabledSetup, issueCertificateSubTestMustStapleWhenEnabled},
-		{"MustStapleDuplicate", DuplicateMustStapleCSR, issueCertificateSubTestMustStapleEnabledSetup, issueCertificateSubTestMustStapleWhenEnabled},
-		{"UnknownExtension", UnsupportedExtensionCSR, issueCertificateSubTestMustStapleEnabledSetup, issueCertificateSubTestUnknownExtension},
-		{"CTPoisonExtension", CTPoisonExtensionCSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestCTPoisonExtension},
-		{"CTPoisonExtensionEmpty", CTPoisonExtensionEmptyCSR, issueCertificateSubTestDefaultSetup, issueCertificateSubTestCTPoisonExtension},
+		{"IssueCertificate", CNandSANCSR, issueCertificateSubTestIssueCertificate},
+		{"ValidityUsesCAClock", CNandSANCSR, issueCertificateSubTestValidityUsesCAClock},
+		{"AllowNoCN", NoCNCSR, issueCertificateSubTestAllowNoCN},
+		{"ProfileSelectionRSA", CNandSANCSR, issueCertificateSubTestProfileSelectionRSA},
+		{"ProfileSelectionECDSA", ECDSACSR, issueCertificateSubTestProfileSelectionECDSA},
+		{"MustStaple", MustStapleCSR, issueCertificateSubTestMustStaple},
+		{"MustStapleDuplicate", DuplicateMustStapleCSR, issueCertificateSubTestMustStaple},
+		{"UnknownExtension", UnsupportedExtensionCSR, issueCertificateSubTestUnknownExtension},
+		{"CTPoisonExtension", CTPoisonExtensionCSR, issueCertificateSubTestCTPoisonExtension},
+		{"CTPoisonExtensionEmpty", CTPoisonExtensionEmptyCSR, issueCertificateSubTestCTPoisonExtension},
 	}
 
 	for _, testCase := range testCases {
@@ -348,7 +346,7 @@ func TestIssueCertificate(t *testing.T) {
 		// the precertificates previously generated from the preceding
 		// "precertificate" test. See also the comment above |issuanceModes|.
 		for _, mode := range issuanceModes {
-			ca, sa := testCase.setup(t)
+			ca, sa := issueCertificateSubTestSetup(t)
 
 			t.Run(mode.name+"-"+testCase.name, func(t *testing.T) {
 				req, err := x509.ParseCertificateRequest(testCase.csr)
@@ -396,7 +394,7 @@ func TestIssueCertificate(t *testing.T) {
 	}
 }
 
-func issueCertificateSubTestDefaultSetup(t *testing.T) (*CertificateAuthorityImpl, *mockSA) {
+func issueCertificateSubTestSetup(t *testing.T) (*CertificateAuthorityImpl, *mockSA) {
 	testCtx := setup(t)
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
@@ -776,18 +774,6 @@ func issueCertificateSubTestProfileSelectionECDSA(t *testing.T, i *TestCertifica
 	test.AssertEquals(t, i.cert.KeyUsage, expectedKeyUsage)
 }
 
-func issueCertificateSubTestMustStapleDisabledSetup(t *testing.T) (*CertificateAuthorityImpl, *mockSA) {
-	ca, sa := issueCertificateSubTestDefaultSetup(t)
-	ca.enableMustStaple = false
-	return ca, sa
-}
-
-func issueCertificateSubTestMustStapleEnabledSetup(t *testing.T) (*CertificateAuthorityImpl, *mockSA) {
-	ca, sa := issueCertificateSubTestDefaultSetup(t)
-	ca.enableMustStaple = true
-	return ca, sa
-}
-
 func countMustStaple(t *testing.T, cert *x509.Certificate) (count int) {
 	oidTLSFeature := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}
 	for _, ext := range cert.Extensions {
@@ -813,7 +799,7 @@ func issueCertificateSubTestMustStapleWhenDisabled(t *testing.T, i *TestCertific
 	test.AssertEquals(t, countMustStaple(t, i.cert), 0)
 }
 
-func issueCertificateSubTestMustStapleWhenEnabled(t *testing.T, i *TestCertificateIssuance) {
+func issueCertificateSubTestMustStaple(t *testing.T, i *TestCertificateIssuance) {
 	// With ca.enableMustStaple = true, a TLS feature extension should put a must-staple
 	// extension into the cert. Even if there are multiple TLS Feature extensions, only
 	// one extension should be included.

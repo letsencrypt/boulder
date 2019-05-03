@@ -128,7 +128,6 @@ type CertificateAuthorityImpl struct {
 	backdate          time.Duration
 	maxNames          int
 	forceCNFromSAN    bool
-	enableMustStaple  bool
 	signatureCount    *prometheus.CounterVec
 	csrExtensionCount *prometheus.CounterVec
 	orphanQueue       *goque.Queue
@@ -273,7 +272,6 @@ func NewCertificateAuthorityImpl(
 		stats:             stats,
 		keyPolicy:         keyPolicy,
 		forceCNFromSAN:    !config.DoNotForceCN, // Note the inversion here
-		enableMustStaple:  config.EnableMustStaple,
 		signatureCount:    signatureCount,
 		csrExtensionCount: csrExtensionCount,
 		orphanQueue:       orphanQueue,
@@ -351,9 +349,7 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 						return nil, berrors.MalformedError("unsupported value for extension with OID %v", ext.Type)
 					}
 
-					if ca.enableMustStaple {
-						extensions = append(extensions, mustStapleExtension)
-					}
+					extensions = append(extensions, mustStapleExtension)
 				case ext.Type.Equal(oidAuthorityInfoAccess),
 					ext.Type.Equal(oidAuthorityKeyIdentifier),
 					ext.Type.Equal(oidBasicConstraints),
