@@ -79,7 +79,7 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, cloc
 		&mockCA{},
 		sa,
 		nil,
-		cmd.OCSPUpdaterConfig{
+		OCSPUpdaterConfig{
 			OldOCSPBatchSize:            1,
 			RevokedCertificateBatchSize: 1,
 			OldOCSPWindow:               cmd.ConfigDuration{Duration: time.Second},
