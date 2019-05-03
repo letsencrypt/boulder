@@ -1983,11 +1983,27 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// again to be safe.
 		if strings.HasPrefix(name, "*.") &&
 			len(authz.Challenges) == 1 && *authz.Challenges[0].Type == core.ChallengeTypeDNS01 {
-			order.Authorizations = append(order.Authorizations, *authz.Id)
+			if *authz.V2 {
+				authzID, err := strconv.ParseInt(*authz.Id, 10, 64)
+				if err != nil {
+					return nil, err
+				}
+				order.V2Authorizations = append(order.V2Authorizations, authzID)
+			} else {
+				order.Authorizations = append(order.Authorizations, *authz.Id)
+			}
 			continue
 		} else if !strings.HasPrefix(name, "*.") {
 			// If the identifier isn't a wildcard, we can reuse any authz
-			order.Authorizations = append(order.Authorizations, *authz.Id)
+			if *authz.V2 {
+				authzID, err := strconv.ParseInt(*authz.Id, 10, 64)
+				if err != nil {
+					return nil, err
+				}
+				order.V2Authorizations = append(order.V2Authorizations, authzID)
+			} else {
+				order.Authorizations = append(order.Authorizations, *authz.Id)
+			}
 			continue
 		}
 
@@ -2049,25 +2065,20 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// If new authorizations are needed, call AddPendingAuthorizations. Also check
 	// whether the newly created pending authz's have an expiry lower than minExpiry
 	if len(newAuthzs) > 0 {
-		var ids []string
 		req := sapb.AddPendingAuthorizationsRequest{Authz: newAuthzs}
 		if v2 {
 			authzIDs, err := ra.SA.NewAuthorizations2(ctx, &req)
 			if err != nil {
 				return nil, err
 			}
-			for _, id := range authzIDs.Ids {
-				ids = append(ids, fmt.Sprintf("%d", id))
-			}
+			order.V2Authorizations = append(order.V2Authorizations, authzIDs.Ids...)
 		} else {
 			authzIDs, err := ra.SA.AddPendingAuthorizations(ctx, &req)
 			if err != nil {
 				return nil, err
 			}
-			ids = authzIDs.Ids
+			order.Authorizations = append(order.Authorizations, authzIDs.Ids...)
 		}
-		order.Authorizations = append(order.Authorizations, ids...)
-
 		// If the newly created pending authz's have an expiry closer than the
 		// minExpiry the minExpiry is the pending authz expiry.
 		newPendingAuthzExpires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)

@@ -2114,7 +2114,7 @@ func (ssa *SQLStorageAuthority) getPendingAuthorizations(
 		requireV2Authzs)
 }
 
-func authzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error) {
+func AuthzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error) {
 	resp := &sapb.Authorizations{}
 	for k, v := range m {
 		authzPB, err := bgrpc.AuthzToPB(*v)
@@ -2145,7 +2145,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(
 		return nil, err
 	}
 	if len(authzMap) == len(req.Domains) {
-		return authzMapToPB(authzMap)
+		return AuthzMapToPB(authzMap)
 	}
 
 	// remove names we already have authz for
@@ -2180,7 +2180,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(
 			return nil, err
 		}
 	}
-	return authzMapToPB(authzMap)
+	return AuthzMapToPB(authzMap)
 }
 
 // AddPendingAuthorizations creates a batch of pending authorizations and returns their IDs
@@ -2576,7 +2576,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 		return nil, err
 	}
 	if len(oldAuthzMap) > 0 {
-		oldAuthzsPB, err := authzMapToPB(oldAuthzMap)
+		oldAuthzsPB, err := AuthzMapToPB(oldAuthzMap)
 		if err != nil {
 			return nil, err
 		}
@@ -2692,7 +2692,7 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 			return nil, err
 		}
 		if len(oldAuthzs) > 0 {
-			oldAuthzsPB, err := authzMapToPB(oldAuthzs)
+			oldAuthzsPB, err := AuthzMapToPB(oldAuthzs)
 			if err != nil {
 				return nil, err
 			}
