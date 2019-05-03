@@ -507,25 +507,13 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		}
 
 		if existingAuthz, ok := auths[identifier.Value]; ok {
-			// Use the valid existing authorization's ID to find a fully populated version
-			// The results from `GetValidAuthorizations` are most notably missing
-			// `Challenge` values that the client expects in the result.
-			populatedAuthz, err := ra.SA.GetAuthorization(ctx, existingAuthz.ID)
-			if err != nil {
-				outErr := berrors.InternalServerError(
-					"unable to get existing authorization for auth ID: %s",
-					existingAuthz.ID,
-				)
-				ra.log.Warningf("%s: %s", outErr.Error(), existingAuthz.ID)
-				return core.Authorization{}, outErr
-			}
-			if ra.authzValidChallengeEnabled(&populatedAuthz) {
+			if ra.authzValidChallengeEnabled(existingAuthz) {
 				// The existing authorization must not expire within the next 24 hours for
 				// it to be OK for reuse
 				reuseCutOff := ra.clk.Now().Add(time.Hour * 24)
-				if populatedAuthz.Expires.After(reuseCutOff) {
+				if existingAuthz.Expires.After(reuseCutOff) {
 					ra.stats.Inc("ReusedValidAuthz", 1)
-					return populatedAuthz, nil
+					return *existingAuthz, nil
 				}
 			}
 		}
