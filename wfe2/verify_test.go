@@ -879,7 +879,6 @@ func TestParseJWSRequest(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
-			fmt.Println(tc.Name)
 			_, prob := wfe.parseJWSRequest(tc.Request)
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatalf("Expected nil problem, got %#v\n", prob)
