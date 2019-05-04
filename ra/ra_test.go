@@ -58,6 +58,45 @@ import (
 	jose "gopkg.in/square/go-jose.v2"
 )
 
+func getAuthorization(t *testing.T, id string, sa *sa.SQLStorageAuthority) core.Authorization {
+	t.Helper()
+	var dbAuthz core.Authorization
+	if features.Enabled(features.NewAuthorizationSchema) {
+		idInt, err := strconv.ParseInt(id, 10, 64)
+		test.AssertNotError(t, err, "strconv.ParseInt failed")
+		dbAuthzPB, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &idInt})
+		test.AssertNotError(t, err, "Could not fetch authorization from database")
+		dbAuthz, err = bgrpc.PBToAuthz(dbAuthzPB)
+		test.AssertNotError(t, err, "bgrpc.PBToAuthz failed")
+	} else {
+		var err error
+		dbAuthz, err = sa.GetAuthorization(ctx, id)
+		test.AssertNotError(t, err, "Could not fetch authorization from database")
+	}
+	return dbAuthz
+}
+
+func challTypeIndex(t *testing.T, challenges []core.Challenge, typ string) int64 {
+	t.Helper()
+	var challIdx int64
+	var set bool
+	for i, ch := range challenges {
+		if ch.Type == typ {
+			challIdx = int64(i)
+			set = true
+			break
+		}
+	}
+	if !set {
+		t.Errorf("challTypeIndex didn't find challenge of type: %s", typ)
+	}
+	return challIdx
+}
+
+func numAuthorizations(o *corepb.Order) int {
+	return len(o.Authorizations) + len(o.V2Authorizations)
+}
+
 type DummyValidationAuthority struct {
 	argument      chan core.Authorization
 	RecordsReturn []core.ValidationRecord
@@ -581,28 +620,11 @@ func TestNewAuthorization(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	// This tests that there is a foreign key constraint on the authorization table
-	// and not anything in the RA itself. It shouldn't be tested here, it should be
-	// tested in the SA, if anywhere.
-	// _, err := ra.NewAuthorization(ctx, AuthzRequest, 0)
-	// test.AssertError(t, err, "Authorization cannot have registrationID == 0")
-
 	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	// Verify that returned authz same as DB
-	var dbAuthz core.Authorization
-	if features.Enabled(features.NewAuthorizationSchema) {
-		idInt, err := strconv.ParseInt(authz.ID, 10, 64)
-		test.AssertNotError(t, err, "strconv.ParseInt failed")
-		dbAuthzPB, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &idInt})
-		test.AssertNotError(t, err, "Could not fetch authorization from database")
-		dbAuthz, err = bgrpc.PBToAuthz(dbAuthzPB)
-		test.AssertNotError(t, err, "bgrpc.PBToAuthz failed")
-	} else {
-		dbAuthz, err = sa.GetAuthorization(ctx, authz.ID)
-		test.AssertNotError(t, err, "Could not fetch authorization from database")
-	}
+	dbAuthz := getAuthorization(t, authz.ID, sa)
 	assertAuthzEqual(t, authz, dbAuthz)
 
 	// Verify that the returned authz has the right information
@@ -827,18 +849,7 @@ func TestNewAuthorizationCapitalLetters(t *testing.T) {
 	test.AssertNotError(t, err, "NewAuthorization failed")
 	test.AssertEquals(t, "not-example.com", authz.Identifier.Value)
 
-	var dbAuthz core.Authorization
-	if features.Enabled(features.NewAuthorizationSchema) {
-		idInt, err := strconv.ParseInt(authz.ID, 10, 64)
-		test.AssertNotError(t, err, "strconv.ParseInt failed")
-		dbAuthzPB, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &idInt})
-		test.AssertNotError(t, err, "Could not fetch authorization from database")
-		dbAuthz, err = bgrpc.PBToAuthz(dbAuthzPB)
-		test.AssertNotError(t, err, "bgrpc.PBToAuthz failed")
-	} else {
-		dbAuthz, err = sa.GetAuthorization(ctx, authz.ID)
-		test.AssertNotError(t, err, "Could not fetch authorization from database")
-	}
+	dbAuthz := getAuthorization(t, authz.ID, sa)
 	assertAuthzEqual(t, authz, dbAuthz)
 }
 
@@ -926,13 +937,7 @@ func TestPerformValidationNewRPC(t *testing.T) {
 	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
-	var challIdx int64
-	for i, ch := range authz.Challenges {
-		if ch.Type == core.ChallengeTypeDNS01 {
-			challIdx = int64(i)
-		}
-	}
-	authz.Challenges[challIdx].Type = core.ChallengeTypeDNS01
+	challIdx := challTypeIndex(t, authz.Challenges, core.ChallengeTypeDNS01)
 	va.RecordsReturn = []core.ValidationRecord{
 		{Hostname: "example.com"}}
 	va.ProblemReturn = nil
@@ -962,26 +967,11 @@ func TestPerformValidationNewRPC(t *testing.T) {
 	// Sleep so the RA has a chance to write to the SA
 	time.Sleep(100 * time.Millisecond)
 
-	var dbAuthz core.Authorization
-	if features.Enabled(features.NewAuthorizationSchema) {
-		idInt, err := strconv.ParseInt(authz.ID, 10, 64)
-		test.AssertNotError(t, err, "strconv.ParseInt failed")
-		dbAuthzPB, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &idInt})
-		test.AssertNotError(t, err, "Could not fetch authorization from database")
-		dbAuthz, err = bgrpc.PBToAuthz(dbAuthzPB)
-		test.AssertNotError(t, err, "bgrpc.PBToAuthz failed")
-	} else {
-		dbAuthz, err = sa.GetAuthorization(ctx, authz.ID)
-		test.AssertNotError(t, err, "Could not fetch authorization from database")
-	}
+	dbAuthz := getAuthorization(t, authz.ID, sa)
 
 	// Verify that the responses are reflected
 	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
-	for i, ch := range dbAuthz.Challenges {
-		if ch.Type == core.ChallengeTypeDNS01 {
-			challIdx = int64(i)
-		}
-	}
+	challIdx = challTypeIndex(t, dbAuthz.Challenges, core.ChallengeTypeDNS01)
 	test.Assert(t, dbAuthz.Challenges[challIdx].Status == core.StatusValid, "challenge was not marked as valid")
 }
 
@@ -1213,7 +1203,8 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 		strings.HasPrefix(err.Error(), expectedErrPrefix),
 		fmt.Sprintf("expected error to have prefix %q got %q", expectedErrPrefix, err))
 
-	// Reset the feature flags explicitly to disable EarlyOrderRateLimit
+	// Disable EarlyOrderRateLimit. Instead of using features.Reset we use
+	// features.Set so that we don't stamp on NewAuthorizationSchema
 	features.Set(map[string]bool{"EarlyOrderRateLimit": false})
 
 	// The same NewOrder request should now succeed because EarlyOrderRateLimit
@@ -2113,11 +2104,7 @@ func TestNewOrder(t *testing.T) {
 	// We expect the order names to have been sorted, deduped, and lowercased
 	test.AssertDeepEquals(t, orderA.Names, []string{"a.com", "b.com", "c.com"})
 	test.AssertEquals(t, *orderA.Id, int64(1))
-	if features.Enabled(features.NewAuthorizationSchema) {
-		test.AssertEquals(t, len(orderA.V2Authorizations), 3)
-	} else {
-		test.AssertEquals(t, len(orderA.Authorizations), 3)
-	}
+	test.AssertEquals(t, numAuthorizations(orderA), 3)
 
 	// Reuse all existing authorizations
 	orderB, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
@@ -2131,11 +2118,10 @@ func TestNewOrder(t *testing.T) {
 	test.AssertEquals(t, *orderB.Id, *orderA.Id)
 	test.AssertEquals(t, len(orderB.Names), 3)
 	test.AssertDeepEquals(t, orderB.Names, []string{"a.com", "b.com", "c.com"})
+	test.AssertEquals(t, numAuthorizations(orderB), 3)
 	if features.Enabled(features.NewAuthorizationSchema) {
-		test.AssertEquals(t, len(orderB.V2Authorizations), 3)
 		test.AssertDeepEquals(t, orderB.V2Authorizations, orderA.V2Authorizations)
 	} else {
-		test.AssertEquals(t, len(orderB.Authorizations), 3)
 		sort.Strings(orderA.Authorizations)
 		sort.Strings(orderB.Authorizations)
 		test.AssertDeepEquals(t, orderB.Authorizations, orderA.Authorizations)
@@ -2156,11 +2142,7 @@ func TestNewOrder(t *testing.T) {
 	// We expect orderC's ID to not match orderA/orderB's because it is for
 	// a different set of names
 	test.AssertNotEquals(t, *orderC.Id, *orderA.Id)
-	if features.Enabled(features.NewAuthorizationSchema) {
-		test.AssertEquals(t, len(orderC.V2Authorizations), 4)
-	} else {
-		test.AssertEquals(t, len(orderC.Authorizations), 4)
-	}
+	test.AssertEquals(t, numAuthorizations(orderC), 4)
 	// Abuse the order of the queries used to extract the reused authorizations
 	if features.Enabled(features.NewAuthorizationSchema) {
 		existing := orderC.V2Authorizations[:3]
@@ -2211,12 +2193,11 @@ func TestNewOrderLegacyAuthzReuse(t *testing.T) {
 	// It should not produce an error
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	// There should be only one authorization
+	test.AssertEquals(t, numAuthorizations(order), 1)
 	if features.Enabled(features.NewAuthorizationSchema) {
-		test.AssertEquals(t, len(order.V2Authorizations), 1)
 		// The authorization should not be the legacy authz
 		test.AssertNotEquals(t, fmt.Sprintf("%d", order.V2Authorizations[0]), legacyAuthz.ID)
 	} else {
-		test.AssertEquals(t, len(order.Authorizations), 1)
 		// The authorization should not be the legacy authz
 		test.AssertNotEquals(t, order.Authorizations[0], legacyAuthz.ID)
 	}
@@ -2232,11 +2213,7 @@ func TestNewOrderLegacyAuthzReuse(t *testing.T) {
 	// It should not produce an error
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	// There should be only two authorizations
-	if features.Enabled(features.NewAuthorizationSchema) {
-		test.AssertEquals(t, len(secondOrder.V2Authorizations), 2)
-	} else {
-		test.AssertEquals(t, len(secondOrder.Authorizations), 2)
-	}
+	test.AssertEquals(t, numAuthorizations(secondOrder), 2)
 
 	// Check each of the authorizations
 	var reusedAuthz bool
@@ -2379,13 +2356,8 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	// It should have an ID
 	test.AssertNotNil(t, order.Id, "Initial order had a nil ID")
 	// It should have one authorization
-	if features.Enabled(features.NewAuthorizationSchema) {
-		test.AssertEquals(t, len(order.V2Authorizations), 1)
-	} else {
-		test.AssertEquals(t, len(order.Authorizations), 1)
-	}
+	test.AssertEquals(t, numAuthorizations(order), 1)
 
-	// Fetch the full authz by the ID
 	if features.Enabled(features.NewAuthorizationSchema) {
 		status := string(core.StatusInvalid)
 		attempted := core.ChallengeTypeDNS01
@@ -2397,6 +2369,7 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 		})
 		test.AssertNotError(t, err, "FinalizeAuthorization2 failed")
 	} else {
+		// Fetch the full authz by the ID
 		authzID := order.Authorizations[0]
 		authz, err := ra.SA.GetAuthorization(ctx, authzID)
 		test.AssertNotError(t, err, "Error getting order authorization")
@@ -2421,15 +2394,12 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	test.AssertNotEquals(t, *secondOrder.Id, *order.Id)
 	// It should be status pending
 	test.AssertEquals(t, *secondOrder.Status, "pending")
+	test.AssertEquals(t, numAuthorizations(secondOrder), 1)
 	if features.Enabled(features.NewAuthorizationSchema) {
-		// It should have one authorization
-		test.AssertEquals(t, len(secondOrder.V2Authorizations), 1)
 		// It should have a different authorization than the first order's now-invalid authorization
 		test.AssertNotEquals(t, secondOrder.V2Authorizations[0], order.V2Authorizations[0])
 
 	} else {
-		// It should have one authorization
-		test.AssertEquals(t, len(secondOrder.Authorizations), 1)
 		// It should have a different authorization than the first order's now-invalid authorization
 		test.AssertNotEquals(t, secondOrder.Authorizations[0], order.Authorizations[0])
 	}
@@ -2590,14 +2560,11 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 	order, err := ra.NewOrder(ctx, orderReq)
 	// It shouldn't fail
 	test.AssertNotError(t, err, "Adding an initial order for regA failed")
+	test.AssertEquals(t, numAuthorizations(order), 1)
 	if features.Enabled(features.NewAuthorizationSchema) {
-		// There should be one authorization
-		test.AssertEquals(t, len(order.V2Authorizations), 1)
 		// It should *not* be the bad authorization!
 		test.AssertNotEquals(t, order.V2Authorizations[0], int64(1))
 	} else {
-		// There should be one authorization
-		test.AssertEquals(t, len(order.Authorizations), 1)
 		// It should *not* be the bad authorization!
 		test.AssertNotEquals(t, order.Authorizations[0], "bad-bad-not-good")
 	}
@@ -2628,15 +2595,12 @@ func TestNewOrderAuthzReuseDisabled(t *testing.T) {
 	order, err := ra.NewOrder(ctx, orderReq)
 	// It shouldn't fail
 	test.AssertNotError(t, err, "Adding an initial order for regA failed")
+	test.AssertEquals(t, numAuthorizations(order), 1)
 	if features.Enabled(features.NewAuthorizationSchema) {
-		// There should be one authorization
-		test.AssertEquals(t, len(order.V2Authorizations), 1)
 		// It should *not* be the bad authorization that indicates reuse!
 		test.AssertNotEquals(t, order.V2Authorizations[0], int64(2))
 
 	} else {
-		// There should be one authorization
-		test.AssertEquals(t, len(order.Authorizations), 1)
 		// It should *not* be the bad authorization that indicates reuse!
 		test.AssertNotEquals(t, order.Authorizations[0], "reused-valid-authz")
 	}
@@ -2678,13 +2642,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	test.AssertDeepEquals(t,
 		core.UniqueLowerNames(order.Names),
 		core.UniqueLowerNames(orderNames))
-	if features.Enabled(features.NewAuthorizationSchema) {
-		// We expect the order to have two authorizations
-		test.AssertEquals(t, len(order.V2Authorizations), 2)
-	} else {
-		// We expect the order to have two authorizations
-		test.AssertEquals(t, len(order.Authorizations), 2)
-	}
+	test.AssertEquals(t, numAuthorizations(order), 2)
 
 	// Check each of the authz IDs in the order
 	if features.Enabled(features.NewAuthorizationSchema) {
@@ -2758,13 +2716,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	test.AssertDeepEquals(t,
 		core.UniqueLowerNames(order.Names),
 		core.UniqueLowerNames(orderNames))
-	if features.Enabled(features.NewAuthorizationSchema) {
-		// We expect the order to have two authorizations
-		test.AssertEquals(t, len(order.V2Authorizations), 2)
-	} else {
-		// We expect the order to have two authorizations
-		test.AssertEquals(t, len(order.Authorizations), 2)
-	}
+	test.AssertEquals(t, numAuthorizations(order), 2)
 
 	if features.Enabled(features.NewAuthorizationSchema) {
 		for _, authzID := range order.V2Authorizations {
@@ -2823,13 +2775,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	normalOrder, err := ra.NewOrder(context.Background(), normalOrderReq)
 	test.AssertNotError(t, err, "NewOrder failed for a normal non-wildcard order")
 
-	if features.Enabled(features.NewAuthorizationSchema) {
-		// There should be one authz
-		test.AssertEquals(t, len(normalOrder.V2Authorizations), 1)
-	} else {
-		// There should be one authz
-		test.AssertEquals(t, len(normalOrder.Authorizations), 1)
-	}
+	test.AssertEquals(t, numAuthorizations(normalOrder), 1)
 	// We expect the order is in Pending status
 	test.AssertEquals(t, *order.Status, string(core.StatusPending))
 	var authz core.Authorization
@@ -2862,9 +2808,8 @@ func TestNewOrderWildcard(t *testing.T) {
 	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
 	// We expect the order is in Pending status
 	test.AssertEquals(t, *order.Status, string(core.StatusPending))
+	test.AssertEquals(t, numAuthorizations(order), 1)
 	if features.Enabled(features.NewAuthorizationSchema) {
-		// There should be one authz
-		test.AssertEquals(t, len(order.V2Authorizations), 1)
 		// The authz should be a different ID than the previous authz
 		test.AssertNotEquals(t, order.V2Authorizations[0], normalOrder.V2Authorizations[0])
 		// We expect the authorization is available
@@ -2873,8 +2818,6 @@ func TestNewOrderWildcard(t *testing.T) {
 		authz, err = bgrpc.PBToAuthz(authzPB)
 		test.AssertNotError(t, err, "bgrpc.PBToAuthz failed")
 	} else {
-		// There should be one authz
-		test.AssertEquals(t, len(order.Authorizations), 1)
 		// The authz should be a different ID than the previous authz
 		test.AssertNotEquals(t, order.Authorizations[0], normalOrder.Authorizations[0])
 		// We expect the authorization is available
@@ -2897,16 +2840,13 @@ func TestNewOrderWildcard(t *testing.T) {
 	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
 	// We expect the order is in Pending status
 	test.AssertEquals(t, *dupeOrder.Status, string(core.StatusPending))
+	test.AssertEquals(t, numAuthorizations(dupeOrder), 1)
 	if features.Enabled(features.NewAuthorizationSchema) {
-		// There should be one authz
-		test.AssertEquals(t, len(dupeOrder.V2Authorizations), 1)
 		// The authz should be the same ID as the previous order's authz. We already
 		// checked that order.Authorizations[0] only has a DNS-01 challenge above so
 		// we don't need to recheck that here.
 		test.AssertEquals(t, dupeOrder.V2Authorizations[0], order.V2Authorizations[0])
 	} else {
-		// There should be one authz
-		test.AssertEquals(t, len(dupeOrder.Authorizations), 1)
 		// The authz should be the same ID as the previous order's authz. We already
 		// checked that order.Authorizations[0] only has a DNS-01 challenge above so
 		// we don't need to recheck that here.
@@ -3015,14 +2955,11 @@ func TestNewOrderExpiry(t *testing.T) {
 	order, err := ra.NewOrder(ctx, orderReq)
 	// It shouldn't fail
 	test.AssertNotError(t, err, "Adding an order for regA failed")
+	test.AssertEquals(t, numAuthorizations(order), 1)
 	if features.Enabled(features.NewAuthorizationSchema) {
-		// There should be one authorization
-		test.AssertEquals(t, len(order.V2Authorizations), 1)
 		// It should be the fake near-expired-authz authz
 		test.AssertEquals(t, order.V2Authorizations[0], int64(1))
 	} else {
-		// There should be one authorization
-		test.AssertEquals(t, len(order.Authorizations), 1)
 		// It should be the fake near-expired-authz authz
 		test.AssertEquals(t, order.Authorizations[0], "near-expired-authz")
 	}
@@ -3037,14 +2974,11 @@ func TestNewOrderExpiry(t *testing.T) {
 	order, err = ra.NewOrder(ctx, orderReq)
 	// It shouldn't fail
 	test.AssertNotError(t, err, "Adding an order for regA failed")
+	test.AssertEquals(t, numAuthorizations(order), 1)
 	if features.Enabled(features.NewAuthorizationSchema) {
-		// There should be one authorization
-		test.AssertEquals(t, len(order.V2Authorizations), 1)
 		// It should be the fake near-expired-authz authz
 		test.AssertEquals(t, order.V2Authorizations[0], int64(1))
 	} else {
-		// There should be one authorization
-		test.AssertEquals(t, len(order.Authorizations), 1)
 		// It should be the fake near-expired-authz authz
 		test.AssertEquals(t, order.Authorizations[0], "near-expired-authz")
 	}
@@ -3496,17 +3430,14 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	validOrder, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertNotError(t, err, "NewOrder failed for wildcard domain order")
 	var authz core.Authorization
+	test.AssertEquals(t, numAuthorizations(validOrder), 1)
 	if features.Enabled(features.NewAuthorizationSchema) {
-		// We expect it has 1 authorization
-		test.AssertEquals(t, len(validOrder.V2Authorizations), 1)
 		// We expect to be able to get the authorization by ID
 		authzPB, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &validOrder.V2Authorizations[0]})
 		test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 		authz, err = bgrpc.PBToAuthz(authzPB)
 		test.AssertNotError(t, err, "bgrpc.PBToAuthz failed")
 	} else {
-		// We expect it has 1 authorization
-		test.AssertEquals(t, len(validOrder.Authorizations), 1)
 		// We expect to be able to get the authorization by ID
 		authz, err = sa.GetAuthorization(ctx, validOrder.Authorizations[0])
 		test.AssertNotError(t, err, "GetAuthorization failed for order authz ID")
