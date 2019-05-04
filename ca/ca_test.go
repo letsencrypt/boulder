@@ -1,7 +1,6 @@
 package ca
 
 import (
-	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -136,8 +135,8 @@ var (
 	// |TestIssueCertificate| quite a bit, and since it isn't clear that that
 	// would be useful, we've avoided adding that case, at least for now.
 	issuanceModes = []IssuanceMode{
-		{name: "precertificate", issuePrecertificate: true, issueCertificateForPrecertificate: false},
-		{name: "certificate-for-precertificate", issuePrecertificate: false, issueCertificateForPrecertificate: true},
+		{name: "precertificate", issueCertificateForPrecertificate: false},
+		{name: "certificate-for-precertificate", issueCertificateForPrecertificate: true},
 	}
 )
 
@@ -318,17 +317,16 @@ type TestCertificateIssuance struct {
 
 type IssuanceMode struct {
 	name                              string
-	issuePrecertificate               bool
 	issueCertificateForPrecertificate bool
 }
 
-func TestIssueCertificate(t *testing.T) {
+func TestIssuePrecertificate(t *testing.T) {
 	testCases := []struct {
 		name    string
 		csr     []byte
 		subTest func(t *testing.T, i *TestCertificateIssuance)
 	}{
-		{"IssueCertificate", CNandSANCSR, issueCertificateSubTestIssueCertificate},
+		{"IssuePrecertificate", CNandSANCSR, issueCertificateSubTestIssuePrecertificate},
 		{"ValidityUsesCAClock", CNandSANCSR, issueCertificateSubTestValidityUsesCAClock},
 		{"AllowNoCN", NoCNCSR, issueCertificateSubTestAllowNoCN},
 		{"ProfileSelectionRSA", CNandSANCSR, issueCertificateSubTestProfileSelectionRSA},
@@ -355,25 +353,16 @@ func TestIssueCertificate(t *testing.T) {
 				issueReq := &caPB.IssueCertificateRequest{Csr: testCase.csr, RegistrationID: &arbitraryRegID}
 
 				var certDER []byte
-				if mode.issuePrecertificate {
-					response, err := ca.IssuePrecertificate(ctx, issueReq)
+				response, err := ca.IssuePrecertificate(ctx, issueReq)
 
-					test.AssertNotError(t, err, "Failed to issue precertificate")
-					certDER = response.DER
-				} else {
-					coreCert, err := ca.IssueCertificate(ctx, issueReq)
-					test.AssertNotError(t, err, "Failed to issue certificate")
-					certDER = coreCert.DER
-
-					// Verify that the cert got stored in the DB
-					test.Assert(t, bytes.Equal(certDER, sa.certificate.DER), "Retrieved cert not equal to issued cert.")
-				}
+				test.AssertNotError(t, err, "Failed to issue precertificate")
+				certDER = response.DER
 
 				cert, err := x509.ParseCertificate(certDER)
 				test.AssertNotError(t, err, "Certificate failed to parse")
 
 				poisonExtension := findExtension(cert.Extensions, OIDExtensionCTPoison)
-				test.AssertEquals(t, mode.issuePrecertificate, poisonExtension != nil)
+				test.AssertEquals(t, true, poisonExtension != nil)
 				if poisonExtension != nil {
 					test.AssertEquals(t, poisonExtension.Critical, true)
 					test.AssertDeepEquals(t, poisonExtension.Value, []byte{0x05, 0x00}) // ASN.1 DER NULL
@@ -413,7 +402,7 @@ func issueCertificateSubTestSetup(t *testing.T) (*CertificateAuthorityImpl, *moc
 	return ca, sa
 }
 
-func issueCertificateSubTestIssueCertificate(t *testing.T, i *TestCertificateIssuance) {
+func issueCertificateSubTestIssuePrecertificate(t *testing.T, i *TestCertificateIssuance) {
 	cert := i.cert
 
 	test.AssertEquals(t, cert.Subject.CommonName, "not-example.com")
@@ -470,7 +459,7 @@ func TestMultipleIssuers(t *testing.T) {
 		nil)
 	test.AssertNotError(t, err, "Failed to remake CA")
 
-	issuedCert, err := ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID})
+	issuedCert, err := ca.IssuePrecertificate(ctx, &caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID})
 	test.AssertNotError(t, err, "Failed to issue certificate")
 
 	cert, err := x509.ParseCertificate(issuedCert.DER)
@@ -497,7 +486,7 @@ func TestOCSP(t *testing.T) {
 
 	issueReq := caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID}
 
-	cert, err := ca.IssueCertificate(ctx, &issueReq)
+	cert, err := ca.IssuePrecertificate(ctx, &issueReq)
 	test.AssertNotError(t, err, "Failed to issue")
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Failed to parse cert")
@@ -545,8 +534,8 @@ func TestOCSP(t *testing.T) {
 		nil)
 	test.AssertNotError(t, err, "Failed to remake CA")
 
-	// Now issue a new cert, signed by newIssuerCert
-	newCert, err := ca.IssueCertificate(ctx, &issueReq)
+	// Now issue a new precert, signed by newIssuerCert
+	newCert, err := ca.IssuePrecertificate(ctx, &issueReq)
 	test.AssertNotError(t, err, "Failed to issue newCert")
 	parsedNewCert, err := x509.ParseCertificate(newCert.DER)
 	test.AssertNotError(t, err, "Failed to parse newCert")
@@ -627,39 +616,33 @@ func TestInvalidCSRs(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		for _, mode := range issuanceModes {
-			testCtx := setup(t)
-			sa := &mockSA{}
-			ca, err := NewCertificateAuthorityImpl(
-				testCtx.caConfig,
-				sa,
-				testCtx.pa,
-				testCtx.fc,
-				testCtx.stats,
-				testCtx.issuers,
-				testCtx.keyPolicy,
-				testCtx.logger,
-				nil)
-			test.AssertNotError(t, err, "Failed to create CA")
+		testCtx := setup(t)
+		sa := &mockSA{}
+		ca, err := NewCertificateAuthorityImpl(
+			testCtx.caConfig,
+			sa,
+			testCtx.pa,
+			testCtx.fc,
+			testCtx.stats,
+			testCtx.issuers,
+			testCtx.keyPolicy,
+			testCtx.logger,
+			nil)
+		test.AssertNotError(t, err, "Failed to create CA")
 
-			t.Run(mode.name+"-"+testCase.name, func(t *testing.T) {
-				serializedCSR := mustRead(testCase.csrPath)
-				issueReq := &caPB.IssueCertificateRequest{Csr: serializedCSR, RegistrationID: &arbitraryRegID}
-				if !mode.issuePrecertificate {
-					_, err = ca.IssueCertificate(ctx, issueReq)
-				} else {
-					_, err = ca.IssuePrecertificate(ctx, issueReq)
-				}
+		t.Run(testCase.name, func(t *testing.T) {
+			serializedCSR := mustRead(testCase.csrPath)
+			issueReq := &caPB.IssueCertificateRequest{Csr: serializedCSR, RegistrationID: &arbitraryRegID}
+			_, err = ca.IssuePrecertificate(ctx, issueReq)
 
-				test.Assert(t, berrors.Is(err, berrors.Malformed), "Incorrect error type returned")
-				test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 0)
+			test.Assert(t, berrors.Is(err, berrors.Malformed), "Incorrect error type returned")
+			test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 0)
 
-				test.AssertError(t, err, testCase.errorMessage)
-				if testCase.check != nil {
-					testCase.check(t, ca, sa)
-				}
-			})
-		}
+			test.AssertError(t, err, testCase.errorMessage)
+			if testCase.check != nil {
+				testCase.check(t, ca, sa)
+			}
+		})
 	}
 }
 
@@ -684,7 +667,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to parse time")
 	testCtx.fc.Set(future)
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
-	_, err = ca.IssueCertificate(ctx, &caPB.IssueCertificateRequest{Csr: NoCNCSR, RegistrationID: &arbitraryRegID})
+	_, err = ca.IssuePrecertificate(ctx, &caPB.IssueCertificateRequest{Csr: NoCNCSR, RegistrationID: &arbitraryRegID})
 	test.AssertError(t, err, "Cannot issue a certificate that expires after the intermediate certificate")
 	test.Assert(t, berrors.Is(err, berrors.InternalServer), "Incorrect error type returned")
 }
@@ -786,30 +769,12 @@ func countMustStaple(t *testing.T, cert *x509.Certificate) (count int) {
 	return count
 }
 
-func issueCertificateSubTestMustStapleWhenDisabled(t *testing.T, i *TestCertificateIssuance) {
-	// With ca.enableMustStaple = false, should issue successfully and not add
-	// Must Staple.
-	certType := "certificate"
-	if i.mode.issuePrecertificate {
-		certType = "precertificate"
-	}
-	test.AssertEquals(t, test.CountCounterVec(csrExtensionCategory, csrExtensionTLSFeature, i.ca.csrExtensionCount), 1)
-	test.AssertEquals(t, test.CountCounterVec(csrExtensionCategory, csrExtensionTLSFeatureInvalid, i.ca.csrExtensionCount), 0)
-	test.AssertEquals(t, signatureCountByPurpose(certType, i.ca.signatureCount), 1)
-	test.AssertEquals(t, countMustStaple(t, i.cert), 0)
-}
-
 func issueCertificateSubTestMustStaple(t *testing.T, i *TestCertificateIssuance) {
-	// With ca.enableMustStaple = true, a TLS feature extension should put a must-staple
-	// extension into the cert. Even if there are multiple TLS Feature extensions, only
-	// one extension should be included.
-	certType := "certificate"
-	if i.mode.issuePrecertificate {
-		certType = "precertificate"
-	}
+	// a TLS feature extension should put a must-staple extension into the cert. Even
+	// if there are multiple TLS Feature extensions, only one extension should be included.
 	test.AssertEquals(t, test.CountCounterVec(csrExtensionCategory, csrExtensionTLSFeature, i.ca.csrExtensionCount), 1)
 	test.AssertEquals(t, test.CountCounterVec(csrExtensionCategory, csrExtensionTLSFeatureInvalid, i.ca.csrExtensionCount), 0)
-	test.AssertEquals(t, signatureCountByPurpose(certType, i.ca.signatureCount), 1)
+	test.AssertEquals(t, signatureCountByPurpose("precertificate", i.ca.signatureCount), 1)
 	test.AssertEquals(t, countMustStaple(t, i.cert), 1)
 }
 
@@ -820,19 +785,12 @@ func issueCertificateSubTestTLSFeatureUnknown(t *testing.T, ca *CertificateAutho
 
 func issueCertificateSubTestUnknownExtension(t *testing.T, i *TestCertificateIssuance) {
 	// Unsupported extensions in the CSR should be silently ignored.
-	certType := "certificate"
-	if i.mode.issuePrecertificate {
-		certType = "precertificate"
-	}
 	test.AssertEquals(t, test.CountCounterVec(csrExtensionCategory, csrExtensionOther, i.ca.csrExtensionCount), 1)
-	test.AssertEquals(t, signatureCountByPurpose(certType, i.ca.signatureCount), 1)
+	test.AssertEquals(t, signatureCountByPurpose("precertificate", i.ca.signatureCount), 1)
 
 	// NOTE: The hard-coded value here will have to change over time as Boulder
 	// adds new (unrequested) extensions to certificates.
-	expectedExtensionCount := 9
-	if i.mode.issuePrecertificate {
-		expectedExtensionCount += 1
-	}
+	expectedExtensionCount := 10
 	test.AssertEquals(t, len(i.cert.Extensions), expectedExtensionCount)
 }
 
@@ -841,12 +799,8 @@ func issueCertificateSubTestCTPoisonExtension(t *testing.T, i *TestCertificateIs
 	// unknown extension, whether it has a valid or invalid value. The check
 	// for whether or not the poison extension is present in the issued
 	// certificate/precertificate is done in the caller.
-	certType := "certificate"
-	if i.mode.issuePrecertificate {
-		certType = "precertificate"
-	}
 	test.AssertEquals(t, test.CountCounterVec(csrExtensionCategory, csrExtensionOther, i.ca.csrExtensionCount), 1)
-	test.AssertEquals(t, signatureCountByPurpose(certType, i.ca.signatureCount), 1)
+	test.AssertEquals(t, signatureCountByPurpose("precertificate", i.ca.signatureCount), 1)
 }
 
 func findExtension(extensions []pkix.Extension, id asn1.ObjectIdentifier) *pkix.Extension {
