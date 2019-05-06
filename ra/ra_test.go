@@ -69,11 +69,6 @@ func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, doma
 }
 
 var (
-	SupportedChallenges = map[string]bool{
-		core.ChallengeTypeHTTP01: true,
-		core.ChallengeTypeDNS01:  true,
-	}
-
 	// These values we simulate from the client
 	AccountKeyJSONA = []byte(`{
 		"kty":"RSA",
@@ -249,7 +244,11 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	va := &DummyValidationAuthority{argument: make(chan core.Authorization, 1)}
 
-	pa, err := policy.New(SupportedChallenges)
+	pa, err := policy.New(map[string]bool{
+		core.ChallengeTypeHTTP01: true,
+		core.ChallengeTypeDNS01:  true,
+	})
+
 	test.AssertNotError(t, err, "Couldn't create PA")
 	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
@@ -592,11 +591,13 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
 
 	// TODO Verify that challenges are correct
-	test.Assert(t, len(authz.Challenges) == len(SupportedChallenges), "Incorrect number of challenges returned")
-	test.Assert(t, SupportedChallenges[authz.Challenges[0].Type], fmt.Sprintf("Unsupported challenge: %s", authz.Challenges[0].Type))
-	test.Assert(t, SupportedChallenges[authz.Challenges[1].Type], fmt.Sprintf("Unsupported challenge: %s", authz.Challenges[1].Type))
-	test.AssertNotError(t, authz.Challenges[0].CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer for Challenge 0 returned an error")
-	test.AssertNotError(t, authz.Challenges[1].CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer for Challenge 1 returned an error")
+	test.Assert(t, len(authz.Challenges) == 2, "Incorrect number of challenges returned")
+	for _, c := range authz.Challenges {
+		if c.Type != core.ChallengeTypeHTTP01 && c.Type != core.ChallengeTypeDNS01 {
+			t.Errorf("unsupported challenge type %s", c.Type)
+		}
+		test.AssertNotError(t, c.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer for Challenge 0 returned an error")
+	}
 }
 
 func TestReuseValidAuthorization(t *testing.T) {
@@ -2464,19 +2465,6 @@ func TestNewOrderWildcard(t *testing.T) {
 		Names:          orderNames,
 	}
 
-	// Also ensure that the required challenge types are enabled. The ra_test
-	// global `SupportedChallenges` used by `initAuthorities` does not include
-	// DNS-01
-	supportedChallenges := map[string]bool{
-		core.ChallengeTypeHTTP01: true,
-		core.ChallengeTypeDNS01:  true,
-	}
-	pa, err := policy.New(supportedChallenges)
-	test.AssertNotError(t, err, "Couldn't create PA")
-	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
-	test.AssertNotError(t, err, "Couldn't set hostname policy")
-	ra.PA = pa
-
 	order, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
 
@@ -3092,19 +3080,6 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	// Pick an expiry in the future
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 
-	// Also ensure that the required challenge types are enabled. The ra_test
-	// global `SupportedChallenges` used by `initAuthorities` does not include
-	// DNS-01 or DNS-01-Wildcard
-	supportedChallenges := map[string]bool{
-		core.ChallengeTypeHTTP01: true,
-		core.ChallengeTypeDNS01:  true,
-	}
-	pa, err := policy.New(supportedChallenges)
-	test.AssertNotError(t, err, "Couldn't create PA")
-	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
-	test.AssertNotError(t, err, "Couldn't set hostname policy")
-	ra.PA = pa
-
 	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "Error creating test RSA key")
 	wildcardCSR, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
@@ -3475,14 +3450,8 @@ func (mp *timeoutPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Req
 }
 
 func TestCTPolicyMeasurements(t *testing.T) {
-	va, ssa, _, fc, cleanup := initAuthorities(t)
+	_, ssa, _, fc, cleanup := initAuthorities(t)
 	defer cleanup()
-
-	pa, err := policy.New(SupportedChallenges)
-	test.AssertNotError(t, err, "Couldn't create PA")
-	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
-	test.AssertNotError(t, err, "Couldn't set hostname policy")
-
 	stats := metrics.NewNoopScope()
 
 	ca := &mocks.MockCA{
@@ -3495,9 +3464,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 		stats,
 		1, testKeyPolicy, 0, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0, ctp, nil, nil)
 	ra.SA = ssa
-	ra.VA = va
 	ra.CA = ca
-	ra.PA = pa
 
 	AuthzFinal.RegistrationID = Registration.ID
 	AuthzFinal, err := ssa.NewPendingAuthorization(ctx, AuthzFinal)
