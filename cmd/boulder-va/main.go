@@ -23,7 +23,13 @@ type config struct {
 
 		PortConfig cmd.PortConfig
 
-		CAADistributedResolver *cmd.CAADistributedResolverConfig
+		// CAADistributedResolverConfig specifies the HTTP client setup and interfaces
+		// needed to resolve CAA addresses over multiple paths
+		CAADistributedResolver struct {
+			Timeout     cmd.ConfigDuration
+			MaxFailures int
+			Proxies     []string
+		}
 
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value

@@ -319,8 +319,6 @@ type config struct {
 
 	PA cmd.PAConfig
 
-	Statsd cmd.StatsdConfig
-
 	Syslog cmd.SyslogConfig
 }
 
