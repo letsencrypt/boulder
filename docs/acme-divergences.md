@@ -5,7 +5,7 @@ While Boulder attempts to implement the ACME specification ([RFC 8555]) as stric
 Presently the following protocol features are not implemented:
 
 - Pre-authorization. This is an optional feature and we have no plans to implement it. V2 clients should use order based issuance without pre-authorization.
-- The `orders` field on account objects. We intend to support this non-essential feature in the near future. Please follow Boulder Issue [#3335](https://github.com/letsencrypt/boulder/issues/3335).
+- The `orders` field on account objects. We intend to support this non-essential feature in the future. Please follow Boulder Issue [#3335](https://github.com/letsencrypt/boulder/issues/3335).
 
 POST-as-GET: We support POST-as-GET but do not yet mandate it. We [plan to mandate](https://community.letsencrypt.org/t/acme-v2-scheduled-deprecation-of-unauthenticated-resource-gets/74380) POST-as-GET for all ACMEv2 requests in late 2019.
 
@@ -15,21 +15,13 @@ Boulder does not provide a `Retry-After` header when a user hits a rate-limit, n
 
 ## [Section 6.7](https://tools.ietf.org/html/rfc8555#section-6.7)
 
-Boulder doesn't return errors under the `urn:ietf:params:acme:error:` namespace but instead uses the `urn:acme:error:` namespace from [draft-ietf-acme-01 Section 5.4](https://tools.ietf.org/html/draft-ietf-acme-acme-01#section-5.4).
-
 Boulder uses `invalidEmail` in place of the error `invalidContact` defined in [draft-ietf-acme-01 Section 5.4](https://tools.ietf.org/html/draft-ietf-acme-acme-01#section-5.4).
 
 Boulder does not implement the `unsupportedContact` and `dnssec` errors.
 
 ## [Section 7.4.2](https://tools.ietf.org/html/draft-ietf-acme-acme-07#section-7.4.2)
 
-Boulder does not process `Accept` headers for `Content-Type` negotiation when retrieving certificates. Boulder returns certificates with the `Content-Type` value `application/pkix-cert` instead of `application/pem-certificate-chain`.
-
-## [Section 7.5](https://tools.ietf.org/html/draft-ietf-acme-acme-07#section-7.5)
-
-Boulder returns an `uri` instead of an `url` field in challenge objects.
-
-Boulder uses an HTTP status code 202 (Accepted) response for correct challenge responses instead of 200 (OK) as defined in [Section 7.1](https://tools.ietf.org/html/draft-ietf-acme-acme-07#section-7.1).
+Boulder does not process `Accept` headers for `Content-Type` negotiation when retrieving certificates.
 
 ## [Section 8.2](https://tools.ietf.org/html/rfc8555#section-8.2)
 
