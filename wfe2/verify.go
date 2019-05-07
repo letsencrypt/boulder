@@ -809,6 +809,6 @@ func (wfe *WebFrontEndImpl) verifyECFieldLengths(body []byte, request *http.Requ
 		// if extractRequesterIP fails just continue on as we still want to know
 		// that the key was badly padded, and a empty net.IP will render just fine
 		ip, _ := extractRequesterIP(request)
-		wfe.log.Infof("Incorrectly padded EC JWK key from UA=%q IP=%s", request.UserAgent(), ip)
+		wfe.log.Infof("Incorrectly padded account EC JWK key from UA=%q IP=%s", request.UserAgent(), ip)
 	}
 }
