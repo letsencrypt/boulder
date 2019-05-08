@@ -70,7 +70,7 @@ func newUpdater(
 	ca core.CertificateAuthority,
 	sac core.StorageAuthority,
 	apc akamaipb.AkamaiPurgerClient,
-	config cmd.OCSPUpdaterConfig,
+	config OCSPUpdaterConfig,
 	issuerPath string,
 	log blog.Logger,
 ) (*OCSPUpdater, error) {
@@ -495,9 +495,7 @@ func (l *looper) loop() error {
 }
 
 type config struct {
-	OCSPUpdater cmd.OCSPUpdaterConfig
-
-	Statsd cmd.StatsdConfig
+	OCSPUpdater OCSPUpdaterConfig
 
 	Syslog cmd.SyslogConfig
 
@@ -506,7 +504,41 @@ type config struct {
 	}
 }
 
-func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Scope, clk clock.Clock) (
+// OCSPUpdaterConfig provides the various window tick times and batch sizes needed
+// for the OCSP (and SCT) updater
+type OCSPUpdaterConfig struct {
+	cmd.ServiceConfig
+	cmd.DBConfig
+
+	OldOCSPWindow            cmd.ConfigDuration
+	RevokedCertificateWindow cmd.ConfigDuration
+
+	OldOCSPBatchSize            int
+	RevokedCertificateBatchSize int
+
+	OCSPMinTimeToExpiry          cmd.ConfigDuration
+	OCSPStaleMaxAge              cmd.ConfigDuration
+	ParallelGenerateOCSPRequests int
+
+	AkamaiBaseURL           string
+	AkamaiClientToken       string
+	AkamaiClientSecret      string
+	AkamaiAccessToken       string
+	AkamaiV3Network         string
+	AkamaiPurgeRetries      int
+	AkamaiPurgeRetryBackoff cmd.ConfigDuration
+
+	SignFailureBackoffFactor float64
+	SignFailureBackoffMax    cmd.ConfigDuration
+
+	SAService            *cmd.GRPCClientConfig
+	OCSPGeneratorService *cmd.GRPCClientConfig
+	AkamaiPurgerService  *cmd.GRPCClientConfig
+
+	Features map[string]bool
+}
+
+func setupClients(c OCSPUpdaterConfig, stats metrics.Scope, clk clock.Clock) (
 	core.CertificateAuthority,
 	core.StorageAuthority,
 	akamaipb.AkamaiPurgerClient,

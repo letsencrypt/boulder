@@ -15,6 +15,9 @@ type wfe2Stats struct {
 	// csrSignatureAlgs counts the signature algorithms in use for order
 	// finalization CSRs
 	csrSignatureAlgs *prometheus.CounterVec
+	// improperECFieldLengths counts the number of ACME account EC JWKs we see
+	// with improper X and Y lengths for their curve
+	improperECFieldLengths prometheus.Counter
 }
 
 func initStats(scope metrics.Scope) wfe2Stats {
@@ -43,9 +46,18 @@ func initStats(scope metrics.Scope) wfe2Stats {
 	)
 	scope.MustRegister(csrSignatureAlgs)
 
+	improperECFieldLengths := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "improperECFieldLengths",
+			Help: "Number of account EC keys with improper X and Y lengths",
+		},
+	)
+	scope.MustRegister(improperECFieldLengths)
+
 	return wfe2Stats{
-		httpErrorCount:   httpErrorCount,
-		joseErrorCount:   joseErrorCount,
-		csrSignatureAlgs: csrSignatureAlgs,
+		httpErrorCount:         httpErrorCount,
+		joseErrorCount:         joseErrorCount,
+		csrSignatureAlgs:       csrSignatureAlgs,
+		improperECFieldLengths: improperECFieldLengths,
 	}
 }

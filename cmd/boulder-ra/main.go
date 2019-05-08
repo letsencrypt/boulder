@@ -12,6 +12,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy"
+	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -70,12 +71,12 @@ type config struct {
 		// in a group and the first SCT returned will be used. This allows
 		// us to comply with Chrome CT policy which requires one SCT from a
 		// Google log and one SCT from any other log included in their policy.
-		CTLogGroups2 []cmd.CTGroup
+		CTLogGroups2 []ctconfig.CTGroup
 		// InformationalCTLogs are a set of CT logs we will always submit to
 		// but won't ever use the SCTs from. This may be because we want to
 		// test them or because they are not yet approved by a browser/root
 		// program but we still want our certs to end up there.
-		InformationalCTLogs []cmd.LogDescription
+		InformationalCTLogs []ctconfig.LogDescription
 
 		// IssuerCertPath is the path to the intermediate used to issue certificates.
 		// It is required if the RevokeAtRA feature is enabled and is used to

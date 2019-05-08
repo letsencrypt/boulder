@@ -9,6 +9,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -39,7 +40,7 @@ func TestGetSCTs(t *testing.T) {
 	testCases := []struct {
 		name       string
 		mock       core.Publisher
-		groups     []cmd.CTGroup
+		groups     []ctconfig.CTGroup
 		ctx        context.Context
 		result     core.SCTDERs
 		errRegexp  *regexp.Regexp
@@ -48,17 +49,17 @@ func TestGetSCTs(t *testing.T) {
 		{
 			name: "basic success case",
 			mock: &mockPub{},
-			groups: []cmd.CTGroup{
+			groups: []ctconfig.CTGroup{
 				{
 					Name: "a",
-					Logs: []cmd.LogDescription{
+					Logs: []ctconfig.LogDescription{
 						{URI: "abc", Key: "def"},
 						{URI: "ghi", Key: "jkl"},
 					},
 				},
 				{
 					Name: "b",
-					Logs: []cmd.LogDescription{
+					Logs: []ctconfig.LogDescription{
 						{URI: "abc", Key: "def"},
 						{URI: "ghi", Key: "jkl"},
 					},
@@ -70,17 +71,17 @@ func TestGetSCTs(t *testing.T) {
 		{
 			name: "basic failure case",
 			mock: &alwaysFail{},
-			groups: []cmd.CTGroup{
+			groups: []ctconfig.CTGroup{
 				{
 					Name: "a",
-					Logs: []cmd.LogDescription{
+					Logs: []ctconfig.LogDescription{
 						{URI: "abc", Key: "def"},
 						{URI: "ghi", Key: "jkl"},
 					},
 				},
 				{
 					Name: "b",
-					Logs: []cmd.LogDescription{
+					Logs: []ctconfig.LogDescription{
 						{URI: "abc", Key: "def"},
 						{URI: "ghi", Key: "jkl"},
 					},
@@ -93,17 +94,17 @@ func TestGetSCTs(t *testing.T) {
 		{
 			name: "parent context timeout failure case",
 			mock: &alwaysFail{},
-			groups: []cmd.CTGroup{
+			groups: []ctconfig.CTGroup{
 				{
 					Name: "a",
-					Logs: []cmd.LogDescription{
+					Logs: []ctconfig.LogDescription{
 						{URI: "abc", Key: "def"},
 						{URI: "ghi", Key: "jkl"},
 					},
 				},
 				{
 					Name: "b",
-					Logs: []cmd.LogDescription{
+					Logs: []ctconfig.LogDescription{
 						{URI: "abc", Key: "def"},
 						{URI: "ghi", Key: "jkl"},
 					},
@@ -155,17 +156,17 @@ func (sp *slowPublisher) SubmitToSingleCTWithResult(_ context.Context, req *pubp
 }
 
 func TestGetSCTsMetrics(t *testing.T) {
-	ctp := New(&failOne{badURL: "abc"}, []cmd.CTGroup{
+	ctp := New(&failOne{badURL: "abc"}, []ctconfig.CTGroup{
 		{
 			Name: "a",
-			Logs: []cmd.LogDescription{
+			Logs: []ctconfig.LogDescription{
 				{URI: "abc", Key: "def"},
 				{URI: "ghi", Key: "jkl"},
 			},
 		},
 		{
 			Name: "b",
-			Logs: []cmd.LogDescription{
+			Logs: []ctconfig.LogDescription{
 				{URI: "abc", Key: "def"},
 				{URI: "ghi", Key: "jkl"},
 			},
@@ -180,10 +181,10 @@ func TestGetSCTsMetrics(t *testing.T) {
 func TestGetSCTsFailMetrics(t *testing.T) {
 	// When an entire log group fails, we should increment the "winner of SCT
 	// race" stat for that group under the fictional log "all_failed".
-	ctp := New(&failOne{badURL: "abc"}, []cmd.CTGroup{
+	ctp := New(&failOne{badURL: "abc"}, []ctconfig.CTGroup{
 		{
 			Name: "a",
-			Logs: []cmd.LogDescription{
+			Logs: []ctconfig.LogDescription{
 				{URI: "abc", Key: "def"},
 			},
 		},
@@ -198,10 +199,10 @@ func TestGetSCTsFailMetrics(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	ctp = New(&slowPublisher{}, []cmd.CTGroup{
+	ctp = New(&slowPublisher{}, []ctconfig.CTGroup{
 		{
 			Name: "a",
-			Logs: []cmd.LogDescription{
+			Logs: []ctconfig.LogDescription{
 				{URI: "abc", Key: "def"},
 			},
 		},
@@ -225,11 +226,11 @@ func (ce *countEm) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Reques
 
 func TestStagger(t *testing.T) {
 	countingPub := &countEm{}
-	ctp := New(countingPub, []cmd.CTGroup{
+	ctp := New(countingPub, []ctconfig.CTGroup{
 		{
 			Name:    "a",
 			Stagger: cmd.ConfigDuration{Duration: 500 * time.Millisecond},
-			Logs: []cmd.LogDescription{
+			Logs: []ctconfig.LogDescription{
 				{URI: "abc", Key: "def"},
 				{URI: "ghi", Key: "jkl"},
 			},

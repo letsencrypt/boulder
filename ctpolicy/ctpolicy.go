@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/canceled"
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -20,9 +20,9 @@ import (
 // groupings
 type CTPolicy struct {
 	pub           core.Publisher
-	groups        []cmd.CTGroup
-	informational []cmd.LogDescription
-	finalLogs     []cmd.LogDescription
+	groups        []ctconfig.CTGroup
+	informational []ctconfig.LogDescription
+	finalLogs     []ctconfig.LogDescription
 	log           blog.Logger
 
 	winnerCounter *prometheus.CounterVec
@@ -30,12 +30,12 @@ type CTPolicy struct {
 
 // New creates a new CTPolicy struct
 func New(pub core.Publisher,
-	groups []cmd.CTGroup,
-	informational []cmd.LogDescription,
+	groups []ctconfig.CTGroup,
+	informational []ctconfig.LogDescription,
 	log blog.Logger,
 	stats metrics.Scope,
 ) *CTPolicy {
-	var finalLogs []cmd.LogDescription
+	var finalLogs []ctconfig.LogDescription
 	for _, group := range groups {
 		for _, log := range group.Logs {
 			if log.SubmitFinalCert {
@@ -78,14 +78,14 @@ type result struct {
 // once it has the first SCT it cancels all of the other submissions and returns.
 // It allows up to len(group)-1 of the submissions to fail as we only care about
 // getting a single SCT.
-func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group cmd.CTGroup, expiration time.Time) ([]byte, error) {
+func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group ctconfig.CTGroup, expiration time.Time) ([]byte, error) {
 	results := make(chan result, len(group.Logs))
 	isPrecert := true
 	// Randomize the order in which we send requests to the logs in a group
 	// so we maximize the distribution of logs we get SCTs from.
 	for i, logNum := range rand.Perm(len(group.Logs)) {
 		ld := group.Logs[logNum]
-		go func(i int, ld cmd.LogDescription) {
+		go func(i int, ld ctconfig.LogDescription) {
 			// Each submission waits a bit longer than the previous one, to give the
 			// previous log a chance to reply. If the context is already done by the
 			// time we get here, don't bother submitting. That generally means the
@@ -145,7 +145,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	for i, g := range ctp.groups {
-		go func(i int, g cmd.CTGroup) {
+		go func(i int, g ctconfig.CTGroup) {
 			sct, err := ctp.race(subCtx, cert, g, expiration)
 			// Only one of these will be non-nil
 			if err != nil {
@@ -156,7 +156,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 	}
 	isPrecert := true
 	for _, log := range ctp.informational {
-		go func(l cmd.LogDescription) {
+		go func(l ctconfig.LogDescription) {
 			// We use a context.Background() here instead of subCtx because these
 			// submissions are running in a goroutine and we don't want them to be
 			// cancelled when the caller of CTPolicy.GetSCTs returns and cancels
@@ -197,7 +197,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 func (ctp *CTPolicy) SubmitFinalCert(cert []byte, expiration time.Time) {
 	falseVar := false
 	for _, log := range ctp.finalLogs {
-		go func(l cmd.LogDescription) {
+		go func(l ctconfig.LogDescription) {
 			uri, key, err := l.Info(expiration)
 			if err != nil {
 				ctp.log.Errf("unable to get log info: %s", err)

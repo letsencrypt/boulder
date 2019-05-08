@@ -87,6 +87,8 @@ type RegistrationAuthorityImpl struct {
 
 	ctpolicy        *ctpolicy.CTPolicy
 	ctpolicyResults *prometheus.HistogramVec
+
+	namesPerCert *prometheus.HistogramVec
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
@@ -118,6 +120,19 @@ func NewRegistrationAuthorityImpl(
 	)
 	stats.MustRegister(ctpolicyResults)
 
+	namesPerCert := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "names_per_cert",
+			Help: "Histogram of the number of SANs in requested and issued certificates",
+			// The namesPerCert buckets are chosen based on the current Let's Encrypt
+			// limit of 100 SANs per certificate.
+			Buckets: []float64{1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100},
+		},
+		// Type label value is either "requested" or "issued".
+		[]string{"type"},
+	)
+	stats.MustRegister(namesPerCert)
+
 	ra := &RegistrationAuthorityImpl{
 		stats:                        stats,
 		clk:                          clk,
@@ -143,6 +158,7 @@ func NewRegistrationAuthorityImpl(
 		ctpolicyResults:              ctpolicyResults,
 		purger:                       purger,
 		issuer:                       issuer,
+		namesPerCert:                 namesPerCert,
 	}
 	return ra
 }
@@ -552,33 +568,13 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		}
 
 		if existingAuthz, ok := auths[identifier.Value]; ok {
-			var authzToCheck *core.Authorization
-			if features.Enabled(features.NewAuthorizationSchema) {
-				// GetValidAuthorizations2 returns full authorizations so we
-				// don't need to do a second query to get the challenges
-				authzToCheck = existingAuthz
-			} else {
-				// Use the valid existing authorization's ID to find a fully populated version
-				// The results from `GetValidAuthorizations` are most notably missing
-				// `Challenge` values that the client expects in the result.
-				populatedAuthz, err := ra.SA.GetAuthorization(ctx, existingAuthz.ID)
-				if err != nil {
-					outErr := berrors.InternalServerError(
-						"unable to get existing authorization for auth ID: %s",
-						existingAuthz.ID,
-					)
-					ra.log.Warningf("%s: %s", outErr.Error(), existingAuthz.ID)
-					return core.Authorization{}, outErr
-				}
-				authzToCheck = &populatedAuthz
-			}
-			if ra.authzValidChallengeEnabled(authzToCheck) {
+			if ra.authzValidChallengeEnabled(existingAuthz) {
 				// The existing authorization must not expire within the next 24 hours for
 				// it to be OK for reuse
 				reuseCutOff := ra.clk.Now().Add(time.Hour * 24)
-				if authzToCheck.Expires.After(reuseCutOff) {
+				if existingAuthz.Expires.After(reuseCutOff) {
 					ra.stats.Inc("ReusedValidAuthz", 1)
-					return *authzToCheck, nil
+					return *existingAuthz, nil
 				}
 			}
 		}
@@ -1040,6 +1036,11 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		ra.failOrder(ctx, order, probs.ServerInternal("Error persisting finalized order"))
 		return nil, err
 	}
+
+	// Note how many names were in this finalized certificate order.
+	ra.namesPerCert.With(
+		prometheus.Labels{"type": "issued"},
+	).Observe(float64(len(order.Names)))
 
 	// Update the order status locally since the SA doesn't return the updated
 	// order itself after setting the status
@@ -2086,6 +2087,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			minExpiry = newPendingAuthzExpires
 		}
 	}
+
+	// Note how many names are being requested in this certificate order.
+	ra.namesPerCert.With(
+		prometheus.Labels{"type": "requested"},
+	).Observe(float64(len(order.Names)))
 
 	// Set the order's expiry to the minimum expiry
 	minExpiryTS := minExpiry.UnixNano()

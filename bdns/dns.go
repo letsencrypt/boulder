@@ -148,7 +148,6 @@ type DNSClient interface {
 	LookupTXT(context.Context, string) (txts []string, authorities []string, err error)
 	LookupHost(context.Context, string) ([]net.IP, error)
 	LookupCAA(context.Context, string) ([]*dns.CAA, error)
-	LookupMX(context.Context, string) ([]string, error)
 }
 
 // DNSClientImpl represents a client that talks to an external resolver
@@ -480,26 +479,4 @@ func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) 
 		}
 	}
 	return CAAs, nil
-}
-
-// LookupMX sends a DNS query to find a MX record associated hostname and returns the
-// record target.
-func (dnsClient *DNSClientImpl) LookupMX(ctx context.Context, hostname string) ([]string, error) {
-	dnsType := dns.TypeMX
-	r, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
-	if err != nil {
-		return nil, &DNSError{dnsType, hostname, err, -1}
-	}
-	if r.Rcode != dns.RcodeSuccess {
-		return nil, &DNSError{dnsType, hostname, nil, r.Rcode}
-	}
-
-	var results []string
-	for _, answer := range r.Answer {
-		if mx, ok := answer.(*dns.MX); ok {
-			results = append(results, mx.Mx)
-		}
-	}
-
-	return results, nil
 }
