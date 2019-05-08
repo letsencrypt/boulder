@@ -20,6 +20,7 @@ import (
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -123,8 +124,8 @@ func TestTLSALPN01FailIP(t *testing.T) {
 	va, _ := setup(hs, 0, "", nil)
 
 	port := getPort(hs)
-	_, prob := va.validateTLSALPN01(ctx, core.AcmeIdentifier{
-		Type:  core.IdentifierType("ip"),
+	_, prob := va.validateTLSALPN01(ctx, identifier.ACMEIdentifier{
+		Type:  identifier.IdentifierType("ip"),
 		Value: net.JoinHostPort("127.0.0.1", strconv.Itoa(port)),
 	}, chall)
 	if prob == nil {

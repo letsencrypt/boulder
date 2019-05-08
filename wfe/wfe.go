@@ -26,6 +26,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
@@ -674,7 +675,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling JSON"), err)
 		return
 	}
-	if init.Identifier.Type == core.IdentifierDNS {
+	if init.Identifier.Type == identifier.IdentifierDNS {
 		logEvent.DNSName = init.Identifier.Value
 	}
 
@@ -1021,7 +1022,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 	challenge := authz.Challenges[challengeIndex]
 
-	if authz.Identifier.Type == core.IdentifierDNS {
+	if authz.Identifier.Type == identifier.IdentifierDNS {
 		logEvent.DNSName = authz.Identifier.Value
 	}
 	logEvent.Status = string(authz.Status)
@@ -1355,7 +1356,7 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 		}
 	}
 
-	if authz.Identifier.Type == core.IdentifierDNS {
+	if authz.Identifier.Type == identifier.IdentifierDNS {
 		logEvent.DNSName = authz.Identifier.Value
 	}
 	logEvent.Status = string(authz.Status)

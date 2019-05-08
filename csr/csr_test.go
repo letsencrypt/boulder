@@ -11,7 +11,9 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -23,15 +25,15 @@ var testingPolicy = &goodkey.KeyPolicy{
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, err error) {
+func (pa *mockPA) ChallengesFor(identifier identifier.ACMEIdentifier) (challenges []core.Challenge, err error) {
 	return
 }
 
-func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier) error {
+func (pa *mockPA) WillingToIssue(id identifier.ACMEIdentifier) error {
 	return nil
 }
 
-func (pa *mockPA) WillingToIssueWildcard(id core.AcmeIdentifier) error {
+func (pa *mockPA) WillingToIssueWildcard(id identifier.ACMEIdentifier) error {
 	if id.Value == "bad-name.com" || id.Value == "other-bad-name.com" {
 		return errors.New("")
 	}
@@ -58,9 +60,6 @@ func TestVerifyCSR(t *testing.T) {
 	signedReqWithLongCN := new(x509.CertificateRequest)
 	*signedReqWithLongCN = *signedReq
 	signedReqWithLongCN.Subject.CommonName = strings.Repeat("a", maxCNLength+1)
-	signedReqWithBadNames := new(x509.CertificateRequest)
-	*signedReqWithBadNames = *signedReq
-	signedReqWithBadNames.DNSNames = []string{"bad-name.com", "other-bad-name.com"}
 	signedReqWithEmailAddress := new(x509.CertificateRequest)
 	*signedReqWithEmailAddress = *signedReq
 	signedReqWithEmailAddress.EmailAddresses = []string{"foo@bar.com"}
@@ -125,14 +124,6 @@ func TestVerifyCSR(t *testing.T) {
 			errors.New("CSR contains more than 1 DNS names"),
 		},
 		{
-			signedReqWithBadNames,
-			100,
-			testingPolicy,
-			&mockPA{},
-			0,
-			errors.New("policy forbids issuing for: \"bad-name.com\", \"other-bad-name.com\""),
-		},
-		{
 			signedReqWithEmailAddress,
 			100,
 			testingPolicy,
@@ -154,6 +145,53 @@ func TestVerifyCSR(t *testing.T) {
 		err := VerifyCSR(c.csr, c.maxNames, c.keyPolicy, c.pa, false, c.regID)
 		test.AssertDeepEquals(t, c.expectedError, err)
 	}
+}
+
+func TestVerifyCSRSubErrors(t *testing.T) {
+	private, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "error generating test key")
+
+	signedReqBytes, err := x509.CreateCertificateRequest(
+		rand.Reader,
+		&x509.CertificateRequest{
+			PublicKey:          private.PublicKey,
+			SignatureAlgorithm: x509.SHA256WithRSA},
+		private)
+	test.AssertNotError(t, err, "error generating test CSR")
+
+	signedReq, err := x509.ParseCertificateRequest(signedReqBytes)
+	test.AssertNotError(t, err, "error parsing test CSR")
+
+	var signedReqWithBadNames *x509.CertificateRequest = signedReq
+	signedReqWithBadNames.DNSNames = []string{"bad-name.com", "other-bad-name.com"}
+
+	err = VerifyCSR(
+		signedReqWithBadNames,
+		100,
+		testingPolicy,
+		&mockPA{},
+		false,
+		0)
+
+	test.AssertError(t, err, "Expected err from VerifyCSR for signedReqWithBadNames")
+
+	berr, ok := err.(*berrors.BoulderError)
+	test.AssertEquals(t, ok, true)
+	test.AssertEquals(t, len(berr.SubErrors), 2)
+
+	subErrMap := make(map[string]berrors.SubBoulderError, len(berr.SubErrors))
+
+	for _, subErr := range berr.SubErrors {
+		subErrMap[subErr.Identifier.Value] = subErr
+	}
+
+	subErrA, foundA := subErrMap["bad-name.com"]
+	subErrB, foundB := subErrMap["other-bad-name.com"]
+	test.AssertEquals(t, foundA, true)
+	test.AssertEquals(t, foundB, true)
+
+	test.AssertEquals(t, subErrA.Type, berrors.Malformed)
+	test.AssertEquals(t, subErrB.Type, berrors.Malformed)
 }
 
 func TestNormalizeCSR(t *testing.T) {

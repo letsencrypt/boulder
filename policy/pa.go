@@ -18,6 +18,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/iana"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/reloader"
 	"gopkg.in/yaml.v2"
@@ -240,8 +241,8 @@ var (
 //
 // If WillingToIssue returns an error, it will be of type MalformedRequestError
 // or RejectedIdentifierError
-func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
-	if id.Type != core.IdentifierDNS {
+func (pa *AuthorityImpl) WillingToIssue(id identifier.ACMEIdentifier) error {
+	if id.Type != identifier.IdentifierDNS {
 		return errInvalidIdentifier
 	}
 	domain := id.Value
@@ -342,9 +343,9 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 //
 // If all of the above is true then the base domain (e.g. without the *.) is run
 // through WillingToIssue to catch other illegal things (blocked hosts, etc).
-func (pa *AuthorityImpl) WillingToIssueWildcard(ident core.AcmeIdentifier) error {
+func (pa *AuthorityImpl) WillingToIssueWildcard(ident identifier.ACMEIdentifier) error {
 	// We're only willing to process DNS identifiers
-	if ident.Type != core.IdentifierDNS {
+	if ident.Type != identifier.IdentifierDNS {
 		return errInvalidIdentifier
 	}
 	rawDomain := ident.Value
@@ -388,8 +389,8 @@ func (pa *AuthorityImpl) WillingToIssueWildcard(ident core.AcmeIdentifier) error
 		// NOTE(@cpu): This is pretty hackish! Boulder issue #3323[0] describes
 		// a better follow-up that we should land to replace this code.
 		// [0] https://github.com/letsencrypt/boulder/issues/3323
-		return pa.WillingToIssue(core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+		return pa.WillingToIssue(identifier.ACMEIdentifier{
+			Type:  identifier.IdentifierDNS,
 			Value: "x." + baseDomain,
 		})
 	}
@@ -439,7 +440,7 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 
 // ChallengesFor makes a decision of what challenges are acceptable for
 // the given identifier.
-func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.Challenge, error) {
+func (pa *AuthorityImpl) ChallengesFor(identifier identifier.ACMEIdentifier) ([]core.Challenge, error) {
 	challenges := []core.Challenge{}
 
 	// If we are using the new authorization storage schema we only use a single

@@ -22,6 +22,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/revocation"
@@ -726,8 +727,8 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization(
 	ctx context.Context,
 	req *sapb.GetPendingAuthorizationRequest,
 ) (*core.Authorization, error) {
-	identifierJSON, err := json.Marshal(core.AcmeIdentifier{
-		Type:  core.IdentifierType(*req.IdentifierType),
+	identifierJSON, err := json.Marshal(identifier.ACMEIdentifier{
+		Type:  identifier.IdentifierType(*req.IdentifierType),
 		Value: *req.IdentifierValue,
 	})
 	if err != nil {
@@ -814,7 +815,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 
 // RevokeAuthorizationsByDomain invalidates all pending or finalized authorizations
 // for a specific domain
-func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context, ident core.AcmeIdentifier) (int64, int64, error) {
+func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context, ident identifier.ACMEIdentifier) (int64, int64, error) {
 	identifierJSON, err := json.Marshal(ident)
 	if err != nil {
 		return 0, 0, err
@@ -886,8 +887,8 @@ func (ssa *SQLStorageAuthority) revokeAuthorizations2(ctx context.Context, ids [
 func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*corepb.Empty, error) {
 	finalRevoked, pendingRevoked, err := ssa.RevokeAuthorizationsByDomain(
 		ctx,
-		core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+		identifier.ACMEIdentifier{
+			Type:  identifier.IdentifierDNS,
 			Value: *req.Domain,
 		})
 	if err != nil {
@@ -1068,8 +1069,8 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations(
 	ctx context.Context,
 	req *sapb.CountInvalidAuthorizationsRequest,
 ) (count *sapb.Count, err error) {
-	identifier := core.AcmeIdentifier{
-		Type:  core.IdentifierDNS,
+	identifier := identifier.ACMEIdentifier{
+		Type:  identifier.IdentifierDNS,
 		Value: *req.Hostname,
 	}
 
@@ -1975,7 +1976,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations(
 	byName := make(map[string]*core.Authorization)
 	for _, auth := range auths {
 		// We only expect to get back DNS identifiers
-		if auth.Identifier.Type != core.IdentifierDNS {
+		if auth.Identifier.Type != identifier.IdentifierDNS {
 			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
 		}
 		existing, present := byName[auth.Identifier.Value]
@@ -2049,7 +2050,7 @@ func (ssa *SQLStorageAuthority) getAuthorizations(
 	params := make([]interface{}, len(names))
 	qmarks := make([]string, len(names))
 	for i, name := range names {
-		id := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
+		id := identifier.ACMEIdentifier{Type: identifier.IdentifierDNS, Value: name}
 		idJSON, err := json.Marshal(id)
 		if err != nil {
 			return nil, err
@@ -2090,7 +2091,7 @@ func (ssa *SQLStorageAuthority) getAuthorizations(
 			continue
 		}
 
-		if auth.Identifier.Type != core.IdentifierDNS {
+		if auth.Identifier.Type != identifier.IdentifierDNS {
 			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
 		}
 		existing, present := byName[auth.Identifier.Value]
@@ -2565,7 +2566,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 
 	byName := make(map[string]authz2Model)
 	for _, am := range ams {
-		if uintToIdentifierType[am.IdentifierType] != string(core.IdentifierDNS) {
+		if uintToIdentifierType[am.IdentifierType] != string(identifier.IdentifierDNS) {
 			return nil, fmt.Errorf("unknown identifier type: %q on authz id %d", am.IdentifierType, am.ID)
 		}
 		existing, present := byName[am.IdentifierValue]
@@ -2667,7 +2668,7 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 	authzMap := make(map[string]authz2Model, len(authzModels))
 	for _, am := range authzModels {
 		// Only allow DNS identifiers
-		if uintToIdentifierType[am.IdentifierType] != string(core.IdentifierDNS) {
+		if uintToIdentifierType[am.IdentifierType] != string(identifier.IdentifierDNS) {
 			continue
 		}
 		// If there is an existing authorization in the map only replace it with one

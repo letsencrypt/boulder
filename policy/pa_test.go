@@ -9,6 +9,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 	"gopkg.in/yaml.v2"
@@ -170,55 +171,55 @@ func TestWillingToIssue(t *testing.T) {
 		test.AssertNotError(t, err, "Couldn't load rules")
 
 		// Test for invalid identifier type
-		identifier := core.AcmeIdentifier{Type: "ip", Value: "example.com"}
-		err = pa.WillingToIssue(identifier)
+		ident := identifier.ACMEIdentifier{Type: "ip", Value: "example.com"}
+		err = pa.WillingToIssue(ident)
 		if err != errInvalidIdentifier {
-			t.Error("Identifier was not correctly forbidden: ", identifier)
+			t.Error("Identifier was not correctly forbidden: ", ident)
 		}
 
 		// Test syntax errors
 		for _, tc := range testCases {
-			identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: tc.domain}
-			err := pa.WillingToIssue(identifier)
+			ident := identifier.ACMEIdentifier{Type: identifier.IdentifierDNS, Value: tc.domain}
+			err := pa.WillingToIssue(ident)
 			if err != tc.err {
 				t.Errorf("WillingToIssue(%q) = %q, expected %q", tc.domain, err, tc.err)
 			}
 		}
 
 		// Invalid encoding
-		err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "www.xn--m.com"})
+		err = pa.WillingToIssue(identifier.ACMEIdentifier{Type: identifier.IdentifierDNS, Value: "www.xn--m.com"})
 		test.AssertError(t, err, "WillingToIssue didn't fail on a malformed IDN")
 		// Valid encoding
-		err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "www.xn--mnich-kva.com"})
+		err = pa.WillingToIssue(identifier.ACMEIdentifier{Type: identifier.IdentifierDNS, Value: "www.xn--mnich-kva.com"})
 		test.AssertNotError(t, err, "WillingToIssue failed on a properly formed IDN")
 		// IDN TLD
-		err = pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "xn--example--3bhk5a.xn--p1ai"})
+		err = pa.WillingToIssue(identifier.ACMEIdentifier{Type: identifier.IdentifierDNS, Value: "xn--example--3bhk5a.xn--p1ai"})
 		test.AssertNotError(t, err, "WillingToIssue failed on a properly formed domain with IDN TLD")
 		features.Reset()
 
 		// Test domains that are equal to public suffixes
 		for _, domain := range shouldBeTLDError {
-			identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-			err := pa.WillingToIssue(identifier)
+			ident := identifier.ACMEIdentifier{Type: identifier.IdentifierDNS, Value: domain}
+			err := pa.WillingToIssue(ident)
 			if err != errICANNTLD {
-				t.Error("Identifier was not correctly forbidden: ", identifier, err)
+				t.Error("Identifier was not correctly forbidden: ", ident, err)
 			}
 		}
 
 		// Test expected blocked domains
 		for _, domain := range shouldBeBlocked {
-			identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-			err := pa.WillingToIssue(identifier)
+			ident := identifier.ACMEIdentifier{Type: identifier.IdentifierDNS, Value: domain}
+			err := pa.WillingToIssue(ident)
 			if err != errPolicyForbidden {
-				t.Error("Identifier was not correctly forbidden: ", identifier, err)
+				t.Error("Identifier was not correctly forbidden: ", ident, err)
 			}
 		}
 
 		// Test acceptance of good names
 		for _, domain := range shouldBeAccepted {
-			identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-			if err := pa.WillingToIssue(identifier); err != nil {
-				t.Error("Identifier was incorrectly forbidden: ", identifier, err)
+			ident := identifier.ACMEIdentifier{Type: identifier.IdentifierDNS, Value: domain}
+			if err := pa.WillingToIssue(ident); err != nil {
+				t.Error("Identifier was incorrectly forbidden: ", ident, err)
 			}
 		}
 	}
@@ -254,21 +255,21 @@ func TestWillingToIssueWildcard(t *testing.T) {
 	err = pa.SetHostnamePolicyFile(f.Name())
 	test.AssertNotError(t, err, "Couldn't load policy contents from file")
 
-	makeDNSIdent := func(domain string) core.AcmeIdentifier {
-		return core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+	makeDNSIdent := func(domain string) identifier.ACMEIdentifier {
+		return identifier.ACMEIdentifier{
+			Type:  identifier.IdentifierDNS,
 			Value: domain,
 		}
 	}
 
 	testCases := []struct {
 		Name        string
-		Ident       core.AcmeIdentifier
+		Ident       identifier.ACMEIdentifier
 		ExpectedErr error
 	}{
 		{
 			Name:        "Non-DNS identifier",
-			Ident:       core.AcmeIdentifier{Type: "nickname", Value: "cpu"},
+			Ident:       identifier.ACMEIdentifier{Type: "nickname", Value: "cpu"},
 			ExpectedErr: errInvalidIdentifier,
 		},
 		{
@@ -341,7 +342,7 @@ var accountKeyJSON = `{
 func TestChallengesFor(t *testing.T) {
 	pa := paImpl(t)
 
-	challenges, err := pa.ChallengesFor(core.AcmeIdentifier{})
+	challenges, err := pa.ChallengesFor(identifier.ACMEIdentifier{})
 	test.AssertNotError(t, err, "ChallengesFor failed")
 
 	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
@@ -359,8 +360,8 @@ func TestChallengesFor(t *testing.T) {
 
 func TestChallengesForWildcard(t *testing.T) {
 	// wildcardIdent is an identifier for a wildcard domain name
-	wildcardIdent := core.AcmeIdentifier{
-		Type:  core.IdentifierDNS,
+	wildcardIdent := identifier.ACMEIdentifier{
+		Type:  identifier.IdentifierDNS,
 		Value: "*.zombo.com",
 	}
 

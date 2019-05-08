@@ -11,6 +11,7 @@ import (
 
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/identifier"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
@@ -106,9 +107,9 @@ type CertificateAuthority interface {
 
 // PolicyAuthority defines the public interface for the Boulder PA
 type PolicyAuthority interface {
-	WillingToIssue(domain AcmeIdentifier) error
-	WillingToIssueWildcard(domain AcmeIdentifier) error
-	ChallengesFor(domain AcmeIdentifier) ([]Challenge, error)
+	WillingToIssue(domain identifier.ACMEIdentifier) error
+	WillingToIssueWildcard(domain identifier.ACMEIdentifier) error
+	ChallengesFor(domain identifier.ACMEIdentifier) ([]Challenge, error)
 	ChallengeTypeEnabled(t string) bool
 }
 
@@ -153,7 +154,7 @@ type StorageAdder interface {
 	FinalizeAuthorization(ctx context.Context, authz Authorization) error
 	MarkCertificateRevoked(ctx context.Context, serial string, reasonCode revocation.Reason) error
 	AddCertificate(ctx context.Context, der []byte, regID int64, ocsp []byte, issued *time.Time) (digest string, err error)
-	RevokeAuthorizationsByDomain(ctx context.Context, domain AcmeIdentifier) (finalized, pending int64, err error)
+	RevokeAuthorizationsByDomain(ctx context.Context, domain identifier.ACMEIdentifier) (finalized, pending int64, err error)
 	DeactivateRegistration(ctx context.Context, id int64) error
 	DeactivateAuthorization(ctx context.Context, id string) error
 	NewOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error)

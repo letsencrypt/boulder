@@ -24,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/iana"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
@@ -1746,7 +1747,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	// Validate that our policy allows issuing for each of the names in the order
 	for _, name := range order.Names {
-		id := core.AcmeIdentifier{Value: name, Type: core.IdentifierDNS}
+		id := identifier.ACMEIdentifier{Value: name, Type: identifier.IdentifierDNS}
 		if err := ra.PA.WillingToIssueWildcard(id); err != nil {
 			return nil, err
 		}
@@ -1874,8 +1875,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		if err := ra.checkInvalidAuthorizationLimit(ctx, *order.RegistrationID, name); err != nil {
 			return nil, err
 		}
-		pb, err := ra.createPendingAuthz(ctx, *order.RegistrationID, core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+		pb, err := ra.createPendingAuthz(ctx, *order.RegistrationID, identifier.ACMEIdentifier{
+			Type:  identifier.IdentifierDNS,
 			Value: name,
 		}, v2)
 		if err != nil {
@@ -1954,7 +1955,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 // createPendingAuthz checks that a name is allowed for issuance and creates the
 // necessary challenges for it and puts this and all of the relevant information
 // into a corepb.Authorization for transmission to the SA to be stored
-func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg int64, identifier core.AcmeIdentifier, v2 bool) (*corepb.Authorization, error) {
+func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg int64, identifier identifier.ACMEIdentifier, v2 bool) (*corepb.Authorization, error) {
 	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second).UnixNano()
 	status := string(core.StatusPending)
 	authz := &corepb.Authorization{

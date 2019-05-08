@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 )
 
@@ -54,7 +55,7 @@ func certNames(cert *x509.Certificate) []string {
 }
 
 func (va *ValidationAuthorityImpl) tryGetTLSCerts(ctx context.Context,
-	identifier core.AcmeIdentifier, challenge core.Challenge,
+	identifier identifier.ACMEIdentifier, challenge core.Challenge,
 	tlsConfig *tls.Config) ([]*x509.Certificate, *tls.ConnectionState, []core.ValidationRecord, *probs.ProblemDetails) {
 
 	allAddrs, problem := va.getAddrs(ctx, identifier.Value)
@@ -118,7 +119,7 @@ func (va *ValidationAuthorityImpl) tryGetTLSCerts(ctx context.Context,
 func (va *ValidationAuthorityImpl) getTLSCerts(
 	ctx context.Context,
 	hostPort string,
-	identifier core.AcmeIdentifier,
+	identifier identifier.ACMEIdentifier,
 	challenge core.Challenge,
 	config *tls.Config,
 ) ([]*x509.Certificate, *tls.ConnectionState, *probs.ProblemDetails) {
@@ -173,15 +174,15 @@ func (va *ValidationAuthorityImpl) tlsDial(ctx context.Context, hostPort string,
 	return conn, nil
 }
 
-func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	if identifier.Type != "dns" {
-		va.log.Info(fmt.Sprintf("Identifier type for TLS-ALPN-01 was not DNS: %s", identifier))
+func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+	if ident.Type != identifier.IdentifierDNS {
+		va.log.Info(fmt.Sprintf("Identifier type for TLS-ALPN-01 was not DNS: %s", ident))
 		return nil, probs.Malformed("Identifier type for TLS-ALPN-01 was not DNS")
 	}
 
-	certs, cs, validationRecords, problem := va.tryGetTLSCerts(ctx, identifier, challenge, &tls.Config{
+	certs, cs, validationRecords, problem := va.tryGetTLSCerts(ctx, ident, challenge, &tls.Config{
 		NextProtos: []string{ACMETLS1Protocol},
-		ServerName: identifier.Value,
+		ServerName: ident.Value,
 	})
 	if problem != nil {
 		return validationRecords, problem
@@ -199,14 +200,14 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 	leafCert := certs[0]
 
 	// Verify SNI - certificate returned must be issued only for the domain we are verifying.
-	if len(leafCert.DNSNames) != 1 || !strings.EqualFold(leafCert.DNSNames[0], identifier.Value) {
+	if len(leafCert.DNSNames) != 1 || !strings.EqualFold(leafCert.DNSNames[0], ident.Value) {
 		hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
 		names := certNames(leafCert)
 		errText := fmt.Sprintf(
 			"Incorrect validation certificate for %s challenge. "+
 				"Requested %s from %s. Received %d certificate(s), "+
 				"first certificate had names %q",
-			challenge.Type, identifier.Value, hostPort, len(certs), strings.Join(names, ", "))
+			challenge.Type, ident.Value, hostPort, len(certs), strings.Join(names, ", "))
 		return validationRecords, probs.Unauthorized(errText)
 	}
 

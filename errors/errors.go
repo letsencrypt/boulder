@@ -1,6 +1,10 @@
 package errors
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/letsencrypt/boulder/identifier"
+)
 
 // ErrorType provides a coarse category for BoulderErrors
 type ErrorType int
@@ -24,16 +28,28 @@ const (
 
 // BoulderError represents internal Boulder errors
 type BoulderError struct {
-	Type   ErrorType
-	Detail string
+	Type      ErrorType
+	Detail    string
+	SubErrors []SubBoulderError
 }
 
-func (be *BoulderError) Error() string {
+// TODO(@cpu): SubBoulderError type docstring
+type SubBoulderError struct {
+	BoulderError
+	Identifier identifier.ACMEIdentifier
+}
+
+func (be BoulderError) Error() string {
 	return be.Detail
 }
 
+func (be *BoulderError) WithSubErrors(subErrs []SubBoulderError) *BoulderError {
+	be.SubErrors = append(be.SubErrors, subErrs...)
+	return be
+}
+
 // New is a convenience function for creating a new BoulderError
-func New(errType ErrorType, msg string, args ...interface{}) error {
+func New(errType ErrorType, msg string, args ...interface{}) *BoulderError {
 	return &BoulderError{
 		Type:   errType,
 		Detail: fmt.Sprintf(msg, args...),
@@ -49,57 +65,57 @@ func Is(err error, errType ErrorType) bool {
 	return bErr.Type == errType
 }
 
-func InternalServerError(msg string, args ...interface{}) error {
+func InternalServerError(msg string, args ...interface{}) *BoulderError {
 	return New(InternalServer, msg, args...)
 }
 
-func MalformedError(msg string, args ...interface{}) error {
+func MalformedError(msg string, args ...interface{}) *BoulderError {
 	return New(Malformed, msg, args...)
 }
 
-func UnauthorizedError(msg string, args ...interface{}) error {
+func UnauthorizedError(msg string, args ...interface{}) *BoulderError {
 	return New(Unauthorized, msg, args...)
 }
 
-func NotFoundError(msg string, args ...interface{}) error {
+func NotFoundError(msg string, args ...interface{}) *BoulderError {
 	return New(NotFound, msg, args...)
 }
 
-func RateLimitError(msg string, args ...interface{}) error {
+func RateLimitError(msg string, args ...interface{}) *BoulderError {
 	return &BoulderError{
 		Type:   RateLimit,
 		Detail: fmt.Sprintf(msg+": see https://letsencrypt.org/docs/rate-limits/", args...),
 	}
 }
 
-func RejectedIdentifierError(msg string, args ...interface{}) error {
+func RejectedIdentifierError(msg string, args ...interface{}) *BoulderError {
 	return New(RejectedIdentifier, msg, args...)
 }
 
-func InvalidEmailError(msg string, args ...interface{}) error {
+func InvalidEmailError(msg string, args ...interface{}) *BoulderError {
 	return New(InvalidEmail, msg, args...)
 }
 
-func ConnectionFailureError(msg string, args ...interface{}) error {
+func ConnectionFailureError(msg string, args ...interface{}) *BoulderError {
 	return New(ConnectionFailure, msg, args...)
 }
 
-func WrongAuthorizationStateError(msg string, args ...interface{}) error {
+func WrongAuthorizationStateError(msg string, args ...interface{}) *BoulderError {
 	return New(WrongAuthorizationState, msg, args...)
 }
 
-func CAAError(msg string, args ...interface{}) error {
+func CAAError(msg string, args ...interface{}) *BoulderError {
 	return New(CAA, msg, args...)
 }
 
-func MissingSCTsError(msg string, args ...interface{}) error {
+func MissingSCTsError(msg string, args ...interface{}) *BoulderError {
 	return New(MissingSCTs, msg, args...)
 }
 
-func DuplicateError(msg string, args ...interface{}) error {
+func DuplicateError(msg string, args ...interface{}) *BoulderError {
 	return New(Duplicate, msg, args...)
 }
 
-func OrderNotReadyError(msg string, args ...interface{}) error {
+func OrderNotReadyError(msg string, args ...interface{}) *BoulderError {
 	return New(OrderNotReady, msg, args...)
 }

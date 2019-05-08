@@ -6,37 +6,56 @@ import (
 )
 
 func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs.ProblemDetails {
+	var outProb *probs.ProblemDetails
+
 	switch err.Type {
 	case berrors.Malformed:
-		return probs.Malformed("%s :: %s", msg, err)
+		outProb = probs.Malformed("%s :: %s", msg, err)
 	case berrors.Unauthorized:
-		return probs.Unauthorized("%s :: %s", msg, err)
+		outProb = probs.Unauthorized("%s :: %s", msg, err)
 	case berrors.NotFound:
-		return probs.NotFound("%s :: %s", msg, err)
+		outProb = probs.NotFound("%s :: %s", msg, err)
 	case berrors.RateLimit:
-		return probs.RateLimited("%s :: %s", msg, err)
+		outProb = probs.RateLimited("%s :: %s", msg, err)
 	case berrors.InternalServer:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.
-		return probs.ServerInternal(msg)
+		outProb = probs.ServerInternal(msg)
 	case berrors.RejectedIdentifier:
-		return probs.RejectedIdentifier("%s :: %s", msg, err)
+		outProb = probs.RejectedIdentifier("%s :: %s", msg, err)
 	case berrors.InvalidEmail:
-		return probs.InvalidEmail("%s :: %s", msg, err)
+		outProb = probs.InvalidEmail("%s :: %s", msg, err)
 	case berrors.WrongAuthorizationState:
-		return probs.Malformed("%s :: %s", msg, err)
+		outProb = probs.Malformed("%s :: %s", msg, err)
 	case berrors.CAA:
-		return probs.CAA("%s :: %s", msg, err)
+		outProb = probs.CAA("%s :: %s", msg, err)
 	case berrors.MissingSCTs:
 		// MissingSCTs are an internal server error, but with a specific error
 		// message related to the SCT problem
-		return probs.ServerInternal("%s :: %s", msg, "Unable to meet CA SCT embedding requirements")
+		outProb = probs.ServerInternal("%s :: %s", msg, "Unable to meet CA SCT embedding requirements")
 	case berrors.OrderNotReady:
-		return probs.OrderNotReady("%s :: %s", msg, err)
+		outProb = probs.OrderNotReady("%s :: %s", msg, err)
 	default:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.
-		return probs.ServerInternal(msg)
+		outProb = probs.ServerInternal(msg)
+	}
+
+	if len(err.SubErrors) > 0 {
+		var subProbs []probs.SubProblemDetails
+		for _, subErr := range err.SubErrors {
+			subProbs = append(subProbs, subProblemDetailsForSubError(subErr, msg))
+		}
+		outProb.WithSubProblems(subProbs)
+	}
+
+	return outProb
+}
+
+func subProblemDetailsForSubError(subErr berrors.SubBoulderError, msg string) probs.SubProblemDetails {
+	return probs.SubProblemDetails{
+		Identifier:     subErr.Identifier,
+		ProblemDetails: *problemDetailsForBoulderError(&subErr.BoulderError, msg),
 	}
 }
 

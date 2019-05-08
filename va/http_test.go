@@ -19,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 
@@ -1035,14 +1036,14 @@ func TestHTTP(t *testing.T) {
 	test.AssertEquals(t, len(matchedValidRedirect), 1)
 	test.AssertEquals(t, len(matchedMovedRedirect), 1)
 
-	ipIdentifier := core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}
+	ipIdentifier := identifier.ACMEIdentifier{Type: identifier.IdentifierType("ip"), Value: "127.0.0.1"}
 	_, prob = va.validateHTTP01(ctx, ipIdentifier, chall)
 	if prob == nil {
 		t.Fatalf("IdentifierType IP shouldn't have worked.")
 	}
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 
-	_, prob = va.validateHTTP01(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
+	_, prob = va.validateHTTP01(ctx, identifier.ACMEIdentifier{Type: identifier.IdentifierDNS, Value: "always.invalid"}, chall)
 	if prob == nil {
 		t.Fatalf("Domain name is invalid.")
 	}

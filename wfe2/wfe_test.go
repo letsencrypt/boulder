@@ -31,6 +31,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
@@ -280,15 +281,15 @@ func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, req *rap
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, err error) {
+func (pa *mockPA) ChallengesFor(identifier identifier.ACMEIdentifier) (challenges []core.Challenge, err error) {
 	return
 }
 
-func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier) error {
+func (pa *mockPA) WillingToIssue(id identifier.ACMEIdentifier) error {
 	return nil
 }
 
-func (pa *mockPA) WillingToIssueWildcard(id core.AcmeIdentifier) error {
+func (pa *mockPA) WillingToIssueWildcard(id identifier.ACMEIdentifier) error {
 	return nil
 }
 
@@ -2880,7 +2881,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 		ID:             "12345",
 		Status:         core.StatusPending,
 		RegistrationID: 1,
-		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "*.example.com"},
+		Identifier:     identifier.ACMEIdentifier{Type: "dns", Value: "*.example.com"},
 		Challenges: []core.Challenge{
 			{
 				ID:   12345,

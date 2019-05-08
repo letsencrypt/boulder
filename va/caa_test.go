@@ -13,6 +13,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 
@@ -184,7 +185,7 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 func TestCAATimeout(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil)
 	va.dnsClient = caaMockDNS{}
-	err := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"}, nil)
+	err := va.checkCAA(ctx, identifier.ACMEIdentifier{Type: identifier.IdentifierDNS, Value: "caa-timeout.com"}, nil)
 	if err.Type != probs.DNSProblem {
 		t.Errorf("Expected timeout error type %s, got %s", probs.DNSProblem, err.Type)
 	}
@@ -404,7 +405,7 @@ func TestCAAChecking(t *testing.T) {
 		mockLog := va.log.(*blog.Mock)
 		mockLog.Clear()
 		t.Run(caaTest.Name, func(t *testing.T) {
-			ident := core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain}
+			ident := identifier.ACMEIdentifier{Type: "dns", Value: caaTest.Domain}
 			present, valid, _, err := va.checkCAARecords(ctx, ident, params)
 			if err != nil {
 				t.Errorf("checkCAARecords error for %s: %s", caaTest.Domain, err)
@@ -422,14 +423,14 @@ func TestCAAChecking(t *testing.T) {
 	features.Reset()
 
 	// present-dns-only.com should now be valid even with http-01
-	ident := core.AcmeIdentifier{Type: "dns", Value: "present-dns-only.com"}
+	ident := identifier.ACMEIdentifier{Type: "dns", Value: "present-dns-only.com"}
 	present, valid, _, err := va.checkCAARecords(ctx, ident, params)
 	test.AssertNotError(t, err, "present-dns-only.com")
 	test.Assert(t, present, "Present should be true")
 	test.Assert(t, valid, "Valid should be true")
 
 	// present-incorrect-accounturi.com should now be also be valid
-	ident = core.AcmeIdentifier{Type: "dns", Value: "present-incorrect-accounturi.com"}
+	ident = identifier.ACMEIdentifier{Type: "dns", Value: "present-incorrect-accounturi.com"}
 	present, valid, _, err = va.checkCAARecords(ctx, ident, params)
 	test.AssertNotError(t, err, "present-incorrect-accounturi.com")
 	test.Assert(t, present, "Present should be true")
@@ -541,7 +542,7 @@ func TestCAALogging(t *testing.T) {
 				accountURIID:     tc.AccountURIID,
 				validationMethod: tc.ChallengeType,
 			}
-			_ = va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: tc.Domain}, params)
+			_ = va.checkCAA(ctx, identifier.ACMEIdentifier{Type: identifier.IdentifierDNS, Value: tc.Domain}, params)
 
 			caaLogLines := mockLog.GetAllMatching(`Checked CAA records for`)
 			if len(caaLogLines) != 1 {

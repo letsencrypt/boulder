@@ -8,7 +8,9 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/identifier"
 )
 
 // maxCNLength is the maximum length allowed for the common name as specified in RFC 5280
@@ -73,19 +75,28 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 	if len(csr.DNSNames) > maxNames {
 		return fmt.Errorf("CSR contains more than %d DNS names", maxNames)
 	}
-	badNames := []string{}
+	var subErrors []berrors.SubBoulderError
 	for _, name := range csr.DNSNames {
-		ident := core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+		ident := identifier.ACMEIdentifier{
+			Type:  identifier.IdentifierDNS,
 			Value: name,
 		}
-		var err error
-		if err = pa.WillingToIssueWildcard(ident); err != nil {
-			badNames = append(badNames, fmt.Sprintf("%q", name))
+		if err := pa.WillingToIssueWildcard(ident); err != nil {
+			if bErr, ok := err.(berrors.BoulderError); ok {
+				subErrors = append(subErrors, berrors.SubBoulderError{
+					Identifier:   ident,
+					BoulderError: bErr})
+			} else {
+				subErrors = append(subErrors, berrors.SubBoulderError{
+					Identifier:   ident,
+					BoulderError: *berrors.MalformedError(err.Error())})
+			}
 		}
 	}
-	if len(badNames) > 0 {
-		return fmt.Errorf("policy forbids issuing for: %s", strings.Join(badNames, ", "))
+	if len(subErrors) > 0 {
+		return berrors.UnauthorizedError(
+			"policy forbids issuing for one or more identifiers. See SubProblems",
+		).WithSubErrors(subErrors)
 	}
 	return nil
 }

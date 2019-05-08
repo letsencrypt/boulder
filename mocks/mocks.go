@@ -18,6 +18,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/revocation"
@@ -241,7 +242,7 @@ func (sa *StorageAuthority) GetAuthorization(_ context.Context, id string) (core
 		ID:             "valid",
 		Status:         core.StatusValid,
 		RegistrationID: 1,
-		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-an-example.com"},
+		Identifier:     identifier.ACMEIdentifier{Type: "dns", Value: "not-an-example.com"},
 		Challenges: []core.Challenge{
 			{
 				ID:    23,
@@ -282,7 +283,7 @@ func (sa *StorageAuthority) GetAuthorization(_ context.Context, id string) (core
 }
 
 // RevokeAuthorizationsByDomain is a mock
-func (sa *StorageAuthority) RevokeAuthorizationsByDomain(_ context.Context, ident core.AcmeIdentifier) (int64, int64, error) {
+func (sa *StorageAuthority) RevokeAuthorizationsByDomain(_ context.Context, ident identifier.ACMEIdentifier) (int64, int64, error) {
 	return 0, 0, nil
 }
 
@@ -389,7 +390,7 @@ func (sa *StorageAuthority) GetValidAuthorizations(_ context.Context, regID int6
 					Status:         core.StatusValid,
 					RegistrationID: 1,
 					Expires:        &exp,
-					Identifier: core.AcmeIdentifier{
+					Identifier: identifier.ACMEIdentifier{
 						Type:  "dns",
 						Value: name,
 					},
@@ -605,7 +606,7 @@ func (sa *StorageAuthority) GetAuthorization2(ctx context.Context, id *sapb.Auth
 	authz := core.Authorization{
 		Status:         core.StatusValid,
 		RegistrationID: 1,
-		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-an-example.com"},
+		Identifier:     identifier.ACMEIdentifier{Type: "dns", Value: "not-an-example.com"},
 		V2:             true,
 		Challenges: []core.Challenge{
 			{
@@ -713,7 +714,7 @@ func (sa *SAWithFailedChallenges) GetAuthorization(_ context.Context, id string)
 		ID:             "valid",
 		Status:         core.StatusValid,
 		RegistrationID: 1,
-		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-an-example.com"},
+		Identifier:     identifier.ACMEIdentifier{Type: "dns", Value: "not-an-example.com"},
 		Challenges: []core.Challenge{
 			{
 				ID:   23,

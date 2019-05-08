@@ -3,6 +3,8 @@ package probs
 import (
 	"fmt"
 	"net/http"
+
+	"github.com/letsencrypt/boulder/identifier"
 )
 
 // Error types that can be used in ACME payloads
@@ -40,10 +42,25 @@ type ProblemDetails struct {
 	// HTTPStatus is the HTTP status code the ProblemDetails should probably be sent
 	// as.
 	HTTPStatus int `json:"status,omitempty"`
+	// SubProblems are optional additional per-identifier problems See
+	// RFC 8555 Section 6.7.1: https://tools.ietf.org/html/rfc8555#section-6.7.1
+	SubProblems []SubProblemDetails `json:"subproblems,omitempty"`
+}
+
+// TODO(@cpu): SubProblemDetails type doc string
+type SubProblemDetails struct {
+	ProblemDetails
+	Identifier identifier.ACMEIdentifier
 }
 
 func (pd *ProblemDetails) Error() string {
 	return fmt.Sprintf("%s :: %s", pd.Type, pd.Detail)
+}
+
+// TODO(@cpu): WithSubProblems function doc string
+func (pd *ProblemDetails) WithSubProblems(subProbs []SubProblemDetails) *ProblemDetails {
+	pd.SubProblems = append(pd.SubProblems, subProbs...)
+	return pd
 }
 
 // statusTooManyRequests is the HTTP status code meant for rate limiting

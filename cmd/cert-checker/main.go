@@ -23,6 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
@@ -267,7 +268,7 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 		}
 		// Check that the PA is still willing to issue for each name in DNSNames + CommonName
 		for _, name := range append(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
-			id := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
+			id := identifier.ACMEIdentifier{Type: identifier.IdentifierDNS, Value: name}
 			// TODO(https://github.com/letsencrypt/boulder/issues/3371): Distinguish
 			// between certificates issued by v1 and v2 API.
 			if err = c.pa.WillingToIssueWildcard(id); err != nil {

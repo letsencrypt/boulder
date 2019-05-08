@@ -16,6 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/iana"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 )
 
@@ -613,15 +614,15 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	return body, records, nil
 }
 
-func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	if identifier.Type != core.IdentifierDNS {
-		va.log.Infof("Got non-DNS identifier for HTTP validation: %s", identifier)
+func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+	if ident.Type != identifier.IdentifierDNS {
+		va.log.Infof("Got non-DNS identifier for HTTP validation: %s", ident)
 		return nil, probs.Malformed("Identifier type for HTTP validation was not DNS")
 	}
 
 	// Perform the fetch
 	path := fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Token)
-	body, validationRecords, prob := va.fetchHTTP(ctx, identifier.Value, "/"+path)
+	body, validationRecords, prob := va.fetchHTTP(ctx, ident.Value, "/"+path)
 	if prob != nil {
 		return validationRecords, prob
 	}
@@ -631,7 +632,7 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 	if payload != challenge.ProvidedKeyAuthorization {
 		problem := probs.Unauthorized("The key authorization file from the server did not match this challenge [%v] != [%v]",
 			challenge.ProvidedKeyAuthorization, payload)
-		va.log.Infof("%s for %s", problem.Detail, identifier)
+		va.log.Infof("%s for %s", problem.Detail, ident)
 		return validationRecords, problem
 	}
 

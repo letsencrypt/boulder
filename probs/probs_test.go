@@ -5,6 +5,7 @@ import (
 
 	"net/http"
 
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -77,5 +78,39 @@ func TestProblemDetailsConvenience(t *testing.T) {
 		if c.pb.Detail != c.detail {
 			t.Errorf("Incorrect detail message. Expected %s got %s", c.detail, c.pb.Detail)
 		}
+
+		if subProbLen := len(c.pb.SubProblems); subProbLen != 0 {
+			t.Errorf("Incorrect SubProblems. Expected 0, found %d", subProbLen)
+		}
 	}
+}
+
+// TestWithSubProblems tests that a top level problem can be updated with
+// subproblems.
+func TestWithSubProblems(t *testing.T) {
+	topProb := RateLimited("don't you think you have enough certificates already?")
+
+	initialSubProbs := []SubProblemDetails{
+		SubProblemDetails{
+			Identifier:     identifier.DNSIdentifier("example.com"),
+			ProblemDetails: *RateLimited("everyone uses this example domain"),
+		},
+		SubProblemDetails{
+			Identifier:     identifier.DNSIdentifier("what about example.com"),
+			ProblemDetails: *Malformed("try a real identifier value next time"),
+		},
+	}
+
+	moreSubProbs := []SubProblemDetails{
+		SubProblemDetails{
+			Identifier:     identifier.DNSIdentifier("letsencrypt.org"),
+			ProblemDetails: *Unauthorized("nope"),
+		},
+	}
+
+	outResult := topProb.WithSubProblems(initialSubProbs)
+	test.AssertEquals(t, topProb, outResult)
+	test.AssertEquals(t, len(topProb.SubProblems), len(initialSubProbs))
+	_ = topProb.WithSubProblems(moreSubProbs)
+	test.AssertEquals(t, len(topProb.SubProblems), len(initialSubProbs)+len(moreSubProbs))
 }
