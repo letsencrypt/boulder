@@ -18,6 +18,7 @@ const (
 	TLSSNIRevalidation
 	AllowRenewalFirstRL
 	SetIssuedNamesRenewalBit
+	FasterRateLimit
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -46,9 +47,6 @@ const (
 	// RemoveWFE2AccountID will remove the account ID from account objects returned
 	// from the new-account endpoint if enabled.
 	RemoveWFE2AccountID
-	// FasterRateLimit enables use of a separate table for counting the
-	// Certificates Per Name rate limit.
-	FasterRateLimit
 	// CheckRenewalFirst will check whether an issuance is a renewal before
 	// checking the "certificates per name" rate limit.
 	CheckRenewalFirst
