@@ -34,16 +34,18 @@ env:
     #
     # Current Go version build tasks:
     #
-    - RUN="lints integration generate rpm"
+    - RUN="integration generate rpm"
     # Config changes that have landed in master but not yet been applied to
     # production can be made in boulder-config-next.json.
     - RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
     - RUN="unit"
     - RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
-    # godep-restore runs with a separate container because it needs to fetch
+    # gomod-vendor runs with a separate container because it needs to fetch
     # packages from GitHub et. al., which is incompatible with the DNS server
     # override in the boulder container (used for service discovery).
-    - RUN="godep-restore" CONTAINER="netaccess"
+    # lints runs in the separate container because "go fmt" ignores the
+    # -mod=vendor flag and tries to fetch modules from upstream.
+    - RUN="lints gomod-vendor" CONTAINER="netaccess"
     - RUN="coverage" CONTAINER="netaccess"
 
 matrix:
