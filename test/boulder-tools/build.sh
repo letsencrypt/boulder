@@ -42,7 +42,6 @@ go get \
   github.com/kisielk/errcheck \
   github.com/mattn/goveralls \
   github.com/modocache/gover \
-  github.com/tools/godep \
   golang.org/x/tools/cover \
   golang.org/x/tools/cmd/stringer \
   github.com/gordonklaus/ineffassign
