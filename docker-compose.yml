@@ -76,6 +76,9 @@ services:
             driver: none
     netaccess:
         image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.12}:2019-04-08
+        environment:
+            GO111MODULE: "on"
+            GOFLAGS: "-mod=vendor"
         networks:
           - bluenet
         volumes:
