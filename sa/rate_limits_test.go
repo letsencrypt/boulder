@@ -19,7 +19,7 @@ func TestFasterRateLimit(t *testing.T) {
 	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
 		return
 	}
-	features.Set(map[string]bool{"FasterRateLimit": true})
+	_ = features.Set(map[string]bool{"FasterRateLimit": true})
 
 	aprilFirst, err := time.Parse(time.RFC3339, "2019-04-01T00:00:00Z")
 	if err != nil {
