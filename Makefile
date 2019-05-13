@@ -39,7 +39,7 @@ $(OBJDIR):
 $(CMD_BINS): build_cmds
 
 build_cmds: | $(OBJDIR)
-	GOBIN=$(OBJDIR) go install $(GO_BUILD_FLAGS) ./...
+	GOBIN=$(OBJDIR) GO111MODULE=on go install -mod=vendor $(GO_BUILD_FLAGS) ./...
 	cp $(OBJDIR)/boulder-va $(OBJDIR)/boulder-remoteva
 
 # Building an RPM requires `fpm` from https://github.com/jordansissel/fpm
