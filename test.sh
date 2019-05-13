@@ -69,7 +69,9 @@ function run_test_coverage() {
 #
 if [[ "$RUN" =~ "lints" ]] ; then
   run_and_expect_silence go vet ./...
-  run_and_expect_silence go fmt ./...
+  # Run gofmt instead of go fmt because of
+  # https://github.com/golang/go/issues/31976
+  run_and_expect_silence bash -c "find . -name '*.go' -not -path './vendor/*' -print | xargs -n1 gofmt -l"
   run_and_expect_silence ./test/test-no-outdated-migrations.sh
   ineffassign .
   python test/grafana/lint.py
