@@ -20,7 +20,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -106,12 +105,8 @@ func NewSQLStorageAuthority(
 		parallelismPerRPC: parallelismPerRPC,
 	}
 
-	ssa.countCertificatesByName = ssa.countCertificatesByNameImpl
-	ssa.countCertificatesByExactName = ssa.countCertificatesByExactNameImpl
-	if features.Enabled(features.FasterRateLimit) {
-		ssa.countCertificatesByName = ssa.countCertificatesFaster
-		ssa.countCertificatesByExactName = ssa.countCertificatesFaster
-	}
+	ssa.countCertificatesByName = ssa.countCertificatesFaster
+	ssa.countCertificatesByExactName = ssa.countCertificatesFaster
 	ssa.getChallenges = ssa.getChallengesImpl
 
 	return ssa, nil
@@ -455,69 +450,6 @@ func ReverseName(domain string) string {
 		labels[i], labels[j] = labels[j], labels[i]
 	}
 	return strings.Join(labels, ".")
-}
-
-const countCertificatesSelect = `
-		 SELECT serial from issuedNames
-		 WHERE (reversedName = :reversedDomain OR
-			      reversedName LIKE CONCAT(:reversedDomain, ".%"))
-		 AND NOT renewal AND notBefore > :earliest AND notBefore <= :latest;`
-
-const countCertificatesExactSelect = `
-		 SELECT serial from issuedNames
-		 WHERE reversedName = :reversedDomain
-		 AND NOT renewal AND notBefore > :earliest AND notBefore <= :latest;`
-
-// countCertificatesByNames returns, for a single domain, the count of
-// certificates issued in the given time range for that domain and its
-// subdomains.
-func (ssa *SQLStorageAuthority) countCertificatesByNameImpl(
-	db dbSelector,
-	domain string,
-	earliest,
-	latest time.Time,
-) (int, error) {
-	return ssa.countCertificates(db, domain, earliest, latest, countCertificatesSelect)
-}
-
-// countCertificatesByExactNames returns, for a single domain, the count of
-// certificates issued in the given time range for that domain. In contrast to
-// countCertificatesByNames subdomains are NOT considered.
-func (ssa *SQLStorageAuthority) countCertificatesByExactNameImpl(
-	db dbSelector,
-	domain string,
-	earliest,
-	latest time.Time,
-) (int, error) {
-	return ssa.countCertificates(db, domain, earliest, latest, countCertificatesExactSelect)
-}
-
-// countCertificates returns, for a single domain, the count of certificate
-// issuances in the given time range for that domain using the
-// provided query assumed to be either `countCertificatesExactSelect`,
-// or `countCertificatesSelect`.
-func (ssa *SQLStorageAuthority) countCertificates(db dbSelector, domain string, earliest, latest time.Time, query string) (int, error) {
-	var serials []string
-	_, err := db.Select(
-		&serials,
-		query,
-		map[string]interface{}{
-			"reversedDomain": ReverseName(domain),
-			"earliest":       earliest,
-			"latest":         latest,
-		})
-	if err == sql.ErrNoRows {
-		return 0, nil
-	} else if err != nil {
-		return 0, err
-	}
-
-	// Deduplicate serials returning a count of unique serials
-	serialMap := make(map[string]struct{}, len(serials))
-	for _, s := range serials {
-		serialMap[s] = struct{}{}
-	}
-	return len(serialMap), nil
 }
 
 // GetCertificate takes a serial number and returns the corresponding
@@ -2125,7 +2057,7 @@ func (ssa *SQLStorageAuthority) getPendingAuthorizations(
 		requireV2Authzs)
 }
 
-func authzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error) {
+func AuthzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error) {
 	resp := &sapb.Authorizations{}
 	for k, v := range m {
 		authzPB, err := bgrpc.AuthzToPB(*v)
@@ -2156,7 +2088,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(
 		return nil, err
 	}
 	if len(authzMap) == len(req.Domains) {
-		return authzMapToPB(authzMap)
+		return AuthzMapToPB(authzMap)
 	}
 
 	// remove names we already have authz for
@@ -2191,7 +2123,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations(
 			return nil, err
 		}
 	}
-	return authzMapToPB(authzMap)
+	return AuthzMapToPB(authzMap)
 }
 
 // AddPendingAuthorizations creates a batch of pending authorizations and returns their IDs
@@ -2587,7 +2519,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 		return nil, err
 	}
 	if len(oldAuthzMap) > 0 {
-		oldAuthzsPB, err := authzMapToPB(oldAuthzMap)
+		oldAuthzsPB, err := AuthzMapToPB(oldAuthzMap)
 		if err != nil {
 			return nil, err
 		}
@@ -2703,7 +2635,7 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 			return nil, err
 		}
 		if len(oldAuthzs) > 0 {
-			oldAuthzsPB, err := authzMapToPB(oldAuthzs)
+			oldAuthzsPB, err := AuthzMapToPB(oldAuthzs)
 			if err != nil {
 				return nil, err
 			}
