@@ -256,7 +256,7 @@ func (r *dummyRateLimitConfig) LoadPolicies(contents []byte) error {
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
 	features.Reset()
 	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		features.Set(map[string]bool{"NewAuthorizationSchema": true})
+		_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
 	}
 
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
@@ -1207,7 +1207,7 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 
 	// Disable EarlyOrderRateLimit. Instead of using features.Reset we use
 	// features.Set so that we don't stamp on NewAuthorizationSchema
-	features.Set(map[string]bool{"EarlyOrderRateLimit": false})
+	_ = features.Set(map[string]bool{"EarlyOrderRateLimit": false})
 
 	// The same NewOrder request should now succeed because EarlyOrderRateLimit
 	// isn't enabled and the CertificatesPerNamePolicy won't be enforced until
