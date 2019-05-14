@@ -196,7 +196,7 @@ func setup(t *testing.T) *testCtx {
 
 	pa, err := policy.New(nil)
 	test.AssertNotError(t, err, "Couldn't create PA")
-	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
+	err = pa.SetHostnamePolicyFile("../test/hostname-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
 	allowedExtensions := []cfsslConfig.OID{
