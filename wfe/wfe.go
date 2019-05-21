@@ -687,7 +687,12 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 	logEvent.Created = authz.ID
 
 	// Make a URL for this authz, then blow away the ID and RegID before serializing
-	authzURL := web.RelativeEndpoint(request, authzPath+string(authz.ID))
+	var authzURL string
+	if authz.V2 {
+		authzURL = web.RelativeEndpoint(request, fmt.Sprintf("%sv2/%s", authzPath, authz.ID))
+	} else {
+		authzURL = web.RelativeEndpoint(request, authzPath+string(authz.ID))
+	}
 	wfe.prepAuthorizationForDisplay(request, &authz)
 
 	response.Header().Add("Location", authzURL)
@@ -702,16 +707,34 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 }
 
 func (wfe *WebFrontEndImpl) regHoldsAuthorizations(ctx context.Context, regID int64, names []string) (bool, error) {
-	authz, err := wfe.SA.GetValidAuthorizations(ctx, regID, names, wfe.clk.Now())
-	if err != nil {
-		return false, err
+	var authzMap map[string]*core.Authorization
+	if features.Enabled(features.NewAuthorizationSchema) {
+		now := wfe.clk.Now().UnixNano()
+		authzMapPB, err := wfe.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
+			RegistrationID: &regID,
+			Domains:        names,
+			Now:            &now,
+		})
+		if err != nil {
+			return false, err
+		}
+		authzMap, err = bgrpc.PBToAuthzMap(authzMapPB)
+		if err != nil {
+			return false, err
+		}
+	} else {
+		var err error
+		authzMap, err = wfe.SA.GetValidAuthorizations(ctx, regID, names, wfe.clk.Now())
+		if err != nil {
+			return false, err
+		}
 	}
-	if len(names) != len(authz) {
+	if len(names) != len(authzMap) {
 		return false, nil
 	}
 	missingNames := false
 	for _, name := range names {
-		if _, present := authz[name]; !present {
+		if _, present := authzMap[name]; !present {
 			missingNames = true
 		}
 	}
@@ -1323,8 +1346,8 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 	id := request.URL.Path
 	var authz core.Authorization
 	var err error
-	if features.Enabled(features.NewAuthorizationSchema) && strings.HasPrefix(id, "/v2/") {
-		authzID, err := strconv.ParseInt(id[4:], 10, 64)
+	if features.Enabled(features.NewAuthorizationSchema) && strings.HasPrefix(id, "v2/") {
+		authzID, err := strconv.ParseInt(id[3:], 10, 64)
 		if err != nil {
 			wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
 			return

@@ -592,16 +592,34 @@ func (wfe *WebFrontEndImpl) NewAccount(
 }
 
 func (wfe *WebFrontEndImpl) acctHoldsAuthorizations(ctx context.Context, acctID int64, names []string) (bool, error) {
-	authz, err := wfe.SA.GetValidAuthorizations(ctx, acctID, names, wfe.clk.Now())
-	if err != nil {
-		return false, err
+	var authzMap map[string]*core.Authorization
+	if features.Enabled(features.NewAuthorizationSchema) {
+		now := wfe.clk.Now().UnixNano()
+		authzMapPB, err := wfe.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
+			RegistrationID: &acctID,
+			Domains: names,
+			Now: &now,
+		})
+		if err != nil {
+			return false, err
+		}
+		authzMap, err = bgrpc.PBToAuthzMap(authzMapPB)
+		if err != nil {
+			return false, err
+		}
+	} else {
+		var err error
+		authzMap, err = wfe.SA.GetValidAuthorizations(ctx, acctID, names, wfe.clk.Now())
+		if err != nil {
+			return false, err
+		}
 	}
-	if len(names) != len(authz) {
+	if len(names) != len(authzMap) {
 		return false, nil
 	}
 	missingNames := false
 	for _, name := range names {
-		if _, present := authz[name]; !present {
+		if _, present := authzMap[name]; !present {
 			missingNames = true
 		}
 	}
@@ -1283,6 +1301,7 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 // Authorization is used by clients to submit an update to one of their
 // authorizations.
 func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	fmt.Println("Hello 2!", request.URL)
 	var requestAccount *core.Registration
 	var requestBody []byte
 	// If the request is a POST it is either:
@@ -1304,8 +1323,8 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 	id := request.URL.Path
 	var authz core.Authorization
 	var err error
-	if features.Enabled(features.NewAuthorizationSchema) && strings.HasPrefix(id, "/v2/") {
-		authzID, err := strconv.ParseInt(id[4:], 10, 64)
+	if features.Enabled(features.NewAuthorizationSchema) && strings.HasPrefix(id, "v2/") {
+		authzID, err := strconv.ParseInt(id[3:], 10, 64)
 		if err != nil {
 			wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
 			return

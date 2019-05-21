@@ -1875,6 +1875,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 
 // NewOrder creates a new order object
 func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
+	fmt.Println("starting up")
 	order := &corepb.Order{
 		RegistrationID: req.RegistrationID,
 		Names:          core.UniqueLowerNames(req.Names),
@@ -1903,6 +1904,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// If there was an error and it wasn't an acceptable "NotFound" error, return
 	// immediately
 	if err != nil && !berrors.Is(err, berrors.NotFound) {
+		fmt.Println("hweo")
 		return nil, err
 	}
 	// If there was an order, return it
@@ -1914,6 +1916,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	// Check if there is rate limit space for a new order within the current window
 	if err := ra.checkNewOrdersPerAccountLimit(ctx, *order.RegistrationID); err != nil {
+		fmt.Println("hweo 2")
 		return nil, err
 	}
 
@@ -1922,6 +1925,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// order's names. If there isn't then it doesn't make sense to allow creating
 		// an order - it will just fail when finalization checks the same limits.
 		if err := ra.checkLimits(ctx, order.Names, *order.RegistrationID); err != nil {
+			fmt.Println("hweo 3")
 			return nil, err
 		}
 	}
@@ -1951,6 +1955,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		existingAuthz, err = ra.SA.GetAuthorizations(ctx, getAuthReq)
 	}
 	if err != nil {
+		fmt.Println("hweo 4")
 		return nil, err
 	}
 
@@ -2019,6 +2024,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// rate limit room for more pending authorizations
 	if len(missingAuthzNames) > 0 {
 		if err := ra.checkPendingAuthorizationLimit(ctx, *order.RegistrationID); err != nil {
+			fmt.Println("hweo 5")
 			return nil, err
 		}
 	}
@@ -2030,6 +2036,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	for _, name := range missingAuthzNames {
 		// TODO(#3069): Batch this check
 		if err := ra.checkInvalidAuthorizationLimit(ctx, *order.RegistrationID, name); err != nil {
+			fmt.Println("hweo 6")
 			return nil, err
 		}
 		pb, err := ra.createPendingAuthz(ctx, *order.RegistrationID, core.AcmeIdentifier{
@@ -2037,6 +2044,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			Value: name,
 		}, v2)
 		if err != nil {
+			fmt.Println("hweo 7")
 			return nil, err
 		}
 		newAuthzs = append(newAuthzs, pb)
@@ -2051,6 +2059,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	for _, authz := range nameToExistingAuthz {
 		// An authz without an expiry is an unexpected internal server event
 		if authz.Expires == nil {
+			fmt.Println("hweo 8")
 			return nil, berrors.InternalServerError(
 				"SA.GetAuthorizations returned an authz (%s) with nil expiry",
 				*authz.Id)
@@ -2070,12 +2079,14 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		if v2 {
 			authzIDs, err := ra.SA.NewAuthorizations2(ctx, &req)
 			if err != nil {
+				fmt.Println("hweo 9")
 				return nil, err
 			}
 			order.V2Authorizations = append(order.V2Authorizations, authzIDs.Ids...)
 		} else {
 			authzIDs, err := ra.SA.AddPendingAuthorizations(ctx, &req)
 			if err != nil {
+				fmt.Println("hweo 10")
 				return nil, err
 			}
 			order.Authorizations = append(order.Authorizations, authzIDs.Ids...)
@@ -2098,6 +2109,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	order.Expires = &minExpiryTS
 	storedOrder, err := ra.SA.NewOrder(ctx, order)
 	if err != nil {
+		fmt.Println("hweo 11")
 		return nil, err
 	}
 

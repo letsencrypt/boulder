@@ -1411,6 +1411,7 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		Expires:        time.Unix(0, *req.Expires),
 		Created:        ssa.clk.Now(),
 	}
+	fmt.Println("eh?")
 
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
