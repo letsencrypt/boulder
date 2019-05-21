@@ -511,6 +511,10 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		numRedirects++
 		va.metrics.http01Redirects.Inc()
 
+		// Lowercase the redirect host immediately, as the dialer and redirect
+		// validation expect it to have been lowercased already.
+		req.URL.Host = strings.ToLower(req.URL.Host)
+
 		// Extract the redirect target's host and port. This will return an error if
 		// the redirect request scheme, host or port is not acceptable.
 		redirHost, redirPort, err := va.extractRequestTarget(req)

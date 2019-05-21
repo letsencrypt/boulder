@@ -1043,7 +1043,7 @@ func TestLookupJWK(t *testing.T) {
 			Request: makePostRequestWithPath("test-path", errorIDJWSBody),
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.ServerInternalProblem,
-				Detail:     "Error retreiving account \"http://localhost/acme/acct/100\"",
+				Detail:     "Error retrieving account \"http://localhost/acme/acct/100\"",
 				HTTPStatus: http.StatusInternalServerError,
 			},
 			ErrorStatType: "JWSKeyIDLookupFailed",

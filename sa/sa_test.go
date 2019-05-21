@@ -566,8 +566,9 @@ func TestCountCertificatesByNames(t *testing.T) {
 	cert, err := x509.ParseCertificate(certDER)
 	test.AssertNotError(t, err, "Couldn't parse example cert DER")
 
-	// Set the test clock's time to the time from the test certificate
-	clk.Add(-clk.Now().Sub(cert.NotBefore))
+	// Set the test clock's time to the time from the test certificate, plus an
+	// hour to account for rounding.
+	clk.Add(time.Hour - clk.Now().Sub(cert.NotBefore))
 	now := clk.Now()
 	yesterday := clk.Now().Add(-24 * time.Hour)
 	twoDaysAgo := clk.Now().Add(-48 * time.Hour)
@@ -2814,20 +2815,6 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 		}
 		return 0
 	}
-	countNameExact := func(t *testing.T, name string) int64 {
-		counts, err := sa.CountCertificatesByExactNames(
-			context.Background(),
-			[]string{name},
-			fc.Now().Add(-5*time.Hour),
-			fc.Now().Add(5*time.Hour))
-		test.AssertNotError(t, err, "Unexpected err from CountCertificatesByExactNames")
-		for _, elem := range counts {
-			if *elem.Name == name {
-				return *elem.Count
-			}
-		}
-		return 0
-	}
 
 	// Add the first certificate - it won't be considered a renewal.
 	issued := certA.NotBefore
@@ -2853,11 +2840,6 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	// The count for the base domain should be 2 now: certA and certC.
 	// CertB should be ignored.
 	test.AssertEquals(t, countName(t, "not-example.com"), int64(2))
-
-	// The exact name count for the base domain should be 1: certA. CertB should
-	// be ignored as a renewal and CertC should be ignored because it isn't an
-	// exact match.
-	test.AssertEquals(t, countNameExact(t, "not-example.com"), int64(1))
 }
 
 func TestNewAuthorizations2(t *testing.T) {

@@ -3,7 +3,6 @@ package policy
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net"
@@ -58,17 +57,13 @@ type blockedNamesPolicy struct {
 	// matching an entry in the list will be forbidden. (e.g. `ExactBlockedNames`
 	// containing `www.example.com` will not block `example.com` or
 	// `mail.example.com`).
-	//
-	// TODO(@cpu): Remove the JSON tag when data is updated to use the new field names
-	ExactBlockedNames []string `json:"exactBlacklist" yaml:"ExactBlockedNames"`
+	ExactBlockedNames []string `yaml:"ExactBlockedNames"`
 	// HighRiskBlockedNames is like ExactBlockedNames except that issuance is
 	// blocked for subdomains as well. (e.g. BlockedNames containing `example.com`
 	// will block `www.example.com`).
 	//
 	// This list typically doesn't change with much regularity.
-	//
-	// TODO(@cpu): Remove the JSON tag when data is updated to use the new field names
-	HighRiskBlockedNames []string `json:"blacklist" yaml:"HighRiskBlockedNames"`
+	HighRiskBlockedNames []string `yaml:"HighRiskBlockedNames"`
 
 	// AdminBlockedNames operates the same as BlockedNames but is changed with more
 	// frequency based on administrative blocks/revocations that are added over
@@ -78,21 +73,9 @@ type blockedNamesPolicy struct {
 }
 
 // SetHostnamePolicyFile will load the given policy file, returning error if it
-// fails. It will also start a reloader in case the file changes. It supports
-// YAML and JSON serialization formats and chooses the correct unserialization
-// method based on the file extension which must be ".yaml", ".yml", or ".json".
+// fails. It will also start a reloader in case the file changes
 func (pa *AuthorityImpl) SetHostnamePolicyFile(f string) error {
-	var loadHandler func([]byte) error
-	if strings.HasSuffix(f, ".json") {
-		loadHandler = pa.loadHostnamePolicy(json.Unmarshal)
-	} else if strings.HasSuffix(f, ".yml") || strings.HasSuffix(f, ".yaml") {
-		loadHandler = pa.loadHostnamePolicy(yaml.Unmarshal)
-	} else {
-		return fmt.Errorf(
-			"Hostname policy file %q has unknown extension. Supported: .yml,.yaml,.json",
-			f)
-	}
-	if _, err := reloader.New(f, loadHandler, pa.hostnamePolicyLoadError); err != nil {
+	if _, err := reloader.New(f, pa.loadHostnamePolicy, pa.hostnamePolicyLoadError); err != nil {
 		return err
 	}
 	return nil
@@ -102,32 +85,23 @@ func (pa *AuthorityImpl) hostnamePolicyLoadError(err error) {
 	pa.log.AuditErrf("error loading hostname policy: %s", err)
 }
 
-// unmarshalHandler is a function type that abstracts away a choice between
-// json.Unmarshal and yaml.Unmarshal, both of which take a byte slice, an
-// interface to unmarshal to, and return an error.
-type unmarshalHandler func([]byte, interface{}) error
-
-// loadHostnamePolicy returns a reloader dataCallback function that uses the
-// unmarshalHandler to load a hostname policy. The returned callback is suitable
-// for use with reloader.New()
-func (pa *AuthorityImpl) loadHostnamePolicy(unmarshal unmarshalHandler) func([]byte) error {
-	// Return a reloader dataCallback that uses the provided unmarshalHandler.
-	return func(contents []byte) error {
-		hash := sha256.Sum256(contents)
-		pa.log.Infof("loading hostname policy, sha256: %s", hex.EncodeToString(hash[:]))
-		var policy blockedNamesPolicy
-		err := unmarshal(contents, &policy)
-		if err != nil {
-			return err
-		}
-		if len(policy.HighRiskBlockedNames) == 0 {
-			return fmt.Errorf("No entries in HighRiskBlockedNames.")
-		}
-		if len(policy.ExactBlockedNames) == 0 {
-			return fmt.Errorf("No entries in ExactBlockedNames.")
-		}
-		return pa.processHostnamePolicy(policy)
+// loadHostnamePolicy is a callback suitable for use with reloader.New() that
+// will unmarshal a YAML hostname policy.
+func (pa *AuthorityImpl) loadHostnamePolicy(contents []byte) error {
+	hash := sha256.Sum256(contents)
+	pa.log.Infof("loading hostname policy, sha256: %s", hex.EncodeToString(hash[:]))
+	var policy blockedNamesPolicy
+	err := yaml.Unmarshal(contents, &policy)
+	if err != nil {
+		return err
 	}
+	if len(policy.HighRiskBlockedNames) == 0 {
+		return fmt.Errorf("No entries in HighRiskBlockedNames.")
+	}
+	if len(policy.ExactBlockedNames) == 0 {
+		return fmt.Errorf("No entries in ExactBlockedNames.")
+	}
+	return pa.processHostnamePolicy(policy)
 }
 
 // processHostnamePolicy handles loading a new blockedNamesPolicy into the PA.

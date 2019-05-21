@@ -455,7 +455,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSKeyIDLookupFailed"}).Inc()
 		// Add an error to the log event with the internal error message
 		logEvent.AddError(fmt.Sprintf("Error calling SA.GetRegistration: %s", err.Error()))
-		return nil, nil, probs.ServerInternal("Error retreiving account %q", accountURL)
+		return nil, nil, probs.ServerInternal("Error retrieving account %q", accountURL)
 	}
 
 	// Verify the account is not deactivated

@@ -46,7 +46,7 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 		for _, subErr := range err.SubErrors {
 			subProbs = append(subProbs, subProblemDetailsForSubError(subErr, msg))
 		}
-		outProb.WithSubProblems(subProbs)
+		return outProb.WithSubProblems(subProbs)
 	}
 
 	return outProb
