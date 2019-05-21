@@ -579,6 +579,10 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 			go func() {
 				_ = va.processRemoteResults(domain, string(challenge.Type), prob, remoteProbs, len(va.remoteVAs))
 			}()
+			// Since prob was nil and we're not enforcing the results from
+			// `processRemoteResults` set the challenge status to valid so the
+			// validationTime metrics increment has the correct result label.
+			challenge.Status = core.StatusValid
 		} else if features.Enabled(features.EnforceMultiVA) {
 			remoteProb := va.processRemoteResults(domain, string(challenge.Type), prob, remoteProbs, len(va.remoteVAs))
 			if remoteProb != nil {

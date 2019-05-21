@@ -204,7 +204,10 @@ func (sa *mockInvalidAuthorizationsAuthority) GetValidOrderAuthorizations2(ctx c
 }
 
 func (sa *mockInvalidAuthorizationsAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest, opts ...grpc.CallOption) (*sapb.Count, error) {
-	return nil, nil
+	count := int64(1)
+	return &sapb.Count{
+		Count: &count,
+	}, nil
 }
 
 func (sa *mockInvalidAuthorizationsAuthority) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest, opts ...grpc.CallOption) (*sapb.Authorizations, error) {

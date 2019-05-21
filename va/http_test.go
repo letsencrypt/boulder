@@ -497,6 +497,15 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 		fmt.Fprint(resp, tooLargeBuf)
 	})
 
+	// A path that redirects to an uppercase public suffix (#4215)
+	mux.HandleFunc("/redir-uppercase-publicsuffix", func(resp http.ResponseWriter, req *http.Request) {
+		http.Redirect(
+			resp,
+			req,
+			"http://example.COM/ok",
+			301)
+	})
+
 	return server
 }
 
@@ -822,6 +831,28 @@ func TestFetchHTTP(t *testing.T) {
 			Path:         "/ok",
 			ExpectedBody: "ok",
 			ExpectedRecords: []core.ValidationRecord{
+				core.ValidationRecord{
+					Hostname:          "example.com",
+					Port:              strconv.Itoa(httpPort),
+					URL:               "http://example.com/ok",
+					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
+					AddressUsed:       net.ParseIP("127.0.0.1"),
+				},
+			},
+		},
+		{
+			Name:         "Redirect to uppercase Public Suffix",
+			Host:         "example.com",
+			Path:         "/redir-uppercase-publicsuffix",
+			ExpectedBody: "ok",
+			ExpectedRecords: []core.ValidationRecord{
+				core.ValidationRecord{
+					Hostname:          "example.com",
+					Port:              strconv.Itoa(httpPort),
+					URL:               "http://example.com/redir-uppercase-publicsuffix",
+					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
+					AddressUsed:       net.ParseIP("127.0.0.1"),
+				},
 				core.ValidationRecord{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),

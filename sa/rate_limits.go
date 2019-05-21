@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/features"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/net/context"
 )
@@ -37,9 +36,6 @@ func (ssa *SQLStorageAuthority) addCertificatesPerName(
 	names []string,
 	timeToTheHour time.Time,
 ) error {
-	if !features.Enabled(features.FasterRateLimit) {
-		return nil
-	}
 	// De-duplicate the base domains.
 	baseDomainsMap := make(map[string]bool)
 	var qmarks []string

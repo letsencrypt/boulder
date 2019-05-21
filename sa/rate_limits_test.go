@@ -2,12 +2,8 @@ package sa
 
 import (
 	"fmt"
-	"os"
-	"strings"
 	"testing"
 	"time"
-
-	"github.com/letsencrypt/boulder/features"
 
 	"golang.org/x/net/context"
 )
@@ -15,11 +11,6 @@ import (
 func TestFasterRateLimit(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
-
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-	features.Set(map[string]bool{"FasterRateLimit": true})
 
 	aprilFirst, err := time.Parse(time.RFC3339, "2019-04-01T00:00:00Z")
 	if err != nil {

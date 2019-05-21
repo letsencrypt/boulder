@@ -33,10 +33,6 @@ func (mock caaMockDNS) LookupHost(_ context.Context, hostname string) ([]net.IP,
 	return []net.IP{ip}, nil
 }
 
-func (mock caaMockDNS) LookupMX(_ context.Context, domain string) ([]string, error) {
-	return nil, nil
-}
-
 func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, error) {
 	var results []*dns.CAA
 	var record dns.CAA
