@@ -34,17 +34,6 @@ func NewCertificateAuthorityClient(inner caPB.CertificateAuthorityClient, innerO
 	return &CertificateAuthorityClientWrapper{inner, innerOCSP}
 }
 
-func (cac CertificateAuthorityClientWrapper) IssueCertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (core.Certificate, error) {
-	if cac.inner == nil {
-		return core.Certificate{}, errors.New("this CA client does not support issuing certificates")
-	}
-	res, err := cac.inner.IssueCertificate(ctx, issueReq)
-	if err != nil {
-		return core.Certificate{}, err
-	}
-	return pbToCert(res)
-}
-
 func (cac CertificateAuthorityClientWrapper) IssuePrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
 	if cac.inner == nil {
 		return nil, errors.New("this CA client does not support issuing precertificates")
@@ -100,14 +89,6 @@ type CertificateAuthorityServerWrapper struct {
 
 func NewCertificateAuthorityServer(inner core.CertificateAuthority) *CertificateAuthorityServerWrapper {
 	return &CertificateAuthorityServerWrapper{inner}
-}
-
-func (cas *CertificateAuthorityServerWrapper) IssueCertificate(ctx context.Context, request *caPB.IssueCertificateRequest) (*corepb.Certificate, error) {
-	cert, err := cas.inner.IssueCertificate(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	return certToPB(cert), nil
 }
 
 func (cas *CertificateAuthorityServerWrapper) IssuePrecertificate(ctx context.Context, request *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
