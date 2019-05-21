@@ -1301,7 +1301,6 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 // Authorization is used by clients to submit an update to one of their
 // authorizations.
 func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	fmt.Println("Hello 2!", request.URL)
 	var requestAccount *core.Registration
 	var requestBody []byte
 	// If the request is a POST it is either:
