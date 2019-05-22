@@ -55,7 +55,13 @@ var (
 	// http.Client.Do() will return a url.Error err that wraps
 	// a errors.ErrorString instance. There isn't much else to do with one of
 	// those except match the encoded byte string with a regex. :-X
-	h2SettingsFrameErrRegex = regexp.MustCompile(`net\/http\: HTTP\/1\.x transport connection broken: malformed HTTP response \"\\x00\\x00\\x[a-f0-9]{2}\\x04\\x00\\x00\\x00\\x00\\x00.*"`)
+	//
+	// NOTE(@cpu): The first component of this regex is optional to avoid an
+	// integration test flake. In some (fairly rare) conditions the malformed
+	// response error will be returned simply as a http.badStringError without
+	// the broken transport prefix. Most of the time the error is returned with
+	// a transport connection error prefix.
+	h2SettingsFrameErrRegex = regexp.MustCompile(`(?:net\/http\: HTTP\/1\.x transport connection broken: )?malformed HTTP response \"\\x00\\x00\\x[a-f0-9]{2}\\x04\\x00\\x00\\x00\\x00\\x00.*"`)
 )
 
 // RemoteVA wraps the core.ValidationAuthority interface and adds a field containing the addresses
