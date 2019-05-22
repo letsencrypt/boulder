@@ -1538,7 +1538,7 @@ func TestGetAuthorization(t *testing.T) {
 
 	responseWriter = httptest.NewRecorder()
 	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
-		URL:    mustParseURL("/v2/1"),
+		URL:    mustParseURL("v2/1"),
 		Method: "GET",
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
@@ -1562,7 +1562,7 @@ func TestGetAuthorization(t *testing.T) {
 
 	responseWriter = httptest.NewRecorder()
 	_, _, jwsBody = signRequestKeyID(t, 1, nil, "http://localhost/v2/1", "", wfe.nonceService)
-	postAsGet = makePostRequestWithPath("http://localhost/v2/1", jwsBody)
+	postAsGet = makePostRequestWithPath("v2/1", jwsBody)
 	wfe.Authorization(ctx, newRequestEvent(), responseWriter, postAsGet)
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	body = responseWriter.Body.String()

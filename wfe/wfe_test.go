@@ -1844,7 +1844,7 @@ func TestAuthorization(t *testing.T) {
 	// Test retrieving a v2 style authorization
 	responseWriter = httptest.NewRecorder()
 	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
-		URL:    mustParseURL("/v2/1"),
+		URL:    mustParseURL("v2/1"),
 		Method: "GET",
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
