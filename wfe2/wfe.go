@@ -597,8 +597,8 @@ func (wfe *WebFrontEndImpl) acctHoldsAuthorizations(ctx context.Context, acctID 
 		now := wfe.clk.Now().UnixNano()
 		authzMapPB, err := wfe.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: &acctID,
-			Domains: names,
-			Now: &now,
+			Domains:        names,
+			Now:            &now,
 		})
 		if err != nil {
 			return false, err
