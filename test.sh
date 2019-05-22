@@ -65,7 +65,7 @@ function run_test_coverage() {
 }
 
 #
-# Run Go Vet, a correctness-focused static analysis tool
+# Run various linters.
 #
 if [[ "$RUN" =~ "lints" ]] ; then
   run_and_expect_silence go vet ./...
@@ -75,6 +75,10 @@ if [[ "$RUN" =~ "lints" ]] ; then
   run_and_expect_silence ./test/test-no-outdated-migrations.sh
   ineffassign .
   python test/grafana/lint.py
+
+  run_and_expect_silence errcheck \
+    -ignore fmt:Fprintf,fmt:Fprintln,fmt:Fprint,io:Write,os:Remove,net/http:Write \
+    $(go list -f '{{ .ImportPath }}' ./... | grep -v test)
 fi
 
 #
@@ -116,19 +120,6 @@ fi
 if [[ "$RUN" =~ "gomod-vendor" ]] ; then
   go mod vendor
   git diff --exit-code
-fi
-
-#
-# Run errcheck, to ensure that error returns are always used.
-# Note: errcheck seemingly doesn't understand ./vendor/ yet, and so will fail
-# if imports are not available in $GOPATH. So, in Travis, it always needs to
-# run after `godep restore`. Locally it can run anytime, assuming you have the
-# packages present in #GOPATH.
-#
-if [[ "$RUN" =~ "errcheck" ]] ; then
-  run_and_expect_silence errcheck \
-    -ignore fmt:Fprintf,fmt:Fprintln,fmt:Fprint,io:Write,os:Remove,net/http:Write \
-    $(go list -f '{{ .ImportPath }}' ./... | grep -v test)
 fi
 
 # Run generate to make sure all our generated code can be re-generated with

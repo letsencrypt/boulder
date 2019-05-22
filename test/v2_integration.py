@@ -367,7 +367,7 @@ def test_wildcard_exactblacklist():
     should fail with a policy error.
     """
 
-    # We include "highrisk.le-test.hoffman-andrews.com" in `test/hostname-policy.json`
+    # We include "highrisk.le-test.hoffman-andrews.com" in `test/hostname-policy.yaml`
     # Issuing for "*.le-test.hoffman-andrews.com" should be blocked
     domain = "*.le-test.hoffman-andrews.com"
     # We expect this to produce a policy problem
