@@ -86,6 +86,8 @@ github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399 h1:e/5i7d4oYZ+C
 github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399/go.mod h1:LdwHTNJT99C5fTAzDz0ud328OgXz+gierycbcIx2fRs=
 github.com/weppos/publicsuffix-go v0.0.0-20190329074744-34e9f38296ac h1:tIgN69/jblVxcgI4lB1VMEXMvwnWDMtUISoi4/9zjNU=
 github.com/weppos/publicsuffix-go v0.0.0-20190329074744-34e9f38296ac/go.mod h1:z3LCPQ38eedDQSwmsSRW4Y7t2L8Ln16JPQ02lHAdn5k=
+github.com/weppos/publicsuffix-go v0.4.1-0.20190430132455-7c1d5dc5cdc2 h1:9O5+udktp+JMAfkOWDzL8vI2lVRFybLnIzSOt9nF9pw=
+github.com/weppos/publicsuffix-go v0.4.1-0.20190430132455-7c1d5dc5cdc2/go.mod h1:z3LCPQ38eedDQSwmsSRW4Y7t2L8Ln16JPQ02lHAdn5k=
 github.com/ziutek/mymysql v1.5.4 h1:GB0qdRGsTwQSBVYuVShFBKaXSnSnYYC2d9knnE1LHFs=
 github.com/ziutek/mymysql v1.5.4/go.mod h1:LMSpPZ6DbqWFxNCHW77HeMg9I646SAhApZ/wKdgO/C0=
 github.com/zmap/zcrypto v0.0.0-20180601141720-cf96f6a85166 h1:uQ1MXNbsobFuzv7ggDMnKJ9HlffWEoxiBOzZaxyxeoc=

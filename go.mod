@@ -35,7 +35,7 @@ require (
 	github.com/stretchr/testify v1.3.0 // indirect
 	github.com/syndtr/goleveldb v0.0.0-20180331014930-714f901b98fd // indirect
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
-	github.com/weppos/publicsuffix-go v0.0.0-20190329074744-34e9f38296ac
+	github.com/weppos/publicsuffix-go v0.4.1-0.20190430132455-7c1d5dc5cdc2
 	github.com/ziutek/mymysql v1.5.4 // indirect
 	github.com/zmap/zcrypto v0.0.0-20180601141720-cf96f6a85166
 	github.com/zmap/zlint v0.0.0-20190218154616-f38bd223a43c

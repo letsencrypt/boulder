@@ -88,7 +88,7 @@ github.com/syndtr/goleveldb/leveldb/storage
 github.com/syndtr/goleveldb/leveldb/table
 # github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 github.com/titanous/rocacheck
-# github.com/weppos/publicsuffix-go v0.0.0-20190329074744-34e9f38296ac
+# github.com/weppos/publicsuffix-go v0.4.1-0.20190430132455-7c1d5dc5cdc2
 github.com/weppos/publicsuffix-go/publicsuffix
 # github.com/zmap/zcrypto v0.0.0-20180601141720-cf96f6a85166
 github.com/zmap/zcrypto/x509
