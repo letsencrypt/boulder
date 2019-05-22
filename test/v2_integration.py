@@ -361,6 +361,20 @@ def test_overlapping_wildcard():
     finally:
         cleanup()
 
+def test_highrisk_blocklist():
+    """
+    Test issuance for a subdomain of a HighRiskBlockedNames entry. It should
+    fail with a policy error.
+    """
+
+    # We include "example.org" in `test/hostname-policy.yaml` in the
+    # HighRiskBlockedNames list so issuing for "foo.example.org" should be
+    # blocked.
+    domain = "foo.example.org"
+    # We expect this to produce a policy problem
+    chisel2.expect_problem("urn:ietf:params:acme:error:rejectedIdentifier",
+        lambda: chisel2.auth_and_issue([domain], chall_type="dns-01"))
+
 def test_wildcard_exactblacklist():
     """
     Test issuance for a wildcard that would cover an exact blacklist entry. It
