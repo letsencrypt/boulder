@@ -239,7 +239,8 @@ def main():
     # traffic.
     if not args.test_case_filter:
         check_balance()
-    run_expired_authz_purger()
+    if not CONFIG_NEXT:
+        run_expired_authz_purger()
 
     # Run the load-generator last. run_loadtest will stop the
     # pebble-challtestsrv before running the load-generator and will not restart
