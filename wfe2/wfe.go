@@ -57,6 +57,8 @@ const (
 	finalizeOrderPath = "/acme/finalize/"
 )
 
+const authz2Prefix = "v2"
+
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
 // i.e., ACME.  Its members configure the paths for various ACME functions,
 // plus a few other data items used in ACME.  Its methods are primarily handlers
@@ -882,7 +884,8 @@ func (wfe *WebFrontEndImpl) Challenge(
 	var err error
 	var v2 bool
 	if len(slug) == 3 {
-		if !features.Enabled(features.NewAuthorizationSchema) || slug[0] != "v2" {
+		// index authz2Prefix to strip the trailing '/'
+		if !features.Enabled(features.NewAuthorizationSchema) || slug[0] != authz2Prefix {
 			notFound()
 			return
 		}
@@ -969,7 +972,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
 	// Update the challenge URL to be relative to the HTTP request Host
 	if authz.V2 {
-		challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%sv2/%s/%s", challengePath, authz.ID, challenge.StringID()))
+		challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s/%s", challengePath, authz2Prefix, authz.ID, challenge.StringID()))
 	} else {
 		challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
 	}
@@ -1322,8 +1325,8 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 	id := request.URL.Path
 	var authz core.Authorization
 	var err error
-	if features.Enabled(features.NewAuthorizationSchema) && strings.HasPrefix(id, "v2/") {
-		authzID, err := strconv.ParseInt(id[3:], 10, 64)
+	if features.Enabled(features.NewAuthorizationSchema) && strings.HasPrefix(id, authz2Prefix) {
+		authzID, err := strconv.ParseInt(id[len(authz2Prefix)+1:], 10, 64)
 		if err != nil {
 			wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
 			return
@@ -1717,7 +1720,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		respObj.Authorizations = append(respObj.Authorizations, web.RelativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authzID)))
 	}
 	for _, v2ID := range order.V2Authorizations {
-		respObj.Authorizations = append(respObj.Authorizations, web.RelativeEndpoint(request, fmt.Sprintf("%sv2/%d", authzPath, v2ID)))
+		respObj.Authorizations = append(respObj.Authorizations, web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%d", authzPath, authz2Prefix, v2ID)))
 	}
 	if respObj.Status == core.StatusValid {
 		certURL := web.RelativeEndpoint(request,
