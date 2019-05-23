@@ -39,6 +39,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	sagrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
@@ -155,8 +156,8 @@ var (
 	ShortKey = jose.JSONWebKey{}
 
 	AuthzRequest = core.Authorization{
-		Identifier: core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+		Identifier: identifier.ACMEIdentifier{
+			Type:  identifier.DNS,
 			Value: "not-example.com",
 		},
 		V2: true,
@@ -172,7 +173,7 @@ var (
 	Registration = core.Registration{}
 	AuthzInitial = core.Authorization{
 		ID:             "60p2Dc_XmUB2UUJBV4wYkF7BJbPD9KlDnUL3SmFMuTE",
-		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-example.com"},
+		Identifier:     identifier.DNSIdentifier("not-example.com"),
 		RegistrationID: 1,
 		Status:         "pending",
 	}
@@ -842,8 +843,8 @@ func TestNewAuthorizationCapitalLetters(t *testing.T) {
 	defer cleanUp()
 
 	authzReq := core.Authorization{
-		Identifier: core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+		Identifier: identifier.ACMEIdentifier{
+			Type:  identifier.DNS,
 			Value: "NOT-example.COM",
 		},
 	}
@@ -860,8 +861,8 @@ func TestNewAuthorizationInvalidName(t *testing.T) {
 	defer cleanUp()
 
 	authzReq := core.Authorization{
-		Identifier: core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+		Identifier: identifier.ACMEIdentifier{
+			Type:  identifier.DNS,
 			Value: "127.0.0.1",
 		},
 	}
@@ -983,8 +984,8 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	authz := core.Authorization{RegistrationID: 1}
 	authz, err := sa.NewPendingAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Could not store test data")
-	authz.Identifier = core.AcmeIdentifier{
-		Type:  core.IdentifierDNS,
+	authz.Identifier = identifier.ACMEIdentifier{
+		Type:  identifier.DNS,
 		Value: "www.example.com",
 	}
 	csr := x509.CertificateRequest{
@@ -1903,9 +1904,9 @@ type mockSAWithRecentAndOlder struct {
 }
 
 func newMockSAWithRecentAndOlder(recent, older time.Time) *mockSAWithRecentAndOlder {
-	makeIdentifier := func(name string) core.AcmeIdentifier {
-		return core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+	makeIdentifier := func(name string) identifier.ACMEIdentifier {
+		return identifier.ACMEIdentifier{
+			Type:  identifier.DNS,
 			Value: name,
 		}
 	}
@@ -2035,7 +2036,7 @@ func TestRecheckCAAEmpty(t *testing.T) {
 
 func makeHTTP01Authorization(domain string) *core.Authorization {
 	return &core.Authorization{
-		Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain},
+		Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: domain},
 		Challenges: []core.Challenge{core.Challenge{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 	}
 }
@@ -2173,7 +2174,7 @@ func TestNewOrderLegacyAuthzReuse(t *testing.T) {
 
 	// Create a legacy pending authz, not associated with an order
 	legacyAuthz := AuthzInitial
-	legacyAuthz.Identifier = core.AcmeIdentifier{Type: "dns", Value: "not-example.com"}
+	legacyAuthz.Identifier = identifier.DNSIdentifier("not-example.com")
 	legacyAuthz.RegistrationID = Registration.ID
 	legacyAuthz.Status = core.StatusPending
 	exp := fc.Now().Add(time.Hour)
@@ -2424,7 +2425,7 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations(
 		"*.zombo.com": &core.Authorization{
 			// A static fake ID we can check for in a unit test
 			ID:             "bad-bad-not-good",
-			Identifier:     core.AcmeIdentifier{Type: "dns", Value: "*.zombo.com"},
+			Identifier:     identifier.DNSIdentifier("*.zombo.com"),
 			RegistrationID: *req.RegistrationID,
 			// Authz is valid
 			Status: "valid",
@@ -2444,7 +2445,7 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations(
 		"zombo.com": &core.Authorization{
 			// A static fake ID we can check for in a unit test
 			ID:             "reused-valid-authz",
-			Identifier:     core.AcmeIdentifier{Type: "dns", Value: "zombo.com"},
+			Identifier:     identifier.DNSIdentifier("zombo.com"),
 			RegistrationID: *req.RegistrationID,
 			// Authz is valid
 			Status: "valid",
@@ -2473,7 +2474,7 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations2(
 			V2: true,
 			// A static fake ID we can check for in a unit test
 			ID:             "1",
-			Identifier:     core.AcmeIdentifier{Type: "dns", Value: "*.zombo.com"},
+			Identifier:     identifier.DNSIdentifier("*.zombo.com"),
 			RegistrationID: *req.RegistrationID,
 			// Authz is valid
 			Status: "valid",
@@ -2494,7 +2495,7 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations2(
 			V2: true,
 			// A static fake ID we can check for in a unit test
 			ID:             "2",
-			Identifier:     core.AcmeIdentifier{Type: "dns", Value: "zombo.com"},
+			Identifier:     identifier.DNSIdentifier("zombo.com"),
 			RegistrationID: *req.RegistrationID,
 			// Authz is valid
 			Status: "valid",
@@ -2859,7 +2860,7 @@ func (msa *mockSANearExpiredAuthz) GetAuthorizations(
 		"zombo.com": &core.Authorization{
 			// A static fake ID we can check for in a unit test
 			ID:             "near-expired-authz",
-			Identifier:     core.AcmeIdentifier{Type: "dns", Value: "zombo.com"},
+			Identifier:     identifier.DNSIdentifier("zombo.com"),
 			RegistrationID: *req.RegistrationID,
 			Expires:        &msa.expiry,
 			Status:         "valid",
@@ -2882,7 +2883,7 @@ func (msa *mockSANearExpiredAuthz) GetAuthorizations2(
 			V2: true,
 			// A static fake ID we can check for in a unit test
 			ID:             "1",
-			Identifier:     core.AcmeIdentifier{Type: "dns", Value: "zombo.com"},
+			Identifier:     identifier.DNSIdentifier("zombo.com"),
 			RegistrationID: *req.RegistrationID,
 			Expires:        &msa.expiry,
 			Status:         "valid",
@@ -3021,7 +3022,7 @@ func TestFinalizeOrder(t *testing.T) {
 
 	// Create one finalized authorization for Registration.ID for not-example.com
 	finalAuthz := AuthzInitial
-	finalAuthz.Identifier = core.AcmeIdentifier{Type: "dns", Value: "not-example.com"}
+	finalAuthz.Identifier = identifier.DNSIdentifier("not-example.com")
 	finalAuthz.Status = "valid"
 	finalAuthz.Expires = &exp
 	finalAuthz.Challenges[0].Status = "valid"
@@ -3033,7 +3034,7 @@ func TestFinalizeOrder(t *testing.T) {
 
 	// Create one finalized authorization for Registration.ID for www.not-example.org
 	finalAuthzB := AuthzInitial
-	finalAuthzB.Identifier = core.AcmeIdentifier{Type: "dns", Value: "www.not-example.com"}
+	finalAuthzB.Identifier = identifier.DNSIdentifier("www.not-example.com")
 	finalAuthzB.Status = "valid"
 	finalAuthzB.Expires = &exp
 	finalAuthzB.Challenges[0].Status = "valid"
@@ -3258,7 +3259,7 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 	// Create one finalized authorization for Registration.ID for not-example.com
 	var err error
 	finalAuthz := AuthzInitial
-	finalAuthz.Identifier = core.AcmeIdentifier{Type: "dns", Value: "not-example.com"}
+	finalAuthz.Identifier = identifier.DNSIdentifier("not-example.com")
 	finalAuthz.Status = "valid"
 	finalAuthz.Expires = &exp
 	finalAuthz.Challenges[0].Status = "valid"
@@ -3270,7 +3271,7 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 
 	// Create one finalized authorization for Registration.ID for www.not-example.org
 	finalAuthzB := AuthzInitial
-	finalAuthzB.Identifier = core.AcmeIdentifier{Type: "dns", Value: "www.not-example.com"}
+	finalAuthzB.Identifier = identifier.DNSIdentifier("www.not-example.com")
 	finalAuthzB.Status = "valid"
 	finalAuthzB.Expires = &exp
 	finalAuthzB.Challenges[0].Status = "valid"
@@ -3379,7 +3380,7 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 
 	// Create one standard finalized authorization for Registration.ID for zombo.com
 	finalAuthz := AuthzInitial
-	finalAuthz.Identifier = core.AcmeIdentifier{Type: "dns", Value: "zombo.com"}
+	finalAuthz.Identifier = identifier.DNSIdentifier("zombo.com")
 	finalAuthz.Status = "valid"
 	finalAuthz.Expires = &exp
 	finalAuthz.Challenges[0].Status = "valid"
@@ -3466,7 +3467,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 
 	authzForChalType := func(domain, chalType string) core.Authorization {
 		template := AuthzInitial
-		template.Identifier = core.AcmeIdentifier{
+		template.Identifier = identifier.ACMEIdentifier{
 			Type:  "dns",
 			Value: domain,
 		}
@@ -3885,7 +3886,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 
 	authzForIdent := func(domain string) core.Authorization {
 		template := AuthzInitial
-		template.Identifier = core.AcmeIdentifier{
+		template.Identifier = identifier.ACMEIdentifier{
 			Type:  "dns",
 			Value: domain,
 		}

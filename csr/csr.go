@@ -9,6 +9,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/identifier"
 )
 
 // maxCNLength is the maximum length allowed for the common name as specified in RFC 5280
@@ -75,8 +76,8 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 	}
 	badNames := []string{}
 	for _, name := range csr.DNSNames {
-		ident := core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+		ident := identifier.ACMEIdentifier{
+			Type:  identifier.DNS,
 			Value: name,
 		}
 		var err error

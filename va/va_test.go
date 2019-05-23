@@ -21,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
@@ -56,8 +57,8 @@ var TheKey = rsa.PrivateKey{
 var accountKey = &jose.JSONWebKey{Key: TheKey.Public()}
 
 // Return an ACME DNS identifier for the given hostname
-func dnsi(hostname string) core.AcmeIdentifier {
-	return core.AcmeIdentifier{Type: core.IdentifierDNS, Value: hostname}
+func dnsi(hostname string) identifier.ACMEIdentifier {
+	return identifier.ACMEIdentifier{Type: identifier.DNS, Value: hostname}
 }
 
 var ctx context.Context

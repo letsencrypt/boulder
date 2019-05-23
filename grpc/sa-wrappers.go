@@ -15,6 +15,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -423,7 +424,7 @@ func (sac StorageAuthorityClientWrapper) AddCertificate(
 	return *response.Digest, nil
 }
 
-func (sac StorageAuthorityClientWrapper) RevokeAuthorizationsByDomain(ctx context.Context, domain core.AcmeIdentifier) (int64, int64, error) {
+func (sac StorageAuthorityClientWrapper) RevokeAuthorizationsByDomain(ctx context.Context, domain identifier.ACMEIdentifier) (int64, int64, error) {
 	response, err := sac.inner.RevokeAuthorizationsByDomain(ctx, &sapb.RevokeAuthorizationsByDomainRequest{Domain: &domain.Value})
 	if err != nil {
 		return 0, 0, err
@@ -1039,7 +1040,7 @@ func (sas StorageAuthorityServerWrapper) RevokeAuthorizationsByDomain(ctx contex
 		return nil, errIncompleteRequest
 	}
 
-	finalized, pending, err := sas.inner.RevokeAuthorizationsByDomain(ctx, core.AcmeIdentifier{Value: *request.Domain, Type: core.IdentifierDNS})
+	finalized, pending, err := sas.inner.RevokeAuthorizationsByDomain(ctx, identifier.ACMEIdentifier{Value: *request.Domain, Type: identifier.DNS})
 	if err != nil {
 		return nil, err
 	}

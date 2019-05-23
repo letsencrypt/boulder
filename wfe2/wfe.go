@@ -22,6 +22,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
@@ -932,7 +933,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	challenge := authz.Challenges[challengeIndex]
 
 	logEvent.Extra["ChallengeType"] = challenge.Type
-	if authz.Identifier.Type == core.IdentifierDNS {
+	if authz.Identifier.Type == identifier.DNS {
 		logEvent.DNSName = authz.Identifier.Value
 	}
 	logEvent.Status = string(authz.Status)
@@ -1335,7 +1336,7 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 			return
 		}
 	}
-	if authz.Identifier.Type == core.IdentifierDNS {
+	if authz.Identifier.Type == identifier.DNS {
 		logEvent.DNSName = authz.Identifier.Value
 	}
 	logEvent.Status = string(authz.Status)
@@ -1659,13 +1660,13 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 }
 
 type orderJSON struct {
-	Status         core.AcmeStatus       `json:"status"`
-	Expires        time.Time             `json:"expires"`
-	Identifiers    []core.AcmeIdentifier `json:"identifiers"`
-	Authorizations []string              `json:"authorizations"`
-	Finalize       string                `json:"finalize"`
-	Certificate    string                `json:"certificate,omitempty"`
-	Error          *probs.ProblemDetails `json:"error,omitempty"`
+	Status         core.AcmeStatus             `json:"status"`
+	Expires        time.Time                   `json:"expires"`
+	Identifiers    []identifier.ACMEIdentifier `json:"identifiers"`
+	Authorizations []string                    `json:"authorizations"`
+	Finalize       string                      `json:"finalize"`
+	Certificate    string                      `json:"certificate,omitempty"`
+	Error          *probs.ProblemDetails       `json:"error,omitempty"`
 }
 
 // orderToOrderJSON converts a *corepb.Order instance into an orderJSON struct
@@ -1673,9 +1674,9 @@ type orderJSON struct {
 // DNS type identifiers and additionally create absolute URLs for the finalize
 // URL and the ceritificate URL as appropriate.
 func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corepb.Order) orderJSON {
-	idents := make([]core.AcmeIdentifier, len(order.Names))
+	idents := make([]identifier.ACMEIdentifier, len(order.Names))
 	for i, name := range order.Names {
-		idents[i] = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
+		idents[i] = identifier.ACMEIdentifier{Type: identifier.DNS, Value: name}
 	}
 	finalizeURL := web.RelativeEndpoint(request,
 		fmt.Sprintf("%s%d/%d", finalizeOrderPath, *order.RegistrationID, *order.Id))
@@ -1727,7 +1728,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// `notBefore` and/or `notAfter` fields described in Section 7.4 of acme-08
 	// are sent we return a probs.Malformed as we do not support them
 	var newOrderRequest struct {
-		Identifiers         []core.AcmeIdentifier `json:"identifiers"`
+		Identifiers         []identifier.ACMEIdentifier `json:"identifiers"`
 		NotBefore, NotAfter string
 	}
 	err := json.Unmarshal(body, &newOrderRequest)
@@ -1751,7 +1752,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// layers to process. We reject anything with a non-DNS type identifier here.
 	names := make([]string, len(newOrderRequest.Identifiers))
 	for i, ident := range newOrderRequest.Identifiers {
-		if ident.Type != core.IdentifierDNS {
+		if ident.Type != identifier.DNS {
 			wfe.sendError(response, logEvent,
 				probs.Malformed("NewOrder request included invalid non-DNS type identifier: type %q, value %q",
 					ident.Type, ident.Value),

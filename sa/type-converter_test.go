@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 
 	jose "gopkg.in/square/go-jose.v2"
@@ -19,8 +20,8 @@ const JWK1JSON = `{
 func TestAcmeIdentifier(t *testing.T) {
 	tc := BoulderTypeConverter{}
 
-	ai := core.AcmeIdentifier{Type: "data1", Value: "data2"}
-	out := core.AcmeIdentifier{}
+	ai := identifier.ACMEIdentifier{Type: "data1", Value: "data2"}
+	out := identifier.ACMEIdentifier{}
 
 	marshaledI, err := tc.ToDb(ai)
 	test.AssertNotError(t, err, "Could not ToDb")
@@ -41,7 +42,7 @@ func TestAcmeIdentifier(t *testing.T) {
 func TestAcmeIdentifierBadJSON(t *testing.T) {
 	badJSON := `{`
 	tc := BoulderTypeConverter{}
-	out := core.AcmeIdentifier{}
+	out := identifier.ACMEIdentifier{}
 	scanner, _ := tc.FromDb(&out)
 	err := scanner.Binder(&badJSON, &out)
 	test.AssertError(t, err, "expected error from scanner.Binder")
