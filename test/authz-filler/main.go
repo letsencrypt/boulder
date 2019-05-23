@@ -13,6 +13,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -77,7 +78,7 @@ func main() {
 						Expires:        &expires,
 						Combinations:   [][]int{[]int{1, 2, 3}},
 						Status:         "pending",
-						Identifier: core.AcmeIdentifier{
+						Identifier: identifier.ACMEIdentifier{
 							Type:  "dns",
 							Value: "example.com",
 						},

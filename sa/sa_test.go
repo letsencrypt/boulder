@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 
 	"golang.org/x/net/context"
@@ -199,7 +200,7 @@ func TestAddAuthorization(t *testing.T) {
 	test.AssertMarshaledEquals(t, dbPa.ID, expectedPa.ID)
 
 	exp := time.Now().AddDate(0, 0, 1)
-	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}
+	identifier := identifier.ACMEIdentifier{Type: identifier.DNS, Value: "wut.com"}
 	newPa := core.Authorization{ID: PA.ID, Identifier: identifier, RegistrationID: reg.ID, Status: core.StatusPending, Expires: &exp}
 
 	newPa.Status = core.StatusValid
@@ -235,7 +236,7 @@ func TestRecyclePendingEnabled(t *testing.T) {
 	expires := fc.Now()
 	authz := core.Authorization{
 		RegistrationID: reg.ID,
-		Identifier: core.AcmeIdentifier{
+		Identifier: identifier.ACMEIdentifier{
 			Type:  "dns",
 			Value: "example.letsencrypt.org",
 		},
@@ -277,7 +278,7 @@ func CreateDomainAuthWithRegID(t *testing.T, domainName string, sa *SQLStorageAu
 	authz, err := sa.NewPendingAuthorization(ctx, core.Authorization{
 		Status:         core.StatusPending,
 		Expires:        &exp,
-		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domainName},
+		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: domainName},
 		RegistrationID: regID,
 		Challenges:     []core.Challenge{{Type: "simpleHttp", Status: core.StatusValid, URI: domainName, Token: "THISWOULDNTBEAGOODTOKEN"}},
 	})
@@ -321,7 +322,7 @@ func TestGetValidAuthorizationsBasic(t *testing.T) {
 	test.AssertEquals(t, len(authzMap), 1)
 	result := authzMap["example.org"]
 	test.AssertEquals(t, result.Status, core.StatusValid)
-	test.AssertEquals(t, result.Identifier.Type, core.IdentifierDNS)
+	test.AssertEquals(t, result.Identifier.Type, identifier.DNS)
 	test.AssertEquals(t, result.Identifier.Value, "example.org")
 	test.AssertEquals(t, result.RegistrationID, reg.ID)
 }
@@ -419,7 +420,7 @@ func TestGetValidAuthorizationsDuplicate(t *testing.T) {
 	test.AssertEquals(t, len(authzMap), 1)
 	result1 := authzMap[domain]
 	test.AssertEquals(t, result1.Status, core.StatusValid)
-	test.AssertEquals(t, result1.Identifier.Type, core.IdentifierDNS)
+	test.AssertEquals(t, result1.Identifier.Type, identifier.DNS)
 	test.AssertEquals(t, result1.Identifier.Value, domain)
 	test.AssertEquals(t, result1.RegistrationID, reg.ID)
 
@@ -431,7 +432,7 @@ func TestGetValidAuthorizationsDuplicate(t *testing.T) {
 	test.AssertEquals(t, len(authzMap), 1)
 	result2 := authzMap[domain]
 	test.AssertEquals(t, result2.Status, core.StatusValid)
-	test.AssertEquals(t, result2.Identifier.Type, core.IdentifierDNS)
+	test.AssertEquals(t, result2.Identifier.Type, identifier.DNS)
 	test.AssertEquals(t, result2.Identifier.Value, domain)
 	test.AssertEquals(t, result2.RegistrationID, reg.ID)
 	// make sure we got the latest auth
@@ -806,7 +807,7 @@ func TestRevokeAuthorizationsByDomain(t *testing.T) {
 	err := sa.FinalizeAuthorization(ctx, PA2)
 	test.AssertNotError(t, err, "Failed to finalize authorization")
 
-	ident := core.AcmeIdentifier{Value: "a.com", Type: core.IdentifierDNS}
+	ident := identifier.ACMEIdentifier{Value: "a.com", Type: identifier.DNS}
 	ar, par, err := sa.RevokeAuthorizationsByDomain(ctx, ident)
 	test.AssertNotError(t, err, "Failed to revoke authorizations for a.com")
 	test.AssertEquals(t, ar, int64(1))
@@ -924,8 +925,8 @@ func TestRevokeAuthorizationsByDomain2(t *testing.T) {
 	oldPending, err := sa.NewPendingAuthorization(context.Background(), core.Authorization{
 		Status:         core.StatusPending,
 		RegistrationID: reg.ID,
-		Identifier: core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+		Identifier: identifier.ACMEIdentifier{
+			Type:  identifier.DNS,
 			Value: ident,
 		},
 		Expires: &exp,
@@ -1216,7 +1217,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 	test.AssertMarshaledEquals(t, dbPa.ID, expectedPa.ID)
 
 	exp := time.Now().AddDate(0, 0, 1)
-	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}
+	identifier := identifier.ACMEIdentifier{Type: identifier.DNS, Value: "wut.com"}
 	newPa := core.Authorization{
 		ID:             PA.ID,
 		Identifier:     identifier,
@@ -1625,7 +1626,7 @@ func TestSetOrderProcessing(t *testing.T) {
 	// Add one pending authz
 	authzExpires := fc.Now().Add(time.Hour)
 	newAuthz := core.Authorization{
-		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.com"},
+		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"},
 		RegistrationID: reg.ID,
 		Status:         core.StatusPending,
 		Expires:        &authzExpires,
@@ -1678,7 +1679,7 @@ func TestFinalizeOrder(t *testing.T) {
 	// Add one pending authz
 	authzExpires := fc.Now().Add(time.Hour)
 	newAuthz := core.Authorization{
-		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.com"},
+		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"},
 		RegistrationID: reg.ID,
 		Status:         core.StatusPending,
 		Expires:        &authzExpires,
@@ -1736,7 +1737,7 @@ func TestOrder(t *testing.T) {
 
 	authzExpires := fc.Now().Add(time.Hour)
 	newAuthz := core.Authorization{
-		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.com"},
+		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"},
 		RegistrationID: reg.ID,
 		Status:         core.StatusPending,
 		Expires:        &authzExpires,
@@ -1886,7 +1887,7 @@ func TestGetAuthorizations(t *testing.T) {
 	// Create an authorization template for a pending authorization with a dummy identifier
 	pa := core.Authorization{
 		RegistrationID: reg.ID,
-		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: identA},
+		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: identA},
 		Status:         core.StatusPending,
 		Expires:        &exp,
 	}
@@ -2013,7 +2014,7 @@ func TestGetAuthorizations2(t *testing.T) {
 	// Create an authorization template for a pending authorization with a dummy identifier
 	pa := core.Authorization{
 		RegistrationID: reg.ID,
-		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: identA},
+		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: identA},
 		Status:         core.StatusPending,
 		Expires:        &exp,
 		Challenges: []core.Challenge{
@@ -2162,7 +2163,7 @@ func TestCountOrders(t *testing.T) {
 	test.AssertEquals(t, count, 0)
 
 	// Add a pending authorization
-	authz, err := sa.NewPendingAuthorization(ctx, core.Authorization{RegistrationID: reg.ID, Identifier: core.AcmeIdentifier{Type: "dns", Value: "example.com"}, Status: core.StatusPending, Expires: &expires})
+	authz, err := sa.NewPendingAuthorization(ctx, core.Authorization{RegistrationID: reg.ID, Identifier: identifier.DNSIdentifier("example.com"), Status: core.StatusPending, Expires: &expires})
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 
 	// Add one pending order
@@ -2207,7 +2208,7 @@ func TestGetOrderForNames(t *testing.T) {
 	// Add one pending authz for the first name for regA
 	authzExpires := fc.Now().Add(time.Hour)
 	newAuthzA := core.Authorization{
-		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.com"},
+		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"},
 		RegistrationID: regA.ID,
 		Status:         core.StatusPending,
 		Expires:        &authzExpires,
@@ -2217,7 +2218,7 @@ func TestGetOrderForNames(t *testing.T) {
 
 	// Add one pending authz for the second name for regA
 	newAuthzB := core.Authorization{
-		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "just.another.example.com"},
+		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: "just.another.example.com"},
 		RegistrationID: regA.ID,
 		Status:         core.StatusPending,
 		Expires:        &authzExpires,
@@ -2298,14 +2299,14 @@ func TestGetOrderForNames(t *testing.T) {
 	// Create two valid authorizations (by first creating pending authorizations)
 	authzExpires = fc.Now().Add(time.Hour)
 	validAuthzA, err := sa.NewPendingAuthorization(ctx, core.Authorization{
-		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "zombo.com"},
+		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: "zombo.com"},
 		RegistrationID: regA.ID,
 		Status:         core.StatusPending,
 		Expires:        &authzExpires,
 	})
 	test.AssertNotError(t, err, "unexpected error creating pending authorization")
 	validAuthzB, err := sa.NewPendingAuthorization(ctx, core.Authorization{
-		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "welcome.to.zombo.com"},
+		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: "welcome.to.zombo.com"},
 		RegistrationID: regA.ID,
 		Status:         core.StatusPending,
 		Expires:        &authzExpires,
@@ -2387,7 +2388,7 @@ func TestStatusForOrder(t *testing.T) {
 		RegistrationID: reg.ID,
 		Expires:        &expires,
 		Status:         core.StatusPending,
-		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "pending.your.order.is.up"},
+		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: "pending.your.order.is.up"},
 	}
 	pendingAuthz, err := sa.NewPendingAuthorization(ctx, newAuthz)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
@@ -2397,7 +2398,7 @@ func TestStatusForOrder(t *testing.T) {
 		RegistrationID: newAuthz.RegistrationID,
 		Expires:        &alreadyExpired,
 		Status:         newAuthz.Status,
-		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "expired.your.order.is.up"},
+		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: "expired.your.order.is.up"},
 	}
 	expiredAuthz, err := sa.NewPendingAuthorization(ctx, newExpiredAuthz)
 	test.AssertNotError(t, err, "Couldn't create new expired pending authorization")
@@ -2561,8 +2562,8 @@ func TestGetAuthorizationsFast(t *testing.T) {
 			RegistrationID: reg.ID,
 			Expires:        &expires,
 			Status:         core.StatusPending,
-			Identifier: core.AcmeIdentifier{
-				Type:  core.IdentifierDNS,
+			Identifier: identifier.ACMEIdentifier{
+				Type:  identifier.DNS,
 				Value: s,
 			},
 		})
@@ -2613,7 +2614,7 @@ func TestUpdateChallengesPendingOnly(t *testing.T) {
 		RegistrationID: reg.ID,
 		Expires:        &expires,
 		Status:         core.StatusPending,
-		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.com"},
+		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"},
 		Challenges: []core.Challenge{
 			core.Challenge{
 				Type:   "http-01",
@@ -3066,15 +3067,15 @@ func TestGetPendingAuthorization2(t *testing.T) {
 		Status:         core.StatusPending,
 		Expires:        &exp,
 		RegistrationID: reg.ID,
-		Identifier: core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+		Identifier: identifier.ACMEIdentifier{
+			Type:  identifier.DNS,
 			Value: ident,
 		},
 	})
 	test.AssertNotError(t, err, "sa.NewPendingAuthorization failed")
 
 	validUntil = fc.Now().UTC().UnixNano()
-	identType := string(core.IdentifierDNS)
+	identType := string(identifier.DNS)
 	dbVer, err = sa.GetPendingAuthorization2(context.Background(), &sapb.GetPendingAuthorizationRequest{
 		RegistrationID:  &reg.ID,
 		IdentifierValue: &ident,
@@ -3347,8 +3348,8 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 		RegistrationID: reg.ID,
 		Expires:        &exp,
 		Status:         core.StatusPending,
-		Identifier: core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+		Identifier: identifier.ACMEIdentifier{
+			Type:  identifier.DNS,
 			Value: ident,
 		},
 	})
@@ -3386,8 +3387,8 @@ func TestGetValidAuthorizations2(t *testing.T) {
 		RegistrationID: reg.ID,
 		Expires:        &exp,
 		Status:         core.StatusPending,
-		Identifier: core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+		Identifier: identifier.ACMEIdentifier{
+			Type:  identifier.DNS,
 			Value: "bbb",
 		},
 	})

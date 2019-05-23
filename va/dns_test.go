@@ -11,6 +11,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
@@ -94,8 +95,8 @@ func TestDNSValidationFailure(t *testing.T) {
 }
 
 func TestDNSValidationInvalid(t *testing.T) {
-	var notDNS = core.AcmeIdentifier{
-		Type:  core.IdentifierType("iris"),
+	var notDNS = identifier.ACMEIdentifier{
+		Type:  identifier.IdentifierType("iris"),
 		Value: "790DB180-A274-47A4-855F-31C428CB1072",
 	}
 

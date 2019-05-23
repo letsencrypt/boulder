@@ -23,6 +23,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
@@ -281,7 +282,7 @@ func detailedError(err error) *probs.ProblemDetails {
 // validation attempt.
 func (va *ValidationAuthorityImpl) validate(
 	ctx context.Context,
-	identifier core.AcmeIdentifier,
+	identifier identifier.ACMEIdentifier,
 	challenge core.Challenge,
 	authz core.Authorization,
 ) ([]core.ValidationRecord, *probs.ProblemDetails) {
@@ -321,7 +322,7 @@ func (va *ValidationAuthorityImpl) validate(
 	return validationRecords, nil
 }
 
-func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	if err := challenge.CheckConsistencyForValidation(); err != nil {
 		return nil, probs.Malformed("Challenge failed consistency check: %s", err)
 	}
@@ -563,7 +564,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteProbs)
 	}
 
-	records, prob := va.validate(ctx, core.AcmeIdentifier{Type: "dns", Value: domain}, challenge, authz)
+	records, prob := va.validate(ctx, identifier.DNSIdentifier(domain), challenge, authz)
 	challenge.ValidationRecord = records
 
 	// Check for malformed ValidationRecords

@@ -9,6 +9,7 @@ import (
 	"net"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 )
 
@@ -43,9 +44,9 @@ func availableAddresses(allAddrs []net.IP) (v4 []net.IP, v6 []net.IP) {
 	return
 }
 
-func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	if identifier.Type != core.IdentifierDNS {
-		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", identifier)
+func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+	if ident.Type != identifier.DNS {
+		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", ident)
 		return nil, probs.Malformed("Identifier type for DNS was not itself DNS")
 	}
 
@@ -55,11 +56,11 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 
 	// Look for the required record in the DNS
-	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, identifier.Value)
+	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, ident.Value)
 	txts, authorities, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 
 	if err != nil {
-		va.log.Infof("Failed to lookup TXT records for %s. err=[%#v] errStr=[%s]", identifier, err, err)
+		va.log.Infof("Failed to lookup TXT records for %s. err=[%#v] errStr=[%s]", ident, err, err)
 		return nil, probs.DNS(err.Error())
 	}
 
@@ -75,7 +76,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 			// Successful challenge validation
 			return []core.ValidationRecord{{
 				Authorities: authorities,
-				Hostname:    identifier.Value,
+				Hostname:    ident.Value,
 			}}, nil
 		}
 	}

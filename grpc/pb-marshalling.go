@@ -14,6 +14,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vapb "github.com/letsencrypt/boulder/va/proto"
@@ -388,7 +389,7 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		v2 = *pb.V2
 	}
 	authz := core.Authorization{
-		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: *pb.Identifier},
+		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: *pb.Identifier},
 		RegistrationID: *pb.RegistrationID,
 		Status:         core.AcmeStatus(*pb.Status),
 		Expires:        &expires,
