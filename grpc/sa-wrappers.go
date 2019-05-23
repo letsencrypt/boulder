@@ -1213,7 +1213,7 @@ func (sas StorageAuthorityServerWrapper) FinalizeAuthorization2(ctx context.Cont
 		return nil, errIncompleteRequest
 	}
 
-	return nil, sas.inner.FinalizeAuthorization2(ctx, req)
+	return &corepb.Empty{}, sas.inner.FinalizeAuthorization2(ctx, req)
 }
 
 func (sas StorageAuthorityServerWrapper) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
