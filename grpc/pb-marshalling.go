@@ -421,7 +421,7 @@ func orderValid(order *corepb.Order) bool {
 // `order.CertificateSerial` to be nil such that it can be used in places where
 // the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
-	return !(order.RegistrationID == nil || order.Expires == nil || order.Authorizations == nil || order.Names == nil)
+	return !(order.RegistrationID == nil || order.Expires == nil || (order.Authorizations == nil && order.V2Authorizations == nil) || order.Names == nil)
 }
 
 func authorizationValid(authz *corepb.Authorization) bool {
