@@ -19,14 +19,13 @@ const (
 	AllowRenewalFirstRL
 	SetIssuedNamesRenewalBit
 	FasterRateLimit
+	ProbeCTLogs
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
 	CAAValidationMethods
 	// Check CAA and respect accounturi parameter.
 	CAAAccountURI
-	// ProbeCTLogs enables HTTP probes to CT logs from the publisher
-	ProbeCTLogs
 	// HEAD requests to the WFE2 new-nonce endpoint should return HTTP StatusOK
 	// instead of HTTP StatusNoContent.
 	HeadNonceStatusOK
