@@ -884,7 +884,6 @@ func (wfe *WebFrontEndImpl) Challenge(
 	var err error
 	var v2 bool
 	if len(slug) == 3 {
-		// index authz2Prefix to strip the trailing '/'
 		if !features.Enabled(features.NewAuthorizationSchema) || slug[0] != authz2Prefix {
 			notFound()
 			return
