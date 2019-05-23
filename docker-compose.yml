@@ -7,6 +7,8 @@ services:
             FAKE_DNS: 10.77.77.77
             PKCS11_PROXY_SOCKET: tcp://boulder-hsm:5657
             BOULDER_CONFIG_DIR: test/config
+            GO111MODULE: "on"
+            GOFLAGS: "-mod=vendor"
         volumes:
           - .:/go/src/github.com/letsencrypt/boulder
           - ./.gocache:/root/.cache/go-build
@@ -74,6 +76,9 @@ services:
             driver: none
     netaccess:
         image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.12}:2019-04-08
+        environment:
+            GO111MODULE: "on"
+            GOFLAGS: "-mod=vendor"
         networks:
           - bluenet
         volumes:
