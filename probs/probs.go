@@ -42,7 +42,7 @@ type ProblemDetails struct {
 	// HTTPStatus is the HTTP status code the ProblemDetails should probably be sent
 	// as.
 	HTTPStatus int `json:"status,omitempty"`
-	// SubProblems are optional additional per-identifier problems See
+	// SubProblems are optional additional per-identifier problems. See
 	// RFC 8555 Section 6.7.1: https://tools.ietf.org/html/rfc8555#section-6.7.1
 	SubProblems []SubProblemDetails `json:"subproblems,omitempty"`
 }
