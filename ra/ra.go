@@ -1874,6 +1874,20 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 	return nil
 }
 
+// checkOrderNames validates that the RA's policy authority allows issuing for
+// each of the names in an order. If any of the names are unacceptable an
+// unauthorized error with suberrors for each rejected identifier is returned.
+func (ra *RegistrationAuthorityImpl) checkOrderNames(names []string) error {
+	idents := make([]identifier.ACMEIdentifier, len(names))
+	for i, name := range names {
+		idents[i] = identifier.DNSIdentifier(name)
+	}
+	if err := ra.PA.WillingToIssueWildcards(idents); err != nil {
+		return err
+	}
+	return nil
+}
+
 // NewOrder creates a new order object
 func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
 	order := &corepb.Order{
@@ -1882,11 +1896,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Validate that our policy allows issuing for each of the names in the order
-	for _, name := range order.Names {
-		id := identifier.ACMEIdentifier{Value: name, Type: identifier.DNS}
-		if err := ra.PA.WillingToIssueWildcard(id); err != nil {
-			return nil, err
-		}
+	if err := ra.checkOrderNames(order.Names); err != nil {
+		return nil, err
 	}
 
 	if err := wildcardOverlap(order.Names); err != nil {

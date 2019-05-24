@@ -271,7 +271,7 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 			id := identifier.ACMEIdentifier{Type: identifier.DNS, Value: name}
 			// TODO(https://github.com/letsencrypt/boulder/issues/3371): Distinguish
 			// between certificates issued by v1 and v2 API.
-			if err = c.pa.WillingToIssueWildcard(id); err != nil {
+			if err = c.pa.WillingToIssueWildcards([]identifier.ACMEIdentifier{id}); err != nil {
 				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
 			} else {
 				// For defense-in-depth, even if the PA was willing to issue for a name

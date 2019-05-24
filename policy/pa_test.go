@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -235,13 +236,6 @@ func TestWillingToIssueWildcard(t *testing.T) {
 	err = pa.SetHostnamePolicyFile(f.Name())
 	test.AssertNotError(t, err, "Couldn't load policy contents from file")
 
-	makeDNSIdent := func(domain string) identifier.ACMEIdentifier {
-		return identifier.ACMEIdentifier{
-			Type:  identifier.DNS,
-			Value: domain,
-		}
-	}
-
 	testCases := []struct {
 		Name        string
 		Ident       identifier.ACMEIdentifier
@@ -254,63 +248,110 @@ func TestWillingToIssueWildcard(t *testing.T) {
 		},
 		{
 			Name:        "Too many wildcards",
-			Ident:       makeDNSIdent("ok.*.whatever.*.example.com"),
+			Ident:       identifier.DNSIdentifier("ok.*.whatever.*.example.com"),
 			ExpectedErr: errTooManyWildcards,
 		},
 		{
 			Name:        "Misplaced wildcard",
-			Ident:       makeDNSIdent("ok.*.whatever.example.com"),
+			Ident:       identifier.DNSIdentifier("ok.*.whatever.example.com"),
 			ExpectedErr: errMalformedWildcard,
 		},
 		{
 			Name:        "Missing ICANN TLD",
-			Ident:       makeDNSIdent("*.ok.madeup"),
+			Ident:       identifier.DNSIdentifier("*.ok.madeup"),
 			ExpectedErr: errNonPublic,
 		},
 		{
 			Name:        "Wildcard for ICANN TLD",
-			Ident:       makeDNSIdent("*.com"),
+			Ident:       identifier.DNSIdentifier("*.com"),
 			ExpectedErr: errICANNTLDWildcard,
 		},
 		{
 			Name:        "Forbidden base domain",
-			Ident:       makeDNSIdent("*.zombo.gov.us"),
+			Ident:       identifier.DNSIdentifier("*.zombo.gov.us"),
 			ExpectedErr: errPolicyForbidden,
 		},
 		// We should not allow getting a wildcard for that would cover an exact
 		// blocklist domain
 		{
 			Name:        "Wildcard for ExactBlocklist base domain",
-			Ident:       makeDNSIdent("*.letsdecrypt.org"),
+			Ident:       identifier.DNSIdentifier("*.letsdecrypt.org"),
 			ExpectedErr: errPolicyForbidden,
 		},
 		// We should allow a wildcard for a domain that doesn't match the exact
 		// blocklist domain
 		{
 			Name:        "Wildcard for non-matching subdomain of ExactBlocklist domain",
-			Ident:       makeDNSIdent("*.lowvalue.letsdecrypt.org"),
+			Ident:       identifier.DNSIdentifier("*.lowvalue.letsdecrypt.org"),
 			ExpectedErr: nil,
 		},
 		// We should allow getting a wildcard for an exact blocklist domain since it
 		// only covers subdomains, not the exact name.
 		{
 			Name:        "Wildcard for ExactBlocklist domain",
-			Ident:       makeDNSIdent("*.highvalue.letsdecrypt.org"),
+			Ident:       identifier.DNSIdentifier("*.highvalue.letsdecrypt.org"),
 			ExpectedErr: nil,
 		},
 		{
 			Name:        "Valid wildcard domain",
-			Ident:       makeDNSIdent("*.everything.is.possible.at.zombo.com"),
+			Ident:       identifier.DNSIdentifier("*.everything.is.possible.at.zombo.com"),
 			ExpectedErr: nil,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			result := pa.WillingToIssueWildcard(tc.Ident)
+			result := pa.willingToIssueWildcard(tc.Ident)
 			test.AssertEquals(t, result, tc.ExpectedErr)
 		})
 	}
+}
+
+// TestWillingToIssueWildcards tests that more than one rejected identifier
+// results in an error with suberrors.
+func TestWillingToIssueWildcards(t *testing.T) {
+	banned := []string{
+		"letsdecrypt.org",
+	}
+	pa := paImpl(t)
+
+	bannedBytes, err := yaml.Marshal(blockedNamesPolicy{
+		HighRiskBlockedNames: banned,
+		ExactBlockedNames:    banned,
+	})
+	test.AssertNotError(t, err, "Couldn't serialize banned list")
+	f, _ := ioutil.TempFile("", "test-wildcard-banlist.*.yaml")
+	defer os.Remove(f.Name())
+	err = ioutil.WriteFile(f.Name(), bannedBytes, 0640)
+	test.AssertNotError(t, err, "Couldn't write serialized banned list to file")
+	err = pa.SetHostnamePolicyFile(f.Name())
+	test.AssertNotError(t, err, "Couldn't load policy contents from file")
+
+	badIdentifiers := []identifier.ACMEIdentifier{
+		identifier.DNSIdentifier("letsdecrypt.org"),
+		identifier.DNSIdentifier("ok.*.this.is.a.*.weird.one.com"),
+	}
+
+	err = pa.WillingToIssueWildcards(badIdentifiers)
+	test.AssertError(t, err, "Expected err from WillingToIssueWildcards")
+
+	berr, ok := err.(*berrors.BoulderError)
+	test.AssertEquals(t, ok, true)
+	test.AssertEquals(t, len(berr.SubErrors), 2)
+
+	subErrMap := make(map[string]berrors.SubBoulderError, len(berr.SubErrors))
+
+	for _, subErr := range berr.SubErrors {
+		subErrMap[subErr.Identifier.Value] = subErr
+	}
+
+	subErrA, foundA := subErrMap["letsdecrypt.org"]
+	subErrB, foundB := subErrMap["ok.*.this.is.a.*.weird.one.com"]
+	test.AssertEquals(t, foundA, true)
+	test.AssertEquals(t, foundB, true)
+
+	test.AssertEquals(t, subErrA.Type, berrors.RejectedIdentifier)
+	test.AssertEquals(t, subErrB.Type, berrors.Malformed)
 }
 
 var accountKeyJSON = `{

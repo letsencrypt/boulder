@@ -105,7 +105,7 @@ type CertificateAuthority interface {
 // PolicyAuthority defines the public interface for the Boulder PA
 type PolicyAuthority interface {
 	WillingToIssue(domain identifier.ACMEIdentifier) error
-	WillingToIssueWildcard(domain identifier.ACMEIdentifier) error
+	WillingToIssueWildcards(identifiers []identifier.ACMEIdentifier) error
 	ChallengesFor(domain identifier.ACMEIdentifier) ([]Challenge, error)
 	ChallengeTypeEnabled(t string) bool
 }
