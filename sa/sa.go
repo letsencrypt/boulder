@@ -1,6 +1,7 @@
 package sa
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/x509"
 	"database/sql"
@@ -11,7 +12,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"context"
 
 	"github.com/jmhodges/clock"
 	"gopkg.in/go-gorp/gorp.v2"
