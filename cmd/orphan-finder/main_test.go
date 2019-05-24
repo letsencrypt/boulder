@@ -1,16 +1,14 @@
 package main
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
 	"testing"
 	"time"
 
-	"golang.org/x/net/context"
-
 	"github.com/jmhodges/clock"
-
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"

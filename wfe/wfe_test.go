@@ -2,6 +2,7 @@ package wfe
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"crypto/rsa"
 	"crypto/x509"
@@ -19,8 +20,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"gopkg.in/square/go-jose.v2"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
@@ -41,8 +40,8 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 	"github.com/letsencrypt/boulder/web"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"gopkg.in/square/go-jose.v2"
 )
 
 const (

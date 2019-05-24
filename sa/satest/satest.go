@@ -1,12 +1,11 @@
 package satest
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"testing"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
 	jose "gopkg.in/square/go-jose.v2"

@@ -2,6 +2,7 @@ package wfe2
 
 import (
 	"bytes"
+	"context"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
@@ -33,7 +34,6 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/net/context"
 	jose "gopkg.in/square/go-jose.v2"
 )
 

@@ -1,6 +1,7 @@
 package va
 
 import (
+	"context"
 	"crypto/rsa"
 	"encoding/base64"
 	"errors"
@@ -27,7 +28,6 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/net/context"
 	"gopkg.in/square/go-jose.v2"
 )
 

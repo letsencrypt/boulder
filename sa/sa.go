@@ -11,9 +11,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"context"
 
 	"github.com/jmhodges/clock"
-	"golang.org/x/net/context"
 	"gopkg.in/go-gorp/gorp.v2"
 	jose "gopkg.in/square/go-jose.v2"
 

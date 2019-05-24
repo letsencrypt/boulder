@@ -1,13 +1,13 @@
 package bdns
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 
 	"github.com/miekg/dns"
-	"golang.org/x/net/context"
 )
 
 // MockDNSClient is a mock

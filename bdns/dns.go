@@ -1,6 +1,7 @@
 package bdns
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"net"
@@ -12,7 +13,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/metrics"
 )

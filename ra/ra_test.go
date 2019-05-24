@@ -1,6 +1,7 @@
 package ra
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -55,7 +56,6 @@ import (
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	jose "gopkg.in/square/go-jose.v2"
 )

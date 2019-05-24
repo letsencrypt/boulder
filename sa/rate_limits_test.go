@@ -1,11 +1,10 @@
 package sa
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
-
-	"golang.org/x/net/context"
 )
 
 func TestFasterRateLimit(t *testing.T) {

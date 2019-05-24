@@ -1,6 +1,7 @@
 package bdns
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -10,8 +11,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/metrics"

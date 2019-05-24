@@ -1,6 +1,7 @@
 package ra
 
 import (
+	"context"
 	"crypto/x509"
 	"fmt"
 	"net"
@@ -38,7 +39,6 @@ import (
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
-	"golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
 )
 
