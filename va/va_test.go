@@ -63,8 +63,12 @@ func dnsi(hostname string) identifier.ACMEIdentifier {
 
 var ctx context.Context
 
-func init() {
-	ctx, _ = context.WithTimeout(context.Background(), 10*time.Minute)
+func TestMain(m *testing.M) {
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Minute)
+	ret := m.Run()
+	cancel()
+	os.Exit(ret)
 }
 
 var accountURIPrefixes = []string{"http://boulder:4000/acme/reg/"}
