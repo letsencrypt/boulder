@@ -390,6 +390,9 @@ var forbiddenMailDomains = map[string]bool{
 func validateEmail(address string) error {
 	email, err := mail.ParseAddress(address)
 	if err != nil {
+		if len(address) > 254 {
+			address = address[:254]
+		}
 		return berrors.InvalidEmailError("%q is not a valid e-mail address", address)
 	}
 	splitEmail := strings.SplitN(email.Address, "@", -1)
