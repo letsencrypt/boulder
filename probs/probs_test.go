@@ -5,6 +5,7 @@ import (
 
 	"net/http"
 
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -77,5 +78,55 @@ func TestProblemDetailsConvenience(t *testing.T) {
 		if c.pb.Detail != c.detail {
 			t.Errorf("Incorrect detail message. Expected %s got %s", c.detail, c.pb.Detail)
 		}
+
+		if subProbLen := len(c.pb.SubProblems); subProbLen != 0 {
+			t.Errorf("Incorrect SubProblems. Expected 0, found %d", subProbLen)
+		}
 	}
+}
+
+// TestWithSubProblems tests that a new problem can be constructed by adding
+// subproblems.
+func TestWithSubProblems(t *testing.T) {
+	topProb := &ProblemDetails{
+		Type:       RateLimitedProblem,
+		Detail:     "don't you think you have enough certificates already?",
+		HTTPStatus: statusTooManyRequests,
+	}
+	subProbs := []SubProblemDetails{
+		SubProblemDetails{
+			Identifier: identifier.DNSIdentifier("example.com"),
+			ProblemDetails: ProblemDetails{
+				Type:       RateLimitedProblem,
+				Detail:     "don't you think you have enough certificates already?",
+				HTTPStatus: statusTooManyRequests,
+			},
+		},
+		SubProblemDetails{
+			Identifier: identifier.DNSIdentifier("what about example.com"),
+			ProblemDetails: ProblemDetails{
+				Type:       MalformedProblem,
+				Detail:     "try a real identifier value next time",
+				HTTPStatus: http.StatusConflict,
+			},
+		},
+	}
+
+	outResult := topProb.WithSubProblems(subProbs)
+
+	// The outResult should be a new, distinct problem details instance
+	test.AssertNotEquals(t, topProb, outResult)
+	// The outResult problem details should have the correct sub problems
+	test.AssertDeepEquals(t, outResult.SubProblems, subProbs)
+	// Adding another sub problem shouldn't squash the original sub problems
+	anotherSubProb := SubProblemDetails{
+		Identifier: identifier.DNSIdentifier("another ident"),
+		ProblemDetails: ProblemDetails{
+			Type:       RateLimitedProblem,
+			Detail:     "yet another rate limit err",
+			HTTPStatus: statusTooManyRequests,
+		},
+	}
+	outResult = outResult.WithSubProblems([]SubProblemDetails{anotherSubProb})
+	test.AssertDeepEquals(t, outResult.SubProblems, append(subProbs, anotherSubProb))
 }
