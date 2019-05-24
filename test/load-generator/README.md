@@ -2,4 +2,4 @@
 
 ![](https://i.imgur.com/58ZQjyH.gif)
 
-`load-generator` is a load generator for the Boulder WFE which emulates user workflows.
+`load-generator` is a load generator for RFC 8555 which emulates user workflows.

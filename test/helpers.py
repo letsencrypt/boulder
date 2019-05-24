@@ -4,6 +4,7 @@ import os
 import urllib2
 import time
 import re
+import random
 import requests
 import tempfile
 import shutil
@@ -15,6 +16,21 @@ tempdir = tempfile.mkdtemp()
 @atexit.register
 def stop():
     shutil.rmtree(tempdir)
+
+default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
+if default_config_dir == '':
+    default_config_dir = 'test/config'
+CONFIG_NEXT = default_config_dir.startswith("test/config-next")
+
+def fakeclock(date):
+    return date.strftime("%a %b %d %H:%M:%S UTC %Y")
+
+def get_future_output(cmd, date):
+    return run(cmd, env={'FAKECLOCK': fakeclock(date)})
+
+def random_domain():
+    """Generate a random domain for testing (to avoid rate limiting)."""
+    return "rand.%x.xyz" % random.randrange(2**32)
 
 def run(cmd, **kwargs):
     return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)
@@ -126,6 +142,10 @@ def verify_akamai_purge():
     reset_akamai_purges()
 
 def verify_revocation(cert_file, issuer_file, url):
+    # This is gated on the RevokeAtRA feature flag.
+    if not CONFIG_NEXT:
+        wait_for_ocsp_revoked(cert_file, issuer_file, url)
+        return
     ocsp_request = make_ocsp_req(cert_file, issuer_file)
     responses = fetch_ocsp(ocsp_request, url)
 
@@ -140,5 +160,4 @@ def verify_revocation(cert_file, issuer_file, url):
     verify_output = ocsp_verify(cert_file, issuer_file, resp)
     if not re.search(": revoked", verify_output):
         print verify_output
-        raise Exception("OCSP response didn't match '%s'" %(
-            final))
+        raise Exception("OCSP response wasn't 'revoked'")

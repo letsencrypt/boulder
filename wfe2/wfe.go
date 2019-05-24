@@ -22,6 +22,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
@@ -57,6 +58,8 @@ const (
 	orderPath         = "/acme/order/"
 	finalizeOrderPath = "/acme/finalize/"
 )
+
+const authz2Prefix = "v2"
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
 // i.e., ACME.  Its members configure the paths for various ACME functions,
@@ -192,6 +195,13 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 				} else {
 					logEvent.AddError("unable to make nonce: %s", err)
 				}
+			}
+			// Per section 7.1 "Resources":
+			//   The "index" link relation is present on all resources other than the
+			//   directory and indicates the URL of the directory.
+			if pattern != directoryPath {
+				directoryURL := web.RelativeEndpoint(request, directoryPath)
+				response.Header().Add("Link", link(directoryURL, "index"))
 			}
 
 			logEvent.Endpoint = pattern
@@ -501,9 +511,22 @@ func (wfe *WebFrontEndImpl) NewAccount(
 
 	existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, key)
 	if err == nil {
+		if existingAcct.Status == core.StatusDeactivated {
+			// If there is an existing, but deactivated account, then return an unauthorized
+			// problem informing the user that this account was deactivated
+			wfe.sendError(response, logEvent, probs.Unauthorized(
+				"An account with the provided public key exists but is deactivated"), nil)
+			return
+		}
+
 		response.Header().Set("Location",
 			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
 		logEvent.Requester = existingAcct.ID
+
+		if features.Enabled(features.RemoveWFE2AccountID) {
+			// Zero out the account ID so that it isn't marshalled
+			existingAcct.ID = 0
+		}
 
 		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, existingAcct)
 		if err != nil {
@@ -532,20 +555,15 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	ip := net.ParseIP(request.Header.Get("X-Real-IP"))
-	if ip == nil {
-		host, _, err := net.SplitHostPort(request.RemoteAddr)
-		if err == nil {
-			ip = net.ParseIP(host)
-		} else {
-			wfe.sendError(
-				response,
-				logEvent,
-				probs.ServerInternal("couldn't parse the remote (that is, the client's) address"),
-				fmt.Errorf("Couldn't parse RemoteAddr: %s", request.RemoteAddr),
-			)
-			return
-		}
+	ip, err := extractRequesterIP(request)
+	if err != nil {
+		wfe.sendError(
+			response,
+			logEvent,
+			probs.ServerInternal("couldn't parse the remote (that is, the client's) address"),
+			fmt.Errorf("Couldn't parse RemoteAddr: %s", request.RemoteAddr),
+		)
+		return
 	}
 
 	acct, err := wfe.RA.NewRegistration(ctx, core.Registration{
@@ -580,6 +598,11 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
 
+	if features.Enabled(features.RemoveWFE2AccountID) {
+		// Zero out the account ID so that it isn't marshalled
+		acct.ID = 0
+	}
+
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, acct)
 	if err != nil {
 		// ServerInternal because we just created this account, and it
@@ -590,16 +613,34 @@ func (wfe *WebFrontEndImpl) NewAccount(
 }
 
 func (wfe *WebFrontEndImpl) acctHoldsAuthorizations(ctx context.Context, acctID int64, names []string) (bool, error) {
-	authz, err := wfe.SA.GetValidAuthorizations(ctx, acctID, names, wfe.clk.Now())
-	if err != nil {
-		return false, err
+	var authzMap map[string]*core.Authorization
+	if features.Enabled(features.NewAuthorizationSchema) {
+		now := wfe.clk.Now().UnixNano()
+		authzMapPB, err := wfe.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
+			RegistrationID: &acctID,
+			Domains:        names,
+			Now:            &now,
+		})
+		if err != nil {
+			return false, err
+		}
+		authzMap, err = bgrpc.PBToAuthzMap(authzMapPB)
+		if err != nil {
+			return false, err
+		}
+	} else {
+		var err error
+		authzMap, err = wfe.SA.GetValidAuthorizations(ctx, acctID, names, wfe.clk.Now())
+		if err != nil {
+			return false, err
+		}
 	}
-	if len(names) != len(authz) {
+	if len(names) != len(authzMap) {
 		return false, nil
 	}
 	missingNames := false
 	for _, name := range names {
-		if _, present := authz[name]; !present {
+		if _, present := authzMap[name]; !present {
 			missingNames = true
 		}
 	}
@@ -848,28 +889,66 @@ func (wfe *WebFrontEndImpl) Challenge(
 		wfe.sendError(response, logEvent, probs.NotFound("No such challenge"), nil)
 	}
 
-	// Challenge URLs are of the form /acme/challenge/<auth id>/<challenge id>.
-	// Here we parse out the id components.
+	// Challenge URIs are of the form /acme/challenge/<auth id>/<challenge id>
+	// or /acme/challenge/v2/<auth id>/<challenge id> depending on the authorization
+	// version. Here we parse out the authorization and challenge IDs and retrieve
+	// the authorization.
 	slug := strings.Split(request.URL.Path, "/")
-	if len(slug) != 2 {
+	if len(slug) != 2 && len(slug) != 3 {
 		notFound()
 		return
 	}
-	authorizationID := slug[0]
-	challengeID, err := strconv.ParseInt(slug[1], 10, 64)
-	if err != nil {
-		notFound()
-		return
+	var authorizationID string
+	var challengeID interface{}
+	var err error
+	var v2 bool
+	if len(slug) == 3 {
+		if !features.Enabled(features.NewAuthorizationSchema) || slug[0] != authz2Prefix {
+			notFound()
+			return
+		}
+		v2 = true
+		authorizationID, challengeID = slug[1], slug[2]
+	} else {
+		authorizationID = slug[0]
+		challengeID, err = strconv.ParseInt(slug[1], 10, 64)
+		if err != nil {
+			notFound()
+			return
+		}
 	}
 
-	authz, err := wfe.SA.GetAuthorization(ctx, authorizationID)
-	if err != nil {
-		if berrors.Is(err, berrors.NotFound) {
+	var authz core.Authorization
+	if v2 {
+		id, err := strconv.ParseInt(authorizationID, 10, 64)
+		if err != nil {
 			notFound()
-		} else {
-			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+			return
 		}
-		return
+		authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &id})
+		if err != nil {
+			if berrors.Is(err, berrors.NotFound) {
+				notFound()
+			} else {
+				wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+			}
+			return
+		}
+		authz, err = bgrpc.PBToAuthz(authzPB)
+		if err != nil {
+			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+			return
+		}
+	} else {
+		authz, err = wfe.SA.GetAuthorization(ctx, authorizationID)
+		if err != nil {
+			if berrors.Is(err, berrors.NotFound) {
+				notFound()
+			} else {
+				wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+			}
+			return
+		}
 	}
 
 	// After expiring, challenges are inaccessible
@@ -879,7 +958,12 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 
 	// Check that the requested challenge exists within the authorization
-	challengeIndex := authz.FindChallenge(challengeID)
+	var challengeIndex int
+	if authz.V2 {
+		challengeIndex = authz.FindChallengeByStringID(challengeID.(string))
+	} else {
+		challengeIndex = authz.FindChallenge(challengeID.(int64))
+	}
 	if challengeIndex == -1 {
 		notFound()
 		return
@@ -887,7 +971,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	challenge := authz.Challenges[challengeIndex]
 
 	logEvent.Extra["ChallengeType"] = challenge.Type
-	if authz.Identifier.Type == core.IdentifierDNS {
+	if authz.Identifier.Type == identifier.DNS {
 		logEvent.DNSName = authz.Identifier.Value
 	}
 	logEvent.Status = string(authz.Status)
@@ -905,7 +989,11 @@ func (wfe *WebFrontEndImpl) Challenge(
 // the client by filling in its URL field and clearing its ID and URI fields.
 func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
 	// Update the challenge URL to be relative to the HTTP request Host
-	challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
+	if authz.V2 {
+		challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s/%s", challengePath, authz2Prefix, authz.ID, challenge.StringID()))
+	} else {
+		challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
+	}
 	// Ensure the challenge URI and challenge ID aren't written by setting them to
 	// values that the JSON omitempty tag considers empty
 	challenge.URI = ""
@@ -1253,16 +1341,40 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 
 	// Requests to this handler should have a path that leads to a known authz
 	id := request.URL.Path
-	authz, err := wfe.SA.GetAuthorization(ctx, id)
-	if err != nil {
-		if berrors.Is(err, berrors.NotFound) {
+	var authz core.Authorization
+	var err error
+	if features.Enabled(features.NewAuthorizationSchema) && strings.HasPrefix(id, authz2Prefix) {
+		authzID, err := strconv.ParseInt(strings.TrimPrefix(id, authz2Prefix+"/"), 10, 64)
+		if err != nil {
 			wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
-		} else {
-			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+			return
 		}
-		return
+		authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID})
+		if err != nil {
+			if berrors.Is(err, berrors.NotFound) {
+				wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
+			} else {
+				wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+			}
+			return
+		}
+		authz, err = bgrpc.PBToAuthz(authzPB)
+		if err != nil {
+			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+			return
+		}
+	} else {
+		authz, err = wfe.SA.GetAuthorization(ctx, id)
+		if err != nil {
+			if berrors.Is(err, berrors.NotFound) {
+				wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
+			} else {
+				wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+			}
+			return
+		}
 	}
-	if authz.Identifier.Type == core.IdentifierDNS {
+	if authz.Identifier.Type == identifier.DNS {
 		logEvent.DNSName = authz.Identifier.Value
 	}
 	logEvent.Status = string(authz.Status)
@@ -1586,13 +1698,13 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 }
 
 type orderJSON struct {
-	Status         core.AcmeStatus       `json:"status"`
-	Expires        time.Time             `json:"expires"`
-	Identifiers    []core.AcmeIdentifier `json:"identifiers"`
-	Authorizations []string              `json:"authorizations"`
-	Finalize       string                `json:"finalize"`
-	Certificate    string                `json:"certificate,omitempty"`
-	Error          *probs.ProblemDetails `json:"error,omitempty"`
+	Status         core.AcmeStatus             `json:"status"`
+	Expires        time.Time                   `json:"expires"`
+	Identifiers    []identifier.ACMEIdentifier `json:"identifiers"`
+	Authorizations []string                    `json:"authorizations"`
+	Finalize       string                      `json:"finalize"`
+	Certificate    string                      `json:"certificate,omitempty"`
+	Error          *probs.ProblemDetails       `json:"error,omitempty"`
 }
 
 // orderToOrderJSON converts a *corepb.Order instance into an orderJSON struct
@@ -1600,18 +1712,17 @@ type orderJSON struct {
 // DNS type identifiers and additionally create absolute URLs for the finalize
 // URL and the ceritificate URL as appropriate.
 func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corepb.Order) orderJSON {
-	idents := make([]core.AcmeIdentifier, len(order.Names))
+	idents := make([]identifier.ACMEIdentifier, len(order.Names))
 	for i, name := range order.Names {
-		idents[i] = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
+		idents[i] = identifier.ACMEIdentifier{Type: identifier.DNS, Value: name}
 	}
 	finalizeURL := web.RelativeEndpoint(request,
 		fmt.Sprintf("%s%d/%d", finalizeOrderPath, *order.RegistrationID, *order.Id))
 	respObj := orderJSON{
-		Status:         core.AcmeStatus(*order.Status),
-		Expires:        time.Unix(0, *order.Expires).UTC(),
-		Identifiers:    idents,
-		Authorizations: make([]string, len(order.Authorizations)),
-		Finalize:       finalizeURL,
+		Status:      core.AcmeStatus(*order.Status),
+		Expires:     time.Unix(0, *order.Expires).UTC(),
+		Identifiers: idents,
+		Finalize:    finalizeURL,
 	}
 	// If there is an order error, prefix its type with the V2 namespace
 	if order.Error != nil {
@@ -1623,8 +1734,11 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		respObj.Error = prob
 		respObj.Error.Type = probs.V2ErrorNS + respObj.Error.Type
 	}
-	for i, authzID := range order.Authorizations {
-		respObj.Authorizations[i] = web.RelativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authzID))
+	for _, authzID := range order.Authorizations {
+		respObj.Authorizations = append(respObj.Authorizations, web.RelativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authzID)))
+	}
+	for _, v2ID := range order.V2Authorizations {
+		respObj.Authorizations = append(respObj.Authorizations, web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%d", authzPath, authz2Prefix, v2ID)))
 	}
 	if respObj.Status == core.StatusValid {
 		certURL := web.RelativeEndpoint(request,
@@ -1652,7 +1766,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// `notBefore` and/or `notAfter` fields described in Section 7.4 of acme-08
 	// are sent we return a probs.Malformed as we do not support them
 	var newOrderRequest struct {
-		Identifiers         []core.AcmeIdentifier `json:"identifiers"`
+		Identifiers         []identifier.ACMEIdentifier `json:"identifiers"`
 		NotBefore, NotAfter string
 	}
 	err := json.Unmarshal(body, &newOrderRequest)
@@ -1676,7 +1790,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// layers to process. We reject anything with a non-DNS type identifier here.
 	names := make([]string, len(newOrderRequest.Identifiers))
 	for i, ident := range newOrderRequest.Identifiers {
-		if ident.Type != core.IdentifierDNS {
+		if ident.Type != identifier.DNS {
 			wfe.sendError(response, logEvent,
 				probs.Malformed("NewOrder request included invalid non-DNS type identifier: type %q, value %q",
 					ident.Type, ident.Value),
@@ -1739,7 +1853,8 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
-	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
+	useV2Authzs := features.Enabled(features.NewAuthorizationSchema)
+	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID, UseV2Authorizations: &useV2Authzs})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("No order for ID %d", orderID), err)
@@ -1801,7 +1916,8 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID})
+	useV2Authzs := features.Enabled(features.NewAuthorizationSchema)
+	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID, UseV2Authorizations: &useV2Authzs})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("No order for ID %d", orderID), err)
@@ -1823,15 +1939,10 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	// Prior to ACME draft-10 the "ready" status did not exist and orders in
-	// a pending status with valid authzs were finalizable. We accept both states
-	// here for deployability ease. In the future we will only allow ready orders
-	// to be finalized.
-	// TODO(@cpu): Forbid finalizing "Pending" orders
-	if *order.Status != string(core.StatusPending) &&
-		*order.Status != string(core.StatusReady) {
+	// Only ready orders can be finalized.
+	if *order.Status != string(core.StatusReady) {
 		wfe.sendError(response, logEvent,
-			probs.Malformed(
+			probs.OrderNotReady(
 				"Order's status (%q) is not acceptable for finalization",
 				*order.Status),
 			nil)
@@ -1891,4 +2002,16 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to write finalize order response"), err)
 		return
 	}
+}
+
+func extractRequesterIP(req *http.Request) (net.IP, error) {
+	ip := net.ParseIP(req.Header.Get("X-Real-IP"))
+	if ip != nil {
+		return ip, nil
+	}
+	host, _, err := net.SplitHostPort(req.RemoteAddr)
+	if err != nil {
+		return nil, err
+	}
+	return net.ParseIP(host), nil
 }

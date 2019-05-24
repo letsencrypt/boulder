@@ -69,16 +69,6 @@ def get_chall(authz, typ):
             return chall_body
     raise Exception("No %s challenge found" % typ.typ)
 
-class ValidationError(Exception):
-    """An error that occurs during challenge validation."""
-    def __init__(self, domain, problem_type, detail, *args, **kwargs):
-        self.domain = domain
-        self.problem_type = problem_type
-        self.detail = detail
-
-    def __str__(self):
-        return "%s: %s: %s" % (self.domain, self.problem_type, self.detail)
-
 def make_csr(domains):
     key = OpenSSL.crypto.PKey()
     key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
@@ -162,32 +152,35 @@ def do_tlsalpn_challenges(client, authzs):
     cleanup_hosts = []
     for a in authzs:
         c = get_chall(a, challenges.TLSALPN01)
-        name, value = (a.body.identifier.value, c.key_authorization(client.key))
+        name, value = (a.body.identifier.value, c.key_authorization(client.net.key))
         cleanup_hosts.append(name)
         challSrv.add_tlsalpn01_response(name, value)
-        client.answer_challenge(c, c.response(client.key))
+        client.answer_challenge(c, c.response(client.net.key))
     def cleanup():
         for host in cleanup_hosts:
             challSrv.remove_tlsalpn01_response(host)
     return cleanup
 
 def expect_problem(problem_type, func):
-    """Run a function. If it raises a ValidationError or messages.Error that
+    """Run a function. If it raises an acme_errors.ValidationError or messages.Error that
        contains the given problem_type, return. If it raises no error or the wrong
        error, raise an exception."""
     ok = False
     try:
         func()
-    except ValidationError as e:
-        if e.problem_type == problem_type:
-            ok = True
-        else:
-            raise
     except messages.Error as e:
-        if problem_type in e.__str__():
+        if e.typ == problem_type:
             ok = True
         else:
-            raise
+            raise Exception("Expected %s, got %s" % (problem_type, error.__str__()))
+    except acme_errors.ValidationError as e:
+        for authzr in e.failed_authzrs:
+            for chall in authzr.body.challenges:
+                error = chall.error
+                if error and error.typ == problem_type:
+                    ok = True
+                elif error:
+                    raise Exception("Expected %s, got %s" % (problem_type, error.__str__()))
     if not ok:
         raise Exception('Expected %s, got no error' % problem_type)
 

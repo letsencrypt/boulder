@@ -9,7 +9,6 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type config struct {
@@ -62,15 +61,8 @@ func main() {
 	dbMap, err := sa.NewDbMap(dbURL, saConf.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Couldn't connect to SA database")
 
-	// Export the MaxDBConns
-	dbConnStat := prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "max_db_connections",
-		Help: "Maximum number of DB connections allowed.",
-	})
-	scope.MustRegister(dbConnStat)
-	dbConnStat.Set(float64(saConf.DBConfig.MaxDBConns))
-
-	go sa.ReportDbConnCount(dbMap, scope)
+	// Collect and periodically report DB metrics using the DBMap and prometheus scope.
+	sa.InitDBMetrics(dbMap, scope)
 
 	clk := cmd.Clock()
 

@@ -23,9 +23,13 @@ type config struct {
 
 		PortConfig cmd.PortConfig
 
-		GoogleSafeBrowsing *cmd.GoogleSafeBrowsingConfig
-
-		CAADistributedResolver *cmd.CAADistributedResolverConfig
+		// CAADistributedResolverConfig specifies the HTTP client setup and interfaces
+		// needed to resolve CAA addresses over multiple paths
+		CAADistributedResolver struct {
+			Timeout     cmd.ConfigDuration
+			MaxFailures int
+			Proxies     []string
+		}
 
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
@@ -93,9 +97,6 @@ func main() {
 		pc.TLSPort = c.VA.PortConfig.TLSPort
 	}
 
-	sbc, err := newGoogleSafeBrowsingV4(c.VA.GoogleSafeBrowsing, logger)
-	cmd.FailOnError(err, "Failed to create Google Safe Browsing client")
-
 	dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 	cmd.FailOnError(err, "Couldn't parse DNS timeout")
 	dnsTries := c.VA.DNSTries
@@ -141,7 +142,6 @@ func main() {
 
 	vai, err := va.NewValidationAuthorityImpl(
 		pc,
-		sbc,
 		resolver,
 		remotes,
 		c.VA.MaxRemoteValidationFailures,

@@ -39,25 +39,8 @@ $(OBJDIR):
 $(CMD_BINS): build_cmds
 
 build_cmds: | $(OBJDIR)
-	GOBIN=$(OBJDIR) go install $(GO_BUILD_FLAGS) ./...
-
-clean:
-	rm -f $(OBJDIR)/*
-	rmdir $(OBJDIR)
-
-# Install to a destination directory. Defaults to /usr/local/, but you can
-# override it with the DESTDIR variable. Example:
-#
-# DESTDIR=~/bin make install
-install:
-	@mkdir -p $(DESTDIR)
-	$(foreach var,$(OBJECTS), install -m 0755 $(OBJDIR)/$(var) $(DESTDIR)/;)
-
-# Produce a tarball of the current commit; you can set the destination in the
-# ARCHIVEDIR variable.
-archive:
-	git archive --output=$(ARCHIVEDIR)/boulder-$(COMMIT_ID).tar.gz \
-		--prefix=boulder-$(COMMIT_ID)/ $(COMMIT_ID)
+	GOBIN=$(OBJDIR) GO111MODULE=on go install -mod=vendor $(GO_BUILD_FLAGS) ./...
+	cp $(OBJDIR)/boulder-va $(OBJDIR)/boulder-remoteva
 
 # Building an RPM requires `fpm` from https://github.com/jordansissel/fpm
 # which you can install with `gem install fpm`.

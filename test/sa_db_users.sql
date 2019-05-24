@@ -34,6 +34,7 @@ GRANT SELECT(id,Lockcol) ON pendingAuthorizations TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON certificates TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON certificateStatus TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON issuedNames TO 'sa'@'localhost';
+GRANT SELECT,INSERT,UPDATE ON certificatesPerName TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON sctReceipts TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON registrations TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON challenges TO 'sa'@'localhost';
@@ -42,6 +43,8 @@ GRANT SELECT,INSERT,UPDATE ON orders TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON orderToAuthz TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON requestedNames TO 'sa'@'localhost';
 GRANT SELECT,INSERT,DELETE ON orderFqdnSets TO 'sa'@'localhost';
+GRANT SELECT,INSERT,UPDATE ON authz2 TO 'sa'@'localhost';
+GRANT SELECT,INSERT ON orderToAuthz2 TO 'sa'@'localhost';
 
 -- OCSP Responder
 GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';

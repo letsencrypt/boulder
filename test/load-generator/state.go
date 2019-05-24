@@ -27,7 +27,7 @@ import (
 
 	"gopkg.in/square/go-jose.v2"
 
-	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/test/load-generator/acme"
 	"github.com/letsencrypt/challtestsrv"
 )
 
@@ -35,15 +35,6 @@ import (
 type RatePeriod struct {
 	For  time.Duration
 	Rate int64
-}
-
-// registration is an ACME v1 registration resource
-type registration struct {
-	key            *ecdsa.PrivateKey
-	signer         jose.Signer
-	finalizedAuthz []string
-	certs          []string
-	mu             sync.Mutex
 }
 
 // account is an ACME v2 account resource. It does not have a `jose.Signer`
@@ -69,26 +60,7 @@ func (acct *account) update(finalizedOrders, certs []string) {
 	acct.certs = append(acct.certs, certs...)
 }
 
-// update locks a registration resource's mutx and sets the `finalizedAuthz` and
-// `certs` fields to the provided values.
-func (r *registration) update(finalizedAuthz, certs []string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.finalizedAuthz = append(r.finalizedAuthz, finalizedAuthz...)
-	r.certs = append(r.certs, certs...)
-}
-
 type context struct {
-	/* ACME V1 Context */
-	// The current V1 registration (may be nil for V2 load generation)
-	reg *registration
-	// Pending authorizations waiting for challenge validation
-	pendingAuthz []*core.Authorization
-	// IDs of finalized authorizations in valid status
-	finalizedAuthz []string
-
-	/* ACME V2 Context */
 	// The current V2 account (may be nil for legacy load generation)
 	acct *account
 	// Pending orders waiting for authorization challenge validation
@@ -98,7 +70,6 @@ type context struct {
 	// Finalized orders that have certificates
 	finalizedOrders []string
 
-	/* Shared Context */
 	// A list of URLs for issued certificates
 	certs []string
 	// The nonce source for JWS signature nonce headers
@@ -196,7 +167,6 @@ type respCode struct {
 
 // State holds *all* the stuff
 type State struct {
-	apiBase         string
 	domainBase      string
 	email           string
 	maxRegs         int
@@ -208,27 +178,21 @@ type State struct {
 
 	rMu sync.RWMutex
 
-	// regs holds V1 registration objects
-	regs []*registration
 	// accts holds V2 account objects
 	accts []*account
 
 	challSrv    *challtestsrv.ChallSrv
 	callLatency latencyWriter
-	client      *http.Client
 
-	getTotal  int64
-	postTotal int64
+	directory  *acme.Directory
+	challStrat acme.ChallengeStrategy
+	httpClient *http.Client
+
+	reqTotal  int64
 	respCodes map[int]*respCode
 	cMu       sync.Mutex
 
 	wg *sync.WaitGroup
-}
-
-type rawRegistration struct {
-	Certs          []string `json:"certs"`
-	FinalizedAuthz []string `json:"finalizedAuthz"`
-	RawKey         []byte   `json:"rawKey"`
 }
 
 type rawAccount struct {
@@ -239,8 +203,7 @@ type rawAccount struct {
 }
 
 type snapshot struct {
-	Registrations []rawRegistration
-	Accounts      []rawAccount
+	Accounts []rawAccount
 }
 
 func (s *State) numAccts() int {
@@ -249,28 +212,10 @@ func (s *State) numAccts() int {
 	return len(s.accts)
 }
 
-func (s *State) numRegs() int {
-	s.rMu.RLock()
-	defer s.rMu.RUnlock()
-	return len(s.regs)
-}
-
-// Snapshot will save out generated registrations and accounts
+// Snapshot will save out generated accounts
 func (s *State) Snapshot(filename string) error {
-	fmt.Printf("[+] Saving registrations/accounts to %s\n", filename)
+	fmt.Printf("[+] Saving accounts to %s\n", filename)
 	snap := snapshot{}
-	// assume rMu lock operations aren't happening right now
-	for _, reg := range s.regs {
-		k, err := x509.MarshalECPrivateKey(reg.key)
-		if err != nil {
-			return err
-		}
-		snap.Registrations = append(snap.Registrations, rawRegistration{
-			Certs:          reg.certs,
-			FinalizedAuthz: reg.finalizedAuthz,
-			RawKey:         k,
-		})
-	}
 	for _, acct := range s.accts {
 		k, err := x509.MarshalECPrivateKey(acct.key)
 		if err != nil {
@@ -290,38 +235,30 @@ func (s *State) Snapshot(filename string) error {
 	return ioutil.WriteFile(filename, cont, os.ModePerm)
 }
 
-// Restore previously generated registrations and accounts
+// Restore previously generated accounts
 func (s *State) Restore(filename string) error {
-	fmt.Printf("[+] Loading registrations/accounts from %s\n", filename)
-	content, err := ioutil.ReadFile(filename)
+	fmt.Printf("[+] Loading accounts from %q\n", filename)
+	// NOTE(@cpu): Using os.O_CREATE here explicitly to create the file if it does
+	// not exist.
+	f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		return err
 	}
+
+	content, err := ioutil.ReadAll(f)
+	if err != nil {
+		return err
+	}
+	// If the file's content is the empty string it was probably just created.
+	// Avoid an unmarshaling error by assuming an empty file is an empty snapshot.
+	if string(content) == "" {
+		content = []byte("{}")
+	}
+
 	snap := snapshot{}
 	err = json.Unmarshal(content, &snap)
 	if err != nil {
 		return err
-	}
-	for _, r := range snap.Registrations {
-		key, err := x509.ParseECPrivateKey(r.RawKey)
-		if err != nil {
-			continue
-		}
-		signer, err := jose.NewSigner(jose.SigningKey{
-			Key:       key,
-			Algorithm: jose.RS256,
-		}, &jose.SignerOptions{
-			NonceSource: &nonceSource{s: s},
-			EmbedJWK:    true,
-		})
-		if err != nil {
-			continue
-		}
-		s.regs = append(s.regs, &registration{
-			key:    key,
-			signer: signer,
-			certs:  r.Certs,
-		})
 	}
 	for _, a := range snap.Accounts {
 		key, err := x509.ParseECPrivateKey(a.RawKey)
@@ -343,19 +280,28 @@ func (s *State) Restore(filename string) error {
 
 // New returns a pointer to a new State struct or an error
 func New(
-	apiBase string,
+	directoryURL string,
 	keySize int,
 	domainBase string,
 	realIP string,
 	maxRegs, maxNamesPerCert int,
 	latencyPath string,
 	userEmail string,
-	operations []string) (*State, error) {
+	operations []string,
+	challStrat string) (*State, error) {
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
 	}
-	client := &http.Client{
+	directory, err := acme.NewDirectory(directoryURL)
+	if err != nil {
+		return nil, err
+	}
+	strat, err := acme.NewChallengeStrategy(challStrat)
+	if err != nil {
+		return nil, err
+	}
+	httpClient := &http.Client{
 		Transport: &http.Transport{
 			DialContext: (&net.Dialer{
 				Timeout:   10 * time.Second,
@@ -375,8 +321,9 @@ func New(
 		return nil, err
 	}
 	s := &State{
-		client:          client,
-		apiBase:         apiBase,
+		httpClient:      httpClient,
+		directory:       directory,
+		challStrat:      strat,
 		certKey:         certKey,
 		domainBase:      domainBase,
 		callLatency:     latencyFile,
@@ -401,13 +348,25 @@ func New(
 }
 
 // Run runs the WFE load-generator
-func (s *State) Run(httpOneAddr string, p Plan) error {
-	// Create a new challenge server for HTTP-01 challenges
+func (s *State) Run(
+	httpOneAddrs []string,
+	tlsALPNOneAddrs []string,
+	dnsAddrs []string,
+	fakeDNS string,
+	p Plan) error {
+	// Create a new challenge server binding the requested addrs.
 	challSrv, err := challtestsrv.New(challtestsrv.Config{
-		HTTPOneAddrs: []string{httpOneAddr},
+		HTTPOneAddrs:    httpOneAddrs,
+		TLSALPNOneAddrs: tlsALPNOneAddrs,
+		DNSOneAddrs:     dnsAddrs,
 		// Use a logger that has a load-generator prefix
 		Log: log.New(os.Stdout, "load-generator challsrv - ", log.LstdFlags),
 	})
+	// Setup the challenge server to return the mock "fake DNS" IP address
+	challSrv.SetDefaultDNSIPv4(fakeDNS)
+	// Disable returning any AAAA records.
+	challSrv.SetDefaultDNSIPv6("")
+
 	if err != nil {
 		return err
 	}
@@ -416,7 +375,6 @@ func (s *State) Run(httpOneAddr string, p Plan) error {
 
 	// Start the Challenge server in its own Go routine
 	go s.challSrv.Run()
-	fmt.Printf("[+] Started http-01 challenge server: %q\n", httpOneAddr)
 
 	if p.Delta != nil {
 		go func() {
@@ -450,26 +408,21 @@ func (s *State) Run(httpOneAddr string, p Plan) error {
 	}()
 	go func() {
 		lastTotal := int64(0)
-		lastGet := int64(0)
-		lastPost := int64(0)
+		lastReqTotal := int64(0)
 		for {
 			time.Sleep(time.Second)
 			curTotal := atomic.LoadInt64(&i)
-			curGet := atomic.LoadInt64(&s.getTotal)
-			curPost := atomic.LoadInt64(&s.postTotal)
+			curReqTotal := atomic.LoadInt64(&s.reqTotal)
 			fmt.Printf(
-				"%s Action rate: %d/s [expected: %d/s], Request rate: %d/s [POST: %d/s, GET: %d/s], Responses: [%s]\n",
+				"%s Action rate: %d/s [expected: %d/s], Request rate: %d/s, Responses: [%s]\n",
 				time.Now().Format("2006-01-02 15:04:05"),
 				curTotal-lastTotal,
 				atomic.LoadInt64(&p.Rate),
-				(curGet+curPost)-(lastGet+lastPost),
-				curGet-lastGet,
-				curPost-lastPost,
+				curReqTotal-lastReqTotal,
 				s.respCodeString(),
 			)
 			lastTotal = curTotal
-			lastGet = curGet
-			lastPost = curPost
+			lastReqTotal = curReqTotal
 		}
 	}()
 
@@ -535,16 +488,28 @@ func (s *State) respCodeString() string {
 
 var userAgent = "boulder load-generator -- heyo ^_^"
 
-func (s *State) post(endpoint string, payload []byte, ns *nonceSource) (*http.Response, error) {
-	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(payload))
+func (s *State) post(
+	url string,
+	payload []byte,
+	ns *nonceSource,
+	latencyTag string,
+	expectedCode int) (*http.Response, error) {
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Add("X-Real-IP", s.realIP)
 	req.Header.Add("User-Agent", userAgent)
 	req.Header.Add("Content-Type", "application/jose+json")
-	atomic.AddInt64(&s.postTotal, 1)
-	resp, err := s.client.Do(req)
+	atomic.AddInt64(&s.reqTotal, 1)
+	started := time.Now()
+	resp, err := s.httpClient.Do(req)
+	finished := time.Now()
+	state := "error"
+	// Defer logging the latency and result
+	defer func() {
+		s.callLatency.Add(latencyTag, started, finished, state)
+	}()
 	if err != nil {
 		return nil, err
 	}
@@ -552,27 +517,13 @@ func (s *State) post(endpoint string, payload []byte, ns *nonceSource) (*http.Re
 	if newNonce := resp.Header.Get("Replay-Nonce"); newNonce != "" {
 		ns.addNonce(newNonce)
 	}
+	if resp.StatusCode != expectedCode {
+		return nil, fmt.Errorf("POST %q returned HTTP status %d, expected %d",
+			url, resp.StatusCode, expectedCode)
+	}
+	state = "good"
 	return resp, nil
 }
-
-func (s *State) get(path string) (*http.Response, error) {
-	req, err := http.NewRequest("GET", path, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Add("X-Real-IP", s.realIP)
-	req.Header.Add("User-Agent", userAgent)
-	atomic.AddInt64(&s.getTotal, 1)
-	resp, err := s.client.Get(path)
-	if err != nil {
-		return nil, err
-	}
-	go s.addRespCode(resp.StatusCode)
-	return resp, nil
-}
-
-// Nonce utils, these methods are used to generate/store/retrieve the nonces
-// required for JWS in V1 ACME requests
 
 // signWithNonce signs the provided message with the provided signer, returning
 // the raw JWS bytes or an error. signWithNonce is not compatible with ACME v2
@@ -591,20 +542,24 @@ type nonceSource struct {
 }
 
 func (ns *nonceSource) getNonce() (string, error) {
+	nonceURL := ns.s.directory.EndpointURL(acme.NewNonceEndpoint)
+	latencyTag := string(acme.NewNonceEndpoint)
 	started := time.Now()
-	resp, err := ns.s.client.Head(fmt.Sprintf("%s/directory", ns.s.apiBase))
+	resp, err := ns.s.httpClient.Head(nonceURL)
 	finished := time.Now()
-	state := "good"
-	defer func() { ns.s.callLatency.Add("HEAD /directory", started, finished, state) }()
+	state := "error"
+	defer func() {
+		ns.s.callLatency.Add(fmt.Sprintf("HEAD %s", latencyTag),
+			started, finished, state)
+	}()
 	if err != nil {
-		state = "error"
 		return "", err
 	}
 	defer resp.Body.Close()
 	if nonce := resp.Header.Get("Replay-Nonce"); nonce != "" {
+		state = "good"
 		return nonce, nil
 	}
-	state = "error"
 	return "", errors.New("'Replay-Nonce' header not supplied")
 }
 
@@ -639,14 +594,6 @@ func (s *State) addAccount(acct *account) {
 	s.accts = append(s.accts, acct)
 }
 
-// addRegistration adds the provided registration to the state's list of regs
-func (s *State) addRegistration(reg *registration) {
-	s.rMu.Lock()
-	defer s.rMu.Unlock()
-
-	s.regs = append(s.regs, reg)
-}
-
 func (s *State) sendCall() {
 	defer s.wg.Done()
 	ctx := &context{}
@@ -658,10 +605,6 @@ func (s *State) sendCall() {
 			fmt.Printf("[FAILED] %s: %s\n", method, err)
 			break
 		}
-	}
-	// If the context's V1 registration
-	if ctx.reg != nil {
-		ctx.reg.update(ctx.finalizedAuthz, ctx.certs)
 	}
 	// If the context's V2 account isn't nil, update it based on the context's
 	// finalizedOrders and certs.

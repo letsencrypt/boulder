@@ -18,6 +18,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -226,11 +227,37 @@ func main() {
 	case command == "auth-revoke" && len(args) == 1:
 		domain := args[0]
 		_, logger, _, sac := setupContext(c)
-		ident := core.AcmeIdentifier{Value: domain, Type: core.IdentifierDNS}
-		authsRevoked, pendingAuthsRevoked, err := sac.RevokeAuthorizationsByDomain(ctx, ident)
-		cmd.FailOnError(err, fmt.Sprintf("Failed to revoke authorizations for %s", ident.Value))
-		logger.Infof("Revoked %d pending authorizations and %d final authorizations",
-			pendingAuthsRevoked, authsRevoked)
+		var err error
+		var authsRevoked, pendingAuthsRevoked int64
+		if features.Enabled(features.NewAuthorizationSchema) {
+			req := &sapb.RevokeAuthorizationsByDomainRequest{
+				Domain: &domain,
+			}
+			_, err = sac.RevokeAuthorizationsByDomain2(ctx, req)
+		} else {
+			ident := identifier.ACMEIdentifier{Value: domain, Type: identifier.DNS}
+			authsRevoked, pendingAuthsRevoked, err = sac.RevokeAuthorizationsByDomain(ctx, ident)
+			// For the legacy RevokeAuthorizationsByDomain RPC synthesize
+			// a berrors.NotFound err when there were no revocations. This makes it
+			// easier to handle the error case the same for the new and old RPC.
+			if authsRevoked == 0 && pendingAuthsRevoked == 0 {
+				err = berrors.NotFoundError(
+					"No pending or final authorizations were found to revoke for domain %q",
+					domain)
+			}
+		}
+		// If there were no authorizations revoked then exit non-zero with
+		// a distinct message so the operator can check the domain name.
+		if berrors.Is(err, berrors.NotFound) {
+			cmd.Fail(fmt.Sprintf(
+				"No pending or final authorizations were found to revoke for domain %q",
+				domain))
+		}
+		// All other errors should exit non-zero with a more generic error message.
+		cmd.FailOnError(err, fmt.Sprintf(
+			"Failed to revoke authorizations for %s", domain))
+		logger.Infof(
+			"Revoked pending and final authorizations for %s", domain)
 
 	default:
 		usage()

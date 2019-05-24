@@ -1043,7 +1043,7 @@ func TestLookupJWK(t *testing.T) {
 			Request: makePostRequestWithPath("test-path", errorIDJWSBody),
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.ServerInternalProblem,
-				Detail:     "Error retreiving account \"http://localhost/acme/acct/100\"",
+				Detail:     "Error retrieving account \"http://localhost/acme/acct/100\"",
 				HTTPStatus: http.StatusInternalServerError,
 			},
 			ErrorStatType: "JWSKeyIDLookupFailed",
@@ -1161,7 +1161,7 @@ func TestValidJWSForKey(t *testing.T) {
 			JWS:  wrongAlgJWS,
 			JWK:  goodJWK,
 			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
+				Type:       probs.BadSignatureAlgorithmProblem,
 				Detail:     "signature type 'HS256' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
 				HTTPStatus: http.StatusBadRequest,
 			},
@@ -1563,6 +1563,40 @@ func TestMatchJWSURLs(t *testing.T) {
 				test.AssertEquals(t, test.CountCounterVec(
 					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
 			}
+		})
+	}
+}
+
+func TestVerifyECFieldLengths(t *testing.T) {
+	wfe, _ := setupWFE(t)
+
+	var testCases = []struct {
+		Name         string
+		Body         string
+		ExpectedStat int
+	}{
+		{
+			Name:         "Correct lengths",
+			Body:         `{"protected":"eyJhbGciOiJFUzI1NiIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IlM4Rk9tclozeXdqNHl5RnF0MGV0QUQ5MFUtRW5rTmFPQlNMZlFtZjdwTmciLCJ5Ijoidk12cER5cUZEUkhqR2ZaMXNpRE9tNUxTNnhOZFI1eFRweW9RR0xET1gyUSJ9fQ"}`,
+			ExpectedStat: 0,
+		},
+		{
+			Name:         "Incorrect X length",
+			Body:         `{"protected":"eyJhbGciOiJFUzI1NiIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6Im5QVElBQmNEQVNZNkZOR1NOZkhDQjUxdFk3cUNodGd6ZVZhek90THJ3USIsInkiOiJ2RUVzNFYwZWdKa055TTJRNHBwMDAxenUxNFZjcFEwX0VpOHhPT1B4S1pzIn19"}`,
+			ExpectedStat: 1,
+		},
+		{
+			Name:         "Incorrect Y length",
+			Body:         `{"protected":"eyJhbGciOiJFUzI1NiIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InZFRXM0VjBlZ0prTnlNMlE0cHAwMDF6dTE0VmNwUTBfRWk4eE9PUHhLWnMiLCJ5IjoiblBUSUFCY0RBU1k2Rk5HU05mSENCNTF0WTdxQ2h0Z3plVmF6T3RMcndRIn19"}`,
+			ExpectedStat: 1,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			wfe.stats.improperECFieldLengths.Set(0)
+			wfe.verifyECFieldLengths([]byte(tc.Body), &http.Request{})
+			test.AssertEquals(t, test.CountCounter(wfe.stats.improperECFieldLengths), tc.ExpectedStat)
 		})
 	}
 }

@@ -6,7 +6,6 @@ import (
 	"crypto/elliptic"
 	"crypto/rsa"
 	"math/big"
-	"reflect"
 	"sync"
 
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -79,7 +78,7 @@ func (policy *KeyPolicy) GoodKey(key crypto.PublicKey) error {
 	case *ecdsa.PublicKey:
 		return policy.goodKeyECDSA(*t)
 	default:
-		return berrors.MalformedError("unknown key type %s", reflect.TypeOf(key))
+		return berrors.MalformedError("unknown key type %T", key)
 	}
 }
 

@@ -26,15 +26,12 @@
         "ra.boulder"
       ]
     },
-    "GoogleSafeBrowsing": {
-      "APIKey": "my-voice-is-my-passport",
-      "DataDir": "/tmp",
-      "ServerURL": "http://va1.boulder:6000"
-    },
     "features": {
       "CAAValidationMethods": true,
       "CAAAccountURI": true,
-      "SimplifiedVAHTTP": true
+      "SimplifiedVAHTTP": true,
+      "EnforceMultiVA": true,
+      "MultiVAFullResults": true
     },
     "remoteVAs": [
       {
@@ -46,6 +43,7 @@
         "timeout": "15s"
       }
     ],
+    "maxRemoteValidationFailures": 1,
     "accountURIPrefixes": [
       "http://boulder:4000/acme/reg/"
     ]

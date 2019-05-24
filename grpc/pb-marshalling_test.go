@@ -10,6 +10,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 	vapb "github.com/letsencrypt/boulder/va/proto"
@@ -266,10 +267,8 @@ func TestRegistration(t *testing.T) {
 }
 
 func TestAuthz(t *testing.T) {
-	exp := time.Now().AddDate(0, 0, 1)
-	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.com"}
-	combos := make([][]int, 1)
-	combos[0] = []int{0, 1}
+	exp := time.Now().AddDate(0, 0, 1).UTC()
+	identifier := identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"}
 	challA := core.Challenge{
 		ID:                       10,
 		Type:                     core.ChallengeTypeDNS01,
@@ -291,7 +290,6 @@ func TestAuthz(t *testing.T) {
 		Status:         core.StatusPending,
 		Expires:        &exp,
 		Challenges:     []core.Challenge{challA, challB},
-		Combinations:   combos,
 	}
 
 	pbAuthz, err := AuthzToPB(inAuthz)

@@ -407,39 +407,3 @@ func CreateTestingSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool, tim
 	jsonSCT, _ := json.Marshal(jsonSCTObj)
 	return jsonSCT
 }
-
-// ProbeLogs sends a HTTP GET request to each of the logs in the
-// publisher logCache and records the latency and status of the
-// response.
-func (pub *Impl) ProbeLogs() {
-	wg := new(sync.WaitGroup)
-	for _, log := range pub.ctLogsCache.LogURIs() {
-		wg.Add(1)
-		go func(uri string) {
-			defer wg.Done()
-			c := http.Client{
-				Timeout: time.Minute*2 + time.Second*30,
-			}
-			url, err := url.Parse(uri)
-			if err != nil {
-				pub.log.Errf("failed to parse log URI: %s", err)
-			}
-			url.Path = ct.GetSTHPath
-			s := time.Now()
-			resp, err := c.Get(url.String())
-			took := time.Since(s).Seconds()
-			var status string
-			if err == nil {
-				defer func() { _ = resp.Body.Close() }()
-				status = resp.Status
-			} else {
-				status = "error"
-			}
-			pub.metrics.probeLatency.With(prometheus.Labels{
-				"log":    uri,
-				"status": status,
-			}).Observe(took)
-		}(log)
-	}
-	wg.Wait()
-}

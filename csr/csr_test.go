@@ -12,6 +12,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -23,22 +24,22 @@ var testingPolicy = &goodkey.KeyPolicy{
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier, registrationID int64, revalidation bool) (challenges []core.Challenge, combinations [][]int, err error) {
+func (pa *mockPA) ChallengesFor(identifier identifier.ACMEIdentifier) (challenges []core.Challenge, err error) {
 	return
 }
 
-func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier) error {
+func (pa *mockPA) WillingToIssue(id identifier.ACMEIdentifier) error {
 	return nil
 }
 
-func (pa *mockPA) WillingToIssueWildcard(id core.AcmeIdentifier) error {
+func (pa *mockPA) WillingToIssueWildcard(id identifier.ACMEIdentifier) error {
 	if id.Value == "bad-name.com" || id.Value == "other-bad-name.com" {
 		return errors.New("")
 	}
 	return nil
 }
 
-func (pa *mockPA) ChallengeTypeEnabled(t string, registrationID int64) bool {
+func (pa *mockPA) ChallengeTypeEnabled(t string) bool {
 	return true
 }
 

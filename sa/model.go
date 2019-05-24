@@ -20,6 +20,35 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 )
 
+// errBadJSON is an error type returned when a json.Unmarshal performed by the
+// SA fails. It includes both the Unmarshal error and the original JSON data in
+// its error message to make it easier to track down the bad JSON data.
+type errBadJSON struct {
+	msg  string
+	json []byte
+	err  error
+}
+
+// Error returns an error message that includes the json.Unmarshal error as well
+// as the bad JSON data.
+func (e errBadJSON) Error() string {
+	return fmt.Sprintf(
+		"%s: error unmarshaling JSON %q: %s",
+		e.msg,
+		string(e.json),
+		e.err)
+}
+
+// badJSONError is a convenience function for constructing a errBadJSON instance
+// with the provided args.
+func badJSONError(msg string, jsonData []byte, err error) error {
+	return errBadJSON{
+		msg:  msg,
+		json: jsonData,
+		err:  err,
+	}
+}
+
 // By convention, any function that takes a dbOneSelector, dbSelector,
 // dbInserter, dbExecer, or dbSelectExecer as as an argument expects
 // that a context has already been applied to the relevant DbMap or
@@ -70,13 +99,13 @@ func selectPendingAuthz(s dbOneSelector, q string, args ...interface{}) (*pendin
 	var model pendingauthzModel
 	err := s.SelectOne(
 		&model,
-		"SELECT id, identifier, registrationID, status, expires, combinations, LockCol FROM pendingAuthorizations "+q,
+		"SELECT id, identifier, registrationID, status, expires, LockCol FROM pendingAuthorizations "+q,
 		args...,
 	)
 	return &model, err
 }
 
-const authzFields = "id, identifier, registrationID, status, expires, combinations"
+const authzFields = "id, identifier, registrationID, status, expires"
 
 // selectAuthz selects all fields of one authorization model
 func selectAuthz(s dbOneSelector, q string, args ...interface{}) (*authzModel, error) {
@@ -180,11 +209,6 @@ type certStatusModel struct {
 	OCSPResponse          []byte            `db:"ocspResponse"`
 	NotAfter              time.Time         `db:"notAfter"`
 	IsExpired             bool              `db:"isExpired"`
-
-	// TODO(#856, #873): Deprecated, remove once #2882 has been deployed
-	// to production
-	SubscribedApproved bool `db:"subscriberApproved"`
-	LockCol            int
 }
 
 // challModel is the description of a core.Challenge in the database
@@ -249,8 +273,11 @@ func modelToRegistration(reg *regModel) (core.Registration, error) {
 	k := &jose.JSONWebKey{}
 	err := json.Unmarshal(reg.Key, k)
 	if err != nil {
-		err = fmt.Errorf("unable to unmarshal JSONWebKey in db: %s", err)
-		return core.Registration{}, err
+		return core.Registration{},
+			badJSONError(
+				"failed to unmarshal registration model's key",
+				reg.Key,
+				err)
 	}
 	var contact *[]string
 	// Contact can be nil when the DB contains the literal string "null". We
@@ -318,7 +345,10 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 		var problem probs.ProblemDetails
 		err := json.Unmarshal(cm.Error, &problem)
 		if err != nil {
-			return core.Challenge{}, err
+			return core.Challenge{}, badJSONError(
+				"failed to unmarshal challenge model's error",
+				cm.Error,
+				err)
 		}
 		c.Error = &problem
 	}
@@ -326,7 +356,10 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 		var vr []core.ValidationRecord
 		err := json.Unmarshal(cm.ValidationRecord, &vr)
 		if err != nil {
-			return core.Challenge{}, err
+			return core.Challenge{}, badJSONError(
+				"failed to unmarshal challenge model's validation record",
+				cm.ValidationRecord,
+				err)
 		}
 		c.ValidationRecord = vr
 	}
@@ -352,6 +385,11 @@ type requestedNameModel struct {
 type orderToAuthzModel struct {
 	OrderID int64
 	AuthzID string
+}
+
+type orderToAuthz2Model struct {
+	OrderID int64
+	AuthzID int64
 }
 
 func orderToModel(order *corepb.Order) (*orderModel, error) {
@@ -394,61 +432,70 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 		var problem corepb.ProblemDetails
 		err := json.Unmarshal(om.Error, &problem)
 		if err != nil {
-			return &corepb.Order{}, err
+			return &corepb.Order{}, badJSONError(
+				"failed to unmarshal order model's error",
+				om.Error,
+				err)
 		}
 		order.Error = &problem
 	}
 	return order, nil
 }
 
-var challTypeToUint = map[string]uint{
+var challTypeToUint = map[string]uint8{
 	"http-01":     0,
-	"tls-sni-01":  1,
-	"dns-01":      2,
-	"tls-alpn-01": 3,
+	"dns-01":      1,
+	"tls-alpn-01": 2,
 }
 
-var uintToChallType = map[uint]string{
+var uintToChallType = map[uint8]string{
 	0: "http-01",
-	1: "tls-sni-01",
-	2: "dns-01",
-	3: "tls-alpn-01",
+	1: "dns-01",
+	2: "tls-alpn-01",
 }
 
-var identifierTypeToUint = map[string]uint{
+var identifierTypeToUint = map[string]uint8{
 	"dns": 0,
 }
 
-var uintToIdentifierType = map[uint]string{
+var uintToIdentifierType = map[uint8]string{
 	0: "dns",
 }
 
-var statusToUint = map[string]uint{
+var statusToUint = map[string]uint8{
 	"pending":     0,
 	"valid":       1,
 	"invalid":     2,
 	"deactivated": 3,
+	"revoked":     4,
 }
 
-var uintToStatus = map[uint]string{
+var uintToStatus = map[uint8]string{
 	0: "pending",
 	1: "valid",
 	2: "invalid",
 	3: "deactivated",
+	4: "revoked",
 }
 
+func statusUint(status core.AcmeStatus) uint8 {
+	return statusToUint[string(status)]
+}
+
+const authz2Fields = "id, identifierType, identifierValue, registrationID, status, expires, challenges, attempted, token, validationError, validationRecord"
+
 type authz2Model struct {
-	ID               int64
-	IdentifierType   uint
-	IdentifierValue  string
-	RegistrationID   int64
-	Status           uint
-	Expires          *time.Time
-	Challenges       byte
-	Attempted        *uint
-	Token            []byte
-	ValidationError  []byte
-	ValidationRecord []byte
+	ID               int64     `db:"id"`
+	IdentifierType   uint8     `db:"identifierType"`
+	IdentifierValue  string    `db:"identifierValue"`
+	RegistrationID   int64     `db:"registrationID"`
+	Status           uint8     `db:"status"`
+	Expires          time.Time `db:"expires"`
+	Challenges       uint8     `db:"challenges"`
+	Attempted        *uint8    `db:"attempted"`
+	Token            []byte    `db:"token"`
+	ValidationError  []byte    `db:"validationError"`
+	ValidationRecord []byte    `db:"validationRecord"`
 }
 
 // hasMultipleNonPendingChallenges checks if a slice of challenges contains
@@ -467,21 +514,31 @@ func hasMultipleNonPendingChallenges(challenges []*corepb.Challenge) bool {
 	return false
 }
 
+// authzPBToModel converts a protobuf authorization representation to the
+// authz2Model storage representation. This method should only be used to
+// convert protobuf authorizations generated from core.Authorizations that
+// were constructed using the new authorization storage concepts (i.e.
+// authorizations that have the V2 field set).
 func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 	if authz.V2 == nil || !*authz.V2 {
 		return nil, errors.New("authorization is not v2 format")
 	}
-	expires := time.Unix(0, *authz.Expires)
-	id, err := strconv.Atoi(*authz.Id)
-	if err != nil {
-		return nil, err
-	}
+	expires := time.Unix(0, *authz.Expires).UTC()
 	am := &authz2Model{
-		ID:              int64(id),
 		IdentifierValue: *authz.Identifier,
 		RegistrationID:  *authz.RegistrationID,
 		Status:          statusToUint[*authz.Status],
-		Expires:         &expires,
+		Expires:         expires,
+	}
+	if authz.Id != nil && *authz.Id != "" {
+		// The v1 internal authorization objects use a string for the ID, the v2
+		// storage format uses a integer ID. In order to maintain compatibility we
+		// convert the integer ID to a string.
+		id, err := strconv.Atoi(*authz.Id)
+		if err != nil {
+			return nil, err
+		}
+		am.ID = int64(id)
 	}
 	if hasMultipleNonPendingChallenges(authz.Challenges) {
 		return nil, errors.New("multiple challenges are non-pending")
@@ -491,7 +548,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 	// set, a bitmap of available challenge types, and a row indicating which challenge type
 	// was 'attempted'.
 	//
-	// Since we don't currently have the singluar token/error/record set abstracted out to
+	// Since we don't currently have the singular token/error/record set abstracted out to
 	// the core authorization type yet we need to extract these from the challenges array.
 	// We assume that the token in each challenge is the same and that if any of the challenges
 	// has a non-pending status that it should be considered the 'attempted' challenge and
@@ -534,7 +591,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 				}
 			}
 		}
-		token, err := base64.StdEncoding.DecodeString(tokenStr)
+		token, err := base64.RawURLEncoding.DecodeString(tokenStr)
 		if err != nil {
 			return nil, err
 		}
@@ -554,7 +611,10 @@ func populateAttemptedFields(am *authz2Model, challenge *corepb.Challenge) error
 		var prob probs.ProblemDetails
 		err := json.Unmarshal(am.ValidationError, &prob)
 		if err != nil {
-			return err
+			return badJSONError(
+				"failed to unmarshal authz2 model's validation error",
+				am.ValidationError,
+				err)
 		}
 		challenge.Error, err = grpc.ProblemDetailsToPB(&prob)
 		if err != nil {
@@ -568,7 +628,10 @@ func populateAttemptedFields(am *authz2Model, challenge *corepb.Challenge) error
 	var records []core.ValidationRecord
 	err := json.Unmarshal(am.ValidationRecord, &records)
 	if err != nil {
-		return err
+		return badJSONError(
+			"failed to unmarshal authz2 model's validation record",
+			am.ValidationRecord,
+			err)
 	}
 	challenge.Validationrecords = make([]*corepb.ValidationRecord, len(records))
 	for i, r := range records {
@@ -581,7 +644,7 @@ func populateAttemptedFields(am *authz2Model, challenge *corepb.Challenge) error
 }
 
 func modelToAuthzPB(am *authz2Model) (*corepb.Authorization, error) {
-	expires := am.Expires.UnixNano()
+	expires := am.Expires.UTC().UnixNano()
 	id := fmt.Sprintf("%d", am.ID)
 	v2 := true
 	status := uintToStatus[am.Status]
@@ -601,11 +664,11 @@ func modelToAuthzPB(am *authz2Model) (*corepb.Authorization, error) {
 	// to core.StatusValid or core.StatusInvalid depending on if there is anything
 	// in ValidationError and populate the ValidationRecord and ValidationError
 	// fields.
-	for pos := uint(0); pos < 8; pos++ {
+	for pos := uint8(0); pos < 8; pos++ {
 		if (am.Challenges>>pos)&1 == 1 {
 			challType := uintToChallType[pos]
 			status := string(core.StatusPending)
-			token := base64.StdEncoding.EncodeToString(am.Token)
+			token := base64.RawURLEncoding.EncodeToString(am.Token)
 			challenge := &corepb.Challenge{
 				Type:   &challType,
 				Status: &status,

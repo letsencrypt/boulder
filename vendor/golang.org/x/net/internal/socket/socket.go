@@ -4,13 +4,16 @@
 
 // Package socket provides a portable interface for socket system
 // calls.
-package socket
+package socket // import "golang.org/x/net/internal/socket"
 
 import (
 	"errors"
 	"net"
+	"runtime"
 	"unsafe"
 )
+
+var errNotImplemented = errors.New("not implemented on " + runtime.GOOS + "/" + runtime.GOARCH)
 
 // An Option represents a sticky socket option.
 type Option struct {

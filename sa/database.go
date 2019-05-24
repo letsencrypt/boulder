@@ -3,14 +3,12 @@ package sa
 import (
 	"database/sql"
 	"fmt"
-	"time"
 
 	"github.com/go-sql-driver/mysql"
 	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 )
 
 // NewDbMap creates the root gorp mapping object. Create one of these for each
@@ -111,14 +109,6 @@ func (log *SQLLogger) Printf(format string, v ...interface{}) {
 	log.Debugf(format, v...)
 }
 
-func ReportDbConnCount(dbMap *gorp.DbMap, statter metrics.Scope) {
-	db := dbMap.Db
-	for {
-		statter.Gauge("OpenConnections", int64(db.Stats().OpenConnections))
-		time.Sleep(1 * time.Second)
-	}
-}
-
 // initTables constructs the table map for the ORM.
 // NOTE: For tables with an auto-increment primary key (SetKeys(true, ...)),
 // it is very important to declare them as a such here. It produces a side
@@ -147,4 +137,6 @@ func initTables(dbMap *gorp.DbMap) {
 	dbMap.AddTableWithName(orderToAuthzModel{}, "orderToAuthz").SetKeys(false, "OrderID", "AuthzID")
 	dbMap.AddTableWithName(requestedNameModel{}, "requestedNames").SetKeys(false, "OrderID")
 	dbMap.AddTableWithName(orderFQDNSet{}, "orderFqdnSets").SetKeys(true, "ID")
+	dbMap.AddTableWithName(authz2Model{}, "authz2").SetKeys(true, "ID")
+	dbMap.AddTableWithName(orderToAuthz2Model{}, "orderToAuthz2").SetKeys(false, "OrderID", "AuthzID")
 }

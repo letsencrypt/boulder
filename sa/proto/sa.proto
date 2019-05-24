@@ -26,11 +26,17 @@ service StorageAuthority {
         rpc CountFQDNSets(CountFQDNSetsRequest) returns (Count) {}
         rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
         rpc PreviousCertificateExists(PreviousCertificateExistsRequest) returns (Exists) {}
+        rpc GetAuthorization2(AuthorizationID2) returns (core.Authorization) {}
+        rpc GetAuthorizations2(GetAuthorizationsRequest) returns (Authorizations) {}
+        rpc GetPendingAuthorization2(GetPendingAuthorizationRequest) returns (core.Authorization) {}
+        rpc CountPendingAuthorizations2(RegistrationID) returns (Count) {}
+        rpc GetValidOrderAuthorizations2(GetValidOrderAuthorizationsRequest) returns (Authorizations) {}
+        rpc CountInvalidAuthorizations2(CountInvalidAuthorizationsRequest) returns (Count) {}
+        rpc GetValidAuthorizations2(GetValidAuthorizationsRequest) returns (Authorizations) {}
         // Adders
         rpc NewRegistration(core.Registration) returns (core.Registration) {}
         rpc UpdateRegistration(core.Registration) returns (core.Empty) {}
         rpc NewPendingAuthorization(core.Authorization) returns (core.Authorization) {}
-        rpc UpdatePendingAuthorization(core.Authorization) returns (core.Empty) {}
         rpc FinalizeAuthorization(core.Authorization) returns (core.Empty) {}
         rpc MarkCertificateRevoked(MarkCertificateRevokedRequest) returns (core.Empty) {}
         rpc AddCertificate(AddCertificateRequest) returns (AddCertificateResponse) {}
@@ -47,6 +53,10 @@ service StorageAuthority {
         rpc GetAuthorizations(GetAuthorizationsRequest) returns (Authorizations) {}
         rpc AddPendingAuthorizations(AddPendingAuthorizationsRequest) returns (AuthorizationIDs) {}
         rpc RevokeCertificate(RevokeCertificateRequest) returns (core.Empty) {}
+        rpc NewAuthorizations2(AddPendingAuthorizationsRequest) returns (Authorization2IDs) {}
+        rpc FinalizeAuthorization2(FinalizeAuthorizationRequest) returns (core.Empty) {}
+        rpc DeactivateAuthorization2(AuthorizationID2) returns (core.Empty) {}
+        rpc RevokeAuthorizationsByDomain2(RevokeAuthorizationsByDomainRequest) returns (core.Empty) {}
 }
 
 message RegistrationID {
@@ -85,7 +95,7 @@ message ValidAuthorizations {
 
 message CertificateStatus {
         optional string serial = 1;
-        optional bool subscriberApproved = 2;
+        reserved 2; // previously subscriberApproved
         optional string status = 3;
         optional int64 ocspLastUpdated = 4;
         optional int64 revokedDate = 5;
@@ -189,6 +199,7 @@ message RevokeAuthorizationsByDomainResponse {
 
 message OrderRequest {
         optional int64 id = 1;
+        optional bool useV2Authorizations = 2;
 }
 
 message GetValidOrderAuthorizationsRequest {
@@ -199,6 +210,7 @@ message GetValidOrderAuthorizationsRequest {
 message GetOrderForNamesRequest {
         optional int64 acctID = 1;
         repeated string names = 2;
+        optional bool useV2Authorizations = 3;
 }
 
 message GetAuthorizationsRequest {
@@ -224,9 +236,26 @@ message AuthorizationIDs {
         repeated string ids = 1;
 }
 
+message AuthorizationID2 {
+        optional int64 id = 1;
+}
+
+message Authorization2IDs {
+        repeated int64 ids = 1;
+}
+
 message RevokeCertificateRequest {
         optional string serial = 1;
         optional int64 reason = 2;
         optional int64 date = 3; // Unix timestamp (nanoseconds)
         optional bytes response = 4;
+}
+
+message FinalizeAuthorizationRequest {
+        optional int64 id = 1;
+        optional string status = 2;
+        optional int64 expires = 3; // Unix timestamp (nanoseconds)
+        optional string attempted = 4;
+        repeated core.ValidationRecord validationRecords = 5;
+        optional core.ProblemDetails validationError = 6;
 }

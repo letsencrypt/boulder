@@ -17,6 +17,8 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/revocation"
@@ -240,11 +242,12 @@ func (sa *StorageAuthority) GetAuthorization(_ context.Context, id string) (core
 		ID:             "valid",
 		Status:         core.StatusValid,
 		RegistrationID: 1,
-		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-an-example.com"},
+		Identifier:     identifier.DNSIdentifier("not-an-example.com"),
 		Challenges: []core.Challenge{
 			{
-				ID:   23,
-				Type: "dns",
+				ID:    23,
+				Token: "token",
+				Type:  "dns",
 			},
 		},
 	}
@@ -280,7 +283,7 @@ func (sa *StorageAuthority) GetAuthorization(_ context.Context, id string) (core
 }
 
 // RevokeAuthorizationsByDomain is a mock
-func (sa *StorageAuthority) RevokeAuthorizationsByDomain(_ context.Context, ident core.AcmeIdentifier) (int64, int64, error) {
+func (sa *StorageAuthority) RevokeAuthorizationsByDomain(_ context.Context, ident identifier.ACMEIdentifier) (int64, int64, error) {
 	return 0, 0, nil
 }
 
@@ -347,11 +350,6 @@ func (sa *StorageAuthority) NewRegistration(_ context.Context, reg core.Registra
 	return
 }
 
-// UpdatePendingAuthorization is a mock
-func (sa *StorageAuthority) UpdatePendingAuthorization(_ context.Context, authz core.Authorization) (err error) {
-	return
-}
-
 // UpdateRegistration is a mock
 func (sa *StorageAuthority) UpdateRegistration(_ context.Context, reg core.Registration) (err error) {
 	return
@@ -392,7 +390,7 @@ func (sa *StorageAuthority) GetValidAuthorizations(_ context.Context, regID int6
 					Status:         core.StatusValid,
 					RegistrationID: 1,
 					Expires:        &exp,
-					Identifier: core.AcmeIdentifier{
+					Identifier: identifier.ACMEIdentifier{
 						Type:  "dns",
 						Value: name,
 					},
@@ -515,10 +513,10 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 		validOrder.RegistrationID = &six
 	}
 
-	// Order ID 7 is expired
+	// Order ID 7 is ready, but expired
 	if *req.Id == 7 {
-		pending := string(core.StatusPending)
-		validOrder.Status = &pending
+		ready := string(core.StatusReady)
+		validOrder.Status = &ready
 		exp = sa.clk.Now().AddDate(-30, 0, 0).Unix()
 		validOrder.Expires = &exp
 	}
@@ -552,6 +550,101 @@ func (sa *StorageAuthority) CountInvalidAuthorizations(ctx context.Context, req 
 // AddPendingAuthorizations is a mock
 func (sa *StorageAuthority) AddPendingAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
 	return &sapb.AuthorizationIDs{}, nil
+}
+
+// NewAuthorizations is a mock
+func (sa *StorageAuthority) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
+	return &sapb.Authorization2IDs{}, nil
+}
+
+func (sa *StorageAuthority) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) error {
+	return nil
+}
+
+func (sa *StorageAuthority) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Empty, error) {
+	return nil, nil
+}
+
+func (sa *StorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*corepb.Empty, error) {
+	return nil, nil
+}
+
+func (sa *StorageAuthority) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error) {
+	return nil, nil
+}
+
+func (sa *StorageAuthority) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
+	return nil, nil
+}
+
+func (sa *StorageAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
+	return nil, nil
+}
+
+func (sa *StorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
+	return nil, nil
+}
+
+func (sa *StorageAuthority) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
+	return nil, nil
+}
+
+func (sa *StorageAuthority) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
+	return nil, nil
+}
+
+var (
+	authzIdValid       = int64(1)
+	authzIdPending     = int64(2)
+	authzIdExpired     = int64(3)
+	authzIdErrorResult = int64(4)
+	authzIdDiffAccount = int64(5)
+)
+
+// GetAuthorization2 is a mock
+func (sa *StorageAuthority) GetAuthorization2(ctx context.Context, id *sapb.AuthorizationID2) (*corepb.Authorization, error) {
+	authz := core.Authorization{
+		Status:         core.StatusValid,
+		RegistrationID: 1,
+		Identifier:     identifier.DNSIdentifier("not-an-example.com"),
+		V2:             true,
+		Challenges: []core.Challenge{
+			{
+				ID:    23,
+				Token: "token",
+				Type:  "dns",
+			},
+		},
+	}
+
+	switch *id.Id {
+	case authzIdValid:
+		exp := sa.clk.Now().AddDate(100, 0, 0)
+		authz.Expires = &exp
+		authz.ID = fmt.Sprintf("%d", authzIdValid)
+		return bgrpc.AuthzToPB(authz)
+	case authzIdPending:
+		exp := sa.clk.Now().AddDate(100, 0, 0)
+		authz.Expires = &exp
+		authz.ID = fmt.Sprintf("%d", authzIdPending)
+		authz.Status = core.StatusPending
+		return bgrpc.AuthzToPB(authz)
+	case authzIdExpired:
+		exp := sa.clk.Now().AddDate(0, -1, 0)
+		authz.Expires = &exp
+		authz.ID = fmt.Sprintf("%d", authzIdExpired)
+		return bgrpc.AuthzToPB(authz)
+	case authzIdErrorResult:
+		return nil, fmt.Errorf("Unspecified database error")
+	case authzIdDiffAccount:
+		exp := sa.clk.Now().AddDate(100, 0, 0)
+		authz.RegistrationID = 2
+		authz.Expires = &exp
+		authz.ID = fmt.Sprintf("%d", authzIdDiffAccount)
+		return bgrpc.AuthzToPB(authz)
+	}
+
+	return nil, berrors.NotFoundError("no authorization found with id %q", id)
 }
 
 // RevokeCertificate is a mock
@@ -621,7 +714,7 @@ func (sa *SAWithFailedChallenges) GetAuthorization(_ context.Context, id string)
 		ID:             "valid",
 		Status:         core.StatusValid,
 		RegistrationID: 1,
-		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-an-example.com"},
+		Identifier:     identifier.DNSIdentifier("not-an-example.com"),
 		Challenges: []core.Challenge{
 			{
 				ID:   23,

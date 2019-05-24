@@ -6,9 +6,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/features"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/miekg/dns"
@@ -21,8 +21,8 @@ type caaParams struct {
 }
 
 func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
-	acmeID := core.AcmeIdentifier{
-		Type:  core.IdentifierDNS,
+	acmeID := identifier.ACMEIdentifier{
+		Type:  identifier.DNS,
 		Value: *req.Domain,
 	}
 	params := &caaParams{
@@ -46,7 +46,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 // the CAA lookup & validation fail a problem is returned.
 func (va *ValidationAuthorityImpl) checkCAA(
 	ctx context.Context,
-	identifier core.AcmeIdentifier,
+	identifier identifier.ACMEIdentifier,
 	params *caaParams) *probs.ProblemDetails {
 	present, valid, records, err := va.checkCAARecords(ctx, identifier, params)
 	if err != nil {
@@ -176,7 +176,7 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 // checkCAARecords fetches the CAA records for the given identifier and then
 // validates them. If the identifier argument's value has a wildcard prefix then
 // the prefix is stripped and validation will be performed against the base
-// domain, honouring any issueWild CAA records encountered as apppropriate.
+// domain, honouring any issueWild CAA records encountered as appropriate.
 // checkCAARecords returns four values: the first is a bool indicating whether
 // CAA records were present after filtering for known/supported CAA tags. The
 // second is a bool indicating whether issuance for the identifier is valid. The
@@ -185,7 +185,7 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 // value (or nil).
 func (va *ValidationAuthorityImpl) checkCAARecords(
 	ctx context.Context,
-	identifier core.AcmeIdentifier,
+	identifier identifier.ACMEIdentifier,
 	params *caaParams) (bool, bool, []*dns.CAA, error) {
 	hostname := strings.ToLower(identifier.Value)
 	// If this is a wildcard name, remove the prefix

@@ -33,11 +33,13 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/ctpolicy"
+	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	sagrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
@@ -58,12 +60,49 @@ import (
 	jose "gopkg.in/square/go-jose.v2"
 )
 
+func getAuthorization(t *testing.T, id string, sa *sa.SQLStorageAuthority) core.Authorization {
+	t.Helper()
+	var dbAuthz core.Authorization
+	if features.Enabled(features.NewAuthorizationSchema) {
+		idInt, err := strconv.ParseInt(id, 10, 64)
+		test.AssertNotError(t, err, "strconv.ParseInt failed")
+		dbAuthzPB, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &idInt})
+		test.AssertNotError(t, err, "Could not fetch authorization from database")
+		dbAuthz, err = bgrpc.PBToAuthz(dbAuthzPB)
+		test.AssertNotError(t, err, "bgrpc.PBToAuthz failed")
+	} else {
+		var err error
+		dbAuthz, err = sa.GetAuthorization(ctx, id)
+		test.AssertNotError(t, err, "Could not fetch authorization from database")
+	}
+	return dbAuthz
+}
+
+func challTypeIndex(t *testing.T, challenges []core.Challenge, typ string) int64 {
+	t.Helper()
+	var challIdx int64
+	var set bool
+	for i, ch := range challenges {
+		if ch.Type == typ {
+			challIdx = int64(i)
+			set = true
+			break
+		}
+	}
+	if !set {
+		t.Errorf("challTypeIndex didn't find challenge of type: %s", typ)
+	}
+	return challIdx
+}
+
+func numAuthorizations(o *corepb.Order) int {
+	return len(o.Authorizations) + len(o.V2Authorizations)
+}
+
 type DummyValidationAuthority struct {
-	argument        chan core.Authorization
-	RecordsReturn   []core.ValidationRecord
-	ProblemReturn   *probs.ProblemDetails
-	IsNotSafe       bool
-	IsSafeDomainErr error
+	argument      chan core.Authorization
+	RecordsReturn []core.ValidationRecord
+	ProblemReturn *probs.ProblemDetails
 }
 
 func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
@@ -71,21 +110,7 @@ func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, doma
 	return dva.RecordsReturn, dva.ProblemReturn
 }
 
-func (dva *DummyValidationAuthority) IsSafeDomain(ctx context.Context, req *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
-	if dva.IsSafeDomainErr != nil {
-		return nil, dva.IsSafeDomainErr
-	}
-	ret := !dva.IsNotSafe
-	return &vaPB.IsDomainSafe{IsSafe: &ret}, nil
-}
-
 var (
-	SupportedChallenges = map[string]bool{
-		core.ChallengeTypeHTTP01:   true,
-		core.ChallengeTypeTLSSNI01: true,
-		core.ChallengeTypeDNS01:    true,
-	}
-
 	// These values we simulate from the client
 	AccountKeyJSONA = []byte(`{
 		"kty":"RSA",
@@ -131,10 +156,11 @@ var (
 	ShortKey = jose.JSONWebKey{}
 
 	AuthzRequest = core.Authorization{
-		Identifier: core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+		Identifier: identifier.ACMEIdentifier{
+			Type:  identifier.DNS,
 			Value: "not-example.com",
 		},
+		V2: true,
 	}
 
 	ResponseIndex = 0
@@ -147,10 +173,9 @@ var (
 	Registration = core.Registration{}
 	AuthzInitial = core.Authorization{
 		ID:             "60p2Dc_XmUB2UUJBV4wYkF7BJbPD9KlDnUL3SmFMuTE",
-		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-example.com"},
+		Identifier:     identifier.DNSIdentifier("not-example.com"),
 		RegistrationID: 1,
 		Status:         "pending",
-		Combinations:   [][]int{{0}, {1}},
 	}
 	AuthzFinal = core.Authorization{}
 
@@ -230,6 +255,11 @@ func (r *dummyRateLimitConfig) LoadPolicies(contents []byte) error {
 }
 
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
+	features.Reset()
+	if strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
+	}
+
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	err = json.Unmarshal(AccountKeyJSONB, &AccountKeyB)
@@ -260,9 +290,13 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	va := &DummyValidationAuthority{argument: make(chan core.Authorization, 1)}
 
-	pa, err := policy.New(SupportedChallenges)
+	pa, err := policy.New(map[string]bool{
+		core.ChallengeTypeHTTP01: true,
+		core.ChallengeTypeDNS01:  true,
+	})
+
 	test.AssertNotError(t, err, "Couldn't create PA")
-	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
+	err = pa.SetHostnamePolicyFile("../test/hostname-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
 	stats := metrics.NewNoopScope()
@@ -297,9 +331,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	AuthzInitial.RegistrationID = Registration.ID
 
-	challenges, combinations, _ := pa.ChallengesFor(AuthzInitial.Identifier, Registration.ID, false)
+	challenges, _ := pa.ChallengesFor(AuthzInitial.Identifier)
 	AuthzInitial.Challenges = challenges
-	AuthzInitial.Combinations = combinations
 
 	AuthzFinal = AuthzInitial
 	AuthzFinal.Status = "valid"
@@ -587,15 +620,12 @@ func TestUpdateRegistrationSame(t *testing.T) {
 func TestNewAuthorization(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	_, err := ra.NewAuthorization(ctx, AuthzRequest, 0)
-	test.AssertError(t, err, "Authorization cannot have registrationID == 0")
 
 	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	// Verify that returned authz same as DB
-	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
-	test.AssertNotError(t, err, "Could not fetch authorization from database")
+	dbAuthz := getAuthorization(t, authz.ID, sa)
 	assertAuthzEqual(t, authz, dbAuthz)
 
 	// Verify that the returned authz has the right information
@@ -604,11 +634,13 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
 
 	// TODO Verify that challenges are correct
-	test.Assert(t, len(authz.Challenges) == len(SupportedChallenges), "Incorrect number of challenges returned")
-	test.Assert(t, SupportedChallenges[authz.Challenges[0].Type], fmt.Sprintf("Unsupported challenge: %s", authz.Challenges[0].Type))
-	test.Assert(t, SupportedChallenges[authz.Challenges[1].Type], fmt.Sprintf("Unsupported challenge: %s", authz.Challenges[1].Type))
-	test.AssertNotError(t, authz.Challenges[0].CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer for Challenge 0 returned an error")
-	test.AssertNotError(t, authz.Challenges[1].CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer for Challenge 1 returned an error")
+	test.Assert(t, len(authz.Challenges) == 2, "Incorrect number of challenges returned")
+	for _, c := range authz.Challenges {
+		if c.Type != core.ChallengeTypeHTTP01 && c.Type != core.ChallengeTypeDNS01 {
+			t.Errorf("unsupported challenge type %s", c.Type)
+		}
+		test.AssertNotError(t, c.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer for Challenge 0 returned an error")
+	}
 }
 
 func TestReuseValidAuthorization(t *testing.T) {
@@ -648,12 +680,6 @@ func TestReuseValidAuthorization(t *testing.T) {
 	test.AssertEquals(t, httpChallenge.Type, core.ChallengeTypeHTTP01)
 	test.AssertEquals(t, httpChallenge.Status, core.StatusValid)
 
-	// It should have one SNI challenge that is pending
-	sniIndex := httpIndex + 1
-	sniChallenge := secondAuthz.Challenges[sniIndex]
-	test.AssertEquals(t, sniChallenge.Type, core.ChallengeTypeTLSSNI01)
-	test.AssertEquals(t, sniChallenge.Status, core.StatusPending)
-
 	// Sending an update to this authz for an already valid challenge should do
 	// nothing (but produce no error), since it is already a valid authz
 	authzPB, err := bgrpc.AuthzToPB(secondAuthz)
@@ -668,7 +694,7 @@ func TestReuseValidAuthorization(t *testing.T) {
 	test.AssertEquals(t, finalAuthz.ID, secondAuthz.ID)
 	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
 
-	challIndex = int64(sniIndex)
+	challIndex = int64(httpIndex)
 	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: &challIndex})
@@ -725,6 +751,12 @@ func (m mockSAWithBadGetValidAuthz) GetValidAuthorizations(
 	return nil, fmt.Errorf("mockSAWithBadGetValidAuthz always errors!")
 }
 
+func (m mockSAWithBadGetValidAuthz) GetValidAuthorizations2(
+	ctx context.Context,
+	_ *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
+	return nil, fmt.Errorf("mockSAWithBadGetValidAuthz always errors!")
+}
+
 func TestReuseAuthorizationFaultySA(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -732,7 +764,8 @@ func TestReuseAuthorizationFaultySA(t *testing.T) {
 	// Turn on AuthZ Reuse
 	ra.reuseValidAuthz = true
 
-	// Use a mock SA that always fails `GetValidAuthorizations`
+	// Use a mock SA that always fails `GetValidAuthorizations` and
+	// `GetValidAuthorizations2`
 	mockSA := &mockSAWithBadGetValidAuthz{}
 	ra.SA = mockSA
 
@@ -810,8 +843,8 @@ func TestNewAuthorizationCapitalLetters(t *testing.T) {
 	defer cleanUp()
 
 	authzReq := core.Authorization{
-		Identifier: core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+		Identifier: identifier.ACMEIdentifier{
+			Type:  identifier.DNS,
 			Value: "NOT-example.COM",
 		},
 	}
@@ -819,8 +852,7 @@ func TestNewAuthorizationCapitalLetters(t *testing.T) {
 	test.AssertNotError(t, err, "NewAuthorization failed")
 	test.AssertEquals(t, "not-example.com", authz.Identifier.Value)
 
-	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
-	test.AssertNotError(t, err, "Could not fetch authorization from database")
+	dbAuthz := getAuthorization(t, authz.ID, sa)
 	assertAuthzEqual(t, authz, dbAuthz)
 }
 
@@ -829,8 +861,8 @@ func TestNewAuthorizationInvalidName(t *testing.T) {
 	defer cleanUp()
 
 	authzReq := core.Authorization{
-		Identifier: core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+		Identifier: identifier.ACMEIdentifier{
+			Type:  identifier.DNS,
 			Value: "127.0.0.1",
 		},
 	}
@@ -841,81 +873,6 @@ func TestNewAuthorizationInvalidName(t *testing.T) {
 	if !berrors.Is(err, berrors.Malformed) {
 		t.Errorf("expected berrors.BoulderError with internal type berrors.Malformed, got %T", err)
 	}
-}
-
-func TestPerformValidation(t *testing.T) {
-	va, sa, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// We know this is OK because of TestNewAuthorization
-	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
-	test.AssertNotError(t, err, "NewAuthorization failed")
-
-	authzPB, err := bgrpc.AuthzToPB(authz)
-	test.AssertNotError(t, err, "AuthzToPB for known OK authz failed")
-
-	challIndex := int64(ResponseIndex)
-	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
-		Authz:          authzPB,
-		ChallengeIndex: &challIndex,
-	})
-	test.AssertNotError(t, err, "PerformValidation failed")
-	authz, err = bgrpc.PBToAuthz(authzPB)
-	test.AssertNotError(t, err, "PBToAuthz failed for PerformValidation result")
-
-	var vaAuthz core.Authorization
-	select {
-	case a := <-va.argument:
-		vaAuthz = a
-	case <-time.After(time.Second):
-		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
-	}
-
-	// Verify that returned authz same as DB
-	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
-	test.AssertNotError(t, err, "Could not fetch authorization from database")
-	assertAuthzEqual(t, authz, dbAuthz)
-
-	// Verify that the VA got the authz, and it's the same as the others
-	assertAuthzEqual(t, authz, vaAuthz)
-
-	// Verify that the responses are reflected
-	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
-
-	// Create another authorization
-	newAR := AuthzRequest
-	newAR.Identifier.Value = "not-not-example.com" // Identifier needs to be different to bypass authorization reuse
-	authz, err = ra.NewAuthorization(ctx, newAR, Registration.ID)
-	test.AssertNotError(t, err, "NewAuthorization failed")
-
-	authzPB, err = bgrpc.AuthzToPB(authz)
-	test.AssertNotError(t, err, "AuthzToPB failed")
-
-	// Update it with an empty challenge, no key authorization
-	// This should work as well based on modern key authorization semantics
-	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
-		Authz:          authzPB,
-		ChallengeIndex: &challIndex})
-	test.AssertNotError(t, err, "PerformValidation failed")
-	select {
-	case a := <-va.argument:
-		vaAuthz = a
-	case <-time.After(time.Second):
-		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
-	}
-	authz, err = bgrpc.PBToAuthz(authzPB)
-	test.AssertNotError(t, err, "PBToAuthz failed")
-
-	// Verify that returned authz same as DB
-	dbAuthz, err = sa.GetAuthorization(ctx, authz.ID)
-	test.AssertNotError(t, err, "Could not fetch authorization from database")
-	assertAuthzEqual(t, authz, dbAuthz)
-
-	// Verify that the VA got the authz, and it's the same as the others
-	assertAuthzEqual(t, authz, vaAuthz)
-
-	// Verify that the responses are reflected
-	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
 }
 
 func TestPerformValidationExpired(t *testing.T) {
@@ -975,7 +932,7 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 		"PerformValidation of valid authz (with reuseValidAuthz disabled) didn't return a berrors.WrongAuthorizationState")
 }
 
-func TestPerformValidationNewRPC(t *testing.T) {
+func TestPerformValidationSuccess(t *testing.T) {
 	va, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
@@ -983,7 +940,7 @@ func TestPerformValidationNewRPC(t *testing.T) {
 	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
-	authz.Challenges[ResponseIndex].Type = core.ChallengeTypeDNS01
+	challIdx := challTypeIndex(t, authz.Challenges, core.ChallengeTypeDNS01)
 	va.RecordsReturn = []core.ValidationRecord{
 		{Hostname: "example.com"}}
 	va.ProblemReturn = nil
@@ -991,10 +948,9 @@ func TestPerformValidationNewRPC(t *testing.T) {
 	authzPB, err := bgrpc.AuthzToPB(authz)
 	test.AssertNotError(t, err, "AuthzToPB failed")
 
-	challIndex := int64(ResponseIndex)
 	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
-		ChallengeIndex: &challIndex,
+		ChallengeIndex: &challIdx,
 	})
 	test.AssertNotError(t, err, "PerformValidation failed")
 	authz, err = bgrpc.PBToAuthz(authzPB)
@@ -1014,12 +970,12 @@ func TestPerformValidationNewRPC(t *testing.T) {
 	// Sleep so the RA has a chance to write to the SA
 	time.Sleep(100 * time.Millisecond)
 
-	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
-	test.AssertNotError(t, err, "Could not fetch authorization from database")
+	dbAuthz := getAuthorization(t, authz.ID, sa)
 
 	// Verify that the responses are reflected
 	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
-	test.Assert(t, dbAuthz.Challenges[ResponseIndex].Status == core.StatusValid, "challenge was not marked as valid")
+	challIdx = challTypeIndex(t, dbAuthz.Challenges, core.ChallengeTypeDNS01)
+	test.Assert(t, dbAuthz.Challenges[challIdx].Status == core.StatusValid, "challenge was not marked as valid")
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
@@ -1028,8 +984,8 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	authz := core.Authorization{RegistrationID: 1}
 	authz, err := sa.NewPendingAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Could not store test data")
-	authz.Identifier = core.AcmeIdentifier{
-		Type:  core.IdentifierDNS,
+	authz.Identifier = identifier.ACMEIdentifier{
+		Type:  identifier.DNS,
 		Value: "www.example.com",
 	}
 	csr := x509.CertificateRequest{
@@ -1099,9 +1055,6 @@ func TestNewCertificate(t *testing.T) {
 	ExampleCSR.Signature[0]--
 	test.AssertError(t, err, "Failed to check CSR signature")
 
-	// Before issuance the issuanceExpvar should be 0
-	test.AssertEquals(t, issuanceExpvar.String(), "0")
-
 	// Check that we don't fail on case mismatches
 	ExampleCSR.Subject.CommonName = "www.NOT-example.com"
 	certRequest = core.CertificateRequest{
@@ -1110,10 +1063,6 @@ func TestNewCertificate(t *testing.T) {
 
 	cert, err := ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertNotError(t, err, "Failed to issue certificate")
-
-	// After issuance the issuanceExpvar should be the current timestamp
-	now := ra.clk.Now()
-	test.AssertEquals(t, issuanceExpvar.String(), strconv.FormatInt(now.Unix(), 10))
 
 	_, err = x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Failed to parse certificate")
@@ -1142,8 +1091,14 @@ func TestAuthzRateLimiting(t *testing.T) {
 	test.AssertError(t, err, "Pending Authorization rate limit failed.")
 
 	// Finalize pending authz
-	err = ra.onValidationUpdate(ctx, authz)
-	test.AssertNotError(t, err, "Could not store test data")
+	if features.Enabled(features.NewAuthorizationSchema) {
+		authz.Challenges[0].Status = core.StatusInvalid
+		err = ra.recordValidation(ctx, authz.ID, authz.Expires, &authz.Challenges[0])
+		test.AssertNotError(t, err, "recordValidation failed")
+	} else {
+		err = ra.onValidationUpdate(ctx, authz)
+		test.AssertNotError(t, err, "Could not store test data")
+	}
 
 	// Try to create a new authzRequest, should be fine now.
 	_, err = ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
@@ -1197,6 +1152,69 @@ func TestNewOrderRateLimiting(t *testing.T) {
 	fc.Add(2 * rateLimitDuration)
 	_, err = ra.NewOrder(ctx, orderTwo)
 	test.AssertNotError(t, err, "NewOrder for orderTwo failed after advancing clock")
+}
+
+// TestEarlyOrderRateLimiting tests that the EarlyOrderRateLimiting flag results
+// in NewOrder applying the certificates per name/per FQDN rate limits against
+// the order names.
+func TestEarlyOrderRateLimiting(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ra.orderLifetime = 5 * 24 * time.Hour
+
+	rateLimitDuration := 5 * time.Minute
+
+	domain := "early-ratelimit-example.com"
+
+	// Set a mock RL policy with a CertificatesPerName threshold for the domain
+	// name so low if it were enforced it would prevent a new order for any names.
+	ra.rlPolicies = &dummyRateLimitConfig{
+		CertificatesPerNamePolicy: ratelimit.RateLimitPolicy{
+			Threshold: 10,
+			Window:    cmd.ConfigDuration{Duration: rateLimitDuration},
+			// Setting the Threshold to 0 skips applying the rate limit. Setting an
+			// override to 0 does the trick.
+			Overrides: map[string]int{
+				domain: 0,
+			},
+		},
+		NewOrdersPerAccountPolicy: ratelimit.RateLimitPolicy{
+			Threshold: 10,
+			Window:    cmd.ConfigDuration{Duration: rateLimitDuration},
+		},
+	}
+
+	// Start with the feature flag enabled.
+	err := features.Set(map[string]bool{"EarlyOrderRateLimit": true})
+	test.AssertNotError(t, err, "Failed to set EarlyOrderRateLimit feature flag")
+
+	// Request an order for the test domain
+	newOrder := &rapb.NewOrderRequest{
+		RegistrationID: &Registration.ID,
+		Names:          []string{domain},
+	}
+
+	// With the feature flag enabled the NewOrder request should fail because of
+	// the CertificatesPerNamePolicy.
+	_, err = ra.NewOrder(ctx, newOrder)
+	test.AssertError(t, err, "NewOrder did not apply cert rate limits with feature flag enabled")
+
+	// The err should be the expected rate limit error
+	expectedErrPrefix := "too many certificates already issued for: " +
+		"early-ratelimit-example.com"
+	test.Assert(t,
+		strings.HasPrefix(err.Error(), expectedErrPrefix),
+		fmt.Sprintf("expected error to have prefix %q got %q", expectedErrPrefix, err))
+
+	// Disable EarlyOrderRateLimit. Instead of using features.Reset we use
+	// features.Set so that we don't stamp on NewAuthorizationSchema
+	_ = features.Set(map[string]bool{"EarlyOrderRateLimit": false})
+
+	// The same NewOrder request should now succeed because EarlyOrderRateLimit
+	// isn't enabled and the CertificatesPerNamePolicy won't be enforced until
+	// finalization time.
+	_, err = ra.NewOrder(ctx, newOrder)
+	test.AssertNotError(t, err, "NewOrder applied cert rate limits with feature flag disabled")
 }
 
 func TestAuthzFailedRateLimiting(t *testing.T) {
@@ -1881,8 +1899,46 @@ func (cr *caaRecorder) IsCAAValid(
 // A mock SA that returns special authzs for testing rechecking of CAA (in
 // TestRecheckCAADates below)
 type mockSAWithRecentAndOlder struct {
-	recent, older time.Time
+	authzMap map[string]*core.Authorization
 	mocks.StorageAuthority
+}
+
+func newMockSAWithRecentAndOlder(recent, older time.Time) *mockSAWithRecentAndOlder {
+	makeIdentifier := func(name string) identifier.ACMEIdentifier {
+		return identifier.ACMEIdentifier{
+			Type:  identifier.DNS,
+			Value: name,
+		}
+	}
+	return &mockSAWithRecentAndOlder{
+		authzMap: map[string]*core.Authorization{
+			"recent.com": &core.Authorization{
+				Identifier: makeIdentifier("recent.com"),
+				Expires:    &recent,
+				Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
+			},
+			"older.com": &core.Authorization{
+				Identifier: makeIdentifier("older.com"),
+				Expires:    &older,
+				Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
+			},
+			"older2.com": &core.Authorization{
+				Identifier: makeIdentifier("older2.com"),
+				Expires:    &older,
+				Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
+			},
+			"wildcard.com": &core.Authorization{
+				Identifier: makeIdentifier("wildcard.com"),
+				Expires:    &older,
+				Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
+			},
+			"*.wildcard.com": &core.Authorization{
+				Identifier: makeIdentifier("*.wildcard.com"),
+				Expires:    &older,
+				Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
+			},
+		},
+	}
 }
 
 func (m *mockSAWithRecentAndOlder) GetValidAuthorizations(
@@ -1890,39 +1946,11 @@ func (m *mockSAWithRecentAndOlder) GetValidAuthorizations(
 	registrationID int64,
 	names []string,
 	now time.Time) (map[string]*core.Authorization, error) {
-	makeIdentifier := func(name string) core.AcmeIdentifier {
-		return core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
-			Value: name,
-		}
-	}
-	return map[string]*core.Authorization{
-		"recent.com": &core.Authorization{
-			Identifier: makeIdentifier("recent.com"),
-			Expires:    &m.recent,
-			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
-		},
-		"older.com": &core.Authorization{
-			Identifier: makeIdentifier("older.com"),
-			Expires:    &m.older,
-			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
-		},
-		"older2.com": &core.Authorization{
-			Identifier: makeIdentifier("older2.com"),
-			Expires:    &m.older,
-			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
-		},
-		"wildcard.com": &core.Authorization{
-			Identifier: makeIdentifier("wildcard.com"),
-			Expires:    &m.older,
-			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
-		},
-		"*.wildcard.com": &core.Authorization{
-			Identifier: makeIdentifier("*.wildcard.com"),
-			Expires:    &m.older,
-			Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
-		},
-	}, nil
+	return m.authzMap, nil
+}
+
+func (m *mockSAWithRecentAndOlder) GetValidAuthorizations2(_ context.Context, _ *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
+	return sa.AuthzMapToPB(m.authzMap)
 }
 
 // Test that the right set of domain names have their CAA rechecked, based on
@@ -1933,10 +1961,10 @@ func TestRecheckCAADates(t *testing.T) {
 	recorder := &caaRecorder{names: make(map[string]bool)}
 	ra.caa = recorder
 	ra.authorizationLifetime = 15 * time.Hour
-	ra.SA = &mockSAWithRecentAndOlder{
-		recent: fc.Now().Add(15 * time.Hour),
-		older:  fc.Now().Add(5 * time.Hour),
-	}
+	ra.SA = newMockSAWithRecentAndOlder(
+		fc.Now().Add(15*time.Hour),
+		fc.Now().Add(5*time.Hour),
+	)
 
 	// NOTE: The names provided here correspond to authorizations in the
 	// `mockSAWithRecentAndOlder`
@@ -2008,7 +2036,7 @@ func TestRecheckCAAEmpty(t *testing.T) {
 
 func makeHTTP01Authorization(domain string) *core.Authorization {
 	return &core.Authorization{
-		Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain},
+		Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: domain},
 		Challenges: []core.Challenge{core.Challenge{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 	}
 }
@@ -2079,7 +2107,7 @@ func TestNewOrder(t *testing.T) {
 	// We expect the order names to have been sorted, deduped, and lowercased
 	test.AssertDeepEquals(t, orderA.Names, []string{"a.com", "b.com", "c.com"})
 	test.AssertEquals(t, *orderA.Id, int64(1))
-	test.AssertEquals(t, len(orderA.Authorizations), 3)
+	test.AssertEquals(t, numAuthorizations(orderA), 3)
 
 	// Reuse all existing authorizations
 	orderB, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
@@ -2093,10 +2121,14 @@ func TestNewOrder(t *testing.T) {
 	test.AssertEquals(t, *orderB.Id, *orderA.Id)
 	test.AssertEquals(t, len(orderB.Names), 3)
 	test.AssertDeepEquals(t, orderB.Names, []string{"a.com", "b.com", "c.com"})
-	test.AssertEquals(t, len(orderB.Authorizations), 3)
-	sort.Strings(orderA.Authorizations)
-	sort.Strings(orderB.Authorizations)
-	test.AssertDeepEquals(t, orderB.Authorizations, orderA.Authorizations)
+	test.AssertEquals(t, numAuthorizations(orderB), 3)
+	if features.Enabled(features.NewAuthorizationSchema) {
+		test.AssertDeepEquals(t, orderB.V2Authorizations, orderA.V2Authorizations)
+	} else {
+		sort.Strings(orderA.Authorizations)
+		sort.Strings(orderB.Authorizations)
+		test.AssertDeepEquals(t, orderB.Authorizations, orderA.Authorizations)
+	}
 
 	// Reuse all of the existing authorizations from the previous order and
 	// add a new one
@@ -2113,11 +2145,16 @@ func TestNewOrder(t *testing.T) {
 	// We expect orderC's ID to not match orderA/orderB's because it is for
 	// a different set of names
 	test.AssertNotEquals(t, *orderC.Id, *orderA.Id)
-	test.AssertEquals(t, len(orderC.Authorizations), 4)
+	test.AssertEquals(t, numAuthorizations(orderC), 4)
 	// Abuse the order of the queries used to extract the reused authorizations
-	existing := orderC.Authorizations[:3]
-	sort.Strings(existing)
-	test.AssertDeepEquals(t, existing, orderA.Authorizations)
+	if features.Enabled(features.NewAuthorizationSchema) {
+		existing := orderC.V2Authorizations[:3]
+		test.AssertDeepEquals(t, existing, orderA.V2Authorizations)
+	} else {
+		existing := orderC.Authorizations[:3]
+		sort.Strings(existing)
+		test.AssertDeepEquals(t, existing, orderA.Authorizations)
+	}
 
 	_, err = ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: &id,
@@ -2137,7 +2174,7 @@ func TestNewOrderLegacyAuthzReuse(t *testing.T) {
 
 	// Create a legacy pending authz, not associated with an order
 	legacyAuthz := AuthzInitial
-	legacyAuthz.Identifier = core.AcmeIdentifier{Type: "dns", Value: "not-example.com"}
+	legacyAuthz.Identifier = identifier.DNSIdentifier("not-example.com")
 	legacyAuthz.RegistrationID = Registration.ID
 	legacyAuthz.Status = core.StatusPending
 	exp := fc.Now().Add(time.Hour)
@@ -2159,9 +2196,14 @@ func TestNewOrderLegacyAuthzReuse(t *testing.T) {
 	// It should not produce an error
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	// There should be only one authorization
-	test.AssertEquals(t, len(order.Authorizations), 1)
-	// The authorization should not be the legacy authz
-	test.AssertNotEquals(t, order.Authorizations[0], legacyAuthz.ID)
+	test.AssertEquals(t, numAuthorizations(order), 1)
+	if features.Enabled(features.NewAuthorizationSchema) {
+		// The authorization should not be the legacy authz
+		test.AssertNotEquals(t, fmt.Sprintf("%d", order.V2Authorizations[0]), legacyAuthz.ID)
+	} else {
+		// The authorization should not be the legacy authz
+		test.AssertNotEquals(t, order.Authorizations[0], legacyAuthz.ID)
+	}
 	// The order should be pending status
 	test.AssertEquals(t, *order.Status, string(core.StatusPending))
 
@@ -2174,16 +2216,21 @@ func TestNewOrderLegacyAuthzReuse(t *testing.T) {
 	// It should not produce an error
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	// There should be only two authorizations
-	test.AssertEquals(t, len(secondOrder.Authorizations), 2)
+	test.AssertEquals(t, numAuthorizations(secondOrder), 2)
 
 	// Check each of the authorizations
 	var reusedAuthz bool
-	for _, authzID := range secondOrder.Authorizations {
-		// If the ID is equal to the original order's authorization ID then the
-		// authz was reused
-		if authzID == order.Authorizations[0] {
-			reusedAuthz = true
+	// If the ID is equal to the original order's authorization ID then the
+	// authz was reused
+	if features.Enabled(features.NewAuthorizationSchema) {
+		reusedAuthz = secondOrder.V2Authorizations[0] == order.V2Authorizations[0]
+	} else {
+		for _, authzID := range secondOrder.Authorizations {
+			if authzID == order.Authorizations[0] {
+				reusedAuthz = true
+			}
 		}
+
 	}
 	// We expect the authz to have been reused.
 	test.AssertEquals(t, reusedAuthz, true)
@@ -2312,20 +2359,33 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	// It should have an ID
 	test.AssertNotNil(t, order.Id, "Initial order had a nil ID")
 	// It should have one authorization
-	test.AssertEquals(t, len(order.Authorizations), 1)
+	test.AssertEquals(t, numAuthorizations(order), 1)
 
-	// Fetch the full authz by the ID
-	authzID := order.Authorizations[0]
-	authz, err := ra.SA.GetAuthorization(ctx, authzID)
-	test.AssertNotError(t, err, "Error getting order authorization")
+	if features.Enabled(features.NewAuthorizationSchema) {
+		status := string(core.StatusInvalid)
+		attempted := core.ChallengeTypeDNS01
+		err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
+			Id:        &order.V2Authorizations[0],
+			Status:    &status,
+			Expires:   order.Expires,
+			Attempted: &attempted,
+		})
+		test.AssertNotError(t, err, "FinalizeAuthorization2 failed")
+	} else {
+		// Fetch the full authz by the ID
+		authzID := order.Authorizations[0]
+		authz, err := ra.SA.GetAuthorization(ctx, authzID)
+		test.AssertNotError(t, err, "Error getting order authorization")
 
-	// Finalize the authz to an invalid status
-	authz.Status = core.StatusInvalid
-	err = ra.SA.FinalizeAuthorization(ctx, authz)
-	test.AssertNotError(t, err, fmt.Sprintf("Could not finalize authorization %q", authzID))
+		// Finalize the authz to an invalid status
+		authz.Status = core.StatusInvalid
+		err = ra.SA.FinalizeAuthorization(ctx, authz)
+		test.AssertNotError(t, err, fmt.Sprintf("Could not finalize authorization %q", authzID))
+	}
 
 	// The order associated with the authz should now be invalid
-	updatedOrder, err := ra.SA.GetOrder(ctx, &sapb.OrderRequest{Id: order.Id})
+	v2 := features.Enabled(features.NewAuthorizationSchema)
+	updatedOrder, err := ra.SA.GetOrder(ctx, &sapb.OrderRequest{Id: order.Id, UseV2Authorizations: &v2})
 	test.AssertNotError(t, err, "Error getting order to check status")
 	test.AssertEquals(t, *updatedOrder.Status, "invalid")
 
@@ -2337,38 +2397,42 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	test.AssertNotEquals(t, *secondOrder.Id, *order.Id)
 	// It should be status pending
 	test.AssertEquals(t, *secondOrder.Status, "pending")
-	// It should have one authorization
-	test.AssertEquals(t, len(secondOrder.Authorizations), 1)
-	// It should have a different authorization than the first order's now-invalid authorization
-	test.AssertNotEquals(t, secondOrder.Authorizations[0], order.Authorizations[0])
+	test.AssertEquals(t, numAuthorizations(secondOrder), 1)
+	if features.Enabled(features.NewAuthorizationSchema) {
+		// It should have a different authorization than the first order's now-invalid authorization
+		test.AssertNotEquals(t, secondOrder.V2Authorizations[0], order.V2Authorizations[0])
+
+	} else {
+		// It should have a different authorization than the first order's now-invalid authorization
+		test.AssertNotEquals(t, secondOrder.Authorizations[0], order.Authorizations[0])
+	}
 }
 
 // mockSAUnsafeAuthzReuse has a GetAuthorizations implementation that returns
-// a TLS-SNI-01 validated wildcard authz.
+// an HTTP-01 validated wildcard authz.
 type mockSAUnsafeAuthzReuse struct {
 	mocks.StorageAuthority
 }
 
 // GetAuthorizations returns a _bizarre_ authorization for "*.zombo.com" that
-// was validated by TLS-SNI-01. This should never happen in real life since the
+// was validated by HTTP-01. This should never happen in real life since the
 // name is a wildcard. We use this mock to test that we reject this bizarre
 // situation correctly.
-func (sa *mockSAUnsafeAuthzReuse) GetAuthorizations(
+func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations(
 	ctx context.Context,
 	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
 	authzs := map[string]*core.Authorization{
 		"*.zombo.com": &core.Authorization{
 			// A static fake ID we can check for in a unit test
 			ID:             "bad-bad-not-good",
-			Identifier:     core.AcmeIdentifier{Type: "dns", Value: "*.zombo.com"},
+			Identifier:     identifier.DNSIdentifier("*.zombo.com"),
 			RegistrationID: *req.RegistrationID,
-			Combinations:   [][]int{{0}, {1}},
 			// Authz is valid
 			Status: "valid",
 			Challenges: []core.Challenge{
-				// TLS-SNI-01 challenge is valid
+				// HTTP-01 challenge is valid
 				core.Challenge{
-					Type:   core.ChallengeTypeTLSSNI01, // The dreaded TLS-SNI-01! X__X
+					Type:   core.ChallengeTypeHTTP01, // The dreaded HTTP-01! X__X
 					Status: core.StatusValid,
 				},
 				// DNS-01 challenge is pending
@@ -2381,15 +2445,14 @@ func (sa *mockSAUnsafeAuthzReuse) GetAuthorizations(
 		"zombo.com": &core.Authorization{
 			// A static fake ID we can check for in a unit test
 			ID:             "reused-valid-authz",
-			Identifier:     core.AcmeIdentifier{Type: "dns", Value: "zombo.com"},
+			Identifier:     identifier.DNSIdentifier("zombo.com"),
 			RegistrationID: *req.RegistrationID,
-			Combinations:   [][]int{{0}, {1}},
 			// Authz is valid
 			Status: "valid",
 			Challenges: []core.Challenge{
-				// TLS-SNI-01 challenge is valid
+				// HTTP-01 challenge is valid
 				core.Challenge{
-					Type:   core.ChallengeTypeTLSSNI01,
+					Type:   core.ChallengeTypeHTTP01,
 					Status: core.StatusValid,
 				},
 				// DNS-01 challenge is pending
@@ -2400,18 +2463,58 @@ func (sa *mockSAUnsafeAuthzReuse) GetAuthorizations(
 			},
 		},
 	}
-	// We can't easily access sa.authzMapToPB so we "inline" it for the mock :-)
-	resp := &sapb.Authorizations{}
-	for k, v := range authzs {
-		authzPB, err := sagrpc.AuthzToPB(*v)
-		if err != nil {
-			return nil, err
-		}
-		// Make a copy of k because it will be reassigned with each loop.
-		kCopy := k
-		resp.Authz = append(resp.Authz, &sapb.Authorizations_MapElement{Domain: &kCopy, Authz: authzPB})
+	return sa.AuthzMapToPB(authzs)
+}
+
+func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations2(
+	ctx context.Context,
+	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
+	authzs := map[string]*core.Authorization{
+		"*.zombo.com": &core.Authorization{
+			V2: true,
+			// A static fake ID we can check for in a unit test
+			ID:             "1",
+			Identifier:     identifier.DNSIdentifier("*.zombo.com"),
+			RegistrationID: *req.RegistrationID,
+			// Authz is valid
+			Status: "valid",
+			Challenges: []core.Challenge{
+				// HTTP-01 challenge is valid
+				core.Challenge{
+					Type:   core.ChallengeTypeHTTP01, // The dreaded HTTP-01! X__X
+					Status: core.StatusValid,
+				},
+				// DNS-01 challenge is pending
+				core.Challenge{
+					Type:   core.ChallengeTypeDNS01,
+					Status: core.StatusPending,
+				},
+			},
+		},
+		"zombo.com": &core.Authorization{
+			V2: true,
+			// A static fake ID we can check for in a unit test
+			ID:             "2",
+			Identifier:     identifier.DNSIdentifier("zombo.com"),
+			RegistrationID: *req.RegistrationID,
+			// Authz is valid
+			Status: "valid",
+			Challenges: []core.Challenge{
+				// HTTP-01 challenge is valid
+				core.Challenge{
+					Type:   core.ChallengeTypeHTTP01,
+					Status: core.StatusValid,
+				},
+				// DNS-01 challenge is pending
+				core.Challenge{
+					Type:   core.ChallengeTypeDNS01,
+					Status: core.StatusPending,
+				},
+			},
+		},
 	}
-	return resp, nil
+	return sa.AuthzMapToPB(authzs)
+
 }
 
 // AddPendingAuthorizations is a mock that just returns a fake pending authz ID
@@ -2426,6 +2529,12 @@ func (sa *mockSAUnsafeAuthzReuse) AddPendingAuthorizations(
 	}, nil
 }
 
+func (sa *mockSAUnsafeAuthzReuse) NewAuthorizations2(_ context.Context, _ *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
+	return &sapb.Authorization2IDs{
+		Ids: []int64{5},
+	}, nil
+}
+
 // TestNewOrderAuthzReuseSafety checks that the RA's safety check for reusing an
 // authorization for a new-order request with a wildcard name works correctly.
 // We want to ensure that we never reuse a non-Wildcard authorization (e.g. one
@@ -2433,7 +2542,6 @@ func (sa *mockSAUnsafeAuthzReuse) AddPendingAuthorizations(
 // for background - this safety check was previously broken!
 // https://github.com/letsencrypt/boulder/issues/3420
 func TestNewOrderAuthzReuseSafety(t *testing.T) {
-
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
@@ -2441,7 +2549,7 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 	regA := int64(1)
 	names := []string{"*.zombo.com"}
 
-	// Use a mock SA that always returns a valid TLS-SNI-01 authz for the name
+	// Use a mock SA that always returns a valid HTTP-01 authz for the name
 	// "zombo.com"
 	ra.SA = &mockSAUnsafeAuthzReuse{}
 
@@ -2455,10 +2563,14 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 	order, err := ra.NewOrder(ctx, orderReq)
 	// It shouldn't fail
 	test.AssertNotError(t, err, "Adding an initial order for regA failed")
-	// There should be one authorization
-	test.AssertEquals(t, len(order.Authorizations), 1)
-	// It should *not* be the bad authorization!
-	test.AssertNotEquals(t, order.Authorizations[0], "bad-bad-not-good")
+	test.AssertEquals(t, numAuthorizations(order), 1)
+	if features.Enabled(features.NewAuthorizationSchema) {
+		// It should *not* be the bad authorization!
+		test.AssertNotEquals(t, order.V2Authorizations[0], int64(1))
+	} else {
+		// It should *not* be the bad authorization!
+		test.AssertNotEquals(t, order.Authorizations[0], "bad-bad-not-good")
+	}
 }
 
 func TestNewOrderAuthzReuseDisabled(t *testing.T) {
@@ -2469,7 +2581,7 @@ func TestNewOrderAuthzReuseDisabled(t *testing.T) {
 	regA := int64(1)
 	names := []string{"zombo.com"}
 
-	// Use a mock SA that always returns a valid TLS-SNI-01 authz for the name
+	// Use a mock SA that always returns a valid HTTP-01 authz for the name
 	// "zombo.com"
 	ra.SA = &mockSAUnsafeAuthzReuse{}
 
@@ -2486,10 +2598,15 @@ func TestNewOrderAuthzReuseDisabled(t *testing.T) {
 	order, err := ra.NewOrder(ctx, orderReq)
 	// It shouldn't fail
 	test.AssertNotError(t, err, "Adding an initial order for regA failed")
-	// There should be one authorization
-	test.AssertEquals(t, len(order.Authorizations), 1)
-	// It should *not* be the bad authorization that indicates reuse!
-	test.AssertNotEquals(t, order.Authorizations[0], "reused-valid-authz")
+	test.AssertEquals(t, numAuthorizations(order), 1)
+	if features.Enabled(features.NewAuthorizationSchema) {
+		// It should *not* be the bad authorization that indicates reuse!
+		test.AssertNotEquals(t, order.V2Authorizations[0], int64(2))
+
+	} else {
+		// It should *not* be the bad authorization that indicates reuse!
+		test.AssertNotEquals(t, order.Authorizations[0], "reused-valid-authz")
+	}
 }
 
 func TestNewOrderWildcard(t *testing.T) {
@@ -2504,20 +2621,6 @@ func TestNewOrderWildcard(t *testing.T) {
 		Names:          orderNames,
 	}
 
-	// Also ensure that the required challenge types are enabled. The ra_test
-	// global `SupportedChallenges` used by `initAuthorities` does not include
-	// DNS-01
-	supportedChallenges := map[string]bool{
-		core.ChallengeTypeHTTP01:   true,
-		core.ChallengeTypeTLSSNI01: true,
-		core.ChallengeTypeDNS01:    true,
-	}
-	pa, err := policy.New(supportedChallenges)
-	test.AssertNotError(t, err, "Couldn't create PA")
-	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
-	test.AssertNotError(t, err, "Couldn't set hostname policy")
-	ra.PA = pa
-
 	order, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
 
@@ -2529,31 +2632,58 @@ func TestNewOrderWildcard(t *testing.T) {
 	test.AssertDeepEquals(t,
 		core.UniqueLowerNames(order.Names),
 		core.UniqueLowerNames(orderNames))
-	// We expect the order to have two authorizations
-	test.AssertEquals(t, len(order.Authorizations), 2)
+	test.AssertEquals(t, numAuthorizations(order), 2)
 
 	// Check each of the authz IDs in the order
-	for _, authzID := range order.Authorizations {
-		// We should be able to retreive the authz from the db without error
-		authz, err := ra.SA.GetAuthorization(ctx, authzID)
-		test.AssertNotError(t, err, "Could not fetch authorization from database")
+	if features.Enabled(features.NewAuthorizationSchema) {
+		for _, authzID := range order.V2Authorizations {
+			// We should be able to retreive the authz from the db without error
+			authzPB, err := ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID})
+			test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
+			authz, err := bgrpc.PBToAuthz(authzPB)
+			test.AssertNotError(t, err, "bgrpc.PBToAuthz failed")
 
-		// We expect the authz is in Pending status
-		test.AssertEquals(t, authz.Status, core.StatusPending)
+			// We expect the authz is in Pending status
+			test.AssertEquals(t, authz.Status, core.StatusPending)
 
-		name := authz.Identifier.Value
-		switch name {
-		case "*.welcome.zombo.com":
-			// If the authz is for *.welcome.zombo.com, we expect that it only has one
-			// pending challenge with DNS-01 type
-			test.AssertEquals(t, len(authz.Challenges), 1)
-			test.AssertEquals(t, authz.Challenges[0].Status, core.StatusPending)
-			test.AssertEquals(t, authz.Challenges[0].Type, core.ChallengeTypeDNS01)
-		case "example.com":
-			// If the authz is for example.com, we expect it has normal challenges
-			test.AssertEquals(t, len(authz.Challenges), 3)
-		default:
-			t.Fatalf("Received an authorization for a name not requested: %q", name)
+			name := authz.Identifier.Value
+			switch name {
+			case "*.welcome.zombo.com":
+				// If the authz is for *.welcome.zombo.com, we expect that it only has one
+				// pending challenge with DNS-01 type
+				test.AssertEquals(t, len(authz.Challenges), 1)
+				test.AssertEquals(t, authz.Challenges[0].Status, core.StatusPending)
+				test.AssertEquals(t, authz.Challenges[0].Type, core.ChallengeTypeDNS01)
+			case "example.com":
+				// If the authz is for example.com, we expect it has normal challenges
+				test.AssertEquals(t, len(authz.Challenges), 2)
+			default:
+				t.Fatalf("Received an authorization for a name not requested: %q", name)
+			}
+		}
+	} else {
+		for _, authzID := range order.Authorizations {
+			// We should be able to retreive the authz from the db without error
+			authz, err := ra.SA.GetAuthorization(ctx, authzID)
+			test.AssertNotError(t, err, "Could not fetch authorization from database")
+
+			// We expect the authz is in Pending status
+			test.AssertEquals(t, authz.Status, core.StatusPending)
+
+			name := authz.Identifier.Value
+			switch name {
+			case "*.welcome.zombo.com":
+				// If the authz is for *.welcome.zombo.com, we expect that it only has one
+				// pending challenge with DNS-01 type
+				test.AssertEquals(t, len(authz.Challenges), 1)
+				test.AssertEquals(t, authz.Challenges[0].Status, core.StatusPending)
+				test.AssertEquals(t, authz.Challenges[0].Type, core.ChallengeTypeDNS01)
+			case "example.com":
+				// If the authz is for example.com, we expect it has normal challenges
+				test.AssertEquals(t, len(authz.Challenges), 2)
+			default:
+				t.Fatalf("Received an authorization for a name not requested: %q", name)
+			}
 		}
 	}
 
@@ -2576,28 +2706,53 @@ func TestNewOrderWildcard(t *testing.T) {
 	test.AssertDeepEquals(t,
 		core.UniqueLowerNames(order.Names),
 		core.UniqueLowerNames(orderNames))
-	// We expect the order to have two authorizations
-	test.AssertEquals(t, len(order.Authorizations), 2)
+	test.AssertEquals(t, numAuthorizations(order), 2)
 
-	for _, authzID := range order.Authorizations {
-		// We expect the authorization is available
-		authz, err := ra.SA.GetAuthorization(ctx, authzID)
-		test.AssertNotError(t, err, "Could not fetch authorization from database")
-		// We expect the authz is in Pending status
-		test.AssertEquals(t, authz.Status, core.StatusPending)
-		switch authz.Identifier.Value {
-		case "zombo.com":
-			// We expect that the base domain identifier auth has the normal number of
-			// challenges
-			test.AssertEquals(t, len(authz.Challenges), 3)
-		case "*.zombo.com":
-			// We expect that the wildcard identifier auth has only a pending
-			// DNS-01 type challenge
-			test.AssertEquals(t, len(authz.Challenges), 1)
-			test.AssertEquals(t, authz.Challenges[0].Status, core.StatusPending)
-			test.AssertEquals(t, authz.Challenges[0].Type, core.ChallengeTypeDNS01)
-		default:
-			t.Fatal("Unexpected authorization value returned from new-order")
+	if features.Enabled(features.NewAuthorizationSchema) {
+		for _, authzID := range order.V2Authorizations {
+			// We should be able to retreive the authz from the db without error
+			authzPB, err := ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID})
+			test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
+			authz, err := bgrpc.PBToAuthz(authzPB)
+			test.AssertNotError(t, err, "bgrpc.PBToAuthz failed")
+			// We expect the authz is in Pending status
+			test.AssertEquals(t, authz.Status, core.StatusPending)
+			switch authz.Identifier.Value {
+			case "zombo.com":
+				// We expect that the base domain identifier auth has the normal number of
+				// challenges
+				test.AssertEquals(t, len(authz.Challenges), 2)
+			case "*.zombo.com":
+				// We expect that the wildcard identifier auth has only a pending
+				// DNS-01 type challenge
+				test.AssertEquals(t, len(authz.Challenges), 1)
+				test.AssertEquals(t, authz.Challenges[0].Status, core.StatusPending)
+				test.AssertEquals(t, authz.Challenges[0].Type, core.ChallengeTypeDNS01)
+			default:
+				t.Fatal("Unexpected authorization value returned from new-order")
+			}
+		}
+	} else {
+		for _, authzID := range order.Authorizations {
+			// We expect the authorization is available
+			authz, err := ra.SA.GetAuthorization(ctx, authzID)
+			test.AssertNotError(t, err, "Could not fetch authorization from database")
+			// We expect the authz is in Pending status
+			test.AssertEquals(t, authz.Status, core.StatusPending)
+			switch authz.Identifier.Value {
+			case "zombo.com":
+				// We expect that the base domain identifier auth has the normal number of
+				// challenges
+				test.AssertEquals(t, len(authz.Challenges), 2)
+			case "*.zombo.com":
+				// We expect that the wildcard identifier auth has only a pending
+				// DNS-01 type challenge
+				test.AssertEquals(t, len(authz.Challenges), 1)
+				test.AssertEquals(t, authz.Challenges[0].Status, core.StatusPending)
+				test.AssertEquals(t, authz.Challenges[0].Type, core.ChallengeTypeDNS01)
+			default:
+				t.Fatal("Unexpected authorization value returned from new-order")
+			}
 		}
 	}
 
@@ -2610,19 +2765,26 @@ func TestNewOrderWildcard(t *testing.T) {
 	normalOrder, err := ra.NewOrder(context.Background(), normalOrderReq)
 	test.AssertNotError(t, err, "NewOrder failed for a normal non-wildcard order")
 
-	// There should be one authz
-	test.AssertEquals(t, len(normalOrder.Authorizations), 1)
+	test.AssertEquals(t, numAuthorizations(normalOrder), 1)
 	// We expect the order is in Pending status
 	test.AssertEquals(t, *order.Status, string(core.StatusPending))
-	// We expect the authorization is available
-	authz, err := ra.SA.GetAuthorization(ctx, normalOrder.Authorizations[0])
-	test.AssertNotError(t, err, "Could not fetch authorization from database")
+	var authz core.Authorization
+	if features.Enabled(features.NewAuthorizationSchema) {
+		authzPB, err := ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &normalOrder.V2Authorizations[0]})
+		test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
+		authz, err = bgrpc.PBToAuthz(authzPB)
+		test.AssertNotError(t, err, "bgrpc.PBToAuthz failed")
+	} else {
+		authz, err = ra.SA.GetAuthorization(ctx, normalOrder.Authorizations[0])
+		// We expect the authorization is available
+		test.AssertNotError(t, err, "Could not fetch authorization from database")
+	}
 	// We expect the authz is in Pending status
 	test.AssertEquals(t, authz.Status, core.StatusPending)
 	// We expect the authz is for the identifier the correct domain
 	test.AssertEquals(t, authz.Identifier.Value, "everything.is.possible.zombo.com")
 	// We expect the authz has the normal # of challenges
-	test.AssertEquals(t, len(authz.Challenges), 3)
+	test.AssertEquals(t, len(authz.Challenges), 2)
 
 	// Now submit an order request for a wildcard of the domain we just created an
 	// order for. We should **NOT** reuse the authorization from the previous
@@ -2636,13 +2798,22 @@ func TestNewOrderWildcard(t *testing.T) {
 	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
 	// We expect the order is in Pending status
 	test.AssertEquals(t, *order.Status, string(core.StatusPending))
-	// There should be one authz
-	test.AssertEquals(t, len(order.Authorizations), 1)
-	// The authz should be a different ID than the previous authz
-	test.AssertNotEquals(t, order.Authorizations[0], normalOrder.Authorizations[0])
-	// We expect the authorization is available
-	authz, err = ra.SA.GetAuthorization(ctx, order.Authorizations[0])
-	test.AssertNotError(t, err, "Could not fetch authorization from database")
+	test.AssertEquals(t, numAuthorizations(order), 1)
+	if features.Enabled(features.NewAuthorizationSchema) {
+		// The authz should be a different ID than the previous authz
+		test.AssertNotEquals(t, order.V2Authorizations[0], normalOrder.V2Authorizations[0])
+		// We expect the authorization is available
+		authzPB, err := ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &order.V2Authorizations[0]})
+		test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
+		authz, err = bgrpc.PBToAuthz(authzPB)
+		test.AssertNotError(t, err, "bgrpc.PBToAuthz failed")
+	} else {
+		// The authz should be a different ID than the previous authz
+		test.AssertNotEquals(t, order.Authorizations[0], normalOrder.Authorizations[0])
+		// We expect the authorization is available
+		authz, err = ra.SA.GetAuthorization(ctx, order.Authorizations[0])
+		test.AssertNotError(t, err, "Could not fetch authorization from database")
+	}
 	// We expect the authz is in Pending status
 	test.AssertEquals(t, authz.Status, core.StatusPending)
 	// We expect the authz is for a identifier with the correct domain
@@ -2659,12 +2830,18 @@ func TestNewOrderWildcard(t *testing.T) {
 	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
 	// We expect the order is in Pending status
 	test.AssertEquals(t, *dupeOrder.Status, string(core.StatusPending))
-	// There should be one authz
-	test.AssertEquals(t, len(dupeOrder.Authorizations), 1)
-	// The authz should be the same ID as the previous order's authz. We already
-	// checked that order.Authorizations[0] only has a DNS-01 challenge above so
-	// we don't need to recheck that here.
-	test.AssertEquals(t, dupeOrder.Authorizations[0], order.Authorizations[0])
+	test.AssertEquals(t, numAuthorizations(dupeOrder), 1)
+	if features.Enabled(features.NewAuthorizationSchema) {
+		// The authz should be the same ID as the previous order's authz. We already
+		// checked that order.Authorizations[0] only has a DNS-01 challenge above so
+		// we don't need to recheck that here.
+		test.AssertEquals(t, dupeOrder.V2Authorizations[0], order.V2Authorizations[0])
+	} else {
+		// The authz should be the same ID as the previous order's authz. We already
+		// checked that order.Authorizations[0] only has a DNS-01 challenge above so
+		// we don't need to recheck that here.
+		test.AssertEquals(t, dupeOrder.Authorizations[0], order.Authorizations[0])
+	}
 }
 
 // mockSANearExpiredAuthz is a mock SA that always returns an authz near expiry
@@ -2676,16 +2853,16 @@ type mockSANearExpiredAuthz struct {
 
 // GetAuthorizations is a mock that always returns a valid authorization for
 // "zombo.com" very near to expiry
-func (sa *mockSANearExpiredAuthz) GetAuthorizations(
+func (msa *mockSANearExpiredAuthz) GetAuthorizations(
 	ctx context.Context,
 	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
 	authzs := map[string]*core.Authorization{
 		"zombo.com": &core.Authorization{
 			// A static fake ID we can check for in a unit test
 			ID:             "near-expired-authz",
-			Identifier:     core.AcmeIdentifier{Type: "dns", Value: "zombo.com"},
+			Identifier:     identifier.DNSIdentifier("zombo.com"),
 			RegistrationID: *req.RegistrationID,
-			Expires:        &sa.expiry,
+			Expires:        &msa.expiry,
 			Status:         "valid",
 			Challenges: []core.Challenge{
 				core.Challenge{
@@ -2693,32 +2870,49 @@ func (sa *mockSANearExpiredAuthz) GetAuthorizations(
 					Status: core.StatusValid,
 				},
 			},
-			Combinations: [][]int{{0}, {1}},
 		},
 	}
-	// We can't easily access sa.authzMapToPB so we "inline" it for the mock :-)
-	resp := &sapb.Authorizations{}
-	for k, v := range authzs {
-		authzPB, err := sagrpc.AuthzToPB(*v)
-		if err != nil {
-			return nil, err
-		}
-		// Make a copy of k because it will be reassigned with each loop.
-		kCopy := k
-		resp.Authz = append(resp.Authz, &sapb.Authorizations_MapElement{Domain: &kCopy, Authz: authzPB})
+	return sa.AuthzMapToPB(authzs)
+}
+
+func (msa *mockSANearExpiredAuthz) GetAuthorizations2(
+	ctx context.Context,
+	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
+	authzs := map[string]*core.Authorization{
+		"zombo.com": &core.Authorization{
+			V2: true,
+			// A static fake ID we can check for in a unit test
+			ID:             "1",
+			Identifier:     identifier.DNSIdentifier("zombo.com"),
+			RegistrationID: *req.RegistrationID,
+			Expires:        &msa.expiry,
+			Status:         "valid",
+			Challenges: []core.Challenge{
+				core.Challenge{
+					Type:   core.ChallengeTypeHTTP01,
+					Status: core.StatusValid,
+				},
+			},
+		},
 	}
-	return resp, nil
+	return sa.AuthzMapToPB(authzs)
 }
 
 // AddPendingAuthorizations is a mock that just returns a fake pending authz ID
 // that is != "near-expired-authz"
-func (sa *mockSANearExpiredAuthz) AddPendingAuthorizations(
+func (msa *mockSANearExpiredAuthz) AddPendingAuthorizations(
 	_ context.Context,
 	_ *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
 	return &sapb.AuthorizationIDs{
 		Ids: []string{
 			"abcdefg",
 		},
+	}, nil
+}
+
+func (msa *mockSANearExpiredAuthz) NewAuthorizations2(_ context.Context, _ *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
+	return &sapb.Authorization2IDs{
+		Ids: []int64{5},
 	}, nil
 }
 
@@ -2751,10 +2945,14 @@ func TestNewOrderExpiry(t *testing.T) {
 	order, err := ra.NewOrder(ctx, orderReq)
 	// It shouldn't fail
 	test.AssertNotError(t, err, "Adding an order for regA failed")
-	// There should be one authorization
-	test.AssertEquals(t, len(order.Authorizations), 1)
-	// It should be the fake near-expired-authz authz
-	test.AssertEquals(t, order.Authorizations[0], "near-expired-authz")
+	test.AssertEquals(t, numAuthorizations(order), 1)
+	if features.Enabled(features.NewAuthorizationSchema) {
+		// It should be the fake near-expired-authz authz
+		test.AssertEquals(t, order.V2Authorizations[0], int64(1))
+	} else {
+		// It should be the fake near-expired-authz authz
+		test.AssertEquals(t, order.Authorizations[0], "near-expired-authz")
+	}
 	// The order's expiry should be the fake authz's expiry since it is sooner
 	// than the order's own expiry.
 	test.AssertEquals(t, *order.Expires, fakeAuthzExpires.UnixNano())
@@ -2766,10 +2964,14 @@ func TestNewOrderExpiry(t *testing.T) {
 	order, err = ra.NewOrder(ctx, orderReq)
 	// It shouldn't fail
 	test.AssertNotError(t, err, "Adding an order for regA failed")
-	// There should be one authorization
-	test.AssertEquals(t, len(order.Authorizations), 1)
-	// It should be the fake near-expired-authz authz
-	test.AssertEquals(t, order.Authorizations[0], "near-expired-authz")
+	test.AssertEquals(t, numAuthorizations(order), 1)
+	if features.Enabled(features.NewAuthorizationSchema) {
+		// It should be the fake near-expired-authz authz
+		test.AssertEquals(t, order.V2Authorizations[0], int64(1))
+	} else {
+		// It should be the fake near-expired-authz authz
+		test.AssertEquals(t, order.Authorizations[0], "near-expired-authz")
+	}
 	// The order's expiry should be the order's own expiry since it is sooner than
 	// the fake authz's expiry.
 	test.AssertEquals(t, *order.Expires, expectedOrderExpiry)
@@ -2781,6 +2983,7 @@ func TestFinalizeOrder(t *testing.T) {
 	ra.orderLifetime = time.Hour
 
 	validStatus := string(core.StatusValid)
+	pendingStatus := string(core.StatusPending)
 	readyStatus := string(core.StatusReady)
 	processingStatus := false
 
@@ -2819,7 +3022,7 @@ func TestFinalizeOrder(t *testing.T) {
 
 	// Create one finalized authorization for Registration.ID for not-example.com
 	finalAuthz := AuthzInitial
-	finalAuthz.Identifier = core.AcmeIdentifier{Type: "dns", Value: "not-example.com"}
+	finalAuthz.Identifier = identifier.DNSIdentifier("not-example.com")
 	finalAuthz.Status = "valid"
 	finalAuthz.Expires = &exp
 	finalAuthz.Challenges[0].Status = "valid"
@@ -2831,7 +3034,7 @@ func TestFinalizeOrder(t *testing.T) {
 
 	// Create one finalized authorization for Registration.ID for www.not-example.org
 	finalAuthzB := AuthzInitial
-	finalAuthzB.Identifier = core.AcmeIdentifier{Type: "dns", Value: "www.not-example.com"}
+	finalAuthzB.Identifier = identifier.DNSIdentifier("www.not-example.com")
 	finalAuthzB.Status = "valid"
 	finalAuthzB.Expires = &exp
 	finalAuthzB.Challenges[0].Status = "valid"
@@ -2841,20 +3044,9 @@ func TestFinalizeOrder(t *testing.T) {
 	err = sa.FinalizeAuthorization(ctx, finalAuthzB)
 	test.AssertNotError(t, err, "Could not finalize 2nd test pending authorization")
 
-	// Create a new order referencing both of the above finalized authzs
-	pendingStatus := "pending"
-	expUnix := exp.UnixNano()
-	finalOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
-		RegistrationID: &Registration.ID,
-		Expires:        &expUnix,
-		Names:          []string{"not-example.com", "www.not-example.com"},
-		Authorizations: []string{finalAuthz.ID, finalAuthzB.ID},
-		Status:         &validStatus,
-	})
-	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
-
 	// Create an order with valid authzs, it should end up status ready in the
 	// resulting returned order
+	expUnix := exp.UnixNano()
 	modernFinalOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
 		RegistrationID:  &Registration.ID,
 		Expires:         &expUnix,
@@ -2910,7 +3102,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "No names in order",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status: &pendingStatus,
+					Status: &readyStatus,
 					Names:  []string{},
 				},
 			},
@@ -2924,13 +3116,25 @@ func TestFinalizeOrder(t *testing.T) {
 					Names:  []string{"example.com"},
 				},
 			},
-			ExpectedErrMsg: "Order's status (\"valid\") is not acceptable for finalization",
+			ExpectedErrMsg: `Order's status ("valid") is not acceptable for finalization`,
+		},
+		{
+			Name: "Wrong order state (pending)",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: &corepb.Order{
+					Status: &pendingStatus,
+					Names:  []string{"example.com"},
+				},
+				Csr: validCSR.Raw,
+			},
+			ExpectIssuance: false,
+			ExpectedErrMsg: `Order's status ("pending") is not acceptable for finalization`,
 		},
 		{
 			Name: "Invalid CSR",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status: &pendingStatus,
+					Status: &readyStatus,
 					Names:  []string{"example.com"},
 				},
 				Csr: []byte{0xC0, 0xFF, 0xEE},
@@ -2941,7 +3145,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "CSR and Order with diff number of names",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:         &pendingStatus,
+					Status:         &readyStatus,
 					Names:          []string{"example.com", "example.org"},
 					RegistrationID: &fakeRegID,
 				},
@@ -2953,7 +3157,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "CSR missing an order name",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:         &pendingStatus,
+					Status:         &readyStatus,
 					Names:          []string{"foobar.com"},
 					RegistrationID: &fakeRegID,
 				},
@@ -2965,7 +3169,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "CSR with policy forbidden name",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:            &pendingStatus,
+					Status:            &readyStatus,
 					Names:             []string{"example.org"},
 					RegistrationID:    &Registration.ID,
 					Id:                emptyOrder.Id,
@@ -2981,7 +3185,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order with missing registration",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:            &pendingStatus,
+					Status:            &readyStatus,
 					Names:             []string{"a.com", "a.org"},
 					Id:                fakeRegOrder.Id,
 					RegistrationID:    &fakeRegID,
@@ -2998,7 +3202,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order with missing authorizations",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:            &pendingStatus,
+					Status:            &readyStatus,
 					Names:             []string{"a.com", "a.org", "b.com"},
 					Id:                missingAuthzOrder.Id,
 					RegistrationID:    &Registration.ID,
@@ -3010,14 +3214,6 @@ func TestFinalizeOrder(t *testing.T) {
 				Csr: threeDomainCSR,
 			},
 			ExpectedErrMsg: "authorizations for these names not found or expired: a.com, a.org, b.com",
-		},
-		{
-			Name: "Order with correct authorizations, pending status",
-			OrderReq: &rapb.FinalizeOrderRequest{
-				Order: finalOrder,
-				Csr:   validCSR.Raw,
-			},
-			ExpectIssuance: true,
 		},
 		{
 			Name: "Order with correct authorizations, ready status",
@@ -3063,7 +3259,7 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 	// Create one finalized authorization for Registration.ID for not-example.com
 	var err error
 	finalAuthz := AuthzInitial
-	finalAuthz.Identifier = core.AcmeIdentifier{Type: "dns", Value: "not-example.com"}
+	finalAuthz.Identifier = identifier.DNSIdentifier("not-example.com")
 	finalAuthz.Status = "valid"
 	finalAuthz.Expires = &exp
 	finalAuthz.Challenges[0].Status = "valid"
@@ -3075,7 +3271,7 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 
 	// Create one finalized authorization for Registration.ID for www.not-example.org
 	finalAuthzB := AuthzInitial
-	finalAuthzB.Identifier = core.AcmeIdentifier{Type: "dns", Value: "www.not-example.com"}
+	finalAuthzB.Identifier = identifier.DNSIdentifier("www.not-example.com")
 	finalAuthzB.Status = "valid"
 	finalAuthzB.Expires = &exp
 	finalAuthzB.Challenges[0].Status = "valid"
@@ -3140,20 +3336,6 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	// Pick an expiry in the future
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 
-	// Also ensure that the required challenge types are enabled. The ra_test
-	// global `SupportedChallenges` used by `initAuthorities` does not include
-	// DNS-01 or DNS-01-Wildcard
-	supportedChallenges := map[string]bool{
-		core.ChallengeTypeHTTP01:   true,
-		core.ChallengeTypeTLSSNI01: true,
-		core.ChallengeTypeDNS01:    true,
-	}
-	pa, err := policy.New(supportedChallenges)
-	test.AssertNotError(t, err, "Couldn't create PA")
-	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
-	test.AssertNotError(t, err, "Couldn't set hostname policy")
-	ra.PA = pa
-
 	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "Error creating test RSA key")
 	wildcardCSR, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
@@ -3198,7 +3380,7 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 
 	// Create one standard finalized authorization for Registration.ID for zombo.com
 	finalAuthz := AuthzInitial
-	finalAuthz.Identifier = core.AcmeIdentifier{Type: "dns", Value: "zombo.com"}
+	finalAuthz.Identifier = identifier.DNSIdentifier("zombo.com")
 	finalAuthz.Status = "valid"
 	finalAuthz.Expires = &exp
 	finalAuthz.Challenges[0].Status = "valid"
@@ -3209,7 +3391,8 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	test.AssertNotError(t, err, "Could not finalize test pending authorization")
 
 	// Finalizing the order should *not* work since the existing validated authz
-	// is not a special DNS-01-Wildcard challenge authz
+	// is not a special DNS-01-Wildcard challenge authz, so the order will be
+	// "pending" not "ready".
 	finalizeReq := &rapb.FinalizeOrderRequest{
 		Order: order,
 		Csr:   wildcardCSR,
@@ -3217,23 +3400,52 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	_, err = ra.FinalizeOrder(context.Background(), finalizeReq)
 	test.AssertError(t, err, "FinalizeOrder did not fail for unauthorized "+
 		"wildcard order")
-	test.AssertEquals(t, err.Error(), "authorizations for these names not "+
-		"found or expired: *.zombo.com")
+	test.AssertEquals(t, err.Error(),
+		`Order's status ("pending") is not acceptable for finalization`)
 
 	// Creating another order for the wildcard name
 	validOrder, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertNotError(t, err, "NewOrder failed for wildcard domain order")
-	// We expect it has 1 authorization
-	test.AssertEquals(t, len(validOrder.Authorizations), 1)
-	// We expect to be able to get the authorization by ID
-	authz, err := sa.GetAuthorization(ctx, validOrder.Authorizations[0])
-	test.AssertNotError(t, err, "GetAuthorization failed for order authz ID")
+	var authz core.Authorization
+	test.AssertEquals(t, numAuthorizations(validOrder), 1)
+	if features.Enabled(features.NewAuthorizationSchema) {
+		// We expect to be able to get the authorization by ID
+		authzPB, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &validOrder.V2Authorizations[0]})
+		test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
+		authz, err = bgrpc.PBToAuthz(authzPB)
+		test.AssertNotError(t, err, "bgrpc.PBToAuthz failed")
+	} else {
+		// We expect to be able to get the authorization by ID
+		authz, err = sa.GetAuthorization(ctx, validOrder.Authorizations[0])
+		test.AssertNotError(t, err, "GetAuthorization failed for order authz ID")
+	}
 
 	// Finalize the authorization with the challenge validated
-	authz.Status = "valid"
-	authz.Challenges[0].Status = "valid"
-	err = sa.FinalizeAuthorization(ctx, authz)
-	test.AssertNotError(t, err, "Could not finalize order's pending authorization")
+	if features.Enabled(features.NewAuthorizationSchema) {
+		status := string(core.StatusValid)
+		attempted := core.ChallengeTypeDNS01
+		exp := ra.clk.Now().Add(time.Hour * 24 * 7).UnixNano()
+		err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
+			Id:        &validOrder.V2Authorizations[0],
+			Status:    &status,
+			Expires:   &exp,
+			Attempted: &attempted,
+		})
+		test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	} else {
+		authz.Status = "valid"
+		authz.Challenges[0].Status = "valid"
+		err = sa.FinalizeAuthorization(ctx, authz)
+		test.AssertNotError(t, err, "Could not finalize order's pending authorization")
+	}
+
+	// Refresh the order so the SA sets its status
+	v2 := features.Enabled(features.NewAuthorizationSchema)
+	validOrder, err = sa.GetOrder(ctx, &sapb.OrderRequest{
+		Id:                  validOrder.Id,
+		UseV2Authorizations: &v2,
+	})
+	test.AssertNotError(t, err, "Could not refresh valid order from SA")
 
 	// Now it should be possible to finalize the order
 	finalizeReq = &rapb.FinalizeOrderRequest{
@@ -3255,27 +3467,24 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 
 	authzForChalType := func(domain, chalType string) core.Authorization {
 		template := AuthzInitial
-		template.Identifier = core.AcmeIdentifier{
+		template.Identifier = identifier.ACMEIdentifier{
 			Type:  "dns",
 			Value: domain,
 		}
 		// Create challenges
 		httpChal := core.HTTPChallenge01("")
 		dnsChal := core.DNSChallenge01("")
-		tlsChal := core.TLSSNIChallenge01("")
 		// Set the selected challenge to valid
 		switch chalType {
 		case "http-01":
 			httpChal.Status = core.StatusValid
 		case "dns-01":
 			dnsChal.Status = core.StatusValid
-		case "tls-sni-01":
-			tlsChal.Status = core.StatusValid
 		default:
 			t.Fatalf("Invalid challenge type used with authzForChalType: %q", chalType)
 		}
 		// Set the template's challenges
-		template.Challenges = []core.Challenge{httpChal, dnsChal, tlsChal}
+		template.Challenges = []core.Challenge{httpChal, dnsChal}
 		// Set the overall authz to valid
 		template.Status = "valid"
 		template.Expires = &exp
@@ -3295,7 +3504,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 
 	// Make some valid authorizations for some names using different challenge types
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
-	chalTypes := []string{"http-01", "dns-01", "tls-sni-01", "dns-01"}
+	chalTypes := []string{"http-01", "dns-01", "http-01", "dns-01"}
 	var authzs []core.Authorization
 	var authzIDs []string
 	for i, name := range names {
@@ -3430,21 +3639,32 @@ func TestUpdateMissingAuthorization(t *testing.T) {
 	// Twiddle the authz to pretend its been validated by the VA
 	authz.Status = "valid"
 	authz.Challenges[0].Status = "valid"
+	if features.Enabled(features.NewAuthorizationSchema) {
+		err = ra.recordValidation(ctx, authz.ID, authz.Expires, &authz.Challenges[0])
+		test.AssertNotError(t, err, "ra.recordValidation failed")
 
-	// Call onValidationUpdate once to finalize the new authz state with the SA.
-	// It should not error
-	err = ra.onValidationUpdate(ctx, authz)
-	test.AssertNotError(t, err, "Initial onValidationUpdate for Authz failed")
+		err = ra.recordValidation(ctx, authz.ID, authz.Expires, &authz.Challenges[0])
+		test.AssertError(t, err, "ra.recordValidation didn't fail")
+		// It should *not* be an internal server error
+		test.AssertEquals(t, berrors.Is(err, berrors.InternalServer), false)
+		// It *should* be a NotFound error
+		test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
+	} else {
+		// Call onValidationUpdate once to finalize the new authz state with the SA.
+		// It should not error
+		err = ra.onValidationUpdate(ctx, authz)
+		test.AssertNotError(t, err, "Initial onValidationUpdate for Authz failed")
 
-	// Call onValidationUpdate again to simulate another validation attempt
-	// finishing. It should error since the pendingAuthorization row has been
-	// removed by the first finalization update.
-	err = ra.onValidationUpdate(ctx, authz)
-	test.AssertError(t, err, "Second onValidationUpdate didn't fail")
-	// It should *not* be an internal server error
-	test.AssertEquals(t, berrors.Is(err, berrors.InternalServer), false)
-	// It *should* be a NotFound error
-	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
+		// Call onValidationUpdate again to simulate another validation attempt
+		// finishing. It should error since the pendingAuthorization row has been
+		// removed by the first finalization update.
+		err = ra.onValidationUpdate(ctx, authz)
+		test.AssertError(t, err, "Second onValidationUpdate didn't fail")
+		// It should *not* be an internal server error
+		test.AssertEquals(t, berrors.Is(err, berrors.InternalServer), false)
+		// It *should* be a NotFound error
+		test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
+	}
 }
 
 var previousIssuanceRegId int64 = 98765
@@ -3470,93 +3690,18 @@ func (ms *mockSAPreexistingCertificate) GetPendingAuthorization(ctx context.Cont
 	return nil, berrors.NotFoundError("no pending authorization found")
 }
 
-// With TLS-SNI-01 disabled, an account that previously issued a certificate for
-// example.com should still be able to get a new authorization.
-func TestNewAuthzTLSSNIRevalidation(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	challenges := map[string]bool{
-		core.ChallengeTypeHTTP01: true,
-	}
-	_ = features.Set(map[string]bool{
-		"TLSSNIRevalidation": true,
-	})
-	pa, err := policy.New(challenges)
-	test.AssertNotError(t, err, "Couldn't create PA")
-	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
-	test.AssertNotError(t, err, "Couldn't set hostname policy")
-	ra.PA = pa
-
-	ra.SA = &mockSAPreexistingCertificate{}
-
-	// Test with a reg ID and hostname that have a previous issuance, expect to
-	// see TLS-SNI-01.
-	authz, err := ra.NewAuthorization(context.Background(),
-		core.Authorization{
-			Identifier: core.AcmeIdentifier{
-				Type:  core.IdentifierDNS,
-				Value: previousIssuanceDomain,
-			},
-		}, previousIssuanceRegId)
-	test.AssertNotError(t, err, "creating authz with domain for revalidation")
-
-	hasTLSSNI := func(challenges []core.Challenge) bool {
-		var foundTLSSNI bool
-		for _, c := range challenges {
-			if c.Type == core.ChallengeTypeTLSSNI01 {
-				foundTLSSNI = true
-			}
-		}
-		return foundTLSSNI
-	}
-	if !hasTLSSNI(authz.Challenges) {
-		t.Errorf("TLS-SNI challenge was not created during revalidation.")
-	}
-
-	// Test with a different reg ID, expect no TLS-SNI-01.
-	authz, err = ra.NewAuthorization(context.Background(),
-		core.Authorization{
-			Identifier: core.AcmeIdentifier{
-				Type:  core.IdentifierDNS,
-				Value: previousIssuanceDomain,
-			},
-		}, 1234)
-	test.AssertNotError(t, err, "creating authz with domain for revalidation")
-	if hasTLSSNI(authz.Challenges) {
-		t.Errorf("TLS-SNI challenge was created during non-revalidation new-authz " +
-			"(different regID).")
-	}
-
-	// Test with a different domain, expect no TLS-SNI-01.
-	authz, err = ra.NewAuthorization(context.Background(),
-		core.Authorization{
-			Identifier: core.AcmeIdentifier{
-				Type:  core.IdentifierDNS,
-				Value: "not.example.com",
-			},
-		}, previousIssuanceRegId)
-	test.AssertNotError(t, err, "creating authz with domain for revalidation")
-	if hasTLSSNI(authz.Challenges) {
-		t.Errorf("TLS-SNI challenge was created during non-revalidation new-authz " +
-			"(different domain).")
-	}
-}
-
 func TestValidChallengeStillGood(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	pa, err := policy.New(map[string]bool{
-		core.ChallengeTypeTLSSNI01: true,
+		core.ChallengeTypeHTTP01: true,
 	})
 	test.AssertNotError(t, err, "Couldn't create PA")
 	ra.PA = pa
 
 	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{}), "ra.authzValidChallengeEnabled didn't fail with empty authorization")
 	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusPending}}}), "ra.authzValidChallengeEnabled didn't fail with no valid challenges")
-	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}}}), "ra.authzValidChallengeEnabled didn't fail with disabled challenge")
-
-	test.Assert(t, ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeTLSSNI01}}}), "ra.authzValidChallengeEnabled failed with enabled challenge")
+	test.Assert(t, !ra.authzValidChallengeEnabled(&core.Authorization{Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeDNS01}}}), "ra.authzValidChallengeEnabled didn't fail with disabled challenge")
 }
 
 func TestPerformValidationBadChallengeType(t *testing.T) {
@@ -3571,7 +3716,7 @@ func TestPerformValidationBadChallengeType(t *testing.T) {
 		Challenges: []core.Challenge{
 			core.Challenge{
 				Status: core.StatusValid,
-				Type:   core.ChallengeTypeTLSSNI01},
+				Type:   core.ChallengeTypeHTTP01},
 		},
 		Expires: &exp,
 	}
@@ -3584,7 +3729,7 @@ func TestPerformValidationBadChallengeType(t *testing.T) {
 		ChallengeIndex: &challIndex,
 	})
 	test.AssertError(t, err, "ra.PerformValidation allowed a update to a authorization")
-	test.AssertEquals(t, err.Error(), "challenge type \"tls-sni-01\" no longer allowed")
+	test.AssertEquals(t, err.Error(), "challenge type \"http-01\" no longer allowed")
 }
 
 type timeoutPub struct {
@@ -3595,29 +3740,21 @@ func (mp *timeoutPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Req
 }
 
 func TestCTPolicyMeasurements(t *testing.T) {
-	va, ssa, _, fc, cleanup := initAuthorities(t)
+	_, ssa, _, fc, cleanup := initAuthorities(t)
 	defer cleanup()
-
-	pa, err := policy.New(SupportedChallenges)
-	test.AssertNotError(t, err, "Couldn't create PA")
-	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
-	test.AssertNotError(t, err, "Couldn't set hostname policy")
-
 	stats := metrics.NewNoopScope()
 
 	ca := &mocks.MockCA{
 		PEM: eeCertPEM,
 	}
 
-	ctp := ctpolicy.New(&timeoutPub{}, []cmd.CTGroup{{}}, nil, log, metrics.NewNoopScope())
+	ctp := ctpolicy.New(&timeoutPub{}, []ctconfig.CTGroup{{}}, nil, log, metrics.NewNoopScope())
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,
 		1, testKeyPolicy, 0, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0, ctp, nil, nil)
 	ra.SA = ssa
-	ra.VA = va
 	ra.CA = ca
-	ra.PA = pa
 
 	AuthzFinal.RegistrationID = Registration.ID
 	AuthzFinal, err := ssa.NewPendingAuthorization(ctx, AuthzFinal)
@@ -3749,7 +3886,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 
 	authzForIdent := func(domain string) core.Authorization {
 		template := AuthzInitial
-		template.Identifier = core.AcmeIdentifier{
+		template.Identifier = identifier.ACMEIdentifier{
 			Type:  "dns",
 			Value: domain,
 		}

@@ -13,8 +13,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -27,7 +27,7 @@ type ctSubmissionRequest struct {
 
 type integrationSrv struct {
 	sync.Mutex
-	submissions     int64
+	submissions     map[string]int64
 	key             *ecdsa.PrivateKey
 	latencySchedule []float64
 	latencyItem     int
@@ -46,15 +46,6 @@ func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
-		atomic.AddInt64(&is.submissions, 1)
-
-		if is.latencySchedule != nil {
-			is.Lock()
-			sleepTime := time.Duration(is.latencySchedule[is.latencyItem%len(is.latencySchedule)]) * time.Second
-			is.latencyItem++
-			is.Unlock()
-			time.Sleep(sleepTime)
-		}
 
 		var addChainReq ctSubmissionRequest
 		err = json.Unmarshal(bodyBytes, &addChainReq)
@@ -71,6 +62,29 @@ func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 			precert = true
 		}
 
+		b, err := base64.StdEncoding.DecodeString(addChainReq.Chain[0])
+		if err != nil {
+			w.WriteHeader(400)
+			return
+		}
+		cert, err := x509.ParseCertificate(b)
+		if err != nil {
+			w.WriteHeader(400)
+			return
+		}
+		hostnames := strings.Join(cert.DNSNames, ",")
+
+		is.Lock()
+		is.submissions[hostnames]++
+		is.Unlock()
+
+		if is.latencySchedule != nil {
+			is.Lock()
+			sleepTime := time.Duration(is.latencySchedule[is.latencyItem%len(is.latencySchedule)]) * time.Second
+			is.latencyItem++
+			is.Unlock()
+			time.Sleep(sleepTime)
+		}
 		w.WriteHeader(http.StatusOK)
 		w.Write(publisher.CreateTestingSignedSCT(addChainReq.Chain, is.key, precert, time.Now()))
 	case "/submissions":
@@ -79,7 +93,11 @@ func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		submissions := atomic.LoadInt64(&is.submissions)
+		is.Lock()
+		hostnames := r.URL.Query().Get("hostnames")
+		submissions := is.submissions[hostnames]
+		is.Unlock()
+
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "%d", submissions)
 	default:
@@ -120,6 +138,7 @@ func runPersonality(p Personality) {
 	is := integrationSrv{
 		key:             key,
 		latencySchedule: p.LatencySchedule,
+		submissions:     make(map[string]int64),
 	}
 	srv := &http.Server{
 		Addr:    p.Addr,

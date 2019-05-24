@@ -19,6 +19,7 @@ const (
 	CAA
 	MissingSCTs
 	Duplicate
+	OrderNotReady
 )
 
 // BoulderError represents internal Boulder errors
@@ -97,4 +98,8 @@ func MissingSCTsError(msg string, args ...interface{}) error {
 
 func DuplicateError(msg string, args ...interface{}) error {
 	return New(Duplicate, msg, args...)
+}
+
+func OrderNotReadyError(msg string, args ...interface{}) error {
+	return New(OrderNotReady, msg, args...)
 }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"strings"
 
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
@@ -65,13 +64,9 @@ func (t timeoutError) Timeout() bool {
 }
 
 // LookupHost is a mock
-//
-// Note: see comments on LookupMX regarding email.only
-//
 func (mock *MockDNSClient) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
 	if hostname == "always.invalid" ||
-		hostname == "invalid.invalid" ||
-		hostname == "email.only" {
+		hostname == "invalid.invalid" {
 		return []net.IP{}, nil
 	}
 	if hostname == "always.timeout" {
@@ -100,29 +95,5 @@ func (mock *MockDNSClient) LookupHost(_ context.Context, hostname string) ([]net
 
 // LookupCAA returns mock records for use in tests.
 func (mock *MockDNSClient) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, error) {
-	return nil, nil
-}
-
-// LookupMX is a mock
-//
-// Note: the email.only domain must have an MX but no A or AAAA
-// records. The mock LookupHost returns an address of 127.0.0.1 for
-// all domains except for special cases, so MX-only domains must be
-// handled in both LookupHost and LookupMX.
-//
-func (mock *MockDNSClient) LookupMX(_ context.Context, domain string) ([]string, error) {
-	switch strings.TrimRight(domain, ".") {
-	case "letsencrypt.org":
-		fallthrough
-	case "email.only":
-		fallthrough
-	case "email.com":
-		return []string{"mail.email.com"}, nil
-	case "always.error":
-		return []string{}, &DNSError{dns.TypeA, "always.error",
-			&net.OpError{Err: errors.New("always.error always errors")}, -1}
-	case "always.timeout":
-		return []string{}, &DNSError{dns.TypeA, "always.timeout", MockTimeoutError(), -1}
-	}
 	return nil, nil
 }

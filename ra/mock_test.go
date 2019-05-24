@@ -6,6 +6,7 @@ import (
 	"google.golang.org/grpc"
 
 	core "github.com/letsencrypt/boulder/core/proto"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -110,10 +111,6 @@ func (sa *mockInvalidAuthorizationsAuthority) NewPendingAuthorization(ctx contex
 	return nil, nil
 }
 
-func (sa *mockInvalidAuthorizationsAuthority) UpdatePendingAuthorization(ctx context.Context, in *core.Authorization, opts ...grpc.CallOption) (*core.Empty, error) {
-	return nil, nil
-}
-
 func (sa *mockInvalidAuthorizationsAuthority) FinalizeAuthorization(ctx context.Context, in *core.Authorization, opts ...grpc.CallOption) (*core.Empty, error) {
 	return nil, nil
 }
@@ -175,5 +172,52 @@ func (sa *mockInvalidAuthorizationsAuthority) FinalizeOrder(ctx context.Context,
 }
 
 func (sa *mockInvalidAuthorizationsAuthority) RevokeCertificate(_ context.Context, _ *sapb.RevokeCertificateRequest, opts ...grpc.CallOption) (*core.Empty, error) {
+	return nil, nil
+}
+
+func (sa *mockInvalidAuthorizationsAuthority) GetAuthorization2(_ context.Context, _ *sapb.AuthorizationID2, opts ...grpc.CallOption) (*corepb.Authorization, error) {
+	return nil, nil
+}
+
+func (sa *mockInvalidAuthorizationsAuthority) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest, opts ...grpc.CallOption) (*sapb.Authorization2IDs, error) {
+	return nil, nil
+}
+
+func (sa *mockInvalidAuthorizationsAuthority) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest, opts ...grpc.CallOption) (*corepb.Empty, error) {
+	return nil, nil
+}
+
+func (sa *mockInvalidAuthorizationsAuthority) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2, opts ...grpc.CallOption) (*corepb.Empty, error) {
+	return nil, nil
+}
+
+func (sa *mockInvalidAuthorizationsAuthority) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest, opts ...grpc.CallOption) (*corepb.Empty, error) {
+	return nil, nil
+}
+
+func (sa *mockInvalidAuthorizationsAuthority) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID, opts ...grpc.CallOption) (*sapb.Count, error) {
+	return nil, nil
+}
+
+func (sa *mockInvalidAuthorizationsAuthority) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest, opts ...grpc.CallOption) (*sapb.Authorizations, error) {
+	return nil, nil
+}
+
+func (sa *mockInvalidAuthorizationsAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest, opts ...grpc.CallOption) (*sapb.Count, error) {
+	count := int64(1)
+	return &sapb.Count{
+		Count: &count,
+	}, nil
+}
+
+func (sa *mockInvalidAuthorizationsAuthority) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest, opts ...grpc.CallOption) (*sapb.Authorizations, error) {
+	return nil, nil
+}
+
+func (sa *mockInvalidAuthorizationsAuthority) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, opts ...grpc.CallOption) (*sapb.Authorizations, error) {
+	return nil, nil
+}
+
+func (sa *mockInvalidAuthorizationsAuthority) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest, opts ...grpc.CallOption) (*corepb.Authorization, error) {
 	return nil, nil
 }

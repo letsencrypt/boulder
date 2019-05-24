@@ -4,7 +4,7 @@
     "maxConcurrentRPCServerRequests": 100000,
     "maxContactsPerRegistration": 100,
     "debugAddr": ":8002",
-    "hostnamePolicyFile": "test/hostname-policy.json",
+    "hostnamePolicyFile": "test/hostname-policy.yaml",
     "maxNames": 100,
     "reuseValidAuthz": true,
     "authorizationLifetimeDays": 30,
@@ -19,7 +19,7 @@
     },
     "vaService": {
       "serverAddress": "va.boulder:9092",
-      "timeout": "8s"
+      "timeout": "20s"
     },
     "caService": {
       "serverAddress": "ca.boulder:9093",
@@ -46,7 +46,9 @@
       ]
     },
     "features": {
-      "RevokeAtRA": true
+      "RevokeAtRA": true,
+      "EarlyOrderRateLimit": true,
+      "NewAuthorizationSchema": true
     },
     "CTLogGroups2": [
       {
@@ -56,12 +58,12 @@
           {
             "uri": "http://boulder:4500",
             "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q==",
-            "submitFinalCert": true
+            "submitFinalCert": false
           },
           {
             "uri": "http://boulder:4501",
             "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEKtnFevaXV/kB8dmhCNZHmxKVLcHX1plaAsY9LrKilhYxdmQZiu36LvAvosTsqMVqRK9a96nC8VaxAdaHUbM8EA==",
-            "submitFinalCert": true
+            "submitFinalCert": false
           }
         ]
       },
@@ -115,17 +117,11 @@
       "http-01": true,
       "dns-01": true,
       "tls-alpn-01": true
-    },
-    "challengesWhitelistFile": "test/challenges-whitelist.json"
+    }
   },
 
   "syslog": {
     "stdoutlevel": 6,
     "sysloglevel": 4
-  },
-
-  "common": {
-    "dnsTimeout": "1s",
-    "dnsAllowLoopbackAddresses": true
   }
 }

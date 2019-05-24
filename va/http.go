@@ -10,11 +10,29 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/iana"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
+)
+
+const (
+	// maxRedirect is the maximum number of redirects the VA will follow
+	// processing an HTTP-01 challenge.
+	maxRedirect = 10
+	// maxResponseSize holds the maximum number of bytes that will be read from an
+	// HTTP-01 challenge response. The expected payload should be ~87 bytes. Since
+	// it may be padded by whitespace which we previously allowed accept up to 128
+	// bytes before rejecting a response (32 byte b64 encoded token + . + 32 byte
+	// b64 encoded key fingerprint)
+	maxResponseSize = 128
+	// whitespaceCutset is the set of characters trimmed from the right of an
+	// HTTP-01 key authorization response.
+	whitespaceCutset = "\n\r\t "
 )
 
 // preresolvedDialer is a struct type that provides a DialContext function which
@@ -285,12 +303,37 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 		return "", 0, fmt.Errorf("unable to determine redirect HTTP request port")
 	}
 
+	if reqHost == "" {
+		return "", 0, berrors.ConnectionFailureError("Invalid empty hostname in redirect target")
+	}
+
 	// Check that the request host isn't a bare IP address. We only follow
 	// redirects to hostnames.
 	if net.ParseIP(reqHost) != nil {
 		return "", 0, berrors.ConnectionFailureError(
 			"Invalid host in redirect target %q. "+
 				"Only domain names are supported, not IP addresses", reqHost)
+	}
+
+	// Often folks will misconfigure their webserver to send an HTTP redirect
+	// missing a `/' between the FQDN and the path. E.g. in Apache using:
+	//   Redirect / https://bad-redirect.org
+	// Instead of
+	//   Redirect / https://bad-redirect.org/
+	// Will produce an invalid HTTP-01 redirect target like:
+	//   https://bad-redirect.org.well-known/acme-challenge/xxxx
+	// This happens frequently enough we want to return a distinct error message
+	// for this case by detecting the reqHost ending in ".well-known".
+	if strings.HasSuffix(reqHost, ".well-known") {
+		return "", 0, berrors.ConnectionFailureError(
+			"Invalid host in redirect target %q. Check webserver config for missing '/' in redirect target.",
+			reqHost,
+		)
+	}
+
+	if _, err := iana.ExtractSuffix(reqHost); err != nil {
+		return "", 0, berrors.ConnectionFailureError(
+			"Invalid hostname in redirect target, must end in IANA registered TLD")
 	}
 
 	return reqHost, reqPort, nil
@@ -346,10 +389,10 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 	return dialer, record, nil
 }
 
-// fetchHTTPSimple invokes processHTTPValidation and if an error result is
+// fetchHTTP invokes processHTTPValidation and if an error result is
 // returned, converts it to a problem. Otherwise the results from
 // processHTTPValidation are returned.
-func (va *ValidationAuthorityImpl) fetchHTTPSimple(
+func (va *ValidationAuthorityImpl) fetchHTTP(
 	ctx context.Context,
 	host string,
 	path string) ([]byte, []core.ValidationRecord, *probs.ProblemDetails) {
@@ -409,7 +452,23 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	if err != nil {
 		return nil, nil, err
 	}
-	// Immediately reconstruct the request using the validation context
+
+	// Add a context to the request. Shave some time from the
+	// overall context deadline so that we are not racing with gRPC when the
+	// HTTP server is timing out. This avoids returning ServerInternal
+	// errors when we should be returning Connection errors. This may fix a flaky
+	// integration test: https://github.com/letsencrypt/boulder/issues/4087
+	// Note: The gRPC interceptor in grpc/interceptors.go already shaves some time
+	// off RPCs, but this takes off additional time because HTTP-related timeouts
+	// are so common (and because it might fix a flaky build).
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return nil, nil, fmt.Errorf("processHTTPValidation had no deadline")
+	} else {
+		deadline = deadline.Add(-200 * time.Millisecond)
+	}
+	ctx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
 	initialReq = initialReq.WithContext(ctx)
 	if va.userAgent != "" {
 		initialReq.Header.Set("User-Agent", va.userAgent)
@@ -451,6 +510,10 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		}
 		numRedirects++
 		va.metrics.http01Redirects.Inc()
+
+		// Lowercase the redirect host immediately, as the dialer and redirect
+		// validation expect it to have been lowercased already.
+		req.URL.Host = strings.ToLower(req.URL.Host)
 
 		// Extract the redirect target's host and port. This will return an error if
 		// the redirect request scheme, host or port is not acceptable.
@@ -553,4 +616,29 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 			records[len(records)-1].URL, records[len(records)-1].AddressUsed, httpResponse.StatusCode)
 	}
 	return body, records, nil
+}
+
+func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+	if ident.Type != identifier.DNS {
+		va.log.Infof("Got non-DNS identifier for HTTP validation: %s", ident)
+		return nil, probs.Malformed("Identifier type for HTTP validation was not DNS")
+	}
+
+	// Perform the fetch
+	path := fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Token)
+	body, validationRecords, prob := va.fetchHTTP(ctx, ident.Value, "/"+path)
+	if prob != nil {
+		return validationRecords, prob
+	}
+
+	payload := strings.TrimRight(string(body), whitespaceCutset)
+
+	if payload != challenge.ProvidedKeyAuthorization {
+		problem := probs.Unauthorized("The key authorization file from the server did not match this challenge [%v] != [%v]",
+			challenge.ProvidedKeyAuthorization, payload)
+		va.log.Infof("%s for %s", problem.Detail, ident)
+		return validationRecords, problem
+	}
+
+	return validationRecords, nil
 }

@@ -9,6 +9,7 @@ import (
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/identifier"
 )
 
 // BoulderTypeConverter is used by Gorp for storing objects in DB.
@@ -17,7 +18,7 @@ type BoulderTypeConverter struct{}
 // ToDb converts a Boulder object to one suitable for the DB representation.
 func (tc BoulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 	switch t := val.(type) {
-	case core.AcmeIdentifier, []core.Challenge, []string, [][]int:
+	case identifier.ACMEIdentifier, []core.Challenge, []string, [][]int:
 		jsonBytes, err := json.Marshal(t)
 		if err != nil {
 			return nil, err
@@ -41,14 +42,20 @@ func (tc BoulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 // FromDb converts a DB representation back into a Boulder object.
 func (tc BoulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, bool) {
 	switch target.(type) {
-	case *core.AcmeIdentifier, *[]core.Challenge, *[]string, *[][]int:
+	case *identifier.ACMEIdentifier, *[]core.Challenge, *[]string, *[][]int:
 		binder := func(holder, target interface{}) error {
 			s, ok := holder.(*string)
 			if !ok {
 				return errors.New("FromDb: Unable to convert *string")
 			}
 			b := []byte(*s)
-			return json.Unmarshal(b, target)
+			if err := json.Unmarshal(b, target); err != nil {
+				return badJSONError(
+					fmt.Sprintf("binder failed to unmarshal %T", target),
+					b,
+					err)
+			}
+			return nil
 		}
 		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
 	case *jose.JSONWebKey:
@@ -65,7 +72,13 @@ func (tc BoulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 			if !ok {
 				return fmt.Errorf("FromDb: Unable to convert %T to *jose.JSONWebKey", target)
 			}
-			return k.UnmarshalJSON(b)
+			if err := k.UnmarshalJSON(b); err != nil {
+				return badJSONError(
+					"binder failed to unmarshal JWK",
+					b,
+					err)
+			}
+			return nil
 		}
 		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
 	case *core.AcmeStatus:

@@ -57,7 +57,7 @@ func TestChallengeSanityCheck(t *testing.T) {
   }`), &accountKey)
 	test.AssertNotError(t, err, "Error unmarshaling JWK")
 
-	types := []string{ChallengeTypeHTTP01, ChallengeTypeTLSSNI01, ChallengeTypeDNS01, ChallengeTypeTLSALPN01}
+	types := []string{ChallengeTypeHTTP01, ChallengeTypeDNS01, ChallengeTypeTLSALPN01}
 	for _, challengeType := range types {
 		chall := Challenge{
 			Type:   challengeType,
@@ -143,4 +143,26 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 			test.AssertEquals(t, result, tc.ExpectedResult)
 		})
 	}
+}
+
+func TestChallengeStringID(t *testing.T) {
+	ch := Challenge{
+		Token: "asd",
+		Type:  ChallengeTypeDNS01,
+	}
+	test.AssertEquals(t, ch.StringID(), "iFVMwA==")
+	ch.Type = ChallengeTypeHTTP01
+	test.AssertEquals(t, ch.StringID(), "0Gexug==")
+}
+
+func TestFindChallengeByType(t *testing.T) {
+	authz := Authorization{
+		Challenges: []Challenge{
+			{Token: "woo", Type: ChallengeTypeDNS01},
+			{Token: "woo", Type: ChallengeTypeHTTP01},
+		},
+	}
+	test.AssertEquals(t, 0, authz.FindChallengeByStringID(authz.Challenges[0].StringID()))
+	test.AssertEquals(t, 1, authz.FindChallengeByStringID(authz.Challenges[1].StringID()))
+	test.AssertEquals(t, -1, authz.FindChallengeByStringID("hello"))
 }

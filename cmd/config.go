@@ -75,9 +75,7 @@ type SMTPConfig struct {
 // it should offer.
 type PAConfig struct {
 	DBConfig
-	EnforcePolicyWhitelist  bool
-	Challenges              map[string]bool
-	ChallengesWhitelistFile string
+	Challenges map[string]bool
 }
 
 // HostnamePolicyConfig specifies a file from which to load a policy regarding
@@ -150,58 +148,10 @@ type RPCServerConfig struct {
 	RPCTimeout ConfigDuration
 }
 
-// OCSPUpdaterConfig provides the various window tick times and batch sizes needed
-// for the OCSP (and SCT) updater
-type OCSPUpdaterConfig struct {
-	ServiceConfig
-	DBConfig
-
-	OldOCSPWindow            ConfigDuration
-	RevokedCertificateWindow ConfigDuration
-
-	OldOCSPBatchSize            int
-	RevokedCertificateBatchSize int
-
-	OCSPMinTimeToExpiry          ConfigDuration
-	OCSPStaleMaxAge              ConfigDuration
-	ParallelGenerateOCSPRequests int
-
-	AkamaiBaseURL           string
-	AkamaiClientToken       string
-	AkamaiClientSecret      string
-	AkamaiAccessToken       string
-	AkamaiV3Network         string
-	AkamaiPurgeRetries      int
-	AkamaiPurgeRetryBackoff ConfigDuration
-
-	SignFailureBackoffFactor float64
-	SignFailureBackoffMax    ConfigDuration
-
-	SAService            *GRPCClientConfig
-	OCSPGeneratorService *GRPCClientConfig
-	AkamaiPurgerService  *GRPCClientConfig
-
-	Features map[string]bool
-}
-
-// GoogleSafeBrowsingConfig is the JSON config struct for the VA's use of the
-// Google Safe Browsing API.
-type GoogleSafeBrowsingConfig struct {
-	APIKey    string
-	DataDir   string
-	ServerURL string
-}
-
 // SyslogConfig defines the config for syslogging.
 type SyslogConfig struct {
 	StdoutLevel int
 	SyslogLevel int
-}
-
-// StatsdConfig defines the config for Statsd.
-type StatsdConfig struct {
-	Server string
-	Prefix string
 }
 
 // ConfigDuration is just an alias for time.Duration that allows
@@ -279,93 +229,4 @@ type PortConfig struct {
 	HTTPPort  int
 	HTTPSPort int
 	TLSPort   int
-}
-
-// CAADistributedResolverConfig specifies the HTTP client setup and interfaces
-// needed to resolve CAA addresses over multiple paths
-type CAADistributedResolverConfig struct {
-	Timeout     ConfigDuration
-	MaxFailures int
-	Proxies     []string
-}
-
-// LogShard describes a single shard of a temporally sharded
-// CT log
-type LogShard struct {
-	URI         string
-	Key         string
-	WindowStart time.Time
-	WindowEnd   time.Time
-}
-
-// TemporalSet contains a set of temporal shards of a single log
-type TemporalSet struct {
-	Name   string
-	Shards []LogShard
-}
-
-// Setup initializes the TemporalSet by parsing the start and end dates
-// and verifying WindowEnd > WindowStart
-func (ts *TemporalSet) Setup() error {
-	if ts.Name == "" {
-		return errors.New("Name cannot be empty")
-	}
-	if len(ts.Shards) == 0 {
-		return errors.New("temporal set contains no shards")
-	}
-	for i := range ts.Shards {
-		if ts.Shards[i].WindowEnd.Before(ts.Shards[i].WindowStart) ||
-			ts.Shards[i].WindowEnd.Equal(ts.Shards[i].WindowStart) {
-			return errors.New("WindowStart must be before WindowEnd")
-		}
-	}
-	return nil
-}
-
-// pick chooses the correct shard from a TemporalSet to use for the given
-// expiration time. In the case where two shards have overlapping windows
-// the earlier of the two shards will be chosen.
-func (ts *TemporalSet) pick(exp time.Time) (*LogShard, error) {
-	for _, shard := range ts.Shards {
-		if exp.Before(shard.WindowStart) {
-			continue
-		}
-		if !exp.Before(shard.WindowEnd) {
-			continue
-		}
-		return &shard, nil
-	}
-	return nil, fmt.Errorf("no valid shard available for temporal set %q for expiration date %q", ts.Name, exp)
-}
-
-// LogDescription contains the information needed to submit certificates
-// to a CT log and verify returned receipts. If TemporalSet is non-nil then
-// URI and Key should be empty.
-type LogDescription struct {
-	URI             string
-	Key             string
-	SubmitFinalCert bool
-
-	*TemporalSet
-}
-
-// Info returns the URI and key of the log, either from a plain log description
-// or from the earliest valid shard from a temporal log set
-func (ld LogDescription) Info(exp time.Time) (string, string, error) {
-	if ld.TemporalSet == nil {
-		return ld.URI, ld.Key, nil
-	}
-	shard, err := ld.TemporalSet.pick(exp)
-	if err != nil {
-		return "", "", err
-	}
-	return shard.URI, shard.Key, nil
-}
-
-type CTGroup struct {
-	Name string
-	Logs []LogDescription
-	// How long to wait for one log to accept a certificate before moving on to
-	// the next.
-	Stagger ConfigDuration
 }

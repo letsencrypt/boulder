@@ -1,10 +1,6 @@
 package core
 
-import (
-	"golang.org/x/net/context"
-
-	vaPB "github.com/letsencrypt/boulder/va/proto"
-)
+import "golang.org/x/net/context"
 
 // ValidationAuthority defines the public interface for the Boulder VA
 type ValidationAuthority interface {
@@ -16,5 +12,4 @@ type ValidationAuthority interface {
 	//
 	// TODO(#1626): remove authz parameter
 	PerformValidation(ctx context.Context, domain string, challenge Challenge, authz Authorization) ([]ValidationRecord, error)
-	IsSafeDomain(ctx context.Context, req *vaPB.IsSafeDomainRequest) (resp *vaPB.IsDomainSafe, err error)
 }

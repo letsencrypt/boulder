@@ -32,22 +32,58 @@ func TestGetThreshold(t *testing.T) {
 		Threshold: 1,
 		Overrides: map[string]int{
 			"key": 2,
+			"baz": 99,
 		},
 		RegistrationOverrides: map[int64]int{
 			101: 3,
 		},
 	}
-	if policy.GetThreshold("foo", 11) != 1 {
-		t.Errorf("threshold should have been 1")
+
+	testCases := []struct {
+		Name     string
+		Key      string
+		RegID    int64
+		Expected int
+	}{
+
+		{
+			Name:     "No key or reg overrides",
+			Key:      "foo",
+			RegID:    11,
+			Expected: 1,
+		},
+		{
+			Name:     "Key override, no reg override",
+			Key:      "key",
+			RegID:    11,
+			Expected: 2,
+		},
+		{
+			Name:     "No key override, reg override",
+			Key:      "foo",
+			RegID:    101,
+			Expected: 3,
+		},
+		{
+			Name:     "Key override, larger reg override",
+			Key:      "foo",
+			RegID:    101,
+			Expected: 3,
+		},
+		{
+			Name:     "Key override, smaller reg override",
+			Key:      "baz",
+			RegID:    101,
+			Expected: 99,
+		},
 	}
-	if policy.GetThreshold("key", 11) != 2 {
-		t.Errorf("threshold should have been 2")
-	}
-	if policy.GetThreshold("key", 101) != 3 {
-		t.Errorf("threshold should have been 3")
-	}
-	if policy.GetThreshold("foo", 101) != 3 {
-		t.Errorf("threshold should have been 3")
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			test.AssertEquals(t,
+				policy.GetThreshold(tc.Key, tc.RegID),
+				tc.Expected)
+		})
 	}
 }
 

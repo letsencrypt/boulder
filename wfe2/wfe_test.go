@@ -31,6 +31,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
@@ -211,6 +212,7 @@ type MockRegistrationAuthority struct {
 }
 
 func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, acct core.Registration) (core.Registration, error) {
+	acct.ID = 1
 	return acct, nil
 }
 
@@ -279,15 +281,15 @@ func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, req *rap
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int, err error) {
+func (pa *mockPA) ChallengesFor(identifier identifier.ACMEIdentifier) (challenges []core.Challenge, err error) {
 	return
 }
 
-func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier) error {
+func (pa *mockPA) WillingToIssue(id identifier.ACMEIdentifier) error {
 	return nil
 }
 
-func (pa *mockPA) WillingToIssueWildcard(id core.AcmeIdentifier) error {
+func (pa *mockPA) WillingToIssueWildcard(id identifier.ACMEIdentifier) error {
 	return nil
 }
 
@@ -342,6 +344,8 @@ var testKeyPolicy = goodkey.KeyPolicy{
 var ctx = context.Background()
 
 func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
+	features.Reset()
+
 	fc := clock.NewFake()
 	stats := metrics.NewNoopScope()
 
@@ -448,6 +452,7 @@ func TestHandleFunc(t *testing.T) {
 		{[]string{"GET"}, "POST", false, false, "/test"},
 		{[]string{"GET"}, "OPTIONS", false, true, "/test"},
 		{[]string{"GET"}, "MAKE-COFFEE", false, false, "/test"}, // 405, or 418?
+		{[]string{"GET"}, "GET", true, true, directoryPath},
 	} {
 		runWrappedHandler(&http.Request{Method: c.reqMethod}, c.pattern, c.allowed...)
 		test.AssertEquals(t, stubCalled, c.shouldCallStub)
@@ -468,6 +473,14 @@ func TestHandleFunc(t *testing.T) {
 			test.AssertNotEquals(t, nonce, lastNonce)
 			test.AssertNotEquals(t, nonce, "")
 			lastNonce = nonce
+		}
+		linkHeader := rw.Header().Get("Link")
+		if c.pattern != directoryPath {
+			// If the pattern wasn't the directory there should be a Link header for the index
+			test.AssertEquals(t, linkHeader, `<http://localhost/directory>;rel="index"`)
+		} else {
+			// The directory resource shouldn't get a link header
+			test.AssertEquals(t, linkHeader, "")
 		}
 	}
 
@@ -1045,7 +1058,7 @@ func TestGetChallenge(t *testing.T) {
 		if method == "GET" {
 			test.AssertUnmarshaledEquals(
 				t, resp.Body.String(),
-				`{"type":"dns","url":"http://localhost/acme/challenge/valid/23"}`)
+				`{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/23"}`)
 		}
 	}
 }
@@ -1080,7 +1093,7 @@ func TestChallenge(t *testing.T) {
 				"Location": "http://localhost/acme/challenge/valid/23",
 				"Link":     `<http://localhost/acme/authz/valid>;rel="up"`,
 			},
-			ExpectedBody: `{"type":"dns","url":"http://localhost/acme/challenge/valid/23"}`,
+			ExpectedBody: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/23"}`,
 		},
 		{
 			Name:           "Expired challenge",
@@ -1110,7 +1123,7 @@ func TestChallenge(t *testing.T) {
 			Name:           "Valid POST-as-GET",
 			Request:        postAsGet(1, "valid/23", ""),
 			ExpectedStatus: http.StatusOK,
-			ExpectedBody:   `{"type":"dns", "url": "http://localhost/acme/challenge/valid/23"}`,
+			ExpectedBody:   `{"type":"dns", "token":"token", "url": "http://localhost/acme/challenge/valid/23"}`,
 		},
 	}
 
@@ -1156,6 +1169,7 @@ func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 	body := responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `{
 		"type": "dns",
+		"token":"token",
 		"url": "http://localhost/acme/challenge/valid/23"
 	  }`)
 }
@@ -1235,7 +1249,7 @@ func TestNewECDSAAccount(t *testing.T) {
 	test.AssertEquals(t, acct.Agreement, "")
 	test.AssertEquals(t, acct.InitialIP.String(), "1.1.1.1")
 
-	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/0")
+	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/1")
 
 	key = loadKey(t, []byte(testE1KeyPrivatePEM))
 	_, ok = key.(*ecdsa.PrivateKey)
@@ -1251,6 +1265,23 @@ func TestNewECDSAAccount(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"id\": 3,\n  \"key\": {\n    \"kty\": \"EC\",\n    \"crv\": \"P-256\",\n    \"x\": \"FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao\",\n    \"y\": \"S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk\"\n  },\n  \"agreement\": \"http://example.invalid/terms\",\n  \"initialIp\": \"\",\n  \"createdAt\": \"0001-01-01T00:00:00Z\",\n  \"status\": \"\"\n}")
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/3")
 	test.AssertEquals(t, responseWriter.Code, 200)
+
+	// test3KeyPrivatePEM is a private key corresponding to a deactivated account in the mock SA's GetRegistration test data.
+	key = loadKey(t, []byte(test3KeyPrivatePEM))
+	_, ok = key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load test3 key")
+
+	// Reset the body and status code
+	responseWriter = httptest.NewRecorder()
+
+	// Test POST valid JSON with deactivated account
+	payload = `{}`
+	path = "1"
+	signedURL = "http://localhost/1"
+	_, _, body = signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
+	request = makePostRequestWithPath(path, body)
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
+	test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
 }
 
 // Test that the WFE handling of the "empty update" POST is correct. The ACME
@@ -1381,7 +1412,7 @@ func TestNewAccount(t *testing.T) {
 
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
-		"http://localhost/acme/acct/0")
+		"http://localhost/acme/acct/1")
 
 	// Load an existing key
 	key = loadKey(t, []byte(test1KeyPrivatePEM))
@@ -1403,8 +1434,63 @@ func TestNewAccount(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"id\": 1,\n  \"key\": {\n    \"kty\": \"RSA\",\n    \"n\": \"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ\",\n    \"e\": \"AQAB\"\n  },\n  \"contact\": [\n    \"mailto:person@mail.com\"\n  ],\n  \"agreement\": \"http://example.invalid/terms\",\n  \"initialIp\": \"\",\n  \"createdAt\": \"0001-01-01T00:00:00Z\",\n  \"status\": \"valid\"\n}")
 }
 
+func TestNewAccountWhenAccountHasBeenDeactivated(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	signedURL := fmt.Sprintf("http://localhost%s", newAcctPath)
+	// test3KeyPrivatePEM is a private key corresponding to a deactivated account in the mock SA's GetRegistration test data.
+	k := loadKey(t, []byte(test3KeyPrivatePEM))
+	_, ok := k.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load test3 key")
+
+	payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
+	_, _, body := signRequestEmbed(t, k, signedURL, payload, wfe.nonceService)
+	request := makePostRequestWithPath(newAcctPath, body)
+
+	responseWriter := httptest.NewRecorder()
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
+
+	test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
+}
+
+func TestNewAccountNoID(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	key := loadKey(t, []byte(test2KeyPrivatePEM))
+	_, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load test2 key")
+	path := newAcctPath
+	signedURL := fmt.Sprintf("http://localhost%s", path)
+
+	_ = features.Set(map[string]bool{
+		"RemoveWFE2AccountID": true,
+	})
+
+	payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
+	_, _, body := signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
+	request := makePostRequestWithPath(path, body)
+
+	responseWriter := httptest.NewRecorder()
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
+
+	responseBody := responseWriter.Body.String()
+	test.AssertUnmarshaledEquals(t, responseBody, `{
+		"key": {
+			"kty": "RSA",
+			"n": "qnARLrT7Xz4gRcKyLdydmCr-ey9OuPImX4X40thk3on26FkMznR3fRjs66eLK7mmPcBZ6uOJseURU6wAaZNmemoYx1dMvqvWWIyiQleHSD7Q8vBrhR6uIoO4jAzJZR-ChzZuSDt7iHN-3xUVspu5XGwXU_MVJZshTwp4TaFx5elHIT_ObnTvTOU3Xhish07AbgZKmWsVbXh5s-CrIicU4OexJPgunWZ_YJJueOKmTvnLlTV4MzKR2oZlBKZ27S0-SfdV_QDx_ydle5oMAyKVtlAV35cyPMIsYNwgUGBCdY_2Uzi5eX0lTc7MPRwz6qR1kip-i59VcGcUQgqHV6Fyqw",
+			"e": "AQAB"
+		},
+		"contact": [
+			"mailto:person@mail.com"
+		],
+		"initialIp": "1.1.1.1",
+		"createdAt": "0001-01-01T00:00:00Z",
+		"status": ""
+	}`)
+}
+
 func TestGetAuthorization(t *testing.T) {
 	wfe, _ := setupWFE(t)
+
+	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
 
 	// Expired authorizations should be inaccessible
 	authzURL := "expired"
@@ -1445,7 +1531,55 @@ func TestGetAuthorization(t *testing.T) {
 		"challenges": [
 			{
 				"type": "dns",
+				"token":"token",
 				"url": "http://localhost/acme/challenge/valid/23"
+			}
+		]
+	}`)
+
+	responseWriter = httptest.NewRecorder()
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
+		URL:    mustParseURL("v2/1"),
+		Method: "GET",
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	body = responseWriter.Body.String()
+	test.AssertUnmarshaledEquals(t, body, `
+	{
+		"identifier": {
+			"type": "dns",
+			"value": "not-an-example.com"
+		},
+		"status": "valid",
+		"expires": "2070-01-01T00:00:00Z",
+		"challenges": [
+			{
+				"type": "dns",
+				"token":"token",
+				"url": "http://localhost/acme/challenge/v2/1/-ZfxEw=="
+			}
+		]
+	}`)
+
+	responseWriter = httptest.NewRecorder()
+	_, _, jwsBody = signRequestKeyID(t, 1, nil, "http://localhost/v2/1", "", wfe.nonceService)
+	postAsGet = makePostRequestWithPath("v2/1", jwsBody)
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, postAsGet)
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	body = responseWriter.Body.String()
+	test.AssertUnmarshaledEquals(t, body, `
+	{
+		"identifier": {
+			"type": "dns",
+			"value": "not-an-example.com"
+		},
+		"status": "valid",
+		"expires": "2070-01-01T00:00:00Z",
+		"challenges": [
+			{
+				"type": "dns",
+				"token":"token",
+				"url": "http://localhost/acme/challenge/v2/1/-ZfxEw=="
 			}
 		]
 	}`)
@@ -1881,7 +2015,8 @@ func TestDeactivateAuthorization(t *testing.T) {
 		  "expires": "2070-01-01T00:00:00Z",
 		  "challenges": [
 		    {
-		      "type": "dns",
+			  "type": "dns",
+			  "token":"token",
 		      "url": "http://localhost/acme/challenge/valid/23"
 		    }
 		  ]
@@ -2165,7 +2300,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order is already finalized",
 			// mocks/mocks.go's StorageAuthority's GetOrder mock treats ID 1 as an Order with a Serial
 			Request:      signAndPost(t, "1/1", "http://localhost/1/1", goodCertCSRPayload, 1, wfe.nonceService),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order's status (\"valid\") is not acceptable for finalization","status":400}`,
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `orderNotReady","detail":"Order's status (\"valid\") is not acceptable for finalization","status":403}`,
 		},
 		{
 			Name: "Order is expired",
@@ -2174,21 +2309,9 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order 7 is expired","status":404}`,
 		},
 		{
-			Name:            "Good CSR, Pending Order",
-			Request:         signAndPost(t, "1/4", "http://localhost/1/4", goodCertCSRPayload, 1, wfe.nonceService),
-			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1/4"},
-			ExpectedBody: `
-{
-  "status": "processing",
-  "expires": "1970-01-01T00:00:00.9466848Z",
-  "identifiers": [
-    {"type":"dns","value":"example.com"}
-  ],
-  "authorizations": [
-    "http://localhost/acme/authz/hello"
-  ],
-  "finalize": "http://localhost/acme/finalize/1/4"
-}`,
+			Name:         "Good CSR, Pending Order",
+			Request:      signAndPost(t, "1/4", "http://localhost/1/4", goodCertCSRPayload, 1, wfe.nonceService),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `orderNotReady","detail":"Order's status (\"pending\") is not acceptable for finalization","status":403}`,
 		},
 		{
 			Name:            "Good CSR, Ready Order",
@@ -2229,7 +2352,7 @@ func TestFinalizeOrder(t *testing.T) {
 	// to match the whole response body because the "detail" of a bad CSR problem
 	// contains a verbose Go error message that can change between versions (e.g.
 	// Go 1.10.4 to 1.11 changed the expected format)
-	badCSRReq := signAndPost(t, "1/4", "http://localhost/1/4", `{"CSR": "ABCD"}`, 1, wfe.nonceService)
+	badCSRReq := signAndPost(t, "1/8", "http://localhost/1/8", `{"CSR": "ABCD"}`, 1, wfe.nonceService)
 	responseWriter.Body.Reset()
 	responseWriter.HeaderMap = http.Header{}
 	wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, badCSRReq)
@@ -2758,7 +2881,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 		ID:             "12345",
 		Status:         core.StatusPending,
 		RegistrationID: 1,
-		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "*.example.com"},
+		Identifier:     identifier.DNSIdentifier("*.example.com"),
 		Challenges: []core.Challenge{
 			{
 				ID:   12345,
@@ -2790,6 +2913,14 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	// We also expect the ProvidedKeyAuthorization is not echoed back in the
 	// challenge
 	test.AssertEquals(t, chal.ProvidedKeyAuthorization, "")
+
+	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
+	authz.ID = "12345"
+	authz.V2 = true
+	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
+	chal = authz.Challenges[0]
+	test.AssertEquals(t, chal.URL, "http://localhost/acme/challenge/v2/12345/po1V2w==")
+	test.AssertEquals(t, chal.URI, "")
 }
 
 // noSCTMockRA is a mock RA that always returns a `berrors.MissingSCTsError` from `FinalizeOrder`
@@ -2819,7 +2950,7 @@ func TestFinalizeSCTError(t *testing.T) {
 	}`
 
 	// Create a finalization request with the above payload
-	request := signAndPost(t, "1/4", "http://localhost/1/4", goodCertCSRPayload, 1, wfe.nonceService)
+	request := signAndPost(t, "1/8", "http://localhost/1/8", goodCertCSRPayload, 1, wfe.nonceService)
 
 	// POST the finalize order request.
 	wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, request)
@@ -2829,4 +2960,96 @@ func TestFinalizeSCTError(t *testing.T) {
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"`+probs.V2ErrorNS+`serverInternal","detail":"Error finalizing order :: Unable to meet CA SCT embedding requirements","status":500}`)
+}
+
+func TestChallengeNewIDScheme(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
+
+	for _, tc := range []struct {
+		path     string
+		location string
+		expected string
+	}{
+		{
+			path:     "valid/23",
+			location: "http://localhost/acme/challenge/valid/23",
+			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/23"}`,
+		},
+		{
+			path:     "v2/1/-ZfxEw==",
+			location: "http://localhost/acme/challenge/v2/1/-ZfxEw==",
+			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/v2/1/-ZfxEw=="}`,
+		},
+	} {
+		resp := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", tc.path, nil)
+		test.AssertNotError(t, err, "http.NewRequest failed")
+
+		wfe.Challenge(context.Background(), newRequestEvent(), resp, req)
+		test.AssertEquals(t,
+			resp.Code,
+			http.StatusOK)
+		test.AssertEquals(t,
+			resp.Header().Get("Location"),
+			tc.location)
+		test.AssertUnmarshaledEquals(
+			t, resp.Body.String(),
+			tc.expected)
+	}
+
+	for _, tc := range []struct {
+		path     string
+		location string
+		expected string
+	}{
+		{
+			path:     "valid/23",
+			location: "http://localhost/acme/challenge/valid/23",
+			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/23"}`,
+		},
+		{
+			path:     "v2/1/-ZfxEw==",
+			location: "http://localhost/acme/challenge/v2/1/-ZfxEw==",
+			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/v2/1/-ZfxEw=="}`,
+		},
+	} {
+		resp := httptest.NewRecorder()
+
+		_, _, jwsBody := signRequestKeyID(t, 1, nil, "http://localhost/"+tc.path, `{"resource":"challenge"}`, wfe.nonceService)
+		wfe.Challenge(ctx, newRequestEvent(), resp, makePostRequestWithPath(
+			tc.path, jwsBody))
+		test.AssertEquals(t,
+			resp.Code,
+			http.StatusOK)
+		test.AssertEquals(t,
+			resp.Header().Get("Location"),
+			tc.location)
+		test.AssertUnmarshaledEquals(
+			t, resp.Body.String(),
+			tc.expected)
+	}
+}
+
+func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
+	wfe, fc := setupWFE(t)
+
+	id := int64(1)
+	status := string(core.StatusPending)
+	expires := fc.Now().UnixNano()
+	orderJSON := wfe.orderToOrderJSON(&http.Request{}, &corepb.Order{
+		Id:               &id,
+		RegistrationID:   &id,
+		Names:            []string{"a"},
+		Status:           &status,
+		Expires:          &expires,
+		Authorizations:   []string{"a", "b"},
+		V2Authorizations: []int64{1, 2},
+	})
+	test.AssertDeepEquals(t, orderJSON.Authorizations, []string{
+		"http://localhost/acme/authz/a",
+		"http://localhost/acme/authz/b",
+		"http://localhost/acme/authz/v2/1",
+		"http://localhost/acme/authz/v2/2",
+	})
 }

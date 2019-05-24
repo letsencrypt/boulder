@@ -27,7 +27,9 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/ctpolicy"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
@@ -268,19 +270,19 @@ func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, _ *rapb.
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier, registrationID int64, revalidation bool) (challenges []core.Challenge, combinations [][]int, err error) {
+func (pa *mockPA) ChallengesFor(identifier identifier.ACMEIdentifier) (challenges []core.Challenge, err error) {
 	return
 }
 
-func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier) error {
+func (pa *mockPA) WillingToIssue(id identifier.ACMEIdentifier) error {
 	return nil
 }
 
-func (pa *mockPA) WillingToIssueWildcard(id core.AcmeIdentifier) error {
+func (pa *mockPA) WillingToIssueWildcard(id identifier.ACMEIdentifier) error {
 	return nil
 }
 
-func (pa *mockPA) ChallengeTypeEnabled(t string, registrationID int64) bool {
+func (pa *mockPA) ChallengeTypeEnabled(t string) bool {
 	return true
 }
 
@@ -373,6 +375,8 @@ var testKeyPolicy = goodkey.KeyPolicy{
 var ctx = context.Background()
 
 func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
+	features.Reset()
+
 	fc := clock.NewFake()
 	stats := metrics.NewNoopScope()
 
@@ -1101,7 +1105,7 @@ func TestGetChallenge(t *testing.T) {
 		if method == "GET" {
 			test.AssertUnmarshaledEquals(
 				t, resp.Body.String(),
-				`{"type":"dns","uri":"http://localhost/acme/challenge/valid/23"}`)
+				`{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`)
 		}
 	}
 }
@@ -1135,7 +1139,7 @@ func TestChallenge(t *testing.T) {
 		`<http://localhost/acme/authz/valid>;rel="up"`)
 	test.AssertUnmarshaledEquals(
 		t, responseWriter.Body.String(),
-		`{"type":"dns","uri":"http://localhost/acme/challenge/valid/23"}`)
+		`{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`)
 
 	// Expired challenges should be inaccessible
 	challengeURL = "expired/23"
@@ -1195,6 +1199,7 @@ func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 	body := responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `{
 		"type": "dns",
+		"token":"token",
 		"uri": "http://localhost/acme/challenge/valid/23"
 	  }`)
 }
@@ -1745,6 +1750,8 @@ func TestAuthorization(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 
+	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
+
 	responseWriter := httptest.NewRecorder()
 
 	// GET instead of POST should be rejected
@@ -1834,6 +1841,31 @@ func TestAuthorization(t *testing.T) {
 	})
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"No such authorization","status":404}`)
+
+	// Test retrieving a v2 style authorization
+	responseWriter = httptest.NewRecorder()
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
+		URL:    mustParseURL("v2/1"),
+		Method: "GET",
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `
+	{
+		"identifier": {
+			"type": "dns",
+			"value": "not-an-example.com"
+		},
+		"status": "valid",
+		"expires": "2070-01-01T00:00:00Z",
+		"combinations": [[0]],
+		"challenges": [
+			{
+				"type": "dns",
+				"token":"token",
+				"uri": "http://localhost/acme/challenge/v2/1/-ZfxEw=="
+			}
+		]
+	}`)
 }
 
 // TestAuthorizationChallengeNamespace tests that the runtime prefixing of
@@ -2341,9 +2373,11 @@ func TestDeactivateAuthorization(t *testing.T) {
 		  },
 		  "status": "deactivated",
 		  "expires": "2070-01-01T00:00:00Z",
+			"combinations": [[0]],
 		  "challenges": [
 		    {
-		      "type": "dns",
+			  "type": "dns",
+			  "token":"token",
 		      "uri": "http://localhost/acme/challenge/valid/23"
 		    }
 		  ]
@@ -2512,8 +2546,11 @@ func TestPrepChallengeForDisplay(t *testing.T) {
 	}
 	chall := &core.Challenge{
 		Status: core.AcmeStatus("pending"),
+		Token:  "asd",
+		Type:   core.ChallengeTypeDNS01,
 	}
 	authz := core.Authorization{
+		ID:     "eyup",
 		Status: core.AcmeStatus("invalid"),
 	}
 
@@ -2522,6 +2559,12 @@ func TestPrepChallengeForDisplay(t *testing.T) {
 	if chall.Status != "invalid" {
 		t.Errorf("Expected challenge status to be forced to invalid, got %#v", chall)
 	}
+	test.AssertEquals(t, chall.URI, "http://example.com/acme/challenge/eyup/0")
+
+	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
+	authz.V2 = true
+	wfe.prepChallengeForDisplay(req, authz, chall)
+	test.AssertEquals(t, chall.URI, "http://example.com/acme/challenge/v2/eyup/iFVMwA==")
 }
 
 // noSCTMockRA is a mock RA that always returns a `berrors.MissingSCTsError` from `NewCertificate`
@@ -2586,5 +2629,72 @@ func TestNewRegistrationGetKeyBroken(t *testing.T) {
 	test.AssertNotError(t, err, "unmarshalling response")
 	if prob.Type != probs.V1ErrorNS+probs.ServerInternalProblem {
 		t.Errorf("Wrong type for returned problem: %#v", prob.Type)
+	}
+}
+
+func TestChallengeNewIDScheme(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
+
+	for _, tc := range []struct {
+		path     string
+		location string
+		expected string
+	}{
+		{
+			path:     "valid/23",
+			location: "http://localhost/acme/challenge/valid/23",
+			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`,
+		},
+		{
+			path:     "v2/1/-ZfxEw==",
+			location: "http://localhost/acme/challenge/v2/1/-ZfxEw==",
+			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/v2/1/-ZfxEw=="}`,
+		},
+	} {
+		resp := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", tc.path, nil)
+		test.AssertNotError(t, err, "http.NewRequest failed")
+
+		wfe.Challenge(context.Background(), newRequestEvent(), resp, req)
+		test.AssertEquals(t,
+			resp.Code,
+			http.StatusAccepted)
+		test.AssertEquals(t,
+			resp.Header().Get("Location"),
+			tc.location)
+		test.AssertUnmarshaledEquals(
+			t, resp.Body.String(),
+			tc.expected)
+	}
+
+	for _, tc := range []struct {
+		path     string
+		location string
+		expected string
+	}{
+		{
+			path:     "valid/23",
+			location: "http://localhost/acme/challenge/valid/23",
+			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`,
+		},
+		{
+			path:     "v2/1/-ZfxEw==",
+			location: "http://localhost/acme/challenge/v2/1/-ZfxEw==",
+			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/v2/1/-ZfxEw=="}`,
+		},
+	} {
+		resp := httptest.NewRecorder()
+		wfe.Challenge(ctx, newRequestEvent(), resp, makePostRequestWithPath(
+			tc.path, signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
+		test.AssertEquals(t,
+			resp.Code,
+			http.StatusAccepted)
+		test.AssertEquals(t,
+			resp.Header().Get("Location"),
+			tc.location)
+		test.AssertUnmarshaledEquals(
+			t, resp.Body.String(),
+			tc.expected)
 	}
 }

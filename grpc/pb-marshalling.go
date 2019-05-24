@@ -6,7 +6,6 @@
 package grpc
 
 import (
-	"encoding/json"
 	"net"
 	"time"
 
@@ -15,7 +14,9 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
@@ -115,7 +116,7 @@ func pbToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 	if in == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
-	if in.Id == nil || in.Type == nil || in.Status == nil || in.Token == nil || in.KeyAuthorization == nil {
+	if in.Type == nil || in.Status == nil || in.Token == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
 	var recordAry []core.ValidationRecord
@@ -132,15 +133,20 @@ func pbToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 	if err != nil {
 		return core.Challenge{}, err
 	}
-	return core.Challenge{
-		ID:                       *in.Id,
-		Type:                     *in.Type,
-		Status:                   core.AcmeStatus(*in.Status),
-		Token:                    *in.Token,
-		ProvidedKeyAuthorization: *in.KeyAuthorization,
-		Error:                    prob,
-		ValidationRecord:         recordAry,
-	}, nil
+	ch := core.Challenge{
+		Type:             *in.Type,
+		Status:           core.AcmeStatus(*in.Status),
+		Token:            *in.Token,
+		Error:            prob,
+		ValidationRecord: recordAry,
+	}
+	if in.Id != nil {
+		ch.ID = *in.Id
+	}
+	if in.KeyAuthorization != nil {
+		ch.ProvidedKeyAuthorization = *in.KeyAuthorization
+	}
+	return ch, nil
 }
 
 func ValidationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecord, error) {
@@ -352,14 +358,10 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 		}
 		challs[i] = pbChall
 	}
-	comboBytes, err := json.Marshal(authz.Combinations)
-	if err != nil {
-		return nil, err
-	}
 	status := string(authz.Status)
 	var expires int64
 	if authz.Expires != nil {
-		expires = authz.Expires.UnixNano()
+		expires = authz.Expires.UTC().UnixNano()
 	}
 	return &corepb.Authorization{
 		Id:             &authz.ID,
@@ -368,7 +370,7 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 		Status:         &status,
 		Expires:        &expires,
 		Challenges:     challs,
-		Combinations:   comboBytes,
+		V2:             &authz.V2,
 	}, nil
 }
 
@@ -381,19 +383,18 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		}
 		challs[i] = chall
 	}
-	var combos [][]int
-	err := json.Unmarshal(pb.Combinations, &combos)
-	if err != nil {
-		return core.Authorization{}, err
+	expires := time.Unix(0, *pb.Expires).UTC()
+	v2 := false
+	if pb.V2 != nil {
+		v2 = *pb.V2
 	}
-	expires := time.Unix(0, *pb.Expires)
 	authz := core.Authorization{
-		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: *pb.Identifier},
+		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: *pb.Identifier},
 		RegistrationID: *pb.RegistrationID,
 		Status:         core.AcmeStatus(*pb.Status),
 		Expires:        &expires,
 		Challenges:     challs,
-		Combinations:   combos,
+		V2:             v2,
 	}
 	if pb.Id != nil {
 		authz.ID = *pb.Id
@@ -420,7 +421,7 @@ func orderValid(order *corepb.Order) bool {
 // `order.CertificateSerial` to be nil such that it can be used in places where
 // the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
-	return !(order.RegistrationID == nil || order.Expires == nil || order.Authorizations == nil || order.Names == nil)
+	return !(order.RegistrationID == nil || order.Expires == nil || (order.Authorizations == nil && order.V2Authorizations == nil) || order.Names == nil)
 }
 
 func authorizationValid(authz *corepb.Authorization) bool {
@@ -451,4 +452,18 @@ func pbToCert(pb *corepb.Certificate) (core.Certificate, error) {
 		Issued:         time.Unix(0, *pb.Issued),
 		Expires:        time.Unix(0, *pb.Expires),
 	}, nil
+}
+
+// PBToAuthzMap converts a protobuf map of domains mapped to protobuf authorizations to a
+// golang map[string]*core.Authorization.
+func PBToAuthzMap(pb *sapb.Authorizations) (map[string]*core.Authorization, error) {
+	m := make(map[string]*core.Authorization, len(pb.Authz))
+	for _, v := range pb.Authz {
+		authz, err := PBToAuthz(v.Authz)
+		if err != nil {
+			return nil, err
+		}
+		m[*v.Domain] = &authz
+	}
+	return m, nil
 }

@@ -2,13 +2,12 @@
   "certChecker": {
     "dbConnectFile": "test/secrets/cert_checker_dburl",
     "maxDBConns": 10,
-    "hostnamePolicyFile": "test/hostname-policy.json"
+    "hostnamePolicyFile": "test/hostname-policy.yaml"
   },
 
   "pa": {
     "challenges": {
       "http-01": true,
-      "tls-sni-01": true,
       "dns-01": true,
       "tls-alpn-01": true
     }

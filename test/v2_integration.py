@@ -1,8 +1,8 @@
 #!/usr/bin/env python2.7
+# -*- coding: utf-8 -*-
 """
 Integration test cases for ACMEv2 as implemented by boulder-wfe2.
 """
-import random
 import subprocess
 import requests
 import datetime
@@ -19,10 +19,14 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 import chisel2
 from helpers import *
 
+from acme import errors as acme_errors
+
 from acme.messages import Status, CertificateRequest, Directory
 from acme import crypto_util as acme_crypto_util
 from acme import client as acme_client
 from acme import messages
+from acme import challenges
+from acme import errors
 
 import josepy
 
@@ -30,22 +34,13 @@ import tempfile
 import shutil
 import atexit
 
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import socketserver
+import socket
+
 import challtestsrv
 challSrv = challtestsrv.ChallTestServer()
-
-tempdir = tempfile.mkdtemp()
-
-default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
-if default_config_dir == '':
-    default_config_dir = 'test/config'
-
-@atexit.register
-def stop():
-    shutil.rmtree(tempdir)
-
-def random_domain():
-    """Generate a random domain for testing (to avoid rate limiting)."""
-    return "rand.%x.xyz" % random.randrange(2**32)
 
 def test_multidomain():
     chisel2.auth_and_issue([random_domain(), random_domain()])
@@ -61,11 +56,51 @@ def test_http_challenge():
 
 def rand_http_chall(client):
     d = random_domain()
-    authz = client.request_domain_challenges(d)
-    for c in authz.body.challenges:
-        if isinstance(c.chall, challenges.HTTP01):
-            return d, c.chall
+    csr_pem = chisel2.make_csr([d])
+    order = client.new_order(csr_pem)
+    authzs = order.authorizations
+    for a in authzs:
+        for c in a.body.challenges:
+            if isinstance(c.chall, challenges.HTTP01):
+                return d, c.chall
     raise Exception("No HTTP-01 challenge found for random domain authz")
+
+def test_http_challenge_broken_redirect():
+    """
+    test_http_challenge_broken_redirect tests that a common webserver
+    mis-configuration receives the correct specialized error message when attempting
+    an HTTP-01 challenge.
+    """
+    client = chisel2.make_client()
+
+    # Create an authz for a random domain and get its HTTP-01 challenge token
+    d, chall = rand_http_chall(client)
+    token = chall.encode("token")
+
+    # Create a broken HTTP redirect similar to a sort we see frequently "in the wild"
+    challengePath = "/.well-known/acme-challenge/{0}".format(token)
+    redirect = "http://{0}.well-known/acme-challenge/bad-bad-bad".format(d)
+    challSrv.add_http_redirect(
+        challengePath,
+        redirect)
+
+    # Expect the specialized error message
+    expectedError = "Fetching {0}: Invalid host in redirect target \"{1}.well-known\". Check webserver config for missing '/' in redirect target.".format(redirect, d)
+
+    # NOTE(@cpu): Can't use chisel2.expect_problem here because it doesn't let
+    # us interrogate the detail message easily.
+    try:
+        chisel2.auth_and_issue([d], client=client, chall_type="http-01")
+    except acme_errors.ValidationError as e:
+        for authzr in e.failed_authzrs:
+            c = chisel2.get_chall(authzr, challenges.HTTP01)
+            error = c.error
+            if error is None or error.typ != "urn:ietf:params:acme:error:connection":
+                raise Exception("Expected connection prob, got %s" % (error.__str__()))
+            if error.detail != expectedError:
+                raise Exception("Expected prob detail %s, got %s" % (expectedError, error.detail))
+
+    challSrv.remove_http_redirect(challengePath)
 
 def test_http_challenge_loop_redirect():
     client = chisel2.make_client()
@@ -82,8 +117,8 @@ def test_http_challenge_loop_redirect():
 
     # Issuing for the the name should fail because of the challenge domains's
     # redirect loop.
-    chisel2.expect_problem("urn:acme:error:connection",
-        lambda: auth_and_issue([d], client=client, chall_type="http-01"))
+    chisel2.expect_problem("urn:ietf:params:acme:error:connection",
+        lambda: chisel2.auth_and_issue([d], client=client, chall_type="http-01"))
 
     challSrv.remove_http_redirect(challengePath)
 
@@ -103,8 +138,8 @@ def test_http_challenge_badport_redirect():
 
     # Issuing for the name should fail because of the challenge domain's
     # invalid port redirect.
-    chisel2.expect_problem("urn:acme:error:connection",
-        lambda: auth_and_issue([d], client=client, chall_type="http-01"))
+    chisel2.expect_problem("urn:ietf:params:acme:error:connection",
+        lambda: chisel2.auth_and_issue([d], client=client, chall_type="http-01"))
 
     challSrv.remove_http_redirect(challengePath)
 
@@ -124,8 +159,8 @@ def test_http_challenge_badhost_redirect():
 
     # Issuing for the name should cause a connection error because the redirect
     # domain name is an IP address.
-    chisel2.expect_problem("urn:acme:error:connection",
-        lambda: auth_and_issue([d], client=client, chall_type="http-01"))
+    chisel2.expect_problem("urn:ietf:params:acme:error:connection",
+        lambda: chisel2.auth_and_issue([d], client=client, chall_type="http-01"))
 
     challSrv.remove_http_redirect(challengePath)
 
@@ -145,8 +180,8 @@ def test_http_challenge_badproto_redirect():
 
     # Issuing for the name should cause a connection error because the redirect
     # domain name is an IP address.
-    chisel2.expect_problem("urn:acme:error:connection",
-        lambda: auth_and_issue([d], client=client, chall_type="http-01"))
+    chisel2.expect_problem("urn:ietf:params:acme:error:connection",
+        lambda: chisel2.auth_and_issue([d], client=client, chall_type="http-01"))
 
     challSrv.remove_http_redirect(challengePath)
 
@@ -165,11 +200,12 @@ def test_http_challenge_http_redirect():
     # Create a HTTP redirect from the challenge's validation path to some other
     # token path where we have registered the key authorization.
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
+    redirectPath = "/.well-known/acme-challenge/http-redirect?params=are&important=to&not=lose"
     challSrv.add_http_redirect(
         challengePath,
-        "http://{0}/.well-known/acme-challenge/http-redirect".format(d))
+        "http://{0}{1}".format(d, redirectPath))
 
-    auth_and_issue([d], client=client, chall_type="http-01")
+    chisel2.auth_and_issue([d], client=client, chall_type="http-01")
 
     challSrv.remove_http_redirect(challengePath)
     challSrv.remove_http01_response("http-redirect")
@@ -213,22 +249,40 @@ def test_http_challenge_https_redirect():
     # Create an authz for a random domain and get its HTTP-01 challenge token
     d, chall = rand_http_chall(client)
     token = chall.encode("token")
+    # Calculate its keyauth so we can add it in a special non-standard location
+    # for the redirect result
+    resp = chall.response(client.net.key)
+    keyauth = resp.key_authorization
+    challSrv.add_http01_response("https-redirect", keyauth)
 
     # Create a HTTP redirect from the challenge's validation path to an HTTPS
-    # address with the same path.
+    # path with some parameters
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
+    redirectPath = "/.well-known/acme-challenge/https-redirect?params=are&important=to&not=lose"
     challSrv.add_http_redirect(
         challengePath,
-        "https://{0}{1}".format(d, challengePath))
+        "https://{0}{1}".format(d, redirectPath))
 
     # Also add an A record for the domain pointing to the interface that the
     # HTTPS HTTP-01 challtestsrv is bound.
     challSrv.add_a_record(d, ["10.77.77.77"])
 
-    auth_and_issue([d], client=client, chall_type="http-01")
+    try:
+        chisel2.auth_and_issue([d], client=client, chall_type="http-01")
+    except errors.ValidationError as e:
+        problems = []
+        for authzr in e.failed_authzrs:
+            for chall in authzr.body.challenges:
+                error = chall.error
+                if error:
+                    problems.append(error.__str__())
+        raise Exception("validation problem: %s" % "; ".join(problems))
 
     challSrv.remove_http_redirect(challengePath)
     challSrv.remove_a_record(d)
+
+    history = challSrv.http_request_history(d)
+    challSrv.clear_http_request_history(d)
 
     # There should have been at least two GET requests made to the challtestsrv by the VA
     if len(history) < 2:
@@ -254,7 +308,7 @@ def test_http_challenge_https_redirect():
      # All initial requests should have been over HTTP
     for r in initialRequests:
       if r['HTTPS'] is True:
-        raise Exception("Expected all initial requests to be HTTP")
+        raise Exception("Expected all initial requests to be HTTP, got %s" % r)
 
     # There should have been at least 1 redirected HTTP request for each VA
     if len(redirectedRequests) < 1:
@@ -266,7 +320,7 @@ def test_http_challenge_https_redirect():
         raise Exception("Expected all redirected requests to be HTTPS")
       # TODO(@cpu): The following ServerName test will fail with config-next
       # until https://github.com/letsencrypt/boulder/issues/3969 is fixed.
-      if default_config_dir.startswith("test/config-next"):
+      if CONFIG_NEXT:
         return
       elif r['ServerName'] != d:
         raise Exception("Expected all redirected requests to have ServerName {0} got \"{1}\"".format(d, r['ServerName']))
@@ -280,7 +334,6 @@ def test_tls_alpn_challenge():
     # responses
     for host in domains:
         challSrv.add_a_record(host, ["10.88.88.88"])
-
     chisel2.auth_and_issue(domains, chall_type="tls-alpn-01")
 
     for host in domains:
@@ -308,13 +361,27 @@ def test_overlapping_wildcard():
     finally:
         cleanup()
 
+def test_highrisk_blocklist():
+    """
+    Test issuance for a subdomain of a HighRiskBlockedNames entry. It should
+    fail with a policy error.
+    """
+
+    # We include "example.org" in `test/hostname-policy.yaml` in the
+    # HighRiskBlockedNames list so issuing for "foo.example.org" should be
+    # blocked.
+    domain = "foo.example.org"
+    # We expect this to produce a policy problem
+    chisel2.expect_problem("urn:ietf:params:acme:error:rejectedIdentifier",
+        lambda: chisel2.auth_and_issue([domain], chall_type="dns-01"))
+
 def test_wildcard_exactblacklist():
     """
     Test issuance for a wildcard that would cover an exact blacklist entry. It
     should fail with a policy error.
     """
 
-    # We include "highrisk.le-test.hoffman-andrews.com" in `test/hostname-policy.json`
+    # We include "highrisk.le-test.hoffman-andrews.com" in `test/hostname-policy.yaml`
     # Issuing for "*.le-test.hoffman-andrews.com" should be blocked
     domain = "*.le-test.hoffman-andrews.com"
     # We expect this to produce a policy problem
@@ -355,8 +422,6 @@ def test_wildcard_authz_reuse():
                     ((domains), str(authz.body.status)))
 
 def test_bad_overlap_wildcard():
-    if not os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):
-        return
     chisel2.expect_problem("urn:ietf:params:acme:error:malformed",
         lambda: chisel2.auth_and_issue(["*.example.com", "www.example.com"]))
 
@@ -440,27 +505,9 @@ def test_order_finalize_early():
 
     deadline = datetime.datetime.now() + datetime.timedelta(seconds=5)
 
-    # Finalizing an order early should generate an unauthorized error and we
-    # should check that the order is invalidated.
-    chisel2.expect_problem("urn:ietf:params:acme:error:unauthorized",
+    # Finalizing an order early should generate an orderNotReady error.
+    chisel2.expect_problem("urn:ietf:params:acme:error:orderNotReady",
         lambda: client.finalize_order(order, deadline))
-
-    # Poll for a fixed amount of time checking for the order to become invalid
-    # from the early finalization attempt initiated above failing
-    while datetime.datetime.now() < deadline:
-        time.sleep(1)
-        updatedOrder = requests.get(order.uri).json()
-        if updatedOrder['status'] == "invalid":
-            break
-
-    # If the loop ended and the status isn't invalid then we reached the
-    # deadline waiting for the order to become invalid, fail the test
-    if updatedOrder['status'] != "invalid":
-        raise Exception("timed out waiting for order %s to become invalid" % order.uri)
-
-    # The order should have an error with the expected type
-    if updatedOrder['error']['type'] != 'urn:ietf:params:acme:error:unauthorized':
-        raise Exception("order %s has incorrect error field type: \"%s\"" % (order.uri, updatedOrder['error']['type']))
 
 def test_revoke_by_issuer():
     client = chisel2.make_client(None)
@@ -475,10 +522,7 @@ def test_revoke_by_issuer():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
     ee_ocsp_url = "http://localhost:4002"
-    if default_config_dir.startswith("test/config-next"):
-        verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
-    else:
-        wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
     verify_akamai_purge()
 
 def test_revoke_by_authz():
@@ -498,10 +542,7 @@ def test_revoke_by_authz():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
     ee_ocsp_url = "http://localhost:4002"
-    if default_config_dir.startswith("test/config-next"):
-        verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
-    else:
-        wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
     verify_akamai_purge()
 
 def test_revoke_by_privkey():
@@ -534,15 +575,10 @@ def test_revoke_by_privkey():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
     ee_ocsp_url = "http://localhost:4002"
-    if default_config_dir.startswith("test/config-next"):
-        verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
-    else:
-        wait_for_ocsp_revoked(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
     verify_akamai_purge()
 
 def test_sct_embedding():
-    if not os.environ.get('BOULDER_CONFIG_DIR', '').startswith("test/config-next"):
-        return
     order = chisel2.auth_and_issue([random_domain()])
     cert = x509.load_pem_x509_certificate(str(order.fullchain_pem), default_backend())
 
@@ -594,6 +630,248 @@ def test_only_return_existing_reg():
     })
     chisel2.expect_problem("urn:ietf:params:acme:error:accountDoesNotExist",
         lambda: other_client.net.post(other_client.directory['newAccount'], newAcct, acme_version=2))
+
+def BouncerHTTPRequestHandler(redirect, guestlist):
+    """
+    BouncerHTTPRequestHandler returns a BouncerHandler class that acts like
+    a club bouncer in front of another server. The bouncer will respond to
+    GET requests by looking up the allowed number of requests in the guestlist
+    for the User-Agent making the request. If there is at least one guestlist
+    spot for that UA it will be redirected to the real server and the
+    guestlist will be decremented. Once the guestlist spots for a UA are
+    expended requests will get a bogus result and have to stand outside in the
+    cold 
+    """
+    class BouncerHandler(BaseHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            BaseHTTPRequestHandler.__init__(self, *args, **kwargs)
+
+        def do_HEAD(self):
+            # This is used by wait_for_server
+            self.send_response(200)
+            self.end_headers()
+
+        def do_GET(self):
+            ua = self.headers['User-Agent']
+            guestlistAllows = BouncerHandler.guestlist.get(ua, 0)
+            # If there is still space on the guestlist for this UA then redirect
+            # the request and decrement the guestlist.
+            if guestlistAllows > 0:
+                BouncerHandler.guestlist[ua] -= 1
+                self.log_message("BouncerHandler UA {0} is on the Guestlist. {1} requests remaining.".format(ua, BouncerHandler.guestlist[ua]))
+                self.send_response(302)
+                self.send_header("Location", BouncerHandler.redirect)
+                self.end_headers()
+            # Otherwise return a bogus result
+            else:
+                self.log_message("BouncerHandler UA {0} has no requests on the Guestlist. Sending request to the curb".format(ua))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'(• ◡ •) <( VIPs only! )')
+
+    BouncerHandler.guestlist = guestlist
+    BouncerHandler.redirect = redirect
+    return BouncerHandler
+
+def wait_for_server(addr):
+    while True:
+        try:
+            # NOTE(@cpu): Using HEAD here instead of GET because the
+            # BouncerHandler modifies its state for GET requests.
+            status = requests.head(addr).status_code
+            if status == 200:
+                return
+        except requests.exceptions.ConnectionError:
+            pass
+        time.sleep(0.5)
+
+def multiva_setup(client, guestlist):
+    """
+    Create a testing hostname and the multiva server setup. This will block
+    until the server is ready. The returned cleanup function should be used to
+    stop the server. The first bounceFirst requests to the server will be sent
+    to the real challtestsrv for a good answer, the rest will get a bad
+    answer.
+    """
+
+    hostname = random_domain()
+    csr_pem = chisel2.make_csr([hostname])
+    order = client.new_order(csr_pem)
+    authz = order.authorizations[0]
+    chall = None
+    for c in authz.body.challenges:
+        if isinstance(c.chall, challenges.HTTP01):
+            chall = c.chall
+    if chall is None:
+        raise Exception("No HTTP-01 challenge found for random domain authz")
+
+    token = chall.encode("token")
+
+    # Calculate the challenge's keyauth so we can add a good keyauth response on
+    # the real challtestsrv that we redirect VIP requests to.
+    resp = chall.response(client.net.key)
+    keyauth = resp.key_authorization
+    challSrv.add_http01_response(token, keyauth)
+
+    # Add an A record for the domains to ensure the VA's requests are directed
+    # to the interface that we bound the HTTPServer to.
+    challSrv.add_a_record(hostname, ["10.88.88.88"])
+
+    # Add an A record for the redirect target that sends it to the real chall
+    # test srv for a valid HTTP-01 response.
+    redirHostname = "pebble-challtestsrv.example.com"
+    challSrv.add_a_record(redirHostname, ["10.77.77.77"])
+
+    # Start a simple python HTTP server on port 5002 in its own thread.
+    # NOTE(@cpu): The pebble-challtestsrv binds 10.77.77.77:5002 for HTTP-01
+    # challenges so we must use the 10.88.88.88 address for the throw away
+    # server for this test and add a mock DNS entry that directs the VA to it.
+    redirect = "http://{0}/.well-known/acme-challenge/{1}".format(
+            redirHostname, token)
+    httpd = HTTPServer(('10.88.88.88', 5002), BouncerHTTPRequestHandler(redirect, guestlist))
+    thread = threading.Thread(target = httpd.serve_forever)
+    thread.daemon = False
+    thread.start()
+
+    def cleanup():
+        # Remove the challtestsrv mocks
+        challSrv.remove_a_record(hostname)
+        challSrv.remove_a_record(redirHostname)
+        challSrv.remove_http01_response(token)
+        # Shut down the HTTP server gracefully and join on its thread.
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join()
+
+    return hostname, cleanup
+
+def test_http_multiva_threshold_pass():
+    # Only config-next has remote VAs configured and is appropriate for this
+    # integration test.
+    if not CONFIG_NEXT:
+        return
+
+    client = chisel2.make_client()
+
+    # Configure a guestlist that will pass the multiVA threshold test by
+    # allowing the primary VA and one remote.
+    guestlist = {"boulder": 1, "boulder-remote-b": 1}
+
+    hostname, cleanup = multiva_setup(client, guestlist)
+
+    try:
+        # With the maximum number of allowed remote VA failures the overall
+        # challenge should still succeed.
+        chisel2.auth_and_issue([hostname], client=client, chall_type="http-01")
+    finally:
+        cleanup()
+
+def test_http_multiva_threshold_fail():
+    # Only config-next has remote VAs configured and is appropriate for this
+    # integration test.
+    if not CONFIG_NEXT:
+        return
+
+    client = chisel2.make_client()
+
+    # Configure a guestlist that will fail the multiVA threshold test by
+    # only allowing the primary VA.
+    guestlist = {"boulder": 1}
+
+    hostname, cleanup = multiva_setup(client, guestlist)
+
+    try:
+        chisel2.auth_and_issue([hostname], client=client, chall_type="http-01")
+    except acme_errors.ValidationError as e:
+        # NOTE(@cpu): Chisel2's expect_problem doesn't work in this case so this
+        # test needs to unpack an `acme_errors.ValidationError` on its own. It
+        # might be possible to clean this up in the future.
+        if len(e.failed_authzrs) != 1:
+            raise Exception("expected one failed authz, found {0}".format(len(e.failed_authzrs)))
+        challs = e.failed_authzrs[0].body.challenges
+        httpChall = None
+        for chall_body in challs:
+            if isinstance(chall_body.chall, challenges.HTTP01):
+                httpChall = chall_body
+        if httpChall is None:
+            raise Exception("no HTTP-01 challenge in failed authz")
+        if httpChall.error.typ != "urn:ietf:params:acme:error:unauthorized":
+            raise Exception("expected unauthorized prob, found {0}".format(httpChall.error.typ))
+    finally:
+        cleanup()
+
+class FakeH2ServerHandler(socketserver.BaseRequestHandler):
+    """
+    FakeH2ServerHandler is a TCP socket handler that writes data representing an
+    initial HTTP/2 SETTINGS frame as a response to all received data.
+    """
+    def handle(self):
+        # Read whatever the HTTP request was so that the response isn't seen as
+        # unsolicited.
+        self.data = self.request.recv(1024).strip()
+        # Blast some HTTP/2 bytes onto the socket
+        # Truncated example data from taken from the community forum:
+        # https://community.letsencrypt.org/t/le-validation-error-if-server-is-in-google-infrastructure/51841
+        self.request.sendall(b'\x00\x00\x12\x04\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x80\x00')
+
+def wait_for_tcp_server(addr, port):
+    """
+    wait_for_tcp_server attempts to make a TCP connection to the given
+    address/port every 0.5s until it succeeds.
+    """
+    while True:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.connect((addr, port))
+            sock.sendall("\n")
+            return
+        except socket.error:
+            time.sleep(0.5)
+            pass
+
+def test_http2_http01_challenge():
+    """
+    test_http2_http01_challenge tests that an HTTP-01 challenge made to a HTTP/2
+    server fails with a specific error message for this case.
+    """
+    client = chisel2.make_client()
+    hostname = "fake.h2.example.com"
+
+    # Add an A record for the test server to ensure the VA's requests are directed
+    # to the interface that we bind the FakeH2ServerHandler to.
+    challSrv.add_a_record(hostname, ["10.88.88.88"])
+
+    # Allow socket address reuse on the base TCPServer class. Failing to do this
+    # causes subsequent integration tests to fail with "Address in use" errors even
+    # though this test _does_ call shutdown() and server_close(). Even though the
+    # server was shut-down Python's socket will be in TIME_WAIT because of prev. client
+    # connections. Having the TCPServer set SO_REUSEADDR on the socket solves
+    # the problem.
+    socketserver.TCPServer.allow_reuse_address = True
+    # Create, start, and wait for a fake HTTP/2 server.
+    server = socketserver.TCPServer(('10.88.88.88', 5002), FakeH2ServerHandler)
+    thread = threading.Thread(target = server.serve_forever)
+    thread.daemon = False
+    thread.start()
+    wait_for_tcp_server('10.88.88.88', 5002)
+
+    # Issuing an HTTP-01 challenge for this hostname should produce a connection
+    # problem with an error specific to the HTTP/2 misconfiguration.
+    expectedError = "Server is speaking HTTP/2 over HTTP"
+    try:
+        chisel2.auth_and_issue([hostname], client=client, chall_type="http-01")
+    except acme_errors.ValidationError as e:
+        for authzr in e.failed_authzrs:
+            c = chisel2.get_chall(authzr, challenges.HTTP01)
+            error = c.error
+            if error is None or error.typ != "urn:ietf:params:acme:error:connection":
+                raise Exception("Expected connection prob, got %s" % (error.__str__()))
+            if not error.detail.endswith(expectedError):
+                raise Exception("Expected prob detail ending in %s, got %s" % (expectedError, error.detail))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
 
 def run(cmd, **kwargs):
     return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)

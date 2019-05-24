@@ -4,9 +4,34 @@ package features
 
 import "strconv"
 
-const _FeatureFlag_name = "unusedPerformValidationRPCACME13KeyRolloverAllowRenewalFirstRLTLSSNIRevalidationCAAValidationMethodsCAAAccountURIProbeCTLogsSimplifiedVAHTTPHeadNonceStatusOKNewAuthorizationSchemaRevokeAtRASetIssuedNamesRenewalBit"
+func _() {
+	// An "invalid array index" compiler error signifies that the constant values have changed.
+	// Re-run the stringer command to generate them again.
+	var x [1]struct{}
+	_ = x[unused-0]
+	_ = x[PerformValidationRPC-1]
+	_ = x[ACME13KeyRollover-2]
+	_ = x[SimplifiedVAHTTP-3]
+	_ = x[TLSSNIRevalidation-4]
+	_ = x[AllowRenewalFirstRL-5]
+	_ = x[SetIssuedNamesRenewalBit-6]
+	_ = x[FasterRateLimit-7]
+	_ = x[ProbeCTLogs-8]
+	_ = x[CAAValidationMethods-9]
+	_ = x[CAAAccountURI-10]
+	_ = x[HeadNonceStatusOK-11]
+	_ = x[NewAuthorizationSchema-12]
+	_ = x[RevokeAtRA-13]
+	_ = x[EarlyOrderRateLimit-14]
+	_ = x[EnforceMultiVA-15]
+	_ = x[MultiVAFullResults-16]
+	_ = x[RemoveWFE2AccountID-17]
+	_ = x[CheckRenewalFirst-18]
+}
 
-var _FeatureFlag_index = [...]uint8{0, 6, 26, 43, 62, 80, 100, 113, 124, 140, 157, 179, 189, 213}
+const _FeatureFlag_name = "unusedPerformValidationRPCACME13KeyRolloverSimplifiedVAHTTPTLSSNIRevalidationAllowRenewalFirstRLSetIssuedNamesRenewalBitFasterRateLimitProbeCTLogsCAAValidationMethodsCAAAccountURIHeadNonceStatusOKNewAuthorizationSchemaRevokeAtRAEarlyOrderRateLimitEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountIDCheckRenewalFirst"
+
+var _FeatureFlag_index = [...]uint16{0, 6, 26, 43, 59, 77, 96, 120, 135, 146, 166, 179, 196, 218, 228, 247, 261, 279, 298, 315}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 
@@ -31,10 +32,6 @@ func (mock caaMockDNS) LookupTXT(_ context.Context, hostname string) ([]string, 
 func (mock caaMockDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
 	ip := net.ParseIP("127.0.0.1")
 	return []net.IP{ip}, nil
-}
-
-func (mock caaMockDNS) LookupMX(_ context.Context, domain string) ([]string, error) {
-	return nil, nil
 }
 
 func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, error) {
@@ -186,9 +183,9 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 }
 
 func TestCAATimeout(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 	va.dnsClient = caaMockDNS{}
-	err := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"}, nil)
+	err := va.checkCAA(ctx, identifier.DNSIdentifier("caa-timeout.com"), nil)
 	if err.Type != probs.DNSProblem {
 		t.Errorf("Expected timeout error type %s, got %s", probs.DNSProblem, err.Type)
 	}
@@ -199,11 +196,6 @@ func TestCAATimeout(t *testing.T) {
 }
 
 func TestCAAChecking(t *testing.T) {
-	if err := features.Set(map[string]bool{"CAAValidationMethods": true, "CAAAccountURI": true}); err != nil {
-		t.Fatalf("Failed to enable feature: %v", err)
-	}
-	defer features.Reset()
-
 	testCases := []struct {
 		Name    string
 		Domain  string
@@ -402,14 +394,18 @@ func TestCAAChecking(t *testing.T) {
 	method := "http-01"
 	params := &caaParams{accountURIID: &accountURIID, validationMethod: &method}
 
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
+	if err := features.Set(map[string]bool{"CAAValidationMethods": true, "CAAAccountURI": true}); err != nil {
+		t.Fatalf("Failed to enable feature: %v", err)
+	}
+
 	va.dnsClient = caaMockDNS{}
 	va.accountURIPrefixes = []string{"https://letsencrypt.org/acct/reg/"}
 	for _, caaTest := range testCases {
 		mockLog := va.log.(*blog.Mock)
 		mockLog.Clear()
 		t.Run(caaTest.Name, func(t *testing.T) {
-			ident := core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain}
+			ident := identifier.DNSIdentifier(caaTest.Domain)
 			present, valid, _, err := va.checkCAARecords(ctx, ident, params)
 			if err != nil {
 				t.Errorf("checkCAARecords error for %s: %s", caaTest.Domain, err)
@@ -427,14 +423,14 @@ func TestCAAChecking(t *testing.T) {
 	features.Reset()
 
 	// present-dns-only.com should now be valid even with http-01
-	ident := core.AcmeIdentifier{Type: "dns", Value: "present-dns-only.com"}
+	ident := identifier.DNSIdentifier("present-dns-only.com")
 	present, valid, _, err := va.checkCAARecords(ctx, ident, params)
 	test.AssertNotError(t, err, "present-dns-only.com")
 	test.Assert(t, present, "Present should be true")
 	test.Assert(t, valid, "Valid should be true")
 
 	// present-incorrect-accounturi.com should now be also be valid
-	ident = core.AcmeIdentifier{Type: "dns", Value: "present-incorrect-accounturi.com"}
+	ident = identifier.DNSIdentifier("present-incorrect-accounturi.com")
 	present, valid, _, err = va.checkCAARecords(ctx, ident, params)
 	test.AssertNotError(t, err, "present-incorrect-accounturi.com")
 	test.Assert(t, present, "Present should be true")
@@ -468,7 +464,7 @@ func TestCAAChecking(t *testing.T) {
 }
 
 func TestCAALogging(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 	va.dnsClient = caaMockDNS{}
 
 	httpChal := core.ChallengeTypeHTTP01
@@ -546,7 +542,7 @@ func TestCAALogging(t *testing.T) {
 				accountURIID:     tc.AccountURIID,
 				validationMethod: tc.ChallengeType,
 			}
-			_ = va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: tc.Domain}, params)
+			_ = va.checkCAA(ctx, identifier.ACMEIdentifier{Type: identifier.DNS, Value: tc.Domain}, params)
 
 			caaLogLines := mockLog.GetAllMatching(`Checked CAA records for`)
 			if len(caaLogLines) != 1 {
@@ -562,7 +558,7 @@ func TestCAALogging(t *testing.T) {
 // TestIsCAAValidErrMessage tests that an error result from `va.IsCAAValid`
 // includes the domain name that was being checked in the failure detail.
 func TestIsCAAValidErrMessage(t *testing.T) {
-	va, _ := setup(nil, 0)
+	va, _ := setup(nil, 0, "", nil)
 	va.dnsClient = caaMockDNS{}
 
 	// Call IsCAAValid with a domain we know fails with a generic error from the
@@ -583,11 +579,11 @@ func TestIsCAAValidErrMessage(t *testing.T) {
 }
 
 func TestCAAFailure(t *testing.T) {
-	chall := createChallenge(core.ChallengeTypeTLSSNI01)
-	hs := tlssni01Srv(t, chall)
+	chall := createChallenge(core.ChallengeTypeHTTP01)
+	hs := httpSrv(t, chall.Token)
 	defer hs.Close()
 
-	va, _ := setup(hs, 0)
+	va, _ := setup(hs, 0, "", nil)
 	va.dnsClient = caaMockDNS{}
 
 	_, prob := va.validate(ctx, dnsi("reserved.com"), chall, core.Authorization{})
