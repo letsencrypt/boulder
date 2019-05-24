@@ -123,7 +123,6 @@ func TestChallenge(t *testing.T) {
 			AddressesResolved: []net.IP{ip},
 			AddressUsed:       ip,
 			URL:               "url",
-			Authorities:       []string{"auth"},
 			AddressesTried:    []net.IP{ip},
 		},
 	}
@@ -152,7 +151,6 @@ func TestValidationRecord(t *testing.T) {
 		AddressesResolved: []net.IP{ip},
 		AddressUsed:       ip,
 		URL:               "url",
-		Authorities:       []string{"auth"},
 		AddressesTried:    []net.IP{ip},
 	}
 
@@ -173,7 +171,6 @@ func TestValidationResult(t *testing.T) {
 		AddressesResolved: []net.IP{ip},
 		AddressUsed:       ip,
 		URL:               "urlA",
-		Authorities:       []string{"authA"},
 		AddressesTried:    []net.IP{ip},
 	}
 	vrB := core.ValidationRecord{
@@ -182,7 +179,6 @@ func TestValidationResult(t *testing.T) {
 		AddressesResolved: []net.IP{ip},
 		AddressUsed:       ip,
 		URL:               "urlB",
-		Authorities:       []string{"authB"},
 		AddressesTried:    []net.IP{ip},
 	}
 	result := []core.ValidationRecord{vrA, vrB}

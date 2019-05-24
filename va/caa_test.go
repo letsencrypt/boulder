@@ -25,8 +25,8 @@ import (
 // answers for CAA queries.
 type caaMockDNS struct{}
 
-func (mock caaMockDNS) LookupTXT(_ context.Context, hostname string) ([]string, []string, error) {
-	return nil, nil, nil
+func (mock caaMockDNS) LookupTXT(_ context.Context, hostname string) ([]string, error) {
+	return nil, nil
 }
 
 func (mock caaMockDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {

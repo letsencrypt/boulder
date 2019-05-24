@@ -57,7 +57,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident iden
 
 	// Look for the required record in the DNS
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, ident.Value)
-	txts, authorities, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
+	txts, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 
 	if err != nil {
 		va.log.Infof("Failed to lookup TXT records for %s. err=[%#v] errStr=[%s]", ident, err, err)
@@ -74,10 +74,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident iden
 	for _, element := range txts {
 		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
 			// Successful challenge validation
-			return []core.ValidationRecord{{
-				Authorities: authorities,
-				Hostname:    ident.Value,
-			}}, nil
+			return []core.ValidationRecord{{Hostname: ident.Value}}, nil
 		}
 	}
 
