@@ -14,8 +14,8 @@ import (
 type config struct {
 	NonceService struct {
 		cmd.ServiceConfig
+		Syslog cmd.SyslogConfig
 	}
-	Syslog cmd.SyslogConfig
 }
 
 type nonceServer struct {
@@ -46,7 +46,7 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.NonceService.DebugAddr)
+	scope, logger := cmd.StatsAndLogging(c.NonceService.Syslog, c.NonceService.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

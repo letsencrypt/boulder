@@ -20,6 +20,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"math/big"
 	"sync"
 	"time"
@@ -131,6 +132,7 @@ func (ns *NonceService) decrypt(nonce string) (int64, error) {
 	}
 	copy(n[4:], decoded[:8])
 
+	fmt.Println(decoded)
 	pt, err := ns.gcm.Open(nil, n, decoded[8:], nil)
 	if err != nil {
 		return 0, err

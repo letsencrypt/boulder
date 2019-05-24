@@ -22,6 +22,7 @@ import (
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -29,6 +30,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	"github.com/letsencrypt/boulder/nonce"
+	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
@@ -85,7 +87,8 @@ type WebFrontEndImpl struct {
 	DirectoryWebsite string
 
 	// Register of anti-replay nonces
-	nonceService *nonce.NonceService
+	nonceService       *nonce.NonceService
+	remoteNonceService noncepb.NonceServiceClient
 
 	// Key policy.
 	keyPolicy goodkey.KeyPolicy
@@ -107,13 +110,9 @@ func NewWebFrontEndImpl(
 	stats metrics.Scope,
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
+	remoteNonceService noncepb.NonceServiceClient,
 	logger blog.Logger,
 ) (WebFrontEndImpl, error) {
-	nonceService, err := nonce.NewNonceService(stats)
-	if err != nil {
-		return WebFrontEndImpl{}, err
-	}
-
 	csrSignatureAlgs := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "csrSignatureAlgs",
@@ -123,14 +122,24 @@ func NewWebFrontEndImpl(
 	)
 	stats.MustRegister(csrSignatureAlgs)
 
-	return WebFrontEndImpl{
-		log:              logger,
-		clk:              clk,
-		nonceService:     nonceService,
-		stats:            stats,
-		keyPolicy:        keyPolicy,
-		csrSignatureAlgs: csrSignatureAlgs,
-	}, nil
+	wfe := WebFrontEndImpl{
+		log:                logger,
+		clk:                clk,
+		stats:              stats,
+		keyPolicy:          keyPolicy,
+		csrSignatureAlgs:   csrSignatureAlgs,
+		remoteNonceService: remoteNonceService,
+	}
+
+	if wfe.remoteNonceService == nil {
+		nonceService, err := nonce.NewNonceService(stats)
+		if err != nil {
+			return WebFrontEndImpl{}, err
+		}
+		wfe.nonceService = nonceService
+	}
+
+	return wfe, nil
 }
 
 // HandleFunc registers a handler at the given path. It's
@@ -166,7 +175,17 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 		web.WFEHandlerFunc(func(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 			// We do not propagate errors here, because (1) they should be
 			// transient, and (2) they fail closed.
-			nonce, err := wfe.nonceService.Nonce()
+			var nonce string
+			var err error
+			if wfe.remoteNonceService != nil {
+				var nonceMsg *noncepb.NonceMessage
+				nonceMsg, err = wfe.remoteNonceService.Nonce(ctx, &corepb.Empty{})
+				if nonceMsg != nil {
+					nonce = *nonceMsg.Nonce
+				}
+			} else {
+				nonce, err = wfe.nonceService.Nonce()
+			}
 			if err == nil {
 				response.Header().Set("Replay-Nonce", nonce)
 			} else {
@@ -537,7 +556,18 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	if len(nonce) == 0 {
 		wfe.stats.Inc("Errors.JWSMissingNonce", 1)
 		return nil, nil, reg, probs.BadNonce("JWS has no anti-replay nonce")
-	} else if !wfe.nonceService.Valid(nonce) {
+	}
+	var nonceValid bool
+	if wfe.remoteNonceService != nil {
+		validMsg, err := wfe.remoteNonceService.Valid(ctx, &noncepb.NonceMessage{Nonce: &nonce})
+		if err != nil {
+			return nil, nil, reg, probs.ServerInternal("failed to verify nonce validity: %s", err)
+		}
+		nonceValid = *validMsg.Valid
+	} else {
+		nonceValid = wfe.nonceService.Valid(nonce)
+	}
+	if !nonceValid {
 		wfe.stats.Inc("Errors.JWSInvalidNonce", 1)
 		return nil, nil, reg, probs.BadNonce("JWS has invalid anti-replay nonce %s", nonce)
 	}

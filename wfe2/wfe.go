@@ -121,7 +121,6 @@ func NewWebFrontEndImpl(
 	remoteNonceService noncepb.NonceServiceClient,
 	logger blog.Logger,
 ) (WebFrontEndImpl, error) {
-
 	wfe := WebFrontEndImpl{
 		log:                logger,
 		clk:                clk,

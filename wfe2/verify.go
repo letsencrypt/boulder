@@ -191,7 +191,7 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, jws *jose.JSONWebSig
 	if wfe.remoteNonceService != nil {
 		validMsg, err := wfe.remoteNonceService.Valid(ctx, &noncepb.NonceMessage{Nonce: &nonce})
 		if err != nil {
-			return probs.ServerInternal("Failed to check nonce validity: %s", err)
+			return probs.ServerInternal("failed to verify nonce validity: %s", err)
 		}
 		nonceValid = *validMsg.Valid
 	} else {

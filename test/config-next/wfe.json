@@ -30,6 +30,10 @@
       "serverAddress": "sa.boulder:9095",
       "timeout": "15s"
     },
+    "nonceService": {
+      "serverAddress": "nonce.boulder:9101",
+      "timeout": "15s"
+    },
     "features": {
     }
   },

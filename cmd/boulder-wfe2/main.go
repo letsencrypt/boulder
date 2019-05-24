@@ -47,7 +47,7 @@ type config struct {
 
 		RAService    *cmd.GRPCClientConfig
 		SAService    *cmd.GRPCClientConfig
-		Nonceservice *cmd.GRPCClientConfig
+		NonceService *cmd.GRPCClientConfig
 
 		// CertificateChains maps AIA issuer URLs to certificate filenames.
 		// Certificates are read into the chain in the order they are defined in the
@@ -182,7 +182,7 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string][]byte, 
 	return results, nil
 }
 
-func setupWFE(c config, logger blog.Logger, stats metrics.Scope, clk clock.Clock) (core.RegistrationAuthority, core.StorageAuthority) {
+func setupWFE(c config, logger blog.Logger, stats metrics.Scope, clk clock.Clock) (core.RegistrationAuthority, core.StorageAuthority, noncepb.NonceServiceClient) {
 	tlsConfig, err := c.WFE.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 	clientMetrics := bgrpc.NewClientMetrics(stats)
@@ -194,9 +194,9 @@ func setupWFE(c config, logger blog.Logger, stats metrics.Scope, clk clock.Clock
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
 
-	var rns *noncepb.NonceServiceClient
-	if c.WFE.Nonceservice != nil {
-		rnsConn, err := bgrpc.ClientSetup(c.WFE.Nonceservice, tlsConfig, clientMetrics, clk)
+	var rns noncepb.NonceServiceClient
+	if c.WFE.NonceService != nil {
+		rnsConn, err := bgrpc.ClientSetup(c.WFE.NonceService, tlsConfig, clientMetrics, clk)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Nonce service")
 		rns = noncepb.NewNonceServiceClient(rnsConn)
 	}
