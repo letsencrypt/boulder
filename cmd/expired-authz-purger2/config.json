@@ -7,6 +7,6 @@
         "maxDBConns": 10,
         "gracePeriod": "168h",
         "batchSize": 1000,
-        "debugAddr": ":8014"
+        "debugAddr": ":8015"
     }
 }

@@ -37,7 +37,7 @@ var deletedStat = prometheus.NewCounter(
 	},
 )
 
-func delete(clk clock.Clock, gracePeriod time.Duration, batchSize int, dbMap *gorp.DbMap) (int64, error) {
+func deleteExpired(clk clock.Clock, gracePeriod time.Duration, batchSize int, dbMap *gorp.DbMap) (int64, error) {
 	expires := clk.Now().Add(-gracePeriod)
 	res, err := dbMap.Exec(
 		"DELETE FROM authz2 WHERE expires <= :expires LIMIT :limit",
@@ -84,7 +84,7 @@ func main() {
 	cmd.FailOnError(err, "Could not connect to database")
 
 	for {
-		deleted, err := delete(clk, c.ExpiredAuthzPurger2.GracePeriod.Duration, c.ExpiredAuthzPurger2.BatchSize, dbMap)
+		deleted, err := deleteExpired(clk, c.ExpiredAuthzPurger2.GracePeriod.Duration, c.ExpiredAuthzPurger2.BatchSize, dbMap)
 		if err != nil {
 			logger.Errf("failed to purge expired authorizations: %s", err)
 			if !*singleRun {
