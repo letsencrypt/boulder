@@ -1,6 +1,6 @@
 package core
 
-import "golang.org/x/net/context"
+import "context"
 
 // ValidationAuthority defines the public interface for the Boulder VA
 type ValidationAuthority interface {

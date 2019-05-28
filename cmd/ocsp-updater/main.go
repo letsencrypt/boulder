@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
@@ -22,7 +23,6 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"golang.org/x/crypto/ocsp"
-	"golang.org/x/net/context"
 )
 
 /*

@@ -7,10 +7,10 @@
 package grpc
 
 import (
+	"context"
 	"errors"
 	"time"
 
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
 	caPB "github.com/letsencrypt/boulder/ca/proto"

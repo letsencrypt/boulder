@@ -1,6 +1,7 @@
 package va
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -12,7 +13,6 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/miekg/dns"
-	"golang.org/x/net/context"
 )
 
 type caaParams struct {

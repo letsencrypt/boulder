@@ -2,6 +2,7 @@ package sa
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -18,27 +19,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/identifier"
-	"github.com/letsencrypt/boulder/probs"
-
-	"golang.org/x/net/context"
-
 	"github.com/jmhodges/clock"
-	gorp "gopkg.in/go-gorp/gorp.v2"
-	jose "gopkg.in/square/go-jose.v2"
-
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	gorp "gopkg.in/go-gorp/gorp.v2"
+	jose "gopkg.in/square/go-jose.v2"
 )
 
 var log = blog.UseMock()

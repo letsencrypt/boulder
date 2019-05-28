@@ -7,10 +7,10 @@
 package grpc
 
 import (
+	"context"
 	"net"
 	"time"
 
-	"golang.org/x/net/context"
 	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"

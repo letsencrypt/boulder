@@ -1,11 +1,10 @@
 package mocks
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-
-	"golang.org/x/net/context"
 
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"

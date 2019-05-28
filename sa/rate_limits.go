@@ -1,12 +1,12 @@
 package sa
 
 import (
+	"context"
 	"database/sql"
 	"strings"
 	"time"
 
 	"github.com/weppos/publicsuffix-go/publicsuffix"
-	"golang.org/x/net/context"
 )
 
 // baseDomain returns the eTLD+1 of a domain name for the purpose of rate

@@ -1,6 +1,7 @@
 package publisher
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -23,7 +24,6 @@ import (
 	"time"
 
 	ct "github.com/google/certificate-transparency-go"
-	"golang.org/x/net/context"
 
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"

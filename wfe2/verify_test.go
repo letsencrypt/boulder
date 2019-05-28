@@ -1,6 +1,7 @@
 package wfe2
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -8,8 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
-
-	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"

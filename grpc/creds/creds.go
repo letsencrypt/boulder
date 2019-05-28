@@ -1,13 +1,13 @@
 package creds
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
 
-	"golang.org/x/net/context"
 	"google.golang.org/grpc/credentials"
 )
 

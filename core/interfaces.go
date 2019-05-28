@@ -1,12 +1,12 @@
 package core
 
 import (
+	"context"
 	"crypto/x509"
 	"net"
 	"net/http"
 	"time"
 
-	"golang.org/x/net/context"
 	jose "gopkg.in/square/go-jose.v2"
 
 	caPB "github.com/letsencrypt/boulder/ca/proto"

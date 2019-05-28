@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/x509"
 	"database/sql"
 	"flag"
@@ -10,7 +11,6 @@ import (
 	"sort"
 	"strconv"
 
-	"golang.org/x/net/context"
 	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/cmd"

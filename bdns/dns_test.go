@@ -1,6 +1,7 @@
 package bdns
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -10,8 +11,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/metrics"
@@ -213,7 +212,8 @@ func serveLoopResolver(stopChan chan bool) {
 
 func pollServer() {
 	backoff := time.Duration(200 * time.Millisecond)
-	ctx, _ := context.WithTimeout(context.Background(), time.Duration(5*time.Second))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(5*time.Second))
+	defer cancel()
 	ticker := time.NewTicker(backoff)
 
 	for {
@@ -622,7 +622,8 @@ func TestRetry(t *testing.T) {
 	}
 
 	dr.dnsClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
-	ctx, _ = context.WithTimeout(context.Background(), -10*time.Hour)
+	ctx, cancel = context.WithTimeout(context.Background(), -10*time.Hour)
+	defer cancel()
 	_, err = dr.LookupTXT(ctx, "example.com")
 	if err == nil ||
 		err.Error() != "DNS problem: query timed out looking up TXT for example.com" {
