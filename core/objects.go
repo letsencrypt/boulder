@@ -143,9 +143,6 @@ type Registration struct {
 // ValidationRecord represents a validation attempt against a specific URL/hostname
 // and the IP addresses that were resolved and used
 type ValidationRecord struct {
-	// DNS only
-	Authorities []string `json:"-"`
-
 	// SimpleHTTP only
 	URL string `json:"url,omitempty"`
 
