@@ -491,9 +491,8 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, key)
-	if err == nil {
-		if existingAcct.Status == core.StatusDeactivated {
+	returnExistingAcct := func(acct core.Registration) {
+		if acct.Status == core.StatusDeactivated {
 			// If there is an existing, but deactivated account, then return an unauthorized
 			// problem informing the user that this account was deactivated
 			wfe.sendError(response, logEvent, probs.Unauthorized(
@@ -502,21 +501,26 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		}
 
 		response.Header().Set("Location",
-			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
-		logEvent.Requester = existingAcct.ID
+			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, acct.ID)))
+		logEvent.Requester = acct.ID
 
 		if features.Enabled(features.RemoveWFE2AccountID) {
 			// Zero out the account ID so that it isn't marshalled
-			existingAcct.ID = 0
+			acct.ID = 0
 		}
 
-		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, existingAcct)
+		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, acct)
 		if err != nil {
 			// ServerInternal because we just created this account, and it
 			// should be OK.
 			wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling account"), err)
 			return
 		}
+	}
+
+	existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, key)
+	if err == nil {
+		returnExistingAcct(existingAcct)
 		return
 	} else if !berrors.Is(err, berrors.NotFound) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), err)
@@ -555,6 +559,18 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		InitialIP: ip,
 	})
 	if err != nil {
+		if berrors.Is(err, berrors.Duplicate) {
+			existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, key)
+			if err == nil {
+				returnExistingAcct(existingAcct)
+				return
+			} else {
+				// return error even if berrors.NotFound, as the duplicate key error we got from
+				// ra.NewRegistration indicates it _does_ already exist.
+				wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), err)
+				return
+			}
+		}
 		wfe.sendError(response, logEvent,
 			web.ProblemDetailsForError(err, "Error creating new account"), err)
 		return
@@ -1668,6 +1684,22 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	// Update the account key to the new key
 	updatedAcct, err := wfe.RA.UpdateRegistration(ctx, *acct, core.Registration{Key: &newKey})
 	if err != nil {
+		if berrors.Is(err, berrors.Duplicate) {
+			// It is possible that between checking for the existing key, and preforming the update
+			// a parallel update or new account request happened and claimed the key. In this case
+			// just retrieve the account again, and return an error as we would above with a Location
+			// header
+			existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &newKey)
+			if err != nil {
+				wfe.sendError(response, logEvent, probs.ServerInternal("Failed to lookup existing keys"), err)
+				return
+			}
+			response.Header().Set("Location",
+				web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
+			wfe.sendError(response, logEvent,
+				probs.Conflict("New key is already in use for a different account"), err)
+			return
+		}
 		wfe.sendError(response, logEvent,
 			web.ProblemDetailsForError(err, "Unable to update account with new key"), err)
 		return
