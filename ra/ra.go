@@ -372,12 +372,6 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 	return nil
 }
 
-var (
-	// unparseableEmailError is returned by validateEmail when the given address
-	// is not parseable.
-	unparseableEmailError = berrors.InvalidEmailError("not a valid e-mail address")
-)
-
 // forbiddenMailDomains is a map of domain names we do not allow after the
 // @ symbol in contact mailto addresses. These are frequently used when
 // copy-pasting example configurations and would not result in expiration
@@ -396,7 +390,10 @@ var forbiddenMailDomains = map[string]bool{
 func validateEmail(address string) error {
 	email, err := mail.ParseAddress(address)
 	if err != nil {
-		return unparseableEmailError
+		if len(address) > 254 {
+			address = address[:254]
+		}
+		return berrors.InvalidEmailError("%q is not a valid e-mail address", address)
 	}
 	splitEmail := strings.SplitN(email.Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])

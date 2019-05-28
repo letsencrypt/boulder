@@ -4021,6 +4021,11 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 	}
 }
 
+func TestValidateEmailError(t *testing.T) {
+	err := validateEmail("(๑•́ ω •̀๑)")
+	test.AssertEquals(t, err.Error(), "\"(๑•́ ω •̀๑)\" is not a valid e-mail address")
+}
+
 var CAkeyPEM = `
 -----BEGIN RSA PRIVATE KEY-----
 MIIJKQIBAAKCAgEAqmM0dEf/J9MCk2ItzevL0dKJ84lVUtf/vQ7AXFi492vFXc3b

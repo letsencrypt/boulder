@@ -1,6 +1,10 @@
 package errors
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/letsencrypt/boulder/identifier"
+)
 
 // ErrorType provides a coarse category for BoulderErrors
 type ErrorType int
@@ -24,12 +28,30 @@ const (
 
 // BoulderError represents internal Boulder errors
 type BoulderError struct {
-	Type   ErrorType
-	Detail string
+	Type      ErrorType
+	Detail    string
+	SubErrors []SubBoulderError
+}
+
+// SubBoulderError represents sub-errors specific to an identifier that are
+// related to a top-level internal Boulder error.
+type SubBoulderError struct {
+	*BoulderError
+	Identifier identifier.ACMEIdentifier
 }
 
 func (be *BoulderError) Error() string {
 	return be.Detail
+}
+
+// WithSubErrors returns a new BoulderError instance created by adding the
+// provided subErrs to the existing BoulderError.
+func (be *BoulderError) WithSubErrors(subErrs []SubBoulderError) *BoulderError {
+	return &BoulderError{
+		Type:      be.Type,
+		Detail:    be.Detail,
+		SubErrors: append(be.SubErrors, subErrs...),
+	}
 }
 
 // New is a convenience function for creating a new BoulderError
