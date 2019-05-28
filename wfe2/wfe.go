@@ -564,12 +564,11 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			if err == nil {
 				returnExistingAcct(existingAcct)
 				return
-			} else {
-				// return error even if berrors.NotFound, as the duplicate key error we got from
-				// ra.NewRegistration indicates it _does_ already exist.
-				wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), err)
-				return
 			}
+			// return error even if berrors.NotFound, as the duplicate key error we got from
+			// ra.NewRegistration indicates it _does_ already exist.
+			wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), err)
+			return
 		}
 		wfe.sendError(response, logEvent,
 			web.ProblemDetailsForError(err, "Error creating new account"), err)

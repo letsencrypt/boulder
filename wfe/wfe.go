@@ -627,6 +627,18 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *web.R
 
 	reg, err := wfe.RA.NewRegistration(ctx, init)
 	if err != nil {
+		if berrors.Is(err, berrors.Duplicate) {
+			existingReg, err := wfe.SA.GetRegistrationByKey(ctx, key)
+			if err != nil {
+				// return error even if berrors.NotFound, as the duplicate key error we got from
+				// ra.NewRegistration indicates it _does_ already exist.
+				wfe.sendError(response, logEvent, probs.ServerInternal("couldn't retrieve the registration"), err)
+				return
+			}
+			response.Header().Set("Location", web.RelativeEndpoint(request, fmt.Sprintf("%s%d", regPath, existingReg.ID)))
+			wfe.sendError(response, logEvent, probs.Conflict("Registration key is already in use"), err)
+			return
+		}
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new registration"), err)
 		return
 	}
