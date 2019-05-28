@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -57,4 +58,44 @@ func TestProblemDetailsFromError(t *testing.T) {
 	}
 	p := ProblemDetailsForError(expected, "k")
 	test.AssertDeepEquals(t, expected, p)
+}
+
+func TestSubProblems(t *testing.T) {
+	topErr := (&berrors.BoulderError{
+		Type:   berrors.CAA,
+		Detail: "CAA policy forbids issuance",
+	}).WithSubErrors(
+		[]berrors.SubBoulderError{
+			{
+				Identifier: identifier.DNSIdentifier("threeletter.agency"),
+				BoulderError: &berrors.BoulderError{
+					Type:   berrors.CAA,
+					Detail: "Forbidden by ■■■■■■■■■■■ and directive ■■■■",
+				},
+			},
+			{
+				Identifier: identifier.DNSIdentifier("area51.threeletter.agency"),
+				BoulderError: &berrors.BoulderError{
+					Type:   berrors.NotFound,
+					Detail: "No Such Area...",
+				},
+			},
+		})
+
+	prob := problemDetailsForBoulderError(topErr, "problem with subproblems")
+	test.AssertEquals(t, len(prob.SubProblems), len(topErr.SubErrors))
+
+	subProbsMap := make(map[string]probs.SubProblemDetails, len(prob.SubProblems))
+
+	for _, subProb := range prob.SubProblems {
+		subProbsMap[subProb.Identifier.Value] = subProb
+	}
+
+	subProbA, foundA := subProbsMap["threeletter.agency"]
+	subProbB, foundB := subProbsMap["area51.threeletter.agency"]
+	test.AssertEquals(t, foundA, true)
+	test.AssertEquals(t, foundB, true)
+
+	test.AssertEquals(t, subProbA.Type, probs.CAAProblem)
+	test.AssertEquals(t, subProbB.Type, probs.MalformedProblem)
 }
