@@ -188,6 +188,8 @@ type State struct {
 	challStrat acme.ChallengeStrategy
 	httpClient *http.Client
 
+	revokeChance float32
+
 	reqTotal  int64
 	respCodes map[int]*respCode
 	cMu       sync.Mutex
@@ -288,7 +290,8 @@ func New(
 	latencyPath string,
 	userEmail string,
 	operations []string,
-	challStrat string) (*State, error) {
+	challStrat string,
+	revokeChance float32) (*State, error) {
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
@@ -300,6 +303,9 @@ func New(
 	strat, err := acme.NewChallengeStrategy(challStrat)
 	if err != nil {
 		return nil, err
+	}
+	if revokeChance > 1 {
+		return nil, errors.New("revokeChance must be between 0.0 and 1.0")
 	}
 	httpClient := &http.Client{
 		Transport: &http.Transport{
@@ -333,6 +339,7 @@ func New(
 		maxNamesPerCert: maxNamesPerCert,
 		email:           userEmail,
 		respCodes:       make(map[int]*respCode),
+		revokeChance:    revokeChance,
 	}
 
 	// convert operations strings to methods

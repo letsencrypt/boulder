@@ -23,8 +23,8 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test/load-generator/acme"
-
 	"gopkg.in/square/go-jose.v2"
 )
 
@@ -611,6 +611,10 @@ func revokeCertificate(s *State, ctx *context) error {
 		return errors.New("No certificates in the context that can be revoked")
 	}
 
+	if r := mrand.Float32(); r > s.revokeChance {
+		return nil
+	}
+
 	certURL := popCertificate(ctx)
 	certPEM, err := getCert(s, ctx, certURL)
 	if err != nil {
@@ -623,7 +627,7 @@ func revokeCertificate(s *State, ctx *context) error {
 		Reason      int
 	}{
 		Certificate: base64.URLEncoding.EncodeToString(pemBlock.Bytes),
-		Reason:      0, // randomly pick one probably
+		Reason:      revocation.Unspecified,
 	}
 
 	revokeJSON, err := json.Marshal(revokeObj)
@@ -631,7 +635,9 @@ func revokeCertificate(s *State, ctx *context) error {
 		return err
 	}
 	revokeURL := s.directory.EndpointURL(acme.RevokeCertEndpoint)
-	jws, err := ctx.signKeyIDV2Request(revokeJSON, revokeURL) // it'd be nice to also use the cert key randomly?
+	// TODO(roland): randomly use the certificate key to sign the request instead of
+	// the account key
+	jws, err := ctx.signKeyIDV2Request(revokeJSON, revokeURL)
 	if err != nil {
 		return err
 	}
