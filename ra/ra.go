@@ -898,13 +898,9 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 		}(authz)
 	}
 	var subErrors []berrors.SubBoulderError
-	var firstBadIdent *identifier.ACMEIdentifier
 	for _, authz := range authzs {
 		err := <-ch
 		if err != nil {
-			if firstBadIdent == nil {
-				firstBadIdent = &authz.Identifier
-			}
 			if bErr, _ := err.(*berrors.BoulderError); berrors.Is(err, berrors.CAA) {
 				subErrors = append(subErrors, berrors.SubBoulderError{
 					Identifier:   authz.Identifier,
@@ -917,10 +913,16 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 	if len(subErrors) > 0 {
 		var detail string
 		if len(subErrors) == 1 {
-			detail = fmt.Sprintf("Rechecking CAA for %q: %s", firstBadIdent.Value, subErrors[0].BoulderError.Detail)
+			detail = fmt.Sprintf(
+				"Rechecking CAA for %q: %s",
+				subErrors[0].Identifier.Value,
+				subErrors[0].BoulderError.Detail)
 		} else {
-			detail = fmt.Sprintf("Rechecking CAA for %q and %d more identifiers failed. "+
-				"Refer to sub-problems for more information", firstBadIdent.Value, len(subErrors)-1)
+			detail = fmt.Sprintf(
+				"Rechecking CAA for %q and %d more identifiers failed. "+
+					"Refer to sub-problems for more information",
+				subErrors[0].Identifier.Value,
+				len(subErrors)-1)
 		}
 		return (&berrors.BoulderError{
 			Type:   berrors.CAA,
