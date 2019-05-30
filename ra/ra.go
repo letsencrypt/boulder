@@ -905,7 +905,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 			if firstBadIdent == nil {
 				firstBadIdent = &authz.Identifier
 			}
-			if bErr, ok := err.(*berrors.BoulderError); ok && berrors.Is(bErr, berrors.CAA) {
+			if bErr, _ := err.(*berrors.BoulderError); berrors.Is(err, berrors.CAA) {
 				subErrors = append(subErrors, berrors.SubBoulderError{
 					Identifier:   authz.Identifier,
 					BoulderError: bErr})
