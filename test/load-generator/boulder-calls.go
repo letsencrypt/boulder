@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -22,8 +23,8 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test/load-generator/acme"
-
 	"gopkg.in/square/go-jose.v2"
 )
 
@@ -31,11 +32,12 @@ var (
 	// stringToOperation maps a configured plan action to a function that can
 	// operate on a state/context.
 	stringToOperation = map[string]func(*State, *context) error{
-		"newAccount":    newAccount,
-		"getAccount":    getAccount,
-		"newOrder":      newOrder,
-		"fulfillOrder":  fulfillOrder,
-		"finalizeOrder": finalizeOrder,
+		"newAccount":        newAccount,
+		"getAccount":        getAccount,
+		"newOrder":          newOrder,
+		"fulfillOrder":      fulfillOrder,
+		"finalizeOrder":     finalizeOrder,
+		"revokeCertificate": revokeCertificate,
 	}
 )
 
@@ -581,4 +583,82 @@ func postAsGet(s *State, ctx *context, url string, latencyTag string) (*http.Res
 	requestPayload := []byte(jws.FullSerialize())
 
 	return s.post(url, requestPayload, ctx.ns, latencyTag, http.StatusOK)
+}
+
+func popCertificate(ctx *context) string {
+	certIndex := mrand.Intn(len(ctx.certs))
+	certURL := ctx.certs[certIndex]
+	ctx.certs = append(ctx.certs[:certIndex], ctx.certs[certIndex+1:]...)
+	return certURL
+}
+
+func getCert(s *State, ctx *context, url string) ([]byte, error) {
+	latencyTag := "/acme/cert/{serial}"
+	resp, err := postAsGet(s, ctx, url, latencyTag)
+	if err != nil {
+		return nil, fmt.Errorf("%s bad response: %s", url, err)
+	}
+	defer resp.Body.Close()
+	return ioutil.ReadAll(resp.Body)
+}
+
+// revokeCertificate removes a certificate url from the context, retrieves it,
+// and sends a revocation request for the certificate to the ACME server.
+// The revocation request is signed with the account key rather than the certificate
+// key.
+func revokeCertificate(s *State, ctx *context) error {
+	if len(ctx.certs) < 1 {
+		return errors.New("No certificates in the context that can be revoked")
+	}
+
+	if r := mrand.Float32(); r > s.revokeChance {
+		return nil
+	}
+
+	certURL := popCertificate(ctx)
+	certPEM, err := getCert(s, ctx, certURL)
+	if err != nil {
+		return err
+	}
+
+	pemBlock, _ := pem.Decode(certPEM)
+	revokeObj := struct {
+		Certificate string
+		Reason      int
+	}{
+		Certificate: base64.URLEncoding.EncodeToString(pemBlock.Bytes),
+		Reason:      revocation.Unspecified,
+	}
+
+	revokeJSON, err := json.Marshal(revokeObj)
+	if err != nil {
+		return err
+	}
+	revokeURL := s.directory.EndpointURL(acme.RevokeCertEndpoint)
+	// TODO(roland): randomly use the certificate key to sign the request instead of
+	// the account key
+	jws, err := ctx.signKeyIDV2Request(revokeJSON, revokeURL)
+	if err != nil {
+		return err
+	}
+	requestPayload := []byte(jws.FullSerialize())
+
+	resp, err := s.post(
+		revokeURL,
+		requestPayload,
+		ctx.ns,
+		"/acme/revoke-cert",
+		http.StatusOK,
+	)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	_, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
