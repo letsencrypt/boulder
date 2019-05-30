@@ -305,8 +305,13 @@ func (pa *AuthorityImpl) WillingToIssue(id identifier.ACMEIdentifier) error {
 }
 
 // WillingToIssueWildcards is an extension of WillingToIssue that accepts DNS
-// identifiers for well formed wildcard domains. For each provided identifier
-// WillingToIssueWildcards enforces that:
+// identifiers for well formed wildcard domains in addition to regular
+// identifiers.
+//
+// All provided identifiers are run through WillingToIssue and any errors are
+// returned. In addition to the regular WillingToIssue checks this function
+// also checks each wildcard identifier to enforce that:
+//
 // * The identifer is a DNS type identifier
 // * There is at most one `*` wildcard character
 // * That the wildcard character is the leftmost label
@@ -315,9 +320,6 @@ func (pa *AuthorityImpl) WillingToIssue(id identifier.ACMEIdentifier) error {
 // * That the wildcard wouldn't cover an exact blocklist entry (e.g. an exact
 //   blocklist entry for "foo.example.com" should prevent issuance for
 //   "*.example.com")
-//
-// If all of the above is true then the base domain (e.g. without the *.) is run
-// through WillingToIssue to catch other illegal things (blocked hosts, etc).
 //
 // If any of the identifiers are not valid then an error with suberrors specific
 // to the rejected identifiers will be returned.
