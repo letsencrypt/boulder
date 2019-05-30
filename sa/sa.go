@@ -583,11 +583,6 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 		if err == sql.ErrNoRows {
 			return berrors.NotFoundError("registration with ID '%d' not found", reg.ID)
 		}
-		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
-			// duplicate entry error can only happen when jwk_sha256 collides, indicate
-			// to caller that the provided key is already in use
-			return berrors.DuplicateError("key is already in use for a different account")
-		}
 		return err
 	}
 
@@ -601,6 +596,11 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	updatedRegModel.LockCol = model.LockCol
 	n, err := ssa.dbMap.WithContext(ctx).Update(updatedRegModel)
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+			// duplicate entry error can only happen when jwk_sha256 collides, indicate
+			// to caller that the provided key is already in use
+			return berrors.DuplicateError("key is already in use for a different account")
+		}
 		return err
 	}
 	if n == 0 {
