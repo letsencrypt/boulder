@@ -2158,7 +2158,7 @@ func TestNewOrder(t *testing.T) {
 
 	_, err = ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: &id,
-		Names:          []string{"example.com", "a"},
+		Names:          []string{"a"},
 	})
 	test.AssertError(t, err, "NewOrder with invalid names did not error")
 	test.AssertEquals(t, err.Error(), "DNS name does not have enough labels")
@@ -3179,7 +3179,7 @@ func TestFinalizeOrder(t *testing.T) {
 				},
 				Csr: policyForbidCSR,
 			},
-			ExpectedErrMsg: "policy forbids issuing for: \"example.org\"",
+			ExpectedErrMsg: "Policy forbids issuing for name",
 		},
 		{
 			Name: "Order with missing registration",

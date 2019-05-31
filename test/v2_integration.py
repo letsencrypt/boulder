@@ -873,5 +873,35 @@ def test_http2_http01_challenge():
         server.server_close()
         thread.join()
 
+def test_new_order_policy_errs():
+    """
+    Test that creating an order with policy blocked identifiers returns
+    a problem with subproblems.
+    """
+    client = chisel2.make_client(None)
+
+    # 'in-addr.arpa' is present in `test/hostname-policy.yaml`'s
+    # HighRiskBlockedNames list. 
+    csr_pem = chisel2.make_csr(["out-addr.in-addr.arpa", "between-addr.in-addr.arpa"])
+
+    # With two policy blocked names in the order we expect to get back a top
+    # level rejectedIdentifier with a detail message that references
+    # subproblems.
+    #
+    # TODO(@cpu): After https://github.com/certbot/certbot/issues/7046 is
+    # implemented in the upstream `acme` module this test should also ensure the
+    # subproblems are properly represented.
+    ok = False
+    try:
+        order = client.new_order(csr_pem)
+    except messages.Error as e:
+        ok = True
+        if e.typ != "urn:ietf:params:acme:error:rejectedIdentifier":
+            raise Exception('Expected rejectedIdentifier type problem, got {0}'.format(e.typ))
+        if e.detail != 'Error creating new order :: Policy forbids issuing for "out-addr.in-addr.arpa" and 1 more identifiers. Refer to sub-problems for more information':
+            raise Exception('Order problem detail did not match expected')
+    if not ok:
+        raise Exception('Expected problem, got no error')
+
 def run(cmd, **kwargs):
     return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)

@@ -304,8 +304,14 @@ func (pa *AuthorityImpl) WillingToIssue(id identifier.ACMEIdentifier) error {
 	return nil
 }
 
-// WillingToIssueWildcard is an extension of WillingToIssue that accepts DNS
-// identifiers for well formed wildcard domains. It enforces that:
+// WillingToIssueWildcards is an extension of WillingToIssue that accepts DNS
+// identifiers for well formed wildcard domains in addition to regular
+// identifiers.
+//
+// All provided identifiers are run through WillingToIssue and any errors are
+// returned. In addition to the regular WillingToIssue checks this function
+// also checks each wildcard identifier to enforce that:
+//
 // * The identifer is a DNS type identifier
 // * There is at most one `*` wildcard character
 // * That the wildcard character is the leftmost label
@@ -315,9 +321,50 @@ func (pa *AuthorityImpl) WillingToIssue(id identifier.ACMEIdentifier) error {
 //   blocklist entry for "foo.example.com" should prevent issuance for
 //   "*.example.com")
 //
-// If all of the above is true then the base domain (e.g. without the *.) is run
-// through WillingToIssue to catch other illegal things (blocked hosts, etc).
-func (pa *AuthorityImpl) WillingToIssueWildcard(ident identifier.ACMEIdentifier) error {
+// If any of the identifiers are not valid then an error with suberrors specific
+// to the rejected identifiers will be returned.
+func (pa *AuthorityImpl) WillingToIssueWildcards(idents []identifier.ACMEIdentifier) error {
+	var subErrors []berrors.SubBoulderError
+	var firstBadIdent *identifier.ACMEIdentifier
+	for _, ident := range idents {
+		if err := pa.willingToIssueWildcard(ident); err != nil {
+			if firstBadIdent == nil {
+				firstBadIdent = &ident
+			}
+			if bErr, ok := err.(*berrors.BoulderError); ok {
+				subErrors = append(subErrors, berrors.SubBoulderError{
+					Identifier:   ident,
+					BoulderError: bErr})
+			} else {
+				subErrors = append(subErrors, berrors.SubBoulderError{
+					Identifier: ident,
+					BoulderError: &berrors.BoulderError{
+						Type:   berrors.RejectedIdentifier,
+						Detail: err.Error(),
+					}})
+			}
+		}
+	}
+	if len(subErrors) > 0 {
+		var detail string
+		if len(subErrors) == 1 {
+			detail = subErrors[0].BoulderError.Detail
+		} else {
+			detail = fmt.Sprintf("Policy forbids issuing for %q and %d more identifiers. "+
+				"Refer to sub-problems for more information",
+				firstBadIdent.Value, len(subErrors)-1)
+		}
+		return (&berrors.BoulderError{
+			Type:   berrors.RejectedIdentifier,
+			Detail: detail,
+		}).WithSubErrors(subErrors)
+	}
+	return nil
+}
+
+// willingToIssueWildcard vets a single identifier. It is used by
+// the plural WillingToIssueWildcards when evaluating a list of identifiers.
+func (pa *AuthorityImpl) willingToIssueWildcard(ident identifier.ACMEIdentifier) error {
 	// We're only willing to process DNS identifiers
 	if ident.Type != identifier.DNS {
 		return errInvalidIdentifier

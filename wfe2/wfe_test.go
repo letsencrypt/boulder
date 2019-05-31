@@ -289,7 +289,7 @@ func (pa *mockPA) WillingToIssue(id identifier.ACMEIdentifier) error {
 	return nil
 }
 
-func (pa *mockPA) WillingToIssueWildcard(id identifier.ACMEIdentifier) error {
+func (pa *mockPA) WillingToIssueWildcards(idents []identifier.ACMEIdentifier) error {
 	return nil
 }
 

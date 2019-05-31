@@ -32,9 +32,11 @@ func (pa *mockPA) WillingToIssue(id identifier.ACMEIdentifier) error {
 	return nil
 }
 
-func (pa *mockPA) WillingToIssueWildcard(id identifier.ACMEIdentifier) error {
-	if id.Value == "bad-name.com" || id.Value == "other-bad-name.com" {
-		return errors.New("")
+func (pa *mockPA) WillingToIssueWildcards(idents []identifier.ACMEIdentifier) error {
+	for _, ident := range idents {
+		if ident.Value == "bad-name.com" || ident.Value == "other-bad-name.com" {
+			return errors.New("policy forbids issuing for identifier")
+		}
 	}
 	return nil
 }
@@ -131,7 +133,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("policy forbids issuing for: \"bad-name.com\", \"other-bad-name.com\""),
+			errors.New("policy forbids issuing for identifier"),
 		},
 		{
 			signedReqWithEmailAddress,

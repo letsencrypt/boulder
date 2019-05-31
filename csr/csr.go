@@ -74,19 +74,12 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 	if len(csr.DNSNames) > maxNames {
 		return fmt.Errorf("CSR contains more than %d DNS names", maxNames)
 	}
-	badNames := []string{}
-	for _, name := range csr.DNSNames {
-		ident := identifier.ACMEIdentifier{
-			Type:  identifier.DNS,
-			Value: name,
-		}
-		var err error
-		if err = pa.WillingToIssueWildcard(ident); err != nil {
-			badNames = append(badNames, fmt.Sprintf("%q", name))
-		}
+	idents := make([]identifier.ACMEIdentifier, len(csr.DNSNames))
+	for i, dnsName := range csr.DNSNames {
+		idents[i] = identifier.DNSIdentifier(dnsName)
 	}
-	if len(badNames) > 0 {
-		return fmt.Errorf("policy forbids issuing for: %s", strings.Join(badNames, ", "))
+	if err := pa.WillingToIssueWildcards(idents); err != nil {
+		return err
 	}
 	return nil
 }
