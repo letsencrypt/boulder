@@ -2063,15 +2063,37 @@ func TestRecheckCAAFail(t *testing.T) {
 		makeHTTP01Authorization("b.com"),
 		makeHTTP01Authorization("c.com"),
 	}
-	if err := ra.recheckCAA(context.Background(), authzs); err == nil {
-		t.Errorf("expected err, got nil")
+	err := ra.recheckCAA(context.Background(), authzs)
+
+	if err == nil {
+		t.Fatalf("expected err, got nil")
 	} else if !berrors.Is(err, berrors.CAA) {
-		t.Errorf("expected CAA error, got %T", err)
-	} else if !strings.Contains(err.Error(), "CAA invalid for a.com") {
-		t.Errorf("expected error to contain error for a.com, got %q", err)
-	} else if !strings.Contains(err.Error(), "CAA invalid for c.com") {
-		t.Errorf("expected error to contain error for c.com, got %q", err)
+		t.Fatalf("expected CAA error, got %T", err)
 	}
+
+	// NOTE(@cpu): Safe to skip the cast check here because we already checked err
+	// with `berrors.Is(err, berrors.CAA)`
+	berr, _ := err.(*berrors.BoulderError)
+
+	// There should be two sub errors
+	test.AssertEquals(t, len(berr.SubErrors), 2)
+
+	// The top level error should reference the first failing identifier
+	if !strings.Contains(berr.Detail, `Rechecking CAA for "a.com" and 1 more identifiers`) {
+		t.Errorf("expected error to ref first failed identiifer, got %q", err)
+	}
+
+	// There should be a sub error for both a.com and c.com with the correct type
+	subErrMap := make(map[string]berrors.SubBoulderError, len(berr.SubErrors))
+	for _, subErr := range berr.SubErrors {
+		subErrMap[subErr.Identifier.Value] = subErr
+	}
+	subErrA, foundA := subErrMap["a.com"]
+	subErrB, foundB := subErrMap["c.com"]
+	test.AssertEquals(t, foundA, true)
+	test.AssertEquals(t, foundB, true)
+	test.AssertEquals(t, subErrA.Type, berrors.CAA)
+	test.AssertEquals(t, subErrB.Type, berrors.CAA)
 }
 
 func TestRecheckCAAInternalServerError(t *testing.T) {

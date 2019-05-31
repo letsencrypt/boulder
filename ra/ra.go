@@ -894,16 +894,37 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 			ch <- err
 		}(authz)
 	}
-	var caaFailures []string
-	for _ = range authzs {
-		if err := <-ch; berrors.Is(err, berrors.CAA) {
-			caaFailures = append(caaFailures, err.Error())
-		} else if err != nil {
-			return err
+	var subErrors []berrors.SubBoulderError
+	for _, authz := range authzs {
+		err := <-ch
+		if err != nil {
+			if bErr, _ := err.(*berrors.BoulderError); berrors.Is(err, berrors.CAA) {
+				subErrors = append(subErrors, berrors.SubBoulderError{
+					Identifier:   authz.Identifier,
+					BoulderError: bErr})
+			} else {
+				return err
+			}
 		}
 	}
-	if len(caaFailures) > 0 {
-		return berrors.CAAError("Rechecking CAA: %v", strings.Join(caaFailures, ", "))
+	if len(subErrors) > 0 {
+		var detail string
+		if len(subErrors) == 1 {
+			detail = fmt.Sprintf(
+				"Rechecking CAA for %q: %s",
+				subErrors[0].Identifier.Value,
+				subErrors[0].BoulderError.Detail)
+		} else {
+			detail = fmt.Sprintf(
+				"Rechecking CAA for %q and %d more identifiers failed. "+
+					"Refer to sub-problems for more information",
+				subErrors[0].Identifier.Value,
+				len(subErrors)-1)
+		}
+		return (&berrors.BoulderError{
+			Type:   berrors.CAA,
+			Detail: detail,
+		}).WithSubErrors(subErrors)
 	}
 	return nil
 }
