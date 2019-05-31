@@ -513,6 +513,11 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, reg core.Re
 	}
 	err = ssa.dbMap.WithContext(ctx).Insert(rm)
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+			// duplicate entry error can only happen when jwk_sha256 collides, indicate
+			// to caller that the provided key is already in use
+			return reg, berrors.DuplicateError("key is already in use for a different account")
+		}
 		return reg, err
 	}
 	return modelToRegistration(rm)
@@ -574,8 +579,11 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core.Registration) error {
 	const query = "WHERE id = ?"
 	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, reg.ID)
-	if err == sql.ErrNoRows {
-		return berrors.NotFoundError("registration with ID '%d' not found", reg.ID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return berrors.NotFoundError("registration with ID '%d' not found", reg.ID)
+		}
+		return err
 	}
 
 	updatedRegModel, err := registrationToModel(&reg)
@@ -588,6 +596,11 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	updatedRegModel.LockCol = model.LockCol
 	n, err := ssa.dbMap.WithContext(ctx).Update(updatedRegModel)
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+			// duplicate entry error can only happen when jwk_sha256 collides, indicate
+			// to caller that the provided key is already in use
+			return berrors.DuplicateError("key is already in use for a different account")
+		}
 		return err
 	}
 	if n == 0 {
