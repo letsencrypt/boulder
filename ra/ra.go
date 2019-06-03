@@ -1893,8 +1893,9 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 }
 
 // checkOrderNames validates that the RA's policy authority allows issuing for
-// each of the names in an order. If any of the names are unacceptable an
-// unauthorized error with suberrors for each rejected identifier is returned.
+// each of the names in an order. If any of the names are unacceptable a
+// malformed or rejectedIdentifier error with suberrors for each rejected
+// identifier is returned.
 func (ra *RegistrationAuthorityImpl) checkOrderNames(names []string) error {
 	idents := make([]identifier.ACMEIdentifier, len(names))
 	for i, name := range names {
