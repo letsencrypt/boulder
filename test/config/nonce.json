@@ -1,12 +1,12 @@
 {
     "NonceService": {
+        "maxUsed": 131072,
         "syslog": {
             "stdoutLevel": 6
         },
         "debugAddr": ":8111",
         "grpc": {
             "address": ":9101",
-            "maxConcurrentStreams": 2000,
             "clientNames": [
                 "wfe.boulder"
             ]

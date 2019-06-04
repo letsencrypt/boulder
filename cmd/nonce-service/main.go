@@ -14,7 +14,8 @@ import (
 type config struct {
 	NonceService struct {
 		cmd.ServiceConfig
-		Syslog cmd.SyslogConfig
+		Syslog  cmd.SyslogConfig
+		MaxUsed int
 	}
 }
 
@@ -22,7 +23,7 @@ type nonceServer struct {
 	inner *nonce.NonceService
 }
 
-func (ns *nonceServer) Valid(_ context.Context, msg *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
+func (ns *nonceServer) Redeem(_ context.Context, msg *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
 	if msg.Nonce == nil {
 		return nil, bgrpc.ErrIncompleteRequest
 	}
@@ -50,7 +51,7 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	ns, err := nonce.NewNonceService(scope)
+	ns, err := nonce.NewNonceService(scope, c.NonceService.MaxUsed)
 	cmd.FailOnError(err, "Failed to initialize nonce service")
 
 	tlsConfig, err := c.NonceService.TLS.Load()

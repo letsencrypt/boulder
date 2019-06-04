@@ -137,7 +137,7 @@ func NewWebFrontEndImpl(
 	}
 
 	if wfe.remoteNonceService == nil {
-		nonceService, err := nonce.NewNonceService(stats)
+		nonceService, err := nonce.NewNonceService(stats, 0)
 		if err != nil {
 			return WebFrontEndImpl{}, err
 		}
@@ -178,23 +178,27 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 	methodsStr := strings.Join(methods, ", ")
 	handler := http.StripPrefix(pattern, web.NewTopHandler(wfe.log,
 		web.WFEHandlerFunc(func(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-			// We do not propagate errors here, because (1) they should be
-			// transient, and (2) they fail closed.
-			var nonce string
-			var err error
+			// Historically we did not return a error to the client
+			// if we failed to get a new nonce. We preserve that
+			// behavior if using the built in nonce service, but
+			// if we get a failure using the new remote nonce service
+			// we return an internal server error so that it is
+			// clearer both in our metrics and to the client that
+			// something is wrong.
 			if wfe.remoteNonceService != nil {
-				var nonceMsg *noncepb.NonceMessage
-				nonceMsg, err = wfe.remoteNonceService.Nonce(ctx, &corepb.Empty{})
-				if nonceMsg != nil {
-					nonce = *nonceMsg.Nonce
+				nonceMsg, err := wfe.remoteNonceService.Nonce(ctx, &corepb.Empty{})
+				if err != nil {
+					wfe.sendError(response, logEvent, probs.ServerInternal("unable to get nonce"), err)
+					return
 				}
+				response.Header().Set("Replay-Nonce", *nonceMsg.Nonce)
 			} else {
-				nonce, err = wfe.nonceService.Nonce()
-			}
-			if err == nil {
-				response.Header().Set("Replay-Nonce", nonce)
-			} else {
-				logEvent.AddError("unable to make nonce: %s", err)
+				nonce, err := wfe.nonceService.Nonce()
+				if err == nil {
+					response.Header().Set("Replay-Nonce", nonce)
+				} else {
+					logEvent.AddError("unable to make nonce: %s", err)
+				}
 			}
 
 			logEvent.Endpoint = pattern
@@ -564,7 +568,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	}
 	var nonceValid bool
 	if wfe.remoteNonceService != nil {
-		validMsg, err := wfe.remoteNonceService.Valid(ctx, &noncepb.NonceMessage{Nonce: &nonce})
+		validMsg, err := wfe.remoteNonceService.Redeem(ctx, &noncepb.NonceMessage{Nonce: &nonce})
 		if err != nil {
 			return nil, nil, reg, probs.ServerInternal("failed to verify nonce validity: %s", err)
 		}
