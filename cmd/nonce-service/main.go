@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -25,7 +26,7 @@ type nonceServer struct {
 
 func (ns *nonceServer) Redeem(_ context.Context, msg *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
 	if msg.Nonce == nil {
-		return nil, bgrpc.ErrIncompleteRequest
+		return nil, errors.New("Incomplete gRPC request message")
 	}
 	valid := ns.inner.Valid(*msg.Nonce)
 	return &noncepb.ValidMessage{Valid: &valid}, nil

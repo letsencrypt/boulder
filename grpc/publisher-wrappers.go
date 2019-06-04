@@ -31,7 +31,7 @@ func (pc *PublisherClientWrapper) SubmitToSingleCTWithResult(ctx context.Context
 		return nil, err
 	}
 	if res.Sct == nil {
-		return nil, ErrIncompleteResponse
+		return nil, errIncompleteResponse
 	}
 	return res, nil
 }
@@ -49,7 +49,7 @@ func NewPublisherServerWrapper(inner *publisher.Impl) *PublisherServerWrapper {
 // SubmitToSingleCTWithResult is a wrapper
 func (pub *PublisherServerWrapper) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error) {
 	if req == nil || req.Der == nil || req.LogURL == nil || req.LogPublicKey == nil {
-		return nil, ErrIncompleteRequest
+		return nil, errIncompleteRequest
 	}
 	return pub.inner.SubmitToSingleCTWithResult(ctx, req)
 }
