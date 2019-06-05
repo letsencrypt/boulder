@@ -27,8 +27,10 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 )
 
-const defaultMaxUsed = 65536
-const nonceLen = 32
+const (
+	defaultMaxUsed = 65536
+	nonceLen       = 32
+)
 
 var errInvalidNonceLength = errors.New("invalid nonce length")
 
@@ -79,7 +81,7 @@ func NewNonceService(scope metrics.Scope, maxUsed int) (*NonceService, error) {
 		panic("Failure in NewGCM: " + err.Error())
 	}
 
-	if maxUsed == 0 {
+	if maxUsed <= 0 {
 		maxUsed = defaultMaxUsed
 	}
 
