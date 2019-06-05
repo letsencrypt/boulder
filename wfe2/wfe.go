@@ -28,6 +28,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	"github.com/letsencrypt/boulder/nonce"
+	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
@@ -98,7 +99,8 @@ type WebFrontEndImpl struct {
 	LegacyKeyIDPrefix string
 
 	// Register of anti-replay nonces
-	nonceService *nonce.NonceService
+	nonceService       *nonce.NonceService
+	remoteNonceService noncepb.NonceServiceClient
 
 	// Key policy.
 	keyPolicy goodkey.KeyPolicy
@@ -119,22 +121,28 @@ func NewWebFrontEndImpl(
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
 	certificateChains map[string][]byte,
+	remoteNonceService noncepb.NonceServiceClient,
 	logger blog.Logger,
 ) (WebFrontEndImpl, error) {
-	nonceService, err := nonce.NewNonceService(scope)
-	if err != nil {
-		return WebFrontEndImpl{}, err
+	wfe := WebFrontEndImpl{
+		log:                logger,
+		clk:                clk,
+		keyPolicy:          keyPolicy,
+		certificateChains:  certificateChains,
+		stats:              initStats(scope),
+		scope:              scope,
+		remoteNonceService: remoteNonceService,
 	}
 
-	return WebFrontEndImpl{
-		log:               logger,
-		clk:               clk,
-		nonceService:      nonceService,
-		keyPolicy:         keyPolicy,
-		certificateChains: certificateChains,
-		stats:             initStats(scope),
-		scope:             scope,
-	}, nil
+	if wfe.remoteNonceService == nil {
+		nonceService, err := nonce.NewNonceService(scope, 0)
+		if err != nil {
+			return WebFrontEndImpl{}, err
+		}
+		wfe.nonceService = nonceService
+	}
+
+	return wfe, nil
 }
 
 // HandleFunc registers a handler at the given path. It's
@@ -169,13 +177,28 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 	handler := http.StripPrefix(pattern, web.NewTopHandler(wfe.log,
 		web.WFEHandlerFunc(func(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 			if request.Method != "GET" || pattern == newNoncePath {
-				// We do not propagate errors here, because (1) they should be
-				// transient, and (2) they fail closed.
-				nonce, err := wfe.nonceService.Nonce()
-				if err == nil {
-					response.Header().Set("Replay-Nonce", nonce)
+				// Historically we did not return a error to the client
+				// if we failed to get a new nonce. We preserve that
+				// behavior if using the built in nonce service, but
+				// if we get a failure using the new remote nonce service
+				// we return an internal server error so that it is
+				// clearer both in our metrics and to the client that
+				// something is wrong.
+				if wfe.remoteNonceService != nil {
+					nonceMsg, err := wfe.remoteNonceService.Nonce(ctx, &corepb.Empty{})
+					if err != nil {
+						fmt.Println("fucking broken", err)
+						wfe.sendError(response, logEvent, probs.ServerInternal("unable to get nonce"), err)
+						return
+					}
+					response.Header().Set("Replay-Nonce", *nonceMsg.Nonce)
 				} else {
-					logEvent.AddError("unable to make nonce: %s", err)
+					nonce, err := wfe.nonceService.Nonce()
+					if err == nil {
+						response.Header().Set("Replay-Nonce", nonce)
+					} else {
+						logEvent.AddError("unable to make nonce: %s", err)
+					}
 				}
 			}
 			// Per section 7.1 "Resources":
@@ -472,7 +495,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	// NewAccount uses `validSelfAuthenticatedPOST` instead of
 	// `validPOSTforAccount` because there is no account to authenticate against
 	// until after it is created!
-	body, key, prob := wfe.validSelfAuthenticatedPOST(request, logEvent)
+	body, key, prob := wfe.validSelfAuthenticatedPOST(ctx, request, logEvent)
 	if prob != nil {
 		// validSelfAuthenticatedPOST handles its own setting of logEvent.Errors
 		wfe.sendError(response, logEvent, prob, nil)
@@ -794,7 +817,7 @@ func (wfe *WebFrontEndImpl) revokeCertByJWK(
 	// `validSelfAuthenticatedJWS` similar to new-reg and key rollover.
 	// We do *not* use `validSelfAuthenticatedPOST` here because we've already
 	// read the HTTP request body in `parseJWSRequest` and it is now empty.
-	jwsBody, jwk, prob := wfe.validSelfAuthenticatedJWS(outerJWS, request, logEvent)
+	jwsBody, jwk, prob := wfe.validSelfAuthenticatedJWS(ctx, outerJWS, request, logEvent)
 	if prob != nil {
 		return prob
 	}

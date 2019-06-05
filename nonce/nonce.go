@@ -27,10 +27,10 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 )
 
-// MaxUsed defines the maximum number of Nonces we're willing to hold in
-// memory.
-const MaxUsed = 65536
-const nonceLen = 32
+const (
+	defaultMaxUsed = 65536
+	nonceLen       = 32
+)
 
 var errInvalidNonceLength = errors.New("invalid nonce length")
 
@@ -65,7 +65,7 @@ func (h *int64Heap) Pop() interface{} {
 }
 
 // NewNonceService constructs a NonceService with defaults
-func NewNonceService(scope metrics.Scope) (*NonceService, error) {
+func NewNonceService(scope metrics.Scope, maxUsed int) (*NonceService, error) {
 	scope = scope.NewScope("NonceService")
 	key := make([]byte, 16)
 	if _, err := rand.Read(key); err != nil {
@@ -81,13 +81,17 @@ func NewNonceService(scope metrics.Scope) (*NonceService, error) {
 		panic("Failure in NewGCM: " + err.Error())
 	}
 
+	if maxUsed <= 0 {
+		maxUsed = defaultMaxUsed
+	}
+
 	return &NonceService{
 		earliest: 0,
 		latest:   0,
-		used:     make(map[int64]bool, MaxUsed),
+		used:     make(map[int64]bool, maxUsed),
 		usedHeap: &int64Heap{},
 		gcm:      gcm,
-		maxUsed:  MaxUsed,
+		maxUsed:  maxUsed,
 		stats:    scope,
 	}, nil
 }
