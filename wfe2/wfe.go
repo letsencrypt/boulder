@@ -749,8 +749,14 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	reason := revocation.Reason(0)
 	if revokeRequest.Reason != nil && wfe.AcceptRevocationReason {
 		if _, present := revocation.UserAllowedReasons[*revokeRequest.Reason]; !present {
+			reasonStr, ok := revocation.ReasonToString[revocation.Reason(*revokeRequest.Reason)]
+			if !ok {
+				reasonStr = "unknown"
+			}
 			return probs.BadRevocationReason(
-				"unsupported revocation reason code provided. Supported reasons: %s",
+				"unsupported revocation reason code provided: %s (%d). Supported reasons: %s",
+				reasonStr,
+				*revokeRequest.Reason,
 				revocation.UserAllowedReasonsMessage())
 		}
 		reason = *revokeRequest.Reason

@@ -1,6 +1,7 @@
 package revocation
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 )
@@ -70,6 +71,7 @@ func UserAllowedReasonsMessage() string {
 	var buf strings.Builder
 	for i, reason := range allowed {
 		buf.WriteString(ReasonToString[Reason(reason)])
+		buf.WriteString(fmt.Sprintf(" (%d)", reason))
 		if i != len(UserAllowedReasons)-1 {
 			buf.WriteString(", ")
 		}
