@@ -66,16 +66,10 @@ func UserAllowedReasonsMessage() string {
 	}
 	sort.Ints(allowed)
 
-	// Find the string representation of each allowed reason code and build
-	// a message to return in `buf`.
-	var buf strings.Builder
-	for i, reason := range allowed {
-		buf.WriteString(ReasonToString[Reason(reason)])
-		buf.WriteString(fmt.Sprintf(" (%d)", reason))
-		if i != len(UserAllowedReasons)-1 {
-			buf.WriteString(", ")
-		}
+	var reasonStrings []string
+	for _, reason := range allowed {
+		reasonStrings = append(reasonStrings, fmt.Sprintf("%s (%d)",
+			ReasonToString[Reason(reason)], reason))
 	}
-
-	return buf.String()
+	return strings.Join(reasonStrings, ", ")
 }
