@@ -3060,7 +3060,7 @@ func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 func TestMandatoryPOSTAsGET(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
-	features.Set(map[string]bool{"MandatoryPOSTAsGET": true})
+	_ = features.Set(map[string]bool{"MandatoryPOSTAsGET": true})
 	defer features.Reset()
 
 	// CheckProblem matches a HTTP response body to a Method Not Allowed problem.
