@@ -42,7 +42,8 @@
     "features": {
       "HeadNonceStatusOK": true,
       "NewAuthorizationSchema": true,
-      "RemoveWFE2AccountID": true
+      "RemoveWFE2AccountID": true,
+      "MandatoryPOSTAsGET": true
     }
   },
 
