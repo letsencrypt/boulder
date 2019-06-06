@@ -93,7 +93,8 @@ func ProblemDetailsToStatusCode(prob *ProblemDetails) int {
 		BadNonceProblem,
 		InvalidEmailProblem,
 		RejectedIdentifierProblem,
-		AccountDoesNotExistProblem:
+		AccountDoesNotExistProblem,
+		BadRevocationReasonProblem:
 		return http.StatusBadRequest
 	case ServerInternalProblem:
 		return http.StatusInternalServerError
