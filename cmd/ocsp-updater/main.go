@@ -166,8 +166,6 @@ func newUpdater(
 
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
 	var statuses []core.CertificateStatus
-	// TODO(@cpu): Once the notafter-backfill cmd has been run & completed then
-	// the query below can be rewritten to use `AND NOT cs.isExpired`.
 	now := updater.clk.Now()
 	maxAgeCutoff := now.Add(-updater.ocspStaleMaxAge)
 
