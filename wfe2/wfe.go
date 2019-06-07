@@ -913,6 +913,11 @@ func (wfe *WebFrontEndImpl) Challenge(
 	response http.ResponseWriter,
 	request *http.Request) {
 
+	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost {
+		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
+		return
+	}
+
 	notFound := func() {
 		wfe.sendError(response, logEvent, probs.NotFound("No such challenge"), nil)
 	}
@@ -1350,6 +1355,11 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 // Authorization is used by clients to submit an update to one of their
 // authorizations.
 func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost {
+		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
+		return
+	}
+
 	var requestAccount *core.Registration
 	var requestBody []byte
 	// If the request is a POST it is either:
@@ -1448,6 +1458,11 @@ var allHex = regexp.MustCompile("^[0-9a-f]+$")
 // Certificate is used by clients to request a copy of their current certificate, or to
 // request a reissuance of the certificate.
 func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost {
+		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
+		return
+	}
+
 	var requesterAccount *core.Registration
 	// Any POSTs to the Certificate endpoint should be POST-as-GET requests. There are
 	// no POSTs with a body allowed for this endpoint.
@@ -1868,10 +1883,15 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 // GetOrder is used to retrieve a existing order object
 func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost {
+		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
+		return
+	}
+
 	var requesterAccount *core.Registration
 	// Any POSTs to the Order endpoint should be POST-as-GET requests. There are
 	// no POSTs with a body allowed for this endpoint.
-	if request.Method == "POST" {
+	if request.Method == http.MethodPost {
 		acct, prob := wfe.validPOSTAsGETForAccount(request, ctx, logEvent)
 		if prob != nil {
 			wfe.sendError(response, logEvent, prob, nil)
