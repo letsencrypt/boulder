@@ -32,7 +32,7 @@ func (l *subExtKeyUsageLegalUsage) Initialize() error {
 }
 
 func (l *subExtKeyUsageLegalUsage) CheckApplies(c *x509.Certificate) bool {
-	return c.ExtKeyUsage != nil
+	return util.IsSubscriberCert(c) && c.ExtKeyUsage != nil
 }
 
 func (l *subExtKeyUsageLegalUsage) Execute(c *x509.Certificate) *LintResult {

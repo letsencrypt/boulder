@@ -188,9 +188,25 @@ type SignedCertificateTimestamp struct {
 	SCTVersion Version    `json:"version"` // The version of the protocol to which the SCT conforms
 	LogID      SHA256Hash `json:"log_id"`  // the SHA-256 hash of the log's public key, calculated over
 	// the DER encoding of the key represented as SubjectPublicKeyInfo.
-	Timestamp  uint64          `json:"timestamp,omitempty"`  // Timestamp (in ms since unix epoc) at which the SCT was issued
+	Timestamp  uint64          `json:"timestamp,omitempty"`  // Timestamp (in ms since unix epoc) at which the SCT was issued. NOTE: When this is serialized, the output is in seconds, not milliseconds.
 	Extensions CTExtensions    `json:"extensions,omitempty"` // For future extensions to the protocol
 	Signature  DigitallySigned `json:"signature"`            // The Log's signature for this SCT
+}
+
+// Copied from ct/types.go 2018/06/15 to deal with BQ timestamp overflow; output
+// is expected to be seconds, not milliseconds.
+type auxSignedCertificateTimestamp SignedCertificateTimestamp
+
+const kMaxTimestamp = 253402300799
+
+// MarshalJSON implements the JSON.Marshaller interface.
+func (sct *SignedCertificateTimestamp) MarshalJSON() ([]byte, error) {
+	aux := auxSignedCertificateTimestamp(*sct)
+	aux.Timestamp = sct.Timestamp / 1000 // convert ms to sec
+	if aux.Timestamp > kMaxTimestamp {
+		aux.Timestamp = 0
+	}
+	return json.Marshal(&aux)
 }
 
 type sctError int

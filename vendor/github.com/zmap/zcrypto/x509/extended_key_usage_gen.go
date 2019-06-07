@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -113,9 +114,16 @@ import (
 	out.Write([]byte(s))
 }
 
-func generateASN1(oidToName map[string]OID) []byte {
+func generateASN1(rawToOID map[string]OID) []byte {
 	buffer := bytes.Buffer{}
-	for _, oid := range oidToName {
+	// Create sorted slice of keys to ensure deterministic output
+	var keys = make([]string, 0, len(rawToOID))
+	for k := range rawToOID {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		oid := rawToOID[k]
 		goName := oid.GoName(GO_PREFIX)
 		oidDecl := oid.OIDDecl()
 		buffer.WriteString(goName)
@@ -126,11 +134,18 @@ func generateASN1(oidToName map[string]OID) []byte {
 	return buffer.Bytes()
 }
 
-func generateIntegerConstants(oidToName map[string]OID) []byte {
+func generateIntegerConstants(rawToOID map[string]OID) []byte {
 	buffer := bytes.Buffer{}
 	buffer.WriteString("const (\n")
 	first := true
-	for _, oid := range oidToName {
+	// Create sorted slice of keys to ensure deterministic output
+	var keys = make([]string, 0, len(rawToOID))
+	for k := range rawToOID {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		oid := rawToOID[k]
 		goName := oid.GoName("ExtKeyUsage")
 		buffer.WriteString(goName)
 		if first {
@@ -143,9 +158,16 @@ func generateIntegerConstants(oidToName map[string]OID) []byte {
 	return buffer.Bytes()
 }
 
-func generateNameConstants(oidToName map[string]OID) []byte {
+func generateNameConstants(rawToOID map[string]OID) []byte {
 	buffer := bytes.Buffer{}
-	for _, oid := range oidToName {
+	// Create sorted slice of keys to ensure deterministic output
+	var keys = make([]string, 0, len(rawToOID))
+	for k := range rawToOID {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		oid := rawToOID[k]
 		constantName := oid.GoConstant(CONST_PREFIX)
 		buffer.WriteString(constantName)
 		buffer.WriteString(" = \"")
@@ -155,11 +177,19 @@ func generateNameConstants(oidToName map[string]OID) []byte {
 	return buffer.Bytes()
 }
 
-func generateOIDMap(oidToName map[string]OID, mapName string) []byte {
+func generateOIDMap(rawToOID map[string]OID, mapName string) []byte {
 	buffer := bytes.Buffer{}
 	buffer.WriteString(mapName)
 	buffer.WriteString(" = make(map[string]asn1.ObjectIdentifier)\n")
-	for _, oid := range oidToName {
+
+	// Create sorted slice of keys to ensure deterministic output
+	var keys = make([]string, 0, len(rawToOID))
+	for k := range rawToOID {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		oid := rawToOID[k]
 		constantName := oid.GoConstant(CONST_PREFIX)
 		goName := oid.GoName(GO_PREFIX)
 		buffer.WriteString(mapName)
@@ -172,11 +202,19 @@ func generateOIDMap(oidToName map[string]OID, mapName string) []byte {
 	return buffer.Bytes()
 }
 
-func generateIntegerMap(oidToName map[string]OID, mapName string) []byte {
+func generateIntegerMap(rawToOID map[string]OID, mapName string) []byte {
 	buffer := bytes.Buffer{}
 	buffer.WriteString(mapName)
 	buffer.WriteString(" = make(map[string]ExtKeyUsage)\n")
-	for _, oid := range oidToName {
+
+	// Create sorted slice of keys to ensure deterministic output
+	var keys = make([]string, 0, len(rawToOID))
+	for k := range rawToOID {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		oid := rawToOID[k]
 		constantName := oid.GoConstant(CONST_PREFIX)
 		goName := oid.GoName("ExtKeyUsage")
 		buffer.WriteString(mapName)
@@ -189,21 +227,32 @@ func generateIntegerMap(oidToName map[string]OID, mapName string) []byte {
 	return buffer.Bytes()
 }
 
-func generateEKUJSONStruct(oidToName map[string]OID) []byte {
+func generateEKUJSONStruct(rawToOID map[string]OID) []byte {
 	buffer := bytes.Buffer{}
 	buffer.WriteString("type auxExtendedKeyUsage struct {\n")
-	for _, oid := range oidToName {
+
+	// Create sorted slice of keys to ensure deterministic output
+	var keys = make([]string, 0, len(rawToOID))
+	for k := range rawToOID {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		oid := rawToOID[k]
 		buffer.WriteString(oid.StructFieldName())
 		buffer.WriteString(" bool `json:\"")
 		buffer.WriteString(oid.JSONName(""))
-		buffer.WriteString(",omitempty\"`\n")
+		buffer.WriteString(",omitempty\" oid:\"")
+		buffer.WriteString(oid.OID)
+		buffer.WriteString("\"`\n")
 	}
 	buffer.WriteString("Unknown []string `json:\"unknown,omitempty\"`")
 	buffer.WriteString("}\n\n")
 	buffer.WriteString("func (aux *auxExtendedKeyUsage) populateFromASN1(oid asn1.ObjectIdentifier) {\n")
 	buffer.WriteString("s := oid.String()\n")
 	buffer.WriteString("switch s {\n")
-	for _, oid := range oidToName {
+	for _, k := range keys {
+		oid := rawToOID[k]
 		buffer.WriteString("case ")
 		constantName := oid.GoConstant(CONST_PREFIX)
 		buffer.WriteString(constantName)
@@ -219,7 +268,8 @@ func generateEKUJSONStruct(oidToName map[string]OID) []byte {
 
 	buffer.WriteString("func (aux *auxExtendedKeyUsage) populateFromExtKeyUsage(eku ExtKeyUsage) {\n")
 	buffer.WriteString("switch eku {\n")
-	for _, oid := range oidToName {
+	for _, k := range keys {
+		oid := rawToOID[k]
 		buffer.WriteString("case ")
 		ekuName := oid.GoName("ExtKeyUsage")
 		buffer.WriteString(ekuName)
@@ -250,7 +300,7 @@ func main() {
 	}
 	defer resp.Body.Close()
 
-	oidToName := make(map[string]OID)
+	rawToOID := make(map[string]OID)
 	r := csv.NewReader(resp.Body)
 	for lines := 0; ; lines++ {
 		record, err := r.Read()
@@ -266,35 +316,35 @@ func main() {
 		}
 		oid := record[COLUMN_IDX_OID]
 		shortName := record[COLUMN_IDX_SHORT_NAME]
-		oidToName[oid] = OID{
+		rawToOID[oid] = OID{
 			OID:       oid,
 			ShortName: shortName,
 		}
 	}
 
 	out.Write([]byte("const (\n"))
-	constants := generateNameConstants(oidToName)
+	constants := generateNameConstants(rawToOID)
 	out.Write(constants)
 	out.Write([]byte(")\n"))
 
 	out.Write([]byte("var (\n"))
-	oidDecls := generateASN1(oidToName)
+	oidDecls := generateASN1(rawToOID)
 	out.Write(oidDecls)
 	out.Write([]byte(")\n"))
 
-	integersConstants := generateIntegerConstants(oidToName)
+	integersConstants := generateIntegerConstants(rawToOID)
 	out.Write(integersConstants)
 
-	out.Write(generateEKUJSONStruct(oidToName))
+	out.Write(generateEKUJSONStruct(rawToOID))
 
 	out.Write([]byte("\nvar ekuOIDs map[string]asn1.ObjectIdentifier\n\n"))
 	out.Write([]byte("\nvar ekuConstants map[string]ExtKeyUsage\n\n"))
 
 	out.Write([]byte("func init() {\n"))
-	mapEntries := generateOIDMap(oidToName, "ekuOIDs")
+	mapEntries := generateOIDMap(rawToOID, "ekuOIDs")
 	out.Write(mapEntries)
 	out.Write([]byte("\n"))
-	intMapEntries := generateIntegerMap(oidToName, "ekuConstants")
+	intMapEntries := generateIntegerMap(rawToOID, "ekuConstants")
 	out.Write(intMapEntries)
 	out.Write([]byte("}\n"))
 }
