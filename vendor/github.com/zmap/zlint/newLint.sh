@@ -1,16 +1,19 @@
 # Script to create new lint from template
 
+USAGE="Usage: $0 <ARG1> <ARG2>
+
+ARG1: File_name/TestName (no 'lint_' prefix)
+ARG2: Struct_name"
+
 if [ $# -eq 0 ]; then
     echo "No arguments provided..."
-    echo "ARG1: File_name/TestName"
-    echo "ARG2: Struct_name"
+    echo "$USAGE"
     exit 1
 fi
 
 if [ $# -eq 1 ]; then
     echo "Not enough arguments provided..."
-    echo "ARG1: File_name/TestName"
-    echo "ARG2: Struct_name"
+    echo "$USAGE"
     exit 1
 fi
 

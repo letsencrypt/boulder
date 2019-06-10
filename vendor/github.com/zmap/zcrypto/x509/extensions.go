@@ -33,8 +33,6 @@ var (
 	oidExtSignedCertificateTimestampList = oidExtensionSignedCertificateTimestampList
 )
 
-type encodedUnknownExtensions []encodedUnknownExtension
-
 type CertificateExtensions struct {
 	KeyUsage                       KeyUsage                         `json:"key_usage,omitempty"`
 	BasicConstraints               *BasicConstraints                `json:"basic_constraints,omitempty"`
@@ -49,15 +47,10 @@ type CertificateExtensions struct {
 	AuthorityInfoAccess            *AuthorityInfoAccess             `json:"authority_info_access,omitempty"`
 	IsPrecert                      IsPrecert                        `json:"ct_poison,omitempty"`
 	SignedCertificateTimestampList []*ct.SignedCertificateTimestamp `json:"signed_certificate_timestamps,omitempty"`
+	TorServiceDescriptors          []*TorServiceDescriptorHash      `json:"tor_service_descriptors,omitempty"`
 }
 
 type UnknownCertificateExtensions []pkix.Extension
-
-type encodedUnknownExtension struct {
-	OID      string `json:"oid"`
-	Critical bool   `json:"critical"`
-	Value    []byte `json:"raw,omitempty"`
-}
 
 type IsPrecert bool
 
@@ -756,6 +749,8 @@ func (c *Certificate) jsonifyExtensions() (*CertificateExtensions, UnknownCertif
 			exts.SignedCertificateTimestampList = c.SignedCertificateTimestampList
 		} else if e.Id.Equal(oidExtensionCTPrecertificatePoison) {
 			exts.IsPrecert = true
+		} else if e.Id.Equal(oidBRTorServiceDescriptor) {
+			exts.TorServiceDescriptors = c.TorServiceDescriptors
 		} else {
 			// Unknown extension
 			unk = append(unk, e)

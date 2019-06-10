@@ -4,7 +4,6 @@ go 1.12
 
 require (
 	github.com/apoydence/onpar v0.0.0-20181125144932-f2f06780798d // indirect
-	github.com/asaskevich/govalidator v0.0.0-20170903095215-73945b6115bf // indirect
 	github.com/beeker1121/goque v0.0.0-20170321141813-4044bc29b280
 	github.com/beorn7/perks v0.0.0-20160229213445-3ac7bf7a47d1 // indirect
 	github.com/cloudflare/cfssl v0.0.0-20190409034051-768cd563887f
@@ -32,13 +31,12 @@ require (
 	github.com/prometheus/client_model v0.0.0-20150212101744-fa8ad6fec335
 	github.com/prometheus/common v0.0.0-20161002210234-85637ea67b04 // indirect
 	github.com/prometheus/procfs v0.0.0-20160411190841-abf152e5f3e9 // indirect
-	github.com/stretchr/testify v1.3.0 // indirect
 	github.com/syndtr/goleveldb v0.0.0-20180331014930-714f901b98fd // indirect
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 	github.com/weppos/publicsuffix-go v0.4.1-0.20190430132455-7c1d5dc5cdc2
 	github.com/ziutek/mymysql v1.5.4 // indirect
-	github.com/zmap/zcrypto v0.0.0-20180601141720-cf96f6a85166
-	github.com/zmap/zlint v0.0.0-20190218154616-f38bd223a43c
+	github.com/zmap/zcrypto v0.0.0-20190329181646-dff83107394d
+	github.com/zmap/zlint v0.0.0-20190606200837-46c8a3a2f983
 	golang.org/x/crypto v0.0.0-20190411191339-88737f569e3a
 	golang.org/x/net v0.0.0-20190415214537-1da14a5a36f2
 	golang.org/x/sys v0.0.0-20190416152802-12500544f89f // indirect
