@@ -31,9 +31,6 @@ from acme import challenges
 
 import requests
 
-import challtestsrv
-challSrv = challtestsrv.ChallTestServer()
-
 def setup_seventy_days_ago():
     """Do any setup that needs to happen 70 days in the past, for tests that
        will run in the 'present'.
@@ -41,15 +38,6 @@ def setup_seventy_days_ago():
     # Issue a certificate with the clock set back, and save the authzs to check
     # later that they are expired (404).
     _, v1_integration.old_authzs = auth_and_issue([random_domain()])
-
-def setup_twenty_days_ago():
-    """Do any setup that needs to happen 20 day in the past, for tests that
-       will run in the 'present'.
-    """
-    # Issue a certificate with the clock set back, and save the authzs to check
-    # later that they are valid (200). They should however require rechecking for
-    # CAA purposes.
-    _, v1_integration.caa_authzs = auth_and_issue(["recheck.good-caa-reserved.com"], client=v1_integration.caa_client)
 
 def setup_zero_days_ago():
     """Do any setup that needs to happen at the start of a test run."""
@@ -148,30 +136,6 @@ def test_stats():
 
     expect_stat(8001, "\ngo_goroutines ")
 
-def setup_mock_dns(caa_account_uri=None):
-    """
-    setup_mock_dns adds mock DNS entries to the running pebble-challtestsrv.
-    Integration tests depend on this mock data.
-    """
-
-    if caa_account_uri is None:
-      caa_account_uri = os.environ.get("ACCOUNT_URI")
-
-    goodCAA = "happy-hacker-ca.invalid"
-    badCAA = "sad-hacker-ca.invalid"
-
-    caa_records = [
-        {"domain": "bad-caa-reserved.com", "value": badCAA},
-        {"domain": "good-caa-reserved.com", "value": goodCAA},
-        {"domain": "accounturi.good-caa-reserved.com", "value":"{0}; accounturi={1}".format(goodCAA, caa_account_uri)},
-        {"domain": "recheck.good-caa-reserved.com", "value":badCAA},
-        {"domain": "dns-01-only.good-caa-reserved.com", "value": "{0}; validationmethods=dns-01".format(goodCAA)},
-        {"domain": "http-01-only.good-caa-reserved.com", "value": "{0}; validationmethods=http-01".format(goodCAA)},
-        {"domain": "dns-01-or-http01.good-caa-reserved.com", "value": "{0}; validationmethods=dns-01,http-01".format(goodCAA)},
-    ]
-    for policy in caa_records:
-        challSrv.add_caa_issue(policy["domain"], policy["value"])
-
 exit_status = 1
 
 def main():
@@ -215,14 +179,11 @@ def main():
         setup_twenty_days_ago()
         startservers.stop()
 
-    caa_account_uri = caa_client.account.uri if caa_client is not None else None
-    if not startservers.start(race_detection=True, account_uri=caa_account_uri):
+    if not startservers.start(race_detection=True):
         raise Exception("startservers failed")
 
     if not args.skip_setup:
         setup_zero_days_ago()
-
-    setup_mock_dns(caa_account_uri)
 
     if args.run_all or args.run_chisel:
         run_chisel(args.test_case_filter)
