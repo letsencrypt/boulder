@@ -34,7 +34,6 @@
     },
     "grpc": {
       "address": ":9094",
-      "maxConcurrentStreams": 2000,
       "clientNames": [
         "wfe.boulder",
         "admin-revoker.boulder"

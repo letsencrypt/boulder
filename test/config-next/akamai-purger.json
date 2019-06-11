@@ -14,7 +14,6 @@
         },
         "grpc": {
           "address": ":9099",
-          "maxConcurrentStreams": 2000,
           "clientNames": [
             "ocsp-updater.boulder",
             "ra.boulder",
