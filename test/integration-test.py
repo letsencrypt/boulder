@@ -42,15 +42,6 @@ def setup_seventy_days_ago():
     # later that they are expired (404).
     _, v1_integration.old_authzs = auth_and_issue([random_domain()])
 
-def setup_twenty_days_ago():
-    """Do any setup that needs to happen 20 day in the past, for tests that
-       will run in the 'present'.
-    """
-    # Issue a certificate with the clock set back, and save the authzs to check
-    # later that they are valid (200). They should however require rechecking for
-    # CAA purposes.
-    _, v1_integration.caa_authzs = auth_and_issue(["recheck.good-caa-reserved.com"], client=v1_integration.caa_client)
-
 def setup_zero_days_ago():
     """Do any setup that needs to happen at the start of a test run."""
     # Issue a certificate and save the authzs to check that they still exist

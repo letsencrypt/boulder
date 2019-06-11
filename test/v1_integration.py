@@ -425,6 +425,16 @@ def test_revoke_by_account():
     verify_akamai_purge()
     return 0
 
+caa_authzs = []
+@register_twenty_days_ago
+def caa_setup():
+    # Issue a certificate with the clock set back, and save the authzs to check
+    # later that they are valid (200). They should however require rechecking for
+    # CAA purposes.
+    _, authzs = auth_and_issue(["recheck.good-caa-reserved.com"], client=caa_client)
+    for a in authzs:
+        caa_authzs.append(a)
+
 def test_caa():
     """Request issuance for two CAA domains, one where we are permitted and one where we are not.
        Two further sub-domains have restricted validationmethods.
