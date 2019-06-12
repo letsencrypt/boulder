@@ -854,7 +854,12 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*core.Authorization) error {
 	ra.stats.Inc("recheck_caa", 1)
 	ra.stats.Inc("recheck_caa_authzs", int64(len(authzs)))
-	ch := make(chan error, len(authzs))
+
+	type authzCAAResult struct {
+		authz *core.Authorization
+		err   error
+	}
+	ch := make(chan authzCAAResult, len(authzs))
 	for _, authz := range authzs {
 		go func(authz *core.Authorization) {
 			name := authz.Identifier.Value
@@ -870,10 +875,12 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 				}
 			}
 			if method == "" {
-				ch <- berrors.InternalServerError(
-					"Internal error determining validation method for authorization ID %v (%v)",
-					authz.ID, name,
-				)
+				ch <- authzCAAResult{
+					authz: authz,
+					err: berrors.InternalServerError(
+						"Internal error determining validation method for authorization ID %v (%v)",
+						authz.ID, name),
+				}
 				return
 			}
 
@@ -891,16 +898,22 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 			} else if resp.Problem != nil {
 				err = berrors.CAAError(*resp.Problem.Detail)
 			}
-			ch <- err
+			ch <- authzCAAResult{
+				authz: authz,
+				err:   err,
+			}
 		}(authz)
 	}
 	var subErrors []berrors.SubBoulderError
-	for _, authz := range authzs {
-		err := <-ch
-		if err != nil {
+	// Read a recheckResult for each authz from the results channel
+	for i := 0; i < len(authzs); i++ {
+		recheckResult := <-ch
+		// If the result had a CAA boulder error, construct a suberror with the
+		// identifier from the authorization that was checked.
+		if err := recheckResult.err; err != nil {
 			if bErr, _ := err.(*berrors.BoulderError); berrors.Is(err, berrors.CAA) {
 				subErrors = append(subErrors, berrors.SubBoulderError{
-					Identifier:   authz.Identifier,
+					Identifier:   recheckResult.authz.Identifier,
 					BoulderError: bErr})
 			} else {
 				return err
