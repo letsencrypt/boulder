@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -2078,9 +2079,13 @@ func TestRecheckCAAFail(t *testing.T) {
 	// There should be two sub errors
 	test.AssertEquals(t, len(berr.SubErrors), 2)
 
-	// The top level error should reference the first failing identifier
-	if !strings.Contains(berr.Detail, `Rechecking CAA for "a.com" and 1 more identifiers`) {
-		t.Errorf("expected error to ref first failed identiifer, got %q", err)
+	// We don't know whether the asynchronous a.com or c.com CAA recheck will fail
+	// first. Whichever does will be mentioned in the top level problem detail.
+	expectedDetailRegex := regexp.MustCompile(
+		`Rechecking CAA for "(?:a\.com|c\.com)" and 1 more identifiers failed. Refer to sub-problems for more information`,
+	)
+	if !expectedDetailRegex.MatchString(berr.Detail) {
+		t.Errorf("expected suberror detail to match expected regex, got %q", err)
 	}
 
 	// There should be a sub error for both a.com and c.com with the correct type

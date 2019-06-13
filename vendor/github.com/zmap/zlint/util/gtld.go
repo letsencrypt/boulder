@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/zmap/zcrypto/x509"
 )
 
 // This package uses the `zlint-gtld-update` command to generate a `tldMap` map.
@@ -97,4 +99,24 @@ func IsInTLDMap(label string) bool {
 	} else {
 		return false
 	}
+}
+
+// CertificateSubjContainsTLD checks whether the provided Certificate has
+// a Subject Common Name or DNS Subject Alternate Name that ends in the provided
+// TLD label. If IsInTLDMap(label) returns false then CertificateSubjInTLD will
+// return false.
+func CertificateSubjInTLD(c *x509.Certificate, label string) bool {
+	label = strings.ToLower(label)
+	if strings.HasPrefix(label, ".") {
+		label = label[1:]
+	}
+	if !IsInTLDMap(label) {
+		return false
+	}
+	for _, name := range append(c.DNSNames, c.Subject.CommonName) {
+		if strings.HasSuffix(name, "."+label) {
+			return true
+		}
+	}
+	return false
 }

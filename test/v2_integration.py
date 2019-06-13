@@ -454,18 +454,20 @@ def test_order_reuse_failed_authz():
     # Answer it, but with nothing set up to solve the challenge request
     client.answer_challenge(chall_body, chall_body.response(client.net.key))
 
-    # Poll for a fixed amount of time checking for the order to become invalid
-    # from the authorization attempt initiated above failing
     deadline = datetime.datetime.now() + datetime.timedelta(seconds=60)
-    while datetime.datetime.now() < deadline:
-        time.sleep(1)
-        updatedOrder = requests.get(firstOrderURI).json()
-        if updatedOrder['status'] == "invalid":
-            break
+    authzFailed = False
+    try:
+        # Poll the order's authorizations until they are non-pending, a timeout
+        # occurs, or there is an invalid authorization status.
+        client.poll_authorizations(order, deadline)
+    except acme_errors.ValidationError as e:
+        # We expect there to be a ValidationError from one of the authorizations
+        # being invalid.
+        authzFailed = True
 
-    # If the loop ended and the status isn't invalid then we reached the
-    # deadline waiting for the order to become invalid, fail the test
-    if updatedOrder['status'] != "invalid":
+    # If the poll ended and an authz's status isn't invalid then we reached the
+    # deadline, fail the test
+    if not authzFailed:
         raise Exception("timed out waiting for order %s to become invalid" % firstOrderURI)
 
     # Make another order with the same domains

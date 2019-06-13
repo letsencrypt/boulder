@@ -1,7 +1,7 @@
 govalidator
 ===========
 [![Gitter](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/asaskevich/govalidator?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge) [![GoDoc](https://godoc.org/github.com/asaskevich/govalidator?status.png)](https://godoc.org/github.com/asaskevich/govalidator) [![Coverage Status](https://img.shields.io/coveralls/asaskevich/govalidator.svg)](https://coveralls.io/r/asaskevich/govalidator?branch=master) [![wercker status](https://app.wercker.com/status/1ec990b09ea86c910d5f08b0e02c6043/s "wercker status")](https://app.wercker.com/project/bykey/1ec990b09ea86c910d5f08b0e02c6043)
-[![Build Status](https://travis-ci.org/asaskevich/govalidator.svg?branch=master)](https://travis-ci.org/asaskevich/govalidator) [![Go Report Card](https://goreportcard.com/badge/github.com/asaskevich/govalidator)](https://goreportcard.com/report/github.com/asaskevich/govalidator) [![GoSearch](http://go-search.org/badge?id=github.com%2Fasaskevich%2Fgovalidator)](http://go-search.org/view?id=github.com%2Fasaskevich%2Fgovalidator)
+[![Build Status](https://travis-ci.org/asaskevich/govalidator.svg?branch=master)](https://travis-ci.org/asaskevich/govalidator) [![Go Report Card](https://goreportcard.com/badge/github.com/asaskevich/govalidator)](https://goreportcard.com/report/github.com/asaskevich/govalidator) [![GoSearch](http://go-search.org/badge?id=github.com%2Fasaskevich%2Fgovalidator)](http://go-search.org/view?id=github.com%2Fasaskevich%2Fgovalidator) [![Backers on Open Collective](https://opencollective.com/govalidator/backers/badge.svg)](#backers) [![Sponsors on Open Collective](https://opencollective.com/govalidator/sponsors/badge.svg)](#sponsors) [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fasaskevich%2Fgovalidator.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fasaskevich%2Fgovalidator?ref=badge_shield)
 
 A package of validators and sanitizers for strings, structs and collections. Based on [validator.js](https://github.com/chriso/validator.js).
 
@@ -32,6 +32,8 @@ import (
 
 #### Activate behavior to require all fields have a validation tag by default
 `SetFieldsRequiredByDefault` causes validation to fail when struct fields do not include validations or are not explicitly marked as exempt (using `valid:"-"` or `valid:"email,optional"`). A good place to activate this is a package init function or the main() function.
+
+`SetNilPtrAllowedByRequired` causes validation to pass when struct fields marked by `required` are set to nil. This is disabled by default for consistency, but some packages that need to be able to determine between `nil` and `zero value` state can use this. If disabled, both `nil` and `zero` values cause validation errors.
 
 ```go
 import "github.com/asaskevich/govalidator"
@@ -156,6 +158,7 @@ func IsPort(str string) bool
 func IsPositive(value float64) bool
 func IsPrintableASCII(str string) bool
 func IsRFC3339(str string) bool
+func IsRFC3339WithoutZone(str string) bool
 func IsRGBcolor(str string) bool
 func IsRequestURI(rawurl string) bool
 func IsRequestURL(rawurl string) bool
@@ -269,56 +272,57 @@ For completely custom validators (interface-based), see below.
 
 Here is a list of available validators for struct fields (validator - used function):
 ```go
-"email":          IsEmail,
-"url":            IsURL,
-"dialstring":     IsDialString,
-"requrl":         IsRequestURL,
-"requri":         IsRequestURI,
-"alpha":          IsAlpha,
-"utfletter":      IsUTFLetter,
-"alphanum":       IsAlphanumeric,
-"utfletternum":   IsUTFLetterNumeric,
-"numeric":        IsNumeric,
-"utfnumeric":     IsUTFNumeric,
-"utfdigit":       IsUTFDigit,
-"hexadecimal":    IsHexadecimal,
-"hexcolor":       IsHexcolor,
-"rgbcolor":       IsRGBcolor,
-"lowercase":      IsLowerCase,
-"uppercase":      IsUpperCase,
-"int":            IsInt,
-"float":          IsFloat,
-"null":           IsNull,
-"uuid":           IsUUID,
-"uuidv3":         IsUUIDv3,
-"uuidv4":         IsUUIDv4,
-"uuidv5":         IsUUIDv5,
-"creditcard":     IsCreditCard,
-"isbn10":         IsISBN10,
-"isbn13":         IsISBN13,
-"json":           IsJSON,
-"multibyte":      IsMultibyte,
-"ascii":          IsASCII,
-"printableascii": IsPrintableASCII,
-"fullwidth":      IsFullWidth,
-"halfwidth":      IsHalfWidth,
-"variablewidth":  IsVariableWidth,
-"base64":         IsBase64,
-"datauri":        IsDataURI,
-"ip":             IsIP,
-"port":           IsPort,
-"ipv4":           IsIPv4,
-"ipv6":           IsIPv6,
-"dns":            IsDNSName,
-"host":           IsHost,
-"mac":            IsMAC,
-"latitude":       IsLatitude,
-"longitude":      IsLongitude,
-"ssn":            IsSSN,
-"semver":         IsSemver,
-"rfc3339":        IsRFC3339,
-"ISO3166Alpha2":  IsISO3166Alpha2,
-"ISO3166Alpha3":  IsISO3166Alpha3,
+"email":              IsEmail,
+"url":                IsURL,
+"dialstring":         IsDialString,
+"requrl":             IsRequestURL,
+"requri":             IsRequestURI,
+"alpha":              IsAlpha,
+"utfletter":          IsUTFLetter,
+"alphanum":           IsAlphanumeric,
+"utfletternum":       IsUTFLetterNumeric,
+"numeric":            IsNumeric,
+"utfnumeric":         IsUTFNumeric,
+"utfdigit":           IsUTFDigit,
+"hexadecimal":        IsHexadecimal,
+"hexcolor":           IsHexcolor,
+"rgbcolor":           IsRGBcolor,
+"lowercase":          IsLowerCase,
+"uppercase":          IsUpperCase,
+"int":                IsInt,
+"float":              IsFloat,
+"null":               IsNull,
+"uuid":               IsUUID,
+"uuidv3":             IsUUIDv3,
+"uuidv4":             IsUUIDv4,
+"uuidv5":             IsUUIDv5,
+"creditcard":         IsCreditCard,
+"isbn10":             IsISBN10,
+"isbn13":             IsISBN13,
+"json":               IsJSON,
+"multibyte":          IsMultibyte,
+"ascii":              IsASCII,
+"printableascii":     IsPrintableASCII,
+"fullwidth":          IsFullWidth,
+"halfwidth":          IsHalfWidth,
+"variablewidth":      IsVariableWidth,
+"base64":             IsBase64,
+"datauri":            IsDataURI,
+"ip":                 IsIP,
+"port":               IsPort,
+"ipv4":               IsIPv4,
+"ipv6":               IsIPv6,
+"dns":                IsDNSName,
+"host":               IsHost,
+"mac":                IsMAC,
+"latitude":           IsLatitude,
+"longitude":          IsLongitude,
+"ssn":                IsSSN,
+"semver":             IsSemver,
+"rfc3339":            IsRFC3339,
+"rfc3339WithoutZone": IsRFC3339WithoutZone,
+"ISO3166Alpha2":      IsISO3166Alpha2,
+"ISO3166Alpha3":      IsISO3166Alpha3,
 ```
 Validators with parameters
 
@@ -404,12 +408,50 @@ govalidator.CustomTypeTagMap.Set("customMinLengthValidator", CustomTypeValidator
 }))
 ```
 
+###### Custom error messages
+Custom error messages are supported via annotations by adding the `~` separator - here's an example of how to use it:
+```go
+type Ticket struct {
+  Id        int64     `json:"id"`
+  FirstName string    `json:"firstname" valid:"required~First name is blank"`
+}
+```
+
 #### Notes
 Documentation is available here: [godoc.org](https://godoc.org/github.com/asaskevich/govalidator).
 Full information about code coverage is also available here: [govalidator on gocover.io](http://gocover.io/github.com/asaskevich/govalidator).
 
 #### Support
-If you do have a contribution for the package feel free to put up a Pull Request or open Issue.
+If you do have a contribution to the package, feel free to create a Pull Request or an Issue.
+
+#### What to contribute
+If you don't know what to do, there are some features and functions that need to be done
+
+- [ ] Refactor code
+- [ ] Edit docs and [README](https://github.com/asaskevich/govalidator/README.md): spellcheck, grammar and typo check
+- [ ] Create actual list of contributors and projects that currently using this package
+- [ ] Resolve [issues and bugs](https://github.com/asaskevich/govalidator/issues)
+- [ ] Update actual [list of functions](https://github.com/asaskevich/govalidator#list-of-functions)
+- [ ] Update [list of validators](https://github.com/asaskevich/govalidator#validatestruct-2) that available for `ValidateStruct` and add new
+- [ ] Implement new validators: `IsFQDN`, `IsIMEI`, `IsPostalCode`, `IsISIN`, `IsISRC` etc
+- [ ] Implement [validation by maps](https://github.com/asaskevich/govalidator/issues/224)
+- [ ] Implement fuzzing testing
+- [ ] Implement some struct/map/array utilities
+- [ ] Implement map/array validation
+- [ ] Implement benchmarking
+- [ ] Implement batch of examples
+- [ ] Look at forks for new features and fixes
+
+#### Advice
+Feel free to create what you want, but keep in mind when you implement new features:
+- Code must be clear and readable, names of variables/constants clearly describes what they are doing
+- Public functions must be documented and described in source file and added to README.md to the list of available functions
+- There are must be unit-tests for any new functions and improvements
+
+## Credits
+### Contributors
+
+This project exists thanks to all the people who contribute. [[Contribute](CONTRIBUTING.md)].
 
 #### Special thanks to [contributors](https://github.com/asaskevich/govalidator/graphs/contributors)
 * [Daniel Lohse](https://github.com/annismckenzie)
@@ -421,3 +463,34 @@ If you do have a contribution for the package feel free to put up a Pull Request
 * [Nathan Davies](https://github.com/nathj07)
 * [Matt Sanford](https://github.com/mzsanford)
 * [Simon ccl1115](https://github.com/ccl1115)
+
+<a href="graphs/contributors"><img src="https://opencollective.com/govalidator/contributors.svg?width=890" /></a>
+
+
+### Backers
+
+Thank you to all our backers! 🙏 [[Become a backer](https://opencollective.com/govalidator#backer)]
+
+<a href="https://opencollective.com/govalidator#backers" target="_blank"><img src="https://opencollective.com/govalidator/backers.svg?width=890"></a>
+
+
+### Sponsors
+
+Support this project by becoming a sponsor. Your logo will show up here with a link to your website. [[Become a sponsor](https://opencollective.com/govalidator#sponsor)]
+
+<a href="https://opencollective.com/govalidator/sponsor/0/website" target="_blank"><img src="https://opencollective.com/govalidator/sponsor/0/avatar.svg"></a>
+<a href="https://opencollective.com/govalidator/sponsor/1/website" target="_blank"><img src="https://opencollective.com/govalidator/sponsor/1/avatar.svg"></a>
+<a href="https://opencollective.com/govalidator/sponsor/2/website" target="_blank"><img src="https://opencollective.com/govalidator/sponsor/2/avatar.svg"></a>
+<a href="https://opencollective.com/govalidator/sponsor/3/website" target="_blank"><img src="https://opencollective.com/govalidator/sponsor/3/avatar.svg"></a>
+<a href="https://opencollective.com/govalidator/sponsor/4/website" target="_blank"><img src="https://opencollective.com/govalidator/sponsor/4/avatar.svg"></a>
+<a href="https://opencollective.com/govalidator/sponsor/5/website" target="_blank"><img src="https://opencollective.com/govalidator/sponsor/5/avatar.svg"></a>
+<a href="https://opencollective.com/govalidator/sponsor/6/website" target="_blank"><img src="https://opencollective.com/govalidator/sponsor/6/avatar.svg"></a>
+<a href="https://opencollective.com/govalidator/sponsor/7/website" target="_blank"><img src="https://opencollective.com/govalidator/sponsor/7/avatar.svg"></a>
+<a href="https://opencollective.com/govalidator/sponsor/8/website" target="_blank"><img src="https://opencollective.com/govalidator/sponsor/8/avatar.svg"></a>
+<a href="https://opencollective.com/govalidator/sponsor/9/website" target="_blank"><img src="https://opencollective.com/govalidator/sponsor/9/avatar.svg"></a>
+
+
+
+
+## License
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fasaskevich%2Fgovalidator.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fasaskevich%2Fgovalidator?ref=badge_large)

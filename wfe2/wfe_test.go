@@ -356,7 +356,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 		"http://localhost:4000/acme/issuer-cert": append([]byte{'\n'}, chainPEM...),
 	}
 
-	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, certChains, blog.NewMock())
+	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, certChains, nil, blog.NewMock())
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL
@@ -2631,13 +2631,13 @@ func TestRevokeCertificateReasons(t *testing.T) {
 			Name:             "Unsupported reason",
 			Reason:           &reason2,
 			ExpectedHTTPCode: http.StatusBadRequest,
-			ExpectedBody:     `{"type":"` + probs.V2ErrorNS + `malformed","detail":"unsupported revocation reason code provided","status":400}`,
+			ExpectedBody:     `{"type":"` + probs.V2ErrorNS + `badRevocationReason","detail":"unsupported revocation reason code provided: cACompromise (2). Supported reasons: unspecified (0), keyCompromise (1), affiliationChanged (3), superseded (4), cessationOfOperation (5)","status":400}`,
 		},
 		{
 			Name:             "Non-existent reason",
 			Reason:           &reason100,
 			ExpectedHTTPCode: http.StatusBadRequest,
-			ExpectedBody:     `{"type":"` + probs.V2ErrorNS + `malformed","detail":"unsupported revocation reason code provided","status":400}`,
+			ExpectedBody:     `{"type":"` + probs.V2ErrorNS + `badRevocationReason","detail":"unsupported revocation reason code provided: unknown (100). Supported reasons: unspecified (0), keyCompromise (1), affiliationChanged (3), superseded (4), cessationOfOperation (5)","status":400}`,
 		},
 	}
 
@@ -3052,4 +3052,64 @@ func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 		"http://localhost/acme/authz/v2/1",
 		"http://localhost/acme/authz/v2/2",
 	})
+}
+
+// TestMandatoryPOSTAsGET tests that the MandatoryPOSTAsGET feature flag
+// correctly causes unauthenticated GET requests to ACME resources to be
+// forbidden.
+func TestMandatoryPOSTAsGET(t *testing.T) {
+	wfe, _ := setupWFE(t)
+
+	_ = features.Set(map[string]bool{"MandatoryPOSTAsGET": true})
+	defer features.Reset()
+
+	// CheckProblem matches a HTTP response body to a Method Not Allowed problem.
+	checkProblem := func(actual []byte) {
+		var prob probs.ProblemDetails
+		err := json.Unmarshal(actual, &prob)
+		test.AssertNotError(t, err, "error unmarshaling HTTP response body as problem")
+		test.AssertEquals(t, string(prob.Type), "urn:ietf:params:acme:error:malformed")
+		test.AssertEquals(t, prob.Detail, "Method not allowed")
+		test.AssertEquals(t, prob.HTTPStatus, http.StatusMethodNotAllowed)
+	}
+
+	testCases := []struct {
+		name    string
+		path    string
+		handler web.WFEHandlerFunc
+	}{
+		{
+			// GET requests to a mocked order path should return an error
+			name:    "GET Order",
+			path:    "1/1",
+			handler: wfe.GetOrder,
+		},
+		{
+			// GET requests to a mocked authorization path should return an error
+			name:    "GET Authz",
+			path:    "v2/1",
+			handler: wfe.Authorization,
+		},
+		{
+			// GET requests to a mocked challenge path should return an error
+			name:    "GET Chall",
+			path:    "valid/23",
+			handler: wfe.Challenge,
+		},
+		{
+			// GET requests to a mocked certificate serial path should return an error
+			name:    "GET Cert",
+			path:    "acme/cert/0000000000000000000000000000000000b2",
+			handler: wfe.Certificate,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			responseWriter := httptest.NewRecorder()
+			req := &http.Request{URL: &url.URL{Path: tc.path}, Method: "GET"}
+			tc.handler(ctx, newRequestEvent(), responseWriter, req)
+			checkProblem(responseWriter.Body.Bytes())
+		})
+	}
 }

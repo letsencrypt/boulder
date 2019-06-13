@@ -10,7 +10,9 @@ import (
 	"crypto/rsa"
 	"encoding/asn1"
 	"encoding/json"
+	"errors"
 	"net"
+	"sort"
 
 	"strings"
 	"time"
@@ -24,7 +26,7 @@ var kMinTime, kMaxTime time.Time
 
 func init() {
 	var err error
-	kMinTime, err = time.Parse(time.RFC3339, "0001-01-01T00:00:00Z")
+	kMinTime, err = time.Parse(time.RFC3339, "1970-01-01T00:00:00Z")
 	if err != nil {
 		panic(err)
 	}
@@ -93,14 +95,18 @@ func (k *KeyUsage) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-type auxSignatureAlgorithm struct {
+// JSONSignatureAlgorithm is the intermediate type
+// used when marshaling a PublicKeyAlgorithm out to JSON.
+type JSONSignatureAlgorithm struct {
 	Name string      `json:"name,omitempty"`
 	OID  pkix.AuxOID `json:"oid"`
 }
 
 // MarshalJSON implements the json.Marshaler interface
+// MAY NOT PRESERVE ORIGINAL OID FROM CERTIFICATE -
+// CONSIDER USING jsonifySignatureAlgorithm INSTEAD!
 func (s *SignatureAlgorithm) MarshalJSON() ([]byte, error) {
-	aux := auxSignatureAlgorithm{
+	aux := JSONSignatureAlgorithm{
 		Name: s.String(),
 	}
 	for _, val := range signatureAlgorithmDetails {
@@ -116,24 +122,63 @@ func (s *SignatureAlgorithm) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements the json.Unmarshler interface
 func (s *SignatureAlgorithm) UnmarshalJSON(b []byte) error {
-	var aux auxSignatureAlgorithm
+	var aux JSONSignatureAlgorithm
 	if err := json.Unmarshal(b, &aux); err != nil {
 		return err
 	}
 	*s = UnknownSignatureAlgorithm
 	oid := asn1.ObjectIdentifier(aux.OID.AsSlice())
-	for _, val := range signatureAlgorithmDetails {
-		if val.oid.Equal(oid) {
-			*s = val.algo
-			break
+	if oid.Equal(oidSignatureRSAPSS) {
+		pssAlgs := []SignatureAlgorithm{SHA256WithRSAPSS, SHA384WithRSAPSS, SHA512WithRSAPSS}
+		for _, alg := range pssAlgs {
+			if strings.Compare(alg.String(), aux.Name) == 0 {
+				*s = alg
+				break
+			}
+		}
+	} else {
+		for _, val := range signatureAlgorithmDetails {
+			if val.oid.Equal(oid) {
+				*s = val.algo
+				break
+			}
 		}
 	}
 	return nil
 }
 
+// jsonifySignatureAlgorithm gathers the necessary fields in a Certificate
+// into a JSONSignatureAlgorithm, which can then use the default
+// JSON marhsalers and unmarshalers. THIS FUNCTION IS PREFERED OVER
+// THE CUSTOM JSON MARSHALER PRESENTED ABOVE FOR SIGNATUREALGORITHM
+// BECAUSE THIS METHOD PRESERVES THE OID ORIGINALLY IN THE CERTIFICATE!
+// This reason also explains why we need this function -
+// the OID is unfortunately stored outside the scope of a
+// SignatureAlgorithm struct and cannot be recovered without access to the
+// entire Certificate if we do not know the signature algorithm.
+func (c *Certificate) jsonifySignatureAlgorithm() (JSONSignatureAlgorithm) {
+	aux := JSONSignatureAlgorithm{}
+	if c.SignatureAlgorithm == 0 {
+		aux.Name = "unknown_algorithm"
+	} else {
+		aux.Name = c.SignatureAlgorithm.String()
+	}
+	aux.OID = make([]int, len(c.SignatureAlgorithmOID))
+	for idx := range c.SignatureAlgorithmOID {
+		aux.OID[idx] = c.SignatureAlgorithmOID[idx]
+	}
+	return aux
+}
+
 type auxPublicKeyAlgorithm struct {
 	Name string       `json:"name,omitempty"`
 	OID  *pkix.AuxOID `json:"oid,omitempty"`
+}
+
+var publicKeyNameToAlgorithm = map[string]PublicKeyAlgorithm{
+	"RSA":   RSA,
+	"DSA":   DSA,
+	"ECDSA": ECDSA,
 }
 
 // MarshalJSON implements the json.Marshaler interface
@@ -150,7 +195,8 @@ func (p *PublicKeyAlgorithm) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &aux); err != nil {
 		return err
 	}
-	panic("unimplemented")
+	*p = publicKeyNameToAlgorithm[aux.Name]
+	return nil
 }
 
 func clampTime(t time.Time) time.Time {
@@ -194,39 +240,183 @@ func (v *validity) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-type jsonSubjectKeyInfo struct {
+// ECDSAPublicKeyJSON - used to condense several fields from a
+// ECDSA public key into one field for use in JSONCertificate.
+// Uses default JSON marshal and unmarshal methods
+type ECDSAPublicKeyJSON struct {
+	B      []byte `json:"b"`
+	Curve  string `json:"curve"`
+	Gx     []byte `json:"gx"`
+	Gy     []byte `json:"gy"`
+	Length int    `json:"length"`
+	N      []byte `json:"n"`
+	P      []byte `json:"p"`
+	Pub    []byte `json:"pub,omitempty"`
+	X      []byte `json:"x"`
+	Y      []byte `json:"y"`
+}
+
+// DSAPublicKeyJSON - used to condense several fields from a
+// DSA public key into one field for use in JSONCertificate.
+// Uses default JSON marshal and unmarshal methods
+type DSAPublicKeyJSON struct {
+	G []byte `json:"g"`
+	P []byte `json:"p"`
+	Q []byte `json:"q"`
+	Y []byte `json:"y"`
+}
+
+// GetDSAPublicKeyJSON - get the DSAPublicKeyJSON for the given standard DSA PublicKey.
+func GetDSAPublicKeyJSON(key *dsa.PublicKey) *DSAPublicKeyJSON {
+	return &DSAPublicKeyJSON{
+		P: key.P.Bytes(),
+		Q: key.Q.Bytes(),
+		G: key.G.Bytes(),
+		Y: key.Y.Bytes(),
+	}
+}
+
+// GetRSAPublicKeyJSON - get the jsonKeys.RSAPublicKey for the given standard RSA PublicKey.
+func GetRSAPublicKeyJSON(key *rsa.PublicKey) *jsonKeys.RSAPublicKey {
+	rsaKey := new(jsonKeys.RSAPublicKey)
+	rsaKey.PublicKey = key
+	return rsaKey
+}
+
+// GetECDSAPublicKeyJSON - get the GetECDSAPublicKeyJSON for the given standard ECDSA PublicKey.
+func GetECDSAPublicKeyJSON(key *ecdsa.PublicKey) *ECDSAPublicKeyJSON {
+	params := key.Params()
+	return &ECDSAPublicKeyJSON{
+		P:      params.P.Bytes(),
+		N:      params.N.Bytes(),
+		B:      params.B.Bytes(),
+		Gx:     params.Gx.Bytes(),
+		Gy:     params.Gy.Bytes(),
+		X:      key.X.Bytes(),
+		Y:      key.Y.Bytes(),
+		Curve:  key.Curve.Params().Name,
+		Length: key.Curve.Params().BitSize,
+	}
+}
+
+// GetAugmentedECDSAPublicKeyJSON - get the GetECDSAPublicKeyJSON for the given "augmented"
+// ECDSA PublicKey.
+func GetAugmentedECDSAPublicKeyJSON(key *AugmentedECDSA) *ECDSAPublicKeyJSON {
+	params := key.Pub.Params()
+	return &ECDSAPublicKeyJSON{
+		P:      params.P.Bytes(),
+		N:      params.N.Bytes(),
+		B:      params.B.Bytes(),
+		Gx:     params.Gx.Bytes(),
+		Gy:     params.Gy.Bytes(),
+		X:      key.Pub.X.Bytes(),
+		Y:      key.Pub.Y.Bytes(),
+		Curve:  key.Pub.Curve.Params().Name,
+		Length: key.Pub.Curve.Params().BitSize,
+		Pub:    key.Raw.Bytes,
+	}
+}
+
+// jsonifySubjectKey - Convert public key data in a Certificate
+// into json output format for JSONCertificate
+func (c *Certificate) jsonifySubjectKey() JSONSubjectKeyInfo {
+	j := JSONSubjectKeyInfo{
+		KeyAlgorithm:    c.PublicKeyAlgorithm,
+		SPKIFingerprint: c.SPKIFingerprint,
+	}
+
+	switch key := c.PublicKey.(type) {
+	case *rsa.PublicKey:
+		rsaKey := new(jsonKeys.RSAPublicKey)
+		rsaKey.PublicKey = key
+		j.RSAPublicKey = rsaKey
+	case *dsa.PublicKey:
+		j.DSAPublicKey = &DSAPublicKeyJSON{
+			P: key.P.Bytes(),
+			Q: key.Q.Bytes(),
+			G: key.G.Bytes(),
+			Y: key.Y.Bytes(),
+		}
+	case *ecdsa.PublicKey:
+		params := key.Params()
+		j.ECDSAPublicKey = &ECDSAPublicKeyJSON{
+			P:      params.P.Bytes(),
+			N:      params.N.Bytes(),
+			B:      params.B.Bytes(),
+			Gx:     params.Gx.Bytes(),
+			Gy:     params.Gy.Bytes(),
+			X:      key.X.Bytes(),
+			Y:      key.Y.Bytes(),
+			Curve:  key.Curve.Params().Name,
+			Length: key.Curve.Params().BitSize,
+		}
+	case *AugmentedECDSA:
+		params := key.Pub.Params()
+		j.ECDSAPublicKey = &ECDSAPublicKeyJSON{
+			P:      params.P.Bytes(),
+			N:      params.N.Bytes(),
+			B:      params.B.Bytes(),
+			Gx:     params.Gx.Bytes(),
+			Gy:     params.Gy.Bytes(),
+			X:      key.Pub.X.Bytes(),
+			Y:      key.Pub.Y.Bytes(),
+			Curve:  key.Pub.Curve.Params().Name,
+			Length: key.Pub.Curve.Params().BitSize,
+			Pub:    key.Raw.Bytes,
+		}
+	}
+	return j
+}
+
+// JSONSubjectKeyInfo - used to condense several fields from x509.Certificate
+// related to the subject public key into one field within JSONCertificate
+// Unfortunately, this struct cannot have its own Marshal method since it
+// needs information from multiple fields in x509.Certificate
+type JSONSubjectKeyInfo struct {
 	KeyAlgorithm    PublicKeyAlgorithm     `json:"key_algorithm"`
 	RSAPublicKey    *jsonKeys.RSAPublicKey `json:"rsa_public_key,omitempty"`
-	DSAPublicKey    interface{}            `json:"dsa_public_key,omitempty"`
-	ECDSAPublicKey  interface{}            `json:"ecdsa_public_key,omitempty"`
+	DSAPublicKey    *DSAPublicKeyJSON      `json:"dsa_public_key,omitempty"`
+	ECDSAPublicKey  *ECDSAPublicKeyJSON    `json:"ecdsa_public_key,omitempty"`
 	SPKIFingerprint CertificateFingerprint `json:"fingerprint_sha256"`
 }
 
-type jsonSignature struct {
-	SignatureAlgorithm SignatureAlgorithm `json:"signature_algorithm"`
-	Value              []byte             `json:"value"`
-	Valid              bool               `json:"valid"`
-	SelfSigned         bool               `json:"self_signed"`
+// JSONSignature - used to condense several fields from x509.Certificate
+// related to the signature into one field within JSONCertificate
+// Unfortunately, this struct cannot have its own Marshal method since it
+// needs information from multiple fields in x509.Certificate
+type JSONSignature struct {
+	SignatureAlgorithm JSONSignatureAlgorithm `json:"signature_algorithm"`
+	Value              []byte                 `json:"value"`
+	Valid              bool                   `json:"valid"`
+	SelfSigned         bool                   `json:"self_signed"`
 }
 
-type fullValidity struct {
+// JSONValidity - used to condense several fields related
+// to validity in x509.Certificate into one field within JSONCertificate
+// Unfortunately, this struct cannot have its own Marshal method since it
+// needs information from multiple fields in x509.Certificate
+type JSONValidity struct {
 	validity
 	ValidityPeriod int
 }
 
-type jsonCertificate struct {
+// JSONCertificate - used to condense data from x509.Certificate when marhsaling
+// into JSON. This struct has a distinct and independent layout from
+// x509.Certificate, mostly for condensing data across repetitive
+// fields and making it more presentable.
+type JSONCertificate struct {
 	Version                   int                          `json:"version"`
 	SerialNumber              string                       `json:"serial_number"`
-	SignatureAlgorithm        SignatureAlgorithm           `json:"signature_algorithm"`
+	SignatureAlgorithm        JSONSignatureAlgorithm       `json:"signature_algorithm"`
 	Issuer                    pkix.Name                    `json:"issuer"`
 	IssuerDN                  string                       `json:"issuer_dn,omitempty"`
-	Validity                  fullValidity                 `json:"validity"`
+	Validity                  JSONValidity                 `json:"validity"`
 	Subject                   pkix.Name                    `json:"subject"`
 	SubjectDN                 string                       `json:"subject_dn,omitempty"`
-	SubjectKeyInfo            jsonSubjectKeyInfo           `json:"subject_key_info"`
+	SubjectKeyInfo            JSONSubjectKeyInfo           `json:"subject_key_info"`
 	Extensions                *CertificateExtensions       `json:"extensions,omitempty"`
 	UnknownExtensions         UnknownCertificateExtensions `json:"unknown_extensions,omitempty"`
-	Signature                 jsonSignature                `json:"signature"`
+	Signature                 JSONSignature                `json:"signature"`
 	FingerprintMD5            CertificateFingerprint       `json:"fingerprint_md5"`
 	FingerprintSHA1           CertificateFingerprint       `json:"fingerprint_sha1"`
 	FingerprintSHA256         CertificateFingerprint       `json:"fingerprint_sha256"`
@@ -238,32 +428,11 @@ type jsonCertificate struct {
 	Redacted                  bool                         `json:"redacted"`
 }
 
-func AddECDSAPublicKeyToKeyMap(keyMap map[string]interface{}, key *ecdsa.PublicKey) {
-	params := key.Params()
-	keyMap["p"] = params.P.Bytes()
-	keyMap["n"] = params.N.Bytes()
-	keyMap["b"] = params.B.Bytes()
-	keyMap["gx"] = params.Gx.Bytes()
-	keyMap["gy"] = params.Gy.Bytes()
-	keyMap["x"] = key.X.Bytes()
-	keyMap["y"] = key.Y.Bytes()
-	keyMap["curve"] = key.Curve.Params().Name
-	keyMap["length"] = key.Curve.Params().BitSize
-}
-
-func AddDSAPublicKeyToKeyMap(keyMap map[string]interface{}, key *dsa.PublicKey) {
-	keyMap["p"] = key.P.Bytes()
-	keyMap["q"] = key.Q.Bytes()
-	keyMap["g"] = key.G.Bytes()
-	keyMap["y"] = key.Y.Bytes()
-}
-
 func (c *Certificate) MarshalJSON() ([]byte, error) {
 	// Fill out the certificate
-	jc := new(jsonCertificate)
+	jc := new(JSONCertificate)
 	jc.Version = c.Version
 	jc.SerialNumber = c.SerialNumber.String()
-	jc.SignatureAlgorithm = c.SignatureAlgorithm
 	jc.Issuer = c.Issuer
 	jc.IssuerDN = c.Issuer.String()
 
@@ -272,7 +441,6 @@ func (c *Certificate) MarshalJSON() ([]byte, error) {
 	jc.Validity.ValidityPeriod = c.ValidityPeriod
 	jc.Subject = c.Subject
 	jc.SubjectDN = c.Subject.String()
-	jc.SubjectKeyInfo.KeyAlgorithm = c.PublicKeyAlgorithm
 
 	if isValidName(c.Subject.CommonName) {
 		jc.Names = append(jc.Names, c.Subject.CommonName)
@@ -308,47 +476,18 @@ func (c *Certificate) MarshalJSON() ([]byte, error) {
 		}
 	}
 
-	// Pull out the key
-	keyMap := make(map[string]interface{})
-
-	jc.SubjectKeyInfo.SPKIFingerprint = c.SPKIFingerprint
-	switch key := c.PublicKey.(type) {
-	case *rsa.PublicKey:
-		rsaKey := new(jsonKeys.RSAPublicKey)
-		rsaKey.PublicKey = key
-		jc.SubjectKeyInfo.RSAPublicKey = rsaKey
-	case *dsa.PublicKey:
-		AddDSAPublicKeyToKeyMap(keyMap, key)
-		jc.SubjectKeyInfo.DSAPublicKey = keyMap
-	case *ecdsa.PublicKey:
-		AddECDSAPublicKeyToKeyMap(keyMap, key)
-		jc.SubjectKeyInfo.ECDSAPublicKey = keyMap
-	case *AugmentedECDSA:
-		pub := key.Pub
-		keyMap["pub"] = key.Raw.Bytes
-		params := pub.Params()
-		keyMap["p"] = params.P.Bytes()
-		keyMap["n"] = params.N.Bytes()
-		keyMap["b"] = params.B.Bytes()
-		keyMap["gx"] = params.Gx.Bytes()
-		keyMap["gy"] = params.Gy.Bytes()
-		keyMap["x"] = pub.X.Bytes()
-		keyMap["y"] = pub.Y.Bytes()
-		keyMap["curve"] = pub.Curve.Params().Name
-		keyMap["length"] = pub.Curve.Params().BitSize
-
-		//keyMap["asn1_oid"] = c.SignatureAlgorithmOID.String()
-
-		jc.SubjectKeyInfo.ECDSAPublicKey = keyMap
-	}
-
+	jc.SubjectKeyInfo = c.jsonifySubjectKey()
 	jc.Extensions, jc.UnknownExtensions = c.jsonifyExtensions()
 
 	// TODO: Handle the fact this might not match
+	jc.SignatureAlgorithm = c.jsonifySignatureAlgorithm()
 	jc.Signature.SignatureAlgorithm = jc.SignatureAlgorithm
 	jc.Signature.Value = c.Signature
 	jc.Signature.Valid = c.validSignature
 	jc.Signature.SelfSigned = c.SelfSigned
+	if c.SelfSigned {
+		jc.Signature.Valid = true
+	}
 	jc.FingerprintMD5 = c.FingerprintMD5
 	jc.FingerprintSHA1 = c.FingerprintSHA1
 	jc.FingerprintSHA256 = c.FingerprintSHA256
@@ -358,6 +497,42 @@ func (c *Certificate) MarshalJSON() ([]byte, error) {
 	jc.ValidationLevel = c.ValidationLevel
 
 	return json.Marshal(jc)
+}
+
+// UnmarshalJSON - intentionally implimented to always error,
+// as this method should not be used. The MarshalJSON method
+// on Certificate condenses data in a way that is not recoverable.
+// Use the x509.ParseCertificate function instead or
+// JSONCertificateWithRaw Marshal method
+func (jc *JSONCertificate) UnmarshalJSON(b []byte) error {
+	return errors.New("Do not unmarshal cert JSON directly, use JSONCertificateWithRaw or x509.ParseCertificate function")
+}
+
+// UnmarshalJSON - intentionally implimented to always error,
+// as this method should not be used. The MarshalJSON method
+// on Certificate condenses data in a way that is not recoverable.
+// Use the x509.ParseCertificate function instead or
+// JSONCertificateWithRaw Marshal method
+func (c *Certificate) UnmarshalJSON(b []byte) error {
+	return errors.New("Do not unmarshal cert JSON directly, use JSONCertificateWithRaw or x509.ParseCertificate function")
+}
+
+// JSONCertificateWithRaw - intermediate struct for unmarshaling json
+// of a certificate - the raw is require since the
+// MarshalJSON method on Certificate condenses data in a way that
+// makes extraction to the original in Unmarshal impossible.
+// The JSON output of Marshal is not even used to construct
+// a certificate, all we need is raw
+type JSONCertificateWithRaw struct {
+	Raw []byte `json:"raw,omitempty"`
+}
+
+// ParseRaw - for converting the intermediate object
+// JSONCertificateWithRaw into a parsed Certificate
+// see description of JSONCertificateWithRaw for
+// why this is used instead of UnmarshalJSON methods
+func (c *JSONCertificateWithRaw) ParseRaw() (*Certificate, error) {
+	return ParseCertificate(c.Raw)
 }
 
 func purgeNameDuplicates(names []string) (out []string) {
@@ -372,6 +547,8 @@ func purgeNameDuplicates(names []string) (out []string) {
 	for key := range hashset {
 		out = append(out, key)
 	}
+
+	sort.Strings(out) // must sort to ensure output is deterministic!
 	return
 }
 

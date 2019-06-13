@@ -46,15 +46,10 @@ func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, metrics serverMet
 		return nil, nil, err
 	}
 
-	maxConcurrentStreams := c.MaxConcurrentStreams
-	if maxConcurrentStreams == 0 {
-		maxConcurrentStreams = 250
-	}
 	si := newServerInterceptor(metrics, clk)
 	return grpc.NewServer(
 		grpc.Creds(creds),
 		grpc.UnaryInterceptor(si.intercept),
-		grpc.MaxConcurrentStreams(uint32(maxConcurrentStreams)),
 	), l, nil
 }
 

@@ -379,7 +379,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	fc := clock.NewFake()
 	stats := metrics.NewNoopScope()
 
-	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, blog.NewMock())
+	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, nil, blog.NewMock())
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL

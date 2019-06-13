@@ -15,11 +15,6 @@
     "signFailureBackoffFactor": 1.2,
     "signFailureBackoffMax": "30m",
     "debugAddr": ":8006",
-    "akamaiBaseURL": "http://localhost:6789",
-    "akamaiClientToken": "its-a-token",
-    "akamaiClientSecret": "its-a-secret",
-    "akamaiAccessToken": "idk-how-this-is-different-from-client-token-but-okay",
-    "akamaiV3Network": "staging",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/ocsp-updater.boulder/cert.pem",
@@ -31,6 +26,10 @@
     },
     "ocspGeneratorService": {
       "serverAddress": "ca.boulder:9096",
+      "timeout": "15s"
+    },
+    "akamaiPurgerService": {
+      "serverAddress": "akamai-purger.boulder:9099",
       "timeout": "15s"
     },
     "features": {
