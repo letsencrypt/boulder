@@ -70,7 +70,7 @@ func newFakeClock(t *testing.T) clock.FakeClock {
 	return fc
 }
 
-const testTmpl = `hi, cert for DNS names {{.DNSNames}} is going to expire in {{.DaysToExpiration}} days ({{.ExpirationDate}})`
+const testTmpl = `hi, certs {{if .DNSSerials}}{{.DNSSerials }} {{end}}for DNS names {{.DNSNames}} is going to expire in {{.DaysToExpiration}} days ({{.ExpirationDate}})`
 const testEmailSubject = `email subject for test`
 const emailARaw = "rolandshoemaker@gmail.com"
 const emailBRaw = "test@gmail.com"
@@ -131,7 +131,7 @@ func TestSendNags(t *testing.T) {
 	test.AssertEquals(t, mocks.MailerMessage{
 		To:      emailARaw,
 		Subject: testEmailSubject,
-		Body:    fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.RFC822Z)),
+		Body:    fmt.Sprintf(`hi, certs for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.RFC822Z)),
 	}, mc.Messages[0])
 
 	mc.Clear()
@@ -141,12 +141,12 @@ func TestSendNags(t *testing.T) {
 	test.AssertEquals(t, mocks.MailerMessage{
 		To:      emailARaw,
 		Subject: testEmailSubject,
-		Body:    fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.RFC822Z)),
+		Body:    fmt.Sprintf(`hi, certs for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.RFC822Z)),
 	}, mc.Messages[0])
 	test.AssertEquals(t, mocks.MailerMessage{
 		To:      emailBRaw,
 		Subject: testEmailSubject,
-		Body:    fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.RFC822Z)),
+		Body:    fmt.Sprintf(`hi, certs for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.RFC822Z)),
 	}, mc.Messages[1])
 
 	mc.Clear()
@@ -224,14 +224,14 @@ func TestFindExpiringCertificates(t *testing.T) {
 		// A certificate with only one domain should have only one domain listed in
 		// the subject
 		Subject: "Testing: Let's Encrypt certificate expiration notice for domain \"example-a.com\"",
-		Body:    "hi, cert for DNS names example-a.com is going to expire in 0 days (03 Jan 06 14:04 +0000)",
+		Body:    fmt.Sprintf("hi, certs %s for DNS names example-a.com is going to expire in 0 days (03 Jan 06 14:04 +0000)", serial1String),
 	}, testCtx.mc.Messages[0])
 	test.AssertEquals(t, mocks.MailerMessage{
 		To: emailBRaw,
 		// A certificate with two domains should have only one domain listed and an
 		// additional count included
 		Subject: "Testing: Let's Encrypt certificate expiration notice for domain \"another.example-c.com\" (and 1 more)",
-		Body:    "hi, cert for DNS names another.example-c.com\nexample-c.com is going to expire in 7 days (09 Jan 06 16:04 +0000)",
+		Body:    fmt.Sprintf("hi, certs %s for DNS names another.example-c.com\nexample-c.com is going to expire in 7 days (09 Jan 06 16:04 +0000)", serial3String),
 	}, testCtx.mc.Messages[1])
 
 	// Check that regC's only certificate being renewed does not cause a log
@@ -785,12 +785,17 @@ func TestDedupOnRegistration(t *testing.T) {
 		t.Fatalf("no messages sent")
 	}
 	domains := "example-a.com\nexample-b.com\nshared-example.com"
+    serials := strings.Join([]string{
+        core.SerialToString(rawCertB.SerialNumber),
+        core.SerialToString(rawCertA.SerialNumber),
+        }, "\n")
 	expected := mocks.MailerMessage{
 		To: emailARaw,
 		// A certificate with three domain names should have one in the subject and
 		// a count of '2 more' at the end
 		Subject: "Testing: Let's Encrypt certificate expiration notice for domain \"example-a.com\" (and 2 more)",
-		Body: fmt.Sprintf(`hi, cert for DNS names %s is going to expire in 1 days (%s)`,
+		Body: fmt.Sprintf(`hi, certs %s for DNS names %s is going to expire in 1 days (%s)`,
+            serials,
 			domains,
 			rawCertB.NotAfter.Format(time.RFC822Z)),
 	}

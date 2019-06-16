@@ -126,10 +126,13 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 		ExpirationDate   string
 		DaysToExpiration int
 		DNSNames         string
+        DNSSerials       string
 	}{
 		ExpirationDate:   expDate.UTC().Format(time.RFC822Z),
 		DaysToExpiration: int(expiresIn.Hours() / 24),
 		DNSNames:         strings.Join(domains, "\n"),
+        DNSSerials:       strings.Replace(
+            strings.Join(serials, "\n"), "<nil>", "", -1),
 	}
 	msgBuf := new(bytes.Buffer)
 	err = m.emailTemplate.Execute(msgBuf, email)
@@ -174,7 +177,6 @@ func (m *mailer) certIsRenewed(serial string) (renewed bool, err error) {
 
 func (m *mailer) processCerts(allCerts []core.Certificate) {
 	ctx := context.Background()
-
 	regIDToCerts := make(map[int64][]core.Certificate)
 
 	for _, cert := range allCerts {
