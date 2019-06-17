@@ -201,7 +201,7 @@ def main():
 
         now = datetime.datetime.utcnow()
         twenty_days_ago = now+datetime.timedelta(days=-20)
-        if not startservers.start(race_detection=True, fakeclock=fakeclock(twenty_days_ago)):
+        if not startservers.start(race_detection=True, fakeclock=fakeclock(twenty_days_ago), config_dir="test/config-next"):
             raise Exception("startservers failed (mocking twenty days ago)")
         setup_twenty_days_ago()
         startservers.stop()

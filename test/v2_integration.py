@@ -859,5 +859,32 @@ def test_http2_http01_challenge():
         server.server_close()
         thread.join()
 
+authz2_reuse_client = None
+authz2_reuse_authzs = []
+@register_twenty_days_ago
+def authz2_reuse_setup():
+    """Runs during "setup_twenty_days_ago" phase."""
+    authz2_reuse_client = chisel2.make_client()
+    old_authz_domains = [random_domain(), random_domain()]
+    order = chisel2.auth_and_issue(old_authz_domains, client=authz2_reuse_client)
+    for a in order.authorizations:
+        authz2_reuse_authzs.append(a)
+
+def test_authz2_reuse():
+    reuse_domains = []
+    authz_uris = set()
+    for a in authz2_reuse_authzs:
+        authz_uris.add(a.uri)
+        reuse_domains.append(a.body.identifier.value)
+    print("AITHZZ2 REUSE", reuse_domains)
+    order = chisel2.auth_and_issue(reuse_domains, client=authz2_reuse_client)
+    for a in order.authorizations:
+        try:
+            authz_uris.remove(a.uri)
+        except KeyError as e:
+            raise Exception("Expected to reuse authzs %s, but got %s" % (authz_uris, a.uri))
+    if len(authz_uris) != 0:
+        raise Exception("Failed to reuse all authzs")
+
 def run(cmd, **kwargs):
     return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)
