@@ -142,7 +142,7 @@
   },
 
   "syslog": {
-    "stdoutlevel": 6,
-    "sysloglevel": 4
+    "stdoutlevel": 1,
+    "sysloglevel": 1
   }
 }

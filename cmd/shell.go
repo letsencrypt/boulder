@@ -125,13 +125,13 @@ func (log grpcLogger) Warningln(args ...interface{}) {
 }
 
 func (log grpcLogger) Info(args ...interface{}) {
-	log.Logger.Info(fmt.Sprintln(args...))
+	log.Logger.Debug(fmt.Sprintln(args...))
 }
 func (log grpcLogger) Infof(format string, args ...interface{}) {
-	log.Logger.Infof(format, args...)
+	log.Logger.Debugf(format, args...)
 }
 func (log grpcLogger) Infoln(args ...interface{}) {
-	log.Logger.Info(fmt.Sprintln(args...))
+	log.Logger.Debug(fmt.Sprintln(args...))
 }
 
 type promLogger struct {
