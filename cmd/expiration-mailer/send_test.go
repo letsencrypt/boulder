@@ -5,11 +5,11 @@ import (
 	"crypto/x509/pkix"
 	"fmt"
 	"math/big"
+	"strings"
 	"testing"
 	"time"
-    "strings"
 
-    "github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -46,14 +46,14 @@ func TestSendEarliestCertInfo(t *testing.T) {
 		t.Fatalf("no message sent")
 	}
 	domains := "example-a.com\nexample-b.com\nshared-example.com"
-    serials := strings.Join([]string{
-        core.SerialToString(rawCertA.SerialNumber),
-        core.SerialToString(rawCertB.SerialNumber),
-    }, "\n")
+	serials := strings.Join([]string{
+		core.SerialToString(rawCertA.SerialNumber),
+		core.SerialToString(rawCertB.SerialNumber),
+	}, "\n")
 	expected := mocks.MailerMessage{
 		Subject: "Testing: Let's Encrypt certificate expiration notice for domain \"example-a.com\" (and 2 more)",
 		Body: fmt.Sprintf(`hi, certs %s for DNS names %s is going to expire in 2 days (%s)`,
-            serials,
+			serials,
 			domains,
 			rawCertB.NotAfter.Format(time.RFC822Z)),
 	}

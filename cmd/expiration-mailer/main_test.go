@@ -785,17 +785,17 @@ func TestDedupOnRegistration(t *testing.T) {
 		t.Fatalf("no messages sent")
 	}
 	domains := "example-a.com\nexample-b.com\nshared-example.com"
-    serials := strings.Join([]string{
-        core.SerialToString(rawCertB.SerialNumber),
-        core.SerialToString(rawCertA.SerialNumber),
-        }, "\n")
+	serials := strings.Join([]string{
+		core.SerialToString(rawCertB.SerialNumber),
+		core.SerialToString(rawCertA.SerialNumber),
+	}, "\n")
 	expected := mocks.MailerMessage{
 		To: emailARaw,
 		// A certificate with three domain names should have one in the subject and
 		// a count of '2 more' at the end
 		Subject: "Testing: Let's Encrypt certificate expiration notice for domain \"example-a.com\" (and 2 more)",
 		Body: fmt.Sprintf(`hi, certs %s for DNS names %s is going to expire in 1 days (%s)`,
-            serials,
+			serials,
 			domains,
 			rawCertB.NotAfter.Format(time.RFC822Z)),
 	}
