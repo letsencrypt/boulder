@@ -32,13 +32,11 @@ def install(race_detection):
 
     return subprocess.call(cmd, shell=True) == 0
 
-def run(cmd, race_detection, fakeclock, account_uri):
+def run(cmd, race_detection, fakeclock):
     e = os.environ.copy()
     e.setdefault("GORACE", "halt_on_error=1")
     if fakeclock:
         e.setdefault("FAKECLOCK", fakeclock)
-    if account_uri:
-        e.setdefault("ACCOUNT_URI", account_uri)
     # Note: Must use exec here so that killing this process kills the command.
     cmd = """exec %s""" % cmd
     p = subprocess.Popen(cmd, shell=True, env=e)
@@ -64,7 +62,7 @@ def waitport(port, prog):
                 raise
     raise Exception("timed out waiting for debug port %d (%s)" % (port, prog))
 
-def start(race_detection, fakeclock=None, account_uri=None, config_dir=default_config_dir):
+def start(race_detection, fakeclock=None, config_dir=default_config_dir):
     """Return True if everything builds and starts.
 
     Give up and return False if anything fails to build, or dies at
@@ -114,7 +112,7 @@ def start(race_detection, fakeclock=None, account_uri=None, config_dir=default_c
     for (port, prog) in progs:
         try:
             global processes
-            processes.append(run(prog, race_detection, fakeclock, account_uri))
+            processes.append(run(prog, race_detection, fakeclock))
             if not waitport(port, prog):
                 return False
         except Exception as e:
@@ -160,13 +158,9 @@ def startChallSrv():
     # which is used is controlled by mock DNS data added by the relevant
     # integration tests.
     prog = 'pebble-challtestsrv --defaultIPv4 %s --defaultIPv6 "" --dns01 :8053,:8054 --management :8055 --http01 10.77.77.77:5002 -https01 10.77.77.77:5001 --tlsalpn01 10.88.88.88:5001' % os.environ.get("FAKE_DNS")
-    try:
-        challSrvProcess = run(prog, False, None, None)
-        # Wait for the pebble-challtestsrv management port.
-        if not waitport(8055, prog):
-            return False
-    except Exception as e:
-        print(e)
+    challSrvProcess = run(prog, False, None)
+    # Wait for the pebble-challtestsrv management port.
+    if not waitport(8055, prog):
         return False
 
 def stopChallSrv():

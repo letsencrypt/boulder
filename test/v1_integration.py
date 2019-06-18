@@ -447,6 +447,22 @@ def test_caa():
             raise Exception("Unexpected response for CAA authz: ",
                 response.status_code)
 
+    goodCAA = "happy-hacker-ca.invalid"
+    badCAA = "sad-hacker-ca.invalid"
+
+    caa_account_uri = caa_client.account.uri if caa_client is not None else None
+    caa_records = [
+        {"domain": "bad-caa-reserved.com", "value": badCAA},
+        {"domain": "good-caa-reserved.com", "value": goodCAA},
+        {"domain": "accounturi.good-caa-reserved.com", "value":"{0}; accounturi={1}".format(goodCAA, caa_account_uri)},
+        {"domain": "recheck.good-caa-reserved.com", "value":badCAA},
+        {"domain": "dns-01-only.good-caa-reserved.com", "value": "{0}; validationmethods=dns-01".format(goodCAA)},
+        {"domain": "http-01-only.good-caa-reserved.com", "value": "{0}; validationmethods=http-01".format(goodCAA)},
+        {"domain": "dns-01-or-http01.good-caa-reserved.com", "value": "{0}; validationmethods=dns-01,http-01".format(goodCAA)},
+    ]
+    for policy in caa_records:
+        challSrv.add_caa_issue(policy["domain"], policy["value"])
+
     # We include a random domain so we don't hit the "exact match" rate limit
     # when testing locally with a persistent database.
     auth_and_issue(["good-caa-reserved.com"])
@@ -455,6 +471,7 @@ def test_caa():
     # now be denied due to CAA.
     chisel.expect_problem("urn:acme:error:caa", lambda: chisel.issue(caa_client, caa_authzs))
 
+    challSrv.add_caa_issue({"domain": "bad-caa-reserved.com", "value": badCAA})
     chisel.expect_problem("urn:acme:error:caa",
         lambda: auth_and_issue(["bad-caa-reserved.com"]))
 

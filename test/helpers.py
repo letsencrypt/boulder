@@ -11,6 +11,9 @@ import shutil
 import atexit
 import subprocess
 
+import challtestsrv
+
+challSrv = challtestsrv.ChallTestServer()
 tempdir = tempfile.mkdtemp()
 
 @atexit.register
