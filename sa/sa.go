@@ -1890,8 +1890,6 @@ func (ssa *SQLStorageAuthority) getAllOrderAuthorizationStatuses(
 		allAuthzValidity = append(allAuthzValidity, validityInfo...)
 	}
 	return allAuthzValidity, tx.Commit()
-
-	return allAuthzValidity, nil
 }
 
 // GetValidOrderAuthorizations is used to find the valid, unexpired authorizations
