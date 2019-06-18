@@ -736,12 +736,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 	logEvent.Created = authz.ID
 
 	// Make a URL for this authz, then blow away the ID and RegID before serializing
-	var authzURL string
-	if authz.V2 {
-		authzURL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", authzPath, authz2Prefix, authz.ID))
-	} else {
-		authzURL = web.RelativeEndpoint(request, authzPath+string(authz.ID))
-	}
+	authzURL := urlForAuthz(authz, request)
 	wfe.prepAuthorizationForDisplay(request, &authz)
 
 	response.Header().Add("Location", authzURL)
@@ -1158,7 +1153,7 @@ func (wfe *WebFrontEndImpl) getChallenge(
 
 	wfe.prepChallengeForDisplay(request, authz, challenge)
 
-	authzURL := web.RelativeEndpoint(request, authzPath+string(authz.ID))
+	authzURL := urlForAuthz(authz, request)
 	response.Header().Add("Location", challenge.URI)
 	response.Header().Add("Link", link(authzURL, "up"))
 
@@ -1249,7 +1244,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	challenge := returnAuthz.Challenges[challengeIndex]
 	wfe.prepChallengeForDisplay(request, authz, &challenge)
 
-	authzURL := web.RelativeEndpoint(request, authzPath+string(authz.ID))
+	authzURL := urlForAuthz(authz, request)
 	response.Header().Add("Location", challenge.URI)
 	response.Header().Add("Link", link(authzURL, "up"))
 
@@ -1668,4 +1663,11 @@ func (wfe *WebFrontEndImpl) addIssuingCertificateURLs(response http.ResponseWrit
 		response.Header().Add("Link", link(parsedURI.String(), "up"))
 	}
 	return nil
+}
+
+func urlForAuthz(authz core.Authorization, request *http.Request) string {
+	if authz.V2 {
+		return web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", authzPath, authz2Prefix, authz.ID))
+	}
+	return web.RelativeEndpoint(request, authzPath+string(authz.ID))
 }

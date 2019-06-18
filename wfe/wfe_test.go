@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"os"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -1107,6 +1108,30 @@ func TestGetChallenge(t *testing.T) {
 				`{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`)
 		}
 	}
+}
+
+func TestGetChallengeV2UpRel(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	wfe, _ := setupWFE(t)
+	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
+
+	challengeURL := "http://localhost/acme/challenge/v2/1/-ZfxEw=="
+	resp := httptest.NewRecorder()
+
+	req, err := http.NewRequest("GET", challengeURL, nil)
+	req.URL.Path = "v2/1/-ZfxEw=="
+	test.AssertNotError(t, err, "Could not make NewRequest")
+
+	wfe.Challenge(ctx, newRequestEvent(), resp, req)
+	test.AssertEquals(t,
+		resp.Code,
+		http.StatusAccepted)
+	test.AssertEquals(t,
+		resp.Header().Get("Link"),
+		`<http://localhost/acme/authz/v2/1>;rel="up"`)
 }
 
 func TestChallenge(t *testing.T) {
