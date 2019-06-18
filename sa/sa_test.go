@@ -3445,3 +3445,26 @@ func TestGetValidAuthorizations2(t *testing.T) {
 	test.AssertEquals(t, *authzs.Authz[1].Domain, "bbb")
 	test.AssertEquals(t, *authzs.Authz[1].Authz.Id, oldPA.ID)
 }
+
+func TestBrokenStuff(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	authz, err := sa.NewPendingAuthorization(context.Background(), core.Authorization{
+		RegistrationID: reg.ID,
+		Identifier:     identifier.DNSIdentifier("example.com"),
+		Expires:        fc.Now().Add(time.Hour * 10),
+	})
+	test.AssertNotError(t, err, "new pending fail")
+	expires := fc.Now().Add(time.Hour * 10).UnixNano()
+	_, err = sa.NewOrder(context.Background(), &corepb.Order{
+		RegistrationID: &reg.ID,
+		Expires:        &expires,
+		Authorizations: []string{
+			authz.ID,
+		},
+		Names: []string{"example.com"},
+	})
+	test.AssertNotError(t, err, "new order fail")
+}
