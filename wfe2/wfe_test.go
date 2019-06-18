@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"os"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -3112,4 +3113,28 @@ func TestMandatoryPOSTAsGET(t *testing.T) {
 			checkProblem(responseWriter.Body.Bytes())
 		})
 	}
+}
+
+func TestGetChallengeV2UpRel(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	wfe, _ := setupWFE(t)
+	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
+
+	challengeURL := "http://localhost/acme/challenge/v2/1/-ZfxEw=="
+	resp := httptest.NewRecorder()
+
+	req, err := http.NewRequest("GET", challengeURL, nil)
+	req.URL.Path = "v2/1/-ZfxEw=="
+	test.AssertNotError(t, err, "Could not make NewRequest")
+
+	wfe.Challenge(ctx, newRequestEvent(), resp, req)
+	test.AssertEquals(t,
+		resp.Code,
+		http.StatusOK)
+	test.AssertEquals(t,
+		resp.Header().Get("Link"),
+		`<http://localhost/acme/authz/v2/1>;rel="up"`)
 }
