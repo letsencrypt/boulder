@@ -1088,7 +1088,7 @@ func (wfe *WebFrontEndImpl) getChallenge(
 
 	wfe.prepChallengeForDisplay(request, authz, challenge)
 
-	authzURL := web.RelativeEndpoint(request, authzPath+string(authz.ID))
+	authzURL := urlForAuthz(authz, request)
 	response.Header().Add("Location", challenge.URL)
 	response.Header().Add("Link", link(authzURL, "up"))
 
@@ -1183,7 +1183,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	challenge := returnAuthz.Challenges[challengeIndex]
 	wfe.prepChallengeForDisplay(request, authz, &challenge)
 
-	authzURL := web.RelativeEndpoint(request, authzPath+string(authz.ID))
+	authzURL := urlForAuthz(authz, request)
 	response.Header().Add("Location", challenge.URL)
 	response.Header().Add("Link", link(authzURL, "up"))
 
@@ -2078,4 +2078,11 @@ func extractRequesterIP(req *http.Request) (net.IP, error) {
 		return nil, err
 	}
 	return net.ParseIP(host), nil
+}
+
+func urlForAuthz(authz core.Authorization, request *http.Request) string {
+	if authz.V2 {
+		return web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", authzPath, authz2Prefix, authz.ID))
+	}
+	return web.RelativeEndpoint(request, authzPath+string(authz.ID))
 }
