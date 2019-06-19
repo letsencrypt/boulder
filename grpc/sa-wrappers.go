@@ -1209,7 +1209,7 @@ func (sas StorageAuthorityServerWrapper) GetAuthorizations2(ctx context.Context,
 }
 
 func (sas StorageAuthorityServerWrapper) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) (*corepb.Empty, error) {
-	if req == nil || req.ValidationRecords == nil || req.Status == nil || req.Attempted == nil || req.Expires == nil || req.Id == nil {
+	if req == nil || req.Status == nil || req.Attempted == nil || req.Expires == nil || req.Id == nil {
 		return nil, errIncompleteRequest
 	}
 
