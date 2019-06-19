@@ -15,7 +15,9 @@
         "grpc": {
           "address": ":9099",
           "clientNames": [
-            "ocsp-updater.boulder"
+            "ra.boulder",
+            "ra1.boulder",
+            "ra2.boulder"
           ]
         }
     },

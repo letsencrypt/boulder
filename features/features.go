@@ -20,6 +20,7 @@ const (
 	SetIssuedNamesRenewalBit
 	FasterRateLimit
 	ProbeCTLogs
+	RevokeAtRA
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -32,8 +33,6 @@ const (
 	// NewAuthorizationSchema enables usage of the new authorization storage schema
 	// and associated RPCs.
 	NewAuthorizationSchema
-	// RevokeAtRA enables revocation in the RA instead of ocsp-updater
-	RevokeAtRA
 	// EarlyOrderRateLimit enables the RA applying certificate per name/per FQDN
 	// set rate limits in NewOrder in addition to FinalizeOrder.
 	EarlyOrderRateLimit

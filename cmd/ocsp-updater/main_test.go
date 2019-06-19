@@ -14,7 +14,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
@@ -80,10 +79,8 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, cloc
 		sa,
 		nil,
 		OCSPUpdaterConfig{
-			OldOCSPBatchSize:            1,
-			RevokedCertificateBatchSize: 1,
-			OldOCSPWindow:               cmd.ConfigDuration{Duration: time.Second},
-			RevokedCertificateWindow:    cmd.ConfigDuration{Duration: time.Second},
+			OldOCSPBatchSize: 1,
+			OldOCSPWindow:    cmd.ConfigDuration{Duration: time.Second},
 		},
 		"",
 		blog.NewMock(),
@@ -115,23 +112,6 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't generate OCSP response")
 	err = updater.storeResponse(meta)
 	test.AssertNotError(t, err, "Couldn't store certificate status")
-
-	secondMeta, purgeURLs, err := updater.generateRevokedResponse(ctx, status)
-	test.AssertNotError(t, err, "Couldn't generate revoked OCSP response")
-	err = updater.storeResponse(secondMeta)
-	test.AssertNotError(t, err, "Couldn't store certificate status")
-	test.AssertDeepEquals(t, purgeURLs, []string{
-		// akamai magic POST format
-		"http://127.0.0.1:4002/?body-md5=1f00f751a981b76c",
-		// GET format with // replaced with /
-		"http://127.0.0.1:4002/MFQwUjBQME4wTDAJBgUrDgMCGgUABBRBJaTET3lGgf1uVfnmEsA5Rr8viQQU+3hPEvlgFYMsnxd/NBmzLjbqQYkCEwD/ajxemKXeOt+gQo15uy0YcQs=",
-		// GET format with url-encoding
-		"http://127.0.0.1:4002/MFQwUjBQME4wTDAJBgUrDgMCGgUABBRBJaTET3lGgf1uVfnmEsA5Rr8viQQU%2B3hPEvlgFYMsnxd%2FNBmzLjbqQYkCEwD%2FajxemKXeOt%2BgQo15uy0YcQs%3D",
-	})
-
-	newStatus, err := sa.GetCertificateStatus(ctx, status.Serial)
-	test.AssertNotError(t, err, "Couldn't retrieve certificate status")
-	test.AssertByteEquals(t, meta.OCSPResponse, newStatus.OCSPResponse)
 }
 
 func TestGenerateOCSPResponses(t *testing.T) {
@@ -263,29 +243,6 @@ func TestFindStaleOCSPResponsesStaleMaxAge(t *testing.T) {
 	test.AssertEquals(t, certs[0].Serial, core.SerialToString(parsedCertA.SerialNumber))
 }
 
-func TestFindRevokedCertificatesToUpdate(t *testing.T) {
-	updater, sa, _, fc, cleanUp := setup(t)
-	defer cleanUp()
-
-	reg := satest.CreateWorkingRegistration(t, sa)
-	cert, err := core.LoadCert("test-cert.pem")
-	test.AssertNotError(t, err, "Couldn't read test certificate")
-	issued := fc.Now()
-	_, err = sa.AddCertificate(ctx, cert.Raw, reg.ID, nil, &issued)
-	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
-
-	statuses, err := updater.findRevokedCertificatesToUpdate(10)
-	test.AssertNotError(t, err, "Failed to find revoked certificates")
-	test.AssertEquals(t, len(statuses), 0)
-
-	err = sa.MarkCertificateRevoked(ctx, core.SerialToString(cert.SerialNumber), revocation.KeyCompromise)
-	test.AssertNotError(t, err, "Failed to revoke certificate")
-
-	statuses, err = updater.findRevokedCertificatesToUpdate(10)
-	test.AssertNotError(t, err, "Failed to find revoked certificates")
-	test.AssertEquals(t, len(statuses), 1)
-}
-
 func TestOldOCSPResponsesTick(t *testing.T) {
 	updater, sa, _, fc, cleanUp := setup(t)
 	defer cleanUp()
@@ -354,33 +311,6 @@ func TestOldOCSPResponsesTickIsExpired(t *testing.T) {
 	cs, err = sa.GetCertificateStatus(ctx, serial)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get certificate status for %q", serial))
 	test.AssertEquals(t, cs.IsExpired, true)
-}
-
-func TestRevokedCertificatesTick(t *testing.T) {
-	updater, sa, _, fc, cleanUp := setup(t)
-	defer cleanUp()
-
-	reg := satest.CreateWorkingRegistration(t, sa)
-	parsedCert, err := core.LoadCert("test-cert.pem")
-	test.AssertNotError(t, err, "Couldn't read test certificate")
-	issued := fc.Now()
-	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID, nil, &issued)
-	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
-
-	err = sa.MarkCertificateRevoked(ctx, core.SerialToString(parsedCert.SerialNumber), revocation.KeyCompromise)
-	test.AssertNotError(t, err, "Failed to revoke certificate")
-
-	statuses, err := updater.findRevokedCertificatesToUpdate(10)
-	test.AssertNotError(t, err, "Failed to find revoked certificates")
-	test.AssertEquals(t, len(statuses), 1)
-
-	err = updater.revokedCertificatesTick(ctx, 10)
-	test.AssertNotError(t, err, "Failed to run revokedCertificatesTick")
-
-	status, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
-	test.AssertNotError(t, err, "Failed to get certificate status")
-	test.AssertEquals(t, status.Status, core.OCSPStatusRevoked)
-	test.Assert(t, len(status.OCSPResponse) != 0, "Certificate status doesn't contain OCSP response")
 }
 
 func TestStoreResponseGuard(t *testing.T) {

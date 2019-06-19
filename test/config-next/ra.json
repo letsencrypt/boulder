@@ -45,7 +45,6 @@
       ]
     },
     "features": {
-      "RevokeAtRA": true,
       "EarlyOrderRateLimit": true,
       "NewAuthorizationSchema": true
     },
