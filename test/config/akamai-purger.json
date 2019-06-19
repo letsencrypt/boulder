@@ -15,9 +15,7 @@
         "grpc": {
           "address": ":9099",
           "clientNames": [
-            "ra.boulder",
-            "ra1.boulder",
-            "ra2.boulder"
+            "ra.boulder"
           ]
         }
     },
