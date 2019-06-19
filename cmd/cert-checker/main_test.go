@@ -443,7 +443,6 @@ func TestIgnoredLint(t *testing.T) {
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 		IssuingCertificateURL: []string{"http://ca.cpu"},
-		OCSPServer:            []string{"http://ocsp.cpu"},
 		SubjectKeyId:          []byte("foobar"),
 	}
 
@@ -475,12 +474,14 @@ func TestIgnoredLint(t *testing.T) {
 		Expires: subjectCert.NotAfter,
 	}
 
-	// Without any ignored lints we expect two info level results and one warn
-	// based on the templates in use and the available zlint lints.
+	// Without any ignored lints we expect one error level result due to the
+	// missing OCSP url in the template.
 	expectedProblems := []string{
-		"zlint warn: w_serial_number_low_entropy",
-		"zlint info: n_subject_common_name_included",
-		"zlint info: ct_sct_policy_count_unsatisfied Certificate had 0 embedded SCTs. Browser policy may require 2 for this certificate.",
+		"zlint error: e_sub_cert_aia_does_not_contain_ocsp_url",
+		// TODO(@cpu): After Issue #4273 is unblocked these warn/info results should be expected
+		// "zlint warn: w_serial_number_low_entropy",
+		// "zlint info: n_subject_common_name_included",
+		// "zlint info: ct_sct_policy_count_unsatisfied Certificate had 0 embedded SCTs. Browser policy may require 2 for this certificate.",
 	}
 	sort.Strings(expectedProblems)
 
@@ -493,9 +494,12 @@ func TestIgnoredLint(t *testing.T) {
 	// Check the certificate again with an ignore map that excludes the affected
 	// lints. This should return no problems.
 	problems = checker.checkCert(cert, map[string]bool{
-		"w_serial_number_low_entropy":     true,
-		"n_subject_common_name_included":  true,
-		"ct_sct_policy_count_unsatisfied": true,
+		"e_sub_cert_aia_does_not_contain_ocsp_url": true,
+		// TODO(@cpu): After Issue #4273 is unblocked these info/warn lints should
+		// be ignored in the test.
+		// "w_serial_number_low_entropy":     true,
+		// "n_subject_common_name_included":  true,
+		// "ct_sct_policy_count_unsatisfied": true,
 	})
 	test.AssertEquals(t, len(problems), 0)
 }
