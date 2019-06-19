@@ -38,7 +38,6 @@ service StorageAuthority {
         rpc UpdateRegistration(core.Registration) returns (core.Empty) {}
         rpc NewPendingAuthorization(core.Authorization) returns (core.Authorization) {}
         rpc FinalizeAuthorization(core.Authorization) returns (core.Empty) {}
-        rpc MarkCertificateRevoked(MarkCertificateRevokedRequest) returns (core.Empty) {}
         rpc AddCertificate(AddCertificateRequest) returns (AddCertificateResponse) {}
         rpc RevokeAuthorizationsByDomain(RevokeAuthorizationsByDomainRequest) returns (RevokeAuthorizationsByDomainResponse) {}
         rpc DeactivateRegistration(RegistrationID) returns (core.Empty) {}
@@ -165,11 +164,6 @@ message PreviousCertificateExistsRequest {
 
 message Exists {
         optional bool exists = 1;
-}
-
-message MarkCertificateRevokedRequest {
-        optional string serial = 1;
-        optional int64 code = 2;
 }
 
 message AddCertificateRequest {

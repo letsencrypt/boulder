@@ -15,6 +15,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -327,7 +328,14 @@ func TestStoreResponseGuard(t *testing.T) {
 	status, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
 	test.AssertNotError(t, err, "Failed to get certificate status")
 
-	err = sa.MarkCertificateRevoked(ctx, core.SerialToString(parsedCert.SerialNumber), 0)
+	serialStr := core.SerialToString(parsedCert.SerialNumber)
+	reason := int64(0)
+	revokedDate := fc.Now().UnixNano()
+	err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		Serial: &serialStr,
+		Reason: &reason,
+		Date:   &revokedDate,
+	})
 	test.AssertNotError(t, err, "Failed to revoked certificate")
 
 	// Attempt to update OCSP response where status.Status is good but stored status

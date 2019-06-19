@@ -149,7 +149,6 @@ type StorageAdder interface {
 	UpdateRegistration(ctx context.Context, reg Registration) error
 	NewPendingAuthorization(ctx context.Context, authz Authorization) (Authorization, error)
 	FinalizeAuthorization(ctx context.Context, authz Authorization) error
-	MarkCertificateRevoked(ctx context.Context, serial string, reasonCode revocation.Reason) error
 	AddCertificate(ctx context.Context, der []byte, regID int64, ocsp []byte, issued *time.Time) (digest string, err error)
 	RevokeAuthorizationsByDomain(ctx context.Context, domain identifier.ACMEIdentifier) (finalized, pending int64, err error)
 	DeactivateRegistration(ctx context.Context, id int64) error

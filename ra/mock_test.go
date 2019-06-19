@@ -115,10 +115,6 @@ func (sa *mockInvalidAuthorizationsAuthority) FinalizeAuthorization(ctx context.
 	return nil, nil
 }
 
-func (sa *mockInvalidAuthorizationsAuthority) MarkCertificateRevoked(ctx context.Context, in *sapb.MarkCertificateRevokedRequest, opts ...grpc.CallOption) (*core.Empty, error) {
-	return nil, nil
-}
-
 func (sa *mockInvalidAuthorizationsAuthority) AddCertificate(ctx context.Context, in *sapb.AddCertificateRequest, opts ...grpc.CallOption) (*sapb.AddCertificateResponse, error) {
 	return nil, nil
 }

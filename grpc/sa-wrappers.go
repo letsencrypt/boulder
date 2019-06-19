@@ -383,20 +383,6 @@ func (sac StorageAuthorityClientWrapper) FinalizeAuthorization(ctx context.Conte
 	return nil
 }
 
-func (sac StorageAuthorityClientWrapper) MarkCertificateRevoked(ctx context.Context, serial string, reasonCode revocation.Reason) error {
-	reason := int64(reasonCode)
-
-	_, err := sac.inner.MarkCertificateRevoked(ctx, &sapb.MarkCertificateRevokedRequest{
-		Serial: &serial,
-		Code:   &reason,
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (sac StorageAuthorityClientWrapper) AddCertificate(
 	ctx context.Context,
 	der []byte,
@@ -1001,19 +987,6 @@ func (sas StorageAuthorityServerWrapper) FinalizeAuthorization(ctx context.Conte
 	}
 
 	err = sas.inner.FinalizeAuthorization(ctx, authz)
-	if err != nil {
-		return nil, err
-	}
-
-	return &corepb.Empty{}, nil
-}
-
-func (sas StorageAuthorityServerWrapper) MarkCertificateRevoked(ctx context.Context, request *sapb.MarkCertificateRevokedRequest) (*corepb.Empty, error) {
-	if request == nil || request.Serial == nil || request.Code == nil {
-		return nil, errIncompleteRequest
-	}
-
-	err := sas.inner.MarkCertificateRevoked(ctx, *request.Serial, revocation.Reason(*request.Code))
 	if err != nil {
 		return nil, err
 	}
