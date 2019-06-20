@@ -6,9 +6,11 @@ import time
 import re
 import random
 import requests
+import socket
 import tempfile
 import shutil
 import atexit
+import errno
 import subprocess
 
 import challtestsrv
@@ -126,3 +128,21 @@ def setup_twenty_days_ago():
     """
     for f in twenty_days_ago_functions:
         f()
+
+def waitport(port, prog, perTickCheck=None):
+    """Wait until a port on localhost is open."""
+    for _ in range(1000):
+        try:
+            time.sleep(0.1)
+            if perTickCheck is not None and not perTickCheck():
+                return false
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.connect(('localhost', port))
+            s.close()
+            return True
+        except socket.error as e:
+            if e.errno == errno.ECONNREFUSED:
+                print "Waiting for debug port %d (%s)" % (port, prog)
+            else:
+                raise
+    raise Exception("timed out waiting for debug port %d (%s)" % (port, prog))

@@ -1,15 +1,15 @@
 import atexit
 import BaseHTTPServer
-import errno
 import os
 import shutil
 import signal
-import socket
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+
+from helpers import waitport
 
 default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
 if default_config_dir == '':
@@ -42,25 +42,6 @@ def run(cmd, race_detection, fakeclock):
     p = subprocess.Popen(cmd, shell=True, env=e)
     p.cmd = cmd
     return p
-
-def waitport(port, prog):
-    """Wait until a port on localhost is open."""
-    for _ in range(1000):
-        try:
-            time.sleep(0.1)
-            # If one of the servers has died, quit immediately.
-            if not check():
-                return False
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.connect(('localhost', port))
-            s.close()
-            return True
-        except socket.error as e:
-            if e.errno == errno.ECONNREFUSED:
-                print "Waiting for debug port %d (%s)" % (port, prog)
-            else:
-                raise
-    raise Exception("timed out waiting for debug port %d (%s)" % (port, prog))
 
 def start(race_detection, fakeclock=None):
     """Return True if everything builds and starts.
@@ -114,7 +95,7 @@ def start(race_detection, fakeclock=None):
         try:
             global processes
             processes.append(run(prog, race_detection, fakeclock))
-            if not waitport(port, prog):
+            if not waitport(port, prog, perTickCheck=check):
                 return False
         except Exception as e:
             print(e)
