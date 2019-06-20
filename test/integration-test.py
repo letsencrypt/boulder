@@ -119,7 +119,7 @@ def test_single_ocsp():
 
     # Verify that the static OCSP responder, which answers with a
     # pre-signed, long-lived response for the CA cert, works.
-    wait_for_ocsp_good("test/test-ca2.pem", "test/test-root.pem", "http://localhost:4003")
+    verify_ocsp("test/test-ca2.pem", "test/test-root.pem", "http://localhost:4003", "good")
 
     p.send_signal(signal.SIGTERM)
     p.wait()
