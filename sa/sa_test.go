@@ -643,41 +643,6 @@ func TestCountCertificatesByNames(t *testing.T) {
 	}
 }
 
-func TestMarkCertificateRevoked(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
-
-	reg := satest.CreateWorkingRegistration(t, sa)
-	// Add a cert to the DB to test with.
-	certDER, err := ioutil.ReadFile("www.eff.org.der")
-	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	issued := sa.clk.Now()
-	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
-
-	serial := "000000000000000000000000000000021bd4"
-	const ocspResponse = "this is a fake OCSP response"
-
-	certificateStatusObj, err := sa.GetCertificateStatus(ctx, serial)
-	test.AssertNotError(t, err, "sa.GetCertificateStatus failed")
-	test.AssertEquals(t, certificateStatusObj.Status, core.OCSPStatusGood)
-
-	fc.Add(1 * time.Hour)
-
-	err = sa.MarkCertificateRevoked(ctx, serial, revocation.KeyCompromise)
-	test.AssertNotError(t, err, "MarkCertificateRevoked failed")
-
-	certificateStatusObj, err = sa.GetCertificateStatus(ctx, serial)
-	test.AssertNotError(t, err, "Failed to fetch certificate status")
-
-	if revocation.KeyCompromise != certificateStatusObj.RevokedReason {
-		t.Errorf("RevokedReasons, expected %v, got %v", revocation.KeyCompromise, certificateStatusObj.RevokedReason)
-	}
-	if !fc.Now().Equal(certificateStatusObj.RevokedDate) {
-		t.Errorf("RevokedData, expected %s, got %s", fc.Now(), certificateStatusObj.RevokedDate)
-	}
-}
-
 func TestCountRegistrationsByIP(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()

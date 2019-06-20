@@ -21,7 +21,6 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
-	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -332,11 +331,6 @@ func (sa *StorageAuthority) AddCertificate(_ context.Context, certDER []byte, re
 
 // FinalizeAuthorization is a mock
 func (sa *StorageAuthority) FinalizeAuthorization(_ context.Context, authz core.Authorization) (err error) {
-	return
-}
-
-// MarkCertificateRevoked is a mock
-func (sa *StorageAuthority) MarkCertificateRevoked(_ context.Context, serial string, reasonCode revocation.Reason) (err error) {
 	return
 }
 

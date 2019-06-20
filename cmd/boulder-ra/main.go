@@ -79,8 +79,7 @@ type config struct {
 		InformationalCTLogs []ctconfig.LogDescription
 
 		// IssuerCertPath is the path to the intermediate used to issue certificates.
-		// It is required if the RevokeAtRA feature is enabled and is used to
-		// generate OCSP URLs to purge at revocation time.
+		// It is used to generate OCSP URLs to purge at revocation time.
 		IssuerCertPath string
 
 		Features map[string]bool
@@ -131,10 +130,6 @@ func main() {
 	err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
 
-	if features.Enabled(features.RevokeAtRA) && (c.RA.AkamaiPurgerService == nil || c.RA.IssuerCertPath == "") {
-		cmd.Fail("If the RevokeAtRA feature is enabled the AkamaiPurgerService and IssuerCertPath config fields must be populated")
-	}
-
 	tlsConfig, err := c.RA.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
@@ -158,14 +153,12 @@ func main() {
 
 	var apc akamaipb.AkamaiPurgerClient
 	var issuerCert *x509.Certificate
-	if features.Enabled(features.RevokeAtRA) {
-		apConn, err := bgrpc.ClientSetup(c.RA.AkamaiPurgerService, tlsConfig, clientMetrics, clk)
-		cmd.FailOnError(err, "Unable to create a Akamai Purger client")
-		apc = akamaipb.NewAkamaiPurgerClient(apConn)
+	apConn, err := bgrpc.ClientSetup(c.RA.AkamaiPurgerService, tlsConfig, clientMetrics, clk)
+	cmd.FailOnError(err, "Unable to create a Akamai Purger client")
+	apc = akamaipb.NewAkamaiPurgerClient(apConn)
 
-		issuerCert, err = core.LoadCert(c.RA.IssuerCertPath)
-		cmd.FailOnError(err, "Failed to load issuer certificate")
-	}
+	issuerCert, err = core.LoadCert(c.RA.IssuerCertPath)
+	cmd.FailOnError(err, "Failed to load issuer certificate")
 
 	// Boulder's components assume that there will always be CT logs configured.
 	// Issuing a certificate without SCTs embedded is a miss-issuance event in the

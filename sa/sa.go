@@ -523,58 +523,6 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, reg core.Re
 	return modelToRegistration(rm)
 }
 
-// MarkCertificateRevoked stores the fact that a certificate is revoked, along
-// with a timestamp and a reason.
-// TODO(#4048): This method has been deprecated and replaced by RevokeCertificate.
-func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, serial string, reasonCode revocation.Reason) error {
-	var err error
-	if _, err = ssa.GetCertificate(ctx, serial); err != nil {
-		return fmt.Errorf(
-			"Unable to mark certificate %s revoked: cert not found.", serial)
-	}
-
-	if _, err = ssa.GetCertificateStatus(ctx, serial); err != nil {
-		return fmt.Errorf(
-			"Unable to mark certificate %s revoked: cert status not found.", serial)
-	}
-
-	tx, err := ssa.dbMap.Begin()
-	if err != nil {
-		return err
-	}
-	txWithCtx := tx.WithContext(ctx)
-
-	const statusQuery = "WHERE serial = ?"
-	statusObj, err := SelectCertificateStatus(txWithCtx, statusQuery, serial)
-	if err == sql.ErrNoRows {
-		err = fmt.Errorf("No certificate with serial %s", serial)
-		err = Rollback(tx, err)
-		return err
-	}
-	if err != nil {
-		err = Rollback(tx, err)
-		return err
-	}
-
-	var n int64
-	now := ssa.clk.Now()
-	statusObj.Status = core.OCSPStatusRevoked
-	statusObj.RevokedDate = now
-	statusObj.RevokedReason = reasonCode
-	n, err = tx.Update(&statusObj)
-	if err != nil {
-		err = Rollback(tx, err)
-		return err
-	}
-	if n == 0 {
-		err = berrors.InternalServerError("no certificate updated")
-		err = Rollback(tx, err)
-		return err
-	}
-
-	return tx.Commit()
-}
-
 // UpdateRegistration stores an updated Registration
 func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core.Registration) error {
 	const query = "WHERE id = ?"
@@ -2381,8 +2329,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 }
 
 // RevokeCertificate stores revocation information about a certificate. It will only store this
-// information if the certificate is not alreay marked as revoked. This method is meant as a
-// replacement for MarkCertificateRevoked and the ocsp-updater database methods.
+// information if the certificate is not already marked as revoked.
 func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {

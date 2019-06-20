@@ -125,9 +125,6 @@ def ocsp_verify(cert_file, issuer_file, ocsp_response):
 def wait_for_ocsp_good(cert_file, issuer_file, url):
     fetch_until(cert_file, issuer_file, url, " unauthorized", ": good")
 
-def wait_for_ocsp_revoked(cert_file, issuer_file, url):
-    fetch_until(cert_file, issuer_file, url, ": good", ": revoked")
-
 def reset_akamai_purges():
     requests.post("http://localhost:6789/debug/reset-purges")
 
@@ -145,10 +142,6 @@ def verify_akamai_purge():
     reset_akamai_purges()
 
 def verify_revocation(cert_file, issuer_file, url):
-    # This is gated on the RevokeAtRA feature flag.
-    if not CONFIG_NEXT:
-        wait_for_ocsp_revoked(cert_file, issuer_file, url)
-        return
     ocsp_request = make_ocsp_req(cert_file, issuer_file)
     responses = fetch_ocsp(ocsp_request, url)
 
