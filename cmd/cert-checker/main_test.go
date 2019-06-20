@@ -11,6 +11,8 @@ import (
 	"log"
 	"math/big"
 	mrand "math/rand"
+	"reflect"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -73,7 +75,7 @@ func BenchmarkCheckCert(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		checker.checkCert(cert)
+		checker.checkCert(cert, nil)
 	}
 }
 
@@ -118,7 +120,7 @@ func TestCheckWildcardCert(t *testing.T) {
 		Issued:  parsed.NotBefore,
 		DER:     wildcardCertDer,
 	}
-	problems := checker.checkCert(cert)
+	problems := checker.checkCert(cert, nil)
 	for _, p := range problems {
 		t.Errorf(p)
 	}
@@ -194,7 +196,7 @@ func TestCheckCert(t *testing.T) {
 		Expires: goodExpiry.AddDate(0, 0, 2), // Expiration doesn't match
 	}
 
-	problems := checker.checkCert(cert)
+	problems := checker.checkCert(cert, nil)
 
 	problemsMap := map[string]int{
 		"Stored digest doesn't match certificate digest":                            1,
@@ -220,7 +222,7 @@ func TestCheckCert(t *testing.T) {
 
 	// Same settings as above, but the stored serial number in the DB is invalid.
 	cert.Serial = "not valid"
-	problems = checker.checkCert(cert)
+	problems = checker.checkCert(cert, nil)
 	foundInvalidSerialProblem := false
 	for _, p := range problems {
 		if p == "Stored serial is invalid" {
@@ -245,7 +247,7 @@ func TestCheckCert(t *testing.T) {
 	cert.DER = goodCertDer
 	cert.Expires = parsed.NotAfter
 	cert.Issued = parsed.NotBefore
-	problems = checker.checkCert(cert)
+	problems = checker.checkCert(cert, nil)
 	test.AssertEquals(t, len(problems), 0)
 }
 
@@ -290,7 +292,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	test.AssertEquals(t, len(checker.certs), 5)
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
-	checker.processCerts(wg, false)
+	checker.processCerts(wg, false, nil)
 	test.AssertEquals(t, checker.issuedReport.BadCerts, int64(5))
 	test.AssertEquals(t, len(checker.issuedReport.Entries), 5)
 }
@@ -410,4 +412,94 @@ func TestIsForbiddenDomain(t *testing.T) {
 		result, _ := isForbiddenDomain(tc.Name)
 		test.AssertEquals(t, result, tc.Expected)
 	}
+}
+
+func TestIgnoredLint(t *testing.T) {
+	saDbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
+	test.AssertNotError(t, err, "Couldn't connect to database")
+	saCleanup := test.ResetSATestDatabase(t)
+	defer func() {
+		saCleanup()
+	}()
+
+	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	fc := clock.NewFake()
+	fc.Add(time.Hour * 24 * 90)
+	checker := newChecker(saDbMap, fc, pa, expectedValidityPeriod)
+	serial := big.NewInt(1337)
+
+	template := &x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "CPU's Cool CA",
+		},
+		SerialNumber: serial,
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().AddDate(0, 0, 90),
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		PolicyIdentifiers: []asn1.ObjectIdentifier{
+			{1, 2, 3},
+		},
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+		IssuingCertificateURL: []string{"http://ca.cpu"},
+		SubjectKeyId:          []byte("foobar"),
+	}
+
+	// Create a self-signed issuer certificate to use
+	issuerDer, err := x509.CreateCertificate(rand.Reader, template, template, testKey.Public(), testKey)
+	test.AssertNotError(t, err, "failed to create self-signed issuer cert")
+	issuerCert, err := x509.ParseCertificate(issuerDer)
+	test.AssertNotError(t, err, "failed to parse self-signed issuer cert")
+
+	// Reconfigure the template for an EE cert with a Subj. CN
+	serial = big.NewInt(1338)
+	template.SerialNumber = serial
+	template.Subject.CommonName = "zombo.com"
+	template.DNSNames = []string{"zombo.com"}
+	template.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
+	template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
+	template.IsCA = false
+
+	subjectCertDer, err := x509.CreateCertificate(rand.Reader, template, issuerCert, testKey.Public(), testKey)
+	test.AssertNotError(t, err, "failed to create EE cert")
+	subjectCert, err := x509.ParseCertificate(subjectCertDer)
+	test.AssertNotError(t, err, "failed to parse EE cert")
+
+	cert := core.Certificate{
+		Serial:  core.SerialToString(serial),
+		DER:     subjectCertDer,
+		Digest:  core.Fingerprint256(subjectCertDer),
+		Issued:  subjectCert.NotBefore,
+		Expires: subjectCert.NotAfter,
+	}
+
+	// Without any ignored lints we expect one error level result due to the
+	// missing OCSP url in the template.
+	expectedProblems := []string{
+		"zlint error: e_sub_cert_aia_does_not_contain_ocsp_url",
+		// TODO(@cpu): After Issue #4273 is unblocked these warn/info results should be expected
+		// "zlint warn: w_serial_number_low_entropy",
+		// "zlint info: n_subject_common_name_included",
+		// "zlint info: ct_sct_policy_count_unsatisfied Certificate had 0 embedded SCTs. Browser policy may require 2 for this certificate.",
+	}
+	sort.Strings(expectedProblems)
+
+	// Check the certificate with a nil ignore map. This should return the
+	// expected zlint problems.
+	problems := checker.checkCert(cert, nil)
+	sort.Strings(problems)
+	test.Assert(t, reflect.DeepEqual(problems, expectedProblems), "problems did not match expected")
+
+	// Check the certificate again with an ignore map that excludes the affected
+	// lints. This should return no problems.
+	problems = checker.checkCert(cert, map[string]bool{
+		"e_sub_cert_aia_does_not_contain_ocsp_url": true,
+		// TODO(@cpu): After Issue #4273 is unblocked these info/warn lints should
+		// be ignored in the test.
+		// "w_serial_number_low_entropy":     true,
+		// "n_subject_common_name_included":  true,
+		// "ct_sct_policy_count_unsatisfied": true,
+	})
+	test.AssertEquals(t, len(problems), 0)
 }

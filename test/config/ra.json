@@ -11,6 +11,7 @@
     "pendingAuthorizationLifetimeDays": 7,
     "weakKeyDirectory": "test/example-weak-keys.json",
     "orderLifetime": "168h",
+    "issuerCertPath":  "test/test-ca2.pem",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/ra.boulder/cert.pem",
@@ -30,6 +31,10 @@
     },
     "saService": {
       "serverAddress": "sa.boulder:9095",
+      "timeout": "15s"
+    },
+    "akamaiPurgerService": {
+      "serverAddress": "akamai-purger.boulder:9099",
       "timeout": "15s"
     },
     "grpc": {

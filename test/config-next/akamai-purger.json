@@ -1,7 +1,7 @@
 {
     "akamaiPurger": {
         "debugAddr": ":9666",
-        "purgeInterval": "1s",
+        "purgeInterval": "1ms",
         "baseURL": "http://localhost:6789",
         "clientToken": "its-a-token",
         "clientSecret": "its-a-secret",
@@ -15,10 +15,7 @@
         "grpc": {
           "address": ":9099",
           "clientNames": [
-            "ocsp-updater.boulder",
-            "ra.boulder",
-            "ra1.boulder",
-            "ra2.boulder"
+            "ra.boulder"
           ]
         }
     },
