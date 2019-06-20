@@ -220,7 +220,7 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 		// Run zlint checks
 		results := zlint.LintCertificate(parsedCert)
 		for name, res := range results.Results {
-			if _, ignore := ignoredLints[name]; ignore {
+			if ignoredLints[name] {
 				continue
 			}
 			if res.Status >= lints.Error {
