@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -15,14 +16,7 @@ import (
 	"text/template"
 	"time"
 
-	"golang.org/x/net/context"
-
 	"github.com/jmhodges/clock"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_model/go"
-	"gopkg.in/go-gorp/gorp.v2"
-	"gopkg.in/square/go-jose.v2"
-
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
@@ -32,6 +26,10 @@ import (
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_model/go"
+	"gopkg.in/go-gorp/gorp.v2"
+	"gopkg.in/square/go-jose.v2"
 )
 
 func bigIntFromB64(b64 string) *big.Int {

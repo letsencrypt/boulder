@@ -4,7 +4,7 @@
     "maxConcurrentRPCServerRequests": 100000,
     "maxContactsPerRegistration": 100,
     "debugAddr": ":8002",
-    "hostnamePolicyFile": "test/hostname-policy.json",
+    "hostnamePolicyFile": "test/hostname-policy.yaml",
     "maxNames": 100,
     "reuseValidAuthz": true,
     "authorizationLifetimeDays": 30,
@@ -34,7 +34,6 @@
     },
     "grpc": {
       "address": ":9094",
-      "maxConcurrentStreams": 2000,
       "clientNames": [
         "wfe.boulder",
         "admin-revoker.boulder"

@@ -19,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 
@@ -497,6 +498,15 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 		fmt.Fprint(resp, tooLargeBuf)
 	})
 
+	// A path that redirects to an uppercase public suffix (#4215)
+	mux.HandleFunc("/redir-uppercase-publicsuffix", func(resp http.ResponseWriter, req *http.Request) {
+		http.Redirect(
+			resp,
+			req,
+			"http://example.COM/ok",
+			301)
+	})
+
 	return server
 }
 
@@ -831,6 +841,28 @@ func TestFetchHTTP(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name:         "Redirect to uppercase Public Suffix",
+			Host:         "example.com",
+			Path:         "/redir-uppercase-publicsuffix",
+			ExpectedBody: "ok",
+			ExpectedRecords: []core.ValidationRecord{
+				core.ValidationRecord{
+					Hostname:          "example.com",
+					Port:              strconv.Itoa(httpPort),
+					URL:               "http://example.com/redir-uppercase-publicsuffix",
+					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
+					AddressUsed:       net.ParseIP("127.0.0.1"),
+				},
+				core.ValidationRecord{
+					Hostname:          "example.com",
+					Port:              strconv.Itoa(httpPort),
+					URL:               "http://example.com/ok",
+					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
+					AddressUsed:       net.ParseIP("127.0.0.1"),
+				},
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -1035,14 +1067,14 @@ func TestHTTP(t *testing.T) {
 	test.AssertEquals(t, len(matchedValidRedirect), 1)
 	test.AssertEquals(t, len(matchedMovedRedirect), 1)
 
-	ipIdentifier := core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}
+	ipIdentifier := identifier.ACMEIdentifier{Type: identifier.IdentifierType("ip"), Value: "127.0.0.1"}
 	_, prob = va.validateHTTP01(ctx, ipIdentifier, chall)
 	if prob == nil {
 		t.Fatalf("IdentifierType IP shouldn't have worked.")
 	}
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 
-	_, prob = va.validateHTTP01(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
+	_, prob = va.validateHTTP01(ctx, identifier.ACMEIdentifier{Type: identifier.DNS, Value: "always.invalid"}, chall)
 	if prob == nil {
 		t.Fatalf("Domain name is invalid.")
 	}

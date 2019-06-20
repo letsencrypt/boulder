@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/x509"
 	"errors"
 	"flag"
@@ -15,8 +16,6 @@ import (
 	"strings"
 	"text/template"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"github.com/jmhodges/clock"
 	"gopkg.in/go-gorp/gorp.v2"

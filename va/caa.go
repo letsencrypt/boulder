@@ -1,18 +1,18 @@
 package va
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
 
-	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/features"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/miekg/dns"
-	"golang.org/x/net/context"
 )
 
 type caaParams struct {
@@ -21,8 +21,8 @@ type caaParams struct {
 }
 
 func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
-	acmeID := core.AcmeIdentifier{
-		Type:  core.IdentifierDNS,
+	acmeID := identifier.ACMEIdentifier{
+		Type:  identifier.DNS,
 		Value: *req.Domain,
 	}
 	params := &caaParams{
@@ -46,7 +46,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 // the CAA lookup & validation fail a problem is returned.
 func (va *ValidationAuthorityImpl) checkCAA(
 	ctx context.Context,
-	identifier core.AcmeIdentifier,
+	identifier identifier.ACMEIdentifier,
 	params *caaParams) *probs.ProblemDetails {
 	present, valid, records, err := va.checkCAARecords(ctx, identifier, params)
 	if err != nil {
@@ -185,7 +185,7 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 // value (or nil).
 func (va *ValidationAuthorityImpl) checkCAARecords(
 	ctx context.Context,
-	identifier core.AcmeIdentifier,
+	identifier identifier.ACMEIdentifier,
 	params *caaParams) (bool, bool, []*dns.CAA, error) {
 	hostname := strings.ToLower(identifier.Value)
 	// If this is a wildcard name, remove the prefix

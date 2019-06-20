@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/x509"
 	"database/sql"
 	"flag"
@@ -10,7 +11,6 @@ import (
 	"sort"
 	"strconv"
 
-	"golang.org/x/net/context"
 	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -18,6 +18,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -234,7 +235,7 @@ func main() {
 			}
 			_, err = sac.RevokeAuthorizationsByDomain2(ctx, req)
 		} else {
-			ident := core.AcmeIdentifier{Value: domain, Type: core.IdentifierDNS}
+			ident := identifier.ACMEIdentifier{Value: domain, Type: identifier.DNS}
 			authsRevoked, pendingAuthsRevoked, err = sac.RevokeAuthorizationsByDomain(ctx, ident)
 			// For the legacy RevokeAuthorizationsByDomain RPC synthesize
 			// a berrors.NotFound err when there were no revocations. This makes it

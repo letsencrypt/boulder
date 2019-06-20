@@ -3,7 +3,6 @@ package policy
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net"
@@ -18,6 +17,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/iana"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/reloader"
 	"gopkg.in/yaml.v2"
@@ -57,17 +57,13 @@ type blockedNamesPolicy struct {
 	// matching an entry in the list will be forbidden. (e.g. `ExactBlockedNames`
 	// containing `www.example.com` will not block `example.com` or
 	// `mail.example.com`).
-	//
-	// TODO(@cpu): Remove the JSON tag when data is updated to use the new field names
-	ExactBlockedNames []string `json:"exactBlacklist" yaml:"ExactBlockedNames"`
+	ExactBlockedNames []string `yaml:"ExactBlockedNames"`
 	// HighRiskBlockedNames is like ExactBlockedNames except that issuance is
 	// blocked for subdomains as well. (e.g. BlockedNames containing `example.com`
 	// will block `www.example.com`).
 	//
 	// This list typically doesn't change with much regularity.
-	//
-	// TODO(@cpu): Remove the JSON tag when data is updated to use the new field names
-	HighRiskBlockedNames []string `json:"blacklist" yaml:"HighRiskBlockedNames"`
+	HighRiskBlockedNames []string `yaml:"HighRiskBlockedNames"`
 
 	// AdminBlockedNames operates the same as BlockedNames but is changed with more
 	// frequency based on administrative blocks/revocations that are added over
@@ -77,21 +73,9 @@ type blockedNamesPolicy struct {
 }
 
 // SetHostnamePolicyFile will load the given policy file, returning error if it
-// fails. It will also start a reloader in case the file changes. It supports
-// YAML and JSON serialization formats and chooses the correct unserialization
-// method based on the file extension which must be ".yaml", ".yml", or ".json".
+// fails. It will also start a reloader in case the file changes
 func (pa *AuthorityImpl) SetHostnamePolicyFile(f string) error {
-	var loadHandler func([]byte) error
-	if strings.HasSuffix(f, ".json") {
-		loadHandler = pa.loadHostnamePolicy(json.Unmarshal)
-	} else if strings.HasSuffix(f, ".yml") || strings.HasSuffix(f, ".yaml") {
-		loadHandler = pa.loadHostnamePolicy(yaml.Unmarshal)
-	} else {
-		return fmt.Errorf(
-			"Hostname policy file %q has unknown extension. Supported: .yml,.yaml,.json",
-			f)
-	}
-	if _, err := reloader.New(f, loadHandler, pa.hostnamePolicyLoadError); err != nil {
+	if _, err := reloader.New(f, pa.loadHostnamePolicy, pa.hostnamePolicyLoadError); err != nil {
 		return err
 	}
 	return nil
@@ -101,32 +85,23 @@ func (pa *AuthorityImpl) hostnamePolicyLoadError(err error) {
 	pa.log.AuditErrf("error loading hostname policy: %s", err)
 }
 
-// unmarshalHandler is a function type that abstracts away a choice between
-// json.Unmarshal and yaml.Unmarshal, both of which take a byte slice, an
-// interface to unmarshal to, and return an error.
-type unmarshalHandler func([]byte, interface{}) error
-
-// loadHostnamePolicy returns a reloader dataCallback function that uses the
-// unmarshalHandler to load a hostname policy. The returned callback is suitable
-// for use with reloader.New()
-func (pa *AuthorityImpl) loadHostnamePolicy(unmarshal unmarshalHandler) func([]byte) error {
-	// Return a reloader dataCallback that uses the provided unmarshalHandler.
-	return func(contents []byte) error {
-		hash := sha256.Sum256(contents)
-		pa.log.Infof("loading hostname policy, sha256: %s", hex.EncodeToString(hash[:]))
-		var policy blockedNamesPolicy
-		err := unmarshal(contents, &policy)
-		if err != nil {
-			return err
-		}
-		if len(policy.HighRiskBlockedNames) == 0 {
-			return fmt.Errorf("No entries in HighRiskBlockedNames.")
-		}
-		if len(policy.ExactBlockedNames) == 0 {
-			return fmt.Errorf("No entries in ExactBlockedNames.")
-		}
-		return pa.processHostnamePolicy(policy)
+// loadHostnamePolicy is a callback suitable for use with reloader.New() that
+// will unmarshal a YAML hostname policy.
+func (pa *AuthorityImpl) loadHostnamePolicy(contents []byte) error {
+	hash := sha256.Sum256(contents)
+	pa.log.Infof("loading hostname policy, sha256: %s", hex.EncodeToString(hash[:]))
+	var policy blockedNamesPolicy
+	err := yaml.Unmarshal(contents, &policy)
+	if err != nil {
+		return err
 	}
+	if len(policy.HighRiskBlockedNames) == 0 {
+		return fmt.Errorf("No entries in HighRiskBlockedNames.")
+	}
+	if len(policy.ExactBlockedNames) == 0 {
+		return fmt.Errorf("No entries in ExactBlockedNames.")
+	}
+	return pa.processHostnamePolicy(policy)
 }
 
 // processHostnamePolicy handles loading a new blockedNamesPolicy into the PA.
@@ -240,8 +215,8 @@ var (
 //
 // If WillingToIssue returns an error, it will be of type MalformedRequestError
 // or RejectedIdentifierError
-func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
-	if id.Type != core.IdentifierDNS {
+func (pa *AuthorityImpl) WillingToIssue(id identifier.ACMEIdentifier) error {
+	if id.Type != identifier.DNS {
 		return errInvalidIdentifier
 	}
 	domain := id.Value
@@ -329,8 +304,14 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 	return nil
 }
 
-// WillingToIssueWildcard is an extension of WillingToIssue that accepts DNS
-// identifiers for well formed wildcard domains. It enforces that:
+// WillingToIssueWildcards is an extension of WillingToIssue that accepts DNS
+// identifiers for well formed wildcard domains in addition to regular
+// identifiers.
+//
+// All provided identifiers are run through WillingToIssue and any errors are
+// returned. In addition to the regular WillingToIssue checks this function
+// also checks each wildcard identifier to enforce that:
+//
 // * The identifer is a DNS type identifier
 // * There is at most one `*` wildcard character
 // * That the wildcard character is the leftmost label
@@ -340,11 +321,52 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 //   blocklist entry for "foo.example.com" should prevent issuance for
 //   "*.example.com")
 //
-// If all of the above is true then the base domain (e.g. without the *.) is run
-// through WillingToIssue to catch other illegal things (blocked hosts, etc).
-func (pa *AuthorityImpl) WillingToIssueWildcard(ident core.AcmeIdentifier) error {
+// If any of the identifiers are not valid then an error with suberrors specific
+// to the rejected identifiers will be returned.
+func (pa *AuthorityImpl) WillingToIssueWildcards(idents []identifier.ACMEIdentifier) error {
+	var subErrors []berrors.SubBoulderError
+	var firstBadIdent *identifier.ACMEIdentifier
+	for _, ident := range idents {
+		if err := pa.willingToIssueWildcard(ident); err != nil {
+			if firstBadIdent == nil {
+				firstBadIdent = &ident
+			}
+			if bErr, ok := err.(*berrors.BoulderError); ok {
+				subErrors = append(subErrors, berrors.SubBoulderError{
+					Identifier:   ident,
+					BoulderError: bErr})
+			} else {
+				subErrors = append(subErrors, berrors.SubBoulderError{
+					Identifier: ident,
+					BoulderError: &berrors.BoulderError{
+						Type:   berrors.RejectedIdentifier,
+						Detail: err.Error(),
+					}})
+			}
+		}
+	}
+	if len(subErrors) > 0 {
+		var detail string
+		if len(subErrors) == 1 {
+			detail = subErrors[0].BoulderError.Detail
+		} else {
+			detail = fmt.Sprintf("Policy forbids issuing for %q and %d more identifiers. "+
+				"Refer to sub-problems for more information",
+				firstBadIdent.Value, len(subErrors)-1)
+		}
+		return (&berrors.BoulderError{
+			Type:   berrors.RejectedIdentifier,
+			Detail: detail,
+		}).WithSubErrors(subErrors)
+	}
+	return nil
+}
+
+// willingToIssueWildcard vets a single identifier. It is used by
+// the plural WillingToIssueWildcards when evaluating a list of identifiers.
+func (pa *AuthorityImpl) willingToIssueWildcard(ident identifier.ACMEIdentifier) error {
 	// We're only willing to process DNS identifiers
-	if ident.Type != core.IdentifierDNS {
+	if ident.Type != identifier.DNS {
 		return errInvalidIdentifier
 	}
 	rawDomain := ident.Value
@@ -388,8 +410,8 @@ func (pa *AuthorityImpl) WillingToIssueWildcard(ident core.AcmeIdentifier) error
 		// NOTE(@cpu): This is pretty hackish! Boulder issue #3323[0] describes
 		// a better follow-up that we should land to replace this code.
 		// [0] https://github.com/letsencrypt/boulder/issues/3323
-		return pa.WillingToIssue(core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+		return pa.WillingToIssue(identifier.ACMEIdentifier{
+			Type:  identifier.DNS,
 			Value: "x." + baseDomain,
 		})
 	}
@@ -439,7 +461,7 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 
 // ChallengesFor makes a decision of what challenges are acceptable for
 // the given identifier.
-func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) ([]core.Challenge, error) {
+func (pa *AuthorityImpl) ChallengesFor(identifier identifier.ACMEIdentifier) ([]core.Challenge, error) {
 	challenges := []core.Challenge{}
 
 	// If we are using the new authorization storage schema we only use a single

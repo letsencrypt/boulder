@@ -7,7 +7,8 @@
 package grpc
 
 import (
-	"golang.org/x/net/context"
+	"context"
+
 	ggrpc "google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/core"

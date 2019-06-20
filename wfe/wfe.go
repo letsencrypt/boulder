@@ -2,6 +2,7 @@ package wfe
 
 import (
 	"bytes"
+	"context"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
@@ -18,18 +19,20 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/net/context"
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	"github.com/letsencrypt/boulder/nonce"
+	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
@@ -56,6 +59,8 @@ const (
 	buildIDPath    = "/build"
 	rolloverPath   = "/acme/key-change"
 )
+
+const authz2Prefix = "v2"
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
 // i.e., ACME.  Its members configure the paths for various ACME functions,
@@ -87,7 +92,8 @@ type WebFrontEndImpl struct {
 	DirectoryWebsite string
 
 	// Register of anti-replay nonces
-	nonceService *nonce.NonceService
+	nonceService       *nonce.NonceService
+	remoteNonceService noncepb.NonceServiceClient
 
 	// Key policy.
 	keyPolicy goodkey.KeyPolicy
@@ -109,13 +115,9 @@ func NewWebFrontEndImpl(
 	stats metrics.Scope,
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
+	remoteNonceService noncepb.NonceServiceClient,
 	logger blog.Logger,
 ) (WebFrontEndImpl, error) {
-	nonceService, err := nonce.NewNonceService(stats)
-	if err != nil {
-		return WebFrontEndImpl{}, err
-	}
-
 	csrSignatureAlgs := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "csrSignatureAlgs",
@@ -125,14 +127,24 @@ func NewWebFrontEndImpl(
 	)
 	stats.MustRegister(csrSignatureAlgs)
 
-	return WebFrontEndImpl{
-		log:              logger,
-		clk:              clk,
-		nonceService:     nonceService,
-		stats:            stats,
-		keyPolicy:        keyPolicy,
-		csrSignatureAlgs: csrSignatureAlgs,
-	}, nil
+	wfe := WebFrontEndImpl{
+		log:                logger,
+		clk:                clk,
+		stats:              stats,
+		keyPolicy:          keyPolicy,
+		csrSignatureAlgs:   csrSignatureAlgs,
+		remoteNonceService: remoteNonceService,
+	}
+
+	if wfe.remoteNonceService == nil {
+		nonceService, err := nonce.NewNonceService(stats, 0)
+		if err != nil {
+			return WebFrontEndImpl{}, err
+		}
+		wfe.nonceService = nonceService
+	}
+
+	return wfe, nil
 }
 
 // HandleFunc registers a handler at the given path. It's
@@ -166,13 +178,27 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 	methodsStr := strings.Join(methods, ", ")
 	handler := http.StripPrefix(pattern, web.NewTopHandler(wfe.log,
 		web.WFEHandlerFunc(func(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-			// We do not propagate errors here, because (1) they should be
-			// transient, and (2) they fail closed.
-			nonce, err := wfe.nonceService.Nonce()
-			if err == nil {
-				response.Header().Set("Replay-Nonce", nonce)
+			// Historically we did not return a error to the client
+			// if we failed to get a new nonce. We preserve that
+			// behavior if using the built in nonce service, but
+			// if we get a failure using the new remote nonce service
+			// we return an internal server error so that it is
+			// clearer both in our metrics and to the client that
+			// something is wrong.
+			if wfe.remoteNonceService != nil {
+				nonceMsg, err := wfe.remoteNonceService.Nonce(ctx, &corepb.Empty{})
+				if err != nil {
+					wfe.sendError(response, logEvent, probs.ServerInternal("unable to get nonce"), err)
+					return
+				}
+				response.Header().Set("Replay-Nonce", *nonceMsg.Nonce)
 			} else {
-				logEvent.AddError("unable to make nonce: %s", err)
+				nonce, err := wfe.nonceService.Nonce()
+				if err == nil {
+					response.Header().Set("Replay-Nonce", nonce)
+				} else {
+					logEvent.AddError("unable to make nonce: %s", err)
+				}
 			}
 
 			logEvent.Endpoint = pattern
@@ -539,7 +565,18 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	if len(nonce) == 0 {
 		wfe.stats.Inc("Errors.JWSMissingNonce", 1)
 		return nil, nil, reg, probs.BadNonce("JWS has no anti-replay nonce")
-	} else if !wfe.nonceService.Valid(nonce) {
+	}
+	var nonceValid bool
+	if wfe.remoteNonceService != nil {
+		validMsg, err := wfe.remoteNonceService.Redeem(ctx, &noncepb.NonceMessage{Nonce: &nonce})
+		if err != nil {
+			return nil, nil, reg, probs.ServerInternal("failed to verify nonce validity: %s", err)
+		}
+		nonceValid = *validMsg.Valid
+	} else {
+		nonceValid = wfe.nonceService.Valid(nonce)
+	}
+	if !nonceValid {
 		wfe.stats.Inc("Errors.JWSInvalidNonce", 1)
 		return nil, nil, reg, probs.BadNonce("JWS has invalid anti-replay nonce %s", nonce)
 	}
@@ -624,6 +661,18 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *web.R
 
 	reg, err := wfe.RA.NewRegistration(ctx, init)
 	if err != nil {
+		if berrors.Is(err, berrors.Duplicate) {
+			existingReg, err := wfe.SA.GetRegistrationByKey(ctx, key)
+			if err != nil {
+				// return error even if berrors.NotFound, as the duplicate key error we got from
+				// ra.NewRegistration indicates it _does_ already exist.
+				wfe.sendError(response, logEvent, probs.ServerInternal("couldn't retrieve the registration"), err)
+				return
+			}
+			response.Header().Set("Location", web.RelativeEndpoint(request, fmt.Sprintf("%s%d", regPath, existingReg.ID)))
+			wfe.sendError(response, logEvent, probs.Conflict("Registration key is already in use"), err)
+			return
+		}
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new registration"), err)
 		return
 	}
@@ -674,7 +723,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling JSON"), err)
 		return
 	}
-	if init.Identifier.Type == core.IdentifierDNS {
+	if init.Identifier.Type == identifier.DNS {
 		logEvent.DNSName = init.Identifier.Value
 	}
 
@@ -687,7 +736,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 	logEvent.Created = authz.ID
 
 	// Make a URL for this authz, then blow away the ID and RegID before serializing
-	authzURL := web.RelativeEndpoint(request, authzPath+string(authz.ID))
+	authzURL := urlForAuthz(authz, request)
 	wfe.prepAuthorizationForDisplay(request, &authz)
 
 	response.Header().Add("Location", authzURL)
@@ -702,16 +751,34 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 }
 
 func (wfe *WebFrontEndImpl) regHoldsAuthorizations(ctx context.Context, regID int64, names []string) (bool, error) {
-	authz, err := wfe.SA.GetValidAuthorizations(ctx, regID, names, wfe.clk.Now())
-	if err != nil {
-		return false, err
+	var authzMap map[string]*core.Authorization
+	if features.Enabled(features.NewAuthorizationSchema) {
+		now := wfe.clk.Now().UnixNano()
+		authzMapPB, err := wfe.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
+			RegistrationID: &regID,
+			Domains:        names,
+			Now:            &now,
+		})
+		if err != nil {
+			return false, err
+		}
+		authzMap, err = bgrpc.PBToAuthzMap(authzMapPB)
+		if err != nil {
+			return false, err
+		}
+	} else {
+		var err error
+		authzMap, err = wfe.SA.GetValidAuthorizations(ctx, regID, names, wfe.clk.Now())
+		if err != nil {
+			return false, err
+		}
 	}
-	if len(names) != len(authz) {
+	if len(names) != len(authzMap) {
 		return false, nil
 	}
 	missingNames := false
 	for _, name := range names {
-		if _, present := authz[name]; !present {
+		if _, present := authzMap[name]; !present {
 			missingNames = true
 		}
 	}
@@ -954,7 +1021,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	var err error
 	var v2 bool
 	if len(slug) == 3 {
-		if !features.Enabled(features.NewAuthorizationSchema) || slug[0] != "v2" {
+		if !features.Enabled(features.NewAuthorizationSchema) || slug[0] != authz2Prefix {
 			notFound()
 			return
 		}
@@ -1021,7 +1088,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 	challenge := authz.Challenges[challengeIndex]
 
-	if authz.Identifier.Type == core.IdentifierDNS {
+	if authz.Identifier.Type == identifier.DNS {
 		logEvent.DNSName = authz.Identifier.Value
 	}
 	logEvent.Status = string(authz.Status)
@@ -1041,7 +1108,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
 	// Update the challenge URI to be relative to the HTTP request Host
 	if authz.V2 {
-		challenge.URI = web.RelativeEndpoint(request, fmt.Sprintf("%sv2/%s/%s", challengePath, authz.ID, challenge.StringID()))
+		challenge.URI = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s/%s", challengePath, authz2Prefix, authz.ID, challenge.StringID()))
 	} else {
 		challenge.URI = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
 	}
@@ -1086,7 +1153,7 @@ func (wfe *WebFrontEndImpl) getChallenge(
 
 	wfe.prepChallengeForDisplay(request, authz, challenge)
 
-	authzURL := web.RelativeEndpoint(request, authzPath+string(authz.ID))
+	authzURL := urlForAuthz(authz, request)
 	response.Header().Add("Location", challenge.URI)
 	response.Header().Add("Link", link(authzURL, "up"))
 
@@ -1177,7 +1244,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	challenge := returnAuthz.Challenges[challengeIndex]
 	wfe.prepChallengeForDisplay(request, authz, &challenge)
 
-	authzURL := web.RelativeEndpoint(request, authzPath+string(authz.ID))
+	authzURL := urlForAuthz(authz, request)
 	response.Header().Add("Location", challenge.URI)
 	response.Header().Add("Link", link(authzURL, "up"))
 
@@ -1323,8 +1390,8 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 	id := request.URL.Path
 	var authz core.Authorization
 	var err error
-	if features.Enabled(features.NewAuthorizationSchema) && strings.HasPrefix(id, "/v2/") {
-		authzID, err := strconv.ParseInt(id[4:], 10, 64)
+	if features.Enabled(features.NewAuthorizationSchema) && strings.HasPrefix(id, authz2Prefix) {
+		authzID, err := strconv.ParseInt(strings.TrimPrefix(id, authz2Prefix+"/"), 10, 64)
 		if err != nil {
 			wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
 			return
@@ -1355,7 +1422,7 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 		}
 	}
 
-	if authz.Identifier.Type == core.IdentifierDNS {
+	if authz.Identifier.Type == identifier.DNS {
 		logEvent.DNSName = authz.Identifier.Value
 	}
 	logEvent.Status = string(authz.Status)
@@ -1596,4 +1663,11 @@ func (wfe *WebFrontEndImpl) addIssuingCertificateURLs(response http.ResponseWrit
 		response.Header().Add("Link", link(parsedURI.String(), "up"))
 	}
 	return nil
+}
+
+func urlForAuthz(authz core.Authorization, request *http.Request) string {
+	if authz.V2 {
+		return web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", authzPath, authz2Prefix, authz.ID))
+	}
+	return web.RelativeEndpoint(request, authzPath+string(authz.ID))
 }

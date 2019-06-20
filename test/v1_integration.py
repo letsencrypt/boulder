@@ -471,7 +471,7 @@ def test_caa():
     # now be denied due to CAA.
     chisel.expect_problem("urn:acme:error:caa", lambda: chisel.issue(caa_client, caa_authzs))
 
-    challSrv.add_caa_issue({"domain": "bad-caa-reserved.com", "value": badCAA})
+    challSrv.add_caa_issue("bad-caa-reserved.com", badCAA)
     chisel.expect_problem("urn:acme:error:caa",
         lambda: auth_and_issue(["bad-caa-reserved.com"]))
 

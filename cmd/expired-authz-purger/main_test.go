@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -15,7 +16,6 @@ import (
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	"golang.org/x/net/context"
 )
 
 func TestPurgeAuthzs(t *testing.T) {

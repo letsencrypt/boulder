@@ -14,6 +14,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vapb "github.com/letsencrypt/boulder/va/proto"
@@ -167,7 +168,6 @@ func ValidationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecor
 		Port:              &record.Port,
 		AddressesResolved: addrs,
 		AddressUsed:       addrUsed,
-		Authorities:       record.Authorities,
 		Url:               &record.URL,
 		AddressesTried:    addrsTried,
 	}, nil
@@ -198,7 +198,6 @@ func PBToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 		Port:              *in.Port,
 		AddressesResolved: addrs,
 		AddressUsed:       addrUsed,
-		Authorities:       in.Authorities,
 		URL:               *in.Url,
 		AddressesTried:    addrsTried,
 	}, nil
@@ -388,7 +387,7 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		v2 = *pb.V2
 	}
 	authz := core.Authorization{
-		Identifier:     core.AcmeIdentifier{Type: core.IdentifierDNS, Value: *pb.Identifier},
+		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: *pb.Identifier},
 		RegistrationID: *pb.RegistrationID,
 		Status:         core.AcmeStatus(*pb.Status),
 		Expires:        &expires,
@@ -420,7 +419,7 @@ func orderValid(order *corepb.Order) bool {
 // `order.CertificateSerial` to be nil such that it can be used in places where
 // the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
-	return !(order.RegistrationID == nil || order.Expires == nil || order.Authorizations == nil || order.Names == nil)
+	return !(order.RegistrationID == nil || order.Expires == nil || (order.Authorizations == nil && order.V2Authorizations == nil) || order.Names == nil)
 }
 
 func authorizationValid(authz *corepb.Authorization) bool {

@@ -1,13 +1,12 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 	"time"
-
-	"golang.org/x/net/context"
 
 	blog "github.com/letsencrypt/boulder/log"
 )

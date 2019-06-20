@@ -1,13 +1,14 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/akamai"
+	akamaiProto "github.com/letsencrypt/boulder/akamai/proto"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -18,7 +19,6 @@ import (
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	"golang.org/x/net/context"
 	"gopkg.in/go-gorp/gorp.v2"
 )
 
@@ -96,10 +96,10 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, cloc
 func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	updater, sa, _, fc, cleanUp := setup(t)
 	defer cleanUp()
-	updater.ccu = &akamai.CachePurgeClient{}
 	issuer, err := core.LoadCert("../../test/test-ca2.pem")
 	test.AssertNotError(t, err, "Couldn't read test issuer certificate")
 	updater.issuer = issuer
+	updater.purgerService = akamaiProto.NewAkamaiPurgerClient(nil)
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")

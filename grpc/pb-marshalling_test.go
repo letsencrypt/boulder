@@ -10,6 +10,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 	vapb "github.com/letsencrypt/boulder/va/proto"
@@ -122,7 +123,6 @@ func TestChallenge(t *testing.T) {
 			AddressesResolved: []net.IP{ip},
 			AddressUsed:       ip,
 			URL:               "url",
-			Authorities:       []string{"auth"},
 			AddressesTried:    []net.IP{ip},
 		},
 	}
@@ -151,7 +151,6 @@ func TestValidationRecord(t *testing.T) {
 		AddressesResolved: []net.IP{ip},
 		AddressUsed:       ip,
 		URL:               "url",
-		Authorities:       []string{"auth"},
 		AddressesTried:    []net.IP{ip},
 	}
 
@@ -172,7 +171,6 @@ func TestValidationResult(t *testing.T) {
 		AddressesResolved: []net.IP{ip},
 		AddressUsed:       ip,
 		URL:               "urlA",
-		Authorities:       []string{"authA"},
 		AddressesTried:    []net.IP{ip},
 	}
 	vrB := core.ValidationRecord{
@@ -181,7 +179,6 @@ func TestValidationResult(t *testing.T) {
 		AddressesResolved: []net.IP{ip},
 		AddressUsed:       ip,
 		URL:               "urlB",
-		Authorities:       []string{"authB"},
 		AddressesTried:    []net.IP{ip},
 	}
 	result := []core.ValidationRecord{vrA, vrB}
@@ -267,7 +264,7 @@ func TestRegistration(t *testing.T) {
 
 func TestAuthz(t *testing.T) {
 	exp := time.Now().AddDate(0, 0, 1).UTC()
-	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.com"}
+	identifier := identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"}
 	challA := core.Challenge{
 		ID:                       10,
 		Type:                     core.ChallengeTypeDNS01,

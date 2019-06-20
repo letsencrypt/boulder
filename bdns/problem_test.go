@@ -1,12 +1,12 @@
 package bdns
 
 import (
+	"context"
 	"errors"
 	"net"
 	"testing"
 
 	"github.com/miekg/dns"
-	"golang.org/x/net/context"
 )
 
 func TestDNSError(t *testing.T) {

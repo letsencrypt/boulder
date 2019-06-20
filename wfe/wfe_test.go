@@ -2,6 +2,7 @@ package wfe
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"crypto/rsa"
 	"crypto/x509"
@@ -14,13 +15,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
-
-	"gopkg.in/square/go-jose.v2"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
@@ -29,6 +29,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
@@ -40,8 +41,8 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 	"github.com/letsencrypt/boulder/web"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"gopkg.in/square/go-jose.v2"
 )
 
 const (
@@ -269,15 +270,15 @@ func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, _ *rapb.
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, err error) {
+func (pa *mockPA) ChallengesFor(identifier identifier.ACMEIdentifier) (challenges []core.Challenge, err error) {
 	return
 }
 
-func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier) error {
+func (pa *mockPA) WillingToIssue(id identifier.ACMEIdentifier) error {
 	return nil
 }
 
-func (pa *mockPA) WillingToIssueWildcard(id core.AcmeIdentifier) error {
+func (pa *mockPA) WillingToIssueWildcards(idents []identifier.ACMEIdentifier) error {
 	return nil
 }
 
@@ -379,7 +380,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	fc := clock.NewFake()
 	stats := metrics.NewNoopScope()
 
-	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, blog.NewMock())
+	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, nil, blog.NewMock())
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL
@@ -1107,6 +1108,30 @@ func TestGetChallenge(t *testing.T) {
 				`{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`)
 		}
 	}
+}
+
+func TestGetChallengeV2UpRel(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	wfe, _ := setupWFE(t)
+	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
+
+	challengeURL := "http://localhost/acme/challenge/v2/1/-ZfxEw=="
+	resp := httptest.NewRecorder()
+
+	req, err := http.NewRequest("GET", challengeURL, nil)
+	req.URL.Path = "v2/1/-ZfxEw=="
+	test.AssertNotError(t, err, "Could not make NewRequest")
+
+	wfe.Challenge(ctx, newRequestEvent(), resp, req)
+	test.AssertEquals(t,
+		resp.Code,
+		http.StatusAccepted)
+	test.AssertEquals(t,
+		resp.Header().Get("Link"),
+		`<http://localhost/acme/authz/v2/1>;rel="up"`)
 }
 
 func TestChallenge(t *testing.T) {
@@ -1844,7 +1869,7 @@ func TestAuthorization(t *testing.T) {
 	// Test retrieving a v2 style authorization
 	responseWriter = httptest.NewRecorder()
 	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
-		URL:    mustParseURL("/v2/1"),
+		URL:    mustParseURL("v2/1"),
 		Method: "GET",
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
@@ -12,8 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"

@@ -1,6 +1,7 @@
 package va
 
 import (
+	"context"
 	"crypto/rsa"
 	"encoding/base64"
 	"errors"
@@ -21,12 +22,12 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/net/context"
 	"gopkg.in/square/go-jose.v2"
 )
 
@@ -56,14 +57,18 @@ var TheKey = rsa.PrivateKey{
 var accountKey = &jose.JSONWebKey{Key: TheKey.Public()}
 
 // Return an ACME DNS identifier for the given hostname
-func dnsi(hostname string) core.AcmeIdentifier {
-	return core.AcmeIdentifier{Type: core.IdentifierDNS, Value: hostname}
+func dnsi(hostname string) identifier.ACMEIdentifier {
+	return identifier.ACMEIdentifier{Type: identifier.DNS, Value: hostname}
 }
 
 var ctx context.Context
 
-func init() {
-	ctx, _ = context.WithTimeout(context.Background(), 10*time.Minute)
+func TestMain(m *testing.M) {
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Minute)
+	ret := m.Run()
+	cancel()
+	os.Exit(ret)
 }
 
 var accountURIPrefixes = []string{"http://boulder:4000/acme/reg/"}

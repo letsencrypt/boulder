@@ -1,12 +1,12 @@
 package grpc
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"testing"
 	"time"
 
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
 	"github.com/jmhodges/clock"

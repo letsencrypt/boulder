@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -14,8 +15,6 @@ import (
 	"os"
 	"testing"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"

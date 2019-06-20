@@ -5,7 +5,6 @@
     "debugAddr": ":8009",
     "grpc": {
       "address": ":9091",
-      "maxConcurrentStreams": 2000,
       "clientNames": [
         "ra.boulder",
         "ocsp-updater.boulder"

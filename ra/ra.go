@@ -1,6 +1,7 @@
 package ra
 
 import (
+	"context"
 	"crypto/x509"
 	"fmt"
 	"net"
@@ -25,6 +26,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/iana"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
@@ -37,7 +39,6 @@ import (
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
-	"golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
 )
 
@@ -371,12 +372,6 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 	return nil
 }
 
-var (
-	// unparseableEmailError is returned by validateEmail when the given address
-	// is not parseable.
-	unparseableEmailError = berrors.InvalidEmailError("not a valid e-mail address")
-)
-
 // forbiddenMailDomains is a map of domain names we do not allow after the
 // @ symbol in contact mailto addresses. These are frequently used when
 // copy-pasting example configurations and would not result in expiration
@@ -395,7 +390,10 @@ var forbiddenMailDomains = map[string]bool{
 func validateEmail(address string) error {
 	email, err := mail.ParseAddress(address)
 	if err != nil {
-		return unparseableEmailError
+		if len(address) > 254 {
+			address = address[:254]
+		}
+		return berrors.InvalidEmailError("%q is not a valid e-mail address", address)
 	}
 	splitEmail := strings.SplitN(email.Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
@@ -856,7 +854,12 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*core.Authorization) error {
 	ra.stats.Inc("recheck_caa", 1)
 	ra.stats.Inc("recheck_caa_authzs", int64(len(authzs)))
-	ch := make(chan error, len(authzs))
+
+	type authzCAAResult struct {
+		authz *core.Authorization
+		err   error
+	}
+	ch := make(chan authzCAAResult, len(authzs))
 	for _, authz := range authzs {
 		go func(authz *core.Authorization) {
 			name := authz.Identifier.Value
@@ -872,10 +875,12 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 				}
 			}
 			if method == "" {
-				ch <- berrors.InternalServerError(
-					"Internal error determining validation method for authorization ID %v (%v)",
-					authz.ID, name,
-				)
+				ch <- authzCAAResult{
+					authz: authz,
+					err: berrors.InternalServerError(
+						"Internal error determining validation method for authorization ID %v (%v)",
+						authz.ID, name),
+				}
 				return
 			}
 
@@ -893,19 +898,46 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 			} else if resp.Problem != nil {
 				err = berrors.CAAError(*resp.Problem.Detail)
 			}
-			ch <- err
+			ch <- authzCAAResult{
+				authz: authz,
+				err:   err,
+			}
 		}(authz)
 	}
-	var caaFailures []string
-	for _ = range authzs {
-		if err := <-ch; berrors.Is(err, berrors.CAA) {
-			caaFailures = append(caaFailures, err.Error())
-		} else if err != nil {
-			return err
+	var subErrors []berrors.SubBoulderError
+	// Read a recheckResult for each authz from the results channel
+	for i := 0; i < len(authzs); i++ {
+		recheckResult := <-ch
+		// If the result had a CAA boulder error, construct a suberror with the
+		// identifier from the authorization that was checked.
+		if err := recheckResult.err; err != nil {
+			if bErr, _ := err.(*berrors.BoulderError); berrors.Is(err, berrors.CAA) {
+				subErrors = append(subErrors, berrors.SubBoulderError{
+					Identifier:   recheckResult.authz.Identifier,
+					BoulderError: bErr})
+			} else {
+				return err
+			}
 		}
 	}
-	if len(caaFailures) > 0 {
-		return berrors.CAAError("Rechecking CAA: %v", strings.Join(caaFailures, ", "))
+	if len(subErrors) > 0 {
+		var detail string
+		if len(subErrors) == 1 {
+			detail = fmt.Sprintf(
+				"Rechecking CAA for %q: %s",
+				subErrors[0].Identifier.Value,
+				subErrors[0].BoulderError.Detail)
+		} else {
+			detail = fmt.Sprintf(
+				"Rechecking CAA for %q and %d more identifiers failed. "+
+					"Refer to sub-problems for more information",
+				subErrors[0].Identifier.Value,
+				len(subErrors)-1)
+		}
+		return (&berrors.BoulderError{
+			Type:   berrors.CAA,
+			Detail: detail,
+		}).WithSubErrors(subErrors)
 	}
 	return nil
 }
@@ -1873,6 +1905,21 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 	return nil
 }
 
+// checkOrderNames validates that the RA's policy authority allows issuing for
+// each of the names in an order. If any of the names are unacceptable a
+// malformed or rejectedIdentifier error with suberrors for each rejected
+// identifier is returned.
+func (ra *RegistrationAuthorityImpl) checkOrderNames(names []string) error {
+	idents := make([]identifier.ACMEIdentifier, len(names))
+	for i, name := range names {
+		idents[i] = identifier.DNSIdentifier(name)
+	}
+	if err := ra.PA.WillingToIssueWildcards(idents); err != nil {
+		return err
+	}
+	return nil
+}
+
 // NewOrder creates a new order object
 func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
 	order := &corepb.Order{
@@ -1881,11 +1928,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Validate that our policy allows issuing for each of the names in the order
-	for _, name := range order.Names {
-		id := core.AcmeIdentifier{Value: name, Type: core.IdentifierDNS}
-		if err := ra.PA.WillingToIssueWildcard(id); err != nil {
-			return nil, err
-		}
+	if err := ra.checkOrderNames(order.Names); err != nil {
+		return nil, err
 	}
 
 	if err := wildcardOverlap(order.Names); err != nil {
@@ -2032,8 +2076,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		if err := ra.checkInvalidAuthorizationLimit(ctx, *order.RegistrationID, name); err != nil {
 			return nil, err
 		}
-		pb, err := ra.createPendingAuthz(ctx, *order.RegistrationID, core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+		pb, err := ra.createPendingAuthz(ctx, *order.RegistrationID, identifier.ACMEIdentifier{
+			Type:  identifier.DNS,
 			Value: name,
 		}, v2)
 		if err != nil {
@@ -2107,7 +2151,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 // createPendingAuthz checks that a name is allowed for issuance and creates the
 // necessary challenges for it and puts this and all of the relevant information
 // into a corepb.Authorization for transmission to the SA to be stored
-func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg int64, identifier core.AcmeIdentifier, v2 bool) (*corepb.Authorization, error) {
+func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg int64, identifier identifier.ACMEIdentifier, v2 bool) (*corepb.Authorization, error) {
 	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second).UnixNano()
 	status := string(core.StatusPending)
 	authz := &corepb.Authorization{

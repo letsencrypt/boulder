@@ -1,9 +1,11 @@
 package publisher
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
@@ -19,10 +21,8 @@ import (
 	"github.com/google/certificate-transparency-go"
 	ctClient "github.com/google/certificate-transparency-go/client"
 	"github.com/google/certificate-transparency-go/jsonclient"
-	"github.com/google/certificate-transparency-go/tls"
 	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
@@ -131,6 +131,18 @@ func NewLog(uri, b64PK string, logger blog.Logger) (*Log, error) {
 			MaxIdleConns:        http.DefaultTransport.(*http.Transport).MaxIdleConns,
 			IdleConnTimeout:     http.DefaultTransport.(*http.Transport).IdleConnTimeout,
 			TLSHandshakeTimeout: http.DefaultTransport.(*http.Transport).TLSHandshakeTimeout,
+			// In Boulder Issue 3821[0] we found that HTTP/2 support was causing hard
+			// to diagnose intermittent freezes in CT submission. Disabling HTTP/2 with
+			// an environment variable resolved the freezes but is not a stable fix.
+			//
+			// Per the Go `http` package docs we can make this change persistent by
+			// changing the `http.Transport` config:
+			//   "Programs that must disable HTTP/2 can do so by setting
+			//   Transport.TLSNextProto (for clients) or Server.TLSNextProto (for
+			//   servers) to a non-nil, empty map"
+			//
+			// [0]: https://github.com/letsencrypt/boulder/issues/3821
+			TLSNextProto: map[string]func(string, *tls.Conn) http.RoundTripper{},
 		},
 	}
 	client, err := ctClient.New(url.String(), httpClient, opts)
@@ -266,7 +278,7 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		return nil, err
 	}
 
-	sctBytes, err := tls.Marshal(*sct)
+	sctBytes, err := cttls.Marshal(*sct)
 	if err != nil {
 		return nil, err
 	}
@@ -406,40 +418,4 @@ func CreateTestingSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool, tim
 
 	jsonSCT, _ := json.Marshal(jsonSCTObj)
 	return jsonSCT
-}
-
-// ProbeLogs sends a HTTP GET request to each of the logs in the
-// publisher logCache and records the latency and status of the
-// response.
-func (pub *Impl) ProbeLogs() {
-	wg := new(sync.WaitGroup)
-	for _, log := range pub.ctLogsCache.LogURIs() {
-		wg.Add(1)
-		go func(uri string) {
-			defer wg.Done()
-			c := http.Client{
-				Timeout: time.Minute*2 + time.Second*30,
-			}
-			url, err := url.Parse(uri)
-			if err != nil {
-				pub.log.Errf("failed to parse log URI: %s", err)
-			}
-			url.Path = ct.GetSTHPath
-			s := time.Now()
-			resp, err := c.Get(url.String())
-			took := time.Since(s).Seconds()
-			var status string
-			if err == nil {
-				defer func() { _ = resp.Body.Close() }()
-				status = resp.Status
-			} else {
-				status = "error"
-			}
-			pub.metrics.probeLatency.With(prometheus.Labels{
-				"log":    uri,
-				"status": status,
-			}).Observe(took)
-		}(log)
-	}
-	wg.Wait()
 }

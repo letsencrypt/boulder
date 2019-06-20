@@ -2,6 +2,7 @@ package va
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -23,11 +24,11 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/net/context"
 )
 
 var (
@@ -55,7 +56,13 @@ var (
 	// http.Client.Do() will return a url.Error err that wraps
 	// a errors.ErrorString instance. There isn't much else to do with one of
 	// those except match the encoded byte string with a regex. :-X
-	h2SettingsFrameErrRegex = regexp.MustCompile(`net\/http\: HTTP\/1\.x transport connection broken: malformed HTTP response \"\\x00\\x00\\x[a-f0-9]{2}\\x04\\x00\\x00\\x00\\x00\\x00.*"`)
+	//
+	// NOTE(@cpu): The first component of this regex is optional to avoid an
+	// integration test flake. In some (fairly rare) conditions the malformed
+	// response error will be returned simply as a http.badStringError without
+	// the broken transport prefix. Most of the time the error is returned with
+	// a transport connection error prefix.
+	h2SettingsFrameErrRegex = regexp.MustCompile(`(?:net\/http\: HTTP\/1\.x transport connection broken: )?malformed HTTP response \"\\x00\\x00\\x[a-f0-9]{2}\\x04\\x00\\x00\\x00\\x00\\x00.*"`)
 )
 
 // RemoteVA wraps the core.ValidationAuthority interface and adds a field containing the addresses
@@ -275,7 +282,7 @@ func detailedError(err error) *probs.ProblemDetails {
 // validation attempt.
 func (va *ValidationAuthorityImpl) validate(
 	ctx context.Context,
-	identifier core.AcmeIdentifier,
+	identifier identifier.ACMEIdentifier,
 	challenge core.Challenge,
 	authz core.Authorization,
 ) ([]core.ValidationRecord, *probs.ProblemDetails) {
@@ -315,7 +322,7 @@ func (va *ValidationAuthorityImpl) validate(
 	return validationRecords, nil
 }
 
-func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	if err := challenge.CheckConsistencyForValidation(); err != nil {
 		return nil, probs.Malformed("Challenge failed consistency check: %s", err)
 	}
@@ -557,7 +564,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteProbs)
 	}
 
-	records, prob := va.validate(ctx, core.AcmeIdentifier{Type: "dns", Value: domain}, challenge, authz)
+	records, prob := va.validate(ctx, identifier.DNSIdentifier(domain), challenge, authz)
 	challenge.ValidationRecord = records
 
 	// Check for malformed ValidationRecords
@@ -579,6 +586,10 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 			go func() {
 				_ = va.processRemoteResults(domain, string(challenge.Type), prob, remoteProbs, len(va.remoteVAs))
 			}()
+			// Since prob was nil and we're not enforcing the results from
+			// `processRemoteResults` set the challenge status to valid so the
+			// validationTime metrics increment has the correct result label.
+			challenge.Status = core.StatusValid
 		} else if features.Enabled(features.EnforceMultiVA) {
 			remoteProb := va.processRemoteResults(domain, string(challenge.Type), prob, remoteProbs, len(va.remoteVAs))
 			if remoteProb != nil {

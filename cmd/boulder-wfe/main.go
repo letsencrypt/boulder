@@ -15,6 +15,7 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/wfe"
@@ -40,8 +41,9 @@ type config struct {
 
 		TLS cmd.TLSConfig
 
-		RAService *cmd.GRPCClientConfig
-		SAService *cmd.GRPCClientConfig
+		RAService    *cmd.GRPCClientConfig
+		SAService    *cmd.GRPCClientConfig
+		NonceService *cmd.GRPCClientConfig
 
 		Features map[string]bool
 
@@ -61,7 +63,7 @@ type config struct {
 	}
 }
 
-func setupWFE(c config, logger blog.Logger, stats metrics.Scope, clk clock.Clock) (core.RegistrationAuthority, core.StorageAuthority) {
+func setupWFE(c config, logger blog.Logger, stats metrics.Scope, clk clock.Clock) (core.RegistrationAuthority, core.StorageAuthority, noncepb.NonceServiceClient) {
 	tlsConfig, err := c.WFE.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
@@ -74,7 +76,14 @@ func setupWFE(c config, logger blog.Logger, stats metrics.Scope, clk clock.Clock
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
 
-	return rac, sac
+	var rns noncepb.NonceServiceClient
+	if c.WFE.NonceService != nil {
+		rnsConn, err := bgrpc.ClientSetup(c.WFE.NonceService, tlsConfig, clientMetrics, clk)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Nonce service")
+		rns = noncepb.NewNonceServiceClient(rnsConn)
+	}
+
+	return rac, sac, rns
 }
 
 func main() {
@@ -100,9 +109,9 @@ func main() {
 
 	kp, err := goodkey.NewKeyPolicy("") // don't load any weak keys
 	cmd.FailOnError(err, "Unable to create key policy")
-	wfe, err := wfe.NewWebFrontEndImpl(scope, clk, kp, logger)
+	rac, sac, rns := setupWFE(c, logger, scope, clk)
+	wfe, err := wfe.NewWebFrontEndImpl(scope, clk, kp, rns, logger)
 	cmd.FailOnError(err, "Unable to create WFE")
-	rac, sac := setupWFE(c, logger, scope, clk)
 	wfe.RA = rac
 	wfe.SA = sac
 

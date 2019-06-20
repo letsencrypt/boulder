@@ -111,11 +111,11 @@ _testmain.go
 *.out
 
 # external packages folder
-vendor/
 0
 
 ### Build Targets ###
 /zlint
 cmd/zlint/zlint
-
+/zlint-gtld-update
+cmd/zlint-gtld-update/zlint-gtld-update
 

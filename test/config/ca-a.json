@@ -16,7 +16,6 @@
     },
     "grpcCA": {
       "address": ":9093",
-      "maxConcurrentStreams": 2000,
       "clientNames": [
         "ra.boulder"
       ]
@@ -40,8 +39,7 @@
     "backdate": "1h",
     "lifespanOCSP": "96h",
     "maxNames": 100,
-    "enableMustStaple": true,
-    "hostnamePolicyFile": "test/hostname-policy.json",
+    "hostnamePolicyFile": "test/hostname-policy.yaml",
     "cfssl": {
       "signing": {
         "profiles": {

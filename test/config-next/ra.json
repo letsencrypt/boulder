@@ -39,7 +39,6 @@
     },
     "grpc": {
       "address": ":9094",
-      "maxConcurrentStreams": 2000,
       "clientNames": [
         "wfe.boulder",
         "admin-revoker.boulder"
@@ -47,7 +46,8 @@
     },
     "features": {
       "RevokeAtRA": true,
-      "EarlyOrderRateLimit": true
+      "EarlyOrderRateLimit": true,
+      "NewAuthorizationSchema": true
     },
     "CTLogGroups2": [
       {

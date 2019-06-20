@@ -4,7 +4,8 @@
             "newAccount",
             "newOrder",
             "fulfillOrder",
-            "finalizeOrder"
+            "finalizeOrder",
+            "revokeCertificate"
         ],
         "rate": 1,
         "runtime": "10s",
@@ -22,5 +23,6 @@
     "regEmail": "loadtesting@letsencrypt.org",
     "maxRegs": 20,
     "maxNamesPerCert": 20,
-    "dontSaveState": true
+    "dontSaveState": true,
+    "revokeChance": 0.5
 }

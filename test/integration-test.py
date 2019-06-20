@@ -59,15 +59,23 @@ def run_expired_authz_purger():
     # (e.g. test_expired_authzs_404).
 
     def expect(target_time, num, table):
-        out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json", target_time)
+        if CONFIG_NEXT:
+            tool = "expired-authz-purger2"
+            out = get_future_output("./bin/expired-authz-purger2 --single-run --config cmd/expired-authz-purger2/config.json", target_time)
+        else:
+            tool = "expired-authz-purger"
+            out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json", target_time)
         if 'via FAKECLOCK' not in out:
-            raise Exception("expired-authz-purger was not built with `integration` build tag")
+            raise Exception("%s was not built with `integration` build tag" % (tool))
         if num is None:
             return
-        expected_output = 'Deleted a total of %d expired authorizations from %s' % (num, table)
+        if CONFIG_NEXT:
+            expected_output = 'deleted %d expired authorizations' % (num)
+        else:
+            expected_output = 'Deleted a total of %d expired authorizations from %s' % (num, table)
         if expected_output not in out:
-            raise Exception("expired-authz-purger did not print '%s'.  Output:\n%s" % (
-                  expected_output, out))
+            raise Exception("%s did not print '%s'.  Output:\n%s" % (
+                  tool, expected_output, out))
 
     now = datetime.datetime.utcnow()
 
@@ -200,7 +208,8 @@ def main():
     # traffic.
     if not args.test_case_filter:
         check_balance()
-    run_expired_authz_purger()
+    if not CONFIG_NEXT:
+        run_expired_authz_purger()
 
     # Run the load-generator last. run_loadtest will stop the
     # pebble-challtestsrv before running the load-generator and will not restart

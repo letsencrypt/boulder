@@ -12,6 +12,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -23,17 +24,19 @@ var testingPolicy = &goodkey.KeyPolicy{
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, err error) {
+func (pa *mockPA) ChallengesFor(identifier identifier.ACMEIdentifier) (challenges []core.Challenge, err error) {
 	return
 }
 
-func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier) error {
+func (pa *mockPA) WillingToIssue(id identifier.ACMEIdentifier) error {
 	return nil
 }
 
-func (pa *mockPA) WillingToIssueWildcard(id core.AcmeIdentifier) error {
-	if id.Value == "bad-name.com" || id.Value == "other-bad-name.com" {
-		return errors.New("")
+func (pa *mockPA) WillingToIssueWildcards(idents []identifier.ACMEIdentifier) error {
+	for _, ident := range idents {
+		if ident.Value == "bad-name.com" || ident.Value == "other-bad-name.com" {
+			return errors.New("policy forbids issuing for identifier")
+		}
 	}
 	return nil
 }
@@ -130,7 +133,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("policy forbids issuing for: \"bad-name.com\", \"other-bad-name.com\""),
+			errors.New("policy forbids issuing for identifier"),
 		},
 		{
 			signedReqWithEmailAddress,

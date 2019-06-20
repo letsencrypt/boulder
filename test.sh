@@ -10,9 +10,9 @@ TRAVIS=${TRAVIS:-false}
 
 # The list of segments to run. To run only some of these segments, pre-set the
 # RUN variable with the ones you want (see .travis.yml for an example).
-# Order doesn't matter. Note: godep-restore is specifically left out of the
-# defaults, because we don't want to run it locally (would be too disruptive to
-# GOPATH). We also omit coverage by default on local runs because it generates
+# Order doesn't matter. Note: gomod-vendor is specifically left out of the
+# defaults, because we don't want to run it locally (it could delete local
+# state) We also omit coverage by default on local runs because it generates
 # artifacts on disk that aren't needed.
 RUN=${RUN:-lints unit integration}
 
@@ -65,14 +65,20 @@ function run_test_coverage() {
 }
 
 #
-# Run Go Vet, a correctness-focused static analysis tool
+# Run various linters.
 #
 if [[ "$RUN" =~ "lints" ]] ; then
   run_and_expect_silence go vet ./...
-  run_and_expect_silence go fmt ./...
+  # Run gofmt instead of go fmt because of
+  # https://github.com/golang/go/issues/31976
+  run_and_expect_silence bash -c "find . -name '*.go' -not -path './vendor/*' -print | xargs -n1 gofmt -l"
   run_and_expect_silence ./test/test-no-outdated-migrations.sh
   ineffassign .
   python test/grafana/lint.py
+
+  run_and_expect_silence errcheck \
+    -ignore fmt:Fprintf,fmt:Fprintln,fmt:Fprint,io:Write,os:Remove,net/http:Write \
+    $(go list -f '{{ .ImportPath }}' ./... | grep -v test)
 fi
 
 #
@@ -109,32 +115,11 @@ if [[ "$RUN" =~ "integration" ]] ; then
     python2 test/integration-test.py "${args[@]}"
 fi
 
-# Run godep-restore (happens only in Travis) to check that the hashes in
-# Godeps.json really exist in the remote repo and match what we have.
-if [[ "$RUN" =~ "godep-restore" ]] ; then
-  run_and_expect_silence godep restore
-  # Run godep save and do a diff, to ensure that the version we got from
-  # `godep restore` matched what was in the remote repo.
-  cp Godeps/Godeps.json /tmp/Godeps.json.head
-  run_and_expect_silence rm -rf Godeps/ vendor/
-  run_and_expect_silence godep save ./...
-  run_and_expect_silence diff \
-    <(sed '/GodepVersion/d;/Comment/d;/GoVersion/d;' /tmp/Godeps.json.head) \
-    <(sed '/GodepVersion/d;/Comment/d;/GoVersion/d;' Godeps/Godeps.json)
-  run_and_expect_silence git diff --exit-code -- ./vendor/
-fi
-
-#
-# Run errcheck, to ensure that error returns are always used.
-# Note: errcheck seemingly doesn't understand ./vendor/ yet, and so will fail
-# if imports are not available in $GOPATH. So, in Travis, it always needs to
-# run after `godep restore`. Locally it can run anytime, assuming you have the
-# packages present in #GOPATH.
-#
-if [[ "$RUN" =~ "errcheck" ]] ; then
-  run_and_expect_silence errcheck \
-    -ignore fmt:Fprintf,fmt:Fprintln,fmt:Fprint,io:Write,os:Remove,net/http:Write \
-    $(go list -f '{{ .ImportPath }}' ./... | grep -v test)
+# Run go mod vendor (happens only in Travis) to check that the versions in
+# vendor/ really exist in the remote repo and match what we have.
+if [[ "$RUN" =~ "gomod-vendor" ]] ; then
+  go mod vendor
+  git diff --exit-code
 fi
 
 # Run generate to make sure all our generated code can be re-generated with

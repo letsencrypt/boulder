@@ -1,13 +1,14 @@
 language: go
+
 dist: trusty
+
 go:
-- "1.11"
-before_install:
-- go get ./...
-- go get -t ./...
+  - "1.12.x"
+
 script:
-- make
-- make test
+  - make
+  - make test
+
 notifications:
   email:
   - dkumar11@illinois.edu

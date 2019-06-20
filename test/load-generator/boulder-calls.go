@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -20,9 +21,10 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test/load-generator/acme"
-
 	"gopkg.in/square/go-jose.v2"
 )
 
@@ -30,11 +32,12 @@ var (
 	// stringToOperation maps a configured plan action to a function that can
 	// operate on a state/context.
 	stringToOperation = map[string]func(*State, *context) error{
-		"newAccount":    newAccount,
-		"getAccount":    getAccount,
-		"newOrder":      newOrder,
-		"fulfillOrder":  fulfillOrder,
-		"finalizeOrder": finalizeOrder,
+		"newAccount":        newAccount,
+		"getAccount":        getAccount,
+		"newOrder":          newOrder,
+		"fulfillOrder":      fulfillOrder,
+		"finalizeOrder":     finalizeOrder,
+		"revokeCertificate": revokeCertificate,
 	}
 )
 
@@ -47,13 +50,13 @@ type OrderJSON struct {
 	// The URL field isn't returned by the API, we populate it manually with the
 	// `Location` header.
 	URL            string
-	Status         core.AcmeStatus       `json:"status"`
-	Expires        time.Time             `json:"expires"`
-	Identifiers    []core.AcmeIdentifier `json:"identifiers"`
-	Authorizations []string              `json:"authorizations"`
-	Finalize       string                `json:"finalize"`
-	Certificate    string                `json:"certificate,omitempty"`
-	Error          *probs.ProblemDetails `json:"error,omitempty"`
+	Status         core.AcmeStatus             `json:"status"`
+	Expires        time.Time                   `json:"expires"`
+	Identifiers    []identifier.ACMEIdentifier `json:"identifiers"`
+	Authorizations []string                    `json:"authorizations"`
+	Finalize       string                      `json:"finalize"`
+	Certificate    string                      `json:"certificate,omitempty"`
+	Error          *probs.ProblemDetails       `json:"error,omitempty"`
 }
 
 // getAccount takes a randomly selected v2 account from `state.accts` and puts it
@@ -163,17 +166,17 @@ func newOrder(s *State, ctx *context) error {
 	orderSize := 1 + mrand.Intn(s.maxNamesPerCert-1)
 	// Generate that many random domain names. There may be some duplicates, we
 	// don't care. The ACME server will collapse those down for us, how handy!
-	dnsNames := []core.AcmeIdentifier{}
+	dnsNames := []identifier.ACMEIdentifier{}
 	for i := 0; i <= orderSize; i++ {
-		dnsNames = append(dnsNames, core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+		dnsNames = append(dnsNames, identifier.ACMEIdentifier{
+			Type:  identifier.DNS,
 			Value: randDomain(s.domainBase),
 		})
 	}
 
 	// create the new order request object
 	initOrder := struct {
-		Identifiers []core.AcmeIdentifier
+		Identifiers []identifier.ACMEIdentifier
 	}{
 		Identifiers: dnsNames,
 	}
@@ -580,4 +583,82 @@ func postAsGet(s *State, ctx *context, url string, latencyTag string) (*http.Res
 	requestPayload := []byte(jws.FullSerialize())
 
 	return s.post(url, requestPayload, ctx.ns, latencyTag, http.StatusOK)
+}
+
+func popCertificate(ctx *context) string {
+	certIndex := mrand.Intn(len(ctx.certs))
+	certURL := ctx.certs[certIndex]
+	ctx.certs = append(ctx.certs[:certIndex], ctx.certs[certIndex+1:]...)
+	return certURL
+}
+
+func getCert(s *State, ctx *context, url string) ([]byte, error) {
+	latencyTag := "/acme/cert/{serial}"
+	resp, err := postAsGet(s, ctx, url, latencyTag)
+	if err != nil {
+		return nil, fmt.Errorf("%s bad response: %s", url, err)
+	}
+	defer resp.Body.Close()
+	return ioutil.ReadAll(resp.Body)
+}
+
+// revokeCertificate removes a certificate url from the context, retrieves it,
+// and sends a revocation request for the certificate to the ACME server.
+// The revocation request is signed with the account key rather than the certificate
+// key.
+func revokeCertificate(s *State, ctx *context) error {
+	if len(ctx.certs) < 1 {
+		return errors.New("No certificates in the context that can be revoked")
+	}
+
+	if r := mrand.Float32(); r > s.revokeChance {
+		return nil
+	}
+
+	certURL := popCertificate(ctx)
+	certPEM, err := getCert(s, ctx, certURL)
+	if err != nil {
+		return err
+	}
+
+	pemBlock, _ := pem.Decode(certPEM)
+	revokeObj := struct {
+		Certificate string
+		Reason      int
+	}{
+		Certificate: base64.URLEncoding.EncodeToString(pemBlock.Bytes),
+		Reason:      revocation.Unspecified,
+	}
+
+	revokeJSON, err := json.Marshal(revokeObj)
+	if err != nil {
+		return err
+	}
+	revokeURL := s.directory.EndpointURL(acme.RevokeCertEndpoint)
+	// TODO(roland): randomly use the certificate key to sign the request instead of
+	// the account key
+	jws, err := ctx.signKeyIDV2Request(revokeJSON, revokeURL)
+	if err != nil {
+		return err
+	}
+	requestPayload := []byte(jws.FullSerialize())
+
+	resp, err := s.post(
+		revokeURL,
+		requestPayload,
+		ctx.ns,
+		"/acme/revoke-cert",
+		http.StatusOK,
+	)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	_, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

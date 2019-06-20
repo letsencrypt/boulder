@@ -36,6 +36,7 @@ type Config struct {
 	MaxRegs           int      // maximum number of registrations to create
 	MaxNamesPerCert   int      // maximum number of names on one certificate/order
 	ChallengeStrategy string   // challenge selection strategy ("random", "http-01", "dns-01", "tls-alpn-01")
+	RevokeChance      float32  // chance of revoking certificate after issuance, between 0.0 and 1.0
 }
 
 func main() {
@@ -87,6 +88,7 @@ func main() {
 		config.RegEmail,
 		config.Plan.Actions,
 		config.ChallengeStrategy,
+		config.RevokeChance,
 	)
 	cmd.FailOnError(err, "Failed to create load generator")
 

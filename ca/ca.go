@@ -2,6 +2,7 @@ package ca
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/rand"
@@ -27,7 +28,6 @@ import (
 	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/jmhodges/clock"
 	"github.com/miekg/pkcs11"
-	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/ca/config"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
@@ -128,7 +128,6 @@ type CertificateAuthorityImpl struct {
 	backdate          time.Duration
 	maxNames          int
 	forceCNFromSAN    bool
-	enableMustStaple  bool
 	signatureCount    *prometheus.CounterVec
 	csrExtensionCount *prometheus.CounterVec
 	orphanQueue       *goque.Queue
@@ -273,7 +272,6 @@ func NewCertificateAuthorityImpl(
 		stats:             stats,
 		keyPolicy:         keyPolicy,
 		forceCNFromSAN:    !config.DoNotForceCN, // Note the inversion here
-		enableMustStaple:  config.EnableMustStaple,
 		signatureCount:    signatureCount,
 		csrExtensionCount: csrExtensionCount,
 		orphanQueue:       orphanQueue,
@@ -351,9 +349,7 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 						return nil, berrors.MalformedError("unsupported value for extension with OID %v", ext.Type)
 					}
 
-					if ca.enableMustStaple {
-						extensions = append(extensions, mustStapleExtension)
-					}
+					extensions = append(extensions, mustStapleExtension)
 				case ext.Type.Equal(oidAuthorityInfoAccess),
 					ext.Type.Equal(oidAuthorityKeyIdentifier),
 					ext.Type.Equal(oidBasicConstraints),
@@ -418,45 +414,13 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 	return ocspResponse, err
 }
 
-// IssueCertificate attempts to convert a CSR into a signed Certificate, while
-// enforcing all policies. Names (domains) in the CertificateRequest will be
-// lowercased before storage.
-// Currently it will always sign with the defaultIssuer.
-func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (core.Certificate, error) {
-	emptyCert := core.Certificate{}
-
-	if issueReq.RegistrationID == nil {
-		return emptyCert, berrors.InternalServerError("RegistrationID is nil")
-	}
-
-	// OrderID is an optional field only used by the "ACME v2" issuance flow. If
-	// it isn't nil, then populate the `orderID` var with the request's OrderID.
-	// If it is nil, use the default int64 value of 0.
-	var orderID int64
-	if issueReq.OrderID != nil {
-		orderID = *issueReq.OrderID
-	}
-
-	serialBigInt, validity, err := ca.generateSerialNumberAndValidity()
-	if err != nil {
-		return emptyCert, err
-	}
-
-	certDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, certType)
-	if err != nil {
-		return emptyCert, err
-	}
-
-	return ca.generateOCSPAndStoreCertificate(ctx, *issueReq.RegistrationID, orderID, serialBigInt, certDER)
-}
-
 func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
 	serialBigInt, validity, err := ca.generateSerialNumberAndValidity()
 	if err != nil {
 		return nil, err
 	}
 
-	precertDER, err := ca.issueCertificateOrPrecertificate(ctx, issueReq, serialBigInt, validity, precertType)
+	precertDER, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity, precertType)
 	if err != nil {
 		return nil, err
 	}
@@ -531,7 +495,7 @@ func (ca *CertificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	return serialBigInt, validity, nil
 }
 
-func (ca *CertificateAuthorityImpl) issueCertificateOrPrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest, serialBigInt *big.Int, validity validity, certType certificateType) ([]byte, error) {
+func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *caPB.IssueCertificateRequest, serialBigInt *big.Int, validity validity, certType certificateType) ([]byte, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
 		return nil, err

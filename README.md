@@ -109,14 +109,14 @@ Boulder's default VA configuration (`test/config/va.json`) is configured to conn
 
 ### Working with Certbot
 
-Check out the Certbot client from https://github.com/certbot/certbot and follow their setup instructions. Once you've got the client set up, you'll probably want to run it against your local Boulder. There are a number of command line flags that are necessary to run the client against a local Boulder, and without root access. The simplest way to run the client locally is to source a file that provides an alias for certbot (`certbot_test`) that has all those flags:
+Check out the Certbot client from https://github.com/certbot/certbot and follow their setup instructions. Once you've got the client set up, you'll probably want to run it against your local Boulder. There are a number of command line flags that are necessary to run the client against a local Boulder, and without root access. The simplest way to run the client locally is to use a convenient alias for certbot (`certbot_test`) with a custom `SERVER` environment variable:
 
-    source ~/certbot/tests/integration/_common.sh
-    certbot_test certonly -a standalone -d example.com
+    SERVER=http://localhost:4001/directory certbot_test certonly --standalone -d test.example.com
 
 Your local Boulder instance uses a fake DNS resolver that returns 127.0.0.1 for any query, so you can use any value for the -d flag. To return an answer other than `127.0.0.1` change the Boulder `FAKE_DNS` environment variable to another IP address.
 
-By default Certbot will connect to the ACME v2 API over HTTP. You can customize the `SERVER` environment variable with an alternative ACME directory URL if required.
+To use the legacy ACME v1 API over change `SERVER` to `http://localhost:4000/directory`.
+
 
 ### Working with another ACME Client
 

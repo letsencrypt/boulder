@@ -13,6 +13,7 @@ import (
 
 	"gopkg.in/square/go-jose.v2"
 
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 )
@@ -22,9 +23,6 @@ type AcmeStatus string
 
 // AcmeResource values identify different types of ACME resources
 type AcmeResource string
-
-// IdentifierType defines the available identification mechanisms for domains
-type IdentifierType string
 
 // OCSPStatus defines the state of OCSP for a domain
 type OCSPStatus string
@@ -39,11 +37,6 @@ const (
 	StatusInvalid     = AcmeStatus("invalid")     // Validation failed
 	StatusRevoked     = AcmeStatus("revoked")     // Object no longer valid
 	StatusDeactivated = AcmeStatus("deactivated") // Object has been deactivated
-)
-
-// These types are the available identification mechanisms
-const (
-	IdentifierDNS = IdentifierType("dns")
 )
 
 // The types of ACME resources
@@ -85,16 +78,6 @@ func ValidChallenge(name string) bool {
 
 // DNSPrefix is attached to DNS names in DNS challenges
 const DNSPrefix = "_acme-challenge"
-
-// An AcmeIdentifier encodes an identifier that can
-// be validated by ACME.  The protocol allows for different
-// types of identifier to be supported (DNS names, IP
-// addresses, etc.), but currently we only support
-// domain names.
-type AcmeIdentifier struct {
-	Type  IdentifierType `json:"type"`  // The type of identifier being encoded
-	Value string         `json:"value"` // The identifier itself
-}
 
 // CertificateRequest is just a CSR
 //
@@ -160,9 +143,6 @@ type Registration struct {
 // ValidationRecord represents a validation attempt against a specific URL/hostname
 // and the IP addresses that were resolved and used
 type ValidationRecord struct {
-	// DNS only
-	Authorities []string `json:"-"`
-
 	// SimpleHTTP only
 	URL string `json:"url,omitempty"`
 
@@ -361,7 +341,7 @@ type Authorization struct {
 	ID string `json:"id,omitempty" db:"id"`
 
 	// The identifier for which authorization is being given
-	Identifier AcmeIdentifier `json:"identifier,omitempty" db:"identifier"`
+	Identifier identifier.ACMEIdentifier `json:"identifier,omitempty" db:"identifier"`
 
 	// The registration ID associated with the authorization
 	RegistrationID int64 `json:"regId,omitempty" db:"registrationID"`

@@ -1,6 +1,7 @@
 package sa
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/x509"
 	"database/sql"
@@ -13,7 +14,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"golang.org/x/net/context"
 	"gopkg.in/go-gorp/gorp.v2"
 	jose "gopkg.in/square/go-jose.v2"
 
@@ -21,6 +21,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/revocation"
@@ -512,6 +513,11 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, reg core.Re
 	}
 	err = ssa.dbMap.WithContext(ctx).Insert(rm)
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+			// duplicate entry error can only happen when jwk_sha256 collides, indicate
+			// to caller that the provided key is already in use
+			return reg, berrors.DuplicateError("key is already in use for a different account")
+		}
 		return reg, err
 	}
 	return modelToRegistration(rm)
@@ -573,8 +579,11 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, seri
 func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core.Registration) error {
 	const query = "WHERE id = ?"
 	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, reg.ID)
-	if err == sql.ErrNoRows {
-		return berrors.NotFoundError("registration with ID '%d' not found", reg.ID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return berrors.NotFoundError("registration with ID '%d' not found", reg.ID)
+		}
+		return err
 	}
 
 	updatedRegModel, err := registrationToModel(&reg)
@@ -587,6 +596,11 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	updatedRegModel.LockCol = model.LockCol
 	n, err := ssa.dbMap.WithContext(ctx).Update(updatedRegModel)
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+			// duplicate entry error can only happen when jwk_sha256 collides, indicate
+			// to caller that the provided key is already in use
+			return berrors.DuplicateError("key is already in use for a different account")
+		}
 		return err
 	}
 	if n == 0 {
@@ -658,8 +672,8 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization(
 	ctx context.Context,
 	req *sapb.GetPendingAuthorizationRequest,
 ) (*core.Authorization, error) {
-	identifierJSON, err := json.Marshal(core.AcmeIdentifier{
-		Type:  core.IdentifierType(*req.IdentifierType),
+	identifierJSON, err := json.Marshal(identifier.ACMEIdentifier{
+		Type:  identifier.IdentifierType(*req.IdentifierType),
 		Value: *req.IdentifierValue,
 	})
 	if err != nil {
@@ -746,7 +760,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 
 // RevokeAuthorizationsByDomain invalidates all pending or finalized authorizations
 // for a specific domain
-func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context, ident core.AcmeIdentifier) (int64, int64, error) {
+func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context, ident identifier.ACMEIdentifier) (int64, int64, error) {
 	identifierJSON, err := json.Marshal(ident)
 	if err != nil {
 		return 0, 0, err
@@ -818,8 +832,8 @@ func (ssa *SQLStorageAuthority) revokeAuthorizations2(ctx context.Context, ids [
 func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*corepb.Empty, error) {
 	finalRevoked, pendingRevoked, err := ssa.RevokeAuthorizationsByDomain(
 		ctx,
-		core.AcmeIdentifier{
-			Type:  core.IdentifierDNS,
+		identifier.ACMEIdentifier{
+			Type:  identifier.DNS,
 			Value: *req.Domain,
 		})
 	if err != nil {
@@ -1000,8 +1014,8 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations(
 	ctx context.Context,
 	req *sapb.CountInvalidAuthorizationsRequest,
 ) (count *sapb.Count, err error) {
-	identifier := core.AcmeIdentifier{
-		Type:  core.IdentifierDNS,
+	identifier := identifier.ACMEIdentifier{
+		Type:  identifier.DNS,
 		Value: *req.Hostname,
 	}
 
@@ -1907,7 +1921,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations(
 	byName := make(map[string]*core.Authorization)
 	for _, auth := range auths {
 		// We only expect to get back DNS identifiers
-		if auth.Identifier.Type != core.IdentifierDNS {
+		if auth.Identifier.Type != identifier.DNS {
 			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
 		}
 		existing, present := byName[auth.Identifier.Value]
@@ -1981,7 +1995,7 @@ func (ssa *SQLStorageAuthority) getAuthorizations(
 	params := make([]interface{}, len(names))
 	qmarks := make([]string, len(names))
 	for i, name := range names {
-		id := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
+		id := identifier.ACMEIdentifier{Type: identifier.DNS, Value: name}
 		idJSON, err := json.Marshal(id)
 		if err != nil {
 			return nil, err
@@ -2022,7 +2036,7 @@ func (ssa *SQLStorageAuthority) getAuthorizations(
 			continue
 		}
 
-		if auth.Identifier.Type != core.IdentifierDNS {
+		if auth.Identifier.Type != identifier.DNS {
 			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
 		}
 		existing, present := byName[auth.Identifier.Value]
@@ -2497,7 +2511,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 
 	byName := make(map[string]authz2Model)
 	for _, am := range ams {
-		if uintToIdentifierType[am.IdentifierType] != string(core.IdentifierDNS) {
+		if uintToIdentifierType[am.IdentifierType] != string(identifier.DNS) {
 			return nil, fmt.Errorf("unknown identifier type: %q on authz id %d", am.IdentifierType, am.ID)
 		}
 		existing, present := byName[am.IdentifierValue]
@@ -2599,7 +2613,7 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 	authzMap := make(map[string]authz2Model, len(authzModels))
 	for _, am := range authzModels {
 		// Only allow DNS identifiers
-		if uintToIdentifierType[am.IdentifierType] != string(core.IdentifierDNS) {
+		if uintToIdentifierType[am.IdentifierType] != string(identifier.DNS) {
 			continue
 		}
 		// If there is an existing authorization in the map only replace it with one

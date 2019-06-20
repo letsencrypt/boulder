@@ -361,13 +361,27 @@ def test_overlapping_wildcard():
     finally:
         cleanup()
 
+def test_highrisk_blocklist():
+    """
+    Test issuance for a subdomain of a HighRiskBlockedNames entry. It should
+    fail with a policy error.
+    """
+
+    # We include "example.org" in `test/hostname-policy.yaml` in the
+    # HighRiskBlockedNames list so issuing for "foo.example.org" should be
+    # blocked.
+    domain = "foo.example.org"
+    # We expect this to produce a policy problem
+    chisel2.expect_problem("urn:ietf:params:acme:error:rejectedIdentifier",
+        lambda: chisel2.auth_and_issue([domain], chall_type="dns-01"))
+
 def test_wildcard_exactblacklist():
     """
     Test issuance for a wildcard that would cover an exact blacklist entry. It
     should fail with a policy error.
     """
 
-    # We include "highrisk.le-test.hoffman-andrews.com" in `test/hostname-policy.json`
+    # We include "highrisk.le-test.hoffman-andrews.com" in `test/hostname-policy.yaml`
     # Issuing for "*.le-test.hoffman-andrews.com" should be blocked
     domain = "*.le-test.hoffman-andrews.com"
     # We expect this to produce a policy problem
@@ -440,18 +454,20 @@ def test_order_reuse_failed_authz():
     # Answer it, but with nothing set up to solve the challenge request
     client.answer_challenge(chall_body, chall_body.response(client.net.key))
 
-    # Poll for a fixed amount of time checking for the order to become invalid
-    # from the authorization attempt initiated above failing
     deadline = datetime.datetime.now() + datetime.timedelta(seconds=60)
-    while datetime.datetime.now() < deadline:
-        time.sleep(1)
-        updatedOrder = requests.get(firstOrderURI).json()
-        if updatedOrder['status'] == "invalid":
-            break
+    authzFailed = False
+    try:
+        # Poll the order's authorizations until they are non-pending, a timeout
+        # occurs, or there is an invalid authorization status.
+        client.poll_authorizations(order, deadline)
+    except acme_errors.ValidationError as e:
+        # We expect there to be a ValidationError from one of the authorizations
+        # being invalid.
+        authzFailed = True
 
-    # If the loop ended and the status isn't invalid then we reached the
-    # deadline waiting for the order to become invalid, fail the test
-    if updatedOrder['status'] != "invalid":
+    # If the poll ended and an authz's status isn't invalid then we reached the
+    # deadline, fail the test
+    if not authzFailed:
         raise Exception("timed out waiting for order %s to become invalid" % firstOrderURI)
 
     # Make another order with the same domains
@@ -885,6 +901,36 @@ def test_authz2_reuse():
             raise Exception("Expected to reuse authzs %s, but got %s" % (authz_uris, a.uri))
     if len(authz_uris) != 0:
         raise Exception("Failed to reuse all authzs")
+
+def test_new_order_policy_errs():
+    """
+    Test that creating an order with policy blocked identifiers returns
+    a problem with subproblems.
+    """
+    client = chisel2.make_client(None)
+
+    # 'in-addr.arpa' is present in `test/hostname-policy.yaml`'s
+    # HighRiskBlockedNames list. 
+    csr_pem = chisel2.make_csr(["out-addr.in-addr.arpa", "between-addr.in-addr.arpa"])
+
+    # With two policy blocked names in the order we expect to get back a top
+    # level rejectedIdentifier with a detail message that references
+    # subproblems.
+    #
+    # TODO(@cpu): After https://github.com/certbot/certbot/issues/7046 is
+    # implemented in the upstream `acme` module this test should also ensure the
+    # subproblems are properly represented.
+    ok = False
+    try:
+        order = client.new_order(csr_pem)
+    except messages.Error as e:
+        ok = True
+        if e.typ != "urn:ietf:params:acme:error:rejectedIdentifier":
+            raise Exception('Expected rejectedIdentifier type problem, got {0}'.format(e.typ))
+        if e.detail != 'Error creating new order :: Policy forbids issuing for "out-addr.in-addr.arpa" and 1 more identifiers. Refer to sub-problems for more information':
+            raise Exception('Order problem detail did not match expected')
+    if not ok:
+        raise Exception('Expected problem, got no error')
 
 def run(cmd, **kwargs):
     return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)
