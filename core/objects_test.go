@@ -150,9 +150,9 @@ func TestChallengeStringID(t *testing.T) {
 		Token: "asd",
 		Type:  ChallengeTypeDNS01,
 	}
-	test.AssertEquals(t, ch.StringID(), "iFVMwA==")
+	test.AssertEquals(t, ch.StringID(), "iFVMwA")
 	ch.Type = ChallengeTypeHTTP01
-	test.AssertEquals(t, ch.StringID(), "0Gexug==")
+	test.AssertEquals(t, ch.StringID(), "0Gexug")
 }
 
 func TestFindChallengeByType(t *testing.T) {
