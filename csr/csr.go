@@ -88,9 +88,15 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 // If forceCNFromSAN is true it will also hoist a dNSName into the CN if it is empty.
 func normalizeCSR(csr *x509.CertificateRequest, forceCNFromSAN bool) {
 	if forceCNFromSAN && csr.Subject.CommonName == "" {
-		if len(csr.DNSNames) > 0 {
-			csr.Subject.CommonName = csr.DNSNames[0]
+		var forcedCN string
+		// Promote the first SAN that is less than maxCNLength (if any)
+		for _, name := range csr.DNSNames {
+			if len(name) <= maxCNLength {
+				forcedCN = name
+				break
+			}
 		}
+		csr.Subject.CommonName = forcedCN
 	} else if csr.Subject.CommonName != "" {
 		csr.DNSNames = append(csr.DNSNames, csr.Subject.CommonName)
 	}
