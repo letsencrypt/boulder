@@ -13,6 +13,8 @@ github.com/beorn7/perks v0.0.0-20160229213445-3ac7bf7a47d1/go.mod h1:Dwedo/Wpr24
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
 github.com/cloudflare/cfssl v0.0.0-20190409034051-768cd563887f h1:+2gpkLTePKn3qDlYFOF5HnOLn+Hti/n4Iqk5jBFA7KU=
 github.com/cloudflare/cfssl v0.0.0-20190409034051-768cd563887f/go.mod h1:yMWuSON2oQp+43nFtAV/uvKQIFpSPerB57DCt9t8sSA=
+github.com/cloudflare/cfssl v0.0.0-20190616170404-1bf3e59ec1cf h1:0/1jvWAjicn0BZTNnv5KLnf29+B01Yh1O0BMLrgOCb0=
+github.com/cloudflare/cfssl v0.0.0-20190616170404-1bf3e59ec1cf/go.mod h1:yMWuSON2oQp+43nFtAV/uvKQIFpSPerB57DCt9t8sSA=
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
