@@ -33,6 +33,11 @@ const (
 	// NewAuthorizationSchema enables usage of the new authorization storage schema
 	// and associated RPCs.
 	NewAuthorizationSchema
+	// DisableAuthz2Orders prevents returning orders containing authz2 authorizations
+	// from the SA. If a order containing authz2 authorizations is queried a NotFound
+	// error will be returned. DisableAuthz2Orders should only be enabled if the authz2
+	// schema is in place.
+	DisableAuthz2Orders
 	// EarlyOrderRateLimit enables the RA applying certificate per name/per FQDN
 	// set rate limits in NewOrder in addition to FinalizeOrder.
 	EarlyOrderRateLimit
@@ -75,6 +80,7 @@ var features = map[FeatureFlag]bool{
 	FasterRateLimit:          false,
 	CheckRenewalFirst:        false,
 	MandatoryPOSTAsGET:       false,
+	DisableAuthz2Orders:      false,
 }
 
 var fMu = new(sync.RWMutex)

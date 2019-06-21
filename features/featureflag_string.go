@@ -22,17 +22,18 @@ func _() {
 	_ = x[CAAAccountURI-11]
 	_ = x[HeadNonceStatusOK-12]
 	_ = x[NewAuthorizationSchema-13]
-	_ = x[EarlyOrderRateLimit-14]
-	_ = x[EnforceMultiVA-15]
-	_ = x[MultiVAFullResults-16]
-	_ = x[RemoveWFE2AccountID-17]
-	_ = x[CheckRenewalFirst-18]
-	_ = x[MandatoryPOSTAsGET-19]
+	_ = x[DisableAuthz2Orders-14]
+	_ = x[EarlyOrderRateLimit-15]
+	_ = x[EnforceMultiVA-16]
+	_ = x[MultiVAFullResults-17]
+	_ = x[RemoveWFE2AccountID-18]
+	_ = x[CheckRenewalFirst-19]
+	_ = x[MandatoryPOSTAsGET-20]
 }
 
-const _FeatureFlag_name = "unusedPerformValidationRPCACME13KeyRolloverSimplifiedVAHTTPTLSSNIRevalidationAllowRenewalFirstRLSetIssuedNamesRenewalBitFasterRateLimitProbeCTLogsRevokeAtRACAAValidationMethodsCAAAccountURIHeadNonceStatusOKNewAuthorizationSchemaEarlyOrderRateLimitEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountIDCheckRenewalFirstMandatoryPOSTAsGET"
+const _FeatureFlag_name = "unusedPerformValidationRPCACME13KeyRolloverSimplifiedVAHTTPTLSSNIRevalidationAllowRenewalFirstRLSetIssuedNamesRenewalBitFasterRateLimitProbeCTLogsRevokeAtRACAAValidationMethodsCAAAccountURIHeadNonceStatusOKNewAuthorizationSchemaDisableAuthz2OrdersEarlyOrderRateLimitEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountIDCheckRenewalFirstMandatoryPOSTAsGET"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 26, 43, 59, 77, 96, 120, 135, 146, 156, 176, 189, 206, 228, 247, 261, 279, 298, 315, 333}
+var _FeatureFlag_index = [...]uint16{0, 6, 26, 43, 59, 77, 96, 120, 135, 146, 156, 176, 189, 206, 228, 247, 266, 280, 298, 317, 334, 352}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

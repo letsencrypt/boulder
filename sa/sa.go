@@ -1602,9 +1602,13 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	if req.UseV2Authorizations != nil {
 		useV2Authzs = *req.UseV2Authorizations
 	}
+	useV2Authzs = useV2Authzs || features.Enabled(features.DisableAuthz2Orders)
 	v1AuthzIDs, v2AuthzIDs, err := ssa.authzForOrder(ctx, *order.Id, useV2Authzs)
 	if err != nil {
 		return nil, err
+	}
+	if features.Enabled(features.DisableAuthz2Orders) && len(order.V2Authorizations) {
+		return nil, berrors.NotFoundError("no order found for ID %d", *req.Id)
 	}
 	order.Authorizations, order.V2Authorizations = v1AuthzIDs, v2AuthzIDs
 
