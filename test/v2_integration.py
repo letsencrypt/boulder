@@ -524,7 +524,7 @@ def test_revoke_by_issuer():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
     ee_ocsp_url = "http://localhost:4002"
-    verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "revoked")
     verify_akamai_purge()
 
 def test_revoke_by_authz():
@@ -544,7 +544,7 @@ def test_revoke_by_authz():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
     ee_ocsp_url = "http://localhost:4002"
-    verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "revoked")
     verify_akamai_purge()
 
 def test_revoke_by_privkey():
@@ -577,7 +577,7 @@ def test_revoke_by_privkey():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
     ee_ocsp_url = "http://localhost:4002"
-    verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "revoked")
     verify_akamai_purge()
 
 def test_sct_embedding():

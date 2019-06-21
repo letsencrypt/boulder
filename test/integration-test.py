@@ -18,6 +18,7 @@ import re
 import requests
 import subprocess
 import signal
+import time
 
 import startservers
 
@@ -116,10 +117,11 @@ def test_single_ocsp():
 
     p = subprocess.Popen(
         './bin/ocsp-responder --config test/issuer-ocsp-responder.json', shell=True)
+    waitport(4003, './bin/ocsp-responder --config test/issuer-ocsp-responder.json')
 
     # Verify that the static OCSP responder, which answers with a
     # pre-signed, long-lived response for the CA cert, works.
-    wait_for_ocsp_good("test/test-ca2.pem", "test/test-root.pem", "http://localhost:4003")
+    verify_ocsp("test/test-ca2.pem", "test/test-root.pem", "http://localhost:4003", "good")
 
     p.send_signal(signal.SIGTERM)
     p.wait()

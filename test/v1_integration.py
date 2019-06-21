@@ -363,7 +363,7 @@ def test_ocsp():
 
     # As OCSP-Updater is generating responses independently of the CA we sit in a loop
     # checking OCSP until we either see a good response or we timeout (5s).
-    wait_for_ocsp_good(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "good")
 
 def test_ct_submission():
     hostname = random_domain()
@@ -421,7 +421,7 @@ def test_revoke_by_account():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert.body.wrapped).decode())
     ee_ocsp_url = "http://localhost:4002"
-    verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "revoked")
     verify_akamai_purge()
     return 0
 
@@ -582,7 +582,7 @@ def test_admin_revoker_cert():
         default_config_dir, serial, 1))
     # Wait for OCSP response to indicate revocation took place
     ee_ocsp_url = "http://localhost:4002"
-    verify_revocation(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url)
+    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "revoked")
     verify_akamai_purge()
 
 def test_admin_revoker_authz():
