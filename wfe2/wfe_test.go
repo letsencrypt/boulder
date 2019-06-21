@@ -1557,7 +1557,7 @@ func TestGetAuthorization(t *testing.T) {
 			{
 				"type": "dns",
 				"token":"token",
-				"url": "http://localhost/acme/challenge/v2/1/-ZfxEw=="
+				"url": "http://localhost/acme/challenge/v2/1/-ZfxEw"
 			}
 		]
 	}`)
@@ -1580,7 +1580,7 @@ func TestGetAuthorization(t *testing.T) {
 			{
 				"type": "dns",
 				"token":"token",
-				"url": "http://localhost/acme/challenge/v2/1/-ZfxEw=="
+				"url": "http://localhost/acme/challenge/v2/1/-ZfxEw"
 			}
 		]
 	}`)
@@ -2920,7 +2920,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	authz.V2 = true
 	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
 	chal = authz.Challenges[0]
-	test.AssertEquals(t, chal.URL, "http://localhost/acme/challenge/v2/12345/po1V2w==")
+	test.AssertEquals(t, chal.URL, "http://localhost/acme/challenge/v2/12345/po1V2w")
 	test.AssertEquals(t, chal.URI, "")
 }
 
@@ -2978,9 +2978,9 @@ func TestChallengeNewIDScheme(t *testing.T) {
 			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/23"}`,
 		},
 		{
-			path:     "v2/1/-ZfxEw==",
-			location: "http://localhost/acme/challenge/v2/1/-ZfxEw==",
-			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/v2/1/-ZfxEw=="}`,
+			path:     "v2/1/-ZfxEw",
+			location: "http://localhost/acme/challenge/v2/1/-ZfxEw",
+			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/v2/1/-ZfxEw"}`,
 		},
 	} {
 		resp := httptest.NewRecorder()
@@ -3010,9 +3010,9 @@ func TestChallengeNewIDScheme(t *testing.T) {
 			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/23"}`,
 		},
 		{
-			path:     "v2/1/-ZfxEw==",
-			location: "http://localhost/acme/challenge/v2/1/-ZfxEw==",
-			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/v2/1/-ZfxEw=="}`,
+			path:     "v2/1/-ZfxEw",
+			location: "http://localhost/acme/challenge/v2/1/-ZfxEw",
+			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/v2/1/-ZfxEw"}`,
 		},
 	} {
 		resp := httptest.NewRecorder()
@@ -3123,11 +3123,11 @@ func TestGetChallengeV2UpRel(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
 
-	challengeURL := "http://localhost/acme/challenge/v2/1/-ZfxEw=="
+	challengeURL := "http://localhost/acme/challenge/v2/1/-ZfxEw"
 	resp := httptest.NewRecorder()
 
 	req, err := http.NewRequest("GET", challengeURL, nil)
-	req.URL.Path = "v2/1/-ZfxEw=="
+	req.URL.Path = "v2/1/-ZfxEw"
 	test.AssertNotError(t, err, "Could not make NewRequest")
 
 	wfe.Challenge(ctx, newRequestEvent(), resp, req)
