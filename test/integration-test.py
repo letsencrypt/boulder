@@ -174,14 +174,13 @@ def main():
 
     caa_client = None
     if not args.skip_setup:
-        # XXX
-        #now = datetime.datetime.utcnow()
-        #seventy_days_ago = now+datetime.timedelta(days=-70)
-        #if not startservers.start(race_detection=True, fakeclock=fakeclock(seventy_days_ago)):
-            #raise Exception("startservers failed (mocking seventy days ago)")
-        #setup_seventy_days_ago()
-        #v1_integration.caa_client = caa_client = chisel.make_client()
-        #startservers.stop()
+        now = datetime.datetime.utcnow()
+        seventy_days_ago = now+datetime.timedelta(days=-70)
+        if not startservers.start(race_detection=True, fakeclock=fakeclock(seventy_days_ago)):
+            raise Exception("startservers failed (mocking seventy days ago)")
+        setup_seventy_days_ago()
+        v1_integration.caa_client = caa_client = chisel.make_client()
+        startservers.stop()
 
         # For the twenty-days-ago setup, use the opposite of the config dir that
         # we're using for the main tests. This lets us test the transition to
@@ -193,7 +192,6 @@ def main():
         twenty_days_ago = now+datetime.timedelta(days=-20)
         if not startservers.start(race_detection=True, fakeclock=fakeclock(twenty_days_ago), config_dir=old_config):
             raise Exception("startservers failed (mocking twenty days ago)")
-        v1_integration.caa_client = caa_client = chisel.make_client()
         setup_twenty_days_ago()
         startservers.stop()
 
@@ -224,9 +222,8 @@ def main():
     # Run the load-generator last. run_loadtest will stop the
     # pebble-challtestsrv before running the load-generator and will not restart
     # it.
-    # XXX
-    #if args.run_all or args.run_loadtest:
-        #run_loadtest()
+    if args.run_all or args.run_loadtest:
+        run_loadtest()
 
     if not startservers.check():
         raise Exception("startservers.check failed")
