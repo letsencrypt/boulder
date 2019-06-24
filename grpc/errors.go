@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 
@@ -27,10 +28,29 @@ func wrapError(ctx context.Context, err error) error {
 		return nil
 	}
 	if berr, ok := err.(*berrors.BoulderError); ok {
+		pairs := []string{
+			"errortype", strconv.Itoa(int(berr.Type)),
+		}
+
+		// If there are suberrors then extend the metadata pairs to include the JSON
+		// marshaling of the suberrors. Errors in marshaling are not ignored and
+		// instead result in a return of an explicit InternalServerError and not
+		// a wrapped error missing suberrors.
+		if len(berr.SubErrors) > 0 {
+			jsonSubErrs, err := json.Marshal(berr.SubErrors)
+			if err != nil {
+				return berrors.InternalServerError(
+					"error marshaling json SubErrors, orig error %q",
+					err)
+			}
+			pairs = append(pairs, "suberrors")
+			pairs = append(pairs, string(jsonSubErrs))
+		}
+
 		// Ignoring the error return here is safe because if setting the metadata
 		// fails, we'll still return an error, but it will be interpreted on the
 		// other side as an InternalServerError instead of a more specific one.
-		_ = grpc.SetTrailer(ctx, metadata.Pairs("errortype", strconv.Itoa(int(berr.Type))))
+		_ = grpc.SetTrailer(ctx, metadata.Pairs(pairs...))
 		return grpc.Errorf(codes.Unknown, err.Error())
 	}
 	return grpc.Errorf(codes.Unknown, err.Error())
@@ -60,7 +80,25 @@ func unwrapError(err error, md metadata.MD) error {
 				unwrappedErr,
 			)
 		}
-		return berrors.New(berrors.ErrorType(errType), unwrappedErr)
+		outErr := berrors.New(berrors.ErrorType(errType), unwrappedErr)
+		if subErrsJSON, ok := md["suberrors"]; ok {
+			if len(subErrsJSON) != 1 {
+				return berrors.InternalServerError(
+					"multiple suberrors metadata, wrapped error %q",
+					unwrappedErr,
+				)
+			}
+			var suberrs []berrors.SubBoulderError
+			if err := json.Unmarshal([]byte(subErrsJSON[0]), &suberrs); err != nil {
+				return berrors.InternalServerError(
+					"error unmarshaling suberrs JSON %q, wrapped error %q",
+					subErrsJSON[0],
+					unwrappedErr,
+				)
+			}
+			outErr = (outErr.(*berrors.BoulderError)).WithSubErrors(suberrs)
+		}
+		return outErr
 	}
 	return err
 }

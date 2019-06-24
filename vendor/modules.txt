@@ -4,7 +4,7 @@ github.com/asaskevich/govalidator
 github.com/beeker1121/goque
 # github.com/beorn7/perks v0.0.0-20160229213445-3ac7bf7a47d1
 github.com/beorn7/perks/quantile
-# github.com/cloudflare/cfssl v0.0.0-20190409034051-768cd563887f
+# github.com/cloudflare/cfssl v0.0.0-20190616170404-1bf3e59ec1cf
 github.com/cloudflare/cfssl/config
 github.com/cloudflare/cfssl/errors
 github.com/cloudflare/cfssl/ocsp

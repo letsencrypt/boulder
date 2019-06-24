@@ -1118,11 +1118,11 @@ func TestGetChallengeV2UpRel(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
 
-	challengeURL := "http://localhost/acme/challenge/v2/1/-ZfxEw=="
+	challengeURL := "http://localhost/acme/challenge/v2/1/-ZfxEw"
 	resp := httptest.NewRecorder()
 
 	req, err := http.NewRequest("GET", challengeURL, nil)
-	req.URL.Path = "v2/1/-ZfxEw=="
+	req.URL.Path = "v2/1/-ZfxEw"
 	test.AssertNotError(t, err, "Could not make NewRequest")
 
 	wfe.Challenge(ctx, newRequestEvent(), resp, req)
@@ -1886,7 +1886,7 @@ func TestAuthorization(t *testing.T) {
 			{
 				"type": "dns",
 				"token":"token",
-				"uri": "http://localhost/acme/challenge/v2/1/-ZfxEw=="
+				"uri": "http://localhost/acme/challenge/v2/1/-ZfxEw"
 			}
 		]
 	}`)
@@ -2588,7 +2588,7 @@ func TestPrepChallengeForDisplay(t *testing.T) {
 	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
 	authz.V2 = true
 	wfe.prepChallengeForDisplay(req, authz, chall)
-	test.AssertEquals(t, chall.URI, "http://example.com/acme/challenge/v2/eyup/iFVMwA==")
+	test.AssertEquals(t, chall.URI, "http://example.com/acme/challenge/v2/eyup/iFVMwA")
 }
 
 // noSCTMockRA is a mock RA that always returns a `berrors.MissingSCTsError` from `NewCertificate`
@@ -2671,9 +2671,9 @@ func TestChallengeNewIDScheme(t *testing.T) {
 			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`,
 		},
 		{
-			path:     "v2/1/-ZfxEw==",
-			location: "http://localhost/acme/challenge/v2/1/-ZfxEw==",
-			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/v2/1/-ZfxEw=="}`,
+			path:     "v2/1/-ZfxEw",
+			location: "http://localhost/acme/challenge/v2/1/-ZfxEw",
+			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/v2/1/-ZfxEw"}`,
 		},
 	} {
 		resp := httptest.NewRecorder()
@@ -2703,9 +2703,9 @@ func TestChallengeNewIDScheme(t *testing.T) {
 			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`,
 		},
 		{
-			path:     "v2/1/-ZfxEw==",
-			location: "http://localhost/acme/challenge/v2/1/-ZfxEw==",
-			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/v2/1/-ZfxEw=="}`,
+			path:     "v2/1/-ZfxEw",
+			location: "http://localhost/acme/challenge/v2/1/-ZfxEw",
+			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/v2/1/-ZfxEw"}`,
 		},
 	} {
 		resp := httptest.NewRecorder()

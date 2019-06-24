@@ -328,7 +328,7 @@ func (ch Challenge) StringID() string {
 	h := fnv.New128a()
 	h.Write([]byte(ch.Token))
 	h.Write([]byte(ch.Type))
-	return base64.URLEncoding.EncodeToString(h.Sum(nil)[0:4])
+	return base64.RawURLEncoding.EncodeToString(h.Sum(nil)[0:4])
 }
 
 // Authorization represents the authorization of an account key holder

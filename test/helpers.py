@@ -102,9 +102,9 @@ def reset_akamai_purges():
     urllib2.urlopen("http://localhost:6789/debug/reset-purges", "{}")
 
 def verify_akamai_purge():
-    deadline = time.time() + 10
+    deadline = time.time() + 0.25
     while True:
-        time.sleep(0.25)
+        time.sleep(0.05)
         if time.time() > deadline:
             raise Exception("Timed out waiting for Akamai purge")
         response = urllib2.urlopen("http://localhost:6789/debug/get-purges")
