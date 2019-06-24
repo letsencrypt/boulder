@@ -875,6 +875,32 @@ def test_http2_http01_challenge():
         server.server_close()
         thread.join()
 
+z1 = type('', (), {})()
+z1.reuse_client = None
+z1.reuse_authzs = []
+@register_twenty_days_ago
+def z1_reuse_setup():
+    """Runs during "setup_twenty_days_ago" phase."""
+    z1.reuse_client = chisel2.make_client()
+    order = chisel2.auth_and_issue([random_domain()], client=z1.reuse_client)
+    for a in order.authorizations:
+        z1.reuse_authzs.append(a)
+
+def test_z1_reuse():
+    reuse_domains = []
+    authz_uris = set()
+    for a in z1.reuse_authzs:
+        authz_uris.add(a.uri)
+        reuse_domains.append(a.body.identifier.value)
+    order = chisel2.auth_and_issue(reuse_domains, client=z1.reuse_client)
+    for a in order.authorizations:
+        try:
+            authz_uris.remove(a.uri)
+        except KeyError as e:
+            raise Exception("Expected to reuse authzs %s, but got %s" % (authz_uris, a.uri))
+    if len(authz_uris) != 0:
+        raise Exception("Failed to reuse all authzs")
+
 authz2_reuse_client = None
 authz2_reuse_authzs = []
 @register_twenty_days_ago
