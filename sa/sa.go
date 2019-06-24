@@ -20,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -1607,7 +1608,7 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	if err != nil {
 		return nil, err
 	}
-	if features.Enabled(features.DisableAuthz2Orders) && len(order.V2Authorizations) {
+	if features.Enabled(features.DisableAuthz2Orders) && len(v2AuthzIDs) > 0 {
 		return nil, berrors.NotFoundError("no order found for ID %d", *req.Id)
 	}
 	order.Authorizations, order.V2Authorizations = v1AuthzIDs, v2AuthzIDs

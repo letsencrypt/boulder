@@ -3410,3 +3410,61 @@ func TestGetValidAuthorizations2(t *testing.T) {
 	test.AssertEquals(t, *authzs.Authz[1].Domain, "bbb")
 	test.AssertEquals(t, *authzs.Authz[1].Authz.Id, oldPA.ID)
 }
+
+func TestDisableAuthz2Orders(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	exp := fc.Now().Add(time.Hour).UnixNano()
+	v2 := true
+	ident := "aaa"
+	pending := string(core.StatusPending)
+	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
+	challType := string(core.ChallengeTypeDNS01)
+	token := "YXNkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	ids, err := sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{&corepb.Authorization{
+		V2:             &v2,
+		Identifier:     &ident,
+		RegistrationID: &reg.ID,
+		Status:         &pending,
+		Expires:        &expires,
+		Challenges: []*corepb.Challenge{
+			{
+				Status: &pending,
+				Type:   &challType,
+				Token:  &token,
+			},
+		},
+	}}})
+	test.AssertNotError(t, err, "sa.NewAuthorization failed")
+	status := string(core.StatusValid)
+	order, err := sa.NewOrder(context.Background(), &corepb.Order{
+		RegistrationID:   &reg.ID,
+		Expires:          &exp,
+		Names:            []string{"aaa"},
+		V2Authorizations: []int64{ids.Ids[0]},
+		Status:           &status,
+	})
+	test.AssertNotError(t, err, "sa.NewOrder failed")
+
+	useV2Authz := true
+	_, err = sa.GetOrder(context.Background(), &sapb.OrderRequest{
+		Id:                  order.Id,
+		UseV2Authorizations: &useV2Authz,
+	})
+	test.AssertNotError(t, err, "GetOrder failed")
+
+	features.Set(map[string]bool{"DisableAuthz2Orders": true})
+	useV2Authz = false
+	_, err = sa.GetOrder(context.Background(), &sapb.OrderRequest{
+		Id:                  order.Id,
+		UseV2Authorizations: &useV2Authz,
+	})
+	test.AssertError(t, err, "GetOrder didn't fail with DisableAuthz2Orders enabled")
+	test.Assert(t, berrors.Is(err, berrors.NotFound), "GetOrder error was not NotFound")
+}
