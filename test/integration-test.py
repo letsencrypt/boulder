@@ -172,14 +172,12 @@ def main():
     if not (args.run_all or args.run_certbot or args.run_chisel or args.run_loadtest or args.custom is not None):
         raise Exception("must run at least one of the letsencrypt or chisel tests with --all, --certbot, --chisel, --load or --custom")
 
-    caa_client = None
     if not args.skip_setup:
         now = datetime.datetime.utcnow()
         seventy_days_ago = now+datetime.timedelta(days=-70)
         if not startservers.start(race_detection=True, fakeclock=fakeclock(seventy_days_ago)):
             raise Exception("startservers failed (mocking seventy days ago)")
         setup_seventy_days_ago()
-        v1_integration.caa_client = caa_client = chisel.make_client()
         startservers.stop()
 
         now = datetime.datetime.utcnow()
