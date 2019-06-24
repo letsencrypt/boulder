@@ -5,7 +5,7 @@ import urllib2
 import time
 import re
 import random
-import requests
+import json
 import socket
 import tempfile
 import shutil
@@ -99,7 +99,7 @@ def verify_ocsp(cert_file, issuer_file, url, status):
         raise Exception("OCSP response wasn't '%s'" % status)
 
 def reset_akamai_purges():
-    requests.post("http://localhost:6789/debug/reset-purges")
+    urllib2.urlopen("http://localhost:6789/debug/reset-purges", "{}")
 
 def verify_akamai_purge():
     deadline = time.time() + 10
@@ -107,8 +107,8 @@ def verify_akamai_purge():
         time.sleep(0.25)
         if time.time() > deadline:
             raise Exception("Timed out waiting for Akamai purge")
-        response = requests.get("http://localhost:6789/debug/get-purges")
-        purgeData = response.json()
+        response = urllib2.urlopen("http://localhost:6789/debug/get-purges")
+        purgeData = json.load(response)
         if len(purgeData["V3"]) is not 1:
             continue
         break
