@@ -1603,6 +1603,10 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	if req.UseV2Authorizations != nil {
 		useV2Authzs = *req.UseV2Authorizations
 	}
+	// we set useV2Authzs if DisableAuthz2Orders is enabled as actually looking for v2
+	// authorizations is the only way to tell if an order contains them, otherwise
+	// we will fail due to the number of authorizations not matching the number of names
+	// in the order.
 	useV2Authzs = useV2Authzs || features.Enabled(features.DisableAuthz2Orders)
 	v1AuthzIDs, v2AuthzIDs, err := ssa.authzForOrder(ctx, *order.Id, useV2Authzs)
 	if err != nil {

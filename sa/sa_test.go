@@ -3459,7 +3459,7 @@ func TestDisableAuthz2Orders(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "GetOrder failed")
 
-	features.Set(map[string]bool{"DisableAuthz2Orders": true})
+	_ = features.Set(map[string]bool{"DisableAuthz2Orders": true})
 	useV2Authz = false
 	_, err = sa.GetOrder(context.Background(), &sapb.OrderRequest{
 		Id:                  order.Id,
