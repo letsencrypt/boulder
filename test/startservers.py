@@ -43,7 +43,7 @@ def run(cmd, race_detection, fakeclock):
     p.cmd = cmd
     return p
 
-def start(race_detection, fakeclock=None):
+def start(race_detection, fakeclock=None, config_dir=default_config_dir):
     """Return True if everything builds and starts.
 
     Give up and return False if anything fails to build, or dies at
@@ -63,33 +63,33 @@ def start(race_detection, fakeclock=None):
     # before any services that intend to send it RPCs. On shutdown they will be
     # killed in reverse order.
     progs = []
-    if default_config_dir.startswith("test/config-next"):
+    if config_dir.startswith("test/config-next"):
         # Run the two 'remote' VAs
         progs.extend([
-            [8011, './bin/boulder-remoteva --config %s' % os.path.join(default_config_dir, "va-remote-a.json")],
-            [8012, './bin/boulder-remoteva --config %s' % os.path.join(default_config_dir, "va-remote-b.json")],
+            [8011, './bin/boulder-remoteva --config %s' % os.path.join(config_dir, "va-remote-a.json")],
+            [8012, './bin/boulder-remoteva --config %s' % os.path.join(config_dir, "va-remote-b.json")],
         ])
     progs.extend([
         [53, './bin/sd-test-srv --listen :53'], # Service discovery DNS server
-        [8003, './bin/boulder-sa --config %s --addr sa1.boulder:9095 --debug-addr :8003' % os.path.join(default_config_dir, "sa.json")],
-        [8103, './bin/boulder-sa --config %s --addr sa2.boulder:9095 --debug-addr :8103' % os.path.join(default_config_dir, "sa.json")],
+        [8003, './bin/boulder-sa --config %s --addr sa1.boulder:9095 --debug-addr :8003' % os.path.join(config_dir, "sa.json")],
+        [8103, './bin/boulder-sa --config %s --addr sa2.boulder:9095 --debug-addr :8103' % os.path.join(config_dir, "sa.json")],
         [4500, './bin/ct-test-srv --config test/ct-test-srv/ct-test-srv.json'],
-        [8009, './bin/boulder-publisher --config %s --addr publisher1.boulder:9091 --debug-addr :8009' % os.path.join(default_config_dir, "publisher.json")],
-        [8109, './bin/boulder-publisher --config %s --addr publisher2.boulder:9091 --debug-addr :8109' % os.path.join(default_config_dir, "publisher.json")],
+        [8009, './bin/boulder-publisher --config %s --addr publisher1.boulder:9091 --debug-addr :8009' % os.path.join(config_dir, "publisher.json")],
+        [8109, './bin/boulder-publisher --config %s --addr publisher2.boulder:9091 --debug-addr :8109' % os.path.join(config_dir, "publisher.json")],
         [9380, './bin/mail-test-srv --closeFirst 5 --cert test/mail-test-srv/localhost/cert.pem --key test/mail-test-srv/localhost/key.pem'],
-        [8005, './bin/ocsp-responder --config %s' % os.path.join(default_config_dir, "ocsp-responder.json")],
-        [8004, './bin/boulder-va --config %s --addr va1.boulder:9092 --debug-addr :8004' % os.path.join(default_config_dir, "va.json")],
-        [8104, './bin/boulder-va --config %s --addr va2.boulder:9092 --debug-addr :8104' % os.path.join(default_config_dir, "va.json")],
-        [8001, './bin/boulder-ca --config %s --ca-addr ca1.boulder:9093 --ocsp-addr ca1.boulder:9096 --debug-addr :8001' % os.path.join(default_config_dir, "ca-a.json")],
-        [8101, './bin/boulder-ca --config %s --ca-addr ca2.boulder:9093 --ocsp-addr ca2.boulder:9096 --debug-addr :8101' % os.path.join(default_config_dir, "ca-b.json")],
+        [8005, './bin/ocsp-responder --config %s' % os.path.join(config_dir, "ocsp-responder.json")],
+        [8004, './bin/boulder-va --config %s --addr va1.boulder:9092 --debug-addr :8004' % os.path.join(config_dir, "va.json")],
+        [8104, './bin/boulder-va --config %s --addr va2.boulder:9092 --debug-addr :8104' % os.path.join(config_dir, "va.json")],
+        [8001, './bin/boulder-ca --config %s --ca-addr ca1.boulder:9093 --ocsp-addr ca1.boulder:9096 --debug-addr :8001' % os.path.join(config_dir, "ca-a.json")],
+        [8101, './bin/boulder-ca --config %s --ca-addr ca2.boulder:9093 --ocsp-addr ca2.boulder:9096 --debug-addr :8101' % os.path.join(config_dir, "ca-b.json")],
         [6789, './bin/akamai-test-srv --listen localhost:6789 --secret its-a-secret'],
-        [9666, './bin/akamai-purger --config %s' % os.path.join(default_config_dir, "akamai-purger.json")],
-        [8006, './bin/ocsp-updater --config %s' % os.path.join(default_config_dir, "ocsp-updater.json")],
-        [8002, './bin/boulder-ra --config %s --addr ra1.boulder:9094 --debug-addr :8002' % os.path.join(default_config_dir, "ra.json")],
-        [8102, './bin/boulder-ra --config %s --addr ra2.boulder:9094 --debug-addr :8102' % os.path.join(default_config_dir, "ra.json")],
-        [8111, './bin/nonce-service --config %s' % os.path.join(default_config_dir, "nonce.json")],
-        [4431, './bin/boulder-wfe2 --config %s' % os.path.join(default_config_dir, "wfe2.json")],
-        [4000, './bin/boulder-wfe --config %s' % os.path.join(default_config_dir, "wfe.json")],
+        [9666, './bin/akamai-purger --config %s' % os.path.join(config_dir, "akamai-purger.json")],
+        [8006, './bin/ocsp-updater --config %s' % os.path.join(config_dir, "ocsp-updater.json")],
+        [8002, './bin/boulder-ra --config %s --addr ra1.boulder:9094 --debug-addr :8002' % os.path.join(config_dir, "ra.json")],
+        [8102, './bin/boulder-ra --config %s --addr ra2.boulder:9094 --debug-addr :8102' % os.path.join(config_dir, "ra.json")],
+        [8111, './bin/nonce-service --config %s' % os.path.join(config_dir, "nonce.json")],
+        [4431, './bin/boulder-wfe2 --config %s' % os.path.join(config_dir, "wfe2.json")],
+        [4000, './bin/boulder-wfe --config %s' % os.path.join(config_dir, "wfe.json")],
     ])
     for (port, prog) in progs:
         try:

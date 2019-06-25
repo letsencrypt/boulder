@@ -161,8 +161,15 @@ def main():
     caa_client = None
     if not args.skip_setup:
         now = datetime.datetime.utcnow()
+
+        # In CONFIG_NEXT mode, use the basic, non-next config for setup.
+        # This lets us test the transition to authz2.
+        config = default_config_dir
+        if CONFIG_NEXT:
+            config = "test/config"
+        now = datetime.datetime.utcnow()
         twenty_days_ago = now+datetime.timedelta(days=-20)
-        if not startservers.start(race_detection=True, fakeclock=fakeclock(twenty_days_ago)):
+        if not startservers.start(race_detection=True, fakeclock=fakeclock(twenty_days_ago), config_dir=config):
             raise Exception("startservers failed (mocking twenty days ago)")
         v1_integration.caa_client = caa_client = chisel.make_client()
         setup_twenty_days_ago()
