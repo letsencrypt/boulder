@@ -102,6 +102,11 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rwws := &responseWriterWithStatus{w, 0}
 	defer func() {
 		logEvent.Code = rwws.code
+		if logEvent.Code == 0 {
+			// If we haven't explicitly set a status code golang will set it
+			// to 200 itself when writing to the wire
+			logEvent.Code = http.StatusOK
+		}
 		logEvent.Latency = time.Since(begin).Seconds()
 		th.logEvent(logEvent)
 	}()
