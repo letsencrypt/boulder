@@ -32,20 +32,6 @@ from acme import challenges
 
 import requests
 
-def setup_seventy_days_ago():
-    """Do any setup that needs to happen 70 days in the past, for tests that
-       will run in the 'present'.
-    """
-    # Issue a certificate with the clock set back, and save the authzs to check
-    # later that they are expired (404).
-    _, v1_integration.old_authzs = auth_and_issue([random_domain()])
-
-def setup_zero_days_ago():
-    """Do any setup that needs to happen at the start of a test run."""
-    # Issue a certificate and save the authzs to check that they still exist
-    # at a later point.
-    _, v1_integration.new_authzs = auth_and_issue([random_domain()])
-
 def run_client_tests():
     root = os.environ.get("CERTBOT_PATH")
     assert root is not None, (
@@ -174,24 +160,15 @@ def main():
 
     if not args.skip_setup:
         now = datetime.datetime.utcnow()
-        seventy_days_ago = now+datetime.timedelta(days=-70)
-        if not startservers.start(race_detection=True, fakeclock=fakeclock(seventy_days_ago)):
-            raise Exception("startservers failed (mocking seventy days ago)")
-        setup_seventy_days_ago()
-        startservers.stop()
-
-        now = datetime.datetime.utcnow()
         twenty_days_ago = now+datetime.timedelta(days=-20)
         if not startservers.start(race_detection=True, fakeclock=fakeclock(twenty_days_ago)):
             raise Exception("startservers failed (mocking twenty days ago)")
+        v1_integration.caa_client = caa_client = chisel.make_client()
         setup_twenty_days_ago()
         startservers.stop()
 
     if not startservers.start(race_detection=True):
         raise Exception("startservers failed")
-
-    if not args.skip_setup:
-        setup_zero_days_ago()
 
     if args.run_all or args.run_chisel:
         run_chisel(args.test_case_filter)

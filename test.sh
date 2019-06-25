@@ -115,6 +115,19 @@ if [[ "$RUN" =~ "integration" ]] ; then
     python2 test/integration-test.py "${args[@]}"
 fi
 
+# Test that just ./start.py works, which is a proxy for testing that
+# `docker-compose up` works, since that just runs start.py (via entrypoint.sh).
+if [[ "$RUN" =~ "start" ]] ; then
+  ./start.py &
+  for I in $(seq 1 100); do
+    sleep 1
+    curl http://localhost:4000/directory && break
+  done
+  if [[ $I = 100 ]]; then
+    echo "Boulder did not come up after ./start.py."
+  fi
+fi
+
 # Run go mod vendor (happens only in Travis) to check that the versions in
 # vendor/ really exist in the remote repo and match what we have.
 if [[ "$RUN" =~ "gomod-vendor" ]] ; then
