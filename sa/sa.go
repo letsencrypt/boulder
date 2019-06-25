@@ -2203,7 +2203,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 	query := fmt.Sprintf(
 		`SELECT %s FROM authz2
 		JOIN orderToAuthz2
-		ON id = CONVERT(authzID, INTEGER)
+		ON CONVERT(id, CHAR) = authzID
 		WHERE registrationID = ? AND
 		expires > ? AND
 		status IN (?,?) AND
