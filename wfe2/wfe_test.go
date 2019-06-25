@@ -1263,7 +1263,7 @@ func TestNewECDSAAccount(t *testing.T) {
 	responseWriter = httptest.NewRecorder()
 	// POST, Valid JSON, Key already in use
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"id\": 3,\n  \"key\": {\n    \"kty\": \"EC\",\n    \"crv\": \"P-256\",\n    \"x\": \"FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao\",\n    \"y\": \"S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk\"\n  },\n  \"agreement\": \"http://example.invalid/terms\",\n  \"initialIp\": \"\",\n  \"createdAt\": \"0001-01-01T00:00:00Z\",\n  \"status\": \"\"\n}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"id\": 3,\n  \"key\": {\n    \"kty\": \"EC\",\n    \"crv\": \"P-256\",\n    \"x\": \"FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao\",\n    \"y\": \"S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk\"\n  },\n  \"initialIp\": \"\",\n  \"createdAt\": \"0001-01-01T00:00:00Z\",\n  \"status\": \"\"\n}")
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/3")
 	test.AssertEquals(t, responseWriter.Code, 200)
 
@@ -1432,7 +1432,7 @@ func TestNewAccount(t *testing.T) {
 		t, responseWriter.Header().Get("Location"),
 		"http://localhost/acme/acct/1")
 	test.AssertEquals(t, responseWriter.Code, 200)
-	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"id\": 1,\n  \"key\": {\n    \"kty\": \"RSA\",\n    \"n\": \"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ\",\n    \"e\": \"AQAB\"\n  },\n  \"contact\": [\n    \"mailto:person@mail.com\"\n  ],\n  \"agreement\": \"http://example.invalid/terms\",\n  \"initialIp\": \"\",\n  \"createdAt\": \"0001-01-01T00:00:00Z\",\n  \"status\": \"valid\"\n}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"id\": 1,\n  \"key\": {\n    \"kty\": \"RSA\",\n    \"n\": \"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ\",\n    \"e\": \"AQAB\"\n  },\n  \"contact\": [\n    \"mailto:person@mail.com\"\n  ],\n  \"initialIp\": \"\",\n  \"createdAt\": \"0001-01-01T00:00:00Z\",\n  \"status\": \"valid\"\n}")
 }
 
 func TestNewAccountWhenAccountHasBeenDeactivated(t *testing.T) {
@@ -2432,7 +2432,6 @@ func TestKeyRollover(t *testing.T) {
 		     "contact": [
 		       "mailto:person@mail.com"
 		     ],
-		     "agreement": "http://example.invalid/terms",
 		     "initialIp": "",
 		     "createdAt": "0001-01-01T00:00:00Z",
 		     "status": "valid"
