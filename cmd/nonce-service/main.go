@@ -22,7 +22,6 @@ type config struct {
 		MaxUsed int
 
 		RemoteNonceServices []cmd.GRPCClientConfig
-		TLS                 cmd.TLSConfig
 	}
 }
 
@@ -110,10 +109,11 @@ func main() {
 	ns, err := nonce.NewNonceService(scope, c.NonceService.MaxUsed)
 	cmd.FailOnError(err, "Failed to initialize nonce service")
 
+	tlsConfig, err := c.NonceService.TLS.Load()
+	cmd.FailOnError(err, "tlsConfig config")
+
 	nonceServer := &nonceServer{inner: ns, log: logger}
 	if len(c.NonceService.RemoteNonceServices) > 0 {
-		tlsConfig, err := c.NonceService.TLS.Load()
-		cmd.FailOnError(err, "TLS config")
 		clientMetrics := bgrpc.NewClientMetrics(scope)
 		clk := cmd.Clock()
 		for _, remoteNonceConfig := range c.NonceService.RemoteNonceServices {
@@ -123,8 +123,6 @@ func main() {
 		}
 	}
 
-	tlsConfig, err := c.NonceService.TLS.Load()
-	cmd.FailOnError(err, "tlsConfig config")
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	grpcSrv, l, err := bgrpc.NewServer(c.NonceService.GRPC, tlsConfig, serverMetrics, cmd.Clock())
 	cmd.FailOnError(err, "Unable to setup nonce service gRPC server")

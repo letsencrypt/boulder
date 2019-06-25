@@ -8,13 +8,20 @@
         "grpc": {
             "address": ":9101",
             "clientNames": [
-                "wfe.boulder"
+                "wfe.boulder",
+                "nonce.boulder"
             ]
         },
         "tls": {
             "caCertFile": "test/grpc-creds/minica.pem",
             "certFile": "test/grpc-creds/nonce.boulder/cert.pem",
             "keyFile": "test/grpc-creds/nonce.boulder/key.pem"
-        }
+        },
+        "remoteNonceServices": [
+            {
+                "serverAddress": "nonce.boulder:9102",
+                "timeout": "15s"
+            }
+        ]
     }
 }

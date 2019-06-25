@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -40,6 +41,16 @@ func (sr *sleepingRemote) Nonce(ctx context.Context, in *corepb.Empty, opts ...g
 	return nil, nil
 }
 
+type brokenRemote struct{}
+
+func (br *brokenRemote) Redeem(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
+	return nil, errors.New("BROKE!")
+}
+
+func (br *brokenRemote) Nonce(ctx context.Context, in *corepb.Empty, opts ...grpc.CallOption) (*noncepb.NonceMessage, error) {
+	return nil, nil
+}
+
 func TestRemoteRedeem(t *testing.T) {
 	l := blog.NewMock()
 
@@ -60,7 +71,7 @@ func TestRemoteRedeem(t *testing.T) {
 	test.AssertNotError(t, err, "Redeem failed")
 	test.Assert(t, *resp.Valid, "Redeem returned the wrong response")
 
-	// Working remote returning invalid nonce message
+	// Working remotes returning invalid nonce message
 	ns.remoteServices = []noncepb.NonceServiceClient{
 		&workingRemote{resp: false},
 		&workingRemote{resp: false},
@@ -71,8 +82,11 @@ func TestRemoteRedeem(t *testing.T) {
 	test.AssertNotError(t, err, "Redeem failed")
 	test.Assert(t, !*resp.Valid, "Redeem returned the wrong response")
 
-	// Sleeping remote returns valid nonce message, but after 50ms, Redeem should return false
-	ns.remoteServices = []noncepb.NonceServiceClient{&sleepingRemote{}}
+	// Sleeping remotes returns valid nonce message, but after 50ms, Redeem should return false
+	ns.remoteServices = []noncepb.NonceServiceClient{
+		&sleepingRemote{},
+		&sleepingRemote{},
+	}
 	ctx, cancel = context.WithDeadline(context.Background(), time.Now().Add(time.Millisecond))
 	resp, err = ns.Redeem(ctx, &noncepb.NonceMessage{Nonce: &nonce, Forwarded: &forwarded})
 	cancel()
@@ -86,6 +100,17 @@ func TestRemoteRedeem(t *testing.T) {
 	}
 	forwarded = true
 	ctx, cancel = context.WithDeadline(context.Background(), time.Now().Add(time.Hour))
+	resp, err = ns.Redeem(ctx, &noncepb.NonceMessage{Nonce: &nonce, Forwarded: &forwarded})
+	cancel()
+	test.AssertNotError(t, err, "Redeem failed")
+	test.Assert(t, !*resp.Valid, "Redeem returned the wrong response")
+
+	// Broken remotes, Redeem should return false
+	ns.remoteServices = []noncepb.NonceServiceClient{
+		&brokenRemote{},
+		&brokenRemote{},
+	}
+	ctx, cancel = context.WithDeadline(context.Background(), time.Now().Add(time.Millisecond))
 	resp, err = ns.Redeem(ctx, &noncepb.NonceMessage{Nonce: &nonce, Forwarded: &forwarded})
 	cancel()
 	test.AssertNotError(t, err, "Redeem failed")
