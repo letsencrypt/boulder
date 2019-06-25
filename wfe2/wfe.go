@@ -527,10 +527,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, acct.ID)))
 		logEvent.Requester = acct.ID
 
-		if features.Enabled(features.RemoveWFE2AccountID) {
-			// Zero out the account ID so that it isn't marshalled
-			acct.ID = 0
-		}
+		prepAccountForDisplay(&acct)
 
 		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, acct)
 		if err != nil {
@@ -603,14 +600,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		logEvent.Contacts = *acct.Contact
 	}
 
-	// We populate the account Agreement field when creating a new response to
-	// track which terms-of-service URL was in effect when an account with
-	// "termsOfServiceAgreed":"true" is created. That said, we don't want to send
-	// this value back to a V2 client. The "Agreement" field of an
-	// account/registration is a V1 notion so we strip it here in the WFE2 before
-	// returning the account.
-	acct.Agreement = ""
-
 	acctURL := web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, acct.ID))
 
 	response.Header().Add("Location", acctURL)
@@ -618,10 +607,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
 
-	if features.Enabled(features.RemoveWFE2AccountID) {
-		// Zero out the account ID so that it isn't marshalled
-		acct.ID = 0
-	}
+	prepAccountForDisplay(&acct)
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, acct)
 	if err != nil {
@@ -1018,6 +1004,26 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 }
 
+// prepAccountForDisplay takes a core.Registration and mutates it to be ready
+// for display in a JSON response. Primarily it papers over legacy ACME v1
+// features or non-standard details internal to Boulder we don't want clients to
+// rely on.
+func prepAccountForDisplay(acct *core.Registration) {
+	if features.Enabled(features.RemoveWFE2AccountID) {
+		// Zero out the account ID so that it isn't marshalled. RFC 8555 specifies
+		// using the Location header for learning the account ID.
+		acct.ID = 0
+	}
+
+	// We populate the account Agreement field when creating a new response to
+	// track which terms-of-service URL was in effect when an account with
+	// "termsOfServiceAgreed":"true" is created. That said, we don't want to send
+	// this value back to a V2 client. The "Agreement" field of an
+	// account/registration is a V1 notion so we strip it here in the WFE2 before
+	// returning the account.
+	acct.Agreement = ""
+}
+
 // prepChallengeForDisplay takes a core.Challenge and prepares it for display to
 // the client by filling in its URL field and clearing its ID and URI fields.
 func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
@@ -1239,13 +1245,7 @@ func (wfe *WebFrontEndImpl) Account(
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
 
-	// We populate the account Agreement field when creating a new response to
-	// track which terms-of-service URL was in effect when an account with
-	// "termsOfServiceAgreed":"true" is created. That said, we don't want to send
-	// this value back to a V2 client. The "Agreement" field of an
-	// account/registration is a V1 notion so we strip it here in the WFE2 before
-	// returning the account.
-	currAcct.Agreement = ""
+	prepAccountForDisplay(currAcct)
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, currAcct)
 	if err != nil {
@@ -1749,6 +1749,8 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 			web.ProblemDetailsForError(err, "Unable to update account with new key"), err)
 		return
 	}
+
+	prepAccountForDisplay(&updatedAcct)
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, updatedAcct)
 	if err != nil {
