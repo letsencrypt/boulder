@@ -502,9 +502,9 @@ def test_caa_extensions():
     auth_and_issue(["dns-01-or-http-01.good-caa-reserved.com", "dns-01-only.good-caa-reserved.com"], chall_type="dns-01")
     auth_and_issue(["dns-01-or-http-01.good-caa-reserved.com", "http-01-only.good-caa-reserved.com"], chall_type="http-01")
 
-    # CAA should fail with an arbitrary account, but succeed with the caa_client.
+    # CAA should fail with an arbitrary account, but succeed with the CAA client.
     chisel.expect_problem("urn:acme:error:caa", lambda: auth_and_issue(["accounturi.good-caa-reserved.com"]))
-    auth_and_issue(["accounturi.good-caa-reserved.com"], client=caa_client)
+    auth_and_issue(["accounturi.good-caa-reserved.com"], client=client)
 
 def test_account_update():
     """
