@@ -3138,3 +3138,26 @@ func TestGetChallengeV2UpRel(t *testing.T) {
 		resp.Header().Get("Link"),
 		`<http://localhost/acme/authz/v2/1>;rel="up"`)
 }
+
+func TestPrepAccountForDisplay(t *testing.T) {
+	acct := &core.Registration{
+		ID:        1987,
+		Agreement: "disagreement",
+	}
+
+	// Prep the account for display.
+	prepAccountForDisplay(acct)
+
+	// Without the RemoveWFE2AccountID feature flag we expect
+	// prepAccountForDisplay to leave the ID in place.
+	test.AssertEquals(t, acct.ID, int64(1987))
+	// The Agreement should always be cleared.
+	test.AssertEquals(t, acct.Agreement, "")
+
+	// Enable the feature flag and re-prep
+	_ = features.Set(map[string]bool{"RemoveWFE2AccountID": true})
+	prepAccountForDisplay(acct)
+
+	// The ID field should now be zeroed
+	test.AssertEquals(t, acct.ID, int64(0))
+}
