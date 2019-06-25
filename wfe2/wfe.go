@@ -607,10 +607,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
 
-	if features.Enabled(features.RemoveWFE2AccountID) {
-		// Zero out the account ID so that it isn't marshalled
-		acct.ID = 0
-	}
+	prepAccountForDisplay(&acct)
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, acct)
 	if err != nil {
