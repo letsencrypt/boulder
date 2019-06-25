@@ -425,55 +425,65 @@ def test_revoke_by_account():
     verify_akamai_purge()
     return 0
 
-caa_authzs = []
+caa_recheck_authzs = []
+caa_recheck_client = None
 @register_twenty_days_ago
-def caa_setup():
+def caa_recheck_setup():
+    global caa_recheck_client
+    caa_recheck_client = chisel.make_client()
     # Issue a certificate with the clock set back, and save the authzs to check
     # later that they are valid (200). They should however require rechecking for
     # CAA purposes.
-    _, authzs = auth_and_issue(["recheck.good-caa-reserved.com"], client=caa_client)
+    _, authzs = auth_and_issue([random_domain()], client=caa_recheck_client)
     for a in authzs:
-        caa_authzs.append(a)
+        caa_recheck_authzs.append(a)
 
-def test_caa():
-    """Request issuance for two CAA domains, one where we are permitted and one where we are not.
-       Two further sub-domains have restricted validationmethods.
+def test_recheck_caa():
+    """Request issuance for a domain where we have a old cached authz from when CAA
+       was good. We'll set a new CAA record forbidding issuance; the CAA should
+       recheck CAA and reject the request.
     """
-    if len(caa_authzs) == 0:
+    if len(caa_recheck_authzs) == 0:
         raise Exception("CAA authzs not prepared for test_caa")
-    for a in caa_authzs:
+    domains = []
+    for a in caa_recheck_authzs:
         response = requests.get(a.uri)
         if response.status_code != 200:
             raise Exception("Unexpected response for CAA authz: ",
                 response.status_code)
+        domain = a.body.identifier.value
+        domains.append(domain)
+        challSrv.add_caa_issue(domain, ";")
 
+    # Request issuance for the previously-issued domain name, which should
+    # now be denied due to CAA.
+    chisel.expect_problem("urn:acme:error:caa",
+        lambda: chisel.auth_and_issue(domains, client=caa_recheck_client))
+
+def test_caa_good():
+    domain = random_domain()
+    challSrv.add_caa_issue(domain, "happy-hacker-ca.invalid")
+    auth_and_issue([domain])
+
+def test_caa_reject():
+    domain = random_domain()
+    challSrv.add_caa_issue(domain, "sad-hacker-ca.invalid")
+    chisel.expect_problem("urn:acme:error:caa",
+        lambda: auth_and_issue([domain]))
+
+def test_caa_extensions():
     goodCAA = "happy-hacker-ca.invalid"
-    badCAA = "sad-hacker-ca.invalid"
 
-    caa_account_uri = caa_client.account.uri if caa_client is not None else None
+    client = chisel.make_client()
+    caa_account_uri = client.account.uri
     caa_records = [
-        {"domain": "bad-caa-reserved.com", "value": badCAA},
-        {"domain": "good-caa-reserved.com", "value": goodCAA},
         {"domain": "accounturi.good-caa-reserved.com", "value":"{0}; accounturi={1}".format(goodCAA, caa_account_uri)},
-        {"domain": "recheck.good-caa-reserved.com", "value":badCAA},
         {"domain": "dns-01-only.good-caa-reserved.com", "value": "{0}; validationmethods=dns-01".format(goodCAA)},
         {"domain": "http-01-only.good-caa-reserved.com", "value": "{0}; validationmethods=http-01".format(goodCAA)},
         {"domain": "dns-01-or-http01.good-caa-reserved.com", "value": "{0}; validationmethods=dns-01,http-01".format(goodCAA)},
     ]
     for policy in caa_records:
         challSrv.add_caa_issue(policy["domain"], policy["value"])
-
-    # We include a random domain so we don't hit the "exact match" rate limit
-    # when testing locally with a persistent database.
-    auth_and_issue(["good-caa-reserved.com"])
-
-    # Request issuance for recheck.good-caa-reserved.com, which should
-    # now be denied due to CAA.
-    chisel.expect_problem("urn:acme:error:caa", lambda: chisel.issue(caa_client, caa_authzs))
-
-    challSrv.add_caa_issue("bad-caa-reserved.com", badCAA)
-    chisel.expect_problem("urn:acme:error:caa",
-        lambda: auth_and_issue(["bad-caa-reserved.com"]))
 
     # TODO(@4a6f656c): Once the `CAAValidationMethods` feature flag is enabled by
     # default, remove this early return.
@@ -492,9 +502,9 @@ def test_caa():
     auth_and_issue(["dns-01-or-http-01.good-caa-reserved.com", "dns-01-only.good-caa-reserved.com"], chall_type="dns-01")
     auth_and_issue(["dns-01-or-http-01.good-caa-reserved.com", "http-01-only.good-caa-reserved.com"], chall_type="http-01")
 
-    # CAA should fail with an arbitrary account, but succeed with the caa_client.
+    # CAA should fail with an arbitrary account, but succeed with the CAA client.
     chisel.expect_problem("urn:acme:error:caa", lambda: auth_and_issue(["accounturi.good-caa-reserved.com"]))
-    auth_and_issue(["accounturi.good-caa-reserved.com"], client=caa_client)
+    auth_and_issue(["accounturi.good-caa-reserved.com"], client=client)
 
 def test_account_update():
     """
