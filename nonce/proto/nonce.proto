@@ -12,6 +12,7 @@ service NonceService {
 
 message NonceMessage {
 	optional string nonce = 1;
+	optional bool forwarded = 2;
 }
 
 message ValidMessage {
