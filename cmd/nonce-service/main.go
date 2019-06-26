@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"sync"
 	"time"
@@ -39,8 +38,7 @@ func (ns *nonceServer) remoteRedeem(ctx context.Context, msg *noncepb.NonceMessa
 	}
 	subCtx, cancel := context.WithDeadline(ctx, deadline.Add(-time.Millisecond*250))
 	defer cancel()
-	forwarded := true
-	msg.Forwarded = &forwarded
+	msg.Forwarded = true
 	results := make(chan bool, len(ns.remoteServices))
 	wg := new(sync.WaitGroup)
 	for _, remote := range ns.remoteServices {
@@ -52,7 +50,7 @@ func (ns *nonceServer) remoteRedeem(ctx context.Context, msg *noncepb.NonceMessa
 				ns.log.Errf("remote Redeem call failed: %s", err)
 				return
 			}
-			results <- *resp.Valid
+			results <- resp.Valid
 		}(remote)
 	}
 	go func() {
@@ -73,17 +71,14 @@ func (ns *nonceServer) remoteRedeem(ctx context.Context, msg *noncepb.NonceMessa
 }
 
 func (ns *nonceServer) Redeem(ctx context.Context, msg *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
-	if msg.Nonce == nil {
-		return nil, errors.New("Incomplete gRPC request message")
-	}
-	valid := ns.inner.Valid(*msg.Nonce)
+	valid := ns.inner.Valid(msg.Nonce)
 	// If the nonce was not valid, we have configured remote nonce services,
 	// and this Redeem message wasn't forwarded, then forward it to the
 	// remote services
-	if !valid && len(ns.remoteServices) > 0 && msg.Forwarded != nil && !*msg.Forwarded {
+	if !valid && len(ns.remoteServices) > 0 && !msg.Forwarded {
 		valid = ns.remoteRedeem(ctx, msg)
 	}
-	return &noncepb.ValidMessage{Valid: &valid}, nil
+	return &noncepb.ValidMessage{Valid: valid}, nil
 }
 
 func (ns *nonceServer) Nonce(_ context.Context, _ *corepb.Empty) (*noncepb.NonceMessage, error) {
@@ -91,7 +86,7 @@ func (ns *nonceServer) Nonce(_ context.Context, _ *corepb.Empty) (*noncepb.Nonce
 	if err != nil {
 		return nil, err
 	}
-	return &noncepb.NonceMessage{Nonce: &nonce}, nil
+	return &noncepb.NonceMessage{Nonce: nonce}, nil
 }
 
 func main() {

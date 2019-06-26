@@ -1,4 +1,4 @@
-syntax = "proto2";
+syntax = "proto3";
 
 package nonce;
 option go_package = "proto";
@@ -11,10 +11,10 @@ service NonceService {
 }
 
 message NonceMessage {
-	optional string nonce = 1;
-	optional bool forwarded = 2;
+	string nonce = 1;
+	bool forwarded = 2;
 }
 
 message ValidMessage {
-    optional bool valid = 1;
+    bool valid = 1;
 }

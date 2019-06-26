@@ -191,7 +191,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 					wfe.sendError(response, logEvent, probs.ServerInternal("unable to get nonce"), err)
 					return
 				}
-				response.Header().Set("Replay-Nonce", *nonceMsg.Nonce)
+				response.Header().Set("Replay-Nonce", nonceMsg.Nonce)
 			} else {
 				nonce, err := wfe.nonceService.Nonce()
 				if err == nil {
@@ -568,11 +568,11 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	}
 	var nonceValid bool
 	if wfe.remoteNonceService != nil {
-		validMsg, err := wfe.remoteNonceService.Redeem(ctx, &noncepb.NonceMessage{Nonce: &nonce})
+		validMsg, err := wfe.remoteNonceService.Redeem(ctx, &noncepb.NonceMessage{Nonce: nonce})
 		if err != nil {
 			return nil, nil, reg, probs.ServerInternal("failed to verify nonce validity: %s", err)
 		}
-		nonceValid = *validMsg.Valid
+		nonceValid = validMsg.Valid
 	} else {
 		nonceValid = wfe.nonceService.Valid(nonce)
 	}
