@@ -20,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -1602,9 +1603,17 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	if req.UseV2Authorizations != nil {
 		useV2Authzs = *req.UseV2Authorizations
 	}
+	// we set useV2Authzs if DisableAuthz2Orders is enabled as actually looking for v2
+	// authorizations is the only way to tell if an order contains them, otherwise
+	// we will fail due to the number of authorizations not matching the number of names
+	// in the order.
+	useV2Authzs = useV2Authzs || features.Enabled(features.DisableAuthz2Orders)
 	v1AuthzIDs, v2AuthzIDs, err := ssa.authzForOrder(ctx, *order.Id, useV2Authzs)
 	if err != nil {
 		return nil, err
+	}
+	if features.Enabled(features.DisableAuthz2Orders) && len(v2AuthzIDs) > 0 {
+		return nil, berrors.NotFoundError("no order found for ID %d", *req.Id)
 	}
 	order.Authorizations, order.V2Authorizations = v1AuthzIDs, v2AuthzIDs
 
