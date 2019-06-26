@@ -707,42 +707,6 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz
 	return tx.Commit()
 }
 
-// RevokeAuthorizationsByDomain invalidates all pending or finalized authorizations
-// for a specific domain
-func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context, ident identifier.ACMEIdentifier) (int64, int64, error) {
-	identifierJSON, err := json.Marshal(ident)
-	if err != nil {
-		return 0, 0, err
-	}
-	identifier := string(identifierJSON)
-	results := []int64{0, 0}
-
-	now := ssa.clk.Now()
-	for i, table := range authorizationTables {
-		for {
-			authz, err := getAuthorizationIDsByDomain(ssa.dbMap.WithContext(ctx), table, identifier, now)
-			if err != nil {
-				return results[0], results[1], err
-			}
-			numAuthz := len(authz)
-			if numAuthz == 0 {
-				break
-			}
-
-			numRevoked, err := revokeAuthorizations(ssa.dbMap.WithContext(ctx), table, authz)
-			if err != nil {
-				return results[0], results[1], err
-			}
-			results[i] += numRevoked
-			if numRevoked < int64(numAuthz) {
-				return results[0], results[1], fmt.Errorf("Didn't revoke all found authorizations")
-			}
-		}
-	}
-
-	return results[0], results[1], nil
-}
-
 func (ssa *SQLStorageAuthority) getAuthorizationIDsByDomain2(ctx context.Context, domain string) ([]int64, error) {
 	var ids []int64
 	_, err := ssa.dbMap.Select(
@@ -774,47 +738,6 @@ func (ssa *SQLStorageAuthority) revokeAuthorizations2(ctx context.Context, ids [
 		params...,
 	)
 	return err
-}
-
-// RevokeAuthorizationsByDomain2 invalidates all pending or valid authorizations for a
-// specific domain. This method is intended to deprecate RevokeAuthorizationsByDomain.
-func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*corepb.Empty, error) {
-	finalRevoked, pendingRevoked, err := ssa.RevokeAuthorizationsByDomain(
-		ctx,
-		identifier.ACMEIdentifier{
-			Type:  identifier.DNS,
-			Value: *req.Domain,
-		})
-	if err != nil {
-		return nil, err
-	}
-
-	var revokedTotal int64 = finalRevoked + pendingRevoked
-	for {
-		var ids []int64
-		ids, err := ssa.getAuthorizationIDsByDomain2(ctx, *req.Domain)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				break
-			}
-			return nil, err
-		}
-		if len(ids) == 0 {
-			break
-		}
-		if err = ssa.revokeAuthorizations2(ctx, ids); err != nil {
-			return nil, err
-		}
-		revokedTotal += int64(len(ids))
-	}
-	// If no authorizations were revoked return a NotFoundError so that the caller
-	// can decide whether that was an expected result or not. Some callers (e.g.
-	// the admin-revoker tool) may wish to handle this case specifically.
-	if revokedTotal == 0 {
-		return nil, berrors.NotFoundError(
-			"no authorizations to revoke for %q", *req.Domain)
-	}
-	return &corepb.Empty{}, nil
 }
 
 // AddCertificate stores an issued certificate and returns the digest as

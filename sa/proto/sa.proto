@@ -39,7 +39,6 @@ service StorageAuthority {
         rpc NewPendingAuthorization(core.Authorization) returns (core.Authorization) {}
         rpc FinalizeAuthorization(core.Authorization) returns (core.Empty) {}
         rpc AddCertificate(AddCertificateRequest) returns (AddCertificateResponse) {}
-        rpc RevokeAuthorizationsByDomain(RevokeAuthorizationsByDomainRequest) returns (RevokeAuthorizationsByDomainResponse) {}
         rpc DeactivateRegistration(RegistrationID) returns (core.Empty) {}
         rpc DeactivateAuthorization(AuthorizationID) returns (core.Empty) {}
         rpc NewOrder(core.Order) returns (core.Order) {}
@@ -55,7 +54,6 @@ service StorageAuthority {
         rpc NewAuthorizations2(AddPendingAuthorizationsRequest) returns (Authorization2IDs) {}
         rpc FinalizeAuthorization2(FinalizeAuthorizationRequest) returns (core.Empty) {}
         rpc DeactivateAuthorization2(AuthorizationID2) returns (core.Empty) {}
-        rpc RevokeAuthorizationsByDomain2(RevokeAuthorizationsByDomainRequest) returns (core.Empty) {}
 }
 
 message RegistrationID {
@@ -180,15 +178,6 @@ message AddCertificateRequest {
 
 message AddCertificateResponse {
         optional string digest = 1;
-}
-
-message RevokeAuthorizationsByDomainRequest {
-        optional string domain = 1;
-}
-
-message RevokeAuthorizationsByDomainResponse {
-        optional int64 finalized = 1;
-        optional int64 pending = 2;
 }
 
 message OrderRequest {

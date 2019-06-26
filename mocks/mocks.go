@@ -281,11 +281,6 @@ func (sa *StorageAuthority) GetAuthorization(_ context.Context, id string) (core
 	return core.Authorization{}, berrors.NotFoundError("no authorization found with id %q", id)
 }
 
-// RevokeAuthorizationsByDomain is a mock
-func (sa *StorageAuthority) RevokeAuthorizationsByDomain(_ context.Context, ident identifier.ACMEIdentifier) (int64, int64, error) {
-	return 0, 0, nil
-}
-
 // GetCertificate is a mock
 func (sa *StorageAuthority) GetCertificate(_ context.Context, serial string) (core.Certificate, error) {
 	// Serial ee == 238.crt
@@ -556,10 +551,6 @@ func (sa *StorageAuthority) FinalizeAuthorization2(ctx context.Context, req *sap
 }
 
 func (sa *StorageAuthority) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Empty, error) {
-	return nil, nil
-}
-
-func (sa *StorageAuthority) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*corepb.Empty, error) {
 	return nil, nil
 }
 
