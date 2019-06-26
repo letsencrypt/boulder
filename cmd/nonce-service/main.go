@@ -77,8 +77,8 @@ func (ns *nonceServer) Redeem(ctx context.Context, msg *noncepb.NonceMessage) (*
 		return nil, errors.New("Incomplete gRPC request message")
 	}
 	valid := ns.inner.Valid(*msg.Nonce)
-	// If the nonce was not valid, we have configured remote nonce services
-	// and this Redeem message wasn't forwarded then forward it to the
+	// If the nonce was not valid, we have configured remote nonce services,
+	// and this Redeem message wasn't forwarded, then forward it to the
 	// remote services
 	if !valid && len(ns.remoteServices) > 0 && msg.Forwarded != nil && !*msg.Forwarded {
 		valid = ns.remoteRedeem(ctx, msg)
@@ -95,12 +95,21 @@ func (ns *nonceServer) Nonce(_ context.Context, _ *corepb.Empty) (*noncepb.Nonce
 }
 
 func main() {
+	grpcAddr := flag.String("addr", "", "gRPC listen address override")
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 
 	var c config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
+
+	if *grpcAddr != "" {
+		c.NonceService.GRPC.Address = *grpcAddr
+	}
+	if *debugAddr != "" {
+		c.NonceService.DebugAddr = *debugAddr
+	}
 
 	scope, logger := cmd.StatsAndLogging(c.NonceService.Syslog, c.NonceService.DebugAddr)
 	defer logger.AuditPanic()
