@@ -70,6 +70,9 @@ func TestVerifyCSR(t *testing.T) {
 	signedReqWithIPAddress := new(x509.CertificateRequest)
 	*signedReqWithIPAddress = *signedReq
 	signedReqWithIPAddress.IPAddresses = []net.IP{net.IPv4(1, 2, 3, 4)}
+	signedReqWithAllLongSANs := new(x509.CertificateRequest)
+	*signedReqWithAllLongSANs = *signedReq
+	signedReqWithAllLongSANs.DNSNames = []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.com"}
 
 	cases := []struct {
 		csr           *x509.CertificateRequest
@@ -151,10 +154,18 @@ func TestVerifyCSR(t *testing.T) {
 			0,
 			invalidIPPresent,
 		},
+		{
+			signedReqWithAllLongSANs,
+			100,
+			testingPolicy,
+			&mockPA{},
+			0,
+			invalidAllSANTooLong,
+		},
 	}
 
 	for _, c := range cases {
-		err := VerifyCSR(c.csr, c.maxNames, c.keyPolicy, c.pa, false, c.regID)
+		err := VerifyCSR(c.csr, c.maxNames, c.keyPolicy, c.pa, true, c.regID)
 		test.AssertDeepEquals(t, c.expectedError, err)
 	}
 }
