@@ -1300,7 +1300,7 @@ func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte, e
 
 // domainsForRateLimiting transforms a list of FQDNs into a list of eTLD+1's
 // for the purpose of rate limiting. It also de-duplicates the output
-// domains. Exact public suffix matches are not included.
+// domains. Exact public suffix matches are included.
 func domainsForRateLimiting(names []string) ([]string, error) {
 	var domains []string
 	for _, name := range names {
@@ -1309,34 +1309,14 @@ func domainsForRateLimiting(names []string) ([]string, error) {
 			// The only possible errors are:
 			// (1) publicsuffix.Domain is giving garbage values
 			// (2) the public suffix is the domain itself
-			// We assume 2 and do not include it in the result.
-			continue
+			// We assume 2 and include the original name in the result.
+			domains = append(domains, name)
+		} else {
+			domains = append(domains, domain)
 		}
-		domains = append(domains, domain)
 	}
 	return core.UniqueLowerNames(domains), nil
 }
-
-// suffixesForRateLimiting returns the unique subset of input names that are
-// exactly equal to a public suffix.
-func suffixesForRateLimiting(names []string) ([]string, error) {
-	var suffixMatches []string
-	for _, name := range names {
-		_, err := publicsuffix.Domain(name)
-		if err != nil {
-			// Like `domainsForRateLimiting`, the only possible errors here are:
-			// (1) publicsuffix.Domain is giving garbage values
-			// (2) the public suffix is the domain itself
-			// We assume 2 and collect it into the result
-			suffixMatches = append(suffixMatches, name)
-		}
-	}
-	return core.UniqueLowerNames(suffixMatches), nil
-}
-
-// certCountRPC abstracts the choice of the SA.CountCertificatesByExactNames or
-// the SA.CountCertificatesByNames RPC.
-type certCountRPC func(ctx context.Context, names []string, earliest, lastest time.Time) ([]*sapb.CountByNames_MapElement, error)
 
 // enforceNameCounts uses the provided count RPC to find a count of certificates
 // for each of the names. If the count for any of the names exceeds the limit
@@ -1346,12 +1326,11 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(
 	ctx context.Context,
 	names []string,
 	limit ratelimit.RateLimitPolicy,
-	regID int64,
-	countFunc certCountRPC) ([]string, error) {
+	regID int64) ([]string, error) {
 
 	now := ra.clk.Now()
 	windowBegin := limit.WindowBegin(now)
-	counts, err := countFunc(ctx, names, windowBegin, now)
+	counts, err := ra.SA.CountCertificatesByNames(ctx, names, windowBegin, now)
 	if err != nil {
 		return nil, err
 	}
@@ -1383,42 +1362,19 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 			return nil
 		}
 	}
+
 	tldNames, err := domainsForRateLimiting(names)
 	if err != nil {
 		return err
 	}
-	exactPublicSuffixes, err := suffixesForRateLimiting(names)
+
+	namesOutOfLimit, err := ra.enforceNameCounts(ctx, tldNames, limit, regID)
 	if err != nil {
-		return err
+		return fmt.Errorf("checking certificates per name limit for %q: %s",
+			names, err)
 	}
 
-	var badNames []string
-	// Domains that are exactly equal to a public suffix are treated differently
-	// by enforcing the limit against only exact matches to the names, not
-	// matches to subdomains as well. This allows the owners of such domains to
-	// issue certificates even though issuance from their subdomains may
-	// constantly exceed the rate limit.
-	if len(exactPublicSuffixes) > 0 {
-		psNamesOutOfLimit, err := ra.enforceNameCounts(ctx, exactPublicSuffixes, limit, regID, ra.SA.CountCertificatesByExactNames)
-		if err != nil {
-			return fmt.Errorf("checking certificates per name limit (exact) for %q: %s",
-				names, err)
-		}
-		badNames = append(badNames, psNamesOutOfLimit...)
-	}
-
-	// If there are any tldNames, enforce the certificate count rate limit against
-	// them and any subdomains.
-	if len(tldNames) > 0 {
-		namesOutOfLimit, err := ra.enforceNameCounts(ctx, tldNames, limit, regID, ra.SA.CountCertificatesByNames)
-		if err != nil {
-			return fmt.Errorf("checking certificates per name limit for %q: %s",
-				names, err)
-		}
-		badNames = append(badNames, namesOutOfLimit...)
-	}
-
-	if len(badNames) > 0 {
+	if len(namesOutOfLimit) > 0 {
 		if !features.Enabled(features.CheckRenewalFirst) {
 			// check if there is already an existing certificate for
 			// the exact name set we are issuing for. If so bypass the
@@ -1432,7 +1388,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 				return nil
 			}
 		}
-		domains := strings.Join(badNames, ", ")
+		domains := strings.Join(namesOutOfLimit, ", ")
 		ra.certsForDomainStats.Inc("Exceeded", 1)
 		ra.log.Infof("Rate limit exceeded, CertificatesForDomain, regID: %d, domains: %s", regID, domains)
 		return berrors.RateLimitError(
