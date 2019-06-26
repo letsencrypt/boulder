@@ -4,9 +4,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rsa"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -318,6 +316,9 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*jose.JSONWebSignature, *prob
 	parsedJWS, err := jose.ParseSigned(bodyStr)
 	if err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSParseError"}).Inc()
+		if strings.HasPrefix(err.Error(), "failed to unmarshal JWK: square/go-jose: invalid EC private key, wrong length") {
+			return nil, probs.Malformed("Parse error reading JWS: EC public key has incorrect padding")
+		}
 		return nil, probs.Malformed("Parse error reading JWS")
 	}
 	if len(parsedJWS.Signatures) > 1 {
@@ -354,16 +355,6 @@ func (wfe *WebFrontEndImpl) parseJWSRequest(request *http.Request) (*jose.JSONWe
 	jws, prob := wfe.parseJWS(bodyBytes)
 	if prob != nil {
 		return nil, prob
-	}
-
-	// if the protected header contains a JWK and it's a EC key verify that it has
-	// proper field lengths in a goroutine as the caller doesn't care about the
-	// result of this check
-	if jws.Signatures[0].Header.JSONWebKey != nil {
-		switch jws.Signatures[0].Header.JSONWebKey.Key.(type) {
-		case *ecdsa.PublicKey:
-			go wfe.verifyECFieldLengths(bodyBytes, request)
-		}
 	}
 
 	return jws, nil
@@ -766,64 +757,4 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 		},
 		NewKey: *jwk,
 	}, nil
-}
-
-func bitSizeToByteSize(bitSize int) int {
-	byteSize := (bitSize / 8)
-	if bitSize%8 > 0 {
-		return byteSize + 1
-	}
-	return byteSize
-}
-
-var curvesToSize = map[string]int{
-	"P-256": bitSizeToByteSize(elliptic.P256().Params().BitSize),
-	"P-384": bitSizeToByteSize(elliptic.P384().Params().BitSize),
-	"P-521": bitSizeToByteSize(elliptic.P521().Params().BitSize),
-}
-
-func (wfe *WebFrontEndImpl) verifyECFieldLengths(body []byte, request *http.Request) {
-	var payload struct {
-		Protected string
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return
-	}
-	b, err := base64.RawURLEncoding.DecodeString(payload.Protected)
-	if err != nil {
-		return
-	}
-	var keyData struct {
-		JWK struct {
-			X   string
-			Y   string
-			Crv string
-		}
-	}
-	if err := json.Unmarshal(b, &keyData); err != nil {
-		// this really shouldn't happen as we've already done this once before
-		// successfully, in order to avoid a headache just return and pretend
-		// it didn't happen
-		return
-	}
-	x, err := base64.RawURLEncoding.DecodeString(keyData.JWK.X)
-	if err != nil {
-		return
-	}
-	y, err := base64.RawURLEncoding.DecodeString(keyData.JWK.Y)
-	if err != nil {
-		return
-	}
-	xLen, yLen := len(x), len(y)
-	curveSize, present := curvesToSize[keyData.JWK.Crv]
-	if !present {
-		return
-	}
-	if xLen != curveSize || yLen != curveSize {
-		wfe.stats.improperECFieldLengths.Inc()
-		// if extractRequesterIP fails just continue on as we still want to know
-		// that the key was badly padded, and a empty net.IP will render just fine
-		ip, _ := extractRequesterIP(request)
-		wfe.log.Infof("Incorrectly padded account EC JWK key from UA=%q IP=%s", request.UserAgent(), ip)
-	}
 }
