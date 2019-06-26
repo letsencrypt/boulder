@@ -15,7 +15,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -410,19 +409,6 @@ func (sac StorageAuthorityClientWrapper) AddCertificate(
 	return *response.Digest, nil
 }
 
-func (sac StorageAuthorityClientWrapper) RevokeAuthorizationsByDomain(ctx context.Context, domain identifier.ACMEIdentifier) (int64, int64, error) {
-	response, err := sac.inner.RevokeAuthorizationsByDomain(ctx, &sapb.RevokeAuthorizationsByDomainRequest{Domain: &domain.Value})
-	if err != nil {
-		return 0, 0, err
-	}
-
-	if response == nil || response.Finalized == nil || response.Pending == nil {
-		return 0, 0, errIncompleteResponse
-	}
-
-	return *response.Finalized, *response.Pending, nil
-}
-
 func (sac StorageAuthorityClientWrapper) DeactivateRegistration(ctx context.Context, id int64) error {
 	_, err := sac.inner.DeactivateRegistration(ctx, &sapb.RegistrationID{Id: &id})
 	if err != nil {
@@ -645,10 +631,6 @@ func (sas StorageAuthorityClientWrapper) GetValidAuthorizations2(ctx context.Con
 func (sas StorageAuthorityClientWrapper) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Empty, error) {
 	_, err := sas.inner.DeactivateAuthorization2(ctx, req)
 	return nil, err
-}
-
-func (sas StorageAuthorityClientWrapper) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*corepb.Empty, error) {
-	return sas.inner.RevokeAuthorizationsByDomain2(ctx, req)
 }
 
 // StorageAuthorityServerWrapper is the gRPC version of a core.ServerAuthority server
@@ -1008,19 +990,6 @@ func (sas StorageAuthorityServerWrapper) AddCertificate(ctx context.Context, req
 	return &sapb.AddCertificateResponse{Digest: &digest}, nil
 }
 
-func (sas StorageAuthorityServerWrapper) RevokeAuthorizationsByDomain(ctx context.Context, request *sapb.RevokeAuthorizationsByDomainRequest) (*sapb.RevokeAuthorizationsByDomainResponse, error) {
-	if request == nil || request.Domain == nil {
-		return nil, errIncompleteRequest
-	}
-
-	finalized, pending, err := sas.inner.RevokeAuthorizationsByDomain(ctx, identifier.ACMEIdentifier{Value: *request.Domain, Type: identifier.DNS})
-	if err != nil {
-		return nil, err
-	}
-
-	return &sapb.RevokeAuthorizationsByDomainResponse{Finalized: &finalized, Pending: &pending}, nil
-}
-
 func (sas StorageAuthorityServerWrapper) DeactivateRegistration(ctx context.Context, request *sapb.RegistrationID) (*corepb.Empty, error) {
 	if request == nil || request.Id == nil {
 		return nil, errIncompleteRequest
@@ -1235,12 +1204,4 @@ func (sas StorageAuthorityServerWrapper) DeactivateAuthorization2(ctx context.Co
 	}
 
 	return sas.inner.DeactivateAuthorization2(ctx, req)
-}
-
-func (sas StorageAuthorityServerWrapper) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*corepb.Empty, error) {
-	if req == nil || req.Domain == nil {
-		return nil, errIncompleteRequest
-	}
-
-	return sas.inner.RevokeAuthorizationsByDomain2(ctx, req)
 }

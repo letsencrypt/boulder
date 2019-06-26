@@ -150,7 +150,6 @@ type StorageAdder interface {
 	NewPendingAuthorization(ctx context.Context, authz Authorization) (Authorization, error)
 	FinalizeAuthorization(ctx context.Context, authz Authorization) error
 	AddCertificate(ctx context.Context, der []byte, regID int64, ocsp []byte, issued *time.Time) (digest string, err error)
-	RevokeAuthorizationsByDomain(ctx context.Context, domain identifier.ACMEIdentifier) (finalized, pending int64, err error)
 	DeactivateRegistration(ctx context.Context, id int64) error
 	DeactivateAuthorization(ctx context.Context, id string) error
 	NewOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error)
@@ -163,7 +162,6 @@ type StorageAdder interface {
 	NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error)
 	FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) error
 	DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Empty, error)
-	RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest) (*corepb.Empty, error)
 }
 
 // StorageAuthority interface represents a simple key/value

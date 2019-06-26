@@ -18,7 +18,6 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -32,13 +31,11 @@ usage:
 admin-revoker serial-revoke --config <path> <serial> <reason-code>
 admin-revoker reg-revoke --config <path> <registration-id> <reason-code>
 admin-revoker list-reasons --config <path>
-admin-revoker auth-revoke --config <path> <domain>
 
 command descriptions:
   serial-revoke   Revoke a single certificate by the hex serial number
   reg-revoke      Revoke all certificates associated with a registration ID
   list-reasons    List all revocation reason codes
-  auth-revoke     Revoke all pending/valid authorizations for a domain
 
 args:
   config    File path to the configuration file for this service
@@ -223,41 +220,6 @@ func main() {
 		for _, k := range codes {
 			fmt.Printf("%d: %s\n", k, revocation.ReasonToString[k])
 		}
-
-	case command == "auth-revoke" && len(args) == 1:
-		domain := args[0]
-		_, logger, _, sac := setupContext(c)
-		var err error
-		var authsRevoked, pendingAuthsRevoked int64
-		if features.Enabled(features.NewAuthorizationSchema) {
-			req := &sapb.RevokeAuthorizationsByDomainRequest{
-				Domain: &domain,
-			}
-			_, err = sac.RevokeAuthorizationsByDomain2(ctx, req)
-		} else {
-			ident := identifier.ACMEIdentifier{Value: domain, Type: identifier.DNS}
-			authsRevoked, pendingAuthsRevoked, err = sac.RevokeAuthorizationsByDomain(ctx, ident)
-			// For the legacy RevokeAuthorizationsByDomain RPC synthesize
-			// a berrors.NotFound err when there were no revocations. This makes it
-			// easier to handle the error case the same for the new and old RPC.
-			if authsRevoked == 0 && pendingAuthsRevoked == 0 {
-				err = berrors.NotFoundError(
-					"No pending or final authorizations were found to revoke for domain %q",
-					domain)
-			}
-		}
-		// If there were no authorizations revoked then exit non-zero with
-		// a distinct message so the operator can check the domain name.
-		if berrors.Is(err, berrors.NotFound) {
-			cmd.Fail(fmt.Sprintf(
-				"No pending or final authorizations were found to revoke for domain %q",
-				domain))
-		}
-		// All other errors should exit non-zero with a more generic error message.
-		cmd.FailOnError(err, fmt.Sprintf(
-			"Failed to revoke authorizations for %s", domain))
-		logger.Infof(
-			"Revoked pending and final authorizations for %s", domain)
 
 	default:
 		usage()

@@ -119,10 +119,6 @@ func (sa *mockInvalidAuthorizationsAuthority) AddCertificate(ctx context.Context
 	return nil, nil
 }
 
-func (sa *mockInvalidAuthorizationsAuthority) RevokeAuthorizationsByDomain(ctx context.Context, in *sapb.RevokeAuthorizationsByDomainRequest, opts ...grpc.CallOption) (*sapb.RevokeAuthorizationsByDomainResponse, error) {
-	return nil, nil
-}
-
 func (sa *mockInvalidAuthorizationsAuthority) DeactivateRegistration(ctx context.Context, in *sapb.RegistrationID, opts ...grpc.CallOption) (*core.Empty, error) {
 	return nil, nil
 }
@@ -184,10 +180,6 @@ func (sa *mockInvalidAuthorizationsAuthority) FinalizeAuthorization2(ctx context
 }
 
 func (sa *mockInvalidAuthorizationsAuthority) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2, opts ...grpc.CallOption) (*corepb.Empty, error) {
-	return nil, nil
-}
-
-func (sa *mockInvalidAuthorizationsAuthority) RevokeAuthorizationsByDomain2(ctx context.Context, req *sapb.RevokeAuthorizationsByDomainRequest, opts ...grpc.CallOption) (*corepb.Empty, error) {
 	return nil, nil
 }
 
