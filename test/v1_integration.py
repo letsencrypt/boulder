@@ -576,21 +576,6 @@ def test_admin_revoker_cert():
     verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "revoked")
     verify_akamai_purge()
 
-def test_admin_revoker_authz():
-    # Make an authz, but don't attempt its challenges.
-    authz_resource = chisel.make_client().request_domain_challenges("ar-auth-test.com")
-    url = authz_resource.uri
-    # Revoke authorization by domain
-    output = run(
-            "./bin/admin-revoker auth-revoke --config %s/admin-revoker.json ar-auth-test.com" % (default_config_dir))
-    if "Revoked pending and final authorizations" not in output:
-        raise Exception("admin-revoker didn't successfully revoke authorizations")
-    # Check authorization has actually been revoked
-    response = urllib2.urlopen(url)
-    data = json.loads(response.read())
-    if data['status'] != "revoked":
-        raise Exception("Authorization wasn't revoked")
-
 def test_sct_embedding():
     certr, authzs = auth_and_issue([random_domain()])
     certBytes = urllib2.urlopen(certr.uri).read()
