@@ -922,18 +922,16 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 	}
 	if len(subErrors) > 0 {
 		var detail string
+		// If there was only one error, then use it as the top level error that is
+		// returned.
 		if len(subErrors) == 1 {
-			detail = fmt.Sprintf(
-				"Rechecking CAA for %q: %s",
-				subErrors[0].Identifier.Value,
-				subErrors[0].BoulderError.Detail)
-		} else {
-			detail = fmt.Sprintf(
-				"Rechecking CAA for %q and %d more identifiers failed. "+
-					"Refer to sub-problems for more information",
-				subErrors[0].Identifier.Value,
-				len(subErrors)-1)
+			return subErrors[0].BoulderError
 		}
+		detail = fmt.Sprintf(
+			"Rechecking CAA for %q and %d more identifiers failed. "+
+				"Refer to sub-problems for more information",
+			subErrors[0].Identifier.Value,
+			len(subErrors)-1)
 		return (&berrors.BoulderError{
 			Type:   berrors.CAA,
 			Detail: detail,

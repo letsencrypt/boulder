@@ -33,6 +33,8 @@ import josepy
 import tempfile
 import shutil
 import atexit
+import random
+import string
 
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -937,6 +939,17 @@ def test_new_order_policy_errs():
             raise Exception('Order problem detail did not match expected')
     if not ok:
         raise Exception('Expected problem, got no error')
+
+def test_long_san_no_cn():
+    try:
+        chisel2.auth_and_issue([''.join(random.choice(string.ascii_uppercase) for x in range(61)) + ".com"])
+        # if we get to this raise the auth_and_issue call didn't fail, so fail the test
+        raise Exception("Issuance didn't fail when the only SAN in a certificate was longer than the max CN length")
+    except messages.Error as e:
+        if e.typ != "urn:ietf:params:acme:error:malformed":
+            raise Exception('Expected malformed type problem, got {0}'.format(e.typ))
+        if e.detail != 'Error finalizing order :: issuing precertificate: CSR doesn\'t contain a SAN short enough to fit in CN':
+            raise Exception('Problem detail did not match expected')
 
 def run(cmd, **kwargs):
     return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)

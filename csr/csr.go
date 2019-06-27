@@ -33,12 +33,13 @@ var goodSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 }
 
 var (
-	invalidPubKey       = errors.New("invalid public key in CSR")
-	unsupportedSigAlg   = errors.New("signature algorithm not supported")
-	invalidSig          = errors.New("invalid signature on CSR")
-	invalidEmailPresent = errors.New("CSR contains one or more email address fields")
-	invalidIPPresent    = errors.New("CSR contains one or more IP address fields")
-	invalidNoDNS        = errors.New("at least one DNS name is required")
+	invalidPubKey        = errors.New("invalid public key in CSR")
+	unsupportedSigAlg    = errors.New("signature algorithm not supported")
+	invalidSig           = errors.New("invalid signature on CSR")
+	invalidEmailPresent  = errors.New("CSR contains one or more email address fields")
+	invalidIPPresent     = errors.New("CSR contains one or more IP address fields")
+	invalidNoDNS         = errors.New("at least one DNS name is required")
+	invalidAllSANTooLong = errors.New("CSR doesn't contain a SAN short enough to fit in CN")
 )
 
 // VerifyCSR checks the validity of a x509.CertificateRequest. Before doing checks it normalizes
@@ -67,6 +68,9 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 	}
 	if len(csr.DNSNames) == 0 && csr.Subject.CommonName == "" {
 		return invalidNoDNS
+	}
+	if forceCNFromSAN && csr.Subject.CommonName == "" {
+		return invalidAllSANTooLong
 	}
 	if len(csr.Subject.CommonName) > maxCNLength {
 		return fmt.Errorf("CN was longer than %d bytes", maxCNLength)

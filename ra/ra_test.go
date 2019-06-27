@@ -2099,6 +2099,19 @@ func TestRecheckCAAFail(t *testing.T) {
 	test.AssertEquals(t, foundB, true)
 	test.AssertEquals(t, subErrA.Type, berrors.CAA)
 	test.AssertEquals(t, subErrB.Type, berrors.CAA)
+
+	// Recheck CAA with just one bad authz
+	authzs = []*core.Authorization{
+		makeHTTP01Authorization("a.com"),
+	}
+	err = ra.recheckCAA(context.Background(), authzs)
+	// It should error
+	test.AssertError(t, err, "expected err from recheckCAA")
+	// It should be a berror
+	berr, ok := err.(*berrors.BoulderError)
+	test.AssertEquals(t, ok, true)
+	// There should be *no* suberrors because there was only one overall error
+	test.AssertEquals(t, len(berr.SubErrors), 0)
 }
 
 func TestRecheckCAAInternalServerError(t *testing.T) {
