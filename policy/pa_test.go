@@ -352,6 +352,18 @@ func TestWillingToIssueWildcards(t *testing.T) {
 
 	test.AssertEquals(t, subErrA.Type, berrors.RejectedIdentifier)
 	test.AssertEquals(t, subErrB.Type, berrors.Malformed)
+
+	// Test willing to issue with only *one* bad identifier.
+	err = pa.WillingToIssueWildcards([]identifier.ACMEIdentifier{
+		identifier.DNSIdentifier("letsdecrypt.org"),
+	})
+	// It should error
+	test.AssertError(t, err, "Expected err from WillingToIssueWildcards")
+
+	berr, ok = err.(*berrors.BoulderError)
+	test.AssertEquals(t, ok, true)
+	// There should be *no* suberrors because there was only one error overall.
+	test.AssertEquals(t, len(berr.SubErrors), 0)
 }
 
 var accountKeyJSON = `{
