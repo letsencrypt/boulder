@@ -94,6 +94,7 @@ type WebFrontEndImpl struct {
 	// Register of anti-replay nonces
 	nonceService       *nonce.NonceService
 	remoteNonceService noncepb.NonceServiceClient
+	noncePrefixMap     map[byte]noncepb.NonceServiceClient
 
 	// Key policy.
 	keyPolicy goodkey.KeyPolicy
@@ -116,6 +117,7 @@ func NewWebFrontEndImpl(
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
 	remoteNonceService noncepb.NonceServiceClient,
+	noncePrefixMap map[byte]noncepb.NonceServiceClient,
 	logger blog.Logger,
 ) (WebFrontEndImpl, error) {
 	csrSignatureAlgs := prometheus.NewCounterVec(
@@ -134,10 +136,11 @@ func NewWebFrontEndImpl(
 		keyPolicy:          keyPolicy,
 		csrSignatureAlgs:   csrSignatureAlgs,
 		remoteNonceService: remoteNonceService,
+		noncePrefixMap:     noncePrefixMap,
 	}
 
 	if wfe.remoteNonceService == nil {
-		nonceService, err := nonce.NewNonceService(stats, 0)
+		nonceService, err := nonce.NewNonceService(stats, 0, nil)
 		if err != nil {
 			return WebFrontEndImpl{}, err
 		}
@@ -561,24 +564,24 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	logEvent.Payload = string(payload)
 
 	// Check that the request has a known anti-replay nonce
-	nonce := parsedJws.Signatures[0].Header.Nonce
-	if len(nonce) == 0 {
+	nonceStr := parsedJws.Signatures[0].Header.Nonce
+	if len(nonceStr) == 0 {
 		wfe.stats.Inc("Errors.JWSMissingNonce", 1)
 		return nil, nil, reg, probs.BadNonce("JWS has no anti-replay nonce")
 	}
 	var nonceValid bool
 	if wfe.remoteNonceService != nil {
-		validMsg, err := wfe.remoteNonceService.Redeem(ctx, &noncepb.NonceMessage{Nonce: nonce})
+		valid, err := nonce.RemoteRedeem(ctx, wfe.noncePrefixMap, nonceStr)
 		if err != nil {
 			return nil, nil, reg, probs.ServerInternal("failed to verify nonce validity: %s", err)
 		}
-		nonceValid = validMsg.Valid
+		nonceValid = valid
 	} else {
-		nonceValid = wfe.nonceService.Valid(nonce)
+		nonceValid = wfe.nonceService.Valid(nonceStr)
 	}
 	if !nonceValid {
 		wfe.stats.Inc("Errors.JWSInvalidNonce", 1)
-		return nil, nil, reg, probs.BadNonce("JWS has invalid anti-replay nonce %s", nonce)
+		return nil, nil, reg, probs.BadNonce("JWS has invalid anti-replay nonce %s", nonceStr)
 	}
 
 	// Check that the "resource" field is present and has the correct value

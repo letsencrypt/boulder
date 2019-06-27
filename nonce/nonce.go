@@ -15,6 +15,7 @@ package nonce
 
 import (
 	"container/heap"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -25,6 +26,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/metrics"
+	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 )
 
 const (
@@ -43,6 +45,7 @@ type NonceService struct {
 	usedHeap *int64Heap
 	gcm      cipher.AEAD
 	maxUsed  int
+	prefix   *byte
 	stats    metrics.Scope
 }
 
@@ -65,7 +68,7 @@ func (h *int64Heap) Pop() interface{} {
 }
 
 // NewNonceService constructs a NonceService with defaults
-func NewNonceService(scope metrics.Scope, maxUsed int) (*NonceService, error) {
+func NewNonceService(scope metrics.Scope, maxUsed int, prefix *byte) (*NonceService, error) {
 	scope = scope.NewScope("NonceService")
 	key := make([]byte, 16)
 	if _, err := rand.Read(key); err != nil {
@@ -92,6 +95,7 @@ func NewNonceService(scope metrics.Scope, maxUsed int) (*NonceService, error) {
 		usedHeap: &int64Heap{},
 		gcm:      gcm,
 		maxUsed:  maxUsed,
+		prefix:   prefix,
 		stats:    scope,
 	}, nil
 }
@@ -117,6 +121,11 @@ func (ns *NonceService) encrypt(counter int64) (string, error) {
 	ct := ns.gcm.Seal(nil, nonce, pt, nil)
 	copy(ret, nonce[4:])
 	copy(ret[8:], ct)
+
+	// If we are using a identifying prefix, append it to the nonce
+	if ns.prefix != nil {
+		ret = append([]byte{*ns.prefix}, ret...)
+	}
 	return base64.RawURLEncoding.EncodeToString(ret), nil
 }
 
@@ -125,7 +134,15 @@ func (ns *NonceService) decrypt(nonce string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if len(decoded) != nonceLen {
+	if ns.prefix != nil {
+		if len(decoded) != nonceLen+1 {
+			return 0, errInvalidNonceLength
+		}
+		if decoded[0] != *ns.prefix {
+			return 0, errors.New("nonce prefixes don't match")
+		}
+		decoded = decoded[1:]
+	} else if len(decoded) != nonceLen {
 		return 0, errInvalidNonceLength
 	}
 
@@ -192,4 +209,25 @@ func (ns *NonceService) Valid(nonce string) bool {
 
 	ns.stats.Inc("Valid", 1)
 	return true
+}
+
+// RemoteRedeem checks the nonce prefix and routes the Redeem RPC
+// to the associated remote nonce service
+func RemoteRedeem(ctx context.Context, noncePrefixMap map[byte]noncepb.NonceServiceClient, nonce string) (bool, error) {
+	nonceBytes, err := base64.RawURLEncoding.DecodeString(nonce)
+	if err != nil {
+		return false, err
+	}
+	if len(nonceBytes) == 0 {
+		return false, nil
+	}
+	nonceService, present := noncePrefixMap[nonceBytes[0]]
+	if !present {
+		return false, nil
+	}
+	resp, err := nonceService.Redeem(ctx, &noncepb.NonceMessage{Nonce: nonce})
+	if err != nil {
+		return false, err
+	}
+	return resp.Valid, nil
 }

@@ -34,6 +34,12 @@
       "serverAddress": "nonce.boulder:9101",
       "timeout": "15s"
     },
+    "nonceServicePrefixes": {
+      "ef": {
+        "serverAddress": "nonce.boulder:9101",
+        "timeout": "15s"
+      }
+    },
     "features": {
       "NewAuthorizationSchema": true
     }

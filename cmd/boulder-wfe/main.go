@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"net/http"
@@ -41,9 +42,10 @@ type config struct {
 
 		TLS cmd.TLSConfig
 
-		RAService    *cmd.GRPCClientConfig
-		SAService    *cmd.GRPCClientConfig
-		NonceService *cmd.GRPCClientConfig
+		RAService            *cmd.GRPCClientConfig
+		SAService            *cmd.GRPCClientConfig
+		NonceService         *cmd.GRPCClientConfig
+		NonceServicePrefixes map[string]cmd.GRPCClientConfig
 
 		Features map[string]bool
 
@@ -63,7 +65,7 @@ type config struct {
 	}
 }
 
-func setupWFE(c config, logger blog.Logger, stats metrics.Scope, clk clock.Clock) (core.RegistrationAuthority, core.StorageAuthority, noncepb.NonceServiceClient) {
+func setupWFE(c config, logger blog.Logger, stats metrics.Scope, clk clock.Clock) (core.RegistrationAuthority, core.StorageAuthority, noncepb.NonceServiceClient, map[byte]noncepb.NonceServiceClient) {
 	tlsConfig, err := c.WFE.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
@@ -77,13 +79,24 @@ func setupWFE(c config, logger blog.Logger, stats metrics.Scope, clk clock.Clock
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
 
 	var rns noncepb.NonceServiceClient
+	npm := map[byte]noncepb.NonceServiceClient{}
 	if c.WFE.NonceService != nil {
 		rnsConn, err := bgrpc.ClientSetup(c.WFE.NonceService, tlsConfig, clientMetrics, clk)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Nonce service")
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to nonce service")
 		rns = noncepb.NewNonceServiceClient(rnsConn)
+		for prefixStr, serviceConfig := range c.WFE.NonceServicePrefixes {
+			prefix, err := hex.DecodeString(prefixStr)
+			cmd.FailOnError(err, "Unable to decode nonce prefix")
+			if len(prefix) != 1 {
+				cmd.Fail("nonce prefix can only be 1 byte")
+			}
+			conn, err := bgrpc.ClientSetup(&serviceConfig, tlsConfig, clientMetrics, clk)
+			cmd.FailOnError(err, "Failed ot load credentials and create gRPC connection to nonce service")
+			npm[prefix[0]] = noncepb.NewNonceServiceClient(conn)
+		}
 	}
 
-	return rac, sac, rns
+	return rac, sac, rns, npm
 }
 
 func main() {
@@ -109,8 +122,8 @@ func main() {
 
 	kp, err := goodkey.NewKeyPolicy("") // don't load any weak keys
 	cmd.FailOnError(err, "Unable to create key policy")
-	rac, sac, rns := setupWFE(c, logger, scope, clk)
-	wfe, err := wfe.NewWebFrontEndImpl(scope, clk, kp, rns, logger)
+	rac, sac, rns, npm := setupWFE(c, logger, scope, clk)
+	wfe, err := wfe.NewWebFrontEndImpl(scope, clk, kp, rns, npm, logger)
 	cmd.FailOnError(err, "Unable to create WFE")
 	wfe.RA = rac
 	wfe.SA = sac
