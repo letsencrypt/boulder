@@ -87,8 +87,8 @@ def start(race_detection, fakeclock=None, config_dir=default_config_dir):
         [8006, './bin/ocsp-updater --config %s' % os.path.join(config_dir, "ocsp-updater.json")],
         [8002, './bin/boulder-ra --config %s --addr ra1.boulder:9094 --debug-addr :8002' % os.path.join(config_dir, "ra.json")],
         [8102, './bin/boulder-ra --config %s --addr ra2.boulder:9094 --debug-addr :8102' % os.path.join(config_dir, "ra.json")],
-        [8111, './bin/nonce-service --config %s' % os.path.join(config_dir, "nonce.json")],
-        # [8112, './bin/nonce-service --config %s --addr nonce.boulder:9102 --debug-addr :8112' % os.path.join(config_dir, "nonce.json")],
+        [8111, './bin/nonce-service --config %s --addr nonce1.boulder:9101 --debug-addr :8111 --prefix ef' % os.path.join(config_dir, "nonce.json")],
+        [8112, './bin/nonce-service --config %s --addr nonce2.boulder:9101 --debug-addr :8112 --prefix ff' % os.path.join(config_dir, "nonce.json")],
         [4431, './bin/boulder-wfe2 --config %s' % os.path.join(config_dir, "wfe2.json")],
         [4000, './bin/boulder-wfe --config %s' % os.path.join(config_dir, "wfe.json")],
     ])

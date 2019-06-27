@@ -28,14 +28,6 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 		w.WriteMsg(m)
 		return
 	}
-	// Do special stuff for nonce service :)
-	if r.Question[0].Name == "nonce.boulder." {
-		if r.Question[0].Qtype == dns.TypeSRV {
-
-		}
-		w.WriteMsg(m)
-		return
-	}
 	if r.Question[0].Qtype != dns.TypeA {
 		// Just return a NOERROR message for non-A questions
 		w.WriteMsg(m)

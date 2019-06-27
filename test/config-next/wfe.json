@@ -36,7 +36,11 @@
     },
     "nonceServicePrefixes": {
       "ef": {
-        "serverAddress": "nonce.boulder:9101",
+        "serverAddress": "nonce1.boulder:9101",
+        "timeout": "15s"
+      },
+      "ff": {
+        "serverAddress": "nonce2.boulder:9101",
         "timeout": "15s"
       }
     },

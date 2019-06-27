@@ -40,6 +40,7 @@ func (ns *nonceServer) Nonce(_ context.Context, _ *corepb.Empty) (*noncepb.Nonce
 func main() {
 	grpcAddr := flag.String("addr", "", "gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
+	prefixOverride := flag.String("prefix", "", "Override the configured nonce prefix")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 
@@ -52,6 +53,9 @@ func main() {
 	}
 	if *debugAddr != "" {
 		c.NonceService.DebugAddr = *debugAddr
+	}
+	if *prefixOverride != "" {
+		c.NonceService.NoncePrefix = *prefixOverride
 	}
 
 	scope, logger := cmd.StatsAndLogging(c.NonceService.Syslog, c.NonceService.DebugAddr)
