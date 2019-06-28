@@ -73,7 +73,7 @@ func NewNonceService(scope metrics.Scope, maxUsed int, prefix string) (*NonceSer
 	scope = scope.NewScope("NonceService")
 
 	// If a prefix is provided it must be four characters and valid
-	// base64. The prefix is required to be base64 as RFC8555
+	// base64. The prefix is required to be base64url as RFC8555
 	// section 6.5.1 requires that nonces use that encoding.
 	// As base64 operates on three byte binary segments we require
 	// the prefix to be three bytes (four characters) so that the
@@ -83,7 +83,7 @@ func NewNonceService(scope metrics.Scope, maxUsed int, prefix string) (*NonceSer
 			return nil, errors.New("nonce prefix must be 4 characters")
 		}
 		if _, err := base64.RawURLEncoding.DecodeString(prefix); err != nil {
-			return nil, errors.New("nonce prefix must be valid base64")
+			return nil, errors.New("nonce prefix must be valid base64url")
 		}
 	}
 
@@ -143,11 +143,11 @@ func (ns *NonceService) encrypt(counter int64) (string, error) {
 }
 
 func (ns *NonceService) decrypt(nonce string) (int64, error) {
-	var decoded []byte
+	body := nonce
 	if ns.prefix != "" {
 		var prefix string
 		var err error
-		prefix, nonce, err = splitNonce(nonce)
+		prefix, body, err = splitNonce(nonce)
 		if err != nil {
 			return 0, err
 		}
@@ -155,8 +155,7 @@ func (ns *NonceService) decrypt(nonce string) (int64, error) {
 			return 0, fmt.Errorf("nonce contains invalid prefix: expected %q, got %q", ns.prefix, prefix)
 		}
 	}
-	var err error
-	decoded, err = base64.RawURLEncoding.DecodeString(nonce)
+	decoded, err := base64.RawURLEncoding.DecodeString(body)
 	if err != nil {
 		return 0, err
 	}
