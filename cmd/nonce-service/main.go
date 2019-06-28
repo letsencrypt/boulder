@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/hex"
 	"flag"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -62,13 +61,7 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	noncePrefix, err := hex.DecodeString(c.NonceService.NoncePrefix)
-	cmd.FailOnError(err, "Unable to decode nonce prefix")
-	if len(noncePrefix) != 1 {
-		cmd.Fail("nonce prefix can only be 1 byte")
-	}
-
-	ns, err := nonce.NewNonceService(scope, c.NonceService.MaxUsed, &noncePrefix[0])
+	ns, err := nonce.NewNonceService(scope, c.NonceService.MaxUsed, c.NonceService.NoncePrefix)
 	cmd.FailOnError(err, "Failed to initialize nonce service")
 
 	tlsConfig, err := c.NonceService.TLS.Load()

@@ -45,7 +45,7 @@ type NonceService struct {
 	usedHeap *int64Heap
 	gcm      cipher.AEAD
 	maxUsed  int
-	prefix   *byte
+	prefix   string
 	stats    metrics.Scope
 }
 
@@ -68,8 +68,18 @@ func (h *int64Heap) Pop() interface{} {
 }
 
 // NewNonceService constructs a NonceService with defaults
-func NewNonceService(scope metrics.Scope, maxUsed int, prefix *byte) (*NonceService, error) {
+func NewNonceService(scope metrics.Scope, maxUsed int, prefix string) (*NonceService, error) {
 	scope = scope.NewScope("NonceService")
+
+	if prefix != "" {
+		if len(prefix) != 4 {
+			return nil, errors.New("nonce prefix must be 4 characters")
+		}
+		if _, err := base64.RawURLEncoding.DecodeString(prefix); err != nil {
+			return nil, errors.New("nonce prefix must be valid base64")
+		}
+	}
+
 	key := make([]byte, 16)
 	if _, err := rand.Read(key); err != nil {
 		return nil, err
@@ -122,27 +132,28 @@ func (ns *NonceService) encrypt(counter int64) (string, error) {
 	copy(ret, nonce[4:])
 	copy(ret[8:], ct)
 
-	// If we are using a identifying prefix, append it to the nonce
-	if ns.prefix != nil {
-		ret = append([]byte{*ns.prefix}, ret...)
-	}
-	return base64.RawURLEncoding.EncodeToString(ret), nil
+	return ns.prefix + base64.RawURLEncoding.EncodeToString(ret), nil
 }
 
 func (ns *NonceService) decrypt(nonce string) (int64, error) {
-	decoded, err := base64.RawURLEncoding.DecodeString(nonce)
+	var decoded []byte
+	if ns.prefix != "" {
+		var prefix string
+		var err error
+		prefix, nonce, err = splitNonce(nonce)
+		if err != nil {
+			return 0, err
+		}
+		if ns.prefix != prefix {
+			return 0, errors.New("nonce contains invalid prefix")
+		}
+	}
+	var err error
+	decoded, err = base64.RawURLEncoding.DecodeString(nonce)
 	if err != nil {
 		return 0, err
 	}
-	if ns.prefix != nil {
-		if len(decoded) != nonceLen+1 {
-			return 0, errInvalidNonceLength
-		}
-		if decoded[0] != *ns.prefix {
-			return 0, errors.New("nonce prefixes don't match")
-		}
-		decoded = decoded[1:]
-	} else if len(decoded) != nonceLen {
+	if len(decoded) != nonceLen {
 		return 0, errInvalidNonceLength
 	}
 
@@ -211,17 +222,21 @@ func (ns *NonceService) Valid(nonce string) bool {
 	return true
 }
 
+func splitNonce(nonce string) (string, string, error) {
+	if len(nonce) < 4 {
+		return "", "", errInvalidNonceLength
+	}
+	return nonce[:4], nonce[4:], nil
+}
+
 // RemoteRedeem checks the nonce prefix and routes the Redeem RPC
 // to the associated remote nonce service
-func RemoteRedeem(ctx context.Context, noncePrefixMap map[byte]noncepb.NonceServiceClient, nonce string) (bool, error) {
-	nonceBytes, err := base64.RawURLEncoding.DecodeString(nonce)
+func RemoteRedeem(ctx context.Context, noncePrefixMap map[string]noncepb.NonceServiceClient, nonce string) (bool, error) {
+	prefix, _, err := splitNonce(nonce)
 	if err != nil {
-		return false, err
-	}
-	if len(nonceBytes) == 0 {
 		return false, nil
 	}
-	nonceService, present := noncePrefixMap[nonceBytes[0]]
+	nonceService, present := noncePrefixMap[prefix]
 	if !present {
 		return false, nil
 	}

@@ -94,7 +94,7 @@ type WebFrontEndImpl struct {
 	// Register of anti-replay nonces
 	nonceService       *nonce.NonceService
 	remoteNonceService noncepb.NonceServiceClient
-	noncePrefixMap     map[byte]noncepb.NonceServiceClient
+	noncePrefixMap     map[string]noncepb.NonceServiceClient
 
 	// Key policy.
 	keyPolicy goodkey.KeyPolicy
@@ -117,7 +117,7 @@ func NewWebFrontEndImpl(
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
 	remoteNonceService noncepb.NonceServiceClient,
-	noncePrefixMap map[byte]noncepb.NonceServiceClient,
+	noncePrefixMap map[string]noncepb.NonceServiceClient,
 	logger blog.Logger,
 ) (WebFrontEndImpl, error) {
 	csrSignatureAlgs := prometheus.NewCounterVec(
@@ -140,7 +140,7 @@ func NewWebFrontEndImpl(
 	}
 
 	if wfe.remoteNonceService == nil {
-		nonceService, err := nonce.NewNonceService(stats, 0, nil)
+		nonceService, err := nonce.NewNonceService(stats, 0, "")
 		if err != nil {
 			return WebFrontEndImpl{}, err
 		}

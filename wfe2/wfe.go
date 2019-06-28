@@ -101,7 +101,7 @@ type WebFrontEndImpl struct {
 	// Register of anti-replay nonces
 	nonceService       *nonce.NonceService
 	remoteNonceService noncepb.NonceServiceClient
-	noncePrefixMap     map[byte]noncepb.NonceServiceClient
+	noncePrefixMap     map[string]noncepb.NonceServiceClient
 
 	// Key policy.
 	keyPolicy goodkey.KeyPolicy
@@ -123,7 +123,7 @@ func NewWebFrontEndImpl(
 	keyPolicy goodkey.KeyPolicy,
 	certificateChains map[string][]byte,
 	remoteNonceService noncepb.NonceServiceClient,
-	noncePrefixMap map[byte]noncepb.NonceServiceClient,
+	noncePrefixMap map[string]noncepb.NonceServiceClient,
 	logger blog.Logger,
 ) (WebFrontEndImpl, error) {
 	wfe := WebFrontEndImpl{
@@ -138,7 +138,7 @@ func NewWebFrontEndImpl(
 	}
 
 	if wfe.remoteNonceService == nil {
-		nonceService, err := nonce.NewNonceService(scope, 0, nil)
+		nonceService, err := nonce.NewNonceService(scope, 0, "")
 		if err != nil {
 			return WebFrontEndImpl{}, err
 		}
