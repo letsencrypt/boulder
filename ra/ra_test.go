@@ -1727,15 +1727,6 @@ func TestExactPublicSuffixCertLimit(t *testing.T) {
 	test.AssertError(t, err, "certificate per name rate limit not applied correctly")
 }
 
-// mockSAOnlyExact is a Mock SA that will fail all calls to
-// CountCertifcatesByNames and will return 0 for all
-// CountCertificatesByExactNames calls. It can be used to test that the correct
-// function is called for a PSL matching domain
-//XXXXXX
-type mockSAOnlyExact struct {
-	mocks.StorageAuthority
-}
-
 func TestDeactivateAuthorization(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
