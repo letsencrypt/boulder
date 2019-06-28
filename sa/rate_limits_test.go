@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func TestFasterRateLimit(t *testing.T) {
+func TestRateLimit(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -72,7 +72,7 @@ func TestFasterRateLimit(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
-			count, err := sa.countCertificatesFaster(sa.dbMap, tc.domainName, aprilFirst.Add(-1*time.Second), aprilFirst.Add(aWeek))
+			count, err := sa.countCertificatesByName(sa.dbMap, tc.domainName, aprilFirst.Add(-1*time.Second), aprilFirst.Add(aWeek))
 			if err != nil {
 				t.Fatal(err)
 			}

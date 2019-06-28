@@ -45,9 +45,8 @@ type SQLStorageAuthority struct {
 
 	// We use function types here so we can mock out this internal function in
 	// unittests.
-	countCertificatesByName      certCountFunc
-	countCertificatesByExactName certCountFunc
-	getChallenges                getChallengesFunc
+	countCertificatesByName certCountFunc
+	getChallenges           getChallengesFunc
 }
 
 func digest256(data []byte) []byte {
@@ -107,8 +106,7 @@ func NewSQLStorageAuthority(
 		parallelismPerRPC: parallelismPerRPC,
 	}
 
-	ssa.countCertificatesByName = ssa.countCertificatesFaster
-	ssa.countCertificatesByExactName = ssa.countCertificatesFaster
+	ssa.countCertificatesByName = ssa.countCertificates
 	ssa.getChallenges = ssa.getChallengesImpl
 
 	return ssa, nil
@@ -429,21 +427,7 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, do
 }
 
 func (ssa *SQLStorageAuthority) CountCertificatesByExactNames(ctx context.Context, domains []string, earliest, latest time.Time) ([]*sapb.CountByNames_MapElement, error) {
-	var ret []*sapb.CountByNames_MapElement
-	for _, domain := range domains {
-		currentCount, err := ssa.countCertificatesByExactName(
-			ssa.dbMap.WithContext(ctx), domain, earliest, latest)
-		if err != nil {
-			return ret, err
-		}
-		name := string(domain)
-		pbCount := int64(currentCount)
-		ret = append(ret, &sapb.CountByNames_MapElement{
-			Name:  &name,
-			Count: &pbCount,
-		})
-	}
-	return ret, nil
+	return ssa.CountCertificatesByNames(ctx, domains, earliest, latest)
 }
 
 func ReverseName(domain string) string {
