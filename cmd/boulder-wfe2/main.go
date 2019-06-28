@@ -49,7 +49,7 @@ type config struct {
 		SAService *cmd.GRPCClientConfig
 		// GetNonceService contains a gRPC config for any nonce-service instances
 		// which we want to retrieve nonces from. In a multi-DC deployment this
-		// is should refer to any local nonce-service instances.
+		// should refer to any local nonce-service instances.
 		GetNonceService *cmd.GRPCClientConfig
 		// RedeemNonceServices contains a map of nonce-service prefixes to
 		// gRPC configs we want to use to redeem nonces. In a multi-DC deployment
@@ -206,11 +206,11 @@ func setupWFE(c config, logger blog.Logger, stats metrics.Scope, clk clock.Clock
 	npm := map[string]noncepb.NonceServiceClient{}
 	if c.WFE.GetNonceService != nil {
 		rnsConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, clientMetrics, clk)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Nonce service")
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to get nonce service")
 		rns = noncepb.NewNonceServiceClient(rnsConn)
 		for prefix, serviceConfig := range c.WFE.RedeemNonceServices {
 			conn, err := bgrpc.ClientSetup(&serviceConfig, tlsConfig, clientMetrics, clk)
-			cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to nonce service")
+			cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to redeem nonce service")
 			npm[prefix] = noncepb.NewNonceServiceClient(conn)
 		}
 	}

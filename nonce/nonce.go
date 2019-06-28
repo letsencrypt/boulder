@@ -21,6 +21,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"math/big"
 	"sync"
 	"time"
@@ -71,6 +72,12 @@ func (h *int64Heap) Pop() interface{} {
 func NewNonceService(scope metrics.Scope, maxUsed int, prefix string) (*NonceService, error) {
 	scope = scope.NewScope("NonceService")
 
+	// If a prefix is provided it must be four characters and valid
+	// base64. The prefix is required to be base64 as RFC8555
+	// section 6.5.1 requires that nonces use that encoding.
+	// As base64 operates on three byte binary segments we require
+	// the prefix to be three bytes (four characters) so that the
+	// bytes preceding the prefix wouldn't impact the encoding.
 	if prefix != "" {
 		if len(prefix) != 4 {
 			return nil, errors.New("nonce prefix must be 4 characters")
@@ -145,7 +152,7 @@ func (ns *NonceService) decrypt(nonce string) (int64, error) {
 			return 0, err
 		}
 		if ns.prefix != prefix {
-			return 0, errors.New("nonce contains invalid prefix")
+			return 0, fmt.Errorf("nonce contains invalid prefix: expected %q, got %q", ns.prefix, prefix)
 		}
 	}
 	var err error

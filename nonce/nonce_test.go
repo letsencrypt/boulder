@@ -174,20 +174,30 @@ func TestRemoteRedeem(t *testing.T) {
 			},
 		},
 	}
-	valid, err = RemoteRedeem(context.Background(), prefixMap, "asdd.CQEC")
+	// Attempt to redeem a nonce with a prefix not in the prefix map, expect return false, nil
+	valid, err = RemoteRedeem(context.Background(), prefixMap, "asddCQEC")
 	test.AssertNotError(t, err, "RemoteRedeem failed")
 	test.Assert(t, !valid, "RemoteRedeem accepted nonce not in prefix map")
-	_, err = RemoteRedeem(context.Background(), prefixMap, "abcd.beef")
+
+	// Attempt to redeem a nonce with a prefix in the prefix map, remote returns error
+	// expect false, err
+	_, err = RemoteRedeem(context.Background(), prefixMap, "abcdbeef")
 	test.AssertError(t, err, "RemoteRedeem didn't return error when remote did")
-	valid, err = RemoteRedeem(context.Background(), prefixMap, "wxyz.dead")
+
+	// Attempt to redeem a nonce with a prefix in the prefix map, remote returns valid
+	// expect true, nil
+	valid, err = RemoteRedeem(context.Background(), prefixMap, "wxyzdead")
 	test.AssertNotError(t, err, "RemoteRedeem failed")
 	test.Assert(t, !valid, "RemoteRedeem didn't honor remote result")
+
+	// Attempt to redeem a nonce with a prefix in the prefix map, remote returns invalid
+	// expect false, nil
 	prefixMap["wxyz"] = &malleableNonceClient{
 		redeem: func(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
 			return &noncepb.ValidMessage{Valid: true}, nil
 		},
 	}
-	valid, err = RemoteRedeem(context.Background(), prefixMap, "wxyz.dead")
+	valid, err = RemoteRedeem(context.Background(), prefixMap, "wxyzdead")
 	test.AssertNotError(t, err, "RemoteRedeem failed")
 	test.Assert(t, valid, "RemoteRedeem didn't honor remote result")
 }
