@@ -19,7 +19,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	noncepb "github.com/letsencrypt/boulder/nonce/proto"
+	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/web"
 )
@@ -182,24 +182,23 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, jws *jose.JSONWebSig
 	// validNonce is called after validPOSTRequest() and parseJWS() which
 	// defend against the incorrect number of signatures.
 	header := jws.Signatures[0].Header
-	nonce := header.Nonce
-	if len(nonce) == 0 {
+	if len(header.Nonce) == 0 {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMissingNonce"}).Inc()
 		return probs.BadNonce("JWS has no anti-replay nonce")
 	}
 	var nonceValid bool
 	if wfe.remoteNonceService != nil {
-		validMsg, err := wfe.remoteNonceService.Redeem(ctx, &noncepb.NonceMessage{Nonce: nonce})
+		valid, err := nonce.RemoteRedeem(ctx, wfe.noncePrefixMap, header.Nonce)
 		if err != nil {
 			return probs.ServerInternal("failed to verify nonce validity: %s", err)
 		}
-		nonceValid = validMsg.Valid
+		nonceValid = valid
 	} else {
-		nonceValid = wfe.nonceService.Valid(nonce)
+		nonceValid = wfe.nonceService.Valid(header.Nonce)
 	}
 	if !nonceValid {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSInvalidNonce"}).Inc()
-		return probs.BadNonce("JWS has an invalid anti-replay nonce: %q", nonce)
+		return probs.BadNonce("JWS has an invalid anti-replay nonce: %q", header.Nonce)
 	}
 	return nil
 }

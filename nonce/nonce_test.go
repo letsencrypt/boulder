@@ -1,15 +1,20 @@
 package nonce
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/metrics"
+	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/test"
+	"google.golang.org/grpc"
 )
 
 func TestValidNonce(t *testing.T) {
-	ns, err := NewNonceService(metrics.NewNoopScope(), 0)
+	ns, err := NewNonceService(metrics.NewNoopScope(), 0, "")
 	test.AssertNotError(t, err, "Could not create nonce service")
 	n, err := ns.Nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
@@ -17,7 +22,7 @@ func TestValidNonce(t *testing.T) {
 }
 
 func TestAlreadyUsed(t *testing.T) {
-	ns, err := NewNonceService(metrics.NewNoopScope(), 0)
+	ns, err := NewNonceService(metrics.NewNoopScope(), 0, "")
 	test.AssertNotError(t, err, "Could not create nonce service")
 	n, err := ns.Nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
@@ -26,7 +31,7 @@ func TestAlreadyUsed(t *testing.T) {
 }
 
 func TestRejectMalformed(t *testing.T) {
-	ns, err := NewNonceService(metrics.NewNoopScope(), 0)
+	ns, err := NewNonceService(metrics.NewNoopScope(), 0, "")
 	test.AssertNotError(t, err, "Could not create nonce service")
 	n, err := ns.Nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
@@ -34,15 +39,15 @@ func TestRejectMalformed(t *testing.T) {
 }
 
 func TestRejectShort(t *testing.T) {
-	ns, err := NewNonceService(metrics.NewNoopScope(), 0)
+	ns, err := NewNonceService(metrics.NewNoopScope(), 0, "")
 	test.AssertNotError(t, err, "Could not create nonce service")
 	test.Assert(t, !ns.Valid("aGkK"), "Accepted an invalid nonce")
 }
 
 func TestRejectUnknown(t *testing.T) {
-	ns1, err := NewNonceService(metrics.NewNoopScope(), 0)
+	ns1, err := NewNonceService(metrics.NewNoopScope(), 0, "")
 	test.AssertNotError(t, err, "Could not create nonce service")
-	ns2, err := NewNonceService(metrics.NewNoopScope(), 0)
+	ns2, err := NewNonceService(metrics.NewNoopScope(), 0, "")
 	test.AssertNotError(t, err, "Could not create nonce service")
 
 	n, err := ns1.Nonce()
@@ -51,7 +56,7 @@ func TestRejectUnknown(t *testing.T) {
 }
 
 func TestRejectTooLate(t *testing.T) {
-	ns, err := NewNonceService(metrics.NewNoopScope(), 0)
+	ns, err := NewNonceService(metrics.NewNoopScope(), 0, "")
 	test.AssertNotError(t, err, "Could not create nonce service")
 
 	ns.latest = 2
@@ -62,7 +67,7 @@ func TestRejectTooLate(t *testing.T) {
 }
 
 func TestRejectTooEarly(t *testing.T) {
-	ns, err := NewNonceService(metrics.NewNoopScope(), 0)
+	ns, err := NewNonceService(metrics.NewNoopScope(), 0, "")
 	test.AssertNotError(t, err, "Could not create nonce service")
 
 	n0, err := ns.Nonce()
@@ -90,7 +95,7 @@ func TestRejectTooEarly(t *testing.T) {
 }
 
 func BenchmarkNonces(b *testing.B) {
-	ns, err := NewNonceService(metrics.NewNoopScope(), 0)
+	ns, err := NewNonceService(metrics.NewNoopScope(), 0, "")
 	if err != nil {
 		b.Fatal("creating nonce service", err)
 	}
@@ -117,4 +122,91 @@ func BenchmarkNonces(b *testing.B) {
 			}
 		}
 	})
+}
+
+func TestNoncePrefixing(t *testing.T) {
+	ns, err := NewNonceService(metrics.NewNoopScope(), 0, "zinc")
+	test.AssertNotError(t, err, "Could not create nonce service")
+
+	n, err := ns.Nonce()
+	test.AssertNotError(t, err, "Could not create nonce")
+	test.Assert(t, ns.Valid(n), "Valid nonce rejected")
+
+	n, err = ns.Nonce()
+	test.AssertNotError(t, err, "Could not create nonce")
+	n = n[1:]
+	test.Assert(t, !ns.Valid(n), "Valid nonce with incorrect prefix accepted")
+
+	n, err = ns.Nonce()
+	test.AssertNotError(t, err, "Could not create nonce")
+	test.Assert(t, !ns.Valid(n[6:]), "Valid nonce without prefix accepted")
+}
+
+type malleableNonceClient struct {
+	redeem func(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error)
+}
+
+func (mnc *malleableNonceClient) Redeem(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
+	return mnc.redeem(ctx, in, opts...)
+}
+
+func (mnc *malleableNonceClient) Nonce(ctx context.Context, in *corepb.Empty, opts ...grpc.CallOption) (*noncepb.NonceMessage, error) {
+	return nil, errors.New("unimplemented")
+}
+
+func TestRemoteRedeem(t *testing.T) {
+	valid, err := RemoteRedeem(context.Background(), nil, "q")
+	test.AssertNotError(t, err, "RemoteRedeem failed")
+	test.Assert(t, !valid, "RemoteRedeem accepted an invalid nonce")
+	valid, err = RemoteRedeem(context.Background(), nil, "")
+	test.AssertNotError(t, err, "RemoteRedeem failed")
+	test.Assert(t, !valid, "RemoteRedeem accepted an empty nonce")
+
+	prefixMap := map[string]noncepb.NonceServiceClient{
+		"abcd": &malleableNonceClient{
+			redeem: func(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
+				return nil, errors.New("wrong one!")
+			},
+		},
+		"wxyz": &malleableNonceClient{
+			redeem: func(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
+				return &noncepb.ValidMessage{Valid: false}, nil
+			},
+		},
+	}
+	// Attempt to redeem a nonce with a prefix not in the prefix map, expect return false, nil
+	valid, err = RemoteRedeem(context.Background(), prefixMap, "asddCQEC")
+	test.AssertNotError(t, err, "RemoteRedeem failed")
+	test.Assert(t, !valid, "RemoteRedeem accepted nonce not in prefix map")
+
+	// Attempt to redeem a nonce with a prefix in the prefix map, remote returns error
+	// expect false, err
+	_, err = RemoteRedeem(context.Background(), prefixMap, "abcdbeef")
+	test.AssertError(t, err, "RemoteRedeem didn't return error when remote did")
+
+	// Attempt to redeem a nonce with a prefix in the prefix map, remote returns valid
+	// expect true, nil
+	valid, err = RemoteRedeem(context.Background(), prefixMap, "wxyzdead")
+	test.AssertNotError(t, err, "RemoteRedeem failed")
+	test.Assert(t, !valid, "RemoteRedeem didn't honor remote result")
+
+	// Attempt to redeem a nonce with a prefix in the prefix map, remote returns invalid
+	// expect false, nil
+	prefixMap["wxyz"] = &malleableNonceClient{
+		redeem: func(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
+			return &noncepb.ValidMessage{Valid: true}, nil
+		},
+	}
+	valid, err = RemoteRedeem(context.Background(), prefixMap, "wxyzdead")
+	test.AssertNotError(t, err, "RemoteRedeem failed")
+	test.Assert(t, valid, "RemoteRedeem didn't honor remote result")
+}
+
+func TestNoncePrefixValidation(t *testing.T) {
+	_, err := NewNonceService(metrics.NewNoopScope(), 0, "hey")
+	test.AssertError(t, err, "NewNonceService didn't fail with short prefix")
+	_, err = NewNonceService(metrics.NewNoopScope(), 0, "hey!")
+	test.AssertError(t, err, "NewNonceService didn't fail with invalid base64")
+	_, err = NewNonceService(metrics.NewNoopScope(), 0, "heyy")
+	test.AssertNotError(t, err, "NewNonceService failed with valid nonce prefix")
 }

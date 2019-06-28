@@ -357,7 +357,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 		"http://localhost:4000/acme/issuer-cert": append([]byte{'\n'}, chainPEM...),
 	}
 
-	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, certChains, nil, blog.NewMock())
+	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, certChains, nil, nil, blog.NewMock())
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL

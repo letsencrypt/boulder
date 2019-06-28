@@ -30,9 +30,19 @@
       "serverAddress": "sa.boulder:9095",
       "timeout": "15s"
     },
-    "nonceService": {
+    "getNonceService": {
       "serverAddress": "nonce.boulder:9101",
       "timeout": "15s"
+    },
+    "redeemNonceServices": {
+      "taro": {
+        "serverAddress": "nonce1.boulder:9101",
+        "timeout": "15s"
+      },
+      "zinc": {
+        "serverAddress": "nonce2.boulder:9101",
+        "timeout": "15s"
+      }
     },
     "features": {
       "NewAuthorizationSchema": true
