@@ -220,16 +220,14 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 		// Run zlint checks
 		results := zlint.LintCertificate(parsedCert)
 		for name, res := range results.Results {
-			if ignoredLints[name] {
+			if ignoredLints[name] || res.Status <= lints.Pass {
 				continue
 			}
-			if res.Status >= lints.Error {
-				prob := fmt.Sprintf("zlint %s: %s", res.Status, name)
-				if res.Details != "" {
-					prob = fmt.Sprintf("%s %s", prob, res.Details)
-				}
-				problems = append(problems, prob)
+			prob := fmt.Sprintf("zlint %s: %s", res.Status, name)
+			if res.Details != "" {
+				prob = fmt.Sprintf("%s %s", prob, res.Details)
 			}
+			problems = append(problems, prob)
 		}
 		// Check stored serial is correct
 		storedSerial, err := core.StringToSerial(cert.Serial)
