@@ -426,10 +426,6 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, do
 	return ret, nil
 }
 
-func (ssa *SQLStorageAuthority) CountCertificatesByExactNames(ctx context.Context, domains []string, earliest, latest time.Time) ([]*sapb.CountByNames_MapElement, error) {
-	return ssa.CountCertificatesByNames(ctx, domains, earliest, latest)
-}
-
 func ReverseName(domain string) string {
 	labels := strings.Split(domain, ".")
 	for i, j := 0, len(labels)-1; i < j; i, j = i+1, j-1 {
