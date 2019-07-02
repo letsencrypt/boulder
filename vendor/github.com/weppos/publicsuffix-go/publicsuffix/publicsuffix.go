@@ -18,9 +18,9 @@ import (
 
 const (
 	// Version identifies the current library version.
-	// This is a pro-forma convention given that Go dependencies
+	// This is a pro forma convention given that Go dependencies
 	// tends to be fetched directly from the repo.
-	Version = "0.4.0"
+	Version = "0.5.0"
 
 	NormalType    = 1
 	WildcardType  = 2
@@ -215,7 +215,6 @@ func (l *List) Find(name string, options *FindOptions) *Rule {
 		part = part[i+1:]
 	}
 
-	return nil
 }
 
 // NewRule parses the rule content, creates and returns a Rule.
@@ -451,6 +450,10 @@ func ParseFromListWithOptions(l *List, name string, options *FindOptions) (*Doma
 	}
 
 	r := l.Find(n, options)
+	if r == nil {
+		return nil, fmt.Errorf("no rule matching name %s", name)
+	}
+
 	parts := r.Decompose(n)
 	left, tld := parts[0], parts[1]
 	if tld == "" {
