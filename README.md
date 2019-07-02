@@ -72,7 +72,7 @@ Make sure you have a local copy of Boulder in your [`$GOPATH`](https://golang.or
     git clone https://github.com/letsencrypt/boulder/ $GOPATH/src/github.com/letsencrypt/boulder
     cd $GOPATH/src/github.com/letsencrypt/boulder
 
-Additionally, make sure you have Docker Engine 1.10.0+ and Docker Compose 1.6.0+ installed. If you do not, you can follow Docker's [installation instructions](https://docs.docker.com/compose/install/).
+Additionally, make sure you have Docker Engine 1.13.0+ and Docker Compose 1.10.0+ installed. If you do not, you can follow Docker's [installation instructions](https://docs.docker.com/compose/install/).
 
 We recommend having **at least 2GB of RAM** available on your Docker host. In practice using less RAM may result in the MariaDB container failing in non-obvious ways.
 

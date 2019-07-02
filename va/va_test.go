@@ -325,7 +325,7 @@ func TestMultiVA(t *testing.T) {
 	}
 
 	unauthorized := probs.Unauthorized(
-		"The key authorization file from the server did not match this challenge [%s] != [???]",
+		`The key authorization file from the server did not match this challenge %q != "???"`,
 		expectedKeyAuthorization)
 
 	internalErr := probs.ServerInternal("Remote PerformValidation RPC failed")

@@ -634,7 +634,7 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident ide
 	payload := strings.TrimRight(string(body), whitespaceCutset)
 
 	if payload != challenge.ProvidedKeyAuthorization {
-		problem := probs.Unauthorized("The key authorization file from the server did not match this challenge [%v] != [%v]",
+		problem := probs.Unauthorized("The key authorization file from the server did not match this challenge %q != %q",
 			challenge.ProvidedKeyAuthorization, payload)
 		va.log.Infof("%s for %s", problem.Detail, ident)
 		return validationRecords, problem

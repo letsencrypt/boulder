@@ -1,4 +1,4 @@
-import urllib2
+import requests
 import json
 
 class ChallTestServer:
@@ -39,14 +39,14 @@ class ChallTestServer:
             self._baseURL = url
 
     def _postURL(self, url, body):
-        return urllib2.urlopen(
+        return requests.post(
                 url,
-                data=json.dumps(body)).read()
+                data=json.dumps(body)).text
 
     def _URL(self, path):
         urlPath = self._paths.get(path, None)
         if urlPath is None:
-            raise Exception("No challenge test server URL path known for {0}".format(path))
+            raise(Exception("No challenge test server URL path known for {0}".format(path)))
         return self._baseURL + urlPath
 
     def _clear_request_history(self, host, typ):

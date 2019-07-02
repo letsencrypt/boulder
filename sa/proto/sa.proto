@@ -15,7 +15,6 @@ service StorageAuthority {
         rpc GetCertificate(Serial) returns (core.Certificate) {}
         rpc GetCertificateStatus(Serial) returns (CertificateStatus) {}
         rpc CountCertificatesByNames(CountCertificatesByNamesRequest) returns (CountByNames) {}
-        rpc CountCertificatesByExactNames(CountCertificatesByNamesRequest) returns (CountByNames) {}
         rpc CountRegistrationsByIP(CountRegistrationsByIPRequest) returns (Count) {}
         rpc CountRegistrationsByIPRange(CountRegistrationsByIPRequest) returns (Count) {}
         rpc CountPendingAuthorizations(RegistrationID) returns (Count) {}
