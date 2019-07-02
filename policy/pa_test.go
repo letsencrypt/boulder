@@ -364,6 +364,7 @@ func TestWillingToIssueWildcards(t *testing.T) {
 	test.AssertEquals(t, ok, true)
 	// There should be *no* suberrors because there was only one error overall.
 	test.AssertEquals(t, len(berr.SubErrors), 0)
+	test.AssertEquals(t, berr.Error(), "Policy forbids issuing for \"letsdecrypt.org\": Policy forbids issuing for name")
 }
 
 var accountKeyJSON = `{

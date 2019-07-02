@@ -350,7 +350,11 @@ func (pa *AuthorityImpl) WillingToIssueWildcards(idents []identifier.ACMEIdentif
 		// If there was only one error, then use it as the top level error that is
 		// returned.
 		if len(subErrors) == 1 {
-			return subErrors[0].BoulderError
+			return berrors.RejectedIdentifierError(
+				"Policy forbids issuing for %q: %s",
+				subErrors[0].Identifier.Value,
+				subErrors[0].BoulderError.Detail,
+			)
 		}
 
 		detail = fmt.Sprintf("Policy forbids issuing for %q and %d more identifiers. "+
