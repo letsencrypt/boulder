@@ -142,12 +142,17 @@ func SelectCertificate(s dbOneSelector, q string, args ...interface{}) (core.Cer
 	return model, err
 }
 
+type CertWithID struct {
+	ID int64
+	core.Certificate
+}
+
 // SelectCertificates selects all fields of multiple certificate objects
-func SelectCertificates(s dbSelector, q string, args map[string]interface{}) ([]core.Certificate, error) {
-	var models []core.Certificate
+func SelectCertificates(s dbSelector, q string, args map[string]interface{}) ([]CertWithID, error) {
+	var models []CertWithID
 	_, err := s.Select(
 		&models,
-		"SELECT "+certFields+" FROM certificates "+q, args)
+		"SELECT id, "+certFields+" FROM certificates "+q, args)
 	return models, err
 }
 

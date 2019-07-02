@@ -315,8 +315,8 @@ func (db mismatchedCountDB) SelectOne(output interface{}, _ string, _ ...interfa
 // a dastardly switch-a-roo here and return an empty set
 func (db mismatchedCountDB) Select(output interface{}, _ string, _ ...interface{}) ([]interface{}, error) {
 	// But actually return nothing
-	outputPtr, _ := output.(*[]core.Certificate)
-	*outputPtr = []core.Certificate{}
+	outputPtr, _ := output.(*[]sa.CertWithID)
+	*outputPtr = []sa.CertWithID{}
 	return nil, nil
 }
 
