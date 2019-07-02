@@ -407,11 +407,6 @@ func (sa *StorageAuthority) CountCertificatesByNames(_ context.Context, _ []stri
 	return
 }
 
-// CountCertificatesByExactNames is a mock
-func (sa *StorageAuthority) CountCertificatesByExactNames(_ context.Context, _ []string, _, _ time.Time) (ret []*sapb.CountByNames_MapElement, err error) {
-	return
-}
-
 // CountRegistrationsByIP is a mock
 func (sa *StorageAuthority) CountRegistrationsByIP(_ context.Context, _ net.IP, _, _ time.Time) (int, error) {
 	return 0, nil
