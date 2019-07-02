@@ -1002,6 +1002,29 @@ func TestHTTPBadPort(t *testing.T) {
 	}
 }
 
+func TestHTTPKeyAuthorizationFileMismatch(t *testing.T) {
+	chall := core.HTTPChallenge01("")
+	setChallengeToken(&chall, expectedToken)
+
+	m := http.NewServeMux()
+	hs := httptest.NewUnstartedServer(m)
+	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("\xef\xffAABBCC"))
+	})
+	hs.Start()
+
+	va, _ := setup(hs, 0, "", nil)
+	_, prob := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+
+	if prob == nil {
+		t.Fatalf("Expected validation to fail when file mismatched.")
+	}
+	expected := `The key authorization file from the server did not match this challenge "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI" != "\xef\xffAABBCC"`
+	if prob.Detail != expected {
+		t.Errorf("validation failed with %s, expected %s", prob.Detail, expected)
+	}
+}
+
 func TestHTTP(t *testing.T) {
 	chall := core.HTTPChallenge01("")
 	setChallengeToken(&chall, expectedToken)
