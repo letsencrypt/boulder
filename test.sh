@@ -110,9 +110,9 @@ if [[ "$RUN" =~ "integration" ]] ; then
     args+=("--skip-setup")
   fi
 
-  source ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv}/bin/activate
+  source ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv3}/bin/activate
   DIRECTORY=http://boulder:4000/directory \
-    python2 test/integration-test.py "${args[@]}"
+    python3 test/integration-test.py "${args[@]}"
 fi
 
 # Test that just ./start.py works, which is a proxy for testing that

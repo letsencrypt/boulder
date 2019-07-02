@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 This file contains basic infrastructure for running the integration test cases.
@@ -53,7 +53,7 @@ def run_expired_authz_purger():
             tool = "expired-authz-purger"
             out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json", target_time)
         if 'via FAKECLOCK' not in out:
-            raise Exception("%s was not built with `integration` build tag" % (tool))
+            raise(Exception("%s was not built with `integration` build tag" % (tool)))
         if num is None:
             return
         if CONFIG_NEXT:
@@ -61,8 +61,8 @@ def run_expired_authz_purger():
         else:
             expected_output = 'Deleted a total of %d expired authorizations from %s' % (num, table)
         if expected_output not in out:
-            raise Exception("%s did not print '%s'.  Output:\n%s" % (
-                  tool, expected_output, out))
+            raise(Exception("%s did not print '%s'.  Output:\n%s" % (
+                  tool, expected_output, out)))
 
     now = datetime.datetime.utcnow()
 
@@ -121,9 +121,9 @@ def test_stats():
     def expect_stat(port, stat):
         url = "http://localhost:%d/metrics" % port
         response = requests.get(url)
-        if not stat in response.content:
+        if not stat in response.text:
             print(response.content)
-            raise Exception("%s not present in %s" % (stat, url))
+            raise(Exception("%s not present in %s" % (stat, url)))
     expect_stat(8000, "\nresponse_time_count{")
     expect_stat(8000, "\ngo_goroutines ")
     expect_stat(8000, '\ngrpc_client_handling_seconds_count{grpc_method="NewRegistration",grpc_service="ra.RegistrationAuthority",grpc_type="unary"} ')
@@ -156,7 +156,7 @@ def main():
     args = parser.parse_args()
 
     if not (args.run_all or args.run_certbot or args.run_chisel or args.run_loadtest or args.custom is not None):
-        raise Exception("must run at least one of the letsencrypt or chisel tests with --all, --certbot, --chisel, --load or --custom")
+        raise(Exception("must run at least one of the letsencrypt or chisel tests with --all, --certbot, --chisel, --load or --custom"))
 
     if not args.skip_setup:
         now = datetime.datetime.utcnow()
@@ -169,13 +169,13 @@ def main():
         now = datetime.datetime.utcnow()
         twenty_days_ago = now+datetime.timedelta(days=-20)
         if not startservers.start(race_detection=True, fakeclock=fakeclock(twenty_days_ago), config_dir=config):
-            raise Exception("startservers failed (mocking twenty days ago)")
+            raise(Exception("startservers failed (mocking twenty days ago)"))
         v1_integration.caa_client = caa_client = chisel.make_client()
         setup_twenty_days_ago()
         startservers.stop()
 
     if not startservers.start(race_detection=True):
-        raise Exception("startservers failed")
+        raise(Exception("startservers failed"))
 
     if args.run_all or args.run_chisel:
         run_chisel(args.test_case_filter)
@@ -202,7 +202,7 @@ def main():
         run_loadtest()
 
     if not startservers.check():
-        raise Exception("startservers.check failed")
+        raise(Exception("startservers.check failed"))
 
     global exit_status
     exit_status = 0
@@ -253,7 +253,7 @@ def check_balance():
     for address in addresses:
         metrics = requests.get("http://%s/metrics" % address)
         if not "grpc_server_handled_total" in metrics.text:
-            raise Exception("no gRPC traffic processed by %s; load balancing problem?"
+            raise(Exception("no gRPC traffic processed by %s; load balancing problem?")
                 % address)
 
 def run_cert_checker():
@@ -263,7 +263,7 @@ if __name__ == "__main__":
     try:
         main()
     except subprocess.CalledProcessError as e:
-        raise Exception("%s. Output:\n%s" % (e, e.output))
+        raise(Exception("%s. Output:\n%s" % (e, e.output)))
 
 @atexit.register
 def stop():
