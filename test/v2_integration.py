@@ -935,7 +935,7 @@ def test_new_order_policy_errs():
         ok = True
         if e.typ != "urn:ietf:params:acme:error:rejectedIdentifier":
             raise(Exception('Expected rejectedIdentifier type problem, got {0}'.format(e.typ)))
-        if e.detail != 'Error creating new order :: Policy forbids issuing for "out-addr.in-addr.arpa" and 1 more identifiers. Refer to sub-problems for more information':
+        if e.detail != 'Error creating new order :: Cannot issue for "out-addr.in-addr.arpa": Policy forbids issuing for name (and 1 more problems. Refer to sub-problems for more information.)':
             raise(Exception('Order problem detail did not match expected'))
     if not ok:
         raise(Exception('Expected problem, got no error'))
