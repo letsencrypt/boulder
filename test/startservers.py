@@ -1,4 +1,5 @@
 import atexit
+import BaseHTTPServer
 import os
 import shutil
 import signal
@@ -101,7 +102,7 @@ def start(race_detection, fakeclock=None, config_dir=default_config_dir):
             print(e)
             return False
 
-    print("All servers running. Hit ^C to kill.")
+    print "All servers running. Hit ^C to kill."
     return True
 
 def check():
@@ -119,9 +120,9 @@ def check():
         else:
             busted.append(p)
     if busted:
-        print("\n\nThese processes exited early (check above for their output):")
+        print "\n\nThese processes exited early (check above for their output):"
         for p in busted:
-            print("\t'%s' with pid %d exited %d" % (p.cmd, p.pid, p.returncode))
+            print "\t'%s' with pid %d exited %d" % (p.cmd, p.pid, p.returncode)
     processes = stillok
     return not busted
 
@@ -132,7 +133,7 @@ def startChallSrv():
     """
     global challSrvProcess
     if challSrvProcess is not None:
-        raise(Exception("startChallSrv called more than once"))
+        raise Exception("startChallSrv called more than once")
 
     # NOTE(@cpu): We specify explicit bind addresses for -https01 and
     # --tlsalpn01 here to allow HTTPS HTTP-01 responses on 5001 for on interface
