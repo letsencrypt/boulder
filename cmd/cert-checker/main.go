@@ -136,27 +136,41 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 		return err
 	}
 
+	var initialID int
+	err = c.dbMap.SelectOne(
+		&initialID,
+		"SELECT id FROM certificates WHERE issued >= :issued AND expires >= :now LIMIT 1",
+		args,
+	)
+	if err != nil {
+		return err
+	}
+	if initialID > 0 {
+		// decrement the initial ID so that we select below as we aren't using >=
+		initialID -= 1
+	}
+
 	// Retrieve certs in batches of 1000 (the size of the certificate channel)
 	// so that we don't eat unnecessary amounts of memory and avoid the 16MB MySQL
 	// packet limit.
 	args["limit"] = batchSize
-	args["lastSerial"] = ""
+	args["id"] = initialID
 	for offset := 0; offset < count; {
 		certs, err := sa.SelectCertificates(
 			c.dbMap,
-			"WHERE issued >= :issued AND expires >= :now AND serial > :lastSerial LIMIT :limit",
+			"WHERE id > :id AND expires >= :now ORDER BY id LIMIT :limit",
 			args,
 		)
 		if err != nil {
 			return err
 		}
 		for _, cert := range certs {
-			c.certs <- cert
+			c.certs <- cert.Certificate
 		}
 		if len(certs) == 0 {
 			break
 		}
-		args["lastSerial"] = certs[len(certs)-1].Serial
+		args["id"] = certs[len(certs)-1].ID
 		offset += len(certs)
 	}
 
