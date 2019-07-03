@@ -2092,7 +2092,7 @@ func TestNewOrder(t *testing.T) {
 		Names:          []string{"a"},
 	})
 	test.AssertError(t, err, "NewOrder with invalid names did not error")
-	test.AssertEquals(t, err.Error(), "DNS name does not have enough labels")
+	test.AssertEquals(t, err.Error(), "Cannot issue for \"a\": DNS name does not have enough labels")
 }
 
 // TestNewOrderLegacyAuthzReuse tests that a legacy acme v1 authorization from
@@ -3110,7 +3110,7 @@ func TestFinalizeOrder(t *testing.T) {
 				},
 				Csr: policyForbidCSR,
 			},
-			ExpectedErrMsg: "Policy forbids issuing for name",
+			ExpectedErrMsg: "Cannot issue for \"example.org\": Policy forbids issuing for name",
 		},
 		{
 			Name: "Order with missing registration",
