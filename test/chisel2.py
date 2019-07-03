@@ -15,6 +15,7 @@ import sys
 import signal
 import threading
 import time
+import urllib2
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -59,14 +60,14 @@ def make_client(email=None):
         client.net.account = client.new_account(messages.NewRegistration.from_data(email=email,
             terms_of_service_agreed=True))
     else:
-        raise(Exception("Unrecognized terms of service URL %s" % tos))
+        raise Exception("Unrecognized terms of service URL %s" % tos)
     return client
 
 def get_chall(authz, typ):
     for chall_body in authz.body.challenges:
         if isinstance(chall_body.chall, typ):
             return chall_body
-    raise(Exception("No %s challenge found" % typ.typ))
+    raise Exception("No %s challenge found" % typ.typ)
 
 def make_csr(domains):
     key = OpenSSL.crypto.PKey()
@@ -99,7 +100,7 @@ def auth_and_issue(domains, chall_type="dns-01", email=None, cert_output=None, c
     elif chall_type == "tls-alpn-01":
         cleanup = do_tlsalpn_challenges(client, authzs)
     else:
-        raise(Exception("invalid challenge type %s" % chall_type))
+        raise Exception("invalid challenge type %s" % chall_type)
 
     try:
         order = client.poll_and_finalize(order)
@@ -171,7 +172,7 @@ def expect_problem(problem_type, func):
         if e.typ == problem_type:
             ok = True
         else:
-            raise(Exception("Expected %s, got %s" % (problem_type, error.__str__())))
+            raise Exception("Expected %s, got %s" % (problem_type, error.__str__()))
     except acme_errors.ValidationError as e:
         for authzr in e.failed_authzrs:
             for chall in authzr.body.challenges:
@@ -179,19 +180,19 @@ def expect_problem(problem_type, func):
                 if error and error.typ == problem_type:
                     ok = True
                 elif error:
-                    raise(Exception("Expected %s, got %s" % (problem_type, error.__str__())))
+                    raise Exception("Expected %s, got %s" % (problem_type, error.__str__()))
     if not ok:
-        raise(Exception('Expected %s, got no error' % problem_type))
+        raise Exception('Expected %s, got no error' % problem_type)
 
 if __name__ == "__main__":
     # Die on SIGINT
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     domains = sys.argv[1:]
     if len(domains) == 0:
-        print(__doc__)
+        print __doc__
         sys.exit(0)
     try:
         auth_and_issue(domains)
-    except messages.Error as e:
-        print(e)
+    except messages.Error, e:
+        print e
         sys.exit(1)
