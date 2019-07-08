@@ -179,7 +179,7 @@ func (ci *clientInterceptor) intercept(
 	// And defer decrementing it when we're done
 	defer ci.metrics.inFlightRPCs.With(labels).Dec()
 	// Handle the RPC
-	begin := time.Now()
+	begin := ci.clk.Now()
 	err := ci.metrics.grpcMetrics.UnaryClientInterceptor()(localCtx, fullMethod, req, reply, cc, invoker, opts...)
 	if err != nil {
 		err = unwrapError(err, respMD)
@@ -188,12 +188,14 @@ func (ci *clientInterceptor) intercept(
 		return deadlineDetails{
 			service: service,
 			method:  method,
-			latency: time.Since(begin),
+			latency: ci.clk.Since(begin),
 		}
 	}
 	return err
 }
 
+// deadlineDetails is an error type that we use in place of gRPC's
+// DeadlineExceeded errors in order to add more detail for debugging.
 type deadlineDetails struct {
 	service string
 	method  string
