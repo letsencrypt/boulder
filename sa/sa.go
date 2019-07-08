@@ -1812,21 +1812,31 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	// Hash the names requested for lookup in the orderFqdnSets table
 	fqdnHash := hashNames(req.Names)
 
+	// Find a possibly-suitable order. We don't include the account ID or order
+	// status in this query because there's no index that includes those, so
+	// including them could require the DB to scan extra rows.
+	// Instead, we select one unexpired order that matches the fqdnSet. If
+	// that order doesn't match the account ID or status we need, just return
+	// nothing. We use `ORDER BY expires ASC` because the index on
+	// (setHash, expires) is in ASC order. DESC would be slightly nicer from a
+	// user experience perspective but would be slow when there are many entries
+	// to sort.
+	// This approach works fine because in most cases there's only one account
+	// issuing for a given name. If there are other accounts issuing for the same
+	// name, it just means order reuse happens less often.
 	var orderID int64
 	err := ssa.dbMap.WithContext(ctx).SelectOne(&orderID, `
 	SELECT orderID
 	FROM orderFqdnSets
 	WHERE setHash = ?
-	AND registrationID = ?
-	AND expires > ?`,
-		fqdnHash, *req.AcctID, ssa.clk.Now())
+	AND expires > ?
+	ORDER BY expires ASC
+	LIMIT 1`,
+		fqdnHash, ssa.clk.Now())
 
-	// There isn't an unexpired order for the provided AcctID that has the
-	// fqdnHash requested.
 	if err == sql.ErrNoRows {
 		return nil, berrors.NotFoundError("no order matching request found")
 	} else if err != nil {
-		// An unexpected error occurred
 		return nil, err
 	}
 
@@ -1835,6 +1845,11 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	if err != nil {
 		return nil, err
 	}
+
+	if *order.RegistrationID != *req.AcctID {
+		return nil, berrors.NotFoundError("no order matching request found")
+	}
+
 	// Only return a pending or ready order
 	if *order.Status != string(core.StatusPending) &&
 		*order.Status != string(core.StatusReady) {
