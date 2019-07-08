@@ -1825,14 +1825,25 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	// issuing for a given name. If there are other accounts issuing for the same
 	// name, it just means order reuse happens less often.
 	var orderID int64
-	err := ssa.dbMap.WithContext(ctx).SelectOne(&orderID, `
-	SELECT orderID
-	FROM orderFqdnSets
-	WHERE setHash = ?
-	AND expires > ?
-	ORDER BY expires ASC
-	LIMIT 1`,
-		fqdnHash, ssa.clk.Now())
+	var err error
+	if features.Enabled(features.FasterGetOrderForNames) {
+		err = ssa.dbMap.WithContext(ctx).SelectOne(&orderID, `
+					SELECT orderID
+					FROM orderFqdnSets
+					WHERE setHash = ?
+					AND expires > ?
+					ORDER BY expires ASC
+					LIMIT 1`,
+			fqdnHash, ssa.clk.Now())
+	} else {
+		err = ssa.dbMap.WithContext(ctx).SelectOne(&orderID, `
+					SELECT orderID
+					FROM orderFqdnSets
+					WHERE setHash = ?
+					AND registrationID = ?
+					AND expires > ?`,
+			fqdnHash, *req.AcctID, ssa.clk.Now())
+	}
 
 	if err == sql.ErrNoRows {
 		return nil, berrors.NotFoundError("no order matching request found")
