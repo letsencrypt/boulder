@@ -162,8 +162,8 @@ func TestTimeouts(t *testing.T) {
 		expectedErrorPrefix string
 	}{
 		{250 * time.Millisecond, "rpc error: code = Unknown desc = rpc error: code = DeadlineExceeded desc = the chiller overslept"},
-		{100 * time.Millisecond, "rpc error: code = DeadlineExceeded desc = not enough time left on clock: "},
-		{10 * time.Millisecond, "rpc error: code = DeadlineExceeded desc = not enough time left on clock: "},
+		{100 * time.Millisecond, "Chiller.Chill timed out after 0 ms"},
+		{10 * time.Millisecond, "Chiller.Chill timed out after 0 ms"},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.timeout.String(), func(t *testing.T) {

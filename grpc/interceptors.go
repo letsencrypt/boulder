@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	berrors "github.com/letsencrypt/boulder/errors"
 )
@@ -177,9 +179,30 @@ func (ci *clientInterceptor) intercept(
 	// And defer decrementing it when we're done
 	defer ci.metrics.inFlightRPCs.With(labels).Dec()
 	// Handle the RPC
+	begin := ci.clk.Now()
 	err := ci.metrics.grpcMetrics.UnaryClientInterceptor()(localCtx, fullMethod, req, reply, cc, invoker, opts...)
 	if err != nil {
 		err = unwrapError(err, respMD)
 	}
+	if status.Code(err) == codes.DeadlineExceeded {
+		return deadlineDetails{
+			service: service,
+			method:  method,
+			latency: ci.clk.Since(begin),
+		}
+	}
 	return err
+}
+
+// deadlineDetails is an error type that we use in place of gRPC's
+// DeadlineExceeded errors in order to add more detail for debugging.
+type deadlineDetails struct {
+	service string
+	method  string
+	latency time.Duration
+}
+
+func (dd deadlineDetails) Error() string {
+	return fmt.Sprintf("%s.%s timed out after %d ms",
+		dd.service, dd.method, int64(dd.latency/time.Millisecond))
 }
