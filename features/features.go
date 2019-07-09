@@ -57,6 +57,8 @@ const (
 	// MandatoryPOSTAsGET forbids legacy unauthenticated GET requests for ACME
 	// resources.
 	MandatoryPOSTAsGET
+	// Use an optimized query for GetOrderForNames.
+	FasterGetOrderForNames
 )
 
 // List of features and their default value, protected by fMu
@@ -82,6 +84,7 @@ var features = map[FeatureFlag]bool{
 	CheckRenewalFirst:        false,
 	MandatoryPOSTAsGET:       false,
 	DisableAuthz2Orders:      false,
+	FasterGetOrderForNames:   false,
 }
 
 var fMu = new(sync.RWMutex)
