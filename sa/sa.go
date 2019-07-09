@@ -1824,20 +1824,23 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	// This approach works fine because in most cases there's only one account
 	// issuing for a given name. If there are other accounts issuing for the same
 	// name, it just means order reuse happens less often.
-	var orderID int64
+	var result struct {
+		OrderID        int64
+		RegistrationID int64
+	}
 	var err error
 	if features.Enabled(features.FasterGetOrderForNames) {
-		err = ssa.dbMap.WithContext(ctx).SelectOne(&orderID, `
-					SELECT orderID
+		err = ssa.dbMap.WithContext(ctx).SelectOne(&result, `
+					SELECT orderID, registrationID
 					FROM orderFqdnSets
 					WHERE setHash = ?
 					AND expires > ?
-					ORDER BY expires ASC
+					ORDER BY expires DESC
 					LIMIT 1`,
 			fqdnHash, ssa.clk.Now())
 	} else {
-		err = ssa.dbMap.WithContext(ctx).SelectOne(&orderID, `
-					SELECT orderID
+		err = ssa.dbMap.WithContext(ctx).SelectOne(&result, `
+					SELECT orderID, registrationID
 					FROM orderFqdnSets
 					WHERE setHash = ?
 					AND registrationID = ?
@@ -1851,14 +1854,14 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 		return nil, err
 	}
 
-	// Get the order
-	order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID, UseV2Authorizations: req.UseV2Authorizations})
-	if err != nil {
-		return nil, err
+	if result.RegistrationID != *req.AcctID {
+		return nil, berrors.NotFoundError("no order matching request found")
 	}
 
-	if *order.RegistrationID != *req.AcctID {
-		return nil, berrors.NotFoundError("no order matching request found")
+	// Get the order
+	order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &result.OrderID, UseV2Authorizations: req.UseV2Authorizations})
+	if err != nil {
+		return nil, err
 	}
 
 	// Only return a pending or ready order
