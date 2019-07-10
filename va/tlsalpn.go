@@ -227,7 +227,7 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 			}
 			var extValue []byte
 			rest, err := asn1.Unmarshal(ext.Value, &extValue)
-			if err != nil || len(rest) > 0 {
+			if err != nil || len(rest) > 0 || len(h) != len(extValue) {
 				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
 					"Malformed acmeValidationV1 extension value", core.ChallengeTypeTLSALPN01)
 				return validationRecords, probs.Unauthorized(errText)
