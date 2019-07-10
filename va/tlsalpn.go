@@ -234,7 +234,7 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 			}
 			if subtle.ConstantTimeCompare(h[:], extValue) != 1 {
 				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-					"Invalid acmeValidationV1 extension value: %s for this challenge but got %s",
+					"Expected acmeValidationV1 extension value %s for this challenge but got %s",
 					core.ChallengeTypeTLSALPN01, hex.EncodeToString(h[:]), hex.EncodeToString(extValue))
 				return validationRecords, probs.Unauthorized(errText)
 			}
