@@ -1860,7 +1860,7 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	}
 
 	// Get the order
-	order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &result.orderID, UseV2Authorizations: req.UseV2Authorizations})
+	order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &result.OrderID, UseV2Authorizations: req.UseV2Authorizations})
 	if err != nil {
 		return nil, err
 	}
