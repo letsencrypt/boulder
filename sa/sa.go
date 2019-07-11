@@ -1856,6 +1856,10 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 		return nil, err
 	}
 
+	if result.RegistrationID != *req.AcctID {
+		return nil, berrors.NotFoundError("no order matching request found")
+	}
+
 	// Get the order
 	order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID, UseV2Authorizations: req.UseV2Authorizations})
 	if err != nil {
