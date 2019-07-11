@@ -1852,7 +1852,6 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	if err == sql.ErrNoRows {
 		return nil, berrors.NotFoundError("no order matching request found")
 	} else if err != nil {
-		// An unexpected error occurred
 		return nil, err
 	}
 
@@ -1861,7 +1860,7 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	}
 
 	// Get the order
-	order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID, UseV2Authorizations: req.UseV2Authorizations})
+	order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &result.orderID, UseV2Authorizations: req.UseV2Authorizations})
 	if err != nil {
 		return nil, err
 	}
