@@ -1979,6 +1979,51 @@ func TestCountOrders(t *testing.T) {
 	test.AssertEquals(t, count, 0)
 }
 
+func TestFasterGetOrderForNames(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	domain := "example.com"
+	expires := fc.Now().Add(time.Hour)
+
+	reg, err := sa.NewRegistration(ctx, core.Registration{
+		Key:       satest.GoodJWK(),
+		InitialIP: net.ParseIP("42.42.42.42"),
+	})
+	test.AssertNotError(t, err, "Couldn't create test registration")
+
+	authz, err := sa.NewPendingAuthorization(ctx, core.Authorization{
+		Identifier:     identifier.DNSIdentifier(domain),
+		RegistrationID: reg.ID,
+		Status:         core.StatusPending,
+		Expires:        &expires,
+	})
+	test.AssertNotError(t, err, "creating authorization")
+
+	expiresNano := expires.UnixNano()
+	_, err = sa.NewOrder(ctx, &corepb.Order{
+		RegistrationID: &reg.ID,
+		Expires:        &expiresNano,
+		Authorizations: []string{authz.ID},
+		Names:          []string{domain},
+	})
+	test.AssertNotError(t, err, "sa.NewOrder failed")
+
+	_, err = sa.NewOrder(ctx, &corepb.Order{
+		RegistrationID: &reg.ID,
+		Expires:        &expiresNano,
+		Authorizations: []string{authz.ID},
+		Names:          []string{domain},
+	})
+	test.AssertNotError(t, err, "sa.NewOrder failed")
+
+	_, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
+		AcctID: &reg.ID,
+		Names:  []string{domain},
+	})
+	test.AssertNotError(t, err, "sa.GetOrderForNames failed")
+}
+
 func TestGetOrderForNames(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()

@@ -1812,26 +1812,55 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	// Hash the names requested for lookup in the orderFqdnSets table
 	fqdnHash := hashNames(req.Names)
 
-	var orderID int64
-	err := ssa.dbMap.WithContext(ctx).SelectOne(&orderID, `
-	SELECT orderID
-	FROM orderFqdnSets
-	WHERE setHash = ?
-	AND registrationID = ?
-	AND expires > ?`,
-		fqdnHash, *req.AcctID, ssa.clk.Now())
+	// Find a possibly-suitable order. We don't include the account ID or order
+	// status in this query because there's no index that includes those, so
+	// including them could require the DB to scan extra rows.
+	// Instead, we select one unexpired order that matches the fqdnSet. If
+	// that order doesn't match the account ID or status we need, just return
+	// nothing. We use `ORDER BY expires ASC` because the index on
+	// (setHash, expires) is in ASC order. DESC would be slightly nicer from a
+	// user experience perspective but would be slow when there are many entries
+	// to sort.
+	// This approach works fine because in most cases there's only one account
+	// issuing for a given name. If there are other accounts issuing for the same
+	// name, it just means order reuse happens less often.
+	var result struct {
+		OrderID        int64
+		RegistrationID int64
+	}
+	var err error
+	if features.Enabled(features.FasterGetOrderForNames) {
+		err = ssa.dbMap.WithContext(ctx).SelectOne(&result, `
+					SELECT orderID, registrationID
+					FROM orderFqdnSets
+					WHERE setHash = ?
+					AND expires > ?
+					ORDER BY expires DESC
+					LIMIT 1`,
+			fqdnHash, ssa.clk.Now())
+	} else {
+		err = ssa.dbMap.WithContext(ctx).SelectOne(&result, `
+					SELECT orderID, registrationID
+					FROM orderFqdnSets
+					WHERE setHash = ?
+					AND registrationID = ?
+					AND expires > ?
+					LIMIT 1`,
+			fqdnHash, *req.AcctID, ssa.clk.Now())
+	}
 
-	// There isn't an unexpired order for the provided AcctID that has the
-	// fqdnHash requested.
 	if err == sql.ErrNoRows {
 		return nil, berrors.NotFoundError("no order matching request found")
 	} else if err != nil {
-		// An unexpected error occurred
 		return nil, err
 	}
 
+	if result.RegistrationID != *req.AcctID {
+		return nil, berrors.NotFoundError("no order matching request found")
+	}
+
 	// Get the order
-	order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID, UseV2Authorizations: req.UseV2Authorizations})
+	order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &result.OrderID, UseV2Authorizations: req.UseV2Authorizations})
 	if err != nil {
 		return nil, err
 	}

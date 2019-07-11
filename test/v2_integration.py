@@ -104,6 +104,26 @@ def test_http_challenge_broken_redirect():
 
     challSrv.remove_http_redirect(challengePath)
 
+def test_fail_thrice():
+    """
+    Fail a challenge for the same domain, with the same account, three times in
+    a row. This tests a fix for
+    https://github.com/letsencrypt/boulder/issues/4329. We expect to get
+    ValidationErrors, but no 500s.
+    """
+    domain = "failthrice." + random_domain()
+    csr_pem = chisel2.make_csr([domain])
+    client = chisel2.make_client()
+    for _ in range(3):
+        order = client.new_order(csr_pem)
+        chall = order.authorizations[0].body.challenges[0]
+        client.answer_challenge(chall, chall.response(client.net.key))
+        try:
+            client.poll_and_finalize(order)
+        except errors.ValidationError as e:
+            pass
+
+
 def test_http_challenge_loop_redirect():
     client = chisel2.make_client()
 
