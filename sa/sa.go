@@ -1844,7 +1844,8 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 					FROM orderFqdnSets
 					WHERE setHash = ?
 					AND registrationID = ?
-					AND expires > ?`,
+					AND expires > ?
+					LIMIT 1`,
 			fqdnHash, *req.AcctID, ssa.clk.Now())
 	}
 
@@ -1863,7 +1864,6 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	if err != nil {
 		return nil, err
 	}
-
 	// Only return a pending or ready order
 	if *order.Status != string(core.StatusPending) &&
 		*order.Status != string(core.StatusReady) {

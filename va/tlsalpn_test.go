@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"net"
@@ -69,29 +70,7 @@ func tlssniSrvWithNames(t *testing.T, chall core.Challenge, names ...string) *ht
 	return hs
 }
 
-func tlsalpn01Srv(t *testing.T, chall core.Challenge, oid asn1.ObjectIdentifier, names ...string) *httptest.Server {
-	template := tlsCertTemplate(names)
-	certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
-	cert := &tls.Certificate{
-		Certificate: [][]byte{certBytes},
-		PrivateKey:  &TheKey,
-	}
-
-	shasum := sha256.Sum256([]byte(chall.ProvidedKeyAuthorization))
-	encHash, _ := asn1.Marshal(shasum[:])
-	acmeExtension := pkix.Extension{
-		Id:       oid,
-		Critical: true,
-		Value:    encHash,
-	}
-
-	template.ExtraExtensions = []pkix.Extension{acmeExtension}
-	certBytes, _ = x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
-	acmeCert := &tls.Certificate{
-		Certificate: [][]byte{certBytes},
-		PrivateKey:  &TheKey,
-	}
-
+func tlsalpn01SrvWithCert(t *testing.T, chall core.Challenge, oid asn1.ObjectIdentifier, names []string, cert *tls.Certificate, acmeCert *tls.Certificate) *httptest.Server {
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{},
 		ClientAuth:   tls.NoClientCert,
@@ -116,6 +95,31 @@ func tlsalpn01Srv(t *testing.T, chall core.Challenge, oid asn1.ObjectIdentifier,
 	}
 	hs.StartTLS()
 	return hs
+}
+
+func tlsalpn01Srv(t *testing.T, chall core.Challenge, oid asn1.ObjectIdentifier, names ...string) *httptest.Server {
+	template := tlsCertTemplate(names)
+	certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
+	cert := &tls.Certificate{
+		Certificate: [][]byte{certBytes},
+		PrivateKey:  &TheKey,
+	}
+
+	shasum := sha256.Sum256([]byte(chall.ProvidedKeyAuthorization))
+	encHash, _ := asn1.Marshal(shasum[:])
+	acmeExtension := pkix.Extension{
+		Id:       oid,
+		Critical: true,
+		Value:    encHash,
+	}
+	template.ExtraExtensions = []pkix.Extension{acmeExtension}
+	certBytes, _ = x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
+	acmeCert := &tls.Certificate{
+		Certificate: [][]byte{certBytes},
+		PrivateKey:  &TheKey,
+	}
+
+	return tlsalpn01SrvWithCert(t, chall, oid, names, cert, acmeCert)
 }
 
 func TestTLSALPN01FailIP(t *testing.T) {
@@ -366,6 +370,16 @@ func TestValidateTLSALPN01BadChallenge(t *testing.T) {
 		t.Fatalf("TLS ALPN validation should have failed.")
 	}
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
+
+	expectedDigest := sha256.Sum256([]byte(chall.ProvidedKeyAuthorization))
+	badDigest := sha256.Sum256([]byte(chall2.ProvidedKeyAuthorization))
+
+	test.AssertEquals(t, prob.Detail, fmt.Sprintf(
+		"Incorrect validation certificate for %s challenge. "+
+			"Expected acmeValidationV1 extension value %s for this challenge but got %s",
+		core.ChallengeTypeTLSALPN01,
+		hex.EncodeToString(expectedDigest[:]),
+		hex.EncodeToString(badDigest[:])))
 }
 
 func TestValidateTLSALPN01BrokenSrv(t *testing.T) {
@@ -413,4 +427,62 @@ func TestValidateTLSALPN01BadUTFSrv(t *testing.T) {
 			"Requested localhost from 127.0.0.1:%d. Received 1 certificate(s), "+
 			`first certificate had names "localhost, %s"`,
 		port, "\ufffd(\ufffd\ufffd"))
+}
+
+// TestValidateTLSALPN01MalformedExtnValue tests that validating TLS-ALPN-01
+// against a host that returns a certificate that contains an ASN.1 DER
+// acmeValidation extension value that does not parse or is the wrong length
+// will result in an Unauthorized problem
+func TestValidateTLSALPN01MalformedExtnValue(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSALPN01)
+
+	names := []string{"localhost"}
+	template := tlsCertTemplate(names)
+	certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
+	cert := &tls.Certificate{
+		Certificate: [][]byte{certBytes},
+		PrivateKey:  &TheKey,
+	}
+
+	wrongTypeDER, _ := asn1.Marshal("a string")
+	wrongLengthDER, _ := asn1.Marshal(make([]byte, 31))
+	badExtensions := []pkix.Extension{
+		{
+			Id:       IdPeAcmeIdentifier,
+			Critical: true,
+			Value:    wrongTypeDER,
+		},
+		{
+			Id:       IdPeAcmeIdentifier,
+			Critical: true,
+			Value:    wrongLengthDER,
+		},
+	}
+
+	malformedMsg := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
+		"Malformed acmeValidationV1 extension value", core.ChallengeTypeTLSALPN01)
+
+	for _, badExt := range badExtensions {
+		template.ExtraExtensions = []pkix.Extension{badExt}
+		certBytes, _ = x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
+		acmeCert := &tls.Certificate{
+			Certificate: [][]byte{certBytes},
+			PrivateKey:  &TheKey,
+		}
+
+		hs := tlsalpn01SrvWithCert(t, chall, IdPeAcmeIdentifier, names, cert, acmeCert)
+		va, _ := setup(hs, 0, "", nil)
+
+		_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
+		hs.Close()
+
+		if prob == nil {
+			t.Errorf("TLS ALPN validation should have failed for acmeValidation extension %+v.",
+				badExt)
+			continue
+		}
+		test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
+		test.AssertEquals(t, prob.Detail, malformedMsg)
+	}
+
 }

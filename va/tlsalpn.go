@@ -222,19 +222,20 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 			}
 			if !ext.Critical {
 				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-					"acmeValidationV1 extension not critical.", core.ChallengeTypeTLSALPN01)
+					"acmeValidationV1 extension not critical", core.ChallengeTypeTLSALPN01)
 				return validationRecords, probs.Unauthorized(errText)
 			}
 			var extValue []byte
 			rest, err := asn1.Unmarshal(ext.Value, &extValue)
-			if err != nil || len(rest) > 0 {
+			if err != nil || len(rest) > 0 || len(h) != len(extValue) {
 				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-					"Malformed acmeValidationV1 extension value.", core.ChallengeTypeTLSALPN01)
+					"Malformed acmeValidationV1 extension value", core.ChallengeTypeTLSALPN01)
 				return validationRecords, probs.Unauthorized(errText)
 			}
 			if subtle.ConstantTimeCompare(h[:], extValue) != 1 {
 				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-					"Invalid acmeValidationV1 extension value.", core.ChallengeTypeTLSALPN01)
+					"Expected acmeValidationV1 extension value %s for this challenge but got %s",
+					core.ChallengeTypeTLSALPN01, hex.EncodeToString(h[:]), hex.EncodeToString(extValue))
 				return validationRecords, probs.Unauthorized(errText)
 			}
 			return validationRecords, nil
