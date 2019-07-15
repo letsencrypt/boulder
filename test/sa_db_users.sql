@@ -1,21 +1,7 @@
---
--- Copyright 2015 ISRG.  All rights reserved
--- This Source Code Form is subject to the terms of the Mozilla Public
--- License, v. 2.0. If a copy of the MPL was not distributed with this
--- file, You can obtain one at http://mozilla.org/MPL/2.0/.
---
--- This file defines the default users for the primary database, used by
--- all the parts of Boulder except the Certificate Authority module, which
--- utilizes its own database.
---
+-- sa_db_users.sql is run by test/create_db.sh to create users for each
+-- component with the appropriate permissions.
 
--- Create users for each component with the appropriate permissions. We want to
--- drop each user and recreate them, but if the user doesn't already exist, the
--- drop command will fail. So we grant the dummy `USAGE` privilege to make sure
--- the user exists and then drop the user.
-
-
--- These lines require MariaDB 10.1
+-- These lines require MariaDB 10.1+
 CREATE USER IF NOT EXISTS 'policy'@'localhost';
 CREATE USER IF NOT EXISTS 'sa'@'localhost';
 CREATE USER IF NOT EXISTS 'ocsp_resp'@'localhost';
