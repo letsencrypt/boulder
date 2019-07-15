@@ -2670,26 +2670,26 @@ func TestChallengeNewIDScheme(t *testing.T) {
 		path     string
 		location string
 		expected string
-		f        func(context.Context, *web.RequestEvent, http.ResponseWriter, *http.Request)
+		handler  func(context.Context, *web.RequestEvent, http.ResponseWriter, *http.Request)
 	}{
 		{
 			path:     "valid/23",
 			location: "http://localhost/acme/challenge/valid/23",
 			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`,
-			f:        wfe.Challenge,
+			handler:  wfe.Challenge,
 		},
 		{
 			path:     "1/-ZfxEw",
 			location: "http://localhost/acme/chall-v3/1/-ZfxEw",
 			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/chall-v3/1/-ZfxEw"}`,
-			f:        wfe.ChallengeV2,
+			handler:  wfe.ChallengeV2,
 		},
 	} {
 		resp := httptest.NewRecorder()
 		req, err := http.NewRequest("GET", tc.path, nil)
 		test.AssertNotError(t, err, "http.NewRequest failed")
 
-		tc.f(context.Background(), newRequestEvent(), resp, req)
+		tc.handler(context.Background(), newRequestEvent(), resp, req)
 		test.AssertEquals(t,
 			resp.Code,
 			http.StatusAccepted)
@@ -2705,23 +2705,23 @@ func TestChallengeNewIDScheme(t *testing.T) {
 		path     string
 		location string
 		expected string
-		f        func(context.Context, *web.RequestEvent, http.ResponseWriter, *http.Request)
+		handler  func(context.Context, *web.RequestEvent, http.ResponseWriter, *http.Request)
 	}{
 		{
 			path:     "valid/23",
 			location: "http://localhost/acme/challenge/valid/23",
 			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`,
-			f:        wfe.Challenge,
+			handler:  wfe.Challenge,
 		},
 		{
 			path:     "1/-ZfxEw",
 			location: "http://localhost/acme/chall-v3/1/-ZfxEw",
 			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/chall-v3/1/-ZfxEw"}`,
-			f:        wfe.ChallengeV2,
+			handler:  wfe.ChallengeV2,
 		},
 	} {
 		resp := httptest.NewRecorder()
-		tc.f(ctx, newRequestEvent(), resp, makePostRequestWithPath(
+		tc.handler(ctx, newRequestEvent(), resp, makePostRequestWithPath(
 			tc.path, signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
 		test.AssertEquals(t,
 			resp.Code,

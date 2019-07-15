@@ -1413,19 +1413,22 @@ func (wfe *WebFrontEndImpl) AuthorizationV2(ctx context.Context, logEvent *web.R
 	id := request.URL.Path
 	var authz core.Authorization
 	var err error
-	if !features.Enabled(features.NewAuthorizationSchema) {
+	notFound := func() {
 		wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
+	}
+	if !features.Enabled(features.NewAuthorizationSchema) {
+		notFound()
 		return
 	}
 	authzID, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
+		notFound()
 		return
 	}
 	authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
-			wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
+			notFound()
 		} else {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
 		}
@@ -1485,9 +1488,7 @@ func (wfe *WebFrontEndImpl) authorizationCommon(
 func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	// Requests to this handler should have a path that leads to a known authz
 	id := request.URL.Path
-	var authz core.Authorization
-	var err error
-	authz, err = wfe.SA.GetAuthorization(ctx, id)
+	authz, err := wfe.SA.GetAuthorization(ctx, id)
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
