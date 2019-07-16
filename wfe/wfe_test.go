@@ -1118,20 +1118,20 @@ func TestGetChallengeV2UpRel(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
 
-	challengeURL := "http://localhost/acme/challenge/v2/1/-ZfxEw"
+	challengeURL := "http://localhost/acme/chall-v3/1/-ZfxEw"
 	resp := httptest.NewRecorder()
 
 	req, err := http.NewRequest("GET", challengeURL, nil)
-	req.URL.Path = "v2/1/-ZfxEw"
+	req.URL.Path = "1/-ZfxEw"
 	test.AssertNotError(t, err, "Could not make NewRequest")
 
-	wfe.Challenge(ctx, newRequestEvent(), resp, req)
+	wfe.ChallengeV2(ctx, newRequestEvent(), resp, req)
 	test.AssertEquals(t,
 		resp.Code,
 		http.StatusAccepted)
 	test.AssertEquals(t,
 		resp.Header().Get("Link"),
-		`<http://localhost/acme/authz/v2/1>;rel="up"`)
+		`<http://localhost/acme/authz-v3/1>;rel="up"`)
 }
 
 func TestChallenge(t *testing.T) {
@@ -1774,8 +1774,6 @@ func TestAuthorization(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 
-	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
-
 	responseWriter := httptest.NewRecorder()
 
 	// GET instead of POST should be rejected
@@ -1865,11 +1863,19 @@ func TestAuthorization(t *testing.T) {
 	})
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
 		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"No such authorization","status":404}`)
+}
+
+func TestAuthorizationV2(t *testing.T) {
+	wfe, _ := setupWFE(t)
+
+	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
+
+	responseWriter := httptest.NewRecorder()
 
 	// Test retrieving a v2 style authorization
 	responseWriter = httptest.NewRecorder()
-	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
-		URL:    mustParseURL("v2/1"),
+	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, &http.Request{
+		URL:    mustParseURL("1"),
 		Method: "GET",
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
@@ -1886,7 +1892,7 @@ func TestAuthorization(t *testing.T) {
 			{
 				"type": "dns",
 				"token":"token",
-				"uri": "http://localhost/acme/challenge/v2/1/-ZfxEw"
+				"uri": "http://localhost/acme/chall-v3/1/-ZfxEw"
 			}
 		]
 	}`)
@@ -2588,7 +2594,7 @@ func TestPrepChallengeForDisplay(t *testing.T) {
 	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
 	authz.V2 = true
 	wfe.prepChallengeForDisplay(req, authz, chall)
-	test.AssertEquals(t, chall.URI, "http://example.com/acme/challenge/v2/eyup/iFVMwA")
+	test.AssertEquals(t, chall.URI, "http://example.com/acme/chall-v3/eyup/iFVMwA")
 }
 
 // noSCTMockRA is a mock RA that always returns a `berrors.MissingSCTsError` from `NewCertificate`
@@ -2664,23 +2670,26 @@ func TestChallengeNewIDScheme(t *testing.T) {
 		path     string
 		location string
 		expected string
+		handler  func(context.Context, *web.RequestEvent, http.ResponseWriter, *http.Request)
 	}{
 		{
 			path:     "valid/23",
 			location: "http://localhost/acme/challenge/valid/23",
 			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`,
+			handler:  wfe.Challenge,
 		},
 		{
-			path:     "v2/1/-ZfxEw",
-			location: "http://localhost/acme/challenge/v2/1/-ZfxEw",
-			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/v2/1/-ZfxEw"}`,
+			path:     "1/-ZfxEw",
+			location: "http://localhost/acme/chall-v3/1/-ZfxEw",
+			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/chall-v3/1/-ZfxEw"}`,
+			handler:  wfe.ChallengeV2,
 		},
 	} {
 		resp := httptest.NewRecorder()
 		req, err := http.NewRequest("GET", tc.path, nil)
 		test.AssertNotError(t, err, "http.NewRequest failed")
 
-		wfe.Challenge(context.Background(), newRequestEvent(), resp, req)
+		tc.handler(context.Background(), newRequestEvent(), resp, req)
 		test.AssertEquals(t,
 			resp.Code,
 			http.StatusAccepted)
@@ -2696,20 +2705,23 @@ func TestChallengeNewIDScheme(t *testing.T) {
 		path     string
 		location string
 		expected string
+		handler  func(context.Context, *web.RequestEvent, http.ResponseWriter, *http.Request)
 	}{
 		{
 			path:     "valid/23",
 			location: "http://localhost/acme/challenge/valid/23",
 			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`,
+			handler:  wfe.Challenge,
 		},
 		{
-			path:     "v2/1/-ZfxEw",
-			location: "http://localhost/acme/challenge/v2/1/-ZfxEw",
-			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/v2/1/-ZfxEw"}`,
+			path:     "1/-ZfxEw",
+			location: "http://localhost/acme/chall-v3/1/-ZfxEw",
+			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/chall-v3/1/-ZfxEw"}`,
+			handler:  wfe.ChallengeV2,
 		},
 	} {
 		resp := httptest.NewRecorder()
-		wfe.Challenge(ctx, newRequestEvent(), resp, makePostRequestWithPath(
+		tc.handler(ctx, newRequestEvent(), resp, makePostRequestWithPath(
 			tc.path, signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
 		test.AssertEquals(t,
 			resp.Code,
