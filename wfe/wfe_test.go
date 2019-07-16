@@ -1530,7 +1530,6 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
-	wfe.AcceptRevocationReason = true
 	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
 	responseWriter := httptest.NewRecorder()
 
@@ -1556,7 +1555,6 @@ func TestRevokeCertificateReasons(t *testing.T) {
 	revokeRequestJSON, err := makeRevokeRequestJSON(&keyComp)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
-	wfe.AcceptRevocationReason = true
 	ra := wfe.RA.(*MockRegistrationAuthority)
 	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
 	responseWriter := httptest.NewRecorder()
