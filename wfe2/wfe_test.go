@@ -1539,8 +1539,8 @@ func TestGetAuthorization(t *testing.T) {
 	}`)
 
 	responseWriter = httptest.NewRecorder()
-	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
-		URL:    mustParseURL("v2/1"),
+	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, &http.Request{
+		URL:    mustParseURL("1"),
 		Method: "GET",
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
@@ -1557,15 +1557,15 @@ func TestGetAuthorization(t *testing.T) {
 			{
 				"type": "dns",
 				"token":"token",
-				"url": "http://localhost/acme/challenge/v2/1/-ZfxEw"
+				"url": "http://localhost/acme/chall-v3/1/-ZfxEw"
 			}
 		]
 	}`)
 
 	responseWriter = httptest.NewRecorder()
-	_, _, jwsBody = signRequestKeyID(t, 1, nil, "http://localhost/v2/1", "", wfe.nonceService)
-	postAsGet = makePostRequestWithPath("v2/1", jwsBody)
-	wfe.Authorization(ctx, newRequestEvent(), responseWriter, postAsGet)
+	_, _, jwsBody = signRequestKeyID(t, 1, nil, "http://localhost/1", "", wfe.nonceService)
+	postAsGet = makePostRequestWithPath("1", jwsBody)
+	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, postAsGet)
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	body = responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `
@@ -1580,7 +1580,7 @@ func TestGetAuthorization(t *testing.T) {
 			{
 				"type": "dns",
 				"token":"token",
-				"url": "http://localhost/acme/challenge/v2/1/-ZfxEw"
+				"url": "http://localhost/acme/chall-v3/1/-ZfxEw"
 			}
 		]
 	}`)
@@ -2919,7 +2919,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	authz.V2 = true
 	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
 	chal = authz.Challenges[0]
-	test.AssertEquals(t, chal.URL, "http://localhost/acme/challenge/v2/12345/po1V2w")
+	test.AssertEquals(t, chal.URL, "http://localhost/acme/chall-v3/12345/po1V2w")
 	test.AssertEquals(t, chal.URI, "")
 }
 
@@ -2970,23 +2970,27 @@ func TestChallengeNewIDScheme(t *testing.T) {
 		path     string
 		location string
 		expected string
+		handler  func(context.Context, *web.RequestEvent, http.ResponseWriter, *http.Request)
 	}{
 		{
 			path:     "valid/23",
 			location: "http://localhost/acme/challenge/valid/23",
 			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/23"}`,
+			handler:  wfe.Challenge,
 		},
 		{
-			path:     "v2/1/-ZfxEw",
-			location: "http://localhost/acme/challenge/v2/1/-ZfxEw",
-			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/v2/1/-ZfxEw"}`,
+			path:     "1/-ZfxEw",
+			location: "http://localhost/acme/chall-v3/1/-ZfxEw",
+			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/chall-v3/1/-ZfxEw"}`,
+			handler:  wfe.ChallengeV2,
 		},
 	} {
 		resp := httptest.NewRecorder()
 		req, err := http.NewRequest("GET", tc.path, nil)
 		test.AssertNotError(t, err, "http.NewRequest failed")
 
-		wfe.Challenge(context.Background(), newRequestEvent(), resp, req)
+		tc.handler(context.Background(), newRequestEvent(), resp, req)
+		fmt.Println(tc.path)
 		test.AssertEquals(t,
 			resp.Code,
 			http.StatusOK)
@@ -3002,22 +3006,25 @@ func TestChallengeNewIDScheme(t *testing.T) {
 		path     string
 		location string
 		expected string
+		handler  func(context.Context, *web.RequestEvent, http.ResponseWriter, *http.Request)
 	}{
 		{
 			path:     "valid/23",
 			location: "http://localhost/acme/challenge/valid/23",
 			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/valid/23"}`,
+			handler:  wfe.Challenge,
 		},
 		{
-			path:     "v2/1/-ZfxEw",
-			location: "http://localhost/acme/challenge/v2/1/-ZfxEw",
-			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/challenge/v2/1/-ZfxEw"}`,
+			path:     "1/-ZfxEw",
+			location: "http://localhost/acme/chall-v3/1/-ZfxEw",
+			expected: `{"type":"dns","token":"token","url":"http://localhost/acme/chall-v3/1/-ZfxEw"}`,
+			handler:  wfe.ChallengeV2,
 		},
 	} {
 		resp := httptest.NewRecorder()
 
-		_, _, jwsBody := signRequestKeyID(t, 1, nil, "http://localhost/"+tc.path, `{"resource":"challenge"}`, wfe.nonceService)
-		wfe.Challenge(ctx, newRequestEvent(), resp, makePostRequestWithPath(
+		_, _, jwsBody := signRequestKeyID(t, 1, nil, "http://localhost/"+tc.path, `{}`, wfe.nonceService)
+		tc.handler(ctx, newRequestEvent(), resp, makePostRequestWithPath(
 			tc.path, jwsBody))
 		test.AssertEquals(t,
 			resp.Code,
@@ -3049,8 +3056,8 @@ func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 	test.AssertDeepEquals(t, orderJSON.Authorizations, []string{
 		"http://localhost/acme/authz/a",
 		"http://localhost/acme/authz/b",
-		"http://localhost/acme/authz/v2/1",
-		"http://localhost/acme/authz/v2/2",
+		"http://localhost/acme/authz-v3/1",
+		"http://localhost/acme/authz-v3/2",
 	})
 }
 
@@ -3087,7 +3094,7 @@ func TestMandatoryPOSTAsGET(t *testing.T) {
 		{
 			// GET requests to a mocked authorization path should return an error
 			name:    "GET Authz",
-			path:    "v2/1",
+			path:    "1",
 			handler: wfe.Authorization,
 		},
 		{
@@ -3122,12 +3129,12 @@ func TestGetChallengeV2UpRel(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
 
-	challengeURL := "http://localhost/acme/challenge/v2/1/-ZfxEw"
+	challengeURL := "http://localhost/acme/chall-v3/1/-ZfxEw"
 	resp := httptest.NewRecorder()
 
 	req, err := http.NewRequest("GET", challengeURL, nil)
-	req.URL.Path = "v2/1/-ZfxEw"
 	test.AssertNotError(t, err, "Could not make NewRequest")
+	req.URL.Path = "1/-ZfxEw"
 
 	wfe.Challenge(ctx, newRequestEvent(), resp, req)
 	test.AssertEquals(t,
@@ -3135,7 +3142,7 @@ func TestGetChallengeV2UpRel(t *testing.T) {
 		http.StatusOK)
 	test.AssertEquals(t,
 		resp.Header().Get("Link"),
-		`<http://localhost/acme/authz/v2/1>;rel="up"`)
+		`<http://localhost/acme/authz-v3/1>;rel="up"`)
 }
 
 func TestPrepAccountForDisplay(t *testing.T) {
