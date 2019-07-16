@@ -2990,7 +2990,6 @@ func TestChallengeNewIDScheme(t *testing.T) {
 		test.AssertNotError(t, err, "http.NewRequest failed")
 
 		tc.handler(context.Background(), newRequestEvent(), resp, req)
-		fmt.Println(tc.path)
 		test.AssertEquals(t,
 			resp.Code,
 			http.StatusOK)
@@ -3136,7 +3135,7 @@ func TestGetChallengeV2UpRel(t *testing.T) {
 	test.AssertNotError(t, err, "Could not make NewRequest")
 	req.URL.Path = "1/-ZfxEw"
 
-	wfe.Challenge(ctx, newRequestEvent(), resp, req)
+	wfe.ChallengeV2(ctx, newRequestEvent(), resp, req)
 	test.AssertEquals(t,
 		resp.Code,
 		http.StatusOK)
