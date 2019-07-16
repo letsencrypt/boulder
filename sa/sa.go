@@ -1745,7 +1745,7 @@ func (ssa *SQLStorageAuthority) getAllOrderAuthorizationStatuses(
 			orderID,
 		)
 		if err != nil {
-			return nil, err
+			return nil, Rollback(tx, err)
 		}
 		allAuthzValidity = append(allAuthzValidity, validityInfo...)
 	}
