@@ -107,8 +107,6 @@ type WebFrontEndImpl struct {
 	// Maximum duration of a request
 	RequestTimeout time.Duration
 
-	AllowAuthzDeactivation bool
-
 	csrSignatureAlgs *prometheus.CounterVec
 }
 
@@ -1461,7 +1459,7 @@ func (wfe *WebFrontEndImpl) authorizationCommon(
 		return
 	}
 
-	if wfe.AllowAuthzDeactivation && request.Method == "POST" {
+	if request.Method == "POST" {
 		// If the deactivation fails return early as errors and return codes
 		// have already been set. Otherwise continue so that the user gets
 		// sent the deactivated authorization.

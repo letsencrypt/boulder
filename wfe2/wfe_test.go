@@ -1983,7 +1983,6 @@ func TestHeaderBoulderRequester(t *testing.T) {
 
 func TestDeactivateAuthorization(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.AllowAuthzDeactivation = true
 	responseWriter := httptest.NewRecorder()
 
 	responseWriter.Body.Reset()
