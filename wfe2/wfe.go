@@ -113,8 +113,6 @@ type WebFrontEndImpl struct {
 
 	// Maximum duration of a request
 	RequestTimeout time.Duration
-
-	AllowAuthzDeactivation bool
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -1461,7 +1459,7 @@ func (wfe *WebFrontEndImpl) handleAuthorization(ctx context.Context, logEvent *w
 
 	// If the body isn't empty we know it isn't a POST-as-GET and must be an
 	// attempt to deactivate an authorization.
-	if string(requestBody) != "" && wfe.AllowAuthzDeactivation {
+	if string(requestBody) != "" {
 		// If the deactivation fails return early as errors and return codes
 		// have already been set. Otherwise continue so that the user gets
 		// sent the deactivated authorization.

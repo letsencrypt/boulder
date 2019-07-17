@@ -40,8 +40,6 @@ type config struct {
 
 		SubscriberAgreementURL string
 
-		AllowAuthzDeactivation bool
-
 		TLS cmd.TLSConfig
 
 		RAService *cmd.GRPCClientConfig
@@ -251,7 +249,6 @@ func main() {
 
 	wfe.SubscriberAgreementURL = c.WFE.SubscriberAgreementURL
 	wfe.AllowOrigins = c.WFE.AllowOrigins
-	wfe.AllowAuthzDeactivation = c.WFE.AllowAuthzDeactivation
 	wfe.DirectoryCAAIdentity = c.WFE.DirectoryCAAIdentity
 	wfe.DirectoryWebsite = c.WFE.DirectoryWebsite
 	wfe.LegacyKeyIDPrefix = c.WFE.LegacyKeyIDPrefix
