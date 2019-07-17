@@ -440,6 +440,26 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 	return nil
 }
 
+// checkInvalidAuthorizationLimits checks the failed validation limit for each
+// of the provided hostnames, in parallel. It returns the first error.
+func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimits(ctx context.Context, regID int64, hostnames []string) error {
+	results := make(chan error, len(hostnames))
+	for _, hostname := range hostnames {
+		go func(hostname string) {
+			results <- ra.checkInvalidAuthorizationLimit(ctx, regID, hostname)
+		}(hostname)
+	}
+	// We don't have to wait for all of the goroutines to finish because there's
+	// enough capacity in the chan for them all to write their result even if
+	// nothing is reading off the chan anymore.
+	for i := 0; i < len(hostnames); i++ {
+		if err := <-results; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.Context, regID int64, hostname string) error {
 	limit := ra.rlPolicies.InvalidAuthorizationsPerAccount()
 	// The SA.CountInvalidAuthorizations method is not implemented on the wrapper
@@ -2009,6 +2029,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		if err := ra.checkPendingAuthorizationLimit(ctx, *order.RegistrationID); err != nil {
 			return nil, err
 		}
+		if err := ra.checkInvalidAuthorizationLimits(ctx, *order.RegistrationID, missingAuthzNames); err != nil {
+			return nil, err
+		}
 	}
 
 	// Loop through each of the names missing authzs and create a new pending
@@ -2016,10 +2039,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	var newAuthzs []*corepb.Authorization
 	v2 := features.Enabled(features.NewAuthorizationSchema)
 	for _, name := range missingAuthzNames {
-		// TODO(#3069): Batch this check
-		if err := ra.checkInvalidAuthorizationLimit(ctx, *order.RegistrationID, name); err != nil {
-			return nil, err
-		}
 		pb, err := ra.createPendingAuthz(ctx, *order.RegistrationID, identifier.ACMEIdentifier{
 			Type:  identifier.DNS,
 			Value: name,
