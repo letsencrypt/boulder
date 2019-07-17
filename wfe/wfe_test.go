@@ -1350,6 +1350,44 @@ func TestEmptyRegistration(t *testing.T) {
 	responseWriter.Body.Reset()
 }
 
+func TestNewRegistrationForbiddenWithAccountCreationDisabled(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	_ = features.Set(map[string]bool{"AccountCreation": false})
+
+	key := loadPrivateKey(t, []byte(test2KeyPrivatePEM))
+	signer := newJoseSigner(t, key, wfe.nonceService)
+	// Reset the body and status code
+	responseWriter := httptest.NewRecorder()
+	// POST, Valid JSON, Key already in use
+	result, err := signer.Sign([]byte(`{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`))
+	test.AssertNotError(t, err, "Failed to signer.Sign")
+
+	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(result.FullSerialize()))
+	test.AssertUnmarshaledEquals(t,
+		responseWriter.Body.String(),
+		`{"type":"`+probs.V1ErrorNS+`unauthorized","detail":"Account creation on ACMEv1 is disabled. Please upgrade your ACME client to a version that supports ACMEv2. See https://community.letsencrypt.org/t/end-of-life-plan-for-acmev1/88430 for details.","status":403}`)
+}
+
+func TestNewRegistration409sWithAccountCreationDisabled(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	_ = features.Set(map[string]bool{"AccountCreation": false})
+
+	key := loadPrivateKey(t, []byte(test1KeyPrivatePEM))
+	signer := newJoseSigner(t, key, wfe.nonceService)
+	// Reset the body and status code
+	responseWriter := httptest.NewRecorder()
+	// POST, Valid JSON, Key already in use
+	result, err := signer.Sign([]byte(`{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`))
+	test.AssertNotError(t, err, "Failed to signer.Sign")
+
+	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(result.FullSerialize()))
+	test.AssertUnmarshaledEquals(t,
+		responseWriter.Body.String(),
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Registration key is already in use","status":409}`)
+}
+
 func TestNewRegistration(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
