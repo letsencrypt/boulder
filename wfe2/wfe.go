@@ -114,7 +114,6 @@ type WebFrontEndImpl struct {
 	// Maximum duration of a request
 	RequestTimeout time.Duration
 
-	AcceptRevocationReason bool
 	AllowAuthzDeactivation bool
 }
 
@@ -740,7 +739,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 
 	// Verify the revocation reason supplied is allowed
 	reason := revocation.Reason(0)
-	if revokeRequest.Reason != nil && wfe.AcceptRevocationReason {
+	if revokeRequest.Reason != nil {
 		if _, present := revocation.UserAllowedReasons[*revokeRequest.Reason]; !present {
 			reasonStr, ok := revocation.ReasonToString[revocation.Reason(*revokeRequest.Reason)]
 			if !ok {

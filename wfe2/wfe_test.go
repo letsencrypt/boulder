@@ -2573,7 +2573,6 @@ func (msa mockSANoSuchRegistration) GetRegistrationByKey(ctx context.Context, jw
 // key.
 func TestRevokeCertificateCertKey(t *testing.T) {
 	wfe, fc := setupWFE(t)
-	wfe.AcceptRevocationReason = true
 	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
 	responseWriter := httptest.NewRecorder()
 
@@ -2595,7 +2594,6 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 
 func TestRevokeCertificateReasons(t *testing.T) {
 	wfe, fc := setupWFE(t)
-	wfe.AcceptRevocationReason = true
 	ra := wfe.RA.(*MockRegistrationAuthority)
 	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
 	responseWriter := httptest.NewRecorder()

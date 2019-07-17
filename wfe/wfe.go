@@ -107,7 +107,6 @@ type WebFrontEndImpl struct {
 	// Maximum duration of a request
 	RequestTimeout time.Duration
 
-	AcceptRevocationReason bool
 	AllowAuthzDeactivation bool
 
 	csrSignatureAlgs *prometheus.CounterVec
@@ -872,7 +871,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 	}
 
 	reason := revocation.Reason(0)
-	if revokeRequest.Reason != nil && wfe.AcceptRevocationReason {
+	if revokeRequest.Reason != nil {
 		if _, present := revocation.UserAllowedReasons[*revokeRequest.Reason]; !present {
 			wfe.sendError(response, logEvent, probs.Malformed("unsupported revocation reason code provided"), nil)
 			return

@@ -36,7 +36,6 @@ type config struct {
 
 		SubscriberAgreementURL string
 
-		AcceptRevocationReason bool
 		AllowAuthzDeactivation bool
 
 		TLS cmd.TLSConfig
@@ -131,7 +130,6 @@ func main() {
 
 	wfe.SubscriberAgreementURL = c.WFE.SubscriberAgreementURL
 	wfe.AllowOrigins = c.WFE.AllowOrigins
-	wfe.AcceptRevocationReason = c.WFE.AcceptRevocationReason
 	wfe.AllowAuthzDeactivation = c.WFE.AllowAuthzDeactivation
 	wfe.DirectoryCAAIdentity = c.WFE.DirectoryCAAIdentity
 	wfe.DirectoryWebsite = c.WFE.DirectoryWebsite
