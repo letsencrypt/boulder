@@ -15,6 +15,7 @@ var (
 )
 
 type mockInvalidAuthorizationsAuthority struct {
+	domainWithFailures string
 }
 
 func (sa *mockInvalidAuthorizationsAuthority) GetRegistration(ctx context.Context, in *sapb.RegistrationID, opts ...grpc.CallOption) (*core.Registration, error) {
@@ -69,8 +70,11 @@ func (sa *mockInvalidAuthorizationsAuthority) CountOrders(ctx context.Context, i
 	}, nil
 }
 
-func (sa *mockInvalidAuthorizationsAuthority) CountInvalidAuthorizations(ctx context.Context, in *sapb.CountInvalidAuthorizationsRequest, opts ...grpc.CallOption) (*sapb.Count, error) {
-	count := int64(1)
+func (sa *mockInvalidAuthorizationsAuthority) CountInvalidAuthorizations(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest, opts ...grpc.CallOption) (*sapb.Count, error) {
+	var count int64
+	if *req.Hostname == sa.domainWithFailures {
+		count = 1
+	}
 	return &sapb.Count{
 		Count: &count,
 	}, nil
@@ -188,7 +192,10 @@ func (sa *mockInvalidAuthorizationsAuthority) GetValidOrderAuthorizations2(ctx c
 }
 
 func (sa *mockInvalidAuthorizationsAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest, opts ...grpc.CallOption) (*sapb.Count, error) {
-	count := int64(1)
+	var count int64
+	if *req.Hostname == sa.domainWithFailures {
+		count = 1
+	}
 	return &sapb.Count{
 		Count: &count,
 	}, nil

@@ -443,18 +443,26 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 // checkInvalidAuthorizationLimits checks the failed validation limit for each
 // of the provided hostnames, in parallel. It returns the first error.
 func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimits(ctx context.Context, regID int64, hostnames []string) error {
-	results := make(chan error, len(hostnames))
-	for _, hostname := range hostnames {
-		go func(hostname string) {
-			results <- ra.checkInvalidAuthorizationLimit(ctx, regID, hostname)
-		}(hostname)
-	}
-	// We don't have to wait for all of the goroutines to finish because there's
-	// enough capacity in the chan for them all to write their result even if
-	// nothing is reading off the chan anymore.
-	for i := 0; i < len(hostnames); i++ {
-		if err := <-results; err != nil {
-			return err
+	if features.Enabled(features.ParallelCheckFailedValidation) {
+		results := make(chan error, len(hostnames))
+		for _, hostname := range hostnames {
+			go func(hostname string) {
+				results <- ra.checkInvalidAuthorizationLimit(ctx, regID, hostname)
+			}(hostname)
+		}
+		// We don't have to wait for all of the goroutines to finish because there's
+		// enough capacity in the chan for them all to write their result even if
+		// nothing is reading off the chan anymore.
+		for i := 0; i < len(hostnames); i++ {
+			if err := <-results; err != nil {
+				return err
+			}
+		}
+	} else {
+		for _, hostname := range hostnames {
+			if err := ra.checkInvalidAuthorizationLimit(ctx, regID, hostname); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

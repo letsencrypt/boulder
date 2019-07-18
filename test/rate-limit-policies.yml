@@ -32,7 +32,7 @@ pendingAuthorizationsPerAccount:
   threshold: 150
 invalidAuthorizationsPerAccount:
   window: 5m
-  threshold: 3
+  threshold: 3000
 newOrdersPerAccount:
   window: 3h
   threshold: 1500

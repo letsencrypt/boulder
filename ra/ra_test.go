@@ -1230,11 +1230,38 @@ func TestAuthzFailedRateLimiting(t *testing.T) {
 	}
 
 	// override with our mockInvalidAuthorizationsAuthority for this specific test
-	ra.SA = sagrpc.NewStorageAuthorityClient(&mockInvalidAuthorizationsAuthority{})
+	ra.SA = sagrpc.NewStorageAuthorityClient(&mockInvalidAuthorizationsAuthority{"ifail.com"})
 	// Should trigger rate limit
-	_, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	_, err := ra.NewAuthorization(ctx, core.Authorization{
+		Identifier: identifier.DNSIdentifier("ifail.com"),
+		V2:         true,
+	}, Registration.ID)
 	test.AssertError(t, err, "NewAuthorization did not encounter expected rate limit error")
 	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/rate-limits/")
+}
+
+func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ra.rlPolicies = &dummyRateLimitConfig{
+		InvalidAuthorizationsPerAccountPolicy: ratelimit.RateLimitPolicy{
+			Threshold: 1,
+			Window:    cmd.ConfigDuration{Duration: 1 * time.Hour},
+		},
+	}
+
+	testcase := func() {
+		ra.SA = sagrpc.NewStorageAuthorityClient(&mockInvalidAuthorizationsAuthority{"all.i.do.is.lose.com"})
+		err := ra.checkInvalidAuthorizationLimits(ctx, Registration.ID,
+			[]string{"charlie.brown.com", "all.i.do.is.lose.com"})
+		test.AssertError(t, err, "checkInvalidAuthorizationLimits did not encounter expected rate limit error")
+		test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/rate-limits/")
+	}
+
+	testcase()
+	_ = features.Set(map[string]bool{"ParallelCheckFailedValidation": true})
+	testcase()
 }
 
 func TestDomainsForRateLimiting(t *testing.T) {
