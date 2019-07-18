@@ -107,8 +107,6 @@ type WebFrontEndImpl struct {
 	// Maximum duration of a request
 	RequestTimeout time.Duration
 
-	AllowAuthzDeactivation bool
-
 	csrSignatureAlgs *prometheus.CounterVec
 }
 
@@ -634,6 +632,13 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *web.R
 	} else if err == nil || !berrors.Is(err, berrors.NotFound) {
 		response.Header().Set("Location", web.RelativeEndpoint(request, fmt.Sprintf("%s%d", regPath, existingReg.ID)))
 		wfe.sendError(response, logEvent, probs.Conflict("Registration key is already in use"), err)
+		return
+	}
+
+	if !features.Enabled(features.AllowV1Registration) {
+		wfe.sendError(response, logEvent, probs.Unauthorized("Account creation on ACMEv1 is disabled. "+
+			"Please upgrade your ACME client to a version that supports ACMEv2 / RFC 8555. "+
+			"See https://community.letsencrypt.org/t/end-of-life-plan-for-acmev1/88430 for details."), nil)
 		return
 	}
 
@@ -1461,7 +1466,7 @@ func (wfe *WebFrontEndImpl) authorizationCommon(
 		return
 	}
 
-	if wfe.AllowAuthzDeactivation && request.Method == "POST" {
+	if request.Method == "POST" {
 		// If the deactivation fails return early as errors and return codes
 		// have already been set. Otherwise continue so that the user gets
 		// sent the deactivated authorization.
