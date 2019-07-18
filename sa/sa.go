@@ -1835,7 +1835,7 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 					FROM orderFqdnSets
 					WHERE setHash = ?
 					AND expires > ?
-					ORDER BY expires DESC
+					ORDER BY expires ASC
 					LIMIT 1`,
 			fqdnHash, ssa.clk.Now())
 	} else {
