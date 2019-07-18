@@ -116,7 +116,7 @@ def do_dns_challenges(client, authzs):
         name, value = (c.validation_domain_name(a.body.identifier.value),
             c.validation(client.net.key))
         cleanup_hosts.append(name)
-        #challSrv.add_dns01_response(name, value)
+        challSrv.add_dns01_response(name, value)
         client.answer_challenge(c, c.response(client.net.key))
     def cleanup():
         for host in cleanup_hosts:
@@ -188,9 +188,11 @@ if __name__ == "__main__":
     # Die on SIGINT
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     domains = sys.argv[1:]
-    client = make_client()
-    while True:
-        try:
-            auth_and_issue(domains, client=client)
-        except acme_errors.ValidationError as e:
-            print(e)
+    if len(domains) == 0:
+        print __doc__
+        sys.exit(0)
+    try:
+        auth_and_issue(domains)
+    except messages.Error, e:
+        print e
+        sys.exit(1)
