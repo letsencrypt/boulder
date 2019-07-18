@@ -59,6 +59,8 @@ const (
 	MandatoryPOSTAsGET
 	// Use an optimized query for GetOrderForNames.
 	FasterGetOrderForNames
+	// Allow creation of new registrations in ACMEv1.
+	AllowV1Registration
 )
 
 // List of features and their default value, protected by fMu
@@ -85,6 +87,7 @@ var features = map[FeatureFlag]bool{
 	MandatoryPOSTAsGET:       false,
 	DisableAuthz2Orders:      false,
 	FasterGetOrderForNames:   false,
+	AllowV1Registration:      true,
 }
 
 var fMu = new(sync.RWMutex)

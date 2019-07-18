@@ -635,6 +635,13 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *web.R
 		return
 	}
 
+	if !features.Enabled(features.AllowV1Registration) {
+		wfe.sendError(response, logEvent, probs.Unauthorized("Account creation on ACMEv1 is disabled. "+
+			"Please upgrade your ACME client to a version that supports ACMEv2 / RFC 8555. "+
+			"See https://community.letsencrypt.org/t/end-of-life-plan-for-acmev1/88430 for details."), nil)
+		return
+	}
+
 	var init core.Registration
 	err = json.Unmarshal(body, &init)
 	if err != nil {
