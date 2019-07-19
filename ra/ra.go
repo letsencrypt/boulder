@@ -441,7 +441,7 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 }
 
 // checkInvalidAuthorizationLimits checks the failed validation limit for each
-// of the provided hostnames, in parallel. It returns the first error.
+// of the provided hostnames. It returns the first error.
 func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimits(ctx context.Context, regID int64, hostnames []string) error {
 	if features.Enabled(features.ParallelCheckFailedValidation) {
 		results := make(chan error, len(hostnames))
