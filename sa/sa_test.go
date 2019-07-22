@@ -2433,6 +2433,61 @@ func TestGetAuthorizationsFast(t *testing.T) {
 	}
 }
 
+func TestUpdateChallengesDeleteUnused(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	_ = features.Set(map[string]bool{"DeleteUnusedChallenges": true})
+
+	expires := fc.Now().Add(time.Hour)
+	ctx := context.Background()
+
+	// Create a registration to work with
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	// Create a pending authz
+	input := core.Authorization{
+		RegistrationID: reg.ID,
+		Expires:        &expires,
+		Status:         core.StatusPending,
+		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"},
+		Challenges: []core.Challenge{
+			core.Challenge{
+				Type:   "http-01",
+				Status: "pending",
+			},
+			core.Challenge{
+				Type:   "dns-01",
+				Status: "pending",
+			},
+			core.Challenge{
+				Type:   "tls-alpn-01",
+				Status: "pending",
+			},
+		},
+	}
+	authz, err := sa.NewPendingAuthorization(ctx, input)
+	test.AssertNotError(t, err, "making authorization")
+
+	authz.Status = core.StatusValid
+	authz.Challenges[0].Status = core.StatusValid
+	err = sa.FinalizeAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "finalizing authorization")
+
+	result, err := sa.GetAuthorization(ctx, authz.ID)
+	test.AssertNotError(t, err, "fetching")
+
+	if len(result.Challenges) != 1 {
+		t.Fatalf("expected 1 challenge left after finalization, got %d", len(result.Challenges))
+	}
+	if result.Challenges[0].Status != core.StatusValid {
+		t.Errorf("expected challenge status %q, got %q", core.StatusValid, result.Challenges[0].Status)
+	}
+	if result.Challenges[0].Type != "http-01" {
+		t.Errorf("expected challenge type %q, got %q", "http-01", result.Challenges[0].Type)
+	}
+}
+
 func TestUpdateChallengesPendingOnly(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
