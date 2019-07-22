@@ -134,6 +134,10 @@ func existingRegistration(tx *gorp.Transaction, id int64) bool {
 	return count > 0
 }
 
+// updateChallenge writes the valid or invalid challenge in a list of challenges
+// to the database. It deletes from the database any of those challenges that
+// weren't used (i.e. aren't "valid" or "invalid"), so long as the
+// DeleteUnusedChallenges flag is set.
 func updateChallenges(db dbSelectExecer, authID string, challenges []core.Challenge) error {
 	var challs []challModel
 	_, err := db.Select(
@@ -156,19 +160,28 @@ func updateChallenges(db dbSelectExecer, authID string, challenges []core.Challe
 			return err
 		}
 		chall.ID = challs[i].ID
-		_, err = db.Exec(
-			`UPDATE challenges SET
+		if authChall.Status == core.StatusInvalid || authChall.Status == core.StatusValid {
+			_, err = db.Exec(
+				`UPDATE challenges SET
 				status = ?,
 				error = ?,
 				validationRecord = ?
 			WHERE status = ? AND id = ?`,
-			string(chall.Status),
-			chall.Error,
-			chall.ValidationRecord,
-			string(core.StatusPending),
-			chall.ID)
-		if err != nil {
-			return err
+				string(chall.Status),
+				chall.Error,
+				chall.ValidationRecord,
+				string(core.StatusPending),
+				chall.ID)
+			if err != nil {
+				return err
+			}
+		} else if features.Enabled(features.DeleteUnusedChallenges) {
+			_, err = db.Exec(
+				`DELETE FROM challenges WHERE id = ?`,
+				chall.ID)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil

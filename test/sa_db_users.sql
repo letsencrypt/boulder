@@ -22,7 +22,7 @@ GRANT SELECT,INSERT,UPDATE ON certificateStatus TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON issuedNames TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON certificatesPerName TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON registrations TO 'sa'@'localhost';
-GRANT SELECT,INSERT,UPDATE ON challenges TO 'sa'@'localhost';
+GRANT SELECT,INSERT,UPDATE,DELETE ON challenges TO 'sa'@'localhost';
 GRANT SELECT,INSERT on fqdnSets TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON orders TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON orderToAuthz TO 'sa'@'localhost';
