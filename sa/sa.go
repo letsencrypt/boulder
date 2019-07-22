@@ -706,20 +706,6 @@ func (ssa *SQLStorageAuthority) getAuthorizationIDsByDomain2(ctx context.Context
 	return ids, nil
 }
 
-func (ssa *SQLStorageAuthority) revokeAuthorizations2(ctx context.Context, ids []int64) error {
-	qmarks := []string{}
-	params := []interface{}{statusUint(core.StatusRevoked)}
-	for _, id := range ids {
-		qmarks = append(qmarks, "?")
-		params = append(params, id)
-	}
-	_, err := ssa.dbMap.Exec(
-		fmt.Sprintf(`UPDATE authz2 SET status = ? WHERE id IN (%s)`, strings.Join(qmarks, ",")),
-		params...,
-	)
-	return err
-}
-
 // AddCertificate stores an issued certificate and returns the digest as
 // a string, or an error if any occurred.
 func (ssa *SQLStorageAuthority) AddCertificate(
