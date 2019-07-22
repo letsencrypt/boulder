@@ -2,7 +2,6 @@ package sa
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
