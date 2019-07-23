@@ -338,7 +338,7 @@ func TestWillingToIssueWildcards(t *testing.T) {
 	berr, ok := err.(*berrors.BoulderError)
 	test.AssertEquals(t, ok, true)
 	test.AssertEquals(t, len(berr.SubErrors), 2)
-	test.AssertEquals(t, berr.Error(), "Cannot issue for \"ok.*.this.is.a.*.weird.one.com\": Policy forbids issuing for name (and 1 more problems. Refer to sub-problems for more information.)")
+	test.AssertEquals(t, berr.Error(), "Cannot issue for \"letsdecrypt.org\": Policy forbids issuing for name (and 1 more problems. Refer to sub-problems for more information.)")
 
 	subErrMap := make(map[string]berrors.SubBoulderError, len(berr.SubErrors))
 

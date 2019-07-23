@@ -329,7 +329,10 @@ func (pa *AuthorityImpl) WillingToIssueWildcards(idents []identifier.ACMEIdentif
 	for _, ident := range idents {
 		if err := pa.willingToIssueWildcard(ident); err != nil {
 			if firstBadIdent == nil {
-				firstBadIdent = &ident
+				// Make a copy of ident so that the pointer doesn't get
+				// overwritten when for for loop iterates
+				identCopy := ident
+				firstBadIdent = &identCopy
 			}
 			if bErr, ok := err.(*berrors.BoulderError); ok {
 				subErrors = append(subErrors, berrors.SubBoulderError{
