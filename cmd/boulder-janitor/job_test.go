@@ -120,6 +120,7 @@ func TestGetWork(t *testing.T) {
 
 	// We expect to get back no error and the correct lastID
 	lastID, err := job.getWork(workChan, startID)
+	test.AssertNotError(t, err, "unexpected error from getWork")
 	test.AssertEquals(t, lastID, mockIDs[len(mockIDs)-1])
 
 	// We expect the work gauge for this table has been updated
@@ -157,6 +158,7 @@ func TestDeleteResource(t *testing.T) {
 	// With the mock error removed we expect no error returned from deleteResource
 	testDB.errResult = nil
 	err = job.deleteResource(testID)
+	test.AssertNotError(t, err, "unexpected error from deleteResource")
 	// We expect a delete to have been tracked in the deletedStat
 	test.AssertEquals(t, test.CountCounterVec("table", "certificates", deletedStat), 1)
 }
