@@ -59,7 +59,7 @@ type batchedDBJob struct {
 // getWork reads work into the provided work channel starting at the startID by
 // using the batchedDBJob's configured work query, purgeBefore, and batchSize.
 // If there is no error the last primary key ID written to the work channel will
-// be returned, otherwise an error result are returned.
+// be returned, otherwise an error result is returned.
 func (j batchedDBJob) getWork(work chan<- int64, startID int64) (int64, error) {
 	var idBatch []int64
 	_, err := j.db.Select(
