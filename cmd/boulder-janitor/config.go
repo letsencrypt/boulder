@@ -59,19 +59,13 @@ type Config struct {
 		cmd.DBConfig
 
 		// Certificates describes a cleanup job for the certificates table.
-		Certificates struct {
-			CleanupConfig
-		}
+		Certificates CleanupConfig
 
 		// CertificateStatus describes a cleanup job for the certificateStatus table.
-		CertificateStatus struct {
-			CleanupConfig
-		}
+		CertificateStatus CleanupConfig
 
 		// CertificatesPerName describes a cleanup job for the certificatesPerName table.
-		CertificatesPerName struct {
-			CleanupConfig
-		}
+		CertificatesPerName CleanupConfig
 	}
 }
 
