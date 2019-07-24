@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"errors"
-	"sync"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
@@ -104,11 +103,11 @@ func newJobs(
 // dedicated go routines. The janitor will block on the completion of these
 // jobs (presently forever).
 func (j *janitor) Run() {
-	// Run each job and wait for all of them to complete
-	wg := new(sync.WaitGroup)
+	waitChan := make(chan bool)
+	// Run each job
 	for _, job := range j.jobs {
-		wg.Add(1)
 		go job.RunForever()
 	}
-	wg.Wait()
+	// Wait forever
+	<-waitChan
 }
