@@ -12,6 +12,16 @@ import (
 )
 
 var (
+	// errStat is a prometheus counter vector tracking the number of errors
+	// experienced by the janitor during operation sliced by a tabel label anda
+	// type label. Examples of possible type labels include "getWork" and
+	// "deleteResource".
+	errStat = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "janitor_errors",
+			Help: "Number of errors by type the boulder-janitor has experienced.",
+		},
+		[]string{"table", "type"})
 	// deletedStat is a prometheus counter vector tracking the number of rows
 	// deleted by the janitor, sliced by a table label.
 	deletedStat = prometheus.NewCounterVec(
@@ -114,6 +124,7 @@ func (j batchedDBJob) cleanResource(work <-chan int64) {
 					j.log.AuditErrf(
 						"error deleting ID %d from table %q: %s",
 						id, j.table, err)
+					errStat.WithLabelValues(j.table, "deleteResource").Inc()
 				}
 				_ = atomic.AddInt64(&deleted, 1)
 			}
@@ -153,6 +164,7 @@ func (j batchedDBJob) RunForever() {
 			lastID, err := j.getWork(work, id)
 			if err != nil {
 				j.log.AuditErr(err.Error())
+				errStat.WithLabelValues(j.table, "getWork").Inc()
 				time.Sleep(time.Millisecond * 500)
 				continue
 			} else if lastID == id {
