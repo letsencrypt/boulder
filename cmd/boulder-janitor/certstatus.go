@@ -20,7 +20,7 @@ func newCertificateStatusJob(
 		 ORDER by id
 		 LIMIT :limit`
 	log.Debugf("Creating CertificateStatus job from config: %#v\n", config.Janitor.CertificateStatus)
-	j := &batchedDBJob{
+	return &batchedDBJob{
 		db:          db,
 		log:         log,
 		purgeBefore: purgeBefore,
@@ -30,5 +30,4 @@ func newCertificateStatusJob(
 		table:       "certificateStatus",
 		workQuery:   workQuery,
 	}
-	return j
 }
