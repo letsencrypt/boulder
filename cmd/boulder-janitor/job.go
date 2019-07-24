@@ -121,7 +121,7 @@ func (j batchedDBJob) cleanResource(work <-chan int64) {
 					<-ticker.C
 				}
 				if err := j.deleteResource(id); err != nil {
-					j.log.AuditErrf(
+					j.log.Errf(
 						"error deleting ID %d from table %q: %s",
 						id, j.table, err)
 					errStat.WithLabelValues(j.table, "deleteResource").Inc()
@@ -163,7 +163,7 @@ func (j batchedDBJob) RunForever() {
 		for {
 			lastID, err := j.getWork(work, id)
 			if err != nil {
-				j.log.AuditErr(err.Error())
+				j.log.Err(err.Error())
 				errStat.WithLabelValues(j.table, "getWork").Inc()
 				time.Sleep(time.Millisecond * 500)
 				continue
