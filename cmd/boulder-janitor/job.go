@@ -13,7 +13,7 @@ import (
 
 var (
 	// errStat is a prometheus counter vector tracking the number of errors
-	// experienced by the janitor during operation sliced by a tabel label anda
+	// experienced by the janitor during operation sliced by a tabel label and a
 	// type label. Examples of possible type labels include "getWork" and
 	// "deleteResource".
 	errStat = prometheus.NewCounterVec(
