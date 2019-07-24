@@ -22,6 +22,5 @@ func main() {
 	j, err := New(cmd.Clock(), config)
 	cmd.FailOnError(err, "Failed to build janitor with config")
 
-	err = j.Run()
-	cmd.FailOnError(err, "Failed to run janitor")
+	j.Run()
 }

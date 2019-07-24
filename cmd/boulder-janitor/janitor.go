@@ -111,7 +111,7 @@ func newJobs(
 // Run starts the janitor daemon. Each configured job will start running in
 // dedicated go routines. The janitor will block on the completion of these
 // jobs (presently forever).
-func (j *janitor) Run() error {
+func (j *janitor) Run() {
 	// Run each job and wait for all of them to complete
 	wg := new(sync.WaitGroup)
 	for _, job := range j.jobs {
@@ -119,5 +119,4 @@ func (j *janitor) Run() error {
 		go job.RunForever()
 	}
 	wg.Wait()
-	return nil
 }
