@@ -30,6 +30,7 @@ var (
 	errInvalidGracePeriod   = errors.New("grace period must be > 0")
 	errInvalidParallelism   = errors.New("parallelism must be > 0")
 	errInvalidNegativeValue = errors.New("neither BatchSize or MaxDPS may be negative")
+	errEmptyMetricsAddr     = errors.New("metricsAddr must not be empty")
 )
 
 // Valid checks the cleanup config is valid or returns an error.
@@ -72,6 +73,9 @@ type Config struct {
 // Valid checks that each of the cleanup job configurations are valid or returns
 // an error.
 func (c Config) Valid() error {
+	if c.Janitor.DebugAddr == "" {
+		return errEmptyMetricsAddr
+	}
 	jobConfigs := []CleanupConfig{c.Janitor.Certificates, c.Janitor.CertificateStatus, c.Janitor.CertificatesPerName}
 	for _, cc := range jobConfigs {
 		if err := cc.Valid(); err != nil {

@@ -9,7 +9,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -48,14 +47,8 @@ func New(clk clock.Clock, config Config) (*janitor, error) {
 	}
 
 	// Setup logging and stats
-	var logger blog.Logger
-	if config.Janitor.DebugAddr != "" {
-		var scope metrics.Scope
-		scope, logger = cmd.StatsAndLogging(config.Janitor.Syslog, config.Janitor.DebugAddr)
-		scope.MustRegister(deletedStat)
-	} else {
-		logger = cmd.NewLogger(config.Janitor.Syslog)
-	}
+	scope, logger := cmd.StatsAndLogging(config.Janitor.Syslog, config.Janitor.DebugAddr)
+	scope.MustRegister(deletedStat)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
