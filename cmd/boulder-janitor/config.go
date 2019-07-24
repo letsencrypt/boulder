@@ -72,14 +72,11 @@ type Config struct {
 // Valid checks that each of the cleanup job configurations are valid or returns
 // an error.
 func (c Config) Valid() error {
-	if err := c.Janitor.Certificates.Valid(); err != nil {
-		return err
-	}
-	if err := c.Janitor.CertificateStatus.Valid(); err != nil {
-		return err
-	}
-	if err := c.Janitor.CertificatesPerName.Valid(); err != nil {
-		return err
+	jobConfigs := []CleanupConfig{c.Janitor.Certificates, c.Janitor.CertificateStatus, c.Janitor.CertificatesPerName}
+	for _, cc := range jobConfigs {
+		if err := cc.Valid(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
