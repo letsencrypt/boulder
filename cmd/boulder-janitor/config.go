@@ -29,7 +29,7 @@ type CleanupConfig struct {
 var (
 	errInvalidGracePeriod   = errors.New("grace period must be > 0")
 	errInvalidParallelism   = errors.New("parallelism must be > 0")
-	errInvalidNegativeValue = errors.New("no numeric configuration values should be negative")
+	errInvalidNegativeValue = errors.New("neither BatchSize or MaxDPS may be negative")
 )
 
 // Valid checks the cleanup config is valid or returns an error.
