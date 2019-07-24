@@ -42,6 +42,11 @@ func New(clk clock.Clock, config Config) (*janitor, error) {
 		return nil, err
 	}
 
+	// Enable configured feature flags
+	if err := features.Set(config.Janitor.Features); err != nil {
+		return nil, err
+	}
+
 	// Setup logging and stats
 	var logger blog.Logger
 	if config.Janitor.DebugAddr != "" {
@@ -64,12 +69,6 @@ func New(clk clock.Clock, config Config) (*janitor, error) {
 		return nil, err
 	}
 	sa.SetSQLDebug(dbMap, logger)
-
-	// Enable configured feature flags
-	err = features.Set(config.Janitor.Features)
-	if err != nil {
-		return nil, err
-	}
 
 	// Construct configured jobs
 	jobs, err := newJobs(dbMap, logger, clk, config)
