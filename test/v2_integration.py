@@ -977,5 +977,33 @@ def test_long_san_no_cn():
         if e.detail != 'Error finalizing order :: issuing precertificate: CSR doesn\'t contain a SAN short enough to fit in CN':
             raise Exception('Problem detail did not match expected')
 
+def test_delete_unused_challenges():
+    if not CONFIG_NEXT:
+      return
+    order = chisel2.auth_and_issue([random_domain()], chall_type="dns-01")
+    for a in order.authorizations:
+        if len(a.body.challenges) != 1:
+            raise Exception("too many challenges (%d) left after validation", len(a.body.challenges))
+        if not isinstance(a.body.challenges[0], challenges.DNS01):
+            raise Exception("wrong challenge type left after validation")
+
+    # intentionally fail a challenge
+    if client is None:
+        client = chisel2.make_client()
+    csr_pem = chisel2.make_csr(domains)
+    order = client.new_order(csr_pem)
+    c = get_chall(a, chall_type)
+    client.answer_challenge(c, c.response(client.net.key))
+    try:
+        client.poll_and_finalize(order)
+    except errors.ValidationError as e:
+        pass
+    for a in order.authorizations:
+        if len(a.body.challenges) != 1:
+            raise Exception("too many challenges (%d) left after failed validation",
+                len(a.body.challenges))
+        if not isinstance(a.body.challenges[0], challenges.DNS01):
+            raise Exception("wrong challenge type left after validation")
+
 def run(cmd, **kwargs):
     return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)
