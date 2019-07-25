@@ -124,14 +124,13 @@ func (log grpcLogger) Warningln(args ...interface{}) {
 	log.Errorln(args...)
 }
 
+// Don't log any INFO-level gRPC stuff. In practice this is all noise, like
+// failed TXT lookups for service discovery (we only use A records).
 func (log grpcLogger) Info(args ...interface{}) {
-	log.Logger.Info(fmt.Sprintln(args...))
 }
 func (log grpcLogger) Infof(format string, args ...interface{}) {
-	log.Logger.Infof(format, args...)
 }
 func (log grpcLogger) Infoln(args ...interface{}) {
-	log.Logger.Info(fmt.Sprintln(args...))
 }
 
 type promLogger struct {
