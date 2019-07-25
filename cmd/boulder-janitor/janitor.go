@@ -47,7 +47,9 @@ func New(clk clock.Clock, config Config) (*janitor, error) {
 
 	// Setup logging and stats
 	scope, logger := cmd.StatsAndLogging(config.Janitor.Syslog, config.Janitor.DebugAddr)
+	scope.MustRegister(errStat)
 	scope.MustRegister(deletedStat)
+	scope.MustRegister(workStat)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
