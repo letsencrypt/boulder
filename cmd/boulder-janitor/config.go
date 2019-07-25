@@ -13,6 +13,9 @@ type CleanupConfig struct {
 	Enabled bool
 	// GracePeriod controls when a resource is old enough to be cleaned up.
 	GracePeriod cmd.ConfigDuration
+	// WorkSleep controls how long the janitor's work threads sleep between
+	// finding no work and trying again. Defaults to a minute if not provided.
+	WorkSleep cmd.ConfigDuration
 	// BatchSize controls how many rows of the resource will be read from the DB
 	// per-query.
 	BatchSize int64
