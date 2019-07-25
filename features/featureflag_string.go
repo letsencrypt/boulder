@@ -30,11 +30,13 @@ func _() {
 	_ = x[CheckRenewalFirst-19]
 	_ = x[MandatoryPOSTAsGET-20]
 	_ = x[FasterGetOrderForNames-21]
+	_ = x[AllowV1Registration-22]
+	_ = x[ParallelCheckFailedValidation-23]
 }
 
-const _FeatureFlag_name = "unusedPerformValidationRPCACME13KeyRolloverSimplifiedVAHTTPTLSSNIRevalidationAllowRenewalFirstRLSetIssuedNamesRenewalBitFasterRateLimitProbeCTLogsRevokeAtRACAAValidationMethodsCAAAccountURIHeadNonceStatusOKNewAuthorizationSchemaDisableAuthz2OrdersEarlyOrderRateLimitEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountIDCheckRenewalFirstMandatoryPOSTAsGETFasterGetOrderForNames"
+const _FeatureFlag_name = "unusedPerformValidationRPCACME13KeyRolloverSimplifiedVAHTTPTLSSNIRevalidationAllowRenewalFirstRLSetIssuedNamesRenewalBitFasterRateLimitProbeCTLogsRevokeAtRACAAValidationMethodsCAAAccountURIHeadNonceStatusOKNewAuthorizationSchemaDisableAuthz2OrdersEarlyOrderRateLimitEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountIDCheckRenewalFirstMandatoryPOSTAsGETFasterGetOrderForNamesAllowV1RegistrationParallelCheckFailedValidation"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 26, 43, 59, 77, 96, 120, 135, 146, 156, 176, 189, 206, 228, 247, 266, 280, 298, 317, 334, 352, 374}
+var _FeatureFlag_index = [...]uint16{0, 6, 26, 43, 59, 77, 96, 120, 135, 146, 156, 176, 189, 206, 228, 247, 266, 280, 298, 317, 334, 352, 374, 393, 422}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

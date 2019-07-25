@@ -325,12 +325,8 @@ func (pa *AuthorityImpl) WillingToIssue(id identifier.ACMEIdentifier) error {
 // to the rejected identifiers will be returned.
 func (pa *AuthorityImpl) WillingToIssueWildcards(idents []identifier.ACMEIdentifier) error {
 	var subErrors []berrors.SubBoulderError
-	var firstBadIdent *identifier.ACMEIdentifier
 	for _, ident := range idents {
 		if err := pa.willingToIssueWildcard(ident); err != nil {
-			if firstBadIdent == nil {
-				firstBadIdent = &ident
-			}
 			if bErr, ok := err.(*berrors.BoulderError); ok {
 				subErrors = append(subErrors, berrors.SubBoulderError{
 					Identifier:   ident,
@@ -358,7 +354,7 @@ func (pa *AuthorityImpl) WillingToIssueWildcards(idents []identifier.ACMEIdentif
 
 		detail := fmt.Sprintf(
 			"Cannot issue for %q: %s (and %d more problems. Refer to sub-problems for more information.)",
-			firstBadIdent.Value,
+			subErrors[0].Identifier.Value,
 			subErrors[0].BoulderError.Detail,
 			len(subErrors)-1,
 		)

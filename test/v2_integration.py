@@ -104,17 +104,21 @@ def test_http_challenge_broken_redirect():
 
     challSrv.remove_http_redirect(challengePath)
 
-def test_fail_thrice():
+def test_failed_validation_limit():
     """
-    Fail a challenge for the same domain, with the same account, three times in
-    a row. This tests a fix for
+    Fail a challenge repeatedly for the same domain, with the same account. Once
+    we reach the rate limit we should get a rateLimitedError. Note that this
+    depends on the specific threshold configured in rate-limit-policies.yml.
+
+    This also incidentally tests a fix for
     https://github.com/letsencrypt/boulder/issues/4329. We expect to get
-    ValidationErrors, but no 500s.
+    ValidationErrors, eventually followed by a rate limit error.
     """
-    domain = "failthrice." + random_domain()
+    domain = "fail." + random_domain()
     csr_pem = chisel2.make_csr([domain])
     client = chisel2.make_client()
-    for _ in range(3):
+    threshold = 3
+    for _ in range(threshold):
         order = client.new_order(csr_pem)
         chall = order.authorizations[0].body.challenges[0]
         client.answer_challenge(chall, chall.response(client.net.key))
@@ -122,6 +126,8 @@ def test_fail_thrice():
             client.poll_and_finalize(order)
         except errors.ValidationError as e:
             pass
+    chisel2.expect_problem("urn:ietf:params:acme:error:rateLimited",
+        lambda: chisel2.auth_and_issue([domain], client=client))
 
 
 def test_http_challenge_loop_redirect():
@@ -955,7 +961,7 @@ def test_new_order_policy_errs():
         ok = True
         if e.typ != "urn:ietf:params:acme:error:rejectedIdentifier":
             raise(Exception('Expected rejectedIdentifier type problem, got {0}'.format(e.typ)))
-        if e.detail != 'Error creating new order :: Cannot issue for "out-addr.in-addr.arpa": Policy forbids issuing for name (and 1 more problems. Refer to sub-problems for more information.)':
+        if e.detail != 'Error creating new order :: Cannot issue for "between-addr.in-addr.arpa": Policy forbids issuing for name (and 1 more problems. Refer to sub-problems for more information.)':
             raise(Exception('Order problem detail did not match expected'))
     if not ok:
         raise Exception('Expected problem, got no error')

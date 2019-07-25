@@ -118,17 +118,6 @@ func selectAuthz(s dbOneSelector, q string, args ...interface{}) (*authzModel, e
 	return &model, err
 }
 
-// selectSctReceipt selects all fields of one SignedCertificateTimestamp object
-func selectSctReceipt(s dbOneSelector, q string, args ...interface{}) (core.SignedCertificateTimestamp, error) {
-	var model core.SignedCertificateTimestamp
-	err := s.SelectOne(
-		&model,
-		"SELECT id, sctVersion, logID, timestamp, extensions, signature, certificateSerial, LockCol FROM sctReceipts "+q,
-		args...,
-	)
-	return model, err
-}
-
 const certFields = "registrationID, serial, digest, der, issued, expires"
 
 // SelectCertificate selects all fields of one certificate object

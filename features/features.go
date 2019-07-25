@@ -59,32 +59,38 @@ const (
 	MandatoryPOSTAsGET
 	// Use an optimized query for GetOrderForNames.
 	FasterGetOrderForNames
+	// Allow creation of new registrations in ACMEv1.
+	AllowV1Registration
+	// Check the failed validation limit in parallel during NewOrder
+	ParallelCheckFailedValidation
 )
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                   false,
-	AllowRenewalFirstRL:      false,
-	TLSSNIRevalidation:       false,
-	CAAValidationMethods:     false,
-	CAAAccountURI:            false,
-	ACME13KeyRollover:        false,
-	ProbeCTLogs:              false,
-	SimplifiedVAHTTP:         false,
-	PerformValidationRPC:     false,
-	HeadNonceStatusOK:        false,
-	NewAuthorizationSchema:   false,
-	RevokeAtRA:               false,
-	SetIssuedNamesRenewalBit: false,
-	EarlyOrderRateLimit:      false,
-	EnforceMultiVA:           false,
-	MultiVAFullResults:       false,
-	RemoveWFE2AccountID:      false,
-	FasterRateLimit:          false,
-	CheckRenewalFirst:        false,
-	MandatoryPOSTAsGET:       false,
-	DisableAuthz2Orders:      false,
-	FasterGetOrderForNames:   false,
+	unused:                        false,
+	AllowRenewalFirstRL:           false,
+	TLSSNIRevalidation:            false,
+	CAAValidationMethods:          false,
+	CAAAccountURI:                 false,
+	ACME13KeyRollover:             false,
+	ProbeCTLogs:                   false,
+	SimplifiedVAHTTP:              false,
+	PerformValidationRPC:          false,
+	HeadNonceStatusOK:             false,
+	NewAuthorizationSchema:        false,
+	RevokeAtRA:                    false,
+	SetIssuedNamesRenewalBit:      false,
+	EarlyOrderRateLimit:           false,
+	EnforceMultiVA:                false,
+	MultiVAFullResults:            false,
+	RemoveWFE2AccountID:           false,
+	FasterRateLimit:               false,
+	CheckRenewalFirst:             false,
+	MandatoryPOSTAsGET:            false,
+	DisableAuthz2Orders:           false,
+	FasterGetOrderForNames:        false,
+	AllowV1Registration:           true,
+	ParallelCheckFailedValidation: false,
 }
 
 var fMu = new(sync.RWMutex)

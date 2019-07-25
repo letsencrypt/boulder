@@ -1,21 +1,7 @@
---
--- Copyright 2015 ISRG.  All rights reserved
--- This Source Code Form is subject to the terms of the Mozilla Public
--- License, v. 2.0. If a copy of the MPL was not distributed with this
--- file, You can obtain one at http://mozilla.org/MPL/2.0/.
---
--- This file defines the default users for the primary database, used by
--- all the parts of Boulder except the Certificate Authority module, which
--- utilizes its own database.
---
+-- sa_db_users.sql is run by test/create_db.sh to create users for each
+-- component with the appropriate permissions.
 
--- Create users for each component with the appropriate permissions. We want to
--- drop each user and recreate them, but if the user doesn't already exist, the
--- drop command will fail. So we grant the dummy `USAGE` privilege to make sure
--- the user exists and then drop the user.
-
-
--- These lines require MariaDB 10.1
+-- These lines require MariaDB 10.1+
 CREATE USER IF NOT EXISTS 'policy'@'localhost';
 CREATE USER IF NOT EXISTS 'sa'@'localhost';
 CREATE USER IF NOT EXISTS 'ocsp_resp'@'localhost';
@@ -26,6 +12,7 @@ CREATE USER IF NOT EXISTS 'cert_checker'@'localhost';
 CREATE USER IF NOT EXISTS 'ocsp_update'@'localhost';
 CREATE USER IF NOT EXISTS 'test_setup'@'localhost';
 CREATE USER IF NOT EXISTS 'purger'@'localhost';
+CREATE USER IF NOT EXISTS 'janitor'@'localhost';
 
 -- Storage Authority
 GRANT SELECT,INSERT,UPDATE ON authz TO 'sa'@'localhost';
@@ -35,7 +22,6 @@ GRANT SELECT,INSERT ON certificates TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON certificateStatus TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON issuedNames TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON certificatesPerName TO 'sa'@'localhost';
-GRANT SELECT,INSERT ON sctReceipts TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON registrations TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON challenges TO 'sa'@'localhost';
 GRANT SELECT,INSERT on fqdnSets TO 'sa'@'localhost';
@@ -52,7 +38,6 @@ GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';
 -- OCSP Generator Tool (Updater)
 GRANT SELECT ON certificates TO 'ocsp_update'@'localhost';
 GRANT SELECT,UPDATE ON certificateStatus TO 'ocsp_update'@'localhost';
-GRANT SELECT ON sctReceipts TO 'ocsp_update'@'localhost';
 
 -- Revoker Tool
 GRANT SELECT ON registrations TO 'revoker'@'localhost';
@@ -72,6 +57,12 @@ GRANT SELECT,DELETE ON pendingAuthorizations TO 'purger'@'localhost';
 GRANT SELECT,DELETE ON authz TO 'purger'@'localhost';
 GRANT SELECT,DELETE ON challenges TO 'purger'@'localhost';
 GRANT SELECT,DELETE ON authz2 TO 'purger'@'localhost';
+
+-- Janitor
+GRANT SELECT,DELETE ON certificates TO 'janitor'@'localhost';
+GRANT SELECT,DELETE ON certificateStatus TO 'janitor'@'localhost';
+GRANT SELECT,DELETE ON certificatesPerName TO 'janitor'@'localhost';
+GRANT SELECT,DELETE ON sctReceipts TO 'janitor'@'localhost';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';
