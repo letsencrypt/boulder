@@ -327,18 +327,20 @@ func TestWillingToIssueWildcards(t *testing.T) {
 	err = pa.SetHostnamePolicyFile(f.Name())
 	test.AssertNotError(t, err, "Couldn't load policy contents from file")
 
-	badIdentifiers := []identifier.ACMEIdentifier{
+	idents := []identifier.ACMEIdentifier{
+		identifier.DNSIdentifier("perfectly-fine.com"),
 		identifier.DNSIdentifier("letsdecrypt.org"),
 		identifier.DNSIdentifier("ok.*.this.is.a.*.weird.one.com"),
+		identifier.DNSIdentifier("also-perfectly-fine.com"),
 	}
 
-	err = pa.WillingToIssueWildcards(badIdentifiers)
+	err = pa.WillingToIssueWildcards(idents)
 	test.AssertError(t, err, "Expected err from WillingToIssueWildcards")
 
 	berr, ok := err.(*berrors.BoulderError)
 	test.AssertEquals(t, ok, true)
 	test.AssertEquals(t, len(berr.SubErrors), 2)
-	test.AssertEquals(t, berr.Error(), "Cannot issue for \"ok.*.this.is.a.*.weird.one.com\": Policy forbids issuing for name (and 1 more problems. Refer to sub-problems for more information.)")
+	test.AssertEquals(t, berr.Error(), "Cannot issue for \"letsdecrypt.org\": Policy forbids issuing for name (and 1 more problems. Refer to sub-problems for more information.)")
 
 	subErrMap := make(map[string]berrors.SubBoulderError, len(berr.SubErrors))
 
