@@ -984,13 +984,12 @@ def test_delete_unused_challenges():
     for a in order.authorizations:
         if len(a.body.challenges) != 1:
             raise Exception("too many challenges (%d) left after validation", len(a.body.challenges))
-        if not isinstance(a.body.challenges[0], challenges.DNS01):
+        if not isinstance(a.body.challenges[0].chall, challenges.DNS01):
             raise Exception("wrong challenge type left after validation")
 
     # intentionally fail a challenge
-    if client is None:
-        client = chisel2.make_client()
-    csr_pem = chisel2.make_csr(domains)
+    client = chisel2.make_client()
+    csr_pem = chisel2.make_csr([random_domain()])
     order = client.new_order(csr_pem)
     c = get_chall(a, chall_type)
     client.answer_challenge(c, c.response(client.net.key))
@@ -1002,7 +1001,7 @@ def test_delete_unused_challenges():
         if len(a.body.challenges) != 1:
             raise Exception("too many challenges (%d) left after failed validation",
                 len(a.body.challenges))
-        if not isinstance(a.body.challenges[0], challenges.DNS01):
+        if not isinstance(a.body.challenges[0].chall, challenges.DNS01):
             raise Exception("wrong challenge type left after validation")
 
 def run(cmd, **kwargs):
