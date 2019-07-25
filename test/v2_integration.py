@@ -978,31 +978,29 @@ def test_long_san_no_cn():
             raise Exception('Problem detail did not match expected')
 
 def test_delete_unused_challenges():
-    if not CONFIG_NEXT:
-      return
     order = chisel2.auth_and_issue([random_domain()], chall_type="dns-01")
-    for a in order.authorizations:
-        if len(a.body.challenges) != 1:
-            raise Exception("too many challenges (%d) left after validation", len(a.body.challenges))
-        if not isinstance(a.body.challenges[0].chall, challenges.DNS01):
-            raise Exception("wrong challenge type left after validation")
+    a = order.authorizations[0]
+    if len(a.body.challenges) != 1:
+        raise Exception("too many challenges (%d) left after validation" % len(a.body.challenges))
+    if not isinstance(a.body.challenges[0].chall, challenges.DNS01):
+        raise Exception("wrong challenge type left after validation")
 
     # intentionally fail a challenge
     client = chisel2.make_client()
     csr_pem = chisel2.make_csr([random_domain()])
     order = client.new_order(csr_pem)
-    c = get_chall(a, chall_type)
+    c = chisel2.get_chall(order.authorizations[0], challenges.DNS01)
     client.answer_challenge(c, c.response(client.net.key))
-    try:
-        client.poll_and_finalize(order)
-    except errors.ValidationError as e:
-        pass
-    for a in order.authorizations:
-        if len(a.body.challenges) != 1:
-            raise Exception("too many challenges (%d) left after failed validation",
-                len(a.body.challenges))
-        if not isinstance(a.body.challenges[0].chall, challenges.DNS01):
-            raise Exception("wrong challenge type left after validation")
+    for _ in range(5):
+        a, _ = client.poll(order.authorizations[0])
+        if a.body.status == Status("invalid"):
+            break
+        time.sleep(1)
+    if len(a.body.challenges) != 1:
+        raise Exception("too many challenges (%d) left after failed validation" %
+            len(a.body.challenges))
+    if not isinstance(a.body.challenges[0].chall, challenges.DNS01):
+        raise Exception("wrong challenge type left after validation")
 
 def run(cmd, **kwargs):
     return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)
