@@ -30,8 +30,6 @@ from helpers import *
 
 from acme import challenges
 
-import requests
-
 def run_client_tests():
     root = os.environ.get("CERTBOT_PATH")
     assert root is not None, (
@@ -82,6 +80,80 @@ def run_expired_authz_purger():
     after_grace_period = now + datetime.timedelta(days=+67, minutes=+3)
     expect(now, 0, "authz")
     expect(after_grace_period, 1, "authz")
+
+def run_janitor():
+    # Set the fake clock to a year in the future such that all of the database
+    # rows created during the integration tests are older than the grace period.
+    now = datetime.datetime.utcnow()
+    target_time = now+datetime.timedelta(days=+365)
+
+    e = os.environ.copy()
+    e.setdefault("GORACE", "halt_on_error=1")
+    e.setdefault("FAKECLOCK", fakeclock(target_time))
+
+    # Note: Must use exec here so that killing this process kills the command.
+    cmdline = "exec ./bin/boulder-janitor --config test/config-next/janitor.json"
+    p = subprocess.Popen(cmdline, shell=True, env=e)
+    p.cmd = cmdline
+
+    # Wait for the janitor to come up
+    waitport(8014, "boulder-janitor", None)
+
+    def statline(statname, table):
+        return "janitor_{0}{{table\"{1}\"}}".format(statname, table)
+
+    def get_stat_line(port, stat):
+        url = "http://localhost:%d/metrics" % port
+        response = requests.get(url)
+        for l in response.content.split("\n"):
+            if l.strip().startswith(stat):
+                return l
+        return None
+
+    # Wait for the janitor to report it isn't finding new work
+    print("waiting for boulder-janitor work to complete...\n")
+    workDone = False
+    for i in range(10):
+        certStatusWorkbatch = get_stat_line(8014, statline("workbatch", "certificateStatus"))
+        certsWorkBatch = get_stat_line(8014, statline("workbatch", "certificates"))
+        certsPerNameWorkBatch = get_stat_line(8014, statline("workbatch", "certificatesPerName"))
+
+        if certStatusWorkbatch is None and certsWorkBatch is None and certsPerNameWorkBatch is None:
+            workDone = True
+            break
+
+        print("not done after check {0}. Sleeping".format(i))
+        time.sleep(2)
+    if workDone is False:
+        raise Exception("Timed out waiting for janitor to report all work completed\n")
+
+    # Check deletion stats are not empty/zero
+    for i in range(10):
+        certStatusDeletes = get_stat_line(8014, statline("deletions", "certificateStatus"))
+        certsDeletes = get_stat_line(8014, statline("deletions", "certificates"))
+        certsPerNameDeletes = get_stat_line(8014, statline("deletions", "certificatesPerName"))
+
+        if certStatusDeletes is None or certsDeletes is None or certsPerNameDeletes is None:
+            print("delete stats not present after check {0}. Sleeping".format(i))
+            time.sleep(2)
+            continue
+
+        if certStatusDeletes.endswith("0") or certDeletes.endswith("0") or certsPerNameDeletes.endswith("0"):
+            raise Exception("Expected a non-zero number of deletes to be performed")
+
+    # Check that all error stats are empty
+    errorStats = [
+      statline("errors", "certificateStatus"),
+      statline("errors", "certificates"),
+      statline("errors", "certificatesPerName"),
+    ]
+    for eStat in errorStats:
+        actual = get_stat_line(8014, eStat)
+        if actual is not None:
+            raise Exception("Expected to find no error stat lines but found {0}\n".format(eStat))
+
+    # Kill the janitor
+    p.kill()
 
 def test_single_ocsp():
     """Run the single-ocsp command, which is used to generate OCSP responses for
@@ -194,6 +266,12 @@ def main():
         check_balance()
     if not CONFIG_NEXT:
         run_expired_authz_purger()
+
+    # Run the boulder-janitor. This should happen after all other tests because
+    # it will advance the fake clock and delete rows that may otherwise be
+    # referenced by tests otherwise
+    if CONFIG_NEXT:
+        run_janitor()
 
     # Run the load-generator last. run_loadtest will stop the
     # pebble-challtestsrv before running the load-generator and will not restart

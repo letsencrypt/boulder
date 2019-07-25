@@ -1,7 +1,7 @@
 {
   "janitor": {
     "syslog": {
-      "stdoutLevel": 7
+      "stdoutLevel": 6
     },
     "dbConnectFile": "test/secrets/janitor_dburl",
     "maxDBConns": 10,
@@ -9,23 +9,26 @@
     "certificates": {
         "enabled": true,
         "gracePeriod": "1h",
-        "batchSize": 10,
+        "batchSize": 100,
+        "workSleep": "500ms",
         "parallelism": 2,
-        "maxDPS": 1
+        "maxDPS": 50
     },
     "certificateStatus": {
         "enabled": true,
         "gracePeriod": "1h",
-        "batchSize": 10,
+        "batchSize": 100,
+        "workSleep": "500ms",
         "parallelism": 2,
-        "maxDPS": 1
+        "maxDPS": 50
     },
     "certificatesPerName": {
         "enabled": true,
         "gracePeriod": "1h",
-        "batchSize": 10,
+        "batchSize": 100,
+        "workSleep": "500ms",
         "parallelism": 2,
-        "maxDPS": 1
+        "maxDPS": 50
     }
   }
 }
