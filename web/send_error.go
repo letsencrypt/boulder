@@ -49,7 +49,12 @@ func SendError(
 		}
 	}
 
+	// Set the proper namespace for the problem and any
+	// sub-problems
 	prob.Type = probs.ProblemType(namespace) + prob.Type
+	for i := range prob.SubProblems {
+		prob.SubProblems[i].Type = probs.ProblemType(namespace) + prob.Type
+	}
 	problemDoc, err := json.MarshalIndent(prob, "", "  ")
 	if err != nil {
 		log.AuditErrf("Could not marshal error message: %s - %+v", err, prob)
