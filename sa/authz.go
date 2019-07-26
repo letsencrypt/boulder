@@ -2,7 +2,6 @@ package sa
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
@@ -35,32 +34,4 @@ func getAuthorizationIDsByDomain(db dbSelector, tableName string, ident string, 
 		return nil, err
 	}
 	return allIDs, nil
-}
-
-func revokeAuthorizations(db dbExecer, tableName string, authIDs []string) (int64, error) {
-	stmtArgs := []interface{}{string(core.StatusRevoked)}
-	qmarks := []string{}
-	for _, id := range authIDs {
-		stmtArgs = append(stmtArgs, id)
-		qmarks = append(qmarks, "?")
-	}
-	idStmt := fmt.Sprintf("(%s)", strings.Join(qmarks, ", "))
-	result, err := db.Exec(
-		fmt.Sprintf(
-			`UPDATE %s
-       SET status = ?
-       WHERE id IN %s`,
-			tableName,
-			idStmt,
-		),
-		stmtArgs...,
-	)
-	if err != nil {
-		return 0, err
-	}
-	batchSize, err := result.RowsAffected()
-	if err != nil {
-		return 0, err
-	}
-	return batchSize, nil
 }
