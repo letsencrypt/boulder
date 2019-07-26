@@ -269,6 +269,12 @@ class SlowHTTPRequestHandler(BaseHTTPRequestHandler):
         except:
             pass
 
+class SlowHTTPServer(HTTPServer):
+    # Override handle_error so we don't print a misleading stack trace when the
+    # VA terminates the connection due to timeout.
+    def handle_error(self, request, client_address):
+        pass
+
 def test_http_challenge_timeout():
     """
     test_http_challenge_timeout tests that the VA times out challenge requests
@@ -278,7 +284,7 @@ def test_http_challenge_timeout():
     # NOTE(@cpu): The pebble-challtestsrv binds 10.77.77.77:5002 for HTTP-01
     # challenges so we must use the 10.88.88.88 address for the throw away
     # server for this test and add a mock DNS entry that directs the VA to it.
-    httpd = HTTPServer(('10.88.88.88', 5002), SlowHTTPRequestHandler)
+    httpd = SlowHTTPServer(('10.88.88.88', 5002), SlowHTTPRequestHandler)
     thread = threading.Thread(target = httpd.serve_forever)
     thread.daemon = False
     thread.start()
