@@ -282,8 +282,8 @@ def main():
         run_expired_authz_purger()
 
     # Run the boulder-janitor. This should happen after all other tests because
-    # it will advance the fake clock and delete rows that may otherwise be
-    # referenced by tests otherwise
+    # it runs with the fake clock set to the future and deletes rows that may
+    # otherwise be referenced by tests.
     run_janitor()
 
     # Run the load-generator last. run_loadtest will stop the
