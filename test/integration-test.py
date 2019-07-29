@@ -99,7 +99,9 @@ def run_janitor():
     waitport(8014, "boulder-janitor", None)
 
     def statline(statname, table):
-        return "janitor_{0}{{table\"{1}\"}}".format(statname, table)
+        # NOTE: we omit the trailing "}}" to make this match general enough to
+        # permit new labels in the future.
+        return "janitor_{0}{{table=\"{1}\"".format(statname, table)
 
     def get_stat_line(port, stat):
         url = "http://localhost:%d/metrics" % port
