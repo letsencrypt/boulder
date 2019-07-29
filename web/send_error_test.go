@@ -64,3 +64,33 @@ func TestSendErrorSubProblemNamespace(t *testing.T) {
 		]
 	  }`)
 }
+
+func TestSendErrorSubProbLogging(t *testing.T) {
+	rw := httptest.NewRecorder()
+	prob := ProblemDetailsForError((&berrors.BoulderError{
+		Type:   berrors.Malformed,
+		Detail: "bad",
+	}).WithSubErrors(
+		[]berrors.SubBoulderError{
+			berrors.SubBoulderError{
+				Identifier: identifier.DNSIdentifier("example.com"),
+				BoulderError: &berrors.BoulderError{
+					Type:   berrors.Malformed,
+					Detail: "nop",
+				},
+			},
+			berrors.SubBoulderError{
+				Identifier: identifier.DNSIdentifier("what about example.com"),
+				BoulderError: &berrors.BoulderError{
+					Type:   berrors.Malformed,
+					Detail: "nah",
+				},
+			},
+		}),
+		"dfoop",
+	)
+	logEvent := RequestEvent{}
+	SendError(log.NewMock(), "namespace:test:", rw, &logEvent, prob, errors.New("it bad"))
+
+	test.AssertEquals(t, logEvent.Error, `400 :: malformed :: dfoop :: bad ["example.com :: malformed :: dfoop :: nop", "what about example.com :: malformed :: dfoop :: nah"]`)
+}

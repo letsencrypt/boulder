@@ -24,6 +24,7 @@
       ]
     },
     "features": {
+      "DeleteUnusedChallenges": true
     }
   },
 
