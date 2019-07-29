@@ -111,6 +111,12 @@ def run_janitor():
                 return l
         return None
 
+    def stat_value(line):
+        parts = line.split(" ")
+        if len(parts) != 2:
+            raise Exception("stat line {0} was missing required parts".format(line))
+        return parts[1]
+
     # Wait for the janitor to report it isn't finding new work
     print("waiting for boulder-janitor work to complete...\n")
     workDone = False
@@ -119,12 +125,18 @@ def run_janitor():
         certsWorkBatch = get_stat_line(8014, statline("workbatch", "certificates"))
         certsPerNameWorkBatch = get_stat_line(8014, statline("workbatch", "certificatesPerName"))
 
-        if certStatusWorkbatch is None and certsWorkBatch is None and certsPerNameWorkBatch is None:
+        allReady = True
+        for line in [certStatusWorkbatch, certsWorkBatch, certsPerNameWorkBatch]:
+            if stat_value(line) != "0":
+                allReady = False
+
+        if allReady is False:
+            print("not done after check {0}. Sleeping".format(i))
+            time.sleep(2)
+        else:
             workDone = True
             break
 
-        print("not done after check {0}. Sleeping".format(i))
-        time.sleep(2)
     if workDone is False:
         raise Exception("Timed out waiting for janitor to report all work completed\n")
 
@@ -139,8 +151,9 @@ def run_janitor():
             time.sleep(2)
             continue
 
-        if certStatusDeletes.endswith("0") or certDeletes.endswith("0") or certsPerNameDeletes.endswith("0"):
-            raise Exception("Expected a non-zero number of deletes to be performed")
+        for l in [certStatusDeletes, certsDeletes, certsPerNameDeletes]:
+            if stat_value(l) == "0":
+                raise Exception("Expected a non-zero number of deletes to be performed. Found {0}".format(l))
 
     # Check that all error stats are empty
     errorStats = [
