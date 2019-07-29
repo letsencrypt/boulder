@@ -52,6 +52,9 @@ type batchedDBJob struct {
 	// purgeBefore indicates the cut-off for the the resoruce being cleaned up by
 	// the job. Rows that older than now - purgeBefore are deleted.
 	purgeBefore time.Time
+	// workSleep is a duration that the job will sleep between getWork() calls
+	// when no new work is found. If not provided, defaults to a minute.
+	workSleep time.Duration
 	// batchSize indicates how many database rows of work should be returned per query.
 	batchSize int64
 	// maxDPS optionally indicates a maximum rate of deletes to run per second.
@@ -171,7 +174,11 @@ func (j batchedDBJob) RunForever() {
 				j.log.Debugf(
 					"made no new progress on table %q. Sleeping for a minute",
 					j.table)
-				time.Sleep(time.Minute)
+				if j.workSleep.Seconds() == 0 {
+					time.Sleep(time.Minute)
+				} else {
+					time.Sleep(j.workSleep)
+				}
 			}
 			id = lastID
 		}
