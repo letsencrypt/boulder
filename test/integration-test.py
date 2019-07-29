@@ -284,8 +284,7 @@ def main():
     # Run the boulder-janitor. This should happen after all other tests because
     # it will advance the fake clock and delete rows that may otherwise be
     # referenced by tests otherwise
-    if CONFIG_NEXT:
-        run_janitor()
+    run_janitor()
 
     # Run the load-generator last. run_loadtest will stop the
     # pebble-challtestsrv before running the load-generator and will not restart
