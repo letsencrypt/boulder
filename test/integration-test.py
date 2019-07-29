@@ -222,29 +222,23 @@ exit_status = 1
 
 def main():
     parser = argparse.ArgumentParser(description='Run integration tests')
-    parser.add_argument('--all', dest="run_all", action="store_true",
-                        help="run all of the clients' integration tests")
     parser.add_argument('--certbot', dest='run_certbot', action='store_true',
                         help="run the certbot integration tests")
     parser.add_argument('--chisel', dest="run_chisel", action="store_true",
                         help="run integration tests using chisel")
-    parser.add_argument('--load', dest="run_loadtest", action="store_true",
-                        help="run load-generator")
     parser.add_argument('--filter', dest="test_case_filter", action="store",
                         help="Regex filter for test cases")
-    parser.add_argument('--skip-setup', dest="skip_setup", action="store_true",
-                        help="skip integration test setup")
     # allow any ACME client to run custom command for integration
     # testing (without having to implement its own busy-wait loop)
     parser.add_argument('--custom', metavar="CMD", help="run custom command")
-    parser.set_defaults(run_all=False, run_certbot=False, run_chisel=False,
-        run_loadtest=False, test_case_filter="", skip_setup=False)
+    parser.set_defaults(run_certbot=False, run_chisel=False,
+        test_case_filter="", skip_setup=False)
     args = parser.parse_args()
 
-    if not (args.run_all or args.run_certbot or args.run_chisel or args.run_loadtest or args.custom is not None):
-        raise Exception("must run at least one of the letsencrypt or chisel tests with --all, --certbot, --chisel, --load or --custom")
+    if not (args.run_certbot or args.run_chisel or args.run_loadtest or args.custom is not None):
+        raise Exception("must run at least one of the letsencrypt or chisel tests with --certbot, --chisel, or --custom")
 
-    if not args.skip_setup:
+    if not args.test_case_filter:
         now = datetime.datetime.utcnow()
 
         # In CONFIG_NEXT mode, use the basic, non-next config for setup.
@@ -263,33 +257,31 @@ def main():
     if not startservers.start(race_detection=True):
         raise Exception("startservers failed")
 
-    if args.run_all or args.run_chisel:
+    if args.run_chisel:
         run_chisel(args.test_case_filter)
 
-    if args.run_all or args.run_certbot:
+    if args.run_certbot:
         run_client_tests()
 
     if args.custom:
         run(args.custom)
 
-    run_cert_checker()
-    # Skip load-balancing check when test case filter is on, since that usually
-    # means there's a single issuance and we don't expect every RPC backend to get
-    # traffic.
+    # Skip the last-phase checks when the test case filter is one, because that
+    # means we want to quickly iterate on a single test case.
     if not args.test_case_filter:
+        run_cert_checker()
         check_balance()
-    if not CONFIG_NEXT:
-        run_expired_authz_purger()
+        if not CONFIG_NEXT:
+            run_expired_authz_purger()
 
-    # Run the boulder-janitor. This should happen after all other tests because
-    # it runs with the fake clock set to the future and deletes rows that may
-    # otherwise be referenced by tests.
-    run_janitor()
+        # Run the boulder-janitor. This should happen after all other tests because
+        # it runs with the fake clock set to the future and deletes rows that may
+        # otherwise be referenced by tests.
+        run_janitor()
 
-    # Run the load-generator last. run_loadtest will stop the
-    # pebble-challtestsrv before running the load-generator and will not restart
-    # it.
-    if args.run_all or args.run_loadtest:
+        # Run the load-generator last. run_loadtest will stop the
+        # pebble-challtestsrv before running the load-generator and will not restart
+        # it.
         run_loadtest()
 
     if not startservers.check():

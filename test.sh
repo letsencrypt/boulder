@@ -99,20 +99,13 @@ fi
 # Integration tests
 #
 if [[ "$RUN" =~ "integration" ]] ; then
-  args=("--chisel")
-  if [[ "${INT_SKIP_LOAD:-}" == "" ]]; then
-    args+=("--load")
-  fi
   if [[ "${INT_FILTER:-}" != "" ]]; then
     args+=("--filter" "${INT_FILTER}")
-  fi
-  if [[ "${INT_SKIP_SETUP:-}" =~ "true" ]]; then
-    args+=("--skip-setup")
   fi
 
   source ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv}/bin/activate
   DIRECTORY=http://boulder:4000/directory \
-    python2 test/integration-test.py "${args[@]}"
+    python2 test/integration-test.py --chisel "${args[@]}"
 fi
 
 # Test that just ./start.py works, which is a proxy for testing that
