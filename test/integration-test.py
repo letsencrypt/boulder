@@ -94,7 +94,6 @@ def run_janitor():
     # Note: Must use exec here so that killing this process kills the command.
     cmdline = "exec ./bin/boulder-janitor --config test/config-next/janitor.json"
     p = subprocess.Popen(cmdline, shell=True, env=e)
-    p.cmd = cmdline
 
     # Wait for the janitor to come up
     waitport(8014, "boulder-janitor", None)
