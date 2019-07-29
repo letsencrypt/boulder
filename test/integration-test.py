@@ -153,8 +153,8 @@ def run_janitor():
         if actual is not None:
             raise Exception("Expected to find no error stat lines but found {0}\n".format(eStat))
 
-    # Kill the janitor
-    p.kill()
+    # Terminate the janitor
+    p.terminate()
 
 def test_single_ocsp():
     """Run the single-ocsp command, which is used to generate OCSP responses for
