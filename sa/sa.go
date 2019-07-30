@@ -241,7 +241,10 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 	if overallError != nil {
 		return core.Authorization{}, overallError
 	}
-	return authz.(core.Authorization), nil
+	if authz, ok := authz.(core.Authorization); ok {
+		return authz, nil
+	}
+	return core.Authorization{}, fmt.Errorf("shouldn't happen: casting error in GetAuthorization")
 }
 
 // GetValidAuthorizations returns the latest authorization object for all
@@ -581,7 +584,10 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 	if overallError != nil {
 		return core.Authorization{}, overallError
 	}
-	return output.(core.Authorization), nil
+	if output, ok := output.(core.Authorization); ok {
+		return output, nil
+	}
+	return core.Authorization{}, fmt.Errorf("shouldn't happen: casting error in NewPendingAuthorization")
 }
 
 // GetPendingAuthorization returns the most recent Pending authorization
