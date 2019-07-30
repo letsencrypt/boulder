@@ -210,21 +210,21 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *j
 
 // GetAuthorization obtains an Authorization by ID
 func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string) (core.Authorization, error) {
-	authz := core.Authorization{}
-	overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) error {
+	authz, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
 		pa, err := selectPendingAuthz(txWithCtx, "WHERE id = ?", id)
 		if err != nil && err != sql.ErrNoRows {
-			return err
+			return nil, err
 		}
+		var authz core.Authorization
 		if err == sql.ErrNoRows {
 			var fa authzModel
 			err := txWithCtx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = ?", authzFields), id)
 			if err != nil && err != sql.ErrNoRows {
-				return err
+				return nil, err
 			} else if err == sql.ErrNoRows {
 				// If there was no result in either the pending authz table or the authz
 				// table then return a `berrors.NotFound` instance
-				return berrors.NotFoundError("no authorization found with id %q", id)
+				return nil, berrors.NotFoundError("no authorization found with id %q", id)
 			}
 			authz = fa.Authorization
 		} else {
@@ -233,12 +233,15 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 
 		authz.Challenges, err = ssa.getChallenges(txWithCtx, authz.ID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		return nil
+		return authz, nil
 	})
-	return authz, overallError
+	if overallError != nil {
+		return core.Authorization{}, overallError
+	}
+	return authz.(core.Authorization), nil
 }
 
 // GetValidAuthorizations returns the latest authorization object for all
@@ -536,8 +539,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 // NewPendingAuthorization retrieves a pending authorization for
 // authz.Identifier if one exists, or creates a new one otherwise.
 func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, authz core.Authorization) (core.Authorization, error) {
-	var output core.Authorization
-	overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) error {
+	output, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
 		// Create a random ID and check that it doesn't exist already
 		authz.ID = core.NewToken()
 		for existingPending(txWithCtx, authz.ID) ||
@@ -549,13 +551,13 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 		pendingAuthz := pendingauthzModel{Authorization: authz}
 		err := txWithCtx.Insert(&pendingAuthz)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		for i, c := range authz.Challenges {
 			challModel, err := challengeToModel(&c, pendingAuthz.ID)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			// Magic happens here: Gorp will modify challModel, setting challModel.ID
 			// to the auto-increment primary key. This is important because we want
@@ -564,20 +566,22 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, aut
 			// See https://godoc.org/github.com/coopernurse/gorp#DbMap.Insert
 			err = txWithCtx.Insert(challModel)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			challenge, err := modelToChallenge(challModel)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			authz.Challenges[i] = challenge
 		}
 
-		output = pendingAuthz.Authorization
-		output.Challenges = authz.Challenges
-		return nil
+		pendingAuthz.Authorization.Challenges = authz.Challenges
+		return pendingAuthz.Authorization, nil
 	})
-	return output, overallError
+	if overallError != nil {
+		return core.Authorization{}, overallError
+	}
+	return output.(core.Authorization), nil
 }
 
 // GetPendingAuthorization returns the most recent Pending authorization
@@ -629,40 +633,40 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization(
 // Authorization is not found a berrors.NotFound result is returned. If the
 // Authorization is status pending a berrors.InternalServer error is returned.
 func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz core.Authorization) error {
-	overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) error {
+	_, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
 		// Check that a pending authz exists
 		if !existingPending(txWithCtx, authz.ID) {
-			return berrors.NotFoundError("authorization with ID %q not found", authz.ID)
+			return nil, berrors.NotFoundError("authorization with ID %q not found", authz.ID)
 		}
 		if statusIsPending(authz.Status) {
-			return berrors.InternalServerError("authorization to finalize is pending (ID %q)", authz.ID)
+			return nil, berrors.InternalServerError("authorization to finalize is pending (ID %q)", authz.ID)
 		}
 
 		auth := &authzModel{authz}
 		pa, err := selectPendingAuthz(txWithCtx, "WHERE id = ?", authz.ID)
 		if err == sql.ErrNoRows {
-			return berrors.NotFoundError("authorization with ID %q not found", authz.ID)
+			return nil, berrors.NotFoundError("authorization with ID %q not found", authz.ID)
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		err = txWithCtx.Insert(auth)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		_, err = txWithCtx.Delete(pa)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		err = updateChallenges(txWithCtx, authz.ID, authz.Challenges)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		return nil
+		return nil, nil
 	})
 	return overallError
 }
@@ -724,25 +728,24 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		certStatus.OCSPLastUpdated = ssa.clk.Now()
 	}
 
-	var output string
-	overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) error {
+	_, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
 		// Note: will fail on duplicate serials. Extremely unlikely to happen and soon
 		// to be fixed by redesign. Reference issue
 		// https://github.com/letsencrypt/boulder/issues/2265 for more
 		err = txWithCtx.Insert(cert)
 		if err != nil {
 			if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
-				return berrors.DuplicateError("cannot add a duplicate cert")
+				return nil, berrors.DuplicateError("cannot add a duplicate cert")
 			}
-			return err
+			return nil, err
 		}
 
 		err = txWithCtx.Insert(certStatus)
 		if err != nil {
 			if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
-				return berrors.DuplicateError("cannot add a duplicate cert status")
+				return nil, berrors.DuplicateError("cannot add a duplicate cert status")
 			}
-			return err
+			return nil, err
 		}
 
 		// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
@@ -755,12 +758,12 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 			txWithCtx.SelectOne,
 			parsedCertificate.DNSNames)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		err = addIssuedNames(txWithCtx, parsedCertificate, isRenewal)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		// Add to the rate limit table, but only for new certificates. Renewals
@@ -769,7 +772,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 			timeToTheHour := parsedCertificate.NotBefore.Round(time.Hour)
 			err = ssa.addCertificatesPerName(ctx, txWithCtx, parsedCertificate.DNSNames, timeToTheHour)
 			if err != nil {
-				return err
+				return nil, err
 			}
 		}
 
@@ -781,13 +784,15 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 			parsedCertificate.NotAfter,
 		)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		output = digest
-		return nil
+		return digest, nil
 	})
-	return output, overallError
+	if overallError != nil {
+		return "", overallError
+	}
+	return digest, nil
 }
 
 // CountPendingAuthorizations returns the number of pending, unexpired
