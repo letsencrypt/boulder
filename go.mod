@@ -6,7 +6,7 @@ require (
 	github.com/apoydence/onpar v0.0.0-20181125144932-f2f06780798d // indirect
 	github.com/beeker1121/goque v0.0.0-20170321141813-4044bc29b280
 	github.com/beorn7/perks v0.0.0-20160229213445-3ac7bf7a47d1 // indirect
-	github.com/cloudflare/cfssl v0.0.0-20190616170404-1bf3e59ec1cf
+	github.com/cloudflare/cfssl v0.0.0-20190716004220-2185c182e6ba
 	github.com/go-gorp/gorp v2.0.0+incompatible // indirect
 	github.com/go-sql-driver/mysql v0.0.0-20170715192408-3955978caca4
 	github.com/golang/mock v1.2.0

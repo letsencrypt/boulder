@@ -19,6 +19,7 @@ import (
 	"github.com/cloudflare/cfssl/helpers"
 	"github.com/cloudflare/cfssl/log"
 	ocspConfig "github.com/cloudflare/cfssl/ocsp/config"
+	"github.com/zmap/zlint/lints"
 )
 
 // A CSRWhitelist stores booleans for fields in the CSR. If a CSRWhitelist is
@@ -81,6 +82,7 @@ type SigningProfile struct {
 	ExpiryString        string       `json:"expiry"`
 	BackdateString      string       `json:"backdate"`
 	AuthKeyName         string       `json:"auth_key"`
+	PrevAuthKeyName     string       `json:"prev_auth_key"` // to suppport key rotation
 	RemoteName          string       `json:"remote"`
 	NotBefore           time.Time    `json:"not_before"`
 	NotAfter            time.Time    `json:"not_after"`
@@ -89,11 +91,25 @@ type SigningProfile struct {
 	CTLogServers        []string     `json:"ct_log_servers"`
 	AllowedExtensions   []OID        `json:"allowed_extensions"`
 	CertStore           string       `json:"cert_store"`
+	// LintErrLevel controls preissuance linting for the signing profile.
+	// 0 = no linting is performed [default]
+	// 2..3 = reserved
+	// 3 = all lint results except pass are considered errors
+	// 4 = all lint results except pass and notice are considered errors
+	// 5 = all lint results except pass, notice and warn are considered errors
+	// 6 = all lint results except pass, notice, warn and error are considered errors.
+	// 7 = lint is performed, no lint results are treated as errors.
+	LintErrLevel lints.LintStatus `json:"lint_error_level"`
+	// IgnoredLints lists zlint lint names to ignore. Any lint results from
+	// matching lints will be ignored no matter what the configured LintErrLevel
+	// is.
+	IgnoredLints []string `json:"ignored_lints"`
 
 	Policies                    []CertificatePolicy
 	Expiry                      time.Duration
 	Backdate                    time.Duration
 	Provider                    auth.Provider
+	PrevProvider                auth.Provider // to suppport key rotation
 	RemoteProvider              auth.Provider
 	RemoteServer                string
 	RemoteCAs                   *x509.CertPool
@@ -102,6 +118,9 @@ type SigningProfile struct {
 	NameWhitelist               *regexp.Regexp
 	ExtensionWhitelist          map[string]bool
 	ClientProvidesSerialNumbers bool
+	// IgnoredLintsMap is a bool map created from IgnoredLints when the profile is
+	// loaded. It facilitates set membership testing.
+	IgnoredLintsMap map[string]bool
 }
 
 // UnmarshalJSON unmarshals a JSON string into an OID.
@@ -229,7 +248,7 @@ func (p *SigningProfile) populate(cfg *Config) error {
 
 	if p.AuthKeyName != "" {
 		log.Debug("match auth key in profile to auth_keys section")
-		if key, ok := cfg.AuthKeys[p.AuthKeyName]; ok == true {
+		if key, ok := cfg.AuthKeys[p.AuthKeyName]; ok {
 			if key.Type == "standard" {
 				p.Provider, err = auth.New(key.Key, nil)
 				if err != nil {
@@ -245,6 +264,27 @@ func (p *SigningProfile) populate(cfg *Config) error {
 		} else {
 			return cferr.Wrap(cferr.PolicyError, cferr.InvalidPolicy,
 				errors.New("failed to find auth_key in auth_keys section"))
+		}
+	}
+
+	if p.PrevAuthKeyName != "" {
+		log.Debug("match previous auth key in profile to auth_keys section")
+		if key, ok := cfg.AuthKeys[p.PrevAuthKeyName]; ok {
+			if key.Type == "standard" {
+				p.PrevProvider, err = auth.New(key.Key, nil)
+				if err != nil {
+					log.Debugf("failed to create new standard auth provider: %v", err)
+					return cferr.Wrap(cferr.PolicyError, cferr.InvalidPolicy,
+						errors.New("failed to create new standard auth provider"))
+				}
+			} else {
+				log.Debugf("unknown authentication type %v", key.Type)
+				return cferr.Wrap(cferr.PolicyError, cferr.InvalidPolicy,
+					errors.New("unknown authentication type"))
+			}
+		} else {
+			return cferr.Wrap(cferr.PolicyError, cferr.InvalidPolicy,
+				errors.New("failed to find prev_auth_key in auth_keys section"))
 		}
 	}
 
@@ -282,6 +322,11 @@ func (p *SigningProfile) populate(cfg *Config) error {
 	p.ExtensionWhitelist = map[string]bool{}
 	for _, oid := range p.AllowedExtensions {
 		p.ExtensionWhitelist[asn1.ObjectIdentifier(oid).String()] = true
+	}
+
+	p.IgnoredLintsMap = map[string]bool{}
+	for _, lintName := range p.IgnoredLints {
+		p.IgnoredLintsMap[lintName] = true
 	}
 
 	return nil
@@ -404,7 +449,8 @@ func (p *SigningProfile) Usages() (ku x509.KeyUsage, eku []x509.ExtKeyUsage, unk
 // valid local default profile has defined at least a default expiration.
 // A valid remote profile (default or not) has remote signer initialized.
 // In addition, a remote profile must has a valid auth provider if auth
-// key defined.
+// key defined. A valid profile must not include a lint_error_level outside of
+// [0,8).
 func (p *SigningProfile) validProfile(isDefault bool) bool {
 	if p == nil {
 		return false
@@ -459,6 +505,11 @@ func (p *SigningProfile) validProfile(isDefault bool) bool {
 				return false
 			}
 		}
+	}
+
+	if p.LintErrLevel < 0 || p.LintErrLevel >= 8 {
+		log.Debugf("invalid profile: lint_error_level outside of range [0,8)")
+		return false
 	}
 
 	log.Debugf("profile is valid")
