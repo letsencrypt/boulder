@@ -24,7 +24,7 @@ be used.
 **********************************************************************************************************************/
 
 import (
-	"strings"
+	"fmt"
 
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/util"
@@ -41,28 +41,17 @@ func (l *illegalChar) CheckApplies(c *x509.Certificate) bool {
 }
 
 func (l *illegalChar) Execute(c *x509.Certificate) *LintResult {
-	domain := c.Subject.DomainComponent
-	serial := c.Subject.SerialNumber
-	names := c.Subject.Names
-	for _, j := range names {
-		tempStr, ok := j.Value.(string)
+	for _, j := range c.Subject.Names {
+		value, ok := j.Value.(string)
 		if !ok {
-			continue //TODO: change this?
+			continue
 		}
-		if tempStr == "-" || tempStr == "." || tempStr == " " {
-			return &LintResult{Status: Error}
-		}
-	}
-	if serial == "-" || serial == "." || serial == " " {
-		return &LintResult{Status: Error}
-	}
-	for _, j := range domain {
-		if strings.Compare(j, "-") == 0 ||
-			strings.Compare(j, ".") == 0 ||
-			strings.Compare(j, " ") == 0 {
-			return &LintResult{Status: Error}
+
+		if !checkAlphaNumericOrUTF8Present(value) {
+			return &LintResult{Status: Error, Details: fmt.Sprintf("found only metadata %s in subjectDN attribute %s", value, j.Type.String())}
 		}
 	}
+
 	return &LintResult{Status: Pass}
 }
 
@@ -75,4 +64,16 @@ func init() {
 		EffectiveDate: util.CABEffectiveDate,
 		Lint:          &illegalChar{},
 	})
+}
+
+// checkAlphaNumericOrUTF8Present checks if input string contains at least one occurrence of [a-Z0-9] or
+// a UTF8 rune outside of ascii table
+func checkAlphaNumericOrUTF8Present(input string) bool {
+	for _, r := range input {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r > 127 {
+			return true
+		}
+	}
+
+	return false
 }
