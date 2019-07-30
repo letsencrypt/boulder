@@ -54,3 +54,19 @@ func TestStatusCodeLogging(t *testing.T) {
 			expected, strings.Join(mockLog.GetAllMatching(".*"), "\n"))
 	}
 }
+
+func TestOrigin(t *testing.T) {
+	mockLog := blog.UseMock()
+	th := NewTopHandler(mockLog, myHandler{})
+	req, err := http.NewRequest("GET", "/thisisignored", &bytes.Reader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Add("Origin", "https://example.com")
+	th.ServeHTTP(httptest.NewRecorder(), req)
+	expected := `INFO: GET /endpoint 0 201 0 0.0.0.0 JSON={.*"Origin":"https://example.com"}`
+	if 1 != len(mockLog.GetAllMatching(expected)) {
+		t.Errorf("Expected exactly one log line matching %q. Got \n%s",
+			expected, strings.Join(mockLog.GetAllMatching(".*"), "\n"))
+	}
+}
