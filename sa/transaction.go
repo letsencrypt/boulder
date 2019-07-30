@@ -1,7 +1,7 @@
 package sa
 
 import (
-	"golang.org/x/net/context"
+	"context"
 	"gopkg.in/go-gorp/gorp.v2"
 )
 
