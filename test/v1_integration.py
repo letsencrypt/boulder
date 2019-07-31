@@ -618,3 +618,8 @@ def test_auth_deactivation():
     resp = client.deactivate_authorization(auth)
     if resp.body.status is not messages.STATUS_DEACTIVATED:
         raise Exception("unexpected authorization status")
+
+    _, auth = auth_and_issue([random_domain()], client=client)
+    resp = client.deactivate_authorization(auth[0])
+    if resp.body.status is not messages.STATUS_DEACTIVATED:
+        raise Exception("unexpected authorization status")
