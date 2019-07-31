@@ -50,7 +50,7 @@ go get \
 git clone https://github.com/certbot/certbot /certbot
 cd /certbot
 ./letsencrypt-auto --os-packages-only
-./tools/venv3.py
+./tools/venv.py
 cd -
 
 # Install pkcs11-proxy. Checked out commit was master HEAD at time

@@ -15,7 +15,7 @@ import chisel
 from chisel import auth_and_issue
 from helpers import *
 
-from acme import challenges
+from acme import challenges, messages
 
 import OpenSSL
 
@@ -611,3 +611,10 @@ def test_sct_embedding():
         if abs(delta) > datetime.timedelta(hours=1):
             raise Exception("Delta between SCT timestamp and now was too great "
                 "%s vs %s (%s)" % (sct.timestamp, datetime.datetime.now(), delta))
+
+def test_auth_deactivation():
+    client = chisel.make_client(None)
+    auth = client.request_domain_challenges(random_domain())
+    resp = client.deactivate_authorization(auth)
+    if resp.body.status is not messages.STATUS_DEACTIVATED:
+        raise Exception("unexpected authorization status")
