@@ -1002,5 +1002,18 @@ def test_delete_unused_challenges():
     if not isinstance(a.body.challenges[0].chall, challenges.DNS01):
         raise Exception("wrong challenge type left after validation")
 
+def test_auth_deactivation_v2():
+    client = chisel2.make_client(None)
+    csr_pem = chisel2.make_csr([random_domain()])
+    order = client.new_order(csr_pem)
+    resp = client.deactivate_authorization(order.authorizations[0])
+    if resp.body.status is not messages.STATUS_DEACTIVATED:
+        raise Exception("unexpected authorization status")
+
+    order = chisel2.auth_and_issue([random_domain()], client=client)
+    resp = client.deactivate_authorization(order.authorizations[0])
+    if resp.body.status is not messages.STATUS_DEACTIVATED:
+        raise Exception("unexpected authorization status")
+
 def run(cmd, **kwargs):
     return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)
