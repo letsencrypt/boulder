@@ -478,7 +478,6 @@ func TestIgnoredLint(t *testing.T) {
 	// missing OCSP url in the template.
 	expectedProblems := []string{
 		"zlint error: e_sub_cert_aia_does_not_contain_ocsp_url",
-		"zlint warn: w_serial_number_low_entropy",
 		"zlint info: n_subject_common_name_included",
 		"zlint info: ct_sct_policy_count_unsatisfied Certificate had 0 embedded SCTs. Browser policy may require 2 for this certificate.",
 	}
@@ -494,7 +493,6 @@ func TestIgnoredLint(t *testing.T) {
 	// lints. This should return no problems.
 	problems = checker.checkCert(cert, map[string]bool{
 		"e_sub_cert_aia_does_not_contain_ocsp_url": true,
-		"w_serial_number_low_entropy":              true,
 		"n_subject_common_name_included":           true,
 		"ct_sct_policy_count_unsatisfied":          true,
 	})
