@@ -1,7 +1,7 @@
 package sa
 
 import (
-	"golang.org/x/net/context"
+	"context"
 	"gopkg.in/go-gorp/gorp.v2"
 )
 
@@ -14,22 +14,26 @@ type transaction interface {
 	Update(...interface{}) (int64, error)
 }
 
-type txFunc func(transaction) error
+// txFunc represents a function that does work in the context of a transaction.
+type txFunc func(transaction) (interface{}, error)
 
 // withTransaction runs the given function in a transaction, rolling back if it
 // returns an error and committing if not. The provided context is also attached
-// to the transaction. Because `f` only accepts a transaction as an argument, it
-// is expected that it will be a closure, with additional inputs and outputs
-// coming from the outer function.
-func withTransaction(ctx context.Context, dbMap *gorp.DbMap, f txFunc) error {
+// to the transaction. withTransaction also passes through a value returned by
+// `f`, if there is no error.
+func withTransaction(ctx context.Context, dbMap *gorp.DbMap, f txFunc) (interface{}, error) {
 	tx, err := dbMap.Begin()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	txWithCtx := tx.WithContext(ctx)
-	err = f(txWithCtx)
+	result, err := f(txWithCtx)
 	if err != nil {
-		return Rollback(tx, err)
+		return nil, Rollback(tx, err)
 	}
-	return tx.Commit()
+	err = tx.Commit()
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
