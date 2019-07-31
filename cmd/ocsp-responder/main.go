@@ -103,6 +103,7 @@ func NewSourceFromDatabase(
 
 type dbResponse struct {
 	OCSPResponse    []byte
+	IsExpired       bool
 	OCSPLastUpdated time.Time
 }
 
@@ -143,7 +144,7 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 	}
 	err := src.dbMap.WithContext(ctx).SelectOne(
 		&response,
-		"SELECT ocspResponse, ocspLastUpdated FROM certificateStatus WHERE serial = :serial",
+		"SELECT ocspResponse, isExpired, ocspLastUpdated FROM certificateStatus WHERE serial = :serial",
 		map[string]interface{}{"serial": serialString},
 	)
 	if err == sql.ErrNoRows {
@@ -156,8 +157,9 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 	if response.OCSPLastUpdated.IsZero() {
 		src.log.Debugf("OCSP Response not sent (ocspLastUpdated is zero) for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString)
 		return nil, nil, cfocsp.ErrNotFound
+	} else if response.IsExpired {
+		return nil, nil, cfocsp.ErrNotFound
 	}
-
 	return response.OCSPResponse, nil, nil
 }
 

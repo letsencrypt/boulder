@@ -27,7 +27,7 @@ import (
 
 var (
 	req   = mustRead("./testdata/ocsp.req")
-	resp  = dbResponse{mustRead("./testdata/ocsp.resp"), time.Now()}
+	resp  = dbResponse{mustRead("./testdata/ocsp.resp"), false, time.Now()}
 	stats = metrics.NewNoopScope()
 )
 
@@ -251,4 +251,30 @@ func TestRequiredSerialPrefix(t *testing.T) {
 	test.AssertNotError(t, err, "failed to create DBSource")
 	_, _, err = src.Response(ocspReq)
 	test.AssertNotError(t, err, "src.Response failed with acceptable prefix")
+}
+
+type expiredSelector struct {
+	mockSqlExecutor
+}
+
+func (es expiredSelector) SelectOne(obj interface{}, _ string, _ ...interface{}) error {
+	rows := obj.(*dbResponse)
+	rows.IsExpired = true
+	rows.OCSPLastUpdated = time.Time{}.Add(time.Hour)
+	return nil
+}
+
+func (es expiredSelector) WithContext(context.Context) gorp.SqlExecutor {
+	return es
+}
+
+func TestExpiredUnauthorized(t *testing.T) {
+	src, err := makeDBSource(expiredSelector{}, "./testdata/test-ca.der.pem", []string{"00"}, time.Second, blog.NewMock())
+	test.AssertNotError(t, err, "makeDBSource failed")
+
+	ocspReq, err := ocsp.ParseRequest(req)
+	test.AssertNotError(t, err, "Failed to parse OCSP request")
+
+	_, _, err = src.Response(ocspReq)
+	test.AssertEquals(t, err, cfocsp.ErrNotFound)
 }
