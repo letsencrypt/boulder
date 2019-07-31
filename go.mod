@@ -37,7 +37,7 @@ require (
 	github.com/weppos/publicsuffix-go v0.5.1-0.20190702072049-5363748eae15
 	github.com/ziutek/mymysql v1.5.4 // indirect
 	github.com/zmap/zcrypto v0.0.0-20190729165852-9051775e6a2e
-	github.com/zmap/zlint v0.0.0-20190730153040-757a6bf54dd7
+	github.com/zmap/zlint v0.0.0-20190730215301-9971d62266e7
 	golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4
 	golang.org/x/net v0.0.0-20190415214537-1da14a5a36f2
 	golang.org/x/sys v0.0.0-20190416152802-12500544f89f // indirect

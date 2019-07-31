@@ -94,7 +94,7 @@ github.com/zmap/zcrypto/json
 github.com/zmap/zcrypto/util
 github.com/zmap/zcrypto/x509/ct
 github.com/zmap/zcrypto/x509/pkix
-# github.com/zmap/zlint v0.0.0-20190730153040-757a6bf54dd7
+# github.com/zmap/zlint v0.0.0-20190730215301-9971d62266e7
 github.com/zmap/zlint
 github.com/zmap/zlint/lints
 github.com/zmap/zlint/util
