@@ -15,6 +15,9 @@ github.com/cloudflare/cfssl v0.0.0-20190409034051-768cd563887f h1:+2gpkLTePKn3qD
 github.com/cloudflare/cfssl v0.0.0-20190409034051-768cd563887f/go.mod h1:yMWuSON2oQp+43nFtAV/uvKQIFpSPerB57DCt9t8sSA=
 github.com/cloudflare/cfssl v0.0.0-20190616170404-1bf3e59ec1cf h1:0/1jvWAjicn0BZTNnv5KLnf29+B01Yh1O0BMLrgOCb0=
 github.com/cloudflare/cfssl v0.0.0-20190616170404-1bf3e59ec1cf/go.mod h1:yMWuSON2oQp+43nFtAV/uvKQIFpSPerB57DCt9t8sSA=
+github.com/cloudflare/cfssl v0.0.0-20190716004220-2185c182e6ba h1:gI0EFi8pFYkjYBA3A78uFXRUzAx1pkYS1lVcsYdSZhE=
+github.com/cloudflare/cfssl v0.0.0-20190716004220-2185c182e6ba/go.mod h1:yMWuSON2oQp+43nFtAV/uvKQIFpSPerB57DCt9t8sSA=
+github.com/cloudflare/cfssl v0.0.0-20190726000631-633726f6bcb7 h1:Puu1hUwfps3+1CUzYdAZXijuvLuRMirgiXdf3zsM2Ig=
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
