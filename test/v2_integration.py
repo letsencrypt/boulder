@@ -977,5 +977,43 @@ def test_long_san_no_cn():
         if e.detail != 'Error finalizing order :: issuing precertificate: CSR doesn\'t contain a SAN short enough to fit in CN':
             raise Exception('Problem detail did not match expected')
 
+def test_delete_unused_challenges():
+    order = chisel2.auth_and_issue([random_domain()], chall_type="dns-01")
+    a = order.authorizations[0]
+    if len(a.body.challenges) != 1:
+        raise Exception("too many challenges (%d) left after validation" % len(a.body.challenges))
+    if not isinstance(a.body.challenges[0].chall, challenges.DNS01):
+        raise Exception("wrong challenge type left after validation")
+
+    # intentionally fail a challenge
+    client = chisel2.make_client()
+    csr_pem = chisel2.make_csr([random_domain()])
+    order = client.new_order(csr_pem)
+    c = chisel2.get_chall(order.authorizations[0], challenges.DNS01)
+    client.answer_challenge(c, c.response(client.net.key))
+    for _ in range(5):
+        a, _ = client.poll(order.authorizations[0])
+        if a.body.status == Status("invalid"):
+            break
+        time.sleep(1)
+    if len(a.body.challenges) != 1:
+        raise Exception("too many challenges (%d) left after failed validation" %
+            len(a.body.challenges))
+    if not isinstance(a.body.challenges[0].chall, challenges.DNS01):
+        raise Exception("wrong challenge type left after validation")
+
+def test_auth_deactivation_v2():
+    client = chisel2.make_client(None)
+    csr_pem = chisel2.make_csr([random_domain()])
+    order = client.new_order(csr_pem)
+    resp = client.deactivate_authorization(order.authorizations[0])
+    if resp.body.status is not messages.STATUS_DEACTIVATED:
+        raise Exception("unexpected authorization status")
+
+    order = chisel2.auth_and_issue([random_domain()], client=client)
+    resp = client.deactivate_authorization(order.authorizations[0])
+    if resp.body.status is not messages.STATUS_DEACTIVATED:
+        raise Exception("unexpected authorization status")
+
 def run(cmd, **kwargs):
     return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)

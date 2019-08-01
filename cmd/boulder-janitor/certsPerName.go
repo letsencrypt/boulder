@@ -24,6 +24,7 @@ func newCertificatesPerNameJob(
 		db:          db,
 		log:         log,
 		purgeBefore: purgeBefore,
+		workSleep:   config.Janitor.CertificatesPerName.WorkSleep.Duration,
 		batchSize:   config.Janitor.CertificatesPerName.BatchSize,
 		maxDPS:      config.Janitor.CertificatesPerName.MaxDPS,
 		parallelism: config.Janitor.CertificatesPerName.Parallelism,

@@ -30,8 +30,6 @@ from helpers import *
 
 from acme import challenges
 
-import requests
-
 def run_client_tests():
     root = os.environ.get("CERTBOT_PATH")
     assert root is not None, (
@@ -82,6 +80,94 @@ def run_expired_authz_purger():
     after_grace_period = now + datetime.timedelta(days=+67, minutes=+3)
     expect(now, 0, "authz")
     expect(after_grace_period, 1, "authz")
+
+def run_janitor():
+    # Set the fake clock to a year in the future such that all of the database
+    # rows created during the integration tests are older than the grace period.
+    now = datetime.datetime.utcnow()
+    target_time = now+datetime.timedelta(days=+365)
+
+    e = os.environ.copy()
+    e.setdefault("GORACE", "halt_on_error=1")
+    e.setdefault("FAKECLOCK", fakeclock(target_time))
+
+    # Note: Must use exec here so that killing this process kills the command.
+    cmdline = "exec ./bin/boulder-janitor --config test/config-next/janitor.json"
+    p = subprocess.Popen(cmdline, shell=True, env=e)
+
+    # Wait for the janitor to come up
+    waitport(8014, "boulder-janitor", None)
+
+    def statline(statname, table):
+        # NOTE: we omit the trailing "}}" to make this match general enough to
+        # permit new labels in the future.
+        return "janitor_{0}{{table=\"{1}\"".format(statname, table)
+
+    def get_stat_line(port, stat):
+        url = "http://localhost:%d/metrics" % port
+        response = requests.get(url)
+        for l in response.content.split("\n"):
+            if l.strip().startswith(stat):
+                return l
+        return None
+
+    def stat_value(line):
+        parts = line.split(" ")
+        if len(parts) != 2:
+            raise Exception("stat line {0} was missing required parts".format(line))
+        return parts[1]
+
+    # Wait for the janitor to report it isn't finding new work
+    print("waiting for boulder-janitor work to complete...\n")
+    workDone = False
+    for i in range(10):
+        certStatusWorkbatch = get_stat_line(8014, statline("workbatch", "certificateStatus"))
+        certsWorkBatch = get_stat_line(8014, statline("workbatch", "certificates"))
+        certsPerNameWorkBatch = get_stat_line(8014, statline("workbatch", "certificatesPerName"))
+
+        allReady = True
+        for line in [certStatusWorkbatch, certsWorkBatch, certsPerNameWorkBatch]:
+            if stat_value(line) != "0":
+                allReady = False
+
+        if allReady is False:
+            print("not done after check {0}. Sleeping".format(i))
+            time.sleep(2)
+        else:
+            workDone = True
+            break
+
+    if workDone is False:
+        raise Exception("Timed out waiting for janitor to report all work completed\n")
+
+    # Check deletion stats are not empty/zero
+    for i in range(10):
+        certStatusDeletes = get_stat_line(8014, statline("deletions", "certificateStatus"))
+        certsDeletes = get_stat_line(8014, statline("deletions", "certificates"))
+        certsPerNameDeletes = get_stat_line(8014, statline("deletions", "certificatesPerName"))
+
+        if certStatusDeletes is None or certsDeletes is None or certsPerNameDeletes is None:
+            print("delete stats not present after check {0}. Sleeping".format(i))
+            time.sleep(2)
+            continue
+
+        for l in [certStatusDeletes, certsDeletes, certsPerNameDeletes]:
+            if stat_value(l) == "0":
+                raise Exception("Expected a non-zero number of deletes to be performed. Found {0}".format(l))
+
+    # Check that all error stats are empty
+    errorStats = [
+      statline("errors", "certificateStatus"),
+      statline("errors", "certificates"),
+      statline("errors", "certificatesPerName"),
+    ]
+    for eStat in errorStats:
+        actual = get_stat_line(8014, eStat)
+        if actual is not None:
+            raise Exception("Expected to find no error stat lines but found {0}\n".format(eStat))
+
+    # Terminate the janitor
+    p.terminate()
 
 def test_single_ocsp():
     """Run the single-ocsp command, which is used to generate OCSP responses for
@@ -136,29 +222,23 @@ exit_status = 1
 
 def main():
     parser = argparse.ArgumentParser(description='Run integration tests')
-    parser.add_argument('--all', dest="run_all", action="store_true",
-                        help="run all of the clients' integration tests")
     parser.add_argument('--certbot', dest='run_certbot', action='store_true',
                         help="run the certbot integration tests")
     parser.add_argument('--chisel', dest="run_chisel", action="store_true",
                         help="run integration tests using chisel")
-    parser.add_argument('--load', dest="run_loadtest", action="store_true",
-                        help="run load-generator")
     parser.add_argument('--filter', dest="test_case_filter", action="store",
                         help="Regex filter for test cases")
-    parser.add_argument('--skip-setup', dest="skip_setup", action="store_true",
-                        help="skip integration test setup")
     # allow any ACME client to run custom command for integration
     # testing (without having to implement its own busy-wait loop)
     parser.add_argument('--custom', metavar="CMD", help="run custom command")
-    parser.set_defaults(run_all=False, run_certbot=False, run_chisel=False,
-        run_loadtest=False, test_case_filter="", skip_setup=False)
+    parser.set_defaults(run_certbot=False, run_chisel=False,
+        test_case_filter="", skip_setup=False)
     args = parser.parse_args()
 
-    if not (args.run_all or args.run_certbot or args.run_chisel or args.run_loadtest or args.custom is not None):
-        raise Exception("must run at least one of the letsencrypt or chisel tests with --all, --certbot, --chisel, --load or --custom")
+    if not (args.run_certbot or args.run_chisel or args.run_loadtest or args.custom is not None):
+        raise Exception("must run at least one of the letsencrypt or chisel tests with --certbot, --chisel, or --custom")
 
-    if not args.skip_setup:
+    if not args.test_case_filter:
         now = datetime.datetime.utcnow()
 
         # In CONFIG_NEXT mode, use the basic, non-next config for setup.
@@ -177,28 +257,31 @@ def main():
     if not startservers.start(race_detection=True):
         raise Exception("startservers failed")
 
-    if args.run_all or args.run_chisel:
+    if args.run_chisel:
         run_chisel(args.test_case_filter)
 
-    if args.run_all or args.run_certbot:
+    if args.run_certbot:
         run_client_tests()
 
     if args.custom:
         run(args.custom)
 
-    run_cert_checker()
-    # Skip load-balancing check when test case filter is on, since that usually
-    # means there's a single issuance and we don't expect every RPC backend to get
-    # traffic.
+    # Skip the last-phase checks when the test case filter is one, because that
+    # means we want to quickly iterate on a single test case.
     if not args.test_case_filter:
+        run_cert_checker()
         check_balance()
-    if not CONFIG_NEXT:
-        run_expired_authz_purger()
+        if not CONFIG_NEXT:
+            run_expired_authz_purger()
 
-    # Run the load-generator last. run_loadtest will stop the
-    # pebble-challtestsrv before running the load-generator and will not restart
-    # it.
-    if args.run_all or args.run_loadtest:
+        # Run the boulder-janitor. This should happen after all other tests because
+        # it runs with the fake clock set to the future and deletes rows that may
+        # otherwise be referenced by tests.
+        run_janitor()
+
+        # Run the load-generator last. run_loadtest will stop the
+        # pebble-challtestsrv before running the load-generator and will not restart
+        # it.
         run_loadtest()
 
     if not startservers.check():

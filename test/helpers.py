@@ -135,7 +135,7 @@ def waitport(port, prog, perTickCheck=None):
         try:
             time.sleep(0.1)
             if perTickCheck is not None and not perTickCheck():
-                return false
+                return False
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect(('localhost', port))
             s.close()

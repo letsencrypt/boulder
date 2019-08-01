@@ -63,6 +63,8 @@ const (
 	AllowV1Registration
 	// Check the failed validation limit in parallel during NewOrder
 	ParallelCheckFailedValidation
+	// Upon authorization validation, delete the challenges that weren't used.
+	DeleteUnusedChallenges
 )
 
 // List of features and their default value, protected by fMu
@@ -91,6 +93,7 @@ var features = map[FeatureFlag]bool{
 	FasterGetOrderForNames:        false,
 	AllowV1Registration:           true,
 	ParallelCheckFailedValidation: false,
+	DeleteUnusedChallenges:        false,
 }
 
 var fMu = new(sync.RWMutex)
