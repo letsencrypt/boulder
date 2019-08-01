@@ -1015,5 +1015,24 @@ def test_auth_deactivation_v2():
     if resp.body.status is not messages.STATUS_DEACTIVATED:
         raise Exception("unexpected authorization status")
 
+
+expired_cert_name = ""
+@register_six_months_ago
+def ocsp_exp_unauth_setup():
+    client = chisel2.make_client(None)
+    order = chisel2.auth_and_issue([random_domain()], client=client)
+
+    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    cert_file_pem = os.path.join(tempdir, "to-expire.pem")
+    with open(cert_file_pem, "w") as f:
+        f.write(OpenSSL.crypto.dump_certificate(
+            OpenSSL.crypto.FILETYPE_PEM, cert).decode())
+    ee_ocsp_url = "http://localhost:4002"
+    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "good")
+    expired_cert_name = cert_file_pem
+
+def test_ocsp_exp_unauth():
+    verify_ocsp(expired_cert_name, "test/test-ca2.pem", ee_ocsp_url, "unauthorized")
+
 def run(cmd, **kwargs):
     return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)

@@ -129,6 +129,14 @@ def setup_twenty_days_ago():
     for f in twenty_days_ago_functions:
         f()
 
+six_months_ago_functions = []
+
+def register_six_months_ago(f):
+    six_months_ago_functions.append(f)
+
+def setup_six_months_ago():
+    [f() for f in six_months_ago_functions]
+
 def waitport(port, prog, perTickCheck=None):
     """Wait until a port on localhost is open."""
     for _ in range(1000):
