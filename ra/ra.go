@@ -634,7 +634,21 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 				identifier.Value,
 				err)
 		} else if err == nil {
+			fmt.Println("uhjh?")
 			return *pendingAuth, nil
+		}
+	}
+
+	if features.Enabled(features.V1DisableNewValidations) {
+		exists, err := ra.SA.PreviousCertificateExists(ctx, &sapb.PreviousCertificateExistsRequest{
+			Domain: &identifier.Value,
+			RegID:  &regID,
+		})
+		if err != nil {
+			return core.Authorization{}, err
+		}
+		if !*exists.Exists {
+			return core.Authorization{}, berrors.UnauthorizedError("Validations for new domains are disabled in the V1 API")
 		}
 	}
 
