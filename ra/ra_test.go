@@ -4002,6 +4002,20 @@ func (ms *mockSAPreviousValidations) GetPendingAuthorization(_ context.Context, 
 	return nil, berrors.NotFoundError("")
 }
 
+func (ms *mockSAPreviousValidations) GetValidAuthorizations2(_ context.Context, _ *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
+	return &sapb.Authorizations{}, nil
+}
+
+func (ms *mockSAPreviousValidations) GetPendingAuthorization2(_ context.Context, _ *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
+	return nil, berrors.NotFoundError("")
+}
+
+func (ms *mockSAPreviousValidations) NewAuthorizations2(_ context.Context, _ *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
+	return &sapb.Authorization2IDs{
+		Ids: []int64{1},
+	}, nil
+}
+
 func TestDisableNewV1Validations(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
