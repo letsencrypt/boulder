@@ -22,10 +22,12 @@ import (
 	cfsslConfig "github.com/cloudflare/cfssl/config"
 	"github.com/cloudflare/cfssl/helpers"
 	"github.com/cloudflare/cfssl/signer"
+	"github.com/cloudflare/cfssl/signer/local"
 	"github.com/google/certificate-transparency-go"
 	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/zmap/zlint/lints"
 	"golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/ca/config"
@@ -161,7 +163,7 @@ type testCtx struct {
 	keyPolicy goodkey.KeyPolicy
 	fc        clock.FakeClock
 	stats     metrics.Scope
-	logger    blog.Logger
+	logger    *blog.Mock
 }
 
 type mockSA struct {
@@ -995,4 +997,70 @@ func TestOrphanQueue(t *testing.T) {
 	if err != goque.ErrEmpty {
 		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
 	}
+}
+
+type linttrapSigner struct {
+	lintErr error
+}
+
+func (s *linttrapSigner) Sign(signer.SignRequest) ([]byte, error) {
+	return nil, s.lintErr
+}
+
+func (s *linttrapSigner) SignFromPrecert(*x509.Certificate, []ct.SignedCertificateTimestamp) ([]byte, error) {
+	return nil, errors.New("SignFromPrecert not implemented for linttrapSigner")
+}
+
+func TestIssuePrecertificateLinting(t *testing.T) {
+	testCtx := setup(t)
+	sa := &mockSA{}
+	ca, err := NewCertificateAuthorityImpl(
+		testCtx.caConfig,
+		sa,
+		testCtx.pa,
+		testCtx.fc,
+		testCtx.stats,
+		testCtx.issuers,
+		testCtx.keyPolicy,
+		testCtx.logger,
+		nil)
+	test.AssertNotError(t, err, "Failed to create CA")
+
+	// Reconfigure the CA's eeSigner to be a linttrapSigner that always returns
+	// two LintResults.
+	ca.defaultIssuer.eeSigner = &linttrapSigner{
+		lintErr: &local.LintError{
+			ErrorResults: map[string]lints.LintResult{
+				"foobar": lints.LintResult{
+					Status:  lints.Error,
+					Details: "foobar is error",
+				},
+				"foobar2": lints.LintResult{
+					Status:  lints.Warn,
+					Details: "foobar2 is warning",
+				},
+			},
+		},
+	}
+
+	// Clear the mock logger
+	testCtx.logger.Clear()
+
+	// Attempt to issue a pre-certificate
+	_, err = ca.IssuePrecertificate(ctx, &caPB.IssueCertificateRequest{
+		Csr:            CNandSANCSR,
+		RegistrationID: &arbitraryRegID,
+	})
+	// It should error
+	test.AssertError(t, err, "expected err from IssuePrecertificate with linttrapSigner")
+	// The local.LintError should have been converted to an internal server error
+	// berror with the correct message.
+	test.Assert(t, berrors.Is(err, berrors.InternalServer), "Incorrect error type returned")
+	test.AssertEquals(t, err.Error(), "failed to sign certificate: pre-issuance linting found 2 error results")
+
+	// We also expect that an AUDIT level error is logged that includes the expect
+	// serialized JSON lintErrors
+	regex := `ERR: \[AUDIT\] Signing failed: serial=\[.*\] err=\[pre-issuance linting found 2 error results\] lintErrors=\{"foobar":\{"result":"error","details":"foobar is error"\},"foobar2":\{"result":"warn","details":"foobar2 is warning"\}\}`
+	matches := testCtx.logger.GetAllMatching(regex)
+	test.AssertEquals(t, len(matches), 1)
 }

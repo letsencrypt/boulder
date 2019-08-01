@@ -23,13 +23,15 @@ type RequestEvent struct {
 	Latency   float64 `json:"-"`
 	RealIP    string  `json:"-"`
 
-	Slug           string                 `json:",omitempty"`
-	InternalErrors []string               `json:",omitempty"`
-	Error          string                 `json:",omitempty"`
-	Contacts       []string               `json:",omitempty"`
-	UserAgent      string                 `json:"ua,omitempty"`
-	Payload        string                 `json:",omitempty"`
-	Extra          map[string]interface{} `json:",omitempty"`
+	Slug           string   `json:",omitempty"`
+	InternalErrors []string `json:",omitempty"`
+	Error          string   `json:",omitempty"`
+	Contacts       []string `json:",omitempty"`
+	UserAgent      string   `json:"ua,omitempty"`
+	// Origin is sent by the browser from XHR-based clients.
+	Origin  string                 `json:",omitempty"`
+	Payload string                 `json:",omitempty"`
+	Extra   map[string]interface{} `json:",omitempty"`
 
 	// For endpoints that create objects, the ID of the newly created object.
 	Created string `json:",omitempty"`
@@ -95,6 +97,7 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		RealIP:    realIP,
 		Method:    r.Method,
 		UserAgent: r.Header.Get("User-Agent"),
+		Origin:    r.Header.Get("Origin"),
 		Extra:     make(map[string]interface{}, 0),
 	}
 

@@ -3,13 +3,13 @@
 
 package publicsuffix
 
-const defaultListVersion = "PSL version a264f0 (Mon Jul  1 18:44:30 2019)"
+const defaultListVersion = "PSL version 3e7b3e (Thu Jul 25 00:19:17 2019)"
 
-func DefaultRules() [8778]Rule {
+func DefaultRules() [8793]Rule {
 	return r
 }
 
-var r = [8778]Rule{
+var r = [8793]Rule{
 	{1, "ac", 1, false},
 	{1, "com.ac", 2, false},
 	{1, "edu.ac", 2, false},
@@ -199,6 +199,8 @@ var r = [8778]Rule{
 	{1, "vic.au", 2, false},
 	{1, "wa.au", 2, false},
 	{1, "act.edu.au", 3, false},
+	{1, "catholic.edu.au", 3, false},
+	{1, "eq.edu.au", 3, false},
 	{1, "nsw.edu.au", 3, false},
 	{1, "nt.edu.au", 3, false},
 	{1, "qld.edu.au", 3, false},
@@ -211,6 +213,8 @@ var r = [8778]Rule{
 	{1, "tas.gov.au", 3, false},
 	{1, "vic.gov.au", 3, false},
 	{1, "wa.gov.au", 3, false},
+	{1, "education.tas.edu.au", 4, false},
+	{1, "schools.nsw.edu.au", 4, false},
 	{1, "aw", 1, false},
 	{1, "com.aw", 2, false},
 	{1, "ax", 1, false},
@@ -6118,6 +6122,7 @@ var r = [8778]Rule{
 	{1, "mil.za", 2, false},
 	{1, "net.za", 2, false},
 	{1, "ngo.za", 2, false},
+	{1, "nic.za", 2, false},
 	{1, "nis.za", 2, false},
 	{1, "nom.za", 2, false},
 	{1, "org.za", 2, false},
@@ -7441,6 +7446,9 @@ var r = [8778]Rule{
 	{1, "tele.amune.org", 3, true},
 	{1, "apigee.io", 2, true},
 	{1, "on-aptible.com", 2, true},
+	{1, "user.aseinet.ne.jp", 4, true},
+	{1, "gv.vc", 2, true},
+	{1, "d.gv.vc", 3, true},
 	{1, "user.party.eus", 3, true},
 	{1, "pimienta.org", 2, true},
 	{1, "poivron.org", 2, true},
@@ -8222,11 +8230,13 @@ var r = [8778]Rule{
 	{1, "bpl.biz", 2, true},
 	{1, "orx.biz", 2, true},
 	{1, "ng.city", 2, true},
-	{1, "ng.ink", 2, true},
 	{1, "biz.gl", 2, true},
+	{1, "ng.ink", 2, true},
 	{1, "col.ng", 2, true},
+	{1, "firm.ng", 2, true},
 	{1, "gen.ng", 2, true},
 	{1, "ltd.ng", 2, true},
+	{1, "ng.school", 2, true},
 	{1, "sch.so", 2, true},
 	{1, "xn--hkkinen-5wa.fi", 2, true},
 	{2, "moonscale.io", 3, true},
@@ -8300,6 +8310,7 @@ var r = [8778]Rule{
 	{1, "leadpages.co", 2, true},
 	{1, "lpages.co", 2, true},
 	{1, "lpusercontent.com", 2, true},
+	{1, "lelux.site", 2, true},
 	{1, "co.business", 2, true},
 	{1, "co.education", 2, true},
 	{1, "co.events", 2, true},
@@ -8637,8 +8648,6 @@ var r = [8778]Rule{
 	{1, "my-firewall.org", 2, true},
 	{1, "myfirewall.org", 2, true},
 	{1, "spdns.org", 2, true},
-	{2, "s5y.io", 3, true},
-	{2, "sensiosite.cloud", 3, true},
 	{1, "biz.ua", 2, true},
 	{1, "co.ua", 2, true},
 	{1, "pp.ua", 2, true},
@@ -8671,6 +8680,8 @@ var r = [8778]Rule{
 	{1, "temp-dns.com", 2, true},
 	{1, "applicationcloud.io", 2, true},
 	{1, "scapp.io", 2, true},
+	{2, "s5y.io", 3, true},
+	{2, "sensiosite.cloud", 3, true},
 	{1, "syncloud.it", 2, true},
 	{1, "diskstation.me", 2, true},
 	{1, "dscloud.biz", 2, true},
@@ -8756,6 +8767,7 @@ var r = [8778]Rule{
 	{1, "v-info.info", 2, true},
 	{1, "voorloper.cloud", 2, true},
 	{1, "wafflecell.com", 2, true},
+	{2, "webhare.dev", 3, true},
 	{1, "wedeploy.io", 2, true},
 	{1, "wedeploy.me", 2, true},
 	{1, "wedeploy.sh", 2, true},
@@ -8768,6 +8780,9 @@ var r = [8778]Rule{
 	{1, "cistron.nl", 2, true},
 	{1, "demon.nl", 2, true},
 	{1, "xs4all.space", 2, true},
+	{1, "yandexcloud.net", 2, true},
+	{1, "storage.yandexcloud.net", 3, true},
+	{1, "website.yandexcloud.net", 3, true},
 	{1, "official.academy", 2, true},
 	{1, "yolasite.com", 2, true},
 	{1, "ybo.faith", 2, true},
