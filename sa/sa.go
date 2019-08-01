@@ -1303,32 +1303,33 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 			txWithCtx, req.Names, order.ID, order.RegistrationID, order.Expires); err != nil {
 			return nil, err
 		}
-
-		// Update the request with the ID that the order received
-		req.Id = &order.ID
-		// Update the request with the created timestamp from the model
-		createdTS := order.Created.UnixNano()
-		req.Created = &createdTS
-		// A new order is never processing because it can't have been finalized yet
-		processingStatus := false
-		req.BeganProcessing = &processingStatus
-
-		// Calculate the order status before returning it. Since it may have reused all
-		// valid authorizations the order may be "born" in a ready status.
-		status, err := ssa.statusForOrder(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-		req.Status = &status
 		return req, nil
 	})
 	if overallError != nil {
 		return nil, overallError
 	}
-	if output, ok := output.(*corepb.Order); ok {
-		return output, nil
+	var outputOrder *corepb.Order
+	var ok bool
+	if outputOrder, ok = output.(*corepb.Order); !ok {
+		return nil, fmt.Errorf("shouldn't happen: casting error in NewOrder")
 	}
-	return nil, fmt.Errorf("shouldn't happen: casting error in NewOrder")
+	// Update the output with the ID that the order received
+	outputOrder.Id = &order.ID
+	// Update the output with the created timestamp from the model
+	createdTS := order.Created.UnixNano()
+	outputOrder.Created = &createdTS
+	// A new order is never processing because it can't have been finalized yet
+	processingStatus := false
+	outputOrder.BeganProcessing = &processingStatus
+
+	// Calculate the order status before returning it. Since it may have reused all
+	// valid authorizations the order may be "born" in a ready status.
+	status, err := ssa.statusForOrder(ctx, outputOrder)
+	if err != nil {
+		return nil, err
+	}
+	outputOrder.Status = &status
+	return outputOrder, nil
 }
 
 // SetOrderProcessing updates a provided *corepb.Order in pending status to be
