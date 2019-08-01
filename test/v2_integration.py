@@ -1027,12 +1027,25 @@ def ocsp_exp_unauth_setup():
     with open(cert_file_pem, "w") as f:
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
-    ee_ocsp_url = "http://localhost:4002"
-    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "good")
+    verify_ocsp(cert_file_pem, "test/test-ca2.pem", "http://localhost:4002", "good")
+    global expired_cert_name
     expired_cert_name = cert_file_pem
 
 def test_ocsp_exp_unauth():
-    verify_ocsp(expired_cert_name, "test/test-ca2.pem", ee_ocsp_url, "unauthorized")
+    tries = 0
+    while True:
+        try:
+            verify_ocsp(expired_cert_name, "test/test-ca2.pem", "http://localhost:4002", "XXX")
+            raise Exception("Unexpected return from verify_ocsp")
+        except subprocess.CalledProcessError as cpe:
+            if cpe.output == 'Responder Error: unauthorized (6)\n':
+                break
+        except:
+            pass
+        if tries is 5:
+            raise Exception("timed out waiting for unauthorized OCSP response for expired certificate")
+        tries += 1
+        time.sleep(0.25)
 
 def run(cmd, **kwargs):
     return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)
