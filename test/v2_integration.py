@@ -1015,5 +1015,37 @@ def test_auth_deactivation_v2():
     if resp.body.status is not messages.STATUS_DEACTIVATED:
         raise Exception("unexpected authorization status")
 
+
+expired_cert_name = ""
+@register_six_months_ago
+def ocsp_exp_unauth_setup():
+    client = chisel2.make_client(None)
+    order = chisel2.auth_and_issue([random_domain()], client=client)
+
+    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    cert_file_pem = os.path.join(tempdir, "to-expire.pem")
+    with open(cert_file_pem, "w") as f:
+        f.write(OpenSSL.crypto.dump_certificate(
+            OpenSSL.crypto.FILETYPE_PEM, cert).decode())
+    verify_ocsp(cert_file_pem, "test/test-ca2.pem", "http://localhost:4002", "good")
+    global expired_cert_name
+    expired_cert_name = cert_file_pem
+
+def test_ocsp_exp_unauth():
+    tries = 0
+    while True:
+        try:
+            verify_ocsp(expired_cert_name, "test/test-ca2.pem", "http://localhost:4002", "XXX")
+            raise Exception("Unexpected return from verify_ocsp")
+        except subprocess.CalledProcessError as cpe:
+            if cpe.output == 'Responder Error: unauthorized (6)\n':
+                break
+        except:
+            pass
+        if tries is 5:
+            raise Exception("timed out waiting for unauthorized OCSP response for expired certificate")
+        tries += 1
+        time.sleep(0.25)
+
 def run(cmd, **kwargs):
     return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)
