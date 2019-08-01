@@ -245,11 +245,11 @@ def main():
         if CONFIG_NEXT:
             config = "test/config"
         now = datetime.datetime.utcnow()
-        v1_integration.caa_client = caa_client = chisel.make_client()
 
         six_months_ago = now+datetime.timedelta(days=-30*6)
         if not startservers.start(race_detection=True, fakeclock=fakeclock(six_months_ago), config_dir=config):
             raise Exception("startservers failed (mocking six months ago)")
+        v1_integration.caa_client = caa_client = chisel.make_client()
         setup_six_months_ago()
         startservers.stop()
 
