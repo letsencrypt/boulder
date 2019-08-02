@@ -1699,9 +1699,13 @@ func (ssa *SQLStorageAuthority) getAllOrderAuthorizationStatuses(
 		allAuthzValidity = append(allAuthzValidity, validityInfo...)
 	}
 
+	tx, err := ssa.dbMap.Begin()
+	if err != nil {
+		return nil, err
+	}
 	for _, table := range authorizationTables {
 		var validityInfo []authzValidity
-		_, err := ssa.dbMap.Select(
+		_, err := tx.WithContext(ctx).Select(
 			&validityInfo,
 			fmt.Sprintf(`SELECT status, expires from %s AS authz
 		INNER JOIN orderToAuthz
@@ -1712,11 +1716,11 @@ func (ssa *SQLStorageAuthority) getAllOrderAuthorizationStatuses(
 			orderID,
 		)
 		if err != nil {
-			return nil, err
+			return nil, Rollback(tx, err)
 		}
 		allAuthzValidity = append(allAuthzValidity, validityInfo...)
 	}
-	return allAuthzValidity, nil
+	return allAuthzValidity, tx.Commit()
 }
 
 // GetValidOrderAuthorizations is used to find the valid, unexpired authorizations
