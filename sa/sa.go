@@ -134,6 +134,10 @@ func existingRegistration(tx *gorp.Transaction, id int64) bool {
 	return count > 0
 }
 
+// updateChallenge writes the valid or invalid challenge in a list of challenges
+// to the database. It deletes from the database any of those challenges that
+// weren't used (i.e. aren't "valid" or "invalid"), so long as the
+// DeleteUnusedChallenges flag is set.
 func updateChallenges(db dbSelectExecer, authID string, challenges []core.Challenge) error {
 	var challs []challModel
 	_, err := db.Select(
@@ -156,19 +160,28 @@ func updateChallenges(db dbSelectExecer, authID string, challenges []core.Challe
 			return err
 		}
 		chall.ID = challs[i].ID
-		_, err = db.Exec(
-			`UPDATE challenges SET
+		if authChall.Status == core.StatusInvalid || authChall.Status == core.StatusValid {
+			_, err = db.Exec(
+				`UPDATE challenges SET
 				status = ?,
 				error = ?,
 				validationRecord = ?
 			WHERE status = ? AND id = ?`,
-			string(chall.Status),
-			chall.Error,
-			chall.ValidationRecord,
-			string(core.StatusPending),
-			chall.ID)
-		if err != nil {
-			return err
+				string(chall.Status),
+				chall.Error,
+				chall.ValidationRecord,
+				string(core.StatusPending),
+				chall.ID)
+			if err != nil {
+				return err
+			}
+		} else if features.Enabled(features.DeleteUnusedChallenges) {
+			_, err = db.Exec(
+				`DELETE FROM challenges WHERE id = ?`,
+				chall.ID)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -210,41 +223,41 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *j
 
 // GetAuthorization obtains an Authorization by ID
 func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string) (core.Authorization, error) {
-	authz := core.Authorization{}
-	tx, err := ssa.dbMap.Begin()
-	if err != nil {
-		return authz, err
-	}
-	txWithCtx := tx.WithContext(ctx)
-
-	pa, err := selectPendingAuthz(txWithCtx, "WHERE id = ?", id)
-	if err != nil && err != sql.ErrNoRows {
-		return authz, Rollback(tx, err)
-	}
-	if err == sql.ErrNoRows {
-		var fa authzModel
-		err := txWithCtx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = ?", authzFields), id)
+	authz, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
+		pa, err := selectPendingAuthz(txWithCtx, "WHERE id = ?", id)
 		if err != nil && err != sql.ErrNoRows {
-			return authz, Rollback(tx, err)
-		} else if err == sql.ErrNoRows {
-			// If there was no result in either the pending authz table or the authz
-			// table then return a `berrors.NotFound` instance (or a rollback error if
-			// the transaction rollback fails)
-			return authz, Rollback(
-				tx,
-				berrors.NotFoundError("no authorization found with id %q", id))
+			return nil, err
 		}
-		authz = fa.Authorization
-	} else {
-		authz = pa.Authorization
-	}
+		var authz core.Authorization
+		if err == sql.ErrNoRows {
+			var fa authzModel
+			err := txWithCtx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = ?", authzFields), id)
+			if err != nil && err != sql.ErrNoRows {
+				return nil, err
+			} else if err == sql.ErrNoRows {
+				// If there was no result in either the pending authz table or the authz
+				// table then return a `berrors.NotFound` instance
+				return nil, berrors.NotFoundError("no authorization found with id %q", id)
+			}
+			authz = fa.Authorization
+		} else {
+			authz = pa.Authorization
+		}
 
-	authz.Challenges, err = ssa.getChallenges(txWithCtx, authz.ID)
-	if err != nil {
-		return authz, Rollback(tx, err)
-	}
+		authz.Challenges, err = ssa.getChallenges(txWithCtx, authz.ID)
+		if err != nil {
+			return nil, err
+		}
 
-	return authz, tx.Commit()
+		return authz, nil
+	})
+	if overallError != nil {
+		return core.Authorization{}, overallError
+	}
+	if authz, ok := authz.(core.Authorization); ok {
+		return authz, nil
+	}
+	return core.Authorization{}, fmt.Errorf("shouldn't happen: casting error in GetAuthorization")
 }
 
 // GetValidAuthorizations returns the latest authorization object for all
@@ -542,57 +555,52 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 // NewPendingAuthorization retrieves a pending authorization for
 // authz.Identifier if one exists, or creates a new one otherwise.
 func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, authz core.Authorization) (core.Authorization, error) {
-	var output core.Authorization
-
-	tx, err := ssa.dbMap.Begin()
-	if err != nil {
-		return output, err
-	}
-	txWithCtx := tx.WithContext(ctx)
-
-	// Create a random ID and check that it doesn't exist already
-	authz.ID = core.NewToken()
-	for existingPending(txWithCtx, authz.ID) ||
-		existingFinal(txWithCtx, authz.ID) {
+	output, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
+		// Create a random ID and check that it doesn't exist already
 		authz.ID = core.NewToken()
-	}
-
-	// Insert a stub row in pending
-	pendingAuthz := pendingauthzModel{Authorization: authz}
-	err = txWithCtx.Insert(&pendingAuthz)
-	if err != nil {
-		err = Rollback(tx, err)
-		return output, err
-	}
-
-	for i, c := range authz.Challenges {
-		challModel, err := challengeToModel(&c, pendingAuthz.ID)
-		if err != nil {
-			err = Rollback(tx, err)
-			return output, err
+		for existingPending(txWithCtx, authz.ID) ||
+			existingFinal(txWithCtx, authz.ID) {
+			authz.ID = core.NewToken()
 		}
-		// Magic happens here: Gorp will modify challModel, setting challModel.ID
-		// to the auto-increment primary key. This is important because we want
-		// the challenge objects inside the Authorization we return to know their
-		// IDs, so they can have proper URLs.
-		// See https://godoc.org/github.com/coopernurse/gorp#DbMap.Insert
-		err = txWithCtx.Insert(challModel)
-		if err != nil {
-			err = Rollback(tx, err)
-			return output, err
-		}
-		challenge, err := modelToChallenge(challModel)
-		if err != nil {
-			err = Rollback(tx, err)
-			return output, err
-		}
-		authz.Challenges[i] = challenge
-	}
 
-	err = tx.Commit()
-	output = pendingAuthz.Authorization
-	output.Challenges = authz.Challenges
-	return output, err
+		// Insert a stub row in pending
+		pendingAuthz := pendingauthzModel{Authorization: authz}
+		err := txWithCtx.Insert(&pendingAuthz)
+		if err != nil {
+			return nil, err
+		}
+
+		for i, c := range authz.Challenges {
+			challModel, err := challengeToModel(&c, pendingAuthz.ID)
+			if err != nil {
+				return nil, err
+			}
+			// Magic happens here: Gorp will modify challModel, setting challModel.ID
+			// to the auto-increment primary key. This is important because we want
+			// the challenge objects inside the Authorization we return to know their
+			// IDs, so they can have proper URLs.
+			// See https://godoc.org/github.com/coopernurse/gorp#DbMap.Insert
+			err = txWithCtx.Insert(challModel)
+			if err != nil {
+				return nil, err
+			}
+			challenge, err := modelToChallenge(challModel)
+			if err != nil {
+				return nil, err
+			}
+			authz.Challenges[i] = challenge
+		}
+
+		pendingAuthz.Authorization.Challenges = authz.Challenges
+		return pendingAuthz.Authorization, nil
+	})
+	if overallError != nil {
+		return core.Authorization{}, overallError
+	}
+	if output, ok := output.(core.Authorization); ok {
+		return output, nil
+	}
+	return core.Authorization{}, fmt.Errorf("shouldn't happen: casting error in NewPendingAuthorization")
 }
 
 // GetPendingAuthorization returns the most recent Pending authorization
@@ -644,47 +652,42 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization(
 // Authorization is not found a berrors.NotFound result is returned. If the
 // Authorization is status pending a berrors.InternalServer error is returned.
 func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz core.Authorization) error {
-	tx, err := ssa.dbMap.Begin()
-	if err != nil {
-		return err
-	}
-	txWithCtx := tx.WithContext(ctx)
+	_, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
+		// Check that a pending authz exists
+		if !existingPending(txWithCtx, authz.ID) {
+			return nil, berrors.NotFoundError("authorization with ID %q not found", authz.ID)
+		}
+		if statusIsPending(authz.Status) {
+			return nil, berrors.InternalServerError("authorization to finalize is pending (ID %q)", authz.ID)
+		}
 
-	// Check that a pending authz exists
-	if !existingPending(txWithCtx, authz.ID) {
-		err = berrors.NotFoundError("authorization with ID %q not found", authz.ID)
-		return Rollback(tx, err)
-	}
-	if statusIsPending(authz.Status) {
-		err = berrors.InternalServerError("authorization to finalize is pending (ID %q)", authz.ID)
-		return Rollback(tx, err)
-	}
+		auth := &authzModel{authz}
+		pa, err := selectPendingAuthz(txWithCtx, "WHERE id = ?", authz.ID)
+		if err == sql.ErrNoRows {
+			return nil, berrors.NotFoundError("authorization with ID %q not found", authz.ID)
+		}
+		if err != nil {
+			return nil, err
+		}
 
-	auth := &authzModel{authz}
-	pa, err := selectPendingAuthz(txWithCtx, "WHERE id = ?", authz.ID)
-	if err == sql.ErrNoRows {
-		return Rollback(tx, berrors.NotFoundError("authorization with ID %q not found", authz.ID))
-	}
-	if err != nil {
-		return Rollback(tx, err)
-	}
+		err = txWithCtx.Insert(auth)
+		if err != nil {
+			return nil, err
+		}
 
-	err = txWithCtx.Insert(auth)
-	if err != nil {
-		return Rollback(tx, err)
-	}
+		_, err = txWithCtx.Delete(pa)
+		if err != nil {
+			return nil, err
+		}
 
-	_, err = txWithCtx.Delete(pa)
-	if err != nil {
-		return Rollback(tx, err)
-	}
+		err = updateChallenges(txWithCtx, authz.ID, authz.Challenges)
+		if err != nil {
+			return nil, err
+		}
 
-	err = updateChallenges(txWithCtx, authz.ID, authz.Challenges)
-	if err != nil {
-		return Rollback(tx, err)
-	}
-
-	return tx.Commit()
+		return nil, nil
+	})
+	return overallError
 }
 
 func (ssa *SQLStorageAuthority) getAuthorizationIDsByDomain2(ctx context.Context, domain string) ([]int64, error) {
@@ -744,71 +747,71 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		certStatus.OCSPLastUpdated = ssa.clk.Now()
 	}
 
-	tx, err := ssa.dbMap.Begin()
-	if err != nil {
-		return "", err
-	}
-	txWithCtx := tx.WithContext(ctx)
-
-	// Note: will fail on duplicate serials. Extremely unlikely to happen and soon
-	// to be fixed by redesign. Reference issue
-	// https://github.com/letsencrypt/boulder/issues/2265 for more
-	err = txWithCtx.Insert(cert)
-	if err != nil {
-		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
-			err = berrors.DuplicateError("cannot add a duplicate cert")
-		}
-		return "", Rollback(tx, err)
-	}
-
-	err = txWithCtx.Insert(certStatus)
-	if err != nil {
-		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
-			err = berrors.DuplicateError("cannot add a duplicate cert status")
-		}
-		return "", Rollback(tx, err)
-	}
-
-	// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
-	// that it is a renewal) we use just the DNSNames from the certificate and
-	// ignore the Subject Common Name (if any). This is a safe assumption because
-	// if a certificate we issued were to have a Subj. CN not present as a SAN it
-	// would be a misissuance and miscalculating whether the cert is a renewal or
-	// not for the purpose of rate limiting is the least of our troubles.
-	isRenewal, err := ssa.checkFQDNSetExists(
-		txWithCtx.SelectOne,
-		parsedCertificate.DNSNames)
-	if err != nil {
-		return "", Rollback(tx, err)
-	}
-
-	err = addIssuedNames(txWithCtx, parsedCertificate, isRenewal)
-	if err != nil {
-		return "", Rollback(tx, err)
-	}
-
-	// Add to the rate limit table, but only for new certificates. Renewals
-	// don't count against the certificatesPerName limit.
-	if !isRenewal {
-		timeToTheHour := parsedCertificate.NotBefore.Round(time.Hour)
-		err = ssa.addCertificatesPerName(ctx, txWithCtx, parsedCertificate.DNSNames, timeToTheHour)
+	_, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
+		// Note: will fail on duplicate serials. Extremely unlikely to happen and soon
+		// to be fixed by redesign. Reference issue
+		// https://github.com/letsencrypt/boulder/issues/2265 for more
+		err = txWithCtx.Insert(cert)
 		if err != nil {
-			return "", Rollback(tx, err)
+			if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+				return nil, berrors.DuplicateError("cannot add a duplicate cert")
+			}
+			return nil, err
 		}
-	}
 
-	err = addFQDNSet(
-		txWithCtx,
-		parsedCertificate.DNSNames,
-		serial,
-		parsedCertificate.NotBefore,
-		parsedCertificate.NotAfter,
-	)
-	if err != nil {
-		return "", Rollback(tx, err)
-	}
+		err = txWithCtx.Insert(certStatus)
+		if err != nil {
+			if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+				return nil, berrors.DuplicateError("cannot add a duplicate cert status")
+			}
+			return nil, err
+		}
 
-	return digest, tx.Commit()
+		// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
+		// that it is a renewal) we use just the DNSNames from the certificate and
+		// ignore the Subject Common Name (if any). This is a safe assumption because
+		// if a certificate we issued were to have a Subj. CN not present as a SAN it
+		// would be a misissuance and miscalculating whether the cert is a renewal or
+		// not for the purpose of rate limiting is the least of our troubles.
+		isRenewal, err := ssa.checkFQDNSetExists(
+			txWithCtx.SelectOne,
+			parsedCertificate.DNSNames)
+		if err != nil {
+			return nil, err
+		}
+
+		err = addIssuedNames(txWithCtx, parsedCertificate, isRenewal)
+		if err != nil {
+			return nil, err
+		}
+
+		// Add to the rate limit table, but only for new certificates. Renewals
+		// don't count against the certificatesPerName limit.
+		if !isRenewal {
+			timeToTheHour := parsedCertificate.NotBefore.Round(time.Hour)
+			err = ssa.addCertificatesPerName(ctx, txWithCtx, parsedCertificate.DNSNames, timeToTheHour)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		err = addFQDNSet(
+			txWithCtx,
+			parsedCertificate.DNSNames,
+			serial,
+			parsedCertificate.NotBefore,
+			parsedCertificate.NotAfter,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		return digest, nil
+	})
+	if overallError != nil {
+		return "", overallError
+	}
+	return digest, nil
 }
 
 // CountPendingAuthorizations returns the number of pending, unexpired

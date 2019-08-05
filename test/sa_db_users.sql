@@ -12,6 +12,7 @@ CREATE USER IF NOT EXISTS 'cert_checker'@'localhost';
 CREATE USER IF NOT EXISTS 'ocsp_update'@'localhost';
 CREATE USER IF NOT EXISTS 'test_setup'@'localhost';
 CREATE USER IF NOT EXISTS 'purger'@'localhost';
+CREATE USER IF NOT EXISTS 'janitor'@'localhost';
 
 -- Storage Authority
 GRANT SELECT,INSERT,UPDATE ON authz TO 'sa'@'localhost';
@@ -22,7 +23,7 @@ GRANT SELECT,INSERT,UPDATE ON certificateStatus TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON issuedNames TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON certificatesPerName TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON registrations TO 'sa'@'localhost';
-GRANT SELECT,INSERT,UPDATE ON challenges TO 'sa'@'localhost';
+GRANT SELECT,INSERT,UPDATE,DELETE ON challenges TO 'sa'@'localhost';
 GRANT SELECT,INSERT on fqdnSets TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON orders TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON orderToAuthz TO 'sa'@'localhost';
@@ -56,6 +57,12 @@ GRANT SELECT,DELETE ON pendingAuthorizations TO 'purger'@'localhost';
 GRANT SELECT,DELETE ON authz TO 'purger'@'localhost';
 GRANT SELECT,DELETE ON challenges TO 'purger'@'localhost';
 GRANT SELECT,DELETE ON authz2 TO 'purger'@'localhost';
+
+-- Janitor
+GRANT SELECT,DELETE ON certificates TO 'janitor'@'localhost';
+GRANT SELECT,DELETE ON certificateStatus TO 'janitor'@'localhost';
+GRANT SELECT,DELETE ON certificatesPerName TO 'janitor'@'localhost';
+GRANT SELECT,DELETE ON sctReceipts TO 'janitor'@'localhost';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';

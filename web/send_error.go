@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -32,6 +33,13 @@ func SendError(
 
 	// Record details to the log event
 	logEvent.Error = fmt.Sprintf("%d :: %s :: %s", prob.HTTPStatus, prob.Type, prob.Detail)
+	if len(prob.SubProblems) > 0 {
+		subDetails := make([]string, len(prob.SubProblems))
+		for i, sub := range prob.SubProblems {
+			subDetails[i] = fmt.Sprintf("\"%s :: %s :: %s\"", sub.Identifier.Value, sub.Type, sub.Detail)
+		}
+		logEvent.Error += fmt.Sprintf(" [%s]", strings.Join(subDetails, ", "))
+	}
 	if ierr != nil {
 		logEvent.AddError(fmt.Sprintf("%s", ierr))
 	}
@@ -49,7 +57,12 @@ func SendError(
 		}
 	}
 
+	// Set the proper namespace for the problem and any
+	// sub-problems
 	prob.Type = probs.ProblemType(namespace) + prob.Type
+	for i := range prob.SubProblems {
+		prob.SubProblems[i].Type = probs.ProblemType(namespace) + prob.Type
+	}
 	problemDoc, err := json.MarshalIndent(prob, "", "  ")
 	if err != nil {
 		log.AuditErrf("Could not marshal error message: %s - %+v", err, prob)

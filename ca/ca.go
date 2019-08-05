@@ -139,11 +139,18 @@ type Issuer struct {
 	Cert   *x509.Certificate
 }
 
+// localSigner is an interface describing the functions of a cfssl.local.Signer
+// that the Boulder CA uses. It allows mocking the local.Signer in unit tests.
+type localSigner interface {
+	Sign(signer.SignRequest) ([]byte, error)
+	SignFromPrecert(*x509.Certificate, []ct.SignedCertificateTimestamp) ([]byte, error)
+}
+
 // internalIssuer represents the fully initialized internal state for a single
 // issuer, including the cfssl signer and OCSP signer objects.
 type internalIssuer struct {
 	cert       *x509.Certificate
-	eeSigner   *local.Signer
+	eeSigner   localSigner
 	ocspSigner ocsp.Signer
 }
 
@@ -574,6 +581,18 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	certPEM, err := issuer.eeSigner.Sign(req)
 	ca.noteSignError(err)
 	if err != nil {
+		// If the Signing error was a pre-issuance lint error then marshal the
+		// linting errors to include in the audit err msg.
+		if lErr, ok := err.(*local.LintError); ok {
+			// NOTE(@cpu): We throw away the JSON marshal error here. If marshaling
+			// fails for some reason it's acceptable to log an empty string for the
+			// JSON component.
+			lintErrsJSON, _ := json.Marshal(lErr.ErrorResults)
+			ca.log.AuditErrf("Signing failed: serial=[%s] err=[%v] lintErrors=%s",
+				serialHex, err, string(lintErrsJSON))
+			return nil, berrors.InternalServerError("failed to sign certificate: %s", err)
+		}
+
 		err = berrors.InternalServerError("failed to sign certificate: %s", err)
 		ca.log.AuditErrf("Signing failed: serial=[%s] err=[%v]", serialHex, err)
 		return nil, err
