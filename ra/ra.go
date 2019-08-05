@@ -634,7 +634,6 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 				identifier.Value,
 				err)
 		} else if err == nil {
-			fmt.Println("uhjh?")
 			return *pendingAuth, nil
 		}
 	}
@@ -648,7 +647,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 			return core.Authorization{}, err
 		}
 		if !*exists.Exists {
-			return core.Authorization{}, berrors.UnauthorizedError("Validations for new domains are disabled in the V1 API")
+			return core.Authorization{}, berrors.UnauthorizedError("Validations for new domains are disabled in the V1 API (https://community.letsencrypt.org/t/end-of-life-plan-for-acmev1/88430)")
 		}
 	}
 

@@ -4036,7 +4036,7 @@ func TestDisableNewV1Validations(t *testing.T) {
 		Identifier: identifier.DNSIdentifier("bloop-not-example.com"),
 	}, 1)
 	test.AssertError(t, err, "ra.NewAuthorization failed")
-	test.AssertEquals(t, err.Error(), "Validations for new domains are disabled in the V1 API")
+	test.AssertEquals(t, err.Error(), "Validations for new domains are disabled in the V1 API (https://community.letsencrypt.org/t/end-of-life-plan-for-acmev1/88430)")
 }
 
 var CAkeyPEM = `
