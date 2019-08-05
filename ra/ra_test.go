@@ -3984,6 +3984,61 @@ func TestValidateEmailError(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "\"(๑•́ ω •̀๑)\" is not a valid e-mail address")
 }
 
+type mockSAPreviousValidations struct {
+	mocks.StorageAuthority
+	existsDomain string
+}
+
+func (ms *mockSAPreviousValidations) PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (*sapb.Exists, error) {
+	t := true
+	f := false
+	if *req.Domain == ms.existsDomain {
+		return &sapb.Exists{Exists: &t}, nil
+	}
+	return &sapb.Exists{Exists: &f}, nil
+}
+
+func (ms *mockSAPreviousValidations) GetPendingAuthorization(_ context.Context, _ *sapb.GetPendingAuthorizationRequest) (*core.Authorization, error) {
+	return nil, berrors.NotFoundError("")
+}
+
+func (ms *mockSAPreviousValidations) GetValidAuthorizations2(_ context.Context, _ *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
+	return &sapb.Authorizations{}, nil
+}
+
+func (ms *mockSAPreviousValidations) GetPendingAuthorization2(_ context.Context, _ *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
+	return nil, berrors.NotFoundError("")
+}
+
+func (ms *mockSAPreviousValidations) NewAuthorizations2(_ context.Context, _ *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
+	return &sapb.Authorization2IDs{
+		Ids: []int64{1},
+	}, nil
+}
+
+func TestDisableNewV1Validations(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ms := mockSAPreviousValidations{
+		existsDomain: "bloop-example.com",
+	}
+	ra.SA = &ms
+
+	_ = features.Set(map[string]bool{"V1DisableNewValidations": true})
+	defer features.Reset()
+
+	_, err := ra.NewAuthorization(context.Background(), core.Authorization{
+		Identifier: identifier.DNSIdentifier("bloop-example.com"),
+	}, 1)
+	test.AssertNotError(t, err, "ra.NewAuthorization failed")
+
+	_, err = ra.NewAuthorization(context.Background(), core.Authorization{
+		Identifier: identifier.DNSIdentifier("bloop-not-example.com"),
+	}, 1)
+	test.AssertError(t, err, "ra.NewAuthorization failed")
+	test.AssertEquals(t, err.Error(), "Validations for new domains are disabled in the V1 API (https://community.letsencrypt.org/t/end-of-life-plan-for-acmev1/88430)")
+}
+
 var CAkeyPEM = `
 -----BEGIN RSA PRIVATE KEY-----
 MIIJKQIBAAKCAgEAqmM0dEf/J9MCk2ItzevL0dKJ84lVUtf/vQ7AXFi492vFXc3b

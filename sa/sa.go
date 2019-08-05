@@ -1126,10 +1126,10 @@ func (ssa *SQLStorageAuthority) checkFQDNSetExists(selector oneSelectorFunc, nam
 
 // PreviousCertificateExists returns true iff there was at least one certificate
 // issued with the provided domain name, and the most recent such certificate
-// was issued by the provided registration ID. Note: This means that if two
-// different accounts were issuing certificates for a domain, only one gets the
-// right to revalidate using TLS-SNI-01. We think this is an acceptable tradeoff
-// of complexity versus coverage, though we may reconsider in the future.
+// was issued by the provided registration ID. This method is currently only
+// used to determine if a certificate has previously been issued for a given
+// domain name in order to determine if validations should be allowed during
+// the v1 API shutoff.
 func (ssa *SQLStorageAuthority) PreviousCertificateExists(
 	ctx context.Context,
 	req *sapb.PreviousCertificateExistsRequest,

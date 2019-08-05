@@ -65,6 +65,9 @@ const (
 	ParallelCheckFailedValidation
 	// Upon authorization validation, delete the challenges that weren't used.
 	DeleteUnusedChallenges
+	// V1DisableNewValidations disables validations for new domain names in the V1
+	// API.
+	V1DisableNewValidations
 )
 
 // List of features and their default value, protected by fMu
@@ -94,6 +97,7 @@ var features = map[FeatureFlag]bool{
 	AllowV1Registration:           true,
 	ParallelCheckFailedValidation: false,
 	DeleteUnusedChallenges:        false,
+	V1DisableNewValidations:       false,
 }
 
 var fMu = new(sync.RWMutex)
