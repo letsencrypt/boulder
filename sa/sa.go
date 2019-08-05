@@ -1195,50 +1195,47 @@ func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, id i
 
 // DeactivateAuthorization deactivates a currently valid or pending authorization
 func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id string) error {
-	tx, err := ssa.dbMap.Begin()
-	if err != nil {
-		return err
-	}
-	txWithCtx := tx.WithContext(ctx)
+	_, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
+		if existingPending(txWithCtx, id) {
+			authzObj, err := txWithCtx.Get(&pendingauthzModel{}, id)
+			if err != nil {
+				return nil, err
+			}
+			if authzObj == nil {
+				// InternalServerError because existingPending already told us it existed
+				return nil, berrors.InternalServerError("failure retrieving pending authorization")
+			}
+			authz := authzObj.(*pendingauthzModel)
+			if authz.Status != core.StatusPending {
+				return nil, berrors.WrongAuthorizationStateError("authorization not pending")
+			}
+			authz.Status = core.StatusDeactivated
+			err = txWithCtx.Insert(&authzModel{authz.Authorization})
+			if err != nil {
+				return nil, err
+			}
+			result, err := txWithCtx.Delete(authzObj)
+			if err != nil {
+				return nil, err
+			}
+			if result != 1 {
+				return nil, berrors.InternalServerError("wrong number of rows deleted: expected 1, got %d", result)
+			}
+		} else {
+			_, err := txWithCtx.Exec(
+				`UPDATE authz SET status = ? WHERE id = ? and status = ?`,
+				string(core.StatusDeactivated),
+				id,
+				string(core.StatusValid),
+			)
+			if err != nil {
+				return nil, err
+			}
+		}
 
-	if existingPending(txWithCtx, id) {
-		authzObj, err := txWithCtx.Get(&pendingauthzModel{}, id)
-		if err != nil {
-			return Rollback(tx, err)
-		}
-		if authzObj == nil {
-			// InternalServerError because existingPending already told us it existed
-			return Rollback(tx, berrors.InternalServerError("failure retrieving pending authorization"))
-		}
-		authz := authzObj.(*pendingauthzModel)
-		if authz.Status != core.StatusPending {
-			return Rollback(tx, berrors.WrongAuthorizationStateError("authorization not pending"))
-		}
-		authz.Status = core.StatusDeactivated
-		err = txWithCtx.Insert(&authzModel{authz.Authorization})
-		if err != nil {
-			return Rollback(tx, err)
-		}
-		result, err := txWithCtx.Delete(authzObj)
-		if err != nil {
-			return Rollback(tx, err)
-		}
-		if result != 1 {
-			return Rollback(tx, berrors.InternalServerError("wrong number of rows deleted: expected 1, got %d", result))
-		}
-	} else {
-		_, err = txWithCtx.Exec(
-			`UPDATE authz SET status = ? WHERE id = ? and status = ?`,
-			string(core.StatusDeactivated),
-			id,
-			string(core.StatusValid),
-		)
-		if err != nil {
-			return Rollback(tx, err)
-		}
-	}
-
-	return tx.Commit()
+		return nil, nil
+	})
+	return overallError
 }
 
 // DeactivateAuthorization2 deactivates a currently valid or pending authorization.
@@ -1267,137 +1264,127 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		Created:        ssa.clk.Now(),
 	}
 
-	tx, err := ssa.dbMap.Begin()
-	if err != nil {
-		return nil, err
-	}
-	txWithCtx := tx.WithContext(ctx)
-
-	if err := txWithCtx.Insert(order); err != nil {
-		return nil, Rollback(tx, err)
-	}
-
-	for _, id := range req.Authorizations {
-		otoa := &orderToAuthzModel{
-			OrderID: order.ID,
-			AuthzID: id,
+	output, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
+		if err := txWithCtx.Insert(order); err != nil {
+			return nil, err
 		}
-		if err := txWithCtx.Insert(otoa); err != nil {
-			return nil, Rollback(tx, err)
-		}
-	}
-	for _, id := range req.V2Authorizations {
-		otoa := &orderToAuthz2Model{
-			OrderID: order.ID,
-			AuthzID: id,
-		}
-		if err := txWithCtx.Insert(otoa); err != nil {
-			return nil, Rollback(tx, err)
-		}
-	}
 
-	for _, name := range req.Names {
-		reqdName := &requestedNameModel{
-			OrderID:      order.ID,
-			ReversedName: ReverseName(name),
+		for _, id := range req.Authorizations {
+			otoa := &orderToAuthzModel{
+				OrderID: order.ID,
+				AuthzID: id,
+			}
+			if err := txWithCtx.Insert(otoa); err != nil {
+				return nil, err
+			}
 		}
-		if err := txWithCtx.Insert(reqdName); err != nil {
-			return nil, Rollback(tx, err)
+		for _, id := range req.V2Authorizations {
+			otoa := &orderToAuthz2Model{
+				OrderID: order.ID,
+				AuthzID: id,
+			}
+			if err := txWithCtx.Insert(otoa); err != nil {
+				return nil, err
+			}
 		}
-	}
 
-	// Add an FQDNSet entry for the order
-	if err := addOrderFQDNSet(
-		txWithCtx, req.Names, order.ID, order.RegistrationID, order.Expires); err != nil {
-		return nil, Rollback(tx, err)
-	}
+		for _, name := range req.Names {
+			reqdName := &requestedNameModel{
+				OrderID:      order.ID,
+				ReversedName: ReverseName(name),
+			}
+			if err := txWithCtx.Insert(reqdName); err != nil {
+				return nil, err
+			}
+		}
 
-	if err := tx.Commit(); err != nil {
-		return nil, err
+		// Add an FQDNSet entry for the order
+		if err := addOrderFQDNSet(
+			txWithCtx, req.Names, order.ID, order.RegistrationID, order.Expires); err != nil {
+			return nil, err
+		}
+		return req, nil
+	})
+	if overallError != nil {
+		return nil, overallError
 	}
-
-	// Update the request with the ID that the order received
-	req.Id = &order.ID
-	// Update the request with the created timestamp from the model
+	var outputOrder *corepb.Order
+	var ok bool
+	if outputOrder, ok = output.(*corepb.Order); !ok {
+		return nil, fmt.Errorf("shouldn't happen: casting error in NewOrder")
+	}
+	// Update the output with the ID that the order received
+	outputOrder.Id = &order.ID
+	// Update the output with the created timestamp from the model
 	createdTS := order.Created.UnixNano()
-	req.Created = &createdTS
+	outputOrder.Created = &createdTS
 	// A new order is never processing because it can't have been finalized yet
 	processingStatus := false
-	req.BeganProcessing = &processingStatus
+	outputOrder.BeganProcessing = &processingStatus
 
 	// Calculate the order status before returning it. Since it may have reused all
 	// valid authorizations the order may be "born" in a ready status.
-	status, err := ssa.statusForOrder(ctx, req)
+	status, err := ssa.statusForOrder(ctx, outputOrder)
 	if err != nil {
 		return nil, err
 	}
-	req.Status = &status
-	return req, nil
+	outputOrder.Status = &status
+	return outputOrder, nil
 }
 
 // SetOrderProcessing updates a provided *corepb.Order in pending status to be
 // in processing status by updating the `beganProcessing` field of the
 // corresponding Order table row in the DB.
 func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *corepb.Order) error {
-	tx, err := ssa.dbMap.Begin()
-	if err != nil {
-		return err
-	}
-	txWithCtx := tx.WithContext(ctx)
-
-	result, err := txWithCtx.Exec(`
+	_, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
+		result, err := txWithCtx.Exec(`
 		UPDATE orders
 		SET beganProcessing = ?
 		WHERE id = ?
 		AND beganProcessing = ?`,
-		true,
-		*req.Id,
-		false)
-	if err != nil {
-		err = berrors.InternalServerError("error updating order to beganProcessing status")
-		return Rollback(tx, err)
-	}
+			true,
+			*req.Id,
+			false)
+		if err != nil {
+			return nil, berrors.InternalServerError("error updating order to beganProcessing status")
+		}
 
-	n, err := result.RowsAffected()
-	if err != nil || n == 0 {
-		err = berrors.InternalServerError("no order updated to beganProcessing status")
-		return Rollback(tx, err)
-	}
+		n, err := result.RowsAffected()
+		if err != nil || n == 0 {
+			return nil, berrors.InternalServerError("no order updated to beganProcessing status")
+		}
 
-	return tx.Commit()
+		return nil, nil
+	})
+	return overallError
 }
 
 // SetOrderError updates a provided Order's error field.
 func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, order *corepb.Order) error {
-	tx, err := ssa.dbMap.Begin()
-	if err != nil {
-		return err
-	}
-	txWithCtx := tx.WithContext(ctx)
+	_, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
+		om, err := orderToModel(order)
+		if err != nil {
+			return nil, err
+		}
 
-	om, err := orderToModel(order)
-	if err != nil {
-		return Rollback(tx, err)
-	}
-
-	result, err := txWithCtx.Exec(`
+		result, err := txWithCtx.Exec(`
 		UPDATE orders
 		SET error = ?
 		WHERE id = ?`,
-		om.Error,
-		om.ID)
-	if err != nil {
-		err = berrors.InternalServerError("error updating order error field")
-		return Rollback(tx, err)
-	}
+			om.Error,
+			om.ID)
+		if err != nil {
+			return nil, berrors.InternalServerError("error updating order error field")
+		}
 
-	n, err := result.RowsAffected()
-	if err != nil || n == 0 {
-		err = berrors.InternalServerError("no order updated with new error field")
-		return Rollback(tx, err)
-	}
+		n, err := result.RowsAffected()
+		if err != nil || n == 0 {
+			return nil, berrors.InternalServerError("no order updated with new error field")
+		}
 
-	return tx.Commit()
+		return nil, nil
+	})
+	return overallError
 }
 
 // FinalizeOrder finalizes a provided *corepb.Order by persisting the
@@ -1405,37 +1392,32 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, order *corepb
 // CertificateSerial and the order ID on the provided order are processed (e.g.
 // this is not a generic update RPC).
 func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.Order) error {
-	tx, err := ssa.dbMap.Begin()
-	if err != nil {
-		return err
-	}
-	txWithCtx := tx.WithContext(ctx)
-
-	result, err := txWithCtx.Exec(`
+	_, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
+		result, err := txWithCtx.Exec(`
 		UPDATE orders
 		SET certificateSerial = ?
 		WHERE id = ? AND
 		beganProcessing = true`,
-		*req.CertificateSerial,
-		*req.Id)
-	if err != nil {
-		err = berrors.InternalServerError("error updating order for finalization")
-		return Rollback(tx, err)
-	}
+			*req.CertificateSerial,
+			*req.Id)
+		if err != nil {
+			return nil, berrors.InternalServerError("error updating order for finalization")
+		}
 
-	n, err := result.RowsAffected()
-	if err != nil || n == 0 {
-		err = berrors.InternalServerError("no order updated for finalization")
-		return Rollback(tx, err)
-	}
+		n, err := result.RowsAffected()
+		if err != nil || n == 0 {
+			return nil, berrors.InternalServerError("no order updated for finalization")
+		}
 
-	// Delete the orderFQDNSet row for the order now that it has been finalized.
-	// We use this table for order reuse and should not reuse a finalized order.
-	if err := deleteOrderFQDNSet(txWithCtx, *req.Id); err != nil {
-		return Rollback(tx, err)
-	}
+		// Delete the orderFQDNSet row for the order now that it has been finalized.
+		// We use this table for order reuse and should not reuse a finalized order.
+		if err := deleteOrderFQDNSet(txWithCtx, *req.Id); err != nil {
+			return nil, err
+		}
 
-	return tx.Commit()
+		return nil, nil
+	})
+	return overallError
 }
 
 // authzForOrder retrieves the authorization IDs for an order. It returns these
@@ -2261,43 +2243,40 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 // RevokeCertificate stores revocation information about a certificate. It will only store this
 // information if the certificate is not already marked as revoked.
 func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error {
-	tx, err := ssa.dbMap.Begin()
-	if err != nil {
-		return err
-	}
-	txWithCtx := tx.WithContext(ctx)
-
-	status, err := SelectCertificateStatus(
-		txWithCtx,
-		"WHERE serial = ? AND status != ?",
-		*req.Serial,
-		string(core.OCSPStatusRevoked),
-	)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			// InternalServerError because we expected this certificate status to exist and
-			// not be revoked.
-			return Rollback(tx, berrors.InternalServerError("no certificate with serial %s and status %s", *req.Serial, string(core.OCSPStatusRevoked)))
+	_, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
+		status, err := SelectCertificateStatus(
+			txWithCtx,
+			"WHERE serial = ? AND status != ?",
+			*req.Serial,
+			string(core.OCSPStatusRevoked),
+		)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				// InternalServerError because we expected this certificate status to exist and
+				// not be revoked.
+				return nil, berrors.InternalServerError("no certificate with serial %s and status %s", *req.Serial, string(core.OCSPStatusRevoked))
+			}
+			return nil, err
 		}
-		return Rollback(tx, err)
-	}
 
-	revokedDate := time.Unix(0, *req.Date)
-	status.Status = core.OCSPStatusRevoked
-	status.RevokedReason = revocation.Reason(*req.Reason)
-	status.RevokedDate = revokedDate
-	status.OCSPLastUpdated = revokedDate
-	status.OCSPResponse = req.Response
+		revokedDate := time.Unix(0, *req.Date)
+		status.Status = core.OCSPStatusRevoked
+		status.RevokedReason = revocation.Reason(*req.Reason)
+		status.RevokedDate = revokedDate
+		status.OCSPLastUpdated = revokedDate
+		status.OCSPResponse = req.Response
 
-	n, err := txWithCtx.Update(&status)
-	if err != nil {
-		return Rollback(tx, err)
-	}
-	if n == 0 {
-		return Rollback(tx, berrors.InternalServerError("no certificate updated"))
-	}
+		n, err := txWithCtx.Update(&status)
+		if err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			return nil, berrors.InternalServerError("no certificate updated")
+		}
 
-	return tx.Commit()
+		return nil, nil
+	})
+	return overallError
 }
 
 // GetPendingAuthorization2 returns the most recent Pending authorization with
