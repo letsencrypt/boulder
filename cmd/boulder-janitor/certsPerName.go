@@ -19,7 +19,7 @@ func newCertificatesPerNameJob(
 		   time <= :cutoff
 		 ORDER by id
 		 LIMIT :limit`
-	log.Debugf("Creating Certificates job from config: %#v\n", config.Janitor.CertificatesPerName)
+	log.Debugf("Creating CertificatesPerName job from config: %#v\n", config.Janitor.CertificatesPerName)
 	return &batchedDBJob{
 		db:          db,
 		log:         log,
