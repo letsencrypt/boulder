@@ -189,7 +189,7 @@ func initMetrics(stats metrics.Scope) *pubMetrics {
 			Help:    "Time taken to submit a certificate to a CT log",
 			Buckets: metrics.InternetFacingBuckets,
 		},
-		[]string{"log", "status"},
+		[]string{"log", "status", "httpStatus"},
 	)
 	stats.MustRegister(submissionLatency)
 
@@ -306,10 +306,14 @@ func (pub *Impl) singleLogSubmit(
 		if canceled.Is(err) {
 			status = "canceled"
 		}
-		pub.metrics.submissionLatency.With(prometheus.Labels{
+		labels := prometheus.Labels{
 			"log":    ctLog.uri,
 			"status": status,
-		}).Observe(took)
+		}
+		if rspError, ok := err.(*ctClient.RspError); ok && rspError.StatusCode != 0 {
+			labels["httpStatus"] = fmt.Sprintf("%d", rspError.StatusCode)
+		}
+		pub.metrics.submissionLatency.With(labels).Observe(took)
 		return nil, err
 	}
 	pub.metrics.submissionLatency.With(prometheus.Labels{
