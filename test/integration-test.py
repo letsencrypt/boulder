@@ -246,6 +246,8 @@ def main():
         config = default_config_dir
         if CONFIG_NEXT:
             config = "test/config"
+        else:
+            config = "test/config-next"
         now = datetime.datetime.utcnow()
         twenty_days_ago = now+datetime.timedelta(days=-20)
         if not startservers.start(race_detection=True, fakeclock=fakeclock(twenty_days_ago), config_dir=config):

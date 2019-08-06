@@ -936,6 +936,33 @@ def test_z1_reuse():
     if len(authz_uris) != 0:
         raise Exception("Failed to reuse all authzs. Remaining: %s" % authz_uris)
 
+z2_disable_client = None
+z2_disable_authz = None
+z2_disable_order = None
+@register_twenty_days_ago
+def z2_disable_setup():
+    global z2_disable_client
+    global z2_disable_authz
+    global z2_disable_order
+    z2_disable_client = chisel2.make_client()
+    z2_disable_order = chisel2.auth_and_issue([random_domain()])
+    z2_disable_authz = z2_disable_order.authorizations[0]
+
+def test_z2_disable():
+    """Test the DisableAuthz2Orders feature flag."""
+    response = requests.get(z2_disable_authz.uri)
+    if response.status_code != 404:
+        raise Exception("Expected authorization to be disabled. Got %s" %
+            response)
+    response = requests.get(z2_disable_order.uri)
+    if response.status_code != 404:
+        raise Exception("Expected order to be disabled. Got %s" %
+            response)
+    o = z2_disable_client.new_order(
+        chisel2.make_csr([z2_disable_authz.body.identifier.value]))
+    if o.authorizations[0].uri == z2_disable_authz.uri:
+        raise Exception("Expected authzv2 authorization not to be reused")
+
 def test_new_order_policy_errs():
     """
     Test that creating an order with policy blocked identifiers returns
