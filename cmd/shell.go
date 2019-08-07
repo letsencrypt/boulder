@@ -171,6 +171,12 @@ func NewLogger(logConf SyslogConfig) blog.Logger {
 	FailOnError(err, "Could not connect to Syslog")
 
 	_ = blog.Set(logger)
+	// We set the cfssl logging level to Debug as it
+	// won't actually call logging methods for any
+	// level less than what is set. We will ignore
+	// any logging we don't care about at the syslog
+	// level, so this doesn't cause extraneous logging.
+	cfsslLog.Level = cfsslLog.LevelDebug
 	cfsslLog.SetLogger(cfsslLogger{logger})
 	_ = mysql.SetLogger(mysqlLogger{logger})
 	grpclog.SetLoggerV2(grpcLogger{logger})
