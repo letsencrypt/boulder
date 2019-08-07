@@ -108,7 +108,11 @@ func (log grpcLogger) Error(args ...interface{}) {
 	log.Logger.AuditErr(fmt.Sprintln(args...))
 }
 func (log grpcLogger) Errorf(format string, args ...interface{}) {
-	log.Logger.AuditErrf(format, args...)
+	output := fmt.Sprintf(format, args...)
+	if output == `grpc: Server.processUnaryRPC failed to write status: connection error: desc = "transport is closing"` {
+		return
+	}
+	log.Logger.AuditErr(output)
 }
 func (log grpcLogger) Errorln(args ...interface{}) {
 	log.Logger.AuditErr(fmt.Sprintln(args...))
