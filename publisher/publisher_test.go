@@ -24,6 +24,7 @@ import (
 	"time"
 
 	ct "github.com/google/certificate-transparency-go"
+	"github.com/prometheus/client_golang/prometheus"
 
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -431,4 +432,51 @@ func TestLogErrorBody(t *testing.T) {
 	})
 	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
 	test.AssertEquals(t, len(log.GetAllMatching("well this isn't good now is it")), 1)
+}
+
+func TestHTTPStatusMetric(t *testing.T) {
+	pub, leaf, k := setup(t)
+
+	badSrv := errorBodyLogSrv()
+	defer badSrv.Close()
+	port, err := getPort(badSrv.URL)
+	test.AssertNotError(t, err, "Failed to get test server port")
+	logURI := fmt.Sprintf("http://localhost:%d", port)
+
+	pkDER, err := x509.MarshalPKIXPublicKey(&k.PublicKey)
+	test.AssertNotError(t, err, "Failed to marshal key")
+	pkB64 := base64.StdEncoding.EncodeToString(pkDER)
+	_, err = pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
+		LogURL:       &logURI,
+		LogPublicKey: &pkB64,
+		Der:          leaf.Raw,
+	})
+	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
+	test.AssertEquals(t, test.CountHistogramSamples(pub.metrics.submissionLatency.With(prometheus.Labels{
+		"log":        logURI,
+		"status":     "error",
+		"httpStatus": "400",
+	})), 1)
+
+	pub, leaf, k = setup(t)
+	pkDER, err = x509.MarshalPKIXPublicKey(&k.PublicKey)
+	test.AssertNotError(t, err, "Failed to marshal key")
+	pkB64 = base64.StdEncoding.EncodeToString(pkDER)
+	workingSrv := logSrv(k)
+	defer workingSrv.Close()
+	port, err = getPort(workingSrv.URL)
+	test.AssertNotError(t, err, "Failed to get test server port")
+	logURI = fmt.Sprintf("http://localhost:%d", port)
+
+	_, err = pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
+		LogURL:       &logURI,
+		LogPublicKey: &pkB64,
+		Der:          leaf.Raw,
+	})
+	test.AssertNotError(t, err, "SubmitToSingleCTWithResult failed")
+	test.AssertEquals(t, test.CountHistogramSamples(pub.metrics.submissionLatency.With(prometheus.Labels{
+		"log":        logURI,
+		"status":     "success",
+		"httpStatus": "",
+	})), 1)
 }

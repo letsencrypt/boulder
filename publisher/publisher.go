@@ -306,19 +306,21 @@ func (pub *Impl) singleLogSubmit(
 		if canceled.Is(err) {
 			status = "canceled"
 		}
-		labels := prometheus.Labels{
-			"log":    ctLog.uri,
-			"status": status,
+		httpStatus := ""
+		if rspError, ok := err.(ctClient.RspError); ok && rspError.StatusCode != 0 {
+			httpStatus = fmt.Sprintf("%d", rspError.StatusCode)
 		}
-		if rspError, ok := err.(*ctClient.RspError); ok && rspError.StatusCode != 0 {
-			labels["httpStatus"] = fmt.Sprintf("%d", rspError.StatusCode)
-		}
-		pub.metrics.submissionLatency.With(labels).Observe(took)
+		pub.metrics.submissionLatency.With(prometheus.Labels{
+			"log":        ctLog.uri,
+			"status":     status,
+			"httpStatus": httpStatus,
+		}).Observe(took)
 		return nil, err
 	}
 	pub.metrics.submissionLatency.With(prometheus.Labels{
-		"log":    ctLog.uri,
-		"status": "success",
+		"log":        ctLog.uri,
+		"status":     "success",
+		"httpStatus": "",
 	}).Observe(took)
 
 	// Generate log entry so we can verify the signature in the returned SCT
