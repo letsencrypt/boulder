@@ -600,6 +600,10 @@ func (wfe *WebFrontEndImpl) validPOSTAsGETForAccount(
 	if string(body) != "" {
 		return nil, probs.Malformed("POST-as-GET requests must have an empty payload")
 	}
+	// To make log analysis easier we choose to elevate the pseudo ACME HTTP
+	// method "POST-as-GET" to the logEvent's Method, replacing the
+	// http.MethodPost value.
+	logEvent.Method = "POST-as-GET"
 	return reg, prob
 }
 
