@@ -949,7 +949,10 @@ def z2_disable_setup():
     z2_disable_authz = z2_disable_order.authorizations[0]
 
 def test_z2_disable():
-    """Test the DisableAuthz2Orders feature flag."""
+    """Test the DisableAuthz2Orders feature flag. Only runs when
+       that flag is set (that is, not in CONFIG_NEXT mode)."""
+    if CONFIG_NEXT:
+        return
     response = requests.get(z2_disable_authz.uri)
     if response.status_code != 404:
         raise Exception("Expected authorization to be disabled. Got %s" %
