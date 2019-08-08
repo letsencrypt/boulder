@@ -14,6 +14,7 @@ import (
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/boulder/web"
 
 	"gopkg.in/square/go-jose.v2"
 )
@@ -1350,31 +1351,42 @@ func TestValidPOSTAsGETForAccount(t *testing.T) {
 	_, _, validRequest := signRequestKeyID(t, 1, nil, "http://localhost/test", "", wfe.nonceService)
 
 	testCases := []struct {
-		Name            string
-		Request         *http.Request
-		ExpectedProblem *probs.ProblemDetails
+		Name             string
+		Request          *http.Request
+		ExpectedProblem  *probs.ProblemDetails
+		ExpectedLogEvent web.RequestEvent
 	}{
 		{
 			Name:            "Non-empty JWS payload",
 			Request:         makePostRequestWithPath("test", invalidPayloadRequest),
 			ExpectedProblem: probs.Malformed("POST-as-GET requests must have an empty payload"),
+			ExpectedLogEvent: web.RequestEvent{
+				Contacts: []string{"mailto:person@mail.com"},
+				Payload:  "{}",
+			},
 		},
 		{
 			Name:    "Valid POST-as-GET",
 			Request: makePostRequestWithPath("test", validRequest),
+			ExpectedLogEvent: web.RequestEvent{
+				Contacts: []string{"mailto:person@mail.com"},
+				Method:   "POST-as-GET",
+			},
 		},
 	}
 
 	for _, tc := range testCases {
+		ev := newRequestEvent()
 		_, prob := wfe.validPOSTAsGETForAccount(
 			tc.Request,
 			context.Background(),
-			newRequestEvent())
+			ev)
 		if tc.ExpectedProblem == nil && prob != nil {
 			t.Fatalf("Expected nil problem, got %#v\n", prob)
 		} else if tc.ExpectedProblem != nil {
 			test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 		}
+		test.AssertMarshaledEquals(t, *ev, tc.ExpectedLogEvent)
 	}
 }
 
