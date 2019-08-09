@@ -27,8 +27,7 @@
     },
     "features": {
       "CAAValidationMethods": true,
-      "CAAAccountURI": true,
-      "SimplifiedVAHTTP": true
+      "CAAAccountURI": true
     },
     "accountURIPrefixes": [
       "http://boulder:4000/acme/reg/"

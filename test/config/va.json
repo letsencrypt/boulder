@@ -26,7 +26,10 @@
       ]
     },
     "features": {
-    }
+    },
+    "accountURIPrefixes": [
+      "http://boulder:4000/acme/reg/"
+    ]
   },
 
   "syslog": {
