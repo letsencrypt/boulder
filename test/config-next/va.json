@@ -28,7 +28,6 @@
     "features": {
       "CAAValidationMethods": true,
       "CAAAccountURI": true,
-      "SimplifiedVAHTTP": true,
       "EnforceMultiVA": true,
       "MultiVAFullResults": true
     },
