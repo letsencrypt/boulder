@@ -244,6 +244,8 @@ def main():
         config = default_config_dir
         if CONFIG_NEXT:
             config = "test/config"
+        else:
+            config = "test/config-next"
         now = datetime.datetime.utcnow()
 
         six_months_ago = now+datetime.timedelta(days=-30*6)

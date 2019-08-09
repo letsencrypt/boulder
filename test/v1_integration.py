@@ -449,6 +449,13 @@ def test_recheck_caa():
        was good. We'll set a new CAA record forbidding issuance; the CAA should
        recheck CAA and reject the request.
     """
+    # TODO(jsha): We can't do this test in non-CONFIG_NEXT mode
+    # because of authzv2. We do the twenty_days setup in CONFIG_NEXT
+    # mode (creating an authzv2), then restart Boulder with the authzv2
+    # flag disabled, which causes the authz to 404. Remove this check once
+    # authzv2 is live.
+    if not CONFIG_NEXT:
+        return
     if len(caa_recheck_authzs) == 0:
         raise Exception("CAA authzs not prepared for test_caa")
     domains = []
