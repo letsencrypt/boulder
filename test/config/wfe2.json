@@ -17,6 +17,7 @@
     "debugAddr": ":8013",
     "directoryCAAIdentity": "happy-hacker-ca.invalid",
     "directoryWebsite": "https://github.com/letsencrypt/boulder",
+    "legacyKeyIDPrefix": "http://boulder:4000/reg/",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/wfe.boulder/cert.pem",
@@ -35,6 +36,8 @@
       "http://127.0.0.1:4000/acme/issuer-cert": [ "test/test-ca2.pem" ]
     },
     "features": {
+      "HeadNonceStatusOK": true,
+      "RemoveWFE2AccountID": true
     }
   },
 
