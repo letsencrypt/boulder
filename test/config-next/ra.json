@@ -9,7 +9,7 @@
     "reuseValidAuthz": true,
     "authorizationLifetimeDays": 30,
     "pendingAuthorizationLifetimeDays": 7,
-    "weakKeyDirectory": "test/example-weak-keys.json",
+    "weakKeyFile": "test/example-weak-keys.json",
     "orderLifetime": "168h",
     "issuerCertPath":  "test/test-ca2.pem",
     "tls": {
