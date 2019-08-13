@@ -146,7 +146,7 @@ func appleCTPolicyExpectedSCTs(cert *x509.Certificate) int {
 
 func init() {
 	RegisterLint(&Lint{
-		Name:          "ct_sct_policy_count_unsatisfied",
+		Name:          "w_ct_sct_policy_count_unsatisfied",
 		Description:   "Check if certificate has enough embedded SCTs to meet Apple CT Policy",
 		Citation:      "https://support.apple.com/en-us/HT205280",
 		Source:        AppleCTPolicy,

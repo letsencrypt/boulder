@@ -12,6 +12,13 @@ Baseline Requirements
 A detailed list of BR coverage can be found here:
 https://docs.google.com/spreadsheets/d/1ywp0op9mkTaggigpdF2YMTubepowJ50KQBhc_b00e-Y.
 
+Requirements
+------------
+
+ZLint requires [Go 1.12.x or newer](https://golang.org/doc/install) be
+installed. The command line setup instructions assume the `go` command is in
+your `$PATH`.
+
 Command Line Usage
 ------------------
 
@@ -60,6 +67,17 @@ following Go conventions, e.g., `subjectCommonNameNotFromSAN`. Example:
 `./newLint.sh e_subject_common_name_not_from_san subjectCommonNameNotFromSAN`.
 This will generate a new lint in the `lints` directory with the necessary
 fields filled out.
+
+**Choosing a Lint Result Level.** When choosing what `lints.LintStatus` your new
+lint should return (e.g. `Notice`,`Warn`, `Error`, or `Fatal`) the following
+general guidance may help. `Error` should be used for clear violations of RFC/BR
+`MUST` or `MUST NOT` requirements and include strong citations. `Warn` should be
+used for violations of RFC/BR `SHOULD` or `SHOULD NOT` requirements and again
+should include strong citations. `Notice` should be used for more general "FYI"
+statements that violate non-codified community standards or for cases where
+citations are unclear. Lastly `Fatal` should be used when there is an
+unresolvable error in `zlint`, `zcrypto` or some other part of the certificate
+processing.
 
 **Scoping a Lint.** Lints are executed in three steps. First, the ZLint
 framework determines whether a certificate falls within the scope of a given

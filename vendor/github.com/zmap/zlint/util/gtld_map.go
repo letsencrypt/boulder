@@ -2478,6 +2478,11 @@ var tldMap = map[string]GTLDPeriod{
 		DelegationDate: "2014-12-13",
 		RemovalDate:    "",
 	},
+	"gay": {
+		GTLD:           "gay",
+		DelegationDate: "2019-08-09",
+		RemovalDate:    "",
+	},
 	"gb": {
 		GTLD:           "gb",
 		DelegationDate: "1985-01-01",
@@ -3226,7 +3231,7 @@ var tldMap = map[string]GTLDPeriod{
 	"iselect": {
 		GTLD:           "iselect",
 		DelegationDate: "2016-01-15",
-		RemovalDate:    "",
+		RemovalDate:    "2019-08-05",
 	},
 	"ismaili": {
 		GTLD:           "ismaili",
@@ -5936,7 +5941,7 @@ var tldMap = map[string]GTLDPeriod{
 	"starhub": {
 		GTLD:           "starhub",
 		DelegationDate: "2015-06-22",
-		RemovalDate:    "",
+		RemovalDate:    "2019-08-02",
 	},
 	"statebank": {
 		GTLD:           "statebank",
