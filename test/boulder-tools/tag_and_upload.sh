@@ -4,7 +4,7 @@ cd $(dirname $0)
 
 DATESTAMP=$(date +%Y-%m-%d)
 BASE_TAG_NAME="letsencrypt/boulder-tools"
-GO_VERSIONS=( "1.12" )
+GO_VERSIONS=( "1.12" "1.12.8" )
 
 # Build a tagged image for each GO_VERSION
 for GO_VERSION in "${GO_VERSIONS[@]}"
@@ -19,7 +19,7 @@ do
   # would be cleaner if we could just output the `sed` directly to the `docker
   # build` stdin but that requires Docker 17+ too! :'(
   DOCKERFILE="golang.$GO_VERSION.Dockerfile"
-  sed -r \
+  gsed -r \
     -e 's!%%GO_VERSION%%!'"$GO_VERSION"'!g' \
     "Dockerfile.tmpl" > "$DOCKERFILE"
 
