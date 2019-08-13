@@ -479,7 +479,7 @@ func TestIgnoredLint(t *testing.T) {
 	expectedProblems := []string{
 		"zlint error: e_sub_cert_aia_does_not_contain_ocsp_url",
 		"zlint info: n_subject_common_name_included",
-		"zlint info: ct_sct_policy_count_unsatisfied Certificate had 0 embedded SCTs. Browser policy may require 2 for this certificate.",
+		"zlint info: w_ct_sct_policy_count_unsatisfied Certificate had 0 embedded SCTs. Browser policy may require 2 for this certificate.",
 	}
 	sort.Strings(expectedProblems)
 
@@ -494,7 +494,7 @@ func TestIgnoredLint(t *testing.T) {
 	problems = checker.checkCert(cert, map[string]bool{
 		"e_sub_cert_aia_does_not_contain_ocsp_url": true,
 		"n_subject_common_name_included":           true,
-		"ct_sct_policy_count_unsatisfied":          true,
+		"w_ct_sct_policy_count_unsatisfied":        true,
 	})
 	test.AssertEquals(t, len(problems), 0)
 }
