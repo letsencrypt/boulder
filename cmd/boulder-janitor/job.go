@@ -166,7 +166,7 @@ func (j batchedDBJob) RunForever() {
 		for {
 			lastID, err := j.getWork(work, id)
 			if err != nil {
-				j.log.Errf("error getting work for %q from ID %d: %v",
+				j.log.Errf("error getting work for %q from ID %d: %s",
 					j.table, id, err.Error())
 				errStat.WithLabelValues(j.table, "getWork").Inc()
 				time.Sleep(time.Millisecond * 500)
