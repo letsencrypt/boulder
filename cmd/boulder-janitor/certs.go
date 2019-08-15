@@ -18,7 +18,6 @@ func newCertificatesJob(
 		 WHERE
 		   id > :startID AND
 		   expires <= :cutoff
-		 ORDER by id
 		 LIMIT :limit`
 	log.Debugf("Creating Certificates job from config: %#v\n", config.Janitor.Certificates)
 	return &batchedDBJob{

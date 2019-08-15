@@ -17,7 +17,6 @@ func newCertificateStatusJob(
 		 WHERE
 		   id > :startID AND
 		   notAfter <= :cutoff
-		 ORDER by id
 		 LIMIT :limit`
 	log.Debugf("Creating CertificateStatus job from config: %#v\n", config.Janitor.CertificateStatus)
 	return &batchedDBJob{
