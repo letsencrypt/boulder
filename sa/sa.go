@@ -2099,9 +2099,9 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 	var authzModels []authz2Model
 	params := []interface{}{
 		*req.RegistrationID,
-		time.Unix(0, *req.Now),
 		statusUint(core.StatusValid),
 		statusUint(core.StatusPending),
+		time.Unix(0, *req.Now),
 		identifierTypeToUint[string(identifier.DNS)],
 	}
 	qmarks := make([]string, len(req.Domains))
@@ -2114,8 +2114,8 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 		JOIN orderToAuthz2
 		ON id = authzID
 		WHERE registrationID = ? AND
-		expires > ? AND
 		status IN (?,?) AND
+		expires > ? AND
 		identifierType = ? AND
 		identifierValue IN (%s)`,
 		authz2Fields,
@@ -2286,18 +2286,18 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, re
 		&am,
 		fmt.Sprintf(`SELECT %s FROM authz2 WHERE
 			registrationID = :regID AND
-			identifierType = :dnsType AND
-			identifierValue = :ident AND
 			status = :status AND
-			expires > :validUntil
+			expires > :validUntil AND
+			identifierType = :dnsType AND
+			identifierValue = :ident
 			ORDER BY expires ASC
 			LIMIT 1 `, authz2Fields),
 		map[string]interface{}{
 			"regID":      *req.RegistrationID,
-			"dnsType":    identifierTypeToUint[string(identifier.DNS)],
-			"ident":      *req.IdentifierValue,
 			"status":     statusUint(core.StatusPending),
 			"validUntil": time.Unix(0, *req.ValidUntil),
+			"dnsType":    identifierTypeToUint[string(identifier.DNS)],
+			"ident":      *req.IdentifierValue,
 		},
 	)
 	if err != nil {
@@ -2413,11 +2413,11 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context,
 		&count,
 		`SELECT COUNT(1) FROM authz2 WHERE
 		registrationID = :regID AND
-		identifierType = :dnsType AND
-		identifierValue = :ident AND
+		status = :status AND
 		expires > :expiresEarliest AND
 		expires <= :expiresLatest AND
-		status = :status`,
+		identifierType = :dnsType AND
+		identifierValue = :ident`,
 		map[string]interface{}{
 			"regID":           *req.RegistrationID,
 			"dnsType":         identifierTypeToUint[string(identifier.DNS)],
@@ -2448,8 +2448,8 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 	var authzModels []authz2Model
 	params := []interface{}{
 		*req.RegistrationID,
-		time.Unix(0, *req.Now),
 		statusUint(core.StatusValid),
+		time.Unix(0, *req.Now),
 		identifierTypeToUint[string(identifier.DNS)],
 	}
 	qmarks := make([]string, len(req.Domains))
@@ -2462,8 +2462,8 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 		fmt.Sprintf(
 			`SELECT %s FROM authz2 WHERE
 			registrationID = ? AND
-			expires > ? AND
 			status = ? AND
+			expires > ? AND
 			identifierType = ? AND
 			identifierValue IN (%s)`,
 			authz2Fields,
