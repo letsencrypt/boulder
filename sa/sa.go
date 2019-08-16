@@ -2094,14 +2094,15 @@ func authz2ModelMapToPB(m map[string]authz2Model) (*sapb.Authorizations, error) 
 // This method will look in both the v2 and v1 authorizations tables for authorizations but will
 // always prefer v2 authorizations. This method will only return authorizations created using the
 // WFE v2 API (in GetAuthorizations this feature was, now somewhat confusingly, called RequireV2Authzs).
-// This method is intended to deprecate GetAuthorizations.
+// This method is intended to deprecate GetAuthorizations. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
 	var authzModels []authz2Model
 	params := []interface{}{
 		*req.RegistrationID,
-		time.Unix(0, *req.Now),
 		statusUint(core.StatusValid),
 		statusUint(core.StatusPending),
+		time.Unix(0, *req.Now),
+		identifierTypeToUint[string(identifier.DNS)],
 	}
 	qmarks := make([]string, len(req.Domains))
 	for i, n := range req.Domains {
@@ -2113,8 +2114,9 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 		JOIN orderToAuthz2
 		ON id = authzID
 		WHERE registrationID = ? AND
-		expires > ? AND
 		status IN (?,?) AND
+		expires > ? AND
+		identifierType = ? AND
 		identifierValue IN (%s)`,
 		authz2Fields,
 		strings.Join(qmarks, ","),
@@ -2277,23 +2279,25 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 
 // GetPendingAuthorization2 returns the most recent Pending authorization with
 // the given identifier, if available. This method is intended to deprecate
-// GetPendingAuthorization.
+// GetPendingAuthorization. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
 	var am authz2Model
 	err := ssa.dbMap.WithContext(ctx).SelectOne(
 		&am,
 		fmt.Sprintf(`SELECT %s FROM authz2 WHERE
 			registrationID = :regID AND
-			identifierValue = :ident AND
 			status = :status AND
-			expires > :validUntil
+			expires > :validUntil AND
+			identifierType = :dnsType AND
+			identifierValue = :ident
 			ORDER BY expires ASC
 			LIMIT 1 `, authz2Fields),
 		map[string]interface{}{
 			"regID":      *req.RegistrationID,
-			"ident":      *req.IdentifierValue,
 			"status":     statusUint(core.StatusPending),
 			"validUntil": time.Unix(0, *req.ValidUntil),
+			"dnsType":    identifierTypeToUint[string(identifier.DNS)],
+			"ident":      *req.IdentifierValue,
 		},
 	)
 	if err != nil {
@@ -2402,18 +2406,21 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 
 // CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
 // in a given time range. This method is intended to deprecate CountInvalidAuthorizations.
+// This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
 	var count int64
 	err := ssa.dbMap.WithContext(ctx).SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM authz2 WHERE
 		registrationID = :regID AND
-		identifierValue = :ident AND
+		status = :status AND
 		expires > :expiresEarliest AND
 		expires <= :expiresLatest AND
-		status = :status`,
+		identifierType = :dnsType AND
+		identifierValue = :ident`,
 		map[string]interface{}{
 			"regID":           *req.RegistrationID,
+			"dnsType":         identifierTypeToUint[string(identifier.DNS)],
 			"ident":           *req.Hostname,
 			"expiresEarliest": time.Unix(0, *req.Range.Earliest),
 			"expiresLatest":   time.Unix(0, *req.Range.Latest),
@@ -2435,13 +2442,15 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context,
 
 // GetValidAuthorizations2 returns the latest authorization for all
 // domain names that the account has authorizations for. This method is
-// intended to deprecate GetValidAuthorizations.
+// intended to deprecate GetValidAuthorizations. This method only supports
+// DNS identifier types.
 func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
 	var authzModels []authz2Model
 	params := []interface{}{
 		*req.RegistrationID,
-		time.Unix(0, *req.Now),
 		statusUint(core.StatusValid),
+		time.Unix(0, *req.Now),
+		identifierTypeToUint[string(identifier.DNS)],
 	}
 	qmarks := make([]string, len(req.Domains))
 	for i, n := range req.Domains {
@@ -2451,10 +2460,11 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 	_, err := ssa.dbMap.Select(
 		&authzModels,
 		fmt.Sprintf(
-			`SELECT %s from authz2 WHERE
+			`SELECT %s FROM authz2 WHERE
 			registrationID = ? AND
-			expires > ? AND
 			status = ? AND
+			expires > ? AND
+			identifierType = ? AND
 			identifierValue IN (%s)`,
 			authz2Fields,
 			strings.Join(qmarks, ","),
