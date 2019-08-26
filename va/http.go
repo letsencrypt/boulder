@@ -213,9 +213,9 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	// Resolve IP addresses for the hostname
 	addrs, err := va.getAddrs(ctx, host)
 	if err != nil {
-		// Convert the error into a ConnectionFailureError so it is presented to the
-		// end user in a problem after being fed through detailedError.
-		return nil, berrors.ConnectionFailureError(err.Error())
+		// va.getAddrs will only ever return a *probs.DNS or *probs.UnknownHost
+		// error. It is safe to pass through unchanged.
+		return nil, err
 	}
 
 	target := &httpValidationTarget{

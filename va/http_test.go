@@ -127,7 +127,7 @@ func TestHTTPValidationTarget(t *testing.T) {
 		{
 			Name:          "No IPs for host",
 			Host:          "always.invalid",
-			ExpectedError: berrors.ConnectionFailureError("unknownHost :: No valid IP addresses found for always.invalid"),
+			ExpectedError: probs.UnknownHost("No valid IP addresses found for always.invalid"),
 		},
 		{
 			Name:        "Only IPv4 addrs for host",
