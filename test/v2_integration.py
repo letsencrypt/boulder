@@ -9,6 +9,7 @@ import datetime
 import time
 import os
 import json
+import re
 
 import OpenSSL
 
@@ -66,6 +67,77 @@ def rand_http_chall(client):
             if isinstance(c.chall, challenges.HTTP01):
                 return d, c.chall
     raise Exception("No HTTP-01 challenge found for random domain authz")
+
+def check_challenge_dns_err(chalType):
+    """
+    check_challenge_dns_err tests that performing an ACME challenge of the
+    specified type to a hostname that is configured to return SERVFAIL for all
+    queries produces the correct problem type and detail message.
+    """
+    client = chisel2.make_client()
+
+    # Create a random domains.
+    d = random_domain()
+
+    # Configure the chall srv to SERVFAIL all queries for that domain.
+    challSrv.add_servfail_response(d)
+
+    # Expect a DNS problem with a detail that matches a regex
+    expectedProbType = "dns"
+    expectedProbRegex = re.compile(r"DNS problem: SERVFAIL looking up (A|AAAA|CAA) for {0}".format(d))
+
+    # Try and issue for the domain with the given challenge type.
+    failed = False
+    try:
+        chisel2.auth_and_issue([d], client=client, chall_type=chalType)
+    except acme_errors.ValidationError as e:
+        # Mark that the auth_and_issue failed
+        failed = True
+        # Extract the failed challenge from each failed authorization
+        for authzr in e.failed_authzrs:
+            c = None
+            if chalType == "http-01":
+                c = chisel2.get_chall(authzr, challenges.HTTP01)
+            elif chalType == "dns-01":
+                c = chisel2.get_chall(authzr, challenges.DNS01)
+            elif chalType == "tls-alpn-01":
+                c = chisel2.get_chall(authzr, challenges.TLSALPN01)
+            else:
+                raise Exception("Invalid challenge type requested: {0}".format(challType))
+
+            # The failed challenge's error should match expected
+            error = c.error
+            if error is None or error.typ != "urn:ietf:params:acme:error:{0}".format(expectedProbType):
+                raise Exception("Expected {0} prob, got {1}".format(expectedProbType, error.typ))
+            if not expectedProbRegex.match(error.detail):
+                raise Exception("Prob detail did not match expectedProbRegex, got \"{0}\"".format(error.detail))
+    finally:
+        challSrv.remove_servfail_response(d)
+
+    # If there was no exception that means something went wrong. The test should fail.
+    if failed is False:
+        raise Exception("No problem generated issuing for broken DNS identifier")
+
+def test_http_challenge_dns_err():
+    """
+    test_http_challenge_dns_err tests that a HTTP-01 challenge for a domain
+    with broken DNS produces the correct problem response.
+    """
+    check_challenge_dns_err("http-01")
+
+def test_dns_challenge_dns_err():
+    """
+    test_dns_challenge_dns_err tests that a DNS-01 challenge for a domain
+    with broken DNS produces the correct problem response.
+    """
+    check_challenge_dns_err("dns-01")
+
+def test_tls_alpn_challenge_dns_err():
+    """
+    test_tls_alpn_challenge_dns_err tests that a TLS-ALPN-01 challenge for a domain
+    with broken DNS produces the correct problem response.
+    """
+    check_challenge_dns_err("tls-alpn-01")
 
 def test_http_challenge_broken_redirect():
     """

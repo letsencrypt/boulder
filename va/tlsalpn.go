@@ -67,7 +67,7 @@ func (va *ValidationAuthorityImpl) tryGetTLSCerts(ctx context.Context,
 		},
 	}
 	if problem != nil {
-		return nil, nil, validationRecords, problem
+		return nil, nil, validationRecords, detailedError(problem)
 	}
 	thisRecord := &validationRecords[0]
 

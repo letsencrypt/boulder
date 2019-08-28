@@ -268,6 +268,9 @@ func detailedError(err error) *probs.ProblemDetails {
 	if berrors.Is(err, berrors.Unauthorized) {
 		return probs.Unauthorized(err.Error())
 	}
+	if berrors.Is(err, berrors.DNS) {
+		return probs.DNS(err.Error())
+	}
 
 	if h2SettingsFrameErrRegex.MatchString(err.Error()) {
 		return probs.ConnectionFailure("Server is speaking HTTP/2 over HTTP")

@@ -294,6 +294,22 @@ func TestTLSError(t *testing.T) {
 	}
 }
 
+func TestDNSError(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSALPN01)
+	hs := brokenTLSSrv()
+
+	va, _ := setup(hs, 0, "", nil)
+
+	_, prob := va.validateTLSALPN01(ctx, dnsi("always.invalid"), chall)
+	if prob == nil {
+		t.Fatalf("TLS validation should have failed: what IP was used?")
+	}
+	if prob.Type != probs.DNSProblem {
+		t.Errorf("Wrong problem type: got %s, expected type %s",
+			prob, probs.DNSProblem)
+	}
+}
+
 func TestCertNames(t *testing.T) {
 	// We duplicate names inside the SAN set
 	names := []string{

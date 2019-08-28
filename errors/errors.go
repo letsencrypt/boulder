@@ -24,6 +24,7 @@ const (
 	MissingSCTs
 	Duplicate
 	OrderNotReady
+	DNS
 )
 
 // BoulderError represents internal Boulder errors
@@ -124,4 +125,8 @@ func DuplicateError(msg string, args ...interface{}) error {
 
 func OrderNotReadyError(msg string, args ...interface{}) error {
 	return New(OrderNotReady, msg, args...)
+}
+
+func DNSError(msg string, args ...interface{}) error {
+	return New(DNS, msg, args...)
 }

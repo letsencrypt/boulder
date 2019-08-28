@@ -32,6 +32,8 @@ class ChallTestServer:
             "del-txt": "/clear-txt",
             "add-alpn": "/add-tlsalpn01",
             "del-alpn": "/del-tlsalpn01",
+            "add-servfail": "/set-servfail",
+            "del-servfail": "/clear-servfail",
             }
 
     def __init__(self, url=None):
@@ -188,6 +190,25 @@ class ChallTestServer:
         return self._postURL(
                 self._URL("del-http"),
                 { "token": token })
+
+    def add_servfail_response(self, host):
+        """
+        add_servfail_response configures the challenge test server to return
+        SERVFAIL for all queries made for the provided host. This will override
+        any other mocks for the host until removed with remove_servfail_response.
+        """
+        return self._postURL(
+                self._URL("add-servfail"),
+                { "host": host})
+
+    def remove_servfail_response(self, host):
+        """
+        remove_servfail_response undoes the work of add_servfail_response,
+        removing the SERVFAIL configuration for the given host.
+        """
+        return self._postURL(
+                self._URL("del-servfail"),
+                { "host": host})
 
     def add_dns01_response(self, host, value):
         """
