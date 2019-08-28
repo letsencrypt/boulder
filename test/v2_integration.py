@@ -84,7 +84,7 @@ def check_challenge_dns_err(chalType):
 
     # Expect a DNS problem with a detail that matches a regex
     expectedProbType = "dns"
-    expectedProbRegex = re.compile(r"DNS problem: SERVFAIL looking up (A|AAAA|CAA) for {0}".format(d))
+    expectedProbRegex = re.compile(r"DNS problem: SERVFAIL looking up (A|AAAA|TXT|CAA) for {0}".format(d))
 
     # Try and issue for the domain with the given challenge type.
     failed = False
