@@ -127,7 +127,7 @@ func TestHTTPValidationTarget(t *testing.T) {
 		{
 			Name:          "No IPs for host",
 			Host:          "always.invalid",
-			ExpectedError: berrors.ConnectionFailureError("unknownHost :: No valid IP addresses found for always.invalid"),
+			ExpectedError: berrors.DNSError("No valid IP addresses found for always.invalid"),
 		},
 		{
 			Name:        "Only IPv4 addrs for host",
@@ -668,8 +668,8 @@ func TestFetchHTTP(t *testing.T) {
 			Name: "No IPs for host",
 			Host: "always.invalid",
 			Path: "/.well-known/whatever",
-			ExpectedProblem: probs.ConnectionFailure(
-				"unknownHost :: No valid IP addresses found for always.invalid"),
+			ExpectedProblem: probs.DNS(
+				"No valid IP addresses found for always.invalid"),
 			// There are no validation records in this case because the base record
 			// is only constructed once a URL is made.
 			ExpectedRecords: nil,
@@ -1101,7 +1101,7 @@ func TestHTTP(t *testing.T) {
 	if prob == nil {
 		t.Fatalf("Domain name is invalid.")
 	}
-	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+	test.AssertEquals(t, prob.Type, probs.DNSProblem)
 }
 
 func TestHTTPTimeout(t *testing.T) {

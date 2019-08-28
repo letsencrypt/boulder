@@ -58,7 +58,7 @@ func (va *ValidationAuthorityImpl) tryGetTLSCerts(ctx context.Context,
 	identifier identifier.ACMEIdentifier, challenge core.Challenge,
 	tlsConfig *tls.Config) ([]*x509.Certificate, *tls.ConnectionState, []core.ValidationRecord, *probs.ProblemDetails) {
 
-	allAddrs, problem := va.getAddrs(ctx, identifier.Value)
+	allAddrs, err := va.getAddrs(ctx, identifier.Value)
 	validationRecords := []core.ValidationRecord{
 		{
 			Hostname:          identifier.Value,
@@ -66,8 +66,8 @@ func (va *ValidationAuthorityImpl) tryGetTLSCerts(ctx context.Context,
 			Port:              strconv.Itoa(va.tlsPort),
 		},
 	}
-	if problem != nil {
-		return nil, nil, validationRecords, problem
+	if err != nil {
+		return nil, nil, validationRecords, detailedError(err)
 	}
 	thisRecord := &validationRecords[0]
 
@@ -85,11 +85,11 @@ func (va *ValidationAuthorityImpl) tryGetTLSCerts(ctx context.Context,
 		address := net.JoinHostPort(v6[0].String(), thisRecord.Port)
 		thisRecord.AddressUsed = v6[0]
 
-		certs, cs, err := va.getTLSCerts(ctx, address, identifier, challenge, tlsConfig)
+		certs, cs, prob := va.getTLSCerts(ctx, address, identifier, challenge, tlsConfig)
 
-		// If there is no error, return immediately
+		// If there is no problem, return immediately
 		if err == nil {
-			return certs, cs, validationRecords, err
+			return certs, cs, validationRecords, prob
 		}
 
 		// Otherwise, we note that we tried an address and fall back to trying IPv4
@@ -111,9 +111,9 @@ func (va *ValidationAuthorityImpl) tryGetTLSCerts(ctx context.Context,
 	// Otherwise if there are no IPv6 addresses, or there was an error
 	// talking to the first IPv6 address, try the first IPv4 address
 	thisRecord.AddressUsed = v4[0]
-	certs, cs, err := va.getTLSCerts(ctx, net.JoinHostPort(v4[0].String(), thisRecord.Port),
+	certs, cs, prob := va.getTLSCerts(ctx, net.JoinHostPort(v4[0].String(), thisRecord.Port),
 		identifier, challenge, tlsConfig)
-	return certs, cs, validationRecords, err
+	return certs, cs, validationRecords, prob
 }
 
 func (va *ValidationAuthorityImpl) getTLSCerts(

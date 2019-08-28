@@ -9,6 +9,7 @@ import (
 	"net"
 
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 )
@@ -16,16 +17,17 @@ import (
 // getAddr will query for all A/AAAA records associated with hostname and return
 // the preferred address, the first net.IP in the addrs slice, and all addresses
 // resolved. This is the same choice made by the Go internal resolution library
-// used by net/http.
-func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]net.IP, *probs.ProblemDetails) {
+// used by net/http. If there is an error resolving the hostname, or if no
+// usable IP addresses are available then a berrors.DNSError instance is
+// returned with a nil net.IP slice.
+func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]net.IP, error) {
 	addrs, err := va.dnsClient.LookupHost(ctx, hostname)
 	if err != nil {
-		problem := probs.DNS("%v", err)
-		return nil, problem
+		return nil, berrors.DNSError("%v", err)
 	}
 
 	if len(addrs) == 0 {
-		return nil, probs.UnknownHost("No valid IP addresses found for %s", hostname)
+		return nil, berrors.DNSError("No valid IP addresses found for %s", hostname)
 	}
 	va.log.Debugf("Resolved addresses for %s: %s", hostname, addrs)
 	return addrs, nil

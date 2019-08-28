@@ -14,7 +14,6 @@ const (
 	ServerInternalProblem        = ProblemType("serverInternal")
 	TLSProblem                   = ProblemType("tls")
 	UnauthorizedProblem          = ProblemType("unauthorized")
-	UnknownHostProblem           = ProblemType("unknownHost")
 	RateLimitedProblem           = ProblemType("rateLimited")
 	BadNonceProblem              = ProblemType("badNonce")
 	InvalidEmailProblem          = ProblemType("invalidEmail")
@@ -89,7 +88,6 @@ func ProblemDetailsToStatusCode(prob *ProblemDetails) int {
 		BadSignatureAlgorithmProblem,
 		BadPublicKeyProblem,
 		TLSProblem,
-		UnknownHostProblem,
 		BadNonceProblem,
 		InvalidEmailProblem,
 		RejectedIdentifierProblem,
@@ -254,15 +252,6 @@ func InvalidEmail(detail string, a ...interface{}) *ProblemDetails {
 func ConnectionFailure(detail string, a ...interface{}) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       ConnectionProblem,
-		Detail:     fmt.Sprintf(detail, a...),
-		HTTPStatus: http.StatusBadRequest,
-	}
-}
-
-// UnknownHost returns a ProblemDetails representing an UnknownHostProblem error
-func UnknownHost(detail string, a ...interface{}) *ProblemDetails {
-	return &ProblemDetails{
-		Type:       UnknownHostProblem,
 		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusBadRequest,
 	}
