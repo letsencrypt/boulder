@@ -632,30 +632,46 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 	testCases := []struct {
 		name          string
 		primaryResult *probs.ProblemDetails
-		remoteProbs   []*probs.ProblemDetails
+		remoteProbs   []*remoteValidationResult
 		expectedLog   string
 	}{
 		{
 			name:          "remote and primary results equal (all nil)",
 			primaryResult: nil,
-			remoteProbs:   nil,
+			remoteProbs: []*remoteValidationResult{
+				&remoteValidationResult{Problem: nil, Hostname: "remoteA"},
+				&remoteValidationResult{Problem: nil, Hostname: "remoteB"},
+				&remoteValidationResult{Problem: nil, Hostname: "remoteC"},
+			},
 		},
 		{
 			name:          "remote and primary results equal (not nil)",
 			primaryResult: egProbA,
-			remoteProbs:   []*probs.ProblemDetails{egProbA, egProbA, egProbA},
+			remoteProbs: []*remoteValidationResult{
+				&remoteValidationResult{Problem: egProbA, Hostname: "remoteA"},
+				&remoteValidationResult{Problem: egProbA, Hostname: "remoteB"},
+				&remoteValidationResult{Problem: egProbA, Hostname: "remoteC"},
+			},
 		},
 		{
 			name:          "remote and primary differ (primary nil)",
 			primaryResult: nil,
-			remoteProbs:   []*probs.ProblemDetails{egProbA, nil, egProbB},
-			expectedLog:   `INFO: remoteVADifferentials JSON={"Domain":"example.com","ChallengeType":"blorpus-01","PrimaryResult":null,"RemoteSuccesses":1,"RemoteFailures":[{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400},{"type":"orderNotReady","detail":"please take a number","status":403}]}`,
+			remoteProbs: []*remoteValidationResult{
+				&remoteValidationResult{Problem: egProbA, Hostname: "remoteA"},
+				&remoteValidationResult{Problem: nil, Hostname: "remoteB"},
+				&remoteValidationResult{Problem: egProbB, Hostname: "remoteC"},
+			},
+			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","ChallengeType":"blorpus-01","PrimaryResult":null,"RemoteSuccesses":1,"RemoteFailures":[{"Hostname":"remoteA","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"Hostname":"remoteC","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
 		},
 		{
 			name:          "remote and primary differ (primary not nil)",
 			primaryResult: egProbA,
-			remoteProbs:   []*probs.ProblemDetails{nil, egProbB, nil},
-			expectedLog:   `INFO: remoteVADifferentials JSON={"Domain":"example.com","ChallengeType":"blorpus-01","PrimaryResult":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400},"RemoteSuccesses":2,"RemoteFailures":[{"type":"orderNotReady","detail":"please take a number","status":403}]}`,
+			remoteProbs: []*remoteValidationResult{
+				&remoteValidationResult{Problem: nil, Hostname: "remoteA"},
+				&remoteValidationResult{Problem: egProbB, Hostname: "remoteB"},
+				&remoteValidationResult{Problem: nil, Hostname: "remoteC"},
+			},
+			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","ChallengeType":"blorpus-01","PrimaryResult":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400},"RemoteSuccesses":2,"RemoteFailures":[{"Hostname":"remoteB","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
 		},
 	}
 

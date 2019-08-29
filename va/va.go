@@ -65,12 +65,12 @@ var (
 	h2SettingsFrameErrRegex = regexp.MustCompile(`(?:net\/http\: HTTP\/1\.x transport connection broken: )?malformed HTTP response \"\\x00\\x00\\x[a-f0-9]{2}\\x04\\x00\\x00\\x00\\x00\\x00.*"`)
 )
 
-// RemoteVA wraps the core.ValidationAuthority interface and adds a field containing the addresses
+// RemoteVA wraps the core.ValidationAuthority interface and adds a field containing the address
 // of the remote gRPC server since the interface (and the underlying gRPC client) doesn't
 // provide a way to extract this metadata which is useful for debugging gRPC connection issues.
 type RemoteVA struct {
 	core.ValidationAuthority
-	Addresses string
+	Address string
 }
 
 type vaMetrics struct {
@@ -353,7 +353,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	domain string,
 	challenge core.Challenge,
 	authz core.Authorization,
-	results chan *probs.ProblemDetails) {
+	results chan *remoteValidationResult) {
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]
 		go func(rva RemoteVA, index int) {
@@ -368,7 +368,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 					// If the non-nil err was a non-nil *probs.ProblemDetails then we can
 					// log it at an info level. It's a normal non-success validation
 					// result and the remote VA will have logged more detail.
-					va.log.Infof("Remote VA %q.PerformValidation returned problem: %s", rva.Addresses, err)
+					va.log.Infof("Remote VA %q.PerformValidation returned problem: %s", rva.Address, err)
 				} else if ok && p == (*probs.ProblemDetails)(nil) {
 					// If the non-nil err was a nil *probs.ProblemDetails then we don't need to do
 					// anything. There isn't really an error here.
@@ -384,15 +384,20 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 					// will later be returned as a server internal error
 					// without detail if the number of errors is >= va.maxRemoteFailures.
 					// Log it at the error level so we can debug from logs.
-					va.log.Errf("Remote VA %q.PerformValidation failed: %s", rva.Addresses, err)
+					va.log.Errf("Remote VA %q.PerformValidation failed: %s", rva.Address, err)
 				}
 			}
+			result := &remoteValidationResult{
+				Hostname: rva.Address,
+			}
 			if err == nil {
-				results <- nil
+				results <- result
 			} else if prob, ok := err.(*probs.ProblemDetails); ok {
-				results <- prob
+				result.Problem = prob
+				results <- result
 			} else {
-				results <- probs.ServerInternal("Remote PerformValidation RPC failed")
+				result.Problem = probs.ServerInternal("Remote PerformValidation RPC failed")
+				results <- result
 			}
 		}(remoteVA, i)
 	}
@@ -418,7 +423,7 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 	domain string,
 	challengeType string,
 	primaryResult *probs.ProblemDetails,
-	remoteErrors chan *probs.ProblemDetails,
+	remoteResultsChan chan *remoteValidationResult,
 	numRemoteVAs int) *probs.ProblemDetails {
 
 	state := "failure"
@@ -435,15 +440,15 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 	good := 0
 	bad := 0
 
-	var remoteProbs []*probs.ProblemDetails
+	var remoteResults []*remoteValidationResult
 	var firstProb *probs.ProblemDetails
 	// Due to channel behavior this could block indefinitely and we rely on gRPC
 	// honoring the context deadline used in client calls to prevent that from
 	// happening.
-	for prob := range remoteErrors {
-		// Add the problem to the slice
-		remoteProbs = append(remoteProbs, prob)
-		if prob == nil {
+	for result := range remoteResultsChan {
+		// Add the result to the slice
+		remoteResults = append(remoteResults, result)
+		if result.Problem == nil {
 			good++
 		} else {
 			bad++
@@ -451,8 +456,8 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 
 		// Store the first non-nil problem to return later (if `MultiVAFullResults`
 		// is enabled).
-		if firstProb == nil && prob != nil {
-			firstProb = prob
+		if firstProb == nil && result.Problem != nil {
+			firstProb = result.Problem
 		}
 
 		// If MultiVAFullResults isn't enabled then return early whenever the
@@ -462,13 +467,13 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 				state = "success"
 				return nil
 			} else if bad > va.maxRemoteFailures {
-				return prob
+				return result.Problem
 			}
 		}
 
 		// If we haven't returned early because of MultiVAFullResults being enabled
 		// we need to break the loop once all of the VAs have returned a result.
-		if len(remoteProbs) == numRemoteVAs {
+		if len(remoteResults) == numRemoteVAs {
 			break
 		}
 	}
@@ -476,7 +481,7 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 	// If we are using `features.MultiVAFullResults` then we haven't returned
 	// early and can now log the differential between what the primary VA saw and
 	// what all of the remote VAs saw.
-	va.logRemoteValidationDifferentials(domain, challengeType, primaryResult, remoteProbs)
+	va.logRemoteValidationDifferentials(domain, challengeType, primaryResult, remoteResults)
 
 	// Based on the threshold of good/bad return nil or a problem.
 	if good >= required {
@@ -498,20 +503,20 @@ func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 	domain string,
 	challengeType string,
 	primaryResult *probs.ProblemDetails,
-	remoteProbs []*probs.ProblemDetails) {
+	remoteResults []*remoteValidationResult) {
 
-	var successes []*probs.ProblemDetails
-	var failures []*probs.ProblemDetails
+	var successes []*remoteValidationResult
+	var failures []*remoteValidationResult
 
 	allEqual := true
-	for _, e := range remoteProbs {
-		if e != primaryResult {
+	for _, result := range remoteResults {
+		if result.Problem != primaryResult {
 			allEqual = false
 		}
-		if e == nil {
-			successes = append(successes, nil)
+		if result.Problem == nil {
+			successes = append(successes, result)
 		} else {
-			failures = append(failures, e)
+			failures = append(failures, result)
 		}
 	}
 	if allEqual {
@@ -532,7 +537,7 @@ func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 		ChallengeType   string
 		PrimaryResult   *probs.ProblemDetails
 		RemoteSuccesses int
-		RemoteFailures  []*probs.ProblemDetails
+		RemoteFailures  []*remoteValidationResult
 	}{
 		Domain:          domain,
 		ChallengeType:   challengeType,
@@ -554,6 +559,13 @@ func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 	va.log.Infof("remoteVADifferentials JSON=%s", string(logJSON))
 }
 
+// remoteValidationResult is a struct that combines a problem details instance
+// (that may be nil) with the remote VA hostname that produced it.
+type remoteValidationResult struct {
+	Hostname string
+	Problem  *probs.ProblemDetails
+}
+
 // PerformValidation validates the given challenge. It always returns a list of
 // validation records, even when it also returns an error.
 func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
@@ -564,10 +576,10 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	}
 	vStart := va.clk.Now()
 
-	var remoteProbs chan *probs.ProblemDetails
+	var remoteResults chan *remoteValidationResult
 	if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
-		remoteProbs = make(chan *probs.ProblemDetails, remoteVACount)
-		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteProbs)
+		remoteResults = make(chan *remoteValidationResult, remoteVACount)
+		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteResults)
 	}
 
 	records, prob := va.validate(ctx, identifier.DNSIdentifier(domain), challenge, authz)
@@ -584,20 +596,20 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		challenge.Status = core.StatusInvalid
 		challenge.Error = prob
 		logEvent.Error = prob.Error()
-	} else if remoteProbs != nil {
+	} else if remoteResults != nil {
 		if !features.Enabled(features.EnforceMultiVA) && features.Enabled(features.MultiVAFullResults) {
 			// If we're not going to enforce multi VA but we are logging the
 			// differentials then collect and log the remote results in a separate go
 			// routine to avoid blocking the primary VA.
 			go func() {
-				_ = va.processRemoteResults(domain, string(challenge.Type), prob, remoteProbs, len(va.remoteVAs))
+				_ = va.processRemoteResults(domain, string(challenge.Type), prob, remoteResults, len(va.remoteVAs))
 			}()
 			// Since prob was nil and we're not enforcing the results from
 			// `processRemoteResults` set the challenge status to valid so the
 			// validationTime metrics increment has the correct result label.
 			challenge.Status = core.StatusValid
 		} else if features.Enabled(features.EnforceMultiVA) {
-			remoteProb := va.processRemoteResults(domain, string(challenge.Type), prob, remoteProbs, len(va.remoteVAs))
+			remoteProb := va.processRemoteResults(domain, string(challenge.Type), prob, remoteResults, len(va.remoteVAs))
 			if remoteProb != nil {
 				prob = remoteProb
 				challenge.Status = core.StatusInvalid
