@@ -476,7 +476,7 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 	// If we are using `features.MultiVAFullResults` then we haven't returned
 	// early and can now log the differential between what the primary VA saw and
 	// what all of the remote VAs saw.
-	va.logRemoteValidationDifferentials(domain, primaryResult, remoteProbs)
+	va.logRemoteValidationDifferentials(domain, challengeType, primaryResult, remoteProbs)
 
 	// Based on the threshold of good/bad return nil or a problem.
 	if good >= required {
@@ -496,6 +496,7 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 // that contains the primary VA result and the results each remote VA returned.
 func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 	domain string,
+	challengeType string,
 	primaryResult *probs.ProblemDetails,
 	remoteProbs []*probs.ProblemDetails) {
 
@@ -528,11 +529,13 @@ func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 
 	logOb := struct {
 		Domain          string
+		ChallengeType   string
 		PrimaryResult   *probs.ProblemDetails
 		RemoteSuccesses int
 		RemoteFailures  []*probs.ProblemDetails
 	}{
 		Domain:          domain,
+		ChallengeType:   challengeType,
 		PrimaryResult:   primaryResult,
 		RemoteSuccesses: len(successes),
 		RemoteFailures:  failures,
