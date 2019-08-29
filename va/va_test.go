@@ -611,3 +611,68 @@ func TestDetailedError(t *testing.T) {
 		}
 	}
 }
+
+func TestLogRemoteValidationDifferentials(t *testing.T) {
+	// Create some remote VAs
+	remoteVA1, _ := setup(nil, 0, "remote 1", nil)
+	remoteVA2, _ := setup(nil, 0, "remote 2", nil)
+	remoteVA3, _ := setup(nil, 0, "remote 3", nil)
+	remoteVAs := []RemoteVA{
+		{remoteVA1, "remote 1"},
+		{remoteVA2, "remote 2"},
+		{remoteVA3, "remote 3"},
+	}
+
+	// Set up a local VA that allows a max of 2 remote failures.
+	localVA, mockLog := setup(nil, 2, "local 1", remoteVAs)
+
+	egProbA := probs.DNS("root DNS servers closed at 4:30pm")
+	egProbB := probs.OrderNotReady("please take a number")
+
+	testCases := []struct {
+		name          string
+		primaryResult *probs.ProblemDetails
+		remoteProbs   []*probs.ProblemDetails
+		expectedLog   string
+	}{
+		{
+			name:          "remote and primary results equal (all nil)",
+			primaryResult: nil,
+			remoteProbs:   nil,
+		},
+		{
+			name:          "remote and primary results equal (not nil)",
+			primaryResult: egProbA,
+			remoteProbs:   []*probs.ProblemDetails{egProbA, egProbA, egProbA},
+		},
+		{
+			name:          "remote and primary differ (primary nil)",
+			primaryResult: nil,
+			remoteProbs:   []*probs.ProblemDetails{egProbA, nil, egProbB},
+			expectedLog:   `INFO: remoteVADifferentials JSON={"Domain":"example.com","ChallengeType":"blorpus-01","PrimaryResult":null,"RemoteSuccesses":1,"RemoteFailures":[{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400},{"type":"orderNotReady","detail":"please take a number","status":403}]}`,
+		},
+		{
+			name:          "remote and primary differ (primary not nil)",
+			primaryResult: egProbA,
+			remoteProbs:   []*probs.ProblemDetails{nil, egProbB, nil},
+			expectedLog:   `INFO: remoteVADifferentials JSON={"Domain":"example.com","ChallengeType":"blorpus-01","PrimaryResult":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400},"RemoteSuccesses":2,"RemoteFailures":[{"type":"orderNotReady","detail":"please take a number","status":403}]}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockLog.Clear()
+
+			localVA.logRemoteValidationDifferentials(
+				"example.com", "blorpus-01", tc.primaryResult, tc.remoteProbs)
+
+			lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
+			if tc.expectedLog != "" {
+				test.AssertEquals(t, len(lines), 1)
+				test.AssertEquals(t, lines[0], tc.expectedLog)
+			} else {
+				test.AssertEquals(t, len(lines), 0)
+			}
+		})
+	}
+}
