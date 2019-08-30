@@ -134,7 +134,7 @@ func main() {
 				remotes,
 				va.RemoteVA{
 					ValidationAuthority: bgrpc.NewValidationAuthorityGRPCClient(vaConn),
-					Addresses:           rva.ServerAddress,
+					Address:             rva.ServerAddress,
 				},
 			)
 		}
