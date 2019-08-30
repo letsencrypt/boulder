@@ -388,7 +388,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 				}
 			}
 			result := &remoteValidationResult{
-				Hostname: rva.Address,
+				VAHostname: rva.Address,
 			}
 			if err == nil {
 				results <- result
@@ -562,8 +562,8 @@ func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 // remoteValidationResult is a struct that combines a problem details instance
 // (that may be nil) with the remote VA hostname that produced it.
 type remoteValidationResult struct {
-	Hostname string
-	Problem  *probs.ProblemDetails
+	VAHostname string
+	Problem    *probs.ProblemDetails
 }
 
 // PerformValidation validates the given challenge. It always returns a list of
