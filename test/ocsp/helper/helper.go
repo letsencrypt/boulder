@@ -96,7 +96,11 @@ func Req(fileName string) (*ocsp.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	cert, err := parse(contents)
+	return ReqDER(contents)
+}
+
+func ReqDER(der []byte) (*ocsp.Response, error) {
+	cert, err := parse(der)
 	if err != nil {
 		return nil, fmt.Errorf("parsing certificate: %s", err)
 	}

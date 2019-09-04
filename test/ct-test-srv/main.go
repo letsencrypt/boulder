@@ -132,6 +132,7 @@ func (is *integrationSrv) addChainOrPre(w http.ResponseWriter, r *http.Request, 
 	is.Lock()
 	for _, h := range cert.DNSNames {
 		if is.rejectHosts[h] {
+			is.Unlock()
 			is.rejected = append(is.rejected, addChainReq.Chain[0])
 			w.WriteHeader(400)
 			return
