@@ -39,7 +39,7 @@ def run_client_tests():
     run(cmd, cwd=root)
 
 def run_go_tests():
-    run("go test -count=1 ./test/integration")
+    run("go test -tags integration -count=1 ./test/integration")
 
 def run_expired_authz_purger():
     # Note: This test must be run after all other tests that depend on
