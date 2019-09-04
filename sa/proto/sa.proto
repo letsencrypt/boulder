@@ -38,6 +38,8 @@ service StorageAuthority {
         rpc NewPendingAuthorization(core.Authorization) returns (core.Authorization) {}
         rpc FinalizeAuthorization(core.Authorization) returns (core.Empty) {}
         rpc AddCertificate(AddCertificateRequest) returns (AddCertificateResponse) {}
+        rpc AddPrecertificate(AddCertificateRequest) returns (core.Empty) {}
+        rpc AddSerial(AddSerialRequest) returns (core.Empty) {}
         rpc DeactivateRegistration(RegistrationID) returns (core.Empty) {}
         rpc DeactivateAuthorization(AuthorizationID) returns (core.Empty) {}
         rpc NewOrder(core.Order) returns (core.Order) {}
@@ -161,6 +163,13 @@ message PreviousCertificateExistsRequest {
 
 message Exists {
         optional bool exists = 1;
+}
+
+message AddSerialRequest {
+        optional int64 regID = 1;
+        optional string serial = 2;
+        optional int64 created = 3; // Unix timestamp (nanoseconds)
+        optional int64 expires = 4; // Unix timestamp (nanoseconds)
 }
 
 message AddCertificateRequest {
