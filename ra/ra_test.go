@@ -1407,6 +1407,19 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	if !berrors.Is(err, berrors.RateLimit) {
 		t.Errorf("Incorrect error type %#v", err)
 	}
+	// Verify it has no sub errors as there is only one bad name
+	test.AssertEquals(t, len(err.(*berrors.BoulderError).SubErrors), 0)
+
+	// Two base domains, above threshold
+	mockSA.nameCounts["example.com"] = nameCount("example.com", 10)
+	mockSA.nameCounts["other-example.com"] = nameCount("other-example.com", 10)
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"example.com", "other-example.com"}, rlp, 99)
+	test.AssertError(t, err, "incorrectly failed to rate limit example.com, other-example.com")
+	if !berrors.Is(err, berrors.RateLimit) {
+		t.Errorf("Incorrect error type %#v", err)
+	}
+	// Verify it has two sub errors as there are two bad names
+	test.AssertEquals(t, len(err.(*berrors.BoulderError).SubErrors), 2)
 
 	// SA misbehaved and didn't send back a count for every input name
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"zombo.com", "www.example.com", "example.com"}, rlp, 99)
