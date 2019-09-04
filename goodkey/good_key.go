@@ -41,13 +41,17 @@ type KeyPolicy struct {
 	AllowECDSANISTP256 bool // Whether ECDSA NISTP256 keys should be allowed.
 	AllowECDSANISTP384 bool // Whether ECDSA NISTP384 keys should be allowed.
 	weakRSAList        *WeakRSAKeys
+	blockedList        *blockedKeys
 }
 
 // NewKeyPolicy returns a KeyPolicy that allows RSA, ECDSA256 and ECDSA384.
 // weakKeyFile contains the path to a JSON file containing truncated modulus
 // hashes of known weak RSA keys. If this argument is empty RSA modulus hash
-// checking will be disabled.
-func NewKeyPolicy(weakKeyFile string) (KeyPolicy, error) {
+// checking will be disabled. blockedKeyFile contains the path to a YAML file
+// containing Base64 encoded SHA256 hashes of pkix subject public keys that
+// should be blocked. If this argument is empty then no blocked key checking is
+// performed.
+func NewKeyPolicy(weakKeyFile, blockedKeyFile string) (KeyPolicy, error) {
 	kp := KeyPolicy{
 		AllowRSA:           true,
 		AllowECDSANISTP256: true,
@@ -60,6 +64,13 @@ func NewKeyPolicy(weakKeyFile string) (KeyPolicy, error) {
 		}
 		kp.weakRSAList = keyList
 	}
+	if blockedKeyFile != "" {
+		blocked, err := loadBlockedKeysList(blockedKeyFile)
+		if err != nil {
+			return KeyPolicy{}, err
+		}
+		kp.blockedList = blocked
+	}
 	return kp, nil
 }
 
@@ -68,6 +79,15 @@ func NewKeyPolicy(weakKeyFile string) (KeyPolicy, error) {
 // strength and algorithm checking.
 // TODO: Support JSONWebKeys once go-jose migration is done.
 func (policy *KeyPolicy) GoodKey(key crypto.PublicKey) error {
+	// If there is a blocked list configured then check if the public key is one
+	// that has been administratively blocked.
+	if policy.blockedList != nil {
+		if blocked, err := policy.blockedList.blocked(key); err != nil {
+			return berrors.InternalServerError("error checking blocklist for key: %v", key)
+		} else if blocked {
+			return berrors.BadPublicKeyError("public key is forbidden")
+		}
+	}
 	switch t := key.(type) {
 	case rsa.PublicKey:
 		return policy.goodKeyRSA(t)

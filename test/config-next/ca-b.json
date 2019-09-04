@@ -5,6 +5,7 @@
     "ecdsaProfile": "ecdsaEE",
     "debugAddr": ":8001",
     "weakKeyFile": "test/example-weak-keys.json",
+    "blockedKeyFile": "test/example-blocked-keys.yaml",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/ca.boulder/cert.pem",

@@ -18,6 +18,7 @@
     "directoryCAAIdentity": "happy-hacker-ca.invalid",
     "directoryWebsite": "https://github.com/letsencrypt/boulder",
     "legacyKeyIDPrefix": "http://boulder:4000/reg/",
+    "blockedKeyFile": "test/example-blocked-keys.yaml",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/wfe.boulder/cert.pem",

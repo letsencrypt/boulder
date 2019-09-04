@@ -46,6 +46,11 @@ type CAConfig struct {
 	// hashes of known easily enumerable keys.
 	WeakKeyFile string
 
+	// BlockedKeyFile is the path to a YAML file containing Base64 encoded
+	// SHA256 hashes of DER encoded PKIX public keys that should be considered
+	// administratively blocked.
+	BlockedKeyFile string
+
 	SAService *cmd.GRPCClientConfig
 
 	// Path to directory holding orphan queue files, if not provided an orphan queue

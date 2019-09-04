@@ -64,6 +64,11 @@ type config struct {
 		// hashes of known easily enumerable keys.
 		WeakKeyFile string
 
+		// BlockedKeyFile is the path to a YAML file containing Base64 encoded
+		// SHA256 hashes of DER encoded PKIX public keys that should be considered
+		// administratively blocked.
+		BlockedKeyFile string
+
 		OrderLifetime cmd.ConfigDuration
 
 		// CTLogGroups contains groupings of CT logs which we want SCTs from.
@@ -199,7 +204,7 @@ func main() {
 		pendingAuthorizationLifetime = time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 	}
 
-	kp, err := goodkey.NewKeyPolicy(c.RA.WeakKeyFile)
+	kp, err := goodkey.NewKeyPolicy(c.RA.WeakKeyFile, c.RA.BlockedKeyFile)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	if c.RA.MaxNames == 0 {

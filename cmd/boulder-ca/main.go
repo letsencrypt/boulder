@@ -156,7 +156,7 @@ func main() {
 	issuers, err := loadIssuers(c)
 	cmd.FailOnError(err, "Couldn't load issuers")
 
-	kp, err := goodkey.NewKeyPolicy(c.CA.WeakKeyFile)
+	kp, err := goodkey.NewKeyPolicy(c.CA.WeakKeyFile, c.CA.BlockedKeyFile)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	tlsConfig, err := c.CA.TLS.Load()

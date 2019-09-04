@@ -10,6 +10,7 @@
     "authorizationLifetimeDays": 30,
     "pendingAuthorizationLifetimeDays": 7,
     "weakKeyFile": "test/example-weak-keys.json",
+    "blockedKeyFile": "test/example-blocked-keys.yaml",
     "orderLifetime": "168h",
     "issuerCertPath":  "test/test-ca2.pem",
     "tls": {
