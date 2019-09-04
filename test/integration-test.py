@@ -38,6 +38,9 @@ def run_client_tests():
     cmd = os.path.join(root, 'tests', 'boulder-integration.sh')
     run(cmd, cwd=root)
 
+def run_go_tests():
+    run("go test ./test/integration")
+
 def run_expired_authz_purger():
     # Note: This test must be run after all other tests that depend on
     # authorizations added to the database during setup
@@ -269,6 +272,8 @@ def main():
 
     if args.run_certbot:
         run_client_tests()
+
+    run_go_tests()
 
     if args.custom:
         run(args.custom)

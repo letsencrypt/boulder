@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/eggsampler/acme"
+	"github.com/eggsampler/acme/v2"
 	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
 )
 
