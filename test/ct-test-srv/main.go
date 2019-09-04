@@ -27,83 +27,145 @@ type ctSubmissionRequest struct {
 
 type integrationSrv struct {
 	sync.Mutex
-	submissions     map[string]int64
+	submissions map[string]int64
+	// Hostnames where we refuse to provide an SCT. This is to exercise the code
+	// path where all CT servers fail.
+	rejectHosts map[string]bool
+	// A list of entries that we rejected based on rejectHosts.
+	rejected        []string
 	key             *ecdsa.PrivateKey
 	latencySchedule []float64
 	latencyItem     int
 }
 
-func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
-	switch r.URL.Path {
-	case "/ct/v1/add-pre-chain":
-		fallthrough
-	case "/ct/v1/add-chain":
-		if r.Method != "POST" {
-			http.NotFound(w, r)
-			return
-		}
-		bodyBytes, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		}
+func readJSON(w http.ResponseWriter, r *http.Request, output interface{}) error {
+	if r.Method != "POST" {
+		return fmt.Errorf("incorrect method; only POST allowed")
+	}
+	bodyBytes, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		return err
+	}
 
-		var addChainReq ctSubmissionRequest
-		err = json.Unmarshal(bodyBytes, &addChainReq)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		}
-		if len(addChainReq.Chain) == 0 {
-			w.WriteHeader(400)
-			return
-		}
+	err = json.Unmarshal(bodyBytes, output)
+	if err != nil {
+		return err
+	}
+	return nil
+}
 
-		precert := false
-		if r.URL.Path == "/ct/v1/add-pre-chain" {
-			precert = true
-		}
+func (is *integrationSrv) addChain(w http.ResponseWriter, r *http.Request) {
+	is.addChainOrPre(w, r, false)
+}
 
-		b, err := base64.StdEncoding.DecodeString(addChainReq.Chain[0])
-		if err != nil {
-			w.WriteHeader(400)
-			return
-		}
-		cert, err := x509.ParseCertificate(b)
-		if err != nil {
-			w.WriteHeader(400)
-			return
-		}
-		hostnames := strings.Join(cert.DNSNames, ",")
+// addRejectHost takes a JSON POST with a "host" field; any subsequent
+// submissions for that host will get a 400 error.
+func (is *integrationSrv) addRejectHost(w http.ResponseWriter, r *http.Request) {
+	var rejectHostReq struct {
+		Host string
+	}
+	err := readJSON(w, r, &rejectHostReq)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-		is.Lock()
-		is.submissions[hostnames]++
-		is.Unlock()
+	is.Lock()
+	defer is.Unlock()
+	is.rejectHosts[rejectHostReq.Host] = true
+}
 
-		if is.latencySchedule != nil {
-			is.Lock()
-			sleepTime := time.Duration(is.latencySchedule[is.latencyItem%len(is.latencySchedule)]) * time.Second
-			is.latencyItem++
-			is.Unlock()
-			time.Sleep(sleepTime)
-		}
-		w.WriteHeader(http.StatusOK)
-		w.Write(publisher.CreateTestingSignedSCT(addChainReq.Chain, is.key, precert, time.Now()))
-	case "/submissions":
-		if r.Method != "GET" {
-			http.NotFound(w, r)
-			return
-		}
+// getRejections returns a JSON array containing strings; those strings are
+// base64 encodings of certificates or precertificates that were rejected due to
+// the rejectHosts mechanism.
+func (is *integrationSrv) getRejections(w http.ResponseWriter, r *http.Request) {
+	is.Lock()
+	defer is.Unlock()
+	output, err := json.Marshal(is.rejected)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-		is.Lock()
-		hostnames := r.URL.Query().Get("hostnames")
-		submissions := is.submissions[hostnames]
-		is.Unlock()
+	w.WriteHeader(http.StatusOK)
+	w.Write(output)
+}
 
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "%d", submissions)
-	default:
+func (is *integrationSrv) addPreChain(w http.ResponseWriter, r *http.Request) {
+	is.addChainOrPre(w, r, true)
+}
+
+func (is *integrationSrv) addChainOrPre(w http.ResponseWriter, r *http.Request, precert bool) {
+	if r.Method != "POST" {
 		http.NotFound(w, r)
 		return
 	}
+	bodyBytes, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var addChainReq ctSubmissionRequest
+	err = json.Unmarshal(bodyBytes, &addChainReq)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if len(addChainReq.Chain) == 0 {
+		w.WriteHeader(400)
+		return
+	}
+
+	b, err := base64.StdEncoding.DecodeString(addChainReq.Chain[0])
+	if err != nil {
+		w.WriteHeader(400)
+		return
+	}
+	cert, err := x509.ParseCertificate(b)
+	if err != nil {
+		w.WriteHeader(400)
+		return
+	}
+	hostnames := strings.Join(cert.DNSNames, ",")
+
+	is.Lock()
+	for _, h := range cert.DNSNames {
+		if is.rejectHosts[h] {
+			is.Unlock()
+			is.rejected = append(is.rejected, addChainReq.Chain[0])
+			w.WriteHeader(400)
+			return
+		}
+	}
+
+	is.submissions[hostnames]++
+	is.Unlock()
+
+	if is.latencySchedule != nil {
+		is.Lock()
+		sleepTime := time.Duration(is.latencySchedule[is.latencyItem%len(is.latencySchedule)]) * time.Second
+		is.latencyItem++
+		is.Unlock()
+		time.Sleep(sleepTime)
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write(publisher.CreateTestingSignedSCT(addChainReq.Chain, is.key, precert, time.Now()))
+}
+
+func (is *integrationSrv) getSubmissions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.NotFound(w, r)
+		return
+	}
+
+	is.Lock()
+	hostnames := r.URL.Query().Get("hostnames")
+	submissions := is.submissions[hostnames]
+	is.Unlock()
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "%d", submissions)
 }
 
 type config struct {
@@ -139,10 +201,17 @@ func runPersonality(p Personality) {
 		key:             key,
 		latencySchedule: p.LatencySchedule,
 		submissions:     make(map[string]int64),
+		rejectHosts:     make(map[string]bool),
 	}
+	m := http.NewServeMux()
+	m.HandleFunc("/submissions", is.getSubmissions)
+	m.HandleFunc("/ct/v1/add-pre-chain", is.addPreChain)
+	m.HandleFunc("/ct/v1/add-chain", is.addChain)
+	m.HandleFunc("/add-reject-host", is.addRejectHost)
+	m.HandleFunc("/get-rejections", is.getRejections)
 	srv := &http.Server{
 		Addr:    p.Addr,
-		Handler: http.HandlerFunc(is.handler),
+		Handler: m,
 	}
 	log.Printf("ct-test-srv on %s with pubkey %s", p.Addr,
 		base64.StdEncoding.EncodeToString(pubKeyBytes))
