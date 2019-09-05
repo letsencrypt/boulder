@@ -44,20 +44,13 @@ def run_expired_authz_purger():
     # (e.g. test_expired_authzs_404).
 
     def expect(target_time, num, table):
-        if CONFIG_NEXT:
-            tool = "expired-authz-purger2"
-            out = get_future_output("./bin/expired-authz-purger2 --single-run --config cmd/expired-authz-purger2/config.json", target_time)
-        else:
-            tool = "expired-authz-purger"
-            out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json", target_time)
+        tool = "expired-authz-purger2"
+        out = get_future_output("./bin/expired-authz-purger2 --single-run --config cmd/expired-authz-purger2/config.json", target_time)
         if 'via FAKECLOCK' not in out:
             raise Exception("%s was not built with `integration` build tag" % (tool))
         if num is None:
             return
-        if CONFIG_NEXT:
-            expected_output = 'deleted %d expired authorizations' % (num)
-        else:
-            expected_output = 'Deleted a total of %d expired authorizations from %s' % (num, table)
+        expected_output = 'deleted %d expired authorizations' % (num)
         if expected_output not in out:
             raise Exception("%s did not print '%s'.  Output:\n%s" % (
                   tool, expected_output, out))
