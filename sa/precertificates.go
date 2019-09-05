@@ -13,7 +13,6 @@ import (
 
 // AddSerail writes a
 func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*corepb.Empty, error) {
-	ssa.log.Infof("addserial %s", *req.Serial)
 	created := time.Unix(0, *req.Created)
 	expires := time.Unix(0, *req.Expires)
 	err := ssa.dbMap.WithContext(ctx).Insert(&recordedSerialModel{
@@ -35,7 +34,6 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 	}
 	issued := time.Unix(0, *req.Issued)
 	serialHex := core.SerialToString(parsed.SerialNumber)
-	ssa.log.Infof("addprecert %s", serialHex)
 	err = ssa.dbMap.WithContext(ctx).Insert(&precertificateModel{
 		Serial:         serialHex,
 		RegistrationID: *req.RegID,
