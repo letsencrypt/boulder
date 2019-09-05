@@ -45,6 +45,7 @@
       ]
     },
     "features": {
+      "NewAuthorizationSchema": true,
       "EarlyOrderRateLimit": true
     },
     "CTLogGroups2": [
