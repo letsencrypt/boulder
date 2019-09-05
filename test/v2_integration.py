@@ -975,69 +975,6 @@ def test_http2_http01_challenge():
         server.server_close()
         thread.join()
 
-z1_reuse_client = None
-z1_reuse_authzs = []
-@register_twenty_days_ago
-def z1_reuse_setup():
-    """Runs during "setup_twenty_days_ago" phase."""
-    global z1_reuse_client
-    global z1_reuse_authzs
-    z1_reuse_client = chisel2.make_client()
-    order = chisel2.auth_and_issue([random_domain(), random_domain()], client=z1_reuse_client)
-    for a in order.authorizations:
-        z1_reuse_authzs.append(a)
-
-def test_z1_reuse():
-    """Test that authzv1's get reused alongside authzv2's once the
-       NewAuthorizationSchema flag is turned on.
-       This relies on the fact that when CONFIG_NEXT is true, the n_days_ago
-       setup phases get run with `test/config` rather than `test/config-next`.
-    """
-    if not CONFIG_NEXT:
-        return
-    reuse_domains = []
-    authz_uris = set()
-    for a in z1_reuse_authzs:
-        authz_uris.add(a.uri)
-        reuse_domains.append(a.body.identifier.value)
-    new_domains = [random_domain(), random_domain()]
-    order = chisel2.auth_and_issue(reuse_domains + new_domains, client=z1_reuse_client)
-    for a in order.authorizations:
-        if a.uri in authz_uris:
-            authz_uris.remove(a.uri)
-    if len(authz_uris) != 0:
-        raise Exception("Failed to reuse all authzs. Remaining: %s" % authz_uris)
-
-z2_disable_client = None
-z2_disable_authz = None
-z2_disable_order = None
-@register_twenty_days_ago
-def z2_disable_setup():
-    global z2_disable_client
-    global z2_disable_authz
-    global z2_disable_order
-    z2_disable_client = chisel2.make_client()
-    z2_disable_order = chisel2.auth_and_issue([random_domain()])
-    z2_disable_authz = z2_disable_order.authorizations[0]
-
-def test_z2_disable():
-    """Test the DisableAuthz2Orders feature flag. Only runs when
-       that flag is set (that is, not in CONFIG_NEXT mode)."""
-    if CONFIG_NEXT:
-        return
-    response = requests.get(z2_disable_authz.uri)
-    if response.status_code != 404:
-        raise Exception("Expected authorization to be disabled. Got %s" %
-            response)
-    response = requests.get(z2_disable_order.uri)
-    if response.status_code != 404:
-        raise Exception("Expected order to be disabled. Got %s" %
-            response)
-    o = z2_disable_client.new_order(
-        chisel2.make_csr([z2_disable_authz.body.identifier.value]))
-    if o.authorizations[0].uri == z2_disable_authz.uri:
-        raise Exception("Expected authzv2 authorization not to be reused")
-
 def test_new_order_policy_errs():
     """
     Test that creating an order with policy blocked identifiers returns

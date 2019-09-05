@@ -14,6 +14,9 @@
     "saService": {
       "serverAddress": "sa.boulder:9095",
       "timeout": "15s"
+    },
+    "features": {
+      "NewAuthorizationSchema": true
     }
   },
 
