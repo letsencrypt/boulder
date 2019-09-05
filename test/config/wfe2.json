@@ -37,6 +37,7 @@
     },
     "features": {
       "HeadNonceStatusOK": true,
+      "NewAuthorizationSchema": true,
       "RemoveWFE2AccountID": true
     }
   },

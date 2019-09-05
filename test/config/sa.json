@@ -24,7 +24,6 @@
       ]
     },
     "features": {
-      "DisableAuthz2Orders": true,
       "DeleteUnusedChallenges": true
     }
   },

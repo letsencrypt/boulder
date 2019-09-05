@@ -44,20 +44,13 @@ def run_expired_authz_purger():
     # (e.g. test_expired_authzs_404).
 
     def expect(target_time, num, table):
-        if CONFIG_NEXT:
-            tool = "expired-authz-purger2"
-            out = get_future_output("./bin/expired-authz-purger2 --single-run --config cmd/expired-authz-purger2/config.json", target_time)
-        else:
-            tool = "expired-authz-purger"
-            out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json", target_time)
+        tool = "expired-authz-purger2"
+        out = get_future_output("./bin/expired-authz-purger2 --single-run --config cmd/expired-authz-purger2/config.json", target_time)
         if 'via FAKECLOCK' not in out:
             raise Exception("%s was not built with `integration` build tag" % (tool))
         if num is None:
             return
-        if CONFIG_NEXT:
-            expected_output = 'deleted %d expired authorizations' % (num)
-        else:
-            expected_output = 'Deleted a total of %d expired authorizations from %s' % (num, table)
+        expected_output = 'deleted %d expired authorizations' % (num)
         if expected_output not in out:
             raise Exception("%s did not print '%s'.  Output:\n%s" % (
                   tool, expected_output, out))
@@ -239,24 +232,17 @@ def main():
         raise Exception("must run at least one of the letsencrypt or chisel tests with --certbot, --chisel, or --custom")
 
     if not args.test_case_filter:
-        # In CONFIG_NEXT mode, use the basic, non-next config for setup.
-        # This lets us test the transition to authz2.
-        config = default_config_dir
-        if CONFIG_NEXT:
-            config = "test/config"
-        else:
-            config = "test/config-next"
         now = datetime.datetime.utcnow()
 
         six_months_ago = now+datetime.timedelta(days=-30*6)
-        if not startservers.start(race_detection=True, fakeclock=fakeclock(six_months_ago), config_dir=config):
+        if not startservers.start(race_detection=True, fakeclock=fakeclock(six_months_ago)):
             raise Exception("startservers failed (mocking six months ago)")
         v1_integration.caa_client = caa_client = chisel.make_client()
         setup_six_months_ago()
         startservers.stop()
 
         twenty_days_ago = now+datetime.timedelta(days=-20)
-        if not startservers.start(race_detection=True, fakeclock=fakeclock(twenty_days_ago), config_dir=config):
+        if not startservers.start(race_detection=True, fakeclock=fakeclock(twenty_days_ago)):
             raise Exception("startservers failed (mocking twenty days ago)")
         setup_twenty_days_ago()
         startservers.stop()
