@@ -748,9 +748,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 	}
 
 	_, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
-		// Note: will fail on duplicate serials. Extremely unlikely to happen and soon
-		// to be fixed by redesign. Reference issue
-		// https://github.com/letsencrypt/boulder/issues/2265 for more
 		err = txWithCtx.Insert(cert)
 		if err != nil {
 			if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
