@@ -52,7 +52,7 @@ type ProblemDetails struct {
 // See RFC 8555 Section 6.7.1: https://tools.ietf.org/html/rfc8555#section-6.7.1
 type SubProblemDetails struct {
 	ProblemDetails
-	Identifier identifier.ACMEIdentifier
+	Identifier identifier.ACMEIdentifier `json:"identifier"`
 }
 
 func (pd *ProblemDetails) Error() string {
