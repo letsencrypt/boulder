@@ -1,26 +1,4 @@
-// block-a-key utility tool for generating a Base64 encoded SHA256 digest of
-// a certificate or JWK public key in DER encoded PKIX subject public key form.
-//
-// The produced encoded digest can be used with Boulder's key blocklist to block
-// any ACME account creation or certificate requests that use the same public
-// key.
-//
-// installation:
-//   go install ./...
-//
-// usage:
-//   block-a-key -cert <PEM encoded x509 certificate file>
-//   block-a-key -jwk <JSON encoded JWK file>
-//
-// output format:
-//     # <filepath>
-//     - "<base64 encoded SHA256 subject public key digest>"
-//
-// examples:
-//   $> block-a-key -jwk ./test/block-a-key/test/test.ecdsa.jwk.json
-//   ./test/block-a-key/test/test.ecdsa.jwk.json	cuwGhNNI6nfob5aqY90e7BleU6l7rfxku4X3UTJ3Z7M=
-//   $> block-a-key -cert ./test/block-a-key/test/test.rsa.cert.pem
-//   ./test/block-a-key/test/test.rsa.cert.pem	Qebc1V3SkX3izkYRGNJilm9Bcuvf0oox4U2Rn+b4JOE=
+// block-a-key is a small utility for creating key blocklist entries.
 package main
 
 import (
@@ -29,10 +7,37 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/web"
 )
+
+const usageHelp = `
+block-a-key is utility tool for generating a Base64 encoded SHA256 digest of
+a certificate or JWK public key in DER encoded PKIX subject public key form.
+
+The produced encoded digest can be used with Boulder's key blocklist to block
+any ACME account creation or certificate requests that use the same public
+key.
+
+installation:
+  go install github.com/letsencrypt/boulder/test/block-a-key/...
+
+usage:
+  block-a-key -cert <PEM encoded x509 certificate file>
+  block-a-key -jwk <JSON encoded JWK file>
+
+output format:
+  # <filepath>
+  - "<base64 encoded SHA256 subject public key digest>"
+
+examples:
+  $> block-a-key -jwk ./test/block-a-key/test/test.ecdsa.jwk.json
+  ./test/block-a-key/test/test.ecdsa.jwk.json	cuwGhNNI6nfob5aqY90e7BleU6l7rfxku4X3UTJ3Z7M=
+  $> block-a-key -cert ./test/block-a-key/test/test.rsa.cert.pem
+  ./test/block-a-key/test/test.rsa.cert.pem	Qebc1V3SkX3izkYRGNJilm9Bcuvf0oox4U2Rn+b4JOE=
+`
 
 // keyFromCert returns the public key from a PEM encoded certificate located in
 // pemFile or returns an error.
@@ -57,6 +62,12 @@ func keyFromJWK(jsonFile string) (crypto.PublicKey, error) {
 func main() {
 	certFileArg := flag.String("cert", "", "path to a PEM encoded X509 certificate file")
 	jwkFileArg := flag.String("jwk", "", "path to a JSON encoded JWK file")
+
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "%s\n\n", usageHelp)
+		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
+		flag.PrintDefaults()
+	}
 
 	flag.Parse()
 
