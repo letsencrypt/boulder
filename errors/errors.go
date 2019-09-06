@@ -25,6 +25,7 @@ const (
 	Duplicate
 	OrderNotReady
 	DNS
+	BadPublicKey
 )
 
 // BoulderError represents internal Boulder errors
@@ -129,4 +130,8 @@ func OrderNotReadyError(msg string, args ...interface{}) error {
 
 func DNSError(msg string, args ...interface{}) error {
 	return New(DNS, msg, args...)
+}
+
+func BadPublicKeyError(msg string, args ...interface{}) error {
+	return New(BadPublicKey, msg, args...)
 }

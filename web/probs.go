@@ -35,6 +35,8 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 		outProb = probs.ServerInternal("%s :: %s", msg, "Unable to meet CA SCT embedding requirements")
 	case berrors.OrderNotReady:
 		outProb = probs.OrderNotReady("%s :: %s", msg, err)
+	case berrors.BadPublicKey:
+		outProb = probs.BadPublicKey("%s :: %s", msg, err)
 	default:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.

@@ -59,6 +59,11 @@ type config struct {
 		// DirectoryWebsite is used for the /directory response's "meta" element's
 		// "website" field.
 		DirectoryWebsite string
+
+		// BlockedKeyFile is the path to a YAML file containing Base64 encoded
+		// SHA256 hashes of DER encoded PKIX public keys that should be considered
+		// administratively blocked.
+		BlockedKeyFile string
 	}
 
 	Syslog cmd.SyslogConfig
@@ -118,7 +123,8 @@ func main() {
 
 	clk := cmd.Clock()
 
-	kp, err := goodkey.NewKeyPolicy("") // don't load any weak keys
+	// don't load any weak keys, but do load blocked keys
+	kp, err := goodkey.NewKeyPolicy("", c.WFE.BlockedKeyFile)
 	cmd.FailOnError(err, "Unable to create key policy")
 	rac, sac, rns, npm := setupWFE(c, logger, scope, clk)
 	wfe, err := wfe.NewWebFrontEndImpl(scope, clk, kp, rns, npm, logger)
