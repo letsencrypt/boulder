@@ -287,20 +287,28 @@ func (sac StorageAuthorityClientWrapper) AddPrecertificate(
 	ctx context.Context,
 	req *sapb.AddCertificateRequest,
 ) (*corepb.Empty, error) {
-	if req == nil {
+	empty, err := sac.inner.AddPrecertificate(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if empty == nil {
 		return nil, errIncompleteResponse
 	}
-	return sac.inner.AddPrecertificate(ctx, req)
+	return empty, nil
 }
 
 func (sac StorageAuthorityClientWrapper) AddSerial(
 	ctx context.Context,
 	req *sapb.AddSerialRequest,
 ) (*corepb.Empty, error) {
-	if req == nil {
+	empty, err := sac.inner.AddSerial(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if empty == nil {
 		return nil, errIncompleteResponse
 	}
-	return sac.inner.AddSerial(ctx, req)
+	return empty, nil
 }
 
 func (sac StorageAuthorityClientWrapper) FQDNSetExists(ctx context.Context, domains []string) (bool, error) {

@@ -330,10 +330,10 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 
 func modelToChallenge(cm *challModel) (core.Challenge, error) {
 	c := core.Challenge{
-		ID:                       cm.ID,
-		Type:                     cm.Type,
-		Status:                   cm.Status,
-		Token:                    cm.Token,
+		ID:     cm.ID,
+		Type:   cm.Type,
+		Status: cm.Status,
+		Token:  cm.Token,
 		ProvidedKeyAuthorization: cm.KeyAuthorization,
 	}
 	if len(cm.Error) > 0 {
@@ -363,19 +363,19 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 
 type recordedSerialModel struct {
 	ID             int64
-	Serial         string    `db:"serial"`
-	RegistrationID int64     `db:"registrationID"`
-	Created        time.Time `db:"created"`
-	Expires        time.Time `db:"expires"`
+	Serial         string
+	RegistrationID int64
+	Created        time.Time
+	Expires        time.Time
 }
 
 type precertificateModel struct {
 	ID             int64
-	Serial         string    `db:"serial"`
-	RegistrationID int64     `db:"registrationID"`
-	DER            []byte    `db:"der"`
-	Issued         time.Time `db:"issued"`
-	Expires        time.Time `db:"expires"`
+	Serial         string
+	RegistrationID int64
+	DER            []byte
+	Issued         time.Time
+	Expires        time.Time
 }
 
 type orderModel struct {

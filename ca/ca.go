@@ -453,11 +453,11 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 
 		ocspResp, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
 			CertDER: precertDER,
-			Status:  "good",
+			Status:  string(core.OCSPStatusGood),
 		})
 		if err != nil {
 			err = berrors.InternalServerError(err.Error())
-			ca.log.AuditInfof("OCSP Signing failure: serial=[%s] err=[%s]", core.SerialToString(serialBigInt), err)
+			ca.log.AuditInfof("OCSP Signing failure: serial=[%s] err=[%s]", serialHex, err)
 		}
 
 		_, err = ca.sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
@@ -681,7 +681,7 @@ func (ca *CertificateAuthorityImpl) generateOCSPAndStoreCertificate(
 	certDER []byte) (core.Certificate, error) {
 	ocspResp, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
 		CertDER: certDER,
-		Status:  "good",
+		Status:  string(core.OCSPStatusGood),
 	})
 	if err != nil {
 		err = berrors.InternalServerError(err.Error())
