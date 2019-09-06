@@ -73,6 +73,7 @@ func (is *integrationSrv) addRejectHost(w http.ResponseWriter, r *http.Request) 
 	is.Lock()
 	defer is.Unlock()
 	is.rejectHosts[rejectHostReq.Host] = true
+	w.Write([]byte{})
 }
 
 // getRejections returns a JSON array containing strings; those strings are

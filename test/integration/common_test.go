@@ -9,17 +9,12 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
-	"testing"
 
 	"github.com/eggsampler/acme/v2"
-	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
 )
 
 func random_domain() string {
@@ -65,6 +60,21 @@ func addHTTP01Response(token, keyAuthorization string) error {
 	return nil
 }
 
+func delHTTP01Response(token string) error {
+	resp, err := http.Post("http://boulder:8055/del-http01", "",
+		bytes.NewBufferString(fmt.Sprintf(`{
+		"token": "%s"
+	}`, token)))
+	if err != nil {
+		return fmt.Errorf("deleting http-01 response: %s", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("deleting http-01 response: status %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	return nil
+}
+
 type issuanceResult struct {
 	acme.Order
 	certs []*x509.Certificate
@@ -99,12 +109,30 @@ func authAndIssue(domains []string) (*issuanceResult, error) {
 		if err != nil {
 			return nil, fmt.Errorf("adding HTTP-01 response: %s", err)
 		}
+		defer delHTTP01Response(chal.Token)
 		chal, err = c.Client.UpdateChallenge(c.Account, chal)
 		if err != nil {
 			return nil, fmt.Errorf("updating challenge: %s", err)
 		}
 	}
 
+	csr, err := makeCSR(domains)
+	if err != nil {
+		return nil, err
+	}
+
+	order, err = c.Client.FinalizeOrder(c.Account, order, csr)
+	if err != nil {
+		return nil, fmt.Errorf("finalizing order: %s", err)
+	}
+	certs, err := c.Client.FetchCertificates(c.Account, order.Certificate)
+	if err != nil {
+		return nil, fmt.Errorf("fetching certificates: %s", err)
+	}
+	return &issuanceResult{order, certs}, nil
+}
+
+func makeCSR(domains []string) (*x509.CertificateRequest, error) {
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("generating certificate key: %s", err)
@@ -124,72 +152,5 @@ func authAndIssue(domains []string) (*issuanceResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parsing csr: %s", err)
 	}
-
-	order, err = c.Client.FinalizeOrder(c.Account, order, csr)
-	if err != nil {
-		return nil, fmt.Errorf("finalizing order: %s", err)
-	}
-	certs, err := c.Client.FetchCertificates(c.Account, order.Certificate)
-	if err != nil {
-		return nil, fmt.Errorf("fetching certificates: %s", err)
-	}
-	return &issuanceResult{order, certs}, nil
-}
-
-func TestPrecertificateOCSP(t *testing.T) {
-	// This test is gated on the PrecertificateOCSP feature flag.
-	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		return
-	}
-	domain := random_domain()
-	for _, port := range []int{4500, 4501, 4510, 4511} {
-		url := fmt.Sprintf("http://boulder:%d/add-reject-host", port)
-		body := []byte(fmt.Sprintf(`{"host": "%s"}`, domain))
-		resp, err := http.Post(url, "", bytes.NewBuffer(body))
-		if err != nil {
-			t.Fatalf("adding reject host: %s", err)
-		}
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("adding reject host: %d", resp.StatusCode)
-		}
-		resp.Body.Close()
-	}
-
-	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
-	_, err := authAndIssue([]string{domain})
-	if err != nil {
-		if strings.Contains(err.Error(), "urn:ietf:params:acme:error:serverInternal") &&
-			strings.Contains(err.Error(), "SCT embedding") {
-		} else {
-			t.Fatal(err)
-		}
-	}
-	if err == nil {
-		t.Fatal("expected error issuing for domain rejected by CT servers; got none")
-	}
-
-	resp, err := http.Get("http://boulder:4500/get-rejections")
-	if err != nil {
-		t.Fatalf("getting rejections: %s", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("getting rejections: status %d", resp.StatusCode)
-	}
-	var rejections []string
-	err = json.NewDecoder(resp.Body).Decode(&rejections)
-	if err != nil {
-		t.Fatalf("parsing rejections: %s", err)
-	}
-
-	for _, r := range rejections {
-		rejectedCertBytes, err := base64.StdEncoding.DecodeString(r)
-		if err != nil {
-			t.Fatalf("decoding rejected cert: %s", err)
-		}
-		_, err = ocsp_helper.ReqDER(rejectedCertBytes)
-		if err != nil {
-			t.Errorf("requesting OCSP for rejected precertificate: %s", err)
-		}
-	}
+	return csr, nil
 }
