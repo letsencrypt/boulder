@@ -19,7 +19,9 @@ type blockedKeys struct {
 
 // blocked checks if the given public key is considered administratively
 // blocked based on a Base64 encoded SHA256 hash of the DER encoded PKIX public
-// key.
+// key. Important: blocked should not be called except on a blockedKeys instance
+// returned from loadBlockedKeysList.
+// function should not be used until after `loadBlockedKeysList` has returned.
 func (b blockedKeys) blocked(key crypto.PublicKey) (bool, error) {
 	hash, err := core.KeyDigest(key)
 	if err != nil {
