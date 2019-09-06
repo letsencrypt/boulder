@@ -72,11 +72,11 @@ func main() {
 	flag.Parse()
 
 	if *certFileArg == "" && *jwkFileArg == "" {
-		log.Fatalf("error: a -cert or -jwk argument must be provided\n")
+		log.Fatalf("error: a -cert or -jwk argument must be provided")
 	}
 
 	if *certFileArg != "" && *jwkFileArg != "" {
-		log.Fatalf("error: -cert and -jwk arguments are mutually exclusive\n")
+		log.Fatalf("error: -cert and -jwk arguments are mutually exclusive")
 	}
 
 	var file string
@@ -93,12 +93,12 @@ func main() {
 		err = errors.New("unexpected command line state")
 	}
 	if err != nil {
-		log.Fatalf("error loading public key: %v\n", err)
+		log.Fatalf("error loading public key: %v", err)
 	}
 
 	spkiHash, err := core.KeyDigest(key)
 	if err != nil {
-		log.Fatalf("error computing spki hash: %v\n", err)
+		log.Fatalf("error computing spki hash: %v", err)
 	}
 	fmt.Printf("  # %s\n  - %s\n", file, spkiHash)
 }
