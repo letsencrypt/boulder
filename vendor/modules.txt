@@ -19,6 +19,8 @@ github.com/cloudflare/cfssl/csr
 github.com/cloudflare/cfssl/info
 github.com/cloudflare/cfssl/crypto/pkcs7
 github.com/cloudflare/cfssl/helpers/derhelpers
+# github.com/eggsampler/acme/v2 v2.0.1
+github.com/eggsampler/acme/v2
 # github.com/go-sql-driver/mysql v0.0.0-20170715192408-3955978caca4
 github.com/go-sql-driver/mysql
 # github.com/golang/mock v1.2.0
