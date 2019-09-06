@@ -16,6 +16,10 @@ import (
 )
 
 func TestPrecertificateOCSP(t *testing.T) {
+	// This test is gated on the PrecertificateOCSP feature flag.
+	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR", "test/config-next")) {
+		return
+	}
 	domain := random_domain()
 	for _, port := range []int{4500, 4501, 4510, 4511} {
 		url := fmt.Sprintf("http://boulder:%d/add-reject-host", port)
