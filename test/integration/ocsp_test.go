@@ -17,7 +17,7 @@ import (
 
 func TestPrecertificateOCSP(t *testing.T) {
 	// This test is gated on the PrecertificateOCSP feature flag.
-	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR", "test/config-next")) {
+	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
 		return
 	}
 	domain := random_domain()
