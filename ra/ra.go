@@ -1438,7 +1438,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 					BoulderError: berrors.RateLimitError("too many certificates already issued").(*berrors.BoulderError),
 				})
 			}
-			return berrors.RateLimitError("too many certificates already issued for multiple names").(*berrors.BoulderError).WithSubErrors(subErrors)
+			return berrors.RateLimitError("too many certificates already issued for multiple names (%s and %d others)", namesOutOfLimit[0], len(namesOutOfLimit)).(*berrors.BoulderError).WithSubErrors(subErrors)
 		}
 		return berrors.RateLimitError("too many certificates already issued for: %s", namesOutOfLimit[0])
 	}
