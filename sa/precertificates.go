@@ -11,7 +11,7 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-// AddSerail writes a
+// AddSerial writes a record of a serial number generation to the DB.
 func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*corepb.Empty, error) {
 	created := time.Unix(0, *req.Created)
 	expires := time.Unix(0, *req.Expires)
@@ -27,6 +27,7 @@ func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSeri
 	return &corepb.Empty{}, nil
 }
 
+// AddSerial writes a record of a precertificate generation to the DB.
 func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error) {
 	parsed, err := x509.ParseCertificate(req.Der)
 	if err != nil {

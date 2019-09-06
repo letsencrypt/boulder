@@ -287,6 +287,9 @@ func (sac StorageAuthorityClientWrapper) AddPrecertificate(
 	ctx context.Context,
 	req *sapb.AddCertificateRequest,
 ) (*corepb.Empty, error) {
+	if req == nil {
+		return nil, errIncompleteResponse
+	}
 	return sac.inner.AddPrecertificate(ctx, req)
 }
 
@@ -294,6 +297,9 @@ func (sac StorageAuthorityClientWrapper) AddSerial(
 	ctx context.Context,
 	req *sapb.AddSerialRequest,
 ) (*corepb.Empty, error) {
+	if req == nil {
+		return nil, errIncompleteResponse
+	}
 	return sac.inner.AddSerial(ctx, req)
 }
 

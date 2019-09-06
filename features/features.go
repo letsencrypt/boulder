@@ -69,7 +69,8 @@ const (
 	// API.
 	V1DisableNewValidations
 	// PrecertificateOCSP ensures that we write an OCSP response immediately upon
-	// generating a precertificate.
+	// generating a precertificate. This also changes the issuance / storage flow,
+	// adding two new calls from CA to SA: AddSerial and AddPrecertificate.
 	PrecertificateOCSP
 )
 

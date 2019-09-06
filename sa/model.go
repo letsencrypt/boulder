@@ -362,6 +362,7 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 }
 
 type recordedSerialModel struct {
+	ID             int64
 	Serial         string    `db:"serial"`
 	RegistrationID int64     `db:"registrationID"`
 	Created        time.Time `db:"created"`
@@ -369,6 +370,7 @@ type recordedSerialModel struct {
 }
 
 type precertificateModel struct {
+	ID             int64
 	Serial         string    `db:"serial"`
 	RegistrationID int64     `db:"registrationID"`
 	DER            []byte    `db:"der"`

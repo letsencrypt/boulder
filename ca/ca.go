@@ -468,6 +468,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		})
 		if err != nil {
 			err = berrors.InternalServerError(err.Error())
+			// TODO(#4425): Extend orphanQueue support to precertificates.
 			ca.log.AuditErrf("Failed RPC to store at SA, orphaning precertificate: serial=[%s] cert=[%s] err=[%v], regID=[%d], orderID=[%d]",
 				serialHex, hex.EncodeToString(precertDER), err, issueReq.RegistrationID, issueReq.OrderID)
 			return nil, err

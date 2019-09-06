@@ -11,7 +11,7 @@ CREATE TABLE `serials` (
   UNIQUE KEY `serial` (`serial`),
   KEY `regId_serials_idx` (`registrationID`),
   CONSTRAINT `regId_serials` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `precertificates` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -25,9 +25,10 @@ CREATE TABLE `precertificates` (
   KEY `regId_precertificates_idx` (`registrationID`),
   KEY `issued_precertificates_idx` (`issued`),
   CONSTRAINT `regId_precertificates` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 -- +goose Down
 -- SQL section 'Down' is executed when this migration is rolled back
 
+DROP TABLE serials;
 DROP TABLE precertificates;
