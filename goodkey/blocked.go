@@ -10,12 +10,10 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
-// blockedKeys is a type that maintains a map of Base64 encoded SHA256 hashes of
-// DER encoded PKIX public keys that should be considered blocked. blockedKeys
-// are created by using loadBlockedKeysList.
-type blockedKeys struct {
-	blockedMap map[string]bool
-}
+// blockedKeys is a type for maintaining a map of Base64 encoded SHA256 hashes
+// of DER encoded PKIX public keys that should be considered blocked.
+// blockedKeys are created by using loadBlockedKeysList.
+type blockedKeys map[string]bool
 
 // blocked checks if the given public key is considered administratively
 // blocked based on a Base64 encoded SHA256 hash of the DER encoded PKIX public
@@ -31,7 +29,7 @@ func (b blockedKeys) blocked(key crypto.PublicKey) (bool, error) {
 		// err result.
 		return true, err
 	}
-	return b.blockedMap[hash], nil
+	return b[hash], nil
 }
 
 // loadBlockedKeysList creates a blockedKeys object that can be used to check if
@@ -64,9 +62,9 @@ func loadBlockedKeysList(filename string) (*blockedKeys, error) {
 		return nil, errors.New("no blocked hashes in YAML")
 	}
 
-	blockedMap := make(map[string]bool, len(list.BlockedHashes))
+	blockedKeys := make(blockedKeys, len(list.BlockedHashes))
 	for _, hash := range list.BlockedHashes {
-		blockedMap[hash] = true
+		blockedKeys[hash] = true
 	}
-	return &blockedKeys{blockedMap: blockedMap}, nil
+	return &blockedKeys, nil
 }
