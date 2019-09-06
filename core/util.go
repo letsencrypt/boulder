@@ -8,7 +8,6 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"expvar"
@@ -261,17 +260,6 @@ func LoadCert(filename string) (cert *x509.Certificate, err error) {
 	}
 	cert, err = x509.ParseCertificate(block.Bytes)
 	return
-}
-
-// LoadJWK loads a JSON encoded JWK specified by filename or returns an error
-func LoadJWK(filename string) (*jose.JSONWebKey, error) {
-	var jwk jose.JSONWebKey
-	if jsonBytes, err := ioutil.ReadFile(filename); err != nil {
-		return nil, err
-	} else if err = json.Unmarshal(jsonBytes, &jwk); err != nil {
-		return nil, err
-	}
-	return &jwk, nil
 }
 
 // retryJitter is used to prevent bunched retried queries from falling into lockstep

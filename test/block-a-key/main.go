@@ -31,6 +31,7 @@ import (
 	"log"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/web"
 )
 
 // keyFromCert returns the public key from a PEM encoded certificate located in
@@ -46,7 +47,7 @@ func keyFromCert(pemFile string) (crypto.PublicKey, error) {
 // keyFromJWK returns the public key from a JSON encoded JOSE JWK located in
 // jsonFile or returns an error.
 func keyFromJWK(jsonFile string) (crypto.PublicKey, error) {
-	jwk, err := core.LoadJWK(jsonFile)
+	jwk, err := web.LoadJWK(jsonFile)
 	if err != nil {
 		return nil, err
 	}

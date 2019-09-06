@@ -9,6 +9,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/boulder/web"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -38,9 +39,9 @@ func TestBlockedKeys(t *testing.T) {
 	test.AssertNotError(t, err, "error loading test.rsa.cert.pem")
 	testCertB, err := core.LoadCert("../test/block-a-key/test/test.ecdsa.cert.pem")
 	test.AssertNotError(t, err, "error loading test.ecdsa.cert.pem")
-	testJWKA, err := core.LoadJWK("../test/block-a-key/test/test.rsa.jwk.json")
+	testJWKA, err := web.LoadJWK("../test/block-a-key/test/test.rsa.jwk.json")
 	test.AssertNotError(t, err, "error loading test.rsa.jwk.pem")
-	testJWKB, err := core.LoadJWK("../test/block-a-key/test/test.ecdsa.jwk.json")
+	testJWKB, err := web.LoadJWK("../test/block-a-key/test/test.ecdsa.jwk.json")
 	test.AssertNotError(t, err, "error loading test.ecdsa.jwk.pem")
 
 	// All of the above should be blocked
