@@ -679,16 +679,20 @@ func (ca *CertificateAuthorityImpl) generateOCSPAndStoreCertificate(
 	orderID int64,
 	serialBigInt *big.Int,
 	certDER []byte) (core.Certificate, error) {
-	ocspResp, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
-		CertDER: certDER,
-		Status:  string(core.OCSPStatusGood),
-	})
-	if err != nil {
-		err = berrors.InternalServerError(err.Error())
-		ca.log.AuditInfof("OCSP Signing failure: serial=[%s] err=[%s]", core.SerialToString(serialBigInt), err)
-		// Ignore errors here to avoid orphaning the certificate. The
-		// ocsp-updater will look for certs with a zero ocspLastUpdated
-		// and generate the initial response in this case.
+	var err error
+	var ocspResp []byte
+	if !features.Enabled(features.PrecertificateOCSP) {
+		ocspResp, err = ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+			CertDER: certDER,
+			Status:  string(core.OCSPStatusGood),
+		})
+		if err != nil {
+			err = berrors.InternalServerError(err.Error())
+			ca.log.AuditInfof("OCSP Signing failure: serial=[%s] err=[%s]", core.SerialToString(serialBigInt), err)
+			// Ignore errors here to avoid orphaning the certificate. The
+			// ocsp-updater will look for certs with a zero ocspLastUpdated
+			// and generate the initial response in this case.
+		}
 	}
 
 	now := ca.clk.Now()
