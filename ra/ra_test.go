@@ -1400,13 +1400,30 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	err := ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com"}, rlp, 99)
 	test.AssertNotError(t, err, "rate limited example.com incorrectly")
 
-	// One base domain, above threshold
+	// Two base domains, one above threshold, one below
 	mockSA.nameCounts["example.com"] = nameCount("example.com", 10)
-	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com"}, rlp, 99)
+	mockSA.nameCounts["good-example.com"] = nameCount("good-example.com", 1)
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "good-example.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit example.com")
 	if !berrors.Is(err, berrors.RateLimit) {
 		t.Errorf("Incorrect error type %#v", err)
 	}
+	// Verify it has no sub errors as there is only one bad name
+	test.AssertEquals(t, err.Error(), "too many certificates already issued for: example.com: see https://letsencrypt.org/docs/rate-limits/")
+	test.AssertEquals(t, len(err.(*berrors.BoulderError).SubErrors), 0)
+
+	// Three base domains, two above threshold, one below
+	mockSA.nameCounts["example.com"] = nameCount("example.com", 10)
+	mockSA.nameCounts["other-example.com"] = nameCount("other-example.com", 10)
+	mockSA.nameCounts["good-example.com"] = nameCount("good-example.com", 1)
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"example.com", "other-example.com", "good-example.com"}, rlp, 99)
+	test.AssertError(t, err, "incorrectly failed to rate limit example.com, other-example.com")
+	if !berrors.Is(err, berrors.RateLimit) {
+		t.Errorf("Incorrect error type %#v", err)
+	}
+	// Verify it has two sub errors as there are two bad names
+	test.AssertEquals(t, err.Error(), "too many certificates already issued for multiple names (example.com and 2 others): see https://letsencrypt.org/docs/rate-limits/")
+	test.AssertEquals(t, len(err.(*berrors.BoulderError).SubErrors), 2)
 
 	// SA misbehaved and didn't send back a count for every input name
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"zombo.com", "www.example.com", "example.com"}, rlp, 99)

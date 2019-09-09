@@ -1427,13 +1427,20 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 				return nil
 			}
 		}
-		domains := strings.Join(namesOutOfLimit, ", ")
+
+		ra.log.Infof("Rate limit exceeded, CertificatesForDomain, regID: %d, domains: %s", regID, strings.Join(namesOutOfLimit, ", "))
 		ra.certsForDomainStats.Inc("Exceeded", 1)
-		ra.log.Infof("Rate limit exceeded, CertificatesForDomain, regID: %d, domains: %s", regID, domains)
-		return berrors.RateLimitError(
-			"too many certificates already issued for: %s",
-			domains,
-		)
+		if len(namesOutOfLimit) > 1 {
+			var subErrors []berrors.SubBoulderError
+			for _, name := range namesOutOfLimit {
+				subErrors = append(subErrors, berrors.SubBoulderError{
+					Identifier:   identifier.DNSIdentifier(name),
+					BoulderError: berrors.RateLimitError("too many certificates already issued").(*berrors.BoulderError),
+				})
+			}
+			return berrors.RateLimitError("too many certificates already issued for multiple names (%s and %d others)", namesOutOfLimit[0], len(namesOutOfLimit)).(*berrors.BoulderError).WithSubErrors(subErrors)
+		}
+		return berrors.RateLimitError("too many certificates already issued for: %s", namesOutOfLimit[0])
 	}
 	ra.certsForDomainStats.Inc("Pass", 1)
 
