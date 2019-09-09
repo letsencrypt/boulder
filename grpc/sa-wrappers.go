@@ -283,6 +283,34 @@ func (sac StorageAuthorityClientWrapper) PreviousCertificateExists(
 	return exists, err
 }
 
+func (sac StorageAuthorityClientWrapper) AddPrecertificate(
+	ctx context.Context,
+	req *sapb.AddCertificateRequest,
+) (*corepb.Empty, error) {
+	empty, err := sac.inner.AddPrecertificate(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if empty == nil {
+		return nil, errIncompleteResponse
+	}
+	return empty, nil
+}
+
+func (sac StorageAuthorityClientWrapper) AddSerial(
+	ctx context.Context,
+	req *sapb.AddSerialRequest,
+) (*corepb.Empty, error) {
+	empty, err := sac.inner.AddSerial(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if empty == nil {
+		return nil, errIncompleteResponse
+	}
+	return empty, nil
+}
+
 func (sac StorageAuthorityClientWrapper) FQDNSetExists(ctx context.Context, domains []string) (bool, error) {
 	response, err := sac.inner.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Domains: domains})
 	if err != nil {
@@ -615,10 +643,11 @@ func (sas StorageAuthorityClientWrapper) DeactivateAuthorization2(ctx context.Co
 type StorageAuthorityServerWrapper struct {
 	// TODO(#3119): Don't use core.StorageAuthority
 	inner core.StorageAuthority
+	core.StorageAuthority
 }
 
 func NewStorageAuthorityServer(inner core.StorageAuthority) *StorageAuthorityServerWrapper {
-	return &StorageAuthorityServerWrapper{inner}
+	return &StorageAuthorityServerWrapper{inner, inner}
 }
 
 func (sas StorageAuthorityServerWrapper) GetRegistration(ctx context.Context, request *sapb.RegistrationID) (*corepb.Registration, error) {

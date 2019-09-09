@@ -34,11 +34,13 @@ import (
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -173,6 +175,14 @@ type mockSA struct {
 func (m *mockSA) AddCertificate(ctx context.Context, der []byte, _ int64, _ []byte, _ *time.Time) (string, error) {
 	m.certificate.DER = der
 	return "", nil
+}
+
+func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error) {
+	return &corepb.Empty{}, nil
+}
+
+func (m *mockSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*corepb.Empty, error) {
+	return &corepb.Empty{}, nil
 }
 
 var caKey crypto.Signer
@@ -899,6 +909,14 @@ func (qsa *queueSA) AddCertificate(_ context.Context, _ []byte, _ int64, _ []byt
 	}
 	qsa.issued = issued
 	return "", nil
+}
+
+func (qsa *queueSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error) {
+	return &corepb.Empty{}, nil
+}
+
+func (qsa *queueSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*corepb.Empty, error) {
+	return &corepb.Empty{}, nil
 }
 
 func TestOrphanQueue(t *testing.T) {

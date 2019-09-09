@@ -361,6 +361,23 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 	return c, nil
 }
 
+type recordedSerialModel struct {
+	ID             int64
+	Serial         string
+	RegistrationID int64
+	Created        time.Time
+	Expires        time.Time
+}
+
+type precertificateModel struct {
+	ID             int64
+	Serial         string
+	RegistrationID int64
+	DER            []byte
+	Issued         time.Time
+	Expires        time.Time
+}
+
 type orderModel struct {
 	ID                int64
 	RegistrationID    int64

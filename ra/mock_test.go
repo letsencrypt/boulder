@@ -115,6 +115,16 @@ func (sa *mockInvalidAuthorizationsAuthority) FinalizeAuthorization(ctx context.
 	return nil, nil
 }
 
+// AddPrecertificate is a mock
+func (sa *mockInvalidAuthorizationsAuthority) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest, opts ...grpc.CallOption) (empty *corepb.Empty, err error) {
+	return
+}
+
+// AddSerial is a mock
+func (sa *mockInvalidAuthorizationsAuthority) AddSerial(ctx context.Context, req *sapb.AddSerialRequest, opts ...grpc.CallOption) (empty *corepb.Empty, err error) {
+	return
+}
+
 func (sa *mockInvalidAuthorizationsAuthority) AddCertificate(ctx context.Context, in *sapb.AddCertificateRequest, opts ...grpc.CallOption) (*sapb.AddCertificateResponse, error) {
 	return nil, nil
 }

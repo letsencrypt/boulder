@@ -748,9 +748,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 	}
 
 	_, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
-		// Note: will fail on duplicate serials. Extremely unlikely to happen and soon
-		// to be fixed by redesign. Reference issue
-		// https://github.com/letsencrypt/boulder/issues/2265 for more
 		err = txWithCtx.Insert(cert)
 		if err != nil {
 			if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
@@ -761,10 +758,12 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 
 		err = txWithCtx.Insert(certStatus)
 		if err != nil {
-			if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
-				return nil, berrors.DuplicateError("cannot add a duplicate cert status")
+			// We ignore "duplicate entry" on insert to the certificateStatus table
+			// because we may be inserting a certificate after a call to
+			// AddPrecertificate, which also adds a certificateStatus entry.
+			if !strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+				return nil, err
 			}
-			return nil, err
 		}
 
 		// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.

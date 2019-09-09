@@ -149,6 +149,8 @@ type StorageAdder interface {
 	NewPendingAuthorization(ctx context.Context, authz Authorization) (Authorization, error)
 	FinalizeAuthorization(ctx context.Context, authz Authorization) error
 	AddCertificate(ctx context.Context, der []byte, regID int64, ocsp []byte, issued *time.Time) (digest string, err error)
+	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error)
+	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*corepb.Empty, error)
 	DeactivateRegistration(ctx context.Context, id int64) error
 	DeactivateAuthorization(ctx context.Context, id string) error
 	NewOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error)

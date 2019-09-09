@@ -27,6 +27,9 @@ import (
 	"github.com/google/certificate-transparency-go"
 	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/jmhodges/clock"
+	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/features"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/miekg/pkcs11"
 
 	"github.com/letsencrypt/boulder/ca/config"
@@ -99,6 +102,8 @@ const (
 
 type certificateStorage interface {
 	AddCertificate(context.Context, []byte, int64, []byte, *time.Time) (string, error)
+	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error)
+	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*corepb.Empty, error)
 }
 
 type certificateType string
@@ -427,13 +432,61 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	precertDER, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity, precertType)
-	if err != nil {
-		return nil, err
+	if features.Enabled(features.PrecertificateOCSP) {
+		serialHex := core.SerialToString(serialBigInt)
+		nowNanos := ca.clk.Now().UnixNano()
+		expiresNanos := validity.NotAfter.UnixNano()
+		_, err = ca.sa.AddSerial(ctx, &sapb.AddSerialRequest{
+			Serial:  &serialHex,
+			RegID:   issueReq.RegistrationID,
+			Created: &nowNanos,
+			Expires: &expiresNanos,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		precertDER, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity, precertType)
+		if err != nil {
+			return nil, err
+		}
+
+		ocspResp, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+			CertDER: precertDER,
+			Status:  string(core.OCSPStatusGood),
+		})
+		if err != nil {
+			err = berrors.InternalServerError(err.Error())
+			ca.log.AuditInfof("OCSP Signing failure: serial=[%s] err=[%s]", serialHex, err)
+		}
+
+		_, err = ca.sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+			Der:    precertDER,
+			RegID:  issueReq.RegistrationID,
+			Ocsp:   ocspResp,
+			Issued: &nowNanos,
+		})
+		if err != nil {
+			err = berrors.InternalServerError(err.Error())
+			// TODO(#4425): Extend orphanQueue support to precertificates.
+			ca.log.AuditErrf("Failed RPC to store at SA, orphaning precertificate: serial=[%s] cert=[%s] err=[%v], regID=[%d], orderID=[%d]",
+				serialHex, hex.EncodeToString(precertDER), err, issueReq.RegistrationID, issueReq.OrderID)
+			return nil, err
+		}
+
+		return &caPB.IssuePrecertificateResponse{
+			DER: precertDER,
+		}, nil
+
+	} else {
+		precertDER, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity, precertType)
+		if err != nil {
+			return nil, err
+		}
+		return &caPB.IssuePrecertificateResponse{
+			DER: precertDER,
+		}, nil
 	}
-	return &caPB.IssuePrecertificateResponse{
-		DER: precertDER,
-	}, nil
 }
 
 // IssueCertificateForPrecertificate takes a precertificate and a set of SCTs for that precertificate
@@ -626,16 +679,20 @@ func (ca *CertificateAuthorityImpl) generateOCSPAndStoreCertificate(
 	orderID int64,
 	serialBigInt *big.Int,
 	certDER []byte) (core.Certificate, error) {
-	ocspResp, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
-		CertDER: certDER,
-		Status:  "good",
-	})
-	if err != nil {
-		err = berrors.InternalServerError(err.Error())
-		ca.log.AuditInfof("OCSP Signing failure: serial=[%s] err=[%s]", core.SerialToString(serialBigInt), err)
-		// Ignore errors here to avoid orphaning the certificate. The
-		// ocsp-updater will look for certs with a zero ocspLastUpdated
-		// and generate the initial response in this case.
+	var err error
+	var ocspResp []byte
+	if !features.Enabled(features.PrecertificateOCSP) {
+		ocspResp, err = ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+			CertDER: certDER,
+			Status:  string(core.OCSPStatusGood),
+		})
+		if err != nil {
+			err = berrors.InternalServerError(err.Error())
+			ca.log.AuditInfof("OCSP Signing failure: serial=[%s] err=[%s]", core.SerialToString(serialBigInt), err)
+			// Ignore errors here to avoid orphaning the certificate. The
+			// ocsp-updater will look for certs with a zero ocspLastUpdated
+			// and generate the initial response in this case.
+		}
 	}
 
 	now := ca.clk.Now()

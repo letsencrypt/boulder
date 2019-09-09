@@ -68,6 +68,10 @@ const (
 	// V1DisableNewValidations disables validations for new domain names in the V1
 	// API.
 	V1DisableNewValidations
+	// PrecertificateOCSP ensures that we write an OCSP response immediately upon
+	// generating a precertificate. This also changes the issuance / storage flow,
+	// adding two new calls from CA to SA: AddSerial and AddPrecertificate.
+	PrecertificateOCSP
 )
 
 // List of features and their default value, protected by fMu
@@ -98,6 +102,7 @@ var features = map[FeatureFlag]bool{
 	ParallelCheckFailedValidation: false,
 	DeleteUnusedChallenges:        false,
 	V1DisableNewValidations:       false,
+	PrecertificateOCSP:            false,
 }
 
 var fMu = new(sync.RWMutex)

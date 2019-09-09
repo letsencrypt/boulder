@@ -319,6 +319,16 @@ func (sa *StorageAuthority) GetCertificateStatus(_ context.Context, serial strin
 	}
 }
 
+// AddPrecertificate is a mock
+func (sa *StorageAuthority) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (empty *corepb.Empty, err error) {
+	return
+}
+
+// AddSerial is a mock
+func (sa *StorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (empty *corepb.Empty, err error) {
+	return
+}
+
 // AddCertificate is a mock
 func (sa *StorageAuthority) AddCertificate(_ context.Context, certDER []byte, regID int64, _ []byte, _ *time.Time) (digest string, err error) {
 	return
