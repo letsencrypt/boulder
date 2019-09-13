@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-func setup() (*blog.Mock, clock.Clock) {
+func setup() (*blog.Mock, clock.FakeClock) {
 	return blog.UseMock(), clock.NewFake()
 }
 
@@ -67,6 +67,7 @@ func TestGetWork(t *testing.T) {
 	log, clk := setup()
 	startID := int64(10)
 	table := "certificates"
+	clk.Add(time.Hour * 5)
 	purgeBefore := clk.Now().Add(-time.Hour)
 	batchSize := int64(20)
 	workQuery := `SELECT id FROM certificates WHERE id > :startID AND time <= :cutoff ORDER by id LIMIT :limit`
@@ -93,8 +94,9 @@ func TestGetWork(t *testing.T) {
 	job := &batchedDBJob{
 		db:          testDB,
 		log:         log,
+		clk:         clk,
 		table:       table,
-		purgeBefore: purgeBefore,
+		purgeBefore: time.Hour,
 		batchSize:   batchSize,
 		workQuery:   workQuery,
 	}

@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/jmhodges/clock"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -47,11 +48,12 @@ var (
 type batchedDBJob struct {
 	db  janitorDB
 	log blog.Logger
+	clk clock.Clock
 	// table is the name of the table that this job cleans up.
 	table string
 	// purgeBefore indicates the cut-off for the the resoruce being cleaned up by
 	// the job. Rows that older than now - purgeBefore are deleted.
-	purgeBefore time.Time
+	purgeBefore time.Duration
 	// workSleep is a duration that the job will sleep between getWork() calls
 	// when no new work is found. If not provided, defaults to a minute.
 	workSleep time.Duration
@@ -64,7 +66,7 @@ type batchedDBJob struct {
 	parallelism int
 	// workQuery is the parameterized SQL query that is used to find more work. It will be provided three parameters:
 	//   * :startID - the primary key value to start the work query from.
-	//   * :cutoff  - the purgeBefore date used to control which rows are old enough to be deleted.
+	//   * :cutoff  - the purgeBefore duration used to control which rows are old enough to be deleted.
 	//   * :limit   - the batchSize value. Only this many rows should be returned by the query.
 	workQuery string
 }
@@ -80,7 +82,7 @@ func (j batchedDBJob) getWork(work chan<- int64, startID int64) (int64, error) {
 		j.workQuery,
 		map[string]interface{}{
 			"startID": startID,
-			"cutoff":  j.purgeBefore,
+			"cutoff":  j.clk.Now().Add(-j.purgeBefore),
 			"limit":   j.batchSize,
 		},
 	)
@@ -140,7 +142,7 @@ func (j batchedDBJob) cleanResource(work <-chan int64) {
 		deleted, j.table)
 }
 
-// deleteResource peforms a delete of the given ID from the batchedDBJob's
+// deleteResource performs a delete of the given ID from the batchedDBJob's
 // table or returns an error.
 func (j batchedDBJob) deleteResource(id int64) error {
 	// NOTE(@cpu): We throw away the sql.Result here without checking the rows
