@@ -105,7 +105,7 @@ if [[ "$RUN" =~ "integration" ]] ; then
 
   source ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv}/bin/activate
   DIRECTORY=http://boulder:4000/directory \
-    python2 test/integration-test.py --chisel "${args[@]}"
+    python2 test/integration-test.py --chisel --gotest "${args[@]}"
 fi
 
 # Test that just ./start.py works, which is a proxy for testing that
