@@ -12,7 +12,7 @@ func newCertificatesPerNameJob(
 	log blog.Logger,
 	clk clock.Clock,
 	config Config) *batchedDBJob {
-	purgeBefore := clk.Now().Add(-config.Janitor.CertificatesPerName.GracePeriod.Duration)
+	purgeBefore := config.Janitor.CertificatesPerName.GracePeriod.Duration
 	workQuery := `SELECT id FROM certificatesPerName
 		 WHERE
 		   id > :startID AND
@@ -22,6 +22,7 @@ func newCertificatesPerNameJob(
 	return &batchedDBJob{
 		db:          db,
 		log:         log,
+		clk:         clk,
 		purgeBefore: purgeBefore,
 		workSleep:   config.Janitor.CertificatesPerName.WorkSleep.Duration,
 		batchSize:   config.Janitor.CertificatesPerName.BatchSize,
