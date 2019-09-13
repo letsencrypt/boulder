@@ -45,12 +45,11 @@ def run_go_tests(filterPattern=None):
     return zero or an exception will be raised. If the filterPattern is provided
     it is used as the value of the `--test.run` argument to the go test command.
     """
-    cmdLine = "go test"
+    cmdLine = [ "go", "test", ]
     if filterPattern is not None and filterPattern != "":
-        cmdLine = "{0} --test.run {1}".format(cmdLine, filterPattern)
-    cmdLine = "{0} -tags integration -count=1 ./test/integration".format(cmdLine)
-    cmd = shlex.split(cmdLine)
-    return subprocess.check_call(cmd, shell=False, stderr=subprocess.STDOUT)
+        cmdLine = cmdLine + ["--test.run", filterPattern]
+    cmdLine = cmdLine + ["-tags", "integration", "-count=1", "./test/integration"]
+    return subprocess.check_call(cmdLine, shell=False, stderr=subprocess.STDOUT)
 
 def run_expired_authz_purger():
     # Note: This test must be run after all other tests that depend on
