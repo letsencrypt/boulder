@@ -704,6 +704,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	logEvent.Extra["ProvidedCertificateSerial"] = serial
 	notFoundProb := probs.NotFound("No such certificate")
 
+	var certDER []byte
 	// If the PrecertificateRevocation feature flag is enabled that means we won't
 	// do a byte-for-byte comparison of the providedCert against the stored cert
 	// returned by SA.GetCertificate because a precert will always fail this
@@ -734,13 +735,13 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		if !validIssuerSignature {
 			return notFoundProb
 		}
-	}
-
-	var certDER []byte
-	// When the precertificate revocation feature flag isn't enabled try to find
-	// a finalized cert in the DB matching the serial. If there is one, it needs
-	// to be a byte-for-byte match with the requested cert.
-	if !features.Enabled(features.PrecertificateRevocation) {
+		// If the signature validates we can use the provided cert's DER for
+		// revocation safely.
+		certDER = providedCert.Raw
+	} else {
+		// When the precertificate revocation feature flag isn't enabled try to find
+		// a finalized cert in the DB matching the serial. If there is one, it needs
+		// to be a byte-for-byte match with the requested cert.
 		cert, err := wfe.SA.GetCertificate(ctx, serial)
 		if err != nil {
 			return notFoundProb
@@ -750,11 +751,6 @@ func (wfe *WebFrontEndImpl) processRevocation(
 			return notFoundProb
 		}
 		certDER = cert.DER
-	} else {
-		// When the precertificate revocation feature flag is enabled, don't try to
-		// find a cert from the DB. Use the provided cert. We checked that its
-		// signature was from one of the configured issuers.
-		certDER = providedCert.Raw
 	}
 
 	// Parse the certificate into memory
