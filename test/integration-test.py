@@ -17,6 +17,7 @@ import random
 import re
 import requests
 import subprocess
+import shlex
 import signal
 import time
 
@@ -38,8 +39,17 @@ def run_client_tests():
     cmd = os.path.join(root, 'tests', 'boulder-integration.sh')
     run(cmd, cwd=root)
 
-def run_go_tests():
-    run("go test -tags integration -count=1 ./test/integration")
+def run_go_tests(filterPattern=None):
+    """
+    run_go_tests launches the Go integration tests. The go test command must
+    return zero or an exception will be raised. If the filterPattern is provided
+    it is used as the value of the `--test.run` argument to the go test command.
+    """
+    cmdLine = [ "go", "test", ]
+    if filterPattern is not None and filterPattern != "":
+        cmdLine = cmdLine + ["--test.run", filterPattern]
+    cmdLine = cmdLine + ["-tags", "integration", "-count=1", "./test/integration"]
+    return subprocess.check_call(cmdLine, shell=False, stderr=subprocess.STDOUT)
 
 def run_expired_authz_purger():
     # Note: This test must be run after all other tests that depend on
@@ -222,6 +232,8 @@ def main():
                         help="run the certbot integration tests")
     parser.add_argument('--chisel', dest="run_chisel", action="store_true",
                         help="run integration tests using chisel")
+    parser.add_argument('--gotest', dest="run_go", action="store_true",
+                        help="run Go integration tests")
     parser.add_argument('--filter', dest="test_case_filter", action="store",
                         help="Regex filter for test cases")
     # allow any ACME client to run custom command for integration
@@ -259,7 +271,8 @@ def main():
     if args.run_certbot:
         run_client_tests()
 
-    run_go_tests()
+    if args.run_go:
+        run_go_tests(args.test_case_filter)
 
     if args.custom:
         run(args.custom)
