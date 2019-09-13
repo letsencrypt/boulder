@@ -94,19 +94,19 @@ type config struct {
 // loadCertificateFile loads a PEM certificate from the certFile provided. It
 // validates that the PEM is well-formed with no leftover bytes, and contains
 // only a well-formed X509 certificate. If the cert file meets these
-// requirements the PEM bytes from the file are returned, otherwise an error is
-// returned. If the PEM contents of a certFile do not have a trailing newline
-// one is added.
-func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, error) {
+// requirements the PEM bytes from the file are returned along with the parsed
+// certificate, otherwise an error is returned. If the PEM contents of
+// a certFile do not have a trailing newline one is added.
+func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, *x509.Certificate, error) {
 	pemBytes, err := ioutil.ReadFile(certFile)
 	if err != nil {
-		return nil, fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"CertificateChain entry for AIA issuer url %q has an "+
 				"invalid chain file: %q - error reading contents: %s",
 			aiaIssuerURL, certFile, err)
 	}
 	if bytes.Contains(pemBytes, []byte("\r\n")) {
-		return nil, fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"CertificateChain entry for AIA issuer url %q has an "+
 				"invalid chain file: %q - contents had CRLF line endings",
 			aiaIssuerURL, certFile)
@@ -114,22 +114,23 @@ func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, error) {
 	// Try to decode the contents as PEM
 	certBlock, rest := pem.Decode(pemBytes)
 	if certBlock == nil {
-		return nil, fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"CertificateChain entry for AIA issuer url %q has an "+
 				"invalid chain file: %q - contents did not decode as PEM",
 			aiaIssuerURL, certFile)
 	}
 	// The PEM contents must be a CERTIFICATE
 	if certBlock.Type != "CERTIFICATE" {
-		return nil, fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"CertificateChain entry for AIA issuer url %q has an "+
 				"invalid chain file: %q - PEM block type incorrect, found "+
 				"%q, expected \"CERTIFICATE\"",
 			aiaIssuerURL, certFile, certBlock.Type)
 	}
 	// The PEM Certificate must successfully parse
-	if _, err := x509.ParseCertificate(certBlock.Bytes); err != nil {
-		return nil, fmt.Errorf(
+	var cert *x509.Certificate
+	if cert, err = x509.ParseCertificate(certBlock.Bytes); err != nil {
+		return nil, nil, fmt.Errorf(
 			"CertificateChain entry for AIA issuer url %q has an "+
 				"invalid chain file: %q - certificate bytes failed to parse: %s",
 			aiaIssuerURL, certFile, err)
@@ -137,7 +138,7 @@ func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, error) {
 	// If there are bytes leftover we must reject the file otherwise these
 	// leftover bytes will end up in a served certificate chain.
 	if len(rest) != 0 {
-		return nil, fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"CertificateChain entry for AIA issuer url %q has an "+
 				"invalid chain file: %q - PEM contents had unused remainder "+
 				"input (%d bytes)",
@@ -147,16 +148,19 @@ func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, error) {
 	if pemBytes[len(pemBytes)-1] != '\n' {
 		pemBytes = append(pemBytes, '\n')
 	}
-	return pemBytes, nil
+	return pemBytes, cert, nil
 }
 
 // loadCertificateChains processes the provided chainConfig of AIA Issuer URLs
 // and cert filenames. For each AIA issuer URL all of its cert filenames are
 // read, validated as PEM certificates, and concatenated together separated by
 // newlines. The combined PEM certificate chain contents for each are returned
-// in the results map, keyed by the AIA Issuer URL.
-func loadCertificateChains(chainConfig map[string][]string) (map[string][]byte, error) {
+// in the results map, keyed by the AIA Issuer URL. Additionally the first
+// certificate in each chain is parsed and returned in a slice of issuer
+// certificates.
+func loadCertificateChains(chainConfig map[string][]string) (map[string][]byte, []*x509.Certificate, error) {
 	results := make(map[string][]byte, len(chainConfig))
+	var issuerCerts []*x509.Certificate
 
 	// For each AIA Issuer URL we need to read the chain cert files
 	for aiaIssuerURL, certFiles := range chainConfig {
@@ -164,7 +168,7 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string][]byte, 
 
 		// There must be at least one chain file specified
 		if len(certFiles) == 0 {
-			return nil, fmt.Errorf(
+			return nil, nil, fmt.Errorf(
 				"CertificateChain entry for AIA issuer url %q has no chain "+
 					"file names configured",
 				aiaIssuerURL)
@@ -172,14 +176,19 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string][]byte, 
 
 		// certFiles are read and appended in the order they appear in the
 		// configuration
-		for _, c := range certFiles {
+		for i, c := range certFiles {
 			// Prepend a newline before each chain entry
 			buffer.Write([]byte("\n"))
 
 			// Read and validate the chain file contents
-			pemBytes, err := loadCertificateFile(aiaIssuerURL, c)
+			pemBytes, cert, err := loadCertificateFile(aiaIssuerURL, c)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
+			}
+
+			// Save the first certificate as a direct issuer certificate
+			if i == 0 {
+				issuerCerts = append(issuerCerts, cert)
 			}
 
 			// Write the PEM bytes to the result buffer for this AIAIssuer
@@ -189,7 +198,8 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string][]byte, 
 		// Save the full PEM chain contents
 		results[aiaIssuerURL] = buffer.Bytes()
 	}
-	return results, nil
+
+	return results, issuerCerts, nil
 }
 
 func setupWFE(c config, logger blog.Logger, stats metrics.Scope, clk clock.Clock) (core.RegistrationAuthority, core.StorageAuthority, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient) {
@@ -232,7 +242,7 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	certChains, err := loadCertificateChains(c.WFE.CertificateChains)
+	certChains, issuerCerts, err := loadCertificateChains(c.WFE.CertificateChains)
 	cmd.FailOnError(err, "Couldn't read configured CertificateChains")
 
 	err = features.Set(c.WFE.Features)
@@ -248,7 +258,7 @@ func main() {
 	kp, err := goodkey.NewKeyPolicy("", c.WFE.BlockedKeyFile)
 	cmd.FailOnError(err, "Unable to create key policy")
 	rac, sac, rns, npm := setupWFE(c, logger, scope, clk)
-	wfe, err := wfe2.NewWebFrontEndImpl(scope, clk, kp, certChains, rns, npm, logger)
+	wfe, err := wfe2.NewWebFrontEndImpl(scope, clk, kp, certChains, issuerCerts, rns, npm, logger)
 	cmd.FailOnError(err, "Unable to create WFE")
 	wfe.RA = rac
 	wfe.SA = sac

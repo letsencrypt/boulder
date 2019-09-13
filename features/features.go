@@ -72,6 +72,9 @@ const (
 	// generating a precertificate. This also changes the issuance / storage flow,
 	// adding two new calls from CA to SA: AddSerial and AddPrecertificate.
 	PrecertificateOCSP
+	// PrecertificateRevocation allows revocation of precertificates with the
+	// ACMEv2 interface.
+	PrecertificateRevocation
 )
 
 // List of features and their default value, protected by fMu
@@ -103,6 +106,7 @@ var features = map[FeatureFlag]bool{
 	DeleteUnusedChallenges:        false,
 	V1DisableNewValidations:       false,
 	PrecertificateOCSP:            false,
+	PrecertificateRevocation:      false,
 }
 
 var fMu = new(sync.RWMutex)

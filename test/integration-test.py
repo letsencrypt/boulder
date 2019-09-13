@@ -45,8 +45,8 @@ def run_go_tests(filterPattern=None):
     return zero or an exception will be raised. If the filterPattern is provided
     it is used as the value of the `--test.run` argument to the go test command.
     """
-    cmdLine = "go test -v"
-    if filterPattern is not None:
+    cmdLine = "go test"
+    if filterPattern is not None and filterPattern is not "":
         cmdLine = "{0} --test.run {1}".format(cmdLine, filterPattern)
     cmdLine = "{0} -tags integration -count=1 ./test/integration".format(cmdLine)
     cmd = shlex.split(cmdLine)

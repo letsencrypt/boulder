@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -352,12 +353,18 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 
 	chainPEM, err := ioutil.ReadFile("../test/test-ca2.pem")
 	test.AssertNotError(t, err, "Unable to read ../test/test-ca2.pem")
+	chainDER, _ := pem.Decode(chainPEM)
 
 	certChains := map[string][]byte{
 		"http://localhost:4000/acme/issuer-cert": append([]byte{'\n'}, chainPEM...),
 	}
+	issuerCert, err := x509.ParseCertificate(chainDER.Bytes)
+	test.AssertNotError(t, err, "Unable to parse issuer cert")
+	issuerCertificates := []*x509.Certificate{
+		issuerCert,
+	}
 
-	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, certChains, nil, nil, blog.NewMock())
+	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, certChains, issuerCertificates, nil, nil, blog.NewMock())
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL
@@ -2542,11 +2549,15 @@ func makeRevokeRequestJSON(reason *revocation.Reason) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	return makeRevokeRequestJSONForCert(certBlock.Bytes, reason)
+}
+
+func makeRevokeRequestJSONForCert(der []byte, reason *revocation.Reason) ([]byte, error) {
 	revokeRequest := struct {
 		CertificateDER core.JSONBuffer    `json:"certificate"`
 		Reason         *revocation.Reason `json:"reason"`
 	}{
-		CertificateDER: certBlock.Bytes,
+		CertificateDER: der,
 		Reason:         reason,
 	}
 	revokeRequestJSON, err := json.Marshal(revokeRequest)
@@ -2589,6 +2600,60 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 		makePostRequestWithPath("revoke-cert", jwsBody))
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
+}
+
+// Valid revocation request for existing, non-revoked cert, signed with cert
+// key, precertificate revocation feature flag enabled.
+func TestRevokePreCertificateFeatureEnabled(t *testing.T) {
+	_ = features.Set(map[string]bool{"PrecertificateRevocation": true})
+	defer features.Reset()
+
+	wfe, fc := setupWFE(t)
+	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
+	responseWriter := httptest.NewRecorder()
+
+	keyPemBytes, err := ioutil.ReadFile("test/238.key")
+	test.AssertNotError(t, err, "Failed to load key")
+	key := loadKey(t, keyPemBytes)
+
+	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
+
+	_, _, jwsBody := signRequestEmbed(t,
+		key, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+
+	// Revoking a certificate that was issued by a known issuer should work
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath("revoke-cert", jwsBody))
+	test.AssertEquals(t, responseWriter.Code, 200)
+	test.AssertEquals(t, responseWriter.Body.String(), "")
+
+	// Make a self-signed junk certificate
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "unexpected error making random private key")
+	// Use a known serial from the mocks/mocks.go GetCertificate mock. This
+	// shouldn't matter for the precertificate revocation feature flag flow but
+	// will ensure we don't get a 404 response from the feature flag being handled
+	// incorrectly and the GetCertificate() mock not knowing the serial.
+	knownSerial, err := core.StringToSerial("0000000000000000000000000000000000ee")
+	test.AssertNotError(t, err, "Unexpected error converting known serial to bigint")
+	template := &x509.Certificate{
+		SerialNumber: knownSerial,
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, k.Public(), k)
+	test.AssertNotError(t, err, "Unexpected error creating self-signed junk cert")
+	revokeRequestJSON, err = makeRevokeRequestJSONForCert(certDER, nil)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON for certDER")
+
+	// Revoking a certificate that wasn't signed by a known issuer should fail
+	responseWriter = httptest.NewRecorder()
+	_, _, jwsBody = signRequestEmbed(t,
+		key, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath("revoke-cert", jwsBody))
+	// It should result in a 404 response with a problem body
+	test.AssertEquals(t, responseWriter.Code, 404)
+	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"type\": \"urn:ietf:params:acme:error:malformed\",\n  \"detail\": \"No such certificate\",\n  \"status\": 404\n}")
 }
 
 func TestRevokeCertificateReasons(t *testing.T) {

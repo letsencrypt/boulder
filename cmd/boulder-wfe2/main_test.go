@@ -43,23 +43,20 @@ func TestLoadCertificateChains(t *testing.T) {
 	test.AssertNotError(t, err, "ioutil.WriteFile failed")
 
 	testCases := []struct {
-		Name           string
-		Input          map[string][]string
-		ExpectedResult map[string][]byte
-		ExpectedError  error
+		Name          string
+		Input         map[string][]string
+		ExpectedMap   map[string][]byte
+		ExpectedError error
 	}{
 		{
-			Name:           "No input",
-			Input:          nil,
-			ExpectedResult: nil,
-			ExpectedError:  nil,
+			Name:  "No input",
+			Input: nil,
 		},
 		{
 			Name: "AIA Issuer without chain files",
 			Input: map[string][]string{
 				"http://break.the.chain.com": []string{},
 			},
-			ExpectedResult: nil,
 			ExpectedError: fmt.Errorf(
 				"CertificateChain entry for AIA issuer url \"http://break.the.chain.com\" " +
 					"has no chain file names configured"),
@@ -69,7 +66,6 @@ func TestLoadCertificateChains(t *testing.T) {
 			Input: map[string][]string{
 				"http://where.is.my.mind": []string{"/tmp/does.not.exist.pem"},
 			},
-			ExpectedResult: nil,
 			ExpectedError: fmt.Errorf("CertificateChain entry for AIA issuer url \"http://where.is.my.mind\" " +
 				"has an invalid chain file: \"/tmp/does.not.exist.pem\" - error reading " +
 				"contents: open /tmp/does.not.exist.pem: no such file or directory"),
@@ -79,7 +75,6 @@ func TestLoadCertificateChains(t *testing.T) {
 			Input: map[string][]string{
 				"http://windows.sad.zone": []string{crlfPEM.Name()},
 			},
-			ExpectedResult: nil,
 			ExpectedError: fmt.Errorf("CertificateChain entry for AIA issuer url \"http://windows.sad.zone\" "+
 				"has an invalid chain file: %q - contents had CRLF line endings", crlfPEM.Name()),
 		},
@@ -88,7 +83,6 @@ func TestLoadCertificateChains(t *testing.T) {
 			Input: map[string][]string{
 				"http://ok.go": []string{invalidPEMFile.Name()},
 			},
-			ExpectedResult: nil,
 			ExpectedError: fmt.Errorf(
 				"CertificateChain entry for AIA issuer url \"http://ok.go\" has an "+
 					"invalid chain file: %q - contents did not decode as PEM",
@@ -99,7 +93,6 @@ func TestLoadCertificateChains(t *testing.T) {
 			Input: map[string][]string{
 				"http://not-a-cert.com": []string{"../../test/test-root.key"},
 			},
-			ExpectedResult: nil,
 			ExpectedError: fmt.Errorf(
 				"CertificateChain entry for AIA issuer url \"http://not-a-cert.com\" has " +
 					"an invalid chain file: \"../../test/test-root.key\" - PEM block type " +
@@ -110,7 +103,6 @@ func TestLoadCertificateChains(t *testing.T) {
 			Input: map[string][]string{
 				"http://tasty.leftovers.com": []string{leftoverPEMFile.Name()},
 			},
-			ExpectedResult: nil,
 			ExpectedError: fmt.Errorf(
 				"CertificateChain entry for AIA issuer url \"http://tasty.leftovers.com\" "+
 					"has an invalid chain file: %q - PEM contents had unused remainder input "+
@@ -124,38 +116,35 @@ func TestLoadCertificateChains(t *testing.T) {
 			Input: map[string][]string{
 				"http://single-cert-chain.com": []string{"../../test/test-ca.pem"},
 			},
-			ExpectedResult: map[string][]byte{
+			ExpectedMap: map[string][]byte{
 				"http://single-cert-chain.com": []byte(fmt.Sprintf("\n%s", string(certBytesA))),
 			},
-			ExpectedError: nil,
 		},
 		{
 			Name: "Two PEM file chain",
 			Input: map[string][]string{
 				"http://two-cert-chain.com": []string{"../../test/test-ca.pem", "../../test/test-ca2.pem"},
 			},
-			ExpectedResult: map[string][]byte{
+			ExpectedMap: map[string][]byte{
 				"http://two-cert-chain.com": []byte(fmt.Sprintf("\n%s\n%s", string(certBytesA), string(certBytesB))),
 			},
-			ExpectedError: nil,
 		},
 		{
 			Name: "One PEM file chain, no trailing newline",
 			Input: map[string][]string{
 				"http://single-cert-chain.nonewline.com": []string{abruptPEM.Name()},
 			},
-			ExpectedResult: map[string][]byte{
+			ExpectedMap: map[string][]byte{
 				// NOTE(@cpu): There should be a trailing \n added by the WFE that we
 				// expect in the format specifier below.
 				"http://single-cert-chain.nonewline.com": []byte(fmt.Sprintf("\n%s\n", string(abruptPEMBytes))),
 			},
-			ExpectedError: nil,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			result, err := loadCertificateChains(tc.Input)
+			resultMap, issuers, err := loadCertificateChains(tc.Input)
 			if tc.ExpectedError == nil && err != nil {
 				t.Errorf("Expected nil error, got %#v\n", err)
 			} else if tc.ExpectedError != nil && err == nil {
@@ -163,9 +152,10 @@ func TestLoadCertificateChains(t *testing.T) {
 			} else if tc.ExpectedError != nil {
 				test.AssertEquals(t, err.Error(), tc.ExpectedError.Error())
 			}
-			test.AssertEquals(t, len(result), len(tc.ExpectedResult))
-			for url, chain := range result {
-				test.Assert(t, bytes.Compare(chain, tc.ExpectedResult[url]) == 0, "Chain bytes did not match expected")
+			test.AssertEquals(t, len(resultMap), len(tc.ExpectedMap))
+			test.AssertEquals(t, len(issuers), len(tc.ExpectedMap))
+			for url, chain := range resultMap {
+				test.Assert(t, bytes.Compare(chain, tc.ExpectedMap[url]) == 0, "Chain bytes did not match expected")
 			}
 		})
 	}
