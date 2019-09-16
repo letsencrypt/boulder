@@ -829,21 +829,55 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 	// certificate by checking that the account has valid authorizations for all
 	// of the names in the certificate or was the issuing account
 	authorizedToRevoke := func(parsedCertificate *x509.Certificate) *probs.ProblemDetails {
-		cert, err := wfe.SA.GetCertificate(ctx, core.SerialToString(parsedCertificate.SerialNumber))
-		if err != nil {
+		// Try to find a stored final certificate for the serial number
+		serial := core.SerialToString(parsedCertificate.SerialNumber)
+		cert, err := wfe.SA.GetCertificate(ctx, serial)
+		if berrors.Is(err, berrors.NotFound) && features.Enabled(features.PrecertificateRevocation) {
+			// If there was an error, it was a not found error, and the precertificate
+			// revocation feature is enabled, then try to find a stored precert.
+			pbCert, err := wfe.SA.GetPrecertificate(ctx,
+				&sapb.Serial{Serial: &serial})
+			if berrors.Is(err, berrors.NotFound) {
+				// If looking up a precert also returned a not found error then return
+				// a not found problem.
+				return probs.NotFound("No such certificate")
+			} else if err != nil {
+				fmt.Printf("\n\nERR: %#v\n\n", err)
+				fmt.Printf("\n\nERR: %v\n\n", err)
+				// If there was any other error looking up the precert then return
+				// a server internal problem.
+				return probs.ServerInternal("Failed to retrieve certificate")
+			}
+			cert, err = bgrpc.PBToCert(pbCert)
+			if err != nil {
+				return probs.ServerInternal("Failed to unmarshal protobuf Certificate")
+			}
+		} else if berrors.Is(err, berrors.NotFound) {
+			// Otherwise if the err was not nil and was a not found error but the
+			// precertificate revocation feature flag is not enabled, return a not
+			// found error.
+			return probs.NotFound("No such certificate")
+		} else if err != nil {
+			// Otherwise if the err was not nil and not a not found error, return
+			// a server internal problem.
 			return probs.ServerInternal("Failed to retrieve certificate")
 		}
+		// If the cert/precert is owned by the requester then return nil, it is an
+		// authorized revocation.
 		if cert.RegistrationID == acct.ID {
 			return nil
 		}
+		// Otherwise check if the account, while not the owner, has equivalent authorizations
 		valid, err := wfe.acctHoldsAuthorizations(ctx, acct.ID, parsedCertificate.DNSNames)
 		if err != nil {
 			return probs.ServerInternal("Failed to retrieve authorizations for names in certificate")
 		}
+		// If it doesn't, return an unauthorized problem.
 		if !valid {
 			return probs.Unauthorized(
 				"The key ID specified in the revocation request does not hold valid authorizations for all names in the certificate to be revoked")
 		}
+		// If it does, return nil. It is an an authorized revocation.
 		return nil
 	}
 	return wfe.processRevocation(ctx, jwsBody, acct.ID, authorizedToRevoke, request, logEvent)

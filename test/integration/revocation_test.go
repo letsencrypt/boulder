@@ -3,11 +3,11 @@
 package integration
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
-	"encoding/base64"
 	"os"
 	"strings"
 	"testing"
@@ -17,78 +17,116 @@ import (
 	"golang.org/x/crypto/ocsp"
 )
 
+// isPrecert returns true if the provided cert has an extension with the OID
+// equal to OIDExtensionCTPoison.
+func isPrecert(cert *x509.Certificate) bool {
+	for _, ext := range cert.Extensions {
+		if ext.Id.Equal(OIDExtensionCTPoison) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestPrecertificateRevocation tests that a precertificate without a matching
+// certificate can be revoked using all of the available RFC 8555 revocation
+// authentication mechansims.
 func TestPrecertificateRevocation(t *testing.T) {
 	// This test is gated on the PrecertificateRevocation feature flag.
 	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
 		return
 	}
 
-	// Pick a random domain, make sure all of the ct-test-srv's reject giving back
-	// SCTs for that domain.
-	domain := random_domain()
-	ctAddRejectHost(t, domain)
-
+	// Create a base account to use for revocation tests.
 	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
 	c, err := makeClient()
 	test.AssertNotError(t, err, "unexpected error creating acme client")
 
+	// Create a specific key for CSRs so that it is possible to test revocation
+	// with the cert key.
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "unexpected error creating random cert key")
 
-	// Issue a certificate for the name. It should fail because not enough SCTs
-	// can be collected, leaving a precert without a matching final cert.
-	_, err = authAndIssue(c, certKey, []string{domain})
-	test.AssertError(t, err, "expected error from authAndIssue, was nil")
-	if !strings.Contains(err.Error(), "urn:ietf:params:acme:error:serverInternal") ||
-		!strings.Contains(err.Error(), "SCT embedding") {
-		t.Fatal(err)
+	// Create a second account to test revocation with an equally authorized account
+	otherAccount, err := makeClient()
+	test.AssertNotError(t, err, "unexpected error creating second acme client")
+	// Preauthorize a specific domain with the other account before it has been
+	// added to the ct-test-srv reject list.
+	preAuthDomain := "preauth.precert.domain.example.com"
+	_, err = authAndIssue(otherAccount, nil, []string{preAuthDomain})
+	test.AssertNotError(t, err, "unexpected error preauthorizing second acme client")
+
+	testCases := []struct {
+		name         string
+		domain       string
+		revokeClient *client
+		revokeKey    crypto.Signer
+	}{
+		{
+			name:      "revocation by certificate key",
+			revokeKey: certKey,
+		},
+		{
+			name:      "revocation by owner account key",
+			revokeKey: c.Account.PrivateKey,
+		},
+		{
+			name:         "equivalently authorized account key",
+			revokeClient: otherAccount,
+			revokeKey:    otherAccount.Account.PrivateKey,
+			domain:       preAuthDomain,
+		},
 	}
 
-	// Get the rejections from the first ct-test-srv
-	rejections := ctGetRejections(t, 4500)
-	if len(rejections) == 0 {
-		t.Fatal("expected to find rejected precert from ct-test-srv:4500, found none")
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// If the test case didn't specify a domain make one up randomly
+			if tc.domain == "" {
+				tc.domain = random_domain()
+			}
+			// If the test case didn't specify a different client to use for
+			// revocation use c.
+			if tc.revokeClient == nil {
+				tc.revokeClient = c
+			}
+
+			// Make sure the ct-test-srv will reject issuance for the domain
+			ctAddRejectHost(t, tc.domain)
+			// Issue a certificate for the name using the `c` client. It should fail
+			// because not enough SCTs can be collected, leaving a precert without
+			// a matching final cert.
+			_, err = authAndIssue(c, certKey, []string{tc.domain})
+			test.AssertError(t, err, "expected error from authAndIssue, was nil")
+			if !strings.Contains(err.Error(), "urn:ietf:params:acme:error:serverInternal") ||
+				!strings.Contains(err.Error(), "SCT embedding") {
+				t.Fatal(err)
+			}
+
+			// Find the rejected precert from the first ct-test-srv for the domains we
+			// attempted to issue for.
+			cert := ctFindRejection(t, 4500, []string{tc.domain})
+			// To be confident that we're testing the right thing also verify that the
+			// rejection is a poisoned precertificate.
+			if !isPrecert(cert) {
+				t.Fatal("precert was missing poison extension")
+			}
+
+			// To start with the precertificate should have a Good OCSP response.
+			_, err = ocsp_helper.ReqDER(cert.Raw, ocsp.Good)
+			test.AssertNotError(t, err, "unexpected error requesting OCSP for precert")
+
+			// Revoke the precertificate using the specified key and client
+			err = tc.revokeClient.RevokeCertificate(
+				tc.revokeClient.Account,
+				cert,
+				tc.revokeKey,
+				ocsp.KeyCompromise)
+			test.AssertNotError(t, err, "unexpected error revoking precert")
+
+			// Check the OCSP response for the precertificate again. It should now be
+			// revoked.
+			_, err = ocsp_helper.ReqDER(cert.Raw, ocsp.Revoked)
+			test.AssertNotError(t, err, "unexpected error requesting OCSP for revoked precert")
+		})
 	}
-
-	// Parse the rejections and find the precertificate that matches the random
-	// domain we issued for.
-	var cert *x509.Certificate
-	for _, r := range rejections {
-		precertDER, err := base64.StdEncoding.DecodeString(r)
-		test.AssertNotError(t, err, "unexpected error decoding ct-test-srv rejected precert bytes")
-		c, err := x509.ParseCertificate(precertDER)
-		test.AssertNotError(t, err, "unexpected error parsing ct-test-srv rejected precert bytes")
-
-		if len(c.DNSNames) == 1 && c.DNSNames[0] == domain {
-			cert = c
-		}
-	}
-	// If there was no matching precert then fail the test
-	if cert == nil {
-		t.Fatalf("failed to find precertificate for %q in ct-test-srv:4500 rejections", domain)
-	}
-
-	// To be confident that we're testing the right thing also verify that the
-	// rejection is a poisoned precertificate.
-	var isPrecert bool
-	for _, ext := range cert.Extensions {
-		if ext.Id.Equal(OIDExtensionCTPoison) {
-			isPrecert = true
-			break
-		}
-	}
-	test.AssertEquals(t, isPrecert, true)
-
-	// To start with the precertificate should have a Good OCSP response.
-	_, err = ocsp_helper.ReqDER(cert.Raw, ocsp.Good)
-	test.AssertNotError(t, err, "unexpected error requesting OCSP for precert")
-
-	// Revoke the precertificate
-	err = c.RevokeCertificate(c.Account, cert, certKey, ocsp.KeyCompromise)
-	test.AssertNotError(t, err, "unexpected error revoking precert")
-
-	// Check the OCSP response for the precertificate again. It should now be
-	// revoked.
-	_, err = ocsp_helper.ReqDER(cert.Raw, ocsp.Revoked)
-	test.AssertNotError(t, err, "unexpected error requesting OCSP for revoked precert")
 }

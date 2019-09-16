@@ -426,7 +426,7 @@ func authorizationValid(authz *corepb.Authorization) bool {
 	return !(authz.Id == nil || authz.Identifier == nil || authz.RegistrationID == nil || authz.Status == nil || authz.Expires == nil)
 }
 
-func certToPB(cert core.Certificate) *corepb.Certificate {
+func CertToPB(cert core.Certificate) *corepb.Certificate {
 	issued, expires := cert.Issued.UnixNano(), cert.Expires.UnixNano()
 	return &corepb.Certificate{
 		RegistrationID: &cert.RegistrationID,
@@ -438,7 +438,7 @@ func certToPB(cert core.Certificate) *corepb.Certificate {
 	}
 }
 
-func pbToCert(pb *corepb.Certificate) (core.Certificate, error) {
+func PBToCert(pb *corepb.Certificate) (core.Certificate, error) {
 	if pb == nil || pb.RegistrationID == nil || pb.Serial == nil || pb.Digest == nil || pb.Der == nil || pb.Issued == nil || pb.Expires == nil {
 		return core.Certificate{}, errIncompleteResponse
 	}
