@@ -134,8 +134,8 @@ func SelectCertificate(s dbOneSelector, q string, args ...interface{}) (core.Cer
 
 const precertFields = "registrationID, serial, der, issued, expires"
 
-// selectPrecertificate selects all fields of one certificate object identified
-// by serial.
+// selectPrecertificate selects all fields of one precertificate object
+// identified by serial.
 func selectPrecertificate(s dbOneSelector, serial string) (core.Certificate, error) {
 	var model precertificateModel
 	err := s.SelectOne(
