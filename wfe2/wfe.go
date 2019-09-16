@@ -848,7 +848,7 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 			}
 			cert, err = bgrpc.PBToCert(pbCert)
 			if err != nil {
-				return probs.ServerInternal("Failed to unmarshal protobuf Certificate")
+				return probs.ServerInternal("Failed to unmarshal protobuf certificate")
 			}
 		} else if berrors.Is(err, berrors.NotFound) {
 			// Otherwise if the err was not nil and was a not found error but the
