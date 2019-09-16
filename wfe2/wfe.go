@@ -83,6 +83,11 @@ type WebFrontEndImpl struct {
 	// sorted from leaf to root
 	certificateChains map[string][]byte
 
+	// issuerCertificates is a slice of known issuer certificates built with the
+	// first entry from each of the certificateChains. These certificates are used
+	// to verify the signature of certificates provided in revocation requests.
+	issuerCertificates []*x509.Certificate
+
 	// URL to the current subscriber agreement (should contain some version identifier)
 	SubscriberAgreementURL string
 
@@ -121,6 +126,7 @@ func NewWebFrontEndImpl(
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
 	certificateChains map[string][]byte,
+	issuerCertificates []*x509.Certificate,
 	remoteNonceService noncepb.NonceServiceClient,
 	noncePrefixMap map[string]noncepb.NonceServiceClient,
 	logger blog.Logger,
@@ -130,6 +136,7 @@ func NewWebFrontEndImpl(
 		clk:                clk,
 		keyPolicy:          keyPolicy,
 		certificateChains:  certificateChains,
+		issuerCertificates: issuerCertificates,
 		stats:              initStats(scope),
 		scope:              scope,
 		remoteNonceService: remoteNonceService,
@@ -695,22 +702,65 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	// Compute and record the serial number of the provided certificate
 	serial := core.SerialToString(providedCert.SerialNumber)
 	logEvent.Extra["ProvidedCertificateSerial"] = serial
+	notFoundProb := probs.NotFound("No such certificate")
 
-	// Lookup the certificate by the serial. If the certificate wasn't found, or
-	// it wasn't a byte-for-byte match to the certificate requested for
-	// revocation, return an error
-	cert, err := wfe.SA.GetCertificate(ctx, serial)
-	if err != nil || !bytes.Equal(cert.DER, revokeRequest.CertificateDER) {
-		return probs.NotFound("No such certificate")
+	var certDER []byte
+	// If the PrecertificateRevocation feature flag is enabled that means we won't
+	// do a byte-for-byte comparison of the providedCert against the stored cert
+	// returned by SA.GetCertificate because a precert will always fail this
+	// check. Instead, perform a signature validation of the providedCert using
+	// the known issuer public keys. If the providedCert signature can not be
+	// validated with any of the known issuers return a not-found error.
+	if features.Enabled(features.PrecertificateRevocation) {
+		// If no issuerCertificates are initialized but the PrecertificateRevocation
+		// feature flag is enabled then return a runtime server internal error
+		// rather than fail open.
+		if len(wfe.issuerCertificates) == 0 {
+			return probs.ServerInternal(
+				"unable to verify provided certificate, empty issuerCertificates")
+		}
+
+		// Try to validate the signature on the provided cert using each of the
+		// known issuer certificates. This is O(n) but we always expect to have
+		// a small number of configured issuers.
+		var validIssuerSignature bool
+		for _, issuer := range wfe.issuerCertificates {
+			if err := providedCert.CheckSignatureFrom(issuer); err == nil {
+				validIssuerSignature = true
+				break
+			}
+		}
+		// If none of the issuers validate the signature on the provided cert then
+		// return an error.
+		if !validIssuerSignature {
+			return notFoundProb
+		}
+		// If the signature validates we can use the provided cert's DER for
+		// revocation safely.
+		certDER = providedCert.Raw
+	} else {
+		// When the precertificate revocation feature flag isn't enabled try to find
+		// a finalized cert in the DB matching the serial. If there is one, it needs
+		// to be a byte-for-byte match with the requested cert.
+		cert, err := wfe.SA.GetCertificate(ctx, serial)
+		if err != nil {
+			return notFoundProb
+		}
+		// If the certificate in the DB isn't a byte for byte match, return a problem
+		if !bytes.Equal(cert.DER, revokeRequest.CertificateDER) {
+			return notFoundProb
+		}
+		certDER = cert.DER
 	}
 
 	// Parse the certificate into memory
-	parsedCertificate, err := x509.ParseCertificate(cert.DER)
+	parsedCertificate, err := x509.ParseCertificate(certDER)
 	if err != nil {
-		// InternalServerError because cert.DER came from our own DB.
+		// InternalServerError because certDER came from our own DB, or was
+		// confirmed issued by one of our own issuers.
 		return probs.ServerInternal("invalid parse of stored certificate")
 	}
-	logEvent.Extra["RetrievedCertificateSerial"] = core.SerialToString(parsedCertificate.SerialNumber)
+	logEvent.Extra["RetrievedCertificateSerial"] = serial
 	logEvent.Extra["RetrievedCertificateDNSNames"] = parsedCertificate.DNSNames
 
 	if parsedCertificate.NotAfter.Before(wfe.clk.Now()) {
@@ -779,21 +829,53 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 	// certificate by checking that the account has valid authorizations for all
 	// of the names in the certificate or was the issuing account
 	authorizedToRevoke := func(parsedCertificate *x509.Certificate) *probs.ProblemDetails {
-		cert, err := wfe.SA.GetCertificate(ctx, core.SerialToString(parsedCertificate.SerialNumber))
-		if err != nil {
+		// Try to find a stored final certificate for the serial number
+		serial := core.SerialToString(parsedCertificate.SerialNumber)
+		cert, err := wfe.SA.GetCertificate(ctx, serial)
+		if berrors.Is(err, berrors.NotFound) && features.Enabled(features.PrecertificateRevocation) {
+			// If there was an error, it was a not found error, and the precertificate
+			// revocation feature is enabled, then try to find a stored precert.
+			pbCert, err := wfe.SA.GetPrecertificate(ctx,
+				&sapb.Serial{Serial: &serial})
+			if berrors.Is(err, berrors.NotFound) {
+				// If looking up a precert also returned a not found error then return
+				// a not found problem.
+				return probs.NotFound("No such certificate")
+			} else if err != nil {
+				// If there was any other error looking up the precert then return
+				// a server internal problem.
+				return probs.ServerInternal("Failed to retrieve certificate")
+			}
+			cert, err = bgrpc.PBToCert(pbCert)
+			if err != nil {
+				return probs.ServerInternal("Failed to unmarshal protobuf certificate")
+			}
+		} else if berrors.Is(err, berrors.NotFound) {
+			// Otherwise if the err was not nil and was a not found error but the
+			// precertificate revocation feature flag is not enabled, return a not
+			// found error.
+			return probs.NotFound("No such certificate")
+		} else if err != nil {
+			// Otherwise if the err was not nil and not a not found error, return
+			// a server internal problem.
 			return probs.ServerInternal("Failed to retrieve certificate")
 		}
+		// If the cert/precert is owned by the requester then return nil, it is an
+		// authorized revocation.
 		if cert.RegistrationID == acct.ID {
 			return nil
 		}
+		// Otherwise check if the account, while not the owner, has equivalent authorizations
 		valid, err := wfe.acctHoldsAuthorizations(ctx, acct.ID, parsedCertificate.DNSNames)
 		if err != nil {
 			return probs.ServerInternal("Failed to retrieve authorizations for names in certificate")
 		}
+		// If it doesn't, return an unauthorized problem.
 		if !valid {
 			return probs.Unauthorized(
 				"The key ID specified in the revocation request does not hold valid authorizations for all names in the certificate to be revoked")
 		}
+		// If it does, return nil. It is an an authorized revocation.
 		return nil
 	}
 	return wfe.processRevocation(ctx, jwsBody, acct.ID, authorizedToRevoke, request, logEvent)

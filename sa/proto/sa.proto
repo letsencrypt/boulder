@@ -13,6 +13,7 @@ service StorageAuthority {
         rpc GetPendingAuthorization(GetPendingAuthorizationRequest) returns (core.Authorization) {}
         rpc GetValidAuthorizations(GetValidAuthorizationsRequest) returns (ValidAuthorizations) {}
         rpc GetCertificate(Serial) returns (core.Certificate) {}
+        rpc GetPrecertificate(Serial) returns (core.Certificate) {}
         rpc GetCertificateStatus(Serial) returns (CertificateStatus) {}
         rpc CountCertificatesByNames(CountCertificatesByNamesRequest) returns (CountByNames) {}
         rpc CountRegistrationsByIP(CountRegistrationsByIPRequest) returns (Count) {}

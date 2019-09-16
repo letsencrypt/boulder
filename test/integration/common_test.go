@@ -9,12 +9,17 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
 
 	"github.com/eggsampler/acme/v2"
+)
+
+var (
+	OIDExtensionCTPoison = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 3}
 )
 
 func random_domain() string {
@@ -80,11 +85,15 @@ type issuanceResult struct {
 	certs []*x509.Certificate
 }
 
-func authAndIssue(domains []string) (*issuanceResult, error) {
-	c, err := makeClient()
-	if err != nil {
-		return nil, err
+func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, domains []string) (*issuanceResult, error) {
+	var err error
+	if c == nil {
+		c, err = makeClient()
+		if err != nil {
+			return nil, err
+		}
 	}
+
 	var ids []acme.Identifier
 	for _, domain := range domains {
 		ids = append(ids, acme.Identifier{Type: "dns", Value: domain})
@@ -116,7 +125,7 @@ func authAndIssue(domains []string) (*issuanceResult, error) {
 		}
 	}
 
-	csr, err := makeCSR(domains)
+	csr, err := makeCSR(csrKey, domains)
 	if err != nil {
 		return nil, err
 	}
@@ -132,19 +141,22 @@ func authAndIssue(domains []string) (*issuanceResult, error) {
 	return &issuanceResult{order, certs}, nil
 }
 
-func makeCSR(domains []string) (*x509.CertificateRequest, error) {
-	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, fmt.Errorf("generating certificate key: %s", err)
+func makeCSR(k *ecdsa.PrivateKey, domains []string) (*x509.CertificateRequest, error) {
+	var err error
+	if k == nil {
+		k, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return nil, fmt.Errorf("generating certificate key: %s", err)
+		}
 	}
 
 	csrDer, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
 		SignatureAlgorithm: x509.ECDSAWithSHA256,
 		PublicKeyAlgorithm: x509.ECDSA,
-		PublicKey:          certKey.Public(),
+		PublicKey:          k.Public(),
 		Subject:            pkix.Name{CommonName: domains[0]},
 		DNSNames:           domains,
-	}, certKey)
+	}, k)
 	if err != nil {
 		return nil, fmt.Errorf("making csr: %s", err)
 	}

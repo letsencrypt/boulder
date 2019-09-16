@@ -42,6 +42,10 @@ func (sa *mockInvalidAuthorizationsAuthority) GetCertificate(ctx context.Context
 	return nil, nil
 }
 
+func (sa *mockInvalidAuthorizationsAuthority) GetPrecertificate(_ context.Context, _ *sapb.Serial, opts ...grpc.CallOption) (*core.Certificate, error) {
+	return nil, nil
+}
+
 func (sa *mockInvalidAuthorizationsAuthority) GetCertificateStatus(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*sapb.CertificateStatus, error) {
 	return nil, nil
 }

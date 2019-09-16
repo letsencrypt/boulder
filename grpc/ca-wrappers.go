@@ -56,7 +56,7 @@ func (cac CertificateAuthorityClientWrapper) IssueCertificateForPrecertificate(c
 	if err != nil {
 		return core.Certificate{}, err
 	}
-	return pbToCert(res)
+	return PBToCert(res)
 }
 
 func (cac CertificateAuthorityClientWrapper) GenerateOCSP(ctx context.Context, ocspReq core.OCSPSigningRequest) ([]byte, error) {
@@ -113,7 +113,7 @@ func (cas *CertificateAuthorityServerWrapper) IssueCertificateForPrecertificate(
 	if err != nil {
 		return nil, err
 	}
-	return certToPB(cert), nil
+	return CertToPB(cert), nil
 }
 
 func (cas *CertificateAuthorityServerWrapper) GenerateOCSP(ctx context.Context, request *caPB.GenerateOCSPRequest) (*caPB.OCSPResponse, error) {

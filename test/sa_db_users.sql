@@ -32,7 +32,7 @@ GRANT SELECT,INSERT,DELETE ON orderFqdnSets TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON authz2 TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON orderToAuthz2 TO 'sa'@'localhost';
 GRANT INSERT ON serials TO 'sa'@'localhost';
-GRANT INSERT ON precertificates TO 'sa'@'localhost';
+GRANT SELECT,INSERT ON precertificates TO 'sa'@'localhost';
 
 -- OCSP Responder
 GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';
