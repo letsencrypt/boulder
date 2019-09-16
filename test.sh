@@ -124,6 +124,11 @@ fi
 # Run go mod vendor (happens only in Travis) to check that the versions in
 # vendor/ really exist in the remote repo and match what we have.
 if [[ "$RUN" =~ "gomod-vendor" ]] ; then
+  # NOTE(@cpu): Go 1.13 and 1.12.x handle vendoring differently. Only test on Go
+  # 1.13. This check can be deleted after we remove Go 1.12.x support.
+  if [ "$TRAVIS_GO_VERSION" != "1.13" ]; then
+    return 0
+  fi
   go mod vendor
   git diff --exit-code
 fi
