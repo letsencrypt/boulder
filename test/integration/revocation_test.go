@@ -52,7 +52,7 @@ func TestPrecertificateRevocation(t *testing.T) {
 	test.AssertNotError(t, err, "unexpected error creating second acme client")
 	// Preauthorize a specific domain with the other account before it has been
 	// added to the ct-test-srv reject list.
-	preAuthDomain := "preauth.precert.domain.example.com"
+	preAuthDomain := random_domain()
 	_, err = authAndIssue(otherAccount, nil, []string{preAuthDomain})
 	test.AssertNotError(t, err, "unexpected error preauthorizing second acme client")
 
