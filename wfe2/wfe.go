@@ -842,8 +842,6 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 				// a not found problem.
 				return probs.NotFound("No such certificate")
 			} else if err != nil {
-				fmt.Printf("\n\nERR: %#v\n\n", err)
-				fmt.Printf("\n\nERR: %v\n\n", err)
 				// If there was any other error looking up the precert then return
 				// a server internal problem.
 				return probs.ServerInternal("Failed to retrieve certificate")
