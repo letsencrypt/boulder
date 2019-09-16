@@ -40,21 +40,21 @@ func TestPrecertificateRevocation(t *testing.T) {
 	// Create a base account to use for revocation tests.
 	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
 	c, err := makeClient()
-	test.AssertNotError(t, err, "unexpected error creating acme client")
+	test.AssertNotError(t, err, "creating acme client")
 
 	// Create a specific key for CSRs so that it is possible to test revocation
 	// with the cert key.
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "unexpected error creating random cert key")
+	test.AssertNotError(t, err, "creating random cert key")
 
 	// Create a second account to test revocation with an equally authorized account
 	otherAccount, err := makeClient()
-	test.AssertNotError(t, err, "unexpected error creating second acme client")
+	test.AssertNotError(t, err, "creating second acme client")
 	// Preauthorize a specific domain with the other account before it has been
 	// added to the ct-test-srv reject list.
 	preAuthDomain := random_domain()
 	_, err = authAndIssue(otherAccount, nil, []string{preAuthDomain})
-	test.AssertNotError(t, err, "unexpected error preauthorizing second acme client")
+	test.AssertNotError(t, err, "preauthorizing second acme client")
 
 	testCases := []struct {
 		name         string
@@ -113,7 +113,7 @@ func TestPrecertificateRevocation(t *testing.T) {
 
 			// To start with the precertificate should have a Good OCSP response.
 			_, err = ocsp_helper.ReqDER(cert.Raw, ocsp.Good)
-			test.AssertNotError(t, err, "unexpected error requesting OCSP for precert")
+			test.AssertNotError(t, err, "requesting OCSP for precert")
 
 			// Revoke the precertificate using the specified key and client
 			err = tc.revokeClient.RevokeCertificate(
@@ -121,12 +121,12 @@ func TestPrecertificateRevocation(t *testing.T) {
 				cert,
 				tc.revokeKey,
 				ocsp.KeyCompromise)
-			test.AssertNotError(t, err, "unexpected error revoking precert")
+			test.AssertNotError(t, err, "revoking precert")
 
 			// Check the OCSP response for the precertificate again. It should now be
 			// revoked.
 			_, err = ocsp_helper.ReqDER(cert.Raw, ocsp.Revoked)
-			test.AssertNotError(t, err, "unexpected error requesting OCSP for revoked precert")
+			test.AssertNotError(t, err, "requesting OCSP for revoked precert")
 		})
 	}
 }
