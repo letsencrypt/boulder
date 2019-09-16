@@ -18,10 +18,13 @@ func TestPrecertificateOCSP(t *testing.T) {
 		return
 	}
 	domain := random_domain()
-	ctAddRejectHost(t, domain)
+	err := ctAddRejectHost(domain)
+	if err != nil {
+		t.Fatalf("adding ct-test-srv reject host: %s", err)
+	}
 
 	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
-	_, err := authAndIssue(nil, nil, []string{domain})
+	_, err = authAndIssue(nil, nil, []string{domain})
 	if err != nil {
 		if strings.Contains(err.Error(), "urn:ietf:params:acme:error:serverInternal") &&
 			strings.Contains(err.Error(), "SCT embedding") {
@@ -33,7 +36,10 @@ func TestPrecertificateOCSP(t *testing.T) {
 		t.Fatal("expected error issuing for domain rejected by CT servers; got none")
 	}
 
-	rejections := ctGetRejections(t, 4500)
+	rejections, err := ctGetRejections(4500)
+	if err != nil {
+		t.Fatalf("getting ct-test-srv rejections: %s", err)
+	}
 	for _, r := range rejections {
 		rejectedCertBytes, err := base64.StdEncoding.DecodeString(r)
 		if err != nil {

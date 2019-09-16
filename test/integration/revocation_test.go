@@ -91,7 +91,9 @@ func TestPrecertificateRevocation(t *testing.T) {
 			}
 
 			// Make sure the ct-test-srv will reject issuance for the domain
-			ctAddRejectHost(t, tc.domain)
+			err := ctAddRejectHost(tc.domain)
+			test.AssertNotError(t, err, "adding ct-test-srv reject host")
+
 			// Issue a certificate for the name using the `c` client. It should fail
 			// because not enough SCTs can be collected, leaving a precert without
 			// a matching final cert.
@@ -104,7 +106,9 @@ func TestPrecertificateRevocation(t *testing.T) {
 
 			// Find the rejected precert from the first ct-test-srv for the domains we
 			// attempted to issue for.
-			cert := ctFindRejection(t, 4500, []string{tc.domain})
+			cert, err := ctFindRejection(4500, []string{tc.domain})
+			test.AssertNotError(t, err, "finding rejected precertificate")
+
 			// To be confident that we're testing the right thing also verify that the
 			// rejection is a poisoned precertificate.
 			if !isPrecert(cert) {
