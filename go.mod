@@ -4,7 +4,6 @@ go 1.12
 
 require (
 	github.com/apoydence/onpar v0.0.0-20181125144932-f2f06780798d // indirect
-	github.com/asaskevich/govalidator v0.0.0-20180720115003-f9ffefc3facf // indirect
 	github.com/beeker1121/goque v0.0.0-20170321141813-4044bc29b280
 	github.com/beorn7/perks v0.0.0-20160229213445-3ac7bf7a47d1 // indirect
 	github.com/cloudflare/cfssl v0.0.0-20190716004220-2185c182e6ba
@@ -43,7 +42,6 @@ require (
 	golang.org/x/net v0.0.0-20190415214537-1da14a5a36f2
 	golang.org/x/sys v0.0.0-20190416152802-12500544f89f // indirect
 	golang.org/x/text v0.3.0
-	google.golang.org/appengine v1.4.0 // indirect
 	google.golang.org/genproto v0.0.0-20190415143225-d1146b9035b9 // indirect
 	google.golang.org/grpc v1.20.0
 	gopkg.in/go-gorp/gorp.v2 v2.0.0-20180410155428-6032c66e0f5f

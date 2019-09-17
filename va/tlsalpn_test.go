@@ -70,7 +70,14 @@ func tlssniSrvWithNames(t *testing.T, chall core.Challenge, names ...string) *ht
 	return hs
 }
 
-func tlsalpn01SrvWithCert(t *testing.T, chall core.Challenge, oid asn1.ObjectIdentifier, names []string, cert *tls.Certificate, acmeCert *tls.Certificate) *httptest.Server {
+func tlsalpn01SrvWithCert(
+	t *testing.T,
+	chall core.Challenge,
+	oid asn1.ObjectIdentifier,
+	names []string,
+	cert *tls.Certificate,
+	acmeCert *tls.Certificate,
+	minTLSVersion uint16) *httptest.Server {
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{},
 		ClientAuth:   tls.NoClientCert,
@@ -84,6 +91,7 @@ func tlsalpn01SrvWithCert(t *testing.T, chall core.Challenge, oid asn1.ObjectIde
 			return cert, nil
 		},
 		NextProtos: []string{"http/1.1", ACMETLS1Protocol},
+		MinVersion: minTLSVersion,
 	}
 
 	hs := httptest.NewUnstartedServer(http.DefaultServeMux)
@@ -97,7 +105,12 @@ func tlsalpn01SrvWithCert(t *testing.T, chall core.Challenge, oid asn1.ObjectIde
 	return hs
 }
 
-func tlsalpn01Srv(t *testing.T, chall core.Challenge, oid asn1.ObjectIdentifier, names ...string) *httptest.Server {
+func tlsalpn01Srv(
+	t *testing.T,
+	chall core.Challenge,
+	oid asn1.ObjectIdentifier,
+	minTLSVersion uint16,
+	names ...string) *httptest.Server {
 	template := tlsCertTemplate(names)
 	certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
 	cert := &tls.Certificate{
@@ -119,12 +132,12 @@ func tlsalpn01Srv(t *testing.T, chall core.Challenge, oid asn1.ObjectIdentifier,
 		PrivateKey:  &TheKey,
 	}
 
-	return tlsalpn01SrvWithCert(t, chall, oid, names, cert, acmeCert)
+	return tlsalpn01SrvWithCert(t, chall, oid, names, cert, acmeCert, minTLSVersion)
 }
 
 func TestTLSALPN01FailIP(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
-	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, "localhost")
+	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "localhost")
 	va, _ := setup(hs, 0, "", nil)
 
 	port := getPort(hs)
@@ -237,7 +250,7 @@ func TestTLSALPN01DialTimeout(t *testing.T) {
 
 func TestTLSALPN01Refused(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
-	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, "localhost")
+	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "localhost")
 	va, _ := setup(hs, 0, "", nil)
 	// Take down validation server and check that validation fails.
 	hs.Close()
@@ -254,7 +267,7 @@ func TestTLSALPN01Refused(t *testing.T) {
 
 func TestTLSALPN01TalkingToHTTP(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
-	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, "localhost")
+	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "localhost")
 	va, _ := setup(hs, 0, "", nil)
 	httpOnly := httpSrv(t, "")
 	va.tlsPort = getPort(httpOnly)
@@ -349,7 +362,7 @@ func TestCertNames(t *testing.T) {
 
 func TestTLSALPN01Success(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
-	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, "localhost")
+	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "localhost")
 
 	va, _ := setup(hs, 0, "", nil)
 
@@ -361,7 +374,7 @@ func TestTLSALPN01Success(t *testing.T) {
 
 	hs.Close()
 	chall = createChallenge(core.ChallengeTypeTLSALPN01)
-	hs = tlsalpn01Srv(t, chall, IdPeAcmeIdentifierV1Obsolete, "localhost")
+	hs = tlsalpn01Srv(t, chall, IdPeAcmeIdentifierV1Obsolete, 0, "localhost")
 
 	va, _ = setup(hs, 0, "", nil)
 
@@ -377,7 +390,7 @@ func TestValidateTLSALPN01BadChallenge(t *testing.T) {
 	chall2 := chall
 	setChallengeToken(&chall2, "bad token")
 
-	hs := tlsalpn01Srv(t, chall2, IdPeAcmeIdentifier, "localhost")
+	hs := tlsalpn01Srv(t, chall2, IdPeAcmeIdentifier, 0, "localhost")
 	va, _ := setup(hs, 0, "", nil)
 
 	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
@@ -429,7 +442,7 @@ func TestValidateTLSALPN01UnawareSrv(t *testing.T) {
 // will result in a problem with the invalid UTF-8 replaced.
 func TestValidateTLSALPN01BadUTFSrv(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSALPN01)
-	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, "localhost", "\xf0\x28\x8c\xbc")
+	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "localhost", "\xf0\x28\x8c\xbc")
 	port := getPort(hs)
 	va, _ := setup(hs, 0, "", nil)
 
@@ -486,7 +499,7 @@ func TestValidateTLSALPN01MalformedExtnValue(t *testing.T) {
 			PrivateKey:  &TheKey,
 		}
 
-		hs := tlsalpn01SrvWithCert(t, chall, IdPeAcmeIdentifier, names, cert, acmeCert)
+		hs := tlsalpn01SrvWithCert(t, chall, IdPeAcmeIdentifier, names, cert, acmeCert, 0)
 		va, _ := setup(hs, 0, "", nil)
 
 		_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
@@ -501,4 +514,22 @@ func TestValidateTLSALPN01MalformedExtnValue(t *testing.T) {
 		test.AssertEquals(t, prob.Detail, malformedMsg)
 	}
 
+}
+
+func TestTLSALPN01TLS13(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSALPN01)
+	// Create a server that uses tls.VersionTLS13 as the minimum supported version
+	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, tls.VersionTLS13, "localhost")
+	defer hs.Close()
+
+	va, _ := setup(hs, 0, "", nil)
+
+	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
+	// TODO(@cpu): This should be changed to test there was no problem and that
+	// the correct stat counter was incremented once TLS 1.3 support is enabled.
+	if prob == nil {
+		t.Fatal("expected problem validating TLS-ALPN-01 challenge against a TLS 1.3 only server, got nil")
+	}
+	test.AssertEquals(t, prob.Type, probs.TLSProblem)
+	test.AssertEquals(t, prob.Detail, "remote error: tls: protocol version not supported")
 }
