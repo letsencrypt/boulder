@@ -21,26 +21,26 @@ import (
 	"github.com/beeker1121/goque"
 	cfsslConfig "github.com/cloudflare/cfssl/config"
 	cferr "github.com/cloudflare/cfssl/errors"
-	"github.com/cloudflare/cfssl/ocsp"
 	"github.com/cloudflare/cfssl/signer"
 	"github.com/cloudflare/cfssl/signer/local"
 	"github.com/google/certificate-transparency-go"
 	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/jmhodges/clock"
-	corepb "github.com/letsencrypt/boulder/core/proto"
-	"github.com/letsencrypt/boulder/features"
-	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/miekg/pkcs11"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/ca/config"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	csrlib "github.com/letsencrypt/boulder/csr"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/prometheus/client_golang/prometheus"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 // Miscellaneous PKIX OIDs that we need to refer to
@@ -136,6 +136,7 @@ type CertificateAuthorityImpl struct {
 	signatureCount    *prometheus.CounterVec
 	csrExtensionCount *prometheus.CounterVec
 	orphanQueue       *goque.Queue
+	ocspLifetime      time.Duration
 }
 
 // Issuer represents a single issuer certificate, along with its key.
@@ -156,7 +157,7 @@ type localSigner interface {
 type internalIssuer struct {
 	cert       *x509.Certificate
 	eeSigner   localSigner
-	ocspSigner ocsp.Signer
+	ocspSigner crypto.Signer
 }
 
 func makeInternalIssuers(
@@ -177,12 +178,6 @@ func makeInternalIssuers(
 			return nil, err
 		}
 
-		// Set up our OCSP signer. Note this calls for both the issuer cert and the
-		// OCSP signing cert, which are the same in our case.
-		ocspSigner, err := ocsp.NewSigner(iss.Cert, iss.Cert, iss.Signer, lifespanOCSP)
-		if err != nil {
-			return nil, err
-		}
 		cn := iss.Cert.Subject.CommonName
 		if internalIssuers[cn] != nil {
 			return nil, errors.New("Multiple issuer certs with the same CommonName are not supported")
@@ -190,7 +185,7 @@ func makeInternalIssuers(
 		internalIssuers[cn] = &internalIssuer{
 			cert:       iss.Cert,
 			eeSigner:   eeSigner,
-			ocspSigner: ocspSigner,
+			ocspSigner: iss.Signer,
 		}
 	}
 	return internalIssuers, nil
@@ -287,6 +282,7 @@ func NewCertificateAuthorityImpl(
 		signatureCount:    signatureCount,
 		csrExtensionCount: csrExtensionCount,
 		orphanQueue:       orphanQueue,
+		ocspLifetime:      config.LifespanOCSP.Duration,
 	}
 
 	if config.Expiry == "" {
@@ -390,19 +386,18 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 	return extensions, nil
 }
 
+var ocspStatusToCode = map[string]int{
+	"good":    ocsp.Good,
+	"revoked": ocsp.Revoked,
+	"unknown": ocsp.Unknown,
+}
+
 // GenerateOCSP produces a new OCSP response and returns it
 func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj core.OCSPSigningRequest) ([]byte, error) {
 	cert, err := x509.ParseCertificate(xferObj.CertDER)
 	if err != nil {
 		ca.log.AuditErr(err.Error())
 		return nil, err
-	}
-
-	signRequest := ocsp.SignRequest{
-		Certificate: cert,
-		Status:      xferObj.Status,
-		Reason:      int(xferObj.Reason),
-		RevokedAt:   xferObj.RevokedAt,
 	}
 
 	cn := cert.Issuer.CommonName
@@ -418,7 +413,19 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 			core.SerialToString(cert.SerialNumber), cn, err)
 	}
 
-	ocspResponse, err := issuer.ocspSigner.Sign(signRequest)
+	now := ca.clk.Now().Truncate(time.Hour)
+	tbsResponse := ocsp.Response{
+		Status:       ocspStatusToCode[xferObj.Status],
+		SerialNumber: cert.SerialNumber,
+		ThisUpdate:   now,
+		NextUpdate:   now.Add(ca.ocspLifetime),
+	}
+	if tbsResponse.Status == ocsp.Revoked {
+		tbsResponse.RevokedAt = xferObj.RevokedAt
+		tbsResponse.RevocationReason = int(xferObj.Reason)
+	}
+
+	ocspResponse, err := ocsp.CreateResponse(issuer.cert, issuer.cert, tbsResponse, issuer.ocspSigner)
 	ca.noteSignError(err)
 	if err == nil {
 		ca.signatureCount.With(prometheus.Labels{"purpose": "ocsp"}).Inc()
