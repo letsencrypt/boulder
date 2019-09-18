@@ -21,7 +21,7 @@ type mockDB struct {
 	t               *testing.T
 	expectedQuery   string
 	expectedArgMap  map[string]interface{}
-	selectResult    []int64
+	selectResult    []workUnit
 	expectedExecArg int64
 	execResult      sql.Result
 	errResult       error
@@ -52,11 +52,11 @@ func (m mockDB) Select(result interface{}, query string, args ...interface{}) ([
 		test.AssertDeepEquals(m.t, argMap, m.expectedArgMap)
 	}
 
-	if idResults, ok := result.(*[]int64); !ok {
+	if idResults, ok := result.(*[]workUnit); !ok {
 		m.t.Fatalf("Select()'s result target pointer was %T not []int64", result)
 	} else {
-		for _, id := range m.selectResult {
-			*idResults = append(*idResults, id)
+		for _, wu := range m.selectResult {
+			*idResults = append(*idResults, wu)
 		}
 	}
 
@@ -68,15 +68,15 @@ func TestGetWork(t *testing.T) {
 	startID := int64(10)
 	table := "certificates"
 	clk.Add(time.Hour * 5)
-	purgeBefore := clk.Now().Add(-time.Hour)
+	resultsExpires := clk.Now().Add(-time.Hour * 2)
 	batchSize := int64(20)
-	workQuery := `SELECT id FROM certificates WHERE id > :startID AND time <= :cutoff ORDER by id LIMIT :limit`
-	mockIDs := []int64{
-		1,
-		2,
-		3,
-		10,
-		90,
+	workQuery := `SELECT id, time AS expires FROM certificates WHERE id > :startID LIMIT :limit`
+	mockIDs := []workUnit{
+		{1, resultsExpires},
+		{2, resultsExpires},
+		{3, resultsExpires},
+		{10, resultsExpires},
+		{90, resultsExpires},
 	}
 
 	testDB := &mockDB{
@@ -84,12 +84,11 @@ func TestGetWork(t *testing.T) {
 		expectedQuery: workQuery,
 		expectedArgMap: map[string]interface{}{
 			"startID": startID,
-			"cutoff":  purgeBefore,
 			"limit":   batchSize,
 		},
 	}
 
-	workChan := make(chan int64)
+	workChan := make(chan int64, 5)
 
 	job := &batchedDBJob{
 		db:          testDB,
@@ -111,24 +110,39 @@ func TestGetWork(t *testing.T) {
 	testDB.errResult = nil
 	testDB.selectResult = mockIDs
 
-	// Start a go routine to read the work channel results
-	go func() {
-		// We should be able to read one item per mockID and it should match the expected ID
-		for i := 0; i < len(mockIDs); i++ {
-			got := <-workChan
-			test.AssertEquals(t, got, mockIDs[i])
-		}
-	}()
-
 	// We expect to get back no error and the correct lastID
 	lastID, err := job.getWork(workChan, startID)
 	test.AssertNotError(t, err, "unexpected error from getWork")
-	test.AssertEquals(t, lastID, mockIDs[len(mockIDs)-1])
+	test.AssertEquals(t, lastID, mockIDs[len(mockIDs)-1].ID)
+
+	// We should be able to read one item per mockID and it should match the expected ID
+	for i := 0; i < len(mockIDs); i++ {
+		got := <-workChan
+		test.AssertEquals(t, got, mockIDs[i].ID)
+	}
 
 	// We expect the work gauge for this table has been updated
 	workCount, err := test.GaugeValueWithLabels(workStat, prometheus.Labels{"table": table})
 	test.AssertNotError(t, err, "unexpected error from GaugeValueWithLabels")
 	test.AssertEquals(t, workCount, len(mockIDs))
+
+	// Set the third item in mockIDs to have an expiry after the purge cutoff
+	// so we expect to only get the first two items returned from getWork
+	testDB.selectResult[2].Expires = clk.Now()
+	workStat.Reset()
+
+	// We expect to get back no error and the correct lastID
+	lastID, err = job.getWork(workChan, startID)
+	test.AssertNotError(t, err, "unexpected error from getWork")
+	test.AssertEquals(t, lastID, testDB.selectResult[1].ID)
+
+	for i := 0; i < 2; i++ {
+		got := <-workChan
+		test.AssertEquals(t, got, mockIDs[i].ID)
+	}
+	workCount, err = test.GaugeValueWithLabels(workStat, prometheus.Labels{"table": table})
+	test.AssertNotError(t, err, "unexpected error from GaugeValueWithLabels")
+	test.AssertEquals(t, workCount, 2)
 }
 
 func TestDeleteResource(t *testing.T) {

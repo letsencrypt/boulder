@@ -14,10 +14,9 @@ func newCertificatesJob(
 	config Config) *batchedDBJob {
 	purgeBefore := config.Janitor.Certificates.GracePeriod.Duration
 	workQuery := `
-		 SELECT id FROM certificates
+		 SELECT id, expires FROM certificates
 		 WHERE
-		   id > :startID AND
-		   expires <= :cutoff
+		   id > :startID
 		 LIMIT :limit`
 	log.Debugf("Creating Certificates job from config: %#v\n", config.Janitor.Certificates)
 	return &batchedDBJob{

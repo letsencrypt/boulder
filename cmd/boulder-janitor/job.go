@@ -64,11 +64,19 @@ type batchedDBJob struct {
 	// parallelism controls how many independent go routines will be performing
 	// cleanup deletes.
 	parallelism int
-	// workQuery is the parameterized SQL query that is used to find more work. It will be provided three parameters:
+	// workQuery is the parameterized SQL SELECT query that is used to find more work. It will be provided two parameters:
 	//   * :startID - the primary key value to start the work query from.
-	//   * :cutoff  - the purgeBefore duration used to control which rows are old enough to be deleted.
 	//   * :limit   - the batchSize value. Only this many rows should be returned by the query.
+	// And it expects two columns for each row returned:
+	//   * id      - the primary key value for each row.
+	//   * expires - the expiry datetime used to calculate if the row is within the cutoff window. The column name
+	//               may need to be aliased to expiry if it has another name.
 	workQuery string
+}
+
+type workUnit struct {
+	ID      int64
+	Expires time.Time
 }
 
 // getWork reads work into the provided work channel starting at the startID by
@@ -76,29 +84,36 @@ type batchedDBJob struct {
 // If there is no error the last primary key ID written to the work channel will
 // be returned, otherwise an error result is returned.
 func (j batchedDBJob) getWork(work chan<- int64, startID int64) (int64, error) {
-	var idBatch []int64
+	var data []workUnit
 	_, err := j.db.Select(
-		&idBatch,
+		&data,
 		j.workQuery,
 		map[string]interface{}{
 			"startID": startID,
-			"cutoff":  j.clk.Now().Add(-j.purgeBefore),
 			"limit":   j.batchSize,
 		},
 	)
 	if err != nil && err != sql.ErrNoRows {
 		return 0, err
 	}
-	rowsFound := len(idBatch)
-	workStat.WithLabelValues(j.table).Set(float64(rowsFound))
-	if rowsFound == 0 {
-		return startID, nil
+	lastID := startID
+	rows := 0
+	cutoff := j.clk.Now().Add(-j.purgeBefore)
+	for _, v := range data {
+		// We check for the expiration in code rather than doing so in the
+		// database query as it allows us to impose a bound on the number
+		// of rows that the database will examine. If a row is return that
+		// has an expiry after the cutoff all of the successive rows
+		// should also have an expiry after the cutoff so we break from
+		// the loop and ignore the rest of the results.
+		if v.Expires.After(cutoff) {
+			break
+		}
+		work <- v.ID
+		rows++
+		lastID = v.ID
 	}
-	var lastID int64
-	for _, v := range idBatch {
-		work <- v
-		lastID = v
-	}
+	workStat.WithLabelValues(j.table).Set(float64(rows))
 	return lastID, nil
 }
 
