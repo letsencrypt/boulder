@@ -929,6 +929,11 @@ func (qsa *queueSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (
 	return &corepb.Empty{}, nil
 }
 
+// TestPrecertOrphanQueue tests that IssuePrecertificate writes precertificates
+// to the orphan queue if storage fails, and that `integrateOrphan` later
+// successfully writes those precertificates to the database. To do this, it
+// uses the `queueSA` mock, which allows us to flip on and off a "fail" bit that
+// decides whether it errors in response to storage requests.
 func TestPrecertOrphanQueue(t *testing.T) {
 	tmpDir, err := ioutil.TempDir("", "orphan-queue-tmp")
 	defer os.Remove(tmpDir)

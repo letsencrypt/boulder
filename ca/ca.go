@@ -432,11 +432,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	var regID int64
-	if issueReq.RegistrationID == nil {
-		return nil, fmt.Errorf("incomplete request")
-	}
-	regID = *issueReq.RegistrationID
+	regID := *issueReq.RegistrationID
 
 	if features.Enabled(features.PrecertificateOCSP) {
 		serialHex := core.SerialToString(serialBigInt)
@@ -721,7 +717,6 @@ func (ca *CertificateAuthorityImpl) generateOCSPAndStoreCertificate(
 				DER:      certDER,
 				OCSPResp: ocspResp,
 				RegID:    regID,
-				Precert:  false,
 			})
 		}
 		return core.Certificate{}, err
@@ -779,6 +774,9 @@ func (ca *CertificateAuthorityImpl) integrateOrphan() error {
 	if err != nil {
 		return fmt.Errorf("failed to parse orphan: %s", err)
 	}
+	// When calculating the `NotBefore` at issuance time, we subtracted
+	// ca.backdate. Now, to calculate the actual issuance time from the NotBefore,
+	// we reverse the process and add ca.backdate.
 	issued := cert.NotBefore.Add(ca.backdate)
 	if orphan.Precert {
 		issuedNanos := issued.UnixNano()
