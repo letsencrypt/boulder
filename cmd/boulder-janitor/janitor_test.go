@@ -36,7 +36,7 @@ func TestNewJobs(t *testing.T) {
 		},
 		"certificatesPerName": {
 			"enabled": true,
-			"gracePeriod": "1h"
+			"gracePeriod": "169h"
 		}
 	}
 }`
