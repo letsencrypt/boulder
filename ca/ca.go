@@ -23,14 +23,14 @@ import (
 	cferr "github.com/cloudflare/cfssl/errors"
 	"github.com/cloudflare/cfssl/signer"
 	"github.com/cloudflare/cfssl/signer/local"
-	"github.com/google/certificate-transparency-go"
+	ct "github.com/google/certificate-transparency-go"
 	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/jmhodges/clock"
 	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 
-	"github.com/letsencrypt/boulder/ca/config"
+	ca_config "github.com/letsencrypt/boulder/ca/config"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -418,7 +418,10 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 	// and openssl doesn't understand our concept of fake time so it thinks
 	// our responses are expired when we are doing things with our fake clock
 	// time set in the past. Since we don't rely on fake clock time for any
-	// OCSP testing always using the real time doesn't cause any problems.
+	// OCSP unit tests always using the real time doesn't cause any problems.
+	// Currently the only integration test case that triggers this is
+	// ocsp_exp_unauth_setup, but any other integration test introduced that
+	//  sets the fake clock into the past will also do so.
 	now := time.Now().Truncate(time.Hour)
 	tbsResponse := ocsp.Response{
 		Status:       ocspStatusToCode[xferObj.Status],
