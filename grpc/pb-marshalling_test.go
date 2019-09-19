@@ -306,8 +306,8 @@ func TestCert(t *testing.T) {
 		Expires:        now.Add(time.Hour),
 	}
 
-	certPB := certToPB(cert)
-	outCert, _ := pbToCert(certPB)
+	certPB := CertToPB(cert)
+	outCert, _ := PBToCert(certPB)
 
 	test.AssertDeepEquals(t, cert, outCert)
 }

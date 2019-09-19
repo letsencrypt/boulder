@@ -68,7 +68,7 @@ func (rac RegistrationAuthorityClientWrapper) NewCertificate(ctx context.Context
 		return core.Certificate{}, err
 	}
 
-	return pbToCert(response)
+	return PBToCert(response)
 }
 
 func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Context, base, updates core.Registration) (core.Registration, error) {
@@ -237,7 +237,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewCertificate(ctx context.Contex
 	if err != nil {
 		return nil, err
 	}
-	return certToPB(cert), nil
+	return CertToPB(cert), nil
 }
 
 func (ras *RegistrationAuthorityServerWrapper) UpdateRegistration(ctx context.Context, request *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
