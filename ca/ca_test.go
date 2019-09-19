@@ -36,6 +36,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -202,6 +203,7 @@ func init() {
 }
 
 func setup(t *testing.T) *testCtx {
+	features.Reset()
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
 
@@ -898,7 +900,8 @@ type queueSA struct {
 	fail      bool
 	duplicate bool
 
-	issued *time.Time
+	issued        *time.Time
+	issuedPrecert *time.Time
 }
 
 func (qsa *queueSA) AddCertificate(_ context.Context, _ []byte, _ int64, _ []byte, issued *time.Time) (string, error) {
@@ -912,11 +915,73 @@ func (qsa *queueSA) AddCertificate(_ context.Context, _ []byte, _ int64, _ []byt
 }
 
 func (qsa *queueSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error) {
-	return &corepb.Empty{}, nil
+	if qsa.fail {
+		return nil, errors.New("bad")
+	} else if qsa.duplicate {
+		return nil, berrors.DuplicateError("is a dupe")
+	}
+	issued := time.Unix(0, *req.Issued)
+	qsa.issuedPrecert = &issued
+	return nil, nil
 }
 
 func (qsa *queueSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*corepb.Empty, error) {
 	return &corepb.Empty{}, nil
+}
+
+// TestPrecertOrphanQueue tests that IssuePrecertificate writes precertificates
+// to the orphan queue if storage fails, and that `integrateOrphan` later
+// successfully writes those precertificates to the database. To do this, it
+// uses the `queueSA` mock, which allows us to flip on and off a "fail" bit that
+// decides whether it errors in response to storage requests.
+func TestPrecertOrphanQueue(t *testing.T) {
+	tmpDir, err := ioutil.TempDir("", "orphan-queue-tmp")
+	defer os.Remove(tmpDir)
+	test.AssertNotError(t, err, "Failed to create temp directory")
+	orphanQueue, err := goque.OpenQueue(tmpDir)
+	test.AssertNotError(t, err, "Failed to open orphaned certificate queue")
+
+	qsa := &queueSA{fail: true}
+	testCtx := setup(t)
+	fakeNow := time.Date(2019, 9, 20, 0, 0, 0, 0, time.UTC)
+	testCtx.fc.Set(fakeNow)
+	ca, err := NewCertificateAuthorityImpl(
+		testCtx.caConfig,
+		qsa,
+		testCtx.pa,
+		testCtx.fc,
+		testCtx.stats,
+		testCtx.issuers,
+		testCtx.keyPolicy,
+		testCtx.logger,
+		orphanQueue)
+	test.AssertNotError(t, err, "Failed to create CA")
+
+	_ = features.Set(map[string]bool{"PrecertificateOCSP": true})
+
+	err = ca.integrateOrphan()
+	if err != goque.ErrEmpty {
+		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
+	}
+
+	var one int64 = 1
+	_, err = ca.IssuePrecertificate(context.Background(), &caPB.IssueCertificateRequest{
+		RegistrationID: &one,
+		OrderID:        &one,
+		Csr:            CNandSANCSR,
+	})
+	test.AssertError(t, err, "Expected IssuePrecertificate to fail with `failSA`")
+
+	qsa.fail = false
+	err = ca.integrateOrphan()
+	test.AssertNotError(t, err, "integrateOrphan failed")
+	if !qsa.issuedPrecert.Equal(fakeNow) {
+		t.Errorf("expected issued time to be %s, got %s", fakeNow, *qsa.issued)
+	}
+	err = ca.integrateOrphan()
+	if err != goque.ErrEmpty {
+		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
+	}
 }
 
 func TestOrphanQueue(t *testing.T) {
@@ -928,6 +993,11 @@ func TestOrphanQueue(t *testing.T) {
 
 	qsa := &queueSA{fail: true}
 	testCtx := setup(t)
+	fakeNow, err := time.Parse("Mon Jan 2 15:04:05 2006", "Mon Jan 2 15:04:05 2006")
+	if err != nil {
+		t.Fatal(err)
+	}
+	testCtx.fc.Set(fakeNow)
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		qsa,
@@ -951,7 +1021,7 @@ func TestOrphanQueue(t *testing.T) {
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
 		DNSNames:     []string{"test.invalid"},
-		NotBefore:    time.Time{}.Add(time.Hour * 24),
+		NotBefore:    fakeNow.Add(-time.Hour),
 	}
 	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, k.Public(), k)
 	test.AssertNotError(t, err, "Failed to generate test cert")
@@ -967,7 +1037,9 @@ func TestOrphanQueue(t *testing.T) {
 	qsa.fail = false
 	err = ca.integrateOrphan()
 	test.AssertNotError(t, err, "integrateOrphan failed")
-	test.AssertEquals(t, *qsa.issued, time.Time{}.Add(time.Hour*24).Add(-time.Hour))
+	if !qsa.issued.Equal(fakeNow) {
+		t.Errorf("expected issued time to be %s, got %s", fakeNow, *qsa.issued)
+	}
 	err = ca.integrateOrphan()
 	if err != goque.ErrEmpty {
 		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
@@ -983,7 +1055,9 @@ func TestOrphanQueue(t *testing.T) {
 	qsa.duplicate = true
 	err = ca.integrateOrphan()
 	test.AssertNotError(t, err, "integrateOrphan failed with duplicate cert")
-	test.AssertEquals(t, *qsa.issued, time.Time{}.Add(time.Hour*24).Add(-time.Hour))
+	if !qsa.issued.Equal(fakeNow) {
+		t.Errorf("expected issued time to be %s, got %s", fakeNow, *qsa.issued)
+	}
 	err = ca.integrateOrphan()
 	if err != goque.ErrEmpty {
 		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
@@ -1010,7 +1084,9 @@ func TestOrphanQueue(t *testing.T) {
 	qsa.fail = false
 	err = ca.integrateOrphan()
 	test.AssertNotError(t, err, "integrateOrphan failed")
-	test.AssertEquals(t, *qsa.issued, time.Time{}.Add(time.Hour*24).Add(-time.Hour))
+	if !qsa.issued.Equal(fakeNow) {
+		t.Errorf("expected issued time to be %s, got %s", fakeNow, *qsa.issued)
+	}
 	err = ca.integrateOrphan()
 	if err != goque.ErrEmpty {
 		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
