@@ -130,6 +130,10 @@ def run_janitor():
         certStatusWorkbatch = get_stat_line(8014, statline("workbatch", "certificateStatus"))
         certsWorkBatch = get_stat_line(8014, statline("workbatch", "certificates"))
         certsPerNameWorkBatch = get_stat_line(8014, statline("workbatch", "certificatesPerName"))
+        if not certStatusWorkbatch or not certsWorkBatch or not certsPerNameWorkBatch:
+            print("not done after check {0}. Sleeping".format(i))
+            time.sleep(2)
+            continue
 
         allReady = True
         for line in [certStatusWorkbatch, certsWorkBatch, certsPerNameWorkBatch]:

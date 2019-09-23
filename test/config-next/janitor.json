@@ -24,7 +24,7 @@
     },
     "certificatesPerName": {
         "enabled": true,
-        "gracePeriod": "1h",
+        "gracePeriod": "169h",
         "batchSize": 100,
         "workSleep": "500ms",
         "parallelism": 2,

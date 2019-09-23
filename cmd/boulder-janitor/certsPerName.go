@@ -13,10 +13,13 @@ func newCertificatesPerNameJob(
 	clk clock.Clock,
 	config Config) *batchedDBJob {
 	purgeBefore := config.Janitor.CertificatesPerName.GracePeriod.Duration
-	workQuery := `SELECT id FROM certificatesPerName
+	// Technically the `time` column in certificatesPerName is not an expiry, it is
+	// the time at which it was inserted into the table, but we use it as the cutoff
+	// for deletions here as we only care about data in this table for 7 days after
+	// it was inserted.
+	workQuery := `SELECT id, time AS expires FROM certificatesPerName
 		 WHERE
-		   id > :startID AND
-		   time <= :cutoff
+		   id > :startID
 		 LIMIT :limit`
 	log.Debugf("Creating CertificatesPerName job from config: %#v\n", config.Janitor.CertificatesPerName)
 	return &batchedDBJob{

@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
@@ -93,6 +94,13 @@ func newJobs(
 		jobs = append(jobs, newCertificatesJob(dbMap, logger, clk, config))
 	}
 	if config.Janitor.CertificatesPerName.Enabled {
+		// Since we rely on data in the certificatesPerName table to calculate
+		// rate limits we don't want to delete anything that is still being
+		// relied for those calculations. If we are asked to purge anything
+		// less than 7 days old we return an error.
+		if config.Janitor.CertificatesPerName.GracePeriod.Duration < time.Hour*24*7 {
+			return nil, errors.New("certificatesPerName GracePeriod must be more than 7 days")
+		}
 		jobs = append(jobs, newCertificatesPerNameJob(dbMap, logger, clk, config))
 	}
 	if len(jobs) == 0 {
