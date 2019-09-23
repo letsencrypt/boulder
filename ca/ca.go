@@ -421,7 +421,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 	// OCSP unit tests always using the real time doesn't cause any problems.
 	// Currently the only integration test case that triggers this is
 	// ocsp_exp_unauth_setup, but any other integration test introduced that
-	//  sets the fake clock into the past will also do so.
+	// sets the fake clock into the past and verifies OCSP will also do so.
 	now := time.Now().Truncate(time.Hour)
 	tbsResponse := ocsp.Response{
 		Status:       ocspStatusToCode[xferObj.Status],
