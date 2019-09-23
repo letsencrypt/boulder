@@ -4056,6 +4056,22 @@ func TestDisableNewV1Validations(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "Validations for new domains are disabled in the V1 API (https://community.letsencrypt.org/t/end-of-life-plan-for-acmev1/88430)")
 }
 
+func TestNewOrderMaxNames(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ra.maxNames = 2
+	_, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		Names: []string{
+			"a",
+			"b",
+			"c",
+		},
+	})
+	test.AssertError(t, err, "NewOrder didn't fail with too many names in request")
+	test.AssertEquals(t, err.Error(), "Order cannot contain more than 2 DNS names")
+}
+
 var CAkeyPEM = `
 -----BEGIN RSA PRIVATE KEY-----
 MIIJKQIBAAKCAgEAqmM0dEf/J9MCk2ItzevL0dKJ84lVUtf/vQ7AXFi492vFXc3b

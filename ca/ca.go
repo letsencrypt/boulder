@@ -448,13 +448,15 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
+	regID := *issueReq.RegistrationID
+
 	if features.Enabled(features.PrecertificateOCSP) {
 		serialHex := core.SerialToString(serialBigInt)
 		nowNanos := ca.clk.Now().UnixNano()
 		expiresNanos := validity.NotAfter.UnixNano()
 		_, err = ca.sa.AddSerial(ctx, &sapb.AddSerialRequest{
 			Serial:  &serialHex,
-			RegID:   issueReq.RegistrationID,
+			RegID:   &regID,
 			Created: &nowNanos,
 			Expires: &expiresNanos,
 		})
@@ -478,15 +480,22 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 
 		_, err = ca.sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:    precertDER,
-			RegID:  issueReq.RegistrationID,
+			RegID:  &regID,
 			Ocsp:   ocspResp,
 			Issued: &nowNanos,
 		})
 		if err != nil {
 			err = berrors.InternalServerError(err.Error())
-			// TODO(#4425): Extend orphanQueue support to precertificates.
 			ca.log.AuditErrf("Failed RPC to store at SA, orphaning precertificate: serial=[%s] cert=[%s] err=[%v], regID=[%d], orderID=[%d]",
-				serialHex, hex.EncodeToString(precertDER), err, issueReq.RegistrationID, issueReq.OrderID)
+				serialHex, hex.EncodeToString(precertDER), err, *issueReq.RegistrationID, *issueReq.OrderID)
+			if ca.orphanQueue != nil {
+				ca.queueOrphan(&orphanedCert{
+					DER:      precertDER,
+					RegID:    regID,
+					OCSPResp: ocspResp,
+					Precert:  true,
+				})
+			}
 			return nil, err
 		}
 
@@ -736,6 +745,7 @@ type orphanedCert struct {
 	DER      []byte
 	OCSPResp []byte
 	RegID    int64
+	Precert  bool
 }
 
 func (ca *CertificateAuthorityImpl) queueOrphan(o *orphanedCert) {
@@ -780,8 +790,21 @@ func (ca *CertificateAuthorityImpl) integrateOrphan() error {
 	if err != nil {
 		return fmt.Errorf("failed to parse orphan: %s", err)
 	}
-	issued := cert.NotBefore.Add(-ca.backdate)
-	_, err = ca.sa.AddCertificate(context.Background(), orphan.DER, orphan.RegID, orphan.OCSPResp, &issued)
+	// When calculating the `NotBefore` at issuance time, we subtracted
+	// ca.backdate. Now, to calculate the actual issuance time from the NotBefore,
+	// we reverse the process and add ca.backdate.
+	issued := cert.NotBefore.Add(ca.backdate)
+	if orphan.Precert {
+		issuedNanos := issued.UnixNano()
+		_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
+			Der:    orphan.DER,
+			RegID:  &orphan.RegID,
+			Ocsp:   orphan.OCSPResp,
+			Issued: &issuedNanos,
+		})
+	} else {
+		_, err = ca.sa.AddCertificate(context.Background(), orphan.DER, orphan.RegID, orphan.OCSPResp, &issued)
+	}
 	if err != nil && !berrors.Is(err, berrors.Duplicate) {
 		return fmt.Errorf("failed to store orphaned certificate: %s", err)
 	}
