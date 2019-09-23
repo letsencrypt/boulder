@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"os"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -971,6 +972,12 @@ func TestPrecertOrphanQueue(t *testing.T) {
 		Csr:            CNandSANCSR,
 	})
 	test.AssertError(t, err, "Expected IssuePrecertificate to fail with `failSA`")
+
+	matches := testCtx.logger.GetAllMatching(`orphaning precertificate.* regID=\[1\], orderID=\[1\]`)
+	if len(matches) != 1 {
+		t.Errorf("no log line, or incorrect log line for orphaned precertificate:\n%s",
+			strings.Join(testCtx.logger.GetAllMatching(".*"), "\n"))
+	}
 
 	qsa.fail = false
 	err = ca.integrateOrphan()
