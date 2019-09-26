@@ -34,7 +34,7 @@ require (
 	github.com/prometheus/procfs v0.0.0-20160411190841-abf152e5f3e9 // indirect
 	github.com/syndtr/goleveldb v0.0.0-20180331014930-714f901b98fd // indirect
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
-	github.com/weppos/publicsuffix-go v0.5.1-0.20190725085804-8ac7722bc7d7
+	github.com/weppos/publicsuffix-go v0.10.1-0.20190926082447-75329425f8bb
 	github.com/ziutek/mymysql v1.5.4 // indirect
 	github.com/zmap/zcrypto v0.0.0-20190729165852-9051775e6a2e
 	github.com/zmap/zlint v0.0.0-20190812234238-3307e6abe190

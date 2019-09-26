@@ -3,13 +3,13 @@
 
 package publicsuffix
 
-const defaultListVersion = "PSL version 3e7b3e (Thu Jul 25 00:19:17 2019)"
+const defaultListVersion = "PSL version f42b9c (Wed Sep 25 17:05:14 2019)"
 
-func DefaultRules() [8793]Rule {
+func DefaultRules() [8796]Rule {
 	return r
 }
 
-var r = [8793]Rule{
+var r = [8796]Rule{
 	{1, "ac", 1, false},
 	{1, "com.ac", 2, false},
 	{1, "edu.ac", 2, false},
@@ -3898,8 +3898,6 @@ var r = [8793]Rule{
 	{1, "norfolk.museum", 2, false},
 	{1, "north.museum", 2, false},
 	{1, "nrw.museum", 2, false},
-	{1, "nuernberg.museum", 2, false},
-	{1, "nuremberg.museum", 2, false},
 	{1, "nyc.museum", 2, false},
 	{1, "nyny.museum", 2, false},
 	{1, "oceanographic.museum", 2, false},
@@ -5454,6 +5452,13 @@ var r = [8793]Rule{
 	{1, "net.so", 2, false},
 	{1, "org.so", 2, false},
 	{1, "sr", 1, false},
+	{1, "ss", 1, false},
+	{1, "biz.ss", 2, false},
+	{1, "com.ss", 2, false},
+	{1, "edu.ss", 2, false},
+	{1, "gov.ss", 2, false},
+	{1, "net.ss", 2, false},
+	{1, "org.ss", 2, false},
 	{1, "st", 1, false},
 	{1, "co.st", 2, false},
 	{1, "com.st", 2, false},
@@ -6036,6 +6041,7 @@ var r = [8793]Rule{
 	{1, "xn--lgbbat1ad8j", 1, false},
 	{1, "xn--wgbh1c", 1, false},
 	{1, "xn--e1a4c", 1, false},
+	{1, "xn--mgbah1a3hjkrd", 1, false},
 	{1, "xn--node", 1, false},
 	{1, "xn--qxam", 1, false},
 	{1, "xn--j6w193g", 1, false},
@@ -6268,7 +6274,6 @@ var r = [8793]Rule{
 	{1, "blue", 1, false},
 	{1, "bms", 1, false},
 	{1, "bmw", 1, false},
-	{1, "bnl", 1, false},
 	{1, "bnpparibas", 1, false},
 	{1, "boats", 1, false},
 	{1, "boehringer", 1, false},
@@ -6449,7 +6454,6 @@ var r = [8793]Rule{
 	{1, "dubai", 1, false},
 	{1, "duck", 1, false},
 	{1, "dunlop", 1, false},
-	{1, "duns", 1, false},
 	{1, "dupont", 1, false},
 	{1, "durban", 1, false},
 	{1, "dvag", 1, false},
@@ -6620,7 +6624,6 @@ var r = [8793]Rule{
 	{1, "homes", 1, false},
 	{1, "homesense", 1, false},
 	{1, "honda", 1, false},
-	{1, "honeywell", 1, false},
 	{1, "horse", 1, false},
 	{1, "hospital", 1, false},
 	{1, "host", 1, false},
@@ -6660,7 +6663,6 @@ var r = [8793]Rule{
 	{1, "investments", 1, false},
 	{1, "ipiranga", 1, false},
 	{1, "irish", 1, false},
-	{1, "iselect", 1, false},
 	{1, "ismaili", 1, false},
 	{1, "ist", 1, false},
 	{1, "istanbul", 1, false},
@@ -6748,6 +6750,7 @@ var r = [8793]Rule{
 	{1, "living", 1, false},
 	{1, "lixil", 1, false},
 	{1, "llc", 1, false},
+	{1, "llp", 1, false},
 	{1, "loan", 1, false},
 	{1, "loans", 1, false},
 	{1, "locker", 1, false},
@@ -6804,7 +6807,6 @@ var r = [8793]Rule{
 	{1, "mls", 1, false},
 	{1, "mma", 1, false},
 	{1, "mobile", 1, false},
-	{1, "mobily", 1, false},
 	{1, "moda", 1, false},
 	{1, "moe", 1, false},
 	{1, "moi", 1, false},
@@ -7072,6 +7074,7 @@ var r = [8793]Rule{
 	{1, "song", 1, false},
 	{1, "sony", 1, false},
 	{1, "soy", 1, false},
+	{1, "spa", 1, false},
 	{1, "space", 1, false},
 	{1, "sport", 1, false},
 	{1, "spot", 1, false},
@@ -7081,7 +7084,6 @@ var r = [8793]Rule{
 	{1, "stada", 1, false},
 	{1, "staples", 1, false},
 	{1, "star", 1, false},
-	{1, "starhub", 1, false},
 	{1, "statebank", 1, false},
 	{1, "statefarm", 1, false},
 	{1, "stc", 1, false},
@@ -7303,7 +7305,6 @@ var r = [8793]Rule{
 	{1, "xn--mgba7c0bbn0a", 1, false},
 	{1, "xn--mgbaakc7dvf", 1, false},
 	{1, "xn--mgbab2bd", 1, false},
-	{1, "xn--mgbb9fbpob", 1, false},
 	{1, "xn--mgbca7dzdo", 1, false},
 	{1, "xn--mgbi4ecexp", 1, false},
 	{1, "xn--mgbt3dhd", 1, false},
@@ -7360,6 +7361,7 @@ var r = [8793]Rule{
 	{1, "barsy.ca", 2, true},
 	{2, "compute.estate", 3, true},
 	{2, "alces.network", 3, true},
+	{1, "altervista.org", 2, true},
 	{1, "alwaysdata.net", 2, true},
 	{1, "cloudfront.net", 2, true},
 	{2, "compute.amazonaws.com", 4, true},
@@ -8115,6 +8117,7 @@ var r = [8793]Rule{
 	{1, "githubusercontent.com", 2, true},
 	{1, "gitlab.io", 2, true},
 	{1, "glitch.me", 2, true},
+	{1, "lolipop.io", 2, true},
 	{1, "cloudapps.digital", 2, true},
 	{1, "london.cloudapps.digital", 3, true},
 	{1, "homeoffice.gov.uk", 3, true},
@@ -8697,6 +8700,7 @@ var r = [8793]Rule{
 	{1, "myds.me", 2, true},
 	{1, "synology.me", 2, true},
 	{1, "vpnplus.to", 2, true},
+	{1, "direct.quickconnect.to", 3, true},
 	{1, "taifun-dns.de", 2, true},
 	{1, "gda.pl", 2, true},
 	{1, "gdansk.pl", 2, true},
@@ -8802,7 +8806,6 @@ var r = [8793]Rule{
 	{1, "virtualserver.io", 2, true},
 	{1, "site.builder.nu", 3, true},
 	{1, "enterprisecloud.nu", 2, true},
-	{1, "zone.id", 2, true},
 }
 
 func init() {
