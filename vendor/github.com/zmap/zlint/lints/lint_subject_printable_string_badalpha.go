@@ -30,7 +30,7 @@ var (
 	//   character set: the lowercase letters 'a' through 'z', uppercase
 	//   letters 'A' through 'Z', the digits '0' through '9', eleven special
 	//   characters ' = ( ) + , - . / : ? and space.
-	printableStringRegex = regexp.MustCompile(`^[a-zA-Z0-9\=\(\)\+,\-.\/:\? ]+$`)
+	printableStringRegex = regexp.MustCompile(`^[a-zA-Z0-9\=\(\)\+,\-.\/:\? ']+$`)
 )
 
 // validatePrintableString returns an error if the provided encoded printable

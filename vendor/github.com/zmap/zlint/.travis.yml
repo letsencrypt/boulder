@@ -3,7 +3,7 @@ language: go
 dist: trusty
 
 go:
-  - "1.12.x"
+  - "1.13.x"
 
 script:
   # Fast-fail on non-zero exit codes
