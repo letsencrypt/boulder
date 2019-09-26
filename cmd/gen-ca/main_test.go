@@ -242,6 +242,16 @@ func TestMakeTemplate(t *testing.T) {
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid policy OID")
 
 	profile.PolicyOIDs = []string{"1.2.3"}
+	profile.CPSPolicyOID = "1234"
+	_, err = makeTemplate(ctx, profile, nil, 0)
+	test.AssertError(t, err, "makeTemplate didn't fail with invalid CPS policy OID")
+
+	profile.CPSPolicyOID = "1.2.3"
+	profile.CPSPolicyURL = ""
+	_, err = makeTemplate(ctx, profile, nil, 0)
+	test.AssertError(t, err, "makeTemplate didn't fail with invalid CPS policy URL")
+
+	profile.CPSPolicyURL = "http://cps"
 	profile.SignatureAlgorithm = "nope"
 	_, err = makeTemplate(ctx, profile, nil, 0)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid signature algorithm")

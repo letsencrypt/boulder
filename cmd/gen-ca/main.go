@@ -208,6 +208,41 @@ type CertProfile struct {
 	// policies extension. These should be formatted in the standard OID
 	// string format (i.e. "1.2.3")
 	PolicyOIDs []string
+
+	CPSPolicyOID string
+	CPSPolicyURL string
+}
+
+// OID is our own version of asn1's ObjectIdentifier, so we can define a custom
+// JSON marshal / unmarshal.
+type OID asn1.ObjectIdentifier
+
+// CertificatePolicy is a flattening of the ASN.1 PolicyInformation structure from
+// https://tools.ietf.org/html/rfc3280.html#page-106.
+// Valid values of Type are "id-qt-unotice" and "id-qt-cps"
+type CertificatePolicy struct {
+	ID        OID
+	Type      string
+	Qualifier string
+}
+
+// UnmarshalJSON unmarshals a JSON string into an OID.
+func (oid *OID) UnmarshalJSON(data []byte) (err error) {
+	if data[0] != '"' || data[len(data)-1] != '"' {
+		return errors.New("OID JSON string not wrapped in quotes." + string(data))
+	}
+	data = data[1 : len(data)-1]
+	parsedOid, err := parseOID(string(data))
+	if err != nil {
+		return err
+	}
+	*oid = OID(parsedOid)
+	return
+}
+
+// MarshalJSON marshals an oid into a JSON string.
+func (oid OID) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf(`"%v"`, oid)), nil
 }
 
 func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
@@ -221,6 +256,25 @@ func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
 	}
 	return oid, nil
 }
+
+type policyQualifier struct {
+	PolicyQualifierID asn1.ObjectIdentifier
+	Qualifier         string `asn1:"tag:optional,ia5"`
+}
+type policyInformation struct {
+	PolicyIdentifier asn1.ObjectIdentifier
+	PolicyQualifiers []policyQualifier `asn1:"omitempty"`
+}
+
+var (
+	// Per https://tools.ietf.org/html/rfc3280.html#page-106, this represents:
+	// iso(1) identified-organization(3) dod(6) internet(1) security(5)
+	//   mechanisms(5) pkix(7) id-qt(2) id-qt-cps(1)
+	iDQTCertificationPracticeStatement = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 2, 1}
+	// iso(1) identified-organization(3) dod(6) internet(1) security(5)
+	//   mechanisms(5) pkix(7) id-qt(2) id-qt-unotice(2)
+	iDQTUserNotice = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 2, 2}
+)
 
 func verifyProfile(profile CertProfile, root bool) error {
 	if profile.NotBefore == "" {
@@ -249,6 +303,12 @@ func verifyProfile(profile CertProfile, root bool) error {
 	}
 	if !root && profile.IssuerURL == "" {
 		return errors.New("IssuerURL in profile is required for intermediates")
+	}
+	if !root && profile.CPSPolicyOID == "" {
+		return errors.New("CPSPolicyOID in profile is required for intermediates")
+	}
+	if !root && profile.CPSPolicyURL == "" {
+		return errors.New("CPSPolicyURL in profile is required for intermediates")
 	}
 	return nil
 }
@@ -287,6 +347,42 @@ func makeTemplate(ctx pkcs11helpers.PKCtx, profile *CertProfile, pubKey []byte, 
 		policyOIDs = append(policyOIDs, oid)
 	}
 
+	var cpsPolicyOID asn1.ObjectIdentifier
+	if profile.CPSPolicyOID != "" {
+		cpsPolicyOID, err = parseOID(profile.CPSPolicyOID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var cpsPolicyURL string
+	if profile.CPSPolicyURL != "" {
+		cpsPolicyURL = string(profile.CPSPolicyURL)
+	}
+
+	asn1PolicyList := policyInformation{
+		// The PolicyIdentifier is an OID assigned to a given issuer.
+		PolicyIdentifier: cpsPolicyOID,
+		PolicyQualifiers: []policyQualifier{
+			policyQualifier{
+				PolicyQualifierID: iDQTCertificationPracticeStatement,
+				Qualifier:         cpsPolicyURL,
+			},
+		},
+	}
+
+	asn1Bytes, err := asn1.Marshal(asn1PolicyList)
+	if err != nil {
+		return nil, err
+	}
+
+	var extraExtensions []pkix.Extension
+
+	extraExtensions = append(extraExtensions, pkix.Extension{
+		Id:       asn1.ObjectIdentifier{2, 5, 29, 32},
+		Critical: false,
+		Value:    asn1Bytes,
+	})
+
 	sigAlg, ok := AllowedSigAlgs[profile.SignatureAlgorithm]
 	if !ok {
 		return nil, fmt.Errorf("unsupported signature algorithm %q", profile.SignatureAlgorithm)
@@ -315,6 +411,7 @@ func makeTemplate(ctx pkcs11helpers.PKCtx, profile *CertProfile, pubKey []byte, 
 		CRLDistributionPoints: crlDistributionPoints,
 		IssuingCertificateURL: issuingCertificateURL,
 		PolicyIdentifiers:     policyOIDs,
+		ExtraExtensions:       extraExtensions,
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		SubjectKeyId:          subjectKeyID[:],
 	}
