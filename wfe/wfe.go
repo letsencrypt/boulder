@@ -1028,7 +1028,7 @@ func (wfe *WebFrontEndImpl) ChallengeV2(
 	}
 	authorizationID, err := strconv.ParseInt(slug[0], 10, 64)
 	if err != nil {
-		notFound()
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid authorization ID"), nil)
 		return
 	}
 	challengeID := slug[1]
@@ -1426,7 +1426,7 @@ func (wfe *WebFrontEndImpl) AuthorizationV2(ctx context.Context, logEvent *web.R
 	}
 	authzID, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
-		notFound()
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid authorization ID"), nil)
 		return
 	}
 	authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID})
