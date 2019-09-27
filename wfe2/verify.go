@@ -233,10 +233,10 @@ func (wfe *WebFrontEndImpl) validPOSTURL(
 	}
 
 	// Sometimes a client will include the default port of the protocol scheme
-	// they are using to their Host header. This will often cause issues because
+	// they are using in their Host header. This will often cause issues because
 	// they don't also include the port in the 'url' JWS header. As some clients
 	// don't have easy access to the underlying HTTP library they use in order
-	// to prevent this we just strip out the port.q
+	// to prevent this we just strip out the port.
 	if expectedURL.Scheme == "https" && strings.HasSuffix(expectedURL.Host, ":443") {
 		expectedURL.Host = strings.TrimSuffix(expectedURL.Host, ":443")
 	} else if expectedURL.Scheme == "http" && strings.HasSuffix(expectedURL.Host, ":80") {
