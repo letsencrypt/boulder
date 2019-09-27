@@ -18,6 +18,11 @@ func RelativeEndpoint(request *http.Request, endpoint string) string {
 		proto = "https"
 	}
 
+	// If a client sends a HTTP Host header that includes the default port
+	// for a scheme then we strip the port out of the host and return the
+	// standards compliant host instead. This is mainly done to prevent
+	// returning a directory to the user that includes the port, which they
+	// would then use in the 'url' JWS signature header.
 	if proto == "https" && strings.HasSuffix(host, ":443") {
 		host = strings.TrimSuffix(host, ":443")
 	} else if proto == "http" && strings.HasSuffix(host, ":80") {
