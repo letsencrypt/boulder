@@ -19,7 +19,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/web"
@@ -231,15 +230,6 @@ func (wfe *WebFrontEndImpl) validPOSTURL(
 		Scheme: requestProto(request),
 		Host:   request.Host,
 		Path:   request.RequestURI,
-	}
-
-	// Sometimes a client will include the default port of the protocol scheme
-	// they are using in their Host header. This will often cause issues because
-	// they don't also include the port in the 'url' JWS header. As some clients
-	// don't have easy access to the underlying HTTP library they use in order
-	// to prevent this we just strip out the port.
-	if features.Enabled(features.StripDefaultSchemePort) {
-		expectedURL.Host = web.StripDefaultSchemePort(expectedURL.Scheme, expectedURL.Host)
 	}
 	// Check that the URL we expect is the one that was found in the signed JWS
 	// header

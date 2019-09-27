@@ -6,13 +6,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
-	"crypto/tls"
 	"fmt"
 	"net/http"
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
@@ -651,8 +649,6 @@ func signExtraHeaders(
 
 func TestValidPOSTURL(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	features.Set(map[string]bool{"StripDefaultSchemePort": true})
-	defer features.Reset()
 
 	// A JWS and HTTP request with no extra headers
 	noHeadersJWS, noHeadersJWSBody := signExtraHeaders(t, nil, wfe.nonceService)
@@ -674,14 +670,6 @@ func TestValidPOSTURL(t *testing.T) {
 
 	correctURLHeaderJWS, _, correctURLHeaderJWSBody := signRequestEmbed(t, nil, "http://localhost/test-path", "", wfe.nonceService)
 	correctURLHeaderRequest := makePostRequestWithPath("test-path", correctURLHeaderJWSBody)
-
-	correctURLHeaderRequestWithHTTPPort := makePostRequestWithPath("test-path", correctURLHeaderJWSBody)
-	correctURLHeaderRequestWithHTTPPort.Host = correctURLHeaderRequestWithHTTPPort.Host + ":80"
-
-	correctURLHeaderHTTPSJWS, _, correctURLHeaderHTTPSJWSBody := signRequestEmbed(t, nil, "https://localhost/test-path", "", wfe.nonceService)
-	correctURLHeaderRequestWithHTTPSPort := makePostRequestWithPath("test-path", correctURLHeaderHTTPSJWSBody)
-	correctURLHeaderRequestWithHTTPSPort.TLS = &tls.ConnectionState{}
-	correctURLHeaderRequestWithHTTPSPort.Host = correctURLHeaderRequestWithHTTPSPort.Host + ":443"
 
 	testCases := []struct {
 		Name           string
@@ -727,18 +715,6 @@ func TestValidPOSTURL(t *testing.T) {
 			Name:           "Correct URL header in JWS",
 			JWS:            correctURLHeaderJWS,
 			Request:        correctURLHeaderRequest,
-			ExpectedResult: nil,
-		},
-		{
-			Name:           "Correct URL header in JWS, :443 in Host header",
-			JWS:            correctURLHeaderHTTPSJWS,
-			Request:        correctURLHeaderRequestWithHTTPSPort,
-			ExpectedResult: nil,
-		},
-		{
-			Name:           "Correct URL header in JWS, :80 in Host header",
-			JWS:            correctURLHeaderJWS,
-			Request:        correctURLHeaderRequestWithHTTPPort,
 			ExpectedResult: nil,
 		},
 	}
