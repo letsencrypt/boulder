@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 // RelativeEndpoint takes a path component of URL and constructs a new URL using
@@ -15,6 +16,12 @@ func RelativeEndpoint(request *http.Request, endpoint string) string {
 	// If the request was received via TLS, use `https://` for the protocol
 	if request.TLS != nil {
 		proto = "https"
+	}
+
+	if proto == "https" && strings.HasSuffix(host, ":443") {
+		host = strings.TrimSuffix(host, ":443")
+	} else if proto == "http" && strings.HasSuffix(host, ":80") {
+		host = strings.TrimSuffix(host, ":80")
 	}
 
 	// Allow upstream proxies  to specify the forwarded protocol. Allow this value
