@@ -19,6 +19,14 @@ ZLint requires [Go 1.12.x or newer](https://golang.org/doc/install) be
 installed. The command line setup instructions assume the `go` command is in
 your `$PATH`.
 
+Versioning
+----------
+
+ZLint aims to follow [semantic versioning](https://semver.org/). The addition of
+new lints will generally result in a MINOR version revision. Since downstream
+projects depend on lint results and names for policy decisions changes of this
+nature will result in MAJOR version revision.
+
 Command Line Usage
 ------------------
 
@@ -165,11 +173,32 @@ generate`:
 	go get github.com/zmap/zlint/cmd/zlint-gtld-update
 	go generate github.com/zmap/zlint/...
 
+Zlint Users/Integrations
+-------------------------
+
+Pre-issuance linting is **strongly recommended** by the [Mozilla root
+program](https://wiki.allizom.org/CA/Required_or_Recommended_Practices#Pre-Issuance_Linting).
+Here are some projects/CAs known to integrate with ZLint in some fashion:
+
+* [CFSSL](https://github.com/cloudflare/cfssl/pull/1015)
+* [Sectigo and crt.sh](https://groups.google.com/forum/#!msg/mozilla.dev.security.policy/sjXswrcsvrE/Nl3OLd4PAAAJ)
+* [Digicert](https://bugzilla.mozilla.org/show_bug.cgi?id=1550645#c9)
+* [EJBCA](https://download.primekey.com/docs/EJBCA-Enterprise/6_11_1/adminguide.html#Post%20Processing%20Validators%20(Pre-Certificate%20or%20Certificate%20Validation))
+* [Government of Spain, FNMT](https://bugzilla.mozilla.org/show_bug.cgi?id=1495507#c8)
+* [Globalsign](https://cabforum.org/pipermail/public/2018-April/013233.html)
+* [GoDaddy](https://bugzilla.mozilla.org/show_bug.cgi?id=1462844#c6)
+* [Izenpe](https://bugzilla.mozilla.org/show_bug.cgi?id=1528290#c5)
+* [Let's Encrypt](https://letsencrypt.org) and [Boulder](https://github.com/letsencrypt/boulder)
+* [Siemens](https://bugzilla.mozilla.org/show_bug.cgi?id=1391063#c32)
+* [QuoVadis](https://bugzilla.mozilla.org/show_bug.cgi?id=1521950#c3)
+
+Please submit a pull request to update the README if you are aware of
+another CA/project that uses zlint.
 
 License and Copyright
 ---------------------
 
-ZMap Copyright 2017 Regents of the University of Michigan
+ZMap Copyright 2019 Regents of the University of Michigan
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use
 this file except in compliance with the License. You may obtain a copy of the

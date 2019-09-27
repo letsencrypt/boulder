@@ -106,6 +106,10 @@ github.com/zmap/zcrypto v0.0.0-20190729165852-9051775e6a2e h1:mvOa4+/DXStR4ZXOks
 github.com/zmap/zcrypto v0.0.0-20190729165852-9051775e6a2e/go.mod h1:w7kd3qXHh8FNaczNjslXqvFQiv5mMWRXlL9klTUAHc8=
 github.com/zmap/zlint v0.0.0-20190812234238-3307e6abe190 h1:6GptW5eE0D3TUxZcnJ6T/krJlGyULRQjGI1Kz0fsu6c=
 github.com/zmap/zlint v0.0.0-20190812234238-3307e6abe190/go.mod h1:29UiAJNsiVdvTBFCJW8e3q6dcDbOoPkhMgttOSCIMMY=
+github.com/zmap/zlint v1.0.1 h1:LRjQApGB7ppkCQEsW2FVYBxz7KJWGHZZvk1OsnbLxgY=
+github.com/zmap/zlint v1.0.1/go.mod h1:29UiAJNsiVdvTBFCJW8e3q6dcDbOoPkhMgttOSCIMMY=
+github.com/zmap/zlint v1.0.2-0.20190921214057-00156801166b h1:gZluua+YxLCHC5AN3j2HnuLj0BgkxuHy9OzZC8W86fE=
+github.com/zmap/zlint v1.0.2-0.20190921214057-00156801166b/go.mod h1:29UiAJNsiVdvTBFCJW8e3q6dcDbOoPkhMgttOSCIMMY=
 golang.org/x/crypto v0.0.0-20180904163835-0709b304e793/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=
 golang.org/x/crypto v0.0.0-20181203042331-505ab145d0a9/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=

@@ -1523,6 +1523,11 @@ var tldMap = map[string]GTLDPeriod{
 		DelegationDate: "2015-02-25",
 		RemovalDate:    "",
 	},
+	"cpa": {
+		GTLD:           "cpa",
+		DelegationDate: "2019-09-20",
+		RemovalDate:    "",
+	},
 	"cr": {
 		GTLD:           "cr",
 		DelegationDate: "1985-01-01",
@@ -1891,7 +1896,7 @@ var tldMap = map[string]GTLDPeriod{
 	"duns": {
 		GTLD:           "duns",
 		DelegationDate: "2016-07-23",
-		RemovalDate:    "",
+		RemovalDate:    "2019-08-30",
 	},
 	"dupont": {
 		GTLD:           "dupont",
@@ -4181,7 +4186,7 @@ var tldMap = map[string]GTLDPeriod{
 	"mobily": {
 		GTLD:           "mobily",
 		DelegationDate: "2015-12-23",
-		RemovalDate:    "",
+		RemovalDate:    "2019-09-09",
 	},
 	"moda": {
 		GTLD:           "moda",
@@ -7416,7 +7421,7 @@ var tldMap = map[string]GTLDPeriod{
 	"xn--mgbb9fbpob": {
 		GTLD:           "xn--mgbb9fbpob",
 		DelegationDate: "2015-12-23",
-		RemovalDate:    "",
+		RemovalDate:    "2019-09-09",
 	},
 	"xn--mgbbh1a": {
 		GTLD:           "xn--mgbbh1a",
@@ -7571,6 +7576,11 @@ var tldMap = map[string]GTLDPeriod{
 	"xn--qcka1pmc": {
 		GTLD:           "xn--qcka1pmc",
 		DelegationDate: "2014-11-20",
+		RemovalDate:    "",
+	},
+	"xn--qxa6a": {
+		GTLD:           "xn--qxa6a",
+		DelegationDate: "1985-01-01",
 		RemovalDate:    "",
 	},
 	"xn--qxam": {
