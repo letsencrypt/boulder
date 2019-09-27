@@ -75,6 +75,9 @@ const (
 	// PrecertificateRevocation allows revocation of precertificates with the
 	// ACMEv2 interface.
 	PrecertificateRevocation
+	// StripDefaultSchemePort enables stripping of default scheme ports from HTTP
+	// request Host headers
+	StripDefaultSchemePort
 )
 
 // List of features and their default value, protected by fMu
@@ -107,6 +110,7 @@ var features = map[FeatureFlag]bool{
 	V1DisableNewValidations:       false,
 	PrecertificateOCSP:            false,
 	PrecertificateRevocation:      false,
+	StripDefaultSchemePort:        false,
 }
 
 var fMu = new(sync.RWMutex)

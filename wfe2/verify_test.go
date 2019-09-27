@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
@@ -650,6 +651,8 @@ func signExtraHeaders(
 
 func TestValidPOSTURL(t *testing.T) {
 	wfe, _ := setupWFE(t)
+	features.Set(map[string]bool{"StripDefaultSchemePort": true})
+	defer features.Reset()
 
 	// A JWS and HTTP request with no extra headers
 	noHeadersJWS, noHeadersJWSBody := signExtraHeaders(t, nil, wfe.nonceService)

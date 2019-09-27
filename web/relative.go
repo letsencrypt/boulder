@@ -4,7 +4,21 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/letsencrypt/boulder/features"
 )
+
+// StripDefaultSchemePort takes a scheme (either 'https' or 'http') and a host
+// from a HTTP Host header and strips out the default scheme ports if they are
+// present.
+func StripDefaultSchemePort(scheme, host string) string {
+	if scheme == "https" && strings.HasSuffix(host, ":443") {
+		host = strings.TrimSuffix(host, ":443")
+	} else if scheme == "http" && strings.HasSuffix(host, ":80") {
+		host = strings.TrimSuffix(host, ":80")
+	}
+	return host
+}
 
 // RelativeEndpoint takes a path component of URL and constructs a new URL using
 // the host and port from the request combined the provided path.
@@ -23,10 +37,8 @@ func RelativeEndpoint(request *http.Request, endpoint string) string {
 	// standards compliant host instead. This is mainly done to prevent
 	// returning a directory to the user that includes the port, which they
 	// would then use in the 'url' JWS signature header.
-	if proto == "https" && strings.HasSuffix(host, ":443") {
-		host = strings.TrimSuffix(host, ":443")
-	} else if proto == "http" && strings.HasSuffix(host, ":80") {
-		host = strings.TrimSuffix(host, ":80")
+	if features.Enabled(features.StripDefaultSchemePort) {
+		host = StripDefaultSchemePort(proto, host)
 	}
 
 	// Allow upstream proxies  to specify the forwarded protocol. Allow this value
