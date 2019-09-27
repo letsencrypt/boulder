@@ -55,7 +55,8 @@
       "NewAuthorizationSchema": true,
       "RemoveWFE2AccountID": true,
       "MandatoryPOSTAsGET": true,
-      "PrecertificateRevocation": true
+      "PrecertificateRevocation": true,
+      "StripDefaultSchemePort": true
     }
   },
 

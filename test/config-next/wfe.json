@@ -46,7 +46,8 @@
       }
     },
     "features": {
-      "NewAuthorizationSchema": true
+      "NewAuthorizationSchema": true,
+      "StripDefaultSchemePort": true
     }
   },
 

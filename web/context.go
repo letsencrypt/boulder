@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -99,6 +101,24 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		UserAgent: r.Header.Get("User-Agent"),
 		Origin:    r.Header.Get("Origin"),
 		Extra:     make(map[string]interface{}, 0),
+	}
+
+	if features.Enabled(features.StripDefaultSchemePort) {
+		// Some clients will send a HTTP Host header that includes the default port
+		// for the scheme that they are using. Previously when we were fronted by
+		// Akamai they would rewrite the header and strip out the unnecessary port,
+		// now that they are not in our request path we need to strip these ports out
+		// ourselves.
+		//
+		// The main reason we want to strip these ports out is so that when this header
+		// is sent to the /directory endpoint we don't reply with directory URLs that
+		// also contain these ports, which would then in turn end up being sent in the JWS
+		// signature 'url' header, which we don't support.
+		if r.TLS != nil && strings.HasSuffix(r.Host, ":443") {
+			r.Host = strings.TrimSuffix(r.Host, ":443")
+		} else if r.TLS == nil && strings.HasSuffix(r.Host, ":80") {
+			r.Host = strings.TrimSuffix(r.Host, ":80")
+		}
 	}
 
 	begin := time.Now()
