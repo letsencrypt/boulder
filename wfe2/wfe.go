@@ -999,7 +999,7 @@ func (wfe *WebFrontEndImpl) ChallengeV2(
 	}
 	authorizationID, err := strconv.ParseInt(slug[0], 10, 64)
 	if err != nil {
-		notFound()
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid authorization ID"), nil)
 		return
 	}
 	challengeID := slug[1]
@@ -1474,7 +1474,7 @@ func (wfe *WebFrontEndImpl) AuthorizationV2(ctx context.Context, logEvent *web.R
 		}
 		authzID, err := strconv.ParseInt(request.URL.Path, 10, 64)
 		if err != nil {
-			return nil, err
+			return nil, berrors.MalformedError("Invalid authorization ID")
 		}
 		authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID})
 		if err != nil {
@@ -1514,6 +1514,9 @@ func (wfe *WebFrontEndImpl) handleAuthorization(ctx context.Context, logEvent *w
 	authz, err := lookupFunc()
 	if berrors.Is(err, berrors.NotFound) {
 		wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
+		return
+	} else if berrors.Is(err, berrors.Malformed) {
+		wfe.sendError(response, logEvent, probs.Malformed(err.Error()), nil)
 		return
 	} else if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)

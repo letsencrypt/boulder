@@ -1933,6 +1933,21 @@ func TestAuthorizationV2(t *testing.T) {
 			}
 		]
 	}`)
+
+	// Test that getting a v2 authorization with an invalid ID results in the
+	// expected not found status.
+	responseWriter = httptest.NewRecorder()
+	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, &http.Request{
+		URL:    mustParseURL("1junkjunkjunk"),
+		Method: "GET",
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `
+	{
+		"type": "urn:acme:error:malformed",
+		"detail": "Invalid authorization ID",
+		"status": 400
+	}`)
 }
 
 // TestAuthorizationChallengeNamespace tests that the runtime prefixing of
@@ -2703,22 +2718,31 @@ func TestChallengeNewIDScheme(t *testing.T) {
 	_ = features.Set(map[string]bool{"NewAuthorizationSchema": true})
 
 	for _, tc := range []struct {
-		path     string
-		location string
-		expected string
-		handler  func(context.Context, *web.RequestEvent, http.ResponseWriter, *http.Request)
+		path           string
+		location       string
+		expected       string
+		expectedStatus int
+		handler        func(context.Context, *web.RequestEvent, http.ResponseWriter, *http.Request)
 	}{
 		{
-			path:     "valid/23",
-			location: "http://localhost/acme/challenge/valid/23",
-			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`,
-			handler:  wfe.Challenge,
+			path:           "valid/23",
+			location:       "http://localhost/acme/challenge/valid/23",
+			expected:       `{"type":"dns","token":"token","uri":"http://localhost/acme/challenge/valid/23"}`,
+			expectedStatus: http.StatusAccepted,
+			handler:        wfe.Challenge,
 		},
 		{
-			path:     "1/-ZfxEw",
-			location: "http://localhost/acme/chall-v3/1/-ZfxEw",
-			expected: `{"type":"dns","token":"token","uri":"http://localhost/acme/chall-v3/1/-ZfxEw"}`,
-			handler:  wfe.ChallengeV2,
+			path:           "1/-ZfxEw",
+			location:       "http://localhost/acme/chall-v3/1/-ZfxEw",
+			expected:       `{"type":"dns","token":"token","uri":"http://localhost/acme/chall-v3/1/-ZfxEw"}`,
+			expectedStatus: http.StatusAccepted,
+			handler:        wfe.ChallengeV2,
+		},
+		{
+			path:           "1aaaa/-ZfxEw",
+			expected:       `{ "type": "urn:acme:error:malformed", "detail": "Invalid authorization ID", "status": 400 }`,
+			expectedStatus: http.StatusBadRequest,
+			handler:        wfe.ChallengeV2,
 		},
 	} {
 		resp := httptest.NewRecorder()
@@ -2728,7 +2752,7 @@ func TestChallengeNewIDScheme(t *testing.T) {
 		tc.handler(context.Background(), newRequestEvent(), resp, req)
 		test.AssertEquals(t,
 			resp.Code,
-			http.StatusAccepted)
+			tc.expectedStatus)
 		test.AssertEquals(t,
 			resp.Header().Get("Location"),
 			tc.location)
