@@ -3,6 +3,7 @@ package sa
 import (
 	"crypto/x509"
 	"errors"
+	"strings"
 	"time"
 
 	"golang.org/x/net/context"
@@ -52,6 +53,9 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		Expires:        parsed.NotAfter,
 	})
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+			return nil, berrors.DuplicateError("cannot add a duplicate cert")
+		}
 		return nil, err
 	}
 
