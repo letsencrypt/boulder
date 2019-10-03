@@ -118,7 +118,7 @@ func TestParseLine(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			log.Clear()
-			found, added := parseLogLine(sa, ca, log, tc.LogLine)
+			found, added := storeParsedLogLine(sa, ca, log, tc.LogLine)
 			test.AssertEquals(t, found, tc.ExpectFound)
 			test.AssertEquals(t, added, tc.ExpectAdded)
 			logs := log.GetAllMatching("ERR:")
@@ -150,7 +150,7 @@ func TestNotOrphan(t *testing.T) {
 	ca := &mockCA{}
 
 	log.Clear()
-	found, added := parseLogLine(sa, ca, log, "cert=fakeout")
+	found, added := storeParsedLogLine(sa, ca, log, "cert=fakeout")
 	test.AssertEquals(t, found, false)
 	test.AssertEquals(t, added, false)
 	checkNoErrors(t)

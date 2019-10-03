@@ -83,12 +83,12 @@ func checkDER(sai certificateStorage, der []byte) (*x509.Certificate, error) {
 	return nil, fmt.Errorf("Existing certificate lookup failed: %s", err)
 }
 
-// parseLogLine attempts to parse one log line according to the format used when
+// storeParsedLogLine attempts to parse one log line according to the format used when
 // orphaning certificates. It returns two booleans: The first is true if the
 // line was a match, and the second is true if the certificate was successfully
 // added to the DB. As part of adding a certificate to the DB, it requests a
 // fresh OCSP response from the CA to store alongside the certificate.
-func parseLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Logger, line string) (found bool, added bool) {
+func storeParsedLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Logger, line string) (found bool, added bool) {
 	ctx := context.Background()
 	if !strings.Contains(line, "cert=") || !strings.Contains(line, "orphaning certificate") {
 		return false, false
@@ -210,7 +210,7 @@ func main() {
 		orphansFound := int64(0)
 		orphansAdded := int64(0)
 		for _, line := range strings.Split(string(logData), "\n") {
-			found, added := parseLogLine(sa, ca, logger, line)
+			found, added := storeParsedLogLine(sa, ca, logger, line)
 			if found {
 				orphansFound++
 				if added {
