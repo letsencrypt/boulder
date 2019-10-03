@@ -17,10 +17,10 @@ import (
 
 	"golang.org/x/crypto/ocsp"
 
-	bocsp "github.com/letsencrypt/boulder/ocsp"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	bocsp "github.com/letsencrypt/boulder/ocsp"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -45,7 +45,7 @@ func TestMux(t *testing.T) {
 		t.Fatalf("failed to parse double slash OCSP request")
 	}
 	responses := map[string][]byte{
-		ocspReq.SerialNumber.String(): resp.OCSPResponse,
+		ocspReq.SerialNumber.String():        resp.OCSPResponse,
 		doubleSlashReq.SerialNumber.String(): resp.OCSPResponse,
 	}
 	src := bocsp.NewMemorySource(responses, blog.NewMock())

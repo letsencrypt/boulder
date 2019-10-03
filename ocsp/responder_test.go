@@ -39,8 +39,8 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	goocsp "golang.org/x/crypto/ocsp"
 	"github.com/prometheus/client_golang/prometheus"
+	goocsp "golang.org/x/crypto/ocsp"
 
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -89,7 +89,7 @@ func TestOCSP(t *testing.T) {
 			},
 			[]string{"type"},
 		),
-		clk:    clock.NewFake(),
+		clk: clock.NewFake(),
 	}
 
 	for _, tc := range cases {
@@ -136,7 +136,7 @@ func TestOverrideHeaders(t *testing.T) {
 			},
 			[]string{"type"},
 		),
-		clk:    clock.NewFake(),
+		clk: clock.NewFake(),
 	}
 
 	rw := httptest.NewRecorder()
@@ -166,7 +166,7 @@ func TestCacheHeaders(t *testing.T) {
 			},
 			[]string{"type"},
 		),
-		clk:    fc,
+		clk: fc,
 	}
 
 	rw := httptest.NewRecorder()

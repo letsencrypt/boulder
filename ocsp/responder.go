@@ -45,8 +45,8 @@ import (
 
 	"github.com/cloudflare/cfssl/log"
 	"github.com/jmhodges/clock"
-	"golang.org/x/crypto/ocsp"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
 
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -81,14 +81,14 @@ type Source interface {
 // An InMemorySource is a map from serialNumber -> der(response)
 type InMemorySource struct {
 	responses map[string][]byte
-	log blog.Logger
+	log       blog.Logger
 }
 
 // NewMemorySource returns an initialized InMemorySource
 func NewMemorySource(responses map[string][]byte, logger blog.Logger) Source {
 	return InMemorySource{
 		responses: responses,
-		log: logger,
+		log:       logger,
 	}
 }
 
@@ -152,17 +152,17 @@ var responseTypeToString = map[ocsp.ResponseStatus]string{
 // A Responder object provides the HTTP logic to expose a
 // Source of OCSP responses.
 type Responder struct {
-	Source Source
+	Source        Source
 	responseTypes *prometheus.CounterVec
-	clk    clock.Clock
+	clk           clock.Clock
 }
 
 // NewResponder instantiates a Responder with the give Source.
 func NewResponder(source Source, responseTypes *prometheus.CounterVec) *Responder {
 	return &Responder{
-		Source: source,
-		responseTypes:  responseTypes,
-		clk:    clock.New(),
+		Source:        source,
+		responseTypes: responseTypes,
+		clk:           clock.New(),
 	}
 }
 

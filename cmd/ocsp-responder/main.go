@@ -19,13 +19,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 
-	bocsp "github.com/letsencrypt/boulder/ocsp"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
+	bocsp "github.com/letsencrypt/boulder/ocsp"
 	"github.com/letsencrypt/boulder/sa"
 )
 
