@@ -206,7 +206,8 @@ func setup(
 		metrics.NewNoopScope(),
 		clock.Default(),
 		logger,
-		accountURIPrefixes)
+		accountURIPrefixes,
+		"")
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
 	}
@@ -573,6 +574,83 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 					elapsed)
 			}
 		})
+	}
+}
+
+func TestMultiVAPolicy(t *testing.T) {
+	chall := core.HTTPChallenge01("")
+	setChallengeToken(&chall, core.NewToken())
+
+	const (
+		remoteUA1 = "remote 1"
+		remoteUA2 = "remote 2"
+		localUA   = "local 1"
+	)
+	// Forbid both remote UAs to ensure that multi-va fails
+	allowedUAs := map[string]bool{
+		localUA:   true,
+		remoteUA1: false,
+		remoteUA2: false,
+	}
+
+	ms := httpMultiSrv(t, chall.Token, allowedUAs)
+	defer ms.Close()
+
+	remoteVA1, _ := setup(ms.Server, 0, remoteUA1, nil)
+	remoteVA2, _ := setup(ms.Server, 0, remoteUA2, nil)
+
+	remoteVAs := []RemoteVA{
+		{remoteVA1, remoteUA1},
+		{remoteVA2, remoteUA2},
+	}
+
+	// Create a local test VA with the two remote VAs
+	localVA, _ := setup(ms.Server, 0, localUA, remoteVAs)
+
+	// Configure a multiVA policy
+	testPolicy := `
+disabledDomains:
+  - badmultiva.letsencrypt.org
+disabledAccounts:
+  - 12344
+`
+	var policy MultiVAPolicy
+	err := policy.LoadPolicy([]byte(testPolicy))
+	test.AssertNotError(t, err, "loading test multi VA policy")
+
+	// Set the policy on the local VA
+	localVA.multiVAPolicy = &policy
+
+	// Ensure multi VA enforcement is enabled, don't wait for full multi VA
+	// results.
+	err = features.Set(map[string]bool{
+		"EnforceMultiVA":     true,
+		"MultiVAFullResults": false,
+	})
+	test.AssertNotError(t, err, "setting feature flags")
+	defer features.Reset()
+
+	// Perform validation for a domain not in the disabledDomains list
+	_, prob := localVA.PerformValidation(ctx, "letsencrypt.org", chall, core.Authorization{})
+	// It should fail
+	if prob == nil {
+		t.Error("expected prob from PerformValidation, got nil")
+	}
+
+	// Perform validation for a domain that is on the disabledDomains list
+	_, prob = localVA.PerformValidation(ctx, "badmultiva.letsencrypt.org", chall, core.Authorization{})
+	// It should not fail
+	if prob != nil {
+		t.Errorf("unexpected prob from PerformValidation with multi VA disabled domain name, got: %v", prob)
+	}
+
+	// Perform validation for a domain that isn't on the disabledDomains list, but
+	// with an authorization owned by an account ID that is on the
+	// disabledAccounts list.
+	_, prob = localVA.PerformValidation(ctx, "letsencrypt.org", chall, core.Authorization{RegistrationID: 12344})
+	// It should not fail
+	if prob != nil {
+		t.Errorf("unexpected prob from PerformValidation with multi VA disabled acct ID, got: %v", prob)
 	}
 }
 
