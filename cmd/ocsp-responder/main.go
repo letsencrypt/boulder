@@ -29,12 +29,6 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
-// statsShim implements the cfocsp.Stats interface which allows
-// measurement of number/type of OCSP responses that are served
-type statsShim struct {
-	responseTypes *prometheus.CounterVec
-}
-
 /*
 DBSource maps a given Database schema to a CA Key Hash, so we can pick
 from among them when presented with OCSP requests for different certs.
