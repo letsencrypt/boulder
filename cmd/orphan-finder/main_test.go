@@ -42,6 +42,12 @@ func (m *mockSA) GetCertificate(ctx context.Context, s string) (core.Certificate
 	return core.Certificate{}, berrors.NotFoundError("no cert stored")
 }
 
+type mockCA struct{}
+
+func (ca *mockCA) GenerateOCSP(ctx context.Context, xferObj core.OCSPSigningRequest) (ocsp []byte, err error) {
+	return []byte("HI"), nil
+}
+
 func checkNoErrors(t *testing.T) {
 	logs := log.GetAllMatching("ERR:")
 	if len(logs) != 0 {
@@ -56,6 +62,7 @@ func TestParseLine(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 	sa := &mockSA{}
+	ca := &mockCA{}
 
 	// Set an example backdate duration (this is normally read from config)
 	backdateDuration = time.Hour
@@ -111,7 +118,7 @@ func TestParseLine(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			log.Clear()
-			found, added := parseLogLine(sa, log, tc.LogLine)
+			found, added := parseLogLine(sa, ca, log, tc.LogLine)
 			test.AssertEquals(t, found, tc.ExpectFound)
 			test.AssertEquals(t, added, tc.ExpectAdded)
 			logs := log.GetAllMatching("ERR:")
@@ -140,9 +147,10 @@ func TestNotOrphan(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 	sa := &mockSA{}
+	ca := &mockCA{}
 
 	log.Clear()
-	found, added := parseLogLine(sa, log, "cert=fakeout")
+	found, added := parseLogLine(sa, ca, log, "cert=fakeout")
 	test.AssertEquals(t, found, false)
 	test.AssertEquals(t, added, false)
 	checkNoErrors(t)
