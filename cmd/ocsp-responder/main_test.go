@@ -17,7 +17,7 @@ import (
 
 	"golang.org/x/crypto/ocsp"
 
-	cfocsp "github.com/cloudflare/cfssl/ocsp"
+	bocsp "github.com/letsencrypt/boulder/ocsp"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -44,16 +44,18 @@ func TestMux(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to parse double slash OCSP request")
 	}
-	src := make(cfocsp.InMemorySource)
-	src[ocspReq.SerialNumber.String()] = resp.OCSPResponse
-	src[doubleSlashReq.SerialNumber.String()] = resp.OCSPResponse
-	ocspStats := statsShim{responseTypes: prometheus.NewCounterVec(
+	responses := map[string][]byte{
+		ocspReq.SerialNumber.String(): resp.OCSPResponse,
+		doubleSlashReq.SerialNumber.String(): resp.OCSPResponse,
+	}
+	src := bocsp.NewMemorySource(responses, blog.NewMock())
+	responseTypesCounter := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "ocspResponses-test",
 		},
 		[]string{"type"},
-	)}
-	h := mux(stats, "/foobar/", src, &ocspStats)
+	)
+	h := mux(stats, "/foobar/", src, responseTypesCounter)
 	type muxTest struct {
 		method       string
 		path         string
@@ -80,8 +82,8 @@ func TestMux(t *testing.T) {
 			t.Errorf("Mismatched body: want %#v, got %#v", mt.respBody, w.Body.Bytes())
 		}
 		if mt.expectedType != "" {
-			test.AssertEquals(t, 1, test.CountCounterVec("type", mt.expectedType, ocspStats.responseTypes))
-			ocspStats.responseTypes.Reset()
+			test.AssertEquals(t, 1, test.CountCounterVec("type", mt.expectedType, responseTypesCounter))
+			responseTypesCounter.Reset()
 		}
 	}
 }
@@ -92,7 +94,13 @@ func TestDBHandler(t *testing.T) {
 		t.Fatalf("makeDBSource: %s", err)
 	}
 
-	h := cfocsp.NewResponder(src, nil)
+	responseTypesCounter := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ocspResponses-test",
+		},
+		[]string{"type"},
+	)
+	h := bocsp.NewResponder(src, responseTypesCounter)
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest("POST", "/", bytes.NewReader(req))
 	if err != nil {
@@ -243,7 +251,7 @@ func TestRequiredSerialPrefix(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
 
 	_, _, err = src.Response(ocspReq)
-	test.AssertEquals(t, err, cfocsp.ErrNotFound)
+	test.AssertEquals(t, err, bocsp.ErrNotFound)
 
 	fmt.Println(core.SerialToString(ocspReq.SerialNumber))
 
@@ -276,5 +284,5 @@ func TestExpiredUnauthorized(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
 
 	_, _, err = src.Response(ocspReq)
-	test.AssertEquals(t, err, cfocsp.ErrNotFound)
+	test.AssertEquals(t, err, bocsp.ErrNotFound)
 }
