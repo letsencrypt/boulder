@@ -411,26 +411,16 @@ func validateEmail(address string) error {
 func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.Context, regID int64) error {
 	limit := ra.rlPolicies.PendingAuthorizationsPerAccount()
 	if limit.Enabled() {
-		var count int
-		var err error
-		if features.Enabled(features.NewAuthorizationSchema) {
-			countPB, err := ra.SA.CountPendingAuthorizations2(ctx, &sapb.RegistrationID{
-				Id: &regID,
-			})
-			if err != nil {
-				return err
-			}
-			count = int(*countPB.Count)
-		} else {
-			count, err = ra.SA.CountPendingAuthorizations(ctx, regID)
-			if err != nil {
-				return err
-			}
+		countPB, err := ra.SA.CountPendingAuthorizations2(ctx, &sapb.RegistrationID{
+			Id: &regID,
+		})
+		if err != nil {
+			return err
 		}
 		// Most rate limits have a key for overrides, but there is no meaningful key
 		// here.
 		noKey := ""
-		if count >= limit.GetThreshold(noKey, regID) {
+		if int(*countPB.Count) >= limit.GetThreshold(noKey, regID) {
 			ra.pendAuthByRegIDStats.Inc("Exceeded", 1)
 			ra.log.Infof("Rate limit exceeded, PendingAuthorizationsByRegID, regID: %d", regID)
 			return berrors.RateLimitError("too many currently pending authorizations")
@@ -481,8 +471,6 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	earliest := latest.Add(-limit.Window.Duration)
 	latestNanos := latest.UnixNano()
 	earliestNanos := earliest.UnixNano()
-	var count *sapb.Count
-	var err error
 	req := &sapb.CountInvalidAuthorizationsRequest{
 		RegistrationID: &regID,
 		Hostname:       &hostname,
@@ -491,16 +479,9 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 			Latest:   &latestNanos,
 		},
 	}
-	if features.Enabled(features.NewAuthorizationSchema) {
-		count, err = saGRPC.CountInvalidAuthorizations2(ctx, req)
-	} else {
-		count, err = saGRPC.CountInvalidAuthorizations(ctx, req)
-	}
+	count, err := saGRPC.CountInvalidAuthorizations2(ctx, req)
 	if err != nil {
 		return err
-	}
-	if count == nil {
-		return fmt.Errorf("nil count")
 	}
 	// Most rate limits have a key for overrides, but there is no meaningful key
 	// here.
@@ -556,41 +537,25 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	}
 
 	if ra.reuseValidAuthz {
-		var auths map[string]*core.Authorization
-		var err error
-		if features.Enabled(features.NewAuthorizationSchema) {
-			now := ra.clk.Now().UnixNano()
-			authzMapPB, err := ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
-				RegistrationID: &regID,
-				Domains:        []string{identifier.Value},
-				Now:            &now,
-			})
-			if err != nil {
-				outErr := berrors.InternalServerError(
-					"unable to get existing validations for regID: %d, identifier: %s, %s",
-					regID,
-					identifier.Value,
-					err,
-				)
-				ra.log.Warning(outErr.Error())
-				return core.Authorization{}, outErr
-			}
-			auths, err = bgrpc.PBToAuthzMap(authzMapPB)
-			if err != nil {
-				return core.Authorization{}, err
-			}
-		} else {
-			auths, err = ra.SA.GetValidAuthorizations(ctx, regID, []string{identifier.Value}, ra.clk.Now())
-			if err != nil {
-				outErr := berrors.InternalServerError(
-					"unable to get existing validations for regID: %d, identifier: %s, %s",
-					regID,
-					identifier.Value,
-					err,
-				)
-				ra.log.Warning(outErr.Error())
-				return core.Authorization{}, outErr
-			}
+		now := ra.clk.Now().UnixNano()
+		authzMapPB, err := ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
+			RegistrationID: &regID,
+			Domains:        []string{identifier.Value},
+			Now:            &now,
+		})
+		if err != nil {
+			outErr := berrors.InternalServerError(
+				"unable to get existing validations for regID: %d, identifier: %s, %s",
+				regID,
+				identifier.Value,
+				err,
+			)
+			ra.log.Warning(outErr.Error())
+			return core.Authorization{}, outErr
+		}
+		auths, err := bgrpc.PBToAuthzMap(authzMapPB)
+		if err != nil {
+			return core.Authorization{}, err
 		}
 
 		if existingAuthz, ok := auths[identifier.Value]; ok {
@@ -614,28 +579,15 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		IdentifierValue: &identifier.Value,
 		ValidUntil:      &nowishNano,
 	}
-	if features.Enabled(features.NewAuthorizationSchema) {
-		pendingPB, err := ra.SA.GetPendingAuthorization2(ctx, req)
-		if err != nil && !berrors.Is(err, berrors.NotFound) {
-			return core.Authorization{}, berrors.InternalServerError(
-				"unable to get pending authorization for regID: %d, identifier: %s: %s",
-				regID,
-				identifier.Value,
-				err)
-		} else if err == nil {
-			return bgrpc.PBToAuthz(pendingPB)
-		}
-	} else {
-		pendingAuth, err := ra.SA.GetPendingAuthorization(ctx, req)
-		if err != nil && !berrors.Is(err, berrors.NotFound) {
-			return core.Authorization{}, berrors.InternalServerError(
-				"unable to get pending authorization for regID: %d, identifier: %s: %s",
-				regID,
-				identifier.Value,
-				err)
-		} else if err == nil {
-			return *pendingAuth, nil
-		}
+	pendingPB, err := ra.SA.GetPendingAuthorization2(ctx, req)
+	if err != nil && !berrors.Is(err, berrors.NotFound) {
+		return core.Authorization{}, berrors.InternalServerError(
+			"unable to get pending authorization for regID: %d, identifier: %s: %s",
+			regID,
+			identifier.Value,
+			err)
+	} else if err == nil {
+		return bgrpc.PBToAuthz(pendingPB)
 	}
 
 	if features.Enabled(features.V1DisableNewValidations) {
@@ -651,42 +603,26 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		}
 	}
 
-	v2 := features.Enabled(features.NewAuthorizationSchema)
-	authzPB, err := ra.createPendingAuthz(ctx, regID, identifier, v2)
+	authzPB, err := ra.createPendingAuthz(ctx, regID, identifier)
 	if err != nil {
 		return core.Authorization{}, err
 	}
 
-	if v2 {
-		authzIDs, err := ra.SA.NewAuthorizations2(ctx, &sapb.AddPendingAuthorizationsRequest{
-			Authz: []*corepb.Authorization{authzPB},
-		})
-		if err != nil {
-			return core.Authorization{}, err
-		}
-		if len(authzIDs.Ids) != 1 {
-			return core.Authorization{}, berrors.InternalServerError("unexpected number of authorization IDs returned from NewAuthorizations2: expected 1, got %d", len(authzIDs.Ids))
-		}
-		// The current internal authorization objects use a string for the ID, the new
-		// storage format uses a integer ID. In order to maintain compatibility we
-		// convert the integer ID to a string.
-		id := fmt.Sprintf("%d", authzIDs.Ids[0])
-		authzPB.Id = &id
-		return bgrpc.PBToAuthz(authzPB)
-	}
-
-	authz, err := bgrpc.PBToAuthz(authzPB)
+	authzIDs, err := ra.SA.NewAuthorizations2(ctx, &sapb.AddPendingAuthorizationsRequest{
+		Authz: []*corepb.Authorization{authzPB},
+	})
 	if err != nil {
 		return core.Authorization{}, err
 	}
-	result, err := ra.SA.NewPendingAuthorization(ctx, authz)
-	if err != nil {
-		// berrors.InternalServerError since the user-data was validated before being
-		// passed to the SA.
-		err = berrors.InternalServerError("failed to store new pending authorization: %s", err)
-		return core.Authorization{}, err
+	if len(authzIDs.Ids) != 1 {
+		return core.Authorization{}, berrors.InternalServerError("unexpected number of authorization IDs returned from NewAuthorizations2: expected 1, got %d", len(authzIDs.Ids))
 	}
-	return result, nil
+	// The current internal authorization objects use a string for the ID, the new
+	// storage format uses a integer ID. In order to maintain compatibility we
+	// convert the integer ID to a string.
+	id := fmt.Sprintf("%d", authzIDs.Ids[0])
+	authzPB.Id = &id
+	return bgrpc.PBToAuthz(authzPB)
 }
 
 // MatchesCSR tests the contents of a generated certificate to make sure
@@ -764,26 +700,17 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	acctIDInt := int64(acctID)
 	orderIDInt := int64(orderID)
 	// Get all of the valid authorizations for this account/order
-	var authzs map[string]*core.Authorization
-	var err error
 	req := &sapb.GetValidOrderAuthorizationsRequest{
 		Id:     &orderIDInt,
 		AcctID: &acctIDInt,
 	}
-	if features.Enabled(features.NewAuthorizationSchema) {
-		authzMapPB, err := ra.SA.GetValidOrderAuthorizations2(ctx, req)
-		if err != nil {
-			return nil, berrors.InternalServerError("error in GetValidOrderAuthorizations: %s", err)
-		}
-		authzs, err = bgrpc.PBToAuthzMap(authzMapPB)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		authzs, err = ra.SA.GetValidOrderAuthorizations(ctx, req)
-		if err != nil {
-			return nil, berrors.InternalServerError("error in GetValidOrderAuthorizations: %s", err)
-		}
+	authzMapPB, err := ra.SA.GetValidOrderAuthorizations2(ctx, req)
+	if err != nil {
+		return nil, berrors.InternalServerError("error in GetValidOrderAuthorizations: %s", err)
+	}
+	authzs, err := bgrpc.PBToAuthzMap(authzMapPB)
+	if err != nil {
+		return nil, err
 	}
 	// Ensure the names from the CSR are free of duplicates & lowercased.
 	names = core.UniqueLowerNames(names)
@@ -804,27 +731,18 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, na
 	for i := range names {
 		names[i] = strings.ToLower(names[i])
 	}
-	var auths map[string]*core.Authorization
-	var err error
-	if features.Enabled(features.NewAuthorizationSchema) {
-		nowUnix := now.UnixNano()
-		authMapPB, err := ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
-			RegistrationID: &regID,
-			Domains:        names,
-			Now:            &nowUnix,
-		})
-		if err != nil {
-			return nil, err
-		}
-		auths, err = bgrpc.PBToAuthzMap(authMapPB)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		auths, err = ra.SA.GetValidAuthorizations(ctx, regID, names, now)
-		if err != nil {
-			return nil, berrors.InternalServerError("error in GetValidAuthorizations: %s", err)
-		}
+	nowUnix := now.UnixNano()
+	authMapPB, err := ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
+		RegistrationID: &regID,
+		Domains:        names,
+		Now:            &nowUnix,
+	})
+	if err != nil {
+		return nil, err
+	}
+	auths, err := bgrpc.PBToAuthzMap(authMapPB)
+	if err != nil {
+		return nil, err
 	}
 
 	if err = ra.checkAuthorizationsCAA(ctx, names, auths, regID, now); err != nil {
@@ -1934,7 +1852,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	// See if there is an existing unexpired pending (or ready) order that can be reused
 	// for this account
-	useV2Authzs := features.Enabled(features.NewAuthorizationSchema)
+	useV2Authzs := true
 	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID:              order.RegistrationID,
 		Names:               order.Names,
@@ -1978,18 +1896,13 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// We do not want any legacy V1 API authorizations not associated with an
 	// order to be returned from the SA so we set requireV2Authzs to true
 	requireV2Authzs := true
-	var existingAuthz *sapb.Authorizations
 	getAuthReq := &sapb.GetAuthorizationsRequest{
 		RegistrationID:  order.RegistrationID,
 		Now:             &authzExpiryCutoff,
 		Domains:         order.Names,
 		RequireV2Authzs: &requireV2Authzs,
 	}
-	if features.Enabled(features.NewAuthorizationSchema) {
-		existingAuthz, err = ra.SA.GetAuthorizations2(ctx, getAuthReq)
-	} else {
-		existingAuthz, err = ra.SA.GetAuthorizations(ctx, getAuthReq)
-	}
+	existingAuthz, err := ra.SA.GetAuthorizations2(ctx, getAuthReq)
 	if err != nil {
 		return nil, err
 	}
@@ -2069,12 +1982,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Loop through each of the names missing authzs and create a new pending
 	// authorization for each.
 	var newAuthzs []*corepb.Authorization
-	v2 := features.Enabled(features.NewAuthorizationSchema)
 	for _, name := range missingAuthzNames {
 		pb, err := ra.createPendingAuthz(ctx, *order.RegistrationID, identifier.ACMEIdentifier{
 			Type:  identifier.DNS,
 			Value: name,
-		}, v2)
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -2106,19 +2018,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// whether the newly created pending authz's have an expiry lower than minExpiry
 	if len(newAuthzs) > 0 {
 		req := sapb.AddPendingAuthorizationsRequest{Authz: newAuthzs}
-		if v2 {
-			authzIDs, err := ra.SA.NewAuthorizations2(ctx, &req)
-			if err != nil {
-				return nil, err
-			}
-			order.V2Authorizations = append(order.V2Authorizations, authzIDs.Ids...)
-		} else {
-			authzIDs, err := ra.SA.AddPendingAuthorizations(ctx, &req)
-			if err != nil {
-				return nil, err
-			}
-			order.Authorizations = append(order.Authorizations, authzIDs.Ids...)
+		authzIDs, err := ra.SA.NewAuthorizations2(ctx, &req)
+		if err != nil {
+			return nil, err
 		}
+		order.V2Authorizations = append(order.V2Authorizations, authzIDs.Ids...)
 		// If the newly created pending authz's have an expiry closer than the
 		// minExpiry the minExpiry is the pending authz expiry.
 		newPendingAuthzExpires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
@@ -2146,9 +2050,12 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 // createPendingAuthz checks that a name is allowed for issuance and creates the
 // necessary challenges for it and puts this and all of the relevant information
 // into a corepb.Authorization for transmission to the SA to be stored
-func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg int64, identifier identifier.ACMEIdentifier, v2 bool) (*corepb.Authorization, error) {
+func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg int64, identifier identifier.ACMEIdentifier) (*corepb.Authorization, error) {
 	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second).UnixNano()
 	status := string(core.StatusPending)
+	// TODO(XXX): Once the change removing old style authorizations has been
+	// removed we can stop sending the V2 field in this PB.
+	v2 := true
 	authz := &corepb.Authorization{
 		Identifier:     &identifier.Value,
 		RegistrationID: &reg,

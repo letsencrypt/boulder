@@ -21,6 +21,8 @@ const (
 	FasterRateLimit
 	ProbeCTLogs
 	RevokeAtRA
+	NewAuthorizationSchema
+	DisableAuthz2Orders
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -30,15 +32,6 @@ const (
 	// HEAD requests to the WFE2 new-nonce endpoint should return HTTP StatusOK
 	// instead of HTTP StatusNoContent.
 	HeadNonceStatusOK
-	// NewAuthorizationSchema enables usage of the new authorization storage schema
-	// and associated RPCs.
-	NewAuthorizationSchema
-	// DisableAuthz2Orders prevents returning orders containing authz2 authorizations
-	// from the SA. If a order containing authz2 authorizations is queried a NotFound
-	// error will be returned. DisableAuthz2Orders should only be enabled if the authz2
-	// schema is in place. DisableAuthz2Orders should not be enabled if NewAuthorizationSchema
-	// is enabled as all new orders containing v2 authorizations will be hidden.
-	DisableAuthz2Orders
 	// EarlyOrderRateLimit enables the RA applying certificate per name/per FQDN
 	// set rate limits in NewOrder in addition to FinalizeOrder.
 	EarlyOrderRateLimit

@@ -1287,15 +1287,6 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 			return nil, err
 		}
 
-		for _, id := range req.Authorizations {
-			otoa := &orderToAuthzModel{
-				OrderID: order.ID,
-				AuthzID: id,
-			}
-			if err := txWithCtx.Insert(otoa); err != nil {
-				return nil, err
-			}
-		}
 		for _, id := range req.V2Authorizations {
 			otoa := &orderToAuthz2Model{
 				OrderID: order.ID,
@@ -1441,25 +1432,14 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 // authzForOrder retrieves the authorization IDs for an order. It returns these
 // IDs in two slices: one for v1 style authorizations, and another for
 // v2 style authorizations.
-func (ssa *SQLStorageAuthority) authzForOrder(ctx context.Context, orderID int64, lookForV2 bool) ([]string, []int64, error) {
-	var v1IDs []string
+func (ssa *SQLStorageAuthority) authzForOrder(ctx context.Context, orderID int64) ([]int64, error) {
 	var v2IDs []int64
-	if lookForV2 {
-		_, err := ssa.dbMap.WithContext(ctx).Select(
-			&v2IDs,
-			"SELECT authzID FROM orderToAuthz2 WHERE orderID = ?",
-			orderID,
-		)
-		if err != nil {
-			return nil, nil, err
-		}
-	}
 	_, err := ssa.dbMap.WithContext(ctx).Select(
-		&v1IDs, "SELECT authzID FROM orderToAuthz WHERE orderID = ?", orderID)
-	if err != nil {
-		return nil, nil, err
-	}
-	return v1IDs, v2IDs, nil
+		&v2IDs,
+		"SELECT authzID FROM orderToAuthz2 WHERE orderID = ?",
+		orderID,
+	)
+	return v2IDs, err
 }
 
 // namesForOrder finds all of the requested names associated with an order. The
@@ -1491,23 +1471,11 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	if err != nil {
 		return nil, err
 	}
-	var useV2Authzs bool
-	if req.UseV2Authorizations != nil {
-		useV2Authzs = *req.UseV2Authorizations
-	}
-	// we set useV2Authzs if DisableAuthz2Orders is enabled as actually looking for v2
-	// authorizations is the only way to tell if an order contains them, otherwise
-	// we will fail due to the number of authorizations not matching the number of names
-	// in the order.
-	useV2Authzs = useV2Authzs || features.Enabled(features.DisableAuthz2Orders)
-	v1AuthzIDs, v2AuthzIDs, err := ssa.authzForOrder(ctx, *order.Id, useV2Authzs)
+	v2AuthzIDs, err := ssa.authzForOrder(ctx, *order.Id)
 	if err != nil {
 		return nil, err
 	}
-	if features.Enabled(features.DisableAuthz2Orders) && len(v2AuthzIDs) > 0 {
-		return nil, berrors.NotFoundError("no order found for ID %d", *req.Id)
-	}
-	order.Authorizations, order.V2Authorizations = v1AuthzIDs, v2AuthzIDs
+	order.V2Authorizations = v2AuthzIDs
 
 	names, err := ssa.namesForOrder(ctx, *order.Id)
 	if err != nil {
@@ -1572,20 +1540,20 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 	}
 
 	// Get the full Authorization objects for the order
-	authzValidityInfo, err := ssa.getAllOrderAuthorizationStatuses(ctx, *order.Id, *order.RegistrationID, order.V2Authorizations)
+	authzValidityInfo, err := ssa.getAuthorizationStatuses(ctx, order.V2Authorizations)
 	// If there was an error getting the authorizations, return it immediately
 	if err != nil {
 		return "", err
 	}
 
-	// If getAllOrderAuthorizationStatuses returned a different number of authorization
-	// objects than the order's slices of v1 and v2 authorization IDs something has gone
+	// If getAuthorizationStatuses returned a different number of authorization
+	// objects than the order's slice of authorization IDs something has gone
 	// wrong worth raising an internal error about.
-	if len(authzValidityInfo) != len(order.Authorizations)+len(order.V2Authorizations) {
+	if len(authzValidityInfo) != len(order.V2Authorizations) {
 		return "", berrors.InternalServerError(
-			"getAllOrderAuthorizationStatuses returned the wrong number of authorization statuses "+
+			"getAuthorizationStatuses returned the wrong number of authorization statuses "+
 				"(%d vs expected %d) for order %d",
-			len(authzValidityInfo), len(order.Authorizations), *order.Id)
+			len(authzValidityInfo), len(order.V2Authorizations), *order.Id)
 	}
 
 	// Keep a count of the authorizations seen
@@ -1703,40 +1671,6 @@ func (ssa *SQLStorageAuthority) getAuthorizationStatuses(ctx context.Context, id
 	return allAuthzValidity, nil
 }
 
-func (ssa *SQLStorageAuthority) getAllOrderAuthorizationStatuses(
-	ctx context.Context,
-	orderID, acctID int64,
-	v2AuthzIDs []int64) ([]authzValidity, error) {
-	var allAuthzValidity []authzValidity
-
-	if len(v2AuthzIDs) > 0 {
-		validityInfo, err := ssa.getAuthorizationStatuses(ctx, v2AuthzIDs)
-		if err != nil {
-			return nil, err
-		}
-		allAuthzValidity = append(allAuthzValidity, validityInfo...)
-	}
-
-	for _, table := range authorizationTables {
-		var validityInfo []authzValidity
-		_, err := ssa.dbMap.WithContext(ctx).Select(
-			&validityInfo,
-			fmt.Sprintf(`SELECT status, expires from %s AS authz
-		INNER JOIN orderToAuthz
-		ON authz.ID = orderToAuthz.authzID
-		WHERE authz.registrationID = ? AND
-		orderToAuthz.orderID = ?`, table),
-			acctID,
-			orderID,
-		)
-		if err != nil {
-			return nil, err
-		}
-		allAuthzValidity = append(allAuthzValidity, validityInfo...)
-	}
-	return allAuthzValidity, nil
-}
-
 // GetValidOrderAuthorizations is used to find the valid, unexpired authorizations
 // associated with a specific order and account ID.
 func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations(
@@ -1845,7 +1779,7 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	}
 
 	// Get the order
-	order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &result.OrderID, UseV2Authorizations: req.UseV2Authorizations})
+	order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &result.OrderID})
 	if err != nil {
 		return nil, err
 	}

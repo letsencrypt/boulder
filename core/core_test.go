@@ -24,13 +24,14 @@ func TestChallenges(t *testing.T) {
 		t.Errorf("Error unmarshaling JWK: %v", err)
 	}
 
-	http01 := HTTPChallenge01("")
+	token := NewToken()
+	http01 := HTTPChallenge01(token)
 	test.AssertNotError(t, http01.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer returned an error")
 
-	dns01 := DNSChallenge01("")
+	dns01 := DNSChallenge01(token)
 	test.AssertNotError(t, dns01.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer returned an error")
 
-	tlsalpn01 := TLSALPNChallenge01("")
+	tlsalpn01 := TLSALPNChallenge01(token)
 	test.AssertNotError(t, tlsalpn01.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer returned an error")
 
 	test.Assert(t, ValidChallenge(ChallengeTypeHTTP01), "Refused valid challenge")

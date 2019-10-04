@@ -15,7 +15,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -468,12 +467,7 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 func (pa *AuthorityImpl) ChallengesFor(identifier identifier.ACMEIdentifier) ([]core.Challenge, error) {
 	challenges := []core.Challenge{}
 
-	// If we are using the new authorization storage schema we only use a single
-	// token for all challenges rather than a unique token per challenge.
-	var token string
-	if features.Enabled(features.NewAuthorizationSchema) {
-		token = core.NewToken()
-	}
+	token := core.NewToken()
 
 	// If the identifier is for a DNS wildcard name we only
 	// provide a DNS-01 challenge as a matter of CA policy.

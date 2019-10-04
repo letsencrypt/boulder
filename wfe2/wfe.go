@@ -357,9 +357,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	// TODO(@cpu): After November 1st, 2019 support for "GET" to the following
 	// endpoints will be removed, leaving only POST-as-GET support.
 	wfe.HandleFunc(m, orderPath, wfe.GetOrder, "GET", "POST")
-	wfe.HandleFunc(m, authzPath, wfe.Authorization, "GET", "POST")
 	wfe.HandleFunc(m, authzv2Path, wfe.AuthorizationV2, "GET", "POST")
-	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
 	wfe.HandleFunc(m, challengev2Path, wfe.ChallengeV2, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET", "POST")
 
@@ -630,27 +628,18 @@ func (wfe *WebFrontEndImpl) NewAccount(
 }
 
 func (wfe *WebFrontEndImpl) acctHoldsAuthorizations(ctx context.Context, acctID int64, names []string) (bool, error) {
-	var authzMap map[string]*core.Authorization
-	if features.Enabled(features.NewAuthorizationSchema) {
-		now := wfe.clk.Now().UnixNano()
-		authzMapPB, err := wfe.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
-			RegistrationID: &acctID,
-			Domains:        names,
-			Now:            &now,
-		})
-		if err != nil {
-			return false, err
-		}
-		authzMap, err = bgrpc.PBToAuthzMap(authzMapPB)
-		if err != nil {
-			return false, err
-		}
-	} else {
-		var err error
-		authzMap, err = wfe.SA.GetValidAuthorizations(ctx, acctID, names, wfe.clk.Now())
-		if err != nil {
-			return false, err
-		}
+	now := wfe.clk.Now().UnixNano()
+	authzMapPB, err := wfe.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
+		RegistrationID: &acctID,
+		Domains:        names,
+		Now:            &now,
+	})
+	if err != nil {
+		return false, err
+	}
+	authzMap, err := bgrpc.PBToAuthzMap(authzMapPB)
+	if err != nil {
+		return false, err
 	}
 	if len(names) != len(authzMap) {
 		return false, nil
@@ -988,10 +977,6 @@ func (wfe *WebFrontEndImpl) ChallengeV2(
 	notFound := func() {
 		wfe.sendError(response, logEvent, probs.NotFound("No such challenge"), nil)
 	}
-	if !features.Enabled(features.NewAuthorizationSchema) {
-		notFound()
-		return
-	}
 	slug := strings.Split(request.URL.Path, "/")
 	if len(slug) != 2 {
 		notFound()
@@ -1022,64 +1007,7 @@ func (wfe *WebFrontEndImpl) ChallengeV2(
 		notFound()
 		return
 	}
-	wfe.challengeCommon(ctx, logEvent, response, request, authz, challengeIndex)
-}
 
-// Challenge handles POST requests to challenge URLs.  Such requests are clients'
-// responses to the server's challenges.
-func (wfe *WebFrontEndImpl) Challenge(
-	ctx context.Context,
-	logEvent *web.RequestEvent,
-	response http.ResponseWriter,
-	request *http.Request) {
-
-	notFound := func() {
-		wfe.sendError(response, logEvent, probs.NotFound("No such challenge"), nil)
-	}
-
-	// Here we parse out the authorization and challenge IDs and retrieve
-	// the authorization.
-	slug := strings.Split(request.URL.Path, "/")
-	if len(slug) != 2 {
-		notFound()
-		return
-	}
-	var authorizationID string = slug[0]
-	challengeID, err := strconv.ParseInt(slug[1], 10, 64)
-	if err != nil {
-		notFound()
-		return
-	}
-
-	authz, err := wfe.SA.GetAuthorization(ctx, authorizationID)
-	if err != nil {
-		if berrors.Is(err, berrors.NotFound) {
-			notFound()
-		} else {
-			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
-		}
-		return
-	}
-
-	// Check that the requested challenge exists within the authorization
-	challengeIndex := authz.FindChallenge(challengeID)
-	if challengeIndex == -1 {
-		notFound()
-		return
-	}
-
-	wfe.challengeCommon(ctx, logEvent, response, request, authz, challengeIndex)
-}
-
-// challengeCommon handles logic that is common to both Challenge and
-// ChallengeV2.
-func (wfe *WebFrontEndImpl) challengeCommon(
-	ctx context.Context,
-	logEvent *web.RequestEvent,
-	response http.ResponseWriter,
-	request *http.Request,
-	authz core.Authorization,
-	challengeIndex int) {
 	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost {
 		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
 		return
@@ -1458,20 +1386,8 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 // or an authzv2, as appropriate.
 type authzLookupFunc func() (*core.Authorization, error)
 
-// Authorization is used by clients to poll or update one of their
-// authorizations.
-func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	wfe.handleAuthorization(ctx, logEvent, response, request, func() (*core.Authorization, error) {
-		authz, err := wfe.SA.GetAuthorization(ctx, request.URL.Path)
-		return &authz, err
-	})
-}
-
 func (wfe *WebFrontEndImpl) AuthorizationV2(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	wfe.handleAuthorization(ctx, logEvent, response, request, func() (*core.Authorization, error) {
-		if !features.Enabled(features.NewAuthorizationSchema) {
-			return nil, berrors.NotFoundError("No such authorization")
-		}
 		authzID, err := strconv.ParseInt(request.URL.Path, 10, 64)
 		if err != nil {
 			return nil, berrors.MalformedError("Invalid authorization ID")
@@ -2029,7 +1945,9 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
-	useV2Authzs := features.Enabled(features.NewAuthorizationSchema)
+	// TODO(XXX): Once the change removing old style authorizations has been
+	// deployed we can  stop sending this PB field
+	useV2Authzs := true
 	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID, UseV2Authorizations: &useV2Authzs})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
@@ -2092,7 +2010,9 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	useV2Authzs := features.Enabled(features.NewAuthorizationSchema)
+	// TODO(XXX): Once the change removing old style authorizations has been
+	// deployed we can  stop sending this PB field
+	useV2Authzs := true
 	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID, UseV2Authorizations: &useV2Authzs})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
