@@ -131,8 +131,7 @@ fi
 # Run generate to make sure all our generated code can be re-generated with
 # current tools.
 # Note: Some of the tools we use seemingly don't understand ./vendor yet, and
-# so will fail if imports are not available in $GOPATH. So, in travis, this
-# always needs to run after `godep restore`.
+# so will fail if imports are not available in $GOPATH.
 if [[ "$RUN" =~ "generate" ]] ; then
   # Additionally, we need to run go install before go generate because the stringer command
   # (using in ./grpc/) checks imports, and depends on the presence of a built .a
@@ -145,7 +144,6 @@ if [[ "$RUN" =~ "generate" ]] ; then
   go install ./probs
   go install ./vendor/google.golang.org/grpc/codes
   run_and_expect_silence go generate ./...
-  run_and_expect_silence git diff --exit-code $(ls | grep -v Godeps)
 fi
 
 if [[ "$RUN" =~ "rpm" ]]; then
