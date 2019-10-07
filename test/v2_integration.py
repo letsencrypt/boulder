@@ -1010,7 +1010,14 @@ def test_http_multiva_threshold_fail_account_disabled():
         chisel2.auth_and_issue([domain], client=client, chall_type="http-01")
     finally:
         cleanup()
+        # Remove certificates and related resources issued by the
+        # fixed example-multi-va-policy.yaml account ID. This avoids foreign key
+        # constraints being broken when we flip_ids next.
         remove_certs(newID)
+        # Change the account ID back to the old account ID. This will prevent
+        # duplicate key errors when the integration test is run again and tries
+        # to update a different newly created account to the fixed ID from the
+        # example-multi-va-policy.yaml file.
         flip_ids(newID, acctID)
 
 class FakeH2ServerHandler(socketserver.BaseRequestHandler):
