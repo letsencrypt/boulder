@@ -406,6 +406,12 @@ func TestLoopTickBackoff(t *testing.T) {
 }
 
 func TestGenerateOCSPResponsePrecert(t *testing.T) {
+	// The schema required to insert a precertificate is only available in
+	// config-next at the time of writing.
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
 	updater, sa, dbMap, fc, cleanUp := setup(t)
 	defer cleanUp()
 
