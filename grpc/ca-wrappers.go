@@ -42,7 +42,7 @@ func (cac CertificateAuthorityClientWrapper) IssuePrecertificate(ctx context.Con
 	if err != nil {
 		return nil, err
 	}
-	if resp.DER == nil {
+	if resp == nil || resp.DER == nil {
 		return nil, errIncompleteResponse
 	}
 	return resp, nil
@@ -79,6 +79,9 @@ func (cac CertificateAuthorityClientWrapper) GenerateOCSP(ctx context.Context, o
 	if err != nil {
 		return nil, err
 	}
+	if res == nil || res.Response == nil {
+		return nil, errIncompleteResponse
+	}
 	return res.Response, nil
 }
 
@@ -95,14 +98,7 @@ func (cas *CertificateAuthorityServerWrapper) IssuePrecertificate(ctx context.Co
 	if request == nil || request.Csr == nil || request.OrderID == nil || request.RegistrationID == nil {
 		return nil, errIncompleteRequest
 	}
-	resp, err := cas.inner.IssuePrecertificate(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	if resp.DER == nil {
-		return nil, errIncompleteRequest
-	}
-	return resp, nil
+	return cas.inner.IssuePrecertificate(ctx, request)
 }
 
 func (cas *CertificateAuthorityServerWrapper) IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
