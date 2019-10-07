@@ -451,7 +451,7 @@ func TestGenerateOCSPResponsePrecert(t *testing.T) {
 
 	// Disable PrecertificateOCSP.
 	err = features.Set(map[string]bool{"PrecertificateOCSP": false})
-	test.AssertNotError(t, err, "setting PrecerticiateOCSP feature to off")
+	test.AssertNotError(t, err, "setting PrecertificateOCSP feature to off")
 
 	// Directly call generateResponse with the result, when the PrecertificateOCSP
 	// feature flag is disabled we expect this to error because no matching
@@ -462,7 +462,7 @@ func TestGenerateOCSPResponsePrecert(t *testing.T) {
 
 	// Now enable PrecertificateOCSP.
 	err = features.Set(map[string]bool{"PrecertificateOCSP": true})
-	test.AssertNotError(t, err, "setting PrecerticiateOCSP feature to off")
+	test.AssertNotError(t, err, "setting PrecertificateOCSP feature to off")
 
 	// Directly call generateResponse again with the same result. It should not
 	// error and should instead update the precertificate's OCSP status even
