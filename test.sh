@@ -144,6 +144,7 @@ if [[ "$RUN" =~ "generate" ]] ; then
   go install ./probs
   go install ./vendor/google.golang.org/grpc/codes
   run_and_expect_silence go generate ./...
+  run_and_expect_silence git diff --exit-code .
 fi
 
 if [[ "$RUN" =~ "rpm" ]]; then
