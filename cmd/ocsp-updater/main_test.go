@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
@@ -401,4 +403,64 @@ func TestLoopTickBackoff(t *testing.T) {
 	l.tick()
 	test.AssertEquals(t, l.failures, 0)
 	test.AssertEquals(t, l.clk.Now(), start)
+}
+
+func TestGenerateOCSPResponsePrecert(t *testing.T) {
+	updater, sa, dbMap, fc, cleanUp := setup(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	// Use AddPrecertificate to set up a precertificate, serials, and
+	// certificateStatus row for the testcert.
+	certDER, err := ioutil.ReadFile("../../test/test-ca.der")
+	test.AssertNotError(t, err, "Couldn't read example cert DER")
+	serial := "00000000000000000000000000000000124d"
+	ocspResp := []byte{0, 0, 1}
+	regID := reg.ID
+	issuedTime := fc.Now().UnixNano()
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    certDER,
+		RegID:  &regID,
+		Ocsp:   ocspResp,
+		Issued: &issuedTime,
+	})
+	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
+
+	// We need to set a fake "ocspLastUpdated" value for the precert we created
+	// in order to satisfy the "ocspStaleMaxAge" constraint.
+	fakeLastUpdate := fc.Now().Add(-time.Hour * 24 * 3)
+	_, err = dbMap.Exec(
+		"UPDATE certificateStatus SET ocspLastUpdated = ? WHERE serial = ?",
+		fakeLastUpdate,
+		serial)
+	test.AssertNotError(t, err, "Couldn't update ocspLastUpdated")
+
+	// There should be one stale ocsp response found for the precert
+	earliest := fc.Now().Add(-time.Hour)
+	certs, err := updater.findStaleOCSPResponses(earliest, 10)
+	test.AssertNotError(t, err, "Couldn't find stale responses")
+	test.AssertEquals(t, len(certs), 1)
+	test.AssertEquals(t, certs[0].Serial, serial)
+
+	// Disable PrecertificateOCSP.
+	err = features.Set(map[string]bool{"PrecertificateOCSP": false})
+	test.AssertNotError(t, err, "setting PrecerticiateOCSP feature to off")
+
+	// Directly call generateResponse with the result, when the PrecertificateOCSP
+	// feature flag is disabled we expect this to error because no matching
+	// certificates row will be found.
+	updater.cac = &mockCA{time.Second}
+	_, err = updater.generateResponse(ctx, certs[0])
+	test.AssertError(t, err, "generateResponse for precert without PrecertificateOCSP did not error")
+
+	// Now enable PrecertificateOCSP.
+	err = features.Set(map[string]bool{"PrecertificateOCSP": true})
+	test.AssertNotError(t, err, "setting PrecerticiateOCSP feature to off")
+
+	// Directly call generateResponse again with the same result. It should not
+	// error and should instead update the precertificate's OCSP status even
+	// though no certificate row exists.
+	_, err = updater.generateResponse(ctx, certs[0])
+	test.AssertNotError(t, err, "generateResponse for precert with PrecertificateOCSP errored")
 }
