@@ -982,31 +982,31 @@ def test_http_multiva_threshold_fail_account_disabled():
         run_query("DELETE FROM precertificates WHERE registrationID={0}".format(newID))
         run_query("DELETE FROM serials WHERE registrationID={0}".format(newID))
 
-    # Update the account ID in the database to match an ID that exists in
-    # `test/example-multi-va-policy.yaml`'s disabledAccounts list. We do this
-    # with direct DB access because the alternative is hackish rewriting of the
-    # policy YAML file at runtime (especially since the reload event can't be
-    # easily detected). This approach is _also_ hackish, but marginally less so.
-    newID=99991337
-    flip_ids(acctID, newID)
-
-    # Update the in-memory account ID for the client instance to match
-    client.net.account = RegistrationResource(
-            body=client.net.account.body,
-            uri=acctURI.replace(acctID, str(newID)),
-            terms_of_service=client.net.account.terms_of_service)
-
-    # Configure a guestlist that will fail the multiVA threshold test by
-    # only allowing the primary VA.
-    guestlist = {"boulder": 1}
-
-    # Setup for a random domain name
-    domain, cleanup = multiva_setup(client, guestlist, domain=None)
-
-    # We do not expect any errors, even though the guestlist ensured multi-va
-    # failures, because the client was set up with an account key corresponding
-    # to a multi VA policy disabledAccount ID.
     try:
+        # Update the account ID in the database to match an ID that exists in
+        # `test/example-multi-va-policy.yaml`'s disabledAccounts list. We do this
+        # with direct DB access because the alternative is hackish rewriting of the
+        # policy YAML file at runtime (especially since the reload event can't be
+        # easily detected). This approach is _also_ hackish, but marginally less so.
+        newID=99991337
+        flip_ids(acctID, newID)
+
+        # Update the in-memory account ID for the client instance to match
+        client.net.account = RegistrationResource(
+                body=client.net.account.body,
+                uri=acctURI.replace(acctID, str(newID)),
+                terms_of_service=client.net.account.terms_of_service)
+
+        # Configure a guestlist that will fail the multiVA threshold test by
+        # only allowing the primary VA.
+        guestlist = {"boulder": 1}
+
+        # Setup for a random domain name
+        domain, cleanup = multiva_setup(client, guestlist, domain=None)
+
+        # We do not expect any errors, even though the guestlist ensured multi-va
+        # failures, because the client was set up with an account key corresponding
+        # to a multi VA policy disabledAccount ID.
         chisel2.auth_and_issue([domain], client=client, chall_type="http-01")
     finally:
         cleanup()
