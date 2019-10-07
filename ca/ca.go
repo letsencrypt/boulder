@@ -765,6 +765,7 @@ func (ca *CertificateAuthorityImpl) OrphanIntegrationLoop() {
 				continue
 			}
 			ca.log.AuditErrf("failed to integrate orphaned certs: %s", err)
+			time.Sleep(time.Second)
 		}
 	}
 }
