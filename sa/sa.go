@@ -472,7 +472,7 @@ func (ssa *SQLStorageAuthority) GetPrecertificate(ctx context.Context, reqSerial
 		return nil,
 			fmt.Errorf("Invalid precertificate serial %q", *reqSerial.Serial)
 	}
-	cert, err := selectPrecertificate(ssa.dbMap.WithContext(ctx), *reqSerial.Serial)
+	cert, err := SelectPrecertificate(ssa.dbMap.WithContext(ctx), *reqSerial.Serial)
 	if err == sql.ErrNoRows {
 		return nil,
 			berrors.NotFoundError("precertificate with serial %q not found", *reqSerial.Serial)

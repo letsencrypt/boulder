@@ -1,17 +1,39 @@
+/*
+This code was originally forked from https://github.com/cloudflare/cfssl/blob/1a911ca1b1d6e899bf97dcfa4a14b38db0d31134/ocsp/responder.go
+
+Copyright (c) 2014 CloudFlare Inc.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+Redistributions of source code must retain the above copyright notice,
+this list of conditions and the following disclaimer.
+
+Redistributions in binary form must reproduce the above copyright notice,
+this list of conditions and the following disclaimer in the documentation
+and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
 // Package ocsp implements an OCSP responder based on a generic storage backend.
-// It provides a couple of sample implementations.
-// Because OCSP responders handle high query volumes, we have to be careful
-// about how much logging we do. Error-level logs are reserved for problems
-// internal to the server, that can be fixed by an administrator. Any type of
-// incorrect input from a user should be logged and Info or below. For things
-// that are logged on every request, Debug is the appropriate level.
 package ocsp
 
 import (
 	"crypto"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,12 +43,12 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/cloudflare/cfssl/certdb"
-	"github.com/cloudflare/cfssl/certdb/dbconf"
-	"github.com/cloudflare/cfssl/certdb/sql"
 	"github.com/cloudflare/cfssl/log"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
+
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 var (
@@ -57,87 +79,43 @@ type Source interface {
 }
 
 // An InMemorySource is a map from serialNumber -> der(response)
-type InMemorySource map[string][]byte
+type InMemorySource struct {
+	responses map[string][]byte
+	log       blog.Logger
+}
+
+// NewMemorySource returns an initialized InMemorySource
+func NewMemorySource(responses map[string][]byte, logger blog.Logger) Source {
+	return InMemorySource{
+		responses: responses,
+		log:       logger,
+	}
+}
 
 // Response looks up an OCSP response to provide for a given request.
 // InMemorySource looks up a response purely based on serial number,
 // without regard to what issuer the request is asking for.
 func (src InMemorySource) Response(request *ocsp.Request) ([]byte, http.Header, error) {
-	response, present := src[request.SerialNumber.String()]
+	response, present := src.responses[request.SerialNumber.String()]
 	if !present {
 		return nil, nil, ErrNotFound
 	}
 	return response, nil, nil
 }
 
-// DBSource represnts a source of OCSP responses backed by the certdb package.
-type DBSource struct {
-	Accessor certdb.Accessor
-}
-
-// NewDBSource creates a new DBSource type with an associated dbAccessor.
-func NewDBSource(dbAccessor certdb.Accessor) Source {
-	return DBSource{
-		Accessor: dbAccessor,
-	}
-}
-
-// Response implements cfssl.ocsp.responder.Source, which returns the
-// OCSP response in the Database for the given request with the expiration
-// date furthest in the future.
-func (src DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
-	if req == nil {
-		return nil, nil, errors.New("called with nil request")
-	}
-
-	aki := hex.EncodeToString(req.IssuerKeyHash)
-	sn := req.SerialNumber
-
-	if sn == nil {
-		return nil, nil, errors.New("request contains no serial")
-	}
-	strSN := sn.String()
-
-	if src.Accessor == nil {
-		log.Errorf("No DB Accessor")
-		return nil, nil, errors.New("called with nil DB accessor")
-	}
-	records, err := src.Accessor.GetOCSP(strSN, aki)
-
-	// Response() logs when there are errors obtaining the OCSP response
-	// and returns nil, false.
-	if err != nil {
-		log.Errorf("Error obtaining OCSP response: %s", err)
-		return nil, nil, fmt.Errorf("failed to obtain OCSP response: %s", err)
-	}
-
-	if len(records) == 0 {
-		return nil, nil, ErrNotFound
-	}
-
-	// Response() finds the OCSPRecord with the expiration date furthest in the future.
-	cur := records[0]
-	for _, rec := range records {
-		if rec.Expiry.After(cur.Expiry) {
-			cur = rec
-		}
-	}
-	return []byte(cur.Body), nil, nil
-}
-
-// NewSourceFromFile reads the named file into an InMemorySource.
+// NewMemorySourceFromFile reads the named file into an InMemorySource.
 // The file read by this function must contain whitespace-separated OCSP
 // responses. Each OCSP response must be in base64-encoded DER form (i.e.,
 // PEM without headers or whitespace).  Invalid responses are ignored.
 // This function pulls the entire file into an InMemorySource.
-func NewSourceFromFile(responseFile string) (Source, error) {
+func NewMemorySourceFromFile(responseFile string, logger blog.Logger) (Source, error) {
 	fileContents, err := ioutil.ReadFile(responseFile)
 	if err != nil {
 		return nil, err
 	}
 
 	responsesB64 := regexp.MustCompile("\\s").Split(string(fileContents), -1)
-	src := InMemorySource{}
+	responses := make(map[string][]byte, len(responsesB64))
 	for _, b64 := range responsesB64 {
 		// if the line/space is empty just skip
 		if b64 == "" {
@@ -145,59 +123,46 @@ func NewSourceFromFile(responseFile string) (Source, error) {
 		}
 		der, tmpErr := base64.StdEncoding.DecodeString(b64)
 		if tmpErr != nil {
-			log.Errorf("Base64 decode error %s on: %s", tmpErr, b64)
+			logger.Errf("Base64 decode error %s on: %s", tmpErr, b64)
 			continue
 		}
 
 		response, tmpErr := ocsp.ParseResponse(der, nil)
 		if tmpErr != nil {
-			log.Errorf("OCSP decode error %s on: %s", tmpErr, b64)
+			logger.Errf("OCSP decode error %s on: %s", tmpErr, b64)
 			continue
 		}
 
-		src[response.SerialNumber.String()] = der
+		responses[response.SerialNumber.String()] = der
 	}
 
-	log.Infof("Read %d OCSP responses", len(src))
-	return src, nil
+	logger.Infof("Read %d OCSP responses", len(responses))
+	return NewMemorySource(responses, logger), nil
 }
 
-// NewSourceFromDB reads the given database configuration file
-// and creates a database data source for use with the OCSP responder
-func NewSourceFromDB(DBConfigFile string) (Source, error) {
-	// Load DB from cofiguration file
-	db, err := dbconf.DBFromConfig(DBConfigFile)
-
-	if err != nil {
-		return nil, err
-	}
-	// Create accesor
-	accessor := sql.NewAccessor(db)
-	src := NewDBSource(accessor)
-
-	return src, nil
-}
-
-// Stats is a basic interface that allows users to record information
-// about returned responses
-type Stats interface {
-	ResponseStatus(ocsp.ResponseStatus)
+var responseTypeToString = map[ocsp.ResponseStatus]string{
+	ocsp.Success:           "Success",
+	ocsp.Malformed:         "Malformed",
+	ocsp.InternalError:     "InternalError",
+	ocsp.TryLater:          "TryLater",
+	ocsp.SignatureRequired: "SignatureRequired",
+	ocsp.Unauthorized:      "Unauthorized",
 }
 
 // A Responder object provides the HTTP logic to expose a
 // Source of OCSP responses.
 type Responder struct {
-	Source Source
-	stats  Stats
-	clk    clock.Clock
+	Source        Source
+	responseTypes *prometheus.CounterVec
+	clk           clock.Clock
 }
 
 // NewResponder instantiates a Responder with the give Source.
-func NewResponder(source Source, stats Stats) *Responder {
+func NewResponder(source Source, responseTypes *prometheus.CounterVec) *Responder {
 	return &Responder{
-		Source: source,
-		stats:  stats,
-		clk:    clock.New(),
+		Source:        source,
+		responseTypes: responseTypes,
+		clk:           clock.New(),
 	}
 }
 
@@ -339,9 +304,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		log.Debugf("Error decoding request body: %s", b64Body)
 		response.WriteHeader(http.StatusBadRequest)
 		response.Write(malformedRequestErrorResponse)
-		if rs.stats != nil {
-			rs.stats.ResponseStatus(ocsp.Malformed)
-		}
+		rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Malformed]}).Inc()
 		return
 	}
 	le.Serial = fmt.Sprintf("%x", ocspRequest.SerialNumber.Bytes())
@@ -356,18 +319,14 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 			log.Infof("No response found for request: serial %x, request body %s",
 				ocspRequest.SerialNumber, b64Body)
 			response.Write(unauthorizedErrorResponse)
-			if rs.stats != nil {
-				rs.stats.ResponseStatus(ocsp.Unauthorized)
-			}
+			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Unauthorized]}).Inc()
 			return
 		}
 		log.Infof("Error retrieving response for request: serial %x, request body %s, error: %s",
 			ocspRequest.SerialNumber, b64Body, err)
 		response.WriteHeader(http.StatusInternalServerError)
 		response.Write(internalErrorErrorResponse)
-		if rs.stats != nil {
-			rs.stats.ResponseStatus(ocsp.InternalError)
-		}
+		rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.InternalError]}).Inc()
 		return
 	}
 
@@ -376,13 +335,11 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		log.Errorf("Error parsing response for serial %x: %s",
 			ocspRequest.SerialNumber, err)
 		response.Write(internalErrorErrorResponse)
-		if rs.stats != nil {
-			rs.stats.ResponseStatus(ocsp.InternalError)
-		}
+		rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.InternalError]}).Inc()
 		return
 	}
 
-	// Write OCSP response to response
+	// Write OCSP response
 	response.Header().Add("Last-Modified", parsedResponse.ThisUpdate.Format(time.RFC1123))
 	response.Header().Add("Expires", parsedResponse.NextUpdate.Format(time.RFC1123))
 	now := rs.clk.Now()
@@ -419,7 +376,5 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 	}
 	response.WriteHeader(http.StatusOK)
 	response.Write(ocspResponse)
-	if rs.stats != nil {
-		rs.stats.ResponseStatus(ocsp.Success)
-	}
+	rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Success]}).Inc()
 }
