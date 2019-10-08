@@ -595,7 +595,9 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		*issueReq.RegistrationID,
 	); err != nil {
 		ca.log.AuditErr(err.Error())
-		return nil, berrors.MalformedError(err.Error())
+		// VerifyCSR returns berror instances that can be passed through as-is
+		// without wrapping.
+		return nil, err
 	}
 
 	extensions, err := ca.extensionsFromCSR(csr)

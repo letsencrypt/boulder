@@ -1129,7 +1129,7 @@ def test_long_san_no_cn():
         # if we get to this raise the auth_and_issue call didn't fail, so fail the test
         raise Exception("Issuance didn't fail when the only SAN in a certificate was longer than the max CN length")
     except messages.Error as e:
-        if e.typ != "urn:ietf:params:acme:error:malformed":
+        if e.typ != "urn:ietf:params:acme:error:badCSR":
             raise Exception('Expected malformed type problem, got {0}'.format(e.typ))
         if e.detail != 'Error finalizing order :: issuing precertificate: CSR doesn\'t contain a SAN short enough to fit in CN':
             raise Exception('Problem detail did not match expected')
@@ -1252,16 +1252,11 @@ def test_blocked_key_cert():
     try:
         order = client.poll_and_finalize(order)
     except acme_errors.Error as e:
-        # TODO(@cpu): this _should_ be type
-        # urn:ietf:params:acme:error:badPublicKey but this will require
-        # refactoring the `csr` package error handling.
-        # See https://github.com/letsencrypt/boulder/issues/4418
-        if e.typ != "urn:ietf:params:acme:error:malformed":
+        if e.typ != "urn:ietf:params:acme:error:badPublicKey":
             raise Exception("problem did not have correct error type, had {0}".format(e.typ))
         if e.detail != "Error finalizing order :: invalid public key in CSR: public key is forbidden":
             raise Exception("problem did not have correct error detail, had {0}".format(e.detail))
         testPass = True
-
 
     if testPass is False:
         raise Exception("expected cert creation to fail with Error when using blocked key")
