@@ -5,8 +5,6 @@ github.com/beorn7/perks/quantile
 # github.com/cloudflare/cfssl v0.0.0-20190716004220-2185c182e6ba
 github.com/cloudflare/cfssl/auth
 github.com/cloudflare/cfssl/certdb
-github.com/cloudflare/cfssl/certdb/dbconf
-github.com/cloudflare/cfssl/certdb/sql
 github.com/cloudflare/cfssl/config
 github.com/cloudflare/cfssl/crypto/pkcs7
 github.com/cloudflare/cfssl/csr
@@ -15,7 +13,6 @@ github.com/cloudflare/cfssl/helpers
 github.com/cloudflare/cfssl/helpers/derhelpers
 github.com/cloudflare/cfssl/info
 github.com/cloudflare/cfssl/log
-github.com/cloudflare/cfssl/ocsp
 github.com/cloudflare/cfssl/ocsp/config
 github.com/cloudflare/cfssl/signer
 github.com/cloudflare/cfssl/signer/local
@@ -47,11 +44,6 @@ github.com/google/certificate-transparency-go/x509/pkix
 github.com/grpc-ecosystem/go-grpc-prometheus
 # github.com/jmhodges/clock v0.0.0-20160418191101-880ee4c33548
 github.com/jmhodges/clock
-# github.com/jmoiron/sqlx v0.0.0-20180124204410-05cef0741ade
-github.com/jmoiron/sqlx
-github.com/jmoiron/sqlx/reflectx
-# github.com/kisielk/sqlstruct v0.0.0-20150923205031-648daed35d49
-github.com/kisielk/sqlstruct
 # github.com/letsencrypt/challtestsrv v1.0.2
 github.com/letsencrypt/challtestsrv
 # github.com/letsencrypt/pkcs11key v1.0.0

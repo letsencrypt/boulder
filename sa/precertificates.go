@@ -3,12 +3,14 @@ package sa
 import (
 	"crypto/x509"
 	"errors"
+	"strings"
 	"time"
 
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	berrors "github.com/letsencrypt/boulder/errors"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -52,6 +54,9 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		Expires:        parsed.NotAfter,
 	})
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+			return nil, berrors.DuplicateError("cannot add a duplicate precertificate")
+		}
 		return nil, err
 	}
 

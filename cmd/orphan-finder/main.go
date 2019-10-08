@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -40,6 +41,7 @@ command descriptions:
 type config struct {
 	TLS       cmd.TLSConfig
 	SAService *cmd.GRPCClientConfig
+	CAService *cmd.GRPCClientConfig
 	Syslog    cmd.SyslogConfig
 	// Backdate specifies how to adjust a certificate's NotBefore date to get back
 	// to the original issued date. It should match the value used in
@@ -51,6 +53,10 @@ type config struct {
 type certificateStorage interface {
 	AddCertificate(context.Context, []byte, int64, []byte, *time.Time) (string, error)
 	GetCertificate(ctx context.Context, serial string) (core.Certificate, error)
+}
+
+type ocspGenerator interface {
+	GenerateOCSP(context.Context, core.OCSPSigningRequest) ([]byte, error)
 }
 
 var (
@@ -77,7 +83,12 @@ func checkDER(sai certificateStorage, der []byte) (*x509.Certificate, error) {
 	return nil, fmt.Errorf("Existing certificate lookup failed: %s", err)
 }
 
-func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found bool, added bool) {
+// storeParsedLogLine attempts to parse one log line according to the format used when
+// orphaning certificates. It returns two booleans: The first is true if the
+// line was a match, and the second is true if the certificate was successfully
+// added to the DB. As part of adding a certificate to the DB, it requests a
+// fresh OCSP response from the CA to store alongside the certificate.
+func storeParsedLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Logger, line string) (found bool, added bool) {
 	ctx := context.Background()
 	if !strings.Contains(line, "cert=") || !strings.Contains(line, "orphaning certificate") {
 		return false, false
@@ -119,7 +130,15 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 	// backdated we need to add the backdate duration to find the true issued
 	// time.
 	issuedDate := cert.NotBefore.Add(backdateDuration)
-	_, err = sa.AddCertificate(ctx, der, int64(regID), nil, &issuedDate)
+	ocspResponse, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+		CertDER: der,
+		Status:  string(core.OCSPStatusGood),
+	})
+	if err != nil {
+		logger.AuditErrf("Couldn't generate OCSP: %s, [%s]", err, line)
+		return true, false
+	}
+	_, err = sa.AddCertificate(ctx, der, int64(regID), ocspResponse, &issuedDate)
 	if err != nil {
 		logger.AuditErrf("Failed to store certificate: %s, [%s]", err, line)
 		return true, false
@@ -127,7 +146,7 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 	return true, true
 }
 
-func setup(configFile string) (blog.Logger, core.StorageAuthority) {
+func setup(configFile string) (blog.Logger, core.StorageAuthority, core.CertificateAuthority) {
 	configJSON, err := ioutil.ReadFile(configFile)
 	cmd.FailOnError(err, "Failed to read config file")
 	var conf config
@@ -141,12 +160,16 @@ func setup(configFile string) (blog.Logger, core.StorageAuthority) {
 	cmd.FailOnError(err, "TLS config")
 
 	clientMetrics := bgrpc.NewClientMetrics(metrics.NewNoopScope())
-	conn, err := bgrpc.ClientSetup(conf.SAService, tlsConfig, clientMetrics, cmd.Clock())
+	saConn, err := bgrpc.ClientSetup(conf.SAService, tlsConfig, clientMetrics, cmd.Clock())
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
+
+	caConn, err := bgrpc.ClientSetup(conf.CAService, tlsConfig, clientMetrics, cmd.Clock())
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
+	cac := bgrpc.NewCertificateAuthorityClient(nil, capb.NewCertificateAuthorityClient(caConn))
 
 	backdateDuration = conf.Backdate.Duration
-	return logger, sac
+	return logger, sac, cac
 }
 
 func main() {
@@ -176,7 +199,7 @@ func main() {
 
 	switch command {
 	case "parse-ca-log":
-		logger, sa := setup(*configFile)
+		logger, sa, ca := setup(*configFile)
 		if *logPath == "" {
 			usage()
 		}
@@ -187,7 +210,7 @@ func main() {
 		orphansFound := int64(0)
 		orphansAdded := int64(0)
 		for _, line := range strings.Split(string(logData), "\n") {
-			found, added := parseLogLine(sa, logger, line)
+			found, added := storeParsedLogLine(sa, ca, logger, line)
 			if found {
 				orphansFound++
 				if added {
@@ -199,7 +222,7 @@ func main() {
 
 	case "parse-der":
 		ctx := context.Background()
-		_, sa := setup(*configFile)
+		_, sa, ca := setup(*configFile)
 		if *derPath == "" || *regID == 0 {
 			usage()
 		}
@@ -210,7 +233,12 @@ func main() {
 		// Because certificates are backdated we need to add the backdate duration
 		// to find the true issued time.
 		issuedDate := cert.NotBefore.Add(1 * backdateDuration)
-		_, err = sa.AddCertificate(ctx, der, int64(*regID), nil, &issuedDate)
+		ocspResponse, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+			CertDER: der,
+			Status:  string(core.OCSPStatusGood),
+		})
+		cmd.FailOnError(err, "Generating OCSP")
+		_, err = sa.AddCertificate(ctx, der, int64(*regID), ocspResponse, &issuedDate)
 		cmd.FailOnError(err, "Failed to add certificate to database")
 
 	default:

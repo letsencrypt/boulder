@@ -23,7 +23,7 @@ from helpers import *
 
 from acme import errors as acme_errors
 
-from acme.messages import Status, CertificateRequest, Directory
+from acme.messages import Status, CertificateRequest, Directory, RegistrationResource
 from acme import crypto_util as acme_crypto_util
 from acme import client as acme_client
 from acme import messages
@@ -788,16 +788,20 @@ def wait_for_server(addr):
             pass
         time.sleep(0.5)
 
-def multiva_setup(client, guestlist):
+def multiva_setup(client, guestlist, domain=None):
     """
-    Create a testing hostname and the multiva server setup. This will block
+    Setup a testing domain and backing multiva server setup. This will block
     until the server is ready. The returned cleanup function should be used to
     stop the server. The first bounceFirst requests to the server will be sent
     to the real challtestsrv for a good answer, the rest will get a bad
-    answer.
+    answer. If no explicit testing domain is provided then one is randomly
+    chosen with random_domain().
     """
+    if domain is None:
+        hostname = random_domain()
+    else:
+        hostname = domain
 
-    hostname = random_domain()
     csr_pem = chisel2.make_csr([hostname])
     order = client.new_order(csr_pem)
     authz = order.authorizations[0]
@@ -902,6 +906,119 @@ def test_http_multiva_threshold_fail():
             raise Exception("expected unauthorized prob, found {0}".format(httpChall.error.typ))
     finally:
         cleanup()
+
+def test_http_multiva_threshold_fail_domain_disabled():
+    # Only the config-next config dir has remote VAs and a multi VA policy file
+    # configured at the time of writing.
+    if not CONFIG_NEXT:
+        return
+
+    client = chisel2.make_client()
+
+    # Configure a guestlist that will fail the multiVA threshold test by
+    # only allowing the primary VA.
+    guestlist = {"boulder": 1}
+
+    # Explicitly use a domain name that exists in
+    # `test/example-multiva-policy.yaml`'s disabledDomains list
+    domain = "brokenmultiva.letsencrypt.org"
+
+    _, cleanup = multiva_setup(client, guestlist, domain)
+
+    # We do not expect any errors, even though the guestlist ensured multi-va
+    # failures, because the domain was in the multi VA policy disabledDomains
+    # list.
+    try:
+        chisel2.auth_and_issue([domain], client=client, chall_type="http-01")
+    finally:
+        cleanup()
+
+def test_http_multiva_threshold_fail_account_disabled():
+    # Only the config-next config dir has remote VAs and a multi VA policy file
+    # configured at the time of writing.
+    if not CONFIG_NEXT:
+        return
+
+    # Create an ACME account
+    client = chisel2.make_client()
+
+    # Find the numeric ID it was assigned by the ACME server
+    acctURI = client.net.account.uri
+    if len(acctURI.split("/")) < 1:
+        raise Exception("invalid account URI for newly registered account: {0}".format(acctURI))
+    acctID = acctURI.split("/")[-1:][0]
+
+    def run_query(query):
+        command=["mysql",
+            "-h", "bmysql",
+            "-u", "root",
+            "--password=",
+            "-e", query,
+            "boulder_sa_integration",
+            ]
+        subprocess.check_call(command, shell=False, stderr=subprocess.STDOUT)
+
+    def flip_ids(oldID, newID):
+        """
+        flip_ids changes a registrations ID from one value to another. Note that
+        in order for this to succeed all other tables with foreign key
+        constraints on the registration.ID field must be adjusted or otherwise
+        dealt with.
+        """
+        run_query("UPDATE registrations SET id={0} WHERE id={1}".format(newID, oldID))
+
+    def remove_certs(newID):
+        """
+        remove_certs deletes rows created while the account registration ID was changed.
+        We need to delete these rows so that the original account registration
+        ID can be restored without violating the foreign key constraints on the
+        certs, precerts and serials tables. Updating the registrationID of these
+        rows first is difficult because the new value (the original ID) doesn't
+        exist in the registrations table yet. The best solution would be doing
+        all of this in one transaction but we're already deep in hacky
+        integration test yak shaving at this point...
+        """
+        run_query("DELETE FROM certificates WHERE registrationID={0}".format(newID))
+        run_query("DELETE FROM precertificates WHERE registrationID={0}".format(newID))
+        run_query("DELETE FROM serials WHERE registrationID={0}".format(newID))
+
+    try:
+        # Update the account ID in the database to match an ID that exists in
+        # `test/example-multi-va-policy.yaml`'s disabledAccounts list. We do this
+        # with direct DB access because the alternative is hackish rewriting of the
+        # policy YAML file at runtime (especially since the reload event can't be
+        # easily detected). This approach is _also_ hackish, but marginally less so.
+        newID=99991337
+        flip_ids(acctID, newID)
+
+        # Update the in-memory account ID for the client instance to match
+        client.net.account = RegistrationResource(
+                body=client.net.account.body,
+                uri=acctURI.replace(acctID, str(newID)),
+                terms_of_service=client.net.account.terms_of_service)
+
+        # Configure a guestlist that will fail the multiVA threshold test by
+        # only allowing the primary VA.
+        guestlist = {"boulder": 1}
+
+        # Setup for a random domain name
+        domain, cleanup = multiva_setup(client, guestlist, domain=None)
+
+        # We do not expect any errors, even though the guestlist ensured multi-va
+        # failures, because the client was set up with an account key corresponding
+        # to a multi VA policy disabledAccount ID.
+        chisel2.auth_and_issue([domain], client=client, chall_type="http-01")
+    finally:
+        cleanup()
+        # Remove certificates and related resources issued by the
+        # fixed example-multi-va-policy.yaml account ID. This avoids foreign key
+        # constraints being broken when we flip_ids next.
+        remove_certs(newID)
+        # Change the account ID back to the old account ID. This will prevent
+        # duplicate key errors when the integration test is run again and tries
+        # to update a different newly created account to the fixed ID from the
+        # example-multi-va-policy.yaml file.
+        flip_ids(newID, acctID)
 
 class FakeH2ServerHandler(socketserver.BaseRequestHandler):
     """

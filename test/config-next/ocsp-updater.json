@@ -27,6 +27,7 @@
       "timeout": "15s"
     },
     "features": {
+      "PrecertificateOCSP": true
     }
   },
 
