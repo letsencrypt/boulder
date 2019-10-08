@@ -49,12 +49,10 @@ const (
 	newRegPath    = "/acme/new-reg"
 	regPath       = "/acme/reg/"
 	newAuthzPath  = "/acme/new-authz"
-	authzPath     = "/acme/authz/"
 	// For user-facing URLs we use a "v3" suffix to avoid potential confusiong
 	// regarding ACMEv2.
 	authzv2Path     = "/acme/authz-v3/"
 	challengev2Path = "/acme/chall-v3/"
-	challengePath   = "/acme/challenge/"
 	newCertPath     = "/acme/new-cert"
 	certPath        = "/acme/cert/"
 	revokeCertPath  = "/acme/revoke-cert"
@@ -1062,11 +1060,8 @@ func (wfe *WebFrontEndImpl) ChallengeV2(
 // the client by filling in its URI field and clearing its ID field.
 func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
 	// Update the challenge URI to be relative to the HTTP request Host
-	if authz.V2 {
-		challenge.URI = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", challengev2Path, authz.ID, challenge.StringID()))
-	} else {
-		challenge.URI = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
-	}
+	challenge.URI = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", challengev2Path, authz.ID, challenge.StringID()))
+
 	// Ensure the challenge ID isn't written. 0 is considered "empty" for the purpose of the JSON omitempty tag.
 	challenge.ID = 0
 
@@ -1623,8 +1618,5 @@ func (wfe *WebFrontEndImpl) addIssuingCertificateURLs(response http.ResponseWrit
 }
 
 func urlForAuthz(authz core.Authorization, request *http.Request) string {
-	if authz.V2 {
-		return web.RelativeEndpoint(request, authzv2Path+string(authz.ID))
-	}
-	return web.RelativeEndpoint(request, authzPath+string(authz.ID))
+	return web.RelativeEndpoint(request, authzv2Path+string(authz.ID))
 }

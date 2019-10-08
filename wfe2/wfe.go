@@ -1058,11 +1058,8 @@ func prepAccountForDisplay(acct *core.Registration) {
 // the client by filling in its URL field and clearing its ID and URI fields.
 func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
 	// Update the challenge URL to be relative to the HTTP request Host
-	if authz.V2 {
-		challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", challengev2Path, authz.ID, challenge.StringID()))
-	} else {
-		challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%d", challengePath, authz.ID, challenge.ID))
-	}
+	challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", challengev2Path, authz.ID, challenge.StringID()))
+
 	// Ensure the challenge URI and challenge ID aren't written by setting them to
 	// values that the JSON omitempty tag considers empty
 	challenge.URI = ""
@@ -2113,8 +2110,5 @@ func extractRequesterIP(req *http.Request) (net.IP, error) {
 }
 
 func urlForAuthz(authz core.Authorization, request *http.Request) string {
-	if authz.V2 {
-		return web.RelativeEndpoint(request, authzv2Path+string(authz.ID))
-	}
-	return web.RelativeEndpoint(request, authzPath+string(authz.ID))
+	return web.RelativeEndpoint(request, authzv2Path+string(authz.ID))
 }

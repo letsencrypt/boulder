@@ -1628,17 +1628,9 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		}
 		authz.Challenges[challIndex] = *challenge
 
-		if authz.V2 {
-			if err := ra.recordValidation(vaCtx, authz.ID, authz.Expires, challenge); err != nil {
-				ra.log.AuditErrf("Could not record updated validation: err=[%s] regID=[%d] authzID=[%s]",
-					err, authz.RegistrationID, authz.ID)
-			}
-		} else {
-			err = ra.onValidationUpdate(vaCtx, authz)
-			if err != nil {
-				ra.log.AuditErrf("Could not record updated validation: err=[%s] regID=[%d] authzID=[%s]",
-					err, authz.RegistrationID, authz.ID)
-			}
+		if err := ra.recordValidation(vaCtx, authz.ID, authz.Expires, challenge); err != nil {
+			ra.log.AuditErrf("Could not record updated validation: err=[%s] regID=[%d] authzID=[%s]",
+				err, authz.RegistrationID, authz.ID)
 		}
 	}(authz)
 	ra.stats.Inc("UpdatedPendingAuthorizations", 1)
@@ -1754,34 +1746,6 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	return nil
 }
 
-// onValidationUpdate saves a validation's new status after receiving an
-// authorization back from the VA.
-func (ra *RegistrationAuthorityImpl) onValidationUpdate(ctx context.Context, authz core.Authorization) error {
-	// Consider validation successful if any of the challenges
-	// specified in the authorization has been fulfilled
-	for _, ch := range authz.Challenges {
-		if ch.Status == core.StatusValid {
-			authz.Status = core.StatusValid
-		}
-	}
-
-	// If no validation succeeded, then the authorization is invalid
-	if authz.Status != core.StatusValid {
-		authz.Status = core.StatusInvalid
-	} else {
-		exp := ra.clk.Now().Add(ra.authorizationLifetime)
-		authz.Expires = &exp
-	}
-
-	// Finalize the authorization
-	if err := ra.SA.FinalizeAuthorization(ctx, authz); err != nil {
-		return err
-	}
-
-	ra.stats.Inc("FinalizedAuthorizations", 1)
-	return nil
-}
-
 // DeactivateRegistration deactivates a valid registration
 func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context, reg core.Registration) error {
 	if reg.Status != core.StatusValid {
@@ -1799,18 +1763,12 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 	if auth.Status != core.StatusValid && auth.Status != core.StatusPending {
 		return berrors.MalformedError("only valid and pending authorizations can be deactivated")
 	}
-	if auth.V2 {
-		authzID, err := strconv.ParseInt(auth.ID, 10, 64)
-		if err != nil {
-			return err
-		}
-		if _, err := ra.SA.DeactivateAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID}); err != nil {
-			return err
-		}
-	} else {
-		if err := ra.SA.DeactivateAuthorization(ctx, auth.ID); err != nil {
-			return berrors.InternalServerError(err.Error())
-		}
+	authzID, err := strconv.ParseInt(auth.ID, 10, 64)
+	if err != nil {
+		return err
+	}
+	if _, err := ra.SA.DeactivateAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID}); err != nil {
+		return err
 	}
 	return nil
 }
@@ -1937,27 +1895,19 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// again to be safe.
 		if strings.HasPrefix(name, "*.") &&
 			len(authz.Challenges) == 1 && *authz.Challenges[0].Type == core.ChallengeTypeDNS01 {
-			if *authz.V2 {
-				authzID, err := strconv.ParseInt(*authz.Id, 10, 64)
-				if err != nil {
-					return nil, err
-				}
-				order.V2Authorizations = append(order.V2Authorizations, authzID)
-			} else {
-				order.Authorizations = append(order.Authorizations, *authz.Id)
+			authzID, err := strconv.ParseInt(*authz.Id, 10, 64)
+			if err != nil {
+				return nil, err
 			}
+			order.V2Authorizations = append(order.V2Authorizations, authzID)
 			continue
 		} else if !strings.HasPrefix(name, "*.") {
 			// If the identifier isn't a wildcard, we can reuse any authz
-			if *authz.V2 {
-				authzID, err := strconv.ParseInt(*authz.Id, 10, 64)
-				if err != nil {
-					return nil, err
-				}
-				order.V2Authorizations = append(order.V2Authorizations, authzID)
-			} else {
-				order.Authorizations = append(order.Authorizations, *authz.Id)
+			authzID, err := strconv.ParseInt(*authz.Id, 10, 64)
+			if err != nil {
+				return nil, err
 			}
+			order.V2Authorizations = append(order.V2Authorizations, authzID)
 			continue
 		}
 
@@ -2053,15 +2003,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg int64, identifier identifier.ACMEIdentifier) (*corepb.Authorization, error) {
 	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second).UnixNano()
 	status := string(core.StatusPending)
-	// TODO(XXX): Once the change removing old style authorizations has been
-	// removed we can stop sending the V2 field in this PB.
-	v2 := true
 	authz := &corepb.Authorization{
 		Identifier:     &identifier.Value,
 		RegistrationID: &reg,
 		Status:         &status,
 		Expires:        &expires,
-		V2:             &v2,
 	}
 
 	// Create challenges. The WFE will update them with URIs before sending them out.

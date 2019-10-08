@@ -188,11 +188,9 @@ func looksLikeKeyAuthorization(str string) error {
 // challenge, we just throw all the elements into one bucket,
 // together with the common metadata elements.
 type Challenge struct {
-	// ID was previously used to uniquely identify a challenge in the database and
-	// by users in the WFE. The ID is only populated when a challenge is added to
-	// the database. When features.NewAuthorizationSchema is enabled it is no
-	// longer populated at all and must not be relied upon in order to uniquely
-	// identify a challenge when transiting the RPC or storage layers.
+	// TODO(XXX): This field has be deprecated and should be removed
+	// once the removal of old stlye authorization code has been
+	// deployed.
 	ID int64 `json:"id,omitempty"`
 
 	// The type of challenge

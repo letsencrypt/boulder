@@ -368,7 +368,6 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 		Status:         &status,
 		Expires:        &expires,
 		Challenges:     challs,
-		V2:             &authz.V2,
 	}, nil
 }
 
@@ -382,17 +381,12 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		challs[i] = chall
 	}
 	expires := time.Unix(0, *pb.Expires).UTC()
-	v2 := false
-	if pb.V2 != nil {
-		v2 = *pb.V2
-	}
 	authz := core.Authorization{
 		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: *pb.Identifier},
 		RegistrationID: *pb.RegistrationID,
 		Status:         core.AcmeStatus(*pb.Status),
 		Expires:        &expires,
 		Challenges:     challs,
-		V2:             v2,
 	}
 	if pb.Id != nil {
 		authz.ID = *pb.Id
