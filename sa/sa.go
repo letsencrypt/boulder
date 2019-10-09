@@ -30,7 +30,6 @@ import (
 )
 
 type certCountFunc func(db dbSelector, domain string, earliest, latest time.Time) (int, error)
-type getChallengesFunc func(db dbSelector, authID string) ([]core.Challenge, error)
 
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
@@ -46,7 +45,6 @@ type SQLStorageAuthority struct {
 	// We use function types here so we can mock out this internal function in
 	// unittests.
 	countCertificatesByName certCountFunc
-	getChallenges           getChallengesFunc
 }
 
 func digest256(data []byte) []byte {
@@ -107,7 +105,6 @@ func NewSQLStorageAuthority(
 	}
 
 	ssa.countCertificatesByName = ssa.countCertificates
-	ssa.getChallenges = ssa.getChallengesImpl
 
 	return ssa, nil
 }
@@ -1390,27 +1387,6 @@ func AuthzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error
 		resp.Authz = append(resp.Authz, &sapb.Authorizations_MapElement{Domain: &kCopy, Authz: authzPB})
 	}
 	return resp, nil
-}
-
-func (ssa *SQLStorageAuthority) getChallengesImpl(db dbSelector, authID string) ([]core.Challenge, error) {
-	var challObjs []challModel
-	_, err := db.Select(
-		&challObjs,
-		getChallengesQuery,
-		map[string]interface{}{"authID": authID},
-	)
-	if err != nil {
-		return nil, err
-	}
-	var challs []core.Challenge
-	for _, c := range challObjs {
-		chall, err := modelToChallenge(&c)
-		if err != nil {
-			return nil, err
-		}
-		challs = append(challs, chall)
-	}
-	return challs, nil
 }
 
 // NewAuthorizations2 adds a set of new style authorizations to the database and returns

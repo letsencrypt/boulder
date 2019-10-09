@@ -1062,9 +1062,6 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 	// Update the challenge URI to be relative to the HTTP request Host
 	challenge.URI = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", challengev2Path, authz.ID, challenge.StringID()))
 
-	// Ensure the challenge ID isn't written. 0 is considered "empty" for the purpose of the JSON omitempty tag.
-	challenge.ID = 0
-
 	// Historically the Type field of a problem was always prefixed with a static
 	// error namespace. To support the V2 API and migrating to the correct IETF
 	// namespace we now prefix the Type with the correct namespace at runtime when

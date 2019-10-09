@@ -1060,10 +1060,9 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 	// Update the challenge URL to be relative to the HTTP request Host
 	challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", challengev2Path, authz.ID, challenge.StringID()))
 
-	// Ensure the challenge URI and challenge ID aren't written by setting them to
-	// values that the JSON omitempty tag considers empty
+	// Ensure the challenge URI isn't written by setting it to
+	// a value that the JSON omitempty tag considers empty
 	challenge.URI = ""
-	challenge.ID = 0
 
 	// ACMEv2 never sends the KeyAuthorization back in a challenge object.
 	challenge.ProvidedKeyAuthorization = ""

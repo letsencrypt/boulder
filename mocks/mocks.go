@@ -234,11 +234,6 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.JS
 	return core.Registration{ID: 1, Key: &test1KeyPublic, Agreement: agreementURL, Status: core.StatusValid}, nil
 }
 
-// GetAuthorization is a mock
-func (sa *StorageAuthority) GetAuthorization(_ context.Context, id string) (core.Authorization, error) {
-	return core.Authorization{}, errors.New("REMOVE ME PLEASE")
-}
-
 // GetCertificate is a mock
 func (sa *StorageAuthority) GetCertificate(_ context.Context, serial string) (core.Certificate, error) {
 	// Serial ee == 238.crt
@@ -297,16 +292,6 @@ func (sa *StorageAuthority) AddCertificate(_ context.Context, certDER []byte, re
 	return
 }
 
-// FinalizeAuthorization is a mock
-func (sa *StorageAuthority) FinalizeAuthorization(_ context.Context, authz core.Authorization) (err error) {
-	return
-}
-
-// NewPendingAuthorization is a mock
-func (sa *StorageAuthority) NewPendingAuthorization(_ context.Context, authz core.Authorization) (core.Authorization, error) {
-	return authz, nil
-}
-
 // NewRegistration is a mock
 func (sa *StorageAuthority) NewRegistration(_ context.Context, reg core.Registration) (regR core.Registration, err error) {
 	return
@@ -337,15 +322,6 @@ func (sa *StorageAuthority) PreviousCertificateExists(
 	}, nil
 }
 
-func (sa *StorageAuthority) GetPendingAuthorization(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*core.Authorization, error) {
-	return nil, nil
-}
-
-// GetValidAuthorizations is a mock
-func (sa *StorageAuthority) GetValidAuthorizations(_ context.Context, regID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
-	return nil, errors.New("REMOVE ME NOW PLEASE")
-}
-
 // CountCertificatesByNames is a mock
 func (sa *StorageAuthority) CountCertificatesByNames(_ context.Context, _ []string, _, _ time.Time) (ret []*sapb.CountByNames_MapElement, err error) {
 	return
@@ -361,19 +337,9 @@ func (sa *StorageAuthority) CountRegistrationsByIPRange(_ context.Context, _ net
 	return 0, nil
 }
 
-// CountPendingAuthorizations is a mock
-func (sa *StorageAuthority) CountPendingAuthorizations(_ context.Context, _ int64) (int, error) {
-	return 0, nil
-}
-
 // CountOrders is a mock
 func (sa *StorageAuthority) CountOrders(_ context.Context, _ int64, _, _ time.Time) (int, error) {
 	return 0, nil
-}
-
-// DeactivateAuthorization is a mock
-func (sa *StorageAuthority) DeactivateAuthorization(_ context.Context, _ string) error {
-	return nil
 }
 
 // DeactivateRegistration is a mock
@@ -461,25 +427,6 @@ func (sa *StorageAuthority) GetOrderForNames(_ context.Context, _ *sapb.GetOrder
 	return nil, nil
 }
 
-func (sa *StorageAuthority) GetValidOrderAuthorizations(_ context.Context, _ *sapb.GetValidOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
-	return nil, nil
-}
-
-// GetAuthorizations is a mock
-func (sa *StorageAuthority) GetAuthorizations(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	return &sapb.Authorizations{}, nil
-}
-
-// CountInvalidAuthorizations is a mock
-func (sa *StorageAuthority) CountInvalidAuthorizations(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (count *sapb.Count, err error) {
-	return &sapb.Count{}, nil
-}
-
-// AddPendingAuthorizations is a mock
-func (sa *StorageAuthority) AddPendingAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
-	return &sapb.AuthorizationIDs{}, nil
-}
-
 // NewAuthorizations is a mock
 func (sa *StorageAuthority) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
 	return &sapb.Authorization2IDs{}, nil
@@ -523,7 +470,6 @@ func (sa *StorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sa
 					Challenges: []core.Challenge{
 						{
 							Status: core.StatusValid,
-							ID:     23,
 							Type:   core.ChallengeTypeDNS01,
 						},
 					},
@@ -567,7 +513,6 @@ func (sa *StorageAuthority) GetAuthorization2(ctx context.Context, id *sapb.Auth
 		Identifier:     identifier.DNSIdentifier("not-an-example.com"),
 		Challenges: []core.Challenge{
 			{
-				ID:    23,
 				Token: "token",
 				Type:  "dns",
 			},
@@ -674,7 +619,6 @@ func (sa *SAWithFailedChallenges) GetAuthorization2(ctx context.Context, id *sap
 		Identifier:     identifier.DNSIdentifier("not-an-example.com"),
 		Challenges: []core.Challenge{
 			{
-				ID:   23,
 				Type: "dns",
 			},
 		},
