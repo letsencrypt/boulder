@@ -188,11 +188,6 @@ func looksLikeKeyAuthorization(str string) error {
 // challenge, we just throw all the elements into one bucket,
 // together with the common metadata elements.
 type Challenge struct {
-	// TODO(XXX): This field has be deprecated and should be removed
-	// once the removal of old stlye authorization code has been
-	// deployed.
-	ID int64 `json:"id,omitempty"`
-
 	// The type of challenge
 	Type string `json:"type"`
 
