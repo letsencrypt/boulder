@@ -104,10 +104,22 @@ func TestPrecertificateRevocation(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			// Find the rejected precert from the first ct-test-srv for the domains we
-			// attempted to issue for.
-			cert, err := ctFindRejection(4500, []string{tc.domain})
-			test.AssertNotError(t, err, "finding rejected precertificate")
+			// Try to find a precertificate matching the domain from one of the
+			// configured ct-test-srv instances.
+			var cert *x509.Certificate
+			for _, port := range ctSrvPorts {
+				cert, err = ctFindRejection(port, []string{tc.domain})
+				if err != nil {
+					continue
+				} else if err == nil {
+					break
+				}
+			}
+			// At least one of the logs should have given us back a matching
+			// precertificate to use for revocation.
+			if cert == nil {
+				t.Fatal("precert was missing poison extension")
+			}
 
 			// To be confident that we're testing the right thing also verify that the
 			// rejection is a poisoned precertificate.
