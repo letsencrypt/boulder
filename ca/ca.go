@@ -36,7 +36,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	csrlib "github.com/letsencrypt/boulder/csr"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -450,68 +449,57 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 
 	regID := *issueReq.RegistrationID
 
-	if features.Enabled(features.PrecertificateOCSP) {
-		serialHex := core.SerialToString(serialBigInt)
-		nowNanos := ca.clk.Now().UnixNano()
-		expiresNanos := validity.NotAfter.UnixNano()
-		_, err = ca.sa.AddSerial(ctx, &sapb.AddSerialRequest{
-			Serial:  &serialHex,
-			RegID:   &regID,
-			Created: &nowNanos,
-			Expires: &expiresNanos,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		precertDER, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity, precertType)
-		if err != nil {
-			return nil, err
-		}
-
-		ocspResp, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
-			CertDER: precertDER,
-			Status:  string(core.OCSPStatusGood),
-		})
-		if err != nil {
-			err = berrors.InternalServerError(err.Error())
-			ca.log.AuditInfof("OCSP Signing failure: serial=[%s] err=[%s]", serialHex, err)
-		}
-
-		_, err = ca.sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-			Der:    precertDER,
-			RegID:  &regID,
-			Ocsp:   ocspResp,
-			Issued: &nowNanos,
-		})
-		if err != nil {
-			err = berrors.InternalServerError(err.Error())
-			ca.log.AuditErrf("Failed RPC to store at SA, orphaning precertificate: serial=[%s] cert=[%s] err=[%v], regID=[%d], orderID=[%d]",
-				serialHex, hex.EncodeToString(precertDER), err, *issueReq.RegistrationID, *issueReq.OrderID)
-			if ca.orphanQueue != nil {
-				ca.queueOrphan(&orphanedCert{
-					DER:      precertDER,
-					RegID:    regID,
-					OCSPResp: ocspResp,
-					Precert:  true,
-				})
-			}
-			return nil, err
-		}
-
-		return &caPB.IssuePrecertificateResponse{
-			DER: precertDER,
-		}, nil
-
-	} else {
-		precertDER, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity, precertType)
-		if err != nil {
-			return nil, err
-		}
-		return &caPB.IssuePrecertificateResponse{
-			DER: precertDER,
-		}, nil
+	serialHex := core.SerialToString(serialBigInt)
+	nowNanos := ca.clk.Now().UnixNano()
+	expiresNanos := validity.NotAfter.UnixNano()
+	_, err = ca.sa.AddSerial(ctx, &sapb.AddSerialRequest{
+		Serial:  &serialHex,
+		RegID:   &regID,
+		Created: &nowNanos,
+		Expires: &expiresNanos,
+	})
+	if err != nil {
+		return nil, err
 	}
+
+	precertDER, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity, precertType)
+	if err != nil {
+		return nil, err
+	}
+
+	ocspResp, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+		CertDER: precertDER,
+		Status:  string(core.OCSPStatusGood),
+	})
+	if err != nil {
+		err = berrors.InternalServerError(err.Error())
+		ca.log.AuditInfof("OCSP Signing failure: serial=[%s] err=[%s]", serialHex, err)
+	}
+
+	_, err = ca.sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    precertDER,
+		RegID:  &regID,
+		Ocsp:   ocspResp,
+		Issued: &nowNanos,
+	})
+	if err != nil {
+		err = berrors.InternalServerError(err.Error())
+		ca.log.AuditErrf("Failed RPC to store at SA, orphaning precertificate: serial=[%s] cert=[%s] err=[%v], regID=[%d], orderID=[%d]",
+			serialHex, hex.EncodeToString(precertDER), err, *issueReq.RegistrationID, *issueReq.OrderID)
+		if ca.orphanQueue != nil {
+			ca.queueOrphan(&orphanedCert{
+				DER:      precertDER,
+				RegID:    regID,
+				OCSPResp: ocspResp,
+				Precert:  true,
+			})
+		}
+		return nil, err
+	}
+
+	return &caPB.IssuePrecertificateResponse{
+		DER: precertDER,
+	}, nil
 }
 
 // IssueCertificateForPrecertificate takes a precertificate and a set of SCTs for that precertificate
@@ -549,7 +537,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] precertificate=[%s] certificate=[%s]",
 		serialHex, strings.Join(precert.DNSNames, ", "), hex.EncodeToString(req.DER),
 		hex.EncodeToString(certDER))
-	return ca.generateOCSPAndStoreCertificate(ctx, *req.RegistrationID, *req.OrderID, precert.SerialNumber, certDER)
+	return ca.storeCertificate(ctx, *req.RegistrationID, *req.OrderID, precert.SerialNumber, certDER)
 }
 
 type validity struct {
@@ -700,7 +688,7 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	return certDER, nil
 }
 
-func (ca *CertificateAuthorityImpl) generateOCSPAndStoreCertificate(
+func (ca *CertificateAuthorityImpl) storeCertificate(
 	ctx context.Context,
 	regID int64,
 	orderID int64,
@@ -708,20 +696,6 @@ func (ca *CertificateAuthorityImpl) generateOCSPAndStoreCertificate(
 	certDER []byte) (core.Certificate, error) {
 	var err error
 	var ocspResp []byte
-	if !features.Enabled(features.PrecertificateOCSP) {
-		ocspResp, err = ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
-			CertDER: certDER,
-			Status:  string(core.OCSPStatusGood),
-		})
-		if err != nil {
-			err = berrors.InternalServerError(err.Error())
-			ca.log.AuditInfof("OCSP Signing failure: serial=[%s] err=[%s]", core.SerialToString(serialBigInt), err)
-			// Ignore errors here to avoid orphaning the certificate. The
-			// ocsp-updater will look for certs with a zero ocspLastUpdated
-			// and generate the initial response in this case.
-		}
-	}
-
 	now := ca.clk.Now()
 	_, err = ca.sa.AddCertificate(ctx, certDER, regID, ocspResp, &now)
 	if err != nil {

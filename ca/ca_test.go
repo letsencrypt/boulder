@@ -1033,14 +1033,14 @@ func TestOrphanQueue(t *testing.T) {
 	}
 	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, k.Public(), k)
 	test.AssertNotError(t, err, "Failed to generate test cert")
-	_, err = ca.generateOCSPAndStoreCertificate(
+	_, err = ca.storeCertificate(
 		context.Background(),
 		1,
 		1,
 		tmpl.SerialNumber,
 		certDER,
 	)
-	test.AssertError(t, err, "generateOCSPAndStoreCertificate didn't fail when AddCertificate failed")
+	test.AssertError(t, err, "storeCertificate didn't fail when AddCertificate failed")
 
 	qsa.fail = false
 	err = ca.integrateOrphan()
@@ -1074,14 +1074,14 @@ func TestOrphanQueue(t *testing.T) {
 	// add cert to queue, and recreate queue to make sure it still has the cert
 	qsa.fail = true
 	qsa.duplicate = false
-	_, err = ca.generateOCSPAndStoreCertificate(
+	_, err = ca.storeCertificate(
 		context.Background(),
 		1,
 		1,
 		tmpl.SerialNumber,
 		certDER,
 	)
-	test.AssertError(t, err, "generateOCSPAndStoreCertificate didn't fail when AddCertificate failed")
+	test.AssertError(t, err, "storeCertificate didn't fail when AddCertificate failed")
 	err = orphanQueue.Close()
 	test.AssertNotError(t, err, "Failed to close the queue cleanly")
 	orphanQueue, err = goque.OpenQueue(tmpDir)
