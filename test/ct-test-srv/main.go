@@ -92,6 +92,19 @@ func (is *integrationSrv) getRejections(w http.ResponseWriter, r *http.Request) 
 	w.Write(output)
 }
 
+// shouldReject checks if the given host is in the rejectHosts list for the
+// integrationSrv. If it is, then the chain is appended to the integrationSrv
+// rejected list and true is returned indicating the request should be rejected.
+func (is *integrationSrv) shouldReject(host, chain string) bool {
+	is.Lock()
+	defer is.Unlock()
+	if is.rejectHosts[host] {
+		is.rejected = append(is.rejected, chain)
+		return true
+	}
+	return false
+}
+
 func (is *integrationSrv) addPreChain(w http.ResponseWriter, r *http.Request) {
 	is.addChainOrPre(w, r, true)
 }
@@ -130,16 +143,14 @@ func (is *integrationSrv) addChainOrPre(w http.ResponseWriter, r *http.Request, 
 	}
 	hostnames := strings.Join(cert.DNSNames, ",")
 
-	is.Lock()
 	for _, h := range cert.DNSNames {
-		if is.rejectHosts[h] {
-			is.rejected = append(is.rejected, addChainReq.Chain[0])
-			is.Unlock()
+		if is.shouldReject(h, addChainReq.Chain[0]) {
 			w.WriteHeader(400)
 			return
 		}
 	}
 
+	is.Lock()
 	is.submissions[hostnames]++
 	is.Unlock()
 
