@@ -37,6 +37,8 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 		outProb = probs.OrderNotReady("%s :: %s", msg, err)
 	case berrors.BadPublicKey:
 		outProb = probs.BadPublicKey("%s :: %s", msg, err)
+	case berrors.BadCSR:
+		outProb = probs.BadCSR("%s :: %s", msg, err)
 	default:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.

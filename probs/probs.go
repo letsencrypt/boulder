@@ -26,6 +26,7 @@ const (
 	BadSignatureAlgorithmProblem = ProblemType("badSignatureAlgorithm")
 	BadPublicKeyProblem          = ProblemType("badPublicKey")
 	BadRevocationReasonProblem   = ProblemType("badRevocationReason")
+	BadCSRProblem                = ProblemType("badCSR")
 
 	V1ErrorNS = "urn:acme:error:"
 	V2ErrorNS = "urn:ietf:params:acme:error:"
@@ -317,6 +318,15 @@ func OrderNotReady(detail string, a ...interface{}) *ProblemDetails {
 func BadRevocationReason(detail string, a ...interface{}) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       BadRevocationReasonProblem,
+		Detail:     fmt.Sprintf(detail, a...),
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// BadCSR returns a ProblemDetails representing a BadCSRProblem.
+func BadCSR(detail string, a ...interface{}) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       BadCSRProblem,
 		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusBadRequest,
 	}
