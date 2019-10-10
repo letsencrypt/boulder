@@ -474,6 +474,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	if err != nil {
 		err = berrors.InternalServerError(err.Error())
 		ca.log.AuditInfof("OCSP Signing failure: serial=[%s] err=[%s]", serialHex, err)
+		return nil, err
 	}
 
 	_, err = ca.sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
