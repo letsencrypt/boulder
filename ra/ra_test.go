@@ -663,6 +663,7 @@ func TestReuseValidAuthorization(t *testing.T) {
 		Expires:   &expInt,
 		Attempted: &authz.Challenges[0].Type,
 	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
 	// Now create another authorization for the same Reg.ID/domain
 	secondAuthz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
@@ -808,6 +809,7 @@ func TestReuseAuthorizationDisabled(t *testing.T) {
 		Expires:   &expInt,
 		Attempted: &authz.Challenges[0].Type,
 	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
 	// Now create another authorization for the same Reg.ID/domain
 	secondAuthz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
@@ -857,6 +859,7 @@ func TestReuseExpiringAuthorization(t *testing.T) {
 		Expires:   &expInt,
 		Attempted: &authz.Challenges[0].Type,
 	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
 	// Now create another authorization for the same Reg.ID/domain
 	secondAuthz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
@@ -1041,6 +1044,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 		Expires:   &expInt,
 		Attempted: &authz.Challenges[0].Type,
 	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 	csr := x509.CertificateRequest{
 		SignatureAlgorithm: x509.SHA256WithRSA,
 		PublicKey:          AccountKeyA.Key,
@@ -1089,6 +1093,7 @@ func TestAuthorizationRequired(t *testing.T) {
 		Expires:   &expInt,
 		Attempted: &authz.Challenges[0].Type,
 	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
 	// ExampleCSR requests not-example.com and www.not-example.com,
 	// but the authorization only covers not-example.com
@@ -1129,6 +1134,7 @@ func TestNewCertificate(t *testing.T) {
 		Expires:   &expInt,
 		Attempted: &authz.Challenges[0].Type,
 	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
 	// Inject another final authorization to cover www.not-example.com
 	authz.Identifier.Value = "www.not-example.com"
@@ -1143,6 +1149,7 @@ func TestNewCertificate(t *testing.T) {
 		Expires:   &expInt,
 		Attempted: &authz.Challenges[0].Type,
 	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
 	// Check that we fail if the CSR signature is invalid
 	ExampleCSR.Signature[0]++
@@ -1892,6 +1899,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 		Expires:   &expInt,
 		Attempted: &authz.Challenges[0].Type,
 	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
 	authz.ID = fmt.Sprintf("%d", ids.Ids[0])
 	err = ra.DeactivateAuthorization(ctx, authz)
@@ -2275,6 +2283,7 @@ func TestNewOrderLegacyAuthzReuse(t *testing.T) {
 		Expires:   &expInt,
 		Attempted: &authz.Challenges[0].Type,
 	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
 	// Create an order request for the same name as the legacy authz
 	order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
@@ -3418,6 +3427,7 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 		Expires:   &expInt,
 		Attempted: &authz.Challenges[0].Type,
 	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
 	// Finalizing the order should *not* work since the existing validated authz
 	// is not a special DNS-01-Wildcard challenge authz, so the order will be
@@ -3784,6 +3794,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 		Expires:   &expInt,
 		Attempted: &authz.Challenges[0].Type,
 	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 	// Inject another final authorization to cover www.not-example.com
 	authz.Identifier.Value = "www.not-example.com"
 	authz.Challenges[0].Token = core.NewToken()
@@ -3797,6 +3808,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 		Expires:   &expInt,
 		Attempted: &authz.Challenges[0].Type,
 	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
