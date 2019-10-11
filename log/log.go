@@ -9,6 +9,7 @@ import (
 	"path"
 	"runtime"
 	"strings"
+	"hash/crc32"
 	"sync"
 
 	"github.com/jmhodges/clock"
@@ -125,6 +126,9 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 
 	const red = "\033[31m\033[1m"
 	const yellow = "\033[33m"
+
+	crc := crc32.ChecksumIEEE([]byte(msg))
+	msg = fmt.Sprintf("%x %s", crc, msg)
 
 	switch syslogAllowed := int(level) <= w.syslogLevel; level {
 	case syslog.LOG_ERR:
