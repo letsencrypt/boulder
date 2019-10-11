@@ -123,32 +123,31 @@ def run_janitor():
             raise Exception("stat line {0} was missing required parts".format(line))
         return parts[1]
 
-    # Wait for the janitor to report it isn't finding new work
-    print("waiting for boulder-janitor work to complete...\n")
-    workDone = False
-    for i in range(10):
-        certStatusWorkbatch = get_stat_line(8014, statline("workbatch", "certificateStatus"))
+    # Wait for the janitor to finish its work. The easiest way to tell this
+    # externally is to watch for the work batch counters to stabilize for
+    # a period longer than the configured workSleep.
+    attempts = 0
+    while True:
+        if attempts > 5:
+            raise Exception("timed out waiting for janitor workbatch counts to stabilize")
+
+        certStatusWorkBatch = get_stat_line(8014, statline("workbatch", "certificateStatus"))
         certsWorkBatch = get_stat_line(8014, statline("workbatch", "certificates"))
         certsPerNameWorkBatch = get_stat_line(8014, statline("workbatch", "certificatesPerName"))
-        if not certStatusWorkbatch or not certsWorkBatch or not certsPerNameWorkBatch:
-            print("not done after check {0}. Sleeping".format(i))
-            time.sleep(2)
-            continue
 
-        allReady = True
-        for line in [certStatusWorkbatch, certsWorkBatch, certsPerNameWorkBatch]:
-            if stat_value(line) != "0":
-                allReady = False
+        # sleep for double the configured workSleep for each job
+        time.sleep(1)
 
-        if allReady is False:
-            print("not done after check {0}. Sleeping".format(i))
-            time.sleep(2)
-        else:
-            workDone = True
+        newCertStatusWorkBatch = get_stat_line(8014, statline("workbatch", "certificateStatus"))
+        newCertsWorkBatch = get_stat_line(8014, statline("workbatch", "certificates"))
+        newCertsPerNameWorkBatch = get_stat_line(8014, statline("workbatch", "certificatesPerName"))
+
+        if (certStatusWorkBatch == newCertStatusWorkBatch 
+            and certsWorkBatch == newCertsWorkBatch 
+            and certsPerNameWorkBatch == newCertsPerNameWorkBatch):
             break
 
-    if workDone is False:
-        raise Exception("Timed out waiting for janitor to report all work completed\n")
+        attempts = attempts + 1
 
     # Check deletion stats are not empty/zero
     for i in range(10):
