@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"log/syslog"
 	"os"
 	"path"
 	"runtime"
 	"strings"
-	"hash/crc32"
 	"sync"
 
 	"github.com/jmhodges/clock"
