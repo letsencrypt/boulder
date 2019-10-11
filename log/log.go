@@ -1,6 +1,8 @@
 package log
 
 import (
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -118,6 +120,15 @@ type bothWriter struct {
 	clk         clock.Clock
 }
 
+func LogLineChecksum(line string) string {
+	crc := crc32.ChecksumIEEE([]byte(line))
+	// Using the hash.Hash32 doesn't make this any easier
+	// as it also returns a uint32 rather than []byte
+	buf := make([]byte, binary.MaxVarintLen32)
+	binary.PutUvarint(buf, uint64(crc))
+	return base64.RawURLEncoding.EncodeToString(buf)
+}
+
 // Log the provided message at the appropriate level, writing to
 // both stdout and the Logger
 func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
@@ -127,8 +138,7 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 	const red = "\033[31m\033[1m"
 	const yellow = "\033[33m"
 
-	crc := crc32.ChecksumIEEE([]byte(msg))
-	msg = fmt.Sprintf("%x %s", crc, msg)
+	msg = fmt.Sprintf("%s %s", LogLineChecksum(msg), msg)
 
 	switch syslogAllowed := int(level) <= w.syslogLevel; level {
 	case syslog.LOG_ERR:

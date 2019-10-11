@@ -106,8 +106,8 @@ func ExampleLogger() {
 	impl.AuditErr("Error Audit")
 	impl.Warning("Warning Audit")
 	// Output:
-	// [31m[1mE000000 log.test 80b817e3 [AUDIT] Error Audit[0m
-	// [33mW000000 log.test 48fd5d76 Warning Audit[0m
+	// [31m[1mE000000 log.test 46_ghQg [AUDIT] Error Audit[0m
+	// [33mW000000 log.test 9rr1xwQ Warning Audit[0m
 }
 
 func TestSyslogMethods(t *testing.T) {
