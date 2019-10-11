@@ -2417,24 +2417,22 @@ func TestCountPendingAuthorizations2(t *testing.T) {
 }
 
 func TestGetValidOrderAuthorizations2(t *testing.T) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
-	// Create a new valid authorization and an old valid authorization
+	// Create two new valid authorizations
 	reg := satest.CreateWorkingRegistration(t, sa)
-	ident := "b.example.com"
+	identA := "a.example.com"
+	identB := "b.example.com"
 	pending := string(core.StatusPending)
 	expires := fc.Now().Add(time.Hour * 24 * 7).UTC().UnixNano()
 	challType := string(core.ChallengeTypeDNS01)
-	token := "YXNkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	tokenA := core.NewToken()
+	tokenB := core.NewToken()
 	ids, err := sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{
 		Authz: []*corepb.Authorization{
 			&corepb.Authorization{
-				Identifier:     &ident,
+				Identifier:     &identA,
 				RegistrationID: &reg.ID,
 				Status:         &pending,
 				Expires:        &expires,
@@ -2442,7 +2440,20 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 					{
 						Status: &pending,
 						Type:   &challType,
-						Token:  &token,
+						Token:  &tokenA,
+					},
+				},
+			},
+			&corepb.Authorization{
+				Identifier:     &identB,
+				RegistrationID: &reg.ID,
+				Status:         &pending,
+				Expires:        &expires,
+				Challenges: []*corepb.Challenge{
+					{
+						Status: &pending,
+						Type:   &challType,
+						Token:  &tokenB,
 					},
 				},
 			},
@@ -2458,6 +2469,14 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 		Expires:           &expires,
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id:                &ids.Ids[1],
+		Status:            &valid,
+		Attempted:         &challType,
+		ValidationRecords: []*corepb.ValidationRecord{},
+		Expires:           &expires,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
 	i := fc.Now().Truncate(time.Second).UnixNano()
 	status := string(core.StatusPending)
@@ -2465,7 +2484,7 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 		RegistrationID:   &reg.ID,
 		Expires:          &i,
 		Names:            []string{"a.example.com", "b.example.com"},
-		V2Authorizations: []int64{ids.Ids[0]},
+		V2Authorizations: []int64{ids.Ids[0], ids.Ids[1]},
 		Status:           &status,
 	}
 	order, err = sa.NewOrder(context.Background(), order)
@@ -2506,10 +2525,6 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 }
 
 func TestCountInvalidAuthorizations2(t *testing.T) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -2556,6 +2571,16 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
 	test.AssertEquals(t, len(ids.Ids), 2)
 
+	invalid := string(core.StatusInvalid)
+	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id:                &ids.Ids[0],
+		Status:            &invalid,
+		Attempted:         &challType,
+		ValidationRecords: []*corepb.ValidationRecord{},
+		Expires:           &expiresA,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+
 	earliest, latest := fc.Now().Add(-time.Hour).UTC().UnixNano(), fc.Now().Add(time.Hour*5).UTC().UnixNano()
 	count, err := sa.CountInvalidAuthorizations2(context.Background(), &sapb.CountInvalidAuthorizationsRequest{
 		RegistrationID: &reg.ID,
@@ -2566,7 +2591,7 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 		},
 	})
 	test.AssertNotError(t, err, "sa.CountInvalidAuthorizations2 failed")
-	test.AssertEquals(t, *count.Count, int64(2))
+	test.AssertEquals(t, *count.Count, int64(1))
 }
 
 func TestGetValidAuthorizations2(t *testing.T) {
