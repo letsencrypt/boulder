@@ -2182,7 +2182,6 @@ func TestNewAuthorizations2(t *testing.T) {
 		test.AssertNotError(t, err, "sa.GetAuthorization failed")
 		// Everything but ID should match
 		req.Authz[i].Id = dbVer.Id
-		req.Authz[i].Combinations = dbVer.Combinations
 		test.AssertDeepEquals(t, req.Authz[i], dbVer)
 	}
 }

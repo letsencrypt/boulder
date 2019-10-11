@@ -90,7 +90,7 @@ func challTypeIndex(t *testing.T, challenges []core.Challenge, typ string) int64
 }
 
 func numAuthorizations(o *corepb.Order) int {
-	return len(o.Authorizations) + len(o.V2Authorizations)
+	return len(o.V2Authorizations)
 }
 
 type DummyValidationAuthority struct {

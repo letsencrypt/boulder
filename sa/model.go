@@ -496,7 +496,6 @@ func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 		// convert the integer ID to a string.
 		id, err := strconv.Atoi(*authz.Id)
 		if err != nil {
-			fmt.Println("here")
 			return nil, err
 		}
 		am.ID = int64(id)

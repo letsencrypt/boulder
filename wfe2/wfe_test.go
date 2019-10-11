@@ -266,12 +266,12 @@ func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, req *rapb.New
 	zero := int64(0)
 	status := string(core.StatusPending)
 	return &corepb.Order{
-		Id:             &one,
-		RegistrationID: req.RegistrationID,
-		Expires:        &zero,
-		Names:          req.Names,
-		Status:         &status,
-		Authorizations: []string{"hello"},
+		Id:               &one,
+		RegistrationID:   req.RegistrationID,
+		Expires:          &zero,
+		Names:            req.Names,
+		Status:           &status,
+		V2Authorizations: []int64{1},
 	}, nil
 }
 
@@ -2136,7 +2136,7 @@ func TestNewOrder(t *testing.T) {
 							{ "type": "dns", "value": "www.not-example.com"}
 						],
 						"authorizations": [
-							"http://localhost/acme/authz/hello"
+							"http://localhost/acme/authz-v3/1"
 						],
 						"finalize": "http://localhost/acme/finalize/1/1"
 					}`,
@@ -2275,7 +2275,7 @@ func TestFinalizeOrder(t *testing.T) {
     {"type":"dns","value":"example.com"}
   ],
   "authorizations": [
-    "http://localhost/acme/authz/hello"
+    "http://localhost/acme/authz-v3/1"
   ],
   "finalize": "http://localhost/acme/finalize/1/8"
 }`,
@@ -2425,7 +2425,7 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "Good request",
 			Request:  makeGet("1/1"),
-			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz/hello"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "404 request",
@@ -2470,7 +2470,7 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "Valid POST-as-GET",
 			Request:  makePost(1, "1/1", ""),
-			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz/hello"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 	}
 
@@ -2971,12 +2971,9 @@ func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 		Names:            []string{"a"},
 		Status:           &status,
 		Expires:          &expires,
-		Authorizations:   []string{"a", "b"},
 		V2Authorizations: []int64{1, 2},
 	})
 	test.AssertDeepEquals(t, orderJSON.Authorizations, []string{
-		"http://localhost/acme/authz/a",
-		"http://localhost/acme/authz/b",
 		"http://localhost/acme/authz-v3/1",
 		"http://localhost/acme/authz-v3/2",
 	})
