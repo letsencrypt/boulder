@@ -10,7 +10,6 @@ import (
 	"github.com/jmhodges/clock"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 func setup() (*blog.Mock, clock.FakeClock) {
@@ -122,8 +121,7 @@ func TestGetWork(t *testing.T) {
 	}
 
 	// We expect the work gauge for this table has been updated
-	workCount, err := test.GaugeValueWithLabels(workStat, prometheus.Labels{"table": table})
-	test.AssertNotError(t, err, "unexpected error from GaugeValueWithLabels")
+	workCount := test.CountCounterVec("table", table, workStat)
 	test.AssertEquals(t, workCount, len(mockIDs))
 
 	// Set the third item in mockIDs to have an expiry after the purge cutoff
@@ -140,8 +138,7 @@ func TestGetWork(t *testing.T) {
 		got := <-workChan
 		test.AssertEquals(t, got, mockIDs[i].ID)
 	}
-	workCount, err = test.GaugeValueWithLabels(workStat, prometheus.Labels{"table": table})
-	test.AssertNotError(t, err, "unexpected error from GaugeValueWithLabels")
+	workCount = test.CountCounterVec("table", table, workStat)
 	test.AssertEquals(t, workCount, 2)
 }
 

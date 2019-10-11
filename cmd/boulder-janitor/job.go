@@ -31,11 +31,11 @@ var (
 			Help: "Number of deletions by table the boulder-janitor has performed.",
 		},
 		[]string{"table"})
-	// workStat is a prometheus gauge vector tracking the number of rows found
+	// workStat is a prometheus counter vector tracking the number of rows found
 	// during a batchedJob's getWork stage and queued into the work channel sliced
 	// by a table label.
-	workStat = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
+	workStat = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
 			Name: "janitor_workbatch",
 			Help: "Number of items of work by table the boulder-janitor queued for deletion.",
 		},
@@ -113,7 +113,7 @@ func (j batchedDBJob) getWork(work chan<- int64, startID int64) (int64, error) {
 		rows++
 		lastID = v.ID
 	}
-	workStat.WithLabelValues(j.table).Set(float64(rows))
+	workStat.WithLabelValues(j.table).Add(float64(rows))
 	return lastID, nil
 }
 
