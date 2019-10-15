@@ -12,9 +12,7 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net"
-	"os"
 	"reflect"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -699,10 +697,6 @@ func TestPreviousCertificateExists(t *testing.T) {
 }
 
 func TestDeactivateAuthorization2(t *testing.T) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -971,10 +965,6 @@ func TestNewOrder(t *testing.T) {
 	test.AssertEquals(t, len(names), 2)
 	test.AssertDeepEquals(t, names, []string{"com.example", "com.example.another.just"})
 
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	names, err = sa.namesForOrder(context.Background(), *order.Id)
 	test.AssertNotError(t, err, "namesForOrder errored")
 	test.AssertEquals(t, len(names), 2)
@@ -1142,10 +1132,6 @@ func TestGetAuthorizationNoRows(t *testing.T) {
 }
 
 func TestGetAuthorizations2(t *testing.T) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
@@ -1158,10 +1144,10 @@ func TestGetAuthorizations2(t *testing.T) {
 	identD := "ddd"
 	idents := []string{identA, identB, identC}
 
-	// Create an authorization template for a pending authorization with a dummy identifier
 	authzIDA := createFinalizedAuthorization(t, sa, "aaa", exp, "valid")
 	authzIDB := createPendingAuthorization(t, sa, "bbb", exp)
-	authzIDC := createPendingAuthorization(t, sa, "ccc", exp)
+	nearbyExpires := fc.Now().UTC().Add(time.Hour)
+	authzIDC := createPendingAuthorization(t, sa, "ccc", nearbyExpires)
 
 	// Associate authorizations with an order so that GetAuthorizations2 thinks
 	// they are WFE2 authorizations.
@@ -1798,10 +1784,6 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 }
 
 func TestNewAuthorizations2(t *testing.T) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -1852,10 +1834,6 @@ func TestNewAuthorizations2(t *testing.T) {
 }
 
 func TestFinalizeAuthorization2(t *testing.T) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -1941,10 +1919,6 @@ func TestFinalizeAuthorization2(t *testing.T) {
 }
 
 func TestGetPendingAuthorization2(t *testing.T) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -1975,10 +1949,6 @@ func TestGetPendingAuthorization2(t *testing.T) {
 }
 
 func TestCountPendingAuthorizations2(t *testing.T) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -2096,10 +2066,6 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 }
 
 func TestGetValidAuthorizations2(t *testing.T) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
