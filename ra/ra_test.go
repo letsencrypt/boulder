@@ -204,12 +204,6 @@ var (
 	url0, _      = url.Parse("http://acme.invalid/authz/60p2Dc_XmUB2UUJBV4wYkF7BJbPD9KlDnUL3SmFMuTE?challenge=0")
 	url1, _      = url.Parse("http://acme.invalid/authz/60p2Dc_XmUB2UUJBV4wYkF7BJbPD9KlDnUL3SmFMuTE?challenge=0")
 	Registration = core.Registration{}
-	AuthzInitial = core.Authorization{
-		Identifier:     identifier.DNSIdentifier("not-example.com"),
-		RegistrationID: 1,
-		Status:         "pending",
-	}
-	AuthzFinal = core.Authorization{}
 
 	log = blog.UseMock()
 )
@@ -354,17 +348,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra.CA = ca
 	ra.PA = pa
 	ra.reuseValidAuthz = true
-
-	AuthzInitial.RegistrationID = Registration.ID
-
-	challenges, _ := pa.ChallengesFor(AuthzInitial.Identifier)
-	AuthzInitial.Challenges = challenges
-
-	AuthzFinal = AuthzInitial
-	AuthzFinal.Status = "valid"
-	exp := time.Now().Add(365 * 24 * time.Hour)
-	AuthzFinal.Expires = &exp
-	AuthzFinal.Challenges[0].Status = "valid"
 
 	return va, ssa, ra, fc, cleanUp
 }
@@ -727,12 +710,16 @@ func TestReusePendingAuthorization(t *testing.T) {
 	defer cleanUp()
 
 	// Create one pending authorization
-	firstAuthz, err := ra.NewAuthorization(ctx, AuthzInitial, Registration.ID)
+	firstAuthz, err := ra.NewAuthorization(ctx, core.Authorization{
+		Identifier:     identifier.DNSIdentifier("not-example.com"),
+		RegistrationID: 1,
+		Status:         "pending",
+	}, Registration.ID)
 	test.AssertNotError(t, err, "Could not store test pending authorization")
 
 	// Create another one with the same identifier
 	secondAuthz, err := ra.NewAuthorization(ctx, core.Authorization{
-		Identifier: AuthzInitial.Identifier,
+		Identifier: identifier.DNSIdentifier("not-example.com"),
 	}, Registration.ID)
 	test.AssertNotError(t, err, "Could not store test pending authorization")
 
@@ -748,7 +735,7 @@ func TestReusePendingAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "Creating otherReg")
 	// An authz created under another registration ID should not be reused.
 	thirdAuthz, err := ra.NewAuthorization(ctx, core.Authorization{
-		Identifier: AuthzInitial.Identifier,
+		Identifier: identifier.DNSIdentifier("not-example.com"),
 	}, otherReg.ID)
 	test.AssertNotError(t, err, "Could not store test pending authorization")
 	if thirdAuthz.ID == firstAuthz.ID {
