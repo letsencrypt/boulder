@@ -60,6 +60,46 @@ import (
 	jose "gopkg.in/square/go-jose.v2"
 )
 
+func createPendingAuthorization(t *testing.T, sa core.StorageAuthority, domain string, exp time.Time) int64 {
+	t.Helper()
+
+	authz := core.Authorization{
+		Identifier:     identifier.DNSIdentifier(domain),
+		RegistrationID: 1,
+		Status:         "pending",
+		Expires:        &exp,
+		Challenges: []core.Challenge{
+			{
+				Token:  core.NewToken(),
+				Type:   core.ChallengeTypeHTTP01,
+				Status: core.StatusPending,
+			},
+		},
+	}
+	authzPB, err := bgrpc.AuthzToPB(authz)
+	test.AssertNotError(t, err, "AuthzToPB failed")
+	ids, err := sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{
+		Authz: []*corepb.Authorization{authzPB},
+	})
+	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
+	return ids.Ids[0]
+}
+
+func createFinalizedAuthorization(t *testing.T, sa core.StorageAuthority, domain string, exp time.Time, status string) int64 {
+	t.Helper()
+	pendingID := createPendingAuthorization(t, sa, domain, exp)
+	expInt := exp.UnixNano()
+	attempted := string(core.ChallengeTypeHTTP01)
+	err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id:        &pendingID,
+		Status:    &status,
+		Expires:   &expInt,
+		Attempted: &attempted,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorizations2 failed")
+	return pendingID
+}
+
 func getAuthorization(t *testing.T, id string, sa *sa.SQLStorageAuthority) core.Authorization {
 	t.Helper()
 	var dbAuthz core.Authorization
@@ -638,39 +678,14 @@ func TestReuseValidAuthorization(t *testing.T) {
 
 	// Create one finalized authorization
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authz := core.Authorization{
-		Identifier:     identifier.DNSIdentifier("not-example.com"),
-		RegistrationID: 1,
-		Status:         "pending",
-		Expires:        &exp,
-		Challenges: []core.Challenge{
-			{
-				Token:  "YXNk",
-				Type:   core.ChallengeTypeHTTP01,
-				Status: core.StatusPending,
-			},
-		},
-	}
-	authzPB, err := bgrpc.AuthzToPB(authz)
-	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
-	ids, err := sa.NewAuthorizations2(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{authzPB}})
-	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
-	status := "valid"
-	expInt := exp.UnixNano()
-	err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:        &ids.Ids[0],
-		Status:    &status,
-		Expires:   &expInt,
-		Attempted: &authz.Challenges[0].Type,
-	})
-	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid")
 
 	// Now create another authorization for the same Reg.ID/domain
 	secondAuthz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization for secondAuthz failed")
 
 	// The first authz should be reused as the second and thus have the same ID
-	test.AssertEquals(t, fmt.Sprintf("%d", ids.Ids[0]), secondAuthz.ID)
+	test.AssertEquals(t, fmt.Sprintf("%d", authzIDA), secondAuthz.ID)
 
 	// The second authz shouldn't be pending, it should be valid (that's why it
 	// was reused)
@@ -684,7 +699,7 @@ func TestReuseValidAuthorization(t *testing.T) {
 
 	// Sending an update to this authz for an already valid challenge should do
 	// nothing (but produce no error), since it is already a valid authz
-	authzPB, err = bgrpc.AuthzToPB(secondAuthz)
+	authzPB, err := bgrpc.AuthzToPB(secondAuthz)
 	test.AssertNotError(t, err, "Failed to serialize secondAuthz")
 	challIndex := int64(httpIndex)
 	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
@@ -693,7 +708,7 @@ func TestReuseValidAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "PerformValidation on secondAuthz http failed")
 	secondAuthz, err = bgrpc.PBToAuthz(authzPB)
 	test.AssertNotError(t, err, "Failed to deserialize PerformValidation result for secondAuthz")
-	test.AssertEquals(t, fmt.Sprintf("%d", ids.Ids[0]), secondAuthz.ID)
+	test.AssertEquals(t, fmt.Sprintf("%d", authzIDA), secondAuthz.ID)
 	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
 
 	challIndex = int64(httpIndex)
@@ -703,7 +718,7 @@ func TestReuseValidAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "PerformValidation on secondAuthz sni failed")
 	secondAuthz, err = bgrpc.PBToAuthz(authzPB)
 	test.AssertNotError(t, err, "Failed to deserialize PerformValidation result for secondAuthz")
-	test.AssertEquals(t, fmt.Sprintf("%d", ids.Ids[0]), secondAuthz.ID)
+	test.AssertEquals(t, fmt.Sprintf("%d", authzIDA), secondAuthz.ID)
 	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
 }
 
@@ -784,32 +799,7 @@ func TestReuseAuthorizationDisabled(t *testing.T) {
 
 	// Create one finalized authorization
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authz := core.Authorization{
-		Identifier:     identifier.DNSIdentifier("not-example.com"),
-		RegistrationID: 1,
-		Status:         "pending",
-		Expires:        &exp,
-		Challenges: []core.Challenge{
-			{
-				Token:  "YXNk",
-				Type:   core.ChallengeTypeHTTP01,
-				Status: core.StatusPending,
-			},
-		},
-	}
-	authzPB, err := bgrpc.AuthzToPB(authz)
-	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
-	ids, err := sa.NewAuthorizations2(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{authzPB}})
-	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
-	status := "valid"
-	expInt := exp.UnixNano()
-	err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:        &ids.Ids[0],
-		Status:    &status,
-		Expires:   &expInt,
-		Attempted: &authz.Challenges[0].Type,
-	})
-	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	authzID := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid")
 
 	// Now create another authorization for the same Reg.ID/domain
 	secondAuthz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
@@ -818,7 +808,7 @@ func TestReuseAuthorizationDisabled(t *testing.T) {
 	// The second authz should not have the same ID as the previous AuthZ,
 	// because we have set `reuseValidAuthZ` to false. It should be a fresh
 	// & unique authz
-	test.AssertNotEquals(t, ids.Ids[0], secondAuthz.ID)
+	test.AssertNotEquals(t, fmt.Sprintf("%d", authzID), secondAuthz.ID)
 
 	// The second authz shouldn't be valid, but pending since it is a brand new
 	// authz, not a reused one
@@ -834,32 +824,7 @@ func TestReuseExpiringAuthorization(t *testing.T) {
 
 	// Create one finalized authorization that expires in 12 hours from now
 	exp := ra.clk.Now().Add(12 * time.Hour)
-	authz := core.Authorization{
-		Identifier:     identifier.DNSIdentifier("not-example.com"),
-		RegistrationID: 1,
-		Status:         "pending",
-		Expires:        &exp,
-		Challenges: []core.Challenge{
-			{
-				Token:  "YXNk",
-				Type:   core.ChallengeTypeHTTP01,
-				Status: core.StatusPending,
-			},
-		},
-	}
-	authzPB, err := bgrpc.AuthzToPB(authz)
-	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
-	ids, err := sa.NewAuthorizations2(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{authzPB}})
-	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
-	status := "valid"
-	expInt := exp.UnixNano()
-	err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:        &ids.Ids[0],
-		Status:    &status,
-		Expires:   &expInt,
-		Attempted: &authz.Challenges[0].Type,
-	})
-	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	authzID := createFinalizedAuthorization(t, sa, "not-example", exp, "valid")
 
 	// Now create another authorization for the same Reg.ID/domain
 	secondAuthz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
@@ -867,7 +832,7 @@ func TestReuseExpiringAuthorization(t *testing.T) {
 
 	// The second authz should not have the same ID as the previous AuthZ,
 	// because the existing valid authorization expires within 1 day from now
-	test.AssertNotEquals(t, ids.Ids[0], secondAuthz.ID)
+	test.AssertNotEquals(t, fmt.Sprintf("%d", authzID), secondAuthz.ID)
 
 	// The second authz shouldn't be valid, but pending since it is a brand new
 	// authz, not a reused one
@@ -1019,32 +984,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authz := core.Authorization{
-		Identifier:     identifier.DNSIdentifier("www.example.com"),
-		RegistrationID: 1,
-		Status:         "pending",
-		Expires:        &exp,
-		Challenges: []core.Challenge{
-			{
-				Token:  "YXNk",
-				Type:   core.ChallengeTypeHTTP01,
-				Status: core.StatusPending,
-			},
-		},
-	}
-	authzPB, err := bgrpc.AuthzToPB(authz)
-	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
-	ids, err := sa.NewAuthorizations2(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{authzPB}})
-	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
-	status := "valid"
-	expInt := exp.UnixNano()
-	err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:        &ids.Ids[0],
-		Status:    &status,
-		Expires:   &expInt,
-		Attempted: &authz.Challenges[0].Type,
-	})
-	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	_ = createFinalizedAuthorization(t, sa, "www.example.com", exp, "valid")
 	csr := x509.CertificateRequest{
 		SignatureAlgorithm: x509.SHA256WithRSA,
 		PublicKey:          AccountKeyA.Key,
@@ -1068,32 +1008,7 @@ func TestAuthorizationRequired(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authz := core.Authorization{
-		Identifier:     identifier.DNSIdentifier("not-example.com"),
-		RegistrationID: 1,
-		Status:         "pending",
-		Expires:        &exp,
-		Challenges: []core.Challenge{
-			{
-				Token:  "YXNk",
-				Type:   core.ChallengeTypeHTTP01,
-				Status: core.StatusPending,
-			},
-		},
-	}
-	authzPB, err := bgrpc.AuthzToPB(authz)
-	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
-	ids, err := sa.NewAuthorizations2(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{authzPB}})
-	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
-	status := "valid"
-	expInt := exp.UnixNano()
-	err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:        &ids.Ids[0],
-		Status:    &status,
-		Expires:   &expInt,
-		Attempted: &authz.Challenges[0].Type,
-	})
-	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	_ = createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid")
 
 	// ExampleCSR requests not-example.com and www.not-example.com,
 	// but the authorization only covers not-example.com
@@ -1101,7 +1016,7 @@ func TestAuthorizationRequired(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
-	_, err = ra.NewCertificate(ctx, certRequest, 1)
+	_, err := ra.NewCertificate(ctx, certRequest, 1)
 	test.Assert(t, err != nil, "Issued certificate with insufficient authorization")
 }
 
@@ -1109,47 +1024,9 @@ func TestNewCertificate(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authz := core.Authorization{
-		Identifier:     identifier.DNSIdentifier("not-example.com"),
-		RegistrationID: 1,
-		Status:         "pending",
-		Expires:        &exp,
-		Challenges: []core.Challenge{
-			{
-				Token:  "YXNk",
-				Type:   core.ChallengeTypeHTTP01,
-				Status: core.StatusPending,
-			},
-		},
-	}
-	authzPB, err := bgrpc.AuthzToPB(authz)
-	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
-	ids, err := sa.NewAuthorizations2(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{authzPB}})
-	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
-	status := "valid"
-	expInt := exp.UnixNano()
-	err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:        &ids.Ids[0],
-		Status:    &status,
-		Expires:   &expInt,
-		Attempted: &authz.Challenges[0].Type,
-	})
-	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
-
-	// Inject another final authorization to cover www.not-example.com
-	authz.Identifier.Value = "www.not-example.com"
-	authz.Challenges[0].Token = "YXNkbb"
-	authzPB, err = bgrpc.AuthzToPB(authz)
-	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
-	ids, err = sa.NewAuthorizations2(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{authzPB}})
-	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
-	err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:        &ids.Ids[0],
-		Status:    &status,
-		Expires:   &expInt,
-		Attempted: &authz.Challenges[0].Type,
-	})
-	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	// Create valid authorizations for not-example.com and www.not-example.com
+	_ = createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid")
+	_ = createFinalizedAuthorization(t, sa, "www.not-example.com", exp, "valid")
 
 	// Check that we fail if the CSR signature is invalid
 	ExampleCSR.Signature[0]++
@@ -1157,7 +1034,7 @@ func TestNewCertificate(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
-	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
+	_, err := ra.NewCertificate(ctx, certRequest, Registration.ID)
 	ExampleCSR.Signature[0]--
 	test.AssertError(t, err, "Failed to check CSR signature")
 
@@ -1874,37 +1751,11 @@ func TestDeactivateAuthorization(t *testing.T) {
 	defer cleanUp()
 
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authz := core.Authorization{
-		Identifier:     identifier.DNSIdentifier("not-example.com"),
-		RegistrationID: 1,
-		Status:         "pending",
-		Expires:        &exp,
-		Challenges: []core.Challenge{
-			{
-				Token:  "YXNk",
-				Type:   core.ChallengeTypeHTTP01,
-				Status: core.StatusPending,
-			},
-		},
-	}
-	authzPB, err := bgrpc.AuthzToPB(authz)
-	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
-	ids, err := sa.NewAuthorizations2(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{authzPB}})
-	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
-	status := "valid"
-	expInt := exp.UnixNano()
-	err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:        &ids.Ids[0],
-		Status:    &status,
-		Expires:   &expInt,
-		Attempted: &authz.Challenges[0].Type,
-	})
-	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
-
-	authz.ID = fmt.Sprintf("%d", ids.Ids[0])
-	err = ra.DeactivateAuthorization(ctx, authz)
+	authzID := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid")
+	authz := getAuthorization(t, fmt.Sprintf("%d", authzID), sa)
+	err := ra.DeactivateAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Could not deactivate authorization")
-	deact, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &ids.Ids[0]})
+	deact, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID})
 	test.AssertNotError(t, err, "Could not get deactivated authorization with ID "+authz.ID)
 	test.AssertEquals(t, *deact.Status, string(core.StatusDeactivated))
 }
@@ -2258,32 +2109,7 @@ func TestNewOrderLegacyAuthzReuse(t *testing.T) {
 
 	// Create a legacy pending authz, not associated with an order
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authz := core.Authorization{
-		Identifier:     identifier.DNSIdentifier("not-example.com"),
-		RegistrationID: 1,
-		Status:         "pending",
-		Expires:        &exp,
-		Challenges: []core.Challenge{
-			{
-				Token:  "YXNk",
-				Type:   core.ChallengeTypeHTTP01,
-				Status: core.StatusPending,
-			},
-		},
-	}
-	authzPB, err := bgrpc.AuthzToPB(authz)
-	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
-	ids, err := sa.NewAuthorizations2(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{authzPB}})
-	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
-	status := "valid"
-	expInt := exp.UnixNano()
-	err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:        &ids.Ids[0],
-		Status:    &status,
-		Expires:   &expInt,
-		Attempted: &authz.Challenges[0].Type,
-	})
-	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	authzID := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid")
 
 	// Create an order request for the same name as the legacy authz
 	order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
@@ -2295,7 +2121,7 @@ func TestNewOrderLegacyAuthzReuse(t *testing.T) {
 	// There should be only one authorization
 	test.AssertEquals(t, numAuthorizations(order), 1)
 	// The authorization should not be the legacy authz
-	test.AssertNotEquals(t, fmt.Sprintf("%d", order.V2Authorizations[0]), ids.Ids[0])
+	test.AssertNotEquals(t, order.V2Authorizations[0], authzID)
 	// The order should be pending status
 	test.AssertEquals(t, *order.Status, string(core.StatusPending))
 
@@ -2950,12 +2776,6 @@ func TestFinalizeOrder(t *testing.T) {
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
 
-	pa, err := policy.New(map[string]bool{
-		core.ChallengeTypeHTTP01: true,
-		core.ChallengeTypeDNS01:  true,
-	})
-	test.AssertNotError(t, err, "Couldn't create PA")
-
 	validStatus := string(core.StatusValid)
 	pendingStatus := string(core.StatusPending)
 	readyStatus := string(core.StatusReady)
@@ -2991,54 +2811,11 @@ func TestFinalizeOrder(t *testing.T) {
 	}, testKey)
 	test.AssertNotError(t, err, "Error creating CSR with three DNS names")
 
-	// Pick an expiry in the future
+	// Create one finalized authorization for not-example.com and one finalized
+	// authorization for www.not-example.org
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-
-	// Create one finalized authorization for Registration.ID for not-example.com and
-	// one finalized authorization for Registration.ID for www.not-example.org
-	finalAuthz := AuthzInitial
-	finalAuthz.Identifier = identifier.DNSIdentifier("not-example.com")
-	finalAuthz.Status = "pending"
-	finalAuthz.Expires = &exp
-	challenges, _ := pa.ChallengesFor(finalAuthz.Identifier)
-	finalAuthz.Challenges = challenges
-	finalAuthz.Challenges[0].Status = "valid"
-	finalAuthz.RegistrationID = Registration.ID
-	authzPBA, err := bgrpc.AuthzToPB(finalAuthz)
-	test.AssertNotError(t, err, "AuthzToPB failed")
-
-	finalAuthzB := AuthzInitial
-	finalAuthzB.Identifier = identifier.DNSIdentifier("www.not-example.com")
-	finalAuthzB.Status = "pending"
-	finalAuthzB.Expires = &exp
-	challenges, _ = pa.ChallengesFor(finalAuthz.Identifier)
-	finalAuthz.Challenges = challenges
-	finalAuthzB.Challenges[0].Status = "valid"
-	finalAuthzB.RegistrationID = Registration.ID
-	authzPBB, err := bgrpc.AuthzToPB(finalAuthzB)
-	test.AssertNotError(t, err, "AuthzToPB failed")
-
-	ids, err := sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{
-		Authz: []*corepb.Authorization{authzPBA, authzPBB},
-	})
-	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
-	expInt := exp.UnixNano()
-	status := string(core.StatusValid)
-	attempted := "dns-01"
-	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
-		Id:        &ids.Ids[0],
-		Status:    &status,
-		Expires:   &expInt,
-		Attempted: &attempted,
-	})
-	test.AssertNotError(t, err, "sa.FinalizeAuthorizations2 failed")
-	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
-		Id:        &ids.Ids[1],
-		Status:    &status,
-		Expires:   &expInt,
-		Attempted: &attempted,
-	})
-	test.AssertNotError(t, err, "sa.FinalizeAuthorizations2 failed")
+	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid")
+	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, "valid")
 
 	// Create an order with valid authzs, it should end up status ready in the
 	// resulting returned order
@@ -3047,7 +2824,7 @@ func TestFinalizeOrder(t *testing.T) {
 		RegistrationID:   &Registration.ID,
 		Expires:          &expUnix,
 		Names:            []string{"not-example.com", "www.not-example.com"},
-		V2Authorizations: ids.Ids,
+		V2Authorizations: []int64{authzIDA, authzIDB},
 		Status:           &readyStatus,
 		BeganProcessing:  &processingStatus,
 	})
@@ -3249,60 +3026,13 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
 
-	pa, err := policy.New(map[string]bool{
-		core.ChallengeTypeHTTP01: true,
-		core.ChallengeTypeDNS01:  true,
-	})
-	test.AssertNotError(t, err, "Couldn't create PA")
-
 	// Pick an expiry in the future
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 
 	// Create one finalized authorization for Registration.ID for not-example.com and
 	// one finalized authorization for Registration.ID for www.not-example.org
-	finalAuthz := AuthzInitial
-	finalAuthz.Identifier = identifier.DNSIdentifier("not-example.com")
-	finalAuthz.Status = "pending"
-	finalAuthz.Expires = &exp
-	challenges, _ := pa.ChallengesFor(finalAuthz.Identifier)
-	finalAuthz.Challenges = challenges
-	finalAuthz.Challenges[0].Status = "valid"
-	finalAuthz.RegistrationID = Registration.ID
-	authzPBA, err := bgrpc.AuthzToPB(finalAuthz)
-	test.AssertNotError(t, err, "AuthzToPB failed")
-
-	finalAuthzB := AuthzInitial
-	finalAuthzB.Identifier = identifier.DNSIdentifier("www.not-example.com")
-	finalAuthzB.Status = "pending"
-	finalAuthzB.Expires = &exp
-	challenges, _ = pa.ChallengesFor(finalAuthz.Identifier)
-	finalAuthz.Challenges = challenges
-	finalAuthzB.Challenges[0].Status = "valid"
-	finalAuthzB.RegistrationID = Registration.ID
-	authzPBB, err := bgrpc.AuthzToPB(finalAuthzB)
-	test.AssertNotError(t, err, "AuthzToPB failed")
-
-	ids, err := sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{
-		Authz: []*corepb.Authorization{authzPBA, authzPBB},
-	})
-	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
-	expInt := exp.UnixNano()
-	status := string(core.StatusValid)
-	attempted := "dns-01"
-	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
-		Id:        &ids.Ids[0],
-		Status:    &status,
-		Expires:   &expInt,
-		Attempted: &attempted,
-	})
-	test.AssertNotError(t, err, "sa.FinalizeAuthorizations2 failed")
-	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
-		Id:        &ids.Ids[1],
-		Status:    &status,
-		Expires:   &expInt,
-		Attempted: &attempted,
-	})
-	test.AssertNotError(t, err, "sa.FinalizeAuthorizations2 failed")
+	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid")
+	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, "valid")
 
 	// Create a new order to finalize with names in SAN and CN
 	expUnix := exp.UnixNano()
@@ -3311,7 +3041,7 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 		RegistrationID:   &Registration.ID,
 		Expires:          &expUnix,
 		Names:            []string{"not-example.com", "www.not-example.com"},
-		V2Authorizations: ids.Ids,
+		V2Authorizations: []int64{authzIDA, authzIDB},
 		Status:           &pendingStatus,
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
@@ -3402,32 +3132,7 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	test.AssertNotError(t, err, "NewOrder failed for wildcard domain order")
 
 	// Create one standard finalized authorization for Registration.ID for zombo.com
-	authz := core.Authorization{
-		Identifier:     identifier.DNSIdentifier("zombo.com"),
-		RegistrationID: Registration.ID,
-		Status:         "pending",
-		Expires:        &exp,
-		Challenges: []core.Challenge{
-			{
-				Token:  "YXNk",
-				Type:   core.ChallengeTypeHTTP01,
-				Status: core.StatusPending,
-			},
-		},
-	}
-	authzPB, err := bgrpc.AuthzToPB(authz)
-	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
-	ids, err := sa.NewAuthorizations2(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{authzPB}})
-	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
-	status := "valid"
-	expInt := exp.UnixNano()
-	err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:        &ids.Ids[0],
-		Status:    &status,
-		Expires:   &expInt,
-		Attempted: &authz.Challenges[0].Type,
-	})
-	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	_ = createFinalizedAuthorization(t, sa, "zombo.com", exp, "valid")
 
 	// Finalizing the order should *not* work since the existing validated authz
 	// is not a special DNS-01-Wildcard challenge authz, so the order will be
@@ -3451,9 +3156,9 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 
 	// Finalize the authorization with the challenge validated
-	status = string(core.StatusValid)
+	status := string(core.StatusValid)
 	attempted := core.ChallengeTypeDNS01
-	expInt = ra.clk.Now().Add(time.Hour * 24 * 7).UnixNano()
+	expInt := ra.clk.Now().Add(time.Hour * 24 * 7).UnixNano()
 	err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:        &validOrder.V2Authorizations[0],
 		Status:    &status,
@@ -3769,51 +3474,14 @@ func TestCTPolicyMeasurements(t *testing.T) {
 	ra.CA = ca
 
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authz := core.Authorization{
-		Identifier:     identifier.DNSIdentifier("not-example.com"),
-		RegistrationID: 1,
-		Status:         "pending",
-		Expires:        &exp,
-		Challenges: []core.Challenge{
-			{
-				Token:  core.NewToken(),
-				Type:   core.ChallengeTypeHTTP01,
-				Status: core.StatusPending,
-			},
-		},
-	}
-	authzPB, err := bgrpc.AuthzToPB(authz)
-	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
-	ids, err := ssa.NewAuthorizations2(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{authzPB}})
-	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
-	status := "valid"
-	expInt := exp.UnixNano()
-	err = ssa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:        &ids.Ids[0],
-		Status:    &status,
-		Expires:   &expInt,
-		Attempted: &authz.Challenges[0].Type,
-	})
-	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
-	// Inject another final authorization to cover www.not-example.com
-	authz.Identifier.Value = "www.not-example.com"
-	authz.Challenges[0].Token = core.NewToken()
-	authzPBB, err := bgrpc.AuthzToPB(authz)
-	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
-	ids, err = ssa.NewAuthorizations2(ctx, &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{authzPBB}})
-	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
-	err = ssa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:        &ids.Ids[0],
-		Status:    &status,
-		Expires:   &expInt,
-		Attempted: &authz.Challenges[0].Type,
-	})
-	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	// Create valid authorizatiosn for not-example.com and www.not-example.com
+	_ = createFinalizedAuthorization(t, ssa, "not-example.com", exp, "valid")
+	_ = createFinalizedAuthorization(t, ssa, "www.not-example.com", exp, "valid")
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	_, err = ra.issueCertificate(ctx, core.CertificateRequest{
+	_, err := ra.issueCertificate(ctx, core.CertificateRequest{
 		CSR: ExampleCSR,
 	}, accountID(Registration.ID), 0)
 	test.AssertError(t, err, "ra.issueCertificate didn't fail when CTPolicy.GetSCTs timed out")
