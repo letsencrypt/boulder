@@ -39,9 +39,33 @@ func lineValid(text string) bool {
 	return checksum == blog.LogLineChecksum(line)
 }
 
+func validateFile(filename string) error {
+	file, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	for i, line := range strings.Split(string(file), "\n") {
+		if line == "" {
+			continue
+		}
+		if !lineValid(line) {
+			fmt.Printf("bad checksum for line %d: %s\n", i+1, line)
+		}
+	}
+
+	return nil
+}
+
 func main() {
-	configPath := flag.String("config", "", "")
+	configPath := flag.String("config", "", "File path to the configuration file for this service")
+	checkFile := flag.String("check-file", "", "File path to a file to directly validate, if this argument is provided the config will not be parsed and only this file will be inspected")
 	flag.Parse()
+
+	if *checkFile != "" {
+		err := validateFile(*checkFile)
+		cmd.FailOnError(err, "failed to validate file")
+		return
+	}
 
 	var config struct {
 		Syslog cmd.SyslogConfig

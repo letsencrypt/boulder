@@ -42,6 +42,12 @@ github.com/google/certificate-transparency-go/x509
 github.com/google/certificate-transparency-go/x509/pkix
 # github.com/grpc-ecosystem/go-grpc-prometheus v0.0.0-20170826090648-0dafe0d496ea
 github.com/grpc-ecosystem/go-grpc-prometheus
+# github.com/hpcloud/tail v1.0.0
+github.com/hpcloud/tail
+github.com/hpcloud/tail/ratelimiter
+github.com/hpcloud/tail/util
+github.com/hpcloud/tail/watch
+github.com/hpcloud/tail/winfile
 # github.com/jmhodges/clock v0.0.0-20160418191101-880ee4c33548
 github.com/jmhodges/clock
 # github.com/letsencrypt/challtestsrv v1.0.2
@@ -157,11 +163,15 @@ google.golang.org/grpc/resolver/passthrough
 google.golang.org/grpc/stats
 google.golang.org/grpc/status
 google.golang.org/grpc/tap
+# gopkg.in/fsnotify.v1 v1.4.7
+gopkg.in/fsnotify.v1
 # gopkg.in/go-gorp/gorp.v2 v2.0.0-20180410155428-6032c66e0f5f
 gopkg.in/go-gorp/gorp.v2
 # gopkg.in/square/go-jose.v2 v2.3.1
 gopkg.in/square/go-jose.v2
 gopkg.in/square/go-jose.v2/cipher
 gopkg.in/square/go-jose.v2/json
+# gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
+gopkg.in/tomb.v1
 # gopkg.in/yaml.v2 v2.2.2
 gopkg.in/yaml.v2
