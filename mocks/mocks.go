@@ -490,7 +490,7 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 		Expires:           &exp,
 		Names:             []string{"example.com"},
 		Status:            &status,
-		Authorizations:    []string{"hello"},
+		V2Authorizations:  []int64{1},
 		CertificateSerial: &serial,
 		Error:             nil,
 	}
@@ -577,7 +577,40 @@ func (sa *StorageAuthority) CountInvalidAuthorizations2(ctx context.Context, req
 }
 
 func (sa *StorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
-	return nil, nil
+	if *req.RegistrationID != 1 && *req.RegistrationID != 5 && *req.RegistrationID != 4 {
+		return &sapb.Authorizations{}, nil
+	}
+	now := time.Unix(0, *req.Now)
+	auths := &sapb.Authorizations{}
+	for _, name := range req.Domains {
+		if sa.authorizedDomains[name] || name == "not-an-example.com" || name == "bad.example.com" {
+			exp := now.AddDate(100, 0, 0)
+			authzPB, err := bgrpc.AuthzToPB(core.Authorization{
+				Status:         core.StatusValid,
+				RegistrationID: *req.RegistrationID,
+				Expires:        &exp,
+				Identifier: identifier.ACMEIdentifier{
+					Type:  "dns",
+					Value: name,
+				},
+				Challenges: []core.Challenge{
+					{
+						Status: core.StatusValid,
+						Type:   core.ChallengeTypeDNS01,
+					},
+				},
+			})
+			if err != nil {
+				return nil, err
+			}
+			n := name
+			auths.Authz = append(auths.Authz, &sapb.Authorizations_MapElement{
+				Domain: &n,
+				Authz:  authzPB,
+			})
+		}
+	}
+	return auths, nil
 }
 
 func (sa *StorageAuthority) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
@@ -602,10 +635,8 @@ func (sa *StorageAuthority) GetAuthorization2(ctx context.Context, id *sapb.Auth
 		Status:         core.StatusValid,
 		RegistrationID: 1,
 		Identifier:     identifier.DNSIdentifier("not-an-example.com"),
-		V2:             true,
 		Challenges: []core.Challenge{
 			{
-				ID:    23,
 				Token: "token",
 				Type:  "dns",
 			},
@@ -704,15 +735,14 @@ type SAWithFailedChallenges struct {
 	Clk clock.FakeClock
 }
 
-func (sa *SAWithFailedChallenges) GetAuthorization(_ context.Context, id string) (core.Authorization, error) {
+func (sa *SAWithFailedChallenges) GetAuthorization2(ctx context.Context, id *sapb.AuthorizationID2) (*corepb.Authorization, error) {
 	authz := core.Authorization{
-		ID:             "valid",
+		ID:             "55",
 		Status:         core.StatusValid,
 		RegistrationID: 1,
 		Identifier:     identifier.DNSIdentifier("not-an-example.com"),
 		Challenges: []core.Challenge{
 			{
-				ID:   23,
 				Type: "dns",
 			},
 		},
@@ -724,18 +754,18 @@ func (sa *SAWithFailedChallenges) GetAuthorization(_ context.Context, id string)
 	}
 	exp := sa.Clk.Now().AddDate(100, 0, 0)
 	authz.Expires = &exp
-	// "oldNS" returns an authz with a failed challenge that has the problem type
+	// 55 returns an authz with a failed challenge that has the problem type
 	// statically prefixed by the V1ErrorNS
-	if id == "oldNS" {
+	if *id.Id == 55 {
 		prob.Type = probs.V1ErrorNS + prob.Type
 		authz.Challenges[0].Error = prob
-		return authz, nil
+		return bgrpc.AuthzToPB(authz)
 	}
-	// "failed" returns an authz with a failed challenge that has no error
+	// 56 returns an authz with a failed challenge that has no error
 	// namespace on the problem type.
-	if id == "failed" {
+	if *id.Id == 56 {
 		authz.Challenges[0].Error = prob
-		return authz, nil
+		return bgrpc.AuthzToPB(authz)
 	}
-	return core.Authorization{}, berrors.NotFoundError("no authorization found with id %q", id)
+	return nil, berrors.NotFoundError("no authorization found with id %q", id)
 }
