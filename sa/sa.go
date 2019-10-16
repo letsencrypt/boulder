@@ -2156,37 +2156,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 		}
 	}
 
-	authzsPB, err := authz2ModelMapToPB(authzModelMap)
-	if err != nil {
-		return nil, err
-	}
-
-	// If we still need more authorizations look for them in the old
-	// style authorization tables.
-	if len(authzModelMap) != len(req.Domains) {
-		// Get the authorizations for names we don't already have
-		var remaining []string
-		for _, name := range req.Domains {
-			if _, present := authzModelMap[name]; !present {
-				remaining = append(remaining, name)
-			}
-		}
-		reqV2 := true
-		authz, err := ssa.GetAuthorizations(ctx, &sapb.GetAuthorizationsRequest{
-			RegistrationID:  req.RegistrationID,
-			Domains:         remaining,
-			Now:             req.Now,
-			RequireV2Authzs: &reqV2,
-		})
-		if err != nil {
-			return nil, err
-		}
-		for _, authzPB := range authz.Authz {
-			authzsPB.Authz = append(authzsPB.Authz, authzPB)
-		}
-	}
-
-	return authzsPB, nil
+	return authz2ModelMapToPB(authzModelMap)
 }
 
 // FinalizeAuthorization2 moves a pending authorization to either the valid or invalid status. If
@@ -2320,12 +2290,7 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, re
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			// there may be an old style pending authorization so look for that
-			authz, err := ssa.GetPendingAuthorization(ctx, req)
-			if err != nil {
-				return nil, err
-			}
-			return bgrpc.AuthzToPB(*authz)
+			return nil, berrors.NotFoundError("pending authz not found")
 		}
 		return nil, err
 	}
@@ -2350,13 +2315,6 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations2(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	// also count old style authorizations and add those to the count of
-	// new authorizations
-	oldCount, err := ssa.CountPendingAuthorizations(ctx, *req.Id)
-	if err != nil {
-		return nil, err
-	}
-	count += int64(oldCount)
 	return &sapb.Count{Count: &count}, nil
 }
 
@@ -2397,29 +2355,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 		}
 	}
 
-	authzsPB, err := authz2ModelMapToPB(byName)
-	if err != nil {
-		return nil, err
-	}
-
-	// also get any older style authorizations, as far as I can tell
-	// there is no easy way to tell if this is needed or not as
-	// an order may be all one style, all the other, or a mix
-	oldAuthzMap, err := ssa.GetValidOrderAuthorizations(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if len(oldAuthzMap) > 0 {
-		oldAuthzsPB, err := AuthzMapToPB(oldAuthzMap)
-		if err != nil {
-			return nil, err
-		}
-		for _, authzPB := range oldAuthzsPB.Authz {
-			authzsPB.Authz = append(authzsPB.Authz, authzPB)
-		}
-	}
-
-	return authzsPB, nil
+	return authz2ModelMapToPB(byName)
 }
 
 // CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
@@ -2448,13 +2384,6 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	// Also count old authorizations and add those to the new style
-	// count
-	oldCount, err := ssa.CountInvalidAuthorizations(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	count += *oldCount.Count
 	return &sapb.Count{Count: &count}, nil
 }
 
@@ -2506,41 +2435,5 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 		}
 		authzMap[am.IdentifierValue] = am
 	}
-	authzsPB, err := authz2ModelMapToPB(authzMap)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(authzsPB.Authz) != len(req.Domains) {
-		// We may still have valid old style authorizations
-		// we want for names in the list, so we have to look
-		// for them.
-		var remaining []string
-		for _, name := range req.Domains {
-			if _, present := authzMap[name]; !present {
-				remaining = append(remaining, name)
-			}
-		}
-		now := time.Unix(0, *req.Now)
-		oldAuthzs, err := ssa.GetValidAuthorizations(
-			ctx,
-			*req.RegistrationID,
-			remaining,
-			now,
-		)
-		if err != nil {
-			return nil, err
-		}
-		if len(oldAuthzs) > 0 {
-			oldAuthzsPB, err := AuthzMapToPB(oldAuthzs)
-			if err != nil {
-				return nil, err
-			}
-			for _, authzPB := range oldAuthzsPB.Authz {
-				authzsPB.Authz = append(authzsPB.Authz, authzPB)
-			}
-		}
-	}
-
-	return authzsPB, nil
+	return authz2ModelMapToPB(authzMap)
 }
