@@ -10,7 +10,6 @@ addons:
     - le.wtf
     - boulder
     - boulder-mysql
-    - boulder-rabbitmq
 
 sudo: required
 
