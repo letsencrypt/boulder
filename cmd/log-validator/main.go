@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"strings"
 
 	"github.com/hpcloud/tail"
@@ -14,21 +16,23 @@ import (
 )
 
 func lineValid(text string) bool {
-	// Line format should match the following template:
-	//   timestamp hostname datacenter level binary-name[pid]: checksum msg
+	// Line format should match the following rsyslog omfile template:
 	//
-	// template( name="LELogFormat" type="list" ) {
-	// 	property(name="timereported" dateFormat="rfc3339")
-	// 	constant(value=" ")
-	// 	property(name="hostname" field.delimiter="46" field.number="1")
-	// 	constant(value=" slc ")
-	// 	property(name="syslogseverity")
-	// 	constant(value=" ")
-	// 	property(name="syslogtag")
-	// 	property(name="msg" spifno1stsp="on" )
-	// 	property(name="msg" droplastlf="on" )
-	// 	constant(value="\n")
-	// }
+	//   template( name="LELogFormat" type="list" ) {
+	//  	property(name="timereported" dateFormat="rfc3339")
+	//  	constant(value=" ")
+	//  	property(name="hostname" field.delimiter="46" field.number="1")
+	//  	constant(value=" datacenter ")
+	//  	property(name="syslogseverity")
+	//  	constant(value=" ")
+	//  	property(name="syslogtag")
+	//  	property(name="msg" spifno1stsp="on" )
+	//  	property(name="msg" droplastlf="on" )
+	//  	constant(value="\n")
+	//   }
+	//
+	// This should result in a log line that looks like this:
+	//   timestamp hostname datacenter syslogseverity binary-name[pid]: checksum msg
 
 	fields := strings.Split(text, " ")
 	// Extract checksum from line
@@ -44,15 +48,20 @@ func validateFile(filename string) error {
 	if err != nil {
 		return err
 	}
+	badFile := false
 	for i, line := range strings.Split(string(file), "\n") {
 		if line == "" {
 			continue
 		}
 		if !lineValid(line) {
-			fmt.Printf("bad checksum for line %d: %s\n", i+1, line)
+			badFile = true
+			fmt.Fprintf(os.Stderr, "bad checksum for line %d: %s\n", i+1, line)
 		}
 	}
 
+	if badFile {
+		return errors.New("file contained invalid lines")
+	}
 	return nil
 }
 
@@ -63,7 +72,7 @@ func main() {
 
 	if *checkFile != "" {
 		err := validateFile(*checkFile)
-		cmd.FailOnError(err, "failed to validate file")
+		cmd.FailOnError(err, "validation failed")
 		return
 	}
 
@@ -91,11 +100,11 @@ func main() {
 		go func() {
 			for line := range t.Lines {
 				if line.Err != nil {
-					fmt.Printf("bad bad tail: %s\n", err)
+					logger.Errf("error while tailing %s: %s", t.Filename, err)
 					continue
 				}
 				if !lineValid(line.Text) {
-					fmt.Printf("bad checksum for line: %s\n", line.Text)
+					logger.Errf("bad checksum for line in %s: %s", t.Filename, line.Text)
 				}
 			}
 		}()
