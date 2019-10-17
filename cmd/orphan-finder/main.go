@@ -194,7 +194,7 @@ func storeParsedLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Log
 		logger.AuditErrf("regID variable is empty, [%s]", line)
 		return true, false, typ
 	}
-	regID, err := strconv.Atoi(regStr[1])
+	regID, err := strconv.ParseInt(regStr[1], 10, 64)
 	if err != nil {
 		logger.AuditErrf("Couldn't parse regID: %s, [%s]", err, line)
 		return true, false, typ
@@ -215,13 +215,12 @@ func storeParsedLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Log
 	issuedDate := cert.NotBefore.Add(backdateDuration)
 	switch typ {
 	case certOrphan:
-		_, err = sa.AddCertificate(ctx, der, int64(regID), ocspResponse, &issuedDate)
+		_, err = sa.AddCertificate(ctx, der, regID, ocspResponse, &issuedDate)
 	case precertOrphan:
-		reg64 := int64(regID)
 		issued := issuedDate.UnixNano()
 		_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:    der,
-			RegID:  &reg64,
+			RegID:  &regID,
 			Ocsp:   ocspResponse,
 			Issued: &issued,
 		})
