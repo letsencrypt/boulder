@@ -9,8 +9,6 @@ services:
             BOULDER_CONFIG_DIR: test/config
             GO111MODULE: "on"
             GOFLAGS: "-mod=vendor"
-            # TODO(@cpu): Remove this when we are ready to enable TLS 1.3
-            GODEBUG: "tls13=0"
         volumes:
           - .:/go/src/github.com/letsencrypt/boulder
           - ./.gocache:/root/.cache/go-build
