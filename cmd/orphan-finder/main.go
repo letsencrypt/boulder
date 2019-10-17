@@ -273,7 +273,7 @@ func main() {
 	configFile := flagSet.String("config", "", "File path to the configuration file for this service")
 	logPath := flagSet.String("log-file", "", "Path to boulder-ca log file to parse")
 	derPath := flagSet.String("der-file", "", "Path to DER certificate file")
-	regID := flagSet.Int("regID", 0, "Registration ID of user who requested the certificate")
+	regID := flagSet.Int64("regID", 0, "Registration ID of user who requested the certificate")
 	err := flagSet.Parse(os.Args[2:])
 	cmd.FailOnError(err, "Error parsing flagset")
 
@@ -343,13 +343,12 @@ func main() {
 
 		switch typ {
 		case certOrphan:
-			_, err = sa.AddCertificate(ctx, der, int64(*regID), ocspResponse, &issuedDate)
+			_, err = sa.AddCertificate(ctx, der, *regID, ocspResponse, &issuedDate)
 		case precertOrphan:
-			reg64 := int64(*regID)
 			issued := issuedDate.UnixNano()
 			_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 				Der:    der,
-				RegID:  &reg64,
+				RegID:  regID,
 				Ocsp:   ocspResponse,
 				Issued: &issued,
 			})
