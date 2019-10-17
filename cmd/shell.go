@@ -1,19 +1,4 @@
 // This package provides utilities that underlie the specific commands.
-// The idea is to make the specific command files very small, e.g.:
-//
-//    func main() {
-//      app := cmd.NewAppShell("command-name")
-//      app.Action = func(c cmd.Config) {
-//        // command logic
-//      }
-//      app.Run()
-//    }
-//
-// All commands share the same invocation pattern.  They take a single
-// parameter "-config", which is the name of a JSON file containing
-// the configuration for the app.  This JSON file is unmarshalled into
-// a Config object, which is provided to the app.
-
 package cmd
 
 import (
