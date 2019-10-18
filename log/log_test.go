@@ -5,6 +5,7 @@ import (
 	"log"
 	"log/syslog"
 	"net"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -303,4 +304,28 @@ func newUDPListener(addr string) (*net.UDPConn, error) {
 		return nil, err
 	}
 	return l.(*net.UDPConn), nil
+}
+
+// TestStdoutFailure tests that audit logging with a bothWriter panics if stdout
+// becomes unavailable.
+func TestStdoutFailure(t *testing.T) {
+	t.Parallel()
+	log := setup(t)
+
+	// Close Stdout so that the fmt.Printf in bothWriter's logAtLevel
+	// function will return an err on next log.
+	err := os.Stdout.Close()
+	test.AssertNotError(t, err, "failed to close stdout")
+
+	// Defer a function that will check if there was a panic to recover from. If
+	// there wasn't then the test should fail, we were able to AuditInfo when
+	// Stdout was inoperable.
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Errorf("log.AuditInfo with Stdout closed did not panic")
+		}
+	}()
+
+	// Try to audit log something
+	log.AuditInfo("This should cause a panic, stdout is closed!")
 }
