@@ -175,12 +175,14 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 	}
 
 	if int(level) <= w.stdoutLevel {
-		fmt.Printf("%s%s %s %s%s\n",
+		if _, err := fmt.Printf("%s%s %s %s%s\n",
 			prefix,
 			w.clk.Now().Format("150405"),
 			path.Base(os.Args[0]),
 			msg,
-			reset)
+			reset); err != nil {
+			panic(fmt.Sprintf("failed to write to stdout: %v\n", err))
+		}
 	}
 }
 
