@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/certificate-transparency-go"
+	ct "github.com/google/certificate-transparency-go"
 	ctClient "github.com/google/certificate-transparency-go/client"
 	"github.com/google/certificate-transparency-go/jsonclient"
 	cttls "github.com/google/certificate-transparency-go/tls"
@@ -150,26 +150,10 @@ func NewLog(uri, b64PK string, logger blog.Logger) (*Log, error) {
 		return nil, fmt.Errorf("making CT client: %s", err)
 	}
 
-	// TODO: Maybe this isn't necessary any more now that ctClient can check sigs?
-	pkBytes, err := base64.StdEncoding.DecodeString(b64PK)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to decode base64 log public key")
-	}
-	pk, err := x509.ParsePKIXPublicKey(pkBytes)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to parse log public key")
-	}
-
-	verifier, err := ct.NewSignatureVerifier(pk)
-	if err != nil {
-		return nil, err
-	}
-
 	return &Log{
-		logID:    b64PK,
-		uri:      url.String(),
-		client:   client,
-		verifier: verifier,
+		logID:  b64PK,
+		uri:    url.String(),
+		client: client,
 	}, nil
 }
 
@@ -323,21 +307,6 @@ func (pub *Impl) singleLogSubmit(
 		"httpStatus": "",
 	}).Observe(took)
 
-	// Generate log entry so we can verify the signature in the returned SCT
-	eType := ct.X509LogEntryType
-	if isPrecert {
-		eType = ct.PrecertLogEntryType
-	}
-	// Note: The timestamp on the merkle tree leaf is not actually used in
-	// the SCT signature validation so it is left as 0 here
-	leaf, err := ct.MerkleTreeLeafFromRawChain(chain, eType, 0)
-	if err != nil {
-		return nil, err
-	}
-	err = ctLog.verifier.VerifySCTSignature(*sct, ct.LogEntry{Leaf: *leaf})
-	if err != nil {
-		return nil, err
-	}
 	timestamp := time.Unix(int64(sct.Timestamp)/1000, 0)
 	if timestamp.Sub(time.Now()) > time.Minute {
 		return nil, fmt.Errorf("SCT Timestamp was too far in the future (%s)", timestamp)
