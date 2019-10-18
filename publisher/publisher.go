@@ -111,6 +111,7 @@ func NewLog(uri, b64PK string, logger blog.Logger) (*Log, error) {
 	opts := jsonclient.Options{
 		Logger:    logAdaptor{logger},
 		PublicKey: pemPK,
+		UserAgent: "boulder/1.0",
 	}
 	httpClient := &http.Client{
 		// We set the HTTP client timeout to about half of what we expect
