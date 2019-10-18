@@ -1,7 +1,7 @@
 language: go
 
 go:
-  - "1.13"
+  - "1.13.2"
 
 go_import_path: github.com/letsencrypt/boulder
 
@@ -10,7 +10,6 @@ addons:
     - le.wtf
     - boulder
     - boulder-mysql
-    - boulder-rabbitmq
 
 sudo: required
 

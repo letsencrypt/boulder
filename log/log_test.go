@@ -5,6 +5,7 @@ import (
 	"log"
 	"log/syslog"
 	"net"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -106,8 +107,8 @@ func ExampleLogger() {
 	impl.AuditErr("Error Audit")
 	impl.Warning("Warning Audit")
 	// Output:
-	// [31m[1mE000000 log.test [AUDIT] Error Audit[0m
-	// [33mW000000 log.test Warning Audit[0m
+	// [31m[1mE000000 log.test 46_ghQg [AUDIT] Error Audit[0m
+	// [33mW000000 log.test 9rr1xwQ Warning Audit[0m
 }
 
 func TestSyslogMethods(t *testing.T) {
@@ -303,4 +304,39 @@ func newUDPListener(addr string) (*net.UDPConn, error) {
 		return nil, err
 	}
 	return l.(*net.UDPConn), nil
+}
+
+// TestStdoutFailure tests that audit logging with a bothWriter panics if stdout
+// becomes unavailable.
+func TestStdoutFailure(t *testing.T) {
+	// Save the stdout fd so we can restore it later
+	saved := os.Stdout
+
+	// Create a throw-away pipe FD to replace stdout with
+	_, w, err := os.Pipe()
+	test.AssertNotError(t, err, "failed to create pipe")
+	os.Stdout = w
+
+	// Setup the logger
+	log := setup(t)
+
+	// Close Stdout so that the fmt.Printf in bothWriter's logAtLevel
+	// function will return an err on next log.
+	err = os.Stdout.Close()
+	test.AssertNotError(t, err, "failed to close stdout")
+
+	// Defer a function that will check if there was a panic to recover from. If
+	// there wasn't then the test should fail, we were able to AuditInfo when
+	// Stdout was inoperable.
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Errorf("log.AuditInfo with Stdout closed did not panic")
+		}
+
+		// Restore stdout so that subsequent tests don't fail
+		os.Stdout = saved
+	}()
+
+	// Try to audit log something
+	log.AuditInfo("This should cause a panic, stdout is closed!")
 }

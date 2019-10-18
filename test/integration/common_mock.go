@@ -13,10 +13,12 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 )
 
+var ctSrvPorts = []int{4500, 4501, 4510, 4511}
+
 // ctAddRejectHost adds a domain to all of the CT test server's reject-host
 // lists. If this fails the test is aborted with a fatal error.
 func ctAddRejectHost(domain string) error {
-	for _, port := range []int{4500, 4501, 4510, 4511} {
+	for _, port := range ctSrvPorts {
 		url := fmt.Sprintf("http://boulder:%d/add-reject-host", port)
 		body := []byte(fmt.Sprintf(`{"host": %q}`, domain))
 		resp, err := http.Post(url, "", bytes.NewBuffer(body))

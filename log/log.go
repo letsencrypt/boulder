@@ -1,9 +1,12 @@
 package log
 
 import (
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"log/syslog"
 	"os"
 	"path"
@@ -117,6 +120,15 @@ type bothWriter struct {
 	clk         clock.Clock
 }
 
+func LogLineChecksum(line string) string {
+	crc := crc32.ChecksumIEEE([]byte(line))
+	// Using the hash.Hash32 doesn't make this any easier
+	// as it also returns a uint32 rather than []byte
+	buf := make([]byte, binary.MaxVarintLen32)
+	binary.PutUvarint(buf, uint64(crc))
+	return base64.RawURLEncoding.EncodeToString(buf)
+}
+
 // Log the provided message at the appropriate level, writing to
 // both stdout and the Logger
 func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
@@ -125,6 +137,8 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 
 	const red = "\033[31m\033[1m"
 	const yellow = "\033[33m"
+
+	msg = fmt.Sprintf("%s %s", LogLineChecksum(msg), msg)
 
 	switch syslogAllowed := int(level) <= w.syslogLevel; level {
 	case syslog.LOG_ERR:
@@ -161,12 +175,14 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 	}
 
 	if int(level) <= w.stdoutLevel {
-		fmt.Printf("%s%s %s %s%s\n",
+		if _, err := fmt.Printf("%s%s %s %s%s\n",
 			prefix,
 			w.clk.Now().Format("150405"),
 			path.Base(os.Args[0]),
 			msg,
-			reset)
+			reset); err != nil {
+			panic(fmt.Sprintf("failed to write to stdout: %v\n", err))
+		}
 	}
 }
 

@@ -40,6 +40,7 @@ GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';
 -- OCSP Generator Tool (Updater)
 GRANT SELECT ON certificates TO 'ocsp_update'@'localhost';
 GRANT SELECT,UPDATE ON certificateStatus TO 'ocsp_update'@'localhost';
+GRANT SELECT ON precertificates TO 'ocsp_update'@'localhost';
 
 -- Revoker Tool
 GRANT SELECT ON registrations TO 'revoker'@'localhost';

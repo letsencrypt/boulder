@@ -42,6 +42,7 @@
       }
     ],
     "maxRemoteValidationFailures": 1,
+    "multiVAPolicyFile": "test/example-multiva-policy.yaml",
     "accountURIPrefixes": [
       "http://boulder:4000/acme/reg/"
     ]

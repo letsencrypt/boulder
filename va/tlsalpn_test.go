@@ -525,11 +525,12 @@ func TestTLSALPN01TLS13(t *testing.T) {
 	va, _ := setup(hs, 0, "", nil)
 
 	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
-	// TODO(@cpu): This should be changed to test there was no problem and that
-	// the correct stat counter was incremented once TLS 1.3 support is enabled.
-	if prob == nil {
-		t.Fatal("expected problem validating TLS-ALPN-01 challenge against a TLS 1.3 only server, got nil")
+	// Validation should not fail
+	if prob != nil {
+		t.Errorf("Validation failed: %v", prob)
 	}
-	test.AssertEquals(t, prob.Type, probs.TLSProblem)
-	test.AssertEquals(t, prob.Detail, "remote error: tls: protocol version not supported")
+	// The correct TLS-ALPN-01 OID counter should have been incremented
+	test.AssertEquals(t, test.CountCounterVec(
+		"oid", IdPeAcmeIdentifier.String(), va.metrics.tlsALPNOIDCounter),
+		1)
 }
