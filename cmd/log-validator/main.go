@@ -15,7 +15,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-func lineValid(text string) bool {
+func lineValid(text string) error {
 	// Line format should match the following rsyslog omfile template:
 	//
 	//   template( name="LELogFormat" type="list" ) {
@@ -36,11 +36,17 @@ func lineValid(text string) bool {
 
 	fields := strings.Split(text, " ")
 	// Extract checksum from line
+	if len(fields) < 6 {
+		return errors.New("line doesn't match expected format")
+	}
 	checksum := fields[5]
 	// Reconstruct just the message portion of the line
 	line := strings.Join(fields[6:], " ")
 	// Check the extracted checksum against the computed checksum
-	return checksum == blog.LogLineChecksum(line)
+	if computedChecksum := blog.LogLineChecksum(line); checksum != computedChecksum {
+		return fmt.Errorf("invalid checksum (expected %q, got %q)", computedChecksum, checksum)
+	}
+	return nil
 }
 
 func validateFile(filename string) error {
@@ -53,9 +59,9 @@ func validateFile(filename string) error {
 		if line == "" {
 			continue
 		}
-		if !lineValid(line) {
+		if err := lineValid(line); err != nil {
 			badFile = true
-			fmt.Fprintf(os.Stderr, "bad checksum for line %d: %s\n", i+1, line)
+			fmt.Fprintf(os.Stderr, "[line %d] %s: %s\n", i+1, err, line)
 		}
 	}
 
@@ -103,8 +109,8 @@ func main() {
 					logger.Errf("error while tailing %s: %s", t.Filename, err)
 					continue
 				}
-				if !lineValid(line.Text) {
-					logger.Errf("bad checksum for line in %s: %s", t.Filename, line.Text)
+				if err := lineValid(line.Text); err != nil {
+					logger.Errf("%s: %s %q", t.Filename, err, line.Text)
 				}
 			}
 		}()
