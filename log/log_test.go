@@ -309,12 +309,20 @@ func newUDPListener(addr string) (*net.UDPConn, error) {
 // TestStdoutFailure tests that audit logging with a bothWriter panics if stdout
 // becomes unavailable.
 func TestStdoutFailure(t *testing.T) {
-	t.Parallel()
+	// Save the stdout fd so we can restore it later
+	saved := os.Stdout
+
+	// Create a throw-away pipe FD to replace stdout with
+	_, w, err := os.Pipe()
+	test.AssertNotError(t, err, "failed to create pipe")
+	os.Stdout = w
+
+	// Setup the logger
 	log := setup(t)
 
 	// Close Stdout so that the fmt.Printf in bothWriter's logAtLevel
 	// function will return an err on next log.
-	err := os.Stdout.Close()
+	err = os.Stdout.Close()
 	test.AssertNotError(t, err, "failed to close stdout")
 
 	// Defer a function that will check if there was a panic to recover from. If
@@ -324,6 +332,9 @@ func TestStdoutFailure(t *testing.T) {
 		if recovered := recover(); recovered == nil {
 			t.Errorf("log.AuditInfo with Stdout closed did not panic")
 		}
+
+		// Restore stdout so that subsequent tests don't fail
+		os.Stdout = saved
 	}()
 
 	// Try to audit log something
