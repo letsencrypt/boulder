@@ -134,9 +134,9 @@ func SelectCertificate(s dbOneSelector, q string, args ...interface{}) (core.Cer
 
 const precertFields = "registrationID, serial, der, issued, expires"
 
-// selectPrecertificate selects all fields of one precertificate object
+// SelectPrecertificate selects all fields of one precertificate object
 // identified by serial.
-func selectPrecertificate(s dbOneSelector, serial string) (core.Certificate, error) {
+func SelectPrecertificate(s dbOneSelector, serial string) (core.Certificate, error) {
 	var model precertificateModel
 	err := s.SelectOne(
 		&model,
@@ -313,6 +313,69 @@ func modelToRegistration(reg *regModel) (core.Registration, error) {
 	}
 
 	return r, nil
+}
+
+func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
+	cm := challModel{
+		AuthorizationID:  authID,
+		Type:             c.Type,
+		Status:           c.Status,
+		Token:            c.Token,
+		KeyAuthorization: c.ProvidedKeyAuthorization,
+	}
+	if c.Error != nil {
+		errJSON, err := json.Marshal(c.Error)
+		if err != nil {
+			return nil, err
+		}
+		if len(errJSON) > mediumBlobSize {
+			return nil, fmt.Errorf("Error object is too large to store in the database")
+		}
+		cm.Error = errJSON
+	}
+	if len(c.ValidationRecord) > 0 {
+		vrJSON, err := json.Marshal(c.ValidationRecord)
+		if err != nil {
+			return nil, err
+		}
+		if len(vrJSON) > mediumBlobSize {
+			return nil, fmt.Errorf("Validation Record object is too large to store in the database")
+		}
+		cm.ValidationRecord = vrJSON
+	}
+	return &cm, nil
+}
+
+func modelToChallenge(cm *challModel) (core.Challenge, error) {
+	c := core.Challenge{
+		Type:                     cm.Type,
+		Status:                   cm.Status,
+		Token:                    cm.Token,
+		ProvidedKeyAuthorization: cm.KeyAuthorization,
+	}
+	if len(cm.Error) > 0 {
+		var problem probs.ProblemDetails
+		err := json.Unmarshal(cm.Error, &problem)
+		if err != nil {
+			return core.Challenge{}, badJSONError(
+				"failed to unmarshal challenge model's error",
+				cm.Error,
+				err)
+		}
+		c.Error = &problem
+	}
+	if len(cm.ValidationRecord) > 0 {
+		var vr []core.ValidationRecord
+		err := json.Unmarshal(cm.ValidationRecord, &vr)
+		if err != nil {
+			return core.Challenge{}, badJSONError(
+				"failed to unmarshal challenge model's validation record",
+				cm.ValidationRecord,
+				err)
+		}
+		c.ValidationRecord = vr
+	}
+	return c, nil
 }
 
 type recordedSerialModel struct {

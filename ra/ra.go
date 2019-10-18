@@ -460,11 +460,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimits(ctx context
 
 func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.Context, regID int64, hostname string) error {
 	limit := ra.rlPolicies.InvalidAuthorizationsPerAccount()
-	// The SA.CountInvalidAuthorizations method is not implemented on the wrapper
-	// interface, because we want to move towards using gRPC interfaces more
-	// directly. So we type-assert the wrapper to a gRPC-specific type.
-	saGRPC, ok := ra.SA.(*bgrpc.StorageAuthorityClientWrapper)
-	if !limit.Enabled() || !ok {
+	if !limit.Enabled() {
 		return nil
 	}
 	latest := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
@@ -479,7 +475,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 			Latest:   &latestNanos,
 		},
 	}
-	count, err := saGRPC.CountInvalidAuthorizations2(ctx, req)
+	count, err := ra.SA.CountInvalidAuthorizations2(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -1810,11 +1806,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	// See if there is an existing unexpired pending (or ready) order that can be reused
 	// for this account
-	useV2Authzs := true
 	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
-		AcctID:              order.RegistrationID,
-		Names:               order.Names,
-		UseV2Authorizations: &useV2Authzs,
+		AcctID: order.RegistrationID,
+		Names:  order.Names,
 	})
 	// If there was an error and it wasn't an acceptable "NotFound" error, return
 	// immediately
@@ -2003,7 +1997,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg int64, identifier identifier.ACMEIdentifier) (*corepb.Authorization, error) {
 	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second).UnixNano()
 	status := string(core.StatusPending)
+	v2 := true
 	authz := &corepb.Authorization{
+		V2:             &v2,
 		Identifier:     &identifier.Value,
 		RegistrationID: &reg,
 		Status:         &status,

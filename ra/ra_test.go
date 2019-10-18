@@ -39,7 +39,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	sagrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -78,6 +77,8 @@ func createPendingAuthorization(t *testing.T, sa core.StorageAuthority, domain s
 	}
 	authzPB, err := bgrpc.AuthzToPB(authz)
 	test.AssertNotError(t, err, "AuthzToPB failed")
+	v2 := true
+	authzPB.V2 = &v2
 	ids, err := sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{
 		Authz: []*corepb.Authorization{authzPB},
 	})
@@ -1193,7 +1194,7 @@ func TestAuthzFailedRateLimiting(t *testing.T) {
 	}
 
 	// override with our mockInvalidAuthorizationsAuthority for this specific test
-	ra.SA = sagrpc.NewStorageAuthorityClient(&mockInvalidAuthorizationsAuthority{"ifail.com"})
+	ra.SA = &mockInvalidAuthorizationsAuthority{domainWithFailures: "ifail.com"}
 	// Should trigger rate limit
 	_, err := ra.NewAuthorization(ctx, core.Authorization{
 		Identifier: identifier.DNSIdentifier("ifail.com"),
@@ -1214,7 +1215,7 @@ func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
 	}
 
 	testcase := func() {
-		ra.SA = sagrpc.NewStorageAuthorityClient(&mockInvalidAuthorizationsAuthority{"all.i.do.is.lose.com"})
+		ra.SA = &mockInvalidAuthorizationsAuthority{domainWithFailures: "all.i.do.is.lose.com"}
 		err := ra.checkInvalidAuthorizationLimits(ctx, Registration.ID,
 			[]string{"charlie.brown.com", "all.i.do.is.lose.com"})
 		test.AssertError(t, err, "checkInvalidAuthorizationLimits did not encounter expected rate limit error")
@@ -2267,7 +2268,8 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	test.AssertNotError(t, err, "FinalizeAuthorization2 failed")
 
 	// The order associated with the authz should now be invalid
-	updatedOrder, err := ra.SA.GetOrder(ctx, &sapb.OrderRequest{Id: order.Id})
+	useV2 := true
+	updatedOrder, err := ra.SA.GetOrder(ctx, &sapb.OrderRequest{Id: order.Id, UseV2Authorizations: &useV2})
 	test.AssertNotError(t, err, "Error getting order to check status")
 	test.AssertEquals(t, *updatedOrder.Status, "invalid")
 
@@ -2997,9 +2999,10 @@ func TestFinalizeOrder(t *testing.T) {
 				// Otherwise we expect an issuance and no error
 				test.AssertNotError(t, result, fmt.Sprintf("FinalizeOrder result was %#v, expected nil", result))
 				// Check that the order now has a serial for the issued certificate
+				useV2 := true
 				updatedOrder, err := sa.GetOrder(
 					context.Background(),
-					&sapb.OrderRequest{Id: tc.OrderReq.Order.Id})
+					&sapb.OrderRequest{Id: tc.OrderReq.Order.Id, UseV2Authorizations: &useV2})
 				test.AssertNotError(t, err, "Error getting order to check serial")
 				test.AssertNotEquals(t, *updatedOrder.CertificateSerial, "")
 				test.AssertEquals(t, *updatedOrder.Status, "valid")
