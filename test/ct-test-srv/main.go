@@ -110,6 +110,10 @@ func (is *integrationSrv) addPreChain(w http.ResponseWriter, r *http.Request) {
 }
 
 func (is *integrationSrv) addChainOrPre(w http.ResponseWriter, r *http.Request, precert bool) {
+	if r.UserAgent() != "boulder/1.0" {
+		http.Error(w, "invalid user-agent", http.StatusBadRequest)
+		return
+	}
 	if r.Method != "POST" {
 		http.NotFound(w, r)
 		return
