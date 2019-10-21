@@ -15,6 +15,7 @@ require (
 	github.com/golang/snappy v0.0.0-20170215233205-553a64147049 // indirect
 	github.com/google/certificate-transparency-go v0.0.0-20181127102053-c25855a82c75
 	github.com/grpc-ecosystem/go-grpc-prometheus v0.0.0-20170826090648-0dafe0d496ea
+	github.com/hpcloud/tail v1.0.0
 	github.com/jmhodges/clock v0.0.0-20160418191101-880ee4c33548
 	github.com/jmoiron/sqlx v0.0.0-20180124204410-05cef0741ade // indirect
 	github.com/kisielk/sqlstruct v0.0.0-20150923205031-648daed35d49 // indirect
