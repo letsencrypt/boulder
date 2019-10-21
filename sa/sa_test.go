@@ -2741,14 +2741,12 @@ func TestNewAuthorizations2(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
-	v2 := true
 	ident := "aaa"
 	pending := string(core.StatusPending)
 	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
 	challType := string(core.ChallengeTypeDNS01)
 	tokenA := "YXNkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	apbA := &corepb.Authorization{
-		V2:             &v2,
 		Identifier:     &ident,
 		RegistrationID: &reg.ID,
 		Status:         &pending,
@@ -2763,7 +2761,6 @@ func TestNewAuthorizations2(t *testing.T) {
 	}
 	tokenB := "ZmdoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	apbB := &corepb.Authorization{
-		V2:             &v2,
 		Identifier:     &ident,
 		RegistrationID: &reg.ID,
 		Status:         &pending,
