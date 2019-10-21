@@ -18,11 +18,11 @@ func _() {
 	_ = x[FasterRateLimit-7]
 	_ = x[ProbeCTLogs-8]
 	_ = x[RevokeAtRA-9]
-	_ = x[CAAValidationMethods-10]
-	_ = x[CAAAccountURI-11]
-	_ = x[HeadNonceStatusOK-12]
-	_ = x[NewAuthorizationSchema-13]
-	_ = x[DisableAuthz2Orders-14]
+	_ = x[NewAuthorizationSchema-10]
+	_ = x[DisableAuthz2Orders-11]
+	_ = x[CAAValidationMethods-12]
+	_ = x[CAAAccountURI-13]
+	_ = x[HeadNonceStatusOK-14]
 	_ = x[EarlyOrderRateLimit-15]
 	_ = x[EnforceMultiVA-16]
 	_ = x[MultiVAFullResults-17]
@@ -39,9 +39,9 @@ func _() {
 	_ = x[StripDefaultSchemePort-28]
 }
 
-const _FeatureFlag_name = "unusedPerformValidationRPCACME13KeyRolloverSimplifiedVAHTTPTLSSNIRevalidationAllowRenewalFirstRLSetIssuedNamesRenewalBitFasterRateLimitProbeCTLogsRevokeAtRACAAValidationMethodsCAAAccountURIHeadNonceStatusOKNewAuthorizationSchemaDisableAuthz2OrdersEarlyOrderRateLimitEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountIDCheckRenewalFirstMandatoryPOSTAsGETFasterGetOrderForNamesAllowV1RegistrationParallelCheckFailedValidationDeleteUnusedChallengesV1DisableNewValidationsPrecertificateOCSPPrecertificateRevocationStripDefaultSchemePort"
+const _FeatureFlag_name = "unusedPerformValidationRPCACME13KeyRolloverSimplifiedVAHTTPTLSSNIRevalidationAllowRenewalFirstRLSetIssuedNamesRenewalBitFasterRateLimitProbeCTLogsRevokeAtRANewAuthorizationSchemaDisableAuthz2OrdersCAAValidationMethodsCAAAccountURIHeadNonceStatusOKEarlyOrderRateLimitEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountIDCheckRenewalFirstMandatoryPOSTAsGETFasterGetOrderForNamesAllowV1RegistrationParallelCheckFailedValidationDeleteUnusedChallengesV1DisableNewValidationsPrecertificateOCSPPrecertificateRevocationStripDefaultSchemePort"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 26, 43, 59, 77, 96, 120, 135, 146, 156, 176, 189, 206, 228, 247, 266, 280, 298, 317, 334, 352, 374, 393, 422, 444, 467, 485, 509, 531}
+var _FeatureFlag_index = [...]uint16{0, 6, 26, 43, 59, 77, 96, 120, 135, 146, 156, 178, 197, 217, 230, 247, 266, 280, 298, 317, 334, 352, 374, 393, 422, 444, 467, 485, 509, 531}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

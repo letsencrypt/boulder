@@ -244,7 +244,6 @@ func (sa *StorageAuthority) GetAuthorization(_ context.Context, id string) (core
 		Identifier:     identifier.DNSIdentifier("not-an-example.com"),
 		Challenges: []core.Challenge{
 			{
-				ID:    23,
 				Token: "token",
 				Type:  "dns",
 			},
@@ -401,7 +400,6 @@ func (sa *StorageAuthority) GetValidAuthorizations(_ context.Context, regID int6
 					Challenges: []core.Challenge{
 						{
 							Status: core.StatusValid,
-							ID:     23,
 							Type:   core.ChallengeTypeDNS01,
 						},
 					},

@@ -102,7 +102,6 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 		}
 	}
 	return &corepb.Challenge{
-		Id:                &challenge.ID,
 		Type:              &challenge.Type,
 		Status:            &st,
 		Token:             &challenge.Token,
@@ -139,9 +138,6 @@ func pbToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 		Token:            *in.Token,
 		Error:            prob,
 		ValidationRecord: recordAry,
-	}
-	if in.Id != nil {
-		ch.ID = *in.Id
 	}
 	if in.KeyAuthorization != nil {
 		ch.ProvidedKeyAuthorization = *in.KeyAuthorization
@@ -361,14 +357,15 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 	if authz.Expires != nil {
 		expires = authz.Expires.UTC().UnixNano()
 	}
+	v2 := true
 	return &corepb.Authorization{
+		V2:             &v2,
 		Id:             &authz.ID,
 		Identifier:     &authz.Identifier.Value,
 		RegistrationID: &authz.RegistrationID,
 		Status:         &status,
 		Expires:        &expires,
 		Challenges:     challs,
-		V2:             &authz.V2,
 	}, nil
 }
 
@@ -382,17 +379,12 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		challs[i] = chall
 	}
 	expires := time.Unix(0, *pb.Expires).UTC()
-	v2 := false
-	if pb.V2 != nil {
-		v2 = *pb.V2
-	}
 	authz := core.Authorization{
 		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: *pb.Identifier},
 		RegistrationID: *pb.RegistrationID,
 		Status:         core.AcmeStatus(*pb.Status),
 		Expires:        &expires,
 		Challenges:     challs,
-		V2:             v2,
 	}
 	if pb.Id != nil {
 		authz.ID = *pb.Id
@@ -419,7 +411,7 @@ func orderValid(order *corepb.Order) bool {
 // `order.CertificateSerial` to be nil such that it can be used in places where
 // the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
-	return !(order.RegistrationID == nil || order.Expires == nil || (order.Authorizations == nil && order.V2Authorizations == nil) || order.Names == nil)
+	return !(order.RegistrationID == nil || order.Expires == nil || order.V2Authorizations == nil || order.Names == nil)
 }
 
 func authorizationValid(authz *corepb.Authorization) bool {

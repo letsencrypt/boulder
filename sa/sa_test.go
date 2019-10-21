@@ -1557,10 +1557,11 @@ func TestOrder(t *testing.T) {
 	expectedOrder := &corepb.Order{
 		// The registration ID, authorizations, expiry, and names should match the
 		// input to NewOrder
-		RegistrationID: inputOrder.RegistrationID,
-		Authorizations: inputOrder.Authorizations,
-		Names:          inputOrder.Names,
-		Expires:        inputOrder.Expires,
+		RegistrationID:   inputOrder.RegistrationID,
+		Authorizations:   inputOrder.Authorizations,
+		V2Authorizations: []int64{},
+		Names:            inputOrder.Names,
+		Expires:          inputOrder.Expires,
 		// The ID should have been set to 1 by the SA
 		Id: &one,
 		// The status should be pending
@@ -2740,14 +2741,12 @@ func TestNewAuthorizations2(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
-	v2 := true
 	ident := "aaa"
 	pending := string(core.StatusPending)
 	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
 	challType := string(core.ChallengeTypeDNS01)
 	tokenA := "YXNkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	apbA := &corepb.Authorization{
-		V2:             &v2,
 		Identifier:     &ident,
 		RegistrationID: &reg.ID,
 		Status:         &pending,
@@ -2762,7 +2761,6 @@ func TestNewAuthorizations2(t *testing.T) {
 	}
 	tokenB := "ZmdoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	apbB := &corepb.Authorization{
-		V2:             &v2,
 		Identifier:     &ident,
 		RegistrationID: &reg.ID,
 		Status:         &pending,

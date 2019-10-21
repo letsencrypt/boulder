@@ -1422,20 +1422,18 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 // authzForOrder retrieves the authorization IDs for an order. It returns these
 // IDs in two slices: one for v1 style authorizations, and another for
 // v2 style authorizations.
-func (ssa *SQLStorageAuthority) authzForOrder(ctx context.Context, orderID int64, lookForV2 bool) ([]string, []int64, error) {
+func (ssa *SQLStorageAuthority) authzForOrder(ctx context.Context, orderID int64) ([]string, []int64, error) {
 	var v1IDs []string
 	var v2IDs []int64
-	if lookForV2 {
-		_, err := ssa.dbMap.WithContext(ctx).Select(
-			&v2IDs,
-			"SELECT authzID FROM orderToAuthz2 WHERE orderID = ?",
-			orderID,
-		)
-		if err != nil {
-			return nil, nil, err
-		}
-	}
 	_, err := ssa.dbMap.WithContext(ctx).Select(
+		&v2IDs,
+		"SELECT authzID FROM orderToAuthz2 WHERE orderID = ?",
+		orderID,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	_, err = ssa.dbMap.WithContext(ctx).Select(
 		&v1IDs, "SELECT authzID FROM orderToAuthz WHERE orderID = ?", orderID)
 	if err != nil {
 		return nil, nil, err
@@ -1472,16 +1470,7 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	if err != nil {
 		return nil, err
 	}
-	var useV2Authzs bool
-	if req.UseV2Authorizations != nil {
-		useV2Authzs = *req.UseV2Authorizations
-	}
-	// we set useV2Authzs if DisableAuthz2Orders is enabled as actually looking for v2
-	// authorizations is the only way to tell if an order contains them, otherwise
-	// we will fail due to the number of authorizations not matching the number of names
-	// in the order.
-	useV2Authzs = useV2Authzs || features.Enabled(features.DisableAuthz2Orders)
-	v1AuthzIDs, v2AuthzIDs, err := ssa.authzForOrder(ctx, *order.Id, useV2Authzs)
+	v1AuthzIDs, v2AuthzIDs, err := ssa.authzForOrder(ctx, *order.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -1826,7 +1815,7 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	}
 
 	// Get the order
-	order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &result.OrderID, UseV2Authorizations: req.UseV2Authorizations})
+	order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: &result.OrderID})
 	if err != nil {
 		return nil, err
 	}

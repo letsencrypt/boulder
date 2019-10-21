@@ -100,7 +100,6 @@ func TestChallenge(t *testing.T) {
 	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
 	test.AssertNotError(t, err, "Failed to unmarshal test key")
 	chall := core.Challenge{
-		ID:                       10,
 		Type:                     core.ChallengeTypeDNS01,
 		Status:                   core.StatusPending,
 		Token:                    "asd",
@@ -200,7 +199,6 @@ func TestPerformValidationReq(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to unmarshal test key")
 	domain := "example.com"
 	chall := core.Challenge{
-		ID:                       10,
 		Type:                     core.ChallengeTypeDNS01,
 		Status:                   core.StatusPending,
 		Token:                    "asd",
@@ -266,14 +264,12 @@ func TestAuthz(t *testing.T) {
 	exp := time.Now().AddDate(0, 0, 1).UTC()
 	identifier := identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"}
 	challA := core.Challenge{
-		ID:                       10,
 		Type:                     core.ChallengeTypeDNS01,
 		Status:                   core.StatusPending,
 		Token:                    "asd",
 		ProvidedKeyAuthorization: "keyauth",
 	}
 	challB := core.Challenge{
-		ID:                       11,
 		Type:                     core.ChallengeTypeDNS01,
 		Status:                   core.StatusPending,
 		Token:                    "asd2",
@@ -330,7 +326,7 @@ func TestOrderValid(t *testing.T) {
 				RegistrationID:    &testID,
 				Expires:           &testExpires,
 				CertificateSerial: &emptyString,
-				Authorizations:    []string{},
+				V2Authorizations:  []int64{},
 				Names:             []string{},
 				BeganProcessing:   &falseBool,
 				Created:           &testExpires,
@@ -340,13 +336,13 @@ func TestOrderValid(t *testing.T) {
 		{
 			Name: "Serial nil",
 			Order: &corepb.Order{
-				Id:              &testID,
-				RegistrationID:  &testID,
-				Expires:         &testExpires,
-				Authorizations:  []string{},
-				Names:           []string{},
-				BeganProcessing: &falseBool,
-				Created:         &testExpires,
+				Id:               &testID,
+				RegistrationID:   &testID,
+				Expires:          &testExpires,
+				V2Authorizations: []int64{},
+				Names:            []string{},
+				BeganProcessing:  &falseBool,
+				Created:          &testExpires,
 			},
 			ExpectedValid: true,
 		},
@@ -360,7 +356,7 @@ func TestOrderValid(t *testing.T) {
 				RegistrationID:    &testID,
 				Expires:           &testExpires,
 				CertificateSerial: &emptyString,
-				Authorizations:    []string{},
+				V2Authorizations:  []int64{},
 				Names:             []string{},
 				BeganProcessing:   &falseBool,
 			},
@@ -371,7 +367,7 @@ func TestOrderValid(t *testing.T) {
 				Id:                &testID,
 				Expires:           &testExpires,
 				CertificateSerial: &emptyString,
-				Authorizations:    []string{},
+				V2Authorizations:  []int64{},
 				Names:             []string{},
 				BeganProcessing:   &falseBool,
 			},
@@ -382,7 +378,7 @@ func TestOrderValid(t *testing.T) {
 				Id:                &testID,
 				RegistrationID:    &testID,
 				CertificateSerial: &emptyString,
-				Authorizations:    []string{},
+				V2Authorizations:  []int64{},
 				Names:             []string{},
 				BeganProcessing:   &falseBool,
 			},
@@ -405,7 +401,7 @@ func TestOrderValid(t *testing.T) {
 				RegistrationID:    &testID,
 				Expires:           &testExpires,
 				CertificateSerial: &emptyString,
-				Authorizations:    []string{},
+				V2Authorizations:  []int64{},
 				Names:             []string{},
 			},
 		},
@@ -416,7 +412,7 @@ func TestOrderValid(t *testing.T) {
 				RegistrationID:    &testID,
 				Expires:           &testExpires,
 				CertificateSerial: &emptyString,
-				Authorizations:    []string{},
+				V2Authorizations:  []int64{},
 				BeganProcessing:   &falseBool,
 			},
 		},

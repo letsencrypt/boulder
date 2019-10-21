@@ -188,13 +188,6 @@ func looksLikeKeyAuthorization(str string) error {
 // challenge, we just throw all the elements into one bucket,
 // together with the common metadata elements.
 type Challenge struct {
-	// ID was previously used to uniquely identify a challenge in the database and
-	// by users in the WFE. The ID is only populated when a challenge is added to
-	// the database. When features.NewAuthorizationSchema is enabled it is no
-	// longer populated at all and must not be relied upon in order to uniquely
-	// identify a challenge when transiting the RPC or storage layers.
-	ID int64 `json:"id,omitempty"`
-
 	// The type of challenge
 	Type string `json:"type"`
 
@@ -375,22 +368,6 @@ type Authorization struct {
 	// Authorization with the identifier `example.com` and one DNS-01 challenge
 	// corresponds to a name `*.example.com` from an associated order.
 	Wildcard bool `json:"wildcard,omitempty" db:"-"`
-
-	// v2 is used to indicate if the backing storage for this authorization is
-	// the new v2 style. It is not exposed to users.
-	V2 bool `json:"-" db:"-"`
-}
-
-// FindChallenge will look for the given challenge inside this authorization. If
-// found, it will return the index of that challenge within the Authorization's
-// Challenges array. Otherwise it will return -1.
-func (authz *Authorization) FindChallenge(challengeID int64) int {
-	for i, c := range authz.Challenges {
-		if c.ID == challengeID {
-			return i
-		}
-	}
-	return -1
 }
 
 // FindChallengeByStringID will look for a challenge matching the given ID inside

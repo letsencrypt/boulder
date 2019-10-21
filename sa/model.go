@@ -317,7 +317,6 @@ func modelToRegistration(reg *regModel) (core.Registration, error) {
 
 func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 	cm := challModel{
-		ID:               c.ID,
 		AuthorizationID:  authID,
 		Type:             c.Type,
 		Status:           c.Status,
@@ -349,7 +348,6 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 
 func modelToChallenge(cm *challModel) (core.Challenge, error) {
 	c := core.Challenge{
-		ID:                       cm.ID,
 		Type:                     cm.Type,
 		Status:                   cm.Status,
 		Token:                    cm.Token,
@@ -546,14 +544,8 @@ func hasMultipleNonPendingChallenges(challenges []*corepb.Challenge) bool {
 }
 
 // authzPBToModel converts a protobuf authorization representation to the
-// authz2Model storage representation. This method should only be used to
-// convert protobuf authorizations generated from core.Authorizations that
-// were constructed using the new authorization storage concepts (i.e.
-// authorizations that have the V2 field set).
+// authz2Model storage representation.
 func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
-	if authz.V2 == nil || !*authz.V2 {
-		return nil, errors.New("authorization is not v2 format")
-	}
 	expires := time.Unix(0, *authz.Expires).UTC()
 	am := &authz2Model{
 		IdentifierValue: *authz.Identifier,
@@ -677,10 +669,8 @@ func populateAttemptedFields(am *authz2Model, challenge *corepb.Challenge) error
 func modelToAuthzPB(am *authz2Model) (*corepb.Authorization, error) {
 	expires := am.Expires.UTC().UnixNano()
 	id := fmt.Sprintf("%d", am.ID)
-	v2 := true
 	status := uintToStatus[am.Status]
 	pb := &corepb.Authorization{
-		V2:             &v2,
 		Id:             &id,
 		Status:         &status,
 		Identifier:     &am.IdentifierValue,

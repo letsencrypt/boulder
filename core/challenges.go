@@ -1,9 +1,6 @@
 package core
 
 func newChallenge(challengeType string, token string) Challenge {
-	if token == "" {
-		token = NewToken()
-	}
 	return Challenge{
 		Type:   challengeType,
 		Status: StatusPending,
