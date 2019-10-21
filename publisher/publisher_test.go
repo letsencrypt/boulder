@@ -263,6 +263,7 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	intermediatePEM, _ := pem.Decode([]byte(testIntermediate))
 
 	pub := New(nil,
+		"test-user-agent/1.0",
 		log,
 		metrics.NewNoopScope())
 	pub.issuerBundle = append(pub.issuerBundle, ct.ASN1Cert{Data: intermediatePEM.Bytes})
@@ -281,7 +282,7 @@ func addLog(t *testing.T, pub *Impl, port int, pubKey *ecdsa.PublicKey) *Log {
 	uri := fmt.Sprintf("http://localhost:%d", port)
 	der, err := x509.MarshalPKIXPublicKey(pubKey)
 	test.AssertNotError(t, err, "Failed to marshal key")
-	newLog, err := NewLog(uri, base64.StdEncoding.EncodeToString(der), log)
+	newLog, err := NewLog(uri, base64.StdEncoding.EncodeToString(der), "test-user-agent/1.0", log)
 	test.AssertNotError(t, err, "Couldn't create log")
 	test.AssertEquals(t, newLog.uri, fmt.Sprintf("http://localhost:%d", port))
 	return newLog
@@ -369,11 +370,11 @@ func TestLogCache(t *testing.T) {
 	}
 
 	// Adding a log with an invalid base64 public key should error
-	_, err := cache.AddLog("www.test.com", "1234", log)
+	_, err := cache.AddLog("www.test.com", "1234", "test-user-agent/1.0", log)
 	test.AssertError(t, err, "AddLog() with invalid base64 pk didn't error")
 
 	// Adding a log with an invalid URI should error
-	_, err = cache.AddLog(":", "", log)
+	_, err = cache.AddLog(":", "", "test-user-agent/1.0", log)
 	test.AssertError(t, err, "AddLog() with an invalid log URI didn't error")
 
 	// Create one keypair & base 64 public key
@@ -391,21 +392,21 @@ func TestLogCache(t *testing.T) {
 	k2b64 := base64.StdEncoding.EncodeToString(der2)
 
 	// Adding the first log should not produce an error
-	l1, err := cache.AddLog("http://log.one.example.com", k1b64, log)
+	l1, err := cache.AddLog("http://log.one.example.com", k1b64, "test-user-agent/1.0", log)
 	test.AssertNotError(t, err, "cache.AddLog() failed for log 1")
 	test.AssertEquals(t, cache.Len(), 1)
 	test.AssertEquals(t, l1.uri, "http://log.one.example.com")
 	test.AssertEquals(t, l1.logID, k1b64)
 
 	// Adding it again should not produce any errors, or increase the Len()
-	l1, err = cache.AddLog("http://log.one.example.com", k1b64, log)
+	l1, err = cache.AddLog("http://log.one.example.com", k1b64, "test-user-agent/1.0", log)
 	test.AssertNotError(t, err, "cache.AddLog() failed for second add of log 1")
 	test.AssertEquals(t, cache.Len(), 1)
 	test.AssertEquals(t, l1.uri, "http://log.one.example.com")
 	test.AssertEquals(t, l1.logID, k1b64)
 
 	// Adding a second log should not error and should increase the Len()
-	l2, err := cache.AddLog("http://log.two.example.com", k2b64, log)
+	l2, err := cache.AddLog("http://log.two.example.com", k2b64, "test-user-agent/1.0", log)
 	test.AssertNotError(t, err, "cache.AddLog() failed for log 2")
 	test.AssertEquals(t, cache.Len(), 2)
 	test.AssertEquals(t, l2.uri, "http://log.two.example.com")

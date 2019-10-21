@@ -48,7 +48,7 @@ type logCache struct {
 
 // AddLog adds a *Log to the cache by constructing the statName, client and
 // verifier for the given uri & base64 public key.
-func (c *logCache) AddLog(uri, b64PK string, logger blog.Logger) (*Log, error) {
+func (c *logCache) AddLog(uri, b64PK, userAgent string, logger blog.Logger) (*Log, error) {
 	// Lock the mutex for reading to check the cache
 	c.RLock()
 	log, present := c.logs[b64PK]
@@ -64,7 +64,7 @@ func (c *logCache) AddLog(uri, b64PK string, logger blog.Logger) (*Log, error) {
 	defer c.Unlock()
 
 	// Construct a Log, add it to the cache, and return it to the caller
-	log, err := NewLog(uri, b64PK, logger)
+	log, err := NewLog(uri, b64PK, userAgent, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func (la logAdaptor) Printf(s string, args ...interface{}) {
 }
 
 // NewLog returns an initialized Log struct
-func NewLog(uri, b64PK string, logger blog.Logger) (*Log, error) {
+func NewLog(uri, b64PK, userAgent string, logger blog.Logger) (*Log, error) {
 	url, err := url.Parse(uri)
 	if err != nil {
 		return nil, err
@@ -111,6 +111,7 @@ func NewLog(uri, b64PK string, logger blog.Logger) (*Log, error) {
 	opts := jsonclient.Options{
 		Logger:    logAdaptor{logger},
 		PublicKey: pemPK,
+		UserAgent: userAgent,
 	}
 	httpClient := &http.Client{
 		// We set the HTTP client timeout to about half of what we expect
@@ -196,6 +197,7 @@ func initMetrics(stats metrics.Scope) *pubMetrics {
 // Impl defines a Publisher
 type Impl struct {
 	log          blog.Logger
+	userAgent    string
 	issuerBundle []ct.ASN1Cert
 	ctLogsCache  logCache
 	metrics      *pubMetrics
@@ -205,11 +207,13 @@ type Impl struct {
 // to requested CT logs
 func New(
 	bundle []ct.ASN1Cert,
+	userAgent string,
 	logger blog.Logger,
 	stats metrics.Scope,
 ) *Impl {
 	return &Impl{
 		issuerBundle: bundle,
+		userAgent:    userAgent,
 		ctLogsCache: logCache{
 			logs: make(map[string]*Log),
 		},
@@ -232,7 +236,7 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 	// Add a log URL/pubkey to the cache, if already present the
 	// existing *Log will be returned, otherwise one will be constructed, added
 	// and returned.
-	ctLog, err := pub.ctLogsCache.AddLog(*req.LogURL, *req.LogPublicKey, pub.log)
+	ctLog, err := pub.ctLogsCache.AddLog(*req.LogURL, *req.LogPublicKey, pub.userAgent, pub.log)
 	if err != nil {
 		pub.log.AuditErrf("Making Log: %s", err)
 		return nil, err

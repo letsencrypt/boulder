@@ -23,6 +23,7 @@ type config struct {
 		// sampled every N nanoseconds.
 		// https://golang.org/pkg/runtime/#SetBlockProfileRate
 		BlockProfileRate int
+		UserAgent        string
 	}
 
 	Syslog cmd.SyslogConfig
@@ -58,6 +59,9 @@ func main() {
 	if *debugAddr != "" {
 		c.Publisher.DebugAddr = *debugAddr
 	}
+	if c.Publisher.UserAgent == "" {
+		c.Publisher.UserAgent = "certificate-transparency-go/1.0"
+	}
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.Publisher.DebugAddr)
 	defer logger.AuditPanic()
@@ -81,6 +85,7 @@ func main() {
 
 	pubi := publisher.New(
 		bundle,
+		c.Publisher.UserAgent,
 		logger,
 		scope)
 
