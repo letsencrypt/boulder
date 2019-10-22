@@ -23,6 +23,8 @@ const (
 	RevokeAtRA
 	NewAuthorizationSchema
 	DisableAuthz2Orders
+	EarlyOrderRateLimit
+	FasterGetOrderForNames
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -32,9 +34,6 @@ const (
 	// HEAD requests to the WFE2 new-nonce endpoint should return HTTP StatusOK
 	// instead of HTTP StatusNoContent.
 	HeadNonceStatusOK
-	// EarlyOrderRateLimit enables the RA applying certificate per name/per FQDN
-	// set rate limits in NewOrder in addition to FinalizeOrder.
-	EarlyOrderRateLimit
 	// EnforceMultiVA causes the VA to block on remote VA PerformValidation
 	// requests in order to make a valid/invalid decision with the results.
 	EnforceMultiVA
@@ -50,8 +49,6 @@ const (
 	// MandatoryPOSTAsGET forbids legacy unauthenticated GET requests for ACME
 	// resources.
 	MandatoryPOSTAsGET
-	// Use an optimized query for GetOrderForNames.
-	FasterGetOrderForNames
 	// Allow creation of new registrations in ACMEv1.
 	AllowV1Registration
 	// Check the failed validation limit in parallel during NewOrder

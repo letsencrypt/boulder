@@ -1784,25 +1784,14 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 		RegistrationID int64
 	}
 	var err error
-	if features.Enabled(features.FasterGetOrderForNames) {
-		err = ssa.dbMap.WithContext(ctx).SelectOne(&result, `
+	err = ssa.dbMap.WithContext(ctx).SelectOne(&result, `
 					SELECT orderID, registrationID
 					FROM orderFqdnSets
 					WHERE setHash = ?
 					AND expires > ?
 					ORDER BY expires ASC
 					LIMIT 1`,
-			fqdnHash, ssa.clk.Now())
-	} else {
-		err = ssa.dbMap.WithContext(ctx).SelectOne(&result, `
-					SELECT orderID, registrationID
-					FROM orderFqdnSets
-					WHERE setHash = ?
-					AND registrationID = ?
-					AND expires > ?
-					LIMIT 1`,
-			fqdnHash, *req.AcctID, ssa.clk.Now())
-	}
+		fqdnHash, ssa.clk.Now())
 
 	if err == sql.ErrNoRows {
 		return nil, berrors.NotFoundError("no order matching request found")
