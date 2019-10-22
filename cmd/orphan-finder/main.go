@@ -42,10 +42,10 @@ command descriptions:
 `
 
 type config struct {
-	TLS       cmd.TLSConfig
-	SAService *cmd.GRPCClientConfig
-	CAService *cmd.GRPCClientConfig
-	Syslog    cmd.SyslogConfig
+	TLS                  cmd.TLSConfig
+	SAService            *cmd.GRPCClientConfig
+	OCSPGeneratorService *cmd.GRPCClientConfig
+	Syslog               cmd.SyslogConfig
 	// Backdate specifies how to adjust a certificate's NotBefore date to get back
 	// to the original issued date. It should match the value used in
 	// `test/config/ca.json` for the CA "backdate" value.
@@ -253,8 +253,8 @@ func setup(configFile string) (blog.Logger, core.StorageAuthority, core.Certific
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
 
-	caConn, err := bgrpc.ClientSetup(conf.CAService, tlsConfig, clientMetrics, cmd.Clock())
-	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
+	caConn, err := bgrpc.ClientSetup(conf.OCSPGeneratorService, tlsConfig, clientMetrics, cmd.Clock())
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to OCSPGeneratorService")
 	cac := bgrpc.NewCertificateAuthorityClient(nil, capb.NewCertificateAuthorityClient(caConn))
 
 	backdateDuration = conf.Backdate.Duration
