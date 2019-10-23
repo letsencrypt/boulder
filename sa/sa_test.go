@@ -2290,13 +2290,6 @@ func TestStatusForOrder(t *testing.T) {
 			ExpectedStatus:   string(core.StatusDeactivated),
 		},
 		{
-			Name:             "Order that has expired and references a purged expired authz",
-			OrderExpires:     alreadyExpired.UnixNano(),
-			OrderNames:       []string{"missing.your.order.is.up"},
-			AuthorizationIDs: []string{"this does not exist"},
-			ExpectedStatus:   string(core.StatusInvalid),
-		},
-		{
 			Name:             "Order with a pending authz",
 			OrderNames:       []string{"valid.your.order.is.up", "pending.your.order.is.up"},
 			AuthorizationIDs: []string{validAuthz.ID, pendingAuthz.ID},
@@ -2746,7 +2739,9 @@ func TestNewAuthorizations2(t *testing.T) {
 	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
 	challType := string(core.ChallengeTypeDNS01)
 	tokenA := "YXNkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	v2 := true
 	apbA := &corepb.Authorization{
+		V2: &v2,
 		Identifier:     &ident,
 		RegistrationID: &reg.ID,
 		Status:         &pending,
@@ -2761,6 +2756,7 @@ func TestNewAuthorizations2(t *testing.T) {
 	}
 	tokenB := "ZmdoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	apbB := &corepb.Authorization{
+		V2: &v2,
 		Identifier:     &ident,
 		RegistrationID: &reg.ID,
 		Status:         &pending,
@@ -3392,4 +3388,25 @@ func TestDisableAuthz2Orders(t *testing.T) {
 	})
 	test.AssertError(t, err, "GetOrder didn't fail with DisableAuthz2Orders enabled")
 	test.Assert(t, berrors.Is(err, berrors.NotFound), "GetOrder error was not NotFound")
+}
+
+func TestGetOrderExpired(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	fc.Add(time.Hour * 5)
+	reg := satest.CreateWorkingRegistration(t, sa)
+	exp := fc.Now().Add(-time.Hour).UnixNano()
+	order, err := sa.NewOrder(context.Background(), &corepb.Order{
+		RegistrationID:   &reg.ID,
+		Expires:          &exp,
+		Names:            []string{"example.com"},
+		V2Authorizations: []int64{666},
+	})
+	test.AssertNotError(t, err, "NewOrder failed")
+	_, err = sa.GetOrder(context.Background(), &sapb.OrderRequest{
+		Id: order.Id,
+	})
+	test.AssertError(t, err, "GetOrder didn't fail for an expired order")
+	test.Assert(t, berrors.Is(err, berrors.NotFound), "GetOrder error wasn't of type NotFound")
 }

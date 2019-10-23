@@ -670,7 +670,9 @@ func modelToAuthzPB(am *authz2Model) (*corepb.Authorization, error) {
 	expires := am.Expires.UTC().UnixNano()
 	id := fmt.Sprintf("%d", am.ID)
 	status := uintToStatus[am.Status]
+	v2 := true
 	pb := &corepb.Authorization{
+		V2:             &v2,
 		Id:             &id,
 		Status:         &status,
 		Identifier:     &am.IdentifierValue,

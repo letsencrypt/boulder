@@ -1470,6 +1470,11 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	if err != nil {
 		return nil, err
 	}
+	orderExp := time.Unix(0, *order.Expires)
+	if orderExp.Before(ssa.clk.Now()) {
+		return nil, berrors.NotFoundError("no order found for ID %d", *req.Id)
+	}
+
 	v1AuthzIDs, v2AuthzIDs, err := ssa.authzForOrder(ctx, *order.Id)
 	if err != nil {
 		return nil, err
