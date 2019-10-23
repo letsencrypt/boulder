@@ -255,7 +255,7 @@ func setup(configFile string) (blog.Logger, core.StorageAuthority, core.Certific
 
 	caConn, err := bgrpc.ClientSetup(conf.OCSPGeneratorService, tlsConfig, clientMetrics, cmd.Clock())
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
-	cac := bgrpc.NewCertificateAuthorityClient(nil, capb.NewCertificateAuthorityClient(caConn))
+	cac := bgrpc.NewCertificateAuthorityClient(nil, capb.NewOCSPGeneratorClient(caConn))
 
 	backdateDuration = conf.Backdate.Duration
 	return logger, sac, cac
@@ -298,6 +298,9 @@ func main() {
 
 		var certOrphansFound, certOrphansAdded, precertOrphansFound, precertOrphansAdded int64
 		for _, line := range strings.Split(string(logData), "\n") {
+			if line == "" {
+				continue
+			}
 			found, added, typ := storeParsedLogLine(sa, ca, logger, line)
 			var foundStat, addStat *int64
 			switch typ {

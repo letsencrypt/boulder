@@ -23,7 +23,8 @@
     "grpcOCSPGenerator": {
       "address": ":9096",
       "clientNames": [
-        "ocsp-updater.boulder"
+        "ocsp-updater.boulder",
+        "orphan-finder.boulder"
       ]
     },
     "Issuers": [{

@@ -946,6 +946,9 @@ func deleteOrderFQDNSet(
 }
 
 func addIssuedNames(db dbExecer, cert *x509.Certificate, isRenewal bool) error {
+	if len(cert.DNSNames) == 0 {
+		return berrors.InternalServerError("certificate has no DNSNames")
+	}
 	var qmarks []string
 	var values []interface{}
 	for _, name := range cert.DNSNames {

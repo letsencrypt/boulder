@@ -402,8 +402,6 @@ func setupClients(c OCSPUpdaterConfig, stats metrics.Scope, clk clock.Clock) (
 	caConn, err := bgrpc.ClientSetup(c.OCSPGeneratorService, tls, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
 	// Make a CA client that is only capable of signing OCSP.
-	// TODO(jsha): Once we've fully moved to gRPC, replace this
-	// with a plain caPB.NewOCSPGeneratorClient.
 	cac := bgrpc.NewCertificateAuthorityClient(nil, capb.NewOCSPGeneratorClient(caConn))
 
 	saConn, err := bgrpc.ClientSetup(c.SAService, tls, clientMetrics, clk)
