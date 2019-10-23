@@ -114,9 +114,13 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// is sent to the /directory endpoint we don't reply with directory URLs that
 		// also contain these ports, which would then in turn end up being sent in the JWS
 		// signature 'url' header, which we don't support.
-		if r.TLS != nil && strings.HasSuffix(r.Host, ":443") {
+		//
+		// We unconditionally strip :443 even when r.TLS is nil because the WFE/WFE2
+		// may be deployed HTTP-only behind another service that terminates HTTPS on
+		// its behalf.
+		if strings.HasSuffix(r.Host, ":443") {
 			r.Host = strings.TrimSuffix(r.Host, ":443")
-		} else if r.TLS == nil && strings.HasSuffix(r.Host, ":80") {
+		} else if strings.HasSuffix(r.Host, ":80") {
 			r.Host = strings.TrimSuffix(r.Host, ":80")
 		}
 	}

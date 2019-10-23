@@ -107,6 +107,12 @@ func TestHostHeaderRewrite(t *testing.T) {
 	req.TLS = &tls.ConnectionState{}
 	th.ServeHTTP(httptest.NewRecorder(), req)
 
+	req, err = http.NewRequest("GET", "/", &bytes.Reader{})
+	test.AssertNotError(t, err, "http.NewRequest failed")
+	req.Host = "localhost:443"
+	req.TLS = nil
+	th.ServeHTTP(httptest.NewRecorder(), req)
+
 	hhh.f = func(_ *RequestEvent, _ http.ResponseWriter, r *http.Request) {
 		t.Helper()
 		test.AssertEquals(t, r.Host, "localhost:123")
