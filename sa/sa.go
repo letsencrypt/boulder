@@ -30,7 +30,6 @@ import (
 )
 
 type certCountFunc func(db dbSelector, domain string, earliest, latest time.Time) (int, error)
-type getChallengesFunc func(db dbSelector, authID string) ([]core.Challenge, error)
 
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
@@ -46,7 +45,6 @@ type SQLStorageAuthority struct {
 	// We use function types here so we can mock out this internal function in
 	// unittests.
 	countCertificatesByName certCountFunc
-	getChallenges           getChallengesFunc
 }
 
 func digest256(data []byte) []byte {
@@ -107,7 +105,6 @@ func NewSQLStorageAuthority(
 	}
 
 	ssa.countCertificatesByName = ssa.countCertificates
-	ssa.getChallenges = ssa.getChallengesImpl
 
 	return ssa, nil
 }
@@ -132,59 +129,6 @@ func existingRegistration(tx *gorp.Transaction, id int64) bool {
 	var count int64
 	_ = tx.SelectOne(&count, "SELECT count(*) FROM registrations WHERE id = :id", map[string]interface{}{"id": id})
 	return count > 0
-}
-
-// updateChallenge writes the valid or invalid challenge in a list of challenges
-// to the database. It deletes from the database any of those challenges that
-// weren't used (i.e. aren't "valid" or "invalid"), so long as the
-// DeleteUnusedChallenges flag is set.
-func updateChallenges(db dbSelectExecer, authID string, challenges []core.Challenge) error {
-	var challs []challModel
-	_, err := db.Select(
-		&challs,
-		getChallengesQuery,
-		map[string]interface{}{"authID": authID},
-	)
-	if err != nil {
-		return err
-	}
-	if len(challs) != len(challenges) {
-		return fmt.Errorf("Invalid number of challenges provided")
-	}
-	for i, authChall := range challenges {
-		if challs[i].AuthorizationID != authID {
-			return fmt.Errorf("challenge authorization ID %q didn't match associated authorization ID %q", challs[i].AuthorizationID, authID)
-		}
-		chall, err := challengeToModel(&authChall, authID)
-		if err != nil {
-			return err
-		}
-		chall.ID = challs[i].ID
-		if authChall.Status == core.StatusInvalid || authChall.Status == core.StatusValid {
-			_, err = db.Exec(
-				`UPDATE challenges SET
-				status = ?,
-				error = ?,
-				validationRecord = ?
-			WHERE status = ? AND id = ?`,
-				string(chall.Status),
-				chall.Error,
-				chall.ValidationRecord,
-				string(core.StatusPending),
-				chall.ID)
-			if err != nil {
-				return err
-			}
-		} else if features.Enabled(features.DeleteUnusedChallenges) {
-			_, err = db.Exec(
-				`DELETE FROM challenges WHERE id = ?`,
-				chall.ID)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 // GetRegistration obtains a Registration by ID
@@ -219,62 +163,6 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *j
 	}
 
 	return modelToRegistration(model)
-}
-
-// GetAuthorization obtains an Authorization by ID
-func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string) (core.Authorization, error) {
-	authz, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
-		pa, err := selectPendingAuthz(txWithCtx, "WHERE id = ?", id)
-		if err != nil && err != sql.ErrNoRows {
-			return nil, err
-		}
-		var authz core.Authorization
-		if err == sql.ErrNoRows {
-			var fa authzModel
-			err := txWithCtx.SelectOne(&fa, fmt.Sprintf("SELECT %s FROM authz WHERE id = ?", authzFields), id)
-			if err != nil && err != sql.ErrNoRows {
-				return nil, err
-			} else if err == sql.ErrNoRows {
-				// If there was no result in either the pending authz table or the authz
-				// table then return a `berrors.NotFound` instance
-				return nil, berrors.NotFoundError("no authorization found with id %q", id)
-			}
-			authz = fa.Authorization
-		} else {
-			authz = pa.Authorization
-		}
-
-		authz.Challenges, err = ssa.getChallenges(txWithCtx, authz.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		return authz, nil
-	})
-	if overallError != nil {
-		return core.Authorization{}, overallError
-	}
-	if authz, ok := authz.(core.Authorization); ok {
-		return authz, nil
-	}
-	return core.Authorization{}, fmt.Errorf("shouldn't happen: casting error in GetAuthorization")
-}
-
-// GetValidAuthorizations returns the latest authorization object for all
-// domain names from the parameters that the account has authorizations for.
-func (ssa *SQLStorageAuthority) GetValidAuthorizations(
-	ctx context.Context,
-	registrationID int64,
-	names []string,
-	now time.Time) (map[string]*core.Authorization, error) {
-	return ssa.getAuthorizations(
-		ctx,
-		authorizationTable,
-		string(core.StatusValid),
-		registrationID,
-		names,
-		now,
-		false)
 }
 
 // incrementIP returns a copy of `ip` incremented at a bit index `index`,
@@ -552,163 +440,6 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	return nil
 }
 
-// NewPendingAuthorization retrieves a pending authorization for
-// authz.Identifier if one exists, or creates a new one otherwise.
-func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, authz core.Authorization) (core.Authorization, error) {
-	output, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
-		// Create a random ID and check that it doesn't exist already
-		authz.ID = core.NewToken()
-		for existingPending(txWithCtx, authz.ID) ||
-			existingFinal(txWithCtx, authz.ID) {
-			authz.ID = core.NewToken()
-		}
-
-		// Insert a stub row in pending
-		pendingAuthz := pendingauthzModel{Authorization: authz}
-		err := txWithCtx.Insert(&pendingAuthz)
-		if err != nil {
-			return nil, err
-		}
-
-		for i, c := range authz.Challenges {
-			challModel, err := challengeToModel(&c, pendingAuthz.ID)
-			if err != nil {
-				return nil, err
-			}
-			// Magic happens here: Gorp will modify challModel, setting challModel.ID
-			// to the auto-increment primary key. This is important because we want
-			// the challenge objects inside the Authorization we return to know their
-			// IDs, so they can have proper URLs.
-			// See https://godoc.org/github.com/coopernurse/gorp#DbMap.Insert
-			err = txWithCtx.Insert(challModel)
-			if err != nil {
-				return nil, err
-			}
-			challenge, err := modelToChallenge(challModel)
-			if err != nil {
-				return nil, err
-			}
-			authz.Challenges[i] = challenge
-		}
-
-		pendingAuthz.Authorization.Challenges = authz.Challenges
-		return pendingAuthz.Authorization, nil
-	})
-	if overallError != nil {
-		return core.Authorization{}, overallError
-	}
-	if output, ok := output.(core.Authorization); ok {
-		return output, nil
-	}
-	return core.Authorization{}, fmt.Errorf("shouldn't happen: casting error in NewPendingAuthorization")
-}
-
-// GetPendingAuthorization returns the most recent Pending authorization
-// with the given identifier, if available.
-func (ssa *SQLStorageAuthority) GetPendingAuthorization(
-	ctx context.Context,
-	req *sapb.GetPendingAuthorizationRequest,
-) (*core.Authorization, error) {
-	identifierJSON, err := json.Marshal(identifier.ACMEIdentifier{
-		Type:  identifier.IdentifierType(*req.IdentifierType),
-		Value: *req.IdentifierValue,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Note: This will use the index on `registrationId`, `expires`, which should
-	// keep the amount of scanning to a minimum. That index does not include the
-	// identifier, so accounts with huge numbers of pending authzs may result in
-	// slow queries here.
-	pa, err := selectPendingAuthz(ssa.dbMap.WithContext(ctx),
-		`WHERE registrationID = :regID
-			 AND identifier = :identifierJSON
-			 AND status = :status
-			 AND expires > :validUntil
-		 ORDER BY expires ASC
-		 LIMIT 1`,
-		map[string]interface{}{
-			"regID":          *req.RegistrationID,
-			"identifierJSON": identifierJSON,
-			"status":         string(core.StatusPending),
-			"validUntil":     time.Unix(0, *req.ValidUntil),
-		})
-	if err == sql.ErrNoRows {
-		return nil, berrors.NotFoundError("pending authz not found")
-	} else if err == nil {
-		// We found an authz, but we still need to fetch its challenges. To
-		// simplify things, just call GetAuthorization, which takes care of that.
-		authz, err := ssa.GetAuthorization(ctx, pa.ID)
-		return &authz, err
-	} else {
-		// Any error other than ErrNoRows; return the error
-		return nil, err
-	}
-
-}
-
-// FinalizeAuthorization converts a Pending Authorization to a final one. If the
-// Authorization is not found a berrors.NotFound result is returned. If the
-// Authorization is status pending a berrors.InternalServer error is returned.
-func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz core.Authorization) error {
-	_, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
-		// Check that a pending authz exists
-		if !existingPending(txWithCtx, authz.ID) {
-			return nil, berrors.NotFoundError("authorization with ID %q not found", authz.ID)
-		}
-		if statusIsPending(authz.Status) {
-			return nil, berrors.InternalServerError("authorization to finalize is pending (ID %q)", authz.ID)
-		}
-
-		auth := &authzModel{authz}
-		pa, err := selectPendingAuthz(txWithCtx, "WHERE id = ?", authz.ID)
-		if err == sql.ErrNoRows {
-			return nil, berrors.NotFoundError("authorization with ID %q not found", authz.ID)
-		}
-		if err != nil {
-			return nil, err
-		}
-
-		err = txWithCtx.Insert(auth)
-		if err != nil {
-			return nil, err
-		}
-
-		_, err = txWithCtx.Delete(pa)
-		if err != nil {
-			return nil, err
-		}
-
-		err = updateChallenges(txWithCtx, authz.ID, authz.Challenges)
-		if err != nil {
-			return nil, err
-		}
-
-		return nil, nil
-	})
-	return overallError
-}
-
-func (ssa *SQLStorageAuthority) getAuthorizationIDsByDomain2(ctx context.Context, domain string) ([]int64, error) {
-	var ids []int64
-	_, err := ssa.dbMap.Select(
-		&ids,
-		`SELECT id FROM authz2 WHERE identifierValue = :ident AND status IN (:pending,:valid) AND expires > :expires LIMIT :limit`,
-		map[string]interface{}{
-			"ident":   domain,
-			"pending": statusUint(core.StatusPending),
-			"valid":   statusUint(core.StatusValid),
-			"expires": ssa.clk.Now(),
-			"limit":   getAuthorizationIDsMax,
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-	return ids, nil
-}
-
 // AddCertificate stores an issued certificate and returns the digest as
 // a string, or an error if any occurred.
 func (ssa *SQLStorageAuthority) AddCertificate(
@@ -813,22 +544,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 	return digest, nil
 }
 
-// CountPendingAuthorizations returns the number of pending, unexpired
-// authorizations for the given registration.
-func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, regID int64) (count int, err error) {
-	err = ssa.dbMap.WithContext(ctx).SelectOne(&count,
-		`SELECT count(1) FROM pendingAuthorizations
-		WHERE registrationID = :regID AND
-		expires > :now AND
-		status = :pending`,
-		map[string]interface{}{
-			"regID":   regID,
-			"now":     ssa.clk.Now(),
-			"pending": string(core.StatusPending),
-		})
-	return
-}
-
 func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error) {
 	var count int
 	err := ssa.dbMap.WithContext(ctx).SelectOne(&count,
@@ -845,43 +560,6 @@ func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, acctID int64, e
 		return 0, err
 	}
 	return count, nil
-}
-
-// CountInvalidAuthorizations counts invalid authorizations for a user expiring
-// in a given time range.
-// authorizations for the give registration.
-func (ssa *SQLStorageAuthority) CountInvalidAuthorizations(
-	ctx context.Context,
-	req *sapb.CountInvalidAuthorizationsRequest,
-) (count *sapb.Count, err error) {
-	identifier := identifier.ACMEIdentifier{
-		Type:  identifier.DNS,
-		Value: *req.Hostname,
-	}
-
-	idJSON, err := json.Marshal(identifier)
-	if err != nil {
-		return nil, err
-	}
-
-	count = &sapb.Count{
-		Count: new(int64),
-	}
-	err = ssa.dbMap.WithContext(ctx).SelectOne(count.Count,
-		`SELECT COUNT(1) FROM authz
-		WHERE registrationID = :regID AND
-		identifier = :identifier AND
-		expires > :earliest AND
-		expires <= :latest AND
-		status = :invalid`,
-		map[string]interface{}{
-			"regID":      *req.RegistrationID,
-			"identifier": idJSON,
-			"earliest":   time.Unix(0, *req.Range.Earliest),
-			"latest":     time.Unix(0, *req.Range.Latest),
-			"invalid":    string(core.StatusInvalid),
-		})
-	return
 }
 
 func hashNames(names []string) []byte {
@@ -1192,51 +870,6 @@ func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, id i
 	return err
 }
 
-// DeactivateAuthorization deactivates a currently valid or pending authorization
-func (ssa *SQLStorageAuthority) DeactivateAuthorization(ctx context.Context, id string) error {
-	_, overallError := withTransaction(ctx, ssa.dbMap, func(txWithCtx transaction) (interface{}, error) {
-		if existingPending(txWithCtx, id) {
-			authzObj, err := txWithCtx.Get(&pendingauthzModel{}, id)
-			if err != nil {
-				return nil, err
-			}
-			if authzObj == nil {
-				// InternalServerError because existingPending already told us it existed
-				return nil, berrors.InternalServerError("failure retrieving pending authorization")
-			}
-			authz := authzObj.(*pendingauthzModel)
-			if authz.Status != core.StatusPending {
-				return nil, berrors.WrongAuthorizationStateError("authorization not pending")
-			}
-			authz.Status = core.StatusDeactivated
-			err = txWithCtx.Insert(&authzModel{authz.Authorization})
-			if err != nil {
-				return nil, err
-			}
-			result, err := txWithCtx.Delete(authzObj)
-			if err != nil {
-				return nil, err
-			}
-			if result != 1 {
-				return nil, berrors.InternalServerError("wrong number of rows deleted: expected 1, got %d", result)
-			}
-		} else {
-			_, err := txWithCtx.Exec(
-				`UPDATE authz SET status = ? WHERE id = ? and status = ?`,
-				string(core.StatusDeactivated),
-				id,
-				string(core.StatusValid),
-			)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		return nil, nil
-	})
-	return overallError
-}
-
 // DeactivateAuthorization2 deactivates a currently valid or pending authorization.
 // This method is intended to deprecate DeactivateAuthorization.
 func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Empty, error) {
@@ -1268,15 +901,6 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 			return nil, err
 		}
 
-		for _, id := range req.Authorizations {
-			otoa := &orderToAuthzModel{
-				OrderID: order.ID,
-				AuthzID: id,
-			}
-			if err := txWithCtx.Insert(otoa); err != nil {
-				return nil, err
-			}
-		}
 		for _, id := range req.V2Authorizations {
 			otoa := &orderToAuthz2Model{
 				OrderID: order.ID,
@@ -1422,23 +1046,14 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 // authzForOrder retrieves the authorization IDs for an order. It returns these
 // IDs in two slices: one for v1 style authorizations, and another for
 // v2 style authorizations.
-func (ssa *SQLStorageAuthority) authzForOrder(ctx context.Context, orderID int64) ([]string, []int64, error) {
-	var v1IDs []string
+func (ssa *SQLStorageAuthority) authzForOrder(ctx context.Context, orderID int64) ([]int64, error) {
 	var v2IDs []int64
 	_, err := ssa.dbMap.WithContext(ctx).Select(
 		&v2IDs,
 		"SELECT authzID FROM orderToAuthz2 WHERE orderID = ?",
 		orderID,
 	)
-	if err != nil {
-		return nil, nil, err
-	}
-	_, err = ssa.dbMap.WithContext(ctx).Select(
-		&v1IDs, "SELECT authzID FROM orderToAuthz WHERE orderID = ?", orderID)
-	if err != nil {
-		return nil, nil, err
-	}
-	return v1IDs, v2IDs, nil
+	return v2IDs, err
 }
 
 // namesForOrder finds all of the requested names associated with an order. The
@@ -1470,14 +1085,11 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	if err != nil {
 		return nil, err
 	}
-	v1AuthzIDs, v2AuthzIDs, err := ssa.authzForOrder(ctx, *order.Id)
+	v2AuthzIDs, err := ssa.authzForOrder(ctx, *order.Id)
 	if err != nil {
 		return nil, err
 	}
-	if features.Enabled(features.DisableAuthz2Orders) && len(v2AuthzIDs) > 0 {
-		return nil, berrors.NotFoundError("no order found for ID %d", *req.Id)
-	}
-	order.Authorizations, order.V2Authorizations = v1AuthzIDs, v2AuthzIDs
+	order.V2Authorizations = v2AuthzIDs
 
 	names, err := ssa.namesForOrder(ctx, *order.Id)
 	if err != nil {
@@ -1542,20 +1154,20 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 	}
 
 	// Get the full Authorization objects for the order
-	authzValidityInfo, err := ssa.getAllOrderAuthorizationStatuses(ctx, *order.Id, *order.RegistrationID, order.V2Authorizations)
+	authzValidityInfo, err := ssa.getAuthorizationStatuses(ctx, order.V2Authorizations)
 	// If there was an error getting the authorizations, return it immediately
 	if err != nil {
 		return "", err
 	}
 
-	// If getAllOrderAuthorizationStatuses returned a different number of authorization
-	// objects than the order's slices of v1 and v2 authorization IDs something has gone
+	// If getAuthorizationStatuses returned a different number of authorization
+	// objects than the order's slice of authorization IDs something has gone
 	// wrong worth raising an internal error about.
-	if len(authzValidityInfo) != len(order.Authorizations)+len(order.V2Authorizations) {
+	if len(authzValidityInfo) != len(order.V2Authorizations) {
 		return "", berrors.InternalServerError(
-			"getAllOrderAuthorizationStatuses returned the wrong number of authorization statuses "+
+			"getAuthorizationStatuses returned the wrong number of authorization statuses "+
 				"(%d vs expected %d) for order %d",
-			len(authzValidityInfo), len(order.Authorizations), *order.Id)
+			len(authzValidityInfo), len(order.V2Authorizations), *order.Id)
 	}
 
 	// Keep a count of the authorizations seen
@@ -1673,89 +1285,6 @@ func (ssa *SQLStorageAuthority) getAuthorizationStatuses(ctx context.Context, id
 	return allAuthzValidity, nil
 }
 
-func (ssa *SQLStorageAuthority) getAllOrderAuthorizationStatuses(
-	ctx context.Context,
-	orderID, acctID int64,
-	v2AuthzIDs []int64) ([]authzValidity, error) {
-	var allAuthzValidity []authzValidity
-
-	if len(v2AuthzIDs) > 0 {
-		validityInfo, err := ssa.getAuthorizationStatuses(ctx, v2AuthzIDs)
-		if err != nil {
-			return nil, err
-		}
-		allAuthzValidity = append(allAuthzValidity, validityInfo...)
-	}
-
-	for _, table := range authorizationTables {
-		var validityInfo []authzValidity
-		_, err := ssa.dbMap.WithContext(ctx).Select(
-			&validityInfo,
-			fmt.Sprintf(`SELECT status, expires from %s AS authz
-		INNER JOIN orderToAuthz
-		ON authz.ID = orderToAuthz.authzID
-		WHERE authz.registrationID = ? AND
-		orderToAuthz.orderID = ?`, table),
-			acctID,
-			orderID,
-		)
-		if err != nil {
-			return nil, err
-		}
-		allAuthzValidity = append(allAuthzValidity, validityInfo...)
-	}
-	return allAuthzValidity, nil
-}
-
-// GetValidOrderAuthorizations is used to find the valid, unexpired authorizations
-// associated with a specific order and account ID.
-func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations(
-	ctx context.Context,
-	req *sapb.GetValidOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
-	now := ssa.clk.Now()
-	// Select the full authorization data for all *valid, unexpired*
-	// authorizations that are owned by the correct account ID and associated with
-	// the given order ID
-	var auths []*core.Authorization
-	_, err := ssa.dbMap.WithContext(ctx).Select(
-		&auths,
-		fmt.Sprintf(`SELECT %s FROM %s AS authz
-	LEFT JOIN orderToAuthz
-	ON authz.ID = orderToAuthz.authzID
-	WHERE authz.registrationID = ? AND
-	authz.expires > ? AND
-	authz.status = ? AND
-	orderToAuthz.orderID = ?`, authzFields, authorizationTable),
-		*req.AcctID,
-		now,
-		string(core.StatusValid),
-		*req.Id)
-	if err != nil {
-		return nil, err
-	}
-
-	// Collapse & dedupe the returned authorizations into a mapping from name to
-	// authorization
-	byName := make(map[string]*core.Authorization)
-	for _, auth := range auths {
-		// We only expect to get back DNS identifiers
-		if auth.Identifier.Type != identifier.DNS {
-			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
-		}
-		existing, present := byName[auth.Identifier.Value]
-		if !present || auth.Expires.After(*existing.Expires) {
-			// Retrieve challenges for the authz
-			auth.Challenges, err = ssa.getChallenges(ssa.dbMap.WithContext(ctx), auth.ID)
-			if err != nil {
-				return nil, err
-			}
-
-			byName[auth.Identifier.Value] = auth
-		}
-	}
-	return byName, nil
-}
-
 // GetOrderForNames tries to find a **pending** or **ready** order with the
 // exact set of names requested, associated with the given accountID. Only
 // unexpired orders are considered. If no order meeting these requirements is
@@ -1827,97 +1356,6 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	return order, nil
 }
 
-func (ssa *SQLStorageAuthority) getAuthorizations(
-	ctx context.Context,
-	table string,
-	status string,
-	registrationID int64,
-	names []string,
-	now time.Time,
-	requireV2Authzs bool) (map[string]*core.Authorization, error) {
-	if len(names) == 0 {
-		return nil, berrors.InternalServerError("no names received")
-	}
-
-	params := make([]interface{}, len(names))
-	qmarks := make([]string, len(names))
-	for i, name := range names {
-		id := identifier.ACMEIdentifier{Type: identifier.DNS, Value: name}
-		idJSON, err := json.Marshal(id)
-		if err != nil {
-			return nil, err
-		}
-		params[i] = string(idJSON)
-		qmarks[i] = "?"
-	}
-
-	// If requested, filter out V1 authorizations by doing a JOIN on the
-	// orderToAuthz table, ensuring that all authorization IDs returned correspond
-	// to a V2 order.
-	queryPrefix := fmt.Sprintf(`SELECT %s FROM %s`, authzFields, table)
-	if requireV2Authzs {
-		queryPrefix = queryPrefix + `
-		JOIN orderToAuthz
-			ON ID = authzID`
-	}
-
-	var auths []*core.Authorization
-	_, err := ssa.dbMap.WithContext(ctx).Select(
-		&auths,
-		fmt.Sprintf(`%s
-		WHERE registrationID = ? AND
-		expires > ? AND
-		status = ? AND
-		identifier IN (%s)`,
-			queryPrefix, strings.Join(qmarks, ",")),
-		append([]interface{}{registrationID, now, status}, params...)...)
-	if err != nil {
-		return nil, err
-	}
-
-	byName := make(map[string]*core.Authorization)
-	for _, auth := range auths {
-		// No real life authorizations should have a nil expires. If we find them,
-		// don't consider them valid.
-		if auth.Expires == nil {
-			continue
-		}
-
-		if auth.Identifier.Type != identifier.DNS {
-			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
-		}
-		existing, present := byName[auth.Identifier.Value]
-		if !present || auth.Expires.After(*existing.Expires) {
-			byName[auth.Identifier.Value] = auth
-		}
-	}
-
-	for _, auth := range byName {
-		// Retrieve challenges for the authz
-		if auth.Challenges, err = ssa.getChallenges(ssa.dbMap.WithContext(ctx), auth.ID); err != nil {
-			return nil, err
-		}
-	}
-
-	return byName, nil
-}
-
-func (ssa *SQLStorageAuthority) getPendingAuthorizations(
-	ctx context.Context,
-	registrationID int64,
-	names []string,
-	now time.Time,
-	requireV2Authzs bool) (map[string]*core.Authorization, error) {
-	return ssa.getAuthorizations(
-		ctx,
-		pendingAuthorizationTable,
-		string(core.StatusPending),
-		registrationID,
-		names,
-		now,
-		requireV2Authzs)
-}
-
 func AuthzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error) {
 	resp := &sapb.Authorizations{}
 	for k, v := range m {
@@ -1930,99 +1368,6 @@ func AuthzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error
 		resp.Authz = append(resp.Authz, &sapb.Authorizations_MapElement{Domain: &kCopy, Authz: authzPB})
 	}
 	return resp, nil
-}
-
-// GetAuthorizations returns a map of valid or pending authorizations for as many names as possible
-func (ssa *SQLStorageAuthority) GetAuthorizations(
-	ctx context.Context,
-	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	authzMap, err := ssa.getAuthorizations(
-		ctx,
-		authorizationTable,
-		string(core.StatusValid),
-		*req.RegistrationID,
-		req.Domains,
-		time.Unix(0, *req.Now),
-		*req.RequireV2Authzs,
-	)
-	if err != nil {
-		return nil, err
-	}
-	if len(authzMap) == len(req.Domains) {
-		return AuthzMapToPB(authzMap)
-	}
-
-	// remove names we already have authz for
-	remainingNames := []string{}
-	for _, name := range req.Domains {
-		if _, present := authzMap[name]; !present {
-			remainingNames = append(remainingNames, name)
-		}
-	}
-	pendingAuthz, err := ssa.getPendingAuthorizations(
-		ctx,
-		*req.RegistrationID,
-		remainingNames,
-		time.Unix(0, *req.Now),
-		*req.RequireV2Authzs)
-	if err != nil {
-		return nil, err
-	}
-	// merge pending into valid
-	for name, a := range pendingAuthz {
-		authzMap[name] = a
-	}
-
-	// Wildcard domain issuance requires that the authorizations returned by this
-	// RPC also include populated challenges such that the caller can know if the
-	// challenges meet the wildcard issuance policy (e.g. only 1 DNS-01
-	// challenge).
-	// Fetch each of the authorizations' associated challenges
-	for _, authz := range authzMap {
-		authz.Challenges, err = ssa.getChallenges(ssa.dbMap.WithContext(ctx), authz.ID)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return AuthzMapToPB(authzMap)
-}
-
-// AddPendingAuthorizations creates a batch of pending authorizations and returns their IDs
-func (ssa *SQLStorageAuthority) AddPendingAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
-	ids := []string{}
-	for _, authPB := range req.Authz {
-		authz, err := bgrpc.PBToAuthz(authPB)
-		if err != nil {
-			return nil, err
-		}
-		result, err := ssa.NewPendingAuthorization(ctx, authz)
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, result.ID)
-	}
-	return &sapb.AuthorizationIDs{Ids: ids}, nil
-}
-
-func (ssa *SQLStorageAuthority) getChallengesImpl(db dbSelector, authID string) ([]core.Challenge, error) {
-	var challObjs []challModel
-	_, err := db.Select(
-		&challObjs,
-		getChallengesQuery,
-		map[string]interface{}{"authID": authID},
-	)
-	if err != nil {
-		return nil, err
-	}
-	var challs []core.Challenge
-	for _, c := range challObjs {
-		chall, err := modelToChallenge(&c)
-		if err != nil {
-			return nil, err
-		}
-		challs = append(challs, chall)
-	}
-	return challs, nil
 }
 
 // NewAuthorizations2 adds a set of new style authorizations to the database and returns
@@ -2126,37 +1471,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 		}
 	}
 
-	authzsPB, err := authz2ModelMapToPB(authzModelMap)
-	if err != nil {
-		return nil, err
-	}
-
-	// If we still need more authorizations look for them in the old
-	// style authorization tables.
-	if len(authzModelMap) != len(req.Domains) {
-		// Get the authorizations for names we don't already have
-		var remaining []string
-		for _, name := range req.Domains {
-			if _, present := authzModelMap[name]; !present {
-				remaining = append(remaining, name)
-			}
-		}
-		reqV2 := true
-		authz, err := ssa.GetAuthorizations(ctx, &sapb.GetAuthorizationsRequest{
-			RegistrationID:  req.RegistrationID,
-			Domains:         remaining,
-			Now:             req.Now,
-			RequireV2Authzs: &reqV2,
-		})
-		if err != nil {
-			return nil, err
-		}
-		for _, authzPB := range authz.Authz {
-			authzsPB.Authz = append(authzsPB.Authz, authzPB)
-		}
-	}
-
-	return authzsPB, nil
+	return authz2ModelMapToPB(authzModelMap)
 }
 
 // FinalizeAuthorization2 moves a pending authorization to either the valid or invalid status. If
@@ -2290,12 +1605,7 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, re
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			// there may be an old style pending authorization so look for that
-			authz, err := ssa.GetPendingAuthorization(ctx, req)
-			if err != nil {
-				return nil, err
-			}
-			return bgrpc.AuthzToPB(*authz)
+			return nil, berrors.NotFoundError("pending authz not found")
 		}
 		return nil, err
 	}
@@ -2320,13 +1630,6 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations2(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	// also count old style authorizations and add those to the count of
-	// new authorizations
-	oldCount, err := ssa.CountPendingAuthorizations(ctx, *req.Id)
-	if err != nil {
-		return nil, err
-	}
-	count += int64(oldCount)
 	return &sapb.Count{Count: &count}, nil
 }
 
@@ -2367,29 +1670,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 		}
 	}
 
-	authzsPB, err := authz2ModelMapToPB(byName)
-	if err != nil {
-		return nil, err
-	}
-
-	// also get any older style authorizations, as far as I can tell
-	// there is no easy way to tell if this is needed or not as
-	// an order may be all one style, all the other, or a mix
-	oldAuthzMap, err := ssa.GetValidOrderAuthorizations(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if len(oldAuthzMap) > 0 {
-		oldAuthzsPB, err := AuthzMapToPB(oldAuthzMap)
-		if err != nil {
-			return nil, err
-		}
-		for _, authzPB := range oldAuthzsPB.Authz {
-			authzsPB.Authz = append(authzsPB.Authz, authzPB)
-		}
-	}
-
-	return authzsPB, nil
+	return authz2ModelMapToPB(byName)
 }
 
 // CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
@@ -2418,13 +1699,6 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	// Also count old authorizations and add those to the new style
-	// count
-	oldCount, err := ssa.CountInvalidAuthorizations(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	count += *oldCount.Count
 	return &sapb.Count{Count: &count}, nil
 }
 
@@ -2476,41 +1750,5 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 		}
 		authzMap[am.IdentifierValue] = am
 	}
-	authzsPB, err := authz2ModelMapToPB(authzMap)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(authzsPB.Authz) != len(req.Domains) {
-		// We may still have valid old style authorizations
-		// we want for names in the list, so we have to look
-		// for them.
-		var remaining []string
-		for _, name := range req.Domains {
-			if _, present := authzMap[name]; !present {
-				remaining = append(remaining, name)
-			}
-		}
-		now := time.Unix(0, *req.Now)
-		oldAuthzs, err := ssa.GetValidAuthorizations(
-			ctx,
-			*req.RegistrationID,
-			remaining,
-			now,
-		)
-		if err != nil {
-			return nil, err
-		}
-		if len(oldAuthzs) > 0 {
-			oldAuthzsPB, err := AuthzMapToPB(oldAuthzs)
-			if err != nil {
-				return nil, err
-			}
-			for _, authzPB := range oldAuthzsPB.Authz {
-				authzsPB.Authz = append(authzsPB.Authz, authzPB)
-			}
-		}
-	}
-
-	return authzsPB, nil
+	return authz2ModelMapToPB(authzMap)
 }

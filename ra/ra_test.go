@@ -77,8 +77,6 @@ func createPendingAuthorization(t *testing.T, sa core.StorageAuthority, domain s
 	}
 	authzPB, err := bgrpc.AuthzToPB(authz)
 	test.AssertNotError(t, err, "AuthzToPB failed")
-	v2 := true
-	authzPB.V2 = &v2
 	ids, err := sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{
 		Authz: []*corepb.Authorization{authzPB},
 	})
@@ -2268,8 +2266,7 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	test.AssertNotError(t, err, "FinalizeAuthorization2 failed")
 
 	// The order associated with the authz should now be invalid
-	useV2 := true
-	updatedOrder, err := ra.SA.GetOrder(ctx, &sapb.OrderRequest{Id: order.Id, UseV2Authorizations: &useV2})
+	updatedOrder, err := ra.SA.GetOrder(ctx, &sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "Error getting order to check status")
 	test.AssertEquals(t, *updatedOrder.Status, "invalid")
 
@@ -2999,10 +2996,9 @@ func TestFinalizeOrder(t *testing.T) {
 				// Otherwise we expect an issuance and no error
 				test.AssertNotError(t, result, fmt.Sprintf("FinalizeOrder result was %#v, expected nil", result))
 				// Check that the order now has a serial for the issued certificate
-				useV2 := true
 				updatedOrder, err := sa.GetOrder(
 					context.Background(),
-					&sapb.OrderRequest{Id: tc.OrderReq.Order.Id, UseV2Authorizations: &useV2})
+					&sapb.OrderRequest{Id: tc.OrderReq.Order.Id})
 				test.AssertNotError(t, err, "Error getting order to check serial")
 				test.AssertNotEquals(t, *updatedOrder.CertificateSerial, "")
 				test.AssertEquals(t, *updatedOrder.Status, "valid")

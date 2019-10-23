@@ -357,9 +357,7 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 	if authz.Expires != nil {
 		expires = authz.Expires.UTC().UnixNano()
 	}
-	v2 := true
 	return &corepb.Authorization{
-		V2:             &v2,
 		Id:             &authz.ID,
 		Identifier:     &authz.Identifier.Value,
 		RegistrationID: &authz.RegistrationID,

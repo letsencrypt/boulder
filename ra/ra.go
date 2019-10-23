@@ -2001,9 +2001,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg int64, identifier identifier.ACMEIdentifier) (*corepb.Authorization, error) {
 	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second).UnixNano()
 	status := string(core.StatusPending)
-	v2 := true
 	authz := &corepb.Authorization{
-		V2:             &v2,
 		Identifier:     &identifier.Value,
 		RegistrationID: &reg,
 		Status:         &status,
