@@ -2741,7 +2741,7 @@ func TestNewAuthorizations2(t *testing.T) {
 	tokenA := "YXNkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	v2 := true
 	apbA := &corepb.Authorization{
-		V2: &v2,
+		V2:             &v2,
 		Identifier:     &ident,
 		RegistrationID: &reg.ID,
 		Status:         &pending,
@@ -2756,7 +2756,7 @@ func TestNewAuthorizations2(t *testing.T) {
 	}
 	tokenB := "ZmdoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	apbB := &corepb.Authorization{
-		V2: &v2,
+		V2:             &v2,
 		Identifier:     &ident,
 		RegistrationID: &reg.ID,
 		Status:         &pending,
