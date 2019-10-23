@@ -1042,10 +1042,6 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 	if err := csrlib.VerifyCSR(req.CSR, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, regID); err != nil {
 		return core.Certificate{}, berrors.MalformedError(err.Error())
 	}
-	if err := ra.checkLimits(ctx, req.CSR.DNSNames, regID); err != nil {
-		return core.Certificate{}, err
-	}
-
 	// NewCertificate provides an order ID of 0, indicating this is a classic ACME
 	// v1 issuance request from the new certificate endpoint that is not
 	// associated with an ACME v2 order.
@@ -1120,6 +1116,14 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 
 	if core.KeyDigestEquals(csr.PublicKey, account.Key) {
 		return emptyCert, berrors.MalformedError("certificate public key must be different than account key")
+	}
+
+	// Check rate limits before checking authorizations. If someone is unable to
+	// issue a cert due to rate limiting, we don't want to tell them to go get the
+	// necessary authorizations, only to later fail the rate limit check.
+	err = ra.checkLimits(ctx, names, account.ID)
+	if err != nil {
+		return emptyCert, err
 	}
 
 	var authzs map[string]*core.Authorization
@@ -1389,11 +1393,6 @@ func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []st
 		if err != nil {
 			return err
 		}
-	}
-
-	// Check if there is rate limit space for a new order within the current window
-	if err := ra.checkNewOrdersPerAccountLimit(ctx, regID); err != nil {
-		return err
 	}
 	return nil
 }
@@ -1823,6 +1822,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// If there was an order, return it
 	if existingOrder != nil {
 		return existingOrder, nil
+	}
+
+	// Check if there is rate limit space for a new order within the current window
+	if err := ra.checkNewOrdersPerAccountLimit(ctx, *order.RegistrationID); err != nil {
+		return nil, err
 	}
 	// Check if there is rate limit space for issuing a certificate for the new
 	// order's names. If there isn't then it doesn't make sense to allow creating
