@@ -200,12 +200,7 @@ func storeParsedLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Log
 		logger.AuditErrf("Couldn't parse regID: %s, [%s]", err, line)
 		return true, false, typ
 	}
-	// generate a fresh OCSP response
-	statusGood := string(core.OCSPStatusGood)
-	ocspResponse, err := ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-		CertDER: der,
-		Status:  &statusGood,
-	})
+	response, err := generateOCSP(ctx, ca, der)
 	if err != nil {
 		logger.AuditErrf("Couldn't generate OCSP: %s, [%s]", err, line)
 		return true, false, typ
@@ -217,13 +212,13 @@ func storeParsedLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Log
 	issuedDate := cert.NotBefore.Add(backdateDuration)
 	switch typ {
 	case certOrphan:
-		_, err = sa.AddCertificate(ctx, der, regID, ocspResponse.Response, &issuedDate)
+		_, err = sa.AddCertificate(ctx, der, regID, response, &issuedDate)
 	case precertOrphan:
 		issued := issuedDate.UnixNano()
 		_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:    der,
 			RegID:  &regID,
-			Ocsp:   ocspResponse.Response,
+			Ocsp:   response,
 			Issued: &issued,
 		})
 	default:
@@ -237,6 +232,22 @@ func storeParsedLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Log
 	return true, true, typ
 }
 
+func generateOCSP(ctx context.Context, ca ocspGenerator, certDER []byte) ([]byte, error) {
+	// generate a fresh OCSP response
+	statusGood := string(core.OCSPStatusGood)
+	zeroInt32 := int32(0)
+	zeroInt64 := int64(0)
+	ocspResponse, err := ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
+		CertDER:   certDER,
+		Status:    &statusGood,
+		Reason:    &zeroInt32,
+		RevokedAt: &zeroInt64,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ocspResponse.Response, nil
+}
 func setup(configFile string) (blog.Logger, core.StorageAuthority, capb.OCSPGeneratorClient) {
 	configJSON, err := ioutil.ReadFile(configFile)
 	cmd.FailOnError(err, "Failed to read config file")
@@ -339,22 +350,18 @@ func main() {
 		// Because certificates are backdated we need to add the backdate duration
 		// to find the true issued time.
 		issuedDate := cert.NotBefore.Add(1 * backdateDuration)
-		statusGood := string(core.OCSPStatusGood)
-		ocspResponse, err := ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-			CertDER: der,
-			Status:  &statusGood,
-		})
+		response, err := generateOCSP(ctx, ca, der)
 		cmd.FailOnError(err, "Generating OCSP")
 
 		switch typ {
 		case certOrphan:
-			_, err = sa.AddCertificate(ctx, der, *regID, ocspResponse.Response, &issuedDate)
+			_, err = sa.AddCertificate(ctx, der, *regID, response, &issuedDate)
 		case precertOrphan:
 			issued := issuedDate.UnixNano()
 			_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 				Der:    der,
 				RegID:  regID,
-				Ocsp:   ocspResponse.Response,
+				Ocsp:   response,
 				Issued: &issued,
 			})
 		default:

@@ -112,12 +112,15 @@ func (cas *CertificateAuthorityServerWrapper) IssueCertificateForPrecertificate(
 	return CertToPB(cert), nil
 }
 
-func (cas *CertificateAuthorityServerWrapper) GenerateOCSP(ctx context.Context, request *caPB.GenerateOCSPRequest) (*caPB.OCSPResponse, error) {
+func (cas *CertificateAuthorityServerWrapper) GenerateOCSP(ctx context.Context, req *caPB.GenerateOCSPRequest) (*caPB.OCSPResponse, error) {
+	if req.CertDER == nil || req.Status == nil || req.Reason == nil || req.RevokedAt == nil {
+		return nil, errIncompleteRequest
+	}
 	res, err := cas.inner.GenerateOCSP(ctx, core.OCSPSigningRequest{
-		CertDER:   request.CertDER,
-		Status:    *request.Status,
-		Reason:    revocation.Reason(*request.Reason),
-		RevokedAt: time.Unix(0, *request.RevokedAt),
+		CertDER:   req.CertDER,
+		Status:    *req.Status,
+		Reason:    revocation.Reason(*req.Reason),
+		RevokedAt: time.Unix(0, *req.RevokedAt),
 	})
 	if err != nil {
 		return nil, err
