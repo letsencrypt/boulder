@@ -11,6 +11,10 @@
     "keyFile": "../../test/grpc-creds/orphan-finder.boulder/key.pem"
   },
 
+  "ocspGeneratorService": {
+    "serverAddress": "ca.boulder:9096",
+    "timeout": "15s"
+  },
   "saService": {
     "serverAddress": "sa.boulder:9095",
     "timeout": "15s"

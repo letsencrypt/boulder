@@ -39,11 +39,12 @@ func TestOrphanFinder(t *testing.T) {
 	io.WriteString(f, fmt.Sprintf(template, precert.SerialNumber.Bytes(),
 		precert.Raw, cert.SerialNumber.Bytes(), cert.Raw))
 	f.Close()
-	out, err := exec.Command("../../bin/orphan-finder", "parse-ca-log",
+	cmd := exec.Command("../../bin/orphan-finder", "parse-ca-log",
 		"--config", "../../"+os.Getenv("BOULDER_CONFIG_DIR")+"/orphan-finder.json",
-		"--log-file", f.Name()).Output()
+		"--log-file", f.Name())
+	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("orphan finder failed (%q). Output was: %s", err, out)
+		t.Fatalf("orphan finder failed (%s). Output was: %s", err, out)
 	}
 	if !strings.Contains(string(out), "Found 1 precertificate orphans and added 1 to the database") {
 		t.Fatalf("Failed to insert orphaned precertificate. orphan-finder output was: %s", out)
@@ -53,8 +54,11 @@ func TestOrphanFinder(t *testing.T) {
 	}
 }
 
+// makeFakeCert a unique fake cert for each run of TestOrphanFinder to avoid duplicate
+// errors. This fake cert will have its issuer equal to the issuer we use in the
+// general integration test setup, and will be signed by that issuer key.
+// Otherwise, the request orphan-finder makes to sign OCSP would be rejected.
 func makeFakeCert(precert bool) (*x509.Certificate, error) {
-	// Generate a unique fake cert for each run to avoid duplicate errors.
 	serialBytes := make([]byte, 18)
 	_, err := rand.Read(serialBytes[:])
 	if err != nil {
