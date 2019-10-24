@@ -406,11 +406,11 @@ def test_expiration_mailer():
 
     urllib2.urlopen("http://localhost:9381/clear", data='')
     print get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
-        default_config_dir, no_reminder)
+        config_dir, no_reminder)
     print get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
-        default_config_dir, first_reminder)
+        config_dir, first_reminder)
     print get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
-        default_config_dir, last_reminder)
+        config_dir, last_reminder)
     resp = urllib2.urlopen("http://localhost:9381/count?to=%s" % email_addr)
     mailcount = int(resp.read())
     if mailcount != 2:
@@ -576,7 +576,7 @@ def test_admin_revoker_cert():
     # Revoke certificate by serial
     reset_akamai_purges()
     run("./bin/admin-revoker serial-revoke --config %s/admin-revoker.json %s %d" % (
-        default_config_dir, serial, 1))
+        config_dir, serial, 1))
     # Wait for OCSP response to indicate revocation took place
     ee_ocsp_url = "http://localhost:4002"
     verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "revoked")

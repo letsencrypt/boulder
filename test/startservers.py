@@ -9,11 +9,7 @@ import tempfile
 import threading
 import time
 
-from helpers import waitport
-
-default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
-if default_config_dir == '':
-    default_config_dir = 'test/config'
+from helpers import waitport, config_dir, CONFIG_NEXT
 
 processes = []
 
@@ -43,7 +39,7 @@ def run(cmd, race_detection, fakeclock):
     p.cmd = cmd
     return p
 
-def start(race_detection, fakeclock=None, config_dir=default_config_dir):
+def start(race_detection, fakeclock):
     """Return True if everything builds and starts.
 
     Give up and return False if anything fails to build, or dies at
@@ -63,7 +59,7 @@ def start(race_detection, fakeclock=None, config_dir=default_config_dir):
     # before any services that intend to send it RPCs. On shutdown they will be
     # killed in reverse order.
     progs = []
-    if config_dir.startswith("test/config-next"):
+    if CONFIG_NEXT:
         # Run the two 'remote' VAs
         progs.extend([
             [8011, './bin/boulder-remoteva --config %s' % os.path.join(config_dir, "va-remote-a.json")],

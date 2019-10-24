@@ -265,7 +265,7 @@ def main():
         setup_twenty_days_ago()
         startservers.stop()
 
-    if not startservers.start(race_detection=True):
+    if not startservers.start(race_detection=True, fakeclock=None):
         raise Exception("startservers failed")
 
     if args.run_chisel:
@@ -354,7 +354,7 @@ def check_balance():
                 % address)
 
 def run_cert_checker():
-    run("./bin/cert-checker -config %s/cert-checker.json" % default_config_dir)
+    run("./bin/cert-checker -config %s/cert-checker.json" % config_dir)
 
 if __name__ == "__main__":
     try:
