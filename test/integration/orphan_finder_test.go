@@ -51,8 +51,6 @@ func TestOrphanFinder(t *testing.T) {
 	if !strings.Contains(string(out), "Found 1 certificate orphans and added 1 to the database") {
 		t.Fatalf("Failed to insert orphaned certificate. orphan-finder output was: %s", out)
 	}
-
-	fmt.Println("SUccUUSSS")
 }
 
 func makeFakeCert(precert bool) (*x509.Certificate, error) {
