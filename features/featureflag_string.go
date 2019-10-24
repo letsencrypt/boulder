@@ -20,16 +20,16 @@ func _() {
 	_ = x[RevokeAtRA-9]
 	_ = x[NewAuthorizationSchema-10]
 	_ = x[DisableAuthz2Orders-11]
-	_ = x[CAAValidationMethods-12]
-	_ = x[CAAAccountURI-13]
-	_ = x[HeadNonceStatusOK-14]
-	_ = x[EarlyOrderRateLimit-15]
-	_ = x[EnforceMultiVA-16]
-	_ = x[MultiVAFullResults-17]
-	_ = x[RemoveWFE2AccountID-18]
-	_ = x[CheckRenewalFirst-19]
-	_ = x[MandatoryPOSTAsGET-20]
-	_ = x[FasterGetOrderForNames-21]
+	_ = x[EarlyOrderRateLimit-12]
+	_ = x[FasterGetOrderForNames-13]
+	_ = x[CAAValidationMethods-14]
+	_ = x[CAAAccountURI-15]
+	_ = x[HeadNonceStatusOK-16]
+	_ = x[EnforceMultiVA-17]
+	_ = x[MultiVAFullResults-18]
+	_ = x[RemoveWFE2AccountID-19]
+	_ = x[CheckRenewalFirst-20]
+	_ = x[MandatoryPOSTAsGET-21]
 	_ = x[AllowV1Registration-22]
 	_ = x[ParallelCheckFailedValidation-23]
 	_ = x[DeleteUnusedChallenges-24]
@@ -39,9 +39,9 @@ func _() {
 	_ = x[StripDefaultSchemePort-28]
 }
 
-const _FeatureFlag_name = "unusedPerformValidationRPCACME13KeyRolloverSimplifiedVAHTTPTLSSNIRevalidationAllowRenewalFirstRLSetIssuedNamesRenewalBitFasterRateLimitProbeCTLogsRevokeAtRANewAuthorizationSchemaDisableAuthz2OrdersCAAValidationMethodsCAAAccountURIHeadNonceStatusOKEarlyOrderRateLimitEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountIDCheckRenewalFirstMandatoryPOSTAsGETFasterGetOrderForNamesAllowV1RegistrationParallelCheckFailedValidationDeleteUnusedChallengesV1DisableNewValidationsPrecertificateOCSPPrecertificateRevocationStripDefaultSchemePort"
+const _FeatureFlag_name = "unusedPerformValidationRPCACME13KeyRolloverSimplifiedVAHTTPTLSSNIRevalidationAllowRenewalFirstRLSetIssuedNamesRenewalBitFasterRateLimitProbeCTLogsRevokeAtRANewAuthorizationSchemaDisableAuthz2OrdersEarlyOrderRateLimitFasterGetOrderForNamesCAAValidationMethodsCAAAccountURIHeadNonceStatusOKEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountIDCheckRenewalFirstMandatoryPOSTAsGETAllowV1RegistrationParallelCheckFailedValidationDeleteUnusedChallengesV1DisableNewValidationsPrecertificateOCSPPrecertificateRevocationStripDefaultSchemePort"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 26, 43, 59, 77, 96, 120, 135, 146, 156, 178, 197, 217, 230, 247, 266, 280, 298, 317, 334, 352, 374, 393, 422, 444, 467, 485, 509, 531}
+var _FeatureFlag_index = [...]uint16{0, 6, 26, 43, 59, 77, 96, 120, 135, 146, 156, 178, 197, 216, 238, 258, 271, 288, 302, 320, 339, 356, 374, 393, 422, 444, 467, 485, 509, 531}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

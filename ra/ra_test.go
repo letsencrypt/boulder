@@ -1120,9 +1120,8 @@ func TestNewOrderRateLimiting(t *testing.T) {
 	test.AssertNotError(t, err, "NewOrder for orderTwo failed after advancing clock")
 }
 
-// TestEarlyOrderRateLimiting tests that the EarlyOrderRateLimiting flag results
-// in NewOrder applying the certificates per name/per FQDN rate limits against
-// the order names.
+// TestEarlyOrderRateLimiting tests that NewOrder applies the certificates per
+// name/per FQDN rate limits against the order names.
 func TestEarlyOrderRateLimiting(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -1150,10 +1149,6 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 		},
 	}
 
-	// Start with the feature flag enabled.
-	err := features.Set(map[string]bool{"EarlyOrderRateLimit": true})
-	test.AssertNotError(t, err, "Failed to set EarlyOrderRateLimit feature flag")
-
 	// Request an order for the test domain
 	newOrder := &rapb.NewOrderRequest{
 		RegistrationID: &Registration.ID,
@@ -1162,7 +1157,7 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 
 	// With the feature flag enabled the NewOrder request should fail because of
 	// the CertificatesPerNamePolicy.
-	_, err = ra.NewOrder(ctx, newOrder)
+	_, err := ra.NewOrder(ctx, newOrder)
 	test.AssertError(t, err, "NewOrder did not apply cert rate limits with feature flag enabled")
 
 	// The err should be the expected rate limit error
@@ -1171,15 +1166,6 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 	test.Assert(t,
 		strings.HasPrefix(err.Error(), expectedErrPrefix),
 		fmt.Sprintf("expected error to have prefix %q got %q", expectedErrPrefix, err))
-
-	// Disable EarlyOrderRateLimit.
-	_ = features.Set(map[string]bool{"EarlyOrderRateLimit": false})
-
-	// The same NewOrder request should now succeed because EarlyOrderRateLimit
-	// isn't enabled and the CertificatesPerNamePolicy won't be enforced until
-	// finalization time.
-	_, err = ra.NewOrder(ctx, newOrder)
-	test.AssertNotError(t, err, "NewOrder applied cert rate limits with feature flag disabled")
 }
 
 func TestAuthzFailedRateLimiting(t *testing.T) {
