@@ -8,7 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc"
+
 	"github.com/jmhodges/clock"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -90,8 +93,10 @@ func (m *mockSA) GetPrecertificate(ctx context.Context, req *sapb.Serial) (*core
 
 type mockCA struct{}
 
-func (ca *mockCA) GenerateOCSP(ctx context.Context, xferObj core.OCSPSigningRequest) (ocsp []byte, err error) {
-	return []byte("HI"), nil
+func (ca *mockCA) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...grpc.CallOption) (*capb.OCSPResponse, error) {
+	return &capb.OCSPResponse{
+		Response: []byte("HI"),
+	}, nil
 }
 
 func checkNoErrors(t *testing.T) {

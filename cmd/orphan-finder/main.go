@@ -26,6 +26,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"google.golang.org/grpc"
 )
 
 var usageString = `
@@ -61,7 +62,7 @@ type certificateStorage interface {
 }
 
 type ocspGenerator interface {
-	GenerateOCSP(context.Context, core.OCSPSigningRequest) ([]byte, error)
+	GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...grpc.CallOption) (*capb.OCSPResponse, error)
 }
 
 // orphanType is a numeric identifier for the type of orphan being processed.
@@ -200,9 +201,10 @@ func storeParsedLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Log
 		return true, false, typ
 	}
 	// generate a fresh OCSP response
-	ocspResponse, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+	statusGood := string(core.OCSPStatusGood)
+	ocspResponse, err := ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		CertDER: der,
-		Status:  string(core.OCSPStatusGood),
+		Status:  &statusGood,
 	})
 	if err != nil {
 		logger.AuditErrf("Couldn't generate OCSP: %s, [%s]", err, line)
@@ -215,13 +217,13 @@ func storeParsedLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Log
 	issuedDate := cert.NotBefore.Add(backdateDuration)
 	switch typ {
 	case certOrphan:
-		_, err = sa.AddCertificate(ctx, der, regID, ocspResponse, &issuedDate)
+		_, err = sa.AddCertificate(ctx, der, regID, ocspResponse.Response, &issuedDate)
 	case precertOrphan:
 		issued := issuedDate.UnixNano()
 		_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:    der,
 			RegID:  &regID,
-			Ocsp:   ocspResponse,
+			Ocsp:   ocspResponse.Response,
 			Issued: &issued,
 		})
 	default:
@@ -235,7 +237,7 @@ func storeParsedLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Log
 	return true, true, typ
 }
 
-func setup(configFile string) (blog.Logger, core.StorageAuthority, core.CertificateAuthority) {
+func setup(configFile string) (blog.Logger, core.StorageAuthority, capb.OCSPGeneratorClient) {
 	configJSON, err := ioutil.ReadFile(configFile)
 	cmd.FailOnError(err, "Failed to read config file")
 	var conf config
@@ -255,7 +257,7 @@ func setup(configFile string) (blog.Logger, core.StorageAuthority, core.Certific
 
 	caConn, err := bgrpc.ClientSetup(conf.OCSPGeneratorService, tlsConfig, clientMetrics, cmd.Clock())
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
-	cac := bgrpc.NewCertificateAuthorityClient(nil, capb.NewOCSPGeneratorClient(caConn))
+	cac := capb.NewOCSPGeneratorClient(caConn)
 
 	backdateDuration = conf.Backdate.Duration
 	return logger, sac, cac
@@ -337,21 +339,22 @@ func main() {
 		// Because certificates are backdated we need to add the backdate duration
 		// to find the true issued time.
 		issuedDate := cert.NotBefore.Add(1 * backdateDuration)
-		ocspResponse, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+		statusGood := string(core.OCSPStatusGood)
+		ocspResponse, err := ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 			CertDER: der,
-			Status:  string(core.OCSPStatusGood),
+			Status:  &statusGood,
 		})
 		cmd.FailOnError(err, "Generating OCSP")
 
 		switch typ {
 		case certOrphan:
-			_, err = sa.AddCertificate(ctx, der, *regID, ocspResponse, &issuedDate)
+			_, err = sa.AddCertificate(ctx, der, *regID, ocspResponse.Response, &issuedDate)
 		case precertOrphan:
 			issued := issuedDate.UnixNano()
 			_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 				Der:    der,
 				RegID:  regID,
-				Ocsp:   ocspResponse,
+				Ocsp:   ocspResponse.Response,
 				Issued: &issued,
 			})
 		default:
