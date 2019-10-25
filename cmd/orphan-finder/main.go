@@ -248,6 +248,7 @@ func generateOCSP(ctx context.Context, ca ocspGenerator, certDER []byte) ([]byte
 	}
 	return ocspResponse.Response, nil
 }
+
 func setup(configFile string) (blog.Logger, core.StorageAuthority, capb.OCSPGeneratorClient) {
 	configJSON, err := ioutil.ReadFile(configFile)
 	cmd.FailOnError(err, "Failed to read config file")
