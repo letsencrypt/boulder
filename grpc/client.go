@@ -18,6 +18,9 @@ import (
 // on the provided *tls.Config.
 // It dials the remote service and returns a grpc.ClientConn if successful.
 func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientMetrics, clk clock.Clock) (*grpc.ClientConn, error) {
+	if c == nil {
+		return nil, errors.New("nil gRPC client config provided. JSON config is probably missing a fooService section.")
+	}
 	if c.ServerAddress == "" {
 		return nil, errors.New("ServerAddress must not be empty")
 	}
