@@ -22,10 +22,10 @@ tempdir = tempfile.mkdtemp()
 def stop():
     shutil.rmtree(tempdir)
 
-default_config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
-if default_config_dir == '':
-    default_config_dir = 'test/config'
-CONFIG_NEXT = default_config_dir.startswith("test/config-next")
+config_dir = os.environ.get('BOULDER_CONFIG_DIR', '')
+if config_dir == '':
+    raise Exception("BOULDER_CONFIG_DIR was not set")
+CONFIG_NEXT = config_dir.startswith("test/config-next")
 
 def fakeclock(date):
     return date.strftime("%a %b %d %H:%M:%S UTC %Y")
