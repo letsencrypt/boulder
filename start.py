@@ -16,7 +16,7 @@ import time
 sys.path.append('./test')
 import startservers
 
-if not startservers.start(race_detection=False):
+if not startservers.start(race_detection=False, fakeclock=None):
     sys.exit(1)
 try:
     os.wait()
