@@ -190,7 +190,7 @@ var (
 	errInvalidRLDH          = berrors.RejectedIdentifierError("Domain name contains a R-LDH label")
 	errTooManyWildcards     = berrors.MalformedError("Domain name has more than one wildcard")
 	errMalformedWildcard    = berrors.MalformedError("Domain name has a malformed wildcard label")
-	errICANNTLDWildcard     = berrors.MalformedError("Domain name is a wildcard for an ICANN TLD")
+	errICANNTLDWildcard     = berrors.MalformedError("Domain name is a wildcard for an ICANN TLD. Certificate can not be issued")
 	errWildcardNotSupported = berrors.MalformedError("Wildcard domain names are not supported")
 )
 
