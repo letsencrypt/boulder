@@ -175,10 +175,10 @@ func isDNSCharacter(ch byte) bool {
 var (
 	errInvalidIdentifier    = berrors.MalformedError("Invalid identifier type")
 	errNonPublic            = berrors.MalformedError("Domain name does not end with a valid public suffix (TLD)")
-	errICANNTLD             = berrors.MalformedError("Domain name is an ICANN TLD. Certificate can not be issued")
+	errICANNTLD             = berrors.MalformedError("Domain name is an ICANN TLD")
 	errPolicyForbidden      = berrors.RejectedIdentifierError("The ACME server can not issue a certificate for this domain name, because part of the name is forbidden by policy.")
 	errInvalidDNSCharacter  = berrors.MalformedError("Domain name contains an invalid character")
-	errNameTooLong          = berrors.MalformedError("Domain name is longer than 230 bytes, which is the maximum length supported by this server.")
+	errNameTooLong          = berrors.MalformedError("Domain name is longer than 230 bytes, which is the maximum length supported by this server")
 	errIPAddress            = berrors.MalformedError("The ACME server can not issue a certificate for an IP address")
 	errTooManyLabels        = berrors.MalformedError("Domain name has more than 10 labels (parts)")
 	errEmptyName            = berrors.MalformedError("Domain name is empty")
@@ -190,7 +190,7 @@ var (
 	errInvalidRLDH          = berrors.RejectedIdentifierError("Domain name contains a R-LDH label")
 	errTooManyWildcards     = berrors.MalformedError("Domain name has more than one wildcard")
 	errMalformedWildcard    = berrors.MalformedError("Domain name has a malformed wildcard label")
-	errICANNTLDWildcard     = berrors.MalformedError("Domain name is a wildcard for an ICANN TLD. Certificate can not be issued")
+	errICANNTLDWildcard     = berrors.MalformedError("Domain name is a wildcard for an ICANN TLD")
 	errWildcardNotSupported = berrors.MalformedError("Wildcard domain names are not supported")
 )
 
