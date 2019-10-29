@@ -185,7 +185,7 @@ var (
 	errNameEndsInDot        = berrors.MalformedError("Domain name ends in a period")
 	errTooFewLabels         = berrors.MalformedError("Domain name does not have enough labels (parts). At least two parts are required for a valid domain name")
 	errLabelTooShort        = berrors.MalformedError("Domain label is too short. Each part of the domain name must be between 1 and 63 octets (bytes) long")
-	errLabelTooLong         = berrors.MalformedError("Domain label too long. Each part of the domain name must be between 1 and 63 octets (bytes) long")
+	errLabelTooLong         = berrors.MalformedError("Domain has a label (component between dots) longer than 63 bytes")
 	errMalformedIDN         = berrors.MalformedError("Domain name contains malformed punycode")
 	errInvalidRLDH          = berrors.RejectedIdentifierError("Domain name contains a R-LDH label")
 	errTooManyWildcards     = berrors.MalformedError("Domain name has more than one wildcard")
