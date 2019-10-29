@@ -180,7 +180,7 @@ var (
 	errInvalidDNSCharacter  = berrors.MalformedError("Domain name contains invalid character")
 	errNameTooLong          = berrors.MalformedError("Domain name too long. (Note that certificates containing domain names over 230 octets long are not currently supported)")
 	errIPAddress            = berrors.MalformedError("Certificate issue for IP addresses is not supported")
-	errTooManyLabels        = berrors.MalformedError("Domain name has too many labels. Domain names can have up to 10 labels (parts)")
+	errTooManyLabels        = berrors.MalformedError("Domain name has more than 10 labels (parts)")
 	errEmptyName            = berrors.MalformedError("Domain name is empty")
 	errNameEndsInDot        = berrors.MalformedError("Domain name ends in a period")
 	errTooFewLabels         = berrors.MalformedError("Domain name does not have enough labels (parts). At least two parts are required for a valid domain name")
