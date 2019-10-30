@@ -187,7 +187,7 @@ var (
 	errLabelTooShort        = berrors.MalformedError("Domain name can not have two dots in a row")
 	errLabelTooLong         = berrors.MalformedError("Domain has a label (component between dots) longer than 63 bytes")
 	errMalformedIDN         = berrors.MalformedError("Domain name contains malformed punycode")
-	errInvalidRLDH          = berrors.RejectedIdentifierError("Domain name contains a R-LDH label")
+	errInvalidRLDH          = berrors.RejectedIdentifierError("Domain name contains an invalid label in a reserved format (R-LDH: '??--')")
 	errTooManyWildcards     = berrors.MalformedError("Domain name has more than one wildcard")
 	errMalformedWildcard    = berrors.MalformedError("Domain name contains an invalid wildcard. A wildcard is only permitted before the first dot in a domain name")
 	errICANNTLDWildcard     = berrors.MalformedError("Domain name is a wildcard for an ICANN TLD")
