@@ -2,7 +2,6 @@ package wfe2
 
 import (
 	"context"
-	"crypto"
 	"crypto/ecdsa"
 	"crypto/rsa"
 	"encoding/json"
@@ -27,29 +26,28 @@ import (
 // POST requests with a JWS body must have the following Content-Type header
 const expectedJWSContentType = "application/jose+json"
 
-var sigAlgErr = errors.New("no signature algorithms suitable for given key type")
-
-func sigAlgorithmForECDSAKey(key *ecdsa.PublicKey) (jose.SignatureAlgorithm, error) {
-	params := key.Params()
-	switch params.Name {
-	case "P-256":
-		return jose.ES256, nil
-	case "P-384":
-		return jose.ES384, nil
-	case "P-521":
-		return jose.ES512, nil
-	}
-	return "", sigAlgErr
-}
-
-func sigAlgorithmForKey(key crypto.PublicKey) (jose.SignatureAlgorithm, error) {
-	switch k := key.(type) {
+func sigAlgorithmForKey(key *jose.JSONWebKey) (jose.SignatureAlgorithm, error) {
+	switch k := key.Key.(type) {
 	case *rsa.PublicKey:
 		return jose.RS256, nil
 	case *ecdsa.PublicKey:
-		return sigAlgorithmForECDSAKey(k)
+		switch k.Params().Name {
+		case "P-256":
+			return jose.ES256, nil
+		case "P-384":
+			return jose.ES384, nil
+		case "P-521":
+			return jose.ES512, nil
+		}
 	}
-	return "", sigAlgErr
+	return "", errors.New("JWK contains unsupported key type (expected RSA, or ECDSA P-256, P-384, or P-521")
+}
+
+var supportedAlgs = map[string]bool{
+	string(jose.RS256): true,
+	string(jose.ES256): true,
+	string(jose.ES384): true,
+	string(jose.ES512): true,
 }
 
 // Check that (1) there is a suitable algorithm for the provided key based on its
@@ -58,22 +56,22 @@ func sigAlgorithmForKey(key crypto.PublicKey) (jose.SignatureAlgorithm, error) {
 // that algorithm. Precondition: parsedJws must have exactly one signature on
 // it.
 func checkAlgorithm(key *jose.JSONWebKey, parsedJWS *jose.JSONWebSignature) error {
-	algorithm, err := sigAlgorithmForKey(key.Key)
-	if err != nil {
-		// The only error that can returned is sigAlgErr which indicates
-		// that the key type is unsupported. In order to provide more context
-		// to the user we return a more verbose error.
+	sigHeaderAlg := parsedJWS.Signatures[0].Header.Algorithm
+	if !supportedAlgs[sigHeaderAlg] {
 		return fmt.Errorf(
-			"signature type '%s' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
+			"JWS signature header contains unsupported algorithm %q, expected one of RS256, ES256, ES384 or ES512",
 			parsedJWS.Signatures[0].Header.Algorithm,
 		)
 	}
-	jwsAlgorithm := parsedJWS.Signatures[0].Header.Algorithm
-	if jwsAlgorithm != string(algorithm) {
-		return fmt.Errorf("JWS key type %q does not match signature algorithm %q", algorithm, jwsAlgorithm)
+	expectedAlg, err := sigAlgorithmForKey(key)
+	if err != nil {
+		return err
 	}
-	if key.Algorithm != "" && key.Algorithm != string(algorithm) {
-		return fmt.Errorf("algorithm '%s' on JWK is unacceptable", key.Algorithm)
+	if sigHeaderAlg != string(expectedAlg) {
+		return fmt.Errorf("JWS signature header algorithm %q does not match expected algorithm %q for JWK", sigHeaderAlg, string(expectedAlg))
+	}
+	if key.Algorithm != "" && key.Algorithm != string(expectedAlg) {
+		return fmt.Errorf("JWK key header algorithm %q does not match expected algorithm %q for JWK", key.Algorithm, string(expectedAlg))
 	}
 	return nil
 }
