@@ -189,7 +189,7 @@ var (
 	errMalformedIDN         = berrors.MalformedError("Domain name contains malformed punycode")
 	errInvalidRLDH          = berrors.RejectedIdentifierError("Domain name contains a R-LDH label")
 	errTooManyWildcards     = berrors.MalformedError("Domain name has more than one wildcard")
-	errMalformedWildcard    = berrors.MalformedError("Domain name has a malformed wildcard label")
+	errMalformedWildcard    = berrors.MalformedError("Domain name contains an invalid wildcard. A wildcard is only permitted before the first dot in a domain name")
 	errICANNTLDWildcard     = berrors.MalformedError("Domain name is a wildcard for an ICANN TLD")
 	errWildcardNotSupported = berrors.MalformedError("Wildcard domain names are not supported")
 )
