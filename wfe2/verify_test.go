@@ -244,7 +244,7 @@ func TestCheckAlgorithm(t *testing.T) {
 		},
 		{
 			jose.JSONWebKey{
-				Key:       &dsa.PublicKey{},
+				Key: &dsa.PublicKey{},
 			},
 			jose.JSONWebSignature{
 				Signatures: []jose.Signature{
