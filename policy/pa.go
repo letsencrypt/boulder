@@ -160,6 +160,9 @@ const (
 	maxLabelLength         = 63
 	maxDNSIdentifierLength = 230
 )
+// The values of maxDNSIdentifierLength, maxLabelLength and maxLabels are hard coded
+// into the error messages errNameTooLong, errLabelTooLong and errTooManyLabels.
+// If their values change, the related error messages should be updated.
 
 var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,62}$")
 var punycodeRegexp = regexp.MustCompile("^xn--")
@@ -193,6 +196,11 @@ var (
 	errICANNTLDWildcard     = berrors.MalformedError("Domain name is a wildcard for an ICANN TLD")
 	errWildcardNotSupported = berrors.MalformedError("Wildcard domain names are not supported")
 )
+// In these error messages:
+//   230 is the value of maxDNSIdentifierLength
+//   63 is the value of maxLabelLength 
+//   10 is the value of maxLabels
+// If these values change, the related error messages should be updated.
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
 // identifier. It expects domains in id to be lowercase to prevent mismatched
