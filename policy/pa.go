@@ -176,7 +176,7 @@ var (
 	errInvalidIdentifier    = berrors.MalformedError("Invalid identifier type")
 	errNonPublic            = berrors.MalformedError("Domain name does not end with a valid public suffix (TLD)")
 	errICANNTLD             = berrors.MalformedError("Domain name is an ICANN TLD")
-	errPolicyForbidden      = berrors.RejectedIdentifierError("The ACME server can not issue a certificate for this domain name, because part of the name is forbidden by policy.")
+	errPolicyForbidden      = berrors.RejectedIdentifierError("The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy")
 	errInvalidDNSCharacter  = berrors.MalformedError("Domain name contains an invalid character")
 	errNameTooLong          = berrors.MalformedError("Domain name is longer than 230 bytes, which is the maximum length supported by this server")
 	errIPAddress            = berrors.MalformedError("The ACME server can not issue a certificate for an IP address")
