@@ -185,7 +185,7 @@ func TestRejectsNone(t *testing.T) {
 	if err == nil {
 		t.Fatalf("checkAlgorithm did not reject JWS with alg: 'none'")
 	}
-	if err.Error() != "signature type 'none' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512" {
+	if err.Error() != "JWS key type \"RS256\" does not match signature algorithm \"none\"" {
 		t.Fatalf("checkAlgorithm rejected JWS with alg: 'none', but for wrong reason: %#v", err)
 	}
 }
@@ -216,9 +216,9 @@ func TestRejectsHS256(t *testing.T) {
 	if err == nil {
 		t.Fatalf("checkAlgorithm did not reject JWS with alg: 'HS256'")
 	}
-	expected := "signature type 'HS256' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512"
+	expected := "JWS key type \"RS256\" does not match signature algorithm \"HS256\""
 	if err.Error() != expected {
-		t.Fatalf("checkAlgorithm rejected JWS with alg: 'none', but for wrong reason: got '%s', wanted %s", err.Error(), expected)
+		t.Fatalf("checkAlgorithm rejected JWS with alg: 'none', but for wrong reason: got %q, wanted %q", err.Error(), expected)
 	}
 }
 
@@ -232,7 +232,15 @@ func TestCheckAlgorithm(t *testing.T) {
 			jose.JSONWebKey{
 				Algorithm: "HS256",
 			},
-			jose.JSONWebSignature{},
+			jose.JSONWebSignature{
+				Signatures: []jose.Signature{
+					{
+						Header: jose.Header{
+							Algorithm: "HS256",
+						},
+					},
+				},
+			},
 			"no signature algorithms suitable for given key type",
 		},
 		{
@@ -286,7 +294,7 @@ func TestCheckAlgorithm(t *testing.T) {
 	for i, tc := range testCases {
 		err := checkAlgorithm(&tc.key, &tc.jws)
 		if tc.expectedErr != "" && err.Error() != tc.expectedErr {
-			t.Errorf("TestCheckAlgorithm %d: Expected '%s', got '%s'", i, tc.expectedErr, err)
+			t.Errorf("TestCheckAlgorithm %d: Expected %q, got %q", i, tc.expectedErr, err)
 		}
 	}
 }

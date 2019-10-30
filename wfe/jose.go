@@ -39,14 +39,14 @@ const (
 func checkAlgorithm(key *jose.JSONWebKey, parsedJws *jose.JSONWebSignature) (string, error) {
 	algorithm, err := algorithmForKey(key)
 	if err != nil {
-		return noAlgorithmForKey, err
+		return noAlgorithmForKey, fmt.Errorf(
+			"signature type '%s' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
+			parsedJws.Signatures[0].Header.Algorithm,
+		)
 	}
 	jwsAlgorithm := parsedJws.Signatures[0].Header.Algorithm
 	if jwsAlgorithm != algorithm {
-		return invalidJWSAlgorithm, fmt.Errorf(
-			"signature type '%s' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
-			jwsAlgorithm,
-		)
+		return invalidJWSAlgorithm, fmt.Errorf("JWS key type %q does not match signature algorithm %q", algorithm, jwsAlgorithm)
 	}
 	if key.Algorithm != "" && key.Algorithm != algorithm {
 		return invalidAlgorithmOnKey, fmt.Errorf("algorithm '%s' on JWK is unacceptable",

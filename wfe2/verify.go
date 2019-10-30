@@ -60,14 +60,17 @@ func sigAlgorithmForKey(key crypto.PublicKey) (jose.SignatureAlgorithm, error) {
 func checkAlgorithm(key *jose.JSONWebKey, parsedJWS *jose.JSONWebSignature) error {
 	algorithm, err := sigAlgorithmForKey(key.Key)
 	if err != nil {
-		return err
+		// The only error that can returned is sigAlgErr which indicates
+		// that the key type is unsupported. In order to provide more context
+		// to the user we return a more verbose error.
+		return fmt.Errorf(
+			"signature type '%s' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
+			parsedJWS.Signatures[0].Header.Algorithm,
+		)
 	}
 	jwsAlgorithm := parsedJWS.Signatures[0].Header.Algorithm
 	if jwsAlgorithm != string(algorithm) {
-		return fmt.Errorf(
-			"signature type '%s' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
-			jwsAlgorithm,
-		)
+		return fmt.Errorf("JWS key type %q does not match signature algorithm %q", algorithm, jwsAlgorithm)
 	}
 	if key.Algorithm != "" && key.Algorithm != string(algorithm) {
 		return fmt.Errorf("algorithm '%s' on JWK is unacceptable", key.Algorithm)
