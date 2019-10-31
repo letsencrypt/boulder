@@ -22,7 +22,7 @@ func algorithmForKey(key *jose.JSONWebKey) (string, error) {
 			return string(jose.ES512), nil
 		}
 	}
-	return "", fmt.Errorf("no signature algorithms suitable for given key type")
+	return "", fmt.Errorf("JWK contains unsupported key type (expected RSA, or ECDSA P-256, P-384, or P-521")
 }
 
 const (
@@ -31,26 +31,35 @@ const (
 	invalidAlgorithmOnKey = "WFE.Errors.InvalidAlgorithmOnKey"
 )
 
+var supportedAlgs = map[string]bool{
+	string(jose.RS256): true,
+	string(jose.ES256): true,
+	string(jose.ES384): true,
+	string(jose.ES512): true,
+}
+
 // Check that (1) there is a suitable algorithm for the provided key based on its
 // Golang type, (2) the Algorithm field on the JWK is either absent, or matches
 // that algorithm, and (3) the Algorithm field on the JWK is present and matches
-// that algorithm. Precondition: parsedJws must have exactly one signature on
+// that algorithm. Precondition: parsedJWS must have exactly one signature on
 // it. Returns stat name to increment if err is non-nil.
-func checkAlgorithm(key *jose.JSONWebKey, parsedJws *jose.JSONWebSignature) (string, error) {
-	algorithm, err := algorithmForKey(key)
+func checkAlgorithm(key *jose.JSONWebKey, parsedJWS *jose.JSONWebSignature) (string, error) {
+	sigHeaderAlg := parsedJWS.Signatures[0].Header.Algorithm
+	if !supportedAlgs[sigHeaderAlg] {
+		return invalidJWSAlgorithm, fmt.Errorf(
+			"JWS signature header contains unsupported algorithm %q, expected one of RS256, ES256, ES384 or ES512",
+			parsedJWS.Signatures[0].Header.Algorithm,
+		)
+	}
+	expectedAlg, err := algorithmForKey(key)
 	if err != nil {
 		return noAlgorithmForKey, err
 	}
-	jwsAlgorithm := parsedJws.Signatures[0].Header.Algorithm
-	if jwsAlgorithm != algorithm {
-		return invalidJWSAlgorithm, fmt.Errorf(
-			"signature type '%s' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
-			jwsAlgorithm,
-		)
+	if sigHeaderAlg != string(expectedAlg) {
+		return invalidJWSAlgorithm, fmt.Errorf("JWS signature header algorithm %q does not match expected algorithm %q for JWK", sigHeaderAlg, string(expectedAlg))
 	}
-	if key.Algorithm != "" && key.Algorithm != algorithm {
-		return invalidAlgorithmOnKey, fmt.Errorf("algorithm '%s' on JWK is unacceptable",
-			key.Algorithm)
+	if key.Algorithm != "" && key.Algorithm != string(expectedAlg) {
+		return invalidAlgorithmOnKey, fmt.Errorf("JWK key header algorithm %q does not match expected algorithm %q for JWK", key.Algorithm, string(expectedAlg))
 	}
 	return "", nil
 }

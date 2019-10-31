@@ -1,6 +1,7 @@
 package wfe
 
 import (
+	"crypto/dsa"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
@@ -28,7 +29,7 @@ func TestRejectsNone(t *testing.T) {
 	if prob == nil {
 		t.Fatalf("verifyPOST did not reject JWS with alg: 'none'")
 	}
-	if prob.Detail != "signature type 'none' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512" {
+	if prob.Detail != "JWS signature header contains unsupported algorithm \"none\", expected one of RS256, ES256, ES384 or ES512" {
 		t.Fatalf("verifyPOST rejected JWS with alg: 'none', but for wrong reason: %#v", prob)
 	}
 }
@@ -52,7 +53,7 @@ func TestRejectsHS256(t *testing.T) {
 	if prob == nil {
 		t.Fatalf("verifyPOST did not reject JWS with alg: 'HS256'")
 	}
-	expected := "signature type 'HS256' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512"
+	expected := "JWS signature header contains unsupported algorithm \"HS256\", expected one of RS256, ES256, ES384 or ES512"
 	if prob.Detail != expected {
 		t.Fatalf("verifyPOST rejected JWS with alg: 'none', but for wrong reason: got %q, wanted %q", prob, expected)
 	}
@@ -66,17 +67,7 @@ func TestCheckAlgorithm(t *testing.T) {
 		expectedStat string
 	}{
 		{
-			jose.JSONWebKey{
-				Algorithm: "HS256",
-			},
-			jose.JSONWebSignature{},
-			"no signature algorithms suitable for given key type",
-			"WFE.Errors.NoAlgorithmForKey",
-		},
-		{
-			jose.JSONWebKey{
-				Key: &rsa.PublicKey{},
-			},
+			jose.JSONWebKey{},
 			jose.JSONWebSignature{
 				Signatures: []jose.Signature{
 					{
@@ -86,25 +77,41 @@ func TestCheckAlgorithm(t *testing.T) {
 					},
 				},
 			},
-			"signature type 'HS256' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
-			"WFE.Errors.InvalidJWSAlgorithm",
+			"JWS signature header contains unsupported algorithm \"HS256\", expected one of RS256, ES256, ES384 or ES512",
+			invalidJWSAlgorithm,
 		},
 		{
 			jose.JSONWebKey{
-				Algorithm: "HS256",
+				Key: &dsa.PublicKey{},
+			},
+			jose.JSONWebSignature{
+				Signatures: []jose.Signature{
+					{
+						Header: jose.Header{
+							Algorithm: "ES512",
+						},
+					},
+				},
+			},
+			"JWK contains unsupported key type (expected RSA, or ECDSA P-256, P-384, or P-521",
+			noAlgorithmForKey,
+		},
+		{
+			jose.JSONWebKey{
+				Algorithm: "RS256",
 				Key:       &rsa.PublicKey{},
 			},
 			jose.JSONWebSignature{
 				Signatures: []jose.Signature{
 					{
 						Header: jose.Header{
-							Algorithm: "HS256",
+							Algorithm: "ES512",
 						},
 					},
 				},
 			},
-			"signature type 'HS256' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
-			"WFE.Errors.InvalidJWSAlgorithm",
+			"JWS signature header algorithm \"ES512\" does not match expected algorithm \"RS256\" for JWK",
+			invalidJWSAlgorithm,
 		},
 		{
 			jose.JSONWebKey{
@@ -120,8 +127,8 @@ func TestCheckAlgorithm(t *testing.T) {
 					},
 				},
 			},
-			"algorithm 'HS256' on JWK is unacceptable",
-			"WFE.Errors.InvalidAlgorithmOnKey",
+			"JWK key header algorithm \"HS256\" does not match expected algorithm \"RS256\" for JWK",
+			invalidAlgorithmOnKey,
 		},
 	}
 	for i, tc := range testCases {

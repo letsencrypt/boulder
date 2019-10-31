@@ -83,6 +83,7 @@ func AssertDeepEquals(t *testing.T, one interface{}, two interface{}) {
 // AssertMarshaledEquals marshals one and two to JSON, and then uses
 // the equality operator to measure them
 func AssertMarshaledEquals(t *testing.T, one interface{}, two interface{}) {
+	t.Helper()
 	oneJSON, err := json.Marshal(one)
 	AssertNotError(t, err, "Could not marshal 1st argument")
 	twoJSON, err := json.Marshal(two)
