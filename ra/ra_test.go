@@ -2070,7 +2070,7 @@ func TestNewOrder(t *testing.T) {
 		Names:          []string{"a"},
 	})
 	test.AssertError(t, err, "NewOrder with invalid names did not error")
-	test.AssertEquals(t, err.Error(), "Cannot issue for \"a\": DNS name does not have enough labels")
+	test.AssertEquals(t, err.Error(), "Cannot issue for \"a\": Domain name needs at least one dot")
 }
 
 // TestNewOrderLegacyAuthzReuse tests that a legacy acme v1 authorization from
