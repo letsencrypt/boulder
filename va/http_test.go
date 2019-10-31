@@ -307,6 +307,21 @@ func TestExtractRequestTarget(t *testing.T) {
 	}
 }
 
+// TestHTTPValidationDNSError attempts validation for a domain name that always
+// generates a DNS error, and checks that a log line with the detailed error is
+// generated.
+func TestHTTPValidationDNSError(t *testing.T) {
+	va, mockLog := setup(nil, 0, "", nil)
+
+	_, _, prob := va.fetchHTTP(ctx, "always.error", "/.well-known/acme-challenge/whatever")
+	test.AssertError(t, prob, "Expected validation fetch to fail")
+	matchingLines := mockLog.GetAllMatching(`read udp: some net error`)
+	if len(matchingLines) != 1 {
+		t.Errorf("Didn't see expected DNS error logged. Instead, got:\n%s",
+			strings.Join(mockLog.GetAllMatching(`.*`), "\n"))
+	}
+}
+
 func TestSetupHTTPValidation(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil)
 

@@ -149,6 +149,9 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 		wg.Add(1)
 		go func(name string, r *caaResult) {
 			r.records, r.err = va.dnsClient.LookupCAA(ctx, name)
+			if r.err != nil {
+				va.logDNSError(name, r.err)
+			}
 			wg.Done()
 		}(strings.Join(labels[i:], "."), &results[i])
 	}

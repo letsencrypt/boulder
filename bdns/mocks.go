@@ -74,6 +74,8 @@ func (mock *MockDNSClient) LookupHost(_ context.Context, hostname string) ([]net
 	}
 	if hostname == "always.error" {
 		return []net.IP{}, &DNSError{dns.TypeA, "always.error", &net.OpError{
+			Op:  "read",
+			Net: "udp",
 			Err: errors.New("some net error"),
 		}, -1}
 	}
