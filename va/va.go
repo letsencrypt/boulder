@@ -443,6 +443,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 // remote VAs but is more performant.
 func (va *ValidationAuthorityImpl) processRemoteResults(
 	domain string,
+	acctID int64,
 	challengeType string,
 	primaryResult *probs.ProblemDetails,
 	remoteResultsChan chan *remoteValidationResult,
@@ -503,7 +504,12 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 	// If we are using `features.MultiVAFullResults` then we haven't returned
 	// early and can now log the differential between what the primary VA saw and
 	// what all of the remote VAs saw.
-	va.logRemoteValidationDifferentials(domain, challengeType, primaryResult, remoteResults)
+	va.logRemoteValidationDifferentials(
+		domain,
+		acctID,
+		challengeType,
+		primaryResult,
+		remoteResults)
 
 	// Based on the threshold of good/bad return nil or a problem.
 	if good >= required {
@@ -523,6 +529,7 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 // that contains the primary VA result and the results each remote VA returned.
 func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 	domain string,
+	acctID int64,
 	challengeType string,
 	primaryResult *probs.ProblemDetails,
 	remoteResults []*remoteValidationResult) {
@@ -556,12 +563,14 @@ func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 
 	logOb := struct {
 		Domain          string
+		AccountID       int64
 		ChallengeType   string
 		PrimaryResult   *probs.ProblemDetails
 		RemoteSuccesses int
 		RemoteFailures  []*remoteValidationResult
 	}{
 		Domain:          domain,
+		AccountID:       acctID,
 		ChallengeType:   challengeType,
 		PrimaryResult:   primaryResult,
 		RemoteSuccesses: len(successes),
@@ -624,14 +633,26 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 			// differentials then collect and log the remote results in a separate go
 			// routine to avoid blocking the primary VA.
 			go func() {
-				_ = va.processRemoteResults(domain, string(challenge.Type), prob, remoteResults, len(va.remoteVAs))
+				_ = va.processRemoteResults(
+					domain,
+					authz.RegistrationID,
+					string(challenge.Type),
+					prob,
+					remoteResults,
+					len(va.remoteVAs))
 			}()
 			// Since prob was nil and we're not enforcing the results from
 			// `processRemoteResults` set the challenge status to valid so the
 			// validationTime metrics increment has the correct result label.
 			challenge.Status = core.StatusValid
 		} else if features.Enabled(features.EnforceMultiVA) {
-			remoteProb := va.processRemoteResults(domain, string(challenge.Type), prob, remoteResults, len(va.remoteVAs))
+			remoteProb := va.processRemoteResults(
+				domain,
+				authz.RegistrationID,
+				string(challenge.Type),
+				prob,
+				remoteResults,
+				len(va.remoteVAs))
 
 			// We consider the multi VA result skippable even though we are enforcing
 			// multi VA if the domain or the account has multi-VA disabled by policy.
