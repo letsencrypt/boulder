@@ -37,11 +37,12 @@ func _() {
 	_ = x[PrecertificateOCSP-26]
 	_ = x[PrecertificateRevocation-27]
 	_ = x[StripDefaultSchemePort-28]
+	_ = x[GetAuthorizationsPerf-29]
 }
 
-const _FeatureFlag_name = "unusedPerformValidationRPCACME13KeyRolloverSimplifiedVAHTTPTLSSNIRevalidationAllowRenewalFirstRLSetIssuedNamesRenewalBitFasterRateLimitProbeCTLogsRevokeAtRANewAuthorizationSchemaDisableAuthz2OrdersEarlyOrderRateLimitFasterGetOrderForNamesCAAValidationMethodsCAAAccountURIHeadNonceStatusOKEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountIDCheckRenewalFirstMandatoryPOSTAsGETAllowV1RegistrationParallelCheckFailedValidationDeleteUnusedChallengesV1DisableNewValidationsPrecertificateOCSPPrecertificateRevocationStripDefaultSchemePort"
+const _FeatureFlag_name = "unusedPerformValidationRPCACME13KeyRolloverSimplifiedVAHTTPTLSSNIRevalidationAllowRenewalFirstRLSetIssuedNamesRenewalBitFasterRateLimitProbeCTLogsRevokeAtRANewAuthorizationSchemaDisableAuthz2OrdersEarlyOrderRateLimitFasterGetOrderForNamesCAAValidationMethodsCAAAccountURIHeadNonceStatusOKEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountIDCheckRenewalFirstMandatoryPOSTAsGETAllowV1RegistrationParallelCheckFailedValidationDeleteUnusedChallengesV1DisableNewValidationsPrecertificateOCSPPrecertificateRevocationStripDefaultSchemePortGetAuthorizationsPerf"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 26, 43, 59, 77, 96, 120, 135, 146, 156, 178, 197, 216, 238, 258, 271, 288, 302, 320, 339, 356, 374, 393, 422, 444, 467, 485, 509, 531}
+var _FeatureFlag_index = [...]uint16{0, 6, 26, 43, 59, 77, 96, 120, 135, 146, 156, 178, 197, 216, 238, 258, 271, 288, 302, 320, 339, 356, 374, 393, 422, 444, 467, 485, 509, 531, 552}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

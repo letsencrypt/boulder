@@ -68,6 +68,9 @@ const (
 	// StripDefaultSchemePort enables stripping of default scheme ports from HTTP
 	// request Host headers
 	StripDefaultSchemePort
+	// GetAuthorizationsPerf enables a more performant GetAuthorizations2 query
+	// at the SA.
+	GetAuthorizationsPerf
 )
 
 // List of features and their default value, protected by fMu
@@ -101,6 +104,7 @@ var features = map[FeatureFlag]bool{
 	PrecertificateOCSP:            false,
 	PrecertificateRevocation:      false,
 	StripDefaultSchemePort:        false,
+	GetAuthorizationsPerf:         false,
 }
 
 var fMu = new(sync.RWMutex)
