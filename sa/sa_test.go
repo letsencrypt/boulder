@@ -1789,6 +1789,8 @@ func TestGetAuthorizations2(t *testing.T) {
 		return
 	}
 
+	_ = features.Set(map[string]bool{"GetAuthorizationsPerf": true})
+
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
