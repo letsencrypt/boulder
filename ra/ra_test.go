@@ -2927,7 +2927,7 @@ func TestFinalizeOrder(t *testing.T) {
 				},
 				Csr: policyForbidCSR,
 			},
-			ExpectedErrMsg: "Cannot issue for \"example.org\": Policy forbids issuing for name",
+			ExpectedErrMsg: "Cannot issue for \"example.org\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy",
 		},
 		{
 			Name: "Order with missing registration",
