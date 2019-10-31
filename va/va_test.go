@@ -739,7 +739,7 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 				&remoteValidationResult{Problem: nil, VAHostname: "remoteB"},
 				&remoteValidationResult{Problem: egProbB, VAHostname: "remoteC"},
 			},
-			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","ChallengeType":"blorpus-01","PrimaryResult":null,"RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"remoteA","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"VAHostname":"remoteC","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
+			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","PrimaryResult":null,"RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"remoteA","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"VAHostname":"remoteC","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
 		},
 		{
 			name:          "remote and primary differ (primary not nil)",
@@ -749,7 +749,7 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 				&remoteValidationResult{Problem: egProbB, VAHostname: "remoteB"},
 				&remoteValidationResult{Problem: nil, VAHostname: "remoteC"},
 			},
-			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","ChallengeType":"blorpus-01","PrimaryResult":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400},"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"remoteB","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
+			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","PrimaryResult":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400},"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"remoteB","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
 		},
 	}
 
@@ -758,7 +758,7 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 			mockLog.Clear()
 
 			localVA.logRemoteValidationDifferentials(
-				"example.com", "blorpus-01", tc.primaryResult, tc.remoteProbs)
+				"example.com", 1999, "blorpus-01", tc.primaryResult, tc.remoteProbs)
 
 			lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
 			if tc.expectedLog != "" {
