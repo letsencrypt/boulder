@@ -65,7 +65,7 @@ type config struct {
 		WeakKeyFile string
 
 		// BlockedKeyFile is the path to a YAML file containing Base64 encoded
-		// SHA256 hashes of DER encoded PKIX public keys that should be considered
+		// SHA256 hashes of SubjectPublicKeyInfo's that should be considered
 		// administratively blocked.
 		BlockedKeyFile string
 

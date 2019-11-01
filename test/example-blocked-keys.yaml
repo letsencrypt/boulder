@@ -1,8 +1,7 @@
 #
 # List of blocked keys
 #
-# Each blocked entry is a Base64 encoded SHA256 digest of a public key encoded
-# in DER form as a PKIX public key.
+# Each blocked entry is a Base64 encoded SHA256 hash of a SubjectPublicKeyInfo.
 #
 # Use the test/block-a-key utility to generate new additions.
 #
