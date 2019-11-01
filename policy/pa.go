@@ -145,6 +145,10 @@ func (pa *AuthorityImpl) processHostnamePolicy(policy blockedNamesPolicy) error 
 	return nil
 }
 
+// The values of maxDNSIdentifierLength, maxLabelLength and maxLabels are hard coded
+// into the error messages errNameTooLong, errLabelTooLong and errTooManyLabels.
+// If their values change, the related error messages should be updated.
+
 const (
 	maxLabels = 10
 
@@ -172,26 +176,32 @@ func isDNSCharacter(ch byte) bool {
 		ch == '.' || ch == '-'
 }
 
+// In these error messages:
+//   230 is the value of maxDNSIdentifierLength
+//   63 is the value of maxLabelLength
+//   10 is the value of maxLabels
+// If these values change, the related error messages should be updated.
+
 var (
 	errInvalidIdentifier    = berrors.MalformedError("Invalid identifier type")
-	errNonPublic            = berrors.MalformedError("Name does not end in a public suffix")
-	errICANNTLD             = berrors.MalformedError("Name is an ICANN TLD")
-	errPolicyForbidden      = berrors.RejectedIdentifierError("Policy forbids issuing for name")
-	errInvalidDNSCharacter  = berrors.MalformedError("Invalid character in DNS name")
-	errNameTooLong          = berrors.MalformedError("DNS name too long")
-	errIPAddress            = berrors.MalformedError("Issuance for IP addresses not supported")
-	errTooManyLabels        = berrors.MalformedError("DNS name has too many labels")
-	errEmptyName            = berrors.MalformedError("DNS name was empty")
-	errNameEndsInDot        = berrors.MalformedError("DNS name ends in a period")
-	errTooFewLabels         = berrors.MalformedError("DNS name does not have enough labels")
-	errLabelTooShort        = berrors.MalformedError("DNS label is too short")
-	errLabelTooLong         = berrors.MalformedError("DNS label is too long")
-	errMalformedIDN         = berrors.MalformedError("DNS label contains malformed punycode")
-	errInvalidRLDH          = berrors.RejectedIdentifierError("DNS name contains a R-LDH label")
-	errTooManyWildcards     = berrors.MalformedError("DNS name had more than one wildcard")
-	errMalformedWildcard    = berrors.MalformedError("DNS name had a malformed wildcard label")
-	errICANNTLDWildcard     = berrors.MalformedError("DNS name was a wildcard for an ICANN TLD")
-	errWildcardNotSupported = berrors.MalformedError("Wildcard names not supported")
+	errNonPublic            = berrors.MalformedError("Domain name does not end with a valid public suffix (TLD)")
+	errICANNTLD             = berrors.MalformedError("Domain name is an ICANN TLD")
+	errPolicyForbidden      = berrors.RejectedIdentifierError("The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy")
+	errInvalidDNSCharacter  = berrors.MalformedError("Domain name contains an invalid character")
+	errNameTooLong          = berrors.MalformedError("Domain name is longer than 230 bytes, which is the maximum length supported by this server")
+	errIPAddress            = berrors.MalformedError("The ACME server can not issue a certificate for an IP address")
+	errTooManyLabels        = berrors.MalformedError("Domain name has more than 10 labels (parts)")
+	errEmptyName            = berrors.MalformedError("Domain name is empty")
+	errNameEndsInDot        = berrors.MalformedError("Domain name ends in a dot")
+	errTooFewLabels         = berrors.MalformedError("Domain name needs at least one dot")
+	errLabelTooShort        = berrors.MalformedError("Domain name can not have two dots in a row")
+	errLabelTooLong         = berrors.MalformedError("Domain has a label (component between dots) longer than 63 bytes")
+	errMalformedIDN         = berrors.MalformedError("Domain name contains malformed punycode")
+	errInvalidRLDH          = berrors.RejectedIdentifierError("Domain name contains an invalid label in a reserved format (R-LDH: '??--')")
+	errTooManyWildcards     = berrors.MalformedError("Domain name has more than one wildcard")
+	errMalformedWildcard    = berrors.MalformedError("Domain name contains an invalid wildcard. A wildcard is only permitted before the first dot in a domain name")
+	errICANNTLDWildcard     = berrors.MalformedError("Domain name is a wildcard for an ICANN TLD")
+	errWildcardNotSupported = berrors.MalformedError("Wildcard domain names are not supported")
 )
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
