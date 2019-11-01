@@ -14,12 +14,16 @@ import (
 )
 
 const usageHelp = `
-block-a-key is utility tool for generating a Base64 encoded SHA256 digest of
-a certificate or JWK public key in DER encoded PKIX subject public key form.
+block-a-key is utility tool for generating a SHA256 hash of the SubjectPublicKeyInfo
+from a certificate or a synthetic SubjectPublicKeyInfo generated from a JWK public key.
+It outputs the Base64 encoding of that hash.
 
 The produced encoded digest can be used with Boulder's key blocklist to block
 any ACME account creation or certificate requests that use the same public
 key.
+
+If you already have an SPKI hash, and it's a SHA256 hash, you can add it directly
+to the key blocklist. If it's in hex form you'll need to convert it to base64 first.
 
 installation:
   go install github.com/letsencrypt/boulder/test/block-a-key/...
