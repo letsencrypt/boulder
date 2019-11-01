@@ -145,7 +145,6 @@ func (pa *AuthorityImpl) processHostnamePolicy(policy blockedNamesPolicy) error 
 	return nil
 }
 
-
 // The values of maxDNSIdentifierLength, maxLabelLength and maxLabels are hard coded
 // into the error messages errNameTooLong, errLabelTooLong and errTooManyLabels.
 // If their values change, the related error messages should be updated.
@@ -176,7 +175,6 @@ func isDNSCharacter(ch byte) bool {
 		('0' <= ch && ch <= '9') ||
 		ch == '.' || ch == '-'
 }
-
 
 // In these error messages:
 //   230 is the value of maxDNSIdentifierLength
