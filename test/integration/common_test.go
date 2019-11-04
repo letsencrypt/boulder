@@ -18,6 +18,14 @@ import (
 	"github.com/eggsampler/acme/v2"
 )
 
+func init() {
+	// Go tests get run in the directory their source code lives in. For these
+	// test cases, that would be "test/integration." However, it's easier to
+	// reference test data and config files for integration tests relative to the
+	// root of the Boulder repo, so we run all of these tests from there instead.
+	os.Chdir("../../")
+}
+
 var (
 	OIDExtensionCTPoison = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 3}
 )
