@@ -11,13 +11,13 @@ import (
 )
 
 // blockedKeys is a type for maintaining a map of Base64 encoded SHA256 hashes
-// of DER encoded PKIX public keys that should be considered blocked.
+// of SubjectPublicKeyInfo's that should be considered blocked.
 // blockedKeys are created by using loadBlockedKeysList.
 type blockedKeys map[string]bool
 
 // blocked checks if the given public key is considered administratively
-// blocked based on a Base64 encoded SHA256 hash of the DER encoded PKIX public
-// key. Important: blocked should not be called except on a blockedKeys instance
+// blocked based on a Base64 encoded SHA256 hash of the SubjectPublicKeyInfo.
+// Important: blocked should not be called except on a blockedKeys instance
 // returned from loadBlockedKeysList.
 // function should not be used until after `loadBlockedKeysList` has returned.
 func (b blockedKeys) blocked(key crypto.PublicKey) (bool, error) {
@@ -34,7 +34,7 @@ func (b blockedKeys) blocked(key crypto.PublicKey) (bool, error) {
 
 // loadBlockedKeysList creates a blockedKeys object that can be used to check if
 // a key is blocked. It creates a lookup map from a list of Base64 encoded
-// SHA256 digest of a DER encoded PKIX public key hashes in the input YAML file
+// SHA256 hashes of SubjectPublicKeyInfo's in the input YAML file
 // with the expected format:
 //
 // ```
