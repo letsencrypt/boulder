@@ -17,6 +17,10 @@ type DNSError struct {
 	rCode      int
 }
 
+func (d DNSError) Underlying() error {
+	return d.underlying
+}
+
 func (d DNSError) Error() string {
 	var detail string
 	if d.underlying != nil {
