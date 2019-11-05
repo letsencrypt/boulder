@@ -39,8 +39,8 @@ func TestOrphanFinder(t *testing.T) {
 	io.WriteString(f, fmt.Sprintf(template, precert.SerialNumber.Bytes(),
 		precert.Raw, cert.SerialNumber.Bytes(), cert.Raw))
 	f.Close()
-	cmd := exec.Command("../../bin/orphan-finder", "parse-ca-log",
-		"--config", "../../"+os.Getenv("BOULDER_CONFIG_DIR")+"/orphan-finder.json",
+	cmd := exec.Command("./bin/orphan-finder", "parse-ca-log",
+		"--config", "./"+os.Getenv("BOULDER_CONFIG_DIR")+"/orphan-finder.json",
 		"--log-file", f.Name())
 	out, err := cmd.Output()
 	if err != nil {
@@ -70,7 +70,7 @@ func makeFakeCert(precert bool) (*x509.Certificate, error) {
 	if err != nil {
 		return nil, err
 	}
-	issuerKeyBytes, err := ioutil.ReadFile("../test-ca.key")
+	issuerKeyBytes, err := ioutil.ReadFile("test/test-ca.key")
 	if err != nil {
 		return nil, err
 	}
