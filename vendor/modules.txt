@@ -2,7 +2,7 @@
 github.com/beeker1121/goque
 # github.com/beorn7/perks v0.0.0-20160229213445-3ac7bf7a47d1
 github.com/beorn7/perks/quantile
-# github.com/cloudflare/cfssl v0.0.0-20190716004220-2185c182e6ba
+# github.com/cloudflare/cfssl v1.4.0
 github.com/cloudflare/cfssl/auth
 github.com/cloudflare/cfssl/certdb
 github.com/cloudflare/cfssl/config
@@ -18,7 +18,7 @@ github.com/cloudflare/cfssl/signer
 github.com/cloudflare/cfssl/signer/local
 # github.com/eggsampler/acme/v2 v2.0.1
 github.com/eggsampler/acme/v2
-# github.com/go-sql-driver/mysql v0.0.0-20170715192408-3955978caca4
+# github.com/go-sql-driver/mysql v1.3.1-0.20170715192408-3955978caca4
 github.com/go-sql-driver/mysql
 # github.com/golang/mock v1.2.0
 github.com/golang/mock/gomock
@@ -31,7 +31,7 @@ github.com/golang/protobuf/ptypes/duration
 github.com/golang/protobuf/ptypes/timestamp
 # github.com/golang/snappy v0.0.0-20170215233205-553a64147049
 github.com/golang/snappy
-# github.com/google/certificate-transparency-go v0.0.0-20181127102053-c25855a82c75
+# github.com/google/certificate-transparency-go v1.0.22-0.20181127102053-c25855a82c75
 github.com/google/certificate-transparency-go
 github.com/google/certificate-transparency-go/asn1
 github.com/google/certificate-transparency-go/client
@@ -123,7 +123,7 @@ golang.org/x/net/ipv6
 golang.org/x/net/trace
 # golang.org/x/sys v0.0.0-20190416152802-12500544f89f
 golang.org/x/sys/unix
-# golang.org/x/text v0.3.0
+# golang.org/x/text v0.3.2
 golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
