@@ -41,7 +41,7 @@ require (
 	golang.org/x/text v0.3.2
 	google.golang.org/genproto v0.0.0-20190415143225-d1146b9035b9 // indirect
 	google.golang.org/grpc v1.20.0
-	gopkg.in/go-gorp/gorp.v2 v2.0.0-20180410155428-6032c66e0f5f
+	gopkg.in/go-gorp/gorp.v2 v2.0.1-0.20180410155428-6032c66e0f5f
 	gopkg.in/square/go-jose.v2 v2.4.0
 	gopkg.in/yaml.v2 v2.2.2
 )
