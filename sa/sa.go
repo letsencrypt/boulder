@@ -1477,7 +1477,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 	authz2IDMap := map[int64]bool{}
 	// Once the old authorization storage format fallback is removed we don't need
 	// this length check as if there are none returned we can just return immediately.
-	if features.Enabled(features.GetAuthorizationsPerf) && len(authzModels) > 0 {
+	if features.Enabled(features.CheckForACMEV1Authz) && features.Enabled(features.GetAuthorizationsPerf) && len(authzModels) > 0 {
 		// Previously we used a JOIN on the orderToAuthz2 table in order to make sure
 		// we only returned authorizations created using the ACME v2 API. Each time an
 		// order is created a pivot row (order ID + authz ID) is added to the
@@ -1512,7 +1512,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 
 	authzModelMap := make(map[string]authz2Model)
 	for _, am := range authzModels {
-		if _, present := authz2IDMap[am.ID]; features.Enabled(features.GetAuthorizationsPerf) && !present {
+		if _, present := authz2IDMap[am.ID]; features.Enabled(features.CheckForACMEV1Authz) && features.Enabled(features.GetAuthorizationsPerf) && !present {
 			continue
 		}
 		if existing, present := authzModelMap[am.IdentifierValue]; !present ||

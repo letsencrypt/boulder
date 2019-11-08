@@ -71,6 +71,10 @@ const (
 	// GetAuthorizationsPerf enables a more performant GetAuthorizations2 query
 	// at the SA.
 	GetAuthorizationsPerf
+	// Run a (potentially expensive) check during pending
+	// authorization reuse to make sure ACMEv1 authzs can't be reused
+	// in ACMEv2 orders.
+	CheckForACMEV1Authz
 )
 
 // List of features and their default value, protected by fMu
@@ -105,6 +109,7 @@ var features = map[FeatureFlag]bool{
 	PrecertificateRevocation:      false,
 	StripDefaultSchemePort:        false,
 	GetAuthorizationsPerf:         false,
+	CheckForACMEV1Authz:           true,
 }
 
 var fMu = new(sync.RWMutex)

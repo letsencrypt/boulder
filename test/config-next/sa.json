@@ -24,6 +24,7 @@
       ]
     },
     "features": {
+      "CheckForACMEV1Authz": false,
       "DeleteUnusedChallenges": true,
       "FasterGetOrderForNames": true
     }
