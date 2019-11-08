@@ -55,15 +55,21 @@ func ctGetRejections(port int) ([]string, error) {
 }
 
 // ctFindRejection returns a parsed x509.Certificate matching the given domains
-// from the base64 certificates the CT test server rejected. If no rejected
+// from the base64 certificates any CT test server rejected. If no rejected
 // certificate matching the provided domains is found an error is returned.
-func ctFindRejection(port int, domains []string) (*x509.Certificate, error) {
+func ctFindRejection(domains []string) (*x509.Certificate, error) {
+	// Collect up rejections from all of the ctSrvPorts
+	var rejections []string
+	for _, port := range ctSrvPorts {
+		r, err := ctGetRejections(port)
+		if err != nil {
+			continue
+		}
+		rejections = append(rejections, r...)
+	}
+
 	// Parse each rejection cert
 	var cert *x509.Certificate
-	rejections, err := ctGetRejections(port)
-	if err != nil {
-		return nil, err
-	}
 RejectionLoop:
 	for _, r := range rejections {
 		precertDER, err := base64.StdEncoding.DecodeString(r)
