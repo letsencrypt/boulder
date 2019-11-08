@@ -73,7 +73,8 @@ const (
 	GetAuthorizationsPerf
 	// Run a (potentially expensive) check during pending
 	// authorization reuse to make sure ACMEv1 authzs can't be reused
-	// in ACMEv2 orders.
+	// in ACMEv2 orders. Note: This flag should only be set to false when
+	// GetAuthorizationsPerf is true.
 	CheckForACMEV1Authz
 )
 
