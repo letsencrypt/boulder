@@ -32,6 +32,7 @@ func isPrecert(cert *x509.Certificate) bool {
 // certificate can be revoked using all of the available RFC 8555 revocation
 // authentication mechansims.
 func TestPrecertificateRevocation(t *testing.T) {
+	t.Parallel()
 	// This test is gated on the PrecertificateRevocation feature flag.
 	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
 		return
