@@ -48,7 +48,7 @@ def run_go_tests(filterPattern=None):
     cmdLine = [ "go", "test", ]
     if filterPattern is not None and filterPattern != "":
         cmdLine = cmdLine + ["--test.run", filterPattern]
-    cmdLine = cmdLine + ["-tags", "integration", "-count=1", "./test/integration"]
+    cmdLine = cmdLine + ["-tags", "integration", "-count=1", "-race", "./test/integration"]
     return subprocess.check_call(cmdLine, shell=False, stderr=subprocess.STDOUT)
 
 def run_expired_authz_purger():
