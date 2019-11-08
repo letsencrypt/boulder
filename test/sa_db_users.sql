@@ -66,6 +66,11 @@ GRANT SELECT,DELETE ON certificates TO 'janitor'@'localhost';
 GRANT SELECT,DELETE ON certificateStatus TO 'janitor'@'localhost';
 GRANT SELECT,DELETE ON certificatesPerName TO 'janitor'@'localhost';
 GRANT SELECT,DELETE ON sctReceipts TO 'janitor'@'localhost';
+GRANT SELECT,DELETE ON orders TO 'janitor'@'localhost';
+GRANT SELECT,DELETE ON requestedNames TO 'janitor'@'localhost';
+GRANT SELECT,DELETE ON orderFqdnSets TO 'janitor'@'localhost';
+GRANT SELECT,DELETE ON orderToAuthz2 TO 'janitor'@'localhost';
+GRANT SELECT,DELETE ON orderToAuthz TO 'janitor'@'localhost';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';

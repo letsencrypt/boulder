@@ -5,7 +5,7 @@ import (
 	"gopkg.in/go-gorp/gorp.v2"
 )
 
-type transaction interface {
+type Transaction interface {
 	dbOneSelector
 	dbInserter
 	dbSelectExecer
@@ -14,14 +14,21 @@ type transaction interface {
 	Update(...interface{}) (int64, error)
 }
 
-// txFunc represents a function that does work in the context of a transaction.
-type txFunc func(transaction) (interface{}, error)
+type DatabaseMap interface {
+	dbOneSelector
+	dbInserter
+	dbSelectExecer
+	Begin() (*gorp.Transaction, error)
+}
 
-// withTransaction runs the given function in a transaction, rolling back if it
+// txFunc represents a function that does work in the context of a transaction.
+type txFunc func(Transaction) (interface{}, error)
+
+// WithTransaction runs the given function in a transaction, rolling back if it
 // returns an error and committing if not. The provided context is also attached
-// to the transaction. withTransaction also passes through a value returned by
+// to the transaction. WithTransaction also passes through a value returned by
 // `f`, if there is no error.
-func withTransaction(ctx context.Context, dbMap *gorp.DbMap, f txFunc) (interface{}, error) {
+func WithTransaction(ctx context.Context, dbMap DatabaseMap, f txFunc) (interface{}, error) {
 	tx, err := dbMap.Begin()
 	if err != nil {
 		return nil, err

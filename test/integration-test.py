@@ -98,7 +98,7 @@ def run_janitor():
     e.setdefault("FAKECLOCK", fakeclock(target_time))
 
     # Note: Must use exec here so that killing this process kills the command.
-    cmdline = "exec ./bin/boulder-janitor --config {0}/janitor.json"
+    cmdline = "exec ./bin/boulder-janitor --config {0}/janitor.json".format(config_dir)
     p = subprocess.Popen(cmdline, shell=True, env=e)
 
     # Wait for the janitor to come up

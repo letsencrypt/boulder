@@ -29,6 +29,14 @@
         "workSleep": "500ms",
         "parallelism": 2,
         "maxDPS": 50
+    },
+    "orders": {
+        "enabled": true,
+        "gracePeriod": "169h",
+        "batchSize": 100,
+        "workSleep": "500ms",
+        "parallelism": 2,
+        "maxDPS": 50
     }
   }
 }

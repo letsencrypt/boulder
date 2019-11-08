@@ -10,6 +10,7 @@ import (
 	"github.com/jmhodges/clock"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
+	"gopkg.in/go-gorp/gorp.v2"
 )
 
 func setup() (*blog.Mock, clock.FakeClock) {
@@ -60,6 +61,18 @@ func (m mockDB) Select(result interface{}, query string, args ...interface{}) ([
 	}
 
 	return nil, m.errResult
+}
+
+func (m mockDB) SelectOne(interface{}, string, ...interface{}) error {
+	return errors.New("not implemented")
+}
+
+func (m mockDB) Insert(...interface{}) error {
+	return errors.New("not implemented")
+}
+
+func (m mockDB) Begin() (*gorp.Transaction, error) {
+	return nil, errors.New("not implemented")
 }
 
 func TestGetWork(t *testing.T) {
@@ -154,24 +167,29 @@ func TestDeleteResource(t *testing.T) {
 		expectedExecArg: testID,
 	}
 
+	// create a batchedDBJob with the simpleResourceDelete function as the
+	// deleteHandler
 	job := &batchedDBJob{
 		db:    testDB,
 		log:   log,
 		table: table,
 	}
+	// Normally this would be set when deleteHandler is nil inside of the janitor
+	// newJobs function.
+	job.deleteHandler = job.simpleResourceDelete
 
 	// Mock Exec() to return a non-nil error result
 	testDB.errResult = errors.New("database is on vacation")
-	err := job.deleteResource(testID)
+	err := job.deleteHandler(testID)
 	// We expect an err result back
-	test.AssertError(t, err, "no error returned from deleteResource with bad DB")
+	test.AssertError(t, err, "no error returned from deleteHandler with bad DB")
 	// We expect no deletes to have been tracked in the deletedStat
 	test.AssertEquals(t, test.CountCounterVec("table", "certificates", deletedStat), 0)
 
-	// With the mock error removed we expect no error returned from deleteResource
+	// With the mock error removed we expect no error returned from simpleDeleteResource
 	testDB.errResult = nil
-	err = job.deleteResource(testID)
-	test.AssertNotError(t, err, "unexpected error from deleteResource")
+	err = job.deleteHandler(testID)
+	test.AssertNotError(t, err, "unexpected error from deleteHandler")
 	// We expect a delete to have been tracked in the deletedStat
 	test.AssertEquals(t, test.CountCounterVec("table", "certificates", deletedStat), 1)
 }
@@ -187,6 +205,18 @@ func (db slowDB) Select(result interface{}, _ string, _ ...interface{}) ([]inter
 	return nil, nil
 }
 
+func (db slowDB) SelectOne(interface{}, string, ...interface{}) error {
+	return errors.New("not implemented")
+}
+
+func (db slowDB) Insert(...interface{}) error {
+	return errors.New("Not implemented")
+}
+
+func (db slowDB) Begin() (*gorp.Transaction, error) {
+	return nil, errors.New("Not implemented")
+}
+
 func TestCleanResource(t *testing.T) {
 	log, _ := setup()
 
@@ -200,6 +230,9 @@ func TestCleanResource(t *testing.T) {
 		// Start with a parallelism of 1
 		parallelism: 1,
 	}
+	// Normally this would be set when deleteHandler is nil inside of the janitor
+	// newJobs function.
+	job.deleteHandler = job.simpleResourceDelete
 
 	busyWork := func() <-chan int64 {
 		work := make(chan int64, 2)
@@ -272,4 +305,70 @@ func TestCleanResource(t *testing.T) {
 	// Both rows should have been deleted
 	matches = log.GetAllMatching(expectedLog)
 	test.AssertEquals(t, len(matches), 1)
+}
+
+func TestBatchedDBJobValid(t *testing.T) {
+	testCases := []struct {
+		name        string
+		j           batchedDBJob
+		expectedErr error
+	}{
+		{
+			name:        "no table",
+			j:           batchedDBJob{},
+			expectedErr: errNoTable,
+		},
+		{
+			name: "no purgeBefore",
+			j: batchedDBJob{
+				table: "chef's",
+			},
+			expectedErr: errNoPurgeBefore,
+		},
+		{
+			name: "no batchSize",
+			j: batchedDBJob{
+				table:       "chef's",
+				purgeBefore: time.Second,
+			},
+			expectedErr: errNoBatchSize,
+		},
+		{
+			name: "no parallelism",
+			j: batchedDBJob{
+				table:       "chef's",
+				purgeBefore: time.Second,
+				batchSize:   1,
+			},
+			expectedErr: errNoParallelism,
+		},
+		{
+			name: "no workQuery",
+			j: batchedDBJob{
+				table:       "chef's",
+				purgeBefore: time.Second,
+				batchSize:   1,
+				parallelism: 1,
+			},
+			expectedErr: errNoWorkQuery,
+		},
+		{
+			name: "valid",
+			j: batchedDBJob{
+				table:       "chef's",
+				purgeBefore: time.Second,
+				batchSize:   1,
+				parallelism: 1,
+				workQuery:   "GET food FROM kitchen",
+			},
+			expectedErr: nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.j.valid()
+			test.AssertEquals(t, err, tc.expectedErr)
+		})
+	}
 }

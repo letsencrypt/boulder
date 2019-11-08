@@ -70,6 +70,9 @@ type Config struct {
 
 		// CertificatesPerName describes a cleanup job for the certificatesPerName table.
 		CertificatesPerName CleanupConfig
+
+		// TODO(@cpu): Docstring this
+		Orders CleanupConfig
 	}
 }
 
