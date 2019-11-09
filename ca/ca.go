@@ -412,16 +412,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 			core.SerialToString(cert.SerialNumber), cn, err)
 	}
 
-	// We use time.Now() rather than ca.clk.Now() here as we use openssl
-	// to verify the validity of the OCSP responses we generate during testing
-	// and openssl doesn't understand our concept of fake time so it thinks
-	// our responses are expired when we are doing things with our fake clock
-	// time set in the past. Since we don't rely on fake clock time for any
-	// OCSP unit tests always using the real time doesn't cause any problems.
-	// Currently the only integration test case that triggers this is
-	// ocsp_exp_unauth_setup, but any other integration test introduced that
-	// sets the fake clock into the past and verifies OCSP will also do so.
-	now := time.Now().Truncate(time.Hour)
+	now := ca.clk.Now().Truncate(time.Hour)
 	tbsResponse := ocsp.Response{
 		Status:       ocspStatusToCode[xferObj.Status],
 		SerialNumber: cert.SerialNumber,

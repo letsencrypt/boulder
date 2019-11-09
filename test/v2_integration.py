@@ -1173,6 +1173,25 @@ def test_auth_deactivation_v2():
         raise Exception("unexpected authorization status")
 
 
+def check_ocsp_successful(cert_file, issuer_file, url):
+    """
+    This function checks if an OCSP response was successful, but doesn't verify
+    the signature or timestamp. This is useful when simulating the past, so we
+    don't incorrectly reject a response for being in the past.
+    """
+    ocsp_request = make_ocsp_req(cert_file, issuer_file)
+    responses = fetch_ocsp(ocsp_request, url)
+    # An unauthorized response (for instance, if the OCSP responder doesn't know
+    # about this cert) will just be 30 03 0A 01 06. A "good" or "revoked"
+    # response will contain, among other things, the id-pkix-ocsp-basic OID
+    # identifying the response type. We look for that OID to confirm we got a
+    # succesful response.
+    expected = bytearray.fromhex("06 09 2B 06 01 05 05 07 30 01 01")
+    for resp in responses:
+        if not expected in bytearray(resp):
+            raise Exception("Did not receive successful OCSP response: %s doesn't contain %s" %
+                (base64.b64encode(resp), base64.b64encode(expected)))
+
 expired_cert_name = ""
 @register_six_months_ago
 def ocsp_exp_unauth_setup():
@@ -1184,7 +1203,11 @@ def ocsp_exp_unauth_setup():
     with open(cert_file_pem, "w") as f:
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
-    verify_ocsp(cert_file_pem, "test/test-ca2.pem", "http://localhost:4002", "good")
+
+    # Since we're pretending to be in the past, we'll get an expired OCSP
+    # response. Just check that it exists; don't do the full verification (which
+    # would fail).
+    check_ocsp_successful(cert_file_pem, "test/test-ca2.pem", "http://localhost:4002")
     global expired_cert_name
     expired_cert_name = cert_file_pem
 
