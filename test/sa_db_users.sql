@@ -15,9 +15,6 @@ CREATE USER IF NOT EXISTS 'purger'@'localhost';
 CREATE USER IF NOT EXISTS 'janitor'@'localhost';
 
 -- Storage Authority
-GRANT SELECT,INSERT,UPDATE ON authz TO 'sa'@'localhost';
-GRANT SELECT,INSERT,UPDATE,DELETE ON pendingAuthorizations TO 'sa'@'localhost';
-GRANT SELECT(id,Lockcol) ON pendingAuthorizations TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON certificates TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON certificateStatus TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON issuedNames TO 'sa'@'localhost';
@@ -26,7 +23,6 @@ GRANT SELECT,INSERT,UPDATE ON registrations TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE,DELETE ON challenges TO 'sa'@'localhost';
 GRANT SELECT,INSERT on fqdnSets TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON orders TO 'sa'@'localhost';
-GRANT SELECT,INSERT ON orderToAuthz TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON requestedNames TO 'sa'@'localhost';
 GRANT SELECT,INSERT,DELETE ON orderFqdnSets TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON authz2 TO 'sa'@'localhost';
@@ -56,8 +52,6 @@ GRANT SELECT ON fqdnSets TO 'mailer'@'localhost';
 GRANT SELECT ON certificates TO 'cert_checker'@'localhost';
 
 -- Expired authorization purger
-GRANT SELECT,DELETE ON pendingAuthorizations TO 'purger'@'localhost';
-GRANT SELECT,DELETE ON authz TO 'purger'@'localhost';
 GRANT SELECT,DELETE ON challenges TO 'purger'@'localhost';
 GRANT SELECT,DELETE ON authz2 TO 'purger'@'localhost';
 

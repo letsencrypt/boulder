@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"encoding/base64"
 	"os"
 	"strings"
 	"testing"
@@ -13,6 +12,7 @@ import (
 )
 
 func TestPrecertificateOCSP(t *testing.T) {
+	t.Parallel()
 	// This test is gated on the PrecertificateOCSP feature flag.
 	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
 		return
@@ -36,18 +36,15 @@ func TestPrecertificateOCSP(t *testing.T) {
 		t.Fatal("expected error issuing for domain rejected by CT servers; got none")
 	}
 
-	rejections, err := ctGetRejections(4500)
-	if err != nil {
-		t.Fatalf("getting ct-test-srv rejections: %s", err)
+	// Try to find a precertificate matching the domain from one of the
+	// configured ct-test-srv instances.
+	cert, err := ctFindRejection([]string{domain})
+	if err != nil || cert == nil {
+		t.Fatalf("couldn't find rejected precert for %q", domain)
 	}
-	for _, r := range rejections {
-		rejectedCertBytes, err := base64.StdEncoding.DecodeString(r)
-		if err != nil {
-			t.Fatalf("decoding rejected cert: %s", err)
-		}
-		_, err = ocsp_helper.ReqDER(rejectedCertBytes, ocsp.Good)
-		if err != nil {
-			t.Errorf("requesting OCSP for rejected precertificate: %s", err)
-		}
+
+	_, err = ocsp_helper.ReqDER(cert.Raw, ocsp.Good)
+	if err != nil {
+		t.Errorf("requesting OCSP for rejected precertificate: %s", err)
 	}
 }

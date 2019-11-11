@@ -48,6 +48,8 @@ def run_go_tests(filterPattern=None):
     cmdLine = [ "go", "test", ]
     if filterPattern is not None and filterPattern != "":
         cmdLine = cmdLine + ["--test.run", filterPattern]
+    # TODO: We don't run the race detector here as it catches a race condition
+    # in eggsampler/acme that we are waiting on a fix for.
     cmdLine = cmdLine + ["-tags", "integration", "-count=1", "./test/integration"]
     return subprocess.check_call(cmdLine, shell=False, stderr=subprocess.STDOUT)
 

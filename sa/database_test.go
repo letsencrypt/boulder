@@ -65,9 +65,9 @@ func TestStrictness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = dbMap.Exec(`insert into authz set
-		id="hi", identifier="foo", status="pending", combinations="combos",
-		registrationID=999999999999999999999999999;`)
+	_, err = dbMap.Exec(`insert into orderToAuthz2 set
+		orderID=999999999999999999999999999,
+		authzID=999999999999999999999999999;`)
 	if err == nil {
 		t.Fatal("Expected error when providing out of range value, got none.")
 	}

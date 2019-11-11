@@ -53,7 +53,7 @@ func TestWillingToIssue(t *testing.T) {
 
 		{`www.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef012345.com`, errNameTooLong}, // Too long (254 characters)
 
-		{`www.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef012345.com`, errNameTooLong}, // Too long (240 characters)
+		{`www.ef0123456789abcdef013456789abcdef012345.789abcdef012345679abcdef0123456789abcdef01234.6789abcdef0123456789abcdef0.23456789abcdef0123456789a.cdef0123456789abcdef0123456789ab.def0123456789abcdef0123456789.bcdef0123456789abcdef012345.com`, nil}, // OK, not too long (240 characters)
 
 		{`www.abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz.com`, errLabelTooLong}, // Label too long (>63 characters)
 

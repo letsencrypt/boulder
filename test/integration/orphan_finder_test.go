@@ -27,6 +27,7 @@ var template = `[AUDIT] Failed RPC to store at SA, orphaning precertificate: ser
 // be run after other tests so the account ID 1 exists (since the inserted
 // certificates will be associated with that account).
 func TestOrphanFinder(t *testing.T) {
+	t.Parallel()
 	precert, err := makeFakeCert(true)
 	if err != nil {
 		log.Fatal(err)

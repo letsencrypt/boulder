@@ -156,13 +156,8 @@ const (
 	// octets: https://tools.ietf.org/html/rfc1035#page-10. Since two of those octets
 	// are taken up by the leading length byte and the trailing root period the actual
 	// max length becomes 253.
-	// TODO(#3237): Right now our schema for the authz table only allows 255 characters
-	// for identifiers, including JSON wrapping, which takes up 25 characters. For
-	// now, we only allow identifiers up to 230 characters in length. When we are
-	// able to do a migration to update this table, we can allow DNS names up to
-	// 253 characters in length.
 	maxLabelLength         = 63
-	maxDNSIdentifierLength = 230
+	maxDNSIdentifierLength = 253
 )
 
 var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,62}$")
@@ -177,7 +172,7 @@ func isDNSCharacter(ch byte) bool {
 }
 
 // In these error messages:
-//   230 is the value of maxDNSIdentifierLength
+//   253 is the value of maxDNSIdentifierLength
 //   63 is the value of maxLabelLength
 //   10 is the value of maxLabels
 // If these values change, the related error messages should be updated.
@@ -188,7 +183,7 @@ var (
 	errICANNTLD             = berrors.MalformedError("Domain name is an ICANN TLD")
 	errPolicyForbidden      = berrors.RejectedIdentifierError("The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy")
 	errInvalidDNSCharacter  = berrors.MalformedError("Domain name contains an invalid character")
-	errNameTooLong          = berrors.MalformedError("Domain name is longer than 230 bytes, which is the maximum length supported by this server")
+	errNameTooLong          = berrors.MalformedError("Domain name is longer than 253 bytes")
 	errIPAddress            = berrors.MalformedError("The ACME server can not issue a certificate for an IP address")
 	errTooManyLabels        = berrors.MalformedError("Domain name has more than 10 labels (parts)")
 	errEmptyName            = berrors.MalformedError("Domain name is empty")

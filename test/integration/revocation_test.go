@@ -32,6 +32,7 @@ func isPrecert(cert *x509.Certificate) bool {
 // certificate can be revoked using all of the available RFC 8555 revocation
 // authentication mechansims.
 func TestPrecertificateRevocation(t *testing.T) {
+	t.Parallel()
 	// This test is gated on the PrecertificateRevocation feature flag.
 	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
 		return
@@ -106,19 +107,9 @@ func TestPrecertificateRevocation(t *testing.T) {
 
 			// Try to find a precertificate matching the domain from one of the
 			// configured ct-test-srv instances.
-			var cert *x509.Certificate
-			for _, port := range ctSrvPorts {
-				cert, err = ctFindRejection(port, []string{tc.domain})
-				if err != nil {
-					continue
-				} else if err == nil {
-					break
-				}
-			}
-			// At least one of the logs should have given us back a matching
-			// precertificate to use for revocation.
-			if cert == nil {
-				t.Fatal("precert was missing poison extension")
+			cert, err := ctFindRejection([]string{tc.domain})
+			if err != nil || cert == nil {
+				t.Fatalf("couldn't find rejected precert for %q", tc.domain)
 			}
 
 			// To be confident that we're testing the right thing also verify that the
