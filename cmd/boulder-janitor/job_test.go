@@ -210,11 +210,11 @@ func (db slowDB) SelectOne(interface{}, string, ...interface{}) error {
 }
 
 func (db slowDB) Insert(...interface{}) error {
-	return errors.New("Not implemented")
+	return errors.New("not implemented")
 }
 
 func (db slowDB) Begin() (*gorp.Transaction, error) {
-	return nil, errors.New("Not implemented")
+	return nil, errors.New("not implemented")
 }
 
 func TestCleanResource(t *testing.T) {

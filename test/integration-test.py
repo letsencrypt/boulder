@@ -136,6 +136,7 @@ def run_janitor():
         certStatusWorkBatch = get_stat_line(8014, statline("workbatch", "certificateStatus"))
         certsWorkBatch = get_stat_line(8014, statline("workbatch", "certificates"))
         certsPerNameWorkBatch = get_stat_line(8014, statline("workbatch", "certificatesPerName"))
+        ordersWorkBatch = get_stat_line(8014, statline("workbatch", "orders"))
 
         # sleep for double the configured workSleep for each job
         time.sleep(1)
@@ -143,10 +144,12 @@ def run_janitor():
         newCertStatusWorkBatch = get_stat_line(8014, statline("workbatch", "certificateStatus"))
         newCertsWorkBatch = get_stat_line(8014, statline("workbatch", "certificates"))
         newCertsPerNameWorkBatch = get_stat_line(8014, statline("workbatch", "certificatesPerName"))
+        newOrdersWorkBatch = get_stat_line(8014, statline("workbatch", "orders"))
 
         if (certStatusWorkBatch == newCertStatusWorkBatch 
             and certsWorkBatch == newCertsWorkBatch 
-            and certsPerNameWorkBatch == newCertsPerNameWorkBatch):
+            and certsPerNameWorkBatch == newCertsPerNameWorkBatch
+            and ordersWorkBatch == newOrdersWorkBatch):
             break
 
         attempts = attempts + 1
@@ -156,13 +159,14 @@ def run_janitor():
         certStatusDeletes = get_stat_line(8014, statline("deletions", "certificateStatus"))
         certsDeletes = get_stat_line(8014, statline("deletions", "certificates"))
         certsPerNameDeletes = get_stat_line(8014, statline("deletions", "certificatesPerName"))
+        ordersDeletes = get_stat_line(8014, statline("deletions", "orders"))
 
-        if certStatusDeletes is None or certsDeletes is None or certsPerNameDeletes is None:
+        if certStatusDeletes is None or certsDeletes is None or certsPerNameDeletes is None or ordersDeletes is None:
             print("delete stats not present after check {0}. Sleeping".format(i))
             time.sleep(2)
             continue
 
-        for l in [certStatusDeletes, certsDeletes, certsPerNameDeletes]:
+        for l in [certStatusDeletes, certsDeletes, certsPerNameDeletes, ordersDeletes]:
             if stat_value(l) == "0":
                 raise Exception("Expected a non-zero number of deletes to be performed. Found {0}".format(l))
 
@@ -171,6 +175,7 @@ def run_janitor():
       statline("errors", "certificateStatus"),
       statline("errors", "certificates"),
       statline("errors", "certificatesPerName"),
+      statline("errors", "orders"),
     ]
     for eStat in errorStats:
         actual = get_stat_line(8014, eStat)
