@@ -34,6 +34,7 @@ CREATE TABLE `pendingAuthorizations` (
   KEY `registrationID_status_expires_idx` (`registrationID`,`status`,`expires`),
   CONSTRAINT `regId_pending_authz` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
 CREATE TABLE `orderToAuthz` (
   `orderID` bigint(20) NOT NULL,
   `authzID` varchar(255) NOT NULL,
