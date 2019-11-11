@@ -2,9 +2,9 @@
 -- +goose Up
 -- SQL in section 'Up' is executed when this migration is applied
 
-DROP TABLE authz;
-DROP TABLE pendingAuthorizations;
-DROP TABLE orderToAuthz;
+DROP TABLE `authz`;
+DROP TABLE `pendingAuthorizations`;
+DROP TABLE `orderToAuthz`;
 
 -- +goose Down
 -- SQL section 'Down' is executed when this migration is rolled back
@@ -20,6 +20,7 @@ CREATE TABLE `authz` (
   KEY `registrationID_identifier_status_expires_authz_idx` (`registrationID`,`identifier`,`status`,`expires`),
   CONSTRAINT `regId_authz` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
 CREATE TABLE `pendingAuthorizations` (
   `id` varchar(255) NOT NULL,
   `identifier` varchar(255) NOT NULL,
