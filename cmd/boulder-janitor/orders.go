@@ -49,7 +49,7 @@ func (j *ordersJob) deleteOrder(orderID int64) error {
 	// transaction will be rolled back.
 	_, err := sa.WithTransaction(ctx, j.db, func(txWithCtx sa.Transaction) (interface{}, error) {
 		// Delete table rows in the childTables that reference the order being deleted.
-		childTables := []string{"requestedNames", "orderFqdnSets", "orderToAuthz2", "orderToAuthz"}
+		childTables := []string{"requestedNames", "orderFqdnSets", "orderToAuthz2"}
 		for _, t := range childTables {
 			query := fmt.Sprintf(`DELETE FROM %s WHERE orderID = ?`, t)
 			res, err := txWithCtx.Exec(query, orderID)
