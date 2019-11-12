@@ -172,6 +172,7 @@ message AddCertificateRequest {
         // the current time. The orphan-finder uses this parameter to add
         // certificates with the correct historic issued date
         optional int64 issued = 4;
+        optional int64 issuerID = 5;
 }
 
 message AddCertificateResponse {

@@ -99,7 +99,7 @@ type CertificateAuthority interface {
 	// [RegistrationAuthority]
 	IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (Certificate, error)
 
-	GenerateOCSP(ctx context.Context, ocspReq OCSPSigningRequest) ([]byte, error)
+	GenerateOCSP(ctx context.Context, ocspReq *caPB.GenerateOCSPRequest) ([]byte, error)
 }
 
 // PolicyAuthority defines the public interface for the Boulder PA

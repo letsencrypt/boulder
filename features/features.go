@@ -71,6 +71,9 @@ const (
 	// GetAuthorizationsPerf enables a more performant GetAuthorizations2 query
 	// at the SA.
 	GetAuthorizationsPerf
+	// StoreIssuerInfo enables storage of information identifying the issuer of
+	// a certificate in the certificateStatus table.
+	StoreIssuerInfo
 )
 
 // List of features and their default value, protected by fMu
@@ -105,6 +108,7 @@ var features = map[FeatureFlag]bool{
 	PrecertificateRevocation:      false,
 	StripDefaultSchemePort:        false,
 	GetAuthorizationsPerf:         false,
+	StoreIssuerInfo:               false,
 }
 
 var fMu = new(sync.RWMutex)

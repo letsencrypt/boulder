@@ -36,6 +36,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	csrlib "github.com/letsencrypt/boulder/csr"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -119,6 +120,9 @@ type CertificateAuthorityImpl struct {
 	ecdsaProfile string
 	// A map from issuer cert common name to an internalIssuer struct
 	issuers map[string]*internalIssuer
+	// A map from issuer CN to ID and from ID to internalIssuer
+	issuerToID map[string]int64
+	idToIssuer map[int64]*internalIssuer
 	// The common name of the default issuer cert
 	defaultIssuer     *internalIssuer
 	sa                certificateStorage
@@ -392,36 +396,47 @@ var ocspStatusToCode = map[string]int{
 }
 
 // GenerateOCSP produces a new OCSP response and returns it
-func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj core.OCSPSigningRequest) ([]byte, error) {
-	cert, err := x509.ParseCertificate(xferObj.CertDER)
-	if err != nil {
-		ca.log.AuditErr(err.Error())
-		return nil, err
-	}
+func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *caPB.GenerateOCSPRequest) ([]byte, error) {
+	var issuer *internalIssuer
+	var serial *big.Int
+	if features.Enabled(features.StoreIssuerInfo) {
+		serialInt, err := core.StringToSerial(*req.Serial)
+		if err != nil {
+			return nil, err
+		}
+		serial = serialInt
+		issuer = ca.idToIssuer[*req.IssuerID]
+	} else {
+		cert, err := x509.ParseCertificate(req.CertDER)
+		if err != nil {
+			ca.log.AuditErr(err.Error())
+			return nil, err
+		}
 
-	cn := cert.Issuer.CommonName
-	issuer := ca.issuers[cn]
-	if issuer == nil {
-		return nil, fmt.Errorf("This CA doesn't have an issuer cert with CommonName %q", cn)
-	}
-
-	err = cert.CheckSignatureFrom(issuer.cert)
-	if err != nil {
-		return nil, fmt.Errorf("GenerateOCSP was asked to sign OCSP for cert "+
-			"%s from %q, but the cert's signature was not valid: %s.",
-			core.SerialToString(cert.SerialNumber), cn, err)
+		serial = cert.SerialNumber
+		cn := cert.Issuer.CommonName
+		issuer = ca.issuers[cn]
+		if issuer == nil {
+			return nil, fmt.Errorf("This CA doesn't have an issuer cert with CommonName %q", cn)
+		}
+		err = cert.CheckSignatureFrom(issuer.cert)
+		if err != nil {
+			return nil, fmt.Errorf("GenerateOCSP was asked to sign OCSP for cert "+
+				"%s from %q, but the cert's signature was not valid: %s.",
+				core.SerialToString(cert.SerialNumber), cn, err)
+		}
 	}
 
 	now := ca.clk.Now().Truncate(time.Hour)
 	tbsResponse := ocsp.Response{
-		Status:       ocspStatusToCode[xferObj.Status],
-		SerialNumber: cert.SerialNumber,
+		Status:       ocspStatusToCode[*req.Status],
+		SerialNumber: serial,
 		ThisUpdate:   now,
 		NextUpdate:   now.Add(ca.ocspLifetime),
 	}
 	if tbsResponse.Status == ocsp.Revoked {
-		tbsResponse.RevokedAt = xferObj.RevokedAt
-		tbsResponse.RevocationReason = int(xferObj.Reason)
+		tbsResponse.RevokedAt = time.Unix(*req.RevokedAt, 0)
+		tbsResponse.RevocationReason = int(*req.Reason)
 	}
 
 	ocspResponse, err := ocsp.CreateResponse(issuer.cert, issuer.cert, tbsResponse, issuer.ocspSigner)
@@ -458,9 +473,10 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	ocspResp, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+	status := string(core.OCSPStatusGood)
+	ocspResp, err := ca.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
 		CertDER: precertDER,
-		Status:  string(core.OCSPStatusGood),
+		Status:  &status,
 	})
 	if err != nil {
 		err = berrors.InternalServerError(err.Error())
@@ -468,12 +484,21 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	_, err = ca.sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+	req := &sapb.AddCertificateRequest{
 		Der:    precertDER,
 		RegID:  &regID,
 		Ocsp:   ocspResp,
 		Issued: &nowNanos,
-	})
+	}
+
+	if features.Enabled(features.StoreIssuerInfo) {
+		// we currently only use one issuer, in the future when we support multiple
+		// the issuer will need to be derived from issueReq
+		issuerID := ca.issuerToID[ca.defaultIssuer.cert.Subject.CommonName]
+		req.IssuerID = &issuerID
+	}
+
+	_, err = ca.sa.AddPrecertificate(ctx, req)
 	if err != nil {
 		err = berrors.InternalServerError(err.Error())
 		ca.log.AuditErrf("Failed RPC to store at SA, orphaning precertificate: serial=[%s] cert=[%s] err=[%v], regID=[%d], orderID=[%d]",

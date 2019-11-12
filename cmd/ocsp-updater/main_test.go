@@ -23,31 +23,19 @@ import (
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	"google.golang.org/grpc"
 	"gopkg.in/go-gorp/gorp.v2"
 )
 
 var ctx = context.Background()
 
-type mockCA struct {
+type mockOCSP struct {
 	sleepTime time.Duration
 }
 
-func (ca *mockCA) IssueCertificate(_ context.Context, _ *caPB.IssueCertificateRequest) (core.Certificate, error) {
-	return core.Certificate{}, nil
-}
-
-func (ca *mockCA) IssuePrecertificate(_ context.Context, _ *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
-	return nil, errors.New("IssuePrecertificate is not implemented by mockCA")
-}
-
-func (ca *mockCA) IssueCertificateForPrecertificate(_ context.Context, _ *caPB.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
-	return core.Certificate{}, errors.New("IssueCertificateForPrecertificate is not implemented by mockCA")
-}
-
-func (ca *mockCA) GenerateOCSP(_ context.Context, xferObj core.OCSPSigningRequest) (ocsp []byte, err error) {
-	ocsp = []byte{1, 2, 3}
+func (ca *mockOCSP) GenerateOCSP(_ context.Context, req *caPB.GenerateOCSPRequest, _ ...grpc.CallOption) (*caPB.OCSPResponse, error) {
 	time.Sleep(ca.sleepTime)
-	return
+	return &caPB.OCSPResponse{Response: []byte{1, 2, 3}}, nil
 }
 
 var log = blog.UseMock()
@@ -80,7 +68,7 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, cloc
 		metrics.NewNoopScope(),
 		fc,
 		dbMap,
-		&mockCA{},
+		&mockOCSP{},
 		sa,
 		nil,
 		OCSPUpdaterConfig{
@@ -155,7 +143,7 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	// Note that this test also tests the basic functionality of
 	// generateOCSPResponses.
 	start := time.Now()
-	updater.cac = &mockCA{time.Second}
+	updater.ogc = &mockOCSP{time.Second}
 	updater.parallelGenerateOCSPRequests = 10
 	err = updater.generateOCSPResponses(ctx, certs, metrics.NewNoopScope())
 	test.AssertNotError(t, err, "Couldn't generate OCSP responses")
@@ -458,7 +446,7 @@ func TestGenerateOCSPResponsePrecert(t *testing.T) {
 	// Directly call generateResponse with the result, when the PrecertificateOCSP
 	// feature flag is disabled we expect this to error because no matching
 	// certificates row will be found.
-	updater.cac = &mockCA{time.Second}
+	updater.ogc = &mockOCSP{time.Second}
 	_, err = updater.generateResponse(ctx, certs[0])
 	test.AssertError(t, err, "generateResponse for precert without PrecertificateOCSP did not error")
 

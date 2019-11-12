@@ -53,7 +53,7 @@ func (ca *MockCA) IssueCertificateForPrecertificate(ctx context.Context, req *ca
 }
 
 // GenerateOCSP is a mock
-func (ca *MockCA) GenerateOCSP(ctx context.Context, xferObj core.OCSPSigningRequest) (ocsp []byte, err error) {
+func (ca *MockCA) GenerateOCSP(ctx context.Context, req *caPB.GenerateOCSPRequest) (ocsp []byte, err error) {
 	return
 }
 

@@ -1649,24 +1649,26 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 // revokeCertificate generates a revoked OCSP response for the given certificate, stores
 // the revocation information, and purges OCSP request URLs from Akamai.
 func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason) error {
-	now := time.Now()
-	signRequest := core.OCSPSigningRequest{
+	status := string(core.OCSPStatusRevoked)
+	reason := int32(code)
+	revokedAt := time.Now().UnixNano()
+	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
 		CertDER:   cert.Raw,
-		Status:    string(core.OCSPStatusRevoked),
-		Reason:    code,
-		RevokedAt: now,
-	}
-	ocspResponse, err := ra.CA.GenerateOCSP(ctx, signRequest)
+		Status:    &status,
+		Reason:    &reason,
+		RevokedAt: &revokedAt,
+	})
 	if err != nil {
 		return err
 	}
 	serial := core.SerialToString(cert.SerialNumber)
-	nowUnix := now.UnixNano()
-	reason := int64(code)
+	// for some reason we use int32 and int64 for the reason in different
+	// protobuf messages, so we have to re-cast it here.
+	reason64 := int64(reason)
 	err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   &serial,
-		Reason:   &reason,
-		Date:     &nowUnix,
+		Reason:   &reason64,
+		Date:     &revokedAt,
 		Response: ocspResponse,
 	})
 	if err != nil {

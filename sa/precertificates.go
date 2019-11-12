@@ -63,7 +63,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		return nil, err
 	}
 
-	err = ssa.dbMap.WithContext(ctx).Insert(&certStatusModel{
+	certModel := certStatusModel{
 		Status:          core.OCSPStatusGood,
 		OCSPLastUpdated: ssa.clk.Now(),
 		OCSPResponse:    req.Ocsp,
@@ -71,7 +71,12 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		RevokedDate:     time.Time{},
 		RevokedReason:   0,
 		NotAfter:        parsed.NotAfter,
-	})
+	}
+	if req.IssuerID != nil {
+		certModel.IssuerID = req.IssuerID
+	}
+
+	err = ssa.dbMap.WithContext(ctx).Insert(&certModel)
 	if err != nil {
 		return nil, err
 	}

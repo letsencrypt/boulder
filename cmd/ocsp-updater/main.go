@@ -42,7 +42,7 @@ type OCSPUpdater struct {
 
 	dbMap ocspDB
 
-	cac core.CertificateAuthority
+	ogc capb.OCSPGeneratorClient
 	sac core.StorageAuthority
 
 	// Used to calculate how far back stale OCSP responses should be looked for
@@ -64,7 +64,7 @@ func newUpdater(
 	stats metrics.Scope,
 	clk clock.Clock,
 	dbMap ocspDB,
-	ca core.CertificateAuthority,
+	ogc capb.OCSPGeneratorClient,
 	sac core.StorageAuthority,
 	apc akamaipb.AkamaiPurgerClient,
 	config OCSPUpdaterConfig,
@@ -90,7 +90,7 @@ func newUpdater(
 		stats:                        stats,
 		clk:                          clk,
 		dbMap:                        dbMap,
-		cac:                          ca,
+		ogc:                          ogc,
 		log:                          log,
 		sac:                          sac,
 		ocspMinTimeToExpiry:          config.OCSPMinTimeToExpiry.Duration,
@@ -154,18 +154,18 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	return statuses, err
 }
 
-func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.CertificateStatus) (*core.CertificateStatus, error) {
+func getCertDER(selector ocspDB, serial string) ([]byte, error) {
 	cert, err := sa.SelectCertificate(
-		updater.dbMap,
+		selector,
 		"WHERE serial = ?",
-		status.Serial,
+		serial,
 	)
 	if err != nil {
 		// If PrecertificateOCSP is enabled and the error indicates there was no
 		// certificates table row then try to find a precertificate table row before
 		// giving up with an error.
 		if features.Enabled(features.PrecertificateOCSP) && err == sql.ErrNoRows {
-			cert, err = sa.SelectPrecertificate(updater.dbMap, status.Serial)
+			cert, err = sa.SelectPrecertificate(selector, serial)
 			// If there was still a non-nil error return it. If we can't find
 			// a precert row something is amiss, we have a certificateStatus row with
 			// no matching certificate or precertificate.
@@ -176,21 +176,52 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.Ce
 			return nil, err
 		}
 	}
+	return cert.DER, nil
+}
 
-	signRequest := core.OCSPSigningRequest{
-		CertDER:   cert.DER,
-		Reason:    status.RevokedReason,
-		Status:    string(status.Status),
-		RevokedAt: status.RevokedDate,
+func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.CertificateStatus) (*core.CertificateStatus, error) {
+	reason := int32(status.RevokedReason)
+	statusStr := string(status.Status)
+	revokedAt := status.RevokedDate.UnixNano()
+	ocspReq := capb.GenerateOCSPRequest{
+		Reason:    &reason,
+		Status:    &statusStr,
+		RevokedAt: &revokedAt,
+	}
+	if features.Enabled(features.StoreIssuerInfo) {
+		certStatus, err := sa.SelectCertificateStatus(
+			updater.dbMap,
+			"WHERE serial = ?",
+			status.Serial,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if certStatus.IssuerID != nil {
+			ocspReq.Serial = &certStatus.Serial
+			ocspReq.IssuerID = certStatus.IssuerID
+		} else {
+			certDER, err := getCertDER(updater.dbMap, status.Serial)
+			if err != nil {
+				return nil, err
+			}
+			ocspReq.CertDER = certDER
+		}
+	} else {
+		certDER, err := getCertDER(updater.dbMap, status.Serial)
+		if err != nil {
+			return nil, err
+		}
+		ocspReq.CertDER = certDER
 	}
 
-	ocspResponse, err := updater.cac.GenerateOCSP(ctx, signRequest)
+	ocspResponse, err := updater.ogc.GenerateOCSP(ctx, &ocspReq)
 	if err != nil {
 		return nil, err
 	}
 
 	status.OCSPLastUpdated = updater.clk.Now()
-	status.OCSPResponse = ocspResponse
+	status.OCSPResponse = ocspResponse.Response
 
 	return &status, nil
 }
@@ -388,7 +419,7 @@ type OCSPUpdaterConfig struct {
 }
 
 func setupClients(c OCSPUpdaterConfig, stats metrics.Scope, clk clock.Clock) (
-	core.CertificateAuthority,
+	capb.OCSPGeneratorClient,
 	core.StorageAuthority,
 	akamaipb.AkamaiPurgerClient,
 ) {
@@ -401,10 +432,7 @@ func setupClients(c OCSPUpdaterConfig, stats metrics.Scope, clk clock.Clock) (
 	clientMetrics := bgrpc.NewClientMetrics(stats)
 	caConn, err := bgrpc.ClientSetup(c.OCSPGeneratorService, tls, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
-	// Make a CA client that is only capable of signing OCSP.
-	// TODO(jsha): Once we've fully moved to gRPC, replace this
-	// with a plain caPB.NewOCSPGeneratorClient.
-	cac := bgrpc.NewCertificateAuthorityClient(nil, capb.NewOCSPGeneratorClient(caConn))
+	ogc := bgrpc.NewOCSPGeneratorClient(capb.NewOCSPGeneratorClient(caConn))
 
 	saConn, err := bgrpc.ClientSetup(c.SAService, tls, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
@@ -417,7 +445,7 @@ func setupClients(c OCSPUpdaterConfig, stats metrics.Scope, clk clock.Clock) (
 		apc = akamaipb.NewAkamaiPurgerClient(apcConn)
 	}
 
-	return cac, sac, apc
+	return ogc, sac, apc
 }
 
 func main() {
@@ -450,13 +478,13 @@ func main() {
 	sa.InitDBMetrics(dbMap, scope)
 
 	clk := cmd.Clock()
-	cac, sac, apc := setupClients(conf, scope, clk)
+	ogc, sac, apc := setupClients(conf, scope, clk)
 
 	updater, err := newUpdater(
 		scope,
 		clk,
 		dbMap,
-		cac,
+		ogc,
 		sac,
 		apc,
 		// Necessary evil for now

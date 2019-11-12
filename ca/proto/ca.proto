@@ -42,6 +42,9 @@ message GenerateOCSPRequest {
   optional string status = 2;
   optional int32 reason = 3;
   optional int64 revokedAt = 4;
+  // If serial is set than certDER must not be set and issuerID must be set
+  optional string serial = 5;
+  optional int64 issuerID = 6;
 }
 
 message OCSPResponse {
