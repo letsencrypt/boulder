@@ -19,6 +19,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -29,7 +30,7 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-type certCountFunc func(db dbSelector, domain string, earliest, latest time.Time) (int, error)
+type certCountFunc func(db db.Selector, domain string, earliest, latest time.Time) (int, error)
 
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
@@ -113,15 +114,15 @@ func statusIsPending(status core.AcmeStatus) bool {
 	return status == core.StatusPending || status == core.StatusProcessing || status == core.StatusUnknown
 }
 
-func existingPending(db dbOneSelector, id string) bool {
+func existingPending(dbMap db.OneSelector, id string) bool {
 	var count int64
-	_ = db.SelectOne(&count, "SELECT count(*) FROM pendingAuthorizations WHERE id = :id", map[string]interface{}{"id": id})
+	_ = dbMap.SelectOne(&count, "SELECT count(*) FROM pendingAuthorizations WHERE id = :id", map[string]interface{}{"id": id})
 	return count > 0
 }
 
-func existingFinal(db dbOneSelector, id string) bool {
+func existingFinal(dbMap db.OneSelector, id string) bool {
 	var count int64
-	_ = db.SelectOne(&count, "SELECT count(*) FROM authz WHERE id = :id", map[string]interface{}{"id": id})
+	_ = dbMap.SelectOne(&count, "SELECT count(*) FROM authz WHERE id = :id", map[string]interface{}{"id": id})
 	return count > 0
 }
 
@@ -478,7 +479,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		certStatus.OCSPLastUpdated = ssa.clk.Now()
 	}
 
-	_, overallError := WithTransaction(ctx, ssa.dbMap, func(txWithCtx Transaction) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
 		err = txWithCtx.Insert(cert)
 		if err != nil {
 			if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
@@ -568,7 +569,7 @@ func hashNames(names []string) []byte {
 	return hash[:]
 }
 
-func addFQDNSet(db dbInserter, names []string, serial string, issued time.Time, expires time.Time) error {
+func addFQDNSet(db db.Inserter, names []string, serial string, issued time.Time, expires time.Time) error {
 	return db.Insert(&core.FQDNSet{
 		SetHash: hashNames(names),
 		Serial:  serial,
@@ -582,7 +583,7 @@ func addFQDNSet(db dbInserter, names []string, serial string, issued time.Time, 
 // addition can take place within the order addition transaction. The caller is
 // required to rollback the transaction if an error is returned.
 func addOrderFQDNSet(
-	db dbInserter,
+	db db.Inserter,
 	names []string,
 	orderID int64,
 	regID int64,
@@ -600,7 +601,7 @@ func addOrderFQDNSet(
 // take place within the finalization transaction. The caller is required to
 // rollback the transaction if an error is returned.
 func deleteOrderFQDNSet(
-	db dbExecer,
+	db db.Execer,
 	orderID int64) error {
 
 	result, err := db.Exec(`
@@ -623,7 +624,7 @@ func deleteOrderFQDNSet(
 	return nil
 }
 
-func addIssuedNames(db dbExecer, cert *x509.Certificate, isRenewal bool) error {
+func addIssuedNames(db db.Execer, cert *x509.Certificate, isRenewal bool) error {
 	if len(cert.DNSNames) == 0 {
 		return berrors.InternalServerError("certificate has no DNSNames")
 	}
@@ -664,7 +665,7 @@ type setHash []byte
 // certificate serials. These serials can be used to check whether any
 // certificates have been issued for the same set of names previously.
 func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(
-	db dbSelector,
+	db db.Selector,
 	serials []string,
 ) ([]setHash, error) {
 	var fqdnSets []setHash
@@ -708,7 +709,7 @@ func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(
 // included) for a given slice of fqdnSets that occurred after the earliest
 // parameter.
 func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(
-	db dbSelector,
+	db db.Selector,
 	fqdnSets []setHash,
 	earliest time.Time,
 ) (int, error) {
@@ -899,7 +900,7 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		Created:        ssa.clk.Now(),
 	}
 
-	output, overallError := WithTransaction(ctx, ssa.dbMap, func(txWithCtx Transaction) (interface{}, error) {
+	output, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
 		if err := txWithCtx.Insert(order); err != nil {
 			return nil, err
 		}
@@ -962,7 +963,7 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 // in processing status by updating the `beganProcessing` field of the
 // corresponding Order table row in the DB.
 func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *corepb.Order) error {
-	_, overallError := WithTransaction(ctx, ssa.dbMap, func(txWithCtx Transaction) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
 		result, err := txWithCtx.Exec(`
 		UPDATE orders
 		SET beganProcessing = ?
@@ -987,7 +988,7 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *cor
 
 // SetOrderError updates a provided Order's error field.
 func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, order *corepb.Order) error {
-	_, overallError := WithTransaction(ctx, ssa.dbMap, func(txWithCtx Transaction) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
 		om, err := orderToModel(order)
 		if err != nil {
 			return nil, err
@@ -1018,7 +1019,7 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, order *corepb
 // CertificateSerial and the order ID on the provided order are processed (e.g.
 // this is not a generic update RPC).
 func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.Order) error {
-	_, overallError := WithTransaction(ctx, ssa.dbMap, func(txWithCtx Transaction) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
 		result, err := txWithCtx.Exec(`
 		UPDATE orders
 		SET certificateSerial = ?
@@ -1594,7 +1595,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 // RevokeCertificate stores revocation information about a certificate. It will only store this
 // information if the certificate is not already marked as revoked.
 func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error {
-	_, overallError := WithTransaction(ctx, ssa.dbMap, func(txWithCtx Transaction) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
 		status, err := SelectCertificateStatus(
 			txWithCtx,
 			"WHERE serial = ? AND status != ?",

@@ -1,25 +1,6 @@
-package sa
+package db
 
-import (
-	"context"
-	"gopkg.in/go-gorp/gorp.v2"
-)
-
-type Transaction interface {
-	dbOneSelector
-	dbInserter
-	dbSelectExecer
-	Delete(...interface{}) (int64, error)
-	Get(interface{}, ...interface{}) (interface{}, error)
-	Update(...interface{}) (int64, error)
-}
-
-type DatabaseMap interface {
-	dbOneSelector
-	dbInserter
-	dbSelectExecer
-	Begin() (*gorp.Transaction, error)
-}
+import "context"
 
 // txFunc represents a function that does work in the context of a transaction.
 type txFunc func(Transaction) (interface{}, error)

@@ -6,6 +6,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
@@ -22,7 +23,7 @@ var (
 type janitor struct {
 	log  blog.Logger
 	clk  clock.Clock
-	db   sa.DatabaseMap
+	db   db.DatabaseMap
 	jobs []*batchedDBJob
 }
 
@@ -74,7 +75,7 @@ func New(clk clock.Clock, config Config) (*janitor, error) {
 // newJobs constructs a list of batchedDBJobs based on the provided config. If
 // no jobs are enabled in the config then errNoJobsConfigured is returned.
 func newJobs(
-	dbMap sa.DatabaseMap,
+	dbMap db.DatabaseMap,
 	logger blog.Logger,
 	clk clock.Clock,
 	config Config) ([]*batchedDBJob, error) {

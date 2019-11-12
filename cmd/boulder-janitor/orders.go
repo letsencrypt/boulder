@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/sa"
 )
 
 type ordersJob struct {
@@ -14,7 +14,7 @@ type ordersJob struct {
 }
 
 func newOrdersJob(
-	db sa.DatabaseMap,
+	dbMap db.DatabaseMap,
 	log blog.Logger,
 	clk clock.Clock,
 	config CleanupConfig) *batchedDBJob {
@@ -26,7 +26,7 @@ func newOrdersJob(
 	log.Debugf("Creating Orders job from config: %#v\n", config)
 	j := &ordersJob{
 		batchedDBJob: &batchedDBJob{
-			db:          db,
+			db:          dbMap,
 			log:         log,
 			clk:         clk,
 			purgeBefore: purgeBefore,
@@ -47,7 +47,7 @@ func (j *ordersJob) deleteOrder(orderID int64) error {
 	// Perform a multi-table delete inside of a transaction using the order ID.
 	// Either all of the rows associated with the order ID will be deleted or the
 	// transaction will be rolled back.
-	_, err := sa.WithTransaction(ctx, j.db, func(txWithCtx sa.Transaction) (interface{}, error) {
+	_, err := db.WithTransaction(ctx, j.db, func(txWithCtx db.Transaction) (interface{}, error) {
 		// Delete table rows in the childTables that reference the order being deleted.
 		childTables := []string{"requestedNames", "orderFqdnSets", "orderToAuthz2"}
 		for _, t := range childTables {

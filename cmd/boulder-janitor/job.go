@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/sa"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -48,7 +48,7 @@ var (
 // cleanup job based on cursoring across a database table's auto incrementing
 // primary key.
 type batchedDBJob struct {
-	db  sa.DatabaseMap
+	db  db.DatabaseMap
 	log blog.Logger
 	clk clock.Clock
 	// table is the name of the table that this job cleans up.

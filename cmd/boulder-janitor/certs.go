@@ -2,14 +2,14 @@ package main
 
 import (
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/sa"
 )
 
 // newCertificatesJob returns a batchedDBJob configured to delete expired rows
 // from the certificates table.
 func newCertificatesJob(
-	db sa.DatabaseMap,
+	dbMap db.DatabaseMap,
 	log blog.Logger,
 	clk clock.Clock,
 	config Config) *batchedDBJob {
@@ -21,7 +21,7 @@ func newCertificatesJob(
 		 LIMIT :limit`
 	log.Debugf("Creating Certificates job from config: %#v\n", config.Janitor.Certificates)
 	return &batchedDBJob{
-		db:          db,
+		db:          dbMap,
 		log:         log,
 		clk:         clk,
 		purgeBefore: purgeBefore,

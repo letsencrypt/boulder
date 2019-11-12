@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/db"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 )
 
@@ -32,7 +33,7 @@ func baseDomain(name string) string {
 // input timeToTheHour must be a time rounded to an hour.
 func (ssa *SQLStorageAuthority) addCertificatesPerName(
 	ctx context.Context,
-	db dbSelectExecer,
+	db db.SelectExecer,
 	names []string,
 	timeToTheHour time.Time,
 ) error {
@@ -63,7 +64,7 @@ func (ssa *SQLStorageAuthority) addCertificatesPerName(
 // certificates issued in the given time range for that domain's eTLD+1 (aka
 // base domain). It uses the certificatesPerName table to make this lookup fast.
 func (ssa *SQLStorageAuthority) countCertificates(
-	db dbSelector,
+	db db.Selector,
 	domain string,
 	earliest,
 	latest time.Time,
