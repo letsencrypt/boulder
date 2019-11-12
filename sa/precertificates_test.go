@@ -53,8 +53,7 @@ func TestAddPrecertificate(t *testing.T) {
 	)
 
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER,
-		RegID:  &regID,
+		Der: certDER, RegID: &regID,
 		Ocsp:   ocspResp,
 		Issued: &issuedTime,
 	})

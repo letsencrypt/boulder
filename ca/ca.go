@@ -7,6 +7,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/hex"
@@ -120,8 +121,7 @@ type CertificateAuthorityImpl struct {
 	ecdsaProfile string
 	// A map from issuer cert common name to an internalIssuer struct
 	issuers map[string]*internalIssuer
-	// A map from issuer CN to ID and from ID to internalIssuer
-	issuerToID map[string]int64
+	// A map issuer ID to internalIssuer
 	idToIssuer map[int64]*internalIssuer
 	// The common name of the default issuer cert
 	defaultIssuer     *internalIssuer
@@ -192,6 +192,14 @@ func makeInternalIssuers(
 		}
 	}
 	return internalIssuers, nil
+}
+
+// idForIssuer generates a stable ID for a issuer certificate. This
+// is used for identifying which issuer issued a certificate in the
+// certificateStatus table.
+func idForIssuer(cert *x509.Certificate) int64 {
+	h := sha256.Sum256(cert.Raw)
+	return big.NewInt(0).SetBytes(h[:4]).Int64()
 }
 
 // NewCertificateAuthorityImpl creates a CA instance that can sign certificates
@@ -286,6 +294,14 @@ func NewCertificateAuthorityImpl(
 		csrExtensionCount: csrExtensionCount,
 		orphanQueue:       orphanQueue,
 		ocspLifetime:      config.LifespanOCSP.Duration,
+	}
+
+	if features.Enabled(features.StoreIssuerInfo) {
+		ca.idToIssuer = make(map[int64]*internalIssuer)
+		for _, ii := range ca.issuers {
+			id := idForIssuer(ii.cert)
+			ca.idToIssuer[id] = ii
+		}
 	}
 
 	if config.Expiry == "" {
@@ -399,13 +415,22 @@ var ocspStatusToCode = map[string]int{
 func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *caPB.GenerateOCSPRequest) ([]byte, error) {
 	var issuer *internalIssuer
 	var serial *big.Int
-	if features.Enabled(features.StoreIssuerInfo) {
+	// Once the feature is enabled we need to support both RPCs that include
+	// IssuerID and those that don't as we still need to be able to update rows
+	// that didn't have an IssuerID set when they were created. Once this featue
+	// has been enabled for a full OCSP lifetime cycle we can remove this
+	// functionality.
+	if features.Enabled(features.StoreIssuerInfo) && req.IssuerID != nil {
 		serialInt, err := core.StringToSerial(*req.Serial)
 		if err != nil {
 			return nil, err
 		}
 		serial = serialInt
-		issuer = ca.idToIssuer[*req.IssuerID]
+		var ok bool
+		issuer, ok = ca.idToIssuer[*req.IssuerID]
+		if !ok {
+			return nil, fmt.Errorf("This CA doesn't have an issuer cert with ID %d", *req.IssuerID)
+		}
 	} else {
 		cert, err := x509.ParseCertificate(req.CertDER)
 		if err != nil {
@@ -435,7 +460,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *caPB.
 		NextUpdate:   now.Add(ca.ocspLifetime),
 	}
 	if tbsResponse.Status == ocsp.Revoked {
-		tbsResponse.RevokedAt = time.Unix(*req.RevokedAt, 0)
+		tbsResponse.RevokedAt = time.Unix(0, *req.RevokedAt)
 		tbsResponse.RevocationReason = int(*req.Reason)
 	}
 
@@ -494,7 +519,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	if features.Enabled(features.StoreIssuerInfo) {
 		// we currently only use one issuer, in the future when we support multiple
 		// the issuer will need to be derived from issueReq
-		issuerID := ca.issuerToID[ca.defaultIssuer.cert.Subject.CommonName]
+		issuerID := idForIssuer(ca.defaultIssuer.cert)
 		req.IssuerID = &issuerID
 	}
 

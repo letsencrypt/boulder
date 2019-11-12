@@ -201,6 +201,9 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.Ce
 			ocspReq.Serial = &certStatus.Serial
 			ocspReq.IssuerID = certStatus.IssuerID
 		} else {
+			// If IssuerID wasn't returned it's likely because we requested
+			// a row that was created before we started using issuer IDs.
+			// Because of this we need to fall back to the old method.
 			certDER, err := getCertDER(updater.dbMap, status.Serial)
 			if err != nil {
 				return nil, err

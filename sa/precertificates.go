@@ -13,6 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -72,7 +73,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		RevokedReason:   0,
 		NotAfter:        parsed.NotAfter,
 	}
-	if req.IssuerID != nil {
+	if features.Enabled(features.StoreIssuerInfo) && req.IssuerID != nil {
 		certModel.IssuerID = req.IssuerID
 	}
 

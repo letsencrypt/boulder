@@ -26,7 +26,8 @@
     "features": {
       "DeleteUnusedChallenges": true,
       "FasterGetOrderForNames": true,
-      "GetAuthorizationsPerf": true
+      "GetAuthorizationsPerf": true,
+      "StoreIssuerInfo": true
     }
   },
 

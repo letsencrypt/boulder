@@ -1167,3 +1167,50 @@ func TestIssuePrecertificateLinting(t *testing.T) {
 	matches := testCtx.logger.GetAllMatching(regex)
 	test.AssertEquals(t, len(matches), 1)
 }
+
+func TestGenerateOCSPWithIssuerID(t *testing.T) {
+	testCtx := setup(t)
+	sa := &mockSA{}
+	features.Set(map[string]bool{"StoreIssuerInfo": true})
+	ca, err := NewCertificateAuthorityImpl(
+		testCtx.caConfig,
+		sa,
+		testCtx.pa,
+		testCtx.fc,
+		testCtx.stats,
+		testCtx.issuers,
+		testCtx.keyPolicy,
+		testCtx.logger,
+		nil)
+	test.AssertNotError(t, err, "Failed to create CA")
+
+	// GenerateOCSP with feature enabled + req contains bad IssuerID
+	issuerID := int64(666)
+	serial := "DEADDEADDEADDEADDEADDEADDEADDEADDEAD"
+	status := string(core.OCSPStatusGood)
+	_, err = ca.GenerateOCSP(context.Background(), &caPB.GenerateOCSPRequest{
+		IssuerID: &issuerID,
+		Serial:   &serial,
+		Status:   &status,
+	})
+	test.AssertError(t, err, "GenerateOCSP didn't fail with invalid IssuerID")
+
+	// GenerateOCSP with feature enabled + req contains good IssuerID
+	issuerID = idForIssuer(ca.defaultIssuer.cert)
+	_, err = ca.GenerateOCSP(context.Background(), &caPB.GenerateOCSPRequest{
+		IssuerID: &issuerID,
+		Serial:   &serial,
+		Status:   &status,
+	})
+	test.AssertNotError(t, err, "GenerateOCSP failed")
+
+	// GenerateOCSP with feature enabled + req doesn't contain IssuerID
+	issueReq := caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID}
+	cert, err := ca.IssuePrecertificate(ctx, &issueReq)
+	test.AssertNotError(t, err, "Failed to issue")
+	_, err = ca.GenerateOCSP(context.Background(), &caPB.GenerateOCSPRequest{
+		CertDER: cert.DER,
+		Status:  &status,
+	})
+	test.AssertNotError(t, err, "GenerateOCSP failed")
+}
