@@ -23,7 +23,7 @@ type Selector interface {
 	Select(interface{}, string, ...interface{}) ([]interface{}, error)
 }
 
-// a `Inserter` is anything that provides an `Insert` function
+// A `Inserter` is anything that provides an `Insert` function
 type Inserter interface {
 	Insert(list ...interface{}) error
 }
@@ -50,8 +50,7 @@ type DatabaseMap interface {
 }
 
 // Transaction offers the combination of OneSelector, Inserter, SelectExecer
-// interface sas well as Delete, Get, and
-// Update.
+// interface as well as Delete, Get, and Update.
 type Transaction interface {
 	OneSelector
 	Inserter
