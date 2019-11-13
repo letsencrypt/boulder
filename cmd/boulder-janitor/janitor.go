@@ -1,23 +1,16 @@
 package main
 
 import (
-	"database/sql"
 	"errors"
 	"time"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
 )
-
-// janitorDB is an interface describing the two functions of a sql.DB that the
-// janitor uses. It allows easy mocking of the DB for unit tests.
-type janitorDB interface {
-	Exec(query string, args ...interface{}) (sql.Result, error)
-	Select(i interface{}, query string, args ...interface{}) ([]interface{}, error)
-}
 
 var (
 	// errNoJobsConfigured is returned from New() when there are no jobs enabled
@@ -30,7 +23,7 @@ var (
 type janitor struct {
 	log  blog.Logger
 	clk  clock.Clock
-	db   janitorDB
+	db   db.DatabaseMap
 	jobs []*batchedDBJob
 }
 
@@ -82,7 +75,7 @@ func New(clk clock.Clock, config Config) (*janitor, error) {
 // newJobs constructs a list of batchedDBJobs based on the provided config. If
 // no jobs are enabled in the config then errNoJobsConfigured is returned.
 func newJobs(
-	dbMap janitorDB,
+	dbMap db.DatabaseMap,
 	logger blog.Logger,
 	clk clock.Clock,
 	config Config) ([]*batchedDBJob, error) {
@@ -103,8 +96,22 @@ func newJobs(
 		}
 		jobs = append(jobs, newCertificatesPerNameJob(dbMap, logger, clk, config))
 	}
+	if config.Janitor.Orders.Enabled {
+		jobs = append(jobs, newOrdersJob(dbMap, logger, clk, config.Janitor.Orders))
+	}
+	// There must be at least one job
 	if len(jobs) == 0 {
 		return nil, errNoJobsConfigured
+	}
+	// The jobs must all be valid
+	for _, j := range jobs {
+		if err := j.valid(); err != nil {
+			return nil, err
+		}
+		// if no explicit deleteHandler is specified use the default
+		if j.deleteHandler == nil {
+			j.deleteHandler = j.simpleResourceDelete
+		}
 	}
 	return jobs, nil
 }

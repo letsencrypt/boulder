@@ -17,7 +17,9 @@ func TestNewJobs(t *testing.T) {
 		},
 		"certificateStatus": {
 			"enabled": true,
-			"gracePeriod": "1h"
+			"gracePeriod": "2184h",
+			"batchSize": 1,
+			"parallelism": 1
 		},
 		"certificatesPerName": {
 			"enabled": false
@@ -28,15 +30,21 @@ func TestNewJobs(t *testing.T) {
 	"janitor": {
 		"certificates": {
 			"enabled": true,
-			"gracePeriod": "1h"
+			"gracePeriod": "2184h",
+			"batchSize": 1,
+			"parallelism": 1
 		},
 		"certificateStatus": {
 			"enabled": true,
-			"gracePeriod": "1h"
+			"gracePeriod": "2184h",
+			"batchSize": 1,
+			"parallelism": 1
 		},
 		"certificatesPerName": {
 			"enabled": true,
-			"gracePeriod": "169h"
+			"gracePeriod": "2184h",
+			"batchSize": 1,
+			"parallelism": 1
 		}
 	}
 }`

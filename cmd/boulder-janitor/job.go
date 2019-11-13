@@ -2,14 +2,23 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/prometheus/client_golang/prometheus"
+)
+
+const (
+	// minPurgeBefore is the smallest purgeBefore time.Duration that can be
+	// configured for a job. We set this to 90 days to match the default validity
+	// window of Let's Encrypt certificates.
+	minPurgeBefore = time.Hour * 24 * 90
 )
 
 var (
@@ -46,7 +55,7 @@ var (
 // cleanup job based on cursoring across a database table's auto incrementing
 // primary key.
 type batchedDBJob struct {
-	db  janitorDB
+	db  db.DatabaseMap
 	log blog.Logger
 	clk clock.Clock
 	// table is the name of the table that this job cleans up.
@@ -71,7 +80,37 @@ type batchedDBJob struct {
 	//   * id      - the primary key value for each row.
 	//   * expires - the expiry datetime used to calculate if the row is within the cutoff window. The column name
 	//               may need to be aliased to expiry if it has another name.
-	workQuery string
+	workQuery     string
+	deleteHandler func(id int64) error
+}
+
+var (
+	errNoTable       = errors.New("table must not be empty")
+	errNoPurgeBefore = fmt.Errorf("purgeBefore must be greater than %s", minPurgeBefore)
+	errNoBatchSize   = errors.New("batchSize must be > 0")
+	errNoParallelism = errors.New("parallelism must be > 0")
+	errNoWorkQuery   = errors.New("workQuery must not be empty")
+)
+
+// valid checks that the batchedDBJob has all required fields set correctly and
+// returns an error if not satisfied.
+func (j *batchedDBJob) valid() error {
+	if j.table == "" {
+		return errNoTable
+	}
+	if j.purgeBefore <= minPurgeBefore {
+		return errNoPurgeBefore
+	}
+	if j.batchSize <= 0 {
+		return errNoBatchSize
+	}
+	if j.parallelism <= 0 {
+		return errNoParallelism
+	}
+	if j.workQuery == "" {
+		return errNoWorkQuery
+	}
+	return nil
 }
 
 type workUnit struct {
@@ -140,7 +179,7 @@ func (j batchedDBJob) cleanResource(work <-chan int64) {
 				if ticker != nil {
 					<-ticker.C
 				}
-				if err := j.deleteResource(id); err != nil {
+				if err := j.deleteHandler(id); err != nil {
 					j.log.Errf(
 						"error deleting ID %d from table %q: %s",
 						id, j.table, err)
@@ -157,9 +196,10 @@ func (j batchedDBJob) cleanResource(work <-chan int64) {
 		deleted, j.table)
 }
 
-// deleteResource performs a delete of the given ID from the batchedDBJob's
-// table or returns an error.
-func (j batchedDBJob) deleteResource(id int64) error {
+// simpleResourceDelete performs a delete of the given ID from the batchedDBJob's
+// table or returns an error. It does not use a transaction and assumes there
+// are no foreign key constraints or referencing rows in other tables to manage.
+func (j batchedDBJob) simpleResourceDelete(id int64) error {
 	// NOTE(@cpu): We throw away the sql.Result here without checking the rows
 	// affected because the query is always specific to the ID auto-increment
 	// primary key. If there are multiple rows with the same primary key MariaDB
