@@ -5,11 +5,12 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/db"
 )
 
 const getAuthorizationIDsMax = 1000
 
-func getAuthorizationIDsByDomain(db dbSelector, tableName string, ident string, now time.Time) ([]string, error) {
+func getAuthorizationIDsByDomain(db db.Selector, tableName string, ident string, now time.Time) ([]string, error) {
 	var allIDs []string
 	_, err := db.Select(
 		&allIDs,

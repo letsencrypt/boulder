@@ -4,7 +4,6 @@ Thanks for helping us build Boulder! This page contains requirements and guideli
 * All new functionality and fixed bugs must be accompanied by tests.
 * All patches must meet the deployability requirements listed below.
 * We prefer pull requests from external forks be created with the ["Allow edits from maintainers"](https://github.com/blog/2247-improving-collaboration-with-forks) checkbox selected.
-* Boulder currently implements something we internally refer to as "ACME v1". It is largely the same as the IETF ACME protocol's current most draft ([ACME draft-06](https://tools.ietf.org/html/draft-ietf-acme-acme-06)). The [acme-divergences](https://github.com/letsencrypt/boulder/blob/master/docs/acme-divergences.md) document outlines the places where Boulder differs from the IETF drafts. Our [plans for an "ACME v2" endpoint](https://letsencrypt.org/2017/06/14/acme-v2-api.html) describe how we will resolve the divergences when ACME leaves draft status. If a protocol spec change is required for Boulder functionality, you should propose it on the ACME mailing list (acme@ietf.org), possibly accompanied by a pull request on the [spec repo](https://github.com/ietf-wg-acme/acme/).
 
 # Review Requirements
 * All pull requests must receive at least one positive review. Contributors are

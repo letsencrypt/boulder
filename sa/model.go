@@ -1,7 +1,6 @@
 package sa
 
 import (
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
@@ -50,42 +50,10 @@ func badJSONError(msg string, jsonData []byte, err error) error {
 	}
 }
 
-// By convention, any function that takes a dbOneSelector, dbSelector,
-// dbInserter, dbExecer, or dbSelectExecer as as an argument expects
-// that a context has already been applied to the relevant DbMap or
-// Transaction object.
-
-// A `dbOneSelector` is anything that provides a `SelectOne` function.
-type dbOneSelector interface {
-	SelectOne(interface{}, string, ...interface{}) error
-}
-
-// A `dbSelector` is anything that provides a `Select` function.
-type dbSelector interface {
-	Select(interface{}, string, ...interface{}) ([]interface{}, error)
-}
-
-// a `dbInserter` is anything that provides an `Insert` function
-type dbInserter interface {
-	Insert(list ...interface{}) error
-}
-
-// A `dbExecer` is anything that provides an `Exec` function
-type dbExecer interface {
-	Exec(string, ...interface{}) (sql.Result, error)
-}
-
-// dbSelectExecer offers a subset of gorp.SqlExecutor's methods: Select and
-// Exec.
-type dbSelectExecer interface {
-	dbSelector
-	dbExecer
-}
-
 const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol, status"
 
 // selectRegistration selects all fields of one registration model
-func selectRegistration(s dbOneSelector, q string, args ...interface{}) (*regModel, error) {
+func selectRegistration(s db.OneSelector, q string, args ...interface{}) (*regModel, error) {
 	var model regModel
 	err := s.SelectOne(
 		&model,
@@ -96,7 +64,7 @@ func selectRegistration(s dbOneSelector, q string, args ...interface{}) (*regMod
 }
 
 // selectPendingAuthz selects all fields of one pending authorization model
-func selectPendingAuthz(s dbOneSelector, q string, args ...interface{}) (*pendingauthzModel, error) {
+func selectPendingAuthz(s db.OneSelector, q string, args ...interface{}) (*pendingauthzModel, error) {
 	var model pendingauthzModel
 	err := s.SelectOne(
 		&model,
@@ -109,7 +77,7 @@ func selectPendingAuthz(s dbOneSelector, q string, args ...interface{}) (*pendin
 const authzFields = "id, identifier, registrationID, status, expires"
 
 // selectAuthz selects all fields of one authorization model
-func selectAuthz(s dbOneSelector, q string, args ...interface{}) (*authzModel, error) {
+func selectAuthz(s db.OneSelector, q string, args ...interface{}) (*authzModel, error) {
 	var model authzModel
 	err := s.SelectOne(
 		&model,
@@ -122,7 +90,7 @@ func selectAuthz(s dbOneSelector, q string, args ...interface{}) (*authzModel, e
 const certFields = "registrationID, serial, digest, der, issued, expires"
 
 // SelectCertificate selects all fields of one certificate object
-func SelectCertificate(s dbOneSelector, q string, args ...interface{}) (core.Certificate, error) {
+func SelectCertificate(s db.OneSelector, q string, args ...interface{}) (core.Certificate, error) {
 	var model core.Certificate
 	err := s.SelectOne(
 		&model,
@@ -136,7 +104,7 @@ const precertFields = "registrationID, serial, der, issued, expires"
 
 // SelectPrecertificate selects all fields of one precertificate object
 // identified by serial.
-func SelectPrecertificate(s dbOneSelector, serial string) (core.Certificate, error) {
+func SelectPrecertificate(s db.OneSelector, serial string) (core.Certificate, error) {
 	var model precertificateModel
 	err := s.SelectOne(
 		&model,
@@ -157,7 +125,7 @@ type CertWithID struct {
 }
 
 // SelectCertificates selects all fields of multiple certificate objects
-func SelectCertificates(s dbSelector, q string, args map[string]interface{}) ([]CertWithID, error) {
+func SelectCertificates(s db.Selector, q string, args map[string]interface{}) ([]CertWithID, error) {
 	var models []CertWithID
 	_, err := s.Select(
 		&models,
@@ -168,7 +136,7 @@ func SelectCertificates(s dbSelector, q string, args map[string]interface{}) ([]
 const certStatusFields = "serial, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, notAfter, isExpired"
 
 // SelectCertificateStatus selects all fields of one certificate status model
-func SelectCertificateStatus(s dbOneSelector, q string, args ...interface{}) (certStatusModel, error) {
+func SelectCertificateStatus(s db.OneSelector, q string, args ...interface{}) (certStatusModel, error) {
 	fields := certStatusFields
 	if features.Enabled(features.StoreIssuerInfo) {
 		fields += ", issuerID"
@@ -183,7 +151,7 @@ func SelectCertificateStatus(s dbOneSelector, q string, args ...interface{}) (ce
 }
 
 // SelectCertificateStatuses selects all fields of multiple certificate status objects
-func SelectCertificateStatuses(s dbSelector, q string, args ...interface{}) ([]core.CertificateStatus, error) {
+func SelectCertificateStatuses(s db.Selector, q string, args ...interface{}) ([]core.CertificateStatus, error) {
 	fields := certStatusFields
 	if features.Enabled(features.StoreIssuerInfo) {
 		fields += ", issuerID"

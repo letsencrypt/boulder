@@ -15,6 +15,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -171,12 +172,12 @@ func main() {
 
 		tx, err := dbMap.Begin()
 		if err != nil {
-			cmd.FailOnError(sa.Rollback(tx, err), "Couldn't begin transaction")
+			cmd.FailOnError(db.Rollback(tx, err), "Couldn't begin transaction")
 		}
 
 		err = revokeBySerial(ctx, serial, revocation.Reason(reasonCode), rac, logger, tx)
 		if err != nil {
-			cmd.FailOnError(sa.Rollback(tx, err), "Couldn't revoke certificate")
+			cmd.FailOnError(db.Rollback(tx, err), "Couldn't revoke certificate")
 		}
 
 		err = tx.Commit()
@@ -194,7 +195,7 @@ func main() {
 
 		tx, err := dbMap.Begin()
 		if err != nil {
-			cmd.FailOnError(sa.Rollback(tx, err), "Couldn't begin transaction")
+			cmd.FailOnError(db.Rollback(tx, err), "Couldn't begin transaction")
 		}
 
 		_, err = sac.GetRegistration(ctx, regID)
@@ -204,7 +205,7 @@ func main() {
 
 		err = revokeByReg(ctx, regID, revocation.Reason(reasonCode), rac, logger, tx)
 		if err != nil {
-			cmd.FailOnError(sa.Rollback(tx, err), "Couldn't revoke certificate")
+			cmd.FailOnError(db.Rollback(tx, err), "Couldn't revoke certificate")
 		}
 
 		err = tx.Commit()
