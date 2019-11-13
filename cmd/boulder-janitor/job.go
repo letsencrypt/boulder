@@ -14,6 +14,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+const (
+	// minPurgeBefore is the smallest purgeBefore time.Duration that can be
+	// configured for a job. We set this to 90 days to match the default validity
+	// window of Let's Encrypt certificates.
+	minPurgeBefore = time.Hour * 24 * 90
+)
+
 var (
 	// errStat is a prometheus counter vector tracking the number of errors
 	// experienced by the janitor during operation sliced by a table label and a
@@ -79,7 +86,7 @@ type batchedDBJob struct {
 
 var (
 	errNoTable       = errors.New("table must not be empty")
-	errNoPurgeBefore = errors.New("purgeBefore must be greater than 0")
+	errNoPurgeBefore = fmt.Errorf("purgeBefore must be greater than %s", minPurgeBefore)
 	errNoBatchSize   = errors.New("batchSize must be > 0")
 	errNoParallelism = errors.New("parallelism must be > 0")
 	errNoWorkQuery   = errors.New("workQuery must not be empty")
@@ -91,7 +98,7 @@ func (j *batchedDBJob) valid() error {
 	if j.table == "" {
 		return errNoTable
 	}
-	if j.purgeBefore.Seconds() <= 0 {
+	if j.purgeBefore <= minPurgeBefore {
 		return errNoPurgeBefore
 	}
 	if j.batchSize <= 0 {

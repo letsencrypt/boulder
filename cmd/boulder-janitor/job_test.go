@@ -326,10 +326,18 @@ func TestBatchedDBJobValid(t *testing.T) {
 			expectedErr: errNoPurgeBefore,
 		},
 		{
+			name: "too small purgeBefore",
+			j: batchedDBJob{
+				table:       "chef's",
+				purgeBefore: minPurgeBefore,
+			},
+			expectedErr: errNoPurgeBefore,
+		},
+		{
 			name: "no batchSize",
 			j: batchedDBJob{
 				table:       "chef's",
-				purgeBefore: time.Second,
+				purgeBefore: minPurgeBefore + time.Hour,
 			},
 			expectedErr: errNoBatchSize,
 		},
@@ -337,7 +345,7 @@ func TestBatchedDBJobValid(t *testing.T) {
 			name: "no parallelism",
 			j: batchedDBJob{
 				table:       "chef's",
-				purgeBefore: time.Second,
+				purgeBefore: minPurgeBefore + time.Hour,
 				batchSize:   1,
 			},
 			expectedErr: errNoParallelism,
@@ -346,7 +354,7 @@ func TestBatchedDBJobValid(t *testing.T) {
 			name: "no workQuery",
 			j: batchedDBJob{
 				table:       "chef's",
-				purgeBefore: time.Second,
+				purgeBefore: minPurgeBefore + time.Hour,
 				batchSize:   1,
 				parallelism: 1,
 			},
@@ -356,7 +364,7 @@ func TestBatchedDBJobValid(t *testing.T) {
 			name: "valid",
 			j: batchedDBJob{
 				table:       "chef's",
-				purgeBefore: time.Second,
+				purgeBefore: time.Hour * 24 * 91,
 				batchSize:   1,
 				parallelism: 1,
 				workQuery:   "GET food FROM kitchen",

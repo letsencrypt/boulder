@@ -8,7 +8,7 @@
     "debugAddr": ":8014",
     "certificates": {
         "enabled": true,
-        "gracePeriod": "1h",
+        "gracePeriod": "2184h",
         "batchSize": 100,
         "workSleep": "500ms",
         "parallelism": 2,
@@ -16,7 +16,7 @@
     },
     "certificateStatus": {
         "enabled": true,
-        "gracePeriod": "1h",
+        "gracePeriod": "2184h",
         "batchSize": 100,
         "workSleep": "500ms",
         "parallelism": 2,
@@ -24,7 +24,7 @@
     },
     "certificatesPerName": {
         "enabled": true,
-        "gracePeriod": "169h",
+        "gracePeriod": "2184h",
         "batchSize": 100,
         "workSleep": "500ms",
         "parallelism": 2,
@@ -32,7 +32,7 @@
     },
     "orders": {
         "enabled": true,
-        "gracePeriod": "169h",
+        "gracePeriod": "2184h",
         "batchSize": 100,
         "workSleep": "500ms",
         "parallelism": 2,
