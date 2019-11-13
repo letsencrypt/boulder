@@ -64,20 +64,40 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		return nil, err
 	}
 
-	certModel := certStatusModel{
-		Status:          core.OCSPStatusGood,
-		OCSPLastUpdated: ssa.clk.Now(),
-		OCSPResponse:    req.Ocsp,
-		Serial:          serialHex,
-		RevokedDate:     time.Time{},
-		RevokedReason:   0,
-		NotAfter:        parsed.NotAfter,
+	// With feature.StoreIssuerInfo we've added a new field to certStatusModel
+	// so when we try and use dbMap.Insert it will always try to insert that field.
+	// That will break when the relevant migration hasn't bene applied so we need
+	// to use an explicit INSERT statement that we can manipulate to include the
+	// field only when the feature is enabled (and as such the migration has been
+	// applied).
+	csFields := certStatusFields
+	if features.Enabled(features.StoreIssuerInfo) {
+		csFields += ", issuerID"
+	}
+	qmarks := []string{}
+	for range strings.Split(csFields, ",") {
+		qmarks = append(qmarks, "?")
+	}
+	args := []interface{}{
+		serialHex,                   // serial
+		string(core.OCSPStatusGood), // stauts
+		ssa.clk.Now(),               // ocspLastUpdated
+		time.Time{},                 // revokedDate
+		0,                           // revokedReason
+		time.Time{},                 // lastExpirationNagSent
+		req.Ocsp,                    // ocspResponse
+		parsed.NotAfter,             // notAfter
+		false,                       // isExpired
 	}
 	if features.Enabled(features.StoreIssuerInfo) && req.IssuerID != nil {
-		certModel.IssuerID = req.IssuerID
+		args = append(args, req.IssuerID)
 	}
 
-	err = ssa.dbMap.WithContext(ctx).Insert(&certModel)
+	_, err = ssa.dbMap.WithContext(ctx).Exec(fmt.Sprintf(
+		"INSERT INTO certificateStatus (%s) VALUES (%s)",
+		csFields,
+		strings.Join(qmarks, ","),
+	), args...)
 	if err != nil {
 		return nil, err
 	}
