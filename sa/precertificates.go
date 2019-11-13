@@ -1,14 +1,13 @@
 package sa
 
 import (
+	"context"
 	"crypto/x509"
 	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
