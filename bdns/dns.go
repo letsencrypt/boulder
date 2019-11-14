@@ -182,7 +182,6 @@ func NewDNSClientImpl(
 	log blog.Logger,
 ) *DNSClientImpl {
 	stats = stats.NewScope("DNS")
-	// TODO(jmhodges): make constructor use an Option func pattern
 	dnsClient := new(dns.Client)
 
 	// Set timeout for underlying net.Conn
