@@ -24,14 +24,14 @@ import (
 	"github.com/cloudflare/cfssl/helpers"
 	"github.com/cloudflare/cfssl/signer"
 	"github.com/cloudflare/cfssl/signer/local"
-	"github.com/google/certificate-transparency-go"
+	ct "github.com/google/certificate-transparency-go"
 	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/zmap/zlint/lints"
 	"golang.org/x/crypto/ocsp"
 
-	"github.com/letsencrypt/boulder/ca/config"
+	ca_config "github.com/letsencrypt/boulder/ca/config"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -505,21 +505,22 @@ func TestOCSP(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to issue")
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Failed to parse cert")
-	ocspResp, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+	status := string(core.OCSPStatusGood)
+	ocspResp, err := ca.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
 		CertDER: cert.DER,
-		Status:  string(core.OCSPStatusGood),
+		Status:  &status,
 	})
 	test.AssertNotError(t, err, "Failed to generate OCSP")
-	parsed, err := ocsp.ParseResponse(ocspResp, caCert)
+	parsed, err := ocsp.ParseResponse(ocspResp.Response, caCert)
 	test.AssertNotError(t, err, "Failed to parse validate OCSP")
 	test.AssertEquals(t, parsed.Status, 0)
 	test.AssertEquals(t, parsed.RevocationReason, 0)
 	test.AssertEquals(t, parsed.SerialNumber.Cmp(parsedCert.SerialNumber), 0)
 
 	// Test that signatures are checked.
-	_, err = ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+	_, err = ca.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
 		CertDER: append(cert.DER, byte(0)),
-		Status:  string(core.OCSPStatusGood),
+		Status:  &status,
 	})
 	test.AssertError(t, err, "Generated OCSP for cert with bad signature")
 
@@ -560,22 +561,22 @@ func TestOCSP(t *testing.T) {
 
 	// ocspResp2 is a second OCSP response for `cert` (issued by caCert), and
 	// should be signed by caCert.
-	ocspResp2, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+	ocspResp2, err := ca.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
 		CertDER: append(cert.DER),
-		Status:  string(core.OCSPStatusGood),
+		Status:  &status,
 	})
 	test.AssertNotError(t, err, "Failed to sign second OCSP response")
-	_, err = ocsp.ParseResponse(ocspResp2, caCert)
+	_, err = ocsp.ParseResponse(ocspResp2.Response, caCert)
 	test.AssertNotError(t, err, "Failed to parse / validate second OCSP response")
 
 	// newCertOcspResp is an OCSP response for `newCert` (issued by newIssuer),
 	// and should be signed by newIssuer.
-	newCertOcspResp, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+	newCertOcspResp, err := ca.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
 		CertDER: newCert.DER,
-		Status:  string(core.OCSPStatusGood),
+		Status:  &status,
 	})
 	test.AssertNotError(t, err, "Failed to generate OCSP")
-	parsedNewCertOcspResp, err := ocsp.ParseResponse(newCertOcspResp, newIssuerCert)
+	parsedNewCertOcspResp, err := ocsp.ParseResponse(newCertOcspResp.Response, newIssuerCert)
 	test.AssertNotError(t, err, "Failed to parse / validate OCSP for newCert")
 	test.AssertEquals(t, parsedNewCertOcspResp.Status, 0)
 	test.AssertEquals(t, parsedNewCertOcspResp.RevocationReason, 0)
