@@ -14,6 +14,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 )
 
@@ -157,6 +158,7 @@ type DNSClientImpl struct {
 	allowRestrictedAddresses bool
 	maxTries                 int
 	clk                      clock.Clock
+	log                      blog.Logger
 
 	queryTime       *prometheus.HistogramVec
 	totalLookupTime *prometheus.HistogramVec
@@ -177,6 +179,7 @@ func NewDNSClientImpl(
 	stats metrics.Scope,
 	clk clock.Clock,
 	maxTries int,
+	log blog.Logger,
 ) *DNSClientImpl {
 	stats = stats.NewScope("DNS")
 	// TODO(jmhodges): make constructor use an Option func pattern
@@ -220,14 +223,21 @@ func NewDNSClientImpl(
 		queryTime:                queryTime,
 		totalLookupTime:          totalLookupTime,
 		timeoutCounter:           timeoutCounter,
+		log:                      log,
 	}
 }
 
 // NewTestDNSClientImpl constructs a new DNS resolver object that utilizes the
 // provided list of DNS servers for resolution and will allow loopback addresses.
 // This constructor should *only* be called from tests (unit or integration).
-func NewTestDNSClientImpl(readTimeout time.Duration, servers []string, stats metrics.Scope, clk clock.Clock, maxTries int) *DNSClientImpl {
-	resolver := NewDNSClientImpl(readTimeout, servers, stats, clk, maxTries)
+func NewTestDNSClientImpl(
+	readTimeout time.Duration,
+	servers []string,
+	stats metrics.Scope,
+	clk clock.Clock,
+	maxTries int,
+	log blog.Logger) *DNSClientImpl {
+	resolver := NewDNSClientImpl(readTimeout, servers, stats, clk, maxTries, log)
 	resolver.allowRestrictedAddresses = true
 	return resolver
 }
