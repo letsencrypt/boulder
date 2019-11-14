@@ -465,20 +465,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		Expires:        parsedCertificate.NotAfter,
 	}
 
-	certStatus := &certStatusModel{
-		Status:          core.OCSPStatus("good"),
-		OCSPLastUpdated: time.Time{},
-		OCSPResponse:    []byte{},
-		Serial:          serial,
-		RevokedDate:     time.Time{},
-		RevokedReason:   0,
-		NotAfter:        parsedCertificate.NotAfter,
-	}
-	if len(ocspResponse) != 0 {
-		certStatus.OCSPResponse = ocspResponse
-		certStatus.OCSPLastUpdated = ssa.clk.Now()
-	}
-
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
 		err = txWithCtx.Insert(cert)
 		if err != nil {
@@ -486,16 +472,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 				return nil, berrors.DuplicateError("cannot add a duplicate cert")
 			}
 			return nil, err
-		}
-
-		err = txWithCtx.Insert(certStatus)
-		if err != nil {
-			// We ignore "duplicate entry" on insert to the certificateStatus table
-			// because we may be inserting a certificate after a call to
-			// AddPrecertificate, which also adds a certificateStatus entry.
-			if !strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
-				return nil, err
-			}
 		}
 
 		// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
