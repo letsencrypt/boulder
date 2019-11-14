@@ -960,8 +960,6 @@ func TestPrecertOrphanQueue(t *testing.T) {
 		orphanQueue)
 	test.AssertNotError(t, err, "Failed to create CA")
 
-	_ = features.Set(map[string]bool{"PrecertificateOCSP": true})
-
 	err = ca.integrateOrphan()
 	if err != goque.ErrEmpty {
 		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
