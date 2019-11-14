@@ -392,8 +392,8 @@ var ocspStatusToCode = map[string]int{
 }
 
 // GenerateOCSP produces a new OCSP response and returns it
-func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj core.OCSPSigningRequest) ([]byte, error) {
-	cert, err := x509.ParseCertificate(xferObj.CertDER)
+func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *caPB.GenerateOCSPRequest) (*caPB.OCSPResponse, error) {
+	cert, err := x509.ParseCertificate(req.CertDER)
 	if err != nil {
 		ca.log.AuditErr(err.Error())
 		return nil, err
@@ -414,14 +414,14 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 
 	now := ca.clk.Now().Truncate(time.Hour)
 	tbsResponse := ocsp.Response{
-		Status:       ocspStatusToCode[xferObj.Status],
+		Status:       ocspStatusToCode[*req.Status],
 		SerialNumber: cert.SerialNumber,
 		ThisUpdate:   now,
 		NextUpdate:   now.Add(ca.ocspLifetime),
 	}
 	if tbsResponse.Status == ocsp.Revoked {
-		tbsResponse.RevokedAt = xferObj.RevokedAt
-		tbsResponse.RevocationReason = int(xferObj.Reason)
+		tbsResponse.RevokedAt = time.Unix(0, *req.RevokedAt)
+		tbsResponse.RevocationReason = int(*req.Reason)
 	}
 
 	ocspResponse, err := ocsp.CreateResponse(issuer.cert, issuer.cert, tbsResponse, issuer.ocspSigner)
@@ -429,7 +429,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 	if err == nil {
 		ca.signatureCount.With(prometheus.Labels{"purpose": "ocsp"}).Inc()
 	}
-	return ocspResponse, err
+	return &caPB.OCSPResponse{Response: ocspResponse}, err
 }
 
 func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
@@ -458,9 +458,10 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	ocspResp, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+	status := string(core.OCSPStatusGood)
+	ocspResp, err := ca.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
 		CertDER: precertDER,
-		Status:  string(core.OCSPStatusGood),
+		Status:  &status,
 	})
 	if err != nil {
 		err = berrors.InternalServerError(err.Error())
@@ -471,7 +472,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	_, err = ca.sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    precertDER,
 		RegID:  &regID,
-		Ocsp:   ocspResp,
+		Ocsp:   ocspResp.Response,
 		Issued: &nowNanos,
 	})
 	if err != nil {
@@ -482,7 +483,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 			ca.queueOrphan(&orphanedCert{
 				DER:      precertDER,
 				RegID:    regID,
-				OCSPResp: ocspResp,
+				OCSPResp: ocspResp.Response,
 				Precert:  true,
 			})
 		}
