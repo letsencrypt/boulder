@@ -511,7 +511,7 @@ func TestOCSP(t *testing.T) {
 		Status:  &status,
 	})
 	test.AssertNotError(t, err, "Failed to generate OCSP")
-	parsed, err := ocsp.ParseResponse(ocspResp, caCert)
+	parsed, err := ocsp.ParseResponse(ocspResp.Response, caCert)
 	test.AssertNotError(t, err, "Failed to parse validate OCSP")
 	test.AssertEquals(t, parsed.Status, 0)
 	test.AssertEquals(t, parsed.RevocationReason, 0)
@@ -566,7 +566,7 @@ func TestOCSP(t *testing.T) {
 		Status:  &status,
 	})
 	test.AssertNotError(t, err, "Failed to sign second OCSP response")
-	_, err = ocsp.ParseResponse(ocspResp2, caCert)
+	_, err = ocsp.ParseResponse(ocspResp2.Response, caCert)
 	test.AssertNotError(t, err, "Failed to parse / validate second OCSP response")
 
 	// newCertOcspResp is an OCSP response for `newCert` (issued by newIssuer),
@@ -576,7 +576,7 @@ func TestOCSP(t *testing.T) {
 		Status:  &status,
 	})
 	test.AssertNotError(t, err, "Failed to generate OCSP")
-	parsedNewCertOcspResp, err := ocsp.ParseResponse(newCertOcspResp, newIssuerCert)
+	parsedNewCertOcspResp, err := ocsp.ParseResponse(newCertOcspResp.Response, newIssuerCert)
 	test.AssertNotError(t, err, "Failed to parse / validate OCSP for newCert")
 	test.AssertEquals(t, parsedNewCertOcspResp.Status, 0)
 	test.AssertEquals(t, parsedNewCertOcspResp.RevocationReason, 0)
@@ -959,8 +959,6 @@ func TestPrecertOrphanQueue(t *testing.T) {
 		testCtx.logger,
 		orphanQueue)
 	test.AssertNotError(t, err, "Failed to create CA")
-
-	_ = features.Set(map[string]bool{"PrecertificateOCSP": true})
 
 	err = ca.integrateOrphan()
 	if err != goque.ErrEmpty {

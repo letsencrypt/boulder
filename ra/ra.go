@@ -1669,7 +1669,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 		Serial:   &serial,
 		Reason:   &reason64,
 		Date:     &revokedAt,
-		Response: ocspResponse,
+		Response: ocspResponse.Response,
 	})
 	if err != nil {
 		return err

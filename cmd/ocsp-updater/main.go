@@ -162,10 +162,7 @@ func getCertDER(selector ocspDB, serial string) ([]byte, error) {
 		serial,
 	)
 	if err != nil {
-		// If PrecertificateOCSP is enabled and the error indicates there was no
-		// certificates table row then try to find a precertificate table row before
-		// giving up with an error.
-		if features.Enabled(features.PrecertificateOCSP) && err == sql.ErrNoRows {
+		if err == sql.ErrNoRows {
 			cert, err = sa.SelectPrecertificate(selector, serial)
 			// If there was still a non-nil error return it. If we can't find
 			// a precert row something is amiss, we have a certificateStatus row with

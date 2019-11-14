@@ -410,7 +410,7 @@ var ocspStatusToCode = map[string]int{
 }
 
 // GenerateOCSP produces a new OCSP response and returns it
-func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *caPB.GenerateOCSPRequest) ([]byte, error) {
+func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *caPB.GenerateOCSPRequest) (*caPB.OCSPResponse, error) {
 	var issuer *internalIssuer
 	var serial *big.Int
 	// Once the feature is enabled we need to support both RPCs that include
@@ -467,7 +467,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *caPB.
 	if err == nil {
 		ca.signatureCount.With(prometheus.Labels{"purpose": "ocsp"}).Inc()
 	}
-	return ocspResponse, err
+	return &caPB.OCSPResponse{Response: ocspResponse}, err
 }
 
 func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
@@ -510,7 +510,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	req := &sapb.AddCertificateRequest{
 		Der:    precertDER,
 		RegID:  &regID,
-		Ocsp:   ocspResp,
+		Ocsp:   ocspResp.Response,
 		Issued: &nowNanos,
 	}
 
@@ -530,7 +530,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 			ca.queueOrphan(&orphanedCert{
 				DER:      precertDER,
 				RegID:    regID,
-				OCSPResp: ocspResp,
+				OCSPResp: ocspResp.Response,
 				Precert:  true,
 			})
 		}
@@ -735,9 +735,8 @@ func (ca *CertificateAuthorityImpl) storeCertificate(
 	serialBigInt *big.Int,
 	certDER []byte) (core.Certificate, error) {
 	var err error
-	var ocspResp []byte
 	now := ca.clk.Now()
-	_, err = ca.sa.AddCertificate(ctx, certDER, regID, ocspResp, &now)
+	_, err = ca.sa.AddCertificate(ctx, certDER, regID, nil, &now)
 	if err != nil {
 		err = berrors.InternalServerError(err.Error())
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
@@ -746,9 +745,8 @@ func (ca *CertificateAuthorityImpl) storeCertificate(
 			core.SerialToString(serialBigInt), hex.EncodeToString(certDER), err, regID, orderID)
 		if ca.orphanQueue != nil {
 			ca.queueOrphan(&orphanedCert{
-				DER:      certDER,
-				OCSPResp: ocspResp,
-				RegID:    regID,
+				DER:   certDER,
+				RegID: regID,
 			})
 		}
 		return core.Certificate{}, err
@@ -820,7 +818,7 @@ func (ca *CertificateAuthorityImpl) integrateOrphan() error {
 			Issued: &issuedNanos,
 		})
 	} else {
-		_, err = ca.sa.AddCertificate(context.Background(), orphan.DER, orphan.RegID, orphan.OCSPResp, &issued)
+		_, err = ca.sa.AddCertificate(context.Background(), orphan.DER, orphan.RegID, nil, &issued)
 	}
 	if err != nil && !berrors.Is(err, berrors.Duplicate) {
 		return fmt.Errorf("failed to store orphaned certificate: %s", err)

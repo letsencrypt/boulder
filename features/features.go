@@ -25,6 +25,7 @@ const (
 	DisableAuthz2Orders
 	EarlyOrderRateLimit
 	FasterGetOrderForNames
+	PrecertificateOCSP
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -58,10 +59,6 @@ const (
 	// V1DisableNewValidations disables validations for new domain names in the V1
 	// API.
 	V1DisableNewValidations
-	// PrecertificateOCSP ensures that we write an OCSP response immediately upon
-	// generating a precertificate. This also changes the issuance / storage flow,
-	// adding two new calls from CA to SA: AddSerial and AddPrecertificate.
-	PrecertificateOCSP
 	// PrecertificateRevocation allows revocation of precertificates with the
 	// ACMEv2 interface.
 	PrecertificateRevocation

@@ -42,7 +42,7 @@ func (cac CertificateAuthorityClientWrapper) IssueCertificateForPrecertificate(c
 	return PBToCert(res)
 }
 
-func (cac CertificateAuthorityClientWrapper) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) ([]byte, error) {
+func (cac CertificateAuthorityClientWrapper) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
 	res, err := cac.inner.GenerateOCSP(ctx, req)
 	if err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ func (cac CertificateAuthorityClientWrapper) GenerateOCSP(ctx context.Context, r
 	if res == nil || res.Response == nil {
 		return nil, errIncompleteResponse
 	}
-	return res.Response, nil
+	return res, nil
 }
 
 type OCSPGeneratorClientWrapper struct {
@@ -103,9 +103,5 @@ func (cas *CertificateAuthorityServerWrapper) GenerateOCSP(ctx context.Context, 
 	if (req.CertDER == nil && (req.Serial == nil || req.IssuerID == nil)) || req.Status == nil || req.Reason == nil || req.RevokedAt == nil {
 		return nil, errIncompleteRequest
 	}
-	res, err := cas.inner.GenerateOCSP(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	return &capb.OCSPResponse{Response: res}, nil
+	return cas.inner.GenerateOCSP(ctx, req)
 }
