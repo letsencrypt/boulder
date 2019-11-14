@@ -230,7 +230,6 @@ func TestAddCertificate(t *testing.T) {
 	// Test adding OCSP response with cert
 	certDER3, err := ioutil.ReadFile("test-cert2.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	serial = "ffa0160630d618b2eb5c0510824b14274856"
 	ocspResp := []byte{0, 0, 1}
 	_, err = sa.AddCertificate(ctx, certDER3, reg.ID, ocspResp, &issuedTime)
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
