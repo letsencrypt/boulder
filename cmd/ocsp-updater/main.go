@@ -129,19 +129,20 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	now := updater.clk.Now()
 	maxAgeCutoff := now.Add(-updater.ocspStaleMaxAge)
 
+	certStatusFields := "cs.serial, cs.status, cs.revokedDate, cs.notAfter"
+	if features.Enabled(features.StoreIssuerInfo) {
+		certStatusFields += ", cs.issuerID"
+	}
 	_, err := updater.dbMap.Select(
 		&statuses,
-		`SELECT
-				cs.serial,
-				cs.status,
-				cs.revokedDate,
-				cs.notAfter
+		fmt.Sprintf(`SELECT
+				%s
 				FROM certificateStatus AS cs
 				WHERE cs.ocspLastUpdated > :maxAge
 				AND cs.ocspLastUpdated < :lastUpdate
 				AND NOT cs.isExpired
 				ORDER BY cs.ocspLastUpdated ASC
-				LIMIT :limit`,
+				LIMIT :limit`, certStatusFields),
 		map[string]interface{}{
 			"lastUpdate": oldestLastUpdatedTime,
 			"maxAge":     maxAgeCutoff,
@@ -188,28 +189,9 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.Ce
 		Status:    &statusStr,
 		RevokedAt: &revokedAt,
 	}
-	if features.Enabled(features.StoreIssuerInfo) {
-		certStatus, err := sa.SelectCertificateStatus(
-			updater.dbMap,
-			"WHERE serial = ?",
-			status.Serial,
-		)
-		if err != nil {
-			return nil, err
-		}
-		if certStatus.IssuerID != nil {
-			ocspReq.Serial = &certStatus.Serial
-			ocspReq.IssuerID = certStatus.IssuerID
-		} else {
-			// If IssuerID wasn't returned it's likely because we requested
-			// a row that was created before we started using issuer IDs.
-			// Because of this we need to fall back to the old method.
-			certDER, err := getCertDER(updater.dbMap, status.Serial)
-			if err != nil {
-				return nil, err
-			}
-			ocspReq.CertDER = certDER
-		}
+	if status.IssuerID != nil {
+		ocspReq.Serial = &status.Serial
+		ocspReq.IssuerID = status.IssuerID
 	} else {
 		certDER, err := getCertDER(updater.dbMap, status.Serial)
 		if err != nil {

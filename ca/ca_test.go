@@ -1171,7 +1171,7 @@ func TestIssuePrecertificateLinting(t *testing.T) {
 func TestGenerateOCSPWithIssuerID(t *testing.T) {
 	testCtx := setup(t)
 	sa := &mockSA{}
-	features.Set(map[string]bool{"StoreIssuerInfo": true})
+	_ = features.Set(map[string]bool{"StoreIssuerInfo": true})
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		sa,

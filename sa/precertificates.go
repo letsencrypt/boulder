@@ -71,7 +71,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 	// field only when the feature is enabled (and as such the migration has been
 	// applied).
 	csFields := certStatusFields
-	if features.Enabled(features.StoreIssuerInfo) {
+	if features.Enabled(features.StoreIssuerInfo) && req.IssuerID != nil {
 		csFields += ", issuerID"
 	}
 	qmarks := []string{}

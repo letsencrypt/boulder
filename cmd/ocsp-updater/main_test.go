@@ -474,7 +474,7 @@ func (ca *mockOCSPRecordIssuer) GenerateOCSP(_ context.Context, req *caPB.Genera
 	return &caPB.OCSPResponse{Response: []byte{1, 2, 3}}, nil
 }
 
-func TestGenerateOCSPIssuerInfo(t *testing.T) {
+func TestIssuerInfo(t *testing.T) {
 	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
 		return
 	}
@@ -515,14 +515,17 @@ func TestGenerateOCSPIssuerInfo(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "sa.AddPrecertificate failed")
 
-	_, err = updater.generateResponse(context.Background(), core.CertificateStatus{
-		Serial: core.SerialToString(big.NewInt(1)),
-	})
+	fc.Add(time.Hour * 24 * 4)
+	statuses, err := updater.findStaleOCSPResponses(fc.Now().Add(-time.Hour), 10)
+	test.AssertNotError(t, err, "findStaleOCSPResponses failed")
+	test.AssertEquals(t, len(statuses), 2)
+	test.AssertEquals(t, *statuses[0].IssuerID, id)
+	test.Assert(t, statuses[1].IssuerID == nil, "second status doesn't have nil IssuerID")
+
+	_, err = updater.generateResponse(context.Background(), statuses[0])
 	test.AssertNotError(t, err, "generateResponse failed")
 	test.Assert(t, m.gotIssuer, "generateResponse didn't send issuer information and serial")
-	_, err = updater.generateResponse(context.Background(), core.CertificateStatus{
-		Serial: core.SerialToString(big.NewInt(2)),
-	})
+	_, err = updater.generateResponse(context.Background(), statuses[1])
 	test.AssertNotError(t, err, "generateResponse failed")
 	test.Assert(t, !m.gotIssuer, "generateResponse did send issuer information and serial when it shouldn't")
 }

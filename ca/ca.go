@@ -296,12 +296,10 @@ func NewCertificateAuthorityImpl(
 		ocspLifetime:      config.LifespanOCSP.Duration,
 	}
 
-	if features.Enabled(features.StoreIssuerInfo) {
-		ca.idToIssuer = make(map[int64]*internalIssuer)
-		for _, ii := range ca.issuers {
-			id := idForIssuer(ii.cert)
-			ca.idToIssuer[id] = ii
-		}
+	ca.idToIssuer = make(map[int64]*internalIssuer)
+	for _, ii := range ca.issuers {
+		id := idForIssuer(ii.cert)
+		ca.idToIssuer[id] = ii
 	}
 
 	if config.Expiry == "" {

@@ -150,21 +150,6 @@ func SelectCertificateStatus(s db.OneSelector, q string, args ...interface{}) (c
 	return model, err
 }
 
-// SelectCertificateStatuses selects all fields of multiple certificate status objects
-func SelectCertificateStatuses(s db.Selector, q string, args ...interface{}) ([]core.CertificateStatus, error) {
-	fields := certStatusFields
-	if features.Enabled(features.StoreIssuerInfo) {
-		fields += ", issuerID"
-	}
-	var models []core.CertificateStatus
-	_, err := s.Select(
-		&models,
-		"SELECT "+fields+" FROM certificateStatus "+q,
-		args...,
-	)
-	return models, err
-}
-
 var mediumBlobSize = int(math.Pow(2, 24))
 
 type issuedNameModel struct {
