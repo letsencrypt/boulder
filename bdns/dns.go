@@ -2,6 +2,7 @@ package bdns
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"math/rand"
 	"net"
@@ -297,6 +298,9 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 				result = dns.RcodeToString[rsp.Rcode]
 				authenticated = fmt.Sprintf("%t", rsp.AuthenticatedData)
 			}
+			if err != nil {
+				dnsClient.logDNSError(hostname, m, rsp, err)
+			}
 			dnsClient.queryTime.With(prometheus.Labels{
 				"qtype":              qtypeStr,
 				"result":             result,
@@ -483,4 +487,58 @@ func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) 
 		}
 	}
 	return CAAs, nil
+}
+
+// TODO(@cpu): Rewrite this comment
+//
+// logDNSError logs the provided DNSError, but only if it has an underlying
+// error. This excludes "normal" DNS errors like NXDOMAIN and SERVFAIL that we
+// successfully received from our resolver, but includes errors in communicating
+// with our resolver. We're interested in logging these separately because the
+// problem document that gets sent to the user (and logged) includes only a more
+// generic message like "networking error."
+func (dnsClient *DNSClientImpl) logDNSError(hostname string, msg, resp *dns.Msg, err error) {
+	// We use a stand-alone function for this to make it easy to share the
+	// implementation between the DNSClientImpl and MockDNSClient
+	logDNSError(dnsClient.log, hostname, msg, resp, err)
+}
+
+// log a DNS level error with the given logger. See DNSClientImpl.logDNSError.
+func logDNSError(logger blog.Logger, hostname string, msg, resp *dns.Msg, underlying error) {
+	// We don't expect logDNSError to be called with a nil msg or err but
+	// if it happens return early. We allow resp to be nil.
+	if msg == nil || underlying == nil {
+		return
+	}
+
+	// If the error indicates there was a query/response ID mismatch then we want
+	// to log more detail.
+	if underlying == dns.ErrId {
+		packedMsgBytes, err := msg.Pack()
+		if err != nil {
+			logger.Errf("logDNSError failed to pack msg: %v\n", err)
+			return
+		}
+		encodedMsg := base64.RawURLEncoding.EncodeToString(packedMsgBytes)
+
+		var encodedResp string
+		if resp != nil {
+			packedRespBytes, err := resp.Pack()
+			if err != nil {
+				logger.Errf("logDNSError failed to pack resp: %v\n", err)
+				return
+			}
+			encodedResp = base64.RawURLEncoding.EncodeToString(packedRespBytes)
+		}
+
+		logger.Errf(
+			"logDNSError ID mismatch hostname=[%s] err=[%s] msg=[%s] resp=[%s]",
+			hostname,
+			underlying,
+			encodedMsg,
+			encodedResp)
+	} else {
+		// Otherwise log a general DNS error
+		logger.Errf("logDNSerror hostname=[%s] err=[%s]", hostname, underlying)
+	}
 }

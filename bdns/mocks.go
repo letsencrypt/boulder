@@ -8,10 +8,13 @@ import (
 	"os"
 
 	"github.com/miekg/dns"
+
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 // MockDNSClient is a mock
 type MockDNSClient struct {
+	Log blog.Logger
 }
 
 // LookupTXT is a mock
@@ -73,11 +76,31 @@ func (mock *MockDNSClient) LookupHost(_ context.Context, hostname string) ([]net
 		return []net.IP{}, &DNSError{dns.TypeA, "always.timeout", MockTimeoutError(), -1}
 	}
 	if hostname == "always.error" {
-		return []net.IP{}, &DNSError{dns.TypeA, "always.error", &net.OpError{
+		err := &net.OpError{
 			Op:  "read",
 			Net: "udp",
 			Err: errors.New("some net error"),
-		}, -1}
+		}
+		m := new(dns.Msg)
+		m.SetQuestion(dns.Fqdn(hostname), dns.TypeA)
+		m.AuthenticatedData = true
+		m.SetEdns0(4096, false)
+		logDNSError(mock.Log, hostname, m, nil, err)
+		return []net.IP{}, &DNSError{dns.TypeA, hostname, err, -1}
+	}
+	if hostname == "id.mismatch" {
+		err := dns.ErrId
+		m := new(dns.Msg)
+		m.SetQuestion(dns.Fqdn(hostname), dns.TypeA)
+		m.AuthenticatedData = true
+		m.SetEdns0(4096, false)
+		r := new(dns.Msg)
+		record := new(dns.A)
+		record.Hdr = dns.RR_Header{Name: dns.Fqdn(hostname), Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
+		record.A = net.ParseIP("127.0.0.1")
+		r.Answer = append(r.Answer, record)
+		logDNSError(mock.Log, hostname, m, r, err)
+		return []net.IP{}, &DNSError{dns.TypeA, hostname, err, -1}
 	}
 	// dual-homed host with an IPv6 and an IPv4 address
 	if hostname == "ipv4.and.ipv6.localhost" {
