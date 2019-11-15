@@ -340,6 +340,7 @@ func TestHTTPValidationDNSIdMismatchError(t *testing.T) {
 	}
 	expectedRegex := regexp.MustCompile(
 		`ERR: \[AUDIT\] logDNSError ID mismatch ` +
+			`chosenServer=\[mock.server\] ` +
 			`hostname=\[id\.mismatch\] ` +
 			`queryType=\[A\] ` +
 			`err\=\[dns: id mismatch\] ` +

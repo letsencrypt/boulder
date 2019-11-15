@@ -299,7 +299,7 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 				authenticated = fmt.Sprintf("%t", rsp.AuthenticatedData)
 			}
 			if err != nil {
-				logDNSError(dnsClient.log, hostname, m, rsp, err)
+				logDNSError(dnsClient.log, chosenServer, hostname, m, rsp, err)
 			}
 			dnsClient.queryTime.With(prometheus.Labels{
 				"qtype":              qtypeStr,
@@ -489,13 +489,18 @@ func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) 
 	return CAAs, nil
 }
 
-// logDNSError logs the provided err result from making a query for hostname. If
-// the err is a `dns.ErrId` instance then the raw Base64 URL encoded bytes of
-// the query (and if not-nil, the response) in wire format is logged as well.
-// This function is called from exchangeOne only for the case where an error
-// occurs querying a hostname that indicates a problem between the VA and the
-// resolver.
-func logDNSError(logger blog.Logger, hostname string, msg, resp *dns.Msg, underlying error) {
+// logDNSError logs the provided err result from making a query for hostname to
+// the chosenServer. If the err is a `dns.ErrId` instance then the raw Base64
+// URL encoded bytes of the query (and if not-nil, the response) in wire format
+// is logged as well. This function is called from exchangeOne only for the case
+// where an error occurs querying a hostname that indicates a problem between
+// the VA and the chosenServer.
+func logDNSError(
+	logger blog.Logger,
+	chosenServer string,
+	hostname string,
+	msg, resp *dns.Msg,
+	underlying error) {
 	// We don't expect logDNSError to be called with a nil msg or err but
 	// if it happens return early. We allow resp to be nil.
 	if msg == nil || len(msg.Question) == 0 || underlying == nil {
@@ -524,7 +529,8 @@ func logDNSError(logger blog.Logger, hostname string, msg, resp *dns.Msg, underl
 		}
 
 		logger.Errf(
-			"logDNSError ID mismatch hostname=[%s] queryType=[%s] err=[%s] msg=[%s] resp=[%s]",
+			"logDNSError ID mismatch chosenServer=[%s] hostname=[%s] queryType=[%s] err=[%s] msg=[%s] resp=[%s]",
+			chosenServer,
 			hostname,
 			queryType,
 			underlying,
@@ -532,7 +538,8 @@ func logDNSError(logger blog.Logger, hostname string, msg, resp *dns.Msg, underl
 			encodedResp)
 	} else {
 		// Otherwise log a general DNS error
-		logger.Errf("logDNSError queryType=[%s] hostname=[%s] err=[%s]",
+		logger.Errf("logDNSError chosenServer=[%s] queryType=[%s] hostname=[%s] err=[%s]",
+			chosenServer,
 			hostname,
 			queryType,
 			underlying)
