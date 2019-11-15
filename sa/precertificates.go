@@ -65,7 +65,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 
 	// With feature.StoreIssuerInfo we've added a new field to certStatusModel
 	// so when we try and use dbMap.Insert it will always try to insert that field.
-	// That will break when the relevant migration hasn't bene applied so we need
+	// That will break when the relevant migration hasn't been applied so we need
 	// to use an explicit INSERT statement that we can manipulate to include the
 	// field only when the feature is enabled (and as such the migration has been
 	// applied).

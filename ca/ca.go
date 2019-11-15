@@ -122,7 +122,7 @@ type CertificateAuthorityImpl struct {
 	ecdsaProfile string
 	// A map from issuer cert common name to an internalIssuer struct
 	issuers map[string]*internalIssuer
-	// A map issuer ID to internalIssuer
+	// A map from issuer ID to internalIssuer
 	idToIssuer map[int64]*internalIssuer
 	// The common name of the default issuer cert
 	defaultIssuer     *internalIssuer
@@ -195,7 +195,7 @@ func makeInternalIssuers(
 	return internalIssuers, nil
 }
 
-// idForIssuer generates a stable ID for a issuer certificate. This
+// idForIssuer generates a stable ID for an issuer certificate. This
 // is used for identifying which issuer issued a certificate in the
 // certificateStatus table.
 func idForIssuer(cert *x509.Certificate) int64 {
