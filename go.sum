@@ -48,6 +48,8 @@ github.com/go-sql-driver/mysql v1.3.0 h1:pgwjLi/dvffoP9aabwkT3AKpXQM93QARkjFhDDq
 github.com/go-sql-driver/mysql v1.3.0/go.mod h1:zAC/RDZ24gD3HViQzih4MyKcchzm+sOG5ZlKdlhCg5w=
 github.com/go-sql-driver/mysql v1.3.1-0.20170715192408-3955978caca4 h1:VR5tBQt9N1t7k1gLi3zDPVMJ7dNwrHewr8cH+r3hRCo=
 github.com/go-sql-driver/mysql v1.3.1-0.20170715192408-3955978caca4/go.mod h1:zAC/RDZ24gD3HViQzih4MyKcchzm+sOG5ZlKdlhCg5w=
+github.com/go-sql-driver/mysql v1.4.1-0.20191114115753-b4242bab7dc5 h1:TPdJVmaDpKVlxYKc2CTaU6iY51jeQqbRooWdI1ATYG4=
+github.com/go-sql-driver/mysql v1.4.1-0.20191114115753-b4242bab7dc5/go.mod h1:XIaZU7xtUgusUqDPXOOPcmC5Dyyw3F1pbh54fHzaehk=
 github.com/gogo/googleapis v1.1.0/go.mod h1:gf4bu3Q80BeJ6H1S1vYPm8/ELATdvryBaNFGgqEef3s=
 github.com/gogo/protobuf v1.2.0/go.mod h1:r8qH/GZQm5c6nD/R0oafs1akxWv10x8SbQlK7atdtwQ=
 github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b h1:VKtxabqXZkF25pY9ekfRL6a582T4P37/31XEstQ5p58=
