@@ -688,9 +688,8 @@ func (ca *CertificateAuthorityImpl) storeCertificate(
 	serialBigInt *big.Int,
 	certDER []byte) (core.Certificate, error) {
 	var err error
-	var ocspResp []byte
 	now := ca.clk.Now()
-	_, err = ca.sa.AddCertificate(ctx, certDER, regID, ocspResp, &now)
+	_, err = ca.sa.AddCertificate(ctx, certDER, regID, nil, &now)
 	if err != nil {
 		err = berrors.InternalServerError(err.Error())
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
@@ -699,9 +698,8 @@ func (ca *CertificateAuthorityImpl) storeCertificate(
 			core.SerialToString(serialBigInt), hex.EncodeToString(certDER), err, regID, orderID)
 		if ca.orphanQueue != nil {
 			ca.queueOrphan(&orphanedCert{
-				DER:      certDER,
-				OCSPResp: ocspResp,
-				RegID:    regID,
+				DER:   certDER,
+				RegID: regID,
 			})
 		}
 		return core.Certificate{}, err
@@ -773,7 +771,7 @@ func (ca *CertificateAuthorityImpl) integrateOrphan() error {
 			Issued: &issuedNanos,
 		})
 	} else {
-		_, err = ca.sa.AddCertificate(context.Background(), orphan.DER, orphan.RegID, orphan.OCSPResp, &issued)
+		_, err = ca.sa.AddCertificate(context.Background(), orphan.DER, orphan.RegID, nil, &issued)
 	}
 	if err != nil && !berrors.Is(err, berrors.Duplicate) {
 		return fmt.Errorf("failed to store orphaned certificate: %s", err)
