@@ -2083,3 +2083,26 @@ func TestGetOrderExpired(t *testing.T) {
 	test.AssertError(t, err, "GetOrder didn't fail for an expired order")
 	test.Assert(t, berrors.Is(err, berrors.NotFound), "GetOrder error wasn't of type NotFound")
 }
+
+func TestSerialExists(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	serial := "asd"
+	resp, err := sa.SerialExists(context.Background(), &sapb.Serial{Serial: &serial})
+	test.AssertNotError(t, err, "SerialExists failed")
+	test.AssertEquals(t, *resp.Exists, false)
+
+	zero := int64(0)
+	_, err = sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
+		RegID:   &reg.ID,
+		Serial:  &serial,
+		Created: &zero,
+		Expires: &zero,
+	})
+	test.AssertNotError(t, err, "AddSerial failed")
+	resp, err = sa.SerialExists(context.Background(), &sapb.Serial{Serial: &serial})
+	test.AssertNotError(t, err, "SerialExists failed")
+	test.AssertEquals(t, *resp.Exists, true)
+}
