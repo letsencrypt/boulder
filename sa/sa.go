@@ -1779,3 +1779,16 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 	}
 	return authz2ModelMapToPB(authzMap)
 }
+
+// SerialExists returns a bool indicating whether the provided serial
+// exists in the serial table. This is currently only used to determine
+// if a serial passed to ca.GenerateOCSP is one which we have previously
+// generated a certificate for.
+func (ssa *SQLStorageAuthority) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
+	err := ssa.dbMap.SelectOne(&recordedSerialModel{}, "SELECT * FROM serials WHERE serial = ?", req.Serial)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+	exists := err != sql.ErrNoRows
+	return &sapb.Exists{Exists: &exists}, nil
+}

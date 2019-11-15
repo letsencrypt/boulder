@@ -187,6 +187,11 @@ func (m *mockSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*co
 	return &corepb.Empty{}, nil
 }
 
+func (m *mockSA) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
+	e := true
+	return &sapb.Exists{Exists: &e}, nil
+}
+
 var caKey crypto.Signer
 var caCert *x509.Certificate
 var ctx = context.Background()
@@ -930,6 +935,11 @@ func (qsa *queueSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertific
 
 func (qsa *queueSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*corepb.Empty, error) {
 	return &corepb.Empty{}, nil
+}
+
+func (qsa *queueSA) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
+	e := true
+	return &sapb.Exists{Exists: &e}, nil
 }
 
 // TestPrecertOrphanQueue tests that IssuePrecertificate writes precertificates

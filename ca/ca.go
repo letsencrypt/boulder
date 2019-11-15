@@ -105,6 +105,7 @@ type certificateStorage interface {
 	AddCertificate(context.Context, []byte, int64, []byte, *time.Time) (string, error)
 	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error)
 	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*corepb.Empty, error)
+	SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error)
 }
 
 type certificateType string
@@ -429,6 +430,13 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *caPB.
 		if !ok {
 			return nil, fmt.Errorf("This CA doesn't have an issuer cert with ID %d", *req.IssuerID)
 		}
+		exists, err := ca.sa.SerialExists(ctx, &sapb.Serial{Serial: req.Serial})
+		if err != nil {
+			return nil, err
+		}
+		if !*exists.Exists {
+			return nil, fmt.Errorf("GenerateOCSP was asked to sign OCSP for certification with unknown serial %q", *req.Serial)
+		}
 	} else {
 		cert, err := x509.ParseCertificate(req.CertDER)
 		if err != nil {
@@ -514,12 +522,10 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		Issued: &nowNanos,
 	}
 
-	if features.Enabled(features.StoreIssuerInfo) {
-		// we currently only use one issuer, in the future when we support multiple
-		// the issuer will need to be derived from issueReq
-		issuerID := idForIssuer(ca.defaultIssuer.cert)
-		req.IssuerID = &issuerID
-	}
+	// we currently only use one issuer, in the future when we support multiple
+	// the issuer will need to be derived from issueReq
+	issuerID := idForIssuer(ca.defaultIssuer.cert)
+	req.IssuerID = &issuerID
 
 	_, err = ca.sa.AddPrecertificate(ctx, req)
 	if err != nil {
