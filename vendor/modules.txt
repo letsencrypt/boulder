@@ -18,7 +18,7 @@ github.com/cloudflare/cfssl/signer
 github.com/cloudflare/cfssl/signer/local
 # github.com/eggsampler/acme/v2 v2.0.1
 github.com/eggsampler/acme/v2
-# github.com/go-sql-driver/mysql v1.3.1-0.20170715192408-3955978caca4
+# github.com/go-sql-driver/mysql v1.4.1-0.20191114115753-b4242bab7dc5
 github.com/go-sql-driver/mysql
 # github.com/golang/mock v1.2.0
 github.com/golang/mock/gomock
