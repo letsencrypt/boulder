@@ -1569,40 +1569,36 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 // RevokeCertificate stores revocation information about a certificate. It will only store this
 // information if the certificate is not already marked as revoked.
 func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error {
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
-		status, err := SelectCertificateStatus(
-			txWithCtx,
-			"WHERE serial = ? AND status != ?",
-			*req.Serial,
-			string(core.OCSPStatusRevoked),
-		)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				// InternalServerError because we expected this certificate status to exist and
-				// not be revoked.
-				return nil, berrors.InternalServerError("no certificate with serial %s and status %s", *req.Serial, string(core.OCSPStatusRevoked))
-			}
-			return nil, err
-		}
-
-		revokedDate := time.Unix(0, *req.Date)
-		status.Status = core.OCSPStatusRevoked
-		status.RevokedReason = revocation.Reason(*req.Reason)
-		status.RevokedDate = revokedDate
-		status.OCSPLastUpdated = revokedDate
-		status.OCSPResponse = req.Response
-
-		n, err := txWithCtx.Update(&status)
-		if err != nil {
-			return nil, err
-		}
-		if n == 0 {
-			return nil, berrors.InternalServerError("no certificate updated")
-		}
-
-		return nil, nil
-	})
-	return overallError
+	revokedDate := time.Unix(0, *req.Date)
+	res, err := ssa.dbMap.Exec(
+		`UPDATE certificateStatus SET
+				status = ?,
+				revokedReason = ?,
+				revokedDate = ?,
+				ocspLastUpdated = ?,
+				ocspResponse = ?
+			WHERE serial = ? AND status != ?`,
+		string(core.OCSPStatusRevoked),
+		revocation.Reason(*req.Reason),
+		revokedDate,
+		revokedDate,
+		req.Response,
+		*req.Serial,
+		string(core.OCSPStatusRevoked),
+	)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		// InternalServerError because we expected this certificate status to exist and
+		// not be revoked.
+		return berrors.InternalServerError("no certificate with serial %s and status %s", *req.Serial, string(core.OCSPStatusRevoked))
+	}
+	return nil
 }
 
 // GetPendingAuthorization2 returns the most recent Pending authorization with
