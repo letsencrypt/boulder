@@ -161,9 +161,10 @@ type DNSClientImpl struct {
 	clk                      clock.Clock
 	log                      blog.Logger
 
-	queryTime       *prometheus.HistogramVec
-	totalLookupTime *prometheus.HistogramVec
-	timeoutCounter  *prometheus.CounterVec
+	queryTime         *prometheus.HistogramVec
+	totalLookupTime   *prometheus.HistogramVec
+	timeoutCounter    *prometheus.CounterVec
+	idMismatchCounter *prometheus.CounterVec
 }
 
 var _ DNSClient = &DNSClientImpl{}
@@ -212,7 +213,14 @@ func NewDNSClientImpl(
 		},
 		[]string{"qtype", "type", "resolver"},
 	)
-	stats.MustRegister(queryTime, totalLookupTime, timeoutCounter)
+	idMismatchCounter := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "dns_id_mismatch",
+			Help: "Counter of DNS ErrId errors sliced by query type and resolver",
+		},
+		[]string{"qtype", "resolver"},
+	)
+	stats.MustRegister(queryTime, totalLookupTime, timeoutCounter, idMismatchCounter)
 
 	return &DNSClientImpl{
 		dnsClient:                dnsClient,
@@ -223,6 +231,7 @@ func NewDNSClientImpl(
 		queryTime:                queryTime,
 		totalLookupTime:          totalLookupTime,
 		timeoutCounter:           timeoutCounter,
+		idMismatchCounter:        idMismatchCounter,
 		log:                      log,
 	}
 }
@@ -300,6 +309,12 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 			}
 			if err != nil {
 				logDNSError(dnsClient.log, chosenServer, hostname, m, rsp, err)
+				if err == dns.ErrId {
+					dnsClient.idMismatchCounter.With(prometheus.Labels{
+						"qtype":    qtypeStr,
+						"resolver": chosenServer,
+					}).Inc()
+				}
 			}
 			dnsClient.queryTime.With(prometheus.Labels{
 				"qtype":              qtypeStr,
