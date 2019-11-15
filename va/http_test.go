@@ -341,6 +341,7 @@ func TestHTTPValidationDNSIdMismatchError(t *testing.T) {
 	expectedRegex := regexp.MustCompile(
 		`ERR: \[AUDIT\] logDNSError ID mismatch ` +
 			`hostname=\[id\.mismatch\] ` +
+			`queryType=\[A\] ` +
 			`err\=\[dns: id mismatch\] ` +
 			`msg=\[([A-Za-z0-9+_]+)\] ` +
 			`resp=\[([A-Za-z0-9+_]+)\]`,
