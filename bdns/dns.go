@@ -491,7 +491,10 @@ func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) 
 
 // logDNSError logs the provided err result from making a query for hostname. If
 // the err is a `dns.ErrId` instance then the raw Base64 URL encoded bytes of
-// the query (and if not-nil) the response in wire format is logged as well.
+// the query (and if not-nil, the response) in wire format is logged as well.
+// This function is called from exchangeOne only for the case where an error
+// occurs querying a hostname that indicates a problem between the VA and the
+// resolver.
 func (dnsClient *DNSClientImpl) logDNSError(hostname string, msg, resp *dns.Msg, err error) {
 	// We use a stand-alone function for this to make it easy to share the
 	// implementation between the DNSClientImpl and MockDNSClient
