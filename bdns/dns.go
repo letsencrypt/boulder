@@ -507,9 +507,10 @@ func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) 
 // logDNSError logs the provided err result from making a query for hostname to
 // the chosenServer. If the err is a `dns.ErrId` instance then the Base64
 // encoded bytes of the query (and if not-nil, the response) in wire format
-// is logged as well. This function is called from exchangeOne only for the case
-// where an error occurs querying a hostname that indicates a problem between
-// the VA and the chosenServer.
+// is logged as well. This won't capture the query ID (this is internal to
+// miekg/dns) but it provides additonal information to help debug. This function
+// is called from exchangeOne only for the case where an error occurs querying
+// a hostname that indicates a problem between the VA and the chosenServer.
 func logDNSError(
 	logger blog.Logger,
 	chosenServer string,
