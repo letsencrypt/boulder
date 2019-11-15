@@ -184,12 +184,12 @@ func (m *IssueCertificateForPrecertificateRequest) GetOrderID() int64 {
 	return 0
 }
 
+// Exactly one of certDER or [serial and issuerID] must be set.
 type GenerateOCSPRequest struct {
-	CertDER   []byte  `protobuf:"bytes,1,opt,name=certDER" json:"certDER,omitempty"`
-	Status    *string `protobuf:"bytes,2,opt,name=status" json:"status,omitempty"`
-	Reason    *int32  `protobuf:"varint,3,opt,name=reason" json:"reason,omitempty"`
-	RevokedAt *int64  `protobuf:"varint,4,opt,name=revokedAt" json:"revokedAt,omitempty"`
-	// If serial is set than certDER must not be set and issuerID must be set
+	CertDER              []byte   `protobuf:"bytes,1,opt,name=certDER" json:"certDER,omitempty"`
+	Status               *string  `protobuf:"bytes,2,opt,name=status" json:"status,omitempty"`
+	Reason               *int32   `protobuf:"varint,3,opt,name=reason" json:"reason,omitempty"`
+	RevokedAt            *int64   `protobuf:"varint,4,opt,name=revokedAt" json:"revokedAt,omitempty"`
 	Serial               *string  `protobuf:"bytes,5,opt,name=serial" json:"serial,omitempty"`
 	IssuerID             *int64   `protobuf:"varint,6,opt,name=issuerID" json:"issuerID,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
