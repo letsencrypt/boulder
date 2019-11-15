@@ -535,6 +535,7 @@ func logDNSError(
 		encodedMsg := base64.StdEncoding.EncodeToString(packedMsgBytes)
 
 		var encodedResp string
+		var respQname string
 		if resp != nil {
 			packedRespBytes, err := resp.Pack()
 			if err != nil {
@@ -542,12 +543,16 @@ func logDNSError(
 				return
 			}
 			encodedResp = base64.StdEncoding.EncodeToString(packedRespBytes)
+			if len(resp.Answer) > 0 && resp.Answer[0].Header() != nil {
+				respQname = resp.Answer[0].Header().Name
+			}
 		}
 
 		logger.Errf(
-			"logDNSError ID mismatch chosenServer=[%s] hostname=[%s] queryType=[%s] err=[%s] msg=[%s] resp=[%s]",
+			"logDNSError ID mismatch chosenServer=[%s] hostname=[%s] respHostname=[%s] queryType=[%s] err=[%s] msg=[%s] resp=[%s]",
 			chosenServer,
 			hostname,
+			respQname,
 			queryType,
 			underlying,
 			encodedMsg,

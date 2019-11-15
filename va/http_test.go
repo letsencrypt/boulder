@@ -342,6 +342,7 @@ func TestHTTPValidationDNSIdMismatchError(t *testing.T) {
 		`ERR: \[AUDIT\] logDNSError ID mismatch ` +
 			`chosenServer=\[mock.server\] ` +
 			`hostname=\[id\.mismatch\] ` +
+			`respHostname=\[id\.mismatch\.\] ` +
 			`queryType=\[A\] ` +
 			`err\=\[dns: id mismatch\] ` +
 			`msg=\[([A-Za-z0-9+=/\=]+)\] ` +
