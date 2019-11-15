@@ -299,7 +299,7 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 				authenticated = fmt.Sprintf("%t", rsp.AuthenticatedData)
 			}
 			if err != nil {
-				dnsClient.logDNSError(hostname, m, rsp, err)
+				logDNSError(dnsClient.log, hostname, m, rsp, err)
 			}
 			dnsClient.queryTime.With(prometheus.Labels{
 				"qtype":              qtypeStr,
@@ -495,13 +495,6 @@ func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) 
 // This function is called from exchangeOne only for the case where an error
 // occurs querying a hostname that indicates a problem between the VA and the
 // resolver.
-func (dnsClient *DNSClientImpl) logDNSError(hostname string, msg, resp *dns.Msg, err error) {
-	// We use a stand-alone function for this to make it easy to share the
-	// implementation between the DNSClientImpl and MockDNSClient
-	logDNSError(dnsClient.log, hostname, msg, resp, err)
-}
-
-// log a DNS level error with the given logger. See DNSClientImpl.logDNSError.
 func logDNSError(logger blog.Logger, hostname string, msg, resp *dns.Msg, underlying error) {
 	// We don't expect logDNSError to be called with a nil msg or err but
 	// if it happens return early. We allow resp to be nil.
@@ -539,7 +532,7 @@ func logDNSError(logger blog.Logger, hostname string, msg, resp *dns.Msg, underl
 			encodedResp)
 	} else {
 		// Otherwise log a general DNS error
-		logger.Errf("logDNSerror queryType=[%s] hostname=[%s] err=[%s]",
+		logger.Errf("logDNSError queryType=[%s] hostname=[%s] err=[%s]",
 			hostname,
 			queryType,
 			underlying)
