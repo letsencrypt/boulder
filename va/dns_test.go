@@ -152,13 +152,14 @@ func TestDNSValidationServFail(t *testing.T) {
 }
 
 func TestDNSValidationNoServer(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil)
+	va, log := setup(nil, 0, "", nil)
 	va.dnsClient = bdns.NewTestDNSClientImpl(
 		time.Second*5,
 		nil,
 		metrics.NewNoopScope(),
 		clock.Default(),
-		1)
+		1,
+		log)
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 

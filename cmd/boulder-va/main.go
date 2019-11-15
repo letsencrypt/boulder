@@ -121,10 +121,17 @@ func main() {
 			c.VA.DNSResolvers,
 			scope,
 			clk,
-			dnsTries)
+			dnsTries,
+			logger)
 		resolver = r
 	} else {
-		r := bdns.NewTestDNSClientImpl(dnsTimeout, c.VA.DNSResolvers, scope, clk, dnsTries)
+		r := bdns.NewTestDNSClientImpl(
+			dnsTimeout,
+			c.VA.DNSResolvers,
+			scope,
+			clk,
+			dnsTries,
+			logger)
 		resolver = r
 	}
 
