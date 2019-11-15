@@ -363,16 +363,16 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 		return core.CertificateStatus{}, err
 	}
 
-	var status core.CertificateStatus
-	statusObj, err := ssa.dbMap.WithContext(ctx).Get(certStatusModel{}, serial)
+	statusModel, err := SelectCertificateStatus(
+		ssa.dbMap.WithContext(ctx),
+		"WHERE serial = ?",
+		serial,
+	)
 	if err != nil {
-		return status, err
+		return core.CertificateStatus{}, err
 	}
-	if statusObj == nil {
-		return status, nil
-	}
-	statusModel := statusObj.(*certStatusModel)
-	status = core.CertificateStatus{
+
+	return core.CertificateStatus{
 		Serial:                statusModel.Serial,
 		Status:                statusModel.Status,
 		OCSPLastUpdated:       statusModel.OCSPLastUpdated,
@@ -382,9 +382,7 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 		OCSPResponse:          statusModel.OCSPResponse,
 		NotAfter:              statusModel.NotAfter,
 		IsExpired:             statusModel.IsExpired,
-	}
-
-	return status, nil
+	}, nil
 }
 
 // NewRegistration stores a new Registration
