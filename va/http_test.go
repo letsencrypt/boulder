@@ -344,8 +344,8 @@ func TestHTTPValidationDNSIdMismatchError(t *testing.T) {
 			`hostname=\[id\.mismatch\] ` +
 			`queryType=\[A\] ` +
 			`err\=\[dns: id mismatch\] ` +
-			`msg=\[([A-Za-z0-9+_]+)\] ` +
-			`resp=\[([A-Za-z0-9+_]+)\]`,
+			`msg=\[([A-Za-z0-9+=/\=]+)\] ` +
+			`resp=\[([A-Za-z0-9+=/\=]+)\]`,
 	)
 
 	matches := expectedRegex.FindAllStringSubmatch(matchingLines[0], -1)
@@ -353,13 +353,13 @@ func TestHTTPValidationDNSIdMismatchError(t *testing.T) {
 	submatches := matches[0]
 	test.AssertEquals(t, len(submatches), 3)
 
-	msgBytes, err := base64.RawURLEncoding.DecodeString(submatches[1])
+	msgBytes, err := base64.StdEncoding.DecodeString(submatches[1])
 	test.AssertNotError(t, err, "bad base64 encoded query msg")
 	msg := new(dns.Msg)
 	err = msg.Unpack(msgBytes)
 	test.AssertNotError(t, err, "bad packed query msg")
 
-	respBytes, err := base64.RawURLEncoding.DecodeString(submatches[2])
+	respBytes, err := base64.StdEncoding.DecodeString(submatches[2])
 	test.AssertNotError(t, err, "bad base64 encoded resp msg")
 	resp := new(dns.Msg)
 	err = resp.Unpack(respBytes)

@@ -505,8 +505,8 @@ func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) 
 }
 
 // logDNSError logs the provided err result from making a query for hostname to
-// the chosenServer. If the err is a `dns.ErrId` instance then the raw Base64
-// URL encoded bytes of the query (and if not-nil, the response) in wire format
+// the chosenServer. If the err is a `dns.ErrId` instance then the Base64
+// encoded bytes of the query (and if not-nil, the response) in wire format
 // is logged as well. This function is called from exchangeOne only for the case
 // where an error occurs querying a hostname that indicates a problem between
 // the VA and the chosenServer.
@@ -531,7 +531,7 @@ func logDNSError(
 			logger.Errf("logDNSError failed to pack msg: %v\n", err)
 			return
 		}
-		encodedMsg := base64.RawURLEncoding.EncodeToString(packedMsgBytes)
+		encodedMsg := base64.StdEncoding.EncodeToString(packedMsgBytes)
 
 		var encodedResp string
 		if resp != nil {
@@ -540,7 +540,7 @@ func logDNSError(
 				logger.Errf("logDNSError failed to pack resp: %v\n", err)
 				return
 			}
-			encodedResp = base64.RawURLEncoding.EncodeToString(packedRespBytes)
+			encodedResp = base64.StdEncoding.EncodeToString(packedRespBytes)
 		}
 
 		logger.Errf(
