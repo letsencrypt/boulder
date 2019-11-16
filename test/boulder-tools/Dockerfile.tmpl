@@ -9,4 +9,5 @@ RUN mkdir -p "$GOPATH/src" "$GOPATH/bin" && chmod -R 777 "$GOPATH"
 WORKDIR $GOPATH
 
 ADD build.sh /tmp/build.sh
+ADD requirements.txt /tmp/requirements.txt
 RUN /tmp/build.sh

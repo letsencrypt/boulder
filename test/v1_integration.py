@@ -1,4 +1,3 @@
-#!/usr/bin/env python2.7
 # -*- coding: utf-8 -*-
 import datetime
 import json
@@ -7,7 +6,6 @@ import random
 import re
 import requests
 import time
-import urllib2
 
 import startservers
 
@@ -40,7 +38,7 @@ def rand_http_chall(client):
     for c in authz.body.challenges:
         if isinstance(c.chall, challenges.HTTP01):
             return d, c.chall
-    raise Exception("No HTTP-01 challenge found for random domain authz")
+    raise(Exception("No HTTP-01 challenge found for random domain authz"))
 
 def test_http_challenge_loop_redirect():
     client = chisel.make_client()
@@ -158,7 +156,7 @@ def test_http_challenge_http_redirect():
     # There should have been at least two GET requests made to the
     # challtestsrv. There may have been more if remote VAs were configured.
     if len(history) < 2:
-        raise Exception("Expected at least 2 HTTP request events on challtestsrv, found {1}".format(len(history)))
+        raise(Exception("Expected at least 2 HTTP request events on challtestsrv, found {1}".format(len(history))))
 
     initialRequests = []
     redirectedRequests = []
@@ -166,7 +164,7 @@ def test_http_challenge_http_redirect():
     for request in history:
       # All requests should have been over HTTP
       if request['HTTPS'] is True:
-        raise Exception("Expected all requests to be HTTP")
+        raise(Exception("Expected all requests to be HTTP"))
       # Initial requests should have the expected initial HTTP-01 URL for the challenge
       if request['URL'] == challengePath:
         initialRequests.append(request)
@@ -175,15 +173,15 @@ def test_http_challenge_http_redirect():
       elif request['URL'] == redirectPath:
         redirectedRequests.append(request)
       else:
-        raise Exception("Unexpected request URL {0} in challtestsrv history: {1}".format(request['URL'], request))
+        raise(Exception("Unexpected request URL {0} in challtestsrv history: {1}".format(request['URL'], request)))
 
     # There should have been at least 1 initial HTTP-01 validation request.
     if len(initialRequests) < 1:
-        raise Exception("Expected {0} initial HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(initialRequests)))
+        raise(Exception("Expected {0} initial HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(initialRequests))))
 
     # There should have been at least 1 redirected HTTP request for each VA
     if len(redirectedRequests) < 1:
-        raise Exception("Expected {0} redirected HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(redirectedRequests)))
+        raise(Exception("Expected {0} redirected HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(redirectedRequests))))
 
 def test_http_challenge_https_redirect():
     client = chisel.make_client()
@@ -220,7 +218,7 @@ def test_http_challenge_https_redirect():
 
     # There should have been at least two GET requests made to the challtestsrv by the VA
     if len(history) < 2:
-        raise Exception("Expected 2 HTTP request events on challtestsrv, found {0}".format(len(history)))
+        raise(Exception("Expected 2 HTTP request events on challtestsrv, found {0}".format(len(history))))
 
     initialRequests = []
     redirectedRequests = []
@@ -234,26 +232,26 @@ def test_http_challenge_https_redirect():
       elif request['URL'] == redirectPath:
         redirectedRequests.append(request)
       else:
-        raise Exception("Unexpected request URL {0} in challtestsrv history: {1}".format(request['URL'], request))
+        raise(Exception("Unexpected request URL {0} in challtestsrv history: {1}".format(request['URL'], request)))
 
     # There should have been at least 1 initial HTTP-01 validation request.
     if len(initialRequests) < 1:
-        raise Exception("Expected {0} initial HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(initialRequests)))
+        raise(Exception("Expected {0} initial HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(initialRequests))))
      # All initial requests should have been over HTTP
     for r in initialRequests:
       if r['HTTPS'] is True:
-        raise Exception("Expected all initial requests to be HTTP")
+        raise(Exception("Expected all initial requests to be HTTP"))
 
     # There should have been at least 1 redirected HTTP request for each VA
     if len(redirectedRequests) < 1:
-        raise Exception("Expected {0} redirected HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(redirectedRequests)))
+        raise(Exception("Expected {0} redirected HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(redirectedRequests))))
     # All the redirected requests should have been over HTTPS with the correct
     # SNI value
     for r in redirectedRequests:
       if r['HTTPS'] is False:
-        raise Exception("Expected all redirected requests to be HTTPS")
+        raise(Exception("Expected all redirected requests to be HTTPS"))
       elif r['ServerName'] != d:
-        raise Exception("Expected all redirected requests to have ServerName {0} got \"{1}\"".format(d, r['ServerName']))
+        raise(Exception("Expected all redirected requests to have ServerName {0} got \"{1}\"".format(d, r['ServerName'])))
 
 class SlowHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -315,7 +313,7 @@ def test_http_challenge_timeout():
     # present the timeout is 20s so adding 2s of padding = 22s)
     expectedDuration = 22
     if delta.total_seconds() == 0 or delta.total_seconds() > expectedDuration:
-        raise Exception("expected timeout to occur in under {0} seconds. Took {1}".format(expectedDuration, delta.total_seconds()))
+        raise(Exception("expected timeout to occur in under {0} seconds. Took {1}".format(expectedDuration, delta.total_seconds())))
 
 def test_tls_alpn_challenge():
     # Pick two random domains
@@ -339,7 +337,7 @@ def test_issuer():
     of length exactly 1.
     """
     certr, authzs = auth_and_issue([random_domain()])
-    cert = urllib2.urlopen(certr.uri).read()
+    cert = requests.get(certr.uri).content
     # In the future the chain URI will use HTTPS so include the root certificate
     # for the WFE's PKI. Note: We use the requests library here so we honor the
     # REQUESTS_CA_BUNDLE passed by test.sh.
@@ -382,7 +380,7 @@ def test_ct_submission():
     def submissions(group):
         count = 0
         for log in group:
-            count += int(urllib2.urlopen(log + "?hostnames=%s" % hostname).read())
+            count += int(requests.get(log + "?hostnames=%s" % hostname).text)
         return count
 
     auth_and_issue([hostname])
@@ -392,29 +390,29 @@ def test_ct_submission():
 
     for i in range(len(log_groups)):
         if got[i] < expected[i]:
-            raise Exception("For log group %d, got %d submissions, expected %d." %
-                (i, got[i], expected[i]))
+            raise(Exception("For log group %d, got %d submissions, expected %d." %
+                (i, got[i], expected[i])))
 
 def test_expiration_mailer():
     email_addr = "integration.%x@letsencrypt.org" % random.randrange(2**16)
     cert, _ = auth_and_issue([random_domain()], email=email_addr)
     # Check that the expiration mailer sends a reminder
-    expiry = datetime.datetime.strptime(cert.body.get_notAfter(), '%Y%m%d%H%M%SZ')
+    expiry = datetime.datetime.strptime(cert.body.get_notAfter().decode(), '%Y%m%d%H%M%SZ')
     no_reminder = expiry + datetime.timedelta(days=-31)
     first_reminder = expiry + datetime.timedelta(days=-13)
     last_reminder = expiry + datetime.timedelta(days=-2)
 
-    urllib2.urlopen("http://localhost:9381/clear", data='')
-    print get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
-        config_dir, no_reminder)
-    print get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
-        config_dir, first_reminder)
-    print get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
-        config_dir, last_reminder)
-    resp = urllib2.urlopen("http://localhost:9381/count?to=%s" % email_addr)
+    requests.post("http://localhost:9381/clear", data='')
+    print(get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
+        config_dir, no_reminder))
+    print(get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
+        config_dir, first_reminder))
+    print(get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
+        config_dir, last_reminder))
+    resp = urllib.urlopen("http://localhost:9381/count?to=%s" % email_addr)
     mailcount = int(resp.read())
     if mailcount != 2:
-        raise Exception("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount)
+        raise(Exception("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount))
 
 def test_revoke_by_account():
     client = chisel.make_client()
@@ -450,13 +448,13 @@ def test_recheck_caa():
        recheck CAA and reject the request.
     """
     if len(caa_recheck_authzs) == 0:
-        raise Exception("CAA authzs not prepared for test_caa")
+        raise(Exception("CAA authzs not prepared for test_caa"))
     domains = []
     for a in caa_recheck_authzs:
         response = requests.get(a.uri)
         if response.status_code != 200:
-            raise Exception("Unexpected response for CAA authz: ",
-                response.status_code)
+            raise(Exception("Unexpected response for CAA authz: ",
+                response.status_code))
         domain = a.body.identifier.value
         domains.append(domain)
         challSrv.add_caa_issue(domain, ";")
@@ -524,11 +522,11 @@ def test_account_update():
         result = chisel.update_email(client, email=email)
         # We expect one contact in the result
         if len(result.body.contact) != 1:
-            raise Exception("\nUpdate account failed: expected one contact in result, got 0")
+            raise(Exception("\nUpdate account failed: expected one contact in result, got 0"))
         # We expect it to be the email we just updated to
         actual = result.body.contact[0]
         if actual != "mailto:"+email:
-            raise Exception("\nUpdate account failed: expected contact %s, got %s" % (email, actual))
+            raise(Exception("\nUpdate account failed: expected contact %s, got %s" % (email, actual)))
 
 def test_renewal_exemption():
     """
@@ -584,13 +582,13 @@ def test_admin_revoker_cert():
 
 def test_sct_embedding():
     certr, authzs = auth_and_issue([random_domain()])
-    certBytes = urllib2.urlopen(certr.uri).read()
+    certBytes = requests.get(certr.uri).content
     cert = x509.load_der_x509_certificate(certBytes, default_backend())
 
     # make sure there is no poison extension
     try:
         cert.extensions.get_extension_for_oid(x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.3"))
-        raise Exception("certificate contains CT poison extension")
+        raise(Exception("certificate contains CT poison extension"))
     except x509.ExtensionNotFound:
         # do nothing
         pass
@@ -599,18 +597,18 @@ def test_sct_embedding():
     try:
         sctList = cert.extensions.get_extension_for_oid(x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.2"))
     except x509.ExtensionNotFound:
-        raise Exception("certificate doesn't contain SCT list extension")
+        raise(Exception("certificate doesn't contain SCT list extension"))
     if len(sctList.value) != 2:
-        raise Exception("SCT list contains wrong number of SCTs")
+        raise(Exception("SCT list contains wrong number of SCTs"))
     for sct in sctList.value:
         if sct.version != x509.certificate_transparency.Version.v1:
-            raise Exception("SCT contains wrong version")
+            raise(Exception("SCT contains wrong version"))
         if sct.entry_type != x509.certificate_transparency.LogEntryType.PRE_CERTIFICATE:
-            raise Exception("SCT contains wrong entry type")
+            raise(Exception("SCT contains wrong entry type"))
         delta = sct.timestamp - datetime.datetime.now()
         if abs(delta) > datetime.timedelta(hours=1):
-            raise Exception("Delta between SCT timestamp and now was too great "
-                "%s vs %s (%s)" % (sct.timestamp, datetime.datetime.now(), delta))
+            raise(Exception("Delta between SCT timestamp and now was too great "
+                "%s vs %s (%s)" % (sct.timestamp, datetime.datetime.now(), delta)))
 
 def test_auth_deactivation():
     client = chisel.make_client(None)

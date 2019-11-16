@@ -14,7 +14,7 @@ import socket
 import sys
 import threading
 import time
-import urllib2
+import requests
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
@@ -73,9 +73,9 @@ def update_email(client, email):
     email.
     """
     if client is None:
-        raise NoClientError("update_email requires a valid acme.Client argument")
+        raise(NoClientError("update_email requires a valid acme.Client argument"))
     if email is None:
-        raise EmailRequiredError("update_email requires an email argument")
+        raise(EmailRequiredError("update_email requires an email argument"))
     if not email.startswith("mailto:"):
         email = "mailto:"+ email
     acct = client.account
@@ -86,7 +86,7 @@ def get_chall(authz, typ):
     for chall_body in authz.body.challenges:
         if isinstance(chall_body.chall, typ):
             return chall_body
-    raise Exception("No %s challenge found" % typ)
+    raise(Exception("No %s challenge found" % typ))
 
 class ValidationError(Exception):
     """An error that occurs during challenge validation."""
@@ -110,9 +110,9 @@ def issue(client, authzs, cert_output=None):
     csr = OpenSSL.crypto.X509Req()
     csr.add_extensions([
         OpenSSL.crypto.X509Extension(
-            'subjectAltName',
+            'subjectAltName'.encode(),
             critical=False,
-            value=', '.join('DNS:' + d for d in domains).encode()
+            value=(', '.join('DNS:' + d for d in domains)).encode()
         ),
     ])
     csr.set_pubkey(pkey)
@@ -126,19 +126,21 @@ def issue(client, authzs, cert_output=None):
         # If we get a PollError, pick the first failed authz and turn it into a more
         # useful ValidationError that contains details we can look for in tests.
         for authz in error.updated:
-            updated_authz = json.loads(urllib2.urlopen(authz.uri).read())
+            r = requests.get(authz.uri)
+            r.raise_for_status()
+            updated_authz = r.json()
             domain = authz.body.identifier.value,
             for c in updated_authz['challenges']:
                 if 'error' in c:
                     err = c['error']
-                    raise ValidationError(domain, err['type'], err['detail'])
+                    raise(ValidationError(domain, err['type'], err['detail']))
         # If none of the authz's had an error, just re-raise.
         raise
     if cert_output is not None:
         pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM,
                                               cert_resource.body)
         with open(cert_output, 'w') as f:
-            f.write(pem)
+            f.write(pem.decode())
     return cert_resource
 
 def http_01_answer(client, chall_body):
@@ -223,7 +225,7 @@ def auth_and_issue(domains, chall_type="dns-01", email=None, cert_output=None, c
     elif chall_type == "tls-alpn-01":
         cleanup = do_tlsalpn_challenges(client, authzs)
     else:
-        raise Exception("invalid challenge type %s" % chall_type)
+        raise(Exception("invalid challenge type %s" % chall_type))
 
     try:
         cert_resource = issue(client, authzs, cert_output)
@@ -250,15 +252,15 @@ def expect_problem(problem_type, func):
         else:
             raise
     if not ok:
-        raise Exception('Expected %s, got no error' % problem_type)
+        raise(Exception('Expected %s, got no error' % problem_type))
 
 if __name__ == "__main__":
     domains = sys.argv[1:]
     if len(domains) == 0:
-        print __doc__
+        print(__doc__)
         sys.exit(0)
     try:
         auth_and_issue(domains)
-    except messages.Error, e:
-        print e
+    except messages.Error as e:
+        print(e)
         sys.exit(1)
