@@ -51,7 +51,9 @@ if [ -n "${PKCS11_PROXY_SOCKET:-}" ]; then
 fi
 
 if [[ $# -eq 0 ]]; then
-    exec ./start.py
+    PS1=foo
+    source ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv}/bin/activate
+    exec python2 ./start.py
 fi
 
 exec $@

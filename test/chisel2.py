@@ -15,7 +15,6 @@ import sys
 import signal
 import threading
 import time
-import urllib2
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -189,10 +188,10 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     domains = sys.argv[1:]
     if len(domains) == 0:
-        print __doc__
+        print(__doc__)
         sys.exit(0)
     try:
         auth_and_issue(domains)
-    except messages.Error, e:
-        print e
+    except messages.Error as e:
+        print(e)
         sys.exit(1)
