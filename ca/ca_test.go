@@ -989,6 +989,9 @@ func TestPrecertOrphanQueue(t *testing.T) {
 			strings.Join(testCtx.logger.GetAllMatching(".*"), "\n"))
 	}
 
+	orphanCount := test.CountCounterVec("type", "precert", ca.orphanCount)
+	test.AssertEquals(t, orphanCount, 1)
+
 	qsa.fail = false
 	err = ca.integrateOrphan()
 	test.AssertNotError(t, err, "integrateOrphan failed")
@@ -999,6 +1002,9 @@ func TestPrecertOrphanQueue(t *testing.T) {
 	if err != goque.ErrEmpty {
 		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
 	}
+
+	adoptedCount := test.CountCounterVec("type", "precert", ca.adoptedOrphanCount)
+	test.AssertEquals(t, adoptedCount, 1)
 }
 
 func TestOrphanQueue(t *testing.T) {

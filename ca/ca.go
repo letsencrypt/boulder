@@ -125,22 +125,24 @@ type CertificateAuthorityImpl struct {
 	// A map from issuer ID to internalIssuer
 	idToIssuer map[int64]*internalIssuer
 	// The common name of the default issuer cert
-	defaultIssuer     *internalIssuer
-	sa                certificateStorage
-	pa                core.PolicyAuthority
-	keyPolicy         goodkey.KeyPolicy
-	clk               clock.Clock
-	log               blog.Logger
-	stats             metrics.Scope
-	prefix            int // Prepended to the serial number
-	validityPeriod    time.Duration
-	backdate          time.Duration
-	maxNames          int
-	forceCNFromSAN    bool
-	signatureCount    *prometheus.CounterVec
-	csrExtensionCount *prometheus.CounterVec
-	orphanQueue       *goque.Queue
-	ocspLifetime      time.Duration
+	defaultIssuer      *internalIssuer
+	sa                 certificateStorage
+	pa                 core.PolicyAuthority
+	keyPolicy          goodkey.KeyPolicy
+	clk                clock.Clock
+	log                blog.Logger
+	stats              metrics.Scope
+	prefix             int // Prepended to the serial number
+	validityPeriod     time.Duration
+	backdate           time.Duration
+	maxNames           int
+	forceCNFromSAN     bool
+	signatureCount     *prometheus.CounterVec
+	csrExtensionCount  *prometheus.CounterVec
+	orphanCount        *prometheus.CounterVec
+	adoptedOrphanCount *prometheus.CounterVec
+	orphanQueue        *goque.Queue
+	ocspLifetime       time.Duration
 }
 
 // Issuer represents a single issuer certificate, along with its key.
@@ -278,23 +280,41 @@ func NewCertificateAuthorityImpl(
 		[]string{"purpose"})
 	stats.MustRegister(signatureCount)
 
+	orphanCount := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "orphans",
+			Help: "Number of orphaned certificates labelled by type (precert, cert)",
+		},
+		[]string{"type"})
+	stats.MustRegister(orphanCount)
+
+	adoptedOrphanCount := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "adopted_orphans",
+			Help: "Number of orphaned certificates adopted from the orphan queue by type (precert, cert)",
+		},
+		[]string{"type"})
+	stats.MustRegister(adoptedOrphanCount)
+
 	ca = &CertificateAuthorityImpl{
-		sa:                sa,
-		pa:                pa,
-		issuers:           internalIssuers,
-		defaultIssuer:     defaultIssuer,
-		rsaProfile:        rsaProfile,
-		ecdsaProfile:      ecdsaProfile,
-		prefix:            config.SerialPrefix,
-		clk:               clk,
-		log:               logger,
-		stats:             stats,
-		keyPolicy:         keyPolicy,
-		forceCNFromSAN:    !config.DoNotForceCN, // Note the inversion here
-		signatureCount:    signatureCount,
-		csrExtensionCount: csrExtensionCount,
-		orphanQueue:       orphanQueue,
-		ocspLifetime:      config.LifespanOCSP.Duration,
+		sa:                 sa,
+		pa:                 pa,
+		issuers:            internalIssuers,
+		defaultIssuer:      defaultIssuer,
+		rsaProfile:         rsaProfile,
+		ecdsaProfile:       ecdsaProfile,
+		prefix:             config.SerialPrefix,
+		clk:                clk,
+		log:                logger,
+		stats:              stats,
+		keyPolicy:          keyPolicy,
+		forceCNFromSAN:     !config.DoNotForceCN, // Note the inversion here
+		signatureCount:     signatureCount,
+		csrExtensionCount:  csrExtensionCount,
+		orphanCount:        orphanCount,
+		adoptedOrphanCount: adoptedOrphanCount,
+		orphanQueue:        orphanQueue,
+		ocspLifetime:       config.LifespanOCSP.Duration,
 	}
 
 	ca.idToIssuer = make(map[int64]*internalIssuer)
@@ -529,7 +549,10 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 
 	_, err = ca.sa.AddPrecertificate(ctx, req)
 	if err != nil {
+		ca.orphanCount.With(prometheus.Labels{"type": "precert"}).Inc()
 		err = berrors.InternalServerError(err.Error())
+		// Note: This log line is parsed by cmd/orphan-finder. If you make any
+		// changes here, you should make sure they are reflected in orphan-finder.
 		ca.log.AuditErrf("Failed RPC to store at SA, orphaning precertificate: serial=[%s] cert=[%s] err=[%v], regID=[%d], orderID=[%d]",
 			serialHex, hex.EncodeToString(precertDER), err, *issueReq.RegistrationID, *issueReq.OrderID)
 		if ca.orphanQueue != nil {
@@ -744,6 +767,7 @@ func (ca *CertificateAuthorityImpl) storeCertificate(
 	now := ca.clk.Now()
 	_, err = ca.sa.AddCertificate(ctx, certDER, regID, nil, &now)
 	if err != nil {
+		ca.orphanCount.With(prometheus.Labels{"type": "cert"}).Inc()
 		err = berrors.InternalServerError(err.Error())
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
 		// changes here, you should make sure they are reflected in orphan-finder.
@@ -832,5 +856,10 @@ func (ca *CertificateAuthorityImpl) integrateOrphan() error {
 	if _, err = ca.orphanQueue.Dequeue(); err != nil {
 		return fmt.Errorf("failed to dequeue integrated orphaned certificate: %s", err)
 	}
+	typ := "cert"
+	if orphan.Precert {
+		typ = "precert"
+	}
+	ca.adoptedOrphanCount.With(prometheus.Labels{"type": typ}).Inc()
 	return nil
 }
