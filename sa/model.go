@@ -137,24 +137,17 @@ const certStatusFields = "serial, status, ocspLastUpdated, revokedDate, revokedR
 
 // SelectCertificateStatus selects all fields of one certificate status model
 func SelectCertificateStatus(s db.OneSelector, q string, args ...interface{}) (certStatusModel, error) {
+	fields := certStatusFields
+	if features.Enabled(features.StoreIssuerInfo) {
+		fields += ", issuerID"
+	}
 	var model certStatusModel
 	err := s.SelectOne(
 		&model,
-		"SELECT "+certStatusFields+" FROM certificateStatus "+q,
+		"SELECT "+fields+" FROM certificateStatus "+q,
 		args...,
 	)
 	return model, err
-}
-
-// SelectCertificateStatuses selects all fields of multiple certificate status objects
-func SelectCertificateStatuses(s db.Selector, q string, args ...interface{}) ([]core.CertificateStatus, error) {
-	var models []core.CertificateStatus
-	_, err := s.Select(
-		&models,
-		"SELECT "+certStatusFields+" FROM certificateStatus "+q,
-		args...,
-	)
-	return models, err
 }
 
 var mediumBlobSize = int(math.Pow(2, 24))
@@ -191,6 +184,7 @@ type certStatusModel struct {
 	OCSPResponse          []byte            `db:"ocspResponse"`
 	NotAfter              time.Time         `db:"notAfter"`
 	IsExpired             bool              `db:"isExpired"`
+	IssuerID              *int64            `db:"issuerID"`
 }
 
 // challModel is the description of a core.Challenge in the database

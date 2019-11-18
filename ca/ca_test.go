@@ -187,6 +187,11 @@ func (m *mockSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*co
 	return &corepb.Empty{}, nil
 }
 
+func (m *mockSA) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
+	e := true
+	return &sapb.Exists{Exists: &e}, nil
+}
+
 var caKey crypto.Signer
 var caCert *x509.Certificate
 var ctx = context.Background()
@@ -932,6 +937,11 @@ func (qsa *queueSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (
 	return &corepb.Empty{}, nil
 }
 
+func (qsa *queueSA) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
+	e := true
+	return &sapb.Exists{Exists: &e}, nil
+}
+
 // TestPrecertOrphanQueue tests that IssuePrecertificate writes precertificates
 // to the orphan queue if storage fails, and that `integrateOrphan` later
 // successfully writes those precertificates to the database. To do this, it
@@ -1164,4 +1174,51 @@ func TestIssuePrecertificateLinting(t *testing.T) {
 	regex := `ERR: \[AUDIT\] Signing failed: serial=\[.*\] err=\[pre-issuance linting found 2 error results\] lintErrors=\{"foobar":\{"result":"error","details":"foobar is error"\},"foobar2":\{"result":"warn","details":"foobar2 is warning"\}\}`
 	matches := testCtx.logger.GetAllMatching(regex)
 	test.AssertEquals(t, len(matches), 1)
+}
+
+func TestGenerateOCSPWithIssuerID(t *testing.T) {
+	testCtx := setup(t)
+	sa := &mockSA{}
+	_ = features.Set(map[string]bool{"StoreIssuerInfo": true})
+	ca, err := NewCertificateAuthorityImpl(
+		testCtx.caConfig,
+		sa,
+		testCtx.pa,
+		testCtx.fc,
+		testCtx.stats,
+		testCtx.issuers,
+		testCtx.keyPolicy,
+		testCtx.logger,
+		nil)
+	test.AssertNotError(t, err, "Failed to create CA")
+
+	// GenerateOCSP with feature enabled + req contains bad IssuerID
+	issuerID := int64(666)
+	serial := "DEADDEADDEADDEADDEADDEADDEADDEADDEAD"
+	status := string(core.OCSPStatusGood)
+	_, err = ca.GenerateOCSP(context.Background(), &caPB.GenerateOCSPRequest{
+		IssuerID: &issuerID,
+		Serial:   &serial,
+		Status:   &status,
+	})
+	test.AssertError(t, err, "GenerateOCSP didn't fail with invalid IssuerID")
+
+	// GenerateOCSP with feature enabled + req contains good IssuerID
+	issuerID = idForIssuer(ca.defaultIssuer.cert)
+	_, err = ca.GenerateOCSP(context.Background(), &caPB.GenerateOCSPRequest{
+		IssuerID: &issuerID,
+		Serial:   &serial,
+		Status:   &status,
+	})
+	test.AssertNotError(t, err, "GenerateOCSP failed")
+
+	// GenerateOCSP with feature enabled + req doesn't contain IssuerID
+	issueReq := caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID}
+	cert, err := ca.IssuePrecertificate(ctx, &issueReq)
+	test.AssertNotError(t, err, "Failed to issue")
+	_, err = ca.GenerateOCSP(context.Background(), &caPB.GenerateOCSPRequest{
+		CertDER: cert.DER,
+		Status:  &status,
+	})
+	test.AssertNotError(t, err, "GenerateOCSP failed")
 }

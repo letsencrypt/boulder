@@ -129,19 +129,20 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	now := updater.clk.Now()
 	maxAgeCutoff := now.Add(-updater.ocspStaleMaxAge)
 
+	certStatusFields := "cs.serial, cs.status, cs.revokedDate, cs.notAfter"
+	if features.Enabled(features.StoreIssuerInfo) {
+		certStatusFields += ", cs.issuerID"
+	}
 	_, err := updater.dbMap.Select(
 		&statuses,
-		`SELECT
-				cs.serial,
-				cs.status,
-				cs.revokedDate,
-				cs.notAfter
+		fmt.Sprintf(`SELECT
+				%s
 				FROM certificateStatus AS cs
 				WHERE cs.ocspLastUpdated > :maxAge
 				AND cs.ocspLastUpdated < :lastUpdate
 				AND NOT cs.isExpired
 				ORDER BY cs.ocspLastUpdated ASC
-				LIMIT :limit`,
+				LIMIT :limit`, certStatusFields),
 		map[string]interface{}{
 			"lastUpdate": oldestLastUpdatedTime,
 			"maxAge":     maxAgeCutoff,
@@ -154,15 +155,15 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	return statuses, err
 }
 
-func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.CertificateStatus) (*core.CertificateStatus, error) {
+func getCertDER(selector ocspDB, serial string) ([]byte, error) {
 	cert, err := sa.SelectCertificate(
-		updater.dbMap,
+		selector,
 		"WHERE serial = ?",
-		status.Serial,
+		serial,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			cert, err = sa.SelectPrecertificate(updater.dbMap, status.Serial)
+			cert, err = sa.SelectPrecertificate(selector, serial)
 			// If there was still a non-nil error return it. If we can't find
 			// a precert row something is amiss, we have a certificateStatus row with
 			// no matching certificate or precertificate.
@@ -173,16 +174,30 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.Ce
 			return nil, err
 		}
 	}
+	return cert.DER, nil
+}
 
+func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.CertificateStatus) (*core.CertificateStatus, error) {
 	reason := int32(status.RevokedReason)
 	statusStr := string(status.Status)
 	revokedAt := status.RevokedDate.UnixNano()
-	ocspResponse, err := updater.ogc.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-		CertDER:   cert.DER,
+	ocspReq := capb.GenerateOCSPRequest{
 		Reason:    &reason,
 		Status:    &statusStr,
 		RevokedAt: &revokedAt,
-	})
+	}
+	if status.IssuerID != nil {
+		ocspReq.Serial = &status.Serial
+		ocspReq.IssuerID = status.IssuerID
+	} else {
+		certDER, err := getCertDER(updater.dbMap, status.Serial)
+		if err != nil {
+			return nil, err
+		}
+		ocspReq.CertDER = certDER
+	}
+
+	ocspResponse, err := updater.ogc.GenerateOCSP(ctx, &ocspReq)
 	if err != nil {
 		return nil, err
 	}
@@ -399,10 +414,7 @@ func setupClients(c OCSPUpdaterConfig, stats metrics.Scope, clk clock.Clock) (
 	clientMetrics := bgrpc.NewClientMetrics(stats)
 	caConn, err := bgrpc.ClientSetup(c.OCSPGeneratorService, tls, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
-	// Make a CA client that is only capable of signing OCSP.
-	// TODO(jsha): Once we've fully moved to gRPC, replace this
-	// with a plain caPB.NewOCSPGeneratorClient.
-	ogc := capb.NewOCSPGeneratorClient(caConn)
+	ogc := bgrpc.NewOCSPGeneratorClient(capb.NewOCSPGeneratorClient(caConn))
 
 	saConn, err := bgrpc.ClientSetup(c.SAService, tls, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")

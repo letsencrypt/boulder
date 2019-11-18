@@ -2,9 +2,15 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/big"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +19,7 @@ import (
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
@@ -480,4 +487,69 @@ func TestGenerateOCSPResponsePrecert(t *testing.T) {
 	// though no certificate row exists.
 	_, err = updater.generateResponse(ctx, certs[0])
 	test.AssertNotError(t, err, "generateResponse for precert errored")
+}
+
+type mockOCSPRecordIssuer struct {
+	gotIssuer bool
+}
+
+func (ca *mockOCSPRecordIssuer) GenerateOCSP(_ context.Context, req *caPB.GenerateOCSPRequest, _ ...grpc.CallOption) (*caPB.OCSPResponse, error) {
+	ca.gotIssuer = req.IssuerID != nil && req.Serial != nil
+	return &caPB.OCSPResponse{Response: []byte{1, 2, 3}}, nil
+}
+
+func TestIssuerInfo(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	updater, sa, _, fc, cleanUp := setup(t)
+	defer cleanUp()
+	m := mockOCSPRecordIssuer{}
+	updater.ogc = &m
+	reg := satest.CreateWorkingRegistration(t, sa)
+	_ = features.Set(map[string]bool{"StoreIssuerInfo": true})
+
+	k, err := rsa.GenerateKey(rand.Reader, 512)
+	test.AssertNotError(t, err, "rsa.GenerateKey failed")
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+	}
+	certA, err := x509.CreateCertificate(rand.Reader, template, template, &k.PublicKey, k)
+	test.AssertNotError(t, err, "x509.CreateCertificate failed")
+	template.SerialNumber = big.NewInt(2)
+	certB, err := x509.CreateCertificate(rand.Reader, template, template, &k.PublicKey, k)
+	test.AssertNotError(t, err, "x509.CreateCertificate failed")
+
+	now := fc.Now().UnixNano()
+	id := int64(1234)
+	_, err = sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
+		Der:      certA,
+		RegID:    &reg.ID,
+		Ocsp:     []byte{1, 2, 3},
+		Issued:   &now,
+		IssuerID: &id,
+	})
+	test.AssertNotError(t, err, "sa.AddPrecertificate failed")
+	_, err = sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
+		Der:    certB,
+		RegID:  &reg.ID,
+		Ocsp:   []byte{1, 2, 3},
+		Issued: &now,
+	})
+	test.AssertNotError(t, err, "sa.AddPrecertificate failed")
+
+	fc.Add(time.Hour * 24 * 4)
+	statuses, err := updater.findStaleOCSPResponses(fc.Now().Add(-time.Hour), 10)
+	test.AssertNotError(t, err, "findStaleOCSPResponses failed")
+	test.AssertEquals(t, len(statuses), 2)
+	test.AssertEquals(t, *statuses[0].IssuerID, id)
+	test.Assert(t, statuses[1].IssuerID == nil, "second status doesn't have nil IssuerID")
+
+	_, err = updater.generateResponse(context.Background(), statuses[0])
+	test.AssertNotError(t, err, "generateResponse failed")
+	test.Assert(t, m.gotIssuer, "generateResponse didn't send issuer information and serial")
+	_, err = updater.generateResponse(context.Background(), statuses[1])
+	test.AssertNotError(t, err, "generateResponse failed")
+	test.Assert(t, !m.gotIssuer, "generateResponse did send issuer information and serial when it shouldn't")
 }

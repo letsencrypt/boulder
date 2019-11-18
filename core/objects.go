@@ -490,6 +490,8 @@ type CertificateStatus struct {
 	// [0]: https://github.com/letsencrypt/boulder/issues/1864
 	NotAfter  time.Time `db:"notAfter"`
 	IsExpired bool      `db:"isExpired"`
+
+	IssuerID *int64
 }
 
 // OCSPResponse is a (large) table of OCSP responses. This contains all

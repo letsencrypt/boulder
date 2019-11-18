@@ -363,16 +363,16 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 		return core.CertificateStatus{}, err
 	}
 
-	var status core.CertificateStatus
-	statusObj, err := ssa.dbMap.WithContext(ctx).Get(certStatusModel{}, serial)
+	statusModel, err := SelectCertificateStatus(
+		ssa.dbMap.WithContext(ctx),
+		"WHERE serial = ?",
+		serial,
+	)
 	if err != nil {
-		return status, err
+		return core.CertificateStatus{}, err
 	}
-	if statusObj == nil {
-		return status, nil
-	}
-	statusModel := statusObj.(*certStatusModel)
-	status = core.CertificateStatus{
+
+	return core.CertificateStatus{
 		Serial:                statusModel.Serial,
 		Status:                statusModel.Status,
 		OCSPLastUpdated:       statusModel.OCSPLastUpdated,
@@ -382,9 +382,7 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 		OCSPResponse:          statusModel.OCSPResponse,
 		NotAfter:              statusModel.NotAfter,
 		IsExpired:             statusModel.IsExpired,
-	}
-
-	return status, nil
+	}, nil
 }
 
 // NewRegistration stores a new Registration
@@ -1571,40 +1569,36 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 // RevokeCertificate stores revocation information about a certificate. It will only store this
 // information if the certificate is not already marked as revoked.
 func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error {
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
-		status, err := SelectCertificateStatus(
-			txWithCtx,
-			"WHERE serial = ? AND status != ?",
-			*req.Serial,
-			string(core.OCSPStatusRevoked),
-		)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				// InternalServerError because we expected this certificate status to exist and
-				// not be revoked.
-				return nil, berrors.InternalServerError("no certificate with serial %s and status %s", *req.Serial, string(core.OCSPStatusRevoked))
-			}
-			return nil, err
-		}
-
-		revokedDate := time.Unix(0, *req.Date)
-		status.Status = core.OCSPStatusRevoked
-		status.RevokedReason = revocation.Reason(*req.Reason)
-		status.RevokedDate = revokedDate
-		status.OCSPLastUpdated = revokedDate
-		status.OCSPResponse = req.Response
-
-		n, err := txWithCtx.Update(&status)
-		if err != nil {
-			return nil, err
-		}
-		if n == 0 {
-			return nil, berrors.InternalServerError("no certificate updated")
-		}
-
-		return nil, nil
-	})
-	return overallError
+	revokedDate := time.Unix(0, *req.Date)
+	res, err := ssa.dbMap.Exec(
+		`UPDATE certificateStatus SET
+				status = ?,
+				revokedReason = ?,
+				revokedDate = ?,
+				ocspLastUpdated = ?,
+				ocspResponse = ?
+			WHERE serial = ? AND status != ?`,
+		string(core.OCSPStatusRevoked),
+		revocation.Reason(*req.Reason),
+		revokedDate,
+		revokedDate,
+		req.Response,
+		*req.Serial,
+		string(core.OCSPStatusRevoked),
+	)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		// InternalServerError because we expected this certificate status to exist and
+		// not be revoked.
+		return berrors.InternalServerError("no certificate with serial %s and status %s", *req.Serial, string(core.OCSPStatusRevoked))
+	}
+	return nil
 }
 
 // GetPendingAuthorization2 returns the most recent Pending authorization with
@@ -1778,4 +1772,17 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 		authzMap[am.IdentifierValue] = am
 	}
 	return authz2ModelMapToPB(authzMap)
+}
+
+// SerialExists returns a bool indicating whether the provided serial
+// exists in the serial table. This is currently only used to determine
+// if a serial passed to ca.GenerateOCSP is one which we have previously
+// generated a certificate for.
+func (ssa *SQLStorageAuthority) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
+	err := ssa.dbMap.SelectOne(&recordedSerialModel{}, "SELECT * FROM serials WHERE serial = ?", req.Serial)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+	exists := err != sql.ErrNoRows
+	return &sapb.Exists{Exists: &exists}, nil
 }
