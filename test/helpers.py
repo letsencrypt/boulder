@@ -50,7 +50,7 @@ def fetch_ocsp(request_bytes, url):
     # Make the OCSP request three different ways: by POST, by GET, and by GET with
     # URL-encoded parameters. All three should have an identical response.
     get_response = requests.get("%s/%s" % (url, ocsp_req_b64)).content
-    get_encoded_response = requests.get("%s/%s" % (url, urllib.quote(ocsp_req_b64, safe = ""))).content
+    get_encoded_response = requests.get("%s/%s" % (url, urllib.parse.quote(ocsp_req_b64, safe = ""))).content
     post_response = requests.post("%s/" % (url), data=request_bytes).content
 
     return (post_response, get_response, get_encoded_response)

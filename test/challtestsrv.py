@@ -1,5 +1,5 @@
-import requests
 import json
+import requests
 
 class ChallTestServer:
     """
@@ -41,14 +41,15 @@ class ChallTestServer:
             self._baseURL = url
 
     def _postURL(self, url, body):
-        return requests.post(
+        response = requests.post(
                 url,
-                data=json.dumps(body)).text
+                data=json.dumps(body))
+        return response.text
 
     def _URL(self, path):
         urlPath = self._paths.get(path, None)
         if urlPath is None:
-            raise(Exception("No challenge test server URL path known for {0}".format(path)))
+            raise Exception("No challenge test server URL path known for {0}".format(path))
         return self._baseURL + urlPath
 
     def _clear_request_history(self, host, typ):

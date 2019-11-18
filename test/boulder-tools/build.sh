@@ -16,14 +16,21 @@ apt-get install -y --no-install-recommends \
   ruby \
   ruby-dev \
   rsyslog \
-  python3-venv \
   softhsm \
   build-essential \
   cmake \
   libssl-dev \
   libseccomp-dev \
   opensc \
-  unzip
+  unzip \
+  python3-dev \
+  python3-venv \
+  gcc \
+  libaugeas0 \
+  libssl-dev \
+  libffi-dev \
+  ca-certificates \
+  openssl
 
 curl -L https://github.com/google/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip -o /tmp/protoc.zip
 unzip /tmp/protoc.zip -d /usr/local/protoc
@@ -48,9 +55,8 @@ go get \
 
 git clone https://github.com/certbot/certbot /certbot
 cd /certbot
-./letsencrypt-auto --os-packages-only
-./tools/venv.py
-source venv/bin/activate
+./tools/venv3.py
+source venv3/bin/activate
 pip install -r /tmp/requirements.txt
 cd -
 

@@ -409,8 +409,8 @@ def test_expiration_mailer():
         config_dir, first_reminder))
     print(get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
         config_dir, last_reminder))
-    resp = urllib.urlopen("http://localhost:9381/count?to=%s" % email_addr)
-    mailcount = int(resp.read())
+    resp = requests.get("http://localhost:9381/count?to=%s" % email_addr)
+    mailcount = int(resp.text)
     if mailcount != 2:
         raise(Exception("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount))
 

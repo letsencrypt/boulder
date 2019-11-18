@@ -8,7 +8,7 @@
     "dbConnectFile": "test/secrets/mailer_dburl",
     "maxDBConns": 10,
     "messageLimit": 0,
-    "nagTimes": ["24h", "72h", "168h", "336h"],
+    "nagTimes": ["240h", "480h"],
     "nagCheckInterval": "24h",
     "emailTemplate": "test/example-expiration-template",
     "debugAddr": ":8008",
@@ -26,7 +26,7 @@
   },
 
   "syslog": {
-    "stdoutlevel": 6,
+    "stdoutlevel": 7,
     "sysloglevel": 4
   }
 }
