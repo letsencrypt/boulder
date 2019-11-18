@@ -83,7 +83,7 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMa
 	return rac, logger, dbMap, sac
 }
 
-func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, tx *gorp.Transaction) (err error) {
+func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, tx db.Transaction) (err error) {
 	if reasonCode < 0 || reasonCode == 7 || reasonCode > 10 {
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
@@ -110,7 +110,7 @@ func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Re
 	return
 }
 
-func revokeByReg(ctx context.Context, regID int64, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, tx *gorp.Transaction) (err error) {
+func revokeByReg(ctx context.Context, regID int64, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, tx db.Transaction) (err error) {
 	var certs []core.Certificate
 	_, err = tx.Select(&certs, "SELECT serial FROM certificates WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
 	if err != nil {
@@ -170,18 +170,11 @@ func main() {
 
 		rac, logger, dbMap, _ := setupContext(c)
 
-		tx, err := dbMap.Begin()
-		if err != nil {
-			cmd.FailOnError(db.Rollback(tx, err), "Couldn't begin transaction")
-		}
-
-		err = revokeBySerial(ctx, serial, revocation.Reason(reasonCode), rac, logger, tx)
-		if err != nil {
-			cmd.FailOnError(db.Rollback(tx, err), "Couldn't revoke certificate")
-		}
-
-		err = tx.Commit()
-		cmd.FailOnError(err, "Couldn't cleanly close transaction")
+		_, err = db.WithTransaction(ctx, dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
+			err := revokeBySerial(ctx, serial, revocation.Reason(reasonCode), rac, logger, txWithCtx)
+			return nil, err
+		})
+		cmd.FailOnError(err, "Couldn't revoke certificate by serial")
 
 	case command == "reg-revoke" && len(args) == 2:
 		// 1: registration ID,  2: reasonCode
@@ -193,23 +186,16 @@ func main() {
 		rac, logger, dbMap, sac := setupContext(c)
 		defer logger.AuditPanic()
 
-		tx, err := dbMap.Begin()
-		if err != nil {
-			cmd.FailOnError(db.Rollback(tx, err), "Couldn't begin transaction")
-		}
-
 		_, err = sac.GetRegistration(ctx, regID)
 		if err != nil {
 			cmd.FailOnError(err, "Couldn't fetch registration")
 		}
 
-		err = revokeByReg(ctx, regID, revocation.Reason(reasonCode), rac, logger, tx)
-		if err != nil {
-			cmd.FailOnError(db.Rollback(tx, err), "Couldn't revoke certificate")
-		}
-
-		err = tx.Commit()
-		cmd.FailOnError(err, "Couldn't cleanly close transaction")
+		_, err = db.WithTransaction(ctx, dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
+			err := revokeByReg(ctx, regID, revocation.Reason(reasonCode), rac, logger, txWithCtx)
+			return nil, err
+		})
+		cmd.FailOnError(err, "Couldn't revoke certificate by registration")
 
 	case command == "list-reasons":
 		var codes revocationCodes
