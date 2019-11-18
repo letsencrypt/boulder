@@ -316,7 +316,7 @@ def main():
 def check_slow_queries():
     """Checks that we haven't run any slow queries during the integration test.
 
-    This depends on flags set on mysql in docker-compose.yml.
+    This depends on flags set on mysqld in docker-compose.yml.
     """
     output = run("mysql -h boulder-mysql -D boulder_sa_integration -e " +
         "'select * from mysql.slow_log where user_host not like \"test_setup%\" \G'")
