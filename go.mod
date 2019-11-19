@@ -32,9 +32,9 @@ require (
 	github.com/prometheus/procfs v0.0.0-20160411190841-abf152e5f3e9 // indirect
 	github.com/syndtr/goleveldb v0.0.0-20180331014930-714f901b98fd // indirect
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
-	github.com/weppos/publicsuffix-go v0.10.1-0.20190926082447-75329425f8bb
+	github.com/weppos/publicsuffix-go v0.10.1-0.20191119120252-3dd5f42d2d87
 	github.com/zmap/zcrypto v0.0.0-20190729165852-9051775e6a2e
-	github.com/zmap/zlint v1.0.2-0.20190921214057-00156801166b
+	github.com/zmap/zlint v1.0.3-0.20191115164049-eea5fe83935a
 	golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4
 	golang.org/x/net v0.0.0-20190415214537-1da14a5a36f2
 	golang.org/x/sys v0.0.0-20190416152802-12500544f89f // indirect
