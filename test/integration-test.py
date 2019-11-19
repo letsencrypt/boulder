@@ -321,7 +321,8 @@ def check_slow_queries():
     output = run("mysql -h boulder-mysql -D boulder_sa_integration -e " +
         "'select * from mysql.slow_log where user_host not like \"test_setup%\" \G'")
     if len(output) > 0:
-        raise Exception("Found slow queries in the slow query log: %s", output)
+        print(output)
+        raise Exception("Found slow queries in the slow query log")
 
 def run_chisel(test_case_filter):
     for key, value in inspect.getmembers(v1_integration):
