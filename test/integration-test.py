@@ -308,8 +308,21 @@ def main():
     if not startservers.check():
         raise Exception("startservers.check failed")
 
+    check_slow_queries()
+
     global exit_status
     exit_status = 0
+
+def check_slow_queries():
+    """Checks that we haven't run any slow queries during the integration test.
+
+    This depends on flags set on mysqld in docker-compose.yml.
+    """
+    output = run("mysql -h boulder-mysql -D boulder_sa_integration -e " +
+        "'select * from mysql.slow_log where user_host not like \"test_setup%\" \G'")
+    if len(output) > 0:
+        print(output)
+        raise Exception("Found slow queries in the slow query log")
 
 def run_chisel(test_case_filter):
     for key, value in inspect.getmembers(v1_integration):
