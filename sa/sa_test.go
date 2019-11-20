@@ -185,6 +185,7 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 		t.Errorf("UpdateRegistration: expected a berrors.NotFound type error, got %T type error (%v)", err, err)
 	}
 }
+
 func TestAddCertificate(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
@@ -233,6 +234,31 @@ func TestAddCertificate(t *testing.T) {
 	ocspResp := []byte{0, 0, 1}
 	_, err = sa.AddCertificate(ctx, certDER3, reg.ID, ocspResp, &issuedTime)
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
+
+	// Test adding a certificate with the features.WriteIssuedNamesPrecert feature
+	// flag enabled doesn't result in issuedNames and fqdnSet updates since we
+	// expect AddPrecertificate to handle it in this case.
+	err = features.Set(map[string]bool{"WriteIssuedNamesPrecert": true})
+	test.AssertNotError(t, err, "failed to set WriteIssuedNamesPrecert feature flag")
+
+	// Create a throw-away self signed certificate with a random name and
+	// serial number
+	_, testCert := test.ThrowAwayCert(t, 1)
+
+	// Add the test cert
+	_, err = sa.AddCertificate(ctx, testCert.Raw, reg.ID, ocspResp, &issuedTime)
+	test.AssertNotError(t, err, "unexpected error adding testcert")
+
+	// Check the issuedNames table
+	_, err = findIssuedName(sa.dbMap, testCert.DNSNames[0])
+	// We expect sql.ErrNoRows because AddPrecertificate not
+	// AddCertificate will be updating this table.
+	test.AssertEquals(t, err, sql.ErrNoRows)
+
+	// Check the fqdnSets table. The FQDNSet should not exist.
+	fqdnSetExists, err := sa.FQDNSetExists(ctx, testCert.DNSNames)
+	test.AssertNotError(t, err, "unexpected err from FQDNSetExists")
+	test.AssertEquals(t, fqdnSetExists, false)
 }
 
 func TestCountCertificatesByNames(t *testing.T) {

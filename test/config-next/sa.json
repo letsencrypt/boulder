@@ -27,7 +27,8 @@
       "DeleteUnusedChallenges": true,
       "FasterGetOrderForNames": true,
       "GetAuthorizationsPerf": true,
-      "StoreIssuerInfo": true
+      "StoreIssuerInfo": true,
+      "WriteIssuedNamesPrecert": true
     }
   },
 

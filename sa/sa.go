@@ -439,6 +439,51 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	return nil
 }
 
+// recordIssuedNames updates the issuedNames table and the fqdnSet table to
+// track issuance for the names from the cert's DNSNames field. The fqdnSet
+// table is consulted before inserting the issuedNames rows for the certificate
+// to determine if it is a renewal or not.
+func (ssa *SQLStorageAuthority) recordIssuedNames(
+	ctx context.Context,
+	txWithCtx db.Transaction,
+	cert *x509.Certificate) error {
+	// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
+	// that it is a renewal) we use just the DNSNames from the certificate and
+	// ignore the Subject Common Name (if any). This is a safe assumption because
+	// if a certificate we issued were to have a Subj. CN not present as a SAN it
+	// would be a misissuance and miscalculating whether the cert is a renewal or
+	// not for the purpose of rate limiting is the least of our troubles.
+	isRenewal, err := ssa.checkFQDNSetExists(
+		txWithCtx.SelectOne,
+		cert.DNSNames)
+	if err != nil {
+		return err
+	}
+
+	err = addIssuedNames(txWithCtx, cert, isRenewal)
+	if err != nil {
+		return err
+	}
+
+	// Add to the rate limit table, but only for new certificates. Renewals
+	// don't count against the certificatesPerName limit.
+	if !isRenewal {
+		timeToTheHour := cert.NotBefore.Round(time.Hour)
+		err = ssa.addCertificatesPerName(ctx, txWithCtx, cert.DNSNames, timeToTheHour)
+		if err != nil {
+			return err
+		}
+	}
+
+	return addFQDNSet(
+		txWithCtx,
+		cert.DNSNames,
+		core.SerialToString(cert.SerialNumber),
+		cert.NotBefore,
+		cert.NotAfter,
+	)
+}
+
 // AddCertificate stores an issued certificate and returns the digest as
 // a string, or an error if any occurred.
 func (ssa *SQLStorageAuthority) AddCertificate(
@@ -472,46 +517,15 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 			return nil, err
 		}
 
-		// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
-		// that it is a renewal) we use just the DNSNames from the certificate and
-		// ignore the Subject Common Name (if any). This is a safe assumption because
-		// if a certificate we issued were to have a Subj. CN not present as a SAN it
-		// would be a misissuance and miscalculating whether the cert is a renewal or
-		// not for the purpose of rate limiting is the least of our troubles.
-		isRenewal, err := ssa.checkFQDNSetExists(
-			txWithCtx.SelectOne,
-			parsedCertificate.DNSNames)
-		if err != nil {
-			return nil, err
-		}
-
-		err = addIssuedNames(txWithCtx, parsedCertificate, isRenewal)
-		if err != nil {
-			return nil, err
-		}
-
-		// Add to the rate limit table, but only for new certificates. Renewals
-		// don't count against the certificatesPerName limit.
-		if !isRenewal {
-			timeToTheHour := parsedCertificate.NotBefore.Round(time.Hour)
-			err = ssa.addCertificatesPerName(ctx, txWithCtx, parsedCertificate.DNSNames, timeToTheHour)
-			if err != nil {
+		// If the WriteIssuedNamesPrecert feature flag is *disabled* then we need to
+		// record the issued names from the final certificate being added by the SA.
+		if !features.Enabled(features.WriteIssuedNamesPrecert) {
+			if err := ssa.recordIssuedNames(ctx, txWithCtx, parsedCertificate); err != nil {
 				return nil, err
 			}
 		}
 
-		err = addFQDNSet(
-			txWithCtx,
-			parsedCertificate.DNSNames,
-			serial,
-			parsedCertificate.NotBefore,
-			parsedCertificate.NotAfter,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		return digest, nil
+		return nil, nil
 	})
 	if overallError != nil {
 		return "", overallError
