@@ -15,7 +15,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/eggsampler/acme/v2"
+	"github.com/eggsampler/acme/v3"
 )
 
 func init() {
