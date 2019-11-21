@@ -1,17 +1,12 @@
 package acme
 
 import (
-	"net/http"
-
-	"encoding/base64"
-
-	"fmt"
-
-	"time"
-
-	"errors"
-
 	"crypto/x509"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"net/http"
+	"time"
 )
 
 // NewOrder initiates a new order for a new certificate.

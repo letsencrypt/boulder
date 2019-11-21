@@ -2,20 +2,24 @@ package acme
 
 import (
 	"crypto"
-	"errors"
 	"net/http"
 	"time"
 )
 
 // Different possible challenge types provided by an ACME server.
+// See https://tools.ietf.org/html/rfc8555#section-9.7.8
 const (
 	ChallengeTypeDNS01     = "dns-01"
 	ChallengeTypeHTTP01    = "http-01"
 	ChallengeTypeTLSALPN01 = "tls-alpn-01"
-	ChallengeTypeTLSSNI01  = "tls-sni-01"
+
+	// ChallengeTypeTLSSNI01 is deprecated and should not be used.
+	// See: https://community.letsencrypt.org/t/important-what-you-need-to-know-about-tls-sni-validation-issues/50811
+	ChallengeTypeTLSSNI01 = "tls-sni-01"
 )
 
 // Constants used for certificate revocation, used for RevokeCertificate
+// See https://tools.ietf.org/html/rfc5280#section-5.3.1
 const (
 	ReasonUnspecified          = iota // 0
 	ReasonKeyCompromise               // 1
@@ -30,11 +34,8 @@ const (
 	ReasonAaCompromise                // 10
 )
 
-var (
-	ErrUnsupported = errors.New("acme: unsupported")
-)
-
 // Directory object as returned from the client's directory url upon creation of client.
+// See https://tools.ietf.org/html/rfc8555#section-7.1.1
 type Directory struct {
 	NewNonce   string `json:"newNonce"`   // url to new nonce endpoint
 	NewAccount string `json:"newAccount"` // url to new account endpoint
@@ -75,11 +76,12 @@ type Client struct {
 }
 
 // Account structure representing fields in an account object.
+// See https://tools.ietf.org/html/rfc8555#section-7.1.2
+// See also https://tools.ietf.org/html/rfc8555#section-9.7.1
 type Account struct {
-	Status               string   `json:"status"`
-	Contact              []string `json:"contact"`
-	TermsOfServiceAgreed bool     `json:"onlyReturnExisting"`
-	Orders               string   `json:"orders"`
+	Status  string   `json:"status"`
+	Contact []string `json:"contact"`
+	Orders  string   `json:"orders"`
 
 	// Provided by the Location http header when creating a new account or fetching an existing account.
 	URL string `json:"-"`
@@ -88,24 +90,28 @@ type Account struct {
 	// Not fetched from server.
 	PrivateKey crypto.Signer `json:"-"`
 
-	// SHA-256 digest JWK_Thumbprint of the account key.
-	// Used in updating challenges, see: https://tools.ietf.org/html/draft-ietf-acme-acme-10#section-8.1
+	// Thumbprint is the SHA-256 digest JWK_Thumbprint of the account key.
+	// See https://tools.ietf.org/html/rfc8555#section-8.1
 	Thumbprint string `json:"-"`
 }
 
 // Identifier object used in order and authorization objects
+// See https://tools.ietf.org/html/rfc8555#section-7.1.4
 type Identifier struct {
 	Type  string `json:"type"`
 	Value string `json:"value"`
 }
 
 // Order object returned when fetching or creating a new order.
+// See https://tools.ietf.org/html/rfc8555#section-7.1.3
 type Order struct {
 	Status         string       `json:"status"`
 	Expires        time.Time    `json:"expires"`
 	Identifiers    []Identifier `json:"identifiers"`
-	Authorizations []string     `json:"authorizations"`
+	NotBefore      time.Time    `json:"notBefore"`
+	NotAfter       time.Time    `json:"notAfter"`
 	Error          Problem      `json:"error"`
+	Authorizations []string     `json:"authorizations"`
 	Finalize       string       `json:"finalize"`
 	Certificate    string       `json:"certificate"`
 
@@ -115,6 +121,7 @@ type Order struct {
 }
 
 // Authorization object returned when fetching an authorization in an order.
+// See https://tools.ietf.org/html/rfc8555#section-7.1.4
 type Authorization struct {
 	Identifier Identifier  `json:"identifier"`
 	Status     string      `json:"status"`
@@ -130,6 +137,7 @@ type Authorization struct {
 }
 
 // Challenge object fetched in an authorization or directly from the challenge url.
+// See https://tools.ietf.org/html/rfc8555#section-7.1.5
 type Challenge struct {
 	Type      string  `json:"type"`
 	URL       string  `json:"url"`

@@ -1,26 +1,19 @@
 package acme
 
 import (
-	"net/http"
-
-	"fmt"
-
 	"crypto"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"reflect"
 )
 
 // NewAccount registers a new account with the acme service
 func (c Client) NewAccount(privateKey crypto.Signer, onlyReturnExisting, termsOfServiceAgreed bool, contact ...string) (Account, error) {
-	if contact == nil {
-		// workaround for json marshalling {"contact":null}
-		contact = []string{}
-		// should now be {"contact":[]}
-	}
-
 	newAccountReq := struct {
 		OnlyReturnExisting   bool     `json:"onlyReturnExisting"`
 		TermsOfServiceAgreed bool     `json:"termsOfServiceAgreed"`
-		Contact              []string `json:"contact"`
+		Contact              []string `json:"contact,omitempty"`
 	}{
 		OnlyReturnExisting:   onlyReturnExisting,
 		TermsOfServiceAgreed: termsOfServiceAgreed,
@@ -47,19 +40,20 @@ func (c Client) NewAccount(privateKey crypto.Signer, onlyReturnExisting, termsOf
 }
 
 // UpdateAccount updates an existing account with the acme service.
-func (c Client) UpdateAccount(account Account, termsOfServiceAgreed bool, contact ...string) (Account, error) {
-	if contact == nil {
-		// workaround for json marshalling {"contact":null}
-		contact = []string{}
-		// should now be {"contact":[]}
-	}
+func (c Client) UpdateAccount(account Account, contact ...string) (Account, error) {
+	var updateAccountReq interface{}
 
-	updateAccountReq := struct {
-		TermsOfServiceAgreed bool     `json:"termsOfServiceAgreed"`
-		Contact              []string `json:"contact"`
-	}{
-		TermsOfServiceAgreed: termsOfServiceAgreed,
-		Contact:              contact,
+	if !reflect.DeepEqual(account.Contact, contact) {
+		// Only provide a non-nil updateAccountReq when there is an update to be made.
+		updateAccountReq = struct {
+			Contact []string `json:"contact,omitempty"`
+		}{
+			Contact: contact,
+		}
+	} else {
+		// Otherwise use "" to trigger a POST-as-GET to fetch up-to-date account
+		// information from the acme service.
+		updateAccountReq = ""
 	}
 
 	_, err := c.post(account.URL, account.URL, account.PrivateKey, updateAccountReq, &account, http.StatusOK)
@@ -79,10 +73,6 @@ func (c Client) UpdateAccount(account Account, termsOfServiceAgreed bool, contac
 
 // AccountKeyChange rolls over an account to a new key.
 func (c Client) AccountKeyChange(account Account, newPrivateKey crypto.Signer) (Account, error) {
-	if c.dir.KeyChange == "" {
-		return account, ErrUnsupported
-	}
-
 	oldJwkKeyPub, err := jwkEncode(account.PrivateKey.Public())
 	if err != nil {
 		return account, fmt.Errorf("acme: error encoding new private key: %v", err)

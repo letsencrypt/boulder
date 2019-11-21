@@ -7,7 +7,7 @@ require (
 	github.com/beeker1121/goque v0.0.0-20170321141813-4044bc29b280
 	github.com/beorn7/perks v0.0.0-20160229213445-3ac7bf7a47d1 // indirect
 	github.com/cloudflare/cfssl v1.4.0
-	github.com/eggsampler/acme/v2 v2.0.1
+	github.com/eggsampler/acme/v3 v3.0.0
 	github.com/go-gorp/gorp v2.0.0+incompatible // indirect
 	github.com/go-sql-driver/mysql v1.4.1-0.20191114115753-b4242bab7dc5
 	github.com/golang/mock v1.2.0
