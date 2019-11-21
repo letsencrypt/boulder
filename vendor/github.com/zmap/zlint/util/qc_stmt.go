@@ -98,14 +98,14 @@ type EtsiQcSscd struct {
 }
 
 type EtsiMonetaryValueAlph struct {
-	iso4217CurrencyCodeAlph string `asn1:"printable"`
-	amount                  int
-	exponent                int
+	Iso4217CurrencyCodeAlph string `asn1:"printable"`
+	Amount                  int
+	Exponent                int
 }
 type EtsiMonetaryValueNum struct {
-	iso4217CurrencyCodeNum int
-	amount                 int
-	exponent               int
+	Iso4217CurrencyCodeNum int
+	Amount                 int
+	Exponent               int
 }
 
 type EtsiQcLimitValue struct {
@@ -217,9 +217,9 @@ func ParseQcStatem(extVal []byte, sought asn1.ObjectIdentifier) EtsiQcStmtIf {
 				numErr = true
 			} else {
 				etsiObj.IsNum = true
-				etsiObj.Amount = numeric.amount
-				etsiObj.Exponent = numeric.exponent
-				etsiObj.CurrencyNum = numeric.iso4217CurrencyCodeNum
+				etsiObj.Amount = numeric.Amount
+				etsiObj.Exponent = numeric.Exponent
+				etsiObj.CurrencyNum = numeric.Iso4217CurrencyCodeNum
 
 			}
 			if numErr {
@@ -228,9 +228,9 @@ func ParseQcStatem(extVal []byte, sought asn1.ObjectIdentifier) EtsiQcStmtIf {
 					alphErr = true
 				} else {
 					etsiObj.IsNum = false
-					etsiObj.Amount = alphabetic.amount
-					etsiObj.Exponent = alphabetic.exponent
-					etsiObj.CurrencyAlph = alphabetic.iso4217CurrencyCodeAlph
+					etsiObj.Amount = alphabetic.Amount
+					etsiObj.Exponent = alphabetic.Exponent
+					etsiObj.CurrencyAlph = alphabetic.Iso4217CurrencyCodeAlph
 					AppendToStringSemicolonDelim(&etsiObj.errorInfo,
 						checkAsn1Reencoding(reflect.ValueOf(alphabetic).Interface(),
 							statem.Any.FullBytes, "error with ASN.1 encoding, possibly a wrong ASN.1 string type was used"))
