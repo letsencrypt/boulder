@@ -4,13 +4,29 @@
 
 ## About
 
-`eggsampler/acme` is a Go client library implementation for [RFC8555](https://tools.ietf.org/html/rfc8555) (previously ACME), specifically for use with the [Let's Encrypt](https://letsencrypt.org/) service. 
+`eggsampler/acme` is a Go client library implementation for [RFC8555](https://tools.ietf.org/html/rfc8555) (previously ACME v2), specifically for use with the [Let's Encrypt](https://letsencrypt.org/)™ service. 
 
 The library is designed to provide a zero external dependency wrapper over exposed directory endpoints and provide objects in easy to use structures.
 
-## Example
+## Requirements
 
-A simple [certbot](https://certbot.eff.org/)-like example is provided in the examples/certbot directory. This code demonstrates account registration, new order submission, fulfilling challenges, finalising an order and fetching the issued certificate chain.
+A Go version of at least 1.11 is required as this repository is designed to be imported as a Go module.
+
+## Usage
+
+Simply import the module into a project,
+
+```go
+import "github.com/eggsampler/acme/v3"
+```
+
+Note the `/v3` major version at the end. Due to the way modules function, this is the major version as represented int he `go.mod` file and latest git repo [semver](https://semver.org/) tag.
+All functions are still exported and called using the `acme` package name.
+
+## Examples
+
+A simple [certbot](https://certbot.eff.org/)-like example is provided in the examples/certbot directory.
+This code demonstrates account registration, new order submission, fulfilling challenges, finalising an order and fetching the issued certificate chain.
 
 An example of how to use the autocert package is also provided in examples/autocert.
 
