@@ -3781,6 +3781,7 @@ func TestNewOrderMaxNames(t *testing.T) {
 	})
 	test.AssertError(t, err, "NewOrder didn't fail with too many names in request")
 	test.AssertEquals(t, err.Error(), "Order cannot contain more than 2 DNS names")
+	test.AssertEquals(t, berrors.Is(err, berrors.Malformed), true)
 }
 
 var CAkeyPEM = `

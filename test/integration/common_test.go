@@ -15,7 +15,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/eggsampler/acme/v2"
+	"github.com/eggsampler/acme/v3"
 )
 
 func init() {
@@ -108,7 +108,7 @@ func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, domains []string) (*issua
 	}
 	order, err := c.Client.NewOrder(c.Account, ids)
 	if err != nil {
-		return nil, fmt.Errorf("making order: %s", err)
+		return nil, err
 	}
 
 	for _, authUrl := range order.Authorizations {

@@ -1796,7 +1796,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	if len(order.Names) > ra.maxNames {
-		return nil, fmt.Errorf("Order cannot contain more than %d DNS names", ra.maxNames)
+		return nil, berrors.MalformedError(
+			"Order cannot contain more than %d DNS names", ra.maxNames)
 	}
 
 	// Validate that our policy allows issuing for each of the names in the order
