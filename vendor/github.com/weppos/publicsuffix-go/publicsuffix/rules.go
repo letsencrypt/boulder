@@ -3,13 +3,13 @@
 
 package publicsuffix
 
-const defaultListVersion = "PSL version f42b9c (Wed Sep 25 17:05:14 2019)"
+const defaultListVersion = "PSL version 2c6878 (Fri Nov 15 23:25:27 2019)"
 
-func DefaultRules() [8796]Rule {
+func DefaultRules() [8794]Rule {
 	return r
 }
 
-var r = [8796]Rule{
+var r = [8794]Rule{
 	{1, "ac", 1, false},
 	{1, "com.ac", 2, false},
 	{1, "edu.ac", 2, false},
@@ -5449,6 +5449,9 @@ var r = [8796]Rule{
 	{1, "univ.sn", 2, false},
 	{1, "so", 1, false},
 	{1, "com.so", 2, false},
+	{1, "edu.so", 2, false},
+	{1, "gov.so", 2, false},
+	{1, "me.so", 2, false},
 	{1, "net.so", 2, false},
 	{1, "org.so", 2, false},
 	{1, "sr", 1, false},
@@ -6323,7 +6326,6 @@ var r = [8796]Rule{
 	{1, "career", 1, false},
 	{1, "careers", 1, false},
 	{1, "cars", 1, false},
-	{1, "cartier", 1, false},
 	{1, "casa", 1, false},
 	{1, "case", 1, false},
 	{1, "caseih", 1, false},
@@ -6480,7 +6482,6 @@ var r = [8796]Rule{
 	{1, "eurovision", 1, false},
 	{1, "eus", 1, false},
 	{1, "events", 1, false},
-	{1, "everbank", 1, false},
 	{1, "exchange", 1, false},
 	{1, "expert", 1, false},
 	{1, "exposed", 1, false},
@@ -6909,7 +6910,6 @@ var r = [8796]Rule{
 	{1, "photography", 1, false},
 	{1, "photos", 1, false},
 	{1, "physio", 1, false},
-	{1, "piaget", 1, false},
 	{1, "pics", 1, false},
 	{1, "pictet", 1, false},
 	{1, "pictures", 1, false},
@@ -7457,9 +7457,6 @@ var r = [8796]Rule{
 	{1, "potager.org", 2, true},
 	{1, "sweetpepper.org", 2, true},
 	{1, "myasustor.com", 2, true},
-	{1, "go-vip.co", 2, true},
-	{1, "go-vip.net", 2, true},
-	{1, "wpcomstaging.com", 2, true},
 	{1, "myfritz.net", 2, true},
 	{2, "awdev.ca", 3, true},
 	{2, "advisor.ws", 3, true},
@@ -8640,6 +8637,7 @@ var r = [8796]Rule{
 	{1, "logoip.de", 2, true},
 	{1, "logoip.com", 2, true},
 	{1, "schokokeks.net", 2, true},
+	{1, "gov.scot", 2, true},
 	{1, "scrysec.com", 2, true},
 	{1, "firewall-gateway.com", 2, true},
 	{1, "firewall-gateway.de", 2, true},

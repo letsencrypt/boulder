@@ -119,3 +119,5 @@ cmd/zlint/zlint
 /zlint-gtld-update
 cmd/zlint-gtld-update/zlint-gtld-update
 
+### Integration test data ###
+data

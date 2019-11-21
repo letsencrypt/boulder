@@ -14,6 +14,12 @@ script:
   - make format-check
   # Run unit tests
   - make test
+  # Run integration tests
+  - make integration PARALLELISM=3
+
+cache:
+  directories:
+    - data
 
 notifications:
   email:

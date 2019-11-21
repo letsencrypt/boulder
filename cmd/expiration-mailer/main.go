@@ -319,10 +319,6 @@ func (m *mailer) findExpiringCertificates() error {
 		m.log.Infof("Found %d certificates expiring between %s and %s", len(certs),
 			left.Format("2006-01-02 03:04"), right.Format("2006-01-02 03:04"))
 
-		if len(certs) == 0 {
-			continue // nothing to do
-		}
-
 		// If the `certs` result was exactly `m.limit` rows we need to increment
 		// a stat indicating that this nag group is at capacity based on the
 		// configured cert limit. If this condition continually occurs across mailer
@@ -330,10 +326,16 @@ func (m *mailer) findExpiringCertificates() error {
 		// mails. The effects of this were initially described in issue #2002[0].
 		//
 		// 0: https://github.com/letsencrypt/boulder/issues/2002
+		atCapacity := float64(0)
 		if len(certs) == m.limit {
 			m.log.Infof("nag group %s expiring certificates at configured capacity (cert limit %d)",
 				expiresIn.String(), m.limit)
-			m.stats.nagsAtCapacity.With(prometheus.Labels{"nagGroup": expiresIn.String()}).Set(1)
+			atCapacity = float64(1)
+		}
+		m.stats.nagsAtCapacity.With(prometheus.Labels{"nagGroup": expiresIn.String()}).Set(atCapacity)
+
+		if len(certs) == 0 {
+			continue // nothing to do
 		}
 
 		processingStarted := m.clk.Now()

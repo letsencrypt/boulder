@@ -16,8 +16,8 @@ github.com/cloudflare/cfssl/log
 github.com/cloudflare/cfssl/ocsp/config
 github.com/cloudflare/cfssl/signer
 github.com/cloudflare/cfssl/signer/local
-# github.com/eggsampler/acme/v2 v2.0.1
-github.com/eggsampler/acme/v2
+# github.com/eggsampler/acme/v3 v3.0.0
+github.com/eggsampler/acme/v3
 # github.com/go-sql-driver/mysql v1.4.1-0.20191114115753-b4242bab7dc5
 github.com/go-sql-driver/mysql
 # github.com/golang/mock v1.2.0
@@ -86,7 +86,7 @@ github.com/syndtr/goleveldb/leveldb/table
 github.com/syndtr/goleveldb/leveldb/util
 # github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 github.com/titanous/rocacheck
-# github.com/weppos/publicsuffix-go v0.10.1-0.20190926082447-75329425f8bb
+# github.com/weppos/publicsuffix-go v0.10.1-0.20191119120252-3dd5f42d2d87
 github.com/weppos/publicsuffix-go/publicsuffix
 # github.com/zmap/zcrypto v0.0.0-20190729165852-9051775e6a2e
 github.com/zmap/zcrypto/json
@@ -94,7 +94,7 @@ github.com/zmap/zcrypto/util
 github.com/zmap/zcrypto/x509
 github.com/zmap/zcrypto/x509/ct
 github.com/zmap/zcrypto/x509/pkix
-# github.com/zmap/zlint v1.0.2-0.20190921214057-00156801166b
+# github.com/zmap/zlint v1.0.3-0.20191115164049-eea5fe83935a
 github.com/zmap/zlint
 github.com/zmap/zlint/lints
 github.com/zmap/zlint/util
