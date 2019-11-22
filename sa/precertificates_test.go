@@ -84,11 +84,6 @@ func TestAddPrecertificate(t *testing.T) {
 			test.AssertEquals(t, err, sql.ErrNoRows)
 		}
 
-		// Check the fqdnSets table
-		fqdnSetExists, err := sa.FQDNSetExists(ctx, testCert.DNSNames)
-		test.AssertNotError(t, err, "unexpected err from FQDNSetExists")
-		test.AssertEquals(t, fqdnSetExists, expectIssuedNamesUpdate)
-
 		// Adding the same certificate with the same serial should result in an
 		// error
 		_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{

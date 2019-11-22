@@ -439,10 +439,10 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	return nil
 }
 
-// recordIssuedNames updates the issuedNames table and the fqdnSet table to
-// track issuance for the names from the cert's DNSNames field. The fqdnSet
-// table is consulted before inserting the issuedNames rows for the certificate
-// to determine if it is a renewal or not.
+// recordIssuedNames updates the issuedNames table to track issuance for the
+// names from the cert's DNSNames field. The fqdnSet table is consulted before
+// inserting the issuedNames rows for the certificate to determine if it is
+// a renewal or not.
 func (ssa *SQLStorageAuthority) recordIssuedNames(
 	ctx context.Context,
 	txWithCtx db.Transaction,
@@ -475,13 +475,7 @@ func (ssa *SQLStorageAuthority) recordIssuedNames(
 		}
 	}
 
-	return addFQDNSet(
-		txWithCtx,
-		cert.DNSNames,
-		core.SerialToString(cert.SerialNumber),
-		cert.NotBefore,
-		cert.NotAfter,
-	)
+	return nil
 }
 
 // AddCertificate stores an issued certificate and returns the digest as
@@ -509,6 +503,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 	}
 
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
+		// Save the final certificate
 		err = txWithCtx.Insert(cert)
 		if err != nil {
 			if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
@@ -525,7 +520,16 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 			}
 		}
 
-		return nil, nil
+		// Update the FQDN sets now that there is a final certificate to ensure rate
+		// limits are calculated correctly.
+		err = addFQDNSet(
+			txWithCtx,
+			parsedCertificate.DNSNames,
+			core.SerialToString(parsedCertificate.SerialNumber),
+			parsedCertificate.NotBefore,
+			parsedCertificate.NotAfter,
+		)
+		return nil, err
 	})
 	if overallError != nil {
 		return "", overallError

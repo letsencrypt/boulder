@@ -254,11 +254,6 @@ func TestAddCertificate(t *testing.T) {
 	// We expect sql.ErrNoRows because AddPrecertificate not
 	// AddCertificate will be updating this table.
 	test.AssertEquals(t, err, sql.ErrNoRows)
-
-	// Check the fqdnSets table. The FQDNSet should not exist.
-	fqdnSetExists, err := sa.FQDNSetExists(ctx, testCert.DNSNames)
-	test.AssertNotError(t, err, "unexpected err from FQDNSetExists")
-	test.AssertEquals(t, fqdnSetExists, false)
 }
 
 func TestCountCertificatesByNames(t *testing.T) {
