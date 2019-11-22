@@ -25,7 +25,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -349,22 +348,22 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 
 	for _, contact := range *contacts {
 		if contact == "" {
-			return berrors.MalformedError("empty contact")
+			return berrors.InvalidEmailError("empty contact")
 		}
 		parsed, err := url.Parse(contact)
 		if err != nil {
-			return berrors.MalformedError("invalid contact")
+			return berrors.InvalidEmailError("invalid contact")
 		}
 		if parsed.Scheme != "mailto" {
-			return berrors.MalformedError("contact method %s is not supported", parsed.Scheme)
+			return berrors.InvalidEmailError("contact method %q is not supported", parsed.Scheme)
 		}
 		if !core.IsASCII(contact) {
-			return berrors.MalformedError(
-				"contact email [%s] contains non-ASCII characters",
+			return berrors.InvalidEmailError(
+				"contact email [%q] contains non-ASCII characters",
 				contact,
 			)
 		}
-		if err := validateEmail(parsed.Opaque); err != nil {
+		if err := ra.validateEmail(parsed.Opaque); err != nil {
 			return err
 		}
 	}
@@ -385,9 +384,9 @@ var forbiddenMailDomains = map[string]bool{
 }
 
 // validateEmail returns an error if the given address is not parseable as an
-// email address or if the domain portion of the email address is a member of
-// the forbiddenMailDomains map.
-func validateEmail(address string) error {
+// email address or if the domain portion of the email address is invalid or
+// a member of the forbiddenMailDomains map.
+func (ra *RegistrationAuthorityImpl) validateEmail(address string) error {
 	email, err := mail.ParseAddress(address)
 	if err != nil {
 		if len(address) > 254 {
@@ -397,13 +396,15 @@ func validateEmail(address string) error {
 	}
 	splitEmail := strings.SplitN(email.Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
+	if err := ra.PA.ValidDomain(domain); err != nil {
+		return berrors.InvalidEmailError(
+			"contact email %q has invalid domain : %s",
+			email.Address, err)
+	}
 	if forbiddenMailDomains[domain] {
 		return berrors.InvalidEmailError(
 			"invalid contact domain. Contact emails @%s are forbidden",
 			domain)
-	}
-	if _, err := iana.ExtractSuffix(domain); err != nil {
-		return berrors.InvalidEmailError("email domain name does not end in a IANA suffix")
 	}
 	return nil
 }

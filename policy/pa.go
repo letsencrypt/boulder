@@ -199,32 +199,21 @@ var (
 	errWildcardNotSupported = berrors.MalformedError("Wildcard domain names are not supported")
 )
 
-// WillingToIssue determines whether the CA is willing to issue for the provided
-// identifier. It expects domains in id to be lowercase to prevent mismatched
-// cases breaking queries.
+// ValidDomain checks that a domain isn't:
 //
-// We place several criteria on identifiers we are willing to issue for:
+// * empty
+// * prefixed with the wildcard label `*.`
+// * made of invalid DNS characters
+// * longer than the maxDNSIdentifierLength
+// * an IPv4 or IPv6 address
+// * suffixed with just "."
+// * made of too many DNS labels
+// * made of any invalid DNS labels
+// * suffixed with something other than an IANA registered TLD
+// * exactly equal to an IANA registered TLD
 //
-//  * MUST self-identify as DNS identifiers
-//  * MUST contain only bytes in the DNS hostname character set
-//  * MUST NOT have more than maxLabels labels
-//  * MUST follow the DNS hostname syntax rules in RFC 1035 and RFC 2181
-//    In particular:
-//    * MUST NOT contain underscores
-//  * MUST NOT match the syntax of an IP address
-//  * MUST end in a public suffix
-//  * MUST have at least one label in addition to the public suffix
-//  * MUST NOT be a label-wise suffix match for a name on the block list,
-//    where comparison is case-independent (normalized to lower case)
-//
-// If WillingToIssue returns an error, it will be of type MalformedRequestError
-// or RejectedIdentifierError
-func (pa *AuthorityImpl) WillingToIssue(id identifier.ACMEIdentifier) error {
-	if id.Type != identifier.DNS {
-		return errInvalidIdentifier
-	}
-	domain := id.Value
-
+// It does _not_ check that the domain isn't on any PA blocked lists.
+func (pa *AuthorityImpl) ValidDomain(domain string) error {
 	if domain == "" {
 		return errEmptyName
 	}
@@ -298,6 +287,39 @@ func (pa *AuthorityImpl) WillingToIssue(id identifier.ACMEIdentifier) error {
 	}
 	if icannTLD == domain {
 		return errICANNTLD
+	}
+
+	return nil
+}
+
+// WillingToIssue determines whether the CA is willing to issue for the provided
+// identifier. It expects domains in id to be lowercase to prevent mismatched
+// cases breaking queries.
+//
+// We place several criteria on identifiers we are willing to issue for:
+//
+//  * MUST self-identify as DNS identifiers
+//  * MUST contain only bytes in the DNS hostname character set
+//  * MUST NOT have more than maxLabels labels
+//  * MUST follow the DNS hostname syntax rules in RFC 1035 and RFC 2181
+//    In particular:
+//    * MUST NOT contain underscores
+//  * MUST NOT match the syntax of an IP address
+//  * MUST end in a public suffix
+//  * MUST have at least one label in addition to the public suffix
+//  * MUST NOT be a label-wise suffix match for a name on the block list,
+//    where comparison is case-independent (normalized to lower case)
+//
+// If WillingToIssue returns an error, it will be of type MalformedRequestError
+// or RejectedIdentifierError
+func (pa *AuthorityImpl) WillingToIssue(id identifier.ACMEIdentifier) error {
+	if id.Type != identifier.DNS {
+		return errInvalidIdentifier
+	}
+	domain := id.Value
+
+	if err := pa.ValidDomain(domain); err != nil {
+		return err
 	}
 
 	// Require no match against hostname block lists

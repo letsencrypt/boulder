@@ -40,7 +40,7 @@ func TestPrecertificateRevocation(t *testing.T) {
 
 	// Create a base account to use for revocation tests.
 	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
-	c, err := makeClient()
+	c, err := makeClient("mailto:example@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
 
 	// Create a specific key for CSRs so that it is possible to test revocation
