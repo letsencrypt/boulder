@@ -3,6 +3,7 @@ package ra
 import (
 	"context"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/mail"
@@ -366,6 +367,21 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 		if err := ra.validateEmail(parsed.Opaque); err != nil {
 			return err
 		}
+	}
+
+	// NOTE(@cpu): For historical reasons (</3) we store ACME account contact
+	// information de-normalized in a fixed size `contact` field on the
+	// `registrations` table. At the time of writing this field is VARCHAR(191)
+	// That means the largest marshalled JSON value we can store is 191 bytes.
+	const maxContactBytes = 191
+	if jsonBytes, err := json.Marshal(*contacts); err != nil {
+		// This shouldn't happen with a simple []string but if it does we want the
+		// error to be logged internally but served as a 500 to the user so we
+		// return a bare error and not a berror here.
+		return fmt.Errorf("failed to marshal reg.Contact to JSON: %#v", *contacts)
+	} else if len(jsonBytes) >= maxContactBytes {
+		return berrors.InvalidEmailError(
+			"too many/too long contact(s). Please use shorter or fewer email addresses")
 	}
 
 	return nil
