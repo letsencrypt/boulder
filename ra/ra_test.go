@@ -418,6 +418,19 @@ func TestValidateContacts(t *testing.T) {
 
 	err = ra.validateContacts(context.Background(), &[]string{"mailto:admin@[1.2.3.4]"})
 	test.AssertError(t, err, "Forbidden email")
+
+	// The registrations.contact field is VARCHAR(191). 175 'a' characters plus
+	// the prefix "mailto:" and the suffix "@a.com" makes exactly 191 bytes of
+	// encoded JSON. The correct size to hit our maximum DB field length.
+	var longStringBuf strings.Builder
+	longStringBuf.WriteString("mailto:")
+	for i := 0; i < 175; i++ {
+		longStringBuf.WriteRune('a')
+	}
+	longStringBuf.WriteString("@a.com")
+
+	err = ra.validateContacts(context.Background(), &[]string{longStringBuf.String()})
+	test.AssertError(t, err, "Too long contacts")
 }
 
 func TestNewRegistration(t *testing.T) {

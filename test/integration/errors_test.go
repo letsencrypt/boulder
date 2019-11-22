@@ -42,13 +42,15 @@ func TestAccountEmailError(t *testing.T) {
 	t.Parallel()
 	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
 
-	/*
-		  // TODO(@cpu): Uncomment this when the too-long test case is re-added.
-			var longStringBuf strings.Builder
-			for i := 0; i < 254; i++ {
-				longStringBuf.WriteRune('a')
-			}
-	*/
+	// The registrations.contact field is VARCHAR(191). 175 'a' characters plus
+	// the prefix "mailto:" and the suffix "@a.com" makes exactly 191 bytes of
+	// encoded JSON. The correct size to hit our maximum DB field length.
+	var longStringBuf strings.Builder
+	longStringBuf.WriteString("mailto:")
+	for i := 0; i < 175; i++ {
+		longStringBuf.WriteRune('a')
+	}
+	longStringBuf.WriteString("@a.com")
 
 	createErrorPrefix := "Error creating new account :: "
 	updateErrorPrefix := "Unable to update account :: "
@@ -113,18 +115,14 @@ func TestAccountEmailError(t *testing.T) {
 			expectedProbType:   "urn:ietf:params:acme:error:invalidEmail",
 			expectedProbDetail: "contact email \"a@example./.com\" has invalid domain : Domain name contains an invalid character",
 		},
-		/*
-			// NOTE(@cpu): Disabled for now - causes serverInternal err when SA saves
-			// contacts.
-			{
-				name: "too long contact",
-				contacts: []string{
-					fmt.Sprintf("mailto:%s@a.com", longStringBuf.String()),
-				},
-				expectedProbType:   "urn:ietf:params:acme:error:invalidEmail",
-				expectedProbDetail: "??????",
+		{
+			name: "too long contact",
+			contacts: []string{
+				longStringBuf.String(),
 			},
-		*/
+			expectedProbType:   "urn:ietf:params:acme:error:invalidEmail",
+			expectedProbDetail: `too many/too long contact(s). Please use shorter or fewer email addresses`,
+		},
 	}
 
 	for _, tc := range testCases {
