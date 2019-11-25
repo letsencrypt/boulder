@@ -106,10 +106,23 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			return nil, err
 		}
 
+		// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
+		// that it is a renewal) we use just the DNSNames from the certificate and
+		// ignore the Subject Common Name (if any). This is a safe assumption because
+		// if a certificate we issued were to have a Subj. CN not present as a SAN it
+		// would be a misissuance and miscalculating whether the cert is a renewal or
+		// not for the purpose of rate limiting is the least of our troubles.
+		isRenewal, err := ssa.checkFQDNSetExists(
+			txWithCtx.SelectOne,
+			parsed.DNSNames)
+		if err != nil {
+			return nil, err
+		}
+
 		// If the WriteIssuedNamesPrecert feature flag is *enabled* then we need to
 		// record the issued names from the precertificate being added by the SA.
 		if features.Enabled(features.WriteIssuedNamesPrecert) {
-			if err := ssa.recordIssuedNames(ctx, txWithCtx, parsed); err != nil {
+			if err := addIssuedNames(txWithCtx, parsed, isRenewal); err != nil {
 				return nil, err
 			}
 		}
