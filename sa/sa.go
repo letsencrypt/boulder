@@ -21,7 +21,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -1415,31 +1414,16 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 		params = append(params, n)
 	}
 	var query string
-	if features.Enabled(features.GetAuthorizationsPerf) {
-		query = fmt.Sprintf(
-			`SELECT %s FROM authz2
+	query = fmt.Sprintf(
+		`SELECT %s FROM authz2
 			WHERE registrationID = ? AND
 			status IN (?,?) AND
 			expires > ? AND
 			identifierType = ? AND
 			identifierValue IN (%s)`,
-			authz2Fields,
-			strings.Join(qmarks, ","),
-		)
-	} else {
-		query = fmt.Sprintf(
-			`SELECT %s FROM authz2
-			JOIN orderToAuthz2
-			ON id = authzID
-			WHERE registrationID = ? AND
-			status IN (?,?) AND
-			expires > ? AND
-			identifierType = ? AND
-			identifierValue IN (%s)`,
-			authz2Fields,
-			strings.Join(qmarks, ","),
-		)
-	}
+		authz2Fields,
+		strings.Join(qmarks, ","),
+	)
 	_, err := ssa.dbMap.Select(
 		&authzModels,
 		query,
@@ -1449,45 +1433,48 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 		return nil, err
 	}
 
-	authz2IDMap := map[int64]bool{}
-	// Once the old authorization storage format fallback is removed we don't need
-	// this length check as if there are none returned we can just return immediately.
-	if features.Enabled(features.GetAuthorizationsPerf) && len(authzModels) > 0 {
-		// Previously we used a JOIN on the orderToAuthz2 table in order to make sure
-		// we only returned authorizations created using the ACME v2 API. Each time an
-		// order is created a pivot row (order ID + authz ID) is added to the
-		// orderToAuthz2 table. If a large number of orders are created that all contain
-		// the same authorization, due to reuse, then the JOINd query would return a full
-		// authorization row for each entry in the orderToAuthz2 table with the authorization
-		// ID.
-		//
-		// Instead we now filter out these authorizations by doing a second query against
-		// the orderToAuthz2 table. Using this query still requires examining a large number
-		// of rows, but because we don't need to construct a temporary table for the JOIN
-		// and fill it with all the full authorization rows we should save resources.
-		var ids []interface{}
-		qmarks = make([]string, len(authzModels))
-		for i, am := range authzModels {
-			ids = append(ids, am.ID)
-			qmarks[i] = "?"
-		}
-		var authz2IDs []int64
-		_, err = ssa.dbMap.Select(
-			&authz2IDs,
-			fmt.Sprintf(`SELECT DISTINCT(authzID) FROM orderToAuthz2 WHERE authzID IN (%s)`, strings.Join(qmarks, ",")),
-			ids...,
-		)
-		if err != nil {
-			return nil, err
-		}
-		for _, id := range authz2IDs {
-			authz2IDMap[id] = true
-		}
+	if len(authzModels) == 0 {
+		return &sapb.Authorizations{}, nil
+	}
+
+	// Previously we used a JOIN on the orderToAuthz2 table in order to make sure
+	// we only returned authorizations created using the ACME v2 API. Each time an
+	// order is created a pivot row (order ID + authz ID) is added to the
+	// orderToAuthz2 table. If a large number of orders are created that all contain
+	// the same authorization, due to reuse, then the JOINd query would return a full
+	// authorization row for each entry in the orderToAuthz2 table with the authorization
+	// ID.
+	//
+	// Instead we now filter out these authorizations by doing a second query against
+	// the orderToAuthz2 table. Using this query still requires examining a large number
+	// of rows, but because we don't need to construct a temporary table for the JOIN
+	// and fill it with all the full authorization rows we should save resources.
+	var ids []interface{}
+	qmarks = make([]string, len(authzModels))
+	for i, am := range authzModels {
+		ids = append(ids, am.ID)
+		qmarks[i] = "?"
+	}
+	var authzIDs []int64
+	_, err = ssa.dbMap.Select(
+		&authzIDs,
+		fmt.Sprintf(`SELECT DISTINCT(authzID) FROM orderToAuthz2 WHERE authzID IN (%s)`, strings.Join(qmarks, ",")),
+		ids...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	authzIDMap := map[int64]bool{}
+	for _, id := range authzIDs {
+		authzIDMap[id] = true
 	}
 
 	authzModelMap := make(map[string]authz2Model)
 	for _, am := range authzModels {
-		if _, present := authz2IDMap[am.ID]; features.Enabled(features.GetAuthorizationsPerf) && !present {
+		// Anything not found in the ID map wasn't in the pivot table, meaning it
+		// didn't correspond to an order, meaning it wasn't created with ACMEv2.
+		// Don't return it for ACMEv2 requests.
+		if _, present := authzIDMap[am.ID]; !present {
 			continue
 		}
 		if existing, present := authzModelMap[am.IdentifierValue]; !present ||
