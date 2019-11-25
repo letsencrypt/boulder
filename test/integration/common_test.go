@@ -41,7 +41,7 @@ type client struct {
 	acme.Client
 }
 
-func makeClient() (*client, error) {
+func makeClient(contacts ...string) (*client, error) {
 	c, err := acme.NewClient(os.Getenv("DIRECTORY"))
 	if err != nil {
 		return nil, fmt.Errorf("Error connecting to acme directory: %v", err)
@@ -50,9 +50,9 @@ func makeClient() (*client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error creating private key: %v", err)
 	}
-	account, err := c.NewAccount(privKey, false, true, "mailto:example@letsencrypt.org")
+	account, err := c.NewAccount(privKey, false, true, contacts...)
 	if err != nil {
-		return nil, fmt.Errorf("error creating new account: %v", err)
+		return nil, err
 	}
 	return &client{account, c}, nil
 }

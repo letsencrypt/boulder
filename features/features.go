@@ -26,6 +26,7 @@ const (
 	EarlyOrderRateLimit
 	FasterGetOrderForNames
 	PrecertificateOCSP
+	GetAuthorizationsPerf
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -65,9 +66,6 @@ const (
 	// StripDefaultSchemePort enables stripping of default scheme ports from HTTP
 	// request Host headers
 	StripDefaultSchemePort
-	// GetAuthorizationsPerf enables a more performant GetAuthorizations2 query
-	// at the SA.
-	GetAuthorizationsPerf
 	// StoreIssuerInfo enables storage of information identifying the issuer of
 	// a certificate in the certificateStatus table.
 	StoreIssuerInfo
