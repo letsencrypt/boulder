@@ -511,10 +511,18 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 			return nil, err
 		}
 
-		// If the WriteIssuedNamesPrecert feature flag is *disabled* then we need to
-		// record the issued names from the final certificate being added by the SA.
-		if !features.Enabled(features.WriteIssuedNamesPrecert) {
-			if err := ssa.recordIssuedNames(ctx, txWithCtx, parsedCertificate); err != nil {
+		// Record the issued names from the final certificate being added by the SA.
+		// If features.WriteIssuedNamesPrecert was enabled when the corresponding
+		// precertificate was added in AddPrecertificate then this will prompt
+		// a duplicate entry error that we can safely ignore.
+		//
+		// TODO(@cpu): Once features.WriteIssuedNamesPrecert has been deployed
+		// globally we can remove this call to ssa.recordIssuedNames from
+		// AddCertificate.
+		if err := ssa.recordIssuedNames(ctx, txWithCtx, parsedCertificate); err != nil {
+			// if it wasn't a duplicate entry error, return the err. Otherwise ignore
+			// it.
+			if !strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
 				return nil, err
 			}
 		}

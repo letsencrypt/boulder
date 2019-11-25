@@ -49,12 +49,13 @@ func TestAddPrecertificate(t *testing.T) {
 		// Add the cert as a precertificate
 		ocspResp := []byte{0, 0, 1}
 		regID := reg.ID
-		issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC).UnixNano()
+		issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
+		issuedTimeNano := issuedTime.UnixNano()
 		_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:    testCert.Raw,
 			RegID:  &regID,
 			Ocsp:   ocspResp,
-			Issued: &issuedTime,
+			Issued: &issuedTimeNano,
 		})
 		test.AssertNotError(t, err, "Couldn't add test cert")
 
@@ -78,6 +79,12 @@ func TestAddPrecertificate(t *testing.T) {
 			// expected serial
 			test.AssertNotError(t, err, "expected no err querying issuedNames for precert")
 			test.AssertEquals(t, issuedNamesSerial, serial)
+
+			// We should also be able to call AddCertificate with the same cert
+			// without it being an error. The duplicate err on inserting to
+			// issuedNames should be ignored.
+			_, err := sa.AddCertificate(ctx, testCert.Raw, regID, nil, &issuedTime)
+			test.AssertNotError(t, err, "unexpected err adding final cert after precert")
 		} else {
 			// Otherwise we expect sql.ErrNoRows because AddCertificate not
 			// AddPrecertificate will be updating this table.
@@ -90,7 +97,7 @@ func TestAddPrecertificate(t *testing.T) {
 			Der:    testCert.Raw,
 			RegID:  &regID,
 			Ocsp:   ocspResp,
-			Issued: &issuedTime,
+			Issued: &issuedTimeNano,
 		})
 		if err == nil {
 			t.Fatalf("Expected error inserting duplicate precertificate, got none")

@@ -251,9 +251,9 @@ func TestAddCertificate(t *testing.T) {
 
 	// Check the issuedNames table
 	_, err = findIssuedName(sa.dbMap, testCert.DNSNames[0])
-	// We expect sql.ErrNoRows because AddPrecertificate not
-	// AddCertificate will be updating this table.
-	test.AssertEquals(t, err, sql.ErrNoRows)
+	// We expect no error because AddCertificate should have updated the issued
+	// names table.
+	test.AssertNotError(t, err, "unexpected error finding issued names after addCert")
 }
 
 func TestCountCertificatesByNames(t *testing.T) {
