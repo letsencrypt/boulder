@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"strings"
@@ -450,16 +449,16 @@ func TestGenerateOCSPResponsePrecert(t *testing.T) {
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 
+	// Create a throw-away self signed certificate with some names
+	serial, testCert := test.ThrowAwayCert(t, 5)
+
 	// Use AddPrecertificate to set up a precertificate, serials, and
 	// certificateStatus row for the testcert.
-	certDER, err := ioutil.ReadFile("../../test/test-ca.der")
-	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	serial := "00000000000000000000000000000000124d"
 	ocspResp := []byte{0, 0, 1}
 	regID := reg.ID
 	issuedTime := fc.Now().UnixNano()
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER,
+	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    testCert.Raw,
 		RegID:  &regID,
 		Ocsp:   ocspResp,
 		Issued: &issuedTime,
