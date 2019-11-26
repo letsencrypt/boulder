@@ -438,18 +438,6 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	return nil
 }
 
-// recordIssuedNames updates the issuedNames table to track issuance for the
-// names from the cert's DNSNames field. The fqdnSet table is consulted before
-// inserting the issuedNames rows for the certificate to determine if it is
-// a renewal or not.
-func (ssa *SQLStorageAuthority) recordIssuedNames(
-	ctx context.Context,
-	txWithCtx db.Transaction,
-	cert *x509.Certificate) error {
-
-	return nil
-}
-
 // AddCertificate stores an issued certificate and returns the digest as
 // a string, or an error if any occurred.
 func (ssa *SQLStorageAuthority) AddCertificate(
