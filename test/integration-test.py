@@ -316,8 +316,15 @@ def check_slow_queries():
 
     This depends on flags set on mysqld in docker-compose.yml.
     """
-    output = run("mysql -h boulder-mysql -D boulder_sa_integration -e " +
-        "'select * from mysql.slow_log where user_host not like \"test_setup%\" \G'")
+    query = """
+        SELECT * FROM mysql.slow_log
+            WHERE user_host NOT LIKE "test_setup%"
+            AND sql_text != 'SELECT 1 FROM (SELECT SLEEP(5)) as subselect'
+        \G
+    """
+    output = subprocess.check_output(
+      ["mysql", "-h", "boulder-mysql", "-D", "boulder_sa_integration", "-e", query],
+      stderr=subprocess.STDOUT)
     if len(output) > 0:
         print(output)
         raise Exception("Found slow queries in the slow query log")
