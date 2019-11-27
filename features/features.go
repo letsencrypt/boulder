@@ -69,6 +69,10 @@ const (
 	// StoreIssuerInfo enables storage of information identifying the issuer of
 	// a certificate in the certificateStatus table.
 	StoreIssuerInfo
+	// WriteIssuedNamesPrecert moves the issuedNames and fqdnSet insertions from
+	// happening when final certificates are saved by the SA to when
+	// precertificates are saved.
+	WriteIssuedNamesPrecert
 )
 
 // List of features and their default value, protected by fMu
@@ -104,6 +108,7 @@ var features = map[FeatureFlag]bool{
 	StripDefaultSchemePort:        false,
 	GetAuthorizationsPerf:         false,
 	StoreIssuerInfo:               false,
+	WriteIssuedNamesPrecert:       false,
 }
 
 var fMu = new(sync.RWMutex)

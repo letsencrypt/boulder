@@ -463,6 +463,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 	}
 
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
+		// Save the final certificate
 		err = txWithCtx.Insert(cert)
 		if err != nil {
 			if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
@@ -484,33 +485,41 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 			return nil, err
 		}
 
-		err = addIssuedNames(txWithCtx, parsedCertificate, isRenewal)
-		if err != nil {
-			return nil, err
+		// Record the issued names from the final certificate being added by the SA.
+		// If features.WriteIssuedNamesPrecert was enabled when the corresponding
+		// precertificate was added in AddPrecertificate then this will prompt
+		// a duplicate entry error that we can safely ignore.
+		//
+		// TODO(@cpu): Once features.WriteIssuedNamesPrecert has been deployed
+		// globally we can remove this call to ssa.addIssuedNames from
+		// AddCertificate
+		if err := addIssuedNames(txWithCtx, parsedCertificate, isRenewal); err != nil {
+			// if it wasn't a duplicate entry error, return the err. Otherwise ignore
+			// it.
+			if !strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+				return nil, err
+			}
 		}
 
 		// Add to the rate limit table, but only for new certificates. Renewals
 		// don't count against the certificatesPerName limit.
 		if !isRenewal {
 			timeToTheHour := parsedCertificate.NotBefore.Round(time.Hour)
-			err = ssa.addCertificatesPerName(ctx, txWithCtx, parsedCertificate.DNSNames, timeToTheHour)
-			if err != nil {
+			if err := ssa.addCertificatesPerName(ctx, txWithCtx, parsedCertificate.DNSNames, timeToTheHour); err != nil {
 				return nil, err
 			}
 		}
 
+		// Update the FQDN sets now that there is a final certificate to ensure rate
+		// limits are calculated correctly.
 		err = addFQDNSet(
 			txWithCtx,
 			parsedCertificate.DNSNames,
-			serial,
+			core.SerialToString(parsedCertificate.SerialNumber),
 			parsedCertificate.NotBefore,
 			parsedCertificate.NotAfter,
 		)
-		if err != nil {
-			return nil, err
-		}
-
-		return digest, nil
+		return nil, err
 	})
 	if overallError != nil {
 		return "", overallError

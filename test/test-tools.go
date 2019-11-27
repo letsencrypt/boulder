@@ -2,9 +2,14 @@ package test
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"reflect"
 	"runtime"
 	"strings"
@@ -203,4 +208,35 @@ func GaugeValueWithLabels(vecGauge *prometheus.GaugeVec, labels prometheus.Label
 	_ = m.Write(&iom)
 
 	return int(iom.Gauge.GetValue()), nil
+}
+
+// ThrowAwayCert is a small test helper function that creates a self-signed
+// certificate for nameCount random example.com subdomains and returns the
+// parsed certificate  and the random serial in string form or aborts the test.
+// The certificate returned from this function is the bare minimum needed for
+// most tests and isn't a robust example of a complete end entity certificate.
+func ThrowAwayCert(t *testing.T, nameCount int) (string, *x509.Certificate) {
+	k, err := rsa.GenerateKey(rand.Reader, 512)
+	AssertNotError(t, err, "rsa.GenerateKey failed")
+
+	var serialBytes [16]byte
+	_, _ = rand.Read(serialBytes[:])
+	serialNum := big.NewInt(0).SetBytes(serialBytes[:])
+
+	var names []string
+	for i := 0; i < nameCount; i++ {
+		var nameBytes [3]byte
+		_, _ = rand.Read(nameBytes[:])
+		names = append(names, fmt.Sprintf("%s.example.com", hex.EncodeToString(nameBytes[:])))
+	}
+
+	template := &x509.Certificate{
+		SerialNumber: serialNum,
+		DNSNames:     names,
+	}
+	testCertDER, err := x509.CreateCertificate(rand.Reader, template, template, &k.PublicKey, k)
+	AssertNotError(t, err, "x509.CreateCertificate failed")
+	testCert, err := x509.ParseCertificate(testCertDER)
+	AssertNotError(t, err, "failed to parse self-signed cert DER")
+	return fmt.Sprintf("%036x", serialNum), testCert
 }
