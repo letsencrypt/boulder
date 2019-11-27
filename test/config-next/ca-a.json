@@ -137,7 +137,7 @@
     "maxConcurrentRPCServerRequests": 100000,
     "orphanQueueDir": "/tmp/orphaned-certificates-a",
     "features": {
-      "PrecertificateOCSP": true
+      "StoreIssuerInfo": true
     }
   },
 

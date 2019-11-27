@@ -2,6 +2,7 @@ package bdns
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"math/rand"
 	"net"
@@ -14,6 +15,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 )
 
@@ -157,10 +159,12 @@ type DNSClientImpl struct {
 	allowRestrictedAddresses bool
 	maxTries                 int
 	clk                      clock.Clock
+	log                      blog.Logger
 
-	queryTime       *prometheus.HistogramVec
-	totalLookupTime *prometheus.HistogramVec
-	timeoutCounter  *prometheus.CounterVec
+	queryTime         *prometheus.HistogramVec
+	totalLookupTime   *prometheus.HistogramVec
+	timeoutCounter    *prometheus.CounterVec
+	idMismatchCounter *prometheus.CounterVec
 }
 
 var _ DNSClient = &DNSClientImpl{}
@@ -177,9 +181,9 @@ func NewDNSClientImpl(
 	stats metrics.Scope,
 	clk clock.Clock,
 	maxTries int,
+	log blog.Logger,
 ) *DNSClientImpl {
 	stats = stats.NewScope("DNS")
-	// TODO(jmhodges): make constructor use an Option func pattern
 	dnsClient := new(dns.Client)
 
 	// Set timeout for underlying net.Conn
@@ -209,7 +213,14 @@ func NewDNSClientImpl(
 		},
 		[]string{"qtype", "type", "resolver"},
 	)
-	stats.MustRegister(queryTime, totalLookupTime, timeoutCounter)
+	idMismatchCounter := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "dns_id_mismatch",
+			Help: "Counter of DNS ErrId errors sliced by query type and resolver",
+		},
+		[]string{"qtype", "resolver"},
+	)
+	stats.MustRegister(queryTime, totalLookupTime, timeoutCounter, idMismatchCounter)
 
 	return &DNSClientImpl{
 		dnsClient:                dnsClient,
@@ -220,14 +231,22 @@ func NewDNSClientImpl(
 		queryTime:                queryTime,
 		totalLookupTime:          totalLookupTime,
 		timeoutCounter:           timeoutCounter,
+		idMismatchCounter:        idMismatchCounter,
+		log:                      log,
 	}
 }
 
 // NewTestDNSClientImpl constructs a new DNS resolver object that utilizes the
 // provided list of DNS servers for resolution and will allow loopback addresses.
 // This constructor should *only* be called from tests (unit or integration).
-func NewTestDNSClientImpl(readTimeout time.Duration, servers []string, stats metrics.Scope, clk clock.Clock, maxTries int) *DNSClientImpl {
-	resolver := NewDNSClientImpl(readTimeout, servers, stats, clk, maxTries)
+func NewTestDNSClientImpl(
+	readTimeout time.Duration,
+	servers []string,
+	stats metrics.Scope,
+	clk clock.Clock,
+	maxTries int,
+	log blog.Logger) *DNSClientImpl {
+	resolver := NewDNSClientImpl(readTimeout, servers, stats, clk, maxTries, log)
 	resolver.allowRestrictedAddresses = true
 	return resolver
 }
@@ -287,6 +306,15 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 			if rsp != nil {
 				result = dns.RcodeToString[rsp.Rcode]
 				authenticated = fmt.Sprintf("%t", rsp.AuthenticatedData)
+			}
+			if err != nil {
+				logDNSError(dnsClient.log, chosenServer, hostname, m, rsp, err)
+				if err == dns.ErrId {
+					dnsClient.idMismatchCounter.With(prometheus.Labels{
+						"qtype":    qtypeStr,
+						"resolver": chosenServer,
+					}).Inc()
+				}
 			}
 			dnsClient.queryTime.With(prometheus.Labels{
 				"qtype":              qtypeStr,
@@ -474,4 +502,66 @@ func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) 
 		}
 	}
 	return CAAs, nil
+}
+
+// logDNSError logs the provided err result from making a query for hostname to
+// the chosenServer. If the err is a `dns.ErrId` instance then the Base64
+// encoded bytes of the query (and if not-nil, the response) in wire format
+// is logged as well. This function is called from exchangeOne only for the case
+// where an error occurs querying a hostname that indicates a problem between
+// the VA and the chosenServer.
+func logDNSError(
+	logger blog.Logger,
+	chosenServer string,
+	hostname string,
+	msg, resp *dns.Msg,
+	underlying error) {
+	// We don't expect logDNSError to be called with a nil msg or err but
+	// if it happens return early. We allow resp to be nil.
+	if msg == nil || len(msg.Question) == 0 || underlying == nil {
+		return
+	}
+	queryType := dns.TypeToString[msg.Question[0].Qtype]
+
+	// If the error indicates there was a query/response ID mismatch then we want
+	// to log more detail.
+	if underlying == dns.ErrId {
+		packedMsgBytes, err := msg.Pack()
+		if err != nil {
+			logger.Errf("logDNSError failed to pack msg: %v\n", err)
+			return
+		}
+		encodedMsg := base64.StdEncoding.EncodeToString(packedMsgBytes)
+
+		var encodedResp string
+		var respQname string
+		if resp != nil {
+			packedRespBytes, err := resp.Pack()
+			if err != nil {
+				logger.Errf("logDNSError failed to pack resp: %v\n", err)
+				return
+			}
+			encodedResp = base64.StdEncoding.EncodeToString(packedRespBytes)
+			if len(resp.Answer) > 0 && resp.Answer[0].Header() != nil {
+				respQname = resp.Answer[0].Header().Name
+			}
+		}
+
+		logger.Errf(
+			"logDNSError ID mismatch chosenServer=[%s] hostname=[%s] respHostname=[%s] queryType=[%s] err=[%s] msg=[%s] resp=[%s]",
+			chosenServer,
+			hostname,
+			respQname,
+			queryType,
+			underlying,
+			encodedMsg,
+			encodedResp)
+	} else {
+		// Otherwise log a general DNS error
+		logger.Errf("logDNSError chosenServer=[%s] queryType=[%s] hostname=[%s] err=[%s]",
+			chosenServer,
+			hostname,
+			queryType,
+			underlying)
+	}
 }

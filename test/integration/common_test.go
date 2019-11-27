@@ -15,7 +15,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/eggsampler/acme/v2"
+	"github.com/eggsampler/acme/v3"
 )
 
 func init() {
@@ -41,7 +41,7 @@ type client struct {
 	acme.Client
 }
 
-func makeClient() (*client, error) {
+func makeClient(contacts ...string) (*client, error) {
 	c, err := acme.NewClient(os.Getenv("DIRECTORY"))
 	if err != nil {
 		return nil, fmt.Errorf("Error connecting to acme directory: %v", err)
@@ -50,9 +50,9 @@ func makeClient() (*client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error creating private key: %v", err)
 	}
-	account, err := c.NewAccount(privKey, false, true, "mailto:example@letsencrypt.org")
+	account, err := c.NewAccount(privKey, false, true, contacts...)
 	if err != nil {
-		return nil, fmt.Errorf("error creating new account: %v", err)
+		return nil, err
 	}
 	return &client{account, c}, nil
 }
@@ -108,7 +108,7 @@ func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, domains []string) (*issua
 	}
 	order, err := c.Client.NewOrder(c.Account, ids)
 	if err != nil {
-		return nil, fmt.Errorf("making order: %s", err)
+		return nil, err
 	}
 
 	for _, authUrl := range order.Authorizations {

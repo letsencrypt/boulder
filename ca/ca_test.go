@@ -24,14 +24,14 @@ import (
 	"github.com/cloudflare/cfssl/helpers"
 	"github.com/cloudflare/cfssl/signer"
 	"github.com/cloudflare/cfssl/signer/local"
-	"github.com/google/certificate-transparency-go"
+	ct "github.com/google/certificate-transparency-go"
 	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/zmap/zlint/lints"
 	"golang.org/x/crypto/ocsp"
 
-	"github.com/letsencrypt/boulder/ca/config"
+	ca_config "github.com/letsencrypt/boulder/ca/config"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -185,6 +185,11 @@ func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificate
 
 func (m *mockSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*corepb.Empty, error) {
 	return &corepb.Empty{}, nil
+}
+
+func (m *mockSA) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
+	e := true
+	return &sapb.Exists{Exists: &e}, nil
 }
 
 var caKey crypto.Signer
@@ -505,21 +510,22 @@ func TestOCSP(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to issue")
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Failed to parse cert")
-	ocspResp, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+	status := string(core.OCSPStatusGood)
+	ocspResp, err := ca.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
 		CertDER: cert.DER,
-		Status:  string(core.OCSPStatusGood),
+		Status:  &status,
 	})
 	test.AssertNotError(t, err, "Failed to generate OCSP")
-	parsed, err := ocsp.ParseResponse(ocspResp, caCert)
+	parsed, err := ocsp.ParseResponse(ocspResp.Response, caCert)
 	test.AssertNotError(t, err, "Failed to parse validate OCSP")
 	test.AssertEquals(t, parsed.Status, 0)
 	test.AssertEquals(t, parsed.RevocationReason, 0)
 	test.AssertEquals(t, parsed.SerialNumber.Cmp(parsedCert.SerialNumber), 0)
 
 	// Test that signatures are checked.
-	_, err = ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+	_, err = ca.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
 		CertDER: append(cert.DER, byte(0)),
-		Status:  string(core.OCSPStatusGood),
+		Status:  &status,
 	})
 	test.AssertError(t, err, "Generated OCSP for cert with bad signature")
 
@@ -560,22 +566,22 @@ func TestOCSP(t *testing.T) {
 
 	// ocspResp2 is a second OCSP response for `cert` (issued by caCert), and
 	// should be signed by caCert.
-	ocspResp2, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+	ocspResp2, err := ca.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
 		CertDER: append(cert.DER),
-		Status:  string(core.OCSPStatusGood),
+		Status:  &status,
 	})
 	test.AssertNotError(t, err, "Failed to sign second OCSP response")
-	_, err = ocsp.ParseResponse(ocspResp2, caCert)
+	_, err = ocsp.ParseResponse(ocspResp2.Response, caCert)
 	test.AssertNotError(t, err, "Failed to parse / validate second OCSP response")
 
 	// newCertOcspResp is an OCSP response for `newCert` (issued by newIssuer),
 	// and should be signed by newIssuer.
-	newCertOcspResp, err := ca.GenerateOCSP(ctx, core.OCSPSigningRequest{
+	newCertOcspResp, err := ca.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
 		CertDER: newCert.DER,
-		Status:  string(core.OCSPStatusGood),
+		Status:  &status,
 	})
 	test.AssertNotError(t, err, "Failed to generate OCSP")
-	parsedNewCertOcspResp, err := ocsp.ParseResponse(newCertOcspResp, newIssuerCert)
+	parsedNewCertOcspResp, err := ocsp.ParseResponse(newCertOcspResp.Response, newIssuerCert)
 	test.AssertNotError(t, err, "Failed to parse / validate OCSP for newCert")
 	test.AssertEquals(t, parsedNewCertOcspResp.Status, 0)
 	test.AssertEquals(t, parsedNewCertOcspResp.RevocationReason, 0)
@@ -931,6 +937,11 @@ func (qsa *queueSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (
 	return &corepb.Empty{}, nil
 }
 
+func (qsa *queueSA) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
+	e := true
+	return &sapb.Exists{Exists: &e}, nil
+}
+
 // TestPrecertOrphanQueue tests that IssuePrecertificate writes precertificates
 // to the orphan queue if storage fails, and that `integrateOrphan` later
 // successfully writes those precertificates to the database. To do this, it
@@ -959,8 +970,6 @@ func TestPrecertOrphanQueue(t *testing.T) {
 		orphanQueue)
 	test.AssertNotError(t, err, "Failed to create CA")
 
-	_ = features.Set(map[string]bool{"PrecertificateOCSP": true})
-
 	err = ca.integrateOrphan()
 	if err != goque.ErrEmpty {
 		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
@@ -980,6 +989,9 @@ func TestPrecertOrphanQueue(t *testing.T) {
 			strings.Join(testCtx.logger.GetAllMatching(".*"), "\n"))
 	}
 
+	orphanCount := test.CountCounterVec("type", "precert", ca.orphanCount)
+	test.AssertEquals(t, orphanCount, 1)
+
 	qsa.fail = false
 	err = ca.integrateOrphan()
 	test.AssertNotError(t, err, "integrateOrphan failed")
@@ -990,6 +1002,9 @@ func TestPrecertOrphanQueue(t *testing.T) {
 	if err != goque.ErrEmpty {
 		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
 	}
+
+	adoptedCount := test.CountCounterVec("type", "precert", ca.adoptedOrphanCount)
+	test.AssertEquals(t, adoptedCount, 1)
 }
 
 func TestOrphanQueue(t *testing.T) {
@@ -1165,4 +1180,51 @@ func TestIssuePrecertificateLinting(t *testing.T) {
 	regex := `ERR: \[AUDIT\] Signing failed: serial=\[.*\] err=\[pre-issuance linting found 2 error results\] lintErrors=\{"foobar":\{"result":"error","details":"foobar is error"\},"foobar2":\{"result":"warn","details":"foobar2 is warning"\}\}`
 	matches := testCtx.logger.GetAllMatching(regex)
 	test.AssertEquals(t, len(matches), 1)
+}
+
+func TestGenerateOCSPWithIssuerID(t *testing.T) {
+	testCtx := setup(t)
+	sa := &mockSA{}
+	_ = features.Set(map[string]bool{"StoreIssuerInfo": true})
+	ca, err := NewCertificateAuthorityImpl(
+		testCtx.caConfig,
+		sa,
+		testCtx.pa,
+		testCtx.fc,
+		testCtx.stats,
+		testCtx.issuers,
+		testCtx.keyPolicy,
+		testCtx.logger,
+		nil)
+	test.AssertNotError(t, err, "Failed to create CA")
+
+	// GenerateOCSP with feature enabled + req contains bad IssuerID
+	issuerID := int64(666)
+	serial := "DEADDEADDEADDEADDEADDEADDEADDEADDEAD"
+	status := string(core.OCSPStatusGood)
+	_, err = ca.GenerateOCSP(context.Background(), &caPB.GenerateOCSPRequest{
+		IssuerID: &issuerID,
+		Serial:   &serial,
+		Status:   &status,
+	})
+	test.AssertError(t, err, "GenerateOCSP didn't fail with invalid IssuerID")
+
+	// GenerateOCSP with feature enabled + req contains good IssuerID
+	issuerID = idForIssuer(ca.defaultIssuer.cert)
+	_, err = ca.GenerateOCSP(context.Background(), &caPB.GenerateOCSPRequest{
+		IssuerID: &issuerID,
+		Serial:   &serial,
+		Status:   &status,
+	})
+	test.AssertNotError(t, err, "GenerateOCSP failed")
+
+	// GenerateOCSP with feature enabled + req doesn't contain IssuerID
+	issueReq := caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID}
+	cert, err := ca.IssuePrecertificate(ctx, &issueReq)
+	test.AssertNotError(t, err, "Failed to issue")
+	_, err = ca.GenerateOCSP(context.Background(), &caPB.GenerateOCSPRequest{
+		CertDER: cert.DER,
+		Status:  &status,
+	})
+	test.AssertNotError(t, err, "GenerateOCSP failed")
 }

@@ -435,6 +435,9 @@ func TestFindCertsAtCapacity(t *testing.T) {
 	err = testCtx.m.findExpiringCertificates()
 	test.AssertNotError(t, err, "Failed to find expiring certs")
 	test.AssertEquals(t, len(testCtx.mc.Messages), 0)
+
+	// The "48h0m0s" nag group should now be reporting that it isn't at capacity
+	test.AssertEquals(t, countGroupsAtCapacity("48h0m0s", testCtx.m.stats.nagsAtCapacity), 0)
 }
 
 func TestCertIsRenewed(t *testing.T) {

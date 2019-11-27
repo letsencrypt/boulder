@@ -286,6 +286,10 @@ func (pa *mockPA) ChallengeTypeEnabled(t string) bool {
 	return true
 }
 
+func (pa *mockPA) ValidDomain(_ string) error {
+	return nil
+}
+
 func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
 }

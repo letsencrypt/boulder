@@ -99,7 +99,7 @@ type CertificateAuthority interface {
 	// [RegistrationAuthority]
 	IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (Certificate, error)
 
-	GenerateOCSP(ctx context.Context, ocspReq OCSPSigningRequest) ([]byte, error)
+	GenerateOCSP(ctx context.Context, ocspReq *caPB.GenerateOCSPRequest) (*caPB.OCSPResponse, error)
 }
 
 // PolicyAuthority defines the public interface for the Boulder PA
@@ -108,6 +108,7 @@ type PolicyAuthority interface {
 	WillingToIssueWildcards(identifiers []identifier.ACMEIdentifier) error
 	ChallengesFor(domain identifier.ACMEIdentifier) ([]Challenge, error)
 	ChallengeTypeEnabled(t string) bool
+	ValidDomain(domain string) error
 }
 
 // StorageGetter are the Boulder SA's read-only methods
@@ -134,6 +135,7 @@ type StorageGetter interface {
 	GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error)
 	CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error)
 	GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error)
+	SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error)
 }
 
 // StorageAdder are the Boulder SA's write/update methods

@@ -22,27 +22,29 @@ func _() {
 	_ = x[DisableAuthz2Orders-11]
 	_ = x[EarlyOrderRateLimit-12]
 	_ = x[FasterGetOrderForNames-13]
-	_ = x[CAAValidationMethods-14]
-	_ = x[CAAAccountURI-15]
-	_ = x[HeadNonceStatusOK-16]
-	_ = x[EnforceMultiVA-17]
-	_ = x[MultiVAFullResults-18]
-	_ = x[RemoveWFE2AccountID-19]
-	_ = x[CheckRenewalFirst-20]
-	_ = x[MandatoryPOSTAsGET-21]
-	_ = x[AllowV1Registration-22]
-	_ = x[ParallelCheckFailedValidation-23]
-	_ = x[DeleteUnusedChallenges-24]
-	_ = x[V1DisableNewValidations-25]
-	_ = x[PrecertificateOCSP-26]
-	_ = x[PrecertificateRevocation-27]
-	_ = x[StripDefaultSchemePort-28]
-	_ = x[GetAuthorizationsPerf-29]
+	_ = x[PrecertificateOCSP-14]
+	_ = x[GetAuthorizationsPerf-15]
+	_ = x[CAAValidationMethods-16]
+	_ = x[CAAAccountURI-17]
+	_ = x[HeadNonceStatusOK-18]
+	_ = x[EnforceMultiVA-19]
+	_ = x[MultiVAFullResults-20]
+	_ = x[RemoveWFE2AccountID-21]
+	_ = x[CheckRenewalFirst-22]
+	_ = x[MandatoryPOSTAsGET-23]
+	_ = x[AllowV1Registration-24]
+	_ = x[ParallelCheckFailedValidation-25]
+	_ = x[DeleteUnusedChallenges-26]
+	_ = x[V1DisableNewValidations-27]
+	_ = x[PrecertificateRevocation-28]
+	_ = x[StripDefaultSchemePort-29]
+	_ = x[StoreIssuerInfo-30]
+	_ = x[WriteIssuedNamesPrecert-31]
 }
 
-const _FeatureFlag_name = "unusedPerformValidationRPCACME13KeyRolloverSimplifiedVAHTTPTLSSNIRevalidationAllowRenewalFirstRLSetIssuedNamesRenewalBitFasterRateLimitProbeCTLogsRevokeAtRANewAuthorizationSchemaDisableAuthz2OrdersEarlyOrderRateLimitFasterGetOrderForNamesCAAValidationMethodsCAAAccountURIHeadNonceStatusOKEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountIDCheckRenewalFirstMandatoryPOSTAsGETAllowV1RegistrationParallelCheckFailedValidationDeleteUnusedChallengesV1DisableNewValidationsPrecertificateOCSPPrecertificateRevocationStripDefaultSchemePortGetAuthorizationsPerf"
+const _FeatureFlag_name = "unusedPerformValidationRPCACME13KeyRolloverSimplifiedVAHTTPTLSSNIRevalidationAllowRenewalFirstRLSetIssuedNamesRenewalBitFasterRateLimitProbeCTLogsRevokeAtRANewAuthorizationSchemaDisableAuthz2OrdersEarlyOrderRateLimitFasterGetOrderForNamesPrecertificateOCSPGetAuthorizationsPerfCAAValidationMethodsCAAAccountURIHeadNonceStatusOKEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountIDCheckRenewalFirstMandatoryPOSTAsGETAllowV1RegistrationParallelCheckFailedValidationDeleteUnusedChallengesV1DisableNewValidationsPrecertificateRevocationStripDefaultSchemePortStoreIssuerInfoWriteIssuedNamesPrecert"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 26, 43, 59, 77, 96, 120, 135, 146, 156, 178, 197, 216, 238, 258, 271, 288, 302, 320, 339, 356, 374, 393, 422, 444, 467, 485, 509, 531, 552}
+var _FeatureFlag_index = [...]uint16{0, 6, 26, 43, 59, 77, 96, 120, 135, 146, 156, 178, 197, 216, 238, 256, 277, 297, 310, 327, 341, 359, 378, 395, 413, 432, 461, 483, 506, 530, 552, 567, 590}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

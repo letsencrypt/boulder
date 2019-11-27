@@ -21,7 +21,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -363,16 +362,16 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 		return core.CertificateStatus{}, err
 	}
 
-	var status core.CertificateStatus
-	statusObj, err := ssa.dbMap.WithContext(ctx).Get(certStatusModel{}, serial)
+	statusModel, err := SelectCertificateStatus(
+		ssa.dbMap.WithContext(ctx),
+		"WHERE serial = ?",
+		serial,
+	)
 	if err != nil {
-		return status, err
+		return core.CertificateStatus{}, err
 	}
-	if statusObj == nil {
-		return status, nil
-	}
-	statusModel := statusObj.(*certStatusModel)
-	status = core.CertificateStatus{
+
+	return core.CertificateStatus{
 		Serial:                statusModel.Serial,
 		Status:                statusModel.Status,
 		OCSPLastUpdated:       statusModel.OCSPLastUpdated,
@@ -382,9 +381,7 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 		OCSPResponse:          statusModel.OCSPResponse,
 		NotAfter:              statusModel.NotAfter,
 		IsExpired:             statusModel.IsExpired,
-	}
-
-	return status, nil
+	}, nil
 }
 
 // NewRegistration stores a new Registration
@@ -465,37 +462,14 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		Expires:        parsedCertificate.NotAfter,
 	}
 
-	certStatus := &certStatusModel{
-		Status:          core.OCSPStatus("good"),
-		OCSPLastUpdated: time.Time{},
-		OCSPResponse:    []byte{},
-		Serial:          serial,
-		RevokedDate:     time.Time{},
-		RevokedReason:   0,
-		NotAfter:        parsedCertificate.NotAfter,
-	}
-	if len(ocspResponse) != 0 {
-		certStatus.OCSPResponse = ocspResponse
-		certStatus.OCSPLastUpdated = ssa.clk.Now()
-	}
-
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
+		// Save the final certificate
 		err = txWithCtx.Insert(cert)
 		if err != nil {
 			if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
 				return nil, berrors.DuplicateError("cannot add a duplicate cert")
 			}
 			return nil, err
-		}
-
-		err = txWithCtx.Insert(certStatus)
-		if err != nil {
-			// We ignore "duplicate entry" on insert to the certificateStatus table
-			// because we may be inserting a certificate after a call to
-			// AddPrecertificate, which also adds a certificateStatus entry.
-			if !strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
-				return nil, err
-			}
 		}
 
 		// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
@@ -511,33 +485,41 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 			return nil, err
 		}
 
-		err = addIssuedNames(txWithCtx, parsedCertificate, isRenewal)
-		if err != nil {
-			return nil, err
+		// Record the issued names from the final certificate being added by the SA.
+		// If features.WriteIssuedNamesPrecert was enabled when the corresponding
+		// precertificate was added in AddPrecertificate then this will prompt
+		// a duplicate entry error that we can safely ignore.
+		//
+		// TODO(@cpu): Once features.WriteIssuedNamesPrecert has been deployed
+		// globally we can remove this call to ssa.addIssuedNames from
+		// AddCertificate
+		if err := addIssuedNames(txWithCtx, parsedCertificate, isRenewal); err != nil {
+			// if it wasn't a duplicate entry error, return the err. Otherwise ignore
+			// it.
+			if !strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+				return nil, err
+			}
 		}
 
 		// Add to the rate limit table, but only for new certificates. Renewals
 		// don't count against the certificatesPerName limit.
 		if !isRenewal {
 			timeToTheHour := parsedCertificate.NotBefore.Round(time.Hour)
-			err = ssa.addCertificatesPerName(ctx, txWithCtx, parsedCertificate.DNSNames, timeToTheHour)
-			if err != nil {
+			if err := ssa.addCertificatesPerName(ctx, txWithCtx, parsedCertificate.DNSNames, timeToTheHour); err != nil {
 				return nil, err
 			}
 		}
 
+		// Update the FQDN sets now that there is a final certificate to ensure rate
+		// limits are calculated correctly.
 		err = addFQDNSet(
 			txWithCtx,
 			parsedCertificate.DNSNames,
-			serial,
+			core.SerialToString(parsedCertificate.SerialNumber),
 			parsedCertificate.NotBefore,
 			parsedCertificate.NotAfter,
 		)
-		if err != nil {
-			return nil, err
-		}
-
-		return digest, nil
+		return nil, err
 	})
 	if overallError != nil {
 		return "", overallError
@@ -1441,31 +1423,16 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 		params = append(params, n)
 	}
 	var query string
-	if features.Enabled(features.GetAuthorizationsPerf) {
-		query = fmt.Sprintf(
-			`SELECT %s FROM authz2
+	query = fmt.Sprintf(
+		`SELECT %s FROM authz2
 			WHERE registrationID = ? AND
 			status IN (?,?) AND
 			expires > ? AND
 			identifierType = ? AND
 			identifierValue IN (%s)`,
-			authz2Fields,
-			strings.Join(qmarks, ","),
-		)
-	} else {
-		query = fmt.Sprintf(
-			`SELECT %s FROM authz2
-			JOIN orderToAuthz2
-			ON id = authzID
-			WHERE registrationID = ? AND
-			status IN (?,?) AND
-			expires > ? AND
-			identifierType = ? AND
-			identifierValue IN (%s)`,
-			authz2Fields,
-			strings.Join(qmarks, ","),
-		)
-	}
+		authz2Fields,
+		strings.Join(qmarks, ","),
+	)
 	_, err := ssa.dbMap.Select(
 		&authzModels,
 		query,
@@ -1475,45 +1442,48 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 		return nil, err
 	}
 
-	authz2IDMap := map[int64]bool{}
-	// Once the old authorization storage format fallback is removed we don't need
-	// this length check as if there are none returned we can just return immediately.
-	if features.Enabled(features.GetAuthorizationsPerf) && len(authzModels) > 0 {
-		// Previously we used a JOIN on the orderToAuthz2 table in order to make sure
-		// we only returned authorizations created using the ACME v2 API. Each time an
-		// order is created a pivot row (order ID + authz ID) is added to the
-		// orderToAuthz2 table. If a large number of orders are created that all contain
-		// the same authorization, due to reuse, then the JOINd query would return a full
-		// authorization row for each entry in the orderToAuthz2 table with the authorization
-		// ID.
-		//
-		// Instead we now filter out these authorizations by doing a second query against
-		// the orderToAuthz2 table. Using this query still requires examining a large number
-		// of rows, but because we don't need to construct a temporary table for the JOIN
-		// and fill it with all the full authorization rows we should save resources.
-		var ids []interface{}
-		qmarks = make([]string, len(authzModels))
-		for i, am := range authzModels {
-			ids = append(ids, am.ID)
-			qmarks[i] = "?"
-		}
-		var authz2IDs []int64
-		_, err = ssa.dbMap.Select(
-			&authz2IDs,
-			fmt.Sprintf(`SELECT DISTINCT(authzID) FROM orderToAuthz2 WHERE authzID IN (%s)`, strings.Join(qmarks, ",")),
-			ids...,
-		)
-		if err != nil {
-			return nil, err
-		}
-		for _, id := range authz2IDs {
-			authz2IDMap[id] = true
-		}
+	if len(authzModels) == 0 {
+		return &sapb.Authorizations{}, nil
+	}
+
+	// Previously we used a JOIN on the orderToAuthz2 table in order to make sure
+	// we only returned authorizations created using the ACME v2 API. Each time an
+	// order is created a pivot row (order ID + authz ID) is added to the
+	// orderToAuthz2 table. If a large number of orders are created that all contain
+	// the same authorization, due to reuse, then the JOINd query would return a full
+	// authorization row for each entry in the orderToAuthz2 table with the authorization
+	// ID.
+	//
+	// Instead we now filter out these authorizations by doing a second query against
+	// the orderToAuthz2 table. Using this query still requires examining a large number
+	// of rows, but because we don't need to construct a temporary table for the JOIN
+	// and fill it with all the full authorization rows we should save resources.
+	var ids []interface{}
+	qmarks = make([]string, len(authzModels))
+	for i, am := range authzModels {
+		ids = append(ids, am.ID)
+		qmarks[i] = "?"
+	}
+	var authzIDs []int64
+	_, err = ssa.dbMap.Select(
+		&authzIDs,
+		fmt.Sprintf(`SELECT DISTINCT(authzID) FROM orderToAuthz2 WHERE authzID IN (%s)`, strings.Join(qmarks, ",")),
+		ids...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	authzIDMap := map[int64]bool{}
+	for _, id := range authzIDs {
+		authzIDMap[id] = true
 	}
 
 	authzModelMap := make(map[string]authz2Model)
 	for _, am := range authzModels {
-		if _, present := authz2IDMap[am.ID]; features.Enabled(features.GetAuthorizationsPerf) && !present {
+		// Anything not found in the ID map wasn't in the pivot table, meaning it
+		// didn't correspond to an order, meaning it wasn't created with ACMEv2.
+		// Don't return it for ACMEv2 requests.
+		if _, present := authzIDMap[am.ID]; !present {
 			continue
 		}
 		if existing, present := authzModelMap[am.IdentifierValue]; !present ||
@@ -1595,40 +1565,36 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 // RevokeCertificate stores revocation information about a certificate. It will only store this
 // information if the certificate is not already marked as revoked.
 func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error {
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
-		status, err := SelectCertificateStatus(
-			txWithCtx,
-			"WHERE serial = ? AND status != ?",
-			*req.Serial,
-			string(core.OCSPStatusRevoked),
-		)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				// InternalServerError because we expected this certificate status to exist and
-				// not be revoked.
-				return nil, berrors.InternalServerError("no certificate with serial %s and status %s", *req.Serial, string(core.OCSPStatusRevoked))
-			}
-			return nil, err
-		}
-
-		revokedDate := time.Unix(0, *req.Date)
-		status.Status = core.OCSPStatusRevoked
-		status.RevokedReason = revocation.Reason(*req.Reason)
-		status.RevokedDate = revokedDate
-		status.OCSPLastUpdated = revokedDate
-		status.OCSPResponse = req.Response
-
-		n, err := txWithCtx.Update(&status)
-		if err != nil {
-			return nil, err
-		}
-		if n == 0 {
-			return nil, berrors.InternalServerError("no certificate updated")
-		}
-
-		return nil, nil
-	})
-	return overallError
+	revokedDate := time.Unix(0, *req.Date)
+	res, err := ssa.dbMap.Exec(
+		`UPDATE certificateStatus SET
+				status = ?,
+				revokedReason = ?,
+				revokedDate = ?,
+				ocspLastUpdated = ?,
+				ocspResponse = ?
+			WHERE serial = ? AND status != ?`,
+		string(core.OCSPStatusRevoked),
+		revocation.Reason(*req.Reason),
+		revokedDate,
+		revokedDate,
+		req.Response,
+		*req.Serial,
+		string(core.OCSPStatusRevoked),
+	)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		// InternalServerError because we expected this certificate status to exist and
+		// not be revoked.
+		return berrors.InternalServerError("no certificate with serial %s and status %s", *req.Serial, string(core.OCSPStatusRevoked))
+	}
+	return nil
 }
 
 // GetPendingAuthorization2 returns the most recent Pending authorization with
@@ -1802,4 +1768,17 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 		authzMap[am.IdentifierValue] = am
 	}
 	return authz2ModelMapToPB(authzMap)
+}
+
+// SerialExists returns a bool indicating whether the provided serial
+// exists in the serial table. This is currently only used to determine
+// if a serial passed to ca.GenerateOCSP is one which we have previously
+// generated a certificate for.
+func (ssa *SQLStorageAuthority) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
+	err := ssa.dbMap.SelectOne(&recordedSerialModel{}, "SELECT * FROM serials WHERE serial = ?", req.Serial)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+	exists := err != sql.ErrNoRows
+	return &sapb.Exists{Exists: &exists}, nil
 }

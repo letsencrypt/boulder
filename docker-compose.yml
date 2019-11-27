@@ -73,7 +73,12 @@ services:
               - boulder-mysql
         environment:
             MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
-        command: mysqld --bind-address=0.0.0.0
+        # Send slow queries to a table so we can check for them in the
+        # integration tests. For now we ignore queries not using indexes,
+        # because that seems to trigger based on the optimizer's choice to not
+        # use an index for certain queries, particularly when tables are still
+        # small.
+        command: mysqld --bind-address=0.0.0.0 --slow-query-log --log-output=TABLE --log-queries-not-using-indexes=OFF
         logging:
             driver: none
     netaccess:

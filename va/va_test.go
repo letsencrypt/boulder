@@ -198,7 +198,7 @@ func setup(
 	va, err := NewValidationAuthorityImpl(
 		// Use the test server's port as both the HTTPPort and the TLSPort for the VA
 		&portConfig,
-		&bdns.MockDNSClient{},
+		&bdns.MockDNSClient{Log: logger},
 		nil,
 		maxRemoteFailures,
 		userAgent,

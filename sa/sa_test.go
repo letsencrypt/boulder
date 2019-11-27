@@ -1,7 +1,6 @@
 package sa
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -186,6 +185,7 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 		t.Errorf("UpdateRegistration: expected a berrors.NotFound type error, got %T type error (%v)", err, err)
 	}
 }
+
 func TestAddCertificate(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
@@ -209,12 +209,6 @@ func TestAddCertificate(t *testing.T) {
 	// with an issued time equal to now
 	test.AssertEquals(t, retrievedCert.Issued, clk.Now())
 
-	certificateStatus, err := sa.GetCertificateStatus(ctx, "000000000000000000000000000000021bd4")
-	test.AssertNotError(t, err, "Couldn't get status for www.eff.org.der")
-	test.Assert(t, certificateStatus.Status == core.OCSPStatusGood, "OCSP Status should be good")
-	test.Assert(t, certificateStatus.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
-	test.AssertEquals(t, certificateStatus.NotAfter, retrievedCert.Expires)
-
 	// Test cert generated locally by Boulder / CFSSL, names [example.com,
 	// www.example.com, admin.example.com]
 	certDER2, err := ioutil.ReadFile("test-cert.der")
@@ -234,31 +228,32 @@ func TestAddCertificate(t *testing.T) {
 	// as the issued field.
 	test.AssertEquals(t, retrievedCert2.Issued, issuedTime)
 
-	certificateStatus2, err := sa.GetCertificateStatus(ctx, serial)
-	test.AssertNotError(t, err, "Couldn't get status for test-cert.der")
-	test.Assert(t, certificateStatus2.Status == core.OCSPStatusGood, "OCSP Status should be good")
-	test.Assert(t, certificateStatus2.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
-
 	// Test adding OCSP response with cert
 	certDER3, err := ioutil.ReadFile("test-cert2.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	serial = "ffa0160630d618b2eb5c0510824b14274856"
 	ocspResp := []byte{0, 0, 1}
 	_, err = sa.AddCertificate(ctx, certDER3, reg.ID, ocspResp, &issuedTime)
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 
-	certificateStatus3, err := sa.GetCertificateStatus(ctx, serial)
-	test.AssertNotError(t, err, "Couldn't get status for test-cert2.der")
-	test.Assert(
-		t,
-		bytes.Compare(certificateStatus3.OCSPResponse, ocspResp) == 0,
-		fmt.Sprintf("OCSP responses don't match, expected: %x, got %x", certificateStatus3.OCSPResponse, ocspResp),
-	)
-	test.Assert(
-		t,
-		clk.Now().Equal(certificateStatus3.OCSPLastUpdated),
-		fmt.Sprintf("OCSPLastUpdated doesn't match, expected %s, got %s", clk.Now(), certificateStatus3.OCSPLastUpdated),
-	)
+	// Test adding a certificate with the features.WriteIssuedNamesPrecert feature
+	// flag enabled doesn't result in issuedNames and fqdnSet updates since we
+	// expect AddPrecertificate to handle it in this case.
+	err = features.Set(map[string]bool{"WriteIssuedNamesPrecert": true})
+	test.AssertNotError(t, err, "failed to set WriteIssuedNamesPrecert feature flag")
+
+	// Create a throw-away self signed certificate with a random name and
+	// serial number
+	_, testCert := test.ThrowAwayCert(t, 1)
+
+	// Add the test cert
+	_, err = sa.AddCertificate(ctx, testCert.Raw, reg.ID, ocspResp, &issuedTime)
+	test.AssertNotError(t, err, "unexpected error adding testcert")
+
+	// Check the issuedNames table
+	_, err = findIssuedName(sa.dbMap, testCert.DNSNames[0])
+	// We expect no error because AddCertificate should have updated the issued
+	// names table.
+	test.AssertNotError(t, err, "unexpected error finding issued names after addCert")
 }
 
 func TestCountCertificatesByNames(t *testing.T) {
@@ -1592,8 +1587,13 @@ func TestRevokeCertificate(t *testing.T) {
 	// Add a cert to the DB to test with.
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	issued := sa.clk.Now()
-	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
+	issued := sa.clk.Now().UnixNano()
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    certDER,
+		RegID:  &reg.ID,
+		Ocsp:   nil,
+		Issued: &issued,
+	})
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	serial := "000000000000000000000000000000021bd4"
@@ -2103,4 +2103,27 @@ func TestGetOrderExpired(t *testing.T) {
 	})
 	test.AssertError(t, err, "GetOrder didn't fail for an expired order")
 	test.Assert(t, berrors.Is(err, berrors.NotFound), "GetOrder error wasn't of type NotFound")
+}
+
+func TestSerialExists(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	serial := "asd"
+	resp, err := sa.SerialExists(context.Background(), &sapb.Serial{Serial: &serial})
+	test.AssertNotError(t, err, "SerialExists failed")
+	test.AssertEquals(t, *resp.Exists, false)
+
+	zero := int64(0)
+	_, err = sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
+		RegID:   &reg.ID,
+		Serial:  &serial,
+		Created: &zero,
+		Expires: &zero,
+	})
+	test.AssertNotError(t, err, "AddSerial failed")
+	resp, err = sa.SerialExists(context.Background(), &sapb.Serial{Serial: &serial})
+	test.AssertNotError(t, err, "SerialExists failed")
+	test.AssertEquals(t, *resp.Exists, true)
 }

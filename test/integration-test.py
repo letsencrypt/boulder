@@ -48,9 +48,7 @@ def run_go_tests(filterPattern=None):
     cmdLine = [ "go", "test", ]
     if filterPattern is not None and filterPattern != "":
         cmdLine = cmdLine + ["--test.run", filterPattern]
-    # TODO: We don't run the race detector here as it catches a race condition
-    # in eggsampler/acme that we are waiting on a fix for.
-    cmdLine = cmdLine + ["-tags", "integration", "-count=1", "./test/integration"]
+    cmdLine = cmdLine + ["-tags", "integration", "-count=1", "-race", "./test/integration"]
     return subprocess.check_call(cmdLine, shell=False, stderr=subprocess.STDOUT)
 
 def run_expired_authz_purger():
@@ -308,8 +306,28 @@ def main():
     if not startservers.check():
         raise(Exception("startservers.check failed"))
 
+    check_slow_queries()
+
     global exit_status
     exit_status = 0
+
+def check_slow_queries():
+    """Checks that we haven't run any slow queries during the integration test.
+
+    This depends on flags set on mysqld in docker-compose.yml.
+    """
+    query = """
+        SELECT * FROM mysql.slow_log
+            WHERE user_host NOT LIKE "test_setup%"
+            AND sql_text != 'SELECT 1 FROM (SELECT SLEEP(5)) as subselect'
+        \G
+    """
+    output = subprocess.check_output(
+      ["mysql", "-h", "boulder-mysql", "-D", "boulder_sa_integration", "-e", query],
+      stderr=subprocess.STDOUT)
+    if len(output) > 0:
+        print(output)
+        raise Exception("Found slow queries in the slow query log")
 
 def run_chisel(test_case_filter):
     for key, value in inspect.getmembers(v1_integration):

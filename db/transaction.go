@@ -17,7 +17,7 @@ func WithTransaction(ctx context.Context, dbMap DatabaseMap, f txFunc) (interfac
 	txWithCtx := tx.WithContext(ctx)
 	result, err := f(txWithCtx)
 	if err != nil {
-		return nil, Rollback(tx, err)
+		return nil, rollback(tx, err)
 	}
 	err = tx.Commit()
 	if err != nil {

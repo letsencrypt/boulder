@@ -1096,7 +1096,7 @@ var tldMap = map[string]GTLDPeriod{
 	"cartier": {
 		GTLD:           "cartier",
 		DelegationDate: "2014-12-11",
-		RemovalDate:    "",
+		RemovalDate:    "2019-11-14",
 	},
 	"casa": {
 		GTLD:           "casa",
@@ -2081,7 +2081,7 @@ var tldMap = map[string]GTLDPeriod{
 	"everbank": {
 		GTLD:           "everbank",
 		DelegationDate: "2014-11-26",
-		RemovalDate:    "",
+		RemovalDate:    "2019-11-14",
 	},
 	"exchange": {
 		GTLD:           "exchange",
@@ -4896,7 +4896,7 @@ var tldMap = map[string]GTLDPeriod{
 	"piaget": {
 		GTLD:           "piaget",
 		DelegationDate: "2015-03-16",
-		RemovalDate:    "",
+		RemovalDate:    "2019-11-14",
 	},
 	"pics": {
 		GTLD:           "pics",

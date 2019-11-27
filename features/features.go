@@ -25,6 +25,8 @@ const (
 	DisableAuthz2Orders
 	EarlyOrderRateLimit
 	FasterGetOrderForNames
+	PrecertificateOCSP
+	GetAuthorizationsPerf
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -58,19 +60,19 @@ const (
 	// V1DisableNewValidations disables validations for new domain names in the V1
 	// API.
 	V1DisableNewValidations
-	// PrecertificateOCSP ensures that we write an OCSP response immediately upon
-	// generating a precertificate. This also changes the issuance / storage flow,
-	// adding two new calls from CA to SA: AddSerial and AddPrecertificate.
-	PrecertificateOCSP
 	// PrecertificateRevocation allows revocation of precertificates with the
 	// ACMEv2 interface.
 	PrecertificateRevocation
 	// StripDefaultSchemePort enables stripping of default scheme ports from HTTP
 	// request Host headers
 	StripDefaultSchemePort
-	// GetAuthorizationsPerf enables a more performant GetAuthorizations2 query
-	// at the SA.
-	GetAuthorizationsPerf
+	// StoreIssuerInfo enables storage of information identifying the issuer of
+	// a certificate in the certificateStatus table.
+	StoreIssuerInfo
+	// WriteIssuedNamesPrecert moves the issuedNames and fqdnSet insertions from
+	// happening when final certificates are saved by the SA to when
+	// precertificates are saved.
+	WriteIssuedNamesPrecert
 )
 
 // List of features and their default value, protected by fMu
@@ -105,6 +107,8 @@ var features = map[FeatureFlag]bool{
 	PrecertificateRevocation:      false,
 	StripDefaultSchemePort:        false,
 	GetAuthorizationsPerf:         false,
+	StoreIssuerInfo:               false,
+	WriteIssuedNamesPrecert:       false,
 }
 
 var fMu = new(sync.RWMutex)

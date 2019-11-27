@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/identifier"
@@ -24,7 +23,6 @@ import (
 func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]net.IP, error) {
 	addrs, err := va.dnsClient.LookupHost(ctx, hostname)
 	if err != nil {
-		va.logDNSError(hostname, err)
 		return nil, berrors.DNSError("%v", err)
 	}
 
@@ -63,7 +61,6 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident iden
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, ident.Value)
 	txts, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 	if err != nil {
-		va.logDNSError(ident.Value, err)
 		return nil, probs.DNS(err.Error())
 	}
 
@@ -91,24 +88,4 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident iden
 	}
 	return nil, probs.Unauthorized("Incorrect TXT record %q%s found at %s",
 		replaceInvalidUTF8([]byte(invalidRecord)), andMore, challengeSubdomain)
-}
-
-// logDNSError logs the provided error, but only if it's one of our DNS error
-// types, and only if it has an underlying error. This excludes "normal" DNS
-// errors like NXDOMAIN and SERVFAIL that we successfully received from our
-// resolver, but includes errors in communicating with our resolver.
-// We're interested in logging these separately because the problem document
-// that gets sent to the user (and logged) includes only a more generic message
-// like "networking error."
-func (va *ValidationAuthorityImpl) logDNSError(ident string, err error) {
-	if dnsErr, ok := err.(*bdns.DNSError); ok {
-		underlying := dnsErr.Underlying()
-		// Excluded canceled and deadline exceeded requests because those are
-		// expected and are generally the "fault" of the authoritative resolver, not
-		// ours.
-		if underlying != nil && underlying != context.Canceled && underlying != context.DeadlineExceeded {
-			va.log.Errf("For identifier %q: err=[%s], underlying=[%s]",
-				ident, err, underlying)
-		}
-	}
 }

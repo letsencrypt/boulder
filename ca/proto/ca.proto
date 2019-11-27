@@ -37,11 +37,14 @@ message IssueCertificateForPrecertificateRequest {
   optional int64 orderID = 4;
 }
 
+// Exactly one of certDER or [serial and issuerID] must be set.
 message GenerateOCSPRequest {
   optional bytes certDER = 1;
   optional string status = 2;
   optional int32 reason = 3;
   optional int64 revokedAt = 4;
+  optional string serial = 5;
+  optional int64 issuerID = 6;
 }
 
 message OCSPResponse {

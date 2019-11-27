@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"math/big"
 	"os"
 	"strings"
 	"testing"
@@ -23,31 +26,19 @@ import (
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	"google.golang.org/grpc"
 	"gopkg.in/go-gorp/gorp.v2"
 )
 
 var ctx = context.Background()
 
-type mockCA struct {
+type mockOCSP struct {
 	sleepTime time.Duration
 }
 
-func (ca *mockCA) IssueCertificate(_ context.Context, _ *caPB.IssueCertificateRequest) (core.Certificate, error) {
-	return core.Certificate{}, nil
-}
-
-func (ca *mockCA) IssuePrecertificate(_ context.Context, _ *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
-	return nil, errors.New("IssuePrecertificate is not implemented by mockCA")
-}
-
-func (ca *mockCA) IssueCertificateForPrecertificate(_ context.Context, _ *caPB.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
-	return core.Certificate{}, errors.New("IssueCertificateForPrecertificate is not implemented by mockCA")
-}
-
-func (ca *mockCA) GenerateOCSP(_ context.Context, xferObj core.OCSPSigningRequest) (ocsp []byte, err error) {
-	ocsp = []byte{1, 2, 3}
+func (ca *mockOCSP) GenerateOCSP(_ context.Context, req *caPB.GenerateOCSPRequest, _ ...grpc.CallOption) (*caPB.OCSPResponse, error) {
 	time.Sleep(ca.sleepTime)
-	return
+	return &caPB.OCSPResponse{Response: []byte{1, 2, 3}}, nil
 }
 
 var log = blog.UseMock()
@@ -80,7 +71,7 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, cloc
 		metrics.NewNoopScope(),
 		fc,
 		dbMap,
-		&mockCA{},
+		&mockOCSP{},
 		sa,
 		nil,
 		OCSPUpdaterConfig{
@@ -106,8 +97,13 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	issued := fc.Now()
-	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID, nil, &issued)
+	issued := fc.Now().UnixNano()
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    parsedCert.Raw,
+		RegID:  &reg.ID,
+		Ocsp:   nil,
+		Issued: &issued,
+	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	status, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
@@ -126,12 +122,22 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCertA, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	issued := fc.Now()
-	_, err = sa.AddCertificate(ctx, parsedCertA.Raw, reg.ID, nil, &issued)
+	issued := fc.Now().UnixNano()
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    parsedCertA.Raw,
+		RegID:  &reg.ID,
+		Ocsp:   nil,
+		Issued: &issued,
+	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 	parsedCertB, err := core.LoadCert("test-cert-b.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(ctx, parsedCertB.Raw, reg.ID, nil, &issued)
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    parsedCertB.Raw,
+		RegID:  &reg.ID,
+		Ocsp:   nil,
+		Issued: &issued,
+	})
 	test.AssertNotError(t, err, "Couldn't add test-cert-b.pem")
 
 	// We need to set a fake "ocspLastUpdated" value for the two certs we created
@@ -155,7 +161,7 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	// Note that this test also tests the basic functionality of
 	// generateOCSPResponses.
 	start := time.Now()
-	updater.cac = &mockCA{time.Second}
+	updater.ogc = &mockOCSP{time.Second}
 	updater.parallelGenerateOCSPRequests = 10
 	err = updater.generateOCSPResponses(ctx, certs, metrics.NewNoopScope())
 	test.AssertNotError(t, err, "Couldn't generate OCSP responses")
@@ -176,8 +182,13 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	issued := fc.Now()
-	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID, nil, &issued)
+	issued := fc.Now().UnixNano()
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    parsedCert.Raw,
+		RegID:  &reg.ID,
+		Ocsp:   nil,
+		Issued: &issued,
+	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	// We need to set a fake "ocspLastUpdated" value for the cert we created
@@ -214,12 +225,22 @@ func TestFindStaleOCSPResponsesStaleMaxAge(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCertA, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	issued := fc.Now()
-	_, err = sa.AddCertificate(ctx, parsedCertA.Raw, reg.ID, nil, &issued)
+	issued := fc.Now().UnixNano()
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    parsedCertA.Raw,
+		RegID:  &reg.ID,
+		Ocsp:   nil,
+		Issued: &issued,
+	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 	parsedCertB, err := core.LoadCert("test-cert-b.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(ctx, parsedCertB.Raw, reg.ID, nil, &issued)
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    parsedCertB.Raw,
+		RegID:  &reg.ID,
+		Ocsp:   nil,
+		Issued: &issued,
+	})
 	test.AssertNotError(t, err, "Couldn't add test-cert-b.pem")
 
 	// Set a "ocspLastUpdated" value of 3 days ago for parsedCertA
@@ -255,8 +276,13 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	issued := fc.Now()
-	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID, nil, &issued)
+	issued := fc.Now().UnixNano()
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    parsedCert.Raw,
+		RegID:  &reg.ID,
+		Ocsp:   nil,
+		Issued: &issued,
+	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	updater.ocspMinTimeToExpiry = 1 * time.Hour
@@ -282,8 +308,13 @@ func TestOldOCSPResponsesTickIsExpired(t *testing.T) {
 	serial := core.SerialToString(parsedCert.SerialNumber)
 
 	// Add a new test certificate
-	issued := fc.Now()
-	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID, nil, &issued)
+	issued := fc.Now().UnixNano()
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    parsedCert.Raw,
+		RegID:  &reg.ID,
+		Ocsp:   nil,
+		Issued: &issued,
+	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	// We need to set a fake "ocspLastUpdated" value for the cert we created
@@ -325,8 +356,13 @@ func TestStoreResponseGuard(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	issued := fc.Now()
-	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID, nil, &issued)
+	issued := fc.Now().UnixNano()
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    parsedCert.Raw,
+		RegID:  &reg.ID,
+		Ocsp:   nil,
+		Issued: &issued,
+	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	status, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
@@ -408,27 +444,21 @@ func TestLoopTickBackoff(t *testing.T) {
 }
 
 func TestGenerateOCSPResponsePrecert(t *testing.T) {
-	// The schema required to insert a precertificate is only available in
-	// config-next at the time of writing.
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	updater, sa, dbMap, fc, cleanUp := setup(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 
+	// Create a throw-away self signed certificate with some names
+	serial, testCert := test.ThrowAwayCert(t, 5)
+
 	// Use AddPrecertificate to set up a precertificate, serials, and
 	// certificateStatus row for the testcert.
-	certDER, err := ioutil.ReadFile("../../test/test-ca.der")
-	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	serial := "00000000000000000000000000000000124d"
 	ocspResp := []byte{0, 0, 1}
 	regID := reg.ID
 	issuedTime := fc.Now().UnixNano()
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER,
+	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    testCert.Raw,
 		RegID:  &regID,
 		Ocsp:   ocspResp,
 		Issued: &issuedTime,
@@ -451,24 +481,74 @@ func TestGenerateOCSPResponsePrecert(t *testing.T) {
 	test.AssertEquals(t, len(certs), 1)
 	test.AssertEquals(t, certs[0].Serial, serial)
 
-	// Disable PrecertificateOCSP.
-	err = features.Set(map[string]bool{"PrecertificateOCSP": false})
-	test.AssertNotError(t, err, "setting PrecertificateOCSP feature to off")
-
-	// Directly call generateResponse with the result, when the PrecertificateOCSP
-	// feature flag is disabled we expect this to error because no matching
-	// certificates row will be found.
-	updater.cac = &mockCA{time.Second}
-	_, err = updater.generateResponse(ctx, certs[0])
-	test.AssertError(t, err, "generateResponse for precert without PrecertificateOCSP did not error")
-
-	// Now enable PrecertificateOCSP.
-	err = features.Set(map[string]bool{"PrecertificateOCSP": true})
-	test.AssertNotError(t, err, "setting PrecertificateOCSP feature to off")
-
 	// Directly call generateResponse again with the same result. It should not
 	// error and should instead update the precertificate's OCSP status even
 	// though no certificate row exists.
 	_, err = updater.generateResponse(ctx, certs[0])
-	test.AssertNotError(t, err, "generateResponse for precert with PrecertificateOCSP errored")
+	test.AssertNotError(t, err, "generateResponse for precert errored")
+}
+
+type mockOCSPRecordIssuer struct {
+	gotIssuer bool
+}
+
+func (ca *mockOCSPRecordIssuer) GenerateOCSP(_ context.Context, req *caPB.GenerateOCSPRequest, _ ...grpc.CallOption) (*caPB.OCSPResponse, error) {
+	ca.gotIssuer = req.IssuerID != nil && req.Serial != nil
+	return &caPB.OCSPResponse{Response: []byte{1, 2, 3}}, nil
+}
+
+func TestIssuerInfo(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	updater, sa, _, fc, cleanUp := setup(t)
+	defer cleanUp()
+	m := mockOCSPRecordIssuer{}
+	updater.ogc = &m
+	reg := satest.CreateWorkingRegistration(t, sa)
+	_ = features.Set(map[string]bool{"StoreIssuerInfo": true})
+
+	k, err := rsa.GenerateKey(rand.Reader, 512)
+	test.AssertNotError(t, err, "rsa.GenerateKey failed")
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+	}
+	certA, err := x509.CreateCertificate(rand.Reader, template, template, &k.PublicKey, k)
+	test.AssertNotError(t, err, "x509.CreateCertificate failed")
+	template.SerialNumber = big.NewInt(2)
+	certB, err := x509.CreateCertificate(rand.Reader, template, template, &k.PublicKey, k)
+	test.AssertNotError(t, err, "x509.CreateCertificate failed")
+
+	now := fc.Now().UnixNano()
+	id := int64(1234)
+	_, err = sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
+		Der:      certA,
+		RegID:    &reg.ID,
+		Ocsp:     []byte{1, 2, 3},
+		Issued:   &now,
+		IssuerID: &id,
+	})
+	test.AssertNotError(t, err, "sa.AddPrecertificate failed")
+	_, err = sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
+		Der:    certB,
+		RegID:  &reg.ID,
+		Ocsp:   []byte{1, 2, 3},
+		Issued: &now,
+	})
+	test.AssertNotError(t, err, "sa.AddPrecertificate failed")
+
+	fc.Add(time.Hour * 24 * 4)
+	statuses, err := updater.findStaleOCSPResponses(fc.Now().Add(-time.Hour), 10)
+	test.AssertNotError(t, err, "findStaleOCSPResponses failed")
+	test.AssertEquals(t, len(statuses), 2)
+	test.AssertEquals(t, *statuses[0].IssuerID, id)
+	test.Assert(t, statuses[1].IssuerID == nil, "second status doesn't have nil IssuerID")
+
+	_, err = updater.generateResponse(context.Background(), statuses[0])
+	test.AssertNotError(t, err, "generateResponse failed")
+	test.Assert(t, m.gotIssuer, "generateResponse didn't send issuer information and serial")
+	_, err = updater.generateResponse(context.Background(), statuses[1])
+	test.AssertNotError(t, err, "generateResponse failed")
+	test.Assert(t, !m.gotIssuer, "generateResponse did send issuer information and serial when it shouldn't")
 }

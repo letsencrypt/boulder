@@ -489,6 +489,17 @@ func (sas StorageAuthorityClientWrapper) DeactivateAuthorization2(ctx context.Co
 	return nil, err
 }
 
+func (sas StorageAuthorityClientWrapper) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
+	res, err := sas.inner.SerialExists(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil || res.Exists == nil {
+		return nil, errIncompleteResponse
+	}
+	return res, nil
+}
+
 // StorageAuthorityServerWrapper is the gRPC version of a core.ServerAuthority server
 type StorageAuthorityServerWrapper struct {
 	// TODO(#3119): Don't use core.StorageAuthority
@@ -897,4 +908,11 @@ func (sas StorageAuthorityServerWrapper) DeactivateAuthorization2(ctx context.Co
 	}
 
 	return sas.inner.DeactivateAuthorization2(ctx, req)
+}
+
+func (sas StorageAuthorityServerWrapper) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
+	if req == nil || req.Serial == nil {
+		return nil, errIncompleteRequest
+	}
+	return sas.inner.SerialExists(ctx, req)
 }
