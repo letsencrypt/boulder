@@ -9,6 +9,9 @@ services:
             BOULDER_CONFIG_DIR: test/config
             GO111MODULE: "on"
             GOFLAGS: "-mod=vendor"
+            # This is required so Python doesn't throw an error when printing
+            # non-ASCII to stdout.
+            PYTHONIOENCODING: "utf-8"
         volumes:
           - .:/go/src/github.com/letsencrypt/boulder
           - ./.gocache:/root/.cache/go-build

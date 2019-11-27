@@ -1213,12 +1213,14 @@ def ocsp_exp_unauth_setup():
 
 def test_ocsp_exp_unauth():
     tries = 0
+    if expired_cert_name == "":
+        raise Exception("ocsp_exp_unauth_setup didn't run")
     while True:
         try:
             verify_ocsp(expired_cert_name, "test/test-ca2.pem", "http://localhost:4002", "XXX")
             raise(Exception("Unexpected return from verify_ocsp"))
         except subprocess.CalledProcessError as cpe:
-            if cpe.output == 'Responder Error: unauthorized (6)\n':
+            if cpe.output == b'Responder Error: unauthorized (6)\n':
                 break
         except:
             pass

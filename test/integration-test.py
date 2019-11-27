@@ -112,7 +112,7 @@ def run_janitor():
     def get_stat_line(port, stat):
         url = "http://localhost:%d/metrics" % port
         response = requests.get(url)
-        for l in response.content.split("\n"):
+        for l in response.text.split("\n"):
             if l.strip().startswith(stat):
                 return l
         return None
