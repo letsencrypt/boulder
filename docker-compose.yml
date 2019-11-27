@@ -78,7 +78,7 @@ services:
         # because that seems to trigger based on the optimizer's choice to not
         # use an index for certain queries, particularly when tables are still
         # small.
-        command: mysqld --bind-address=0.0.0.0 --slow-query-log --log-output=TABLE --log-queries-not-using-indexes=OFF
+        command: mysqld --bind-address=0.0.0.0 --slow-query-log --log-output=TABLE --log-queries-not-using-indexes=ON
         logging:
             driver: none
     netaccess:
