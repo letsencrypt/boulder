@@ -1,9 +1,12 @@
 package db
 
-import "context"
+import (
+	"context"
+	"gopkg.in/go-gorp/gorp.v2"
+)
 
 // txFunc represents a function that does work in the context of a transaction.
-type txFunc func(Transaction) (interface{}, error)
+type txFunc func(txWithCtx gorp.SqlExecutor) (interface{}, error)
 
 // WithTransaction runs the given function in a transaction, rolling back if it
 // returns an error and committing if not. The provided context is also attached

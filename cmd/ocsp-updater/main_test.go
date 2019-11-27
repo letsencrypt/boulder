@@ -18,6 +18,7 @@ import (
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -27,7 +28,6 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 	"google.golang.org/grpc"
-	"gopkg.in/go-gorp/gorp.v2"
 )
 
 var ctx = context.Background()
@@ -54,7 +54,7 @@ const (
 	testLogCID = "OOn8yL8QPsMuqENGprtlkOYkJqwhhcAifEHUPevmnCc="
 )
 
-func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, clock.FakeClock, func()) {
+func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *db.WrappedMap, clock.FakeClock, func()) {
 	dbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
 	test.AssertNotError(t, err, "Failed to create dbMap")
 	sa.SetSQLDebug(dbMap, log)

@@ -3,11 +3,12 @@ package sa
 import (
 	"context"
 	"crypto/x509"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -59,10 +60,9 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		Expires:        parsed.NotAfter,
 	}
 
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
-		err = txWithCtx.Insert(preCertModel)
-		if err != nil {
-			if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
+		if err := txWithCtx.Insert(preCertModel); err != nil {
+			if db.IsDuplicateErr(err) {
 				return nil, berrors.DuplicateError("cannot add a duplicate precertificate")
 			}
 			return nil, err
@@ -143,11 +143,12 @@ func (ssa *SQLStorageAuthority) GetPrecertificate(ctx context.Context, reqSerial
 			fmt.Errorf("Invalid precertificate serial %q", *reqSerial.Serial)
 	}
 	cert, err := SelectPrecertificate(ssa.dbMap.WithContext(ctx), *reqSerial.Serial)
-	if err == sql.ErrNoRows {
-		return nil,
-			berrors.NotFoundError("precertificate with serial %q not found", *reqSerial.Serial)
-	}
 	if err != nil {
+		if db.IsNoRowsErr(err) {
+			return nil, berrors.NotFoundError(
+				"precertificate with serial %q not found",
+				*reqSerial.Serial)
+		}
 		return nil, err
 	}
 

@@ -8,14 +8,17 @@ import (
 	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/core"
+	boulderDB "github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+// TODO(@cpu): Update NewDbMap godoc comment
+//
 // NewDbMap creates the root gorp mapping object. Create one of these for each
 // database schema you wish to map. Each DbMap contains a list of mapped
 // tables. It automatically maps the tables for the primary parts of Boulder
 // around the Storage Authority.
-func NewDbMap(dbConnect string, maxOpenConns int) (*gorp.DbMap, error) {
+func NewDbMap(dbConnect string, maxOpenConns int) (*boulderDB.WrappedMap, error) {
 	var err error
 	var config *mysql.Config
 
@@ -38,9 +41,11 @@ var setMaxOpenConns = func(db *sql.DB, maxOpenConns int) {
 	db.SetMaxOpenConns(maxOpenConns)
 }
 
+// TODO(@cpu): Update NewDbMapFromConfig godoc comment
+//
 // NewDbMapFromConfig functions similarly to NewDbMap, but it takes the
 // decomposed form of the connection string, a *mysql.Config.
-func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*gorp.DbMap, error) {
+func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*boulderDB.WrappedMap, error) {
 	adjustMySQLConfig(config)
 
 	db, err := sqlOpen("mysql", config.FormatDSN())
@@ -57,7 +62,7 @@ func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*gorp.DbMap, er
 
 	initTables(dbmap)
 
-	return dbmap, err
+	return &boulderDB.WrappedMap{DbMap: dbmap}, nil
 }
 
 // adjustMySQLConfig sets certain flags that we want on every connection.
@@ -95,7 +100,7 @@ func adjustMySQLConfig(conf *mysql.Config) *mysql.Config {
 }
 
 // SetSQLDebug enables GORP SQL-level Debugging
-func SetSQLDebug(dbMap *gorp.DbMap, log blog.Logger) {
+func SetSQLDebug(dbMap *boulderDB.WrappedMap, log blog.Logger) {
 	dbMap.TraceOn("SQL: ", &SQLLogger{log})
 }
 

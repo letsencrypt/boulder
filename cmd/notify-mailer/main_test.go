@@ -11,6 +11,7 @@ import (
 
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
@@ -368,8 +369,8 @@ type mockEmailResolver struct{}
 // the `mockEmailResolver` select method treats the requested reg ID as an index
 // into a list of anonymous structs
 func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...interface{}) error {
-	// The "db" is just a list in memory
-	db := []contactJSON{
+	// The "dbList" is just a list of contact records in memory
+	dbList := []contactJSON{
 		{
 			ID:      1,
 			Contact: []byte(`["mailto:example@example.com"]`),
@@ -440,13 +441,17 @@ func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...inte
 		return fmt.Errorf("incorrect output type %T", output)
 	}
 
-	for _, v := range db {
+	for _, v := range dbList {
 		if v.ID == id {
 			*outputPtr = v
 		}
 	}
 	if outputPtr.ID == 0 {
-		return sql.ErrNoRows
+		return db.ErrDatabaseOp{
+			Op:    "select one",
+			Table: "registrations",
+			Err:   sql.ErrNoRows,
+		}
 	}
 	return nil
 }

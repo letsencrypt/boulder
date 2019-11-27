@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/x509"
-	"database/sql"
 	"flag"
 	"fmt"
 	"os"
@@ -58,7 +57,7 @@ type config struct {
 	Syslog cmd.SyslogConfig
 }
 
-func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMap, core.StorageAuthority) {
+func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *db.WrappedMap, core.StorageAuthority) {
 	logger := cmd.NewLogger(c.Syslog)
 
 	tlsConfig, err := c.Revoker.TLS.Load()
@@ -83,16 +82,16 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *gorp.DbMa
 	return rac, logger, dbMap, sac
 }
 
-func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, tx db.Transaction) (err error) {
+func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, dbMap gorp.SqlExecutor) (err error) {
 	if reasonCode < 0 || reasonCode == 7 || reasonCode > 10 {
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
 
-	certObj, err := sa.SelectCertificate(tx, "WHERE serial = ?", serial)
-	if err == sql.ErrNoRows {
-		return berrors.NotFoundError("certificate with serial %q not found", serial)
-	}
+	certObj, err := sa.SelectCertificate(dbMap, "WHERE serial = ?", serial)
 	if err != nil {
+		if db.IsNoRowsErr(err) {
+			return berrors.NotFoundError("certificate with serial %q not found", serial)
+		}
 		return err
 	}
 	cert, err := x509.ParseCertificate(certObj.DER)
@@ -110,15 +109,15 @@ func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Re
 	return
 }
 
-func revokeByReg(ctx context.Context, regID int64, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, tx db.Transaction) (err error) {
+func revokeByReg(ctx context.Context, regID int64, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, dbMap gorp.SqlExecutor) (err error) {
 	var certs []core.Certificate
-	_, err = tx.Select(&certs, "SELECT serial FROM certificates WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
+	_, err = dbMap.Select(&certs, "SELECT serial FROM certificates WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
 	if err != nil {
 		return
 	}
 
 	for _, cert := range certs {
-		err = revokeBySerial(ctx, cert.Serial, reasonCode, rac, logger, tx)
+		err = revokeBySerial(ctx, cert.Serial, reasonCode, rac, logger, dbMap)
 		if err != nil {
 			return
 		}
@@ -170,7 +169,7 @@ func main() {
 
 		rac, logger, dbMap, _ := setupContext(c)
 
-		_, err = db.WithTransaction(ctx, dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
+		_, err = db.WithTransaction(ctx, dbMap, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
 			err := revokeBySerial(ctx, serial, revocation.Reason(reasonCode), rac, logger, txWithCtx)
 			return nil, err
 		})
@@ -191,7 +190,7 @@ func main() {
 			cmd.FailOnError(err, "Couldn't fetch registration")
 		}
 
-		_, err = db.WithTransaction(ctx, dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
+		_, err = db.WithTransaction(ctx, dbMap, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
 			err := revokeByReg(ctx, regID, revocation.Reason(reasonCode), rac, logger, txWithCtx)
 			return nil, err
 		})

@@ -18,6 +18,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -28,7 +29,6 @@ import (
 	"github.com/letsencrypt/boulder/test/vars"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_model/go"
-	"gopkg.in/go-gorp/gorp.v2"
 	"gopkg.in/square/go-jose.v2"
 )
 
@@ -801,7 +801,7 @@ func TestDedupOnRegistration(t *testing.T) {
 }
 
 type testCtx struct {
-	dbMap   *gorp.DbMap
+	dbMap   *db.WrappedMap
 	ssa     core.StorageAdder
 	mc      *mocks.Mailer
 	fc      clock.FakeClock

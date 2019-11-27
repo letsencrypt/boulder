@@ -46,16 +46,13 @@ type DatabaseMap interface {
 	OneSelector
 	Inserter
 	SelectExecer
-	Begin() (*gorp.Transaction, error)
+	Begin() (Transaction, error)
 }
 
 // Transaction offers the combination of OneSelector, Inserter, SelectExecer
 // interface as well as Delete, Get, and Update.
 type Transaction interface {
-	OneSelector
-	Inserter
-	SelectExecer
-	Delete(...interface{}) (int64, error)
-	Get(interface{}, ...interface{}) (interface{}, error)
-	Update(...interface{}) (int64, error)
+	gorp.SqlExecutor
+	Rollback() error
+	Commit() error
 }

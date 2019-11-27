@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
-	"database/sql"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,10 +18,10 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
@@ -44,7 +43,7 @@ type regStore interface {
 
 type mailer struct {
 	log             blog.Logger
-	dbMap           *gorp.DbMap
+	dbMap           *db.WrappedMap
 	rs              regStore
 	mailer          bmail.Mailer
 	emailTemplate   *template.Template
@@ -303,11 +302,11 @@ func (m *mailer) findExpiringCertificates() error {
 			var cert core.Certificate
 			cert, err := sa.SelectCertificate(m.dbMap, "WHERE serial = ?", serial)
 			if err != nil {
-				// We can get an ErrNoRows when processing a serial number corresponding
+				// We can get a NoRowsErr when processing a serial number corresponding
 				// to a precertificate with no final certificate. Since this certificate
 				// is not being used by a subscriber, we don't send expiration email about
 				// it.
-				if err == sql.ErrNoRows {
+				if db.IsNoRowsErr(err) {
 					continue
 				}
 				m.log.AuditErrf("expiration-mailer: Error loading cert %q: %s", cert.Serial, err)
