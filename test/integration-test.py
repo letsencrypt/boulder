@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 This file contains basic infrastructure for running the integration test cases.
@@ -60,13 +60,13 @@ def run_expired_authz_purger():
         tool = "expired-authz-purger2"
         out = get_future_output("./bin/expired-authz-purger2 --single-run --config cmd/expired-authz-purger2/config.json", target_time)
         if 'via FAKECLOCK' not in out:
-            raise Exception("%s was not built with `integration` build tag" % (tool))
+            raise(Exception("%s was not built with `integration` build tag" % (tool)))
         if num is None:
             return
         expected_output = 'deleted %d expired authorizations' % (num)
         if expected_output not in out:
-            raise Exception("%s did not print '%s'.  Output:\n%s" % (
-                  tool, expected_output, out))
+            raise(Exception("%s did not print '%s'.  Output:\n%s" % (
+                  tool, expected_output, out)))
 
     now = datetime.datetime.utcnow()
 
@@ -112,7 +112,7 @@ def run_janitor():
     def get_stat_line(port, stat):
         url = "http://localhost:%d/metrics" % port
         response = requests.get(url)
-        for l in response.content.split("\n"):
+        for l in response.text.split("\n"):
             if l.strip().startswith(stat):
                 return l
         return None
@@ -120,7 +120,7 @@ def run_janitor():
     def stat_value(line):
         parts = line.split(" ")
         if len(parts) != 2:
-            raise Exception("stat line {0} was missing required parts".format(line))
+            raise(Exception("stat line {0} was missing required parts".format(line)))
         return parts[1]
 
     # Wait for the janitor to finish its work. The easiest way to tell this
@@ -129,7 +129,7 @@ def run_janitor():
     attempts = 0
     while True:
         if attempts > 5:
-            raise Exception("timed out waiting for janitor workbatch counts to stabilize")
+            raise(Exception("timed out waiting for janitor workbatch counts to stabilize"))
 
         certStatusWorkBatch = get_stat_line(8014, statline("workbatch", "certificateStatus"))
         certsWorkBatch = get_stat_line(8014, statline("workbatch", "certificates"))
@@ -166,7 +166,7 @@ def run_janitor():
 
         for l in [certStatusDeletes, certsDeletes, certsPerNameDeletes, ordersDeletes]:
             if stat_value(l) == "0":
-                raise Exception("Expected a non-zero number of deletes to be performed. Found {0}".format(l))
+                raise(Exception("Expected a non-zero number of deletes to be performed. Found {0}".format(l)))
 
     # Check that all error stats are empty
     errorStats = [
@@ -178,7 +178,7 @@ def run_janitor():
     for eStat in errorStats:
         actual = get_stat_line(8014, eStat)
         if actual is not None:
-            raise Exception("Expected to find no error stat lines but found {0}\n".format(eStat))
+            raise(Exception("Expected to find no error stat lines but found {0}\n".format(eStat)))
 
     # Terminate the janitor
     p.terminate()
@@ -221,9 +221,9 @@ def test_stats():
     def expect_stat(port, stat):
         url = "http://localhost:%d/metrics" % port
         response = requests.get(url)
-        if not stat in response.content:
+        if not stat in response.text:
             print(response.content)
-            raise Exception("%s not present in %s" % (stat, url))
+            raise(Exception("%s not present in %s" % (stat, url)))
     expect_stat(8000, "\nresponse_time_count{")
     expect_stat(8000, "\ngo_goroutines ")
     expect_stat(8000, '\ngrpc_client_handling_seconds_count{grpc_method="NewRegistration",grpc_service="ra.RegistrationAuthority",grpc_type="unary"} ')
@@ -251,27 +251,27 @@ def main():
         test_case_filter="", skip_setup=False)
     args = parser.parse_args()
 
-    if not (args.run_certbot or args.run_chisel or args.run_loadtest or args.custom is not None):
-        raise Exception("must run at least one of the letsencrypt or chisel tests with --certbot, --chisel, or --custom")
+    if not (args.run_certbot or args.run_chisel or args.custom is not None):
+        raise(Exception("must run at least one of the letsencrypt or chisel tests with --certbot, --chisel, or --custom"))
 
     if not args.test_case_filter:
         now = datetime.datetime.utcnow()
 
         six_months_ago = now+datetime.timedelta(days=-30*6)
         if not startservers.start(race_detection=True, fakeclock=fakeclock(six_months_ago)):
-            raise Exception("startservers failed (mocking six months ago)")
+            raise(Exception("startservers failed (mocking six months ago)"))
         v1_integration.caa_client = caa_client = chisel.make_client()
         setup_six_months_ago()
         startservers.stop()
 
         twenty_days_ago = now+datetime.timedelta(days=-20)
         if not startservers.start(race_detection=True, fakeclock=fakeclock(twenty_days_ago)):
-            raise Exception("startservers failed (mocking twenty days ago)")
+            raise(Exception("startservers failed (mocking twenty days ago)"))
         setup_twenty_days_ago()
         startservers.stop()
 
     if not startservers.start(race_detection=True, fakeclock=None):
-        raise Exception("startservers failed")
+        raise(Exception("startservers failed"))
 
     if args.run_chisel:
         run_chisel(args.test_case_filter)
@@ -304,7 +304,7 @@ def main():
         run_loadtest()
 
     if not startservers.check():
-        raise Exception("startservers.check failed")
+        raise(Exception("startservers.check failed"))
 
     check_slow_queries()
 
@@ -390,7 +390,7 @@ def check_balance():
     for address in addresses:
         metrics = requests.get("http://%s/metrics" % address)
         if not "grpc_server_handled_total" in metrics.text:
-            raise Exception("no gRPC traffic processed by %s; load balancing problem?"
+            raise(Exception("no gRPC traffic processed by %s; load balancing problem?")
                 % address)
 
 def run_cert_checker():
@@ -400,7 +400,7 @@ if __name__ == "__main__":
     try:
         main()
     except subprocess.CalledProcessError as e:
-        raise Exception("%s. Output:\n%s" % (e, e.output))
+        raise(Exception("%s. Output:\n%s" % (e, e.output)))
 
 @atexit.register
 def stop():
