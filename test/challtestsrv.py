@@ -1,5 +1,5 @@
-import urllib2
 import json
+import requests
 
 class ChallTestServer:
     """
@@ -41,9 +41,10 @@ class ChallTestServer:
             self._baseURL = url
 
     def _postURL(self, url, body):
-        return urllib2.urlopen(
+        response = requests.post(
                 url,
-                data=json.dumps(body)).read()
+                data=json.dumps(body))
+        return response.text
 
     def _URL(self, path):
         urlPath = self._paths.get(path, None)

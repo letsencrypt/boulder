@@ -103,9 +103,9 @@ if [[ "$RUN" =~ "integration" ]] ; then
     args+=("--filter" "${INT_FILTER}")
   fi
 
-  source ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv}/bin/activate
+  source ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv3}/bin/activate
   DIRECTORY=http://boulder:4000/directory \
-    python2 test/integration-test.py --chisel --gotest "${args[@]}"
+    python3 test/integration-test.py --chisel --gotest "${args[@]}"
 fi
 
 # Test that just ./start.py works, which is a proxy for testing that

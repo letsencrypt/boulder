@@ -1,11 +1,11 @@
-#!/usr/bin/env python2.7
 import base64
 import os
-import urllib2
+import urllib
 import time
 import re
 import random
 import json
+import requests
 import socket
 import tempfile
 import shutil
@@ -38,20 +38,20 @@ def random_domain():
     return "rand.%x.xyz" % random.randrange(2**32)
 
 def run(cmd, **kwargs):
-    return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)
+    return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs).decode()
 
 def fetch_ocsp(request_bytes, url):
     """Fetch an OCSP response using POST, GET, and GET with URL encoding.
 
     Returns a tuple of the responses.
     """
-    ocsp_req_b64 = base64.b64encode(request_bytes)
+    ocsp_req_b64 = base64.b64encode(request_bytes).decode()
 
     # Make the OCSP request three different ways: by POST, by GET, and by GET with
     # URL-encoded parameters. All three should have an identical response.
-    get_response = urllib2.urlopen("%s/%s" % (url, ocsp_req_b64)).read()
-    get_encoded_response = urllib2.urlopen("%s/%s" % (url, urllib2.quote(ocsp_req_b64, safe = ""))).read()
-    post_response = urllib2.urlopen("%s/" % (url), request_bytes).read()
+    get_response = requests.get("%s/%s" % (url, ocsp_req_b64)).content
+    get_encoded_response = requests.get("%s/%s" % (url, urllib.parse.quote(ocsp_req_b64, safe = ""))).content
+    post_response = requests.post("%s/" % (url), data=request_bytes).content
 
     return (post_response, get_response, get_encoded_response)
 
@@ -61,13 +61,13 @@ def make_ocsp_req(cert_file, issuer_file):
     # First generate the OCSP request in DER form
     run("openssl ocsp -no_nonce -issuer %s -cert %s -reqout %s" % (
         issuer_file, cert_file, ocsp_req_file))
-    with open(ocsp_req_file) as f:
+    with open(ocsp_req_file, mode='rb') as f:
         ocsp_req = f.read()
     return ocsp_req
 
 def ocsp_verify(cert_file, issuer_file, ocsp_response):
     ocsp_resp_file = os.path.join(tempdir, "ocsp.resp")
-    with open(ocsp_resp_file, "w") as f:
+    with open(ocsp_resp_file, "wb") as f:
         f.write(ocsp_response)
     output = run("openssl ocsp -no_nonce -issuer %s -cert %s \
       -verify_other %s -CAfile test/test-root.pem \
@@ -76,8 +76,8 @@ def ocsp_verify(cert_file, issuer_file, ocsp_response):
     # also look for the string "Response Verify Failure"
     verify_failure = "Response Verify Failure"
     if re.search(verify_failure, output):
-        print output
-        raise Exception("OCSP verify failure")
+        print(output)
+        raise(Exception("OCSP verify failure"))
     return output
 
 def verify_ocsp(cert_file, issuer_file, url, status):
@@ -87,28 +87,28 @@ def verify_ocsp(cert_file, issuer_file, url, status):
     # Verify all responses are the same
     for resp in responses:
         if resp != responses[0]:
-            raise Exception("OCSP responses differed: %s vs %s" %(
-                base64.b64encode(responses[0]), base64.b64encode(resp)))
+            raise(Exception("OCSP responses differed: %s vs %s" %(
+                base64.b64encode(responses[0]), base64.b64encode(resp))))
 
     # Check response is for the correct certificate and is correct
     # status
     resp = responses[0]
     verify_output = ocsp_verify(cert_file, issuer_file, resp)
     if not re.search("%s: %s" % (cert_file, status), verify_output):
-        print verify_output
-        raise Exception("OCSP response wasn't '%s'" % status)
+        print(verify_output)
+        raise(Exception("OCSP response wasn't '%s'" % status))
 
 def reset_akamai_purges():
-    urllib2.urlopen("http://localhost:6789/debug/reset-purges", "{}")
+    requests.post("http://localhost:6789/debug/reset-purges", data="{}")
 
 def verify_akamai_purge():
     deadline = time.time() + 0.25
     while True:
         time.sleep(0.05)
         if time.time() > deadline:
-            raise Exception("Timed out waiting for Akamai purge")
-        response = urllib2.urlopen("http://localhost:6789/debug/get-purges")
-        purgeData = json.load(response)
+            raise(Exception("Timed out waiting for Akamai purge"))
+        response = requests.get("http://localhost:6789/debug/get-purges")
+        purgeData = response.json()
         if len(purgeData["V3"]) is not 1:
             continue
         break
@@ -150,7 +150,7 @@ def waitport(port, prog, perTickCheck=None):
             return True
         except socket.error as e:
             if e.errno == errno.ECONNREFUSED:
-                print "Waiting for debug port %d (%s)" % (port, prog)
+                print("Waiting for debug port %d (%s)" % (port, prog))
             else:
                 raise
-    raise Exception("timed out waiting for debug port %d (%s)" % (port, prog))
+    raise(Exception("timed out waiting for debug port %d (%s)" % (port, prog)))
