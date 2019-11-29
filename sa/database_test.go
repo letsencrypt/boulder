@@ -104,7 +104,7 @@ func TestTimeouts(t *testing.T) {
 func TestAutoIncrementSchema(t *testing.T) {
 	// TODO(@cpu): Delete this conditional exit when the following migrations have
 	// moved from sa/_db-next to sa/_db:
-	//  * 20181101105733_RemoveOCSPResponses.sql
+	//  * 20191129164412_RemoveOCSPResponses.sql
 	//  * 20191118124728_FixFQDNSetsAndIssuedNamesID.sql
 	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
 		return
