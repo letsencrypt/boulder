@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/go-gorp/gorp.v2"
 	jose "gopkg.in/square/go-jose.v2"
 
@@ -45,6 +46,13 @@ type SQLStorageAuthority struct {
 	// We use function types here so we can mock out this internal function in
 	// unittests.
 	countCertificatesByName certCountFunc
+
+	// failedAddCertRLTransactions is a Counter for the number of times
+	// a ratelimit update transaction failed during AddCertificate request
+	// processing. We do not fail the overall AddCertificate call when ratelimit
+	// transactions fail and so use this stat to maintain visibility into the rate
+	// this occurs.
+	failedAddCertRLTransactions prometheus.Counter
 }
 
 func digest256(data []byte) []byte {
@@ -97,11 +105,18 @@ func NewSQLStorageAuthority(
 ) (*SQLStorageAuthority, error) {
 	SetSQLDebug(dbMap, logger)
 
+	failedAddCertRLTransactions := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "failedAddCertRLTransactions",
+		Help: "number of failed ratelimit update transactions during AddCertificate",
+	})
+	scope.MustRegister(failedAddCertRLTransactions)
+
 	ssa := &SQLStorageAuthority{
-		dbMap:             dbMap,
-		clk:               clk,
-		log:               logger,
-		parallelismPerRPC: parallelismPerRPC,
+		dbMap:                       dbMap,
+		clk:                         clk,
+		log:                         logger,
+		parallelismPerRPC:           parallelismPerRPC,
+		failedAddCertRLTransactions: failedAddCertRLTransactions,
 	}
 
 	ssa.countCertificatesByName = ssa.countCertificates
@@ -462,7 +477,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		Expires:        parsedCertificate.NotAfter,
 	}
 
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
+	isRenewalRaw, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
 		// Save the final certificate
 		err = txWithCtx.Insert(cert)
 		if err != nil {
@@ -501,6 +516,28 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 			}
 		}
 
+		return isRenewal, err
+	})
+	if overallError != nil {
+		return "", overallError
+	}
+
+	// Recast the interface{} return from db.WithTransaction as a bool, returning
+	// an error if we can't.
+	var isRenewal bool
+	if boolVal, ok := isRenewalRaw.(bool); !ok {
+		return "", fmt.Errorf(
+			"AddCertificate db.WithTransaction returned %T out var, expected bool",
+			isRenewalRaw)
+	} else {
+		isRenewal = boolVal
+	}
+
+	// In a separate transaction perform the work required to update tables used
+	// for rate limits. Since the effects of failing these writes is slight
+	// miscalculation of rate limits we choose to not fail the AddCertificate
+	// operation if the rate limit update transaction fails.
+	_, rlTransactionErr := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
 		// Add to the rate limit table, but only for new certificates. Renewals
 		// don't count against the certificatesPerName limit.
 		if !isRenewal {
@@ -512,18 +549,25 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 
 		// Update the FQDN sets now that there is a final certificate to ensure rate
 		// limits are calculated correctly.
-		err = addFQDNSet(
+		if err := addFQDNSet(
 			txWithCtx,
 			parsedCertificate.DNSNames,
 			core.SerialToString(parsedCertificate.SerialNumber),
 			parsedCertificate.NotBefore,
 			parsedCertificate.NotAfter,
-		)
-		return nil, err
+		); err != nil {
+			return nil, err
+		}
+
+		return nil, nil
 	})
-	if overallError != nil {
-		return "", overallError
+	// If the ratelimit transaction failed increment a stat and log a warning
+	// but don't return an error from AddCertificate.
+	if rlTransactionErr != nil {
+		ssa.failedAddCertRLTransactions.Inc()
+		ssa.log.AuditErrf("failed AddCertificate ratelimit update transaction: %v", rlTransactionErr)
 	}
+
 	return digest, nil
 }
 
