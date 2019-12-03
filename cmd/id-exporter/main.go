@@ -72,7 +72,7 @@ func (c idExporter) findIDsForDomains(domains []string) ([]id, error) {
 			},
 		)
 		if err != nil {
-			if db.IsNoRowsErr(err) {
+			if db.IsNoRows(err) {
 				continue
 			}
 			return nil, err
