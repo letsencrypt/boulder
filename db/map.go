@@ -185,7 +185,11 @@ var (
 	deleteTableRegexp = regexp.MustCompile(`(?i)^\s*delete\s+from\s+([a-z\d \_,` + "`" + `]+)\s+where`)
 
 	// tableRegexps is a list of regexps that tableFromQuery will try to use in
-	// succession to find the table name for an SQL query.
+	// succession to find the table name for an SQL query. While tableFromQuery
+	// isn't used by the higher level gorp Insert/Update/Select/etc functions we
+	// include regexps for matching inserts, updates, selects, etc because we want
+	// to match the correct table when these types of queries are run through
+	// Exec().
 	tableRegexps = []*regexp.Regexp{
 		selectTableRegexp,
 		insertTableRegexp,
