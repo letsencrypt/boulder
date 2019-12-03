@@ -10,8 +10,6 @@ import (
 	"sort"
 	"strconv"
 
-	"gopkg.in/go-gorp/gorp.v2"
-
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
@@ -82,7 +80,7 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *db.Wrappe
 	return rac, logger, dbMap, sac
 }
 
-func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, dbMap gorp.SqlExecutor) (err error) {
+func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, dbMap db.Executor) (err error) {
 	if reasonCode < 0 || reasonCode == 7 || reasonCode > 10 {
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
@@ -109,7 +107,7 @@ func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Re
 	return
 }
 
-func revokeByReg(ctx context.Context, regID int64, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, dbMap gorp.SqlExecutor) (err error) {
+func revokeByReg(ctx context.Context, regID int64, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, dbMap db.Executor) (err error) {
 	var certs []core.Certificate
 	_, err = dbMap.Select(&certs, "SELECT serial FROM certificates WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
 	if err != nil {
@@ -169,7 +167,7 @@ func main() {
 
 		rac, logger, dbMap, _ := setupContext(c)
 
-		_, err = db.WithTransaction(ctx, dbMap, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
+		_, err = db.WithTransaction(ctx, dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 			err := revokeBySerial(ctx, serial, revocation.Reason(reasonCode), rac, logger, txWithCtx)
 			return nil, err
 		})
@@ -190,7 +188,7 @@ func main() {
 			cmd.FailOnError(err, "Couldn't fetch registration")
 		}
 
-		_, err = db.WithTransaction(ctx, dbMap, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
+		_, err = db.WithTransaction(ctx, dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 			err := revokeByReg(ctx, regID, revocation.Reason(reasonCode), rac, logger, txWithCtx)
 			return nil, err
 		})

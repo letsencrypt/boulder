@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/go-gorp/gorp.v2"
-
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
@@ -60,7 +58,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		Expires:        parsed.NotAfter,
 	}
 
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		if err := txWithCtx.Insert(preCertModel); err != nil {
 			if db.IsDuplicate(err) {
 				return nil, berrors.DuplicateError("cannot add a duplicate precertificate")

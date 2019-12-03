@@ -462,7 +462,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		Expires:        parsedCertificate.NotAfter,
 	}
 
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		// Save the final certificate
 		err = txWithCtx.Insert(cert)
 		if err != nil {
@@ -881,7 +881,7 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		Created:        ssa.clk.Now(),
 	}
 
-	output, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
+	output, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		if err := txWithCtx.Insert(order); err != nil {
 			return nil, err
 		}
@@ -944,7 +944,7 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 // in processing status by updating the `beganProcessing` field of the
 // corresponding Order table row in the DB.
 func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *corepb.Order) error {
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		result, err := txWithCtx.Exec(`
 		UPDATE orders
 		SET beganProcessing = ?
@@ -969,7 +969,7 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *cor
 
 // SetOrderError updates a provided Order's error field.
 func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, order *corepb.Order) error {
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		om, err := orderToModel(order)
 		if err != nil {
 			return nil, err
@@ -1000,7 +1000,7 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, order *corepb
 // CertificateSerial and the order ID on the provided order are processed (e.g.
 // this is not a generic update RPC).
 func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.Order) error {
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		result, err := txWithCtx.Exec(`
 		UPDATE orders
 		SET certificateSerial = ?

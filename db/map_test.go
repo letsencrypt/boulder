@@ -252,7 +252,7 @@ func TestWrappedMap(t *testing.T) {
 		return dbOpErr
 	}
 
-	testWrapper := func(dbMap gorp.SqlExecutor) {
+	testWrapper := func(dbMap Executor) {
 		reg := &core.Registration{}
 
 		// Test wrapped Get

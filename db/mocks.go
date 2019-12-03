@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 
 	"gopkg.in/go-gorp/gorp.v2"
@@ -49,10 +50,21 @@ type DatabaseMap interface {
 	Begin() (Transaction, error)
 }
 
-// Transaction offers the combination of OneSelector, Inserter, SelectExecer
-// interface as well as Delete, Get, and Update.
+// Executor offers the full combination of OneSelector, Inserter, SelectExecer
+// and adds a handful of other high level Gorp methods we use in Boulder.
+type Executor interface {
+	OneSelector
+	Inserter
+	SelectExecer
+	Delete(...interface{}) (int64, error)
+	Get(interface{}, ...interface{}) (interface{}, error)
+	Update(...interface{}) (int64, error)
+}
+
+// Transaction extends an Executor and adds Rollback, Commit, and WithContext.
 type Transaction interface {
-	gorp.SqlExecutor
+	Executor
 	Rollback() error
 	Commit() error
+	WithContext(ctx context.Context) gorp.SqlExecutor
 }

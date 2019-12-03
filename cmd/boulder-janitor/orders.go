@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/jmhodges/clock"
-	gorp "gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
@@ -49,7 +48,7 @@ func (j *ordersJob) deleteOrder(orderID int64) error {
 	// Perform a multi-table delete inside of a transaction using the order ID.
 	// Either all of the rows associated with the order ID will be deleted or the
 	// transaction will be rolled back.
-	_, err := db.WithTransaction(ctx, j.db, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
+	_, err := db.WithTransaction(ctx, j.db, func(txWithCtx db.Executor) (interface{}, error) {
 		// Delete table rows in the childTables that reference the order being deleted.
 		childTables := []string{"requestedNames", "orderFqdnSets", "orderToAuthz2"}
 		for _, t := range childTables {
