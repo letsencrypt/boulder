@@ -174,42 +174,6 @@ func (tx WrappedTransaction) Exec(query string, args ...interface{}) (sql.Result
 	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Exec(query, args...)
 }
 
-var (
-	// selectTableRegexp matches the table name from an SQL select statement
-	selectTableRegexp = regexp.MustCompile(`(?i)^\s*select\s+[a-z\d\.\(\), \_\*` + "`" + `]+\s+from\s+([a-z\d\_,` + "`" + `]+)`)
-	// insertTableRegexp matches the table name from an SQL insert statement
-	insertTableRegexp = regexp.MustCompile(`(?i)^\s*insert\s+into\s+([a-z\d \_,` + "`" + `]+)\s+(?:set|\()`)
-	// updateTableRegexp matches the table name from an SQL update statement
-	updateTableRegexp = regexp.MustCompile(`(?i)^\s*update\s+([a-z\d \_,` + "`" + `]+)\s+set`)
-	// deleteTableRegexp matches the table name from an SQL delete statement
-	deleteTableRegexp = regexp.MustCompile(`(?i)^\s*delete\s+from\s+([a-z\d \_,` + "`" + `]+)\s+where`)
-
-	// tableRegexps is a list of regexps that tableFromQuery will try to use in
-	// succession to find the table name for an SQL query. While tableFromQuery
-	// isn't used by the higher level gorp Insert/Update/Select/etc functions we
-	// include regexps for matching inserts, updates, selects, etc because we want
-	// to match the correct table when these types of queries are run through
-	// Exec().
-	tableRegexps = []*regexp.Regexp{
-		selectTableRegexp,
-		insertTableRegexp,
-		updateTableRegexp,
-		deleteTableRegexp,
-	}
-)
-
-// tableFromQuery uses the tableRegexps on the provided query to return the
-// associated table name or an empty string if it can't be determined from the
-// query.
-func tableFromQuery(query string) string {
-	for _, r := range tableRegexps {
-		if matches := r.FindStringSubmatch(query); len(matches) >= 2 {
-			return matches[1]
-		}
-	}
-	return ""
-}
-
 // WrappedExecutor wraps a gorp.SqlExecutor such that its major functions
 // wrap error results in ErrDatabaseOp instances before returning them to the
 // caller.
@@ -273,6 +237,42 @@ func (we WrappedExecutor) SelectOne(holder interface{}, query string, args ...in
 		return errForOp("select one", err, []interface{}{holder})
 	}
 	return nil
+}
+
+var (
+	// selectTableRegexp matches the table name from an SQL select statement
+	selectTableRegexp = regexp.MustCompile(`(?i)^\s*select\s+[a-z\d\.\(\), \_\*` + "`" + `]+\s+from\s+([a-z\d\_,` + "`" + `]+)`)
+	// insertTableRegexp matches the table name from an SQL insert statement
+	insertTableRegexp = regexp.MustCompile(`(?i)^\s*insert\s+into\s+([a-z\d \_,` + "`" + `]+)\s+(?:set|\()`)
+	// updateTableRegexp matches the table name from an SQL update statement
+	updateTableRegexp = regexp.MustCompile(`(?i)^\s*update\s+([a-z\d \_,` + "`" + `]+)\s+set`)
+	// deleteTableRegexp matches the table name from an SQL delete statement
+	deleteTableRegexp = regexp.MustCompile(`(?i)^\s*delete\s+from\s+([a-z\d \_,` + "`" + `]+)\s+where`)
+
+	// tableRegexps is a list of regexps that tableFromQuery will try to use in
+	// succession to find the table name for an SQL query. While tableFromQuery
+	// isn't used by the higher level gorp Insert/Update/Select/etc functions we
+	// include regexps for matching inserts, updates, selects, etc because we want
+	// to match the correct table when these types of queries are run through
+	// Exec().
+	tableRegexps = []*regexp.Regexp{
+		selectTableRegexp,
+		insertTableRegexp,
+		updateTableRegexp,
+		deleteTableRegexp,
+	}
+)
+
+// tableFromQuery uses the tableRegexps on the provided query to return the
+// associated table name or an empty string if it can't be determined from the
+// query.
+func tableFromQuery(query string) string {
+	for _, r := range tableRegexps {
+		if matches := r.FindStringSubmatch(query); len(matches) >= 2 {
+			return matches[1]
+		}
+	}
+	return ""
 }
 
 func (we WrappedExecutor) Exec(query string, args ...interface{}) (sql.Result, error) {
