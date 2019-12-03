@@ -76,7 +76,7 @@ func TestErrDatabaseOpNoRows(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			test.AssertEquals(t, tc.err.NoRows(), tc.expectedNoRows)
+			test.AssertEquals(t, tc.err.noRows(), tc.expectedNoRows)
 		})
 	}
 }
@@ -109,7 +109,7 @@ func TestErrDatabaseOpDuplicate(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			test.AssertEquals(t, tc.err.Duplicate(), tc.expectDuplicate)
+			test.AssertEquals(t, tc.err.duplicate(), tc.expectDuplicate)
 		})
 	}
 }
@@ -287,20 +287,36 @@ func TestWrappedMap(t *testing.T) {
 		test.AssertEquals(t, dbOpErr.Table, "*core.Registration")
 		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
 
-		// Test wrapped Select
+		// Test wrapped Select with a bogus query
 		_, err = dbMap.Select(reg, "blah")
 		test.AssertError(t, err, "expected err Selecting Registration w/o type converter")
 		dbOpErr = mustDbErr(err)
 		test.AssertEquals(t, dbOpErr.Op, "select")
-		test.AssertEquals(t, dbOpErr.Table, "*core.Registration")
+		test.AssertEquals(t, dbOpErr.Table, "*core.Registration (unknown table)")
 		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
 
-		// Test wrapped SelectOne
+		// Test wrapped Select with a valid query
+		_, err = dbMap.Select(reg, "SELECT id, contact FROM registrationzzz WHERE id > 1;")
+		test.AssertError(t, err, "expected err Selecting Registration w/o type converter")
+		dbOpErr = mustDbErr(err)
+		test.AssertEquals(t, dbOpErr.Op, "select")
+		test.AssertEquals(t, dbOpErr.Table, "registrationzzz")
+		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
+
+		// Test wrapped SelectOne with a bogus query
 		err = dbMap.SelectOne(reg, "blah")
 		test.AssertError(t, err, "expected err SelectOne-ing Registration w/o type converter")
 		dbOpErr = mustDbErr(err)
 		test.AssertEquals(t, dbOpErr.Op, "select one")
-		test.AssertEquals(t, dbOpErr.Table, "*core.Registration")
+		test.AssertEquals(t, dbOpErr.Table, "*core.Registration (unknown table)")
+		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
+
+		// Test wrapped SelectOne with a valid query
+		err = dbMap.SelectOne(reg, "SELECT contact FROM doesNotExist WHERE id=1;")
+		test.AssertError(t, err, "expected err SelectOne-ing Registration w/o type converter")
+		dbOpErr = mustDbErr(err)
+		test.AssertEquals(t, dbOpErr.Op, "select one")
+		test.AssertEquals(t, dbOpErr.Table, "doesNotExist")
 		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
 
 		// Test wrapped Exec

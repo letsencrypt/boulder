@@ -181,11 +181,32 @@ type WrappedExecutor struct {
 	gorp.SqlExecutor
 }
 
-func errForOp(operation string, err error, list ...interface{}) ErrDatabaseOp {
+func errForOp(operation string, err error, list []interface{}) ErrDatabaseOp {
 	table := "unknown"
 	if len(list) > 0 {
 		table = fmt.Sprintf("%T", list[0])
 	}
+	return ErrDatabaseOp{
+		Op:    operation,
+		Table: table,
+		Err:   err,
+	}
+}
+
+func errForQuery(query, operation string, err error, list []interface{}) ErrDatabaseOp {
+	// Extract the table from the query
+	table := tableFromQuery(query)
+	if table == "" && len(list) > 0 {
+		// If there's no table from the query but there was a list of holder types,
+		// use the type from the first element of the list and indicate we failed to
+		// extract a table from the query.
+		table = fmt.Sprintf("%T (unknown table)", list[0])
+	} else if table == "" {
+		// If there's no table from the query and no list of holders then all we can
+		// say is that the table is unknown.
+		table = "unknown table"
+	}
+
 	return ErrDatabaseOp{
 		Op:    operation,
 		Table: table,
@@ -227,14 +248,14 @@ func (we WrappedExecutor) Delete(list ...interface{}) (int64, error) {
 func (we WrappedExecutor) Select(holder interface{}, query string, args ...interface{}) ([]interface{}, error) {
 	result, err := we.SqlExecutor.Select(holder, query, args...)
 	if err != nil {
-		return result, errForOp("select", err, []interface{}{holder})
+		return result, errForQuery(query, "select", err, []interface{}{holder})
 	}
 	return result, err
 }
 
 func (we WrappedExecutor) SelectOne(holder interface{}, query string, args ...interface{}) error {
 	if err := we.SqlExecutor.SelectOne(holder, query, args...); err != nil {
-		return errForOp("select one", err, []interface{}{holder})
+		return errForQuery(query, "select one", err, []interface{}{holder})
 	}
 	return nil
 }
@@ -278,15 +299,7 @@ func tableFromQuery(query string) string {
 func (we WrappedExecutor) Exec(query string, args ...interface{}) (sql.Result, error) {
 	res, err := we.SqlExecutor.Exec(query, args...)
 	if err != nil {
-		table := "unknown"
-		if extractedTable := tableFromQuery(query); extractedTable != "" {
-			table = extractedTable
-		}
-		return nil, ErrDatabaseOp{
-			Op:    "exec",
-			Table: table,
-			Err:   err,
-		}
+		return res, errForQuery(query, "exec", err, args)
 	}
 	return res, nil
 }
