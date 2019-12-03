@@ -217,29 +217,29 @@ type WrappedExecutor struct {
 	gorp.SqlExecutor
 }
 
+func errForOp(operation string, err error, list ...interface{}) ErrDatabaseOp {
+	table := "unknown"
+	if len(list) > 0 {
+		table = fmt.Sprintf("%T", list[0])
+	}
+	return ErrDatabaseOp{
+		Op:    operation,
+		Table: table,
+		Err:   err,
+	}
+}
+
 func (we WrappedExecutor) Get(holder interface{}, keys ...interface{}) (interface{}, error) {
 	res, err := we.SqlExecutor.Get(holder, keys...)
 	if err != nil {
-		return res, ErrDatabaseOp{
-			Op:    "get",
-			Table: fmt.Sprintf("%T", holder),
-			Err:   err,
-		}
+		return res, errForOp("get", err, []interface{}{holder})
 	}
 	return res, err
 }
 
 func (we WrappedExecutor) Insert(list ...interface{}) error {
 	if err := we.SqlExecutor.Insert(list...); err != nil {
-		table := "unknown"
-		if len(list) > 0 {
-			table = fmt.Sprintf("%T", list[0])
-		}
-		return ErrDatabaseOp{
-			Op:    "insert",
-			Table: table,
-			Err:   err,
-		}
+		return errForOp("insert", err, list)
 	}
 	return nil
 }
@@ -247,15 +247,7 @@ func (we WrappedExecutor) Insert(list ...interface{}) error {
 func (we WrappedExecutor) Update(list ...interface{}) (int64, error) {
 	updatedRows, err := we.SqlExecutor.Update(list...)
 	if err != nil {
-		table := "unknown"
-		if len(list) > 0 {
-			table = fmt.Sprintf("%T", list[0])
-		}
-		return updatedRows, ErrDatabaseOp{
-			Op:    "update",
-			Table: table,
-			Err:   err,
-		}
+		return updatedRows, errForOp("update", err, list)
 	}
 	return updatedRows, err
 }
@@ -263,15 +255,7 @@ func (we WrappedExecutor) Update(list ...interface{}) (int64, error) {
 func (we WrappedExecutor) Delete(list ...interface{}) (int64, error) {
 	deletedRows, err := we.SqlExecutor.Delete(list...)
 	if err != nil {
-		table := "unknown"
-		if len(list) > 0 {
-			table = fmt.Sprintf("%T", list[0])
-		}
-		return deletedRows, ErrDatabaseOp{
-			Op:    "delete",
-			Table: table,
-			Err:   err,
-		}
+		return deletedRows, errForOp("delete", err, list)
 	}
 	return deletedRows, err
 }
@@ -279,30 +263,14 @@ func (we WrappedExecutor) Delete(list ...interface{}) (int64, error) {
 func (we WrappedExecutor) Select(holder interface{}, query string, args ...interface{}) ([]interface{}, error) {
 	result, err := we.SqlExecutor.Select(holder, query, args...)
 	if err != nil {
-		table := fmt.Sprintf("%T", holder)
-		if extractedTable := tableFromQuery(query); extractedTable != "" {
-			table = extractedTable
-		}
-		return result, ErrDatabaseOp{
-			Op:    "select",
-			Table: table,
-			Err:   err,
-		}
+		return result, errForOp("select", err, []interface{}{holder})
 	}
 	return result, err
 }
 
 func (we WrappedExecutor) SelectOne(holder interface{}, query string, args ...interface{}) error {
 	if err := we.SqlExecutor.SelectOne(holder, query, args...); err != nil {
-		table := fmt.Sprintf("%T", holder)
-		if extractedTable := tableFromQuery(query); extractedTable != "" {
-			table = extractedTable
-		}
-		return ErrDatabaseOp{
-			Op:    "select one",
-			Table: table,
-			Err:   err,
-		}
+		return errForOp("select one", err, []interface{}{holder})
 	}
 	return nil
 }
