@@ -106,7 +106,7 @@ func NewSQLStorageAuthority(
 	SetSQLDebug(dbMap, logger)
 
 	rateLimitWriteErrors := prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "rateLimitWriteErrors",
+		Name: "rate_limit_write_errors",
 		Help: "number of failed ratelimit update transactions during AddCertificate",
 	})
 	scope.MustRegister(rateLimitWriteErrors)
