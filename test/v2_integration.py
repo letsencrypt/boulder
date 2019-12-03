@@ -1285,6 +1285,3 @@ def test_blocked_key_cert():
 
     if testPass is False:
         raise(Exception("expected cert creation to fail with Error when using blocked key"))
-
-def run(cmd, **kwargs):
-    return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)

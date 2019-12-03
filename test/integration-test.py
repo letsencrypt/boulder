@@ -339,7 +339,7 @@ def check_slow_queries():
     """
     output = subprocess.check_output(
       ["mysql", "-h", "boulder-mysql", "-e", query],
-      stderr=subprocess.STDOUT)
+      stderr=subprocess.STDOUT).decode()
     if len(output) > 0:
         print(output)
         raise Exception("Found slow queries in the slow query log")
