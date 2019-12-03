@@ -306,7 +306,7 @@ func (m *mailer) findExpiringCertificates() error {
 				// to a precertificate with no final certificate. Since this certificate
 				// is not being used by a subscriber, we don't send expiration email about
 				// it.
-				if db.IsNoRowsErr(err) {
+				if db.IsNoRows(err) {
 					continue
 				}
 				m.log.AuditErrf("expiration-mailer: Error loading cert %q: %s", cert.Serial, err)

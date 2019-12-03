@@ -87,7 +87,7 @@ func TestAddPrecertificate(t *testing.T) {
 		} else {
 			// Otherwise we expect an ErrDatabaseOp that indicates NoRows because
 			// AddCertificate not AddPrecertificate will be updating this table.
-			test.AssertEquals(t, db.IsNoRowsErr(err), true)
+			test.AssertEquals(t, db.IsNoRows(err), true)
 		}
 
 		// Adding the same certificate with the same serial should result in an

@@ -150,7 +150,7 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 			"limit":      batchSize,
 		},
 	)
-	if db.IsNoRowsErr(err) {
+	if db.IsNoRows(err) {
 		return statuses, nil
 	}
 	return statuses, err
@@ -163,7 +163,7 @@ func getCertDER(selector ocspDB, serial string) ([]byte, error) {
 		serial,
 	)
 	if err != nil {
-		if db.IsNoRowsErr(err) {
+		if db.IsNoRows(err) {
 			cert, err = sa.SelectPrecertificate(selector, serial)
 			// If there was still a non-nil error return it. If we can't find
 			// a precert row something is amiss, we have a certificateStatus row with

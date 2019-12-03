@@ -51,10 +51,10 @@ func (e ErrDatabaseOp) Error() string {
 		e.Err)
 }
 
-// IsNoRowsErr is a utility function for casting an error to ErrDatabaseOp and
+// IsNoRows is a utility function for casting an error to ErrDatabaseOp and
 // returning the result of its NoRows() function. If the error is not an
-// ErrDatabaseOp the return value of IsNoRowsErr will always be false.
-func IsNoRowsErr(err error) bool {
+// ErrDatabaseOp the return value of IsNoRows will always be false.
+func IsNoRows(err error) bool {
 	// if the err is an ErrDatabaseOp instance, return its NoRows() result to see
 	// if the inner err is sql.ErrNoRows
 	if dbErr, ok := err.(ErrDatabaseOp); ok {

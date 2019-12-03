@@ -135,7 +135,7 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (
 	const query = "WHERE id = ?"
 	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, id)
 	if err != nil {
-		if db.IsNoRowsErr(err) {
+		if db.IsNoRows(err) {
 			return core.Registration{}, berrors.NotFoundError("registration with ID '%d' not found", id)
 		}
 		return core.Registration{}, err
@@ -155,7 +155,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *j
 		return core.Registration{}, err
 	}
 	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, sha)
-	if db.IsNoRowsErr(err) {
+	if db.IsNoRows(err) {
 		return core.Registration{}, berrors.NotFoundError("no registrations with public key sha256 %q", sha)
 	}
 	if err != nil {
@@ -344,7 +344,7 @@ func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, serial strin
 	}
 
 	cert, err := SelectCertificate(ssa.dbMap.WithContext(ctx), "WHERE serial = ?", serial)
-	if db.IsNoRowsErr(err) {
+	if db.IsNoRows(err) {
 		return core.Certificate{}, berrors.NotFoundError("certificate with serial %q not found", serial)
 	}
 	if err != nil {
@@ -408,7 +408,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	const query = "WHERE id = ?"
 	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, reg.ID)
 	if err != nil {
-		if db.IsNoRowsErr(err) {
+		if db.IsNoRows(err) {
 			return berrors.NotFoundError("registration with ID '%d' not found", reg.ID)
 		}
 		return err
@@ -679,7 +679,7 @@ func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(
 	// The serials existed when we found them in issuedNames, they should continue
 	// to exist here. Otherwise an internal consistency violation occured and
 	// needs to be audit logged
-	if db.IsNoRowsErr(err) {
+	if db.IsNoRows(err) {
 		err := fmt.Errorf("getFQDNSetsBySerials returned no rows - internal consistency violation")
 		ssa.log.AuditErr(err.Error())
 		return nil, err
@@ -723,7 +723,7 @@ func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(
 	if err != nil {
 		// If there are no results we have encountered a major error and
 		// should loudly complain
-		if db.IsNoRowsErr(err) {
+		if db.IsNoRows(err) {
 			ssa.log.AuditErrf("Found no results from fqdnSets for setHashes known to exist: %#v", fqdnSets)
 			return 0, err
 		}
@@ -813,7 +813,7 @@ func (ssa *SQLStorageAuthority) PreviousCertificateExists(
 		ReverseName(*req.Domain),
 	)
 	if err != nil {
-		if db.IsNoRowsErr(err) {
+		if db.IsNoRows(err) {
 			return notExists, nil
 		}
 		return nil, err
@@ -833,7 +833,7 @@ func (ssa *SQLStorageAuthority) PreviousCertificateExists(
 		// If no rows found, that means the certificate we found in issuedNames wasn't
 		// issued by the registration ID we are checking right now, but is not an
 		// error.
-		if db.IsNoRowsErr(err) {
+		if db.IsNoRows(err) {
 			return notExists, nil
 		}
 		return nil, err
@@ -1061,7 +1061,7 @@ func (ssa *SQLStorageAuthority) namesForOrder(ctx context.Context, orderID int64
 func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
 	omObj, err := ssa.dbMap.WithContext(ctx).Get(orderModel{}, *req.Id)
 	if err != nil {
-		if db.IsNoRowsErr(err) {
+		if db.IsNoRows(err) {
 			return nil, berrors.NotFoundError("no order found for ID %d", *req.Id)
 		}
 		return nil, err
@@ -1315,7 +1315,7 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 					LIMIT 1`,
 		fqdnHash, ssa.clk.Now())
 
-	if db.IsNoRowsErr(err) {
+	if db.IsNoRows(err) {
 		return nil, berrors.NotFoundError("no order matching request found")
 	} else if err != nil {
 		return nil, err
@@ -1623,7 +1623,7 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, re
 		},
 	)
 	if err != nil {
-		if db.IsNoRowsErr(err) {
+		if db.IsNoRows(err) {
 			return nil, berrors.NotFoundError("pending authz not found")
 		}
 		return nil, err
@@ -1778,7 +1778,7 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 // generated a certificate for.
 func (ssa *SQLStorageAuthority) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
 	err := ssa.dbMap.SelectOne(&recordedSerialModel{}, "SELECT * FROM serials WHERE serial = ?", req.Serial)
-	isNoRowsErr := db.IsNoRowsErr(err)
+	isNoRowsErr := db.IsNoRows(err)
 	if err != nil && !isNoRowsErr {
 		return nil, err
 	}

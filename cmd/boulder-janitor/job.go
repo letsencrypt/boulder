@@ -131,7 +131,7 @@ func (j batchedDBJob) getWork(work chan<- int64, startID int64) (int64, error) {
 			"limit":   j.batchSize,
 		},
 	)
-	if err != nil && !db.IsNoRowsErr(err) {
+	if err != nil && !db.IsNoRows(err) {
 		return 0, err
 	}
 	lastID := startID

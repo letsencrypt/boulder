@@ -125,7 +125,7 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 		map[string]interface{}{"serial": serialString},
 	)
 	if err != nil {
-		if db.IsNoRowsErr(err) {
+		if db.IsNoRows(err) {
 			return nil, nil, bocsp.ErrNotFound
 		}
 		src.log.AuditErrf("Looking up OCSP response: %s", err)

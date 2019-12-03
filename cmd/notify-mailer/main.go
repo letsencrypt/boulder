@@ -223,7 +223,7 @@ func emailsForReg(id int, dbMap dbSelector) ([]string, error) {
 			"id": id,
 		})
 	if err != nil {
-		if db.IsNoRowsErr(err) {
+		if db.IsNoRows(err) {
 			return []string{}, nil
 		}
 		return nil, err

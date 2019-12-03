@@ -82,7 +82,7 @@ func (ssa *SQLStorageAuthority) countCertificates(
 			"latest":     latest,
 		})
 	if err != nil {
-		if db.IsNoRowsErr(err) {
+		if db.IsNoRows(err) {
 			return 0, nil
 		}
 		return 0, err
