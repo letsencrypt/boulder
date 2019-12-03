@@ -3,6 +3,7 @@ package sa
 import (
 	"database/sql"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -95,4 +96,30 @@ func TestTimeouts(t *testing.T) {
 	if !strings.Contains(err.Error(), "Error 1969") {
 		t.Fatalf("Got wrong type of error: %s", err)
 	}
+}
+
+// TestAutoIncrementSchema tests that all of the tables in the boulder_*
+// databases that have auto_increment columns use BIGINT for the data type. Our
+// data is too big for INT.
+func TestAutoIncrementSchema(t *testing.T) {
+	// TODO(@cpu): Delete this conditional exit when the following migrations have
+	// moved from sa/_db-next to sa/_db:
+	//  * 20191129164412_RemoveOCSPResponses.sql
+	//  * 20191118124728_FixFQDNSetsAndIssuedNamesID.sql
+	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		return
+	}
+
+	dbMap, err := NewDbMap(vars.DBInfoSchemaRoot, 1)
+	test.AssertNotError(t, err, "unexpected err making NewDbMap")
+
+	var count int64
+	err = dbMap.SelectOne(
+		&count,
+		`SELECT COUNT(1) FROM columns WHERE
+			table_schema LIKE 'boulder%' AND
+			extra LIKE '%auto_increment%' AND
+			data_type != "bigint"`)
+	test.AssertNotError(t, err, "unexpected err querying columns")
+	test.AssertEquals(t, count, int64(0))
 }
