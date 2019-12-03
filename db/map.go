@@ -19,16 +19,16 @@ type ErrDatabaseOp struct {
 	Err   error
 }
 
-// NoRows returns true when the underlying error is sql.ErrNoRows and indicates
+// noRows returns true when the underlying error is sql.ErrNoRows and indicates
 // that the error was that no results were found.
-func (e ErrDatabaseOp) NoRows() bool {
+func (e ErrDatabaseOp) noRows() bool {
 	return e.Err == sql.ErrNoRows
 }
 
-// Duplicate returns true when the underlying error has a message with a prefix
+// duplicate returns true when the underlying error has a message with a prefix
 // matching "Error 1062: Duplicate entry". This is the error prefixed returned
 // by MariaDB when a duplicate row is to be inserted.
-func (e ErrDatabaseOp) Duplicate() bool {
+func (e ErrDatabaseOp) duplicate() bool {
 	return strings.HasPrefix(
 		e.Err.Error(),
 		"Error 1062: Duplicate entry")
@@ -52,25 +52,26 @@ func (e ErrDatabaseOp) Error() string {
 }
 
 // IsNoRows is a utility function for casting an error to ErrDatabaseOp and
-// returning the result of its NoRows() function. If the error is not an
+// returning true if its wrapped err is sql.ErrNoRows. If the error is not an
 // ErrDatabaseOp the return value of IsNoRows will always be false.
 func IsNoRows(err error) bool {
-	// if the err is an ErrDatabaseOp instance, return its NoRows() result to see
+	// if the err is an ErrDatabaseOp instance, return its noRows() result to see
 	// if the inner err is sql.ErrNoRows
 	if dbErr, ok := err.(ErrDatabaseOp); ok {
-		return dbErr.NoRows()
+		return dbErr.noRows()
 	}
 	return false
 }
 
 // IsDuplicate is a utility function for casting an error to ErrDatabaseOp and
-// returning the result of its Duplicate() function. If the error is not an
-// ErrDatabaseOp the return value of IsDuplicate will always be false.
+// returning a boolean indicating if it is a duplicate error or not. If the
+// error is not an ErrDatabaseOp the return value of IsDuplicate will always be
+// false.
 func IsDuplicate(err error) bool {
-	// if the err is an ErrDatabaseOp instance, return its Duplicate() result to
+	// if the err is an ErrDatabaseOp instance, return its duplicate() result to
 	// see if the inner err indicates a duplicate row error.
 	if dbErr, ok := err.(ErrDatabaseOp); ok {
-		return dbErr.Duplicate()
+		return dbErr.duplicate()
 	}
 	return false
 }
