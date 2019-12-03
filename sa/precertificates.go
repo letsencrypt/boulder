@@ -62,7 +62,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
 		if err := txWithCtx.Insert(preCertModel); err != nil {
-			if db.IsDuplicateErr(err) {
+			if db.IsDuplicate(err) {
 				return nil, berrors.DuplicateError("cannot add a duplicate precertificate")
 			}
 			return nil, err

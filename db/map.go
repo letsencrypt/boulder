@@ -63,10 +63,10 @@ func IsNoRows(err error) bool {
 	return false
 }
 
-// IsDuplicateErr is a utility function for casting an error to ErrDatabaseOp and
+// IsDuplicate is a utility function for casting an error to ErrDatabaseOp and
 // returning the result of its Duplicate() function. If the error is not an
-// ErrDatabaseOp the return value of IsDuplicateErr will always be false.
-func IsDuplicateErr(err error) bool {
+// ErrDatabaseOp the return value of IsDuplicate will always be false.
+func IsDuplicate(err error) bool {
 	// if the err is an ErrDatabaseOp instance, return its Duplicate() result to
 	// see if the inner err indicates a duplicate row error.
 	if dbErr, ok := err.(ErrDatabaseOp); ok {

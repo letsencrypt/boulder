@@ -393,7 +393,7 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, reg core.Re
 	}
 	err = ssa.dbMap.WithContext(ctx).Insert(rm)
 	if err != nil {
-		if db.IsDuplicateErr(err) {
+		if db.IsDuplicate(err) {
 			// duplicate entry error can only happen when jwk_sha256 collides, indicate
 			// to caller that the provided key is already in use
 			return reg, berrors.DuplicateError("key is already in use for a different account")
@@ -424,7 +424,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	updatedRegModel.LockCol = model.LockCol
 	n, err := ssa.dbMap.WithContext(ctx).Update(updatedRegModel)
 	if err != nil {
-		if db.IsDuplicateErr(err) {
+		if db.IsDuplicate(err) {
 			// duplicate entry error can only happen when jwk_sha256 collides, indicate
 			// to caller that the provided key is already in use
 			return berrors.DuplicateError("key is already in use for a different account")
@@ -466,7 +466,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		// Save the final certificate
 		err = txWithCtx.Insert(cert)
 		if err != nil {
-			if db.IsDuplicateErr(err) {
+			if db.IsDuplicate(err) {
 				return nil, berrors.DuplicateError("cannot add a duplicate cert")
 			}
 			return nil, err
@@ -496,7 +496,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		if err := addIssuedNames(txWithCtx, parsedCertificate, isRenewal); err != nil {
 			// if it wasn't a duplicate entry error, return the err. Otherwise ignore
 			// it.
-			if !db.IsDuplicateErr(err) {
+			if !db.IsDuplicate(err) {
 				return nil, err
 			}
 		}
