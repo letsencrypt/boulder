@@ -1720,7 +1720,7 @@ func TestAddCertificateBadRatelimitUpdate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't add testCert")
 
 	// The rate limit transaction failure stat should have been incremented
-	test.AssertEquals(t, test.CountCounter(sa.failedAddCertRLTransactions), 1)
+	test.AssertEquals(t, test.CountCounter(sa.rateLimitWriteErrors), 1)
 
 	// The rate limit transaction failure should have been audit logged
 	logLines := log.GetAllMatching(`\[AUDIT\] failed AddCertificate ratelimit update transaction: Error 1062: Duplicate entry '.*' for key 'serial'`)

@@ -47,12 +47,12 @@ type SQLStorageAuthority struct {
 	// unittests.
 	countCertificatesByName certCountFunc
 
-	// failedAddCertRLTransactions is a Counter for the number of times
+	// rateLimitWriteErrors is a Counter for the number of times
 	// a ratelimit update transaction failed during AddCertificate request
 	// processing. We do not fail the overall AddCertificate call when ratelimit
 	// transactions fail and so use this stat to maintain visibility into the rate
 	// this occurs.
-	failedAddCertRLTransactions prometheus.Counter
+	rateLimitWriteErrors prometheus.Counter
 }
 
 func digest256(data []byte) []byte {
@@ -105,18 +105,18 @@ func NewSQLStorageAuthority(
 ) (*SQLStorageAuthority, error) {
 	SetSQLDebug(dbMap, logger)
 
-	failedAddCertRLTransactions := prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "failedAddCertRLTransactions",
+	rateLimitWriteErrors := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "rateLimitWriteErrors",
 		Help: "number of failed ratelimit update transactions during AddCertificate",
 	})
-	scope.MustRegister(failedAddCertRLTransactions)
+	scope.MustRegister(rateLimitWriteErrors)
 
 	ssa := &SQLStorageAuthority{
-		dbMap:                       dbMap,
-		clk:                         clk,
-		log:                         logger,
-		parallelismPerRPC:           parallelismPerRPC,
-		failedAddCertRLTransactions: failedAddCertRLTransactions,
+		dbMap:                dbMap,
+		clk:                  clk,
+		log:                  logger,
+		parallelismPerRPC:    parallelismPerRPC,
+		rateLimitWriteErrors: rateLimitWriteErrors,
 	}
 
 	ssa.countCertificatesByName = ssa.countCertificates
@@ -564,7 +564,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 	// If the ratelimit transaction failed increment a stat and log a warning
 	// but don't return an error from AddCertificate.
 	if rlTransactionErr != nil {
-		ssa.failedAddCertRLTransactions.Inc()
+		ssa.rateLimitWriteErrors.Inc()
 		ssa.log.AuditErrf("failed AddCertificate ratelimit update transaction: %v", rlTransactionErr)
 	}
 
