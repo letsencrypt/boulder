@@ -12,10 +12,8 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-// TODO(@cpu): Update NewDbMap godoc comment
-//
-// NewDbMap creates the root gorp mapping object. Create one of these for each
-// database schema you wish to map. Each DbMap contains a list of mapped
+// NewDbMap creates a wrapped root gorp mapping object. Create one of these for
+// each database schema you wish to map. Each DbMap contains a list of mapped
 // tables. It automatically maps the tables for the primary parts of Boulder
 // around the Storage Authority.
 func NewDbMap(dbConnect string, maxOpenConns int) (*boulderDB.WrappedMap, error) {
@@ -41,8 +39,6 @@ var setMaxOpenConns = func(db *sql.DB, maxOpenConns int) {
 	db.SetMaxOpenConns(maxOpenConns)
 }
 
-// TODO(@cpu): Update NewDbMapFromConfig godoc comment
-//
 // NewDbMapFromConfig functions similarly to NewDbMap, but it takes the
 // decomposed form of the connection string, a *mysql.Config.
 func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*boulderDB.WrappedMap, error) {
