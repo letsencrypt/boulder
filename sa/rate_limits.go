@@ -2,7 +2,6 @@ package sa
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 	"time"
 
@@ -64,14 +63,14 @@ func (ssa *SQLStorageAuthority) addCertificatesPerName(
 // certificates issued in the given time range for that domain's eTLD+1 (aka
 // base domain). It uses the certificatesPerName table to make this lookup fast.
 func (ssa *SQLStorageAuthority) countCertificates(
-	db db.Selector,
+	dbMap db.Selector,
 	domain string,
 	earliest,
 	latest time.Time,
 ) (int, error) {
 	base := baseDomain(domain)
 	var counts []int
-	_, err := db.Select(
+	_, err := dbMap.Select(
 		&counts,
 		`SELECT count FROM certificatesPerName
 		 WHERE eTLDPlusOne = :baseDomain AND
@@ -82,9 +81,10 @@ func (ssa *SQLStorageAuthority) countCertificates(
 			"earliest":   earliest,
 			"latest":     latest,
 		})
-	if err == sql.ErrNoRows {
-		return 0, nil
-	} else if err != nil {
+	if err != nil {
+		if db.IsNoRows(err) {
+			return 0, nil
+		}
 		return 0, err
 	}
 	var total int

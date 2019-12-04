@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/x509"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -34,7 +33,7 @@ type certCountFunc func(db db.Selector, domain string, earliest, latest time.Tim
 
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
-	dbMap *gorp.DbMap
+	dbMap *db.WrappedMap
 	clk   clock.Clock
 	log   blog.Logger
 
@@ -97,7 +96,7 @@ var authorizationTables = []string{
 // NewSQLStorageAuthority provides persistence using a SQL backend for
 // Boulder. It will modify the given gorp.DbMap by adding relevant tables.
 func NewSQLStorageAuthority(
-	dbMap *gorp.DbMap,
+	dbMap *db.WrappedMap,
 	clk clock.Clock,
 	logger blog.Logger,
 	scope metrics.Scope,
@@ -150,12 +149,13 @@ func existingRegistration(tx *gorp.Transaction, id int64) bool {
 func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
 	const query = "WHERE id = ?"
 	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, id)
-	if err == sql.ErrNoRows {
-		return core.Registration{}, berrors.NotFoundError("registration with ID '%d' not found", id)
-	}
 	if err != nil {
+		if db.IsNoRows(err) {
+			return core.Registration{}, berrors.NotFoundError("registration with ID '%d' not found", id)
+		}
 		return core.Registration{}, err
 	}
+
 	return modelToRegistration(model)
 }
 
@@ -170,7 +170,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *j
 		return core.Registration{}, err
 	}
 	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, sha)
-	if err == sql.ErrNoRows {
+	if db.IsNoRows(err) {
 		return core.Registration{}, berrors.NotFoundError("no registrations with public key sha256 %q", sha)
 	}
 	if err != nil {
@@ -359,7 +359,7 @@ func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, serial strin
 	}
 
 	cert, err := SelectCertificate(ssa.dbMap.WithContext(ctx), "WHERE serial = ?", serial)
-	if err == sql.ErrNoRows {
+	if db.IsNoRows(err) {
 		return core.Certificate{}, berrors.NotFoundError("certificate with serial %q not found", serial)
 	}
 	if err != nil {
@@ -408,7 +408,7 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, reg core.Re
 	}
 	err = ssa.dbMap.WithContext(ctx).Insert(rm)
 	if err != nil {
-		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+		if db.IsDuplicate(err) {
 			// duplicate entry error can only happen when jwk_sha256 collides, indicate
 			// to caller that the provided key is already in use
 			return reg, berrors.DuplicateError("key is already in use for a different account")
@@ -423,7 +423,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	const query = "WHERE id = ?"
 	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, reg.ID)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if db.IsNoRows(err) {
 			return berrors.NotFoundError("registration with ID '%d' not found", reg.ID)
 		}
 		return err
@@ -439,7 +439,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core
 	updatedRegModel.LockCol = model.LockCol
 	n, err := ssa.dbMap.WithContext(ctx).Update(updatedRegModel)
 	if err != nil {
-		if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+		if db.IsDuplicate(err) {
 			// duplicate entry error can only happen when jwk_sha256 collides, indicate
 			// to caller that the provided key is already in use
 			return berrors.DuplicateError("key is already in use for a different account")
@@ -477,11 +477,11 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		Expires:        parsedCertificate.NotAfter,
 	}
 
-	isRenewalRaw, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
+	isRenewalRaw, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		// Save the final certificate
 		err = txWithCtx.Insert(cert)
 		if err != nil {
-			if strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+			if db.IsDuplicate(err) {
 				return nil, berrors.DuplicateError("cannot add a duplicate cert")
 			}
 			return nil, err
@@ -511,7 +511,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		if err := addIssuedNames(txWithCtx, parsedCertificate, isRenewal); err != nil {
 			// if it wasn't a duplicate entry error, return the err. Otherwise ignore
 			// it.
-			if !strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+			if !db.IsDuplicate(err) {
 				return nil, err
 			}
 		}
@@ -537,7 +537,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 	// for rate limits. Since the effects of failing these writes is slight
 	// miscalculation of rate limits we choose to not fail the AddCertificate
 	// operation if the rate limit update transaction fails.
-	_, rlTransactionErr := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
+	_, rlTransactionErr := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		// Add to the rate limit table, but only for new certificates. Renewals
 		// don't count against the certificatesPerName limit.
 		if !isRenewal {
@@ -691,7 +691,7 @@ type setHash []byte
 // certificate serials. These serials can be used to check whether any
 // certificates have been issued for the same set of names previously.
 func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(
-	db db.Selector,
+	dbMap db.Selector,
 	serials []string,
 ) ([]setHash, error) {
 	var fqdnSets []setHash
@@ -711,7 +711,7 @@ func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(
 	}
 	query := "SELECT setHash FROM fqdnSets " +
 		"WHERE serial IN (" + strings.Join(qmarks, ",") + ")"
-	_, err := db.Select(
+	_, err := dbMap.Select(
 		&fqdnSets,
 		query,
 		params...)
@@ -723,7 +723,7 @@ func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(
 	// The serials existed when we found them in issuedNames, they should continue
 	// to exist here. Otherwise an internal consistency violation occured and
 	// needs to be audit logged
-	if err == sql.ErrNoRows {
+	if db.IsNoRows(err) {
 		err := fmt.Errorf("getFQDNSetsBySerials returned no rows - internal consistency violation")
 		ssa.log.AuditErr(err.Error())
 		return nil, err
@@ -735,7 +735,7 @@ func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(
 // included) for a given slice of fqdnSets that occurred after the earliest
 // parameter.
 func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(
-	db db.Selector,
+	dbMap db.Selector,
 	fqdnSets []setHash,
 	earliest time.Time,
 ) (int, error) {
@@ -760,19 +760,18 @@ func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(
 
 	// First, find the serial, sethash and issued date from the fqdnSets table for
 	// the given fqdn set hashes
-	_, err := db.Select(
+	_, err := dbMap.Select(
 		&results,
 		query,
 		params...)
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil {
+		// If there are no results we have encountered a major error and
+		// should loudly complain
+		if db.IsNoRows(err) {
+			ssa.log.AuditErrf("Found no results from fqdnSets for setHashes known to exist: %#v", fqdnSets)
+			return 0, err
+		}
 		return -1, err
-	}
-
-	// If there are no results we have encountered a major error and
-	// should loudly complain
-	if err == sql.ErrNoRows || len(results) == 0 {
-		ssa.log.AuditErrf("Found no results from fqdnSets for setHashes known to exist: %#v", fqdnSets)
-		return 0, err
 	}
 
 	processedSetHashes := make(map[string]bool)
@@ -857,10 +856,10 @@ func (ssa *SQLStorageAuthority) PreviousCertificateExists(
 		LIMIT 1`,
 		ReverseName(*req.Domain),
 	)
-	if err == sql.ErrNoRows {
-		return notExists, nil
-	}
 	if err != nil {
+		if db.IsNoRows(err) {
+			return notExists, nil
+		}
 		return nil, err
 	}
 
@@ -874,13 +873,13 @@ func (ssa *SQLStorageAuthority) PreviousCertificateExists(
 		serial,
 		*req.RegID,
 	)
-	// If no rows found, that means the certificate we found in issuedNames wasn't
-	// issued by the registration ID we are checking right now, but is not an
-	// error.
-	if err == sql.ErrNoRows {
-		return notExists, nil
-	}
 	if err != nil {
+		// If no rows found, that means the certificate we found in issuedNames wasn't
+		// issued by the registration ID we are checking right now, but is not an
+		// error.
+		if db.IsNoRows(err) {
+			return notExists, nil
+		}
 		return nil, err
 	}
 	if count > 0 {
@@ -926,7 +925,7 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		Created:        ssa.clk.Now(),
 	}
 
-	output, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
+	output, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		if err := txWithCtx.Insert(order); err != nil {
 			return nil, err
 		}
@@ -989,7 +988,7 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 // in processing status by updating the `beganProcessing` field of the
 // corresponding Order table row in the DB.
 func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *corepb.Order) error {
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		result, err := txWithCtx.Exec(`
 		UPDATE orders
 		SET beganProcessing = ?
@@ -1014,7 +1013,7 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *cor
 
 // SetOrderError updates a provided Order's error field.
 func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, order *corepb.Order) error {
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		om, err := orderToModel(order)
 		if err != nil {
 			return nil, err
@@ -1045,7 +1044,7 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, order *corepb
 // CertificateSerial and the order ID on the provided order are processed (e.g.
 // this is not a generic update RPC).
 func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.Order) error {
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Transaction) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		result, err := txWithCtx.Exec(`
 		UPDATE orders
 		SET certificateSerial = ?
@@ -1105,11 +1104,14 @@ func (ssa *SQLStorageAuthority) namesForOrder(ctx context.Context, orderID int64
 // GetOrder is used to retrieve an already existing order object
 func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
 	omObj, err := ssa.dbMap.WithContext(ctx).Get(orderModel{}, *req.Id)
-	if err == sql.ErrNoRows || omObj == nil {
-		return nil, berrors.NotFoundError("no order found for ID %d", *req.Id)
-	}
 	if err != nil {
+		if db.IsNoRows(err) {
+			return nil, berrors.NotFoundError("no order found for ID %d", *req.Id)
+		}
 		return nil, err
+	}
+	if omObj == nil {
+		return nil, berrors.NotFoundError("no order found for ID %d", *req.Id)
 	}
 	order, err := modelToOrder(omObj.(*orderModel))
 	if err != nil {
@@ -1357,7 +1359,7 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 					LIMIT 1`,
 		fqdnHash, ssa.clk.Now())
 
-	if err == sql.ErrNoRows {
+	if db.IsNoRows(err) {
 		return nil, berrors.NotFoundError("no order matching request found")
 	} else if err != nil {
 		return nil, err
@@ -1665,7 +1667,7 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, re
 		},
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if db.IsNoRows(err) {
 			return nil, berrors.NotFoundError("pending authz not found")
 		}
 		return nil, err
@@ -1820,9 +1822,10 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 // generated a certificate for.
 func (ssa *SQLStorageAuthority) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
 	err := ssa.dbMap.SelectOne(&recordedSerialModel{}, "SELECT * FROM serials WHERE serial = ?", req.Serial)
-	if err != nil && err != sql.ErrNoRows {
+	isNoRowsErr := db.IsNoRows(err)
+	if err != nil && !isNoRowsErr {
 		return nil, err
 	}
-	exists := err != sql.ErrNoRows
+	exists := !isNoRowsErr
 	return &sapb.Exists{Exists: &exists}, nil
 }

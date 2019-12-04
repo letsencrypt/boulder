@@ -4,15 +4,15 @@ import (
 	"database/sql"
 	"time"
 
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/prometheus/client_golang/prometheus"
-	"gopkg.in/go-gorp/gorp.v2"
 )
 
 // dbMetrics is a struct holding prometheus stats related to the dbMap. Each of
 // the prometheus stats corresponds to a field of sql.DBStats.
 type dbMetrics struct {
-	dbMap              *gorp.DbMap
+	dbMap              *db.WrappedMap
 	maxOpenConnections prometheus.Gauge
 	openConnections    prometheus.Gauge
 	inUse              prometheus.Gauge
@@ -27,7 +27,7 @@ type dbMetrics struct {
 // given metrics.Scope. Every 1 second in a separate go routine the prometheus
 // stats will be updated based on the gorp dbMap's inner sql.DBMap's DBStats
 // structure values.
-func InitDBMetrics(dbMap *gorp.DbMap, scope metrics.Scope) {
+func InitDBMetrics(dbMap *db.WrappedMap, scope metrics.Scope) {
 	// Create a dbMetrics instance and register prometheus metrics
 	dbm := newDbMetrics(dbMap, scope)
 
@@ -36,7 +36,7 @@ func InitDBMetrics(dbMap *gorp.DbMap, scope metrics.Scope) {
 }
 
 // newDbMetrics constructs a dbMetrics instance by registering prometheus stats.
-func newDbMetrics(dbMap *gorp.DbMap, scope metrics.Scope) *dbMetrics {
+func newDbMetrics(dbMap *db.WrappedMap, scope metrics.Scope) *dbMetrics {
 	maxOpenConns := prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "db_max_open_connections",
 		Help: "Maximum number of DB connections allowed.",

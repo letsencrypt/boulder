@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"sync"
@@ -132,7 +131,7 @@ func (j batchedDBJob) getWork(work chan<- int64, startID int64) (int64, error) {
 			"limit":   j.batchSize,
 		},
 	)
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !db.IsNoRows(err) {
 		return 0, err
 	}
 	lastID := startID

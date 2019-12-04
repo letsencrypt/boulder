@@ -2,8 +2,6 @@ package db
 
 import (
 	"fmt"
-
-	"gopkg.in/go-gorp/gorp.v2"
 )
 
 // RollbackError is a combination of a database error and the error, if any,
@@ -24,7 +22,7 @@ func (re *RollbackError) Error() string {
 // rollback rolls back the provided transaction. If the rollback fails for any
 // reason a `RollbackError` error is returned wrapping the original error. If no
 // rollback error occurs then the original error is returned.
-func rollback(tx *gorp.Transaction, err error) error {
+func rollback(tx Transaction, err error) error {
 	if txErr := tx.Rollback(); txErr != nil {
 		return &RollbackError{
 			Err:         err,

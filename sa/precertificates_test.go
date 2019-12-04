@@ -2,7 +2,6 @@ package sa
 
 import (
 	"bytes"
-	"database/sql"
 	"fmt"
 	"os"
 	"strings"
@@ -86,9 +85,9 @@ func TestAddPrecertificate(t *testing.T) {
 			_, err := sa.AddCertificate(ctx, testCert.Raw, regID, nil, &issuedTime)
 			test.AssertNotError(t, err, "unexpected err adding final cert after precert")
 		} else {
-			// Otherwise we expect sql.ErrNoRows because AddCertificate not
-			// AddPrecertificate will be updating this table.
-			test.AssertEquals(t, err, sql.ErrNoRows)
+			// Otherwise we expect an ErrDatabaseOp that indicates NoRows because
+			// AddCertificate not AddPrecertificate will be updating this table.
+			test.AssertEquals(t, db.IsNoRows(err), true)
 		}
 
 		// Adding the same certificate with the same serial should result in an

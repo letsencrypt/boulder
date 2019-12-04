@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
-	"database/sql"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -21,6 +20,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -124,10 +124,10 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 		"SELECT ocspResponse, isExpired, ocspLastUpdated FROM certificateStatus WHERE serial = :serial",
 		map[string]interface{}{"serial": serialString},
 	)
-	if err == sql.ErrNoRows {
-		return nil, nil, bocsp.ErrNotFound
-	}
 	if err != nil {
+		if db.IsNoRows(err) {
+			return nil, nil, bocsp.ErrNotFound
+		}
 		src.log.AuditErrf("Looking up OCSP response: %s", err)
 		return nil, nil, err
 	}

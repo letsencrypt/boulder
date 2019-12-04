@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -10,10 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/go-gorp/gorp.v2"
-
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
@@ -21,7 +19,7 @@ import (
 
 type idExporter struct {
 	log   blog.Logger
-	dbMap *gorp.DbMap
+	dbMap *db.WrappedMap
 	clk   clock.Clock
 	grace time.Duration
 }
@@ -74,7 +72,7 @@ func (c idExporter) findIDsForDomains(domains []string) ([]id, error) {
 			},
 		)
 		if err != nil {
-			if err == sql.ErrNoRows {
+			if db.IsNoRows(err) {
 				continue
 			}
 			return nil, err

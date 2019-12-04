@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"flag"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
@@ -222,10 +222,10 @@ func emailsForReg(id int, dbMap dbSelector) ([]string, error) {
 		map[string]interface{}{
 			"id": id,
 		})
-	if err == sql.ErrNoRows {
-		return []string{}, nil
-	}
 	if err != nil {
+		if db.IsNoRows(err) {
+			return []string{}, nil
+		}
 		return nil, err
 	}
 

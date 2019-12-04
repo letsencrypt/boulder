@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
-	"gopkg.in/go-gorp/gorp.v2"
 )
 
 func setup() (*blog.Mock, clock.FakeClock) {
@@ -71,7 +71,7 @@ func (m mockDB) Insert(...interface{}) error {
 	return errors.New("not implemented")
 }
 
-func (m mockDB) Begin() (*gorp.Transaction, error) {
+func (m mockDB) Begin() (db.Transaction, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -213,7 +213,7 @@ func (db slowDB) Insert(...interface{}) error {
 	return errors.New("not implemented")
 }
 
-func (db slowDB) Begin() (*gorp.Transaction, error) {
+func (db slowDB) Begin() (db.Transaction, error) {
 	return nil, errors.New("not implemented")
 }
 

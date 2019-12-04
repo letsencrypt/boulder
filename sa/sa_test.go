@@ -32,7 +32,6 @@ import (
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	gorp "gopkg.in/go-gorp/gorp.v2"
 	jose "gopkg.in/square/go-jose.v2"
 )
 
@@ -749,7 +748,7 @@ type fqdnTestcase struct {
 	Expires      time.Time
 }
 
-func setupFQDNSets(t *testing.T, db *gorp.DbMap, fc clock.FakeClock) map[string]fqdnTestcase {
+func setupFQDNSets(t *testing.T, db *db.WrappedMap, fc clock.FakeClock) map[string]fqdnTestcase {
 	namesA := []string{"a.example.com", "B.example.com"}
 	namesB := []string{"example.org"}
 	namesC := []string{"letsencrypt.org"}
@@ -1120,7 +1119,7 @@ func TestGetAuthorizationNoRows(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	// An empty authz ID should result in `sql.ErrNoRows`
+	// An empty authz ID should result in a not found berror.
 	id := int64(123)
 	_, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &id})
 	test.AssertError(t, err, "Didn't get an error looking up non-existent authz ID")
@@ -1723,7 +1722,7 @@ func TestAddCertificateBadRatelimitUpdate(t *testing.T) {
 	test.AssertEquals(t, test.CountCounter(sa.rateLimitWriteErrors), 1)
 
 	// The rate limit transaction failure should have been audit logged
-	logLines := log.GetAllMatching(`\[AUDIT\] failed AddCertificate ratelimit update transaction: Error 1062: Duplicate entry '.*' for key 'serial'`)
+	logLines := log.GetAllMatching(`ERR: \[AUDIT\] failed AddCertificate ratelimit update transaction: failed to insert \*core.FQDNSet: Error 1062: Duplicate entry '.*' for key 'serial'`)
 	test.AssertEquals(t, len(logLines), 1)
 }
 

@@ -15,6 +15,7 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
@@ -149,7 +150,7 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 			"limit":      batchSize,
 		},
 	)
-	if err == sql.ErrNoRows {
+	if db.IsNoRows(err) {
 		return statuses, nil
 	}
 	return statuses, err
@@ -162,7 +163,7 @@ func getCertDER(selector ocspDB, serial string) ([]byte, error) {
 		serial,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if db.IsNoRows(err) {
 			cert, err = sa.SelectPrecertificate(selector, serial)
 			// If there was still a non-nil error return it. If we can't find
 			// a precert row something is amiss, we have a certificateStatus row with

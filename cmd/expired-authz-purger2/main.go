@@ -6,10 +6,9 @@ import (
 	"io/ioutil"
 	"time"
 
-	"gopkg.in/go-gorp/gorp.v2"
-
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -37,7 +36,7 @@ var deletedStat = prometheus.NewCounter(
 	},
 )
 
-func deleteExpired(clk clock.Clock, gracePeriod time.Duration, batchSize int, dbMap *gorp.DbMap) (int64, error) {
+func deleteExpired(clk clock.Clock, gracePeriod time.Duration, batchSize int, dbMap *db.WrappedMap) (int64, error) {
 	expires := clk.Now().Add(-gracePeriod)
 	res, err := dbMap.Exec(
 		"DELETE FROM authz2 WHERE expires <= :expires LIMIT :limit",
