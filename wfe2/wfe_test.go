@@ -717,8 +717,28 @@ func TestDirectory(t *testing.T) {
 	core.RandReader = fakeRand{}
 	defer func() { core.RandReader = rand.Reader }()
 
-	// Directory with a key change endpoint and a meta entry
-	metaJSON := `{
+	dirURL, _ := url.Parse("/directory")
+
+	getReq := &http.Request{
+		Method: http.MethodGet,
+		URL:    dirURL,
+		Host:   "localhost:4300",
+	}
+
+	_, _, jwsBody := signRequestKeyID(t, 1, nil, "http://localhost/directory", "", wfe.nonceService)
+	postAsGetReq := makePostRequestWithPath("/directory", jwsBody)
+
+	testCases := []struct {
+		name         string
+		caaIdent     string
+		website      string
+		expectedJSON string
+		request      *http.Request
+	}{
+		{
+			name:    "standard GET, no CAA ident/website meta",
+			request: getReq,
+			expectedJSON: `{
   "keyChange": "http://localhost:4300/acme/key-change",
   "meta": {
     "termsOfService": "http://example.invalid/terms"
@@ -728,36 +748,14 @@ func TestDirectory(t *testing.T) {
   "newOrder": "http://localhost:4300/acme/new-order",
   "revokeCert": "http://localhost:4300/acme/revoke-cert",
   "AAAAAAAAAAA": "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417"
-}`
-
-	// NOTE: the req.URL will be modified and must be constructed per
-	// testcase or things will break and you will be confused and sad.
-	url, _ := url.Parse("/directory")
-	req := &http.Request{
-		Method: "GET",
-		URL:    url,
-		Host:   "localhost:4300",
-	}
-	// Serve the /directory response for this request into a recorder
-	responseWriter := httptest.NewRecorder()
-	mux.ServeHTTP(responseWriter, req)
-	// We expect all directory requests to return a json object with a good HTTP status
-	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
-	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), metaJSON)
-	// Check if there is a random directory key present and if so, that it is
-	// expected to be present
-	test.AssertEquals(t,
-		randomDirectoryKeyPresent(t, responseWriter.Body.Bytes()),
-		true)
-
-	// Configure a caaIdentity and website for the /directory meta
-	wfe.DirectoryCAAIdentity = "Radiant Lock"
-	wfe.DirectoryWebsite = "zombo.com"
-
-	// Expect directory with a key change endpoint and a meta entry that has both
-	// a website and a caaIdentity
-	metaJSON = `{
+}`,
+		},
+		{
+			name:     "standard GET, CAA ident/website meta",
+			caaIdent: "Radiant Lock",
+			website:  "zombo.com",
+			request:  getReq,
+			expectedJSON: `{
   "AAAAAAAAAAA": "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",
   "keyChange": "http://localhost:4300/acme/key-change",
   "meta": {
@@ -771,19 +769,51 @@ func TestDirectory(t *testing.T) {
   "newNonce": "http://localhost:4300/acme/new-nonce",
   "newOrder": "http://localhost:4300/acme/new-order",
   "revokeCert": "http://localhost:4300/acme/revoke-cert"
-}`
-	// Serve the /directory response for this request into a recorder
-	responseWriter = httptest.NewRecorder()
-	mux.ServeHTTP(responseWriter, req)
-	// We expect all directory requests to return a json object with a good HTTP status
-	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
-	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), metaJSON)
-	// Check if there is a random directory key present and if so, that it is
-	// expected to be present
-	test.AssertEquals(t,
-		randomDirectoryKeyPresent(t, responseWriter.Body.Bytes()),
-		true)
+}`,
+		},
+		{
+			name:     "POST-as-GET, CAA ident/website meta",
+			caaIdent: "Radiant Lock",
+			website:  "zombo.com",
+			request:  postAsGetReq,
+			expectedJSON: `{
+  "AAAAAAAAAAA": "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",
+  "keyChange": "http://localhost/acme/key-change",
+  "meta": {
+    "caaIdentities": [
+      "Radiant Lock"
+    ],
+    "termsOfService": "http://example.invalid/terms",
+    "website": "zombo.com"
+  },
+  "newAccount": "http://localhost/acme/new-acct",
+  "newNonce": "http://localhost/acme/new-nonce",
+  "newOrder": "http://localhost/acme/new-order",
+  "revokeCert": "http://localhost/acme/revoke-cert"
+}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Configure a caaIdentity and website for the /directory meta based on the tc
+			wfe.DirectoryCAAIdentity = tc.caaIdent // "Radiant Lock"
+			wfe.DirectoryWebsite = tc.website      //"zombo.com"
+			responseWriter := httptest.NewRecorder()
+			// Serve the /directory response for this request into a recorder
+			mux.ServeHTTP(responseWriter, tc.request)
+			// We expect all directory requests to return a json object with a good HTTP status
+			test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
+			// We expect all requests to return status OK
+			test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+			// The response should match expected
+			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.expectedJSON)
+			// Check that the random directory key is present
+			test.AssertEquals(t,
+				randomDirectoryKeyPresent(t, responseWriter.Body.Bytes()),
+				true)
+		})
+	}
 }
 
 func TestRelativeDirectory(t *testing.T) {
@@ -847,37 +877,64 @@ func TestRelativeDirectory(t *testing.T) {
 }
 
 // TestNonceEndpoint tests requests to the WFE2's new-nonce endpoint
-func TestNonceEndpointGET(t *testing.T) {
+func TestNonceEndpoint(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler()
 
+	getReq := &http.Request{
+		Method: http.MethodGet,
+		URL:    mustParseURL(newNoncePath),
+	}
+	headReq := &http.Request{
+		Method: http.MethodHead,
+		URL:    mustParseURL(newNoncePath),
+	}
+
+	// Make two PAG requests. We can't use the same req twice because the nonce in
+	// the signature will be stale the 2nd time.
+	_, _, jwsBodyA := signRequestKeyID(t, 1, nil, fmt.Sprintf("http://localhost%s", newNoncePath), "", wfe.nonceService)
+	_, _, jwsBodyB := signRequestKeyID(t, 1, nil, fmt.Sprintf("http://localhost%s", newNoncePath), "", wfe.nonceService)
+	postAsGetReqA := makePostRequestWithPath(newNoncePath, jwsBodyA)
+	postAsGetReqB := makePostRequestWithPath(newNoncePath, jwsBodyB)
+
 	testCases := []struct {
-		Name              string
-		Method            string
-		ExpectedStatus    int
-		HeadNonceStatusOK bool
+		name              string
+		request           *http.Request
+		expectedStatus    int
+		headNonceStatusOK bool
 	}{
 		{
-			Name:           "GET new-nonce request",
-			Method:         "GET",
-			ExpectedStatus: http.StatusNoContent,
+			name:           "GET new-nonce request",
+			request:        getReq,
+			expectedStatus: http.StatusNoContent,
 		},
 		{
-			Name:           "HEAD new-nonce request (legacy)",
-			Method:         "HEAD",
-			ExpectedStatus: http.StatusNoContent,
+			name:           "HEAD new-nonce request (legacy status code)",
+			request:        headReq,
+			expectedStatus: http.StatusNoContent,
 		},
 		{
-			Name:              "HEAD new-nonce request (feature flag)",
-			Method:            "HEAD",
-			ExpectedStatus:    http.StatusOK,
-			HeadNonceStatusOK: true,
+			name:              "HEAD new-nonce request (ok status code)",
+			request:           headReq,
+			expectedStatus:    http.StatusOK,
+			headNonceStatusOK: true,
+		},
+		{
+			name:           "POST-as-GET new-nonce request (legacy status code)",
+			request:        postAsGetReqA,
+			expectedStatus: http.StatusNoContent,
+		},
+		{
+			name:              "POST-as-GET new-nonce request (ok status code)",
+			request:           postAsGetReqB,
+			expectedStatus:    http.StatusOK,
+			headNonceStatusOK: true,
 		},
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.Name, func(t *testing.T) {
-			if tc.HeadNonceStatusOK {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.headNonceStatusOK {
 				if err := features.Set(map[string]bool{"HeadNonceStatusOK": true}); err != nil {
 					t.Fatalf("Failed to enable HeadNonceStatusOK feature: %v", err)
 				}
@@ -885,12 +942,9 @@ func TestNonceEndpointGET(t *testing.T) {
 			}
 
 			responseWriter := httptest.NewRecorder()
-			mux.ServeHTTP(responseWriter, &http.Request{
-				Method: tc.Method,
-				URL:    mustParseURL(newNoncePath),
-			})
+			mux.ServeHTTP(responseWriter, tc.request)
 			// The response should have the expected HTTP status code
-			test.AssertEquals(t, responseWriter.Code, tc.ExpectedStatus)
+			test.AssertEquals(t, responseWriter.Code, tc.expectedStatus)
 			// And the response should contain a valid nonce in the Replay-Nonce header
 			nonce := responseWriter.Header().Get("Replay-Nonce")
 			test.AssertEquals(t, wfe.nonceService.Valid(nonce), true)
@@ -919,9 +973,9 @@ func TestHTTPMethods(t *testing.T) {
 			Allowed: getOnly,
 		},
 		{
-			Name:    "Directory path should be GET only",
+			Name:    "Directory path should be GET or POST only",
 			Path:    directoryPath,
-			Allowed: getOnly,
+			Allowed: getOrPost,
 		},
 		{
 			Name:    "NewAcct path should be POST only",
@@ -983,9 +1037,9 @@ func TestHTTPMethods(t *testing.T) {
 			Allowed: getOrPost,
 		},
 		{
-			Name:    "Nonce path should be GET only",
+			Name:    "Nonce path should be GET or POST only",
 			Path:    newNoncePath,
-			Allowed: getOnly,
+			Allowed: getOrPost,
 		},
 	}
 
