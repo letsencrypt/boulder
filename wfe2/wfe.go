@@ -341,10 +341,6 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, issuerPath, wfe.Issuer, "GET")
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
 
-	// GETable ACME endpoints
-	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET")
-	wfe.HandleFunc(m, newNoncePath, wfe.Nonce, "GET")
-
 	// POSTable ACME endpoints
 	wfe.HandleFunc(m, newAcctPath, wfe.NewAccount, "POST")
 	wfe.HandleFunc(m, acctPath, wfe.Account, "POST")
@@ -353,6 +349,9 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
 	wfe.HandleFunc(m, finalizeOrderPath, wfe.FinalizeOrder, "POST")
 
+	// GETable and POST-as-GETable ACME endpoints
+	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET", "POST")
+	wfe.HandleFunc(m, newNoncePath, wfe.Nonce, "GET", "POST")
 	// POST-as-GETable ACME endpoints
 	// TODO(@cpu): After November 1st, 2019 support for "GET" to the following
 	// endpoints will be removed, leaving only POST-as-GET support.
@@ -426,6 +425,15 @@ func (wfe *WebFrontEndImpl) Directory(
 		"keyChange":  rolloverPath,
 	}
 
+	if request.Method == http.MethodPost {
+		acct, prob := wfe.validPOSTAsGETForAccount(request, ctx, logEvent)
+		if prob != nil {
+			wfe.sendError(response, logEvent, prob, nil)
+			return
+		}
+		logEvent.Requester = acct.ID
+	}
+
 	// Add a random key to the directory in order to make sure that clients don't hardcode an
 	// expected set of keys. This ensures that we can properly extend the directory when we
 	// need to add a new endpoint or meta element.
@@ -473,12 +481,21 @@ func (wfe *WebFrontEndImpl) Nonce(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
+	if request.Method == http.MethodPost {
+		acct, prob := wfe.validPOSTAsGETForAccount(request, ctx, logEvent)
+		if prob != nil {
+			wfe.sendError(response, logEvent, prob, nil)
+			return
+		}
+		logEvent.Requester = acct.ID
+	}
+
 	statusCode := http.StatusNoContent
 	// The ACME specification says GET requets should receive http.StatusNoContent
-	// and HEAD requests should receive http.StatusOK. We gate this with the
-	// HeadNonceStatusOK feature flag because it may break clients that are
-	// programmed to expect StatusOK.
-	if features.Enabled(features.HeadNonceStatusOK) && request.Method == "HEAD" {
+	// and HEAD/POST-as-GET requests should receive http.StatusOK. We gate this
+	// with the HeadNonceStatusOK feature flag because it may break clients that
+	// are programmed to expect StatusOK.
+	if features.Enabled(features.HeadNonceStatusOK) && request.Method != "GET" {
 		statusCode = http.StatusOK
 	}
 	response.WriteHeader(statusCode)
