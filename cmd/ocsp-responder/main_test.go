@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	gorp "gopkg.in/go-gorp/gorp.v2"
+	"gopkg.in/go-gorp/gorp.v2"
 
 	"golang.org/x/crypto/ocsp"
 
