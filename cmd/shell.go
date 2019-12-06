@@ -175,7 +175,8 @@ func NewLogger(logConf SyslogConfig) blog.Logger {
 func newScope(addr string, logger blog.Logger) metrics.Scope {
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(prometheus.NewGoCollector())
-	registry.MustRegister(prometheus.NewProcessCollector(os.Getpid(), ""))
+	registry.MustRegister(prometheus.NewProcessCollector(
+		prometheus.ProcessCollectorOpts{}))
 
 	mux := http.NewServeMux()
 	// Register the available pprof handlers. These are all registered on
