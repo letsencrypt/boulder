@@ -61,6 +61,11 @@ const (
 	newOrderPath      = "/acme/new-order"
 	orderPath         = "/acme/order/"
 	finalizeOrderPath = "/acme/finalize/"
+
+	getOrderPath       = "/get/order/"
+	getAuthzv2Path     = "/get/authz-v3/"
+	getChallengev2Path = "/get/chall-v3/"
+	getCertPath        = "/get/cert/"
 )
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
@@ -353,12 +358,15 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET", "POST")
 	wfe.HandleFunc(m, newNoncePath, wfe.Nonce, "GET", "POST")
 	// POST-as-GETable ACME endpoints
-	// TODO(@cpu): After November 1st, 2019 support for "GET" to the following
-	// endpoints will be removed, leaving only POST-as-GET support.
-	wfe.HandleFunc(m, orderPath, wfe.GetOrder, "GET", "POST")
-	wfe.HandleFunc(m, authzv2Path, wfe.AuthorizationV2, "GET", "POST")
-	wfe.HandleFunc(m, challengev2Path, wfe.ChallengeV2, "GET", "POST")
-	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET", "POST")
+	wfe.HandleFunc(m, orderPath, wfe.GetOrder, "POST")
+	wfe.HandleFunc(m, authzv2Path, wfe.AuthorizationV2, "POST")
+	wfe.HandleFunc(m, challengev2Path, wfe.ChallengeV2, "POST")
+	wfe.HandleFunc(m, certPath, wfe.Certificate, "POST")
+	// Boulder-specific ACME GET-able endpoints
+	wfe.HandleFunc(m, getOrderPath, wfe.GetOrder, "GET")
+	wfe.HandleFunc(m, getAuthzv2Path, wfe.AuthorizationV2, "GET")
+	wfe.HandleFunc(m, getChallengev2Path, wfe.ChallengeV2, "GET")
+	wfe.HandleFunc(m, getCertPath, wfe.Certificate, "GET")
 
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
