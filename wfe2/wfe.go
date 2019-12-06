@@ -358,10 +358,12 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET", "POST")
 	wfe.HandleFunc(m, newNoncePath, wfe.Nonce, "GET", "POST")
 	// POST-as-GETable ACME endpoints
-	wfe.HandleFunc(m, orderPath, wfe.GetOrder, "POST")
-	wfe.HandleFunc(m, authzv2Path, wfe.AuthorizationV2, "POST")
-	wfe.HandleFunc(m, challengev2Path, wfe.ChallengeV2, "POST")
-	wfe.HandleFunc(m, certPath, wfe.Certificate, "POST")
+	// TODO(@cpu): After November 1st, 2020 support for "GET" to the following
+	// endpoints will be removed, leaving only POST-as-GET support.
+	wfe.HandleFunc(m, orderPath, wfe.GetOrder, "GET", "POST")
+	wfe.HandleFunc(m, authzv2Path, wfe.AuthorizationV2, "GET", "POST")
+	wfe.HandleFunc(m, challengev2Path, wfe.ChallengeV2, "GET", "POST")
+	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET", "POST")
 	// Boulder-specific ACME GET-able endpoints
 	wfe.HandleFunc(m, getOrderPath, wfe.GetOrder, "GET")
 	wfe.HandleFunc(m, getAuthzv2Path, wfe.AuthorizationV2, "GET")
