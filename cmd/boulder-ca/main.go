@@ -12,7 +12,7 @@ import (
 	"github.com/beeker1121/goque"
 
 	"github.com/cloudflare/cfssl/helpers"
-	"github.com/letsencrypt/pkcs11key"
+	pkcs11key "github.com/letsencrypt/pkcs11key/v4"
 
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/ca/config"
@@ -94,8 +94,7 @@ func loadSigner(issuerConfig ca_config.IssuerConfig) (crypto.Signer, error) {
 	}
 	if pkcs11Config.Module == "" ||
 		pkcs11Config.TokenLabel == "" ||
-		pkcs11Config.PIN == "" ||
-		pkcs11Config.PrivateKeyLabel == "" {
+		pkcs11Config.PIN == "" {
 		return nil, fmt.Errorf("Missing a field in pkcs11Config %#v", pkcs11Config)
 	}
 	numSessions := issuerConfig.NumSessions
@@ -103,7 +102,7 @@ func loadSigner(issuerConfig ca_config.IssuerConfig) (crypto.Signer, error) {
 		numSessions = 1
 	}
 	return pkcs11key.NewPool(numSessions, pkcs11Config.Module,
-		pkcs11Config.TokenLabel, pkcs11Config.PIN, pkcs11Config.PrivateKeyLabel)
+		pkcs11Config.TokenLabel, pkcs11Config.PIN)
 }
 
 func main() {
