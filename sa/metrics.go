@@ -80,7 +80,7 @@ func (dbc dbMetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	writeGauge(maxOpenConns, float64(dbMapStats.MaxOpenConnections))
 	writeGauge(openConns, float64(dbMapStats.OpenConnections))
 	writeGauge(inUse, float64(dbMapStats.InUse))
-	writeGauge(idle, float64(dbMapStats.InUse))
+	writeGauge(idle, float64(dbMapStats.Idle))
 	writeCounter(waitCount, float64(dbMapStats.WaitCount))
 	writeCounter(waitDuration, dbMapStats.WaitDuration.Seconds())
 	writeCounter(maxIdleClosed, float64(dbMapStats.MaxIdleClosed))
