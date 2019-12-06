@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	jose "gopkg.in/square/go-jose.v2"
+	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -1811,7 +1811,6 @@ func TestGetCertificate(t *testing.T) {
 
 	noCache := "public, max-age=0, no-cache"
 	goodSerial := "/acme/cert/0000000000000000000000000000000000b2"
-	goodGetSerial := "/get/cert/0000000000000000000000000000000000b2"
 	notFound := `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Certificate not found","status":404}`
 
 	testCases := []struct {
@@ -1824,7 +1823,7 @@ func TestGetCertificate(t *testing.T) {
 	}{
 		{
 			Name:           "Valid serial",
-			Request:        makeGet(goodGetSerial),
+			Request:        makeGet(goodSerial),
 			ExpectedStatus: http.StatusOK,
 			ExpectedHeaders: map[string]string{
 				"Content-Type": pkixContent,
@@ -1862,19 +1861,19 @@ func TestGetCertificate(t *testing.T) {
 		},
 		{
 			Name:           "Unused serial, no cache",
-			Request:        makeGet("/get/cert/0000000000000000000000000000000000ff"),
+			Request:        makeGet("/acme/cert/0000000000000000000000000000000000ff"),
 			ExpectedStatus: http.StatusNotFound,
 			ExpectedBody:   notFound,
 		},
 		{
 			Name:           "Invalid serial, no cache",
-			Request:        makeGet("/get/cert/nothex"),
+			Request:        makeGet("/acme/cert/nothex"),
 			ExpectedStatus: http.StatusNotFound,
 			ExpectedBody:   notFound,
 		},
 		{
 			Name:           "Another invalid serial, no cache",
-			Request:        makeGet("/get/cert/00000000000000"),
+			Request:        makeGet("/acme/cert/00000000000000"),
 			ExpectedStatus: http.StatusNotFound,
 			ExpectedBody:   notFound,
 		},
