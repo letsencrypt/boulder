@@ -175,11 +175,7 @@ func CountCounter(counter prometheus.Counter) int {
 }
 
 func CountHistogramSamples(obs prometheus.Observer) int {
-	hist, ok := obs.(prometheus.Histogram)
-	if !ok {
-		panic("used observer type %T != prometheus.Histogram with CountHistogramSamples\n")
-	}
-
+	hist := obs.(prometheus.Histogram)
 	ch := make(chan prometheus.Metric, 10)
 	hist.Collect(ch)
 	var m prometheus.Metric
