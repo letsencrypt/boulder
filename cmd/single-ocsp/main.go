@@ -111,7 +111,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to read files")
 
 	// Instantiate the private key from PKCS11
-	priv, err := pkcs11key.New(pkcs11.Module, pkcs11.TokenLabel, pkcs11.PIN)
+	priv, err := pkcs11key.New(pkcs11.Module, pkcs11.TokenLabel, pkcs11.PIN, responder.PublicKey)
 	cmd.FailOnError(err, "Failed to load PKCS#11 key")
 
 	// Populate the remaining fields in the template

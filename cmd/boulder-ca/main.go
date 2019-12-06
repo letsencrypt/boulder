@@ -53,7 +53,7 @@ func loadIssuer(issuerConfig ca_config.IssuerConfig) (crypto.Signer, *x509.Certi
 		return nil, nil, err
 	}
 
-	signer, err := loadSigner(issuerConfig)
+	signer, err := loadSigner(issuerConfig, cert)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -64,7 +64,7 @@ func loadIssuer(issuerConfig ca_config.IssuerConfig) (crypto.Signer, *x509.Certi
 	return signer, cert, err
 }
 
-func loadSigner(issuerConfig ca_config.IssuerConfig) (crypto.Signer, error) {
+func loadSigner(issuerConfig ca_config.IssuerConfig, cert *x509.Certificate) (crypto.Signer, error) {
 	if issuerConfig.File != "" {
 		keyBytes, err := ioutil.ReadFile(issuerConfig.File)
 		if err != nil {
@@ -102,7 +102,7 @@ func loadSigner(issuerConfig ca_config.IssuerConfig) (crypto.Signer, error) {
 		numSessions = 1
 	}
 	return pkcs11key.NewPool(numSessions, pkcs11Config.Module,
-		pkcs11Config.TokenLabel, pkcs11Config.PIN)
+		pkcs11Config.TokenLabel, pkcs11Config.PIN, cert.PublicKey)
 }
 
 func main() {
