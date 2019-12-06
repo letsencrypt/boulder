@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/go-gorp/gorp.v2"
+	gorp "gopkg.in/go-gorp/gorp.v2"
 
 	"golang.org/x/crypto/ocsp"
 
@@ -119,13 +119,12 @@ func TestDBHandler(t *testing.T) {
 	defer func() { resp.OCSPLastUpdated = time.Now() }()
 	w = httptest.NewRecorder()
 	r, _ = http.NewRequest("POST", "/", bytes.NewReader(req))
-	unauthorizedErrorResponse := []byte{0x30, 0x03, 0x0A, 0x01, 0x06}
 	h.ServeHTTP(w, r)
 	if w.Code != http.StatusOK {
 		t.Errorf("Code: want %d, got %d", http.StatusOK, w.Code)
 	}
-	if !bytes.Equal(w.Body.Bytes(), unauthorizedErrorResponse) {
-		t.Errorf("Mismatched body: want %#v, got %#v", unauthorizedErrorResponse, w.Body.Bytes())
+	if !bytes.Equal(w.Body.Bytes(), ocsp.UnauthorizedErrorResponse) {
+		t.Errorf("Mismatched body: want %#v, got %#v", ocsp.UnauthorizedErrorResponse, w.Body.Bytes())
 	}
 }
 
