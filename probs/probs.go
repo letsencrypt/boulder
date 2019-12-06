@@ -27,6 +27,7 @@ const (
 	BadPublicKeyProblem          = ProblemType("badPublicKey")
 	BadRevocationReasonProblem   = ProblemType("badRevocationReason")
 	BadCSRProblem                = ProblemType("badCSR")
+	TooNewProblem                = ProblemType("tooNew")
 
 	V1ErrorNS = "urn:acme:error:"
 	V2ErrorNS = "urn:ietf:params:acme:error:"
@@ -329,5 +330,14 @@ func BadCSR(detail string, a ...interface{}) *ProblemDetails {
 		Type:       BadCSRProblem,
 		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// TooNew returns a ProblemDetails representing a TooNewProblem.
+func TooNew(detail string, a ...interface{}) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       TooNewProblem,
+		Detail:     fmt.Sprintf(detail, a...),
+		HTTPStatus: http.StatusTooEarly,
 	}
 }

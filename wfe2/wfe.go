@@ -66,6 +66,8 @@ const (
 	getAuthzv2Path     = "/get/authz-v3/"
 	getChallengev2Path = "/get/chall-v3/"
 	getCertPath        = "/get/cert/"
+
+	staleTimeout = 10 * time.Second
 )
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
@@ -1539,6 +1541,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	logEvent.Extra["RequestedSerial"] = serial
 
 	cert, err := wfe.SA.GetCertificate(ctx, serial)
+
 	// TODO(#991): handle db errors
 	if err != nil {
 		ierr := fmt.Errorf("unable to get certificate by serial id %#v: %s", serial, err)
@@ -1547,6 +1550,16 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		} else {
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), ierr)
 		}
+		return
+	}
+
+	if request.Method == "GET" && time.Since(cert.Issued) < staleTimeout {
+		wfe.sendError(
+			response,
+			logEvent,
+			probs.TooNew("Certificate is too new"),
+			errors.New("You should only use this non-standart API to access old resources"),
+		)
 		return
 	}
 
@@ -1973,6 +1986,16 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 			return
 		}
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve order for ID %d", orderID), err)
+		return
+	}
+
+	if request.Method == "GET" && time.Since(time.Unix(0, *order.Created)) < staleTimeout {
+		wfe.sendError(
+			response,
+			logEvent,
+			probs.TooNew("Order is too new"),
+			errors.New("You should only use this non-standart API to access old resources"),
+		)
 		return
 	}
 
