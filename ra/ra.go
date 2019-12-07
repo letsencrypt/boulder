@@ -1101,6 +1101,17 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 // issueCertificateInner handles the common aspects of certificate issuance used by
 // both the "classic" NewCertificate endpoint (for ACME v1) and the
 // FinalizeOrder endpoint (for ACME v2).
+//
+// This function is responsible for ensuring that we never try to issue a final
+// certificate twice for the same precertificate, because that has the potential
+// to create certificates with duplicate serials. For instance, this could
+// happen if final certificates were created with different sets of SCTs. This
+// function accomplishes that by bailing on issuance if there is any error in
+// IssueCertificateForPrecertificate; there are no retries, and serials are
+// generated in IssuePrecertificate, so serials with errors are dropped and
+// never have final certificates issued for them (because there is a possibility
+// that the certificate was actually issued but there was an error returning
+// it).
 func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ctx context.Context,
 	req core.CertificateRequest,

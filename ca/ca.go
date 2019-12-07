@@ -36,6 +36,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	csrlib "github.com/letsencrypt/boulder/csr"
+	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -103,6 +104,7 @@ const (
 
 type certificateStorage interface {
 	AddCertificate(context.Context, []byte, int64, []byte, *time.Time) (string, error)
+	GetCertificate(context.Context, string) (core.Certificate, error)
 	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error)
 	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*corepb.Empty, error)
 	SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error)
@@ -571,16 +573,43 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	}, nil
 }
 
-// IssueCertificateForPrecertificate takes a precertificate and a set of SCTs for that precertificate
-// and uses the signer to create and sign a certificate from them. The poison extension is removed
-// and a SCT list extension is inserted in its place. Except for this and the signature the certificate
-// exactly matches the precertificate. After the certificate is signed a OCSP response is generated
-// and the response and certificate are stored in the database.
+// IssueCertificateForPrecertificate takes a precertificate and a set
+// of SCTs for that precertificate and uses the signer to create and
+// sign a certificate from them. The poison extension is removed and a
+// SCT list extension is inserted in its place. Except for this and the
+// signature the certificate exactly matches the precertificate. After
+// the certificate is signed a OCSP response is generated and the
+// response and certificate are stored in the database.
+//
+// It's critical not to sign two different final certificates for the same
+// precertificate. This can happen, for instance, if the caller provides a
+// different set of SCTs on subsequent calls to  IssueCertificateForPrecertificate.
+// We rely on the RA not to call IssueCertificateForPrecertificate twice for the
+// same serial. This is accomplished by the fact that
+// IssueCertificateForPrecertificate is only ever called in a straight-through
+// RPC path without retries. If there is any error, including a networking
+// error, the whole certificate issuance attempt fails and any subsequent
+// issuance will use a different serial number.
+//
+// We also check that the provided serial number does not already exist as a
+// final certificate, but this is just a belt-and-suspenders measure, since
+// there could be race conditions where two goroutines are issuing for the same
+// serial number at the same time.
 func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	precert, err := x509.ParseCertificate(req.DER)
 	if err != nil {
 		return emptyCert, err
+	}
+
+	serialHex := core.SerialToString(precert.SerialNumber)
+	_, err = ca.sa.GetCertificate(ctx, serialHex)
+	if err == nil {
+		err = berrors.InternalServerError("issuance of duplicate final certificate requested: %s", serialHex)
+		ca.log.AuditErr(err.Error())
+		return emptyCert, err
+	} else if !db.IsNoRows(err) {
+		return emptyCert, fmt.Errorf("error checking for duplicate issuance of %s: %s", serialHex, err)
 	}
 	var scts []ct.SignedCertificateTimestamp
 	for _, sctBytes := range req.SCTs {
@@ -595,7 +624,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	if err != nil {
 		return emptyCert, err
 	}
-	serialHex := core.SerialToString(precert.SerialNumber)
 	block, _ := pem.Decode(certPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
 		err = berrors.InternalServerError("invalid certificate value returned")

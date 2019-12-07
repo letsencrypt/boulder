@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"database/sql"
 	"encoding/asn1"
 	"errors"
 	"fmt"
@@ -36,6 +37,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -190,6 +192,10 @@ func (m *mockSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*co
 func (m *mockSA) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
 	e := true
 	return &sapb.Exists{Exists: &e}, nil
+}
+
+func (m *mockSA) GetCertificate(ctx context.Context, serial string) (core.Certificate, error) {
+	return core.Certificate{}, db.ErrDatabaseOp{Err: sql.ErrNoRows}
 }
 
 var caKey crypto.Signer
@@ -904,7 +910,49 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 	test.Assert(t, list, "returned cert doesn't contain SCT list")
 }
 
+// dupeSA returns a non-error to GetCertificate in order to simulate a request
+// to issue a final certificate with a duplicate serial.
+type dupeSA struct {
+	mockSA
+}
+
+func (m *dupeSA) GetCertificate(ctx context.Context, serial string) (core.Certificate, error) {
+	return core.Certificate{}, nil
+}
+
+func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
+	testCtx := setup(t)
+	sa := &mockSA{}
+	ca, err := NewCertificateAuthorityImpl(
+		testCtx.caConfig,
+		sa,
+		testCtx.pa,
+		testCtx.fc,
+		testCtx.stats,
+		testCtx.issuers,
+		testCtx.keyPolicy,
+		testCtx.logger,
+		nil)
+	test.AssertNotError(t, err, "Failed to create CA")
+
+	orderID := int64(0)
+	issueReq := caPB.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID, OrderID: &orderID}
+	precert, err := ca.IssuePrecertificate(ctx, &issueReq)
+	test.AssertNotError(t, err, "Failed to issue precert")
+	_, err = ca.IssueCertificateForPrecertificate(ctx, &caPB.IssueCertificateForPrecertificateRequest{
+		DER:            precert.DER,
+		SCTs:           nil,
+		RegistrationID: &arbitraryRegID,
+		OrderID:        new(int64),
+	})
+	if err == nil {
+		t.Fatal("Expected error issuing duplicate serial but got none.")
+	}
+}
+
 type queueSA struct {
+	mockSA
+
 	fail      bool
 	duplicate bool
 
@@ -931,15 +979,6 @@ func (qsa *queueSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertific
 	issued := time.Unix(0, *req.Issued)
 	qsa.issuedPrecert = &issued
 	return nil, nil
-}
-
-func (qsa *queueSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*corepb.Empty, error) {
-	return &corepb.Empty{}, nil
-}
-
-func (qsa *queueSA) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
-	e := true
-	return &sapb.Exists{Exists: &e}, nil
 }
 
 // TestPrecertOrphanQueue tests that IssuePrecertificate writes precertificates
