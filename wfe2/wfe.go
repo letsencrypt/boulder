@@ -1553,7 +1553,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	if request.Method == "GET" && time.Since(cert.Issued) < staleTimeout {
+	if request.Method == "GET" && wfe.clk.Since(cert.Issued) < staleTimeout {
 		wfe.sendError(
 			response,
 			logEvent,
@@ -1989,7 +1989,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
-	if request.Method == "GET" && time.Since(time.Unix(0, *order.Created)) < staleTimeout {
+	if request.Method == "GET" && wfe.clk.Since(time.Unix(*order.Created, 0)) < staleTimeout {
 		wfe.sendError(
 			response,
 			logEvent,

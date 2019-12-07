@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"gopkg.in/square/go-jose.v2"
+	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -289,6 +289,7 @@ func (sa *StorageAuthority) GetCertificate(_ context.Context, serial string) (co
 		return core.Certificate{
 			RegistrationID: 1,
 			DER:            certBlock.Bytes,
+			Issued:         sa.clk.Now().Add(-1 * time.Hour),
 		}, nil
 	} else if serial == "0000000000000000000000000000000000b2" {
 		certPemBytes, _ := ioutil.ReadFile("test/178.crt")
@@ -296,6 +297,15 @@ func (sa *StorageAuthority) GetCertificate(_ context.Context, serial string) (co
 		return core.Certificate{
 			RegistrationID: 1,
 			DER:            certBlock.Bytes,
+			Issued:         sa.clk.Now().Add(-1 * time.Hour),
+		}, nil
+	} else if serial == "0000000000000000000000000000000000b3" {
+		certPemBytes, _ := ioutil.ReadFile("test/178.crt")
+		certBlock, _ := pem.Decode(certPemBytes)
+		return core.Certificate{
+			RegistrationID: 1,
+			DER:            certBlock.Bytes,
+			Issued:         sa.clk.Now(),
 		}, nil
 	} else {
 		return core.Certificate{}, errors.New("No cert")
@@ -481,10 +491,12 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 	status := string(core.StatusValid)
 	one := int64(1)
 	serial := "serial"
+	created := sa.clk.Now().AddDate(-30, 0, 0).Unix()
 	exp := sa.clk.Now().AddDate(30, 0, 0).Unix()
 	validOrder := &corepb.Order{
 		Id:                req.Id,
 		RegistrationID:    &one,
+		Created:           &created,
 		Expires:           &exp,
 		Names:             []string{"example.com"},
 		Status:            &status,
@@ -521,6 +533,12 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 	if *req.Id == 8 {
 		ready := string(core.StatusReady)
 		validOrder.Status = &ready
+	}
+
+	// Order 9 is fresh
+	if *req.Id == 9 {
+		now := sa.clk.Now().Unix()
+		validOrder.Created = &now
 	}
 
 	return validOrder, nil

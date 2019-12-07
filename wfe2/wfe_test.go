@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"gopkg.in/square/go-jose.v2"
+	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -1810,6 +1810,7 @@ func TestGetCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Error reading ../test/test-ca2.pem")
 
 	noCache := "public, max-age=0, no-cache"
+	newSerial := "/acme/cert/0000000000000000000000000000000000b3"
 	goodSerial := "/acme/cert/0000000000000000000000000000000000b2"
 	notFound := `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Certificate not found","status":404}`
 
@@ -1876,6 +1877,25 @@ func TestGetCertificate(t *testing.T) {
 			Request:        makeGet("/acme/cert/00000000000000"),
 			ExpectedStatus: http.StatusNotFound,
 			ExpectedBody:   notFound,
+		},
+		{
+			Name:           "New cert",
+			Request:        makeGet(newSerial),
+			ExpectedStatus: http.StatusTooEarly,
+			ExpectedBody: `{
+				"type": "` + probs.V2ErrorNS + `tooNew",
+				"detail": "Certificate is too new",
+				"status": 425
+			}`,
+		},
+		{
+			Name:           "New cert, POST-as-GET",
+			Request:        makePost(1, nil, newSerial, ""),
+			ExpectedStatus: http.StatusOK,
+			ExpectedHeaders: map[string]string{
+				"Content-Type": pkixContent,
+			},
+			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainPemBytes...)...),
 		},
 	}
 
@@ -2529,6 +2549,16 @@ func TestGetOrder(t *testing.T) {
 			Name:     "Valid POST-as-GET",
 			Request:  makePost(1, "1/1", ""),
 			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
+		},
+		{
+			Name:     "GET new order",
+			Request:  makeGet("1/9"),
+			Response: `{"type":"` + probs.V2ErrorNS + `tooNew","detail":"Order is too new","status":425}`,
+		},
+		{
+			Name:     "POST-as-GET new order",
+			Request:  makePost(1, "1/9", ""),
+			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 	}
 
