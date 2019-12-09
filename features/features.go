@@ -12,21 +12,6 @@ type FeatureFlag int
 const (
 	unused FeatureFlag = iota // unused is used for testing
 	//   Deprecated features, these can be removed once stripped from production configs
-	PerformValidationRPC
-	ACME13KeyRollover
-	SimplifiedVAHTTP
-	TLSSNIRevalidation
-	AllowRenewalFirstRL
-	SetIssuedNamesRenewalBit
-	FasterRateLimit
-	ProbeCTLogs
-	RevokeAtRA
-	NewAuthorizationSchema
-	DisableAuthz2Orders
-	EarlyOrderRateLimit
-	FasterGetOrderForNames
-	PrecertificateOCSP
-	GetAuthorizationsPerf
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -78,35 +63,20 @@ const (
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
 	unused:                        false,
-	AllowRenewalFirstRL:           false,
-	TLSSNIRevalidation:            false,
 	CAAValidationMethods:          false,
 	CAAAccountURI:                 false,
-	ACME13KeyRollover:             false,
-	ProbeCTLogs:                   false,
-	SimplifiedVAHTTP:              false,
-	PerformValidationRPC:          false,
 	HeadNonceStatusOK:             false,
-	NewAuthorizationSchema:        false,
-	RevokeAtRA:                    false,
-	SetIssuedNamesRenewalBit:      false,
-	EarlyOrderRateLimit:           false,
 	EnforceMultiVA:                false,
 	MultiVAFullResults:            false,
 	RemoveWFE2AccountID:           false,
-	FasterRateLimit:               false,
 	CheckRenewalFirst:             false,
 	MandatoryPOSTAsGET:            false,
-	DisableAuthz2Orders:           false,
-	FasterGetOrderForNames:        false,
 	AllowV1Registration:           true,
 	ParallelCheckFailedValidation: false,
 	DeleteUnusedChallenges:        false,
 	V1DisableNewValidations:       false,
-	PrecertificateOCSP:            false,
 	PrecertificateRevocation:      false,
 	StripDefaultSchemePort:        false,
-	GetAuthorizationsPerf:         false,
 	StoreIssuerInfo:               false,
 	WriteIssuedNamesPrecert:       false,
 }
