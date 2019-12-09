@@ -63,7 +63,7 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *db.Wrappe
 
 	clk := cmd.Clock()
 
-	clientMetrics := bgrpc.NewClientMetrics(metrics.NewNoopScope())
+	clientMetrics := bgrpc.NewClientMetrics(metrics.NoopRegisterer)
 	raConn, err := bgrpc.ClientSetup(c.Revoker.RAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 	rac := bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(raConn))

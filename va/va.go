@@ -82,16 +82,18 @@ type vaMetrics struct {
 	tlsALPNOIDCounter                   *prometheus.CounterVec
 	http01Fallbacks                     prometheus.Counter
 	http01Redirects                     prometheus.Counter
+	caaCounter                          *prometheus.CounterVec
+	ipv4FallbackCounter                 prometheus.Counter
 }
 
-func initMetrics(stats metrics.Scope) *vaMetrics {
+func initMetrics(stats prometheus.Registerer) *vaMetrics {
 	validationTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "validation_time",
 			Help:    "Time taken to validate a challenge",
 			Buckets: metrics.InternetFacingBuckets,
 		},
-		[]string{"type", "result", "problemType"})
+		[]string{"type", "result", "problem_type"})
 	stats.MustRegister(validationTime)
 	remoteValidationTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -133,6 +135,15 @@ func initMetrics(stats metrics.Scope) *vaMetrics {
 			Help: "Number of HTTP-01 redirects followed",
 		})
 	stats.MustRegister(http01Redirects)
+	caaCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "caa_sets_processed",
+		Help: "A counter of CAA sets processed labelled by result",
+	}, []string{"result"})
+	stats.MustRegister(caaCounter)
+	ipv4FallbackCounter := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "tls_alpn_ipv4_fallback",
+		Help: "A counter of IPv4 fallbacks during TLS ALPN validation",
+	})
 
 	return &vaMetrics{
 		validationTime:                      validationTime,
@@ -142,6 +153,8 @@ func initMetrics(stats metrics.Scope) *vaMetrics {
 		tlsALPNOIDCounter:                   tlsALPNOIDCounter,
 		http01Fallbacks:                     http01Fallbacks,
 		http01Redirects:                     http01Redirects,
+		caaCounter:                          caaCounter,
+		ipv4FallbackCounter:                 ipv4FallbackCounter,
 	}
 }
 
@@ -154,7 +167,6 @@ type ValidationAuthorityImpl struct {
 	httpsPort          int
 	tlsPort            int
 	userAgent          string
-	stats              metrics.Scope
 	clk                clock.Clock
 	remoteVAs          []RemoteVA
 	maxRemoteFailures  int
@@ -173,7 +185,7 @@ func NewValidationAuthorityImpl(
 	maxRemoteFailures int,
 	userAgent string,
 	issuerDomain string,
-	stats metrics.Scope,
+	stats prometheus.Registerer,
 	clk clock.Clock,
 	logger blog.Logger,
 	accountURIPrefixes []string,
@@ -201,7 +213,6 @@ func NewValidationAuthorityImpl(
 		httpsPort:          pc.HTTPSPort,
 		tlsPort:            pc.TLSPort,
 		userAgent:          userAgent,
-		stats:              stats,
 		clk:                clk,
 		metrics:            initMetrics(stats),
 		remoteVAs:          remoteVAs,
@@ -683,9 +694,9 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	logEvent.ValidationLatency = validationLatency.Round(time.Millisecond).Seconds()
 
 	va.metrics.validationTime.With(prometheus.Labels{
-		"type":        string(challenge.Type),
-		"result":      string(challenge.Status),
-		"problemType": problemType,
+		"type":         string(challenge.Type),
+		"result":       string(challenge.Status),
+		"problem_type": problemType,
 	}).Observe(validationLatency.Seconds())
 
 	va.log.AuditObject("Validation result", logEvent)

@@ -40,7 +40,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -90,10 +89,6 @@ var (
 
 // Metrics for CA statistics
 const (
-	// Increments when CA observes an HSM or signing error
-	metricSigningError = "SigningError"
-	metricHSMError     = metricSigningError + ".HSMError"
-
 	csrExtensionCategory          = "category"
 	csrExtensionBasic             = "basic"
 	csrExtensionTLSFeature        = "tls-feature"
@@ -131,7 +126,6 @@ type CertificateAuthorityImpl struct {
 	keyPolicy          goodkey.KeyPolicy
 	clk                clock.Clock
 	log                blog.Logger
-	stats              metrics.Scope
 	prefix             int // Prepended to the serial number
 	validityPeriod     time.Duration
 	backdate           time.Duration
@@ -141,6 +135,7 @@ type CertificateAuthorityImpl struct {
 	csrExtensionCount  *prometheus.CounterVec
 	orphanCount        *prometheus.CounterVec
 	adoptedOrphanCount *prometheus.CounterVec
+	signErrorCounter   *prometheus.CounterVec
 	orphanQueue        *goque.Queue
 	ocspLifetime       time.Duration
 }
@@ -213,7 +208,7 @@ func NewCertificateAuthorityImpl(
 	sa certificateStorage,
 	pa core.PolicyAuthority,
 	clk clock.Clock,
-	stats metrics.Scope,
+	stats prometheus.Registerer,
 	issuers []Issuer,
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
@@ -266,7 +261,7 @@ func NewCertificateAuthorityImpl(
 
 	csrExtensionCount := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "csrExtensions",
+			Name: "csr_extensions",
 			Help: "Number of CSRs with extensions of the given category",
 		},
 		[]string{csrExtensionCategory})
@@ -296,6 +291,11 @@ func NewCertificateAuthorityImpl(
 		[]string{"type"})
 	stats.MustRegister(adoptedOrphanCount)
 
+	signErrorCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "signature_errors",
+		Help: "A counter of signature errors labelled by error type",
+	}, []string{"type"})
+
 	ca = &CertificateAuthorityImpl{
 		sa:                 sa,
 		pa:                 pa,
@@ -306,7 +306,6 @@ func NewCertificateAuthorityImpl(
 		prefix:             config.SerialPrefix,
 		clk:                clk,
 		log:                logger,
-		stats:              stats,
 		keyPolicy:          keyPolicy,
 		forceCNFromSAN:     !config.DoNotForceCN, // Note the inversion here
 		signatureCount:     signatureCount,
@@ -315,6 +314,7 @@ func NewCertificateAuthorityImpl(
 		adoptedOrphanCount: adoptedOrphanCount,
 		orphanQueue:        orphanQueue,
 		ocspLifetime:       config.LifespanOCSP.Duration,
+		signErrorCounter:   signErrorCounter,
 	}
 
 	ca.idToIssuer = make(map[int64]*internalIssuer)
@@ -349,9 +349,9 @@ func NewCertificateAuthorityImpl(
 func (ca *CertificateAuthorityImpl) noteSignError(err error) {
 	if err != nil {
 		if _, ok := err.(*pkcs11.Error); ok {
-			ca.stats.Inc(metricHSMError, 1)
+			ca.signErrorCounter.WithLabelValues("HSM").Inc()
 		} else if cfErr, ok := err.(*cferr.Error); ok {
-			ca.stats.Inc(fmt.Sprintf("%s.%d", metricSigningError, cfErr.ErrorCode), 1)
+			ca.signErrorCounter.WithLabelValues(fmt.Sprintf("CFSSL %d", cfErr.ErrorCode)).Inc()
 		}
 	}
 	return

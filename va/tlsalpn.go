@@ -94,7 +94,7 @@ func (va *ValidationAuthorityImpl) tryGetTLSCerts(ctx context.Context,
 
 		// Otherwise, we note that we tried an address and fall back to trying IPv4
 		thisRecord.AddressesTried = append(thisRecord.AddressesTried, thisRecord.AddressUsed)
-		va.stats.Inc("IPv4Fallback", 1)
+		va.metrics.ipv4FallbackCounter.Inc()
 	}
 
 	// If there are no IPv4 addresses and we tried an IPv6 address return

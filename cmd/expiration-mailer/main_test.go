@@ -28,7 +28,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_model/go"
+	io_prometheus_client "github.com/prometheus/client_model/go"
 	"gopkg.in/square/go-jose.v2"
 )
 
@@ -114,7 +114,7 @@ func TestSendNags(t *testing.T) {
 		subjectTemplate: staticTmpl,
 		rs:              rs,
 		clk:             fc,
-		stats:           initStats(metrics.NewNoopScope()),
+		stats:           initStats(metrics.NoopRegisterer),
 	}
 
 	cert := &x509.Certificate{
@@ -401,7 +401,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 
 func countGroupsAtCapacity(group string, counter *prometheus.GaugeVec) int {
 	ch := make(chan prometheus.Metric, 10)
-	counter.With(prometheus.Labels{"nagGroup": group}).Collect(ch)
+	counter.With(prometheus.Labels{"nag_group": group}).Collect(ch)
 	m := <-ch
 	var iom io_prometheus_client.Metric
 	_ = m.Write(&iom)
@@ -817,7 +817,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 		t.Fatalf("Couldn't connect the database: %s", err)
 	}
 	fc := newFakeClock(t)
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NewNoopScope(), 1)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}
@@ -840,7 +840,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 		nagTimes:        offsetNags,
 		limit:           100,
 		clk:             fc,
-		stats:           initStats(metrics.NewNoopScope()),
+		stats:           initStats(metrics.NoopRegisterer),
 	}
 	return &testCtx{
 		dbMap:   dbMap,

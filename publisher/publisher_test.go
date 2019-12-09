@@ -265,7 +265,7 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	pub := New(nil,
 		"test-user-agent/1.0",
 		log,
-		metrics.NewNoopScope())
+		metrics.NoopRegisterer)
 	pub.issuerBundle = append(pub.issuerBundle, ct.ASN1Cert{Data: intermediatePEM.Bytes})
 
 	leafPEM, _ := pem.Decode([]byte(testLeaf))
@@ -454,9 +454,9 @@ func TestHTTPStatusMetric(t *testing.T) {
 	})
 	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
 	test.AssertEquals(t, test.CountHistogramSamples(pub.metrics.submissionLatency.With(prometheus.Labels{
-		"log":        logURI,
-		"status":     "error",
-		"httpStatus": "400",
+		"log":         logURI,
+		"status":      "error",
+		"http_status": "400",
 	})), 1)
 
 	pub, leaf, k = setup(t)
@@ -476,8 +476,8 @@ func TestHTTPStatusMetric(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "SubmitToSingleCTWithResult failed")
 	test.AssertEquals(t, test.CountHistogramSamples(pub.metrics.submissionLatency.With(prometheus.Labels{
-		"log":        logURI,
-		"status":     "success",
-		"httpStatus": "",
+		"log":         logURI,
+		"status":      "success",
+		"http_status": "",
 	})), 1)
 }

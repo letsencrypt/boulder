@@ -28,7 +28,7 @@ import (
 var (
 	req   = mustRead("./testdata/ocsp.req")
 	resp  = dbResponse{mustRead("./testdata/ocsp.resp"), false, time.Now()}
-	stats = metrics.NewNoopScope()
+	stats = metrics.NoopRegisterer
 )
 
 func TestMux(t *testing.T) {

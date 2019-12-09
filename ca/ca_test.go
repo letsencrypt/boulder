@@ -166,7 +166,7 @@ type testCtx struct {
 	issuers   []Issuer
 	keyPolicy goodkey.KeyPolicy
 	fc        clock.FakeClock
-	stats     metrics.Scope
+	stats     prometheus.Registerer
 	logger    *blog.Mock
 }
 
@@ -304,7 +304,7 @@ func setup(t *testing.T) *testCtx {
 		issuers,
 		keyPolicy,
 		fc,
-		metrics.NewNoopScope(),
+		metrics.NoopRegisterer,
 		logger,
 	}
 }
@@ -731,7 +731,7 @@ func TestSingleAIAEnforcement(t *testing.T) {
 		&mockSA{},
 		pa,
 		clock.New(),
-		metrics.NewNoopScope(),
+		metrics.NoopRegisterer,
 		nil,
 		goodkey.KeyPolicy{},
 		&blog.Mock{},

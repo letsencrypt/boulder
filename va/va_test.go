@@ -101,9 +101,9 @@ func TestPerformValidationInvalid(t *testing.T) {
 	test.Assert(t, prob != nil, "validation succeeded")
 
 	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
-		"type":        "dns-01",
-		"result":      "invalid",
-		"problemType": "unauthorized",
+		"type":         "dns-01",
+		"result":       "invalid",
+		"problem_type": "unauthorized",
 	}))
 	if samples != 1 {
 		t.Errorf("Wrong number of samples for invalid validation. Expected 1, got %d", samples)
@@ -121,9 +121,9 @@ func TestPerformValidationValid(t *testing.T) {
 	test.Assert(t, prob == nil, fmt.Sprintf("validation failed: %#v", prob))
 
 	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
-		"type":        "dns-01",
-		"result":      "valid",
-		"problemType": "",
+		"type":         "dns-01",
+		"result":       "valid",
+		"problem_type": "",
 	}))
 	if samples != 1 {
 		t.Errorf("Wrong number of samples for successful validation. Expected 1, got %d", samples)
@@ -151,9 +151,9 @@ func TestPerformValidationWildcard(t *testing.T) {
 	test.Assert(t, prob == nil, fmt.Sprintf("validation failed: %#v", prob))
 
 	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
-		"type":        "dns-01",
-		"result":      "valid",
-		"problemType": "",
+		"type":         "dns-01",
+		"result":       "valid",
+		"problem_type": "",
 	}))
 	if samples != 1 {
 		t.Errorf("Wrong number of samples for successful validation. Expected 1, got %d", samples)
@@ -203,7 +203,7 @@ func setup(
 		maxRemoteFailures,
 		userAgent,
 		"letsencrypt.org",
-		metrics.NewNoopScope(),
+		metrics.NoopRegisterer,
 		clock.Default(),
 		logger,
 		accountURIPrefixes,

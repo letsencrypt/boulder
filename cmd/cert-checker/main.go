@@ -25,7 +25,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 )
@@ -100,7 +99,6 @@ type certChecker struct {
 	rMu          *sync.Mutex
 	issuedReport report
 	checkPeriod  time.Duration
-	stats        metrics.Scope
 }
 
 func newChecker(saDbMap certDB, clk clock.Clock, pa core.PolicyAuthority, period time.Duration) certChecker {
@@ -386,10 +384,15 @@ func main() {
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	saDbMap, err := sa.NewDbMap(saDbURL, config.CertChecker.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Could not connect to database")
-	scope := metrics.NewPromScope(prometheus.DefaultRegisterer)
 
-	// Collect and periodically report DB metrics using the DBMap and prometheus scope.
-	sa.InitDBMetrics(saDbMap, scope)
+	// Collect and periodically report DB metrics
+	sa.InitDBMetrics(saDbMap, prometheus.DefaultRegisterer)
+
+	checkerLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name: "cert_checker_latency",
+		Help: "Histogram of latencies a cert-checker worker takes to complete a batch",
+	})
+	prometheus.DefaultRegisterer.MustRegister(checkerLatency)
 
 	pa, err := policy.New(config.PA.Challenges)
 	cmd.FailOnError(err, "Failed to create PA")
@@ -424,7 +427,7 @@ func main() {
 		go func() {
 			s := checker.clock.Now()
 			checker.processCerts(wg, config.CertChecker.BadResultsOnly, ignoredLintsMap)
-			scope.TimingDuration("certChecker.processingLatency", time.Since(s))
+			checkerLatency.Observe(checker.clock.Since(s).Seconds())
 		}()
 	}
 	wg.Wait()

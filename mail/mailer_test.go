@@ -30,10 +30,9 @@ func (f fakeSource) generate() *big.Int {
 
 func TestGenerateMessage(t *testing.T) {
 	fc := clock.NewFake()
-	stats := metrics.NewNoopScope()
 	fromAddress, _ := mail.ParseAddress("happy sender <send@email.com>")
 	log := blog.UseMock()
-	m := New("", "", "", "", nil, *fromAddress, log, stats, 0, 0)
+	m := New("", "", "", "", nil, *fromAddress, log, metrics.NoopRegisterer, 0, 0)
 	m.clk = fc
 	m.csprgSource = fakeSource{}
 	messageBytes, err := m.generateMessage([]string{"recv@email.com"}, "test subject", "this is the body\n")
@@ -56,9 +55,8 @@ func TestGenerateMessage(t *testing.T) {
 
 func TestFailNonASCIIAddress(t *testing.T) {
 	log := blog.UseMock()
-	stats := metrics.NewNoopScope()
 	fromAddress, _ := mail.ParseAddress("send@email.com")
-	m := New("", "", "", "", nil, *fromAddress, log, stats, 0, 0)
+	m := New("", "", "", "", nil, *fromAddress, log, metrics.NoopRegisterer, 0, 0)
 	_, err := m.generateMessage([]string{"遗憾@email.com"}, "test subject", "this is the body\n")
 	test.AssertError(t, err, "Allowed a non-ASCII to address incorrectly")
 }
@@ -199,7 +197,6 @@ func badEmailHandler(messagesToProcess int) connHandler {
 }
 
 func setup(t *testing.T) (*MailerImpl, net.Listener, func()) {
-	stats := metrics.NewNoopScope()
 	fromAddress, _ := mail.ParseAddress("you-are-a-winner@example.com")
 	log := blog.UseMock()
 
@@ -244,7 +241,7 @@ func setup(t *testing.T) (*MailerImpl, net.Listener, func()) {
 		smtpRoots,
 		*fromAddress,
 		log,
-		stats,
+		metrics.NoopRegisterer,
 		time.Second*2, time.Second*10)
 
 	return m, l, cleanUp

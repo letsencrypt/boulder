@@ -178,12 +178,11 @@ type exchanger interface {
 func NewDNSClientImpl(
 	readTimeout time.Duration,
 	servers []string,
-	stats metrics.Scope,
+	stats prometheus.Registerer,
 	clk clock.Clock,
 	maxTries int,
 	log blog.Logger,
 ) *DNSClientImpl {
-	stats = stats.NewScope("DNS")
 	dnsClient := new(dns.Client)
 
 	// Set timeout for underlying net.Conn
@@ -242,7 +241,7 @@ func NewDNSClientImpl(
 func NewTestDNSClientImpl(
 	readTimeout time.Duration,
 	servers []string,
-	stats metrics.Scope,
+	stats prometheus.Registerer,
 	clk clock.Clock,
 	maxTries int,
 	log blog.Logger) *DNSClientImpl {

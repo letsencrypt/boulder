@@ -14,11 +14,11 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/wfe"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type config struct {
@@ -73,7 +73,7 @@ type config struct {
 	}
 }
 
-func setupWFE(c config, logger blog.Logger, stats metrics.Scope, clk clock.Clock) (core.RegistrationAuthority, core.StorageAuthority, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient) {
+func setupWFE(c config, logger blog.Logger, stats prometheus.Registerer, clk clock.Clock) (core.RegistrationAuthority, core.StorageAuthority, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient) {
 	tlsConfig, err := c.WFE.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
@@ -117,7 +117,7 @@ func main() {
 	err = features.Set(c.WFE.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.WFE.DebugAddr)
+	stats, logger := cmd.StatsAndLogging(c.Syslog, c.WFE.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
@@ -126,8 +126,8 @@ func main() {
 	// don't load any weak keys, but do load blocked keys
 	kp, err := goodkey.NewKeyPolicy("", c.WFE.BlockedKeyFile)
 	cmd.FailOnError(err, "Unable to create key policy")
-	rac, sac, rns, npm := setupWFE(c, logger, scope, clk)
-	wfe, err := wfe.NewWebFrontEndImpl(scope, clk, kp, rns, npm, logger)
+	rac, sac, rns, npm := setupWFE(c, logger, stats, clk)
+	wfe, err := wfe.NewWebFrontEndImpl(stats, clk, kp, rns, npm, logger)
 	cmd.FailOnError(err, "Unable to create WFE")
 	wfe.RA = rac
 	wfe.SA = sac
@@ -143,7 +143,7 @@ func main() {
 	logger.Infof("WFE using key policy: %#v", kp)
 
 	logger.Infof("Server running, listening on %s...", c.WFE.ListenAddress)
-	handler := wfe.Handler()
+	handler := wfe.Handler(stats)
 	srv := &http.Server{
 		Addr:    c.WFE.ListenAddress,
 		Handler: handler,

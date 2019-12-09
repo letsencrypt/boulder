@@ -25,7 +25,6 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	"github.com/letsencrypt/boulder/nonce"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
@@ -73,7 +72,6 @@ type WebFrontEndImpl struct {
 	log   blog.Logger
 	clk   clock.Clock
 	stats wfe2Stats
-	scope metrics.Scope
 
 	// Issuer certificate (DER) for /acme/issuer-cert
 	IssuerCert []byte
@@ -122,7 +120,7 @@ type WebFrontEndImpl struct {
 
 // NewWebFrontEndImpl constructs a web service for Boulder
 func NewWebFrontEndImpl(
-	scope metrics.Scope,
+	stats prometheus.Registerer,
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
 	certificateChains map[string][]byte,
@@ -137,14 +135,13 @@ func NewWebFrontEndImpl(
 		keyPolicy:          keyPolicy,
 		certificateChains:  certificateChains,
 		issuerCertificates: issuerCertificates,
-		stats:              initStats(scope),
-		scope:              scope,
+		stats:              initStats(stats),
 		remoteNonceService: remoteNonceService,
 		noncePrefixMap:     noncePrefixMap,
 	}
 
 	if wfe.remoteNonceService == nil {
-		nonceService, err := nonce.NewNonceService(scope, 0, "")
+		nonceService, err := nonce.NewNonceService(stats, 0, "")
 		if err != nil {
 			return WebFrontEndImpl{}, err
 		}
@@ -335,7 +332,7 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 
 // Handler returns an http.Handler that uses various functions for
 // various ACME-specified paths.
-func (wfe *WebFrontEndImpl) Handler() http.Handler {
+func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	m := http.NewServeMux()
 	// Boulder specific endpoints
 	wfe.HandleFunc(m, issuerPath, wfe.Issuer, "GET")
@@ -365,7 +362,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
 	m.Handle("/", web.NewTopHandler(wfe.log, web.WFEHandlerFunc(wfe.Index)))
-	return measured_http.New(m, wfe.clk, wfe.scope)
+	return measured_http.New(m, wfe.clk, stats)
 }
 
 // Method implementations
@@ -1169,11 +1166,9 @@ func (wfe *WebFrontEndImpl) postChallenge(
 
 	// We can expect some clients to try and update a challenge for an authorization
 	// that is already valid. In this case we don't need to process the challenge
-	// update. It wouldn't be helpful, the overall authorization is already good! We
-	// increment a stat for this case and return early.
+	// update. It wouldn't be helpful, the overall authorization is already good!
 	var returnAuthz core.Authorization
 	if authz.Status == core.StatusValid {
-		wfe.scope.Inc("ReusedValidAuthzChallengeWFE", 1)
 		returnAuthz = authz
 	} else {
 

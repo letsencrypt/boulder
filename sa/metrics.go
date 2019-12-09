@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/db"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -23,67 +22,67 @@ type dbMetrics struct {
 	maxLifetimeClosed  prometheus.Counter
 }
 
-// InitDBMetrics will register prometheus stats for the provided dbMap under the
-// given metrics.Scope. Every 1 second in a separate go routine the prometheus
-// stats will be updated based on the gorp dbMap's inner sql.DBMap's DBStats
-// structure values.
-func InitDBMetrics(dbMap *db.WrappedMap, scope metrics.Scope) {
+// InitDBMetrics will register prometheus stats for the provided dbMap
+// Every 1 second in a separate go routine the prometheus stats will be
+// updated based on the gorp dbMap's inner sql.DBMap's DBStats structure
+// values.
+func InitDBMetrics(dbMap *db.WrappedMap, stats prometheus.Registerer) {
 	// Create a dbMetrics instance and register prometheus metrics
-	dbm := newDbMetrics(dbMap, scope)
+	dbm := newDbMetrics(dbMap, stats)
 
 	// Start the metric reporting goroutine to update the metrics periodically.
 	go dbm.reportDBMetrics()
 }
 
 // newDbMetrics constructs a dbMetrics instance by registering prometheus stats.
-func newDbMetrics(dbMap *db.WrappedMap, scope metrics.Scope) *dbMetrics {
+func newDbMetrics(dbMap *db.WrappedMap, stats prometheus.Registerer) *dbMetrics {
 	maxOpenConns := prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "db_max_open_connections",
 		Help: "Maximum number of DB connections allowed.",
 	})
-	scope.MustRegister(maxOpenConns)
+	stats.MustRegister(maxOpenConns)
 
 	openConns := prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "db_open_connections",
 		Help: "Number of established DB connections (in-use and idle).",
 	})
-	scope.MustRegister(openConns)
+	stats.MustRegister(openConns)
 
 	inUse := prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "db_inuse",
 		Help: "Number of DB connections currently in use.",
 	})
-	scope.MustRegister(inUse)
+	stats.MustRegister(inUse)
 
 	idle := prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "db_idle",
 		Help: "Number of idle DB connections.",
 	})
-	scope.MustRegister(idle)
+	stats.MustRegister(idle)
 
 	waitCount := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "db_wait_count",
 		Help: "Total number of DB connections waited for.",
 	})
-	scope.MustRegister(waitCount)
+	stats.MustRegister(waitCount)
 
 	waitDuration := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "db_wait_duration_seconds",
 		Help: "The total time blocked waiting for a new connection.",
 	})
-	scope.MustRegister(waitDuration)
+	stats.MustRegister(waitDuration)
 
 	maxIdleClosed := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "db_max_idle_closed",
 		Help: "Total number of connections closed due to SetMaxIdleConns.",
 	})
-	scope.MustRegister(maxIdleClosed)
+	stats.MustRegister(maxIdleClosed)
 
 	maxLifetimeClosed := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "db_max_lifetime_closed",
 		Help: "Total number of connections closed due to SetConnMaxLifetime.",
 	})
-	scope.MustRegister(maxLifetimeClosed)
+	stats.MustRegister(maxLifetimeClosed)
 
 	// Construct a dbMetrics instance with all of the registered metrics and the
 	// gorp DBMap
