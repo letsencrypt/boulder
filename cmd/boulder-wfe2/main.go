@@ -82,6 +82,9 @@ type config struct {
 		// SHA256 hashes of SubjectPublicKeyInfo's that should be considered
 		// administratively blocked.
 		BlockedKeyFile string
+
+		// StaleTimeout determines how old should data be to be accessed via Boulder-specific GET-able APIs
+		StaleTimeout cmd.ConfigDuration
 	}
 
 	Syslog cmd.SyslogConfig
@@ -258,7 +261,7 @@ func main() {
 	kp, err := goodkey.NewKeyPolicy("", c.WFE.BlockedKeyFile)
 	cmd.FailOnError(err, "Unable to create key policy")
 	rac, sac, rns, npm := setupWFE(c, logger, scope, clk)
-	wfe, err := wfe2.NewWebFrontEndImpl(scope, clk, kp, certChains, issuerCerts, rns, npm, logger)
+	wfe, err := wfe2.NewWebFrontEndImpl(scope, clk, kp, certChains, issuerCerts, rns, npm, logger, c.WFE.StaleTimeout.Duration)
 	cmd.FailOnError(err, "Unable to create WFE")
 	wfe.RA = rac
 	wfe.SA = sac

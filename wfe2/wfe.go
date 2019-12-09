@@ -66,8 +66,6 @@ const (
 	getAuthzv2Path     = "/get/authz-v3/"
 	getChallengev2Path = "/get/chall-v3/"
 	getCertPath        = "/get/cert/"
-
-	staleTimeout = 10 * time.Second
 )
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
@@ -125,6 +123,9 @@ type WebFrontEndImpl struct {
 
 	// Maximum duration of a request
 	RequestTimeout time.Duration
+
+	// StaleTimeout determines how old should data be to be accessed via Boulder-specific GET-able APIs
+	staleTimeout time.Duration
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -137,6 +138,7 @@ func NewWebFrontEndImpl(
 	remoteNonceService noncepb.NonceServiceClient,
 	noncePrefixMap map[string]noncepb.NonceServiceClient,
 	logger blog.Logger,
+	staleTimeout time.Duration,
 ) (WebFrontEndImpl, error) {
 	wfe := WebFrontEndImpl{
 		log:                logger,
@@ -148,6 +150,7 @@ func NewWebFrontEndImpl(
 		scope:              scope,
 		remoteNonceService: remoteNonceService,
 		noncePrefixMap:     noncePrefixMap,
+		staleTimeout:       staleTimeout,
 	}
 
 	if wfe.remoteNonceService == nil {
@@ -1552,12 +1555,12 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	if request.Method == "GET" && wfe.clk.Since(cert.Issued) < staleTimeout {
+	if request.Method == "GET" && wfe.clk.Since(cert.Issued) < wfe.staleTimeout {
 		wfe.sendError(
 			response,
 			logEvent,
 			probs.Unauthorized("Certificate is too new"),
-			errors.New("You should only use this non-standard API to access resources older than %s", staleTimeout),
+			fmt.Errorf("You should only use this non-standard API to access resources older than %s", wfe.staleTimeout),
 		)
 		return
 	}
@@ -1988,12 +1991,12 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
-	if request.Method == "GET" && wfe.clk.Since(time.Unix(*order.Created, 0)) < staleTimeout {
+	if request.Method == "GET" && wfe.clk.Since(time.Unix(*order.Created, 0)) < wfe.staleTimeout {
 		wfe.sendError(
 			response,
 			logEvent,
 			probs.Unauthorized("Order is too new"),
-			errors.New("You should only use this non-standard API to access resources older than %s", staleTimeout),
+			fmt.Errorf("You should only use this non-standard API to access resources older than %s", wfe.staleTimeout),
 		)
 		return
 	}

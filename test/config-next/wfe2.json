@@ -56,7 +56,8 @@
       "MandatoryPOSTAsGET": true,
       "PrecertificateRevocation": true,
       "StripDefaultSchemePort": true
-    }
+    },
+    "staleTimeout": "5m"
   },
 
   "syslog": {
