@@ -46,7 +46,6 @@
       ]
     },
     "features": {
-      "EarlyOrderRateLimit": true
     },
     "CTLogGroups2": [
       {
