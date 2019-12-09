@@ -6,5 +6,5 @@ type Config struct {
 	Module          string
 	TokenLabel      string
 	PIN             string
-	PrivateKeyLabel string
+	PublicKeyPath   string
 }

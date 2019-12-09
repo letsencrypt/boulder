@@ -54,13 +54,13 @@ github.com/hpcloud/tail/winfile
 github.com/jmhodges/clock
 # github.com/letsencrypt/challtestsrv v1.0.2
 github.com/letsencrypt/challtestsrv
-# github.com/letsencrypt/pkcs11key v1.0.0
-github.com/letsencrypt/pkcs11key
+# github.com/letsencrypt/pkcs11key/v4 v4.0.0
+github.com/letsencrypt/pkcs11key/v4
 # github.com/matttproud/golang_protobuf_extensions v1.0.1
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/miekg/dns v1.1.8
 github.com/miekg/dns
-# github.com/miekg/pkcs11 v0.0.0-20180208123754-88ac7c418f89
+# github.com/miekg/pkcs11 v1.0.2
 github.com/miekg/pkcs11
 # github.com/prometheus/client_golang v1.2.1
 github.com/prometheus/client_golang/prometheus

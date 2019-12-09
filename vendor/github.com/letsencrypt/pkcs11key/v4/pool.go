@@ -64,11 +64,11 @@ func (p *Pool) Public() crypto.PublicKey {
 }
 
 // NewPool creates a pool of Keys of size n.
-func NewPool(n int, modulePath, tokenLabel, pin, privateKeyLabel string) (*Pool, error) {
+func NewPool(n int, modulePath, tokenLabel, pin string, publicKey crypto.PublicKey) (*Pool, error) {
 	var err error
 	signers := make([]*Key, n)
 	for i := 0; i < n; i++ {
-		signers[i], err = New(modulePath, tokenLabel, pin, privateKeyLabel)
+		signers[i], err = New(modulePath, tokenLabel, pin, publicKey)
 		// If any of the signers fail, exit early. This could be, e.g., a bad PIN,
 		// and we want to make sure not to lock the token.
 		if err != nil {
@@ -93,7 +93,7 @@ func (p *Pool) Destroy() error {
 	for i := 0; i < p.totalCount; i++ {
 		err := p.get().Destroy()
 		if err != nil {
-			return fmt.Errorf("destroy error: %s", err)
+			return fmt.Errorf("pkcs11key: destroy: %s", err)
 		}
 	}
 	return nil
