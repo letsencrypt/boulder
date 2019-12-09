@@ -1541,7 +1541,6 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	logEvent.Extra["RequestedSerial"] = serial
 
 	cert, err := wfe.SA.GetCertificate(ctx, serial)
-
 	// TODO(#991): handle db errors
 	if err != nil {
 		ierr := fmt.Errorf("unable to get certificate by serial id %#v: %s", serial, err)
