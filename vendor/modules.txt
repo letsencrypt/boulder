@@ -93,13 +93,13 @@ github.com/syndtr/goleveldb/leveldb/util
 github.com/titanous/rocacheck
 # github.com/weppos/publicsuffix-go v0.10.1-0.20191207085315-342bab737784
 github.com/weppos/publicsuffix-go/publicsuffix
-# github.com/zmap/zcrypto v0.0.0-20190729165852-9051775e6a2e
+# github.com/zmap/zcrypto v0.0.0-20191112190257-7f2fe6faf8cf
 github.com/zmap/zcrypto/json
 github.com/zmap/zcrypto/util
 github.com/zmap/zcrypto/x509
 github.com/zmap/zcrypto/x509/ct
 github.com/zmap/zcrypto/x509/pkix
-# github.com/zmap/zlint v1.0.3-0.20191115164049-eea5fe83935a
+# github.com/zmap/zlint v1.1.0
 github.com/zmap/zlint
 github.com/zmap/zlint/lints
 github.com/zmap/zlint/util
