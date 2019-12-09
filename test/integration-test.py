@@ -335,6 +335,7 @@ def check_slow_queries():
             AND user_host NOT LIKE "mailer%"
             AND user_host NOT LIKE "janitor%"
             AND sql_text NOT LIKE 'SELECT status, expires FROM authz2 WHERE id IN %'
+            AND sql_text NOT LIKE '%LEFT JOIN orderToAuthz2 %'
         \G
     """
     output = subprocess.check_output(

@@ -42,12 +42,14 @@ if [ -n "${PKCS11_PROXY_SOCKET:-}" ]; then
   # convert key to DER once per container.
   wait_tcp_port boulder-hsm 5657
 
-  addkey() {
+  addobj() {
     pkcs11-tool --module=/usr/local/lib/libpkcs11-proxy.so \
-      --type privkey --pin 5678 --login --so-pin 1234 "$@";
+      --pin 5678 --login --so-pin 1234 "$@";
   }
-  addkey --token-label intermediate --write-object test/test-ca.key.der --label intermediate_key
-  addkey --token-label root --write-object test/test-root.key.der --label root_key
+  addobj --id 333333 --token-label intermediate --type privkey --write-object test/test-ca.key.der --label intermediate_key
+  addobj --id 777777 --token-label root         --type privkey --write-object test/test-root.key.der --label root_key
+  addobj --id 333333 --token-label intermediate --type pubkey  --write-object test/test-ca.pubkey.der --label intermediate_key
+  addobj --id 777777 --token-label root         --type pubkey  --write-object test/test-root.pubkey.der --label root_key
 fi
 
 if [[ $# -eq 0 ]]; then

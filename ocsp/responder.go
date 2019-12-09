@@ -51,17 +51,9 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-var (
-	malformedRequestErrorResponse = []byte{0x30, 0x03, 0x0A, 0x01, 0x01}
-	internalErrorErrorResponse    = []byte{0x30, 0x03, 0x0A, 0x01, 0x02}
-	tryLaterErrorResponse         = []byte{0x30, 0x03, 0x0A, 0x01, 0x03}
-	sigRequredErrorResponse       = []byte{0x30, 0x03, 0x0A, 0x01, 0x05}
-	unauthorizedErrorResponse     = []byte{0x30, 0x03, 0x0A, 0x01, 0x06}
-
-	// ErrNotFound indicates the request OCSP response was not found. It is used to
-	// indicate that the responder should reply with unauthorizedErrorResponse.
-	ErrNotFound = errors.New("Request OCSP Response not found")
-)
+// ErrNotFound indicates the request OCSP response was not found. It is used to
+// indicate that the responder should reply with unauthorizedErrorResponse.
+var ErrNotFound = errors.New("Request OCSP Response not found")
 
 // Source represents the logical source of OCSP responses, i.e.,
 // the logic that actually chooses a response based on a request.  In
@@ -303,7 +295,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 	if err != nil {
 		log.Debugf("Error decoding request body: %s", b64Body)
 		response.WriteHeader(http.StatusBadRequest)
-		response.Write(malformedRequestErrorResponse)
+		response.Write(ocsp.MalformedRequestErrorResponse)
 		rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Malformed]}).Inc()
 		return
 	}
@@ -318,14 +310,14 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		if err == ErrNotFound {
 			log.Infof("No response found for request: serial %x, request body %s",
 				ocspRequest.SerialNumber, b64Body)
-			response.Write(unauthorizedErrorResponse)
+			response.Write(ocsp.UnauthorizedErrorResponse)
 			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Unauthorized]}).Inc()
 			return
 		}
 		log.Infof("Error retrieving response for request: serial %x, request body %s, error: %s",
 			ocspRequest.SerialNumber, b64Body, err)
 		response.WriteHeader(http.StatusInternalServerError)
-		response.Write(internalErrorErrorResponse)
+		response.Write(ocsp.InternalErrorErrorResponse)
 		rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.InternalError]}).Inc()
 		return
 	}
@@ -334,7 +326,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 	if err != nil {
 		log.Errorf("Error parsing response for serial %x: %s",
 			ocspRequest.SerialNumber, err)
-		response.Write(internalErrorErrorResponse)
+		response.Write(ocsp.InternalErrorErrorResponse)
 		rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.InternalError]}).Inc()
 		return
 	}
