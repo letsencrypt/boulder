@@ -1881,11 +1881,11 @@ func TestGetCertificate(t *testing.T) {
 		{
 			Name:           "New cert",
 			Request:        makeGet(newSerial),
-			ExpectedStatus: http.StatusTooEarly,
+			ExpectedStatus: http.StatusForbidden,
 			ExpectedBody: `{
-				"type": "` + probs.V2ErrorNS + `tooNew",
+				"type": "` + probs.V2ErrorNS + `unauthorized",
 				"detail": "Certificate is too new",
-				"status": 425
+				"status": 403
 			}`,
 		},
 		{
@@ -2553,7 +2553,7 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "GET new order",
 			Request:  makeGet("1/9"),
-			Response: `{"type":"` + probs.V2ErrorNS + `tooNew","detail":"Order is too new","status":425}`,
+			Response: `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"Order is too new","status":403}`,
 		},
 		{
 			Name:     "POST-as-GET new order",

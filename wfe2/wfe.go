@@ -1557,7 +1557,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		wfe.sendError(
 			response,
 			logEvent,
-			probs.TooNew("Certificate is too new"),
+			probs.Unauthorized("Certificate is too new"),
 			errors.New("You should only use this non-standart API to access old resources"),
 		)
 		return
@@ -1993,7 +1993,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		wfe.sendError(
 			response,
 			logEvent,
-			probs.TooNew("Order is too new"),
+			probs.Unauthorized("Order is too new"),
 			errors.New("You should only use this non-standart API to access old resources"),
 		)
 		return
