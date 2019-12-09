@@ -28,9 +28,9 @@ require (
 	github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4
 	github.com/syndtr/goleveldb v0.0.0-20180331014930-714f901b98fd // indirect
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
-	github.com/weppos/publicsuffix-go v0.10.1-0.20191119120252-3dd5f42d2d87
-	github.com/zmap/zcrypto v0.0.0-20190729165852-9051775e6a2e
-	github.com/zmap/zlint v1.0.3-0.20191115164049-eea5fe83935a
+	github.com/weppos/publicsuffix-go v0.10.1-0.20191207085315-342bab737784
+	github.com/zmap/zcrypto v0.0.0-20191112190257-7f2fe6faf8cf
+	github.com/zmap/zlint v1.1.0
 	golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4
 	golang.org/x/net v0.0.0-20190613194153-d28f0bde5980
 	golang.org/x/text v0.3.2

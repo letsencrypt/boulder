@@ -17,10 +17,6 @@ script:
   # Run integration tests
   - make integration PARALLELISM=3
 
-cache:
-  directories:
-    - data
-
 notifications:
   email:
   - dkumar11@illinois.edu

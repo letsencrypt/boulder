@@ -19,6 +19,7 @@ package zlint
 import (
 	"encoding/json"
 	"io"
+	"regexp"
 	"time"
 
 	"github.com/zmap/zcrypto/x509"
@@ -38,9 +39,12 @@ type ResultSet struct {
 	FatalsPresent   bool                         `json:"fatals_present"`
 }
 
-func (z *ResultSet) execute(cert *x509.Certificate) {
+func (z *ResultSet) execute(cert *x509.Certificate, filter *regexp.Regexp) {
 	z.Results = make(map[string]*lints.LintResult, len(lints.Lints))
 	for name, l := range lints.Lints {
+		if filter != nil && !filter.MatchString(name) {
+			continue
+		}
 		res := l.Execute(cert)
 		z.Results[name] = res
 		z.updateErrorStatePresent(res)
@@ -79,8 +83,19 @@ func LintCertificate(c *x509.Certificate) *ResultSet {
 	}
 
 	// Run all tests
+	return LintCertificateFiltered(c, nil)
+}
+
+// LintCertificateFiltered runs all lints with names matching the provided
+// regexp on c, producing a ResultSet.
+func LintCertificateFiltered(c *x509.Certificate, filter *regexp.Regexp) *ResultSet {
+	if c == nil {
+		return nil
+	}
+
+	// Run tests with provided filter
 	res := new(ResultSet)
-	res.execute(c)
+	res.execute(c, filter)
 	res.Version = Version
 	res.Timestamp = time.Now().Unix()
 	return res
