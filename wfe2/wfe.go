@@ -1557,7 +1557,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 			response,
 			logEvent,
 			probs.Unauthorized("Certificate is too new"),
-			errors.New("You should only use this non-standart API to access old resources"),
+			errors.New("You should only use this non-standard API to access resources older than %s", staleTimeout),
 		)
 		return
 	}
