@@ -54,13 +54,13 @@ github.com/hpcloud/tail/winfile
 github.com/jmhodges/clock
 # github.com/letsencrypt/challtestsrv v1.0.2
 github.com/letsencrypt/challtestsrv
-# github.com/letsencrypt/pkcs11key v1.0.0
-github.com/letsencrypt/pkcs11key
+# github.com/letsencrypt/pkcs11key/v4 v4.0.0
+github.com/letsencrypt/pkcs11key/v4
 # github.com/matttproud/golang_protobuf_extensions v1.0.1
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/miekg/dns v1.1.8
 github.com/miekg/dns
-# github.com/miekg/pkcs11 v0.0.0-20180208123754-88ac7c418f89
+# github.com/miekg/pkcs11 v1.0.2
 github.com/miekg/pkcs11
 # github.com/prometheus/client_golang v1.2.1
 github.com/prometheus/client_golang/prometheus
@@ -91,15 +91,15 @@ github.com/syndtr/goleveldb/leveldb/table
 github.com/syndtr/goleveldb/leveldb/util
 # github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 github.com/titanous/rocacheck
-# github.com/weppos/publicsuffix-go v0.10.1-0.20191119120252-3dd5f42d2d87
+# github.com/weppos/publicsuffix-go v0.10.1-0.20191207085315-342bab737784
 github.com/weppos/publicsuffix-go/publicsuffix
-# github.com/zmap/zcrypto v0.0.0-20190729165852-9051775e6a2e
+# github.com/zmap/zcrypto v0.0.0-20191112190257-7f2fe6faf8cf
 github.com/zmap/zcrypto/json
 github.com/zmap/zcrypto/util
 github.com/zmap/zcrypto/x509
 github.com/zmap/zcrypto/x509/ct
 github.com/zmap/zcrypto/x509/pkix
-# github.com/zmap/zlint v1.0.3-0.20191115164049-eea5fe83935a
+# github.com/zmap/zlint v1.1.0
 github.com/zmap/zlint
 github.com/zmap/zlint/lints
 github.com/zmap/zlint/util
