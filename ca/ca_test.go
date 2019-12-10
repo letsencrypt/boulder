@@ -948,6 +948,9 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected error issuing duplicate serial but got none.")
 	}
+	if !strings.Contains(err.Error(), "error checking for duplicate issuance ") {
+		t.Fatal("Wrong type of error issuing duplicate serial.")
+	}
 }
 
 type queueSA struct {

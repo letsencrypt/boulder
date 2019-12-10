@@ -36,7 +36,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	csrlib "github.com/letsencrypt/boulder/csr"
-	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -603,12 +602,11 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	}
 
 	serialHex := core.SerialToString(precert.SerialNumber)
-	_, err = ca.sa.GetCertificate(ctx, serialHex)
-	if err == nil {
+	if _, err = ca.sa.GetCertificate(ctx, serialHex); err == nil {
 		err = berrors.InternalServerError("issuance of duplicate final certificate requested: %s", serialHex)
 		ca.log.AuditErr(err.Error())
 		return emptyCert, err
-	} else if !db.IsNoRows(err) {
+	} else if !berrors.Is(err, berrors.NotFound) {
 		return emptyCert, fmt.Errorf("error checking for duplicate issuance of %s: %s", serialHex, err)
 	}
 	var scts []ct.SignedCertificateTimestamp
