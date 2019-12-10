@@ -139,8 +139,7 @@ func (log promLogger) Println(args ...interface{}) {
 // doesn't use any locking.
 func StatsAndLogging(logConf SyslogConfig, addr string) (prometheus.Registerer, blog.Logger) {
 	logger := NewLogger(logConf)
-	stats := newStatsRegistry(addr, logger)
-	return stats, logger
+	return newStatsRegistry(addr, logger), logger
 }
 
 func NewLogger(logConf SyslogConfig) blog.Logger {

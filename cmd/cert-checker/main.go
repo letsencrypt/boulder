@@ -385,7 +385,6 @@ func main() {
 	saDbMap, err := sa.NewDbMap(saDbURL, config.CertChecker.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Could not connect to database")
 
-	// Collect and periodically report DB metrics
 	sa.InitDBMetrics(saDbMap, prometheus.DefaultRegisterer)
 
 	checkerLatency := prometheus.NewHistogram(prometheus.HistogramOpts{

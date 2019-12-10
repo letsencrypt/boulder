@@ -144,6 +144,7 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		Name: "tls_alpn_ipv4_fallback",
 		Help: "A counter of IPv4 fallbacks during TLS ALPN validation",
 	})
+	stats.MustRegister(ipv4FallbackCounter)
 
 	return &vaMetrics{
 		validationTime:                      validationTime,

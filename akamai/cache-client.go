@@ -84,15 +84,15 @@ func NewCachePurgeClient(
 	stats prometheus.Registerer,
 ) (*CachePurgeClient, error) {
 	purgeLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name:    "ccu_purge_results",
+		Name:    "ccu_purge_latency",
 		Help:    "Histogram of latencies of CCU purges",
 		Buckets: metrics.InternetFacingBuckets,
 	})
+	stats.MustRegister(purgeLatency)
 	purges := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "ccu_purges",
 		Help: "A counter of CCU purges labelled by the result",
 	}, []string{"type"})
-	stats.MustRegister(purgeLatency)
 	stats.MustRegister(purges)
 
 	if strings.HasSuffix(endpoint, "/") {

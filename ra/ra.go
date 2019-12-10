@@ -85,7 +85,7 @@ type RegistrationAuthorityImpl struct {
 	namesPerCert            *prometheus.HistogramVec
 	newRegCounter           prometheus.Counter
 	reusedValidAuthzCounter prometheus.Counter
-	recheckCAACounter       *prometheus.CounterVec
+	recheckCAACounter       prometheus.Counter
 	newCertCounter          prometheus.Counter
 }
 
@@ -150,10 +150,10 @@ func NewRegistrationAuthorityImpl(
 	stats.MustRegister(reusedValidAuthzCounter)
 
 	// this might make more sense as a hist?
-	recheckCAACounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+	recheckCAACounter := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "recheck_caa",
-		Help: "A counter of CAA rechecks labelled by the number of authorizations checked",
-	}, []string{"count"})
+		Help: "A counter of CAA rechecks",
+	})
 	stats.MustRegister(recheckCAACounter)
 
 	newCertCounter := prometheus.NewCounter(prometheus.CounterOpts{
@@ -850,7 +850,7 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 // performs the CAA checks required for each. If any of the rechecks fail an
 // error is returned.
 func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*core.Authorization) error {
-	ra.recheckCAACounter.WithLabelValues(fmt.Sprintf("%d", len(authzs))).Inc()
+	ra.recheckCAACounter.Add(float64(len(authzs)))
 
 	type authzCAAResult struct {
 		authz *core.Authorization

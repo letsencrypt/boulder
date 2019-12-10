@@ -128,7 +128,7 @@ func New(
 	sendMailAttempts := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "send_mail_attempts",
 		Help: "A counter of send mail attempts labelled by result",
-	}, []string{"result"})
+	}, []string{"result", "error"})
 	stats.MustRegister(sendMailAttempts)
 
 	return &MailerImpl{
@@ -336,14 +336,14 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			// If the error is nil, we sent the mail without issue. nice!
 			break
 		} else if err == io.EOF {
-			m.sendMailAttempts.WithLabelValues("failure, EOF").Inc()
+			m.sendMailAttempts.WithLabelValues("failure", "EOF").Inc()
 			// If the error is an EOF, we should try to reconnect on a backoff
 			// schedule, sleeping between attempts.
 			m.reconnect()
 			// After reconnecting, loop around and try `sendOne` again.
 			continue
 		} else if protoErr, ok := err.(*textproto.Error); ok && protoErr.Code == 421 {
-			m.sendMailAttempts.WithLabelValues("failure, SMTP 421").Inc()
+			m.sendMailAttempts.WithLabelValues("failure", "SMTP 421").Inc()
 			/*
 			 *  If the error is an instance of `textproto.Error` with a SMTP error code,
 			 *  and that error code is 421 then treat this as a reconnect-able event.
@@ -361,17 +361,17 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			 */
 			m.reconnect()
 		} else if protoErr, ok := err.(*textproto.Error); ok && recoverableErrorCodes[protoErr.Code] {
-			m.sendMailAttempts.WithLabelValues(fmt.Sprintf("failure, %d", protoErr.Code)).Inc()
+			m.sendMailAttempts.WithLabelValues("failure", fmt.Sprintf("SMTP %d", protoErr.Code)).Inc()
 			return RecoverableSMTPError{fmt.Sprintf("%d: %s", protoErr.Code, protoErr.Msg)}
 		} else {
 			// If it wasn't an EOF error or a recoverable SMTP error it is unexpected and we
 			// return from SendMail() with the error
-			m.sendMailAttempts.WithLabelValues("failure").Inc()
+			m.sendMailAttempts.WithLabelValues("failure", "unexpected").Inc()
 			return err
 		}
 	}
 
-	m.sendMailAttempts.WithLabelValues("success").Inc()
+	m.sendMailAttempts.WithLabelValues("success", "").Inc()
 	return nil
 }
 
