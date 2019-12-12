@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
@@ -261,6 +262,9 @@ func main() {
 	kp, err := goodkey.NewKeyPolicy("", c.WFE.BlockedKeyFile)
 	cmd.FailOnError(err, "Unable to create key policy")
 	rac, sac, rns, npm := setupWFE(c, logger, scope, clk)
+	if c.WFE.StaleTimeout.Duration == 0 {
+	    c.WFE.StaleTimeout.Duration = time.Minute * 10
+	}
 	wfe, err := wfe2.NewWebFrontEndImpl(scope, clk, kp, certChains, issuerCerts, rns, npm, logger, c.WFE.StaleTimeout.Duration)
 	cmd.FailOnError(err, "Unable to create WFE")
 	wfe.RA = rac
