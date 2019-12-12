@@ -149,7 +149,6 @@ func NewRegistrationAuthorityImpl(
 	})
 	stats.MustRegister(reusedValidAuthzCounter)
 
-	// this might make more sense as a hist?
 	recheckCAACounter := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "recheck_caa",
 		Help: "A counter of CAA rechecks",
