@@ -316,7 +316,12 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*jose.JSONWebSignature, *prob
 	parsedJWS, err := jose.ParseSigned(bodyStr)
 	if err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSParseError"}).Inc()
-		if strings.HasPrefix(err.Error(), "failed to unmarshal JWK: square/go-jose: invalid EC public key, wrong length") {
+		// TODO(#4300): This error references private keys, while the issue is
+		// actually with public keys. A fix has been merged upstream but we
+		// are waiting until a tagged release containing the change is made.
+		// Once there is a release containing the fix we'll need to update
+		// the dep and fix this check.
+		if strings.HasPrefix(err.Error(), "failed to unmarshal JWK: square/go-jose: invalid EC private key, wrong length") {
 			return nil, probs.Malformed("Parse error reading JWS: EC public key has incorrect padding")
 		}
 		return nil, probs.Malformed("Parse error reading JWS")
