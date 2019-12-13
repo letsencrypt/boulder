@@ -7,11 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"net"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/test"
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
@@ -300,11 +303,10 @@ func (sa *StorageAuthority) GetCertificate(_ context.Context, serial string) (co
 			Issued:         sa.clk.Now().Add(-1 * time.Hour),
 		}, nil
 	} else if serial == "0000000000000000000000000000000000b3" {
-		certPemBytes, _ := ioutil.ReadFile("test/178.crt")
-		certBlock, _ := pem.Decode(certPemBytes)
+		_, cert := test.ThrowAwayCertWithSerial(&testing.T{}, 1, big.NewInt(0xb3))
 		return core.Certificate{
 			RegistrationID: 1,
-			DER:            certBlock.Bytes,
+			DER:            cert.Raw,
 			Issued:         sa.clk.Now(),
 		}, nil
 	} else {

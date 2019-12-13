@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_model/go"
+	io_prometheus_client "github.com/prometheus/client_model/go"
 )
 
 func fatalf(t *testing.T, format string, args ...interface{}) {
@@ -216,12 +216,21 @@ func GaugeValueWithLabels(vecGauge *prometheus.GaugeVec, labels prometheus.Label
 // The certificate returned from this function is the bare minimum needed for
 // most tests and isn't a robust example of a complete end entity certificate.
 func ThrowAwayCert(t *testing.T, nameCount int) (string, *x509.Certificate) {
-	k, err := rsa.GenerateKey(rand.Reader, 512)
-	AssertNotError(t, err, "rsa.GenerateKey failed")
-
 	var serialBytes [16]byte
 	_, _ = rand.Read(serialBytes[:])
-	serialNum := big.NewInt(0).SetBytes(serialBytes[:])
+	sn := big.NewInt(0).SetBytes(serialBytes[:])
+
+	return ThrowAwayCertWithSerial(t, nameCount, sn)
+}
+
+// ThrowAwayCertWithSerial is a small test helper function that creates a self-signed
+// certificate for nameCount random example.com subdomains and returns the
+// parsed certificate and the serial in string form or aborts the test.
+// The certificate returned from this function is the bare minimum needed for
+// most tests and isn't a robust example of a complete end entity certificate.
+func ThrowAwayCertWithSerial(t *testing.T, nameCount int, sn *big.Int) (string, *x509.Certificate) {
+	k, err := rsa.GenerateKey(rand.Reader, 512)
+	AssertNotError(t, err, "rsa.GenerateKey failed")
 
 	var names []string
 	for i := 0; i < nameCount; i++ {
@@ -231,12 +240,13 @@ func ThrowAwayCert(t *testing.T, nameCount int) (string, *x509.Certificate) {
 	}
 
 	template := &x509.Certificate{
-		SerialNumber: serialNum,
-		DNSNames:     names,
+		SerialNumber:          sn,
+		DNSNames:              names,
+		IssuingCertificateURL: []string{"http://localhost:4000/acme/issuer-cert"},
 	}
 	testCertDER, err := x509.CreateCertificate(rand.Reader, template, template, &k.PublicKey, k)
 	AssertNotError(t, err, "x509.CreateCertificate failed")
 	testCert, err := x509.ParseCertificate(testCertDER)
 	AssertNotError(t, err, "failed to parse self-signed cert DER")
-	return fmt.Sprintf("%036x", serialNum), testCert
+	return fmt.Sprintf("%036x", sn), testCert
 }

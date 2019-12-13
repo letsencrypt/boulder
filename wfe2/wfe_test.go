@@ -1821,6 +1821,7 @@ func TestGetCertificate(t *testing.T) {
 		ExpectedHeaders map[string]string
 		ExpectedBody    string
 		ExpectedCert    []byte
+		AnyCert         bool
 	}{
 		{
 			Name:           "Valid serial",
@@ -1895,7 +1896,7 @@ func TestGetCertificate(t *testing.T) {
 			ExpectedHeaders: map[string]string{
 				"Content-Type": pkixContent,
 			},
-			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainPemBytes...)...),
+			AnyCert: true,
 		},
 	}
 
@@ -1918,6 +1919,10 @@ func TestGetCertificate(t *testing.T) {
 			// If the test cases expects additional headers, check those too
 			for h, v := range tc.ExpectedHeaders {
 				test.AssertEquals(t, headers.Get(h), v)
+			}
+
+			if tc.AnyCert { // Certificate is randomly generated, don't match it
+				return
 			}
 
 			if len(tc.ExpectedCert) > 0 {
