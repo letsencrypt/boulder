@@ -95,7 +95,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			args = append(args, req.IssuerID)
 		}
 
-		_, err = ssa.dbMap.WithContext(ctx).Exec(fmt.Sprintf(
+		_, err = txWithCtx.WithContext(ctx).Exec(fmt.Sprintf(
 			"INSERT INTO certificateStatus (%s) VALUES (%s)",
 			csFields,
 			strings.Join(qmarks, ","),
