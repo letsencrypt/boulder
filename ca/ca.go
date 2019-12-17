@@ -873,11 +873,14 @@ func (ca *CertificateAuthorityImpl) integrateOrphan() error {
 			Ocsp:   orphan.OCSPResp,
 			Issued: &issuedNanos,
 		})
+		if err != nil && !berrors.Is(err, berrors.Duplicate) {
+			return fmt.Errorf("failed to store orphaned precertificate: %s", err)
+		}
 	} else {
 		_, err = ca.sa.AddCertificate(context.Background(), orphan.DER, orphan.RegID, nil, &issued)
-	}
-	if err != nil && !berrors.Is(err, berrors.Duplicate) {
-		return fmt.Errorf("failed to store orphaned certificate: %s", err)
+		if err != nil && !berrors.Is(err, berrors.Duplicate) {
+			return fmt.Errorf("failed to store orphaned certificate: %s", err)
+		}
 	}
 	if _, err = ca.orphanQueue.Dequeue(); err != nil {
 		return fmt.Errorf("failed to dequeue integrated orphaned certificate: %s", err)
