@@ -2,12 +2,14 @@ package sa
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
@@ -115,4 +117,44 @@ func TestAddPrecertificate(t *testing.T) {
 	err := features.Set(map[string]bool{"WriteIssuedNamesPrecert": true})
 	test.AssertNotError(t, err, "failed to set WriteIssuedNamesPrecert feature flag")
 	addPrecert(true)
+}
+
+func TestAddPrecertificateStatusDupe(t *testing.T) {
+	sa, clk, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	serial, testCert := test.ThrowAwayCert(t, 1)
+
+	args := []interface{}{
+		serial,
+		string(core.OCSPStatusGood),
+		clk.Now(),
+		time.Time{},
+		0,
+		time.Time{},
+		[]byte{},
+		time.Time{},
+		false,
+	}
+	qmarks := []string{}
+	for range args {
+		qmarks = append(qmarks, "?")
+	}
+	_, err := sa.dbMap.Exec(fmt.Sprintf(
+		"INSERT INTO certificateStatus (%s) VALUES (%s)",
+		certStatusFields, strings.Join(qmarks, ",")),
+		args...,
+	)
+	test.AssertNotError(t, err, "certStatus insert failed")
+
+	issued := clk.Now().UnixNano()
+	_, err = sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
+		Der:    testCert.Raw,
+		RegID:  &reg.ID,
+		Ocsp:   []byte{},
+		Issued: &issued,
+	})
+	test.AssertError(t, err, "AddPrecertificate didn't fail with duplicate certificate status")
+	test.Assert(t, berrors.Is(err, berrors.Duplicate), "AddPrecertificate didn't return a berrors.Duplicate type error")
 }

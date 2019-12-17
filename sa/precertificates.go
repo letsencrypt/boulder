@@ -102,7 +102,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		), args...)
 		if err != nil {
 			if db.IsDuplicate(err) {
-				return nil, berrors.DuplicateError("cannot add a duplicate precertificate")
+				return nil, berrors.DuplicateError("cannot add a duplicate certificate status")
 			}
 			return nil, err
 		}
