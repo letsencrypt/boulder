@@ -2,7 +2,6 @@ package sa
 
 import (
 	"github.com/letsencrypt/boulder/db"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -90,8 +89,8 @@ func (dbc dbMetricsCollector) Collect(ch chan<- prometheus.Metric) {
 // InitDBMetrics will register a Collector that translates the provided dbMap's
 // stats into Prometheus metrics on the fly. The stat values will be translated
 // from the gorp dbMap's inner sql.DBMap's DBStats structure values.
-func InitDBMetrics(dbMap *db.WrappedMap, scope metrics.Scope) {
+func InitDBMetrics(dbMap *db.WrappedMap, stats prometheus.Registerer) {
 	// Create a dbMetricsCollector and register it
 	dbc := dbMetricsCollector{dbMap}
-	scope.MustRegister(dbc)
+	stats.MustRegister(dbc)
 }

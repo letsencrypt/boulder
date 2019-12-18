@@ -474,7 +474,7 @@ func main() {
 			nil,
 			*address,
 			log,
-			metrics.NewNoopScope(),
+			metrics.NoopRegisterer,
 			*reconnBase,
 			*reconnMax)
 	}

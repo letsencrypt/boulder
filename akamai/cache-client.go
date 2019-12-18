@@ -20,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 )
 
@@ -53,7 +54,8 @@ type CachePurgeClient struct {
 	retries      int
 	retryBackoff time.Duration
 	log          blog.Logger
-	stats        metrics.Scope
+	purgeLatency prometheus.Histogram
+	purges       *prometheus.CounterVec
 	clk          clock.Clock
 }
 
@@ -79,9 +81,20 @@ func NewCachePurgeClient(
 	retries int,
 	retryBackoff time.Duration,
 	log blog.Logger,
-	stats metrics.Scope,
+	stats prometheus.Registerer,
 ) (*CachePurgeClient, error) {
-	stats = stats.NewScope("CCU")
+	purgeLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "ccu_purge_latency",
+		Help:    "Histogram of latencies of CCU purges",
+		Buckets: metrics.InternetFacingBuckets,
+	})
+	stats.MustRegister(purgeLatency)
+	purges := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "ccu_purges",
+		Help: "A counter of CCU purges labelled by the result",
+	}, []string{"type"})
+	stats.MustRegister(purges)
+
 	if strings.HasSuffix(endpoint, "/") {
 		endpoint = endpoint[:len(endpoint)-1]
 	}
@@ -106,8 +119,9 @@ func NewCachePurgeClient(
 		retries:      retries,
 		retryBackoff: retryBackoff,
 		log:          log,
-		stats:        stats,
 		clk:          clock.Default(),
+		purgeLatency: purgeLatency,
+		purges:       purges,
 	}, nil
 }
 
@@ -195,9 +209,9 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 	cpc.log.Debugf("POSTing to %s with Authorization %s: %s",
 		endpoint, authHeader, reqJSON)
 
-	rS := cpc.clk.Now()
+	s := cpc.clk.Now()
 	resp, err := cpc.client.Do(req)
-	cpc.stats.TimingDuration("PurgeRequestLatency", time.Since(rS))
+	cpc.purgeLatency.Observe(cpc.clk.Since(s).Seconds())
 	if err != nil {
 		return err
 	}
@@ -241,11 +255,11 @@ func (cpc *CachePurgeClient) purgeBatch(urls []string) error {
 		err := cpc.purge(urls)
 		if err != nil {
 			if _, ok := err.(errFatal); ok {
-				cpc.stats.Inc("FatalFailures", 1)
+				cpc.purges.WithLabelValues("fatal failure").Inc()
 				return err
 			}
 			cpc.log.AuditErrf("Akamai cache purge failed, retrying: %s", err)
-			cpc.stats.Inc("RetryableFailures", 1)
+			cpc.purges.WithLabelValues("retryable failure").Inc()
 			continue
 		}
 		successful = true
@@ -253,11 +267,11 @@ func (cpc *CachePurgeClient) purgeBatch(urls []string) error {
 	}
 
 	if !successful {
-		cpc.stats.Inc("FatalFailures", 1)
+		cpc.purges.WithLabelValues("fatal failure").Inc()
 		return ErrAllRetriesFailed
 	}
 
-	cpc.stats.Inc("SuccessfulPurges", 1)
+	cpc.purges.WithLabelValues("success").Inc()
 	return nil
 }
 

@@ -27,6 +27,7 @@ import (
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 )
 
@@ -62,13 +63,13 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *db.WrappedMap, c
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
 
-	sa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NewNoopScope(), 1)
+	sa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NoopRegisterer, 1)
 	test.AssertNotError(t, err, "Failed to create SA")
 
 	cleanUp := test.ResetSATestDatabase(t)
 
 	updater, err := newUpdater(
-		metrics.NewNoopScope(),
+		metrics.NoopRegisterer,
 		fc,
 		dbMap,
 		&mockOCSP{},
@@ -163,7 +164,7 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	start := time.Now()
 	updater.ogc = &mockOCSP{time.Second}
 	updater.parallelGenerateOCSPRequests = 10
-	err = updater.generateOCSPResponses(ctx, certs, metrics.NewNoopScope())
+	err = updater.generateOCSPResponses(ctx, certs)
 	test.AssertNotError(t, err, "Couldn't generate OCSP responses")
 	elapsed := time.Since(start)
 	if elapsed > 1500*time.Millisecond {
@@ -404,11 +405,11 @@ func TestLoopTickBackoff(t *testing.T) {
 	fc := clock.NewFake()
 	l := looper{
 		clk:                  fc,
-		stats:                metrics.NewNoopScope(),
 		failureBackoffFactor: 1.5,
 		failureBackoffMax:    10 * time.Minute,
 		tickDur:              time.Minute,
 		tickFunc:             func(context.Context, int) error { return errors.New("baddie") },
+		tickHistogram:        prometheus.NewHistogramVec(prometheus.HistogramOpts{}, []string{"result", "long"}),
 	}
 
 	assertBetween := func(a, b, c int64) {

@@ -62,7 +62,6 @@ type RegistrationAuthorityImpl struct {
 	publisher core.Publisher
 	caa       caaChecker
 
-	stats     metrics.Scope
 	clk       clock.Clock
 	log       blog.Logger
 	keyPolicy goodkey.KeyPolicy
@@ -79,24 +78,22 @@ type RegistrationAuthorityImpl struct {
 	issuer *x509.Certificate
 	purger akamaipb.AkamaiPurgerClient
 
-	regByIPStats           metrics.Scope
-	regByIPRangeStats      metrics.Scope
-	pendAuthByRegIDStats   metrics.Scope
-	pendOrdersByRegIDStats metrics.Scope
-	newOrderByRegIDStats   metrics.Scope
-	certsForDomainStats    metrics.Scope
+	ctpolicy *ctpolicy.CTPolicy
 
-	ctpolicy        *ctpolicy.CTPolicy
-	ctpolicyResults *prometheus.HistogramVec
-
-	namesPerCert *prometheus.HistogramVec
+	ctpolicyResults         *prometheus.HistogramVec
+	rateLimitCounter        *prometheus.CounterVec
+	namesPerCert            *prometheus.HistogramVec
+	newRegCounter           prometheus.Counter
+	reusedValidAuthzCounter prometheus.Counter
+	recheckCAACounter       prometheus.Counter
+	newCertCounter          prometheus.Counter
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
 func NewRegistrationAuthorityImpl(
 	clk clock.Clock,
 	logger blog.Logger,
-	stats metrics.Scope,
+	stats prometheus.Registerer,
 	maxContactsPerReg int,
 	keyPolicy goodkey.KeyPolicy,
 	maxNames int,
@@ -134,8 +131,37 @@ func NewRegistrationAuthorityImpl(
 	)
 	stats.MustRegister(namesPerCert)
 
+	rateLimitCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "ra_ratelimits",
+		Help: "A counter of RA ratelimit checks labelled by type and pass/exceed",
+	}, []string{"limit", "result"})
+	stats.MustRegister(rateLimitCounter)
+
+	newRegCounter := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "new_registrations",
+		Help: "A counter of new registrations",
+	})
+	stats.MustRegister(newRegCounter)
+
+	reusedValidAuthzCounter := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "reused_valid_authz",
+		Help: "A counter of reused valid authorizations",
+	})
+	stats.MustRegister(reusedValidAuthzCounter)
+
+	recheckCAACounter := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "recheck_caa",
+		Help: "A counter of CAA rechecks",
+	})
+	stats.MustRegister(recheckCAACounter)
+
+	newCertCounter := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "new_certificates",
+		Help: "A counter of new certificates",
+	})
+	stats.MustRegister(newCertCounter)
+
 	ra := &RegistrationAuthorityImpl{
-		stats:                        stats,
 		clk:                          clk,
 		log:                          logger,
 		authorizationLifetime:        authorizationLifetime,
@@ -146,12 +172,6 @@ func NewRegistrationAuthorityImpl(
 		maxNames:                     maxNames,
 		forceCNFromSAN:               forceCNFromSAN,
 		reuseValidAuthz:              reuseValidAuthz,
-		regByIPStats:                 stats.NewScope("RateLimit", "RegistrationsByIP"),
-		regByIPRangeStats:            stats.NewScope("RateLimit", "RegistrationsByIPRange"),
-		pendAuthByRegIDStats:         stats.NewScope("RateLimit", "PendingAuthorizationsByRegID"),
-		pendOrdersByRegIDStats:       stats.NewScope("RateLimit", "PendingOrdersByRegID"),
-		newOrderByRegIDStats:         stats.NewScope("RateLimit", "NewOrdersByRegID"),
-		certsForDomainStats:          stats.NewScope("RateLimit", "CertificatesForDomain"),
 		publisher:                    pubc,
 		caa:                          caaClient,
 		orderLifetime:                orderLifetime,
@@ -160,6 +180,11 @@ func NewRegistrationAuthorityImpl(
 		purger:                       purger,
 		issuer:                       issuer,
 		namesPerCert:                 namesPerCert,
+		rateLimitCounter:             rateLimitCounter,
+		newRegCounter:                newRegCounter,
+		reusedValidAuthzCounter:      reusedValidAuthzCounter,
+		recheckCAACounter:            recheckCAACounter,
+		newCertCounter:               newCertCounter,
 	}
 	return ra
 }
@@ -263,11 +288,11 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 	exactRegLimit := ra.rlPolicies.RegistrationsPerIP()
 	err := ra.checkRegistrationIPLimit(ctx, exactRegLimit, ip, ra.SA.CountRegistrationsByIP)
 	if err != nil {
-		ra.regByIPStats.Inc("Exceeded", 1)
+		ra.rateLimitCounter.WithLabelValues("registrations_by_ip", "exceeded").Inc()
 		ra.log.Infof("Rate limit exceeded, RegistrationsByIP, IP: %s", ip)
 		return err
 	}
-	ra.regByIPStats.Inc("Pass", 1)
+	ra.rateLimitCounter.WithLabelValues("registrations_by_ip", "pass").Inc()
 
 	// We only apply the fuzzy reg limit to IPv6 addresses.
 	// Per https://golang.org/pkg/net/#IP.To4 "If ip is not an IPv4 address, To4
@@ -282,13 +307,13 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 	fuzzyRegLimit := ra.rlPolicies.RegistrationsPerIPRange()
 	err = ra.checkRegistrationIPLimit(ctx, fuzzyRegLimit, ip, ra.SA.CountRegistrationsByIPRange)
 	if err != nil {
-		ra.regByIPRangeStats.Inc("Exceeded", 1)
+		ra.rateLimitCounter.WithLabelValues("registrations_by_ip_range", "exceeded").Inc()
 		ra.log.Infof("Rate limit exceeded, RegistrationsByIPRange, IP: %s", ip)
 		// For the fuzzyRegLimit we use a new error message that specifically
 		// mentions that the limit being exceeded is applied to a *range* of IPs
 		return berrors.RateLimitError("too many registrations for this IP range")
 	}
-	ra.regByIPRangeStats.Inc("Pass", 1)
+	ra.rateLimitCounter.WithLabelValues("registrations_by_ip_range", "pass").Inc()
 
 	return nil
 }
@@ -322,7 +347,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 		return core.Registration{}, err
 	}
 
-	ra.stats.Inc("NewRegistrations", 1)
+	ra.newRegCounter.Inc()
 	return reg, nil
 }
 
@@ -438,11 +463,11 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 		// here.
 		noKey := ""
 		if int(*countPB.Count) >= limit.GetThreshold(noKey, regID) {
-			ra.pendAuthByRegIDStats.Inc("Exceeded", 1)
+			ra.rateLimitCounter.WithLabelValues("pending_authorizations_by_registration_id", "exceeded").Inc()
 			ra.log.Infof("Rate limit exceeded, PendingAuthorizationsByRegID, regID: %d", regID)
 			return berrors.RateLimitError("too many currently pending authorizations")
 		}
-		ra.pendAuthByRegIDStats.Inc("Pass", 1)
+		ra.rateLimitCounter.WithLabelValues("pending_authorizations_by_registration_id", "pass").Inc()
 	}
 	return nil
 }
@@ -523,10 +548,10 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 	// There is no meaningful override key to use for this rate limit
 	noKey := ""
 	if count >= limit.GetThreshold(noKey, acctID) {
-		ra.newOrderByRegIDStats.Inc("Exceeded", 1)
+		ra.rateLimitCounter.WithLabelValues("new_order_by_registration_id", "exceeded").Inc()
 		return berrors.RateLimitError("too many new orders recently")
 	}
-	ra.newOrderByRegIDStats.Inc("Pass", 1)
+	ra.rateLimitCounter.WithLabelValues("new_order_by_registration_id", "pass").Inc()
 	return nil
 }
 
@@ -577,7 +602,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 				// it to be OK for reuse
 				reuseCutOff := ra.clk.Now().Add(time.Hour * 24)
 				if existingAuthz.Expires.After(reuseCutOff) {
-					ra.stats.Inc("ReusedValidAuthz", 1)
+					ra.reusedValidAuthzCounter.Inc()
 					return *existingAuthz, nil
 				}
 			}
@@ -824,8 +849,7 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 // performs the CAA checks required for each. If any of the rechecks fail an
 // error is returned.
 func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*core.Authorization) error {
-	ra.stats.Inc("recheck_caa", 1)
-	ra.stats.Inc("recheck_caa_authzs", int64(len(authzs)))
+	ra.recheckCAACounter.Add(float64(len(authzs)))
 
 	type authzCAAResult struct {
 		authz *core.Authorization
@@ -1243,7 +1267,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	logEvent.NotBefore = parsedCertificate.NotBefore
 	logEvent.NotAfter = parsedCertificate.NotAfter
 
-	ra.stats.Inc("NewCertificates", 1)
+	ra.newCertCounter.Inc()
 	return cert, nil
 }
 
@@ -1330,7 +1354,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 			return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
 		}
 		if exists {
-			ra.certsForDomainStats.Inc("FQDNSetBypass", 1)
+			ra.rateLimitCounter.WithLabelValues("certificates_for_domain", "FQDN set bypass").Inc()
 			return nil
 		}
 	}
@@ -1356,13 +1380,13 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 				return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
 			}
 			if exists {
-				ra.certsForDomainStats.Inc("FQDNSetBypass", 1)
+				ra.rateLimitCounter.WithLabelValues("certificates_for_domain", "FQDN set bypass").Inc()
 				return nil
 			}
 		}
 
 		ra.log.Infof("Rate limit exceeded, CertificatesForDomain, regID: %d, domains: %s", regID, strings.Join(namesOutOfLimit, ", "))
-		ra.certsForDomainStats.Inc("Exceeded", 1)
+		ra.rateLimitCounter.WithLabelValues("certificates_for_domain", "exceeded").Inc()
 		if len(namesOutOfLimit) > 1 {
 			var subErrors []berrors.SubBoulderError
 			for _, name := range namesOutOfLimit {
@@ -1375,7 +1399,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 		}
 		return berrors.RateLimitError("too many certificates already issued for: %s", namesOutOfLimit[0])
 	}
-	ra.certsForDomainStats.Inc("Pass", 1)
+	ra.rateLimitCounter.WithLabelValues("certificates_for_domain", "pass").Inc()
 
 	return nil
 }
@@ -1438,7 +1462,6 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, bas
 		return core.Registration{}, err
 	}
 
-	ra.stats.Inc("UpdatedRegistrations", 1)
 	return base, nil
 }
 
@@ -1573,7 +1596,6 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// the overall authorization is already good! We increment a stat for this
 	// case and return early.
 	if ra.reuseValidAuthz && authz.Status == core.StatusValid {
-		ra.stats.Inc("ReusedValidAuthzChallenge", 1)
 		return req.Authz, nil
 	}
 
@@ -1605,8 +1627,6 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	if cErr := ch.CheckConsistencyForValidation(); cErr != nil {
 		return nil, berrors.MalformedError(cErr.Error())
 	}
-
-	ra.stats.Inc("NewPendingAuthorizations", 1)
 
 	// Dispatch to the VA for service
 	vaCtx := context.Background()
@@ -1648,7 +1668,6 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 				err, authz.RegistrationID, authz.ID)
 		}
 	}(authz)
-	ra.stats.Inc("UpdatedPendingAuthorizations", 1)
 	return bgrpc.AuthzToPB(authz)
 }
 
@@ -1728,7 +1747,6 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 	}
 
 	state = "Success"
-	ra.stats.Inc("RevokedCertificates", 1)
 	return nil
 }
 
@@ -1759,7 +1777,6 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	}
 
 	state = "Success"
-	ra.stats.Inc("RevokedCertificates", 1)
 	return nil
 }
 

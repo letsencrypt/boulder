@@ -30,9 +30,9 @@ func TestDNSValidationEmpty(t *testing.T) {
 	test.AssertEquals(t, prob.Error(), "unauthorized :: No TXT record found at _acme-challenge.empty-txts.com")
 
 	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
-		"type":        "dns-01",
-		"result":      "invalid",
-		"problemType": "unauthorized",
+		"type":         "dns-01",
+		"result":       "invalid",
+		"problem_type": "unauthorized",
 	}))
 	if samples != 1 {
 		t.Errorf("Wrong number of samples for invalid validation. Expected 1, got %d", samples)
@@ -156,7 +156,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 	va.dnsClient = bdns.NewTestDNSClientImpl(
 		time.Second*5,
 		nil,
-		metrics.NewNoopScope(),
+		metrics.NoopRegisterer,
 		clock.Default(),
 		1,
 		log)

@@ -167,14 +167,14 @@ type pubMetrics struct {
 	probeLatency      *prometheus.HistogramVec
 }
 
-func initMetrics(stats metrics.Scope) *pubMetrics {
+func initMetrics(stats prometheus.Registerer) *pubMetrics {
 	submissionLatency := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "ct_submission_time_seconds",
 			Help:    "Time taken to submit a certificate to a CT log",
 			Buckets: metrics.InternetFacingBuckets,
 		},
-		[]string{"log", "status", "httpStatus"},
+		[]string{"log", "status", "http_status"},
 	)
 	stats.MustRegister(submissionLatency)
 
@@ -209,7 +209,7 @@ func New(
 	bundle []ct.ASN1Cert,
 	userAgent string,
 	logger blog.Logger,
-	stats metrics.Scope,
+	stats prometheus.Registerer,
 ) *Impl {
 	return &Impl{
 		issuerBundle: bundle,
@@ -299,16 +299,16 @@ func (pub *Impl) singleLogSubmit(
 			httpStatus = fmt.Sprintf("%d", rspError.StatusCode)
 		}
 		pub.metrics.submissionLatency.With(prometheus.Labels{
-			"log":        ctLog.uri,
-			"status":     status,
-			"httpStatus": httpStatus,
+			"log":         ctLog.uri,
+			"status":      status,
+			"http_status": httpStatus,
 		}).Observe(took)
 		return nil, err
 	}
 	pub.metrics.submissionLatency.With(prometheus.Labels{
-		"log":        ctLog.uri,
-		"status":     "success",
-		"httpStatus": "",
+		"log":         ctLog.uri,
+		"status":      "success",
+		"http_status": "",
 	}).Observe(took)
 
 	timestamp := time.Unix(int64(sct.Timestamp)/1000, 0)

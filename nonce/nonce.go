@@ -26,8 +26,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/letsencrypt/boulder/metrics"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -39,15 +39,17 @@ var errInvalidNonceLength = errors.New("invalid nonce length")
 
 // NonceService generates, cancels, and tracks Nonces.
 type NonceService struct {
-	mu       sync.Mutex
-	latest   int64
-	earliest int64
-	used     map[int64]bool
-	usedHeap *int64Heap
-	gcm      cipher.AEAD
-	maxUsed  int
-	prefix   string
-	stats    metrics.Scope
+	mu               sync.Mutex
+	latest           int64
+	earliest         int64
+	used             map[int64]bool
+	usedHeap         *int64Heap
+	gcm              cipher.AEAD
+	maxUsed          int
+	prefix           string
+	noncesGenerated  prometheus.Counter
+	nonceValidations *prometheus.CounterVec
+	nonceHeapLatency prometheus.Histogram
 }
 
 type int64Heap []int64
@@ -69,9 +71,7 @@ func (h *int64Heap) Pop() interface{} {
 }
 
 // NewNonceService constructs a NonceService with defaults
-func NewNonceService(scope metrics.Scope, maxUsed int, prefix string) (*NonceService, error) {
-	scope = scope.NewScope("NonceService")
-
+func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*NonceService, error) {
 	// If a prefix is provided it must be four characters and valid
 	// base64. The prefix is required to be base64url as RFC8555
 	// section 6.5.1 requires that nonces use that encoding.
@@ -105,15 +105,30 @@ func NewNonceService(scope metrics.Scope, maxUsed int, prefix string) (*NonceSer
 		maxUsed = defaultMaxUsed
 	}
 
+	noncesGenerated := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "nonces_generated",
+		Help: "A counter of nonces generated",
+	})
+	nonceValidations := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "nonces_validations",
+		Help: "A counter of nonce validations labelled by result",
+	}, []string{"result", "error"})
+	nonceHeapLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name: "nonce_heap_latency",
+		Help: "A histogram of latencies of heap pop operations",
+	})
+
 	return &NonceService{
-		earliest: 0,
-		latest:   0,
-		used:     make(map[int64]bool, maxUsed),
-		usedHeap: &int64Heap{},
-		gcm:      gcm,
-		maxUsed:  maxUsed,
-		prefix:   prefix,
-		stats:    scope,
+		earliest:         0,
+		latest:           0,
+		used:             make(map[int64]bool, maxUsed),
+		usedHeap:         &int64Heap{},
+		gcm:              gcm,
+		maxUsed:          maxUsed,
+		prefix:           prefix,
+		noncesGenerated:  noncesGenerated,
+		nonceValidations: nonceValidations,
+		nonceHeapLatency: nonceHeapLatency,
 	}, nil
 }
 
@@ -185,7 +200,7 @@ func (ns *NonceService) Nonce() (string, error) {
 	ns.latest++
 	latest := ns.latest
 	ns.mu.Unlock()
-	defer ns.stats.Inc("Generated", 1)
+	defer ns.noncesGenerated.Inc()
 	return ns.encrypt(latest)
 }
 
@@ -194,24 +209,24 @@ func (ns *NonceService) Nonce() (string, error) {
 func (ns *NonceService) Valid(nonce string) bool {
 	c, err := ns.decrypt(nonce)
 	if err != nil {
-		ns.stats.Inc("Invalid.Decrypt", 1)
+		ns.nonceValidations.WithLabelValues("invalid", "decrypt").Inc()
 		return false
 	}
 
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
 	if c > ns.latest {
-		ns.stats.Inc("Invalid.TooHigh", 1)
+		ns.nonceValidations.WithLabelValues("invalid", "too high").Inc()
 		return false
 	}
 
 	if c <= ns.earliest {
-		ns.stats.Inc("Invalid.TooLow", 1)
+		ns.nonceValidations.WithLabelValues("invalid", "too low").Inc()
 		return false
 	}
 
 	if ns.used[c] {
-		ns.stats.Inc("Invalid.AlreadyUsed", 1)
+		ns.nonceValidations.WithLabelValues("invalid", "already used").Inc()
 		return false
 	}
 
@@ -220,11 +235,11 @@ func (ns *NonceService) Valid(nonce string) bool {
 	if len(ns.used) > ns.maxUsed {
 		s := time.Now()
 		ns.earliest = heap.Pop(ns.usedHeap).(int64)
-		ns.stats.TimingDuration("Heap.Latency", time.Since(s))
+		ns.nonceHeapLatency.Observe(time.Since(s).Seconds())
 		delete(ns.used, ns.earliest)
 	}
 
-	ns.stats.Inc("Valid", 1)
+	ns.nonceValidations.WithLabelValues("valid", "").Inc()
 	return true
 }
 

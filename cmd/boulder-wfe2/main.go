@@ -23,6 +23,7 @@ import (
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/wfe2"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type config struct {
@@ -202,7 +203,7 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string][]byte, 
 	return results, issuerCerts, nil
 }
 
-func setupWFE(c config, logger blog.Logger, stats metrics.Scope, clk clock.Clock) (core.RegistrationAuthority, core.StorageAuthority, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient) {
+func setupWFE(c config, logger blog.Logger, stats prometheus.Registerer, clk clock.Clock) (core.RegistrationAuthority, core.StorageAuthority, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient) {
 	tlsConfig, err := c.WFE.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 	clientMetrics := bgrpc.NewClientMetrics(stats)
@@ -248,7 +249,7 @@ func main() {
 	err = features.Set(c.WFE.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.WFE.DebugAddr)
+	stats, logger := cmd.StatsAndLogging(c.Syslog, c.WFE.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
@@ -257,8 +258,8 @@ func main() {
 	// don't load any weak keys, but do load blocked keys
 	kp, err := goodkey.NewKeyPolicy("", c.WFE.BlockedKeyFile)
 	cmd.FailOnError(err, "Unable to create key policy")
-	rac, sac, rns, npm := setupWFE(c, logger, scope, clk)
-	wfe, err := wfe2.NewWebFrontEndImpl(scope, clk, kp, certChains, issuerCerts, rns, npm, logger)
+	rac, sac, rns, npm := setupWFE(c, logger, stats, clk)
+	wfe, err := wfe2.NewWebFrontEndImpl(stats, clk, kp, certChains, issuerCerts, rns, npm, logger)
 	cmd.FailOnError(err, "Unable to create WFE")
 	wfe.RA = rac
 	wfe.SA = sac
@@ -275,7 +276,7 @@ func main() {
 	logger.Infof("WFE using key policy: %#v", kp)
 
 	logger.Infof("Server running, listening on %s...\n", c.WFE.ListenAddress)
-	handler := wfe.Handler()
+	handler := wfe.Handler(metrics.NoopRegisterer)
 	srv := &http.Server{
 		Addr:    c.WFE.ListenAddress,
 		Handler: handler,

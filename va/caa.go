@@ -219,23 +219,14 @@ func containsMethod(commaSeparatedMethods, method string) bool {
 func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool, params *caaParams) (present, valid bool) {
 	if caaSet == nil {
 		// No CAA records found, can issue
-		va.stats.Inc("CAA.None", 1)
+		va.metrics.caaCounter.WithLabelValues("no records").Inc()
 		return false, true
 	}
 
-	// Record stats on directives not currently processed.
-	if len(caaSet.Iodef) > 0 {
-		va.stats.Inc("CAA.WithIodef", 1)
-	}
-
 	if caaSet.criticalUnknown() {
-		// Contains unknown critical directives.
-		va.stats.Inc("CAA.UnknownCritical", 1)
+		// Contains unknown critical directives
+		va.metrics.caaCounter.WithLabelValues("record with unknown critical directive").Inc()
 		return true, false
-	}
-
-	if len(caaSet.Unknown) > 0 {
-		va.stats.Inc("CAA.WithUnknownNoncritical", 1)
 	}
 
 	if len(caaSet.Issue) == 0 && !wildcard {
@@ -243,7 +234,7 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 		// (e.g. there is only an issuewild directive, but we are checking for a
 		// non-wildcard identifier, or there is only an iodef or non-critical unknown
 		// directive.)
-		va.stats.Inc("CAA.NoneRelevant", 1)
+		va.metrics.caaCounter.WithLabelValues("no relevant records").Inc()
 		return true, true
 	}
 
@@ -297,12 +288,12 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 			}
 		}
 
-		va.stats.Inc("CAA.Authorized", 1)
+		va.metrics.caaCounter.WithLabelValues("authorized").Inc()
 		return true, true
 	}
 
 	// The list of authorized issuers is non-empty, but we are not in it. Fail.
-	va.stats.Inc("CAA.Unauthorized", 1)
+	va.metrics.caaCounter.WithLabelValues("unauthorized").Inc()
 	return true, false
 }
 

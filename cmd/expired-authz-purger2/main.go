@@ -11,7 +11,6 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -66,9 +65,9 @@ func main() {
 
 	var logger blog.Logger
 	if c.ExpiredAuthzPurger2.DebugAddr != "" {
-		var scope metrics.Scope
-		scope, logger = cmd.StatsAndLogging(c.ExpiredAuthzPurger2.Syslog, c.ExpiredAuthzPurger2.DebugAddr)
-		scope.MustRegister(deletedStat)
+		var stats prometheus.Registerer
+		stats, logger = cmd.StatsAndLogging(c.ExpiredAuthzPurger2.Syslog, c.ExpiredAuthzPurger2.DebugAddr)
+		stats.MustRegister(deletedStat)
 	} else {
 		logger = cmd.NewLogger(c.ExpiredAuthzPurger2.Syslog)
 	}

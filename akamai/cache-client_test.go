@@ -18,7 +18,7 @@ import (
 
 func TestConstructAuthHeader(t *testing.T) {
 	log := blog.NewMock()
-	stats := metrics.NewNoopScope()
+	stats := metrics.NoopRegisterer
 	cpc, err := NewCachePurgeClient(
 		"https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
 		"akab-client-token-xxx-xxxxxxxxxxxxxxxx",
@@ -137,7 +137,7 @@ func TestV3Purge(t *testing.T) {
 		3,
 		time.Second,
 		blog.NewMock(),
-		metrics.NewNoopScope(),
+		metrics.NoopRegisterer,
 	)
 	test.AssertNotError(t, err, "Failed to create CachePurgeClient")
 	fc := clock.NewFake()
@@ -170,7 +170,7 @@ func TestNewCachePurgeClient(t *testing.T) {
 		3,
 		time.Second,
 		blog.NewMock(),
-		metrics.NewNoopScope(),
+		metrics.NoopRegisterer,
 	)
 	test.AssertError(t, err, "NewCachePurgeClient with invalid network parameter didn't error")
 
@@ -184,7 +184,7 @@ func TestNewCachePurgeClient(t *testing.T) {
 		3,
 		time.Second,
 		blog.NewMock(),
-		metrics.NewNoopScope(),
+		metrics.NoopRegisterer,
 	)
 	test.AssertNotError(t, err, "NewCachePurgeClient with valid network parameter errored")
 
@@ -198,7 +198,7 @@ func TestNewCachePurgeClient(t *testing.T) {
 		3,
 		time.Second,
 		blog.NewMock(),
-		metrics.NewNoopScope(),
+		metrics.NoopRegisterer,
 	)
 	test.AssertError(t, err, "NewCachePurgeClient with invalid server url parameter didn't error")
 }
@@ -223,7 +223,7 @@ func TestBigBatchPurge(t *testing.T) {
 		3,
 		time.Second,
 		log,
-		metrics.NewNoopScope(),
+		metrics.NoopRegisterer,
 	)
 	test.AssertNotError(t, err, "Failed to create CachePurgeClient")
 

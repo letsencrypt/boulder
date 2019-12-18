@@ -117,7 +117,7 @@ func TestGetSCTs(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ctp := New(tc.mock, tc.groups, nil, blog.NewMock(), metrics.NewNoopScope())
+			ctp := New(tc.mock, tc.groups, nil, blog.NewMock(), metrics.NoopRegisterer)
 			ret, err := ctp.GetSCTs(tc.ctx, []byte{0}, time.Time{})
 			if tc.result != nil {
 				test.AssertDeepEquals(t, ret, tc.result)
@@ -171,7 +171,7 @@ func TestGetSCTsMetrics(t *testing.T) {
 				{URI: "ghi", Key: "jkl"},
 			},
 		},
-	}, nil, blog.NewMock(), metrics.NewNoopScope())
+	}, nil, blog.NewMock(), metrics.NoopRegisterer)
 	_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
 	test.AssertNotError(t, err, "GetSCTs failed")
 	test.AssertEquals(t, test.CountCounter(ctp.winnerCounter.With(prometheus.Labels{"log": "ghi", "group": "a"})), 1)
@@ -188,7 +188,7 @@ func TestGetSCTsFailMetrics(t *testing.T) {
 				{URI: "abc", Key: "def"},
 			},
 		},
-	}, nil, blog.NewMock(), metrics.NewNoopScope())
+	}, nil, blog.NewMock(), metrics.NoopRegisterer)
 	_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
 	if err == nil {
 		t.Fatal("GetSCTs should have failed")
@@ -206,7 +206,7 @@ func TestGetSCTsFailMetrics(t *testing.T) {
 				{URI: "abc", Key: "def"},
 			},
 		},
-	}, nil, blog.NewMock(), metrics.NewNoopScope())
+	}, nil, blog.NewMock(), metrics.NoopRegisterer)
 	_, err = ctp.GetSCTs(ctx, []byte{0}, time.Time{})
 	if err == nil {
 		t.Fatal("GetSCTs should have failed")
@@ -235,7 +235,7 @@ func TestStagger(t *testing.T) {
 				{URI: "ghi", Key: "jkl"},
 			},
 		},
-	}, nil, blog.NewMock(), metrics.NewNoopScope())
+	}, nil, blog.NewMock(), metrics.NoopRegisterer)
 	_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
 	test.AssertNotError(t, err, "GetSCTs failed")
 	if countingPub.count != 1 {

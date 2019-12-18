@@ -353,7 +353,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	features.Reset()
 
 	fc := clock.NewFake()
-	stats := metrics.NewNoopScope()
+	stats := metrics.NoopRegisterer
 
 	chainPEM, err := ioutil.ReadFile("../test/test-ca2.pem")
 	test.AssertNotError(t, err, "Unable to read ../test/test-ca2.pem")
@@ -713,7 +713,7 @@ func (fr fakeRand) Read(p []byte) (int, error) {
 
 func TestDirectory(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	mux := wfe.Handler()
+	mux := wfe.Handler(metrics.NoopRegisterer)
 	core.RandReader = fakeRand{}
 	defer func() { core.RandReader = rand.Reader }()
 
@@ -818,7 +818,7 @@ func TestDirectory(t *testing.T) {
 
 func TestRelativeDirectory(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	mux := wfe.Handler()
+	mux := wfe.Handler(metrics.NoopRegisterer)
 	core.RandReader = fakeRand{}
 	defer func() { core.RandReader = rand.Reader }()
 
@@ -879,7 +879,7 @@ func TestRelativeDirectory(t *testing.T) {
 // TestNonceEndpoint tests requests to the WFE2's new-nonce endpoint
 func TestNonceEndpoint(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	mux := wfe.Handler()
+	mux := wfe.Handler(metrics.NoopRegisterer)
 
 	getReq := &http.Request{
 		Method: http.MethodGet,
@@ -954,7 +954,7 @@ func TestNonceEndpoint(t *testing.T) {
 
 func TestHTTPMethods(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	mux := wfe.Handler()
+	mux := wfe.Handler(metrics.NoopRegisterer)
 
 	// NOTE: Boulder's muxer treats HEAD as implicitly allowed if GET is specified
 	// so we include both here in `getOnly`
@@ -1394,7 +1394,7 @@ func TestEmptyAccount(t *testing.T) {
 
 func TestNewAccount(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	mux := wfe.Handler()
+	mux := wfe.Handler(metrics.NoopRegisterer)
 	key := loadKey(t, []byte(test2KeyPrivatePEM))
 	_, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load test2 key")
@@ -1680,7 +1680,7 @@ func contains(s []string, e string) bool {
 
 func TestAccount(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	mux := wfe.Handler()
+	mux := wfe.Handler(metrics.NoopRegisterer)
 	responseWriter := httptest.NewRecorder()
 
 	// Test GET proper entry returns 405
@@ -1788,7 +1788,7 @@ func TestIssuer(t *testing.T) {
 
 func TestGetCertificate(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	mux := wfe.Handler()
+	mux := wfe.Handler(metrics.NoopRegisterer)
 
 	makeGet := func(path string) *http.Request {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"}
@@ -1940,7 +1940,7 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
 
-	mux := wfe.Handler()
+	mux := wfe.Handler(metrics.NoopRegisterer)
 	s := httptest.NewServer(mux)
 	defer s.Close()
 	req, _ := http.NewRequest("HEAD", s.URL+"/acme/cert/0000000000000000000000000000000000b2", nil)
@@ -1967,7 +1967,7 @@ func newRequestEvent() *web.RequestEvent {
 
 func TestHeaderBoulderRequester(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	mux := wfe.Handler()
+	mux := wfe.Handler(metrics.NoopRegisterer)
 	responseWriter := httptest.NewRecorder()
 
 	key := loadKey(t, []byte(test1KeyPrivatePEM))
