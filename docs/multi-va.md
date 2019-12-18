@@ -37,7 +37,22 @@ and
 [`test/config-next/va-remote-b.json`](https://github.com/letsencrypt/boulder/blob/ea231adc36746cce97f860e818c2cdf92f060543/test/config-next/va-remote-b.json)
 as their config files.
 
-There's some integration tests that test this end to end. The most relevant is
+There are two feature flags that control whether multi-VA takes effect:
+MultiVAFullResults and EnforceMultiVA. If MultiVAFullResults is enabled (the
+current setting in prod and staging), then each primary validation will also
+send out remote validation requests, and wait for all the results to come in, so
+we can log the results for analysis. If EnforceMultiVA is enabled, we require
+that almost all remote validation requests succeed. The primary VA's
+"maxRemoteValidationFailures" config field specifies how many remote VAs can
+fail before the primary VA considers overall validation a failure. It should be
+strictly less than the number of remote VAs.
+
+Validation is also controlled by the "multiVAPolicyFile" config field on the
+primary VA. This specifies a file that can contain temporary overrides for
+domains or accounts that fail under multi-va. Over time those temporary
+overrides will be removed.
+
+There are some integration tests that test this end to end. The most relevant is
 probably
 [`test_http_multiva_threshold_fail`](https://github.com/letsencrypt/boulder/blob/ea231adc36746cce97f860e818c2cdf92f060543/test/v2_integration.py#L876-L908).
 It tests that a HTTP-01 challenge made to a webserver that only gives the
