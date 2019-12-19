@@ -977,6 +977,11 @@ func TestPerformValidationSuccess(t *testing.T) {
 	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
 	challIdx = challTypeIndex(t, dbAuthz.Challenges, core.ChallengeTypeDNS01)
 	test.Assert(t, dbAuthz.Challenges[challIdx].Status == core.StatusValid, "challenge was not marked as valid")
+
+	// The DB authz's expiry should be equal to the current time plus the
+	// configured authorization lifetime
+	expectedExpires := ra.clk.Now().Add(ra.authorizationLifetime)
+	test.AssertEquals(t, *dbAuthz.Expires, expectedExpires)
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {

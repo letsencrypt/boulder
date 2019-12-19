@@ -1540,7 +1540,7 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	if challenge.Status == core.StatusInvalid {
 		expires = authExpires.UnixNano()
 	} else {
-		expires = authExpires.Add(ra.authorizationLifetime).UnixNano()
+		expires = ra.clk.Now().Add(ra.authorizationLifetime).UnixNano()
 	}
 	vr, err := bgrpc.ValidationResultToPB(challenge.ValidationRecord, challenge.Error)
 	if err != nil {
