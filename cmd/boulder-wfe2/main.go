@@ -262,11 +262,11 @@ func main() {
 	// don't load any weak keys, but do load blocked keys
 	kp, err := goodkey.NewKeyPolicy("", c.WFE.BlockedKeyFile)
 	cmd.FailOnError(err, "Unable to create key policy")
-	rac, sac, rns, npm := setupWFE(c, logger, scope, clk)
+	rac, sac, rns, npm := setupWFE(c, logger, stats, clk)
 	if c.WFE.StaleTimeout.Duration == 0 {
 		c.WFE.StaleTimeout.Duration = time.Minute * 10
 	}
-	wfe, err := wfe2.NewWebFrontEndImpl(scope, clk, kp, certChains, issuerCerts, rns, npm, logger, c.WFE.StaleTimeout.Duration)
+	wfe, err := wfe2.NewWebFrontEndImpl(stats, clk, kp, certChains, issuerCerts, rns, npm, logger, c.WFE.StaleTimeout.Duration)
 	cmd.FailOnError(err, "Unable to create WFE")
 	wfe.RA = rac
 	wfe.SA = sac
