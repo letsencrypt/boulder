@@ -29,7 +29,6 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	"github.com/letsencrypt/boulder/nonce"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
@@ -67,11 +66,10 @@ const (
 // plus a few other data items used in ACME.  Its methods are primarily handlers
 // for HTTPS requests for the various ACME functions.
 type WebFrontEndImpl struct {
-	RA    core.RegistrationAuthority
-	SA    core.StorageGetter
-	stats metrics.Scope
-	log   blog.Logger
-	clk   clock.Clock
+	RA  core.RegistrationAuthority
+	SA  core.StorageGetter
+	log blog.Logger
+	clk clock.Clock
 
 	// URL configuration parameters
 	BaseURL string
@@ -106,11 +104,13 @@ type WebFrontEndImpl struct {
 	RequestTimeout time.Duration
 
 	csrSignatureAlgs *prometheus.CounterVec
+	joseErrorCounter *prometheus.CounterVec
+	httpErrorCounter *prometheus.CounterVec
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
 func NewWebFrontEndImpl(
-	stats metrics.Scope,
+	stats prometheus.Registerer,
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
 	remoteNonceService noncepb.NonceServiceClient,
@@ -119,21 +119,36 @@ func NewWebFrontEndImpl(
 ) (WebFrontEndImpl, error) {
 	csrSignatureAlgs := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "csrSignatureAlgs",
+			Name: "csr_signature_algs",
 			Help: "Number of CSR signatures by algorithm",
 		},
 		[]string{"type"},
 	)
 	stats.MustRegister(csrSignatureAlgs)
+	httpErrorCounter := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_errors",
+			Help: "client request errors at the HTTP level",
+		},
+		[]string{"type"})
+	stats.MustRegister(httpErrorCounter)
+	joseErrorCounter := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "jose_errors",
+			Help: "client request errors at the JOSE level",
+		},
+		[]string{"type"})
+	stats.MustRegister(joseErrorCounter)
 
 	wfe := WebFrontEndImpl{
 		log:                logger,
 		clk:                clk,
-		stats:              stats,
 		keyPolicy:          keyPolicy,
 		csrSignatureAlgs:   csrSignatureAlgs,
 		remoteNonceService: remoteNonceService,
 		noncePrefixMap:     noncePrefixMap,
+		joseErrorCounter:   joseErrorCounter,
+		httpErrorCounter:   httpErrorCounter,
 	}
 
 	if wfe.remoteNonceService == nil {
@@ -299,7 +314,7 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 
 // Handler returns an http.Handler that uses various functions for
 // various ACME-specified paths.
-func (wfe *WebFrontEndImpl) Handler() http.Handler {
+func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	m := http.NewServeMux()
 	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET")
 	wfe.HandleFunc(m, newRegPath, wfe.NewRegistration, "POST")
@@ -319,7 +334,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
 	m.Handle("/", web.NewTopHandler(wfe.log, web.WFEHandlerFunc(wfe.Index)))
-	return measured_http.New(m, wfe.clk, wfe.stats)
+	return measured_http.New(m, wfe.clk, stats)
 }
 
 // Method implementations
@@ -431,27 +446,27 @@ const (
 func (wfe *WebFrontEndImpl) extractJWSKey(body string) (*jose.JSONWebKey, *jose.JSONWebSignature, error) {
 	parsedJws, err := jose.ParseSigned(body)
 	if err != nil {
-		wfe.stats.Inc("Errors.UnableToParseJWS", 1)
+		wfe.joseErrorCounter.WithLabelValues("JWSParseError").Inc()
 		return nil, nil, errors.New("Parse error reading JWS")
 	}
 
 	if len(parsedJws.Signatures) > 1 {
-		wfe.stats.Inc("Errors.TooManyJWSSignaturesInPOST", 1)
+		wfe.joseErrorCounter.WithLabelValues("JWSTooManySignatures").Inc()
 		return nil, nil, errors.New("Too many signatures in POST body")
 	}
 	if len(parsedJws.Signatures) == 0 {
-		wfe.stats.Inc("Errors.JWSNotSignedInPOST", 1)
+		wfe.joseErrorCounter.WithLabelValues("JWSNoSignatures").Inc()
 		return nil, nil, errors.New("POST JWS not signed")
 	}
 
 	key := parsedJws.Signatures[0].Header.JSONWebKey
 	if key == nil {
-		wfe.stats.Inc("Errors.NoJWKInJWSSignatureHeader", 1)
+		wfe.joseErrorCounter.WithLabelValues("JWKInvalid").Inc()
 		return nil, nil, errors.New("No JWK in JWS header")
 	}
 
 	if !key.Valid() {
-		wfe.stats.Inc("Errors.InvalidJWK", 1)
+		wfe.joseErrorCounter.WithLabelValues("JWKInvalid").Inc()
 		return nil, nil, errors.New("Invalid JWK in JWS header")
 	}
 
@@ -477,19 +492,19 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	reg := core.Registration{ID: 0}
 
 	if _, ok := request.Header["Content-Length"]; !ok {
-		wfe.stats.Inc("HTTP.ClientErrors.LengthRequiredError", 1)
+		wfe.httpErrorCounter.WithLabelValues("ContentLengthRequired").Inc()
 		return nil, nil, reg, probs.ContentLengthRequired()
 	}
 
 	// Read body
 	if request.Body == nil {
-		wfe.stats.Inc("Errors.NoPOSTBody", 1)
+		wfe.httpErrorCounter.WithLabelValues("NoPOSTBody").Inc()
 		return nil, nil, reg, probs.Malformed("No body on POST")
 	}
 
 	bodyBytes, err := ioutil.ReadAll(request.Body)
 	if err != nil {
-		wfe.stats.Inc("Errors.UnableToReadRequestBody", 1)
+		wfe.httpErrorCounter.WithLabelValues("UnableToReadReqBody").Inc()
 		return nil, nil, reg, probs.ServerInternal("unable to read request body")
 	}
 
@@ -516,13 +531,12 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 		// are "good". But when we are verifying against any submitted key, we want
 		// to check its quality before doing the verify.
 		if err = wfe.keyPolicy.GoodKey(submittedKey.Key); err != nil {
-			wfe.stats.Inc("Errors.JWKRejectedByGoodKey", 1)
+			wfe.joseErrorCounter.WithLabelValues("JWKRejectedByGoodKey").Inc()
 			return nil, nil, reg, probs.Malformed(err.Error())
 		}
 		key = submittedKey
 	} else if err != nil {
 		// For all other errors, or if regCheck is true, return error immediately.
-		wfe.stats.Inc("Errors.UnableToGetRegistrationByKey", 1)
 		logEvent.AddError("unable to fetch registration by the given JWK: %s", err)
 		if berrors.Is(err, berrors.NotFound) {
 			return nil, nil, reg, probs.Unauthorized(unknownKey)
@@ -544,13 +558,13 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	}
 
 	if statName, err := checkAlgorithm(key, parsedJws); err != nil {
-		wfe.stats.Inc(statName, 1)
+		wfe.joseErrorCounter.WithLabelValues(statName).Inc()
 		return nil, nil, reg, probs.Malformed(err.Error())
 	}
 
 	payload, err := parsedJws.Verify(key)
 	if err != nil {
-		wfe.stats.Inc("Errors.JWSVerificationFailed", 1)
+		wfe.joseErrorCounter.WithLabelValues("JWSVerifyFailed").Inc()
 		n := len(body)
 		if n > 100 {
 			n = 100
@@ -563,7 +577,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	// Check that the request has a known anti-replay nonce
 	nonceStr := parsedJws.Signatures[0].Header.Nonce
 	if len(nonceStr) == 0 {
-		wfe.stats.Inc("Errors.JWSMissingNonce", 1)
+		wfe.joseErrorCounter.WithLabelValues("JWSMissingNonce").Inc()
 		return nil, nil, reg, probs.BadNonce("JWS has no anti-replay nonce")
 	}
 	var nonceValid bool
@@ -577,7 +591,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 		nonceValid = wfe.nonceService.Valid(nonceStr)
 	}
 	if !nonceValid {
-		wfe.stats.Inc("Errors.JWSInvalidNonce", 1)
+		wfe.joseErrorCounter.WithLabelValues("JWSInvalidNonce").Inc()
 		return nil, nil, reg, probs.BadNonce("JWS has invalid anti-replay nonce %s", nonceStr)
 	}
 
@@ -587,14 +601,14 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	}
 	err = json.Unmarshal([]byte(payload), &parsedRequest)
 	if err != nil {
-		wfe.stats.Inc("Errors.UnparseableJWSPayload", 1)
+		wfe.joseErrorCounter.WithLabelValues("JWSBodyUnmarshalFailed").Inc()
 		return nil, nil, reg, probs.Malformed("Request payload did not parse as JSON")
 	}
 	if parsedRequest.Resource == "" {
-		wfe.stats.Inc("Errors.NoResourceInJWSPayload", 1)
+		wfe.joseErrorCounter.WithLabelValues("NoResourceInJWSPayload").Inc()
 		return nil, nil, reg, probs.Malformed("Request payload does not specify a resource")
 	} else if resource != core.AcmeResource(parsedRequest.Resource) {
-		wfe.stats.Inc("Errors.MismatchedResourceInJWSPayload", 1)
+		wfe.joseErrorCounter.WithLabelValues("MismatchedResourceInJWSPayload").Inc()
 		return nil, nil, reg, probs.Malformed("JWS resource payload does not match the HTTP resource: %s != %s", parsedRequest.Resource, resource)
 	}
 
@@ -603,7 +617,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 
 // sendError wraps web.SendError
 func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *web.RequestEvent, prob *probs.ProblemDetails, ierr error) {
-	wfe.stats.Inc(fmt.Sprintf("HTTP.ProblemTypes.%s", prob.Type), 1)
+	wfe.httpErrorCounter.WithLabelValues(string(prob.Type)).Inc()
 	web.SendError(wfe.log, probs.V1ErrorNS, response, logEvent, prob, ierr)
 }
 
@@ -1152,7 +1166,6 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	// increment a stat for this case and return early.
 	var returnAuthz core.Authorization
 	if authz.Status == core.StatusValid {
-		wfe.stats.Inc("ReusedValidAuthzChallengeWFE", 1)
 		returnAuthz = authz
 	} else {
 		var challengeUpdate core.Challenge

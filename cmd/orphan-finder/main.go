@@ -262,7 +262,7 @@ func setup(configFile string) (blog.Logger, core.StorageAuthority, capb.OCSPGene
 	tlsConfig, err := conf.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
-	clientMetrics := bgrpc.NewClientMetrics(metrics.NewNoopScope())
+	clientMetrics := bgrpc.NewClientMetrics(metrics.NoopRegisterer)
 	saConn, err := bgrpc.ClientSetup(conf.SAService, tlsConfig, clientMetrics, cmd.Clock())
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))

@@ -301,7 +301,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NewNoopScope(), 1)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -318,7 +318,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	err = pa.SetHostnamePolicyFile("../test/hostname-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
-	stats := metrics.NewNoopScope()
+	stats := metrics.NoopRegisterer
 
 	ca := &mocks.MockCA{
 		PEM: eeCertPEM,
@@ -336,7 +336,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		Status:    core.StatusValid,
 	})
 
-	ctp := ctpolicy.New(&mocks.Publisher{}, nil, nil, log, metrics.NewNoopScope())
+	ctp := ctpolicy.New(&mocks.Publisher{}, nil, nil, log, metrics.NoopRegisterer)
 
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
@@ -977,6 +977,11 @@ func TestPerformValidationSuccess(t *testing.T) {
 	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
 	challIdx = challTypeIndex(t, dbAuthz.Challenges, core.ChallengeTypeDNS01)
 	test.Assert(t, dbAuthz.Challenges[challIdx].Status == core.StatusValid, "challenge was not marked as valid")
+
+	// The DB authz's expiry should be equal to the current time plus the
+	// configured authorization lifetime
+	expectedExpires := ra.clk.Now().Add(ra.authorizationLifetime)
+	test.AssertEquals(t, *dbAuthz.Expires, expectedExpires)
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
@@ -3444,13 +3449,13 @@ func (mp *timeoutPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Req
 func TestCTPolicyMeasurements(t *testing.T) {
 	_, ssa, _, fc, cleanup := initAuthorities(t)
 	defer cleanup()
-	stats := metrics.NewNoopScope()
+	stats := metrics.NoopRegisterer
 
 	ca := &mocks.MockCA{
 		PEM: eeCertPEM,
 	}
 
-	ctp := ctpolicy.New(&timeoutPub{}, []ctconfig.CTGroup{{}}, nil, log, metrics.NewNoopScope())
+	ctp := ctpolicy.New(&timeoutPub{}, []ctconfig.CTGroup{{}}, nil, log, metrics.NoopRegisterer)
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,

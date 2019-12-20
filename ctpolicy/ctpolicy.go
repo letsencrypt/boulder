@@ -11,7 +11,6 @@ import (
 	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -33,7 +32,7 @@ func New(pub core.Publisher,
 	groups []ctconfig.CTGroup,
 	informational []ctconfig.LogDescription,
 	log blog.Logger,
-	stats metrics.Scope,
+	stats prometheus.Registerer,
 ) *CTPolicy {
 	var finalLogs []ctconfig.LogDescription
 	for _, group := range groups {

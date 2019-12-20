@@ -1,7 +1,6 @@
 package wfe2
 
 import (
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -20,39 +19,39 @@ type wfe2Stats struct {
 	improperECFieldLengths prometheus.Counter
 }
 
-func initStats(scope metrics.Scope) wfe2Stats {
+func initStats(stats prometheus.Registerer) wfe2Stats {
 	httpErrorCount := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "httpErrors",
+			Name: "http_errors",
 			Help: "client request errors at the HTTP level",
 		},
 		[]string{"type"})
-	scope.MustRegister(httpErrorCount)
+	stats.MustRegister(httpErrorCount)
 
 	joseErrorCount := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "joseErrors",
+			Name: "jose_errors",
 			Help: "client request errors at the JOSE level",
 		},
 		[]string{"type"})
-	scope.MustRegister(joseErrorCount)
+	stats.MustRegister(joseErrorCount)
 
 	csrSignatureAlgs := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "csrSignatureAlgs",
+			Name: "csr_signature_algs",
 			Help: "Number of CSR signatures by algorithm",
 		},
 		[]string{"type"},
 	)
-	scope.MustRegister(csrSignatureAlgs)
+	stats.MustRegister(csrSignatureAlgs)
 
 	improperECFieldLengths := prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: "improperECFieldLengths",
+			Name: "improper_ec_field_lengths",
 			Help: "Number of account EC keys with improper X and Y lengths",
 		},
 	)
-	scope.MustRegister(improperECFieldLengths)
+	stats.MustRegister(improperECFieldLengths)
 
 	return wfe2Stats{
 		httpErrorCount:         httpErrorCount,

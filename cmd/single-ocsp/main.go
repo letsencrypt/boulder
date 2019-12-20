@@ -13,7 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 
-	"github.com/letsencrypt/pkcs11key"
+	pkcs11key "github.com/letsencrypt/pkcs11key/v4"
 	"golang.org/x/crypto/ocsp"
 )
 
@@ -43,8 +43,7 @@ PKCS#11 configuration (JSON), e.g.:
 {
 	"module": "/usr/local/lib/libpkcs11-proxy.so",
 	"tokenLabel": "intermediate",
-	"pin": "5678",
-	"privateKeyLabel": "intermediate_key"
+	"pin": "5678"
 }
 
 Note: These values should *not* be the same as the ones in the CA's config JSON, which point at a differen HSM partition.
@@ -78,8 +77,7 @@ func readFiles(issuerFileName, responderFileName, targetFileName, pkcs11FileName
 	err = json.Unmarshal(pkcs11Bytes, &pkcs11Config)
 	if pkcs11Config.Module == "" ||
 		pkcs11Config.TokenLabel == "" ||
-		pkcs11Config.PIN == "" ||
-		pkcs11Config.PrivateKeyLabel == "" {
+		pkcs11Config.PIN == "" {
 		err = fmt.Errorf("Missing a field in pkcs11Config %#v", pkcs11Config)
 		return
 	}
@@ -113,7 +111,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to read files")
 
 	// Instantiate the private key from PKCS11
-	priv, err := pkcs11key.New(pkcs11.Module, pkcs11.TokenLabel, pkcs11.PIN, pkcs11.PrivateKeyLabel)
+	priv, err := pkcs11key.New(pkcs11.Module, pkcs11.TokenLabel, pkcs11.PIN, responder.PublicKey)
 	cmd.FailOnError(err, "Failed to load PKCS#11 key")
 
 	// Populate the remaining fields in the template

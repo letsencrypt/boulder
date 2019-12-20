@@ -174,7 +174,8 @@ func CountCounter(counter prometheus.Counter) int {
 	return int(iom.Counter.GetValue())
 }
 
-func CountHistogramSamples(hist prometheus.Histogram) int {
+func CountHistogramSamples(obs prometheus.Observer) int {
+	hist := obs.(prometheus.Histogram)
 	ch := make(chan prometheus.Metric, 10)
 	hist.Collect(ch)
 	var m prometheus.Metric

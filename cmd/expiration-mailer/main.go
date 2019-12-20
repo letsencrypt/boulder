@@ -331,7 +331,7 @@ func (m *mailer) findExpiringCertificates() error {
 				expiresIn.String(), m.limit)
 			atCapacity = float64(1)
 		}
-		m.stats.nagsAtCapacity.With(prometheus.Labels{"nagGroup": expiresIn.String()}).Set(atCapacity)
+		m.stats.nagsAtCapacity.With(prometheus.Labels{"nag_group": expiresIn.String()}).Set(atCapacity)
 
 		if len(certs) == 0 {
 			continue // nothing to do
@@ -394,14 +394,14 @@ type config struct {
 	Syslog cmd.SyslogConfig
 }
 
-func initStats(scope metrics.Scope) mailerStats {
+func initStats(stats prometheus.Registerer) mailerStats {
 	nagsAtCapacity := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "nagsAtCapacity",
+			Name: "nags_at_capacity",
 			Help: "Count of nag groups at capcacity",
 		},
-		[]string{"nagGroup"})
-	scope.MustRegister(nagsAtCapacity)
+		[]string{"nag_group"})
+	stats.MustRegister(nagsAtCapacity)
 
 	errorCount := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -409,7 +409,7 @@ func initStats(scope metrics.Scope) mailerStats {
 			Help: "Number of errors",
 		},
 		[]string{"type"})
-	scope.MustRegister(errorCount)
+	stats.MustRegister(errorCount)
 
 	renewalCount := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -417,22 +417,22 @@ func initStats(scope metrics.Scope) mailerStats {
 			Help: "Number of messages skipped for being renewals",
 		},
 		nil)
-	scope.MustRegister(renewalCount)
+	stats.MustRegister(renewalCount)
 
 	sendLatency := prometheus.NewHistogram(
 		prometheus.HistogramOpts{
-			Name:    "sendLatency",
+			Name:    "send_latency",
 			Help:    "Time the mailer takes sending messages",
 			Buckets: metrics.InternetFacingBuckets,
 		})
-	scope.MustRegister(sendLatency)
+	stats.MustRegister(sendLatency)
 
 	processingLatency := prometheus.NewHistogram(
 		prometheus.HistogramOpts{
-			Name: "processingLatency",
+			Name: "processing_latency",
 			Help: "Time the mailer takes processing certificates",
 		})
-	scope.MustRegister(processingLatency)
+	stats.MustRegister(processingLatency)
 
 	return mailerStats{
 		nagsAtCapacity:    nagsAtCapacity,
@@ -574,7 +574,7 @@ func main() {
 	// set to 0 on startup, rather than being missing from stats collection until
 	// the first mail run.
 	for _, expiresIn := range nags {
-		m.stats.nagsAtCapacity.With(prometheus.Labels{"nagGroup": expiresIn.String()}).Set(0)
+		m.stats.nagsAtCapacity.With(prometheus.Labels{"nag_group": expiresIn.String()}).Set(0)
 	}
 
 	if *daemon {

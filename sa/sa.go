@@ -24,7 +24,6 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -99,7 +98,7 @@ func NewSQLStorageAuthority(
 	dbMap *db.WrappedMap,
 	clk clock.Clock,
 	logger blog.Logger,
-	scope metrics.Scope,
+	stats prometheus.Registerer,
 	parallelismPerRPC int,
 ) (*SQLStorageAuthority, error) {
 	SetSQLDebug(dbMap, logger)
@@ -108,7 +107,7 @@ func NewSQLStorageAuthority(
 		Name: "rate_limit_write_errors",
 		Help: "number of failed ratelimit update transactions during AddCertificate",
 	})
-	scope.MustRegister(rateLimitWriteErrors)
+	stats.MustRegister(rateLimitWriteErrors)
 
 	ssa := &SQLStorageAuthority{
 		dbMap:                dbMap,

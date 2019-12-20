@@ -20,10 +20,10 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 )
 
 type idGenerator interface {
@@ -52,15 +52,15 @@ type Mailer interface {
 // MailerImpl defines a mail transfer agent to use for sending mail. It is not
 // safe for concurrent access.
 type MailerImpl struct {
-	log           blog.Logger
-	dialer        dialer
-	from          mail.Address
-	client        smtpClient
-	clk           clock.Clock
-	csprgSource   idGenerator
-	stats         metrics.Scope
-	reconnectBase time.Duration
-	reconnectMax  time.Duration
+	log              blog.Logger
+	dialer           dialer
+	from             mail.Address
+	client           smtpClient
+	clk              clock.Clock
+	csprgSource      idGenerator
+	reconnectBase    time.Duration
+	reconnectMax     time.Duration
+	sendMailAttempts *prometheus.CounterVec
 }
 
 type dialer interface {
@@ -121,9 +121,16 @@ func New(
 	rootCAs *x509.CertPool,
 	from mail.Address,
 	logger blog.Logger,
-	stats metrics.Scope,
+	stats prometheus.Registerer,
 	reconnectBase time.Duration,
 	reconnectMax time.Duration) *MailerImpl {
+
+	sendMailAttempts := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "send_mail_attempts",
+		Help: "A counter of send mail attempts labelled by result",
+	}, []string{"result", "error"})
+	stats.MustRegister(sendMailAttempts)
+
 	return &MailerImpl{
 		dialer: &dialerImpl{
 			username: username,
@@ -132,26 +139,24 @@ func New(
 			port:     port,
 			rootCAs:  rootCAs,
 		},
-		log:           logger,
-		from:          from,
-		clk:           clock.Default(),
-		csprgSource:   realSource{},
-		stats:         stats.NewScope("Mailer"),
-		reconnectBase: reconnectBase,
-		reconnectMax:  reconnectMax,
+		log:              logger,
+		from:             from,
+		clk:              clock.Default(),
+		csprgSource:      realSource{},
+		reconnectBase:    reconnectBase,
+		reconnectMax:     reconnectMax,
+		sendMailAttempts: sendMailAttempts,
 	}
 }
 
 // New constructs a Mailer suitable for doing a dry run. It simply logs each
 // command that would have been run, at debug level.
 func NewDryRun(from mail.Address, logger blog.Logger) *MailerImpl {
-	stats := metrics.NewNoopScope()
 	return &MailerImpl{
 		dialer:      dryRunClient{logger},
 		from:        from,
 		clk:         clock.Default(),
 		csprgSource: realSource{},
-		stats:       stats,
 	}
 }
 
@@ -325,22 +330,20 @@ var recoverableErrorCodes = map[int]bool{
 // SendMail sends an email to the provided list of recipients. The email body
 // is simple text.
 func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
-	m.stats.Inc("SendMail.Attempts", 1)
-
 	for {
 		err := m.sendOne(to, subject, msg)
 		if err == nil {
 			// If the error is nil, we sent the mail without issue. nice!
 			break
 		} else if err == io.EOF {
+			m.sendMailAttempts.WithLabelValues("failure", "EOF").Inc()
 			// If the error is an EOF, we should try to reconnect on a backoff
 			// schedule, sleeping between attempts.
-			m.stats.Inc("SendMail.Errors.EOF", 1)
 			m.reconnect()
 			// After reconnecting, loop around and try `sendOne` again.
-			m.stats.Inc("SendMail.Reconnects", 1)
 			continue
 		} else if protoErr, ok := err.(*textproto.Error); ok && protoErr.Code == 421 {
+			m.sendMailAttempts.WithLabelValues("failure", "SMTP 421").Inc()
 			/*
 			 *  If the error is an instance of `textproto.Error` with a SMTP error code,
 			 *  and that error code is 421 then treat this as a reconnect-able event.
@@ -356,21 +359,19 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			 *
 			 * [0] - https://github.com/letsencrypt/boulder/issues/2249
 			 */
-			m.stats.Inc("SendMail.Errors.SMTP.421", 1)
 			m.reconnect()
-			m.stats.Inc("SendMail.Reconnects", 1)
 		} else if protoErr, ok := err.(*textproto.Error); ok && recoverableErrorCodes[protoErr.Code] {
-			m.stats.Inc(fmt.Sprintf("SendMail.Errors.SMTP.%d", protoErr.Code), 1)
+			m.sendMailAttempts.WithLabelValues("failure", fmt.Sprintf("SMTP %d", protoErr.Code)).Inc()
 			return RecoverableSMTPError{fmt.Sprintf("%d: %s", protoErr.Code, protoErr.Msg)}
 		} else {
 			// If it wasn't an EOF error or a recoverable SMTP error it is unexpected and we
 			// return from SendMail() with the error
-			m.stats.Inc("SendMail.Errors", 1)
+			m.sendMailAttempts.WithLabelValues("failure", "unexpected").Inc()
 			return err
 		}
 	}
 
-	m.stats.Inc("SendMail.Successes", 1)
+	m.sendMailAttempts.WithLabelValues("success", "").Inc()
 	return nil
 }
 

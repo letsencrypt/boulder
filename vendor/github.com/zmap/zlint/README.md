@@ -15,7 +15,7 @@ https://docs.google.com/spreadsheets/d/1ywp0op9mkTaggigpdF2YMTubepowJ50KQBhc_b00
 Requirements
 ------------
 
-ZLint requires [Go 1.12.x or newer](https://golang.org/doc/install) be
+ZLint requires [Go 1.13.x or newer](https://golang.org/doc/install) be
 installed. The command line setup instructions assume the `go` command is in
 your `$PATH`.
 
@@ -138,11 +138,11 @@ func (l *caCRLSignNotSet) RunTest(c *x509.Certificate) *ResultStruct {
 }
 ```
 
-**Creating Tests.** Every lint should also have two corresponding tests for a
-success and failure condition. We have typically generated test certificates
-using Go (see https://golang.org/pkg/crypto/x509/#CreateCertificate for
-details), but OpenSSL could also be used. Test certificates should be placed in
-`testlint/testCerts` and called from the test file created by `newLint.sh`.
+**Creating Unit Tests.** Every lint should also have two corresponding unit
+tests for a success and failure condition. We have typically generated test
+certificates using Go (see https://golang.org/pkg/crypto/x509/#CreateCertificate
+for details), but OpenSSL could also be used. Test certificates should be placed
+in `testlint/testCerts` and called from the test file created by `newLint.sh`.
 Prepend the PEM with the output of `openssl x509 -text`.
 
 Example:
@@ -159,6 +159,16 @@ func TestBasicConstNotCritical(t *testing.T) {
 }
 
 ```
+
+**Integration Tests.** ZLint's [continuous
+integration](https://travis-ci.org/zmap/zlint) includes an integration test
+phase where all lints are run against a large corpus of certificates. The number
+of notice, warning, error and fatal results for each lint are captured and
+compared to a set of expected values in a configuration file. You may need to
+update these expected values when you add/change lints. Please see the
+[integration tests
+README](https://github.com/zmap/zlint/blob/master/integration/README.md) for
+more information.
 
 Updating the TLD Map
 --------------------
@@ -180,6 +190,7 @@ Pre-issuance linting is **strongly recommended** by the [Mozilla root
 program](https://wiki.allizom.org/CA/Required_or_Recommended_Practices#Pre-Issuance_Linting).
 Here are some projects/CAs known to integrate with ZLint in some fashion:
 
+* [Camerfirma](https://bugzilla.mozilla.org/show_bug.cgi?id=1556806#c5)
 * [CFSSL](https://github.com/cloudflare/cfssl/pull/1015)
 * [Sectigo and crt.sh](https://groups.google.com/forum/#!msg/mozilla.dev.security.policy/sjXswrcsvrE/Nl3OLd4PAAAJ)
 * [Digicert](https://bugzilla.mozilla.org/show_bug.cgi?id=1550645#c9)

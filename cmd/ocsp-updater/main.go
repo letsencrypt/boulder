@@ -19,9 +19,9 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 /*
@@ -37,9 +37,8 @@ type ocspDB interface {
 
 // OCSPUpdater contains the useful objects for the Updater
 type OCSPUpdater struct {
-	stats metrics.Scope
-	log   blog.Logger
-	clk   clock.Clock
+	log blog.Logger
+	clk clock.Clock
 
 	dbMap ocspDB
 
@@ -59,10 +58,14 @@ type OCSPUpdater struct {
 	purgerService akamaipb.AkamaiPurgerClient
 	// issuer is used to generate OCSP request URLs to purge
 	issuer *x509.Certificate
+
+	genStoreHistogram prometheus.Histogram
+	generatedCounter  *prometheus.CounterVec
+	storedCounter     *prometheus.CounterVec
 }
 
 func newUpdater(
-	stats metrics.Scope,
+	stats prometheus.Registerer,
 	clk clock.Clock,
 	dbMap ocspDB,
 	ogc capb.OCSPGeneratorClient,
@@ -87,8 +90,23 @@ func newUpdater(
 		config.ParallelGenerateOCSPRequests = 1
 	}
 
+	genStoreHistogram := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name: "ocsp_updater_generate_and_store",
+		Help: "A histogram of latencies of OCSP generation and storage latencies",
+	})
+	stats.MustRegister(genStoreHistogram)
+	generatedCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "ocsp_updater_generated",
+		Help: "A counter of OCSP response generation calls labelled by result",
+	}, []string{"result"})
+	stats.MustRegister(generatedCounter)
+	storedCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "ocsp_updater_stored",
+		Help: "A counter of OCSP response storage calls labelled by result",
+	}, []string{"result"})
+	stats.MustRegister(storedCounter)
+
 	updater := OCSPUpdater{
-		stats:                        stats,
 		clk:                          clk,
 		dbMap:                        dbMap,
 		ogc:                          ogc,
@@ -98,6 +116,9 @@ func newUpdater(
 		ocspStaleMaxAge:              config.OCSPStaleMaxAge.Duration,
 		parallelGenerateOCSPRequests: config.ParallelGenerateOCSPRequests,
 		purgerService:                apc,
+		genStoreHistogram:            genStoreHistogram,
+		generatedCounter:             generatedCounter,
+		storedCounter:                storedCounter,
 	}
 
 	if updater.purgerService != nil {
@@ -108,17 +129,22 @@ func newUpdater(
 		updater.issuer = issuer
 	}
 
+	tickHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "ocsp_updater_ticks",
+		Help: "A histogram of ocsp-updater tick latencies labelled by result",
+	}, []string{"result", "long"})
+
 	// Setup loops
 	updater.loops = []*looper{
 		{
 			clk:                  clk,
-			stats:                stats.NewScope("OldOCSPResponses"),
 			batchSize:            config.OldOCSPBatchSize,
 			tickDur:              config.OldOCSPWindow.Duration,
 			tickFunc:             updater.oldOCSPResponsesTick,
 			name:                 "OldOCSPResponses",
 			failureBackoffFactor: config.SignFailureBackoffFactor,
 			failureBackoffMax:    config.SignFailureBackoffMax.Duration,
+			tickHistogram:        tickHistogram,
 		},
 	}
 
@@ -237,7 +263,7 @@ func (updater *OCSPUpdater) markExpired(status core.CertificateStatus) error {
 	return err
 }
 
-func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses []core.CertificateStatus, stats metrics.Scope) error {
+func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses []core.CertificateStatus) error {
 	// Use the semaphore pattern from
 	// https://github.com/golang/go/wiki/BoundingResourceUse to send a number of
 	// GenerateOCSP / storeResponse requests in parallel, while limiting the total number of
@@ -249,7 +275,7 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 	}
 	done := func(start time.Time) {
 		<-sem // Indicate there's more capacity.
-		stats.TimingDuration("GenerateAndStore", time.Since(start))
+		updater.genStoreHistogram.Observe(time.Since(start).Seconds())
 	}
 
 	work := func(status core.CertificateStatus) {
@@ -257,17 +283,17 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 		meta, err := updater.generateResponse(ctx, status)
 		if err != nil {
 			updater.log.AuditErrf("Failed to generate OCSP response: %s", err)
-			stats.Inc("Errors.ResponseGeneration", 1)
+			updater.generatedCounter.WithLabelValues("failed").Inc()
 			return
 		}
-		stats.Inc("GeneratedResponses", 1)
+		updater.generatedCounter.WithLabelValues("success").Inc()
 		err = updater.storeResponse(meta)
 		if err != nil {
 			updater.log.AuditErrf("Failed to store OCSP response: %s", err)
-			stats.Inc("Errors.StoreResponse", 1)
+			updater.storedCounter.WithLabelValues("failed").Inc()
 			return
 		}
-		stats.Inc("StoredResponses", 1)
+		updater.storedCounter.WithLabelValues("success").Inc()
 	}
 
 	for _, status := range statuses {
@@ -288,15 +314,9 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize 
 	tickStart := updater.clk.Now()
 	statuses, err := updater.findStaleOCSPResponses(tickStart.Add(-updater.ocspMinTimeToExpiry), batchSize)
 	if err != nil {
-		updater.stats.Inc("Errors.FindStaleResponses", 1)
 		updater.log.AuditErrf("Failed to find stale OCSP responses: %s", err)
 		return err
 	}
-	if len(statuses) == batchSize {
-		updater.stats.Inc("oldOCSPResponsesTick.FullTick", 1)
-	}
-	tickEnd := updater.clk.Now()
-	updater.stats.TimingDuration("oldOCSPResponsesTick.QueryTime", tickEnd.Sub(tickStart))
 
 	for _, s := range statuses {
 		if !s.IsExpired && tickStart.After(s.NotAfter) {
@@ -307,12 +327,11 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize 
 		}
 	}
 
-	return updater.generateOCSPResponses(ctx, statuses, updater.stats.NewScope("oldOCSPResponsesTick"))
+	return updater.generateOCSPResponses(ctx, statuses)
 }
 
 type looper struct {
 	clk                  clock.Clock
-	stats                metrics.Scope
 	batchSize            int
 	tickDur              time.Duration
 	tickFunc             func(context.Context, int) error
@@ -320,24 +339,26 @@ type looper struct {
 	failureBackoffFactor float64
 	failureBackoffMax    time.Duration
 	failures             int
+	tickHistogram        *prometheus.HistogramVec
 }
 
 func (l *looper) tick() {
 	tickStart := l.clk.Now()
 	ctx := context.TODO()
 	err := l.tickFunc(ctx, l.batchSize)
-	l.stats.TimingDuration("TickDuration", time.Since(tickStart))
-	l.stats.Inc("Ticks", 1)
-	tickEnd := tickStart.Add(time.Since(tickStart))
+	took := time.Since(tickStart)
+	tickEnd := tickStart.Add(took)
 	expectedTickEnd := tickStart.Add(l.tickDur)
+	long := "false"
+	state := "success"
 	if tickEnd.After(expectedTickEnd) {
-		l.stats.Inc("LongTicks", 1)
+		long = "true"
 	}
 
 	// On success, sleep till it's time for the next tick. On failure, backoff.
 	sleepDur := expectedTickEnd.Sub(tickEnd)
 	if err != nil {
-		l.stats.Inc("FailedTicks", 1)
+		state = "failed"
 		l.failures++
 		sleepDur = core.RetryBackoff(l.failures, l.tickDur, l.failureBackoffMax, l.failureBackoffFactor)
 	} else if l.failures > 0 {
@@ -345,6 +366,7 @@ func (l *looper) tick() {
 		// counter to 0
 		l.failures = 0
 	}
+	l.tickHistogram.WithLabelValues(state, long).Observe(took.Seconds())
 
 	// Sleep for the remaining tick period or for the backoff time
 	l.clk.Sleep(sleepDur)
@@ -401,7 +423,7 @@ type OCSPUpdaterConfig struct {
 	Features map[string]bool
 }
 
-func setupClients(c OCSPUpdaterConfig, stats metrics.Scope, clk clock.Clock) (
+func setupClients(c OCSPUpdaterConfig, stats prometheus.Registerer, clk clock.Clock) (
 	capb.OCSPGeneratorClient,
 	core.StorageAuthority,
 	akamaipb.AkamaiPurgerClient,

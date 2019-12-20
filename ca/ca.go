@@ -40,7 +40,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -90,10 +89,6 @@ var (
 
 // Metrics for CA statistics
 const (
-	// Increments when CA observes an HSM or signing error
-	metricSigningError = "SigningError"
-	metricHSMError     = metricSigningError + ".HSMError"
-
 	csrExtensionCategory          = "category"
 	csrExtensionBasic             = "basic"
 	csrExtensionTLSFeature        = "tls-feature"
@@ -103,6 +98,7 @@ const (
 
 type certificateStorage interface {
 	AddCertificate(context.Context, []byte, int64, []byte, *time.Time) (string, error)
+	GetCertificate(context.Context, string) (core.Certificate, error)
 	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error)
 	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*corepb.Empty, error)
 	SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error)
@@ -131,7 +127,6 @@ type CertificateAuthorityImpl struct {
 	keyPolicy          goodkey.KeyPolicy
 	clk                clock.Clock
 	log                blog.Logger
-	stats              metrics.Scope
 	prefix             int // Prepended to the serial number
 	validityPeriod     time.Duration
 	backdate           time.Duration
@@ -141,6 +136,7 @@ type CertificateAuthorityImpl struct {
 	csrExtensionCount  *prometheus.CounterVec
 	orphanCount        *prometheus.CounterVec
 	adoptedOrphanCount *prometheus.CounterVec
+	signErrorCounter   *prometheus.CounterVec
 	orphanQueue        *goque.Queue
 	ocspLifetime       time.Duration
 }
@@ -213,7 +209,7 @@ func NewCertificateAuthorityImpl(
 	sa certificateStorage,
 	pa core.PolicyAuthority,
 	clk clock.Clock,
-	stats metrics.Scope,
+	stats prometheus.Registerer,
 	issuers []Issuer,
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
@@ -266,7 +262,7 @@ func NewCertificateAuthorityImpl(
 
 	csrExtensionCount := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "csrExtensions",
+			Name: "csr_extensions",
 			Help: "Number of CSRs with extensions of the given category",
 		},
 		[]string{csrExtensionCategory})
@@ -296,6 +292,11 @@ func NewCertificateAuthorityImpl(
 		[]string{"type"})
 	stats.MustRegister(adoptedOrphanCount)
 
+	signErrorCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "signature_errors",
+		Help: "A counter of signature errors labelled by error type",
+	}, []string{"type"})
+
 	ca = &CertificateAuthorityImpl{
 		sa:                 sa,
 		pa:                 pa,
@@ -306,7 +307,6 @@ func NewCertificateAuthorityImpl(
 		prefix:             config.SerialPrefix,
 		clk:                clk,
 		log:                logger,
-		stats:              stats,
 		keyPolicy:          keyPolicy,
 		forceCNFromSAN:     !config.DoNotForceCN, // Note the inversion here
 		signatureCount:     signatureCount,
@@ -315,6 +315,7 @@ func NewCertificateAuthorityImpl(
 		adoptedOrphanCount: adoptedOrphanCount,
 		orphanQueue:        orphanQueue,
 		ocspLifetime:       config.LifespanOCSP.Duration,
+		signErrorCounter:   signErrorCounter,
 	}
 
 	ca.idToIssuer = make(map[int64]*internalIssuer)
@@ -349,9 +350,9 @@ func NewCertificateAuthorityImpl(
 func (ca *CertificateAuthorityImpl) noteSignError(err error) {
 	if err != nil {
 		if _, ok := err.(*pkcs11.Error); ok {
-			ca.stats.Inc(metricHSMError, 1)
+			ca.signErrorCounter.WithLabelValues("HSM").Inc()
 		} else if cfErr, ok := err.(*cferr.Error); ok {
-			ca.stats.Inc(fmt.Sprintf("%s.%d", metricSigningError, cfErr.ErrorCode), 1)
+			ca.signErrorCounter.WithLabelValues(fmt.Sprintf("CFSSL %d", cfErr.ErrorCode)).Inc()
 		}
 	}
 	return
@@ -571,16 +572,42 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	}, nil
 }
 
-// IssueCertificateForPrecertificate takes a precertificate and a set of SCTs for that precertificate
-// and uses the signer to create and sign a certificate from them. The poison extension is removed
-// and a SCT list extension is inserted in its place. Except for this and the signature the certificate
-// exactly matches the precertificate. After the certificate is signed a OCSP response is generated
-// and the response and certificate are stored in the database.
+// IssueCertificateForPrecertificate takes a precertificate and a set
+// of SCTs for that precertificate and uses the signer to create and
+// sign a certificate from them. The poison extension is removed and a
+// SCT list extension is inserted in its place. Except for this and the
+// signature the certificate exactly matches the precertificate. After
+// the certificate is signed a OCSP response is generated and the
+// response and certificate are stored in the database.
+//
+// It's critical not to sign two different final certificates for the same
+// precertificate. This can happen, for instance, if the caller provides a
+// different set of SCTs on subsequent calls to  IssueCertificateForPrecertificate.
+// We rely on the RA not to call IssueCertificateForPrecertificate twice for the
+// same serial. This is accomplished by the fact that
+// IssueCertificateForPrecertificate is only ever called in a straight-through
+// RPC path without retries. If there is any error, including a networking
+// error, the whole certificate issuance attempt fails and any subsequent
+// issuance will use a different serial number.
+//
+// We also check that the provided serial number does not already exist as a
+// final certificate, but this is just a belt-and-suspenders measure, since
+// there could be race conditions where two goroutines are issuing for the same
+// serial number at the same time.
 func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	precert, err := x509.ParseCertificate(req.DER)
 	if err != nil {
 		return emptyCert, err
+	}
+
+	serialHex := core.SerialToString(precert.SerialNumber)
+	if _, err = ca.sa.GetCertificate(ctx, serialHex); err == nil {
+		err = berrors.InternalServerError("issuance of duplicate final certificate requested: %s", serialHex)
+		ca.log.AuditErr(err.Error())
+		return emptyCert, err
+	} else if !berrors.Is(err, berrors.NotFound) {
+		return emptyCert, fmt.Errorf("error checking for duplicate issuance of %s: %s", serialHex, err)
 	}
 	var scts []ct.SignedCertificateTimestamp
 	for _, sctBytes := range req.SCTs {
@@ -595,7 +622,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	if err != nil {
 		return emptyCert, err
 	}
-	serialHex := core.SerialToString(precert.SerialNumber)
 	block, _ := pem.Decode(certPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
 		err = berrors.InternalServerError("invalid certificate value returned")
@@ -847,11 +873,14 @@ func (ca *CertificateAuthorityImpl) integrateOrphan() error {
 			Ocsp:   orphan.OCSPResp,
 			Issued: &issuedNanos,
 		})
+		if err != nil && !berrors.Is(err, berrors.Duplicate) {
+			return fmt.Errorf("failed to store orphaned precertificate: %s", err)
+		}
 	} else {
 		_, err = ca.sa.AddCertificate(context.Background(), orphan.DER, orphan.RegID, nil, &issued)
-	}
-	if err != nil && !berrors.Is(err, berrors.Duplicate) {
-		return fmt.Errorf("failed to store orphaned certificate: %s", err)
+		if err != nil && !berrors.Is(err, berrors.Duplicate) {
+			return fmt.Errorf("failed to store orphaned certificate: %s", err)
+		}
 	}
 	if _, err = ca.orphanQueue.Dequeue(); err != nil {
 		return fmt.Errorf("failed to dequeue integrated orphaned certificate: %s", err)

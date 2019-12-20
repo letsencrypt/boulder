@@ -26,9 +26,9 @@ func algorithmForKey(key *jose.JSONWebKey) (string, error) {
 }
 
 const (
-	noAlgorithmForKey     = "WFE.Errors.NoAlgorithmForKey"
-	invalidJWSAlgorithm   = "WFE.Errors.InvalidJWSAlgorithm"
-	invalidAlgorithmOnKey = "WFE.Errors.InvalidAlgorithmOnKey"
+	noAlgorithmForKey     = "NoAlgorithmForKey"
+	invalidJWSAlgorithm   = "InvalidJWSAlgorithm"
+	invalidAlgorithmOnKey = "InvalidAlgorithmOnKey"
 )
 
 var supportedAlgs = map[string]bool{

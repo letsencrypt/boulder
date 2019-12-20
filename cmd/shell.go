@@ -28,7 +28,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 )
 
 // Because we don't know when this init will be called with respect to
@@ -130,18 +129,17 @@ func (log promLogger) Println(args ...interface{}) {
 	log.AuditErr(fmt.Sprintln(args...))
 }
 
-// StatsAndLogging constructs a metrics.Scope and an AuditLogger based on its config
-// parameters, and return them both. It also spawns off an HTTP server on the
-// provided port to report the stats and provide pprof profiling handlers.
-// Crashes if any setup fails.
+// StatsAndLogging constructs a prometheus registerer and an AuditLogger based
+// on its config parameters, and return them both. It also spawns off an HTTP
+// server on the provided port to report the stats and provide pprof profiling
+// handlers. NewLogger and newStatsRegistry will call os.Exit on errors.
 // Also sets the constructed AuditLogger as the default logger, and configures
 // the cfssl, mysql, and grpc packages to use our logger.
 // This must be called before any gRPC code is called, because gRPC's SetLogger
 // doesn't use any locking.
-func StatsAndLogging(logConf SyslogConfig, addr string) (metrics.Scope, blog.Logger) {
+func StatsAndLogging(logConf SyslogConfig, addr string) (prometheus.Registerer, blog.Logger) {
 	logger := NewLogger(logConf)
-	scope := newScope(addr, logger)
-	return scope, logger
+	return newStatsRegistry(addr, logger), logger
 }
 
 func NewLogger(logConf SyslogConfig) blog.Logger {
@@ -172,10 +170,11 @@ func NewLogger(logConf SyslogConfig) blog.Logger {
 	return logger
 }
 
-func newScope(addr string, logger blog.Logger) metrics.Scope {
+func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(prometheus.NewGoCollector())
-	registry.MustRegister(prometheus.NewProcessCollector(os.Getpid(), ""))
+	registry.MustRegister(prometheus.NewProcessCollector(
+		prometheus.ProcessCollectorOpts{}))
 
 	mux := http.NewServeMux()
 	// Register the available pprof handlers. These are all registered on
@@ -208,7 +207,7 @@ func newScope(addr string, logger blog.Logger) metrics.Scope {
 			log.Fatalf("unable to boot debug server on %s: %v", addr, err)
 		}
 	}()
-	return metrics.NewPromScope(registry)
+	return registry
 }
 
 // Fail exits and prints an error message to stderr and the logger audit log.
