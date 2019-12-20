@@ -1811,6 +1811,7 @@ func TestGetCertificate(t *testing.T) {
 
 	noCache := "public, max-age=0, no-cache"
 	newSerial := "/acme/cert/0000000000000000000000000000000000b3"
+	newGetSerial := "/get/cert/0000000000000000000000000000000000b3"
 	goodSerial := "/acme/cert/0000000000000000000000000000000000b2"
 	notFound := `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Certificate not found","status":404}`
 
@@ -1881,13 +1882,22 @@ func TestGetCertificate(t *testing.T) {
 		},
 		{
 			Name:           "New cert",
-			Request:        makeGet(newSerial),
+			Request:        makeGet(newGetSerial),
 			ExpectedStatus: http.StatusForbidden,
 			ExpectedBody: `{
 				"type": "` + probs.V2ErrorNS + `unauthorized",
 				"detail": "Certificate is too new",
 				"status": 403
 			}`,
+		},
+		{
+			Name:           "New cert, old endpoint",
+			Request:        makeGet(newSerial),
+			ExpectedStatus: http.StatusOK,
+			ExpectedHeaders: map[string]string{
+				"Content-Type": pkixContent,
+			},
+			AnyCert: true,
 		},
 		{
 			Name:           "New cert, POST-as-GET",
@@ -2504,6 +2514,7 @@ func TestGetOrder(t *testing.T) {
 		Name     string
 		Request  *http.Request
 		Response string
+		Endpoint string
 	}{
 		{
 			Name:     "Good request",
@@ -2559,6 +2570,12 @@ func TestGetOrder(t *testing.T) {
 			Name:     "GET new order",
 			Request:  makeGet("1/9"),
 			Response: `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"Order is too new","status":403}`,
+			Endpoint: "/get/order/",
+		},
+		{
+			Name:     "GET new order from old endpoint",
+			Request:  makeGet("1/9"),
+			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "POST-as-GET new order",
@@ -2570,7 +2587,11 @@ func TestGetOrder(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter := httptest.NewRecorder()
-			wfe.GetOrder(ctx, newRequestEvent(), responseWriter, tc.Request)
+			if tc.Endpoint != "" {
+				wfe.GetOrder(ctx, &web.RequestEvent{Extra: make(map[string]interface{}), Endpoint: tc.Endpoint}, responseWriter, tc.Request)
+			} else {
+				wfe.GetOrder(ctx, newRequestEvent(), responseWriter, tc.Request)
+			}
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.Response)
 		})
 	}
