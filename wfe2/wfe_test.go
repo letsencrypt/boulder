@@ -3176,6 +3176,29 @@ func TestGetChallengeV2UpRel(t *testing.T) {
 		`<http://localhost/acme/authz-v3/1>;rel="up"`)
 }
 
+func TestGetChallengeV2UpRelGetEndpoint(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	wfe, _ := setupWFE(t)
+
+	challengeURL := "http://localhost/get/chall-v3/1/-ZfxEw"
+	resp := httptest.NewRecorder()
+
+	req, err := http.NewRequest("GET", challengeURL, nil)
+	test.AssertNotError(t, err, "Could not make NewRequest")
+	req.URL.Path = "1/-ZfxEw"
+
+	wfe.ChallengeV2(ctx, newRequestEvent(), resp, req)
+	test.AssertEquals(t,
+		resp.Code,
+		http.StatusOK)
+	test.AssertEquals(t,
+		resp.Header().Get("Link"),
+		`<http://localhost/get/authz-v3/1>;rel="up"`)
+}
+
 func TestPrepAccountForDisplay(t *testing.T) {
 	acct := &core.Registration{
 		ID:        1987,
