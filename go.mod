@@ -38,5 +38,5 @@ require (
 	google.golang.org/grpc v1.20.0
 	gopkg.in/go-gorp/gorp.v2 v2.0.1-0.20180410155428-6032c66e0f5f
 	gopkg.in/square/go-jose.v2 v2.4.1
-	gopkg.in/yaml.v2 v2.2.2
+	gopkg.in/yaml.v2 v2.2.5
 )
