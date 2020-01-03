@@ -9,7 +9,7 @@ require (
 	github.com/eggsampler/acme/v3 v3.0.0
 	github.com/go-gorp/gorp v2.0.0+incompatible // indirect
 	github.com/go-sql-driver/mysql v1.4.1-0.20191114115753-b4242bab7dc5
-	github.com/golang/mock v1.2.0
+	github.com/golang/mock v1.3.1
 	github.com/golang/protobuf v1.3.2
 	github.com/golang/snappy v0.0.0-20170215233205-553a64147049 // indirect
 	github.com/google/certificate-transparency-go v1.0.22-0.20181127102053-c25855a82c75
