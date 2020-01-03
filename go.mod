@@ -20,7 +20,7 @@ require (
 	github.com/letsencrypt/pkcs11key/v4 v4.0.0
 	github.com/lib/pq v1.1.0 // indirect
 	github.com/miekg/dns v1.1.8
-	github.com/miekg/pkcs11 v1.0.2
+	github.com/miekg/pkcs11 v1.0.3
 	github.com/onsi/ginkgo v1.8.0 // indirect
 	github.com/onsi/gomega v1.5.0 // indirect
 	github.com/poy/onpar v0.0.0-20181125144932-f2f06780798d // indirect
