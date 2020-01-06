@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/hpcloud/tail"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -83,21 +84,27 @@ func main() {
 	}
 
 	var config struct {
-		Syslog cmd.SyslogConfig
-		Files  []string
+		Syslog    cmd.SyslogConfig
+		DebugAddr string
+		Files     []string
 	}
 	configBytes, err := ioutil.ReadFile(*configPath)
 	cmd.FailOnError(err, "failed to read config file")
 	err = json.Unmarshal(configBytes, &config)
 	cmd.FailOnError(err, "failed to parse config file")
 
-	logger := cmd.NewLogger(config.Syslog)
+	stats, logger := cmd.StatsAndLogging(config.Syslog, config.DebugAddr)
+	badLineCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "bad_log_lines",
+		Help: "A counter of corrupt log lines",
+	}, []string{"filename"})
+	stats.MustRegister(badLineCounter)
 
 	var tailers []*tail.Tail
 	for _, filename := range config.Files {
 		t, err := tail.TailFile(filename, tail.Config{
 			ReOpen:    true,
-			MustExist: true,
+			MustExist: false, // sometimes files won't exist, so we must tolerate that
 			Follow:    true,
 		})
 		cmd.FailOnError(err, "failed to tail file")
@@ -110,6 +117,7 @@ func main() {
 					continue
 				}
 				if err := lineValid(line.Text); err != nil {
+					badLineCounter.WithLabelValues(t.Filename).Inc()
 					logger.Errf("%s: %s %q", t.Filename, err, line.Text)
 				}
 			}
