@@ -462,6 +462,36 @@ type AddChainResponse struct {
 	Signature  []byte  `json:"signature"`   // Log signature for this SCT
 }
 
+// ToSignedCertificateTimestamp creates a SignedCertificateTimestamp from the
+// AddChainResponse.
+func (r *AddChainResponse) ToSignedCertificateTimestamp() (*SignedCertificateTimestamp, error) {
+	sct := SignedCertificateTimestamp{
+		SCTVersion: r.SCTVersion,
+		Timestamp:  r.Timestamp,
+	}
+
+	if len(r.ID) != sha256.Size {
+		return nil, fmt.Errorf("id is invalid length, expected %d got %d", sha256.Size, len(r.ID))
+	}
+	copy(sct.LogID.KeyID[:], r.ID)
+
+	exts, err := base64.StdEncoding.DecodeString(r.Extensions)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base64 data in Extensions (%q): %v", r.Extensions, err)
+	}
+	sct.Extensions = CTExtensions(exts)
+
+	var ds DigitallySigned
+	if rest, err := tls.Unmarshal(r.Signature, &ds); err != nil {
+		return nil, fmt.Errorf("tls.Unmarshal(): %s", err)
+	} else if len(rest) > 0 {
+		return nil, fmt.Errorf("trailing data (%d bytes) after DigitallySigned", len(rest))
+	}
+	sct.Signature = ds
+
+	return &sct, nil
+}
+
 // AddJSONRequest represents the JSON request body sent to the add-json POST method.
 // The corresponding response re-uses AddChainResponse.
 // This is an experimental addition not covered by RFC6962.
@@ -469,7 +499,7 @@ type AddJSONRequest struct {
 	Data interface{} `json:"data"`
 }
 
-// GetSTHResponse respresents the JSON response to the get-sth GET method from section 4.3.
+// GetSTHResponse represents the JSON response to the get-sth GET method from section 4.3.
 type GetSTHResponse struct {
 	TreeSize          uint64 `json:"tree_size"`           // Number of certs in the current tree
 	Timestamp         uint64 `json:"timestamp"`           // Time that the tree was created

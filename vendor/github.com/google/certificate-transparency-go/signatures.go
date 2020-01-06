@@ -80,7 +80,7 @@ func NewSignatureVerifier(pk crypto.PublicKey) (*SignatureVerifier, error) {
 
 		}
 	default:
-		return nil, fmt.Errorf("Unsupported public key type %v", pkType)
+		return nil, fmt.Errorf("unsupported public key type %v", pkType)
 	}
 
 	return &SignatureVerifier{PubKey: pk}, nil
