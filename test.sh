@@ -79,6 +79,13 @@ if [[ "$RUN" =~ "lints" ]] ; then
   run_and_expect_silence errcheck \
     -ignore fmt:Fprintf,fmt:Fprintln,fmt:Fprint,io:Write,os:Remove,net/http:Write \
     $(go list -f '{{ .ImportPath }}' ./... | grep -v test)
+
+  # Check for common spelling errors using codespell.
+  # Update .codespell.ignore.txt if you find false positives (NOTE: ignored
+  # words should be all lowercase).
+  run_and_expect_silence codespell \
+    --ignore-words=.codespell.ignore.txt \
+    --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt
 fi
 
 #
