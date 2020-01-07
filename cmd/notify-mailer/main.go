@@ -194,7 +194,7 @@ func (m *mailer) resolveEmailAddresses() (emailToRecipientMap, error) {
 		for _, email := range emails {
 			parsedEmail, err := mail.ParseAddress(email)
 			if err != nil {
-				m.log.Errf("unparseable email for reg ID %d : %q", r.id, email)
+				m.log.Errf("unparsable email for reg ID %d : %q", r.id, email)
 				continue
 			}
 			addr := parsedEmail.Address

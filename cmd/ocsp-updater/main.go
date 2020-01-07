@@ -446,7 +446,7 @@ func setupClients(c OCSPUpdaterConfig, stats prometheus.Registerer, clk clock.Cl
 	var apc akamaipb.AkamaiPurgerClient
 	if c.AkamaiPurgerService != nil {
 		apcConn, err := bgrpc.ClientSetup(c.AkamaiPurgerService, tls, clientMetrics, clk)
-		cmd.FailOnError(err, "Failed ot load credentials and create gRPC connection to Akamai Purger service")
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Akamai Purger service")
 		apc = akamaipb.NewAkamaiPurgerClient(apcConn)
 	}
 

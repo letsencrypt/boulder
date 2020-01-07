@@ -100,7 +100,7 @@ type WebFrontEndImpl struct {
 
 	// Allowed prefix for legacy accounts used by verify.go's `lookupJWK`.
 	// See `cmd/boulder-wfe2/main.go`'s comment on the configuration field
-	// `LegacyKeyIDPrefix` for more informaton.
+	// `LegacyKeyIDPrefix` for more information.
 	LegacyKeyIDPrefix string
 
 	// Register of anti-replay nonces
@@ -1173,7 +1173,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		return
 	}
 
-	// If the JWS body is empty then this POST is a POST-as-GET to retreive
+	// If the JWS body is empty then this POST is a POST-as-GET to retrieve
 	// challenge details, not a POST to initiate a challenge
 	if string(body) == "" {
 		challenge := authz.Challenges[challengeIndex]

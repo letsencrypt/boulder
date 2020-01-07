@@ -211,7 +211,7 @@ func TestTLSALPN01DialTimeout(t *testing.T) {
 	defer cancel()
 
 	// The only method I've found so far to trigger a connect timeout is to
-	// connect to an unrouteable IP address. This usuall generates a connection
+	// connect to an unrouteable IP address. This usually generates a connection
 	// timeout, but will rarely return "Network unreachable" instead. If we get
 	// that, just retry until we get something other than "Network unreachable".
 	var prob *probs.ProblemDetails

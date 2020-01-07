@@ -60,7 +60,7 @@ type CachePurgeClient struct {
 }
 
 // errFatal is used by CachePurgeClient.purge to indicate that it failed for a
-// reason that cannot be remediated by retying a purge request
+// reason that cannot be remediated by retrying a purge request
 type errFatal string
 
 func (e errFatal) Error() string { return string(e) }

@@ -193,7 +193,7 @@ func (m *mockSA) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exis
 }
 
 func (m *mockSA) GetCertificate(ctx context.Context, serial string) (core.Certificate, error) {
-	return core.Certificate{}, berrors.NotFoundError("cannae find tha cert")
+	return core.Certificate{}, berrors.NotFoundError("cannot find the cert")
 }
 
 var caKey crypto.Signer

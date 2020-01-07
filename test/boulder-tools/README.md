@@ -10,7 +10,7 @@ things we separate all of Boulder's build dependencies into its own
 Rather than install multiple versions of Go within the same `boulder-tools`
 container we maintain separate images for each Go version we support.
 
-When a new Go version is available we perform serveral steps to integrate it to our workflow:
+When a new Go version is available we perform several steps to integrate it to our workflow:
 
 1. We add it to the `GO_VERSIONS` array in `tag_and_upload.sh`.
 2. We run the `tag_and_upload.sh` script to build, tag, and upload

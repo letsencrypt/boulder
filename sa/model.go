@@ -528,7 +528,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 	if hasMultipleNonPendingChallenges(authz.Challenges) {
 		return nil, errors.New("multiple challenges are non-pending")
 	}
-	// In the v2 authorization style we don't store invididual challenges with their own
+	// In the v2 authorization style we don't store individual challenges with their own
 	// token, validation errors/records, etc. Instead we store a single token/error/record
 	// set, a bitmap of available challenge types, and a row indicating which challenge type
 	// was 'attempted'.

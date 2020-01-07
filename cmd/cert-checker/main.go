@@ -328,7 +328,7 @@ type config struct {
 		CheckPeriod         cmd.ConfigDuration
 
 		// IgnoredLints is a list of zlint names. Any lint results from a lint in
-		// the IgnoredLists list are ignored regardles of LintStatus level.
+		// the IgnoredLists list are ignored regardless of LintStatus level.
 		IgnoredLints []string
 
 		Features map[string]bool

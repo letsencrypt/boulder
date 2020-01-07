@@ -46,7 +46,7 @@ PKCS#11 configuration (JSON), e.g.:
 	"pin": "5678"
 }
 
-Note: These values should *not* be the same as the ones in the CA's config JSON, which point at a differen HSM partition.
+Note: These values should *not* be the same as the ones in the CA's config JSON, which point at a different HSM partition.
 `
 
 func readFiles(issuerFileName, responderFileName, targetFileName, pkcs11FileName string) (issuer, responder, target *x509.Certificate, pkcs11Config pkcs11key.Config, err error) {
