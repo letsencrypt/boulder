@@ -186,7 +186,7 @@ func (d ConfigDuration) MarshalJSON() ([]byte, error) {
 	return []byte(d.Duration.String()), nil
 }
 
-// UnmarshalYAML uses the same frmat as JSON, but is called by the YAML
+// UnmarshalYAML uses the same format as JSON, but is called by the YAML
 // parser (vs. the JSON parser).
 func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var s string

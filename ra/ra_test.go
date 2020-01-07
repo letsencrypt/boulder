@@ -377,7 +377,7 @@ func TestValidateContacts(t *testing.T) {
 	otherValidEmail := "mailto:other-admin@email.com"
 	malformedEmail := "mailto:admin.com"
 	nonASCII := "mailto:señor@email.com"
-	unparseable := "mailto:a@email.com, b@email.com"
+	unparsable := "mailto:a@email.com, b@email.com"
 	forbidden := "mailto:a@example.org"
 
 	err := ra.validateContacts(context.Background(), &[]string{})
@@ -401,8 +401,8 @@ func TestValidateContacts(t *testing.T) {
 	err = ra.validateContacts(context.Background(), &[]string{nonASCII})
 	test.AssertError(t, err, "Non ASCII email")
 
-	err = ra.validateContacts(context.Background(), &[]string{unparseable})
-	test.AssertError(t, err, "Unparseable email")
+	err = ra.validateContacts(context.Background(), &[]string{unparsable})
+	test.AssertError(t, err, "Unparsable email")
 
 	err = ra.validateContacts(context.Background(), &[]string{forbidden})
 	test.AssertError(t, err, "Forbidden email")
@@ -2502,7 +2502,7 @@ func TestNewOrderWildcard(t *testing.T) {
 
 	// Check each of the authz IDs in the order
 	for _, authzID := range order.V2Authorizations {
-		// We should be able to retreive the authz from the db without error
+		// We should be able to retrieve the authz from the db without error
 		authzPB, err := ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID})
 		test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 		authz, err := bgrpc.PBToAuthz(authzPB)
@@ -2549,7 +2549,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	test.AssertEquals(t, numAuthorizations(order), 2)
 
 	for _, authzID := range order.V2Authorizations {
-		// We should be able to retreive the authz from the db without error
+		// We should be able to retrieve the authz from the db without error
 		authzPB, err := ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID})
 		test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 		authz, err := bgrpc.PBToAuthz(authzPB)
@@ -3574,7 +3574,7 @@ func (ca *mockCAFailIssueCert) IssueCertificate(
 }
 
 // TestIssueCertificateInnerErrs tests that errors from the CA caught during
-// `ra.issueCertificateInner` are propogated correctly, with the part of the
+// `ra.issueCertificateInner` are propagated correctly, with the part of the
 // issuance process that failed prefixed on the error message.
 func TestIssueCertificateInnerErrs(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)

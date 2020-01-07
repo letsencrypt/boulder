@@ -124,7 +124,7 @@ migration. This is because the ORM package we use,
 [`gorp`](https://github.com/go-gorp/gorp), expects every field in a struct to
 map to a column in the table. If we add a new field to a model struct and
 Boulder attempts to write that struct to a table that doesn't yet have the
-corresponding column (case 1), gorp wil fail with
+corresponding column (case 1), gorp will fail with
 `Insert failed table posts has no column named Foo`.
 There are examples of such models in sa/model.go, along with code to
 turn a model into a `struct` used internally. 

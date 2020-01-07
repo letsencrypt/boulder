@@ -296,7 +296,7 @@ func makeBody(s string) io.ReadCloser {
 
 // loadPrivateKey loads a private key from PEM/DER-encoded data.
 // Duplicates functionality from jose v1's util.LoadPrivateKey function. It was
-// moved to the jose-util cmd's main packge in v2.
+// moved to the jose-util cmd's main package in v2.
 func loadPrivateKey(t *testing.T, keyBytes []byte) interface{} {
 	// pem.Decode does not return an error as its 2nd arg, but instead the "rest"
 	// that was leftover from parsing the PEM block. We only care if the decoded

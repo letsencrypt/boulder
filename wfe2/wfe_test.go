@@ -1197,7 +1197,7 @@ func TestChallenge(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter := httptest.NewRecorder()
 			wfe.ChallengeV2(ctx, newRequestEvent(), responseWriter, tc.Request)
-			// Check the reponse code, headers and body match expected
+			// Check the response code, headers and body match expected
 			headers := responseWriter.Header()
 			body := responseWriter.Body.String()
 			test.AssertEquals(t, responseWriter.Code, tc.ExpectedStatus)
@@ -2963,7 +2963,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	test.AssertEquals(t, authz.Wildcard, true)
 	// The authz should not have any combinations
 	// NOTE(@cpu): We don't use test.AssertNotNil here because its use of
-	// interface{} types makes a comparsion of [][]int{nil} and nil fail.
+	// interface{} types makes a comparison of [][]int{nil} and nil fail.
 	if authz.Combinations != nil {
 		t.Errorf("Authz had a non-nil combinations")
 	}

@@ -1185,7 +1185,7 @@ def check_ocsp_basic_oid(cert_file, issuer_file, url):
     # about this cert) will just be 30 03 0A 01 06. A "good" or "revoked"
     # response will contain, among other things, the id-pkix-ocsp-basic OID
     # identifying the response type. We look for that OID to confirm we got a
-    # succesful response.
+    # successful response.
     expected = bytearray.fromhex("06 09 2B 06 01 05 05 07 30 01 01")
     for resp in responses:
         if not expected in bytearray(resp):

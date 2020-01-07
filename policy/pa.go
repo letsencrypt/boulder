@@ -338,7 +338,7 @@ func (pa *AuthorityImpl) WillingToIssue(id identifier.ACMEIdentifier) error {
 // returned. In addition to the regular WillingToIssue checks this function
 // also checks each wildcard identifier to enforce that:
 //
-// * The identifer is a DNS type identifier
+// * The identifier is a DNS type identifier
 // * There is at most one `*` wildcard character
 // * That the wildcard character is the leftmost label
 // * That the wildcard label is not immediately adjacent to a top level ICANN
@@ -408,7 +408,7 @@ func (pa *AuthorityImpl) willingToIssueWildcard(ident identifier.ACMEIdentifier)
 
 	// If there is exactly one wildcard in the domain we need to do some special
 	// processing to ensure that it is a well formed wildcard request and to
-	// translate the identifer to its base domain for use with WillingToIssue
+	// translate the identifier to its base domain for use with WillingToIssue
 	if strings.Count(rawDomain, "*") == 1 {
 		// If the rawDomain has a wildcard character, but it isn't the first most
 		// label of the domain name then the wildcard domain is malformed

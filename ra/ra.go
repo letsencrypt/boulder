@@ -1202,7 +1202,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		var solvedByChallengeType string
 		// If the authz has no solved by challenge type there has been an internal
 		// consistency violation worth logging a warning about. In this case the
-		// solvedByChallengeType will be logged as the emtpy string.
+		// solvedByChallengeType will be logged as the empty string.
 		if solvedByChallengeType = authz.SolvedBy(); solvedByChallengeType == "" {
 			ra.log.Warningf("Authz %q has status %q but empty SolvedBy()", authz.ID, authz.Status)
 		}
@@ -1455,7 +1455,7 @@ func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []st
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, base core.Registration, update core.Registration) (core.Registration, error) {
 	if changed := mergeUpdate(&base, update); !changed {
 		// If merging the update didn't actually change the base then our work is
-		// done, we can return before calling ra.SA.UpdateRegistration since theres
+		// done, we can return before calling ra.SA.UpdateRegistration since there's
 		// nothing for the SA to do
 		return base, nil
 	}

@@ -78,7 +78,7 @@ func checkAlgorithm(key *jose.JSONWebKey, parsedJWS *jose.JSONWebSignature) erro
 
 // jwsAuthType represents whether a given POST request is authenticated using
 // a JWS with an embedded JWK (v1 ACME style, new-account, revoke-cert) or an
-// embeded Key ID (v2 AMCE style) or an unsupported/unknown auth type.
+// embedded Key ID (v2 AMCE style) or an unsupported/unknown auth type.
 type jwsAuthType int
 
 const (
