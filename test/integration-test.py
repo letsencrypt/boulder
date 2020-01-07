@@ -306,7 +306,9 @@ def main():
     if not startservers.check():
         raise(Exception("startservers.check failed"))
 
-    check_slow_queries()
+    # This test is flaky, so it's temporarily disabled.
+    # TODO(#4583): Re-enable this test.
+    #check_slow_queries()
 
     global exit_status
     exit_status = 0
