@@ -353,8 +353,8 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	// TODO(@cpu): After November 1st, 2019 support for "GET" to the following
 	// endpoints will be removed, leaving only POST-as-GET support.
 	wfe.HandleFunc(m, orderPath, wfe.GetOrder, "GET", "POST")
-	wfe.HandleFunc(m, authzv2Path, wfe.AuthorizationV2, "GET", "POST")
-	wfe.HandleFunc(m, challengev2Path, wfe.ChallengeV2, "GET", "POST")
+	wfe.HandleFunc(m, authzv2Path, wfe.Authorization, "GET", "POST")
+	wfe.HandleFunc(m, challengev2Path, wfe.Challenge, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET", "POST")
 
 	// We don't use our special HandleFunc for "/" because it matches everything,
@@ -980,10 +980,10 @@ func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateReq
 	wfe.log.AuditObject("Certificate request", csrLog)
 }
 
-// ChallengeV2 handles POST requests to challenge URLs belonging to
+// Challenge handles POST requests to challenge URLs belonging to
 // authzv2-style authorizations.  Such requests are clients'
 // responses to the server's challenges.
-func (wfe *WebFrontEndImpl) ChallengeV2(
+func (wfe *WebFrontEndImpl) Challenge(
 	ctx context.Context,
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
@@ -1390,29 +1390,12 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 	return true
 }
 
-// authzLookupFunc is used by handleAuthorization to look up either an authzv1
-// or an authzv2, as appropriate.
-type authzLookupFunc func() (*core.Authorization, error)
+func (wfe *WebFrontEndImpl) Authorization(
+	ctx context.Context,
+	logEvent *web.RequestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
 
-func (wfe *WebFrontEndImpl) AuthorizationV2(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	wfe.handleAuthorization(ctx, logEvent, response, request, func() (*core.Authorization, error) {
-		authzID, err := strconv.ParseInt(request.URL.Path, 10, 64)
-		if err != nil {
-			return nil, berrors.MalformedError("Invalid authorization ID")
-		}
-		authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID})
-		if err != nil {
-			return nil, err
-		}
-		authz, err := bgrpc.PBToAuthz(authzPB)
-		if err != nil {
-			return nil, err
-		}
-		return &authz, nil
-	})
-}
-
-func (wfe *WebFrontEndImpl) handleAuthorization(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request, lookupFunc authzLookupFunc) {
 	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost {
 		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
 		return
@@ -1435,7 +1418,13 @@ func (wfe *WebFrontEndImpl) handleAuthorization(ctx context.Context, logEvent *w
 		requestBody = body
 	}
 
-	authz, err := lookupFunc()
+	authzID, err := strconv.ParseInt(request.URL.Path, 10, 64)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid authorization ID"), nil)
+		return
+	}
+
+	authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID})
 	if berrors.Is(err, berrors.NotFound) {
 		wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
 		return
@@ -1446,6 +1435,13 @@ func (wfe *WebFrontEndImpl) handleAuthorization(ctx context.Context, logEvent *w
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
 		return
 	}
+
+	authz, err := bgrpc.PBToAuthz(authzPB)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+		return
+	}
+
 	if authz.Identifier.Type == identifier.DNS {
 		logEvent.DNSName = authz.Identifier.Value
 	}
@@ -1472,12 +1468,12 @@ func (wfe *WebFrontEndImpl) handleAuthorization(ctx context.Context, logEvent *w
 		// If the deactivation fails return early as errors and return codes
 		// have already been set. Otherwise continue so that the user gets
 		// sent the deactivated authorization.
-		if !wfe.deactivateAuthorization(ctx, authz, logEvent, response, requestBody) {
+		if !wfe.deactivateAuthorization(ctx, &authz, logEvent, response, requestBody) {
 			return
 		}
 	}
 
-	wfe.prepAuthorizationForDisplay(request, authz)
+	wfe.prepAuthorizationForDisplay(request, &authz)
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, authz)
 	if err != nil {
