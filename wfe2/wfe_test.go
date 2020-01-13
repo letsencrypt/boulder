@@ -1105,7 +1105,7 @@ func TestGetChallenge(t *testing.T) {
 		req.URL.Path = "1/-ZfxEw"
 		test.AssertNotError(t, err, "Could not make NewRequest")
 
-		wfe.ChallengeV2(ctx, newRequestEvent(), resp, req)
+		wfe.Challenge(ctx, newRequestEvent(), resp, req)
 		test.AssertEquals(t,
 			resp.Code,
 			http.StatusOK)
@@ -1196,7 +1196,7 @@ func TestChallenge(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter := httptest.NewRecorder()
-			wfe.ChallengeV2(ctx, newRequestEvent(), responseWriter, tc.Request)
+			wfe.Challenge(ctx, newRequestEvent(), responseWriter, tc.Request)
 			// Check the response code, headers and body match expected
 			headers := responseWriter.Header()
 			body := responseWriter.Body.String()
@@ -1230,7 +1230,7 @@ func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 	signedURL := "http://localhost/1/-ZfxEw"
 	_, _, jwsBody := signRequestKeyID(t, 1, nil, signedURL, `{}`, wfe.nonceService)
 	request := makePostRequestWithPath("1/-ZfxEw", jwsBody)
-	wfe.ChallengeV2(ctx, newRequestEvent(), responseWriter, request)
+	wfe.Challenge(ctx, newRequestEvent(), responseWriter, request)
 
 	body := responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `{
@@ -1254,7 +1254,7 @@ func TestUpdateChallengeRAError(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 	request := makePostRequestWithPath("2/-ZfxEw", jwsBody)
 
-	wfe.ChallengeV2(ctx, newRequestEvent(), responseWriter, request)
+	wfe.Challenge(ctx, newRequestEvent(), responseWriter, request)
 
 	// The result should be an internal server error problem.
 	body := responseWriter.Body.String()
@@ -1559,7 +1559,7 @@ func TestGetAuthorization(t *testing.T) {
 	// Expired authorizations should be inaccessible
 	authzURL := "3"
 	responseWriter := httptest.NewRecorder()
-	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
 		URL:    mustParseURL(authzURL),
 	})
@@ -1569,7 +1569,7 @@ func TestGetAuthorization(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	// Ensure that a valid authorization can't be reached with an invalid URL
-	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
 		URL:    mustParseURL("1d"),
 		Method: "GET",
 	})
@@ -1581,7 +1581,7 @@ func TestGetAuthorization(t *testing.T) {
 
 	responseWriter = httptest.NewRecorder()
 	// Ensure that a POST-as-GET to an authorization works
-	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, postAsGet)
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, postAsGet)
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	body := responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `
@@ -1618,7 +1618,7 @@ func TestAuthorization500(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
 	responseWriter := httptest.NewRecorder()
-	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
 		URL:    mustParseURL("4"),
 	})
@@ -1641,7 +1641,7 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 	// For "oldNS" the SA mock returns an authorization with a failed challenge
 	// that has an error with the type already prefixed by the v1 error NS
 	responseWriter := httptest.NewRecorder()
-	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
 		URL:    mustParseURL("55"),
 	})
@@ -1656,7 +1656,7 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 	// For "failed" the SA mock returns an authorization with a failed challenge
 	// that has an error with the type not prefixed by an error namespace.
 	responseWriter = httptest.NewRecorder()
-	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
 		URL:    mustParseURL("56"),
 	})
@@ -2001,7 +2001,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 	_, _, body := signRequestKeyID(t, 1, nil, "http://localhost/1", payload, wfe.nonceService)
 	request := makePostRequestWithPath("1", body)
 
-	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, request)
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type": "`+probs.V2ErrorNS+`malformed","detail": "Invalid status value","status": 400}`)
@@ -2011,7 +2011,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 	_, _, body = signRequestKeyID(t, 1, nil, "http://localhost/1", payload, wfe.nonceService)
 	request = makePostRequestWithPath("1", body)
 
-	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, request)
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
@@ -3071,13 +3071,13 @@ func TestMandatoryPOSTAsGET(t *testing.T) {
 			// GET requests to a mocked authorization path should return an error
 			name:    "GET Authz",
 			path:    "1",
-			handler: wfe.AuthorizationV2,
+			handler: wfe.Authorization,
 		},
 		{
 			// GET requests to a mocked challenge path should return an error
 			name:    "GET Chall",
 			path:    "1/-ZfxEw",
-			handler: wfe.ChallengeV2,
+			handler: wfe.Challenge,
 		},
 		{
 			// GET requests to a mocked certificate serial path should return an error
@@ -3097,7 +3097,7 @@ func TestMandatoryPOSTAsGET(t *testing.T) {
 	}
 }
 
-func TestGetChallengeV2UpRel(t *testing.T) {
+func TestGetChallengeUpRel(t *testing.T) {
 	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
 		return
 	}
@@ -3111,7 +3111,7 @@ func TestGetChallengeV2UpRel(t *testing.T) {
 	test.AssertNotError(t, err, "Could not make NewRequest")
 	req.URL.Path = "1/-ZfxEw"
 
-	wfe.ChallengeV2(ctx, newRequestEvent(), resp, req)
+	wfe.Challenge(ctx, newRequestEvent(), resp, req)
 	test.AssertEquals(t,
 		resp.Code,
 		http.StatusOK)
