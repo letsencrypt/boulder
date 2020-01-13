@@ -32,6 +32,9 @@ func TestDNSError(t *testing.T) {
 		}, {
 			&DNSError{dns.TypeCAA, "hostname", nil, dns.RcodeServerFailure},
 			"DNS problem: SERVFAIL looking up CAA for hostname - the domain's nameservers may be malfunctioning",
+		}, {
+			&DNSError{dns.TypeA, "hostname", nil, dns.RcodeFormatError},
+			"DNS problem: FORMERR looking up A for hostname",
 		},
 	}
 	for _, tc := range testCases {

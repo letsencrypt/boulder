@@ -39,7 +39,9 @@ func (d DNSError) Error() string {
 		}
 	} else if d.rCode != dns.RcodeSuccess {
 		detail = dns.RcodeToString[d.rCode]
-		additional = " - " + rcodeExplanations[d.rCode]
+		if explanation, ok := rcodeExplanations[d.rCode]; ok {
+			additional = " - " + explanation
+		}
 	} else {
 		detail = detailServerFailure
 	}
