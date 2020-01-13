@@ -22,7 +22,7 @@ func (d DNSError) Underlying() error {
 }
 
 func (d DNSError) Error() string {
-	var detail string
+	var detail, additional string
 	if d.underlying != nil {
 		if netErr, ok := d.underlying.(*net.OpError); ok {
 			if netErr.Timeout() {
@@ -39,11 +39,12 @@ func (d DNSError) Error() string {
 		}
 	} else if d.rCode != dns.RcodeSuccess {
 		detail = dns.RcodeToString[d.rCode]
+		additional = " - " + rcodeExplanations[d.rCode]
 	} else {
 		detail = detailServerFailure
 	}
-	return fmt.Sprintf("DNS problem: %s looking up %s for %s", detail,
-		dns.TypeToString[d.recordType], d.hostname)
+	return fmt.Sprintf("DNS problem: %s looking up %s for %s%s", detail,
+		dns.TypeToString[d.recordType], d.hostname, additional)
 }
 
 // Timeout returns true if the underlying error was a timeout
@@ -59,3 +60,10 @@ func (d DNSError) Timeout() bool {
 const detailDNSTimeout = "query timed out"
 const detailDNSNetFailure = "networking error"
 const detailServerFailure = "server failure at resolver"
+
+// rcodeExplanations provide additional friendly explanatory text to be included in DNS
+// error messages, for select inscrutable RCODEs.
+var rcodeExplanations = map[int]string{
+	dns.RcodeNameError:     "check that a DNS record exists for this domain",
+	dns.RcodeServerFailure: "the domain's nameservers may be malfunctioning",
+}
