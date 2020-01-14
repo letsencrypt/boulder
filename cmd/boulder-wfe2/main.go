@@ -87,6 +87,18 @@ type config struct {
 
 		// StaleTimeout determines how old should data be to be accessed via Boulder-specific GET-able APIs
 		StaleTimeout cmd.ConfigDuration
+
+		// AuthorizationLifetimeDays defines how long authorizations will be
+		// considered valid for. The WFE uses this to find the creation date of
+		// authorizations by subtracing this value from the expiry. It should match
+		// the value configured in the RA.
+		AuthorizationLifetimeDays int
+
+		// PendingAuthorizationLifetimeDays defines how long authorizations may be in
+		// the pending state before expiry. The WFE uses this to find the creation
+		// date of pending authorizations by subtracting this value from the expiry.
+		// It should match the value configured in the RA.
+		PendingAuthorizationLifetimeDays int
 	}
 
 	Syslog cmd.SyslogConfig
@@ -263,10 +275,22 @@ func main() {
 	kp, err := goodkey.NewKeyPolicy("", c.WFE.BlockedKeyFile)
 	cmd.FailOnError(err, "Unable to create key policy")
 	rac, sac, rns, npm := setupWFE(c, logger, stats, clk)
+
 	if c.WFE.StaleTimeout.Duration == 0 {
 		c.WFE.StaleTimeout.Duration = time.Minute * 10
 	}
-	wfe, err := wfe2.NewWebFrontEndImpl(stats, clk, kp, certChains, issuerCerts, rns, npm, logger, c.WFE.StaleTimeout.Duration)
+
+	authorizationLifetime := 30 * (24 * time.Hour)
+	if c.WFE.AuthorizationLifetimeDays != 0 {
+		authorizationLifetime = c.WFE.AuthorizationLifetimeDays * (24 * time.Hour)
+	}
+
+	pendingAuthorizationLifetime := 7 * (24 * time.Hour)
+	if c.WFE.PendingAuthorizationLifetimeDays != 0 {
+		pendingAuthorizationLifetime = c.WFE.PendingAuthorizationLifetimeDays * (24 * time.Hour)
+	}
+
+	wfe, err := wfe2.NewWebFrontEndImpl(stats, clk, kp, certChains, issuerCerts, rns, npm, logger, c.WFE.StaleTimeout.Duration, authorizationLifetime, pendingAuthorizationLifetime)
 	cmd.FailOnError(err, "Unable to create WFE")
 	wfe.RA = rac
 	wfe.SA = sac

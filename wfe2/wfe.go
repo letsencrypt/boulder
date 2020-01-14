@@ -129,6 +129,13 @@ type WebFrontEndImpl struct {
 	// staleTimeout must be accessed via POST-as-GET and the RFC 8555 ACME API. We
 	// do this to incentivize client developers to use the standard API.
 	staleTimeout time.Duration
+
+	// How long before authorizations and pending authorizations expire. The
+	// Boulder specific GET-able API uses these values to find the creation date
+	// of authorizations to determine if they are stale enough. The values should
+	// match the ones used by the RA.
+	authorizationLifetime        time.Duration
+	pendingAuthorizationLifetime time.Duration
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -142,17 +149,21 @@ func NewWebFrontEndImpl(
 	noncePrefixMap map[string]noncepb.NonceServiceClient,
 	logger blog.Logger,
 	staleTimeout time.Duration,
+	authorizationLifetime time.Duration,
+	pendingAuthorizationLifetime time.Duration,
 ) (WebFrontEndImpl, error) {
 	wfe := WebFrontEndImpl{
-		log:                logger,
-		clk:                clk,
-		keyPolicy:          keyPolicy,
-		certificateChains:  certificateChains,
-		issuerCertificates: issuerCertificates,
-		stats:              initStats(stats),
-		remoteNonceService: remoteNonceService,
-		noncePrefixMap:     noncePrefixMap,
-		staleTimeout:       staleTimeout,
+		log:                          logger,
+		clk:                          clk,
+		keyPolicy:                    keyPolicy,
+		certificateChains:            certificateChains,
+		issuerCertificates:           issuerCertificates,
+		stats:                        initStats(stats),
+		remoteNonceService:           remoteNonceService,
+		noncePrefixMap:               noncePrefixMap,
+		staleTimeout:                 staleTimeout,
+		authorizationLifetime:        authorizationLifetime,
+		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
 	}
 
 	if wfe.remoteNonceService == nil {
@@ -373,8 +384,8 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET", "POST")
 	// Boulder-specific GET-able resource endpoints
 	wfe.HandleFunc(m, getOrderPath, wfe.GetOrder, "GET")
-	wfe.HandleFunc(m, getAuthzv2Path, wfe.AuthorizationV2, "GET")
-	wfe.HandleFunc(m, getChallengev2Path, wfe.ChallengeV2, "GET")
+	wfe.HandleFunc(m, getAuthzv2Path, wfe.Authorization, "GET")
+	wfe.HandleFunc(m, getChallengev2Path, wfe.Challenge, "GET")
 	wfe.HandleFunc(m, getCertPath, wfe.Certificate, "GET")
 
 	// We don't use our special HandleFunc for "/" because it matches everything,
@@ -1052,6 +1063,13 @@ func (wfe *WebFrontEndImpl) Challenge(
 		return
 	}
 
+	if requiredStale(request, logEvent) {
+		if prob := wfe.staleEnoughToGETAuthz(authz); prob != nil {
+			wfe.sendError(response, logEvent, prob, nil)
+			return
+		}
+	}
+
 	if authz.Identifier.Type == identifier.DNS {
 		logEvent.DNSName = authz.Identifier.Value
 	}
@@ -1471,6 +1489,13 @@ func (wfe *WebFrontEndImpl) Authorization(
 	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {
 		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
 		return
+	}
+
+	if requiredStale(request, logEvent) {
+		if prob := wfe.staleEnoughToGETAuthz(authz); prob != nil {
+			wfe.sendError(response, logEvent, prob, nil)
+			return
+		}
 	}
 
 	// If this was a POST that has an associated requestAccount and that account

@@ -368,7 +368,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 		issuerCert,
 	}
 
-	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, certChains, issuerCertificates, nil, nil, blog.NewMock(), 10*time.Second)
+	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, certChains, issuerCertificates, nil, nil, blog.NewMock(), 10*time.Second, 30*24*time.Hour, 7*24*time.Hour)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL
@@ -3190,7 +3190,7 @@ func TestGetChallengeV2UpRelGetEndpoint(t *testing.T) {
 	test.AssertNotError(t, err, "Could not make NewRequest")
 	req.URL.Path = "1/-ZfxEw"
 
-	wfe.ChallengeV2(ctx, newRequestEvent(), resp, req)
+	wfe.Challenge(ctx, newRequestEvent(), resp, req)
 	test.AssertEquals(t,
 		resp.Code,
 		http.StatusOK)
@@ -3220,4 +3220,82 @@ func TestPrepAccountForDisplay(t *testing.T) {
 
 	// The ID field should now be zeroed
 	test.AssertEquals(t, acct.ID, int64(0))
+}
+
+func TestGETAPIAuthz(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
+		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
+			&web.RequestEvent{Endpoint: endpoint}
+	}
+
+	testCases := []struct {
+		name              string
+		path              string
+		expectTooFreshErr bool
+	}{
+		{
+			name:              "fresh authz",
+			path:              "1",
+			expectTooFreshErr: true,
+		},
+		{
+			name:              "old authz",
+			path:              "2",
+			expectTooFreshErr: false,
+		},
+	}
+
+	tooFreshErr := `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"Authorization is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`
+	for _, tc := range testCases {
+		responseWriter := httptest.NewRecorder()
+		req, logEvent := makeGet(tc.path, getAuthzv2Path)
+		wfe.Authorization(context.Background(), logEvent, responseWriter, req)
+
+		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
+			t.Errorf("expected too fresh error, got http.StatusOK")
+		} else {
+			test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
+			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tooFreshErr)
+		}
+	}
+}
+
+func TestGETAPIChallenge(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
+		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
+			&web.RequestEvent{Endpoint: endpoint}
+	}
+
+	testCases := []struct {
+		name              string
+		path              string
+		expectTooFreshErr bool
+	}{
+		{
+			name:              "fresh authz challenge",
+			path:              "1/-ZfxEw",
+			expectTooFreshErr: true,
+		},
+		{
+			name:              "old authz challenge",
+			path:              "2/-ZfxEw",
+			expectTooFreshErr: false,
+		},
+	}
+
+	tooFreshErr := `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"Authorization is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`
+	for _, tc := range testCases {
+		responseWriter := httptest.NewRecorder()
+		req, logEvent := makeGet(tc.path, getAuthzv2Path)
+		wfe.Challenge(context.Background(), logEvent, responseWriter, req)
+
+		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
+			t.Errorf("expected too fresh error, got http.StatusOK")
+		} else {
+			test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
+			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tooFreshErr)
+		}
+	}
 }

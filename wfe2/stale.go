@@ -23,6 +23,20 @@ func (wfe *WebFrontEndImpl) staleEnoughToGETCert(cert core.Certificate) *probs.P
 	return wfe.staleEnoughToGET("Certificate", cert.Issued)
 }
 
+func (wfe *WebFrontEndImpl) staleEnoughToGETAuthz(authz core.Authorization) *probs.ProblemDetails {
+	// We don't directly track authorization creation time. Instead subtract the
+	// pendingAuthorization lifetime from the expiry. This will be inaccurate if
+	// we change the pendingAuthorizationLifetime but is sufficient for the weak
+	// staleness requirements of the GET API.
+	createdTime := authz.Expires.Add(-wfe.pendingAuthorizationLifetime)
+	// if the authz is valid then we need to subtract the authorizationLifetime
+	// instead of the pendingAuthorizationLifetime.
+	if authz.Status == core.StatusValid {
+		createdTime = authz.Expires.Add(-wfe.authorizationLifetime)
+	}
+	return wfe.staleEnoughToGET("Authorization", createdTime)
+}
+
 func (wfe *WebFrontEndImpl) staleEnoughToGET(resourceType string, createDate time.Time) *probs.ProblemDetails {
 	if wfe.clk.Since(createDate) < wfe.staleTimeout {
 		return probs.Unauthorized(
