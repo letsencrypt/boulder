@@ -282,12 +282,12 @@ func main() {
 
 	authorizationLifetime := 30 * (24 * time.Hour)
 	if c.WFE.AuthorizationLifetimeDays != 0 {
-		authorizationLifetime = c.WFE.AuthorizationLifetimeDays * (24 * time.Hour)
+		authorizationLifetime = time.Duration(c.WFE.AuthorizationLifetimeDays) * (24 * time.Hour)
 	}
 
 	pendingAuthorizationLifetime := 7 * (24 * time.Hour)
 	if c.WFE.PendingAuthorizationLifetimeDays != 0 {
-		pendingAuthorizationLifetime = c.WFE.PendingAuthorizationLifetimeDays * (24 * time.Hour)
+		pendingAuthorizationLifetime = time.Duration(c.WFE.PendingAuthorizationLifetimeDays) * (24 * time.Hour)
 	}
 
 	wfe, err := wfe2.NewWebFrontEndImpl(stats, clk, kp, certChains, issuerCerts, rns, npm, logger, c.WFE.StaleTimeout.Duration, authorizationLifetime, pendingAuthorizationLifetime)
