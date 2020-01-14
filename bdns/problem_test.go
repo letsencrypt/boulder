@@ -22,13 +22,19 @@ func TestDNSError(t *testing.T) {
 			"DNS problem: networking error looking up MX for hostname",
 		}, {
 			&DNSError{dns.TypeTXT, "hostname", nil, dns.RcodeNameError},
-			"DNS problem: NXDOMAIN looking up TXT for hostname",
+			"DNS problem: NXDOMAIN looking up TXT for hostname - check that a DNS record exists for this domain",
 		}, {
 			&DNSError{dns.TypeTXT, "hostname", context.DeadlineExceeded, -1},
 			"DNS problem: query timed out looking up TXT for hostname",
 		}, {
 			&DNSError{dns.TypeTXT, "hostname", context.Canceled, -1},
 			"DNS problem: query timed out looking up TXT for hostname",
+		}, {
+			&DNSError{dns.TypeCAA, "hostname", nil, dns.RcodeServerFailure},
+			"DNS problem: SERVFAIL looking up CAA for hostname - the domain's nameservers may be malfunctioning",
+		}, {
+			&DNSError{dns.TypeA, "hostname", nil, dns.RcodeFormatError},
+			"DNS problem: FORMERR looking up A for hostname",
 		},
 	}
 	for _, tc := range testCases {
