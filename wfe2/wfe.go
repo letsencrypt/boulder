@@ -122,7 +122,10 @@ type WebFrontEndImpl struct {
 	// Maximum duration of a request
 	RequestTimeout time.Duration
 
-	// StaleTimeout determines how old should data be to be accessed via Boulder-specific GET-able APIs
+	// StaleTimeout determines the required staleness for resources allowed to be
+	// accessed via Boulder-specific GET-able APIs. Resources newer than
+	// staleTimeout must be accessed via POST-as-GET and the RFC 8555 ACME API. We
+	// do this to incentivize client developers to use the standard API.
 	staleTimeout time.Duration
 }
 
