@@ -369,7 +369,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	wfe.HandleFunc(m, authzv2Path, wfe.AuthorizationV2, "GET", "POST")
 	wfe.HandleFunc(m, challengev2Path, wfe.ChallengeV2, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET", "POST")
-	// Boulder-specific ACME GET-able endpoints
+	// Boulder-specific GET-able resource endpoints
 	wfe.HandleFunc(m, getOrderPath, wfe.GetOrder, "GET")
 	wfe.HandleFunc(m, getAuthzv2Path, wfe.AuthorizationV2, "GET")
 	wfe.HandleFunc(m, getChallengev2Path, wfe.ChallengeV2, "GET")
