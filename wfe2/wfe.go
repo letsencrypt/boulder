@@ -61,9 +61,8 @@ const (
 	orderPath         = "/acme/order/"
 	finalizeOrderPath = "/acme/finalize/"
 
-	getAPIPrefix = "/get/"
-	getOrderPath = getAPIPrefix + "order/"
-	// TODO(@cpu): Remove the -v3 suffix for these new APIs.
+	getAPIPrefix       = "/get/"
+	getOrderPath       = getAPIPrefix + "order/"
 	getAuthzv2Path     = getAPIPrefix + "authz-v3/"
 	getChallengev2Path = getAPIPrefix + "chall-v3/"
 	getCertPath        = getAPIPrefix + "cert/"
