@@ -1886,7 +1886,7 @@ func TestGetCertificate(t *testing.T) {
 			ExpectedStatus: http.StatusForbidden,
 			ExpectedBody: `{
 				"type": "` + probs.V2ErrorNS + `unauthorized",
-				"detail": "Certificate is too new",
+				"detail": "Certificate is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago",
 				"status": 403
 			}`,
 		},
@@ -2569,7 +2569,7 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "GET new order",
 			Request:  makeGet("1/9"),
-			Response: `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"Order is too new","status":403}`,
+			Response: `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"Order is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`,
 			Endpoint: "/get/order/",
 		},
 		{

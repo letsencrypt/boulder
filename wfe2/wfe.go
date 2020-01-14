@@ -1557,8 +1557,11 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		wfe.sendError(
 			response,
 			logEvent,
-			probs.Unauthorized("Certificate is too new"),
-			fmt.Errorf("You should only use this non-standard API to access resources older than %s", wfe.staleTimeout),
+			probs.Unauthorized(
+				"Certificate is too new for GET API. "+
+					"You should only use this non-standard API to access resources created more than %s ago",
+				wfe.staleTimeout),
+			nil,
 		)
 		return
 	}
@@ -1993,9 +1996,10 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		wfe.sendError(
 			response,
 			logEvent,
-			probs.Unauthorized("Order is too new"),
-			fmt.Errorf("You should only use this non-standard API to access resources older than %s", wfe.staleTimeout),
-		)
+			probs.Unauthorized("Order is too new for GET API. "+
+				"You should only use this non-standard API to access resources created more than %s ago",
+				wfe.staleTimeout),
+			nil)
 		return
 	}
 
