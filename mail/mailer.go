@@ -157,6 +157,10 @@ func NewDryRun(from mail.Address, logger blog.Logger) *MailerImpl {
 		from:        from,
 		clk:         clock.Default(),
 		csprgSource: realSource{},
+		sendMailAttempts: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "send_mail_attempts",
+			Help: "A counter of send mail attempts labelled by result",
+		}, []string{"result", "error"}),
 	}
 }
 
