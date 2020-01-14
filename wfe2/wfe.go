@@ -61,10 +61,12 @@ const (
 	orderPath         = "/acme/order/"
 	finalizeOrderPath = "/acme/finalize/"
 
-	getOrderPath       = "/get/order/"
-	getAuthzv2Path     = "/get/authz-v3/"
-	getChallengev2Path = "/get/chall-v3/"
-	getCertPath        = "/get/cert/"
+	getAPIPrefix = "/get/"
+	getOrderPath = getAPIPrefix + "order/"
+	// TODO(@cpu): Remove the -v3 suffix for these new APIs.
+	getAuthzv2Path     = getAPIPrefix + "authz-v3/"
+	getChallengev2Path = getAPIPrefix + "chall-v3/"
+	getCertPath        = getAPIPrefix + "cert/"
 )
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
@@ -1553,17 +1555,11 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	if request.Method == "GET" && strings.HasPrefix(logEvent.Endpoint, "/get") && wfe.clk.Since(cert.Issued) < wfe.staleTimeout {
-		wfe.sendError(
-			response,
-			logEvent,
-			probs.Unauthorized(
-				"Certificate is too new for GET API. "+
-					"You should only use this non-standard API to access resources created more than %s ago",
-				wfe.staleTimeout),
-			nil,
-		)
-		return
+	if requiredStale(request, logEvent) {
+		if prob := wfe.staleEnoughToGETCert(cert); prob != nil {
+			wfe.sendError(response, logEvent, prob, nil)
+			return
+		}
 	}
 
 	// If there was a requesterAccount (e.g. because it was a POST-as-GET request)
@@ -1992,15 +1988,11 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
-	if request.Method == "GET" && strings.HasPrefix(logEvent.Endpoint, "/get") && wfe.clk.Since(time.Unix(*order.Created, 0)) < wfe.staleTimeout {
-		wfe.sendError(
-			response,
-			logEvent,
-			probs.Unauthorized("Order is too new for GET API. "+
-				"You should only use this non-standard API to access resources created more than %s ago",
-				wfe.staleTimeout),
-			nil)
-		return
+	if requiredStale(request, logEvent) {
+		if prob := wfe.staleEnoughToGETOrder(order); prob != nil {
+			wfe.sendError(response, logEvent, prob, nil)
+			return
+		}
 	}
 
 	if *order.RegistrationID != acctID {
