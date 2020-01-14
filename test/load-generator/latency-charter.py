@@ -12,7 +12,7 @@ import argparse
 import os
 matplotlib.style.use('ggplot')
 
-# sacrifical plot for single legend
+# sacrificial plot for single legend
 matplotlib.rcParams['figure.figsize'] = 1, 1
 randFig = plt.figure()
 randAx = plt.subplot()

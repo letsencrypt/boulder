@@ -96,7 +96,7 @@ func splitMethodName(fullMethodName string) (string, string) {
 
 // observeLatency is called with the `clientRequestTimeKey` value from
 // a request's gRPC metadata. This string value is converted to a timestamp and
-// used to calcuate the latency between send and receive time. The latency is
+// used to calculate the latency between send and receive time. The latency is
 // published to the server interceptor's rpcLag prometheus histogram. An error
 // is returned if the `clientReqTime` string is not a valid timestamp.
 func (si *serverInterceptor) observeLatency(clientReqTime string) error {

@@ -124,7 +124,7 @@ migration. This is because the ORM package we use,
 [`gorp`](https://github.com/go-gorp/gorp), expects every field in a struct to
 map to a column in the table. If we add a new field to a model struct and
 Boulder attempts to write that struct to a table that doesn't yet have the
-corresponding column (case 1), gorp wil fail with
+corresponding column (case 1), gorp will fail with
 `Insert failed table posts has no column named Foo`.
 There are examples of such models in sa/model.go, along with code to
 turn a model into a `struct` used internally. 
@@ -268,6 +268,23 @@ When vendorizing dependencies, it's important to make sure tests pass on the ver
 
 To upgrade a dependency, [see the Go
 docs](https://github.com/golang/go/wiki/Modules#how-to-upgrade-and-downgrade-dependencies).
+Typically you want `go get <dependency>` rather than `go get -u
+<dependency>`, which can introduce a lot of unexpected updates. After running
+`go get`, make sure to run `go mod vendor` to update the vendor directory. If
+you forget, Travis tests will catch this.
+
+Note that updating dependencies can introduce new, transitive dependencies. In
+general we try to keep our dependencies as narrow as possible in order to
+minimize the number of people and organizations whose code we need to trust.
+As a rule of thumb: If an update introduces new packages or modules that are
+inside a repository where we already depend on other packages or modules, it's
+not a big deal. If it introduces a new dependency in a different repository,
+please try to figure out where that dependency came from and why (for instance:
+"package X, which we depend on, started supporting XML config files, so now we
+depend on an XML parser") and include that in the PR description. When there are
+a large number of new dependencies introduced, and we don't need the
+functionality they provide, we should consider asking the relevant upstream
+repository for a refactoring to reduce the number of transitive dependencies.
 
 # Go Version
 

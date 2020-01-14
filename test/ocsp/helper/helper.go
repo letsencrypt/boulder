@@ -148,7 +148,7 @@ func ReqDER(der []byte, expectStatus int) (*ocsp.Response, error) {
 		return nil, err
 	}
 	if len(respBytes) == 0 {
-		return nil, fmt.Errorf("empty reponse body")
+		return nil, fmt.Errorf("empty response body")
 	}
 	return parseAndPrint(respBytes, cert, issuer, expectStatus)
 }

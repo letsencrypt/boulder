@@ -44,7 +44,7 @@ Boulder does not implement the `new-order` resource (previously referred to as `
 
 Boulder also doesn't implement the `new-nonce` endpoint.
 
-Boulder implements the `new-account` ressource only under the `new-reg` key.
+Boulder implements the `new-account` resource only under the `new-reg` key.
 
 Boulder implements Link: rel="next" headers from new-reg to new-authz, and
 new-authz to new-cert, as specified in

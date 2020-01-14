@@ -720,7 +720,7 @@ func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(
 	}
 
 	// The serials existed when we found them in issuedNames, they should continue
-	// to exist here. Otherwise an internal consistency violation occured and
+	// to exist here. Otherwise an internal consistency violation occurred and
 	// needs to be audit logged
 	if db.IsNoRows(err) {
 		err := fmt.Errorf("getFQDNSetsBySerials returned no rows - internal consistency violation")

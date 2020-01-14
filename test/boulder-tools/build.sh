@@ -25,6 +25,7 @@ apt-get install -y --no-install-recommends \
   unzip \
   python3-dev \
   python3-venv \
+  python3-pip \
   gcc \
   libaugeas0 \
   libssl-dev \
@@ -52,6 +53,9 @@ go get \
   golang.org/x/tools/cover \
   golang.org/x/tools/cmd/stringer \
   github.com/gordonklaus/ineffassign
+
+# Install codespell for linting common spelling errors
+pip3 install codespell
 
 git clone https://github.com/certbot/certbot /certbot
 cd /certbot

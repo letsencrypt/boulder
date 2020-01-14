@@ -212,7 +212,7 @@ func TestExtractRequestTarget(t *testing.T) {
 			ExpectedError: fmt.Errorf("redirect HTTP request was nil"),
 		},
 		{
-			Name: "invalid protocal scheme",
+			Name: "invalid protocol scheme",
 			Req: &http.Request{
 				URL: mustURL(t, "gopher://letsencrypt.org"),
 			},
@@ -1227,7 +1227,7 @@ func TestHTTPDialTimeout(t *testing.T) {
 
 	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockDNSClient{}}
 	// The only method I've found so far to trigger a connect timeout is to
-	// connect to an unrouteable IP address. This usuall generates a connection
+	// connect to an unrouteable IP address. This usually generates a connection
 	// timeout, but will rarely return "Network unreachable" instead. If we get
 	// that, just retry until we get something other than "Network unreachable".
 	var prob *probs.ProblemDetails

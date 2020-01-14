@@ -243,7 +243,7 @@ func NewValidationAuthorityImpl(
 // multiVAPolicyError is a small error handler called by the reloader package
 // when the multiVAPolicy file can't be loaded.
 func (va *ValidationAuthorityImpl) multiVAPolicyLoadError(err error) {
-	va.log.AuditErrf("error live-loading mutli VA policy file: %v", err)
+	va.log.AuditErrf("error live-loading multi VA policy file: %v", err)
 }
 
 // Used for audit logging
@@ -376,7 +376,7 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 
 // performRemoteValidation calls `PerformValidation` for each of the configured
 // remoteVAs in a random order. The provided `results` chan should have an equal
-// size to the number of remote VAs. The validations will be peformed in
+// size to the number of remote VAs. The validations will be performed in
 // separate go-routines. If the result `error` from a remote
 // `PerformValidation` RPC is nil or a nil `ProblemDetails` instance it is
 // written directly to the `results` chan. If the err is a cancelled error it is

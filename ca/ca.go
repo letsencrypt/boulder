@@ -437,7 +437,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *caPB.
 	var serial *big.Int
 	// Once the feature is enabled we need to support both RPCs that include
 	// IssuerID and those that don't as we still need to be able to update rows
-	// that didn't have an IssuerID set when they were created. Once this featue
+	// that didn't have an IssuerID set when they were created. Once this feature
 	// has been enabled for a full OCSP lifetime cycle we can remove this
 	// functionality.
 	if features.Enabled(features.StoreIssuerInfo) && req.IssuerID != nil {
