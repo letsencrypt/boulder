@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"gopkg.in/square/go-jose.v2"
+	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -368,7 +368,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 		issuerCert,
 	}
 
-	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, certChains, issuerCertificates, nil, nil, blog.NewMock())
+	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, certChains, issuerCertificates, nil, nil, blog.NewMock(), 10*time.Second, 30*24*time.Hour, 7*24*time.Hour)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL
@@ -1810,6 +1810,8 @@ func TestGetCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Error reading ../test/test-ca2.pem")
 
 	noCache := "public, max-age=0, no-cache"
+	newSerial := "/acme/cert/0000000000000000000000000000000000b3"
+	newGetSerial := "/get/cert/0000000000000000000000000000000000b3"
 	goodSerial := "/acme/cert/0000000000000000000000000000000000b2"
 	notFound := `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Certificate not found","status":404}`
 
@@ -1820,6 +1822,7 @@ func TestGetCertificate(t *testing.T) {
 		ExpectedHeaders map[string]string
 		ExpectedBody    string
 		ExpectedCert    []byte
+		AnyCert         bool
 	}{
 		{
 			Name:           "Valid serial",
@@ -1877,6 +1880,34 @@ func TestGetCertificate(t *testing.T) {
 			ExpectedStatus: http.StatusNotFound,
 			ExpectedBody:   notFound,
 		},
+		{
+			Name:           "New cert",
+			Request:        makeGet(newGetSerial),
+			ExpectedStatus: http.StatusForbidden,
+			ExpectedBody: `{
+				"type": "` + probs.V2ErrorNS + `unauthorized",
+				"detail": "Certificate is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago",
+				"status": 403
+			}`,
+		},
+		{
+			Name:           "New cert, old endpoint",
+			Request:        makeGet(newSerial),
+			ExpectedStatus: http.StatusOK,
+			ExpectedHeaders: map[string]string{
+				"Content-Type": pkixContent,
+			},
+			AnyCert: true,
+		},
+		{
+			Name:           "New cert, POST-as-GET",
+			Request:        makePost(1, nil, newSerial, ""),
+			ExpectedStatus: http.StatusOK,
+			ExpectedHeaders: map[string]string{
+				"Content-Type": pkixContent,
+			},
+			AnyCert: true,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -1898,6 +1929,10 @@ func TestGetCertificate(t *testing.T) {
 			// If the test cases expects additional headers, check those too
 			for h, v := range tc.ExpectedHeaders {
 				test.AssertEquals(t, headers.Get(h), v)
+			}
+
+			if tc.AnyCert { // Certificate is randomly generated, don't match it
+				return
 			}
 
 			if len(tc.ExpectedCert) > 0 {
@@ -2479,6 +2514,7 @@ func TestGetOrder(t *testing.T) {
 		Name     string
 		Request  *http.Request
 		Response string
+		Endpoint string
 	}{
 		{
 			Name:     "Good request",
@@ -2530,12 +2566,32 @@ func TestGetOrder(t *testing.T) {
 			Request:  makePost(1, "1/1", ""),
 			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
 		},
+		{
+			Name:     "GET new order",
+			Request:  makeGet("1/9"),
+			Response: `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"Order is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`,
+			Endpoint: "/get/order/",
+		},
+		{
+			Name:     "GET new order from old endpoint",
+			Request:  makeGet("1/9"),
+			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
+		},
+		{
+			Name:     "POST-as-GET new order",
+			Request:  makePost(1, "1/9", ""),
+			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter := httptest.NewRecorder()
-			wfe.GetOrder(ctx, newRequestEvent(), responseWriter, tc.Request)
+			if tc.Endpoint != "" {
+				wfe.GetOrder(ctx, &web.RequestEvent{Extra: make(map[string]interface{}), Endpoint: tc.Endpoint}, responseWriter, tc.Request)
+			} else {
+				wfe.GetOrder(ctx, newRequestEvent(), responseWriter, tc.Request)
+			}
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.Response)
 		})
 	}
@@ -3141,4 +3197,82 @@ func TestPrepAccountForDisplay(t *testing.T) {
 
 	// The ID field should now be zeroed
 	test.AssertEquals(t, acct.ID, int64(0))
+}
+
+func TestGETAPIAuthz(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
+		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
+			&web.RequestEvent{Endpoint: endpoint}
+	}
+
+	testCases := []struct {
+		name              string
+		path              string
+		expectTooFreshErr bool
+	}{
+		{
+			name:              "fresh authz",
+			path:              "1",
+			expectTooFreshErr: true,
+		},
+		{
+			name:              "old authz",
+			path:              "2",
+			expectTooFreshErr: false,
+		},
+	}
+
+	tooFreshErr := `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"Authorization is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`
+	for _, tc := range testCases {
+		responseWriter := httptest.NewRecorder()
+		req, logEvent := makeGet(tc.path, getAuthzv2Path)
+		wfe.Authorization(context.Background(), logEvent, responseWriter, req)
+
+		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
+			t.Errorf("expected too fresh error, got http.StatusOK")
+		} else {
+			test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
+			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tooFreshErr)
+		}
+	}
+}
+
+func TestGETAPIChallenge(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
+		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
+			&web.RequestEvent{Endpoint: endpoint}
+	}
+
+	testCases := []struct {
+		name              string
+		path              string
+		expectTooFreshErr bool
+	}{
+		{
+			name:              "fresh authz challenge",
+			path:              "1/-ZfxEw",
+			expectTooFreshErr: true,
+		},
+		{
+			name:              "old authz challenge",
+			path:              "2/-ZfxEw",
+			expectTooFreshErr: false,
+		},
+	}
+
+	tooFreshErr := `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"Authorization is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`
+	for _, tc := range testCases {
+		responseWriter := httptest.NewRecorder()
+		req, logEvent := makeGet(tc.path, getAuthzv2Path)
+		wfe.Challenge(context.Background(), logEvent, responseWriter, req)
+
+		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
+			t.Errorf("expected too fresh error, got http.StatusOK")
+		} else {
+			test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
+			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tooFreshErr)
+		}
+	}
 }

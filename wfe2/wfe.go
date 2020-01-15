@@ -60,6 +60,12 @@ const (
 	newOrderPath      = "/acme/new-order"
 	orderPath         = "/acme/order/"
 	finalizeOrderPath = "/acme/finalize/"
+
+	getAPIPrefix       = "/get/"
+	getOrderPath       = getAPIPrefix + "order/"
+	getAuthzv2Path     = getAPIPrefix + "authz-v3/"
+	getChallengev2Path = getAPIPrefix + "chall-v3/"
+	getCertPath        = getAPIPrefix + "cert/"
 )
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
@@ -116,6 +122,19 @@ type WebFrontEndImpl struct {
 
 	// Maximum duration of a request
 	RequestTimeout time.Duration
+
+	// StaleTimeout determines the required staleness for resources allowed to be
+	// accessed via Boulder-specific GET-able APIs. Resources newer than
+	// staleTimeout must be accessed via POST-as-GET and the RFC 8555 ACME API. We
+	// do this to incentivize client developers to use the standard API.
+	staleTimeout time.Duration
+
+	// How long before authorizations and pending authorizations expire. The
+	// Boulder specific GET-able API uses these values to find the creation date
+	// of authorizations to determine if they are stale enough. The values should
+	// match the ones used by the RA.
+	authorizationLifetime        time.Duration
+	pendingAuthorizationLifetime time.Duration
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -128,16 +147,22 @@ func NewWebFrontEndImpl(
 	remoteNonceService noncepb.NonceServiceClient,
 	noncePrefixMap map[string]noncepb.NonceServiceClient,
 	logger blog.Logger,
+	staleTimeout time.Duration,
+	authorizationLifetime time.Duration,
+	pendingAuthorizationLifetime time.Duration,
 ) (WebFrontEndImpl, error) {
 	wfe := WebFrontEndImpl{
-		log:                logger,
-		clk:                clk,
-		keyPolicy:          keyPolicy,
-		certificateChains:  certificateChains,
-		issuerCertificates: issuerCertificates,
-		stats:              initStats(stats),
-		remoteNonceService: remoteNonceService,
-		noncePrefixMap:     noncePrefixMap,
+		log:                          logger,
+		clk:                          clk,
+		keyPolicy:                    keyPolicy,
+		certificateChains:            certificateChains,
+		issuerCertificates:           issuerCertificates,
+		stats:                        initStats(stats),
+		remoteNonceService:           remoteNonceService,
+		noncePrefixMap:               noncePrefixMap,
+		staleTimeout:                 staleTimeout,
+		authorizationLifetime:        authorizationLifetime,
+		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
 	}
 
 	if wfe.remoteNonceService == nil {
@@ -350,12 +375,17 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET", "POST")
 	wfe.HandleFunc(m, newNoncePath, wfe.Nonce, "GET", "POST")
 	// POST-as-GETable ACME endpoints
-	// TODO(@cpu): After November 1st, 2019 support for "GET" to the following
+	// TODO(@cpu): After November 1st, 2020 support for "GET" to the following
 	// endpoints will be removed, leaving only POST-as-GET support.
 	wfe.HandleFunc(m, orderPath, wfe.GetOrder, "GET", "POST")
 	wfe.HandleFunc(m, authzv2Path, wfe.Authorization, "GET", "POST")
 	wfe.HandleFunc(m, challengev2Path, wfe.Challenge, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET", "POST")
+	// Boulder-specific GET-able resource endpoints
+	wfe.HandleFunc(m, getOrderPath, wfe.GetOrder, "GET")
+	wfe.HandleFunc(m, getAuthzv2Path, wfe.Authorization, "GET")
+	wfe.HandleFunc(m, getChallengev2Path, wfe.Challenge, "GET")
+	wfe.HandleFunc(m, getCertPath, wfe.Certificate, "GET")
 
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
@@ -1032,6 +1062,13 @@ func (wfe *WebFrontEndImpl) Challenge(
 		return
 	}
 
+	if requiredStale(request, logEvent) {
+		if prob := wfe.staleEnoughToGETAuthz(authz); prob != nil {
+			wfe.sendError(response, logEvent, prob, nil)
+			return
+		}
+	}
+
 	if authz.Identifier.Type == identifier.DNS {
 		logEvent.DNSName = authz.Identifier.Value
 	}
@@ -1453,6 +1490,13 @@ func (wfe *WebFrontEndImpl) Authorization(
 		return
 	}
 
+	if requiredStale(request, logEvent) {
+		if prob := wfe.staleEnoughToGETAuthz(authz); prob != nil {
+			wfe.sendError(response, logEvent, prob, nil)
+			return
+		}
+	}
+
 	// If this was a POST that has an associated requestAccount and that account
 	// doesn't own the authorization, abort before trying to deactivate the authz
 	// or return its details
@@ -1529,6 +1573,13 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), ierr)
 		}
 		return
+	}
+
+	if requiredStale(request, logEvent) {
+		if prob := wfe.staleEnoughToGETCert(cert); prob != nil {
+			wfe.sendError(response, logEvent, prob, nil)
+			return
+		}
 	}
 
 	// If there was a requesterAccount (e.g. because it was a POST-as-GET request)
@@ -1955,6 +2006,13 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		}
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve order for ID %d", orderID), err)
 		return
+	}
+
+	if requiredStale(request, logEvent) {
+		if prob := wfe.staleEnoughToGETOrder(order); prob != nil {
+			wfe.sendError(response, logEvent, prob, nil)
+			return
+		}
 	}
 
 	if *order.RegistrationID != acctID {

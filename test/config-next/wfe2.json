@@ -42,6 +42,9 @@
       "http://boulder:4430/acme/issuer-cert": [ "test/test-ca2.pem" ],
       "http://127.0.0.1:4000/acme/issuer-cert": [ "test/test-ca2.pem" ]
     },
+    "staleTimeout": "5m",
+    "authorizationLifetimeDays": 30,
+    "pendingAuthorizationLifetimeDays": 7,
     "features": {
       "HeadNonceStatusOK": true,
       "RemoveWFE2AccountID": true,
