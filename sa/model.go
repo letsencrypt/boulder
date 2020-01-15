@@ -63,30 +63,6 @@ func selectRegistration(s db.OneSelector, q string, args ...interface{}) (*regMo
 	return &model, err
 }
 
-// selectPendingAuthz selects all fields of one pending authorization model
-func selectPendingAuthz(s db.OneSelector, q string, args ...interface{}) (*pendingauthzModel, error) {
-	var model pendingauthzModel
-	err := s.SelectOne(
-		&model,
-		"SELECT id, identifier, registrationID, status, expires, LockCol FROM pendingAuthorizations "+q,
-		args...,
-	)
-	return &model, err
-}
-
-const authzFields = "id, identifier, registrationID, status, expires"
-
-// selectAuthz selects all fields of one authorization model
-func selectAuthz(s db.OneSelector, q string, args ...interface{}) (*authzModel, error) {
-	var model authzModel
-	err := s.SelectOne(
-		&model,
-		"SELECT "+authzFields+" FROM authz "+q,
-		args...,
-	)
-	return &model, err
-}
-
 const certFields = "registrationID, serial, digest, der, issued, expires"
 
 // SelectCertificate selects all fields of one certificate object
@@ -475,7 +451,7 @@ func statusUint(status core.AcmeStatus) uint8 {
 
 const authz2Fields = "id, identifierType, identifierValue, registrationID, status, expires, challenges, attempted, token, validationError, validationRecord"
 
-type authz2Model struct {
+type authzModel struct {
 	ID               int64     `db:"id"`
 	IdentifierType   uint8     `db:"identifierType"`
 	IdentifierValue  string    `db:"identifierValue"`
@@ -506,10 +482,10 @@ func hasMultipleNonPendingChallenges(challenges []*corepb.Challenge) bool {
 }
 
 // authzPBToModel converts a protobuf authorization representation to the
-// authz2Model storage representation.
-func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
+// authzModel storage representation.
+func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 	expires := time.Unix(0, *authz.Expires).UTC()
-	am := &authz2Model{
+	am := &authzModel{
 		IdentifierValue: *authz.Identifier,
 		RegistrationID:  *authz.RegistrationID,
 		Status:          statusToUint[*authz.Status],
@@ -587,8 +563,8 @@ func authzPBToModel(authz *corepb.Authorization) (*authz2Model, error) {
 }
 
 // populateAttemptedFields takes a challenge and populates it with the validation fields status,
-// validation records, and error (the latter only if the validation failed) from a authz2Model.
-func populateAttemptedFields(am *authz2Model, challenge *corepb.Challenge) error {
+// validation records, and error (the latter only if the validation failed) from a authzModel.
+func populateAttemptedFields(am *authzModel, challenge *corepb.Challenge) error {
 	if len(am.ValidationError) != 0 {
 		// If the error is non-empty the challenge must be invalid.
 		status := string(core.StatusInvalid)
@@ -628,7 +604,7 @@ func populateAttemptedFields(am *authz2Model, challenge *corepb.Challenge) error
 	return nil
 }
 
-func modelToAuthzPB(am *authz2Model) (*corepb.Authorization, error) {
+func modelToAuthzPB(am *authzModel) (*corepb.Authorization, error) {
 	expires := am.Expires.UTC().UnixNano()
 	id := fmt.Sprintf("%d", am.ID)
 	status := uintToStatus[am.Status]
