@@ -59,17 +59,6 @@ func digest256(data []byte) []byte {
 	return d.Sum(nil)
 }
 
-// Utility models
-type pendingauthzModel struct {
-	core.Authorization
-
-	LockCol int64
-}
-
-type authzModel struct {
-	core.Authorization
-}
-
 // orderFQDNSet contains the SHA256 hash of the lowercased, comma joined names
 // from a new-order request, along with the corresponding orderID, the
 // registration ID, and the order expiry. This is used to find
@@ -1421,19 +1410,19 @@ func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sap
 // If no authorization is found matching the ID a berrors.NotFound type error is returned. This method
 // is intended to deprecate GetAuthorization.
 func (ssa *SQLStorageAuthority) GetAuthorization2(ctx context.Context, id *sapb.AuthorizationID2) (*corepb.Authorization, error) {
-	obj, err := ssa.dbMap.Get(authz2Model{}, *id.Id)
+	obj, err := ssa.dbMap.Get(authzModel{}, *id.Id)
 	if err != nil {
 		return nil, err
 	}
 	if obj == nil {
 		return nil, berrors.NotFoundError("authorization %d not found", *id.Id)
 	}
-	return modelToAuthzPB(obj.(*authz2Model))
+	return modelToAuthzPB(obj.(*authzModel))
 }
 
-// authz2ModelMapToPB converts a mapping of domain name to authz2Models into a
+// authzModelMapToPB converts a mapping of domain name to authzModels into a
 // protobuf authorizations map
-func authz2ModelMapToPB(m map[string]authz2Model) (*sapb.Authorizations, error) {
+func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 	resp := &sapb.Authorizations{}
 	for k, v := range m {
 		// Make a copy of k because it will be reassigned with each loop.
@@ -1454,7 +1443,7 @@ func authz2ModelMapToPB(m map[string]authz2Model) (*sapb.Authorizations, error) 
 // WFE v2 API (in GetAuthorizations this feature was, now somewhat confusingly, called RequireV2Authzs).
 // This method is intended to deprecate GetAuthorizations. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	var authzModels []authz2Model
+	var authzModels []authzModel
 	params := []interface{}{
 		*req.RegistrationID,
 		statusUint(core.StatusValid),
@@ -1523,7 +1512,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 		authzIDMap[id] = true
 	}
 
-	authzModelMap := make(map[string]authz2Model)
+	authzModelMap := make(map[string]authzModel)
 	for _, am := range authzModels {
 		// Anything not found in the ID map wasn't in the pivot table, meaning it
 		// didn't correspond to an order, meaning it wasn't created with ACMEv2.
@@ -1537,7 +1526,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 		}
 	}
 
-	return authz2ModelMapToPB(authzModelMap)
+	return authzModelMapToPB(authzModelMap)
 }
 
 // FinalizeAuthorization2 moves a pending authorization to either the valid or invalid status. If
@@ -1646,7 +1635,7 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 // the given identifier, if available. This method is intended to deprecate
 // GetPendingAuthorization. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
-	var am authz2Model
+	var am authzModel
 	err := ssa.dbMap.WithContext(ctx).SelectOne(
 		&am,
 		fmt.Sprintf(`SELECT %s FROM authz2 WHERE
@@ -1699,7 +1688,7 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations2(ctx context.Context,
 // associated with a specific order and account ID. This method is intended to
 // deprecate GetValidOrderAuthorizations.
 func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
-	var ams []authz2Model
+	var ams []authzModel
 	_, err := ssa.dbMap.WithContext(ctx).Select(
 		&ams,
 		fmt.Sprintf(`SELECT %s FROM authz2
@@ -1721,7 +1710,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 		return nil, err
 	}
 
-	byName := make(map[string]authz2Model)
+	byName := make(map[string]authzModel)
 	for _, am := range ams {
 		if uintToIdentifierType[am.IdentifierType] != string(identifier.DNS) {
 			return nil, fmt.Errorf("unknown identifier type: %q on authz id %d", am.IdentifierType, am.ID)
@@ -1732,7 +1721,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 		}
 	}
 
-	return authz2ModelMapToPB(byName)
+	return authzModelMapToPB(byName)
 }
 
 // CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
@@ -1769,7 +1758,7 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context,
 // intended to deprecate GetValidAuthorizations. This method only supports
 // DNS identifier types.
 func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
-	var authzModels []authz2Model
+	var authzModels []authzModel
 	params := []interface{}{
 		*req.RegistrationID,
 		statusUint(core.StatusValid),
@@ -1799,7 +1788,7 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 		return nil, err
 	}
 
-	authzMap := make(map[string]authz2Model, len(authzModels))
+	authzMap := make(map[string]authzModel, len(authzModels))
 	for _, am := range authzModels {
 		// Only allow DNS identifiers
 		if uintToIdentifierType[am.IdentifierType] != string(identifier.DNS) {
@@ -1812,7 +1801,7 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 		}
 		authzMap[am.IdentifierValue] = am
 	}
-	return authz2ModelMapToPB(authzMap)
+	return authzModelMapToPB(authzMap)
 }
 
 // SerialExists returns a bool indicating whether the provided serial

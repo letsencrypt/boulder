@@ -178,17 +178,17 @@ func TestPopulateAttemptedFieldsBadJSON(t *testing.T) {
 
 	testCases := []struct {
 		Name  string
-		Model *authz2Model
+		Model *authzModel
 	}{
 		{
 			Name: "Bad validation error field",
-			Model: &authz2Model{
+			Model: &authzModel{
 				ValidationError: badJSON,
 			},
 		},
 		{
 			Name: "Bad validation record field",
-			Model: &authz2Model{
+			Model: &authzModel{
 				ValidationRecord: badJSON,
 			},
 		},
