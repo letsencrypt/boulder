@@ -1974,10 +1974,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// authorization for each.
 	var newAuthzs []*corepb.Authorization
 	for _, name := range missingAuthzNames {
-		pb, err := ra.createPendingAuthz(ctx, *order.RegistrationID, identifier.ACMEIdentifier{
-			Type:  identifier.DNS,
-			Value: name,
-		})
+		pb, err := ra.createPendingAuthz(ctx, *order.RegistrationID, identifier.RecreateIdentifier(name))
 		if err != nil {
 			return nil, err
 		}

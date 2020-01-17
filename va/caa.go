@@ -21,10 +21,7 @@ type caaParams struct {
 }
 
 func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
-	acmeID := identifier.ACMEIdentifier{
-		Type:  identifier.DNS,
-		Value: *req.Domain,
-	}
+	acmeID := identifier.RecreateIdentifier(*req.Domain)
 	params := &caaParams{
 		accountURIID:     req.AccountURIID,
 		validationMethod: req.ValidationMethod,
