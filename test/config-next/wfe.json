@@ -4,6 +4,7 @@
     "TLSListenAddress": "0.0.0.0:4430",
     "serverCertificatePath": "test/wfe-tls/boulder/cert.pem",
     "serverKeyPath": "test/wfe-tls/boulder/key.pem",
+    "allowOrigins": ["*"],
     "shutdownStopTimeout": "10s",
     "subscriberAgreementURL": "http://boulder:4000/terms/v1",
     "debugAddr": ":8000",
