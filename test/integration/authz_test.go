@@ -47,5 +47,7 @@ func TestValidAuthzExpires(t *testing.T) {
 	// The authz should have the expected expiry date
 	expectedExpires := time.Now().AddDate(0, 0, validAuthorizationLifetime).Round(time.Minute)
 	actualExpires := authzOb.Expires.Round(time.Minute)
-	test.AssertEquals(t, expectedExpires.Equal(actualExpires), true)
+	if !expectedExpires.Equal(actualExpires) {
+		t.Errorf("Wrong expiry. Got %q, expected %q", actualExpires, expectedExpires)
+	}
 }
