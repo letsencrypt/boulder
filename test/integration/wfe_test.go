@@ -32,7 +32,9 @@ func TestWFECORS(t *testing.T) {
 }
 
 // TestWFEHTTPMetrics verifies that the measured_http metrics we collect
-// for boulder-wfe and boulder-wfe2 are being properly collected.
+// for boulder-wfe and boulder-wfe2 are being properly collected. In order
+// to initialize the prometheus metrics we make a call to the /directory
+// endpoint before checking the /metrics endpoint.
 func TestWFEHTTPMetrics(t *testing.T) {
 	// Check boulder-wfe2
 	resp, err := http.Get("http://boulder:4001/directory")
