@@ -19,7 +19,6 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -307,7 +306,7 @@ func main() {
 	logger.Infof("WFE using key policy: %#v", kp)
 
 	logger.Infof("Server running, listening on %s...\n", c.WFE.ListenAddress)
-	handler := wfe.Handler(metrics.NoopRegisterer)
+	handler := wfe.Handler(stats)
 	srv := &http.Server{
 		Addr:    c.WFE.ListenAddress,
 		Handler: handler,
