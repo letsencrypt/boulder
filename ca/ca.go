@@ -296,6 +296,7 @@ func NewCertificateAuthorityImpl(
 		Name: "signature_errors",
 		Help: "A counter of signature errors labelled by error type",
 	}, []string{"type"})
+	stats.MustRegister(signErrorCounter)
 
 	ca = &CertificateAuthorityImpl{
 		sa:                 sa,
