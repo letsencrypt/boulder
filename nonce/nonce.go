@@ -109,14 +109,17 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		Name: "nonces_generated",
 		Help: "A counter of nonces generated",
 	})
+	stats.MustRegister(noncesGenerated)
 	nonceValidations := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "nonces_validations",
 		Help: "A counter of nonce validations labelled by result",
 	}, []string{"result", "error"})
+	stats.MustRegister(nonceValidations)
 	nonceHeapLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name: "nonce_heap_latency",
 		Help: "A histogram of latencies of heap pop operations",
 	})
+	stats.MustRegister(nonceHeapLatency)
 
 	return &NonceService{
 		earliest:         0,

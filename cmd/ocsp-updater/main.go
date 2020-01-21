@@ -133,6 +133,7 @@ func newUpdater(
 		Name: "ocsp_updater_ticks",
 		Help: "A histogram of ocsp-updater tick latencies labelled by result",
 	}, []string{"result", "long"})
+	stats.MustRegister(tickHistogram)
 
 	// Setup loops
 	updater.loops = []*looper{
