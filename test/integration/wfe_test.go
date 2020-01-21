@@ -47,7 +47,7 @@ func TestWFEHTTPMetrics(t *testing.T) {
 	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
 	body, err := ioutil.ReadAll(resp.Body)
 	test.AssertNotError(t, err, "Reading boulder-wfe2 metrics response")
-	test.AssertContains(t, string(body), `response_time_count{code="200",endpoint="/directory",method="GET"} 1`)
+	test.AssertContains(t, string(body), `response_time_count{code="200",endpoint="/directory",method="GET"}`)
 	resp.Body.Close()
 
 	// Check boulder-wfe
@@ -61,6 +61,6 @@ func TestWFEHTTPMetrics(t *testing.T) {
 	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
 	body, err = ioutil.ReadAll(resp.Body)
 	test.AssertNotError(t, err, "Reading boulder-wfe metrics response")
-	test.AssertContains(t, string(body), `response_time_count{code="200",endpoint="/directory",method="GET"} 1`)
+	test.AssertContains(t, string(body), `response_time_count{code="200",endpoint="/directory",method="GET"}`)
 	resp.Body.Close()
 }
