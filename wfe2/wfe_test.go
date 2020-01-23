@@ -3283,7 +3283,7 @@ func TestGetAPIAndMandatoryPOSTAsGET(t *testing.T) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
 			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]interface{}{}}
 	}
-	features.Set(map[string]bool{"MandatoryPOSTAsGET": true})
+	_ = features.Set(map[string]bool{"MandatoryPOSTAsGET": true})
 	defer features.Reset()
 
 	oldSerial := "0000000000000000000000000000000000b2"
