@@ -3276,3 +3276,19 @@ func TestGETAPIChallenge(t *testing.T) {
 		}
 	}
 }
+
+func TestGetAPIAndMandatoryPOSTAsGET(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
+		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
+			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]interface{}{}}
+	}
+	features.Set(map[string]bool{"MandatoryPOSTAsGET": true})
+	defer features.Reset()
+
+	oldSerial := "0000000000000000000000000000000000b2"
+	req, event := makeGet(oldSerial, getCertPath)
+	resp := httptest.NewRecorder()
+	wfe.Certificate(context.Background(), event, resp, req)
+	test.AssertEquals(t, resp.Code, 200)
+}

@@ -218,7 +218,6 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 				if wfe.remoteNonceService != nil {
 					nonceMsg, err := wfe.remoteNonceService.Nonce(ctx, &corepb.Empty{})
 					if err != nil {
-						fmt.Println("fucking broken", err)
 						wfe.sendError(response, logEvent, probs.ServerInternal("unable to get nonce"), err)
 						return
 					}
@@ -1052,7 +1051,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 		return
 	}
 
-	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost {
+	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost && !requiredStale(request, logEvent) {
 		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
 		return
 	}
@@ -1433,7 +1432,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 	response http.ResponseWriter,
 	request *http.Request) {
 
-	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost {
+	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost && !requiredStale(request, logEvent) {
 		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
 		return
 	}
@@ -1532,7 +1531,7 @@ var allHex = regexp.MustCompile("^[0-9a-f]+$")
 // Certificate is used by clients to request a copy of their current certificate, or to
 // request a reissuance of the certificate.
 func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost {
+	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost && !requiredStale(request, logEvent) {
 		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
 		return
 	}
@@ -1963,7 +1962,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 // GetOrder is used to retrieve a existing order object
 func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost {
+	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost && !requiredStale(request, logEvent) {
 		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
 		return
 	}
