@@ -53,8 +53,6 @@ type OCSPUpdater struct {
 	// these requests in parallel allows us to get higher total throughput.
 	parallelGenerateOCSPRequests int
 
-	loops []*looper
-
 	purgerService akamaipb.AkamaiPurgerClient
 	// issuer is used to generate OCSP request URLs to purge
 	issuer *x509.Certificate
@@ -127,26 +125,6 @@ func newUpdater(
 			return nil, err
 		}
 		updater.issuer = issuer
-	}
-
-	tickHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name: "ocsp_updater_ticks",
-		Help: "A histogram of ocsp-updater tick latencies labelled by result",
-	}, []string{"result", "long"})
-	stats.MustRegister(tickHistogram)
-
-	// Setup loops
-	updater.loops = []*looper{
-		{
-			clk:                  clk,
-			batchSize:            config.OldOCSPBatchSize,
-			tickDur:              config.OldOCSPWindow.Duration,
-			tickFunc:             updater.oldOCSPResponsesTick,
-			name:                 "OldOCSPResponses",
-			failureBackoffFactor: config.SignFailureBackoffFactor,
-			failureBackoffMax:    config.SignFailureBackoffMax.Duration,
-			tickHistogram:        tickHistogram,
-		},
 	}
 
 	return &updater, nil
@@ -331,57 +309,6 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize 
 	return updater.generateOCSPResponses(ctx, statuses)
 }
 
-type looper struct {
-	clk                  clock.Clock
-	batchSize            int
-	tickDur              time.Duration
-	tickFunc             func(context.Context, int) error
-	name                 string
-	failureBackoffFactor float64
-	failureBackoffMax    time.Duration
-	failures             int
-	tickHistogram        *prometheus.HistogramVec
-}
-
-func (l *looper) tick() {
-	tickStart := l.clk.Now()
-	ctx := context.TODO()
-	err := l.tickFunc(ctx, l.batchSize)
-	took := time.Since(tickStart)
-	tickEnd := tickStart.Add(took)
-	expectedTickEnd := tickStart.Add(l.tickDur)
-	long := "false"
-	state := "success"
-	if tickEnd.After(expectedTickEnd) {
-		long = "true"
-	}
-
-	// On success, sleep till it's time for the next tick. On failure, backoff.
-	sleepDur := expectedTickEnd.Sub(tickEnd)
-	if err != nil {
-		state = "failed"
-		l.failures++
-		sleepDur = core.RetryBackoff(l.failures, l.tickDur, l.failureBackoffMax, l.failureBackoffFactor)
-	} else if l.failures > 0 {
-		// If the tick was successful but previously there were failures reset
-		// counter to 0
-		l.failures = 0
-	}
-	l.tickHistogram.WithLabelValues(state, long).Observe(took.Seconds())
-
-	// Sleep for the remaining tick period or for the backoff time
-	l.clk.Sleep(sleepDur)
-}
-
-func (l *looper) loop() error {
-	if l.batchSize == 0 || l.tickDur == 0 {
-		return fmt.Errorf("Both batch size and tick duration are required, not running '%s' loop", l.name)
-	}
-	for {
-		l.tick()
-	}
-}
-
 type config struct {
 	OCSPUpdater OCSPUpdaterConfig
 
@@ -399,7 +326,6 @@ type OCSPUpdaterConfig struct {
 	cmd.DBConfig
 
 	OldOCSPWindow cmd.ConfigDuration
-
 	OldOCSPBatchSize int
 
 	OCSPMinTimeToExpiry          cmd.ConfigDuration
@@ -470,7 +396,7 @@ func main() {
 	err = features.Set(conf.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, conf.DebugAddr)
+	stats, logger := cmd.StatsAndLogging(c.Syslog, conf.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
@@ -480,14 +406,14 @@ func main() {
 	dbMap, err := sa.NewDbMap(dbURL, conf.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Could not connect to database")
 
-	// Collect and periodically report DB metrics using the DBMap and prometheus scope.
-	sa.InitDBMetrics(dbMap, scope)
+	// Collect and periodically report DB metrics using the DBMap and prometheus stats.
+	sa.InitDBMetrics(dbMap, stats)
 
 	clk := cmd.Clock()
-	ogc, sac, apc := setupClients(conf, scope, clk)
+	ogc, sac, apc := setupClients(conf, stats, clk)
 
 	updater, err := newUpdater(
-		scope,
+		stats,
 		clk,
 		dbMap,
 		ogc,
@@ -500,14 +426,40 @@ func main() {
 	)
 	cmd.FailOnError(err, "Failed to create updater")
 
-	for _, l := range updater.loops {
-		go func(loop *looper) {
-			err = loop.loop()
-			if err != nil {
-				logger.AuditErr(err.Error())
+	tickHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "ocsp_updater_ticks",
+		Help: "A histogram of ocsp-updater tick latencies labelled by result",
+	}, []string{"result", "long"})
+	stats.MustRegister(tickHistogram)
+
+	go func() {
+		failures := 0
+		for {
+			start := updater.clk.Now()
+			err = updater.oldOCSPResponsesTick(context.Background(), conf.OldOCSPBatchSize)
+			end := updater.clk.Now()
+			took := end.Sub(start)
+			long, state := "false", "success"
+			if took > conf.OldOCSPWindow.Duration {
+				long = "true"
 			}
-		}(l)
-	}
+			sleepDur := end.Sub(start.Add(conf.OldOCSPWindow.Duration))
+			if err != nil {
+				state = "failed"
+				failures++
+				sleepDur = core.RetryBackoff(
+					failures,
+					conf.OldOCSPWindow.Duration,
+					conf.SignFailureBackoffMax.Duration,
+					conf.SignFailureBackoffFactor,
+				)
+			} else if failures > 0 {
+				failures = 0
+			}
+			tickHistogram.WithLabelValues(state, long).Observe(took.Seconds())
+			updater.clk.Sleep(sleepDur)
+		}
+	}()
 
 	go cmd.CatchSignals(logger, nil)
 

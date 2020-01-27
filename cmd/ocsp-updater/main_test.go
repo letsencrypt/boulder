@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -27,7 +26,6 @@ import (
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 )
 
@@ -399,49 +397,6 @@ func TestStoreResponseGuard(t *testing.T) {
 	changedStatus, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
 	test.AssertNotError(t, err, "Failed to get certificate status")
 	test.AssertEquals(t, len(changedStatus.OCSPResponse), 3)
-}
-
-func TestLoopTickBackoff(t *testing.T) {
-	fc := clock.NewFake()
-	l := looper{
-		clk:                  fc,
-		failureBackoffFactor: 1.5,
-		failureBackoffMax:    10 * time.Minute,
-		tickDur:              time.Minute,
-		tickFunc:             func(context.Context, int) error { return errors.New("baddie") },
-		tickHistogram:        prometheus.NewHistogramVec(prometheus.HistogramOpts{}, []string{"result", "long"}),
-	}
-
-	assertBetween := func(a, b, c int64) {
-		t.Helper()
-		if a < b || a > c {
-			t.Fatalf("%d is not between %d and %d", a, b, c)
-		}
-	}
-	start := l.clk.Now()
-	l.tick()
-	// Expected to sleep for 1m
-	backoff := float64(60000000000)
-	assertBetween(l.clk.Now().Sub(start).Nanoseconds(), int64(backoff*0.8), int64(backoff*1.2))
-
-	start = l.clk.Now()
-	l.tick()
-	// Expected to sleep for 1m30s
-	backoff = 90000000000
-	assertBetween(l.clk.Now().Sub(start).Nanoseconds(), int64(backoff*0.8), int64(backoff*1.2))
-
-	l.failures = 6
-	start = l.clk.Now()
-	l.tick()
-	// Expected to sleep for 11m23.4375s, should be truncated to 10m
-	backoff = 600000000000
-	assertBetween(l.clk.Now().Sub(start).Nanoseconds(), int64(backoff*0.8), int64(backoff*1.2))
-
-	l.tickFunc = func(context.Context, int) error { return nil }
-	start = l.clk.Now()
-	l.tick()
-	test.AssertEquals(t, l.failures, 0)
-	test.AssertEquals(t, l.clk.Now(), start)
 }
 
 func TestGenerateOCSPResponsePrecert(t *testing.T) {
