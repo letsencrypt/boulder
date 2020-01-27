@@ -1,17 +1,19 @@
 package main
 
 import (
+	"crypto"
+	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"flag"
-	"crypto/rand"
-	"io/ioutil"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"path"
 	"time"
-	"crypto"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 )
 
@@ -21,9 +23,12 @@ type crlDef struct {
 	end   time.Time
 }
 
-func generateDefs(total, initialNum int, startStr string, period, overlap time.Duration) ([]crlDef, error) {
+func generateDefs(clk clock.Clock, total, initialNum int, startStr string, period, overlap time.Duration) ([]crlDef, error) {
+	if overlap >= period {
+		return nil, errors.New("CRL overlap must be smaller than the validity period")
+	}
 	var crlDefs []crlDef
-	start := time.Now()
+	start := clk.Now()
 	if startStr != "" {
 		var err error
 		start, err = time.Parse(time.RFC3339, startStr)
@@ -107,8 +112,7 @@ func main() {
 		log.Fatalf("Failed to parse issuer certificate %q: %s", *issuerPath, err)
 	}
 
-	
-	crlDefs, err := generateDefs(*numCRLs, *initialCRLNumber, *startDate, *validityPeriod, *validityOverlap)
+	crlDefs, err := generateDefs(clock.New(), *numCRLs, *initialCRLNumber, *startDate, *validityPeriod, *validityOverlap)
 	if err != nil {
 		log.Fatalf("Failed to generate CRL definitions: %s", err)
 	}
