@@ -325,7 +325,7 @@ type OCSPUpdaterConfig struct {
 	cmd.ServiceConfig
 	cmd.DBConfig
 
-	OldOCSPWindow cmd.ConfigDuration
+	OldOCSPWindow    cmd.ConfigDuration
 	OldOCSPBatchSize int
 
 	OCSPMinTimeToExpiry          cmd.ConfigDuration
