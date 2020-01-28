@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"database/sql"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -74,8 +76,12 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *db.WrappedMap, c
 		sa,
 		nil,
 		OCSPUpdaterConfig{
-			OldOCSPBatchSize: 1,
-			OldOCSPWindow:    cmd.ConfigDuration{Duration: time.Second},
+			OldOCSPBatchSize:         1,
+			OldOCSPWindow:            cmd.ConfigDuration{Duration: time.Second},
+			SignFailureBackoffFactor: 1.5,
+			SignFailureBackoffMax: cmd.ConfigDuration{
+				Duration: time.Minute,
+			},
 		},
 		"",
 		blog.NewMock(),
@@ -285,8 +291,8 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	updater.ocspMinTimeToExpiry = 1 * time.Hour
-	err = updater.oldOCSPResponsesTick(ctx, 10)
-	test.AssertNotError(t, err, "Couldn't run oldOCSPResponsesTick")
+	err = updater.updateOCSPResponses(ctx, 10)
+	test.AssertNotError(t, err, "Couldn't run updateOCSPResponses")
 
 	certs, err := updater.findStaleOCSPResponses(fc.Now().Add(-updater.ocspMinTimeToExpiry), 10)
 	test.AssertNotError(t, err, "Failed to find stale responses")
@@ -335,11 +341,11 @@ func TestOldOCSPResponsesTickIsExpired(t *testing.T) {
 	// Advance the clock to the point that the certificate we added is now expired
 	fc.Set(parsedCert.NotAfter.Add(time.Hour))
 
-	// Run the oldOCSPResponsesTick so that it can have a chance to find expired
+	// Run the updateOCSPResponses so that it can have a chance to find expired
 	// certificates
 	updater.ocspMinTimeToExpiry = 1 * time.Hour
-	err = updater.oldOCSPResponsesTick(ctx, 10)
-	test.AssertNotError(t, err, "Couldn't run oldOCSPResponsesTick")
+	err = updater.updateOCSPResponses(ctx, 10)
+	test.AssertNotError(t, err, "Couldn't run updateOCSPResponses")
 
 	// Since we advanced the fakeclock beyond our test certificate's NotAfter we
 	// expect the certificate status has been updated to have a true `IsExpired`
@@ -507,4 +513,39 @@ func TestIssuerInfo(t *testing.T) {
 	_, err = updater.generateResponse(context.Background(), statuses[1])
 	test.AssertNotError(t, err, "generateResponse failed")
 	test.Assert(t, !m.gotIssuer, "generateResponse did send issuer information and serial when it shouldn't")
+}
+
+type brokenDB struct{}
+
+func (bdb *brokenDB) Select(i interface{}, query string, args ...interface{}) ([]interface{}, error) {
+	return nil, errors.New("broken")
+}
+func (bdb *brokenDB) SelectOne(holder interface{}, query string, args ...interface{}) error {
+	return errors.New("broken")
+}
+func (bdb *brokenDB) Exec(query string, args ...interface{}) (sql.Result, error) {
+	return nil, errors.New("broken")
+}
+
+func TestTickSleep(t *testing.T) {
+	updater, _, dbMap, fc, cleanUp := setup(t)
+	defer cleanUp()
+	m := &brokenDB{}
+	updater.dbMap = m
+
+	// Test when updateOCSPResponses fails the failure counter is incremented
+	// and the clock moved forward
+	before := fc.Now()
+	updater.tick()
+	test.AssertEquals(t, updater.tickFailures, 1)
+	test.Assert(t, !fc.Now().Equal(before), "Clock didn't move forward")
+
+	// Test when updateOCSPResponses works the failure counter is reset to zero
+	// and the clock doesn't move
+	updater.dbMap = dbMap
+	before = fc.Now()
+	updater.tick()
+	test.AssertEquals(t, updater.tickFailures, 0)
+	test.Assert(t, fc.Now().Equal(before), "Clock moved forward")
+
 }

@@ -45,6 +45,14 @@ type OCSPUpdater struct {
 	ogc capb.OCSPGeneratorClient
 	sac core.StorageAuthority
 
+	tickWindow    time.Duration
+	batchSize     int
+	tickHistogram *prometheus.HistogramVec
+
+	maxBackoff    time.Duration
+	backoffFactor float64
+	tickFailures  int
+
 	// Used to calculate how far back stale OCSP responses should be looked for
 	ocspMinTimeToExpiry time.Duration
 	// Used to calculate how far back in time the findStaleOCSPResponse will look
@@ -103,6 +111,11 @@ func newUpdater(
 		Help: "A counter of OCSP response storage calls labelled by result",
 	}, []string{"result"})
 	stats.MustRegister(storedCounter)
+	tickHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "ocsp_updater_ticks",
+		Help: "A histogram of ocsp-updater tick latencies labelled by result",
+	}, []string{"result", "long"})
+	stats.MustRegister(tickHistogram)
 
 	updater := OCSPUpdater{
 		clk:                          clk,
@@ -117,6 +130,11 @@ func newUpdater(
 		genStoreHistogram:            genStoreHistogram,
 		generatedCounter:             generatedCounter,
 		storedCounter:                storedCounter,
+		tickHistogram:                tickHistogram,
+		tickWindow:                   config.OldOCSPWindow.Duration,
+		batchSize:                    config.OldOCSPBatchSize,
+		maxBackoff:                   config.SignFailureBackoffMax.Duration,
+		backoffFactor:                config.SignFailureBackoffFactor,
 	}
 
 	if updater.purgerService != nil {
@@ -287,9 +305,9 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 	return nil
 }
 
-// oldOCSPResponsesTick looks for certificates with stale OCSP responses and
+// updateOCSPResponses looks for certificates with stale OCSP responses and
 // generates/stores new ones
-func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize int) error {
+func (updater *OCSPUpdater) updateOCSPResponses(ctx context.Context, batchSize int) error {
 	tickStart := updater.clk.Now()
 	statuses, err := updater.findStaleOCSPResponses(tickStart.Add(-updater.ocspMinTimeToExpiry), batchSize)
 	if err != nil {
@@ -380,6 +398,33 @@ func setupClients(c OCSPUpdaterConfig, stats prometheus.Registerer, clk clock.Cl
 	return ogc, sac, apc
 }
 
+func (updater *OCSPUpdater) tick() {
+	start := updater.clk.Now()
+	err := updater.updateOCSPResponses(context.Background(), updater.batchSize)
+	end := updater.clk.Now()
+	took := end.Sub(start)
+	long, state := "false", "success"
+	if took > updater.tickWindow {
+		long = "true"
+	}
+	sleepDur := end.Sub(start.Add(updater.tickWindow))
+	if err != nil {
+		state = "failed"
+		updater.tickFailures++
+		sleepDur = core.RetryBackoff(
+			updater.tickFailures,
+			updater.tickWindow,
+			updater.maxBackoff,
+			updater.backoffFactor,
+		)
+		fmt.Println(sleepDur)
+	} else if updater.tickFailures > 0 {
+		updater.tickFailures = 0
+	}
+	updater.tickHistogram.WithLabelValues(state, long).Observe(took.Seconds())
+	updater.clk.Sleep(sleepDur)
+}
+
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
@@ -426,43 +471,9 @@ func main() {
 	)
 	cmd.FailOnError(err, "Failed to create updater")
 
-	tickHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name: "ocsp_updater_ticks",
-		Help: "A histogram of ocsp-updater tick latencies labelled by result",
-	}, []string{"result", "long"})
-	stats.MustRegister(tickHistogram)
-
-	go func() {
-		failures := 0
-		for {
-			start := updater.clk.Now()
-			err = updater.oldOCSPResponsesTick(context.Background(), conf.OldOCSPBatchSize)
-			end := updater.clk.Now()
-			took := end.Sub(start)
-			long, state := "false", "success"
-			if took > conf.OldOCSPWindow.Duration {
-				long = "true"
-			}
-			sleepDur := end.Sub(start.Add(conf.OldOCSPWindow.Duration))
-			if err != nil {
-				state = "failed"
-				failures++
-				sleepDur = core.RetryBackoff(
-					failures,
-					conf.OldOCSPWindow.Duration,
-					conf.SignFailureBackoffMax.Duration,
-					conf.SignFailureBackoffFactor,
-				)
-			} else if failures > 0 {
-				failures = 0
-			}
-			tickHistogram.WithLabelValues(state, long).Observe(took.Seconds())
-			updater.clk.Sleep(sleepDur)
-		}
-	}()
-
 	go cmd.CatchSignals(logger, nil)
 
-	// Sleep forever (until signaled)
-	select {}
+	for {
+		updater.tick()
+	}
 }
