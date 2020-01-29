@@ -113,7 +113,7 @@ func newUpdater(
 	stats.MustRegister(storedCounter)
 	tickHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "ocsp_updater_ticks",
-		Help: "A histogram of ocsp-updater tick latencies labelled by result",
+		Help: "A histogram of ocsp-updater tick latencies labelled by result and whether the tick was considered longer than expected",
 	}, []string{"result", "long"})
 	stats.MustRegister(tickHistogram)
 
@@ -417,7 +417,6 @@ func (updater *OCSPUpdater) tick() {
 			updater.maxBackoff,
 			updater.backoffFactor,
 		)
-		fmt.Println(sleepDur)
 	} else if updater.tickFailures > 0 {
 		updater.tickFailures = 0
 	}
