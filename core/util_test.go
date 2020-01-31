@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"gopkg.in/square/go-jose.v2"
 
@@ -124,4 +125,29 @@ func TestValidSerial(t *testing.T) {
 	test.AssertEquals(t, isValidSerial, true)
 	isValidSerial = ValidSerial(length36)
 	test.AssertEquals(t, isValidSerial, true)
+}
+
+func TestRetryBackoff(t *testing.T) {
+	assertBetween := func(a, b, c float64) {
+		t.Helper()
+		if a < b || a > a {
+			t.Fatalf("%f is not between %f and %f", a, b, c)
+		}
+	}
+
+	factor := 1.5
+	base := time.Minute
+	max := 10 * time.Minute
+
+	expected := base
+	backoff := RetryBackoff(1, base, max, factor)
+	assertBetween(float64(backoff), float64(expected)*0.8, float64(expected)*1.2)
+	expected = time.Second * 90
+	backoff = RetryBackoff(2, base, max, factor)
+	assertBetween(float64(backoff), float64(expected)*0.8, float64(expected)*1.2)
+	expected = time.Minute * 10
+	// should be truncated
+	backoff = RetryBackoff(7, base, max, factor)
+	assertBetween(float64(backoff), float64(expected)*0.8, float64(expected)*1.2)
+
 }
