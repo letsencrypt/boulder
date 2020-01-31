@@ -38,6 +38,13 @@ func (wfe *WebFrontEndImpl) staleEnoughToGETCert(cert core.Certificate) *probs.P
 // the appropriate lifetime for the authz is subtracted from the expiry to find
 // the creation date.
 func (wfe *WebFrontEndImpl) staleEnoughToGETAuthz(authz core.Authorization) *probs.ProblemDetails {
+	// If the authorization was deactivated we cannot reliably tell what the creation date was
+	// because we can't easily tell if it was pending or finalized before deactivation.
+	// As these authorizations can no longer be used for anything, just make them immediately
+	// available for access.
+	if authz.Status == core.StatusDeactivated {
+		return nil
+	}
 	// We don't directly track authorization creation time. Instead subtract the
 	// pendingAuthorization lifetime from the expiry. This will be inaccurate if
 	// we change the pendingAuthorizationLifetime but is sufficient for the weak
