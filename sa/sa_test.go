@@ -233,26 +233,6 @@ func TestAddCertificate(t *testing.T) {
 	ocspResp := []byte{0, 0, 1}
 	_, err = sa.AddCertificate(ctx, certDER3, reg.ID, ocspResp, &issuedTime)
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
-
-	// Test adding a certificate with the features.WriteIssuedNamesPrecert feature
-	// flag enabled doesn't result in issuedNames and fqdnSet updates since we
-	// expect AddPrecertificate to handle it in this case.
-	err = features.Set(map[string]bool{"WriteIssuedNamesPrecert": true})
-	test.AssertNotError(t, err, "failed to set WriteIssuedNamesPrecert feature flag")
-
-	// Create a throw-away self signed certificate with a random name and
-	// serial number
-	_, testCert := test.ThrowAwayCert(t, 1)
-
-	// Add the test cert
-	_, err = sa.AddCertificate(ctx, testCert.Raw, reg.ID, ocspResp, &issuedTime)
-	test.AssertNotError(t, err, "unexpected error adding testcert")
-
-	// Check the issuedNames table
-	_, err = findIssuedName(sa.dbMap, testCert.DNSNames[0])
-	// We expect no error because AddCertificate should have updated the issued
-	// names table.
-	test.AssertNotError(t, err, "unexpected error finding issued names after addCert")
 }
 
 func TestCountCertificatesByNames(t *testing.T) {
@@ -662,6 +642,13 @@ func TestPreviousCertificateExists(t *testing.T) {
 	test.AssertNotError(t, err, "reading cert DER")
 
 	issued := sa.clk.Now()
+	issuedUnix := issued.UnixNano()
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    certDER,
+		Issued: &issuedUnix,
+		RegID:  &reg.ID,
+	})
+	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
 	test.AssertNotError(t, err, "calling AddCertificate")
 
@@ -1657,10 +1644,18 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
 	// Add the certificate with the same names.
+	issuedUnix := issued.UnixNano()
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    certDER,
+		Issued: &issuedUnix,
+		RegID:  &reg.ID,
+	})
+	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
 	test.AssertNotError(t, err, "Failed to add certificate")
 
 	assertIsRenewal := func(t *testing.T, name string, expected bool) {
+		t.Helper()
 		var count int
 		err := sa.dbMap.SelectOne(
 			&count,
@@ -1686,6 +1681,13 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	test.AssertNotError(t, err, "Unexpected error parsing test-cert.der test file")
 	names = cert.DNSNames
 
+	issuedUnix = issued.UnixNano()
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    certDER,
+		Issued: &issuedUnix,
+		RegID:  &reg.ID,
+	})
+	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
 	test.AssertNotError(t, err, "Failed to add certificate")
 

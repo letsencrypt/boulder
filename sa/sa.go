@@ -488,22 +488,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 			return nil, err
 		}
 
-		// Record the issued names from the final certificate being added by the SA.
-		// If features.WriteIssuedNamesPrecert was enabled when the corresponding
-		// precertificate was added in AddPrecertificate then this will prompt
-		// a duplicate entry error that we can safely ignore.
-		//
-		// TODO(@cpu): Once features.WriteIssuedNamesPrecert has been deployed
-		// globally we can remove this call to ssa.addIssuedNames from
-		// AddCertificate
-		if err := addIssuedNames(txWithCtx, parsedCertificate, isRenewal); err != nil {
-			// if it wasn't a duplicate entry error, return the err. Otherwise ignore
-			// it.
-			if !db.IsDuplicate(err) {
-				return nil, err
-			}
-		}
-
 		return isRenewal, err
 	})
 	if overallError != nil {

@@ -25,8 +25,7 @@
     },
     "features": {
       "DeleteUnusedChallenges": true,
-      "StoreIssuerInfo": true,
-      "WriteIssuedNamesPrecert": true
+      "StoreIssuerInfo": true
     }
   },
 

@@ -116,13 +116,8 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		if err != nil {
 			return nil, err
 		}
-
-		// If the WriteIssuedNamesPrecert feature flag is *enabled* then we need to
-		// record the issued names from the precertificate being added by the SA.
-		if features.Enabled(features.WriteIssuedNamesPrecert) {
-			if err := addIssuedNames(txWithCtx, parsed, isRenewal); err != nil {
-				return nil, err
-			}
+		if err := addIssuedNames(txWithCtx, parsed, isRenewal); err != nil {
+			return nil, err
 		}
 
 		return nil, nil
