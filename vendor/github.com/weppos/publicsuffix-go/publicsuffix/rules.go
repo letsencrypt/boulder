@@ -3,13 +3,13 @@
 
 package publicsuffix
 
-const defaultListVersion = "PSL version 1e2c4b (Sat Dec  7 01:00:25 2019)"
+const defaultListVersion = "PSL version bf3f6d (Sat Feb  1 22:58:09 2020)"
 
-func DefaultRules() [8807]Rule {
+func DefaultRules() [8818]Rule {
 	return r
 }
 
-var r = [8807]Rule{
+var r = [8818]Rule{
 	{1, "ac", 1, false},
 	{1, "com.ac", 2, false},
 	{1, "edu.ac", 2, false},
@@ -200,7 +200,6 @@ var r = [8807]Rule{
 	{1, "wa.au", 2, false},
 	{1, "act.edu.au", 3, false},
 	{1, "catholic.edu.au", 3, false},
-	{1, "eq.edu.au", 3, false},
 	{1, "nsw.edu.au", 3, false},
 	{1, "nt.edu.au", 3, false},
 	{1, "qld.edu.au", 3, false},
@@ -6190,6 +6189,7 @@ var r = [8807]Rule{
 	{1, "ally", 1, false},
 	{1, "alsace", 1, false},
 	{1, "alstom", 1, false},
+	{1, "amazon", 1, false},
 	{1, "americanexpress", 1, false},
 	{1, "americanfamily", 1, false},
 	{1, "amex", 1, false},
@@ -6723,7 +6723,6 @@ var r = [8807]Rule{
 	{1, "lego", 1, false},
 	{1, "lexus", 1, false},
 	{1, "lgbt", 1, false},
-	{1, "liaison", 1, false},
 	{1, "lidl", 1, false},
 	{1, "life", 1, false},
 	{1, "lifeinsurance", 1, false},
@@ -6812,7 +6811,6 @@ var r = [8807]Rule{
 	{1, "motorcycles", 1, false},
 	{1, "mov", 1, false},
 	{1, "movie", 1, false},
-	{1, "movistar", 1, false},
 	{1, "msd", 1, false},
 	{1, "mtn", 1, false},
 	{1, "mtr", 1, false},
@@ -7111,7 +7109,6 @@ var r = [8807]Rule{
 	{1, "team", 1, false},
 	{1, "tech", 1, false},
 	{1, "technology", 1, false},
-	{1, "telefonica", 1, false},
 	{1, "temasek", 1, false},
 	{1, "tennis", 1, false},
 	{1, "teva", 1, false},
@@ -7259,6 +7256,7 @@ var r = [8807]Rule{
 	{1, "xn--c1avg", 1, false},
 	{1, "xn--c2br7g", 1, false},
 	{1, "xn--cck2b3b", 1, false},
+	{1, "xn--cckwcxetd", 1, false},
 	{1, "xn--cg4bki", 1, false},
 	{1, "xn--czr694b", 1, false},
 	{1, "xn--czrs0t", 1, false},
@@ -7282,6 +7280,7 @@ var r = [8807]Rule{
 	{1, "xn--imr513n", 1, false},
 	{1, "xn--io0a7i", 1, false},
 	{1, "xn--j1aef", 1, false},
+	{1, "xn--jlq480n2rg", 1, false},
 	{1, "xn--jlq61u9w7b", 1, false},
 	{1, "xn--jvr189m", 1, false},
 	{1, "xn--kcrx77d1x4a", 1, false},
@@ -7343,6 +7342,9 @@ var r = [8807]Rule{
 	{1, "cc.ua", 2, true},
 	{1, "inf.ua", 2, true},
 	{1, "ltd.ua", 2, true},
+	{1, "adobeaemcloud.com", 2, true},
+	{1, "adobeaemcloud.net", 2, true},
+	{2, "dev.adobeaemcloud.com", 4, true},
 	{1, "beep.pl", 2, true},
 	{1, "barsy.ca", 2, true},
 	{2, "compute.estate", 3, true},
@@ -7506,6 +7508,7 @@ var r = [8807]Rule{
 	{1, "certmgr.org", 2, true},
 	{1, "xenapponazure.com", 2, true},
 	{1, "discourse.group", 2, true},
+	{1, "discourse.team", 2, true},
 	{1, "virtueeldomein.nl", 2, true},
 	{1, "cleverapps.io", 2, true},
 	{2, "lcl.dev", 3, true},
@@ -8062,6 +8065,7 @@ var r = [8807]Rule{
 	{1, "vladimir.su", 2, true},
 	{1, "vologda.su", 2, true},
 	{1, "channelsdvr.net", 2, true},
+	{1, "u.channelsdvr.net", 3, true},
 	{1, "fastly-terrarium.com", 2, true},
 	{1, "fastlylb.net", 2, true},
 	{1, "map.fastlylb.net", 3, true},
@@ -8616,6 +8620,7 @@ var r = [8807]Rule{
 	{1, "byen.site", 2, true},
 	{1, "pubtls.org", 2, true},
 	{1, "qualifioapp.com", 2, true},
+	{1, "qbuser.com", 2, true},
 	{1, "instantcloud.cn", 2, true},
 	{1, "ras.ru", 2, true},
 	{1, "qa2.com", 2, true},
@@ -8661,6 +8666,7 @@ var r = [8807]Rule{
 	{1, "my-firewall.org", 2, true},
 	{1, "myfirewall.org", 2, true},
 	{1, "spdns.org", 2, true},
+	{1, "senseering.net", 2, true},
 	{1, "biz.ua", 2, true},
 	{1, "co.ua", 2, true},
 	{1, "pp.ua", 2, true},
@@ -8788,6 +8794,11 @@ var r = [8807]Rule{
 	{1, "wedeploy.sh", 2, true},
 	{1, "remotewd.com", 2, true},
 	{1, "wmflabs.org", 2, true},
+	{1, "myforum.community", 2, true},
+	{1, "community-pro.de", 2, true},
+	{1, "diskussionsbereich.de", 2, true},
+	{1, "community-pro.net", 2, true},
+	{1, "meinforum.net", 2, true},
 	{1, "half.host", 2, true},
 	{1, "xnbay.com", 2, true},
 	{1, "u2.xnbay.com", 3, true},
