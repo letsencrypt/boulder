@@ -10,7 +10,6 @@ import (
 
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
@@ -106,13 +105,5 @@ func TestAddPrecertificate(t *testing.T) {
 		}
 	}
 
-	// With no feature flag set we don't expect addPrecertficate to update
-	// issuedNames
-	addPrecert(false)
-	defer features.Reset()
-	// With the feature flag set we do expect addPrecertificate to update
-	// issuedNames
-	err := features.Set(map[string]bool{"WriteIssuedNamesPrecert": true})
-	test.AssertNotError(t, err, "failed to set WriteIssuedNamesPrecert feature flag")
 	addPrecert(true)
 }

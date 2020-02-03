@@ -475,6 +475,7 @@ func TestIssuerInfo(t *testing.T) {
 	test.AssertNotError(t, err, "rsa.GenerateKey failed")
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
+		DNSNames:     []string{"example.com"},
 	}
 	certA, err := x509.CreateCertificate(rand.Reader, template, template, &k.PublicKey, k)
 	test.AssertNotError(t, err, "x509.CreateCertificate failed")

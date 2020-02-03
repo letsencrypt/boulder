@@ -9,27 +9,27 @@ func _() {
 	// Re-run the stringer command to generate them again.
 	var x [1]struct{}
 	_ = x[unused-0]
-	_ = x[CAAValidationMethods-1]
-	_ = x[CAAAccountURI-2]
-	_ = x[HeadNonceStatusOK-3]
-	_ = x[EnforceMultiVA-4]
-	_ = x[MultiVAFullResults-5]
-	_ = x[RemoveWFE2AccountID-6]
-	_ = x[CheckRenewalFirst-7]
-	_ = x[MandatoryPOSTAsGET-8]
-	_ = x[AllowV1Registration-9]
-	_ = x[ParallelCheckFailedValidation-10]
-	_ = x[DeleteUnusedChallenges-11]
-	_ = x[V1DisableNewValidations-12]
-	_ = x[PrecertificateRevocation-13]
-	_ = x[StripDefaultSchemePort-14]
-	_ = x[StoreIssuerInfo-15]
-	_ = x[WriteIssuedNamesPrecert-16]
+	_ = x[WriteIssuedNamesPrecert-1]
+	_ = x[CAAValidationMethods-2]
+	_ = x[CAAAccountURI-3]
+	_ = x[HeadNonceStatusOK-4]
+	_ = x[EnforceMultiVA-5]
+	_ = x[MultiVAFullResults-6]
+	_ = x[RemoveWFE2AccountID-7]
+	_ = x[CheckRenewalFirst-8]
+	_ = x[MandatoryPOSTAsGET-9]
+	_ = x[AllowV1Registration-10]
+	_ = x[ParallelCheckFailedValidation-11]
+	_ = x[DeleteUnusedChallenges-12]
+	_ = x[V1DisableNewValidations-13]
+	_ = x[PrecertificateRevocation-14]
+	_ = x[StripDefaultSchemePort-15]
+	_ = x[StoreIssuerInfo-16]
 }
 
-const _FeatureFlag_name = "unusedCAAValidationMethodsCAAAccountURIHeadNonceStatusOKEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountIDCheckRenewalFirstMandatoryPOSTAsGETAllowV1RegistrationParallelCheckFailedValidationDeleteUnusedChallengesV1DisableNewValidationsPrecertificateRevocationStripDefaultSchemePortStoreIssuerInfoWriteIssuedNamesPrecert"
+const _FeatureFlag_name = "unusedWriteIssuedNamesPrecertCAAValidationMethodsCAAAccountURIHeadNonceStatusOKEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountIDCheckRenewalFirstMandatoryPOSTAsGETAllowV1RegistrationParallelCheckFailedValidationDeleteUnusedChallengesV1DisableNewValidationsPrecertificateRevocationStripDefaultSchemePortStoreIssuerInfo"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 26, 39, 56, 70, 88, 107, 124, 142, 161, 190, 212, 235, 259, 281, 296, 319}
+var _FeatureFlag_index = [...]uint16{0, 6, 29, 49, 62, 79, 93, 111, 130, 147, 165, 184, 213, 235, 258, 282, 304, 319}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {
