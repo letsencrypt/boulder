@@ -3,12 +3,12 @@ package cmd
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"expvar"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"log/syslog"
@@ -95,6 +95,9 @@ func (log grpcLogger) Error(args ...interface{}) {
 }
 func (log grpcLogger) Errorf(format string, args ...interface{}) {
 	output := fmt.Sprintf(format, args...)
+	if output == `ccResolverWrapper: error parsing service config: no JSON service config provided` {
+		return
+	}
 	if output == `grpc: Server.processUnaryRPC failed to write status: connection error: desc = "transport is closing"` {
 		return
 	}
@@ -135,10 +138,10 @@ func (log promLogger) Println(args ...interface{}) {
 // and, instead of writing them to stdout, writes them to the provided logger
 // at "Info" level.
 func captureStdlibLog(logger blog.Logger) {
-	buf := new(bytes.Buffer)
-	log.SetOutput(buf)
+	r, w := io.Pipe()
+	log.SetOutput(w)
 	go func() {
-		scanner := bufio.NewScanner(buf)
+		scanner := bufio.NewScanner(r)
 		for scanner.Scan() {
 			logger.Info(scanner.Text())
 		}
