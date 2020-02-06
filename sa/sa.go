@@ -975,7 +975,7 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *cor
 
 		n, err := result.RowsAffected()
 		if err != nil || n == 0 {
-			return nil, berrors.InternalServerError("no order updated to beganProcessing status")
+			return nil, berrors.OrderNotReadyError("Order was already processing. This may indicate your client submitted the same order multiple times, possibly due to a client bug.")
 		}
 
 		return nil, nil
