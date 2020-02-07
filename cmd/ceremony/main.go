@@ -42,13 +42,25 @@ func (cc ceremonyConfig) Validate() error {
 	if cc.PKCS11Module == "" {
 		return errors.New("pkcs11-module is required")
 	}
+	if cc.CeremonyType != "root" && cc.CeremonyType != "intermediate" && cc.CeremonyType != "key" {
+		return errors.New("ceremony-type can only be 'root', 'intermediate', or 'key'")
+	}
 	switch cc.CeremonyType {
 	case "root":
 		if cc.KeyLabel == "" {
 			return errors.New("key-label is required")
 		}
+		if cc.KeyID != "" {
+			return errors.New("key-id is not used for root ceremonies")
+		}
 		if cc.KeyType == "" {
 			return errors.New("key-type is required")
+		}
+		if cc.KeyType != "rsa" && cc.KeyType != "ecdsa" {
+			return errors.New("key-type can only be 'rsa' or 'ecdsa'")
+		}
+		if cc.KeyType == "rsa" && cc.ECDSACurve != "" {
+			return errors.New("if key-type = \"rsa\" then ecdsa-curve is not used")
 		}
 		if cc.KeyType == "ecdsa" && cc.ECDSACurve == "" {
 			return errors.New("if key-type = \"ecdsa\" then ecdsa-curve is required")
@@ -72,6 +84,9 @@ func (cc ceremonyConfig) Validate() error {
 		if cc.KeyLabel == "" {
 			return errors.New("key-label is required")
 		}
+		if cc.KeyID == "" {
+			return errors.New("key-id is required")
+		}
 		if cc.KeyType != "" {
 			return errors.New("key-type is not used for intermediate ceremonies")
 		}
@@ -94,12 +109,20 @@ func (cc ceremonyConfig) Validate() error {
 			return fmt.Errorf("invalid certificate-profile: %s", err)
 		}
 	case "key":
-
 		if cc.KeyLabel == "" {
 			return errors.New("key-label is required")
 		}
+		if cc.KeyID != "" {
+			return errors.New("key-id is not used for key ceremonies")
+		}
 		if cc.KeyType == "" {
 			return errors.New("key-type is required")
+		}
+		if cc.KeyType != "rsa" && cc.KeyType != "ecdsa" {
+			return errors.New("key-type can only be 'rsa' or 'ecdsa'")
+		}
+		if cc.KeyType == "rsa" && cc.ECDSACurve != "" {
+			return errors.New("if key-type = \"rsa\" then ecdsa-curve is not used")
 		}
 		if cc.KeyType == "ecdsa" && cc.ECDSACurve == "" {
 			return errors.New("if key-type = \"ecdsa\" then ecdsa-curve is required")
