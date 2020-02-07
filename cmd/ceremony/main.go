@@ -24,18 +24,17 @@ const (
 )
 
 type ceremonyConfig struct {
-	CeremonyType       string `yaml:"ceremony-type"`
-	PKCS11Module       string
-	KeySlot            uint
-	KeyPin             string // make --test-only-pin flag instead of config?
-	KeyLabel           string
-	KeyID              string
-	KeyType            string
-	ECDSACurve         string
-	PublicKeyPath      string
-	CertificatePath    string
-	IssuerPath         string
-	CertificateProfile *certProfile
+	CeremonyType       string       `yaml:"ceremony-type"`
+	PKCS11Module       string       `yaml:"pkcs11-module"`
+	KeySlot            uint         `yaml:"key-slot"`
+	KeyLabel           string       `yaml:"key-label"`
+	KeyID              string       `yaml:"key-id"`
+	KeyType            string       `yaml:"key-type"`
+	ECDSACurve         string       `yaml:"ecdsa-curve"`
+	PublicKeyPath      string       `yaml:"public-key-path"`
+	CertificatePath    string       `yaml:"certificate-path"`
+	IssuerPath         string       `yaml:"issuer-path"`
+	CertificateProfile *certProfile `yaml:"certificate-profile"`
 }
 
 func (cc ceremonyConfig) Validate() error {
@@ -165,7 +164,7 @@ func main() {
 		log.Fatalf("Failed to validate config: %s", err)
 	}
 
-	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11Module, config.KeySlot, config.KeyPin)
+	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11Module, config.KeySlot, "")
 	if err != nil {
 		log.Fatalf("Failed to setup session and PKCS#11 context for slot %d: %s", config.KeySlot, err)
 	}

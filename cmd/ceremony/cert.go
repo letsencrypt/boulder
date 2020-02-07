@@ -22,39 +22,39 @@ import (
 type certProfile struct {
 	// SignatureAlgorithm should contain one of the allowed signature algorithms
 	// in AllowedSigAlgs
-	SignatureAlgorithm string
+	SignatureAlgorithm string `yaml:"signature-algorithm"`
 
 	// CommonName should contain the requested subject common name
-	CommonName string
+	CommonName string `yaml:"common-name"`
 	// Organization should contain the requested subject organization
-	Organization string
+	Organization string `yaml:"organization"`
 	// Country should contain the requested subject country code
-	Country string
+	Country string `yaml:"country"`
 
 	// NotBefore should contain the requested NotBefore date for the
 	// certificate in the format "2006-01-02 15:04:05". Dates will
 	// always be UTC.
-	NotBefore string
+	NotBefore string `yaml:"not-before"`
 	// NotAfter should contain the requested NotAfter date for the
 	// certificate in the format "2006-01-02 15:04:05". Dates will
 	// always be UTC.
-	NotAfter string
+	NotAfter string `yaml:"not-after"`
 
 	// OCSPURL should contain the URL at which a OCSP responder that
 	// can respond to OCSP requests for this certificate operates
-	OCSPURL string
+	OCSPURL string `yaml:"ocsp-url"`
 	// CRLURL should contain the URL at which CRLs for this certificate
 	// can be found
-	CRLURL string
+	CRLURL string `yaml:"crl-url"`
 	// IssuerURL should contain the URL at which the issuing certificate
 	// can be found, this is only required if generating an intermediate
 	// certificate
-	IssuerURL string
+	IssuerURL string `yaml:"issuer-url"`
 
 	// PolicyOIDs should contain any OIDs to be inserted in a certificate
 	// policies extension. These should be formatted in the standard OID
 	// string format (i.e. "1.2.3")
-	PolicyOIDs []string
+	PolicyOIDs []string `yaml:"policy-oids"`
 }
 
 // AllowedSigAlgs contains the allowed signature algorithms
