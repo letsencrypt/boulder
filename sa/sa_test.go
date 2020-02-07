@@ -992,6 +992,13 @@ func TestSetOrderProcessing(t *testing.T) {
 	test.AssertNotError(t, err, "GetOrder failed")
 	test.AssertEquals(t, *updatedOrder.Status, string(core.StatusProcessing))
 	test.AssertEquals(t, *updatedOrder.BeganProcessing, true)
+
+	// Try to set the same order to be processing again. We should get an error.
+	err = sa.SetOrderProcessing(context.Background(), order)
+	test.AssertError(t, err, "Set the same order processing twice. This should have been an error.")
+	if !berrors.Is(err, berrors.OrderNotReady) {
+		t.Errorf("Wrong error when setting an order to processing twice. Expected OrderNotReady, got %#v", err)
+	}
 }
 
 func TestFinalizeOrder(t *testing.T) {
