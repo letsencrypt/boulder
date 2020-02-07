@@ -12,6 +12,7 @@
 `ceremony` uses YAML for its configuration file.
 
 | Field | Ceremony Type | Description |
+| --- | --- | --- |
 | `pkcs11-module` | All | Path to the PKCS#11 module to use to communicate with a HSM. |
 | `ceremony-type` |  |  |
 | `key-slot` |  |  |
