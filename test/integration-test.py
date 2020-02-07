@@ -31,6 +31,13 @@ from helpers import *
 
 from acme import challenges
 
+# Set the environment variable RACE to anything other than 'true' to disable
+# race detection. This significantly speeds up integration testing cycles
+# locally.
+race_detection = True
+if os.environ.get('RACE', 'true') != 'true':
+    race_detection = False
+
 def run_client_tests():
     root = os.environ.get("CERTBOT_PATH")
     assert root is not None, (
@@ -261,19 +268,19 @@ def main():
         now = datetime.datetime.utcnow()
 
         six_months_ago = now+datetime.timedelta(days=-30*6)
-        if not startservers.start(race_detection=True, fakeclock=fakeclock(six_months_ago)):
+        if not startservers.start(race_detection=race_detection, fakeclock=fakeclock(six_months_ago)):
             raise(Exception("startservers failed (mocking six months ago)"))
         v1_integration.caa_client = caa_client = chisel.make_client()
         setup_six_months_ago()
         startservers.stop()
 
         twenty_days_ago = now+datetime.timedelta(days=-20)
-        if not startservers.start(race_detection=True, fakeclock=fakeclock(twenty_days_ago)):
+        if not startservers.start(race_detection=race_detection, fakeclock=fakeclock(twenty_days_ago)):
             raise(Exception("startservers failed (mocking twenty days ago)"))
         setup_twenty_days_ago()
         startservers.stop()
 
-    if not startservers.start(race_detection=True, fakeclock=None):
+    if not startservers.start(race_detection=race_detection, fakeclock=None):
         raise(Exception("startservers failed"))
 
     if args.run_chisel:
