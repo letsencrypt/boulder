@@ -113,10 +113,10 @@ func getKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string,
 		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil)},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve key type: %s", err)
+		return nil, fmt.Errorf("GetAttributeValue failed: %s", err)
 	}
 	if len(attrs) == 0 {
-		return nil, errors.New("failed to retrieve key attributes")
+		return nil, errors.New("no key attributes found")
 	}
 
 	// Retrieve the public key handle with the same CKA_ID as the private key
