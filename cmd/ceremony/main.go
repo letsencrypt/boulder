@@ -24,8 +24,8 @@ const (
 )
 
 type ceremonyConfig struct {
-	CeremonyType       string       `yaml:"ceremony-type"`
 	PKCS11Module       string       `yaml:"pkcs11-module"`
+	CeremonyType       string       `yaml:"ceremony-type"`
 	KeySlot            uint         `yaml:"key-slot"`
 	KeyLabel           string       `yaml:"key-label"`
 	KeyID              string       `yaml:"key-id"`
