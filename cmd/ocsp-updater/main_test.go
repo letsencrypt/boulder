@@ -535,18 +535,21 @@ func TestTickSleep(t *testing.T) {
 	updater.dbMap = m
 
 	// Test when updateOCSPResponses fails the failure counter is incremented
-	// and the clock moved forward
+	// and the clock moved forward by more than updater.tickWindow
+	updater.tickFailures = 2
 	before := fc.Now()
 	updater.tick()
-	test.AssertEquals(t, updater.tickFailures, 1)
-	test.Assert(t, !fc.Now().Equal(before), "Clock didn't move forward")
+	test.AssertEquals(t, updater.tickFailures, 3)
+	took := fc.Since(before)
+	test.Assert(t, took > updater.tickWindow, "Clock didn't move forward enough")
 
 	// Test when updateOCSPResponses works the failure counter is reset to zero
-	// and the clock doesn't move
+	// and the clock only moves by updater.tickWindow
 	updater.dbMap = dbMap
 	before = fc.Now()
 	updater.tick()
 	test.AssertEquals(t, updater.tickFailures, 0)
-	test.Assert(t, fc.Now().Equal(before), "Clock moved forward")
+	took = fc.Since(before)
+	test.AssertEquals(t, took, updater.tickWindow)
 
 }
