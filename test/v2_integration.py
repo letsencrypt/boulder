@@ -887,25 +887,29 @@ def test_http_multiva_threshold_fail():
 
     hostname, cleanup = multiva_setup(client, guestlist)
 
+    failed_authzrs = []
     try:
         chisel2.auth_and_issue([hostname], client=client, chall_type="http-01")
     except acme_errors.ValidationError as e:
         # NOTE(@cpu): Chisel2's expect_problem doesn't work in this case so this
         # test needs to unpack an `acme_errors.ValidationError` on its own. It
         # might be possible to clean this up in the future.
-        if len(e.failed_authzrs) != 1:
-            raise(Exception("expected one failed authz, found {0}".format(len(e.failed_authzrs))))
-        challs = e.failed_authzrs[0].body.challenges
-        httpChall = None
-        for chall_body in challs:
-            if isinstance(chall_body.chall, challenges.HTTP01):
-                httpChall = chall_body
-        if httpChall is None:
-            raise(Exception("no HTTP-01 challenge in failed authz"))
-        if httpChall.error.typ != "urn:ietf:params:acme:error:unauthorized":
-            raise(Exception("expected unauthorized prob, found {0}".format(httpChall.error.typ)))
+        failed_authzrs = e.failed_authzrs
     finally:
         cleanup()
+    if len(failed_authzrs) != 1:
+        raise(Exception("expected one failed authz, found {0}".format(len(failed_authzrs))))
+    challs = failed_authzrs[0].body.challenges
+    httpChall = None
+    for chall_body in challs:
+        if isinstance(chall_body.chall, challenges.HTTP01):
+            httpChall = chall_body
+    if httpChall is None:
+        raise(Exception("no HTTP-01 challenge in failed authz"))
+    if httpChall.error.typ != "urn:ietf:params:acme:error:unauthorized":
+        raise(Exception("expected unauthorized prob, found {0}".format(httpChall.error.typ)))
+    if not httpChall.error.detail.startswith("During secondary validation: "):
+        raise(Exception("expected 'During secondary validation' problem detail, found {0}".format(httpChall.error.detail)))
 
 def test_http_multiva_threshold_fail_domain_disabled():
     # Only the config-next config dir has remote VAs and a multi VA policy file
