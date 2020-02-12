@@ -52,6 +52,9 @@ certificate-profile:
     country: US
     not-before: 2020-01-01 12:00:00
     not-after: 2040-01-01 12:00:00
+    key-usages:
+        - Cert Sign
+        - CRL Sign
 ```
 
 This config generates a ECDSA P-384 key in the HSM with the object label `root signing key` and uses this key to sign a self-signed certificate. The public key for the key generated is written to `/home/user/root-signing-pub.pem` and the certificate is written to `/home/user/root-cert.pem`.
@@ -80,6 +83,10 @@ certificate-profile:
     policy-oids:
         - 1.2.3
         - 5.4.3.2.1
+    key-usages:
+        - Digital Signature
+        - Cert Sign
+        - CRL Sign
 ```
 
 This config generates an intermediate certificate signed by a key in the HSM, identified by the object label `root signing key` and the object ID `ffff`. The subject key used is taken from `/home/user/intermediate-signing-pub.pem` and the issuer is `/home/user/root-cert.pem`, the resulting certificate is written to `/home/user/intermediate-cert.pem`.
@@ -114,3 +121,4 @@ The certificate profile defines a restricted set of fields that are used to gene
 | `crl-url` | Specifies the cRLDistributionPoints URL |
 | `issuer-url` | Specifies the AIA caIssuer URL |
 | `policy-oids` | Specifies the contents of the certificatePolicies extension |
+| `key-usages` | Specifies list of key usage bits should be set, list can contain `Digital Signature`, `CRL Sign`, and `Cert Sign` |

@@ -6,6 +6,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/asn1"
 	"errors"
 	"math/big"
@@ -109,6 +110,15 @@ func TestMakeTemplate(t *testing.T) {
 		_, err := rand.Read(r)
 		return r, err
 	}
+
+	_, err = makeTemplate(ctx, 0, profile, nil)
+	test.AssertError(t, err, "makeTemplate didn't fail with empty key usages")
+
+	profile.KeyUsages = []string{"asd"}
+	_, err = makeTemplate(ctx, 0, profile, nil)
+	test.AssertError(t, err, "makeTemplate didn't fail with invalid key usages")
+
+	profile.KeyUsages = []string{"Digital Signature", "CRL Sign"}
 	profile.CommonName = "common name"
 	profile.Organization = "organization"
 	profile.Country = "country"
@@ -128,6 +138,7 @@ func TestMakeTemplate(t *testing.T) {
 	test.AssertEquals(t, cert.CRLDistributionPoints[0], profile.CRLURL)
 	test.AssertEquals(t, len(cert.IssuingCertificateURL), 1)
 	test.AssertEquals(t, cert.IssuingCertificateURL[0], profile.IssuerURL)
+	test.AssertEquals(t, cert.KeyUsage, x509.KeyUsageDigitalSignature|x509.KeyUsageCRLSign)
 }
 
 func TestVerifyProfile(t *testing.T) {

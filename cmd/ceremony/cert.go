@@ -55,6 +55,9 @@ type certProfile struct {
 	// policies extension. These should be formatted in the standard OID
 	// string format (i.e. "1.2.3")
 	PolicyOIDs []string `yaml:"policy-oids"`
+
+	// KeyUsages should contain the set of key usage bits to set
+	KeyUsages []string `yaml:"key-usages`
 }
 
 // AllowedSigAlgs contains the allowed signature algorithms
@@ -110,6 +113,12 @@ func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
 	return oid, nil
 }
 
+var stringToKeyUsage = map[string]x509.KeyUsage{
+	"Digital Signature": x509.KeyUsageDigitalSignature,
+	"CRL Sign":          x509.KeyUsageCRLSign,
+	"Cert Sign":         x509.KeyUsageCertSign,
+}
+
 // makeTemplate generates the certificate template for use in x509.CreateCertificate
 func makeTemplate(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, profile *certProfile, pubKey []byte) (*x509.Certificate, error) {
 	dateLayout := "2006-01-02 15:04:05"
@@ -156,6 +165,18 @@ func makeTemplate(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, profile
 		return nil, fmt.Errorf("failed to generate serial number: %s", err)
 	}
 
+	var ku x509.KeyUsage
+	if len(profile.KeyUsages) == 0 {
+		return nil, errors.New("key usages must be set")
+	}
+	for _, kuStr := range profile.KeyUsages {
+		kuBit, ok := stringToKeyUsage[kuStr]
+		if !ok {
+			return nil, fmt.Errorf("unknown key usage %q", kuStr)
+		}
+		ku |= kuBit
+	}
+
 	cert := &x509.Certificate{
 		SignatureAlgorithm:    sigAlg,
 		SerialNumber:          big.NewInt(0).SetBytes(serial),
@@ -172,7 +193,7 @@ func makeTemplate(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, profile
 		CRLDistributionPoints: crlDistributionPoints,
 		IssuingCertificateURL: issuingCertificateURL,
 		PolicyIdentifiers:     policyOIDs,
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		KeyUsage:              ku,
 		SubjectKeyId:          subjectKeyID[:],
 	}
 
