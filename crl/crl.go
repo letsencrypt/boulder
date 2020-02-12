@@ -50,6 +50,7 @@ var (
 	oidISOSignatureSHA1WithRSA = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 29}
 )
 
+// RFC 5280, 5.1.1.2
 var signatureAlgorithmDetails = []struct {
 	algo       x509.SignatureAlgorithm
 	name       string
@@ -239,7 +240,8 @@ type CRLTemplate struct {
 //
 // The CRL is signed by priv.
 //
-// revokedCerts may be nil, in which case an empty CRL will be created.
+// revokedCerts may be nil, in which case an empty CRL will be created per
+// RFC 5280, 5.1.2.6
 //
 // The issuer distinguished name CRL field and authority key identifier extension
 // are populated using the issuer certificate. issuer must have SubjectKeyId set.
@@ -283,6 +285,7 @@ func CreateCRL(rand io.Reader, issuer *x509.Certificate, priv crypto.Signer, tem
 		return nil, err
 	}
 
+	// RFC 5280, 5.1.1.1 and section 5.1.2
 	tbsCertList := pkix.TBSCertificateList{
 		Version:             1,
 		Signature:           signatureAlgorithm,
