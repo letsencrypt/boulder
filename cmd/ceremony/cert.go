@@ -57,7 +57,7 @@ type certProfile struct {
 	PolicyOIDs []string `yaml:"policy-oids"`
 
 	// KeyUsages should contain the set of key usage bits to set
-	KeyUsages []string `yaml:"key-usages`
+	KeyUsages []string `yaml:"key-usages"`
 }
 
 // AllowedSigAlgs contains the allowed signature algorithms
