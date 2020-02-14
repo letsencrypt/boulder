@@ -329,8 +329,6 @@ func TestMultiVA(t *testing.T) {
 		`The key authorization file from the server did not match this challenge %q != "???"`,
 		expectedKeyAuthorization)
 
-	internalErr := probs.ServerInternal("Remote PerformValidation RPC failed")
-
 	expectedInternalErrLine := fmt.Sprintf(
 		`ERR: \[AUDIT\] Remote VA "broken".PerformValidation failed: %s`,
 		brokenRemoteVAError.Error())
@@ -382,7 +380,7 @@ func TestMultiVA(t *testing.T) {
 			},
 			AllowedUAs:   allowedUAs,
 			Features:     enforceMultiVA,
-			ExpectedProb: internalErr,
+			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
 			// The real failure cause should be logged
 			ExpectedLog: expectedInternalErrLine,
 		},
@@ -410,11 +408,13 @@ func TestMultiVA(t *testing.T) {
 		{
 			// With only one working remote VA there should be a validation failure
 			// when enforcing multi VA.
-			Name:         "Local VA and one remote VA OK, enforce multi VA",
-			RemoteVAs:    remoteVAs,
-			AllowedUAs:   map[string]bool{localUA: true, remoteUA2: true},
-			Features:     enforceMultiVA,
-			ExpectedProb: unauthorized,
+			Name:       "Local VA and one remote VA OK, enforce multi VA",
+			RemoteVAs:  remoteVAs,
+			AllowedUAs: map[string]bool{localUA: true, remoteUA2: true},
+			Features:   enforceMultiVA,
+			ExpectedProb: probs.Unauthorized(
+				`During secondary validation: The key authorization file from the server did not match this challenge %q != "???"`,
+				expectedKeyAuthorization),
 		},
 		{
 			// With one remote VA cancelled there should not be a validation failure
@@ -442,7 +442,7 @@ func TestMultiVA(t *testing.T) {
 			// With the local and remote VAs seeing diff problems and the full results
 			// feature flag on but multi VA enforcement off we expect
 			// no problem.
-			Name:       "Local and remove VA differential, full results, no enforce multi VA",
+			Name:       "Local and remote VA differential, full results, no enforce multi VA",
 			RemoteVAs:  remoteVAs,
 			AllowedUAs: map[string]bool{localUA: true},
 			Features:   noEnforceMultiVAFullResults,
@@ -450,11 +450,13 @@ func TestMultiVA(t *testing.T) {
 		{
 			// With the local and remote VAs seeing diff problems and the full results
 			// feature flag on and multi VA enforcement on we expect a problem.
-			Name:         "Local and remove VA differential, full results, enforce multi VA",
-			RemoteVAs:    remoteVAs,
-			AllowedUAs:   map[string]bool{localUA: true},
-			Features:     enforceMultiVAFullResults,
-			ExpectedProb: unauthorized,
+			Name:       "Local and remote VA differential, full results, enforce multi VA",
+			RemoteVAs:  remoteVAs,
+			AllowedUAs: map[string]bool{localUA: true},
+			Features:   enforceMultiVAFullResults,
+			ExpectedProb: probs.Unauthorized(
+				`During secondary validation: The key authorization file from the server did not match this challenge %q != "???"`,
+				expectedKeyAuthorization),
 		},
 	}
 
