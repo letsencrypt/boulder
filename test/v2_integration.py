@@ -891,7 +891,7 @@ def test_http_multiva_primary_fail_remote_pass():
 
     try:
         # The overall validation should fail even if the remotes are allowed
-        # because the primary VA result cannot be overriden.
+        # because the primary VA result cannot be overridden.
         chisel2.auth_and_issue([hostname], client=client, chall_type="http-01")
     except acme_errors.ValidationError as e:
         # NOTE(@cpu): Chisel2's expect_problem doesn't work in this case so this
