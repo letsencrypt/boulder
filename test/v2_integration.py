@@ -770,7 +770,7 @@ def BouncerHTTPRequestHandler(redirect, guestlist):
                 self.log_message("BouncerHandler UA {0} has no requests on the Guestlist. Sending request to the curb".format(ua))
                 self.send_response(200)
                 self.end_headers()
-                self.wfile.write(u'(• ◡ •) <( VIPs only! )')
+                self.wfile.write(u'(• ◡ •) <( VIPs only! )'.encode())
 
     BouncerHandler.guestlist = guestlist
     BouncerHandler.redirect = redirect
@@ -872,6 +872,47 @@ def test_http_multiva_threshold_pass():
         chisel2.auth_and_issue([hostname], client=client, chall_type="http-01")
     finally:
         cleanup()
+
+def test_http_multiva_primary_fail_remote_pass():
+    # Only config-next has remote VAs configured and is appropriate for this
+    # integration test.
+    if not CONFIG_NEXT:
+        return
+
+    client = chisel2.make_client()
+
+    # Configure a guestlist that will fail the primary VA check but allow the
+    # remote VAs
+    guestlist = {"boulder": 0, "boulder-remote-a": 1, "boulder-remote-b": 1}
+
+    hostname, cleanup = multiva_setup(client, guestlist)
+
+    foundException = False
+
+    try:
+        # The overall validation should fail even if the remotes are allowed
+        # because the primary VA result cannot be overridden.
+        chisel2.auth_and_issue([hostname], client=client, chall_type="http-01")
+    except acme_errors.ValidationError as e:
+        # NOTE(@cpu): Chisel2's expect_problem doesn't work in this case so this
+        # test needs to unpack an `acme_errors.ValidationError` on its own. It
+        # might be possible to clean this up in the future.
+        if len(e.failed_authzrs) != 1:
+            raise(Exception("expected one failed authz, found {0}".format(len(e.failed_authzrs))))
+        challs = e.failed_authzrs[0].body.challenges
+        httpChall = None
+        for chall_body in challs:
+            if isinstance(chall_body.chall, challenges.HTTP01):
+                httpChall = chall_body
+        if httpChall is None:
+            raise(Exception("no HTTP-01 challenge in failed authz"))
+        if httpChall.error.typ != "urn:ietf:params:acme:error:unauthorized":
+            raise(Exception("expected unauthorized prob, found {0}".format(httpChall.error.typ)))
+        foundException = True
+    finally:
+        cleanup()
+        if foundException is False:
+            raise(Exception("Overall validation did not fail"))
 
 def test_http_multiva_threshold_fail():
     # Only config-next has remote VAs configured and is appropriate for this
