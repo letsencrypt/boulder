@@ -70,7 +70,7 @@ var AllowedSigAlgs = map[string]x509.SignatureAlgorithm{
 	"ECDSAWithSHA512": x509.ECDSAWithSHA512,
 }
 
-func verifyProfile(profile *certProfile, root bool) error {
+func (profile *certProfile) verifyProfile(root bool) error {
 	if profile.NotBefore == "" {
 		return errors.New("not-before is required")
 	}
@@ -200,6 +200,12 @@ func makeTemplate(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, profile
 	return cert, nil
 }
 
+// failReader exists to be passed to x509.CreateCertificate which requires
+// a source of randomness for signing methods that require a source of
+// randomness. Since HSM based signing will generate its own randomness
+// we don't need a real reader. Instead of passing a nil reader we use one
+// that always returns errors in case the internal usage of this reader
+// changes.
 type failReader struct{}
 
 func (fr *failReader) Read([]byte) (int, error) {

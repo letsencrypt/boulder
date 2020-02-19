@@ -14,22 +14,22 @@ func TestValidateConfig(t *testing.T) {
 			expectedError: "pkcs11-module is required",
 		},
 		{
+			name: "no key-label",
+			config: ceremonyConfig{
+				PKCS11Module: "asd",
+			},
+			expectedError: "key-label is required",
+		},
+		{
 			name: "invalid ceremony-type",
 			config: ceremonyConfig{
 				PKCS11Module: "asd",
+				KeyLabel:     "label",
 				CeremonyType: "doop",
 			},
 			expectedError: "ceremony-type can only be 'root', 'intermediate', or 'key'",
 		},
 		// root tests
-		{
-			name: "root: no key-label",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "root",
-			},
-			expectedError: "key-label is required",
-		},
 		{
 			name: "root: key-id present",
 			config: ceremonyConfig{
@@ -60,12 +60,24 @@ func TestValidateConfig(t *testing.T) {
 			expectedError: "key-type can only be 'rsa' or 'ecdsa'",
 		},
 		{
+			name: "root: rsa key-type with invalid rsa-mod-length",
+			config: ceremonyConfig{
+				PKCS11Module: "asd",
+				CeremonyType: "root",
+				KeyLabel:     "label",
+				KeyType:      "rsa",
+				RSAModLength: 1337,
+			},
+			expectedError: "rsa-mod-length can only be 2048 or 4096",
+		},
+		{
 			name: "root: rsa key-type with ecdsa-curve",
 			config: ceremonyConfig{
 				PKCS11Module: "asd",
 				CeremonyType: "root",
 				KeyLabel:     "label",
 				KeyType:      "rsa",
+				RSAModLength: 2048,
 				ECDSACurve:   "mhm",
 			},
 			expectedError: "if key-type = \"rsa\" then ecdsa-curve is not used",
@@ -87,6 +99,7 @@ func TestValidateConfig(t *testing.T) {
 				CeremonyType: "root",
 				KeyLabel:     "label",
 				KeyType:      "rsa",
+				RSAModLength: 2048,
 			},
 			expectedError: "public-key-path is required",
 		},
@@ -97,6 +110,7 @@ func TestValidateConfig(t *testing.T) {
 				CeremonyType:  "root",
 				KeyLabel:      "label",
 				KeyType:       "rsa",
+				RSAModLength:  2048,
 				PublicKeyPath: "path",
 			},
 			expectedError: "certificate-path is required",
@@ -108,6 +122,7 @@ func TestValidateConfig(t *testing.T) {
 				CeremonyType:    "root",
 				KeyLabel:        "label",
 				KeyType:         "rsa",
+				RSAModLength:    2048,
 				PublicKeyPath:   "path",
 				CertificatePath: "path",
 				IssuerPath:      "bad path",
@@ -121,6 +136,7 @@ func TestValidateConfig(t *testing.T) {
 				CeremonyType:    "root",
 				KeyLabel:        "label",
 				KeyType:         "rsa",
+				RSAModLength:    2048,
 				PublicKeyPath:   "path",
 				CertificatePath: "path",
 			},
@@ -133,6 +149,7 @@ func TestValidateConfig(t *testing.T) {
 				CeremonyType:       "root",
 				KeyLabel:           "label",
 				KeyType:            "rsa",
+				RSAModLength:       2048,
 				PublicKeyPath:      "path",
 				CertificatePath:    "path",
 				CertificateProfile: &certProfile{},
@@ -140,14 +157,6 @@ func TestValidateConfig(t *testing.T) {
 			expectedError: "invalid certificate-profile: not-before is required",
 		},
 		// intermediate tests
-		{
-			name: "intermediate: no key-label",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "intermediate",
-			},
-			expectedError: "key-label is required",
-		},
 		{
 			name: "intermediate: no key-id",
 			config: ceremonyConfig{
@@ -241,14 +250,6 @@ func TestValidateConfig(t *testing.T) {
 		},
 		// key tests
 		{
-			name: "key: no key-label",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "key",
-			},
-			expectedError: "key-label is required",
-		},
-		{
 			name: "key: key-id present",
 			config: ceremonyConfig{
 				PKCS11Module: "asd",
@@ -278,12 +279,24 @@ func TestValidateConfig(t *testing.T) {
 			expectedError: "key-type can only be 'rsa' or 'ecdsa'",
 		},
 		{
+			name: "key: rsa key-type with invalid rsa-mod-length",
+			config: ceremonyConfig{
+				PKCS11Module: "asd",
+				CeremonyType: "root",
+				KeyLabel:     "label",
+				KeyType:      "rsa",
+				RSAModLength: 1337,
+			},
+			expectedError: "rsa-mod-length can only be 2048 or 4096",
+		},
+		{
 			name: "key: rsa key-type with ecdsa-curve",
 			config: ceremonyConfig{
 				PKCS11Module: "asd",
 				CeremonyType: "key",
 				KeyLabel:     "label",
 				KeyType:      "rsa",
+				RSAModLength: 2048,
 				ECDSACurve:   "mhm",
 			},
 			expectedError: "if key-type = \"rsa\" then ecdsa-curve is not used",
@@ -305,6 +318,7 @@ func TestValidateConfig(t *testing.T) {
 				CeremonyType: "key",
 				KeyLabel:     "label",
 				KeyType:      "rsa",
+				RSAModLength: 2048,
 			},
 			expectedError: "public-key-path is required",
 		},
@@ -315,6 +329,7 @@ func TestValidateConfig(t *testing.T) {
 				CeremonyType:  "key",
 				KeyLabel:      "label",
 				KeyType:       "rsa",
+				RSAModLength:  2048,
 				PublicKeyPath: "path",
 				IssuerPath:    "path",
 			},
@@ -327,6 +342,7 @@ func TestValidateConfig(t *testing.T) {
 				CeremonyType:    "key",
 				KeyLabel:        "label",
 				KeyType:         "rsa",
+				RSAModLength:    2048,
 				PublicKeyPath:   "path",
 				CertificatePath: "path",
 			},
@@ -339,6 +355,7 @@ func TestValidateConfig(t *testing.T) {
 				CeremonyType:       "key",
 				KeyLabel:           "label",
 				KeyType:            "rsa",
+				RSAModLength:       2048,
 				PublicKeyPath:      "path",
 				CertificateProfile: &certProfile{},
 			},

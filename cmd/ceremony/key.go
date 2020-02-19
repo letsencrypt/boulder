@@ -29,23 +29,26 @@ func getRandomBytes(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle) ([]by
 }
 
 const (
-	rsaModLen = 2048
-	rsaExp    = 65537
+	rsaExp = 65537
 )
 
+// keyInfo is a struct used to pass around information about the public key
+// associated with the generated private key. der contains the DER encoding
+// of the SubjectPublicKeyInfo structure for the public key. id contains the
+// HSM key pair object ID.
 type keyInfo struct {
-	key interface{}
+	key crypto.PublicKey
 	der []byte
 	id  []byte
 }
 
 func generateKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, config ceremonyConfig) (*keyInfo, error) {
-	var pubKey interface{}
+	var pubKey crypto.PublicKey
 	var keyID []byte
 	var err error
 	switch config.KeyType {
 	case "RSA":
-		pubKey, keyID, err = rsaGenerate(ctx, session, config.KeyLabel, rsaModLen, rsaExp)
+		pubKey, keyID, err = rsaGenerate(ctx, session, config.KeyLabel, config.RSAModLength, rsaExp)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate RSA key pair: %s", err)
 		}
@@ -94,8 +97,11 @@ func findObject(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, tmpl []*p
 }
 
 // getKey constructs a x509Signer for the private key object associated with the
-// given label and ID
-func getKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string, id []byte) (*x509Signer, error) {
+// given label and ID. Unlike letsencrypt/pkcs11key this method doesn't rely on
+// having the actual public key object in order to retrieve the private key
+// handle. This is because we already have the key pair object ID, and as such
+// do not need to query the HSM to retrieve it.
+func getKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string, id []byte) (crypto.Signer, error) {
 	// Retrieve the private key handle that will later be used for the certificate
 	// signing operation
 	privateHandle, err := findObject(ctx, session, []*pkcs11.Attribute{

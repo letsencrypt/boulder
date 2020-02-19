@@ -248,7 +248,7 @@ func TestVerifyProfile(t *testing.T) {
 			root: true,
 		},
 	} {
-		err := verifyProfile(&tc.profile, tc.root)
+		err := tc.profile.verifyProfile(tc.root)
 		if err != nil {
 			if tc.expectedErr != err.Error() {
 				t.Fatalf("Expected %q, got %q", tc.expectedErr, err.Error())

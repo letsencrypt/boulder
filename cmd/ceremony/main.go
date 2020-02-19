@@ -30,6 +30,7 @@ type ceremonyConfig struct {
 	KeyLabel           string       `yaml:"key-label"`
 	KeyID              string       `yaml:"key-id"`
 	KeyType            string       `yaml:"key-type"`
+	RSAModLength       uint         `yaml:"rsa-mod-length"`
 	ECDSACurve         string       `yaml:"ecdsa-curve"`
 	PublicKeyPath      string       `yaml:"public-key-path"`
 	CertificatePath    string       `yaml:"certificate-path"`
@@ -37,35 +38,42 @@ type ceremonyConfig struct {
 	CertificateProfile *certProfile `yaml:"certificate-profile"`
 }
 
+func (cc ceremonyConfig) validateKeyGenFields() error {
+	if cc.KeyType == "" {
+		return errors.New("key-type is required")
+	}
+	if cc.KeyType != "rsa" && cc.KeyType != "ecdsa" {
+		return errors.New("key-type can only be 'rsa' or 'ecdsa'")
+	}
+	if cc.KeyType == "rsa" && (cc.RSAModLength != 2048 && cc.RSAModLength != 4096) {
+		return errors.New("rsa-mod-length can only be 2048 or 4096")
+	}
+	if cc.KeyType == "rsa" && cc.ECDSACurve != "" {
+		return errors.New("if key-type = \"rsa\" then ecdsa-curve is not used")
+	}
+	if cc.KeyType == "ecdsa" && cc.ECDSACurve == "" {
+		return errors.New("if key-type = \"ecdsa\" then ecdsa-curve is required")
+	}
+	if cc.PublicKeyPath == "" {
+		return errors.New("public-key-path is required")
+	}
+	return nil
+}
+
 func (cc ceremonyConfig) Validate() error {
 	if cc.PKCS11Module == "" {
 		return errors.New("pkcs11-module is required")
 	}
-	if cc.CeremonyType != "root" && cc.CeremonyType != "intermediate" && cc.CeremonyType != "key" {
-		return errors.New("ceremony-type can only be 'root', 'intermediate', or 'key'")
+	if cc.KeyLabel == "" {
+		return errors.New("key-label is required")
 	}
 	switch cc.CeremonyType {
 	case "root":
-		if cc.KeyLabel == "" {
-			return errors.New("key-label is required")
-		}
 		if cc.KeyID != "" {
 			return errors.New("key-id is not used for root ceremonies")
 		}
-		if cc.KeyType == "" {
-			return errors.New("key-type is required")
-		}
-		if cc.KeyType != "rsa" && cc.KeyType != "ecdsa" {
-			return errors.New("key-type can only be 'rsa' or 'ecdsa'")
-		}
-		if cc.KeyType == "rsa" && cc.ECDSACurve != "" {
-			return errors.New("if key-type = \"rsa\" then ecdsa-curve is not used")
-		}
-		if cc.KeyType == "ecdsa" && cc.ECDSACurve == "" {
-			return errors.New("if key-type = \"ecdsa\" then ecdsa-curve is required")
-		}
-		if cc.PublicKeyPath == "" {
-			return errors.New("public-key-path is required")
+		if err := cc.validateKeyGenFields(); err != nil {
+			return err
 		}
 		if cc.CertificatePath == "" {
 			return errors.New("certificate-path is required")
@@ -76,13 +84,10 @@ func (cc ceremonyConfig) Validate() error {
 		if cc.CertificateProfile == nil {
 			return errors.New("certificate-profile is required")
 		}
-		if err := verifyProfile(cc.CertificateProfile, true); err != nil {
+		if err := cc.CertificateProfile.verifyProfile(true); err != nil {
 			return fmt.Errorf("invalid certificate-profile: %s", err)
 		}
 	case "intermediate":
-		if cc.KeyLabel == "" {
-			return errors.New("key-label is required")
-		}
 		if cc.KeyID == "" {
 			return errors.New("key-id is required")
 		}
@@ -104,30 +109,15 @@ func (cc ceremonyConfig) Validate() error {
 		if cc.CertificateProfile == nil {
 			return errors.New("certificate-profile is required")
 		}
-		if err := verifyProfile(cc.CertificateProfile, true); err != nil {
+		if err := cc.CertificateProfile.verifyProfile(true); err != nil {
 			return fmt.Errorf("invalid certificate-profile: %s", err)
 		}
 	case "key":
-		if cc.KeyLabel == "" {
-			return errors.New("key-label is required")
-		}
 		if cc.KeyID != "" {
 			return errors.New("key-id is not used for key ceremonies")
 		}
-		if cc.KeyType == "" {
-			return errors.New("key-type is required")
-		}
-		if cc.KeyType != "rsa" && cc.KeyType != "ecdsa" {
-			return errors.New("key-type can only be 'rsa' or 'ecdsa'")
-		}
-		if cc.KeyType == "rsa" && cc.ECDSACurve != "" {
-			return errors.New("if key-type = \"rsa\" then ecdsa-curve is not used")
-		}
-		if cc.KeyType == "ecdsa" && cc.ECDSACurve == "" {
-			return errors.New("if key-type = \"ecdsa\" then ecdsa-curve is required")
-		}
-		if cc.PublicKeyPath == "" {
-			return errors.New("public-key-path is required")
+		if err := cc.validateKeyGenFields(); err != nil {
+			return err
 		}
 		if cc.IssuerPath != "" {
 			return errors.New("issuer-path is not used for key ceremonies")
@@ -138,6 +128,8 @@ func (cc ceremonyConfig) Validate() error {
 		if cc.CertificateProfile != nil {
 			return errors.New("certificate-profile is not used for key ceremonies")
 		}
+	default:
+		return errors.New("ceremony-type can only be 'root', 'intermediate', or 'key'")
 	}
 
 	return nil
@@ -193,7 +185,8 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to create certificate: %s", err)
 		}
-		log.Printf("Signed certificate: %x\n", certBytes)
+		pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
+		log.Printf("Signed certificate PEM:\n%s", pemBytes)
 		cert, err := x509.ParseCertificate(certBytes)
 		if err != nil {
 			log.Fatalf("Failed to parse signed certificate: %s", err)
@@ -202,8 +195,6 @@ func main() {
 			log.Fatalf("Failed to verify certificate signature: %s", err)
 		}
 		log.Println("Verified certificate signature")
-		pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
-		log.Printf("Certificate PEM:\n%s", pemBytes)
 		if err := ioutil.WriteFile(config.CertificatePath, pemBytes, 0644); err != nil {
 			log.Fatalf("Failed to write certificate to %q: %s", config.CertificatePath, err)
 		}
@@ -257,7 +248,8 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to create certificate: %s", err)
 		}
-		log.Printf("Signed certificate: %x\n", certBytes)
+		pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
+		log.Printf("Signed certificate PEM:\n%s", pemBytes)
 		cert, err := x509.ParseCertificate(certBytes)
 		if err != nil {
 			log.Fatalf("Failed to parse signed certificate: %s", err)
@@ -265,8 +257,6 @@ func main() {
 		if err := cert.CheckSignatureFrom(issuer); err != nil {
 			log.Fatalf("Failed to verify certificate signature: %s", err)
 		}
-		log.Println("Verified certificate signature")
-		pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
 		log.Printf("Certificate PEM:\n%s", pemBytes)
 		if err := ioutil.WriteFile(config.CertificatePath, pemBytes, 0644); err != nil {
 			log.Fatalf("Failed to write certificate to %q: %s", config.CertificatePath, err)
