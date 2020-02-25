@@ -2,6 +2,7 @@
 package main
 
 import (
+	"crypto"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
@@ -182,6 +183,33 @@ func (kc keyConfig) validate() error {
 	return nil
 }
 
+func signAndWriteCert(tbs, issuer *x509.Certificate, pubKey crypto.PublicKey, signer crypto.Signer, certPath string) error {
+	// x509.CreateCertificate uses a io.Reader here for signing methods that require
+	// a source of randomness. Since PKCS#11 based signing generates needed randomness
+	// at the HSM we don't need to pass a real reader. Instead of passing a nil reader
+	// we use one that always returns errors in case the internal usage of this reader
+	// changes.
+	certBytes, err := x509.CreateCertificate(&failReader{}, tbs, issuer, pubKey, signer)
+	if err != nil {
+		return fmt.Errorf("failed to create certificate: %s", err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
+	log.Printf("Signed certificate PEM:\n%s", pemBytes)
+	cert, err := x509.ParseCertificate(certBytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse signed certificate: %s", err)
+	}
+	if err := cert.CheckSignatureFrom(issuer); err != nil {
+		return fmt.Errorf("failed to verify certificate signature: %s", err)
+	}
+	log.Printf("Certificate PEM:\n%s", pemBytes)
+	if err := ioutil.WriteFile(certPath, pemBytes, 0644); err != nil {
+		return fmt.Errorf("failed to write certificate to %q: %s", certPath, err)
+	}
+	log.Printf("Certificate written to %q\n", certPath)
+	return nil
+}
+
 func rootCeremony(configBytes []byte) error {
 	var config rootConfig
 	err := yaml.UnmarshalStrict(configBytes, &config)
@@ -205,29 +233,11 @@ func rootCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
-	// x509.CreateCertificate uses a io.Reader here for signing methods that require
-	// a source of randomness. Since PKCS#11 based signing generates needed randomness
-	// at the HSM we don't need to pass a real reader. Instead of passing a nil reader
-	// we use one that always returns errors in case the internal usage of this reader
-	// changes.
-	certBytes, err := x509.CreateCertificate(&failReader{}, template, template, keyInfo.key, signer)
+	
+	err = signAndWriteCert(template, template, keyInfo.key, signer, config.Outputs.CertificatePath)
 	if err != nil {
-		return fmt.Errorf("failed to create certificate: %s", err)
+		return err
 	}
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
-	log.Printf("Signed certificate PEM:\n%s", pemBytes)
-	cert, err := x509.ParseCertificate(certBytes)
-	if err != nil {
-		return fmt.Errorf("failed to parse signed certificate: %s", err)
-	}
-	if err := cert.CheckSignatureFrom(cert); err != nil {
-		return fmt.Errorf("failed to verify certificate signature: %s", err)
-	}
-	log.Println("Verified certificate signature")
-	if err := ioutil.WriteFile(config.Outputs.CertificatePath, pemBytes, 0644); err != nil {
-		return fmt.Errorf("failed to write certificate to %q: %s", config.Outputs.CertificatePath, err)
-	}
-	log.Printf("Certificate written to %q\n", config.Outputs.CertificatePath)
 
 	return nil
 }
@@ -282,29 +292,11 @@ func intermediateCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
 	template.AuthorityKeyId = issuer.SubjectKeyId
-	// x509.CreateCertificate uses a io.Reader here for signing methods that require
-	// a source of randomness. Since PKCS#11 based signing generates needed randomness
-	// at the HSM we don't need to pass a real reader. Instead of passing a nil reader
-	// we use one that always returns errors in case the internal usage of this reader
-	// changes.
-	certBytes, err := x509.CreateCertificate(&failReader{}, template, issuer, pub, signer)
+
+	err = signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath)
 	if err != nil {
-		return fmt.Errorf("failed to create certificate: %s", err)
+		return err
 	}
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
-	log.Printf("Signed certificate PEM:\n%s", pemBytes)
-	cert, err := x509.ParseCertificate(certBytes)
-	if err != nil {
-		return fmt.Errorf("failed to parse signed certificate: %s", err)
-	}
-	if err := cert.CheckSignatureFrom(issuer); err != nil {
-		return fmt.Errorf("failed to verify certificate signature: %s", err)
-	}
-	log.Printf("Certificate PEM:\n%s", pemBytes)
-	if err := ioutil.WriteFile(config.Outputs.CertificatePath, pemBytes, 0644); err != nil {
-		return fmt.Errorf("failed to write certificate to %q: %s", config.Outputs.CertificatePath, err)
-	}
-	log.Printf("Certificate written to %q\n", config.Outputs.CertificatePath)
 
 	return nil
 }
