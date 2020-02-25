@@ -16,27 +16,13 @@ import (
 func TestRSAPub(t *testing.T) {
 	ctx := pkcs11helpers.MockCtx{}
 
-	// test attribute retrieval failing
-	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return nil, errors.New("yup")
-	}
-	_, err := rsaPub(ctx, 0, 0, 0, 0)
-	test.AssertError(t, err, "rsaPub didn't fail on GetAttributeValue error")
-
-	// test we fail to construct key with missing modulus and exp
-	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return []*pkcs11.Attribute{}, nil
-	}
-	_, err = rsaPub(ctx, 0, 0, 0, 0)
-	test.AssertError(t, err, "rsaPub didn't fail with empty attribute list")
-
 	// test we fail to construct key with non-matching exp
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, []byte{1, 0, 1}),
 		}, nil
 	}
-	_, err = rsaPub(ctx, 0, 0, 0, 0)
+	_, err := rsaPub(ctx, 0, 0, 0, 0)
 	test.AssertError(t, err, "rsaPub didn't fail with non-matching exp")
 
 	// test we fail to construct key with non-matching exp
