@@ -7,19 +7,12 @@ import (
 	"encoding/pem"
 	"errors"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"gopkg.in/yaml.v2"
-)
-
-type ceremonyType int
-
-const (
-	rootCeremony ceremonyType = iota
-	intermediateCeremony
-	keyCeremony
 )
 
 type keyGenConfig struct {
@@ -189,6 +182,151 @@ func (kc keyConfig) validate() error {
 	return nil
 }
 
+func rootCeremony(configBytes []byte) error {
+	var config rootConfig
+	err := yaml.UnmarshalStrict(configBytes, &config)
+	if err != nil {
+		return fmt.Errorf("failed to parse config: %s", err)
+	}
+	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.KeySlot, "")
+	if err != nil {
+		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.KeySlot, err)
+	}
+	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.KeySlot)
+	keyInfo, err := generateKey(ctx, session, config.PKCS11.KeyLabel, config.Outputs.PublicKeyPath, config.Key)
+	if err != nil {
+		return err
+	}
+	signer, err := getKey(ctx, session, config.PKCS11.KeyLabel, keyInfo.id)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve signer: %s", err)
+	}
+	template, err := makeTemplate(ctx, session, &config.CertProfile, keyInfo.der)
+	if err != nil {
+		return fmt.Errorf("failed to create certificate profile: %s", err)
+	}
+	// x509.CreateCertificate uses a io.Reader here for signing methods that require
+	// a source of randomness. Since PKCS#11 based signing generates needed randomness
+	// at the HSM we don't need to pass a real reader. Instead of passing a nil reader
+	// we use one that always returns errors in case the internal usage of this reader
+	// changes.
+	certBytes, err := x509.CreateCertificate(&failReader{}, template, template, keyInfo.key, signer)
+	if err != nil {
+		return fmt.Errorf("failed to create certificate: %s", err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
+	log.Printf("Signed certificate PEM:\n%s", pemBytes)
+	cert, err := x509.ParseCertificate(certBytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse signed certificate: %s", err)
+	}
+	if err := cert.CheckSignatureFrom(cert); err != nil {
+		return fmt.Errorf("failed to verify certificate signature: %s", err)
+	}
+	log.Println("Verified certificate signature")
+	if err := ioutil.WriteFile(config.Outputs.CertificatePath, pemBytes, 0644); err != nil {
+		return fmt.Errorf("failed to write certificate to %q: %s", config.Outputs.CertificatePath, err)
+	}
+	log.Printf("Certificate written to %q\n", config.Outputs.CertificatePath)
+
+	return nil
+}
+
+func intermediateCeremony(configBytes []byte) error {
+	var config intermediateConfig
+	err := yaml.UnmarshalStrict(configBytes, &config)
+	if err != nil {
+		return fmt.Errorf("failed to parse config: %s", err)
+	}
+	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.KeySlot, "")
+	if err != nil {
+		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.KeySlot, err)
+	}
+	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.KeySlot)
+	keyID, err := hex.DecodeString(config.PKCS11.KeyID)
+	if err != nil {
+		return fmt.Errorf("failed to decode key-id: %s", err)
+	}
+	signer, err := getKey(ctx, session, config.PKCS11.KeyLabel, keyID)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve private key handle: %s", err)
+	}
+	log.Println("Retrieved private key handle")
+
+	pubPEMBytes, err := ioutil.ReadFile(config.Inputs.PublicKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read public key %q: %s", config.Inputs.PublicKeyPath, err)
+	}
+	pubPEM, _ := pem.Decode(pubPEMBytes)
+	if pubPEM == nil {
+		return fmt.Errorf("failed to parse public key")
+	}
+	pub, err := x509.ParsePKIXPublicKey(pubPEM.Bytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse public key: %s", err)
+	}
+	issuerPEMBytes, err := ioutil.ReadFile(config.Inputs.IssuerCertificatePath)
+	if err != nil {
+		return fmt.Errorf("failed to read issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
+	}
+	issuerPEM, _ := pem.Decode(issuerPEMBytes)
+	if issuerPEM == nil {
+		return fmt.Errorf("failed to parse issuer certificate PEM")
+	}
+	issuer, err := x509.ParseCertificate(issuerPEM.Bytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse issuer certificate: %s", err)
+	}
+	template, err := makeTemplate(ctx, session, &config.CertProfile, pubPEM.Bytes)
+	if err != nil {
+		return fmt.Errorf("failed to create certificate profile: %s", err)
+	}
+	template.AuthorityKeyId = issuer.SubjectKeyId
+	// x509.CreateCertificate uses a io.Reader here for signing methods that require
+	// a source of randomness. Since PKCS#11 based signing generates needed randomness
+	// at the HSM we don't need to pass a real reader. Instead of passing a nil reader
+	// we use one that always returns errors in case the internal usage of this reader
+	// changes.
+	certBytes, err := x509.CreateCertificate(&failReader{}, template, issuer, pub, signer)
+	if err != nil {
+		return fmt.Errorf("failed to create certificate: %s", err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
+	log.Printf("Signed certificate PEM:\n%s", pemBytes)
+	cert, err := x509.ParseCertificate(certBytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse signed certificate: %s", err)
+	}
+	if err := cert.CheckSignatureFrom(issuer); err != nil {
+		return fmt.Errorf("failed to verify certificate signature: %s", err)
+	}
+	log.Printf("Certificate PEM:\n%s", pemBytes)
+	if err := ioutil.WriteFile(config.Outputs.CertificatePath, pemBytes, 0644); err != nil {
+		return fmt.Errorf("failed to write certificate to %q: %s", config.Outputs.CertificatePath, err)
+	}
+	log.Printf("Certificate written to %q\n", config.Outputs.CertificatePath)
+
+	return nil
+}
+
+func keyCeremony(configBytes []byte) error {
+	var config keyConfig
+	err := yaml.UnmarshalStrict(configBytes, &config)
+	if err != nil {
+		return fmt.Errorf("failed to parse config: %s", err)
+	}
+	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.KeySlot, "")
+	if err != nil {
+		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.KeySlot, err)
+	}
+	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.KeySlot)
+	if _, err = generateKey(ctx, session, config.PKCS11.KeyLabel, config.Outputs.PublicKeyPath, config.Key); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func main() {
 	configPath := flag.String("config", "", "Path to ceremony configuration file")
 	flag.Parse()
@@ -210,137 +348,19 @@ func main() {
 
 	switch ct.CeremonyType {
 	case "root":
-		var config rootConfig
-		err = yaml.UnmarshalStrict(configBytes, &config)
+		err = rootCeremony(configBytes)
 		if err != nil {
-			log.Fatalf("Failed to parse config: %s", err)
+			log.Fatalf("root ceremony failed: %s", err)
 		}
-		ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.KeySlot, "")
-		if err != nil {
-			log.Fatalf("Failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.KeySlot, err)
-		}
-		log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.KeySlot)
-		keyInfo, err := generateKey(ctx, session, config.PKCS11.KeyLabel, config.Outputs.PublicKeyPath, config.Key)
-		if err != nil {
-			log.Fatal(err)
-		}
-		signer, err := getKey(ctx, session, config.PKCS11.KeyLabel, keyInfo.id)
-		if err != nil {
-			log.Fatalf("Failed to retrieve signer: %s", err)
-		}
-		template, err := makeTemplate(ctx, session, &config.CertProfile, keyInfo.der)
-		if err != nil {
-			log.Fatalf("Failed to create certificate profile: %s", err)
-		}
-		// x509.CreateCertificate uses a io.Reader here for signing methods that require
-		// a source of randomness. Since PKCS#11 based signing generates needed randomness
-		// at the HSM we don't need to pass a real reader. Instead of passing a nil reader
-		// we use one that always returns errors in case the internal usage of this reader
-		// changes.
-		certBytes, err := x509.CreateCertificate(&failReader{}, template, template, keyInfo.key, signer)
-		if err != nil {
-			log.Fatalf("Failed to create certificate: %s", err)
-		}
-		pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
-		log.Printf("Signed certificate PEM:\n%s", pemBytes)
-		cert, err := x509.ParseCertificate(certBytes)
-		if err != nil {
-			log.Fatalf("Failed to parse signed certificate: %s", err)
-		}
-		if err := cert.CheckSignatureFrom(cert); err != nil {
-			log.Fatalf("Failed to verify certificate signature: %s", err)
-		}
-		log.Println("Verified certificate signature")
-		if err := ioutil.WriteFile(config.Outputs.CertificatePath, pemBytes, 0644); err != nil {
-			log.Fatalf("Failed to write certificate to %q: %s", config.Outputs.CertificatePath, err)
-		}
-		log.Printf("Certificate written to %q\n", config.Outputs.CertificatePath)
 	case "intermediate":
-		var config intermediateConfig
-		err = yaml.UnmarshalStrict(configBytes, &config)
+		err = intermediateCeremony(configBytes)
 		if err != nil {
-			log.Fatalf("Failed to parse config: %s", err)
+			log.Fatalf("intermediate ceremony failed: %s", err)
 		}
-		ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.KeySlot, "")
-		if err != nil {
-			log.Fatalf("Failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.KeySlot, err)
-		}
-		log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.KeySlot)
-		keyID, err := hex.DecodeString(config.PKCS11.KeyID)
-		if err != nil {
-			log.Fatalf("Failed to decode key-id: %s", err)
-		}
-		signer, err := getKey(ctx, session, config.PKCS11.KeyLabel, keyID)
-		if err != nil {
-			log.Fatalf("Failed to retrieve private key handle: %s", err)
-		}
-		log.Println("Retrieved private key handle")
-
-		pubPEMBytes, err := ioutil.ReadFile(config.Inputs.PublicKeyPath)
-		if err != nil {
-			log.Fatalf("Failed to read public key %q: %s", config.Inputs.PublicKeyPath, err)
-		}
-		pubPEM, _ := pem.Decode(pubPEMBytes)
-		if pubPEM == nil {
-			log.Fatal("Failed to parse public key")
-		}
-		pub, err := x509.ParsePKIXPublicKey(pubPEM.Bytes)
-		if err != nil {
-			log.Fatalf("Failed to parse public key: %s", err)
-		}
-		issuerPEMBytes, err := ioutil.ReadFile(config.Inputs.IssuerCertificatePath)
-		if err != nil {
-			log.Fatalf("Failed to read issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
-		}
-		issuerPEM, _ := pem.Decode(issuerPEMBytes)
-		if issuerPEM == nil {
-			log.Fatal("Failed to parse issuer certificate PEM")
-		}
-		issuer, err := x509.ParseCertificate(issuerPEM.Bytes)
-		if err != nil {
-			log.Fatalf("Failed to parse issuer certificate: %s", err)
-		}
-		template, err := makeTemplate(ctx, session, &config.CertProfile, pubPEM.Bytes)
-		if err != nil {
-			log.Fatalf("Failed to create certificate profile: %s", err)
-		}
-		template.AuthorityKeyId = issuer.SubjectKeyId
-		// x509.CreateCertificate uses a io.Reader here for signing methods that require
-		// a source of randomness. Since PKCS#11 based signing generates needed randomness
-		// at the HSM we don't need to pass a real reader. Instead of passing a nil reader
-		// we use one that always returns errors in case the internal usage of this reader
-		// changes.
-		certBytes, err := x509.CreateCertificate(&failReader{}, template, issuer, pub, signer)
-		if err != nil {
-			log.Fatalf("Failed to create certificate: %s", err)
-		}
-		pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
-		log.Printf("Signed certificate PEM:\n%s", pemBytes)
-		cert, err := x509.ParseCertificate(certBytes)
-		if err != nil {
-			log.Fatalf("Failed to parse signed certificate: %s", err)
-		}
-		if err := cert.CheckSignatureFrom(issuer); err != nil {
-			log.Fatalf("Failed to verify certificate signature: %s", err)
-		}
-		log.Printf("Certificate PEM:\n%s", pemBytes)
-		if err := ioutil.WriteFile(config.Outputs.CertificatePath, pemBytes, 0644); err != nil {
-			log.Fatalf("Failed to write certificate to %q: %s", config.Outputs.CertificatePath, err)
-		}
-		log.Printf("Certificate written to %q\n", config.Outputs.CertificatePath)
 	case "key":
-		var config keyConfig
-		err = yaml.UnmarshalStrict(configBytes, &config)
+		err = keyCeremony(configBytes)
 		if err != nil {
-			log.Fatalf("Failed to parse config: %s", err)
-		}
-		ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.KeySlot, "")
-		if err != nil {
-			log.Fatalf("Failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.KeySlot, err)
-		}
-		log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.KeySlot)
-		if _, err = generateKey(ctx, session, config.PKCS11.KeyLabel, config.Outputs.PublicKeyPath, config.Key); err != nil {
-			log.Fatal(err)
+			log.Fatalf("key ceremony failed: %s", err)
 		}
 	}
 }
