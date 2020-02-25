@@ -42,18 +42,18 @@ type keyInfo struct {
 	id  []byte
 }
 
-func generateKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, config ceremonyConfig) (*keyInfo, error) {
+func generateKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string, outputPath string, config keyGenConfig) (*keyInfo, error) {
 	var pubKey crypto.PublicKey
 	var keyID []byte
 	var err error
-	switch config.KeyType {
+	switch config.Type {
 	case "RSA":
-		pubKey, keyID, err = rsaGenerate(ctx, session, config.KeyLabel, config.RSAModLength, rsaExp)
+		pubKey, keyID, err = rsaGenerate(ctx, session, label, config.RSAModLength, rsaExp)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate RSA key pair: %s", err)
 		}
 	case "ECDSA":
-		pubKey, keyID, err = ecGenerate(ctx, session, config.KeyLabel, config.ECDSACurve)
+		pubKey, keyID, err = ecGenerate(ctx, session, label, config.ECDSACurve)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate ECDSA key pair: %s", err)
 		}
@@ -66,10 +66,10 @@ func generateKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, config c
 
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})
 	log.Printf("Public key PEM:\n%s\n", pemBytes)
-	if err := ioutil.WriteFile(config.PublicKeyPath, pemBytes, 0644); err != nil {
-		return nil, fmt.Errorf("Failed to write public key to %q: %s", config.PublicKeyPath, err)
+	if err := ioutil.WriteFile(outputPath, pemBytes, 0644); err != nil {
+		return nil, fmt.Errorf("Failed to write public key to %q: %s", outputPath, err)
 	}
-	log.Printf("Public key written to %q\n", config.PublicKeyPath)
+	log.Printf("Public key written to %q\n", outputPath)
 	return &keyInfo{key: pubKey, der: der, id: keyID}, nil
 }
 

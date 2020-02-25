@@ -2,374 +2,501 @@ package main
 
 import "testing"
 
-func TestValidateConfig(t *testing.T) {
+func TestKeyGenConfigValidate(t *testing.T) {
 	cases := []struct {
 		name          string
-		config        ceremonyConfig
+		config        keyGenConfig
 		expectedError string
 	}{
 		{
-			name:          "no pkcs11-module",
-			config:        ceremonyConfig{},
-			expectedError: "pkcs11-module is required",
+			name:          "no key.type",
+			config:        keyGenConfig{},
+			expectedError: "key.type is required",
 		},
 		{
-			name: "no key-label",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
+			name: "bad key.type",
+			config: keyGenConfig{
+				Type: "doop",
 			},
-			expectedError: "key-label is required",
+			expectedError: "key.type can only be 'rsa' or 'ecdsa'",
 		},
 		{
-			name: "invalid ceremony-type",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				KeyLabel:     "label",
-				CeremonyType: "doop",
-			},
-			expectedError: "ceremony-type can only be 'root', 'intermediate', or 'key'",
-		},
-		// root tests
-		{
-			name: "root: key-id present",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "root",
-				KeyLabel:     "label",
-				KeyID:        "bad-id",
-			},
-			expectedError: "key-id is not used for root ceremonies",
-		},
-		{
-			name: "root: no key-type",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "root",
-				KeyLabel:     "label",
-			},
-			expectedError: "key-type is required",
-		},
-		{
-			name: "root: bad key-type",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "root",
-				KeyLabel:     "label",
-				KeyType:      "bad",
-			},
-			expectedError: "key-type can only be 'rsa' or 'ecdsa'",
-		},
-		{
-			name: "root: rsa key-type with invalid rsa-mod-length",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "root",
-				KeyLabel:     "label",
-				KeyType:      "rsa",
+			name: "bad key.rsa-mod-length",
+			config: keyGenConfig{
+				Type:         "rsa",
 				RSAModLength: 1337,
 			},
-			expectedError: "rsa-mod-length can only be 2048 or 4096",
+			expectedError: "key.rsa-mod-length can only be 2048 or 4096",
 		},
 		{
-			name: "root: rsa key-type with ecdsa-curve",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "root",
-				KeyLabel:     "label",
-				KeyType:      "rsa",
+			name: "key.type is rsa but key.ecdsa-curve is present",
+			config: keyGenConfig{
+				Type:         "rsa",
 				RSAModLength: 2048,
-				ECDSACurve:   "mhm",
+				ECDSACurve:   "bad",
 			},
-			expectedError: "if key-type = \"rsa\" then ecdsa-curve is not used",
+			expectedError: "if key.type = 'rsa' then key.ecdsa-curve is not used",
 		},
 		{
-			name: "root: ecdsa key-type with no ecdsa-curve",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "root",
-				KeyLabel:     "label",
-				KeyType:      "ecdsa",
+			name: "bad key.ecdsa-curve",
+			config: keyGenConfig{
+				Type:       "ecdsa",
+				ECDSACurve: "bad",
 			},
-			expectedError: "if key-type = \"ecdsa\" then ecdsa-curve is required",
+			expectedError: "key.ecdsa-curve can only be 'P-224', 'P-256', 'P-384', or 'P-521'",
 		},
 		{
-			name: "root: no public-key-path",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "root",
-				KeyLabel:     "label",
-				KeyType:      "rsa",
+			name: "key.type is ecdsa but key.rsa-mod-length is present",
+			config: keyGenConfig{
+				Type:         "ecdsa",
 				RSAModLength: 2048,
+				ECDSACurve:   "P-256",
 			},
-			expectedError: "public-key-path is required",
+			expectedError: "if key.type = 'ecdsa' then key.rsa-mod-length is not used",
 		},
 		{
-			name: "root: no certificate-path",
-			config: ceremonyConfig{
-				PKCS11Module:  "asd",
-				CeremonyType:  "root",
-				KeyLabel:      "label",
-				KeyType:       "rsa",
-				RSAModLength:  2048,
-				PublicKeyPath: "path",
-			},
-			expectedError: "certificate-path is required",
-		},
-		{
-			name: "root: issuer-path present",
-			config: ceremonyConfig{
-				PKCS11Module:    "asd",
-				CeremonyType:    "root",
-				KeyLabel:        "label",
-				KeyType:         "rsa",
-				RSAModLength:    2048,
-				PublicKeyPath:   "path",
-				CertificatePath: "path",
-				IssuerPath:      "bad path",
-			},
-			expectedError: "issuer-path is not used for root ceremonies",
-		},
-		{
-			name: "root: no certificate-profile",
-			config: ceremonyConfig{
-				PKCS11Module:    "asd",
-				CeremonyType:    "root",
-				KeyLabel:        "label",
-				KeyType:         "rsa",
-				RSAModLength:    2048,
-				PublicKeyPath:   "path",
-				CertificatePath: "path",
-			},
-			expectedError: "certificate-profile is required",
-		},
-		{
-			name: "root: bad certificate-profile",
-			config: ceremonyConfig{
-				PKCS11Module:       "asd",
-				CeremonyType:       "root",
-				KeyLabel:           "label",
-				KeyType:            "rsa",
-				RSAModLength:       2048,
-				PublicKeyPath:      "path",
-				CertificatePath:    "path",
-				CertificateProfile: &certProfile{},
-			},
-			expectedError: "invalid certificate-profile: not-before is required",
-		},
-		// intermediate tests
-		{
-			name: "intermediate: no key-id",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "intermediate",
-				KeyLabel:     "label",
-			},
-			expectedError: "key-id is required",
-		},
-		{
-			name: "intermediate: key-type present",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "intermediate",
-				KeyLabel:     "label",
-				KeyID:        "ffff",
-				KeyType:      "rsa",
-			},
-			expectedError: "key-type is not used for intermediate ceremonies",
-		},
-		{
-			name: "intermediate: ecdsa-curve present",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "intermediate",
-				KeyLabel:     "label",
-				KeyID:        "ffff",
-				ECDSACurve:   "p-256",
-			},
-			expectedError: "ecdsa-curve is not used for intermediate ceremonies",
-		},
-		{
-			name: "intermediate: no public-key-path",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "intermediate",
-				KeyLabel:     "label",
-				KeyID:        "ffff",
-			},
-			expectedError: "public-key-path is required",
-		},
-		{
-			name: "intermediate: no certificate-path",
-			config: ceremonyConfig{
-				PKCS11Module:  "asd",
-				CeremonyType:  "intermediate",
-				KeyLabel:      "label",
-				KeyID:         "ffff",
-				PublicKeyPath: "path",
-			},
-			expectedError: "certificate-path is required",
-		},
-		{
-			name: "intermediate: no issuer-path",
-			config: ceremonyConfig{
-				PKCS11Module:    "asd",
-				CeremonyType:    "intermediate",
-				KeyLabel:        "label",
-				KeyID:           "ffff",
-				PublicKeyPath:   "path",
-				CertificatePath: "path",
-			},
-			expectedError: "issuer-path is required",
-		},
-		{
-			name: "intermediate: no certificate-profile",
-			config: ceremonyConfig{
-				PKCS11Module:    "asd",
-				CeremonyType:    "intermediate",
-				KeyLabel:        "label",
-				KeyID:           "ffff",
-				PublicKeyPath:   "path",
-				CertificatePath: "path",
-				IssuerPath:      "path",
-			},
-			expectedError: "certificate-profile is required",
-		},
-		{
-			name: "intermediate: bad certificate-profile",
-			config: ceremonyConfig{
-				PKCS11Module:       "asd",
-				CeremonyType:       "intermediate",
-				KeyLabel:           "label",
-				KeyID:              "ffff",
-				PublicKeyPath:      "path",
-				CertificatePath:    "path",
-				IssuerPath:         "path",
-				CertificateProfile: &certProfile{},
-			},
-			expectedError: "invalid certificate-profile: not-before is required",
-		},
-		// key tests
-		{
-			name: "key: key-id present",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "key",
-				KeyLabel:     "label",
-				KeyID:        "bad-id",
-			},
-			expectedError: "key-id is not used for key ceremonies",
-		},
-		{
-			name: "key: no key-type",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "key",
-				KeyLabel:     "label",
-			},
-			expectedError: "key-type is required",
-		},
-		{
-			name: "key: bad key-type",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "key",
-				KeyLabel:     "label",
-				KeyType:      "bad",
-			},
-			expectedError: "key-type can only be 'rsa' or 'ecdsa'",
-		},
-		{
-			name: "key: rsa key-type with invalid rsa-mod-length",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "root",
-				KeyLabel:     "label",
-				KeyType:      "rsa",
-				RSAModLength: 1337,
-			},
-			expectedError: "rsa-mod-length can only be 2048 or 4096",
-		},
-		{
-			name: "key: rsa key-type with ecdsa-curve",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "key",
-				KeyLabel:     "label",
-				KeyType:      "rsa",
-				RSAModLength: 2048,
-				ECDSACurve:   "mhm",
-			},
-			expectedError: "if key-type = \"rsa\" then ecdsa-curve is not used",
-		},
-		{
-			name: "key: ecdsa key-type with no ecdsa-curve",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "key",
-				KeyLabel:     "label",
-				KeyType:      "ecdsa",
-			},
-			expectedError: "if key-type = \"ecdsa\" then ecdsa-curve is required",
-		},
-		{
-			name: "key: no public-key-path",
-			config: ceremonyConfig{
-				PKCS11Module: "asd",
-				CeremonyType: "key",
-				KeyLabel:     "label",
-				KeyType:      "rsa",
+			name: "good rsa config",
+			config: keyGenConfig{
+				Type:         "rsa",
 				RSAModLength: 2048,
 			},
-			expectedError: "public-key-path is required",
 		},
 		{
-			name: "key: issuer-path present",
-			config: ceremonyConfig{
-				PKCS11Module:  "asd",
-				CeremonyType:  "key",
-				KeyLabel:      "label",
-				KeyType:       "rsa",
-				RSAModLength:  2048,
-				PublicKeyPath: "path",
-				IssuerPath:    "path",
+			name: "good ecdsa config",
+			config: keyGenConfig{
+				Type:       "ecdsa",
+				ECDSACurve: "P-256",
 			},
-			expectedError: "issuer-path is not used for key ceremonies",
-		},
-		{
-			name: "key: certificate-path present",
-			config: ceremonyConfig{
-				PKCS11Module:    "asd",
-				CeremonyType:    "key",
-				KeyLabel:        "label",
-				KeyType:         "rsa",
-				RSAModLength:    2048,
-				PublicKeyPath:   "path",
-				CertificatePath: "path",
-			},
-			expectedError: "certificate-path is not used for key ceremonies",
-		},
-		{
-			name: "key: certificate-profile present",
-			config: ceremonyConfig{
-				PKCS11Module:       "asd",
-				CeremonyType:       "key",
-				KeyLabel:           "label",
-				KeyType:            "rsa",
-				RSAModLength:       2048,
-				PublicKeyPath:      "path",
-				CertificateProfile: &certProfile{},
-			},
-			expectedError: "certificate-profile is not used for key ceremonies",
 		},
 	}
-
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.config.Validate()
-			if err != nil {
-				if err.Error() != tc.expectedError {
-					t.Fatalf("Validate returned an unexpected error: wanted %q, got %q", tc.expectedError, err)
-				}
+			err := tc.config.validate()
+			if err != nil && err.Error() != tc.expectedError {
+				t.Fatalf("Unexpected error, wanted: %q, got: %q", tc.expectedError, err)
+			} else if err == nil && tc.expectedError != "" {
+				t.Fatalf("validate didn't fail, wanted: %q", err)
+			}
+		})
+	}
+}
+
+func TestRootConfigValidate(t *testing.T) {
+	cases := []struct {
+		name          string
+		config        rootConfig
+		expectedError string
+	}{
+		{
+			name:          "no pkcs11.module",
+			config:        rootConfig{},
+			expectedError: "pkcs11.module is required",
+		},
+		{
+			name: "no pkcs11.key-label",
+			config: rootConfig{
+				PKCS11: struct {
+					Module   string `yaml:"module"`
+					KeySlot  uint   `yaml:"key-slot"`
+					KeyLabel string `yaml:"key-label"`
+				}{
+					Module: "module",
+				},
+			},
+			expectedError: "pkcs11.key-label is required",
+		},
+		{
+			name: "bad key fields",
+			config: rootConfig{
+				PKCS11: struct {
+					Module   string `yaml:"module"`
+					KeySlot  uint   `yaml:"key-slot"`
+					KeyLabel string `yaml:"key-label"`
+				}{
+					Module:   "module",
+					KeyLabel: "label",
+				},
+			},
+			expectedError: "key.type is required",
+		},
+		{
+			name: "no outputs.public-key-path",
+			config: rootConfig{
+				PKCS11: struct {
+					Module   string `yaml:"module"`
+					KeySlot  uint   `yaml:"key-slot"`
+					KeyLabel string `yaml:"key-label"`
+				}{
+					Module:   "module",
+					KeyLabel: "label",
+				},
+				Key: keyGenConfig{
+					Type:         "rsa",
+					RSAModLength: 2048,
+				},
+			},
+			expectedError: "outputs.public-key-path is required",
+		},
+		{
+			name: "no outputs.certificate-path",
+			config: rootConfig{
+				PKCS11: struct {
+					Module   string `yaml:"module"`
+					KeySlot  uint   `yaml:"key-slot"`
+					KeyLabel string `yaml:"key-label"`
+				}{
+					Module:   "module",
+					KeyLabel: "label",
+				},
+				Key: keyGenConfig{
+					Type:         "rsa",
+					RSAModLength: 2048,
+				},
+				Outputs: struct {
+					PublicKeyPath   string `yaml:"public-key-path"`
+					CertificatePath string `yaml:"certificate-path"`
+				}{
+					PublicKeyPath: "path",
+				},
+			},
+			expectedError: "outputs.certificate-path is required",
+		},
+		{
+			name: "bad certificate-profile",
+			config: rootConfig{
+				PKCS11: struct {
+					Module   string `yaml:"module"`
+					KeySlot  uint   `yaml:"key-slot"`
+					KeyLabel string `yaml:"key-label"`
+				}{
+					Module:   "module",
+					KeyLabel: "label",
+				},
+				Key: keyGenConfig{
+					Type:         "rsa",
+					RSAModLength: 2048,
+				},
+				Outputs: struct {
+					PublicKeyPath   string `yaml:"public-key-path"`
+					CertificatePath string `yaml:"certificate-path"`
+				}{
+					PublicKeyPath:   "path",
+					CertificatePath: "path",
+				},
+			},
+			expectedError: "not-before is required",
+		},
+		{
+			name: "good config",
+			config: rootConfig{
+				PKCS11: struct {
+					Module   string `yaml:"module"`
+					KeySlot  uint   `yaml:"key-slot"`
+					KeyLabel string `yaml:"key-label"`
+				}{
+					Module:   "module",
+					KeyLabel: "label",
+				},
+				Key: keyGenConfig{
+					Type:         "rsa",
+					RSAModLength: 2048,
+				},
+				Outputs: struct {
+					PublicKeyPath   string `yaml:"public-key-path"`
+					CertificatePath string `yaml:"certificate-path"`
+				}{
+					PublicKeyPath:   "path",
+					CertificatePath: "path",
+				},
+				CertProfile: certProfile{
+					NotBefore:          "a",
+					NotAfter:           "b",
+					SignatureAlgorithm: "c",
+					CommonName:         "d",
+					Organization:       "e",
+					Country:            "f",
+				},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.config.validate()
+			if err != nil && err.Error() != tc.expectedError {
+				t.Fatalf("Unexpected error, wanted: %q, got: %q", tc.expectedError, err)
+			} else if err == nil && tc.expectedError != "" {
+				t.Fatalf("validate didn't fail, wanted: %q", err)
+			}
+		})
+	}
+}
+
+func TestIntermediateConfigValidate(t *testing.T) {
+	cases := []struct {
+		name          string
+		config        intermediateConfig
+		expectedError string
+	}{
+		{
+			name:          "no pkcs11.module",
+			config:        intermediateConfig{},
+			expectedError: "pkcs11.module is required",
+		},
+		{
+			name: "no pkcs11.key-label",
+			config: intermediateConfig{
+				PKCS11: struct {
+					Module   string `yaml:"module"`
+					KeySlot  uint   `yaml:"key-slot"`
+					KeyLabel string `yaml:"key-label"`
+					KeyID    string `yaml:"key-id"`
+				}{
+					Module: "module",
+				},
+			},
+			expectedError: "pkcs11.key-label is required",
+		},
+		{
+			name: "no pkcs11.key-id",
+			config: intermediateConfig{
+				PKCS11: struct {
+					Module   string `yaml:"module"`
+					KeySlot  uint   `yaml:"key-slot"`
+					KeyLabel string `yaml:"key-label"`
+					KeyID    string `yaml:"key-id"`
+				}{
+					Module:   "module",
+					KeyLabel: "label",
+				},
+			},
+			expectedError: "pkcs11.key-id is required",
+		},
+		{
+			name: "no inputs.public-key-path",
+			config: intermediateConfig{
+				PKCS11: struct {
+					Module   string `yaml:"module"`
+					KeySlot  uint   `yaml:"key-slot"`
+					KeyLabel string `yaml:"key-label"`
+					KeyID    string `yaml:"key-id"`
+				}{
+					Module:   "module",
+					KeyLabel: "label",
+					KeyID:    "id",
+				},
+			},
+			expectedError: "inputs.public-key-path is required",
+		},
+		{
+			name: "no inputs.issuer-certificate-path",
+			config: intermediateConfig{
+				PKCS11: struct {
+					Module   string `yaml:"module"`
+					KeySlot  uint   `yaml:"key-slot"`
+					KeyLabel string `yaml:"key-label"`
+					KeyID    string `yaml:"key-id"`
+				}{
+					Module:   "module",
+					KeyLabel: "label",
+					KeyID:    "id",
+				},
+				Inputs: struct {
+					PublicKeyPath         string `yaml:"public-key-path"`
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					PublicKeyPath: "path",
+				},
+			},
+			expectedError: "inputs.issuer-certificate is required",
+		},
+		{
+			name: "no outputs.certificate-path",
+			config: intermediateConfig{
+				PKCS11: struct {
+					Module   string `yaml:"module"`
+					KeySlot  uint   `yaml:"key-slot"`
+					KeyLabel string `yaml:"key-label"`
+					KeyID    string `yaml:"key-id"`
+				}{
+					Module:   "module",
+					KeyLabel: "label",
+					KeyID:    "id",
+				},
+				Inputs: struct {
+					PublicKeyPath         string `yaml:"public-key-path"`
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					PublicKeyPath:         "path",
+					IssuerCertificatePath: "path",
+				},
+			},
+			expectedError: "outputs.certificate-path is required",
+		},
+		{
+			name: "bad certificate-profile",
+			config: intermediateConfig{
+				PKCS11: struct {
+					Module   string `yaml:"module"`
+					KeySlot  uint   `yaml:"key-slot"`
+					KeyLabel string `yaml:"key-label"`
+					KeyID    string `yaml:"key-id"`
+				}{
+					Module:   "module",
+					KeyLabel: "label",
+					KeyID:    "id",
+				},
+				Inputs: struct {
+					PublicKeyPath         string `yaml:"public-key-path"`
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					PublicKeyPath:         "path",
+					IssuerCertificatePath: "path",
+				},
+				Outputs: struct {
+					CertificatePath string `yaml:"certificate-path"`
+				}{
+					CertificatePath: "path",
+				},
+			},
+			expectedError: "not-before is required",
+		},
+		{
+			name: "good config",
+			config: intermediateConfig{
+				PKCS11: struct {
+					Module   string `yaml:"module"`
+					KeySlot  uint   `yaml:"key-slot"`
+					KeyLabel string `yaml:"key-label"`
+					KeyID    string `yaml:"key-id"`
+				}{
+					Module:   "module",
+					KeyLabel: "label",
+					KeyID:    "id",
+				},
+				Inputs: struct {
+					PublicKeyPath         string `yaml:"public-key-path"`
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					PublicKeyPath:         "path",
+					IssuerCertificatePath: "path",
+				},
+				Outputs: struct {
+					CertificatePath string `yaml:"certificate-path"`
+				}{
+					CertificatePath: "path",
+				},
+				CertProfile: certProfile{
+					NotBefore:          "a",
+					NotAfter:           "b",
+					SignatureAlgorithm: "c",
+					CommonName:         "d",
+					Organization:       "e",
+					Country:            "f",
+					OCSPURL:            "g",
+					CRLURL:             "h",
+					IssuerURL:          "i",
+				},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.config.validate()
+			if err != nil && err.Error() != tc.expectedError {
+				t.Fatalf("Unexpected error, wanted: %q, got: %q", tc.expectedError, err)
+			} else if err == nil && tc.expectedError != "" {
+				t.Fatalf("validate didn't fail, wanted: %q", err)
+			}
+		})
+	}
+}
+
+func TestKeyConfigValidate(t *testing.T) {
+	cases := []struct {
+		name          string
+		config        keyConfig
+		expectedError string
+	}{
+		{
+			name:          "no pkcs11.module",
+			config:        keyConfig{},
+			expectedError: "pkcs11.module is required",
+		},
+		{
+			name: "no pkcs11.key-label",
+			config: keyConfig{
+				PKCS11: struct {
+					Module   string `yaml:"module"`
+					KeySlot  uint   `yaml:"key-slot"`
+					KeyLabel string `yaml:"key-label"`
+				}{
+					Module: "module",
+				},
+			},
+			expectedError: "pkcs11.key-label is required",
+		},
+		{
+			name: "bad key fields",
+			config: keyConfig{
+				PKCS11: struct {
+					Module   string `yaml:"module"`
+					KeySlot  uint   `yaml:"key-slot"`
+					KeyLabel string `yaml:"key-label"`
+				}{
+					Module:   "module",
+					KeyLabel: "label",
+				},
+			},
+			expectedError: "key.type is required",
+		},
+		{
+			name: "no outputs.public-key-path",
+			config: keyConfig{
+				PKCS11: struct {
+					Module   string `yaml:"module"`
+					KeySlot  uint   `yaml:"key-slot"`
+					KeyLabel string `yaml:"key-label"`
+				}{
+					Module:   "module",
+					KeyLabel: "label",
+				},
+				Key: keyGenConfig{
+					Type:         "rsa",
+					RSAModLength: 2048,
+				},
+			},
+			expectedError: "outputs.public-key-path is required",
+		},
+		{
+			name: "good config",
+			config: keyConfig{
+				PKCS11: struct {
+					Module   string `yaml:"module"`
+					KeySlot  uint   `yaml:"key-slot"`
+					KeyLabel string `yaml:"key-label"`
+				}{
+					Module:   "module",
+					KeyLabel: "label",
+				},
+				Key: keyGenConfig{
+					Type:         "rsa",
+					RSAModLength: 2048,
+				},
+				Outputs: struct {
+					PublicKeyPath string `yaml:"public-key-path"`
+				}{
+					PublicKeyPath: "path",
+				},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.config.validate()
+			if err != nil && err.Error() != tc.expectedError {
+				t.Fatalf("Unexpected error, wanted: %q, got: %q", tc.expectedError, err)
+			} else if err == nil && tc.expectedError != "" {
+				t.Fatalf("validate didn't fail, wanted: %q", err)
 			}
 		})
 	}

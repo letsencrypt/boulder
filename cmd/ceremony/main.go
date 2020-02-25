@@ -4,15 +4,14 @@ package main
 import (
 	"crypto/x509"
 	"encoding/hex"
-	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"log"
 
 	"github.com/letsencrypt/boulder/pkcs11helpers"
+	"gopkg.in/yaml.v2"
 )
 
 type ceremonyType int
@@ -23,113 +22,168 @@ const (
 	keyCeremony
 )
 
-type ceremonyConfig struct {
-	PKCS11Module       string       `yaml:"pkcs11-module"`
-	CeremonyType       string       `yaml:"ceremony-type"`
-	KeySlot            uint         `yaml:"key-slot"`
-	KeyLabel           string       `yaml:"key-label"`
-	KeyID              string       `yaml:"key-id"`
-	KeyType            string       `yaml:"key-type"`
-	RSAModLength       uint         `yaml:"rsa-mod-length"`
-	ECDSACurve         string       `yaml:"ecdsa-curve"`
-	PublicKeyPath      string       `yaml:"public-key-path"`
-	CertificatePath    string       `yaml:"certificate-path"`
-	IssuerPath         string       `yaml:"issuer-path"`
-	CertificateProfile *certProfile `yaml:"certificate-profile"`
+type keyGenConfig struct {
+	Type         string `yaml:"type"`
+	RSAModLength uint   `yaml:"rsa-mod-length"`
+	ECDSACurve   string `yaml:"ecdsa-curve"`
 }
 
-func (cc ceremonyConfig) validateKeyGenFields() error {
-	if cc.KeyType == "" {
-		return errors.New("key-type is required")
+var allowedCurves = map[string]bool{
+	"P-224": true,
+	"P-256": true,
+	"P-384": true,
+	"P-521": true,
+}
+
+func (kgc keyGenConfig) validate() error {
+	if kgc.Type == "" {
+		return errors.New("key.type is required")
 	}
-	if cc.KeyType != "rsa" && cc.KeyType != "ecdsa" {
-		return errors.New("key-type can only be 'rsa' or 'ecdsa'")
+	if kgc.Type != "rsa" && kgc.Type != "ecdsa" {
+		return errors.New("key.type can only be 'rsa' or 'ecdsa'")
 	}
-	if cc.KeyType == "rsa" && (cc.RSAModLength != 2048 && cc.RSAModLength != 4096) {
-		return errors.New("rsa-mod-length can only be 2048 or 4096")
+	if kgc.Type == "rsa" && (kgc.RSAModLength != 2048 && kgc.RSAModLength != 4096) {
+		return errors.New("key.rsa-mod-length can only be 2048 or 4096")
 	}
-	if cc.KeyType == "rsa" && cc.ECDSACurve != "" {
-		return errors.New("if key-type = \"rsa\" then ecdsa-curve is not used")
+	if kgc.Type == "rsa" && kgc.ECDSACurve != "" {
+		return errors.New("if key.type = 'rsa' then key.ecdsa-curve is not used")
 	}
-	if cc.KeyType == "ecdsa" && cc.ECDSACurve == "" {
-		return errors.New("if key-type = \"ecdsa\" then ecdsa-curve is required")
+	if kgc.Type == "ecdsa" && !allowedCurves[kgc.ECDSACurve] {
+		return errors.New("key.ecdsa-curve can only be 'P-224', 'P-256', 'P-384', or 'P-521'")
 	}
-	if cc.PublicKeyPath == "" {
-		return errors.New("public-key-path is required")
+	if kgc.Type == "ecdsa" && kgc.RSAModLength != 0 {
+		return errors.New("if key.type = 'ecdsa' then key.rsa-mod-length is not used")
 	}
+
 	return nil
 }
 
-func (cc ceremonyConfig) Validate() error {
-	if cc.PKCS11Module == "" {
-		return errors.New("pkcs11-module is required")
+type rootConfig struct {
+	PKCS11 struct {
+		Module   string `yaml:"module"`
+		KeySlot  uint   `yaml:"key-slot"`
+		KeyLabel string `yaml:"key-label"`
+	} `yaml:"pkcs11"`
+	Key     keyGenConfig `yaml:"key"`
+	Outputs struct {
+		PublicKeyPath   string `yaml:"public-key-path"`
+		CertificatePath string `yaml:"certificate-path"`
+	} `yaml:"outputs"`
+	CertProfile certProfile `yaml:"certificate-profile"`
+}
+
+func (rc rootConfig) validate() error {
+	// PKCS11 fields
+	if rc.PKCS11.Module == "" {
+		return errors.New("pkcs11.module is required")
 	}
-	if cc.KeyLabel == "" {
-		return errors.New("key-label is required")
+	// key-slot cannot be tested because 0 is a valid slot
+	if rc.PKCS11.KeyLabel == "" {
+		return errors.New("pkcs11.key-label is required")
 	}
-	switch cc.CeremonyType {
-	case "root":
-		if cc.KeyID != "" {
-			return errors.New("key-id is not used for root ceremonies")
-		}
-		if err := cc.validateKeyGenFields(); err != nil {
-			return err
-		}
-		if cc.CertificatePath == "" {
-			return errors.New("certificate-path is required")
-		}
-		if cc.IssuerPath != "" {
-			return errors.New("issuer-path is not used for root ceremonies")
-		}
-		if cc.CertificateProfile == nil {
-			return errors.New("certificate-profile is required")
-		}
-		if err := cc.CertificateProfile.verifyProfile(true); err != nil {
-			return fmt.Errorf("invalid certificate-profile: %s", err)
-		}
-	case "intermediate":
-		if cc.KeyID == "" {
-			return errors.New("key-id is required")
-		}
-		if cc.KeyType != "" {
-			return errors.New("key-type is not used for intermediate ceremonies")
-		}
-		if cc.ECDSACurve != "" {
-			return errors.New("ecdsa-curve is not used for intermediate ceremonies")
-		}
-		if cc.PublicKeyPath == "" {
-			return errors.New("public-key-path is required")
-		}
-		if cc.CertificatePath == "" {
-			return errors.New("certificate-path is required")
-		}
-		if cc.IssuerPath == "" {
-			return errors.New("issuer-path is required")
-		}
-		if cc.CertificateProfile == nil {
-			return errors.New("certificate-profile is required")
-		}
-		if err := cc.CertificateProfile.verifyProfile(true); err != nil {
-			return fmt.Errorf("invalid certificate-profile: %s", err)
-		}
-	case "key":
-		if cc.KeyID != "" {
-			return errors.New("key-id is not used for key ceremonies")
-		}
-		if err := cc.validateKeyGenFields(); err != nil {
-			return err
-		}
-		if cc.IssuerPath != "" {
-			return errors.New("issuer-path is not used for key ceremonies")
-		}
-		if cc.CertificatePath != "" {
-			return errors.New("certificate-path is not used for key ceremonies")
-		}
-		if cc.CertificateProfile != nil {
-			return errors.New("certificate-profile is not used for key ceremonies")
-		}
-	default:
-		return errors.New("ceremony-type can only be 'root', 'intermediate', or 'key'")
+
+	// Key gen fields
+	if err := rc.Key.validate(); err != nil {
+		return err
+	}
+
+	// Output fields
+	if rc.Outputs.PublicKeyPath == "" {
+		return errors.New("outputs.public-key-path is required")
+	}
+	if rc.Outputs.CertificatePath == "" {
+		return errors.New("outputs.certificate-path is required")
+	}
+
+	// Certificate profile
+	if err := rc.CertProfile.verifyProfile(true); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type intermediateConfig struct {
+	PKCS11 struct {
+		Module   string `yaml:"module"`
+		KeySlot  uint   `yaml:"key-slot"`
+		KeyLabel string `yaml:"key-label"`
+		KeyID    string `yaml:"key-id"`
+	} `yaml:"pkcs11"`
+	Inputs struct {
+		PublicKeyPath         string `yaml:"public-key-path"`
+		IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+	} `yaml:"inputs"`
+	Outputs struct {
+		CertificatePath string `yaml:"certificate-path"`
+	} `yaml:"outputs"`
+	CertProfile certProfile `yaml:"certificate-profile"`
+}
+
+func (ic intermediateConfig) validate() error {
+	// PKCS11 fields
+	if ic.PKCS11.Module == "" {
+		return errors.New("pkcs11.module is required")
+	}
+	// key-slot cannot be tested because 0 is a valid slot
+	if ic.PKCS11.KeyLabel == "" {
+		return errors.New("pkcs11.key-label is required")
+	}
+	if ic.PKCS11.KeyID == "" {
+		return errors.New("pkcs11.key-id is required")
+	}
+
+	// Input fields
+	if ic.Inputs.PublicKeyPath == "" {
+		return errors.New("inputs.public-key-path is required")
+	}
+	if ic.Inputs.IssuerCertificatePath == "" {
+		return errors.New("inputs.issuer-certificate is required")
+	}
+
+	// Output fields
+	if ic.Outputs.CertificatePath == "" {
+		return errors.New("outputs.certificate-path is required")
+	}
+
+	// Certificate profile
+	if err := ic.CertProfile.verifyProfile(false); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type keyConfig struct {
+	PKCS11 struct {
+		Module   string `yaml:"module"`
+		KeySlot  uint   `yaml:"key-slot"`
+		KeyLabel string `yaml:"key-label"`
+	} `yaml:"pkcs11"`
+	Key     keyGenConfig `yaml:"key"`
+	Outputs struct {
+		PublicKeyPath string `yaml:"public-key-path"`
+	} `yaml:"outputs"`
+}
+
+func (kc keyConfig) validate() error {
+	// PKCS11 fields
+	if kc.PKCS11.Module == "" {
+		return errors.New("pkcs11.module is required")
+	}
+	// key-slot cannot be tested because 0 is a valid slot
+	if kc.PKCS11.KeyLabel == "" {
+		return errors.New("pkcs11.key-label is required")
+	}
+
+	// Key gen fields
+	if err := kc.Key.validate(); err != nil {
+		return err
+	}
+
+	// Output fields
+	if kc.Outputs.PublicKeyPath == "" {
+		return errors.New("outputs.public-key-path is required")
 	}
 
 	return nil
@@ -146,33 +200,35 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to read config file: %s", err)
 	}
-	var config ceremonyConfig
-	err = json.Unmarshal(configBytes, &config)
+	var ct struct {
+		CeremonyType string `yaml:"ceremony-type"`
+	}
+	err = yaml.Unmarshal(configBytes, &ct)
 	if err != nil {
 		log.Fatalf("Failed to parse config: %s", err)
 	}
 
-	if err = config.Validate(); err != nil {
-		log.Fatalf("Failed to validate config: %s", err)
-	}
-
-	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11Module, config.KeySlot, "")
-	if err != nil {
-		log.Fatalf("Failed to setup session and PKCS#11 context for slot %d: %s", config.KeySlot, err)
-	}
-	log.Printf("Opened PKCS#11 session for slot %d\n", config.KeySlot)
-
-	switch config.CeremonyType {
+	switch ct.CeremonyType {
 	case "root":
-		keyInfo, err := generateKey(ctx, session, config)
+		var config rootConfig
+		err = yaml.UnmarshalStrict(configBytes, &config)
+		if err != nil {
+			log.Fatalf("Failed to parse config: %s", err)
+		}
+		ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.KeySlot, "")
+		if err != nil {
+			log.Fatalf("Failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.KeySlot, err)
+		}
+		log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.KeySlot)
+		keyInfo, err := generateKey(ctx, session, config.PKCS11.KeyLabel, config.Outputs.PublicKeyPath, config.Key)
 		if err != nil {
 			log.Fatal(err)
 		}
-		signer, err := getKey(ctx, session, config.KeyLabel, keyInfo.id)
+		signer, err := getKey(ctx, session, config.PKCS11.KeyLabel, keyInfo.id)
 		if err != nil {
 			log.Fatalf("Failed to retrieve signer: %s", err)
 		}
-		template, err := makeTemplate(ctx, session, config.CertificateProfile, keyInfo.der)
+		template, err := makeTemplate(ctx, session, &config.CertProfile, keyInfo.der)
 		if err != nil {
 			log.Fatalf("Failed to create certificate profile: %s", err)
 		}
@@ -195,24 +251,34 @@ func main() {
 			log.Fatalf("Failed to verify certificate signature: %s", err)
 		}
 		log.Println("Verified certificate signature")
-		if err := ioutil.WriteFile(config.CertificatePath, pemBytes, 0644); err != nil {
-			log.Fatalf("Failed to write certificate to %q: %s", config.CertificatePath, err)
+		if err := ioutil.WriteFile(config.Outputs.CertificatePath, pemBytes, 0644); err != nil {
+			log.Fatalf("Failed to write certificate to %q: %s", config.Outputs.CertificatePath, err)
 		}
-		log.Printf("Certificate written to %q\n", config.CertificatePath)
+		log.Printf("Certificate written to %q\n", config.Outputs.CertificatePath)
 	case "intermediate":
-		keyID, err := hex.DecodeString(config.KeyID)
+		var config intermediateConfig
+		err = yaml.UnmarshalStrict(configBytes, &config)
+		if err != nil {
+			log.Fatalf("Failed to parse config: %s", err)
+		}
+		ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.KeySlot, "")
+		if err != nil {
+			log.Fatalf("Failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.KeySlot, err)
+		}
+		log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.KeySlot)
+		keyID, err := hex.DecodeString(config.PKCS11.KeyID)
 		if err != nil {
 			log.Fatalf("Failed to decode key-id: %s", err)
 		}
-		signer, err := getKey(ctx, session, config.KeyLabel, keyID)
+		signer, err := getKey(ctx, session, config.PKCS11.KeyLabel, keyID)
 		if err != nil {
 			log.Fatalf("Failed to retrieve private key handle: %s", err)
 		}
 		log.Println("Retrieved private key handle")
 
-		pubPEMBytes, err := ioutil.ReadFile(config.PublicKeyPath)
+		pubPEMBytes, err := ioutil.ReadFile(config.Inputs.PublicKeyPath)
 		if err != nil {
-			log.Fatalf("Failed to read public key %q: %s", config.PublicKeyPath, err)
+			log.Fatalf("Failed to read public key %q: %s", config.Inputs.PublicKeyPath, err)
 		}
 		pubPEM, _ := pem.Decode(pubPEMBytes)
 		if pubPEM == nil {
@@ -222,9 +288,9 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to parse public key: %s", err)
 		}
-		issuerPEMBytes, err := ioutil.ReadFile(config.IssuerPath)
+		issuerPEMBytes, err := ioutil.ReadFile(config.Inputs.IssuerCertificatePath)
 		if err != nil {
-			log.Fatalf("Failed to read issuer certificate %q: %s", config.IssuerPath, err)
+			log.Fatalf("Failed to read issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
 		}
 		issuerPEM, _ := pem.Decode(issuerPEMBytes)
 		if issuerPEM == nil {
@@ -234,7 +300,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to parse issuer certificate: %s", err)
 		}
-		template, err := makeTemplate(ctx, session, config.CertificateProfile, pubPEM.Bytes)
+		template, err := makeTemplate(ctx, session, &config.CertProfile, pubPEM.Bytes)
 		if err != nil {
 			log.Fatalf("Failed to create certificate profile: %s", err)
 		}
@@ -258,12 +324,22 @@ func main() {
 			log.Fatalf("Failed to verify certificate signature: %s", err)
 		}
 		log.Printf("Certificate PEM:\n%s", pemBytes)
-		if err := ioutil.WriteFile(config.CertificatePath, pemBytes, 0644); err != nil {
-			log.Fatalf("Failed to write certificate to %q: %s", config.CertificatePath, err)
+		if err := ioutil.WriteFile(config.Outputs.CertificatePath, pemBytes, 0644); err != nil {
+			log.Fatalf("Failed to write certificate to %q: %s", config.Outputs.CertificatePath, err)
 		}
-		log.Printf("Certificate written to %q\n", config.CertificatePath)
+		log.Printf("Certificate written to %q\n", config.Outputs.CertificatePath)
 	case "key":
-		if _, err = generateKey(ctx, session, config); err != nil {
+		var config keyConfig
+		err = yaml.UnmarshalStrict(configBytes, &config)
+		if err != nil {
+			log.Fatalf("Failed to parse config: %s", err)
+		}
+		ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.KeySlot, "")
+		if err != nil {
+			log.Fatalf("Failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.KeySlot, err)
+		}
+		log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.KeySlot)
+		if _, err = generateKey(ctx, session, config.PKCS11.KeyLabel, config.Outputs.PublicKeyPath, config.Key); err != nil {
 			log.Fatal(err)
 		}
 	}
