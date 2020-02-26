@@ -1128,7 +1128,7 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 //   * If the order has an error, the order is invalid
 //   * If any of the order's authorizations are invalid, the order is invalid.
 //   * If any of the order's authorizations are expired, the order is invalid.
-//   * If any of the order's authorizations are deactivated, the order is deactivated.
+//   * If any of the order's authorizations are deactivated, the order is invalid.
 //   * If any of the order's authorizations are pending, the order is pending.
 //   * If all of the order's authorizations are valid, and there is
 //     a certificate serial, the order is valid.
@@ -1215,9 +1215,9 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 	if expiredAuthzs > 0 {
 		return string(core.StatusInvalid), nil
 	}
-	// An order is deactivated if **any** of its authzs are deactivated
+	// An order is invalid if **any** of its authzs are deactivated
 	if deactivatedAuthzs > 0 {
-		return string(core.StatusDeactivated), nil
+		return string(core.StatusInvalid), nil
 	}
 	// An order is pending if **any** of its authzs are pending
 	if pendingAuthzs > 0 {

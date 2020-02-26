@@ -1460,7 +1460,7 @@ func TestStatusForOrder(t *testing.T) {
 			Name:             "Order with a deactivated authz",
 			OrderNames:       []string{"pending.your.order.is.up", "deactivated.your.order.is.up", "valid.your.order.is.up"},
 			AuthorizationIDs: []int64{pendingID, deactivatedID, validID},
-			ExpectedStatus:   string(core.StatusDeactivated),
+			ExpectedStatus:   string(core.StatusInvalid),
 		},
 		{
 			Name:             "Order with a pending authz",
