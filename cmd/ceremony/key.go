@@ -47,12 +47,12 @@ func generateKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label st
 	var keyID []byte
 	var err error
 	switch config.Type {
-	case "RSA":
+	case "rsa":
 		pubKey, keyID, err = rsaGenerate(ctx, session, label, config.RSAModLength, rsaExp)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate RSA key pair: %s", err)
 		}
-	case "ECDSA":
+	case "ecdsa":
 		pubKey, keyID, err = ecGenerate(ctx, session, label, config.ECDSACurve)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate ECDSA key pair: %s", err)

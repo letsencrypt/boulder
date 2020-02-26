@@ -20,12 +20,13 @@ func TestRSAPub(t *testing.T) {
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, []byte{1, 0, 1}),
+			pkcs11.NewAttribute(pkcs11.CKA_MODULUS, []byte{255}),
 		}, nil
 	}
-	_, err := rsaPub(ctx, 0, 0, 0, 0)
+	_, err := rsaPub(ctx, 0, 0, 0, 255)
 	test.AssertError(t, err, "rsaPub didn't fail with non-matching exp")
 
-	// test we fail to construct key with non-matching exp
+	// test we fail to construct key with non-matching modulus
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, []byte{1, 0, 1}),

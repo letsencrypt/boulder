@@ -2,7 +2,12 @@ package main
 
 import (
 	"bytes"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
+	"io/ioutil"
+	"os"
+	"path"
 	"testing"
 
 	"github.com/letsencrypt/boulder/pkcs11helpers"
@@ -152,4 +157,24 @@ func TestGetKey(t *testing.T) {
 	}
 	_, err = getKey(ctx, 0, "label", []byte{255, 255})
 	test.AssertNotError(t, err, "getKey failed when everything worked properly")
+}
+
+func TestGenerateKey(t *testing.T) {
+	tmp, err := ioutil.TempDir("", "ceremony-testing")
+	test.AssertNotError(t, err, "Failed to create temporary directory")
+	defer os.RemoveAll(tmp)
+
+	ctx := pkcs11helpers.MockCtx{}
+	path := path.Join(tmp, "test-rsa-key.pem")
+	keyInfo, err := generateKey(ctx, 0, "", path, keyGenConfig{
+		Type:         "rsa",
+		RSAModLength: 512,
+	})
+	test.AssertNotError(t, err, "Failed to generate RSA key")
+	diskKeyBytes, err := ioutil.ReadFile(path)
+	test.AssertNotError(t, err, "Failed to load key from disk")
+	block, _ := pem.Decode(diskKeyBytes)
+	diskKey, err := x509.ParsePKIXPublicKey(block.Bytes)
+	test.AssertNotError(t, err, "Failed to parse disk key")
+	test.AssertDeepEquals(t, diskKey, keyInfo.key)
 }
