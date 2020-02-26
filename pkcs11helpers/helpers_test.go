@@ -3,7 +3,7 @@ package pkcs11helpers
 import (
 	"errors"
 	"testing"
-	
+
 	"github.com/letsencrypt/boulder/test"
 	"github.com/miekg/pkcs11"
 )
