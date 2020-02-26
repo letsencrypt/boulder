@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/letsencrypt/boulder/pkcs11helpers"
@@ -21,8 +20,7 @@ func TestECPub(t *testing.T) {
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return nil, errors.New("bad!")
 	}
-	_, err := ecPub(ctx, 0, 0, elliptic.P256().Params())
-	fmt.Println(err)
+	_, err := ecPub(ctx, 0, 0, elliptic.P256())
 	test.AssertError(t, err, "ecPub didn't fail with non-matching curve")
 	test.AssertEquals(t, err.Error(), "Failed to retrieve key attributes: bad!")
 
@@ -33,7 +31,7 @@ func TestECPub(t *testing.T) {
 			pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, []byte{4, 217, 225, 246, 210, 153, 134, 246, 104, 95, 79, 122, 206, 135, 241, 37, 114, 199, 87, 56, 167, 83, 56, 136, 174, 6, 145, 97, 239, 221, 49, 67, 148, 13, 126, 65, 90, 208, 195, 193, 171, 105, 40, 98, 132, 124, 30, 189, 215, 197, 178, 226, 166, 238, 240, 57, 215}),
 		}, nil
 	}
-	_, err = ecPub(ctx, 0, 0, elliptic.P256().Params())
+	_, err = ecPub(ctx, 0, 0, elliptic.P256())
 	test.AssertError(t, err, "ecPub didn't fail with non-matching curve")
 }
 
@@ -54,7 +52,7 @@ func TestECVerify(t *testing.T) {
 	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
 		return errors.New("yup")
 	}
-	err = ecVerify(ctx, 0, 0, &ecdsa.PublicKey{Curve: elliptic.P256().Params()})
+	err = ecVerify(ctx, 0, 0, &ecdsa.PublicKey{Curve: elliptic.P256()})
 	test.AssertError(t, err, "ecVerify didn't fail on SignInit error")
 
 	// test Sign failing
@@ -64,7 +62,7 @@ func TestECVerify(t *testing.T) {
 	ctx.SignFunc = func(pkcs11.SessionHandle, []byte) ([]byte, error) {
 		return nil, errors.New("yup")
 	}
-	err = ecVerify(ctx, 0, 0, &ecdsa.PublicKey{Curve: elliptic.P256().Params()})
+	err = ecVerify(ctx, 0, 0, &ecdsa.PublicKey{Curve: elliptic.P256()})
 	test.AssertError(t, err, "ecVerify didn't fail on Sign error")
 
 	// test signature verification failing

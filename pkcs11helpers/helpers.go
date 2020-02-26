@@ -79,11 +79,11 @@ func GetRSAPublicKey(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.Obje
 
 // oidDERToCurve maps the hex of the DER encoding of the various curve OIDs to
 // the relevant curve parameters
-var oidDERToCurve = map[string]*elliptic.CurveParams{
-	"06052B81040021":       elliptic.P224().Params(),
-	"06082A8648CE3D030107": elliptic.P256().Params(),
-	"06052B81040022":       elliptic.P384().Params(),
-	"06052B81040023":       elliptic.P521().Params(),
+var oidDERToCurve = map[string]elliptic.Curve{
+	"06052B81040021":       elliptic.P224(),
+	"06082A8648CE3D030107": elliptic.P256(),
+	"06052B81040022":       elliptic.P384(),
+	"06052B81040023":       elliptic.P521(),
 }
 
 func GetECDSAPublicKey(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle) (*ecdsa.PublicKey, error) {
@@ -106,6 +106,7 @@ func GetECDSAPublicKey(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.Ob
 				return nil, errors.New("Unknown curve OID value returned")
 			}
 			pubKey.Curve = rCurve
+			fmt.Println("what what", rCurve == elliptic.P256())
 		case pkcs11.CKA_EC_POINT:
 			pointBytes = a.Value
 		}

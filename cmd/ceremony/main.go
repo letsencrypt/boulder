@@ -1,4 +1,3 @@
-// ceremony is a key/certificate ceremony tool.
 package main
 
 import (

@@ -14,11 +14,11 @@ import (
 	"github.com/miekg/pkcs11"
 )
 
-var stringToCurve = map[string]*elliptic.CurveParams{
-	elliptic.P224().Params().Name: elliptic.P224().Params(),
-	elliptic.P256().Params().Name: elliptic.P256().Params(),
-	elliptic.P384().Params().Name: elliptic.P384().Params(),
-	elliptic.P521().Params().Name: elliptic.P521().Params(),
+var stringToCurve = map[string]elliptic.Curve{
+	elliptic.P224().Params().Name: elliptic.P224(),
+	elliptic.P256().Params().Name: elliptic.P256(),
+	elliptic.P384().Params().Name: elliptic.P384(),
+	elliptic.P521().Params().Name: elliptic.P521(),
 }
 
 // curveToOIDDER maps the name of the curves to their DER encoded OIDs
@@ -31,18 +31,18 @@ var curveToOIDDER = map[string][]byte{
 
 // oidDERToCurve maps the hex of the DER encoding of the various curve OIDs to
 // the relevant curve parameters
-var oidDERToCurve = map[string]*elliptic.CurveParams{
-	"06052B81040021":       elliptic.P224().Params(),
-	"06082A8648CE3D030107": elliptic.P256().Params(),
-	"06052B81040022":       elliptic.P384().Params(),
-	"06052B81040023":       elliptic.P521().Params(),
+var oidDERToCurve = map[string]elliptic.Curve{
+	"06052B81040021":       elliptic.P224(),
+	"06082A8648CE3D030107": elliptic.P256(),
+	"06052B81040022":       elliptic.P384(),
+	"06052B81040023":       elliptic.P521(),
 }
 
-var curveToHash = map[*elliptic.CurveParams]crypto.Hash{
-	elliptic.P224().Params(): crypto.SHA256,
-	elliptic.P256().Params(): crypto.SHA256,
-	elliptic.P384().Params(): crypto.SHA384,
-	elliptic.P521().Params(): crypto.SHA512,
+var curveToHash = map[elliptic.Curve]crypto.Hash{
+	elliptic.P224(): crypto.SHA256,
+	elliptic.P256(): crypto.SHA256,
+	elliptic.P384(): crypto.SHA384,
+	elliptic.P521(): crypto.SHA512,
 }
 
 var hashToString = map[crypto.Hash]string{
@@ -54,8 +54,8 @@ var hashToString = map[crypto.Hash]string{
 // ecArgs constructs the private and public key template attributes sent to the
 // device and specifies which mechanism should be used. curve determines which
 // type of key should be generated.
-func ecArgs(label string, curve *elliptic.CurveParams, keyID []byte) generateArgs {
-	encodedCurve := curveToOIDDER[curve.Name]
+func ecArgs(label string, curve elliptic.Curve, keyID []byte) generateArgs {
+	encodedCurve := curveToOIDDER[curve.Params().Name]
 	log.Printf("\tEncoded curve parameters for %s: %X\n", curve.Params().Name, encodedCurve)
 	return generateArgs{
 		mechanism: []*pkcs11.Mechanism{
@@ -89,7 +89,7 @@ func ecPub(
 	ctx pkcs11helpers.PKCtx,
 	session pkcs11.SessionHandle,
 	object pkcs11.ObjectHandle,
-	expectedCurve *elliptic.CurveParams,
+	expectedCurve elliptic.Curve,
 ) (*ecdsa.PublicKey, error) {
 	pubKey, err := pkcs11helpers.GetECDSAPublicKey(ctx, session, object)
 	if err != nil {
@@ -113,11 +113,11 @@ func ecVerify(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, object pkcs
 		return fmt.Errorf("failed to construct nonce: %s", err)
 	}
 	log.Printf("\tConstructed nonce: %d (%X)\n", big.NewInt(0).SetBytes(nonce), nonce)
-	hashFunc := curveToHash[pub.Curve.Params()].New()
+	hashFunc := curveToHash[pub.Curve].New()
 	hashFunc.Write(nonce)
 	digest := hashFunc.Sum(nil)
-	log.Printf("\tMessage %s hash: %X\n", hashToString[curveToHash[pub.Curve.Params()]], digest)
-	signature, err := pkcs11helpers.Sign(ctx, session, object, pkcs11helpers.ECDSAKey, digest, curveToHash[pub.Curve.Params()])
+	log.Printf("\tMessage %s hash: %X\n", hashToString[curveToHash[pub.Curve]], digest)
+	signature, err := pkcs11helpers.Sign(ctx, session, object, pkcs11helpers.ECDSAKey, digest, curveToHash[pub.Curve])
 	if err != nil {
 		return err
 	}
