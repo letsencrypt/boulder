@@ -44,7 +44,7 @@ func TestSendErrorSubProblemNamespace(t *testing.T) {
 		"status": 400,
 		"subproblems": [
 		  {
-			"type": "namespace:test:namespace:test:malformed",
+			"type": "namespace:test:malformed",
 			"detail": "dfoop :: nop",
 			"status": 400,
 			"identifier": {
@@ -53,7 +53,7 @@ func TestSendErrorSubProblemNamespace(t *testing.T) {
 			}
 		  },
 		  {
-			"type": "namespace:test:namespace:test:malformed",
+			"type": "namespace:test:malformed",
 			"detail": "dfoop :: nah",
 			"status": 400,
 			"identifier": {
