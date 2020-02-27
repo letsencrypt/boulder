@@ -623,6 +623,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	if err != nil {
 		return emptyCert, err
 	}
+	ca.signatureCount.WithLabelValues(string(certType)).Inc()
 	block, _ := pem.Decode(certPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
 		err = berrors.InternalServerError("invalid certificate value returned")
