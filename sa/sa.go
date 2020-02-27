@@ -1207,16 +1207,11 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 		}
 	}
 
-	// An order is invalid if **any** of its authzs are invalid
-	if invalidAuthzs > 0 {
-		return string(core.StatusInvalid), nil
-	}
-	// An order is invalid if **any** of its authzs are expired
-	if expiredAuthzs > 0 {
-		return string(core.StatusInvalid), nil
-	}
-	// An order is invalid if **any** of its authzs are deactivated
-	if deactivatedAuthzs > 0 {
+	// An order is invalid if **any** of its authzs are invalid, deactivated,
+	// or expired, see https://tools.ietf.org/html/rfc8555#section-7.1.6
+	if invalidAuthzs > 0 ||
+		expiredAuthzs > 0 ||
+		deactivatedAuthzs > 0 {
 		return string(core.StatusInvalid), nil
 	}
 	// An order is pending if **any** of its authzs are pending
