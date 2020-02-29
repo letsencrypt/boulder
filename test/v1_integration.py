@@ -438,7 +438,11 @@ def caa_recheck_setup():
     # Issue a certificate with the clock set back, and save the authzs to check
     # later that they are valid (200). They should however require rechecking for
     # CAA purposes.
-    _, authzs = auth_and_issue([random_domain()], client=caa_recheck_client)
+    numNames = 10
+    # Generate numNames subdomains of a random domain
+    base_domain = random_domain()
+    domains = [ "{0}.{1}".format(str(n),base_domain) for n in range(numNames) ]
+    _, authzs = auth_and_issue(domains, client=caa_recheck_client)
     for a in authzs:
         caa_recheck_authzs.append(a)
 
@@ -457,7 +461,9 @@ def test_recheck_caa():
                 response.status_code))
         domain = a.body.identifier.value
         domains.append(domain)
-        challSrv.add_caa_issue(domain, ";")
+
+    # Set a forbidding CAA record on just one domain
+    challSrv.add_caa_issue(domains[3], ";")
 
     # Request issuance for the previously-issued domain name, which should
     # now be denied due to CAA.
