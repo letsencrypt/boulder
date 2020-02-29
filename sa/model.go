@@ -564,7 +564,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 
 // populateAttemptedFields takes a challenge and populates it with the validation fields status,
 // validation records, and error (the latter only if the validation failed) from a authzModel.
-func populateAttemptedFields(am *authzModel, challenge *corepb.Challenge) error {
+func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 	if len(am.ValidationError) != 0 {
 		// If the error is non-empty the challenge must be invalid.
 		status := string(core.StatusInvalid)
@@ -604,7 +604,7 @@ func populateAttemptedFields(am *authzModel, challenge *corepb.Challenge) error 
 	return nil
 }
 
-func modelToAuthzPB(am *authzModel) (*corepb.Authorization, error) {
+func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 	expires := am.Expires.UTC().UnixNano()
 	id := fmt.Sprintf("%d", am.ID)
 	status := uintToStatus[am.Status]
