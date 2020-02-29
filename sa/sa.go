@@ -1401,7 +1401,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization2(ctx context.Context, id *sapb.
 	if obj == nil {
 		return nil, berrors.NotFoundError("authorization %d not found", *id.Id)
 	}
-	return modelToAuthzPB(obj.(*authzModel))
+	return modelToAuthzPB(*(obj.(*authzModel)))
 }
 
 // authzModelMapToPB converts a mapping of domain name to authzModels into a
@@ -1411,7 +1411,7 @@ func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 	for k, v := range m {
 		// Make a copy of k because it will be reassigned with each loop.
 		kCopy := k
-		authzPB, err := modelToAuthzPB(&v)
+		authzPB, err := modelToAuthzPB(v)
 		if err != nil {
 			return nil, err
 		}
@@ -1644,7 +1644,7 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, re
 		}
 		return nil, err
 	}
-	return modelToAuthzPB(&am)
+	return modelToAuthzPB(am)
 }
 
 // CountPendingAuthorizations2 returns the number of pending, unexpired authorizations
