@@ -586,6 +586,28 @@ def test_admin_revoker_cert():
     verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "revoked")
     verify_akamai_purge()
 
+def test_admin_revoker_batched():
+    certs = []
+    serials = []
+    serialFile = os.path.join(tempdir, "serials.hex")
+    f = open(serialFile, "w")
+
+    for x in range(3):
+        cert_file_pem = os.path.join(tempdir, "ar-cert-%d.pem" % x)
+        certs.append(cert_file_pem)
+        cert, _ = auth_and_issue([random_domain()], cert_output=cert_file_pem)
+        serial = "%x" % cert.body.get_serial_number()
+        f.write("%s\n" % serial)
+    f.close()
+
+    reset_akamai_purges()
+    run("./bin/admin-revoker batched-serial-revoke --config %s/admin-revoker.json %s %d %d" % (
+        config_dir, serialFile, 0, 2))
+
+    ee_ocsp_url = "http://localhost:4002"
+    for cert in certs:
+        verify_ocsp(cert, "test/test-ca2.pem", ee_ocsp_url, "revoked")
+
 def test_sct_embedding():
     certr, authzs = auth_and_issue([random_domain()])
     certBytes = requests.get(certr.uri).content
