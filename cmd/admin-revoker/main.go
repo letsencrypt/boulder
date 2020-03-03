@@ -199,7 +199,7 @@ func main() {
 	ctx := context.Background()
 	args := flagSet.Args()
 	switch {
-	case command == "batched-serial-revoke" && len(args) == 2:
+	case command == "batched-serial-revoke" && len(args) == 3:
 		// 1: serial file path,  2: reasonCode, 3: parallelism
 		serialPath := args[0]
 		reasonCode, err := strconv.Atoi(args[1])
