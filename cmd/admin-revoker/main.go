@@ -30,13 +30,13 @@ import (
 const usageString = `
 usage:
 admin-revoker serial-revoke --config <path> <serial> <reason-code>
-admin-revoker batch-serial-revoke --config <path> <serial-file-path> <reason-code> <parallelism>
+admin-revoker batched-serial-revoke --config <path> <serial-file-path> <reason-code> <parallelism>
 admin-revoker reg-revoke --config <path> <registration-id> <reason-code>
 admin-revoker list-reasons --config <path>
 
 command descriptions:
   serial-revoke       Revoke a single certificate by the hex serial number
-  batch-serial-revoke Revokes all certificates contained in a file of hex serial numbers
+  batched-serial-revoke Revokes all certificates contained in a file of hex serial numbers
   reg-revoke          Revoke all certificates associated with a registration ID
   list-reasons        List all revocation reason codes
 
@@ -145,7 +145,7 @@ func revokeBatch(rac core.RegistrationAuthority, logger blog.Logger, dbMap *db.W
 				if serial == "" {
 					continue
 				}
-				err = revokeBySerial(context.Background(), serial, revocation.Reason(reasonCode), rac, logger, dbMap)
+				err := revokeBySerial(context.Background(), serial, reasonCode, rac, logger, dbMap)
 				if err != nil {
 					logger.Errf("failed to revoke %q: %s", serial, err)
 				}
