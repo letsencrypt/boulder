@@ -15,7 +15,6 @@ require (
 	github.com/golang/protobuf v1.3.2
 	github.com/golang/snappy v0.0.0-20170215233205-553a64147049 // indirect
 	github.com/google/certificate-transparency-go v1.0.22-0.20181127102053-c25855a82c75
-	github.com/google/safebrowsing v0.0.0-20190624211811-bbf0d20d26b3 // indirect
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/hpcloud/tail v1.0.0
 	github.com/jmhodges/clock v0.0.0-20160418191101-880ee4c33548
