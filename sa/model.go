@@ -351,11 +351,6 @@ type requestedNameModel struct {
 
 type orderToAuthzModel struct {
 	OrderID int64
-	AuthzID string
-}
-
-type orderToAuthz2Model struct {
-	OrderID int64
 	AuthzID int64
 }
 
@@ -449,7 +444,7 @@ func statusUint(status core.AcmeStatus) uint8 {
 	return statusToUint[string(status)]
 }
 
-const authz2Fields = "id, identifierType, identifierValue, registrationID, status, expires, challenges, attempted, token, validationError, validationRecord"
+const authzFields = "id, identifierType, identifierValue, registrationID, status, expires, challenges, attempted, token, validationError, validationRecord"
 
 type authzModel struct {
 	ID               int64     `db:"id"`

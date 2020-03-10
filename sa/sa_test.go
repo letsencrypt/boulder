@@ -1140,17 +1140,17 @@ func TestGetAuthorizations2(t *testing.T) {
 
 	// Associate authorizations with an order so that GetAuthorizations2 thinks
 	// they are WFE2 authorizations.
-	err := sa.dbMap.Insert(&orderToAuthz2Model{
+	err := sa.dbMap.Insert(&orderToAuthzModel{
 		OrderID: 1,
 		AuthzID: authzIDA,
 	})
 	test.AssertNotError(t, err, "sa.dbMap.Insert failed")
-	err = sa.dbMap.Insert(&orderToAuthz2Model{
+	err = sa.dbMap.Insert(&orderToAuthzModel{
 		OrderID: 1,
 		AuthzID: authzIDB,
 	})
 	test.AssertNotError(t, err, "sa.dbMap.Insert failed")
-	err = sa.dbMap.Insert(&orderToAuthz2Model{
+	err = sa.dbMap.Insert(&orderToAuthzModel{
 		OrderID: 1,
 		AuthzID: authzIDC,
 	})
