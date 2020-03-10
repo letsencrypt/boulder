@@ -903,7 +903,7 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		}
 
 		for _, id := range req.V2Authorizations {
-			otoa := &orderToAuthz2Model{
+			otoa := &orderToAuthzModel{
 				OrderID: order.ID,
 				AuthzID: id,
 			}
@@ -1443,7 +1443,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 			expires > ? AND
 			identifierType = ? AND
 			identifierValue IN (%s)`,
-		authz2Fields,
+		authzFields,
 		strings.Join(qmarks, ","),
 	)
 	_, err := ssa.dbMap.Select(
@@ -1624,7 +1624,7 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, re
 			identifierType = :dnsType AND
 			identifierValue = :ident
 			ORDER BY expires ASC
-			LIMIT 1 `, authz2Fields),
+			LIMIT 1 `, authzFields),
 		map[string]interface{}{
 			"regID":      *req.RegistrationID,
 			"status":     statusUint(core.StatusPending),
@@ -1676,7 +1676,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 			authz2.expires > :expires AND
 			authz2.status = :status AND
 			orderToAuthz2.orderID = :orderID`,
-			authz2Fields,
+			authzFields,
 		),
 		map[string]interface{}{
 			"regID":   *req.AcctID,
@@ -1758,7 +1758,7 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 			expires > ? AND
 			identifierType = ? AND
 			identifierValue IN (%s)`,
-			authz2Fields,
+			authzFields,
 			strings.Join(qmarks, ","),
 		),
 		params...,
