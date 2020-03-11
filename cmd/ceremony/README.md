@@ -15,36 +15,44 @@ These modes are set in the `ceremony-type` field of the configuration file.
 
 ## Configuration format
 
-`ceremony` uses YAML for its configuration file, mainly as it allows for commenting.
+`ceremony` uses YAML for its configuration file, mainly as it allows for commenting. Each ceremony type has a different set of configuration fields.
 
-| Field | Ceremony Type | Description |
-| --- | --- | --- |
-| `pkcs11-module` | All | Path to the PKCS#11 module to use to communicate with a HSM. |
-| `ceremony-type` | All | Specifies what type of ceremony to do, either `root`, `intermediate`, or `key`. |
-| `key-slot` | All | Specifies which HSM object slot the signing key is in/should be stored in. |
-| `key-label` | All | Specifies the HSM object label for the signing key. |
-| `key-id` | `intermediate` | Specifies the HSM object ID for the signing key to be used. |
-| `key-type` | `root` and `key` | Specifies the type of key to be generated, either `rsa` or `ecdsa`. If `rsa` the generated key will have a 2048 bit modulus and an exponent of 65537. If `ecdsa` the curve is specified by `ecdsa-curve`. |
-| `ecdsa-curve` | `root` and `key` | Specifies the ECDSA curve to use when generating key, either `P-224`, `P-256`, `P-384`, or `P-521`. |
-| `public-key-path` | All | Path store PEM public key for generated signing key in `ceremony-type`s `root` and `key`, and path to PEM subject public key in `ceremony-type` `intermediate`. |
-| `certificate-path` | `root` and `intermediate` | Path to store signed PEM certificate. |
-| `issuer-path` | `intermediate` | Path to PEM issuer certificate. |
-| `certificate-profile` | `root` and `intermediate` | Profile for certificate, [format defined below](#Certificate-profile-format) |
+### Root ceremony
 
-### Example configs
+- `ceremony-type`: string describing the ceremony type, `root`.
+- `pkcs11`: object containing PKCS#11 related fields.
+    | Field | Description |
+    | --- | --- |
+    | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
+    | `key-slot` | Specifies which HSM object slot the generated signing key should be stored in. |
+    | `key-label` | Specifies the HSM object label for the generated signing key. |
+- `key`: object containing key generation related fields.
+    | Field | Description |
+    | --- | --- |
+    | `key-type` | Specifies the type of key to be generated, either `rsa` or `ecdsa`. If `rsa` the generated key will have an exponent of 65537 and a modulus length specified by `rsa-mod-length`. If `ecdsa` the curve is specified by `ecdsa-curve`. |
+    | `ecdsa-curve` | Specifies the ECDSA curve to use when generating key, either `P-224`, `P-256`, `P-384`, or `P-521`. |
+    | `rsa-mod-length` | Specifies the length of the RSA modulus, either `2048` or `4096`.
+- `outputs`: object containing paths to write outputs.
+    | Field | Description |
+    | --- | --- |
+    | `public-key-path` | Path to store generated PEM public key. |
+    | `certificate-path` | Path to store signed PEM certificate. |
+- `certificate-profile`: object containing profile for certificate to generate. Fields are documented [below](#Certificate-profile-format).
 
-#### Root ceremony
+Example:
 
 ```yaml
-pkcs11-module: /usr/lib/opensc-pkcs11.so
 ceremony-type: root
-key-slot: 0
-key-label: root signing key
-key-type: ecdsa
-ecdsa-curve: P-384
-public-key-path: /home/user/root-signing-pub.pem
-certificate-path: /home/user/root-cert.pem
-issuer-path: /home/user/root-cert.pem
+pkcs11:
+    module: /usr/lib/opensc-pkcs11.so
+    key-slot: 0
+    key-label: root signing key
+key:
+    type: ecdsa
+    ecdsa-curve: P-384
+outputs:
+    public-key-path: /home/user/root-signing-pub.pem
+    certificate-path: /home/user/root-cert.pem
 certificate-profile:
     signature-algorithm: ECDSAWithSHA384
     common-name: CA intermediate
@@ -59,17 +67,41 @@ certificate-profile:
 
 This config generates a ECDSA P-384 key in the HSM with the object label `root signing key` and uses this key to sign a self-signed certificate. The public key for the key generated is written to `/home/user/root-signing-pub.pem` and the certificate is written to `/home/user/root-cert.pem`.
 
-#### Intermediate ceremony
+### Intermediate ceremony
+
+- `ceremony-type`: string describing the ceremony type, `intermediate`.
+- `pkcs11`: object containing PKCS#11 related fields.
+    | Field | Description |
+    | --- | --- |
+    | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
+    | `key-slot` | Specifies which HSM object slot the signing key is in. |
+    | `key-label` | Specifies the HSM object label for the signing key. |
+    | `key-id` | Specifies the HSM object ID for the signing key. |
+- `inputs`: object containing paths for inputs
+    | Field | Description |
+    | --- | --- |
+    | `public-key-path` | Path to PEM subject public key for certificate. |
+    | `issuer-path` | Path to PEM issuer certificate. |
+- `outputs`: object containing paths to write outputs.
+    | Field | Description |
+    | --- | --- |
+    | `certificate-path` | Path to store signed PEM certificate. |
+- `certificate-profile`: object containing profile for certificate to generate. Fields are documented [below](#Certificate-profile-format).
+
+Example:
 
 ```yaml
-pkcs11-module: /usr/lib/opensc-pkcs11.so
 ceremony-type: intermediate
-key-slot: 0
-key-label: root signing key
-key-id: ffff
-public-key-path: /home/user/intermediate-signing-pub.pem
-certificate-path: /home/user/intermediate-cert.pem
-issuer-path: /home/user/root-cert.pem
+pkcs11:
+    module: /usr/lib/opensc-pkcs11.so
+    key-slot: 0
+    key-label: root signing key
+    key-id: ffff
+inputs:
+    public-key-path: /home/user/intermediate-signing-pub.pem
+    issuer-path: /home/user/root-cert.pem
+outputs:
+    certificate-path: /home/user/intermediate-cert.pem
 certificate-profile:
     signature-algorithm: ECDSAWithSHA384
     common-name: CA root
@@ -91,16 +123,39 @@ certificate-profile:
 
 This config generates an intermediate certificate signed by a key in the HSM, identified by the object label `root signing key` and the object ID `ffff`. The subject key used is taken from `/home/user/intermediate-signing-pub.pem` and the issuer is `/home/user/root-cert.pem`, the resulting certificate is written to `/home/user/intermediate-cert.pem`.
 
-#### Key ceremony
+### Key ceremony
+
+- `ceremony-type`: string describing the ceremony type, `key`.
+- `pkcs11`: object containing PKCS#11 related fields.
+    | Field | Description |
+    | --- | --- |
+    | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
+    | `key-slot` | Specifies which HSM object slot the generated signing key should be stored in. |
+    | `key-label` | Specifies the HSM object label for the generated signing key. |
+- `key`: object containing key generation related fields.
+    | Field | Description |
+    | --- | --- |
+    | `key-type` | Specifies the type of key to be generated, either `rsa` or `ecdsa`. If `rsa` the generated key will have an exponent of 65537 and a modulus length specified by `rsa-mod-length`. If `ecdsa` the curve is specified by `ecdsa-curve`. |
+    | `ecdsa-curve` | Specifies the ECDSA curve to use when generating key, either `P-224`, `P-256`, `P-384`, or `P-521`. |
+    | `rsa-mod-length` | Specifies the length of the RSA modulus, either `2048` or `4096`.
+- `outputs`: object containing paths to write outputs.
+    | Field | Description |
+    | --- | --- |
+    | `public-key-path` | Path to store generated PEM public key. |
+
+Example:
 
 ```yaml
-pkcs11-module: /usr/lib/opensc-pkcs11.so
-ceremony-type: root
-key-slot: 0
-key-label: intermediate signing key
-key-type: ecdsa
-ecdsa-curve: P-384
-public-key-path: /home/user/intermediate-signing-pub.pem
+ceremony-type: key
+pkcs11:
+    module: /usr/lib/opensc-pkcs11.so
+    key-slot: 0
+    key-label: intermediate signing key
+key:
+    key-type: ecdsa
+    ecdsa-curve: P-384
+outputs:
+    public-key-path: /home/user/intermediate-signing-pub.pem
 ```
 
 This config generates an ECDSA P-384 key in the HSM with the object label `intermediate signing key`. The public key is written to `/home/user/intermediate-signing-pub.pem`.

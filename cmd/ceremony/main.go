@@ -329,6 +329,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to read config file: %s", err)
 	}
+	// TODO(roland): this could also be done with a command line flag,
+	// but I kind of like having the config file being completely self
+	// descriptive
 	var ct struct {
 		CeremonyType string `yaml:"ceremony-type"`
 	}
