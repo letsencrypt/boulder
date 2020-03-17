@@ -2047,6 +2047,12 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 	test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
 	test.AssertNotNil(t, authzMap, "sa.GetValidOrderAuthorizations result was nil")
 	test.AssertEquals(t, len(authzMap.Authz), 2)
+	test.AssertEquals(t, *authzMap.Authz[0].Authz.Identifier, "a.example.com")
+	test.AssertEquals(t, *authzMap.Authz[1].Authz.Identifier, "b.example.com")
+	test.AssertEquals(t, *authzMap.Authz[0].Authz.Expires, expires.UnixNano())
+	test.AssertEquals(t, *authzMap.Authz[1].Authz.Expires, expires.UnixNano())
+	test.AssertEquals(t, *authzMap.Authz[0].Authz.Id, fmt.Sprintf("%d", authzIDA))
+	test.AssertEquals(t, *authzMap.Authz[1].Authz.Id, fmt.Sprintf("%d", authzIDB))
 
 	// Getting the order authorizations for an order that doesn't exist should return nothing
 	missingID := int64(0xC0FFEEEEEEE)
