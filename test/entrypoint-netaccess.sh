@@ -7,7 +7,7 @@
 # with the boulder container for ports. This is a variant of entrypoint.sh that
 # exits if it is not given an argument.
 if [[ "$@" = "" ]]; then
-  echo "Not needed as part of 'docker-compse up'. Exiting normally."
+  echo "Not needed as part of 'docker-compose up'. Exiting normally."
   exit 0
 fi
 $(dirname "${BASH_SOURCE[0]}")/entrypoint.sh "$@"
