@@ -2062,7 +2062,7 @@ func TestAuthzModelMapToPB(t *testing.T) {
 	for _, el := range out.Authz {
 		model, ok := input[*el.Domain]
 		if !ok {
-			t.Errorf("output had element for %q, a hostname not present in input.", *el.Domain)
+			t.Errorf("output had element for %q, a hostname not present in input", *el.Domain)
 		}
 		authzPB := el.Authz
 		test.AssertEquals(t, *authzPB.Id, fmt.Sprintf("%d", model.ID))
