@@ -1,4 +1,6 @@
-#!/bin/bash -e
+#!/bin/bash
+
+set -eu
 
 cd $(dirname $0)
 
@@ -26,6 +28,7 @@ do
   # Build the docker image using the templated Dockerfile, tagging it with
   # TAG_NAME
   docker build . \
+    --ulimit memlock=-1:-1 \
     -t $TAG_NAME \
     --no-cache \
     -f "$DOCKERFILE"
