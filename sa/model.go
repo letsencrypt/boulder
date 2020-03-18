@@ -183,13 +183,6 @@ type challModel struct {
 	LockCol int64
 }
 
-// getChallengesQuery fetches exactly the fields in challModel from the
-// challenges table.
-const getChallengesQuery = `
-	SELECT id, authorizationID, type, status, error, token,
-		keyAuthorization, validationRecord
-	FROM challenges WHERE authorizationID = :authID ORDER BY id ASC`
-
 // newReg creates a reg model object from a core.Registration
 func registrationToModel(r *core.Registration) (*regModel, error) {
 	key, err := json.Marshal(r.Key)
@@ -251,37 +244,6 @@ func modelToRegistration(reg *regModel) (core.Registration, error) {
 	}
 
 	return r, nil
-}
-
-func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
-	cm := challModel{
-		AuthorizationID:  authID,
-		Type:             c.Type,
-		Status:           c.Status,
-		Token:            c.Token,
-		KeyAuthorization: c.ProvidedKeyAuthorization,
-	}
-	if c.Error != nil {
-		errJSON, err := json.Marshal(c.Error)
-		if err != nil {
-			return nil, err
-		}
-		if len(errJSON) > mediumBlobSize {
-			return nil, fmt.Errorf("Error object is too large to store in the database")
-		}
-		cm.Error = errJSON
-	}
-	if len(c.ValidationRecord) > 0 {
-		vrJSON, err := json.Marshal(c.ValidationRecord)
-		if err != nil {
-			return nil, err
-		}
-		if len(vrJSON) > mediumBlobSize {
-			return nil, fmt.Errorf("Validation Record object is too large to store in the database")
-		}
-		cm.ValidationRecord = vrJSON
-	}
-	return &cm, nil
 }
 
 func modelToChallenge(cm *challModel) (core.Challenge, error) {

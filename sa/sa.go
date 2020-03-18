@@ -14,7 +14,6 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
-	"gopkg.in/go-gorp/gorp.v2"
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
@@ -53,12 +52,6 @@ type SQLStorageAuthority struct {
 	rateLimitWriteErrors prometheus.Counter
 }
 
-func digest256(data []byte) []byte {
-	d := sha256.New()
-	_, _ = d.Write(data) // Never returns an error
-	return d.Sum(nil)
-}
-
 // orderFQDNSet contains the SHA256 hash of the lowercased, comma joined names
 // from a new-order request, along with the corresponding orderID, the
 // registration ID, and the order expiry. This is used to find
@@ -69,16 +62,6 @@ type orderFQDNSet struct {
 	OrderID        int64
 	RegistrationID int64
 	Expires        time.Time
-}
-
-const (
-	authorizationTable        = "authz"
-	pendingAuthorizationTable = "pendingAuthorizations"
-)
-
-var authorizationTables = []string{
-	authorizationTable,
-	pendingAuthorizationTable,
 }
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for
@@ -109,28 +92,6 @@ func NewSQLStorageAuthority(
 	ssa.countCertificatesByName = ssa.countCertificates
 
 	return ssa, nil
-}
-
-func statusIsPending(status core.AcmeStatus) bool {
-	return status == core.StatusPending || status == core.StatusProcessing || status == core.StatusUnknown
-}
-
-func existingPending(dbMap db.OneSelector, id string) bool {
-	var count int64
-	_ = dbMap.SelectOne(&count, "SELECT count(*) FROM pendingAuthorizations WHERE id = :id", map[string]interface{}{"id": id})
-	return count > 0
-}
-
-func existingFinal(dbMap db.OneSelector, id string) bool {
-	var count int64
-	_ = dbMap.SelectOne(&count, "SELECT count(*) FROM authz WHERE id = :id", map[string]interface{}{"id": id})
-	return count > 0
-}
-
-func existingRegistration(tx *gorp.Transaction, id int64) bool {
-	var count int64
-	_ = tx.SelectOne(&count, "SELECT count(*) FROM registrations WHERE id = :id", map[string]interface{}{"id": id})
-	return count > 0
 }
 
 // GetRegistration obtains a Registration by ID
