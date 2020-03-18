@@ -53,9 +53,9 @@ func (kgc keyGenConfig) validate() error {
 
 type rootConfig struct {
 	PKCS11 struct {
-		Module   string `yaml:"module"`
-		KeySlot  uint   `yaml:"key-slot"`
-		KeyLabel string `yaml:"key-label"`
+		Module     string `yaml:"module"`
+		StoreSlot  uint   `yaml:"store-key-in-slot"`
+		StoreLabel string `yaml:"store-key-with-label"`
 	} `yaml:"pkcs11"`
 	Key     keyGenConfig `yaml:"key"`
 	Outputs struct {
@@ -71,8 +71,8 @@ func (rc rootConfig) validate() error {
 		return errors.New("pkcs11.module is required")
 	}
 	// key-slot cannot be tested because 0 is a valid slot
-	if rc.PKCS11.KeyLabel == "" {
-		return errors.New("pkcs11.key-label is required")
+	if rc.PKCS11.StoreLabel == "" {
+		return errors.New("pkcs11.store-key-with-label is required")
 	}
 
 	// Key gen fields
@@ -98,10 +98,10 @@ func (rc rootConfig) validate() error {
 
 type intermediateConfig struct {
 	PKCS11 struct {
-		Module   string `yaml:"module"`
-		KeySlot  uint   `yaml:"key-slot"`
-		KeyLabel string `yaml:"key-label"`
-		KeyID    string `yaml:"key-id"`
+		Module       string `yaml:"module"`
+		SigningSlot  uint   `yaml:"signing-key-slot"`
+		SigningLabel string `yaml:"signing-key-label"`
+		KeyID        string `yaml:"key-id"`
 	} `yaml:"pkcs11"`
 	Inputs struct {
 		PublicKeyPath         string `yaml:"public-key-path"`
@@ -119,8 +119,8 @@ func (ic intermediateConfig) validate() error {
 		return errors.New("pkcs11.module is required")
 	}
 	// key-slot cannot be tested because 0 is a valid slot
-	if ic.PKCS11.KeyLabel == "" {
-		return errors.New("pkcs11.key-label is required")
+	if ic.PKCS11.SigningLabel == "" {
+		return errors.New("pkcs11.signing-key-label is required")
 	}
 	if ic.PKCS11.KeyID == "" {
 		return errors.New("pkcs11.key-id is required")
@@ -149,9 +149,9 @@ func (ic intermediateConfig) validate() error {
 
 type keyConfig struct {
 	PKCS11 struct {
-		Module   string `yaml:"module"`
-		KeySlot  uint   `yaml:"key-slot"`
-		KeyLabel string `yaml:"key-label"`
+		Module     string `yaml:"module"`
+		StoreSlot  uint   `yaml:"store-key-in-slot"`
+		StoreLabel string `yaml:"store-key-with-label"`
 	} `yaml:"pkcs11"`
 	Key     keyGenConfig `yaml:"key"`
 	Outputs struct {
@@ -165,8 +165,8 @@ func (kc keyConfig) validate() error {
 		return errors.New("pkcs11.module is required")
 	}
 	// key-slot cannot be tested because 0 is a valid slot
-	if kc.PKCS11.KeyLabel == "" {
-		return errors.New("pkcs11.key-label is required")
+	if kc.PKCS11.StoreLabel == "" {
+		return errors.New("pkcs11.store-key-with-label is required")
 	}
 
 	// Key gen fields
@@ -215,16 +215,16 @@ func rootCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
-	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.KeySlot, "")
+	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.StoreSlot, "")
 	if err != nil {
-		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.KeySlot, err)
+		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.StoreSlot, err)
 	}
-	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.KeySlot)
-	keyInfo, err := generateKey(ctx, session, config.PKCS11.KeyLabel, config.Outputs.PublicKeyPath, config.Key)
+	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.StoreSlot)
+	keyInfo, err := generateKey(ctx, session, config.PKCS11.StoreLabel, config.Outputs.PublicKeyPath, config.Key)
 	if err != nil {
 		return err
 	}
-	signer, err := getKey(ctx, session, config.PKCS11.KeyLabel, keyInfo.id)
+	signer, err := getKey(ctx, session, config.PKCS11.StoreLabel, keyInfo.id)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve signer: %s", err)
 	}
@@ -247,16 +247,16 @@ func intermediateCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
-	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.KeySlot, "")
+	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.SigningSlot, "")
 	if err != nil {
-		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.KeySlot, err)
+		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.SigningSlot, err)
 	}
-	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.KeySlot)
+	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.SigningSlot)
 	keyID, err := hex.DecodeString(config.PKCS11.KeyID)
 	if err != nil {
 		return fmt.Errorf("failed to decode key-id: %s", err)
 	}
-	signer, err := getKey(ctx, session, config.PKCS11.KeyLabel, keyID)
+	signer, err := getKey(ctx, session, config.PKCS11.SigningLabel, keyID)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve private key handle: %s", err)
 	}
@@ -306,12 +306,12 @@ func keyCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
-	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.KeySlot, "")
+	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.StoreSlot, "")
 	if err != nil {
-		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.KeySlot, err)
+		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.StoreSlot, err)
 	}
-	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.KeySlot)
-	if _, err = generateKey(ctx, session, config.PKCS11.KeyLabel, config.Outputs.PublicKeyPath, config.Key); err != nil {
+	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.StoreSlot)
+	if _, err = generateKey(ctx, session, config.PKCS11.StoreLabel, config.Outputs.PublicKeyPath, config.Key); err != nil {
 		return err
 	}
 

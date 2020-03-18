@@ -93,28 +93,28 @@ func TestRootConfigValidate(t *testing.T) {
 			expectedError: "pkcs11.module is required",
 		},
 		{
-			name: "no pkcs11.key-label",
+			name: "no pkcs11.store-key-with-label",
 			config: rootConfig{
 				PKCS11: struct {
-					Module   string `yaml:"module"`
-					KeySlot  uint   `yaml:"key-slot"`
-					KeyLabel string `yaml:"key-label"`
+					Module     string `yaml:"module"`
+					StoreSlot  uint   `yaml:"store-key-in-slot"`
+					StoreLabel string `yaml:"store-key-with-label"`
 				}{
 					Module: "module",
 				},
 			},
-			expectedError: "pkcs11.key-label is required",
+			expectedError: "pkcs11.store-key-with-label is required",
 		},
 		{
 			name: "bad key fields",
 			config: rootConfig{
 				PKCS11: struct {
-					Module   string `yaml:"module"`
-					KeySlot  uint   `yaml:"key-slot"`
-					KeyLabel string `yaml:"key-label"`
+					Module     string `yaml:"module"`
+					StoreSlot  uint   `yaml:"store-key-in-slot"`
+					StoreLabel string `yaml:"store-key-with-label"`
 				}{
-					Module:   "module",
-					KeyLabel: "label",
+					Module:     "module",
+					StoreLabel: "label",
 				},
 			},
 			expectedError: "key.type is required",
@@ -123,12 +123,12 @@ func TestRootConfigValidate(t *testing.T) {
 			name: "no outputs.public-key-path",
 			config: rootConfig{
 				PKCS11: struct {
-					Module   string `yaml:"module"`
-					KeySlot  uint   `yaml:"key-slot"`
-					KeyLabel string `yaml:"key-label"`
+					Module     string `yaml:"module"`
+					StoreSlot  uint   `yaml:"store-key-in-slot"`
+					StoreLabel string `yaml:"store-key-with-label"`
 				}{
-					Module:   "module",
-					KeyLabel: "label",
+					Module:     "module",
+					StoreLabel: "label",
 				},
 				Key: keyGenConfig{
 					Type:         "rsa",
@@ -141,12 +141,12 @@ func TestRootConfigValidate(t *testing.T) {
 			name: "no outputs.certificate-path",
 			config: rootConfig{
 				PKCS11: struct {
-					Module   string `yaml:"module"`
-					KeySlot  uint   `yaml:"key-slot"`
-					KeyLabel string `yaml:"key-label"`
+					Module     string `yaml:"module"`
+					StoreSlot  uint   `yaml:"store-key-in-slot"`
+					StoreLabel string `yaml:"store-key-with-label"`
 				}{
-					Module:   "module",
-					KeyLabel: "label",
+					Module:     "module",
+					StoreLabel: "label",
 				},
 				Key: keyGenConfig{
 					Type:         "rsa",
@@ -165,12 +165,12 @@ func TestRootConfigValidate(t *testing.T) {
 			name: "bad certificate-profile",
 			config: rootConfig{
 				PKCS11: struct {
-					Module   string `yaml:"module"`
-					KeySlot  uint   `yaml:"key-slot"`
-					KeyLabel string `yaml:"key-label"`
+					Module     string `yaml:"module"`
+					StoreSlot  uint   `yaml:"store-key-in-slot"`
+					StoreLabel string `yaml:"store-key-with-label"`
 				}{
-					Module:   "module",
-					KeyLabel: "label",
+					Module:     "module",
+					StoreLabel: "label",
 				},
 				Key: keyGenConfig{
 					Type:         "rsa",
@@ -190,12 +190,12 @@ func TestRootConfigValidate(t *testing.T) {
 			name: "good config",
 			config: rootConfig{
 				PKCS11: struct {
-					Module   string `yaml:"module"`
-					KeySlot  uint   `yaml:"key-slot"`
-					KeyLabel string `yaml:"key-label"`
+					Module     string `yaml:"module"`
+					StoreSlot  uint   `yaml:"store-key-in-slot"`
+					StoreLabel string `yaml:"store-key-with-label"`
 				}{
-					Module:   "module",
-					KeyLabel: "label",
+					Module:     "module",
+					StoreLabel: "label",
 				},
 				Key: keyGenConfig{
 					Type:         "rsa",
@@ -243,30 +243,30 @@ func TestIntermediateConfigValidate(t *testing.T) {
 			expectedError: "pkcs11.module is required",
 		},
 		{
-			name: "no pkcs11.key-label",
+			name: "no pkcs11.signing-key-label",
 			config: intermediateConfig{
 				PKCS11: struct {
-					Module   string `yaml:"module"`
-					KeySlot  uint   `yaml:"key-slot"`
-					KeyLabel string `yaml:"key-label"`
-					KeyID    string `yaml:"key-id"`
+					Module       string `yaml:"module"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					KeyID        string `yaml:"key-id"`
 				}{
 					Module: "module",
 				},
 			},
-			expectedError: "pkcs11.key-label is required",
+			expectedError: "pkcs11.signing-key-label is required",
 		},
 		{
 			name: "no pkcs11.key-id",
 			config: intermediateConfig{
 				PKCS11: struct {
-					Module   string `yaml:"module"`
-					KeySlot  uint   `yaml:"key-slot"`
-					KeyLabel string `yaml:"key-label"`
-					KeyID    string `yaml:"key-id"`
+					Module       string `yaml:"module"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					KeyID        string `yaml:"key-id"`
 				}{
-					Module:   "module",
-					KeyLabel: "label",
+					Module:       "module",
+					SigningLabel: "label",
 				},
 			},
 			expectedError: "pkcs11.key-id is required",
@@ -275,14 +275,14 @@ func TestIntermediateConfigValidate(t *testing.T) {
 			name: "no inputs.public-key-path",
 			config: intermediateConfig{
 				PKCS11: struct {
-					Module   string `yaml:"module"`
-					KeySlot  uint   `yaml:"key-slot"`
-					KeyLabel string `yaml:"key-label"`
-					KeyID    string `yaml:"key-id"`
+					Module       string `yaml:"module"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					KeyID        string `yaml:"key-id"`
 				}{
-					Module:   "module",
-					KeyLabel: "label",
-					KeyID:    "id",
+					Module:       "module",
+					SigningLabel: "label",
+					KeyID:        "id",
 				},
 			},
 			expectedError: "inputs.public-key-path is required",
@@ -291,14 +291,14 @@ func TestIntermediateConfigValidate(t *testing.T) {
 			name: "no inputs.issuer-certificate-path",
 			config: intermediateConfig{
 				PKCS11: struct {
-					Module   string `yaml:"module"`
-					KeySlot  uint   `yaml:"key-slot"`
-					KeyLabel string `yaml:"key-label"`
-					KeyID    string `yaml:"key-id"`
+					Module       string `yaml:"module"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					KeyID        string `yaml:"key-id"`
 				}{
-					Module:   "module",
-					KeyLabel: "label",
-					KeyID:    "id",
+					Module:       "module",
+					SigningLabel: "label",
+					KeyID:        "id",
 				},
 				Inputs: struct {
 					PublicKeyPath         string `yaml:"public-key-path"`
@@ -313,14 +313,14 @@ func TestIntermediateConfigValidate(t *testing.T) {
 			name: "no outputs.certificate-path",
 			config: intermediateConfig{
 				PKCS11: struct {
-					Module   string `yaml:"module"`
-					KeySlot  uint   `yaml:"key-slot"`
-					KeyLabel string `yaml:"key-label"`
-					KeyID    string `yaml:"key-id"`
+					Module       string `yaml:"module"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					KeyID        string `yaml:"key-id"`
 				}{
-					Module:   "module",
-					KeyLabel: "label",
-					KeyID:    "id",
+					Module:       "module",
+					SigningLabel: "label",
+					KeyID:        "id",
 				},
 				Inputs: struct {
 					PublicKeyPath         string `yaml:"public-key-path"`
@@ -336,14 +336,14 @@ func TestIntermediateConfigValidate(t *testing.T) {
 			name: "bad certificate-profile",
 			config: intermediateConfig{
 				PKCS11: struct {
-					Module   string `yaml:"module"`
-					KeySlot  uint   `yaml:"key-slot"`
-					KeyLabel string `yaml:"key-label"`
-					KeyID    string `yaml:"key-id"`
+					Module       string `yaml:"module"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					KeyID        string `yaml:"key-id"`
 				}{
-					Module:   "module",
-					KeyLabel: "label",
-					KeyID:    "id",
+					Module:       "module",
+					SigningLabel: "label",
+					KeyID:        "id",
 				},
 				Inputs: struct {
 					PublicKeyPath         string `yaml:"public-key-path"`
@@ -364,14 +364,14 @@ func TestIntermediateConfigValidate(t *testing.T) {
 			name: "good config",
 			config: intermediateConfig{
 				PKCS11: struct {
-					Module   string `yaml:"module"`
-					KeySlot  uint   `yaml:"key-slot"`
-					KeyLabel string `yaml:"key-label"`
-					KeyID    string `yaml:"key-id"`
+					Module       string `yaml:"module"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					KeyID        string `yaml:"key-id"`
 				}{
-					Module:   "module",
-					KeyLabel: "label",
-					KeyID:    "id",
+					Module:       "module",
+					SigningLabel: "label",
+					KeyID:        "id",
 				},
 				Inputs: struct {
 					PublicKeyPath         string `yaml:"public-key-path"`
@@ -423,28 +423,28 @@ func TestKeyConfigValidate(t *testing.T) {
 			expectedError: "pkcs11.module is required",
 		},
 		{
-			name: "no pkcs11.key-label",
+			name: "no pkcs11.store-key-with-label",
 			config: keyConfig{
 				PKCS11: struct {
-					Module   string `yaml:"module"`
-					KeySlot  uint   `yaml:"key-slot"`
-					KeyLabel string `yaml:"key-label"`
+					Module     string `yaml:"module"`
+					StoreSlot  uint   `yaml:"store-key-in-slot"`
+					StoreLabel string `yaml:"store-key-with-label"`
 				}{
 					Module: "module",
 				},
 			},
-			expectedError: "pkcs11.key-label is required",
+			expectedError: "pkcs11.store-key-with-label is required",
 		},
 		{
 			name: "bad key fields",
 			config: keyConfig{
 				PKCS11: struct {
-					Module   string `yaml:"module"`
-					KeySlot  uint   `yaml:"key-slot"`
-					KeyLabel string `yaml:"key-label"`
+					Module     string `yaml:"module"`
+					StoreSlot  uint   `yaml:"store-key-in-slot"`
+					StoreLabel string `yaml:"store-key-with-label"`
 				}{
-					Module:   "module",
-					KeyLabel: "label",
+					Module:     "module",
+					StoreLabel: "label",
 				},
 			},
 			expectedError: "key.type is required",
@@ -453,12 +453,12 @@ func TestKeyConfigValidate(t *testing.T) {
 			name: "no outputs.public-key-path",
 			config: keyConfig{
 				PKCS11: struct {
-					Module   string `yaml:"module"`
-					KeySlot  uint   `yaml:"key-slot"`
-					KeyLabel string `yaml:"key-label"`
+					Module     string `yaml:"module"`
+					StoreSlot  uint   `yaml:"store-key-in-slot"`
+					StoreLabel string `yaml:"store-key-with-label"`
 				}{
-					Module:   "module",
-					KeyLabel: "label",
+					Module:     "module",
+					StoreLabel: "label",
 				},
 				Key: keyGenConfig{
 					Type:         "rsa",
@@ -471,12 +471,12 @@ func TestKeyConfigValidate(t *testing.T) {
 			name: "good config",
 			config: keyConfig{
 				PKCS11: struct {
-					Module   string `yaml:"module"`
-					KeySlot  uint   `yaml:"key-slot"`
-					KeyLabel string `yaml:"key-label"`
+					Module     string `yaml:"module"`
+					StoreSlot  uint   `yaml:"store-key-in-slot"`
+					StoreLabel string `yaml:"store-key-with-label"`
 				}{
-					Module:   "module",
-					KeyLabel: "label",
+					Module:     "module",
+					StoreLabel: "label",
 				},
 				Key: keyGenConfig{
 					Type:         "rsa",

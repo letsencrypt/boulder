@@ -106,7 +106,6 @@ func GetECDSAPublicKey(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.Ob
 				return nil, errors.New("Unknown curve OID value returned")
 			}
 			pubKey.Curve = rCurve
-			fmt.Println("what what", rCurve == elliptic.P256())
 		case pkcs11.CKA_EC_POINT:
 			pointBytes = a.Value
 		}

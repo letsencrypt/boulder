@@ -24,8 +24,8 @@ These modes are set in the `ceremony-type` field of the configuration file.
     | Field | Description |
     | --- | --- |
     | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
-    | `key-slot` | Specifies which HSM object slot the generated signing key should be stored in. |
-    | `key-label` | Specifies the HSM object label for the generated signing key. |
+    | `store-key-in-slot` | Specifies which HSM object slot the generated signing key should be stored in. |
+    | `store-key-with-label` | Specifies the HSM object label for the generated signing key. |
 - `key`: object containing key generation related fields.
     | Field | Description |
     | --- | --- |
@@ -45,8 +45,8 @@ Example:
 ceremony-type: root
 pkcs11:
     module: /usr/lib/opensc-pkcs11.so
-    key-slot: 0
-    key-label: root signing key
+    store-key-in-slot: 0
+    store-key-with-label: root signing key
 key:
     type: ecdsa
     ecdsa-curve: P-384
@@ -74,8 +74,8 @@ This config generates a ECDSA P-384 key in the HSM with the object label `root s
     | Field | Description |
     | --- | --- |
     | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
-    | `key-slot` | Specifies which HSM object slot the signing key is in. |
-    | `key-label` | Specifies the HSM object label for the signing key. |
+    | `signing-key-slot` | Specifies which HSM object slot the signing key is in. |
+    | `signing-key-label` | Specifies the HSM object label for the signing key. |
     | `key-id` | Specifies the HSM object ID for the signing key. |
 - `inputs`: object containing paths for inputs
     | Field | Description |
@@ -94,8 +94,8 @@ Example:
 ceremony-type: intermediate
 pkcs11:
     module: /usr/lib/opensc-pkcs11.so
-    key-slot: 0
-    key-label: root signing key
+    signing-key-slot: 0
+    signing-key-label: root signing key
     key-id: ffff
 inputs:
     public-key-path: /home/user/intermediate-signing-pub.pem
@@ -130,8 +130,8 @@ This config generates an intermediate certificate signed by a key in the HSM, id
     | Field | Description |
     | --- | --- |
     | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
-    | `key-slot` | Specifies which HSM object slot the generated signing key should be stored in. |
-    | `key-label` | Specifies the HSM object label for the generated signing key. |
+    | `store-key-in-slot` | Specifies which HSM object slot the generated signing key should be stored in. |
+    | `store-key-with-label` | Specifies the HSM object label for the generated signing key. |
 - `key`: object containing key generation related fields.
     | Field | Description |
     | --- | --- |
@@ -149,8 +149,8 @@ Example:
 ceremony-type: key
 pkcs11:
     module: /usr/lib/opensc-pkcs11.so
-    key-slot: 0
-    key-label: intermediate signing key
+    store-key-in-slot: 0
+    store-key-with-label: intermediate signing key
 key:
     key-type: ecdsa
     ecdsa-curve: P-384
