@@ -6,9 +6,7 @@ Thanks for helping us build Boulder! This page contains requirements and guideli
 * We prefer pull requests from external forks be created with the ["Allow edits from maintainers"](https://github.com/blog/2247-improving-collaboration-with-forks) checkbox selected.
 
 # Review Requirements
-* All pull requests must receive at least one positive review. Contributors are
-  strongly encouraged to get two positive reviews before merging whenever
-  possible.
+* All pull requests must receive at least one approval through the GitHub UI.
 * We indicate review approval through GitHub's code review facility.
 * New commits pushed to a branch invalidate previous reviews. In other words, a reviewer must give positive reviews of a branch after its most recent pushed commit.
 * You cannot review your own code.
@@ -30,7 +28,7 @@ Thanks for helping us build Boulder! This page contains requirements and guideli
 
 # Squash merging
 
-Once a pull requests has two reviews and the tests are passing, we'll merge it. We always use [squash merges](https://github.com/blog/2141-squash-your-commits) via GitHub's web interface. That means that during the course of your review you should generally not squash or amend commits, or force push. Even if the changes in each commit are small, keeping them separate makes it easier for us to review incremental changes to a pull request. Rest assured that those tiny changes will get squashed into a nice meaningful-size commit when we merge.
+Once a pull request is approved and the tests are passing, the author or any other committer can merge it. We always use [squash merges](https://github.com/blog/2141-squash-your-commits) via GitHub's web interface. That means that during the course of your review you should generally not squash or amend commits, or force push. Even if the changes in each commit are small, keeping them separate makes it easier for us to review incremental changes to a pull request. Rest assured that those tiny changes will get squashed into a nice meaningful-size commit when we merge.
 
 If the Travis tests are failing on your branch, you should look at the logs to figure out why. Sometimes (though rarely) they fail spuriously, in which case you can post a comment requesting that a project owner kick the build.
 

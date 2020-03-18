@@ -557,7 +557,7 @@ func logDNSError(
 			encodedResp)
 	} else {
 		// Otherwise log a general DNS error
-		logger.Errf("logDNSError chosenServer=[%s] queryType=[%s] hostname=[%s] err=[%s]",
+		logger.Errf("logDNSError chosenServer=[%s] hostname=[%s] queryType=[%s] err=[%s]",
 			chosenServer,
 			hostname,
 			queryType,

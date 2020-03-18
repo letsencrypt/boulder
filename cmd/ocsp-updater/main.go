@@ -407,7 +407,7 @@ func (updater *OCSPUpdater) tick() {
 	if took > updater.tickWindow {
 		long = "true"
 	}
-	sleepDur := end.Sub(start.Add(updater.tickWindow))
+	sleepDur := start.Add(updater.tickWindow).Sub(end)
 	if err != nil {
 		state = "failed"
 		updater.tickFailures++

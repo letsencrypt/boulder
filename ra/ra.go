@@ -358,6 +358,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 // * A list containing an empty contact
 // * A list containing a contact that does not parse as a URL
 // * A list containing a contact that has a URL scheme other than mailto
+// * A list containing a mailto contact that contains hfields
 // * A list containing a contact that has non-ascii characters
 // * A list containing a contact that doesn't pass `validateEmail`
 func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts *[]string) error {
@@ -382,6 +383,9 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 		}
 		if parsed.Scheme != "mailto" {
 			return berrors.InvalidEmailError("contact method %q is not supported", parsed.Scheme)
+		}
+		if parsed.RawQuery != "" {
+			return berrors.InvalidEmailError("contact email [%q] contains hfields", contact)
 		}
 		if !core.IsASCII(contact) {
 			return berrors.InvalidEmailError(

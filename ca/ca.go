@@ -521,7 +521,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	precertDER, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity, precertType)
+	precertDER, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity)
 	if err != nil {
 		return nil, err
 	}
@@ -623,6 +623,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	if err != nil {
 		return emptyCert, err
 	}
+	ca.signatureCount.WithLabelValues(string(certType)).Inc()
 	block, _ := pem.Decode(certPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
 		err = berrors.InternalServerError("invalid certificate value returned")
@@ -664,7 +665,7 @@ func (ca *CertificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	return serialBigInt, validity, nil
 }
 
-func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *caPB.IssueCertificateRequest, serialBigInt *big.Int, validity validity, certType certificateType) ([]byte, error) {
+func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *caPB.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
 		return nil, err
@@ -723,14 +724,11 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		Subject: &signer.Subject{
 			CN: csr.Subject.CommonName,
 		},
-		Serial:     serialBigInt,
-		Extensions: extensions,
-		NotBefore:  validity.NotBefore,
-		NotAfter:   validity.NotAfter,
-	}
-
-	if certType == precertType {
-		req.ReturnPrecert = true
+		Serial:        serialBigInt,
+		Extensions:    extensions,
+		NotBefore:     validity.NotBefore,
+		NotAfter:      validity.NotAfter,
+		ReturnPrecert: true,
 	}
 
 	serialHex := core.SerialToString(serialBigInt)
@@ -761,7 +759,7 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		ca.log.AuditErrf("Signing failed: serial=[%s] err=[%v]", serialHex, err)
 		return nil, err
 	}
-	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType)}).Inc()
+	ca.signatureCount.WithLabelValues(string(precertType)).Inc()
 
 	if len(certPEM) == 0 {
 		err = berrors.InternalServerError("no certificate returned by server")
@@ -777,8 +775,8 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	}
 	certDER := block.Bytes
 
-	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] csr=[%s] %s=[%s]",
-		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw), certType,
+	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] csr=[%s] precertificate=[%s]",
+		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw),
 		hex.EncodeToString(certDER))
 
 	return certDER, nil

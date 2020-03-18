@@ -502,7 +502,9 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 				state = "success"
 				return nil
 			} else if bad > va.maxRemoteFailures {
-				return result.Problem
+				modifiedProblem := *result.Problem
+				modifiedProblem.Detail = "During secondary validation: " + firstProb.Detail
+				return &modifiedProblem
 			}
 		}
 
@@ -528,7 +530,9 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 		state = "success"
 		return nil
 	} else if bad > va.maxRemoteFailures {
-		return firstProb
+		modifiedProblem := *firstProb
+		modifiedProblem.Detail = "During secondary validation: " + firstProb.Detail
+		return &modifiedProblem
 	}
 
 	// This condition should not occur - it indicates the good/bad counts didn't

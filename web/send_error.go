@@ -61,7 +61,7 @@ func SendError(
 	// sub-problems
 	prob.Type = probs.ProblemType(namespace) + prob.Type
 	for i := range prob.SubProblems {
-		prob.SubProblems[i].Type = probs.ProblemType(namespace) + prob.Type
+		prob.SubProblems[i].Type = prob.Type
 	}
 	problemDoc, err := json.MarshalIndent(prob, "", "  ")
 	if err != nil {
