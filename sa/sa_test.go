@@ -2016,12 +2016,6 @@ func TestCountPendingAuthorizations2(t *testing.T) {
 	test.AssertEquals(t, *count.Count, int64(0))
 }
 
-func strptr(s string) *string {
-	out := new(string)
-	*out = s
-	return out
-}
-
 func TestAuthzModelMapToPB(t *testing.T) {
 	baseExpires := time.Now()
 	input := map[string]authzModel{
