@@ -1141,17 +1141,17 @@ func TestGetAuthorizations2(t *testing.T) {
 
 	// Associate authorizations with an order so that GetAuthorizations2 thinks
 	// they are WFE2 authorizations.
-	err := sa.dbMap.Insert(&orderToAuthz2Model{
+	err := sa.dbMap.Insert(&orderToAuthzModel{
 		OrderID: 1,
 		AuthzID: authzIDA,
 	})
 	test.AssertNotError(t, err, "sa.dbMap.Insert failed")
-	err = sa.dbMap.Insert(&orderToAuthz2Model{
+	err = sa.dbMap.Insert(&orderToAuthzModel{
 		OrderID: 1,
 		AuthzID: authzIDB,
 	})
 	test.AssertNotError(t, err, "sa.dbMap.Insert failed")
-	err = sa.dbMap.Insert(&orderToAuthz2Model{
+	err = sa.dbMap.Insert(&orderToAuthzModel{
 		OrderID: 1,
 		AuthzID: authzIDC,
 	})
@@ -2127,6 +2127,12 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 	test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
 	test.AssertNotNil(t, authzMap, "sa.GetValidOrderAuthorizations result was nil")
 	test.AssertEquals(t, len(authzMap.Authz), 2)
+	test.AssertEquals(t, *authzMap.Authz[0].Authz.Identifier, "a.example.com")
+	test.AssertEquals(t, *authzMap.Authz[1].Authz.Identifier, "b.example.com")
+	test.AssertEquals(t, *authzMap.Authz[0].Authz.Expires, expires.UnixNano())
+	test.AssertEquals(t, *authzMap.Authz[1].Authz.Expires, expires.UnixNano())
+	test.AssertEquals(t, *authzMap.Authz[0].Authz.Id, fmt.Sprintf("%d", authzIDA))
+	test.AssertEquals(t, *authzMap.Authz[1].Authz.Id, fmt.Sprintf("%d", authzIDB))
 
 	// Getting the order authorizations for an order that doesn't exist should return nothing
 	missingID := int64(0xC0FFEEEEEEE)
