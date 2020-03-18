@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/big"
+	"math/bits"
 	"net"
 	"reflect"
 	"sync"
@@ -2013,6 +2014,79 @@ func TestCountPendingAuthorizations2(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "sa.CountPendingAuthorizations2 failed")
 	test.AssertEquals(t, *count.Count, int64(0))
+}
+
+func TestAuthzModelMapToPB(t *testing.T) {
+	baseExpires := time.Now()
+	input := map[string]authzModel{
+		"example.com": authzModel{
+			ID:              123,
+			IdentifierType:  0,
+			IdentifierValue: "example.com",
+			RegistrationID:  77,
+			Status:          1,
+			Expires:         baseExpires,
+			Challenges:      4,
+		},
+		"www.example.com": authzModel{
+			ID:              124,
+			IdentifierType:  0,
+			IdentifierValue: "www.example.com",
+			RegistrationID:  77,
+			Status:          1,
+			Expires:         baseExpires,
+			Challenges:      1,
+		},
+		"other.example.net": authzModel{
+			ID:              125,
+			IdentifierType:  0,
+			IdentifierValue: "other.example.net",
+			RegistrationID:  77,
+			Status:          1,
+			Expires:         baseExpires,
+			Challenges:      3,
+		},
+	}
+
+	out, err := authzModelMapToPB(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, el := range out.Authz {
+		model, ok := input[*el.Domain]
+		if !ok {
+			t.Errorf("output had element for %q, a hostname not present in input", *el.Domain)
+		}
+		authzPB := el.Authz
+		test.AssertEquals(t, *authzPB.Id, fmt.Sprintf("%d", model.ID))
+		test.AssertEquals(t, *authzPB.Identifier, model.IdentifierValue)
+		test.AssertEquals(t, *authzPB.RegistrationID, model.RegistrationID)
+		test.AssertEquals(t, *authzPB.Status, uintToStatus[model.Status])
+		gotTime := time.Unix(0, (*authzPB.Expires)).UTC()
+		if !model.Expires.Equal(gotTime) {
+			t.Errorf("Times didn't match. Got %s, expected %s (%d)", gotTime, model.Expires, *authzPB.Expires)
+		}
+		if len(el.Authz.Challenges) != bits.OnesCount(uint(model.Challenges)) {
+			t.Errorf("wrong number of challenges for %q: got %d, expected %d", *el.Domain,
+				len(el.Authz.Challenges), bits.OnesCount(uint(model.Challenges)))
+		}
+		switch model.Challenges {
+		case 1:
+			test.AssertEquals(t, *el.Authz.Challenges[0].Type, "http-01")
+		case 3:
+			test.AssertEquals(t, *el.Authz.Challenges[0].Type, "http-01")
+			test.AssertEquals(t, *el.Authz.Challenges[1].Type, "dns-01")
+		case 4:
+			test.AssertEquals(t, *el.Authz.Challenges[0].Type, "tls-alpn-01")
+		}
+
+		delete(input, *el.Domain)
+	}
+
+	for k := range input {
+		t.Errorf("hostname %q was not present in output", k)
+	}
 }
 
 func TestGetValidOrderAuthorizations2(t *testing.T) {
