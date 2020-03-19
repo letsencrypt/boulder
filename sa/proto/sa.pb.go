@@ -1843,7 +1843,9 @@ func init() {
 	proto.RegisterType((*FinalizeAuthorizationRequest)(nil), "sa.FinalizeAuthorizationRequest")
 }
 
-func init() { proto.RegisterFile("sa/proto/sa.proto", fileDescriptor_099fb35e782a48a6) }
+func init() {
+	proto.RegisterFile("sa/proto/sa.proto", fileDescriptor_099fb35e782a48a6)
+}
 
 var fileDescriptor_099fb35e782a48a6 = []byte{
 	// 1739 bytes of a gzipped FileDescriptorProto
@@ -1960,11 +1962,11 @@ var fileDescriptor_099fb35e782a48a6 = []byte{
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ context.Context
-var _ grpc.ClientConn
+var _ grpc.ClientConnInterface
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the grpc package it is being compiled against.
-const _ = grpc.SupportPackageIsVersion4
+const _ = grpc.SupportPackageIsVersion6
 
 // StorageAuthorityClient is the client API for StorageAuthority service.
 //
@@ -2013,10 +2015,10 @@ type StorageAuthorityClient interface {
 }
 
 type storageAuthorityClient struct {
-	cc *grpc.ClientConn
+	cc grpc.ClientConnInterface
 }
 
-func NewStorageAuthorityClient(cc *grpc.ClientConn) StorageAuthorityClient {
+func NewStorageAuthorityClient(cc grpc.ClientConnInterface) StorageAuthorityClient {
 	return &storageAuthorityClient{cc}
 }
 

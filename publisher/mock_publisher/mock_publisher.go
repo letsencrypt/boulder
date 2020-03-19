@@ -7,7 +7,7 @@ package mock_publisher
 import (
 	context "context"
 	gomock "github.com/golang/mock/gomock"
-	proto "github.com/letsencrypt/boulder/publisher/proto"
+	publisher "github.com/letsencrypt/boulder/publisher/proto"
 	reflect "reflect"
 )
 
@@ -35,10 +35,10 @@ func (m *MockPublisher) EXPECT() *MockPublisherMockRecorder {
 }
 
 // SubmitToSingleCTWithResult mocks base method
-func (m *MockPublisher) SubmitToSingleCTWithResult(arg0 context.Context, arg1 *proto.Request) (*proto.Result, error) {
+func (m *MockPublisher) SubmitToSingleCTWithResult(arg0 context.Context, arg1 *publisher.Request) (*publisher.Result, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SubmitToSingleCTWithResult", arg0, arg1)
-	ret0, _ := ret[0].(*proto.Result)
+	ret0, _ := ret[0].(*publisher.Result)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

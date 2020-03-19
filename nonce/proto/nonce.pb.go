@@ -108,7 +108,9 @@ func init() {
 	proto.RegisterType((*ValidMessage)(nil), "nonce.ValidMessage")
 }
 
-func init() { proto.RegisterFile("nonce/proto/nonce.proto", fileDescriptor_9197b76ef104b424) }
+func init() {
+	proto.RegisterFile("nonce/proto/nonce.proto", fileDescriptor_9197b76ef104b424)
+}
 
 var fileDescriptor_9197b76ef104b424 = []byte{
 	// 169 bytes of a gzipped FileDescriptorProto
@@ -127,11 +129,11 @@ var fileDescriptor_9197b76ef104b424 = []byte{
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ context.Context
-var _ grpc.ClientConn
+var _ grpc.ClientConnInterface
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the grpc package it is being compiled against.
-const _ = grpc.SupportPackageIsVersion4
+const _ = grpc.SupportPackageIsVersion6
 
 // NonceServiceClient is the client API for NonceService service.
 //
@@ -142,10 +144,10 @@ type NonceServiceClient interface {
 }
 
 type nonceServiceClient struct {
-	cc *grpc.ClientConn
+	cc grpc.ClientConnInterface
 }
 
-func NewNonceServiceClient(cc *grpc.ClientConn) NonceServiceClient {
+func NewNonceServiceClient(cc grpc.ClientConnInterface) NonceServiceClient {
 	return &nonceServiceClient{cc}
 }
 

@@ -278,7 +278,9 @@ func init() {
 	proto.RegisterType((*ValidationResult)(nil), "va.ValidationResult")
 }
 
-func init() { proto.RegisterFile("va/proto/va.proto", fileDescriptor_b39cc52ec1cb3a92) }
+func init() {
+	proto.RegisterFile("va/proto/va.proto", fileDescriptor_b39cc52ec1cb3a92)
+}
 
 var fileDescriptor_b39cc52ec1cb3a92 = []byte{
 	// 378 bytes of a gzipped FileDescriptorProto
@@ -310,11 +312,11 @@ var fileDescriptor_b39cc52ec1cb3a92 = []byte{
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ context.Context
-var _ grpc.ClientConn
+var _ grpc.ClientConnInterface
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the grpc package it is being compiled against.
-const _ = grpc.SupportPackageIsVersion4
+const _ = grpc.SupportPackageIsVersion6
 
 // VAClient is the client API for VA service.
 //
@@ -324,10 +326,10 @@ type VAClient interface {
 }
 
 type vAClient struct {
-	cc *grpc.ClientConn
+	cc grpc.ClientConnInterface
 }
 
-func NewVAClient(cc *grpc.ClientConn) VAClient {
+func NewVAClient(cc grpc.ClientConnInterface) VAClient {
 	return &vAClient{cc}
 }
 
@@ -396,10 +398,10 @@ type CAAClient interface {
 }
 
 type cAAClient struct {
-	cc *grpc.ClientConn
+	cc grpc.ClientConnInterface
 }
 
-func NewCAAClient(cc *grpc.ClientConn) CAAClient {
+func NewCAAClient(cc grpc.ClientConnInterface) CAAClient {
 	return &cAAClient{cc}
 }
 

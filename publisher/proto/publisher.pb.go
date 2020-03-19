@@ -139,7 +139,9 @@ func init() {
 	proto.RegisterType((*Result)(nil), "Result")
 }
 
-func init() { proto.RegisterFile("publisher.proto", fileDescriptor_41489454d08668ce) }
+func init() {
+	proto.RegisterFile("publisher.proto", fileDescriptor_41489454d08668ce)
+}
 
 var fileDescriptor_41489454d08668ce = []byte{
 	// 207 bytes of a gzipped FileDescriptorProto
@@ -160,11 +162,11 @@ var fileDescriptor_41489454d08668ce = []byte{
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ context.Context
-var _ grpc.ClientConn
+var _ grpc.ClientConnInterface
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the grpc package it is being compiled against.
-const _ = grpc.SupportPackageIsVersion4
+const _ = grpc.SupportPackageIsVersion6
 
 // PublisherClient is the client API for Publisher service.
 //
@@ -174,10 +176,10 @@ type PublisherClient interface {
 }
 
 type publisherClient struct {
-	cc *grpc.ClientConn
+	cc grpc.ClientConnInterface
 }
 
-func NewPublisherClient(cc *grpc.ClientConn) PublisherClient {
+func NewPublisherClient(cc grpc.ClientConnInterface) PublisherClient {
 	return &publisherClient{cc}
 }
 

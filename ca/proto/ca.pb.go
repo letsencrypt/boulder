@@ -311,7 +311,9 @@ func init() {
 	proto.RegisterType((*OCSPResponse)(nil), "ca.OCSPResponse")
 }
 
-func init() { proto.RegisterFile("ca/proto/ca.proto", fileDescriptor_8f9fdc2529716820) }
+func init() {
+	proto.RegisterFile("ca/proto/ca.proto", fileDescriptor_8f9fdc2529716820)
+}
 
 var fileDescriptor_8f9fdc2529716820 = []byte{
 	// 415 bytes of a gzipped FileDescriptorProto
@@ -345,11 +347,11 @@ var fileDescriptor_8f9fdc2529716820 = []byte{
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ context.Context
-var _ grpc.ClientConn
+var _ grpc.ClientConnInterface
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the grpc package it is being compiled against.
-const _ = grpc.SupportPackageIsVersion4
+const _ = grpc.SupportPackageIsVersion6
 
 // CertificateAuthorityClient is the client API for CertificateAuthority service.
 //
@@ -361,10 +363,10 @@ type CertificateAuthorityClient interface {
 }
 
 type certificateAuthorityClient struct {
-	cc *grpc.ClientConn
+	cc grpc.ClientConnInterface
 }
 
-func NewCertificateAuthorityClient(cc *grpc.ClientConn) CertificateAuthorityClient {
+func NewCertificateAuthorityClient(cc grpc.ClientConnInterface) CertificateAuthorityClient {
 	return &certificateAuthorityClient{cc}
 }
 
@@ -503,10 +505,10 @@ type OCSPGeneratorClient interface {
 }
 
 type oCSPGeneratorClient struct {
-	cc *grpc.ClientConn
+	cc grpc.ClientConnInterface
 }
 
-func NewOCSPGeneratorClient(cc *grpc.ClientConn) OCSPGeneratorClient {
+func NewOCSPGeneratorClient(cc grpc.ClientConnInterface) OCSPGeneratorClient {
 	return &oCSPGeneratorClient{cc}
 }
 
