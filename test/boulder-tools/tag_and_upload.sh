@@ -6,7 +6,7 @@ cd $(dirname $0)
 
 DATESTAMP=$(date +%Y-%m-%d)
 BASE_TAG_NAME="letsencrypt/boulder-tools"
-GO_VERSIONS=( "1.13.2" )
+GO_VERSIONS=( "1.13.2" "1.14.1" )
 
 # Build a tagged image for each GO_VERSION
 for GO_VERSION in "${GO_VERSIONS[@]}"
@@ -28,7 +28,6 @@ do
   # Build the docker image using the templated Dockerfile, tagging it with
   # TAG_NAME
   docker build . \
-    --ulimit memlock=-1:-1 \
     -t $TAG_NAME \
     --no-cache \
     -f "$DOCKERFILE"
