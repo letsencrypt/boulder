@@ -19,6 +19,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -359,8 +360,14 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	test.AssertNotError(t, err, "Unable to read ../test/test-ca2.pem")
 	chainDER, _ := pem.Decode(chainPEM)
 
-	certChains := map[string][]byte{
-		"http://localhost:4000/acme/issuer-cert": append([]byte{'\n'}, chainPEM...),
+	chainCrossPEM, err := ioutil.ReadFile("../test/test-ca2-cross.pem")
+	test.AssertNotError(t, err, "Unable to read ../test/test-ca2-cross.pem")
+
+	certChains := map[string][][]byte{
+		"http://localhost:4000/acme/issuer-cert": {
+			append([]byte{'\n'}, chainPEM...),
+			append([]byte{'\n'}, chainCrossPEM...),
+		},
 	}
 	issuerCert, err := x509.ParseCertificate(chainDER.Bytes)
 	test.AssertNotError(t, err, "Unable to parse issuer cert")
@@ -1809,17 +1816,23 @@ func TestGetCertificate(t *testing.T) {
 	chainPemBytes, err := ioutil.ReadFile("../test/test-ca2.pem")
 	test.AssertNotError(t, err, "Error reading ../test/test-ca2.pem")
 
+	chainCrossPemBytes, err := ioutil.ReadFile("../test/test-ca2-cross.pem")
+	test.AssertNotError(t, err, "Error reading ../test/test-ca2-cross.pem")
+
 	noCache := "public, max-age=0, no-cache"
 	newSerial := "/acme/cert/0000000000000000000000000000000000b3"
 	newGetSerial := "/get/cert/0000000000000000000000000000000000b3"
 	goodSerial := "/acme/cert/0000000000000000000000000000000000b2"
 	notFound := `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Certificate not found","status":404}`
 
+	linkParser := regexp.MustCompile(`<(.+?)>;\s*rel="(.+?)"`)
+
 	testCases := []struct {
 		Name            string
 		Request         *http.Request
 		ExpectedStatus  int
 		ExpectedHeaders map[string]string
+		ExpectedLinks   map[string][]string
 		ExpectedBody    string
 		ExpectedCert    []byte
 		AnyCert         bool
@@ -1830,6 +1843,9 @@ func TestGetCertificate(t *testing.T) {
 			ExpectedStatus: http.StatusOK,
 			ExpectedHeaders: map[string]string{
 				"Content-Type": pkixContent,
+			},
+			ExpectedLinks: map[string][]string{
+				"alternate": {"http://localhost" + goodSerial + "/1"},
 			},
 			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainPemBytes...)...),
 		},
@@ -1908,6 +1924,36 @@ func TestGetCertificate(t *testing.T) {
 			},
 			AnyCert: true,
 		},
+		{
+			Name:           "Valid serial (explicit default chain)",
+			Request:        makeGet(goodSerial + "/0"),
+			ExpectedStatus: http.StatusOK,
+			ExpectedHeaders: map[string]string{
+				"Content-Type": pkixContent,
+			},
+			ExpectedLinks: map[string][]string{
+				"alternate": {"http://localhost" + goodSerial + "/1"},
+			},
+			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainPemBytes...)...),
+		},
+		{
+			Name:           "Valid serial (explicit alternate chain)",
+			Request:        makeGet(goodSerial + "/1"),
+			ExpectedStatus: http.StatusOK,
+			ExpectedHeaders: map[string]string{
+				"Content-Type": pkixContent,
+			},
+			ExpectedLinks: map[string][]string{
+				"alternate": {"http://localhost" + goodSerial + "/0"},
+			},
+			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainCrossPemBytes...)...),
+		},
+		{
+			Name:           "Valid serial (non-existent alternate chain)",
+			Request:        makeGet(goodSerial + "/2"),
+			ExpectedStatus: http.StatusNotFound,
+			ExpectedBody:   notFound,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -1929,6 +1975,31 @@ func TestGetCertificate(t *testing.T) {
 			// If the test cases expects additional headers, check those too
 			for h, v := range tc.ExpectedHeaders {
 				test.AssertEquals(t, headers.Get(h), v)
+			}
+
+			if tc.ExpectedLinks != nil && len(tc.ExpectedLinks) > 0 {
+				links := headers["Link"]
+				for relation, needles := range tc.ExpectedLinks {
+					for _, needle := range needles {
+						found := false
+						for _, haystack := range links {
+							matches := linkParser.FindAllStringSubmatch(haystack, -1)
+							for _, m := range matches {
+								if len(m) != 3 {
+									continue
+								}
+								if m[2] == relation && m[1] == needle {
+									found = true
+									break
+								}
+							}
+						}
+						if !found {
+							t.Errorf("Expected a link relation '%s' with value '%s', but did not find it in (%v)",
+								relation, needle, links)
+						}
+					}
+				}
 			}
 
 			if tc.AnyCert { // Certificate is randomly generated, don't match it

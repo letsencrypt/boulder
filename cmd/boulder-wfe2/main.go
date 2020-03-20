@@ -60,6 +60,10 @@ type config struct {
 		// slice of filenames.
 		CertificateChains map[string][]string
 
+		// AlternateCertificateChains maps AIA issuer URLs to an optional alternate
+		// certificate chain, represented by an ordered slice of certificate filenames.
+		AlternateCertificateChains map[string][]string
+
 		Features map[string]bool
 
 		// DirectoryCAAIdentity is used for the /directory response's "meta"
@@ -174,7 +178,7 @@ func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, *x509.Certifica
 // in the results map, keyed by the AIA Issuer URL. Additionally the first
 // certificate in each chain is parsed and returned in a slice of issuer
 // certificates.
-func loadCertificateChains(chainConfig map[string][]string) (map[string][]byte, []*x509.Certificate, error) {
+func loadCertificateChains(chainConfig map[string][]string, requireAtLeastOneChain bool) (map[string][]byte, []*x509.Certificate, error) {
 	results := make(map[string][]byte, len(chainConfig))
 	var issuerCerts []*x509.Certificate
 
@@ -183,7 +187,7 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string][]byte, 
 		var buffer bytes.Buffer
 
 		// There must be at least one chain file specified
-		if len(certFiles) == 0 {
+		if requireAtLeastOneChain && len(certFiles) == 0 {
 			return nil, nil, fmt.Errorf(
 				"CertificateChain entry for AIA issuer url %q has no chain "+
 					"file names configured",
@@ -258,11 +262,33 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	certChains, issuerCerts, err := loadCertificateChains(c.WFE.CertificateChains)
+	// Map of AIA Issuer URLs to a slice of PEM-encoded certificate chains.
+	// The first chain in the slice is the default chain, and subsequent
+	// chains are alternates.
+	allCertChains := make(map[string][][]byte, len(c.WFE.CertificateChains))
+
+	certChains, issuerCerts, err := loadCertificateChains(c.WFE.CertificateChains, true)
 	cmd.FailOnError(err, "Couldn't read configured CertificateChains")
+
+	for aiaURL, chainPEM := range certChains {
+		allCertChains[aiaURL] = [][]byte{chainPEM}
+	}
 
 	err = features.Set(c.WFE.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
+
+	if c.WFE.AlternateCertificateChains != nil {
+		altCertChains, _, err := loadCertificateChains(c.WFE.AlternateCertificateChains, false)
+		cmd.FailOnError(err, "Couldn't read configured AlternateCertificateChains")
+
+		for aiaURL, chainPEM := range altCertChains {
+			if _, ok := allCertChains[aiaURL]; !ok {
+				cmd.Fail(fmt.Sprintf("AIA Issuer URL %s appeared in AlternateCertificateChains, "+
+					"but does not exist in CertificateChains", aiaURL))
+			}
+			allCertChains[aiaURL] = append(allCertChains[aiaURL], chainPEM)
+		}
+	}
 
 	stats, logger := cmd.StatsAndLogging(c.Syslog, c.WFE.DebugAddr)
 	defer logger.AuditPanic()
@@ -289,7 +315,7 @@ func main() {
 		pendingAuthorizationLifetime = time.Duration(c.WFE.PendingAuthorizationLifetimeDays) * (24 * time.Hour)
 	}
 
-	wfe, err := wfe2.NewWebFrontEndImpl(stats, clk, kp, certChains, issuerCerts, rns, npm, logger, c.WFE.StaleTimeout.Duration, authorizationLifetime, pendingAuthorizationLifetime)
+	wfe, err := wfe2.NewWebFrontEndImpl(stats, clk, kp, allCertChains, issuerCerts, rns, npm, logger, c.WFE.StaleTimeout.Duration, authorizationLifetime, pendingAuthorizationLifetime)
 	cmd.FailOnError(err, "Unable to create WFE")
 	wfe.RA = rac
 	wfe.SA = sac

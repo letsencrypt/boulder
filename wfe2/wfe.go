@@ -82,10 +82,11 @@ type WebFrontEndImpl struct {
 	// Issuer certificate (DER) for /acme/issuer-cert
 	IssuerCert []byte
 
-	// certificateChains maps AIA issuer URLs to a []byte containing a leading
+	// certificateChains maps AIA issuer URLs to a slice of []byte containing a leading
 	// newline and one or more PEM encoded certificates separated by a newline,
-	// sorted from leaf to root
-	certificateChains map[string][]byte
+	// sorted from leaf to root. The first []byte is the default certificate chain,
+	// and any subsequent []byte is an alternate certificate chain.
+	certificateChains map[string][][]byte
 
 	// issuerCertificates is a slice of known issuer certificates built with the
 	// first entry from each of the certificateChains. These certificates are used
@@ -142,7 +143,7 @@ func NewWebFrontEndImpl(
 	stats prometheus.Registerer,
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
-	certificateChains map[string][]byte,
+	certificateChains map[string][][]byte,
 	issuerCertificates []*x509.Certificate,
 	remoteNonceService noncepb.NonceServiceClient,
 	noncePrefixMap map[string]noncepb.NonceServiceClient,
@@ -1548,7 +1549,22 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		requesterAccount = acct
 	}
 
+	requestedChain := 0
 	serial := request.URL.Path
+
+	// An alternate chain may be requested with the request path {serial}/{chain}, where chain
+	// is a single digit - an index into wfe.certificateChains[aiaIssuerURL]. If a specific chain is
+	// not requested, then it defaults to zero - the default certificate chain for that issuer.
+	if len(serial) > 3 && serial[len(serial)-2] == '/' {
+		idx, err := strconv.Atoi(serial[len(serial)-1:])
+		if err != nil {
+			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
+			return
+		}
+		requestedChain = idx
+		serial = serial[:len(serial)-2]
+	}
+
 	// Certificate paths consist of the CertBase path, plus exactly sixteen hex
 	// digits.
 	if !core.ValidSerial(serial) {
@@ -1615,10 +1631,9 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		// the CA, but should be. See
 		//  https://github.com/letsencrypt/boulder/issues/3374
 		aiaIssuerURL := parsedCert.IssuingCertificateURL[0]
-		if chain, ok := wfe.certificateChains[aiaIssuerURL]; ok {
-			// Prepend the chain with the leaf certificate
-			responsePEM = append(leafPEM, chain...)
-		} else {
+
+		availableChains, ok := wfe.certificateChains[aiaIssuerURL]
+		if !ok || len(availableChains) == 0 {
 			// If there is no wfe.certificateChains entry for the AIA Issuer URL there
 			// is probably a misconfiguration and we should treat it as an internal
 			// server error.
@@ -1631,6 +1646,28 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 			), nil)
 			return
 		}
+
+		// If the requested chain is outside the bounds of the available chains,
+		// then it is an error by the client - not found.
+		if requestedChain >= len(availableChains) {
+			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
+			return
+		}
+
+		// Prepend the chain with the leaf certificate
+		responsePEM = append(leafPEM, availableChains[requestedChain]...)
+
+		// Add rel="alternate" links for every chain available for this issuer,
+		// excluding the currently requested chain.
+		for chainID := range availableChains {
+			if chainID == requestedChain {
+				continue
+			}
+			chainURL := web.RelativeEndpoint(request,
+				fmt.Sprintf("%s%s/%d", certPath, serial, chainID))
+			response.Header().Add("Link", link(chainURL, "alternate"))
+		}
+
 	} else {
 		// Otherwise, with no configured certificateChains just serve the leaf
 		// certificate.

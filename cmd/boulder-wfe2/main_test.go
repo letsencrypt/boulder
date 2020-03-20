@@ -144,7 +144,7 @@ func TestLoadCertificateChains(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			resultMap, issuers, err := loadCertificateChains(tc.Input)
+			resultMap, issuers, err := loadCertificateChains(tc.Input, true)
 			if tc.ExpectedError == nil && err != nil {
 				t.Errorf("Expected nil error, got %#v\n", err)
 			} else if tc.ExpectedError != nil && err == nil {
