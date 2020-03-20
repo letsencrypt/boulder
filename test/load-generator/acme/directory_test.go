@@ -153,11 +153,14 @@ func TestNew(t *testing.T) {
 			DirectoryURL:  "http://" + string([]byte{0x1, 0x7F}),
 			ExpectedError: ErrInvalidDirectoryURL.Error(),
 		},
+		/* This test case depends on an error message that changed in Go 1.14. We
+		 * can uncomment it once we've moved fully to Go 1.14.
 		{
 			Name:          "unreachable directory URL",
 			DirectoryURL:  unreachableDirectoryURL,
-			ExpectedError: "Get http://localhost:1987: dial tcp 127.0.0.1:1987: connect: connection refused",
+			ExpectedError: "Get \"http://localhost:1987\": dial tcp 127.0.0.1:1987: connect: connection refused",
 		},
+		*/
 		{
 			Name:          "wrong directory HTTP status code",
 			DirectoryURL:  wrongStatusCodeURL,
