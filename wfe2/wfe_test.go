@@ -1949,8 +1949,14 @@ func TestGetCertificate(t *testing.T) {
 			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainCrossPemBytes...)...),
 		},
 		{
-			Name:           "Valid serial (non-existent alternate chain)",
+			Name:           "Valid serial (explicit non-existent alternate chain)",
 			Request:        makeGet(goodSerial + "/2"),
+			ExpectedStatus: http.StatusNotFound,
+			ExpectedBody:   notFound,
+		},
+		{
+			Name:           "Valid serial (explicit negative alternate chain)",
+			Request:        makeGet(goodSerial + "/-1"),
 			ExpectedStatus: http.StatusNotFound,
 			ExpectedBody:   notFound,
 		},

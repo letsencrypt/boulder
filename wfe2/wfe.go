@@ -1553,16 +1553,17 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	serial := request.URL.Path
 
 	// An alternate chain may be requested with the request path {serial}/{chain}, where chain
-	// is a single digit - an index into wfe.certificateChains[aiaIssuerURL]. If a specific chain is
-	// not requested, then it defaults to zero - the default certificate chain for that issuer.
-	if len(serial) > 3 && serial[len(serial)-2] == '/' {
-		idx, err := strconv.Atoi(serial[len(serial)-1:])
+	// is a number - an index into the slice of chains for the issuer. If a specific chain is
+	// not requested, then it defaults to zero - the default certificate chain for the issuer.
+	serialAndChain := strings.SplitN(serial, "/", 2)
+	if len(serialAndChain) == 2 {
+		idx, err := strconv.Atoi(serialAndChain[1])
 		if err != nil {
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
 			return
 		}
+		serial = serialAndChain[0]
 		requestedChain = idx
-		serial = serial[:len(serial)-2]
 	}
 
 	// Certificate paths consist of the CertBase path, plus exactly sixteen hex
@@ -1649,7 +1650,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 
 		// If the requested chain is outside the bounds of the available chains,
 		// then it is an error by the client - not found.
-		if requestedChain >= len(availableChains) {
+		if requestedChain < 0 || requestedChain >= len(availableChains) {
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
 			return
 		}
