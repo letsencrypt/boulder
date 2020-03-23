@@ -1558,7 +1558,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	serialAndChain := strings.SplitN(serial, "/", 2)
 	if len(serialAndChain) == 2 {
 		idx, err := strconv.Atoi(serialAndChain[1])
-		if err != nil {
+		if err != nil || idx < 0 {
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
 			return
 		}
