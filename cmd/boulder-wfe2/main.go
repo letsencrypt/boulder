@@ -215,8 +215,10 @@ func loadCertificateChains(chainConfig map[string][]string, requireAtLeastOneCha
 			buffer.Write(pemBytes)
 		}
 
-		// Save the full PEM chain contents
-		results[aiaIssuerURL] = buffer.Bytes()
+		// Save the full PEM chain contents, if any
+		if buffer.Len() > 0 {
+			results[aiaIssuerURL] = buffer.Bytes()
+		}
 	}
 
 	return results, issuerCerts, nil
