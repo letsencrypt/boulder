@@ -19,7 +19,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -1825,14 +1824,12 @@ func TestGetCertificate(t *testing.T) {
 	goodSerial := "/acme/cert/0000000000000000000000000000000000b2"
 	notFound := `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Certificate not found","status":404}`
 
-	linkParser := regexp.MustCompile(`<(.+?)>;\s*rel="(.+?)"`)
-
 	testCases := []struct {
 		Name            string
 		Request         *http.Request
 		ExpectedStatus  int
 		ExpectedHeaders map[string]string
-		ExpectedLinks   map[string][]string
+		ExpectedLink    string
 		ExpectedBody    string
 		ExpectedCert    []byte
 		AnyCert         bool
@@ -1844,10 +1841,8 @@ func TestGetCertificate(t *testing.T) {
 			ExpectedHeaders: map[string]string{
 				"Content-Type": pkixContent,
 			},
-			ExpectedLinks: map[string][]string{
-				"alternate": {"http://localhost" + goodSerial + "/1"},
-			},
 			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainPemBytes...)...),
+			ExpectedLink: fmt.Sprintf(`<http://localhost%s/1>;rel="alternate"`, goodSerial),
 		},
 		{
 			Name:           "Valid serial, POST-as-GET",
@@ -1931,9 +1926,7 @@ func TestGetCertificate(t *testing.T) {
 			ExpectedHeaders: map[string]string{
 				"Content-Type": pkixContent,
 			},
-			ExpectedLinks: map[string][]string{
-				"alternate": {"http://localhost" + goodSerial + "/1"},
-			},
+			ExpectedLink: fmt.Sprintf(`<http://localhost%s/1>;rel="alternate"`, goodSerial),
 			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainPemBytes...)...),
 		},
 		{
@@ -1943,9 +1936,7 @@ func TestGetCertificate(t *testing.T) {
 			ExpectedHeaders: map[string]string{
 				"Content-Type": pkixContent,
 			},
-			ExpectedLinks: map[string][]string{
-				"alternate": {"http://localhost" + goodSerial + "/0"},
-			},
+			ExpectedLink: fmt.Sprintf(`<http://localhost%s/0>;rel="alternate"`, goodSerial),
 			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainCrossPemBytes...)...),
 		},
 		{
@@ -1983,28 +1974,18 @@ func TestGetCertificate(t *testing.T) {
 				test.AssertEquals(t, headers.Get(h), v)
 			}
 
-			if tc.ExpectedLinks != nil && len(tc.ExpectedLinks) > 0 {
+			if tc.ExpectedLink != "" {
+				found := false
 				links := headers["Link"]
-				for relation, needles := range tc.ExpectedLinks {
-					for _, needle := range needles {
-						found := false
-						for _, haystack := range links {
-							matches := linkParser.FindAllStringSubmatch(haystack, -1)
-							for _, m := range matches {
-								if len(m) != 3 {
-									continue
-								}
-								if m[2] == relation && m[1] == needle {
-									found = true
-									break
-								}
-							}
-						}
-						if !found {
-							t.Errorf("Expected a link relation '%s' with value '%s', but did not find it in (%v)",
-								relation, needle, links)
-						}
+				for _, link := range links {
+					if link == tc.ExpectedLink {
+						found = true
+						break
 					}
+				}
+				if !found {
+					t.Errorf("Expected link '%s', but did not find it in (%v)",
+						tc.ExpectedLink, links)
 				}
 			}
 
