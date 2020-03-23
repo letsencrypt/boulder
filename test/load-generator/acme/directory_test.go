@@ -105,7 +105,7 @@ func newMockDirectoryServer() *mockDirectoryServer {
 // TestNew tests that creating a new Client and populating the endpoint map
 // works correctly.
 func TestNew(t *testing.T) {
-	unreachableDirectoryURL := "http://localhost:1987"
+	//unreachableDirectoryURL := "http://localhost:1987"
 
 	srv := newMockDirectoryServer()
 	srv.Start()
