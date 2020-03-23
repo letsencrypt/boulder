@@ -1559,7 +1559,8 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	if len(serialAndChain) == 2 {
 		idx, err := strconv.Atoi(serialAndChain[1])
 		if err != nil || idx < 0 {
-			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
+			wfe.sendError(response, logEvent, probs.Malformed("Chain ID must be a non-negative integer"),
+				fmt.Errorf("certificate chain id provided was not valid: %s", serialAndChain[1]))
 			return
 		}
 		serial = serialAndChain[0]
@@ -1651,7 +1652,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		// If the requested chain is outside the bounds of the available chains,
 		// then it is an error by the client - not found.
 		if requestedChain < 0 || requestedChain >= len(availableChains) {
-			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
+			wfe.sendError(response, logEvent, probs.NotFound("Unknown issuance chain"), nil)
 			return
 		}
 
