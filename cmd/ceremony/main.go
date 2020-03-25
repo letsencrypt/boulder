@@ -228,7 +228,7 @@ func rootCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to retrieve signer: %s", err)
 	}
-	template, err := makeTemplate(ctx, session, &config.CertProfile, keyInfo.der)
+	template, err := makeTemplate(newRandReader(ctx, session), &config.CertProfile, keyInfo.der)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
@@ -286,7 +286,7 @@ func intermediateCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse issuer certificate: %s", err)
 	}
-	template, err := makeTemplate(ctx, session, &config.CertProfile, pubPEM.Bytes)
+	template, err := makeTemplate(newRandReader(ctx, session), &config.CertProfile, pubPEM.Bytes)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}

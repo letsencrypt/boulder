@@ -76,7 +76,8 @@ func rsaPub(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, object pkcs11
 // a nonce generated on the device and verifying the returned signature using the
 // public key.
 func rsaVerify(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, pub *rsa.PublicKey) error {
-	nonce, err := getRandomBytes(ctx, session)
+	nonce := make([]byte, 4)
+	_, err := newRandReader(ctx, session).Read(nonce)
 	if err != nil {
 		return fmt.Errorf("Failed to retrieve nonce: %s", err)
 	}

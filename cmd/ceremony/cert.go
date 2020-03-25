@@ -121,7 +121,7 @@ var stringToKeyUsage = map[string]x509.KeyUsage{
 }
 
 // makeTemplate generates the certificate template for use in x509.CreateCertificate
-func makeTemplate(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, profile *certProfile, pubKey []byte) (*x509.Certificate, error) {
+func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte) (*x509.Certificate, error) {
 	dateLayout := "2006-01-02 15:04:05"
 	notBefore, err := time.Parse(dateLayout, profile.NotBefore)
 	if err != nil {
@@ -161,7 +161,8 @@ func makeTemplate(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, profile
 
 	subjectKeyID := sha256.Sum256(pubKey)
 
-	serial, err := ctx.GenerateRandom(session, 16)
+	serial := make([]byte, 16)
+	_, err = randReader.Read(serial)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate serial number: %s", err)
 	}

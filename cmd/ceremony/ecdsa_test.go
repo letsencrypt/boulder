@@ -4,7 +4,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha256"
 	"errors"
 	"testing"
 
@@ -47,7 +46,7 @@ func TestECVerify(t *testing.T) {
 
 	// test SignInit failing
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
-		return []byte{1, 2, 3}, nil
+		return []byte{1, 2, 3, 4}, nil
 	}
 	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
 		return errors.New("yup")
@@ -75,27 +74,8 @@ func TestECVerify(t *testing.T) {
 	test.AssertError(t, err, "ecVerify didn't fail on signature verification error")
 
 	// test we don't fail with valid signature
-	ctx.SignFunc = func(pkcs11.SessionHandle, []byte) ([]byte, error) {
-		hash := sha256.Sum256([]byte{1, 2, 3})
-		r, s, err := ecdsa.Sign(rand.Reader, tk, hash[:])
-		if err != nil {
-			return nil, err
-		}
-		rBytes := r.Bytes()
-		sBytes := s.Bytes()
-		// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/os/pkcs11-curr-v2.40-os.html
-		// Section 2.3.1: EC Signatures
-		// "If r and s have different octet length, the shorter of both must be padded with
-		// leading zero octets such that both have the same octet length."
-		switch {
-		case len(rBytes) < len(sBytes):
-			padding := make([]byte, len(sBytes)-len(rBytes))
-			rBytes = append(padding, rBytes...)
-		case len(rBytes) > len(sBytes):
-			padding := make([]byte, len(rBytes)-len(sBytes))
-			sBytes = append(padding, sBytes...)
-		}
-		return append(rBytes, sBytes...), nil
+	ctx.SignFunc = func(_ pkcs11.SessionHandle, msg []byte) ([]byte, error) {
+		return ecPKCS11Sign(tk, msg)
 	}
 	err = ecVerify(ctx, 0, 0, &tk.PublicKey)
 	test.AssertNotError(t, err, "ecVerify failed with a valid signature")
@@ -103,9 +83,11 @@ func TestECVerify(t *testing.T) {
 
 func TestECGenerate(t *testing.T) {
 	ctx := pkcs11helpers.MockCtx{}
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "Failed to generate a ECDSA test key")
 
 	// Test ecGenerate fails with unknown curve
-	_, _, err := ecGenerate(ctx, 0, "", "bad-curve")
+	_, _, err = ecGenerate(ctx, 0, "", "bad-curve")
 	test.AssertError(t, err, "ecGenerate accepted unknown curve")
 
 	// Test ecGenerate fails when GenerateKeyPair fails
@@ -129,7 +111,7 @@ func TestECGenerate(t *testing.T) {
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_EC_PARAMS, []byte{6, 8, 42, 134, 72, 206, 61, 3, 1, 7}),
-			pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, []byte{4, 71, 137, 101, 56, 44, 59, 172, 148, 152, 118, 61, 183, 215, 242, 168, 62, 77, 94, 246, 212, 164, 96, 210, 134, 87, 169, 142, 226, 189, 118, 137, 203, 117, 55, 2, 215, 177, 159, 42, 196, 33, 91, 92, 251, 98, 53, 137, 221, 167, 148, 25, 209, 1, 5, 90, 52, 43, 18, 7, 30, 33, 142, 228, 235}),
+			pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, elliptic.Marshal(elliptic.P256(), priv.X, priv.Y)),
 		}, nil
 	}
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
@@ -145,9 +127,31 @@ func TestECGenerate(t *testing.T) {
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
 		return []byte{1, 2, 3}, nil
 	}
-	ctx.SignFunc = func(pkcs11.SessionHandle, []byte) ([]byte, error) {
-		return []byte{82, 33, 179, 118, 118, 141, 38, 154, 5, 20, 207, 140, 127, 221, 237, 139, 222, 74, 189, 107, 84, 133, 127, 80, 226, 169, 25, 110, 141, 226, 196, 69, 202, 51, 204, 77, 22, 198, 104, 91, 74, 120, 221, 156, 122, 11, 43, 54, 106, 10, 165, 202, 229, 71, 44, 18, 113, 236, 213, 47, 208, 239, 198, 33}, nil
+	ctx.SignFunc = func(_ pkcs11.SessionHandle, msg []byte) ([]byte, error) {
+		return ecPKCS11Sign(priv, msg)
 	}
 	_, _, err = ecGenerate(ctx, 0, "", "P-256")
 	test.AssertNotError(t, err, "ecGenerate didn't succeed when everything worked as expected")
+}
+
+func ecPKCS11Sign(priv *ecdsa.PrivateKey, msg []byte) ([]byte, error) {
+	r, s, err := ecdsa.Sign(rand.Reader, priv, msg[:])
+	if err != nil {
+		return nil, err
+	}
+	rBytes := r.Bytes()
+	sBytes := s.Bytes()
+	// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/os/pkcs11-curr-v2.40-os.html
+	// Section 2.3.1: EC Signatures
+	// "If r and s have different octet length, the shorter of both must be padded with
+	// leading zero octets such that both have the same octet length."
+	switch {
+	case len(rBytes) < len(sBytes):
+		padding := make([]byte, len(sBytes)-len(rBytes))
+		rBytes = append(padding, rBytes...)
+	case len(rBytes) > len(sBytes):
+		padding := make([]byte, len(rBytes)-len(sBytes))
+		sBytes = append(padding, sBytes...)
+	}
+	return append(rBytes, sBytes...), nil
 }

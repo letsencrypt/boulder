@@ -12,18 +12,31 @@ import (
 	"github.com/miekg/pkcs11"
 )
 
+type hsmRandReader struct {
+	ctx     pkcs11helpers.PKCtx
+	session pkcs11.SessionHandle
+}
+
+func newRandReader(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle) *hsmRandReader {
+	return &hsmRandReader{
+		ctx:     ctx,
+		session: session,
+	}
+}
+
+func (hrr hsmRandReader) Read(p []byte) (n int, err error) {
+	r, err := hrr.ctx.GenerateRandom(hrr.session, len(p))
+	if err != nil {
+		return 0, err
+	}
+	copy(p[:], r)
+	return len(r), nil
+}
+
 type generateArgs struct {
 	mechanism    []*pkcs11.Mechanism
 	privateAttrs []*pkcs11.Attribute
 	publicAttrs  []*pkcs11.Attribute
-}
-
-func getRandomBytes(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle) ([]byte, error) {
-	r, err := ctx.GenerateRandom(session, 4)
-	if err != nil {
-		return nil, err
-	}
-	return r, nil
 }
 
 const (

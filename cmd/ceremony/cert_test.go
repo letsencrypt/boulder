@@ -79,31 +79,32 @@ func TestParseOID(t *testing.T) {
 func TestMakeTemplate(t *testing.T) {
 	ctx := pkcs11helpers.MockCtx{}
 	profile := &certProfile{}
+	randReader := newRandReader(&ctx, 0)
 
 	profile.NotBefore = "1234"
-	_, err := makeTemplate(ctx, 0, profile, nil)
+	_, err := makeTemplate(randReader, profile, nil)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid not before")
 
 	profile.NotBefore = "2018-05-18 11:31:00"
 	profile.NotAfter = "1234"
-	_, err = makeTemplate(ctx, 0, profile, nil)
+	_, err = makeTemplate(randReader, profile, nil)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid not after")
 
 	profile.NotAfter = "2018-05-18 11:31:00"
 	profile.PolicyOIDs = []string{""}
-	_, err = makeTemplate(ctx, 0, profile, nil)
+	_, err = makeTemplate(randReader, profile, nil)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid policy OID")
 
 	profile.PolicyOIDs = []string{"1.2.3"}
 	profile.SignatureAlgorithm = "nope"
-	_, err = makeTemplate(ctx, 0, profile, nil)
+	_, err = makeTemplate(randReader, profile, nil)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid signature algorithm")
 
 	profile.SignatureAlgorithm = "SHA256WithRSA"
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
 		return nil, errors.New("bad")
 	}
-	_, err = makeTemplate(ctx, 0, profile, nil)
+	_, err = makeTemplate(randReader, profile, nil)
 	test.AssertError(t, err, "makeTemplate didn't fail when GenerateRandom failed")
 
 	ctx.GenerateRandomFunc = func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
@@ -112,11 +113,11 @@ func TestMakeTemplate(t *testing.T) {
 		return r, err
 	}
 
-	_, err = makeTemplate(ctx, 0, profile, nil)
+	_, err = makeTemplate(randReader, profile, nil)
 	test.AssertError(t, err, "makeTemplate didn't fail with empty key usages")
 
 	profile.KeyUsages = []string{"asd"}
-	_, err = makeTemplate(ctx, 0, profile, nil)
+	_, err = makeTemplate(randReader, profile, nil)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid key usages")
 
 	profile.KeyUsages = []string{"Digital Signature", "CRL Sign"}
@@ -126,7 +127,7 @@ func TestMakeTemplate(t *testing.T) {
 	profile.OCSPURL = "ocsp"
 	profile.CRLURL = "crl"
 	profile.IssuerURL = "issuer"
-	cert, err := makeTemplate(ctx, 0, profile, nil)
+	cert, err := makeTemplate(randReader, profile, nil)
 	test.AssertNotError(t, err, "makeTemplate failed when everything worked as expected")
 	test.AssertEquals(t, cert.Subject.CommonName, profile.CommonName)
 	test.AssertEquals(t, len(cert.Subject.Organization), 1)

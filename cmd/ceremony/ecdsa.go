@@ -99,7 +99,9 @@ func ecPub(
 // a nonce generated on the device and verifying the returned signature using the
 // public key.
 func ecVerify(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, pub *ecdsa.PublicKey) error {
-	nonce, err := getRandomBytes(ctx, session)
+	nonce := make([]byte, 4)
+	_, err := newRandReader(ctx, session).Read(nonce)
+	// nonce, err := getRandomBytes(ctx, session)
 	if err != nil {
 		return fmt.Errorf("failed to construct nonce: %s", err)
 	}
