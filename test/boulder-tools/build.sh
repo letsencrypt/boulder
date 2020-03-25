@@ -36,17 +36,20 @@ apt-get install -y --no-install-recommends \
 curl -L https://github.com/google/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip -o /tmp/protoc.zip
 unzip /tmp/protoc.zip -d /usr/local/protoc
 
-# Override default GOBIN and GOPATH
-export GOBIN=/usr/local/bin GOPATH=/tmp/gopath
+# Override default GOBIN and GOCACHE
+export GOBIN=/usr/local/bin GOCACHE=/tmp/gocache
 
 # Install protobuf and testing/dev tools.
-go get \
+# Note: The version of golang/protobuf is partially tied to the version of grpc
+# used by Boulder overall. Updating it may require updating the grpc version
+# and vice versa.
+GO111MODULE=on go get \
   github.com/letsencrypt/pebble/cmd/pebble-challtestsrv \
   bitbucket.org/liamstask/goose/cmd/goose \
   golang.org/x/lint/golint \
   github.com/golang/mock/mockgen \
-  github.com/golang/protobuf/proto \
-  github.com/golang/protobuf/protoc-gen-go \
+  github.com/golang/protobuf/proto@v1.3.4 \
+  github.com/golang/protobuf/protoc-gen-go@v1.3.4 \
   github.com/kisielk/errcheck \
   github.com/mattn/goveralls \
   github.com/modocache/gover \
