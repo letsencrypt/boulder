@@ -126,7 +126,8 @@ func ecVerify(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, object pkcs
 
 // ecGenerate is used to generate and verify a ECDSA key pair of the type
 // specified by curveStr and with the provided label. It returns the public
-// part of the generated key pair as a ecdsa.PublicKey.
+// part of the generated key pair as a ecdsa.PublicKey and the random key ID
+// that the HSM uses to identify the key pair.
 func ecGenerate(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label, curveStr string) (*ecdsa.PublicKey, []byte, error) {
 	curve, present := stringToCurve[curveStr]
 	if !present {

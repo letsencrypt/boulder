@@ -99,7 +99,8 @@ func rsaVerify(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, object pkc
 
 // rsaGenerate is used to generate and verify a RSA key pair of the size
 // specified by modulusLen and with the exponent specified by pubExponent.
-// It returns the public part of the generated key pair as a rsa.PublicKey.
+// It returns the public part of the generated key pair as a rsa.PublicKey
+// and the random key ID that the HSM uses to identify the key pair.
 func rsaGenerate(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string, modulusLen, pubExponent uint) (*rsa.PublicKey, []byte, error) {
 	keyID := make([]byte, 4)
 	_, err := rand.Read(keyID)
