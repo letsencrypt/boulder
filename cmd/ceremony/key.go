@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"crypto"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -71,71 +69,4 @@ func generateKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label st
 	}
 	log.Printf("Public key written to %q\n", outputPath)
 	return &keyInfo{key: pubKey, der: der, id: keyID}, nil
-}
-
-// getKey constructs a x509Signer for the private key object associated with the
-// given label and ID. Unlike letsencrypt/pkcs11key this method doesn't rely on
-// having the actual public key object in order to retrieve the private key
-// handle. This is because we already have the key pair object ID, and as such
-// do not need to query the HSM to retrieve it.
-func getKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string, id []byte) (crypto.Signer, error) {
-	// Retrieve the private key handle that will later be used for the certificate
-	// signing operation
-	privateHandle, err := pkcs11helpers.FindObject(ctx, session, []*pkcs11.Attribute{
-		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PRIVATE_KEY),
-		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
-		pkcs11.NewAttribute(pkcs11.CKA_ID, id),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve private key handle: %s", err)
-	}
-	attrs, err := ctx.GetAttributeValue(session, privateHandle, []*pkcs11.Attribute{
-		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil)},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve key type: %s", err)
-	}
-	if len(attrs) == 0 {
-		return nil, errors.New("failed to retrieve key attributes")
-	}
-
-	// Retrieve the public key handle with the same CKA_ID as the private key
-	// and construct a {rsa,ecdsa}.PublicKey for use in x509.CreateCertificate
-	pubHandle, err := pkcs11helpers.FindObject(ctx, session, []*pkcs11.Attribute{
-		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
-		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
-		pkcs11.NewAttribute(pkcs11.CKA_ID, id),
-		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, attrs[0].Value),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve public key handle: %s", err)
-	}
-	var pub crypto.PublicKey
-	var keyType pkcs11helpers.KeyType
-	switch {
-	// 0x00000000, CKK_RSA
-	case bytes.Compare(attrs[0].Value, []byte{0, 0, 0, 0, 0, 0, 0, 0}) == 0:
-		keyType = pkcs11helpers.RSAKey
-		pub, err = pkcs11helpers.GetRSAPublicKey(ctx, session, pubHandle)
-		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve public key: %s", err)
-		}
-	// 0x00000003, CKK_ECDSA
-	case bytes.Compare(attrs[0].Value, []byte{3, 0, 0, 0, 0, 0, 0, 0}) == 0:
-		keyType = pkcs11helpers.ECDSAKey
-		pub, err = pkcs11helpers.GetECDSAPublicKey(ctx, session, pubHandle)
-		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve public key: %s", err)
-		}
-	default:
-		return nil, errors.New("unsupported key type")
-	}
-
-	return &x509Signer{
-		ctx:          ctx,
-		session:      session,
-		objectHandle: privateHandle,
-		keyType:      keyType,
-		pub:          pub,
-	}, nil
 }
