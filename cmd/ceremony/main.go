@@ -101,7 +101,7 @@ type intermediateConfig struct {
 		Module       string `yaml:"module"`
 		SigningSlot  uint   `yaml:"signing-key-slot"`
 		SigningLabel string `yaml:"signing-key-label"`
-		KeyID        string `yaml:"key-id"`
+		SigningKeyID string `yaml:"signing-key-id"`
 	} `yaml:"pkcs11"`
 	Inputs struct {
 		PublicKeyPath         string `yaml:"public-key-path"`
@@ -122,8 +122,8 @@ func (ic intermediateConfig) validate() error {
 	if ic.PKCS11.SigningLabel == "" {
 		return errors.New("pkcs11.signing-key-label is required")
 	}
-	if ic.PKCS11.KeyID == "" {
-		return errors.New("pkcs11.key-id is required")
+	if ic.PKCS11.SigningKeyID == "" {
+		return errors.New("pkcs11.signing-key-id is required")
 	}
 
 	// Input fields
@@ -252,7 +252,7 @@ func intermediateCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.SigningSlot, err)
 	}
 	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.SigningSlot)
-	keyID, err := hex.DecodeString(config.PKCS11.KeyID)
+	keyID, err := hex.DecodeString(config.PKCS11.SigningKeyID)
 	if err != nil {
 		return fmt.Errorf("failed to decode key-id: %s", err)
 	}

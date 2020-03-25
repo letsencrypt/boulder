@@ -249,7 +249,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 					Module       string `yaml:"module"`
 					SigningSlot  uint   `yaml:"signing-key-slot"`
 					SigningLabel string `yaml:"signing-key-label"`
-					KeyID        string `yaml:"key-id"`
+					SigningKeyID string `yaml:"signing-key-id"`
 				}{
 					Module: "module",
 				},
@@ -263,13 +263,13 @@ func TestIntermediateConfigValidate(t *testing.T) {
 					Module       string `yaml:"module"`
 					SigningSlot  uint   `yaml:"signing-key-slot"`
 					SigningLabel string `yaml:"signing-key-label"`
-					KeyID        string `yaml:"key-id"`
+					SigningKeyID string `yaml:"signing-key-id"`
 				}{
 					Module:       "module",
 					SigningLabel: "label",
 				},
 			},
-			expectedError: "pkcs11.key-id is required",
+			expectedError: "pkcs11.signing-key-id is required",
 		},
 		{
 			name: "no inputs.public-key-path",
@@ -278,11 +278,11 @@ func TestIntermediateConfigValidate(t *testing.T) {
 					Module       string `yaml:"module"`
 					SigningSlot  uint   `yaml:"signing-key-slot"`
 					SigningLabel string `yaml:"signing-key-label"`
-					KeyID        string `yaml:"key-id"`
+					SigningKeyID string `yaml:"signing-key-id"`
 				}{
 					Module:       "module",
 					SigningLabel: "label",
-					KeyID:        "id",
+					SigningKeyID: "id",
 				},
 			},
 			expectedError: "inputs.public-key-path is required",
@@ -294,11 +294,11 @@ func TestIntermediateConfigValidate(t *testing.T) {
 					Module       string `yaml:"module"`
 					SigningSlot  uint   `yaml:"signing-key-slot"`
 					SigningLabel string `yaml:"signing-key-label"`
-					KeyID        string `yaml:"key-id"`
+					SigningKeyID string `yaml:"signing-key-id"`
 				}{
 					Module:       "module",
 					SigningLabel: "label",
-					KeyID:        "id",
+					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					PublicKeyPath         string `yaml:"public-key-path"`
@@ -316,11 +316,11 @@ func TestIntermediateConfigValidate(t *testing.T) {
 					Module       string `yaml:"module"`
 					SigningSlot  uint   `yaml:"signing-key-slot"`
 					SigningLabel string `yaml:"signing-key-label"`
-					KeyID        string `yaml:"key-id"`
+					SigningKeyID string `yaml:"signing-key-id"`
 				}{
 					Module:       "module",
 					SigningLabel: "label",
-					KeyID:        "id",
+					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					PublicKeyPath         string `yaml:"public-key-path"`
@@ -339,11 +339,11 @@ func TestIntermediateConfigValidate(t *testing.T) {
 					Module       string `yaml:"module"`
 					SigningSlot  uint   `yaml:"signing-key-slot"`
 					SigningLabel string `yaml:"signing-key-label"`
-					KeyID        string `yaml:"key-id"`
+					SigningKeyID string `yaml:"signing-key-id"`
 				}{
 					Module:       "module",
 					SigningLabel: "label",
-					KeyID:        "id",
+					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					PublicKeyPath         string `yaml:"public-key-path"`
@@ -367,11 +367,11 @@ func TestIntermediateConfigValidate(t *testing.T) {
 					Module       string `yaml:"module"`
 					SigningSlot  uint   `yaml:"signing-key-slot"`
 					SigningLabel string `yaml:"signing-key-label"`
-					KeyID        string `yaml:"key-id"`
+					SigningKeyID string `yaml:"signing-key-id"`
 				}{
 					Module:       "module",
 					SigningLabel: "label",
-					KeyID:        "id",
+					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					PublicKeyPath         string `yaml:"public-key-path"`
