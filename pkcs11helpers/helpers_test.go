@@ -112,3 +112,56 @@ func TestRSAPublicKey(t *testing.T) {
 	_, err = GetRSAPublicKey(ctx, 0, 0)
 	test.AssertNotError(t, err, "rsaPub failed with valid attributes")
 }
+
+func TestFindObject(t *testing.T) {
+	ctx := MockCtx{}
+
+	// test FindObject fails when FindObjectsInit fails
+	ctx.FindObjectsInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Attribute) error {
+		return errors.New("broken")
+	}
+	_, err := FindObject(ctx, 0, nil)
+	test.AssertError(t, err, "FindObject didn't fail when FindObjectsInit failed")
+
+	// test FindObject fails when FindObjects fails
+	ctx.FindObjectsInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Attribute) error {
+		return nil
+	}
+	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
+		return nil, false, errors.New("broken")
+	}
+	_, err = FindObject(ctx, 0, nil)
+	test.AssertError(t, err, "FindObject didn't fail when FindObjects failed")
+
+	// test FindObject fails when no handles are returned
+	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
+		return []pkcs11.ObjectHandle{}, false, nil
+	}
+	_, err = FindObject(ctx, 0, nil)
+	test.AssertError(t, err, "FindObject didn't fail when FindObjects returns no handles")
+
+	// test FindObject fails when multiple handles are returned
+	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
+		return []pkcs11.ObjectHandle{1}, true, nil
+	}
+	_, err = FindObject(ctx, 0, nil)
+	test.AssertError(t, err, "FindObject didn't fail when FindObjects returns multiple handles")
+
+	// test FindObject fails when FindObjectsFinal fails
+	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
+		return []pkcs11.ObjectHandle{1}, false, nil
+	}
+	ctx.FindObjectsFinalFunc = func(pkcs11.SessionHandle) error {
+		return errors.New("broken")
+	}
+	_, err = FindObject(ctx, 0, nil)
+	test.AssertError(t, err, "FindObject didn't fail when FindObjectsFinal fails")
+
+	// test FindObject works
+	ctx.FindObjectsFinalFunc = func(pkcs11.SessionHandle) error {
+		return nil
+	}
+	handle, err := FindObject(ctx, 0, nil)
+	test.AssertNotError(t, err, "FindObject failed when everything worked as expected")
+	test.AssertEquals(t, handle, pkcs11.ObjectHandle(1))
+}

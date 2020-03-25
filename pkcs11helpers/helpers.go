@@ -182,6 +182,29 @@ func Sign(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, k
 	return signature, nil
 }
 
+// FindObject looks up a PKCS#11 object handle based on the provided template.
+// In the case where zero or more than one objects are found to match the
+// template an error is returned.
+func FindObject(ctx PKCtx, session pkcs11.SessionHandle, tmpl []*pkcs11.Attribute) (pkcs11.ObjectHandle, error) {
+	if err := ctx.FindObjectsInit(session, tmpl); err != nil {
+		return 0, err
+	}
+	handles, more, err := ctx.FindObjects(session, 1)
+	if err != nil {
+		return 0, err
+	}
+	if len(handles) == 0 {
+		return 0, errors.New("no objects found matching provided template")
+	}
+	if more {
+		return 0, errors.New("more than one object matches provided template")
+	}
+	if err := ctx.FindObjectsFinal(session); err != nil {
+		return 0, err
+	}
+	return handles[0], nil
+}
+
 type MockCtx struct {
 	GenerateKeyPairFunc   func(pkcs11.SessionHandle, []*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) (pkcs11.ObjectHandle, pkcs11.ObjectHandle, error)
 	GetAttributeValueFunc func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error)

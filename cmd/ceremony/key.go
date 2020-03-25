@@ -73,29 +73,6 @@ func generateKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label st
 	return &keyInfo{key: pubKey, der: der, id: keyID}, nil
 }
 
-// findObject looks up a PKCS#11 object handle based on the provided template.
-// In the case where zero or more than one objects are found to match the
-// template an error is returned.
-func findObject(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, tmpl []*pkcs11.Attribute) (pkcs11.ObjectHandle, error) {
-	if err := ctx.FindObjectsInit(session, tmpl); err != nil {
-		return 0, err
-	}
-	handles, more, err := ctx.FindObjects(session, 1)
-	if err != nil {
-		return 0, err
-	}
-	if len(handles) == 0 {
-		return 0, errors.New("no objects found matching provided template")
-	}
-	if more {
-		return 0, errors.New("more than one object matches provided template")
-	}
-	if err := ctx.FindObjectsFinal(session); err != nil {
-		return 0, err
-	}
-	return handles[0], nil
-}
-
 // getKey constructs a x509Signer for the private key object associated with the
 // given label and ID. Unlike letsencrypt/pkcs11key this method doesn't rely on
 // having the actual public key object in order to retrieve the private key
@@ -104,7 +81,7 @@ func findObject(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, tmpl []*p
 func getKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string, id []byte) (crypto.Signer, error) {
 	// Retrieve the private key handle that will later be used for the certificate
 	// signing operation
-	privateHandle, err := findObject(ctx, session, []*pkcs11.Attribute{
+	privateHandle, err := pkcs11helpers.FindObject(ctx, session, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PRIVATE_KEY),
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 		pkcs11.NewAttribute(pkcs11.CKA_ID, id),
@@ -124,7 +101,7 @@ func getKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string,
 
 	// Retrieve the public key handle with the same CKA_ID as the private key
 	// and construct a {rsa,ecdsa}.PublicKey for use in x509.CreateCertificate
-	pubHandle, err := findObject(ctx, session, []*pkcs11.Attribute{
+	pubHandle, err := pkcs11helpers.FindObject(ctx, session, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 		pkcs11.NewAttribute(pkcs11.CKA_ID, id),

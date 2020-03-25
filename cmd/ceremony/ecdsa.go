@@ -29,15 +29,6 @@ var curveToOIDDER = map[string][]byte{
 	elliptic.P521().Params().Name: []byte{6, 5, 43, 129, 4, 0, 35},
 }
 
-// oidDERToCurve maps the hex of the DER encoding of the various curve OIDs to
-// the relevant curve parameters
-var oidDERToCurve = map[string]elliptic.Curve{
-	"06052B81040021":       elliptic.P224(),
-	"06082A8648CE3D030107": elliptic.P256(),
-	"06052B81040022":       elliptic.P384(),
-	"06052B81040023":       elliptic.P521(),
-}
-
 var curveToHash = map[elliptic.Curve]crypto.Hash{
 	elliptic.P224(): crypto.SHA256,
 	elliptic.P256(): crypto.SHA256,
