@@ -33,6 +33,7 @@ require (
 	github.com/weppos/publicsuffix-go v0.10.1-0.20200202094241-a723c5d90134
 	github.com/zmap/zcrypto v0.0.0-20191112190257-7f2fe6faf8cf
 	github.com/zmap/zlint v1.1.0
+	github.com/zmap/zlint/v2 v2.0.0
 	golang.org/x/crypto v0.0.0-20200124225646-8b5121be2f68
 	golang.org/x/net v0.0.0-20191112182307-2180aed22343
 	golang.org/x/text v0.3.2
