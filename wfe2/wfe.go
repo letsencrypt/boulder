@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -1526,8 +1525,6 @@ func (wfe *WebFrontEndImpl) Authorization(
 		return
 	}
 }
-
-var allHex = regexp.MustCompile("^[0-9a-f]+$")
 
 // Certificate is used by clients to request a copy of their current certificate, or to
 // request a reissuance of the certificate.

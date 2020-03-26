@@ -560,14 +560,6 @@ func finalizeOrder(s *State, ctx *context) error {
 	return nil
 }
 
-// min returns the smaller of the two inputs
-func min(a, b int) int {
-	if a > b {
-		return b
-	}
-	return a
-}
-
 // postAsGet performs a POST-as-GET request to the provided URL authenticated by
 // the context's account. A HTTP status code other than StatusOK (200)
 // in response to a POST-as-GET request is considered an error. The caller is
