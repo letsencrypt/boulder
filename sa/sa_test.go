@@ -2121,12 +2121,15 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 	test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
 	test.AssertNotNil(t, authzMap, "sa.GetValidOrderAuthorizations result was nil")
 	test.AssertEquals(t, len(authzMap.Authz), 2)
-	test.AssertEquals(t, *authzMap.Authz[0].Authz.Identifier, "a.example.com")
-	test.AssertEquals(t, *authzMap.Authz[1].Authz.Identifier, "b.example.com")
-	test.AssertEquals(t, *authzMap.Authz[0].Authz.Expires, expires.UnixNano())
-	test.AssertEquals(t, *authzMap.Authz[1].Authz.Expires, expires.UnixNano())
-	test.AssertEquals(t, *authzMap.Authz[0].Authz.Id, fmt.Sprintf("%d", authzIDA))
-	test.AssertEquals(t, *authzMap.Authz[1].Authz.Id, fmt.Sprintf("%d", authzIDB))
+
+	namesToCheck := map[string]int64{"a.example.com": authzIDA, "b.example.com": authzIDB}
+	for _, a := range authzMap.Authz {
+		if fmt.Sprintf("%d", namesToCheck[*a.Authz.Identifier]) != *a.Authz.Id {
+			t.Fatalf("incorrect identifier %q with id %d", *a.Authz.Identifier, a.Authz.Id)
+		}
+		test.AssertEquals(t, *a.Authz.Expires, expires.UnixNano())
+		delete(namesToCheck, *a.Authz.Identifier)
+	}
 
 	// Getting the order authorizations for an order that doesn't exist should return nothing
 	missingID := int64(0xC0FFEEEEEEE)
