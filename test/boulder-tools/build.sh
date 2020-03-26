@@ -46,7 +46,7 @@ export GOBIN=/usr/local/bin GOCACHE=/tmp/gocache
 GO111MODULE=on go get \
   bitbucket.org/liamstask/goose/cmd/goose \
   golang.org/x/lint/golint \
-  github.com/golang/mock/mockgen \
+  github.com/golang/mock/mockgen@v1.3.0 \
   github.com/golang/protobuf/proto@v1.3.2 \
   github.com/golang/protobuf/protoc-gen-go@v1.3.2 \
   github.com/kisielk/errcheck \
