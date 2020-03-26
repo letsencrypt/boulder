@@ -39,12 +39,15 @@ unzip /tmp/protoc.zip -d /usr/local/protoc
 # Override default GOBIN and GOCACHE
 export GOBIN=/usr/local/bin GOCACHE=/tmp/gocache
 
+# Pebble's latest version is v2+, but it's not properly go mod compatible, so we
+# fetch it in GOPATH mode.
+go get github.com/letsencrypt/pebble/cmd/pebble-challtestsrv
+
 # Install protobuf and testing/dev tools.
 # Note: The version of golang/protobuf is partially tied to the version of grpc
 # used by Boulder overall. Updating it may require updating the grpc version
 # and vice versa.
 GO111MODULE=on go get \
-  github.com/letsencrypt/pebble/cmd/pebble-challtestsrv \
   bitbucket.org/liamstask/goose/cmd/goose \
   golang.org/x/lint/golint \
   github.com/golang/mock/mockgen \
