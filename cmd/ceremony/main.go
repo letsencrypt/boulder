@@ -52,7 +52,8 @@ func (kgc keyGenConfig) validate() error {
 }
 
 type rootConfig struct {
-	PKCS11 struct {
+	CeremonyType string `yaml:"ceremony-type"`
+	PKCS11       struct {
 		Module     string `yaml:"module"`
 		StoreSlot  uint   `yaml:"store-key-in-slot"`
 		StoreLabel string `yaml:"store-key-with-label"`
@@ -97,7 +98,8 @@ func (rc rootConfig) validate() error {
 }
 
 type intermediateConfig struct {
-	PKCS11 struct {
+	CeremonyType string `yaml:"ceremony-type"`
+	PKCS11       struct {
 		Module       string `yaml:"module"`
 		SigningSlot  uint   `yaml:"signing-key-slot"`
 		SigningLabel string `yaml:"signing-key-label"`
@@ -148,7 +150,8 @@ func (ic intermediateConfig) validate() error {
 }
 
 type keyConfig struct {
-	PKCS11 struct {
+	CeremonyType string `yaml:"ceremony-type"`
+	PKCS11       struct {
 		Module     string `yaml:"module"`
 		StoreSlot  uint   `yaml:"store-key-in-slot"`
 		StoreLabel string `yaml:"store-key-with-label"`
