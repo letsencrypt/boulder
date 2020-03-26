@@ -83,6 +83,9 @@ func TestECVerify(t *testing.T) {
 
 func TestECGenerate(t *testing.T) {
 	ctx := pkcs11helpers.MockCtx{}
+	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
+		return []byte{1, 2, 3}, nil
+	}
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "Failed to generate a ECDSA test key")
 

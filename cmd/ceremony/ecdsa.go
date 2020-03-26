@@ -4,7 +4,6 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"log"
@@ -101,7 +100,6 @@ func ecPub(
 func ecVerify(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, pub *ecdsa.PublicKey) error {
 	nonce := make([]byte, 4)
 	_, err := newRandReader(ctx, session).Read(nonce)
-	// nonce, err := getRandomBytes(ctx, session)
 	if err != nil {
 		return fmt.Errorf("failed to construct nonce: %s", err)
 	}
@@ -134,7 +132,7 @@ func ecGenerate(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label, cu
 		return nil, nil, fmt.Errorf("curve %q not supported", curveStr)
 	}
 	keyID := make([]byte, 4)
-	_, err := rand.Read(keyID)
+	_, err := newRandReader(ctx, session).Read(keyID)
 	if err != nil {
 		return nil, nil, err
 	}

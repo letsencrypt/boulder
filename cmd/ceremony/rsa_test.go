@@ -100,6 +100,9 @@ func TestRSAVerify(t *testing.T) {
 
 func TestRSAGenerate(t *testing.T) {
 	ctx := pkcs11helpers.MockCtx{}
+	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
+		return []byte{1, 2, 3}, nil
+	}
 
 	priv, err := rsa.GenerateKey(rand.Reader, 1024)
 	test.AssertNotError(t, err, "Failed to generate a RSA test key")

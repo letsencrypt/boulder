@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto"
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"errors"
@@ -103,7 +102,7 @@ func rsaVerify(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, object pkc
 // and the random key ID that the HSM uses to identify the key pair.
 func rsaGenerate(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string, modulusLen, pubExponent uint) (*rsa.PublicKey, []byte, error) {
 	keyID := make([]byte, 4)
-	_, err := rand.Read(keyID)
+	_, err := newRandReader(ctx, session).Read(keyID)
 	if err != nil {
 		return nil, nil, err
 	}

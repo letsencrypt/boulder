@@ -76,7 +76,7 @@ This config generates a ECDSA P-384 key in the HSM with the object label `root s
     | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
     | `signing-key-slot` | Specifies which HSM object slot the signing key is in. |
     | `signing-key-label` | Specifies the HSM object label for the signing key. |
-    | `key-id` | Specifies the HSM object ID for the signing key. |
+    | `signing-key-id` | Specifies the HSM object ID for the signing key. |
 - `inputs`: object containing paths for inputs
     | Field | Description |
     | --- | --- |
@@ -96,7 +96,7 @@ pkcs11:
     module: /usr/lib/opensc-pkcs11.so
     signing-key-slot: 0
     signing-key-label: root signing key
-    key-id: ffff
+    signing-key-id: ffff
 inputs:
     public-key-path: /home/user/intermediate-signing-pub.pem
     issuer-path: /home/user/root-cert.pem

@@ -182,13 +182,13 @@ func (kc keyConfig) validate() error {
 	return nil
 }
 
-func signAndWriteCert(tbs, issuer *x509.Certificate, pubKey crypto.PublicKey, signer crypto.Signer, certPath string) error {
+func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string) error {
 	// x509.CreateCertificate uses a io.Reader here for signing methods that require
 	// a source of randomness. Since PKCS#11 based signing generates needed randomness
 	// at the HSM we don't need to pass a real reader. Instead of passing a nil reader
 	// we use one that always returns errors in case the internal usage of this reader
 	// changes.
-	certBytes, err := x509.CreateCertificate(&failReader{}, tbs, issuer, pubKey, signer)
+	certBytes, err := x509.CreateCertificate(&failReader{}, tbs, issuer, subjectPubKey, signer)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate: %s", err)
 	}
@@ -329,9 +329,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to read config file: %s", err)
 	}
-	// TODO(roland): this could also be done with a command line flag,
-	// but I kind of like having the config file being completely self
-	// descriptive
 	var ct struct {
 		CeremonyType string `yaml:"ceremony-type"`
 	}
