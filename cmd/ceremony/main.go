@@ -201,6 +201,13 @@ func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.Public
 	if err != nil {
 		return fmt.Errorf("failed to parse signed certificate: %s", err)
 	}
+	if tbs == issuer {
+		// If cert is self-signed we need to populate the issuer subject key to
+		// verify the signature
+		issuer.PublicKey = cert.PublicKey
+		issuer.PublicKeyAlgorithm = cert.PublicKeyAlgorithm
+	}
+
 	if err := cert.CheckSignatureFrom(issuer); err != nil {
 		return fmt.Errorf("failed to verify certificate signature: %s", err)
 	}
