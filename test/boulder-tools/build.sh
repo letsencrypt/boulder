@@ -51,7 +51,7 @@ GO111MODULE=on go get \
   github.com/golang/protobuf/proto@v1.3.4 \
   github.com/golang/protobuf/protoc-gen-go@v1.3.4 \
   github.com/kisielk/errcheck \
-  github.com/mattn/goveralls \
+  github.com/mattn/goveralls@v0.0.3 \
   github.com/modocache/gover \
   golang.org/x/tools/cover \
   golang.org/x/tools/cmd/stringer \
