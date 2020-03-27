@@ -9,22 +9,14 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 	"gopkg.in/yaml.v2"
 )
-
-var log = blog.UseMock()
 
 var enabledChallenges = map[string]bool{
 	core.ChallengeTypeHTTP01: true,
 	core.ChallengeTypeDNS01:  true,
 }
-
-const (
-	testRegID            = 1234
-	testRegIDWhitelisted = 1000
-)
 
 func paImpl(t *testing.T) *AuthorityImpl {
 	pa, err := New(enabledChallenges)
@@ -369,12 +361,6 @@ func TestWillingToIssueWildcards(t *testing.T) {
 	test.AssertEquals(t, len(berr.SubErrors), 0)
 	test.AssertEquals(t, berr.Error(), "Cannot issue for \"letsdecrypt.org\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy")
 }
-
-var accountKeyJSON = `{
-  "kty":"RSA",
-  "n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
-  "e":"AQAB"
-}`
 
 func TestChallengesFor(t *testing.T) {
 	pa := paImpl(t)

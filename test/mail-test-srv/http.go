@@ -5,7 +5,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -58,8 +57,6 @@ func (s *mailSrv) httpCount(w http.ResponseWriter, r *http.Request) {
 	})
 	fmt.Fprintf(w, "%d\n", count)
 }
-
-var rgxGetMail = regexp.MustCompile(`^(\d+)/?$`)
 
 func (s *mailSrv) httpGetMail(w http.ResponseWriter, r *http.Request) {
 	mailNum, err := strconv.Atoi(strings.Trim(r.URL.Path, "/"))

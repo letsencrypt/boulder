@@ -180,13 +180,6 @@ xxBoTncDuGtTpubGbzBrY5W1SlNm1gqu9oQa23WNViN2Rc4aIVm3
 -----END RSA PRIVATE KEY-----
 `
 
-	testE1KeyPublicJSON = `{
-    "kty":"EC",
-    "crv":"P-256",
-    "x":"FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao",
-    "y":"S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk"
-  }`
-
 	testE1KeyPrivatePEM = `
 -----BEGIN EC PRIVATE KEY-----
 MHcCAQEEIH+p32RUnqT/iICBEGKrLIWFcyButv0S0lU/BLPOyHn2oAoGCCqGSM49
@@ -279,24 +272,6 @@ func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, req *rap
 	statusProcessing := string(core.StatusProcessing)
 	req.Order.Status = &statusProcessing
 	return req.Order, nil
-}
-
-type mockPA struct{}
-
-func (pa *mockPA) ChallengesFor(identifier identifier.ACMEIdentifier) (challenges []core.Challenge, err error) {
-	return
-}
-
-func (pa *mockPA) WillingToIssue(id identifier.ACMEIdentifier) error {
-	return nil
-}
-
-func (pa *mockPA) WillingToIssueWildcards(idents []identifier.ACMEIdentifier) error {
-	return nil
-}
-
-func (pa *mockPA) ValidDomaiN(_ string) error {
-	return nil
 }
 
 func makeBody(s string) io.ReadCloser {
@@ -1606,16 +1581,6 @@ func TestGetAuthorization(t *testing.T) {
 			}
 		]
 	}`)
-}
-
-// An SA mock that always returns a berrors.ServerInternal error for
-// GetAuthorization.
-type mockSAGetAuthzError struct {
-	core.StorageGetter
-}
-
-func (msa *mockSAGetAuthzError) GetAuthorization(ctx context.Context, id string) (core.Authorization, error) {
-	return core.Authorization{}, berrors.InternalServerError("oops")
 }
 
 // TestAuthorization500 tests that internal errors on GetAuthorization result in

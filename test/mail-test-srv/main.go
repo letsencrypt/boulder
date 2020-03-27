@@ -13,7 +13,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -21,7 +20,6 @@ import (
 
 type mailSrv struct {
 	closeFirst      uint
-	closeDuration   time.Duration
 	allReceivedMail []rcvdMail
 	allMailMutex    sync.Mutex
 	connNumber      uint
@@ -47,7 +45,6 @@ func expectLine(buf *bufio.Reader, expected string) error {
 
 var mailFromRegex = regexp.MustCompile("^MAIL FROM:<(.*)>\\s*BODY=8BITMIME\\s*$")
 var rcptToRegex = regexp.MustCompile("^RCPT TO:<(.*)>\\s*$")
-var dataRegex = regexp.MustCompile("^DATA\\s*$")
 var smtpErr501 = []byte("501 syntax error in parameters or arguments \r\n")
 var smtpOk250 = []byte("250 OK \r\n")
 
