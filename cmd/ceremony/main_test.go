@@ -97,6 +97,7 @@ func TestRootConfigValidate(t *testing.T) {
 			config: rootConfig{
 				PKCS11: struct {
 					Module     string `yaml:"module"`
+					PIN        string `yaml:"pin"`
 					StoreSlot  uint   `yaml:"store-key-in-slot"`
 					StoreLabel string `yaml:"store-key-with-label"`
 				}{
@@ -110,6 +111,7 @@ func TestRootConfigValidate(t *testing.T) {
 			config: rootConfig{
 				PKCS11: struct {
 					Module     string `yaml:"module"`
+					PIN        string `yaml:"pin"`
 					StoreSlot  uint   `yaml:"store-key-in-slot"`
 					StoreLabel string `yaml:"store-key-with-label"`
 				}{
@@ -124,6 +126,7 @@ func TestRootConfigValidate(t *testing.T) {
 			config: rootConfig{
 				PKCS11: struct {
 					Module     string `yaml:"module"`
+					PIN        string `yaml:"pin"`
 					StoreSlot  uint   `yaml:"store-key-in-slot"`
 					StoreLabel string `yaml:"store-key-with-label"`
 				}{
@@ -142,6 +145,7 @@ func TestRootConfigValidate(t *testing.T) {
 			config: rootConfig{
 				PKCS11: struct {
 					Module     string `yaml:"module"`
+					PIN        string `yaml:"pin"`
 					StoreSlot  uint   `yaml:"store-key-in-slot"`
 					StoreLabel string `yaml:"store-key-with-label"`
 				}{
@@ -166,6 +170,7 @@ func TestRootConfigValidate(t *testing.T) {
 			config: rootConfig{
 				PKCS11: struct {
 					Module     string `yaml:"module"`
+					PIN        string `yaml:"pin"`
 					StoreSlot  uint   `yaml:"store-key-in-slot"`
 					StoreLabel string `yaml:"store-key-with-label"`
 				}{
@@ -191,6 +196,7 @@ func TestRootConfigValidate(t *testing.T) {
 			config: rootConfig{
 				PKCS11: struct {
 					Module     string `yaml:"module"`
+					PIN        string `yaml:"pin"`
 					StoreSlot  uint   `yaml:"store-key-in-slot"`
 					StoreLabel string `yaml:"store-key-with-label"`
 				}{
@@ -247,6 +253,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 			config: intermediateConfig{
 				PKCS11: struct {
 					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
 					SigningSlot  uint   `yaml:"signing-key-slot"`
 					SigningLabel string `yaml:"signing-key-label"`
 					SigningKeyID string `yaml:"signing-key-id"`
@@ -261,6 +268,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 			config: intermediateConfig{
 				PKCS11: struct {
 					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
 					SigningSlot  uint   `yaml:"signing-key-slot"`
 					SigningLabel string `yaml:"signing-key-label"`
 					SigningKeyID string `yaml:"signing-key-id"`
@@ -276,6 +284,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 			config: intermediateConfig{
 				PKCS11: struct {
 					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
 					SigningSlot  uint   `yaml:"signing-key-slot"`
 					SigningLabel string `yaml:"signing-key-label"`
 					SigningKeyID string `yaml:"signing-key-id"`
@@ -292,6 +301,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 			config: intermediateConfig{
 				PKCS11: struct {
 					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
 					SigningSlot  uint   `yaml:"signing-key-slot"`
 					SigningLabel string `yaml:"signing-key-label"`
 					SigningKeyID string `yaml:"signing-key-id"`
@@ -314,6 +324,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 			config: intermediateConfig{
 				PKCS11: struct {
 					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
 					SigningSlot  uint   `yaml:"signing-key-slot"`
 					SigningLabel string `yaml:"signing-key-label"`
 					SigningKeyID string `yaml:"signing-key-id"`
@@ -337,6 +348,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 			config: intermediateConfig{
 				PKCS11: struct {
 					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
 					SigningSlot  uint   `yaml:"signing-key-slot"`
 					SigningLabel string `yaml:"signing-key-label"`
 					SigningKeyID string `yaml:"signing-key-id"`
@@ -365,6 +377,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 			config: intermediateConfig{
 				PKCS11: struct {
 					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
 					SigningSlot  uint   `yaml:"signing-key-slot"`
 					SigningLabel string `yaml:"signing-key-label"`
 					SigningKeyID string `yaml:"signing-key-id"`
@@ -427,6 +440,7 @@ func TestKeyConfigValidate(t *testing.T) {
 			config: keyConfig{
 				PKCS11: struct {
 					Module     string `yaml:"module"`
+					PIN        string `yaml:"pin"`
 					StoreSlot  uint   `yaml:"store-key-in-slot"`
 					StoreLabel string `yaml:"store-key-with-label"`
 				}{
@@ -440,6 +454,7 @@ func TestKeyConfigValidate(t *testing.T) {
 			config: keyConfig{
 				PKCS11: struct {
 					Module     string `yaml:"module"`
+					PIN        string `yaml:"pin"`
 					StoreSlot  uint   `yaml:"store-key-in-slot"`
 					StoreLabel string `yaml:"store-key-with-label"`
 				}{
@@ -454,6 +469,7 @@ func TestKeyConfigValidate(t *testing.T) {
 			config: keyConfig{
 				PKCS11: struct {
 					Module     string `yaml:"module"`
+					PIN        string `yaml:"pin"`
 					StoreSlot  uint   `yaml:"store-key-in-slot"`
 					StoreLabel string `yaml:"store-key-with-label"`
 				}{
@@ -472,6 +488,7 @@ func TestKeyConfigValidate(t *testing.T) {
 			config: keyConfig{
 				PKCS11: struct {
 					Module     string `yaml:"module"`
+					PIN        string `yaml:"pin"`
 					StoreSlot  uint   `yaml:"store-key-in-slot"`
 					StoreLabel string `yaml:"store-key-with-label"`
 				}{

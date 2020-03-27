@@ -24,6 +24,7 @@ These modes are set in the `ceremony-type` field of the configuration file.
     | Field | Description |
     | --- | --- |
     | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
+    | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
     | `store-key-in-slot` | Specifies which HSM object slot the generated signing key should be stored in. |
     | `store-key-with-label` | Specifies the HSM object label for the generated signing key. |
 - `key`: object containing key generation related fields.
@@ -74,6 +75,7 @@ This config generates a ECDSA P-384 key in the HSM with the object label `root s
     | Field | Description |
     | --- | --- |
     | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
+    | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
     | `signing-key-slot` | Specifies which HSM object slot the signing key is in. |
     | `signing-key-label` | Specifies the HSM object label for the signing key. |
     | `signing-key-id` | Specifies the HSM object ID for the signing key. |
@@ -130,6 +132,7 @@ This config generates an intermediate certificate signed by a key in the HSM, id
     | Field | Description |
     | --- | --- |
     | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
+    | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
     | `store-key-in-slot` | Specifies which HSM object slot the generated signing key should be stored in. |
     | `store-key-with-label` | Specifies the HSM object label for the generated signing key. |
 - `key`: object containing key generation related fields.

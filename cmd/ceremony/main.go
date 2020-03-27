@@ -55,6 +55,7 @@ type rootConfig struct {
 	CeremonyType string `yaml:"ceremony-type"`
 	PKCS11       struct {
 		Module     string `yaml:"module"`
+		PIN        string `yaml:"pin"`
 		StoreSlot  uint   `yaml:"store-key-in-slot"`
 		StoreLabel string `yaml:"store-key-with-label"`
 	} `yaml:"pkcs11"`
@@ -101,6 +102,7 @@ type intermediateConfig struct {
 	CeremonyType string `yaml:"ceremony-type"`
 	PKCS11       struct {
 		Module       string `yaml:"module"`
+		PIN          string `yaml:"pin"`
 		SigningSlot  uint   `yaml:"signing-key-slot"`
 		SigningLabel string `yaml:"signing-key-label"`
 		SigningKeyID string `yaml:"signing-key-id"`
@@ -153,6 +155,7 @@ type keyConfig struct {
 	CeremonyType string `yaml:"ceremony-type"`
 	PKCS11       struct {
 		Module     string `yaml:"module"`
+		PIN        string `yaml:"pin"`
 		StoreSlot  uint   `yaml:"store-key-in-slot"`
 		StoreLabel string `yaml:"store-key-with-label"`
 	} `yaml:"pkcs11"`
@@ -225,7 +228,7 @@ func rootCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
-	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.StoreSlot, "")
+	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.StoreSlot, config.PKCS11.PIN)
 	if err != nil {
 		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.StoreSlot, err)
 	}
@@ -257,7 +260,7 @@ func intermediateCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
-	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.SigningSlot, "")
+	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.SigningSlot, config.PKCS11.PIN)
 	if err != nil {
 		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.SigningSlot, err)
 	}
@@ -316,7 +319,7 @@ func keyCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
-	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.StoreSlot, "")
+	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.StoreSlot, config.PKCS11.PIN)
 	if err != nil {
 		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.StoreSlot, err)
 	}
