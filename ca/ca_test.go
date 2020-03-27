@@ -28,7 +28,7 @@ import (
 	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/zmap/zlint/lints"
+	"github.com/zmap/zlint/v2/lint"
 	"golang.org/x/crypto/ocsp"
 
 	ca_config "github.com/letsencrypt/boulder/ca/config"
@@ -1215,13 +1215,13 @@ func TestIssuePrecertificateLinting(t *testing.T) {
 	// two LintResults.
 	ca.defaultIssuer.eeSigner = &linttrapSigner{
 		lintErr: &local.LintError{
-			ErrorResults: map[string]lints.LintResult{
-				"foobar": lints.LintResult{
-					Status:  lints.Error,
+			ErrorResults: map[string]lint.LintResult{
+				"foobar": lint.LintResult{
+					Status:  lint.Error,
 					Details: "foobar is error",
 				},
-				"foobar2": lints.LintResult{
-					Status:  lints.Warn,
+				"foobar2": lint.LintResult{
+					Status:  lint.Warn,
 					Details: "foobar2 is warning",
 				},
 			},
