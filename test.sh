@@ -68,6 +68,7 @@ function run_test_coverage() {
 # Run various linters.
 #
 if [[ "$RUN" =~ "lints" ]] ; then
+  staticcheck -checks=inherit,-S1021,-ST1005,-SA1019,-S1030,-S1004,-S1032,-ST1017,-ST1013,-SA6003,-SA5011,-ST1012,-S1029,-SA2002 ./...
   run_and_expect_silence go vet ./...
   # Run gofmt instead of go fmt because of
   # https://github.com/golang/go/issues/31976

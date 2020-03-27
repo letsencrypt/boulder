@@ -52,7 +52,8 @@ go get \
   github.com/modocache/gover \
   golang.org/x/tools/cover \
   golang.org/x/tools/cmd/stringer \
-  github.com/gordonklaus/ineffassign
+  github.com/gordonklaus/ineffassign \
+  honnef.co/go/tools/cmd/staticcheck@2020.1.3
 
 # Install codespell for linting common spelling errors
 pip3 install codespell
