@@ -46,10 +46,6 @@ type interval struct {
 	end   string
 }
 
-type regID struct {
-	ID int
-}
-
 type contactJSON struct {
 	ID      int
 	Contact []byte

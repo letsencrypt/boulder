@@ -31,12 +31,11 @@ import (
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 )
 
-// Log contains the CT client and signature verifier for a particular CT log
+// Log contains the CT client for a particular CT log
 type Log struct {
-	logID    string
-	uri      string
-	client   *ctClient.LogClient
-	verifier *ct.SignatureVerifier
+	logID  string
+	uri    string
+	client *ctClient.LogClient
 }
 
 // logCache contains a cache of *Log's that are constructed as required by
@@ -322,17 +321,6 @@ func (pub *Impl) singleLogSubmit(
 	}
 
 	return sct, nil
-}
-
-func sctToInternal(sct *ct.SignedCertificateTimestamp, serial string) core.SignedCertificateTimestamp {
-	return core.SignedCertificateTimestamp{
-		CertificateSerial: serial,
-		SCTVersion:        uint8(sct.SCTVersion),
-		LogID:             base64.StdEncoding.EncodeToString(sct.LogID.KeyID[:]),
-		Timestamp:         sct.Timestamp,
-		Extensions:        sct.Extensions,
-		Signature:         sct.Signature.Signature,
-	}
 }
 
 // CreateTestingSignedSCT is used by both the publisher tests and ct-test-serv, which is

@@ -339,7 +339,6 @@ func TestReconnectSMTP421(t *testing.T) {
 func TestOtherError(t *testing.T) {
 	m, l, cleanUp := setup(t)
 	defer cleanUp()
-	const messages = 3
 
 	go listenForever(l, t, func(_ int, t *testing.T, conn net.Conn) {
 		defer func() {

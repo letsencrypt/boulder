@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -19,20 +18,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 )
-
-func fatalf(t *testing.T, format string, args ...interface{}) {
-	fmt.Printf("\t"+format+"\n", args...)
-	t.FailNow()
-}
-
-// Return short format caller info for printing errors, so errors don't all
-// appear to come from test-tools.go.
-func caller() string {
-	_, file, line, _ := runtime.Caller(2)
-	splits := strings.Split(file, "/")
-	filename := splits[len(splits)-1]
-	return fmt.Sprintf("%s:%d:", filename, line)
-}
 
 // Assert a boolean
 func Assert(t *testing.T, result bool, message string) {
