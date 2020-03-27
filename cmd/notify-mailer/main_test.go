@@ -145,6 +145,7 @@ func TestMailIntervals(t *testing.T) {
 	// Run the mailer. It should produce an error about the interval start
 	mc.Clear()
 	err := m.run()
+	test.AssertError(t, err, "expected error")
 	test.AssertEquals(t, len(mc.Messages), 0)
 
 	// Create a mailer with a negative sleep interval

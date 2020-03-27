@@ -311,12 +311,12 @@ func (pub *Impl) singleLogSubmit(
 	}).Observe(took)
 
 	timestamp := time.Unix(int64(sct.Timestamp)/1000, 0)
-	if timestamp.Sub(time.Now()) > time.Minute {
+	if time.Until(timestamp) > time.Minute {
 		return nil, fmt.Errorf("SCT Timestamp was too far in the future (%s)", timestamp)
 	}
 	// For regular certificates, we could get an old SCT, but that shouldn't
 	// happen for precertificates.
-	if isPrecert && timestamp.Sub(time.Now()) < -10*time.Minute {
+	if isPrecert && time.Until(timestamp) < -10*time.Minute {
 		return nil, fmt.Errorf("SCT Timestamp was too far in the past (%s)", timestamp)
 	}
 

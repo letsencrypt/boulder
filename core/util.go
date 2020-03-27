@@ -69,7 +69,7 @@ func NewToken() string {
 	return RandomString(32)
 }
 
-var tokenFormat = regexp.MustCompile("^[\\w-]{43}$")
+var tokenFormat = regexp.MustCompile(`^[\w-]{43}$`)
 
 // LooksLikeAToken checks whether a string represents a 32-octet value in
 // the URL-safe base64 alphabet.
@@ -167,10 +167,7 @@ func ValidSerial(serial string) bool {
 		return false
 	}
 	_, err := hex.DecodeString(serial)
-	if err != nil {
-		return false
-	}
-	return true
+	return err == nil
 }
 
 // GetBuildID identifies what build is running.
