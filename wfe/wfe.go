@@ -1447,7 +1447,6 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	if _, err = response.Write(cert.DER); err != nil {
 		wfe.log.Warningf("Could not write response: %s", err)
 	}
-	return
 }
 
 // Terms is used by the client to obtain the current Terms of Service /

@@ -106,7 +106,7 @@ func NewMemorySourceFromFile(responseFile string, logger blog.Logger) (Source, e
 		return nil, err
 	}
 
-	responsesB64 := regexp.MustCompile("\\s").Split(string(fileContents), -1)
+	responsesB64 := regexp.MustCompile(`\s`).Split(string(fileContents), -1)
 	responses := make(map[string][]byte, len(responsesB64))
 	for _, b64 := range responsesB64 {
 		// if the line/space is empty just skip

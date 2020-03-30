@@ -32,7 +32,6 @@ func TestNewToken(t *testing.T) {
 		test.Assert(t, !collider[token], "Token collision!")
 		collider[token] = true
 	}
-	return
 }
 
 func TestLooksLikeAToken(t *testing.T) {
@@ -129,7 +128,7 @@ func TestValidSerial(t *testing.T) {
 func TestRetryBackoff(t *testing.T) {
 	assertBetween := func(a, b, c float64) {
 		t.Helper()
-		if a < b || a > a {
+		if a < b || a > c {
 			t.Fatalf("%f is not between %f and %f", a, b, c)
 		}
 	}

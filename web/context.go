@@ -100,7 +100,7 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Method:    r.Method,
 		UserAgent: r.Header.Get("User-Agent"),
 		Origin:    r.Header.Get("Origin"),
-		Extra:     make(map[string]interface{}, 0),
+		Extra:     make(map[string]interface{}),
 	}
 
 	if features.Enabled(features.StripDefaultSchemePort) {

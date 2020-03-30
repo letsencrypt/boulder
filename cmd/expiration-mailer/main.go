@@ -251,7 +251,6 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 			}
 		}
 	}
-	return
 }
 
 func (m *mailer) findExpiringCertificates() error {
@@ -517,7 +516,7 @@ func main() {
 	}
 	// Load subject template
 	subjTmpl, err := template.New("expiry-email-subject").Parse(c.Mailer.Subject)
-	cmd.FailOnError(err, fmt.Sprintf("Could not parse email subject template"))
+	cmd.FailOnError(err, "Could not parse email subject template")
 
 	fromAddress, err := netmail.ParseAddress(c.Mailer.From)
 	cmd.FailOnError(err, fmt.Sprintf("Could not parse from address: %s", c.Mailer.From))

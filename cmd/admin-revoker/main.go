@@ -103,6 +103,9 @@ func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Re
 	}
 
 	u, err := user.Current()
+	if err != nil {
+		return
+	}
 	err = rac.AdministrativelyRevokeCertificate(ctx, *cert, reasonCode, u.Username)
 	if err != nil {
 		return
@@ -173,7 +176,7 @@ func (rc revocationCodes) Swap(i, j int)      { rc[i], rc[j] = rc[j], rc[i] }
 
 func main() {
 	usage := func() {
-		fmt.Fprintf(os.Stderr, usageString)
+		fmt.Fprint(os.Stderr, usageString)
 		os.Exit(1)
 	}
 	if len(os.Args) <= 2 {

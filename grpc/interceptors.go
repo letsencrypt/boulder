@@ -67,7 +67,7 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 		deadline = time.Now().Add(100 * time.Second)
 	}
 	deadline = deadline.Add(-returnOverhead)
-	remaining := deadline.Sub(time.Now())
+	remaining := time.Until(deadline)
 	if remaining < meaningfulWorkOverhead {
 		return nil, grpc.Errorf(codes.DeadlineExceeded, "not enough time left on clock: %s", remaining)
 	}
