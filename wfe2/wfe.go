@@ -1684,7 +1684,6 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	if _, err = response.Write(responsePEM); err != nil {
 		wfe.log.Warningf("Could not write response: %s", err)
 	}
-	return
 }
 
 // Issuer obtains the issuer certificate used by this instance of Boulder.

@@ -277,7 +277,7 @@ func setup(configFile string) (blog.Logger, core.StorageAuthority, capb.OCSPGene
 
 func main() {
 	if len(os.Args) <= 2 {
-		fmt.Fprintf(os.Stderr, usageString)
+		fmt.Fprint(os.Stderr, usageString)
 		os.Exit(1)
 	}
 

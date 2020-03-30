@@ -42,20 +42,6 @@ func pbToAuthzMeta(in *vapb.AuthzMeta) (core.Authorization, error) {
 	}, nil
 }
 
-func jwkToString(jwk *jose.JSONWebKey) (string, error) {
-	bytes, err := jwk.MarshalJSON()
-	return string(bytes), err
-}
-
-func stringToJWK(in string) (*jose.JSONWebKey, error) {
-	var jwk = new(jose.JSONWebKey)
-	err := jwk.UnmarshalJSON([]byte(in))
-	if err != nil {
-		return nil, err
-	}
-	return jwk, nil
-}
-
 func ProblemDetailsToPB(prob *probs.ProblemDetails) (*corepb.ProblemDetails, error) {
 	if prob == nil {
 		// nil problemDetails is valid

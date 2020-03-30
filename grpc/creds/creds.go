@@ -177,9 +177,7 @@ func (tc *serverTransportCredentials) validateClient(peerState tls.ConnectionSta
 	// Combine both the DNS and IP address subjectAlternativeNames into a single
 	// list for checking.
 	var receivedSANs []string
-	for _, dnsName := range leaf.DNSNames {
-		receivedSANs = append(receivedSANs, dnsName)
-	}
+	receivedSANs = append(receivedSANs, leaf.DNSNames...)
 	for _, ip := range leaf.IPAddresses {
 		receivedSANs = append(receivedSANs, ip.String())
 	}
@@ -193,7 +191,7 @@ func (tc *serverTransportCredentials) validateClient(peerState tls.ConnectionSta
 	// If none of the DNS or IP SANs on the leaf certificate matched the
 	// acceptable list, the client isn't valid and we error
 	var acceptableSANs []string
-	for k, _ := range tc.acceptedSANs {
+	for k := range tc.acceptedSANs {
 		acceptableSANs = append(acceptableSANs, k)
 	}
 	return SANNotAcceptedErr{receivedSANs, acceptableSANs}

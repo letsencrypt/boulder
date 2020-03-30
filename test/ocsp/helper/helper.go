@@ -109,7 +109,7 @@ func ReqDER(der []byte, expectStatus int) (*ocsp.Response, error) {
 			return nil, nil
 		} else {
 			return nil, fmt.Errorf("certificate expired %s ago: %s",
-				time.Now().Sub(cert.NotAfter), cert.NotAfter)
+				time.Since(cert.NotAfter), cert.NotAfter)
 		}
 	}
 

@@ -85,7 +85,7 @@ func TestFailFastFalse(t *testing.T) {
 	}
 	conn, err := grpc.Dial("localhost:19876", // random, probably unused port
 		grpc.WithInsecure(),
-		grpc.WithBalancer(grpc.RoundRobin(newStaticResolver([]string{"localhost:19000"}))),
+		grpc.WithBalancerName("round_robin"),
 		grpc.WithUnaryInterceptor(ci.intercept))
 	if err != nil {
 		t.Fatalf("did not connect: %v", err)

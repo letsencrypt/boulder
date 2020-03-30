@@ -85,7 +85,7 @@ if [[ "$RUN" =~ "lints" ]] ; then
   # words should be all lowercase).
   run_and_expect_silence codespell \
     --ignore-words=.codespell.ignore.txt \
-    --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt
+    --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt,.*.swp
 fi
 
 #

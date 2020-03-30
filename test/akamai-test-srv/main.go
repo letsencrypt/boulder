@@ -32,7 +32,6 @@ func main() {
 			return
 		}
 		w.Write(body)
-		return
 	})
 
 	http.HandleFunc("/debug/reset-purges", func(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +39,6 @@ func main() {
 		defer mu.Unlock()
 		v3Purges = [][]string{}
 		w.WriteHeader(http.StatusOK)
-		return
 	})
 
 	http.HandleFunc("/ccu/", func(w http.ResponseWriter, r *http.Request) {

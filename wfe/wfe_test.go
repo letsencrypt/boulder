@@ -1883,10 +1883,8 @@ func TestAuthorization(t *testing.T) {
 func TestAuthorizationV2(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
-	responseWriter := httptest.NewRecorder()
-
 	// Test retrieving a v2 style authorization
-	responseWriter = httptest.NewRecorder()
+	responseWriter := httptest.NewRecorder()
 	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, &http.Request{
 		URL:    mustParseURL("1"),
 		Method: "GET",

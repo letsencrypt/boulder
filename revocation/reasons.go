@@ -61,7 +61,7 @@ func UserAllowedReasonsMessage() string {
 	// and make the message unpredictable and cumbersome for unit testing.
 	// We use []ints instead of []Reason to use `sort.Ints` without fuss.
 	var allowed []int
-	for reason, _ := range UserAllowedReasons {
+	for reason := range UserAllowedReasons {
 		allowed = append(allowed, int(reason))
 	}
 	sort.Ints(allowed)
