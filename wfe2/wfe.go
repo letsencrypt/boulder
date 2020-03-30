@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -1527,8 +1526,6 @@ func (wfe *WebFrontEndImpl) Authorization(
 	}
 }
 
-var allHex = regexp.MustCompile("^[0-9a-f]+$")
-
 // Certificate is used by clients to request a copy of their current certificate, or to
 // request a reissuance of the certificate.
 func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
@@ -1687,7 +1684,6 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	if _, err = response.Write(responsePEM); err != nil {
 		wfe.log.Warningf("Could not write response: %s", err)
 	}
-	return
 }
 
 // Issuer obtains the issuer certificate used by this instance of Boulder.

@@ -11,8 +11,6 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -1416,8 +1414,6 @@ func (wfe *WebFrontEndImpl) authorizationCommon(
 	}
 }
 
-var allHex = regexp.MustCompile("^[0-9a-f]+$")
-
 // Certificate is used by clients to request a copy of their current certificate, or to
 // request a reissuance of the certificate.
 func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
@@ -1451,7 +1447,6 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	if _, err = response.Write(cert.DER); err != nil {
 		wfe.log.Warningf("Could not write response: %s", err)
 	}
-	return
 }
 
 // Terms is used by the client to obtain the current Terms of Service /
@@ -1610,21 +1605,6 @@ func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal registration"), err)
 		return
 	}
-}
-
-// addIssuingCertificateURLs() adds Issuing Certificate URLs (AIA) from a
-// X.509 certificate to the HTTP response. If the IssuingCertificateURL
-// in a certificate is not https://, it will be upgraded to https://
-func (wfe *WebFrontEndImpl) addIssuingCertificateURLs(response http.ResponseWriter, issuingCertificateURL []string) error {
-	for _, rawURL := range issuingCertificateURL {
-		parsedURI, err := url.ParseRequestURI(rawURL)
-		if err != nil {
-			return err
-		}
-		parsedURI.Scheme = "https"
-		response.Header().Add("Link", link(parsedURI.String(), "up"))
-	}
-	return nil
 }
 
 func urlForAuthz(authz core.Authorization, request *http.Request) string {

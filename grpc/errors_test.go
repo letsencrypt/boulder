@@ -50,7 +50,7 @@ func TestErrorWrapping(t *testing.T) {
 	test.Assert(t, err != nil, fmt.Sprintf("nil error returned, expected: %s", err))
 	test.AssertDeepEquals(t, err, es.err)
 
-	test.AssertEquals(t, wrapError(nil, nil), nil)
+	test.AssertEquals(t, wrapError(context.Background(), nil), nil)
 	test.AssertEquals(t, unwrapError(nil, nil), nil)
 }
 

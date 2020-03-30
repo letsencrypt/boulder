@@ -134,7 +134,7 @@ func main() {
 	}
 
 	if c.CA.MaxNames == 0 {
-		cmd.Fail(fmt.Sprintf("Error in CA config: MaxNames must not be 0"))
+		cmd.Fail("Error in CA config: MaxNames must not be 0")
 	}
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.CA.DebugAddr)

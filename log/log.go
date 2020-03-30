@@ -191,15 +191,6 @@ func (log *impl) auditAtLevel(level syslog.Priority, msg string) {
 	log.w.logAtLevel(level, text)
 }
 
-// Return short format caller info for panic events, skipping to before the
-// panic handler.
-func caller(level int) string {
-	_, file, line, _ := runtime.Caller(level)
-	splits := strings.Split(file, "/")
-	filename := splits[len(splits)-1]
-	return fmt.Sprintf("%s:%d:", filename, line)
-}
-
 // AuditPanic catches panicking executables. This method should be added
 // in a defer statement as early as possible
 func (log *impl) AuditPanic() {

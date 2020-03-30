@@ -13,7 +13,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -21,7 +20,6 @@ import (
 
 type mailSrv struct {
 	closeFirst      uint
-	closeDuration   time.Duration
 	allReceivedMail []rcvdMail
 	allMailMutex    sync.Mutex
 	connNumber      uint
@@ -45,9 +43,8 @@ func expectLine(buf *bufio.Reader, expected string) error {
 	return nil
 }
 
-var mailFromRegex = regexp.MustCompile("^MAIL FROM:<(.*)>\\s*BODY=8BITMIME\\s*$")
-var rcptToRegex = regexp.MustCompile("^RCPT TO:<(.*)>\\s*$")
-var dataRegex = regexp.MustCompile("^DATA\\s*$")
+var mailFromRegex = regexp.MustCompile(`^MAIL FROM:<(.*)>\s*BODY=8BITMIME\s*$`)
+var rcptToRegex = regexp.MustCompile(`^RCPT TO:<(.*)>\s*$`)
 var smtpErr501 = []byte("501 syntax error in parameters or arguments \r\n")
 var smtpOk250 = []byte("250 OK \r\n")
 
@@ -87,6 +84,7 @@ func (srv *mailSrv) handleConn(conn net.Conn) {
 	}
 
 	reader := bufio.NewScanner(readBuf)
+scan:
 	for reader.Scan() {
 		line := reader.Text()
 		cmdSplit := strings.SplitN(line, " ", 2)
@@ -94,7 +92,7 @@ func (srv *mailSrv) handleConn(conn net.Conn) {
 		switch cmd {
 		case "QUIT":
 			conn.Write([]byte("221 Bye \r\n"))
-			break
+			break scan
 		case "RSET":
 			clearState()
 			conn.Write(smtpOk250)

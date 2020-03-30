@@ -32,7 +32,6 @@ func TestNewToken(t *testing.T) {
 		test.Assert(t, !collider[token], "Token collision!")
 		collider[token] = true
 	}
-	return
 }
 
 func TestLooksLikeAToken(t *testing.T) {
@@ -66,7 +65,6 @@ const JWK1JSON = `{
   "e": "AQAB"
 }`
 const JWK1Digest = `ul04Iq07ulKnnrebv2hv3yxCGgVvoHs8hjq2tVKx3mc=`
-const JWK1Thumbprint = `-kVpHjJCDNQQk-j9BGMpzHAVCiOqvoTRZB-Ov4CAiM4`
 const JWK2JSON = `{
   "kty":"RSA",
   "n":"yTsLkI8n4lg9UuSKNRC0UPHsVjNdCYk8rGXIqeb_rRYaEev3D9-kxXY8HrYfGkVt5CiIVJ-n2t50BKT8oBEMuilmypSQqJw0pCgtUm-e6Z0Eg3Ly6DMXFlycyikegiZ0b-rVX7i5OCEZRDkENAYwFNX4G7NNCwEZcH7HUMUmty9dchAqDS9YWzPh_dde1A9oy9JMH07nRGDcOzIh1rCPwc71nwfPPYeeS4tTvkjanjeigOYBFkBLQuv7iBB4LPozsGF1XdoKiIIi-8ye44McdhOTPDcQp3xKxj89aO02pQhBECv61rmbPinvjMG9DYxJmZvjsKF4bN2oy0DxdC1jDw",
@@ -130,7 +128,7 @@ func TestValidSerial(t *testing.T) {
 func TestRetryBackoff(t *testing.T) {
 	assertBetween := func(a, b, c float64) {
 		t.Helper()
-		if a < b || a > a {
+		if a < b || a > c {
 			t.Fatalf("%f is not between %f and %f", a, b, c)
 		}
 	}
