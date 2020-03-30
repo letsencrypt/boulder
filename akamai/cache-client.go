@@ -375,7 +375,7 @@ func GeneratePurgeURLs(der []byte, issuer *x509.Certificate) ([]string, error) {
 			ocspServer += "/"
 		}
 		// Generate GET url
-		urls = append(generateOCSPCacheKeys(req, ocspServer))
+		urls = generateOCSPCacheKeys(req, ocspServer)
 	}
 	return urls, nil
 }

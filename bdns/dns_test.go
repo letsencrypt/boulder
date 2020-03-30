@@ -169,7 +169,6 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 	if err != nil {
 		panic(err) // running tests, so panic is OK
 	}
-	return
 }
 
 func serveLoopResolver(stopChan chan bool) {

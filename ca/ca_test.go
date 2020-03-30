@@ -413,7 +413,6 @@ func issueCertificateSubTestIssuePrecertificate(t *testing.T, i *TestCertificate
 	if len(cert.DNSNames) == 1 {
 		if cert.DNSNames[0] != "not-example.com" {
 			t.Errorf("Improper list of domain names %v", cert.DNSNames)
-		} else {
 		}
 		t.Errorf("Improper list of domain names %v", cert.DNSNames)
 	}
@@ -550,7 +549,7 @@ func TestOCSP(t *testing.T) {
 	// ocspResp2 is a second OCSP response for `cert` (issued by caCert), and
 	// should be signed by caCert.
 	ocspResp2, err := ca.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
-		CertDER: append(cert.DER),
+		CertDER: append([]byte(nil), cert.DER...),
 		Status:  &status,
 	})
 	test.AssertNotError(t, err, "Failed to sign second OCSP response")
@@ -736,14 +735,10 @@ func issueCertificateSubTestAllowNoCN(t *testing.T, i *TestCertificateIssuance) 
 	}
 
 	expected := []string{}
-	for _, name := range i.req.DNSNames {
-		expected = append(expected, name)
-	}
+	expected = append(expected, i.req.DNSNames...)
 	sort.Strings(expected)
 	actual := []string{}
-	for _, name := range cert.DNSNames {
-		actual = append(actual, name)
-	}
+	actual = append(actual, cert.DNSNames...)
 	sort.Strings(actual)
 	test.AssertDeepEquals(t, actual, expected)
 }
