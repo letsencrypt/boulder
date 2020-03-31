@@ -51,6 +51,7 @@ matrix:
   allow_failures:
     - env: RUN="coverage" CONTAINER="netaccess"
 
+
 install:
   - ./test/travis-before-install.sh
   - $HOME/bin/docker-compose pull
