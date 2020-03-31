@@ -239,7 +239,7 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 func Fail(msg string) {
 	logger := blog.Get()
 	logger.AuditErr(msg)
-	fmt.Fprintf(os.Stderr, msg)
+	fmt.Fprint(os.Stderr, msg)
 	os.Exit(1)
 }
 

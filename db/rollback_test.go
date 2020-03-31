@@ -19,10 +19,11 @@ func TestRollback(t *testing.T) {
 
 	// Since the tx.Rollback will fail we expect the result to be a wrapped error
 	test.AssertNotEquals(t, result, innerErr)
-	if rbErr, ok := result.(*RollbackError); !ok {
-		t.Fatal("Result was not a RollbackError")
+	if rbErr, ok := result.(*RollbackError); ok {
 		test.AssertEquals(t, rbErr.Err, innerErr)
 		test.AssertNotNil(t, rbErr.RollbackErr, "RollbackErr was nil")
+	} else {
+		t.Fatalf("Result was not a RollbackError: %#v", result)
 	}
 
 	// Create a new transaction and don't commit it this time. The rollback should
