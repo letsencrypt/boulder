@@ -63,7 +63,6 @@ before_install:
   - chmod +x $HOME/bin/docker-compose
 
 install:
-  - ./test/travis-before-install.sh
   - $HOME/bin/docker-compose pull
 
 script:
