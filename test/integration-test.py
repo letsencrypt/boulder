@@ -56,10 +56,7 @@ def run_go_tests(filterPattern=None):
     if filterPattern is not None and filterPattern != "":
         cmdLine = cmdLine + ["--test.run", filterPattern]
     cmdLine = cmdLine + ["-tags", "integration", "-count=1", "-race", "./test/integration"]
-    try:
-        subprocess.check_call(cmdLine, shell=False, stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError as e:
-        raise(Exception("%s. Output:\n%s" % (e, e.output)))
+    subprocess.check_call(cmdLine, shell=False, stderr=subprocess.STDOUT)
 
 def run_expired_authz_purger():
     # Note: This test must be run after all other tests that depend on
@@ -410,10 +407,7 @@ def run_cert_checker():
     run("./bin/cert-checker -config %s/cert-checker.json" % config_dir)
 
 if __name__ == "__main__":
-    try:
-        main()
-    except subprocess.CalledProcessError as e:
-        raise(Exception("%s. Output:\n%s" % (e, e.output)))
+    main()
 
 @atexit.register
 def stop():
