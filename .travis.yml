@@ -42,7 +42,7 @@ matrix:
 
 install:
   - ./test/travis-before-install.sh
-  - $HOME/bin/docker-compose pull
+  - docker-compose pull
 
 script:
   - docker-compose run --use-aliases -e BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR}" -e RUN="${RUN}" -e TRAVIS="${TRAVIS}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e COVERALLS_TOKEN="${COVERALLS_TOKEN}" ${CONTAINER:-boulder} ./test.sh
