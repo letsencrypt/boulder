@@ -32,7 +32,7 @@ def fakeclock(date):
 
 def get_future_output(cmd, date):
     return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT,
-        env={'FAKECLOCK': fakeclock(date)})
+        env={'FAKECLOCK': fakeclock(date)}).decode()
 
 def random_domain():
     """Generate a random domain for testing (to avoid rate limiting)."""
