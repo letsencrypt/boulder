@@ -79,6 +79,21 @@ func NewKeyPolicy(weakKeyFile, blockedKeyFile string) (KeyPolicy, error) {
 // strength and algorithm checking.
 // TODO: Support JSONWebKeys once go-jose migration is done.
 func (policy *KeyPolicy) GoodKey(key crypto.PublicKey) error {
+	err := berrors.MalformedError("unsupported key type: %T", key)
+	switch t := key.(type) {
+	case rsa.PublicKey:
+		err = policy.goodKeyRSA(t)
+	case *rsa.PublicKey:
+		err = policy.goodKeyRSA(*t)
+	case ecdsa.PublicKey:
+		err = policy.goodKeyECDSA(t)
+	case *ecdsa.PublicKey:
+		err = policy.goodKeyECDSA(*t)
+	}
+	if err != nil {
+		return err
+	}
+
 	// If there is a blocked list configured then check if the public key is one
 	// that has been administratively blocked.
 	if policy.blockedList != nil {
@@ -88,18 +103,8 @@ func (policy *KeyPolicy) GoodKey(key crypto.PublicKey) error {
 			return berrors.BadPublicKeyError("public key is forbidden")
 		}
 	}
-	switch t := key.(type) {
-	case rsa.PublicKey:
-		return policy.goodKeyRSA(t)
-	case *rsa.PublicKey:
-		return policy.goodKeyRSA(*t)
-	case ecdsa.PublicKey:
-		return policy.goodKeyECDSA(t)
-	case *ecdsa.PublicKey:
-		return policy.goodKeyECDSA(*t)
-	default:
-		return berrors.MalformedError("unknown key type %T", key)
-	}
+
+	return nil
 }
 
 // GoodKeyECDSA determines if an ECDSA pubkey meets our requirements

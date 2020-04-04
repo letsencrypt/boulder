@@ -1,6 +1,7 @@
 package goodkey
 
 import (
+	"crypto/dsa"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -229,4 +230,16 @@ func TestECDSAIdentity(t *testing.T) {
 		test.AssertError(t, testingPolicy.GoodKey(&public), "Should not have accepted key with point at infinity.")
 		test.AssertError(t, testingPolicy.GoodKey(public), "Should not have accepted key with point at infinity.")
 	}
+}
+
+func TestUnsupportedKeyType(t *testing.T) {
+	var pk dsa.PrivateKey
+	test.AssertNotError(t,
+		dsa.GenerateParameters(&pk.Parameters, rand.Reader, dsa.L1024N160),
+		"DSA key parameter generation should not fail")
+	test.AssertNotError(t, dsa.GenerateKey(&pk, rand.Reader), "DSA key generation should not fail")
+
+	err := testingPolicy.GoodKey(pk.PublicKey)
+	test.AssertError(t, err, "Should have rejected a DSA public key")
+	test.AssertEquals(t, err.Error(), "unsupported key type: dsa.PublicKey")
 }
