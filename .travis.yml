@@ -42,7 +42,6 @@ jobs:
     - env: RUN="coverage" CONTAINER="netaccess"
 
 install:
-  - ./test/travis-before-install.sh
   - docker-compose pull
 
 script:
