@@ -3,7 +3,9 @@ package core
 import (
 	"bytes"
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
@@ -89,16 +91,8 @@ func Fingerprint256(data []byte) string {
 
 // KeyDigest produces a padded, standard Base64-encoded SHA256 digest of a
 // provided public key.
-func KeyDigest(key crypto.PublicKey) (string, error) {
-	switch t := key.(type) {
-	case *jose.JSONWebKey:
-		if t == nil {
-			return "", fmt.Errorf("Cannot compute digest of nil key")
-		}
-		return KeyDigest(t.Key)
-	case jose.JSONWebKey:
-		return KeyDigest(t.Key)
-	default:
+func KeyDigest(wrappedKey crypto.PublicKey) (string, error) {
+	hashDER := func(key crypto.PublicKey) (string, error) {
 		keyDER, err := x509.MarshalPKIXPublicKey(key)
 		if err != nil {
 			logger := blog.Get()
@@ -107,6 +101,23 @@ func KeyDigest(key crypto.PublicKey) (string, error) {
 		}
 		spkiDigest := sha256.Sum256(keyDER)
 		return base64.StdEncoding.EncodeToString(spkiDigest[0:32]), nil
+	}
+	switch t := wrappedKey.(type) {
+	case *jose.JSONWebKey:
+		if t == nil {
+			return "", fmt.Errorf("Cannot compute digest of nil key")
+		}
+		return KeyDigest(t.Key)
+	case jose.JSONWebKey:
+		return KeyDigest(t.Key)
+	// x509.MarshalPKIXPublicKey expects a reference to a {rsa,ecdsa}.PublicKey, if we
+	// are passed a value we need to reference it ourselves in order to avoid an error.
+	case *rsa.PublicKey, *ecdsa.PublicKey:
+		return hashDER(wrappedKey)
+	case rsa.PublicKey, ecdsa.PublicKey:
+		return hashDER(&t)
+	default:
+		return "", errors.New("unsupported key type")
 	}
 }
 

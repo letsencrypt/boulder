@@ -83,7 +83,7 @@ func (policy *KeyPolicy) GoodKey(key crypto.PublicKey) error {
 	// that has been administratively blocked.
 	if policy.blockedList != nil {
 		if blocked, err := policy.blockedList.blocked(key); err != nil {
-			return berrors.InternalServerError("error checking blocklist for key: %v", key)
+			return berrors.InternalServerError("error checking blocklist for key: %s", err)
 		} else if blocked {
 			return berrors.BadPublicKeyError("public key is forbidden")
 		}
