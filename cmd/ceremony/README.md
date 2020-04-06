@@ -30,7 +30,7 @@ These modes are set in the `ceremony-type` field of the configuration file.
 - `key`: object containing key generation related fields.
     | Field | Description |
     | --- | --- |
-    | `key-type` | Specifies the type of key to be generated, either `rsa` or `ecdsa`. If `rsa` the generated key will have an exponent of 65537 and a modulus length specified by `rsa-mod-length`. If `ecdsa` the curve is specified by `ecdsa-curve`. |
+    | `type` | Specifies the type of key to be generated, either `rsa` or `ecdsa`. If `rsa` the generated key will have an exponent of 65537 and a modulus length specified by `rsa-mod-length`. If `ecdsa` the curve is specified by `ecdsa-curve`. |
     | `ecdsa-curve` | Specifies the ECDSA curve to use when generating key, either `P-224`, `P-256`, `P-384`, or `P-521`. |
     | `rsa-mod-length` | Specifies the length of the RSA modulus, either `2048` or `4096`.
 - `outputs`: object containing paths to write outputs.
@@ -138,7 +138,7 @@ This config generates an intermediate certificate signed by a key in the HSM, id
 - `key`: object containing key generation related fields.
     | Field | Description |
     | --- | --- |
-    | `key-type` | Specifies the type of key to be generated, either `rsa` or `ecdsa`. If `rsa` the generated key will have an exponent of 65537 and a modulus length specified by `rsa-mod-length`. If `ecdsa` the curve is specified by `ecdsa-curve`. |
+    | `type` | Specifies the type of key to be generated, either `rsa` or `ecdsa`. If `rsa` the generated key will have an exponent of 65537 and a modulus length specified by `rsa-mod-length`. If `ecdsa` the curve is specified by `ecdsa-curve`. |
     | `ecdsa-curve` | Specifies the ECDSA curve to use when generating key, either `P-224`, `P-256`, `P-384`, or `P-521`. |
     | `rsa-mod-length` | Specifies the length of the RSA modulus, either `2048` or `4096`.
 - `outputs`: object containing paths to write outputs.
@@ -155,7 +155,7 @@ pkcs11:
     store-key-in-slot: 0
     store-key-with-label: intermediate signing key
 key:
-    key-type: ecdsa
+    type: ecdsa
     ecdsa-curve: P-384
 outputs:
     public-key-path: /home/user/intermediate-signing-pub.pem
