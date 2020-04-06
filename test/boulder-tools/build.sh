@@ -61,6 +61,10 @@ GO111MODULE=on go get \
 # fetch it in GOPATH mode.
 go get github.com/letsencrypt/pebble/cmd/pebble-challtestsrv
 
+# Pebble's latest version is v2+, but it's not properly go mod compatible, so we
+# fetch it in GOPATH mode.
+go get github.com/letsencrypt/pebble/cmd/pebble-challtestsrv
+
 # Install codespell for linting common spelling errors
 pip3 install codespell
 

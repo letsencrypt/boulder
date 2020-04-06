@@ -85,7 +85,7 @@ services:
         logging:
             driver: none
     netaccess:
-        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.13.2}:2020-03-27
+        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.13.2}:2020-03-26
         environment:
             GO111MODULE: "on"
             GOFLAGS: "-mod=vendor"
