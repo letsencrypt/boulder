@@ -17,7 +17,6 @@ apt-get install -y --no-install-recommends \
   opensc \
   unzip \
   python3-pip \
-  python3-acme \
   gcc \
   ca-certificates \
   openssl
@@ -72,7 +71,7 @@ gem install fpm
 
 # We can't remove libseccomp-dev as it contains a shared object that is required
 # for pkcs11-proxy to run properly
-apt-get autoremove -y libssl-dev ruby-dev build-essential cmake
+apt-get autoremove -y libssl-dev ruby-dev cmake
 apt-get clean -y
 
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
