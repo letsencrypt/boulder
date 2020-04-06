@@ -46,10 +46,6 @@ type interval struct {
 	end   string
 }
 
-type regID struct {
-	ID int
-}
-
 type contactJSON struct {
 	ID      int
 	Contact []byte
@@ -98,7 +94,7 @@ func (m *mailer) printStatus(to string, cur, total int, start time.Time) {
 
 func sortAddresses(input emailToRecipientMap) []string {
 	var addresses []string
-	for k, _ := range input {
+	for k := range input {
 		addresses = append(addresses, k)
 	}
 	sort.Strings(addresses)

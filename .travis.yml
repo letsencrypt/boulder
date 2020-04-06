@@ -1,7 +1,10 @@
 language: go
+dist: xenial
+os: linux
 
 go:
   - "1.13.2"
+  - "1.14.1"
 
 go_import_path: github.com/letsencrypt/boulder
 
@@ -10,8 +13,6 @@ addons:
     - le.wtf
     - boulder
     - boulder-mysql
-
-sudo: required
 
 services:
   - docker
@@ -46,7 +47,7 @@ env:
     - RUN="gomod-vendor" CONTAINER="netaccess"
     - RUN="coverage" CONTAINER="netaccess"
 
-matrix:
+jobs:
   fast_finish: true
   allow_failures:
     - env: RUN="coverage" CONTAINER="netaccess"
@@ -63,7 +64,6 @@ before_install:
   - chmod +x $HOME/bin/docker-compose
 
 install:
-  - ./test/travis-before-install.sh
   - $HOME/bin/docker-compose pull
 
 script:

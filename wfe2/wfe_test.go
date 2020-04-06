@@ -180,13 +180,6 @@ xxBoTncDuGtTpubGbzBrY5W1SlNm1gqu9oQa23WNViN2Rc4aIVm3
 -----END RSA PRIVATE KEY-----
 `
 
-	testE1KeyPublicJSON = `{
-    "kty":"EC",
-    "crv":"P-256",
-    "x":"FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao",
-    "y":"S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk"
-  }`
-
 	testE1KeyPrivatePEM = `
 -----BEGIN EC PRIVATE KEY-----
 MHcCAQEEIH+p32RUnqT/iICBEGKrLIWFcyButv0S0lU/BLPOyHn2oAoGCCqGSM49
@@ -281,24 +274,6 @@ func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, req *rap
 	return req.Order, nil
 }
 
-type mockPA struct{}
-
-func (pa *mockPA) ChallengesFor(identifier identifier.ACMEIdentifier) (challenges []core.Challenge, err error) {
-	return
-}
-
-func (pa *mockPA) WillingToIssue(id identifier.ACMEIdentifier) error {
-	return nil
-}
-
-func (pa *mockPA) WillingToIssueWildcards(idents []identifier.ACMEIdentifier) error {
-	return nil
-}
-
-func (pa *mockPA) ValidDomaiN(_ string) error {
-	return nil
-}
-
 func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
 }
@@ -359,8 +334,14 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	test.AssertNotError(t, err, "Unable to read ../test/test-ca2.pem")
 	chainDER, _ := pem.Decode(chainPEM)
 
-	certChains := map[string][]byte{
-		"http://localhost:4000/acme/issuer-cert": append([]byte{'\n'}, chainPEM...),
+	chainCrossPEM, err := ioutil.ReadFile("../test/test-ca2-cross.pem")
+	test.AssertNotError(t, err, "Unable to read ../test/test-ca2-cross.pem")
+
+	certChains := map[string][][]byte{
+		"http://localhost:4000/acme/issuer-cert": {
+			append([]byte{'\n'}, chainPEM...),
+			append([]byte{'\n'}, chainCrossPEM...),
+		},
 	}
 	issuerCert, err := x509.ParseCertificate(chainDER.Bytes)
 	test.AssertNotError(t, err, "Unable to parse issuer cert")
@@ -1602,16 +1583,6 @@ func TestGetAuthorization(t *testing.T) {
 	}`)
 }
 
-// An SA mock that always returns a berrors.ServerInternal error for
-// GetAuthorization.
-type mockSAGetAuthzError struct {
-	core.StorageGetter
-}
-
-func (msa *mockSAGetAuthzError) GetAuthorization(ctx context.Context, id string) (core.Authorization, error) {
-	return core.Authorization{}, berrors.InternalServerError("oops")
-}
-
 // TestAuthorization500 tests that internal errors on GetAuthorization result in
 // a 500.
 func TestAuthorization500(t *testing.T) {
@@ -1809,6 +1780,9 @@ func TestGetCertificate(t *testing.T) {
 	chainPemBytes, err := ioutil.ReadFile("../test/test-ca2.pem")
 	test.AssertNotError(t, err, "Error reading ../test/test-ca2.pem")
 
+	chainCrossPemBytes, err := ioutil.ReadFile("../test/test-ca2-cross.pem")
+	test.AssertNotError(t, err, "Error reading ../test/test-ca2-cross.pem")
+
 	noCache := "public, max-age=0, no-cache"
 	newSerial := "/acme/cert/0000000000000000000000000000000000b3"
 	newGetSerial := "/get/cert/0000000000000000000000000000000000b3"
@@ -1820,6 +1794,7 @@ func TestGetCertificate(t *testing.T) {
 		Request         *http.Request
 		ExpectedStatus  int
 		ExpectedHeaders map[string]string
+		ExpectedLink    string
 		ExpectedBody    string
 		ExpectedCert    []byte
 		AnyCert         bool
@@ -1832,6 +1807,7 @@ func TestGetCertificate(t *testing.T) {
 				"Content-Type": pkixContent,
 			},
 			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainPemBytes...)...),
+			ExpectedLink: fmt.Sprintf(`<http://localhost%s/1>;rel="alternate"`, goodSerial),
 		},
 		{
 			Name:           "Valid serial, POST-as-GET",
@@ -1908,6 +1884,38 @@ func TestGetCertificate(t *testing.T) {
 			},
 			AnyCert: true,
 		},
+		{
+			Name:           "Valid serial (explicit default chain)",
+			Request:        makeGet(goodSerial + "/0"),
+			ExpectedStatus: http.StatusOK,
+			ExpectedHeaders: map[string]string{
+				"Content-Type": pkixContent,
+			},
+			ExpectedLink: fmt.Sprintf(`<http://localhost%s/1>;rel="alternate"`, goodSerial),
+			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainPemBytes...)...),
+		},
+		{
+			Name:           "Valid serial (explicit alternate chain)",
+			Request:        makeGet(goodSerial + "/1"),
+			ExpectedStatus: http.StatusOK,
+			ExpectedHeaders: map[string]string{
+				"Content-Type": pkixContent,
+			},
+			ExpectedLink: fmt.Sprintf(`<http://localhost%s/0>;rel="alternate"`, goodSerial),
+			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainCrossPemBytes...)...),
+		},
+		{
+			Name:           "Valid serial (explicit non-existent alternate chain)",
+			Request:        makeGet(goodSerial + "/2"),
+			ExpectedStatus: http.StatusNotFound,
+			ExpectedBody:   `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Unknown issuance chain","status":404}`,
+		},
+		{
+			Name:           "Valid serial (explicit negative alternate chain)",
+			Request:        makeGet(goodSerial + "/-1"),
+			ExpectedStatus: http.StatusBadRequest,
+			ExpectedBody:   `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Chain ID must be a non-negative integer","status":400}`,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -1929,6 +1937,21 @@ func TestGetCertificate(t *testing.T) {
 			// If the test cases expects additional headers, check those too
 			for h, v := range tc.ExpectedHeaders {
 				test.AssertEquals(t, headers.Get(h), v)
+			}
+
+			if tc.ExpectedLink != "" {
+				found := false
+				links := headers["Link"]
+				for _, link := range links {
+					if link == tc.ExpectedLink {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected link '%s', but did not find it in (%v)",
+						tc.ExpectedLink, links)
+				}
 			}
 
 			if tc.AnyCert { // Certificate is randomly generated, don't match it

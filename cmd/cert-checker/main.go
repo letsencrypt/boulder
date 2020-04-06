@@ -30,11 +30,6 @@ import (
 )
 
 const (
-	good = "valid"
-	bad  = "invalid"
-
-	filenameLayout = "20060102"
-
 	expectedValidityPeriod = time.Hour * 24 * 90
 )
 

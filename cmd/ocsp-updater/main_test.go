@@ -44,17 +44,6 @@ func (ca *mockOCSP) GenerateOCSP(_ context.Context, req *caPB.GenerateOCSPReques
 
 var log = blog.UseMock()
 
-const (
-	// Each log's test PK is the base64 of "test pk 1" .. "test pk 2"
-	testLogAPK = "dGVzdCBwayAx"
-	testLogBPK = "dGVzdCBwayAy"
-	testLogCPK = "dGVzdCBwayAz"
-	// Each log's ID is the base64 of the SHA256 sum of the PK above
-	testLogAID = "27sby+EK3U1YKhUUGi9vBfFskgHvKpRMJ7PtNJzGUF8="
-	testLogBID = "EpN+1e1h2jWN6W4IRG4KwjwiY9QIWaep5Qf3s8NLRmc="
-	testLogCID = "OOn8yL8QPsMuqENGprtlkOYkJqwhhcAifEHUPevmnCc="
-)
-
 func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *db.WrappedMap, clock.FakeClock, func()) {
 	dbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
 	test.AssertNotError(t, err, "Failed to create dbMap")

@@ -54,7 +54,6 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 	})
 
 	w.WriteMsg(m)
-	return
 }
 
 func main() {

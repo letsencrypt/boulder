@@ -46,3 +46,6 @@ Intermediate 2 (h2ppy h2cker fake CA):
 Certificate test-example.pem, together with test-example.key are self-signed
 certs used in tests. They were generated using:
    openssl req -x509 -newkey rsa:4096 -keyout test-example.key -out test-example.pem -days 36500 -nodes  -subj "/CN=www.example.com"
+
+The issuance PKI also consists of versions of Intermediate 1 and Intermediate 2 that are cross signed by an alternate root (test-root2.pem, test-root2.key):
+    test-ca-cross.pem, test-ca2-cross.pem

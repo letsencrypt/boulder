@@ -48,13 +48,6 @@ import (
 const (
 	agreementURL = "http://example.invalid/terms"
 
-	test1KeyPublicJSON = `
-	{
-		"kty":"RSA",
-		"n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
-		"e":"AQAB"
-	}`
-
 	test1KeyPrivatePEM = `
 -----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEAyNWVhtYEKJR21y9xsHV+PD/bYwbXSeNuFal46xYxVfRL5mqh
@@ -179,13 +172,6 @@ ikuuM4LqU1dlaAp+c51nye7t4hhIw+JtGSWI2fl5NXxB71LOTvN/sN6sGCbNG3pe
 xxBoTncDuGtTpubGbzBrY5W1SlNm1gqu9oQa23WNViN2Rc4aIVm3
 -----END RSA PRIVATE KEY-----
 `
-
-	testE1KeyPublicJSON = `{
-    "kty":"EC",
-    "crv":"P-256",
-    "x":"FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao",
-    "y":"S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk"
-  }`
 
 	testE1KeyPrivatePEM = `
 -----BEGIN EC PRIVATE KEY-----
@@ -1897,10 +1883,8 @@ func TestAuthorization(t *testing.T) {
 func TestAuthorizationV2(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
-	responseWriter := httptest.NewRecorder()
-
 	// Test retrieving a v2 style authorization
-	responseWriter = httptest.NewRecorder()
+	responseWriter := httptest.NewRecorder()
 	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, &http.Request{
 		URL:    mustParseURL("1"),
 		Method: "GET",

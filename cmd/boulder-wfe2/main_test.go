@@ -43,10 +43,11 @@ func TestLoadCertificateChains(t *testing.T) {
 	test.AssertNotError(t, err, "ioutil.WriteFile failed")
 
 	testCases := []struct {
-		Name          string
-		Input         map[string][]string
-		ExpectedMap   map[string][]byte
-		ExpectedError error
+		Name            string
+		Input           map[string][]string
+		ExpectedMap     map[string][]byte
+		ExpectedError   error
+		AllowEmptyChain bool
 	}{
 		{
 			Name:  "No input",
@@ -140,11 +141,39 @@ func TestLoadCertificateChains(t *testing.T) {
 				"http://single-cert-chain.nonewline.com": []byte(fmt.Sprintf("\n%s\n", string(abruptPEMBytes))),
 			},
 		},
+		{
+			Name:            "Two PEM file chain, don't require at least one chain",
+			AllowEmptyChain: true,
+			Input: map[string][]string{
+				"http://two-cert-chain.com": []string{"../../test/test-ca.pem", "../../test/test-ca2.pem"},
+			},
+			ExpectedMap: map[string][]byte{
+				"http://two-cert-chain.com": []byte(fmt.Sprintf("\n%s\n%s", string(certBytesA), string(certBytesB))),
+			},
+		},
+		{
+			Name:            "Empty chain, don't require at least one chain",
+			AllowEmptyChain: true,
+			Input: map[string][]string{
+				"http://two-cert-chain.com": []string{},
+			},
+			ExpectedMap: map[string][]byte{},
+		},
+		{
+			Name: "Empty chain",
+			Input: map[string][]string{
+				"http://two-cert-chain.com": []string{},
+			},
+			ExpectedError: fmt.Errorf(
+				"CertificateChain entry for AIA issuer url %q has no chain "+
+					"file names configured",
+				"http://two-cert-chain.com"),
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			resultMap, issuers, err := loadCertificateChains(tc.Input)
+			resultMap, issuers, err := loadCertificateChains(tc.Input, !tc.AllowEmptyChain)
 			if tc.ExpectedError == nil && err != nil {
 				t.Errorf("Expected nil error, got %#v\n", err)
 			} else if tc.ExpectedError != nil && err == nil {

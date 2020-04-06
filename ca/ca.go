@@ -349,14 +349,11 @@ func NewCertificateAuthorityImpl(
 // noteSignError is called after operations that may cause a CFSSL
 // or PKCS11 signing error.
 func (ca *CertificateAuthorityImpl) noteSignError(err error) {
-	if err != nil {
-		if _, ok := err.(*pkcs11.Error); ok {
-			ca.signErrorCounter.WithLabelValues("HSM").Inc()
-		} else if cfErr, ok := err.(*cferr.Error); ok {
-			ca.signErrorCounter.WithLabelValues(fmt.Sprintf("CFSSL %d", cfErr.ErrorCode)).Inc()
-		}
+	if _, ok := err.(*pkcs11.Error); ok {
+		ca.signErrorCounter.WithLabelValues("HSM").Inc()
+	} else if cfErr, ok := err.(*cferr.Error); ok {
+		ca.signErrorCounter.WithLabelValues(fmt.Sprintf("CFSSL %d", cfErr.ErrorCode)).Inc()
 	}
-	return
 }
 
 // Extract supported extensions from a CSR.  The following extensions are
