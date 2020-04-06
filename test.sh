@@ -110,7 +110,6 @@ if [[ "$RUN" =~ "integration" ]] ; then
     args+=("--filter" "${INT_FILTER}")
   fi
 
-  source ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv3}/bin/activate
   DIRECTORY=http://boulder:4000/directory \
     python3 test/integration-test.py --chisel --gotest "${args[@]}"
 fi
