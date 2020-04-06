@@ -2,15 +2,8 @@
 
 apt-get update
 
-# Install Go.
-url="https://dl.google.com/go/go${GO_VERSION_TO_INSTALL}.linux-amd64.tar.gz"
-wget -O go.tgz "$url"; \
-tar -C /usr/local -xzf go.tgz; \
-rm go.tgz;
-
 # Install system deps
 apt-get install -y --no-install-recommends \
-  libltdl-dev \
   mariadb-client-core-10.1 \
   rpm \
   ruby \
@@ -23,13 +16,8 @@ apt-get install -y --no-install-recommends \
   libseccomp-dev \
   opensc \
   unzip \
-  python3-dev \
-  python3-venv \
   python3-pip \
   gcc \
-  libaugeas0 \
-  libssl-dev \
-  libffi-dev \
   ca-certificates \
   openssl
 
@@ -65,15 +53,10 @@ go get github.com/letsencrypt/pebble/cmd/pebble-challtestsrv
 # fetch it in GOPATH mode.
 go get github.com/letsencrypt/pebble/cmd/pebble-challtestsrv
 
-# Install codespell for linting common spelling errors
-pip3 install codespell
+go clean -cache
+go clean -modcache
 
-git clone https://github.com/certbot/certbot /certbot
-cd /certbot
-./tools/venv3.py
-source venv3/bin/activate
-pip install -r /tmp/requirements.txt
-cd -
+pip3 install -r /tmp/requirements.txt
 
 # Install pkcs11-proxy. Checked out commit was master HEAD at time
 # of writing
@@ -93,7 +76,7 @@ gem install fpm
 
 # We can't remove libseccomp-dev as it contains a shared object that is required
 # for pkcs11-proxy to run properly
-apt-get autoremove -y libssl-dev ruby-dev
+apt-get autoremove -y libssl-dev ruby-dev cmake
 apt-get clean -y
 
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
