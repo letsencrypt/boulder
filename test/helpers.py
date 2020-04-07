@@ -31,14 +31,15 @@ def fakeclock(date):
     return date.strftime("%a %b %d %H:%M:%S UTC %Y")
 
 def get_future_output(cmd, date):
-    return run(cmd, env={'FAKECLOCK': fakeclock(date)})
+    return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT,
+        env={'FAKECLOCK': fakeclock(date)}).decode()
 
 def random_domain():
     """Generate a random domain for testing (to avoid rate limiting)."""
     return "rand.%x.xyz" % random.randrange(2**32)
 
 def run(cmd, **kwargs):
-    return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs).decode()
+    return subprocess.check_call(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)
 
 def fetch_ocsp(request_bytes, url):
     """Fetch an OCSP response using POST, GET, and GET with URL encoding.
@@ -69,9 +70,10 @@ def ocsp_verify(cert_file, issuer_file, ocsp_response):
     ocsp_resp_file = os.path.join(tempdir, "ocsp.resp")
     with open(ocsp_resp_file, "wb") as f:
         f.write(ocsp_response)
-    output = run("openssl ocsp -no_nonce -issuer %s -cert %s \
+    cmd = "openssl ocsp -no_nonce -issuer %s -cert %s \
       -verify_other %s -CAfile test/test-root.pem \
-      -respin %s" % (issuer_file, cert_file, issuer_file, ocsp_resp_file))
+      -respin %s" % (issuer_file, cert_file, issuer_file, ocsp_resp_file)
+    output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode()
     # OpenSSL doesn't always return non-zero when response verify fails, so we
     # also look for the string "Response Verify Failure"
     verify_failure = "Response Verify Failure"
