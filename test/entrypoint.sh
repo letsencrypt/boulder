@@ -56,7 +56,6 @@ if [[ $# -eq 0 ]]; then
     # the activate script touches PS1, which is undefined, so we have to relax
     # the "fail on undefined" setting here.
     set +u
-    source ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv3}/bin/activate
     exec python3 ./start.py
 fi
 
