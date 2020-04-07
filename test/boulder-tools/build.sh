@@ -42,7 +42,12 @@ GO111MODULE=on go get \
   github.com/modocache/gover \
   golang.org/x/tools/cover \
   golang.org/x/tools/cmd/stringer \
-  github.com/gordonklaus/ineffassign
+  github.com/gordonklaus/ineffassign \
+  honnef.co/go/tools/cmd/staticcheck@2020.1.3
+
+# Pebble's latest version is v2+, but it's not properly go mod compatible, so we
+# fetch it in GOPATH mode.
+go get github.com/letsencrypt/pebble/cmd/pebble-challtestsrv
 
 # Pebble's latest version is v2+, but it's not properly go mod compatible, so we
 # fetch it in GOPATH mode.
