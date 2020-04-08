@@ -2262,7 +2262,6 @@ func TestNewOrder(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter.Body.Reset()
-			responseWriter.HeaderMap = http.Header{}
 
 			wfe.NewOrder(ctx, newRequestEvent(), responseWriter, tc.Request)
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedBody)
@@ -2276,7 +2275,6 @@ func TestNewOrder(t *testing.T) {
 
 	// Test that we log the "Created" field.
 	responseWriter.Body.Reset()
-	responseWriter.HeaderMap = http.Header{}
 	request := signAndPost(t, targetPath, signedURL, validOrderBody, 1, wfe.nonceService)
 	requestEvent := newRequestEvent()
 	wfe.NewOrder(ctx, requestEvent, responseWriter, request)
@@ -2401,7 +2399,6 @@ func TestFinalizeOrder(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter.Body.Reset()
-			responseWriter.HeaderMap = http.Header{}
 			wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, tc.Request)
 			for k, v := range tc.ExpectedHeaders {
 				got := responseWriter.Header().Get(k)
@@ -2420,7 +2417,6 @@ func TestFinalizeOrder(t *testing.T) {
 	// Go 1.10.4 to 1.11 changed the expected format)
 	badCSRReq := signAndPost(t, "1/8", "http://localhost/1/8", `{"CSR": "ABCD"}`, 1, wfe.nonceService)
 	responseWriter.Body.Reset()
-	responseWriter.HeaderMap = http.Header{}
 	wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, badCSRReq)
 	responseBody := responseWriter.Body.String()
 	test.AssertContains(t, responseBody, "Error parsing certificate request")
