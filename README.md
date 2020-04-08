@@ -129,7 +129,7 @@ the following URLs:
 * ACME v1, HTTPS: `https://localhost:4430/directory`
 * ACME v2, HTTPS: `https://localhost:4431/directory`
 
-To access the HTTPS versions of the endpoints you will need to configure your ACME client software to use a CA truststore that contains the `test/wfe-tls/minica.pem` CA certificate. See [the `test/wfe-tls` README](https://github.com/letsencrypt/boulder/master/test/wfe-tls/README) for more information.
+To access the HTTPS versions of the endpoints you will need to configure your ACME client software to use a CA truststore that contains the `test/wfe-tls/minica.pem` CA certificate. See [`test/PKI.md`](https://github.com/letsencrypt/boulder/blob/master/test/PKI.md) for more information.
 
 Your local Boulder instance uses a fake DNS resolver that returns 127.0.0.1 for any query, allowing you to issue certificates for any domain as if it resolved to your localhost. To return an answer other than `127.0.0.1` change the Boulder `FAKE_DNS` environment variable to another IP address.
 
