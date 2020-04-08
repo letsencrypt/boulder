@@ -86,7 +86,7 @@ type dbResponse struct {
 // Response is called by the HTTP server to handle a new OCSP request.
 func (src *DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 	// Check that this request is for the proper CA
-	if bytes.Compare(req.IssuerKeyHash, src.caKeyHash) != 0 {
+	if !bytes.Equal(req.IssuerKeyHash, src.caKeyHash) {
 		src.log.Debugf("Request intended for CA Cert ID: %s", hex.EncodeToString(req.IssuerKeyHash))
 		return nil, nil, bocsp.ErrNotFound
 	}

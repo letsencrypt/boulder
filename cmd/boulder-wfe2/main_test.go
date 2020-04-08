@@ -184,7 +184,7 @@ func TestLoadCertificateChains(t *testing.T) {
 			test.AssertEquals(t, len(resultMap), len(tc.ExpectedMap))
 			test.AssertEquals(t, len(issuers), len(tc.ExpectedMap))
 			for url, chain := range resultMap {
-				test.Assert(t, bytes.Compare(chain, tc.ExpectedMap[url]) == 0, "Chain bytes did not match expected")
+				test.Assert(t, bytes.Equal(chain, tc.ExpectedMap[url]), "Chain bytes did not match expected")
 			}
 		})
 	}

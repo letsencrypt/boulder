@@ -299,7 +299,7 @@ func TestGetKey(t *testing.T) {
 		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_EC)}, nil
 	}
 	ctx.FindObjectsInitFunc = func(_ pkcs11.SessionHandle, tmpl []*pkcs11.Attribute) error {
-		if bytes.Compare(tmpl[0].Value, []byte{2, 0, 0, 0, 0, 0, 0, 0}) == 0 {
+		if bytes.Equal(tmpl[0].Value, []byte{2, 0, 0, 0, 0, 0, 0, 0}) {
 			return errors.New("broken")
 		}
 		return nil
