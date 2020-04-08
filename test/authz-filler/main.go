@@ -76,7 +76,7 @@ func main() {
 						ID:             core.NewToken(),
 						RegistrationID: 1,
 						Expires:        &expires,
-						Combinations:   [][]int{[]int{1, 2, 3}},
+						Combinations:   [][]int{{1, 2, 3}},
 						Status:         "pending",
 						Identifier: identifier.ACMEIdentifier{
 							Type:  "dns",

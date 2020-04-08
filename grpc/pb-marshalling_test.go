@@ -102,7 +102,7 @@ func TestChallenge(t *testing.T) {
 
 	ip := net.ParseIP("1.1.1.1")
 	chall.ValidationRecord = []core.ValidationRecord{
-		core.ValidationRecord{
+		{
 			Hostname:          "host",
 			Port:              "2020",
 			AddressesResolved: []net.IP{ip},

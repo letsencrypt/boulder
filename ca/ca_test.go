@@ -1216,11 +1216,11 @@ func TestIssuePrecertificateLinting(t *testing.T) {
 	ca.defaultIssuer.eeSigner = &linttrapSigner{
 		lintErr: &local.LintError{
 			ErrorResults: map[string]lint.LintResult{
-				"foobar": lint.LintResult{
+				"foobar": {
 					Status:  lint.Error,
 					Details: "foobar is error",
 				},
-				"foobar2": lint.LintResult{
+				"foobar2": {
 					Status:  lint.Warn,
 					Details: "foobar2 is warning",
 				},
