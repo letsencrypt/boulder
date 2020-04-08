@@ -8,7 +8,8 @@ CREATE TABLE `keyHashToSerial` (
   `certExpires` datetime NOT NULL,
   `certSerial` varchar(255) NOT NULL,
   PRIMARY KEY (`id`),
-  KEY `keyHash_certExpires` (`keyHash`, `certExpires`)
+  KEY `keyHash_certExpires` (`keyHash`, `certExpires`),
+  CONSTRAINT `unique_keyHash_certserial` UNIQUE (`keyHash`, `certSerial`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 -- +goose Down
