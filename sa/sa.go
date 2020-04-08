@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -1756,4 +1757,17 @@ func (ssa *SQLStorageAuthority) SerialExists(ctx context.Context, req *sapb.Seri
 	}
 	exists := !isNoRowsErr
 	return &sapb.Exists{Exists: &exists}, nil
+}
+
+func addKeyHash(db db.Inserter, cert *x509.Certificate) error {
+	if cert.RawSubjectPublicKeyInfo == nil {
+		return errors.New("certificate has a nil RawSubjectPublicKeyInfo")
+	}
+	h := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	khm := &keyHashModel{
+		KeyHash:      h[:],
+		CertNotAfter: cert.NotAfter,
+		CertSerial:   core.SerialToString(cert.SerialNumber),
+	}
+	return db.Insert(khm)
 }

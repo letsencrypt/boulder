@@ -2,6 +2,7 @@ package sa
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
@@ -106,4 +108,36 @@ func TestAddPrecertificate(t *testing.T) {
 	}
 
 	addPrecert(true)
+}
+
+func TestAddPrecertificateKeyHash(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+	reg := satest.CreateWorkingRegistration(t, sa)
+	err := features.Set(map[string]bool{"StoreKeyHashes": true})
+	test.AssertNotError(t, err, "failed to set features")
+	defer features.Reset()
+
+	serial, testCert := test.ThrowAwayCert(t, 1)
+	issued := testCert.NotBefore.UnixNano()
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    testCert.Raw,
+		RegID:  &reg.ID,
+		Ocsp:   []byte{1, 2, 3},
+		Issued: &issued,
+	})
+	test.AssertNotError(t, err, "failed to add precert")
+
+	var keyHashes []keyHashModel
+	_, err = sa.dbMap.Select(&keyHashes, "SELECT * FROM keyHashToSerial")
+	test.AssertNotError(t, err, "failed to retrieve rows from keyHashToSerial")
+	test.AssertEquals(t, len(keyHashes), 1)
+	test.AssertEquals(t, keyHashes[0].CertSerial, serial)
+	test.AssertEquals(t, keyHashes[0].CertNotAfter, testCert.NotAfter)
+	spkiHash := sha256.Sum256(testCert.RawSubjectPublicKeyInfo)
+	test.Assert(t, bytes.Compare(keyHashes[0].KeyHash, spkiHash[:]) == 0, "spki hash mismatch")
 }

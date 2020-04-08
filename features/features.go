@@ -55,6 +55,8 @@ const (
 	// StoreIssuerInfo enables storage of information identifying the issuer of
 	// a certificate in the certificateStatus table.
 	StoreIssuerInfo
+	// StoreKeyHashes enables storage of SPKI hashes associated with certificates.
+	StoreKeyHashes
 )
 
 // List of features and their default value, protected by fMu
@@ -76,6 +78,7 @@ var features = map[FeatureFlag]bool{
 	StripDefaultSchemePort:        false,
 	StoreIssuerInfo:               false,
 	WriteIssuedNamesPrecert:       false,
+	StoreKeyHashes:                false,
 }
 
 var fMu = new(sync.RWMutex)
