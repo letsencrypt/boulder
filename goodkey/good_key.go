@@ -76,7 +76,8 @@ func NewKeyPolicy(weakKeyFile, blockedKeyFile string) (KeyPolicy, error) {
 
 // GoodKey returns true if the key is acceptable for both TLS use and account
 // key use (our requirements are the same for either one), according to basic
-// strength and algorithm checking.
+// strength and algorithm checking. GoodKey only supports reference rsa.PublicKey
+// and ecdsa.PublicKey and will reject non-reference versions.
 // TODO: Support JSONWebKeys once go-jose migration is done.
 func (policy *KeyPolicy) GoodKey(key crypto.PublicKey) error {
 	// If there is a blocked list configured then check if the public key is one
@@ -89,14 +90,12 @@ func (policy *KeyPolicy) GoodKey(key crypto.PublicKey) error {
 		}
 	}
 	switch t := key.(type) {
-	case rsa.PublicKey:
-		return policy.goodKeyRSA(t)
 	case *rsa.PublicKey:
 		return policy.goodKeyRSA(*t)
-	case ecdsa.PublicKey:
-		return policy.goodKeyECDSA(t)
 	case *ecdsa.PublicKey:
 		return policy.goodKeyECDSA(*t)
+	case ecdsa.PublicKey, rsa.PublicKey:
+		return berrors.MalformedError("non-reference keys not supported")
 	default:
 		return berrors.MalformedError("unknown key type %T", key)
 	}
@@ -171,16 +170,16 @@ func (policy *KeyPolicy) goodKeyECDSA(key ecdsa.PublicKey) (err error) {
 	}
 
 	// SP800-56A § 5.6.2.3.2 Step 4.
-	//   "Verify that n*Q == O.
+	//   "Verify that n*Q == Ø.
 	//    (Ensures that the public key has the correct order. Along with check 1,
 	//     ensures that the public key is in the correct range in the correct EC
 	//     subgroup, that is, it is in the correct EC subgroup and is not the
 	//     identity element.)"
 	//
 	// Ensure that public key has the correct order:
-	// verify that n*Q = O.
+	// verify that n*Q = Ø.
 	//
-	// n*Q = O iff n*Q is the point at infinity (see step 1).
+	// n*Q = Ø iff n*Q is the point at infinity (see step 1).
 	ox, oy := key.Curve.ScalarMult(key.X, key.Y, params.N.Bytes())
 	if !isPointAtInfinityNISTP(ox, oy) {
 		return berrors.MalformedError("public key does not have correct order")
