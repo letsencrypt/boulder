@@ -1757,3 +1757,13 @@ func (ssa *SQLStorageAuthority) SerialExists(ctx context.Context, req *sapb.Seri
 	exists := !isNoRowsErr
 	return &sapb.Exists{Exists: &exists}, nil
 }
+
+func addKeyHash(db db.Inserter, cert *x509.Certificate) error {
+	h := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	khm := &keyHashModel{
+		KeyHash:     h[:],
+		CertExpires: cert.NotAfter,
+		CertSerial:  core.SerialToString(cert.SerialNumber),
+	}
+	return db.Insert(khm)
+}

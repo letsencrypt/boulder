@@ -25,11 +25,12 @@ func _() {
 	_ = x[PrecertificateRevocation-14]
 	_ = x[StripDefaultSchemePort-15]
 	_ = x[StoreIssuerInfo-16]
+	_ = x[StoreKeyHashes-17]
 }
 
-const _FeatureFlag_name = "unusedWriteIssuedNamesPrecertCAAValidationMethodsCAAAccountURIHeadNonceStatusOKEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountIDCheckRenewalFirstMandatoryPOSTAsGETAllowV1RegistrationParallelCheckFailedValidationDeleteUnusedChallengesV1DisableNewValidationsPrecertificateRevocationStripDefaultSchemePortStoreIssuerInfo"
+const _FeatureFlag_name = "unusedWriteIssuedNamesPrecertCAAValidationMethodsCAAAccountURIHeadNonceStatusOKEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountIDCheckRenewalFirstMandatoryPOSTAsGETAllowV1RegistrationParallelCheckFailedValidationDeleteUnusedChallengesV1DisableNewValidationsPrecertificateRevocationStripDefaultSchemePortStoreIssuerInfoStoreKeyHashes"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 29, 49, 62, 79, 93, 111, 130, 147, 165, 184, 213, 235, 258, 282, 304, 319}
+var _FeatureFlag_index = [...]uint16{0, 6, 29, 49, 62, 79, 93, 111, 130, 147, 165, 184, 213, 235, 258, 282, 304, 319, 333}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

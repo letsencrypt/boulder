@@ -25,7 +25,8 @@
     },
     "features": {
       "DeleteUnusedChallenges": true,
-      "StoreIssuerInfo": true
+      "StoreIssuerInfo": true,
+      "StoreKeyHashes": true
     }
   },
 

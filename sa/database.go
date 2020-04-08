@@ -139,4 +139,5 @@ func initTables(dbMap *gorp.DbMap) {
 	dbMap.AddTableWithName(orderToAuthzModel{}, "orderToAuthz2").SetKeys(false, "OrderID", "AuthzID")
 	dbMap.AddTableWithName(recordedSerialModel{}, "serials").SetKeys(true, "ID")
 	dbMap.AddTableWithName(precertificateModel{}, "precertificates").SetKeys(true, "ID")
+	dbMap.AddTableWithName(keyHashModel{}, "keyHashToSerial").SetKeys(true, "ID")
 }

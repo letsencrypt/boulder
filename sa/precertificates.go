@@ -119,6 +119,11 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		if err := addIssuedNames(txWithCtx, parsed, isRenewal); err != nil {
 			return nil, err
 		}
+		if features.Enabled(features.StoreKeyHashes) {
+			if err := addKeyHash(txWithCtx, parsed); err != nil {
+				return nil, err
+			}
+		}
 
 		return nil, nil
 	})
