@@ -9,6 +9,8 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"math/big"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +24,10 @@ import (
 )
 
 func TestBackfill(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
 	dbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
 	test.AssertNotError(t, err, "failed to create db map")
 	defer test.ResetSATestDatabase(t)
