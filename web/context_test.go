@@ -31,7 +31,7 @@ func TestLogCode(t *testing.T) {
 	}
 	th.ServeHTTP(httptest.NewRecorder(), req)
 	expected := `INFO: GET /endpoint 0 201 0 0.0.0.0 JSON={}`
-	if 1 != len(mockLog.GetAllMatching(expected)) {
+	if len(mockLog.GetAllMatching(expected)) != 1 {
 		t.Errorf("Expected exactly one log line matching %q. Got \n%s",
 			expected, strings.Join(mockLog.GetAllMatching(".*"), "\n"))
 	}
@@ -53,7 +53,7 @@ func TestStatusCodeLogging(t *testing.T) {
 	}
 	th.ServeHTTP(httptest.NewRecorder(), req)
 	expected := `INFO: GET /endpoint 0 200 0 0.0.0.0 JSON={}`
-	if 1 != len(mockLog.GetAllMatching(expected)) {
+	if len(mockLog.GetAllMatching(expected)) != 1 {
 		t.Errorf("Expected exactly one log line matching %q. Got \n%s",
 			expected, strings.Join(mockLog.GetAllMatching(".*"), "\n"))
 	}
@@ -69,7 +69,7 @@ func TestOrigin(t *testing.T) {
 	req.Header.Add("Origin", "https://example.com")
 	th.ServeHTTP(httptest.NewRecorder(), req)
 	expected := `INFO: GET /endpoint 0 201 0 0.0.0.0 JSON={.*"Origin":"https://example.com"}`
-	if 1 != len(mockLog.GetAllMatching(expected)) {
+	if len(mockLog.GetAllMatching(expected)) != 1 {
 		t.Errorf("Expected exactly one log line matching %q. Got \n%s",
 			expected, strings.Join(mockLog.GetAllMatching(".*"), "\n"))
 	}
