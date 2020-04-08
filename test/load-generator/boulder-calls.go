@@ -337,7 +337,7 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 
 	// Poll the authorization waiting for the challenge response to be recorded in
 	// a change of state. The polling may sleep and retry a few times if required
-	pollAuthorization(authz, s, ctx)
+	err = pollAuthorization(authz, s, ctx)
 	if err != nil {
 		return err
 	}
