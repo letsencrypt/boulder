@@ -12,25 +12,25 @@ import (
 )
 
 var (
-	ClientHandshakeNopErr = errors.New(
+	ErrClientHandshakeNop = errors.New(
 		"boulder/grpc/creds: Client-side handshakes are not implemented with " +
 			"serverTransportCredentials")
-	ServerHandshakeNopErr = errors.New(
+	ErrServerHandshakeNop = errors.New(
 		"boulder/grpc/creds: Server-side handshakes are not implemented with " +
 			"clientTransportCredentials")
-	OverrideServerNameNopErr = errors.New(
+	ErrOverrideServerNameNop = errors.New(
 		"boulder/grpc/creds: OverrideServerName() is not implemented")
-	NilServerConfigErr = errors.New(
+	ErrNilServerConfig = errors.New(
 		"boulder/grpc/creds: `serverConfig` must not be nil")
-	EmptyPeerCertsErr = errors.New(
+	ErrEmptyPeerCerts = errors.New(
 		"boulder/grpc/creds: validateClient given state with empty PeerCertificates")
 )
 
-type SANNotAcceptedErr struct {
+type ErrSANNotAccepted struct {
 	got, expected []string
 }
 
-func (e SANNotAcceptedErr) Error() string {
+func (e ErrSANNotAccepted) Error() string {
 	return fmt.Sprintf("boulder/grpc/creds: client certificate SAN was invalid. "+
 		"Got %q, expected one of %q.", e.got, e.expected)
 }
@@ -91,7 +91,7 @@ func (tc *clientTransportCredentials) ClientHandshake(ctx context.Context, addr 
 // ServerHandshake is not implemented for a `clientTransportCredentials`, use
 // a `serverTransportCredentials` if you require `ServerHandshake`.
 func (tc *clientTransportCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	return nil, nil, ServerHandshakeNopErr
+	return nil, nil, ErrServerHandshakeNop
 }
 
 // Info returns information about the transport protocol used
@@ -119,7 +119,7 @@ func (tc *clientTransportCredentials) Clone() credentials.TransportCredentials {
 
 // OverrideServerName is not implemented and here only to satisfy the interface
 func (tc *clientTransportCredentials) OverrideServerName(serverNameOverride string) error {
-	return OverrideServerNameNopErr
+	return ErrOverrideServerNameNop
 }
 
 // serverTransportCredentials is a grpc/credentials.TransportCredentials which supports
@@ -132,7 +132,7 @@ type serverTransportCredentials struct {
 // NewServerCredentials returns a new initialized grpc/credentials.TransportCredentials for server usage
 func NewServerCredentials(serverConfig *tls.Config, acceptedSANs map[string]struct{}) (credentials.TransportCredentials, error) {
 	if serverConfig == nil {
-		return nil, NilServerConfigErr
+		return nil, ErrNilServerConfig
 	}
 
 	return &serverTransportCredentials{serverConfig, acceptedSANs}, nil
@@ -164,7 +164,7 @@ func (tc *serverTransportCredentials) validateClient(peerState tls.ConnectionSta
 	// occur. We return an error in this event primarily for unit tests that may
 	// call `validateClient` with manufactured & artificial connection states.
 	if len(peerState.PeerCertificates) < 1 {
-		return EmptyPeerCertsErr
+		return ErrEmptyPeerCerts
 	}
 
 	// Since we call `conn.Handshake()` before `validateClient` and ensure
@@ -194,7 +194,7 @@ func (tc *serverTransportCredentials) validateClient(peerState tls.ConnectionSta
 	for k := range tc.acceptedSANs {
 		acceptableSANs = append(acceptableSANs, k)
 	}
-	return SANNotAcceptedErr{receivedSANs, acceptableSANs}
+	return ErrSANNotAccepted{receivedSANs, acceptableSANs}
 }
 
 // ServerHandshake does the authentication handshake for servers. It returns
@@ -220,7 +220,7 @@ func (tc *serverTransportCredentials) ServerHandshake(rawConn net.Conn) (net.Con
 // ClientHandshake is not implemented for a `serverTransportCredentials`, use
 // a `clientTransportCredentials` if you require `ClientHandshake`.
 func (tc *serverTransportCredentials) ClientHandshake(ctx context.Context, addr string, rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	return nil, nil, ClientHandshakeNopErr
+	return nil, nil, ErrClientHandshakeNop
 }
 
 // Info provides the ProtocolInfo of this TransportCredentials.
@@ -249,5 +249,5 @@ func (tc *serverTransportCredentials) Clone() credentials.TransportCredentials {
 
 // OverrideServerName is not implemented and here only to satisfy the interface
 func (tc *serverTransportCredentials) OverrideServerName(serverNameOverride string) error {
-	return OverrideServerNameNopErr
+	return ErrOverrideServerNameNop
 }
