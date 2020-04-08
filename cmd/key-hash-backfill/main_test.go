@@ -57,14 +57,17 @@ func TestBackfill(t *testing.T) {
 	_, err = ssa.AddCertificate(context.Background(), testA, reg.ID, nil, &issued)
 	test.AssertNotError(t, err, "failed to store certificate")
 
-	work, err := getWork(logger, dbMap)
+	work, err := getWork(logger, dbMap, 1000, 0)
 	test.AssertNotError(t, err, "getWork failed")
 	test.AssertEquals(t, len(work), 1)
 
 	err = doWork(logger, dbMap, work)
 	test.AssertNotError(t, err, "doWork failed")
+	// Duplicate entries shouldn't error out
+	err = doWork(logger, dbMap, work)
+	test.AssertNotError(t, err, "doWork failed")
 
-	work, err = getWork(logger, dbMap)
+	work, err = getWork(logger, dbMap, 1000, 1)
 	test.AssertNotError(t, err, "failed to retrieve work")
 	test.AssertEquals(t, len(work), 0)
 
@@ -73,8 +76,13 @@ func TestBackfill(t *testing.T) {
 	test.AssertNotError(t, err, "failed to generate test certificate")
 	_, err = ssa.AddCertificate(context.Background(), testB, reg.ID, nil, &issued)
 	test.AssertNotError(t, err, "failed to store certificate")
+	template.SerialNumber = big.NewInt(213)
+	testC, err := x509.CreateCertificate(rand.Reader, template, template, k.Public(), k)
+	test.AssertNotError(t, err, "failed to generate test certificate")
+	_, err = ssa.AddCertificate(context.Background(), testC, reg.ID, nil, &issued)
+	test.AssertNotError(t, err, "failed to store certificate")
 
-	backfill(logger, dbMap)
+	backfill(logger, dbMap, 1, 0)
 
 	var keyHashes []struct {
 		ID           int64
@@ -84,14 +92,17 @@ func TestBackfill(t *testing.T) {
 	}
 	_, err = dbMap.Select(&keyHashes, "SELECT * FROM keyHashToSerial")
 	test.AssertNotError(t, err, "failed to retrieve rows from keyHashToSerial")
-	test.AssertEquals(t, len(keyHashes), 2)
+	test.AssertEquals(t, len(keyHashes), 3)
 	spki, err := x509.MarshalPKIXPublicKey(k.Public())
 	test.AssertNotError(t, err, "failed to marshal spki")
 	spkiHash := sha256.Sum256(spki)
 	test.AssertEquals(t, keyHashes[0].CertSerial, "00000000000000000000000000000000007b")
 	test.AssertEquals(t, keyHashes[1].CertSerial, "000000000000000000000000000000000141")
+	test.AssertEquals(t, keyHashes[2].CertSerial, "0000000000000000000000000000000000d5")
 	test.AssertEquals(t, keyHashes[0].CertNotAfter, expires)
 	test.AssertEquals(t, keyHashes[1].CertNotAfter, expires)
+	test.AssertEquals(t, keyHashes[2].CertNotAfter, expires)
 	test.Assert(t, bytes.Compare(keyHashes[0].KeyHash, spkiHash[:]) == 0, "SPKI hash mismatch")
 	test.Assert(t, bytes.Compare(keyHashes[1].KeyHash, spkiHash[:]) == 0, "SPKI hash mismatch")
+	test.Assert(t, bytes.Compare(keyHashes[2].KeyHash, spkiHash[:]) == 0, "SPKI hash mismatch")
 }

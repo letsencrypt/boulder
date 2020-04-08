@@ -34,29 +34,31 @@ func insertCert(dbMap *db.WrappedMap, keyHash []byte, expires time.Time, serial 
 		expires,
 		serial,
 	)
+	if db.IsDuplicate(err) {
+		return nil
+	}
 	return err
 }
 
 type workUnit struct {
+	ID      int
 	Serial  string
 	DER     []byte
 	Expires time.Time
 }
 
-var batchSize = 1000
-
-func getWork(logger log.Logger, dbMap *db.WrappedMap) ([]workUnit, error) {
+func getWork(logger log.Logger, dbMap *db.WrappedMap, batchSize int, initialID int) ([]workUnit, error) {
 	var data []workUnit
 	// Get rows that are in certificates but not in keyHashToSerial,
 	// this should trend towards 0
 	_, err := dbMap.Select(
 		&data,
-		`SELECT a.serial, a.der, a.expires
-		FROM certificates AS a
-		LEFT JOIN keyHashToSerial AS b
-		ON a.serial = b.certSerial
-		WHERE b.certSerial IS NULL
+		`SELECT id, serial, der, expires
+		FROM certificates
+		WHERE id > ?
+		ORDER BY id
 		LIMIT ?`,
+		initialID,
 		batchSize,
 	)
 	if err != nil {
@@ -79,9 +81,9 @@ func doWork(logger log.Logger, dbMap *db.WrappedMap, work []workUnit) error {
 	return nil
 }
 
-func backfill(logger log.Logger, dbMap *db.WrappedMap) {
+func backfill(logger log.Logger, dbMap *db.WrappedMap, batchSize int, initialID int) {
 	for {
-		work, err := getWork(logger, dbMap)
+		work, err := getWork(logger, dbMap, batchSize, initialID)
 		if err != nil && err != sql.ErrNoRows {
 			logger.Errf("failed to get certificates: %s", err)
 			continue
@@ -92,6 +94,7 @@ func backfill(logger log.Logger, dbMap *db.WrappedMap) {
 		if err := doWork(logger, dbMap, work); err != nil {
 			logger.Errf("error while inserting key hashes: %s", err)
 		}
+		initialID = work[len(work)-1].ID
 	}
 }
 
@@ -103,6 +106,8 @@ func main() {
 		Syslog cmd.SyslogConfig
 	}
 	configFile := flag.String("config", "", "File containing a JSON config.")
+	initialID := flag.Int("intial-id", 0, "Initial certificate ID to start from")
+	batchSize := flag.Int("batch-size", 1000, "Number of certificates to fetch per batch")
 	flag.Parse()
 
 	configBytes, err := ioutil.ReadFile(*configFile)
@@ -118,5 +123,5 @@ func main() {
 	dbMap, err := sa.NewDbMap(dbURL, config.KeyHashBackfiller.MaxDBConns)
 	cmd.FailOnError(err, "Could not connect to database")
 
-	backfill(logger, dbMap)
+	backfill(logger, dbMap, *batchSize, *initialID)
 }
