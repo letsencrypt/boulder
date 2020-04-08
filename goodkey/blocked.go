@@ -13,12 +13,10 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
-type keyHash [32]byte
-
 // blockedKeys is a type for maintaining a map of SHA256 hashes
 // of SubjectPublicKeyInfo's that should be considered blocked.
 // blockedKeys are created by using loadBlockedKeysList.
-type blockedKeys map[keyHash]bool
+type blockedKeys map[core.Sha256Digest]bool
 
 var ErrWrongDecodedSize = errors.New("not enough bytes decoded for sha256 hash")
 
@@ -28,21 +26,13 @@ var ErrWrongDecodedSize = errors.New("not enough bytes decoded for sha256 hash")
 // returned from loadBlockedKeysList.
 // function should not be used until after `loadBlockedKeysList` has returned.
 func (b blockedKeys) blocked(key crypto.PublicKey) (bool, error) {
-	b64Hash, err := core.KeyDigestB64(key)
+	hash, err := core.KeyDigest(key)
 	if err != nil {
 		// the bool result should be ignored when err is != nil but to be on the
 		// paranoid side return true anyway so that a key we can't compute the
 		// digest for will always be blocked even if a caller foolishly discards the
 		// err result.
 		return true, err
-	}
-	var hash keyHash
-	n, err := base64.StdEncoding.Decode(hash[:], []byte(b64Hash))
-	if err != nil {
-		return true, err
-	}
-	if n != sha256.Size {
-		return true, ErrWrongDecodedSize
 	}
 	return b[hash], nil
 }
@@ -80,26 +70,28 @@ func loadBlockedKeysList(filename string) (*blockedKeys, error) {
 
 	blockedKeys := make(blockedKeys, len(list.BlockedHashes)+len(list.BlockedHashesHex))
 	for _, b64Hash := range list.BlockedHashes {
-		var hash keyHash
-		n, err := base64.StdEncoding.Decode(hash[:], []byte(b64Hash))
+		decoded, err := base64.StdEncoding.DecodeString(b64Hash)
 		if err != nil {
 			return nil, err
 		}
-		if n != sha256.Size {
+		if len(decoded) != sha256.Size {
 			return nil, ErrWrongDecodedSize
 		}
-		blockedKeys[hash] = true
+		var sha256Digest core.Sha256Digest
+		copy(sha256Digest[:], decoded[0:sha256.Size])
+		blockedKeys[sha256Digest] = true
 	}
 	for _, hexHash := range list.BlockedHashesHex {
-		var hash keyHash
-		n, err := hex.Decode(hash[:], []byte(hexHash))
+		decoded, err := hex.DecodeString(hexHash)
 		if err != nil {
 			return nil, err
 		}
-		if n != sha256.Size {
+		if len(decoded) != sha256.Size {
 			return nil, ErrWrongDecodedSize
 		}
-		blockedKeys[hash] = true
+		var sha256Digest core.Sha256Digest
+		copy(sha256Digest[:], decoded[0:sha256.Size])
+		blockedKeys[sha256Digest] = true
 	}
 	return &blockedKeys, nil
 }
