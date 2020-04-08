@@ -51,7 +51,7 @@ func TestKeyBlocking(t *testing.T) {
 				key, err = keyFromCert(tc.certPath)
 			}
 			test.AssertNotError(t, err, "error getting key from input file")
-			spkiHash, err := core.KeyDigest(key)
+			spkiHash, err := core.KeyDigestB64(key)
 			test.AssertNotError(t, err, "error computing spki hash")
 			test.AssertEquals(t, spkiHash, tc.expected)
 		})

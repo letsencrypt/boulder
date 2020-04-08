@@ -190,7 +190,7 @@ func registrationToModel(r *core.Registration) (*regModel, error) {
 		return nil, err
 	}
 
-	sha, err := core.KeyDigest(r.Key)
+	sha, err := core.KeyDigestB64(r.Key)
 	if err != nil {
 		return nil, err
 	}

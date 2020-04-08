@@ -100,7 +100,7 @@ func main() {
 		log.Fatalf("error loading public key: %v", err)
 	}
 
-	spkiHash, err := core.KeyDigest(key)
+	spkiHash, err := core.KeyDigestB64(key)
 	if err != nil {
 		log.Fatalf("error computing spki hash: %v", err)
 	}

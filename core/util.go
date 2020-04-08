@@ -87,17 +87,17 @@ func Fingerprint256(data []byte) string {
 	return base64.RawURLEncoding.EncodeToString(d.Sum(nil))
 }
 
-// KeyDigest produces a padded, standard Base64-encoded SHA256 digest of a
+// KeyDigestB64 produces a padded, standard Base64-encoded SHA256 digest of a
 // provided public key.
-func KeyDigest(key crypto.PublicKey) (string, error) {
+func KeyDigestB64(key crypto.PublicKey) (string, error) {
 	switch t := key.(type) {
 	case *jose.JSONWebKey:
 		if t == nil {
 			return "", fmt.Errorf("Cannot compute digest of nil key")
 		}
-		return KeyDigest(t.Key)
+		return KeyDigestB64(t.Key)
 	case jose.JSONWebKey:
-		return KeyDigest(t.Key)
+		return KeyDigestB64(t.Key)
 	default:
 		keyDER, err := x509.MarshalPKIXPublicKey(key)
 		if err != nil {
@@ -112,8 +112,8 @@ func KeyDigest(key crypto.PublicKey) (string, error) {
 
 // KeyDigestEquals determines whether two public keys have the same digest.
 func KeyDigestEquals(j, k crypto.PublicKey) bool {
-	digestJ, errJ := KeyDigest(j)
-	digestK, errK := KeyDigest(k)
+	digestJ, errJ := KeyDigestB64(j)
+	digestK, errK := KeyDigestB64(k)
 	// Keys that don't have a valid digest (due to marshalling problems)
 	// are never equal. So, e.g. nil keys are not equal.
 	if errJ != nil || errK != nil {

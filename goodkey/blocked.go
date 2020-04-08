@@ -28,7 +28,7 @@ var ErrWrongDecodedSize = errors.New("not enough bytes decoded for sha256 hash")
 // returned from loadBlockedKeysList.
 // function should not be used until after `loadBlockedKeysList` has returned.
 func (b blockedKeys) blocked(key crypto.PublicKey) (bool, error) {
-	b64Hash, err := core.KeyDigest(key)
+	b64Hash, err := core.KeyDigestB64(key)
 	if err != nil {
 		// the bool result should be ignored when err is != nil but to be on the
 		// paranoid side return true anyway so that a key we can't compute the
