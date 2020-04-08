@@ -67,7 +67,7 @@ func pubKeyForKey(t *testing.T, privKey interface{}) interface{} {
 	return nil
 }
 
-// signRequestEmbed creates a JWS for aa given request body with an embedded JWK
+// signRequestEmbed creates a JWS for a given request body with an embedded JWK
 // corresponding to the private key provided. The URL and nonce extra headers
 // are set based on the additional arguments. A computed JWS, the corresponding
 // embedded JWK and the JWS in serialized string form are returned.

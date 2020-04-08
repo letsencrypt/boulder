@@ -2521,6 +2521,26 @@ func TestKeyRollover(t *testing.T) {
 	}
 }
 
+func TestKeyRolloverMismatchedJWSURLs(t *testing.T) {
+	responseWriter := httptest.NewRecorder()
+	wfe, _ := setupWFE(t)
+
+	newKeyBytes, err := ioutil.ReadFile("../test/test-key-5.der")
+	test.AssertNotError(t, err, "Failed to read ../test/test-key-5.der")
+	newKeyPriv, err := x509.ParsePKCS1PrivateKey(newKeyBytes)
+	test.AssertNotError(t, err, "Failed parsing private key")
+
+	_, _, inner := signRequestEmbed(t, newKeyPriv, "http://localhost/wrong-url", "{}", wfe.nonceService)
+	_, _, outer := signRequestKeyID(t, 1, nil, "http://localhost/key-change", inner, wfe.nonceService)
+	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("key-change", outer))
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `
+		{
+			"type": "urn:ietf:params:acme:error:malformed",
+			"detail": "Outer JWS 'url' value \"http://localhost/key-change\" does not match inner JWS 'url' value \"http://localhost/wrong-url\"",
+			"status": 400
+		}`)
+}
+
 func TestGetOrder(t *testing.T) {
 	wfe, _ := setupWFE(t)
 

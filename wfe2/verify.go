@@ -725,7 +725,7 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 	// payload already.
 
 	// Verify that the outer and inner JWS protected URL headers match
-	if wfe.matchJWSURLs(outerJWS, innerJWS) != nil {
+	if prob := wfe.matchJWSURLs(outerJWS, innerJWS); prob != nil {
 		return nil, prob
 	}
 
