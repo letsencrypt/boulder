@@ -204,7 +204,7 @@ func setup(
 		userAgent,
 		"letsencrypt.org",
 		metrics.NoopRegisterer,
-		clock.Default(),
+		clock.New(),
 		logger,
 		accountURIPrefixes,
 		"")
