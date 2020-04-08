@@ -77,10 +77,10 @@ func TestBackfill(t *testing.T) {
 	backfill(logger, dbMap)
 
 	var keyHashes []struct {
-		ID          int64
-		KeyHash     []byte
-		CertExpires time.Time
-		CertSerial  string
+		ID           int64
+		KeyHash      []byte
+		CertNotAfter time.Time
+		CertSerial   string
 	}
 	_, err = dbMap.Select(&keyHashes, "SELECT * FROM keyHashToSerial")
 	test.AssertNotError(t, err, "failed to retrieve rows from keyHashToSerial")
@@ -90,8 +90,8 @@ func TestBackfill(t *testing.T) {
 	spkiHash := sha256.Sum256(spki)
 	test.AssertEquals(t, keyHashes[0].CertSerial, "00000000000000000000000000000000007b")
 	test.AssertEquals(t, keyHashes[1].CertSerial, "000000000000000000000000000000000141")
-	test.AssertEquals(t, keyHashes[0].CertExpires, expires)
-	test.AssertEquals(t, keyHashes[1].CertExpires, expires)
+	test.AssertEquals(t, keyHashes[0].CertNotAfter, expires)
+	test.AssertEquals(t, keyHashes[1].CertNotAfter, expires)
 	test.Assert(t, bytes.Compare(keyHashes[0].KeyHash, spkiHash[:]) == 0, "SPKI hash mismatch")
 	test.Assert(t, bytes.Compare(keyHashes[1].KeyHash, spkiHash[:]) == 0, "SPKI hash mismatch")
 }

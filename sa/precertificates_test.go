@@ -137,7 +137,7 @@ func TestAddPrecertificateKeyHash(t *testing.T) {
 	test.AssertNotError(t, err, "failed to retrieve rows from keyHashToSerial")
 	test.AssertEquals(t, len(keyHashes), 1)
 	test.AssertEquals(t, keyHashes[0].CertSerial, serial)
-	test.AssertEquals(t, keyHashes[0].CertExpires, testCert.NotAfter)
+	test.AssertEquals(t, keyHashes[0].CertNotAfter, testCert.NotAfter)
 	spkiHash := sha256.Sum256(testCert.RawSubjectPublicKeyInfo)
 	test.Assert(t, bytes.Compare(keyHashes[0].KeyHash, spkiHash[:]) == 0, "spki hash mismatch")
 }

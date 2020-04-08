@@ -5,11 +5,11 @@
 CREATE TABLE `keyHashToSerial` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `keyHash` binary(32) NOT NULL,
-  `certExpires` datetime NOT NULL,
+  `certNotAfter` datetime NOT NULL,
   `certSerial` varchar(255) NOT NULL,
   PRIMARY KEY (`id`),
-  KEY `keyHash_certExpires` (`keyHash`, `certExpires`),
-  CONSTRAINT `unique_keyHash_certserial` UNIQUE (`keyHash`, `certSerial`)
+  KEY `keyHash_certNotAfter` (`keyHash`, `certNotAfter`),
+  UNIQUE KEY `unique_keyHash_certserial` (`keyHash`, `certSerial`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 -- +goose Down

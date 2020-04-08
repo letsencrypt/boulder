@@ -621,8 +621,8 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 }
 
 type keyHashModel struct {
-	ID          int64
-	KeyHash     []byte
-	CertExpires time.Time
-	CertSerial  string
+	ID           int64
+	KeyHash      []byte
+	CertNotAfter time.Time
+	CertSerial   string
 }

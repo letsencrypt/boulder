@@ -28,7 +28,7 @@ func parseCert(certBytes []byte) ([]byte, error) {
 func insertCert(dbMap *db.WrappedMap, keyHash []byte, expires time.Time, serial string) error {
 	_, err := dbMap.Exec(
 		`INSERT INTO keyHashToSerial
-		(keyHash, certExpires, certSerial)
+		(keyHash, certNotAfter, certSerial)
 		VALUES (?, ?, ?)`,
 		keyHash,
 		expires,
@@ -73,7 +73,7 @@ func doWork(logger log.Logger, dbMap *db.WrappedMap, work []workUnit) error {
 		}
 		err = insertCert(dbMap, h, unit.Expires, unit.Serial)
 		if err != nil {
-			return fmt.Errorf("failed to insert into keyHasToSerial: %s", err)
+			return fmt.Errorf("failed to insert into keyHashToSerial: %s", err)
 		}
 	}
 	return nil
