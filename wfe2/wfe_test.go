@@ -1618,7 +1618,7 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 	})
 
 	var authz core.Authorization
-	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	err := json.Unmarshal(responseWriter.Body.Bytes(), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 	test.AssertEquals(t, len(authz.Challenges), 1)
 	// The Challenge Error Type should have its prefix unmodified
@@ -1632,7 +1632,7 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 		URL:    mustParseURL("56"),
 	})
 
-	err = json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	err = json.Unmarshal(responseWriter.Body.Bytes(), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 	test.AssertEquals(t, len(authz.Challenges), 1)
 	// The Challenge Error Type should have had the probs.V2ErrorNS prefix added
