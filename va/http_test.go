@@ -510,7 +510,7 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 			resp,
 			req,
 			fmt.Sprintf("http://example.com:%d/loop", httpPort),
-			301)
+			http.StatusMovedPermanently)
 	})
 
 	// A path that always redirects to a URL with a non-HTTP/HTTPs protocol scheme
@@ -519,7 +519,7 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 			resp,
 			req,
 			"gopher://example.com",
-			301,
+			http.StatusMovedPermanently,
 		)
 	})
 
@@ -530,7 +530,7 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 			resp,
 			req,
 			"https://example.com:1987",
-			301,
+			http.StatusMovedPermanently,
 		)
 	})
 
@@ -540,7 +540,7 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 			resp,
 			req,
 			"https://127.0.0.1",
-			301,
+			http.StatusMovedPermanently,
 		)
 	})
 
@@ -564,7 +564,7 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 			resp,
 			req,
 			"http://example.COM/ok",
-			301)
+			http.StatusMovedPermanently)
 	})
 
 	return server
@@ -742,7 +742,7 @@ func TestFetchHTTP(t *testing.T) {
 				"Fetching http://example.com/timeout: " +
 					"Timeout after connect (your server may be slow or overloaded)"),
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/timeout",
@@ -768,7 +768,7 @@ func TestFetchHTTP(t *testing.T) {
 					`redirect target. Only "http" and "https" protocol schemes ` +
 					`are supported, not "gopher"`),
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/redir-bad-proto",
@@ -785,7 +785,7 @@ func TestFetchHTTP(t *testing.T) {
 				"Fetching https://example.com:1987: Invalid port in redirect target. "+
 					"Only ports %d and 443 are supported, not 1987", httpPort),
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/redir-bad-port",
@@ -802,7 +802,7 @@ func TestFetchHTTP(t *testing.T) {
 				"Fetching https://127.0.0.1: Invalid host in redirect target " +
 					`"127.0.0.1". Only domain names are supported, not IP addresses`),
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/redir-bad-host",
@@ -819,7 +819,7 @@ func TestFetchHTTP(t *testing.T) {
 				"Invalid response from http://example.com/bad-status-code " +
 					"[127.0.0.1]: 410"),
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/bad-status-code",
@@ -837,7 +837,7 @@ func TestFetchHTTP(t *testing.T) {
 					"[127.0.0.1]: %q", expectedTruncatedResp.String(),
 			),
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/resp-too-big",
@@ -853,7 +853,7 @@ func TestFetchHTTP(t *testing.T) {
 			ExpectedProblem: probs.ConnectionFailure(
 				"Fetching http://ipv6.localhost/ok: Error getting validation data"),
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "ipv6.localhost",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://ipv6.localhost/ok",
@@ -868,7 +868,7 @@ func TestFetchHTTP(t *testing.T) {
 			Path:         "/ok",
 			ExpectedBody: "ok",
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "ipv4.and.ipv6.localhost",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://ipv4.and.ipv6.localhost/ok",
@@ -876,7 +876,7 @@ func TestFetchHTTP(t *testing.T) {
 					// The first validation record should have used the IPv6 addr
 					AddressUsed: net.ParseIP("::1"),
 				},
-				core.ValidationRecord{
+				{
 					Hostname:          "ipv4.and.ipv6.localhost",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://ipv4.and.ipv6.localhost/ok",
@@ -892,7 +892,7 @@ func TestFetchHTTP(t *testing.T) {
 			Path:         "/ok",
 			ExpectedBody: "ok",
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/ok",
@@ -907,14 +907,14 @@ func TestFetchHTTP(t *testing.T) {
 			Path:         "/redir-uppercase-publicsuffix",
 			ExpectedBody: "ok",
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/redir-uppercase-publicsuffix",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 				},
-				core.ValidationRecord{
+				{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/ok",
@@ -979,17 +979,17 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 			t.Logf("HTTPSRV: Got a 500 req\n")
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		} else if strings.HasSuffix(r.URL.Path, pathMoved) {
-			t.Logf("HTTPSRV: Got a 301 redirect req\n")
+			t.Logf("HTTPSRV: Got a http.StatusMovedPermanently redirect req\n")
 			if currentToken == defaultToken {
 				currentToken = pathMoved
 			}
-			http.Redirect(w, r, pathValid, 301)
+			http.Redirect(w, r, pathValid, http.StatusMovedPermanently)
 		} else if strings.HasSuffix(r.URL.Path, pathFound) {
-			t.Logf("HTTPSRV: Got a 302 redirect req\n")
+			t.Logf("HTTPSRV: Got a http.StatusFound redirect req\n")
 			if currentToken == defaultToken {
 				currentToken = pathFound
 			}
-			http.Redirect(w, r, pathMoved, 302)
+			http.Redirect(w, r, pathMoved, http.StatusFound)
 		} else if strings.HasSuffix(r.URL.Path, pathWait) {
 			t.Logf("HTTPSRV: Got a wait req\n")
 			time.Sleep(time.Second * 3)
@@ -1002,21 +1002,21 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 				currentToken = pathReLookup
 			}
 			port := getPort(server)
-			http.Redirect(w, r, fmt.Sprintf("http://other.valid.com:%d/path", port), 302)
+			http.Redirect(w, r, fmt.Sprintf("http://other.valid.com:%d/path", port), http.StatusFound)
 		} else if strings.HasSuffix(r.URL.Path, pathReLookupInvalid) {
 			t.Logf("HTTPSRV: Got a redirect req to an invalid hostname\n")
-			http.Redirect(w, r, "http://invalid.invalid/path", 302)
+			http.Redirect(w, r, "http://invalid.invalid/path", http.StatusFound)
 		} else if strings.HasSuffix(r.URL.Path, pathRedirectToFailingURL) {
 			t.Logf("HTTPSRV: Redirecting to a URL that will fail\n")
 			port := getPort(server)
-			http.Redirect(w, r, fmt.Sprintf("http://other.valid.com:%d/%s", port, path500), 301)
+			http.Redirect(w, r, fmt.Sprintf("http://other.valid.com:%d/%s", port, path500), http.StatusMovedPermanently)
 		} else if strings.HasSuffix(r.URL.Path, pathLooper) {
 			t.Logf("HTTPSRV: Got a loop req\n")
-			http.Redirect(w, r, r.URL.String(), 301)
+			http.Redirect(w, r, r.URL.String(), http.StatusMovedPermanently)
 		} else if strings.HasSuffix(r.URL.Path, pathRedirectInvalidPort) {
 			t.Logf("HTTPSRV: Got a port redirect req\n")
 			// Port 8080 is not the VA's httpPort or httpsPort and should be rejected
-			http.Redirect(w, r, "http://other.valid.com:8080/path", 302)
+			http.Redirect(w, r, "http://other.valid.com:8080/path", http.StatusFound)
 		} else if r.Header.Get("User-Agent") == rejectUserAgent {
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte("found trap User-Agent"))
@@ -1133,7 +1133,7 @@ func TestHTTP(t *testing.T) {
 	setChallengeToken(&chall, pathMoved)
 	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	if prob != nil {
-		t.Fatalf("Failed to follow 301 redirect")
+		t.Fatalf("Failed to follow http.StatusMovedPermanently redirect")
 	}
 	redirectValid := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathValid + `"`
 	matchedValidRedirect := log.GetAllMatching(redirectValid)
@@ -1143,7 +1143,7 @@ func TestHTTP(t *testing.T) {
 	setChallengeToken(&chall, pathFound)
 	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	if prob != nil {
-		t.Fatalf("Failed to follow 302 redirect")
+		t.Fatalf("Failed to follow http.StatusFound redirect")
 	}
 	redirectMoved := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathMoved + `"`
 	matchedMovedRedirect := log.GetAllMatching(redirectMoved)

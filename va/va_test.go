@@ -204,7 +204,7 @@ func setup(
 		userAgent,
 		"letsencrypt.org",
 		metrics.NoopRegisterer,
-		clock.Default(),
+		clock.New(),
 		logger,
 		accountURIPrefixes,
 		"")
@@ -267,17 +267,17 @@ func (v cancelledVA) PerformValidation(_ context.Context, _ string, _ core.Chall
 // always return errors.
 type brokenRemoteVA struct{}
 
-// brokenRemoteVAError is the error returned by a brokenRemoteVA's
+// errBrokenRemoteVA is the error returned by a brokenRemoteVA's
 // PerformValidation and IsSafeDomain functions.
-var brokenRemoteVAError = errors.New("brokenRemoteVA is broken")
+var errBrokenRemoteVA = errors.New("brokenRemoteVA is broken")
 
-// PerformValidation returns brokenRemoteVAError unconditionally
+// PerformValidation returns errBrokenRemoteVA unconditionally
 func (b *brokenRemoteVA) PerformValidation(
 	_ context.Context,
 	_ string,
 	_ core.Challenge,
 	_ core.Authorization) ([]core.ValidationRecord, error) {
-	return nil, brokenRemoteVAError
+	return nil, errBrokenRemoteVA
 }
 
 func TestMultiVA(t *testing.T) {
@@ -331,7 +331,7 @@ func TestMultiVA(t *testing.T) {
 
 	expectedInternalErrLine := fmt.Sprintf(
 		`ERR: \[AUDIT\] Remote VA "broken".PerformValidation failed: %s`,
-		brokenRemoteVAError.Error())
+		errBrokenRemoteVA.Error())
 
 	testCases := []struct {
 		Name         string
@@ -719,27 +719,27 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 			name:          "remote and primary results equal (all nil)",
 			primaryResult: nil,
 			remoteProbs: []*remoteValidationResult{
-				&remoteValidationResult{Problem: nil, VAHostname: "remoteA"},
-				&remoteValidationResult{Problem: nil, VAHostname: "remoteB"},
-				&remoteValidationResult{Problem: nil, VAHostname: "remoteC"},
+				{Problem: nil, VAHostname: "remoteA"},
+				{Problem: nil, VAHostname: "remoteB"},
+				{Problem: nil, VAHostname: "remoteC"},
 			},
 		},
 		{
 			name:          "remote and primary results equal (not nil)",
 			primaryResult: egProbA,
 			remoteProbs: []*remoteValidationResult{
-				&remoteValidationResult{Problem: egProbA, VAHostname: "remoteA"},
-				&remoteValidationResult{Problem: egProbA, VAHostname: "remoteB"},
-				&remoteValidationResult{Problem: egProbA, VAHostname: "remoteC"},
+				{Problem: egProbA, VAHostname: "remoteA"},
+				{Problem: egProbA, VAHostname: "remoteB"},
+				{Problem: egProbA, VAHostname: "remoteC"},
 			},
 		},
 		{
 			name:          "remote and primary differ (primary nil)",
 			primaryResult: nil,
 			remoteProbs: []*remoteValidationResult{
-				&remoteValidationResult{Problem: egProbA, VAHostname: "remoteA"},
-				&remoteValidationResult{Problem: nil, VAHostname: "remoteB"},
-				&remoteValidationResult{Problem: egProbB, VAHostname: "remoteC"},
+				{Problem: egProbA, VAHostname: "remoteA"},
+				{Problem: nil, VAHostname: "remoteB"},
+				{Problem: egProbB, VAHostname: "remoteC"},
 			},
 			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","PrimaryResult":null,"RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"remoteA","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"VAHostname":"remoteC","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
 		},
@@ -747,9 +747,9 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 			name:          "remote and primary differ (primary not nil)",
 			primaryResult: egProbA,
 			remoteProbs: []*remoteValidationResult{
-				&remoteValidationResult{Problem: nil, VAHostname: "remoteA"},
-				&remoteValidationResult{Problem: egProbB, VAHostname: "remoteB"},
-				&remoteValidationResult{Problem: nil, VAHostname: "remoteC"},
+				{Problem: nil, VAHostname: "remoteA"},
+				{Problem: egProbB, VAHostname: "remoteB"},
+				{Problem: nil, VAHostname: "remoteC"},
 			},
 			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","PrimaryResult":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400},"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"remoteB","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
 		},

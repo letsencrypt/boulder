@@ -119,7 +119,7 @@ func NewCachePurgeClient(
 		retries:      retries,
 		retryBackoff: retryBackoff,
 		log:          log,
-		clk:          clock.Default(),
+		clk:          clock.New(),
 		purgeLatency: purgeLatency,
 		purges:       purges,
 	}, nil

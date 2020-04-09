@@ -749,7 +749,7 @@ func (m *Mailer) Connect() error {
 	return nil
 }
 
-// mockSAWithFailedChallenges is a mocks.StorageAuthority that has
+// SAWithFailedChallenges is a mocks.StorageAuthority that has
 // a `GetAuthorization` implementation that can return authorizations with
 // failed challenges.
 type SAWithFailedChallenges struct {

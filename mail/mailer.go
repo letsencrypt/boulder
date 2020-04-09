@@ -141,7 +141,7 @@ func New(
 		},
 		log:              logger,
 		from:             from,
-		clk:              clock.Default(),
+		clk:              clock.New(),
 		csprgSource:      realSource{},
 		reconnectBase:    reconnectBase,
 		reconnectMax:     reconnectMax,
@@ -155,7 +155,7 @@ func NewDryRun(from mail.Address, logger blog.Logger) *MailerImpl {
 	return &MailerImpl{
 		dialer:      dryRunClient{logger},
 		from:        from,
-		clk:         clock.Default(),
+		clk:         clock.New(),
 		csprgSource: realSource{},
 		sendMailAttempts: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "send_mail_attempts",

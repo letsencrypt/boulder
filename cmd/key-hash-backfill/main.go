@@ -106,7 +106,7 @@ func main() {
 		Syslog cmd.SyslogConfig
 	}
 	configFile := flag.String("config", "", "File containing a JSON config.")
-	initialID := flag.Int("intial-id", 0, "Initial certificate ID to start from")
+	initialID := flag.Int("initial-id", 0, "Initial certificate ID to start from")
 	batchSize := flag.Int("batch-size", 1000, "Number of certificates to fetch per batch")
 	flag.Parse()
 

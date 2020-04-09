@@ -41,8 +41,8 @@ var (
 	}
 )
 
-// It's awkward to work with core.Order or corepb.Order when the API returns
-// a different object than either of these types can represent without
+// OrderJSON is used because it's awkward to work with core.Order or corepb.Order
+// when the API returns a different object than either of these types can represent without
 // converting field values. The WFE uses an unexported `orderJSON` type for the
 // API results that contain an order. We duplicate it here instead of moving it
 // somewhere exported for this one utility.
@@ -337,7 +337,7 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 
 	// Poll the authorization waiting for the challenge response to be recorded in
 	// a change of state. The polling may sleep and retry a few times if required
-	pollAuthorization(authz, s, ctx)
+	err = pollAuthorization(authz, s, ctx)
 	if err != nil {
 		return err
 	}

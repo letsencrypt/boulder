@@ -22,10 +22,10 @@ var stringToCurve = map[string]elliptic.Curve{
 
 // curveToOIDDER maps the name of the curves to their DER encoded OIDs
 var curveToOIDDER = map[string][]byte{
-	elliptic.P224().Params().Name: []byte{6, 5, 43, 129, 4, 0, 33},
-	elliptic.P256().Params().Name: []byte{6, 8, 42, 134, 72, 206, 61, 3, 1, 7},
-	elliptic.P384().Params().Name: []byte{6, 5, 43, 129, 4, 0, 34},
-	elliptic.P521().Params().Name: []byte{6, 5, 43, 129, 4, 0, 35},
+	elliptic.P224().Params().Name: {6, 5, 43, 129, 4, 0, 33},
+	elliptic.P256().Params().Name: {6, 8, 42, 134, 72, 206, 61, 3, 1, 7},
+	elliptic.P384().Params().Name: {6, 5, 43, 129, 4, 0, 34},
+	elliptic.P521().Params().Name: {6, 5, 43, 129, 4, 0, 35},
 }
 
 var curveToHash = map[elliptic.Curve]crypto.Hash{

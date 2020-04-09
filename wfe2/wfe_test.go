@@ -369,7 +369,7 @@ func makePostRequestWithPath(path string, body string) *http.Request {
 		RemoteAddr: "1.1.1.1:7882",
 		Header: map[string][]string{
 			"Content-Length": {strconv.Itoa(len(body))},
-			"Content-Type":   []string{expectedJWSContentType},
+			"Content-Type":   {expectedJWSContentType},
 		},
 		Body: makeBody(body),
 		Host: "localhost",
@@ -399,7 +399,7 @@ func mustParseURL(s string) *url.URL {
 
 func sortHeader(s string) string {
 	a := strings.Split(s, ", ")
-	sort.Sort(sort.StringSlice(a))
+	sort.Strings(a)
 	return strings.Join(a, ", ")
 }
 
@@ -1403,7 +1403,7 @@ func TestNewAccount(t *testing.T) {
 				URL:    mustParseURL(newAcctPath),
 				Header: map[string][]string{
 					"Content-Length": {"0"},
-					"Content-Type":   []string{expectedJWSContentType},
+					"Content-Type":   {expectedJWSContentType},
 				},
 			},
 			`{"type":"` + probs.V2ErrorNS + `malformed","detail":"No body on POST","status":400}`,
@@ -1618,7 +1618,7 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 	})
 
 	var authz core.Authorization
-	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	err := json.Unmarshal(responseWriter.Body.Bytes(), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 	test.AssertEquals(t, len(authz.Challenges), 1)
 	// The Challenge Error Type should have its prefix unmodified
@@ -1632,7 +1632,7 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 		URL:    mustParseURL("56"),
 	})
 
-	err = json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	err = json.Unmarshal(responseWriter.Body.Bytes(), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 	test.AssertEquals(t, len(authz.Challenges), 1)
 	// The Challenge Error Type should have had the probs.V2ErrorNS prefix added
@@ -2210,7 +2210,7 @@ func TestNewOrder(t *testing.T) {
 				Method: "POST",
 				Header: map[string][]string{
 					"Content-Length": {"0"},
-					"Content-Type":   []string{expectedJWSContentType},
+					"Content-Type":   {expectedJWSContentType},
 				},
 			},
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No body on POST","status":400}`,
@@ -2262,7 +2262,6 @@ func TestNewOrder(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter.Body.Reset()
-			responseWriter.HeaderMap = http.Header{}
 
 			wfe.NewOrder(ctx, newRequestEvent(), responseWriter, tc.Request)
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedBody)
@@ -2276,7 +2275,6 @@ func TestNewOrder(t *testing.T) {
 
 	// Test that we log the "Created" field.
 	responseWriter.Body.Reset()
-	responseWriter.HeaderMap = http.Header{}
 	request := signAndPost(t, targetPath, signedURL, validOrderBody, 1, wfe.nonceService)
 	requestEvent := newRequestEvent()
 	wfe.NewOrder(ctx, requestEvent, responseWriter, request)
@@ -2316,7 +2314,7 @@ func TestFinalizeOrder(t *testing.T) {
 				Method:     "POST",
 				Header: map[string][]string{
 					"Content-Length": {"0"},
-					"Content-Type":   []string{expectedJWSContentType},
+					"Content-Type":   {expectedJWSContentType},
 				},
 			},
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No body on POST","status":400}`,
@@ -2401,7 +2399,6 @@ func TestFinalizeOrder(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter.Body.Reset()
-			responseWriter.HeaderMap = http.Header{}
 			wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, tc.Request)
 			for k, v := range tc.ExpectedHeaders {
 				got := responseWriter.Header().Get(k)
@@ -2420,7 +2417,6 @@ func TestFinalizeOrder(t *testing.T) {
 	// Go 1.10.4 to 1.11 changed the expected format)
 	badCSRReq := signAndPost(t, "1/8", "http://localhost/1/8", `{"CSR": "ABCD"}`, 1, wfe.nonceService)
 	responseWriter.Body.Reset()
-	responseWriter.HeaderMap = http.Header{}
 	wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, badCSRReq)
 	responseBody := responseWriter.Body.String()
 	test.AssertContains(t, responseBody, "Error parsing certificate request")

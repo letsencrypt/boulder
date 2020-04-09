@@ -252,7 +252,7 @@ func makePrecert(k *ecdsa.PrivateKey) ([]ct.ASN1Cert, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return []ct.ASN1Cert{ct.ASN1Cert{Data: rootBytes}}, precert, err
+	return []ct.ASN1Cert{{Data: rootBytes}}, precert, err
 }
 
 func TestTimestampVerificationFuture(t *testing.T) {

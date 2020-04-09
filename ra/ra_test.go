@@ -1799,27 +1799,27 @@ func newMockSAWithRecentAndOlder(recent, older time.Time) *mockSAWithRecentAndOl
 	}
 	return &mockSAWithRecentAndOlder{
 		authzMap: map[string]*core.Authorization{
-			"recent.com": &core.Authorization{
+			"recent.com": {
 				Identifier: makeIdentifier("recent.com"),
 				Expires:    &recent,
 				Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 			},
-			"older.com": &core.Authorization{
+			"older.com": {
 				Identifier: makeIdentifier("older.com"),
 				Expires:    &older,
 				Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 			},
-			"older2.com": &core.Authorization{
+			"older2.com": {
 				Identifier: makeIdentifier("older2.com"),
 				Expires:    &older,
 				Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 			},
-			"wildcard.com": &core.Authorization{
+			"wildcard.com": {
 				Identifier: makeIdentifier("wildcard.com"),
 				Expires:    &older,
 				Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 			},
-			"*.wildcard.com": &core.Authorization{
+			"*.wildcard.com": {
 				Identifier: makeIdentifier("*.wildcard.com"),
 				Expires:    &older,
 				Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
@@ -1924,7 +1924,7 @@ func TestRecheckCAAEmpty(t *testing.T) {
 func makeHTTP01Authorization(domain string) *core.Authorization {
 	return &core.Authorization{
 		Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: domain},
-		Challenges: []core.Challenge{core.Challenge{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
+		Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 	}
 }
 
@@ -2290,7 +2290,7 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations(
 	ctx context.Context,
 	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
 	authzs := map[string]*core.Authorization{
-		"*.zombo.com": &core.Authorization{
+		"*.zombo.com": {
 			// A static fake ID we can check for in a unit test
 			ID:             "bad-bad-not-good",
 			Identifier:     identifier.DNSIdentifier("*.zombo.com"),
@@ -2299,18 +2299,18 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations(
 			Status: "valid",
 			Challenges: []core.Challenge{
 				// HTTP-01 challenge is valid
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeHTTP01, // The dreaded HTTP-01! X__X
 					Status: core.StatusValid,
 				},
 				// DNS-01 challenge is pending
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeDNS01,
 					Status: core.StatusPending,
 				},
 			},
 		},
-		"zombo.com": &core.Authorization{
+		"zombo.com": {
 			// A static fake ID we can check for in a unit test
 			ID:             "reused-valid-authz",
 			Identifier:     identifier.DNSIdentifier("zombo.com"),
@@ -2319,12 +2319,12 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations(
 			Status: "valid",
 			Challenges: []core.Challenge{
 				// HTTP-01 challenge is valid
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeHTTP01,
 					Status: core.StatusValid,
 				},
 				// DNS-01 challenge is pending
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeDNS01,
 					Status: core.StatusPending,
 				},
@@ -2338,7 +2338,7 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations2(
 	ctx context.Context,
 	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
 	authzs := map[string]*core.Authorization{
-		"*.zombo.com": &core.Authorization{
+		"*.zombo.com": {
 			// A static fake ID we can check for in a unit test
 			ID:             "1",
 			Identifier:     identifier.DNSIdentifier("*.zombo.com"),
@@ -2347,18 +2347,18 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations2(
 			Status: "valid",
 			Challenges: []core.Challenge{
 				// HTTP-01 challenge is valid
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeHTTP01, // The dreaded HTTP-01! X__X
 					Status: core.StatusValid,
 				},
 				// DNS-01 challenge is pending
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeDNS01,
 					Status: core.StatusPending,
 				},
 			},
 		},
-		"zombo.com": &core.Authorization{
+		"zombo.com": {
 			// A static fake ID we can check for in a unit test
 			ID:             "2",
 			Identifier:     identifier.DNSIdentifier("zombo.com"),
@@ -2367,12 +2367,12 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations2(
 			Status: "valid",
 			Challenges: []core.Challenge{
 				// HTTP-01 challenge is valid
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeHTTP01,
 					Status: core.StatusValid,
 				},
 				// DNS-01 challenge is pending
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeDNS01,
 					Status: core.StatusPending,
 				},
@@ -2641,7 +2641,7 @@ func (msa *mockSANearExpiredAuthz) GetAuthorizations(
 	ctx context.Context,
 	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
 	authzs := map[string]*core.Authorization{
-		"zombo.com": &core.Authorization{
+		"zombo.com": {
 			// A static fake ID we can check for in a unit test
 			ID:             "near-expired-authz",
 			Identifier:     identifier.DNSIdentifier("zombo.com"),
@@ -2649,7 +2649,7 @@ func (msa *mockSANearExpiredAuthz) GetAuthorizations(
 			Expires:        &msa.expiry,
 			Status:         "valid",
 			Challenges: []core.Challenge{
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeHTTP01,
 					Status: core.StatusValid,
 				},
@@ -2663,7 +2663,7 @@ func (msa *mockSANearExpiredAuthz) GetAuthorizations2(
 	ctx context.Context,
 	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
 	authzs := map[string]*core.Authorization{
-		"zombo.com": &core.Authorization{
+		"zombo.com": {
 			// A static fake ID we can check for in a unit test
 			ID:             "1",
 			Identifier:     identifier.DNSIdentifier("zombo.com"),
@@ -2671,7 +2671,7 @@ func (msa *mockSANearExpiredAuthz) GetAuthorizations2(
 			Expires:        &msa.expiry,
 			Status:         "valid",
 			Challenges: []core.Challenge{
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeHTTP01,
 					Status: core.StatusValid,
 				},
@@ -3387,7 +3387,7 @@ func TestPerformValidationBadChallengeType(t *testing.T) {
 	exp := fc.Now().Add(10 * time.Hour)
 	authz := core.Authorization{
 		Challenges: []core.Challenge{
-			core.Challenge{
+			{
 				Status: core.StatusValid,
 				Type:   core.ChallengeTypeHTTP01},
 		},

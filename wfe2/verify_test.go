@@ -392,8 +392,8 @@ func TestValidPOSTRequest(t *testing.T) {
 			Name: "POST with a Replay-Nonce HTTP header",
 			Headers: map[string][]string{
 				"Content-Length": dummyContentLength,
-				"Replay-Nonce":   []string{"ima-misplaced-nonce"},
-				"Content-Type":   []string{expectedJWSContentType},
+				"Replay-Nonce":   {"ima-misplaced-nonce"},
+				"Content-Type":   {expectedJWSContentType},
 			},
 			HTTPStatus:    http.StatusBadRequest,
 			ProblemDetail: "HTTP requests should NOT contain Replay-Nonce header. Use JWS nonce field",
@@ -404,7 +404,7 @@ func TestValidPOSTRequest(t *testing.T) {
 			Name: "POST with an empty POST body",
 			Headers: map[string][]string{
 				"Content-Length": dummyContentLength,
-				"Content-Type":   []string{expectedJWSContentType},
+				"Content-Type":   {expectedJWSContentType},
 			},
 			HTTPStatus:    http.StatusBadRequest,
 			ProblemDetail: "No body on POST",
@@ -426,7 +426,7 @@ func TestValidPOSTRequest(t *testing.T) {
 			Name: "POST with an invalid Content-Type header",
 			Headers: map[string][]string{
 				"Content-Length": dummyContentLength,
-				"Content-Type":   []string{"fresh.and.rare"},
+				"Content-Type":   {"fresh.and.rare"},
 			},
 			HTTPStatus: http.StatusUnsupportedMediaType,
 			ProblemDetail: fmt.Sprintf(

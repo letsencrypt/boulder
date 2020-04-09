@@ -102,7 +102,7 @@ func TestBackfill(t *testing.T) {
 	test.AssertEquals(t, keyHashes[0].CertNotAfter, expires)
 	test.AssertEquals(t, keyHashes[1].CertNotAfter, expires)
 	test.AssertEquals(t, keyHashes[2].CertNotAfter, expires)
-	test.Assert(t, bytes.Compare(keyHashes[0].KeyHash, spkiHash[:]) == 0, "SPKI hash mismatch")
-	test.Assert(t, bytes.Compare(keyHashes[1].KeyHash, spkiHash[:]) == 0, "SPKI hash mismatch")
-	test.Assert(t, bytes.Compare(keyHashes[2].KeyHash, spkiHash[:]) == 0, "SPKI hash mismatch")
+	test.Assert(t, bytes.Equal(keyHashes[0].KeyHash, spkiHash[:]), "SPKI hash mismatch")
+	test.Assert(t, bytes.Equal(keyHashes[1].KeyHash, spkiHash[:]), "SPKI hash mismatch")
+	test.Assert(t, bytes.Equal(keyHashes[2].KeyHash, spkiHash[:]), "SPKI hash mismatch")
 }

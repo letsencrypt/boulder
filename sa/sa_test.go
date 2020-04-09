@@ -749,7 +749,7 @@ func setupFQDNSets(t *testing.T, db *db.WrappedMap, fc clock.FakeClock) map[stri
 	testcases := map[string]fqdnTestcase{
 		// One test case with serial "a" issued now and expiring in two hours for
 		// namesA
-		"a": fqdnTestcase{
+		"a": {
 			Serial:       "a",
 			Names:        namesA,
 			ExpectedHash: expectedHashA,
@@ -758,7 +758,7 @@ func setupFQDNSets(t *testing.T, db *db.WrappedMap, fc clock.FakeClock) map[stri
 		},
 		// One test case with serial "b", issued one hour from now and expiring in
 		// two hours, also for namesA
-		"b": fqdnTestcase{
+		"b": {
 			Serial:       "b",
 			Names:        namesA,
 			ExpectedHash: expectedHashA,
@@ -767,7 +767,7 @@ func setupFQDNSets(t *testing.T, db *db.WrappedMap, fc clock.FakeClock) map[stri
 		},
 		// One test case with serial "c", issued one hour from now and expiring in
 		// two hours, for namesB
-		"c": fqdnTestcase{
+		"c": {
 			Serial:       "c",
 			Names:        namesB,
 			ExpectedHash: expectedHashB,
@@ -776,7 +776,7 @@ func setupFQDNSets(t *testing.T, db *db.WrappedMap, fc clock.FakeClock) map[stri
 		},
 		// One test case with serial "d", issued five hours in the past and expiring
 		// in two hours from now, with namesC
-		"d": fqdnTestcase{
+		"d": {
 			Serial:       "d",
 			Names:        namesC,
 			ExpectedHash: expectedHashC,
@@ -883,7 +883,7 @@ func TestGetNewIssuancesByFQDNSet(t *testing.T) {
 
 	// Calling getNewIssuancesByFQDNSet with FQDNSet hashes that don't exist
 	// should return 0
-	count, err = sa.getNewIssuancesByFQDNSet(sa.dbMap, []setHash{setHash{0xC0, 0xFF, 0xEE}, setHash{0x13, 0x37}}, earliest)
+	count, err = sa.getNewIssuancesByFQDNSet(sa.dbMap, []setHash{{0xC0, 0xFF, 0xEE}, {0x13, 0x37}}, earliest)
 	test.AssertNotError(t, err, "Error calling getNewIssuancesByFQDNSet for non-existent set hashes")
 	test.AssertEquals(t, count, 0)
 
@@ -2019,7 +2019,7 @@ func TestCountPendingAuthorizations2(t *testing.T) {
 func TestAuthzModelMapToPB(t *testing.T) {
 	baseExpires := time.Now()
 	input := map[string]authzModel{
-		"example.com": authzModel{
+		"example.com": {
 			ID:              123,
 			IdentifierType:  0,
 			IdentifierValue: "example.com",
@@ -2028,7 +2028,7 @@ func TestAuthzModelMapToPB(t *testing.T) {
 			Expires:         baseExpires,
 			Challenges:      4,
 		},
-		"www.example.com": authzModel{
+		"www.example.com": {
 			ID:              124,
 			IdentifierType:  0,
 			IdentifierValue: "www.example.com",
@@ -2037,7 +2037,7 @@ func TestAuthzModelMapToPB(t *testing.T) {
 			Expires:         baseExpires,
 			Challenges:      1,
 		},
-		"other.example.net": authzModel{
+		"other.example.net": {
 			ID:              125,
 			IdentifierType:  0,
 			IdentifierValue: "other.example.net",

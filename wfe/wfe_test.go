@@ -410,7 +410,7 @@ func mustParseURL(s string) *url.URL {
 
 func sortHeader(s string) string {
 	a := strings.Split(s, ", ")
-	sort.Sort(sort.StringSlice(a))
+	sort.Strings(a)
 	return strings.Join(a, ", ")
 }
 
@@ -1039,7 +1039,6 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertContains(t, reqlogs[0], `"CommonName":"not-an-example.com",`)
 
 	mockLog.Clear()
-	responseWriter.HeaderMap = http.Header{}
 	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(signRequest(t, `{
 			"resource":"new-cert",
@@ -1272,7 +1271,7 @@ func TestNewECDSARegistration(t *testing.T) {
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter, makePostRequest(result.FullSerialize()))
 
 	var reg core.Registration
-	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
+	err = json.Unmarshal(responseWriter.Body.Bytes(), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
 	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
 	test.AssertEquals(t, (*reg.Contact)[0], "mailto:person@mail.com")
@@ -1331,7 +1330,7 @@ func TestEmptyRegistration(t *testing.T) {
 
 	// We should get back a populated Registration
 	var reg core.Registration
-	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
+	err = json.Unmarshal(responseWriter.Body.Bytes(), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
 	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
 	test.AssertEquals(t, (*reg.Contact)[0], "mailto:person@mail.com")
@@ -1466,7 +1465,7 @@ func TestNewRegistration(t *testing.T) {
 		makePostRequest(result.FullSerialize()))
 
 	var reg core.Registration
-	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
+	err = json.Unmarshal(responseWriter.Body.Bytes(), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
 	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
 	test.AssertEquals(t, (*reg.Contact)[0], "mailto:person@mail.com")
@@ -1856,7 +1855,7 @@ func TestAuthorization(t *testing.T) {
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"identifier":{"type":"dns","value":"test.com"}}`)
 
 	var authz core.Authorization
-	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	err := json.Unmarshal(responseWriter.Body.Bytes(), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 
 	// Expired authorizations should be inaccessible
@@ -1942,7 +1941,7 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 	})
 
 	var authz core.Authorization
-	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	err := json.Unmarshal(responseWriter.Body.Bytes(), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 	test.AssertEquals(t, len(authz.Challenges), 1)
 	// The Challenge Error Type should have its prefix unmodified
@@ -1957,7 +1956,7 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 		URL:    mustParseURL(authzURL),
 	})
 
-	err = json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	err = json.Unmarshal(responseWriter.Body.Bytes(), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 	test.AssertEquals(t, len(authz.Challenges), 1)
 	// The Challenge Error Type should have had the probs.V1ErrorNS prefix added
@@ -2060,7 +2059,6 @@ func TestRegistration(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	// Test POST valid JSON with registration up in the mock (with old agreement URL)
-	responseWriter.HeaderMap = http.Header{}
 	wfe.SubscriberAgreementURL = "http://example.invalid/new-terms"
 	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"` + agreementURL + `"}`))
 	test.AssertNotError(t, err, "Couldn't sign")
