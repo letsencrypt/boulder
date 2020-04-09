@@ -296,14 +296,14 @@ func newSigner(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label stri
 	var keyType pkcs11helpers.KeyType
 	switch {
 	// 0x00000000, CKK_RSA
-	case bytes.Compare(attrs[0].Value, []byte{0, 0, 0, 0, 0, 0, 0, 0}) == 0:
+	case bytes.Equal(attrs[0].Value, []byte{0, 0, 0, 0, 0, 0, 0, 0}):
 		keyType = pkcs11helpers.RSAKey
 		pub, err = pkcs11helpers.GetRSAPublicKey(ctx, session, pubHandle)
 		if err != nil {
 			return nil, fmt.Errorf("failed to retrieve public key: %s", err)
 		}
 	// 0x00000003, CKK_ECDSA
-	case bytes.Compare(attrs[0].Value, []byte{3, 0, 0, 0, 0, 0, 0, 0}) == 0:
+	case bytes.Equal(attrs[0].Value, []byte{3, 0, 0, 0, 0, 0, 0, 0}):
 		keyType = pkcs11helpers.ECDSAKey
 		pub, err = pkcs11helpers.GetECDSAPublicKey(ctx, session, pubHandle)
 		if err != nil {
