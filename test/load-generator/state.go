@@ -294,7 +294,7 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	strat, err := acme.NewChallengeStrategy(challStrat)
+	strategy, err := acme.NewChallengeStrategy(challStrat)
 	if err != nil {
 		return nil, err
 	}
@@ -323,7 +323,7 @@ func New(
 	s := &State{
 		httpClient:      httpClient,
 		directory:       directory,
-		challStrat:      strat,
+		challStrat:      strategy,
 		certKey:         certKey,
 		domainBase:      domainBase,
 		callLatency:     latencyFile,

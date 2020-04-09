@@ -1,0 +1,17 @@
+linters:
+  disable-all: true
+  enable:
+    - govet
+    - gofmt
+    - ineffassign
+    - errcheck
+    - misspell
+    - staticcheck
+linters-settings:
+  errcheck:
+    ignore: fmt:[FS]?[Pp]rint*,io:Write,os:Remove,net/http:Write,github.com/miekg/dns:WriteMsg,net:Write,encoding/binary:Write
+issues:
+  exclude-rules:
+    - linters:
+      - staticcheck
+      text: "(SA1019|ST1005|ST1013|SA6003|SA5011|S1029|SA2002):"

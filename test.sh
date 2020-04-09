@@ -68,19 +68,9 @@ function run_test_coverage() {
 # Run various linters.
 #
 if [[ "$RUN" =~ "lints" ]] ; then
-  staticcheck -checks=inherit,-S1021,-ST1005,-SA1019,-S1030,-S1004,-S1032,-ST1017,-ST1013,-SA6003,-SA5011,-ST1012,-S1029,-SA2002 ./...
-  run_and_expect_silence go vet ./...
-  # Run gofmt instead of go fmt because of
-  # https://github.com/golang/go/issues/31976
-  run_and_expect_silence bash -c "find . -name '*.go' -not -path './vendor/*' -print | xargs -n1 gofmt -l"
+  golangci-lint run ./...
   run_and_expect_silence ./test/test-no-outdated-migrations.sh
-  ineffassign .
   python test/grafana/lint.py
-
-  run_and_expect_silence errcheck \
-    -ignore fmt:Fprintf,fmt:Fprintln,fmt:Fprint,io:Write,os:Remove,net/http:Write \
-    $(go list -f '{{ .ImportPath }}' ./... | grep -v test)
-
   # Check for common spelling errors using codespell.
   # Update .codespell.ignore.txt if you find false positives (NOTE: ignored
   # words should be all lowercase).
