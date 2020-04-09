@@ -2,6 +2,9 @@ package goodkey
 
 import (
 	"crypto"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"io/ioutil"
 
@@ -10,13 +13,15 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
-// blockedKeys is a type for maintaining a map of Base64 encoded SHA256 hashes
+// blockedKeys is a type for maintaining a map of SHA256 hashes
 // of SubjectPublicKeyInfo's that should be considered blocked.
 // blockedKeys are created by using loadBlockedKeysList.
-type blockedKeys map[string]bool
+type blockedKeys map[core.Sha256Digest]bool
+
+var ErrWrongDecodedSize = errors.New("not enough bytes decoded for sha256 hash")
 
 // blocked checks if the given public key is considered administratively
-// blocked based on a Base64 encoded SHA256 hash of the SubjectPublicKeyInfo.
+// blocked based on a SHA256 hash of the SubjectPublicKeyInfo.
 // Important: blocked should not be called except on a blockedKeys instance
 // returned from loadBlockedKeysList.
 // function should not be used until after `loadBlockedKeysList` has returned.
@@ -33,7 +38,7 @@ func (b blockedKeys) blocked(key crypto.PublicKey) (bool, error) {
 }
 
 // loadBlockedKeysList creates a blockedKeys object that can be used to check if
-// a key is blocked. It creates a lookup map from a list of Base64 encoded
+// a key is blocked. It creates a lookup map from a list of
 // SHA256 hashes of SubjectPublicKeyInfo's in the input YAML file
 // with the expected format:
 //
@@ -52,19 +57,41 @@ func loadBlockedKeysList(filename string) (*blockedKeys, error) {
 	}
 
 	var list struct {
-		BlockedHashes []string `yaml:"blocked"`
+		BlockedHashes    []string `yaml:"blocked"`
+		BlockedHashesHex []string `yaml:"blockedHashesHex"`
 	}
 	if err := yaml.Unmarshal(yamlBytes, &list); err != nil {
 		return nil, err
 	}
 
-	if len(list.BlockedHashes) == 0 {
+	if len(list.BlockedHashes) == 0 && len(list.BlockedHashesHex) == 0 {
 		return nil, errors.New("no blocked hashes in YAML")
 	}
 
-	blockedKeys := make(blockedKeys, len(list.BlockedHashes))
-	for _, hash := range list.BlockedHashes {
-		blockedKeys[hash] = true
+	blockedKeys := make(blockedKeys, len(list.BlockedHashes)+len(list.BlockedHashesHex))
+	for _, b64Hash := range list.BlockedHashes {
+		decoded, err := base64.StdEncoding.DecodeString(b64Hash)
+		if err != nil {
+			return nil, err
+		}
+		if len(decoded) != sha256.Size {
+			return nil, ErrWrongDecodedSize
+		}
+		var sha256Digest core.Sha256Digest
+		copy(sha256Digest[:], decoded[0:sha256.Size])
+		blockedKeys[sha256Digest] = true
+	}
+	for _, hexHash := range list.BlockedHashesHex {
+		decoded, err := hex.DecodeString(hexHash)
+		if err != nil {
+			return nil, err
+		}
+		if len(decoded) != sha256.Size {
+			return nil, ErrWrongDecodedSize
+		}
+		var sha256Digest core.Sha256Digest
+		copy(sha256Digest[:], decoded[0:sha256.Size])
+		blockedKeys[sha256Digest] = true
 	}
 	return &blockedKeys, nil
 }

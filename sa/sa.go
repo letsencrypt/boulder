@@ -115,7 +115,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *j
 	if key == nil {
 		return core.Registration{}, fmt.Errorf("key argument to GetRegistrationByKey must not be nil")
 	}
-	sha, err := core.KeyDigest(key.Key)
+	sha, err := core.KeyDigestB64(key.Key)
 	if err != nil {
 		return core.Registration{}, err
 	}
