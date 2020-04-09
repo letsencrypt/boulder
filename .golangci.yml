@@ -14,4 +14,4 @@ issues:
   exclude-rules:
     - linters:
       - staticcheck
-      text: "(S1021|ST1005|SA1019|S1030|S1004|S1032|ST1017|ST1013|SA6003|SA5011|ST1012|S1029|SA2002):"
+      text: "(SA1019|ST1005|ST1013|SA6003|SA5011|S1029|SA2002):"
