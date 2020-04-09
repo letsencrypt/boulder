@@ -60,7 +60,7 @@ type randomChallengeStrategy struct {
 
 // PickChallenge for a randomChallengeStrategy returns a random challenge from
 // the authorization.
-func (strat randomChallengeStrategy) PickChallenge(authz *core.Authorization) (*core.Challenge, error) {
+func (strategy randomChallengeStrategy) PickChallenge(authz *core.Authorization) (*core.Challenge, error) {
 	if authz == nil {
 		return nil, ErrPickChallengeNilAuthz
 	}
@@ -80,7 +80,7 @@ type preferredTypeChallengeStrategy struct {
 // PickChallenge for a preferredTypeChallengeStrategy returns the authorization
 // challenge that has Type equal the preferredType. An error is returned if the
 // challenge doesn't have an authorization matching the preferredType.
-func (strat preferredTypeChallengeStrategy) PickChallenge(authz *core.Authorization) (*core.Challenge, error) {
+func (strategy preferredTypeChallengeStrategy) PickChallenge(authz *core.Authorization) (*core.Challenge, error) {
 	if authz == nil {
 		return nil, ErrPickChallengeNilAuthz
 	}
@@ -88,11 +88,11 @@ func (strat preferredTypeChallengeStrategy) PickChallenge(authz *core.Authorizat
 		return nil, ErrPickChallengeAuthzMissingChallenges
 	}
 	for _, chall := range authz.Challenges {
-		if chall.Type == strat.preferredType {
+		if chall.Type == strategy.preferredType {
 			return &chall, nil
 		}
 	}
 	return nil, fmt.Errorf("authorization (ID %q) had no %q type challenge",
 		authz.ID,
-		strat.preferredType)
+		strategy.preferredType)
 }

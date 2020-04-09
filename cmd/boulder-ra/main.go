@@ -167,7 +167,7 @@ func main() {
 
 	// Boulder's components assume that there will always be CT logs configured.
 	// Issuing a certificate without SCTs embedded is a miss-issuance event in the
-	// enviromnent Boulder is built for. Exit early if there is no CTLogGroups2
+	// environment Boulder is built for. Exit early if there is no CTLogGroups2
 	// configured.
 	if len(c.RA.CTLogGroups2) == 0 {
 		cmd.Fail("CTLogGroups2 must not be empty")
