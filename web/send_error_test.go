@@ -18,14 +18,14 @@ func TestSendErrorSubProblemNamespace(t *testing.T) {
 		Detail: "bad",
 	}).WithSubErrors(
 		[]berrors.SubBoulderError{
-			berrors.SubBoulderError{
+			{
 				Identifier: identifier.DNSIdentifier("example.com"),
 				BoulderError: &berrors.BoulderError{
 					Type:   berrors.Malformed,
 					Detail: "nop",
 				},
 			},
-			berrors.SubBoulderError{
+			{
 				Identifier: identifier.DNSIdentifier("what about example.com"),
 				BoulderError: &berrors.BoulderError{
 					Type:   berrors.Malformed,
@@ -72,14 +72,14 @@ func TestSendErrorSubProbLogging(t *testing.T) {
 		Detail: "bad",
 	}).WithSubErrors(
 		[]berrors.SubBoulderError{
-			berrors.SubBoulderError{
+			{
 				Identifier: identifier.DNSIdentifier("example.com"),
 				BoulderError: &berrors.BoulderError{
 					Type:   berrors.Malformed,
 					Detail: "nop",
 				},
 			},
-			berrors.SubBoulderError{
+			{
 				Identifier: identifier.DNSIdentifier("what about example.com"),
 				BoulderError: &berrors.BoulderError{
 					Type:   berrors.Malformed,

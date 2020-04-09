@@ -94,7 +94,7 @@ func TestWithSubProblems(t *testing.T) {
 		HTTPStatus: statusTooManyRequests,
 	}
 	subProbs := []SubProblemDetails{
-		SubProblemDetails{
+		{
 			Identifier: identifier.DNSIdentifier("example.com"),
 			ProblemDetails: ProblemDetails{
 				Type:       RateLimitedProblem,
@@ -102,7 +102,7 @@ func TestWithSubProblems(t *testing.T) {
 				HTTPStatus: statusTooManyRequests,
 			},
 		},
-		SubProblemDetails{
+		{
 			Identifier: identifier.DNSIdentifier("what about example.com"),
 			ProblemDetails: ProblemDetails{
 				Type:       MalformedProblem,

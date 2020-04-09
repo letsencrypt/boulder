@@ -76,22 +76,22 @@ func TestV2AuthzModel(t *testing.T) {
 		Status:         &status,
 		Expires:        &expires,
 		Challenges: []*corepb.Challenge{
-			&corepb.Challenge{
+			{
 				Type:   &challType,
 				Status: &status,
 				Token:  &token,
 				Validationrecords: []*corepb.ValidationRecord{
-					&corepb.ValidationRecord{
+					{
 						Hostname:          &hostname,
 						Port:              &port,
 						AddressUsed:       []byte("1.2.3.4"),
 						Url:               &url,
-						AddressesResolved: [][]byte{[]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
-						AddressesTried:    [][]byte{[]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+						AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
 					},
 				},
 			},
-			&corepb.Challenge{
+			{
 				Type:   &challType2,
 				Status: &statusPending,
 				Token:  &token,

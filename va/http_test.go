@@ -742,7 +742,7 @@ func TestFetchHTTP(t *testing.T) {
 				"Fetching http://example.com/timeout: " +
 					"Timeout after connect (your server may be slow or overloaded)"),
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/timeout",
@@ -768,7 +768,7 @@ func TestFetchHTTP(t *testing.T) {
 					`redirect target. Only "http" and "https" protocol schemes ` +
 					`are supported, not "gopher"`),
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/redir-bad-proto",
@@ -785,7 +785,7 @@ func TestFetchHTTP(t *testing.T) {
 				"Fetching https://example.com:1987: Invalid port in redirect target. "+
 					"Only ports %d and 443 are supported, not 1987", httpPort),
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/redir-bad-port",
@@ -802,7 +802,7 @@ func TestFetchHTTP(t *testing.T) {
 				"Fetching https://127.0.0.1: Invalid host in redirect target " +
 					`"127.0.0.1". Only domain names are supported, not IP addresses`),
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/redir-bad-host",
@@ -819,7 +819,7 @@ func TestFetchHTTP(t *testing.T) {
 				"Invalid response from http://example.com/bad-status-code " +
 					"[127.0.0.1]: 410"),
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/bad-status-code",
@@ -837,7 +837,7 @@ func TestFetchHTTP(t *testing.T) {
 					"[127.0.0.1]: %q", expectedTruncatedResp.String(),
 			),
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/resp-too-big",
@@ -853,7 +853,7 @@ func TestFetchHTTP(t *testing.T) {
 			ExpectedProblem: probs.ConnectionFailure(
 				"Fetching http://ipv6.localhost/ok: Error getting validation data"),
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "ipv6.localhost",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://ipv6.localhost/ok",
@@ -868,7 +868,7 @@ func TestFetchHTTP(t *testing.T) {
 			Path:         "/ok",
 			ExpectedBody: "ok",
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "ipv4.and.ipv6.localhost",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://ipv4.and.ipv6.localhost/ok",
@@ -876,7 +876,7 @@ func TestFetchHTTP(t *testing.T) {
 					// The first validation record should have used the IPv6 addr
 					AddressUsed: net.ParseIP("::1"),
 				},
-				core.ValidationRecord{
+				{
 					Hostname:          "ipv4.and.ipv6.localhost",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://ipv4.and.ipv6.localhost/ok",
@@ -892,7 +892,7 @@ func TestFetchHTTP(t *testing.T) {
 			Path:         "/ok",
 			ExpectedBody: "ok",
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/ok",
@@ -907,14 +907,14 @@ func TestFetchHTTP(t *testing.T) {
 			Path:         "/redir-uppercase-publicsuffix",
 			ExpectedBody: "ok",
 			ExpectedRecords: []core.ValidationRecord{
-				core.ValidationRecord{
+				{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/redir-uppercase-publicsuffix",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 				},
-				core.ValidationRecord{
+				{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/ok",
