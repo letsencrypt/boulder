@@ -399,7 +399,7 @@ func mustParseURL(s string) *url.URL {
 
 func sortHeader(s string) string {
 	a := strings.Split(s, ", ")
-	sort.Sort(sort.StringSlice(a))
+	sort.Strings(a)
 	return strings.Join(a, ", ")
 }
 
