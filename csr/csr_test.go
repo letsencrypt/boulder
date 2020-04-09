@@ -96,7 +96,7 @@ func TestVerifyCSR(t *testing.T) {
 			invalidPubKey,
 		},
 		{
-			&x509.CertificateRequest{PublicKey: private.PublicKey},
+			&x509.CertificateRequest{PublicKey: &private.PublicKey},
 			100,
 			testingPolicy,
 			&mockPA{},
