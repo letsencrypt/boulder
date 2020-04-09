@@ -267,17 +267,17 @@ func (v cancelledVA) PerformValidation(_ context.Context, _ string, _ core.Chall
 // always return errors.
 type brokenRemoteVA struct{}
 
-// brokenRemoteVAError is the error returned by a brokenRemoteVA's
+// errBrokenRemoteVA is the error returned by a brokenRemoteVA's
 // PerformValidation and IsSafeDomain functions.
-var brokenRemoteVAError = errors.New("brokenRemoteVA is broken")
+var errBrokenRemoteVA = errors.New("brokenRemoteVA is broken")
 
-// PerformValidation returns brokenRemoteVAError unconditionally
+// PerformValidation returns errBrokenRemoteVA unconditionally
 func (b *brokenRemoteVA) PerformValidation(
 	_ context.Context,
 	_ string,
 	_ core.Challenge,
 	_ core.Authorization) ([]core.ValidationRecord, error) {
-	return nil, brokenRemoteVAError
+	return nil, errBrokenRemoteVA
 }
 
 func TestMultiVA(t *testing.T) {
@@ -331,7 +331,7 @@ func TestMultiVA(t *testing.T) {
 
 	expectedInternalErrLine := fmt.Sprintf(
 		`ERR: \[AUDIT\] Remote VA "broken".PerformValidation failed: %s`,
-		brokenRemoteVAError.Error())
+		errBrokenRemoteVA.Error())
 
 	testCases := []struct {
 		Name         string
