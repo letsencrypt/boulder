@@ -1,8 +1,10 @@
 # Multi-VA implementation
 
-Boulder supports a multi-perspective validation feature, currently in a test
-deployment by Let's Encrypt. This is intended to increase resilience against
-local network hijacks and BGP attacks.
+Boulder supports a multi-perspective validation feature intended to increase
+resilience against local network hijacks and BGP attacks. It is currently
+[deployed in a production
+capacity](https://letsencrypt.org/2020/02/19/multi-perspective-validation.html)
+by Let's Encrypt.
 
 If you follow the [Development Instructions](https://github.com/letsencrypt/boulder#development)
 to set up a Boulder environment in Docker and then change your `docker-compose.yml`'s
