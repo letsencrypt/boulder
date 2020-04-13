@@ -239,21 +239,14 @@ func (policy *KeyPolicy) goodKeyRSA(key *rsa.PublicKey) (err error) {
 	}
 
 	// Rather than support arbitrary exponents, which significantly increases
-	// the size of the key space we allow, we restrict E to the standard RSA
-	// exponent 65537.
+	// the size of the key space we allow, we restrict E to the defacto standard
+	// RSA exponent 65537. There is no specific standards document that specifies
+	// 65537 as the 'best' exponent, but ITU X.509 Annex C suggests there are
+	// notable merits for using it if using a fixed exponent.
 	if key.E != 65537 {
 		return berrors.MalformedError("key exponent must be 65537")
 	}
 
-	// The CA SHALL confirm that the value of the public exponent is an
-	// odd number equal to 3 or more. Additionally, the public exponent
-	// SHOULD be in the range between 2^16 + 1 and 2^256-1.
-	// NOTE: rsa.PublicKey cannot represent an exponent part greater than
-	// 2^32 - 1 or 2^64 - 1, because it stores E as an integer. So we
-	// don't need to check the upper bound.
-	if (key.E%2) == 0 || key.E < ((1<<16)+1) {
-		return berrors.MalformedError("key exponent should be odd and >2^16: %d", key.E)
-	}
 	// The modulus SHOULD also have the following characteristics: an odd
 	// number, not the power of a prime, and have no factors smaller than 752.
 	// TODO: We don't yet check for "power of a prime."
