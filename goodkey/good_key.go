@@ -237,6 +237,14 @@ func (policy *KeyPolicy) goodKeyRSA(key *rsa.PublicKey) (err error) {
 	if modulusBitLen%8 != 0 {
 		return berrors.MalformedError("key length wasn't a multiple of 8: %d", modulusBitLen)
 	}
+
+	// Rather than support arbitrary exponents, which significantly increases
+	// the size of the key space we allow, we restrict E to the standard RSA
+	// exponent 65537.
+	if key.E != 65537 {
+		return berrors.MalformedError("key exponent must be 65537")
+	}
+
 	// The CA SHALL confirm that the value of the public exponent is an
 	// odd number equal to 3 or more. Additionally, the public exponent
 	// SHOULD be in the range between 2^16 + 1 and 2^256-1.

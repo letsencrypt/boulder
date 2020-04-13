@@ -74,31 +74,22 @@ func TestModulusModulo8(t *testing.T) {
 
 var mod2048 = big.NewInt(0).Sub(big.NewInt(0).Lsh(big.NewInt(1), 2048), big.NewInt(1))
 
-func TestSmallExponent(t *testing.T) {
+func TestNonStandardExp(t *testing.T) {
+	evenMod := big.NewInt(0).Add(big.NewInt(1).Lsh(big.NewInt(1), 2047), big.NewInt(2))
 	key := rsa.PublicKey{
-		N: mod2048,
-		E: 5,
+		N: evenMod,
+		E: (1 << 16),
 	}
 	err := testingPolicy.GoodKey(&key)
-	test.AssertError(t, err, "Should have rejected small exponent")
-	test.AssertEquals(t, err.Error(), "key exponent should be odd and >2^16: 5")
-}
-
-func TestEvenExponent(t *testing.T) {
-	key := rsa.PublicKey{
-		N: mod2048,
-		E: 1 << 17,
-	}
-	err := testingPolicy.GoodKey(&key)
-	test.AssertError(t, err, "Should have rejected even exponent")
-	test.AssertEquals(t, err.Error(), "key exponent should be odd and >2^16: 131072")
+	test.AssertError(t, err, "Should have rejected non-standard exponent")
+	test.AssertEquals(t, err.Error(), "key exponent must be 65537")
 }
 
 func TestEvenModulus(t *testing.T) {
 	evenMod := big.NewInt(0).Add(big.NewInt(1).Lsh(big.NewInt(1), 2047), big.NewInt(2))
 	key := rsa.PublicKey{
 		N: evenMod,
-		E: (1 << 17) + 1,
+		E: (1 << 16) + 1,
 	}
 	err := testingPolicy.GoodKey(&key)
 	test.AssertError(t, err, "Should have rejected even modulus")
@@ -108,7 +99,7 @@ func TestEvenModulus(t *testing.T) {
 func TestModulusDivisibleBySmallPrime(t *testing.T) {
 	key := rsa.PublicKey{
 		N: mod2048,
-		E: (1 << 17) + 1,
+		E: (1 << 16) + 1,
 	}
 	err := testingPolicy.GoodKey(&key)
 	test.AssertError(t, err, "Should have rejected modulus divisible by 3")
