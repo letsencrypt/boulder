@@ -243,6 +243,14 @@ func (policy *KeyPolicy) goodKeyRSA(key *rsa.PublicKey) (err error) {
 	// RSA exponent 65537. There is no specific standards document that specifies
 	// 65537 as the 'best' exponent, but ITU X.509 Annex C suggests there are
 	// notable merits for using it if using a fixed exponent.
+	//
+	// The CABF Baseline Requirements state:
+	//   The CA SHALL confirm that the value of the public exponent is an
+	//   odd number equal to 3 or more. Additionally, the public exponent
+	//   SHOULD be in the range between 2^16 + 1 and 2^256-1.
+	//
+	// By only allowing one exponent that fits these constraints we satisfy
+	// these requirements.
 	if key.E != 65537 {
 		return berrors.MalformedError("key exponent must be 65537")
 	}
