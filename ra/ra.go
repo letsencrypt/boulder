@@ -479,26 +479,18 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 // checkInvalidAuthorizationLimits checks the failed validation limit for each
 // of the provided hostnames. It returns the first error.
 func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimits(ctx context.Context, regID int64, hostnames []string) error {
-	if features.Enabled(features.ParallelCheckFailedValidation) {
-		results := make(chan error, len(hostnames))
-		for _, hostname := range hostnames {
-			go func(hostname string) {
-				results <- ra.checkInvalidAuthorizationLimit(ctx, regID, hostname)
-			}(hostname)
-		}
-		// We don't have to wait for all of the goroutines to finish because there's
-		// enough capacity in the chan for them all to write their result even if
-		// nothing is reading off the chan anymore.
-		for i := 0; i < len(hostnames); i++ {
-			if err := <-results; err != nil {
-				return err
-			}
-		}
-	} else {
-		for _, hostname := range hostnames {
-			if err := ra.checkInvalidAuthorizationLimit(ctx, regID, hostname); err != nil {
-				return err
-			}
+	results := make(chan error, len(hostnames))
+	for _, hostname := range hostnames {
+		go func(hostname string) {
+			results <- ra.checkInvalidAuthorizationLimit(ctx, regID, hostname)
+		}(hostname)
+	}
+	// We don't have to wait for all of the goroutines to finish because there's
+	// enough capacity in the chan for them all to write their result even if
+	// nothing is reading off the chan anymore.
+	for i := 0; i < len(hostnames); i++ {
+		if err := <-results; err != nil {
+			return err
 		}
 	}
 	return nil
@@ -1360,18 +1352,16 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(
 }
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
-	if features.Enabled(features.CheckRenewalFirst) {
-		// check if there is already an existing certificate for
-		// the exact name set we are issuing for. If so bypass the
-		// the certificatesPerName limit.
-		exists, err := ra.SA.FQDNSetExists(ctx, names)
-		if err != nil {
-			return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
-		}
-		if exists {
-			ra.rateLimitCounter.WithLabelValues("certificates_for_domain", "FQDN set bypass").Inc()
-			return nil
-		}
+	// check if there is already an existing certificate for
+	// the exact name set we are issuing for. If so bypass the
+	// the certificatesPerName limit.
+	exists, err := ra.SA.FQDNSetExists(ctx, names)
+	if err != nil {
+		return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
+	}
+	if exists {
+		ra.rateLimitCounter.WithLabelValues("certificates_for_domain", "FQDN set bypass").Inc()
+		return nil
 	}
 
 	tldNames, err := domainsForRateLimiting(names)
@@ -1386,18 +1376,16 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 	}
 
 	if len(namesOutOfLimit) > 0 {
-		if !features.Enabled(features.CheckRenewalFirst) {
-			// check if there is already an existing certificate for
-			// the exact name set we are issuing for. If so bypass the
-			// the certificatesPerName limit.
-			exists, err := ra.SA.FQDNSetExists(ctx, names)
-			if err != nil {
-				return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
-			}
-			if exists {
-				ra.rateLimitCounter.WithLabelValues("certificates_for_domain", "FQDN set bypass").Inc()
-				return nil
-			}
+		// check if there is already an existing certificate for
+		// the exact name set we are issuing for. If so bypass the
+		// the certificatesPerName limit.
+		exists, err := ra.SA.FQDNSetExists(ctx, names)
+		if err != nil {
+			return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
+		}
+		if exists {
+			ra.rateLimitCounter.WithLabelValues("certificates_for_domain", "FQDN set bypass").Inc()
+			return nil
 		}
 
 		ra.log.Infof("Rate limit exceeded, CertificatesForDomain, regID: %d, domains: %s", regID, strings.Join(namesOutOfLimit, ", "))

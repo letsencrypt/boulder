@@ -871,18 +871,13 @@ func TestNonceEndpoint(t *testing.T) {
 		URL:    mustParseURL(newNoncePath),
 	}
 
-	// Make two PAG requests. We can't use the same req twice because the nonce in
-	// the signature will be stale the 2nd time.
-	_, _, jwsBodyA := signRequestKeyID(t, 1, nil, fmt.Sprintf("http://localhost%s", newNoncePath), "", wfe.nonceService)
-	_, _, jwsBodyB := signRequestKeyID(t, 1, nil, fmt.Sprintf("http://localhost%s", newNoncePath), "", wfe.nonceService)
-	postAsGetReqA := makePostRequestWithPath(newNoncePath, jwsBodyA)
-	postAsGetReqB := makePostRequestWithPath(newNoncePath, jwsBodyB)
+	_, _, jwsBody := signRequestKeyID(t, 1, nil, fmt.Sprintf("http://localhost%s", newNoncePath), "", wfe.nonceService)
+	postAsGetReq := makePostRequestWithPath(newNoncePath, jwsBody)
 
 	testCases := []struct {
-		name              string
-		request           *http.Request
-		expectedStatus    int
-		headNonceStatusOK bool
+		name           string
+		request        *http.Request
+		expectedStatus int
 	}{
 		{
 			name:           "GET new-nonce request",
@@ -890,38 +885,19 @@ func TestNonceEndpoint(t *testing.T) {
 			expectedStatus: http.StatusNoContent,
 		},
 		{
-			name:           "HEAD new-nonce request (legacy status code)",
+			name:           "HEAD new-nonce request",
 			request:        headReq,
-			expectedStatus: http.StatusNoContent,
+			expectedStatus: http.StatusOK,
 		},
 		{
-			name:              "HEAD new-nonce request (ok status code)",
-			request:           headReq,
-			expectedStatus:    http.StatusOK,
-			headNonceStatusOK: true,
-		},
-		{
-			name:           "POST-as-GET new-nonce request (legacy status code)",
-			request:        postAsGetReqA,
-			expectedStatus: http.StatusNoContent,
-		},
-		{
-			name:              "POST-as-GET new-nonce request (ok status code)",
-			request:           postAsGetReqB,
-			expectedStatus:    http.StatusOK,
-			headNonceStatusOK: true,
+			name:           "POST-as-GET new-nonce request",
+			request:        postAsGetReq,
+			expectedStatus: http.StatusOK,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			if tc.headNonceStatusOK {
-				if err := features.Set(map[string]bool{"HeadNonceStatusOK": true}); err != nil {
-					t.Fatalf("Failed to enable HeadNonceStatusOK feature: %v", err)
-				}
-				defer features.Reset()
-			}
-
 			responseWriter := httptest.NewRecorder()
 			mux.ServeHTTP(responseWriter, tc.request)
 			// The response should have the expected HTTP status code
@@ -1309,7 +1285,18 @@ func TestNewECDSAAccount(t *testing.T) {
 	responseWriter = httptest.NewRecorder()
 	// POST, Valid JSON, Key already in use
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"id\": 3,\n  \"key\": {\n    \"kty\": \"EC\",\n    \"crv\": \"P-256\",\n    \"x\": \"FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao\",\n    \"y\": \"S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk\"\n  },\n  \"initialIp\": \"\",\n  \"createdAt\": \"0001-01-01T00:00:00Z\",\n  \"status\": \"\"\n}")
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
+		`{
+		"key": {
+			"kty": "EC",
+			"crv": "P-256",
+			"x": "FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao",
+			"y": "S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk"
+		},
+		"initialIp": "",
+		"createdAt": "0001-01-01T00:00:00Z",
+		"status": ""
+		}`)
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/3")
 	test.AssertEquals(t, responseWriter.Code, 200)
 
@@ -1478,7 +1465,20 @@ func TestNewAccount(t *testing.T) {
 		t, responseWriter.Header().Get("Location"),
 		"http://localhost/acme/acct/1")
 	test.AssertEquals(t, responseWriter.Code, 200)
-	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"id\": 1,\n  \"key\": {\n    \"kty\": \"RSA\",\n    \"n\": \"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ\",\n    \"e\": \"AQAB\"\n  },\n  \"contact\": [\n    \"mailto:person@mail.com\"\n  ],\n  \"initialIp\": \"\",\n  \"createdAt\": \"0001-01-01T00:00:00Z\",\n  \"status\": \"valid\"\n}")
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
+		`{
+		"key": {
+			"kty": "RSA",
+			"n": "yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
+			"e": "AQAB"
+		},
+		"contact": [
+			"mailto:person@mail.com"
+		],
+		"initialIp": "",
+		"createdAt": "0001-01-01T00:00:00Z",
+		"status": "valid"
+	}`)
 }
 
 func TestNewAccountWhenAccountHasBeenDeactivated(t *testing.T) {
@@ -1506,10 +1506,6 @@ func TestNewAccountNoID(t *testing.T) {
 	test.Assert(t, ok, "Couldn't load test2 key")
 	path := newAcctPath
 	signedURL := fmt.Sprintf("http://localhost%s", path)
-
-	_ = features.Set(map[string]bool{
-		"RemoveWFE2AccountID": true,
-	})
 
 	payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
 	_, _, body := signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
@@ -2114,7 +2110,6 @@ func TestDeactivateAccount(t *testing.T) {
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
-		  "id": 1,
 		  "key": {
 		    "kty": "RSA",
 		    "n": "yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
@@ -2136,7 +2131,6 @@ func TestDeactivateAccount(t *testing.T) {
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
-		  "id": 1,
 		  "key": {
 		    "kty": "RSA",
 		    "n": "yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
@@ -2488,7 +2482,6 @@ func TestKeyRollover(t *testing.T) {
 			Name:    "Valid key rollover request",
 			Payload: `{"oldKey":` + test1KeyPublicJSON + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
-		     "id": 1,
 		     "key": ` + string(newJWKJSON) + `,
 		     "contact": [
 		       "mailto:person@mail.com"
@@ -3224,17 +3217,9 @@ func TestPrepAccountForDisplay(t *testing.T) {
 	// Prep the account for display.
 	prepAccountForDisplay(acct)
 
-	// Without the RemoveWFE2AccountID feature flag we expect
-	// prepAccountForDisplay to leave the ID in place.
-	test.AssertEquals(t, acct.ID, int64(1987))
 	// The Agreement should always be cleared.
 	test.AssertEquals(t, acct.Agreement, "")
-
-	// Enable the feature flag and re-prep
-	_ = features.Set(map[string]bool{"RemoveWFE2AccountID": true})
-	prepAccountForDisplay(acct)
-
-	// The ID field should now be zeroed
+	// The ID field should be zeroed.
 	test.AssertEquals(t, acct.ID, int64(0))
 }
 

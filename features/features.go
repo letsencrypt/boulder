@@ -13,36 +13,28 @@ const (
 	unused FeatureFlag = iota // unused is used for testing
 	//   Deprecated features, these can be removed once stripped from production configs
 	WriteIssuedNamesPrecert
+	HeadNonceStatusOK
+	RemoveWFE2AccountID
+	CheckRenewalFirst
+	ParallelCheckFailedValidation
+	DeleteUnusedChallenges
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
 	CAAValidationMethods
 	// Check CAA and respect accounturi parameter.
 	CAAAccountURI
-	// HEAD requests to the WFE2 new-nonce endpoint should return HTTP StatusOK
-	// instead of HTTP StatusNoContent.
-	HeadNonceStatusOK
 	// EnforceMultiVA causes the VA to block on remote VA PerformValidation
 	// requests in order to make a valid/invalid decision with the results.
 	EnforceMultiVA
 	// MultiVAFullResults will cause the main VA to wait for all of the remote VA
 	// results, not just the threshold required to make a decision.
 	MultiVAFullResults
-	// RemoveWFE2AccountID will remove the account ID from account objects returned
-	// from the new-account endpoint if enabled.
-	RemoveWFE2AccountID
-	// CheckRenewalFirst will check whether an issuance is a renewal before
-	// checking the "certificates per name" rate limit.
-	CheckRenewalFirst
 	// MandatoryPOSTAsGET forbids legacy unauthenticated GET requests for ACME
 	// resources.
 	MandatoryPOSTAsGET
 	// Allow creation of new registrations in ACMEv1.
 	AllowV1Registration
-	// Check the failed validation limit in parallel during NewOrder
-	ParallelCheckFailedValidation
-	// Upon authorization validation, delete the challenges that weren't used.
-	DeleteUnusedChallenges
 	// V1DisableNewValidations disables validations for new domain names in the V1
 	// API.
 	V1DisableNewValidations

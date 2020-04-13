@@ -10,17 +10,17 @@ func _() {
 	var x [1]struct{}
 	_ = x[unused-0]
 	_ = x[WriteIssuedNamesPrecert-1]
-	_ = x[CAAValidationMethods-2]
-	_ = x[CAAAccountURI-3]
-	_ = x[HeadNonceStatusOK-4]
-	_ = x[EnforceMultiVA-5]
-	_ = x[MultiVAFullResults-6]
-	_ = x[RemoveWFE2AccountID-7]
-	_ = x[CheckRenewalFirst-8]
-	_ = x[MandatoryPOSTAsGET-9]
-	_ = x[AllowV1Registration-10]
-	_ = x[ParallelCheckFailedValidation-11]
-	_ = x[DeleteUnusedChallenges-12]
+	_ = x[HeadNonceStatusOK-2]
+	_ = x[RemoveWFE2AccountID-3]
+	_ = x[CheckRenewalFirst-4]
+	_ = x[ParallelCheckFailedValidation-5]
+	_ = x[DeleteUnusedChallenges-6]
+	_ = x[CAAValidationMethods-7]
+	_ = x[CAAAccountURI-8]
+	_ = x[EnforceMultiVA-9]
+	_ = x[MultiVAFullResults-10]
+	_ = x[MandatoryPOSTAsGET-11]
+	_ = x[AllowV1Registration-12]
 	_ = x[V1DisableNewValidations-13]
 	_ = x[PrecertificateRevocation-14]
 	_ = x[StripDefaultSchemePort-15]
@@ -28,9 +28,9 @@ func _() {
 	_ = x[StoreKeyHashes-17]
 }
 
-const _FeatureFlag_name = "unusedWriteIssuedNamesPrecertCAAValidationMethodsCAAAccountURIHeadNonceStatusOKEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountIDCheckRenewalFirstMandatoryPOSTAsGETAllowV1RegistrationParallelCheckFailedValidationDeleteUnusedChallengesV1DisableNewValidationsPrecertificateRevocationStripDefaultSchemePortStoreIssuerInfoStoreKeyHashes"
+const _FeatureFlag_name = "unusedWriteIssuedNamesPrecertHeadNonceStatusOKRemoveWFE2AccountIDCheckRenewalFirstParallelCheckFailedValidationDeleteUnusedChallengesCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationV1DisableNewValidationsPrecertificateRevocationStripDefaultSchemePortStoreIssuerInfoStoreKeyHashes"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 29, 49, 62, 79, 93, 111, 130, 147, 165, 184, 213, 235, 258, 282, 304, 319, 333}
+var _FeatureFlag_index = [...]uint16{0, 6, 29, 46, 65, 82, 111, 133, 153, 166, 180, 198, 216, 235, 258, 282, 304, 319, 333}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

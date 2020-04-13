@@ -518,10 +518,8 @@ func (wfe *WebFrontEndImpl) Nonce(
 
 	statusCode := http.StatusNoContent
 	// The ACME specification says GET requets should receive http.StatusNoContent
-	// and HEAD/POST-as-GET requests should receive http.StatusOK. We gate this
-	// with the HeadNonceStatusOK feature flag because it may break clients that
-	// are programmed to expect StatusOK.
-	if features.Enabled(features.HeadNonceStatusOK) && request.Method != "GET" {
+	// and HEAD/POST-as-GET requests should receive http.StatusOK.
+	if request.Method != "GET" {
 		statusCode = http.StatusOK
 	}
 	response.WriteHeader(statusCode)
@@ -1089,11 +1087,9 @@ func (wfe *WebFrontEndImpl) Challenge(
 // features or non-standard details internal to Boulder we don't want clients to
 // rely on.
 func prepAccountForDisplay(acct *core.Registration) {
-	if features.Enabled(features.RemoveWFE2AccountID) {
-		// Zero out the account ID so that it isn't marshalled. RFC 8555 specifies
-		// using the Location header for learning the account ID.
-		acct.ID = 0
-	}
+	// Zero out the account ID so that it isn't marshalled. RFC 8555 specifies
+	// using the Location header for learning the account ID.
+	acct.ID = 0
 
 	// We populate the account Agreement field when creating a new response to
 	// track which terms-of-service URL was in effect when an account with
