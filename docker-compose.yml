@@ -56,6 +56,13 @@ services:
           - bmysql
         entrypoint: test/entrypoint.sh
         working_dir: /go/src/github.com/letsencrypt/boulder
+        # This works around a kernel bug that is tickled by Go 1.14:
+        # https://github.com/golang/go/issues/37436
+        # Remove once devs are on Linxu 5.4.2+
+        ulimits:
+          memlock:
+            soft: -1
+            hard: -1
     bhsm:
         # To minimize fetching this should be the same version used above
         image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.13.2}:2020-04-08
