@@ -590,29 +590,20 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 				Status: &status,
 				Token:  &token,
 			}
-			if features.Enabled(features.DeleteUnusedChallenges) {
-				// If the challenge type matches the attempted type it must be either
-				// valid or invalid and we need to populate extra fields.
-				// Also, once any challenge has been attempted, we consider the other
-				// challenges "gone" per https://tools.ietf.org/html/rfc8555#section-7.1.4
-				if am.Attempted != nil {
-					if uintToChallType[*am.Attempted] == challType {
-						if err := populateAttemptedFields(am, challenge); err != nil {
-							return nil, err
-						}
-						pb.Challenges = append(pb.Challenges, challenge)
-					}
-				} else {
-					// When no challenge has been attempted yet, all challenges are still
-					// present.
-					pb.Challenges = append(pb.Challenges, challenge)
-				}
-			} else {
-				if am.Attempted != nil && uintToChallType[*am.Attempted] == challType {
+			// If the challenge type matches the attempted type it must be either
+			// valid or invalid and we need to populate extra fields.
+			// Also, once any challenge has been attempted, we consider the other
+			// challenges "gone" per https://tools.ietf.org/html/rfc8555#section-7.1.4
+			if am.Attempted != nil {
+				if uintToChallType[*am.Attempted] == challType {
 					if err := populateAttemptedFields(am, challenge); err != nil {
 						return nil, err
 					}
+					pb.Challenges = append(pb.Challenges, challenge)
 				}
+			} else {
+				// When no challenge has been attempted yet, all challenges are still
+				// present.
 				pb.Challenges = append(pb.Challenges, challenge)
 			}
 		}

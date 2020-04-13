@@ -1214,8 +1214,6 @@ func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
 	}
 
 	testcase()
-	_ = features.Set(map[string]bool{"ParallelCheckFailedValidation": true})
-	testcase()
 }
 
 func TestDomainsForRateLimiting(t *testing.T) {

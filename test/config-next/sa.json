@@ -24,7 +24,6 @@
       ]
     },
     "features": {
-      "DeleteUnusedChallenges": true,
       "StoreIssuerInfo": true,
       "StoreKeyHashes": true
     }

@@ -56,7 +56,7 @@ func TestModelToRegistrationNonNilContact(t *testing.T) {
 	}
 }
 
-func TestV2AuthzModel(t *testing.T) {
+func TestAuthzModel(t *testing.T) {
 	id := "1"
 	ident := "example.com"
 	reg := int64(1)
@@ -66,8 +66,6 @@ func TestV2AuthzModel(t *testing.T) {
 	token := "MTIz"
 	hostname := "hostname"
 	port := "port"
-	challType2 := string(core.ChallengeTypeDNS01)
-	statusPending := string(core.StatusPending)
 	url := "url"
 	authzPB := &corepb.Authorization{
 		Id:             &id,
@@ -91,11 +89,6 @@ func TestV2AuthzModel(t *testing.T) {
 					},
 				},
 			},
-			{
-				Type:   &challType2,
-				Status: &statusPending,
-				Token:  &token,
-			},
 		},
 	}
 
@@ -118,7 +111,46 @@ func TestV2AuthzModel(t *testing.T) {
 	test.AssertNotError(t, err, "modelToAuthzPB failed")
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 
-	authzPB.Challenges[1].Status = &status
+	challType2 := string(core.ChallengeTypeDNS01)
+	authzPB = &corepb.Authorization{
+		Id:             &id,
+		Identifier:     &ident,
+		RegistrationID: &reg,
+		Status:         &status,
+		Expires:        &expires,
+		Challenges: []*corepb.Challenge{
+			{
+				Type:   &challType,
+				Status: &status,
+				Token:  &token,
+				Validationrecords: []*corepb.ValidationRecord{
+					{
+						Hostname:          &hostname,
+						Port:              &port,
+						AddressUsed:       []byte("1.2.3.4"),
+						Url:               &url,
+						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+						AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+					},
+				},
+			},
+			{
+				Type:   &challType2,
+				Status: &status,
+				Token:  &token,
+				Validationrecords: []*corepb.ValidationRecord{
+					{
+						Hostname:          &hostname,
+						Port:              &port,
+						AddressUsed:       []byte("1.2.3.4"),
+						Url:               &url,
+						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+						AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+					},
+				},
+			},
+		},
+	}
 	_, err = authzPBToModel(authzPB)
 	test.AssertError(t, err, "authzPBToModel didn't fail with multiple non-pending challenges")
 }
