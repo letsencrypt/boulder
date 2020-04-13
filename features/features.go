@@ -13,6 +13,8 @@ const (
 	unused FeatureFlag = iota // unused is used for testing
 	//   Deprecated features, these can be removed once stripped from production configs
 	WriteIssuedNamesPrecert
+	// Upon authorization validation, delete the challenges that weren't used.
+	DeleteUnusedChallenges
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -41,8 +43,6 @@ const (
 	AllowV1Registration
 	// Check the failed validation limit in parallel during NewOrder
 	ParallelCheckFailedValidation
-	// Upon authorization validation, delete the challenges that weren't used.
-	DeleteUnusedChallenges
 	// V1DisableNewValidations disables validations for new domain names in the V1
 	// API.
 	V1DisableNewValidations

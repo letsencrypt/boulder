@@ -1551,8 +1551,6 @@ func TestUpdateChallengesDeleteUnused(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	_ = features.Set(map[string]bool{"DeleteUnusedChallenges": true})
-
 	expires := fc.Now().Add(time.Hour)
 	ctx := context.Background()
 
