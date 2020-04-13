@@ -249,7 +249,7 @@ func (policy *KeyPolicy) goodKeyRSA(key *rsa.PublicKey) (err error) {
 	//   odd number equal to 3 or more. Additionally, the public exponent
 	//   SHOULD be in the range between 2^16 + 1 and 2^256-1.
 	//
-	// By only allowing one exponent that fits these constraints we satisfy
+	// By only allowing one exponent, which fits these constraints, we satisfy
 	// these requirements.
 	if key.E != 65537 {
 		return berrors.MalformedError("key exponent must be 65537")
