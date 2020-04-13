@@ -24,7 +24,6 @@
       ]
     },
     "features": {
-      "DeleteUnusedChallenges": true,
       "WriteIssuedNamesPrecert": true
     }
   },
