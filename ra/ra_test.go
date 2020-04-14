@@ -3876,6 +3876,7 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 
 	mockSA.added = nil
 	err = ra.AdministrativelyRevokeCertificate(context.Background(), *cert, revocation.KeyCompromise, "root")
+	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
 	test.Assert(t, mockSA.added != nil, "blocked key was not added when reason was keyCompromise")
 	test.Assert(t, bytes.Equal(digest[:], mockSA.added.KeyHash), "key hash mismatch")
 	test.AssertEquals(t, *mockSA.added.Source, "admin-revoker")
