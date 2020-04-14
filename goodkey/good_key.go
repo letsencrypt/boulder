@@ -1,6 +1,7 @@
 package goodkey
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -8,7 +9,10 @@ import (
 	"math/big"
 	"sync"
 
+	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
+
 	"github.com/titanous/rocacheck"
 )
 
@@ -34,6 +38,8 @@ var (
 	smallPrimes          []*big.Int
 )
 
+type BlockedKeyCheckFunc func(context.Context, *sapb.KeyBlockedRequest) (*sapb.Exists, error)
+
 // KeyPolicy determines which types of key may be used with various boulder
 // operations.
 type KeyPolicy struct {
@@ -42,6 +48,7 @@ type KeyPolicy struct {
 	AllowECDSANISTP384 bool // Whether ECDSA NISTP384 keys should be allowed.
 	weakRSAList        *WeakRSAKeys
 	blockedList        *blockedKeys
+	dbCheck            BlockedKeyCheckFunc
 }
 
 // NewKeyPolicy returns a KeyPolicy that allows RSA, ECDSA256 and ECDSA384.
@@ -51,11 +58,12 @@ type KeyPolicy struct {
 // containing Base64 encoded SHA256 hashes of pkix subject public keys that
 // should be blocked. If this argument is empty then no blocked key checking is
 // performed.
-func NewKeyPolicy(weakKeyFile, blockedKeyFile string) (KeyPolicy, error) {
+func NewKeyPolicy(weakKeyFile, blockedKeyFile string, bkc BlockedKeyCheckFunc) (KeyPolicy, error) {
 	kp := KeyPolicy{
 		AllowRSA:           true,
 		AllowECDSANISTP256: true,
 		AllowECDSANISTP384: true,
+		dbCheck:            bkc,
 	}
 	if weakKeyFile != "" {
 		keyList, err := LoadWeakRSASuffixes(weakKeyFile)
@@ -86,6 +94,20 @@ func (policy *KeyPolicy) GoodKey(key crypto.PublicKey) error {
 		if blocked, err := policy.blockedList.blocked(key); err != nil {
 			return berrors.InternalServerError("error checking blocklist for key: %v", key)
 		} else if blocked {
+			return berrors.BadPublicKeyError("public key is forbidden")
+		}
+	}
+	if policy.dbCheck != nil {
+		digest, err := core.KeyDigest(key)
+		if err != nil {
+			return err
+		}
+		// TODO: probably should add a ctx to GoodKey
+		exists, err := policy.dbCheck(context.Background(), &sapb.KeyBlockedRequest{KeyHash: digest[:]})
+		if err != nil {
+			return err
+		}
+		if *exists.Exists {
 			return berrors.BadPublicKeyError("public key is forbidden")
 		}
 	}

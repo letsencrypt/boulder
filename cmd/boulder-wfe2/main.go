@@ -298,10 +298,14 @@ func main() {
 
 	clk := cmd.Clock()
 
-	// don't load any weak keys, but do load blocked keys
-	kp, err := goodkey.NewKeyPolicy("", c.WFE.BlockedKeyFile)
-	cmd.FailOnError(err, "Unable to create key policy")
 	rac, sac, rns, npm := setupWFE(c, logger, stats, clk)
+	var blockedKeyFunc goodkey.BlockedKeyCheckFunc
+	if features.Enabled(features.BlockedKeyTable) {
+		blockedKeyFunc = sac.KeyBlocked
+	}
+	// don't load any weak keys, but do load blocked keys
+	kp, err := goodkey.NewKeyPolicy("", c.WFE.BlockedKeyFile, blockedKeyFunc)
+	cmd.FailOnError(err, "Unable to create key policy")
 
 	if c.WFE.StaleTimeout.Duration == 0 {
 		c.WFE.StaleTimeout.Duration = time.Minute * 10

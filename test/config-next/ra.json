@@ -46,6 +46,7 @@
       ]
     },
     "features": {
+      "BlockedKeyTable": true
     },
     "CTLogGroups2": [
       {

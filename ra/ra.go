@@ -1687,7 +1687,7 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 
 // revokeCertificate generates a revoked OCSP response for the given certificate, stores
 // the revocation information, and purges OCSP request URLs from Akamai.
-func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason) error {
+func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, source string) error {
 	status := string(core.OCSPStatusRevoked)
 	reason := int32(code)
 	revokedAt := time.Now().UnixNano()
@@ -1713,6 +1713,19 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	if err != nil {
 		return err
 	}
+	if features.Enabled(features.BlockedKeyTable) && reason == revocation.KeyCompromise {
+		digest, err := core.KeyDigest(cert.PublicKey)
+		if err != nil {
+			return err
+		}
+		if _, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
+			KeyHash: digest[:],
+			Added:   &revokedAt,
+			Source:  &source,
+		}); err != nil {
+			return err
+		}
+	}
 	purgeURLs, err := akamai.GeneratePurgeURLs(cert.Raw, ra.issuer)
 	if err != nil {
 		return err
@@ -1728,7 +1741,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 // RevokeCertificateWithReg terminates trust in the certificate provided.
 func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, regID int64) error {
 	serialString := core.SerialToString(cert.SerialNumber)
-	err := ra.revokeCertificate(ctx, cert, revocationCode)
+	err := ra.revokeCertificate(ctx, cert, revocationCode, "api")
 
 	state := "Failure"
 	defer func() {
@@ -1758,7 +1771,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 // called from the admin-revoker tool.
 func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, user string) error {
 	serialString := core.SerialToString(cert.SerialNumber)
-	err := ra.revokeCertificate(ctx, cert, revocationCode)
+	err := ra.revokeCertificate(ctx, cert, revocationCode, "admin-revoker")
 
 	state := "Failure"
 	defer func() {

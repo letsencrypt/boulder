@@ -500,6 +500,16 @@ func (sas StorageAuthorityClientWrapper) SerialExists(ctx context.Context, req *
 	return res, nil
 }
 
+func (sac StorageAuthorityClientWrapper) AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest) (*corepb.Empty, error) {
+	// All return checking is done at the call site
+	return sac.AddBlockedKey(ctx, req)
+}
+
+func (sac StorageAuthorityClientWrapper) KeyBlocked(ctx context.Context, req *sapb.KeyBlockedRequest) (*sapb.Exists, error) {
+	// All return checking is done at the call site
+	return sac.KeyBlocked(ctx, req)
+}
+
 // StorageAuthorityServerWrapper is the gRPC version of a core.ServerAuthority server
 type StorageAuthorityServerWrapper struct {
 	// TODO(#3119): Don't use core.StorageAuthority
@@ -915,4 +925,14 @@ func (sas StorageAuthorityServerWrapper) SerialExists(ctx context.Context, req *
 		return nil, errIncompleteRequest
 	}
 	return sas.inner.SerialExists(ctx, req)
+}
+
+func (sas StorageAuthorityServerWrapper) AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest) (*corepb.Empty, error) {
+	// All request checking is done in the method
+	return sas.AddBlockedKey(ctx, req)
+}
+
+func (sas StorageAuthorityServerWrapper) KeyBlocked(ctx context.Context, req *sapb.KeyBlockedRequest) (*sapb.Exists, error) {
+	// All request checking is done in the method
+	return sas.KeyBlocked(ctx, req)
 }
