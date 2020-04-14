@@ -1,6 +1,7 @@
 package goodkey
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -9,6 +10,7 @@ import (
 	"math/big"
 	"testing"
 
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -246,4 +248,22 @@ func TestNonRefKey(t *testing.T) {
 	private, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "Error generating key")
 	test.AssertError(t, testingPolicy.GoodKey(private.PublicKey), "Accepted non-reference key")
+}
+
+func TestDBBlacklist(t *testing.T) {
+	exists := false
+	testCheck := func(context.Context, *sapb.KeyBlockedRequest) (*sapb.Exists, error) {
+		return &sapb.Exists{Exists: &exists}, nil
+	}
+
+	policy, err := NewKeyPolicy("", "", testCheck)
+	test.AssertNotError(t, err, "NewKeyPolicy failed")
+
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
+	err = policy.GoodKey(k.Public())
+	test.AssertNotError(t, err, "GoodKey failed with a non-blocked key")
+	exists = true
+	err = policy.GoodKey(k.Public())
+	test.AssertError(t, err, "GoodKey didn't fail with a blocked key")
 }

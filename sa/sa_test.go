@@ -12,7 +12,9 @@ import (
 	"math/big"
 	"math/bits"
 	"net"
+	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -2246,4 +2248,56 @@ func TestSerialExists(t *testing.T) {
 	resp, err = sa.SerialExists(context.Background(), &sapb.Serial{Serial: &serial})
 	test.AssertNotError(t, err, "SerialExists failed")
 	test.AssertEquals(t, *resp.Exists, true)
+}
+
+func TestBlockedKey(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	added := time.Now().UnixNano()
+	source := "testing"
+	_, err := sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
+		KeyHash: []byte{1, 2, 3},
+		Added:   &added,
+		Source:  &source,
+	})
+	test.AssertNotError(t, err, "AddBlockedKey failed")
+	_, err = sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
+		KeyHash: []byte{1, 2, 3},
+		Added:   &added,
+		Source:  &source,
+	})
+	test.AssertError(t, err, "AddBlockedKey didn't fail with duplicate error")
+	test.AssertEquals(t, err.Error(), "cannot add a duplicate key")
+	comment := "testing comments"
+	_, err = sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
+		KeyHash: []byte{1, 2, 3, 4},
+		Added:   &added,
+		Source:  &source,
+		Comment: &comment,
+	})
+	test.AssertNotError(t, err, "AddBlockedKey failed")
+
+	exists, err := sa.KeyBlocked(context.Background(), &sapb.KeyBlockedRequest{
+		KeyHash: []byte{1, 2, 3},
+	})
+	test.AssertNotError(t, err, "KeyBlocked failed")
+	test.Assert(t, exists != nil, "*sapb.Exists is nil")
+	test.Assert(t, *exists.Exists, "KeyBlocked returned false for blocked key")
+	exists, err = sa.KeyBlocked(context.Background(), &sapb.KeyBlockedRequest{
+		KeyHash: []byte{1, 2, 3, 4},
+	})
+	test.AssertNotError(t, err, "KeyBlocked failed")
+	test.Assert(t, exists != nil, "*sapb.Exists is nil")
+	test.Assert(t, *exists.Exists, "KeyBlocked returned false for blocked key")
+	exists, err = sa.KeyBlocked(context.Background(), &sapb.KeyBlockedRequest{
+		KeyHash: []byte{1, 2, 3, 4, 5},
+	})
+	test.AssertNotError(t, err, "KeyBlocked failed")
+	test.Assert(t, exists != nil, "*sapb.Exists is nil")
+	test.Assert(t, !*exists.Exists, "KeyBlocked returned true for non-blocked key")
 }

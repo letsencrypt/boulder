@@ -1,6 +1,7 @@
 package ra
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -28,6 +29,7 @@ import (
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	ctpkix "github.com/google/certificate-transparency-go/x509/pkix"
 	"github.com/jmhodges/clock"
+	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -47,6 +49,7 @@ import (
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimit"
+	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -3809,3 +3812,73 @@ xGUhoOJp0T++nz6R3TX7Rwk7KmG6xX3vWr/MFu5A3c8fvkqj987Vti5BeBezCXfs
 rA==
 -----END CERTIFICATE-----
 `)
+
+type mockSABlockedKey struct {
+	mocks.StorageAuthority
+
+	added *sapb.AddBlockedKeyRequest
+}
+
+func (msabk *mockSABlockedKey) AddBlockedKey(_ context.Context, req *sapb.AddBlockedKeyRequest) (*corepb.Empty, error) {
+	msabk.added = req
+	return &corepb.Empty{}, nil
+}
+
+type mockCAOCSP struct {
+	mocks.MockCA
+}
+
+func (mcao *mockCAOCSP) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
+	return &capb.OCSPResponse{Response: []byte{1, 2, 3}}, nil
+}
+
+type mockPurger struct{}
+
+func (mp *mockPurger) Purge(context.Context, *akamaipb.PurgeRequest, ...grpc.CallOption) (*corepb.Empty, error) {
+	return &corepb.Empty{}, nil
+}
+
+func TestRevocationAddBlockedKey(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	err := features.Set(map[string]bool{"BlockedKeyTable": true})
+	test.AssertNotError(t, err, "features.Set failed")
+	defer features.Reset()
+
+	mockSA := mockSABlockedKey{}
+	ra.SA = &mockSA
+	ra.CA = &mockCAOCSP{}
+	ra.purger = &mockPurger{}
+
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
+	digest, err := core.KeyDigest(k.Public())
+	test.AssertNotError(t, err, "core.KeyDigest failed")
+
+	template := x509.Certificate{PublicKey: k, SerialNumber: big.NewInt(257)}
+	der, err := x509.CreateCertificate(rand.Reader, &template, &template, k.Public(), k)
+	test.AssertNotError(t, err, "x509.CreateCertificate failed")
+	cert, err := x509.ParseCertificate(der)
+	test.AssertNotError(t, err, "x509.ParseCertificate failed")
+	ra.issuer = cert
+
+	err = ra.RevokeCertificateWithReg(context.Background(), *cert, revocation.Unspecified, 0)
+	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
+	test.Assert(t, mockSA.added == nil, "blocked key was added when reason was not keyCompromise")
+
+	err = ra.RevokeCertificateWithReg(context.Background(), *cert, revocation.KeyCompromise, 0)
+	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
+	test.Assert(t, mockSA.added != nil, "blocked key was not added when reason was keyCompromise")
+	test.Assert(t, bytes.Equal(digest[:], mockSA.added.KeyHash), "key hash mismatch")
+	test.AssertEquals(t, *mockSA.added.Source, "api")
+	test.Assert(t, mockSA.added.Comment == nil, "Comment is not nil")
+
+	mockSA.added = nil
+	err = ra.AdministrativelyRevokeCertificate(context.Background(), *cert, revocation.KeyCompromise, "root")
+	test.Assert(t, mockSA.added != nil, "blocked key was not added when reason was keyCompromise")
+	test.Assert(t, bytes.Equal(digest[:], mockSA.added.KeyHash), "key hash mismatch")
+	test.AssertEquals(t, *mockSA.added.Source, "admin-revoker")
+	test.Assert(t, mockSA.added.Comment != nil, "Comment is nil")
+	test.AssertEquals(t, *mockSA.added.Comment, "revoked by root")
+}
