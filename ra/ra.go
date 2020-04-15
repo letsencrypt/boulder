@@ -320,7 +320,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 
 // NewRegistration constructs a new Registration from a request.
 func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init core.Registration) (core.Registration, error) {
-	if err := ra.keyPolicy.GoodKey(init.Key.Key); err != nil {
+	if err := ra.keyPolicy.GoodKey(ctx, init.Key.Key); err != nil {
 		return core.Registration{}, berrors.MalformedError("invalid public key: %s", err.Error())
 	}
 	if err := ra.checkRegistrationLimits(ctx, init.InitialIP); err != nil {
@@ -985,7 +985,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		return nil, err
 	}
 
-	if err := csrlib.VerifyCSR(csrOb, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, *req.Order.RegistrationID); err != nil {
+	if err := csrlib.VerifyCSR(ctx, csrOb, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, *req.Order.RegistrationID); err != nil {
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
 		return nil, err
@@ -1076,7 +1076,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 // NewCertificate requests the issuance of a certificate.
 func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64) (core.Certificate, error) {
 	// Verify the CSR
-	if err := csrlib.VerifyCSR(req.CSR, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, regID); err != nil {
+	if err := csrlib.VerifyCSR(ctx, req.CSR, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, regID); err != nil {
 		return core.Certificate{}, berrors.MalformedError(err.Error())
 	}
 	// NewCertificate provides an order ID of 0, indicating this is a classic ACME
@@ -1687,10 +1687,10 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 
 // revokeCertificate generates a revoked OCSP response for the given certificate, stores
 // the revocation information, and purges OCSP request URLs from Akamai.
-func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason) error {
+func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, source string, comment string) error {
 	status := string(core.OCSPStatusRevoked)
 	reason := int32(code)
-	revokedAt := time.Now().UnixNano()
+	revokedAt := ra.clk.Now().UnixNano()
 	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
 		CertDER:   cert.Raw,
 		Status:    &status,
@@ -1713,6 +1713,23 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	if err != nil {
 		return err
 	}
+	if features.Enabled(features.BlockedKeyTable) && reason == revocation.KeyCompromise {
+		digest, err := core.KeyDigest(cert.PublicKey)
+		if err != nil {
+			return err
+		}
+		req := &sapb.AddBlockedKeyRequest{
+			KeyHash: digest[:],
+			Added:   &revokedAt,
+			Source:  &source,
+		}
+		if comment != "" {
+			req.Comment = &comment
+		}
+		if _, err = ra.SA.AddBlockedKey(ctx, req); err != nil {
+			return err
+		}
+	}
 	purgeURLs, err := akamai.GeneratePurgeURLs(cert.Raw, ra.issuer)
 	if err != nil {
 		return err
@@ -1728,7 +1745,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 // RevokeCertificateWithReg terminates trust in the certificate provided.
 func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, regID int64) error {
 	serialString := core.SerialToString(cert.SerialNumber)
-	err := ra.revokeCertificate(ctx, cert, revocationCode)
+	err := ra.revokeCertificate(ctx, cert, revocationCode, "API", "")
 
 	state := "Failure"
 	defer func() {
@@ -1758,7 +1775,9 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 // called from the admin-revoker tool.
 func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, user string) error {
 	serialString := core.SerialToString(cert.SerialNumber)
-	err := ra.revokeCertificate(ctx, cert, revocationCode)
+	// TODO(#4774): allow setting the comment via the RPC, format should be:
+	// "revoked by %s: %s", user, comment
+	err := ra.revokeCertificate(ctx, cert, revocationCode, "admin-revoker", fmt.Sprintf("revoked by %s", user))
 
 	state := "Failure"
 	defer func() {

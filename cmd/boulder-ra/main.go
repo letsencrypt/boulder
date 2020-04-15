@@ -204,7 +204,11 @@ func main() {
 		pendingAuthorizationLifetime = time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 	}
 
-	kp, err := goodkey.NewKeyPolicy(c.RA.WeakKeyFile, c.RA.BlockedKeyFile)
+	var blockedKeyFunc goodkey.BlockedKeyCheckFunc
+	if features.Enabled(features.BlockedKeyTable) {
+		blockedKeyFunc = sac.KeyBlocked
+	}
+	kp, err := goodkey.NewKeyPolicy(c.RA.WeakKeyFile, c.RA.BlockedKeyFile, blockedKeyFunc)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	if c.RA.MaxNames == 0 {

@@ -30,6 +30,7 @@ GRANT SELECT,INSERT ON orderToAuthz2 TO 'sa'@'localhost';
 GRANT INSERT,SELECT ON serials TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON precertificates TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON keyHashToSerial TO 'sa'@'localhost';
+GRANT SELECT,INSERT ON blockedKeys TO 'sa'@'localhost';
 
 -- OCSP Responder
 GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';

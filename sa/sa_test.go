@@ -12,7 +12,9 @@ import (
 	"math/big"
 	"math/bits"
 	"net"
+	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -2246,4 +2248,76 @@ func TestSerialExists(t *testing.T) {
 	resp, err = sa.SerialExists(context.Background(), &sapb.Serial{Serial: &serial})
 	test.AssertNotError(t, err, "SerialExists failed")
 	test.AssertEquals(t, *resp.Exists, true)
+}
+
+func TestBlockedKey(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	hashA := make([]byte, 32)
+	hashA[0] = 1
+	hashB := make([]byte, 32)
+	hashB[0] = 2
+
+	added := time.Now().UnixNano()
+	source := "API"
+	_, err := sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
+		KeyHash: hashA,
+		Added:   &added,
+		Source:  &source,
+	})
+	test.AssertNotError(t, err, "AddBlockedKey failed")
+	_, err = sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
+		KeyHash: hashA,
+		Added:   &added,
+		Source:  &source,
+	})
+	test.AssertNotError(t, err, "AddBlockedKey failed with duplicate insert")
+
+	comment := "testing comments"
+	_, err = sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
+		KeyHash: hashB,
+		Added:   &added,
+		Source:  &source,
+		Comment: &comment,
+	})
+	test.AssertNotError(t, err, "AddBlockedKey failed")
+
+	exists, err := sa.KeyBlocked(context.Background(), &sapb.KeyBlockedRequest{
+		KeyHash: hashA,
+	})
+	test.AssertNotError(t, err, "KeyBlocked failed")
+	test.Assert(t, exists != nil, "*sapb.Exists is nil")
+	test.Assert(t, *exists.Exists, "KeyBlocked returned false for blocked key")
+	exists, err = sa.KeyBlocked(context.Background(), &sapb.KeyBlockedRequest{
+		KeyHash: hashB,
+	})
+	test.AssertNotError(t, err, "KeyBlocked failed")
+	test.Assert(t, exists != nil, "*sapb.Exists is nil")
+	test.Assert(t, *exists.Exists, "KeyBlocked returned false for blocked key")
+	exists, err = sa.KeyBlocked(context.Background(), &sapb.KeyBlockedRequest{
+		KeyHash: []byte{5},
+	})
+	test.AssertNotError(t, err, "KeyBlocked failed")
+	test.Assert(t, exists != nil, "*sapb.Exists is nil")
+	test.Assert(t, !*exists.Exists, "KeyBlocked returned true for non-blocked key")
+}
+
+func TestAddBlockedKeyUnknownSource(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	added := int64(0)
+	source := "heyo"
+	_, err := sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
+		KeyHash: []byte{1, 2, 3},
+		Added:   &added,
+		Source:  &source,
+	})
+	test.AssertError(t, err, "AddBlockedKey didn't fail with unknown source")
+	test.AssertEquals(t, err.Error(), "unknown source")
 }

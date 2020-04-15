@@ -1771,3 +1771,45 @@ func addKeyHash(db db.Inserter, cert *x509.Certificate) error {
 	}
 	return db.Insert(khm)
 }
+
+// AddBlockedKey adds a key hash to the blockedKeys table
+func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest) (*corepb.Empty, error) {
+	if req == nil || req.KeyHash == nil || req.Added == nil || req.Source == nil {
+		return nil, errIncompleteRequest
+	}
+	sourceInt, ok := stringToSourceInt[*req.Source]
+	if !ok {
+		return nil, errors.New("unknown source")
+	}
+	err := ssa.dbMap.Insert(&blockedKeyModel{
+		KeyHash: req.KeyHash,
+		Added:   time.Unix(0, *req.Added),
+		Source:  sourceInt,
+		Comment: req.Comment,
+	})
+	if err != nil {
+		if db.IsDuplicate(err) {
+			// Ignore duplicate inserts so multiple certs with the same key can
+			// be revoked.
+			return &corepb.Empty{}, nil
+		}
+		return nil, err
+	}
+	return &corepb.Empty{}, nil
+}
+
+// KeyBlocked checks if a key, indicated by a hash, is present in the blockedKeys table
+func (ssa *SQLStorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlockedRequest) (*sapb.Exists, error) {
+	if req == nil || req.KeyHash == nil {
+		return nil, errIncompleteRequest
+	}
+	exists := false
+	if err := ssa.dbMap.SelectOne(&blockedKeyModel{}, `SELECT * FROM blockedKeys WHERE keyHash = ?`, req.KeyHash); err != nil {
+		if db.IsNoRows(err) {
+			return &sapb.Exists{Exists: &exists}, nil
+		}
+		return nil, err
+	}
+	exists = true
+	return &sapb.Exists{Exists: &exists}, nil
+}

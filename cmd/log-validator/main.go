@@ -72,6 +72,39 @@ func validateFile(filename string) error {
 	return nil
 }
 
+// tailLogger is an adapter to the hpcloud/tail module's logging interface.
+type tailLogger struct {
+	blog.Logger
+}
+
+func (tl tailLogger) Fatal(v ...interface{}) {
+	tl.AuditErr(fmt.Sprint(v...))
+}
+func (tl tailLogger) Fatalf(format string, v ...interface{}) {
+	tl.AuditErrf(format, v...)
+}
+func (tl tailLogger) Fatalln(v ...interface{}) {
+	tl.AuditErr(fmt.Sprint(v...) + "\n")
+}
+func (tl tailLogger) Panic(v ...interface{}) {
+	tl.AuditErr(fmt.Sprint(v...))
+}
+func (tl tailLogger) Panicf(format string, v ...interface{}) {
+	tl.AuditErrf(format, v...)
+}
+func (tl tailLogger) Panicln(v ...interface{}) {
+	tl.AuditErr(fmt.Sprint(v...) + "\n")
+}
+func (tl tailLogger) Print(v ...interface{}) {
+	tl.Info(fmt.Sprint(v...))
+}
+func (tl tailLogger) Printf(format string, v ...interface{}) {
+	tl.Infof(format, v...)
+}
+func (tl tailLogger) Println(v ...interface{}) {
+	tl.Info(fmt.Sprint(v...) + "\n")
+}
+
 func main() {
 	configPath := flag.String("config", "", "File path to the configuration file for this service")
 	checkFile := flag.String("check-file", "", "File path to a file to directly validate, if this argument is provided the config will not be parsed and only this file will be inspected")
@@ -106,6 +139,7 @@ func main() {
 			ReOpen:    true,
 			MustExist: false, // sometimes files won't exist, so we must tolerate that
 			Follow:    true,
+			Logger:    tailLogger{logger},
 		})
 		cmd.FailOnError(err, "failed to tail file")
 		defer t.Cleanup()
@@ -130,6 +164,13 @@ func main() {
 
 	cmd.CatchSignals(logger, func() {
 		for _, t := range tailers {
+			// The tail module seems to have a race condition that will generate
+			// errors like this on shutdown:
+			// failed to stop tailing file: <filename>: Failed to detect creation of
+			// <filename>: inotify watcher has been closed
+			// This is probably related to the module's shutdown logic triggering the
+			// "reopen" code path for files that are removed and then recreated.
+			// These errors are harmless so we ignore them to allow clean shutdown.
 			_ = t.Stop()
 		}
 	})

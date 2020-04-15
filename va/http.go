@@ -28,8 +28,11 @@ const (
 	// HTTP-01 challenge response. The expected payload should be ~87 bytes. Since
 	// it may be padded by whitespace which we previously allowed accept up to 128
 	// bytes before rejecting a response (32 byte b64 encoded token + . + 32 byte
-	// b64 encoded key fingerprint)
+	// b64 encoded key fingerprint).
 	maxResponseSize = 128
+	// maxPathSize is the maximum number of bytes we will accept in the path of a
+	// redirect URL.
+	maxPathSize = 2000
 	// whitespaceCutset is the set of characters trimmed from the right of an
 	// HTTP-01 key authorization response.
 	whitespaceCutset = "\n\r\t "
@@ -521,6 +524,10 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		}
 
 		redirPath := req.URL.Path
+		if len(redirPath) > maxPathSize {
+			return berrors.ConnectionFailureError("Redirect target too long")
+		}
+
 		// If the redirect URL has query parameters we need to preserve
 		// those in the redirect path
 		redirQuery := ""

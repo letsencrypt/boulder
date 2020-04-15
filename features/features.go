@@ -49,6 +49,9 @@ const (
 	StoreIssuerInfo
 	// StoreKeyHashes enables storage of SPKI hashes associated with certificates.
 	StoreKeyHashes
+	// BlockedKeyTable enables storage, and checking, of the blockedKeys table in addition
+	// to the blocked key list
+	BlockedKeyTable
 )
 
 // List of features and their default value, protected by fMu
@@ -71,6 +74,7 @@ var features = map[FeatureFlag]bool{
 	StoreIssuerInfo:               false,
 	WriteIssuedNamesPrecert:       false,
 	StoreKeyHashes:                false,
+	BlockedKeyTable:               false,
 }
 
 var fMu = new(sync.RWMutex)
