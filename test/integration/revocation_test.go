@@ -127,7 +127,7 @@ func TestPrecertificateRevocation(t *testing.T) {
 				tc.revokeClient.Account,
 				cert,
 				tc.revokeKey,
-				ocsp.KeyCompromise)
+				ocsp.Unspecified)
 			test.AssertNotError(t, err, "revoking precert")
 
 			// Check the OCSP response for the precertificate again. It should now be
@@ -136,4 +136,34 @@ func TestPrecertificateRevocation(t *testing.T) {
 			test.AssertNotError(t, err, "requesting OCSP for revoked precert")
 		})
 	}
+}
+
+func TestRevokeWithKeyCompromise(t *testing.T) {
+	t.Parallel()
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
+	c, err := makeClient("mailto:example@letsencrypt.org")
+	test.AssertNotError(t, err, "creating acme client")
+
+	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "failed to generate cert key")
+
+	res, err := authAndIssue(c, certKey, []string{random_domain()})
+	test.AssertNotError(t, err, "authAndIssue failed")
+
+	err = c.RevokeCertificate(
+		c.Account,
+		res.certs[0],
+		c.Account.PrivateKey,
+		ocsp.KeyCompromise,
+	)
+	test.AssertNotError(t, err, "failed to revoke certificate")
+
+	// attempt to create a new account using the blacklisted key
+	_, err = c.NewAccount(certKey, false, true)
+	test.AssertError(t, err, "NewAccount didn't fail with a blacklisted key")
+	test.AssertEquals(t, err.Error(), `acme: error code 400 "urn:ietf:params:acme:error:badPublicKey": public key is forbidden`)
 }

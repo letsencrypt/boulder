@@ -617,3 +617,16 @@ type keyHashModel struct {
 	CertNotAfter time.Time
 	CertSerial   string
 }
+
+var stringToSourceInt = map[string]int{
+	"API":           1,
+	"admin-revoker": 2,
+}
+
+type blockedKeyModel struct {
+	ID      int64
+	KeyHash []byte
+	Added   time.Time
+	Source  int
+	Comment *string
+}

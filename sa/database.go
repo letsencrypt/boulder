@@ -140,4 +140,5 @@ func initTables(dbMap *gorp.DbMap) {
 	dbMap.AddTableWithName(recordedSerialModel{}, "serials").SetKeys(true, "ID")
 	dbMap.AddTableWithName(precertificateModel{}, "precertificates").SetKeys(true, "ID")
 	dbMap.AddTableWithName(keyHashModel{}, "keyHashToSerial").SetKeys(true, "ID")
+	dbMap.AddTableWithName(blockedKeyModel{}, "blockedKeys").SetKeys(true, "ID")
 }

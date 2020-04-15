@@ -1,6 +1,7 @@
 package csr
 
 import (
+	"context"
 	"crypto"
 	"crypto/x509"
 	"strings"
@@ -44,13 +45,13 @@ var (
 // VerifyCSR checks the validity of a x509.CertificateRequest. Before doing checks it normalizes
 // the CSR which lowers the case of DNS names and subject CN, and if forceCNFromSAN is true it
 // will hoist a DNS name into the CN if it is empty.
-func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.KeyPolicy, pa core.PolicyAuthority, forceCNFromSAN bool, regID int64) error {
+func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.KeyPolicy, pa core.PolicyAuthority, forceCNFromSAN bool, regID int64) error {
 	normalizeCSR(csr, forceCNFromSAN)
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {
 		return invalidPubKey
 	}
-	if err := keyPolicy.GoodKey(key); err != nil {
+	if err := keyPolicy.GoodKey(ctx, key); err != nil {
 		return berrors.BadPublicKeyError("invalid public key in CSR: %s", err)
 	}
 	if !goodSignatureAlgorithms[csr.SignatureAlgorithm] {
