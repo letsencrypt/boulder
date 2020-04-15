@@ -618,10 +618,15 @@ type keyHashModel struct {
 	CertSerial   string
 }
 
+var stringToSourceInt = map[string]int{
+	"API":           0,
+	"admin-revoker": 1,
+}
+
 type blockedKeyModel struct {
 	ID      int64
 	KeyHash []byte
 	Added   time.Time
-	Source  string
+	Source  int
 	Comment *string
 }

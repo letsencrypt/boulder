@@ -2264,7 +2264,7 @@ func TestBlockedKey(t *testing.T) {
 	hashB[0] = 2
 
 	added := time.Now().UnixNano()
-	source := "testing"
+	source := "API"
 	_, err := sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
 		KeyHash: hashA,
 		Added:   &added,
@@ -2305,4 +2305,19 @@ func TestBlockedKey(t *testing.T) {
 	test.AssertNotError(t, err, "KeyBlocked failed")
 	test.Assert(t, exists != nil, "*sapb.Exists is nil")
 	test.Assert(t, !*exists.Exists, "KeyBlocked returned true for non-blocked key")
+}
+
+func TestAddBlockedKeyUnknownSource(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	added := int64(0)
+	source := "heyo"
+	_, err := sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
+		KeyHash: []byte{1, 2, 3},
+		Added:   &added,
+		Source:  &source,
+	})
+	test.AssertError(t, err, "AddBlockedKey didn't fail with unknown source")
+	test.AssertEquals(t, err.Error(), "unknown source")
 }

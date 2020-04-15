@@ -1777,10 +1777,14 @@ func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.Add
 	if req == nil || req.KeyHash == nil || req.Added == nil || req.Source == nil {
 		return nil, errIncompleteRequest
 	}
+	sourceInt, ok := stringToSourceInt[*req.Source]
+	if !ok {
+		return nil, errors.New("unknown source")
+	}
 	err := ssa.dbMap.Insert(&blockedKeyModel{
 		KeyHash: req.KeyHash,
 		Added:   time.Unix(0, *req.Added),
-		Source:  *req.Source,
+		Source:  sourceInt,
 		Comment: req.Comment,
 	})
 	if err != nil {

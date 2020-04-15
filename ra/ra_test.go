@@ -3871,7 +3871,7 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
 	test.Assert(t, mockSA.added != nil, "blocked key was not added when reason was keyCompromise")
 	test.Assert(t, bytes.Equal(digest[:], mockSA.added.KeyHash), "key hash mismatch")
-	test.AssertEquals(t, *mockSA.added.Source, "api")
+	test.AssertEquals(t, *mockSA.added.Source, "API")
 	test.Assert(t, mockSA.added.Comment == nil, "Comment is not nil")
 
 	mockSA.added = nil
