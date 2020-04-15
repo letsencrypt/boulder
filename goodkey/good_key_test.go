@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"testing"
 
+	berrors "github.com/letsencrypt/boulder/errors"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -266,4 +267,6 @@ func TestDBBlacklist(t *testing.T) {
 	exists = true
 	err = policy.GoodKey(context.Background(), k.Public())
 	test.AssertError(t, err, "GoodKey didn't fail with a blocked key")
+	test.Assert(t, berrors.Is(err, berrors.BadPublicKey), "returned error is wrong type")
+	test.AssertEquals(t, err.Error(), "public key is forbidden")
 }
