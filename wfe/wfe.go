@@ -528,7 +528,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 		// When looking up keys from the registrations DB, we can be confident they
 		// are "good". But when we are verifying against any submitted key, we want
 		// to check its quality before doing the verify.
-		if err = wfe.keyPolicy.GoodKey(submittedKey.Key); err != nil {
+		if err = wfe.keyPolicy.GoodKey(ctx, submittedKey.Key); err != nil {
 			wfe.joseErrorCounter.WithLabelValues("JWKRejectedByGoodKey").Inc()
 			return nil, nil, reg, probs.Malformed(err.Error())
 		}
@@ -959,7 +959,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *web.Re
 	// bytes on the wire, and (b) the CA logs all rejections as audit events, but
 	// a bad key from the client is just a malformed request and doesn't need to
 	// be audited.
-	if err := wfe.keyPolicy.GoodKey(certificateRequest.CSR.PublicKey); err != nil {
+	if err := wfe.keyPolicy.GoodKey(ctx, certificateRequest.CSR.PublicKey); err != nil {
 		wfe.sendError(response, logEvent, probs.Malformed("Invalid key in certificate request :: %s", err), err)
 		return
 	}

@@ -1,6 +1,7 @@
 package csr
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -170,7 +171,7 @@ func TestVerifyCSR(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		err := VerifyCSR(c.csr, c.maxNames, c.keyPolicy, c.pa, true, c.regID)
+		err := VerifyCSR(context.Background(), c.csr, c.maxNames, c.keyPolicy, c.pa, true, c.regID)
 		test.AssertDeepEquals(t, c.expectedError, err)
 	}
 }

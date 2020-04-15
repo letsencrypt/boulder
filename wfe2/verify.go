@@ -626,7 +626,7 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
 	}
 
 	// If the key doesn't meet the GoodKey policy return a problem immediately
-	if err := wfe.keyPolicy.GoodKey(pubKey.Key); err != nil {
+	if err := wfe.keyPolicy.GoodKey(ctx, pubKey.Key); err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWKRejectedByGoodKey"}).Inc()
 		return nil, nil, probs.BadPublicKey(err.Error())
 	}
@@ -689,6 +689,7 @@ type rolloverOperation struct {
 // account) and that the account field of the rollover object matches the
 // account that verified the outer JWS.
 func (wfe *WebFrontEndImpl) validKeyRollover(
+	ctx context.Context,
 	outerJWS *jose.JSONWebSignature,
 	innerJWS *jose.JSONWebSignature,
 	oldKey *jose.JSONWebKey,
@@ -701,7 +702,7 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 	}
 
 	// If the key doesn't meet the GoodKey policy return a problem immediately
-	if err := wfe.keyPolicy.GoodKey(jwk.Key); err != nil {
+	if err := wfe.keyPolicy.GoodKey(ctx, jwk.Key); err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverJWKRejectedByGoodKey"}).Inc()
 		return nil, probs.BadPublicKey(err.Error())
 	}

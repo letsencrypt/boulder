@@ -87,7 +87,7 @@ func NewKeyPolicy(weakKeyFile, blockedKeyFile string, bkc BlockedKeyCheckFunc) (
 // strength and algorithm checking. GoodKey only supports pointers: *rsa.PublicKey
 // and *ecdsa.PublicKey. It will reject non-pointer types.
 // TODO: Support JSONWebKeys once go-jose migration is done.
-func (policy *KeyPolicy) GoodKey(key crypto.PublicKey) error {
+func (policy *KeyPolicy) GoodKey(ctx context.Context, key crypto.PublicKey) error {
 	// If there is a blocked list configured then check if the public key is one
 	// that has been administratively blocked.
 	if policy.blockedList != nil {
@@ -103,7 +103,7 @@ func (policy *KeyPolicy) GoodKey(key crypto.PublicKey) error {
 			return err
 		}
 		// TODO: probably should add a ctx to GoodKey
-		exists, err := policy.dbCheck(context.Background(), &sapb.KeyBlockedRequest{KeyHash: digest[:]})
+		exists, err := policy.dbCheck(ctx, &sapb.KeyBlockedRequest{KeyHash: digest[:]})
 		if err != nil {
 			return err
 		}

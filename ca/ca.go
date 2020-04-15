@@ -669,6 +669,7 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	}
 
 	if err := csrlib.VerifyCSR(
+		ctx,
 		csr,
 		ca.maxNames,
 		&ca.keyPolicy,

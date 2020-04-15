@@ -320,7 +320,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 
 // NewRegistration constructs a new Registration from a request.
 func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init core.Registration) (core.Registration, error) {
-	if err := ra.keyPolicy.GoodKey(init.Key.Key); err != nil {
+	if err := ra.keyPolicy.GoodKey(ctx, init.Key.Key); err != nil {
 		return core.Registration{}, berrors.MalformedError("invalid public key: %s", err.Error())
 	}
 	if err := ra.checkRegistrationLimits(ctx, init.InitialIP); err != nil {
@@ -985,7 +985,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		return nil, err
 	}
 
-	if err := csrlib.VerifyCSR(csrOb, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, *req.Order.RegistrationID); err != nil {
+	if err := csrlib.VerifyCSR(ctx, csrOb, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, *req.Order.RegistrationID); err != nil {
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
 		return nil, err
@@ -1076,7 +1076,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 // NewCertificate requests the issuance of a certificate.
 func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64) (core.Certificate, error) {
 	// Verify the CSR
-	if err := csrlib.VerifyCSR(req.CSR, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, regID); err != nil {
+	if err := csrlib.VerifyCSR(ctx, req.CSR, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, regID); err != nil {
 		return core.Certificate{}, berrors.MalformedError(err.Error())
 	}
 	// NewCertificate provides an order ID of 0, indicating this is a classic ACME
