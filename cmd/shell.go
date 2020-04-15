@@ -8,7 +8,6 @@ import (
 	"expvar"
 	"fmt"
 	"io/ioutil"
-	golog "log"
 	"log/syslog"
 	"net/http"
 	"net/http/pprof"
@@ -93,6 +92,9 @@ func (log grpcLogger) Error(args ...interface{}) {
 }
 func (log grpcLogger) Errorf(format string, args ...interface{}) {
 	output := fmt.Sprintf(format, args...)
+	if output == `ccResolverWrapper: error parsing service config: no JSON service config provided` {
+		return
+	}
 	if output == `grpc: Server.processUnaryRPC failed to write status: connection error: desc = "transport is closing"` {
 		return
 	}

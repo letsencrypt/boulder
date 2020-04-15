@@ -127,8 +127,6 @@ func ReqDER(der []byte, expectStatus int) (*ocsp.Response, error) {
 		return nil, err
 	}
 
-	http.DefaultClient.Timeout = 5 * time.Second
-
 	httpResp, err := sendHTTPRequest(req, ocspURL)
 	if err != nil {
 		return nil, err
@@ -175,7 +173,11 @@ func sendHTTPRequest(req []byte, ocspURL *url.URL) (*http.Response, error) {
 	if *hostOverride != "" {
 		httpRequest.Host = *hostOverride
 	}
-	return http.DefaultClient.Do(httpRequest)
+	client := http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	return client.Do(httpRequest)
 }
 
 func getOCSPURL(cert *x509.Certificate) (*url.URL, error) {
