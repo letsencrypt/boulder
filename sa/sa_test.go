@@ -2258,16 +2258,21 @@ func TestBlockedKey(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
+	hashA := make([]byte, 32)
+	hashA[0] = 1
+	hashB := make([]byte, 32)
+	hashB[0] = 2
+
 	added := time.Now().UnixNano()
 	source := "testing"
 	_, err := sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
-		KeyHash: []byte{1, 2, 3},
+		KeyHash: hashA,
 		Added:   &added,
 		Source:  &source,
 	})
 	test.AssertNotError(t, err, "AddBlockedKey failed")
 	_, err = sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
-		KeyHash: []byte{1, 2, 3},
+		KeyHash: hashA,
 		Added:   &added,
 		Source:  &source,
 	})
@@ -2275,7 +2280,7 @@ func TestBlockedKey(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "cannot add a duplicate key")
 	comment := "testing comments"
 	_, err = sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
-		KeyHash: []byte{1, 2, 3, 4},
+		KeyHash: hashB,
 		Added:   &added,
 		Source:  &source,
 		Comment: &comment,
@@ -2283,19 +2288,19 @@ func TestBlockedKey(t *testing.T) {
 	test.AssertNotError(t, err, "AddBlockedKey failed")
 
 	exists, err := sa.KeyBlocked(context.Background(), &sapb.KeyBlockedRequest{
-		KeyHash: []byte{1, 2, 3},
+		KeyHash: hashA,
 	})
 	test.AssertNotError(t, err, "KeyBlocked failed")
 	test.Assert(t, exists != nil, "*sapb.Exists is nil")
 	test.Assert(t, *exists.Exists, "KeyBlocked returned false for blocked key")
 	exists, err = sa.KeyBlocked(context.Background(), &sapb.KeyBlockedRequest{
-		KeyHash: []byte{1, 2, 3, 4},
+		KeyHash: hashB,
 	})
 	test.AssertNotError(t, err, "KeyBlocked failed")
 	test.Assert(t, exists != nil, "*sapb.Exists is nil")
 	test.Assert(t, *exists.Exists, "KeyBlocked returned false for blocked key")
 	exists, err = sa.KeyBlocked(context.Background(), &sapb.KeyBlockedRequest{
-		KeyHash: []byte{1, 2, 3, 4, 5},
+		KeyHash: []byte{5},
 	})
 	test.AssertNotError(t, err, "KeyBlocked failed")
 	test.Assert(t, exists != nil, "*sapb.Exists is nil")

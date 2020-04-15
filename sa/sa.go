@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/x509"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1799,8 +1798,8 @@ func (ssa *SQLStorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlo
 		return nil, errIncompleteRequest
 	}
 	exists := false
-	if err := ssa.dbMap.SelectOne(blockedKeyModel{}, `SELECT * FROM blockedKeys WHERE keyHash = ?`, req.KeyHash); err != nil {
-		if err == sql.ErrNoRows {
+	if err := ssa.dbMap.SelectOne(&blockedKeyModel{}, `SELECT * FROM blockedKeys WHERE keyHash = ?`, req.KeyHash); err != nil {
+		if db.IsNoRows(err) {
 			return &sapb.Exists{Exists: &exists}, nil
 		}
 		return nil, err
