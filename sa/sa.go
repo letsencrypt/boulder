@@ -1793,7 +1793,7 @@ func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.Add
 		}
 		return nil, err
 	}
-	return nil, nil
+	return &corepb.Empty{}, nil
 }
 
 // KeyBlocked checks if a key, indicated by a hash, is present in the blockedKeys table
