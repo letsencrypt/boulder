@@ -1775,7 +1775,8 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 // called from the admin-revoker tool.
 func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, user string) error {
 	serialString := core.SerialToString(cert.SerialNumber)
-	// TODO: might want to let the comment be set via RPC?
+	// TODO(#4774): allow setting the comment via the RPC, format should be:
+	// "revoked by %s: %s", user, comment
 	err := ra.revokeCertificate(ctx, cert, revocationCode, "admin-revoker", fmt.Sprintf("revoked by %s", user))
 
 	state := "Failure"
