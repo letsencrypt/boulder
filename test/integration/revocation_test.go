@@ -127,7 +127,7 @@ func TestPrecertificateRevocation(t *testing.T) {
 				tc.revokeClient.Account,
 				cert,
 				tc.revokeKey,
-				ocsp.KeyCompromise)
+				ocsp.Unspecified)
 			test.AssertNotError(t, err, "revoking precert")
 
 			// Check the OCSP response for the precertificate again. It should now be
