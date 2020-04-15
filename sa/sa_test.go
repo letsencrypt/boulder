@@ -2276,8 +2276,8 @@ func TestBlockedKey(t *testing.T) {
 		Added:   &added,
 		Source:  &source,
 	})
-	test.AssertError(t, err, "AddBlockedKey didn't fail with duplicate error")
-	test.AssertEquals(t, err.Error(), "cannot add a duplicate key")
+	test.AssertNotError(t, err, "AddBlockedKey failed with duplicate insert")
+
 	comment := "testing comments"
 	_, err = sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
 		KeyHash: hashB,

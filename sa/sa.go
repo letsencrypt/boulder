@@ -1789,7 +1789,9 @@ func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.Add
 	})
 	if err != nil {
 		if db.IsDuplicate(err) {
-			return nil, berrors.DuplicateError("cannot add a duplicate key")
+			// Ignore duplicate inserts so multiple certs with the same key can
+			// be revoked.
+			return &corepb.Empty{}, nil
 		}
 		return nil, err
 	}
