@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
+	golog "log"
 	"log/syslog"
 	"net/http"
 	"net/http/pprof"
@@ -139,7 +139,7 @@ func (log promLogger) Println(args ...interface{}) {
 // at "Info" level.
 func captureStdlibLog(logger blog.Logger) {
 	r, w := io.Pipe()
-	log.SetOutput(w)
+	golog.SetOutput(w)
 	go func() {
 		scanner := bufio.NewScanner(r)
 		for scanner.Scan() {
@@ -229,7 +229,8 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 	go func() {
 		err := server.ListenAndServe()
 		if err != nil {
-			log.Fatalf("unable to boot debug server on %s: %v", addr, err)
+			logger.Errf("unable to boot debug server on %s: %v", addr, err)
+			os.Exit(1)
 		}
 	}()
 	return registry
