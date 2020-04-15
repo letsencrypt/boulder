@@ -86,6 +86,7 @@ def start(race_detection, fakeclock):
         [8112, './bin/nonce-service --config %s --addr nonce2.boulder:9101 --debug-addr :8112 --prefix zinc' % os.path.join(config_dir, "nonce.json")],
         [4431, './bin/boulder-wfe2 --config %s' % os.path.join(config_dir, "wfe2.json")],
         [4000, './bin/boulder-wfe --config %s' % os.path.join(config_dir, "wfe.json")],
+        [8015, './bin/boulder-wfe --config %s' % os.path.join(config_dir, "wfe.json")],
     ])
     for (port, prog) in progs:
         try:

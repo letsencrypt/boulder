@@ -128,8 +128,7 @@ func main() {
 
 	cmd.CatchSignals(logger, func() {
 		for _, t := range tailers {
-			err = t.Stop()
-			cmd.FailOnError(err, fmt.Sprintf("failed to stop tailing file: %s", t.Filename))
+			_ = t.Stop()
 		}
 	})
 }
