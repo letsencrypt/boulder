@@ -1,6 +1,6 @@
 {
   "syslog": {
-    "stdoutLevel": 6
+    "stdoutLevel": 7
   },
   "debugAddr": ":8015",
   "files": [

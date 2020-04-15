@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/hpcloud/tail"
+	"github.com/nxadm/tail"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/cmd"

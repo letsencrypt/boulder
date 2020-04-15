@@ -23,6 +23,7 @@ require (
 	github.com/lyft/protoc-gen-validate v0.0.13 // indirect
 	github.com/miekg/dns v1.1.8
 	github.com/miekg/pkcs11 v1.0.3
+	github.com/nxadm/tail v1.4.4
 	github.com/onsi/ginkgo v1.8.0 // indirect
 	github.com/onsi/gomega v1.5.0 // indirect
 	github.com/poy/onpar v0.0.0-20181125144932-f2f06780798d // indirect
