@@ -12,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/eggsampler/acme/v3"
 	"github.com/letsencrypt/boulder/test"
 	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
 	"golang.org/x/crypto/ocsp"
@@ -145,31 +144,25 @@ func TestRevokeWithKeyCompromise(t *testing.T) {
 		return
 	}
 
-	acctKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "failed to generate acct key")
-
-	c, err := acme.NewClient("http://boulder:4001/directory")
-	test.AssertNotError(t, err, "failed to create client")
-	account, err := c.NewAccount(acctKey, false, true)
-	test.AssertNotError(t, err, "failed ot create account")
+	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
+	c, err := makeClient("mailto:example@letsencrypt.org")
+	test.AssertNotError(t, err, "creating acme client")
 
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate cert key")
 
-	res, err := authAndIssue(&client{account, c}, certKey, []string{random_domain()})
+	res, err := authAndIssue(c, certKey, []string{random_domain()})
 	test.AssertNotError(t, err, "authAndIssue failed")
 
 	err = c.RevokeCertificate(
-		account,
+		c.Account,
 		res.certs[0],
-		acctKey,
+		c.Account.PrivateKey,
 		ocsp.KeyCompromise,
 	)
 	test.AssertNotError(t, err, "failed to revoke certificate")
 
 	// attempt to create a new account using the blacklisted key
-	c, err = acme.NewClient("http://boulder:4001/directory")
-	test.AssertNotError(t, err, "failed to create client")
 	_, err = c.NewAccount(certKey, false, true)
 	test.AssertError(t, err, "NewAccount didn't fail with a blacklisted key")
 	test.AssertEquals(t, err.Error(), `acme: error code 400 "urn:ietf:params:acme:error:badPublicKey": public key is forbidden`)
