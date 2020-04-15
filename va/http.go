@@ -501,7 +501,6 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	records := []core.ValidationRecord{baseRecord}
 	numRedirects := 0
 	processRedirect := func(req *http.Request, via []*http.Request) error {
-		va.log.Debugf("processing a HTTP redirect from the server to %q\n", req.URL.String())
 		// Only process up to maxRedirect redirects
 		if numRedirects > maxRedirect {
 			return berrors.ConnectionFailureError("Too many redirects")
@@ -543,7 +542,6 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		if err != nil {
 			return err
 		}
-		va.log.Debugf("following redirect to host %q url %q\n", req.Host, req.URL.String())
 		// Replace the transport's DialContext with the new preresolvedDialer for
 		// the redirect.
 		transport.DialContext = redirDialer.DialContext
