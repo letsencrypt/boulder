@@ -48,7 +48,7 @@ func TestValidAuthzExpires(t *testing.T) {
 	expectedExpiresMin := time.Now().AddDate(0, 0, validAuthorizationLifetime).Add(-time.Minute)
 	expectedExpiresMax := expectedExpiresMin.Add(2 * time.Minute)
 	actualExpires := authzOb.Expires
-	if !actualExpires.Before(expectedExpiresMin) || actualExpires.After(expectedExpiresMax) {
+	if actualExpires.Before(expectedExpiresMin) || actualExpires.After(expectedExpiresMax) {
 		t.Errorf("Wrong expiry. Got %s, expected it to be between %s and %s",
 			actualExpires, expectedExpiresMin, expectedExpiresMax)
 	}
