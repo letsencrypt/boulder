@@ -102,7 +102,6 @@ func (policy *KeyPolicy) GoodKey(ctx context.Context, key crypto.PublicKey) erro
 		if err != nil {
 			return err
 		}
-		// TODO: probably should add a ctx to GoodKey
 		exists, err := policy.dbCheck(ctx, &sapb.KeyBlockedRequest{KeyHash: digest[:]})
 		if err != nil {
 			return err
