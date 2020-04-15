@@ -619,8 +619,8 @@ type keyHashModel struct {
 }
 
 var stringToSourceInt = map[string]int{
-	"API":           0,
-	"admin-revoker": 1,
+	"API":           1,
+	"admin-revoker": 2,
 }
 
 type blockedKeyModel struct {

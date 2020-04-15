@@ -38,6 +38,9 @@ var (
 	smallPrimes          []*big.Int
 )
 
+// BlockedKeyCheckFunc is used to pass in the sa.BlockedKey method to KeyPolicy,
+// rather than storing a full sa.SQLStorageAuthority. This makes testing
+// significantly simpler.
 type BlockedKeyCheckFunc func(context.Context, *sapb.KeyBlockedRequest) (*sapb.Exists, error)
 
 // KeyPolicy determines which types of key may be used with various boulder
