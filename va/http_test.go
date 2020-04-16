@@ -575,6 +575,12 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 			http.StatusMovedPermanently)
 	})
 
+	// A path that returns a body containing printf formatting verbs
+	mux.HandleFunc("/printf-verbs", func(resp http.ResponseWriter, req *http.Request) {
+		resp.WriteHeader(http.StatusOK)
+		fmt.Fprint(resp, "%"+"2F.well-known%"+"2F"+tooLargeBuf.String())
+	})
+
 	return server
 }
 
@@ -942,6 +948,27 @@ func TestFetchHTTP(t *testing.T) {
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/ok",
+					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
+					AddressUsed:       net.ParseIP("127.0.0.1"),
+				},
+			},
+		},
+		{
+			Name: "Reflected response body containing printf verbs",
+			Host: "example.com",
+			Path: "/printf-verbs",
+			ExpectedProblem: &probs.ProblemDetails{
+				Type: probs.UnauthorizedProblem,
+				Detail: fmt.Sprintf("Invalid response from "+
+					"http://example.com/printf-verbs [127.0.0.1]: %q",
+					("%2F.well-known%2F" + expectedTruncatedResp.String())[:maxResponseSize]),
+				HTTPStatus: http.StatusForbidden,
+			},
+			ExpectedRecords: []core.ValidationRecord{
+				{
+					Hostname:          "example.com",
+					Port:              strconv.Itoa(httpPort),
+					URL:               "http://example.com/printf-verbs",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 				},
