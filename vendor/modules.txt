@@ -99,10 +99,6 @@ github.com/zmap/zcrypto/util
 github.com/zmap/zcrypto/x509
 github.com/zmap/zcrypto/x509/ct
 github.com/zmap/zcrypto/x509/pkix
-# github.com/zmap/zlint v1.1.0
-github.com/zmap/zlint
-github.com/zmap/zlint/lints
-github.com/zmap/zlint/util
 # github.com/zmap/zlint/v2 v2.0.0
 github.com/zmap/zlint/v2
 github.com/zmap/zlint/v2/lint
