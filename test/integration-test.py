@@ -238,6 +238,7 @@ def test_stats():
     expect_stat(8002, '\ngrpc_server_handling_seconds_sum{grpc_method="PerformValidation",grpc_service="ra.RegistrationAuthority",grpc_type="unary"} ')
 
     expect_stat(8001, "\ngo_goroutines ")
+    expect_stat(8015, "\nlog_lines{ ")
 
 exit_status = 1
 
