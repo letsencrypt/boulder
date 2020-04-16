@@ -628,7 +628,7 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
 	// If the key doesn't meet the GoodKey policy return a problem immediately
 	if err := wfe.keyPolicy.GoodKey(ctx, pubKey.Key); err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWKRejectedByGoodKey"}).Inc()
-		return nil, nil, probs.BadPublicKey(err.Error())
+		return nil, nil, probs.BadPublicKey("%s", err)
 	}
 
 	// Verify the JWS with the embedded JWK
@@ -704,12 +704,12 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 	// If the key doesn't meet the GoodKey policy return a problem immediately
 	if err := wfe.keyPolicy.GoodKey(ctx, jwk.Key); err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverJWKRejectedByGoodKey"}).Inc()
-		return nil, probs.BadPublicKey(err.Error())
+		return nil, probs.BadPublicKey("%s", err)
 	}
 
 	// Check that the public key and JWS algorithms match expected
 	if err := checkAlgorithm(jwk, innerJWS); err != nil {
-		return nil, probs.Malformed(err.Error())
+		return nil, probs.Malformed("%s", err)
 	}
 
 	// Verify the inner JWS signature with the public key from the embedded JWK.
@@ -747,7 +747,7 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 	// We must validate that the inner JWS' rollover request specifies the correct
 	// oldKey.
 	if keysEqual, err := core.PublicKeysEqual(req.OldKey.Key, oldKey.Key); err != nil {
-		return nil, probs.Malformed("Unable to compare new and old keys: %s", err.Error())
+		return nil, probs.Malformed("Unable to compare new and old keys: %s", err)
 	} else if !keysEqual {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverWrongOldKey"}).Inc()
 		return nil, probs.Malformed("Inner JWS does not contain old key field matching current account key")

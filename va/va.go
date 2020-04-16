@@ -297,13 +297,13 @@ func detailedError(err error) *probs.ProblemDetails {
 		return probs.ConnectionFailure("Timeout after connect (your server may be slow or overloaded)")
 	}
 	if berrors.Is(err, berrors.ConnectionFailure) {
-		return probs.ConnectionFailure(err.Error())
+		return probs.ConnectionFailure("%s", err)
 	}
 	if berrors.Is(err, berrors.Unauthorized) {
-		return probs.Unauthorized(err.Error())
+		return probs.Unauthorized("%s", err)
 	}
 	if berrors.Is(err, berrors.DNS) {
-		return probs.DNS(err.Error())
+		return probs.DNS("%s", err)
 	}
 
 	if h2SettingsFrameErrRegex.MatchString(err.Error()) {

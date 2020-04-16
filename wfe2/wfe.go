@@ -1461,7 +1461,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 		wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
 		return
 	} else if berrors.Is(err, berrors.Malformed) {
-		wfe.sendError(response, logEvent, probs.Malformed(err.Error()), nil)
+		wfe.sendError(response, logEvent, probs.Malformed("%s", err), nil)
 		return
 	} else if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)

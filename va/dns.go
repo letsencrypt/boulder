@@ -61,7 +61,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident iden
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, ident.Value)
 	txts, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 	if err != nil {
-		return nil, probs.DNS(err.Error())
+		return nil, probs.DNS("%s", err)
 	}
 
 	// If there weren't any TXT records return a distinct error message to allow

@@ -516,7 +516,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	// the signature itself.
 	submittedKey, parsedJws, err := wfe.extractJWSKey(body)
 	if err != nil {
-		return nil, nil, reg, probs.Malformed(err.Error())
+		return nil, nil, reg, probs.Malformed("%s", err)
 	}
 
 	var key *jose.JSONWebKey
@@ -530,7 +530,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 		// to check its quality before doing the verify.
 		if err = wfe.keyPolicy.GoodKey(ctx, submittedKey.Key); err != nil {
 			wfe.joseErrorCounter.WithLabelValues("JWKRejectedByGoodKey").Inc()
-			return nil, nil, reg, probs.Malformed(err.Error())
+			return nil, nil, reg, probs.Malformed("%s", err)
 		}
 		key = submittedKey
 	} else if err != nil {
@@ -557,7 +557,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 
 	if statName, err := checkAlgorithm(key, parsedJws); err != nil {
 		wfe.joseErrorCounter.WithLabelValues(statName).Inc()
-		return nil, nil, reg, probs.Malformed(err.Error())
+		return nil, nil, reg, probs.Malformed("%s", err)
 	}
 
 	payload, err := parsedJws.Verify(key)
@@ -1541,7 +1541,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *web.Reque
 	// Parse as JWS
 	newKey, parsedJWS, err := wfe.extractJWSKey(string(body))
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed(err.Error()), err)
+		wfe.sendError(response, logEvent, probs.Malformed("%s", err), err)
 		return
 	}
 	payload, err := parsedJWS.Verify(newKey)
