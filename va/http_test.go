@@ -578,7 +578,8 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 	// A path that returns a body containing printf formatting verbs
 	mux.HandleFunc("/printf-verbs", func(resp http.ResponseWriter, req *http.Request) {
 		resp.WriteHeader(http.StatusOK)
-		fmt.Fprint(resp, "%"+"2F.well-known%"+"2F"+tooLargeBuf.String())
+		resp.Write([]byte("%2F.well-known%2F"))
+		resp.Write(tooLargeBuf.Bytes())
 	})
 
 	return server
