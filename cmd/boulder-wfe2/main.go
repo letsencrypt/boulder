@@ -337,7 +337,7 @@ func main() {
 
 	logger.Infof("WFE using key policy: %#v", kp)
 
-	logger.Infof("Server running, listening on %s...\n", c.WFE.ListenAddress)
+	logger.Infof("Server running, listening on %s....", c.WFE.ListenAddress)
 	handler := wfe.Handler(stats)
 	srv := &http.Server{
 		Addr:    c.WFE.ListenAddress,

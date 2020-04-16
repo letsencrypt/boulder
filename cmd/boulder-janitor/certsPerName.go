@@ -22,7 +22,7 @@ func newCertificatesPerNameJob(
 		 WHERE
 		   id > :startID
 		 LIMIT :limit`
-	log.Debugf("Creating CertificatesPerName job from config: %#v\n", config.Janitor.CertificatesPerName)
+	log.Debugf("Creating CertificatesPerName job from config: %#v", config.Janitor.CertificatesPerName)
 	return &batchedDBJob{
 		db:          dbMap,
 		log:         log,

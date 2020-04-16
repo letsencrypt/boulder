@@ -335,8 +335,8 @@ func main() {
 				}
 			}
 		}
-		logger.Infof("Found %d certificate orphans and added %d to the database\n", certOrphansFound, certOrphansAdded)
-		logger.Infof("Found %d precertificate orphans and added %d to the database\n", precertOrphansFound, precertOrphansAdded)
+		logger.Infof("Found %d certificate orphans and added %d to the database", certOrphansFound, certOrphansAdded)
+		logger.Infof("Found %d precertificate orphans and added %d to the database", precertOrphansFound, precertOrphansAdded)
 
 	case "parse-der":
 		ctx := context.Background()
