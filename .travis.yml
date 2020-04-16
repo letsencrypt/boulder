@@ -3,7 +3,6 @@ dist: xenial
 os: linux
 
 go:
-  - "1.13.2"
   - "1.14.1"
 
 go_import_path: github.com/letsencrypt/boulder
