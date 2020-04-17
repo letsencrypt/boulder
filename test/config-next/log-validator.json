@@ -2,7 +2,7 @@
   "syslog": {
     "stdoutLevel": 7
   },
-  "debugAddr": ":8015",
+  "debugAddr": ":8016",
   "files": [
     "/var/log/akamai-purger.log",
     "/var/log/boulder-ca.log",
