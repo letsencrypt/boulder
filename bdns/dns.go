@@ -527,7 +527,7 @@ func logDNSError(
 	if underlying == dns.ErrId {
 		packedMsgBytes, err := msg.Pack()
 		if err != nil {
-			logger.Errf("logDNSError failed to pack msg: %v\n", err)
+			logger.Errf("logDNSError failed to pack msg: %v", err)
 			return
 		}
 		encodedMsg := base64.StdEncoding.EncodeToString(packedMsgBytes)
@@ -537,7 +537,7 @@ func logDNSError(
 		if resp != nil {
 			packedRespBytes, err := resp.Pack()
 			if err != nil {
-				logger.Errf("logDNSError failed to pack resp: %v\n", err)
+				logger.Errf("logDNSError failed to pack resp: %v", err)
 				return
 			}
 			encodedResp = base64.StdEncoding.EncodeToString(packedRespBytes)

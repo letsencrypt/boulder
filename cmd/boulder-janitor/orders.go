@@ -24,7 +24,7 @@ func newOrdersJob(
 		 WHERE
 		   id > :startID
 		 LIMIT :limit`
-	log.Debugf("Creating Orders job from config: %#v\n", config)
+	log.Debugf("Creating Orders job from config: %#v", config)
 	j := &ordersJob{
 		batchedDBJob: &batchedDBJob{
 			db:          dbMap,
