@@ -12,7 +12,6 @@
     "/var/log/boulder-va.log",
     "/var/log/boulder-wfe2.log",
     "/var/log/boulder-wfe.log",
-    "/var/log/log-validator.log",
     "/var/log/nonce-service.log",
     "/var/log/ocsp-responder.log",
     "/var/log/ocsp-updater.log"
