@@ -101,7 +101,8 @@ func checkJWSAuthType(jws *jose.JSONWebSignature) (jwsAuthType, *probs.ProblemDe
 	header := jws.Signatures[0].Header
 	// There must not be a Key ID *and* an embedded JWK
 	if header.KeyID != "" && header.JSONWebKey != nil {
-		return invalidAuthType, probs.Malformed("jwk and kid header fields are mutually exclusive")
+		return invalidAuthType, probs.Malformed(
+			"jwk and kid header fields are mutually exclusive")
 	} else if header.KeyID != "" {
 		return embeddedKeyID, nil
 	} else if header.JSONWebKey != nil {
@@ -150,13 +151,13 @@ func (wfe *WebFrontEndImpl) validPOSTRequest(request *http.Request) *probs.Probl
 	// JSON serialization.
 	if _, present := request.Header["Content-Type"]; !present {
 		wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "NoContentType"}).Inc()
-		return probs.InvalidContentType("No Content-Type header on POST. Content-Type must be %q",
-			expectedJWSContentType)
+		return probs.InvalidContentType(fmt.Sprintf("No Content-Type header on POST. Content-Type must be %q",
+			expectedJWSContentType))
 	}
 	if contentType := request.Header.Get("Content-Type"); contentType != expectedJWSContentType {
 		wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "WrongContentType"}).Inc()
-		return probs.InvalidContentType("Invalid Content-Type header on POST. Content-Type must be %q",
-			expectedJWSContentType)
+		return probs.InvalidContentType(fmt.Sprintf("Invalid Content-Type header on POST. Content-Type must be %q",
+			expectedJWSContentType))
 	}
 
 	// Per 6.4.1 "Replay-Nonce" clients should not send a Replay-Nonce header in
@@ -199,7 +200,7 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, jws *jose.JSONWebSig
 	}
 	if !nonceValid {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSInvalidNonce"}).Inc()
-		return probs.BadNonce("JWS has an invalid anti-replay nonce: %q", header.Nonce)
+		return probs.BadNonce(fmt.Sprintf("JWS has an invalid anti-replay nonce: %q", nonce))
 	}
 	return nil
 }
@@ -236,8 +237,9 @@ func (wfe *WebFrontEndImpl) validPOSTURL(
 	// header
 	if expectedURL.String() != headerURL {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMismatchedURL"}).Inc()
-		return probs.Malformed("JWS header parameter 'url' incorrect. Expected %q got %q",
-			expectedURL.String(), headerURL)
+		return probs.Malformed(fmt.Sprintf(
+			"JWS header parameter 'url' incorrect. Expected %q got %q",
+			expectedURL.String(), headerURL))
 	}
 	return nil
 }
@@ -267,8 +269,9 @@ func (wfe *WebFrontEndImpl) matchJWSURLs(outer, inner *jose.JSONWebSignature) *p
 	// Verify that the outer URL matches the inner URL
 	if outerURL != innerURL {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverMismatchedURLs"}).Inc()
-		return probs.Malformed("Outer JWS 'url' value %q does not match inner JWS 'url' value %q",
-			outerURL, innerURL)
+		return probs.Malformed(fmt.Sprintf(
+			"Outer JWS 'url' value %q does not match inner JWS 'url' value %q",
+			outerURL, innerURL))
 	}
 
 	return nil
@@ -299,7 +302,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*jose.JSONWebSignature, *prob
 	if unprotected.Header != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSUnprotectedHeaders"}).Inc()
 		return nil, probs.Malformed(
-			`JWS "header" field not allowed. All headers must be in "protected" field`)
+			"JWS \"header\" field not allowed. All headers must be in \"protected\" field")
 	}
 
 	// ACME v2 never uses the "signatures" array of JSON serialized JWS, just the
@@ -307,7 +310,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*jose.JSONWebSignature, *prob
 	if len(unprotected.Signatures) > 0 {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMultiSig"}).Inc()
 		return nil, probs.Malformed(
-			`JWS "signatures" field not allowed. Only the "signature" field should contain a signature`)
+			"JWS \"signatures\" field not allowed. Only the \"signature\" field should contain a signature")
 	}
 
 	// Parse the JWS using go-jose and enforce that the expected one non-empty
@@ -450,7 +453,8 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 		// If the account isn't found, return a suitable problem
 		if berrors.Is(err, berrors.NotFound) {
 			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSKeyIDNotFound"}).Inc()
-			return nil, nil, probs.AccountDoesNotExist("Account %q not found", accountURL)
+			return nil, nil, probs.AccountDoesNotExist(fmt.Sprintf(
+				"Account %q not found", accountURL))
 		}
 
 		// If there was an error and it isn't a "Not Found" error, return
@@ -458,13 +462,15 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSKeyIDLookupFailed"}).Inc()
 		// Add an error to the log event with the internal error message
 		logEvent.AddError(fmt.Sprintf("Error calling SA.GetRegistration: %s", err.Error()))
-		return nil, nil, probs.ServerInternal("Error retrieving account %q", accountURL)
+		return nil, nil, probs.ServerInternal(fmt.Sprintf(
+			"Error retreiving account %q", accountURL))
 	}
 
 	// Verify the account is not deactivated
 	if account.Status != core.StatusValid {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSKeyIDAccountInvalid"}).Inc()
-		return nil, nil, probs.Unauthorized("Account is not valid, has status %q", account.Status)
+		return nil, nil, probs.Unauthorized(
+			fmt.Sprintf("Account is not valid, has status %q", account.Status))
 	}
 
 	// Update the logEvent with the account information and return the JWK
