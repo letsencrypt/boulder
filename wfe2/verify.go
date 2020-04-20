@@ -192,7 +192,7 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, jws *jose.JSONWebSig
 	if wfe.remoteNonceService != nil {
 		valid, err := nonce.RemoteRedeem(ctx, wfe.noncePrefixMap, header.Nonce)
 		if err != nil {
-			return probs.ServerInternal("failed to verify nonce validity: %s", err)
+			return probs.ServerInternal(fmt.Sprintf("failed to verify nonce validity: %s", err))
 		}
 		nonceValid = valid
 	} else {
@@ -200,7 +200,7 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, jws *jose.JSONWebSig
 	}
 	if !nonceValid {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSInvalidNonce"}).Inc()
-		return probs.BadNonce(fmt.Sprintf("JWS has an invalid anti-replay nonce: %q", nonce))
+		return probs.BadNonce(fmt.Sprintf("JWS has an invalid anti-replay nonce: %q", header.Nonce))
 	}
 	return nil
 }

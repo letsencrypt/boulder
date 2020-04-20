@@ -2054,7 +2054,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 	// POST-as-GET request and we need to verify the requesterAccount is the
 	// order's owner.
 	if requesterAccount != nil && *order.RegistrationID != requesterAccount.ID {
-		wfe.sendError(response, logEvent, probs.NotFound("No order found for account ID %d", acctID), nil)
+		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acctID)), nil)
 		return
 	}
 

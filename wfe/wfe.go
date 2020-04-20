@@ -582,7 +582,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	if wfe.remoteNonceService != nil {
 		valid, err := nonce.RemoteRedeem(ctx, wfe.noncePrefixMap, nonceStr)
 		if err != nil {
-			return nil, nil, reg, probs.ServerInternal("failed to verify nonce validity: %s", err)
+			return nil, nil, reg, probs.ServerInternal(fmt.Sprintf("failed to verify nonce validity: %s", err))
 		}
 		nonceValid = valid
 	} else {
@@ -590,7 +590,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	}
 	if !nonceValid {
 		wfe.joseErrorCounter.WithLabelValues("JWSInvalidNonce").Inc()
-		return nil, nil, reg, probs.BadNonce(fmt.Sprintf("JWS has invalid anti-replay nonce %s", nonce))
+		return nil, nil, reg, probs.BadNonce(fmt.Sprintf("JWS has invalid anti-replay nonce %s", nonceStr))
 	}
 
 	// Check that the "resource" field is present and has the correct value

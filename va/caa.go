@@ -55,7 +55,7 @@ func (va *ValidationAuthorityImpl) checkCAA(
 
 	recordsStr, err := json.Marshal(&records)
 	if err != nil {
-		return probs.CAA("CAA records for %s were malformed", identifier.Value)
+		return probs.CAA(fmt.Sprintf("CAA records for %s were malformed", identifier.Value))
 	}
 
 	accountID, challengeType := "unknown", "unknown"

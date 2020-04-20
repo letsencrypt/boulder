@@ -290,7 +290,7 @@ func detailedError(err error) *probs.ProblemDetails {
 		} else if netErr.Timeout() && netErr.Op == "dial" {
 			return probs.ConnectionFailure("Timeout during connect (likely firewall problem)")
 		} else if netErr.Timeout() {
-			return probs.ConnectionFailure("Timeout during %s (your server may be slow or overloaded)", netErr.Op)
+			return probs.ConnectionFailure(fmt.Sprintf("Timeout during %s (your server may be slow or overloaded)", netErr.Op))
 		}
 	}
 	if err, ok := err.(net.Error); ok && err.Timeout() {
