@@ -463,7 +463,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 		// Add an error to the log event with the internal error message
 		logEvent.AddError(fmt.Sprintf("Error calling SA.GetRegistration: %s", err.Error()))
 		return nil, nil, probs.ServerInternal(fmt.Sprintf(
-			"Error retreiving account %q", accountURL))
+			"Error retrieving account %q", accountURL))
 	}
 
 	// Verify the account is not deactivated

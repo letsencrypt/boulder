@@ -12,13 +12,13 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 
 	switch err.Type {
 	case berrors.Malformed:
-		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
+		outProb = probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.Unauthorized:
-		return probs.Unauthorized(fmt.Sprintf("%s :: %s", msg, err))
+		outProb = probs.Unauthorized(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.NotFound:
-		return probs.NotFound(fmt.Sprintf("%s :: %s", msg, err))
+		outProb = probs.NotFound(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.RateLimit:
-		return probs.RateLimited(fmt.Sprintf("%s :: %s", msg, err))
+		outProb = probs.RateLimited(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.InternalServer:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.
