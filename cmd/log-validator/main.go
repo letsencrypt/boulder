@@ -127,11 +127,11 @@ func main() {
 	cmd.FailOnError(err, "failed to parse config file")
 
 	stats, logger := cmd.StatsAndLogging(config.Syslog, config.DebugAddr)
-	badLineCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "bad_log_lines",
-		Help: "A counter of corrupt log lines",
-	}, []string{"filename"})
-	stats.MustRegister(badLineCounter)
+	lineCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "log_lines",
+		Help: "A counter of log lines processed, with status",
+	}, []string{"filename", "status"})
+	stats.MustRegister(lineCounter)
 
 	var tailers []*tail.Tail
 	for _, filename := range config.Files {
@@ -151,8 +151,10 @@ func main() {
 					continue
 				}
 				if err := lineValid(line.Text); err != nil {
-					badLineCounter.WithLabelValues(t.Filename).Inc()
+					lineCounter.WithLabelValues(t.Filename, "bad").Inc()
 					logger.Errf("%s: %s %q", t.Filename, err, line.Text)
+				} else {
+					lineCounter.WithLabelValues(t.Filename, "ok").Inc()
 				}
 			}
 		}()
