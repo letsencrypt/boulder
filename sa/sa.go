@@ -1804,7 +1804,7 @@ func (ssa *SQLStorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlo
 		return nil, errIncompleteRequest
 	}
 	exists := false
-	if err := ssa.dbMap.SelectOne(&blockedKeyModel{}, `SELECT * FROM blockedKeys WHERE keyHash = ?`, req.KeyHash); err != nil {
+	if err := ssa.dbMap.SelectOne(&blockedKeyModel{}, `SELECT ID FROM blockedKeys WHERE keyHash = ?`, req.KeyHash); err != nil {
 		if db.IsNoRows(err) {
 			return &sapb.Exists{Exists: &exists}, nil
 		}
