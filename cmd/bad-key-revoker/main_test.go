@@ -44,7 +44,7 @@ func TestSelectUncheckedRows(t *testing.T) {
 		(?, ?, ?, ?, ?)`,
 		hashA,
 		time.Now(),
-		"API",
+		1,
 		1,
 		false,
 	)
@@ -55,7 +55,7 @@ func TestSelectUncheckedRows(t *testing.T) {
 		(?, ?, ?, ?, ?)`,
 		hashB,
 		time.Now(),
-		"API",
+		1,
 		2,
 		false,
 	)
@@ -66,7 +66,7 @@ func TestSelectUncheckedRows(t *testing.T) {
 		(?, ?, ?, ?, ?)`,
 		hashC,
 		time.Now(),
-		"API",
+		1,
 		2,
 		true,
 	)
@@ -278,7 +278,7 @@ func TestSendMessages(t *testing.T) {
 
 	maxSerials = 2
 	err := bkr.sendMessages(map[string][]string{
-		"example.com": []string{"a", "b", "c"},
+		"example.com": {"a", "b", "c"},
 	})
 	test.AssertNotError(t, err, "sendMessages failed")
 	test.AssertEquals(t, len(mm.Messages), 1)
@@ -361,7 +361,7 @@ func TestInvoke(t *testing.T) {
 		(?, ?, ?, ?, ?)`,
 		hashA,
 		time.Now(),
-		"API",
+		1,
 		regIDC,
 		false,
 	)
@@ -458,7 +458,7 @@ func TestInvoke(t *testing.T) {
 		(?, ?, ?, ?, ?)`,
 		hashB,
 		time.Now(),
-		"API",
+		1,
 		regIDC,
 		false,
 	)
