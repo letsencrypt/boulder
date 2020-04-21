@@ -552,7 +552,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 
 	// Only check for validity if we are actually checking the registration
 	if regCheck && reg.Status != core.StatusValid {
-		return nil, nil, reg, probs.Unauthorized("Registration is not valid, has status '%s'", reg.Status)
+		return nil, nil, reg, probs.Unauthorized(fmt.Sprintf("Registration is not valid, has status '%s'", reg.Status))
 	}
 
 	if statName, err := checkAlgorithm(key, parsedJws); err != nil {
@@ -582,7 +582,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	if wfe.remoteNonceService != nil {
 		valid, err := nonce.RemoteRedeem(ctx, wfe.noncePrefixMap, nonceStr)
 		if err != nil {
-			return nil, nil, reg, probs.ServerInternal("failed to verify nonce validity: %s", err)
+			return nil, nil, reg, probs.ServerInternal(fmt.Sprintf("failed to verify nonce validity: %s", err))
 		}
 		nonceValid = valid
 	} else {
@@ -590,7 +590,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	}
 	if !nonceValid {
 		wfe.joseErrorCounter.WithLabelValues("JWSInvalidNonce").Inc()
-		return nil, nil, reg, probs.BadNonce("JWS has invalid anti-replay nonce %s", nonceStr)
+		return nil, nil, reg, probs.BadNonce(fmt.Sprintf("JWS has invalid anti-replay nonce %s", nonceStr))
 	}
 
 	// Check that the "resource" field is present and has the correct value
@@ -1275,8 +1275,8 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *web.Requ
 	// extraneous requests to the RA we have to add this bypass.
 	if len(update.Agreement) > 0 && update.Agreement != currReg.Agreement &&
 		update.Agreement != wfe.SubscriberAgreementURL {
-		problem := probs.Malformed("Provided agreement URL [%s] does not match current agreement URL [%s]", update.Agreement, wfe.SubscriberAgreementURL)
-		wfe.sendError(response, logEvent, problem, nil)
+		msg := fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", update.Agreement, wfe.SubscriberAgreementURL)
+		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
 		return
 	}
 

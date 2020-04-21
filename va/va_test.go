@@ -325,9 +325,9 @@ func TestMultiVA(t *testing.T) {
 		"MultiVAFullResults": true,
 	}
 
-	unauthorized := probs.Unauthorized(
+	unauthorized := probs.Unauthorized(fmt.Sprintf(
 		`The key authorization file from the server did not match this challenge %q != "???"`,
-		expectedKeyAuthorization)
+		expectedKeyAuthorization))
 
 	expectedInternalErrLine := fmt.Sprintf(
 		`ERR: \[AUDIT\] Remote VA "broken".PerformValidation failed: %s`,
@@ -412,9 +412,9 @@ func TestMultiVA(t *testing.T) {
 			RemoteVAs:  remoteVAs,
 			AllowedUAs: map[string]bool{localUA: true, remoteUA2: true},
 			Features:   enforceMultiVA,
-			ExpectedProb: probs.Unauthorized(
+			ExpectedProb: probs.Unauthorized(fmt.Sprintf(
 				`During secondary validation: The key authorization file from the server did not match this challenge %q != "???"`,
-				expectedKeyAuthorization),
+				expectedKeyAuthorization)),
 		},
 		{
 			// With one remote VA cancelled there should not be a validation failure
@@ -454,9 +454,9 @@ func TestMultiVA(t *testing.T) {
 			RemoteVAs:  remoteVAs,
 			AllowedUAs: map[string]bool{localUA: true},
 			Features:   enforceMultiVAFullResults,
-			ExpectedProb: probs.Unauthorized(
+			ExpectedProb: probs.Unauthorized(fmt.Sprintf(
 				`During secondary validation: The key authorization file from the server did not match this challenge %q != "???"`,
-				expectedKeyAuthorization),
+				expectedKeyAuthorization)),
 		},
 	}
 

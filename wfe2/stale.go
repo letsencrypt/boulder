@@ -1,6 +1,7 @@
 package wfe2
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -63,11 +64,11 @@ func (wfe *WebFrontEndImpl) staleEnoughToGETAuthz(authz core.Authorization) *pro
 // wfe.staleTimeout then an unauthorized problem is returned.
 func (wfe *WebFrontEndImpl) staleEnoughToGET(resourceType string, createDate time.Time) *probs.ProblemDetails {
 	if wfe.clk.Since(createDate) < wfe.staleTimeout {
-		return probs.Unauthorized(
+		return probs.Unauthorized(fmt.Sprintf(
 			"%s is too new for GET API. "+
 				"You should only use this non-standard API to access resources created more than %s ago",
 			resourceType,
-			wfe.staleTimeout)
+			wfe.staleTimeout))
 	}
 	return nil
 }

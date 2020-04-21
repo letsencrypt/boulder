@@ -50,12 +50,12 @@ func (va *ValidationAuthorityImpl) checkCAA(
 	params *caaParams) *probs.ProblemDetails {
 	present, valid, records, err := va.checkCAARecords(ctx, identifier, params)
 	if err != nil {
-		return probs.DNS("%v", err)
+		return probs.DNS(err.Error())
 	}
 
 	recordsStr, err := json.Marshal(&records)
 	if err != nil {
-		return probs.CAA("CAA records for %s were malformed", identifier.Value)
+		return probs.CAA(fmt.Sprintf("CAA records for %s were malformed", identifier.Value))
 	}
 
 	accountID, challengeType := "unknown", "unknown"
@@ -69,7 +69,7 @@ func (va *ValidationAuthorityImpl) checkCAA(
 	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %s, Challenge: %s, Valid for issuance: %t] Records=%s",
 		identifier.Value, present, accountID, challengeType, valid, recordsStr)
 	if !valid {
-		return probs.CAA("CAA record for %s prevents issuance", identifier.Value)
+		return probs.CAA(fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value))
 	}
 	return nil
 }

@@ -141,7 +141,7 @@ func (va *ValidationAuthorityImpl) getTLSCerts(
 	certs := cs.PeerCertificates
 	if len(certs) == 0 {
 		va.log.Infof("%s challenge for %s resulted in no certificates", challenge.Type, identifier.Value)
-		return nil, nil, probs.Unauthorized("No certs presented for %s challenge", challenge.Type)
+		return nil, nil, probs.Unauthorized(fmt.Sprintf("No certs presented for %s challenge", challenge.Type))
 	}
 	for i, cert := range certs {
 		va.log.AuditInfof("%s challenge for %s received certificate (%d of %d): cert=[%s]",

@@ -575,6 +575,12 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 			http.StatusMovedPermanently)
 	})
 
+	// A path that returns a body containing printf formatting verbs
+	mux.HandleFunc("/printf-verbs", func(resp http.ResponseWriter, req *http.Request) {
+		resp.WriteHeader(http.StatusOK)
+		fmt.Fprint(resp, "%"+"2F.well-known%"+"2F"+tooLargeBuf.String())
+	})
+
 	return server
 }
 
@@ -763,8 +769,8 @@ func TestFetchHTTP(t *testing.T) {
 			Name: "Redirect loop",
 			Host: "example.com",
 			Path: "/loop",
-			ExpectedProblem: probs.ConnectionFailure(
-				"Fetching http://example.com:%d/loop: Too many redirects", httpPort),
+			ExpectedProblem: probs.ConnectionFailure(fmt.Sprintf(
+				"Fetching http://example.com:%d/loop: Too many redirects", httpPort)),
 			ExpectedRecords: expectedLoopRecords,
 		},
 		{
@@ -789,9 +795,9 @@ func TestFetchHTTP(t *testing.T) {
 			Name: "Redirect to bad port",
 			Host: "example.com",
 			Path: "/redir-bad-port",
-			ExpectedProblem: probs.ConnectionFailure(
+			ExpectedProblem: probs.ConnectionFailure(fmt.Sprintf(
 				"Fetching https://example.com:1987: Invalid port in redirect target. "+
-					"Only ports %d and 443 are supported, not 1987", httpPort),
+					"Only ports %d and 443 are supported, not 1987", httpPort)),
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					Hostname:          "example.com",
@@ -856,10 +862,10 @@ func TestFetchHTTP(t *testing.T) {
 			Name: "Response too large",
 			Host: "example.com",
 			Path: "/resp-too-big",
-			ExpectedProblem: probs.Unauthorized(
+			ExpectedProblem: probs.Unauthorized(fmt.Sprintf(
 				"Invalid response from http://example.com/resp-too-big "+
 					"[127.0.0.1]: %q", expectedTruncatedResp.String(),
-			),
+			)),
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					Hostname:          "example.com",
@@ -942,6 +948,27 @@ func TestFetchHTTP(t *testing.T) {
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/ok",
+					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
+					AddressUsed:       net.ParseIP("127.0.0.1"),
+				},
+			},
+		},
+		{
+			Name: "Reflected response body containing printf verbs",
+			Host: "example.com",
+			Path: "/printf-verbs",
+			ExpectedProblem: &probs.ProblemDetails{
+				Type: probs.UnauthorizedProblem,
+				Detail: fmt.Sprintf("Invalid response from "+
+					"http://example.com/printf-verbs [127.0.0.1]: %q",
+					("%2F.well-known%2F" + expectedTruncatedResp.String())[:maxResponseSize]),
+				HTTPStatus: http.StatusForbidden,
+			},
+			ExpectedRecords: []core.ValidationRecord{
+				{
+					Hostname:          "example.com",
+					Port:              strconv.Itoa(httpPort),
+					URL:               "http://example.com/printf-verbs",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 				},
