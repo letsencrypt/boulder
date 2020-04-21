@@ -8,9 +8,12 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/letsencrypt/boulder/test"
 	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
@@ -166,4 +169,54 @@ func TestRevokeWithKeyCompromise(t *testing.T) {
 	_, err = c.NewAccount(certKey, false, true)
 	test.AssertError(t, err, "NewAccount didn't fail with a blacklisted key")
 	test.AssertEquals(t, err.Error(), `acme: error code 400 "urn:ietf:params:acme:error:badPublicKey": public key is forbidden`)
+}
+
+func TestBadKeyRevoker(t *testing.T) {
+	t.Parallel()
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
+	cA, err := makeClient("mailto:test@letsencrypt.org")
+	test.AssertNotError(t, err, "creating acme client")
+	cB, err := makeClient("mailto:bad-key-revoker-test@letsencrypt.org")
+	test.AssertNotError(t, err, "creating acme client")
+	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "failed to generate cert key")
+
+	certA, err := authAndIssue(cA, certKey, []string{random_domain()})
+	test.AssertNotError(t, err, "authAndIssue failed")
+
+	certB, err := authAndIssue(cB, certKey, []string{random_domain()})
+	test.AssertNotError(t, err, "authAndIssue failed")
+
+	err = cA.RevokeCertificate(
+		cA.Account,
+		certA.certs[0],
+		cA.Account.PrivateKey,
+		ocsp.KeyCompromise,
+	)
+	test.AssertNotError(t, err, "failed to revoke certificate")
+
+	_, err = ocsp_helper.ReqDER(certA.certs[0].Raw, ocsp.Revoked)
+	test.AssertNotError(t, err, "ReqDER failed")
+
+	for i := 0; i < 5; i++ {
+		_, err = ocsp_helper.ReqDER(certB.certs[0].Raw, ocsp.Revoked)
+		if err == nil {
+			break
+		}
+		if i == 5 {
+			t.Fatal("timed out waiting for revoked OCSP status")
+		}
+		time.Sleep(time.Second)
+	}
+
+	countResp, err := http.Get("http://boulder:9381/count?to=bad-key-revoker-test@letsencrypt.org")
+	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
+	defer func() { _ = countResp.Body.Close() }()
+	body, err := ioutil.ReadAll(countResp.Body)
+	test.AssertNotError(t, err, "failed to read body")
+	test.AssertEquals(t, string(body), "1\n")
 }

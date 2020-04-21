@@ -258,7 +258,7 @@ def main():
         test_case_filter="", skip_setup=False)
     args = parser.parse_args()
 
-    if not (args.run_certbot or args.run_chisel or args.custom is not None):
+    if not (args.run_certbot or args.run_chisel or args.custom or args.run_go is not None):
         raise(Exception("must run at least one of the letsencrypt or chisel tests with --certbot, --chisel, or --custom"))
 
     if not args.test_case_filter:
