@@ -74,7 +74,8 @@ func TestSelectUncheckedRows(t *testing.T) {
 func insertRegistration(t *testing.T, dbMap *db.WrappedMap, contact string) int64 {
 	t.Helper()
 	jwkHash := make([]byte, 2)
-	rand.Read(jwkHash)
+	_, err := rand.Read(jwkHash)
+	test.AssertNotError(t, err, "failed to read rand")
 	contactStr := "[]"
 	if contact != "" {
 		contactStr = fmt.Sprintf(`["mailto:%s"]`, contact)
