@@ -25,7 +25,8 @@
     },
     "features": {
       "StoreIssuerInfo": true,
-      "StoreKeyHashes": true
+      "StoreKeyHashes": true,
+      "StoreRevokerInfo": true
     }
   },
 

@@ -178,45 +178,70 @@ func TestBadKeyRevoker(t *testing.T) {
 	}
 
 	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
-	cA, err := makeClient("mailto:test@letsencrypt.org")
+	cA, err := makeClient("mailto:bad-key-revoker-revoker@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
-	cB, err := makeClient("mailto:bad-key-revoker-test@letsencrypt.org")
+	cB, err := makeClient("mailto:bad-key-revoker-revokee@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
+	cC, err := makeClient("mailto:bad-key-revoker-revokee@letsencrypt.org")
+	test.AssertNotError(t, err, "creating acme client")
+	cD, err := makeClient("mailto:bad-key-revoker-revokee-2@letsencrypt.org")
+	test.AssertNotError(t, err, "creating acme client")
+
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate cert key")
 
-	certA, err := authAndIssue(cA, certKey, []string{random_domain()})
+	badCert, err := authAndIssue(cA, certKey, []string{random_domain()})
 	test.AssertNotError(t, err, "authAndIssue failed")
 
-	certB, err := authAndIssue(cB, certKey, []string{random_domain()})
-	test.AssertNotError(t, err, "authAndIssue failed")
+	certs := []*x509.Certificate{}
+	for _, c := range []*client{cA, cB, cC, cD} {
+		for i := 0; i < 2; i++ {
+			cert, err := authAndIssue(c, certKey, []string{random_domain()})
+			test.AssertNotError(t, err, "authAndIssue failed")
+			certs = append(certs, cert.certs[0])
+		}
+	}
 
 	err = cA.RevokeCertificate(
 		cA.Account,
-		certA.certs[0],
+		badCert.certs[0],
 		cA.Account.PrivateKey,
 		ocsp.KeyCompromise,
 	)
 	test.AssertNotError(t, err, "failed to revoke certificate")
-
-	_, err = ocsp_helper.ReqDER(certA.certs[0].Raw, ocsp.Revoked)
+	_, err = ocsp_helper.ReqDER(badCert.certs[0].Raw, ocsp.Revoked)
 	test.AssertNotError(t, err, "ReqDER failed")
 
-	for i := 0; i < 5; i++ {
-		_, err = ocsp_helper.ReqDER(certB.certs[0].Raw, ocsp.Revoked)
-		if err == nil {
-			break
+	for _, cert := range certs {
+		for i := 0; i < 5; i++ {
+			_, err = ocsp_helper.ReqDER(cert.Raw, ocsp.Revoked)
+			if err == nil {
+				break
+			}
+			if i == 5 {
+				t.Fatal("timed out waiting for revoked OCSP status")
+			}
+			time.Sleep(time.Second)
 		}
-		if i == 5 {
-			t.Fatal("timed out waiting for revoked OCSP status")
-		}
-		time.Sleep(time.Second)
 	}
 
-	countResp, err := http.Get("http://boulder:9381/count?to=bad-key-revoker-test@letsencrypt.org")
+	countResp, err := http.Get("http://boulder:9381/count?to=bad-key-revoker-revokee@letsencrypt.org")
 	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
 	defer func() { _ = countResp.Body.Close() }()
 	body, err := ioutil.ReadAll(countResp.Body)
 	test.AssertNotError(t, err, "failed to read body")
 	test.AssertEquals(t, string(body), "1\n")
+	otherCountResp, err := http.Get("http://boulder:9381/count?to=bad-key-revoker-revokee-2@letsencrypt.org")
+	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
+	defer func() { _ = otherCountResp.Body.Close() }()
+	body, err = ioutil.ReadAll(otherCountResp.Body)
+	test.AssertNotError(t, err, "failed to read body")
+	test.AssertEquals(t, string(body), "1\n")
+
+	zeroCountResp, err := http.Get("http://boulder:9381/count?to=bad-key-revoker-revoker@letsencrypt.org")
+	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
+	defer func() { _ = zeroCountResp.Body.Close() }()
+	body, err = ioutil.ReadAll(zeroCountResp.Body)
+	test.AssertNotError(t, err, "failed to read body")
+	test.AssertEquals(t, string(body), "0\n")
 }

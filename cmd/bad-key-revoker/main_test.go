@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"fmt"
+	"html/template"
 	"os"
 	"strings"
 	"sync"
@@ -10,6 +13,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/mocks"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/sa"
@@ -25,72 +29,59 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+func randHash() []byte {
+	h := make([]byte, 32)
+	rand.Read(h)
+	return h
+}
+
+func insertBlockedRow(t *testing.T, dbMap *db.WrappedMap, hash []byte, by int64, checked bool) {
+	t.Helper()
+	_, err := dbMap.Exec(`INSERT INTO blockedKeys
+		(keyHash, added, source, revokedBy, extantCertificatesChecked)
+		VALUES
+		(?, ?, ?, ?, ?)`,
+		hash,
+		time.Now(),
+		1,
+		by,
+		checked,
+	)
+	test.AssertNotError(t, err, "failed to add test row")
+}
+
 func TestSelectUncheckedRows(t *testing.T) {
 	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetSATestDatabase(t)()
 
-	bkr := &badKeyRevoker{dbMap: dbMap, uncheckedBatchSize: 1}
+	bkr := &badKeyRevoker{dbMap: dbMap}
 
-	hashA := make([]byte, 32)
-	hashA[0] = 1
-	hashB := make([]byte, 32)
-	hashB[0] = 2
-	hashC := make([]byte, 32)
-	hashC[0] = 3
-	_, err = dbMap.Exec(`INSERT INTO blockedKeys
-		(keyHash, added, source, revokedBy, extantCertificatesChecked)
-		VALUES
-		(?, ?, ?, ?, ?)`,
-		hashA,
-		time.Now(),
-		1,
-		1,
-		false,
-	)
-	test.AssertNotError(t, err, "failed to add test row")
-	_, err = dbMap.Exec(`INSERT INTO blockedKeys
-		(keyHash, added, source, revokedBy, extantCertificatesChecked)
-		VALUES
-		(?, ?, ?, ?, ?)`,
-		hashB,
-		time.Now(),
-		1,
-		2,
-		false,
-	)
-	test.AssertNotError(t, err, "failed to add test row")
-	_, err = dbMap.Exec(`INSERT INTO blockedKeys
-		(keyHash, added, source, revokedBy, extantCertificatesChecked)
-		VALUES
-		(?, ?, ?, ?, ?)`,
-		hashC,
-		time.Now(),
-		1,
-		2,
-		true,
-	)
-	test.AssertNotError(t, err, "failed to add test row")
-
-	rows, err := bkr.selectUncheckedRows()
-	test.AssertNotError(t, err, "selectUncheckedRows failed")
-	test.AssertEquals(t, len(rows), 2)
-	test.AssertByteEquals(t, rows[0].KeyHash, hashA)
-	test.AssertEquals(t, rows[0].RevokedBy, int64(1))
-	test.AssertByteEquals(t, rows[1].KeyHash, hashB)
-	test.AssertEquals(t, rows[1].RevokedBy, int64(2))
+	hashA, hashB := randHash(), randHash()
+	insertBlockedRow(t, dbMap, hashA, 1, true)
+	row, err := bkr.selectUncheckedKey()
+	test.AssertError(t, err, "selectUncheckedKey didn't fail with no rows to process")
+	test.Assert(t, db.IsNoRows(err), "returned error is not sql.ErrNoRows")
+	insertBlockedRow(t, dbMap, hashB, 1, false)
+	row, err = bkr.selectUncheckedKey()
+	test.AssertNotError(t, err, "selectUncheckKey failed")
+	test.AssertByteEquals(t, row.KeyHash, hashB)
+	test.AssertEquals(t, row.RevokedBy, int64(1))
 }
 
-func TestFindUnrevoked(t *testing.T) {
-	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
-	test.AssertNotError(t, err, "failed setting up db client")
-	defer test.ResetSATestDatabase(t)()
-
+func insertRegistration(t *testing.T, dbMap *db.WrappedMap, contact string) int64 {
+	t.Helper()
+	jwkHash := make([]byte, 2)
+	rand.Read(jwkHash)
+	contactStr := "[]"
+	if contact != "" {
+		contactStr = fmt.Sprintf(`["mailto:%s"]`, contact)
+	}
 	res, err := dbMap.Exec(
 		"INSERT INTO registrations (jwk, jwk_sha256, contact, agreement, initialIP, createdAt, status, LockCol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 		[]byte{},
-		"ff",
-		"[]",
+		fmt.Sprintf("%x", jwkHash),
+		contactStr,
 		"yes",
 		[]byte{},
 		time.Now(),
@@ -100,46 +91,38 @@ func TestFindUnrevoked(t *testing.T) {
 	test.AssertNotError(t, err, "failed to insert test registrations row")
 	regID, err := res.LastInsertId()
 	test.AssertNotError(t, err, "failed to get registration ID")
+	return regID
+}
 
-	bkr := &badKeyRevoker{dbMap: dbMap, certificatesBatchSize: 1}
+func insertCert(t *testing.T, dbMap *db.WrappedMap, keyHash []byte, serial string, regID int64, expired bool, revoked bool) {
+	t.Helper()
+	_, err := dbMap.Exec(
+		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
+		keyHash,
+		time.Now(),
+		serial,
+	)
+	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
 
-	hashA := make([]byte, 32)
-	hashA[0] = 1
-	_, err = dbMap.Exec(
-		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
-		hashA,
-		time.Now(),
-		"ff",
-	)
-	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
-	_, err = dbMap.Exec(
-		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
-		hashA,
-		time.Now(),
-		"ee",
-	)
-	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
-	_, err = dbMap.Exec(
-		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
-		hashA,
-		time.Now(),
-		"dd",
-	)
-	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
+	status := string(core.StatusValid)
+	if revoked {
+		status = string(core.StatusRevoked)
+	}
 	_, err = dbMap.Exec(
 		"INSERT INTO certificateStatus (serial, status, isExpired, ocspLAstUpdated, revokedDate, revokedReason, lastExpirationNagSent) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		"ff",
-		string(core.StatusValid),
-		false,
+		serial,
+		status,
+		expired,
 		time.Now(),
 		time.Time{},
 		0,
 		time.Time{},
 	)
 	test.AssertNotError(t, err, "failed to insert test certificateStatus row")
+
 	_, err = dbMap.Exec(
 		"INSERT INTO certificates (serial, registrationID, der, digest, issued, expires) VALUES (?, ?, ?, ?, ?, ?)",
-		"ff",
+		serial,
 		regID,
 		[]byte{1, 2, 3},
 		[]byte{},
@@ -147,56 +130,36 @@ func TestFindUnrevoked(t *testing.T) {
 		time.Now(),
 	)
 	test.AssertNotError(t, err, "failed to insert test certificates row")
-	_, err = dbMap.Exec(
-		"INSERT INTO certificateStatus (serial, status, isExpired, ocspLAstUpdated, revokedDate, revokedReason, lastExpirationNagSent) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		"ee",
-		string(core.StatusValid),
-		true,
-		time.Now(),
-		time.Time{},
-		0,
-		time.Time{},
-	)
-	test.AssertNotError(t, err, "failed to insert test certificateStatus row")
-	_, err = dbMap.Exec(
-		"INSERT INTO certificates (serial, registrationID, der, digest, issued, expires) VALUES (?, ?, ?, ?, ?, ?)",
-		"ee",
-		regID,
-		[]byte{1, 2, 3},
-		[]byte{},
-		time.Now(),
-		time.Now(),
-	)
-	test.AssertNotError(t, err, "failed to insert test certificates row")
-	_, err = dbMap.Exec(
-		"INSERT INTO certificateStatus (serial, status, isExpired, ocspLAstUpdated, revokedDate, revokedReason, lastExpirationNagSent) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		"dd",
-		string(core.StatusRevoked),
-		false,
-		time.Now(),
-		time.Time{},
-		0,
-		time.Time{},
-	)
-	test.AssertNotError(t, err, "failed to insert test certificateStatus row")
-	_, err = dbMap.Exec(
-		"INSERT INTO certificates (serial, registrationID, der, digest, issued, expires) VALUES (?, ?, ?, ?, ?, ?)",
-		"dd",
-		regID,
-		[]byte{1, 2, 3},
-		[]byte{},
-		time.Now(),
-		time.Now(),
-	)
-	test.AssertNotError(t, err, "failed to insert test certificates row")
+}
 
-	rows, err := bkr.findUnrevoked(unchecked{KeyHash: hashA, RevokedBy: 10})
+func TestFindUnrevoked(t *testing.T) {
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	test.AssertNotError(t, err, "failed setting up db client")
+	defer test.ResetSATestDatabase(t)()
+
+	regID := insertRegistration(t, dbMap, "")
+
+	bkr := &badKeyRevoker{dbMap: dbMap, serialBatchSize: 1, maxRevocations: 10}
+
+	hashA := randHash()
+	// insert valid, unexpired
+	insertCert(t, dbMap, hashA, "ff", regID, false, false)
+	// insert valid, expired
+	insertCert(t, dbMap, hashA, "ee", regID, true, false)
+	// insert revoked
+	insertCert(t, dbMap, hashA, "dd", regID, false, true)
+
+	rows, err := bkr.findUnrevoked(uncheckedBlockedKey{KeyHash: hashA})
 	test.AssertNotError(t, err, "findUnrevoked failed")
 	test.AssertEquals(t, len(rows), 1)
 	test.AssertEquals(t, rows[0].Serial, "ff")
 	test.AssertEquals(t, rows[0].RegistrationID, int64(1))
-	test.AssertEquals(t, rows[0].RevokedBy, int64(10))
 	test.AssertByteEquals(t, rows[0].DER, []byte{1, 2, 3})
+
+	bkr.maxRevocations = 0
+	_, err = bkr.findUnrevoked(uncheckedBlockedKey{KeyHash: hashA})
+	test.AssertError(t, err, "findUnrevoked didn't fail with 0 maxRevocations")
+	test.AssertEquals(t, err.Error(), fmt.Sprintf("too many certificates to revoke associated with %x: got 1, max 0", hashA))
 }
 
 func TestResolveContacts(t *testing.T) {
@@ -206,62 +169,10 @@ func TestResolveContacts(t *testing.T) {
 
 	bkr := &badKeyRevoker{dbMap: dbMap}
 
-	res, err := dbMap.Exec(
-		"INSERT INTO registrations (jwk, jwk_sha256, contact, agreement, initialIP, createdAt, status, LockCol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-		[]byte{},
-		"ff",
-		"[]",
-		"yes",
-		[]byte{},
-		time.Now(),
-		string(core.StatusValid),
-		0,
-	)
-	test.AssertNotError(t, err, "failed to insert test registrations row")
-	regIDA, err := res.LastInsertId()
-	test.AssertNotError(t, err, "failed to get registration ID")
-	res, err = dbMap.Exec(
-		"INSERT INTO registrations (jwk, jwk_sha256, contact, agreement, initialIP, createdAt, status, LockCol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-		[]byte{},
-		"ee",
-		`["example.com"]`,
-		"yes",
-		[]byte{},
-		time.Now(),
-		string(core.StatusValid),
-		0,
-	)
-	test.AssertNotError(t, err, "failed to insert test registrations row")
-	regIDB, err := res.LastInsertId()
-	test.AssertNotError(t, err, "failed to get registration ID")
-	res, err = dbMap.Exec(
-		"INSERT INTO registrations (jwk, jwk_sha256, contact, agreement, initialIP, createdAt, status, LockCol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-		[]byte{},
-		"dd",
-		`["example.com"]`,
-		"yes",
-		[]byte{},
-		time.Now(),
-		string(core.StatusValid),
-		0,
-	)
-	test.AssertNotError(t, err, "failed to insert test registrations row")
-	regIDC, err := res.LastInsertId()
-	test.AssertNotError(t, err, "failed to get registration ID")
-	res, err = dbMap.Exec(
-		"INSERT INTO registrations (jwk, jwk_sha256, contact, agreement, initialIP, createdAt, status, LockCol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-		[]byte{},
-		"cc",
-		`["example-2.com"]`,
-		"yes",
-		[]byte{},
-		time.Now(),
-		string(core.StatusValid),
-		0,
-	)
-	test.AssertNotError(t, err, "failed to insert test registrations row")
-	regIDD, err := res.LastInsertId()
-	test.AssertNotError(t, err, "failed to get registration ID")
+	regIDA := insertRegistration(t, dbMap, "")
+	regIDB := insertRegistration(t, dbMap, "example.com")
+	regIDC := insertRegistration(t, dbMap, "example.com")
+	regIDD := insertRegistration(t, dbMap, "example-2.com")
 
 	idToEmail, err := bkr.resolveContacts([]int64{regIDA, regIDB, regIDC, regIDD})
 	test.AssertNotError(t, err, "resolveContacts failed")
@@ -272,19 +183,19 @@ func TestResolveContacts(t *testing.T) {
 	})
 }
 
-func TestSendMessages(t *testing.T) {
+var testTemplate = template.Must(template.New("testing").Parse("{{range .}}{{.}}\n{{end}}"))
+
+func TestSendMessage(t *testing.T) {
 	mm := &mocks.Mailer{}
-	bkr := &badKeyRevoker{mailer: mm}
+	bkr := &badKeyRevoker{mailer: mm, emailSubject: "testing", emailTemplate: testTemplate}
 
 	maxSerials = 2
-	err := bkr.sendMessages(map[string][]string{
-		"example.com": {"a", "b", "c"},
-	})
+	err := bkr.sendMessage("example.com", []string{"a", "b", "c"})
 	test.AssertNotError(t, err, "sendMessages failed")
 	test.AssertEquals(t, len(mm.Messages), 1)
 	test.AssertEquals(t, mm.Messages[0].To, "example.com")
-	test.AssertEquals(t, mm.Messages[0].Subject, emailSubject)
-	test.AssertEquals(t, mm.Messages[0].Body, "Hello,\n\nThe public key associated with certificates which you have issued has been marked as compromised. As such we are required to revoke any certificates which contain this public key.\n\nThe following currently unexpired certificates that you've issued contain this public key and have been revoked:\na\nb\nand 1 more certificates.\n")
+	test.AssertEquals(t, mm.Messages[0].Subject, bkr.emailSubject)
+	test.AssertEquals(t, mm.Messages[0].Body, "a\nb\nand 1 more certificates.\n")
 
 }
 
@@ -300,6 +211,26 @@ func (mr *mockRevoker) AdministrativelyRevokeCertificate(ctx context.Context, in
 	return nil, nil
 }
 
+func TestRevokeCerts(t *testing.T) {
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	test.AssertNotError(t, err, "failed setting up db client")
+	defer test.ResetSATestDatabase(t)()
+
+	mm := &mocks.Mailer{}
+	mr := &mockRevoker{}
+	bkr := &badKeyRevoker{dbMap: dbMap, raClient: mr, mailer: mm, emailSubject: "testing", emailTemplate: testTemplate}
+
+	err = bkr.revokeCerts("revoker@example.com", map[string][]unrevokedCertificate{
+		"revoker@example.com": {{Serial: "ff"}},
+		"other@example.com":   {{Serial: "ee"}},
+	})
+	test.AssertNotError(t, err, "revokeCerts failed")
+	test.AssertEquals(t, len(mm.Messages), 1)
+	test.AssertEquals(t, mm.Messages[0].To, "other@example.com")
+	test.AssertEquals(t, mm.Messages[0].Subject, bkr.emailSubject)
+	test.AssertEquals(t, mm.Messages[0].Body, "ee\n")
+}
+
 func TestInvoke(t *testing.T) {
 	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
 	test.AssertNotError(t, err, "failed setting up db client")
@@ -307,190 +238,17 @@ func TestInvoke(t *testing.T) {
 
 	mm := &mocks.Mailer{}
 	mr := &mockRevoker{}
-	bkr := &badKeyRevoker{dbMap: dbMap, uncheckedBatchSize: 1, certificatesBatchSize: 1, raClient: mr, mailer: mm}
+	bkr := &badKeyRevoker{dbMap: dbMap, maxRevocations: 10, serialBatchSize: 1, raClient: mr, mailer: mm, emailSubject: "testing", emailTemplate: testTemplate}
 
 	// populate DB with all the test data
-	res, err := dbMap.Exec(
-		"INSERT INTO registrations (jwk, jwk_sha256, contact, agreement, initialIP, createdAt, status, LockCol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-		[]byte{},
-		"ff",
-		`["example.com"]`,
-		"yes",
-		[]byte{},
-		time.Now(),
-		string(core.StatusValid),
-		0,
-	)
-	test.AssertNotError(t, err, "failed to insert test registrations row")
-	regIDA, err := res.LastInsertId()
-	test.AssertNotError(t, err, "failed to get registration ID")
-	res, err = dbMap.Exec(
-		"INSERT INTO registrations (jwk, jwk_sha256, contact, agreement, initialIP, createdAt, status, LockCol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-		[]byte{},
-		"ee",
-		`["example.com"]`,
-		"yes",
-		[]byte{},
-		time.Now(),
-		string(core.StatusValid),
-		0,
-	)
-	test.AssertNotError(t, err, "failed to insert test registrations row")
-	regIDB, err := res.LastInsertId()
-	test.AssertNotError(t, err, "failed to get registration ID")
-	res, err = dbMap.Exec(
-		"INSERT INTO registrations (jwk, jwk_sha256, contact, agreement, initialIP, createdAt, status, LockCol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-		[]byte{},
-		"dd",
-		`["other.example.com"]`,
-		"yes",
-		[]byte{},
-		time.Now(),
-		string(core.StatusValid),
-		0,
-	)
-	test.AssertNotError(t, err, "failed to insert test registrations row")
-	regIDC, err := res.LastInsertId()
-	test.AssertNotError(t, err, "failed to get registration ID")
-
-	hashA := make([]byte, 32)
-	hashA[0] = 1
-	_, err = dbMap.Exec(`INSERT INTO blockedKeys
-		(keyHash, added, source, revokedBy, extantCertificatesChecked)
-		VALUES
-		(?, ?, ?, ?, ?)`,
-		hashA,
-		time.Now(),
-		1,
-		regIDC,
-		false,
-	)
-	test.AssertNotError(t, err, "failed to add test row")
-	_, err = dbMap.Exec(
-		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
-		hashA,
-		time.Now(),
-		"ff",
-	)
-	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
-	_, err = dbMap.Exec(
-		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
-		hashA,
-		time.Now(),
-		"ee",
-	)
-	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
-	_, err = dbMap.Exec(
-		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
-		hashA,
-		time.Now(),
-		"dd",
-	)
-	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
-	_, err = dbMap.Exec(
-		"INSERT INTO certificateStatus (serial, status, isExpired, ocspLAstUpdated, revokedDate, revokedReason, lastExpirationNagSent) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		"ff",
-		string(core.StatusValid),
-		false,
-		time.Now(),
-		time.Time{},
-		0,
-		time.Time{},
-	)
-	test.AssertNotError(t, err, "failed to insert test certificateStatus row")
-	_, err = dbMap.Exec(
-		"INSERT INTO certificates (serial, registrationID, der, digest, issued, expires) VALUES (?, ?, ?, ?, ?, ?)",
-		"ff",
-		regIDA,
-		[]byte{1, 2, 3},
-		[]byte{},
-		time.Now(),
-		time.Now(),
-	)
-	test.AssertNotError(t, err, "failed to insert test certificates row")
-	_, err = dbMap.Exec(
-		"INSERT INTO certificateStatus (serial, status, isExpired, ocspLAstUpdated, revokedDate, revokedReason, lastExpirationNagSent) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		"ee",
-		string(core.StatusValid),
-		false,
-		time.Now(),
-		time.Time{},
-		0,
-		time.Time{},
-	)
-	test.AssertNotError(t, err, "failed to insert test certificateStatus row")
-	_, err = dbMap.Exec(
-		"INSERT INTO certificates (serial, registrationID, der, digest, issued, expires) VALUES (?, ?, ?, ?, ?, ?)",
-		"ee",
-		regIDB,
-		[]byte{1, 2, 3},
-		[]byte{},
-		time.Now(),
-		time.Now(),
-	)
-	test.AssertNotError(t, err, "failed to insert test certificates row")
-	_, err = dbMap.Exec(
-		"INSERT INTO certificateStatus (serial, status, isExpired, ocspLAstUpdated, revokedDate, revokedReason, lastExpirationNagSent) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		"dd",
-		string(core.StatusValid),
-		false,
-		time.Now(),
-		time.Time{},
-		0,
-		time.Time{},
-	)
-	test.AssertNotError(t, err, "failed to insert test certificateStatus row")
-	_, err = dbMap.Exec(
-		"INSERT INTO certificates (serial, registrationID, der, digest, issued, expires) VALUES (?, ?, ?, ?, ?, ?)",
-		"dd",
-		regIDC,
-		[]byte{1, 2, 3},
-		[]byte{},
-		time.Now(),
-		time.Now(),
-	)
-	test.AssertNotError(t, err, "failed to insert test certificates row")
-	hashB := make([]byte, 32)
-	hashB[0] = 2
-	_, err = dbMap.Exec(`INSERT INTO blockedKeys
-		(keyHash, added, source, revokedBy, extantCertificatesChecked)
-		VALUES
-		(?, ?, ?, ?, ?)`,
-		hashB,
-		time.Now(),
-		1,
-		regIDC,
-		false,
-	)
-	test.AssertNotError(t, err, "failed to insert test blockKeys row")
-	_, err = dbMap.Exec(
-		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
-		hashB,
-		time.Now(),
-		"cc",
-	)
-	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
-	_, err = dbMap.Exec(
-		"INSERT INTO certificateStatus (serial, status, isExpired, ocspLAstUpdated, revokedDate, revokedReason, lastExpirationNagSent) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		"cc",
-		string(core.StatusRevoked),
-		true,
-		time.Now(),
-		time.Time{},
-		0,
-		time.Time{},
-	)
-	test.AssertNotError(t, err, "failed to insert test certificateStatus row")
-	_, err = dbMap.Exec(
-		"INSERT INTO certificates (serial, registrationID, der, digest, issued, expires) VALUES (?, ?, ?, ?, ?, ?)",
-		"cc",
-		regIDC,
-		[]byte{1, 2, 3},
-		[]byte{},
-		time.Now(),
-		time.Now(),
-	)
-	test.AssertNotError(t, err, "failed to insert test certificates row")
+	regIDA := insertRegistration(t, dbMap, "example.com")
+	regIDB := insertRegistration(t, dbMap, "example.com")
+	regIDC := insertRegistration(t, dbMap, "other.example.com")
+	hashA := randHash()
+	insertBlockedRow(t, dbMap, hashA, regIDC, false)
+	insertCert(t, dbMap, hashA, "ff", regIDA, false, false)
+	insertCert(t, dbMap, hashA, "ee", regIDB, false, false)
+	insertCert(t, dbMap, hashA, "dd", regIDC, false, false)
 
 	noWork, err := bkr.invoke()
 	test.AssertNotError(t, err, "invoke failed")
@@ -505,6 +263,16 @@ func TestInvoke(t *testing.T) {
 	err = dbMap.SelectOne(&checked, "SELECT extantCertificatesChecked FROM blockedKeys WHERE keyHash = ?", hashA)
 	test.AssertNotError(t, err, "failed to select row from blockedKeys")
 	test.AssertEquals(t, checked.ExtantCertificatesChecked, true)
+
+	// add a row with no associated valid certificates
+	hashB := randHash()
+	insertBlockedRow(t, dbMap, hashB, regIDC, false)
+	insertCert(t, dbMap, hashB, "cc", regIDA, true, true)
+
+	noWork, err = bkr.invoke()
+	test.AssertNotError(t, err, "invoke failed")
+	test.AssertEquals(t, noWork, false)
+
 	checked.ExtantCertificatesChecked = false
 	err = dbMap.SelectOne(&checked, "SELECT extantCertificatesChecked FROM blockedKeys WHERE keyHash = ?", hashB)
 	test.AssertNotError(t, err, "failed to select row from blockedKeys")

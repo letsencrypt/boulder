@@ -47,7 +47,8 @@
       ]
     },
     "features": {
-      "BlockedKeyTable": true
+      "BlockedKeyTable": true,
+      "StoreRevokerInfo": true
     },
     "CTLogGroups2": [
       {
