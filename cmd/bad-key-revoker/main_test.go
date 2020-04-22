@@ -29,9 +29,11 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func randHash() []byte {
+func randHash(t *testing.T) []byte {
+	t.Helper()
 	h := make([]byte, 32)
-	rand.Read(h)
+	_, err := rand.Read(h)
+	test.AssertNotError(t, err, "failed to read rand")
 	return h
 }
 
@@ -57,7 +59,7 @@ func TestSelectUncheckedRows(t *testing.T) {
 
 	bkr := &badKeyRevoker{dbMap: dbMap}
 
-	hashA, hashB := randHash(), randHash()
+	hashA, hashB := randHash(t), randHash(t)
 	insertBlockedRow(t, dbMap, hashA, 1, true)
 	row, err := bkr.selectUncheckedKey()
 	test.AssertError(t, err, "selectUncheckedKey didn't fail with no rows to process")
@@ -141,7 +143,7 @@ func TestFindUnrevoked(t *testing.T) {
 
 	bkr := &badKeyRevoker{dbMap: dbMap, serialBatchSize: 1, maxRevocations: 10}
 
-	hashA := randHash()
+	hashA := randHash(t)
 	// insert valid, unexpired
 	insertCert(t, dbMap, hashA, "ff", regID, false, false)
 	// insert valid, expired
@@ -246,7 +248,7 @@ func TestInvoke(t *testing.T) {
 	regIDB := insertRegistration(t, dbMap, "example.com")
 	regIDC := insertRegistration(t, dbMap, "other.example.com")
 	regIDD := insertRegistration(t, dbMap, "")
-	hashA := randHash()
+	hashA := randHash(t)
 	insertBlockedRow(t, dbMap, hashA, regIDC, false)
 	insertCert(t, dbMap, hashA, "ff", regIDA, false, false)
 	insertCert(t, dbMap, hashA, "ee", regIDB, false, false)
@@ -268,7 +270,7 @@ func TestInvoke(t *testing.T) {
 	test.AssertEquals(t, checked.ExtantCertificatesChecked, true)
 
 	// add a row with no associated valid certificates
-	hashB := randHash()
+	hashB := randHash(t)
 	insertBlockedRow(t, dbMap, hashB, regIDC, false)
 	insertCert(t, dbMap, hashB, "bb", regIDA, true, true)
 

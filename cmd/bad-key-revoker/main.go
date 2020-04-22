@@ -36,6 +36,10 @@ var certsRevoked = prometheus.NewCounter(prometheus.CounterOpts{
 	Name: "bad_keys_certs_revoked",
 	Help: "A counter of certificates associated with rows in blockedKeys that have been revoked",
 })
+var mailErrors = prometheus.NewCounter(prometheus.CounterOpts{
+	Name: "bad_keys_mail_errors",
+	Help: "A counter of email send errors",
+})
 
 // revoker is an interface used to reduce the scope of a RA gRPC client
 // to only the single method we need to use, this makes testing significantly
@@ -217,6 +221,7 @@ func (bkr *badKeyRevoker) revokeCerts(revokerEmail string, emailToCerts map[stri
 		}
 		err := bkr.sendMessage(email, revokedSerials)
 		if err != nil {
+			mailErrors.Inc()
 			bkr.logger.Errf("failed to send message to %q: %s", email, err)
 			continue
 		}
@@ -329,6 +334,7 @@ func main() {
 
 	scope.MustRegister(keysProcessed)
 	scope.MustRegister(certsRevoked)
+	scope.MustRegister(mailErrors)
 
 	dbURL, err := config.BadKeyRevoker.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
