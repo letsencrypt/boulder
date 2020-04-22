@@ -177,6 +177,7 @@ func TestResolveContacts(t *testing.T) {
 	idToEmail, err := bkr.resolveContacts([]int64{regIDA, regIDB, regIDC, regIDD})
 	test.AssertNotError(t, err, "resolveContacts failed")
 	test.AssertDeepEquals(t, idToEmail, map[int64]string{
+		regIDA: "",
 		regIDB: "example.com",
 		regIDC: "example.com",
 		regIDD: "example-2.com",
@@ -244,16 +245,18 @@ func TestInvoke(t *testing.T) {
 	regIDA := insertRegistration(t, dbMap, "example.com")
 	regIDB := insertRegistration(t, dbMap, "example.com")
 	regIDC := insertRegistration(t, dbMap, "other.example.com")
+	regIDD := insertRegistration(t, dbMap, "")
 	hashA := randHash()
 	insertBlockedRow(t, dbMap, hashA, regIDC, false)
 	insertCert(t, dbMap, hashA, "ff", regIDA, false, false)
 	insertCert(t, dbMap, hashA, "ee", regIDB, false, false)
 	insertCert(t, dbMap, hashA, "dd", regIDC, false, false)
+	insertCert(t, dbMap, hashA, "cc", regIDD, false, false)
 
 	noWork, err := bkr.invoke()
 	test.AssertNotError(t, err, "invoke failed")
 	test.AssertEquals(t, noWork, false)
-	test.AssertEquals(t, mr.revoked, 3)
+	test.AssertEquals(t, mr.revoked, 4)
 	test.AssertEquals(t, len(mm.Messages), 1)
 	test.AssertEquals(t, mm.Messages[0].To, "example.com")
 
@@ -267,7 +270,7 @@ func TestInvoke(t *testing.T) {
 	// add a row with no associated valid certificates
 	hashB := randHash()
 	insertBlockedRow(t, dbMap, hashB, regIDC, false)
-	insertCert(t, dbMap, hashB, "cc", regIDA, true, true)
+	insertCert(t, dbMap, hashB, "bb", regIDA, true, true)
 
 	noWork, err = bkr.invoke()
 	test.AssertNotError(t, err, "invoke failed")

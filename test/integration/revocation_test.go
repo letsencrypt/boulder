@@ -186,6 +186,8 @@ func TestBadKeyRevoker(t *testing.T) {
 	test.AssertNotError(t, err, "creating acme client")
 	cD, err := makeClient("mailto:bad-key-revoker-revokee-2@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
+	cE, err := makeClient()
+	test.AssertNotError(t, err, "creating acme client")
 
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate cert key")
@@ -194,7 +196,7 @@ func TestBadKeyRevoker(t *testing.T) {
 	test.AssertNotError(t, err, "authAndIssue failed")
 
 	certs := []*x509.Certificate{}
-	for _, c := range []*client{cA, cB, cC, cD} {
+	for _, c := range []*client{cA, cB, cC, cD, cE} {
 		for i := 0; i < 2; i++ {
 			cert, err := authAndIssue(c, certKey, []string{random_domain()})
 			test.AssertNotError(t, err, "authAndIssue failed")

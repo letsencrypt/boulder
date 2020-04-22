@@ -18,13 +18,24 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mail"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"google.golang.org/grpc"
 )
+
+var keysProcessed = prometheus.NewCounterVec(prometheus.CounterOpts{
+	Name: "bad_keys_processed",
+	Help: "A counter of blockedKeys rows processed labelled by processing state",
+}, []string{"state"})
+var certsRevoked = prometheus.NewCounter(prometheus.CounterOpts{
+	Name: "bad_keys_certs_revoked",
+	Help: "A counter of certificates associated with rows in blockedKeys that have been revoked",
+})
 
 // revoker is an interface used to reduce the scope of a RA gRPC client
 // to only the single method we need to use, this makes testing significantly
@@ -41,6 +52,7 @@ type badKeyRevoker struct {
 	mailer          mail.Mailer
 	emailSubject    string
 	emailTemplate   *template.Template
+	logger          log.Logger
 }
 
 // uncheckedBlockedKey represents a row in the blockedKeys table
@@ -94,10 +106,11 @@ func (bkr *badKeyRevoker) findUnrevoked(unchecked uncheckedBlockedKey) ([]unrevo
 			var unrevokedCert unrevokedCertificate
 			err = bkr.dbMap.SelectOne(
 				&unrevokedCert,
-				`SELECT cs.serial, c.registrationID, c.der FROM certificateStatus AS cs
-					JOIN certificates AS c
-					ON cs.serial = c.serial
-					WHERE cs.serial = ? AND cs.isExpired = false AND cs.status != ?`,
+				`SELECT cs.serial, c.registrationID, c.der
+				FROM certificateStatus AS cs
+				JOIN certificates AS c
+				ON cs.serial = c.serial
+				WHERE cs.serial = ? AND cs.isExpired = false AND cs.status != ?`,
 				serial.CertSerial,
 				string(core.StatusRevoked),
 			)
@@ -138,9 +151,10 @@ func (bkr *badKeyRevoker) resolveContacts(ids []int64) (map[int64]string, error)
 			return nil, err
 		}
 		if len(emails.Contact) == 0 {
-			continue
+			idToEmail[id] = ""
+		} else {
+			idToEmail[id] = strings.TrimPrefix(emails.Contact[0], "mailto:")
 		}
-		idToEmail[id] = strings.TrimPrefix(emails.Contact[0], "mailto:")
 	}
 	return idToEmail, nil
 }
@@ -194,16 +208,17 @@ func (bkr *badKeyRevoker) revokeCerts(revokerEmail string, emailToCerts map[stri
 			if err != nil {
 				return err
 			}
+			certsRevoked.Inc()
 			revokedSerials = append(revokedSerials, cert.Serial)
 		}
 		// don't send emails to the person who revoked the certificate
-		fmt.Println("HELLO OVER HERE", email, revokerEmail)
-		if email == revokerEmail {
+		if email == revokerEmail || email == "" {
 			continue
 		}
 		err := bkr.sendMessage(email, revokedSerials)
 		if err != nil {
-			return err
+			bkr.logger.Errf("failed to send message to %q: %s", email, err)
+			continue
 		}
 	}
 	return nil
@@ -250,7 +265,6 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	fmt.Println("map is", idToEmail)
 	// build a map of email -> certificates, this de-duplicates accounts with
 	// the same email address
 	emailToCerts := map[string][]unrevokedCertificate{}
@@ -259,7 +273,6 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 	}
 
 	// revoke each certificate and send emails to their owners
-	fmt.Println("revoker was!!!", unchecked.RevokedBy)
 	err = bkr.revokeCerts(idToEmail[unchecked.RevokedBy], emailToCerts)
 	if err != nil {
 		return false, err
@@ -313,6 +326,9 @@ func main() {
 
 	scope, logger := cmd.StatsAndLogging(config.Syslog, config.BadKeyRevoker.DebugAddr)
 	clk := cmd.Clock()
+
+	scope.MustRegister(keysProcessed)
+	scope.MustRegister(certsRevoked)
 
 	dbURL, err := config.BadKeyRevoker.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
@@ -373,15 +389,19 @@ func main() {
 		mailer:          mailClient,
 		emailSubject:    config.BadKeyRevoker.Mailer.EmailSubject,
 		emailTemplate:   emailTemplate,
+		logger:          logger,
 	}
 	for {
 		noWork, err := bkr.invoke()
 		if err != nil {
-			logger.Err(err.Error())
+			keysProcessed.WithLabelValues("error").Inc()
+			logger.Errf("failed to process blockedKeys row: %s", err)
 			continue
 		}
 		if noWork {
 			time.Sleep(config.BadKeyRevoker.Interval.Duration)
+		} else {
+			keysProcessed.WithLabelValues("success").Inc()
 		}
 	}
 }
