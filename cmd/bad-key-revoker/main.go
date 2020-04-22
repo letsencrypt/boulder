@@ -300,9 +300,17 @@ func main() {
 			TLS       cmd.TLSConfig
 			RAService *cmd.GRPCClientConfig
 
-			MaximumRevocations        int
+			// MaximumRevocations specifies the maximum number of certificates associated with
+			// a key hash that bad-key-revoker will attempt to revoke. If the number of certificates
+			// is higher than MaximumRevocations bad-key-revoker will error out and refuse to
+			// progress until this is addressed.
+			MaximumRevocations int
+			// FindCertificatesBatchSize specifies the maximum number of serials to select from the
+			// keyHashToSerial table at once
 			FindCertificatesBatchSize int
 
+			// Interval specifies how long bad-key-revoker should sleep between attempting to find
+			// blockedKeys rows to process when there is no work to do
 			Interval cmd.ConfigDuration
 
 			Mailer struct {
