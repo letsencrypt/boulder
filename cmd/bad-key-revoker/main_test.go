@@ -71,14 +71,18 @@ func TestSelectUncheckedRows(t *testing.T) {
 	test.AssertEquals(t, row.RevokedBy, int64(1))
 }
 
-func insertRegistration(t *testing.T, dbMap *db.WrappedMap, contact string) int64 {
+func insertRegistration(t *testing.T, dbMap *db.WrappedMap, addrs ...string) int64 {
 	t.Helper()
 	jwkHash := make([]byte, 2)
 	_, err := rand.Read(jwkHash)
 	test.AssertNotError(t, err, "failed to read rand")
 	contactStr := "[]"
-	if contact != "" {
-		contactStr = fmt.Sprintf(`["mailto:%s"]`, contact)
+	if len(addrs) > 0 {
+		contacts := []string{}
+		for _, addr := range addrs {
+			contacts = append(contacts, fmt.Sprintf(`"mailto:%s"`, addr))
+		}
+		contactStr = fmt.Sprintf("[%s]", strings.Join(contacts, ","))
 	}
 	res, err := dbMap.Exec(
 		"INSERT INTO registrations (jwk, jwk_sha256, contact, agreement, initialIP, createdAt, status, LockCol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -173,17 +177,17 @@ func TestResolveContacts(t *testing.T) {
 	bkr := &badKeyRevoker{dbMap: dbMap}
 
 	regIDA := insertRegistration(t, dbMap, "")
-	regIDB := insertRegistration(t, dbMap, "example.com")
+	regIDB := insertRegistration(t, dbMap, "example.com", "example-2.com")
 	regIDC := insertRegistration(t, dbMap, "example.com")
 	regIDD := insertRegistration(t, dbMap, "example-2.com")
 
 	idToEmail, err := bkr.resolveContacts([]int64{regIDA, regIDB, regIDC, regIDD})
 	test.AssertNotError(t, err, "resolveContacts failed")
-	test.AssertDeepEquals(t, idToEmail, map[int64]string{
-		regIDA: "",
-		regIDB: "example.com",
-		regIDC: "example.com",
-		regIDD: "example-2.com",
+	test.AssertDeepEquals(t, idToEmail, map[int64][]string{
+		regIDA: {""},
+		regIDB: {"example.com", "example-2.com"},
+		regIDC: {"example.com"},
+		regIDD: {"example-2.com"},
 	})
 }
 
@@ -224,9 +228,10 @@ func TestRevokeCerts(t *testing.T) {
 	mr := &mockRevoker{}
 	bkr := &badKeyRevoker{dbMap: dbMap, raClient: mr, mailer: mm, emailSubject: "testing", emailTemplate: testTemplate}
 
-	err = bkr.revokeCerts("revoker@example.com", map[string][]unrevokedCertificate{
-		"revoker@example.com": {{Serial: "ff"}},
-		"other@example.com":   {{Serial: "ee"}},
+	err = bkr.revokeCerts([]string{"revoker@example.com", "revoker-b@example.com"}, map[string][]unrevokedCertificate{
+		"revoker@example.com":   {{ID: 0, Serial: "ff"}},
+		"revoker-b@example.com": {{ID: 0, Serial: "ff"}},
+		"other@example.com":     {{ID: 1, Serial: "ee"}},
 	})
 	test.AssertNotError(t, err, "revokeCerts failed")
 	test.AssertEquals(t, len(mm.Messages), 1)
@@ -247,7 +252,7 @@ func TestInvoke(t *testing.T) {
 	// populate DB with all the test data
 	regIDA := insertRegistration(t, dbMap, "example.com")
 	regIDB := insertRegistration(t, dbMap, "example.com")
-	regIDC := insertRegistration(t, dbMap, "other.example.com")
+	regIDC := insertRegistration(t, dbMap, "other.example.com", "uno.example.com")
 	regIDD := insertRegistration(t, dbMap, "")
 	hashA := randHash(t)
 	insertBlockedRow(t, dbMap, hashA, regIDC, false)

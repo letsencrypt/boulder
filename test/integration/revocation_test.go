@@ -178,13 +178,13 @@ func TestBadKeyRevoker(t *testing.T) {
 	}
 
 	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
-	cA, err := makeClient("mailto:bad-key-revoker-revoker@letsencrypt.org")
+	cA, err := makeClient("mailto:bad-key-revoker-revoker@letsencrypt.org", "mailto:bad-key-revoker-revoker-2@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
-	cB, err := makeClient("mailto:bad-key-revoker-revokee@letsencrypt.org")
+	cB, err := makeClient("mailto:bad-key-revoker-revoker-2@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
-	cC, err := makeClient("mailto:bad-key-revoker-revokee@letsencrypt.org")
+	cC, err := makeClient("mailto:bad-key-revoker-revokee@letsencrypt.org", "mailto:bad-key-revoker-revokee-2@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
-	cD, err := makeClient("mailto:bad-key-revoker-revokee-2@letsencrypt.org")
+	cD, err := makeClient("mailto:bad-key-revoker-revokee-2@letsencrypt.org", "mailto:bad-key-revoker-revokee@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
 	cE, err := makeClient()
 	test.AssertNotError(t, err, "creating acme client")

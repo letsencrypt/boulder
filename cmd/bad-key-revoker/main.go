@@ -76,6 +76,7 @@ func (bkr *badKeyRevoker) selectUncheckedKey() (uncheckedBlockedKey, error) {
 
 // unrevokedCertificate represents a yet to be revoked certificate
 type unrevokedCertificate struct {
+	ID             int
 	Serial         string
 	DER            []byte
 	RegistrationID int64
@@ -110,7 +111,7 @@ func (bkr *badKeyRevoker) findUnrevoked(unchecked uncheckedBlockedKey) ([]unrevo
 			var unrevokedCert unrevokedCertificate
 			err = bkr.dbMap.SelectOne(
 				&unrevokedCert,
-				`SELECT cs.serial, c.registrationID, c.der
+				`SELECT cs.id, cs.serial, c.registrationID, c.der
 				FROM certificateStatus AS cs
 				JOIN certificates AS c
 				ON cs.serial = c.serial
@@ -140,12 +141,9 @@ func (bkr *badKeyRevoker) markRowChecked(unchecked uncheckedBlockedKey) error {
 	return err
 }
 
-// resolveContacts builds a map of id -> email address. Due to backwards compat
-// the contact field in the database is represented as a slice, but only a single
-// address should ever be present, as such we only ever inspect the first element
-// of the slice.
-func (bkr *badKeyRevoker) resolveContacts(ids []int64) (map[int64]string, error) {
-	idToEmail := map[int64]string{}
+// resolveContacts builds a map of id -> email addresses
+func (bkr *badKeyRevoker) resolveContacts(ids []int64) (map[int64][]string, error) {
+	idToEmail := map[int64][]string{}
 	for _, id := range ids {
 		var emails struct {
 			Contact []string
@@ -154,10 +152,10 @@ func (bkr *badKeyRevoker) resolveContacts(ids []int64) (map[int64]string, error)
 		if err != nil {
 			return nil, err
 		}
-		if len(emails.Contact) == 0 {
-			idToEmail[id] = ""
-		} else {
-			idToEmail[id] = strings.TrimPrefix(emails.Contact[0], "mailto:")
+		if len(emails.Contact) != 0 {
+			for _, email := range emails.Contact {
+				idToEmail[id] = append(idToEmail[id], strings.TrimPrefix(email, "mailto:"))
+			}
 		}
 	}
 	return idToEmail, nil
@@ -198,12 +196,21 @@ var keyCompromiseCode = int64(revocation.KeyCompromise)
 var revokerName = "bad-key-revoker"
 
 // revokeCerts revokes all the certificates associated with a particular key hash and sends
-// emails to the user that issued the certificates. Emails are not sent to the user which
+// emails to the users that issued the certificates. Emails are not sent to the user which
 // requested revocation of the original certificate which marked the key as compromised.
-func (bkr *badKeyRevoker) revokeCerts(revokerEmail string, emailToCerts map[string][]unrevokedCertificate) error {
+func (bkr *badKeyRevoker) revokeCerts(revokerEmails []string, emailToCerts map[string][]unrevokedCertificate) error {
+	revokerEmailsMap := map[string]bool{}
+	for _, email := range revokerEmails {
+		revokerEmailsMap[email] = true
+	}
+	alreadyRevoked := map[int]bool{}
 	for email, certs := range emailToCerts {
 		var revokedSerials []string
 		for _, cert := range certs {
+			revokedSerials = append(revokedSerials, cert.Serial)
+			if alreadyRevoked[cert.ID] {
+				continue
+			}
 			_, err := bkr.raClient.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 				Cert:      cert.DER,
 				Code:      &keyCompromiseCode,
@@ -213,10 +220,10 @@ func (bkr *badKeyRevoker) revokeCerts(revokerEmail string, emailToCerts map[stri
 				return err
 			}
 			certsRevoked.Inc()
-			revokedSerials = append(revokedSerials, cert.Serial)
+			alreadyRevoked[cert.ID] = true
 		}
 		// don't send emails to the person who revoked the certificate
-		if email == revokerEmail || email == "" {
+		if revokerEmailsMap[email] || email == "" {
 			continue
 		}
 		err := bkr.sendMessage(email, revokedSerials)
@@ -266,19 +273,22 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 		ownedBy[cert.RegistrationID] = append(ownedBy[cert.RegistrationID], cert)
 	}
 	// get contact addresses for the list of IDs
-	idToEmail, err := bkr.resolveContacts(ids)
+	idToEmails, err := bkr.resolveContacts(ids)
 	if err != nil {
 		return false, err
 	}
+
 	// build a map of email -> certificates, this de-duplicates accounts with
-	// the same email address
-	emailToCerts := map[string][]unrevokedCertificate{}
-	for id, email := range idToEmail {
-		emailToCerts[email] = append(emailToCerts[email], ownedBy[id]...)
+	// the same email addresses
+	emailsToCerts := map[string][]unrevokedCertificate{}
+	for id, emails := range idToEmails {
+		for _, email := range emails {
+			emailsToCerts[email] = append(emailsToCerts[email], ownedBy[id]...)
+		}
 	}
 
 	// revoke each certificate and send emails to their owners
-	err = bkr.revokeCerts(idToEmail[unchecked.RevokedBy], emailToCerts)
+	err = bkr.revokeCerts(idToEmails[unchecked.RevokedBy], emailsToCerts)
 	if err != nil {
 		return false, err
 	}
