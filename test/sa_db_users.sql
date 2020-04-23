@@ -13,6 +13,7 @@ CREATE USER IF NOT EXISTS 'ocsp_update'@'localhost';
 CREATE USER IF NOT EXISTS 'test_setup'@'localhost';
 CREATE USER IF NOT EXISTS 'purger'@'localhost';
 CREATE USER IF NOT EXISTS 'janitor'@'localhost';
+CREATE USER IF NOT EXISTS 'badkeyrevoker'@'localhost';
 
 -- Storage Authority
 GRANT SELECT,INSERT ON certificates TO 'sa'@'localhost';
@@ -66,6 +67,13 @@ GRANT SELECT,DELETE ON orders TO 'janitor'@'localhost';
 GRANT SELECT,DELETE ON requestedNames TO 'janitor'@'localhost';
 GRANT SELECT,DELETE ON orderFqdnSets TO 'janitor'@'localhost';
 GRANT SELECT,DELETE ON orderToAuthz2 TO 'janitor'@'localhost';
+
+-- Bad Key Revoker
+GRANT SELECT,UPDATE ON blockedKeys TO 'badkeyrevoker'@'localhost';
+GRANT SELECT ON keyHashToSerial TO 'badkeyrevoker'@'localhost';
+GRANT SELECT ON certificateStatus TO 'badkeyrevoker'@'localhost';
+GRANT SELECT ON certificates TO 'badkeyrevoker'@'localhost';
+GRANT SELECT ON registrations TO 'badkeyrevoker'@'localhost';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';
