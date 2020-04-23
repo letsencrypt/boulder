@@ -1,7 +1,7 @@
 syntax = "proto2";
 
 package ca;
-option go_package = "proto";
+option go_package = "github.com/letsencrypt/boulder/ca/proto";
 
 import "core/proto/core.proto";
 
