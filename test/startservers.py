@@ -63,6 +63,7 @@ def start(race_detection, fakeclock):
         progs.extend([
             [8011, './bin/boulder-remoteva --config %s' % os.path.join(config_dir, "va-remote-a.json")],
             [8012, './bin/boulder-remoteva --config %s' % os.path.join(config_dir, "va-remote-b.json")],
+            [8020, './bin/bad-key-revoker --config %s' % os.path.join(config_dir, "bad-key-revoker.json")],
         ])
     progs.extend([
         [53, './bin/sd-test-srv --listen :53'], # Service discovery DNS server

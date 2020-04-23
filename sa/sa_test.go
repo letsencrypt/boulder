@@ -2321,3 +2321,33 @@ func TestAddBlockedKeyUnknownSource(t *testing.T) {
 	test.AssertError(t, err, "AddBlockedKey didn't fail with unknown source")
 	test.AssertEquals(t, err.Error(), "unknown source")
 }
+
+func TestBlockedKeyRevokedBy(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	err := features.Set(map[string]bool{"StoreRevokerInfo": true})
+	test.AssertNotError(t, err, "failed to set features")
+	defer features.Reset()
+
+	added := int64(0)
+	source := "API"
+	_, err = sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
+		KeyHash: []byte{1},
+		Added:   &added,
+		Source:  &source,
+	})
+	test.AssertNotError(t, err, "AddBlockedKey failed")
+	revoker := int64(1)
+	_, err = sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
+		KeyHash:   []byte{2},
+		Added:     &added,
+		Source:    &source,
+		RevokedBy: &revoker,
+	})
+	test.AssertNotError(t, err, "AddBlockedKey failed")
+}

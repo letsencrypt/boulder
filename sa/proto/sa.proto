@@ -250,6 +250,7 @@ message AddBlockedKeyRequest {
         optional int64 added = 2; // Unix timestamp (nanoseconds)
         optional string source = 3;
         optional string comment = 4;
+        optional int64 revokedBy = 5;
 }
 
 message KeyBlockedRequest {

@@ -1687,7 +1687,7 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 
 // revokeCertificate generates a revoked OCSP response for the given certificate, stores
 // the revocation information, and purges OCSP request URLs from Akamai.
-func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, source string, comment string) error {
+func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, revokedBy int64, source string, comment string) error {
 	status := string(core.OCSPStatusRevoked)
 	reason := int32(code)
 	revokedAt := ra.clk.Now().UnixNano()
@@ -1726,6 +1726,9 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 		if comment != "" {
 			req.Comment = &comment
 		}
+		if features.Enabled(features.StoreRevokerInfo) && revokedBy != 0 {
+			req.RevokedBy = &revokedBy
+		}
 		if _, err = ra.SA.AddBlockedKey(ctx, req); err != nil {
 			return err
 		}
@@ -1745,7 +1748,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 // RevokeCertificateWithReg terminates trust in the certificate provided.
 func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, regID int64) error {
 	serialString := core.SerialToString(cert.SerialNumber)
-	err := ra.revokeCertificate(ctx, cert, revocationCode, "API", "")
+	err := ra.revokeCertificate(ctx, cert, revocationCode, regID, "API", "")
 
 	state := "Failure"
 	defer func() {
@@ -1777,7 +1780,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	serialString := core.SerialToString(cert.SerialNumber)
 	// TODO(#4774): allow setting the comment via the RPC, format should be:
 	// "revoked by %s: %s", user, comment
-	err := ra.revokeCertificate(ctx, cert, revocationCode, "admin-revoker", fmt.Sprintf("revoked by %s", user))
+	err := ra.revokeCertificate(ctx, cert, revocationCode, 0, "admin-revoker", fmt.Sprintf("revoked by %s", user))
 
 	state := "Failure"
 	defer func() {

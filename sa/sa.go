@@ -21,6 +21,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -1772,6 +1773,8 @@ func addKeyHash(db db.Inserter, cert *x509.Certificate) error {
 	return db.Insert(khm)
 }
 
+var blockedKeysColumns = "keyHash, added, source, comment"
+
 // AddBlockedKey adds a key hash to the blockedKeys table
 func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest) (*corepb.Empty, error) {
 	if req == nil || req.KeyHash == nil || req.Added == nil || req.Source == nil {
@@ -1781,12 +1784,22 @@ func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.Add
 	if !ok {
 		return nil, errors.New("unknown source")
 	}
-	err := ssa.dbMap.Insert(&blockedKeyModel{
-		KeyHash: req.KeyHash,
-		Added:   time.Unix(0, *req.Added),
-		Source:  sourceInt,
-		Comment: req.Comment,
-	})
+	cols, qs := blockedKeysColumns, "?, ?, ?, ?"
+	vals := []interface{}{
+		req.KeyHash,
+		time.Unix(0, *req.Added),
+		sourceInt,
+		req.Comment,
+	}
+	if features.Enabled(features.StoreRevokerInfo) && req.RevokedBy != nil {
+		cols += ", revokedBy"
+		qs += ", ?"
+		vals = append(vals, *req.RevokedBy)
+	}
+	_, err := ssa.dbMap.Exec(
+		fmt.Sprintf("INSERT INTO blockedKeys (%s) VALUES (%s)", cols, qs),
+		vals...,
+	)
 	if err != nil {
 		if db.IsDuplicate(err) {
 			// Ignore duplicate inserts so multiple certs with the same key can
@@ -1804,7 +1817,8 @@ func (ssa *SQLStorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlo
 		return nil, errIncompleteRequest
 	}
 	exists := false
-	if err := ssa.dbMap.SelectOne(&blockedKeyModel{}, `SELECT * FROM blockedKeys WHERE keyHash = ?`, req.KeyHash); err != nil {
+	var id int64
+	if err := ssa.dbMap.SelectOne(&id, `SELECT ID FROM blockedKeys WHERE keyHash = ?`, req.KeyHash); err != nil {
 		if db.IsNoRows(err) {
 			return &sapb.Exists{Exists: &exists}, nil
 		}

@@ -52,6 +52,10 @@ const (
 	// BlockedKeyTable enables storage, and checking, of the blockedKeys table in addition
 	// to the blocked key list
 	BlockedKeyTable
+	// StoreRevokerInfo enables storage of the revoker and a bool indicating if the row
+	// was checked for extant unrevoked certificates in the blockedKeys table. It should
+	// only be enabled if BlockedKeyTable is also enabled.
+	StoreRevokerInfo
 )
 
 // List of features and their default value, protected by fMu
@@ -75,6 +79,7 @@ var features = map[FeatureFlag]bool{
 	WriteIssuedNamesPrecert:       false,
 	StoreKeyHashes:                false,
 	BlockedKeyTable:               false,
+	StoreRevokerInfo:              false,
 }
 
 var fMu = new(sync.RWMutex)
