@@ -102,7 +102,7 @@ if [[ "$RUN" =~ "integration" ]] ; then
   fi
 
   DIRECTORY=http://boulder:4000/directory \
-    python3 test/integration-test.py --gotest "${args[@]}"
+    python3 test/integration-test.py --chisel --gotest "${args[@]}"
 fi
 
 # Test that just ./start.py works, which is a proxy for testing that
