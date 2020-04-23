@@ -12,26 +12,11 @@ do
   TAG_NAME="$BASE_TAG_NAME-go$GO_VERSION:$DATESTAMP"
   echo "Building boulder-tools image $TAG_NAME"
 
-  # NOTE(@cpu): Generating DOCKERFILE's on disk with the %%GO_VERSION%%
-  # templated out by `sed` is required because only Docker v17+ supports env var
-  # interpolation in Dockerfile `FROM` directives. This version isn't commonly
-  # packaged so we rely on this technique for the time being. Similarly, it
-  # would be cleaner if we could just output the `sed` directly to the `docker
-  # build` stdin but that requires Docker 17+ too! :'(
-  DOCKERFILE="golang.$GO_VERSION.Dockerfile"
-  sed -r \
-    -e 's!%%GO_VERSION%%!'"$GO_VERSION"'!g' \
-    "Dockerfile.tmpl" > "$DOCKERFILE"
-
   # Build the docker image using the templated Dockerfile, tagging it with
   # TAG_NAME
   docker build . \
     -t $TAG_NAME \
-    --no-cache \
-    -f "$DOCKERFILE"
-
-  # Clean up the temp. Dockerfile
-  rm "$DOCKERFILE"
+    --build-arg "GO_VERSION=${GO_VERSION}"
 done
 
 # Log in once now that images are ready to upload
