@@ -354,8 +354,13 @@ func main() {
 		}
 	}()
 
-	tlsSrv := srv
-	tlsSrv.Addr = c.WFE.TLSListenAddress
+	tlsSrv := http.Server{
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 120 * time.Second,
+		IdleTimeout:  120 * time.Second,
+		Addr:         c.WFE.TLSListenAddress,
+		Handler:      handler,
+	}
 	if tlsSrv.Addr != "" {
 		go func() {
 			err := tlsSrv.ListenAndServeTLS(c.WFE.ServerCertificatePath, c.WFE.ServerKeyPath)
