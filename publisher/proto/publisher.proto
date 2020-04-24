@@ -1,4 +1,5 @@
 syntax = "proto2";
+option go_package = ".;publisher";
 
 service Publisher {
         rpc SubmitToSingleCTWithResult(Request) returns (Result) {}
