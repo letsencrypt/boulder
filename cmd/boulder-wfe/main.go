@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -103,6 +104,15 @@ func setupWFE(c config, logger blog.Logger, stats prometheus.Registerer, clk clo
 	return rac, sac, rns, npm
 }
 
+type errorWriter struct {
+	blog.Logger
+}
+
+func (ew errorWriter) Write(p []byte) (n int, err error) {
+	ew.Logger.Err(string(p))
+	return
+}
+
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
@@ -154,6 +164,7 @@ func main() {
 		WriteTimeout: 120 * time.Second,
 		IdleTimeout:  120 * time.Second,
 		Addr:         c.WFE.ListenAddress,
+		ErrorLog:     log.New(errorWriter{logger}, "", 0),
 		Handler:      handler,
 	}
 
@@ -169,6 +180,7 @@ func main() {
 		WriteTimeout: 120 * time.Second,
 		IdleTimeout:  120 * time.Second,
 		Addr:         c.WFE.TLSListenAddress,
+		ErrorLog:     log.New(errorWriter{logger}, "", 0),
 		Handler:      handler,
 	}
 	if tlsSrv.Addr != "" {
