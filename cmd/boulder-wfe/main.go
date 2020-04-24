@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
@@ -148,9 +149,12 @@ func main() {
 
 	logger.Infof("Server running, listening on %s...", c.WFE.ListenAddress)
 	handler := wfe.Handler(stats)
-	srv := &http.Server{
-		Addr:    c.WFE.ListenAddress,
-		Handler: handler,
+	srv := http.Server{
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 120 * time.Second,
+		IdleTimeout:  120 * time.Second,
+		Addr:         c.WFE.ListenAddress,
+		Handler:      handler,
 	}
 
 	go func() {
@@ -160,12 +164,9 @@ func main() {
 		}
 	}()
 
-	var tlsSrv *http.Server
-	if c.WFE.TLSListenAddress != "" {
-		tlsSrv = &http.Server{
-			Addr:    c.WFE.TLSListenAddress,
-			Handler: handler,
-		}
+	tlsSrv := srv
+	tlsSrv.Addr = c.WFE.TLSListenAddress
+	if tlsSrv.Addr != "" {
 		go func() {
 			err := tlsSrv.ListenAndServeTLS(c.WFE.ServerCertificatePath, c.WFE.ServerKeyPath)
 			if err != nil && err != http.ErrServerClosed {
@@ -180,9 +181,7 @@ func main() {
 			c.WFE.ShutdownStopTimeout.Duration)
 		defer cancel()
 		_ = srv.Shutdown(ctx)
-		if tlsSrv != nil {
-			_ = tlsSrv.Shutdown(ctx)
-		}
+		_ = tlsSrv.Shutdown(ctx)
 		done <- true
 	})
 
