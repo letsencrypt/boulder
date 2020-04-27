@@ -41,7 +41,8 @@ func getIssuer(cert *x509.Certificate) (*x509.Certificate, error) {
 		return nil, err
 	}
 	var issuer *x509.Certificate
-	if resp.Header.Get("Content-Type") == "application/x-pkcs7-mime" {
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "application/x-pkcs7-mime" || contentType == "application/pkcs7-mime" {
 		issuer, err = parseCMS(body)
 	} else {
 		issuer, err = parse(body)
