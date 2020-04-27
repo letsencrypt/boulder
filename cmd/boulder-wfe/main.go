@@ -109,7 +109,7 @@ type errorWriter struct {
 }
 
 func (ew errorWriter) Write(p []byte) (n int, err error) {
-	ew.Logger.Err(string(p))
+	ew.Logger.Err(fmt.Sprintf("net/http.Server: %s", string(p)))
 	return
 }
 
