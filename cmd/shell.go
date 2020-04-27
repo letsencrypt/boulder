@@ -8,6 +8,7 @@ import (
 	"expvar"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"log/syslog"
 	"net/http"
 	"net/http/pprof"
@@ -131,6 +132,15 @@ func (log promLogger) Println(args ...interface{}) {
 	log.AuditErr(fmt.Sprint(args...))
 }
 
+type logWriter struct {
+	blog.Logger
+}
+
+func (lw logWriter) Write(p []byte) (n int, err error) {
+	lw.Logger.Info(string(p))
+	return
+}
+
 // StatsAndLogging constructs a prometheus registerer and an AuditLogger based
 // on its config parameters, and return them both. It also spawns off an HTTP
 // server on the provided port to report the stats and provide pprof profiling
@@ -169,6 +179,7 @@ func NewLogger(logConf SyslogConfig) blog.Logger {
 	cfsslLog.SetLogger(cfsslLogger{logger})
 	_ = mysql.SetLogger(mysqlLogger{logger})
 	grpclog.SetLoggerV2(grpcLogger{logger})
+	log.SetOutput(logWriter{logger})
 	return logger
 }
 

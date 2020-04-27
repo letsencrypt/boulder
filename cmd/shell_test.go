@@ -3,7 +3,9 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
@@ -118,6 +120,21 @@ func TestCfsslLogger(t *testing.T) {
 		test.AssertEquals(t, logged[0], tc.expected)
 		test.AssertEquals(t, logged[1], tc.expected)
 		log.Clear()
+	}
+}
+
+func TestCaptureStdlibLog(t *testing.T) {
+	logger := blog.UseMock()
+	oldDest := log.Writer()
+	defer func() {
+		log.SetOutput(oldDest)
+	}()
+	log.SetOutput(logWriter{logger})
+	log.Print("thisisatest")
+	results := logger.GetAllMatching("thisisatest")
+	if len(results) != 1 {
+		t.Fatalf("Expected logger to receive 'thisisatest', got: %s",
+			strings.Join(logger.GetAllMatching(".*"), "\n"))
 	}
 }
 
