@@ -4,8 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
@@ -102,6 +104,15 @@ func setupWFE(c config, logger blog.Logger, stats prometheus.Registerer, clk clo
 	return rac, sac, rns, npm
 }
 
+type errorWriter struct {
+	blog.Logger
+}
+
+func (ew errorWriter) Write(p []byte) (n int, err error) {
+	ew.Logger.Err(fmt.Sprintf("net/http.Server: %s", string(p)))
+	return
+}
+
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
@@ -148,9 +159,13 @@ func main() {
 
 	logger.Infof("Server running, listening on %s...", c.WFE.ListenAddress)
 	handler := wfe.Handler(stats)
-	srv := &http.Server{
-		Addr:    c.WFE.ListenAddress,
-		Handler: handler,
+	srv := http.Server{
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 120 * time.Second,
+		IdleTimeout:  120 * time.Second,
+		Addr:         c.WFE.ListenAddress,
+		ErrorLog:     log.New(errorWriter{logger}, "", 0),
+		Handler:      handler,
 	}
 
 	go func() {
@@ -160,12 +175,15 @@ func main() {
 		}
 	}()
 
-	var tlsSrv *http.Server
-	if c.WFE.TLSListenAddress != "" {
-		tlsSrv = &http.Server{
-			Addr:    c.WFE.TLSListenAddress,
-			Handler: handler,
-		}
+	tlsSrv := http.Server{
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 120 * time.Second,
+		IdleTimeout:  120 * time.Second,
+		Addr:         c.WFE.TLSListenAddress,
+		ErrorLog:     log.New(errorWriter{logger}, "", 0),
+		Handler:      handler,
+	}
+	if tlsSrv.Addr != "" {
 		go func() {
 			err := tlsSrv.ListenAndServeTLS(c.WFE.ServerCertificatePath, c.WFE.ServerKeyPath)
 			if err != nil && err != http.ErrServerClosed {
@@ -180,9 +198,7 @@ func main() {
 			c.WFE.ShutdownStopTimeout.Duration)
 		defer cancel()
 		_ = srv.Shutdown(ctx)
-		if tlsSrv != nil {
-			_ = tlsSrv.Shutdown(ctx)
-		}
+		_ = tlsSrv.Shutdown(ctx)
 		done <- true
 	})
 
