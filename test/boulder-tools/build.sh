@@ -21,7 +21,7 @@ apt-get install -y --no-install-recommends \
   ca-certificates \
   openssl
 
-curl -L https://github.com/google/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip -o /tmp/protoc.zip
+curl -L https://github.com/google/protobuf/releases/download/v3.11.4/protoc-3.11.4-linux-x86_64.zip -o /tmp/protoc.zip
 unzip /tmp/protoc.zip -d /usr/local/protoc
 
 # Override default GOBIN and GOCACHE
@@ -37,17 +37,12 @@ curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/insta
 GO111MODULE=on go get \
   bitbucket.org/liamstask/goose/cmd/goose \
   github.com/golang/mock/mockgen@v1.3.0 \
-  github.com/golang/protobuf/proto@v1.3.2 \
-  github.com/golang/protobuf/protoc-gen-go@v1.3.2 \
+  github.com/golang/protobuf/proto@v1.4.0 \
+  github.com/golang/protobuf/protoc-gen-go@v1.4.0 \
   github.com/mattn/goveralls@v0.0.3 \
   github.com/modocache/gover \
   golang.org/x/tools/cover \
-  golang.org/x/tools/cmd/stringer \
-  honnef.co/go/tools/cmd/staticcheck@2020.1.3
-
-# Pebble's latest version is v2+, but it's not properly go mod compatible, so we
-# fetch it in GOPATH mode.
-go get github.com/letsencrypt/pebble/cmd/pebble-challtestsrv
+  golang.org/x/tools/cmd/stringer
 
 # Pebble's latest version is v2+, but it's not properly go mod compatible, so we
 # fetch it in GOPATH mode.
@@ -72,7 +67,7 @@ mkdir -p /var/lib/softhsm/tokens
 softhsm2-util --slot 0 --init-token --label intermediate --pin 5678 --so-pin 1234
 softhsm2-util --slot 1 --init-token --label root --pin 5678 --so-pin 1234
 
-gem install fpm
+gem install --no-document fpm
 
 # We can't remove libseccomp-dev as it contains a shared object that is required
 # for pkcs11-proxy to run properly
