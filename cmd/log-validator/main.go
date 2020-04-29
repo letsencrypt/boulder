@@ -142,7 +142,6 @@ func main() {
 			Logger:    tailLogger{logger},
 		})
 		cmd.FailOnError(err, "failed to tail file")
-		defer t.Cleanup()
 
 		go func() {
 			for line := range t.Lines {
@@ -172,6 +171,7 @@ func main() {
 			// "reopen" code path for files that are removed and then recreated.
 			// These errors are harmless so we ignore them to allow clean shutdown.
 			_ = t.Stop()
+			t.Cleanup()
 		}
 	})
 }

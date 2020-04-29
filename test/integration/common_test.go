@@ -81,10 +81,11 @@ func delHTTP01Response(token string) error {
 	if err != nil {
 		return fmt.Errorf("deleting http-01 response: %s", err)
 	}
+	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("deleting http-01 response: status %d", resp.StatusCode)
 	}
-	resp.Body.Close()
 	return nil
 }
 
@@ -126,11 +127,12 @@ func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, domains []string) (*issua
 		if err != nil {
 			return nil, fmt.Errorf("adding HTTP-01 response: %s", err)
 		}
-		defer delHTTP01Response(chal.Token)
 		chal, err = c.Client.UpdateChallenge(c.Account, chal)
 		if err != nil {
+			delHTTP01Response(chal.Token)
 			return nil, fmt.Errorf("updating challenge: %s", err)
 		}
+		delHTTP01Response(chal.Token)
 	}
 
 	csr, err := makeCSR(csrKey, domains)
