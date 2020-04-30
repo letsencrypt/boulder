@@ -877,7 +877,15 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 	reason := revocation.Reason(0)
 	if revokeRequest.Reason != nil {
 		if _, present := revocation.UserAllowedReasons[*revokeRequest.Reason]; !present {
-			wfe.sendError(response, logEvent, probs.Malformed("unsupported revocation reason code provided"), nil)
+			reasonStr, ok := revocation.ReasonToString[revocation.Reason(*revokeRequest.Reason)]
+			if !ok {
+				reasonStr = "unknown"
+			}
+			wfe.sendError(response, logEvent, probs.Malformed(
+				"unsupported revocation reason code provided: %s (%d). Supported reasons: %s",
+				reasonStr,
+				*revokeRequest.Reason,
+				revocation.UserAllowedReasonsMessage), nil)
 			return
 		}
 		reason = *revokeRequest.Reason

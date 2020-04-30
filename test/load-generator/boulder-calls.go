@@ -23,8 +23,8 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
-	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test/load-generator/acme"
+	"golang.org/x/crypto/ocsp"
 	"gopkg.in/square/go-jose.v2"
 )
 
@@ -619,7 +619,7 @@ func revokeCertificate(s *State, ctx *context) error {
 		Reason      int
 	}{
 		Certificate: base64.URLEncoding.EncodeToString(pemBlock.Bytes),
-		Reason:      revocation.Unspecified,
+		Reason:      ocsp.Unspecified,
 	}
 
 	revokeJSON, err := json.Marshal(revokeObj)
