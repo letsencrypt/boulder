@@ -48,6 +48,7 @@
     },
     "features": {
       "BlockedKeyTable": true,
+      "V1DisableNewValidations": true,
       "StoreRevokerInfo": true
     },
     "CTLogGroups2": [
