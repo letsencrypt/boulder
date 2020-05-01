@@ -39,6 +39,7 @@ import (
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
+	"golang.org/x/crypto/ocsp"
 	grpc "google.golang.org/grpc"
 )
 
@@ -1713,7 +1714,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	if err != nil {
 		return err
 	}
-	if features.Enabled(features.BlockedKeyTable) && reason == revocation.KeyCompromise {
+	if features.Enabled(features.BlockedKeyTable) && reason == ocsp.KeyCompromise {
 		digest, err := core.KeyDigest(cert.PublicKey)
 		if err != nil {
 			return err

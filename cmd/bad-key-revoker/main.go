@@ -21,9 +21,9 @@ import (
 	"github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mail"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
-	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
 
 	"google.golang.org/grpc"
 )
@@ -192,7 +192,7 @@ func (bkr *badKeyRevoker) sendMessage(addr string, serials []string) error {
 	return nil
 }
 
-var keyCompromiseCode = int64(revocation.KeyCompromise)
+var keyCompromiseCode = int64(ocsp.KeyCompromise)
 var revokerName = "bad-key-revoker"
 
 // revokeCerts revokes all the certificates associated with a particular key hash and sends

@@ -49,7 +49,6 @@ import (
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimit"
-	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -57,6 +56,7 @@ import (
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
+	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	jose "gopkg.in/square/go-jose.v2"
 )
@@ -3863,11 +3863,11 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	test.AssertNotError(t, err, "x509.ParseCertificate failed")
 	ra.issuer = cert
 
-	err = ra.RevokeCertificateWithReg(context.Background(), *cert, revocation.Unspecified, 0)
+	err = ra.RevokeCertificateWithReg(context.Background(), *cert, ocsp.Unspecified, 0)
 	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
 	test.Assert(t, mockSA.added == nil, "blocked key was added when reason was not keyCompromise")
 
-	err = ra.RevokeCertificateWithReg(context.Background(), *cert, revocation.KeyCompromise, 0)
+	err = ra.RevokeCertificateWithReg(context.Background(), *cert, ocsp.KeyCompromise, 0)
 	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
 	test.Assert(t, mockSA.added != nil, "blocked key was not added when reason was keyCompromise")
 	test.Assert(t, bytes.Equal(digest[:], mockSA.added.KeyHash), "key hash mismatch")
@@ -3875,7 +3875,7 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	test.Assert(t, mockSA.added.Comment == nil, "Comment is not nil")
 
 	mockSA.added = nil
-	err = ra.AdministrativelyRevokeCertificate(context.Background(), *cert, revocation.KeyCompromise, "root")
+	err = ra.AdministrativelyRevokeCertificate(context.Background(), *cert, ocsp.KeyCompromise, "root")
 	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
 	test.Assert(t, mockSA.added != nil, "blocked key was not added when reason was keyCompromise")
 	test.Assert(t, bytes.Equal(digest[:], mockSA.added.KeyHash), "key hash mismatch")

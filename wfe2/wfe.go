@@ -827,7 +827,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 				"unsupported revocation reason code provided: %s (%d). Supported reasons: %s",
 				reasonStr,
 				*revokeRequest.Reason,
-				revocation.UserAllowedReasonsMessage())
+				revocation.UserAllowedReasonsMessage)
 		}
 		reason = *revokeRequest.Reason
 	}
