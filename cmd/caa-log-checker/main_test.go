@@ -17,14 +17,16 @@ func TestOpenFile(t *testing.T) {
 	tmpPlain, err := ioutil.TempFile(os.TempDir(), "plain")
 	test.AssertNotError(t, err, "failed to create temporary file")
 	defer os.Remove(tmpPlain.Name())
-	tmpPlain.Write([]byte("test-1\ntest-2"))
+	_, err = tmpPlain.Write([]byte("test-1\ntest-2"))
+	test.AssertNotError(t, err, "failed to write to temp file")
 	tmpPlain.Close()
 
 	tmpGzip, err := ioutil.TempFile(os.TempDir(), "gzip-*.gz")
 	test.AssertNotError(t, err, "failed to create temporary file")
 	defer os.Remove(tmpGzip.Name())
 	gzipWriter := gzip.NewWriter(tmpGzip)
-	gzipWriter.Write([]byte("test-1\ntest-2"))
+	_, err = gzipWriter.Write([]byte("test-1\ntest-2"))
+	test.AssertNotError(t, err, "failed to write to temp file")
 	gzipWriter.Flush()
 	gzipWriter.Close()
 	tmpGzip.Close()
@@ -38,6 +40,8 @@ func TestOpenFile(t *testing.T) {
 			lines = append(lines, scanner.Text())
 		}
 		test.AssertNotError(t, scanner.Err(), fmt.Sprintf("failed to read from %q", path))
+		test.AssertEquals(t, len(lines), 2)
+		test.AssertDeepEquals(t, lines, []string{"test-1", "test-2"})
 	}
 
 	checkFile(tmpPlain.Name())
@@ -52,19 +56,21 @@ func TestLoadMap(t *testing.T) {
 	test.AssertNotError(t, err, "failed to create temporary file")
 	defer os.Remove(tmpA.Name())
 	formattedTime := testTime.Format(time.RFC3339Nano)
-	tmpA.Write([]byte(fmt.Sprintf(`random
+	_, err = tmpA.Write([]byte(fmt.Sprintf(`random
 %s Checked CAA records for example.com, [Present: true, asd
 random
 %s Checked CAA records for beep.boop.com, [Present: false, asd`, formattedTime, formattedTime)))
+	test.AssertNotError(t, err, "failed to write to temp file")
 	tmpA.Close()
 	tmpB, err := ioutil.TempFile(os.TempDir(), "va-b")
 	test.AssertNotError(t, err, "failed to create temporary file")
 	defer os.Remove(tmpB.Name())
 	formattedTime = testTime.Add(time.Hour).Format(time.RFC3339Nano)
-	tmpB.Write([]byte(fmt.Sprintf(`random
+	_, err = tmpB.Write([]byte(fmt.Sprintf(`random
 %s Checked CAA records for example.com, [Present: true, asd
 random
 %s Checked CAA records for beep.boop.com, [Present: false, asd`, formattedTime, formattedTime)))
+	test.AssertNotError(t, err, "failed to write to temp file")
 	tmpB.Close()
 
 	m, err := loadMap([]string{tmpA.Name(), tmpB.Name()})
@@ -80,14 +86,14 @@ random
 
 func TestCheckIssuances(t *testing.T) {
 	checkedMap := map[string][]time.Time{
-		"example.com": []time.Time{
+		"example.com": {
 			time.Time{}.Add(time.Hour),
 			time.Time{}.Add(3 * time.Hour),
 		},
-		"2.example.com": []time.Time{
+		"2.example.com": {
 			time.Time{}.Add(time.Hour),
 		},
-		"4.example.com": []time.Time{
+		"4.example.com": {
 			time.Time{}.Add(time.Hour),
 		},
 	}
