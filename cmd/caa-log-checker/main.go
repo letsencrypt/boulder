@@ -3,14 +3,12 @@ package main
 import (
 	"bufio"
 	"compress/gzip"
-	"crypto/sha256"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 
@@ -73,34 +71,13 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, s
 			}
 		}
 		if len(badNames) > 0 {
-			hash := hashNames(ie.Names)
-			fmt.Fprintf(stderr, "Issuance missing CAA checks: issued at=%s, serial=%s, requester=%d, names hash=%x, names=%s, missing checks for names=%s\n", ie.ResponseTime, ie.SerialNumber, ie.Requester, hash, ie.Names, badNames)
+			fmt.Fprintf(stderr, "Issuance missing CAA checks: issued at=%s, serial=%s, requester=%d, names=%s, missing checks for names=%s\n", ie.ResponseTime, ie.SerialNumber, ie.Requester, ie.Names, badNames)
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return err
 	}
 	return nil
-}
-
-func hashNames(names []string) []byte {
-	names = uniqueLowerNames(names)
-	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
-	return hash[:]
-}
-
-func uniqueLowerNames(names []string) (unique []string) {
-	nameMap := make(map[string]int, len(names))
-	for _, name := range names {
-		nameMap[strings.ToLower(name)] = 1
-	}
-
-	unique = make([]string, 0, len(nameMap))
-	for name := range nameMap {
-		unique = append(unique, name)
-	}
-	sort.Strings(unique)
-	return
 }
 
 var vaCAALineRE = regexp.MustCompile(`Checked CAA records for ([a-z0-9-.*]+), \[Present: (true|false)`)
