@@ -59,12 +59,13 @@ func TestSelectUncheckedRows(t *testing.T) {
 
 	bkr := &badKeyRevoker{dbMap: dbMap}
 
-	hashA, hashB := randHash(t), randHash(t)
+	hashA, hashB, hashC := randHash(t), randHash(t), randHash(t)
 	insertBlockedRow(t, dbMap, hashA, 1, true)
 	row, err := bkr.selectUncheckedKey()
 	test.AssertError(t, err, "selectUncheckedKey didn't fail with no rows to process")
 	test.Assert(t, db.IsNoRows(err), "returned error is not sql.ErrNoRows")
 	insertBlockedRow(t, dbMap, hashB, 1, false)
+	insertBlockedRow(t, dbMap, hashC, 1, false)
 	row, err = bkr.selectUncheckedKey()
 	test.AssertNotError(t, err, "selectUncheckKey failed")
 	test.AssertByteEquals(t, row.KeyHash, hashB)

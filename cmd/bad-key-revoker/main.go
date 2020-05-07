@@ -69,7 +69,10 @@ func (bkr *badKeyRevoker) selectUncheckedKey() (uncheckedBlockedKey, error) {
 	var row uncheckedBlockedKey
 	err := bkr.dbMap.SelectOne(
 		&row,
-		"SELECT keyHash, revokedBy FROM blockedKeys WHERE extantCertificatesChecked = false",
+		`SELECT keyHash, revokedBy
+		FROM blockedKeys
+		WHERE extantCertificatesChecked = false
+		LIMIT 1`,
 	)
 	return row, err
 }
