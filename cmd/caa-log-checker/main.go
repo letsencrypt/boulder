@@ -35,11 +35,21 @@ func openFile(path string) (*bufio.Scanner, error) {
 type issuanceEvent struct {
 	SerialNumber string
 	Names        []string
-	ResponseTime time.Time
 	Requester    int64
+
+	issuanceTime time.Time
 }
 
 var raIssuanceLineRE = regexp.MustCompile(`Certificate request - successful JSON=(.*)`)
+
+func parseTimestamp(line string) (time.Time, error) {
+	datestampText := line[0:32]
+	datestamp, err := time.Parse(time.RFC3339, datestampText)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return datestamp, nil
+}
 
 func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, stderr *os.File) error {
 	lNum := 0
@@ -58,11 +68,21 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, s
 		if err != nil {
 			return fmt.Errorf("line %d: failed to unmarshal JSON: %s", lNum, err)
 		}
+
+		// populate the issuance time from the syslog timestamp, rather than the ResponseTime
+		// member of the JSON. This makes testing a lot simpler because of how we mess with
+		// time sometimes. Given these timestamps are generated on the same system they should
+		// be tightly coupled anyway.
+		ie.issuanceTime, err = parseTimestamp(line)
+		if err != nil {
+			return fmt.Errorf("line %d: failed to parse timestamp: %s", lNum, err)
+		}
+
 		var badNames []string
 		for _, name := range ie.Names {
 			nameOk := false
 			for _, t := range checkedMap[name] {
-				if t.Before(ie.ResponseTime) && t.After(ie.ResponseTime.Add(-8*time.Hour)) {
+				if t.Before(ie.issuanceTime) && t.After(ie.issuanceTime.Add(-8*time.Hour)) {
 					nameOk = true
 				}
 			}
@@ -71,7 +91,7 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, s
 			}
 		}
 		if len(badNames) > 0 {
-			fmt.Fprintf(stderr, "Issuance missing CAA checks: issued at=%s, serial=%s, requester=%d, names=%s, missing checks for names=%s\n", ie.ResponseTime, ie.SerialNumber, ie.Requester, ie.Names, badNames)
+			fmt.Fprintf(stderr, "Issuance missing CAA checks: issued at=%s, serial=%s, requester=%d, names=%s, missing checks for names=%s\n", ie.issuanceTime, ie.SerialNumber, ie.Requester, ie.Names, badNames)
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -98,10 +118,9 @@ func processVALog(checkedMap map[string][]time.Time, scanner *bufio.Scanner) err
 		labels := strings.Split(domain, ".")
 		present := matches[2]
 
-		datestampText := line[0:32]
-		datestamp, err := time.Parse(time.RFC3339, datestampText)
+		datestamp, err := parseTimestamp(line)
 		if err != nil {
-			return fmt.Errorf("line %d: failed processing timestamp: %s", lNum, err)
+			return fmt.Errorf("line %d: failed to parse timestamp: %s", lNum, err)
 		}
 
 		checkedMap[domain] = append(checkedMap[domain], datestamp)

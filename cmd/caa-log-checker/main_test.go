@@ -85,28 +85,31 @@ random
 }
 
 func TestCheckIssuances(t *testing.T) {
+	testTime := time.Time{}.Add(time.Hour).Add(time.Nanosecond * 123456000)
+	testTime = testTime.In(time.FixedZone("UTC-8", -8*60*60))
+
 	checkedMap := map[string][]time.Time{
 		"example.com": {
-			time.Time{}.Add(time.Hour),
-			time.Time{}.Add(3 * time.Hour),
+			testTime.Add(time.Hour),
+			testTime.Add(3 * time.Hour),
 		},
 		"2.example.com": {
-			time.Time{}.Add(time.Hour),
+			testTime.Add(time.Hour),
 		},
 		"4.example.com": {
-			time.Time{}.Add(time.Hour),
+			testTime.Add(time.Hour),
 		},
 	}
 
 	raBuf := bytes.NewBuffer([]byte(fmt.Sprintf(`random
-Certificate request - successful JSON={"SerialNumber": "1", "Names":["example.com"], "ResponseTime":"%s", "Requester":0}
+%s Certificate request - successful JSON={"SerialNumber": "1", "Names":["example.com"], "Requester":0}
 random
-Certificate request - successful JSON={"SerialNumber": "2", "Names":["2.example.com", "3.example.com"], "ResponseTime":"%s", "Requester":0}
-Certificate request - successful JSON={"SerialNumber": "3", "Names":["4.example.com"], "ResponseTime":"%s", "Requester":0}
+%s Certificate request - successful JSON={"SerialNumber": "2", "Names":["2.example.com", "3.example.com"], "Requester":0}
+%s Certificate request - successful JSON={"SerialNumber": "3", "Names":["4.example.com"], "Requester":0}
 random`,
-		time.Time{}.Add(time.Hour*2).Format(time.RFC3339Nano),
-		time.Time{}.Add(time.Hour*2).Format(time.RFC3339Nano),
-		time.Time{}.Format(time.RFC3339Nano),
+		testTime.Add(time.Hour*2).Format(time.RFC3339Nano),
+		testTime.Add(time.Hour*2).Format(time.RFC3339Nano),
+		testTime.Format(time.RFC3339Nano),
 	)))
 	raScanner := bufio.NewScanner(raBuf)
 
@@ -119,7 +122,5 @@ random`,
 
 	stderrCont, err := ioutil.ReadFile(stderr.Name())
 	test.AssertNotError(t, err, "failed to read temporary file")
-	test.AssertEquals(t, string(stderrCont), `Issuance missing CAA checks: issued at=0001-01-01 02:00:00 +0000 UTC, serial=2, requester=0, names hash=87424e6a210a7f067af05576e64957de28ea88be7edfeccc90865ceb27e938b1, names=[2.example.com 3.example.com], missing checks for names=[3.example.com]
-Issuance missing CAA checks: issued at=0001-01-01 00:00:00 +0000 UTC, serial=3, requester=0, names hash=2811971efc0a8db4f95c268ca75a949d4d1c6fefd70e09be5da42e4eeee1f3b5, names=[4.example.com], missing checks for names=[4.example.com]
-`)
+	test.AssertEquals(t, string(stderrCont), "Issuance missing CAA checks: issued at=0000-12-31 19:00:00.123456 -0800 -0800, serial=2, requester=0, names=[2.example.com 3.example.com], missing checks for names=[3.example.com]\nIssuance missing CAA checks: issued at=0000-12-31 17:00:00.123456 -0800 -0800, serial=3, requester=0, names=[4.example.com], missing checks for names=[4.example.com]\n")
 }
