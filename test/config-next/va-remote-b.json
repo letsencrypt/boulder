@@ -31,7 +31,7 @@
     },
     "accountURIPrefixes": [
       "http://boulder:4000/acme/reg/",
-      "http://localhost:4001/acme/acct/"
+      "http://boulder:4001/acme/acct/"
     ]
   },
 
