@@ -425,6 +425,69 @@ def test_http_challenge_https_redirect():
       elif r['ServerName'] != d:
         raise(Exception("Expected all redirected requests to have ServerName {0} got \"{1}\"".format(d, r['ServerName'])))
 
+class SlowHTTPRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        try:
+            # Sleeptime needs to be larger than the RA->VA timeout (20s at the
+            # time of writing)
+            sleeptime = 22
+            print("SlowHTTPRequestHandler: sleeping for {0}s\n".format(sleeptime))
+            time.sleep(sleeptime)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'this is not an ACME key authorization')
+        except:
+            pass
+
+class SlowHTTPServer(HTTPServer):
+    # Override handle_error so we don't print a misleading stack trace when the
+    # VA terminates the connection due to timeout.
+    def handle_error(self, request, client_address):
+        pass
+
+def test_http_challenge_timeout():
+    """
+    test_http_challenge_timeout tests that the VA times out challenge requests
+    to a slow HTTP server appropriately.
+    """
+    # Start a simple python HTTP server on port 5002 in its own thread.
+    # NOTE(@cpu): The pebble-challtestsrv binds 10.77.77.77:5002 for HTTP-01
+    # challenges so we must use the 10.88.88.88 address for the throw away
+    # server for this test and add a mock DNS entry that directs the VA to it.
+    httpd = SlowHTTPServer(('10.88.88.88', 5002), SlowHTTPRequestHandler)
+    thread = threading.Thread(target = httpd.serve_forever)
+    thread.daemon = False
+    thread.start()
+
+    # Pick a random domain
+    hostname = random_domain()
+
+    # Add A record for the domains to ensure the VA's requests are directed
+    # to the interface that we bound the HTTPServer to.
+    challSrv.add_a_record(hostname, ["10.88.88.88"])
+
+    start = datetime.datetime.utcnow()
+    end = 0
+
+    try:
+        # We expect a connection timeout error to occur
+        chisel2.expect_problem("urn:ietf:params:acme:error:connection",
+            lambda: chisel2.auth_and_issue([hostname], chall_type="http-01"))
+        end = datetime.datetime.utcnow()
+    finally:
+        # Shut down the HTTP server gracefully and join on its thread.
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join()
+
+    delta = end - start
+    # Expected duration should be the RA->VA timeout plus some padding (At
+    # present the timeout is 20s so adding 2s of padding = 22s)
+    expectedDuration = 22
+    if delta.total_seconds() == 0 or delta.total_seconds() > expectedDuration:
+        raise(Exception("expected timeout to occur in under {0} seconds. Took {1}".format(expectedDuration, delta.total_seconds())))
+
+
 def test_tls_alpn_challenge():
     # Pick two random domains
     domains = [random_domain(),random_domain()]
@@ -683,7 +746,7 @@ def test_revoke_by_privkey():
 def test_sct_embedding():
     order = chisel2.auth_and_issue([random_domain()])
     print(order.fullchain_pem.encode())
-    cert = x509.load_pem_x509_certificate(order.fullchain_pem.encode(), default_backend())
+    cert = parse_cert(order)
 
     # make sure there is no poison extension
     try:
@@ -1217,6 +1280,39 @@ def test_auth_deactivation_v2():
     if resp.body.status is not messages.STATUS_DEACTIVATED:
         raise(Exception("unexpected authorization status"))
 
+def test_ocsp():
+    cert_file_pem = os.path.join(tempdir, "cert.pem")
+    chisel2.auth_and_issue([random_domain()], cert_output=cert_file_pem)
+
+    ee_ocsp_url = "http://localhost:4002"
+
+    # As OCSP-Updater is generating responses independently of the CA we sit in a loop
+    # checking OCSP until we either see a good response or we timeout (5s).
+    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "good")
+
+def test_ct_submission():
+    hostname = random_domain()
+
+    # These should correspond to the configured logs in ra.json.
+    log_groups = [
+        ["http://boulder:4500/submissions", "http://boulder:4501/submissions"],
+        ["http://boulder:4510/submissions", "http://boulder:4511/submissions"],
+    ]
+    def submissions(group):
+        count = 0
+        for log in group:
+            count += int(requests.get(log + "?hostnames=%s" % hostname).text)
+        return count
+
+    chisel2.auth_and_issue([hostname])
+
+    got = [ submissions(log_groups[0]), submissions(log_groups[1]) ]
+    expected = [ 1, 2 ]
+
+    for i in range(len(log_groups)):
+        if got[i] < expected[i]:
+            raise(Exception("For log group %d, got %d submissions, expected %d." %
+                (i, got[i], expected[i])))
 
 def check_ocsp_basic_oid(cert_file, issuer_file, url):
     """
@@ -1330,3 +1426,263 @@ def test_blocked_key_cert():
 
     if testPass is False:
         raise(Exception("expected cert creation to fail with Error when using blocked key"))
+
+def test_expiration_mailer():
+    email_addr = "integration.%x@letsencrypt.org" % random.randrange(2**16)
+    order = chisel2.auth_and_issue([random_domain()], email=email_addr)
+    cert = parse_cert(order)
+    # Check that the expiration mailer sends a reminder
+    expiry = cert.not_valid_after
+    no_reminder = expiry + datetime.timedelta(days=-31)
+    first_reminder = expiry + datetime.timedelta(days=-13)
+    last_reminder = expiry + datetime.timedelta(days=-2)
+
+    requests.post("http://localhost:9381/clear", data='')
+    print(get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
+        config_dir, no_reminder))
+    print(get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
+        config_dir, first_reminder))
+    print(get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
+        config_dir, last_reminder))
+    resp = requests.get("http://localhost:9381/count?to=%s" % email_addr)
+    mailcount = int(resp.text)
+    if mailcount != 2:
+        raise(Exception("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount))
+
+def test_revoke_by_account():
+    client = chisel2.make_client()
+    cert_file_pem = os.path.join(tempdir, "revokeme.pem")
+    order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file_pem)
+    reset_akamai_purges()
+    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    client.revoke(josepy.ComparableX509(cert), 0)
+
+    ee_ocsp_url = "http://localhost:4002"
+    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "revoked")
+    verify_akamai_purge()
+
+caa_recheck_authzs = []
+caa_recheck_client = None
+@register_twenty_days_ago
+def caa_recheck_setup():
+    global caa_recheck_client
+    caa_recheck_client = chisel2.make_client()
+    # Issue a certificate with the clock set back, and save the authzs to check
+    # later that they are valid (200). They should however require rechecking for
+    # CAA purposes.
+    numNames = 10
+    # Generate numNames subdomains of a random domain
+    base_domain = random_domain()
+    domains = [ "{0}.{1}".format(str(n),base_domain) for n in range(numNames) ]
+    order = chisel2.auth_and_issue(domains, client=caa_recheck_client)
+    for a in order.authorizations:
+        caa_recheck_authzs.append(a)
+
+def test_recheck_caa():
+    """Request issuance for a domain where we have a old cached authz from when CAA
+       was good. We'll set a new CAA record forbidding issuance; the CAA should
+       recheck CAA and reject the request.
+    """
+    if len(caa_recheck_authzs) == 0:
+        raise(Exception("CAA authzs not prepared for test_caa"))
+    domains = []
+    for a in caa_recheck_authzs:
+        response = caa_recheck_client._post(a.uri, None)
+        if response.status_code != 200:
+            raise(Exception("Unexpected response for CAA authz: ",
+                response.status_code))
+        domain = a.body.identifier.value
+        domains.append(domain)
+
+    # Set a forbidding CAA record on just one domain
+    challSrv.add_caa_issue(domains[3], ";")
+
+    # Request issuance for the previously-issued domain name, which should
+    # now be denied due to CAA.
+    chisel2.expect_problem("urn:ietf:params:acme:error:caa",
+        lambda: chisel2.auth_and_issue(domains, client=caa_recheck_client))
+
+def test_caa_good():
+    domain = random_domain()
+    challSrv.add_caa_issue(domain, "happy-hacker-ca.invalid")
+    chisel2.auth_and_issue([domain])
+
+def test_caa_reject():
+    domain = random_domain()
+    challSrv.add_caa_issue(domain, "sad-hacker-ca.invalid")
+    chisel2.expect_problem("urn:ietf:params:acme:error:caa",
+        lambda: chisel2.auth_and_issue([domain]))
+
+def test_caa_extensions():
+    goodCAA = "happy-hacker-ca.invalid"
+
+    client = chisel2.make_client()
+    caa_account_uri = client.net.account.uri
+    caa_records = [
+        {"domain": "accounturi.good-caa-reserved.com", "value":"{0}; accounturi={1}".format(goodCAA, caa_account_uri)},
+        {"domain": "dns-01-only.good-caa-reserved.com", "value": "{0}; validationmethods=dns-01".format(goodCAA)},
+        {"domain": "http-01-only.good-caa-reserved.com", "value": "{0}; validationmethods=http-01".format(goodCAA)},
+        {"domain": "dns-01-or-http01.good-caa-reserved.com", "value": "{0}; validationmethods=dns-01,http-01".format(goodCAA)},
+    ]
+    for policy in caa_records:
+        challSrv.add_caa_issue(policy["domain"], policy["value"])
+
+    # TODO(@4a6f656c): Once the `CAAValidationMethods` feature flag is enabled by
+    # default, remove this early return.
+    if not CONFIG_NEXT:
+        return
+
+    chisel2.expect_problem("urn:ietf:params:acme:error:caa",
+        lambda: chisel2.auth_and_issue(["dns-01-only.good-caa-reserved.com"], chall_type="http-01"))
+
+    chisel2.expect_problem("urn:ietf:params:acme:error:caa",
+        lambda: chisel2.auth_and_issue(["http-01-only.good-caa-reserved.com"], chall_type="dns-01"))
+
+    ## Note: the additional names are to avoid rate limiting...
+    chisel2.auth_and_issue(["dns-01-only.good-caa-reserved.com", "www.dns-01-only.good-caa-reserved.com"], chall_type="dns-01")
+    chisel2.auth_and_issue(["http-01-only.good-caa-reserved.com", "www.http-01-only.good-caa-reserved.com"], chall_type="http-01")
+    chisel2.auth_and_issue(["dns-01-or-http-01.good-caa-reserved.com", "dns-01-only.good-caa-reserved.com"], chall_type="dns-01")
+    chisel2.auth_and_issue(["dns-01-or-http-01.good-caa-reserved.com", "http-01-only.good-caa-reserved.com"], chall_type="http-01")
+
+    ## CAA should fail with an arbitrary account, but succeed with the CAA client.
+    chisel2.expect_problem("urn:ietf:params:acme:error:caa", lambda: chisel2.auth_and_issue(["accounturi.good-caa-reserved.com"]))
+    chisel2.auth_and_issue(["accounturi.good-caa-reserved.com"], client=client)
+
+def test_account_update():
+    """
+    Create a new ACME client/account with one contact email. Then update the
+    account to a different contact emails.
+    """
+    emails=("initial-email@not-example.com", "updated-email@not-example.com", "another-update@not-example.com")
+    client = chisel2.make_client(email=emails[0])
+
+    for email in emails[1:]:
+        result = chisel2.update_email(client, email=email)
+        # We expect one contact in the result
+        if len(result.body.contact) != 1:
+            raise(Exception("\nUpdate account failed: expected one contact in result, got 0"))
+        # We expect it to be the email we just updated to
+        actual = result.body.contact[0]
+        if actual != "mailto:"+email:
+            raise(Exception("\nUpdate account failed: expected contact %s, got %s" % (email, actual)))
+
+def test_renewal_exemption():
+    """
+    Under a single domain, issue one certificate, then two renewals of that
+    certificate, then one more different certificate (with a different
+    subdomain). Since the certificatesPerName rate limit in testing is 2 per 90
+    days, and the renewals should be discounted under the renewal exemption,
+    each of these issuances should succeed. Then do one last issuance that we
+    expect to be rate limited, just to check that the rate limit is actually 2,
+    and we are testing what we think we are testing. See
+    https://letsencrypt.org/docs/rate-limits/ for more details.
+    """
+    base_domain = random_domain()
+    # First issuance
+    chisel2.auth_and_issue(["www." + base_domain])
+    # First Renewal
+    chisel2.auth_and_issue(["www." + base_domain])
+    # Second Renewal
+    chisel2.auth_and_issue(["www." + base_domain])
+    # Issuance of a different cert
+    chisel2.auth_and_issue(["blog." + base_domain])
+    # Final, failed issuance, for another different cert
+    chisel2.expect_problem("urn:ietf:params:acme:error:rateLimited",
+        lambda: chisel2.auth_and_issue(["mail." + base_domain]))
+
+def test_certificates_per_name():
+    chisel2.expect_problem("urn:ietf:params:acme:error:rateLimited",
+        lambda: chisel2.auth_and_issue([random_domain() + ".lim.it"]))
+
+def test_oversized_csr():
+    # Number of names is chosen to be one greater than the configured RA/CA maxNames
+    numNames = 101
+    # Generate numNames subdomains of a random domain
+    base_domain = random_domain()
+    domains = [ "{0}.{1}".format(str(n),base_domain) for n in range(numNames) ]
+    # We expect issuing for these domains to produce a malformed error because
+    # there are too many names in the request.
+    chisel2.expect_problem("urn:ietf:params:acme:error:malformed",
+            lambda: chisel2.auth_and_issue(domains))
+
+def parse_cert(order):
+    return x509.load_pem_x509_certificate(order.fullchain_pem.encode(), default_backend())
+
+def test_admin_revoker_cert():
+    cert_file_pem = os.path.join(tempdir, "ar-cert.pem")
+    order = chisel2.auth_and_issue([random_domain()], cert_output=cert_file_pem)
+    parsed_cert = parse_cert(order)
+
+    # Revoke certificate by serial
+    reset_akamai_purges()
+    run("./bin/admin-revoker serial-revoke --config %s/admin-revoker.json %x %d" % (
+        config_dir, parsed_cert.serial_number, 1))
+    # Wait for OCSP response to indicate revocation took place
+    ee_ocsp_url = "http://localhost:4002"
+    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "revoked")
+    verify_akamai_purge()
+
+def test_admin_revoker_batched():
+    certs = []
+    serials = []
+    serialFile = os.path.join(tempdir, "serials.hex")
+    f = open(serialFile, "w")
+
+    for x in range(3):
+        cert_file_pem = os.path.join(tempdir, "ar-cert-%d.pem" % x)
+        certs.append(cert_file_pem)
+        order = chisel2.auth_and_issue([random_domain()], cert_output=cert_file_pem)
+        f.write("%x\n" % parse_cert(order).serial_number)
+    f.close()
+
+    reset_akamai_purges()
+    run("./bin/admin-revoker batched-serial-revoke --config %s/admin-revoker.json %s %d %d" % (
+        config_dir, serialFile, 0, 2))
+
+    ee_ocsp_url = "http://localhost:4002"
+    for cert in certs:
+        verify_ocsp(cert, "test/test-ca2.pem", ee_ocsp_url, "revoked")
+
+def test_sct_embedding():
+    order = chisel2.auth_and_issue([random_domain()])
+    cert = parse_cert(order)
+
+    # make sure there is no poison extension
+    try:
+        cert.extensions.get_extension_for_oid(x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.3"))
+        raise(Exception("certificate contains CT poison extension"))
+    except x509.ExtensionNotFound:
+        # do nothing
+        pass
+
+    # make sure there is a SCT list extension
+    try:
+        sctList = cert.extensions.get_extension_for_oid(x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.2"))
+    except x509.ExtensionNotFound:
+        raise(Exception("certificate doesn't contain SCT list extension"))
+    if len(sctList.value) != 2:
+        raise(Exception("SCT list contains wrong number of SCTs"))
+    for sct in sctList.value:
+        if sct.version != x509.certificate_transparency.Version.v1:
+            raise(Exception("SCT contains wrong version"))
+        if sct.entry_type != x509.certificate_transparency.LogEntryType.PRE_CERTIFICATE:
+            raise(Exception("SCT contains wrong entry type"))
+        delta = sct.timestamp - datetime.datetime.now()
+        if abs(delta) > datetime.timedelta(hours=1):
+            raise(Exception("Delta between SCT timestamp and now was too great "
+                "%s vs %s (%s)" % (sct.timestamp, datetime.datetime.now(), delta)))
+
+def test_auth_deactivation():
+    client = chisel2.make_client(None)
+    d = random_domain()
+    csr_pem = chisel2.make_csr([d])
+    order = client.new_order(csr_pem)
+
+    resp = client.deactivate_authorization(order.authorizations[0])
+    if resp.body.status is not messages.STATUS_DEACTIVATED:
+        raise Exception("unexpected authorization status")
+
+    order = chisel2.auth_and_issue([random_domain()], client=client)
+    resp = client.deactivate_authorization(order.authorizations[0])
+    if resp.body.status is not messages.STATUS_DEACTIVATED:
+        raise Exception("unexpected authorization status")

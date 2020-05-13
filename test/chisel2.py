@@ -35,7 +35,7 @@ logging.basicConfig()
 logger = logging.getLogger()
 logger.setLevel(int(os.getenv('LOGLEVEL', 20)))
 
-DIRECTORY_V2 = os.getenv('DIRECTORY_V2', 'http://localhost:4001/directory')
+DIRECTORY_V2 = os.getenv('DIRECTORY_V2', 'http://boulder:4001/directory')
 ACCEPTABLE_TOS = os.getenv('ACCEPTABLE_TOS',"https://boulder:4431/terms/v7")
 PORT = os.getenv('PORT', '5002')
 
@@ -61,6 +61,34 @@ def make_client(email=None):
     else:
         raise Exception("Unrecognized terms of service URL %s" % tos)
     return client
+
+class NoClientError(ValueError):
+    """
+    An error that occurs when no acme.Client is provided to a function that
+    requires one.
+    """
+    pass
+
+class EmailRequiredError(ValueError):
+    """
+    An error that occurs when a None email is provided to update_email.
+    """
+
+def update_email(client, email):
+    """
+    Use a provided acme.Client to update the client's account to the specified
+    email.
+    """
+    if client is None:
+        raise(NoClientError("update_email requires a valid acme.Client argument"))
+    if email is None:
+        raise(EmailRequiredError("update_email requires an email argument"))
+    if not email.startswith("mailto:"):
+        email = "mailto:"+ email
+    acct = client.net.account
+    updatedAcct = acct.update(body=acct.body.update(contact=(email,)))
+    return client.update_registration(updatedAcct)
+
 
 def get_chall(authz, typ):
     for chall_body in authz.body.challenges:
@@ -103,6 +131,9 @@ def auth_and_issue(domains, chall_type="dns-01", email=None, cert_output=None, c
 
     try:
         order = client.poll_and_finalize(order)
+        if cert_output is not None:
+            with open(cert_output, "w") as f:
+                f.write(order.fullchain_pem)
     finally:
         cleanup()
 
@@ -171,7 +202,7 @@ def expect_problem(problem_type, func):
         if e.typ == problem_type:
             ok = True
         else:
-            raise Exception("Expected %s, got %s" % (problem_type, error.__str__()))
+            raise Exception("Expected %s, got %s" % (problem_type, e.__str__()))
     except acme_errors.ValidationError as e:
         for authzr in e.failed_authzrs:
             for chall in authzr.body.challenges:

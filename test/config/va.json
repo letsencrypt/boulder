@@ -28,7 +28,8 @@
     "features": {
     },
     "accountURIPrefixes": [
-      "http://boulder:4000/acme/reg/"
+      "http://boulder:4000/acme/reg/",
+      "http://boulder:4001/acme/acct/"
     ]
   },
 
