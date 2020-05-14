@@ -916,11 +916,6 @@ def multiva_setup(client, guestlist, domain=None):
     return hostname, cleanup
 
 def test_http_multiva_threshold_pass():
-    # Only config-next has remote VAs configured and is appropriate for this
-    # integration test.
-    if not CONFIG_NEXT:
-        return
-
     client = chisel2.make_client()
 
     # Configure a guestlist that will pass the multiVA threshold test by
@@ -937,11 +932,6 @@ def test_http_multiva_threshold_pass():
         cleanup()
 
 def test_http_multiva_primary_fail_remote_pass():
-    # Only config-next has remote VAs configured and is appropriate for this
-    # integration test.
-    if not CONFIG_NEXT:
-        return
-
     client = chisel2.make_client()
 
     # Configure a guestlist that will fail the primary VA check but allow the
@@ -978,11 +968,6 @@ def test_http_multiva_primary_fail_remote_pass():
             raise(Exception("Overall validation did not fail"))
 
 def test_http_multiva_threshold_fail():
-    # Only config-next has remote VAs configured and is appropriate for this
-    # integration test.
-    if not CONFIG_NEXT:
-        return
-
     client = chisel2.make_client()
 
     # Configure a guestlist that will fail the multiVA threshold test by
@@ -1016,11 +1001,6 @@ def test_http_multiva_threshold_fail():
         raise(Exception("expected 'During secondary validation' problem detail, found {0}".format(httpChall.error.detail)))
 
 def test_http_multiva_threshold_fail_domain_disabled():
-    # Only the config-next config dir has remote VAs and a multi VA policy file
-    # configured at the time of writing.
-    if not CONFIG_NEXT:
-        return
-
     client = chisel2.make_client()
 
     # Configure a guestlist that will fail the multiVA threshold test by
@@ -1042,11 +1022,6 @@ def test_http_multiva_threshold_fail_domain_disabled():
         cleanup()
 
 def test_http_multiva_threshold_fail_account_disabled():
-    # Only the config-next config dir has remote VAs and a multi VA policy file
-    # configured at the time of writing.
-    if not CONFIG_NEXT:
-        return
-
     # Create an ACME account
     client = chisel2.make_client()
 

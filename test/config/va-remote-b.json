@@ -1,13 +1,13 @@
 {
   "va": {
-    "userAgent": "boulder",
-    "debugAddr": ":8004",
+    "CAASERVFAILExceptions": "test/caa-servfail-exceptions.txt",
+    "userAgent": "boulder-remote-b",
+    "debugAddr": ":8012",
     "portConfig": {
       "httpPort": 5002,
       "httpsPort": 5001,
       "tlsPort": 5001
     },
-    "maxConcurrentRPCServerRequests": 100000,
     "dnsTries": 3,
     "dnsResolvers": [
       "127.0.0.1:8053",
@@ -20,36 +20,23 @@
       "keyFile": "test/grpc-creds/va.boulder/key.pem"
     },
     "grpc": {
-      "address": ":9092",
+      "address": ":9098",
       "clientNames": [
-        "ra.boulder"
+        "va.boulder"
       ]
     },
     "features": {
-      "EnforceMultiVA": true,
-      "MultiVAFullResults": true
+      "CAAValidationMethods": true,
+      "CAAAccountURI": true
     },
-    "remoteVAs": [
-      {
-        "serverAddress": "va1.boulder:9097",
-        "timeout": "15s"
-      },
-      {
-        "serverAddress": "va1.boulder:9098",
-        "timeout": "15s"
-      }
-    ],
-    "maxRemoteValidationFailures": 1,
-    "multiVAPolicyFile": "test/example-multiva-policy.yaml",
     "accountURIPrefixes": [
-      "http://boulder:4000/acme/reg/",
-      "http://boulder:4001/acme/acct/"
+      "http://boulder:4000/acme/reg/"
     ]
   },
 
   "syslog": {
     "stdoutlevel": 6,
-    "sysloglevel": 6
+    "sysloglevel": 4
   },
 
   "common": {

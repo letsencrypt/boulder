@@ -59,13 +59,12 @@ def start(race_detection, fakeclock):
     # killed in reverse order.
     progs = []
     if CONFIG_NEXT:
-        # Run the two 'remote' VAs
         progs.extend([
-            [8011, './bin/boulder-remoteva --config %s' % os.path.join(config_dir, "va-remote-a.json")],
-            [8012, './bin/boulder-remoteva --config %s' % os.path.join(config_dir, "va-remote-b.json")],
             [8020, './bin/bad-key-revoker --config %s' % os.path.join(config_dir, "bad-key-revoker.json")],
         ])
     progs.extend([
+        [8011, './bin/boulder-remoteva --config %s' % os.path.join(config_dir, "va-remote-a.json")],
+        [8012, './bin/boulder-remoteva --config %s' % os.path.join(config_dir, "va-remote-b.json")],
         [53, './bin/sd-test-srv --listen :53'], # Service discovery DNS server
         [8003, './bin/boulder-sa --config %s --addr sa1.boulder:9095 --debug-addr :8003' % os.path.join(config_dir, "sa.json")],
         [8103, './bin/boulder-sa --config %s --addr sa2.boulder:9095 --debug-addr :8103' % os.path.join(config_dir, "sa.json")],
