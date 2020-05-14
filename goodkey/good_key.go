@@ -91,6 +91,13 @@ func NewKeyPolicy(weakKeyFile, blockedKeyFile string, bkc BlockedKeyCheckFunc) (
 // and *ecdsa.PublicKey. It will reject non-pointer types.
 // TODO: Support JSONWebKeys once go-jose migration is done.
 func (policy *KeyPolicy) GoodKey(ctx context.Context, key crypto.PublicKey) error {
+	// Early rejection of unacceptable key types to guard subsequent checks.
+	switch t := key.(type) {
+	case *rsa.PublicKey, *ecdsa.PublicKey:
+		break
+	default:
+		return berrors.MalformedError("unknown key type %T", t)
+	}
 	// If there is a blocked list configured then check if the public key is one
 	// that has been administratively blocked.
 	if policy.blockedList != nil {
@@ -118,8 +125,6 @@ func (policy *KeyPolicy) GoodKey(ctx context.Context, key crypto.PublicKey) erro
 		return policy.goodKeyRSA(t)
 	case *ecdsa.PublicKey:
 		return policy.goodKeyECDSA(t)
-	case ecdsa.PublicKey, rsa.PublicKey:
-		return berrors.MalformedError("non-reference keys not supported")
 	default:
 		return berrors.MalformedError("unknown key type %T", key)
 	}
