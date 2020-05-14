@@ -206,6 +206,7 @@ func (bkr *badKeyRevoker) revokeCerts(revokerEmails []string, emailToCerts map[s
 	for _, email := range revokerEmails {
 		revokerEmailsMap[email] = true
 	}
+
 	alreadyRevoked := map[int]bool{}
 	for email, certs := range emailToCerts {
 		var revokedSerials []string
@@ -274,6 +275,12 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 			ids = append(ids, cert.RegistrationID)
 		}
 		ownedBy[cert.RegistrationID] = append(ownedBy[cert.RegistrationID], cert)
+	}
+	// if the account that revoked the original certificate isn't an owner of any
+	// extant certificates, still add them to ids so that we can resolve their
+	// email and avoid sending emails later.
+	if _, present := ownedBy[unchecked.RevokedBy]; !present {
+		ids = append(ids, unchecked.RevokedBy)
 	}
 	// get contact addresses for the list of IDs
 	idToEmails, err := bkr.resolveContacts(ids)
