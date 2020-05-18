@@ -294,3 +294,39 @@ func TestInvoke(t *testing.T) {
 	test.AssertNotError(t, err, "invoke failed")
 	test.AssertEquals(t, noWork, true)
 }
+
+func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
+	// This test checks that when the user who revoked the initial
+	// certificate that added the row to blockedKeys doesn't have any
+	// extant certificates themselves their contact email is still
+	// resolved and we avoid sending any emails to accounts that
+	// share the same email.
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	test.AssertNotError(t, err, "failed setting up db client")
+	defer test.ResetSATestDatabase(t)()
+
+	mm := &mocks.Mailer{}
+	mr := &mockRevoker{}
+	bkr := &badKeyRevoker{dbMap: dbMap, maxRevocations: 10, serialBatchSize: 1, raClient: mr, mailer: mm, emailSubject: "testing", emailTemplate: testTemplate}
+
+	// populate DB with all the test data
+	regIDA := insertRegistration(t, dbMap, "a@example.com")
+	regIDB := insertRegistration(t, dbMap, "a@example.com")
+	regIDC := insertRegistration(t, dbMap, "b@example.com")
+
+	hashA := randHash(t)
+
+	insertBlockedRow(t, dbMap, hashA, regIDA, false)
+
+	insertCert(t, dbMap, hashA, "ee", regIDB, false, false)
+	insertCert(t, dbMap, hashA, "dd", regIDB, false, false)
+	insertCert(t, dbMap, hashA, "cc", regIDC, false, false)
+	insertCert(t, dbMap, hashA, "bb", regIDC, false, false)
+
+	noWork, err := bkr.invoke()
+	test.AssertNotError(t, err, "invoke failed")
+	test.AssertEquals(t, noWork, false)
+	test.AssertEquals(t, mr.revoked, 4)
+	test.AssertEquals(t, len(mm.Messages), 1)
+	test.AssertEquals(t, mm.Messages[0].To, "b@example.com")
+}
