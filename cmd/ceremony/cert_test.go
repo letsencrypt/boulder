@@ -91,11 +91,6 @@ func TestMakeTemplate(t *testing.T) {
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid not after")
 
 	profile.NotAfter = "2018-05-18 11:31:00"
-	profile.PolicyOIDs = []string{""}
-	_, err = makeTemplate(randReader, profile, nil)
-	test.AssertError(t, err, "makeTemplate didn't fail with invalid policy OID")
-
-	profile.PolicyOIDs = []string{"1.2.3"}
 	profile.SignatureAlgorithm = "nope"
 	_, err = makeTemplate(randReader, profile, nil)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid signature algorithm")
@@ -121,6 +116,20 @@ func TestMakeTemplate(t *testing.T) {
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid key usages")
 
 	profile.KeyUsages = []string{"Digital Signature", "CRL Sign"}
+	profile.PolicyOIDs = []string{""}
+	_, err = makeTemplate(randReader, profile, nil)
+	test.AssertError(t, err, "makeTemplate didn't fail with invalid policy OID")
+
+	profile.PolicyOIDs = []string{"1.2.3"}
+	profile.CPSPolicies = []cpsPolicy{{OID: ""}}
+	_, err = makeTemplate(randReader, profile, nil)
+	test.AssertError(t, err, "makeTemplate didn't fail with invalid CPS policy OID")
+
+	profile.CPSPolicies = []cpsPolicy{{OID: "1.2.3"}}
+	_, err = makeTemplate(randReader, profile, nil)
+	test.AssertError(t, err, "makeTemplate didn't fail with invalid CPS policy values")
+
+	profile.CPSPolicies = []cpsPolicy{{OID: "1.2.3", Values: []string{"hello"}}}
 	profile.CommonName = "common name"
 	profile.Organization = "organization"
 	profile.Country = "country"
@@ -141,6 +150,7 @@ func TestMakeTemplate(t *testing.T) {
 	test.AssertEquals(t, len(cert.IssuingCertificateURL), 1)
 	test.AssertEquals(t, cert.IssuingCertificateURL[0], profile.IssuerURL)
 	test.AssertEquals(t, cert.KeyUsage, x509.KeyUsageDigitalSignature|x509.KeyUsageCRLSign)
+	test.AssertEquals(t, len(cert.ExtraExtensions), 1)
 }
 
 func TestVerifyProfile(t *testing.T) {

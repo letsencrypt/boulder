@@ -19,6 +19,11 @@ import (
 	"github.com/miekg/pkcs11"
 )
 
+type cpsPolicy struct {
+	OID    string
+	Values []string
+}
+
 // certProfile contains the information required to generate a certificate
 type certProfile struct {
 	// SignatureAlgorithm should contain one of the allowed signature algorithms
@@ -54,8 +59,15 @@ type certProfile struct {
 
 	// PolicyOIDs should contain any OIDs to be inserted in a certificate
 	// policies extension. These should be formatted in the standard OID
-	// string format (i.e. "1.2.3")
+	// string format (i.e. "1.2.3"). This should only be used for policies
+	// which don't need any policyQualifiers.
 	PolicyOIDs []string `yaml:"policy-oids"`
+
+	// CPSPolicies should contain any PolicyInformation extensions with
+	// id-qt-cps type policyQualifiers to be inserted into the certificate.
+	// The OIDs should be formatted in the standard OID string format
+	// (i.e. "1.2.3")
+	CPSPolicies []cpsPolicy `yaml:"cps-policies`
 
 	// KeyUsages should contain the set of key usage bits to set
 	KeyUsages []string `yaml:"key-usages"`
@@ -120,6 +132,21 @@ var stringToKeyUsage = map[string]x509.KeyUsage{
 	"Cert Sign":         x509.KeyUsageCertSign,
 }
 
+type policyQualifier struct {
+	Id    asn1.ObjectIdentifier
+	Value string `asn1:"tag:optional,ia5"`
+}
+
+type policyInformation struct {
+	Policy     asn1.ObjectIdentifier
+	Qualifiers []policyQualifier `asn1:"tag:optional,omitempty"`
+}
+
+var (
+	oidExtensionCertificatePolicies = asn1.ObjectIdentifier{2, 5, 29, 32}
+	oidCPSQualifier                 = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 2, 1}
+)
+
 // makeTemplate generates the certificate template for use in x509.CreateCertificate
 func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte) (*x509.Certificate, error) {
 	dateLayout := "2006-01-02 15:04:05"
@@ -143,15 +170,6 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte) (*x
 	var issuingCertificateURL []string
 	if profile.IssuerURL != "" {
 		issuingCertificateURL = []string{profile.IssuerURL}
-	}
-
-	var policyOIDs []asn1.ObjectIdentifier
-	for _, oidStr := range profile.PolicyOIDs {
-		oid, err := parseOID(oidStr)
-		if err != nil {
-			return nil, err
-		}
-		policyOIDs = append(policyOIDs, oid)
 	}
 
 	sigAlg, ok := AllowedSigAlgs[profile.SignatureAlgorithm]
@@ -194,9 +212,39 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte) (*x
 		OCSPServer:            ocspServer,
 		CRLDistributionPoints: crlDistributionPoints,
 		IssuingCertificateURL: issuingCertificateURL,
-		PolicyIdentifiers:     policyOIDs,
 		KeyUsage:              ku,
 		SubjectKeyId:          subjectKeyID[:],
+	}
+
+	if len(profile.PolicyOIDs) > 0 || len(profile.CPSPolicies) > 0 {
+		policyExt := pkix.Extension{Id: oidExtensionCertificatePolicies}
+		var policies []policyInformation
+		for _, oidStr := range profile.PolicyOIDs {
+			oid, err := parseOID(oidStr)
+			if err != nil {
+				return nil, err
+			}
+			policies = append(policies, policyInformation{Policy: oid})
+		}
+		for _, p := range profile.CPSPolicies {
+			oid, err := parseOID(p.OID)
+			if err != nil {
+				return nil, err
+			}
+			if len(p.Values) == 0 {
+				return nil, errors.New("cps-policies.values cannot be empty")
+			}
+			qualifiers := make([]policyQualifier, len(p.Values))
+			for i, q := range p.Values {
+				qualifiers[i] = policyQualifier{Id: oidCPSQualifier, Value: q}
+			}
+			policies = append(policies, policyInformation{Policy: oid, Qualifiers: qualifiers})
+		}
+		policyExt.Value, err = asn1.Marshal(policies)
+		if err != nil {
+			return nil, err
+		}
+		cert.ExtraExtensions = append(cert.ExtraExtensions, policyExt)
 	}
 
 	return cert, nil
