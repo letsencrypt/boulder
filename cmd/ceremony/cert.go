@@ -67,7 +67,7 @@ type certProfile struct {
 	// id-qt-cps type policyQualifiers to be inserted into the certificate.
 	// The OIDs should be formatted in the standard OID string format
 	// (i.e. "1.2.3")
-	CPSPolicies []cpsPolicy `yaml:"cps-policies`
+	CPSPolicies []cpsPolicy `yaml:"cps-policies"`
 
 	// KeyUsages should contain the set of key usage bits to set
 	KeyUsages []string `yaml:"key-usages"`
