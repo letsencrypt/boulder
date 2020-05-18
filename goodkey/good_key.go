@@ -96,7 +96,7 @@ func (policy *KeyPolicy) GoodKey(ctx context.Context, key crypto.PublicKey) erro
 	case *rsa.PublicKey, *ecdsa.PublicKey:
 		break
 	default:
-		return berrors.MalformedError("unknown key type %T", t)
+		return berrors.MalformedError("unsupported key type %T", t)
 	}
 	// If there is a blocked list configured then check if the public key is one
 	// that has been administratively blocked.
@@ -126,7 +126,7 @@ func (policy *KeyPolicy) GoodKey(ctx context.Context, key crypto.PublicKey) erro
 	case *ecdsa.PublicKey:
 		return policy.goodKeyECDSA(t)
 	default:
-		return berrors.MalformedError("unknown key type %T", key)
+		return berrors.MalformedError("unsupported key type %T", key)
 	}
 }
 
