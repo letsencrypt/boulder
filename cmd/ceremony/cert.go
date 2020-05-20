@@ -58,9 +58,9 @@ type certProfile struct {
 	IssuerURL string `yaml:"issuer-url"`
 
 	// PolicyOIDs should contain any OIDs to be inserted in a certificate
-	// policies extension. These should be formatted in the standard OID
-	// string format (i.e. "1.2.3"). This should only be used for policies
-	// which don't need any policyQualifiers.
+	// policies extension. If the CPSURI field of a policyInfoConfig element
+	// is set it will result in a policyInformation structure containing a
+	// single id-qt-cps type qualifier indicating the CPS URI.
 	Policies []policyInfoConfig `yaml:"policies"`
 
 	// KeyUsages should contain the set of key usage bits to set
