@@ -116,20 +116,11 @@ func TestMakeTemplate(t *testing.T) {
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid key usages")
 
 	profile.KeyUsages = []string{"Digital Signature", "CRL Sign"}
-	profile.PolicyOIDs = []string{""}
+	profile.Policies = []policyInfoConfig{{}}
 	_, err = makeTemplate(randReader, profile, nil)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid policy OID")
 
-	profile.PolicyOIDs = []string{"1.2.3"}
-	profile.CPSPolicies = []cpsPolicy{{OID: ""}}
-	_, err = makeTemplate(randReader, profile, nil)
-	test.AssertError(t, err, "makeTemplate didn't fail with invalid CPS policy OID")
-
-	profile.CPSPolicies = []cpsPolicy{{OID: "1.2.3"}}
-	_, err = makeTemplate(randReader, profile, nil)
-	test.AssertError(t, err, "makeTemplate didn't fail with invalid CPS policy values")
-
-	profile.CPSPolicies = []cpsPolicy{{OID: "1.2.3", Values: []string{"hello"}}}
+	profile.Policies = []policyInfoConfig{{OID: "1.2.3"}, {OID: "1.2.3.4", CPSURI: "hello"}}
 	profile.CommonName = "common name"
 	profile.Organization = "organization"
 	profile.Country = "country"

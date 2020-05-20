@@ -114,16 +114,10 @@ certificate-profile:
     ocsp-url: http://good-guys.com/ocsp
     crl-url:  http://good-guys.com/crl
     issuer-url:  http://good-guys.com/root
-    policy-oids:
-        - 1.2.3
-        - 5.4.3.2.1
-    cps-policies:
+    policies:
+        - oid: 1.2.3
         - oid: 4.5.6
-          values: http://example.com/cps
-        - oid: 7.8.9
-          values:
-            - http://example.com/another-cps
-            - http://example.com/a-third-cps
+          cps-uri: "http://example.com/cps"
     key-usages:
         - Digital Signature
         - Cert Sign
@@ -185,6 +179,5 @@ The certificate profile defines a restricted set of fields that are used to gene
 | `ocsp-url` | Specifies the AIA OCSP responder URL |
 | `crl-url` | Specifies the cRLDistributionPoints URL |
 | `issuer-url` | Specifies the AIA caIssuer URL |
-| `policy-oids` | Specifies bare OIDs to add to the certificatePolicies extension |
-| `cps-policies` | Specifies id-qt-cps policies to add to the certificatePolicies extension. Should contain a list of qualified policies with the fields `oid`, containing the policy OID, and `values`, containing a list of string qualifiers. |
+| `policies` | Specifies contents of a certificatePolicies extension. Should contain a list of policies with the fields `oid`, indicating the policy OID, and a `cps-uri` field, containing the CPS URI to use, if the policy should contain a id-qt-cps qualifier. Only single CPS values are supported. |
 | `key-usages` | Specifies list of key usage bits should be set, list can contain `Digital Signature`, `CRL Sign`, and `Cert Sign` |

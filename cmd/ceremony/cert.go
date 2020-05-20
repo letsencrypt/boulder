@@ -19,9 +19,9 @@ import (
 	"github.com/miekg/pkcs11"
 )
 
-type cpsPolicy struct {
+type policyInfoConfig struct {
 	OID    string
-	Values []string
+	CPSURI string `yaml:"cps-uri"`
 }
 
 // certProfile contains the information required to generate a certificate
@@ -61,13 +61,7 @@ type certProfile struct {
 	// policies extension. These should be formatted in the standard OID
 	// string format (i.e. "1.2.3"). This should only be used for policies
 	// which don't need any policyQualifiers.
-	PolicyOIDs []string `yaml:"policy-oids"`
-
-	// CPSPolicies should contain any PolicyInformation extensions with
-	// id-qt-cps type policyQualifiers to be inserted into the certificate.
-	// The OIDs should be formatted in the standard OID string format
-	// (i.e. "1.2.3")
-	CPSPolicies []cpsPolicy `yaml:"cps-policies"`
+	Policies []policyInfoConfig `yaml:"policies"`
 
 	// KeyUsages should contain the set of key usage bits to set
 	KeyUsages []string `yaml:"key-usages"`
@@ -147,6 +141,28 @@ var (
 	oidCPSQualifier                 = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 2, 1}
 )
 
+func buildPolicies(policies []policyInfoConfig) (pkix.Extension, error) {
+	policyExt := pkix.Extension{Id: oidExtensionCertificatePolicies}
+	var policyInfo []policyInformation
+	for _, p := range policies {
+		oid, err := parseOID(p.OID)
+		if err != nil {
+			return pkix.Extension{}, err
+		}
+		pi := policyInformation{Policy: oid}
+		if p.CPSURI != "" {
+			pi.Qualifiers = []policyQualifier{policyQualifier{Id: oidCPSQualifier, Value: p.CPSURI}}
+		}
+		policyInfo = append(policyInfo, pi)
+	}
+	v, err := asn1.Marshal(policyInfo)
+	if err != nil {
+		return pkix.Extension{}, err
+	}
+	policyExt.Value = v
+	return policyExt, nil
+}
+
 // makeTemplate generates the certificate template for use in x509.CreateCertificate
 func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte) (*x509.Certificate, error) {
 	dateLayout := "2006-01-02 15:04:05"
@@ -216,31 +232,8 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte) (*x
 		SubjectKeyId:          subjectKeyID[:],
 	}
 
-	if len(profile.PolicyOIDs) > 0 || len(profile.CPSPolicies) > 0 {
-		policyExt := pkix.Extension{Id: oidExtensionCertificatePolicies}
-		var policies []policyInformation
-		for _, oidStr := range profile.PolicyOIDs {
-			oid, err := parseOID(oidStr)
-			if err != nil {
-				return nil, err
-			}
-			policies = append(policies, policyInformation{Policy: oid})
-		}
-		for _, p := range profile.CPSPolicies {
-			oid, err := parseOID(p.OID)
-			if err != nil {
-				return nil, err
-			}
-			if len(p.Values) == 0 {
-				return nil, errors.New("cps-policies.values cannot be empty")
-			}
-			qualifiers := make([]policyQualifier, len(p.Values))
-			for i, q := range p.Values {
-				qualifiers[i] = policyQualifier{Id: oidCPSQualifier, Value: q}
-			}
-			policies = append(policies, policyInformation{Policy: oid, Qualifiers: qualifiers})
-		}
-		policyExt.Value, err = asn1.Marshal(policies)
+	if len(profile.Policies) > 0 {
+		policyExt, err := buildPolicies(profile.Policies)
 		if err != nil {
 			return nil, err
 		}
