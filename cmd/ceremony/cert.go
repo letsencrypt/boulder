@@ -71,7 +71,7 @@ var AllowedSigAlgs = map[string]x509.SignatureAlgorithm{
 	"ECDSAWithSHA512": x509.ECDSAWithSHA512,
 }
 
-func (profile *certProfile) verifyProfile(root bool) error {
+func (profile *certProfile) verifyProfile(root bool, ocspSigner bool) error {
 	if profile.NotBefore == "" {
 		return errors.New("not-before is required")
 	}
@@ -90,14 +90,25 @@ func (profile *certProfile) verifyProfile(root bool) error {
 	if profile.Country == "" {
 		return errors.New("country is required")
 	}
-	if !root && profile.OCSPURL == "" {
+
+	if (!root && !ocspSigner) && profile.OCSPURL == "" {
 		return errors.New("ocsp-url is required for intermediates")
 	}
-	if !root && profile.CRLURL == "" {
+	if (!root && !ocspSigner) && profile.CRLURL == "" {
 		return errors.New("crl-url is required for intermediates")
 	}
-	if !root && profile.IssuerURL == "" {
+	if (!root && !ocspSigner) && profile.IssuerURL == "" {
 		return errors.New("issuer-url is required for intermediates")
+	}
+
+	if ocspSigner && len(profile.KeyUsages) != 0 {
+		return errors.New("key-usages cannot be set for a OCSP signer")
+	}
+	if ocspSigner && profile.CRLURL != "" {
+		return errors.New("crl-url cannot be set for a OCSP signer")
+	}
+	if ocspSigner && profile.OCSPURL != "" {
+		return errors.New("ocsp-url cannot be set for a OCSP signer")
 	}
 	return nil
 }
@@ -120,8 +131,10 @@ var stringToKeyUsage = map[string]x509.KeyUsage{
 	"Cert Sign":         x509.KeyUsageCertSign,
 }
 
+var oidOCSPNoCheck = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 48, 1, 5}
+
 // makeTemplate generates the certificate template for use in x509.CreateCertificate
-func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte) (*x509.Certificate, error) {
+func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ocspSigner bool) (*x509.Certificate, error) {
 	dateLayout := "2006-01-02 15:04:05"
 	notBefore, err := time.Parse(dateLayout, profile.NotBefore)
 	if err != nil {
@@ -168,7 +181,7 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte) (*x
 	}
 
 	var ku x509.KeyUsage
-	if len(profile.KeyUsages) == 0 {
+	if len(profile.KeyUsages) == 0 && !ocspSigner {
 		return nil, errors.New("key usages must be set")
 	}
 	for _, kuStr := range profile.KeyUsages {
@@ -177,6 +190,9 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte) (*x
 			return nil, fmt.Errorf("unknown key usage %q", kuStr)
 		}
 		ku |= kuBit
+	}
+	if ocspSigner {
+		ku = x509.KeyUsageDigitalSignature
 	}
 
 	cert := &x509.Certificate{
@@ -197,6 +213,14 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte) (*x
 		PolicyIdentifiers:     policyOIDs,
 		KeyUsage:              ku,
 		SubjectKeyId:          subjectKeyID[:],
+	}
+
+	if ocspSigner {
+		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageOCSPSigning}
+		// ASN.1 NULL is 0x05, 0x00
+		ocspNoCheckExt := pkix.Extension{Id: oidOCSPNoCheck, Value: []byte{5, 0}}
+		cert.ExtraExtensions = append(cert.ExtraExtensions, ocspNoCheckExt)
+		cert.IsCA = false
 	}
 
 	return cert, nil
