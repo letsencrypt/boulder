@@ -151,7 +151,7 @@ func buildPolicies(policies []policyInfoConfig) (pkix.Extension, error) {
 		}
 		pi := policyInformation{Policy: oid}
 		if p.CPSURI != "" {
-			pi.Qualifiers = []policyQualifier{policyQualifier{Id: oidCPSQualifier, Value: p.CPSURI}}
+			pi.Qualifiers = []policyQualifier{{Id: oidCPSQualifier, Value: p.CPSURI}}
 		}
 		policyInfo = append(policyInfo, pi)
 	}
