@@ -19,6 +19,11 @@ import (
 	"github.com/miekg/pkcs11"
 )
 
+type policyInfoConfig struct {
+	OID    string
+	CPSURI string `yaml:"cps-uri"`
+}
+
 // certProfile contains the information required to generate a certificate
 type certProfile struct {
 	// SignatureAlgorithm should contain one of the allowed signature algorithms
@@ -53,9 +58,10 @@ type certProfile struct {
 	IssuerURL string `yaml:"issuer-url"`
 
 	// PolicyOIDs should contain any OIDs to be inserted in a certificate
-	// policies extension. These should be formatted in the standard OID
-	// string format (i.e. "1.2.3")
-	PolicyOIDs []string `yaml:"policy-oids"`
+	// policies extension. If the CPSURI field of a policyInfoConfig element
+	// is set it will result in a policyInformation structure containing a
+	// single id-qt-cps type qualifier indicating the CPS URI.
+	Policies []policyInfoConfig `yaml:"policies"`
 
 	// KeyUsages should contain the set of key usage bits to set
 	KeyUsages []string `yaml:"key-usages"`
@@ -120,6 +126,43 @@ var stringToKeyUsage = map[string]x509.KeyUsage{
 	"Cert Sign":         x509.KeyUsageCertSign,
 }
 
+type policyQualifier struct {
+	Id    asn1.ObjectIdentifier
+	Value string `asn1:"tag:optional,ia5"`
+}
+
+type policyInformation struct {
+	Policy     asn1.ObjectIdentifier
+	Qualifiers []policyQualifier `asn1:"tag:optional,omitempty"`
+}
+
+var (
+	oidExtensionCertificatePolicies = asn1.ObjectIdentifier{2, 5, 29, 32}
+	oidCPSQualifier                 = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 2, 1}
+)
+
+func buildPolicies(policies []policyInfoConfig) (pkix.Extension, error) {
+	policyExt := pkix.Extension{Id: oidExtensionCertificatePolicies}
+	var policyInfo []policyInformation
+	for _, p := range policies {
+		oid, err := parseOID(p.OID)
+		if err != nil {
+			return pkix.Extension{}, err
+		}
+		pi := policyInformation{Policy: oid}
+		if p.CPSURI != "" {
+			pi.Qualifiers = []policyQualifier{{Id: oidCPSQualifier, Value: p.CPSURI}}
+		}
+		policyInfo = append(policyInfo, pi)
+	}
+	v, err := asn1.Marshal(policyInfo)
+	if err != nil {
+		return pkix.Extension{}, err
+	}
+	policyExt.Value = v
+	return policyExt, nil
+}
+
 // makeTemplate generates the certificate template for use in x509.CreateCertificate
 func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte) (*x509.Certificate, error) {
 	dateLayout := "2006-01-02 15:04:05"
@@ -143,15 +186,6 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte) (*x
 	var issuingCertificateURL []string
 	if profile.IssuerURL != "" {
 		issuingCertificateURL = []string{profile.IssuerURL}
-	}
-
-	var policyOIDs []asn1.ObjectIdentifier
-	for _, oidStr := range profile.PolicyOIDs {
-		oid, err := parseOID(oidStr)
-		if err != nil {
-			return nil, err
-		}
-		policyOIDs = append(policyOIDs, oid)
 	}
 
 	sigAlg, ok := AllowedSigAlgs[profile.SignatureAlgorithm]
@@ -194,9 +228,16 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte) (*x
 		OCSPServer:            ocspServer,
 		CRLDistributionPoints: crlDistributionPoints,
 		IssuingCertificateURL: issuingCertificateURL,
-		PolicyIdentifiers:     policyOIDs,
 		KeyUsage:              ku,
 		SubjectKeyId:          subjectKeyID[:],
+	}
+
+	if len(profile.Policies) > 0 {
+		policyExt, err := buildPolicies(profile.Policies)
+		if err != nil {
+			return nil, err
+		}
+		cert.ExtraExtensions = append(cert.ExtraExtensions, policyExt)
 	}
 
 	return cert, nil
