@@ -91,7 +91,7 @@ func (rc rootConfig) validate() error {
 	}
 
 	// Certificate profile
-	if err := rc.CertProfile.verifyProfile(true, false); err != nil {
+	if err := rc.CertProfile.verifyProfile(rootCert); err != nil {
 		return err
 	}
 
@@ -117,7 +117,7 @@ type intermediateConfig struct {
 	CertProfile certProfile `yaml:"certificate-profile"`
 }
 
-func (ic intermediateConfig) validate(ocspSigner bool) error {
+func (ic intermediateConfig) validate(ct certType) error {
 	// PKCS11 fields
 	if ic.PKCS11.Module == "" {
 		return errors.New("pkcs11.module is required")
@@ -144,7 +144,7 @@ func (ic intermediateConfig) validate(ocspSigner bool) error {
 	}
 
 	// Certificate profile
-	if err := ic.CertProfile.verifyProfile(false, ocspSigner); err != nil {
+	if err := ic.CertProfile.verifyProfile(ct); err != nil {
 		return err
 	}
 
@@ -244,7 +244,7 @@ func rootCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to retrieve signer: %s", err)
 	}
-	template, err := makeTemplate(newRandReader(ctx, session), &config.CertProfile, keyInfo.der, false)
+	template, err := makeTemplate(newRandReader(ctx, session), &config.CertProfile, keyInfo.der, rootCert)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
@@ -257,13 +257,13 @@ func rootCeremony(configBytes []byte) error {
 	return nil
 }
 
-func intermediateCeremony(configBytes []byte, ocspSigner bool) error {
+func intermediateCeremony(configBytes []byte, ct certType) error {
 	var config intermediateConfig
 	err := yaml.UnmarshalStrict(configBytes, &config)
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
-	if err := config.validate(ocspSigner); err != nil {
+	if err := config.validate(ct); err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 
@@ -307,7 +307,7 @@ func intermediateCeremony(configBytes []byte, ocspSigner bool) error {
 		return fmt.Errorf("failed to parse issuer certificate: %s", err)
 	}
 
-	template, err := makeTemplate(newRandReader(ctx, session), &config.CertProfile, pubPEM.Bytes, ocspSigner)
+	template, err := makeTemplate(newRandReader(ctx, session), &config.CertProfile, pubPEM.Bytes, ct)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
@@ -368,12 +368,12 @@ func main() {
 			log.Fatalf("root ceremony failed: %s", err)
 		}
 	case "intermediate":
-		err = intermediateCeremony(configBytes, false)
+		err = intermediateCeremony(configBytes, intermediateCert)
 		if err != nil {
 			log.Fatalf("intermediate ceremony failed: %s", err)
 		}
 	case "ocsp-signer":
-		err = intermediateCeremony(configBytes, true)
+		err = intermediateCeremony(configBytes, ocspCert)
 		if err != nil {
 			log.Fatalf("ocsp signer ceremony failed: %s", err)
 		}

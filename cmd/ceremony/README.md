@@ -127,7 +127,7 @@ certificate-profile:
 
 This config generates an intermediate certificate signed by a key in the HSM, identified by the object label `root signing key` and the object ID `ffff`. The subject key used is taken from `/home/user/intermediate-signing-pub.pem` and the issuer is `/home/user/root-cert.pem`, the resulting certificate is written to `/home/user/intermediate-cert.pem`.
 
-### OCSP Signer ceremony
+### OCSP Signing Certificate ceremony
 
 - `ceremony-type`: string describing the ceremony type, `ocsp-signer`.
 - `pkcs11`: object containing PKCS#11 related fields.
@@ -149,7 +149,7 @@ This config generates an intermediate certificate signed by a key in the HSM, id
     | `certificate-path` | Path to store signed PEM certificate. |
 - `certificate-profile`: object containing profile for certificate to generate. Fields are documented [below](#Certificate-profile-format). The key-usages, ocsp-url, and crl-url fields must not be set.
 
-When generating an OCSP signing certificate the key usages field will be set to just Digital Signature and an EKU extension will be included with the id-kp-OCSPSigning usage. Additionally a id-pkix-ocsp-nocheck extension will be included in the certificate.
+When generating an OCSP signing certificate the key usages field will be set to just Digital Signature and an EKU extension will be included with the id-kp-OCSPSigning usage. Additionally an id-pkix-ocsp-nocheck extension will be included in the certificate.
 
 Example:
 

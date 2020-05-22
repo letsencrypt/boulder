@@ -77,7 +77,15 @@ var AllowedSigAlgs = map[string]x509.SignatureAlgorithm{
 	"ECDSAWithSHA512": x509.ECDSAWithSHA512,
 }
 
-func (profile *certProfile) verifyProfile(root bool, ocspSigner bool) error {
+type certType int
+
+const (
+	rootCert certType = iota
+	intermediateCert
+	ocspCert
+)
+
+func (profile *certProfile) verifyProfile(ct certType) error {
 	if profile.NotBefore == "" {
 		return errors.New("not-before is required")
 	}
@@ -97,24 +105,28 @@ func (profile *certProfile) verifyProfile(root bool, ocspSigner bool) error {
 		return errors.New("country is required")
 	}
 
-	if (!root && !ocspSigner) && profile.OCSPURL == "" {
-		return errors.New("ocsp-url is required for intermediates")
-	}
-	if (!root && !ocspSigner) && profile.CRLURL == "" {
-		return errors.New("crl-url is required for intermediates")
-	}
-	if (!root && !ocspSigner) && profile.IssuerURL == "" {
-		return errors.New("issuer-url is required for intermediates")
+	if ct == intermediateCert {
+		if profile.OCSPURL == "" {
+			return errors.New("ocsp-url is required for intermediates")
+		}
+		if profile.CRLURL == "" {
+			return errors.New("crl-url is required for intermediates")
+		}
+		if profile.IssuerURL == "" {
+			return errors.New("issuer-url is required for intermediates")
+		}
 	}
 
-	if ocspSigner && len(profile.KeyUsages) != 0 {
-		return errors.New("key-usages cannot be set for a OCSP signer")
-	}
-	if ocspSigner && profile.CRLURL != "" {
-		return errors.New("crl-url cannot be set for a OCSP signer")
-	}
-	if ocspSigner && profile.OCSPURL != "" {
-		return errors.New("ocsp-url cannot be set for a OCSP signer")
+	if ct == ocspCert {
+		if len(profile.KeyUsages) != 0 {
+			return errors.New("key-usages cannot be set for a OCSP signer")
+		}
+		if profile.CRLURL != "" {
+			return errors.New("crl-url cannot be set for a OCSP signer")
+		}
+		if profile.OCSPURL != "" {
+			return errors.New("ocsp-url cannot be set for a OCSP signer")
+		}
 	}
 	return nil
 }
@@ -177,7 +189,7 @@ func buildPolicies(policies []policyInfoConfig) (pkix.Extension, error) {
 }
 
 // makeTemplate generates the certificate template for use in x509.CreateCertificate
-func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ocspSigner bool) (*x509.Certificate, error) {
+func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct certType) (*x509.Certificate, error) {
 	dateLayout := "2006-01-02 15:04:05"
 	notBefore, err := time.Parse(dateLayout, profile.NotBefore)
 	if err != nil {
@@ -215,9 +227,6 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ocs
 	}
 
 	var ku x509.KeyUsage
-	if len(profile.KeyUsages) == 0 && !ocspSigner {
-		return nil, errors.New("key usages must be set")
-	}
 	for _, kuStr := range profile.KeyUsages {
 		kuBit, ok := stringToKeyUsage[kuStr]
 		if !ok {
@@ -225,8 +234,11 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ocs
 		}
 		ku |= kuBit
 	}
-	if ocspSigner {
+	if ct == ocspCert {
 		ku = x509.KeyUsageDigitalSignature
+	}
+	if ku == 0 {
+		return nil, errors.New("at least one key usage must be set")
 	}
 
 	cert := &x509.Certificate{
@@ -248,7 +260,7 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ocs
 		SubjectKeyId:          subjectKeyID[:],
 	}
 
-	if ocspSigner {
+	if ct == ocspCert {
 		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageOCSPSigning}
 		// ASN.1 NULL is 0x05, 0x00
 		ocspNoCheckExt := pkix.Extension{Id: oidOCSPNoCheck, Value: []byte{5, 0}}
