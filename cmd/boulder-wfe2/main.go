@@ -258,6 +258,13 @@ type errorWriter struct {
 }
 
 func (ew errorWriter) Write(p []byte) (n int, err error) {
+	// log.Logger will append a newline to all messages before calling
+	// Write. Our log checksum checker doesn't like newlines, because
+	// syslog will strip them out so the calculated checksums will
+	// differ. So that we don't hit this corner case for every line
+	// logged from inside net/http.Server we strip the newline before
+	// we get to the checksum generator.
+	p = bytes.TrimRight(p, "\n")
 	ew.Logger.Err(fmt.Sprintf("net/http.Server: %s", string(p)))
 	return
 }
