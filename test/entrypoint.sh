@@ -48,8 +48,8 @@ if [ -n "${PKCS11_PROXY_SOCKET:-}" ]; then
   }
   addobj --id 333333 --token-label intermediate --type privkey --write-object test/test-ca.key.der --label intermediate_key
   addobj --id 777777 --token-label root         --type privkey --write-object test/test-root.key.der --label root_key
-  addobj --id 333333 --token-label intermediate --type pubkey  --write-object test/test-ca.pubkey.der --label intermediate_key
-  addobj --id 777777 --token-label root         --type pubkey  --write-object test/test-root.pubkey.der --label root_key
+  addobj --id 333333 --token-label intermediate --type pubkey  --write-object test/test-ca.pubkey.pem --label intermediate_key
+  addobj --id 777777 --token-label root         --type pubkey  --write-object test/test-root.pubkey.pem --label root_key
 fi
 
 if [[ $# -eq 0 ]]; then
