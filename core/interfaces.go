@@ -160,8 +160,8 @@ type StorageAdder interface {
 }
 
 // StorageAuthority interface represents a simple key/value
-// store.  It is divided into StorageGetter and StorageUpdater
-// interfaces for privilege separation.
+// store. The add and get interfaces contained within are divided
+// for privilege separation.
 type StorageAuthority interface {
 	StorageGetter
 	StorageAdder
