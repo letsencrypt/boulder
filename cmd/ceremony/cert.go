@@ -276,6 +276,10 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		cert.ExtraExtensions = append(cert.ExtraExtensions, policyExt)
 	}
 
+	if ct == intermediateCert {
+		cert.MaxPathLenZero = true
+	}
+
 	return cert, nil
 }
 
