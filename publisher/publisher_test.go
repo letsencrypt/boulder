@@ -265,12 +265,11 @@ func TestTimestampVerificationFuture(t *testing.T) {
 	testLog := addLog(t, pub, port, &k.PublicKey)
 
 	// Precert
-	trueBool := true
 	issuerBundle, precert, err := makePrecert(k)
 	test.AssertNotError(t, err, "Failed to create test leaf")
 	pub.issuerBundle = issuerBundle
 
-	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: &testLog.uri, LogPublicKey: &testLog.logID, Der: precert, Precert: &trueBool})
+	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: testLog.uri, LogPublicKey: testLog.logID, Der: precert, Precert: true})
 	if err == nil {
 		t.Fatal("Expected error for lying log server, got none")
 	}
@@ -289,12 +288,11 @@ func TestTimestampVerificationPast(t *testing.T) {
 	testLog := addLog(t, pub, port, &k.PublicKey)
 
 	// Precert
-	trueBool := true
 	issuerBundle, precert, err := makePrecert(k)
 	test.AssertNotError(t, err, "Failed to create test leaf")
 	pub.issuerBundle = issuerBundle
 
-	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: &testLog.uri, LogPublicKey: &testLog.logID, Der: precert, Precert: &trueBool})
+	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: testLog.uri, LogPublicKey: testLog.logID, Der: precert, Precert: true})
 	if err == nil {
 		t.Fatal("Expected error for lying log server, got none")
 	}
@@ -366,8 +364,8 @@ func TestLogErrorBody(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to marshal key")
 	pkB64 := base64.StdEncoding.EncodeToString(pkDER)
 	_, err = pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
-		LogURL:       &logURI,
-		LogPublicKey: &pkB64,
+		LogURL:       logURI,
+		LogPublicKey: pkB64,
 		Der:          leaf.Raw,
 	})
 	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
@@ -387,8 +385,8 @@ func TestHTTPStatusMetric(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to marshal key")
 	pkB64 := base64.StdEncoding.EncodeToString(pkDER)
 	_, err = pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
-		LogURL:       &logURI,
-		LogPublicKey: &pkB64,
+		LogURL:       logURI,
+		LogPublicKey: pkB64,
 		Der:          leaf.Raw,
 	})
 	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
@@ -409,8 +407,8 @@ func TestHTTPStatusMetric(t *testing.T) {
 	logURI = fmt.Sprintf("http://localhost:%d", port)
 
 	_, err = pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
-		LogURL:       &logURI,
-		LogPublicKey: &pkB64,
+		LogURL:       logURI,
+		LogPublicKey: pkB64,
 		Der:          leaf.Raw,
 	})
 	test.AssertNotError(t, err, "SubmitToSingleCTWithResult failed")

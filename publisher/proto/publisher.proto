@@ -1,4 +1,4 @@
-syntax = "proto2";
+syntax = "proto3";
 option go_package = ".;publisher";
 
 service Publisher {
@@ -6,13 +6,13 @@ service Publisher {
 }
 
 message Request {
-        optional bytes der = 1;
-        optional string LogURL = 2;
-        optional string LogPublicKey = 3;
-        optional bool precert = 4;
-        optional bool storeSCT = 5;
+        bytes der = 1;
+        string LogURL = 2;
+        string LogPublicKey = 3;
+        bool precert = 4;
+        bool storeSCT = 5;
 }
 
 message Result {
-        optional bytes sct = 1;
+        bytes sct = 1;
 }

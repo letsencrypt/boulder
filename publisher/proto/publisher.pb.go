@@ -34,11 +34,11 @@ type Request struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Der          []byte  `protobuf:"bytes,1,opt,name=der" json:"der,omitempty"`
-	LogURL       *string `protobuf:"bytes,2,opt,name=LogURL" json:"LogURL,omitempty"`
-	LogPublicKey *string `protobuf:"bytes,3,opt,name=LogPublicKey" json:"LogPublicKey,omitempty"`
-	Precert      *bool   `protobuf:"varint,4,opt,name=precert" json:"precert,omitempty"`
-	StoreSCT     *bool   `protobuf:"varint,5,opt,name=storeSCT" json:"storeSCT,omitempty"`
+	Der          []byte `protobuf:"bytes,1,opt,name=der,proto3" json:"der,omitempty"`
+	LogURL       string `protobuf:"bytes,2,opt,name=LogURL,proto3" json:"LogURL,omitempty"`
+	LogPublicKey string `protobuf:"bytes,3,opt,name=LogPublicKey,proto3" json:"LogPublicKey,omitempty"`
+	Precert      bool   `protobuf:"varint,4,opt,name=precert,proto3" json:"precert,omitempty"`
+	StoreSCT     bool   `protobuf:"varint,5,opt,name=storeSCT,proto3" json:"storeSCT,omitempty"`
 }
 
 func (x *Request) Reset() {
@@ -81,29 +81,29 @@ func (x *Request) GetDer() []byte {
 }
 
 func (x *Request) GetLogURL() string {
-	if x != nil && x.LogURL != nil {
-		return *x.LogURL
+	if x != nil {
+		return x.LogURL
 	}
 	return ""
 }
 
 func (x *Request) GetLogPublicKey() string {
-	if x != nil && x.LogPublicKey != nil {
-		return *x.LogPublicKey
+	if x != nil {
+		return x.LogPublicKey
 	}
 	return ""
 }
 
 func (x *Request) GetPrecert() bool {
-	if x != nil && x.Precert != nil {
-		return *x.Precert
+	if x != nil {
+		return x.Precert
 	}
 	return false
 }
 
 func (x *Request) GetStoreSCT() bool {
-	if x != nil && x.StoreSCT != nil {
-		return *x.StoreSCT
+	if x != nil {
+		return x.StoreSCT
 	}
 	return false
 }
@@ -113,7 +113,7 @@ type Result struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Sct []byte `protobuf:"bytes,1,opt,name=sct" json:"sct,omitempty"`
+	Sct []byte `protobuf:"bytes,1,opt,name=sct,proto3" json:"sct,omitempty"`
 }
 
 func (x *Result) Reset() {
@@ -174,7 +174,8 @@ var file_publisher_proto_rawDesc = []byte{
 	0x62, 0x6d, 0x69, 0x74, 0x54, 0x6f, 0x53, 0x69, 0x6e, 0x67, 0x6c, 0x65, 0x43, 0x54, 0x57, 0x69,
 	0x74, 0x68, 0x52, 0x65, 0x73, 0x75, 0x6c, 0x74, 0x12, 0x08, 0x2e, 0x52, 0x65, 0x71, 0x75, 0x65,
 	0x73, 0x74, 0x1a, 0x07, 0x2e, 0x52, 0x65, 0x73, 0x75, 0x6c, 0x74, 0x22, 0x00, 0x42, 0x0d, 0x5a,
-	0x0b, 0x2e, 0x3b, 0x70, 0x75, 0x62, 0x6c, 0x69, 0x73, 0x68, 0x65, 0x72,
+	0x0b, 0x2e, 0x3b, 0x70, 0x75, 0x62, 0x6c, 0x69, 0x73, 0x68, 0x65, 0x72, 0x62, 0x06, 0x70, 0x72,
+	0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
