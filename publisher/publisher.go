@@ -235,16 +235,13 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 	// Add a log URL/pubkey to the cache, if already present the
 	// existing *Log will be returned, otherwise one will be constructed, added
 	// and returned.
-	ctLog, err := pub.ctLogsCache.AddLog(*req.LogURL, *req.LogPublicKey, pub.userAgent, pub.log)
+	ctLog, err := pub.ctLogsCache.AddLog(req.LogURL, req.LogPublicKey, pub.userAgent, pub.log)
 	if err != nil {
 		pub.log.AuditErrf("Making Log: %s", err)
 		return nil, err
 	}
 
-	isPrecert := false
-	if req.Precert != nil {
-		isPrecert = *req.Precert
-	}
+	isPrecert := req.Precert
 
 	sct, err := pub.singleLogSubmit(
 		ctx,

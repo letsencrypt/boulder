@@ -48,8 +48,5 @@ func NewPublisherServerWrapper(inner *publisher.Impl) *PublisherServerWrapper {
 
 // SubmitToSingleCTWithResult is a wrapper
 func (pub *PublisherServerWrapper) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error) {
-	if req == nil || req.Der == nil || req.LogURL == nil || req.LogPublicKey == nil {
-		return nil, errIncompleteRequest
-	}
 	return pub.inner.SubmitToSingleCTWithResult(ctx, req)
 }
