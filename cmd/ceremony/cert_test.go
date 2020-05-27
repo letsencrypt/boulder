@@ -82,24 +82,24 @@ func TestMakeTemplate(t *testing.T) {
 	randReader := newRandReader(&ctx, 0)
 
 	profile.NotBefore = "1234"
-	_, err := makeTemplate(randReader, profile, nil)
+	_, err := makeTemplate(randReader, profile, nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid not before")
 
 	profile.NotBefore = "2018-05-18 11:31:00"
 	profile.NotAfter = "1234"
-	_, err = makeTemplate(randReader, profile, nil)
+	_, err = makeTemplate(randReader, profile, nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid not after")
 
 	profile.NotAfter = "2018-05-18 11:31:00"
 	profile.SignatureAlgorithm = "nope"
-	_, err = makeTemplate(randReader, profile, nil)
+	_, err = makeTemplate(randReader, profile, nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid signature algorithm")
 
 	profile.SignatureAlgorithm = "SHA256WithRSA"
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
 		return nil, errors.New("bad")
 	}
-	_, err = makeTemplate(randReader, profile, nil)
+	_, err = makeTemplate(randReader, profile, nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail when GenerateRandom failed")
 
 	ctx.GenerateRandomFunc = func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
@@ -108,16 +108,16 @@ func TestMakeTemplate(t *testing.T) {
 		return r, err
 	}
 
-	_, err = makeTemplate(randReader, profile, nil)
+	_, err = makeTemplate(randReader, profile, nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with empty key usages")
 
 	profile.KeyUsages = []string{"asd"}
-	_, err = makeTemplate(randReader, profile, nil)
+	_, err = makeTemplate(randReader, profile, nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid key usages")
 
 	profile.KeyUsages = []string{"Digital Signature", "CRL Sign"}
 	profile.Policies = []policyInfoConfig{{}}
-	_, err = makeTemplate(randReader, profile, nil)
+	_, err = makeTemplate(randReader, profile, nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid policy OID")
 
 	profile.Policies = []policyInfoConfig{{OID: "1.2.3"}, {OID: "1.2.3.4", CPSURI: "hello"}}
@@ -127,7 +127,7 @@ func TestMakeTemplate(t *testing.T) {
 	profile.OCSPURL = "ocsp"
 	profile.CRLURL = "crl"
 	profile.IssuerURL = "issuer"
-	cert, err := makeTemplate(randReader, profile, nil)
+	cert, err := makeTemplate(randReader, profile, nil, rootCert)
 	test.AssertNotError(t, err, "makeTemplate failed when everything worked as expected")
 	test.AssertEquals(t, cert.Subject.CommonName, profile.CommonName)
 	test.AssertEquals(t, len(cert.Subject.Organization), 1)
@@ -144,22 +144,69 @@ func TestMakeTemplate(t *testing.T) {
 	test.AssertEquals(t, len(cert.ExtraExtensions), 1)
 }
 
+func TestMakeTemplateOCSP(t *testing.T) {
+	ctx := pkcs11helpers.MockCtx{
+		GenerateRandomFunc: func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
+			r := make([]byte, length)
+			_, err := rand.Read(r)
+			return r, err
+		},
+	}
+	randReader := newRandReader(&ctx, 0)
+	profile := &certProfile{
+		SignatureAlgorithm: "SHA256WithRSA",
+		CommonName:         "common name",
+		Organization:       "organization",
+		Country:            "country",
+		OCSPURL:            "ocsp",
+		CRLURL:             "crl",
+		IssuerURL:          "issuer",
+		NotAfter:           "2018-05-18 11:31:00",
+		NotBefore:          "2018-05-18 11:31:00",
+	}
+
+	cert, err := makeTemplate(randReader, profile, nil, ocspCert)
+	test.AssertNotError(t, err, "makeTemplate failed")
+
+	test.Assert(t, !cert.IsCA, "IsCA is set")
+	// Check KU is only KeyUsageDigitalSignature
+	test.AssertEquals(t, cert.KeyUsage, x509.KeyUsageDigitalSignature)
+	// Check there is a single EKU with id-kp-OCSPSigning
+	test.AssertEquals(t, len(cert.ExtKeyUsage), 1)
+	test.AssertEquals(t, cert.ExtKeyUsage[0], x509.ExtKeyUsageOCSPSigning)
+	// Check ExtraExtensions contains a single id-pkix-ocsp-nocheck
+	hasExt := false
+	asnNULL := []byte{5, 0}
+	for _, ext := range cert.ExtraExtensions {
+		if ext.Id.Equal(oidOCSPNoCheck) {
+			if hasExt {
+				t.Error("template contains multiple id-pkix-ocsp-nocheck extensions")
+			}
+			hasExt = true
+			if !bytes.Equal(ext.Value, asnNULL) {
+				t.Errorf("id-pkix-ocsp-nocheck has unexpected content: want %x, got %x", asnNULL, ext.Value)
+			}
+		}
+	}
+	test.Assert(t, hasExt, "template doesn't contain id-pkix-ocsp-nocheck extensions")
+}
+
 func TestVerifyProfile(t *testing.T) {
 	for _, tc := range []struct {
 		profile     certProfile
-		root        bool
+		certType    certType
 		expectedErr string
 	}{
 		{
 			profile:     certProfile{},
-			root:        false,
+			certType:    intermediateCert,
 			expectedErr: "not-before is required",
 		},
 		{
 			profile: certProfile{
 				NotBefore: "a",
 			},
-			root:        false,
+			certType:    intermediateCert,
 			expectedErr: "not-after is required",
 		},
 		{
@@ -167,7 +214,7 @@ func TestVerifyProfile(t *testing.T) {
 				NotBefore: "a",
 				NotAfter:  "b",
 			},
-			root:        false,
+			certType:    intermediateCert,
 			expectedErr: "signature-algorithm is required",
 		},
 		{
@@ -176,7 +223,7 @@ func TestVerifyProfile(t *testing.T) {
 				NotAfter:           "b",
 				SignatureAlgorithm: "c",
 			},
-			root:        false,
+			certType:    intermediateCert,
 			expectedErr: "common-name is required",
 		},
 		{
@@ -186,7 +233,7 @@ func TestVerifyProfile(t *testing.T) {
 				SignatureAlgorithm: "c",
 				CommonName:         "d",
 			},
-			root:        false,
+			certType:    intermediateCert,
 			expectedErr: "organization is required",
 		},
 		{
@@ -197,7 +244,7 @@ func TestVerifyProfile(t *testing.T) {
 				CommonName:         "d",
 				Organization:       "e",
 			},
-			root:        false,
+			certType:    intermediateCert,
 			expectedErr: "country is required",
 		},
 		{
@@ -209,7 +256,7 @@ func TestVerifyProfile(t *testing.T) {
 				Organization:       "e",
 				Country:            "f",
 			},
-			root:        false,
+			certType:    intermediateCert,
 			expectedErr: "ocsp-url is required for intermediates",
 		},
 		{
@@ -222,7 +269,7 @@ func TestVerifyProfile(t *testing.T) {
 				Country:            "f",
 				OCSPURL:            "g",
 			},
-			root:        false,
+			certType:    intermediateCert,
 			expectedErr: "crl-url is required for intermediates",
 		},
 		{
@@ -236,7 +283,7 @@ func TestVerifyProfile(t *testing.T) {
 				OCSPURL:            "g",
 				CRLURL:             "h",
 			},
-			root:        false,
+			certType:    intermediateCert,
 			expectedErr: "issuer-url is required for intermediates",
 		},
 		{
@@ -248,10 +295,67 @@ func TestVerifyProfile(t *testing.T) {
 				Organization:       "e",
 				Country:            "f",
 			},
-			root: true,
+			certType: rootCert,
+		},
+		{
+			profile: certProfile{
+				NotBefore:          "a",
+				NotAfter:           "b",
+				SignatureAlgorithm: "c",
+				CommonName:         "d",
+				Organization:       "e",
+				Country:            "f",
+				IssuerURL:          "g",
+				OCSPURL:            "h",
+				CRLURL:             "i",
+				KeyUsages:          []string{"j"},
+			},
+			certType:    ocspCert,
+			expectedErr: "key-usages cannot be set for a OCSP signer",
+		},
+		{
+			profile: certProfile{
+				NotBefore:          "a",
+				NotAfter:           "b",
+				SignatureAlgorithm: "c",
+				CommonName:         "d",
+				Organization:       "e",
+				Country:            "f",
+				IssuerURL:          "g",
+				OCSPURL:            "h",
+				CRLURL:             "i",
+			},
+			certType:    ocspCert,
+			expectedErr: "crl-url cannot be set for a OCSP signer",
+		},
+		{
+			profile: certProfile{
+				NotBefore:          "a",
+				NotAfter:           "b",
+				SignatureAlgorithm: "c",
+				CommonName:         "d",
+				Organization:       "e",
+				Country:            "f",
+				IssuerURL:          "g",
+				OCSPURL:            "h",
+			},
+			certType:    ocspCert,
+			expectedErr: "ocsp-url cannot be set for a OCSP signer",
+		},
+		{
+			profile: certProfile{
+				NotBefore:          "a",
+				NotAfter:           "b",
+				SignatureAlgorithm: "c",
+				CommonName:         "d",
+				Organization:       "e",
+				Country:            "f",
+				IssuerURL:          "g",
+			},
+			certType: ocspCert,
 		},
 	} {
-		err := tc.profile.verifyProfile(tc.root)
+		err := tc.profile.verifyProfile(tc.certType)
 		if err != nil {
 			if tc.expectedErr != err.Error() {
 				t.Fatalf("Expected %q, got %q", tc.expectedErr, err.Error())
