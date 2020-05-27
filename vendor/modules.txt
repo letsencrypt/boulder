@@ -92,7 +92,7 @@ github.com/syndtr/goleveldb/leveldb/table
 github.com/syndtr/goleveldb/leveldb/util
 # github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 github.com/titanous/rocacheck
-# github.com/weppos/publicsuffix-go v0.10.1-0.20200202094241-a723c5d90134
+# github.com/weppos/publicsuffix-go v0.13.1-0.20200526195454-983d101becd6
 github.com/weppos/publicsuffix-go/publicsuffix
 # github.com/zmap/zcrypto v0.0.0-20191112190257-7f2fe6faf8cf
 github.com/zmap/zcrypto/json
@@ -120,7 +120,7 @@ golang.org/x/crypto/ocsp
 golang.org/x/crypto/pbkdf2
 golang.org/x/crypto/pkcs12
 golang.org/x/crypto/pkcs12/internal/rc2
-# golang.org/x/net v0.0.0-20191112182307-2180aed22343
+# golang.org/x/net v0.0.0-20200202094626-16171245cfb2
 golang.org/x/net/bpf
 golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
