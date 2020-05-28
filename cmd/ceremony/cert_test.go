@@ -142,10 +142,13 @@ func TestMakeTemplate(t *testing.T) {
 	test.AssertEquals(t, cert.IssuingCertificateURL[0], profile.IssuerURL)
 	test.AssertEquals(t, cert.KeyUsage, x509.KeyUsageDigitalSignature|x509.KeyUsageCRLSign)
 	test.AssertEquals(t, len(cert.ExtraExtensions), 1)
+	test.AssertEquals(t, len(cert.ExtKeyUsage), 0)
 
 	cert, err = makeTemplate(randReader, profile, nil, intermediateCert)
 	test.AssertNotError(t, err, "makeTemplate failed when everything worked as expected")
 	test.Assert(t, cert.MaxPathLenZero, "MaxPathLenZero not set in intermediate template")
+	test.AssertEquals(t, len(cert.ExtKeyUsage), 1)
+	test.AssertEquals(t, cert.ExtKeyUsage[0], x509.ExtKeyUsageServerAuth)
 }
 
 func TestMakeTemplateOCSP(t *testing.T) {
