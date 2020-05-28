@@ -26,26 +26,28 @@ https://github.com/jsha/minica, cd to the directory containing minica.pem for
 the PKI you want to issue in, and run `minica -domains YOUR_NEW_DOMAINs`. If
 you're updating the gRPC PKI, please make sure to update grpc-creds/generate.sh.
 
-The issuance PKI consists of a root and two intermediates. Certificates issued
-by Boulder tests are issued from the second of these two intermediates. During
-tests, the keys are loaded into SoftHSM in a Docker container named
-"bhsm". Boulder uses pkcs11-proxy to communicate with SoftHSM running in that
-container and request signature operations, simulating use of a real HSM. The
-.json files in the issuance PKI provide the parameters used to login to the
-simulated PKCS#11 token (aka HSM).
+The issuance PKI consists of a root and two intermediates. These certificates and
+their keys are generated using the `ceremony` tool during integration testing. The
+private keys are stored in SoftHSM, and the public keys and certificates are
+written out to /tmp. The test/test-*.key-pkcs11.json files contain the PKCS#11
+variables needed to access these keys from boulder.
+
+The following files are used in the generation/access of the root and intermediates.
 
 Root:
-   test-root.pem, test-root.key, test-root.key.der, test-root.key-pkcs11.json
+   * test/test-root.key-pkcs11.json
+   * test/cert-ceremonies/root-ceremony-rsa.yaml
 
-Intermediate 1 (happy hacker fake CA):
-   test-ca.der test-ca.key test-ca.key.der test-ca.key-pkcs11.json test-ca.pem
+Intermediate 1 `CA intermediate (RSA) A`:
+   * test/test-ca.key-pkcs11.json
+   * test/cert-ceremonies/intermediate-key-ceremony-rsa.yaml
+   * test/cert-ceremonies/intermediate-ceremony-rsa-a.yaml
 
-Intermediate 2 (h2ppy h2cker fake CA):
-   test-ca2.key test-ca2.pem
+Intermediate 2 `CA intermediate (RSA) B`:
+   * test/test-ca.key-pkcs11.json
+   * test/cert-ceremonies/intermediate-key-ceremony-rsa.yaml
+   * test/cert-ceremonies/intermediate-ceremony-rsa-b.yaml
 
 Certificate test-example.pem, together with test-example.key are self-signed
-certs used in tests. They were generated using:
+certs used in integration tests. They were generated using:
    openssl req -x509 -newkey rsa:4096 -keyout test-example.key -out test-example.pem -days 36500 -nodes  -subj "/CN=www.example.com"
-
-The issuance PKI also consists of versions of Intermediate 1 and Intermediate 2 that are cross signed by an alternate root (test-root2.pem, test-root2.key):
-    test-ca-cross.pem, test-ca2-cross.pem

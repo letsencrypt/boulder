@@ -88,6 +88,7 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 	// Check that this request is for the proper CA
 	if !bytes.Equal(req.IssuerKeyHash, src.caKeyHash) {
 		src.log.Debugf("Request intended for CA Cert ID: %s", hex.EncodeToString(req.IssuerKeyHash))
+		fmt.Printf("HELLO %x != %x\n", req.IssuerKeyHash, src.caKeyHash)
 		return nil, nil, bocsp.ErrNotFound
 	}
 

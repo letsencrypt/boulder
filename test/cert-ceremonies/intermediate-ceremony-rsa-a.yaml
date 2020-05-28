@@ -1,0 +1,30 @@
+ceremony-type: intermediate
+pkcs11:
+    module: /usr/local/lib/softhsm/libsofthsm2.so
+    pin: 1234
+    signing-key-slot: $slotID$
+    signing-key-label: root signing key (rsa)
+    signing-key-id: $keyID$
+inputs:
+    public-key-path: /tmp/intermediate-signing-pub-rsa.pem
+    issuer-certificate-path: /tmp/root-cert-rsa.pem
+outputs:
+    certificate-path: /tmp/intermediate-cert-rsa-a.pem
+certificate-profile:
+    signature-algorithm: SHA256WithRSA
+    common-name: CA intermediate (RSA) A
+    organization: good guys
+    country: US
+    not-before: 2020-01-01 12:00:00
+    not-after: 2040-01-01 12:00:00
+    ocsp-url: http://good-guys.com/ocsp
+    crl-url:  http://good-guys.com/crl
+    issuer-url:  http://good-guys.com/root
+    policies:
+        - oid: 1.2.3
+        - oid: 1.5.6
+          cps-uri: "http://example.com/cps"
+    key-usages:
+        - Digital Signature
+        - Cert Sign
+        - CRL Sign

@@ -36,6 +36,6 @@
   },
 
   "common": {
-    "issuerCert": "test/test-ca2.pem"
+    "issuerCert": "/tmp/intermediate-cert-rsa-a.pem"
   }
 }

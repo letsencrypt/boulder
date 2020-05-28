@@ -28,7 +28,7 @@ for GO_VERSION in "${GO_VERSIONS[@]}"
 do
   TAG_NAME="$BASE_TAG_NAME-go$GO_VERSION:$DATESTAMP"
   echo "Pushing $TAG_NAME to Dockerhub"
-  docker push $TAG_NAME
+  # docker push $TAG_NAME
 done
 
 # TODO(@cpu): Figure out a `sed` for updating the date in `docker-compose.yml`'s
