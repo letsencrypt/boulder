@@ -99,6 +99,12 @@ func TestCheckIssuances(t *testing.T) {
 		"4.example.com": {
 			testTime.Add(time.Hour),
 		},
+		"5.example.com": {
+			testTime.Add(time.Hour),
+		},
+		"6.example.com": {
+			testTime.Add(time.Hour + time.Minute),
+		},
 	}
 
 	raBuf := bytes.NewBuffer([]byte(fmt.Sprintf(`random
@@ -106,10 +112,20 @@ func TestCheckIssuances(t *testing.T) {
 random
 %s Certificate request - successful JSON={"SerialNumber": "2", "Names":["2.example.com", "3.example.com"], "Requester":0}
 %s Certificate request - successful JSON={"SerialNumber": "3", "Names":["4.example.com"], "Requester":0}
+%s Certificate request - successful JSON={"SerialNumber": "4", "Names":["5.example.com"], "Requester":0}
+%s Certificate request - successful JSON={"SerialNumber": "5", "Names":["6.example.com"], "Requester":0}
 random`,
+		// example.com: CAA @ +1:00, Issue @ +2:00, CAA @ +3:00. (PASS, one valid CAA check, one invalid)
 		testTime.Add(time.Hour*2).Format(time.RFC3339Nano),
+		// 2.example.com: CAA @ +1:00, Issue @ +2:00. (PASS)
+		// 3.example.com: Issue @ +2:00. (FAIL, no CAA check)
 		testTime.Add(time.Hour*2).Format(time.RFC3339Nano),
-		testTime.Format(time.RFC3339Nano),
+		// 4.example.com: Issue @ +0:30, CAA @ +1:00. (FAIL, but has CAA check within 1h)
+		testTime.Add(30*time.Minute).Format(time.RFC3339Nano),
+		// 5.example.com: CAA @ +1:00, Issue @ +10:00. (FAIL, CAA check expired >8h)
+		testTime.Add(10*time.Hour).Format(time.RFC3339Nano),
+		// 6.example.com: Issue @ +1:00, CAA @ +1:01. (PASS, has CAA check within tolerance)
+		testTime.Add(time.Hour).Format(time.RFC3339Nano),
 	)))
 	raScanner := bufio.NewScanner(raBuf)
 
@@ -117,10 +133,14 @@ random`,
 	test.AssertNotError(t, err, "failed creating temporary file")
 	defer os.Remove(stderr.Name())
 
-	err = checkIssuances(raScanner, checkedMap, stderr)
+	timeTolerance := 10 * time.Minute
+	err = checkIssuances(raScanner, checkedMap, timeTolerance, stderr)
 	test.AssertNotError(t, err, "checkIssuances failed")
 
 	stderrCont, err := ioutil.ReadFile(stderr.Name())
 	test.AssertNotError(t, err, "failed to read temporary file")
-	test.AssertEquals(t, string(stderrCont), "Issuance missing CAA checks: issued at=0000-12-31 19:00:00.123456 -0800 -0800, serial=2, requester=0, names=[2.example.com 3.example.com], missing checks for names=[3.example.com]\nIssuance missing CAA checks: issued at=0000-12-31 17:00:00.123456 -0800 -0800, serial=3, requester=0, names=[4.example.com], missing checks for names=[4.example.com]\n")
+	test.AssertEquals(t, string(stderrCont),
+		"Issuance missing CAA checks: issued at=0000-12-31 19:00:00.123456 -0800 -0800, serial=2, requester=0, names=[2.example.com 3.example.com], missing checks for names=[3.example.com], timeError=NaN\n"+
+			"Issuance missing CAA checks: issued at=0000-12-31 17:30:00.123456 -0800 -0800, serial=3, requester=0, names=[4.example.com], missing checks for names=[4.example.com], timeError=1800.000\n"+
+			"Issuance missing CAA checks: issued at=0001-01-01 03:00:00.123456 -0800 -0800, serial=4, requester=0, names=[5.example.com], missing checks for names=[5.example.com], timeError=NaN\n")
 }
