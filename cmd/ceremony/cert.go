@@ -266,6 +266,9 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		ocspNoCheckExt := pkix.Extension{Id: oidOCSPNoCheck, Value: []byte{5, 0}}
 		cert.ExtraExtensions = append(cert.ExtraExtensions, ocspNoCheckExt)
 		cert.IsCA = false
+	} else if ct == intermediateCert {
+		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+		cert.MaxPathLenZero = true
 	}
 
 	if len(profile.Policies) > 0 {
@@ -274,10 +277,6 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 			return nil, err
 		}
 		cert.ExtraExtensions = append(cert.ExtraExtensions, policyExt)
-	}
-
-	if ct == intermediateCert {
-		cert.MaxPathLenZero = true
 	}
 
 	return cert, nil
