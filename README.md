@@ -1,7 +1,7 @@
 # Boulder - An ACME CA
 
-[![Build Status](https://travis-ci.org/letsencrypt/boulder.svg)](https://travis-ci.org/letsencrypt/boulder)
-[![Coverage Status](https://coveralls.io/repos/letsencrypt/boulder/badge.svg)](https://coveralls.io/r/letsencrypt/boulder)
+[![Build Status](https://travis-ci.com/letsencrypt/boulder.svg?branch=master)](https://travis-ci.com/letsencrypt/boulder)
+[![Coverage Status](https://coveralls.io/repos/github/letsencrypt/boulder/badge.svg?branch=master)](https://coveralls.io/github/letsencrypt/boulder?branch=master)
 
 This is an implementation of an ACME-based CA. The [ACME protocol](https://github.com/ietf-wg-acme/acme/) allows the CA to automatically verify that an applicant for a certificate actually controls an identifier, and allows domain holders to issue and revoke certificates for their domains. Boulder is the software that runs [Let's Encrypt](https://letsencrypt.org).
 

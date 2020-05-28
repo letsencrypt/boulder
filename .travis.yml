@@ -44,4 +44,6 @@ install:
   - docker-compose pull
 
 script:
-  - docker-compose run --use-aliases -e BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR}" -e RUN="${RUN}" -e TRAVIS="${TRAVIS}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e COVERALLS_TOKEN="${COVERALLS_TOKEN}" ${CONTAINER:-boulder} ./test.sh
+  # Export all variables with a TRAVIS prefix
+  - exported_vars=(BOULDER_CONFIG_DIR RUN "${!TRAVIS@}" COVERALLS_TOKEN)
+  - docker-compose run --use-aliases "${exported_vars[@]/#/-e}" ${CONTAINER:-boulder} ./test.sh
