@@ -61,7 +61,7 @@ function run_test_coverage() {
   # We don't use the run function here because sometimes goveralls fails to
   # contact the server and exits with non-zero status, but we don't want to
   # treat that as a failure.
-  goveralls -v -coverprofile=gover.coverprofile -service=travis-ci
+  goveralls -v -coverprofile=gover.coverprofile -service=travis-pro
 }
 
 #
