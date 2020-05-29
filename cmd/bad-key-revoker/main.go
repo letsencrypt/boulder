@@ -153,6 +153,9 @@ func (bkr *badKeyRevoker) resolveContacts(ids []int64) (map[int64][]string, erro
 		}
 		err := bkr.dbMap.SelectOne(&emails, "SELECT contact FROM registrations WHERE id = ?", id)
 		if err != nil {
+			if db.IsNoRows(err) {
+				continue
+			}
 			return nil, err
 		}
 		if len(emails.Contact) != 0 {
