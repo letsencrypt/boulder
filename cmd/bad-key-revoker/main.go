@@ -281,8 +281,10 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 	}
 	// if the account that revoked the original certificate isn't an owner of any
 	// extant certificates, still add them to ids so that we can resolve their
-	// email and avoid sending emails later.
-	if _, present := ownedBy[unchecked.RevokedBy]; !present {
+	// email and avoid sending emails later. If RevokedBy == 0 it was a row
+	// inserted by admin-revoker with a dummy ID, since there won't be a registration
+	// to look up, don't both adding it to ids.
+	if _, present := ownedBy[unchecked.RevokedBy]; !present && unchecked.RevokedBy != 0 {
 		ids = append(ids, unchecked.RevokedBy)
 	}
 	// get contact addresses for the list of IDs
