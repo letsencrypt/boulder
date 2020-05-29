@@ -16,8 +16,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 )
 
-const maxTimeTolerance = time.Hour
-
 func openFile(path string) (*bufio.Scanner, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -82,10 +80,12 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, t
 		}
 
 		var badNames []string
-		var minTimeError time.Duration = math.MaxInt64
+		var timeErrors []float64
 
 		for _, name := range ie.Names {
 			nameOk := false
+
+			var minTimeError float64 = math.Inf(+1)
 
 			for _, t := range checkedMap[name] {
 				validStart := ie.issuanceTime.Add(-8 * time.Hour)
@@ -93,28 +93,24 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, t
 				if t.After(validStart) && t.Before(validEnd.Add(timeTolerance)) {
 					nameOk = true
 				} else {
-					// If the check didn't pass, calculate how much tolerance we'd need for it to pass, to make it easier to diagnose log timestamp desync.
+					// If the check didn't pass, calculate how much tolerance we'd need for it to
+					// pass, to make it easier to diagnose log timestamp desync.
 					if !t.Before(validEnd) {
 						timeError := t.Sub(validEnd)
 						// ...however only if its <1h, otherwise it's probably not a match
-						if timeError < minTimeError && timeError < maxTimeTolerance {
-							minTimeError = timeError
+						if timeError < timeTolerance+time.Hour {
+							minTimeError = math.Min(minTimeError, float64(timeError)/float64(time.Second))
 						}
 					}
 				}
 			}
 			if !nameOk {
 				badNames = append(badNames, name)
+				timeErrors = append(timeErrors, minTimeError)
 			}
 		}
 		if len(badNames) > 0 {
-			// NaN is reported as the time error if there were no matching checks at all
-			timeError := math.NaN()
-			if minTimeError != math.MaxInt64 {
-				timeError = float64(minTimeError) / float64(time.Second)
-			}
-
-			fmt.Fprintf(stderr, "Issuance missing CAA checks: issued at=%s, serial=%s, requester=%d, names=%s, missing checks for names=%s, timeError=%.3f\n", ie.issuanceTime, ie.SerialNumber, ie.Requester, ie.Names, badNames, timeError)
+			fmt.Fprintf(stderr, "Issuance missing CAA checks: issued at=%s, serial=%s, requester=%d, names=%s, missing checks for names=%s, timeError=%.3f\n", ie.issuanceTime, ie.SerialNumber, ie.Requester, ie.Names, badNames, timeErrors)
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -183,8 +179,8 @@ func main() {
 	timeTolerance := flag.Duration("time-tolerance", 0, "How much slop to allow when comparing timestamps for ordering")
 	flag.Parse()
 
-	if *timeTolerance < 0 || *timeTolerance >= maxTimeTolerance {
-		cmd.Fail("value of -time-tolerance must be in [0, 1h)")
+	if *timeTolerance < 0 {
+		cmd.Fail("value of -time-tolerance must be non-negative")
 	}
 
 	// Build a map from hostnames to a list of times those hostnames were checked

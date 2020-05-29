@@ -140,7 +140,7 @@ random`,
 	stderrCont, err := ioutil.ReadFile(stderr.Name())
 	test.AssertNotError(t, err, "failed to read temporary file")
 	test.AssertEquals(t, string(stderrCont),
-		"Issuance missing CAA checks: issued at=0000-12-31 19:00:00.123456 -0800 -0800, serial=2, requester=0, names=[2.example.com 3.example.com], missing checks for names=[3.example.com], timeError=NaN\n"+
-			"Issuance missing CAA checks: issued at=0000-12-31 17:30:00.123456 -0800 -0800, serial=3, requester=0, names=[4.example.com], missing checks for names=[4.example.com], timeError=1800.000\n"+
-			"Issuance missing CAA checks: issued at=0001-01-01 03:00:00.123456 -0800 -0800, serial=4, requester=0, names=[5.example.com], missing checks for names=[5.example.com], timeError=NaN\n")
+		"Issuance missing CAA checks: issued at=0000-12-31 19:00:00.123456 -0800 -0800, serial=2, requester=0, names=[2.example.com 3.example.com], missing checks for names=[3.example.com], timeError=[+Inf]\n"+
+			"Issuance missing CAA checks: issued at=0000-12-31 17:30:00.123456 -0800 -0800, serial=3, requester=0, names=[4.example.com], missing checks for names=[4.example.com], timeError=[1800.000]\n"+
+			"Issuance missing CAA checks: issued at=0001-01-01 03:00:00.123456 -0800 -0800, serial=4, requester=0, names=[5.example.com], missing checks for names=[5.example.com], timeError=[+Inf]\n")
 }
