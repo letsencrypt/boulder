@@ -69,10 +69,6 @@ git clone https://github.com/opendnssec/SoftHSMv2.git /tmp/softhsm2 --branch 2.5
 mkdir -p /etc/softhsm
 echo "directories.tokendir = /var/lib/softhsm/tokens/" > /etc/softhsm/softhsm2.conf
 mkdir -p /var/lib/softhsm/tokens
-# softhsm2-util --slot 0 --init-token --label root-ecdsa --pin 5678 --so-pin 1234
-# softhsm2-util --slot 1 --init-token --label root-rsa --pin 5678 --so-pin 1234
-# softhsm2-util --slot 0 --init-token --label intermediate-ecdsa --pin 5678 --so-pin 1234
-# softhsm2-util --slot 1 --init-token --label intermediate-rsa --pin 5678 --so-pin 1234
 
 gem install --no-document fpm
 
