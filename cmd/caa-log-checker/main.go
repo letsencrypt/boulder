@@ -92,15 +92,13 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, t
 				validEnd := ie.issuanceTime
 				if t.After(validStart) && t.Before(validEnd.Add(timeTolerance)) {
 					nameOk = true
-				} else {
-					// If the check didn't pass, calculate how much tolerance we'd need for it to
-					// pass, to make it easier to diagnose log timestamp desync.
-					if !t.Before(validEnd) {
-						timeError := t.Sub(validEnd)
-						// ...however only if its <1h, otherwise it's probably not a match
-						if timeError < timeTolerance+time.Hour {
-							minTimeError = math.Min(minTimeError, float64(timeError)/float64(time.Second))
-						}
+				} else if t.After(validStart) {
+					// If the check didn't pass and the check is in the future, calculate how much tolerance
+					// we'd need for it to pass, to make it easier to diagnose log timestamp desync.
+					timeError := t.Sub(validEnd)
+					// ...however only if its <1h, otherwise it's probably not a match
+					if timeError < timeTolerance+time.Hour {
+						minTimeError = math.Min(minTimeError, float64(timeError)/float64(time.Second))
 					}
 				}
 			}
