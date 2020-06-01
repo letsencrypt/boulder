@@ -172,6 +172,8 @@ func loadMap(paths []string) (map[string][]time.Time, error) {
 }
 
 func main() {
+	logStdoutLevel := flag.Int("stdout-level", 6, "Minimum severity of messages to send to stdout")
+	logSyslogLevel := flag.Int("syslog-level", 6, "Minimum severity of messages to send to syslog")
 	raLog := flag.String("ra-log", "", "Path to a single boulder-ra log file")
 	vaLogs := flag.String("va-logs", "", "List of paths to boulder-va logs, separated by commas")
 	timeTolerance := flag.Duration("time-tolerance", 0, "How much slop to allow when comparing timestamps for ordering")
@@ -180,6 +182,11 @@ func main() {
 	if *timeTolerance < 0 {
 		cmd.Fail("value of -time-tolerance must be non-negative")
 	}
+
+	_ = cmd.NewLogger(cmd.SyslogConfig{
+		StdoutLevel: *logStdoutLevel,
+		SyslogLevel: *logSyslogLevel,
+	})
 
 	// Build a map from hostnames to a list of times those hostnames were checked
 	// for CAA.
