@@ -2,7 +2,7 @@ ceremony-type: key
 pkcs11:
     module: /usr/local/lib/softhsm/libsofthsm2.so
     pin: 1234
-    store-key-in-slot: $slotID$
+    store-key-in-slot: {{ .SlotID }}
     store-key-with-label: intermediate signing key (rsa)
 key:
     type: rsa

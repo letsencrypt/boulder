@@ -12,7 +12,6 @@ apt-get install -y --no-install-recommends \
   build-essential \
   cmake \
   libssl-dev \
-  libseccomp-dev \
   opensc \
   unzip \
   python3-pip \
@@ -56,14 +55,14 @@ go clean -modcache
 
 pip3 install -r /tmp/requirements.txt
 
-# Install a newer version of SoftHSM2 than is available from the debian
+# Install a newer version (2.5.0) of SoftHSM2 than is available from the debian
 # repository
-git clone https://github.com/opendnssec/SoftHSMv2.git /tmp/softhsm2 --branch 2.5.0 --depth 1 && \
-  cd /tmp/softhsm2 && \
-  sh autogen.sh && \
-  ./configure --disable-gost && \
-  make && make install && \
-  cd - && rm -r /tmp/softhsm2
+git clone https://github.com/opendnssec/SoftHSMv2.git /tmp/softhsm2 --branch 2.5.0 --depth 1
+cd /tmp/softhsm2
+sh autogen.sh
+./configure --disable-gost
+make && make install
+cd - && rm -r /tmp/softhsm2
 
 # Setup SoftHSM
 mkdir -p /etc/softhsm
@@ -72,7 +71,7 @@ mkdir -p /var/lib/softhsm/tokens
 
 gem install --no-document fpm
 
-apt-get autoremove -y libssl-dev ruby-dev cmake pkg-config libtool autoconf automake libseccomp-dev
+apt-get autoremove -y libssl-dev ruby-dev cmake pkg-config libtool autoconf automake
 apt-get clean -y
 
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*

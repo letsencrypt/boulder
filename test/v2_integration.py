@@ -1323,7 +1323,6 @@ def ocsp_exp_unauth_setup():
     # Since we're pretending to be in the past, we'll get an expired OCSP
     # response. Just check that it exists; don't do the full verification (which
     # would fail).
-    # check_ocsp_basic_oid(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
     check_ocsp_basic_oid(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
     global expired_cert_name
     expired_cert_name = cert_file_pem
