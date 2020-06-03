@@ -47,10 +47,6 @@ func (pa *mockPA) ChallengeTypeEnabled(t string) bool {
 	return true
 }
 
-func (pa *mockPA) ValidDomain(_ string) error {
-	return nil
-}
-
 func TestVerifyCSR(t *testing.T) {
 	private, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "error generating test key")
