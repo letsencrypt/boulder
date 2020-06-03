@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
+	"encoding/hex"
 	"errors"
 	"math/big"
 	"testing"
@@ -81,25 +82,28 @@ func TestMakeTemplate(t *testing.T) {
 	profile := &certProfile{}
 	randReader := newRandReader(&ctx, 0)
 
+	pubKey, err := hex.DecodeString("3059301306072a8648ce3d020106082a8648ce3d03010703420004b06745ef0375c9c54057098f077964e18d3bed0aacd54545b16eab8c539b5768cc1cea93ba56af1e22a7a01c33048c8885ed17c9c55ede70649b707072689f5e")
+	test.AssertNotError(t, err, "failed to decode test public key")
+
 	profile.NotBefore = "1234"
-	_, err := makeTemplate(randReader, profile, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid not before")
 
 	profile.NotBefore = "2018-05-18 11:31:00"
 	profile.NotAfter = "1234"
-	_, err = makeTemplate(randReader, profile, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid not after")
 
 	profile.NotAfter = "2018-05-18 11:31:00"
 	profile.SignatureAlgorithm = "nope"
-	_, err = makeTemplate(randReader, profile, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid signature algorithm")
 
 	profile.SignatureAlgorithm = "SHA256WithRSA"
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
 		return nil, errors.New("bad")
 	}
-	_, err = makeTemplate(randReader, profile, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail when GenerateRandom failed")
 
 	ctx.GenerateRandomFunc = func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
@@ -108,16 +112,16 @@ func TestMakeTemplate(t *testing.T) {
 		return r, err
 	}
 
-	_, err = makeTemplate(randReader, profile, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with empty key usages")
 
 	profile.KeyUsages = []string{"asd"}
-	_, err = makeTemplate(randReader, profile, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid key usages")
 
 	profile.KeyUsages = []string{"Digital Signature", "CRL Sign"}
 	profile.Policies = []policyInfoConfig{{}}
-	_, err = makeTemplate(randReader, profile, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid policy OID")
 
 	profile.Policies = []policyInfoConfig{{OID: "1.2.3"}, {OID: "1.2.3.4", CPSURI: "hello"}}
@@ -127,7 +131,7 @@ func TestMakeTemplate(t *testing.T) {
 	profile.OCSPURL = "ocsp"
 	profile.CRLURL = "crl"
 	profile.IssuerURL = "issuer"
-	cert, err := makeTemplate(randReader, profile, nil, rootCert)
+	cert, err := makeTemplate(randReader, profile, pubKey, rootCert)
 	test.AssertNotError(t, err, "makeTemplate failed when everything worked as expected")
 	test.AssertEquals(t, cert.Subject.CommonName, profile.CommonName)
 	test.AssertEquals(t, len(cert.Subject.Organization), 1)
@@ -144,7 +148,7 @@ func TestMakeTemplate(t *testing.T) {
 	test.AssertEquals(t, len(cert.ExtraExtensions), 1)
 	test.AssertEquals(t, len(cert.ExtKeyUsage), 0)
 
-	cert, err = makeTemplate(randReader, profile, nil, intermediateCert)
+	cert, err = makeTemplate(randReader, profile, pubKey, intermediateCert)
 	test.AssertNotError(t, err, "makeTemplate failed when everything worked as expected")
 	test.Assert(t, cert.MaxPathLenZero, "MaxPathLenZero not set in intermediate template")
 	test.AssertEquals(t, len(cert.ExtKeyUsage), 1)
@@ -171,8 +175,10 @@ func TestMakeTemplateOCSP(t *testing.T) {
 		NotAfter:           "2018-05-18 11:31:00",
 		NotBefore:          "2018-05-18 11:31:00",
 	}
+	pubKey, err := hex.DecodeString("3059301306072a8648ce3d020106082a8648ce3d03010703420004b06745ef0375c9c54057098f077964e18d3bed0aacd54545b16eab8c539b5768cc1cea93ba56af1e22a7a01c33048c8885ed17c9c55ede70649b707072689f5e")
+	test.AssertNotError(t, err, "failed to decode test public key")
 
-	cert, err := makeTemplate(randReader, profile, nil, ocspCert)
+	cert, err := makeTemplate(randReader, profile, pubKey, ocspCert)
 	test.AssertNotError(t, err, "makeTemplate failed")
 
 	test.Assert(t, !cert.IsCA, "IsCA is set")

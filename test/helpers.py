@@ -71,7 +71,7 @@ def ocsp_verify(cert_file, issuer_file, ocsp_response):
     with open(ocsp_resp_file, "wb") as f:
         f.write(ocsp_response)
     cmd = "openssl ocsp -no_nonce -issuer %s -cert %s \
-      -verify_other %s -CAfile test/test-root.pem \
+      -verify_other %s -CAfile /tmp/root-cert-rsa.pem \
       -respin %s" % (issuer_file, cert_file, issuer_file, ocsp_resp_file)
     output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode()
     # OpenSSL doesn't always return non-zero when response verify fails, so we

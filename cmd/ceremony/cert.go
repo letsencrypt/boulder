@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto"
-	"crypto/sha256"
+	"crypto/sha1"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -188,6 +188,18 @@ func buildPolicies(policies []policyInfoConfig) (pkix.Extension, error) {
 	return policyExt, nil
 }
 
+func generateSKID(pk []byte) ([]byte, error) {
+	var pkixPublicKey struct {
+		Algo      pkix.AlgorithmIdentifier
+		BitString asn1.BitString
+	}
+	if _, err := asn1.Unmarshal(pk, &pkixPublicKey); err != nil {
+		return nil, err
+	}
+	skid := sha1.Sum(pkixPublicKey.BitString.Bytes)
+	return skid[:], nil
+}
+
 // makeTemplate generates the certificate template for use in x509.CreateCertificate
 func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct certType) (*x509.Certificate, error) {
 	dateLayout := "2006-01-02 15:04:05"
@@ -218,7 +230,10 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		return nil, fmt.Errorf("unsupported signature algorithm %q", profile.SignatureAlgorithm)
 	}
 
-	subjectKeyID := sha256.Sum256(pubKey)
+	subjectKeyID, err := generateSKID(pubKey)
+	if err != nil {
+		return nil, err
+	}
 
 	serial := make([]byte, 16)
 	_, err = randReader.Read(serial)
@@ -257,7 +272,7 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		CRLDistributionPoints: crlDistributionPoints,
 		IssuingCertificateURL: issuingCertificateURL,
 		KeyUsage:              ku,
-		SubjectKeyId:          subjectKeyID[:],
+		SubjectKeyId:          subjectKeyID,
 	}
 
 	if ct == ocspCert {

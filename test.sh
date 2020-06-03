@@ -101,6 +101,12 @@ if [[ "$RUN" =~ "integration" ]] ; then
     args+=("--filter" "${INT_FILTER}")
   fi
 
+  # We want to setup our 'HSM' before we get into the python part
+  # of the integration tests. To do this we need to build the ceremony
+  # binary, which is typically done in test/startservers.py.
+  GOBIN=$(pwd)/bin go install ./cmd/ceremony
+  go run test/cert-ceremonies/generate.go
+
   python3 test/integration-test.py --chisel --gotest "${args[@]}"
 fi
 

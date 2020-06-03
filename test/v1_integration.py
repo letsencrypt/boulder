@@ -345,7 +345,7 @@ def test_issuer():
     parsed_chain = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, chain)
     parsed_cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, cert)
     parsed_root = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM,
-        open("test/test-root.pem").read())
+        open("/tmp/root-cert-rsa.pem").read())
 
     store = OpenSSL.crypto.X509Store()
     store.add_cert(parsed_root)
@@ -367,7 +367,7 @@ def test_ocsp():
 
     # As OCSP-Updater is generating responses independently of the CA we sit in a loop
     # checking OCSP until we either see a good response or we timeout (5s).
-    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "good")
+    verify_ocsp(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "good")
 
 def test_ct_submission():
     hostname = random_domain()
@@ -425,7 +425,7 @@ def test_revoke_by_account():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert.body.wrapped).decode())
     ee_ocsp_url = "http://localhost:4002"
-    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "revoked")
+    verify_ocsp(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "revoked")
     verify_akamai_purge()
     return 0
 
@@ -583,7 +583,7 @@ def test_admin_revoker_cert():
         config_dir, serial, 1))
     # Wait for OCSP response to indicate revocation took place
     ee_ocsp_url = "http://localhost:4002"
-    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "revoked")
+    verify_ocsp(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "revoked")
     verify_akamai_purge()
 
 def test_admin_revoker_batched():
@@ -606,7 +606,7 @@ def test_admin_revoker_batched():
 
     ee_ocsp_url = "http://localhost:4002"
     for cert in certs:
-        verify_ocsp(cert, "test/test-ca2.pem", ee_ocsp_url, "revoked")
+        verify_ocsp(cert, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "revoked")
 
 def test_sct_embedding():
     certr, authzs = auth_and_issue([random_domain()])

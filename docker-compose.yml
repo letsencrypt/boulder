@@ -2,10 +2,9 @@ version: '3'
 services:
     boulder:
         # To minimize fetching this should be the same version used below
-        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.14.1}:2020-04-23
+        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.14.1}:2020-06-01
         environment:
             FAKE_DNS: 10.77.77.77
-            PKCS11_PROXY_SOCKET: tcp://boulder-hsm:5657
             BOULDER_CONFIG_DIR: test/config
             GO111MODULE: "on"
             GOFLAGS: "-mod=vendor"
@@ -52,7 +51,6 @@ services:
           - 4431:4431 # ACMEv2 via HTTPS
           - 8055:8055 # dns-test-srv updates
         depends_on:
-          - bhsm
           - bmysql
         entrypoint: test/entrypoint.sh
         working_dir: /go/src/github.com/letsencrypt/boulder
@@ -63,18 +61,6 @@ services:
           memlock:
             soft: -1
             hard: -1
-    bhsm:
-        # To minimize fetching this should be the same version used above
-        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.14.1}:2020-04-23
-        environment:
-            PKCS11_DAEMON_SOCKET: tcp://0.0.0.0:5657
-        command: /usr/local/bin/pkcs11-daemon /usr/lib/softhsm/libsofthsm2.so
-        expose:
-          - 5657
-        networks:
-          bluenet:
-            aliases:
-              - boulder-hsm
     bmysql:
         image: mariadb:10.3
         networks:
@@ -92,7 +78,7 @@ services:
         logging:
             driver: none
     netaccess:
-        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.14.1}:2020-04-23
+        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.14.1}:2020-06-01
         environment:
             GO111MODULE: "on"
             GOFLAGS: "-mod=vendor"

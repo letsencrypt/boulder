@@ -11,7 +11,7 @@
     "pendingAuthorizationLifetimeDays": 7,
     "weakKeyFile": "test/example-weak-keys.json",
     "orderLifetime": "168h",
-    "issuerCertPath":  "test/test-ca2.pem",
+    "issuerCertPath":  "/tmp/intermediate-cert-rsa-a.pem",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/ra.boulder/cert.pem",

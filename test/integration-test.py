@@ -199,9 +199,9 @@ def test_single_ocsp():
 
        This is a non-API test.
     """
-    run("./bin/single-ocsp -issuer test/test-root.pem \
-            -responder test/test-root.pem \
-            -target test/test-ca2.pem \
+    run("./bin/single-ocsp -issuer /tmp/root-cert-rsa.pem \
+            -responder /tmp/root-cert-rsa.pem \
+            -target /tmp/intermediate-cert-rsa-a.pem \
             -pkcs11 test/test-root.key-pkcs11.json \
             -thisUpdate 2016-09-02T00:00:00Z \
             -nextUpdate 2020-09-02T00:00:00Z \
@@ -214,7 +214,7 @@ def test_single_ocsp():
 
     # Verify that the static OCSP responder, which answers with a
     # pre-signed, long-lived response for the CA cert, works.
-    verify_ocsp("test/test-ca2.pem", "test/test-root.pem", "http://localhost:4003", "good")
+    verify_ocsp("/tmp/intermediate-cert-rsa-a.pem", "/tmp/root-cert-rsa.pem", "http://localhost:4003", "good")
 
     p.send_signal(signal.SIGTERM)
     p.wait()
