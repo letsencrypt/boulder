@@ -101,25 +101,20 @@ if [[ "$RUN" =~ "integration" ]] ; then
     args+=("--filter" "${INT_FILTER}")
   fi
 
-  # We want to setup our 'HSM' before we get into the python part
-  # of the integration tests. To do this we need to build the ceremony
-  # binary, which is typically done in test/startservers.py.
-  GOBIN=$(pwd)/bin go install ./cmd/ceremony
-  go run test/cert-ceremonies/generate.go
-
   python3 test/integration-test.py --chisel --gotest "${args[@]}"
 fi
 
 # Test that just ./start.py works, which is a proxy for testing that
 # `docker-compose up` works, since that just runs start.py (via entrypoint.sh).
 if [[ "$RUN" =~ "start" ]] ; then
-  ./start.py &
+  python3 start.py &
   for I in $(seq 1 100); do
     sleep 1
     curl http://localhost:4000/directory && break
   done
   if [[ $I = 100 ]]; then
     echo "Boulder did not come up after ./start.py."
+    exit 1
   fi
 fi
 
