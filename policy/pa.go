@@ -305,11 +305,14 @@ var forbiddenMailDomains = map[string]bool{
 	"example.org": true,
 }
 
+// ValidEmail returns an error if the input doesn't parse as an email address,
+// the domain isn't a valid hostname in Preferred Name Syntax, or its on the
+// list of domains forbidden for mail (because they are often used in examples).
 func ValidEmail(address string) error {
 	email, err := mail.ParseAddress(address)
 	if err != nil {
 		if len(address) > 254 {
-			address = address[:254]
+			address = address[:254] + "..."
 		}
 		return berrors.InvalidEmailError("%q is not a valid e-mail address", address)
 	}
