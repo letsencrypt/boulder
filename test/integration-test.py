@@ -261,6 +261,9 @@ def main():
     if not (args.run_certbot or args.run_chisel or args.custom  or args.run_go is not None):
         raise(Exception("must run at least one of the letsencrypt or chisel tests with --certbot, --chisel, --gotest, or --custom"))
 
+    # Setup issuance hierarchy
+    startservers.setupHierarchy()
+
     if not args.test_case_filter:
         now = datetime.datetime.utcnow()
 
