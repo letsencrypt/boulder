@@ -17,6 +17,13 @@ processes = []
 # to run the load-generator).
 challSrvProcess = None
 
+def setupHierarchy():
+    e = os.environ.copy()
+    e.setdefault("GOBIN", "%s/bin" % os.getcwd())
+    subprocess.call("go install ./cmd/ceremony", shell=True, env=e)
+    subprocess.call("go run test/cert-ceremonies/generate.go", shell=True, env=e)
+
+
 def install(race_detection):
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
     # build cache with new BUILD_TIMEs, or invalidating it on merges with a new

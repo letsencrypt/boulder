@@ -22,12 +22,12 @@ Edit docker-compose.yml to change these in the "boulder" section's "env":
 
 Run the pkcs11key benchmark to check raw signing speed at various settings for SESSIONS:
 
-    local-machine$ docker-compose run -e SESSIONS=4 -e MODULE=/usr/local/lib/libpkcs11-proxy.so --entrypoint /go/src/github.com/letsencrypt/pkcs11key/test.sh boulder
+    local-machine$ docker-compose run -e SESSIONS=4 -e MODULE=/usr/local/lib/softhsm/libsofthsm2.so --entrypoint /go/src/github.com/letsencrypt/pkcs11key/test.sh boulder
 
 Initialize the tokens for use by Boulder:
 
-    local-machine$ docker-compose run --entrypoint "softhsm --module /usr/local/lib/libpkcs11-proxy.so --init-token --pin 5678 --so-pin 1234 --slot 0 --label intermediate" boulder
-    local-machine$ docker-compose run --entrypoint "softhsm --module /usr/local/lib/libpkcs11-proxy.so --init-token --pin 5678 --so-pin 1234 --slot 1 --label root" boulder
+    local-machine$ docker-compose run --entrypoint "softhsm --module /usr/local/lib/softhsm/libsofthsm2.so --init-token --pin 5678 --so-pin 1234 --slot 0 --label intermediate" boulder
+    local-machine$ docker-compose run --entrypoint "softhsm --module /usr/local/lib/softhsm/libsofthsm2.so --init-token --pin 5678 --so-pin 1234 --slot 1 --label root" boulder
 
 Configure Boulder to always consider all OCSP responses instantly stale, so it
 will sign new ones as fast as it can. Edit "ocspMinTimeToExpiry" in

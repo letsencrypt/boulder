@@ -9,17 +9,19 @@ apt-get install -y --no-install-recommends \
   ruby \
   ruby-dev \
   rsyslog \
-  softhsm \
   build-essential \
   cmake \
   libssl-dev \
-  libseccomp-dev \
   opensc \
   unzip \
   python3-pip \
   gcc \
   ca-certificates \
-  openssl
+  openssl \
+  pkg-config \
+  libtool \
+  autoconf \
+  automake
 
 curl -L https://github.com/google/protobuf/releases/download/v3.11.4/protoc-3.11.4-linux-x86_64.zip -o /tmp/protoc.zip
 unzip /tmp/protoc.zip -d /usr/local/protoc
@@ -53,25 +55,23 @@ go clean -modcache
 
 pip3 install -r /tmp/requirements.txt
 
-# Install pkcs11-proxy. Checked out commit was master HEAD at time
-# of writing
-git clone https://github.com/SUNET/pkcs11-proxy /tmp/pkcs11-proxy && \
-  cd /tmp/pkcs11-proxy && \
-  git checkout 944684f78bca0c8da6cabe3fa273fed3db44a890 && \
-  cmake . && make && make install && \
-  cd - && rm -r /tmp/pkcs11-proxy
+# Install a newer version (2.5.0) of SoftHSM2 than is available from the debian
+# repository
+git clone https://github.com/opendnssec/SoftHSMv2.git /tmp/softhsm2 --branch 2.5.0 --depth 1
+cd /tmp/softhsm2
+sh autogen.sh
+./configure --disable-gost
+make && make install
+cd - && rm -r /tmp/softhsm2
 
 # Setup SoftHSM
+mkdir -p /etc/softhsm
 echo "directories.tokendir = /var/lib/softhsm/tokens/" > /etc/softhsm/softhsm2.conf
 mkdir -p /var/lib/softhsm/tokens
-softhsm2-util --slot 0 --init-token --label intermediate --pin 5678 --so-pin 1234
-softhsm2-util --slot 1 --init-token --label root --pin 5678 --so-pin 1234
 
 gem install --no-document fpm
 
-# We can't remove libseccomp-dev as it contains a shared object that is required
-# for pkcs11-proxy to run properly
-apt-get autoremove -y libssl-dev ruby-dev cmake
+apt-get autoremove -y libssl-dev ruby-dev cmake pkg-config libtool autoconf automake
 apt-get clean -y
 
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*

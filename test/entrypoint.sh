@@ -36,22 +36,6 @@ wait_tcp_port boulder-mysql 3306
 # create the database
 MYSQL_CONTAINER=1 $DIR/create_db.sh
 
-if [ -n "${PKCS11_PROXY_SOCKET:-}" ]; then
-  # Delaying loading private key into SoftHSM container until now so that switching
-  # out the signing key doesn't require rebuilding the boulder-tools image. Only
-  # convert key to DER once per container.
-  wait_tcp_port boulder-hsm 5657
-
-  addobj() {
-    pkcs11-tool --module=/usr/local/lib/libpkcs11-proxy.so \
-      --pin 5678 --login --so-pin 1234 "$@";
-  }
-  addobj --id 333333 --token-label intermediate --type privkey --write-object test/test-ca.key.der --label intermediate_key
-  addobj --id 777777 --token-label root         --type privkey --write-object test/test-root.key.der --label root_key
-  addobj --id 333333 --token-label intermediate --type pubkey  --write-object test/test-ca.pubkey.pem --label intermediate_key
-  addobj --id 777777 --token-label root         --type pubkey  --write-object test/test-root.pubkey.pem --label root_key
-fi
-
 if [[ $# -eq 0 ]]; then
     exec python3 ./start.py
 fi

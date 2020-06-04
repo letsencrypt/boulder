@@ -687,7 +687,7 @@ def test_revoke_by_issuer():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
     ee_ocsp_url = "http://localhost:4002"
-    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "revoked")
+    verify_ocsp(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "revoked")
     verify_akamai_purge()
 
 def test_revoke_by_authz():
@@ -707,7 +707,7 @@ def test_revoke_by_authz():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
     ee_ocsp_url = "http://localhost:4002"
-    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "revoked")
+    verify_ocsp(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "revoked")
     verify_akamai_purge()
 
 def test_revoke_by_privkey():
@@ -740,7 +740,7 @@ def test_revoke_by_privkey():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
     ee_ocsp_url = "http://localhost:4002"
-    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "revoked")
+    verify_ocsp(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "revoked")
     verify_akamai_purge()
 
 def test_sct_embedding():
@@ -1263,7 +1263,7 @@ def test_ocsp():
 
     # As OCSP-Updater is generating responses independently of the CA we sit in a loop
     # checking OCSP until we either see a good response or we timeout (5s).
-    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "good")
+    verify_ocsp(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "good")
 
 def test_ct_submission():
     hostname = random_domain()
@@ -1323,7 +1323,7 @@ def ocsp_exp_unauth_setup():
     # Since we're pretending to be in the past, we'll get an expired OCSP
     # response. Just check that it exists; don't do the full verification (which
     # would fail).
-    check_ocsp_basic_oid(cert_file_pem, "test/test-ca2.pem", "http://localhost:4002")
+    check_ocsp_basic_oid(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
     global expired_cert_name
     expired_cert_name = cert_file_pem
 
@@ -1333,7 +1333,7 @@ def test_ocsp_exp_unauth():
         raise Exception("ocsp_exp_unauth_setup didn't run")
     while True:
         try:
-            verify_ocsp(expired_cert_name, "test/test-ca2.pem", "http://localhost:4002", "XXX")
+            verify_ocsp(expired_cert_name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "XXX")
             raise(Exception("Unexpected return from verify_ocsp"))
         except subprocess.CalledProcessError as cpe:
             if cpe.output == b'Responder Error: unauthorized (6)\n':
@@ -1433,7 +1433,7 @@ def test_revoke_by_account():
     client.revoke(josepy.ComparableX509(cert), 0)
 
     ee_ocsp_url = "http://localhost:4002"
-    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "revoked")
+    verify_ocsp(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "revoked")
     verify_akamai_purge()
 
 caa_recheck_authzs = []
@@ -1594,7 +1594,7 @@ def test_admin_revoker_cert():
         config_dir, parsed_cert.serial_number, 1))
     # Wait for OCSP response to indicate revocation took place
     ee_ocsp_url = "http://localhost:4002"
-    verify_ocsp(cert_file_pem, "test/test-ca2.pem", ee_ocsp_url, "revoked")
+    verify_ocsp(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "revoked")
     verify_akamai_purge()
 
 def test_admin_revoker_batched():
@@ -1616,7 +1616,7 @@ def test_admin_revoker_batched():
 
     ee_ocsp_url = "http://localhost:4002"
     for cert in certs:
-        verify_ocsp(cert, "test/test-ca2.pem", ee_ocsp_url, "revoked")
+        verify_ocsp(cert, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "revoked")
 
 def test_sct_embedding():
     order = chisel2.auth_and_issue([random_domain()])
