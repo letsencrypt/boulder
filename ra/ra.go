@@ -766,13 +766,13 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	var recheckAuthzs []*core.Authorization
 	// Per Baseline Requirements, CAA must be checked within 8 hours of issuance.
 	// CAA is checked when an authorization is validated, so as long as that was
-	// less than 8 hours ago, we're fine. If it was more than 8 hours ago
-	// we have to recheck. Since we don't record the validation time for
+	// less than 8 hours ago, we're fine. We recheck if that was more than 7 hours
+	// ago, to be on the safe side. Since we don't record the validation time for
 	// authorizations, we instead look at the expiration time and subtract out the
 	// expected authorization lifetime. Note: If we adjust the authorization
 	// lifetime in the future we will need to tweak this correspondingly so it
 	// works correctly during the switchover.
-	caaRecheckTime := now.Add(ra.authorizationLifetime).Add(-8 * time.Hour)
+	caaRecheckTime := now.Add(ra.authorizationLifetime).Add(-7 * time.Hour)
 	for _, name := range names {
 		authz := authzs[name]
 		if authz == nil {
