@@ -38,14 +38,6 @@ race_detection = True
 if os.environ.get('RACE', 'true') != 'true':
     race_detection = False
 
-def run_client_tests():
-    root = os.environ.get("CERTBOT_PATH")
-    assert root is not None, (
-        "Please set CERTBOT_PATH env variable to point at "
-        "initialized (virtualenv) client repo root")
-    cmd = os.path.join(root, 'tests', 'boulder-integration.sh')
-    run(cmd, cwd=root)
-
 def run_go_tests(filterPattern=None):
     """
     run_go_tests launches the Go integration tests. The go test command must
@@ -243,8 +235,6 @@ exit_status = 1
 
 def main():
     parser = argparse.ArgumentParser(description='Run integration tests')
-    parser.add_argument('--certbot', dest='run_certbot', action='store_true',
-                        help="run the certbot integration tests")
     parser.add_argument('--chisel', dest="run_chisel", action="store_true",
                         help="run integration tests using chisel")
     parser.add_argument('--gotest', dest="run_go", action="store_true",
@@ -254,12 +244,11 @@ def main():
     # allow any ACME client to run custom command for integration
     # testing (without having to implement its own busy-wait loop)
     parser.add_argument('--custom', metavar="CMD", help="run custom command")
-    parser.set_defaults(run_certbot=False, run_chisel=False,
-        test_case_filter="", skip_setup=False)
+    parser.set_defaults(run_chisel=False, test_case_filter="", skip_setup=False)
     args = parser.parse_args()
 
-    if not (args.run_certbot or args.run_chisel or args.custom  or args.run_go is not None):
-        raise(Exception("must run at least one of the letsencrypt or chisel tests with --certbot, --chisel, --gotest, or --custom"))
+    if not (args.run_chisel or args.custom  or args.run_go is not None):
+        raise(Exception("must run at least one of the letsencrypt or chisel tests with --chisel, --gotest, or --custom"))
 
     # Setup issuance hierarchy
     startservers.setupHierarchy()
@@ -285,9 +274,6 @@ def main():
 
     if args.run_chisel:
         run_chisel(args.test_case_filter)
-
-    if args.run_certbot:
-        run_client_tests()
 
     if args.run_go:
         run_go_tests(args.test_case_filter)
