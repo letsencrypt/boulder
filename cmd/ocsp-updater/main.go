@@ -153,20 +153,20 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	now := updater.clk.Now()
 	maxAgeCutoff := now.Add(-updater.ocspStaleMaxAge)
 
-	certStatusFields := "cs.serial, cs.status, cs.revokedDate, cs.notAfter"
-	if features.Enabled(features.StoreIssuerInfo) {
-		certStatusFields += ", cs.issuerID"
-	}
 	_, err := updater.dbMap.Select(
 		&statuses,
-		fmt.Sprintf(`SELECT
-				%s
+		`SELECT
+				cs.serial,
+				cs.status,
+				cs.revokedDate,
+				cs.notAfter,
+				cs.issuerID
 				FROM certificateStatus AS cs
 				WHERE cs.ocspLastUpdated > :maxAge
 				AND cs.ocspLastUpdated < :lastUpdate
 				AND NOT cs.isExpired
 				ORDER BY cs.ocspLastUpdated ASC
-				LIMIT :limit`, certStatusFields),
+				LIMIT :limit`,
 		map[string]interface{}{
 			"lastUpdate": oldestLastUpdatedTime,
 			"maxAge":     maxAgeCutoff,
