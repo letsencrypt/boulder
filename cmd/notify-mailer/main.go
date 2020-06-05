@@ -23,6 +23,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -145,6 +146,10 @@ func (m *mailer) run() error {
 			m.log.Debugf("skipping %q: out of target range")
 			continue
 		}
+		if err := policy.ValidEmail(address); err != nil {
+			m.log.Infof("skipping %q: %s", address, err)
+			continue
+		}
 		recipients := addressesToRecipients[address]
 		m.printStatus(address, i+1, numAddresses, startTime)
 		var mailBody bytes.Buffer
@@ -162,7 +167,8 @@ func (m *mailer) run() error {
 				m.log.Errf("address %q was rejected by server: %s", address, err)
 				continue
 			default:
-				return err
+				return fmt.Errorf("sending mail %d of %d to %q: %s",
+					i, len(sortedAddresses), address, err)
 			}
 		}
 		sent++

@@ -3680,13 +3680,6 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 	}
 }
 
-func TestValidateEmailError(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-	err := ra.validateEmail("(๑•́ ω •̀๑)")
-	test.AssertEquals(t, err.Error(), "\"(๑•́ ω •̀๑)\" is not a valid e-mail address")
-}
-
 type mockSAPreviousValidations struct {
 	mocks.StorageAuthority
 	existsDomain string

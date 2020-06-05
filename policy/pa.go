@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"net/mail"
 	"regexp"
 	"strings"
 	"sync"
@@ -213,7 +214,7 @@ var (
 // * exactly equal to an IANA registered TLD
 //
 // It does _not_ check that the domain isn't on any PA blocked lists.
-func (pa *AuthorityImpl) ValidDomain(domain string) error {
+func ValidDomain(domain string) error {
 	if domain == "" {
 		return errEmptyName
 	}
@@ -292,6 +293,44 @@ func (pa *AuthorityImpl) ValidDomain(domain string) error {
 	return nil
 }
 
+// forbiddenMailDomains is a map of domain names we do not allow after the
+// @ symbol in contact mailto addresses. These are frequently used when
+// copy-pasting example configurations and would not result in expiration
+// messages and subscriber communications reaching the user that created the
+// registration if allowed.
+var forbiddenMailDomains = map[string]bool{
+	// https://tools.ietf.org/html/rfc2606#section-3
+	"example.com": true,
+	"example.net": true,
+	"example.org": true,
+}
+
+// ValidEmail returns an error if the input doesn't parse as an email address,
+// the domain isn't a valid hostname in Preferred Name Syntax, or its on the
+// list of domains forbidden for mail (because they are often used in examples).
+func ValidEmail(address string) error {
+	email, err := mail.ParseAddress(address)
+	if err != nil {
+		if len(address) > 254 {
+			address = address[:254] + "..."
+		}
+		return berrors.InvalidEmailError("%q is not a valid e-mail address", address)
+	}
+	splitEmail := strings.SplitN(email.Address, "@", -1)
+	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
+	if err := ValidDomain(domain); err != nil {
+		return berrors.InvalidEmailError(
+			"contact email %q has invalid domain : %s",
+			email.Address, err)
+	}
+	if forbiddenMailDomains[domain] {
+		return berrors.InvalidEmailError(
+			"invalid contact domain. Contact emails @%s are forbidden",
+			domain)
+	}
+	return nil
+}
+
 // WillingToIssue determines whether the CA is willing to issue for the provided
 // identifier. It expects domains in id to be lowercase to prevent mismatched
 // cases breaking queries.
@@ -318,7 +357,7 @@ func (pa *AuthorityImpl) WillingToIssue(id identifier.ACMEIdentifier) error {
 	}
 	domain := id.Value
 
-	if err := pa.ValidDomain(domain); err != nil {
+	if err := ValidDomain(domain); err != nil {
 		return err
 	}
 
