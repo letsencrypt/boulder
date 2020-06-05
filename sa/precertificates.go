@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
@@ -66,43 +65,16 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			return nil, err
 		}
 
-		// With feature.StoreIssuerInfo we've added a new field to certStatusModel
-		// so when we try and use dbMap.Insert it will always try to insert that field.
-		// That will break when the relevant migration hasn't been applied so we need
-		// to use an explicit INSERT statement that we can manipulate to include the
-		// field only when the feature is enabled (and as such the migration has been
-		// applied).
-		csFields := certStatusFields
-		if features.Enabled(features.StoreIssuerInfo) && req.IssuerID != nil {
-			csFields += ", issuerID"
-		}
-		qmarks := []string{}
-		for range strings.Split(csFields, ",") {
-			qmarks = append(qmarks, "?")
-		}
-		args := []interface{}{
-			serialHex,                   // serial
-			string(core.OCSPStatusGood), // status
-			ssa.clk.Now(),               // ocspLastUpdated
-			time.Time{},                 // revokedDate
-			0,                           // revokedReason
-			time.Time{},                 // lastExpirationNagSent
-			req.Ocsp,                    // ocspResponse
-			parsed.NotAfter,             // notAfter
-			false,                       // isExpired
-		}
-		if features.Enabled(features.StoreIssuerInfo) && req.IssuerID != nil {
-			args = append(args, req.IssuerID)
-		}
-
-		_, err = txWithCtx.Exec(fmt.Sprintf(
-			"INSERT INTO certificateStatus (%s) VALUES (%s)",
-			csFields,
-			strings.Join(qmarks, ","),
-		), args...)
-		if err != nil {
-			return nil, err
-		}
+		err = txWithCtx.Insert(&certStatusModel{
+			Status:          core.OCSPStatusGood,
+			OCSPLastUpdated: ssa.clk.Now(),
+			OCSPResponse:    req.Ocsp,
+			Serial:          serialHex,
+			RevokedDate:     time.Time{},
+			RevokedReason:   0,
+			IssuerID:        req.IssuerID,
+			NotAfter:        parsed.NotAfter,
+		})
 
 		// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
 		// that it is a renewal) we use just the DNSNames from the certificate and

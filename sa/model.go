@@ -15,7 +15,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
@@ -109,18 +108,15 @@ func SelectCertificates(s db.Selector, q string, args map[string]interface{}) ([
 	return models, err
 }
 
-const certStatusFields = "serial, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, notAfter, isExpired"
-
 // SelectCertificateStatus selects all fields of one certificate status model
 func SelectCertificateStatus(s db.OneSelector, q string, args ...interface{}) (certStatusModel, error) {
-	fields := certStatusFields
-	if features.Enabled(features.StoreIssuerInfo) {
-		fields += ", issuerID"
-	}
 	var model certStatusModel
 	err := s.SelectOne(
 		&model,
-		"SELECT "+fields+" FROM certificateStatus "+q,
+		`SELECT
+			 serial, status, ocspLastUpdated, revokedDate, revokedReason,
+			 lastExpirationNagSent, ocspResponse, notAfter, isExpired, issuerID
+		 FROM certificateStatus `+q,
 		args...,
 	)
 	return model, err
