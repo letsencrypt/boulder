@@ -282,7 +282,7 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		cert.ExtraExtensions = append(cert.ExtraExtensions, ocspNoCheckExt)
 		cert.IsCA = false
 	} else if ct == intermediateCert {
-		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
 		cert.MaxPathLenZero = true
 	}
 
