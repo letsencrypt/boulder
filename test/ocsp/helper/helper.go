@@ -206,8 +206,7 @@ func getOCSPURL(cert *x509.Certificate) (*url.URL, error) {
 // certificate signed it, and that that certificate is currently valid.
 func checkSignature(resp *ocsp.Response, issuer *x509.Certificate) error {
 	var ocspSigner = issuer
-	var delegatedSigner = resp.Certificate
-	if delegatedSigner != nil {
+	if delegatedSigner := resp.Certificate; delegatedSigner != nil {
 		err := delegatedSigner.CheckSignatureFrom(issuer)
 		if err != nil {
 			return fmt.Errorf("checking signature from issuer to delegated OCSP signer: %s", err)
