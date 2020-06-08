@@ -197,6 +197,13 @@ func getOCSPURL(cert *x509.Certificate) (*url.URL, error) {
 	return ocspURL, nil
 }
 
+// checkSignature checks the response has a valid signature with respect to `issuer`.
+//
+// If there is a delegated signer in the response, it checks that the delegated
+// certificate has a signature from `issuer`.
+//
+// It checks that the OCSP response is within the validity window of whichever
+// certificate signed it, and that that certificate is currently valid.
 func checkSignature(resp *ocsp.Response, issuer *x509.Certificate) error {
 	var ocspSigner = issuer
 	var delegatedSigner = resp.Certificate
