@@ -2,6 +2,9 @@ package web
 
 import (
 	"context"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/rsa"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -161,4 +164,14 @@ func GetClientAddr(r *http.Request) string {
 		return xff + "," + r.RemoteAddr
 	}
 	return r.RemoteAddr
+}
+
+func KeyTypeToString(pub crypto.PublicKey) string {
+	switch pk := pub.(type) {
+	case *rsa.PublicKey:
+		return fmt.Sprintf("RSA %d", pk.N.BitLen())
+	case *ecdsa.PublicKey:
+		return fmt.Sprintf("ECDSA %s", pk.Params().Name)
+	}
+	return "unknown"
 }
