@@ -222,7 +222,7 @@ func checkSignerTimes(resp *ocsp.Response, issuer *x509.Certificate) error {
 		return fmt.Errorf("OCSP signer (%s) expired at %s", ocspSigner.Subject, ocspSigner.NotAfter)
 	}
 	if time.Now().Before(ocspSigner.NotBefore) {
-		return fmt.Errorf("OCSP signer (%s) not valid until %s", ocspSigner.NotBefore)
+		return fmt.Errorf("OCSP signer (%s) not valid until %s", ocspSigner.Subject, ocspSigner.NotBefore)
 	}
 	return nil
 }
@@ -261,7 +261,7 @@ func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, expectStatu
 	if resp.Certificate == nil {
 		fmt.Printf("  Certificate: nil\n")
 	} else {
-		fmt.Printf("  Certificate:\n")
+		fmt.Print("  Certificate:\n")
 		fmt.Printf("    Subject: %s\n", resp.Certificate.Subject)
 		fmt.Printf("    Issuer: %s\n", resp.Certificate.Issuer)
 		fmt.Printf("    NotBefore: %s\n", resp.Certificate.NotBefore)
