@@ -90,15 +90,20 @@ const (
 	precertOrphanAlreadyExists
 )
 
-// String returns a human representation of the orphanType and the expected
-// label in the orphaning message for that type, or "unknown" if it isn't
-// a known orphan type.
+// String returns a human representation of the orphanType.
+// This is used both for printing orphanTypes and (in the case of certOrphan and
+// precertOrphan) to figure out what to search for when parsing logs.
+// Invalid orphanTypes are stringified as "unknown."
 func (t orphanType) String() string {
 	switch t {
 	case certOrphan:
 		return "certificate"
 	case precertOrphan:
 		return "precertificate"
+	case certOrphanAlreadyExists:
+		return "certificate (already exists in DB)"
+	case precertOrphanAlreadyExists:
+		return "precertificate (already exists in DB)"
 	default:
 		return "unknown"
 	}
