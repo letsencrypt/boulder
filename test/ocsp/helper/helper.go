@@ -197,6 +197,36 @@ func getOCSPURL(cert *x509.Certificate) (*url.URL, error) {
 	return ocspURL, nil
 }
 
+// checkSignerTimes checks that the OCSP response is within the
+// validity window of whichever certificate signed it, and that that
+// certificate is currently valid.
+func checkSignerTimes(resp *ocsp.Response, issuer *x509.Certificate) error {
+	var ocspSigner = issuer
+	if delegatedSigner := resp.Certificate; delegatedSigner != nil {
+		ocspSigner = delegatedSigner
+
+		fmt.Printf("Using delegated OCSP signer from response: %s\n",
+			base64.StdEncoding.EncodeToString(ocspSigner.Raw))
+	}
+
+	if resp.NextUpdate.After(ocspSigner.NotAfter) {
+		return fmt.Errorf("OCSP response is valid longer than OCSP signer (%s): %s is after %s",
+			ocspSigner.Subject, resp.NextUpdate, ocspSigner.NotAfter)
+	}
+	if resp.ThisUpdate.Before(ocspSigner.NotBefore) {
+		return fmt.Errorf("OCSP response's validity begins before the OCSP signer's (%s): %s is before %s",
+			ocspSigner.Subject, resp.ThisUpdate, ocspSigner.NotBefore)
+	}
+
+	if time.Now().After(ocspSigner.NotAfter) {
+		return fmt.Errorf("OCSP signer (%s) expired at %s", ocspSigner.Subject, ocspSigner.NotAfter)
+	}
+	if time.Now().Before(ocspSigner.NotBefore) {
+		return fmt.Errorf("OCSP signer (%s) not valid until %s", ocspSigner.Subject, ocspSigner.NotBefore)
+	}
+	return nil
+}
+
 func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, expectStatus int) (*ocsp.Response, error) {
 	fmt.Printf("\nDecoding body: %s\n", base64.StdEncoding.EncodeToString(respBytes))
 	resp, err := ocsp.ParseResponseForCert(respBytes, cert, issuer)
@@ -211,6 +241,12 @@ func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, expectStatu
 	if timeTilExpiry < tooSoonDuration {
 		return nil, fmt.Errorf("NextUpdate is too soon: %s", timeTilExpiry)
 	}
+
+	err = checkSignerTimes(resp, issuer)
+	if err != nil {
+		return nil, fmt.Errorf("checking signature on delegated signer: %s", err)
+	}
+
 	fmt.Printf("\n")
 	fmt.Printf("Good response:\n")
 	fmt.Printf("  CertStatus %d\n", resp.Status)
@@ -222,5 +258,14 @@ func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, expectStatu
 	fmt.Printf("  RevocationReason %d\n", resp.RevocationReason)
 	fmt.Printf("  SignatureAlgorithm %s\n", resp.SignatureAlgorithm)
 	fmt.Printf("  Extensions %#v\n", resp.Extensions)
+	if resp.Certificate == nil {
+		fmt.Printf("  Certificate: nil\n")
+	} else {
+		fmt.Print("  Certificate:\n")
+		fmt.Printf("    Subject: %s\n", resp.Certificate.Subject)
+		fmt.Printf("    Issuer: %s\n", resp.Certificate.Issuer)
+		fmt.Printf("    NotBefore: %s\n", resp.Certificate.NotBefore)
+		fmt.Printf("    NotAfter: %s\n", resp.Certificate.NotAfter)
+	}
 	return resp, nil
 }
