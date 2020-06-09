@@ -157,14 +157,20 @@ func makeDBSource(dbMap dbSelector, issuerCert string, reqSerialPrefixes []strin
 	if err != nil {
 		return nil, fmt.Errorf("Could not parse issuer cert %s: %s", issuerCert, err)
 	}
-	var pkixPublicKey struct {
+	// The issuerKeyHash in OCSP requests is constructed over the DER
+	// encoding of the public key per RFC 6960 (defined in RFC 4055 for
+	// RSA and RFC  5480 for ECDSA). We can't use MarshalPKIXPublicKey
+	// for this since it encodes keys using the SPKI structure itself,
+	// and we just want the contents of the subjectPublicKey for the
+	// hash, so we need  to extract it ourselves.
+	var spki struct {
 		Algo      pkix.AlgorithmIdentifier
 		BitString asn1.BitString
 	}
-	if _, err := asn1.Unmarshal(caCert.RawSubjectPublicKeyInfo, &pkixPublicKey); err != nil {
+	if _, err := asn1.Unmarshal(caCert.RawSubjectPublicKeyInfo, &spki); err != nil {
 		return nil, err
 	}
-	keyHash := sha1.Sum(pkixPublicKey.BitString.Bytes)
+	keyHash := sha1.Sum(spki.BitString.Bytes)
 
 	// Construct a DB backed response source
 	return NewSourceFromDatabase(dbMap, keyHash[:], reqSerialPrefixes, timeout, log)
