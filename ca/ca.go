@@ -7,7 +7,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/hex"
@@ -37,8 +36,8 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	csrlib "github.com/letsencrypt/boulder/csr"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/issuercerts"
 	blog "github.com/letsencrypt/boulder/log"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -116,11 +115,9 @@ const (
 type CertificateAuthorityImpl struct {
 	rsaProfile   string
 	ecdsaProfile string
-	// A map from issuer cert common name to an internalIssuer struct
-	issuers map[string]*internalIssuer
 	// A map from issuer ID to internalIssuer
-	idToIssuer map[int64]*internalIssuer
-	// The common name of the default issuer cert
+	idToIssuer map[issuercerts.ID]*internalIssuer
+	// The issuer that will be used for issuance (as opposed to OCSP signing)
 	defaultIssuer      *internalIssuer
 	sa                 certificateStorage
 	pa                 core.PolicyAuthority
@@ -166,11 +163,12 @@ func makeInternalIssuers(
 	issuers []Issuer,
 	policy *cfsslConfig.Signing,
 	lifespanOCSP time.Duration,
-) (map[string]*internalIssuer, error) {
+) (map[issuercerts.ID]*internalIssuer, error) {
 	if len(issuers) == 0 {
 		return nil, errors.New("No issuers specified.")
 	}
-	internalIssuers := make(map[string]*internalIssuer)
+	internalIssuers := make(map[issuercerts.ID]*internalIssuer)
+	cns := make(map[string]bool)
 	for _, iss := range issuers {
 		if iss.Cert == nil || iss.Signer == nil {
 			return nil, errors.New("Issuer with nil cert or signer specified.")
@@ -181,10 +179,11 @@ func makeInternalIssuers(
 		}
 
 		cn := iss.Cert.Subject.CommonName
-		if internalIssuers[cn] != nil {
+		if cns[cn] {
 			return nil, errors.New("Multiple issuer certs with the same CommonName are not supported")
 		}
-		internalIssuers[cn] = &internalIssuer{
+		id := issuercerts.FromCert(iss.Cert).ID()
+		internalIssuers[id] = &internalIssuer{
 			cert:       iss.Cert,
 			eeSigner:   eeSigner,
 			ocspSigner: iss.Signer,
@@ -193,16 +192,8 @@ func makeInternalIssuers(
 	return internalIssuers, nil
 }
 
-// idForIssuer generates a stable ID for an issuer certificate. This
-// is used for identifying which issuer issued a certificate in the
-// certificateStatus table.
-func idForIssuer(cert *x509.Certificate) int64 {
-	h := sha256.Sum256(cert.Raw)
-	return big.NewInt(0).SetBytes(h[:4]).Int64()
-}
-
 // NewCertificateAuthorityImpl creates a CA instance that can sign certificates
-// from a single issuer (the first first in the issuers slice), and can sign OCSP
+// from a single issuer (the first in the issuers slice), and can sign OCSP
 // for any of the issuer certificates provided.
 func NewCertificateAuthorityImpl(
 	config ca_config.CAConfig,
@@ -251,7 +242,7 @@ func NewCertificateAuthorityImpl(
 	if err != nil {
 		return nil, err
 	}
-	defaultIssuer := internalIssuers[issuers[0].Cert.Subject.CommonName]
+	defaultIssuer := internalIssuers[issuercerts.FromCert(issuers[0].Cert).ID()]
 
 	rsaProfile := config.RSAProfile
 	ecdsaProfile := config.ECDSAProfile
@@ -301,7 +292,6 @@ func NewCertificateAuthorityImpl(
 	ca = &CertificateAuthorityImpl{
 		sa:                 sa,
 		pa:                 pa,
-		issuers:            internalIssuers,
 		defaultIssuer:      defaultIssuer,
 		rsaProfile:         rsaProfile,
 		ecdsaProfile:       ecdsaProfile,
@@ -319,9 +309,9 @@ func NewCertificateAuthorityImpl(
 		signErrorCounter:   signErrorCounter,
 	}
 
-	ca.idToIssuer = make(map[int64]*internalIssuer)
-	for _, ii := range ca.issuers {
-		id := idForIssuer(ii.cert)
+	ca.idToIssuer = make(map[issuercerts.ID]*internalIssuer)
+	for _, ii := range internalIssuers {
+		id := issuercerts.FromCert(ii.cert).ID()
 		ca.idToIssuer[id] = ii
 	}
 
@@ -433,48 +423,33 @@ var ocspStatusToCode = map[string]int{
 func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *caPB.GenerateOCSPRequest) (*caPB.OCSPResponse, error) {
 	var issuer *internalIssuer
 	var serial *big.Int
+	if req.IssuerID == nil {
+		return nil, fmt.Errorf("no issuerID provided")
+	}
+	if req.Serial == nil {
+		return nil, fmt.Errorf("no serial provided")
+	}
 	// Once the feature is enabled we need to support both RPCs that include
 	// IssuerID and those that don't as we still need to be able to update rows
 	// that didn't have an IssuerID set when they were created. Once this feature
 	// has been enabled for a full OCSP lifetime cycle we can remove this
 	// functionality.
-	if features.Enabled(features.StoreIssuerInfo) && req.IssuerID != nil {
-		serialInt, err := core.StringToSerial(*req.Serial)
-		if err != nil {
-			return nil, err
-		}
-		serial = serialInt
-		var ok bool
-		issuer, ok = ca.idToIssuer[*req.IssuerID]
-		if !ok {
-			return nil, fmt.Errorf("This CA doesn't have an issuer cert with ID %d", *req.IssuerID)
-		}
-		exists, err := ca.sa.SerialExists(ctx, &sapb.Serial{Serial: req.Serial})
-		if err != nil {
-			return nil, err
-		}
-		if !*exists.Exists {
-			return nil, fmt.Errorf("GenerateOCSP was asked to sign OCSP for certification with unknown serial %q", *req.Serial)
-		}
-	} else {
-		cert, err := x509.ParseCertificate(req.CertDER)
-		if err != nil {
-			ca.log.AuditErr(err.Error())
-			return nil, err
-		}
-
-		serial = cert.SerialNumber
-		cn := cert.Issuer.CommonName
-		issuer = ca.issuers[cn]
-		if issuer == nil {
-			return nil, fmt.Errorf("This CA doesn't have an issuer cert with CommonName %q", cn)
-		}
-		err = cert.CheckSignatureFrom(issuer.cert)
-		if err != nil {
-			return nil, fmt.Errorf("GenerateOCSP was asked to sign OCSP for cert "+
-				"%s from %q, but the cert's signature was not valid: %s.",
-				core.SerialToString(cert.SerialNumber), cn, err)
-		}
+	serialInt, err := core.StringToSerial(*req.Serial)
+	if err != nil {
+		return nil, err
+	}
+	serial = serialInt
+	var ok bool
+	issuer, ok = ca.idToIssuer[issuercerts.ID(*req.IssuerID)]
+	if !ok {
+		return nil, fmt.Errorf("This CA doesn't have an issuer cert with ID %d", *req.IssuerID)
+	}
+	exists, err := ca.sa.SerialExists(ctx, &sapb.Serial{Serial: req.Serial})
+	if err != nil {
+		return nil, err
+	}
+	if !*exists.Exists {
+		return nil, fmt.Errorf("GenerateOCSP was asked to sign OCSP for certification with unknown serial %q", *req.Serial)
 	}
 
 	now := ca.clk.Now().Truncate(time.Hour)
@@ -523,10 +498,16 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
+	// we currently only use one issuer, in the future when we support multiple
+	// the issuer will need to be derived from issueReq
+	issuerID := int64(issuercerts.FromCert(ca.defaultIssuer.cert).ID())
+
 	status := string(core.OCSPStatusGood)
 	ocspResp, err := ca.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
-		CertDER: precertDER,
-		Status:  &status,
+		Serial:   &serialHex,
+		CertDER:  precertDER,
+		Status:   &status,
+		IssuerID: &issuerID,
 	})
 	if err != nil {
 		err = berrors.InternalServerError(err.Error())
@@ -535,16 +516,12 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	}
 
 	req := &sapb.AddCertificateRequest{
-		Der:    precertDER,
-		RegID:  &regID,
-		Ocsp:   ocspResp.Response,
-		Issued: &nowNanos,
+		Der:      precertDER,
+		RegID:    &regID,
+		Ocsp:     ocspResp.Response,
+		Issued:   &nowNanos,
+		IssuerID: &issuerID,
 	}
-
-	// we currently only use one issuer, in the future when we support multiple
-	// the issuer will need to be derived from issueReq
-	issuerID := idForIssuer(ca.defaultIssuer.cert)
-	req.IssuerID = &issuerID
 
 	_, err = ca.sa.AddPrecertificate(ctx, req)
 	if err != nil {
