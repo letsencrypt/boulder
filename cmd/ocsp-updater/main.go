@@ -179,46 +179,16 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	return statuses, err
 }
 
-func getCertDER(selector ocspDB, serial string) ([]byte, error) {
-	cert, err := sa.SelectCertificate(
-		selector,
-		"WHERE serial = ?",
-		serial,
-	)
-	if err != nil {
-		if db.IsNoRows(err) {
-			cert, err = sa.SelectPrecertificate(selector, serial)
-			// If there was still a non-nil error return it. If we can't find
-			// a precert row something is amiss, we have a certificateStatus row with
-			// no matching certificate or precertificate.
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			return nil, err
-		}
-	}
-	return cert.DER, nil
-}
-
 func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.CertificateStatus) (*core.CertificateStatus, error) {
 	reason := int32(status.RevokedReason)
 	statusStr := string(status.Status)
 	revokedAt := status.RevokedDate.UnixNano()
 	ocspReq := capb.GenerateOCSPRequest{
+		Serial:    &status.Serial,
+		IssuerID:  status.IssuerID,
 		Reason:    &reason,
 		Status:    &statusStr,
 		RevokedAt: &revokedAt,
-	}
-	if status.IssuerID != nil {
-		ocspReq.Serial = &status.Serial
-		ocspReq.IssuerID = status.IssuerID
-	} else {
-		certDER, err := getCertDER(updater.dbMap, status.Serial)
-		if err != nil {
-			return nil, err
-		}
-		ocspReq.CertDER = certDER
 	}
 
 	ocspResponse, err := updater.ogc.GenerateOCSP(ctx, &ocspReq)
