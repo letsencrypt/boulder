@@ -86,25 +86,27 @@ func readFiles(issuerFileName, responderFileName, targetFileName, pkcs11FileName
 }
 
 func signerValidForResp(issuer, responder *x509.Certificate, thisUpdate, nextUpdate time.Time) error {
-	if err := responder.CheckSignatureFrom(issuer); err != nil {
-		return fmt.Errorf("invalid signature on responder from issuer: %s", err)
-	}
-
-	gotOCSPEKU := false
-	for _, eku := range responder.ExtKeyUsage {
-		if eku == x509.ExtKeyUsageOCSPSigning {
-			gotOCSPEKU = true
-			break
+	if !issuer.Equal(responder) {
+		if err := responder.CheckSignatureFrom(issuer); err != nil {
+			return fmt.Errorf("invalid signature on responder from issuer: %s", err)
 		}
-	}
-	if !gotOCSPEKU {
-		return errors.New("responder certificate doesn't contain OCSPSigning extended key usage")
-	}
 
-	if thisUpdate.Before(responder.NotBefore) {
-		return errors.New("thisUpdate is before responder certificates notBefore")
-	} else if nextUpdate.After(responder.NotAfter) {
-		return errors.New("nextUpdate is after responder certificates notAfter")
+		gotOCSPEKU := false
+		for _, eku := range responder.ExtKeyUsage {
+			if eku == x509.ExtKeyUsageOCSPSigning {
+				gotOCSPEKU = true
+				break
+			}
+		}
+		if !gotOCSPEKU {
+			return errors.New("responder certificate doesn't contain OCSPSigning extended key usage")
+		}
+
+		if thisUpdate.Before(responder.NotBefore) {
+			return errors.New("thisUpdate is before responder certificates notBefore")
+		} else if nextUpdate.After(responder.NotAfter) {
+			return errors.New("nextUpdate is after responder certificates notAfter")
+		}
 	}
 
 	return nil
