@@ -4,6 +4,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -84,6 +85,31 @@ func readFiles(issuerFileName, responderFileName, targetFileName, pkcs11FileName
 	return
 }
 
+func signerValidForResp(issuer, responder *x509.Certificate, thisUpdate, nextUpdate time.Time) error {
+	if err := responder.CheckSignatureFrom(issuer); err != nil {
+		return fmt.Errorf("invalid signature on responder from issuer: %s", err)
+	}
+
+	gotOCSPEKU := false
+	for _, eku := range responder.ExtKeyUsage {
+		if eku == x509.ExtKeyUsageOCSPSigning {
+			gotOCSPEKU = true
+			break
+		}
+	}
+	if !gotOCSPEKU {
+		return errors.New("responder certificate doesn't contain OCSPSigning extended key usage")
+	}
+
+	if thisUpdate.Before(responder.NotBefore) {
+		return errors.New("thisUpdate is before responder certificates notBefore")
+	} else if nextUpdate.After(responder.NotAfter) {
+		return errors.New("nextUpdate is after responder certificates notAfter")
+	}
+
+	return nil
+}
+
 func main() {
 	issuerFile := flag.String("issuer", "", "Issuer certificate (PEM)")
 	responderFile := flag.String("responder", "", "OCSP responder certificate (DER)")
@@ -107,14 +133,15 @@ func main() {
 	nextUpdate, err := time.Parse(time.RFC3339, *nextUpdateString)
 	cmd.FailOnError(err, "Parsing nextUpdate flag")
 
+	if nextUpdate.Before(thisUpdate) {
+		cmd.Fail("nextUpdate must be after thisUpdate")
+	}
+
 	issuer, responder, target, pkcs11, err := readFiles(*issuerFile, *responderFile, *targetFile, *pkcs11File)
 	cmd.FailOnError(err, "Failed to read files")
 
-	if thisUpdate.Before(responder.NotBefore) {
-		cmd.Fail("thisUpdate is before responder certificates notBefore")
-	} else if nextUpdate.After(responder.NotAfter) {
-		cmd.Fail("nextUpdate is after responder certificates notAfter")
-	}
+	err = signerValidForResp(issuer, responder, thisUpdate, nextUpdate)
+	cmd.FailOnError(err, "Issuer/Responder are not valid for response")
 
 	// Instantiate the private key from PKCS11
 	priv, err := pkcs11key.New(pkcs11.Module, pkcs11.TokenLabel, pkcs11.PIN, responder.PublicKey)
