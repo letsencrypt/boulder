@@ -110,10 +110,10 @@ func main() {
 	issuer, responder, target, pkcs11, err := readFiles(*issuerFile, *responderFile, *targetFile, *pkcs11File)
 	cmd.FailOnError(err, "Failed to read files")
 
-	if responder.NotAfter.Before(thisUpdate) {
-		cmd.Fail("responder certificate expires before thisUpdate")
-	} else if responder.NotAfter.Before(nextUpdate) {
-		cmd.Fail("responder certificate expires before nextUpdate")
+	if thisUpdate.Before(responder.NotBefore) {
+		cmd.Fail("thisUpdate is before responder certificates notBefore")
+	} else if nextUpdate.After(responder.NotAfter) {
+		cmd.Fail("nextUpdate is after responder certificates notAfter")
 	}
 
 	// Instantiate the private key from PKCS11
