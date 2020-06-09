@@ -48,7 +48,8 @@
     },
     "features": {
       "BlockedKeyTable": true,
-      "StoreRevokerInfo": true
+      "StoreRevokerInfo": true,
+      "RestrictRSAKeySizes": true
     },
     "CTLogGroups2": [
       {
