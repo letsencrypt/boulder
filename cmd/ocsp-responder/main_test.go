@@ -288,7 +288,7 @@ func TestExpiredUnauthorized(t *testing.T) {
 }
 
 func TestKeyHashing(t *testing.T) {
-	src, err := makeDBSource(expiredSelector{}, "./testdata/test-ca.der.pem", []string{"00"}, time.Second, blog.NewMock())
+	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", []string{"00"}, time.Second, blog.NewMock())
 	test.AssertNotError(t, err, "makeDBSource failed")
 	test.AssertEquals(t, hex.EncodeToString(src.caKeyHash), "fb784f12f96015832c9f177f3419b32e36ea4189")
 }
