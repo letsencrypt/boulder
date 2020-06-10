@@ -8,7 +8,7 @@ require (
 	github.com/cloudflare/cfssl v1.4.2-0.20200324225241-abef926615f4
 	github.com/eggsampler/acme/v3 v3.0.0
 	github.com/go-gorp/gorp v2.0.0+incompatible // indirect
-	github.com/go-sql-driver/mysql v1.4.1
+	github.com/go-sql-driver/mysql v1.5.0
 	github.com/golang/mock v1.3.1
 	github.com/golang/protobuf v1.4.0-rc.4.0.20200313231945-b860323f09d0
 	github.com/golang/snappy v0.0.0-20170215233205-553a64147049 // indirect
@@ -29,7 +29,7 @@ require (
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 	github.com/weppos/publicsuffix-go v0.13.1-0.20200526195454-983d101becd6
 	github.com/zmap/zcrypto v0.0.0-20191112190257-7f2fe6faf8cf
-	github.com/zmap/zlint/v2 v2.0.0
+	github.com/zmap/zlint/v2 v2.1.0
 	golang.org/x/crypto v0.0.0-20200124225646-8b5121be2f68
 	golang.org/x/net v0.0.0-20200202094626-16171245cfb2
 	golang.org/x/text v0.3.2

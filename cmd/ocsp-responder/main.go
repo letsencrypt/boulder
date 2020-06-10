@@ -3,7 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto"
+	"crypto/sha1"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -85,6 +89,10 @@ type dbResponse struct {
 
 // Response is called by the HTTP server to handle a new OCSP request.
 func (src *DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
+	if req.HashAlgorithm != crypto.SHA1 {
+		// We only support SHA1 requests
+		return nil, nil, bocsp.ErrNotFound
+	}
 	// Check that this request is for the proper CA
 	if !bytes.Equal(req.IssuerKeyHash, src.caKeyHash) {
 		src.log.Debugf("Request intended for CA Cert ID: %s", hex.EncodeToString(req.IssuerKeyHash))
@@ -140,7 +148,7 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 }
 
 func makeDBSource(dbMap dbSelector, issuerCert string, reqSerialPrefixes []string, timeout time.Duration, log blog.Logger) (*DBSource, error) {
-	// Load the CA's key so we can store its SubjectKey in the DB
+	// Construct the key hash for the issuer
 	caCertDER, err := cmd.LoadCert(issuerCert)
 	if err != nil {
 		return nil, fmt.Errorf("Could not read issuer cert %s: %s", issuerCert, err)
@@ -149,12 +157,23 @@ func makeDBSource(dbMap dbSelector, issuerCert string, reqSerialPrefixes []strin
 	if err != nil {
 		return nil, fmt.Errorf("Could not parse issuer cert %s: %s", issuerCert, err)
 	}
-	if len(caCert.SubjectKeyId) == 0 {
-		return nil, fmt.Errorf("Empty subjectKeyID")
+	// The issuerKeyHash in OCSP requests is constructed over the DER
+	// encoding of the public key per RFC 6960 (defined in RFC 4055 for
+	// RSA and RFC  5480 for ECDSA). We can't use MarshalPKIXPublicKey
+	// for this since it encodes keys using the SPKI structure itself,
+	// and we just want the contents of the subjectPublicKey for the
+	// hash, so we need  to extract it ourselves.
+	var spki struct {
+		Algo      pkix.AlgorithmIdentifier
+		BitString asn1.BitString
 	}
+	if _, err := asn1.Unmarshal(caCert.RawSubjectPublicKeyInfo, &spki); err != nil {
+		return nil, err
+	}
+	keyHash := sha1.Sum(spki.BitString.Bytes)
 
-	// Construct source from DB
-	return NewSourceFromDatabase(dbMap, caCert.SubjectKeyId, reqSerialPrefixes, timeout, log)
+	// Construct a DB backed response source
+	return NewSourceFromDatabase(dbMap, keyHash[:], reqSerialPrefixes, timeout, log)
 }
 
 type config struct {

@@ -29,11 +29,12 @@ func _() {
 	_ = x[BlockedKeyTable-18]
 	_ = x[StoreRevokerInfo-19]
 	_ = x[RestrictRSAKeySizes-20]
+	_ = x[FasterNewOrdersRateLimit-21]
 }
 
-const _FeatureFlag_name = "unusedWriteIssuedNamesPrecertHeadNonceStatusOKRemoveWFE2AccountIDCheckRenewalFirstParallelCheckFailedValidationDeleteUnusedChallengesCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationV1DisableNewValidationsPrecertificateRevocationStripDefaultSchemePortStoreIssuerInfoStoreKeyHashesBlockedKeyTableStoreRevokerInfoRestrictRSAKeySizes"
+const _FeatureFlag_name = "unusedWriteIssuedNamesPrecertHeadNonceStatusOKRemoveWFE2AccountIDCheckRenewalFirstParallelCheckFailedValidationDeleteUnusedChallengesCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationV1DisableNewValidationsPrecertificateRevocationStripDefaultSchemePortStoreIssuerInfoStoreKeyHashesBlockedKeyTableStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimit"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 29, 46, 65, 82, 111, 133, 153, 166, 180, 198, 216, 235, 258, 282, 304, 319, 333, 348, 364, 383}
+var _FeatureFlag_index = [...]uint16{0, 6, 29, 46, 65, 82, 111, 133, 153, 166, 180, 198, 216, 235, 258, 282, 304, 319, 333, 348, 364, 383, 407}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {
