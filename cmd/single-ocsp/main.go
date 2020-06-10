@@ -101,12 +101,12 @@ func signerValidForResp(issuer, responder *x509.Certificate, thisUpdate, nextUpd
 		if !gotOCSPEKU {
 			return errors.New("responder certificate doesn't contain OCSPSigning extended key usage")
 		}
+	}
 
-		if thisUpdate.Before(responder.NotBefore) {
-			return errors.New("thisUpdate is before responder certificates notBefore")
-		} else if nextUpdate.After(responder.NotAfter) {
-			return errors.New("nextUpdate is after responder certificates notAfter")
-		}
+	if thisUpdate.Before(responder.NotBefore) {
+		return errors.New("thisUpdate is before responder certificate's notBefore")
+	} else if nextUpdate.After(responder.NotAfter) {
+		return errors.New("nextUpdate is after responder certificate's notAfter")
 	}
 
 	return nil

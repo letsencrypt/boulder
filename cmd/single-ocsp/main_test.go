@@ -55,11 +55,11 @@ func TestSignerValidForResp(t *testing.T) {
 
 	err = signerValidForResp(issuer, responder, time.Time{}, time.Time{})
 	test.AssertError(t, err, "signerValidForResp didn't fail")
-	test.AssertEquals(t, err.Error(), "thisUpdate is before responder certificates notBefore")
+	test.AssertEquals(t, err.Error(), "thisUpdate is before responder certificate's notBefore")
 
 	err = signerValidForResp(issuer, responder, now.Add(time.Hour), now.Add(time.Hour*4))
 	test.AssertError(t, err, "signerValidForResp didn't fail")
-	test.AssertEquals(t, err.Error(), "nextUpdate is after responder certificates notAfter")
+	test.AssertEquals(t, err.Error(), "nextUpdate is after responder certificate's notAfter")
 
 	err = signerValidForResp(issuer, responder, now.Add(time.Hour), now.Add(time.Hour*2))
 	test.AssertNotError(t, err, "signerValidForResp failed")
