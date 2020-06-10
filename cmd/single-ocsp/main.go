@@ -86,7 +86,7 @@ func readFiles(issuerFileName, responderFileName, targetFileName, pkcs11FileName
 
 func main() {
 	issuerFile := flag.String("issuer", "", "Issuer certificate (PEM)")
-	responderFile := flag.String("responder", "", "OCSP responder certificate (DER)")
+	responderFile := flag.String("responder", "", "OCSP responder certificate (PEM)")
 	targetFile := flag.String("target", "", "Certificate whose status is being reported (PEM)")
 	pkcs11File := flag.String("pkcs11", "", pkcs11Usage)
 	outFile := flag.String("out", "", "File to which the OCSP response will be written")
