@@ -507,6 +507,10 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 }
 
 func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error) {
+	if features.Enabled(features.FasterNewOrdersRateLimit) {
+		return countNewOrders(ctx, ssa.dbMap, acctID, earliest, latest)
+	}
+
 	var count int
 	err := ssa.dbMap.WithContext(ctx).SelectOne(&count,
 		`SELECT count(1) FROM orders
@@ -890,6 +894,14 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 			txWithCtx, req.Names, order.ID, order.RegistrationID, order.Expires); err != nil {
 			return nil, err
 		}
+
+		if features.Enabled(features.FasterNewOrdersRateLimit) {
+			// Increment the order creation count
+			if err := addNewOrdersRateLimit(ctx, txWithCtx, *req.RegistrationID, ssa.clk.Now().Truncate(time.Hour)); err != nil {
+				return nil, err
+			}
+		}
+
 		return req, nil
 	})
 	if overallError != nil {

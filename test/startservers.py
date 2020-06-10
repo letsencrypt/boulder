@@ -17,6 +17,13 @@ processes = []
 # to run the load-generator).
 challSrvProcess = None
 
+def setupHierarchy():
+    e = os.environ.copy()
+    e.setdefault("GOBIN", "%s/bin" % os.getcwd())
+    subprocess.call("go install ./cmd/ceremony", shell=True, env=e)
+    subprocess.call("go run test/cert-ceremonies/generate.go", shell=True, env=e)
+
+
 def install(race_detection):
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
     # build cache with new BUILD_TIMEs, or invalidating it on merges with a new
@@ -84,7 +91,7 @@ def start(race_detection, fakeclock):
         [8102, './bin/boulder-ra --config %s --addr ra2.boulder:9094 --debug-addr :8102' % os.path.join(config_dir, "ra.json")],
         [8111, './bin/nonce-service --config %s --addr nonce1.boulder:9101 --debug-addr :8111 --prefix taro' % os.path.join(config_dir, "nonce.json")],
         [8112, './bin/nonce-service --config %s --addr nonce2.boulder:9101 --debug-addr :8112 --prefix zinc' % os.path.join(config_dir, "nonce.json")],
-        [4431, './bin/boulder-wfe2 --config %s' % os.path.join(config_dir, "wfe2.json")],
+        [4001, './bin/boulder-wfe2 --config %s' % os.path.join(config_dir, "wfe2.json")],
         [4000, './bin/boulder-wfe --config %s' % os.path.join(config_dir, "wfe.json")],
         [8016, './bin/log-validator --config %s' % os.path.join(config_dir, "log-validator.json")],
     ])

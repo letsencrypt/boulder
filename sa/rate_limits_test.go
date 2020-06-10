@@ -3,11 +3,15 @@ package sa
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/letsencrypt/boulder/test"
 )
 
-func TestRateLimit(t *testing.T) {
+func TestCertsPerNameRateLimitTable(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -81,4 +85,36 @@ func TestRateLimit(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNewOrdersRateLimitTable(t *testing.T) {
+	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		return
+	}
+
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	zeroCountRegID := int64(1)
+	manyCountRegID := int64(2)
+
+	start := time.Now().Truncate(time.Hour)
+	for i := 0; i <= 10; i++ {
+		tx, err := sa.dbMap.Begin()
+		test.AssertNotError(t, err, "failed to open tx")
+		err = addNewOrdersRateLimit(context.Background(), tx, manyCountRegID, start.Add(time.Hour*time.Duration(i)))
+		test.AssertNotError(t, err, "addNewOrdersRateLimit failed")
+		test.AssertNotError(t, tx.Commit(), "failed to commit tx")
+	}
+
+	count, err := countNewOrders(context.Background(), sa.dbMap, zeroCountRegID, start, start.Add(time.Hour*10))
+	test.AssertNotError(t, err, "countNewOrders failed")
+	test.AssertEquals(t, count, 0)
+
+	count, err = countNewOrders(context.Background(), sa.dbMap, manyCountRegID, start, start.Add(time.Hour*10))
+	test.AssertNotError(t, err, "countNewOrders failed")
+	test.AssertEquals(t, count, 10)
+	count, err = countNewOrders(context.Background(), sa.dbMap, manyCountRegID, start.Add(time.Hour*5), start.Add(time.Hour*10))
+	test.AssertNotError(t, err, "countNewOrders failed")
+	test.AssertEquals(t, count, 5)
 }

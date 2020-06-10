@@ -451,3 +451,17 @@ func TestMalformedExactBlocklist(t *testing.T) {
 	test.AssertError(t, err, "Loaded invalid exact blocklist content without error")
 	test.AssertEquals(t, err.Error(), "Malformed ExactBlockedNames entry, only one label: \"com\"")
 }
+
+func TestValidEmailError(t *testing.T) {
+	err := ValidEmail("(๑•́ ω •̀๑)")
+	test.AssertEquals(t, err.Error(), "\"(๑•́ ω •̀๑)\" is not a valid e-mail address")
+
+	err = ValidEmail("john.smith@gmail.com #replace with real email")
+	test.AssertEquals(t, err.Error(), "\"john.smith@gmail.com #replace with real email\" is not a valid e-mail address")
+
+	err = ValidEmail("example@example.com")
+	test.AssertEquals(t, err.Error(), "invalid contact domain. Contact emails @example.com are forbidden")
+
+	err = ValidEmail("example@-foobar.com")
+	test.AssertEquals(t, err.Error(), "contact email \"example@-foobar.com\" has invalid domain : Domain name contains an invalid character")
+}

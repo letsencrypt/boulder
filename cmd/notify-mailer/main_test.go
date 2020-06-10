@@ -176,31 +176,31 @@ func TestMailIntervals(t *testing.T) {
 		subject:       testSubject,
 		destinations:  []recipient{{id: 1}, {id: 2}, {id: 3}, {id: 4}},
 		emailTemplate: tmpl,
-		targetRange:   interval{start: "test-example-updated@example.com", end: "\xFF"},
+		targetRange:   interval{start: "test-example-updated@letsencrypt.org", end: "\xFF"},
 		sleepInterval: 0,
 		clk:           newFakeClock(t),
 	}
 
 	// Run the mailer. Two messages should have been produced, one to
-	// test-example-updated@example.com (beginning of the range),
-	// and one to test-test-test@example.com.
+	// test-example-updated@letsencrypt.org (beginning of the range),
+	// and one to test-test-test@letsencrypt.org.
 	mc.Clear()
 	err = m.run()
 	test.AssertNotError(t, err, "run() produced an error")
 	test.AssertEquals(t, len(mc.Messages), 2)
 	test.AssertEquals(t, mocks.MailerMessage{
-		To:      "test-example-updated@example.com",
+		To:      "test-example-updated@letsencrypt.org",
 		Subject: testSubject,
 		Body:    "an email body",
 	}, mc.Messages[0])
 	test.AssertEquals(t, mocks.MailerMessage{
-		To:      "test-test-test@example.com",
+		To:      "test-test-test@letsencrypt.org",
 		Subject: testSubject,
 		Body:    "an email body",
 	}, mc.Messages[1])
 
 	// Create a mailer with a checkpoint interval ending before
-	// "test-example-updated@example.com"
+	// "test-example-updated@letsencrypt.org"
 	m = &mailer{
 		log:           blog.UseMock(),
 		mailer:        mc,
@@ -208,24 +208,24 @@ func TestMailIntervals(t *testing.T) {
 		subject:       testSubject,
 		destinations:  []recipient{{id: 1}, {id: 2}, {id: 3}, {id: 4}},
 		emailTemplate: tmpl,
-		targetRange:   interval{end: "test-example-updated@example.com"},
+		targetRange:   interval{end: "test-example-updated@letsencrypt.org"},
 		sleepInterval: 0,
 		clk:           newFakeClock(t),
 	}
 
 	// Run the mailer. Two messages should have been produced, one to
-	// example@example.com (ID 1), one to example-example-example@example.com (ID 2)
+	// example@letsencrypt.org (ID 1), one to example-example-example@example.com (ID 2)
 	mc.Clear()
 	err = m.run()
 	test.AssertNotError(t, err, "run() produced an error")
 	test.AssertEquals(t, len(mc.Messages), 2)
 	test.AssertEquals(t, mocks.MailerMessage{
-		To:      "example-example-example@example.com",
+		To:      "example-example-example@letsencrypt.org",
 		Subject: testSubject,
 		Body:    "an email body",
 	}, mc.Messages[0])
 	test.AssertEquals(t, mocks.MailerMessage{
-		To:      "example@example.com",
+		To:      "example@letsencrypt.org",
 		Subject: testSubject,
 		Body:    "an email body",
 	}, mc.Messages[1])
@@ -256,7 +256,7 @@ func TestMessageContentStatic(t *testing.T) {
 	test.AssertNotError(t, err, "error calling mailer run()")
 	test.AssertEquals(t, len(mc.Messages), 1)
 	test.AssertEquals(t, mocks.MailerMessage{
-		To:      "example@example.com",
+		To:      "example@letsencrypt.org",
 		Subject: testSubject,
 		Body:    "an email body",
 	}, mc.Messages[0])
@@ -293,7 +293,7 @@ func TestMessageContentInterpolated(t *testing.T) {
 	test.AssertNotError(t, err, "error calling mailer run()")
 	test.AssertEquals(t, len(mc.Messages), 1)
 	test.AssertEquals(t, mocks.MailerMessage{
-		To:      "example@example.com",
+		To:      "example@letsencrypt.org",
 		Subject: "Test Subject",
 		Body:    "issued by eyeballing it",
 	}, mc.Messages[0])
@@ -351,7 +351,7 @@ func TestMessageContentInterpolatedMultiple(t *testing.T) {
 	test.AssertNotError(t, err, "error calling mailer run()")
 	test.AssertEquals(t, len(mc.Messages), 1)
 	test.AssertEquals(t, mocks.MailerMessage{
-		To:      "gotta.lotta.accounts@example.net",
+		To:      "gotta.lotta.accounts@letsencrypt.org",
 		Subject: "Test Subject",
 		Body: `issued for:
 blog.example.com
@@ -374,27 +374,27 @@ func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...inte
 	dbList := []contactJSON{
 		{
 			ID:      1,
-			Contact: []byte(`["mailto:example@example.com"]`),
+			Contact: []byte(`["mailto:example@letsencrypt.org"]`),
 		},
 		{
 			ID:      2,
-			Contact: []byte(`["mailto:test-example-updated@example.com"]`),
+			Contact: []byte(`["mailto:test-example-updated@letsencrypt.org"]`),
 		},
 		{
 			ID:      3,
-			Contact: []byte(`["mailto:test-test-test@example.com"]`),
+			Contact: []byte(`["mailto:test-test-test@letsencrypt.org"]`),
 		},
 		{
 			ID:      4,
-			Contact: []byte(`["mailto:example-example-example@example.com"]`),
+			Contact: []byte(`["mailto:example-example-example@letsencrypt.org"]`),
 		},
 		{
 			ID:      5,
-			Contact: []byte(`["mailto:youve.got.mail@example.com"]`),
+			Contact: []byte(`["mailto:youve.got.mail@letsencrypt.org"]`),
 		},
 		{
 			ID:      6,
-			Contact: []byte(`["mailto:mail@example.com"]`),
+			Contact: []byte(`["mailto:mail@letsencrypt.org"]`),
 		},
 		{
 			ID:      7,
@@ -402,23 +402,23 @@ func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...inte
 		},
 		{
 			ID:      200,
-			Contact: []byte(`["mailto:gotta.lotta.accounts@example.net"]`),
+			Contact: []byte(`["mailto:gotta.lotta.accounts@letsencrypt.org"]`),
 		},
 		{
 			ID:      201,
-			Contact: []byte(`["mailto:gotta.lotta.accounts@example.net"]`),
+			Contact: []byte(`["mailto:gotta.lotta.accounts@letsencrypt.org"]`),
 		},
 		{
 			ID:      202,
-			Contact: []byte(`["mailto:gotta.lotta.accounts@example.net"]`),
+			Contact: []byte(`["mailto:gotta.lotta.accounts@letsencrypt.org"]`),
 		},
 		{
 			ID:      203,
-			Contact: []byte(`["mailto:gotta.lotta.accounts@example.net"]`),
+			Contact: []byte(`["mailto:gotta.lotta.accounts@letsencrypt.org"]`),
 		},
 		{
 			ID:      204,
-			Contact: []byte(`["mailto:gotta.lotta.accounts@example.net"]`),
+			Contact: []byte(`["mailto:gotta.lotta.accounts@letsencrypt.org"]`),
 		},
 	}
 
@@ -519,10 +519,10 @@ func TestResolveEmails(t *testing.T) {
 	test.AssertNotError(t, err, "failed to resolveEmailAddresses")
 
 	expected := []string{
-		"example@example.com",
-		"test-example-updated@example.com",
-		"test-test-test@example.com",
-		"gotta.lotta.accounts@example.net",
+		"example@letsencrypt.org",
+		"test-example-updated@letsencrypt.org",
+		"test-test-test@letsencrypt.org",
+		"gotta.lotta.accounts@letsencrypt.org",
 	}
 
 	test.AssertEquals(t, len(addressesToRecipients), len(expected))

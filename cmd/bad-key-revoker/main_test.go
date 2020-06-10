@@ -182,7 +182,7 @@ func TestResolveContacts(t *testing.T) {
 	regIDC := insertRegistration(t, dbMap, "example.com")
 	regIDD := insertRegistration(t, dbMap, "example-2.com")
 
-	idToEmail, err := bkr.resolveContacts([]int64{regIDA, regIDB, regIDC, regIDD})
+	idToEmail, err := bkr.resolveContacts([]int64{0, regIDA, regIDB, regIDC, regIDD})
 	test.AssertNotError(t, err, "resolveContacts failed")
 	test.AssertDeepEquals(t, idToEmail, map[int64][]string{
 		regIDA: {""},

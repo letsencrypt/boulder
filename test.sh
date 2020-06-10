@@ -61,7 +61,7 @@ function run_test_coverage() {
   # We don't use the run function here because sometimes goveralls fails to
   # contact the server and exits with non-zero status, but we don't want to
   # treat that as a failure.
-  goveralls -v -coverprofile=gover.coverprofile -service=travis-ci
+  goveralls -v -coverprofile=gover.coverprofile -service=travis-pro
 }
 
 #
@@ -107,13 +107,14 @@ fi
 # Test that just ./start.py works, which is a proxy for testing that
 # `docker-compose up` works, since that just runs start.py (via entrypoint.sh).
 if [[ "$RUN" =~ "start" ]] ; then
-  ./start.py &
+  python3 start.py &
   for I in $(seq 1 100); do
     sleep 1
     curl http://localhost:4000/directory && break
   done
   if [[ $I = 100 ]]; then
     echo "Boulder did not come up after ./start.py."
+    exit 1
   fi
 fi
 

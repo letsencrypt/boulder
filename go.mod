@@ -29,7 +29,7 @@ require (
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 	github.com/weppos/publicsuffix-go v0.13.1-0.20200526195454-983d101becd6
 	github.com/zmap/zcrypto v0.0.0-20191112190257-7f2fe6faf8cf
-	github.com/zmap/zlint/v2 v2.0.0
+	github.com/zmap/zlint/v2 v2.1.0
 	golang.org/x/crypto v0.0.0-20200124225646-8b5121be2f68
 	golang.org/x/net v0.0.0-20200202094626-16171245cfb2
 	golang.org/x/text v0.3.2

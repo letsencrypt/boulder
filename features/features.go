@@ -56,6 +56,12 @@ const (
 	// was checked for extant unrevoked certificates in the blockedKeys table. It should
 	// only be enabled if BlockedKeyTable is also enabled.
 	StoreRevokerInfo
+	// RestrictRSAKeySizes enables restriction of acceptable RSA public key moduli to
+	// the common sizes (2048, 3072, and 4096 bits).
+	RestrictRSAKeySizes
+	// FasterNewOrdersRateLimit enables use of a separate table for counting the
+	// new orders rate limit.
+	FasterNewOrdersRateLimit
 )
 
 // List of features and their default value, protected by fMu
@@ -80,6 +86,8 @@ var features = map[FeatureFlag]bool{
 	StoreKeyHashes:                false,
 	BlockedKeyTable:               false,
 	StoreRevokerInfo:              false,
+	RestrictRSAKeySizes:           false,
+	FasterNewOrdersRateLimit:      false,
 }
 
 var fMu = new(sync.RWMutex)
