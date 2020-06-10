@@ -3,7 +3,6 @@ package acme
 import (
 	"crypto"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -87,7 +86,7 @@ func (c Client) AccountKeyChange(account Account, newPrivateKey crypto.Signer) (
 		OldKey:  []byte(oldJwkKeyPub),
 	}
 
-	innerJws, err := jwsEncodeJSON(keyChangeReq, newPrivateKey, "", "", c.dir.KeyChange)
+	innerJws, err := jwsEncodeJSON(keyChangeReq, newPrivateKey, c.dir.KeyChange, "", "")
 	if err != nil {
 		return account, fmt.Errorf("acme: error encoding inner jws: %v", err)
 	}
@@ -112,17 +111,4 @@ func (c Client) DeactivateAccount(account Account) (Account, error) {
 	_, err := c.post(account.URL, account.URL, account.PrivateKey, deactivateReq, &account, http.StatusOK)
 
 	return account, err
-}
-
-// FetchOrderList fetches a list of orders from the account url provided in the account Orders field
-func (c Client) FetchOrderList(account Account) (OrderList, error) {
-	orderList := OrderList{}
-
-	if account.Orders == "" {
-		return orderList, errors.New("no order list for account")
-	}
-
-	_, err := c.post(account.Orders, account.URL, account.PrivateKey, "", &orderList, http.StatusOK)
-
-	return orderList, err
 }

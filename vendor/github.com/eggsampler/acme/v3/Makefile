@@ -1,5 +1,5 @@
 
-.PHONY: test examples clean test_full pebble pebble_setup pebble_start pebble_wait pebble_stop boulder boulder_setup boulder_start boulder_stop
+.PHONY: test examples clean pebble pebble_setup pebble_start pebble_wait pebble_stop boulder boulder_setup boulder_start boulder_stop
 
 
 GOPATH ?= $(HOME)/go
@@ -21,8 +21,6 @@ examples:
 clean:
 	rm -f coverage_*.txt
 
-test_full: clean examples pebble pebble_stop boulder boulder_stop
-
 
 pebble: pebble_setup pebble_start pebble_wait test pebble_stop
 
@@ -30,7 +28,6 @@ pebble_setup:
 	mkdir -p $(PEBBLE_PATH)
 	git clone --depth 1 https://github.com/letsencrypt/pebble.git $(PEBBLE_PATH) \
 		|| (cd $(PEBBLE_PATH); git checkout -f master && git reset --hard HEAD && git pull -q)
-	docker-compose -f $(PEBBLE_PATH)/docker-compose.yml down --rmi all
 
 # runs an instance of pebble using docker
 pebble_start:
@@ -52,7 +49,6 @@ boulder_setup:
 	mkdir -p $(BOULDER_PATH)
 	git clone --depth 1 https://github.com/letsencrypt/boulder.git $(BOULDER_PATH) \
 		|| (cd $(BOULDER_PATH); git checkout -f master && git reset --hard HEAD && git pull -q)
-	docker-compose -f $(BOULDER_PATH)/docker-compose.yml down --rmi all
 
 # runs an instance of boulder
 boulder_start:

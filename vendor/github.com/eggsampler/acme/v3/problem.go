@@ -7,22 +7,18 @@ import (
 	"net/http"
 )
 
-// Problem document as defined in,
-// https://tools.ietf.org/html/rfc7807
-
 // Problem represents an error returned by an acme server.
 type Problem struct {
-	Type        string       `json:"type"`
-	Detail      string       `json:"detail,omitempty"`
-	Status      int          `json:"status,omitempty"`
-	Instance    string       `json:"instance,omitempty"`
-	SubProblems []SubProblem `json:"subproblems,omitempty"`
-}
+	Status int `json:"status"`
 
-type SubProblem struct {
-	Type       string     `json:"type"`
-	Detail     string     `json:"detail"`
-	Identifier Identifier `json:"identifier"`
+	Type        string `json:"type"`
+	Detail      string `json:"detail"`
+	Instance    string `json:"instance"`
+	SubProblems []struct {
+		Type       string `json:"type"`
+		Detail     string `json:"detail"`
+		Identifier Identifier
+	} `json:"subproblems"`
 }
 
 // Returns a human readable error string.
