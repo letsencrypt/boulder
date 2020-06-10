@@ -110,7 +110,7 @@ func SelectCertificates(s db.Selector, q string, args map[string]interface{}) ([
 }
 
 func certStatusFields() []string {
-	return []string{"serial", "status", "ocspLastUpdated", "revokedDate", "revokedReason", "lastExpirationNagSent", "ocspResponse", "notAfter", "isExpired"}
+	return []string{"serial", "status", "ocspLastUpdated", "revokedDate", "revokedReason", "lastExpirationNagSent", "ocspResponse", "notAfter", "isExpired", "issuerID"}
 }
 
 // SelectCertificateStatus selects all fields of one certificate status model
