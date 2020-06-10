@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -284,4 +285,10 @@ func TestExpiredUnauthorized(t *testing.T) {
 
 	_, _, err = src.Response(ocspReq)
 	test.AssertEquals(t, err, bocsp.ErrNotFound)
+}
+
+func TestKeyHashing(t *testing.T) {
+	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", []string{"00"}, time.Second, blog.NewMock())
+	test.AssertNotError(t, err, "makeDBSource failed")
+	test.AssertEquals(t, hex.EncodeToString(src.caKeyHash), "fb784f12f96015832c9f177f3419b32e36ea4189")
 }
