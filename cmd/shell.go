@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	"google.golang.org/grpc/grpclog"
 
@@ -180,6 +181,15 @@ func NewLogger(logConf SyslogConfig) blog.Logger {
 	_ = mysql.SetLogger(mysqlLogger{logger})
 	grpclog.SetLoggerV2(grpcLogger{logger})
 	log.SetOutput(logWriter{logger})
+
+	// Periodically log the current timestamp, to ensure syslog timestamps match
+	// Boulder's conception of time.
+	go func() {
+		for {
+			time.Sleep(time.Minute)
+			logger.Info(fmt.Sprintf("time=%s", time.Now().Format(time.RFC3339Nano)))
+		}
+	}()
 	return logger
 }
 
