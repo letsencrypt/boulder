@@ -9,8 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"os"
-	"strings"
 	"testing"
 	"time"
 
