@@ -93,3 +93,49 @@ func (ssa *SQLStorageAuthority) countCertificates(
 	}
 	return total, nil
 }
+
+// addNewOrdersRateLimit adds 1 to the rate limit count for the provided ID,
+// in a specific time bucket. It must be executed in a transaction, and the
+// input timeToTheHour must be a time rounded to an hour.
+func addNewOrdersRateLimit(ctx context.Context, dbMap db.SelectExecer, regID int64, timeToTheHour time.Time) error {
+	_, err := dbMap.Exec(`INSERT INTO newOrdersRL
+		(regID, time, count)
+		VALUES (?, ?, 1)
+		ON DUPLICATE KEY UPDATE count=count+1;`,
+		regID,
+		timeToTheHour,
+	)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// countNewOrders returns the count of orders created in the given time range
+// for the given registration ID
+func countNewOrders(ctx context.Context, dbMap db.Selector, regID int64, earliest, latest time.Time) (int, error) {
+	var counts []int
+	_, err := dbMap.Select(
+		&counts,
+		`SELECT count FROM newOrdersRL
+		WHERE regID = :regID AND
+		time > :earliest AND
+		time <= :latest`,
+		map[string]interface{}{
+			"regID":    regID,
+			"earliest": earliest,
+			"latest":   latest,
+		},
+	)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	var total int
+	for _, count := range counts {
+		total += count
+	}
+	return total, nil
+}
