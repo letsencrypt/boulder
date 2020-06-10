@@ -8,7 +8,7 @@ require (
 	github.com/cloudflare/cfssl v1.4.2-0.20200324225241-abef926615f4
 	github.com/eggsampler/acme/v3 v3.0.0
 	github.com/go-gorp/gorp v2.0.0+incompatible // indirect
-	github.com/go-sql-driver/mysql v1.4.1
+	github.com/go-sql-driver/mysql v1.5.0
 	github.com/golang/mock v1.3.1
 	github.com/golang/protobuf v1.4.0-rc.4.0.20200313231945-b860323f09d0
 	github.com/golang/snappy v0.0.0-20170215233205-553a64147049 // indirect
