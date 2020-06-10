@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/go-gorp/gorp.v2"
+	"github.com/go-gorp/gorp/v3"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"

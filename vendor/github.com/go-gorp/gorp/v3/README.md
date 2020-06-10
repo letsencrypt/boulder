@@ -318,7 +318,7 @@ See the `TestWithEmbeddedStruct` function in `gorp_test.go` for a full example.
 
 Automatically create / drop registered tables.  This is useful for unit tests
 but is entirely optional.  You can of course use gorp with tables created manually,
-or with a separate migration tool (like [goose](https://bitbucket.org/liamstask/goose) or [migrate](https://github.com/mattes/migrate)).
+or with a separate migration tool (like [sql-migrate](https://github.com/rubenv/sql-migrate), [goose](https://bitbucket.org/liamstask/goose) or [migrate](https://github.com/mattes/migrate)).
 
 ```go
 // create all registered tables
@@ -436,11 +436,13 @@ type InvoicePersonView struct {
 
 // Create some rows
 p1 := &Person{0, 0, 0, "bob", "smith"}
-dbmap.Insert(p1)
+err = dbmap.Insert(p1)
+checkErr(err, "Insert failed")
 
 // notice how we can wire up p1.Id to the invoice easily
 inv1 := &Invoice{0, 0, 0, "xmas order", p1.Id}
-dbmap.Insert(inv1)
+err = dbmap.Insert(inv1)
+checkErr(err, "Insert failed")
 
 // Run your query
 query := "select i.Id InvoiceId, p.Id PersonId, i.Memo, p.FName " +
@@ -503,9 +505,12 @@ func InsertInv(dbmap *DbMap, inv *Invoice, per *Person) error {
         return err
     }
 
-    trans.Insert(per)
+    err = trans.Insert(per)
+    checkErr(err, "Insert failed")
+
     inv.PersonId = per.Id
-    trans.Insert(inv)
+    err = trans.Insert(inv)
+    checkErr(err, "Insert failed")
 
     // if the commit is successful, a nil error is returned
     return trans.Commit()
@@ -591,12 +596,14 @@ type Person struct {
 }
 
 p1 := &Person{0, 0, 0, "Bob", "Smith", 0}
-dbmap.Insert(p1)  // Version is now 1
+err = dbmap.Insert(p1)  // Version is now 1
+checkErr(err, "Insert failed")
 
 obj, err := dbmap.Get(Person{}, p1.Id)
 p2 := obj.(*Person)
 p2.LName = "Edwards"
-dbmap.Update(p2)  // Version is now 2
+_,err = dbmap.Update(p2)  // Version is now 2
+checkErr(err, "Update failed")
 
 p1.LName = "Howard"
 
