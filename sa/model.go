@@ -8,6 +8,7 @@ import (
 	"math"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	jose "gopkg.in/square/go-jose.v2"
@@ -108,14 +109,17 @@ func SelectCertificates(s db.Selector, q string, args map[string]interface{}) ([
 	return models, err
 }
 
-const certStatusFields = "serial, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, notAfter, isExpired"
+func certStatusFields() []string {
+	return []string{"serial", "status", "ocspLastUpdated", "revokedDate", "revokedReason", "lastExpirationNagSent", "ocspResponse", "notAfter", "isExpired"}
+}
 
 // SelectCertificateStatus selects all fields of one certificate status model
 func SelectCertificateStatus(s db.OneSelector, q string, args ...interface{}) (certStatusModel, error) {
 	var model certStatusModel
+	fields := strings.Join(certStatusFields(), ",")
 	err := s.SelectOne(
 		&model,
-		`SELECT `+certStatusFields+
+		`SELECT `+fields+
 			` FROM certificateStatus `+q,
 		args...,
 	)

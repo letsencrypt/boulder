@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
@@ -65,16 +66,31 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			return nil, err
 		}
 
-		err = txWithCtx.Insert(&certStatusModel{
-			Status:          core.OCSPStatusGood,
-			OCSPLastUpdated: ssa.clk.Now(),
-			OCSPResponse:    req.Ocsp,
-			Serial:          serialHex,
-			RevokedDate:     time.Time{},
-			RevokedReason:   0,
-			IssuerID:        req.IssuerID,
-			NotAfter:        parsed.NotAfter,
-		})
+		args := map[string]interface{}{
+			"serial":                serialHex,
+			"status":                string(core.OCSPStatusGood),
+			"ocspLastUpdated":       ssa.clk.Now(),
+			"revokedDate":           time.Time{},
+			"revokedReason":         0,
+			"lastExpirationNagSent": time.Time{},
+			"ocspResponse":          req.Ocsp,
+			"notAfter":              parsed.NotAfter,
+			"isExpired":             false,
+			"issuerID":              req.IssuerID,
+		}
+		fields := []string{}
+		for _, fieldName := range certStatusFields() {
+			fields = append(fields, ":"+fieldName)
+		}
+
+		_, err = txWithCtx.Exec(fmt.Sprintf(
+			"INSERT INTO certificateStatus (%s) VALUES (%s)",
+			certStatusFields(),
+			strings.Join(fields, ","),
+		), args)
+		if err != nil {
+			return nil, err
+		}
 
 		// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
 		// that it is a renewal) we use just the DNSNames from the certificate and
