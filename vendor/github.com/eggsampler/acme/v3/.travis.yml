@@ -1,6 +1,7 @@
 language: go
 
 go:
+  - "1.11"
   - "1.x"
 
 env:
@@ -13,13 +14,7 @@ services:
 
 script:
   - unset TRAVIS_GO_VERSION
-  - make clean
-  - make pebble
-  - make pebble_stop
-  - make boulder
-  - make boulder_stop
-  - go build -o /dev/null examples/certbot/certbot.go
-  - go build -o /dev/null examples/autocert/autocert.go
+  - make test_full
 
 after_success:
   - bash <(curl -s https://codecov.io/bash)

@@ -20,7 +20,7 @@ Simply import the module into a project,
 import "github.com/eggsampler/acme/v3"
 ```
 
-Note the `/v3` major version at the end. Due to the way modules function, this is the major version as represented int he `go.mod` file and latest git repo [semver](https://semver.org/) tag.
+Note the `/v3` major version at the end. Due to the way modules function, this is the major version as represented in the `go.mod` file and latest git repo [semver](https://semver.org/) tag.
 All functions are still exported and called using the `acme` package name.
 
 ## Examples

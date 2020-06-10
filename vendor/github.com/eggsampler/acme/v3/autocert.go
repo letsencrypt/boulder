@@ -107,7 +107,7 @@ func (m *AutoCert) HTTPHandler(handler http.Handler) http.Handler {
 			return
 		}
 
-		w.Write(keyAuth)
+		_, _ = w.Write(keyAuth)
 	})
 }
 
@@ -198,7 +198,7 @@ func (m *AutoCert) putCache(data []byte, keys ...string) context.Context {
 	}
 
 	go func() {
-		ioutil.WriteFile(path.Join(m.CacheDir, key), data, 0700)
+		_ = ioutil.WriteFile(path.Join(m.CacheDir, key), data, 0700)
 		cancel()
 	}()
 
@@ -415,14 +415,14 @@ func (m *AutoCert) issueCert(domainName string) (*tls.Certificate, error) {
 	}
 
 	certPem := certKeyPem
-	var certDer [][]byte
+	// var certDer [][]byte
 	for _, c := range certs {
 		b := pem.EncodeToMemory(&pem.Block{
 			Type:  "CERTIFICATE",
 			Bytes: c.Raw,
 		})
 		certPem = append(certPem, b...)
-		certDer = append(certDer, c.Raw)
+		// certDer = append(certDer, c.Raw)
 	}
 	m.putCache(certPem, "cert", domainName)
 
