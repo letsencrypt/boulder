@@ -20,7 +20,7 @@ github.com/cloudflare/cfssl/signer
 github.com/cloudflare/cfssl/signer/local
 # github.com/eggsampler/acme/v3 v3.0.0
 github.com/eggsampler/acme/v3
-# github.com/go-sql-driver/mysql v1.4.1
+# github.com/go-sql-driver/mysql v1.5.0
 github.com/go-sql-driver/mysql
 # github.com/golang/mock v1.3.1
 github.com/golang/mock/gomock
@@ -142,8 +142,6 @@ golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
-# google.golang.org/appengine v1.4.0
-google.golang.org/appengine/cloudsql
 # google.golang.org/genproto v0.0.0-20190819201941-24fa4b261c55
 google.golang.org/genproto/googleapis/rpc/status
 # google.golang.org/grpc v1.29.0
