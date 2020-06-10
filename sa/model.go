@@ -108,15 +108,15 @@ func SelectCertificates(s db.Selector, q string, args map[string]interface{}) ([
 	return models, err
 }
 
+const certStatusFields = "serial, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, notAfter, isExpired"
+
 // SelectCertificateStatus selects all fields of one certificate status model
 func SelectCertificateStatus(s db.OneSelector, q string, args ...interface{}) (certStatusModel, error) {
 	var model certStatusModel
 	err := s.SelectOne(
 		&model,
-		`SELECT
-			 serial, status, ocspLastUpdated, revokedDate, revokedReason,
-			 lastExpirationNagSent, ocspResponse, notAfter, isExpired, issuerID
-		 FROM certificateStatus `+q,
+		`SELECT `+certStatusFields+
+			` FROM certificateStatus `+q,
 		args...,
 	)
 	return model, err
