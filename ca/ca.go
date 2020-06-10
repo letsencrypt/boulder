@@ -605,7 +605,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		return emptyCert, err
 	}
 	certDER := block.Bytes
-	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] precertificate=[%s] certificate=[%s]",
+	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] certificate=[%s]",
 		serialHex, strings.Join(precert.DNSNames, ", "), hex.EncodeToString(req.DER),
 		hex.EncodeToString(certDER))
 	return ca.storeCertificate(ctx, *req.RegistrationID, *req.OrderID, precert.SerialNumber, certDER)
