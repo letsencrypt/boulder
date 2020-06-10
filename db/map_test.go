@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"testing"
 
-	gorp "gopkg.in/go-gorp/gorp.v2"
+	gorp "github.com/go-gorp/gorp/v3"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/letsencrypt/boulder/core"

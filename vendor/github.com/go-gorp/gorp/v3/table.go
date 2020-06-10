@@ -2,13 +2,6 @@
 // Use of this source code is governed by a MIT-style
 // license that can be found in the LICENSE file.
 
-// Package gorp provides a simple way to marshal Go structs to and from
-// SQL databases.  It uses the database/sql package, and should work with any
-// compliant database/sql driver.
-//
-// Source code and project home:
-// https://github.com/go-gorp/gorp
-
 package gorp
 
 import (
@@ -87,9 +80,15 @@ func (t *TableMap) SetUniqueTogether(fieldNames ...string) *TableMap {
 			"gorp: SetUniqueTogether: must provide at least two fieldNames to set uniqueness constraint."))
 	}
 
-	columns := make([]string, 0)
+	columns := make([]string, 0, len(fieldNames))
 	for _, name := range fieldNames {
 		columns = append(columns, name)
+	}
+
+	for _, existingColumns := range t.uniqueTogether {
+		if equal(existingColumns, columns) {
+			return t
+		}
 	}
 	t.uniqueTogether = append(t.uniqueTogether, columns)
 	t.ResetSql()
@@ -244,4 +243,16 @@ func (t *TableMap) SqlForCreate(ifNotExists bool) string {
 	s.WriteString(dialect.CreateTableSuffix())
 	s.WriteString(dialect.QuerySuffix())
 	return s.String()
+}
+
+func equal(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

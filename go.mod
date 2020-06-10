@@ -3,11 +3,10 @@ module github.com/letsencrypt/boulder
 go 1.12
 
 require (
-	github.com/apoydence/onpar v0.0.0-20181125144932-f2f06780798d // indirect
 	github.com/beeker1121/goque v0.0.0-20170321141813-4044bc29b280
 	github.com/cloudflare/cfssl v1.4.2-0.20200324225241-abef926615f4
 	github.com/eggsampler/acme/v3 v3.0.0
-	github.com/go-gorp/gorp v2.0.0+incompatible // indirect
+	github.com/go-gorp/gorp/v3 v3.0.2
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/golang/mock v1.3.1
 	github.com/golang/protobuf v1.4.0-rc.4.0.20200313231945-b860323f09d0
@@ -22,7 +21,6 @@ require (
 	github.com/miekg/pkcs11 v1.0.3
 	github.com/onsi/ginkgo v1.8.0 // indirect
 	github.com/onsi/gomega v1.5.0 // indirect
-	github.com/poy/onpar v0.0.0-20181125144932-f2f06780798d // indirect
 	github.com/prometheus/client_golang v1.2.1
 	github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4
 	github.com/syndtr/goleveldb v0.0.0-20180331014930-714f901b98fd // indirect
@@ -35,7 +33,6 @@ require (
 	golang.org/x/text v0.3.2
 	google.golang.org/grpc v1.29.0
 	google.golang.org/protobuf v1.21.0
-	gopkg.in/go-gorp/gorp.v2 v2.0.1-0.20180410155428-6032c66e0f5f
 	gopkg.in/square/go-jose.v2 v2.4.1
 	gopkg.in/yaml.v2 v2.2.5
 )

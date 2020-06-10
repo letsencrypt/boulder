@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	gorp "gopkg.in/go-gorp/gorp.v2"
+	gorp "github.com/go-gorp/gorp/v3"
 )
 
 // ErrDatabaseOp wraps an underlying err with a description of the operation
