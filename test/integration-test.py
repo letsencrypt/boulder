@@ -191,14 +191,17 @@ def test_single_ocsp():
 
        This is a non-API test.
     """
+    dateFormat = "%Y-%m-%dT00:00:00Z"
+    thisUpdate = datetime.datetime.now()
+    nextUpdate = thisUpdate + datetime.timedelta(weeks=52)
     run("./bin/single-ocsp -issuer /tmp/root-cert-rsa.pem \
             -responder /tmp/root-cert-rsa.pem \
             -target /tmp/intermediate-cert-rsa-a.pem \
             -pkcs11 test/test-root.key-pkcs11.json \
-            -thisUpdate 2016-09-02T00:00:00Z \
-            -nextUpdate 2020-09-02T00:00:00Z \
+            -thisUpdate %s \
+            -nextUpdate %s \
             -status 0 \
-            -out /tmp/issuer-ocsp-responses.txt")
+            -out /tmp/issuer-ocsp-responses.txt" % (thisUpdate.strftime(dateFormat), nextUpdate.strftime(dateFormat)))
 
     p = subprocess.Popen(
         './bin/ocsp-responder --config test/issuer-ocsp-responder.json', shell=True)
