@@ -66,8 +66,9 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			return nil, err
 		}
 
+		certStatusFields := certStatusFields()
 		fieldNames := []string{}
-		for _, fieldName := range certStatusFields() {
+		for _, fieldName := range certStatusFields {
 			fieldNames = append(fieldNames, ":"+fieldName)
 		}
 		args := map[string]interface{}{
@@ -82,13 +83,13 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			"isExpired":             false,
 			"issuerID":              req.IssuerID,
 		}
-		if len(args) > len(certStatusFields()) {
+		if len(args) > len(certStatusFields) {
 			return nil, fmt.Errorf("too many arguments inserting row into certificateStatus")
 		}
 
 		_, err = txWithCtx.Exec(fmt.Sprintf(
 			"INSERT INTO certificateStatus (%s) VALUES (%s)",
-			strings.Join(certStatusFields(), ","),
+			strings.Join(certStatusFields, ","),
 			strings.Join(fieldNames, ","),
 		), args)
 		if err != nil {
