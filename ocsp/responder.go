@@ -266,7 +266,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 			return
 		}
 	case "POST":
-		requestBody, err = ioutil.ReadAll(request.Body)
+		requestBody, err = ioutil.ReadAll(http.MaxBytesReader(nil, request.Body, 10000))
 		if err != nil {
 			log.Errorf("Problem reading body of POST: %s", err)
 			response.WriteHeader(http.StatusBadRequest)

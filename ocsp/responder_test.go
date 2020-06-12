@@ -30,11 +30,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 package ocsp
 
 import (
+	"bytes"
 	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -105,6 +107,28 @@ func TestOCSP(t *testing.T) {
 		if rw.Code != tc.expected {
 			t.Errorf("Incorrect response code: got %d, wanted %d", rw.Code, tc.expected)
 		}
+	}
+}
+
+func TestRequestTooBig(t *testing.T) {
+	responder := Responder{
+		Source: testSource{},
+		responseTypes: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "ocspResponses-test",
+			},
+			[]string{"type"},
+		),
+		clk: clock.NewFake(),
+	}
+
+	rw := httptest.NewRecorder()
+
+	responder.ServeHTTP(rw, httptest.NewRequest("POST", "/",
+		bytes.NewBuffer([]byte(strings.Repeat("a", 10001)))))
+	expected := 400
+	if rw.Code != expected {
+		t.Errorf("Incorrect response code: got %d, wanted %d", rw.Code, expected)
 	}
 }
 
