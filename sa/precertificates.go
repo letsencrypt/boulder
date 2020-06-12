@@ -66,40 +66,32 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			return nil, err
 		}
 
-		// With feature.StoreIssuerInfo we've added a new field to certStatusModel
-		// so when we try and use dbMap.Insert it will always try to insert that field.
-		// That will break when the relevant migration hasn't been applied so we need
-		// to use an explicit INSERT statement that we can manipulate to include the
-		// field only when the feature is enabled (and as such the migration has been
-		// applied).
-		csFields := certStatusFields
-		if features.Enabled(features.StoreIssuerInfo) && req.IssuerID != nil {
-			csFields += ", issuerID"
+		certStatusFields := certStatusFields()
+		fieldNames := []string{}
+		for _, fieldName := range certStatusFields {
+			fieldNames = append(fieldNames, ":"+fieldName)
 		}
-		qmarks := []string{}
-		for range strings.Split(csFields, ",") {
-			qmarks = append(qmarks, "?")
+		args := map[string]interface{}{
+			"serial":                serialHex,
+			"status":                string(core.OCSPStatusGood),
+			"ocspLastUpdated":       ssa.clk.Now(),
+			"revokedDate":           time.Time{},
+			"revokedReason":         0,
+			"lastExpirationNagSent": time.Time{},
+			"ocspResponse":          req.Ocsp,
+			"notAfter":              parsed.NotAfter,
+			"isExpired":             false,
+			"issuerID":              req.IssuerID,
 		}
-		args := []interface{}{
-			serialHex,                   // serial
-			string(core.OCSPStatusGood), // status
-			ssa.clk.Now(),               // ocspLastUpdated
-			time.Time{},                 // revokedDate
-			0,                           // revokedReason
-			time.Time{},                 // lastExpirationNagSent
-			req.Ocsp,                    // ocspResponse
-			parsed.NotAfter,             // notAfter
-			false,                       // isExpired
-		}
-		if features.Enabled(features.StoreIssuerInfo) && req.IssuerID != nil {
-			args = append(args, req.IssuerID)
+		if len(args) > len(certStatusFields) {
+			return nil, fmt.Errorf("too many arguments inserting row into certificateStatus")
 		}
 
 		_, err = txWithCtx.Exec(fmt.Sprintf(
 			"INSERT INTO certificateStatus (%s) VALUES (%s)",
-			csFields,
-			strings.Join(qmarks, ","),
-		), args...)
+			strings.Join(certStatusFields, ","),
+			strings.Join(fieldNames, ","),
+		), args)
 		if err != nil {
 			return nil, err
 		}
