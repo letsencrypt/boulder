@@ -57,6 +57,8 @@ const (
 	issuerPath      = "/acme/issuer-cert"
 	buildIDPath     = "/build"
 	rolloverPath    = "/acme/key-change"
+
+	maxRequestSize = 50000
 )
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
@@ -500,8 +502,11 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 		return nil, nil, reg, probs.Malformed("No body on POST")
 	}
 
-	bodyBytes, err := ioutil.ReadAll(request.Body)
+	bodyBytes, err := ioutil.ReadAll(http.MaxBytesReader(nil, request.Body, maxRequestSize))
 	if err != nil {
+		if err.Error() == "http: request body too large" {
+			return nil, nil, reg, probs.Unauthorized("request body too large")
+		}
 		wfe.httpErrorCounter.WithLabelValues("UnableToReadReqBody").Inc()
 		return nil, nil, reg, probs.ServerInternal("unable to read request body")
 	}

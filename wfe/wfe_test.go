@@ -2191,6 +2191,18 @@ func TestLengthRequired(t *testing.T) {
 	test.AssertEquals(t, http.StatusLengthRequired, prob.HTTPStatus)
 }
 
+func TestRequestTooLong(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	payload := fmt.Sprintf(`{"a":"%s"}`, strings.Repeat("a", 50000))
+
+	_, _, _, prob := wfe.verifyPOST(ctx, newRequestEvent(), makePostRequest(signRequest(t,
+		payload, wfe.nonceService)), false, "n/a")
+	test.Assert(t, prob != nil, "No error returned for too-long request body.")
+	test.AssertEquals(t, probs.UnauthorizedProblem, prob.Type)
+	test.AssertEquals(t, "request body too large", prob.Detail)
+	test.AssertEquals(t, http.StatusForbidden, prob.HTTPStatus)
+}
+
 type mockSAGetRegByKeyFails struct {
 	core.StorageGetter
 }
