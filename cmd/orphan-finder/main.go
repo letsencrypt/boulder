@@ -20,11 +20,9 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	"github.com/letsencrypt/boulder/issuercerts"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -53,15 +51,10 @@ type config struct {
 	// to the original issued date. It should match the value used in
 	// `test/config/ca.json` for the CA "backdate" value.
 	Backdate cmd.ConfigDuration
-	// A list of issuer certificates. Orphaned certificates from the logs will be
-	// matched against these when determining which issuer ID to enter into the
-	// certificateStatus table.
-	IssuerFiles []string
-	Features    map[string]bool
+	Features map[string]bool
 }
 
 type certificateStorage interface {
-	AddSerial(context.Context, *sapb.AddSerialRequest) (*corepb.Empty, error)
 	AddCertificate(context.Context, []byte, int64, []byte, *time.Time) (string, error)
 	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error)
 	GetCertificate(ctx context.Context, serial string) (core.Certificate, error)
@@ -82,28 +75,17 @@ const (
 	certOrphan
 	// precertOrphan indicates an orphaned precertificate type
 	precertOrphan
-	// certOrphanAlreadyExists indicates an orphaned final certificate that
-	// already exists in the DB.
-	certOrphanAlreadyExists
-	// precertOrphanAlreadyExists indicates an orphaned precertificate that
-	// already exists in the DB.
-	precertOrphanAlreadyExists
 )
 
-// String returns a human representation of the orphanType.
-// This is used both for printing orphanTypes and (in the case of certOrphan and
-// precertOrphan) to figure out what to search for when parsing logs.
-// Invalid orphanTypes are stringified as "unknown."
+// String returns a human representation of the orphanType and the expected
+// label in the orphaning message for that type, or "unknown" if it isn't
+// a known orphan type.
 func (t orphanType) String() string {
 	switch t {
 	case certOrphan:
 		return "certificate"
 	case precertOrphan:
 		return "precertificate"
-	case certOrphanAlreadyExists:
-		return "certificate (already exists in DB)"
-	case precertOrphanAlreadyExists:
-		return "precertificate (already exists in DB)"
 	default:
 		return "unknown"
 	}
@@ -114,6 +96,8 @@ var (
 	regOrphan        = regexp.MustCompile(`regID=\[(\d+)\]`)
 	errAlreadyExists = fmt.Errorf("Certificate already exists in DB")
 )
+
+var backdateDuration time.Duration
 
 // orphanTypeForCert returns precertOrphan if the certificate has the RFC 6962
 // CT poison extension, or certOrphan if it does not. If the certificate is nil
@@ -149,16 +133,13 @@ func checkDER(sai certificateStorage, der []byte) (*x509.Certificate, orphanType
 	switch orphanTyp {
 	case certOrphan:
 		_, err = sai.GetCertificate(ctx, orphanSerial)
-		if err == nil {
-			return nil, certOrphanAlreadyExists, errAlreadyExists
-		}
 	case precertOrphan:
 		_, err = sai.GetPrecertificate(ctx, &sapb.Serial{Serial: &orphanSerial})
-		if err == nil {
-			return nil, precertOrphanAlreadyExists, errAlreadyExists
-		}
 	default:
-		return nil, unknownOrphan, errors.New("unknown orphan type")
+		err = errors.New("unknown orphan type")
+	}
+	if err == nil {
+		return nil, orphanTyp, errAlreadyExists
 	}
 	if berrors.Is(err, berrors.NotFound) {
 		return orphan, orphanTyp, nil
@@ -172,7 +153,7 @@ func checkDER(sai certificateStorage, der []byte) (*x509.Certificate, orphanType
 // is true if the orphan was successfully added to the DB. As part of adding an
 // orphan to the DB, it requests a fresh OCSP response from the CA to store
 // alongside the precertificate/certificate.
-func (of *orphanFinder) storeParsedLogLine(line string) (found bool, added bool, typ orphanType) {
+func storeParsedLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Logger, line string) (found bool, added bool, typ orphanType) {
 	ctx := context.Background()
 
 	// The log line should contain a label indicating it is a cert or a precert
@@ -189,77 +170,78 @@ func (of *orphanFinder) storeParsedLogLine(line string) (found bool, added bool,
 	// Extract and decode the orphan DER
 	derStr := derOrphan.FindStringSubmatch(line)
 	if len(derStr) <= 1 {
-		of.logger.AuditErrf("Didn't match regex for cert: %s", line)
+		logger.AuditErrf("Didn't match regex for cert: %s", line)
 		return true, false, unknownOrphan
 	}
 	der, err := hex.DecodeString(derStr[1])
 	if err != nil {
-		of.logger.AuditErrf("Couldn't decode hex: %s, [%s]", err, line)
+		logger.AuditErrf("Couldn't decode hex: %s, [%s]", err, line)
 		return true, false, unknownOrphan
+	}
+	// Parse the DER, determine the orphan type, and ensure it doesn't already
+	// exist in the DB
+	cert, typ, err := checkDER(sa, der)
+	if err != nil {
+		logFunc := logger.Errf
+		if err == errAlreadyExists {
+			logFunc = logger.Infof
+		}
+		logFunc("%s, [%s]", err, line)
+		return true, false, typ
 	}
 	// extract the regID
 	regStr := regOrphan.FindStringSubmatch(line)
 	if len(regStr) <= 1 {
-		of.logger.AuditErrf("regID variable is empty, [%s]", line)
+		logger.AuditErrf("regID variable is empty, [%s]", line)
 		return true, false, typ
 	}
 	regID, err := strconv.ParseInt(regStr[1], 10, 64)
 	if err != nil {
-		of.logger.AuditErrf("Couldn't parse regID: %s, [%s]", err, line)
+		logger.AuditErrf("Couldn't parse regID: %s, [%s]", err, line)
 		return true, false, typ
 	}
-
-	typ, err = of.storeDER(ctx, regID, der)
+	response, err := generateOCSP(ctx, ca, der)
 	if err != nil {
-		of.logger.AuditErrf("Failed to store certificate: %s, [%s]", err, line)
+		logger.AuditErrf("Couldn't generate OCSP: %s, [%s]", err, line)
 		return true, false, typ
 	}
-	if typ == certOrphanAlreadyExists || typ == precertOrphanAlreadyExists {
-		return true, false, typ
-	} else {
-		return true, true, typ
+	// We use `cert.NotBefore` as the issued date to avoid the SA tagging this
+	// certificate with an issued date of the current time when we know it was an
+	// orphan issued in the past. Because certificates are backdated we need to
+	// add the backdate duration to find the true issued time.
+	issuedDate := cert.NotBefore.Add(backdateDuration)
+	switch typ {
+	case certOrphan:
+		_, err = sa.AddCertificate(ctx, der, regID, response, &issuedDate)
+	case precertOrphan:
+		issued := issuedDate.UnixNano()
+		_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+			Der:    der,
+			RegID:  &regID,
+			Ocsp:   response,
+			Issued: &issued,
+		})
+	default:
+		// Shouldn't happen but be defensive anyway
+		err = errors.New("unknown orphan type")
 	}
+	if err != nil {
+		logger.AuditErrf("Failed to store certificate: %s, [%s]", err, line)
+		return true, false, typ
+	}
+	return true, true, typ
 }
 
-func (of *orphanFinder) findIssuerID(der []byte) (issuercerts.ID, error) {
-	cert, err := x509.ParseCertificate(der)
-	if err != nil {
-		return 0, err
-	}
-	for _, issuer := range of.issuers {
-		if err := cert.CheckSignatureFrom(issuer.Cert); err == nil {
-			return issuer.ID(), nil
-		}
-	}
-	return 0, fmt.Errorf("no issuer found")
-}
-
-func (of *orphanFinder) generateOCSP(ctx context.Context, certDER []byte) ([]byte, error) {
+func generateOCSP(ctx context.Context, ca ocspGenerator, certDER []byte) ([]byte, error) {
 	// generate a fresh OCSP response
 	statusGood := string(core.OCSPStatusGood)
 	zeroInt32 := int32(0)
 	zeroInt64 := int64(0)
-
-	cert, err := x509.ParseCertificate(certDER)
-	if err != nil {
-		return nil, err
-	}
-
-	issuerID, err := of.findIssuerID(certDER)
-	if err != nil {
-		return nil, err
-	}
-	issuerIDInt := int64(issuerID)
-
-	serial := core.SerialToString(cert.SerialNumber)
-
-	ocspResponse, err := of.ocspCA.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
+	ocspResponse, err := ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		CertDER:   certDER,
 		Status:    &statusGood,
 		Reason:    &zeroInt32,
 		RevokedAt: &zeroInt64,
-		IssuerID:  &issuerIDInt,
-		Serial:    &serial,
 	})
 	if err != nil {
 		return nil, err
@@ -267,70 +249,30 @@ func (of *orphanFinder) generateOCSP(ctx context.Context, certDER []byte) ([]byt
 	return ocspResponse.Response, nil
 }
 
-type orphanFinder struct {
-	logger           blog.Logger
-	sa               certificateStorage
-	ocspCA           capb.OCSPGeneratorClient
-	issuers          []*issuercerts.Issuer
-	backdateDuration time.Duration
-}
-
-func setup(configFile string) (*orphanFinder, error) {
+func setup(configFile string) (blog.Logger, core.StorageAuthority, capb.OCSPGeneratorClient) {
 	configJSON, err := ioutil.ReadFile(configFile)
-	if err != nil {
-		return nil, fmt.Errorf("reading config: %s", err)
-	}
-
+	cmd.FailOnError(err, "Failed to read config file")
 	var conf config
 	err = json.Unmarshal(configJSON, &conf)
-	if err != nil {
-		return nil, fmt.Errorf("parsing config: %s", err)
-	}
-
+	cmd.FailOnError(err, "Failed to parse config file")
 	err = features.Set(conf.Features)
-	if err != nil {
-		return nil, fmt.Errorf("setting feature flags: %s", err)
-	}
-
+	cmd.FailOnError(err, "Failed to set feature flags")
 	logger := cmd.NewLogger(conf.Syslog)
 
 	tlsConfig, err := conf.TLS.Load()
-	if err != nil {
-		return nil, fmt.Errorf("loading TLS config: %s", err)
-	}
+	cmd.FailOnError(err, "TLS config")
 
 	clientMetrics := bgrpc.NewClientMetrics(metrics.NoopRegisterer)
 	saConn, err := bgrpc.ClientSetup(conf.SAService, tlsConfig, clientMetrics, cmd.Clock())
-	if err != nil {
-		return nil, fmt.Errorf("setting up SA connection: %s", err)
-	}
-
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
-	caConn, err := bgrpc.ClientSetup(conf.OCSPGeneratorService, tlsConfig, clientMetrics, cmd.Clock())
-	if err != nil {
-		return nil, fmt.Errorf("setting up OCSP CA connection: %s", err)
-	}
 
+	caConn, err := bgrpc.ClientSetup(conf.OCSPGeneratorService, tlsConfig, clientMetrics, cmd.Clock())
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
 	cac := capb.NewOCSPGeneratorClient(caConn)
 
-	issuers, err := loadIssuers(conf.IssuerFiles)
-	if err != nil {
-		return nil, err
-	}
-
-	return &orphanFinder{logger, sac, cac, issuers, conf.Backdate.Duration}, nil
-}
-
-func loadIssuers(filenames []string) ([]*issuercerts.Issuer, error) {
-	var issuers []*issuercerts.Issuer
-	for _, filename := range filenames {
-		issuer, err := issuercerts.FromFile(filename)
-		if err != nil {
-			return nil, fmt.Errorf("loading %s: %s", filename, err)
-		}
-		issuers = append(issuers, issuer)
-	}
-	return issuers, nil
+	backdateDuration = conf.Backdate.Duration
+	return logger, sac, cac
 }
 
 func main() {
@@ -360,12 +302,10 @@ func main() {
 
 	switch command {
 	case "parse-ca-log":
+		logger, sa, ca := setup(*configFile)
 		if *logPath == "" {
 			usage()
 		}
-
-		orphanFinder, err := setup(*configFile)
-		cmd.FailOnError(err, "setup")
 
 		logData, err := ioutil.ReadFile(*logPath)
 		cmd.FailOnError(err, "Failed to read log file")
@@ -375,7 +315,7 @@ func main() {
 			if line == "" {
 				continue
 			}
-			found, added, typ := orphanFinder.storeParsedLogLine(line)
+			found, added, typ := storeParsedLogLine(sa, ca, logger, line)
 			var foundStat, addStat *int64
 			switch typ {
 			case certOrphan:
@@ -385,7 +325,7 @@ func main() {
 				foundStat = &precertOrphansFound
 				addStat = &precertOrphansAdded
 			default:
-				orphanFinder.logger.Errf("Found orphan type %s", typ)
+				logger.Errf("Found orphan type %s", typ)
 				continue
 			}
 			if found {
@@ -395,85 +335,42 @@ func main() {
 				}
 			}
 		}
-		orphanFinder.logger.Infof("Found %d certificate orphans and added %d to the database", certOrphansFound, certOrphansAdded)
-		orphanFinder.logger.Infof("Found %d precertificate orphans and added %d to the database", precertOrphansFound, precertOrphansAdded)
+		logger.Infof("Found %d certificate orphans and added %d to the database", certOrphansFound, certOrphansAdded)
+		logger.Infof("Found %d precertificate orphans and added %d to the database", precertOrphansFound, precertOrphansAdded)
 
 	case "parse-der":
+		ctx := context.Background()
+		_, sa, ca := setup(*configFile)
 		if *derPath == "" || *regID == 0 {
 			usage()
 		}
-
-		orphanFinder, err := setup(*configFile)
-		cmd.FailOnError(err, "setup")
-
 		der, err := ioutil.ReadFile(*derPath)
 		cmd.FailOnError(err, "Failed to read DER file")
-		_, err = orphanFinder.storeDER(context.Background(), *regID, der)
-		cmd.FailOnError(err, "storing DER")
+		cert, typ, err := checkDER(sa, der)
+		cmd.FailOnError(err, "Pre-AddCertificate checks failed")
+		// Because certificates are backdated we need to add the backdate duration
+		// to find the true issued time.
+		issuedDate := cert.NotBefore.Add(1 * backdateDuration)
+		response, err := generateOCSP(ctx, ca, der)
+		cmd.FailOnError(err, "Generating OCSP")
+
+		switch typ {
+		case certOrphan:
+			_, err = sa.AddCertificate(ctx, der, *regID, response, &issuedDate)
+		case precertOrphan:
+			issued := issuedDate.UnixNano()
+			_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+				Der:    der,
+				RegID:  regID,
+				Ocsp:   response,
+				Issued: &issued,
+			})
+		default:
+			err = errors.New("unknown orphan type")
+		}
+		cmd.FailOnError(err, "Failed to add certificate to database")
 
 	default:
 		usage()
 	}
-}
-
-func (of *orphanFinder) storeDER(ctx context.Context, regID int64, der []byte) (orphanType, error) {
-	cert, typ, err := checkDER(of.sa, der)
-	if err != nil {
-		if err == errAlreadyExists {
-			of.logger.Infof("%s", err)
-			return typ, nil
-		} else {
-			return unknownOrphan, err
-		}
-	}
-	// Because certificates are backdated we need to add the backdate duration
-	// to find the true issued time.
-	issuedDate := cert.NotBefore.Add(of.backdateDuration)
-	issuedDateNanos := issuedDate.UnixNano()
-	notAfter := cert.NotAfter.UnixNano()
-	serial := core.SerialToString(cert.SerialNumber)
-
-	// The CA's GenerateOCSP method will return error if the serial is not in the
-	// serials table, so add it in case it doesn't exist (for instance this
-	// happens during integration testing). However, if the serial already exists
-	// ignore the error.
-	_, err = of.sa.AddSerial(ctx, &sapb.AddSerialRequest{
-		RegID:   &regID,
-		Serial:  &serial,
-		Created: &issuedDateNanos,
-		Expires: &notAfter,
-	})
-	if err != nil && !db.IsDuplicate(err) {
-		return unknownOrphan, err
-	}
-
-	response, err := of.generateOCSP(ctx, der)
-	if err != nil {
-		return unknownOrphan, fmt.Errorf("generating OCSP: %s", err)
-	}
-
-	switch typ {
-	case certOrphan:
-		_, err = of.sa.AddCertificate(ctx, der, regID, response, &issuedDate)
-		if err != nil {
-			return unknownOrphan, fmt.Errorf("adding certificate: %s", err)
-		}
-	case precertOrphan:
-		issuerID, err := of.findIssuerID(der)
-		cmd.FailOnError(err, "finding issuerID")
-		issuerIDInt := int64(issuerID)
-		_, err = of.sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-			Der:      der,
-			RegID:    &regID,
-			Ocsp:     response,
-			Issued:   &issuedDateNanos,
-			IssuerID: &issuerIDInt,
-		})
-		if err != nil {
-			return unknownOrphan, fmt.Errorf("adding precertificate: %s", err)
-		}
-	default:
-		return unknownOrphan, errors.New("unknown orphan type")
-	}
-	return typ, nil
 }

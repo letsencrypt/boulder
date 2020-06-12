@@ -26,7 +26,6 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
-	"github.com/letsencrypt/boulder/issuercerts"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
@@ -1655,11 +1654,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	status := string(core.OCSPStatusRevoked)
 	reason := int32(code)
 	revokedAt := ra.clk.Now().UnixNano()
-	serial := core.SerialToString(cert.SerialNumber)
-	issuerID := int64(issuercerts.FromCert(ra.issuer).ID())
 	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
-		Serial:    &serial,
-		IssuerID:  &issuerID,
 		CertDER:   cert.Raw,
 		Status:    &status,
 		Reason:    &reason,
@@ -1668,6 +1663,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	if err != nil {
 		return err
 	}
+	serial := core.SerialToString(cert.SerialNumber)
 	// for some reason we use int32 and int64 for the reason in different
 	// protobuf messages, so we have to re-cast it here.
 	reason64 := int64(reason)
