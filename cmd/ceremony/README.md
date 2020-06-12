@@ -84,7 +84,7 @@ This config generates a ECDSA P-384 key in the HSM with the object label `root s
     | Field | Description |
     | --- | --- |
     | `public-key-path` | Path to PEM subject public key for certificate. |
-    | `issuer-path` | Path to PEM issuer certificate. |
+    | `issuer-certificate-path` | Path to PEM issuer certificate. |
 - `outputs`: object containing paths to write outputs.
     | Field | Description |
     | --- | --- |
@@ -102,7 +102,7 @@ pkcs11:
     signing-key-id: ffff
 inputs:
     public-key-path: /home/user/intermediate-signing-pub.pem
-    issuer-path: /home/user/root-cert.pem
+    issuer-certificate-path: /home/user/root-cert.pem
 outputs:
     certificate-path: /home/user/intermediate-cert.pem
 certificate-profile:
@@ -142,7 +142,7 @@ This config generates an intermediate certificate signed by a key in the HSM, id
     | Field | Description |
     | --- | --- |
     | `public-key-path` | Path to PEM subject public key for certificate. |
-    | `issuer-path` | Path to PEM issuer certificate. |
+    | `issuer-certificate-path` | Path to PEM issuer certificate. |
 - `outputs`: object containing paths to write outputs.
     | Field | Description |
     | --- | --- |
@@ -162,7 +162,7 @@ pkcs11:
     signing-key-id: ffff
 inputs:
     public-key-path: /home/user/ocsp-signer-signing-pub.pem
-    issuer-path: /home/user/intermediate-cert.pem
+    issuer-certificate-path: /home/user/intermediate-cert.pem
 outputs:
     certificate-path: /home/user/ocsp-signer-cert.pem
 certificate-profile:
@@ -175,7 +175,7 @@ certificate-profile:
     issuer-url:  http://good-guys.com/root
 ```
 
-This config generates a delegated OCSP signing certificate signed by a key in the HSM, identified by the object label `intermediate signing key` and the object ID `ffff`. The subject key used is taken from `/home/user/ocsp-signer-signing-pub.pem` and the issuer is `/home/user/intermdiate-cert.pem`, the resulting certificate is written to `/home/user/ocsp-signer-cert.pem`.
+This config generates a delegated OCSP signing certificate signed by a key in the HSM, identified by the object label `intermediate signing key` and the object ID `ffff`. The subject key used is taken from `/home/user/ocsp-signer-signing-pub.pem` and the issuer is `/home/user/intermediate-cert.pem`, the resulting certificate is written to `/home/user/ocsp-signer-cert.pem`.
 
 ### Key ceremony
 
