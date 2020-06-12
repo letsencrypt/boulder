@@ -883,12 +883,12 @@ func TestParseJWSRequest(t *testing.T) {
 			ExpectedProblem: nil,
 		},
 		{
-			Name: "POST body too long",
+			Name: "POST body too large",
 			Request: makePostRequestWithPath("test-path",
 				fmt.Sprintf(`{"a":"%s"}`, strings.Repeat("a", 50000))),
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.UnauthorizedProblem,
-				Detail:     "request body too long",
+				Detail:     "request body too large",
 				HTTPStatus: http.StatusForbidden,
 			},
 		},

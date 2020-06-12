@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -354,13 +353,13 @@ func (wfe *WebFrontEndImpl) parseJWSRequest(request *http.Request) (*jose.JSONWe
 
 	// Read the POST request body's bytes. validPOSTRequest has already checked
 	// that the body is non-nil
-	bodyBytes, err := ioutil.ReadAll(&io.LimitedReader{R: request.Body, N: maxRequestSize + 1})
+	bodyBytes, err := ioutil.ReadAll(http.MaxBytesReader(nil, request.Body, maxRequestSize))
 	if err != nil {
+		if err.Error() == "http: request body too large" {
+			return nil, probs.Unauthorized("request body too large")
+		}
 		wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "UnableToReadReqBody"}).Inc()
 		return nil, probs.ServerInternal("unable to read request body")
-	}
-	if len(bodyBytes) > maxRequestSize {
-		return nil, probs.Unauthorized("request body too long")
 	}
 
 	jws, prob := wfe.parseJWS(bodyBytes)
