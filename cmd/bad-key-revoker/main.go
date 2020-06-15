@@ -121,17 +121,17 @@ func (bkr *badKeyRevoker) findUnrevoked(unchecked uncheckedBlockedKey) ([]unrevo
 				&unrevokedCert,
 				`SELECT cs.id, cs.serial, c.registrationID, c.der
 				FROM certificateStatus AS cs
-				JOIN certificates AS c
+				LEFT JOIN precertificates AS c
 				ON cs.serial = c.serial
 				WHERE cs.serial = ? AND cs.isExpired = false AND cs.status != ?`,
 				serial.CertSerial,
 				string(core.StatusRevoked),
 			)
 			if err != nil {
-				if db.IsNoRows(err) {
-					continue
-				}
 				return nil, err
+			}
+			if unrevokedCert.DER == nil {
+				return nil, fmt.Errorf("serial number %s had an entry in certificateStatus but no entry in the precertificates table.", unrevokedCert.Serial)
 			}
 			unrevokedCerts = append(unrevokedCerts, unrevokedCert)
 		}

@@ -133,7 +133,7 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, keyHash []byte, serial strin
 	test.AssertNotError(t, err, "failed to insert test certificateStatus row")
 
 	_, err = dbMap.Exec(
-		"INSERT INTO certificates (serial, registrationID, der, digest, issued, expires) VALUES (?, ?, ?, ?, ?, ?)",
+		"INSERT INTO precertificates (serial, registrationID, der, digest, issued, expires) VALUES (?, ?, ?, ?, ?, ?)",
 		serial,
 		regID,
 		[]byte{1, 2, 3},
