@@ -65,6 +65,11 @@ type uncheckedBlockedKey struct {
 	RevokedBy int64
 }
 
+func (ubk uncheckedBlockedKey) String() string {
+	return fmt.Sprintf("[revokedBy: %d, keyHash: %x]",
+		ubk.RevokedBy, ubk.KeyHash)
+}
+
 func (bkr *badKeyRevoker) selectUncheckedKey() (uncheckedBlockedKey, error) {
 	var row uncheckedBlockedKey
 	err := bkr.dbMap.SelectOne(
@@ -254,17 +259,17 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 		}
 		return false, err
 	}
-	bkr.logger.AuditInfo(fmt.Sprintf("found unchecked block key to work on: %v", unchecked))
+	bkr.logger.AuditInfo(fmt.Sprintf("found unchecked block key to work on: %s", unchecked))
 
 	// select all unrevoked, unexpired serials associated with the blocked key hash
 	unrevokedCerts, err := bkr.findUnrevoked(unchecked)
 	if err != nil {
-		bkr.logger.AuditInfo(fmt.Sprintf("finding unrevoked certificates related to %v: %s",
+		bkr.logger.AuditInfo(fmt.Sprintf("finding unrevoked certificates related to %s: %s",
 			unchecked, err))
 		return false, err
 	}
 	if len(unrevokedCerts) == 0 {
-		bkr.logger.AuditInfo(fmt.Sprintf("found no certificates that need revoking related to %v, marking row as checked", unchecked))
+		bkr.logger.AuditInfo(fmt.Sprintf("found no certificates that need revoking related to %s, marking row as checked", unchecked))
 		// mark row as checked
 		err = bkr.markRowChecked(unchecked)
 		if err != nil {
@@ -446,6 +451,8 @@ func main() {
 			continue
 		}
 		if noWork {
+			logger.AuditInfo(fmt.Sprintf(
+				"No work to do. Sleeping for %s", config.BadKeyRevoker.Interval.Duration))
 			time.Sleep(config.BadKeyRevoker.Interval.Duration)
 		} else {
 			keysProcessed.WithLabelValues("success").Inc()
