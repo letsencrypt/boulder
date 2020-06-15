@@ -145,7 +145,7 @@ func TestFindUnrevoked(t *testing.T) {
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetSATestDatabase(t)()
 
-	regID := insertRegistration(t, dbMap, "")
+	regID := insertRegistration(t, dbMap)
 
 	bkr := &badKeyRevoker{dbMap: dbMap, serialBatchSize: 1, maxRevocations: 10}
 
@@ -177,12 +177,12 @@ func TestResolveContacts(t *testing.T) {
 
 	bkr := &badKeyRevoker{dbMap: dbMap}
 
-	regIDA := insertRegistration(t, dbMap, "")
+	regIDA := insertRegistration(t, dbMap)
 	regIDB := insertRegistration(t, dbMap, "example.com", "example-2.com")
 	regIDC := insertRegistration(t, dbMap, "example.com")
 	regIDD := insertRegistration(t, dbMap, "example-2.com")
 
-	idToEmail, err := bkr.resolveContacts([]int64{0, regIDA, regIDB, regIDC, regIDD})
+	idToEmail, err := bkr.resolveContacts([]int64{regIDA, regIDB, regIDC, regIDD})
 	test.AssertNotError(t, err, "resolveContacts failed")
 	test.AssertDeepEquals(t, idToEmail, map[int64][]string{
 		regIDA: {""},
@@ -254,7 +254,7 @@ func TestInvoke(t *testing.T) {
 	regIDA := insertRegistration(t, dbMap, "example.com")
 	regIDB := insertRegistration(t, dbMap, "example.com")
 	regIDC := insertRegistration(t, dbMap, "other.example.com", "uno.example.com")
-	regIDD := insertRegistration(t, dbMap, "")
+	regIDD := insertRegistration(t, dbMap)
 	hashA := randHash(t)
 	insertBlockedRow(t, dbMap, hashA, regIDC, false)
 	insertCert(t, dbMap, hashA, "ff", regIDA, false, false)
