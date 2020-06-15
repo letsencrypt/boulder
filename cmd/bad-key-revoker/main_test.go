@@ -60,7 +60,7 @@ func TestSelectUncheckedRows(t *testing.T) {
 
 	bkr := &badKeyRevoker{
 		dbMap:  dbMap,
-		logger: &blog.Mock{},
+		logger: blog.NewMock(),
 	}
 
 	hashA, hashB, hashC := randHash(t), randHash(t), randHash(t)
@@ -260,7 +260,7 @@ func TestInvoke(t *testing.T) {
 		mailer:          mm,
 		emailSubject:    "testing",
 		emailTemplate:   testTemplate,
-		logger:          &blog.Mock{},
+		logger:          blog.NewMock(),
 	}
 
 	// populate DB with all the test data
@@ -327,7 +327,7 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 		mailer:          mm,
 		emailSubject:    "testing",
 		emailTemplate:   testTemplate,
-		logger:          &blog.Mock{},
+		logger:          blog.NewMock(),
 	}
 
 	// populate DB with all the test data
