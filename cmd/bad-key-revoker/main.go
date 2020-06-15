@@ -65,6 +65,11 @@ type uncheckedBlockedKey struct {
 	RevokedBy int64
 }
 
+func (ubk uncheckedBlockedKey) String() string {
+	return fmt.Sprintf("[revokedBy: %d, keyHash: %x]",
+		ubk.RevokedBy, ubk.KeyHash)
+}
+
 func (bkr *badKeyRevoker) selectUncheckedKey() (uncheckedBlockedKey, error) {
 	var row uncheckedBlockedKey
 	err := bkr.dbMap.SelectOne(
@@ -258,13 +263,17 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 		}
 		return false, err
 	}
+	bkr.logger.AuditInfo(fmt.Sprintf("found unchecked block key to work on: %s", unchecked))
 
 	// select all unrevoked, unexpired serials associated with the blocked key hash
 	unrevokedCerts, err := bkr.findUnrevoked(unchecked)
 	if err != nil {
+		bkr.logger.AuditInfo(fmt.Sprintf("finding unrevoked certificates related to %s: %s",
+			unchecked, err))
 		return false, err
 	}
 	if len(unrevokedCerts) == 0 {
+		bkr.logger.AuditInfo(fmt.Sprintf("found no certificates that need revoking related to %s, marking row as checked", unchecked))
 		// mark row as checked
 		err = bkr.markRowChecked(unchecked)
 		if err != nil {
@@ -305,6 +314,10 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 			emailsToCerts[email] = append(emailsToCerts[email], ownedBy[id]...)
 		}
 	}
+
+	revokerEmails := idToEmails[unchecked.RevokedBy]
+	bkr.logger.AuditInfo(fmt.Sprintf("revoking certs. revoked emails=%v, emailsToCerts=%v",
+		revokerEmails, emailsToCerts))
 
 	// revoke each certificate and send emails to their owners
 	err = bkr.revokeCerts(idToEmails[unchecked.RevokedBy], emailsToCerts)
@@ -438,10 +451,12 @@ func main() {
 		noWork, err := bkr.invoke()
 		if err != nil {
 			keysProcessed.WithLabelValues("error").Inc()
-			logger.Errf("failed to process blockedKeys row: %s", err)
+			logger.AuditErrf("failed to process blockedKeys row: %s", err)
 			continue
 		}
 		if noWork {
+			logger.Info(fmt.Sprintf(
+				"No work to do. Sleeping for %s", config.BadKeyRevoker.Interval.Duration))
 			time.Sleep(config.BadKeyRevoker.Interval.Duration)
 		} else {
 			keysProcessed.WithLabelValues("success").Inc()

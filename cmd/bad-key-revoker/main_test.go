@@ -14,6 +14,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/sa"
@@ -57,7 +58,10 @@ func TestSelectUncheckedRows(t *testing.T) {
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetSATestDatabase(t)()
 
-	bkr := &badKeyRevoker{dbMap: dbMap}
+	bkr := &badKeyRevoker{
+		dbMap:  dbMap,
+		logger: blog.NewMock(),
+	}
 
 	hashA, hashB, hashC := randHash(t), randHash(t), randHash(t)
 	insertBlockedRow(t, dbMap, hashA, 1, true)
@@ -248,7 +252,16 @@ func TestInvoke(t *testing.T) {
 
 	mm := &mocks.Mailer{}
 	mr := &mockRevoker{}
-	bkr := &badKeyRevoker{dbMap: dbMap, maxRevocations: 10, serialBatchSize: 1, raClient: mr, mailer: mm, emailSubject: "testing", emailTemplate: testTemplate}
+	bkr := &badKeyRevoker{
+		dbMap:           dbMap,
+		maxRevocations:  10,
+		serialBatchSize: 1,
+		raClient:        mr,
+		mailer:          mm,
+		emailSubject:    "testing",
+		emailTemplate:   testTemplate,
+		logger:          blog.NewMock(),
+	}
 
 	// populate DB with all the test data
 	regIDA := insertRegistration(t, dbMap, "example.com")
@@ -307,7 +320,15 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 
 	mm := &mocks.Mailer{}
 	mr := &mockRevoker{}
-	bkr := &badKeyRevoker{dbMap: dbMap, maxRevocations: 10, serialBatchSize: 1, raClient: mr, mailer: mm, emailSubject: "testing", emailTemplate: testTemplate}
+	bkr := &badKeyRevoker{dbMap: dbMap,
+		maxRevocations:  10,
+		serialBatchSize: 1,
+		raClient:        mr,
+		mailer:          mm,
+		emailSubject:    "testing",
+		emailTemplate:   testTemplate,
+		logger:          blog.NewMock(),
+	}
 
 	// populate DB with all the test data
 	regIDA := insertRegistration(t, dbMap, "a@example.com")
