@@ -451,7 +451,7 @@ func main() {
 			continue
 		}
 		if noWork {
-			logger.AuditInfo(fmt.Sprintf(
+			logger.Info(fmt.Sprintf(
 				"No work to do. Sleeping for %s", config.BadKeyRevoker.Interval.Duration))
 			time.Sleep(config.BadKeyRevoker.Interval.Duration)
 		} else {
