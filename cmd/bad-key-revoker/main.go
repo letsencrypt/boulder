@@ -153,15 +153,19 @@ func (bkr *badKeyRevoker) resolveContacts(ids []int64) (map[int64][]string, erro
 		}
 		err := bkr.dbMap.SelectOne(&emails, "SELECT contact FROM registrations WHERE id = ?", id)
 		if err != nil {
-			if db.IsNoRows(err) {
-				continue
-			}
+			// ErrNoRows is not acceptable here since there should always be a
+			// row for the registration, even if there are no contacts
 			return nil, err
 		}
 		if len(emails.Contact) != 0 {
 			for _, email := range emails.Contact {
 				idToEmail[id] = append(idToEmail[id], strings.TrimPrefix(email, "mailto:"))
 			}
+		} else {
+			// if the account has no contacts add a placeholder empty contact
+			// so that we don't skip any certificates
+			idToEmail[id] = append(idToEmail[id], "")
+			continue
 		}
 	}
 	return idToEmail, nil
