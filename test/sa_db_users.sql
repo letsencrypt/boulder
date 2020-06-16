@@ -73,7 +73,7 @@ GRANT SELECT,DELETE ON orderToAuthz2 TO 'janitor'@'localhost';
 GRANT SELECT,UPDATE ON blockedKeys TO 'badkeyrevoker'@'localhost';
 GRANT SELECT ON keyHashToSerial TO 'badkeyrevoker'@'localhost';
 GRANT SELECT ON certificateStatus TO 'badkeyrevoker'@'localhost';
-GRANT SELECT ON certificates TO 'badkeyrevoker'@'localhost';
+GRANT SELECT ON precertificates TO 'badkeyrevoker'@'localhost';
 GRANT SELECT ON registrations TO 'badkeyrevoker'@'localhost';
 
 -- Test setup and teardown
