@@ -133,7 +133,7 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, keyHash []byte, serial strin
 	test.AssertNotError(t, err, "failed to insert test certificateStatus row")
 
 	_, err = dbMap.Exec(
-		"INSERT INTO precertificates (serial, registrationID, der, digest, issued, expires) VALUES (?, ?, ?, ?, ?, ?)",
+		"INSERT INTO certificates (serial, registrationID, der, digest, issued, expires) VALUES (?, ?, ?, ?, ?, ?)",
 		serial,
 		regID,
 		[]byte{1, 2, 3},
@@ -243,6 +243,40 @@ func TestRevokeCerts(t *testing.T) {
 	test.AssertEquals(t, mm.Messages[0].To, "other@example.com")
 	test.AssertEquals(t, mm.Messages[0].Subject, bkr.emailSubject)
 	test.AssertEquals(t, mm.Messages[0].Body, "ee\n")
+}
+
+func TestCertificateAbsent(t *testing.T) {
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	test.AssertNotError(t, err, "failed setting up db client")
+	defer test.ResetSATestDatabase(t)()
+
+	// populate DB with all the test data
+	regIDA := insertRegistration(t, dbMap, "example.com")
+	hashA := randHash(t)
+	insertBlockedRow(t, dbMap, hashA, regIDA, false)
+
+	// Add an entry to keyHashToSerial but not to certificateStatus or certificate
+	// status, and expect an error.
+	_, err = dbMap.Exec(
+		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
+		hashA,
+		time.Now(),
+		"ffaaee",
+	)
+	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
+
+	bkr := &badKeyRevoker{
+		dbMap:           dbMap,
+		maxRevocations:  1,
+		serialBatchSize: 1,
+		raClient:        &mockRevoker{},
+		mailer:          &mocks.Mailer{},
+		emailSubject:    "testing",
+		emailTemplate:   testTemplate,
+		logger:          blog.NewMock(),
+	}
+	_, err = bkr.invoke()
+	test.AssertError(t, err, "expected error when row in keyHashToSerial didn't have a matching cert")
 }
 
 func TestInvoke(t *testing.T) {
