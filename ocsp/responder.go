@@ -146,14 +146,33 @@ var responseTypeToString = map[ocsp.ResponseStatus]string{
 type Responder struct {
 	Source        Source
 	responseTypes *prometheus.CounterVec
+	requestSizes  prometheus.Histogram
 	clk           clock.Clock
 }
 
 // NewResponder instantiates a Responder with the give Source.
-func NewResponder(source Source, responseTypes *prometheus.CounterVec) *Responder {
+func NewResponder(source Source, stats prometheus.Registerer) *Responder {
+	requestSizes := prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "ocsp_request_sizes",
+			Help:    "Size of OCSP requests",
+			Buckets: []float64{1, 100, 200, 400, 800, 1200, 2000, 5000, 1000},
+		},
+	)
+	stats.MustRegister(requestSizes)
+	responseTypes := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ocsp_responses",
+			Help: "Number of OCSP responses returned by type",
+		},
+		[]string{"type"},
+	)
+	stats.MustRegister(responseTypes)
+
 	return &Responder{
 		Source:        source,
 		responseTypes: responseTypes,
+		requestSizes:  requestSizes,
 		clk:           clock.New(),
 	}
 }
@@ -272,6 +291,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 			response.WriteHeader(http.StatusBadRequest)
 			return
 		}
+		rs.requestSizes.Observe(float64(len(requestBody)))
 	default:
 		response.WriteHeader(http.StatusMethodNotAllowed)
 		return
