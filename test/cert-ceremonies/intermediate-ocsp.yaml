@@ -1,0 +1,16 @@
+ceremony-type: ocsp-response
+pkcs11:
+    module: /usr/local/lib/softhsm/libsofthsm2.so
+    pin: 1234
+    signing-key-slot: {{ .SlotID}}
+    signing-key-label: root signing key (rsa)
+    signing-key-id: {{ .KeyID }}
+inputs:
+    certificate-path: /tmp/intermediate-cert-rsa-a.pem
+    issuer-certificate-path: /tmp/root-cert-rsa.pem
+outputs:
+    response-path: /tmp/intermediate-ocsp.b64
+ocsp-profile:
+    this-update: 2020-01-01 12:00:00
+    next-update: 2039-01-01 12:00:00
+    status: good
