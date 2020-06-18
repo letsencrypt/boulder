@@ -156,7 +156,7 @@ func NewResponder(source Source, stats prometheus.Registerer) *Responder {
 		prometheus.HistogramOpts{
 			Name:    "ocsp_request_sizes",
 			Help:    "Size of OCSP requests",
-			Buckets: []float64{1, 100, 200, 400, 800, 1200, 2000, 5000, 1000},
+			Buckets: []float64{1, 100, 200, 400, 800, 1200, 2000, 5000, 10000},
 		},
 	)
 	stats.MustRegister(requestSizes)
