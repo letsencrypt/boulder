@@ -138,7 +138,6 @@
     "orphanQueueDir": "/tmp/orphaned-certificates-a",
     "features": {
       "StoreIssuerInfo": true,
-      "BlockedKeyTable": true
     }
   },
 

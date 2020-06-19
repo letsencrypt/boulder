@@ -47,7 +47,6 @@
       ]
     },
     "features": {
-      "BlockedKeyTable": true,
       "StoreRevokerInfo": true,
       "RestrictRSAKeySizes": true,
       "FasterNewOrdersRateLimit": true

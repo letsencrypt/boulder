@@ -3835,10 +3835,6 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	err := features.Set(map[string]bool{"BlockedKeyTable": true})
-	test.AssertNotError(t, err, "features.Set failed")
-	defer features.Reset()
-
 	mockSA := mockSABlockedKey{}
 	ra.SA = &mockSA
 	ra.CA = &mockCAOCSP{}
