@@ -175,7 +175,7 @@ func TestRevokeWithKeyCompromise(t *testing.T) {
 	// Check the OCSP response. It should be revoked with reason = 1 (keyCompromise)
 	response, err := ocsp_helper.ReqDER(cert.Raw, ocsp.Revoked)
 	test.AssertNotError(t, err, "requesting OCSP for revoked cert")
-	test.AssertEquals(t, response.RevocationReason, 2)
+	test.AssertEquals(t, response.RevocationReason, 1)
 }
 
 func TestBadKeyRevoker(t *testing.T) {
