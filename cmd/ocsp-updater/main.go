@@ -153,7 +153,7 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	now := updater.clk.Now()
 	maxAgeCutoff := now.Add(-updater.ocspStaleMaxAge)
 
-	certStatusFields := "cs.serial, cs.status, cs.revokedDate, cs.notAfter"
+	certStatusFields := "cs.serial, cs.status, cs.revokedDate, cs.notAfter, cs.revokedReason"
 	if features.Enabled(features.StoreIssuerInfo) {
 		certStatusFields += ", cs.issuerID"
 	}

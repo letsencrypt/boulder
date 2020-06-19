@@ -5,10 +5,6 @@
     "stdoutlevel": 7,
     "stdoutlevel": 7
   },
-  "issuerFiles": [
-    "/tmp/intermediate-cert-rsa-a.pem",
-    "/tmp/intermediate-cert-rsa-b.pem"
-  ],
 
   "tls": {
     "caCertFile": "test/grpc-creds/minica.pem",

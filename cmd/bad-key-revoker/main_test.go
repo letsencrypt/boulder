@@ -14,6 +14,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/sa"
@@ -57,7 +58,10 @@ func TestSelectUncheckedRows(t *testing.T) {
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetSATestDatabase(t)()
 
-	bkr := &badKeyRevoker{dbMap: dbMap}
+	bkr := &badKeyRevoker{
+		dbMap:  dbMap,
+		logger: blog.NewMock(),
+	}
 
 	hashA, hashB, hashC := randHash(t), randHash(t), randHash(t)
 	insertBlockedRow(t, dbMap, hashA, 1, true)
@@ -145,7 +149,7 @@ func TestFindUnrevoked(t *testing.T) {
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetSATestDatabase(t)()
 
-	regID := insertRegistration(t, dbMap, "")
+	regID := insertRegistration(t, dbMap)
 
 	bkr := &badKeyRevoker{dbMap: dbMap, serialBatchSize: 1, maxRevocations: 10}
 
@@ -177,12 +181,12 @@ func TestResolveContacts(t *testing.T) {
 
 	bkr := &badKeyRevoker{dbMap: dbMap}
 
-	regIDA := insertRegistration(t, dbMap, "")
+	regIDA := insertRegistration(t, dbMap)
 	regIDB := insertRegistration(t, dbMap, "example.com", "example-2.com")
 	regIDC := insertRegistration(t, dbMap, "example.com")
 	regIDD := insertRegistration(t, dbMap, "example-2.com")
 
-	idToEmail, err := bkr.resolveContacts([]int64{0, regIDA, regIDB, regIDC, regIDD})
+	idToEmail, err := bkr.resolveContacts([]int64{regIDA, regIDB, regIDC, regIDD})
 	test.AssertNotError(t, err, "resolveContacts failed")
 	test.AssertDeepEquals(t, idToEmail, map[int64][]string{
 		regIDA: {""},
@@ -248,13 +252,22 @@ func TestInvoke(t *testing.T) {
 
 	mm := &mocks.Mailer{}
 	mr := &mockRevoker{}
-	bkr := &badKeyRevoker{dbMap: dbMap, maxRevocations: 10, serialBatchSize: 1, raClient: mr, mailer: mm, emailSubject: "testing", emailTemplate: testTemplate}
+	bkr := &badKeyRevoker{
+		dbMap:           dbMap,
+		maxRevocations:  10,
+		serialBatchSize: 1,
+		raClient:        mr,
+		mailer:          mm,
+		emailSubject:    "testing",
+		emailTemplate:   testTemplate,
+		logger:          blog.NewMock(),
+	}
 
 	// populate DB with all the test data
 	regIDA := insertRegistration(t, dbMap, "example.com")
 	regIDB := insertRegistration(t, dbMap, "example.com")
 	regIDC := insertRegistration(t, dbMap, "other.example.com", "uno.example.com")
-	regIDD := insertRegistration(t, dbMap, "")
+	regIDD := insertRegistration(t, dbMap)
 	hashA := randHash(t)
 	insertBlockedRow(t, dbMap, hashA, regIDC, false)
 	insertCert(t, dbMap, hashA, "ff", regIDA, false, false)
@@ -307,7 +320,15 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 
 	mm := &mocks.Mailer{}
 	mr := &mockRevoker{}
-	bkr := &badKeyRevoker{dbMap: dbMap, maxRevocations: 10, serialBatchSize: 1, raClient: mr, mailer: mm, emailSubject: "testing", emailTemplate: testTemplate}
+	bkr := &badKeyRevoker{dbMap: dbMap,
+		maxRevocations:  10,
+		serialBatchSize: 1,
+		raClient:        mr,
+		mailer:          mm,
+		emailSubject:    "testing",
+		emailTemplate:   testTemplate,
+		logger:          blog.NewMock(),
+	}
 
 	// populate DB with all the test data
 	regIDA := insertRegistration(t, dbMap, "a@example.com")

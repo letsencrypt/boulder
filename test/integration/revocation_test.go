@@ -157,9 +157,11 @@ func TestRevokeWithKeyCompromise(t *testing.T) {
 	res, err := authAndIssue(c, certKey, []string{random_domain()})
 	test.AssertNotError(t, err, "authAndIssue failed")
 
+	cert := res.certs[0]
+
 	err = c.RevokeCertificate(
 		c.Account,
-		res.certs[0],
+		cert,
 		c.Account.PrivateKey,
 		ocsp.KeyCompromise,
 	)
@@ -169,6 +171,11 @@ func TestRevokeWithKeyCompromise(t *testing.T) {
 	_, err = c.NewAccount(certKey, false, true)
 	test.AssertError(t, err, "NewAccount didn't fail with a blacklisted key")
 	test.AssertEquals(t, err.Error(), `acme: error code 400 "urn:ietf:params:acme:error:badPublicKey": public key is forbidden`)
+
+	// Check the OCSP response. It should be revoked with reason = 1 (keyCompromise)
+	response, err := ocsp_helper.ReqDER(cert.Raw, ocsp.Revoked)
+	test.AssertNotError(t, err, "requesting OCSP for revoked cert")
+	test.AssertEquals(t, response.RevocationReason, 1)
 }
 
 func TestBadKeyRevoker(t *testing.T) {
