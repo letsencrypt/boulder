@@ -289,10 +289,10 @@ func TestFindStaleOCSPResponsesStaleMaxAge(t *testing.T) {
 	// certificates, parsedCertA. The second should be excluded by the
 	// `ocspStaleMaxAge` cutoff.
 	earliest := fc.Now().Add(-time.Hour)
-	certs, err := updater.findStaleOCSPResponses(earliest, 10)
+	statuses, err := updater.findStaleOCSPResponses(earliest, 10)
 	test.AssertNotError(t, err, "Couldn't find stale responses")
-	test.AssertEquals(t, len(certs), 1)
-	test.AssertEquals(t, certs[0].Serial, core.SerialToString(parsedCertA.SerialNumber))
+	test.AssertEquals(t, len(statuses), 1)
+	test.AssertEquals(t, statuses[0].Serial, core.SerialToString(parsedCertA.SerialNumber))
 }
 
 func TestOldOCSPResponsesTick(t *testing.T) {
