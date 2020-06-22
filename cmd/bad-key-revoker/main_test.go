@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"fmt"
 	"html/template"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -22,13 +21,6 @@ import (
 	"github.com/letsencrypt/boulder/test/vars"
 	"google.golang.org/grpc"
 )
-
-func TestMain(m *testing.M) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		os.Exit(0)
-	}
-	os.Exit(m.Run())
-}
 
 func randHash(t *testing.T) []byte {
 	t.Helper()
