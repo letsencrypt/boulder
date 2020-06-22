@@ -23,7 +23,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	bocsp "github.com/letsencrypt/boulder/ocsp"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -50,13 +49,7 @@ func TestMux(t *testing.T) {
 		doubleSlashReq.SerialNumber.String(): resp.OCSPResponse,
 	}
 	src := bocsp.NewMemorySource(responses, blog.NewMock())
-	responseTypesCounter := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "ocspResponses-test",
-		},
-		[]string{"type"},
-	)
-	h := mux(stats, "/foobar/", src, responseTypesCounter)
+	h := mux(stats, "/foobar/", src)
 	type muxTest struct {
 		method       string
 		path         string
@@ -82,10 +75,6 @@ func TestMux(t *testing.T) {
 		if !bytes.Equal(w.Body.Bytes(), mt.respBody) {
 			t.Errorf("Mismatched body: want %#v, got %#v", mt.respBody, w.Body.Bytes())
 		}
-		if mt.expectedType != "" {
-			test.AssertEquals(t, 1, test.CountCounterVec("type", mt.expectedType, responseTypesCounter))
-			responseTypesCounter.Reset()
-		}
 	}
 }
 
@@ -95,13 +84,7 @@ func TestDBHandler(t *testing.T) {
 		t.Fatalf("makeDBSource: %s", err)
 	}
 
-	responseTypesCounter := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "ocspResponses-test",
-		},
-		[]string{"type"},
-	)
-	h := bocsp.NewResponder(src, responseTypesCounter)
+	h := bocsp.NewResponder(src, stats)
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest("POST", "/", bytes.NewReader(req))
 	if err != nil {

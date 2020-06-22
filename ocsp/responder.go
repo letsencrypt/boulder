@@ -258,6 +258,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		base64Request, err := url.QueryUnescape(request.URL.Path)
 		if err != nil {
 			log.Debugf("Error decoding URL: %s", request.URL.Path)
+			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Malformed]}).Inc()
 			response.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -282,6 +283,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		if err != nil {
 			log.Debugf("Error decoding base64 from URL: %s", string(base64RequestBytes))
 			response.WriteHeader(http.StatusBadRequest)
+			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Malformed]}).Inc()
 			return
 		}
 	case "POST":
@@ -289,6 +291,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		if err != nil {
 			log.Errorf("Problem reading body of POST: %s", err)
 			response.WriteHeader(http.StatusBadRequest)
+			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Malformed]}).Inc()
 			return
 		}
 		rs.requestSizes.Observe(float64(len(requestBody)))
@@ -344,8 +347,9 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 
 	parsedResponse, err := ocsp.ParseResponse(ocspResponse, nil)
 	if err != nil {
-		log.Errorf("Error parsing response for serial %x: %s",
-			ocspRequest.SerialNumber, err)
+		log.Errorf("Error parsing response for serial %x: %x %s",
+			ocspRequest.SerialNumber, parsedResponse, err)
+		response.WriteHeader(http.StatusInternalServerError)
 		response.Write(ocsp.InternalErrorErrorResponse)
 		rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.InternalError]}).Inc()
 		return
