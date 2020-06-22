@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
-	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -32,10 +30,6 @@ func findIssuedName(dbMap db.OneSelector, name string) (string, error) {
 }
 
 func TestAddPrecertificate(t *testing.T) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -111,10 +105,6 @@ func TestAddPrecertificate(t *testing.T) {
 }
 
 func TestAddPrecertificateKeyHash(t *testing.T) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 	reg := satest.CreateWorkingRegistration(t, sa)
