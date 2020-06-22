@@ -12,9 +12,7 @@ import (
 	"math/big"
 	"math/bits"
 	"net"
-	"os"
 	"reflect"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -2251,10 +2249,6 @@ func TestSerialExists(t *testing.T) {
 }
 
 func TestBlockedKey(t *testing.T) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -2323,10 +2317,6 @@ func TestAddBlockedKeyUnknownSource(t *testing.T) {
 }
 
 func TestBlockedKeyRevokedBy(t *testing.T) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 

@@ -53,8 +53,7 @@
     "features": {
       "MandatoryPOSTAsGET": true,
       "PrecertificateRevocation": true,
-      "StripDefaultSchemePort": true,
-      "BlockedKeyTable": true
+      "StripDefaultSchemePort": true
     }
   },
 
