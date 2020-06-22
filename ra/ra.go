@@ -1676,7 +1676,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	if err != nil {
 		return err
 	}
-	if features.Enabled(features.BlockedKeyTable) && reason == ocsp.KeyCompromise {
+	if reason == ocsp.KeyCompromise {
 		digest, err := core.KeyDigest(cert.PublicKey)
 		if err != nil {
 			return err

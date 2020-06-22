@@ -39,8 +39,7 @@
       }
     },
     "features": {
-      "StripDefaultSchemePort": true,
-      "BlockedKeyTable": true
+      "StripDefaultSchemePort": true
     }
   },
 
