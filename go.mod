@@ -30,7 +30,7 @@ require (
 	github.com/zmap/zlint/v2 v2.1.0
 	golang.org/x/crypto v0.0.0-20200124225646-8b5121be2f68
 	golang.org/x/net v0.0.0-20200202094626-16171245cfb2
-	golang.org/x/text v0.3.2
+	golang.org/x/text v0.3.3
 	google.golang.org/grpc v1.29.0
 	google.golang.org/protobuf v1.21.0
 	gopkg.in/square/go-jose.v2 v2.4.1
