@@ -459,7 +459,7 @@ func crlCeremony(configBytes []byte) error {
 	for _, rc := range config.CRLProfile.RevokedCertificates {
 		cert, err := core.LoadCert(rc.CertificatePath)
 		if err != nil {
-			fmt.Errorf("failed to load revoked certificate %q: %s", rc.CertificatePath, err)
+			return fmt.Errorf("failed to load revoked certificate %q: %s", rc.CertificatePath, err)
 		}
 		revokedAt, err := time.Parse(dateLayout, rc.RevocationDate)
 		if err != nil {
