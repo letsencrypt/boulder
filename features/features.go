@@ -84,6 +84,7 @@ var features = map[FeatureFlag]bool{
 	StoreRevokerInfo:              false,
 	RestrictRSAKeySizes:           false,
 	FasterNewOrdersRateLimit:      false,
+	BlockedKeyTable:               false,
 }
 
 var fMu = new(sync.RWMutex)
