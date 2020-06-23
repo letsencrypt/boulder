@@ -10,10 +10,15 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"time"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
+	"golang.org/x/crypto/ocsp"
 	"gopkg.in/yaml.v2"
 )
+
+const configDateLayout = "2006-01-02 15:04:05"
 
 type keyGenConfig struct {
 	Type         string `yaml:"type"`
@@ -188,6 +193,71 @@ func (kc keyConfig) validate() error {
 	return nil
 }
 
+type ocspRespConfig struct {
+	CeremonyType string `yaml:"ceremony-type"`
+	PKCS11       struct {
+		Module       string `yaml:"module"`
+		PIN          string `yaml:"pin"`
+		SigningSlot  uint   `yaml:"signing-key-slot"`
+		SigningLabel string `yaml:"signing-key-label"`
+		SigningKeyID string `yaml:"signing-key-id"`
+	} `yaml:"pkcs11"`
+	Inputs struct {
+		CertificatePath                string `yaml:"certificate-path"`
+		IssuerCertificatePath          string `yaml:"issuer-certificate-path"`
+		DelegatedIssuerCertificatePath string `yaml:"delegated-issuer-certificate-path"`
+	} `yaml:"inputs"`
+	Outputs struct {
+		ResponsePath string `yaml:"response-path"`
+	} `yaml:"outputs"`
+	OCSPProfile struct {
+		ThisUpdate string `yaml:"this-update"`
+		NextUpdate string `yaml:"next-update"`
+		Status     string `yaml:"status"`
+	} `yaml:"ocsp-profile"`
+}
+
+func (orc ocspRespConfig) validate() error {
+	// PKCS11 fields
+	if orc.PKCS11.Module == "" {
+		return errors.New("pkcs11.module is required")
+	}
+	// key-slot cannot be tested because 0 is a valid slot
+	if orc.PKCS11.SigningLabel == "" {
+		return errors.New("pkcs11.signing-key-label is required")
+	}
+	if orc.PKCS11.SigningKeyID == "" {
+		return errors.New("pkcs11.signing-key-id is required")
+	}
+
+	// Input fields
+	if orc.Inputs.CertificatePath == "" {
+		return errors.New("inputs.certificate-path is required")
+	}
+	if orc.Inputs.IssuerCertificatePath == "" {
+		return errors.New("inputs.issuer-certificate-path is required")
+	}
+	// DelegatedIssuerCertificatePath may be omitted
+
+	// Output fields
+	if orc.Outputs.ResponsePath == "" {
+		return errors.New("outputs.response-path is required")
+	}
+
+	// OCSP fields
+	if orc.OCSPProfile.ThisUpdate == "" {
+		return errors.New("ocsp-profile.this-update is required")
+	}
+	if orc.OCSPProfile.NextUpdate == "" {
+		return errors.New("ocsp-profile.next-update is required")
+	}
+	if orc.OCSPProfile.Status != "good" && orc.OCSPProfile.Status != "revoked" {
+		return errors.New("ocsp-profile.status must be either \"good\" or \"revoked\"")
+	}
+
+	return nil
+}
+
 func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string) error {
 	// x509.CreateCertificate uses a io.Reader here for signing methods that require
 	// a source of randomness. Since PKCS#11 based signing generates needed randomness
@@ -294,17 +364,9 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse public key: %s", err)
 	}
-	issuerPEMBytes, err := ioutil.ReadFile(config.Inputs.IssuerCertificatePath)
+	issuer, err := core.LoadCert(config.Inputs.IssuerCertificatePath)
 	if err != nil {
-		return fmt.Errorf("failed to read issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
-	}
-	issuerPEM, _ := pem.Decode(issuerPEMBytes)
-	if issuerPEM == nil {
-		return fmt.Errorf("failed to parse issuer certificate PEM")
-	}
-	issuer, err := x509.ParseCertificate(issuerPEM.Bytes)
-	if err != nil {
-		return fmt.Errorf("failed to parse issuer certificate: %s", err)
+		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
 	}
 
 	template, err := makeTemplate(newRandReader(ctx, session), &config.CertProfile, pubPEM.Bytes, ct)
@@ -337,6 +399,78 @@ func keyCeremony(configBytes []byte) error {
 	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.StoreSlot)
 	if _, err = generateKey(ctx, session, config.PKCS11.StoreLabel, config.Outputs.PublicKeyPath, config.Key); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func ocspRespCeremony(configBytes []byte) error {
+	var config ocspRespConfig
+	err := yaml.UnmarshalStrict(configBytes, &config)
+	if err != nil {
+		return fmt.Errorf("failed to parse config: %s", err)
+	}
+	if err := config.validate(); err != nil {
+		return fmt.Errorf("failed to validate config: %s", err)
+	}
+
+	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.SigningSlot, config.PKCS11.PIN)
+	if err != nil {
+		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.SigningSlot, err)
+	}
+	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.SigningSlot)
+	keyID, err := hex.DecodeString(config.PKCS11.SigningKeyID)
+	if err != nil {
+		return fmt.Errorf("failed to decode key-id: %s", err)
+	}
+	signer, err := newSigner(ctx, session, config.PKCS11.SigningLabel, keyID)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve private key handle: %s", err)
+	}
+	log.Println("Retrieved private key handle")
+
+	cert, err := core.LoadCert(config.Inputs.CertificatePath)
+	if err != nil {
+		return fmt.Errorf("failed to load certificate %q: %s", config.Inputs.CertificatePath, err)
+	}
+	issuer, err := core.LoadCert(config.Inputs.IssuerCertificatePath)
+	if err != nil {
+		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
+	}
+	var delegatedIssuer *x509.Certificate
+	if config.Inputs.DelegatedIssuerCertificatePath != "" {
+		delegatedIssuer, err = core.LoadCert(config.Inputs.DelegatedIssuerCertificatePath)
+		if err != nil {
+			return fmt.Errorf("failed to load delegated issuer certificate %q: %s", config.Inputs.DelegatedIssuerCertificatePath, err)
+		}
+	}
+
+	thisUpdate, err := time.Parse(configDateLayout, config.OCSPProfile.ThisUpdate)
+	if err != nil {
+		return fmt.Errorf("unable to parse ocsp-profile.this-update: %s", err)
+	}
+	nextUpdate, err := time.Parse(configDateLayout, config.OCSPProfile.NextUpdate)
+	if err != nil {
+		return fmt.Errorf("unable to parse ocsp-profile.next-update: %s", err)
+	}
+	var status int
+	switch config.OCSPProfile.Status {
+	case "good":
+		status = int(ocsp.Good)
+	case "revoked":
+		status = int(ocsp.Revoked)
+	default:
+		// this shouldn't happen if the config is validated
+		return fmt.Errorf("unexpected ocsp-profile.stats: %s", config.OCSPProfile.Status)
+	}
+
+	resp, err := generateOCSPResponse(signer, issuer, delegatedIssuer, cert, thisUpdate, nextUpdate, status)
+	if err != nil {
+		return err
+	}
+
+	if err := ioutil.WriteFile(config.Outputs.ResponsePath, resp, 0644); err != nil {
+		return fmt.Errorf("failed to write OCSP response to %q: %s", config.Outputs.ResponsePath, err)
 	}
 
 	return nil
@@ -381,6 +515,11 @@ func main() {
 		err = keyCeremony(configBytes)
 		if err != nil {
 			log.Fatalf("key ceremony failed: %s", err)
+		}
+	case "ocsp-response":
+		err = ocspRespCeremony(configBytes)
+		if err != nil {
+			log.Fatalf("ocsp response ceremony failed: %s", err)
 		}
 	default:
 		log.Fatalf("unknown ceremony-type, must be one of: root, intermediate, ocsp-signer, key")

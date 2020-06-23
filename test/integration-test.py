@@ -183,26 +183,12 @@ def run_janitor():
     p.terminate()
 
 def test_single_ocsp():
-    """Run the single-ocsp command, which is used to generate OCSP responses for
-       intermediate certificates on a manual basis. Then start up an
-       ocsp-responder configured to respond using the output of single-ocsp,
-       check that it successfully answers OCSP requests, and shut the responder
-       back down.
+    """Run ocsp-responder with the single OCSP response generated for the intermediate
+       certificate using the ceremony tool during setup and check that it successfully
+       answers OCSP requests, and shut the responder back down.
 
        This is a non-API test.
     """
-    dateFormat = "%Y-%m-%dT00:00:00Z"
-    thisUpdate = datetime.datetime.now()
-    nextUpdate = thisUpdate + datetime.timedelta(weeks=52)
-    run("./bin/single-ocsp -issuer /tmp/root-cert-rsa.pem \
-            -responder /tmp/root-cert-rsa.pem \
-            -target /tmp/intermediate-cert-rsa-a.pem \
-            -pkcs11 test/test-root.key-pkcs11.json \
-            -thisUpdate %s \
-            -nextUpdate %s \
-            -status 0 \
-            -out /tmp/issuer-ocsp-responses.txt" % (thisUpdate.strftime(dateFormat), nextUpdate.strftime(dateFormat)))
-
     p = subprocess.Popen(
         './bin/ocsp-responder --config test/issuer-ocsp-responder.json', shell=True)
     waitport(4003, './bin/ocsp-responder --config test/issuer-ocsp-responder.json')
