@@ -3,6 +3,7 @@ package main
 import (
 	"crypto"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
@@ -10,7 +11,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"time"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"gopkg.in/yaml.v2"
 )
@@ -188,6 +191,75 @@ func (kc keyConfig) validate() error {
 	return nil
 }
 
+type crlConfig struct {
+	CeremonyType string `yaml:"ceremony-type"`
+	PKCS11       struct {
+		Module       string `yaml:"module"`
+		PIN          string `yaml:"pin"`
+		SigningSlot  uint   `yaml:"signing-key-slot"`
+		SigningLabel string `yaml:"signing-key-label"`
+		SigningKeyID string `yaml:"signing-key-id"`
+	} `yaml:"pkcs11"`
+	Inputs struct {
+		IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+	} `yaml:"inputs"`
+	Outputs struct {
+		CRLPath string `yaml:"crl-path"`
+	} `yaml:"outputs"`
+	CRLProfile struct {
+		ThisUpdate          string `yaml:"this-update"`
+		NextUpdate          string `yaml:"next-update"`
+		Number              int64  `yaml:"number"`
+		RevokedCertificates []struct {
+			CertificatePath string `yaml:"certificate-path"`
+			RevocationDate  string `yaml:"revocation-date"`
+		} `yaml:"revoked-certificates"`
+	} `yaml:"crl-profile"`
+}
+
+func (cc crlConfig) validate() error {
+	// PKCS11 fields
+	if cc.PKCS11.Module == "" {
+		return errors.New("pkcs11.module is required")
+	}
+	// key-slot cannot be tested because 0 is a valid slot
+	if cc.PKCS11.SigningLabel == "" {
+		return errors.New("pkcs11.signing-key-label is required")
+	}
+	if cc.PKCS11.SigningKeyID == "" {
+		return errors.New("pkcs11.signing-key-id is required")
+	}
+
+	// Input fields
+	if cc.Inputs.IssuerCertificatePath == "" {
+		return errors.New("inputs.issuer-certificate-path is required")
+	}
+
+	// Output fields
+	if cc.Outputs.CRLPath == "" {
+		return errors.New("outputs.crl-path is required")
+	}
+
+	// CRL profile fields
+	if cc.CRLProfile.ThisUpdate == "" {
+		return errors.New("crl-profile.this-update is required")
+	}
+	if cc.CRLProfile.NextUpdate == "" {
+		return errors.New("crl-profile.next-update is required")
+	}
+	// CRL Number cannot be tested because 0 is a valid CRL number
+	for _, rc := range cc.CRLProfile.RevokedCertificates {
+		if rc.CertificatePath == "" {
+			return errors.New("crl-profile.revoked-certificates.certificate-path is required")
+		}
+		if rc.RevocationDate == "" {
+			return errors.New("crl-profile.revoked-certificates.revocation-date is required")
+		}
+	}
+
+	return nil
+}
+
 func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string) error {
 	// x509.CreateCertificate uses a io.Reader here for signing methods that require
 	// a source of randomness. Since PKCS#11 based signing generates needed randomness
@@ -342,6 +414,75 @@ func keyCeremony(configBytes []byte) error {
 	return nil
 }
 
+func crlCeremony(configBytes []byte) error {
+	var config crlConfig
+	err := yaml.UnmarshalStrict(configBytes, &config)
+	if err != nil {
+		return fmt.Errorf("failed to parse config: %s", err)
+	}
+	if err := config.validate(); err != nil {
+		return fmt.Errorf("failed to validate config: %s", err)
+	}
+
+	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.SigningSlot, config.PKCS11.PIN)
+	if err != nil {
+		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.SigningSlot, err)
+	}
+	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.SigningSlot)
+	keyID, err := hex.DecodeString(config.PKCS11.SigningKeyID)
+	if err != nil {
+		return fmt.Errorf("failed to decode key-id: %s", err)
+	}
+	signer, err := newSigner(ctx, session, config.PKCS11.SigningLabel, keyID)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve private key handle: %s", err)
+	}
+	log.Println("Retrieved private key handle")
+
+	issuer, err := core.LoadCert(config.Inputs.IssuerCertificatePath)
+	if err != nil {
+		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
+	}
+
+	dateLayout := "2006-01-02 15:04:05"
+
+	thisUpdate, err := time.Parse(dateLayout, config.CRLProfile.ThisUpdate)
+	if err != nil {
+		return fmt.Errorf("unable to parse crl-profile.this-update: %s", err)
+	}
+	nextUpdate, err := time.Parse(dateLayout, config.CRLProfile.NextUpdate)
+	if err != nil {
+		return fmt.Errorf("unable to parse crl-profile.next-update: %s", err)
+	}
+
+	var revokedCertificates []pkix.RevokedCertificate
+	for _, rc := range config.CRLProfile.RevokedCertificates {
+		cert, err := core.LoadCert(rc.CertificatePath)
+		if err != nil {
+			fmt.Errorf("failed to load revoked certificate %q: %s", rc.CertificatePath, err)
+		}
+		revokedAt, err := time.Parse(dateLayout, rc.RevocationDate)
+		if err != nil {
+			return fmt.Errorf("unable to parse crl-profile.revoked-certificates.revocation-date")
+		}
+		revokedCertificates = append(revokedCertificates, pkix.RevokedCertificate{
+			SerialNumber:   cert.SerialNumber,
+			RevocationTime: revokedAt,
+		})
+	}
+
+	crlBytes, err := generateCRL(signer, issuer, thisUpdate, nextUpdate, config.CRLProfile.Number, revokedCertificates)
+	if err != nil {
+		return err
+	}
+
+	if err := ioutil.WriteFile(config.Outputs.CRLPath, crlBytes, 0644); err != nil {
+		return fmt.Errorf("failed to write CRL to %q: %s", config.Outputs.CRLPath, err)
+	}
+
+	return nil
+}
+
 func main() {
 	configPath := flag.String("config", "", "Path to ceremony configuration file")
 	flag.Parse()
@@ -381,6 +522,11 @@ func main() {
 		err = keyCeremony(configBytes)
 		if err != nil {
 			log.Fatalf("key ceremony failed: %s", err)
+		}
+	case "crl":
+		err = crlCeremony(configBytes)
+		if err != nil {
+			log.Fatalf("crl ceremony failed: %s", err)
 		}
 	default:
 		log.Fatalf("unknown ceremony-type, must be one of: root, intermediate, ocsp-signer, key")
