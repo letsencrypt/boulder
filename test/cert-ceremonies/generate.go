@@ -119,4 +119,13 @@ func main() {
 	// Create the B intermediate certificate
 	err = genCert(tmpRSAIntermediateB)
 	cmd.FailOnError(err, "failed to generate intermediate cert")
+
+	// Create an OCSP response for the A intermediate
+	tmpOCSPConfig, err := rewriteConfig("test/cert-ceremonies/intermediate-ocsp.yaml", map[string]string{
+		"KeyID":  rsaRootKeyID,
+		"SlotID": rootKeySlot,
+	})
+	cmd.FailOnError(err, "failed to rewrite intermediate OCSP config with key ID")
+	err = genCert(tmpOCSPConfig)
+	cmd.FailOnError(err, "failed to generate intermediate OCSP response")
 }

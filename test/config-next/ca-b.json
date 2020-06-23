@@ -138,8 +138,7 @@
     "maxConcurrentRPCServerRequests": 100000,
     "orphanQueueDir": "/tmp/orphaned-certificates-b",
     "features": {
-      "StoreIssuerInfo": true,
-      "BlockedKeyTable": true
+      "StoreIssuerInfo": true
     }
   },
 

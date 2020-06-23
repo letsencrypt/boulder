@@ -202,12 +202,11 @@ func generateSKID(pk []byte) ([]byte, error) {
 
 // makeTemplate generates the certificate template for use in x509.CreateCertificate
 func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct certType) (*x509.Certificate, error) {
-	dateLayout := "2006-01-02 15:04:05"
-	notBefore, err := time.Parse(dateLayout, profile.NotBefore)
+	notBefore, err := time.Parse(configDateLayout, profile.NotBefore)
 	if err != nil {
 		return nil, err
 	}
-	notAfter, err := time.Parse(dateLayout, profile.NotAfter)
+	notAfter, err := time.Parse(configDateLayout, profile.NotAfter)
 	if err != nil {
 		return nil, err
 	}

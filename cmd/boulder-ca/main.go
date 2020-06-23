@@ -165,11 +165,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sa := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
-	var blockedKeyFunc goodkey.BlockedKeyCheckFunc
-	if features.Enabled(features.BlockedKeyTable) {
-		blockedKeyFunc = sa.KeyBlocked
-	}
-	kp, err := goodkey.NewKeyPolicy(c.CA.WeakKeyFile, c.CA.BlockedKeyFile, blockedKeyFunc)
+	kp, err := goodkey.NewKeyPolicy(c.CA.WeakKeyFile, c.CA.BlockedKeyFile, sa.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	var orphanQueue *goque.Queue

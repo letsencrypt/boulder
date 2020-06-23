@@ -146,14 +146,33 @@ var responseTypeToString = map[ocsp.ResponseStatus]string{
 type Responder struct {
 	Source        Source
 	responseTypes *prometheus.CounterVec
+	requestSizes  prometheus.Histogram
 	clk           clock.Clock
 }
 
 // NewResponder instantiates a Responder with the give Source.
-func NewResponder(source Source, responseTypes *prometheus.CounterVec) *Responder {
+func NewResponder(source Source, stats prometheus.Registerer) *Responder {
+	requestSizes := prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "ocsp_request_sizes",
+			Help:    "Size of OCSP requests",
+			Buckets: []float64{1, 100, 200, 400, 800, 1200, 2000, 5000, 10000},
+		},
+	)
+	stats.MustRegister(requestSizes)
+	responseTypes := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ocsp_responses",
+			Help: "Number of OCSP responses returned by type",
+		},
+		[]string{"type"},
+	)
+	stats.MustRegister(responseTypes)
+
 	return &Responder{
 		Source:        source,
 		responseTypes: responseTypes,
+		requestSizes:  requestSizes,
 		clk:           clock.New(),
 	}
 }
@@ -239,6 +258,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		base64Request, err := url.QueryUnescape(request.URL.Path)
 		if err != nil {
 			log.Debugf("Error decoding URL: %s", request.URL.Path)
+			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Malformed]}).Inc()
 			response.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -263,15 +283,18 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		if err != nil {
 			log.Debugf("Error decoding base64 from URL: %s", string(base64RequestBytes))
 			response.WriteHeader(http.StatusBadRequest)
+			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Malformed]}).Inc()
 			return
 		}
 	case "POST":
-		requestBody, err = ioutil.ReadAll(request.Body)
+		requestBody, err = ioutil.ReadAll(http.MaxBytesReader(nil, request.Body, 10000))
 		if err != nil {
 			log.Errorf("Problem reading body of POST: %s", err)
 			response.WriteHeader(http.StatusBadRequest)
+			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Malformed]}).Inc()
 			return
 		}
+		rs.requestSizes.Observe(float64(len(requestBody)))
 	default:
 		response.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -324,8 +347,9 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 
 	parsedResponse, err := ocsp.ParseResponse(ocspResponse, nil)
 	if err != nil {
-		log.Errorf("Error parsing response for serial %x: %s",
-			ocspRequest.SerialNumber, err)
+		log.Errorf("Error parsing response for serial %x: %x %s",
+			ocspRequest.SerialNumber, parsedResponse, err)
+		response.WriteHeader(http.StatusInternalServerError)
 		response.Write(ocsp.InternalErrorErrorResponse)
 		rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.InternalError]}).Inc()
 		return
