@@ -47,8 +47,8 @@ type NonceService struct {
 	gcm              cipher.AEAD
 	maxUsed          int
 	prefix           string
-	noncesGenerated  prometheus.Counter
-	nonceValidations *prometheus.CounterVec
+	nonceCreates     prometheus.Counter
+	nonceRedeems     *prometheus.CounterVec
 	nonceHeapLatency prometheus.Histogram
 }
 
@@ -105,16 +105,16 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		maxUsed = defaultMaxUsed
 	}
 
-	noncesGenerated := prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "nonces_generated",
+	nonceCreates := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "nonce_creates",
 		Help: "A counter of nonces generated",
 	})
-	stats.MustRegister(noncesGenerated)
-	nonceValidations := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "nonces_validations",
+	stats.MustRegister(nonceCreates)
+	nonceRedeems := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "nonce_redeems",
 		Help: "A counter of nonce validations labelled by result",
 	}, []string{"result", "error"})
-	stats.MustRegister(nonceValidations)
+	stats.MustRegister(nonceRedeems)
 	nonceHeapLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name: "nonce_heap_latency",
 		Help: "A histogram of latencies of heap pop operations",
@@ -129,8 +129,8 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		gcm:              gcm,
 		maxUsed:          maxUsed,
 		prefix:           prefix,
-		noncesGenerated:  noncesGenerated,
-		nonceValidations: nonceValidations,
+		nonceCreates:     nonceCreates,
+		nonceRedeems:     nonceRedeems,
 		nonceHeapLatency: nonceHeapLatency,
 	}, nil
 }
@@ -203,7 +203,7 @@ func (ns *NonceService) Nonce() (string, error) {
 	ns.latest++
 	latest := ns.latest
 	ns.mu.Unlock()
-	defer ns.noncesGenerated.Inc()
+	defer ns.nonceCreates.Inc()
 	return ns.encrypt(latest)
 }
 
@@ -212,24 +212,24 @@ func (ns *NonceService) Nonce() (string, error) {
 func (ns *NonceService) Valid(nonce string) bool {
 	c, err := ns.decrypt(nonce)
 	if err != nil {
-		ns.nonceValidations.WithLabelValues("invalid", "decrypt").Inc()
+		ns.nonceRedeems.WithLabelValues("invalid", "decrypt").Inc()
 		return false
 	}
 
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
 	if c > ns.latest {
-		ns.nonceValidations.WithLabelValues("invalid", "too high").Inc()
+		ns.nonceRedeems.WithLabelValues("invalid", "too high").Inc()
 		return false
 	}
 
 	if c <= ns.earliest {
-		ns.nonceValidations.WithLabelValues("invalid", "too low").Inc()
+		ns.nonceRedeems.WithLabelValues("invalid", "too low").Inc()
 		return false
 	}
 
 	if ns.used[c] {
-		ns.nonceValidations.WithLabelValues("invalid", "already used").Inc()
+		ns.nonceRedeems.WithLabelValues("invalid", "already used").Inc()
 		return false
 	}
 
@@ -242,7 +242,7 @@ func (ns *NonceService) Valid(nonce string) bool {
 		delete(ns.used, ns.earliest)
 	}
 
-	ns.nonceValidations.WithLabelValues("valid", "").Inc()
+	ns.nonceRedeems.WithLabelValues("valid", "").Inc()
 	return true
 }
 
