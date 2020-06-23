@@ -18,6 +18,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+const configDateLayout = "2006-01-02 15:04:05"
+
 type keyGenConfig struct {
 	Type         string `yaml:"type"`
 	RSAModLength uint   `yaml:"rsa-mod-length"`
@@ -443,12 +445,11 @@ func ocspRespCeremony(configBytes []byte) error {
 		}
 	}
 
-	dateLayout := "2006-01-02 15:04:05"
-	thisUpdate, err := time.Parse(dateLayout, config.OCSPProfile.ThisUpdate)
+	thisUpdate, err := time.Parse(configDateLayout, config.OCSPProfile.ThisUpdate)
 	if err != nil {
 		return fmt.Errorf("unable to parse ocsp-profile.this-update: %s", err)
 	}
-	nextUpdate, err := time.Parse(dateLayout, config.OCSPProfile.NextUpdate)
+	nextUpdate, err := time.Parse(configDateLayout, config.OCSPProfile.NextUpdate)
 	if err != nil {
 		return fmt.Errorf("unable to parse ocsp-profile.next-update: %s", err)
 	}
