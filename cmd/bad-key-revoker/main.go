@@ -88,6 +88,8 @@ type unrevokedCertificate struct {
 	Serial         string
 	DER            []byte
 	RegistrationID int64
+	Status         core.OCSPStatus
+	IsExpired      bool
 }
 
 // findUnrevoked looks for all unexpired, currently valid certificates which have a specific SPKI hash,
@@ -119,19 +121,18 @@ func (bkr *badKeyRevoker) findUnrevoked(unchecked uncheckedBlockedKey) ([]unrevo
 			var unrevokedCert unrevokedCertificate
 			err = bkr.dbMap.SelectOne(
 				&unrevokedCert,
-				`SELECT cs.id, cs.serial, c.registrationID, c.der
+				`SELECT cs.id, cs.serial, c.registrationID, c.der, cs.status, cs.isExpired
 				FROM certificateStatus AS cs
-				JOIN certificates AS c
+				JOIN precertificates AS c
 				ON cs.serial = c.serial
-				WHERE cs.serial = ? AND cs.isExpired = false AND cs.status != ?`,
+				WHERE cs.serial = ?`,
 				serial.CertSerial,
-				string(core.StatusRevoked),
 			)
 			if err != nil {
-				if db.IsNoRows(err) {
-					continue
-				}
 				return nil, err
+			}
+			if unrevokedCert.IsExpired || unrevokedCert.Status == core.OCSPStatusRevoked {
+				continue
 			}
 			unrevokedCerts = append(unrevokedCerts, unrevokedCert)
 		}
