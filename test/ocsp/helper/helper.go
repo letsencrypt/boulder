@@ -250,10 +250,8 @@ func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, expectStatu
 	if resp.Status != expectStatus {
 		return nil, fmt.Errorf("wrong CertStatus %d, expected %d", resp.Status, expectStatus)
 	}
-	if isFlagSet("expect-reason") {
-		if resp.RevocationReason != *expectReason {
-			return nil, fmt.Errorf("wrong RevocationReason %d, expected %d", resp.RevocationReason, *expectReason)
-		}
+	if resp.RevocationReason != *expectReason && isFlagSet("expect-reason") {
+		return nil, fmt.Errorf("wrong RevocationReason %d, expected %d", resp.RevocationReason, *expectReason)
 	}
 	timeTilExpiry := time.Until(resp.NextUpdate)
 	tooSoonDuration := time.Duration(*tooSoon) * time.Hour
