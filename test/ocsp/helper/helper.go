@@ -22,7 +22,7 @@ var hostOverride = flag.String("host", "", "Host header to override in HTTP requ
 var tooSoon = flag.Int("too-soon", 76, "If NextUpdate is fewer than this many hours in future, warn.")
 var ignoreExpiredCerts = flag.Bool("ignore-expired-certs", false, "If a cert is expired, don't bother requesting OCSP.")
 var expectStatus = flag.Int("expect-status", ocsp.Good, "Expect response to have this numeric status (0=Good, 1=Revoked, 2=Unknown)")
-var expectReason = flag.Int("expect-reason", ocsp.KeyCompromise, "Expect response to have this numeric revocation reason (0=Unspecified, 1=KeyCompromise, etc.)")
+var expectReason = flag.Int("expect-reason", ocsp.Unspecified, "Expect response to have this numeric revocation reason (0=Unspecified, 1=KeyCompromise, etc.)")
 
 // isFlagSet determines if the named flag has been set on the command line.
 // This is especially useful for flags whose values are builtin types and for
