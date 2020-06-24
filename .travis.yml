@@ -19,6 +19,7 @@ services:
 branches:
   only:
     - master
+    - main
     - /^test-.*$/
 
 env:
