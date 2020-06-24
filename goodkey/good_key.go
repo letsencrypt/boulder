@@ -36,7 +36,7 @@ var smallPrimeInts = []int64{
 // singleton defines the object of a Singleton pattern
 var (
 	smallPrimesSingleton sync.Once
-	smallPrimes          []*big.Int
+	smallPrimesProduct   *big.Int
 )
 
 // BlockedKeyCheckFunc is used to pass in the sa.BlockedKey method to KeyPolicy,
@@ -316,20 +316,26 @@ func (policy *KeyPolicy) goodKeyRSA(key *rsa.PublicKey) (err error) {
 //
 // Short circuits; execution time is dependent on i. Do not use this on secret
 // values.
+//
+// Rather than checking each prime individually (invoking Mod on each),
+// multiply the primes together and let GCD do our work for us: if the
+// GCD between <key> and <product of primes> is not one, we know we have
+// a bad key. This is substantially faster than checking each prime
+// individually.
 func checkSmallPrimes(i *big.Int) bool {
 	smallPrimesSingleton.Do(func() {
+		smallPrimesProduct = big.NewInt(1)
 		for _, prime := range smallPrimeInts {
-			smallPrimes = append(smallPrimes, big.NewInt(prime))
+			smallPrimesProduct.Mul(smallPrimesProduct, big.NewInt(prime))
 		}
 	})
 
-	for _, prime := range smallPrimes {
-		var result big.Int
-		result.Mod(i, prime)
-		if result.Sign() == 0 {
-			return true
-		}
-	}
+	// When the GCD is 1, i and smallPrimesProduct are coprime, meaning they
+	// share no common factors. When the GCD is not one, it is the product of
+	// all common factors, meaning we've identified at least one small prime
+	// which invalidates i as a valid key.
 
-	return false
+	var result big.Int
+	result.GCD(nil, nil, i, smallPrimesProduct)
+	return result.Cmp(big.NewInt(1)) != 0
 }
