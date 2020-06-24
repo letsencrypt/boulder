@@ -13,7 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestGenerateCRL(t *testing.T) {
+func TestGenerateCRLTimeBounds(t *testing.T) {
 	_, err := generateCRL(nil, nil, time.Time{}.Add(time.Hour), time.Time{}, 1, nil)
 	test.AssertError(t, err, "generateCRL did not fail")
 	test.AssertEquals(t, err.Error(), "thisUpdate must be before nextUpdate")
@@ -31,7 +31,9 @@ func TestGenerateCRL(t *testing.T) {
 	}, time.Time{}.Add(time.Hour), time.Time{}.Add(time.Hour*3), 1, nil)
 	test.AssertError(t, err, "generateCRL did not fail")
 	test.AssertEquals(t, err.Error(), "nextUpdate is after issuing certificate's notAfter")
+}
 
+func TestGenerateCRL(t *testing.T) {
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
 

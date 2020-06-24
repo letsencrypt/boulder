@@ -248,7 +248,7 @@ This config generates an ECDSA P-384 key in the HSM with the object label `inter
 Example:
 
 ```yaml
-ceremony-type: intermediate
+ceremony-type: ocsp-response
 pkcs11:
     module: /usr/lib/opensc-pkcs11.so
     signing-key-slot: 0
@@ -286,7 +286,7 @@ This config generates a OCSP response signed by a key in the HSM, identified by 
     | Field | Description |
     | --- | --- |
     | `crl-path` | Path to store signed PEM CRL. |
-- `crl-profile`: object containing profile for the OCSP response.
+- `crl-profile`: object containing profile for the CRL.
     | Field | Description |
     | --- | --- |
     | `this-update` | Specifies the CRL thisUpdate date, in the format `2006-01-02 15:04:05`. The time will be interpreted as UTC. |
@@ -297,7 +297,7 @@ This config generates a OCSP response signed by a key in the HSM, identified by 
 Example:
 
 ```yaml
-ceremony-type: intermediate
+ceremony-type: crl
 pkcs11:
     module: /usr/lib/opensc-pkcs11.so
     signing-key-slot: 0
@@ -307,7 +307,7 @@ inputs:
     issuer-certificate-path: /home/user/root-cert.pem
 outputs:
     crl-path: /home/user/crl.pem
-ocsp-profile:
+crl-profile:
     this-update: 2020-01-01 12:00:00
     next-update: 2021-01-01 12:00:00
     number: 80
