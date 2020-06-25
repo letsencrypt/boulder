@@ -44,12 +44,10 @@ const (
 	directoryPath = "/directory"
 	newAcctPath   = "/acme/new-acct"
 	acctPath      = "/acme/acct/"
-	authzPath     = "/acme/authz/"
 	// For user-facing URLs we use a "v3" suffix to avoid potential confusiong
 	// regarding ACMEv2.
 	authzv2Path       = "/acme/authz-v3/"
 	challengev2Path   = "/acme/chall-v3/"
-	challengePath     = "/acme/challenge/"
 	certPath          = "/acme/cert/"
 	revokeCertPath    = "/acme/revoke-cert"
 	issuerPath        = "/acme/issuer-cert"
