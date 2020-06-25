@@ -149,24 +149,16 @@ func newUpdater(
 }
 
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
-	var statuses []core.CertificateStatus
 	now := updater.clk.Now()
 	maxAgeCutoff := now.Add(-updater.ocspStaleMaxAge)
 
-	certStatusFields := "cs.serial, cs.status, cs.revokedDate, cs.notAfter, cs.revokedReason"
-	if features.Enabled(features.StoreIssuerInfo) {
-		certStatusFields += ", cs.issuerID"
-	}
-	_, err := updater.dbMap.Select(
-		&statuses,
-		fmt.Sprintf(`SELECT
-				%s
-				FROM certificateStatus AS cs
-				WHERE cs.ocspLastUpdated > :maxAge
+	statuses, err := sa.SelectCertificateStatuses(
+		updater.dbMap,
+		`WHERE cs.ocspLastUpdated > :maxAge
 				AND cs.ocspLastUpdated < :lastUpdate
 				AND NOT cs.isExpired
 				ORDER BY cs.ocspLastUpdated ASC
-				LIMIT :limit`, certStatusFields),
+				LIMIT :limit`,
 		map[string]interface{}{
 			"lastUpdate": oldestLastUpdatedTime,
 			"maxAge":     maxAgeCutoff,
