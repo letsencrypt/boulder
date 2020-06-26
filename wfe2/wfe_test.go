@@ -909,7 +909,7 @@ func TestNonceEndpoint(t *testing.T) {
 			// directive in responses for the newNonce resource, in order to prevent
 			// caching of this resource.
 			cacheControl := responseWriter.Header().Get("Cache-Control")
-			test.AssertEquals(t, cacheControl, "private, max-age=0, no-store")
+			test.AssertEquals(t, cacheControl, "no-store")
 		})
 	}
 }

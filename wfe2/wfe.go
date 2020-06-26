@@ -525,7 +525,7 @@ func (wfe *WebFrontEndImpl) Nonce(
 	// The ACME specification says the server MUST include a Cache-Control header
 	// field with the "no-store" directive in responses for the newNonce resource,
 	// in order to prevent caching of this resource.
-	response.Header().Set("Cache-Control", "private, max-age=0, no-store")
+	response.Header().Set("Cache-Control", "no-store")
 }
 
 // sendError wraps web.SendError
