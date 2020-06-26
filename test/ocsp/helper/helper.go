@@ -176,12 +176,12 @@ func ReqDER(der []byte, config Config) (*ocsp.Response, error) {
 		return nil, fmt.Errorf("creating OCSP request: %s", err)
 	}
 
-	ocspURL, err := getOCSPURL(cert, config)
+	ocspURL, err := getOCSPURL(cert, config.urlOverride)
 	if err != nil {
 		return nil, err
 	}
 
-	httpResp, err := sendHTTPRequest(req, ocspURL, config)
+	httpResp, err := sendHTTPRequest(req, ocspURL, config.method, config.hostOverride)
 	if err != nil {
 		return nil, err
 	}
@@ -205,27 +205,27 @@ func ReqDER(der []byte, config Config) (*ocsp.Response, error) {
 	return parseAndPrint(respBytes, cert, issuer, config)
 }
 
-func sendHTTPRequest(req []byte, ocspURL *url.URL, config Config) (*http.Response, error) {
+func sendHTTPRequest(req []byte, ocspURL *url.URL, method string, host string) (*http.Response, error) {
 	encodedReq := base64.StdEncoding.EncodeToString(req)
 	var httpRequest *http.Request
 	var err error
-	if config.method == "GET" {
+	if method == "GET" {
 		ocspURL.Path = encodedReq
 		fmt.Printf("Fetching %s\n", ocspURL.String())
 		httpRequest, err = http.NewRequest("GET", ocspURL.String(), http.NoBody)
-	} else if config.method == "POST" {
+	} else if method == "POST" {
 		fmt.Printf("POSTing request, reproduce with: curl -i --data-binary @- %s < <(base64 -d <<<%s)\n",
 			ocspURL, encodedReq)
 		httpRequest, err = http.NewRequest("POST", ocspURL.String(), bytes.NewBuffer(req))
 	} else {
-		return nil, fmt.Errorf("invalid method %s, expected GET or POST", config.method)
+		return nil, fmt.Errorf("invalid method %s, expected GET or POST", method)
 	}
 	if err != nil {
 		return nil, err
 	}
 	httpRequest.Header.Add("Content-Type", "application/ocsp-request")
-	if config.hostOverride != "" {
-		httpRequest.Host = config.hostOverride
+	if host != "" {
+		httpRequest.Host = host
 	}
 	client := http.Client{
 		Timeout: 5 * time.Second,
@@ -234,10 +234,10 @@ func sendHTTPRequest(req []byte, ocspURL *url.URL, config Config) (*http.Respons
 	return client.Do(httpRequest)
 }
 
-func getOCSPURL(cert *x509.Certificate, config Config) (*url.URL, error) {
+func getOCSPURL(cert *x509.Certificate, urlOverride string) (*url.URL, error) {
 	var ocspServer string
-	if config.urlOverride != "" {
-		ocspServer = config.urlOverride
+	if urlOverride != "" {
+		ocspServer = urlOverride
 	} else if len(cert.OCSPServer) > 0 {
 		ocspServer = cert.OCSPServer[0]
 	} else {
