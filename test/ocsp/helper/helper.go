@@ -58,6 +58,15 @@ var isConfigPopulated bool = false
 func ConfigFromFlags() Config {
 	if !isConfigPopulated {
 		flag.Parse()
+		configFromFlags = Config{
+			method:             *method,
+			urlOverride:        *urlOverride,
+			hostOverride:       *hostOverride,
+			tooSoon:            *tooSoon,
+			ignoreExpiredCerts: *ignoreExpiredCerts,
+			expectStatus:       *expectStatus,
+			expectReason:       *expectReason,
+		}
 		isConfigPopulated = true
 	}
 	ret := configFromFlags
