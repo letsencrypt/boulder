@@ -325,11 +325,12 @@ run `go mod vendor && git add vendor/` to save a copy in the vendor folder.
 
 When vendorizing dependencies, it's important to make sure tests pass on the
 version you are vendorizing. Currently we enforce this by requiring that pull
-requests containing a dependency update include a comment indicating that you
-ran the tests and that they succeeded, preferably with the command line you
-run them with. Note that you may have to get a separate checkout of the
-dependency (using `go get` outside of the boulder repository) in order to run
-its tests, as some vendored modules do not bring their tests with them.
+requests containing a dependency update to any version other than a tagged
+release include a comment indicating that you ran the tests and that they
+succeeded, preferably with the command line you run them with. Note that you
+may have to get a separate checkout of the dependency (using `go get` outside
+of the boulder repository) in order to run its tests, as some vendored
+modules do not bring their tests with them.
 
 ## Updating Dependencies
 
