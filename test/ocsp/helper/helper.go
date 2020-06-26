@@ -292,25 +292,27 @@ func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config Conf
 	if err != nil {
 		return nil, fmt.Errorf("parsing response: %s", err)
 	}
+
+	var errs []error
 	if config.expectStatus != -1 && resp.Status != config.expectStatus {
-		return nil, fmt.Errorf("wrong CertStatus %d, expected %d", resp.Status, config.expectStatus)
+		errs = append(errs, fmt.Errorf("wrong CertStatus %d, expected %d", resp.Status, config.expectStatus))
 	}
 	if config.expectReason != -1 && resp.RevocationReason != config.expectReason {
-		return nil, fmt.Errorf("wrong RevocationReason %d, expected %d", resp.RevocationReason, config.expectReason)
+		errs = append(errs, fmt.Errorf("wrong RevocationReason %d, expected %d", resp.RevocationReason, config.expectReason))
 	}
 	timeTilExpiry := time.Until(resp.NextUpdate)
 	tooSoonDuration := time.Duration(config.tooSoon) * time.Hour
 	if timeTilExpiry < tooSoonDuration {
-		return nil, fmt.Errorf("NextUpdate is too soon: %s", timeTilExpiry)
+		errs = append(errs, fmt.Errorf("NextUpdate is too soon: %s", timeTilExpiry))
 	}
 
 	err = checkSignerTimes(resp, issuer)
 	if err != nil {
-		return nil, fmt.Errorf("checking signature on delegated signer: %s", err)
+		errs = append(errs, fmt.Errorf("checking signature on delegated signer: %s", err))
 	}
 
 	fmt.Printf("\n")
-	fmt.Printf("Good response:\n")
+	fmt.Printf("Response:\n")
 	fmt.Printf("  CertStatus %d\n", resp.Status)
 	fmt.Printf("  SerialNumber %036x\n", resp.SerialNumber)
 	fmt.Printf("  ProducedAt %s\n", resp.ProducedAt)
@@ -323,11 +325,26 @@ func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config Conf
 	if resp.Certificate == nil {
 		fmt.Printf("  Certificate: nil\n")
 	} else {
-		fmt.Print("  Certificate:\n")
+		fmt.Printf("  Certificate:\n")
 		fmt.Printf("    Subject: %s\n", resp.Certificate.Subject)
 		fmt.Printf("    Issuer: %s\n", resp.Certificate.Issuer)
 		fmt.Printf("    NotBefore: %s\n", resp.Certificate.NotBefore)
 		fmt.Printf("    NotAfter: %s\n", resp.Certificate.NotAfter)
 	}
+
+	if errs != nil {
+		fmt.Printf("Errors:\n")
+		var err error
+		for _, e := range errs {
+			if err == nil {
+				err = e
+			} else {
+				err = fmt.Errorf("%w; %v", err, e)
+			}
+			fmt.Printf("  %v\n", e.Error())
+		}
+		return nil, err
+	}
+	fmt.Printf("No errors found.\n")
 	return resp, nil
 }
