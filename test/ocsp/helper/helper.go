@@ -48,7 +48,12 @@ func init() {
 	flag.BoolVar(&DefaultConfig.ignoreExpiredCerts, "ignore-expired-certs", false, "If a cert is expired, don't bother requesting OCSP.")
 	flag.IntVar(&DefaultConfig.expectStatus, "expect-status", -1, "Expect response to have this numeric status (0=Good, 1=Revoked, 2=Unknown)")
 	flag.IntVar(&DefaultConfig.expectReason, "expect-reason", -1, "Expect response to have this numeric revocation reason (0=Unspecified, 1=KeyCompromise, etc.)")
-	flag.Parse()
+	// Note that this init() does *not* call flag.Parse(). If a binary imports
+	// multiple libraries which all declare flags, all of those declarations
+	// need to happen before any flags are parsed (or else early parses will
+	// fail to recognize supplied flags that haven't been declared yet). Make
+	// sure your top-level main package parses flags when all libraries have
+	// been loaded.
 }
 
 func getIssuer(cert *x509.Certificate) (*x509.Certificate, error) {

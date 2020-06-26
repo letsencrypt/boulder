@@ -123,7 +123,7 @@ func TestPrecertificateRevocation(t *testing.T) {
 
 			// To start with the precertificate should have a Good OCSP response.
 			ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
-			_, err = ocsp_helper.ReqDER(cert.Raw, oscpConfig)
+			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			test.AssertNotError(t, err, "requesting OCSP for precert")
 
 			// Revoke the precertificate using the specified key and client
@@ -136,7 +136,7 @@ func TestPrecertificateRevocation(t *testing.T) {
 
 			// Check the OCSP response for the precertificate again. It should now be
 			// revoked.
-			ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked)
+			ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked)
 			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			test.AssertNotError(t, err, "requesting OCSP for revoked precert")
 		})
