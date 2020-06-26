@@ -16,9 +16,19 @@ import (
 	"golang.org/x/crypto/ocsp"
 )
 
-// CheckOCSPConfig contains fields which control various behaviors of the
+var (
+	method             = flag.String("method", "GET", "Method to use for fetching OCSP")
+	urlOverride        = flag.String("url", "", "URL of OCSP responder to override")
+	hostOverride       = flag.String("host", "", "Host header to override in HTTP request")
+	tooSoon            = flag.Int("too-soon", 76, "If NextUpdate is fewer than this many hours in future, warn.")
+	ignoreExpiredCerts = flag.Bool("ignore-expired-certs", false, "If a cert is expired, don't bother requesting OCSP.")
+	expectStatus       = flag.Int("expect-status", -1, "Expect response to have this numeric status (0=Good, 1=Revoked, 2=Unknown)")
+	expectReason       = flag.Int("expect-reason", -1, "Expect response to have this numeric revocation reason (0=Unspecified, 1=KeyCompromise, etc.)")
+)
+
+// Config contains fields which control various behaviors of the
 // checker's behavior.
-type CheckOCSPConfig struct {
+type Config struct {
 	method             string
 	urlOverride        string
 	hostOverride       string
@@ -28,32 +38,38 @@ type CheckOCSPConfig struct {
 	expectReason       int
 }
 
-// WithExpectStatus returns a new CheckOCSPConfig with the given expectStatus,
-// and all other fields the same as the receiver.
-func (template CheckOCSPConfig) WithExpectStatus(status int) CheckOCSPConfig {
-	ret := template
-	ret.expectStatus = status
+// DefaultConfig is a Config populated with the same defaults as if command-line
+// flags had been parsed, but none had been passed.
+var DefaultConfig = Config{
+	method:             *method,
+	urlOverride:        *urlOverride,
+	hostOverride:       *hostOverride,
+	tooSoon:            *tooSoon,
+	ignoreExpiredCerts: *ignoreExpiredCerts,
+	expectStatus:       *expectStatus,
+	expectReason:       *expectReason,
+}
+
+var configFromFlags Config
+var isConfigPopulated bool = false
+
+// ConfigFromFlags returns a Config whose values are populated from
+// any command line flags passed by the user, or default values if not passed.
+func ConfigFromFlags() Config {
+	if !isConfigPopulated {
+		flag.Parse()
+		isConfigPopulated = true
+	}
+	ret := configFromFlags
 	return ret
 }
 
-// DefaultConfig is the default configuration, as set by the command line flags
-// (or their default values, when not provided).
-var DefaultConfig CheckOCSPConfig
-
-func init() {
-	flag.StringVar(&DefaultConfig.method, "method", "GET", "Method to use for fetching OCSP")
-	flag.StringVar(&DefaultConfig.urlOverride, "url", "", "URL of OCSP responder to override")
-	flag.StringVar(&DefaultConfig.hostOverride, "host", "", "Host header to override in HTTP request")
-	flag.IntVar(&DefaultConfig.tooSoon, "too-soon", 76, "If NextUpdate is fewer than this many hours in future, warn.")
-	flag.BoolVar(&DefaultConfig.ignoreExpiredCerts, "ignore-expired-certs", false, "If a cert is expired, don't bother requesting OCSP.")
-	flag.IntVar(&DefaultConfig.expectStatus, "expect-status", -1, "Expect response to have this numeric status (0=Good, 1=Revoked, 2=Unknown)")
-	flag.IntVar(&DefaultConfig.expectReason, "expect-reason", -1, "Expect response to have this numeric revocation reason (0=Unspecified, 1=KeyCompromise, etc.)")
-	// Note that this init() does *not* call flag.Parse(). If a binary imports
-	// multiple libraries which all declare flags, all of those declarations
-	// need to happen before any flags are parsed (or else early parses will
-	// fail to recognize supplied flags that haven't been declared yet). Make
-	// sure your top-level main package parses flags when all libraries have
-	// been loaded.
+// WithExpectStatus returns a new Config with the given expectStatus,
+// and all other fields the same as the receiver.
+func (template Config) WithExpectStatus(status int) Config {
+	ret := template
+	ret.expectStatus = status
+	return ret
 }
 
 func getIssuer(cert *x509.Certificate) (*x509.Certificate, error) {
@@ -125,15 +141,9 @@ func parseCMS(body []byte) (*x509.Certificate, error) {
 	return cert, nil
 }
 
-// Req makes an OCSP request using default configuration for the PEM certificate
-// in fileName, and returns the response.
-func Req(fileName string) (*ocsp.Response, error) {
-	return ReqWithConfig(fileName, DefaultConfig)
-}
-
-// ReqWithConfig makes an OCSP request using the given config for the PEM
-// certificate in fileName, and returns the response.
-func ReqWithConfig(fileName string, config CheckOCSPConfig) (*ocsp.Response, error) {
+// Req makes an OCSP request using the given config for the PEM certificate in
+// fileName, and returns the response.
+func Req(fileName string, config Config) (*ocsp.Response, error) {
 	contents, err := ioutil.ReadFile(fileName)
 	if err != nil {
 		return nil, err
@@ -143,7 +153,7 @@ func ReqWithConfig(fileName string, config CheckOCSPConfig) (*ocsp.Response, err
 
 // ReqDER makes an OCSP request using the given config for the given DER-encoded
 // certificate, and returns the response.
-func ReqDER(der []byte, config CheckOCSPConfig) (*ocsp.Response, error) {
+func ReqDER(der []byte, config Config) (*ocsp.Response, error) {
 	cert, err := parse(der)
 	if err != nil {
 		return nil, fmt.Errorf("parsing certificate: %s", err)
@@ -195,7 +205,7 @@ func ReqDER(der []byte, config CheckOCSPConfig) (*ocsp.Response, error) {
 	return parseAndPrint(respBytes, cert, issuer, config)
 }
 
-func sendHTTPRequest(req []byte, ocspURL *url.URL, config CheckOCSPConfig) (*http.Response, error) {
+func sendHTTPRequest(req []byte, ocspURL *url.URL, config Config) (*http.Response, error) {
 	encodedReq := base64.StdEncoding.EncodeToString(req)
 	var httpRequest *http.Request
 	var err error
@@ -224,7 +234,7 @@ func sendHTTPRequest(req []byte, ocspURL *url.URL, config CheckOCSPConfig) (*htt
 	return client.Do(httpRequest)
 }
 
-func getOCSPURL(cert *x509.Certificate, config CheckOCSPConfig) (*url.URL, error) {
+func getOCSPURL(cert *x509.Certificate, config Config) (*url.URL, error) {
 	var ocspServer string
 	if config.urlOverride != "" {
 		ocspServer = config.urlOverride
@@ -270,7 +280,7 @@ func checkSignerTimes(resp *ocsp.Response, issuer *x509.Certificate) error {
 	return nil
 }
 
-func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config CheckOCSPConfig) (*ocsp.Response, error) {
+func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config Config) (*ocsp.Response, error) {
 	fmt.Printf("\nDecoding body: %s\n", base64.StdEncoding.EncodeToString(respBytes))
 	resp, err := ocsp.ParseResponseForCert(respBytes, cert, issuer)
 	if err != nil {
