@@ -24,14 +24,14 @@
       ]
     },
     "features": {
-      "DeleteUnusedChallenges": true,
       "StoreIssuerInfo": true,
-      "WriteIssuedNamesPrecert": true
+      "StoreKeyHashes": true,
+      "StoreRevokerInfo": true
     }
   },
 
   "syslog": {
     "stdoutlevel": 6,
-    "sysloglevel": 4
+    "sysloglevel": 6
   }
 }

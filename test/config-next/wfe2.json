@@ -40,15 +40,17 @@
       }
     },
     "certificateChains": {
-      "http://boulder:4430/acme/issuer-cert": [ "test/test-ca2.pem" ],
-      "http://127.0.0.1:4000/acme/issuer-cert": [ "test/test-ca2.pem" ]
+      "http://boulder:4430/acme/issuer-cert": [ "/tmp/intermediate-cert-rsa-a.pem" ],
+      "http://127.0.0.1:4000/acme/issuer-cert": [ "/tmp/intermediate-cert-rsa-a.pem" ]
+    },
+    "alternateCertificateChains": {
+      "http://boulder:4430/acme/issuer-cert": [ "/tmp/intermediate-cert-rsa-a.pem" ],
+      "http://127.0.0.1:4000/acme/issuer-cert": [ "/tmp/intermediate-cert-rsa-a.pem" ]
     },
     "staleTimeout": "5m",
     "authorizationLifetimeDays": 30,
     "pendingAuthorizationLifetimeDays": 7,
     "features": {
-      "HeadNonceStatusOK": true,
-      "RemoveWFE2AccountID": true,
       "MandatoryPOSTAsGET": true,
       "PrecertificateRevocation": true,
       "StripDefaultSchemePort": true
@@ -57,10 +59,10 @@
 
   "syslog": {
     "stdoutlevel": 4,
-    "sysloglevel": 4
+    "sysloglevel": 6
   },
 
   "common": {
-    "issuerCert": "test/test-ca2.pem"
+    "issuerCert": "/tmp/intermediate-cert-rsa-a.pem"
   }
 }

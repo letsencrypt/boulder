@@ -31,7 +31,7 @@ func TestServerTransportCredentials(t *testing.T) {
 
 	// NewServerCredentials with a nil serverTLSConfig should return an error
 	_, err = NewServerCredentials(nil, acceptedSANs)
-	test.AssertEquals(t, err, NilServerConfigErr)
+	test.AssertEquals(t, err, ErrNilServerConfig)
 
 	// A creds with a empty acceptedSANs list should consider any peer valid
 	wrappedCreds, err := NewServerCredentials(servTLSConfig, nil)
@@ -49,7 +49,7 @@ func TestServerTransportCredentials(t *testing.T) {
 	// A creds given an empty TLS ConnectionState to verify should return an error
 	bcreds = &serverTransportCredentials{servTLSConfig, acceptedSANs}
 	err = bcreds.validateClient(emptyState)
-	test.AssertEquals(t, err, EmptyPeerCertsErr)
+	test.AssertEquals(t, err, ErrEmptyPeerCerts)
 
 	// A creds should reject peers that don't have a leaf certificate with
 	// a SAN on the accepted list.
@@ -57,9 +57,9 @@ func TestServerTransportCredentials(t *testing.T) {
 		PeerCertificates: []*x509.Certificate{badCert},
 	}
 	err = bcreds.validateClient(wrongState)
-	_, ok := err.(SANNotAcceptedErr)
+	_, ok := err.(ErrSANNotAccepted)
 	if !ok {
-		t.Errorf("Expected error of type SANNotAcceptedErr, got %T: %s", err, err)
+		t.Errorf("Expected error of type ErrSANNotAccepted, got %T: %s", err, err)
 	}
 
 	// A creds should accept peers that have a leaf certificate with a SAN

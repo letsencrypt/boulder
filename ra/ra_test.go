@@ -1,6 +1,7 @@
 package ra
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -15,7 +16,6 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net"
-	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -29,6 +29,7 @@ import (
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	ctpkix "github.com/google/certificate-transparency-go/x509/pkix"
 	"github.com/jmhodges/clock"
+	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -55,6 +56,7 @@ import (
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
+	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	jose "gopkg.in/square/go-jose.v2"
 )
@@ -199,23 +201,10 @@ var (
 
 	ExampleCSR = &x509.CertificateRequest{}
 
-	// These values are populated by the tests as we go
-	url0, _      = url.Parse("http://acme.invalid/authz/60p2Dc_XmUB2UUJBV4wYkF7BJbPD9KlDnUL3SmFMuTE?challenge=0")
-	url1, _      = url.Parse("http://acme.invalid/authz/60p2Dc_XmUB2UUJBV4wYkF7BJbPD9KlDnUL3SmFMuTE?challenge=0")
 	Registration = core.Registration{}
 
 	log = blog.UseMock()
 )
-
-func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
-	keyAuthorization, err := ch.ExpectedKeyAuthorization(&AccountKeyA)
-	if err != nil {
-		return
-	}
-
-	out = core.Challenge{ProvidedKeyAuthorization: keyAuthorization}
-	return
-}
 
 var testKeyPolicy = goodkey.KeyPolicy{
 	AllowRSA:           true,
@@ -418,6 +407,9 @@ func TestValidateContacts(t *testing.T) {
 
 	err = ra.validateContacts(context.Background(), &[]string{"mailto:admin@[1.2.3.4]"})
 	test.AssertError(t, err, "Forbidden email")
+
+	err = ra.validateContacts(context.Background(), &[]string{"mailto:admin@a.com?no-reminder-emails"})
+	test.AssertError(t, err, "No hfields in email")
 
 	// The registrations.contact field is VARCHAR(191). 175 'a' characters plus
 	// the prefix "mailto:" and the suffix "@a.com" makes exactly 191 bytes of
@@ -1225,8 +1217,6 @@ func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
 	}
 
 	testcase()
-	_ = features.Set(map[string]bool{"ParallelCheckFailedValidation": true})
-	testcase()
 }
 
 func TestDomainsForRateLimiting(t *testing.T) {
@@ -1810,27 +1800,27 @@ func newMockSAWithRecentAndOlder(recent, older time.Time) *mockSAWithRecentAndOl
 	}
 	return &mockSAWithRecentAndOlder{
 		authzMap: map[string]*core.Authorization{
-			"recent.com": &core.Authorization{
+			"recent.com": {
 				Identifier: makeIdentifier("recent.com"),
 				Expires:    &recent,
 				Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 			},
-			"older.com": &core.Authorization{
+			"older.com": {
 				Identifier: makeIdentifier("older.com"),
 				Expires:    &older,
 				Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 			},
-			"older2.com": &core.Authorization{
+			"older2.com": {
 				Identifier: makeIdentifier("older2.com"),
 				Expires:    &older,
 				Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 			},
-			"wildcard.com": &core.Authorization{
+			"wildcard.com": {
 				Identifier: makeIdentifier("wildcard.com"),
 				Expires:    &older,
 				Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 			},
-			"*.wildcard.com": &core.Authorization{
+			"*.wildcard.com": {
 				Identifier: makeIdentifier("*.wildcard.com"),
 				Expires:    &older,
 				Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
@@ -1935,7 +1925,7 @@ func TestRecheckCAAEmpty(t *testing.T) {
 func makeHTTP01Authorization(domain string) *core.Authorization {
 	return &core.Authorization{
 		Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: domain},
-		Challenges: []core.Challenge{core.Challenge{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
+		Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 	}
 }
 
@@ -2301,7 +2291,7 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations(
 	ctx context.Context,
 	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
 	authzs := map[string]*core.Authorization{
-		"*.zombo.com": &core.Authorization{
+		"*.zombo.com": {
 			// A static fake ID we can check for in a unit test
 			ID:             "bad-bad-not-good",
 			Identifier:     identifier.DNSIdentifier("*.zombo.com"),
@@ -2310,18 +2300,18 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations(
 			Status: "valid",
 			Challenges: []core.Challenge{
 				// HTTP-01 challenge is valid
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeHTTP01, // The dreaded HTTP-01! X__X
 					Status: core.StatusValid,
 				},
 				// DNS-01 challenge is pending
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeDNS01,
 					Status: core.StatusPending,
 				},
 			},
 		},
-		"zombo.com": &core.Authorization{
+		"zombo.com": {
 			// A static fake ID we can check for in a unit test
 			ID:             "reused-valid-authz",
 			Identifier:     identifier.DNSIdentifier("zombo.com"),
@@ -2330,12 +2320,12 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations(
 			Status: "valid",
 			Challenges: []core.Challenge{
 				// HTTP-01 challenge is valid
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeHTTP01,
 					Status: core.StatusValid,
 				},
 				// DNS-01 challenge is pending
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeDNS01,
 					Status: core.StatusPending,
 				},
@@ -2349,7 +2339,7 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations2(
 	ctx context.Context,
 	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
 	authzs := map[string]*core.Authorization{
-		"*.zombo.com": &core.Authorization{
+		"*.zombo.com": {
 			// A static fake ID we can check for in a unit test
 			ID:             "1",
 			Identifier:     identifier.DNSIdentifier("*.zombo.com"),
@@ -2358,18 +2348,18 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations2(
 			Status: "valid",
 			Challenges: []core.Challenge{
 				// HTTP-01 challenge is valid
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeHTTP01, // The dreaded HTTP-01! X__X
 					Status: core.StatusValid,
 				},
 				// DNS-01 challenge is pending
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeDNS01,
 					Status: core.StatusPending,
 				},
 			},
 		},
-		"zombo.com": &core.Authorization{
+		"zombo.com": {
 			// A static fake ID we can check for in a unit test
 			ID:             "2",
 			Identifier:     identifier.DNSIdentifier("zombo.com"),
@@ -2378,12 +2368,12 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations2(
 			Status: "valid",
 			Challenges: []core.Challenge{
 				// HTTP-01 challenge is valid
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeHTTP01,
 					Status: core.StatusValid,
 				},
 				// DNS-01 challenge is pending
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeDNS01,
 					Status: core.StatusPending,
 				},
@@ -2652,7 +2642,7 @@ func (msa *mockSANearExpiredAuthz) GetAuthorizations(
 	ctx context.Context,
 	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
 	authzs := map[string]*core.Authorization{
-		"zombo.com": &core.Authorization{
+		"zombo.com": {
 			// A static fake ID we can check for in a unit test
 			ID:             "near-expired-authz",
 			Identifier:     identifier.DNSIdentifier("zombo.com"),
@@ -2660,7 +2650,7 @@ func (msa *mockSANearExpiredAuthz) GetAuthorizations(
 			Expires:        &msa.expiry,
 			Status:         "valid",
 			Challenges: []core.Challenge{
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeHTTP01,
 					Status: core.StatusValid,
 				},
@@ -2674,7 +2664,7 @@ func (msa *mockSANearExpiredAuthz) GetAuthorizations2(
 	ctx context.Context,
 	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
 	authzs := map[string]*core.Authorization{
-		"zombo.com": &core.Authorization{
+		"zombo.com": {
 			// A static fake ID we can check for in a unit test
 			ID:             "1",
 			Identifier:     identifier.DNSIdentifier("zombo.com"),
@@ -2682,7 +2672,7 @@ func (msa *mockSANearExpiredAuthz) GetAuthorizations2(
 			Expires:        &msa.expiry,
 			Status:         "valid",
 			Challenges: []core.Challenge{
-				core.Challenge{
+				{
 					Type:   core.ChallengeTypeHTTP01,
 					Status: core.StatusValid,
 				},
@@ -3374,29 +3364,6 @@ func TestUpdateMissingAuthorization(t *testing.T) {
 	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
 }
 
-var previousIssuanceRegId int64 = 98765
-var previousIssuanceDomain string = "example.com"
-
-// mockSAPreexistingCertificate acts as an SA that has an existing certificate
-// for "example.com".
-type mockSAPreexistingCertificate struct {
-	mocks.StorageAuthority
-}
-
-func (ms *mockSAPreexistingCertificate) PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (*sapb.Exists, error) {
-	t := true
-	f := false
-	if *req.RegID == previousIssuanceRegId &&
-		*req.Domain == previousIssuanceDomain {
-		return &sapb.Exists{Exists: &t}, nil
-	}
-	return &sapb.Exists{Exists: &f}, nil
-}
-
-func (ms *mockSAPreexistingCertificate) GetPendingAuthorization(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*core.Authorization, error) {
-	return nil, berrors.NotFoundError("no pending authorization found")
-}
-
 func TestValidChallengeStillGood(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -3421,7 +3388,7 @@ func TestPerformValidationBadChallengeType(t *testing.T) {
 	exp := fc.Now().Add(10 * time.Hour)
 	authz := core.Authorization{
 		Challenges: []core.Challenge{
-			core.Challenge{
+			{
 				Status: core.StatusValid,
 				Type:   core.ChallengeTypeHTTP01},
 		},
@@ -3558,18 +3525,6 @@ func (ca *mockCAFailCertForPrecert) IssuePrecertificate(_ context.Context, _ *ca
 func (ca *mockCAFailCertForPrecert) IssueCertificateForPrecertificate(
 	_ context.Context,
 	_ *capb.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
-	return core.Certificate{}, ca.err
-}
-
-// mockCAFailIssueCert is a mock CA that always returns an error from `IssueCertificate`
-type mockCAFailIssueCert struct {
-	mocks.MockCA
-	err error
-}
-
-func (ca *mockCAFailIssueCert) IssueCertificate(
-	_ context.Context,
-	_ *capb.IssueCertificateRequest) (core.Certificate, error) {
 	return core.Certificate{}, ca.err
 }
 
@@ -3725,13 +3680,6 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 	}
 }
 
-func TestValidateEmailError(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-	err := ra.validateEmail("(๑•́ ω •̀๑)")
-	test.AssertEquals(t, err.Error(), "\"(๑•́ ω •̀๑)\" is not a valid e-mail address")
-}
-
 type mockSAPreviousValidations struct {
 	mocks.StorageAuthority
 	existsDomain string
@@ -3804,96 +3752,6 @@ func TestNewOrderMaxNames(t *testing.T) {
 	test.AssertEquals(t, berrors.Is(err, berrors.Malformed), true)
 }
 
-var CAkeyPEM = `
------BEGIN RSA PRIVATE KEY-----
-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
------END RSA PRIVATE KEY-----
-`
-
-var CAcertPEM = `
------BEGIN CERTIFICATE-----
-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
------END CERTIFICATE-----
-`
-
 // CSR generated by Go:
 // * Random public key
 // * CN = not-example.com
@@ -3947,3 +3805,70 @@ xGUhoOJp0T++nz6R3TX7Rwk7KmG6xX3vWr/MFu5A3c8fvkqj987Vti5BeBezCXfs
 rA==
 -----END CERTIFICATE-----
 `)
+
+type mockSABlockedKey struct {
+	mocks.StorageAuthority
+
+	added *sapb.AddBlockedKeyRequest
+}
+
+func (msabk *mockSABlockedKey) AddBlockedKey(_ context.Context, req *sapb.AddBlockedKeyRequest) (*corepb.Empty, error) {
+	msabk.added = req
+	return &corepb.Empty{}, nil
+}
+
+type mockCAOCSP struct {
+	mocks.MockCA
+}
+
+func (mcao *mockCAOCSP) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
+	return &capb.OCSPResponse{Response: []byte{1, 2, 3}}, nil
+}
+
+type mockPurger struct{}
+
+func (mp *mockPurger) Purge(context.Context, *akamaipb.PurgeRequest, ...grpc.CallOption) (*corepb.Empty, error) {
+	return &corepb.Empty{}, nil
+}
+
+func TestRevocationAddBlockedKey(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	mockSA := mockSABlockedKey{}
+	ra.SA = &mockSA
+	ra.CA = &mockCAOCSP{}
+	ra.purger = &mockPurger{}
+
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
+	digest, err := core.KeyDigest(k.Public())
+	test.AssertNotError(t, err, "core.KeyDigest failed")
+
+	template := x509.Certificate{PublicKey: k, SerialNumber: big.NewInt(257)}
+	der, err := x509.CreateCertificate(rand.Reader, &template, &template, k.Public(), k)
+	test.AssertNotError(t, err, "x509.CreateCertificate failed")
+	cert, err := x509.ParseCertificate(der)
+	test.AssertNotError(t, err, "x509.ParseCertificate failed")
+	ra.issuer = cert
+
+	err = ra.RevokeCertificateWithReg(context.Background(), *cert, ocsp.Unspecified, 0)
+	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
+	test.Assert(t, mockSA.added == nil, "blocked key was added when reason was not keyCompromise")
+
+	err = ra.RevokeCertificateWithReg(context.Background(), *cert, ocsp.KeyCompromise, 0)
+	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
+	test.Assert(t, mockSA.added != nil, "blocked key was not added when reason was keyCompromise")
+	test.Assert(t, bytes.Equal(digest[:], mockSA.added.KeyHash), "key hash mismatch")
+	test.AssertEquals(t, *mockSA.added.Source, "API")
+	test.Assert(t, mockSA.added.Comment == nil, "Comment is not nil")
+
+	mockSA.added = nil
+	err = ra.AdministrativelyRevokeCertificate(context.Background(), *cert, ocsp.KeyCompromise, "root")
+	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
+	test.Assert(t, mockSA.added != nil, "blocked key was not added when reason was keyCompromise")
+	test.Assert(t, bytes.Equal(digest[:], mockSA.added.KeyHash), "key hash mismatch")
+	test.AssertEquals(t, *mockSA.added.Source, "admin-revoker")
+	test.Assert(t, mockSA.added.Comment != nil, "Comment is nil")
+	test.AssertEquals(t, *mockSA.added.Comment, "revoked by root")
+}

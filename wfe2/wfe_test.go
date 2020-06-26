@@ -180,13 +180,6 @@ xxBoTncDuGtTpubGbzBrY5W1SlNm1gqu9oQa23WNViN2Rc4aIVm3
 -----END RSA PRIVATE KEY-----
 `
 
-	testE1KeyPublicJSON = `{
-    "kty":"EC",
-    "crv":"P-256",
-    "x":"FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao",
-    "y":"S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk"
-  }`
-
 	testE1KeyPrivatePEM = `
 -----BEGIN EC PRIVATE KEY-----
 MHcCAQEEIH+p32RUnqT/iICBEGKrLIWFcyButv0S0lU/BLPOyHn2oAoGCCqGSM49
@@ -281,24 +274,6 @@ func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, req *rap
 	return req.Order, nil
 }
 
-type mockPA struct{}
-
-func (pa *mockPA) ChallengesFor(identifier identifier.ACMEIdentifier) (challenges []core.Challenge, err error) {
-	return
-}
-
-func (pa *mockPA) WillingToIssue(id identifier.ACMEIdentifier) error {
-	return nil
-}
-
-func (pa *mockPA) WillingToIssueWildcards(idents []identifier.ACMEIdentifier) error {
-	return nil
-}
-
-func (pa *mockPA) ValidDomaiN(_ string) error {
-	return nil
-}
-
 func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
 }
@@ -359,8 +334,14 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	test.AssertNotError(t, err, "Unable to read ../test/test-ca2.pem")
 	chainDER, _ := pem.Decode(chainPEM)
 
-	certChains := map[string][]byte{
-		"http://localhost:4000/acme/issuer-cert": append([]byte{'\n'}, chainPEM...),
+	chainCrossPEM, err := ioutil.ReadFile("../test/test-ca2-cross.pem")
+	test.AssertNotError(t, err, "Unable to read ../test/test-ca2-cross.pem")
+
+	certChains := map[string][][]byte{
+		"http://localhost:4000/acme/issuer-cert": {
+			append([]byte{'\n'}, chainPEM...),
+			append([]byte{'\n'}, chainCrossPEM...),
+		},
 	}
 	issuerCert, err := x509.ParseCertificate(chainDER.Bytes)
 	test.AssertNotError(t, err, "Unable to parse issuer cert")
@@ -388,7 +369,7 @@ func makePostRequestWithPath(path string, body string) *http.Request {
 		RemoteAddr: "1.1.1.1:7882",
 		Header: map[string][]string{
 			"Content-Length": {strconv.Itoa(len(body))},
-			"Content-Type":   []string{expectedJWSContentType},
+			"Content-Type":   {expectedJWSContentType},
 		},
 		Body: makeBody(body),
 		Host: "localhost",
@@ -418,7 +399,7 @@ func mustParseURL(s string) *url.URL {
 
 func sortHeader(s string) string {
 	a := strings.Split(s, ", ")
-	sort.Sort(sort.StringSlice(a))
+	sort.Strings(a)
 	return strings.Join(a, ", ")
 }
 
@@ -890,18 +871,13 @@ func TestNonceEndpoint(t *testing.T) {
 		URL:    mustParseURL(newNoncePath),
 	}
 
-	// Make two PAG requests. We can't use the same req twice because the nonce in
-	// the signature will be stale the 2nd time.
-	_, _, jwsBodyA := signRequestKeyID(t, 1, nil, fmt.Sprintf("http://localhost%s", newNoncePath), "", wfe.nonceService)
-	_, _, jwsBodyB := signRequestKeyID(t, 1, nil, fmt.Sprintf("http://localhost%s", newNoncePath), "", wfe.nonceService)
-	postAsGetReqA := makePostRequestWithPath(newNoncePath, jwsBodyA)
-	postAsGetReqB := makePostRequestWithPath(newNoncePath, jwsBodyB)
+	_, _, jwsBody := signRequestKeyID(t, 1, nil, fmt.Sprintf("http://localhost%s", newNoncePath), "", wfe.nonceService)
+	postAsGetReq := makePostRequestWithPath(newNoncePath, jwsBody)
 
 	testCases := []struct {
-		name              string
-		request           *http.Request
-		expectedStatus    int
-		headNonceStatusOK bool
+		name           string
+		request        *http.Request
+		expectedStatus int
 	}{
 		{
 			name:           "GET new-nonce request",
@@ -909,38 +885,19 @@ func TestNonceEndpoint(t *testing.T) {
 			expectedStatus: http.StatusNoContent,
 		},
 		{
-			name:           "HEAD new-nonce request (legacy status code)",
+			name:           "HEAD new-nonce request",
 			request:        headReq,
-			expectedStatus: http.StatusNoContent,
+			expectedStatus: http.StatusOK,
 		},
 		{
-			name:              "HEAD new-nonce request (ok status code)",
-			request:           headReq,
-			expectedStatus:    http.StatusOK,
-			headNonceStatusOK: true,
-		},
-		{
-			name:           "POST-as-GET new-nonce request (legacy status code)",
-			request:        postAsGetReqA,
-			expectedStatus: http.StatusNoContent,
-		},
-		{
-			name:              "POST-as-GET new-nonce request (ok status code)",
-			request:           postAsGetReqB,
-			expectedStatus:    http.StatusOK,
-			headNonceStatusOK: true,
+			name:           "POST-as-GET new-nonce request",
+			request:        postAsGetReq,
+			expectedStatus: http.StatusOK,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			if tc.headNonceStatusOK {
-				if err := features.Set(map[string]bool{"HeadNonceStatusOK": true}); err != nil {
-					t.Fatalf("Failed to enable HeadNonceStatusOK feature: %v", err)
-				}
-				defer features.Reset()
-			}
-
 			responseWriter := httptest.NewRecorder()
 			mux.ServeHTTP(responseWriter, tc.request)
 			// The response should have the expected HTTP status code
@@ -1328,7 +1285,18 @@ func TestNewECDSAAccount(t *testing.T) {
 	responseWriter = httptest.NewRecorder()
 	// POST, Valid JSON, Key already in use
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"id\": 3,\n  \"key\": {\n    \"kty\": \"EC\",\n    \"crv\": \"P-256\",\n    \"x\": \"FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao\",\n    \"y\": \"S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk\"\n  },\n  \"initialIp\": \"\",\n  \"createdAt\": \"0001-01-01T00:00:00Z\",\n  \"status\": \"\"\n}")
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
+		`{
+		"key": {
+			"kty": "EC",
+			"crv": "P-256",
+			"x": "FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao",
+			"y": "S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk"
+		},
+		"initialIp": "",
+		"createdAt": "0001-01-01T00:00:00Z",
+		"status": ""
+		}`)
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/3")
 	test.AssertEquals(t, responseWriter.Code, 200)
 
@@ -1422,7 +1390,7 @@ func TestNewAccount(t *testing.T) {
 				URL:    mustParseURL(newAcctPath),
 				Header: map[string][]string{
 					"Content-Length": {"0"},
-					"Content-Type":   []string{expectedJWSContentType},
+					"Content-Type":   {expectedJWSContentType},
 				},
 			},
 			`{"type":"` + probs.V2ErrorNS + `malformed","detail":"No body on POST","status":400}`,
@@ -1497,7 +1465,20 @@ func TestNewAccount(t *testing.T) {
 		t, responseWriter.Header().Get("Location"),
 		"http://localhost/acme/acct/1")
 	test.AssertEquals(t, responseWriter.Code, 200)
-	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"id\": 1,\n  \"key\": {\n    \"kty\": \"RSA\",\n    \"n\": \"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ\",\n    \"e\": \"AQAB\"\n  },\n  \"contact\": [\n    \"mailto:person@mail.com\"\n  ],\n  \"initialIp\": \"\",\n  \"createdAt\": \"0001-01-01T00:00:00Z\",\n  \"status\": \"valid\"\n}")
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
+		`{
+		"key": {
+			"kty": "RSA",
+			"n": "yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
+			"e": "AQAB"
+		},
+		"contact": [
+			"mailto:person@mail.com"
+		],
+		"initialIp": "",
+		"createdAt": "0001-01-01T00:00:00Z",
+		"status": "valid"
+	}`)
 }
 
 func TestNewAccountWhenAccountHasBeenDeactivated(t *testing.T) {
@@ -1525,10 +1506,6 @@ func TestNewAccountNoID(t *testing.T) {
 	test.Assert(t, ok, "Couldn't load test2 key")
 	path := newAcctPath
 	signedURL := fmt.Sprintf("http://localhost%s", path)
-
-	_ = features.Set(map[string]bool{
-		"RemoveWFE2AccountID": true,
-	})
 
 	payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
 	_, _, body := signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
@@ -1602,16 +1579,6 @@ func TestGetAuthorization(t *testing.T) {
 	}`)
 }
 
-// An SA mock that always returns a berrors.ServerInternal error for
-// GetAuthorization.
-type mockSAGetAuthzError struct {
-	core.StorageGetter
-}
-
-func (msa *mockSAGetAuthzError) GetAuthorization(ctx context.Context, id string) (core.Authorization, error) {
-	return core.Authorization{}, berrors.InternalServerError("oops")
-}
-
 // TestAuthorization500 tests that internal errors on GetAuthorization result in
 // a 500.
 func TestAuthorization500(t *testing.T) {
@@ -1647,7 +1614,7 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 	})
 
 	var authz core.Authorization
-	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	err := json.Unmarshal(responseWriter.Body.Bytes(), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 	test.AssertEquals(t, len(authz.Challenges), 1)
 	// The Challenge Error Type should have its prefix unmodified
@@ -1661,7 +1628,7 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 		URL:    mustParseURL("56"),
 	})
 
-	err = json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	err = json.Unmarshal(responseWriter.Body.Bytes(), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 	test.AssertEquals(t, len(authz.Challenges), 1)
 	// The Challenge Error Type should have had the probs.V2ErrorNS prefix added
@@ -1809,6 +1776,9 @@ func TestGetCertificate(t *testing.T) {
 	chainPemBytes, err := ioutil.ReadFile("../test/test-ca2.pem")
 	test.AssertNotError(t, err, "Error reading ../test/test-ca2.pem")
 
+	chainCrossPemBytes, err := ioutil.ReadFile("../test/test-ca2-cross.pem")
+	test.AssertNotError(t, err, "Error reading ../test/test-ca2-cross.pem")
+
 	noCache := "public, max-age=0, no-cache"
 	newSerial := "/acme/cert/0000000000000000000000000000000000b3"
 	newGetSerial := "/get/cert/0000000000000000000000000000000000b3"
@@ -1820,6 +1790,7 @@ func TestGetCertificate(t *testing.T) {
 		Request         *http.Request
 		ExpectedStatus  int
 		ExpectedHeaders map[string]string
+		ExpectedLink    string
 		ExpectedBody    string
 		ExpectedCert    []byte
 		AnyCert         bool
@@ -1832,6 +1803,7 @@ func TestGetCertificate(t *testing.T) {
 				"Content-Type": pkixContent,
 			},
 			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainPemBytes...)...),
+			ExpectedLink: fmt.Sprintf(`<http://localhost%s/1>;rel="alternate"`, goodSerial),
 		},
 		{
 			Name:           "Valid serial, POST-as-GET",
@@ -1908,6 +1880,38 @@ func TestGetCertificate(t *testing.T) {
 			},
 			AnyCert: true,
 		},
+		{
+			Name:           "Valid serial (explicit default chain)",
+			Request:        makeGet(goodSerial + "/0"),
+			ExpectedStatus: http.StatusOK,
+			ExpectedHeaders: map[string]string{
+				"Content-Type": pkixContent,
+			},
+			ExpectedLink: fmt.Sprintf(`<http://localhost%s/1>;rel="alternate"`, goodSerial),
+			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainPemBytes...)...),
+		},
+		{
+			Name:           "Valid serial (explicit alternate chain)",
+			Request:        makeGet(goodSerial + "/1"),
+			ExpectedStatus: http.StatusOK,
+			ExpectedHeaders: map[string]string{
+				"Content-Type": pkixContent,
+			},
+			ExpectedLink: fmt.Sprintf(`<http://localhost%s/0>;rel="alternate"`, goodSerial),
+			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainCrossPemBytes...)...),
+		},
+		{
+			Name:           "Valid serial (explicit non-existent alternate chain)",
+			Request:        makeGet(goodSerial + "/2"),
+			ExpectedStatus: http.StatusNotFound,
+			ExpectedBody:   `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Unknown issuance chain","status":404}`,
+		},
+		{
+			Name:           "Valid serial (explicit negative alternate chain)",
+			Request:        makeGet(goodSerial + "/-1"),
+			ExpectedStatus: http.StatusBadRequest,
+			ExpectedBody:   `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Chain ID must be a non-negative integer","status":400}`,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -1929,6 +1933,21 @@ func TestGetCertificate(t *testing.T) {
 			// If the test cases expects additional headers, check those too
 			for h, v := range tc.ExpectedHeaders {
 				test.AssertEquals(t, headers.Get(h), v)
+			}
+
+			if tc.ExpectedLink != "" {
+				found := false
+				links := headers["Link"]
+				for _, link := range links {
+					if link == tc.ExpectedLink {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected link '%s', but did not find it in (%v)",
+						tc.ExpectedLink, links)
+				}
 			}
 
 			if tc.AnyCert { // Certificate is randomly generated, don't match it
@@ -2091,7 +2110,6 @@ func TestDeactivateAccount(t *testing.T) {
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
-		  "id": 1,
 		  "key": {
 		    "kty": "RSA",
 		    "n": "yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
@@ -2113,7 +2131,6 @@ func TestDeactivateAccount(t *testing.T) {
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
-		  "id": 1,
 		  "key": {
 		    "kty": "RSA",
 		    "n": "yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
@@ -2187,7 +2204,7 @@ func TestNewOrder(t *testing.T) {
 				Method: "POST",
 				Header: map[string][]string{
 					"Content-Length": {"0"},
-					"Content-Type":   []string{expectedJWSContentType},
+					"Content-Type":   {expectedJWSContentType},
 				},
 			},
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No body on POST","status":400}`,
@@ -2239,7 +2256,6 @@ func TestNewOrder(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter.Body.Reset()
-			responseWriter.HeaderMap = http.Header{}
 
 			wfe.NewOrder(ctx, newRequestEvent(), responseWriter, tc.Request)
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedBody)
@@ -2253,7 +2269,6 @@ func TestNewOrder(t *testing.T) {
 
 	// Test that we log the "Created" field.
 	responseWriter.Body.Reset()
-	responseWriter.HeaderMap = http.Header{}
 	request := signAndPost(t, targetPath, signedURL, validOrderBody, 1, wfe.nonceService)
 	requestEvent := newRequestEvent()
 	wfe.NewOrder(ctx, requestEvent, responseWriter, request)
@@ -2293,7 +2308,7 @@ func TestFinalizeOrder(t *testing.T) {
 				Method:     "POST",
 				Header: map[string][]string{
 					"Content-Length": {"0"},
-					"Content-Type":   []string{expectedJWSContentType},
+					"Content-Type":   {expectedJWSContentType},
 				},
 			},
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No body on POST","status":400}`,
@@ -2378,7 +2393,6 @@ func TestFinalizeOrder(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter.Body.Reset()
-			responseWriter.HeaderMap = http.Header{}
 			wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, tc.Request)
 			for k, v := range tc.ExpectedHeaders {
 				got := responseWriter.Header().Get(k)
@@ -2397,7 +2411,6 @@ func TestFinalizeOrder(t *testing.T) {
 	// Go 1.10.4 to 1.11 changed the expected format)
 	badCSRReq := signAndPost(t, "1/8", "http://localhost/1/8", `{"CSR": "ABCD"}`, 1, wfe.nonceService)
 	responseWriter.Body.Reset()
-	responseWriter.HeaderMap = http.Header{}
 	wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, badCSRReq)
 	responseBody := responseWriter.Body.String()
 	test.AssertContains(t, responseBody, "Error parsing certificate request")
@@ -2469,7 +2482,6 @@ func TestKeyRollover(t *testing.T) {
 			Name:    "Valid key rollover request",
 			Payload: `{"oldKey":` + test1KeyPublicJSON + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
-		     "id": 1,
 		     "key": ` + string(newJWKJSON) + `,
 		     "contact": [
 		       "mailto:person@mail.com"
@@ -2496,6 +2508,26 @@ func TestKeyRollover(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestKeyRolloverMismatchedJWSURLs(t *testing.T) {
+	responseWriter := httptest.NewRecorder()
+	wfe, _ := setupWFE(t)
+
+	newKeyBytes, err := ioutil.ReadFile("../test/test-key-5.der")
+	test.AssertNotError(t, err, "Failed to read ../test/test-key-5.der")
+	newKeyPriv, err := x509.ParsePKCS1PrivateKey(newKeyBytes)
+	test.AssertNotError(t, err, "Failed parsing private key")
+
+	_, _, inner := signRequestEmbed(t, newKeyPriv, "http://localhost/wrong-url", "{}", wfe.nonceService)
+	_, _, outer := signRequestKeyID(t, 1, nil, "http://localhost/key-change", inner, wfe.nonceService)
+	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("key-change", outer))
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `
+		{
+			"type": "urn:ietf:params:acme:error:malformed",
+			"detail": "Outer JWS 'url' value \"http://localhost/key-change\" does not match inner JWS 'url' value \"http://localhost/wrong-url\"",
+			"status": 400
+		}`)
 }
 
 func TestGetOrder(t *testing.T) {
@@ -3185,17 +3217,9 @@ func TestPrepAccountForDisplay(t *testing.T) {
 	// Prep the account for display.
 	prepAccountForDisplay(acct)
 
-	// Without the RemoveWFE2AccountID feature flag we expect
-	// prepAccountForDisplay to leave the ID in place.
-	test.AssertEquals(t, acct.ID, int64(1987))
 	// The Agreement should always be cleared.
 	test.AssertEquals(t, acct.Agreement, "")
-
-	// Enable the feature flag and re-prep
-	_ = features.Set(map[string]bool{"RemoveWFE2AccountID": true})
-	prepAccountForDisplay(acct)
-
-	// The ID field should now be zeroed
+	// The ID field should be zeroed.
 	test.AssertEquals(t, acct.ID, int64(0))
 }
 
@@ -3275,4 +3299,20 @@ func TestGETAPIChallenge(t *testing.T) {
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tooFreshErr)
 		}
 	}
+}
+
+func TestGetAPIAndMandatoryPOSTAsGET(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
+		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
+			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]interface{}{}}
+	}
+	_ = features.Set(map[string]bool{"MandatoryPOSTAsGET": true})
+	defer features.Reset()
+
+	oldSerial := "0000000000000000000000000000000000b2"
+	req, event := makeGet(oldSerial, getCertPath)
+	resp := httptest.NewRecorder()
+	wfe.Certificate(context.Background(), event, resp, req)
+	test.AssertEquals(t, resp.Code, 200)
 }

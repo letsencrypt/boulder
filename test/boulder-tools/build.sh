@@ -2,87 +2,76 @@
 
 apt-get update
 
-# Install Go.
-url="https://dl.google.com/go/go${GO_VERSION_TO_INSTALL}.linux-amd64.tar.gz"
-wget -O go.tgz "$url"; \
-tar -C /usr/local -xzf go.tgz; \
-rm go.tgz;
-
 # Install system deps
 apt-get install -y --no-install-recommends \
-  libltdl-dev \
   mariadb-client-core-10.1 \
   rpm \
   ruby \
   ruby-dev \
   rsyslog \
-  softhsm \
   build-essential \
   cmake \
   libssl-dev \
-  libseccomp-dev \
   opensc \
   unzip \
-  python3-dev \
-  python3-venv \
   python3-pip \
   gcc \
-  libaugeas0 \
-  libssl-dev \
-  libffi-dev \
   ca-certificates \
-  openssl
+  openssl \
+  pkg-config \
+  libtool \
+  autoconf \
+  automake
 
-curl -L https://github.com/google/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip -o /tmp/protoc.zip
+curl -L https://github.com/google/protobuf/releases/download/v3.11.4/protoc-3.11.4-linux-x86_64.zip -o /tmp/protoc.zip
 unzip /tmp/protoc.zip -d /usr/local/protoc
 
-# Override default GOBIN and GOPATH
-export GOBIN=/usr/local/bin GOPATH=/tmp/gopath
+# Override default GOBIN and GOCACHE
+export GOBIN=/usr/local/bin GOCACHE=/tmp/gocache
+
+# Install golangci-lint
+curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $GOBIN v1.24.0
 
 # Install protobuf and testing/dev tools.
-go get \
-  github.com/letsencrypt/pebble/cmd/pebble-challtestsrv \
+# Note: The version of golang/protobuf is partially tied to the version of grpc
+# used by Boulder overall. Updating it may require updating the grpc version
+# and vice versa.
+GO111MODULE=on go get \
   bitbucket.org/liamstask/goose/cmd/goose \
-  golang.org/x/lint/golint \
-  github.com/golang/mock/mockgen \
-  github.com/golang/protobuf/proto \
-  github.com/golang/protobuf/protoc-gen-go \
-  github.com/kisielk/errcheck \
-  github.com/mattn/goveralls \
+  github.com/golang/mock/mockgen@v1.3.0 \
+  github.com/golang/protobuf/proto@v1.4.0 \
+  github.com/golang/protobuf/protoc-gen-go@v1.4.0 \
+  github.com/mattn/goveralls@v0.0.3 \
   github.com/modocache/gover \
   golang.org/x/tools/cover \
-  golang.org/x/tools/cmd/stringer \
-  github.com/gordonklaus/ineffassign
+  golang.org/x/tools/cmd/stringer
 
-# Install codespell for linting common spelling errors
-pip3 install codespell
+# Pebble's latest version is v2+, but it's not properly go mod compatible, so we
+# fetch it in GOPATH mode.
+go get github.com/letsencrypt/pebble/cmd/pebble-challtestsrv
 
-git clone https://github.com/certbot/certbot /certbot
-cd /certbot
-./tools/venv3.py
-source venv3/bin/activate
-pip install -r /tmp/requirements.txt
-cd -
+go clean -cache
+go clean -modcache
 
-# Install pkcs11-proxy. Checked out commit was master HEAD at time
-# of writing
-git clone https://github.com/SUNET/pkcs11-proxy /tmp/pkcs11-proxy && \
-  cd /tmp/pkcs11-proxy && \
-  git checkout 944684f78bca0c8da6cabe3fa273fed3db44a890 && \
-  cmake . && make && make install && \
-  cd - && rm -r /tmp/pkcs11-proxy
+pip3 install -r /tmp/requirements.txt
+
+# Install a newer version (2.5.0) of SoftHSM2 than is available from the debian
+# repository
+git clone https://github.com/opendnssec/SoftHSMv2.git /tmp/softhsm2 --branch 2.5.0 --depth 1
+cd /tmp/softhsm2
+sh autogen.sh
+./configure --disable-gost
+make && make install
+cd - && rm -r /tmp/softhsm2
 
 # Setup SoftHSM
+mkdir -p /etc/softhsm
 echo "directories.tokendir = /var/lib/softhsm/tokens/" > /etc/softhsm/softhsm2.conf
 mkdir -p /var/lib/softhsm/tokens
-softhsm2-util --slot 0 --init-token --label intermediate --pin 5678 --so-pin 1234
-softhsm2-util --slot 1 --init-token --label root --pin 5678 --so-pin 1234
 
-gem install fpm
+gem install --no-document fpm
 
-# We can't remove libseccomp-dev as it contains a shared object that is required
-# for pkcs11-proxy to run properly
-apt-get autoremove -y libssl-dev ruby-dev
+apt-get autoremove -y libssl-dev ruby-dev cmake pkg-config libtool autoconf automake
 apt-get clean -y
 
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*

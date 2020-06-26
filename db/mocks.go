@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"gopkg.in/go-gorp/gorp.v2"
+	"github.com/go-gorp/gorp/v3"
 )
 
 // These interfaces exist to aid in mocking database operations for unit tests.
@@ -14,22 +14,22 @@ import (
 // that a context has already been applied to the relevant DbMap or
 // Transaction object.
 
-// A `dbOneSelector` is anything that provides a `SelectOne` function.
+// A OneSelector is anything that provides a `SelectOne` function.
 type OneSelector interface {
 	SelectOne(interface{}, string, ...interface{}) error
 }
 
-// A `Selector` is anything that provides a `Select` function.
+// A Selector is anything that provides a `Select` function.
 type Selector interface {
 	Select(interface{}, string, ...interface{}) ([]interface{}, error)
 }
 
-// A `Inserter` is anything that provides an `Insert` function
+// A Inserter is anything that provides an `Insert` function
 type Inserter interface {
 	Insert(list ...interface{}) error
 }
 
-// A `Execer` is anything that provides an `Exec` function
+// A Execer is anything that provides an `Exec` function
 type Execer interface {
 	Exec(string, ...interface{}) (sql.Result, error)
 }

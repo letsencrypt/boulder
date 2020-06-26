@@ -2,9 +2,8 @@ package sa
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
-	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -31,10 +30,6 @@ func findIssuedName(dbMap db.OneSelector, name string) (string, error) {
 }
 
 func TestAddPrecertificate(t *testing.T) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -106,13 +101,33 @@ func TestAddPrecertificate(t *testing.T) {
 		}
 	}
 
-	// With no feature flag set we don't expect addPrecertficate to update
-	// issuedNames
-	addPrecert(false)
-	defer features.Reset()
-	// With the feature flag set we do expect addPrecertificate to update
-	// issuedNames
-	err := features.Set(map[string]bool{"WriteIssuedNamesPrecert": true})
-	test.AssertNotError(t, err, "failed to set WriteIssuedNamesPrecert feature flag")
 	addPrecert(true)
+}
+
+func TestAddPrecertificateKeyHash(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+	reg := satest.CreateWorkingRegistration(t, sa)
+	err := features.Set(map[string]bool{"StoreKeyHashes": true})
+	test.AssertNotError(t, err, "failed to set features")
+	defer features.Reset()
+
+	serial, testCert := test.ThrowAwayCert(t, 1)
+	issued := testCert.NotBefore.UnixNano()
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    testCert.Raw,
+		RegID:  &reg.ID,
+		Ocsp:   []byte{1, 2, 3},
+		Issued: &issued,
+	})
+	test.AssertNotError(t, err, "failed to add precert")
+
+	var keyHashes []keyHashModel
+	_, err = sa.dbMap.Select(&keyHashes, "SELECT * FROM keyHashToSerial")
+	test.AssertNotError(t, err, "failed to retrieve rows from keyHashToSerial")
+	test.AssertEquals(t, len(keyHashes), 1)
+	test.AssertEquals(t, keyHashes[0].CertSerial, serial)
+	test.AssertEquals(t, keyHashes[0].CertNotAfter, testCert.NotAfter)
+	spkiHash := sha256.Sum256(testCert.RawSubjectPublicKeyInfo)
+	test.Assert(t, bytes.Compare(keyHashes[0].KeyHash, spkiHash[:]) == 0, "spki hash mismatch")
 }

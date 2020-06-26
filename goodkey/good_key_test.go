@@ -1,13 +1,18 @@
 package goodkey
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"fmt"
 	"math/big"
 	"testing"
 
+	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -19,13 +24,22 @@ var testingPolicy = &KeyPolicy{
 
 func TestUnknownKeyType(t *testing.T) {
 	notAKey := struct{}{}
-	test.AssertError(t, testingPolicy.GoodKey(notAKey), "Should have rejected a key of unknown type")
+	err := testingPolicy.GoodKey(context.Background(), notAKey)
+	test.AssertError(t, err, "Should have rejected a key of unknown type")
+	test.AssertEquals(t, err.Error(), "unsupported key type struct {}")
+
+	// Check for early rejection and that no error is seen from blockedKeys.blocked.
+	testingPolicyWithBlockedKeys := *testingPolicy
+	testingPolicyWithBlockedKeys.blockedList = &blockedKeys{}
+	err = testingPolicyWithBlockedKeys.GoodKey(context.Background(), notAKey)
+	test.AssertError(t, err, "Should have rejected a key of unknown type")
+	test.AssertEquals(t, err.Error(), "unsupported key type struct {}")
 }
 
 func TestNilKey(t *testing.T) {
-	e := testingPolicy.GoodKey(nil)
-	test.AssertError(t, e, "Should have rejected a nil key")
-	test.AssertNotContains(t, e.Error(), "%!")
+	err := testingPolicy.GoodKey(context.Background(), nil)
+	test.AssertError(t, err, "Should have rejected a nil key")
+	test.AssertEquals(t, err.Error(), "unsupported key type <nil>")
 }
 
 func TestSmallModulus(t *testing.T) {
@@ -38,8 +52,9 @@ func TestSmallModulus(t *testing.T) {
 	if !ok {
 		t.Errorf("error parsing pubkey modulus")
 	}
-	test.AssertError(t, testingPolicy.GoodKey(&pubKey), "Should have rejected too-short key.")
-	test.AssertError(t, testingPolicy.GoodKey(pubKey), "Should have rejected too-short key.")
+	err := testingPolicy.GoodKey(context.Background(), &pubKey)
+	test.AssertError(t, err, "Should have rejected too-short key")
+	test.AssertEquals(t, err.Error(), "key too small: 2040")
 }
 
 func TestLargeModulus(t *testing.T) {
@@ -52,56 +67,54 @@ func TestLargeModulus(t *testing.T) {
 	if !ok {
 		t.Errorf("error parsing pubkey modulus")
 	}
-	test.AssertError(t, testingPolicy.GoodKey(&pubKey), "Should have rejected too-long key.")
-	test.AssertError(t, testingPolicy.GoodKey(pubKey), "Should have rejected too-long key.")
+	err := testingPolicy.GoodKey(context.Background(), &pubKey)
+	test.AssertError(t, err, "Should have rejected too-long key")
+	test.AssertEquals(t, err.Error(), "key too large: 4097 > 4096")
 }
 
 func TestModulusModulo8(t *testing.T) {
 	bigOne := big.NewInt(1)
 	key := rsa.PublicKey{
-		N: bigOne.Lsh(bigOne, 2049),
-		E: 5,
-	}
-	test.AssertError(t, testingPolicy.GoodKey(&key), "Should have rejected modulus with length not divisible by 8.")
-}
-
-func TestSmallExponent(t *testing.T) {
-	bigOne := big.NewInt(1)
-	key := rsa.PublicKey{
 		N: bigOne.Lsh(bigOne, 2048),
 		E: 5,
 	}
-	test.AssertError(t, testingPolicy.GoodKey(&key), "Should have rejected small exponent.")
+	err := testingPolicy.GoodKey(context.Background(), &key)
+	test.AssertError(t, err, "Should have rejected modulus with length not divisible by 8")
+	test.AssertEquals(t, err.Error(), "key length wasn't a multiple of 8: 2049")
 }
 
-func TestEvenExponent(t *testing.T) {
-	bigOne := big.NewInt(1)
+var mod2048 = big.NewInt(0).Sub(big.NewInt(0).Lsh(big.NewInt(1), 2048), big.NewInt(1))
+
+func TestNonStandardExp(t *testing.T) {
+	evenMod := big.NewInt(0).Add(big.NewInt(1).Lsh(big.NewInt(1), 2047), big.NewInt(2))
 	key := rsa.PublicKey{
-		N: bigOne.Lsh(bigOne, 2048),
-		E: 1 << 17,
+		N: evenMod,
+		E: (1 << 16),
 	}
-	test.AssertError(t, testingPolicy.GoodKey(&key), "Should have rejected even exponent.")
+	err := testingPolicy.GoodKey(context.Background(), &key)
+	test.AssertError(t, err, "Should have rejected non-standard exponent")
+	test.AssertEquals(t, err.Error(), "key exponent must be 65537")
 }
 
 func TestEvenModulus(t *testing.T) {
-	bigOne := big.NewInt(1)
+	evenMod := big.NewInt(0).Add(big.NewInt(1).Lsh(big.NewInt(1), 2047), big.NewInt(2))
 	key := rsa.PublicKey{
-		N: bigOne.Lsh(bigOne, 2048),
-		E: (1 << 17) + 1,
+		N: evenMod,
+		E: (1 << 16) + 1,
 	}
-	test.AssertError(t, testingPolicy.GoodKey(&key), "Should have rejected even modulus.")
+	err := testingPolicy.GoodKey(context.Background(), &key)
+	test.AssertError(t, err, "Should have rejected even modulus")
+	test.AssertEquals(t, err.Error(), "key divisible by small prime")
 }
 
-func TestModulusDivisibleBy752(t *testing.T) {
-	N := big.NewInt(1)
-	N.Lsh(N, 2048)
-	N.Add(N, big.NewInt(1))
-	N.Mul(N, big.NewInt(751))
+func TestModulusDivisibleBySmallPrime(t *testing.T) {
 	key := rsa.PublicKey{
-		N: N,
-		E: (1 << 17) + 1,
+		N: mod2048,
+		E: (1 << 16) + 1,
 	}
-	test.AssertError(t, testingPolicy.GoodKey(&key), "Should have rejected modulus divisible by 751.")
+	err := testingPolicy.GoodKey(context.Background(), &key)
+	test.AssertError(t, err, "Should have rejected modulus divisible by 3")
+	test.AssertEquals(t, err.Error(), "key divisible by small prime")
 }
 
 func TestROCA(t *testing.T) {
@@ -113,21 +126,24 @@ func TestROCA(t *testing.T) {
 		N: n,
 		E: 65537,
 	}
-	test.AssertError(t, testingPolicy.GoodKey(&key), "Should have rejected ROCA-weak key.")
+	err := testingPolicy.GoodKey(context.Background(), &key)
+	test.AssertError(t, err, "Should have rejected ROCA-weak key")
+	test.AssertEquals(t, err.Error(), "key generated by vulnerable Infineon-based hardware")
 }
 
 func TestGoodKey(t *testing.T) {
 	private, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "Error generating key")
-	test.AssertNotError(t, testingPolicy.GoodKey(&private.PublicKey), "Should have accepted good key.")
+	test.AssertNotError(t, testingPolicy.GoodKey(context.Background(), &private.PublicKey), "Should have accepted good key")
 }
 
 func TestECDSABadCurve(t *testing.T) {
 	for _, curve := range invalidCurves {
 		private, err := ecdsa.GenerateKey(curve, rand.Reader)
 		test.AssertNotError(t, err, "Error generating key")
-		test.AssertError(t, testingPolicy.GoodKey(&private.PublicKey), "Should have rejected key with unsupported curve.")
-		test.AssertError(t, testingPolicy.GoodKey(private.PublicKey), "Should have rejected key with unsupported curve.")
+		err = testingPolicy.GoodKey(context.Background(), &private.PublicKey)
+		test.AssertError(t, err, "Should have rejected key with unsupported curve")
+		test.AssertEquals(t, err.Error(), fmt.Sprintf("ECDSA curve %s not allowed", curve.Params().Name))
 	}
 }
 
@@ -145,8 +161,7 @@ func TestECDSAGoodKey(t *testing.T) {
 	for _, curve := range validCurves {
 		private, err := ecdsa.GenerateKey(curve, rand.Reader)
 		test.AssertNotError(t, err, "Error generating key")
-		test.AssertNotError(t, testingPolicy.GoodKey(&private.PublicKey), "Should have accepted good key.")
-		test.AssertNotError(t, testingPolicy.GoodKey(private.PublicKey), "Should have accepted good key.")
+		test.AssertNotError(t, testingPolicy.GoodKey(context.Background(), &private.PublicKey), "Should have accepted good key")
 	}
 }
 
@@ -157,8 +172,9 @@ func TestECDSANotOnCurveX(t *testing.T) {
 		test.AssertNotError(t, err, "Error generating key")
 
 		private.X.Add(private.X, big.NewInt(1))
-		test.AssertError(t, testingPolicy.GoodKey(&private.PublicKey), "Should not have accepted key not on the curve.")
-		test.AssertError(t, testingPolicy.GoodKey(private.PublicKey), "Should not have accepted key not on the curve.")
+		err = testingPolicy.GoodKey(context.Background(), &private.PublicKey)
+		test.AssertError(t, err, "Should not have accepted key not on the curve")
+		test.AssertEquals(t, err.Error(), "key point is not on the curve")
 	}
 }
 
@@ -170,8 +186,9 @@ func TestECDSANotOnCurveY(t *testing.T) {
 
 		// Change the public key so that it is no longer on the curve.
 		private.Y.Add(private.Y, big.NewInt(1))
-		test.AssertError(t, testingPolicy.GoodKey(&private.PublicKey), "Should not have accepted key not on the curve.")
-		test.AssertError(t, testingPolicy.GoodKey(private.PublicKey), "Should not have accepted key not on the curve.")
+		err = testingPolicy.GoodKey(context.Background(), &private.PublicKey)
+		test.AssertError(t, err, "Should not have accepted key not on the curve")
+		test.AssertEquals(t, err.Error(), "key point is not on the curve")
 	}
 }
 
@@ -182,38 +199,42 @@ func TestECDSANegative(t *testing.T) {
 		test.AssertNotError(t, err, "Error generating key")
 
 		private.X.Neg(private.X)
-		test.AssertError(t, testingPolicy.GoodKey(&private.PublicKey), "Should not have accepted key with negative X.")
-		test.AssertError(t, testingPolicy.GoodKey(private.PublicKey), "Should not have accepted key with negative X.")
+		err = testingPolicy.GoodKey(context.Background(), &private.PublicKey)
+		test.AssertError(t, err, "Should not have accepted key with negative X")
+		test.AssertEquals(t, err.Error(), "key x, y must not be negative")
 
 		// Check that negative Y is not accepted.
 		private.X.Neg(private.X)
 		private.Y.Neg(private.Y)
-		test.AssertError(t, testingPolicy.GoodKey(&private.PublicKey), "Should not have accepted key with negative Y.")
-		test.AssertError(t, testingPolicy.GoodKey(private.PublicKey), "Should not have accepted key with negative Y.")
+		err = testingPolicy.GoodKey(context.Background(), &private.PublicKey)
+		test.AssertError(t, err, "Should not have accepted key with negative Y")
+		test.AssertEquals(t, err.Error(), "key x, y must not be negative")
 	}
 }
 
-func TestECDSANegativeUnmodulatedX(t *testing.T) {
+func TestECDSAXOutsideField(t *testing.T) {
 	for _, curve := range validCurves {
-		// Check that unmodulated X is not accepted.
+		// Check that X outside [0, p-1] is not accepted.
 		private, err := ecdsa.GenerateKey(curve, rand.Reader)
 		test.AssertNotError(t, err, "Error generating key")
 
 		private.X.Mul(private.X, private.Curve.Params().P)
-		test.AssertError(t, testingPolicy.GoodKey(&private.PublicKey), "Should not have accepted key with unmodulated X.")
-		test.AssertError(t, testingPolicy.GoodKey(private.PublicKey), "Should not have accepted key with unmodulated X.")
+		err = testingPolicy.GoodKey(context.Background(), &private.PublicKey)
+		test.AssertError(t, err, "Should not have accepted key with a X > p-1")
+		test.AssertEquals(t, err.Error(), "key x, y must not exceed P-1")
 	}
 }
 
-func TestECDSANegativeUnmodulatedY(t *testing.T) {
+func TestECDSAYOutsideField(t *testing.T) {
 	for _, curve := range validCurves {
-		// Check that unmodulated Y is not accepted.
+		// Check that Y outside [0, p-1] is not accepted.
 		private, err := ecdsa.GenerateKey(curve, rand.Reader)
 		test.AssertNotError(t, err, "Error generating key")
 
 		private.X.Mul(private.Y, private.Curve.Params().P)
-		test.AssertError(t, testingPolicy.GoodKey(&private.PublicKey), "Should not have accepted key with unmodulated Y.")
-		test.AssertError(t, testingPolicy.GoodKey(private.PublicKey), "Should not have accepted key with unmodulated Y.")
+		err = testingPolicy.GoodKey(context.Background(), &private.PublicKey)
+		test.AssertError(t, err, "Should not have accepted key with a Y > p-1")
+		test.AssertEquals(t, err.Error(), "key x, y must not exceed P-1")
 	}
 }
 
@@ -226,7 +247,45 @@ func TestECDSAIdentity(t *testing.T) {
 			Y:     big.NewInt(0),
 		}
 
-		test.AssertError(t, testingPolicy.GoodKey(&public), "Should not have accepted key with point at infinity.")
-		test.AssertError(t, testingPolicy.GoodKey(public), "Should not have accepted key with point at infinity.")
+		err := testingPolicy.GoodKey(context.Background(), &public)
+		test.AssertError(t, err, "Should not have accepted key with point at infinity")
+		test.AssertEquals(t, err.Error(), "key x, y must not be the point at infinity")
 	}
+}
+
+func TestNonRefKey(t *testing.T) {
+	private, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Error generating key")
+	test.AssertError(t, testingPolicy.GoodKey(context.Background(), private.PublicKey), "Accepted non-reference key")
+}
+
+func TestDBBlacklist(t *testing.T) {
+	exists := false
+	testCheck := func(context.Context, *sapb.KeyBlockedRequest) (*sapb.Exists, error) {
+		return &sapb.Exists{Exists: &exists}, nil
+	}
+
+	policy, err := NewKeyPolicy("", "", testCheck)
+	test.AssertNotError(t, err, "NewKeyPolicy failed")
+
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
+	err = policy.GoodKey(context.Background(), k.Public())
+	test.AssertNotError(t, err, "GoodKey failed with a non-blocked key")
+	exists = true
+	err = policy.GoodKey(context.Background(), k.Public())
+	test.AssertError(t, err, "GoodKey didn't fail with a blocked key")
+	test.Assert(t, berrors.Is(err, berrors.BadPublicKey), "returned error is wrong type")
+	test.AssertEquals(t, err.Error(), "public key is forbidden")
+}
+
+func TestRSAStrangeSize(t *testing.T) {
+	err := features.Set(map[string]bool{"RestrictRSAKeySizes": true})
+	test.AssertNotError(t, err, "failed to set features")
+	defer features.Reset()
+
+	k := &rsa.PublicKey{N: big.NewInt(10)}
+	err = testingPolicy.GoodKey(context.Background(), k)
+	test.AssertError(t, err, "expected GoodKey to fail")
+	test.AssertEquals(t, err.Error(), "key size not supported: 4")
 }

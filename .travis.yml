@@ -1,17 +1,11 @@
 language: go
+dist: xenial
+os: linux
 
 go:
-  - "1.13.2"
+  - "1.14.1"
 
 go_import_path: github.com/letsencrypt/boulder
-
-addons:
-  hosts:
-    - le.wtf
-    - boulder
-    - boulder-mysql
-
-sudo: required
 
 services:
   - docker
@@ -19,52 +13,44 @@ services:
 # Only build pushes to the master branch, PRs, and branches beginning with
 # `test-`. You should not push branches beginning with `test-` to the
 # letsencrypt repository, but this is a convenient way to push branches to your
-# own fork of the repostiroy to ensure Travis passes before submitting a PR.
+# own fork of the repository to ensure Travis passes before submitting a PR.
 # For instance, you might run:
 # git push myremote branchname:test-branchname
 branches:
   only:
     - master
-    - staging
-    - release
+    - main
     - /^test-.*$/
 
 env:
-    #
-    # Current Go version build tasks:
-    #
     - RUN="lints integration generate rpm" BOULDER_CONFIG_DIR="test/config"
     # Config changes that have landed in master but not yet been applied to
     # production can be made in boulder-config-next.json.
     - RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
     - RUN="unit"
     - RUN="unit-next" BOULDER_CONFIG_DIR="test/config-next"
-    - RUN="start"
+    - RUN="start" BOULDER_CONFIG_DIR="test/config"
     # gomod-vendor runs with a separate container because it needs to fetch
     # packages from GitHub et. al., which is incompatible with the DNS server
     # override in the boulder container (used for service discovery).
     - RUN="gomod-vendor" CONTAINER="netaccess"
     - RUN="coverage" CONTAINER="netaccess"
 
-matrix:
+jobs:
   fast_finish: true
   allow_failures:
     - env: RUN="coverage" CONTAINER="netaccess"
 
-# We require a newer version of docker-compose than is installed by way of the
-# "services: docker" directive. Per the travis docs[0] this is best remedied
-# with the following `before_install` commands.
-# [0]: https://docs.travis-ci.com/user/docker/#Using-Docker-Compose
-before_install:
-  # We install `docker-compose` to $HOME/bin to avoid needing root perms.
-  # Afterwards where required we refer to the `docker-compose` binary by
-  # absolute path.
-  - curl -L https://github.com/docker/compose/releases/download/1.20.1/docker-compose-$(uname -s)-$(uname -m) > $HOME/bin/docker-compose
-  - chmod +x $HOME/bin/docker-compose
-
 install:
-  - ./test/travis-before-install.sh
-  - $HOME/bin/docker-compose pull
+  - docker-compose pull
 
 script:
-  - $HOME/bin/docker-compose run --use-aliases -e BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR}" -e RUN="${RUN}" -e TRAVIS="${TRAVIS}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_JOB_ID="${TRAVIS_JOB_ID}" -e COVERALLS_TOKEN="${COVERALLS_TOKEN}" ${CONTAINER:-boulder} ./test.sh
+  - >-
+    docker-compose run --use-aliases
+    -e BOULDER_CONFIG_DIR
+    -e RUN
+    -e TRAVIS_BRANCH
+    -e TRAVIS_JOB_ID
+    -e TRAVIS_PULL_REQUEST
+    -e COVERALLS_TOKEN
+    ${CONTAINER:-boulder} ./test.sh

@@ -17,13 +17,20 @@ processes = []
 # to run the load-generator).
 challSrvProcess = None
 
+def setupHierarchy():
+    e = os.environ.copy()
+    e.setdefault("GOBIN", "%s/bin" % os.getcwd())
+    subprocess.call("go install ./cmd/ceremony", shell=True, env=e)
+    subprocess.call("go run test/cert-ceremonies/generate.go", shell=True, env=e)
+
+
 def install(race_detection):
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
     # build cache with new BUILD_TIMEs, or invalidating it on merges with a new
     # BUILD_ID.
-    cmd = "make GO_BUILD_FLAGS=''  "
+    cmd = "/usr/bin/make GO_BUILD_FLAGS='-tags \"integration\"'  "
     if race_detection:
-        cmd = "make GO_BUILD_FLAGS='-race -tags \"integration\"'"
+        cmd = "/usr/bin/make GO_BUILD_FLAGS='-race -tags \"integration\"'"
 
     return subprocess.call(cmd, shell=True) == 0
 
@@ -59,12 +66,12 @@ def start(race_detection, fakeclock):
     # killed in reverse order.
     progs = []
     if CONFIG_NEXT:
-        # Run the two 'remote' VAs
         progs.extend([
-            [8011, './bin/boulder-remoteva --config %s' % os.path.join(config_dir, "va-remote-a.json")],
-            [8012, './bin/boulder-remoteva --config %s' % os.path.join(config_dir, "va-remote-b.json")],
+            [8020, './bin/bad-key-revoker --config %s' % os.path.join(config_dir, "bad-key-revoker.json")],
         ])
     progs.extend([
+        [8011, './bin/boulder-remoteva --config %s' % os.path.join(config_dir, "va-remote-a.json")],
+        [8012, './bin/boulder-remoteva --config %s' % os.path.join(config_dir, "va-remote-b.json")],
         [53, './bin/sd-test-srv --listen :53'], # Service discovery DNS server
         [8003, './bin/boulder-sa --config %s --addr sa1.boulder:9095 --debug-addr :8003' % os.path.join(config_dir, "sa.json")],
         [8103, './bin/boulder-sa --config %s --addr sa2.boulder:9095 --debug-addr :8103' % os.path.join(config_dir, "sa.json")],
@@ -84,8 +91,9 @@ def start(race_detection, fakeclock):
         [8102, './bin/boulder-ra --config %s --addr ra2.boulder:9094 --debug-addr :8102' % os.path.join(config_dir, "ra.json")],
         [8111, './bin/nonce-service --config %s --addr nonce1.boulder:9101 --debug-addr :8111 --prefix taro' % os.path.join(config_dir, "nonce.json")],
         [8112, './bin/nonce-service --config %s --addr nonce2.boulder:9101 --debug-addr :8112 --prefix zinc' % os.path.join(config_dir, "nonce.json")],
-        [4431, './bin/boulder-wfe2 --config %s' % os.path.join(config_dir, "wfe2.json")],
+        [4001, './bin/boulder-wfe2 --config %s' % os.path.join(config_dir, "wfe2.json")],
         [4000, './bin/boulder-wfe --config %s' % os.path.join(config_dir, "wfe.json")],
+        [8016, './bin/log-validator --config %s' % os.path.join(config_dir, "log-validator.json")],
     ])
     for (port, prog) in progs:
         try:

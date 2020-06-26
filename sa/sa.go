@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -14,13 +15,13 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
-	"gopkg.in/go-gorp/gorp.v2"
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -53,12 +54,6 @@ type SQLStorageAuthority struct {
 	rateLimitWriteErrors prometheus.Counter
 }
 
-func digest256(data []byte) []byte {
-	d := sha256.New()
-	_, _ = d.Write(data) // Never returns an error
-	return d.Sum(nil)
-}
-
 // orderFQDNSet contains the SHA256 hash of the lowercased, comma joined names
 // from a new-order request, along with the corresponding orderID, the
 // registration ID, and the order expiry. This is used to find
@@ -69,16 +64,6 @@ type orderFQDNSet struct {
 	OrderID        int64
 	RegistrationID int64
 	Expires        time.Time
-}
-
-const (
-	authorizationTable        = "authz"
-	pendingAuthorizationTable = "pendingAuthorizations"
-)
-
-var authorizationTables = []string{
-	authorizationTable,
-	pendingAuthorizationTable,
 }
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for
@@ -111,28 +96,6 @@ func NewSQLStorageAuthority(
 	return ssa, nil
 }
 
-func statusIsPending(status core.AcmeStatus) bool {
-	return status == core.StatusPending || status == core.StatusProcessing || status == core.StatusUnknown
-}
-
-func existingPending(dbMap db.OneSelector, id string) bool {
-	var count int64
-	_ = dbMap.SelectOne(&count, "SELECT count(*) FROM pendingAuthorizations WHERE id = :id", map[string]interface{}{"id": id})
-	return count > 0
-}
-
-func existingFinal(dbMap db.OneSelector, id string) bool {
-	var count int64
-	_ = dbMap.SelectOne(&count, "SELECT count(*) FROM authz WHERE id = :id", map[string]interface{}{"id": id})
-	return count > 0
-}
-
-func existingRegistration(tx *gorp.Transaction, id int64) bool {
-	var count int64
-	_ = tx.SelectOne(&count, "SELECT count(*) FROM registrations WHERE id = :id", map[string]interface{}{"id": id})
-	return count > 0
-}
-
 // GetRegistration obtains a Registration by ID
 func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
 	const query = "WHERE id = ?"
@@ -153,7 +116,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *j
 	if key == nil {
 		return core.Registration{}, fmt.Errorf("key argument to GetRegistrationByKey must not be nil")
 	}
-	sha, err := core.KeyDigest(key.Key)
+	sha, err := core.KeyDigestB64(key.Key)
 	if err != nil {
 		return core.Registration{}, err
 	}
@@ -488,22 +451,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 			return nil, err
 		}
 
-		// Record the issued names from the final certificate being added by the SA.
-		// If features.WriteIssuedNamesPrecert was enabled when the corresponding
-		// precertificate was added in AddPrecertificate then this will prompt
-		// a duplicate entry error that we can safely ignore.
-		//
-		// TODO(@cpu): Once features.WriteIssuedNamesPrecert has been deployed
-		// globally we can remove this call to ssa.addIssuedNames from
-		// AddCertificate
-		if err := addIssuedNames(txWithCtx, parsedCertificate, isRenewal); err != nil {
-			// if it wasn't a duplicate entry error, return the err. Otherwise ignore
-			// it.
-			if !db.IsDuplicate(err) {
-				return nil, err
-			}
-		}
-
 		return isRenewal, err
 	})
 	if overallError != nil {
@@ -560,6 +507,10 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 }
 
 func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error) {
+	if features.Enabled(features.FasterNewOrdersRateLimit) {
+		return countNewOrders(ctx, ssa.dbMap, acctID, earliest, latest)
+	}
+
 	var count int
 	err := ssa.dbMap.WithContext(ctx).SelectOne(&count,
 		`SELECT count(1) FROM orders
@@ -919,7 +870,7 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		}
 
 		for _, id := range req.V2Authorizations {
-			otoa := &orderToAuthz2Model{
+			otoa := &orderToAuthzModel{
 				OrderID: order.ID,
 				AuthzID: id,
 			}
@@ -943,6 +894,14 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 			txWithCtx, req.Names, order.ID, order.RegistrationID, order.Expires); err != nil {
 			return nil, err
 		}
+
+		if features.Enabled(features.FasterNewOrdersRateLimit) {
+			// Increment the order creation count
+			if err := addNewOrdersRateLimit(ctx, txWithCtx, *req.RegistrationID, ssa.clk.Now().Truncate(time.Hour)); err != nil {
+				return nil, err
+			}
+		}
+
 		return req, nil
 	})
 	if overallError != nil {
@@ -991,7 +950,7 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *cor
 
 		n, err := result.RowsAffected()
 		if err != nil || n == 0 {
-			return nil, berrors.InternalServerError("no order updated to beganProcessing status")
+			return nil, berrors.OrderNotReadyError("Order was already processing. This may indicate your client finalized the same order multiple times, possibly due to a client bug.")
 		}
 
 		return nil, nil
@@ -1144,7 +1103,7 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 //   * If the order has an error, the order is invalid
 //   * If any of the order's authorizations are invalid, the order is invalid.
 //   * If any of the order's authorizations are expired, the order is invalid.
-//   * If any of the order's authorizations are deactivated, the order is deactivated.
+//   * If any of the order's authorizations are deactivated, the order is invalid.
 //   * If any of the order's authorizations are pending, the order is pending.
 //   * If all of the order's authorizations are valid, and there is
 //     a certificate serial, the order is valid.
@@ -1223,17 +1182,12 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 		}
 	}
 
-	// An order is invalid if **any** of its authzs are invalid
-	if invalidAuthzs > 0 {
+	// An order is invalid if **any** of its authzs are invalid, deactivated,
+	// or expired, see https://tools.ietf.org/html/rfc8555#section-7.1.6
+	if invalidAuthzs > 0 ||
+		expiredAuthzs > 0 ||
+		deactivatedAuthzs > 0 {
 		return string(core.StatusInvalid), nil
-	}
-	// An order is invalid if **any** of its authzs are expired
-	if expiredAuthzs > 0 {
-		return string(core.StatusInvalid), nil
-	}
-	// An order is deactivated if **any** of its authzs are deactivated
-	if deactivatedAuthzs > 0 {
-		return string(core.StatusDeactivated), nil
 	}
 	// An order is pending if **any** of its authzs are pending
 	if pendingAuthzs > 0 {
@@ -1417,7 +1371,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization2(ctx context.Context, id *sapb.
 	if obj == nil {
 		return nil, berrors.NotFoundError("authorization %d not found", *id.Id)
 	}
-	return modelToAuthzPB(obj.(*authzModel))
+	return modelToAuthzPB(*(obj.(*authzModel)))
 }
 
 // authzModelMapToPB converts a mapping of domain name to authzModels into a
@@ -1427,7 +1381,7 @@ func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 	for k, v := range m {
 		// Make a copy of k because it will be reassigned with each loop.
 		kCopy := k
-		authzPB, err := modelToAuthzPB(&v)
+		authzPB, err := modelToAuthzPB(v)
 		if err != nil {
 			return nil, err
 		}
@@ -1464,7 +1418,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 			expires > ? AND
 			identifierType = ? AND
 			identifierValue IN (%s)`,
-		authz2Fields,
+		authzFields,
 		strings.Join(qmarks, ","),
 	)
 	_, err := ssa.dbMap.Select(
@@ -1645,7 +1599,7 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, re
 			identifierType = :dnsType AND
 			identifierValue = :ident
 			ORDER BY expires ASC
-			LIMIT 1 `, authz2Fields),
+			LIMIT 1 `, authzFields),
 		map[string]interface{}{
 			"regID":      *req.RegistrationID,
 			"status":     statusUint(core.StatusPending),
@@ -1660,7 +1614,7 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, re
 		}
 		return nil, err
 	}
-	return modelToAuthzPB(&am)
+	return modelToAuthzPB(am)
 }
 
 // CountPendingAuthorizations2 returns the number of pending, unexpired authorizations
@@ -1697,7 +1651,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 			authz2.expires > :expires AND
 			authz2.status = :status AND
 			orderToAuthz2.orderID = :orderID`,
-			authz2Fields,
+			authzFields,
 		),
 		map[string]interface{}{
 			"regID":   *req.AcctID,
@@ -1779,7 +1733,7 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 			expires > ? AND
 			identifierType = ? AND
 			identifierValue IN (%s)`,
-			authz2Fields,
+			authzFields,
 			strings.Join(qmarks, ","),
 		),
 		params...,
@@ -1815,5 +1769,73 @@ func (ssa *SQLStorageAuthority) SerialExists(ctx context.Context, req *sapb.Seri
 		return nil, err
 	}
 	exists := !isNoRowsErr
+	return &sapb.Exists{Exists: &exists}, nil
+}
+
+func addKeyHash(db db.Inserter, cert *x509.Certificate) error {
+	if cert.RawSubjectPublicKeyInfo == nil {
+		return errors.New("certificate has a nil RawSubjectPublicKeyInfo")
+	}
+	h := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	khm := &keyHashModel{
+		KeyHash:      h[:],
+		CertNotAfter: cert.NotAfter,
+		CertSerial:   core.SerialToString(cert.SerialNumber),
+	}
+	return db.Insert(khm)
+}
+
+var blockedKeysColumns = "keyHash, added, source, comment"
+
+// AddBlockedKey adds a key hash to the blockedKeys table
+func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest) (*corepb.Empty, error) {
+	if req == nil || req.KeyHash == nil || req.Added == nil || req.Source == nil {
+		return nil, errIncompleteRequest
+	}
+	sourceInt, ok := stringToSourceInt[*req.Source]
+	if !ok {
+		return nil, errors.New("unknown source")
+	}
+	cols, qs := blockedKeysColumns, "?, ?, ?, ?"
+	vals := []interface{}{
+		req.KeyHash,
+		time.Unix(0, *req.Added),
+		sourceInt,
+		req.Comment,
+	}
+	if features.Enabled(features.StoreRevokerInfo) && req.RevokedBy != nil {
+		cols += ", revokedBy"
+		qs += ", ?"
+		vals = append(vals, *req.RevokedBy)
+	}
+	_, err := ssa.dbMap.Exec(
+		fmt.Sprintf("INSERT INTO blockedKeys (%s) VALUES (%s)", cols, qs),
+		vals...,
+	)
+	if err != nil {
+		if db.IsDuplicate(err) {
+			// Ignore duplicate inserts so multiple certs with the same key can
+			// be revoked.
+			return &corepb.Empty{}, nil
+		}
+		return nil, err
+	}
+	return &corepb.Empty{}, nil
+}
+
+// KeyBlocked checks if a key, indicated by a hash, is present in the blockedKeys table
+func (ssa *SQLStorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlockedRequest) (*sapb.Exists, error) {
+	if req == nil || req.KeyHash == nil {
+		return nil, errIncompleteRequest
+	}
+	exists := false
+	var id int64
+	if err := ssa.dbMap.SelectOne(&id, `SELECT ID FROM blockedKeys WHERE keyHash = ?`, req.KeyHash); err != nil {
+		if db.IsNoRows(err) {
+			return &sapb.Exists{Exists: &exists}, nil
+		}
+		return nil, err
+	}
+	exists = true
 	return &sapb.Exists{Exists: &exists}, nil
 }

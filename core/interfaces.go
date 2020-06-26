@@ -108,7 +108,6 @@ type PolicyAuthority interface {
 	WillingToIssueWildcards(identifiers []identifier.ACMEIdentifier) error
 	ChallengesFor(domain identifier.ACMEIdentifier) ([]Challenge, error)
 	ChallengeTypeEnabled(t string) bool
-	ValidDomain(domain string) error
 }
 
 // StorageGetter are the Boulder SA's read-only methods
@@ -136,6 +135,7 @@ type StorageGetter interface {
 	CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error)
 	GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error)
 	SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error)
+	KeyBlocked(ctx context.Context, req *sapb.KeyBlockedRequest) (*sapb.Exists, error)
 }
 
 // StorageAdder are the Boulder SA's write/update methods
@@ -155,11 +155,12 @@ type StorageAdder interface {
 	NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error)
 	FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) error
 	DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Empty, error)
+	AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest) (*corepb.Empty, error)
 }
 
 // StorageAuthority interface represents a simple key/value
-// store.  It is divided into StorageGetter and StorageUpdater
-// interfaces for privilege separation.
+// store. The add and get interfaces contained within are divided
+// for privilege separation.
 type StorageAuthority interface {
 	StorageGetter
 	StorageAdder

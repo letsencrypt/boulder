@@ -24,12 +24,12 @@
       ]
     },
     "features": {
-      "DeleteUnusedChallenges": true
+      "WriteIssuedNamesPrecert": true
     }
   },
 
   "syslog": {
     "stdoutlevel": 6,
-    "sysloglevel": 4
+    "sysloglevel": 6
   }
 }

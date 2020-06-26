@@ -55,9 +55,7 @@ func (m mockDB) Select(result interface{}, query string, args ...interface{}) ([
 	if idResults, ok := result.(*[]workUnit); !ok {
 		m.t.Fatalf("Select()'s result target pointer was %T not []int64", result)
 	} else {
-		for _, wu := range m.selectResult {
-			*idResults = append(*idResults, wu)
-		}
+		*idResults = append(*idResults, m.selectResult...)
 	}
 
 	return nil, m.errResult

@@ -12,7 +12,7 @@
     "weakKeyFile": "test/example-weak-keys.json",
     "blockedKeyFile": "test/example-blocked-keys.yaml",
     "orderLifetime": "168h",
-    "issuerCertPath":  "test/test-ca2.pem",
+    "issuerCertPath":  "/tmp/intermediate-cert-rsa-a.pem",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/ra.boulder/cert.pem",
@@ -42,10 +42,14 @@
       "address": ":9094",
       "clientNames": [
         "wfe.boulder",
-        "admin-revoker.boulder"
+        "admin-revoker.boulder",
+        "bad-key-revoker.boulder"
       ]
     },
     "features": {
+      "StoreRevokerInfo": true,
+      "RestrictRSAKeySizes": true,
+      "FasterNewOrdersRateLimit": true
     },
     "CTLogGroups2": [
       {
@@ -119,6 +123,6 @@
 
   "syslog": {
     "stdoutlevel": 6,
-    "sysloglevel": 4
+    "sysloglevel": 6
   }
 }

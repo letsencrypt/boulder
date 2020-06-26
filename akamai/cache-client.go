@@ -119,7 +119,7 @@ func NewCachePurgeClient(
 		retries:      retries,
 		retryBackoff: retryBackoff,
 		log:          log,
-		clk:          clock.Default(),
+		clk:          clock.New(),
 		purgeLatency: purgeLatency,
 		purges:       purges,
 	}, nil
@@ -375,7 +375,7 @@ func GeneratePurgeURLs(der []byte, issuer *x509.Certificate) ([]string, error) {
 			ocspServer += "/"
 		}
 		// Generate GET url
-		urls = append(generateOCSPCacheKeys(req, ocspServer))
+		urls = generateOCSPCacheKeys(req, ocspServer)
 	}
 	return urls, nil
 }

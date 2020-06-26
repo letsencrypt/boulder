@@ -79,7 +79,12 @@ func main() {
 		log.Fatal(err)
 	}
 	http.Handle("/metrics", promhttp.Handler())
-	go http.ListenAndServe(*listenAddress, nil)
+	go func() {
+		err = http.ListenAndServe(*listenAddress, nil)
+		if err != nil && err != http.ErrServerClosed {
+			log.Fatal(err)
+		}
+	}()
 	for {
 		for _, pattern := range flag.Args() {
 			// Note: re-glob this pattern on each run, in case new certificates have

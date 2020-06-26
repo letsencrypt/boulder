@@ -167,7 +167,7 @@ func main() {
 
 	// Boulder's components assume that there will always be CT logs configured.
 	// Issuing a certificate without SCTs embedded is a miss-issuance event in the
-	// enviromnent Boulder is built for. Exit early if there is no CTLogGroups2
+	// environment Boulder is built for. Exit early if there is no CTLogGroups2
 	// configured.
 	if len(c.RA.CTLogGroups2) == 0 {
 		cmd.Fail("CTLogGroups2 must not be empty")
@@ -204,11 +204,11 @@ func main() {
 		pendingAuthorizationLifetime = time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 	}
 
-	kp, err := goodkey.NewKeyPolicy(c.RA.WeakKeyFile, c.RA.BlockedKeyFile)
+	kp, err := goodkey.NewKeyPolicy(c.RA.WeakKeyFile, c.RA.BlockedKeyFile, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	if c.RA.MaxNames == 0 {
-		cmd.Fail(fmt.Sprintf("Error in RA config: MaxNames must not be 0"))
+		cmd.Fail("Error in RA config: MaxNames must not be 0")
 	}
 
 	rai := ra.NewRegistrationAuthorityImpl(

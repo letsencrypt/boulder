@@ -9,6 +9,7 @@ import (
 	"crypto/rsa"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
@@ -67,7 +68,7 @@ func pubKeyForKey(t *testing.T, privKey interface{}) interface{} {
 	return nil
 }
 
-// signRequestEmbed creates a JWS for aa given request body with an embedded JWK
+// signRequestEmbed creates a JWS for a given request body with an embedded JWK
 // corresponding to the private key provided. The URL and nonce extra headers
 // are set based on the additional arguments. A computed JWS, the corresponding
 // embedded JWK and the JWS in serialized string form are returned.
@@ -392,8 +393,8 @@ func TestValidPOSTRequest(t *testing.T) {
 			Name: "POST with a Replay-Nonce HTTP header",
 			Headers: map[string][]string{
 				"Content-Length": dummyContentLength,
-				"Replay-Nonce":   []string{"ima-misplaced-nonce"},
-				"Content-Type":   []string{expectedJWSContentType},
+				"Replay-Nonce":   {"ima-misplaced-nonce"},
+				"Content-Type":   {expectedJWSContentType},
 			},
 			HTTPStatus:    http.StatusBadRequest,
 			ProblemDetail: "HTTP requests should NOT contain Replay-Nonce header. Use JWS nonce field",
@@ -404,7 +405,7 @@ func TestValidPOSTRequest(t *testing.T) {
 			Name: "POST with an empty POST body",
 			Headers: map[string][]string{
 				"Content-Length": dummyContentLength,
-				"Content-Type":   []string{expectedJWSContentType},
+				"Content-Type":   {expectedJWSContentType},
 			},
 			HTTPStatus:    http.StatusBadRequest,
 			ProblemDetail: "No body on POST",
@@ -426,7 +427,7 @@ func TestValidPOSTRequest(t *testing.T) {
 			Name: "POST with an invalid Content-Type header",
 			Headers: map[string][]string{
 				"Content-Length": dummyContentLength,
-				"Content-Type":   []string{"fresh.and.rare"},
+				"Content-Type":   {"fresh.and.rare"},
 			},
 			HTTPStatus: http.StatusUnsupportedMediaType,
 			ProblemDetail: fmt.Sprintf(
@@ -880,6 +881,16 @@ func TestParseJWSRequest(t *testing.T) {
 			Name:            "Valid JWS in POST request",
 			Request:         validJWSRequest,
 			ExpectedProblem: nil,
+		},
+		{
+			Name: "POST body too large",
+			Request: makePostRequestWithPath("test-path",
+				fmt.Sprintf(`{"a":"%s"}`, strings.Repeat("a", 50000))),
+			ExpectedProblem: &probs.ProblemDetails{
+				Type:       probs.UnauthorizedProblem,
+				Detail:     "request body too large",
+				HTTPStatus: http.StatusForbidden,
+			},
 		},
 	}
 

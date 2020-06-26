@@ -28,8 +28,11 @@ const (
 	// HTTP-01 challenge response. The expected payload should be ~87 bytes. Since
 	// it may be padded by whitespace which we previously allowed accept up to 128
 	// bytes before rejecting a response (32 byte b64 encoded token + . + 32 byte
-	// b64 encoded key fingerprint)
+	// b64 encoded key fingerprint).
 	maxResponseSize = 128
+	// maxPathSize is the maximum number of bytes we will accept in the path of a
+	// redirect URL.
+	maxPathSize = 2000
 	// whitespaceCutset is the set of characters trimmed from the right of an
 	// HTTP-01 key authorization response.
 	whitespaceCutset = "\n\r\t "
@@ -501,7 +504,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	records := []core.ValidationRecord{baseRecord}
 	numRedirects := 0
 	processRedirect := func(req *http.Request, via []*http.Request) error {
-		va.log.Debugf("processing a HTTP redirect from the server to %q\n", req.URL.String())
+		va.log.Debugf("processing a HTTP redirect from the server to %q", req.URL.String())
 		// Only process up to maxRedirect redirects
 		if numRedirects > maxRedirect {
 			return berrors.ConnectionFailureError("Too many redirects")
@@ -521,6 +524,10 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		}
 
 		redirPath := req.URL.Path
+		if len(redirPath) > maxPathSize {
+			return berrors.ConnectionFailureError("Redirect target too long")
+		}
+
 		// If the redirect URL has query parameters we need to preserve
 		// those in the redirect path
 		redirQuery := ""
@@ -543,7 +550,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		if err != nil {
 			return err
 		}
-		va.log.Debugf("following redirect to host %q url %q\n", req.Host, req.URL.String())
+		va.log.Debugf("following redirect to host %q url %q", req.Host, req.URL.String())
 		// Replace the transport's DialContext with the new preresolvedDialer for
 		// the redirect.
 		transport.DialContext = redirDialer.DialContext
@@ -632,8 +639,8 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident ide
 	payload := strings.TrimRight(string(body), whitespaceCutset)
 
 	if payload != challenge.ProvidedKeyAuthorization {
-		problem := probs.Unauthorized("The key authorization file from the server did not match this challenge %q != %q",
-			challenge.ProvidedKeyAuthorization, payload)
+		problem := probs.Unauthorized(fmt.Sprintf("The key authorization file from the server did not match this challenge %q != %q",
+			challenge.ProvidedKeyAuthorization, payload))
 		va.log.Infof("%s for %s", problem.Detail, ident)
 		return validationRecords, problem
 	}

@@ -11,8 +11,6 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -59,6 +57,8 @@ const (
 	issuerPath      = "/acme/issuer-cert"
 	buildIDPath     = "/build"
 	rolloverPath    = "/acme/key-change"
+
+	maxRequestSize = 50000
 )
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
@@ -502,8 +502,11 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 		return nil, nil, reg, probs.Malformed("No body on POST")
 	}
 
-	bodyBytes, err := ioutil.ReadAll(request.Body)
+	bodyBytes, err := ioutil.ReadAll(http.MaxBytesReader(nil, request.Body, maxRequestSize))
 	if err != nil {
+		if err.Error() == "http: request body too large" {
+			return nil, nil, reg, probs.Unauthorized("request body too large")
+		}
 		wfe.httpErrorCounter.WithLabelValues("UnableToReadReqBody").Inc()
 		return nil, nil, reg, probs.ServerInternal("unable to read request body")
 	}
@@ -530,7 +533,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 		// When looking up keys from the registrations DB, we can be confident they
 		// are "good". But when we are verifying against any submitted key, we want
 		// to check its quality before doing the verify.
-		if err = wfe.keyPolicy.GoodKey(submittedKey.Key); err != nil {
+		if err = wfe.keyPolicy.GoodKey(ctx, submittedKey.Key); err != nil {
 			wfe.joseErrorCounter.WithLabelValues("JWKRejectedByGoodKey").Inc()
 			return nil, nil, reg, probs.Malformed(err.Error())
 		}
@@ -554,7 +557,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 
 	// Only check for validity if we are actually checking the registration
 	if regCheck && reg.Status != core.StatusValid {
-		return nil, nil, reg, probs.Unauthorized("Registration is not valid, has status '%s'", reg.Status)
+		return nil, nil, reg, probs.Unauthorized(fmt.Sprintf("Registration is not valid, has status '%s'", reg.Status))
 	}
 
 	if statName, err := checkAlgorithm(key, parsedJws); err != nil {
@@ -584,7 +587,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	if wfe.remoteNonceService != nil {
 		valid, err := nonce.RemoteRedeem(ctx, wfe.noncePrefixMap, nonceStr)
 		if err != nil {
-			return nil, nil, reg, probs.ServerInternal("failed to verify nonce validity: %s", err)
+			return nil, nil, reg, probs.ServerInternal(fmt.Sprintf("failed to verify nonce validity: %s", err))
 		}
 		nonceValid = valid
 	} else {
@@ -592,7 +595,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	}
 	if !nonceValid {
 		wfe.joseErrorCounter.WithLabelValues("JWSInvalidNonce").Inc()
-		return nil, nil, reg, probs.BadNonce("JWS has invalid anti-replay nonce %s", nonceStr)
+		return nil, nil, reg, probs.BadNonce(fmt.Sprintf("JWS has invalid anti-replay nonce %s", nonceStr))
 	}
 
 	// Check that the "resource" field is present and has the correct value
@@ -879,7 +882,15 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 	reason := revocation.Reason(0)
 	if revokeRequest.Reason != nil {
 		if _, present := revocation.UserAllowedReasons[*revokeRequest.Reason]; !present {
-			wfe.sendError(response, logEvent, probs.Malformed("unsupported revocation reason code provided"), nil)
+			reasonStr, ok := revocation.ReasonToString[revocation.Reason(*revokeRequest.Reason)]
+			if !ok {
+				reasonStr = "unknown"
+			}
+			wfe.sendError(response, logEvent, probs.Malformed(
+				"unsupported revocation reason code provided: %s (%d). Supported reasons: %s",
+				reasonStr,
+				*revokeRequest.Reason,
+				revocation.UserAllowedReasonsMessage), nil)
 			return
 		}
 		reason = *revokeRequest.Reason
@@ -961,13 +972,14 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *web.Re
 	// bytes on the wire, and (b) the CA logs all rejections as audit events, but
 	// a bad key from the client is just a malformed request and doesn't need to
 	// be audited.
-	if err := wfe.keyPolicy.GoodKey(certificateRequest.CSR.PublicKey); err != nil {
+	if err := wfe.keyPolicy.GoodKey(ctx, certificateRequest.CSR.PublicKey); err != nil {
 		wfe.sendError(response, logEvent, probs.Malformed("Invalid key in certificate request :: %s", err), err)
 		return
 	}
 	logEvent.Extra["CSRDNSNames"] = certificateRequest.CSR.DNSNames
 	logEvent.Extra["CSREmailAddresses"] = certificateRequest.CSR.EmailAddresses
 	logEvent.Extra["CSRIPAddresses"] = certificateRequest.CSR.IPAddresses
+	logEvent.Extra["KeyType"] = web.KeyTypeToString(certificateRequest.CSR.PublicKey)
 
 	// Inc CSR signature algorithm counter
 	wfe.csrSignatureAlgs.With(prometheus.Labels{"type": certificateRequest.CSR.SignatureAlgorithm.String()}).Inc()
@@ -1277,8 +1289,8 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *web.Requ
 	// extraneous requests to the RA we have to add this bypass.
 	if len(update.Agreement) > 0 && update.Agreement != currReg.Agreement &&
 		update.Agreement != wfe.SubscriberAgreementURL {
-		problem := probs.Malformed("Provided agreement URL [%s] does not match current agreement URL [%s]", update.Agreement, wfe.SubscriberAgreementURL)
-		wfe.sendError(response, logEvent, problem, nil)
+		msg := fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", update.Agreement, wfe.SubscriberAgreementURL)
+		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
 		return
 	}
 
@@ -1416,8 +1428,6 @@ func (wfe *WebFrontEndImpl) authorizationCommon(
 	}
 }
 
-var allHex = regexp.MustCompile("^[0-9a-f]+$")
-
 // Certificate is used by clients to request a copy of their current certificate, or to
 // request a reissuance of the certificate.
 func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
@@ -1451,7 +1461,6 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	if _, err = response.Write(cert.DER); err != nil {
 		wfe.log.Warningf("Could not write response: %s", err)
 	}
-	return
 }
 
 // Terms is used by the client to obtain the current Terms of Service /
@@ -1610,21 +1619,6 @@ func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal registration"), err)
 		return
 	}
-}
-
-// addIssuingCertificateURLs() adds Issuing Certificate URLs (AIA) from a
-// X.509 certificate to the HTTP response. If the IssuingCertificateURL
-// in a certificate is not https://, it will be upgraded to https://
-func (wfe *WebFrontEndImpl) addIssuingCertificateURLs(response http.ResponseWriter, issuingCertificateURL []string) error {
-	for _, rawURL := range issuingCertificateURL {
-		parsedURI, err := url.ParseRequestURI(rawURL)
-		if err != nil {
-			return err
-		}
-		parsedURI.Scheme = "https"
-		response.Header().Add("Link", link(parsedURI.String(), "up"))
-	}
-	return nil
 }
 
 func urlForAuthz(authz core.Authorization, request *http.Request) string {

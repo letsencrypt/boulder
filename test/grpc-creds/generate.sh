@@ -10,7 +10,8 @@ command -v minica >/dev/null 2>&1 || {
 }
 
 for HOSTNAME in admin-revoker.boulder expiration-mailer.boulder \
-  ocsp-updater.boulder orphan-finder.boulder wfe.boulder akamai-purger.boulder nonce.boulder ; do
+  ocsp-updater.boulder orphan-finder.boulder wfe.boulder akamai-purger.boulder nonce.boulder \
+  bad-key-revoker.boulder ; do
   minica -domains ${HOSTNAME}
 done
 

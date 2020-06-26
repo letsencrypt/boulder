@@ -8,6 +8,7 @@ import (
 	"math"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	jose "gopkg.in/square/go-jose.v2"
@@ -15,7 +16,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
@@ -109,18 +109,18 @@ func SelectCertificates(s db.Selector, q string, args map[string]interface{}) ([
 	return models, err
 }
 
-const certStatusFields = "serial, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, notAfter, isExpired"
+func certStatusFields() []string {
+	return []string{"serial", "status", "ocspLastUpdated", "revokedDate", "revokedReason", "lastExpirationNagSent", "ocspResponse", "notAfter", "isExpired", "issuerID"}
+}
 
 // SelectCertificateStatus selects all fields of one certificate status model
 func SelectCertificateStatus(s db.OneSelector, q string, args ...interface{}) (certStatusModel, error) {
-	fields := certStatusFields
-	if features.Enabled(features.StoreIssuerInfo) {
-		fields += ", issuerID"
-	}
 	var model certStatusModel
+	fields := strings.Join(certStatusFields(), ",")
 	err := s.SelectOne(
 		&model,
-		"SELECT "+fields+" FROM certificateStatus "+q,
+		`SELECT `+fields+
+			` FROM certificateStatus `+q,
 		args...,
 	)
 	return model, err
@@ -183,13 +183,6 @@ type challModel struct {
 	LockCol int64
 }
 
-// getChallengesQuery fetches exactly the fields in challModel from the
-// challenges table.
-const getChallengesQuery = `
-	SELECT id, authorizationID, type, status, error, token,
-		keyAuthorization, validationRecord
-	FROM challenges WHERE authorizationID = :authID ORDER BY id ASC`
-
 // newReg creates a reg model object from a core.Registration
 func registrationToModel(r *core.Registration) (*regModel, error) {
 	key, err := json.Marshal(r.Key)
@@ -197,7 +190,7 @@ func registrationToModel(r *core.Registration) (*regModel, error) {
 		return nil, err
 	}
 
-	sha, err := core.KeyDigest(r.Key)
+	sha, err := core.KeyDigestB64(r.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -251,37 +244,6 @@ func modelToRegistration(reg *regModel) (core.Registration, error) {
 	}
 
 	return r, nil
-}
-
-func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
-	cm := challModel{
-		AuthorizationID:  authID,
-		Type:             c.Type,
-		Status:           c.Status,
-		Token:            c.Token,
-		KeyAuthorization: c.ProvidedKeyAuthorization,
-	}
-	if c.Error != nil {
-		errJSON, err := json.Marshal(c.Error)
-		if err != nil {
-			return nil, err
-		}
-		if len(errJSON) > mediumBlobSize {
-			return nil, fmt.Errorf("Error object is too large to store in the database")
-		}
-		cm.Error = errJSON
-	}
-	if len(c.ValidationRecord) > 0 {
-		vrJSON, err := json.Marshal(c.ValidationRecord)
-		if err != nil {
-			return nil, err
-		}
-		if len(vrJSON) > mediumBlobSize {
-			return nil, fmt.Errorf("Validation Record object is too large to store in the database")
-		}
-		cm.ValidationRecord = vrJSON
-	}
-	return &cm, nil
 }
 
 func modelToChallenge(cm *challModel) (core.Challenge, error) {
@@ -350,11 +312,6 @@ type requestedNameModel struct {
 }
 
 type orderToAuthzModel struct {
-	OrderID int64
-	AuthzID string
-}
-
-type orderToAuthz2Model struct {
 	OrderID int64
 	AuthzID int64
 }
@@ -449,7 +406,7 @@ func statusUint(status core.AcmeStatus) uint8 {
 	return statusToUint[string(status)]
 }
 
-const authz2Fields = "id, identifierType, identifierValue, registrationID, status, expires, challenges, attempted, token, validationError, validationRecord"
+const authzFields = "id, identifierType, identifierValue, registrationID, status, expires, challenges, attempted, token, validationError, validationRecord"
 
 type authzModel struct {
 	ID               int64     `db:"id"`
@@ -564,7 +521,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 
 // populateAttemptedFields takes a challenge and populates it with the validation fields status,
 // validation records, and error (the latter only if the validation failed) from a authzModel.
-func populateAttemptedFields(am *authzModel, challenge *corepb.Challenge) error {
+func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 	if len(am.ValidationError) != 0 {
 		// If the error is non-empty the challenge must be invalid.
 		status := string(core.StatusInvalid)
@@ -604,7 +561,7 @@ func populateAttemptedFields(am *authzModel, challenge *corepb.Challenge) error 
 	return nil
 }
 
-func modelToAuthzPB(am *authzModel) (*corepb.Authorization, error) {
+func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 	expires := am.Expires.UTC().UnixNano()
 	id := fmt.Sprintf("%d", am.ID)
 	status := uintToStatus[am.Status]
@@ -633,32 +590,35 @@ func modelToAuthzPB(am *authzModel) (*corepb.Authorization, error) {
 				Status: &status,
 				Token:  &token,
 			}
-			if features.Enabled(features.DeleteUnusedChallenges) {
-				// If the challenge type matches the attempted type it must be either
-				// valid or invalid and we need to populate extra fields.
-				// Also, once any challenge has been attempted, we consider the other
-				// challenges "gone" per https://tools.ietf.org/html/rfc8555#section-7.1.4
-				if am.Attempted != nil {
-					if uintToChallType[*am.Attempted] == challType {
-						if err := populateAttemptedFields(am, challenge); err != nil {
-							return nil, err
-						}
-						pb.Challenges = append(pb.Challenges, challenge)
-					}
-				} else {
-					// When no challenge has been attempted yet, all challenges are still
-					// present.
-					pb.Challenges = append(pb.Challenges, challenge)
-				}
-			} else {
-				if am.Attempted != nil && uintToChallType[*am.Attempted] == challType {
+			// If the challenge type matches the attempted type it must be either
+			// valid or invalid and we need to populate extra fields.
+			// Also, once any challenge has been attempted, we consider the other
+			// challenges "gone" per https://tools.ietf.org/html/rfc8555#section-7.1.4
+			if am.Attempted != nil {
+				if uintToChallType[*am.Attempted] == challType {
 					if err := populateAttemptedFields(am, challenge); err != nil {
 						return nil, err
 					}
+					pb.Challenges = append(pb.Challenges, challenge)
 				}
+			} else {
+				// When no challenge has been attempted yet, all challenges are still
+				// present.
 				pb.Challenges = append(pb.Challenges, challenge)
 			}
 		}
 	}
 	return pb, nil
+}
+
+type keyHashModel struct {
+	ID           int64
+	KeyHash      []byte
+	CertNotAfter time.Time
+	CertSerial   string
+}
+
+var stringToSourceInt = map[string]int{
+	"API":           1,
+	"admin-revoker": 2,
 }

@@ -1,8 +1,10 @@
 # Multi-VA implementation
 
-Boulder supports a multi-perspective validation feature, currently in a test
-deployment by Let's Encrypt. This is intended to increase resilience against
-local network hijacks and BGP attacks.
+Boulder supports a multi-perspective validation feature intended to increase
+resilience against local network hijacks and BGP attacks. It is currently
+[deployed in a production
+capacity](https://letsencrypt.org/2020/02/19/multi-perspective-validation.html)
+by Let's Encrypt.
 
 If you follow the [Development Instructions](https://github.com/letsencrypt/boulder#development)
 to set up a Boulder environment in Docker and then change your `docker-compose.yml`'s
@@ -38,14 +40,13 @@ and
 as their config files.
 
 There are two feature flags that control whether multi-VA takes effect:
-MultiVAFullResults and EnforceMultiVA. If MultiVAFullResults is enabled (the
-current setting in prod and staging), then each primary validation will also
-send out remote validation requests, and wait for all the results to come in, so
-we can log the results for analysis. If EnforceMultiVA is enabled, we require
-that almost all remote validation requests succeed. The primary VA's
-"maxRemoteValidationFailures" config field specifies how many remote VAs can
-fail before the primary VA considers overall validation a failure. It should be
-strictly less than the number of remote VAs.
+MultiVAFullResults and EnforceMultiVA. If MultiVAFullResults is enabled
+then each primary validation will also send out remote validation requests, and
+wait for all the results to come in, so we can log the results for analysis. If
+EnforceMultiVA is enabled, we require that almost all remote validation requests
+succeed. The primary VA's "maxRemoteValidationFailures" config field specifies
+how many remote VAs can fail before the primary VA considers overall validation
+a failure. It should be strictly less than the number of remote VAs.
 
 Validation is also controlled by the "multiVAPolicyFile" config field on the
 primary VA. This specifies a file that can contain temporary overrides for

@@ -157,7 +157,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 		time.Second*5,
 		nil,
 		metrics.NoopRegisterer,
-		clock.Default(),
+		clock.New(),
 		1,
 		log)
 

@@ -204,7 +204,7 @@ func setup(
 		userAgent,
 		"letsencrypt.org",
 		metrics.NoopRegisterer,
-		clock.Default(),
+		clock.New(),
 		logger,
 		accountURIPrefixes,
 		"")
@@ -267,17 +267,17 @@ func (v cancelledVA) PerformValidation(_ context.Context, _ string, _ core.Chall
 // always return errors.
 type brokenRemoteVA struct{}
 
-// brokenRemoteVAError is the error returned by a brokenRemoteVA's
+// errBrokenRemoteVA is the error returned by a brokenRemoteVA's
 // PerformValidation and IsSafeDomain functions.
-var brokenRemoteVAError = errors.New("brokenRemoteVA is broken")
+var errBrokenRemoteVA = errors.New("brokenRemoteVA is broken")
 
-// PerformValidation returns brokenRemoteVAError unconditionally
+// PerformValidation returns errBrokenRemoteVA unconditionally
 func (b *brokenRemoteVA) PerformValidation(
 	_ context.Context,
 	_ string,
 	_ core.Challenge,
 	_ core.Authorization) ([]core.ValidationRecord, error) {
-	return nil, brokenRemoteVAError
+	return nil, errBrokenRemoteVA
 }
 
 func TestMultiVA(t *testing.T) {
@@ -325,15 +325,13 @@ func TestMultiVA(t *testing.T) {
 		"MultiVAFullResults": true,
 	}
 
-	unauthorized := probs.Unauthorized(
+	unauthorized := probs.Unauthorized(fmt.Sprintf(
 		`The key authorization file from the server did not match this challenge %q != "???"`,
-		expectedKeyAuthorization)
-
-	internalErr := probs.ServerInternal("Remote PerformValidation RPC failed")
+		expectedKeyAuthorization))
 
 	expectedInternalErrLine := fmt.Sprintf(
 		`ERR: \[AUDIT\] Remote VA "broken".PerformValidation failed: %s`,
-		brokenRemoteVAError.Error())
+		errBrokenRemoteVA.Error())
 
 	testCases := []struct {
 		Name         string
@@ -382,7 +380,7 @@ func TestMultiVA(t *testing.T) {
 			},
 			AllowedUAs:   allowedUAs,
 			Features:     enforceMultiVA,
-			ExpectedProb: internalErr,
+			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
 			// The real failure cause should be logged
 			ExpectedLog: expectedInternalErrLine,
 		},
@@ -410,11 +408,13 @@ func TestMultiVA(t *testing.T) {
 		{
 			// With only one working remote VA there should be a validation failure
 			// when enforcing multi VA.
-			Name:         "Local VA and one remote VA OK, enforce multi VA",
-			RemoteVAs:    remoteVAs,
-			AllowedUAs:   map[string]bool{localUA: true, remoteUA2: true},
-			Features:     enforceMultiVA,
-			ExpectedProb: unauthorized,
+			Name:       "Local VA and one remote VA OK, enforce multi VA",
+			RemoteVAs:  remoteVAs,
+			AllowedUAs: map[string]bool{localUA: true, remoteUA2: true},
+			Features:   enforceMultiVA,
+			ExpectedProb: probs.Unauthorized(fmt.Sprintf(
+				`During secondary validation: The key authorization file from the server did not match this challenge %q != "???"`,
+				expectedKeyAuthorization)),
 		},
 		{
 			// With one remote VA cancelled there should not be a validation failure
@@ -442,7 +442,7 @@ func TestMultiVA(t *testing.T) {
 			// With the local and remote VAs seeing diff problems and the full results
 			// feature flag on but multi VA enforcement off we expect
 			// no problem.
-			Name:       "Local and remove VA differential, full results, no enforce multi VA",
+			Name:       "Local and remote VA differential, full results, no enforce multi VA",
 			RemoteVAs:  remoteVAs,
 			AllowedUAs: map[string]bool{localUA: true},
 			Features:   noEnforceMultiVAFullResults,
@@ -450,11 +450,13 @@ func TestMultiVA(t *testing.T) {
 		{
 			// With the local and remote VAs seeing diff problems and the full results
 			// feature flag on and multi VA enforcement on we expect a problem.
-			Name:         "Local and remove VA differential, full results, enforce multi VA",
-			RemoteVAs:    remoteVAs,
-			AllowedUAs:   map[string]bool{localUA: true},
-			Features:     enforceMultiVAFullResults,
-			ExpectedProb: unauthorized,
+			Name:       "Local and remote VA differential, full results, enforce multi VA",
+			RemoteVAs:  remoteVAs,
+			AllowedUAs: map[string]bool{localUA: true},
+			Features:   enforceMultiVAFullResults,
+			ExpectedProb: probs.Unauthorized(fmt.Sprintf(
+				`During secondary validation: The key authorization file from the server did not match this challenge %q != "???"`,
+				expectedKeyAuthorization)),
 		},
 	}
 
@@ -717,27 +719,27 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 			name:          "remote and primary results equal (all nil)",
 			primaryResult: nil,
 			remoteProbs: []*remoteValidationResult{
-				&remoteValidationResult{Problem: nil, VAHostname: "remoteA"},
-				&remoteValidationResult{Problem: nil, VAHostname: "remoteB"},
-				&remoteValidationResult{Problem: nil, VAHostname: "remoteC"},
+				{Problem: nil, VAHostname: "remoteA"},
+				{Problem: nil, VAHostname: "remoteB"},
+				{Problem: nil, VAHostname: "remoteC"},
 			},
 		},
 		{
 			name:          "remote and primary results equal (not nil)",
 			primaryResult: egProbA,
 			remoteProbs: []*remoteValidationResult{
-				&remoteValidationResult{Problem: egProbA, VAHostname: "remoteA"},
-				&remoteValidationResult{Problem: egProbA, VAHostname: "remoteB"},
-				&remoteValidationResult{Problem: egProbA, VAHostname: "remoteC"},
+				{Problem: egProbA, VAHostname: "remoteA"},
+				{Problem: egProbA, VAHostname: "remoteB"},
+				{Problem: egProbA, VAHostname: "remoteC"},
 			},
 		},
 		{
 			name:          "remote and primary differ (primary nil)",
 			primaryResult: nil,
 			remoteProbs: []*remoteValidationResult{
-				&remoteValidationResult{Problem: egProbA, VAHostname: "remoteA"},
-				&remoteValidationResult{Problem: nil, VAHostname: "remoteB"},
-				&remoteValidationResult{Problem: egProbB, VAHostname: "remoteC"},
+				{Problem: egProbA, VAHostname: "remoteA"},
+				{Problem: nil, VAHostname: "remoteB"},
+				{Problem: egProbB, VAHostname: "remoteC"},
 			},
 			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","PrimaryResult":null,"RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"remoteA","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"VAHostname":"remoteC","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
 		},
@@ -745,9 +747,9 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 			name:          "remote and primary differ (primary not nil)",
 			primaryResult: egProbA,
 			remoteProbs: []*remoteValidationResult{
-				&remoteValidationResult{Problem: nil, VAHostname: "remoteA"},
-				&remoteValidationResult{Problem: egProbB, VAHostname: "remoteB"},
-				&remoteValidationResult{Problem: nil, VAHostname: "remoteC"},
+				{Problem: nil, VAHostname: "remoteA"},
+				{Problem: egProbB, VAHostname: "remoteB"},
+				{Problem: nil, VAHostname: "remoteC"},
 			},
 			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","PrimaryResult":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400},"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"remoteB","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
 		},

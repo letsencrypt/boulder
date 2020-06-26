@@ -61,31 +61,22 @@ function run_test_coverage() {
   # We don't use the run function here because sometimes goveralls fails to
   # contact the server and exits with non-zero status, but we don't want to
   # treat that as a failure.
-  goveralls -v -coverprofile=gover.coverprofile -service=travis-ci
+  goveralls -v -coverprofile=gover.coverprofile -service=travis-pro
 }
 
 #
 # Run various linters.
 #
 if [[ "$RUN" =~ "lints" ]] ; then
-  run_and_expect_silence go vet ./...
-  # Run gofmt instead of go fmt because of
-  # https://github.com/golang/go/issues/31976
-  run_and_expect_silence bash -c "find . -name '*.go' -not -path './vendor/*' -print | xargs -n1 gofmt -l"
+  golangci-lint run ./...
   run_and_expect_silence ./test/test-no-outdated-migrations.sh
-  ineffassign .
   python test/grafana/lint.py
-
-  run_and_expect_silence errcheck \
-    -ignore fmt:Fprintf,fmt:Fprintln,fmt:Fprint,io:Write,os:Remove,net/http:Write \
-    $(go list -f '{{ .ImportPath }}' ./... | grep -v test)
-
   # Check for common spelling errors using codespell.
   # Update .codespell.ignore.txt if you find false positives (NOTE: ignored
   # words should be all lowercase).
   run_and_expect_silence codespell \
     --ignore-words=.codespell.ignore.txt \
-    --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt
+    --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt,.*.swp
 fi
 
 #
@@ -110,21 +101,20 @@ if [[ "$RUN" =~ "integration" ]] ; then
     args+=("--filter" "${INT_FILTER}")
   fi
 
-  source ${CERTBOT_PATH:-/certbot}/${VENV_NAME:-venv3}/bin/activate
-  DIRECTORY=http://boulder:4000/directory \
-    python3 test/integration-test.py --chisel --gotest "${args[@]}"
+  python3 test/integration-test.py --chisel --gotest "${args[@]}"
 fi
 
 # Test that just ./start.py works, which is a proxy for testing that
 # `docker-compose up` works, since that just runs start.py (via entrypoint.sh).
 if [[ "$RUN" =~ "start" ]] ; then
-  ./start.py &
+  python3 start.py &
   for I in $(seq 1 100); do
     sleep 1
     curl http://localhost:4000/directory && break
   done
   if [[ $I = 100 ]]; then
     echo "Boulder did not come up after ./start.py."
+    exit 1
   fi
 fi
 

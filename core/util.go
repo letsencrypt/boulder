@@ -69,7 +69,7 @@ func NewToken() string {
 	return RandomString(32)
 }
 
-var tokenFormat = regexp.MustCompile("^[\\w-]{43}$")
+var tokenFormat = regexp.MustCompile(`^[\w-]{43}$`)
 
 // LooksLikeAToken checks whether a string represents a 32-octet value in
 // the URL-safe base64 alphabet.
@@ -87,13 +87,15 @@ func Fingerprint256(data []byte) string {
 	return base64.RawURLEncoding.EncodeToString(d.Sum(nil))
 }
 
-// KeyDigest produces a padded, standard Base64-encoded SHA256 digest of a
+type Sha256Digest [sha256.Size]byte
+
+// KeyDigest produces a Base64-encoded SHA256 digest of a
 // provided public key.
-func KeyDigest(key crypto.PublicKey) (string, error) {
+func KeyDigest(key crypto.PublicKey) (Sha256Digest, error) {
 	switch t := key.(type) {
 	case *jose.JSONWebKey:
 		if t == nil {
-			return "", fmt.Errorf("Cannot compute digest of nil key")
+			return Sha256Digest{}, fmt.Errorf("Cannot compute digest of nil key")
 		}
 		return KeyDigest(t.Key)
 	case jose.JSONWebKey:
@@ -103,17 +105,26 @@ func KeyDigest(key crypto.PublicKey) (string, error) {
 		if err != nil {
 			logger := blog.Get()
 			logger.Debugf("Problem marshaling public key: %s", err)
-			return "", err
+			return Sha256Digest{}, err
 		}
-		spkiDigest := sha256.Sum256(keyDER)
-		return base64.StdEncoding.EncodeToString(spkiDigest[0:32]), nil
+		return sha256.Sum256(keyDER), nil
 	}
+}
+
+// KeyDigestB64 produces a padded, standard Base64-encoded SHA256 digest of a
+// provided public key.
+func KeyDigestB64(key crypto.PublicKey) (string, error) {
+	digest, err := KeyDigest(key)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(digest[:]), nil
 }
 
 // KeyDigestEquals determines whether two public keys have the same digest.
 func KeyDigestEquals(j, k crypto.PublicKey) bool {
-	digestJ, errJ := KeyDigest(j)
-	digestK, errK := KeyDigest(k)
+	digestJ, errJ := KeyDigestB64(j)
+	digestK, errK := KeyDigestB64(k)
 	// Keys that don't have a valid digest (due to marshalling problems)
 	// are never equal. So, e.g. nil keys are not equal.
 	if errJ != nil || errK != nil {
@@ -167,10 +178,7 @@ func ValidSerial(serial string) bool {
 		return false
 	}
 	_, err := hex.DecodeString(serial)
-	if err != nil {
-		return false
-	}
-	return true
+	return err == nil
 }
 
 // GetBuildID identifies what build is running.

@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	"google.golang.org/grpc/grpclog"
 
@@ -89,17 +90,20 @@ func (log grpcLogger) Fatalln(args ...interface{}) {
 }
 
 func (log grpcLogger) Error(args ...interface{}) {
-	log.Logger.AuditErr(fmt.Sprintln(args...))
+	log.Logger.AuditErr(fmt.Sprint(args...))
 }
 func (log grpcLogger) Errorf(format string, args ...interface{}) {
 	output := fmt.Sprintf(format, args...)
+	if output == `ccResolverWrapper: error parsing service config: no JSON service config provided` {
+		return
+	}
 	if output == `grpc: Server.processUnaryRPC failed to write status: connection error: desc = "transport is closing"` {
 		return
 	}
 	log.Logger.AuditErr(output)
 }
 func (log grpcLogger) Errorln(args ...interface{}) {
-	log.Logger.AuditErr(fmt.Sprintln(args...))
+	log.Logger.AuditErr(fmt.Sprint(args...))
 }
 
 func (log grpcLogger) Warning(args ...interface{}) {
@@ -126,7 +130,16 @@ type promLogger struct {
 }
 
 func (log promLogger) Println(args ...interface{}) {
-	log.AuditErr(fmt.Sprintln(args...))
+	log.AuditErr(fmt.Sprint(args...))
+}
+
+type logWriter struct {
+	blog.Logger
+}
+
+func (lw logWriter) Write(p []byte) (n int, err error) {
+	lw.Logger.Info(string(p))
+	return
 }
 
 // StatsAndLogging constructs a prometheus registerer and an AuditLogger based
@@ -167,6 +180,16 @@ func NewLogger(logConf SyslogConfig) blog.Logger {
 	cfsslLog.SetLogger(cfsslLogger{logger})
 	_ = mysql.SetLogger(mysqlLogger{logger})
 	grpclog.SetLoggerV2(grpcLogger{logger})
+	log.SetOutput(logWriter{logger})
+
+	// Periodically log the current timestamp, to ensure syslog timestamps match
+	// Boulder's conception of time.
+	go func() {
+		for {
+			time.Sleep(time.Minute)
+			logger.Info(fmt.Sprintf("time=%s", time.Now().Format(time.RFC3339Nano)))
+		}
+	}()
 	return logger
 }
 
@@ -204,7 +227,8 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 	go func() {
 		err := server.ListenAndServe()
 		if err != nil {
-			log.Fatalf("unable to boot debug server on %s: %v", addr, err)
+			logger.Errf("unable to boot debug server on %s: %v", addr, err)
+			os.Exit(1)
 		}
 	}()
 	return registry
@@ -214,7 +238,7 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 func Fail(msg string) {
 	logger := blog.Get()
 	logger.AuditErr(msg)
-	fmt.Fprintf(os.Stderr, msg)
+	fmt.Fprint(os.Stderr, msg)
 	os.Exit(1)
 }
 

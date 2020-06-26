@@ -31,13 +31,12 @@ from helpers import *
 
 from acme import challenges
 
-def run_client_tests():
-    root = os.environ.get("CERTBOT_PATH")
-    assert root is not None, (
-        "Please set CERTBOT_PATH env variable to point at "
-        "initialized (virtualenv) client repo root")
-    cmd = os.path.join(root, 'tests', 'boulder-integration.sh')
-    run(cmd, cwd=root)
+# Set the environment variable RACE to anything other than 'true' to disable
+# race detection. This significantly speeds up integration testing cycles
+# locally.
+race_detection = True
+if os.environ.get('RACE', 'true') != 'true':
+    race_detection = False
 
 def run_go_tests(filterPattern=None):
     """
@@ -49,10 +48,7 @@ def run_go_tests(filterPattern=None):
     if filterPattern is not None and filterPattern != "":
         cmdLine = cmdLine + ["--test.run", filterPattern]
     cmdLine = cmdLine + ["-tags", "integration", "-count=1", "-race", "./test/integration"]
-    try:
-        subprocess.check_call(cmdLine, shell=False, stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError as e:
-        raise(Exception("%s. Output:\n%s" % (e, e.output)))
+    subprocess.check_call(cmdLine, shell=False, stderr=subprocess.STDOUT)
 
 def run_expired_authz_purger():
     # Note: This test must be run after all other tests that depend on
@@ -187,30 +183,19 @@ def run_janitor():
     p.terminate()
 
 def test_single_ocsp():
-    """Run the single-ocsp command, which is used to generate OCSP responses for
-       intermediate certificates on a manual basis. Then start up an
-       ocsp-responder configured to respond using the output of single-ocsp,
-       check that it successfully answers OCSP requests, and shut the responder
-       back down.
+    """Run ocsp-responder with the single OCSP response generated for the intermediate
+       certificate using the ceremony tool during setup and check that it successfully
+       answers OCSP requests, and shut the responder back down.
 
        This is a non-API test.
     """
-    run("./bin/single-ocsp -issuer test/test-root.pem \
-            -responder test/test-root.pem \
-            -target test/test-ca2.pem \
-            -pkcs11 test/test-root.key-pkcs11.json \
-            -thisUpdate 2016-09-02T00:00:00Z \
-            -nextUpdate 2020-09-02T00:00:00Z \
-            -status 0 \
-            -out /tmp/issuer-ocsp-responses.txt")
-
     p = subprocess.Popen(
         './bin/ocsp-responder --config test/issuer-ocsp-responder.json', shell=True)
     waitport(4003, './bin/ocsp-responder --config test/issuer-ocsp-responder.json')
 
     # Verify that the static OCSP responder, which answers with a
     # pre-signed, long-lived response for the CA cert, works.
-    verify_ocsp("test/test-ca2.pem", "test/test-root.pem", "http://localhost:4003", "good")
+    verify_ocsp("/tmp/intermediate-cert-rsa-a.pem", "/tmp/root-cert-rsa.pem", "http://localhost:4003", "good")
 
     p.send_signal(signal.SIGTERM)
     p.wait()
@@ -239,8 +224,6 @@ exit_status = 1
 
 def main():
     parser = argparse.ArgumentParser(description='Run integration tests')
-    parser.add_argument('--certbot', dest='run_certbot', action='store_true',
-                        help="run the certbot integration tests")
     parser.add_argument('--chisel', dest="run_chisel", action="store_true",
                         help="run integration tests using chisel")
     parser.add_argument('--gotest', dest="run_go", action="store_true",
@@ -250,37 +233,36 @@ def main():
     # allow any ACME client to run custom command for integration
     # testing (without having to implement its own busy-wait loop)
     parser.add_argument('--custom', metavar="CMD", help="run custom command")
-    parser.set_defaults(run_certbot=False, run_chisel=False,
-        test_case_filter="", skip_setup=False)
+    parser.set_defaults(run_chisel=False, test_case_filter="", skip_setup=False)
     args = parser.parse_args()
 
-    if not (args.run_certbot or args.run_chisel or args.custom is not None):
-        raise(Exception("must run at least one of the letsencrypt or chisel tests with --certbot, --chisel, or --custom"))
+    if not (args.run_chisel or args.custom  or args.run_go is not None):
+        raise(Exception("must run at least one of the letsencrypt or chisel tests with --chisel, --gotest, or --custom"))
+
+    # Setup issuance hierarchy
+    startservers.setupHierarchy()
 
     if not args.test_case_filter:
         now = datetime.datetime.utcnow()
 
         six_months_ago = now+datetime.timedelta(days=-30*6)
-        if not startservers.start(race_detection=True, fakeclock=fakeclock(six_months_ago)):
+        if not startservers.start(race_detection=race_detection, fakeclock=fakeclock(six_months_ago)):
             raise(Exception("startservers failed (mocking six months ago)"))
         v1_integration.caa_client = caa_client = chisel.make_client()
         setup_six_months_ago()
         startservers.stop()
 
         twenty_days_ago = now+datetime.timedelta(days=-20)
-        if not startservers.start(race_detection=True, fakeclock=fakeclock(twenty_days_ago)):
+        if not startservers.start(race_detection=race_detection, fakeclock=fakeclock(twenty_days_ago)):
             raise(Exception("startservers failed (mocking twenty days ago)"))
         setup_twenty_days_ago()
         startservers.stop()
 
-    if not startservers.start(race_detection=True, fakeclock=None):
+    if not startservers.start(race_detection=race_detection, fakeclock=None):
         raise(Exception("startservers failed"))
 
     if args.run_chisel:
         run_chisel(args.test_case_filter)
-
-    if args.run_certbot:
-        run_client_tests()
 
     if args.run_go:
         run_go_tests(args.test_case_filter)
@@ -403,10 +385,7 @@ def run_cert_checker():
     run("./bin/cert-checker -config %s/cert-checker.json" % config_dir)
 
 if __name__ == "__main__":
-    try:
-        main()
-    except subprocess.CalledProcessError as e:
-        raise(Exception("%s. Output:\n%s" % (e, e.output)))
+    main()
 
 @atexit.register
 def stop():

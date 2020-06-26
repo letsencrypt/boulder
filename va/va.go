@@ -76,6 +76,7 @@ type RemoteVA struct {
 
 type vaMetrics struct {
 	validationTime                      *prometheus.HistogramVec
+	localValidationTime                 *prometheus.HistogramVec
 	remoteValidationTime                *prometheus.HistogramVec
 	remoteValidationFailures            prometheus.Counter
 	prospectiveRemoteValidationFailures prometheus.Counter
@@ -90,11 +91,19 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 	validationTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "validation_time",
-			Help:    "Time taken to validate a challenge",
+			Help:    "Total time taken to validate a challenge and aggregate results",
 			Buckets: metrics.InternetFacingBuckets,
 		},
 		[]string{"type", "result", "problem_type"})
 	stats.MustRegister(validationTime)
+	localValidationTime := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "local_validation_time",
+			Help:    "Time taken to locally validate a challenge",
+			Buckets: metrics.InternetFacingBuckets,
+		},
+		[]string{"type", "result"})
+	stats.MustRegister(localValidationTime)
 	remoteValidationTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "remote_validation_time",
@@ -149,6 +158,7 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 	return &vaMetrics{
 		validationTime:                      validationTime,
 		remoteValidationTime:                remoteValidationTime,
+		localValidationTime:                 localValidationTime,
 		remoteValidationFailures:            remoteValidationFailures,
 		prospectiveRemoteValidationFailures: prospectiveRemoteValidationFailures,
 		tlsALPNOIDCounter:                   tlsALPNOIDCounter,
@@ -290,7 +300,7 @@ func detailedError(err error) *probs.ProblemDetails {
 		} else if netErr.Timeout() && netErr.Op == "dial" {
 			return probs.ConnectionFailure("Timeout during connect (likely firewall problem)")
 		} else if netErr.Timeout() {
-			return probs.ConnectionFailure("Timeout during %s (your server may be slow or overloaded)", netErr.Op)
+			return probs.ConnectionFailure(fmt.Sprintf("Timeout during %s (your server may be slow or overloaded)", netErr.Op))
 		}
 	}
 	if err, ok := err.(net.Error); ok && err.Timeout() {
@@ -502,7 +512,9 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 				state = "success"
 				return nil
 			} else if bad > va.maxRemoteFailures {
-				return result.Problem
+				modifiedProblem := *result.Problem
+				modifiedProblem.Detail = "During secondary validation: " + firstProb.Detail
+				return &modifiedProblem
 			}
 		}
 
@@ -528,7 +540,9 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 		state = "success"
 		return nil
 	} else if bad > va.maxRemoteFailures {
-		return firstProb
+		modifiedProblem := *firstProb
+		modifiedProblem.Detail = "During secondary validation: " + firstProb.Detail
+		return &modifiedProblem
 	}
 
 	// This condition should not occur - it indicates the good/bad counts didn't
@@ -627,6 +641,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 
 	records, prob := va.validate(ctx, identifier.DNSIdentifier(domain), challenge, authz)
 	challenge.ValidationRecord = records
+	localValidationLatency := time.Since(vStart)
 
 	// Check for malformed ValidationRecords
 	if !challenge.RecordsSane() && prob == nil {
@@ -694,6 +709,10 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	validationLatency := time.Since(vStart)
 	logEvent.ValidationLatency = validationLatency.Round(time.Millisecond).Seconds()
 
+	va.metrics.localValidationTime.With(prometheus.Labels{
+		"type":   string(challenge.Type),
+		"result": string(challenge.Status),
+	}).Observe(localValidationLatency.Seconds())
 	va.metrics.validationTime.With(prometheus.Labels{
 		"type":         string(challenge.Type),
 		"result":       string(challenge.Status),

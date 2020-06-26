@@ -31,12 +31,6 @@ import (
 	"github.com/letsencrypt/challtestsrv"
 )
 
-// RatePeriod describes how long a certain throughput should be maintained
-type RatePeriod struct {
-	For  time.Duration
-	Rate int64
-}
-
 // account is an ACME v2 account resource. It does not have a `jose.Signer`
 // because we need to set the Signer options per-request with the URL being
 // POSTed and must construct it on the fly from the `key`. Accounts are
@@ -300,7 +294,7 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	strat, err := acme.NewChallengeStrategy(challStrat)
+	strategy, err := acme.NewChallengeStrategy(challStrat)
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +323,7 @@ func New(
 	s := &State{
 		httpClient:      httpClient,
 		directory:       directory,
-		challStrat:      strat,
+		challStrat:      strategy,
 		certKey:         certKey,
 		domainBase:      domainBase,
 		callLatency:     latencyFile,
@@ -530,16 +524,6 @@ func (s *State) post(
 	}
 	state = "good"
 	return resp, nil
-}
-
-// signWithNonce signs the provided message with the provided signer, returning
-// the raw JWS bytes or an error. signWithNonce is not compatible with ACME v2
-func (s *State) signWithNonce(payload []byte, signer jose.Signer) ([]byte, error) {
-	jws, err := signer.Sign(payload)
-	if err != nil {
-		return nil, err
-	}
-	return []byte(jws.FullSerialize()), nil
 }
 
 type nonceSource struct {

@@ -45,6 +45,14 @@ type OCSPUpdater struct {
 	ogc capb.OCSPGeneratorClient
 	sac core.StorageAuthority
 
+	tickWindow    time.Duration
+	batchSize     int
+	tickHistogram *prometheus.HistogramVec
+
+	maxBackoff    time.Duration
+	backoffFactor float64
+	tickFailures  int
+
 	// Used to calculate how far back stale OCSP responses should be looked for
 	ocspMinTimeToExpiry time.Duration
 	// Used to calculate how far back in time the findStaleOCSPResponse will look
@@ -52,8 +60,6 @@ type OCSPUpdater struct {
 	// Maximum number of individual OCSP updates to attempt in parallel. Making
 	// these requests in parallel allows us to get higher total throughput.
 	parallelGenerateOCSPRequests int
-
-	loops []*looper
 
 	purgerService akamaipb.AkamaiPurgerClient
 	// issuer is used to generate OCSP request URLs to purge
@@ -105,6 +111,11 @@ func newUpdater(
 		Help: "A counter of OCSP response storage calls labelled by result",
 	}, []string{"result"})
 	stats.MustRegister(storedCounter)
+	tickHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "ocsp_updater_ticks",
+		Help: "A histogram of ocsp-updater tick latencies labelled by result and whether the tick was considered longer than expected",
+	}, []string{"result", "long"})
+	stats.MustRegister(tickHistogram)
 
 	updater := OCSPUpdater{
 		clk:                          clk,
@@ -119,6 +130,11 @@ func newUpdater(
 		genStoreHistogram:            genStoreHistogram,
 		generatedCounter:             generatedCounter,
 		storedCounter:                storedCounter,
+		tickHistogram:                tickHistogram,
+		tickWindow:                   config.OldOCSPWindow.Duration,
+		batchSize:                    config.OldOCSPBatchSize,
+		maxBackoff:                   config.SignFailureBackoffMax.Duration,
+		backoffFactor:                config.SignFailureBackoffFactor,
 	}
 
 	if updater.purgerService != nil {
@@ -129,25 +145,6 @@ func newUpdater(
 		updater.issuer = issuer
 	}
 
-	tickHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name: "ocsp_updater_ticks",
-		Help: "A histogram of ocsp-updater tick latencies labelled by result",
-	}, []string{"result", "long"})
-
-	// Setup loops
-	updater.loops = []*looper{
-		{
-			clk:                  clk,
-			batchSize:            config.OldOCSPBatchSize,
-			tickDur:              config.OldOCSPWindow.Duration,
-			tickFunc:             updater.oldOCSPResponsesTick,
-			name:                 "OldOCSPResponses",
-			failureBackoffFactor: config.SignFailureBackoffFactor,
-			failureBackoffMax:    config.SignFailureBackoffMax.Duration,
-			tickHistogram:        tickHistogram,
-		},
-	}
-
 	return &updater, nil
 }
 
@@ -156,7 +153,7 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	now := updater.clk.Now()
 	maxAgeCutoff := now.Add(-updater.ocspStaleMaxAge)
 
-	certStatusFields := "cs.serial, cs.status, cs.revokedDate, cs.notAfter"
+	certStatusFields := "cs.serial, cs.status, cs.revokedDate, cs.notAfter, cs.revokedReason"
 	if features.Enabled(features.StoreIssuerInfo) {
 		certStatusFields += ", cs.issuerID"
 	}
@@ -308,9 +305,9 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 	return nil
 }
 
-// oldOCSPResponsesTick looks for certificates with stale OCSP responses and
+// updateOCSPResponses looks for certificates with stale OCSP responses and
 // generates/stores new ones
-func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize int) error {
+func (updater *OCSPUpdater) updateOCSPResponses(ctx context.Context, batchSize int) error {
 	tickStart := updater.clk.Now()
 	statuses, err := updater.findStaleOCSPResponses(tickStart.Add(-updater.ocspMinTimeToExpiry), batchSize)
 	if err != nil {
@@ -330,57 +327,6 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(ctx context.Context, batchSize 
 	return updater.generateOCSPResponses(ctx, statuses)
 }
 
-type looper struct {
-	clk                  clock.Clock
-	batchSize            int
-	tickDur              time.Duration
-	tickFunc             func(context.Context, int) error
-	name                 string
-	failureBackoffFactor float64
-	failureBackoffMax    time.Duration
-	failures             int
-	tickHistogram        *prometheus.HistogramVec
-}
-
-func (l *looper) tick() {
-	tickStart := l.clk.Now()
-	ctx := context.TODO()
-	err := l.tickFunc(ctx, l.batchSize)
-	took := time.Since(tickStart)
-	tickEnd := tickStart.Add(took)
-	expectedTickEnd := tickStart.Add(l.tickDur)
-	long := "false"
-	state := "success"
-	if tickEnd.After(expectedTickEnd) {
-		long = "true"
-	}
-
-	// On success, sleep till it's time for the next tick. On failure, backoff.
-	sleepDur := expectedTickEnd.Sub(tickEnd)
-	if err != nil {
-		state = "failed"
-		l.failures++
-		sleepDur = core.RetryBackoff(l.failures, l.tickDur, l.failureBackoffMax, l.failureBackoffFactor)
-	} else if l.failures > 0 {
-		// If the tick was successful but previously there were failures reset
-		// counter to 0
-		l.failures = 0
-	}
-	l.tickHistogram.WithLabelValues(state, long).Observe(took.Seconds())
-
-	// Sleep for the remaining tick period or for the backoff time
-	l.clk.Sleep(sleepDur)
-}
-
-func (l *looper) loop() error {
-	if l.batchSize == 0 || l.tickDur == 0 {
-		return fmt.Errorf("Both batch size and tick duration are required, not running '%s' loop", l.name)
-	}
-	for {
-		l.tick()
-	}
-}
-
 type config struct {
 	OCSPUpdater OCSPUpdaterConfig
 
@@ -397,8 +343,7 @@ type OCSPUpdaterConfig struct {
 	cmd.ServiceConfig
 	cmd.DBConfig
 
-	OldOCSPWindow cmd.ConfigDuration
-
+	OldOCSPWindow    cmd.ConfigDuration
 	OldOCSPBatchSize int
 
 	OCSPMinTimeToExpiry          cmd.ConfigDuration
@@ -453,6 +398,32 @@ func setupClients(c OCSPUpdaterConfig, stats prometheus.Registerer, clk clock.Cl
 	return ogc, sac, apc
 }
 
+func (updater *OCSPUpdater) tick() {
+	start := updater.clk.Now()
+	err := updater.updateOCSPResponses(context.Background(), updater.batchSize)
+	end := updater.clk.Now()
+	took := end.Sub(start)
+	long, state := "false", "success"
+	if took > updater.tickWindow {
+		long = "true"
+	}
+	sleepDur := start.Add(updater.tickWindow).Sub(end)
+	if err != nil {
+		state = "failed"
+		updater.tickFailures++
+		sleepDur = core.RetryBackoff(
+			updater.tickFailures,
+			updater.tickWindow,
+			updater.maxBackoff,
+			updater.backoffFactor,
+		)
+	} else if updater.tickFailures > 0 {
+		updater.tickFailures = 0
+	}
+	updater.tickHistogram.WithLabelValues(state, long).Observe(took.Seconds())
+	updater.clk.Sleep(sleepDur)
+}
+
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
@@ -469,7 +440,7 @@ func main() {
 	err = features.Set(conf.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, conf.DebugAddr)
+	stats, logger := cmd.StatsAndLogging(c.Syslog, conf.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
@@ -479,14 +450,14 @@ func main() {
 	dbMap, err := sa.NewDbMap(dbURL, conf.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Could not connect to database")
 
-	// Collect and periodically report DB metrics using the DBMap and prometheus scope.
-	sa.InitDBMetrics(dbMap, scope)
+	// Collect and periodically report DB metrics using the DBMap and prometheus stats.
+	sa.InitDBMetrics(dbMap, stats)
 
 	clk := cmd.Clock()
-	ogc, sac, apc := setupClients(conf, scope, clk)
+	ogc, sac, apc := setupClients(conf, stats, clk)
 
 	updater, err := newUpdater(
-		scope,
+		stats,
 		clk,
 		dbMap,
 		ogc,
@@ -499,17 +470,9 @@ func main() {
 	)
 	cmd.FailOnError(err, "Failed to create updater")
 
-	for _, l := range updater.loops {
-		go func(loop *looper) {
-			err = loop.loop()
-			if err != nil {
-				logger.AuditErr(err.Error())
-			}
-		}(l)
-	}
-
 	go cmd.CatchSignals(logger, nil)
 
-	// Sleep forever (until signaled)
-	select {}
+	for {
+		updater.tick()
+	}
 }

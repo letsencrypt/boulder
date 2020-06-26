@@ -700,6 +700,17 @@ func (sa *StorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.Rev
 	return nil
 }
 
+// AddBlockedKey is a mock
+func (sa *StorageAuthority) AddBlockedKey(context.Context, *sapb.AddBlockedKeyRequest) (*corepb.Empty, error) {
+	return &corepb.Empty{}, nil
+}
+
+// KeyBlocked is a mock
+func (sa *StorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlockedRequest) (*sapb.Exists, error) {
+	exists := false
+	return &sapb.Exists{Exists: &exists}, nil
+}
+
 // Publisher is a mock
 type Publisher struct {
 	// empty
@@ -749,7 +760,7 @@ func (m *Mailer) Connect() error {
 	return nil
 }
 
-// mockSAWithFailedChallenges is a mocks.StorageAuthority that has
+// SAWithFailedChallenges is a mocks.StorageAuthority that has
 // a `GetAuthorization` implementation that can return authorizations with
 // failed challenges.
 type SAWithFailedChallenges struct {

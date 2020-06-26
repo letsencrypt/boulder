@@ -56,7 +56,7 @@ func TestModelToRegistrationNonNilContact(t *testing.T) {
 	}
 }
 
-func TestV2AuthzModel(t *testing.T) {
+func TestAuthzModel(t *testing.T) {
 	id := "1"
 	ident := "example.com"
 	reg := int64(1)
@@ -66,8 +66,6 @@ func TestV2AuthzModel(t *testing.T) {
 	token := "MTIz"
 	hostname := "hostname"
 	port := "port"
-	challType2 := string(core.ChallengeTypeDNS01)
-	statusPending := string(core.StatusPending)
 	url := "url"
 	authzPB := &corepb.Authorization{
 		Id:             &id,
@@ -76,25 +74,20 @@ func TestV2AuthzModel(t *testing.T) {
 		Status:         &status,
 		Expires:        &expires,
 		Challenges: []*corepb.Challenge{
-			&corepb.Challenge{
+			{
 				Type:   &challType,
 				Status: &status,
 				Token:  &token,
 				Validationrecords: []*corepb.ValidationRecord{
-					&corepb.ValidationRecord{
+					{
 						Hostname:          &hostname,
 						Port:              &port,
 						AddressUsed:       []byte("1.2.3.4"),
 						Url:               &url,
-						AddressesResolved: [][]byte{[]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
-						AddressesTried:    [][]byte{[]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+						AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
 					},
 				},
-			},
-			&corepb.Challenge{
-				Type:   &challType2,
-				Status: &statusPending,
-				Token:  &token,
 			},
 		},
 	}
@@ -102,7 +95,7 @@ func TestV2AuthzModel(t *testing.T) {
 	model, err := authzPBToModel(authzPB)
 	test.AssertNotError(t, err, "authzPBToModel failed")
 
-	authzPBOut, err := modelToAuthzPB(model)
+	authzPBOut, err := modelToAuthzPB(*model)
 	test.AssertNotError(t, err, "modelToAuthzPB failed")
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 
@@ -114,11 +107,50 @@ func TestV2AuthzModel(t *testing.T) {
 	model, err = authzPBToModel(authzPB)
 	test.AssertNotError(t, err, "authzPBToModel failed")
 
-	authzPBOut, err = modelToAuthzPB(model)
+	authzPBOut, err = modelToAuthzPB(*model)
 	test.AssertNotError(t, err, "modelToAuthzPB failed")
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 
-	authzPB.Challenges[1].Status = &status
+	challType2 := string(core.ChallengeTypeDNS01)
+	authzPB = &corepb.Authorization{
+		Id:             &id,
+		Identifier:     &ident,
+		RegistrationID: &reg,
+		Status:         &status,
+		Expires:        &expires,
+		Challenges: []*corepb.Challenge{
+			{
+				Type:   &challType,
+				Status: &status,
+				Token:  &token,
+				Validationrecords: []*corepb.ValidationRecord{
+					{
+						Hostname:          &hostname,
+						Port:              &port,
+						AddressUsed:       []byte("1.2.3.4"),
+						Url:               &url,
+						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+						AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+					},
+				},
+			},
+			{
+				Type:   &challType2,
+				Status: &status,
+				Token:  &token,
+				Validationrecords: []*corepb.ValidationRecord{
+					{
+						Hostname:          &hostname,
+						Port:              &port,
+						AddressUsed:       []byte("1.2.3.4"),
+						Url:               &url,
+						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+						AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+					},
+				},
+			},
+		},
+	}
 	_, err = authzPBToModel(authzPB)
 	test.AssertError(t, err, "authzPBToModel didn't fail with multiple non-pending challenges")
 }
@@ -195,7 +227,7 @@ func TestPopulateAttemptedFieldsBadJSON(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			err := populateAttemptedFields(tc.Model, &corepb.Challenge{})
+			err := populateAttemptedFields(*tc.Model, &corepb.Challenge{})
 			test.AssertError(t, err, "expected error from populateAttemptedFields")
 			badJSONErr, ok := err.(errBadJSON)
 			test.AssertEquals(t, ok, true)

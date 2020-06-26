@@ -23,8 +23,8 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
-	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test/load-generator/acme"
+	"golang.org/x/crypto/ocsp"
 	"gopkg.in/square/go-jose.v2"
 )
 
@@ -41,8 +41,8 @@ var (
 	}
 )
 
-// It's awkward to work with core.Order or corepb.Order when the API returns
-// a different object than either of these types can represent without
+// OrderJSON is used because it's awkward to work with core.Order or corepb.Order
+// when the API returns a different object than either of these types can represent without
 // converting field values. The WFE uses an unexported `orderJSON` type for the
 // API results that contain an order. We duplicate it here instead of moving it
 // somewhere exported for this one utility.
@@ -337,7 +337,7 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 
 	// Poll the authorization waiting for the challenge response to be recorded in
 	// a change of state. The polling may sleep and retry a few times if required
-	pollAuthorization(authz, s, ctx)
+	err = pollAuthorization(authz, s, ctx)
 	if err != nil {
 		return err
 	}
@@ -560,14 +560,6 @@ func finalizeOrder(s *State, ctx *context) error {
 	return nil
 }
 
-// min returns the smaller of the two inputs
-func min(a, b int) int {
-	if a > b {
-		return b
-	}
-	return a
-}
-
 // postAsGet performs a POST-as-GET request to the provided URL authenticated by
 // the context's account. A HTTP status code other than StatusOK (200)
 // in response to a POST-as-GET request is considered an error. The caller is
@@ -627,7 +619,7 @@ func revokeCertificate(s *State, ctx *context) error {
 		Reason      int
 	}{
 		Certificate: base64.URLEncoding.EncodeToString(pemBlock.Bytes),
-		Reason:      revocation.Unspecified,
+		Reason:      ocsp.Unspecified,
 	}
 
 	revokeJSON, err := json.Marshal(revokeObj)

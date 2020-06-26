@@ -15,7 +15,7 @@ import (
 	pkcs11key "github.com/letsencrypt/pkcs11key/v4"
 
 	"github.com/letsencrypt/boulder/ca"
-	"github.com/letsencrypt/boulder/ca/config"
+	ca_config "github.com/letsencrypt/boulder/ca/config"
 	caPB "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -134,7 +134,7 @@ func main() {
 	}
 
 	if c.CA.MaxNames == 0 {
-		cmd.Fail(fmt.Sprintf("Error in CA config: MaxNames must not be 0"))
+		cmd.Fail("Error in CA config: MaxNames must not be 0")
 	}
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.CA.DebugAddr)
@@ -155,9 +155,6 @@ func main() {
 	issuers, err := loadIssuers(c)
 	cmd.FailOnError(err, "Couldn't load issuers")
 
-	kp, err := goodkey.NewKeyPolicy(c.CA.WeakKeyFile, c.CA.BlockedKeyFile)
-	cmd.FailOnError(err, "Unable to create key policy")
-
 	tlsConfig, err := c.CA.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
@@ -167,6 +164,9 @@ func main() {
 	conn, err := bgrpc.ClientSetup(c.CA.SAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sa := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+
+	kp, err := goodkey.NewKeyPolicy(c.CA.WeakKeyFile, c.CA.BlockedKeyFile, sa.KeyBlocked)
+	cmd.FailOnError(err, "Unable to create key policy")
 
 	var orphanQueue *goque.Queue
 	if c.CA.OrphanQueueDir != "" {

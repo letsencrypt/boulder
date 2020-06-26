@@ -1,6 +1,7 @@
 package wfe2
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -23,7 +24,7 @@ func requiredStale(req *http.Request, logEvent *web.RequestEvent) bool {
 // in the past to be acceptably stale for accessing via the Boulder specific GET
 // API.
 func (wfe *WebFrontEndImpl) staleEnoughToGETOrder(order *corepb.Order) *probs.ProblemDetails {
-	return wfe.staleEnoughToGET("Order", time.Unix(*order.Created, 0))
+	return wfe.staleEnoughToGET("Order", time.Unix(0, *order.Created))
 }
 
 // staleEnoughToGETCert checks if the given cert was issued long enough in the
@@ -38,6 +39,13 @@ func (wfe *WebFrontEndImpl) staleEnoughToGETCert(cert core.Certificate) *probs.P
 // the appropriate lifetime for the authz is subtracted from the expiry to find
 // the creation date.
 func (wfe *WebFrontEndImpl) staleEnoughToGETAuthz(authz core.Authorization) *probs.ProblemDetails {
+	// If the authorization was deactivated we cannot reliably tell what the creation date was
+	// because we can't easily tell if it was pending or finalized before deactivation.
+	// As these authorizations can no longer be used for anything, just make them immediately
+	// available for access.
+	if authz.Status == core.StatusDeactivated {
+		return nil
+	}
 	// We don't directly track authorization creation time. Instead subtract the
 	// pendingAuthorization lifetime from the expiry. This will be inaccurate if
 	// we change the pendingAuthorizationLifetime but is sufficient for the weak
@@ -56,11 +64,11 @@ func (wfe *WebFrontEndImpl) staleEnoughToGETAuthz(authz core.Authorization) *pro
 // wfe.staleTimeout then an unauthorized problem is returned.
 func (wfe *WebFrontEndImpl) staleEnoughToGET(resourceType string, createDate time.Time) *probs.ProblemDetails {
 	if wfe.clk.Since(createDate) < wfe.staleTimeout {
-		return probs.Unauthorized(
+		return probs.Unauthorized(fmt.Sprintf(
 			"%s is too new for GET API. "+
 				"You should only use this non-standard API to access resources created more than %s ago",
 			resourceType,
-			wfe.staleTimeout)
+			wfe.staleTimeout))
 	}
 	return nil
 }

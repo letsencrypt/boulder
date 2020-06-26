@@ -99,10 +99,10 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group ctconfig
 				return
 			}
 			sct, err := ctp.pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{
-				LogURL:       &uri,
-				LogPublicKey: &key,
+				LogURL:       uri,
+				LogPublicKey: key,
 				Der:          cert,
-				Precert:      &isPrecert,
+				Precert:      isPrecert,
 			})
 			if err != nil {
 				// Only log the error if it is not a result of the context being canceled
@@ -166,10 +166,10 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 				return
 			}
 			_, err = ctp.pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
-				LogURL:       &uri,
-				LogPublicKey: &key,
+				LogURL:       uri,
+				LogPublicKey: key,
 				Der:          cert,
-				Precert:      &isPrecert,
+				Precert:      isPrecert,
 			})
 			if err != nil {
 				ctp.log.Warningf("ct submission to informational log %q failed: %s", uri, err)
@@ -194,7 +194,6 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 // SubmitFinalCert submits finalized certificates created from precertificates
 // to any configured logs
 func (ctp *CTPolicy) SubmitFinalCert(cert []byte, expiration time.Time) {
-	falseVar := false
 	for _, log := range ctp.finalLogs {
 		go func(l ctconfig.LogDescription) {
 			uri, key, err := l.Info(expiration)
@@ -203,11 +202,11 @@ func (ctp *CTPolicy) SubmitFinalCert(cert []byte, expiration time.Time) {
 				return
 			}
 			_, err = ctp.pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
-				LogURL:       &uri,
-				LogPublicKey: &key,
+				LogURL:       uri,
+				LogPublicKey: key,
 				Der:          cert,
-				Precert:      &falseVar,
-				StoreSCT:     &falseVar,
+				Precert:      false,
+				StoreSCT:     false,
 			})
 			if err != nil {
 				ctp.log.Warningf("ct submission of final cert to log %q failed: %s", uri, err)

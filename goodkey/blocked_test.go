@@ -1,6 +1,7 @@
 package goodkey
 
 import (
+	"context"
 	"crypto"
 	"io/ioutil"
 	"os"
@@ -16,7 +17,8 @@ import (
 func TestBlockedKeys(t *testing.T) {
 	// Start with an empty list
 	var inList struct {
-		BlockedHashes []string `yaml:"blocked"`
+		BlockedHashes    []string `yaml:"blocked"`
+		BlockedHashesHex []string `yaml:"blockedHashesHex"`
 	}
 
 	yamlList, err := yaml.Marshal(&inList)
@@ -56,7 +58,9 @@ func TestBlockedKeys(t *testing.T) {
 	// public keys in the test certs/JWKs
 	inList.BlockedHashes = []string{
 		"cuwGhNNI6nfob5aqY90e7BleU6l7rfxku4X3UTJ3Z7M=",
-		"Qebc1V3SkX3izkYRGNJilm9Bcuvf0oox4U2Rn+b4JOE=",
+	}
+	inList.BlockedHashesHex = []string{
+		"41e6dcd55dd2917de2ce461118d262966f4172ebdfd28a31e14d919fe6f824e1",
 	}
 
 	yamlList, err = yaml.Marshal(&inList)
@@ -82,7 +86,7 @@ func TestBlockedKeys(t *testing.T) {
 
 	// All of the test keys should not be considered blocked
 	for _, k := range blockedKeys {
-		err := testingPolicy.GoodKey(k)
+		err := testingPolicy.GoodKey(context.Background(), k)
 		test.AssertNotError(t, err, "test key was blocked by key policy without block list")
 	}
 
@@ -92,7 +96,7 @@ func TestBlockedKeys(t *testing.T) {
 	// Now all of the test keys should be considered blocked, and with the correct
 	// type of error.
 	for _, k := range blockedKeys {
-		err := testingPolicy.GoodKey(k)
+		err := testingPolicy.GoodKey(context.Background(), k)
 		test.AssertError(t, err, "test key was not blocked by key policy with block list")
 		test.Assert(t, berrors.Is(err, berrors.BadPublicKey), "err was not BadPublicKey error")
 	}

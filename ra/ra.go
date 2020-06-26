@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"net/mail"
 	"net/url"
 	"reflect"
 	"sort"
@@ -29,6 +28,7 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimit"
@@ -39,6 +39,7 @@ import (
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
+	"golang.org/x/crypto/ocsp"
 	grpc "google.golang.org/grpc"
 )
 
@@ -320,7 +321,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 
 // NewRegistration constructs a new Registration from a request.
 func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init core.Registration) (core.Registration, error) {
-	if err := ra.keyPolicy.GoodKey(init.Key.Key); err != nil {
+	if err := ra.keyPolicy.GoodKey(ctx, init.Key.Key); err != nil {
 		return core.Registration{}, berrors.MalformedError("invalid public key: %s", err.Error())
 	}
 	if err := ra.checkRegistrationLimits(ctx, init.InitialIP); err != nil {
@@ -358,8 +359,9 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 // * A list containing an empty contact
 // * A list containing a contact that does not parse as a URL
 // * A list containing a contact that has a URL scheme other than mailto
+// * A list containing a mailto contact that contains hfields
 // * A list containing a contact that has non-ascii characters
-// * A list containing a contact that doesn't pass `validateEmail`
+// * A list containing a contact that doesn't pass `policy.ValidEmail`
 func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts *[]string) error {
 	if contacts == nil || len(*contacts) == 0 {
 		return nil // Nothing to validate
@@ -383,13 +385,16 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 		if parsed.Scheme != "mailto" {
 			return berrors.InvalidEmailError("contact method %q is not supported", parsed.Scheme)
 		}
+		if parsed.RawQuery != "" {
+			return berrors.InvalidEmailError("contact email [%q] contains hfields", contact)
+		}
 		if !core.IsASCII(contact) {
 			return berrors.InvalidEmailError(
 				"contact email [%q] contains non-ASCII characters",
 				contact,
 			)
 		}
-		if err := ra.validateEmail(parsed.Opaque); err != nil {
+		if err := policy.ValidEmail(parsed.Opaque); err != nil {
 			return err
 		}
 	}
@@ -409,44 +414,6 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 			"too many/too long contact(s). Please use shorter or fewer email addresses")
 	}
 
-	return nil
-}
-
-// forbiddenMailDomains is a map of domain names we do not allow after the
-// @ symbol in contact mailto addresses. These are frequently used when
-// copy-pasting example configurations and would not result in expiration
-// messages and subscriber communications reaching the user that created the
-// registration if allowed.
-var forbiddenMailDomains = map[string]bool{
-	// https://tools.ietf.org/html/rfc2606#section-3
-	"example.com": true,
-	"example.net": true,
-	"example.org": true,
-}
-
-// validateEmail returns an error if the given address is not parseable as an
-// email address or if the domain portion of the email address is invalid or
-// a member of the forbiddenMailDomains map.
-func (ra *RegistrationAuthorityImpl) validateEmail(address string) error {
-	email, err := mail.ParseAddress(address)
-	if err != nil {
-		if len(address) > 254 {
-			address = address[:254]
-		}
-		return berrors.InvalidEmailError("%q is not a valid e-mail address", address)
-	}
-	splitEmail := strings.SplitN(email.Address, "@", -1)
-	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	if err := ra.PA.ValidDomain(domain); err != nil {
-		return berrors.InvalidEmailError(
-			"contact email %q has invalid domain : %s",
-			email.Address, err)
-	}
-	if forbiddenMailDomains[domain] {
-		return berrors.InvalidEmailError(
-			"invalid contact domain. Contact emails @%s are forbidden",
-			domain)
-	}
 	return nil
 }
 
@@ -475,26 +442,18 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 // checkInvalidAuthorizationLimits checks the failed validation limit for each
 // of the provided hostnames. It returns the first error.
 func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimits(ctx context.Context, regID int64, hostnames []string) error {
-	if features.Enabled(features.ParallelCheckFailedValidation) {
-		results := make(chan error, len(hostnames))
-		for _, hostname := range hostnames {
-			go func(hostname string) {
-				results <- ra.checkInvalidAuthorizationLimit(ctx, regID, hostname)
-			}(hostname)
-		}
-		// We don't have to wait for all of the goroutines to finish because there's
-		// enough capacity in the chan for them all to write their result even if
-		// nothing is reading off the chan anymore.
-		for i := 0; i < len(hostnames); i++ {
-			if err := <-results; err != nil {
-				return err
-			}
-		}
-	} else {
-		for _, hostname := range hostnames {
-			if err := ra.checkInvalidAuthorizationLimit(ctx, regID, hostname); err != nil {
-				return err
-			}
+	results := make(chan error, len(hostnames))
+	for _, hostname := range hostnames {
+		go func(hostname string) {
+			results <- ra.checkInvalidAuthorizationLimit(ctx, regID, hostname)
+		}(hostname)
+	}
+	// We don't have to wait for all of the goroutines to finish because there's
+	// enough capacity in the chan for them all to write their result even if
+	// nothing is reading off the chan anymore.
+	for i := 0; i < len(hostnames); i++ {
+		if err := <-results; err != nil {
+			return err
 		}
 	}
 	return nil
@@ -807,13 +766,13 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	var recheckAuthzs []*core.Authorization
 	// Per Baseline Requirements, CAA must be checked within 8 hours of issuance.
 	// CAA is checked when an authorization is validated, so as long as that was
-	// less than 8 hours ago, we're fine. If it was more than 8 hours ago
-	// we have to recheck. Since we don't record the validation time for
+	// less than 8 hours ago, we're fine. We recheck if that was more than 7 hours
+	// ago, to be on the safe side. Since we don't record the validation time for
 	// authorizations, we instead look at the expiration time and subtract out the
 	// expected authorization lifetime. Note: If we adjust the authorization
 	// lifetime in the future we will need to tweak this correspondingly so it
 	// works correctly during the switchover.
-	caaRecheckTime := now.Add(ra.authorizationLifetime).Add(-8 * time.Hour)
+	caaRecheckTime := now.Add(ra.authorizationLifetime).Add(-7 * time.Hour)
 	for _, name := range names {
 		authz := authzs[name]
 		if authz == nil {
@@ -989,7 +948,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		return nil, err
 	}
 
-	if err := csrlib.VerifyCSR(csrOb, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, *req.Order.RegistrationID); err != nil {
+	if err := csrlib.VerifyCSR(ctx, csrOb, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, *req.Order.RegistrationID); err != nil {
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
 		return nil, err
@@ -1080,7 +1039,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 // NewCertificate requests the issuance of a certificate.
 func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64) (core.Certificate, error) {
 	// Verify the CSR
-	if err := csrlib.VerifyCSR(req.CSR, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, regID); err != nil {
+	if err := csrlib.VerifyCSR(ctx, req.CSR, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, regID); err != nil {
 		return core.Certificate{}, berrors.MalformedError(err.Error())
 	}
 	// NewCertificate provides an order ID of 0, indicating this is a classic ACME
@@ -1356,18 +1315,16 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(
 }
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
-	if features.Enabled(features.CheckRenewalFirst) {
-		// check if there is already an existing certificate for
-		// the exact name set we are issuing for. If so bypass the
-		// the certificatesPerName limit.
-		exists, err := ra.SA.FQDNSetExists(ctx, names)
-		if err != nil {
-			return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
-		}
-		if exists {
-			ra.rateLimitCounter.WithLabelValues("certificates_for_domain", "FQDN set bypass").Inc()
-			return nil
-		}
+	// check if there is already an existing certificate for
+	// the exact name set we are issuing for. If so bypass the
+	// the certificatesPerName limit.
+	exists, err := ra.SA.FQDNSetExists(ctx, names)
+	if err != nil {
+		return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
+	}
+	if exists {
+		ra.rateLimitCounter.WithLabelValues("certificates_for_domain", "FQDN set bypass").Inc()
+		return nil
 	}
 
 	tldNames, err := domainsForRateLimiting(names)
@@ -1382,18 +1339,16 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 	}
 
 	if len(namesOutOfLimit) > 0 {
-		if !features.Enabled(features.CheckRenewalFirst) {
-			// check if there is already an existing certificate for
-			// the exact name set we are issuing for. If so bypass the
-			// the certificatesPerName limit.
-			exists, err := ra.SA.FQDNSetExists(ctx, names)
-			if err != nil {
-				return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
-			}
-			if exists {
-				ra.rateLimitCounter.WithLabelValues("certificates_for_domain", "FQDN set bypass").Inc()
-				return nil
-			}
+		// check if there is already an existing certificate for
+		// the exact name set we are issuing for. If so bypass the
+		// the certificatesPerName limit.
+		exists, err := ra.SA.FQDNSetExists(ctx, names)
+		if err != nil {
+			return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
+		}
+		if exists {
+			ra.rateLimitCounter.WithLabelValues("certificates_for_domain", "FQDN set bypass").Inc()
+			return nil
 		}
 
 		ra.log.Infof("Rate limit exceeded, CertificatesForDomain, regID: %d, domains: %s", regID, strings.Join(namesOutOfLimit, ", "))
@@ -1695,10 +1650,10 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 
 // revokeCertificate generates a revoked OCSP response for the given certificate, stores
 // the revocation information, and purges OCSP request URLs from Akamai.
-func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason) error {
+func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, revokedBy int64, source string, comment string) error {
 	status := string(core.OCSPStatusRevoked)
 	reason := int32(code)
-	revokedAt := time.Now().UnixNano()
+	revokedAt := ra.clk.Now().UnixNano()
 	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
 		CertDER:   cert.Raw,
 		Status:    &status,
@@ -1721,6 +1676,26 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	if err != nil {
 		return err
 	}
+	if reason == ocsp.KeyCompromise {
+		digest, err := core.KeyDigest(cert.PublicKey)
+		if err != nil {
+			return err
+		}
+		req := &sapb.AddBlockedKeyRequest{
+			KeyHash: digest[:],
+			Added:   &revokedAt,
+			Source:  &source,
+		}
+		if comment != "" {
+			req.Comment = &comment
+		}
+		if features.Enabled(features.StoreRevokerInfo) && revokedBy != 0 {
+			req.RevokedBy = &revokedBy
+		}
+		if _, err = ra.SA.AddBlockedKey(ctx, req); err != nil {
+			return err
+		}
+	}
 	purgeURLs, err := akamai.GeneratePurgeURLs(cert.Raw, ra.issuer)
 	if err != nil {
 		return err
@@ -1736,7 +1711,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 // RevokeCertificateWithReg terminates trust in the certificate provided.
 func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, regID int64) error {
 	serialString := core.SerialToString(cert.SerialNumber)
-	err := ra.revokeCertificate(ctx, cert, revocationCode)
+	err := ra.revokeCertificate(ctx, cert, revocationCode, regID, "API", "")
 
 	state := "Failure"
 	defer func() {
@@ -1766,7 +1741,9 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 // called from the admin-revoker tool.
 func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, user string) error {
 	serialString := core.SerialToString(cert.SerialNumber)
-	err := ra.revokeCertificate(ctx, cert, revocationCode)
+	// TODO(#4774): allow setting the comment via the RPC, format should be:
+	// "revoked by %s: %s", user, comment
+	err := ra.revokeCertificate(ctx, cert, revocationCode, 0, "admin-revoker", fmt.Sprintf("revoked by %s", user))
 
 	state := "Failure"
 	defer func() {

@@ -60,7 +60,7 @@ func New(log *syslog.Writer, stdoutLogLevel int, syslogLogLevel int) (Logger, er
 		return nil, errors.New("Attempted to use a nil System Logger.")
 	}
 	return &impl{
-		&bothWriter{log, stdoutLogLevel, syslogLogLevel, clock.Default()},
+		&bothWriter{log, stdoutLogLevel, syslogLogLevel, clock.New()},
 	}, nil
 }
 
@@ -189,15 +189,6 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 func (log *impl) auditAtLevel(level syslog.Priority, msg string) {
 	text := fmt.Sprintf("%s %s", auditTag, msg)
 	log.w.logAtLevel(level, text)
-}
-
-// Return short format caller info for panic events, skipping to before the
-// panic handler.
-func caller(level int) string {
-	_, file, line, _ := runtime.Caller(level)
-	splits := strings.Split(file, "/")
-	filename := splits[len(splits)-1]
-	return fmt.Sprintf("%s:%d:", filename, line)
 }
 
 // AuditPanic catches panicking executables. This method should be added

@@ -48,13 +48,6 @@ import (
 const (
 	agreementURL = "http://example.invalid/terms"
 
-	test1KeyPublicJSON = `
-	{
-		"kty":"RSA",
-		"n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
-		"e":"AQAB"
-	}`
-
 	test1KeyPrivatePEM = `
 -----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEAyNWVhtYEKJR21y9xsHV+PD/bYwbXSeNuFal46xYxVfRL5mqh
@@ -180,13 +173,6 @@ xxBoTncDuGtTpubGbzBrY5W1SlNm1gqu9oQa23WNViN2Rc4aIVm3
 -----END RSA PRIVATE KEY-----
 `
 
-	testE1KeyPublicJSON = `{
-    "kty":"EC",
-    "crv":"P-256",
-    "x":"FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao",
-    "y":"S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk"
-  }`
-
 	testE1KeyPrivatePEM = `
 -----BEGIN EC PRIVATE KEY-----
 MHcCAQEEIH+p32RUnqT/iICBEGKrLIWFcyButv0S0lU/BLPOyHn2oAoGCCqGSM49
@@ -284,10 +270,6 @@ func (pa *mockPA) WillingToIssueWildcards(idents []identifier.ACMEIdentifier) er
 
 func (pa *mockPA) ChallengeTypeEnabled(t string) bool {
 	return true
-}
-
-func (pa *mockPA) ValidDomain(_ string) error {
-	return nil
 }
 
 func makeBody(s string) io.ReadCloser {
@@ -424,7 +406,7 @@ func mustParseURL(s string) *url.URL {
 
 func sortHeader(s string) string {
 	a := strings.Split(s, ", ")
-	sort.Sort(sort.StringSlice(a))
+	sort.Strings(a)
 	return strings.Join(a, ", ")
 }
 
@@ -1053,7 +1035,6 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertContains(t, reqlogs[0], `"CommonName":"not-an-example.com",`)
 
 	mockLog.Clear()
-	responseWriter.HeaderMap = http.Header{}
 	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(signRequest(t, `{
 			"resource":"new-cert",
@@ -1286,7 +1267,7 @@ func TestNewECDSARegistration(t *testing.T) {
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter, makePostRequest(result.FullSerialize()))
 
 	var reg core.Registration
-	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
+	err = json.Unmarshal(responseWriter.Body.Bytes(), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
 	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
 	test.AssertEquals(t, (*reg.Contact)[0], "mailto:person@mail.com")
@@ -1345,7 +1326,7 @@ func TestEmptyRegistration(t *testing.T) {
 
 	// We should get back a populated Registration
 	var reg core.Registration
-	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
+	err = json.Unmarshal(responseWriter.Body.Bytes(), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
 	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
 	test.AssertEquals(t, (*reg.Contact)[0], "mailto:person@mail.com")
@@ -1480,7 +1461,7 @@ func TestNewRegistration(t *testing.T) {
 		makePostRequest(result.FullSerialize()))
 
 	var reg core.Registration
-	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
+	err = json.Unmarshal(responseWriter.Body.Bytes(), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
 	test.Assert(t, len(*reg.Contact) >= 1, "No contact field in registration")
 	test.AssertEquals(t, (*reg.Contact)[0], "mailto:person@mail.com")
@@ -1630,7 +1611,7 @@ func TestRevokeCertificateReasons(t *testing.T) {
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Code, 400)
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"unsupported revocation reason code provided","status":400}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"unsupported revocation reason code provided: cACompromise (2). Supported reasons: unspecified (0), keyCompromise (1), affiliationChanged (3), superseded (4), cessationOfOperation (5)","status":400}`)
 
 	responseWriter = httptest.NewRecorder()
 	unsupported = revocation.Reason(100)
@@ -1641,7 +1622,7 @@ func TestRevokeCertificateReasons(t *testing.T) {
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Code, 400)
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"unsupported revocation reason code provided","status":400}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"unsupported revocation reason code provided: unknown (100). Supported reasons: unspecified (0), keyCompromise (1), affiliationChanged (3), superseded (4), cessationOfOperation (5)","status":400}`)
 }
 
 // Valid revocation request for existing, non-revoked cert, signed with account
@@ -1870,7 +1851,7 @@ func TestAuthorization(t *testing.T) {
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"identifier":{"type":"dns","value":"test.com"}}`)
 
 	var authz core.Authorization
-	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	err := json.Unmarshal(responseWriter.Body.Bytes(), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 
 	// Expired authorizations should be inaccessible
@@ -1897,10 +1878,8 @@ func TestAuthorization(t *testing.T) {
 func TestAuthorizationV2(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
-	responseWriter := httptest.NewRecorder()
-
 	// Test retrieving a v2 style authorization
-	responseWriter = httptest.NewRecorder()
+	responseWriter := httptest.NewRecorder()
 	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, &http.Request{
 		URL:    mustParseURL("1"),
 		Method: "GET",
@@ -1958,7 +1937,7 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 	})
 
 	var authz core.Authorization
-	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	err := json.Unmarshal(responseWriter.Body.Bytes(), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 	test.AssertEquals(t, len(authz.Challenges), 1)
 	// The Challenge Error Type should have its prefix unmodified
@@ -1973,7 +1952,7 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 		URL:    mustParseURL(authzURL),
 	})
 
-	err = json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	err = json.Unmarshal(responseWriter.Body.Bytes(), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 	test.AssertEquals(t, len(authz.Challenges), 1)
 	// The Challenge Error Type should have had the probs.V1ErrorNS prefix added
@@ -2076,7 +2055,6 @@ func TestRegistration(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	// Test POST valid JSON with registration up in the mock (with old agreement URL)
-	responseWriter.HeaderMap = http.Header{}
 	wfe.SubscriberAgreementURL = "http://example.invalid/new-terms"
 	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"` + agreementURL + `"}`))
 	test.AssertNotError(t, err, "Couldn't sign")
@@ -2211,6 +2189,18 @@ func TestLengthRequired(t *testing.T) {
 	test.Assert(t, prob != nil, "No error returned for request body missing Content-Length.")
 	test.AssertEquals(t, probs.MalformedProblem, prob.Type)
 	test.AssertEquals(t, http.StatusLengthRequired, prob.HTTPStatus)
+}
+
+func TestRequestTooLong(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	payload := fmt.Sprintf(`{"a":"%s"}`, strings.Repeat("a", 50000))
+
+	_, _, _, prob := wfe.verifyPOST(ctx, newRequestEvent(), makePostRequest(signRequest(t,
+		payload, wfe.nonceService)), false, "n/a")
+	test.Assert(t, prob != nil, "No error returned for too-long request body.")
+	test.AssertEquals(t, probs.UnauthorizedProblem, prob.Type)
+	test.AssertEquals(t, "request body too large", prob.Detail)
+	test.AssertEquals(t, http.StatusForbidden, prob.HTTPStatus)
 }
 
 type mockSAGetRegByKeyFails struct {

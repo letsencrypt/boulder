@@ -186,72 +186,11 @@ func lyingLogSrv(k *ecdsa.PrivateKey, timestamp time.Time) *testLogSrv {
 	return testLog
 }
 
-func errorLogSrv() *httptest.Server {
-	m := http.NewServeMux()
-	m.HandleFunc("/ct/", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	})
-
-	server := httptest.NewUnstartedServer(m)
-	server.Start()
-	return server
-}
-
 func errorBodyLogSrv() *httptest.Server {
 	m := http.NewServeMux()
 	m.HandleFunc("/ct/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("well this isn't good now is it."))
-	})
-
-	server := httptest.NewUnstartedServer(m)
-	server.Start()
-	return server
-}
-
-func retryableLogSrv(k *ecdsa.PrivateKey, retries int, after *int) *httptest.Server {
-	hits := 0
-	m := http.NewServeMux()
-	m.HandleFunc("/ct/", func(w http.ResponseWriter, r *http.Request) {
-		if hits >= retries {
-			decoder := json.NewDecoder(r.Body)
-			var jsonReq ctSubmissionRequest
-			err := decoder.Decode(&jsonReq)
-			if err != nil {
-				return
-			}
-			sct := CreateTestingSignedSCT(jsonReq.Chain, k, false, time.Now())
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, string(sct))
-		} else {
-			hits++
-			if after != nil {
-				w.Header().Add("Retry-After", fmt.Sprintf("%d", *after))
-				w.WriteHeader(503)
-				return
-			}
-			w.WriteHeader(http.StatusRequestTimeout)
-		}
-	})
-
-	server := httptest.NewUnstartedServer(m)
-	server.Start()
-	return server
-}
-
-func badLogSrv() *httptest.Server {
-	m := http.NewServeMux()
-	m.HandleFunc("/ct/", func(w http.ResponseWriter, r *http.Request) {
-		decoder := json.NewDecoder(r.Body)
-		var jsonReq ctSubmissionRequest
-		err := decoder.Decode(&jsonReq)
-		if err != nil {
-			return
-		}
-		// Submissions should always contain at least one cert
-		if len(jsonReq.Chain) >= 1 {
-			fmt.Fprint(w, `{"signature":"BAMASDBGAiEAknaySJVdB3FqG9bUKHgyu7V9AdEabpTc71BELUp6/iECIQDObrkwlQq6Azfj5XOA5E12G/qy/WuRn97z7qMSXXc82Q=="}`)
-		}
 	})
 
 	server := httptest.NewUnstartedServer(m)
@@ -313,7 +252,7 @@ func makePrecert(k *ecdsa.PrivateKey) ([]ct.ASN1Cert, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return []ct.ASN1Cert{ct.ASN1Cert{Data: rootBytes}}, precert, err
+	return []ct.ASN1Cert{{Data: rootBytes}}, precert, err
 }
 
 func TestTimestampVerificationFuture(t *testing.T) {
@@ -326,12 +265,11 @@ func TestTimestampVerificationFuture(t *testing.T) {
 	testLog := addLog(t, pub, port, &k.PublicKey)
 
 	// Precert
-	trueBool := true
 	issuerBundle, precert, err := makePrecert(k)
 	test.AssertNotError(t, err, "Failed to create test leaf")
 	pub.issuerBundle = issuerBundle
 
-	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: &testLog.uri, LogPublicKey: &testLog.logID, Der: precert, Precert: &trueBool})
+	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: testLog.uri, LogPublicKey: testLog.logID, Der: precert, Precert: true})
 	if err == nil {
 		t.Fatal("Expected error for lying log server, got none")
 	}
@@ -350,12 +288,11 @@ func TestTimestampVerificationPast(t *testing.T) {
 	testLog := addLog(t, pub, port, &k.PublicKey)
 
 	// Precert
-	trueBool := true
 	issuerBundle, precert, err := makePrecert(k)
 	test.AssertNotError(t, err, "Failed to create test leaf")
 	pub.issuerBundle = issuerBundle
 
-	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: &testLog.uri, LogPublicKey: &testLog.logID, Der: precert, Precert: &trueBool})
+	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: testLog.uri, LogPublicKey: testLog.logID, Der: precert, Precert: true})
 	if err == nil {
 		t.Fatal("Expected error for lying log server, got none")
 	}
@@ -427,8 +364,8 @@ func TestLogErrorBody(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to marshal key")
 	pkB64 := base64.StdEncoding.EncodeToString(pkDER)
 	_, err = pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
-		LogURL:       &logURI,
-		LogPublicKey: &pkB64,
+		LogURL:       logURI,
+		LogPublicKey: pkB64,
 		Der:          leaf.Raw,
 	})
 	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
@@ -448,8 +385,8 @@ func TestHTTPStatusMetric(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to marshal key")
 	pkB64 := base64.StdEncoding.EncodeToString(pkDER)
 	_, err = pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
-		LogURL:       &logURI,
-		LogPublicKey: &pkB64,
+		LogURL:       logURI,
+		LogPublicKey: pkB64,
 		Der:          leaf.Raw,
 	})
 	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
@@ -470,8 +407,8 @@ func TestHTTPStatusMetric(t *testing.T) {
 	logURI = fmt.Sprintf("http://localhost:%d", port)
 
 	_, err = pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
-		LogURL:       &logURI,
-		LogPublicKey: &pkB64,
+		LogURL:       logURI,
+		LogPublicKey: pkB64,
 		Der:          leaf.Raw,
 	})
 	test.AssertNotError(t, err, "SubmitToSingleCTWithResult failed")

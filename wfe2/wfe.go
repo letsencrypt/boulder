@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -45,12 +44,10 @@ const (
 	directoryPath = "/directory"
 	newAcctPath   = "/acme/new-acct"
 	acctPath      = "/acme/acct/"
-	authzPath     = "/acme/authz/"
 	// For user-facing URLs we use a "v3" suffix to avoid potential confusiong
 	// regarding ACMEv2.
 	authzv2Path       = "/acme/authz-v3/"
 	challengev2Path   = "/acme/chall-v3/"
-	challengePath     = "/acme/challenge/"
 	certPath          = "/acme/cert/"
 	revokeCertPath    = "/acme/revoke-cert"
 	issuerPath        = "/acme/issuer-cert"
@@ -82,10 +79,11 @@ type WebFrontEndImpl struct {
 	// Issuer certificate (DER) for /acme/issuer-cert
 	IssuerCert []byte
 
-	// certificateChains maps AIA issuer URLs to a []byte containing a leading
+	// certificateChains maps AIA issuer URLs to a slice of []byte containing a leading
 	// newline and one or more PEM encoded certificates separated by a newline,
-	// sorted from leaf to root
-	certificateChains map[string][]byte
+	// sorted from leaf to root. The first []byte is the default certificate chain,
+	// and any subsequent []byte is an alternate certificate chain.
+	certificateChains map[string][][]byte
 
 	// issuerCertificates is a slice of known issuer certificates built with the
 	// first entry from each of the certificateChains. These certificates are used
@@ -142,7 +140,7 @@ func NewWebFrontEndImpl(
 	stats prometheus.Registerer,
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
-	certificateChains map[string][]byte,
+	certificateChains map[string][][]byte,
 	issuerCertificates []*x509.Certificate,
 	remoteNonceService noncepb.NonceServiceClient,
 	noncePrefixMap map[string]noncepb.NonceServiceClient,
@@ -218,7 +216,6 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 				if wfe.remoteNonceService != nil {
 					nonceMsg, err := wfe.remoteNonceService.Nonce(ctx, &corepb.Empty{})
 					if err != nil {
-						fmt.Println("fucking broken", err)
 						wfe.sendError(response, logEvent, probs.ServerInternal("unable to get nonce"), err)
 						return
 					}
@@ -519,10 +516,8 @@ func (wfe *WebFrontEndImpl) Nonce(
 
 	statusCode := http.StatusNoContent
 	// The ACME specification says GET requets should receive http.StatusNoContent
-	// and HEAD/POST-as-GET requests should receive http.StatusOK. We gate this
-	// with the HeadNonceStatusOK feature flag because it may break clients that
-	// are programmed to expect StatusOK.
-	if features.Enabled(features.HeadNonceStatusOK) && request.Method != "GET" {
+	// and HEAD/POST-as-GET requests should receive http.StatusOK.
+	if request.Method != "GET" {
 		statusCode = http.StatusOK
 	}
 	response.WriteHeader(statusCode)
@@ -830,7 +825,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 				"unsupported revocation reason code provided: %s (%d). Supported reasons: %s",
 				reasonStr,
 				*revokeRequest.Reason,
-				revocation.UserAllowedReasonsMessage())
+				revocation.UserAllowedReasonsMessage)
 		}
 		reason = *revokeRequest.Reason
 	}
@@ -1052,7 +1047,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 		return
 	}
 
-	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost {
+	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost && !requiredStale(request, logEvent) {
 		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
 		return
 	}
@@ -1090,11 +1085,9 @@ func (wfe *WebFrontEndImpl) Challenge(
 // features or non-standard details internal to Boulder we don't want clients to
 // rely on.
 func prepAccountForDisplay(acct *core.Registration) {
-	if features.Enabled(features.RemoveWFE2AccountID) {
-		// Zero out the account ID so that it isn't marshalled. RFC 8555 specifies
-		// using the Location header for learning the account ID.
-		acct.ID = 0
-	}
+	// Zero out the account ID so that it isn't marshalled. RFC 8555 specifies
+	// using the Location header for learning the account ID.
+	acct.ID = 0
 
 	// We populate the account Agreement field when creating a new response to
 	// track which terms-of-service URL was in effect when an account with
@@ -1433,7 +1426,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 	response http.ResponseWriter,
 	request *http.Request) {
 
-	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost {
+	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost && !requiredStale(request, logEvent) {
 		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
 		return
 	}
@@ -1527,12 +1520,10 @@ func (wfe *WebFrontEndImpl) Authorization(
 	}
 }
 
-var allHex = regexp.MustCompile("^[0-9a-f]+$")
-
 // Certificate is used by clients to request a copy of their current certificate, or to
 // request a reissuance of the certificate.
 func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost {
+	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost && !requiredStale(request, logEvent) {
 		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
 		return
 	}
@@ -1549,7 +1540,24 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		requesterAccount = acct
 	}
 
+	requestedChain := 0
 	serial := request.URL.Path
+
+	// An alternate chain may be requested with the request path {serial}/{chain}, where chain
+	// is a number - an index into the slice of chains for the issuer. If a specific chain is
+	// not requested, then it defaults to zero - the default certificate chain for the issuer.
+	serialAndChain := strings.SplitN(serial, "/", 2)
+	if len(serialAndChain) == 2 {
+		idx, err := strconv.Atoi(serialAndChain[1])
+		if err != nil || idx < 0 {
+			wfe.sendError(response, logEvent, probs.Malformed("Chain ID must be a non-negative integer"),
+				fmt.Errorf("certificate chain id provided was not valid: %s", serialAndChain[1]))
+			return
+		}
+		serial = serialAndChain[0]
+		requestedChain = idx
+	}
+
 	// Certificate paths consist of the CertBase path, plus exactly sixteen hex
 	// digits.
 	if !core.ValidSerial(serial) {
@@ -1616,10 +1624,9 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		// the CA, but should be. See
 		//  https://github.com/letsencrypt/boulder/issues/3374
 		aiaIssuerURL := parsedCert.IssuingCertificateURL[0]
-		if chain, ok := wfe.certificateChains[aiaIssuerURL]; ok {
-			// Prepend the chain with the leaf certificate
-			responsePEM = append(leafPEM, chain...)
-		} else {
+
+		availableChains, ok := wfe.certificateChains[aiaIssuerURL]
+		if !ok || len(availableChains) == 0 {
 			// If there is no wfe.certificateChains entry for the AIA Issuer URL there
 			// is probably a misconfiguration and we should treat it as an internal
 			// server error.
@@ -1632,6 +1639,28 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 			), nil)
 			return
 		}
+
+		// If the requested chain is outside the bounds of the available chains,
+		// then it is an error by the client - not found.
+		if requestedChain < 0 || requestedChain >= len(availableChains) {
+			wfe.sendError(response, logEvent, probs.NotFound("Unknown issuance chain"), nil)
+			return
+		}
+
+		// Prepend the chain with the leaf certificate
+		responsePEM = append(leafPEM, availableChains[requestedChain]...)
+
+		// Add rel="alternate" links for every chain available for this issuer,
+		// excluding the currently requested chain.
+		for chainID := range availableChains {
+			if chainID == requestedChain {
+				continue
+			}
+			chainURL := web.RelativeEndpoint(request,
+				fmt.Sprintf("%s%s/%d", certPath, serial, chainID))
+			response.Header().Add("Link", link(chainURL, "alternate"))
+		}
+
 	} else {
 		// Otherwise, with no configured certificateChains just serve the leaf
 		// certificate.
@@ -1649,7 +1678,6 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	if _, err = response.Write(responsePEM); err != nil {
 		wfe.log.Warningf("Could not write response: %s", err)
 	}
-	return
 }
 
 // Issuer obtains the issuer certificate used by this instance of Boulder.
@@ -1759,7 +1787,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	}
 
 	// Validate the inner JWS as a key rollover request for the outer JWS
-	rolloverOperation, prob := wfe.validKeyRollover(outerJWS, innerJWS, oldKey, logEvent)
+	rolloverOperation, prob := wfe.validKeyRollover(ctx, outerJWS, innerJWS, oldKey, logEvent)
 	if prob != nil {
 		wfe.sendError(response, logEvent, prob, nil)
 		return
@@ -1963,7 +1991,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 // GetOrder is used to retrieve a existing order object
 func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost {
+	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost && !requiredStale(request, logEvent) {
 		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
 		return
 	}
@@ -2001,10 +2029,10 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID, UseV2Authorizations: &useV2Authzs})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
-			wfe.sendError(response, logEvent, probs.NotFound("No order for ID %d", orderID), err)
+			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
 			return
 		}
-		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve order for ID %d", orderID), err)
+		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
 		return
 	}
 
@@ -2016,7 +2044,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 	}
 
 	if *order.RegistrationID != acctID {
-		wfe.sendError(response, logEvent, probs.NotFound("No order found for account ID %d", acctID), nil)
+		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acctID)), nil)
 		return
 	}
 
@@ -2024,7 +2052,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 	// POST-as-GET request and we need to verify the requesterAccount is the
 	// order's owner.
 	if requesterAccount != nil && *order.RegistrationID != requesterAccount.ID {
-		wfe.sendError(response, logEvent, probs.NotFound("No order found for account ID %d", acctID), nil)
+		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acctID)), nil)
 		return
 	}
 
@@ -2071,22 +2099,22 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID, UseV2Authorizations: &useV2Authzs})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
-			wfe.sendError(response, logEvent, probs.NotFound("No order for ID %d", orderID), err)
+			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
 			return
 		}
-		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve order for ID %d", orderID), err)
+		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
 		return
 	}
 
 	if *order.RegistrationID != acctID {
-		wfe.sendError(response, logEvent, probs.NotFound("No order found for account ID %d", acctID), nil)
+		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acctID)), nil)
 		return
 	}
 
 	// If the authenticated account ID doesn't match the order's registration ID
 	// pretend it doesn't exist and abort.
 	if acct.ID != *order.RegistrationID {
-		wfe.sendError(response, logEvent, probs.NotFound("No order found for account ID %d", acct.ID), nil)
+		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acct.ID)), nil)
 		return
 	}
 
@@ -2103,7 +2131,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	// If the order is expired we can not finalize it and must return an error
 	orderExpiry := time.Unix(*order.Expires, 0)
 	if orderExpiry.Before(wfe.clk.Now()) {
-		wfe.sendError(response, logEvent, probs.NotFound("Order %d is expired", *order.Id), nil)
+		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("Order %d is expired", *order.Id)), nil)
 		return
 	}
 
@@ -2130,6 +2158,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	logEvent.Extra["CSRDNSNames"] = certificateRequest.CSR.DNSNames
 	logEvent.Extra["CSREmailAddresses"] = certificateRequest.CSR.EmailAddresses
 	logEvent.Extra["CSRIPAddresses"] = certificateRequest.CSR.IPAddresses
+	logEvent.Extra["KeyType"] = web.KeyTypeToString(certificateRequest.CSR.PublicKey)
 
 	// Inc CSR signature algorithm counter
 	wfe.stats.csrSignatureAlgs.With(prometheus.Labels{"type": certificateRequest.CSR.SignatureAlgorithm.String()}).Inc()

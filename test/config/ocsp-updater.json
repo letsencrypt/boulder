@@ -32,10 +32,10 @@
 
   "syslog": {
     "stdoutlevel": 6,
-    "sysloglevel": 4
+    "sysloglevel": 6
   },
 
   "common": {
-    "issuerCert": "test/test-ca2.pem"
+    "issuerCert": "/tmp/intermediate-cert-rsa-a.pem"
   }
 }

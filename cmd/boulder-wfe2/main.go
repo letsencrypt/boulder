@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -19,7 +20,6 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -60,6 +60,10 @@ type config struct {
 		// Certificates are read into the chain in the order they are defined in the
 		// slice of filenames.
 		CertificateChains map[string][]string
+
+		// AlternateCertificateChains maps AIA issuer URLs to an optional alternate
+		// certificate chain, represented by an ordered slice of certificate filenames.
+		AlternateCertificateChains map[string][]string
 
 		Features map[string]bool
 
@@ -175,7 +179,7 @@ func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, *x509.Certifica
 // in the results map, keyed by the AIA Issuer URL. Additionally the first
 // certificate in each chain is parsed and returned in a slice of issuer
 // certificates.
-func loadCertificateChains(chainConfig map[string][]string) (map[string][]byte, []*x509.Certificate, error) {
+func loadCertificateChains(chainConfig map[string][]string, requireAtLeastOneChain bool) (map[string][]byte, []*x509.Certificate, error) {
 	results := make(map[string][]byte, len(chainConfig))
 	var issuerCerts []*x509.Certificate
 
@@ -184,7 +188,7 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string][]byte, 
 		var buffer bytes.Buffer
 
 		// There must be at least one chain file specified
-		if len(certFiles) == 0 {
+		if requireAtLeastOneChain && len(certFiles) == 0 {
 			return nil, nil, fmt.Errorf(
 				"CertificateChain entry for AIA issuer url %q has no chain "+
 					"file names configured",
@@ -212,8 +216,10 @@ func loadCertificateChains(chainConfig map[string][]string) (map[string][]byte, 
 			buffer.Write(pemBytes)
 		}
 
-		// Save the full PEM chain contents
-		results[aiaIssuerURL] = buffer.Bytes()
+		// Save the full PEM chain contents, if any
+		if buffer.Len() > 0 {
+			results[aiaIssuerURL] = buffer.Bytes()
+		}
 	}
 
 	return results, issuerCerts, nil
@@ -247,6 +253,22 @@ func setupWFE(c config, logger blog.Logger, stats prometheus.Registerer, clk clo
 	return rac, sac, rns, npm
 }
 
+type errorWriter struct {
+	blog.Logger
+}
+
+func (ew errorWriter) Write(p []byte) (n int, err error) {
+	// log.Logger will append a newline to all messages before calling
+	// Write. Our log checksum checker doesn't like newlines, because
+	// syslog will strip them out so the calculated checksums will
+	// differ. So that we don't hit this corner case for every line
+	// logged from inside net/http.Server we strip the newline before
+	// we get to the checksum generator.
+	p = bytes.TrimRight(p, "\n")
+	ew.Logger.Err(fmt.Sprintf("net/http.Server: %s", string(p)))
+	return
+}
+
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
@@ -259,11 +281,33 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	certChains, issuerCerts, err := loadCertificateChains(c.WFE.CertificateChains)
+	// Map of AIA Issuer URLs to a slice of PEM-encoded certificate chains.
+	// The first chain in the slice is the default chain, and subsequent
+	// chains are alternates.
+	allCertChains := make(map[string][][]byte, len(c.WFE.CertificateChains))
+
+	certChains, issuerCerts, err := loadCertificateChains(c.WFE.CertificateChains, true)
 	cmd.FailOnError(err, "Couldn't read configured CertificateChains")
+
+	for aiaURL, chainPEM := range certChains {
+		allCertChains[aiaURL] = [][]byte{chainPEM}
+	}
 
 	err = features.Set(c.WFE.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
+
+	if c.WFE.AlternateCertificateChains != nil {
+		altCertChains, _, err := loadCertificateChains(c.WFE.AlternateCertificateChains, false)
+		cmd.FailOnError(err, "Couldn't read configured AlternateCertificateChains")
+
+		for aiaURL, chainPEM := range altCertChains {
+			if _, ok := allCertChains[aiaURL]; !ok {
+				cmd.Fail(fmt.Sprintf("AIA Issuer URL %s appeared in AlternateCertificateChains, "+
+					"but does not exist in CertificateChains", aiaURL))
+			}
+			allCertChains[aiaURL] = append(allCertChains[aiaURL], chainPEM)
+		}
+	}
 
 	stats, logger := cmd.StatsAndLogging(c.Syslog, c.WFE.DebugAddr)
 	defer logger.AuditPanic()
@@ -271,10 +315,10 @@ func main() {
 
 	clk := cmd.Clock()
 
-	// don't load any weak keys, but do load blocked keys
-	kp, err := goodkey.NewKeyPolicy("", c.WFE.BlockedKeyFile)
-	cmd.FailOnError(err, "Unable to create key policy")
 	rac, sac, rns, npm := setupWFE(c, logger, stats, clk)
+	// don't load any weak keys, but do load blocked keys
+	kp, err := goodkey.NewKeyPolicy("", c.WFE.BlockedKeyFile, sac.KeyBlocked)
+	cmd.FailOnError(err, "Unable to create key policy")
 
 	if c.WFE.StaleTimeout.Duration == 0 {
 		c.WFE.StaleTimeout.Duration = time.Minute * 10
@@ -290,7 +334,7 @@ func main() {
 		pendingAuthorizationLifetime = time.Duration(c.WFE.PendingAuthorizationLifetimeDays) * (24 * time.Hour)
 	}
 
-	wfe, err := wfe2.NewWebFrontEndImpl(stats, clk, kp, certChains, issuerCerts, rns, npm, logger, c.WFE.StaleTimeout.Duration, authorizationLifetime, pendingAuthorizationLifetime)
+	wfe, err := wfe2.NewWebFrontEndImpl(stats, clk, kp, allCertChains, issuerCerts, rns, npm, logger, c.WFE.StaleTimeout.Duration, authorizationLifetime, pendingAuthorizationLifetime)
 	cmd.FailOnError(err, "Unable to create WFE")
 	wfe.RA = rac
 	wfe.SA = sac
@@ -306,11 +350,15 @@ func main() {
 
 	logger.Infof("WFE using key policy: %#v", kp)
 
-	logger.Infof("Server running, listening on %s...\n", c.WFE.ListenAddress)
-	handler := wfe.Handler(metrics.NoopRegisterer)
-	srv := &http.Server{
-		Addr:    c.WFE.ListenAddress,
-		Handler: handler,
+	logger.Infof("Server running, listening on %s....", c.WFE.ListenAddress)
+	handler := wfe.Handler(stats)
+	srv := http.Server{
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 120 * time.Second,
+		IdleTimeout:  120 * time.Second,
+		Addr:         c.WFE.ListenAddress,
+		ErrorLog:     log.New(errorWriter{logger}, "", 0),
+		Handler:      handler,
 	}
 
 	go func() {
@@ -320,12 +368,15 @@ func main() {
 		}
 	}()
 
-	var tlsSrv *http.Server
-	if c.WFE.TLSListenAddress != "" {
-		tlsSrv = &http.Server{
-			Addr:    c.WFE.TLSListenAddress,
-			Handler: handler,
-		}
+	tlsSrv := http.Server{
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 120 * time.Second,
+		IdleTimeout:  120 * time.Second,
+		Addr:         c.WFE.TLSListenAddress,
+		ErrorLog:     log.New(errorWriter{logger}, "", 0),
+		Handler:      handler,
+	}
+	if tlsSrv.Addr != "" {
 		go func() {
 			err := tlsSrv.ListenAndServeTLS(c.WFE.ServerCertificatePath, c.WFE.ServerKeyPath)
 			if err != nil && err != http.ErrServerClosed {
@@ -339,9 +390,7 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), c.WFE.ShutdownStopTimeout.Duration)
 		defer cancel()
 		_ = srv.Shutdown(ctx)
-		if tlsSrv != nil {
-			_ = tlsSrv.Shutdown(ctx)
-		}
+		_ = tlsSrv.Shutdown(ctx)
 		done <- true
 	})
 

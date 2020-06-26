@@ -13,6 +13,7 @@ CREATE USER IF NOT EXISTS 'ocsp_update'@'localhost';
 CREATE USER IF NOT EXISTS 'test_setup'@'localhost';
 CREATE USER IF NOT EXISTS 'purger'@'localhost';
 CREATE USER IF NOT EXISTS 'janitor'@'localhost';
+CREATE USER IF NOT EXISTS 'badkeyrevoker'@'localhost';
 
 -- Storage Authority
 GRANT SELECT,INSERT ON certificates TO 'sa'@'localhost';
@@ -29,6 +30,9 @@ GRANT SELECT,INSERT,UPDATE ON authz2 TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON orderToAuthz2 TO 'sa'@'localhost';
 GRANT INSERT,SELECT ON serials TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON precertificates TO 'sa'@'localhost';
+GRANT SELECT,INSERT ON keyHashToSerial TO 'sa'@'localhost';
+GRANT SELECT,INSERT ON blockedKeys TO 'sa'@'localhost';
+GRANT SELECT,INSERT,UPDATE ON newOrdersRL TO 'sa'@'localhost';
 
 -- OCSP Responder
 GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';
@@ -64,6 +68,13 @@ GRANT SELECT,DELETE ON orders TO 'janitor'@'localhost';
 GRANT SELECT,DELETE ON requestedNames TO 'janitor'@'localhost';
 GRANT SELECT,DELETE ON orderFqdnSets TO 'janitor'@'localhost';
 GRANT SELECT,DELETE ON orderToAuthz2 TO 'janitor'@'localhost';
+
+-- Bad Key Revoker
+GRANT SELECT,UPDATE ON blockedKeys TO 'badkeyrevoker'@'localhost';
+GRANT SELECT ON keyHashToSerial TO 'badkeyrevoker'@'localhost';
+GRANT SELECT ON certificateStatus TO 'badkeyrevoker'@'localhost';
+GRANT SELECT ON precertificates TO 'badkeyrevoker'@'localhost';
+GRANT SELECT ON registrations TO 'badkeyrevoker'@'localhost';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';

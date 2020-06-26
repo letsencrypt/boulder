@@ -26,15 +26,30 @@
       ]
     },
     "features": {
+      "EnforceMultiVA": true,
+      "MultiVAFullResults": true
     },
+    "remoteVAs": [
+      {
+        "serverAddress": "va1.boulder:9097",
+        "timeout": "15s"
+      },
+      {
+        "serverAddress": "va1.boulder:9098",
+        "timeout": "15s"
+      }
+    ],
+    "maxRemoteValidationFailures": 1,
+    "multiVAPolicyFile": "test/example-multiva-policy.yaml",
     "accountURIPrefixes": [
-      "http://boulder:4000/acme/reg/"
+      "http://boulder:4000/acme/reg/",
+      "http://boulder:4001/acme/acct/"
     ]
   },
 
   "syslog": {
     "stdoutlevel": 6,
-    "sysloglevel": 4
+    "sysloglevel": 6
   },
 
   "common": {

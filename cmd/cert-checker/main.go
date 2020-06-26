@@ -17,8 +17,8 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/zmap/zcrypto/x509"
-	"github.com/zmap/zlint"
-	"github.com/zmap/zlint/lints"
+	"github.com/zmap/zlint/v2"
+	"github.com/zmap/zlint/v2/lint"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -30,11 +30,6 @@ import (
 )
 
 const (
-	good = "valid"
-	bad  = "invalid"
-
-	filenameLayout = "20060102"
-
 	expectedValidityPeriod = time.Hour * 24 * 90
 )
 
@@ -215,7 +210,7 @@ var allowedExtensions = map[string]bool{
 
 // For extensions that have a fixed value we check that it contains that value
 var expectedExtensionContent = map[string][]byte{
-	"1.3.6.1.5.5.7.1.24": []byte{0x30, 0x03, 0x02, 0x01, 0x05}, // Must staple feature
+	"1.3.6.1.5.5.7.1.24": {0x30, 0x03, 0x02, 0x01, 0x05}, // Must staple feature
 }
 
 func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]bool) (problems []string) {
@@ -232,7 +227,7 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 		// Run zlint checks
 		results := zlint.LintCertificate(parsedCert)
 		for name, res := range results.Results {
-			if ignoredLints[name] || res.Status <= lints.Pass {
+			if ignoredLints[name] || res.Status <= lint.Pass {
 				continue
 			}
 			prob := fmt.Sprintf("zlint %s: %s", res.Status, name)

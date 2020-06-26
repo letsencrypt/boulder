@@ -140,7 +140,7 @@ type failOne struct {
 }
 
 func (mp *failOne) SubmitToSingleCTWithResult(_ context.Context, req *pubpb.Request) (*pubpb.Result, error) {
-	if *req.LogURL == mp.badURL {
+	if req.LogURL == mp.badURL {
 		return nil, errors.New("BAD")
 	}
 	return &pubpb.Result{Sct: []byte{0}}, nil

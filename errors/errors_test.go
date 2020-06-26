@@ -16,14 +16,14 @@ func TestWithSubErrors(t *testing.T) {
 	}
 
 	subErrs := []SubBoulderError{
-		SubBoulderError{
+		{
 			Identifier: identifier.DNSIdentifier("example.com"),
 			BoulderError: &BoulderError{
 				Type:   RateLimit,
 				Detail: "everyone uses this example domain",
 			},
 		},
-		SubBoulderError{
+		{
 			Identifier: identifier.DNSIdentifier("what about example.com"),
 			BoulderError: &BoulderError{
 				Type:   RateLimit,

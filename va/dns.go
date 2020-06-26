@@ -68,7 +68,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident iden
 	// troubleshooters to differentiate between no TXT records and
 	// invalid/incorrect TXT records.
 	if len(txts) == 0 {
-		return nil, probs.Unauthorized("No TXT record found at %s", challengeSubdomain)
+		return nil, probs.Unauthorized(fmt.Sprintf("No TXT record found at %s", challengeSubdomain))
 	}
 
 	for _, element := range txts {
@@ -86,6 +86,6 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident iden
 	if len(txts) > 1 {
 		andMore = fmt.Sprintf(" (and %d more)", len(txts)-1)
 	}
-	return nil, probs.Unauthorized("Incorrect TXT record %q%s found at %s",
-		replaceInvalidUTF8([]byte(invalidRecord)), andMore, challengeSubdomain)
+	return nil, probs.Unauthorized(fmt.Sprintf("Incorrect TXT record %q%s found at %s",
+		replaceInvalidUTF8([]byte(invalidRecord)), andMore, challengeSubdomain))
 }

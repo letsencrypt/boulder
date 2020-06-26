@@ -1,6 +1,7 @@
 package csr
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -44,10 +45,6 @@ func (pa *mockPA) WillingToIssueWildcards(idents []identifier.ACMEIdentifier) er
 
 func (pa *mockPA) ChallengeTypeEnabled(t string) bool {
 	return true
-}
-
-func (pa *mockPA) ValidDomain(_ string) error {
-	return nil
 }
 
 func TestVerifyCSR(t *testing.T) {
@@ -96,7 +93,7 @@ func TestVerifyCSR(t *testing.T) {
 			invalidPubKey,
 		},
 		{
-			&x509.CertificateRequest{PublicKey: private.PublicKey},
+			&x509.CertificateRequest{PublicKey: &private.PublicKey},
 			100,
 			testingPolicy,
 			&mockPA{},
@@ -170,7 +167,7 @@ func TestVerifyCSR(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		err := VerifyCSR(c.csr, c.maxNames, c.keyPolicy, c.pa, true, c.regID)
+		err := VerifyCSR(context.Background(), c.csr, c.maxNames, c.keyPolicy, c.pa, true, c.regID)
 		test.AssertDeepEquals(t, c.expectedError, err)
 	}
 }

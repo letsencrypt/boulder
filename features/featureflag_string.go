@@ -9,27 +9,32 @@ func _() {
 	// Re-run the stringer command to generate them again.
 	var x [1]struct{}
 	_ = x[unused-0]
-	_ = x[CAAValidationMethods-1]
-	_ = x[CAAAccountURI-2]
-	_ = x[HeadNonceStatusOK-3]
-	_ = x[EnforceMultiVA-4]
-	_ = x[MultiVAFullResults-5]
-	_ = x[RemoveWFE2AccountID-6]
-	_ = x[CheckRenewalFirst-7]
-	_ = x[MandatoryPOSTAsGET-8]
-	_ = x[AllowV1Registration-9]
-	_ = x[ParallelCheckFailedValidation-10]
-	_ = x[DeleteUnusedChallenges-11]
-	_ = x[V1DisableNewValidations-12]
-	_ = x[PrecertificateRevocation-13]
-	_ = x[StripDefaultSchemePort-14]
-	_ = x[StoreIssuerInfo-15]
-	_ = x[WriteIssuedNamesPrecert-16]
+	_ = x[WriteIssuedNamesPrecert-1]
+	_ = x[HeadNonceStatusOK-2]
+	_ = x[RemoveWFE2AccountID-3]
+	_ = x[CheckRenewalFirst-4]
+	_ = x[ParallelCheckFailedValidation-5]
+	_ = x[DeleteUnusedChallenges-6]
+	_ = x[BlockedKeyTable-7]
+	_ = x[CAAValidationMethods-8]
+	_ = x[CAAAccountURI-9]
+	_ = x[EnforceMultiVA-10]
+	_ = x[MultiVAFullResults-11]
+	_ = x[MandatoryPOSTAsGET-12]
+	_ = x[AllowV1Registration-13]
+	_ = x[V1DisableNewValidations-14]
+	_ = x[PrecertificateRevocation-15]
+	_ = x[StripDefaultSchemePort-16]
+	_ = x[StoreIssuerInfo-17]
+	_ = x[StoreKeyHashes-18]
+	_ = x[StoreRevokerInfo-19]
+	_ = x[RestrictRSAKeySizes-20]
+	_ = x[FasterNewOrdersRateLimit-21]
 }
 
-const _FeatureFlag_name = "unusedCAAValidationMethodsCAAAccountURIHeadNonceStatusOKEnforceMultiVAMultiVAFullResultsRemoveWFE2AccountIDCheckRenewalFirstMandatoryPOSTAsGETAllowV1RegistrationParallelCheckFailedValidationDeleteUnusedChallengesV1DisableNewValidationsPrecertificateRevocationStripDefaultSchemePortStoreIssuerInfoWriteIssuedNamesPrecert"
+const _FeatureFlag_name = "unusedWriteIssuedNamesPrecertHeadNonceStatusOKRemoveWFE2AccountIDCheckRenewalFirstParallelCheckFailedValidationDeleteUnusedChallengesBlockedKeyTableCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationV1DisableNewValidationsPrecertificateRevocationStripDefaultSchemePortStoreIssuerInfoStoreKeyHashesStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimit"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 26, 39, 56, 70, 88, 107, 124, 142, 161, 190, 212, 235, 259, 281, 296, 319}
+var _FeatureFlag_index = [...]uint16{0, 6, 29, 46, 65, 82, 111, 133, 148, 168, 181, 195, 213, 231, 250, 273, 297, 319, 334, 348, 364, 383, 407}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

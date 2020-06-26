@@ -1,6 +1,7 @@
 package goodkey
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -8,7 +9,11 @@ import (
 	"math/big"
 	"sync"
 
+	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
+
 	"github.com/titanous/rocacheck"
 )
 
@@ -31,8 +36,13 @@ var smallPrimeInts = []int64{
 // singleton defines the object of a Singleton pattern
 var (
 	smallPrimesSingleton sync.Once
-	smallPrimes          []*big.Int
+	smallPrimesProduct   *big.Int
 )
+
+// BlockedKeyCheckFunc is used to pass in the sa.BlockedKey method to KeyPolicy,
+// rather than storing a full sa.SQLStorageAuthority. This makes testing
+// significantly simpler.
+type BlockedKeyCheckFunc func(context.Context, *sapb.KeyBlockedRequest) (*sapb.Exists, error)
 
 // KeyPolicy determines which types of key may be used with various boulder
 // operations.
@@ -42,6 +52,7 @@ type KeyPolicy struct {
 	AllowECDSANISTP384 bool // Whether ECDSA NISTP384 keys should be allowed.
 	weakRSAList        *WeakRSAKeys
 	blockedList        *blockedKeys
+	dbCheck            BlockedKeyCheckFunc
 }
 
 // NewKeyPolicy returns a KeyPolicy that allows RSA, ECDSA256 and ECDSA384.
@@ -51,11 +62,12 @@ type KeyPolicy struct {
 // containing Base64 encoded SHA256 hashes of pkix subject public keys that
 // should be blocked. If this argument is empty then no blocked key checking is
 // performed.
-func NewKeyPolicy(weakKeyFile, blockedKeyFile string) (KeyPolicy, error) {
+func NewKeyPolicy(weakKeyFile, blockedKeyFile string, bkc BlockedKeyCheckFunc) (KeyPolicy, error) {
 	kp := KeyPolicy{
 		AllowRSA:           true,
 		AllowECDSANISTP256: true,
 		AllowECDSANISTP384: true,
+		dbCheck:            bkc,
 	}
 	if weakKeyFile != "" {
 		keyList, err := LoadWeakRSASuffixes(weakKeyFile)
@@ -76,9 +88,17 @@ func NewKeyPolicy(weakKeyFile, blockedKeyFile string) (KeyPolicy, error) {
 
 // GoodKey returns true if the key is acceptable for both TLS use and account
 // key use (our requirements are the same for either one), according to basic
-// strength and algorithm checking.
+// strength and algorithm checking. GoodKey only supports pointers: *rsa.PublicKey
+// and *ecdsa.PublicKey. It will reject non-pointer types.
 // TODO: Support JSONWebKeys once go-jose migration is done.
-func (policy *KeyPolicy) GoodKey(key crypto.PublicKey) error {
+func (policy *KeyPolicy) GoodKey(ctx context.Context, key crypto.PublicKey) error {
+	// Early rejection of unacceptable key types to guard subsequent checks.
+	switch t := key.(type) {
+	case *rsa.PublicKey, *ecdsa.PublicKey:
+		break
+	default:
+		return berrors.MalformedError("unsupported key type %T", t)
+	}
 	// If there is a blocked list configured then check if the public key is one
 	// that has been administratively blocked.
 	if policy.blockedList != nil {
@@ -88,22 +108,31 @@ func (policy *KeyPolicy) GoodKey(key crypto.PublicKey) error {
 			return berrors.BadPublicKeyError("public key is forbidden")
 		}
 	}
+	if policy.dbCheck != nil {
+		digest, err := core.KeyDigest(key)
+		if err != nil {
+			return err
+		}
+		exists, err := policy.dbCheck(ctx, &sapb.KeyBlockedRequest{KeyHash: digest[:]})
+		if err != nil {
+			return err
+		}
+		if *exists.Exists {
+			return berrors.BadPublicKeyError("public key is forbidden")
+		}
+	}
 	switch t := key.(type) {
-	case rsa.PublicKey:
-		return policy.goodKeyRSA(t)
 	case *rsa.PublicKey:
-		return policy.goodKeyRSA(*t)
-	case ecdsa.PublicKey:
-		return policy.goodKeyECDSA(t)
+		return policy.goodKeyRSA(t)
 	case *ecdsa.PublicKey:
-		return policy.goodKeyECDSA(*t)
+		return policy.goodKeyECDSA(t)
 	default:
-		return berrors.MalformedError("unknown key type %T", key)
+		return berrors.MalformedError("unsupported key type %T", key)
 	}
 }
 
 // GoodKeyECDSA determines if an ECDSA pubkey meets our requirements
-func (policy *KeyPolicy) goodKeyECDSA(key ecdsa.PublicKey) (err error) {
+func (policy *KeyPolicy) goodKeyECDSA(key *ecdsa.PublicKey) (err error) {
 	// Check the curve.
 	//
 	// The validity of the curve is an assumption for all following tests.
@@ -171,16 +200,16 @@ func (policy *KeyPolicy) goodKeyECDSA(key ecdsa.PublicKey) (err error) {
 	}
 
 	// SP800-56A § 5.6.2.3.2 Step 4.
-	//   "Verify that n*Q == O.
+	//   "Verify that n*Q == Ø.
 	//    (Ensures that the public key has the correct order. Along with check 1,
 	//     ensures that the public key is in the correct range in the correct EC
 	//     subgroup, that is, it is in the correct EC subgroup and is not the
 	//     identity element.)"
 	//
 	// Ensure that public key has the correct order:
-	// verify that n*Q = O.
+	// verify that n*Q = Ø.
 	//
-	// n*Q = O iff n*Q is the point at infinity (see step 1).
+	// n*Q = Ø iff n*Q is the point at infinity (see step 1).
 	ox, oy := key.Curve.ScalarMult(key.X, key.Y, params.N.Bytes())
 	if !isPointAtInfinityNISTP(ox, oy) {
 		return berrors.MalformedError("public key does not have correct order")
@@ -213,12 +242,18 @@ func (policy *KeyPolicy) goodCurve(c elliptic.Curve) (err error) {
 	}
 }
 
+var acceptableRSAKeySizes = map[int]bool{
+	2048: true,
+	3072: true,
+	4096: true,
+}
+
 // GoodKeyRSA determines if a RSA pubkey meets our requirements
-func (policy *KeyPolicy) goodKeyRSA(key rsa.PublicKey) (err error) {
+func (policy *KeyPolicy) goodKeyRSA(key *rsa.PublicKey) (err error) {
 	if !policy.AllowRSA {
 		return berrors.MalformedError("RSA keys are not allowed")
 	}
-	if policy.weakRSAList != nil && policy.weakRSAList.Known(&key) {
+	if policy.weakRSAList != nil && policy.weakRSAList.Known(key) {
 		return berrors.MalformedError("key is on a known weak RSA key list")
 	}
 
@@ -226,27 +261,42 @@ func (policy *KeyPolicy) goodKeyRSA(key rsa.PublicKey) (err error) {
 	// Modulus must be >= 2048 bits and <= 4096 bits
 	modulus := key.N
 	modulusBitLen := modulus.BitLen()
-	const maxKeySize = 4096
-	if modulusBitLen < 2048 {
-		return berrors.MalformedError("key too small: %d", modulusBitLen)
+	if features.Enabled(features.RestrictRSAKeySizes) {
+		if !acceptableRSAKeySizes[modulusBitLen] {
+			return berrors.MalformedError("key size not supported: %d", modulusBitLen)
+		}
+	} else {
+		const maxKeySize = 4096
+		if modulusBitLen < 2048 {
+			return berrors.MalformedError("key too small: %d", modulusBitLen)
+		}
+		if modulusBitLen > maxKeySize {
+			return berrors.MalformedError("key too large: %d > %d", modulusBitLen, maxKeySize)
+		}
+		// Bit lengths that are not a multiple of 8 may cause problems on some
+		// client implementations.
+		if modulusBitLen%8 != 0 {
+			return berrors.MalformedError("key length wasn't a multiple of 8: %d", modulusBitLen)
+		}
 	}
-	if modulusBitLen > maxKeySize {
-		return berrors.MalformedError("key too large: %d > %d", modulusBitLen, maxKeySize)
+
+	// Rather than support arbitrary exponents, which significantly increases
+	// the size of the key space we allow, we restrict E to the defacto standard
+	// RSA exponent 65537. There is no specific standards document that specifies
+	// 65537 as the 'best' exponent, but ITU X.509 Annex C suggests there are
+	// notable merits for using it if using a fixed exponent.
+	//
+	// The CABF Baseline Requirements state:
+	//   The CA SHALL confirm that the value of the public exponent is an
+	//   odd number equal to 3 or more. Additionally, the public exponent
+	//   SHOULD be in the range between 2^16 + 1 and 2^256-1.
+	//
+	// By only allowing one exponent, which fits these constraints, we satisfy
+	// these requirements.
+	if key.E != 65537 {
+		return berrors.MalformedError("key exponent must be 65537")
 	}
-	// Bit lengths that are not a multiple of 8 may cause problems on some
-	// client implementations.
-	if modulusBitLen%8 != 0 {
-		return berrors.MalformedError("key length wasn't a multiple of 8: %d", modulusBitLen)
-	}
-	// The CA SHALL confirm that the value of the public exponent is an
-	// odd number equal to 3 or more. Additionally, the public exponent
-	// SHOULD be in the range between 2^16 + 1 and 2^256-1.
-	// NOTE: rsa.PublicKey cannot represent an exponent part greater than
-	// 2^32 - 1 or 2^64 - 1, because it stores E as an integer. So we
-	// don't need to check the upper bound.
-	if (key.E%2) == 0 || key.E < ((1<<16)+1) {
-		return berrors.MalformedError("key exponent should be odd and >2^16: %d", key.E)
-	}
+
 	// The modulus SHOULD also have the following characteristics: an odd
 	// number, not the power of a prime, and have no factors smaller than 752.
 	// TODO: We don't yet check for "power of a prime."
@@ -255,7 +305,7 @@ func (policy *KeyPolicy) goodKeyRSA(key rsa.PublicKey) (err error) {
 	}
 	// Check for weak keys generated by Infineon hardware
 	// (see https://crocs.fi.muni.cz/public/papers/rsa_ccs17)
-	if rocacheck.IsWeak(&key) {
+	if rocacheck.IsWeak(key) {
 		return berrors.MalformedError("key generated by vulnerable Infineon-based hardware")
 	}
 
@@ -266,20 +316,26 @@ func (policy *KeyPolicy) goodKeyRSA(key rsa.PublicKey) (err error) {
 //
 // Short circuits; execution time is dependent on i. Do not use this on secret
 // values.
+//
+// Rather than checking each prime individually (invoking Mod on each),
+// multiply the primes together and let GCD do our work for us: if the
+// GCD between <key> and <product of primes> is not one, we know we have
+// a bad key. This is substantially faster than checking each prime
+// individually.
 func checkSmallPrimes(i *big.Int) bool {
 	smallPrimesSingleton.Do(func() {
+		smallPrimesProduct = big.NewInt(1)
 		for _, prime := range smallPrimeInts {
-			smallPrimes = append(smallPrimes, big.NewInt(prime))
+			smallPrimesProduct.Mul(smallPrimesProduct, big.NewInt(prime))
 		}
 	})
 
-	for _, prime := range smallPrimes {
-		var result big.Int
-		result.Mod(i, prime)
-		if result.Sign() == 0 {
-			return true
-		}
-	}
+	// When the GCD is 1, i and smallPrimesProduct are coprime, meaning they
+	// share no common factors. When the GCD is not one, it is the product of
+	// all common factors, meaning we've identified at least one small prime
+	// which invalidates i as a valid key.
 
-	return false
+	var result big.Int
+	result.GCD(nil, nil, i, smallPrimesProduct)
+	return result.Cmp(big.NewInt(1)) != 0
 }
