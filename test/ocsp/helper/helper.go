@@ -16,25 +16,39 @@ import (
 	"golang.org/x/crypto/ocsp"
 )
 
-var method = flag.String("method", "GET", "Method to use for fetching OCSP")
-var urlOverride = flag.String("url", "", "URL of OCSP responder to override")
-var hostOverride = flag.String("host", "", "Host header to override in HTTP request")
-var tooSoon = flag.Int("too-soon", 76, "If NextUpdate is fewer than this many hours in future, warn.")
-var ignoreExpiredCerts = flag.Bool("ignore-expired-certs", false, "If a cert is expired, don't bother requesting OCSP.")
-var expectStatus = flag.Int("expect-status", ocsp.Good, "Expect response to have this numeric status (0=Good, 1=Revoked, 2=Unknown)")
-var expectReason = flag.Int("expect-reason", ocsp.Unspecified, "Expect response to have this numeric revocation reason (0=Unspecified, 1=KeyCompromise, etc.)")
+// CheckOCSPConfig contains fields which control various behaviors of the
+// checker's behavior.
+type CheckOCSPConfig struct {
+	method             string
+	urlOverride        string
+	hostOverride       string
+	tooSoon            int
+	ignoreExpiredCerts bool
+	expectStatus       int
+	expectReason       int
+}
 
-// isFlagSet determines if the named flag has been set on the command line.
-// This is especially useful for flags whose values are builtin types and for
-// which we want different behavior for "unset" versus "that type's zero value".
-func isFlagSet(name string) bool {
-	set := false
-	flag.Visit(func(f *flag.Flag) {
-		if f.Name == name {
-			set = true
-		}
-	})
-	return set
+// WithExpectStatus returns a new CheckOCSPConfig with the given expectStatus,
+// and all other fields the same as the receiver.
+func (template CheckOCSPConfig) WithExpectStatus(status int) CheckOCSPConfig {
+	ret := template
+	ret.expectStatus = status
+	return ret
+}
+
+// DefaultConfig is the default configuration, as set by the command line flags
+// (or their default values, when not provided).
+var DefaultConfig CheckOCSPConfig
+
+func init() {
+	flag.StringVar(&DefaultConfig.method, "method", "GET", "Method to use for fetching OCSP")
+	flag.StringVar(&DefaultConfig.urlOverride, "url", "", "URL of OCSP responder to override")
+	flag.StringVar(&DefaultConfig.hostOverride, "host", "", "Host header to override in HTTP request")
+	flag.IntVar(&DefaultConfig.tooSoon, "too-soon", 76, "If NextUpdate is fewer than this many hours in future, warn.")
+	flag.BoolVar(&DefaultConfig.ignoreExpiredCerts, "ignore-expired-certs", false, "If a cert is expired, don't bother requesting OCSP.")
+	flag.IntVar(&DefaultConfig.expectStatus, "expect-status", -1, "Expect response to have this numeric status (0=Good, 1=Revoked, 2=Unknown)")
+	flag.IntVar(&DefaultConfig.expectReason, "expect-reason", -1, "Expect response to have this numeric revocation reason (0=Unspecified, 1=KeyCompromise, etc.)")
+	flag.Parse()
 }
 
 func getIssuer(cert *x509.Certificate) (*x509.Certificate, error) {
@@ -106,21 +120,31 @@ func parseCMS(body []byte) (*x509.Certificate, error) {
 	return cert, nil
 }
 
+// Req makes an OCSP request using default configuration for the PEM certificate
+// in fileName, and returns the response.
 func Req(fileName string) (*ocsp.Response, error) {
+	return ReqWithConfig(fileName, DefaultConfig)
+}
+
+// ReqWithConfig makes an OCSP request using the given config for the PEM
+// certificate in fileName, and returns the response.
+func ReqWithConfig(fileName string, config CheckOCSPConfig) (*ocsp.Response, error) {
 	contents, err := ioutil.ReadFile(fileName)
 	if err != nil {
 		return nil, err
 	}
-	return ReqDER(contents, *expectStatus)
+	return ReqDER(contents, config)
 }
 
-func ReqDER(der []byte, expectStatus int) (*ocsp.Response, error) {
+// ReqDER makes an OCSP request using the given config for the given DER-encoded
+// certificate, and returns the response.
+func ReqDER(der []byte, config CheckOCSPConfig) (*ocsp.Response, error) {
 	cert, err := parse(der)
 	if err != nil {
 		return nil, fmt.Errorf("parsing certificate: %s", err)
 	}
 	if time.Now().After(cert.NotAfter) {
-		if *ignoreExpiredCerts {
+		if config.ignoreExpiredCerts {
 			return nil, nil
 		} else {
 			return nil, fmt.Errorf("certificate expired %s ago: %s",
@@ -137,12 +161,12 @@ func ReqDER(der []byte, expectStatus int) (*ocsp.Response, error) {
 		return nil, fmt.Errorf("creating OCSP request: %s", err)
 	}
 
-	ocspURL, err := getOCSPURL(cert)
+	ocspURL, err := getOCSPURL(cert, config)
 	if err != nil {
 		return nil, err
 	}
 
-	httpResp, err := sendHTTPRequest(req, ocspURL)
+	httpResp, err := sendHTTPRequest(req, ocspURL, config)
 	if err != nil {
 		return nil, err
 	}
@@ -163,30 +187,30 @@ func ReqDER(der []byte, expectStatus int) (*ocsp.Response, error) {
 	if len(respBytes) == 0 {
 		return nil, fmt.Errorf("empty response body")
 	}
-	return parseAndPrint(respBytes, cert, issuer, expectStatus)
+	return parseAndPrint(respBytes, cert, issuer, config)
 }
 
-func sendHTTPRequest(req []byte, ocspURL *url.URL) (*http.Response, error) {
+func sendHTTPRequest(req []byte, ocspURL *url.URL, config CheckOCSPConfig) (*http.Response, error) {
 	encodedReq := base64.StdEncoding.EncodeToString(req)
 	var httpRequest *http.Request
 	var err error
-	if *method == "GET" {
+	if config.method == "GET" {
 		ocspURL.Path = encodedReq
 		fmt.Printf("Fetching %s\n", ocspURL.String())
 		httpRequest, err = http.NewRequest("GET", ocspURL.String(), http.NoBody)
-	} else if *method == "POST" {
+	} else if config.method == "POST" {
 		fmt.Printf("POSTing request, reproduce with: curl -i --data-binary @- %s < <(base64 -d <<<%s)\n",
 			ocspURL, encodedReq)
 		httpRequest, err = http.NewRequest("POST", ocspURL.String(), bytes.NewBuffer(req))
 	} else {
-		return nil, fmt.Errorf("invalid method %s, expected GET or POST", *method)
+		return nil, fmt.Errorf("invalid method %s, expected GET or POST", config.method)
 	}
 	if err != nil {
 		return nil, err
 	}
 	httpRequest.Header.Add("Content-Type", "application/ocsp-request")
-	if *hostOverride != "" {
-		httpRequest.Host = *hostOverride
+	if config.hostOverride != "" {
+		httpRequest.Host = config.hostOverride
 	}
 	client := http.Client{
 		Timeout: 5 * time.Second,
@@ -195,10 +219,10 @@ func sendHTTPRequest(req []byte, ocspURL *url.URL) (*http.Response, error) {
 	return client.Do(httpRequest)
 }
 
-func getOCSPURL(cert *x509.Certificate) (*url.URL, error) {
+func getOCSPURL(cert *x509.Certificate, config CheckOCSPConfig) (*url.URL, error) {
 	var ocspServer string
-	if *urlOverride != "" {
-		ocspServer = *urlOverride
+	if config.urlOverride != "" {
+		ocspServer = config.urlOverride
 	} else if len(cert.OCSPServer) > 0 {
 		ocspServer = cert.OCSPServer[0]
 	} else {
@@ -241,20 +265,20 @@ func checkSignerTimes(resp *ocsp.Response, issuer *x509.Certificate) error {
 	return nil
 }
 
-func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, expectStatus int) (*ocsp.Response, error) {
+func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config CheckOCSPConfig) (*ocsp.Response, error) {
 	fmt.Printf("\nDecoding body: %s\n", base64.StdEncoding.EncodeToString(respBytes))
 	resp, err := ocsp.ParseResponseForCert(respBytes, cert, issuer)
 	if err != nil {
 		return nil, fmt.Errorf("parsing response: %s", err)
 	}
-	if resp.Status != expectStatus {
-		return nil, fmt.Errorf("wrong CertStatus %d, expected %d", resp.Status, expectStatus)
+	if config.expectStatus != -1 && resp.Status != config.expectStatus {
+		return nil, fmt.Errorf("wrong CertStatus %d, expected %d", resp.Status, config.expectStatus)
 	}
-	if resp.RevocationReason != *expectReason && isFlagSet("expect-reason") {
-		return nil, fmt.Errorf("wrong RevocationReason %d, expected %d", resp.RevocationReason, *expectReason)
+	if config.expectReason != -1 && resp.RevocationReason != config.expectReason {
+		return nil, fmt.Errorf("wrong RevocationReason %d, expected %d", resp.RevocationReason, config.expectReason)
 	}
 	timeTilExpiry := time.Until(resp.NextUpdate)
-	tooSoonDuration := time.Duration(*tooSoon) * time.Hour
+	tooSoonDuration := time.Duration(config.tooSoon) * time.Hour
 	if timeTilExpiry < tooSoonDuration {
 		return nil, fmt.Errorf("NextUpdate is too soon: %s", timeTilExpiry)
 	}
