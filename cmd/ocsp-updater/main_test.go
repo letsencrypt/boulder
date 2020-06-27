@@ -110,7 +110,7 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 }
 
 func TestGenerateOCSPResponses(t *testing.T) {
-	updater, sa, dbMap, fc, cleanUp := setup(t)
+	updater, sa, _, fc, cleanUp := setup(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -134,20 +134,15 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert-b.pem")
 
-	// We need to set a fake "ocspLastUpdated" value for the two certs we created
-	// in order to satisfy the "ocspStaleMaxAge" constraint.
-	fakeLastUpdate := fc.Now().Add(-time.Hour * 24 * 3)
-	_, err = dbMap.Exec(
-		"UPDATE certificateStatus SET ocspLastUpdated = ? WHERE serial IN (?, ?)",
-		fakeLastUpdate,
-		core.SerialToString(parsedCertA.SerialNumber),
-		core.SerialToString(parsedCertB.SerialNumber))
-	test.AssertNotError(t, err, "Couldn't update ocspLastUpdated")
-
+	// Jump time forward by 2 hours so the ocspLastUpdate value will be older than
+	// the earliest lastUpdate time we care about.
+	fc.Set(fc.Now().Add(2 * time.Hour))
 	earliest := fc.Now().Add(-time.Hour)
-	certs, err := updater.findStaleOCSPResponses(earliest, 10)
+
+	// We should have 2 stale responses now.
+	statuses, err := updater.findStaleOCSPResponses(earliest, 10)
 	test.AssertNotError(t, err, "Couldn't find stale responses")
-	test.AssertEquals(t, len(certs), 2)
+	test.AssertEquals(t, len(statuses), 2)
 
 	// Hacky test of parallelism: Make each request to the CA take 1 second, and
 	// produce 2 requests to the CA. If the pair of requests complete in about a
@@ -157,20 +152,22 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	start := time.Now()
 	updater.ogc = &mockOCSP{time.Second}
 	updater.parallelGenerateOCSPRequests = 10
-	err = updater.generateOCSPResponses(ctx, certs)
+	err = updater.generateOCSPResponses(ctx, statuses)
 	test.AssertNotError(t, err, "Couldn't generate OCSP responses")
 	elapsed := time.Since(start)
 	if elapsed > 1500*time.Millisecond {
 		t.Errorf("generateOCSPResponses took too long, expected it to make calls in parallel.")
 	}
 
-	certs, err = updater.findStaleOCSPResponses(earliest, 10)
+	// generateOCSPResponses should have updated the ocspLastUpdate for each
+	// cert, so there shouldn't be any stale responses anymore.
+	statuses, err = updater.findStaleOCSPResponses(earliest, 10)
 	test.AssertNotError(t, err, "Failed to find stale responses")
-	test.AssertEquals(t, len(certs), 0)
+	test.AssertEquals(t, len(statuses), 0)
 }
 
 func TestFindStaleOCSPResponses(t *testing.T) {
-	updater, sa, dbMap, fc, cleanUp := setup(t)
+	updater, sa, _, fc, cleanUp := setup(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -185,16 +182,12 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
-	// We need to set a fake "ocspLastUpdated" value for the cert we created
-	// in order to satisfy the "ocspStaleMaxAge" constraint.
-	fakeLastUpdate := fc.Now().Add(-time.Hour * 24 * 3)
-	_, err = dbMap.Exec(
-		"UPDATE certificateStatus SET ocspLastUpdated = ? WHERE serial = ?",
-		fakeLastUpdate,
-		core.SerialToString(parsedCert.SerialNumber))
-	test.AssertNotError(t, err, "Couldn't update ocspLastUpdated")
-
+	// Jump time forward by 2 hours so the ocspLastUpdate value will be older than
+	// the earliest lastUpdate time we care about.
+	fc.Set(fc.Now().Add(2 * time.Hour))
 	earliest := fc.Now().Add(-time.Hour)
+
+	// We should have 1 stale response now.
 	statuses, err := updater.findStaleOCSPResponses(earliest, 10)
 	test.AssertNotError(t, err, "Couldn't find status")
 	test.AssertEquals(t, len(statuses), 1)
@@ -202,11 +195,14 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	status, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
 	test.AssertNotError(t, err, "Couldn't get the core.Certificate from the database")
 
+	// Generate and store an updated response, which will update the
+	// ocspLastUpdate field for this cert.
 	meta, err := updater.generateResponse(ctx, status)
 	test.AssertNotError(t, err, "Couldn't generate OCSP response")
 	err = updater.storeResponse(meta)
 	test.AssertNotError(t, err, "Couldn't store OCSP response")
 
+	// We should have 0 stale responses now.
 	statuses, err = updater.findStaleOCSPResponses(earliest, 10)
 	test.AssertNotError(t, err, "Failed to find stale responses")
 	test.AssertEquals(t, len(statuses), 0)
@@ -228,71 +224,21 @@ func TestFindStaleOCSPResponsesRevokedReason(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
-	// We need to set a fake "ocspLastUpdated" value for the cert we created
-	// in order to satisfy the "ocspStaleMaxAge" constraint.
-	fakeLastUpdate := fc.Now().Add(-time.Hour * 24 * 3)
+	// Set a revokedReason to ensure it gets written into the OCSPResponse.
 	_, err = dbMap.Exec(
-		"UPDATE certificateStatus SET ocspLastUpdated = ?, revokedReason = 1 WHERE serial = ?",
-		fakeLastUpdate,
+		"UPDATE certificateStatus SET revokedReason = 1 WHERE serial = ?",
 		core.SerialToString(parsedCert.SerialNumber))
-	test.AssertNotError(t, err, "Couldn't update ocspLastUpdated")
+	test.AssertNotError(t, err, "Couldn't update revokedReason")
 
+	// Jump time forward by 2 hours so the ocspLastUpdate value will be older than
+	// the earliest lastUpdate time we care about.
+	fc.Set(fc.Now().Add(2 * time.Hour))
 	earliest := fc.Now().Add(-time.Hour)
+
 	statuses, err := updater.findStaleOCSPResponses(earliest, 10)
 	test.AssertNotError(t, err, "Couldn't find status")
 	test.AssertEquals(t, len(statuses), 1)
 	test.AssertEquals(t, int(statuses[0].RevokedReason), 1)
-}
-
-func TestFindStaleOCSPResponsesStaleMaxAge(t *testing.T) {
-	updater, sa, dbMap, fc, cleanUp := setup(t)
-	defer cleanUp()
-
-	reg := satest.CreateWorkingRegistration(t, sa)
-	parsedCertA, err := core.LoadCert("test-cert.pem")
-	test.AssertNotError(t, err, "Couldn't read test certificate")
-	issued := fc.Now().UnixNano()
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    parsedCertA.Raw,
-		RegID:  &reg.ID,
-		Ocsp:   nil,
-		Issued: &issued,
-	})
-	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
-	parsedCertB, err := core.LoadCert("test-cert-b.pem")
-	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    parsedCertB.Raw,
-		RegID:  &reg.ID,
-		Ocsp:   nil,
-		Issued: &issued,
-	})
-	test.AssertNotError(t, err, "Couldn't add test-cert-b.pem")
-
-	// Set a "ocspLastUpdated" value of 3 days ago for parsedCertA
-	okLastUpdated := fc.Now().Add(-time.Hour * 24 * 3)
-	_, err = dbMap.Exec(
-		"UPDATE certificateStatus SET ocspLastUpdated = ? WHERE serial = ?",
-		okLastUpdated,
-		core.SerialToString(parsedCertA.SerialNumber))
-	test.AssertNotError(t, err, "Couldn't update ocspLastUpdated for parsedCertA")
-
-	// Set a "ocspLastUpdated" value of 35 days ago for parsedCertB
-	excludedLastUpdated := fc.Now().Add(-time.Hour * 24 * 35)
-	_, err = dbMap.Exec(
-		"UPDATE certificateStatus SET ocspLastUpdated = ? WHERE serial = ?",
-		excludedLastUpdated,
-		core.SerialToString(parsedCertB.SerialNumber))
-	test.AssertNotError(t, err, "Couldn't update ocspLastUpdated for parsedCertB")
-
-	// Running `findStaleOCSPResponses should only find *ONE* of the above
-	// certificates, parsedCertA. The second should be excluded by the
-	// `ocspStaleMaxAge` cutoff.
-	earliest := fc.Now().Add(-time.Hour)
-	statuses, err := updater.findStaleOCSPResponses(earliest, 10)
-	test.AssertNotError(t, err, "Couldn't find stale responses")
-	test.AssertEquals(t, len(statuses), 1)
-	test.AssertEquals(t, statuses[0].Serial, core.SerialToString(parsedCertA.SerialNumber))
 }
 
 func TestOldOCSPResponsesTick(t *testing.T) {
@@ -323,9 +269,9 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 // TestOldOCSPResponsesTickIsExpired checks that the old OCSP responses tick
 // updates the `IsExpired` field opportunistically as it encounters certificates
 // that are expired but whose certificate status rows do not have `IsExpired`
-// set.
+// set, and that expired certs don't show up as having stale responses.
 func TestOldOCSPResponsesTickIsExpired(t *testing.T) {
-	updater, sa, dbMap, fc, cleanUp := setup(t)
+	updater, sa, _, fc, cleanUp := setup(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -343,24 +289,23 @@ func TestOldOCSPResponsesTickIsExpired(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
-	// We need to set a fake "ocspLastUpdated" value for the cert we created
-	// in order to satisfy the "ocspStaleMaxAge" constraint. It needs to fall
-	// within the range of the updater.ocspMinTimeToExpiry we set later.
-	fakeLastUpdate := parsedCert.NotAfter.Add(-time.Hour)
-	_, err = dbMap.Exec(
-		"UPDATE certificateStatus SET ocspLastUpdated = ? WHERE serial = ?",
-		fakeLastUpdate,
-		serial)
-	test.AssertNotError(t, err, "Couldn't update ocspLastUpdated")
+	// Jump time forward by 2 hours so the ocspLastUpdate value will be older than
+	// the earliest lastUpdate time we care about.
+	fc.Set(fc.Now().Add(2 * time.Hour))
+	earliest := fc.Now().Add(-time.Hour)
 
 	// The certificate isn't expired, so the certificate status should have
-	// a false `IsExpired`
+	// a false `IsExpired` and it should show up as stale.
 	cs, err := sa.GetCertificateStatus(ctx, serial)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get certificate status for %q", serial))
 	test.AssertEquals(t, cs.IsExpired, false)
+	statuses, err := updater.findStaleOCSPResponses(earliest, 10)
+	test.AssertNotError(t, err, "Couldn't find status")
+	test.AssertEquals(t, len(statuses), 1)
 
 	// Advance the clock to the point that the certificate we added is now expired
-	fc.Set(parsedCert.NotAfter.Add(time.Hour))
+	fc.Set(parsedCert.NotAfter.Add(2 * time.Hour))
+	earliest = fc.Now().Add(-time.Hour)
 
 	// Run the updateOCSPResponses so that it can have a chance to find expired
 	// certificates
@@ -373,6 +318,9 @@ func TestOldOCSPResponsesTickIsExpired(t *testing.T) {
 	cs, err = sa.GetCertificateStatus(ctx, serial)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get certificate status for %q", serial))
 	test.AssertEquals(t, cs.IsExpired, true)
+	statuses, err = updater.findStaleOCSPResponses(earliest, 10)
+	test.AssertNotError(t, err, "Couldn't find status")
+	test.AssertEquals(t, len(statuses), 0)
 }
 
 func TestStoreResponseGuard(t *testing.T) {
@@ -427,7 +375,7 @@ func TestStoreResponseGuard(t *testing.T) {
 }
 
 func TestGenerateOCSPResponsePrecert(t *testing.T) {
-	updater, sa, dbMap, fc, cleanUp := setup(t)
+	updater, sa, _, fc, cleanUp := setup(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -448,17 +396,12 @@ func TestGenerateOCSPResponsePrecert(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 
-	// We need to set a fake "ocspLastUpdated" value for the precert we created
-	// in order to satisfy the "ocspStaleMaxAge" constraint.
-	fakeLastUpdate := fc.Now().Add(-time.Hour * 24 * 3)
-	_, err = dbMap.Exec(
-		"UPDATE certificateStatus SET ocspLastUpdated = ? WHERE serial = ?",
-		fakeLastUpdate,
-		serial)
-	test.AssertNotError(t, err, "Couldn't update ocspLastUpdated")
+	// Jump time forward by 2 hours so the ocspLastUpdate value will be older than
+	// the earliest lastUpdate time we care about.
+	fc.Set(fc.Now().Add(2 * time.Hour))
+	earliest := fc.Now().Add(-time.Hour)
 
 	// There should be one stale ocsp response found for the precert
-	earliest := fc.Now().Add(-time.Hour)
 	certs, err := updater.findStaleOCSPResponses(earliest, 10)
 	test.AssertNotError(t, err, "Couldn't find stale responses")
 	test.AssertEquals(t, len(certs), 1)
