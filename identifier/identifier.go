@@ -12,7 +12,7 @@ type IdentifierType string
 const (
 	// DNS is specified in RFC 8555 for DNS type identifiers.
 	DNS = IdentifierType("dns")
-	// defined IP Identifiers as specified in draft-ietf-acme-ip-08: update when it becom RFC
+	// IP Identifiers is specified in RFC 8738
 	IP = IdentifierType("ip")
 	// a placeholder onion Identifiers defined
 	ONION = IdentifierType("onion")

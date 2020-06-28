@@ -45,6 +45,12 @@ func (va *ValidationAuthorityImpl) checkCAA(
 	ctx context.Context,
 	identifier identifier.ACMEIdentifier,
 	params *caaParams) *probs.ProblemDetails {
+	// skip CAA check for ip addresses
+	if identifier.Type == 'ip' {
+		va.log.Auditinfo
+		return nil
+	}
+
 	present, valid, records, err := va.checkCAARecords(ctx, identifier, params)
 	if err != nil {
 		return probs.DNS(err.Error())
