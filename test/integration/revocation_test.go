@@ -122,7 +122,8 @@ func TestPrecertificateRevocation(t *testing.T) {
 			}
 
 			// To start with the precertificate should have a Good OCSP response.
-			_, err = ocsp_helper.ReqDER(cert.Raw, ocsp.Good)
+			ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
+			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			test.AssertNotError(t, err, "requesting OCSP for precert")
 
 			// Revoke the precertificate using the specified key and client
@@ -135,7 +136,8 @@ func TestPrecertificateRevocation(t *testing.T) {
 
 			// Check the OCSP response for the precertificate again. It should now be
 			// revoked.
-			_, err = ocsp_helper.ReqDER(cert.Raw, ocsp.Revoked)
+			ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked)
+			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			test.AssertNotError(t, err, "requesting OCSP for revoked precert")
 		})
 	}
@@ -173,7 +175,8 @@ func TestRevokeWithKeyCompromise(t *testing.T) {
 	test.AssertEquals(t, err.Error(), `acme: error code 400 "urn:ietf:params:acme:error:badPublicKey": public key is forbidden`)
 
 	// Check the OCSP response. It should be revoked with reason = 1 (keyCompromise)
-	response, err := ocsp_helper.ReqDER(cert.Raw, ocsp.Revoked)
+	ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked)
+	response, err := ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 	test.AssertNotError(t, err, "requesting OCSP for revoked cert")
 	test.AssertEquals(t, response.RevocationReason, 1)
 }
@@ -218,12 +221,13 @@ func TestBadKeyRevoker(t *testing.T) {
 		ocsp.KeyCompromise,
 	)
 	test.AssertNotError(t, err, "failed to revoke certificate")
-	_, err = ocsp_helper.ReqDER(badCert.certs[0].Raw, ocsp.Revoked)
+	ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked)
+	_, err = ocsp_helper.ReqDER(badCert.certs[0].Raw, ocspConfig)
 	test.AssertNotError(t, err, "ReqDER failed")
 
 	for _, cert := range certs {
 		for i := 0; i < 5; i++ {
-			_, err = ocsp_helper.ReqDER(cert.Raw, ocsp.Revoked)
+			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			if err == nil {
 				break
 			}

@@ -39,7 +39,8 @@ func TestPrecertificateOCSP(t *testing.T) {
 		t.Fatalf("couldn't find rejected precert for %q", domain)
 	}
 
-	_, err = ocsp_helper.ReqDER(cert.Raw, ocsp.Good)
+	ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
+	_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 	if err != nil {
 		t.Errorf("requesting OCSP for rejected precertificate: %s", err)
 	}
