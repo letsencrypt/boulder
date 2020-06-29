@@ -186,6 +186,7 @@ var (
 	errInvalidDNSCharacter  = berrors.MalformedError("Domain name contains an invalid character")
 	errNameTooLong          = berrors.MalformedError("Domain name is longer than 253 bytes")
 	errIPAddress            = berrors.MalformedError("The ACME server can not issue a certificate for an IP address")
+	errPrivateIP						=	berrors.MalformedError("Requested IPaddress is non-routable address")
 	errTooManyLabels        = berrors.MalformedError("Domain name has more than 10 labels (parts)")
 	errEmptyName            = berrors.MalformedError("Domain name is empty")
 	errNameEndsInDot        = berrors.MalformedError("Domain name ends in a dot")
@@ -331,27 +332,46 @@ func ValidEmail(address string) error {
 	return nil
 }
 
+// ValidIP checks if self-identfied ip addresses  are really ip address
+// a delima: we need to test against with private addresss to check,
+// but BR require we don't sign cert for private ip address
+
+func ValidIP(ip string) error {
+	ipaddress := net.ParseIP(ip)
+	if ipaddress == nil{
+		return errInvalidIdentifier
+	}
+	// here should be additional check for private ip addresss
+	return nil
+}
+
+
 // WillingToIssue determines whether the CA is willing to issue for the provided
 // identifier. It expects domains in id to be lowercase to prevent mismatched
 // cases breaking queries.
 //
 // We place several criteria on identifiers we are willing to issue for:
 //
-//  * MUST self-identify as DNS identifiers
-//  * MUST contain only bytes in the DNS hostname character set
-//  * MUST NOT have more than maxLabels labels
-//  * MUST follow the DNS hostname syntax rules in RFC 1035 and RFC 2181
-//    In particular:
-//    * MUST NOT contain underscores
-//  * MUST NOT match the syntax of an IP address
-//  * MUST end in a public suffix
-//  * MUST have at least one label in addition to the public suffix
-//  * MUST NOT be a label-wise suffix match for a name on the block list,
+//  If identifier self-identify as DNS identifiers :
+// 	 * MUST contain only bytes in the DNS hostname character set
+//   * MUST NOT have more than maxLabels labels
+//   * MUST follow the DNS hostname syntax rules in RFC 1035 and RFC 2181
+//     In particular:
+//     * MUST NOT contain underscores
+//   * MUST end in a public suffix
+//   * MUST have at least one label in addition to the public suffix
+//   * MUST NOT be a label-wise suffix match for a name on the block list,
 //    where comparison is case-independent (normalized to lower case)
+//
+//  If iderntifier self-identifiy as IP, it will handled by ValidIP fucntion
 //
 // If WillingToIssue returns an error, it will be of type MalformedRequestError
 // or RejectedIdentifierError
 func (pa *AuthorityImpl) WillingToIssue(id identifier.ACMEIdentifier) error {
+	if id.Type == identifier.IP {
+		return ValidIP(id.Value)
+	}
+
 	if id.Type != identifier.DNS {
 		return errInvalidIdentifier
 	}
@@ -435,7 +455,7 @@ func (pa *AuthorityImpl) WillingToIssueWildcards(idents []identifier.ACMEIdentif
 // the plural WillingToIssueWildcards when evaluating a list of identifiers.
 func (pa *AuthorityImpl) willingToIssueWildcard(ident identifier.ACMEIdentifier) error {
 	// We're only willing to process DNS identifiers
-	if ident.Type != identifier.DNS {
+	if ident.Type != identifier.DNS && ident.Type != identifier.IP {
 		return errInvalidIdentifier
 	}
 	rawDomain := ident.Value
@@ -530,14 +550,14 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 
 // ChallengesFor makes a decision of what challenges are acceptable for
 // the given identifier.
-func (pa *AuthorityImpl) ChallengesFor(identifier identifier.ACMEIdentifier) ([]core.Challenge, error) {
+func (pa *AuthorityImpl) ChallengesFor(ident identifier.ACMEIdentifier) ([]core.Challenge, error) {
 	challenges := []core.Challenge{}
 
 	token := core.NewToken()
 
 	// If the identifier is for a DNS wildcard name we only
 	// provide a DNS-01 challenge as a matter of CA policy.
-	if strings.HasPrefix(identifier.Value, "*.") {
+	if strings.HasPrefix(ident.Value, "*.") {
 		// We must have the DNS-01 challenge type enabled to create challenges for
 		// a wildcard identifier per LE policy.
 		if !pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01) {
@@ -557,7 +577,8 @@ func (pa *AuthorityImpl) ChallengesFor(identifier identifier.ACMEIdentifier) ([]
 			challenges = append(challenges, core.TLSALPNChallenge01(token))
 		}
 
-		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01) {
+		//For IP address DNS challenge does not apply, so should not be allowed
+		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01) && ident.Type != identifier.IP {
 			challenges = append(challenges, core.DNSChallenge01(token))
 		}
 	}

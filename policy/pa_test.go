@@ -27,6 +27,7 @@ func paImpl(t *testing.T) *AuthorityImpl {
 }
 
 func TestWillingToIssue(t *testing.T) {
+	//this test cases all get DNS IdnetifierType
 	testCases := []struct {
 		domain string
 		err    error
@@ -36,8 +37,8 @@ func TestWillingToIssue(t *testing.T) {
 		{`emailaddress@myseriously.present.com`, errInvalidDNSCharacter},
 		{`user:pass@myseriously.present.com`, errInvalidDNSCharacter},
 		{`zömbo.com`, errInvalidDNSCharacter},                              // non-ASCII character
-		{`127.0.0.1`, errIPAddress},                                        // IPv4 address
-		{`fe80::1:1`, errInvalidDNSCharacter},                              // IPv6 addresses
+		{`127.0.0.1`, errIPAddress},                                        // IPv4 address with DNS IdentifierType
+		{`fe80::1:1`, errInvalidDNSCharacter},                              // IPv6 addresses with DNS IdnetifierType
 		{`[2001:db8:85a3:8d3:1319:8a2e:370:7348]`, errInvalidDNSCharacter}, // unexpected IPv6 variants
 		{`[2001:db8:85a3:8d3:1319:8a2e:370:7348]:443`, errInvalidDNSCharacter},
 		{`2001:db8::/32`, errInvalidDNSCharacter},
@@ -154,7 +155,28 @@ func TestWillingToIssue(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't load rules")
 
 	// Test for invalid identifier type
-	ident := identifier.ACMEIdentifier{Type: "ip", Value: "example.com"}
+	ident := identifier.ACMEIdentifier{Type: "invalid", Value: "example.com"}
+	err = pa.WillingToIssue(ident)
+	if err != errInvalidIdentifier {
+		t.Error("Identifier was not correctly forbidden: ", ident)
+	}
+
+	// IPv4 with correct self-idntifiying
+	ident = identifier.ACMEIdentifier{Type: "ip", Value: "42.42.42.42"}
+	err = pa.WillingToIssue(ident)
+	if err != nil {
+		t.Error("WillingToIssue failed on a properly typed IPaddress(v4)")
+	}
+
+	// IPv6
+	ident = identifier.ACMEIdentifier{Type: "ip", Value: "2001:db8:85a3:8d3:1319:8a2e:370:7348"}
+	err = pa.WillingToIssue(ident)
+	if err != nil {
+		t.Error("WillingToIssue failed on a properly typed IPaddress(v6)")
+	}
+
+  // a domain that idnetify itself as ip
+	ident = identifier.ACMEIdentifier{Type: "ip", Value: "example.com"}
 	err = pa.WillingToIssue(ident)
 	if err != errInvalidIdentifier {
 		t.Error("Identifier was not correctly forbidden: ", ident)
@@ -464,4 +486,7 @@ func TestValidEmailError(t *testing.T) {
 
 	err = ValidEmail("example@-foobar.com")
 	test.AssertEquals(t, err.Error(), "contact email \"example@-foobar.com\" has invalid domain : Domain name contains an invalid character")
+
+	err = ValidEmail("john@gmail.com")
+	test.AssertNotError(t, err, "Couldn't process valid Email address")
 }
