@@ -80,7 +80,7 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	}
 	idents := make([]identifier.ACMEIdentifier, len(csr.DNSNames))
 	for i, dnsName := range csr.DNSNames {
-		idents[i] = identifier.DNSIdentifier(dnsName)
+		idents[i] = identifier.RecreateIdentifier(dnsName)
 	}
 	if err := pa.WillingToIssueWildcards(idents); err != nil {
 		return err

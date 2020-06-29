@@ -1357,7 +1357,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 			var subErrors []berrors.SubBoulderError
 			for _, name := range namesOutOfLimit {
 				subErrors = append(subErrors, berrors.SubBoulderError{
-					Identifier:   identifier.DNSIdentifier(name),
+					Identifier:   identifier.RecreateIdentifier(name),
 					BoulderError: berrors.RateLimitError("too many certificates already issued").(*berrors.BoulderError),
 				})
 			}
@@ -1802,7 +1802,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 func (ra *RegistrationAuthorityImpl) checkOrderNames(names []string) error {
 	idents := make([]identifier.ACMEIdentifier, len(names))
 	for i, name := range names {
-		idents[i] = identifier.DNSIdentifier(name)
+		idents[i] = identifier.RecreateIdentifier(name)
 	}
 	if err := ra.PA.WillingToIssueWildcards(idents); err != nil {
 		return err

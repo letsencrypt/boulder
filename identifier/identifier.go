@@ -39,18 +39,18 @@ func DNSIdentifier(domain string) ACMEIdentifier {
 	}
 }
 
-//a temporary function that create currect type of ACMEIdent from string,
-// ultimately shoudn't called outside of test contaxt
+// RecreateIdentifier is  a function for create correct type of ACMEIdent
+// from string, if it's paresable to ip type being ip.
+// ultimately shouldn't called outside of test contaxt
 func RecreateIdentifier(name string) ACMEIdentifier {
 	if net.ParseIP(name) != nil {
 		return ACMEIdentifier{
 			Type:  IP,
 			Value: name,
 		}
-	} else {
-		return ACMEIdentifier{
-			Type:  DNS,
-			Value: name,
-		}
+	}
+	return ACMEIdentifier{
+		Type:  DNS,
+		Value: name,
 	}
 }

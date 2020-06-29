@@ -46,8 +46,7 @@ func (va *ValidationAuthorityImpl) checkCAA(
 	identifier identifier.ACMEIdentifier,
 	params *caaParams) *probs.ProblemDetails {
 	// skip CAA check for ip addresses
-	if identifier.Type == 'ip' {
-		va.log.Auditinfo
+	if identifier.Type == "ip" {
 		return nil
 	}
 

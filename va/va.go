@@ -639,7 +639,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteResults)
 	}
 
-	records, prob := va.validate(ctx, identifier.DNSIdentifier(domain), challenge, authz)
+	records, prob := va.validate(ctx, identifier.RecreateIdentifier(domain), challenge, authz)
 	challenge.ValidationRecord = records
 	localValidationLatency := time.Since(vStart)
 
