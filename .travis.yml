@@ -10,7 +10,7 @@ go_import_path: github.com/letsencrypt/boulder
 services:
   - docker
 
-# Only build pushes to the master branch, PRs, and branches beginning with
+# Only build pushes to the main branch, PRs, and branches beginning with
 # `test-`. You should not push branches beginning with `test-` to the
 # letsencrypt repository, but this is a convenient way to push branches to your
 # own fork of the repository to ensure Travis passes before submitting a PR.
@@ -18,13 +18,12 @@ services:
 # git push myremote branchname:test-branchname
 branches:
   only:
-    - master
     - main
     - /^test-.*$/
 
 env:
     - RUN="lints integration generate rpm" BOULDER_CONFIG_DIR="test/config"
-    # Config changes that have landed in master but not yet been applied to
+    # Config changes that have landed in main but not yet been applied to
     # production can be made in boulder-config-next.json.
     - RUN="integration" BOULDER_CONFIG_DIR="test/config-next"
     - RUN="unit"

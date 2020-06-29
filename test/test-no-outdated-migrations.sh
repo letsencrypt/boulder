@@ -12,7 +12,7 @@ trap 'rm ${NEW_FILES_LIST}' EXIT
 for svc in $SERVICES; do
   for dbenv in $DBENVS; do
     DB_DIR=$svc/_db/
-    git diff --name-only master -- ${DB_DIR} > ${NEW_FILES_LIST}
+    git diff --name-only main -- ${DB_DIR} > ${NEW_FILES_LIST}
     # Search for files in the migrations directory match the new files or come
     # lexically after them, then filter out the new files.
     GREP_OUT="$(ls ${DB_DIR}migrations/* | sort | \
