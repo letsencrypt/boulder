@@ -51,23 +51,23 @@ var DefaultConfig = Config{
 	expectReason:       *expectReason,
 }
 
-var configFromFlagsMemo sync.Once
+var parseFlagsOnce sync.Once
 
 // ConfigFromFlags returns a Config whose values are populated from
 // any command line flags passed by the user, or default values if not passed.
 func ConfigFromFlags() Config {
-	return configFromFlagsMemo.Do(func() {
+	parseFlagsOnce.Do(func() {
 		flag.Parse()
-		return Config{
-			method:             *method,
-			urlOverride:        *urlOverride,
-			hostOverride:       *hostOverride,
-			tooSoon:            *tooSoon,
-			ignoreExpiredCerts: *ignoreExpiredCerts,
-			expectStatus:       *expectStatus,
-			expectReason:       *expectReason,
-		}
 	})
+	return Config{
+		method:             *method,
+		urlOverride:        *urlOverride,
+		hostOverride:       *hostOverride,
+		tooSoon:            *tooSoon,
+		ignoreExpiredCerts: *ignoreExpiredCerts,
+		expectStatus:       *expectStatus,
+		expectReason:       *expectReason,
+	}
 }
 
 // WithExpectStatus returns a new Config with the given expectStatus,
