@@ -321,13 +321,16 @@ those containers you will want to set them yourself.
 
 To add a dependency, add the import statement to your .go file, then run
 `go build` on it. This will automatically add the dependency to go.mod. Next,
-run `go mod vendor` to save a copy in the vendor folder.
+run `go mod vendor && git add vendor/` to save a copy in the vendor folder.
 
 When vendorizing dependencies, it's important to make sure tests pass on the
 version you are vendorizing. Currently we enforce this by requiring that pull
-requests containing a dependency update include a comment indicating that you
-ran the tests and that they succeeded, preferably with the command line you
-run them with.
+requests containing a dependency update to any version other than a tagged
+release include a comment indicating that you ran the tests and that they
+succeeded, preferably with the command line you run them with. Note that you
+may have to get a separate checkout of the dependency (using `go get` outside
+of the boulder repository) in order to run its tests, as some vendored
+modules do not bring their tests with them.
 
 ## Updating Dependencies
 
@@ -335,8 +338,12 @@ To upgrade a dependency, [see the Go
 docs](https://github.com/golang/go/wiki/Modules#how-to-upgrade-and-downgrade-dependencies).
 Typically you want `go get <dependency>` rather than `go get -u
 <dependency>`, which can introduce a lot of unexpected updates. After running
-`go get`, make sure to run `go mod vendor` to update the vendor directory. If
-you forget, Travis tests will catch this.
+`go get`, make sure to run `go mod vendor && git add vendor/` to update the
+vendor directory. If you forget, Travis tests will catch this.
+
+If you are updating a dependency to a version which is not a tagged release,
+see the note above about how to run all of a dependency's tests and note that
+you have done so in the PR.
 
 Note that updating dependencies can introduce new, transitive dependencies. In
 general we try to keep our dependencies as narrow as possible in order to
