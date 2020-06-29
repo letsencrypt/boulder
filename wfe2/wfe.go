@@ -1962,7 +1962,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// layers to process. We reject anything with a non-DNS type identifier here.
 	names := make([]string, len(newOrderRequest.Identifiers))
 	for i, ident := range newOrderRequest.Identifiers {
-		if ident.Type != identifier.DNS {
+		if ident.Type != identifier.DNS && ident.Type != identifier.IP {
 			wfe.sendError(response, logEvent,
 				probs.Malformed("NewOrder request included invalid non-DNS type identifier: type %q, value %q",
 					ident.Type, ident.Value),
