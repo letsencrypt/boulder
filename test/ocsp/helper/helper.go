@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/ocsp"
@@ -22,8 +23,8 @@ var (
 	hostOverride       = flag.String("host", "", "Host header to override in HTTP request")
 	tooSoon            = flag.Int("too-soon", 76, "If NextUpdate is fewer than this many hours in future, warn.")
 	ignoreExpiredCerts = flag.Bool("ignore-expired-certs", false, "If a cert is expired, don't bother requesting OCSP.")
-	expectStatus       = flag.Int("expect-status", -1, "Expect response to have this numeric status (0=Good, 1=Revoked, 2=Unknown)")
-	expectReason       = flag.Int("expect-reason", -1, "Expect response to have this numeric revocation reason (0=Unspecified, 1=KeyCompromise, etc.)")
+	expectStatus       = flag.Int("expect-status", 0, "Expect response to have this numeric status (0=Good, 1=Revoked, 2=Unknown); or -1 for no enforcement.")
+	expectReason       = flag.Int("expect-reason", -1, "Expect response to have this numeric revocation reason (0=Unspecified, 1=KeyCompromise, etc); or -1 for no enforcement.")
 )
 
 // Config contains fields which control various behaviors of the
@@ -38,8 +39,8 @@ type Config struct {
 	expectReason       int
 }
 
-// DefaultConfig is a Config populated with the same defaults as if command-line
-// flags had been parsed, but none had been passed.
+// DefaultConfig is a Config populated with the same defaults as if no
+// command-line had been provided, so all retain their default value.
 var DefaultConfig = Config{
 	method:             *method,
 	urlOverride:        *urlOverride,
@@ -50,15 +51,14 @@ var DefaultConfig = Config{
 	expectReason:       *expectReason,
 }
 
-var configFromFlags Config
-var isConfigPopulated bool = false
+var configFromFlagsMemo sync.Once
 
 // ConfigFromFlags returns a Config whose values are populated from
 // any command line flags passed by the user, or default values if not passed.
 func ConfigFromFlags() Config {
-	if !isConfigPopulated {
+	return configFromFlagsMemo.Do(func() {
 		flag.Parse()
-		configFromFlags = Config{
+		return Config{
 			method:             *method,
 			urlOverride:        *urlOverride,
 			hostOverride:       *hostOverride,
@@ -67,10 +67,7 @@ func ConfigFromFlags() Config {
 			expectStatus:       *expectStatus,
 			expectReason:       *expectReason,
 		}
-		isConfigPopulated = true
-	}
-	ret := configFromFlags
-	return ret
+	})
 }
 
 // WithExpectStatus returns a new Config with the given expectStatus,
