@@ -91,6 +91,7 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 
 // normalizeCSR deduplicates and lowers the case of dNSNames and the subject CN.
 // If forceCNFromSAN is true it will also hoist a dNSName into the CN if it is empty.
+// if there is no DNS name short enough it will try ipv4 names
 func normalizeCSR(csr *x509.CertificateRequest, forceCNFromSAN bool) {
 	if forceCNFromSAN && csr.Subject.CommonName == "" {
 		var forcedCN string
@@ -101,6 +102,16 @@ func normalizeCSR(csr *x509.CertificateRequest, forceCNFromSAN bool) {
 				break
 			}
 		}
+		// Promote first IPv4 address if promoting a DNS name Failed
+		if forcedCN == "" {
+			for _, name := range csr.IPAddresses {
+				if name.To4() != nil {
+					forcedCN = name.String()
+					break
+				}
+			}
+		}
+
 		csr.Subject.CommonName = forcedCN
 	} else if csr.Subject.CommonName != "" {
 		csr.DNSNames = append(csr.DNSNames, csr.Subject.CommonName)
