@@ -219,6 +219,11 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 		return nil, err
 	}
 
+	// If host is bare IPv6 address it need to be covered in []
+	if strings.Count(host, ":") >= 2 {
+		host = "[" + host + "]"
+	}
+
 	target := &httpValidationTarget{
 		host:      host,
 		port:      port,
@@ -432,10 +437,6 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	ctx context.Context,
 	host string,
 	path string) ([]byte, []core.ValidationRecord, error) {
-	// If host is bare IPv6 address it need to be covered in []
-	if strings.Count(host, ":") >= 2 {
-		host = "[" + host + "]"
-	}
 
 	// Create a target for the host, port and path with no query parameters
 	target, err := va.newHTTPValidationTarget(ctx, host, va.httpPort, path, "")
@@ -446,7 +447,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// Create an initial GET Request
 	initialURL := url.URL{
 		Scheme: "http",
-		Host:   host,
+		Host:   target.host,
 		Path:   path,
 	}
 	initialReq, err := http.NewRequest("GET", initialURL.String(), nil)
