@@ -175,7 +175,7 @@ func TestWillingToIssue(t *testing.T) {
 		t.Error("WillingToIssue failed on a properly typed IPaddress(v6)")
 	}
 
-  // a domain that idnetify itself as ip
+	// a domain that idnetify itself as ip
 	ident = identifier.ACMEIdentifier{Type: "ip", Value: "example.com"}
 	err = pa.WillingToIssue(ident)
 	if err != errInvalidIdentifier {

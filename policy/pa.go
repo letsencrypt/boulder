@@ -186,7 +186,7 @@ var (
 	errInvalidDNSCharacter  = berrors.MalformedError("Domain name contains an invalid character")
 	errNameTooLong          = berrors.MalformedError("Domain name is longer than 253 bytes")
 	errIPAddress            = berrors.MalformedError("The ACME server can not issue a certificate for an IP address")
-	errPrivateIP						=	berrors.MalformedError("Requested IPaddress is non-routable address")
+	errPrivateIP            = berrors.MalformedError("Requested IPaddress is non-routable address")
 	errTooManyLabels        = berrors.MalformedError("Domain name has more than 10 labels (parts)")
 	errEmptyName            = berrors.MalformedError("Domain name is empty")
 	errNameEndsInDot        = berrors.MalformedError("Domain name ends in a dot")
@@ -333,18 +333,17 @@ func ValidEmail(address string) error {
 }
 
 // ValidIP checks if self-identfied ip addresses  are really ip address
-// a delima: we need to test against with private addresss to check,
+// a delima: we need to test against with private address to check,
 // but BR require we don't sign cert for private ip address
 
 func ValidIP(ip string) error {
 	ipaddress := net.ParseIP(ip)
-	if ipaddress == nil{
+	if ipaddress == nil {
 		return errInvalidIdentifier
 	}
-	// here should be additional check for private ip addresss
+	// here should be additional check for private ip address
 	return nil
 }
-
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
 // identifier. It expects domains in id to be lowercase to prevent mismatched
@@ -363,7 +362,7 @@ func ValidIP(ip string) error {
 //   * MUST NOT be a label-wise suffix match for a name on the block list,
 //    where comparison is case-independent (normalized to lower case)
 //
-//  If iderntifier self-identifiy as IP, it will handled by ValidIP fucntion
+//  If iderntifier self-identify as IP, it will handled by ValidIP function
 //
 // If WillingToIssue returns an error, it will be of type MalformedRequestError
 // or RejectedIdentifierError
