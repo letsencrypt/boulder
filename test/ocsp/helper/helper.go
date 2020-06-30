@@ -11,17 +11,72 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/ocsp"
 )
 
-var method = flag.String("method", "GET", "Method to use for fetching OCSP")
-var urlOverride = flag.String("url", "", "URL of OCSP responder to override")
-var hostOverride = flag.String("host", "", "Host header to override in HTTP request")
-var tooSoon = flag.Int("too-soon", 76, "If NextUpdate is fewer than this many hours in future, warn.")
-var ignoreExpiredCerts = flag.Bool("ignore-expired-certs", false, "If a cert is expired, don't bother requesting OCSP.")
-var expectStatus = flag.Int("expect-status", 0, "Expect response to have this numeric status (0=good, 1=revoked)")
+var (
+	method             = flag.String("method", "GET", "Method to use for fetching OCSP")
+	urlOverride        = flag.String("url", "", "URL of OCSP responder to override")
+	hostOverride       = flag.String("host", "", "Host header to override in HTTP request")
+	tooSoon            = flag.Int("too-soon", 76, "If NextUpdate is fewer than this many hours in future, warn.")
+	ignoreExpiredCerts = flag.Bool("ignore-expired-certs", false, "If a cert is expired, don't bother requesting OCSP.")
+	expectStatus       = flag.Int("expect-status", 0, "Expect response to have this numeric status (0=Good, 1=Revoked, 2=Unknown); or -1 for no enforcement.")
+	expectReason       = flag.Int("expect-reason", -1, "Expect response to have this numeric revocation reason (0=Unspecified, 1=KeyCompromise, etc); or -1 for no enforcement.")
+)
+
+// Config contains fields which control various behaviors of the
+// checker's behavior.
+type Config struct {
+	method             string
+	urlOverride        string
+	hostOverride       string
+	tooSoon            int
+	ignoreExpiredCerts bool
+	expectStatus       int
+	expectReason       int
+}
+
+// DefaultConfig is a Config populated with the same defaults as if no
+// command-line had been provided, so all retain their default value.
+var DefaultConfig = Config{
+	method:             *method,
+	urlOverride:        *urlOverride,
+	hostOverride:       *hostOverride,
+	tooSoon:            *tooSoon,
+	ignoreExpiredCerts: *ignoreExpiredCerts,
+	expectStatus:       *expectStatus,
+	expectReason:       *expectReason,
+}
+
+var parseFlagsOnce sync.Once
+
+// ConfigFromFlags returns a Config whose values are populated from
+// any command line flags passed by the user, or default values if not passed.
+func ConfigFromFlags() Config {
+	parseFlagsOnce.Do(func() {
+		flag.Parse()
+	})
+	return Config{
+		method:             *method,
+		urlOverride:        *urlOverride,
+		hostOverride:       *hostOverride,
+		tooSoon:            *tooSoon,
+		ignoreExpiredCerts: *ignoreExpiredCerts,
+		expectStatus:       *expectStatus,
+		expectReason:       *expectReason,
+	}
+}
+
+// WithExpectStatus returns a new Config with the given expectStatus,
+// and all other fields the same as the receiver.
+func (template Config) WithExpectStatus(status int) Config {
+	ret := template
+	ret.expectStatus = status
+	return ret
+}
 
 func getIssuer(cert *x509.Certificate) (*x509.Certificate, error) {
 	if cert == nil {
@@ -92,21 +147,25 @@ func parseCMS(body []byte) (*x509.Certificate, error) {
 	return cert, nil
 }
 
-func Req(fileName string) (*ocsp.Response, error) {
+// Req makes an OCSP request using the given config for the PEM certificate in
+// fileName, and returns the response.
+func Req(fileName string, config Config) (*ocsp.Response, error) {
 	contents, err := ioutil.ReadFile(fileName)
 	if err != nil {
 		return nil, err
 	}
-	return ReqDER(contents, *expectStatus)
+	return ReqDER(contents, config)
 }
 
-func ReqDER(der []byte, expectStatus int) (*ocsp.Response, error) {
+// ReqDER makes an OCSP request using the given config for the given DER-encoded
+// certificate, and returns the response.
+func ReqDER(der []byte, config Config) (*ocsp.Response, error) {
 	cert, err := parse(der)
 	if err != nil {
 		return nil, fmt.Errorf("parsing certificate: %s", err)
 	}
 	if time.Now().After(cert.NotAfter) {
-		if *ignoreExpiredCerts {
+		if config.ignoreExpiredCerts {
 			return nil, nil
 		} else {
 			return nil, fmt.Errorf("certificate expired %s ago: %s",
@@ -123,12 +182,12 @@ func ReqDER(der []byte, expectStatus int) (*ocsp.Response, error) {
 		return nil, fmt.Errorf("creating OCSP request: %s", err)
 	}
 
-	ocspURL, err := getOCSPURL(cert)
+	ocspURL, err := getOCSPURL(cert, config.urlOverride)
 	if err != nil {
 		return nil, err
 	}
 
-	httpResp, err := sendHTTPRequest(req, ocspURL)
+	httpResp, err := sendHTTPRequest(req, ocspURL, config.method, config.hostOverride)
 	if err != nil {
 		return nil, err
 	}
@@ -149,30 +208,30 @@ func ReqDER(der []byte, expectStatus int) (*ocsp.Response, error) {
 	if len(respBytes) == 0 {
 		return nil, fmt.Errorf("empty response body")
 	}
-	return parseAndPrint(respBytes, cert, issuer, expectStatus)
+	return parseAndPrint(respBytes, cert, issuer, config)
 }
 
-func sendHTTPRequest(req []byte, ocspURL *url.URL) (*http.Response, error) {
+func sendHTTPRequest(req []byte, ocspURL *url.URL, method string, host string) (*http.Response, error) {
 	encodedReq := base64.StdEncoding.EncodeToString(req)
 	var httpRequest *http.Request
 	var err error
-	if *method == "GET" {
+	if method == "GET" {
 		ocspURL.Path = encodedReq
 		fmt.Printf("Fetching %s\n", ocspURL.String())
 		httpRequest, err = http.NewRequest("GET", ocspURL.String(), http.NoBody)
-	} else if *method == "POST" {
+	} else if method == "POST" {
 		fmt.Printf("POSTing request, reproduce with: curl -i --data-binary @- %s < <(base64 -d <<<%s)\n",
 			ocspURL, encodedReq)
 		httpRequest, err = http.NewRequest("POST", ocspURL.String(), bytes.NewBuffer(req))
 	} else {
-		return nil, fmt.Errorf("invalid method %s, expected GET or POST", *method)
+		return nil, fmt.Errorf("invalid method %s, expected GET or POST", method)
 	}
 	if err != nil {
 		return nil, err
 	}
 	httpRequest.Header.Add("Content-Type", "application/ocsp-request")
-	if *hostOverride != "" {
-		httpRequest.Host = *hostOverride
+	if host != "" {
+		httpRequest.Host = host
 	}
 	client := http.Client{
 		Timeout: 5 * time.Second,
@@ -181,10 +240,10 @@ func sendHTTPRequest(req []byte, ocspURL *url.URL) (*http.Response, error) {
 	return client.Do(httpRequest)
 }
 
-func getOCSPURL(cert *x509.Certificate) (*url.URL, error) {
+func getOCSPURL(cert *x509.Certificate, urlOverride string) (*url.URL, error) {
 	var ocspServer string
-	if *urlOverride != "" {
-		ocspServer = *urlOverride
+	if urlOverride != "" {
+		ocspServer = urlOverride
 	} else if len(cert.OCSPServer) > 0 {
 		ocspServer = cert.OCSPServer[0]
 	} else {
@@ -227,17 +286,20 @@ func checkSignerTimes(resp *ocsp.Response, issuer *x509.Certificate) error {
 	return nil
 }
 
-func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, expectStatus int) (*ocsp.Response, error) {
+func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config Config) (*ocsp.Response, error) {
 	fmt.Printf("\nDecoding body: %s\n", base64.StdEncoding.EncodeToString(respBytes))
 	resp, err := ocsp.ParseResponseForCert(respBytes, cert, issuer)
 	if err != nil {
 		return nil, fmt.Errorf("parsing response: %s", err)
 	}
-	if resp.Status != expectStatus {
-		return nil, fmt.Errorf("wrong CertStatus %d, expected %d", resp.Status, expectStatus)
+	if config.expectStatus != -1 && resp.Status != config.expectStatus {
+		return nil, fmt.Errorf("wrong CertStatus %d, expected %d", resp.Status, config.expectStatus)
+	}
+	if config.expectReason != -1 && resp.RevocationReason != config.expectReason {
+		return nil, fmt.Errorf("wrong RevocationReason %d, expected %d", resp.RevocationReason, config.expectReason)
 	}
 	timeTilExpiry := time.Until(resp.NextUpdate)
-	tooSoonDuration := time.Duration(*tooSoon) * time.Hour
+	tooSoonDuration := time.Duration(config.tooSoon) * time.Hour
 	if timeTilExpiry < tooSoonDuration {
 		return nil, fmt.Errorf("NextUpdate is too soon: %s", timeTilExpiry)
 	}

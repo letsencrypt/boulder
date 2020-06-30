@@ -8,7 +8,6 @@
     "missingSCTBatchSize": 5000,
     "parallelGenerateOCSPRequests": 10,
     "ocspMinTimeToExpiry": "72h",
-    "ocspStaleMaxAge": "5040h",
     "oldestIssuedSCT": "72h",
     "signFailureBackoffFactor": 1.2,
     "signFailureBackoffMax": "30m",

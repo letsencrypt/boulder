@@ -55,8 +55,6 @@ type OCSPUpdater struct {
 
 	// Used to calculate how far back stale OCSP responses should be looked for
 	ocspMinTimeToExpiry time.Duration
-	// Used to calculate how far back in time the findStaleOCSPResponse will look
-	ocspStaleMaxAge time.Duration
 	// Maximum number of individual OCSP updates to attempt in parallel. Making
 	// these requests in parallel allows us to get higher total throughput.
 	parallelGenerateOCSPRequests int
@@ -86,10 +84,6 @@ func newUpdater(
 	}
 	if config.OldOCSPWindow.Duration == 0 {
 		return nil, fmt.Errorf("Loop window sizes must be non-zero")
-	}
-	if config.OCSPStaleMaxAge.Duration == 0 {
-		// Default to 30 days
-		config.OCSPStaleMaxAge = cmd.ConfigDuration{Duration: time.Hour * 24 * 30}
 	}
 	if config.ParallelGenerateOCSPRequests == 0 {
 		// Default to 1
@@ -124,7 +118,6 @@ func newUpdater(
 		log:                          log,
 		sac:                          sac,
 		ocspMinTimeToExpiry:          config.OCSPMinTimeToExpiry.Duration,
-		ocspStaleMaxAge:              config.OCSPStaleMaxAge.Duration,
 		parallelGenerateOCSPRequests: config.ParallelGenerateOCSPRequests,
 		purgerService:                apc,
 		genStoreHistogram:            genStoreHistogram,
@@ -149,19 +142,14 @@ func newUpdater(
 }
 
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
-	now := updater.clk.Now()
-	maxAgeCutoff := now.Add(-updater.ocspStaleMaxAge)
-
 	statuses, err := sa.SelectCertificateStatuses(
 		updater.dbMap,
-		`WHERE cs.ocspLastUpdated > :maxAge
-				AND cs.ocspLastUpdated < :lastUpdate
-				AND NOT cs.isExpired
-				ORDER BY cs.ocspLastUpdated ASC
-				LIMIT :limit`,
+		`WHERE ocspLastUpdated < :lastUpdate
+		 AND NOT isExpired
+		 ORDER BY ocspLastUpdated ASC
+		 LIMIT :limit`,
 		map[string]interface{}{
 			"lastUpdate": oldestLastUpdatedTime,
-			"maxAge":     maxAgeCutoff,
 			"limit":      batchSize,
 		},
 	)
@@ -339,7 +327,6 @@ type OCSPUpdaterConfig struct {
 	OldOCSPBatchSize int
 
 	OCSPMinTimeToExpiry          cmd.ConfigDuration
-	OCSPStaleMaxAge              cmd.ConfigDuration
 	ParallelGenerateOCSPRequests int
 
 	AkamaiBaseURL           string
