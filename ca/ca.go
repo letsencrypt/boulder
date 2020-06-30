@@ -713,12 +713,17 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		ca.log.AuditErr(err.Error())
 		return nil, err
 	}
+	// aggrigate names to pass to cfssl
+	csrnames := csr.DNSNames
+	for _, ip := range csr.IPAddresses {
+		csrnames = append(csrnames, ip.String())
+	}
 
 	// Send the cert off for signing
 	req := signer.SignRequest{
 		Request: csrPEM,
 		Profile: profile,
-		Hosts:   csr.DNSNames,
+		Hosts:   csrnames,
 		Subject: &signer.Subject{
 			CN: csr.Subject.CommonName,
 		},

@@ -956,7 +956,11 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 	// Dedupe, lowercase and sort both the names from the CSR and the names in the
 	// order.
-	csrNames := core.UniqueLowerNames(csrOb.DNSNames)
+	csrNames := csrOb.DNSNames
+	for _, ipName := range csrOb.IPAddresses {
+		csrNames = append(csrNames, ipName.String())
+	}
+	csrNames = core.UniqueLowerNames(csrNames)
 	orderNames := core.UniqueLowerNames(order.Names)
 
 	// Immediately reject the request if the number of names differ
@@ -1121,9 +1125,13 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	logEvent.CommonName = csr.Subject.CommonName
 	logEvent.Names = csr.DNSNames
 
-	// Validate that authorization key is authorized for all domains in the CSR
+	// Validate that authorization key is authorized for all domains and IP addresses in the CSR
 	names := make([]string, len(csr.DNSNames))
 	copy(names, csr.DNSNames)
+
+	for _, ipName := range csr.IPAddresses {
+		names = append(names, ipName.String())
+	}
 
 	if core.KeyDigestEquals(csr.PublicKey, account.Key) {
 		return emptyCert, berrors.MalformedError("certificate public key must be different than account key")
