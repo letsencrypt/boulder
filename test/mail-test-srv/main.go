@@ -65,7 +65,9 @@ func (srv *mailSrv) handleConn(conn net.Conn) {
 	conn.Write([]byte("250-PIPELINING\r\n"))
 	conn.Write([]byte("250-AUTH PLAIN LOGIN\r\n"))
 	conn.Write([]byte("250 8BITMIME\r\n"))
-	if err := expectLine(readBuf, "AUTH PLAIN AGNlcnQtbWFzdGVyQGV4YW1wbGUuY29tAHBhc3N3b3Jk"); err != nil {
+	// This AUTH PLAIN is the output of: echo -en '\0cert-manager@example.com\0password' | base64
+	// Must match the mail configs for integration tests.
+	if err := expectLine(readBuf, "AUTH PLAIN AGNlcnQtbWFuYWdlckBleGFtcGxlLmNvbQBwYXNzd29yZA=="); err != nil {
 		log.Printf("mail-test-srv: %s: %v\n", conn.RemoteAddr(), err)
 		return
 	}
