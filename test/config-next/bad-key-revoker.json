@@ -15,7 +15,7 @@
         "mailer": {
             "server": "localhost",
             "port": "9380",
-            "username": "cert-master@example.com",
+            "username": "cert-manager@example.com",
             "from": "bad key revoker <test@example.com>",
             "passwordFile": "test/secrets/smtp_password",
             "SMTPTrustedRootFile": "test/mail-test-srv/minica.pem",
