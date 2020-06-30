@@ -168,11 +168,18 @@ func TestWillingToIssue(t *testing.T) {
 		t.Error("WillingToIssue failed on a properly typed IPaddress(v4)")
 	}
 
-	// IPv6
-	ident = identifier.ACMEIdentifier{Type: "ip", Value: "2001:db8:85a3:8d3:1319:8a2e:370:7348"}
+	// IPv6 with correct self-identifiying
+	ident = identifier.ACMEIdentifier{Type: "ip", Value: "2001:470:1:258::96"}
 	err = pa.WillingToIssue(ident)
 	if err != nil {
 		t.Error("WillingToIssue failed on a properly typed IPaddress(v6)")
+	}
+
+	// IANA Reserved IP address
+	ident = identifier.ACMEIdentifier{Type: "ip", Value: "192.168.1.1"}
+	err = pa.WillingToIssue(ident)
+	if err != errPrivateIP {
+		t.Error("PA couldn't saparate IANA reserved IP address")
 	}
 
 	// a domain that idnetify itself as ip

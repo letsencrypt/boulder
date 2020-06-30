@@ -20,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/reloader"
+	"github.com/zmap/zlint/v2/util"
 	"gopkg.in/yaml.v2"
 )
 
@@ -342,6 +343,9 @@ func ValidIP(ip string) error {
 		return errInvalidIdentifier
 	}
 	// here should be additional check for private ip address
+	if util.IsIANAReserved(ipaddress) {
+		return errPrivateIP
+	}
 	return nil
 }
 
