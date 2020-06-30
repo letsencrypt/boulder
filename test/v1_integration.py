@@ -88,15 +88,15 @@ def test_http_challenge_badhost_redirect():
     d, chall = rand_http_chall(client)
     token = chall.encode("token")
 
-    # Create a HTTP redirect from the challenge's validation path to a bare IP
-    # hostname.
+    # Create a HTTP redirect from the challenge's validation path to a
+    # non public hostname.
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
     challSrv.add_http_redirect(
         challengePath,
-        "https://127.0.0.1{0}".format(challengePath))
+        "https://example.lan{0}".format(challengePath))
 
     # Issuing for the name should cause a connection error because the redirect
-    # domain name is an IP address.
+    # domain name is an not end in IANA registered TLD.
     chisel.expect_problem("urn:acme:error:connection",
         lambda: auth_and_issue([d], client=client, chall_type="http-01"))
 

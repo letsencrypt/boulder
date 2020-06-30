@@ -250,12 +250,12 @@ func TestExtractRequestTarget(t *testing.T) {
 			ExpectedError: errors.New("Invalid hostname in redirect target, must end in IANA registered TLD"),
 		},
 		{
-			Name: "bare IP",
+			Name: "valid bare IP",
 			Req: &http.Request{
 				URL: mustURL(t, "https://10.10.10.10"),
 			},
-			ExpectedError: fmt.Errorf(`Invalid host in redirect target "10.10.10.10". ` +
-				"Only domain names are supported, not IP addresses"),
+			ExpectedHost: "10.10.10.10",
+			ExpectedPort: 443,
 		},
 		{
 			Name: "valid HTTP redirect, explicit port",
@@ -809,23 +809,6 @@ func TestFetchHTTP(t *testing.T) {
 			},
 		},
 		{
-			Name: "Redirect to bad host (bare IP address)",
-			Host: "example.com",
-			Path: "/redir-bad-host",
-			ExpectedProblem: probs.ConnectionFailure(
-				"Fetching https://127.0.0.1: Invalid host in redirect target " +
-					`"127.0.0.1". Only domain names are supported, not IP addresses`),
-			ExpectedRecords: []core.ValidationRecord{
-				{
-					Hostname:          "example.com",
-					Port:              strconv.Itoa(httpPort),
-					URL:               "http://example.com/redir-bad-host",
-					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
-					AddressUsed:       net.ParseIP("127.0.0.1"),
-				},
-			},
-		},
-		{
 			Name: "Redirect to long path",
 			Host: "example.com",
 			Path: "/redir-path-too-long",
@@ -1201,12 +1184,12 @@ func TestHTTP(t *testing.T) {
 	test.AssertEquals(t, len(matchedValidRedirect), 1)
 	test.AssertEquals(t, len(matchedMovedRedirect), 1)
 
+	// while we use this ip for test, policy should block this address because it's reserved address
 	ipIdentifier := identifier.ACMEIdentifier{Type: identifier.IdentifierType("ip"), Value: "127.0.0.1"}
 	_, prob = va.validateHTTP01(ctx, ipIdentifier, chall)
-	if prob == nil {
-		t.Fatalf("IdentifierType IP shouldn't have worked.")
+	if prob != nil {
+		t.Fatalf("Failed to process bare valid ip address.")
 	}
-	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 
 	_, prob = va.validateHTTP01(ctx, identifier.ACMEIdentifier{Type: identifier.DNS, Value: "always.invalid"}, chall)
 	if prob == nil {

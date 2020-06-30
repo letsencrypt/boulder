@@ -21,6 +21,13 @@ import (
 // usable IP addresses are available then a berrors.DNSError instance is
 // returned with a nil net.IP slice.
 func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]net.IP, error) {
+
+	// For bare ip addresses it returns that ip addresses.
+	parsedIP := net.ParseIP(hostname)
+	if parsedIP != nil {
+		return []net.IP{parsedIP}, nil
+	}
+
 	addrs, err := va.dnsClient.LookupHost(ctx, hostname)
 	if err != nil {
 		return nil, berrors.DNSError("%v", err)

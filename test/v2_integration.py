@@ -250,15 +250,15 @@ def test_http_challenge_badhost_redirect():
     d, chall = rand_http_chall(client)
     token = chall.encode("token")
 
-    # Create a HTTP redirect from the challenge's validation path to a bare IP
-    # hostname.
+    # Create a HTTP redirect from the challenge's validation path to a
+    # non public hostname.
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
     challSrv.add_http_redirect(
         challengePath,
-        "https://127.0.0.1{0}".format(challengePath))
+        "https://example.lan{0}".format(challengePath))
 
     # Issuing for the name should cause a connection error because the redirect
-    # domain name is an IP address.
+    # domain name is not end in IANA registered TLD
     chisel2.expect_problem("urn:ietf:params:acme:error:connection",
         lambda: chisel2.auth_and_issue([d], client=client, chall_type="http-01"))
 
@@ -774,7 +774,7 @@ def test_only_return_existing_reg():
     email = "test@not-example.com"
     client.new_account(messages.NewRegistration.from_data(email=email,
             terms_of_service_agreed=True))
-    
+
     client = chisel2.uninitialized_client(key=client.net.key)
     class extendedAcct(dict):
         def json_dumps(self, indent=None):
@@ -806,7 +806,7 @@ def BouncerHTTPRequestHandler(redirect, guestlist):
     spot for that UA it will be redirected to the real server and the
     guestlist will be decremented. Once the guestlist spots for a UA are
     expended requests will get a bogus result and have to stand outside in the
-    cold 
+    cold
     """
     class BouncerHandler(BaseHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
@@ -1184,7 +1184,7 @@ def test_new_order_policy_errs():
     client = chisel2.make_client(None)
 
     # 'in-addr.arpa' is present in `test/hostname-policy.yaml`'s
-    # HighRiskBlockedNames list. 
+    # HighRiskBlockedNames list.
     csr_pem = chisel2.make_csr(["out-addr.in-addr.arpa", "between-addr.in-addr.arpa"])
 
     # With two policy blocked names in the order we expect to get back a top

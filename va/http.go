@@ -258,9 +258,7 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 // extractRequestTarget extracts the hostname and port specified in the provided
 // HTTP redirect request. If the request's URL's protocol schema is not HTTP or
 // HTTPS an error is returned. If an explicit port is specified in the request's
-// URL and it isn't the VA's HTTP or HTTPS port, an error is returned. If the
-// request's URL's Host is a bare IPv4 or IPv6 address and not a domain name an
-// error is returned.
+// URL and it isn't the VA's HTTP or HTTPS port, an error is returned.
 func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (string, int, error) {
 	// A nil request is certainly not a valid redirect and has no port to extract.
 	if req == nil {
@@ -308,12 +306,10 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 		return "", 0, berrors.ConnectionFailureError("Invalid empty hostname in redirect target")
 	}
 
-	// Check that the request host isn't a bare IP address. We only follow
-	// redirects to hostnames.
+	// Check if reqhost is ip address, and mark it.
+	isip := false
 	if net.ParseIP(reqHost) != nil {
-		return "", 0, berrors.ConnectionFailureError(
-			"Invalid host in redirect target %q. "+
-				"Only domain names are supported, not IP addresses", reqHost)
+		isip = true
 	}
 
 	// Often folks will misconfigure their webserver to send an HTTP redirect
@@ -332,7 +328,7 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 		)
 	}
 
-	if _, err := iana.ExtractSuffix(reqHost); err != nil {
+	if _, err := iana.ExtractSuffix(reqHost); err != nil && isip == false {
 		return "", 0, berrors.ConnectionFailureError(
 			"Invalid hostname in redirect target, must end in IANA registered TLD")
 	}
@@ -624,9 +620,9 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 }
 
 func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	if ident.Type != identifier.DNS {
-		va.log.Infof("Got non-DNS identifier for HTTP validation: %s", ident)
-		return nil, probs.Malformed("Identifier type for HTTP validation was not DNS")
+	if ident.Type != identifier.DNS && ident.Type != identifier.IP {
+		va.log.Infof("Got invalid identifier for HTTP validation: %s", ident)
+		return nil, probs.Malformed("Identifier type for HTTP validation was not appropriate")
 	}
 
 	// Perform the fetch
