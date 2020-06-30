@@ -63,10 +63,7 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	if len(csr.EmailAddresses) > 0 {
 		return invalidEmailPresent
 	}
-	if len(csr.IPAddresses) > 0 {
-		return invalidIPPresent
-	}
-	if len(csr.DNSNames) == 0 && csr.Subject.CommonName == "" {
+	if len(csr.DNSNames) == 0 && csr.Subject.CommonName == "" && len(csr.IPAddresses) == 0 {
 		return invalidNoDNS
 	}
 	if forceCNFromSAN && csr.Subject.CommonName == "" {
@@ -75,13 +72,17 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	if len(csr.Subject.CommonName) > maxCNLength {
 		return berrors.BadCSRError("CN was longer than %d bytes", maxCNLength)
 	}
-	if len(csr.DNSNames) > maxNames {
-		return berrors.BadCSRError("CSR contains more than %d DNS names", maxNames)
+	if len(csr.DNSNames)+len(csr.IPAddresses) > maxNames {
+		return berrors.BadCSRError("CSR contains more than %d names", maxNames)
 	}
 	idents := make([]identifier.ACMEIdentifier, len(csr.DNSNames))
 	for i, dnsName := range csr.DNSNames {
 		idents[i] = identifier.RecreateIdentifier(dnsName)
 	}
+	for _, ipName := range csr.IPAddresses {
+		idents = append(idents, identifier.RecreateIdentifier(ipName.String()))
+	}
+
 	if err := pa.WillingToIssueWildcards(idents); err != nil {
 		return err
 	}

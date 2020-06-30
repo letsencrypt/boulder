@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"errors"
-	"net"
 	"strings"
 	"testing"
 
@@ -69,9 +68,6 @@ func TestVerifyCSR(t *testing.T) {
 	signedReqWithEmailAddress := new(x509.CertificateRequest)
 	*signedReqWithEmailAddress = *signedReq
 	signedReqWithEmailAddress.EmailAddresses = []string{"foo@bar.com"}
-	signedReqWithIPAddress := new(x509.CertificateRequest)
-	*signedReqWithIPAddress = *signedReq
-	signedReqWithIPAddress.IPAddresses = []net.IP{net.IPv4(1, 2, 3, 4)}
 	signedReqWithAllLongSANs := new(x509.CertificateRequest)
 	*signedReqWithAllLongSANs = *signedReq
 	signedReqWithAllLongSANs.DNSNames = []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.com"}
@@ -130,7 +126,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			berrors.BadCSRError("CSR contains more than 1 DNS names"),
+			berrors.BadCSRError("CSR contains more than 1 names"),
 		},
 		{
 			signedReqWithBadNames,
@@ -147,14 +143,6 @@ func TestVerifyCSR(t *testing.T) {
 			&mockPA{},
 			0,
 			invalidEmailPresent,
-		},
-		{
-			signedReqWithIPAddress,
-			100,
-			testingPolicy,
-			&mockPA{},
-			0,
-			invalidIPPresent,
 		},
 		{
 			signedReqWithAllLongSANs,
