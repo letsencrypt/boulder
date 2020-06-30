@@ -603,10 +603,9 @@ func addIssuedNames(db db.Execer, cert *x509.Certificate, isRenewal bool) error 
 			isRenewal)
 		qmarks = append(qmarks, "(?, ?, ?, ?)")
 	}
-	// ip address saves as is big endian
 	for _, ip := range cert.IPAddresses {
 		values = append(values,
-			ip.String(),
+			ReverseName(ip.String()),
 			core.SerialToString(cert.SerialNumber),
 			cert.NotBefore,
 			isRenewal)
