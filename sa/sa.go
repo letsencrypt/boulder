@@ -590,7 +590,7 @@ func deleteOrderFQDNSet(
 }
 
 func addIssuedNames(db db.Execer, cert *x509.Certificate, isRenewal bool) error {
-	if len(cert.DNSNames) == 0 {
+	if len(cert.DNSNames) == 0 && len(cert.IPAddresses) == 0 {
 		return berrors.InternalServerError("certificate has no DNSNames")
 	}
 	var qmarks []string
@@ -598,6 +598,15 @@ func addIssuedNames(db db.Execer, cert *x509.Certificate, isRenewal bool) error 
 	for _, name := range cert.DNSNames {
 		values = append(values,
 			ReverseName(name),
+			core.SerialToString(cert.SerialNumber),
+			cert.NotBefore,
+			isRenewal)
+		qmarks = append(qmarks, "(?, ?, ?, ?)")
+	}
+	// ip address saves as is big endian
+	for _, ip := range cert.IPAddresses {
+		values = append(values,
+			ip.String(),
 			core.SerialToString(cert.SerialNumber),
 			cert.NotBefore,
 			isRenewal)
