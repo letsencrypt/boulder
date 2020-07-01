@@ -10,6 +10,7 @@
     "authorizationLifetimeDays": 30,
     "pendingAuthorizationLifetimeDays": 7,
     "weakKeyFile": "test/example-weak-keys.json",
+    "blockedKeyFile": "test/example-blocked-keys.yaml",
     "orderLifetime": "168h",
     "issuerCertPath":  "/tmp/intermediate-cert-rsa-a.pem",
     "tls": {
@@ -41,10 +42,12 @@
       "address": ":9094",
       "clientNames": [
         "wfe.boulder",
-        "admin-revoker.boulder"
+        "admin-revoker.boulder",
+        "bad-key-revoker.boulder"
       ]
     },
     "features": {
+      "StoreRevokerInfo": true
     },
     "CTLogGroups2": [
       {

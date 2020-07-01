@@ -102,14 +102,6 @@ func TestTimeouts(t *testing.T) {
 // databases that have auto_increment columns use BIGINT for the data type. Our
 // data is too big for INT.
 func TestAutoIncrementSchema(t *testing.T) {
-	// TODO(@cpu): Delete this conditional exit when the following migrations have
-	// moved from sa/_db-next to sa/_db:
-	//  * 20191129164412_RemoveOCSPResponses.sql
-	//  * 20191118124728_FixFQDNSetsAndIssuedNamesID.sql
-	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		return
-	}
-
 	dbMap, err := NewDbMap(vars.DBInfoSchemaRoot, 1)
 	test.AssertNotError(t, err, "unexpected err making NewDbMap")
 
