@@ -332,15 +332,12 @@ func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config Conf
 		fmt.Printf("    NotAfter: %s\n", resp.Certificate.NotAfter)
 	}
 
-	if errs != nil {
+	if len(errs) > 0 {
 		fmt.Printf("Errors:\n")
-		var err error
-		for _, e := range errs {
-			if err == nil {
-				err = e
-			} else {
-				err = fmt.Errorf("%w; %v", err, e)
-			}
+		err := errs[0]
+		fmt.Printf("  %v\n", err.Error())
+		for _, e := range errs[1:] {
+			err = fmt.Errorf("%w; %v", err, e)
 			fmt.Printf("  %v\n", e.Error())
 		}
 		return nil, err
