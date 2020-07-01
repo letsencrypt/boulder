@@ -138,7 +138,7 @@ type logWriter struct {
 }
 
 func (lw logWriter) Write(p []byte) (n int, err error) {
-	lw.Logger.Info(string(p))
+	lw.Logger.Info(strings.Trim(string(p), "\n"))
 	return
 }
 
