@@ -3,7 +3,6 @@ package sa
 import (
 	"database/sql"
 	"errors"
-	"os"
 	"strings"
 	"testing"
 
