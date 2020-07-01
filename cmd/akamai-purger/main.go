@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -42,22 +43,30 @@ type akamaiPurger struct {
 	log    blog.Logger
 }
 
-func (ap *akamaiPurger) purge() {
+func (ap *akamaiPurger) len() int {
+	ap.mu.Lock()
+	defer ap.mu.Unlock()
+	return len(ap.toPurge)
+}
+
+func (ap *akamaiPurger) purge() error {
 	ap.mu.Lock()
 	urls := ap.toPurge[:]
 	ap.toPurge = []string{}
 	ap.mu.Unlock()
 	if len(urls) == 0 {
-		return
+		return nil
 	}
 
 	if err := ap.client.Purge(urls); err != nil {
-		// Add the URLs back to the queue?
+		// Add the URLs back to the queue
 		ap.mu.Lock()
 		ap.toPurge = append(urls, ap.toPurge...)
 		ap.mu.Unlock()
 		ap.log.Errf("Failed to purge %d URLs: %s", len(urls), err)
+		return err
 	}
+	return nil
 }
 
 // maxQueueSize is used to reject Purge requests if the queue contains
@@ -126,14 +135,14 @@ func main() {
 		log:    logger,
 	}
 
-	stop, stopped := make(chan bool, 1), make(chan bool, 1)
+	stop, stopped := make(chan bool), make(chan bool)
 	ticker := time.NewTicker(c.AkamaiPurger.PurgeInterval.Duration)
 	go func() {
 	loop:
 		for {
 			select {
 			case <-ticker.C:
-				ap.purge()
+				_ = ap.purge()
 			case <-stop:
 				break loop
 			}
@@ -141,7 +150,20 @@ func main() {
 		// As we may have missed a tick by calling ticker.Stop() and
 		// writing to the stop channel call ap.purge one last time just
 		// in case there is anything that still needs to be purged.
-		ap.purge()
+		if ap.len() > 0 {
+			queueLen := ap.len()
+			logger.Info(fmt.Sprintf("Shutting down; purging %d queue entries before exit.", queueLen))
+			err = ap.purge()
+			if err != nil {
+				logger.Err(fmt.Sprintf("Shutting down; failed to purge %d queue entries before exit: %s",
+					queueLen, err))
+				os.Exit(1)
+			} else {
+				logger.Info(fmt.Sprintf("Shutting down; finished purging %d queue entries.", queueLen))
+			}
+		} else {
+			logger.Info("Shutting down; queue is already empty.")
+		}
 		stopped <- true
 	}()
 
@@ -150,19 +172,21 @@ func main() {
 	cmd.FailOnError(err, "Unable to setup Akamai purger gRPC server")
 	akamaipb.RegisterAkamaiPurgerServer(grpcSrv, &ap)
 
-	go cmd.CatchSignals(logger, grpcSrv.GracefulStop)
+	go cmd.CatchSignals(logger, func() {
+		grpcSrv.GracefulStop()
+		// Stop the ticker and signal that we want to shutdown by writing to the
+		// stop channel. We wait 15 seconds for any remaining URLs to be emptied
+		// from the current queue, if we pass that deadline we exit early.
+		ticker.Stop()
+		stop <- true
+		select {
+		case <-time.After(time.Second * 15):
+			cmd.Fail("Timed out waiting for purger to finish work")
+		case <-stopped:
+		}
+	})
 
 	err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
 	cmd.FailOnError(err, "Akamai purger gRPC service failed")
-
-	// Stop the ticker and signal that we want to shutdown by writing to the
-	// stop channel. We wait 15 seconds for any remaining URLs to be emptied
-	// from the current queue, if we pass that deadline we exit early.
-	ticker.Stop()
-	stop <- true
-	select {
-	case <-time.After(time.Second * 15):
-		cmd.Fail("Timed out waiting for purger to finish work")
-	case <-stopped:
-	}
+	select {}
 }
