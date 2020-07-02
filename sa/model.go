@@ -113,17 +113,32 @@ func certStatusFields() []string {
 	return []string{"serial", "status", "ocspLastUpdated", "revokedDate", "revokedReason", "lastExpirationNagSent", "ocspResponse", "notAfter", "isExpired", "issuerID"}
 }
 
+func certStatusFieldsSelect(restOfQuery string) string {
+	fields := strings.Join(certStatusFields(), ",")
+	return fmt.Sprintf("SELECT %s FROM certificateStatus %s", fields, restOfQuery)
+}
+
 // SelectCertificateStatus selects all fields of one certificate status model
 func SelectCertificateStatus(s db.OneSelector, q string, args ...interface{}) (certStatusModel, error) {
 	var model certStatusModel
-	fields := strings.Join(certStatusFields(), ",")
 	err := s.SelectOne(
 		&model,
-		`SELECT `+fields+
-			` FROM certificateStatus `+q,
+		certStatusFieldsSelect(q),
 		args...,
 	)
 	return model, err
+}
+
+// SelectCertificateStatuses selects all fields of multiple certificate status
+// objects
+func SelectCertificateStatuses(s db.Selector, q string, args ...interface{}) ([]core.CertificateStatus, error) {
+	var models []core.CertificateStatus
+	_, err := s.Select(
+		&models,
+		certStatusFieldsSelect(q),
+		args...,
+	)
+	return models, err
 }
 
 var mediumBlobSize = int(math.Pow(2, 24))

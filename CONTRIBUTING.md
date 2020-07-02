@@ -298,7 +298,7 @@ The current Boulder release process is described in the [boulder release process
 repository](https://github.com/letsencrypt/boulder-release-process). It includes
 [an example](https://github.com/letsencrypt/boulder-release-process#example) git
 history showing a regular release being tagged, a hotfix being tagged from
-a clean master, and a hotfix being tagged from a release branch because master
+a clean main, and a hotfix being tagged from a release branch because main
 was dirty.
 
 Previously we used dedicated
@@ -321,13 +321,16 @@ those containers you will want to set them yourself.
 
 To add a dependency, add the import statement to your .go file, then run
 `go build` on it. This will automatically add the dependency to go.mod. Next,
-run `go mod vendor` to save a copy in the vendor folder.
+run `go mod vendor && git add vendor/` to save a copy in the vendor folder.
 
 When vendorizing dependencies, it's important to make sure tests pass on the
 version you are vendorizing. Currently we enforce this by requiring that pull
-requests containing a dependency update include a comment indicating that you
-ran the tests and that they succeeded, preferably with the command line you
-run them with.
+requests containing a dependency update to any version other than a tagged
+release include a comment indicating that you ran the tests and that they
+succeeded, preferably with the command line you run them with. Note that you
+may have to get a separate checkout of the dependency (using `go get` outside
+of the boulder repository) in order to run its tests, as some vendored
+modules do not bring their tests with them.
 
 ## Updating Dependencies
 
@@ -335,8 +338,12 @@ To upgrade a dependency, [see the Go
 docs](https://github.com/golang/go/wiki/Modules#how-to-upgrade-and-downgrade-dependencies).
 Typically you want `go get <dependency>` rather than `go get -u
 <dependency>`, which can introduce a lot of unexpected updates. After running
-`go get`, make sure to run `go mod vendor` to update the vendor directory. If
-you forget, Travis tests will catch this.
+`go get`, make sure to run `go mod vendor && git add vendor/` to update the
+vendor directory. If you forget, Travis tests will catch this.
+
+If you are updating a dependency to a version which is not a tagged release,
+see the note above about how to run all of a dependency's tests and note that
+you have done so in the PR.
 
 Note that updating dependencies can introduce new, transitive dependencies. In
 general we try to keep our dependencies as narrow as possible in order to
@@ -354,12 +361,12 @@ repository for a refactoring to reduce the number of transitive dependencies.
 # Go Version
 
 The [Boulder development
-environment](https://github.com/letsencrypt/boulder/blob/master/README.md#setting-up-boulder)
+environment](https://github.com/letsencrypt/boulder/blob/main/README.md#setting-up-boulder)
 does not use the Go version installed on the host machine, and instead uses a
 Go environment baked into a "boulder-tools" Docker image. We build a separate
 boulder-tools container for each supported Go version. Please see [the
 Boulder-tools
-README](https://github.com/letsencrypt/boulder/blob/master/test/boulder-tools/README.md)
+README](https://github.com/letsencrypt/boulder/blob/main/test/boulder-tools/README.md)
 for more information on upgrading Go versions.
 
 # ACME Protocol Divergences
@@ -368,7 +375,7 @@ While Boulder attempts to implement the ACME specification as strictly as
 possible there are places at which we will diverge from the letter of the
 specification for various reasons. We detail these divergences (for both the
 V1 and V2 API) in the [ACME divergences
-doc](https://github.com/letsencrypt/boulder/blob/master/docs/acme-divergences.md).
+doc](https://github.com/letsencrypt/boulder/blob/main/docs/acme-divergences.md).
 
 ## Problems or questions?
 

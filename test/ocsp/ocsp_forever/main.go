@@ -57,7 +57,7 @@ func init() {
 
 func do(f string) {
 	start := time.Now()
-	resp, err := helper.Req(f)
+	resp, err := helper.Req(f, helper.ConfigFromFlags())
 	latency := time.Since(start)
 	if err != nil {
 		errors_count.With(prom.Labels{}).Inc()

@@ -83,6 +83,7 @@ const (
 	rootCert certType = iota
 	intermediateCert
 	ocspCert
+	crlCert
 )
 
 func (profile *certProfile) verifyProfile(ct certType) error {
@@ -117,15 +118,15 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 		}
 	}
 
-	if ct == ocspCert {
+	if ct == ocspCert || ct == crlCert {
 		if len(profile.KeyUsages) != 0 {
-			return errors.New("key-usages cannot be set for a OCSP signer")
+			return errors.New("key-usages cannot be set for a delegated signer")
 		}
 		if profile.CRLURL != "" {
-			return errors.New("crl-url cannot be set for a OCSP signer")
+			return errors.New("crl-url cannot be set for a delegated signer")
 		}
 		if profile.OCSPURL != "" {
-			return errors.New("ocsp-url cannot be set for a OCSP signer")
+			return errors.New("ocsp-url cannot be set for a delegated signer")
 		}
 	}
 	return nil
@@ -250,6 +251,8 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 	}
 	if ct == ocspCert {
 		ku = x509.KeyUsageDigitalSignature
+	} else if ct == crlCert {
+		ku = x509.KeyUsageCRLSign
 	}
 	if ku == 0 {
 		return nil, errors.New("at least one key usage must be set")
@@ -279,6 +282,8 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		// ASN.1 NULL is 0x05, 0x00
 		ocspNoCheckExt := pkix.Extension{Id: oidOCSPNoCheck, Value: []byte{5, 0}}
 		cert.ExtraExtensions = append(cert.ExtraExtensions, ocspNoCheckExt)
+		cert.IsCA = false
+	} else if ct == crlCert {
 		cert.IsCA = false
 	} else if ct == intermediateCert {
 		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}

@@ -10,6 +10,7 @@
     "debugAddr": ":8000",
     "directoryCAAIdentity": "happy-hacker-ca.invalid",
     "directoryWebsite": "https://github.com/letsencrypt/boulder",
+    "blockedKeyFile": "test/example-blocked-keys.yaml",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/wfe.boulder/cert.pem",
@@ -23,7 +24,22 @@
       "serverAddress": "sa.boulder:9095",
       "timeout": "15s"
     },
+    "getNonceService": {
+      "serverAddress": "nonce.boulder:9101",
+      "timeout": "15s"
+    },
+    "redeemNonceServices": {
+      "taro": {
+        "serverAddress": "nonce1.boulder:9101",
+        "timeout": "15s"
+      },
+      "zinc": {
+        "serverAddress": "nonce2.boulder:9101",
+        "timeout": "15s"
+      }
+    },
     "features": {
+      "StripDefaultSchemePort": true
     }
   },
 

@@ -44,12 +44,10 @@ const (
 	directoryPath = "/directory"
 	newAcctPath   = "/acme/new-acct"
 	acctPath      = "/acme/acct/"
-	authzPath     = "/acme/authz/"
 	// For user-facing URLs we use a "v3" suffix to avoid potential confusiong
 	// regarding ACMEv2.
 	authzv2Path       = "/acme/authz-v3/"
 	challengev2Path   = "/acme/chall-v3/"
-	challengePath     = "/acme/challenge/"
 	certPath          = "/acme/cert/"
 	revokeCertPath    = "/acme/revoke-cert"
 	issuerPath        = "/acme/issuer-cert"
@@ -517,12 +515,17 @@ func (wfe *WebFrontEndImpl) Nonce(
 	}
 
 	statusCode := http.StatusNoContent
-	// The ACME specification says GET requets should receive http.StatusNoContent
+	// The ACME specification says GET requests should receive http.StatusNoContent
 	// and HEAD/POST-as-GET requests should receive http.StatusOK.
 	if request.Method != "GET" {
 		statusCode = http.StatusOK
 	}
 	response.WriteHeader(statusCode)
+
+	// The ACME specification says the server MUST include a Cache-Control header
+	// field with the "no-store" directive in responses for the newNonce resource,
+	// in order to prevent caching of this resource.
+	response.Header().Set("Cache-Control", "no-store")
 }
 
 // sendError wraps web.SendError

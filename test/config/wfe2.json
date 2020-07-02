@@ -11,6 +11,7 @@
     "directoryCAAIdentity": "happy-hacker-ca.invalid",
     "directoryWebsite": "https://github.com/letsencrypt/boulder",
     "legacyKeyIDPrefix": "http://boulder:4000/reg/",
+    "blockedKeyFile": "test/example-blocked-keys.yaml",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/wfe.boulder/cert.pem",
@@ -24,11 +25,30 @@
       "serverAddress": "sa.boulder:9095",
       "timeout": "15s"
     },
+    "getNonceService": {
+      "serverAddress": "nonce.boulder:9101",
+      "timeout": "15s"
+    },
+    "redeemNonceServices": {
+      "taro": {
+        "serverAddress": "nonce1.boulder:9101",
+        "timeout": "15s"
+      },
+      "zinc": {
+        "serverAddress": "nonce2.boulder:9101",
+        "timeout": "15s"
+      }
+    },
     "certificateChains": {
       "http://boulder:4430/acme/issuer-cert": [ "/tmp/intermediate-cert-rsa-a.pem" ],
       "http://127.0.0.1:4000/acme/issuer-cert": [ "/tmp/intermediate-cert-rsa-a.pem" ]
     },
+    "staleTimeout": "5m",
+    "authorizationLifetimeDays": 30,
+    "pendingAuthorizationLifetimeDays": 7,
     "features": {
+      "PrecertificateRevocation": true,
+      "StripDefaultSchemePort": true
     }
   },
 

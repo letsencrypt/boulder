@@ -65,11 +65,8 @@ def start(race_detection, fakeclock):
     # before any services that intend to send it RPCs. On shutdown they will be
     # killed in reverse order.
     progs = []
-    if CONFIG_NEXT:
-        progs.extend([
-            [8020, './bin/bad-key-revoker --config %s' % os.path.join(config_dir, "bad-key-revoker.json")],
-        ])
     progs.extend([
+        [8020, './bin/bad-key-revoker --config %s' % os.path.join(config_dir, "bad-key-revoker.json")],
         [8011, './bin/boulder-remoteva --config %s' % os.path.join(config_dir, "va-remote-a.json")],
         [8012, './bin/boulder-remoteva --config %s' % os.path.join(config_dir, "va-remote-b.json")],
         [53, './bin/sd-test-srv --listen :53'], # Service discovery DNS server

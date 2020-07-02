@@ -18,7 +18,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -905,6 +904,11 @@ func TestNonceEndpoint(t *testing.T) {
 			// And the response should contain a valid nonce in the Replay-Nonce header
 			nonce := responseWriter.Header().Get("Replay-Nonce")
 			test.AssertEquals(t, wfe.nonceService.Valid(nonce), true)
+			// The server MUST include a Cache-Control header field with the "no-store"
+			// directive in responses for the newNonce resource, in order to prevent
+			// caching of this resource.
+			cacheControl := responseWriter.Header().Get("Cache-Control")
+			test.AssertEquals(t, cacheControl, "no-store")
 		})
 	}
 }
@@ -3186,10 +3190,6 @@ func TestMandatoryPOSTAsGET(t *testing.T) {
 }
 
 func TestGetChallengeUpRel(t *testing.T) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	wfe, _ := setupWFE(t)
 
 	challengeURL := "http://localhost/acme/chall-v3/1/-ZfxEw"

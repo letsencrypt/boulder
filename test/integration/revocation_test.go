@@ -36,11 +36,6 @@ func isPrecert(cert *x509.Certificate) bool {
 // authentication mechansims.
 func TestPrecertificateRevocation(t *testing.T) {
 	t.Parallel()
-	// This test is gated on the PrecertificateRevocation feature flag.
-	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		return
-	}
-
 	// Create a base account to use for revocation tests.
 	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
 	c, err := makeClient("mailto:example@letsencrypt.org")
@@ -122,7 +117,8 @@ func TestPrecertificateRevocation(t *testing.T) {
 			}
 
 			// To start with the precertificate should have a Good OCSP response.
-			_, err = ocsp_helper.ReqDER(cert.Raw, ocsp.Good)
+			ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
+			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			test.AssertNotError(t, err, "requesting OCSP for precert")
 
 			// Revoke the precertificate using the specified key and client
@@ -135,7 +131,8 @@ func TestPrecertificateRevocation(t *testing.T) {
 
 			// Check the OCSP response for the precertificate again. It should now be
 			// revoked.
-			_, err = ocsp_helper.ReqDER(cert.Raw, ocsp.Revoked)
+			ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked)
+			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			test.AssertNotError(t, err, "requesting OCSP for revoked precert")
 		})
 	}
@@ -143,10 +140,6 @@ func TestPrecertificateRevocation(t *testing.T) {
 
 func TestRevokeWithKeyCompromise(t *testing.T) {
 	t.Parallel()
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
 	c, err := makeClient("mailto:example@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
@@ -173,17 +166,14 @@ func TestRevokeWithKeyCompromise(t *testing.T) {
 	test.AssertEquals(t, err.Error(), `acme: error code 400 "urn:ietf:params:acme:error:badPublicKey": public key is forbidden`)
 
 	// Check the OCSP response. It should be revoked with reason = 1 (keyCompromise)
-	response, err := ocsp_helper.ReqDER(cert.Raw, ocsp.Revoked)
+	ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked)
+	response, err := ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 	test.AssertNotError(t, err, "requesting OCSP for revoked cert")
 	test.AssertEquals(t, response.RevocationReason, 1)
 }
 
 func TestBadKeyRevoker(t *testing.T) {
 	t.Parallel()
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
 	cA, err := makeClient("mailto:bad-key-revoker-revoker@letsencrypt.org", "mailto:bad-key-revoker-revoker-2@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
@@ -218,12 +208,13 @@ func TestBadKeyRevoker(t *testing.T) {
 		ocsp.KeyCompromise,
 	)
 	test.AssertNotError(t, err, "failed to revoke certificate")
-	_, err = ocsp_helper.ReqDER(badCert.certs[0].Raw, ocsp.Revoked)
+	ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked)
+	_, err = ocsp_helper.ReqDER(badCert.certs[0].Raw, ocspConfig)
 	test.AssertNotError(t, err, "ReqDER failed")
 
 	for _, cert := range certs {
 		for i := 0; i < 5; i++ {
-			_, err = ocsp_helper.ReqDER(cert.Raw, ocsp.Revoked)
+			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			if err == nil {
 				break
 			}
