@@ -23,7 +23,7 @@ var (
 	hostOverride       = flag.String("host", "", "Host header to override in HTTP request")
 	tooSoon            = flag.Int("too-soon", 76, "If NextUpdate is fewer than this many hours in future, warn.")
 	ignoreExpiredCerts = flag.Bool("ignore-expired-certs", false, "If a cert is expired, don't bother requesting OCSP.")
-	expectStatus       = flag.Int("expect-status", 0, "Expect response to have this numeric status (0=Good, 1=Revoked, 2=Unknown); or -1 for no enforcement.")
+	expectStatus       = flag.Int("expect-status", -1, "Expect response to have this numeric status (0=Good, 1=Revoked, 2=Unknown); or -1 for no enforcement.")
 	expectReason       = flag.Int("expect-reason", -1, "Expect response to have this numeric revocation reason (0=Unspecified, 1=KeyCompromise, etc); or -1 for no enforcement.")
 )
 
@@ -292,25 +292,27 @@ func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config Conf
 	if err != nil {
 		return nil, fmt.Errorf("parsing response: %s", err)
 	}
+
+	var errs []error
 	if config.expectStatus != -1 && resp.Status != config.expectStatus {
-		return nil, fmt.Errorf("wrong CertStatus %d, expected %d", resp.Status, config.expectStatus)
+		errs = append(errs, fmt.Errorf("wrong CertStatus %d, expected %d", resp.Status, config.expectStatus))
 	}
 	if config.expectReason != -1 && resp.RevocationReason != config.expectReason {
-		return nil, fmt.Errorf("wrong RevocationReason %d, expected %d", resp.RevocationReason, config.expectReason)
+		errs = append(errs, fmt.Errorf("wrong RevocationReason %d, expected %d", resp.RevocationReason, config.expectReason))
 	}
 	timeTilExpiry := time.Until(resp.NextUpdate)
 	tooSoonDuration := time.Duration(config.tooSoon) * time.Hour
 	if timeTilExpiry < tooSoonDuration {
-		return nil, fmt.Errorf("NextUpdate is too soon: %s", timeTilExpiry)
+		errs = append(errs, fmt.Errorf("NextUpdate is too soon: %s", timeTilExpiry))
 	}
 
 	err = checkSignerTimes(resp, issuer)
 	if err != nil {
-		return nil, fmt.Errorf("checking signature on delegated signer: %s", err)
+		errs = append(errs, fmt.Errorf("checking signature on delegated signer: %s", err))
 	}
 
-	fmt.Printf("\n")
-	fmt.Printf("Good response:\n")
+	fmt.Print("\n")
+	fmt.Print("Response:\n")
 	fmt.Printf("  CertStatus %d\n", resp.Status)
 	fmt.Printf("  SerialNumber %036x\n", resp.SerialNumber)
 	fmt.Printf("  ProducedAt %s\n", resp.ProducedAt)
@@ -321,7 +323,7 @@ func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config Conf
 	fmt.Printf("  SignatureAlgorithm %s\n", resp.SignatureAlgorithm)
 	fmt.Printf("  Extensions %#v\n", resp.Extensions)
 	if resp.Certificate == nil {
-		fmt.Printf("  Certificate: nil\n")
+		fmt.Print("  Certificate: nil\n")
 	} else {
 		fmt.Print("  Certificate:\n")
 		fmt.Printf("    Subject: %s\n", resp.Certificate.Subject)
@@ -329,5 +331,17 @@ func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config Conf
 		fmt.Printf("    NotBefore: %s\n", resp.Certificate.NotBefore)
 		fmt.Printf("    NotAfter: %s\n", resp.Certificate.NotAfter)
 	}
+
+	if len(errs) > 0 {
+		fmt.Print("Errors:\n")
+		err := errs[0]
+		fmt.Printf("  %v\n", err.Error())
+		for _, e := range errs[1:] {
+			err = fmt.Errorf("%w; %v", err, e)
+			fmt.Printf("  %v\n", e.Error())
+		}
+		return nil, err
+	}
+	fmt.Print("No errors found.\n")
 	return resp, nil
 }
