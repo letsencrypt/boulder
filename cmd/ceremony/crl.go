@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto"
-	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -30,12 +29,18 @@ func generateCRL(signer crypto.Signer, issuer *x509.Certificate, thisUpdate, nex
 		return nil, errors.New("nextUpdate is after issuing certificate's notAfter")
 	}
 
+	// Verify that the CRL is not valid for more than 12 months as specified in
+	// CABF BRs Section 4.9.7
+	if nextUpdate.Sub(thisUpdate) > time.Hour*24*365 {
+		return nil, errors.New("nextUpdate must be less than 12 months after thisUpdate")
+	}
+
 	// x509.CreateRevocationList uses an io.Reader here for signing methods that require
 	// a source of randomness. Since PKCS#11 based signing generates needed randomness
 	// at the HSM we don't need to pass a real reader. Instead of passing a nil reader
 	// we use one that always returns errors in case the internal usage of this reader
 	// changes.
-	crlBytes, err := x509crl.CreateRevocationList(rand.Reader, template, issuer, signer)
+	crlBytes, err := x509crl.CreateRevocationList(&failReader{}, template, issuer, signer)
 	if err != nil {
 		return nil, err
 	}

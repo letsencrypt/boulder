@@ -292,7 +292,7 @@ This config generates a OCSP response signed by a key in the HSM, identified by 
     | `this-update` | Specifies the CRL thisUpdate date, in the format `2006-01-02 15:04:05`. The time will be interpreted as UTC. |
     | `next-update` | Specifies the CRL nextUpdate date, in the format `2006-01-02 15:04:05`. The time will be interpreted as UTC. |
     | `number` | Specifies the CRL number. Each CRL should have a unique monotonically increasing number. |
-    | `revoked-certificates` | Specifies any revoked certificates that should be included in the CRL. May be empty. If present it should be a list of objects with the fields `certificate-path`, containing the path to the revoked certificate, and `revocation-date`, containing the date the certificate was revoked, in the format `2006-01-02 15:04:05`. |
+    | `revoked-certificates` | Specifies any revoked certificates that should be included in the CRL. May be empty. If present it should be a list of objects with the fields `certificate-path`, containing the path to the revoked certificate, `revocation-date`, containing the date the certificate was revoked, in the format `2006-01-02 15:04:05`, and `revocation-reason`, containing a non-zero CRLReason code for the revocation taken from RFC 5280. |
 
 Example:
 

@@ -4,6 +4,7 @@ import (
 	"crypto"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
@@ -279,8 +280,9 @@ type crlConfig struct {
 		NextUpdate          string `yaml:"next-update"`
 		Number              int64  `yaml:"number"`
 		RevokedCertificates []struct {
-			CertificatePath string `yaml:"certificate-path"`
-			RevocationDate  string `yaml:"revocation-date"`
+			CertificatePath  string `yaml:"certificate-path"`
+			RevocationDate   string `yaml:"revocation-date"`
+			RevocationReason int    `yaml:"revocation-reason"`
 		} `yaml:"revoked-certificates"`
 	} `yaml:"crl-profile"`
 }
@@ -322,6 +324,9 @@ func (cc crlConfig) validate() error {
 		}
 		if rc.RevocationDate == "" {
 			return errors.New("crl-profile.revoked-certificates.revocation-date is required")
+		}
+		if rc.RevocationReason == 0 {
+			return errors.New("crl-profile.revoked-certificates.revocation-reason is required")
 		}
 	}
 
@@ -576,13 +581,11 @@ func crlCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
 	}
 
-	dateLayout := "2006-01-02 15:04:05"
-
-	thisUpdate, err := time.Parse(dateLayout, config.CRLProfile.ThisUpdate)
+	thisUpdate, err := time.Parse(configDateLayout, config.CRLProfile.ThisUpdate)
 	if err != nil {
 		return fmt.Errorf("unable to parse crl-profile.this-update: %s", err)
 	}
-	nextUpdate, err := time.Parse(dateLayout, config.CRLProfile.NextUpdate)
+	nextUpdate, err := time.Parse(configDateLayout, config.CRLProfile.NextUpdate)
 	if err != nil {
 		return fmt.Errorf("unable to parse crl-profile.next-update: %s", err)
 	}
@@ -593,20 +596,31 @@ func crlCeremony(configBytes []byte) error {
 		if err != nil {
 			return fmt.Errorf("failed to load revoked certificate %q: %s", rc.CertificatePath, err)
 		}
-		revokedAt, err := time.Parse(dateLayout, rc.RevocationDate)
+		revokedAt, err := time.Parse(configDateLayout, rc.RevocationDate)
 		if err != nil {
 			return fmt.Errorf("unable to parse crl-profile.revoked-certificates.revocation-date")
 		}
-		revokedCertificates = append(revokedCertificates, pkix.RevokedCertificate{
+		revokedCert := pkix.RevokedCertificate{
 			SerialNumber:   cert.SerialNumber,
 			RevocationTime: revokedAt,
-		})
+		}
+		encReason, err := asn1.Marshal(rc.RevocationReason)
+		if err != nil {
+			return fmt.Errorf("failed to marshal revocation reason %q: %s", rc.RevocationReason, err)
+		}
+		revokedCert.Extensions = []pkix.Extension{{
+			Id:    asn1.ObjectIdentifier{2, 5, 29, 21}, // id-ce-reasonCode
+			Value: encReason,
+		}}
+		revokedCertificates = append(revokedCertificates, revokedCert)
 	}
 
 	crlBytes, err := generateCRL(signer, issuer, thisUpdate, nextUpdate, config.CRLProfile.Number, revokedCertificates)
 	if err != nil {
 		return err
 	}
+
+	log.Printf("Signed CRL PEM:\n%s", crlBytes)
 
 	if err := ioutil.WriteFile(config.Outputs.CRLPath, crlBytes, 0644); err != nil {
 		return fmt.Errorf("failed to write CRL to %q: %s", config.Outputs.CRLPath, err)

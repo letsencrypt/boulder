@@ -920,8 +920,9 @@ func TestCRLConfig(t *testing.T) {
 					NextUpdate          string `yaml:"next-update"`
 					Number              int64  `yaml:"number"`
 					RevokedCertificates []struct {
-						CertificatePath string `yaml:"certificate-path"`
-						RevocationDate  string `yaml:"revocation-date"`
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
 				}{
 					ThisUpdate: "this-update",
@@ -958,15 +959,17 @@ func TestCRLConfig(t *testing.T) {
 					NextUpdate          string `yaml:"next-update"`
 					Number              int64  `yaml:"number"`
 					RevokedCertificates []struct {
-						CertificatePath string `yaml:"certificate-path"`
-						RevocationDate  string `yaml:"revocation-date"`
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
 				}{
 					ThisUpdate: "this-update",
 					NextUpdate: "next-update",
 					RevokedCertificates: []struct {
-						CertificatePath string `yaml:"certificate-path"`
-						RevocationDate  string `yaml:"revocation-date"`
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
 					}{{}},
 				},
 			},
@@ -1001,21 +1004,71 @@ func TestCRLConfig(t *testing.T) {
 					NextUpdate          string `yaml:"next-update"`
 					Number              int64  `yaml:"number"`
 					RevokedCertificates []struct {
-						CertificatePath string `yaml:"certificate-path"`
-						RevocationDate  string `yaml:"revocation-date"`
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
 				}{
 					ThisUpdate: "this-update",
 					NextUpdate: "next-update",
 					RevokedCertificates: []struct {
-						CertificatePath string `yaml:"certificate-path"`
-						RevocationDate  string `yaml:"revocation-date"`
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
 					}{{
 						CertificatePath: "path",
 					}},
 				},
 			},
 			expectedError: "crl-profile.revoked-certificates.revocation-date is required",
+		},
+		{
+			name: "no revocation reason",
+			config: crlConfig{
+				PKCS11: struct {
+					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					SigningKeyID string `yaml:"signing-key-id"`
+				}{
+					Module:       "module",
+					SigningLabel: "label",
+					SigningKeyID: "id",
+				},
+				Inputs: struct {
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					IssuerCertificatePath: "path",
+				},
+				Outputs: struct {
+					CRLPath string `yaml:"crl-path"`
+				}{
+					CRLPath: "path",
+				},
+				CRLProfile: struct {
+					ThisUpdate          string `yaml:"this-update"`
+					NextUpdate          string `yaml:"next-update"`
+					Number              int64  `yaml:"number"`
+					RevokedCertificates []struct {
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
+					} `yaml:"revoked-certificates"`
+				}{
+					ThisUpdate: "this-update",
+					NextUpdate: "next-update",
+					RevokedCertificates: []struct {
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
+					}{{
+						CertificatePath: "path",
+						RevocationDate:  "date",
+					}},
+				},
+			},
+			expectedError: "crl-profile.revoked-certificates.revocation-reason is required",
 		},
 		{
 			name: "good",
@@ -1046,18 +1099,21 @@ func TestCRLConfig(t *testing.T) {
 					NextUpdate          string `yaml:"next-update"`
 					Number              int64  `yaml:"number"`
 					RevokedCertificates []struct {
-						CertificatePath string `yaml:"certificate-path"`
-						RevocationDate  string `yaml:"revocation-date"`
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
 				}{
 					ThisUpdate: "this-update",
 					NextUpdate: "next-update",
 					RevokedCertificates: []struct {
-						CertificatePath string `yaml:"certificate-path"`
-						RevocationDate  string `yaml:"revocation-date"`
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
 					}{{
-						CertificatePath: "path",
-						RevocationDate:  "date",
+						CertificatePath:  "path",
+						RevocationDate:   "date",
+						RevocationReason: 1,
 					}},
 				},
 			},
