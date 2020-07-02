@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/hpcloud/tail"
 	"github.com/prometheus/client_golang/prometheus"
@@ -133,6 +134,11 @@ func main() {
 	}, []string{"filename", "status"})
 	stats.MustRegister(lineCounter)
 
+	// Emit no more than 1 error line per second. This prevents consuming large
+	// amounts of disk space in case there is problem that causes all log lines to
+	// be invalid.
+	outputLimiter := time.NewTicker(time.Second)
+
 	var tailers []*tail.Tail
 	for _, filename := range config.Files {
 		t, err := tail.TailFile(filename, tail.Config{
@@ -149,9 +155,19 @@ func main() {
 					logger.Errf("error while tailing %s: %s", t.Filename, err)
 					continue
 				}
+				const prefix = "log validator error"
+				// Do not consume our own output. This prevents runaway scenarios in
+				// case of a problem that causes all log lines to be invalid.
+				if strings.Contains(line.Text, prefix) {
+					continue
+				}
 				if err := lineValid(line.Text); err != nil {
 					lineCounter.WithLabelValues(t.Filename, "bad").Inc()
-					logger.Errf("%s: %s %q", t.Filename, err, line.Text)
+					select {
+					case <-outputLimiter.C:
+						logger.Errf("%s %s: %s %q", prefix, t.Filename, err, line.Text)
+					default:
+					}
 				} else {
 					lineCounter.WithLabelValues(t.Filename, "ok").Inc()
 				}
