@@ -205,6 +205,36 @@ func TestMakeTemplateOCSP(t *testing.T) {
 	test.Assert(t, hasExt, "template doesn't contain id-pkix-ocsp-nocheck extensions")
 }
 
+func TestMakeTemplateCRL(t *testing.T) {
+	ctx := pkcs11helpers.MockCtx{
+		GenerateRandomFunc: func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
+			r := make([]byte, length)
+			_, err := rand.Read(r)
+			return r, err
+		},
+	}
+	randReader := newRandReader(&ctx, 0)
+	profile := &certProfile{
+		SignatureAlgorithm: "SHA256WithRSA",
+		CommonName:         "common name",
+		Organization:       "organization",
+		Country:            "country",
+		OCSPURL:            "ocsp",
+		CRLURL:             "crl",
+		IssuerURL:          "issuer",
+		NotAfter:           "2018-05-18 11:31:00",
+		NotBefore:          "2018-05-18 11:31:00",
+	}
+	pubKey, err := hex.DecodeString("3059301306072a8648ce3d020106082a8648ce3d03010703420004b06745ef0375c9c54057098f077964e18d3bed0aacd54545b16eab8c539b5768cc1cea93ba56af1e22a7a01c33048c8885ed17c9c55ede70649b707072689f5e")
+	test.AssertNotError(t, err, "failed to decode test public key")
+
+	cert, err := makeTemplate(randReader, profile, pubKey, crlCert)
+	test.AssertNotError(t, err, "makeTemplate failed")
+
+	test.Assert(t, !cert.IsCA, "IsCA is set")
+	test.AssertEquals(t, cert.KeyUsage, x509.KeyUsageCRLSign)
+}
+
 func TestVerifyProfile(t *testing.T) {
 	for _, tc := range []struct {
 		profile     certProfile
@@ -320,12 +350,10 @@ func TestVerifyProfile(t *testing.T) {
 				Organization:       "e",
 				Country:            "f",
 				IssuerURL:          "g",
-				OCSPURL:            "h",
-				CRLURL:             "i",
 				KeyUsages:          []string{"j"},
 			},
 			certType:    ocspCert,
-			expectedErr: "key-usages cannot be set for a OCSP signer",
+			expectedErr: "key-usages cannot be set for a delegated signer",
 		},
 		{
 			profile: certProfile{
@@ -336,11 +364,10 @@ func TestVerifyProfile(t *testing.T) {
 				Organization:       "e",
 				Country:            "f",
 				IssuerURL:          "g",
-				OCSPURL:            "h",
 				CRLURL:             "i",
 			},
 			certType:    ocspCert,
-			expectedErr: "crl-url cannot be set for a OCSP signer",
+			expectedErr: "crl-url cannot be set for a delegated signer",
 		},
 		{
 			profile: certProfile{
@@ -354,7 +381,7 @@ func TestVerifyProfile(t *testing.T) {
 				OCSPURL:            "h",
 			},
 			certType:    ocspCert,
-			expectedErr: "ocsp-url cannot be set for a OCSP signer",
+			expectedErr: "ocsp-url cannot be set for a delegated signer",
 		},
 		{
 			profile: certProfile{
@@ -367,6 +394,60 @@ func TestVerifyProfile(t *testing.T) {
 				IssuerURL:          "g",
 			},
 			certType: ocspCert,
+		},
+		{
+			profile: certProfile{
+				NotBefore:          "a",
+				NotAfter:           "b",
+				SignatureAlgorithm: "c",
+				CommonName:         "d",
+				Organization:       "e",
+				Country:            "f",
+				IssuerURL:          "g",
+				KeyUsages:          []string{"j"},
+			},
+			certType:    crlCert,
+			expectedErr: "key-usages cannot be set for a delegated signer",
+		},
+		{
+			profile: certProfile{
+				NotBefore:          "a",
+				NotAfter:           "b",
+				SignatureAlgorithm: "c",
+				CommonName:         "d",
+				Organization:       "e",
+				Country:            "f",
+				IssuerURL:          "g",
+				CRLURL:             "i",
+			},
+			certType:    crlCert,
+			expectedErr: "crl-url cannot be set for a delegated signer",
+		},
+		{
+			profile: certProfile{
+				NotBefore:          "a",
+				NotAfter:           "b",
+				SignatureAlgorithm: "c",
+				CommonName:         "d",
+				Organization:       "e",
+				Country:            "f",
+				IssuerURL:          "g",
+				OCSPURL:            "h",
+			},
+			certType:    crlCert,
+			expectedErr: "ocsp-url cannot be set for a delegated signer",
+		},
+		{
+			profile: certProfile{
+				NotBefore:          "a",
+				NotAfter:           "b",
+				SignatureAlgorithm: "c",
+				CommonName:         "d",
+				Organization:       "e",
+				Country:            "f",
+				IssuerURL:          "g",
+			},
+			certType: crlCert,
 		},
 	} {
 		err := tc.profile.verifyProfile(tc.certType)
