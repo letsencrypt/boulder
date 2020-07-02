@@ -93,7 +93,7 @@ type unrevokedCertificate struct {
 }
 
 func (uc unrevokedCertificate) String() string {
-	return fmt.Sprintf("id=%d serial=%s regID=%d status=%s, expired=%t",
+	return fmt.Sprintf("id=%d serial=%s regID=%d status=%s expired=%t",
 		uc.ID, uc.Serial, uc.RegistrationID, uc.Status, uc.IsExpired)
 }
 
