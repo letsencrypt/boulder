@@ -311,8 +311,8 @@ func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config Conf
 		errs = append(errs, fmt.Errorf("checking signature on delegated signer: %s", err))
 	}
 
-	fmt.Printf("\n")
-	fmt.Printf("Response:\n")
+	fmt.Print("\n")
+	fmt.Print("Response:\n")
 	fmt.Printf("  CertStatus %d\n", resp.Status)
 	fmt.Printf("  SerialNumber %036x\n", resp.SerialNumber)
 	fmt.Printf("  ProducedAt %s\n", resp.ProducedAt)
@@ -323,9 +323,9 @@ func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config Conf
 	fmt.Printf("  SignatureAlgorithm %s\n", resp.SignatureAlgorithm)
 	fmt.Printf("  Extensions %#v\n", resp.Extensions)
 	if resp.Certificate == nil {
-		fmt.Printf("  Certificate: nil\n")
+		fmt.Print("  Certificate: nil\n")
 	} else {
-		fmt.Printf("  Certificate:\n")
+		fmt.Print("  Certificate:\n")
 		fmt.Printf("    Subject: %s\n", resp.Certificate.Subject)
 		fmt.Printf("    Issuer: %s\n", resp.Certificate.Issuer)
 		fmt.Printf("    NotBefore: %s\n", resp.Certificate.NotBefore)
@@ -333,7 +333,7 @@ func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config Conf
 	}
 
 	if len(errs) > 0 {
-		fmt.Printf("Errors:\n")
+		fmt.Print("Errors:\n")
 		err := errs[0]
 		fmt.Printf("  %v\n", err.Error())
 		for _, e := range errs[1:] {
@@ -342,6 +342,6 @@ func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config Conf
 		}
 		return nil, err
 	}
-	fmt.Printf("No errors found.\n")
+	fmt.Print("No errors found.\n")
 	return resp, nil
 }
