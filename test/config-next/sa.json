@@ -26,7 +26,8 @@
     "features": {
       "StoreIssuerInfo": true,
       "StoreKeyHashes": true,
-      "StoreRevokerInfo": true
+      "StoreRevokerInfo": true,
+      "FasterNewOrdersRateLimit": true
     }
   },
 
