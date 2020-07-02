@@ -92,6 +92,11 @@ type unrevokedCertificate struct {
 	IsExpired      bool
 }
 
+func (uc unrevokedCertificate) String() string {
+	return fmt.Sprintf("id=%d serial=%s regID=%d status=%s expired=%t",
+		uc.ID, uc.Serial, uc.RegistrationID, uc.Status, uc.IsExpired)
+}
+
 // findUnrevoked looks for all unexpired, currently valid certificates which have a specific SPKI hash,
 // by looking first at the keyHashToSerial table and then the certificateStatus and certificates tables.
 // If the number of certificates it finds is larger than bkr.maxRevocations it'll error out.
@@ -317,7 +322,7 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 	}
 
 	revokerEmails := idToEmails[unchecked.RevokedBy]
-	bkr.logger.AuditInfo(fmt.Sprintf("revoking certs. revoked emails=%v, emailsToCerts=%v",
+	bkr.logger.AuditInfo(fmt.Sprintf("revoking certs. revoked emails=%v, emailsToCerts=%s",
 		revokerEmails, emailsToCerts))
 
 	// revoke each certificate and send emails to their owners

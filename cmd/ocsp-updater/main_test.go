@@ -9,8 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -424,10 +422,6 @@ func (ca *mockOCSPRecordIssuer) GenerateOCSP(_ context.Context, req *caPB.Genera
 }
 
 func TestIssuerInfo(t *testing.T) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	updater, sa, _, fc, cleanUp := setup(t)
 	defer cleanUp()
 	m := mockOCSPRecordIssuer{}

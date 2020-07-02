@@ -36,11 +36,6 @@ func isPrecert(cert *x509.Certificate) bool {
 // authentication mechansims.
 func TestPrecertificateRevocation(t *testing.T) {
 	t.Parallel()
-	// This test is gated on the PrecertificateRevocation feature flag.
-	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		return
-	}
-
 	// Create a base account to use for revocation tests.
 	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
 	c, err := makeClient("mailto:example@letsencrypt.org")
@@ -145,10 +140,6 @@ func TestPrecertificateRevocation(t *testing.T) {
 
 func TestRevokeWithKeyCompromise(t *testing.T) {
 	t.Parallel()
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
 	c, err := makeClient("mailto:example@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
@@ -183,10 +174,6 @@ func TestRevokeWithKeyCompromise(t *testing.T) {
 
 func TestBadKeyRevoker(t *testing.T) {
 	t.Parallel()
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
 	cA, err := makeClient("mailto:bad-key-revoker-revoker@letsencrypt.org", "mailto:bad-key-revoker-revoker-2@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")

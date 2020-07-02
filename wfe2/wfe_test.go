@@ -18,7 +18,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -3191,10 +3190,6 @@ func TestMandatoryPOSTAsGET(t *testing.T) {
 }
 
 func TestGetChallengeUpRel(t *testing.T) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	wfe, _ := setupWFE(t)
 
 	challengeURL := "http://localhost/acme/chall-v3/1/-ZfxEw"
