@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
+	"errors"
 	"strings"
 
 	"github.com/letsencrypt/boulder/core"
@@ -52,12 +53,10 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 		return invalidPubKey
 	}
 	if err := keyPolicy.GoodKey(ctx, key); err != nil {
-		switch e := err.(type) {
-		case goodkey.KeyError:
-			return berrors.BadCSRError("invalid public key in CSR: %w", e)
-		default:
-			return berrors.InternalServerError("error checking key validity: %s", e)
+		if errors.Is(err, goodkey.ErrBadKey) {
+			return berrors.BadCSRError("invalid public key in CSR: %s", err)
 		}
+		return berrors.InternalServerError("error checking key validity: %s", err)
 	}
 	if !goodSignatureAlgorithms[csr.SignatureAlgorithm] {
 		return unsupportedSigAlg
