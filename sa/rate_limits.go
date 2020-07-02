@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"time"
+	"net"
 
 	"github.com/letsencrypt/boulder/db"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
@@ -12,6 +13,15 @@ import (
 // baseDomain returns the eTLD+1 of a domain name for the purpose of rate
 // limiting. For a domain name that is itself an eTLD, it returns its input.
 func baseDomain(name string) string {
+
+	//handling for ip address
+	if ip := net.ParseIP(name); ip != nil {
+		// ipv4 just use as and if ipv6 trimed to /48
+		if ip.To4() == nil {
+			ip = append(ip[:4], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+		}
+		return ip.String()
+	}
 	eTLDPlusOne, err := publicsuffix.Domain(name)
 	if err != nil {
 		// publicsuffix.Domain will return an error if the input name is itself a

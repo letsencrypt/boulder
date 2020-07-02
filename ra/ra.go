@@ -1278,6 +1278,14 @@ func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte, e
 func domainsForRateLimiting(names []string) ([]string, error) {
 	var domains []string
 	for _, name := range names {
+		// for ip address
+		if ip := net.ParseIP(name); ip != nil {
+			// ipv4 just use as and if ipv6 trimed to /48
+			if ip.To4() == nil {
+				ip = append(ip[:4], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+			}
+			domains = append(domains, ip.String())
+		}
 		domain, err := publicsuffix.Domain(name)
 		if err != nil {
 			// The only possible errors are:
