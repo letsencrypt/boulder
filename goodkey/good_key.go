@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
+	"fmt"
 	"math/big"
 	"sync"
 
@@ -38,6 +39,16 @@ var (
 	smallPrimesSingleton sync.Once
 	smallPrimesProduct   *big.Int
 )
+
+// KeyError represents an error with a key. It is distinct from the various ways
+// in which an ACME request can have an erroneous key (e.g. BadPublicKeyError,
+// BadCSRError) because this library is used to check both JWS signing keys and
+// keys in CSRs.
+type KeyError error
+
+func keyError(msg string, args ...interface{}) KeyError {
+	return KeyError(fmt.Errorf(msg, args...))
+}
 
 // BlockedKeyCheckFunc is used to pass in the sa.BlockedKey method to KeyPolicy,
 // rather than storing a full sa.SQLStorageAuthority. This makes testing
@@ -97,7 +108,7 @@ func (policy *KeyPolicy) GoodKey(ctx context.Context, key crypto.PublicKey) erro
 	case *rsa.PublicKey, *ecdsa.PublicKey:
 		break
 	default:
-		return berrors.MalformedError("unsupported key type %T", t)
+		return keyError("unsupported key type %T", t)
 	}
 	// If there is a blocked list configured then check if the public key is one
 	// that has been administratively blocked.
@@ -105,20 +116,19 @@ func (policy *KeyPolicy) GoodKey(ctx context.Context, key crypto.PublicKey) erro
 		if blocked, err := policy.blockedList.blocked(key); err != nil {
 			return berrors.InternalServerError("error checking blocklist for key: %v", key)
 		} else if blocked {
-			return berrors.BadPublicKeyError("public key is forbidden")
+			return keyError("public key is forbidden")
 		}
 	}
 	if policy.dbCheck != nil {
 		digest, err := core.KeyDigest(key)
 		if err != nil {
-			return err
+			return keyError("%w", err)
 		}
 		exists, err := policy.dbCheck(ctx, &sapb.KeyBlockedRequest{KeyHash: digest[:]})
 		if err != nil {
 			return err
-		}
-		if *exists.Exists {
-			return berrors.BadPublicKeyError("public key is forbidden")
+		} else if *exists.Exists {
+			return keyError("public key is forbidden")
 		}
 	}
 	switch t := key.(type) {
@@ -127,12 +137,12 @@ func (policy *KeyPolicy) GoodKey(ctx context.Context, key crypto.PublicKey) erro
 	case *ecdsa.PublicKey:
 		return policy.goodKeyECDSA(t)
 	default:
-		return berrors.MalformedError("unsupported key type %T", key)
+		return keyError("unsupported key type %T", key)
 	}
 }
 
 // GoodKeyECDSA determines if an ECDSA pubkey meets our requirements
-func (policy *KeyPolicy) goodKeyECDSA(key *ecdsa.PublicKey) (err error) {
+func (policy *KeyPolicy) goodKeyECDSA(key *ecdsa.PublicKey) (err KeyError) {
 	// Check the curve.
 	//
 	// The validity of the curve is an assumption for all following tests.
@@ -157,7 +167,7 @@ func (policy *KeyPolicy) goodKeyECDSA(key *ecdsa.PublicKey) (err error) {
 	// This code assumes that the point at infinity is (0,0), which is the
 	// case for all supported curves.
 	if isPointAtInfinityNISTP(key.X, key.Y) {
-		return berrors.MalformedError("key x, y must not be the point at infinity")
+		return keyError("key x, y must not be the point at infinity")
 	}
 
 	// SP800-56A § 5.6.2.3.2 Step 2.
@@ -174,11 +184,11 @@ func (policy *KeyPolicy) goodKeyECDSA(key *ecdsa.PublicKey) (err error) {
 	// correct representation of an element in the underlying field by verifying
 	// that x and y are integers in [0, p-1].
 	if key.X.Sign() < 0 || key.Y.Sign() < 0 {
-		return berrors.MalformedError("key x, y must not be negative")
+		return keyError("key x, y must not be negative")
 	}
 
 	if key.X.Cmp(params.P) >= 0 || key.Y.Cmp(params.P) >= 0 {
-		return berrors.MalformedError("key x, y must not exceed P-1")
+		return keyError("key x, y must not exceed P-1")
 	}
 
 	// SP800-56A § 5.6.2.3.2 Step 3.
@@ -196,7 +206,7 @@ func (policy *KeyPolicy) goodKeyECDSA(key *ecdsa.PublicKey) (err error) {
 	// This proves that the public key is on the correct elliptic curve.
 	// But in practice, this test is provided by crypto/elliptic, so use that.
 	if !key.Curve.IsOnCurve(key.X, key.Y) {
-		return berrors.MalformedError("key point is not on the curve")
+		return keyError("key point is not on the curve")
 	}
 
 	// SP800-56A § 5.6.2.3.2 Step 4.
@@ -212,7 +222,7 @@ func (policy *KeyPolicy) goodKeyECDSA(key *ecdsa.PublicKey) (err error) {
 	// n*Q = Ø iff n*Q is the point at infinity (see step 1).
 	ox, oy := key.Curve.ScalarMult(key.X, key.Y, params.N.Bytes())
 	if !isPointAtInfinityNISTP(ox, oy) {
-		return berrors.MalformedError("public key does not have correct order")
+		return keyError("public key does not have correct order")
 	}
 
 	// End of SP800-56A § 5.6.2.3.2 Public Key Validation Routine.
@@ -229,7 +239,7 @@ func isPointAtInfinityNISTP(x, y *big.Int) bool {
 }
 
 // GoodCurve determines if an elliptic curve meets our requirements.
-func (policy *KeyPolicy) goodCurve(c elliptic.Curve) (err error) {
+func (policy *KeyPolicy) goodCurve(c elliptic.Curve) (err KeyError) {
 	// Simply use a whitelist for now.
 	params := c.Params()
 	switch {
@@ -238,7 +248,7 @@ func (policy *KeyPolicy) goodCurve(c elliptic.Curve) (err error) {
 	case policy.AllowECDSANISTP384 && params == elliptic.P384().Params():
 		return nil
 	default:
-		return berrors.MalformedError("ECDSA curve %v not allowed", params.Name)
+		return keyError("ECDSA curve %v not allowed", params.Name)
 	}
 }
 
@@ -249,12 +259,12 @@ var acceptableRSAKeySizes = map[int]bool{
 }
 
 // GoodKeyRSA determines if a RSA pubkey meets our requirements
-func (policy *KeyPolicy) goodKeyRSA(key *rsa.PublicKey) (err error) {
+func (policy *KeyPolicy) goodKeyRSA(key *rsa.PublicKey) (err KeyError) {
 	if !policy.AllowRSA {
-		return berrors.MalformedError("RSA keys are not allowed")
+		return keyError("RSA keys are not allowed")
 	}
 	if policy.weakRSAList != nil && policy.weakRSAList.Known(key) {
-		return berrors.MalformedError("key is on a known weak RSA key list")
+		return keyError("key is on a known weak RSA key list")
 	}
 
 	// Baseline Requirements Appendix A
@@ -263,20 +273,20 @@ func (policy *KeyPolicy) goodKeyRSA(key *rsa.PublicKey) (err error) {
 	modulusBitLen := modulus.BitLen()
 	if features.Enabled(features.RestrictRSAKeySizes) {
 		if !acceptableRSAKeySizes[modulusBitLen] {
-			return berrors.MalformedError("key size not supported: %d", modulusBitLen)
+			return keyError("key size not supported: %d", modulusBitLen)
 		}
 	} else {
 		const maxKeySize = 4096
 		if modulusBitLen < 2048 {
-			return berrors.MalformedError("key too small: %d", modulusBitLen)
+			return keyError("key too small: %d", modulusBitLen)
 		}
 		if modulusBitLen > maxKeySize {
-			return berrors.MalformedError("key too large: %d > %d", modulusBitLen, maxKeySize)
+			return keyError("key too large: %d > %d", modulusBitLen, maxKeySize)
 		}
 		// Bit lengths that are not a multiple of 8 may cause problems on some
 		// client implementations.
 		if modulusBitLen%8 != 0 {
-			return berrors.MalformedError("key length wasn't a multiple of 8: %d", modulusBitLen)
+			return keyError("key length wasn't a multiple of 8: %d", modulusBitLen)
 		}
 	}
 
@@ -294,19 +304,19 @@ func (policy *KeyPolicy) goodKeyRSA(key *rsa.PublicKey) (err error) {
 	// By only allowing one exponent, which fits these constraints, we satisfy
 	// these requirements.
 	if key.E != 65537 {
-		return berrors.MalformedError("key exponent must be 65537")
+		return keyError("key exponent must be 65537")
 	}
 
 	// The modulus SHOULD also have the following characteristics: an odd
 	// number, not the power of a prime, and have no factors smaller than 752.
 	// TODO: We don't yet check for "power of a prime."
 	if checkSmallPrimes(modulus) {
-		return berrors.MalformedError("key divisible by small prime")
+		return keyError("key divisible by small prime")
 	}
 	// Check for weak keys generated by Infineon hardware
 	// (see https://crocs.fi.muni.cz/public/papers/rsa_ccs17)
 	if rocacheck.IsWeak(key) {
-		return berrors.MalformedError("key generated by vulnerable Infineon-based hardware")
+		return keyError("key generated by vulnerable Infineon-based hardware")
 	}
 
 	return nil

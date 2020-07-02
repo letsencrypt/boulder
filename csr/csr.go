@@ -33,7 +33,7 @@ var goodSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 }
 
 var (
-	invalidPubKey        = berrors.BadPublicKeyError("invalid public key in CSR")
+	invalidPubKey        = berrors.BadCSRError("invalid public key in CSR")
 	unsupportedSigAlg    = berrors.BadCSRError("signature algorithm not supported")
 	invalidSig           = berrors.BadCSRError("invalid signature on CSR")
 	invalidEmailPresent  = berrors.BadCSRError("CSR contains one or more email address fields")
@@ -52,7 +52,12 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 		return invalidPubKey
 	}
 	if err := keyPolicy.GoodKey(ctx, key); err != nil {
-		return berrors.BadPublicKeyError("invalid public key in CSR: %s", err)
+		switch e := err.(type) {
+		case goodkey.KeyError:
+			return berrors.BadCSRError("invalid public key in CSR: %w", e)
+		default:
+			return berrors.InternalServerError("error checking key validity: %s", e)
+		}
 	}
 	if !goodSignatureAlgorithms[csr.SignatureAlgorithm] {
 		return unsupportedSigAlg
