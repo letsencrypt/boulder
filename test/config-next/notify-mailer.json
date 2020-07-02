@@ -7,8 +7,8 @@
     "dbConnectFile": "test/secrets/mailer_dburl",
     "maxDBConns": 10
   },
-   "syslog": {
+  "syslog": {
     "stdoutLevel": 7,
     "syslogLevel": 7
-   }
+  }
 }

@@ -26,6 +26,7 @@
       "timeout": "15s"
     },
     "features": {
+      "StoreIssuerInfo": true
     }
   },
 
