@@ -2,9 +2,9 @@ package sa
 
 import (
 	"context"
+	"net"
 	"strings"
 	"time"
-	"net"
 
 	"github.com/letsencrypt/boulder/db"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
