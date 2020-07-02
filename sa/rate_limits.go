@@ -16,7 +16,7 @@ func baseDomain(name string) string {
 
 	//handling for ip address
 	if ip := net.ParseIP(name); ip != nil {
-		// ipv4 just use as and if ipv6 trimed to /48
+		// ipv4 just use as and if ipv6 trimmed to /48
 		if ip.To4() == nil {
 			ip = append(ip[:4], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 		}
