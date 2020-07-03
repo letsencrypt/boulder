@@ -28,7 +28,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
-	"github.com/letsencrypt/boulder/reloader"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -181,7 +180,6 @@ type ValidationAuthorityImpl struct {
 	clk                clock.Clock
 	remoteVAs          []RemoteVA
 	maxRemoteFailures  int
-	multiVAPolicy      *MultiVAPolicy
 	accountURIPrefixes []string
 	singleDialTimeout  time.Duration
 
@@ -234,17 +232,6 @@ func NewValidationAuthorityImpl(
 		// used for the DialContext operations that take place during an
 		// HTTP-01 challenge validation.
 		singleDialTimeout: 10 * time.Second,
-	}
-
-	// if a multiVAPolicyFile was specified then set up a live reloader and
-	// a MultiVAPolicy instance for the VA to refer to.
-	if multiVAPolicyFile != "" {
-		policy := new(MultiVAPolicy)
-		va.multiVAPolicy = policy
-		_, err := reloader.New(multiVAPolicyFile, policy.LoadPolicy, va.multiVAPolicyLoadError)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	return va, nil
@@ -681,14 +668,8 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 				remoteResults,
 				len(va.remoteVAs))
 
-			// We consider the multi VA result skippable even though we are enforcing
-			// multi VA if the domain or the account has multi-VA disabled by policy.
-			skippable := !va.multiVAPolicy.EnabledDomain(domain) ||
-				!va.multiVAPolicy.EnabledAccount(authz.RegistrationID)
-
-			// If the remote result was a non-nil problem and the domain/acct aren't
-			// skippable then fail the validation
-			if remoteProb != nil && !skippable {
+			// If the remote result was a non-nil problem then fail the validation
+			if remoteProb != nil {
 				prob = remoteProb
 				challenge.Status = core.StatusInvalid
 				challenge.Error = remoteProb
