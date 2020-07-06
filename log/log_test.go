@@ -342,7 +342,7 @@ func TestStdoutFailure(t *testing.T) {
 	log.AuditInfo("This should cause a panic, stdout is closed!")
 }
 
-func TestLogAtLevelRemovesNewlines(t *testing.T) {
+func TestLogAtLevelEscapesNewlines(t *testing.T) {
 	var buf bytes.Buffer
 	w := &bothWriter{nil, 6, 0, clock.New(), &buf}
 	w.logAtLevel(6, "foo\nbar")
