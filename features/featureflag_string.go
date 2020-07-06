@@ -16,25 +16,25 @@ func _() {
 	_ = x[ParallelCheckFailedValidation-5]
 	_ = x[DeleteUnusedChallenges-6]
 	_ = x[BlockedKeyTable-7]
-	_ = x[CAAValidationMethods-8]
-	_ = x[CAAAccountURI-9]
-	_ = x[EnforceMultiVA-10]
-	_ = x[MultiVAFullResults-11]
-	_ = x[MandatoryPOSTAsGET-12]
-	_ = x[AllowV1Registration-13]
-	_ = x[V1DisableNewValidations-14]
-	_ = x[PrecertificateRevocation-15]
-	_ = x[StripDefaultSchemePort-16]
-	_ = x[StoreIssuerInfo-17]
-	_ = x[StoreKeyHashes-18]
+	_ = x[StoreKeyHashes-8]
+	_ = x[CAAValidationMethods-9]
+	_ = x[CAAAccountURI-10]
+	_ = x[EnforceMultiVA-11]
+	_ = x[MultiVAFullResults-12]
+	_ = x[MandatoryPOSTAsGET-13]
+	_ = x[AllowV1Registration-14]
+	_ = x[V1DisableNewValidations-15]
+	_ = x[PrecertificateRevocation-16]
+	_ = x[StripDefaultSchemePort-17]
+	_ = x[StoreIssuerInfo-18]
 	_ = x[StoreRevokerInfo-19]
 	_ = x[RestrictRSAKeySizes-20]
 	_ = x[FasterNewOrdersRateLimit-21]
 }
 
-const _FeatureFlag_name = "unusedWriteIssuedNamesPrecertHeadNonceStatusOKRemoveWFE2AccountIDCheckRenewalFirstParallelCheckFailedValidationDeleteUnusedChallengesBlockedKeyTableCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationV1DisableNewValidationsPrecertificateRevocationStripDefaultSchemePortStoreIssuerInfoStoreKeyHashesStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimit"
+const _FeatureFlag_name = "unusedWriteIssuedNamesPrecertHeadNonceStatusOKRemoveWFE2AccountIDCheckRenewalFirstParallelCheckFailedValidationDeleteUnusedChallengesBlockedKeyTableStoreKeyHashesCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationV1DisableNewValidationsPrecertificateRevocationStripDefaultSchemePortStoreIssuerInfoStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimit"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 29, 46, 65, 82, 111, 133, 148, 168, 181, 195, 213, 231, 250, 273, 297, 319, 334, 348, 364, 383, 407}
+var _FeatureFlag_index = [...]uint16{0, 6, 29, 46, 65, 82, 111, 133, 148, 162, 182, 195, 209, 227, 245, 264, 287, 311, 333, 348, 364, 383, 407}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

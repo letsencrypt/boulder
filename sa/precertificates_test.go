@@ -9,7 +9,6 @@ import (
 
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
@@ -108,13 +107,10 @@ func TestAddPrecertificateKeyHash(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 	reg := satest.CreateWorkingRegistration(t, sa)
-	err := features.Set(map[string]bool{"StoreKeyHashes": true})
-	test.AssertNotError(t, err, "failed to set features")
-	defer features.Reset()
 
 	serial, testCert := test.ThrowAwayCert(t, 1)
 	issued := testCert.NotBefore.UnixNano()
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    testCert.Raw,
 		RegID:  &reg.ID,
 		Ocsp:   []byte{1, 2, 3},
