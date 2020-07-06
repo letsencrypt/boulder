@@ -16,7 +16,6 @@
         "admin-revoker.boulder",
         "ca.boulder",
         "expiration-mailer.boulder",
-        "ocsp-updater.boulder",
         "orphan-finder.boulder",
         "ra.boulder",
         "sa.boulder",
