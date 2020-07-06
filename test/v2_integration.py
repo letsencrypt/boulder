@@ -1320,9 +1320,9 @@ def ocsp_exp_unauth_setup():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
 
-    # Since we're pretending to be in the past, we'll get an expired OCSP
-    # response. Just check that it exists; don't do the full verification (which
-    # would fail).
+    # Since our servers are pretending to be in the past, but the openssl cli
+    # isn't, we'll get an expired OCSP response. Just check that it exists;
+    # don't do the full verification (which would fail).
     check_ocsp_basic_oid(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
     global expired_cert_name
     expired_cert_name = cert_file_pem
@@ -1340,7 +1340,7 @@ def test_ocsp_exp_unauth():
                 break
         except:
             pass
-        if tries is 5:
+        if tries >= 5:
             raise(Exception("timed out waiting for unauthorized OCSP response for expired certificate"))
         tries += 1
         time.sleep(0.25)
@@ -1661,3 +1661,46 @@ def test_auth_deactivation():
     resp = client.deactivate_authorization(order.authorizations[0])
     if resp.body.status is not messages.STATUS_DEACTIVATED:
         raise Exception("unexpected authorization status")
+
+revoked_cert_file = ""
+@register_twenty_days_ago
+def ocsp_resigning_setup():
+    """Issue and then revoke a cert in the past.
+
+    Useful setup for test_ocsp_resigning, which needs to check that the
+    revocation reason is still correctly set after re-signing and old OCSP
+    response.
+    """
+    client = chisel2.make_client(None)
+    order = chisel2.auth_and_issue([random_domain()], client=client)
+
+    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    reset_akamai_purges()
+    client.revoke(josepy.ComparableX509(cert), 0)
+
+    cert_file_pem = os.path.join(tempdir, "revokeme.pem")
+    with open(cert_file_pem, "w") as f:
+        f.write(OpenSSL.crypto.dump_certificate(
+            OpenSSL.crypto.FILETYPE_PEM, cert).decode())
+
+    # Since our servers are pretending to be in the past, but the openssl cli
+    # isn't, we'll get an expired OCSP response. Just check that it exists;
+    # don't do the full verification (which would fail).
+    check_ocsp_basic_oid(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
+    global revoked_cert_file
+    revoked_cert_file = cert_file_pem
+
+def test_ocsp_resigning():
+    """Check that, after re-signing an OCSP, the reason is still set."""
+    if revoked_cert_file == "":
+        raise Exception("ocsp_resigning_setup didn't run")
+
+    tries = 0
+    while tries < 5:
+        output = verify_ocsp(revoked_cert_file, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+        if 'WARNING: Status times invalid' not in output:
+            break
+        tries += 1
+        time.sleep(0.25)
+    else:
+        raise(Exception("timed out waiting for re-signed OCSP response for revoked certificate"))

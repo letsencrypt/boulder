@@ -99,6 +99,7 @@ def verify_ocsp(cert_file, issuer_file, url, status):
     if not re.search("%s: %s" % (cert_file, status), verify_output):
         print(verify_output)
         raise(Exception("OCSP response wasn't '%s'" % status))
+    return verify_output
 
 def reset_akamai_purges():
     requests.post("http://localhost:6789/debug/reset-purges", data="{}")
