@@ -44,9 +44,16 @@ func lineValid(text string) error {
 	checksum := fields[5]
 	// Reconstruct just the message portion of the line
 	line := strings.Join(fields[6:], " ")
+
+	const errorPrefix = "invalid checksum"
+	// If we are fed our own output, treat it as always valid. This
+	// prevents runaway scenarios where we generate ever-longer output.
+	if strings.Contains(text, errorPrefix) {
+		return nil
+	}
 	// Check the extracted checksum against the computed checksum
 	if computedChecksum := blog.LogLineChecksum(line); checksum != computedChecksum {
-		return fmt.Errorf("invalid checksum (expected %q, got %q)", computedChecksum, checksum)
+		return fmt.Errorf("%s (expected %q, got %q)", errorPrefix, computedChecksum, checksum)
 	}
 	return nil
 }
@@ -155,17 +162,11 @@ func main() {
 					logger.Errf("error while tailing %s: %s", t.Filename, err)
 					continue
 				}
-				const prefix = "log validator error"
-				// Do not consume our own output. This prevents runaway scenarios in
-				// case of a problem that causes all log lines to be invalid.
-				if strings.Contains(line.Text, prefix) {
-					continue
-				}
 				if err := lineValid(line.Text); err != nil {
 					lineCounter.WithLabelValues(t.Filename, "bad").Inc()
 					select {
 					case <-outputLimiter.C:
-						logger.Errf("%s %s: %s %q", prefix, t.Filename, err, line.Text)
+						logger.Errf("%s: %s %q", t.Filename, err, line.Text)
 					default:
 					}
 				} else {
