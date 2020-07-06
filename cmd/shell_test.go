@@ -198,7 +198,7 @@ func TestReadConfigFile(t *testing.T) {
 func TestLogWriter(t *testing.T) {
 	mock := blog.UseMock()
 	lw := logWriter{mock}
-	_ = lw.Write([]byte("hi\n"))
+	_, _ = lw.Write([]byte("hi\n"))
 	lines := mock.GetAllMatching(".*")
 	test.AssertEquals(t, len(lines), 1)
 	test.AssertEquals(t, lines[0], "INFO: hi")
