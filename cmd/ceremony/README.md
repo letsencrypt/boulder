@@ -10,6 +10,7 @@ ceremony --config path/to/config.yml
 * `root` - generates a signing key on HSM and creates a self-signed root certificate that uses the generated key, outputting a PEM public key, and a PEM certificate
 * `intermediate` - creates a intermediate certificate and signs it using a signing key already on a HSM, outputting a PEM certificate
 * `ocsp-signer` - creates a delegated OCSP signing certificate and signs it using a signing key already on a HSM, outputting a PEM certificate
+* `crl-signer` - creates a delegated CRL signing certificate and signs it using a signing key already on a HSM, outputting a PEM certificate
 * `key` - generates a signing key on HSM, outputting a PEM public key
 * `ocsp-response` - creates a OCSP response for the provided certificate and signs it using a signing key already on a HSM, outputting a base64 encoded response
 
@@ -177,6 +178,56 @@ certificate-profile:
 ```
 
 This config generates a delegated OCSP signing certificate signed by a key in the HSM, identified by the object label `intermediate signing key` and the object ID `ffff`. The subject key used is taken from `/home/user/ocsp-signer-signing-pub.pem` and the issuer is `/home/user/intermediate-cert.pem`, the resulting certificate is written to `/home/user/ocsp-signer-cert.pem`.
+
+### CRL Signing Certificate ceremony
+
+- `ceremony-type`: string describing the ceremony type, `crl-signer`.
+- `pkcs11`: object containing PKCS#11 related fields.
+    | Field | Description |
+    | --- | --- |
+    | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
+    | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
+    | `signing-key-slot` | Specifies which HSM object slot the signing key is in. |
+    | `signing-key-label` | Specifies the HSM object label for the signing key. |
+    | `signing-key-id` | Specifies the HSM object ID for the signing key. |
+- `inputs`: object containing paths for inputs
+    | Field | Description |
+    | --- | --- |
+    | `public-key-path` | Path to PEM subject public key for certificate. |
+    | `issuer-certificate-path` | Path to PEM issuer certificate. |
+- `outputs`: object containing paths to write outputs.
+    | Field | Description |
+    | --- | --- |
+    | `certificate-path` | Path to store signed PEM certificate. |
+- `certificate-profile`: object containing profile for certificate to generate. Fields are documented [below](#Certificate-profile-format). The key-usages, ocsp-url, and crl-url fields must not be set.
+
+When generating a CRL signing certificate the key usages field will be set to just CRL Sign.
+
+Example:
+
+```yaml
+ceremony-type: crl-signer
+pkcs11:
+    module: /usr/lib/opensc-pkcs11.so
+    signing-key-slot: 0
+    signing-key-label: intermediate signing key
+    signing-key-id: ffff
+inputs:
+    public-key-path: /home/user/crl-signer-signing-pub.pem
+    issuer-certificate-path: /home/user/intermediate-cert.pem
+outputs:
+    certificate-path: /home/user/crl-signer-cert.pem
+certificate-profile:
+    signature-algorithm: ECDSAWithSHA384
+    common-name: CA CRL signer
+    organization: good guys
+    country: US
+    not-before: 2020-01-01 12:00:00
+    not-after: 2040-01-01 12:00:00
+    issuer-url:  http://good-guys.com/root
+```
+
+This config generates a delegated CRL signing certificate signed by a key in the HSM, identified by the object label `intermediate signing key` and the object ID `ffff`. The subject key used is taken from `/home/user/crl-signer-signing-pub.pem` and the issuer is `/home/user/intermediate-cert.pem`, the resulting certificate is written to `/home/user/crl-signer-cert.pem`.
 
 ### Key ceremony
 

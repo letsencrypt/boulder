@@ -298,7 +298,7 @@ The current Boulder release process is described in the [boulder release process
 repository](https://github.com/letsencrypt/boulder-release-process). It includes
 [an example](https://github.com/letsencrypt/boulder-release-process#example) git
 history showing a regular release being tagged, a hotfix being tagged from
-a clean master, and a hotfix being tagged from a release branch because master
+a clean main, and a hotfix being tagged from a release branch because main
 was dirty.
 
 Previously we used dedicated
@@ -361,12 +361,12 @@ repository for a refactoring to reduce the number of transitive dependencies.
 # Go Version
 
 The [Boulder development
-environment](https://github.com/letsencrypt/boulder/blob/master/README.md#setting-up-boulder)
+environment](https://github.com/letsencrypt/boulder/blob/main/README.md#setting-up-boulder)
 does not use the Go version installed on the host machine, and instead uses a
 Go environment baked into a "boulder-tools" Docker image. We build a separate
 boulder-tools container for each supported Go version. Please see [the
 Boulder-tools
-README](https://github.com/letsencrypt/boulder/blob/master/test/boulder-tools/README.md)
+README](https://github.com/letsencrypt/boulder/blob/main/test/boulder-tools/README.md)
 for more information on upgrading Go versions.
 
 # ACME Protocol Divergences
@@ -375,7 +375,7 @@ While Boulder attempts to implement the ACME specification as strictly as
 possible there are places at which we will diverge from the letter of the
 specification for various reasons. We detail these divergences (for both the
 V1 and V2 API) in the [ACME divergences
-doc](https://github.com/letsencrypt/boulder/blob/master/docs/acme-divergences.md).
+doc](https://github.com/letsencrypt/boulder/blob/main/docs/acme-divergences.md).
 
 ## Problems or questions?
 

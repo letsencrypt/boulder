@@ -521,7 +521,12 @@ func main() {
 		if err != nil {
 			log.Fatalf("ocsp response ceremony failed: %s", err)
 		}
+	case "crl-signer":
+		err = intermediateCeremony(configBytes, crlCert)
+		if err != nil {
+			log.Fatalf("crl signer ceremony failed: %s", err)
+		}
 	default:
-		log.Fatalf("unknown ceremony-type, must be one of: root, intermediate, ocsp-signer, key")
+		log.Fatalf("unknown ceremony-type, must be one of: root, intermediate, ocsp-signer, crl-signer, key, ocsp-response")
 	}
 }

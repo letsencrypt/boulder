@@ -16,8 +16,8 @@ primary validation). Of course this is a development environment so both the
 primary and remote VAs are all running on one host.
 
 The primary and remote VAs are both the same piece of software, the `boulder-va`
-service ([cmd here](https://github.com/letsencrypt/boulder/tree/master/cmd/boulder-va),
-[package here](https://github.com/letsencrypt/boulder/tree/master/va)).
+service ([cmd here](https://github.com/letsencrypt/boulder/tree/main/cmd/boulder-va),
+[package here](https://github.com/letsencrypt/boulder/tree/main/va)).
 The boulder-ra uses [the same RPC interface](https://github.com/letsencrypt/boulder/blob/ea231adc36746cce97f860e818c2cdf92f060543/va/proto/va.proto#L8-L10)
 to ask for a primary validation as the primary VA uses to ask a remote VA for a
 confirmation validation.

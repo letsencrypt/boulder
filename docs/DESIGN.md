@@ -23,7 +23,7 @@ A couple of notes:
   components.  These calls are done via [gRPC](https://grpc.io/).
 
 * In various places the Boulder implementation of ACME diverges from the current
-  RFC draft. These divergences are documented in [docs/acme-divergences.md](https://github.com/letsencrypt/boulder/blob/master/docs/acme-divergences.md).
+  RFC draft. These divergences are documented in [docs/acme-divergences.md](https://github.com/letsencrypt/boulder/blob/main/docs/acme-divergences.md).
 
 * We focus on the primary ACME operations and do not include all possible
   interactions (e.g. account key change, authorization deactivation)

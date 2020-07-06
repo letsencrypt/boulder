@@ -1393,7 +1393,7 @@ def test_blocked_key_cert():
     try:
         order = client.poll_and_finalize(order)
     except acme_errors.Error as e:
-        if e.typ != "urn:ietf:params:acme:error:badPublicKey":
+        if e.typ != "urn:ietf:params:acme:error:badCSR":
             raise(Exception("problem did not have correct error type, had {0}".format(e.typ)))
         if e.detail != "Error finalizing order :: invalid public key in CSR: public key is forbidden":
             raise(Exception("problem did not have correct error detail, had {0}".format(e.detail)))

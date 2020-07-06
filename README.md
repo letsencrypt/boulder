@@ -1,7 +1,7 @@
 # Boulder - An ACME CA
 
-[![Build Status](https://travis-ci.com/letsencrypt/boulder.svg?branch=master)](https://travis-ci.com/letsencrypt/boulder)
-[![Coverage Status](https://coveralls.io/repos/github/letsencrypt/boulder/badge.svg?branch=master)](https://coveralls.io/github/letsencrypt/boulder?branch=master)
+[![Build Status](https://travis-ci.com/letsencrypt/boulder.svg?branch=main)](https://travis-ci.com/letsencrypt/boulder)
+[![Coverage Status](https://coveralls.io/repos/github/letsencrypt/boulder/badge.svg?branch=main)](https://coveralls.io/github/letsencrypt/boulder?branch=main)
 
 This is an implementation of an ACME-based CA. The [ACME
 protocol](https://github.com/ietf-wg-acme/acme/) allows the CA to
@@ -83,7 +83,7 @@ documentation](http://www.grpc.io/docs/).
 
 The full details of how the various ACME operations happen in Boulder are
 laid out in
-[DESIGN.md](https://github.com/letsencrypt/boulder/blob/master/docs/DESIGN.md).
+[DESIGN.md](https://github.com/letsencrypt/boulder/blob/main/docs/DESIGN.md).
 
 ## Setting up Boulder
 
@@ -221,7 +221,7 @@ the following URLs:
 To access the HTTPS versions of the endpoints you will need to configure your
 ACME client software to use a CA truststore that contains the
 `test/wfe-tls/minica.pem` CA certificate. See
-[`test/PKI.md`](https://github.com/letsencrypt/boulder/blob/master/test/PKI.md)
+[`test/PKI.md`](https://github.com/letsencrypt/boulder/blob/main/test/PKI.md)
 for more information.
 
 Your local Boulder instance uses a fake DNS resolver that returns 127.0.0.1
@@ -263,7 +263,7 @@ fit we're happy to answer questions to the best of our ability.
 ## Contributing
 
 Please take a look at
-[CONTRIBUTING.md](https://github.com/letsencrypt/boulder/blob/master/CONTRIBUTING.md)
+[CONTRIBUTING.md](https://github.com/letsencrypt/boulder/blob/main/CONTRIBUTING.md)
 for our guidelines on submitting patches, code review process, code of conduct,
 and various other tips related to working on the codebase.
 
@@ -271,5 +271,5 @@ and various other tips related to working on the codebase.
 
 This project is licensed under the Mozilla Public License 2.0, the full text
 of which can be found in the
-[LICENSE.txt](https://github.com/letsencrypt/boulder/blob/master/LICENSE.txt)
+[LICENSE.txt](https://github.com/letsencrypt/boulder/blob/main/LICENSE.txt)
 file.
