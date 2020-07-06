@@ -60,7 +60,6 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *db.WrappedMap, c
 		fc,
 		dbMap,
 		&mockOCSP{},
-		sa,
 		nil,
 		OCSPUpdaterConfig{
 			OldOCSPBatchSize:         1,
