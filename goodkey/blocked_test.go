@@ -3,12 +3,12 @@ package goodkey
 import (
 	"context"
 	"crypto"
+	"errors"
 	"io/ioutil"
 	"os"
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
-	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/web"
 	yaml "gopkg.in/yaml.v2"
@@ -98,6 +98,6 @@ func TestBlockedKeys(t *testing.T) {
 	for _, k := range blockedKeys {
 		err := testingPolicy.GoodKey(context.Background(), k)
 		test.AssertError(t, err, "test key was not blocked by key policy with block list")
-		test.Assert(t, berrors.Is(err, berrors.BadPublicKey), "err was not BadPublicKey error")
+		test.Assert(t, errors.Is(err, ErrBadKey), "err was not goodkey.ErrBadKey")
 	}
 }
