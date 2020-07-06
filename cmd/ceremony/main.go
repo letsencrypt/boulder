@@ -317,7 +317,9 @@ func (cc crlConfig) validate() error {
 	if cc.CRLProfile.NextUpdate == "" {
 		return errors.New("crl-profile.next-update is required")
 	}
-	// CRL Number cannot be tested because 0 is a valid CRL number
+	if cc.CRLProfile.Number == 0 {
+		return errors.New("crl-profile.number must be non-zero")
+	}
 	for _, rc := range cc.CRLProfile.RevokedCertificates {
 		if rc.CertificatePath == "" {
 			return errors.New("crl-profile.revoked-certificates.certificate-path is required")

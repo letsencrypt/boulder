@@ -931,6 +931,46 @@ func TestCRLConfig(t *testing.T) {
 			expectedError: "crl-profile.next-update is required",
 		},
 		{
+			name: "no crl-profile.number",
+			config: crlConfig{
+				PKCS11: struct {
+					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					SigningKeyID string `yaml:"signing-key-id"`
+				}{
+					Module:       "module",
+					SigningLabel: "label",
+					SigningKeyID: "id",
+				},
+				Inputs: struct {
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					IssuerCertificatePath: "path",
+				},
+				Outputs: struct {
+					CRLPath string `yaml:"crl-path"`
+				}{
+					CRLPath: "path",
+				},
+				CRLProfile: struct {
+					ThisUpdate          string `yaml:"this-update"`
+					NextUpdate          string `yaml:"next-update"`
+					Number              int64  `yaml:"number"`
+					RevokedCertificates []struct {
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
+					} `yaml:"revoked-certificates"`
+				}{
+					ThisUpdate: "this-update",
+					NextUpdate: "next-update",
+				},
+			},
+			expectedError: "crl-profile.number must be non-zero",
+		},
+		{
 			name: "no crl-profile.revoked-certificates.certificate-path",
 			config: crlConfig{
 				PKCS11: struct {
@@ -966,6 +1006,7 @@ func TestCRLConfig(t *testing.T) {
 				}{
 					ThisUpdate: "this-update",
 					NextUpdate: "next-update",
+					Number:     1,
 					RevokedCertificates: []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
@@ -1011,6 +1052,7 @@ func TestCRLConfig(t *testing.T) {
 				}{
 					ThisUpdate: "this-update",
 					NextUpdate: "next-update",
+					Number:     1,
 					RevokedCertificates: []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
@@ -1058,6 +1100,7 @@ func TestCRLConfig(t *testing.T) {
 				}{
 					ThisUpdate: "this-update",
 					NextUpdate: "next-update",
+					Number:     1,
 					RevokedCertificates: []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
@@ -1106,6 +1149,7 @@ func TestCRLConfig(t *testing.T) {
 				}{
 					ThisUpdate: "this-update",
 					NextUpdate: "next-update",
+					Number:     1,
 					RevokedCertificates: []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
