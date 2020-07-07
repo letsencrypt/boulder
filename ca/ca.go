@@ -101,7 +101,6 @@ type certificateStorage interface {
 	GetCertificate(context.Context, string) (core.Certificate, error)
 	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error)
 	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*corepb.Empty, error)
-	SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error)
 }
 
 type certificateType string
