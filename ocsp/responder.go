@@ -151,7 +151,7 @@ type Responder struct {
 }
 
 // NewResponder instantiates a Responder with the give Source.
-func NewResponder(source Source, stats prometheus.Registerer) *Responder {
+func NewResponder(source Source, stats prometheus.Registerer, logger blog.Logger) *Responder {
 	requestSizes := prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:    "ocsp_request_sizes",
@@ -174,6 +174,7 @@ func NewResponder(source Source, stats prometheus.Registerer) *Responder {
 		responseTypes: responseTypes,
 		requestSizes:  requestSizes,
 		clk:           clock.New(),
+		log:           logger,
 	}
 }
 
