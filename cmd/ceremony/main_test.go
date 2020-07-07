@@ -782,3 +782,395 @@ func TestOCSPRespConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestCRLConfig(t *testing.T) {
+	cases := []struct {
+		name          string
+		config        crlConfig
+		expectedError string
+	}{
+		{
+			name:          "no pkcs11.module",
+			config:        crlConfig{},
+			expectedError: "pkcs11.module is required",
+		},
+		{
+			name: "no pkcs11.signing-key-label",
+			config: crlConfig{
+				PKCS11: struct {
+					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					SigningKeyID string `yaml:"signing-key-id"`
+				}{
+					Module: "module",
+				},
+			},
+			expectedError: "pkcs11.signing-key-label is required",
+		},
+		{
+			name: "no pkcs11.key-id",
+			config: crlConfig{
+				PKCS11: struct {
+					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					SigningKeyID string `yaml:"signing-key-id"`
+				}{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+			},
+			expectedError: "pkcs11.signing-key-id is required",
+		},
+		{
+			name: "no inputs.issuer-certificate-path",
+			config: crlConfig{
+				PKCS11: struct {
+					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					SigningKeyID string `yaml:"signing-key-id"`
+				}{
+					Module:       "module",
+					SigningLabel: "label",
+					SigningKeyID: "id",
+				},
+			},
+			expectedError: "inputs.issuer-certificate-path is required",
+		},
+		{
+			name: "no outputs.crl-path",
+			config: crlConfig{
+				PKCS11: struct {
+					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					SigningKeyID string `yaml:"signing-key-id"`
+				}{
+					Module:       "module",
+					SigningLabel: "label",
+					SigningKeyID: "id",
+				},
+				Inputs: struct {
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					IssuerCertificatePath: "path",
+				},
+			},
+			expectedError: "outputs.crl-path is required",
+		},
+		{
+			name: "no crl-profile.this-update",
+			config: crlConfig{
+				PKCS11: struct {
+					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					SigningKeyID string `yaml:"signing-key-id"`
+				}{
+					Module:       "module",
+					SigningLabel: "label",
+					SigningKeyID: "id",
+				},
+				Inputs: struct {
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					IssuerCertificatePath: "path",
+				},
+				Outputs: struct {
+					CRLPath string `yaml:"crl-path"`
+				}{
+					CRLPath: "path",
+				},
+			},
+			expectedError: "crl-profile.this-update is required",
+		},
+		{
+			name: "no crl-profile.next-update",
+			config: crlConfig{
+				PKCS11: struct {
+					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					SigningKeyID string `yaml:"signing-key-id"`
+				}{
+					Module:       "module",
+					SigningLabel: "label",
+					SigningKeyID: "id",
+				},
+				Inputs: struct {
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					IssuerCertificatePath: "path",
+				},
+				Outputs: struct {
+					CRLPath string `yaml:"crl-path"`
+				}{
+					CRLPath: "path",
+				},
+				CRLProfile: struct {
+					ThisUpdate          string `yaml:"this-update"`
+					NextUpdate          string `yaml:"next-update"`
+					Number              int64  `yaml:"number"`
+					RevokedCertificates []struct {
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
+					} `yaml:"revoked-certificates"`
+				}{
+					ThisUpdate: "this-update",
+				},
+			},
+			expectedError: "crl-profile.next-update is required",
+		},
+		{
+			name: "no crl-profile.number",
+			config: crlConfig{
+				PKCS11: struct {
+					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					SigningKeyID string `yaml:"signing-key-id"`
+				}{
+					Module:       "module",
+					SigningLabel: "label",
+					SigningKeyID: "id",
+				},
+				Inputs: struct {
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					IssuerCertificatePath: "path",
+				},
+				Outputs: struct {
+					CRLPath string `yaml:"crl-path"`
+				}{
+					CRLPath: "path",
+				},
+				CRLProfile: struct {
+					ThisUpdate          string `yaml:"this-update"`
+					NextUpdate          string `yaml:"next-update"`
+					Number              int64  `yaml:"number"`
+					RevokedCertificates []struct {
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
+					} `yaml:"revoked-certificates"`
+				}{
+					ThisUpdate: "this-update",
+					NextUpdate: "next-update",
+				},
+			},
+			expectedError: "crl-profile.number must be non-zero",
+		},
+		{
+			name: "no crl-profile.revoked-certificates.certificate-path",
+			config: crlConfig{
+				PKCS11: struct {
+					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					SigningKeyID string `yaml:"signing-key-id"`
+				}{
+					Module:       "module",
+					SigningLabel: "label",
+					SigningKeyID: "id",
+				},
+				Inputs: struct {
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					IssuerCertificatePath: "path",
+				},
+				Outputs: struct {
+					CRLPath string `yaml:"crl-path"`
+				}{
+					CRLPath: "path",
+				},
+				CRLProfile: struct {
+					ThisUpdate          string `yaml:"this-update"`
+					NextUpdate          string `yaml:"next-update"`
+					Number              int64  `yaml:"number"`
+					RevokedCertificates []struct {
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
+					} `yaml:"revoked-certificates"`
+				}{
+					ThisUpdate: "this-update",
+					NextUpdate: "next-update",
+					Number:     1,
+					RevokedCertificates: []struct {
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
+					}{{}},
+				},
+			},
+			expectedError: "crl-profile.revoked-certificates.certificate-path is required",
+		},
+		{
+			name: "no crl-profile.revoked-certificates.revocation-date",
+			config: crlConfig{
+				PKCS11: struct {
+					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					SigningKeyID string `yaml:"signing-key-id"`
+				}{
+					Module:       "module",
+					SigningLabel: "label",
+					SigningKeyID: "id",
+				},
+				Inputs: struct {
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					IssuerCertificatePath: "path",
+				},
+				Outputs: struct {
+					CRLPath string `yaml:"crl-path"`
+				}{
+					CRLPath: "path",
+				},
+				CRLProfile: struct {
+					ThisUpdate          string `yaml:"this-update"`
+					NextUpdate          string `yaml:"next-update"`
+					Number              int64  `yaml:"number"`
+					RevokedCertificates []struct {
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
+					} `yaml:"revoked-certificates"`
+				}{
+					ThisUpdate: "this-update",
+					NextUpdate: "next-update",
+					Number:     1,
+					RevokedCertificates: []struct {
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
+					}{{
+						CertificatePath: "path",
+					}},
+				},
+			},
+			expectedError: "crl-profile.revoked-certificates.revocation-date is required",
+		},
+		{
+			name: "no revocation reason",
+			config: crlConfig{
+				PKCS11: struct {
+					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					SigningKeyID string `yaml:"signing-key-id"`
+				}{
+					Module:       "module",
+					SigningLabel: "label",
+					SigningKeyID: "id",
+				},
+				Inputs: struct {
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					IssuerCertificatePath: "path",
+				},
+				Outputs: struct {
+					CRLPath string `yaml:"crl-path"`
+				}{
+					CRLPath: "path",
+				},
+				CRLProfile: struct {
+					ThisUpdate          string `yaml:"this-update"`
+					NextUpdate          string `yaml:"next-update"`
+					Number              int64  `yaml:"number"`
+					RevokedCertificates []struct {
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
+					} `yaml:"revoked-certificates"`
+				}{
+					ThisUpdate: "this-update",
+					NextUpdate: "next-update",
+					Number:     1,
+					RevokedCertificates: []struct {
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
+					}{{
+						CertificatePath: "path",
+						RevocationDate:  "date",
+					}},
+				},
+			},
+			expectedError: "crl-profile.revoked-certificates.revocation-reason is required",
+		},
+		{
+			name: "good",
+			config: crlConfig{
+				PKCS11: struct {
+					Module       string `yaml:"module"`
+					PIN          string `yaml:"pin"`
+					SigningSlot  uint   `yaml:"signing-key-slot"`
+					SigningLabel string `yaml:"signing-key-label"`
+					SigningKeyID string `yaml:"signing-key-id"`
+				}{
+					Module:       "module",
+					SigningLabel: "label",
+					SigningKeyID: "id",
+				},
+				Inputs: struct {
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					IssuerCertificatePath: "path",
+				},
+				Outputs: struct {
+					CRLPath string `yaml:"crl-path"`
+				}{
+					CRLPath: "path",
+				},
+				CRLProfile: struct {
+					ThisUpdate          string `yaml:"this-update"`
+					NextUpdate          string `yaml:"next-update"`
+					Number              int64  `yaml:"number"`
+					RevokedCertificates []struct {
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
+					} `yaml:"revoked-certificates"`
+				}{
+					ThisUpdate: "this-update",
+					NextUpdate: "next-update",
+					Number:     1,
+					RevokedCertificates: []struct {
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
+					}{{
+						CertificatePath:  "path",
+						RevocationDate:   "date",
+						RevocationReason: 1,
+					}},
+				},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.config.validate()
+			if err != nil && err.Error() != tc.expectedError {
+				t.Fatalf("Unexpected error, wanted: %q, got: %q", tc.expectedError, err)
+			} else if err == nil && tc.expectedError != "" {
+				t.Fatalf("validate didn't fail, wanted: %q", err)
+			}
+		})
+	}
+}
