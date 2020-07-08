@@ -857,8 +857,7 @@ def multiva_setup(client, guestlist):
     until the server is ready. The returned cleanup function should be used to
     stop the server. The first bounceFirst requests to the server will be sent
     to the real challtestsrv for a good answer, the rest will get a bad
-    answer. If no explicit testing domain is provided then one is randomly
-    chosen with random_domain().
+    answer. Domain name is randomly chosen with random_domain().
     """
     hostname = random_domain()
 
