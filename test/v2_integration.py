@@ -1662,7 +1662,32 @@ def test_auth_deactivation():
     if resp.body.status is not messages.STATUS_DEACTIVATED:
         raise Exception("unexpected authorization status")
 
+def get_ocsp_response_and_reason(cert_file, issuer_file, url):
+    """Returns the ocsp response bytes and revocation reason."""
+    ocsp_request = make_ocsp_req(cert_file, issuer_file)
+    responses = fetch_ocsp(ocsp_request, url)
+
+    # Verify all responses are the same
+    for resp in responses:
+        if resp != responses[0]:
+            raise(Exception("OCSP responses differed: %s vs %s" %(
+                base64.b64encode(responses[0]), base64.b64encode(resp))))
+    ocsp_response = responses[0]
+
+    ocsp_resp_file = os.path.join(tempdir, "ocsp.resp")
+    with open(ocsp_resp_file, "wb") as f:
+        f.write(ocsp_response)
+
+    cmd = "openssl ocsp -no_nonce -issuer %s -cert %s -respin %s" % (
+        issuer_file, cert_file, ocsp_resp_file)
+    output = subprocess.check_output(cmd, shell=True).decode()
+    m = re.search('Reason: (\w+)', output)
+    reason = m.group(1) if m is not None else ""
+    return bytearray(ocsp_response), reason
+
 revoked_cert_file = ""
+ocsp_response_bytes = None
+ocsp_response_reason = ""
 @register_twenty_days_ago
 def ocsp_resigning_setup():
     """Issue and then revoke a cert in the past.
@@ -1674,21 +1699,24 @@ def ocsp_resigning_setup():
     client = chisel2.make_client(None)
     order = chisel2.auth_and_issue([random_domain()], client=client)
 
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    cert = OpenSSL.crypto.load_certificate(
+        OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
     reset_akamai_purges()
-    client.revoke(josepy.ComparableX509(cert), 0)
+    # Revoke for reason 1: keyCompromise
+    client.revoke(josepy.ComparableX509(cert), 1)
 
     cert_file_pem = os.path.join(tempdir, "revokeme.pem")
     with open(cert_file_pem, "w") as f:
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
 
-    # Since our servers are pretending to be in the past, but the openssl cli
-    # isn't, we'll get an expired OCSP response. Just check that it exists;
-    # don't do the full verification (which would fail).
-    check_ocsp_basic_oid(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
-    global revoked_cert_file
+    global revoked_cert_file, ocsp_response_bytes, ocsp_response_reason
     revoked_cert_file = cert_file_pem
+    ocsp_response_bytes, ocsp_response_reason = (
+        get_ocsp_response_and_reason(
+            cert_file_pem,
+            "/tmp/intermediate-cert-rsa-a.pem",
+            "http://localhost:4002"))
 
 def test_ocsp_resigning():
     """Check that, after re-signing an OCSP, the reason is still set."""
@@ -1697,10 +1725,21 @@ def test_ocsp_resigning():
 
     tries = 0
     while tries < 5:
-        output = verify_ocsp(revoked_cert_file, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
-        if 'WARNING: Status times invalid' not in output:
+        resp, reason = get_ocsp_response_and_reason(
+            revoked_cert_file,
+            "/tmp/intermediate-cert-rsa-a.pem",
+            "http://localhost:4002")
+        if resp != ocsp_response_bytes:
             break
         tries += 1
         time.sleep(0.25)
     else:
-        raise(Exception("timed out waiting for re-signed OCSP response for revoked certificate"))
+        raise(Exception(
+            "timed out waiting for re-signed OCSP response for certificate"))
+
+    if reason != ocsp_response_reason:
+        raise(Exception(
+            "re-signed ocsp response has different reason %s expected %s" % (
+                reason, ocsp_response_reason)))
+    if reason != "keyCompromise":
+        raise(Exception("re-signed ocsp response has wrong reason %s" % reason))
