@@ -1331,7 +1331,7 @@ def test_ocsp_exp_unauth():
     tries = 0
     if expired_cert_name == "":
         raise Exception("ocsp_exp_unauth_setup didn't run")
-    while True:
+    while tries < 5:
         try:
             verify_ocsp(expired_cert_name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "XXX")
             raise(Exception("Unexpected return from verify_ocsp"))
@@ -1340,10 +1340,10 @@ def test_ocsp_exp_unauth():
                 break
         except:
             pass
-        if tries >= 5:
-            raise(Exception("timed out waiting for unauthorized OCSP response for expired certificate"))
         tries += 1
         time.sleep(0.25)
+    else:
+        raise(Exception("timed out waiting for unauthorized OCSP response for expired certificate"))
 
 def test_blocked_key_account():
     # Only config-next has a blocked keys file configured.
@@ -1685,7 +1685,6 @@ def get_ocsp_response_and_reason(cert_file, issuer_file, url):
     reason = m.group(1) if m is not None else ""
     return bytearray(ocsp_response), reason
 
-revoked_cert_file = ""
 ocsp_response_bytes = None
 ocsp_response_reason = ""
 @register_twenty_days_ago
@@ -1705,41 +1704,34 @@ def ocsp_resigning_setup():
     # Revoke for reason 1: keyCompromise
     client.revoke(josepy.ComparableX509(cert), 1)
 
-    cert_file_pem = os.path.join(tempdir, "revokeme.pem")
-    with open(cert_file_pem, "w") as f:
+    cert_file = os.path.join(tempdir, "compromised.pem")
+    with open(cert_file, "w") as f:
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
 
-    global revoked_cert_file, ocsp_response_bytes, ocsp_response_reason
-    revoked_cert_file = cert_file_pem
-    ocsp_response_bytes, ocsp_response_reason = (
-        get_ocsp_response_and_reason(
-            cert_file_pem,
-            "/tmp/intermediate-cert-rsa-a.pem",
-            "http://localhost:4002"))
+    global ocsp_response_bytes, ocsp_response_reason
+    ocsp_response_bytes, ocsp_response_reason = get_ocsp_response_and_reason(
+        cert_file, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
 
 def test_ocsp_resigning():
     """Check that, after re-signing an OCSP, the reason is still set."""
-    if revoked_cert_file == "":
+    if ocsp_response_bytes is None:
         raise Exception("ocsp_resigning_setup didn't run")
+    cert_file = os.path.join(tempdir, "compromised.pem")
 
     tries = 0
     while tries < 5:
         resp, reason = get_ocsp_response_and_reason(
-            revoked_cert_file,
-            "/tmp/intermediate-cert-rsa-a.pem",
-            "http://localhost:4002")
+            cert_file, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
         if resp != ocsp_response_bytes:
             break
         tries += 1
         time.sleep(0.25)
     else:
-        raise(Exception(
-            "timed out waiting for re-signed OCSP response for certificate"))
+        raise(Exception("timed out waiting for re-signed OCSP response for certificate"))
 
     if reason != ocsp_response_reason:
-        raise(Exception(
-            "re-signed ocsp response has different reason %s expected %s" % (
-                reason, ocsp_response_reason)))
+        raise(Exception("re-signed ocsp response has different reason %s expected %s" % (
+            reason, ocsp_response_reason)))
     if reason != "keyCompromise":
         raise(Exception("re-signed ocsp response has wrong reason %s" % reason))
