@@ -101,7 +101,6 @@ type certificateStorage interface {
 	GetCertificate(context.Context, string) (core.Certificate, error)
 	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error)
 	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*corepb.Empty, error)
-	SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error)
 }
 
 type certificateType string
@@ -448,13 +447,6 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *caPB.
 		issuer, ok = ca.idToIssuer[*req.IssuerID]
 		if !ok {
 			return nil, fmt.Errorf("This CA doesn't have an issuer cert with ID %d", *req.IssuerID)
-		}
-		exists, err := ca.sa.SerialExists(ctx, &sapb.Serial{Serial: req.Serial})
-		if err != nil {
-			return nil, err
-		}
-		if !*exists.Exists {
-			return nil, fmt.Errorf("GenerateOCSP was asked to sign OCSP for certification with unknown serial %q", *req.Serial)
 		}
 	} else {
 		cert, err := x509.ParseCertificate(req.CertDER)

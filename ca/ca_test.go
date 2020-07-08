@@ -166,11 +166,6 @@ func (m *mockSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*co
 	return &corepb.Empty{}, nil
 }
 
-func (m *mockSA) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
-	e := true
-	return &sapb.Exists{Exists: &e}, nil
-}
-
 func (m *mockSA) GetCertificate(ctx context.Context, serial string) (core.Certificate, error) {
 	return core.Certificate{}, berrors.NotFoundError("cannot find the cert")
 }
