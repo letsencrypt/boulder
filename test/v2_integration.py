@@ -22,7 +22,7 @@ from helpers import *
 
 from acme import errors as acme_errors
 
-from acme.messages import Status, CertificateRequest, Directory, RegistrationResource
+from acme.messages import Status, CertificateRequest, Directory
 from acme import crypto_util as acme_crypto_util
 from acme import client as acme_client
 from acme import messages
@@ -774,7 +774,7 @@ def test_only_return_existing_reg():
     email = "test@not-example.com"
     client.new_account(messages.NewRegistration.from_data(email=email,
             terms_of_service_agreed=True))
-    
+
     client = chisel2.uninitialized_client(key=client.net.key)
     class extendedAcct(dict):
         def json_dumps(self, indent=None):
@@ -806,7 +806,7 @@ def BouncerHTTPRequestHandler(redirect, guestlist):
     spot for that UA it will be redirected to the real server and the
     guestlist will be decremented. Once the guestlist spots for a UA are
     expended requests will get a bogus result and have to stand outside in the
-    cold 
+    cold
     """
     class BouncerHandler(BaseHTTPRequestHandler):
         def __init__(self, *args, **kwargs):

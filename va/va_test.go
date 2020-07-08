@@ -207,7 +207,7 @@ func setup(
 		clock.New(),
 		logger,
 		accountURIPrefixes,
-		"")
+	)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
 	}

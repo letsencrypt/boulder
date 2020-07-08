@@ -198,7 +198,6 @@ func NewValidationAuthorityImpl(
 	clk clock.Clock,
 	logger blog.Logger,
 	accountURIPrefixes []string,
-	multiVAPolicyFile string,
 ) (*ValidationAuthorityImpl, error) {
 	if pc.HTTPPort == 0 {
 		pc.HTTPPort = 80
@@ -235,12 +234,6 @@ func NewValidationAuthorityImpl(
 	}
 
 	return va, nil
-}
-
-// multiVAPolicyError is a small error handler called by the reloader package
-// when the multiVAPolicy file can't be loaded.
-func (va *ValidationAuthorityImpl) multiVAPolicyLoadError(err error) {
-	va.log.AuditErrf("error live-loading multi VA policy file: %v", err)
 }
 
 // Used for audit logging
