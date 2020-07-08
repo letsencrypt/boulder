@@ -851,7 +851,7 @@ def wait_for_server(addr):
             pass
         time.sleep(0.5)
 
-def multiva_setup(client, guestlist, domain=None):
+def multiva_setup(client, guestlist):
     """
     Setup a testing domain and backing multiva server setup. This will block
     until the server is ready. The returned cleanup function should be used to
@@ -860,10 +860,7 @@ def multiva_setup(client, guestlist, domain=None):
     answer. If no explicit testing domain is provided then one is randomly
     chosen with random_domain().
     """
-    if domain is None:
-        hostname = random_domain()
-    else:
-        hostname = domain
+    hostname = random_domain()
 
     csr_pem = chisel2.make_csr([hostname])
     order = client.new_order(csr_pem)
