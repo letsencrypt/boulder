@@ -1667,30 +1667,11 @@ def test_auth_deactivation():
         raise Exception("unexpected authorization status")
 
 def get_ocsp_response_and_reason(cert_file, issuer_file, url):
-    """Returns the ocsp response bytes and revocation reason."""
-    ocsp_request = make_ocsp_req(cert_file, issuer_file)
-    responses = fetch_ocsp(ocsp_request, url)
-
-    # Verify all responses are the same
-    for resp in responses:
-        if resp != responses[0]:
-            raise(Exception("OCSP responses differed: %s vs %s" %(
-                base64.b64encode(responses[0]), base64.b64encode(resp))))
-    ocsp_response = responses[0]
-
-    with tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.ocsp.resp', delete=False) as f:
-        f.write(ocsp_response)
-        f.close()
-        output = subprocess.check_output([
-            "openssl", "ocsp", "-no_nonce",
-            "-issuer", issuer_file,
-            "-cert", cert_file,
-            "-respin", f.name]).decode()
-    m = re.search(r"Reason: (\w+)", output)
+    """Returns the ocsp response output and revocation reason."""
+    output = verify_ocsp(cert_file, issuer_file, url, None)
+    m = re.search('Reason: (\w+)', output)
     reason = m.group(1) if m is not None else ""
-
-    return bytearray(ocsp_response), reason
+    return output, reason
 
 ocsp_resigning_setup_data = {}
 @register_twenty_days_ago
