@@ -37,15 +37,15 @@ func lineValid(text string) error {
 	//   timestamp hostname datacenter syslogseverity binary-name[pid]: checksum msg
 
 	fields := strings.Split(text, " ")
+	const errorPrefix = "log-validator: "
 	// Extract checksum from line
 	if len(fields) < 6 {
-		return errors.New("line doesn't match expected format")
+		return fmt.Errorf("%sline doesn't match expected format", errorPrefix)
 	}
 	checksum := fields[5]
 	// Reconstruct just the message portion of the line
 	line := strings.Join(fields[6:], " ")
 
-	const errorPrefix = "invalid checksum"
 	// If we are fed our own output, treat it as always valid. This
 	// prevents runaway scenarios where we generate ever-longer output.
 	if strings.Contains(text, errorPrefix) {
@@ -53,7 +53,7 @@ func lineValid(text string) error {
 	}
 	// Check the extracted checksum against the computed checksum
 	if computedChecksum := blog.LogLineChecksum(line); checksum != computedChecksum {
-		return fmt.Errorf("%s (expected %q, got %q)", errorPrefix, computedChecksum, checksum)
+		return fmt.Errorf("%s invalid checksum (expected %q, got %q)", errorPrefix, computedChecksum, checksum)
 	}
 	return nil
 }
