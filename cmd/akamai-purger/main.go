@@ -135,7 +135,7 @@ func main() {
 		log:    logger,
 	}
 
-	stop, stopped := make(chan bool), make(chan bool)
+	stop, stopped := make(chan bool, 1), make(chan bool, 1)
 	ticker := time.NewTicker(c.AkamaiPurger.PurgeInterval.Duration)
 	go func() {
 	loop:
@@ -185,5 +185,9 @@ func main() {
 
 	err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
 	cmd.FailOnError(err, "Akamai purger gRPC service failed")
+	// When we get a SIGTERM, we will exit from grpcSrv.Serve as soon as all
+	// extant RPCs have been processed, but we want the process to stick around
+	// while we still have a goroutine purging the last elements from the queue.
+	// Once that's done, CatchSignals will call os.Exit().
 	select {}
 }
