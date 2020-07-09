@@ -150,13 +150,11 @@ func main() {
 		// As we may have missed a tick by calling ticker.Stop() and
 		// writing to the stop channel call ap.purge one last time just
 		// in case there is anything that still needs to be purged.
-		if ap.len() > 0 {
-			queueLen := ap.len()
+		if queueLen := ap.len(); queueLen > 0 {
 			logger.Info(fmt.Sprintf("Shutting down; purging %d queue entries before exit.", queueLen))
 			if err := ap.purge(); err != nil {
-				logger.Err(fmt.Sprintf("Shutting down; failed to purge %d queue entries before exit: %s",
+				cmd.Fail(fmt.Sprintf("Shutting down; failed to purge %d queue entries before exit: %s",
 					queueLen, err))
-				os.Exit(1)
 			} else {
 				logger.Info(fmt.Sprintf("Shutting down; finished purging %d queue entries.", queueLen))
 			}
