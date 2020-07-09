@@ -1685,8 +1685,7 @@ def get_ocsp_response_and_reason(cert_file, issuer_file, url):
     reason = m.group(1) if m is not None else ""
     return bytearray(ocsp_response), reason
 
-ocsp_response_bytes = None
-ocsp_response_reason = ""
+ocsp_resigning_setup_data = {}
 @register_twenty_days_ago
 def ocsp_resigning_setup():
     """Issue and then revoke a cert in the past.
@@ -1700,7 +1699,6 @@ def ocsp_resigning_setup():
 
     cert = OpenSSL.crypto.load_certificate(
         OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-    reset_akamai_purges()
     # Revoke for reason 1: keyCompromise
     client.revoke(josepy.ComparableX509(cert), 1)
 
@@ -1709,13 +1707,17 @@ def ocsp_resigning_setup():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
 
-    global ocsp_response_bytes, ocsp_response_reason
-    ocsp_response_bytes, ocsp_response_reason = get_ocsp_response_and_reason(
+    response, reason = get_ocsp_response_and_reason(
         cert_file, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
+    global ocsp_resigning_setup_data
+    ocsp_resigning_setup_data = {
+        'response': response,
+        'reason': reason
+    }
 
 def test_ocsp_resigning():
     """Check that, after re-signing an OCSP, the reason is still set."""
-    if ocsp_response_bytes is None:
+    if 'response' not in ocsp_resigning_setup_data:
         raise Exception("ocsp_resigning_setup didn't run")
     cert_file = os.path.join(tempdir, "compromised.pem")
 
@@ -1723,15 +1725,15 @@ def test_ocsp_resigning():
     while tries < 5:
         resp, reason = get_ocsp_response_and_reason(
             cert_file, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
-        if resp != ocsp_response_bytes:
+        if resp != ocsp_resigning_setup_data['response']:
             break
         tries += 1
         time.sleep(0.25)
     else:
         raise(Exception("timed out waiting for re-signed OCSP response for certificate"))
 
-    if reason != ocsp_response_reason:
+    if reason != ocsp_resigning_setup_data['reason']:
         raise(Exception("re-signed ocsp response has different reason %s expected %s" % (
-            reason, ocsp_response_reason)))
+            reason, ocsp_resigning_setup_data['reason'])))
     if reason != "keyCompromise":
         raise(Exception("re-signed ocsp response has wrong reason %s" % reason))
