@@ -1704,7 +1704,6 @@ def ocsp_resigning_setup():
 
     cert = OpenSSL.crypto.load_certificate(
         OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-    reset_akamai_purges()
     # Revoke for reason 1: keyCompromise
     client.revoke(josepy.ComparableX509(cert), 1)
 
