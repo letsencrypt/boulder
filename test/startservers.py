@@ -136,6 +136,7 @@ def _service_toposort(services):
         print("WARNING: services with unsatisfied dependencies:")
         for s in blocked:
             print(s.name, ":", s.deps)
+        raise(Exception("Unable to satisfy service dependencies"))
 
 processes = []
 
@@ -238,7 +239,6 @@ def startChallSrv():
     # and TLS-ALPN-01 responses on 5001 for another interface. The choice of
     # which is used is controlled by mock DNS data added by the relevant
     # integration tests.
-    prog = 'pebble-challtestsrv --defaultIPv4 %s --defaultIPv6 "" --dns01 :8053,:8054 --management :8055 --http01 10.77.77.77:5002 -https01 10.77.77.77:5001 --tlsalpn01 10.88.88.88:5001' % os.environ.get("FAKE_DNS")
     challSrvProcess = run([
         'pebble-challtestsrv',
         '--defaultIPv4', os.environ.get("FAKE_DNS"),
