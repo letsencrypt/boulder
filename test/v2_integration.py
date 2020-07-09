@@ -435,7 +435,7 @@ class SlowHTTPRequestHandler(BaseHTTPRequestHandler):
             time.sleep(sleeptime)
             self.send_response(200)
             self.end_headers()
-            self.wfile.write(b'this is not an ACME key authorization')
+            self.wfile.write(b"this is not an ACME key authorization")
         except:
             pass
 
@@ -454,7 +454,7 @@ def test_http_challenge_timeout():
     # NOTE(@cpu): The pebble-challtestsrv binds 10.77.77.77:5002 for HTTP-01
     # challenges so we must use the 10.88.88.88 address for the throw away
     # server for this test and add a mock DNS entry that directs the VA to it.
-    httpd = SlowHTTPServer(('10.88.88.88', 5002), SlowHTTPRequestHandler)
+    httpd = SlowHTTPServer(("10.88.88.88", 5002), SlowHTTPRequestHandler)
     thread = threading.Thread(target = httpd.serve_forever)
     thread.daemon = False
     thread.start()
@@ -674,40 +674,50 @@ def test_order_finalize_early():
     chisel2.expect_problem("urn:ietf:params:acme:error:orderNotReady",
         lambda: client.finalize_order(order, deadline))
 
-def test_revoke_by_issuer():
-    client = chisel2.make_client(None)
-    order = chisel2.auth_and_issue([random_domain()], client=client)
-
+def test_revoke_by_account():
+    client = chisel2.make_client()
+    cert_file = tempfile.NamedTemporaryFile(
+        dir=tempdir, suffix='.test_revoke_by_account.pem', delete=False)
+    cert_file.close()
+    order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+
     reset_akamai_purges()
     client.revoke(josepy.ComparableX509(cert), 0)
 
-    cert_file_pem = os.path.join(tempdir, "revokeme.pem")
-    with open(cert_file_pem, "w") as f:
-        f.write(OpenSSL.crypto.dump_certificate(
-            OpenSSL.crypto.FILETYPE_PEM, cert).decode())
-    ee_ocsp_url = "http://localhost:4002"
-    verify_ocsp(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "revoked")
+    verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+    verify_akamai_purge()
+
+def test_revoke_by_issuer():
+    client = chisel2.make_client(None)
+    cert_file = tempfile.NamedTemporaryFile(
+        dir=tempdir, suffix='.test_revoke_by_issuer.pem', delete=False)
+    cert_file.close()
+    order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
+    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+
+    reset_akamai_purges()
+    client.revoke(josepy.ComparableX509(cert), 0)
+
+    verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
     verify_akamai_purge()
 
 def test_revoke_by_authz():
     domains = [random_domain()]
-    order = chisel2.auth_and_issue(domains)
+    cert_file = tempfile.NamedTemporaryFile(
+        dir=tempdir, suffix='.test_revoke_by_authz.pem', delete=False)
+    cert_file.close()
+    order = chisel2.auth_and_issue(domains, cert_output=cert_file.name)
+    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
 
     # create a new client and re-authz
     client = chisel2.make_client(None)
     chisel2.auth_and_issue(domains, client=client)
 
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
     reset_akamai_purges()
     client.revoke(josepy.ComparableX509(cert), 0)
 
-    cert_file_pem = os.path.join(tempdir, "revokeme.pem")
-    with open(cert_file_pem, "w") as f:
-        f.write(OpenSSL.crypto.dump_certificate(
-            OpenSSL.crypto.FILETYPE_PEM, cert).decode())
-    ee_ocsp_url = "http://localhost:4002"
-    verify_ocsp(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "revoked")
+    verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
     verify_akamai_purge()
 
 def test_revoke_by_privkey():
@@ -735,12 +745,12 @@ def test_revoke_by_privkey():
     reset_akamai_purges()
     client.revoke(josepy.ComparableX509(cert), 0)
 
-    cert_file_pem = os.path.join(tempdir, "revokeme.pem")
-    with open(cert_file_pem, "w") as f:
+    with tempfile.NamedTemporaryFile(
+        dir=tempdir, suffix='.test_revoke_by_privkey.pem', mode='w', delete=False) as f:
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
-    ee_ocsp_url = "http://localhost:4002"
-    verify_ocsp(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "revoked")
+        f.close()
+        verify_ocsp(f.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
     verify_akamai_purge()
 
 def test_sct_embedding():
@@ -833,7 +843,7 @@ def BouncerHTTPRequestHandler(redirect, guestlist):
                 self.log_message("BouncerHandler UA {0} has no requests on the Guestlist. Sending request to the curb".format(ua))
                 self.send_response(200)
                 self.end_headers()
-                self.wfile.write(u'(• ◡ •) <( VIPs only! )'.encode())
+                self.wfile.write(u"(• ◡ •) <( VIPs only! )".encode())
 
     BouncerHandler.guestlist = guestlist
     BouncerHandler.redirect = redirect
@@ -898,7 +908,7 @@ def multiva_setup(client, guestlist, domain=None):
     # server for this test and add a mock DNS entry that directs the VA to it.
     redirect = "http://{0}/.well-known/acme-challenge/{1}".format(
             redirHostname, token)
-    httpd = HTTPServer(('10.88.88.88', 5002), BouncerHTTPRequestHandler(redirect, guestlist))
+    httpd = HTTPServer(("10.88.88.88", 5002), BouncerHTTPRequestHandler(redirect, guestlist))
     thread = threading.Thread(target = httpd.serve_forever)
     thread.daemon = False
     thread.start()
@@ -1032,14 +1042,13 @@ def test_http_multiva_threshold_fail_account_disabled():
     acctID = acctURI.split("/")[-1:][0]
 
     def run_query(query):
-        command=["mysql",
+        subprocess.check_call([
+            "mysql",
             "-h", "bmysql",
             "-u", "root",
             "--password=",
             "-e", query,
-            "boulder_sa_integration",
-            ]
-        subprocess.check_call(command, shell=False, stderr=subprocess.STDOUT)
+            "boulder_sa_integration"], stderr=subprocess.STDOUT)
 
     def flip_ids(oldID, newID):
         """
@@ -1115,7 +1124,7 @@ class FakeH2ServerHandler(socketserver.BaseRequestHandler):
         # Blast some HTTP/2 bytes onto the socket
         # Truncated example data from taken from the community forum:
         # https://community.letsencrypt.org/t/le-validation-error-if-server-is-in-google-infrastructure/51841
-        self.request.sendall(b'\x00\x00\x12\x04\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x80\x00')
+        self.request.sendall(b"\x00\x00\x12\x04\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x80\x00")
 
 def wait_for_tcp_server(addr, port):
     """
@@ -1152,11 +1161,11 @@ def test_http2_http01_challenge():
     # the problem.
     socketserver.TCPServer.allow_reuse_address = True
     # Create, start, and wait for a fake HTTP/2 server.
-    server = socketserver.TCPServer(('10.88.88.88', 5002), FakeH2ServerHandler)
+    server = socketserver.TCPServer(("10.88.88.88", 5002), FakeH2ServerHandler)
     thread = threading.Thread(target = server.serve_forever)
     thread.daemon = False
     thread.start()
-    wait_for_tcp_server('10.88.88.88', 5002)
+    wait_for_tcp_server("10.88.88.88", 5002)
 
     # Issuing an HTTP-01 challenge for this hostname should produce a connection
     # problem with an error specific to the HTTP/2 misconfiguration.
@@ -1200,22 +1209,22 @@ def test_new_order_policy_errs():
     except messages.Error as e:
         ok = True
         if e.typ != "urn:ietf:params:acme:error:rejectedIdentifier":
-            raise(Exception('Expected rejectedIdentifier type problem, got {0}'.format(e.typ)))
+            raise(Exception("Expected rejectedIdentifier type problem, got {0}".format(e.typ)))
         if e.detail != 'Error creating new order :: Cannot issue for "between-addr.in-addr.arpa": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy (and 1 more problems. Refer to sub-problems for more information.)':
-            raise(Exception('Order problem detail did not match expected'))
+            raise(Exception("Order problem detail did not match expected"))
     if not ok:
-        raise(Exception('Expected problem, got no error'))
+        raise(Exception("Expected problem, got no error"))
 
 def test_long_san_no_cn():
     try:
-        chisel2.auth_and_issue([''.join(random.choice(string.ascii_uppercase) for x in range(61)) + ".com"])
+        chisel2.auth_and_issue(["".join(random.choice(string.ascii_uppercase) for x in range(61)) + ".com"])
         # if we get to this raise the auth_and_issue call didn't fail, so fail the test
         raise(Exception("Issuance didn't fail when the only SAN in a certificate was longer than the max CN length"))
     except messages.Error as e:
         if e.typ != "urn:ietf:params:acme:error:badCSR":
-            raise(Exception('Expected malformed type problem, got {0}'.format(e.typ)))
-        if e.detail != 'Error finalizing order :: issuing precertificate: CSR doesn\'t contain a SAN short enough to fit in CN':
-            raise(Exception('Problem detail did not match expected'))
+            raise(Exception("Expected malformed type problem, got {0}".format(e.typ)))
+        if e.detail != "Error finalizing order :: issuing precertificate: CSR doesn't contain a SAN short enough to fit in CN":
+            raise(Exception("Problem detail did not match expected"))
 
 def test_delete_unused_challenges():
     order = chisel2.auth_and_issue([random_domain()], chall_type="dns-01")
@@ -1256,14 +1265,14 @@ def test_auth_deactivation_v2():
         raise(Exception("unexpected authorization status"))
 
 def test_ocsp():
-    cert_file_pem = os.path.join(tempdir, "cert.pem")
-    chisel2.auth_and_issue([random_domain()], cert_output=cert_file_pem)
-
-    ee_ocsp_url = "http://localhost:4002"
+    cert_file = tempfile.NamedTemporaryFile(
+        dir=tempdir, suffix='.test_ocsp.pem', delete=False)
+    cert_file.close()
+    chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
 
     # As OCSP-Updater is generating responses independently of the CA we sit in a loop
     # checking OCSP until we either see a good response or we timeout (5s).
-    verify_ocsp(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "good")
+    verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "good")
 
 def test_ct_submission():
     hostname = random_domain()
@@ -1308,35 +1317,34 @@ def check_ocsp_basic_oid(cert_file, issuer_file, url):
             raise(Exception("Did not receive successful OCSP response: %s doesn't contain %s" %
                 (base64.b64encode(resp), base64.b64encode(expected))))
 
-expired_cert_name = ""
+ocsp_exp_unauth_setup_data = {}
 @register_six_months_ago
 def ocsp_exp_unauth_setup():
     client = chisel2.make_client(None)
-    order = chisel2.auth_and_issue([random_domain()], client=client)
-
+    cert_file = tempfile.NamedTemporaryFile(
+        dir=tempdir, suffix='.ocsp_exp_unauth_setup.pem', delete=False)
+    cert_file.close()
+    order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-    cert_file_pem = os.path.join(tempdir, "to-expire.pem")
-    with open(cert_file_pem, "w") as f:
-        f.write(OpenSSL.crypto.dump_certificate(
-            OpenSSL.crypto.FILETYPE_PEM, cert).decode())
 
     # Since our servers are pretending to be in the past, but the openssl cli
     # isn't, we'll get an expired OCSP response. Just check that it exists;
     # don't do the full verification (which would fail).
-    check_ocsp_basic_oid(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
-    global expired_cert_name
-    expired_cert_name = cert_file_pem
+    check_ocsp_basic_oid(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
+    global ocsp_exp_unauth_setup_data
+    ocsp_exp_unauth_setup_data['cert_file'] = cert_file.name
 
 def test_ocsp_exp_unauth():
     tries = 0
-    if expired_cert_name == "":
+    if 'cert_file' not in ocsp_exp_unauth_setup_data:
         raise Exception("ocsp_exp_unauth_setup didn't run")
+    cert_file = ocsp_exp_unauth_setup_data['cert_file']
     while tries < 5:
         try:
-            verify_ocsp(expired_cert_name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "XXX")
+            verify_ocsp(cert_file, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "XXX")
             raise(Exception("Unexpected return from verify_ocsp"))
         except subprocess.CalledProcessError as cpe:
-            if cpe.output == b'Responder Error: unauthorized (6)\n':
+            if cpe.output == b"Responder Error: unauthorized (6)\n":
                 break
         except:
             pass
@@ -1413,28 +1421,14 @@ def test_expiration_mailer():
     last_reminder = expiry + datetime.timedelta(days=-2)
 
     requests.post("http://localhost:9381/clear", data='')
-    print(get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
-        config_dir, no_reminder))
-    print(get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
-        config_dir, first_reminder))
-    print(get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
-        config_dir, last_reminder))
+    for time in (no_reminder, first_reminder, last_reminder):
+        print(get_future_output(
+            ["./bin/expiration-mailer", "--config", "%s/expiration-mailer.json" % config_dir],
+            time))
     resp = requests.get("http://localhost:9381/count?to=%s" % email_addr)
     mailcount = int(resp.text)
     if mailcount != 2:
         raise(Exception("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount))
-
-def test_revoke_by_account():
-    client = chisel2.make_client()
-    cert_file_pem = os.path.join(tempdir, "revokeme.pem")
-    order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file_pem)
-    reset_akamai_purges()
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-    client.revoke(josepy.ComparableX509(cert), 0)
-
-    ee_ocsp_url = "http://localhost:4002"
-    verify_ocsp(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "revoked")
-    verify_akamai_purge()
 
 caa_recheck_authzs = []
 caa_recheck_client = None
@@ -1584,39 +1578,44 @@ def parse_cert(order):
     return x509.load_pem_x509_certificate(order.fullchain_pem.encode(), default_backend())
 
 def test_admin_revoker_cert():
-    cert_file_pem = os.path.join(tempdir, "ar-cert.pem")
-    order = chisel2.auth_and_issue([random_domain()], cert_output=cert_file_pem)
+    cert_file = tempfile.NamedTemporaryFile(
+        dir=tempdir, suffix='.test_admin_revoker_cert.pem', delete=False)
+    cert_file.close()
+    order = chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
     parsed_cert = parse_cert(order)
 
     # Revoke certificate by serial
     reset_akamai_purges()
-    run("./bin/admin-revoker serial-revoke --config %s/admin-revoker.json %x %d" % (
-        config_dir, parsed_cert.serial_number, 1))
+    run(["./bin/admin-revoker", "serial-revoke",
+        "--config", "%s/admin-revoker.json" % config_dir,
+        '%x' % parsed_cert.serial_number, '1'])
+
     # Wait for OCSP response to indicate revocation took place
-    ee_ocsp_url = "http://localhost:4002"
-    verify_ocsp(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "revoked")
+    verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
     verify_akamai_purge()
 
 def test_admin_revoker_batched():
-    certs = []
-    serials = []
-    serialFile = os.path.join(tempdir, "serials.hex")
-    f = open(serialFile, "w")
+    serialFile = tempfile.NamedTemporaryFile(
+        dir=tempdir, suffix='.test_admin_revoker_batched.serials.hex',
+        mode='w', delete=False)
+    cert_files = [
+        tempfile.NamedTemporaryFile(
+            dir=tempdir, suffix='.test_admin_revoker_batched.%d.pem' % x, delete=False)
+        for x in range(3)
+    ]
 
-    for x in range(3):
-        cert_file_pem = os.path.join(tempdir, "ar-cert-%d.pem" % x)
-        certs.append(cert_file_pem)
-        order = chisel2.auth_and_issue([random_domain()], cert_output=cert_file_pem)
-        f.write("%x\n" % parse_cert(order).serial_number)
-    f.close()
+    for cert_file in cert_files:
+        cert_file.close()
+        order = chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
+        serialFile.write("%x\n" % parse_cert(order).serial_number)
+    serialFile.close()
 
-    reset_akamai_purges()
-    run("./bin/admin-revoker batched-serial-revoke --config %s/admin-revoker.json %s %d %d" % (
-        config_dir, serialFile, 0, 2))
+    run(["./bin/admin-revoker", "batched-serial-revoke",
+        "--config", "%s/admin-revoker.json" % config_dir,
+        serialFile.name, '0', '2'])
 
-    ee_ocsp_url = "http://localhost:4002"
-    for cert in certs:
-        verify_ocsp(cert, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "revoked")
+    for cert_file in cert_files:
+        verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
 
 def test_sct_embedding():
     order = chisel2.auth_and_issue([random_domain()])
@@ -1674,19 +1673,21 @@ def get_ocsp_response_and_reason(cert_file, issuer_file, url):
                 base64.b64encode(responses[0]), base64.b64encode(resp))))
     ocsp_response = responses[0]
 
-    ocsp_resp_file = os.path.join(tempdir, "ocsp.resp")
-    with open(ocsp_resp_file, "wb") as f:
+    with tempfile.NamedTemporaryFile(
+        dir=tempdir, suffix='.ocsp.resp', delete=False) as f:
         f.write(ocsp_response)
-
-    cmd = "openssl ocsp -no_nonce -issuer %s -cert %s -respin %s" % (
-        issuer_file, cert_file, ocsp_resp_file)
-    output = subprocess.check_output(cmd, shell=True).decode()
-    m = re.search('Reason: (\w+)', output)
+        f.close()
+        output = subprocess.check_output([
+            "openssl", "ocsp", "-no_nonce",
+            "-issuer", issuer_file,
+            "-cert", cert_file,
+            "-respin", f.name]).decode()
+    m = re.search(r"Reason: (\w+)", output)
     reason = m.group(1) if m is not None else ""
+
     return bytearray(ocsp_response), reason
 
-ocsp_response_bytes = None
-ocsp_response_reason = ""
+ocsp_resigning_setup_data = {}
 @register_twenty_days_ago
 def ocsp_resigning_setup():
     """Issue and then revoke a cert in the past.
@@ -1696,7 +1697,10 @@ def ocsp_resigning_setup():
     response.
     """
     client = chisel2.make_client(None)
-    order = chisel2.auth_and_issue([random_domain()], client=client)
+    cert_file = tempfile.NamedTemporaryFile(
+        dir=tempdir, suffix='.ocsp_resigning_setup.pem', delete=False)
+    cert_file.close()
+    order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
 
     cert = OpenSSL.crypto.load_certificate(
         OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
@@ -1704,34 +1708,33 @@ def ocsp_resigning_setup():
     # Revoke for reason 1: keyCompromise
     client.revoke(josepy.ComparableX509(cert), 1)
 
-    cert_file = os.path.join(tempdir, "compromised.pem")
-    with open(cert_file, "w") as f:
-        f.write(OpenSSL.crypto.dump_certificate(
-            OpenSSL.crypto.FILETYPE_PEM, cert).decode())
-
-    global ocsp_response_bytes, ocsp_response_reason
-    ocsp_response_bytes, ocsp_response_reason = get_ocsp_response_and_reason(
-        cert_file, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
+    ocsp_response, reason = get_ocsp_response_and_reason(
+        cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
+    global ocsp_resigning_setup_data
+    ocsp_resigning_setup_data = {
+        'cert_file': cert_file.name,
+        'response': ocsp_response,
+        'reason': reason
+    }
 
 def test_ocsp_resigning():
     """Check that, after re-signing an OCSP, the reason is still set."""
-    if ocsp_response_bytes is None:
+    if 'response' not in ocsp_resigning_setup_data:
         raise Exception("ocsp_resigning_setup didn't run")
-    cert_file = os.path.join(tempdir, "compromised.pem")
 
     tries = 0
     while tries < 5:
         resp, reason = get_ocsp_response_and_reason(
-            cert_file, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
-        if resp != ocsp_response_bytes:
+            ocsp_resigning_setup_data['cert_file'], "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
+        if resp != ocsp_resigning_setup_data['response']:
             break
         tries += 1
         time.sleep(0.25)
     else:
         raise(Exception("timed out waiting for re-signed OCSP response for certificate"))
 
-    if reason != ocsp_response_reason:
+    if reason != ocsp_resigning_setup_data['reason']:
         raise(Exception("re-signed ocsp response has different reason %s expected %s" % (
-            reason, ocsp_response_reason)))
+            reason, ocsp_resigning_setup_data['reason'])))
     if reason != "keyCompromise":
         raise(Exception("re-signed ocsp response has wrong reason %s" % reason))
