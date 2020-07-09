@@ -360,9 +360,7 @@ def test_issuer():
     store_ctx.verify_certificate()
 
 def test_ocsp():
-    cert_file = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.test_ocsp.pem', delete=False)
-    cert_file.close()
+    cert_file = temppath('test_ocsp.pem')
     auth_and_issue([random_domain()], cert_output=cert_file.name)
 
     # As OCSP-Updater is generating responses independently of the CA we sit in a loop
@@ -414,9 +412,7 @@ def test_expiration_mailer():
 
 def test_revoke_by_account():
     client = chisel.make_client()
-    cert_file = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.test_revoke_by_account.pem', delete=False)
-    cert_file.close()
+    cert_file = temppath('test_revoke_by_account.pem')
     cert, _ = auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
 
     reset_akamai_purges()
@@ -576,9 +572,7 @@ def test_oversized_csr():
             lambda: auth_and_issue(domains))
 
 def test_admin_revoker_cert():
-    cert_file = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.test_admin_revoker_cert.pem', delete=False)
-    cert_file.close()
+    cert_file = temppath('test_admin_revoker_cert.pem')
     cert, _ = auth_and_issue([random_domain()], cert_output=cert_file.name)
 
     # Revoke certificate by serial
@@ -593,20 +587,15 @@ def test_admin_revoker_cert():
     verify_akamai_purge()
 
 def test_admin_revoker_batched():
-    serialFile = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.test_admin_revoker_batched.serials.hex',
-        mode='w', delete=False)
+    serialFile = temppath('test_admin_revoker_batched.serials.hex')
     cert_files = [
-        tempfile.NamedTemporaryFile(
-            dir=tempdir, suffix='.test_admin_revoker_batched.%d.pem' % x, delete=False)
-        for x in range(3)
+        temppath('test_admin_revoker_batched.%d.pem' % x) for x in range(3)
     ]
 
-    for cert_file in cert_files:
-        cert_file.close()
-        cert, _ = auth_and_issue([random_domain()], cert_output=cert_file.name)
-        serialFile.write("%x\n" % cert.body.get_serial_number())
-    serialFile.close()
+    with open(serialFile) as sf:
+        for cert_file in cert_files:
+            cert, _ = auth_and_issue([random_domain()], cert_output=cert_file.name)
+            sf.write("%x\n" % cert.body.get_serial_number())
 
     run(["./bin/admin-revoker", "batched-serial-revoke",
         "--config", "%s/admin-revoker.json" % config_dir,

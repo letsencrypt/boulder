@@ -676,9 +676,7 @@ def test_order_finalize_early():
 
 def test_revoke_by_account():
     client = chisel2.make_client()
-    cert_file = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.test_revoke_by_account.pem', delete=False)
-    cert_file.close()
+    cert_file = temppath('test_revoke_by_account.pem')
     order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
 
@@ -690,9 +688,7 @@ def test_revoke_by_account():
 
 def test_revoke_by_issuer():
     client = chisel2.make_client(None)
-    cert_file = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.test_revoke_by_issuer.pem', delete=False)
-    cert_file.close()
+    cert_file = temppath('test_revoke_by_issuer.pem')
     order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
 
@@ -704,9 +700,7 @@ def test_revoke_by_issuer():
 
 def test_revoke_by_authz():
     domains = [random_domain()]
-    cert_file = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.test_revoke_by_authz.pem', delete=False)
-    cert_file.close()
+    cert_file = temppath('test_revoke_by_authz.pem')
     order = chisel2.auth_and_issue(domains, cert_output=cert_file.name)
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
 
@@ -745,12 +739,11 @@ def test_revoke_by_privkey():
     reset_akamai_purges()
     client.revoke(josepy.ComparableX509(cert), 0)
 
-    with tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.test_revoke_by_privkey.pem', mode='w', delete=False) as f:
-        f.write(OpenSSL.crypto.dump_certificate(
+    cert_file = temppath('test_revoke_by_privkey.pem')
+    with open(cert_file) as cf:
+        cf.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
-        f.close()
-        verify_ocsp(f.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+    verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
     verify_akamai_purge()
 
 def test_sct_embedding():
@@ -1265,9 +1258,7 @@ def test_auth_deactivation_v2():
         raise(Exception("unexpected authorization status"))
 
 def test_ocsp():
-    cert_file = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.test_ocsp.pem', delete=False)
-    cert_file.close()
+    cert_file = temppath('test_ocsp.pem')
     chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
 
     # As OCSP-Updater is generating responses independently of the CA we sit in a loop
@@ -1321,9 +1312,7 @@ ocsp_exp_unauth_setup_data = {}
 @register_six_months_ago
 def ocsp_exp_unauth_setup():
     client = chisel2.make_client(None)
-    cert_file = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.ocsp_exp_unauth_setup.pem', delete=False)
-    cert_file.close()
+    cert_file = temppath('ocsp_exp_unauth_setup.pem')
     order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
 
@@ -1583,9 +1572,7 @@ def parse_cert(order):
     return x509.load_pem_x509_certificate(order.fullchain_pem.encode(), default_backend())
 
 def test_admin_revoker_cert():
-    cert_file = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.test_admin_revoker_cert.pem', delete=False)
-    cert_file.close()
+    cert_file = temppath('test_admin_revoker_cert.pem')
     order = chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
     parsed_cert = parse_cert(order)
 
@@ -1600,20 +1587,15 @@ def test_admin_revoker_cert():
     verify_akamai_purge()
 
 def test_admin_revoker_batched():
-    serialFile = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.test_admin_revoker_batched.serials.hex',
-        mode='w', delete=False)
+    serialFile = temppath('test_admin_revoker_batched.serials.hex')
     cert_files = [
-        tempfile.NamedTemporaryFile(
-            dir=tempdir, suffix='.test_admin_revoker_batched.%d.pem' % x, delete=False)
-        for x in range(3)
+        temppath('test_admin_revoker_batched.%d.pem' % x) for x in range(3)
     ]
 
-    for cert_file in cert_files:
-        cert_file.close()
-        order = chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
-        serialFile.write("%x\n" % parse_cert(order).serial_number)
-    serialFile.close()
+    with open(serialFile) as sf:
+        for cert_file in cert_files:
+            order = chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
+            serialFile.write("%x\n" % parse_cert(order).serial_number)
 
     run(["./bin/admin-revoker", "batched-serial-revoke",
         "--config", "%s/admin-revoker.json" % config_dir,
@@ -1683,9 +1665,7 @@ def ocsp_resigning_setup():
     response.
     """
     client = chisel2.make_client(None)
-    cert_file = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.ocsp_resigning_setup.pem', delete=False)
-    cert_file.close()
+    cert_file = temppath('ocsp_resigning_setup.pem')
     order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
 
     cert = OpenSSL.crypto.load_certificate(

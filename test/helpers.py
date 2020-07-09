@@ -27,6 +27,17 @@ if config_dir == '':
     raise Exception("BOULDER_CONFIG_DIR was not set")
 CONFIG_NEXT = config_dir.startswith("test/config-next")
 
+def temppath(name):
+    """Creates and returns a closed file inside the tempdir."""
+    f = tempfile.NamedTemporaryFile(
+        dir=tempdir,
+        suffix='.{0}'.format(name),
+        mode='w+',
+        delete=False
+    )
+    f.close()
+    return f
+
 def fakeclock(date):
     return date.strftime("%a %b %d %H:%M:%S UTC %Y")
 
