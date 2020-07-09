@@ -426,12 +426,11 @@ def test_revoke_by_account():
 
     verify_akamai_purge()
 
-caa_recheck_authzs = []
-caa_recheck_client = None
+caa_recheck_setup_data = {}
 @register_twenty_days_ago
 def caa_recheck_setup():
-    global caa_recheck_client
-    caa_recheck_client = chisel.make_client()
+    client = chisel.make_client()
+    authzs = []
     # Issue a certificate with the clock set back, and save the authzs to check
     # later that they are valid (200). They should however require rechecking for
     # CAA purposes.
@@ -439,19 +438,25 @@ def caa_recheck_setup():
     # Generate numNames subdomains of a random domain
     base_domain = random_domain()
     domains = [ "{0}.{1}".format(str(n),base_domain) for n in range(numNames) ]
-    _, authzs = auth_and_issue(domains, client=caa_recheck_client)
+    _, authzs = auth_and_issue(domains, client=client)
     for a in authzs:
-        caa_recheck_authzs.append(a)
+        authzs.append(a)
+
+    global caa_recheck_setup_data
+    caa_recheck_setup_data = {
+        'client': client,
+        'authzs': authzs,
+    }
 
 def test_recheck_caa():
     """Request issuance for a domain where we have a old cached authz from when CAA
        was good. We'll set a new CAA record forbidding issuance; the CAA should
        recheck CAA and reject the request.
     """
-    if len(caa_recheck_authzs) == 0:
+    if 'authzs' not in caa_recheck_setup_data:
         raise(Exception("CAA authzs not prepared for test_caa"))
     domains = []
-    for a in caa_recheck_authzs:
+    for a in caa_recheck_setup_data['authzs']:
         response = requests.get(a.uri)
         if response.status_code != 200:
             raise(Exception("Unexpected response for CAA authz: ",
@@ -465,7 +470,7 @@ def test_recheck_caa():
     # Request issuance for the previously-issued domain name, which should
     # now be denied due to CAA.
     chisel.expect_problem("urn:acme:error:caa",
-        lambda: chisel.auth_and_issue(domains, client=caa_recheck_client))
+        lambda: chisel.auth_and_issue(domains, client=caa_recheck_setup_data['client']))
 
 def test_caa_good():
     domain = random_domain()
