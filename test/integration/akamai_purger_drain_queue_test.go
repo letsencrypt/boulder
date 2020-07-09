@@ -5,6 +5,7 @@ package integration
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -57,9 +58,9 @@ func setup() (*exec.Cmd, *bytes.Buffer, akamaipb.AkamaiPurgerClient, error) {
 		if conn.GetState() == connectivity.Ready {
 			break
 		}
-		if i > 10 {
+		if i > 40 {
 			sigterm()
-			return nil, nil, nil, err
+			return nil, nil, nil, fmt.Errorf("timed out waiting for akamai-purger to come up")
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -116,7 +117,7 @@ func TestAkamaiPurgerDrainQueueSucceeds(t *testing.T) {
 
 	err = purgerCmd.Wait()
 	if err != nil {
-		t.Errorf("unexpected error shutting down akamai-purger: %s", err)
+		t.Errorf("unexpected error shutting down akamai-purger: %s. Output was:\n%s", err, outputBuffer.String())
 	}
 	expectedOutput := "Shutting down; finished purging 10 queue entries."
 	if !strings.Contains(outputBuffer.String(), expectedOutput) {

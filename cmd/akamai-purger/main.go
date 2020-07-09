@@ -153,8 +153,7 @@ func main() {
 		if ap.len() > 0 {
 			queueLen := ap.len()
 			logger.Info(fmt.Sprintf("Shutting down; purging %d queue entries before exit.", queueLen))
-			err = ap.purge()
-			if err != nil {
+			if err := ap.purge(); err != nil {
 				logger.Err(fmt.Sprintf("Shutting down; failed to purge %d queue entries before exit: %s",
 					queueLen, err))
 				os.Exit(1)
