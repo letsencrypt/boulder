@@ -58,16 +58,18 @@ func (kgc keyGenConfig) validate() error {
 	return nil
 }
 
+type PKCS11KeyGenConfig struct {
+	Module     string `yaml:"module"`
+	PIN        string `yaml:"pin"`
+	StoreSlot  uint   `yaml:"store-key-in-slot"`
+	StoreLabel string `yaml:"store-key-with-label"`
+}
+
 type rootConfig struct {
-	CeremonyType string `yaml:"ceremony-type"`
-	PKCS11       struct {
-		Module     string `yaml:"module"`
-		PIN        string `yaml:"pin"`
-		StoreSlot  uint   `yaml:"store-key-in-slot"`
-		StoreLabel string `yaml:"store-key-with-label"`
-	} `yaml:"pkcs11"`
-	Key     keyGenConfig `yaml:"key"`
-	Outputs struct {
+	CeremonyType string             `yaml:"ceremony-type"`
+	PKCS11       PKCS11KeyGenConfig `yaml:"pkcs11"`
+	Key          keyGenConfig       `yaml:"key"`
+	Outputs      struct {
 		PublicKeyPath   string `yaml:"public-key-path"`
 		CertificatePath string `yaml:"certificate-path"`
 	} `yaml:"outputs"`
@@ -105,16 +107,18 @@ func (rc rootConfig) validate() error {
 	return nil
 }
 
+type PKCS11SigningConfig struct {
+	Module       string `yaml:"module"`
+	PIN          string `yaml:"pin"`
+	SigningSlot  uint   `yaml:"signing-key-slot"`
+	SigningLabel string `yaml:"signing-key-label"`
+	SigningKeyID string `yaml:"signing-key-id"`
+}
+
 type intermediateConfig struct {
-	CeremonyType string `yaml:"ceremony-type"`
-	PKCS11       struct {
-		Module       string `yaml:"module"`
-		PIN          string `yaml:"pin"`
-		SigningSlot  uint   `yaml:"signing-key-slot"`
-		SigningLabel string `yaml:"signing-key-label"`
-		SigningKeyID string `yaml:"signing-key-id"`
-	} `yaml:"pkcs11"`
-	Inputs struct {
+	CeremonyType string              `yaml:"ceremony-type"`
+	PKCS11       PKCS11SigningConfig `yaml:"pkcs11"`
+	Inputs       struct {
 		PublicKeyPath         string `yaml:"public-key-path"`
 		IssuerCertificatePath string `yaml:"issuer-certificate-path"`
 	} `yaml:"inputs"`
@@ -159,15 +163,10 @@ func (ic intermediateConfig) validate(ct certType) error {
 }
 
 type keyConfig struct {
-	CeremonyType string `yaml:"ceremony-type"`
-	PKCS11       struct {
-		Module     string `yaml:"module"`
-		PIN        string `yaml:"pin"`
-		StoreSlot  uint   `yaml:"store-key-in-slot"`
-		StoreLabel string `yaml:"store-key-with-label"`
-	} `yaml:"pkcs11"`
-	Key     keyGenConfig `yaml:"key"`
-	Outputs struct {
+	CeremonyType string             `yaml:"ceremony-type"`
+	PKCS11       PKCS11KeyGenConfig `yaml:"pkcs11"`
+	Key          keyGenConfig       `yaml:"key"`
+	Outputs      struct {
 		PublicKeyPath string `yaml:"public-key-path"`
 	} `yaml:"outputs"`
 }
@@ -196,15 +195,9 @@ func (kc keyConfig) validate() error {
 }
 
 type ocspRespConfig struct {
-	CeremonyType string `yaml:"ceremony-type"`
-	PKCS11       struct {
-		Module       string `yaml:"module"`
-		PIN          string `yaml:"pin"`
-		SigningSlot  uint   `yaml:"signing-key-slot"`
-		SigningLabel string `yaml:"signing-key-label"`
-		SigningKeyID string `yaml:"signing-key-id"`
-	} `yaml:"pkcs11"`
-	Inputs struct {
+	CeremonyType string              `yaml:"ceremony-type"`
+	PKCS11       PKCS11SigningConfig `yaml:"pkcs11"`
+	Inputs       struct {
 		CertificatePath                string `yaml:"certificate-path"`
 		IssuerCertificatePath          string `yaml:"issuer-certificate-path"`
 		DelegatedIssuerCertificatePath string `yaml:"delegated-issuer-certificate-path"`
@@ -261,15 +254,9 @@ func (orc ocspRespConfig) validate() error {
 }
 
 type crlConfig struct {
-	CeremonyType string `yaml:"ceremony-type"`
-	PKCS11       struct {
-		Module       string `yaml:"module"`
-		PIN          string `yaml:"pin"`
-		SigningSlot  uint   `yaml:"signing-key-slot"`
-		SigningLabel string `yaml:"signing-key-label"`
-		SigningKeyID string `yaml:"signing-key-id"`
-	} `yaml:"pkcs11"`
-	Inputs struct {
+	CeremonyType string              `yaml:"ceremony-type"`
+	PKCS11       PKCS11SigningConfig `yaml:"pkcs11"`
+	Inputs       struct {
 		IssuerCertificatePath string `yaml:"issuer-certificate-path"`
 	} `yaml:"inputs"`
 	Outputs struct {

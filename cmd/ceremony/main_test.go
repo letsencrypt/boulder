@@ -95,12 +95,7 @@ func TestRootConfigValidate(t *testing.T) {
 		{
 			name: "no pkcs11.store-key-with-label",
 			config: rootConfig{
-				PKCS11: struct {
-					Module     string `yaml:"module"`
-					PIN        string `yaml:"pin"`
-					StoreSlot  uint   `yaml:"store-key-in-slot"`
-					StoreLabel string `yaml:"store-key-with-label"`
-				}{
+				PKCS11: PKCS11KeyGenConfig{
 					Module: "module",
 				},
 			},
@@ -109,12 +104,7 @@ func TestRootConfigValidate(t *testing.T) {
 		{
 			name: "bad key fields",
 			config: rootConfig{
-				PKCS11: struct {
-					Module     string `yaml:"module"`
-					PIN        string `yaml:"pin"`
-					StoreSlot  uint   `yaml:"store-key-in-slot"`
-					StoreLabel string `yaml:"store-key-with-label"`
-				}{
+				PKCS11: PKCS11KeyGenConfig{
 					Module:     "module",
 					StoreLabel: "label",
 				},
@@ -124,12 +114,7 @@ func TestRootConfigValidate(t *testing.T) {
 		{
 			name: "no outputs.public-key-path",
 			config: rootConfig{
-				PKCS11: struct {
-					Module     string `yaml:"module"`
-					PIN        string `yaml:"pin"`
-					StoreSlot  uint   `yaml:"store-key-in-slot"`
-					StoreLabel string `yaml:"store-key-with-label"`
-				}{
+				PKCS11: PKCS11KeyGenConfig{
 					Module:     "module",
 					StoreLabel: "label",
 				},
@@ -143,12 +128,7 @@ func TestRootConfigValidate(t *testing.T) {
 		{
 			name: "no outputs.certificate-path",
 			config: rootConfig{
-				PKCS11: struct {
-					Module     string `yaml:"module"`
-					PIN        string `yaml:"pin"`
-					StoreSlot  uint   `yaml:"store-key-in-slot"`
-					StoreLabel string `yaml:"store-key-with-label"`
-				}{
+				PKCS11: PKCS11KeyGenConfig{
 					Module:     "module",
 					StoreLabel: "label",
 				},
@@ -168,12 +148,7 @@ func TestRootConfigValidate(t *testing.T) {
 		{
 			name: "bad certificate-profile",
 			config: rootConfig{
-				PKCS11: struct {
-					Module     string `yaml:"module"`
-					PIN        string `yaml:"pin"`
-					StoreSlot  uint   `yaml:"store-key-in-slot"`
-					StoreLabel string `yaml:"store-key-with-label"`
-				}{
+				PKCS11: PKCS11KeyGenConfig{
 					Module:     "module",
 					StoreLabel: "label",
 				},
@@ -194,12 +169,7 @@ func TestRootConfigValidate(t *testing.T) {
 		{
 			name: "good config",
 			config: rootConfig{
-				PKCS11: struct {
-					Module     string `yaml:"module"`
-					PIN        string `yaml:"pin"`
-					StoreSlot  uint   `yaml:"store-key-in-slot"`
-					StoreLabel string `yaml:"store-key-with-label"`
-				}{
+				PKCS11: PKCS11KeyGenConfig{
 					Module:     "module",
 					StoreLabel: "label",
 				},
@@ -251,13 +221,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 		{
 			name: "no pkcs11.signing-key-label",
 			config: intermediateConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module: "module",
 				},
 			},
@@ -266,13 +230,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 		{
 			name: "no pkcs11.key-id",
 			config: intermediateConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 				},
@@ -282,13 +240,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 		{
 			name: "no inputs.public-key-path",
 			config: intermediateConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -299,13 +251,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 		{
 			name: "no inputs.issuer-certificate-path",
 			config: intermediateConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -322,13 +268,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 		{
 			name: "no outputs.certificate-path",
 			config: intermediateConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -346,13 +286,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 		{
 			name: "bad certificate-profile",
 			config: intermediateConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -375,13 +309,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 		{
 			name: "good config",
 			config: intermediateConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -438,12 +366,7 @@ func TestKeyConfigValidate(t *testing.T) {
 		{
 			name: "no pkcs11.store-key-with-label",
 			config: keyConfig{
-				PKCS11: struct {
-					Module     string `yaml:"module"`
-					PIN        string `yaml:"pin"`
-					StoreSlot  uint   `yaml:"store-key-in-slot"`
-					StoreLabel string `yaml:"store-key-with-label"`
-				}{
+				PKCS11: PKCS11KeyGenConfig{
 					Module: "module",
 				},
 			},
@@ -452,12 +375,7 @@ func TestKeyConfigValidate(t *testing.T) {
 		{
 			name: "bad key fields",
 			config: keyConfig{
-				PKCS11: struct {
-					Module     string `yaml:"module"`
-					PIN        string `yaml:"pin"`
-					StoreSlot  uint   `yaml:"store-key-in-slot"`
-					StoreLabel string `yaml:"store-key-with-label"`
-				}{
+				PKCS11: PKCS11KeyGenConfig{
 					Module:     "module",
 					StoreLabel: "label",
 				},
@@ -467,12 +385,7 @@ func TestKeyConfigValidate(t *testing.T) {
 		{
 			name: "no outputs.public-key-path",
 			config: keyConfig{
-				PKCS11: struct {
-					Module     string `yaml:"module"`
-					PIN        string `yaml:"pin"`
-					StoreSlot  uint   `yaml:"store-key-in-slot"`
-					StoreLabel string `yaml:"store-key-with-label"`
-				}{
+				PKCS11: PKCS11KeyGenConfig{
 					Module:     "module",
 					StoreLabel: "label",
 				},
@@ -486,12 +399,7 @@ func TestKeyConfigValidate(t *testing.T) {
 		{
 			name: "good config",
 			config: keyConfig{
-				PKCS11: struct {
-					Module     string `yaml:"module"`
-					PIN        string `yaml:"pin"`
-					StoreSlot  uint   `yaml:"store-key-in-slot"`
-					StoreLabel string `yaml:"store-key-with-label"`
-				}{
+				PKCS11: PKCS11KeyGenConfig{
 					Module:     "module",
 					StoreLabel: "label",
 				},
@@ -533,13 +441,7 @@ func TestOCSPRespConfig(t *testing.T) {
 		{
 			name: "no pkcs11.signing-key-label",
 			config: ocspRespConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module: "module",
 				},
 			},
@@ -548,13 +450,7 @@ func TestOCSPRespConfig(t *testing.T) {
 		{
 			name: "no pkcs11.key-id",
 			config: ocspRespConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 				},
@@ -564,13 +460,7 @@ func TestOCSPRespConfig(t *testing.T) {
 		{
 			name: "no inputs.certificate-path",
 			config: ocspRespConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -581,13 +471,7 @@ func TestOCSPRespConfig(t *testing.T) {
 		{
 			name: "no inputs.issuer-certificate-path",
 			config: ocspRespConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -605,13 +489,7 @@ func TestOCSPRespConfig(t *testing.T) {
 		{
 			name: "no outputs.response-path",
 			config: ocspRespConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -630,13 +508,7 @@ func TestOCSPRespConfig(t *testing.T) {
 		{
 			name: "no ocsp-profile.this-update",
 			config: ocspRespConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -660,13 +532,7 @@ func TestOCSPRespConfig(t *testing.T) {
 		{
 			name: "no ocsp-profile.next-update",
 			config: ocspRespConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -697,13 +563,7 @@ func TestOCSPRespConfig(t *testing.T) {
 		{
 			name: "no ocsp-profile.status",
 			config: ocspRespConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -735,13 +595,7 @@ func TestOCSPRespConfig(t *testing.T) {
 		{
 			name: "good config",
 			config: ocspRespConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -797,13 +651,7 @@ func TestCRLConfig(t *testing.T) {
 		{
 			name: "no pkcs11.signing-key-label",
 			config: crlConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module: "module",
 				},
 			},
@@ -812,13 +660,7 @@ func TestCRLConfig(t *testing.T) {
 		{
 			name: "no pkcs11.key-id",
 			config: crlConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 				},
@@ -828,13 +670,7 @@ func TestCRLConfig(t *testing.T) {
 		{
 			name: "no inputs.issuer-certificate-path",
 			config: crlConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -845,13 +681,7 @@ func TestCRLConfig(t *testing.T) {
 		{
 			name: "no outputs.crl-path",
 			config: crlConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -867,13 +697,7 @@ func TestCRLConfig(t *testing.T) {
 		{
 			name: "no crl-profile.this-update",
 			config: crlConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -894,13 +718,7 @@ func TestCRLConfig(t *testing.T) {
 		{
 			name: "no crl-profile.next-update",
 			config: crlConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -933,13 +751,7 @@ func TestCRLConfig(t *testing.T) {
 		{
 			name: "no crl-profile.number",
 			config: crlConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -973,13 +785,7 @@ func TestCRLConfig(t *testing.T) {
 		{
 			name: "no crl-profile.revoked-certificates.certificate-path",
 			config: crlConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -1019,13 +825,7 @@ func TestCRLConfig(t *testing.T) {
 		{
 			name: "no crl-profile.revoked-certificates.revocation-date",
 			config: crlConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -1067,13 +867,7 @@ func TestCRLConfig(t *testing.T) {
 		{
 			name: "no revocation reason",
 			config: crlConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
@@ -1116,13 +910,7 @@ func TestCRLConfig(t *testing.T) {
 		{
 			name: "good",
 			config: crlConfig{
-				PKCS11: struct {
-					Module       string `yaml:"module"`
-					PIN          string `yaml:"pin"`
-					SigningSlot  uint   `yaml:"signing-key-slot"`
-					SigningLabel string `yaml:"signing-key-label"`
-					SigningKeyID string `yaml:"signing-key-id"`
-				}{
+				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
 					SigningKeyID: "id",
