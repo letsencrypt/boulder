@@ -1213,9 +1213,9 @@ def ocsp_exp_unauth_setup():
         f.write(OpenSSL.crypto.dump_certificate(
             OpenSSL.crypto.FILETYPE_PEM, cert).decode())
 
-    # Since we're pretending to be in the past, we'll get an expired OCSP
-    # response. Just check that it exists; don't do the full verification (which
-    # would fail).
+    # Since our servers are pretending to be in the past, but the openssl cli
+    # isn't, we'll get an expired OCSP response. Just check that it exists;
+    # don't do the full verification (which would fail).
     check_ocsp_basic_oid(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
     global expired_cert_name
     expired_cert_name = cert_file_pem
@@ -1224,7 +1224,7 @@ def test_ocsp_exp_unauth():
     tries = 0
     if expired_cert_name == "":
         raise Exception("ocsp_exp_unauth_setup didn't run")
-    while True:
+    while tries < 5:
         try:
             verify_ocsp(expired_cert_name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "XXX")
             raise(Exception("Unexpected return from verify_ocsp"))
@@ -1233,10 +1233,10 @@ def test_ocsp_exp_unauth():
                 break
         except:
             pass
-        if tries is 5:
-            raise(Exception("timed out waiting for unauthorized OCSP response for expired certificate"))
         tries += 1
         time.sleep(0.25)
+    else:
+        raise(Exception("timed out waiting for unauthorized OCSP response for expired certificate"))
 
 def test_blocked_key_account():
     # Only config-next has a blocked keys file configured.
@@ -1554,3 +1554,63 @@ def test_auth_deactivation():
     resp = client.deactivate_authorization(order.authorizations[0])
     if resp.body.status is not messages.STATUS_DEACTIVATED:
         raise Exception("unexpected authorization status")
+
+def get_ocsp_response_and_reason(cert_file, issuer_file, url):
+    """Returns the ocsp response output and revocation reason."""
+    output = verify_ocsp(cert_file, issuer_file, url, None)
+    m = re.search('Reason: (\w+)', output)
+    reason = m.group(1) if m is not None else ""
+    return output, reason
+
+ocsp_resigning_setup_data = {}
+@register_twenty_days_ago
+def ocsp_resigning_setup():
+    """Issue and then revoke a cert in the past.
+
+    Useful setup for test_ocsp_resigning, which needs to check that the
+    revocation reason is still correctly set after re-signing and old OCSP
+    response.
+    """
+    client = chisel2.make_client(None)
+    order = chisel2.auth_and_issue([random_domain()], client=client)
+
+    cert = OpenSSL.crypto.load_certificate(
+        OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    # Revoke for reason 1: keyCompromise
+    client.revoke(josepy.ComparableX509(cert), 1)
+
+    cert_file = os.path.join(tempdir, "compromised.pem")
+    with open(cert_file, "w") as f:
+        f.write(OpenSSL.crypto.dump_certificate(
+            OpenSSL.crypto.FILETYPE_PEM, cert).decode())
+
+    response, reason = get_ocsp_response_and_reason(
+        cert_file, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
+    global ocsp_resigning_setup_data
+    ocsp_resigning_setup_data = {
+        'response': response,
+        'reason': reason
+    }
+
+def test_ocsp_resigning():
+    """Check that, after re-signing an OCSP, the reason is still set."""
+    if 'response' not in ocsp_resigning_setup_data:
+        raise Exception("ocsp_resigning_setup didn't run")
+    cert_file = os.path.join(tempdir, "compromised.pem")
+
+    tries = 0
+    while tries < 5:
+        resp, reason = get_ocsp_response_and_reason(
+            cert_file, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
+        if resp != ocsp_resigning_setup_data['response']:
+            break
+        tries += 1
+        time.sleep(0.25)
+    else:
+        raise(Exception("timed out waiting for re-signed OCSP response for certificate"))
+
+    if reason != ocsp_resigning_setup_data['reason']:
+        raise(Exception("re-signed ocsp response has different reason %s expected %s" % (
+            reason, ocsp_resigning_setup_data['reason'])))
+    if reason != "keyCompromise":
+        raise(Exception("re-signed ocsp response has wrong reason %s" % reason))

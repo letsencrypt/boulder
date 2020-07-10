@@ -82,7 +82,7 @@ def ocsp_verify(cert_file, issuer_file, ocsp_response):
         raise(Exception("OCSP verify failure"))
     return output
 
-def verify_ocsp(cert_file, issuer_file, url, status):
+def verify_ocsp(cert_file, issuer_file, url, status="revoked"):
     ocsp_request = make_ocsp_req(cert_file, issuer_file)
     responses = fetch_ocsp(ocsp_request, url)
 
@@ -96,9 +96,11 @@ def verify_ocsp(cert_file, issuer_file, url, status):
     # status
     resp = responses[0]
     verify_output = ocsp_verify(cert_file, issuer_file, resp)
-    if not re.search("%s: %s" % (cert_file, status), verify_output):
-        print(verify_output)
-        raise(Exception("OCSP response wasn't '%s'" % status))
+    if status is not None:
+        if not re.search("%s: %s" % (cert_file, status), verify_output):
+            print(verify_output)
+            raise(Exception("OCSP response wasn't '%s'" % status))
+    return verify_output
 
 def reset_akamai_purges():
     requests.post("http://localhost:6789/debug/reset-purges", data="{}")
