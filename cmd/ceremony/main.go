@@ -58,16 +58,31 @@ func (kgc keyGenConfig) validate() error {
 	return nil
 }
 
+type PKCS11KeyGenConfig struct {
+	Module     string `yaml:"module"`
+	PIN        string `yaml:"pin"`
+	StoreSlot  uint   `yaml:"store-key-in-slot"`
+	StoreLabel string `yaml:"store-key-with-label"`
+}
+
+func (pkgc PKCS11KeyGenConfig) validate() error {
+	if pkgc.Module == "" {
+		return errors.New("pkcs11.module is required")
+	}
+	if pkgc.StoreLabel == "" {
+		return errors.New("pkcs11.store-key-with-label is required")
+	}
+	// key-slot is allowed to be 0 (which is a valid slot).
+	// PIN is allowed to be "", which will commonly happen when
+	// PIN entry is done via PED.
+	return nil
+}
+
 type rootConfig struct {
-	CeremonyType string `yaml:"ceremony-type"`
-	PKCS11       struct {
-		Module     string `yaml:"module"`
-		PIN        string `yaml:"pin"`
-		StoreSlot  uint   `yaml:"store-key-in-slot"`
-		StoreLabel string `yaml:"store-key-with-label"`
-	} `yaml:"pkcs11"`
-	Key     keyGenConfig `yaml:"key"`
-	Outputs struct {
+	CeremonyType string             `yaml:"ceremony-type"`
+	PKCS11       PKCS11KeyGenConfig `yaml:"pkcs11"`
+	Key          keyGenConfig       `yaml:"key"`
+	Outputs      struct {
 		PublicKeyPath   string `yaml:"public-key-path"`
 		CertificatePath string `yaml:"certificate-path"`
 	} `yaml:"outputs"`
@@ -75,13 +90,8 @@ type rootConfig struct {
 }
 
 func (rc rootConfig) validate() error {
-	// PKCS11 fields
-	if rc.PKCS11.Module == "" {
-		return errors.New("pkcs11.module is required")
-	}
-	// key-slot cannot be tested because 0 is a valid slot
-	if rc.PKCS11.StoreLabel == "" {
-		return errors.New("pkcs11.store-key-with-label is required")
+	if err := rc.PKCS11.validate(); err != nil {
+		return err
 	}
 
 	// Key gen fields
@@ -105,16 +115,32 @@ func (rc rootConfig) validate() error {
 	return nil
 }
 
+type PKCS11SigningConfig struct {
+	Module       string `yaml:"module"`
+	PIN          string `yaml:"pin"`
+	SigningSlot  uint   `yaml:"signing-key-slot"`
+	SigningLabel string `yaml:"signing-key-label"`
+	SigningKeyID string `yaml:"signing-key-id"`
+}
+
+func (psc PKCS11SigningConfig) validate() error {
+	if psc.Module == "" {
+		return errors.New("pkcs11.module is required")
+	}
+	if psc.SigningLabel == "" {
+		return errors.New("pkcs11.signing-key-label is required")
+	}
+	if psc.SigningKeyID == "" {
+		return errors.New("pkcs11.signing-key-id is required")
+	}
+	// key-slot is allowed to be 0 (which is a valid slot).
+	return nil
+}
+
 type intermediateConfig struct {
-	CeremonyType string `yaml:"ceremony-type"`
-	PKCS11       struct {
-		Module       string `yaml:"module"`
-		PIN          string `yaml:"pin"`
-		SigningSlot  uint   `yaml:"signing-key-slot"`
-		SigningLabel string `yaml:"signing-key-label"`
-		SigningKeyID string `yaml:"signing-key-id"`
-	} `yaml:"pkcs11"`
-	Inputs struct {
+	CeremonyType string              `yaml:"ceremony-type"`
+	PKCS11       PKCS11SigningConfig `yaml:"pkcs11"`
+	Inputs       struct {
 		PublicKeyPath         string `yaml:"public-key-path"`
 		IssuerCertificatePath string `yaml:"issuer-certificate-path"`
 	} `yaml:"inputs"`
@@ -125,16 +151,8 @@ type intermediateConfig struct {
 }
 
 func (ic intermediateConfig) validate(ct certType) error {
-	// PKCS11 fields
-	if ic.PKCS11.Module == "" {
-		return errors.New("pkcs11.module is required")
-	}
-	// key-slot cannot be tested because 0 is a valid slot
-	if ic.PKCS11.SigningLabel == "" {
-		return errors.New("pkcs11.signing-key-label is required")
-	}
-	if ic.PKCS11.SigningKeyID == "" {
-		return errors.New("pkcs11.signing-key-id is required")
+	if err := ic.PKCS11.validate(); err != nil {
+		return err
 	}
 
 	// Input fields
@@ -159,27 +177,17 @@ func (ic intermediateConfig) validate(ct certType) error {
 }
 
 type keyConfig struct {
-	CeremonyType string `yaml:"ceremony-type"`
-	PKCS11       struct {
-		Module     string `yaml:"module"`
-		PIN        string `yaml:"pin"`
-		StoreSlot  uint   `yaml:"store-key-in-slot"`
-		StoreLabel string `yaml:"store-key-with-label"`
-	} `yaml:"pkcs11"`
-	Key     keyGenConfig `yaml:"key"`
-	Outputs struct {
+	CeremonyType string             `yaml:"ceremony-type"`
+	PKCS11       PKCS11KeyGenConfig `yaml:"pkcs11"`
+	Key          keyGenConfig       `yaml:"key"`
+	Outputs      struct {
 		PublicKeyPath string `yaml:"public-key-path"`
 	} `yaml:"outputs"`
 }
 
 func (kc keyConfig) validate() error {
-	// PKCS11 fields
-	if kc.PKCS11.Module == "" {
-		return errors.New("pkcs11.module is required")
-	}
-	// key-slot cannot be tested because 0 is a valid slot
-	if kc.PKCS11.StoreLabel == "" {
-		return errors.New("pkcs11.store-key-with-label is required")
+	if err := kc.PKCS11.validate(); err != nil {
+		return err
 	}
 
 	// Key gen fields
@@ -196,15 +204,9 @@ func (kc keyConfig) validate() error {
 }
 
 type ocspRespConfig struct {
-	CeremonyType string `yaml:"ceremony-type"`
-	PKCS11       struct {
-		Module       string `yaml:"module"`
-		PIN          string `yaml:"pin"`
-		SigningSlot  uint   `yaml:"signing-key-slot"`
-		SigningLabel string `yaml:"signing-key-label"`
-		SigningKeyID string `yaml:"signing-key-id"`
-	} `yaml:"pkcs11"`
-	Inputs struct {
+	CeremonyType string              `yaml:"ceremony-type"`
+	PKCS11       PKCS11SigningConfig `yaml:"pkcs11"`
+	Inputs       struct {
 		CertificatePath                string `yaml:"certificate-path"`
 		IssuerCertificatePath          string `yaml:"issuer-certificate-path"`
 		DelegatedIssuerCertificatePath string `yaml:"delegated-issuer-certificate-path"`
@@ -220,16 +222,8 @@ type ocspRespConfig struct {
 }
 
 func (orc ocspRespConfig) validate() error {
-	// PKCS11 fields
-	if orc.PKCS11.Module == "" {
-		return errors.New("pkcs11.module is required")
-	}
-	// key-slot cannot be tested because 0 is a valid slot
-	if orc.PKCS11.SigningLabel == "" {
-		return errors.New("pkcs11.signing-key-label is required")
-	}
-	if orc.PKCS11.SigningKeyID == "" {
-		return errors.New("pkcs11.signing-key-id is required")
+	if err := orc.PKCS11.validate(); err != nil {
+		return err
 	}
 
 	// Input fields
@@ -261,15 +255,9 @@ func (orc ocspRespConfig) validate() error {
 }
 
 type crlConfig struct {
-	CeremonyType string `yaml:"ceremony-type"`
-	PKCS11       struct {
-		Module       string `yaml:"module"`
-		PIN          string `yaml:"pin"`
-		SigningSlot  uint   `yaml:"signing-key-slot"`
-		SigningLabel string `yaml:"signing-key-label"`
-		SigningKeyID string `yaml:"signing-key-id"`
-	} `yaml:"pkcs11"`
-	Inputs struct {
+	CeremonyType string              `yaml:"ceremony-type"`
+	PKCS11       PKCS11SigningConfig `yaml:"pkcs11"`
+	Inputs       struct {
 		IssuerCertificatePath string `yaml:"issuer-certificate-path"`
 	} `yaml:"inputs"`
 	Outputs struct {
@@ -288,16 +276,8 @@ type crlConfig struct {
 }
 
 func (cc crlConfig) validate() error {
-	// PKCS11 fields
-	if cc.PKCS11.Module == "" {
-		return errors.New("pkcs11.module is required")
-	}
-	// key-slot cannot be tested because 0 is a valid slot
-	if cc.PKCS11.SigningLabel == "" {
-		return errors.New("pkcs11.signing-key-label is required")
-	}
-	if cc.PKCS11.SigningKeyID == "" {
-		return errors.New("pkcs11.signing-key-id is required")
+	if err := cc.PKCS11.validate(); err != nil {
+		return err
 	}
 
 	// Input fields
