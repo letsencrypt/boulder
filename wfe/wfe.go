@@ -535,7 +535,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 		// to check its quality before doing the verify.
 		if err = wfe.keyPolicy.GoodKey(ctx, submittedKey.Key); err != nil {
 			wfe.joseErrorCounter.WithLabelValues("JWKRejectedByGoodKey").Inc()
-			return nil, nil, reg, probs.Malformed(err.Error())
+			return nil, nil, reg, probs.BadPublicKey(err.Error())
 		}
 		key = submittedKey
 	} else if err != nil {

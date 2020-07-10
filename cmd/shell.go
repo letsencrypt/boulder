@@ -138,7 +138,8 @@ type logWriter struct {
 }
 
 func (lw logWriter) Write(p []byte) (n int, err error) {
-	lw.Logger.Info(string(p))
+	// Lines received by logWriter will always have a trailing newline.
+	lw.Logger.Info(strings.Trim(string(p), "\n"))
 	return
 }
 

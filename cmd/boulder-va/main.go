@@ -43,13 +43,6 @@ type config struct {
 		Features map[string]bool
 
 		AccountURIPrefixes []string
-
-		// A filename pointing to a YAML file containing MultiVAPolicy contents.
-		// This file will be set up to live-reload the contents of the policy file
-		// such that the VA can use the specified disabledDomains and
-		// disabledAccounts lists to determine whether or not to enforce multi-VA
-		// consensus for an account/domain.
-		MultiVAPolicyFile string
 	}
 
 	Syslog cmd.SyslogConfig
@@ -164,8 +157,7 @@ func main() {
 		scope,
 		clk,
 		logger,
-		c.VA.AccountURIPrefixes,
-		c.VA.MultiVAPolicyFile)
+		c.VA.AccountURIPrefixes)
 	cmd.FailOnError(err, "Unable to create VA server")
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
