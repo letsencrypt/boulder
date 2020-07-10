@@ -584,15 +584,17 @@ def test_admin_revoker_cert():
     verify_akamai_purge()
 
 def test_admin_revoker_batched():
-    serialFile = temppath('test_admin_revoker_batched.serials.hex')
+    serialFile = tempfile.NamedTemporaryFile(
+        dir=tempdir, suffix='.test_admin_revoker_batched.serials.hex',
+        mode='w+', delete=False)
     cert_files = [
         temppath('test_admin_revoker_batched.%d.pem' % x) for x in range(3)
     ]
 
-    with open(serialFile) as sf:
-        for cert_file in cert_files:
-            cert, _ = auth_and_issue([random_domain()], cert_output=cert_file.name)
-            sf.write("%x\n" % cert.body.get_serial_number())
+    for cert_file in cert_files:
+        cert, _ = auth_and_issue([random_domain()], cert_output=cert_file.name)
+        serialFile.write("%x\n" % cert.body.get_serial_number())
+    serialFile.close()
 
     run(["./bin/admin-revoker", "batched-serial-revoke",
         "--config", "%s/admin-revoker.json" % config_dir,

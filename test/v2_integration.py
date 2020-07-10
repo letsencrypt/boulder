@@ -739,10 +739,12 @@ def test_revoke_by_privkey():
     reset_akamai_purges()
     client.revoke(josepy.ComparableX509(cert), 0)
 
-    cert_file = temppath('test_revoke_by_privkey.pem')
-    with open(cert_file) as cf:
-        cf.write(OpenSSL.crypto.dump_certificate(
-            OpenSSL.crypto.FILETYPE_PEM, cert).decode())
+    cert_file = tempfile.NamedTemporaryFile(
+        dir=tempdir, suffix='.test_revoke_by_privkey.pem',
+        mode='w+', delete=False)
+    cert_file.write(OpenSSL.crypto.dump_certificate(
+        OpenSSL.crypto.FILETYPE_PEM, cert).decode())
+    cert_file.close()
     verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
     verify_akamai_purge()
 
@@ -1478,15 +1480,17 @@ def test_admin_revoker_cert():
     verify_akamai_purge()
 
 def test_admin_revoker_batched():
-    serialFile = temppath('test_admin_revoker_batched.serials.hex')
+    serialFile = tempfile.NamedTemporaryFile(
+        dir=tempdir, suffix='.test_admin_revoker_batched.serials.hex',
+        mode='w+', delete=False)
     cert_files = [
         temppath('test_admin_revoker_batched.%d.pem' % x) for x in range(3)
     ]
 
-    with open(serialFile) as sf:
-        for cert_file in cert_files:
-            order = chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
-            serialFile.write("%x\n" % parse_cert(order).serial_number)
+    for cert_file in cert_files:
+        order = chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
+        serialFile.write("%x\n" % parse_cert(order).serial_number)
+    serialFile.close()
 
     run(["./bin/admin-revoker", "batched-serial-revoke",
         "--config", "%s/admin-revoker.json" % config_dir,
