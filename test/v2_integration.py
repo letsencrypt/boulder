@@ -1317,7 +1317,6 @@ caa_recheck_setup_data = {}
 @register_twenty_days_ago
 def caa_recheck_setup():
     client = chisel2.make_client()
-    authzs = []
     # Issue a certificate with the clock set back, and save the authzs to check
     # later that they are valid (200). They should however require rechecking for
     # CAA purposes.
@@ -1326,13 +1325,11 @@ def caa_recheck_setup():
     base_domain = random_domain()
     domains = [ "{0}.{1}".format(str(n),base_domain) for n in range(numNames) ]
     order = chisel2.auth_and_issue(domains, client=client)
-    for a in order.authorizations:
-        authzs.append(a)
     
     global caa_recheck_setup_data
     caa_recheck_setup_data = {
         'client': client,
-        'authzs': authzs,
+        'authzs': order.authorizations,
     }
 
 def test_recheck_caa():
