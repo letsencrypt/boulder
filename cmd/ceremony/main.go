@@ -65,6 +65,19 @@ type PKCS11KeyGenConfig struct {
 	StoreLabel string `yaml:"store-key-with-label"`
 }
 
+func (pkgc PKCS11KeyGenConfig) validate() error {
+	if pkgc.Module == "" {
+		return errors.New("pkcs11.module is required")
+	}
+	if pkgc.StoreLabel == "" {
+		return errors.New("pkcs11.store-key-with-label is required")
+	}
+	// key-slot is allowed to be 0 (which is a valid slot).
+	// PIN is allowed to be "", which will commonly happen when
+	// PIN entry is done via PED.
+	return nil
+}
+
 type rootConfig struct {
 	CeremonyType string             `yaml:"ceremony-type"`
 	PKCS11       PKCS11KeyGenConfig `yaml:"pkcs11"`
@@ -77,13 +90,8 @@ type rootConfig struct {
 }
 
 func (rc rootConfig) validate() error {
-	// PKCS11 fields
-	if rc.PKCS11.Module == "" {
-		return errors.New("pkcs11.module is required")
-	}
-	// key-slot cannot be tested because 0 is a valid slot
-	if rc.PKCS11.StoreLabel == "" {
-		return errors.New("pkcs11.store-key-with-label is required")
+	if err := rc.PKCS11.validate(); err != nil {
+		return err
 	}
 
 	// Key gen fields
@@ -115,6 +123,20 @@ type PKCS11SigningConfig struct {
 	SigningKeyID string `yaml:"signing-key-id"`
 }
 
+func (psc PKCS11SigningConfig) validate() error {
+	if psc.Module == "" {
+		return errors.New("pkcs11.module is required")
+	}
+	if psc.SigningLabel == "" {
+		return errors.New("pkcs11.signing-key-label is required")
+	}
+	if psc.SigningKeyID == "" {
+		return errors.New("pkcs11.signing-key-id is required")
+	}
+	// key-slot is allowed to be 0 (which is a valid slot).
+	return nil
+}
+
 type intermediateConfig struct {
 	CeremonyType string              `yaml:"ceremony-type"`
 	PKCS11       PKCS11SigningConfig `yaml:"pkcs11"`
@@ -129,16 +151,8 @@ type intermediateConfig struct {
 }
 
 func (ic intermediateConfig) validate(ct certType) error {
-	// PKCS11 fields
-	if ic.PKCS11.Module == "" {
-		return errors.New("pkcs11.module is required")
-	}
-	// key-slot cannot be tested because 0 is a valid slot
-	if ic.PKCS11.SigningLabel == "" {
-		return errors.New("pkcs11.signing-key-label is required")
-	}
-	if ic.PKCS11.SigningKeyID == "" {
-		return errors.New("pkcs11.signing-key-id is required")
+	if err := ic.PKCS11.validate(); err != nil {
+		return err
 	}
 
 	// Input fields
@@ -172,13 +186,8 @@ type keyConfig struct {
 }
 
 func (kc keyConfig) validate() error {
-	// PKCS11 fields
-	if kc.PKCS11.Module == "" {
-		return errors.New("pkcs11.module is required")
-	}
-	// key-slot cannot be tested because 0 is a valid slot
-	if kc.PKCS11.StoreLabel == "" {
-		return errors.New("pkcs11.store-key-with-label is required")
+	if err := kc.PKCS11.validate(); err != nil {
+		return err
 	}
 
 	// Key gen fields
@@ -213,16 +222,8 @@ type ocspRespConfig struct {
 }
 
 func (orc ocspRespConfig) validate() error {
-	// PKCS11 fields
-	if orc.PKCS11.Module == "" {
-		return errors.New("pkcs11.module is required")
-	}
-	// key-slot cannot be tested because 0 is a valid slot
-	if orc.PKCS11.SigningLabel == "" {
-		return errors.New("pkcs11.signing-key-label is required")
-	}
-	if orc.PKCS11.SigningKeyID == "" {
-		return errors.New("pkcs11.signing-key-id is required")
+	if err := orc.PKCS11.validate(); err != nil {
+		return err
 	}
 
 	// Input fields
@@ -275,16 +276,8 @@ type crlConfig struct {
 }
 
 func (cc crlConfig) validate() error {
-	// PKCS11 fields
-	if cc.PKCS11.Module == "" {
-		return errors.New("pkcs11.module is required")
-	}
-	// key-slot cannot be tested because 0 is a valid slot
-	if cc.PKCS11.SigningLabel == "" {
-		return errors.New("pkcs11.signing-key-label is required")
-	}
-	if cc.PKCS11.SigningKeyID == "" {
-		return errors.New("pkcs11.signing-key-id is required")
+	if err := cc.PKCS11.validate(); err != nil {
+		return err
 	}
 
 	// Input fields
