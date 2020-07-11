@@ -106,7 +106,7 @@ func revokeCertificate(ctx context.Context, certObj core.Certificate, reasonCode
 }
 
 func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, dbMap db.Executor) error {
-	certObj, err := sa.SelectCertificate(dbMap, "WHERE serial = ?", serial)
+	certObj, err := sa.SelectCertificate(dbMap, serial)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return berrors.NotFoundError("certificate with serial %q not found", serial)
