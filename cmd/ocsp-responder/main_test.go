@@ -26,8 +26,11 @@ import (
 )
 
 var (
-	req   = mustRead("./testdata/ocsp.req")
-	resp  = dbResponse{mustRead("./testdata/ocsp.resp"), false, time.Now()}
+	req  = mustRead("./testdata/ocsp.req")
+	resp = core.CertificateStatus{
+		OCSPResponse:    mustRead("./testdata/ocsp.resp"),
+		IsExpired:       false,
+		OCSPLastUpdated: time.Now()}
 	stats = metrics.NoopRegisterer
 )
 
@@ -122,7 +125,7 @@ func (bs mockSelector) WithContext(context.Context) gorp.SqlExecutor {
 }
 
 func (bs mockSelector) SelectOne(output interface{}, _ string, _ ...interface{}) error {
-	outputPtr, ok := output.(*dbResponse)
+	outputPtr, ok := output.(*core.CertificateStatus)
 	if !ok {
 		return fmt.Errorf("incorrect output type %T", output)
 	}
@@ -249,7 +252,7 @@ type expiredSelector struct {
 }
 
 func (es expiredSelector) SelectOne(obj interface{}, _ string, _ ...interface{}) error {
-	rows := obj.(*dbResponse)
+	rows := obj.(*core.CertificateStatus)
 	rows.IsExpired = true
 	rows.OCSPLastUpdated = time.Time{}.Add(time.Hour)
 	return nil

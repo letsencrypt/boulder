@@ -330,7 +330,6 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 
 	statusModel, err := SelectCertificateStatus(
 		ssa.dbMap.WithContext(ctx),
-		"WHERE serial = ?",
 		serial,
 	)
 	if err != nil {
