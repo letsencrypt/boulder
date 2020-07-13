@@ -27,11 +27,22 @@ if config_dir == '':
     raise Exception("BOULDER_CONFIG_DIR was not set")
 CONFIG_NEXT = config_dir.startswith("test/config-next")
 
+def temppath(name):
+    """Creates and returns a closed file inside the tempdir."""
+    f = tempfile.NamedTemporaryFile(
+        dir=tempdir,
+        suffix='.{0}'.format(name),
+        mode='w+',
+        delete=False
+    )
+    f.close()
+    return f
+
 def fakeclock(date):
     return date.strftime("%a %b %d %H:%M:%S UTC %Y")
 
 def get_future_output(cmd, date):
-    return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT,
+    return subprocess.check_output(cmd, stderr=subprocess.STDOUT,
         env={'FAKECLOCK': fakeclock(date)}).decode()
 
 def random_domain():
@@ -39,7 +50,7 @@ def random_domain():
     return "rand.%x.xyz" % random.randrange(2**32)
 
 def run(cmd, **kwargs):
-    return subprocess.check_call(cmd, shell=True, stderr=subprocess.STDOUT, **kwargs)
+    return subprocess.check_call(cmd, stderr=subprocess.STDOUT, **kwargs)
 
 def fetch_ocsp(request_bytes, url):
     """Fetch an OCSP response using POST, GET, and GET with URL encoding.
@@ -58,22 +69,25 @@ def fetch_ocsp(request_bytes, url):
 
 def make_ocsp_req(cert_file, issuer_file):
     """Return the bytes of an OCSP request for the given certificate file."""
-    ocsp_req_file = os.path.join(tempdir, "ocsp.req")
-    # First generate the OCSP request in DER form
-    run("openssl ocsp -no_nonce -issuer %s -cert %s -reqout %s" % (
-        issuer_file, cert_file, ocsp_req_file))
-    with open(ocsp_req_file, mode='rb') as f:
+    with tempfile.NamedTemporaryFile(dir=tempdir) as f:
+        run(["openssl", "ocsp", "-no_nonce",
+            "-issuer", issuer_file,
+            "-cert", cert_file,
+            "-reqout", f.name])
         ocsp_req = f.read()
     return ocsp_req
 
 def ocsp_verify(cert_file, issuer_file, ocsp_response):
-    ocsp_resp_file = os.path.join(tempdir, "ocsp.resp")
-    with open(ocsp_resp_file, "wb") as f:
+    with tempfile.NamedTemporaryFile(dir=tempdir, delete=False) as f:
         f.write(ocsp_response)
-    cmd = "openssl ocsp -no_nonce -issuer %s -cert %s \
-      -verify_other %s -CAfile /tmp/root-cert-rsa.pem \
-      -respin %s" % (issuer_file, cert_file, issuer_file, ocsp_resp_file)
-    output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode()
+        f.close()
+        output = subprocess.check_output([
+            'openssl', 'ocsp', '-no_nonce',
+            '-issuer', issuer_file,
+            '-cert', cert_file,
+            '-verify_other', issuer_file,
+            '-CAfile', '/tmp/root-cert-rsa.pem',
+            '-respin', f.name], stderr=subprocess.STDOUT).decode()
     # OpenSSL doesn't always return non-zero when response verify fails, so we
     # also look for the string "Response Verify Failure"
     verify_failure = "Response Verify Failure"
@@ -113,7 +127,7 @@ def verify_akamai_purge():
             raise(Exception("Timed out waiting for Akamai purge"))
         response = requests.get("http://localhost:6789/debug/get-purges")
         purgeData = response.json()
-        if len(purgeData["V3"]) is not 1:
+        if len(purgeData["V3"]) != 1:
             continue
         break
     reset_akamai_purges()

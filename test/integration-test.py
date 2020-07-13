@@ -44,11 +44,11 @@ def run_go_tests(filterPattern=None):
     return zero or an exception will be raised. If the filterPattern is provided
     it is used as the value of the `--test.run` argument to the go test command.
     """
-    cmdLine = [ "go", "test", ]
+    cmdLine = ["go", "test"]
     if filterPattern is not None and filterPattern != "":
         cmdLine = cmdLine + ["--test.run", filterPattern]
     cmdLine = cmdLine + ["-tags", "integration", "-count=1", "-race", "./test/integration"]
-    subprocess.check_call(cmdLine, shell=False, stderr=subprocess.STDOUT)
+    subprocess.check_call(cmdLine, stderr=subprocess.STDOUT)
 
 def run_expired_authz_purger():
     # Note: This test must be run after all other tests that depend on
@@ -57,7 +57,9 @@ def run_expired_authz_purger():
 
     def expect(target_time, num, table):
         tool = "expired-authz-purger2"
-        out = get_future_output("./bin/expired-authz-purger2 --single-run --config cmd/expired-authz-purger2/config.json", target_time)
+        out = get_future_output([
+            "./bin/expired-authz-purger2", "--single-run",
+            "--config", "cmd/expired-authz-purger2/config.json"], target_time)
         if 'via FAKECLOCK' not in out:
             raise(Exception("%s was not built with `integration` build tag" % (tool)))
         if num is None:
@@ -96,9 +98,8 @@ def run_janitor():
     e.setdefault("GORACE", "halt_on_error=1")
     e.setdefault("FAKECLOCK", fakeclock(target_time))
 
-    # Note: Must use exec here so that killing this process kills the command.
-    cmdline = "exec ./bin/boulder-janitor --config {0}/janitor.json".format(config_dir)
-    p = subprocess.Popen(cmdline, shell=True, env=e)
+    cmdline = ["./bin/boulder-janitor", "--config",  "{0}/janitor.json".format(config_dir)]
+    p = subprocess.Popen(cmdline, env=e)
 
     # Wait for the janitor to come up
     waitport(8014, "boulder-janitor", None)
@@ -190,8 +191,8 @@ def test_single_ocsp():
        This is a non-API test.
     """
     p = subprocess.Popen(
-        './bin/ocsp-responder --config test/issuer-ocsp-responder.json', shell=True)
-    waitport(4003, './bin/ocsp-responder --config test/issuer-ocsp-responder.json')
+        ["./bin/ocsp-responder", "--config", "test/issuer-ocsp-responder.json"])
+    waitport(4003, ' '.join(p.args))
 
     # Verify that the static OCSP responder, which answers with a
     # pre-signed, long-lived response for the CA cert, works.
@@ -268,7 +269,7 @@ def main():
         run_go_tests(args.test_case_filter)
 
     if args.custom:
-        run(args.custom)
+        run(args.custom.split())
 
     # Skip the last-phase checks when the test case filter is one, because that
     # means we want to quickly iterate on a single test case.
@@ -353,9 +354,9 @@ def run_loadtest():
     # might benefit from the pebble-challtestsrv being restarted.
     startservers.stopChallSrv()
 
-    run("./bin/load-generator \
-            -config test/load-generator/config/integration-test-config.json\
-            -results %s" % latency_data_file)
+    run(["./bin/load-generator",
+        "-config", "test/load-generator/config/integration-test-config.json",
+        "-results", latency_data_file])
 
 def check_balance():
     """Verify that gRPC load balancing across backends is working correctly.
@@ -382,7 +383,7 @@ def check_balance():
                 % address)
 
 def run_cert_checker():
-    run("./bin/cert-checker -config %s/cert-checker.json" % config_dir)
+    run(["./bin/cert-checker", "-config", "%s/cert-checker.json" % config_dir])
 
 if __name__ == "__main__":
     main()
