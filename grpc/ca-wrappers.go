@@ -82,14 +82,14 @@ func NewCertificateAuthorityServer(inner core.CertificateAuthority) *Certificate
 }
 
 func (cas *CertificateAuthorityServerWrapper) IssuePrecertificate(ctx context.Context, request *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
-	if request == nil || request.Csr == nil || request.OrderID == nil || request.RegistrationID == nil {
+	if request == nil || request.Csr == nil || request.OrderID == 0 || request.RegistrationID == 0 {
 		return nil, errIncompleteRequest
 	}
 	return cas.inner.IssuePrecertificate(ctx, request)
 }
 
 func (cas *CertificateAuthorityServerWrapper) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
-	if req == nil || req.DER == nil || req.OrderID == nil || req.RegistrationID == nil || req.SCTs == nil {
+	if req == nil || req.DER == nil || req.OrderID == 0 || req.RegistrationID == 0 || req.SCTs == nil {
 		return nil, errIncompleteRequest
 	}
 	cert, err := cas.inner.IssueCertificateForPrecertificate(ctx, req)
@@ -100,7 +100,7 @@ func (cas *CertificateAuthorityServerWrapper) IssueCertificateForPrecertificate(
 }
 
 func (cas *CertificateAuthorityServerWrapper) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
-	if (req.CertDER == nil && (req.Serial == nil || req.IssuerID == nil)) || req.Status == nil || req.Reason == nil || req.RevokedAt == nil {
+	if (req.CertDER == nil && (req.Serial == "" || req.IssuerID == 0)) || req.Status == "" || req.Reason == 0 || req.RevokedAt == 0 {
 		return nil, errIncompleteRequest
 	}
 	return cas.inner.GenerateOCSP(ctx, req)
