@@ -120,7 +120,7 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 		ctx, cancel = context.WithTimeout(ctx, src.timeout)
 		defer cancel()
 	}
-	certStatus, err := sa.SelectCertificateStatus(src.dbMap, serialString)
+	certStatus, err := sa.SelectCertificateStatus(src.dbMap.WithContext(ctx), serialString)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return nil, nil, bocsp.ErrNotFound
