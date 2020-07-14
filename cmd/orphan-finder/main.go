@@ -234,14 +234,11 @@ func storeParsedLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Log
 
 func generateOCSP(ctx context.Context, ca ocspGenerator, certDER []byte) ([]byte, error) {
 	// generate a fresh OCSP response
-	statusGood := string(core.OCSPStatusGood)
-	zeroInt32 := int32(0)
-	zeroInt64 := int64(0)
 	ocspResponse, err := ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		CertDER:   certDER,
-		Status:    &statusGood,
-		Reason:    &zeroInt32,
-		RevokedAt: &zeroInt64,
+		Status:    string(core.OCSPStatusGood),
+		Reason:    int32(0),
+		RevokedAt: int64(0),
 	})
 	if err != nil {
 		return nil, err
