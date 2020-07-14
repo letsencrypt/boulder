@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -315,6 +316,40 @@ func (cc crlConfig) validate() error {
 	return nil
 }
 
+func equalPubKeys(a, b interface{}) bool {
+	aBytes, err := x509.MarshalPKIXPublicKey(a)
+	if err != nil {
+		return false
+	}
+	bBytes, err := x509.MarshalPKIXPublicKey(b)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(aBytes, bBytes)
+}
+
+func openSigner(cfg PKCS11SigningConfig, issuer *x509.Certificate) (crypto.Signer, *hsmRandReader, error) {
+	ctx, session, err := pkcs11helpers.Initialize(cfg.Module, cfg.SigningSlot, cfg.PIN)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s",
+			cfg.SigningSlot, err)
+	}
+	log.Printf("Opened PKCS#11 session for slot %d\n", cfg.SigningSlot)
+	keyID, err := hex.DecodeString(cfg.SigningKeyID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to decode key-id: %s", err)
+	}
+	signer, err := newSigner(ctx, session, cfg.SigningLabel, keyID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to retrieve private key handle: %s", err)
+	}
+	if !equalPubKeys(signer.Public(), issuer.PublicKey) {
+		return nil, nil, fmt.Errorf("signer pubkey did not match issuer pubkey")
+	}
+	log.Println("Retrieved private key handle")
+	return signer, newRandReader(ctx, session), nil
+}
+
 func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string) error {
 	// x509.CreateCertificate uses a io.Reader here for signing methods that require
 	// a source of randomness. Since PKCS#11 based signing generates needed randomness
@@ -394,21 +429,6 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 
-	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.SigningSlot, config.PKCS11.PIN)
-	if err != nil {
-		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.SigningSlot, err)
-	}
-	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.SigningSlot)
-	keyID, err := hex.DecodeString(config.PKCS11.SigningKeyID)
-	if err != nil {
-		return fmt.Errorf("failed to decode key-id: %s", err)
-	}
-	signer, err := newSigner(ctx, session, config.PKCS11.SigningLabel, keyID)
-	if err != nil {
-		return fmt.Errorf("failed to retrieve private key handle: %s", err)
-	}
-	log.Println("Retrieved private key handle")
-
 	pubPEMBytes, err := ioutil.ReadFile(config.Inputs.PublicKeyPath)
 	if err != nil {
 		return fmt.Errorf("failed to read public key %q: %s", config.Inputs.PublicKeyPath, err)
@@ -426,7 +446,12 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
 	}
 
-	template, err := makeTemplate(newRandReader(ctx, session), &config.CertProfile, pubPEM.Bytes, ct)
+	signer, randReader, err := openSigner(config.PKCS11, issuer)
+	if err != nil {
+		return err
+	}
+
+	template, err := makeTemplate(randReader, &config.CertProfile, pubPEM.Bytes, ct)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
@@ -471,21 +496,6 @@ func ocspRespCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 
-	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.SigningSlot, config.PKCS11.PIN)
-	if err != nil {
-		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.SigningSlot, err)
-	}
-	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.SigningSlot)
-	keyID, err := hex.DecodeString(config.PKCS11.SigningKeyID)
-	if err != nil {
-		return fmt.Errorf("failed to decode key-id: %s", err)
-	}
-	signer, err := newSigner(ctx, session, config.PKCS11.SigningLabel, keyID)
-	if err != nil {
-		return fmt.Errorf("failed to retrieve private key handle: %s", err)
-	}
-	log.Println("Retrieved private key handle")
-
 	cert, err := core.LoadCert(config.Inputs.CertificatePath)
 	if err != nil {
 		return fmt.Errorf("failed to load certificate %q: %s", config.Inputs.CertificatePath, err)
@@ -494,11 +504,22 @@ func ocspRespCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
 	}
+	var signer crypto.Signer
 	var delegatedIssuer *x509.Certificate
 	if config.Inputs.DelegatedIssuerCertificatePath != "" {
 		delegatedIssuer, err = core.LoadCert(config.Inputs.DelegatedIssuerCertificatePath)
 		if err != nil {
 			return fmt.Errorf("failed to load delegated issuer certificate %q: %s", config.Inputs.DelegatedIssuerCertificatePath, err)
+		}
+
+		signer, _, err = openSigner(config.PKCS11, delegatedIssuer)
+		if err != nil {
+			return err
+		}
+	} else {
+		signer, _, err = openSigner(config.PKCS11, issuer)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -543,24 +564,13 @@ func crlCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 
-	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.SigningSlot, config.PKCS11.PIN)
-	if err != nil {
-		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.SigningSlot, err)
-	}
-	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.SigningSlot)
-	keyID, err := hex.DecodeString(config.PKCS11.SigningKeyID)
-	if err != nil {
-		return fmt.Errorf("failed to decode key-id: %s", err)
-	}
-	signer, err := newSigner(ctx, session, config.PKCS11.SigningLabel, keyID)
-	if err != nil {
-		return fmt.Errorf("failed to retrieve private key handle: %s", err)
-	}
-	log.Println("Retrieved private key handle")
-
 	issuer, err := core.LoadCert(config.Inputs.IssuerCertificatePath)
 	if err != nil {
 		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
+	}
+	signer, _, err := openSigner(config.PKCS11, issuer)
+	if err != nil {
+		return err
 	}
 
 	thisUpdate, err := time.Parse(configDateLayout, config.CRLProfile.ThisUpdate)
