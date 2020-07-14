@@ -15,7 +15,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -85,21 +84,7 @@ func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Contex
 		return core.CertificateStatus{}, err
 	}
 
-	if response == nil || response.Serial == nil || response.Status == nil || response.OcspLastUpdated == nil || response.RevokedDate == nil || response.RevokedReason == nil || response.LastExpirationNagSent == nil || response.OcspResponse == nil || response.NotAfter == nil || response.IsExpired == nil {
-		return core.CertificateStatus{}, errIncompleteResponse
-	}
-
-	return core.CertificateStatus{
-		Serial:                *response.Serial,
-		Status:                core.OCSPStatus(*response.Status),
-		OCSPLastUpdated:       time.Unix(0, *response.OcspLastUpdated),
-		RevokedDate:           time.Unix(0, *response.RevokedDate),
-		RevokedReason:         revocation.Reason(*response.RevokedReason),
-		LastExpirationNagSent: time.Unix(0, *response.LastExpirationNagSent),
-		OCSPResponse:          response.OcspResponse,
-		NotAfter:              time.Unix(0, *response.NotAfter),
-		IsExpired:             *response.IsExpired,
-	}, nil
+	return PBToCertStatus(response)
 }
 
 func (sac StorageAuthorityClientWrapper) CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) ([]*sapb.CountByNames_MapElement, error) {
@@ -573,7 +558,7 @@ func (sas StorageAuthorityServerWrapper) GetPrecertificate(ctx context.Context, 
 	return sas.inner.GetPrecertificate(ctx, request)
 }
 
-func (sas StorageAuthorityServerWrapper) GetCertificateStatus(ctx context.Context, request *sapb.Serial) (*sapb.CertificateStatus, error) {
+func (sas StorageAuthorityServerWrapper) GetCertificateStatus(ctx context.Context, request *sapb.Serial) (*corepb.CertificateStatus, error) {
 	if request == nil || request.Serial == nil {
 		return nil, errIncompleteRequest
 	}
@@ -583,24 +568,7 @@ func (sas StorageAuthorityServerWrapper) GetCertificateStatus(ctx context.Contex
 		return nil, err
 	}
 
-	ocspLastUpdatedNano := certStatus.OCSPLastUpdated.UnixNano()
-	revokedDateNano := certStatus.RevokedDate.UnixNano()
-	lastExpirationNagSentNano := certStatus.LastExpirationNagSent.UnixNano()
-	notAfterNano := certStatus.NotAfter.UnixNano()
-	reason := int64(certStatus.RevokedReason)
-	status := string(certStatus.Status)
-
-	return &sapb.CertificateStatus{
-		Serial:                &certStatus.Serial,
-		Status:                &status,
-		OcspLastUpdated:       &ocspLastUpdatedNano,
-		RevokedDate:           &revokedDateNano,
-		RevokedReason:         &reason,
-		LastExpirationNagSent: &lastExpirationNagSentNano,
-		OcspResponse:          certStatus.OCSPResponse,
-		NotAfter:              &notAfterNano,
-		IsExpired:             &certStatus.IsExpired,
-	}, nil
+	return CertStatusToPB(certStatus), nil
 }
 
 func (sas StorageAuthorityServerWrapper) CountCertificatesByNames(ctx context.Context, request *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {

@@ -11,7 +11,7 @@ service StorageAuthority {
         rpc GetRegistrationByKey(JSONWebKey) returns (core.Registration) {}
         rpc GetCertificate(Serial) returns (core.Certificate) {}
         rpc GetPrecertificate(Serial) returns (core.Certificate) {}
-        rpc GetCertificateStatus(Serial) returns (CertificateStatus) {}
+        rpc GetCertificateStatus(Serial) returns (core.CertificateStatus) {}
         rpc CountCertificatesByNames(CountCertificatesByNamesRequest) returns (CountByNames) {}
         rpc CountRegistrationsByIP(CountRegistrationsByIPRequest) returns (Count) {}
         rpc CountRegistrationsByIPRange(CountRegistrationsByIPRequest) returns (Count) {}
@@ -82,19 +82,6 @@ message ValidAuthorizations {
                 optional core.Authorization authz = 2;
         }
         repeated MapElement valid = 1;
-}
-
-message CertificateStatus {
-        optional string serial = 1;
-        reserved 2; // previously subscriberApproved
-        optional string status = 3;
-        optional int64 ocspLastUpdated = 4;
-        optional int64 revokedDate = 5;
-        optional int64 revokedReason = 6;
-        optional int64 lastExpirationNagSent = 7;
-        optional bytes ocspResponse = 8;
-        optional int64 notAfter = 9;
-        optional bool isExpired = 10;
 }
 
 message Serial {
