@@ -3680,13 +3680,6 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 	}
 }
 
-func TestValidateEmailError(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-	err := ra.validateEmail("(๑•́ ω •̀๑)")
-	test.AssertEquals(t, err.Error(), "\"(๑•́ ω •̀๑)\" is not a valid e-mail address")
-}
-
 type mockSAPreviousValidations struct {
 	mocks.StorageAuthority
 	existsDomain string
@@ -3841,10 +3834,6 @@ func (mp *mockPurger) Purge(context.Context, *akamaipb.PurgeRequest, ...grpc.Cal
 func TestRevocationAddBlockedKey(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-
-	err := features.Set(map[string]bool{"BlockedKeyTable": true})
-	test.AssertNotError(t, err, "features.Set failed")
-	defer features.Reset()
 
 	mockSA := mockSABlockedKey{}
 	ra.SA = &mockSA

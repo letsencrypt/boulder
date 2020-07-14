@@ -3,6 +3,8 @@ package main
 import (
 	"crypto"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
@@ -10,10 +12,15 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"time"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
+	"golang.org/x/crypto/ocsp"
 	"gopkg.in/yaml.v2"
 )
+
+const configDateLayout = "2006-01-02 15:04:05"
 
 type keyGenConfig struct {
 	Type         string `yaml:"type"`
@@ -51,16 +58,31 @@ func (kgc keyGenConfig) validate() error {
 	return nil
 }
 
+type PKCS11KeyGenConfig struct {
+	Module     string `yaml:"module"`
+	PIN        string `yaml:"pin"`
+	StoreSlot  uint   `yaml:"store-key-in-slot"`
+	StoreLabel string `yaml:"store-key-with-label"`
+}
+
+func (pkgc PKCS11KeyGenConfig) validate() error {
+	if pkgc.Module == "" {
+		return errors.New("pkcs11.module is required")
+	}
+	if pkgc.StoreLabel == "" {
+		return errors.New("pkcs11.store-key-with-label is required")
+	}
+	// key-slot is allowed to be 0 (which is a valid slot).
+	// PIN is allowed to be "", which will commonly happen when
+	// PIN entry is done via PED.
+	return nil
+}
+
 type rootConfig struct {
-	CeremonyType string `yaml:"ceremony-type"`
-	PKCS11       struct {
-		Module     string `yaml:"module"`
-		PIN        string `yaml:"pin"`
-		StoreSlot  uint   `yaml:"store-key-in-slot"`
-		StoreLabel string `yaml:"store-key-with-label"`
-	} `yaml:"pkcs11"`
-	Key     keyGenConfig `yaml:"key"`
-	Outputs struct {
+	CeremonyType string             `yaml:"ceremony-type"`
+	PKCS11       PKCS11KeyGenConfig `yaml:"pkcs11"`
+	Key          keyGenConfig       `yaml:"key"`
+	Outputs      struct {
 		PublicKeyPath   string `yaml:"public-key-path"`
 		CertificatePath string `yaml:"certificate-path"`
 	} `yaml:"outputs"`
@@ -68,13 +90,8 @@ type rootConfig struct {
 }
 
 func (rc rootConfig) validate() error {
-	// PKCS11 fields
-	if rc.PKCS11.Module == "" {
-		return errors.New("pkcs11.module is required")
-	}
-	// key-slot cannot be tested because 0 is a valid slot
-	if rc.PKCS11.StoreLabel == "" {
-		return errors.New("pkcs11.store-key-with-label is required")
+	if err := rc.PKCS11.validate(); err != nil {
+		return err
 	}
 
 	// Key gen fields
@@ -98,16 +115,32 @@ func (rc rootConfig) validate() error {
 	return nil
 }
 
+type PKCS11SigningConfig struct {
+	Module       string `yaml:"module"`
+	PIN          string `yaml:"pin"`
+	SigningSlot  uint   `yaml:"signing-key-slot"`
+	SigningLabel string `yaml:"signing-key-label"`
+	SigningKeyID string `yaml:"signing-key-id"`
+}
+
+func (psc PKCS11SigningConfig) validate() error {
+	if psc.Module == "" {
+		return errors.New("pkcs11.module is required")
+	}
+	if psc.SigningLabel == "" {
+		return errors.New("pkcs11.signing-key-label is required")
+	}
+	if psc.SigningKeyID == "" {
+		return errors.New("pkcs11.signing-key-id is required")
+	}
+	// key-slot is allowed to be 0 (which is a valid slot).
+	return nil
+}
+
 type intermediateConfig struct {
-	CeremonyType string `yaml:"ceremony-type"`
-	PKCS11       struct {
-		Module       string `yaml:"module"`
-		PIN          string `yaml:"pin"`
-		SigningSlot  uint   `yaml:"signing-key-slot"`
-		SigningLabel string `yaml:"signing-key-label"`
-		SigningKeyID string `yaml:"signing-key-id"`
-	} `yaml:"pkcs11"`
-	Inputs struct {
+	CeremonyType string              `yaml:"ceremony-type"`
+	PKCS11       PKCS11SigningConfig `yaml:"pkcs11"`
+	Inputs       struct {
 		PublicKeyPath         string `yaml:"public-key-path"`
 		IssuerCertificatePath string `yaml:"issuer-certificate-path"`
 	} `yaml:"inputs"`
@@ -118,16 +151,8 @@ type intermediateConfig struct {
 }
 
 func (ic intermediateConfig) validate(ct certType) error {
-	// PKCS11 fields
-	if ic.PKCS11.Module == "" {
-		return errors.New("pkcs11.module is required")
-	}
-	// key-slot cannot be tested because 0 is a valid slot
-	if ic.PKCS11.SigningLabel == "" {
-		return errors.New("pkcs11.signing-key-label is required")
-	}
-	if ic.PKCS11.SigningKeyID == "" {
-		return errors.New("pkcs11.signing-key-id is required")
+	if err := ic.PKCS11.validate(); err != nil {
+		return err
 	}
 
 	// Input fields
@@ -152,27 +177,17 @@ func (ic intermediateConfig) validate(ct certType) error {
 }
 
 type keyConfig struct {
-	CeremonyType string `yaml:"ceremony-type"`
-	PKCS11       struct {
-		Module     string `yaml:"module"`
-		PIN        string `yaml:"pin"`
-		StoreSlot  uint   `yaml:"store-key-in-slot"`
-		StoreLabel string `yaml:"store-key-with-label"`
-	} `yaml:"pkcs11"`
-	Key     keyGenConfig `yaml:"key"`
-	Outputs struct {
+	CeremonyType string             `yaml:"ceremony-type"`
+	PKCS11       PKCS11KeyGenConfig `yaml:"pkcs11"`
+	Key          keyGenConfig       `yaml:"key"`
+	Outputs      struct {
 		PublicKeyPath string `yaml:"public-key-path"`
 	} `yaml:"outputs"`
 }
 
 func (kc keyConfig) validate() error {
-	// PKCS11 fields
-	if kc.PKCS11.Module == "" {
-		return errors.New("pkcs11.module is required")
-	}
-	// key-slot cannot be tested because 0 is a valid slot
-	if kc.PKCS11.StoreLabel == "" {
-		return errors.New("pkcs11.store-key-with-label is required")
+	if err := kc.PKCS11.validate(); err != nil {
+		return err
 	}
 
 	// Key gen fields
@@ -183,6 +198,118 @@ func (kc keyConfig) validate() error {
 	// Output fields
 	if kc.Outputs.PublicKeyPath == "" {
 		return errors.New("outputs.public-key-path is required")
+	}
+
+	return nil
+}
+
+type ocspRespConfig struct {
+	CeremonyType string              `yaml:"ceremony-type"`
+	PKCS11       PKCS11SigningConfig `yaml:"pkcs11"`
+	Inputs       struct {
+		CertificatePath                string `yaml:"certificate-path"`
+		IssuerCertificatePath          string `yaml:"issuer-certificate-path"`
+		DelegatedIssuerCertificatePath string `yaml:"delegated-issuer-certificate-path"`
+	} `yaml:"inputs"`
+	Outputs struct {
+		ResponsePath string `yaml:"response-path"`
+	} `yaml:"outputs"`
+	OCSPProfile struct {
+		ThisUpdate string `yaml:"this-update"`
+		NextUpdate string `yaml:"next-update"`
+		Status     string `yaml:"status"`
+	} `yaml:"ocsp-profile"`
+}
+
+func (orc ocspRespConfig) validate() error {
+	if err := orc.PKCS11.validate(); err != nil {
+		return err
+	}
+
+	// Input fields
+	if orc.Inputs.CertificatePath == "" {
+		return errors.New("inputs.certificate-path is required")
+	}
+	if orc.Inputs.IssuerCertificatePath == "" {
+		return errors.New("inputs.issuer-certificate-path is required")
+	}
+	// DelegatedIssuerCertificatePath may be omitted
+
+	// Output fields
+	if orc.Outputs.ResponsePath == "" {
+		return errors.New("outputs.response-path is required")
+	}
+
+	// OCSP fields
+	if orc.OCSPProfile.ThisUpdate == "" {
+		return errors.New("ocsp-profile.this-update is required")
+	}
+	if orc.OCSPProfile.NextUpdate == "" {
+		return errors.New("ocsp-profile.next-update is required")
+	}
+	if orc.OCSPProfile.Status != "good" && orc.OCSPProfile.Status != "revoked" {
+		return errors.New("ocsp-profile.status must be either \"good\" or \"revoked\"")
+	}
+
+	return nil
+}
+
+type crlConfig struct {
+	CeremonyType string              `yaml:"ceremony-type"`
+	PKCS11       PKCS11SigningConfig `yaml:"pkcs11"`
+	Inputs       struct {
+		IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+	} `yaml:"inputs"`
+	Outputs struct {
+		CRLPath string `yaml:"crl-path"`
+	} `yaml:"outputs"`
+	CRLProfile struct {
+		ThisUpdate          string `yaml:"this-update"`
+		NextUpdate          string `yaml:"next-update"`
+		Number              int64  `yaml:"number"`
+		RevokedCertificates []struct {
+			CertificatePath  string `yaml:"certificate-path"`
+			RevocationDate   string `yaml:"revocation-date"`
+			RevocationReason int    `yaml:"revocation-reason"`
+		} `yaml:"revoked-certificates"`
+	} `yaml:"crl-profile"`
+}
+
+func (cc crlConfig) validate() error {
+	if err := cc.PKCS11.validate(); err != nil {
+		return err
+	}
+
+	// Input fields
+	if cc.Inputs.IssuerCertificatePath == "" {
+		return errors.New("inputs.issuer-certificate-path is required")
+	}
+
+	// Output fields
+	if cc.Outputs.CRLPath == "" {
+		return errors.New("outputs.crl-path is required")
+	}
+
+	// CRL profile fields
+	if cc.CRLProfile.ThisUpdate == "" {
+		return errors.New("crl-profile.this-update is required")
+	}
+	if cc.CRLProfile.NextUpdate == "" {
+		return errors.New("crl-profile.next-update is required")
+	}
+	if cc.CRLProfile.Number == 0 {
+		return errors.New("crl-profile.number must be non-zero")
+	}
+	for _, rc := range cc.CRLProfile.RevokedCertificates {
+		if rc.CertificatePath == "" {
+			return errors.New("crl-profile.revoked-certificates.certificate-path is required")
+		}
+		if rc.RevocationDate == "" {
+			return errors.New("crl-profile.revoked-certificates.revocation-date is required")
+		}
+		if rc.RevocationReason == 0 {
+			return errors.New("crl-profile.revoked-certificates.revocation-reason is required")
+		}
 	}
 
 	return nil
@@ -294,17 +421,9 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse public key: %s", err)
 	}
-	issuerPEMBytes, err := ioutil.ReadFile(config.Inputs.IssuerCertificatePath)
+	issuer, err := core.LoadCert(config.Inputs.IssuerCertificatePath)
 	if err != nil {
-		return fmt.Errorf("failed to read issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
-	}
-	issuerPEM, _ := pem.Decode(issuerPEMBytes)
-	if issuerPEM == nil {
-		return fmt.Errorf("failed to parse issuer certificate PEM")
-	}
-	issuer, err := x509.ParseCertificate(issuerPEM.Bytes)
-	if err != nil {
-		return fmt.Errorf("failed to parse issuer certificate: %s", err)
+		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
 	}
 
 	template, err := makeTemplate(newRandReader(ctx, session), &config.CertProfile, pubPEM.Bytes, ct)
@@ -337,6 +456,156 @@ func keyCeremony(configBytes []byte) error {
 	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.StoreSlot)
 	if _, err = generateKey(ctx, session, config.PKCS11.StoreLabel, config.Outputs.PublicKeyPath, config.Key); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func ocspRespCeremony(configBytes []byte) error {
+	var config ocspRespConfig
+	err := yaml.UnmarshalStrict(configBytes, &config)
+	if err != nil {
+		return fmt.Errorf("failed to parse config: %s", err)
+	}
+	if err := config.validate(); err != nil {
+		return fmt.Errorf("failed to validate config: %s", err)
+	}
+
+	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.SigningSlot, config.PKCS11.PIN)
+	if err != nil {
+		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.SigningSlot, err)
+	}
+	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.SigningSlot)
+	keyID, err := hex.DecodeString(config.PKCS11.SigningKeyID)
+	if err != nil {
+		return fmt.Errorf("failed to decode key-id: %s", err)
+	}
+	signer, err := newSigner(ctx, session, config.PKCS11.SigningLabel, keyID)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve private key handle: %s", err)
+	}
+	log.Println("Retrieved private key handle")
+
+	cert, err := core.LoadCert(config.Inputs.CertificatePath)
+	if err != nil {
+		return fmt.Errorf("failed to load certificate %q: %s", config.Inputs.CertificatePath, err)
+	}
+	issuer, err := core.LoadCert(config.Inputs.IssuerCertificatePath)
+	if err != nil {
+		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
+	}
+	var delegatedIssuer *x509.Certificate
+	if config.Inputs.DelegatedIssuerCertificatePath != "" {
+		delegatedIssuer, err = core.LoadCert(config.Inputs.DelegatedIssuerCertificatePath)
+		if err != nil {
+			return fmt.Errorf("failed to load delegated issuer certificate %q: %s", config.Inputs.DelegatedIssuerCertificatePath, err)
+		}
+	}
+
+	thisUpdate, err := time.Parse(configDateLayout, config.OCSPProfile.ThisUpdate)
+	if err != nil {
+		return fmt.Errorf("unable to parse ocsp-profile.this-update: %s", err)
+	}
+	nextUpdate, err := time.Parse(configDateLayout, config.OCSPProfile.NextUpdate)
+	if err != nil {
+		return fmt.Errorf("unable to parse ocsp-profile.next-update: %s", err)
+	}
+	var status int
+	switch config.OCSPProfile.Status {
+	case "good":
+		status = int(ocsp.Good)
+	case "revoked":
+		status = int(ocsp.Revoked)
+	default:
+		// this shouldn't happen if the config is validated
+		return fmt.Errorf("unexpected ocsp-profile.stats: %s", config.OCSPProfile.Status)
+	}
+
+	resp, err := generateOCSPResponse(signer, issuer, delegatedIssuer, cert, thisUpdate, nextUpdate, status)
+	if err != nil {
+		return err
+	}
+
+	if err := ioutil.WriteFile(config.Outputs.ResponsePath, resp, 0644); err != nil {
+		return fmt.Errorf("failed to write OCSP response to %q: %s", config.Outputs.ResponsePath, err)
+	}
+
+	return nil
+}
+
+func crlCeremony(configBytes []byte) error {
+	var config crlConfig
+	err := yaml.UnmarshalStrict(configBytes, &config)
+	if err != nil {
+		return fmt.Errorf("failed to parse config: %s", err)
+	}
+	if err := config.validate(); err != nil {
+		return fmt.Errorf("failed to validate config: %s", err)
+	}
+
+	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.SigningSlot, config.PKCS11.PIN)
+	if err != nil {
+		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.SigningSlot, err)
+	}
+	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.SigningSlot)
+	keyID, err := hex.DecodeString(config.PKCS11.SigningKeyID)
+	if err != nil {
+		return fmt.Errorf("failed to decode key-id: %s", err)
+	}
+	signer, err := newSigner(ctx, session, config.PKCS11.SigningLabel, keyID)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve private key handle: %s", err)
+	}
+	log.Println("Retrieved private key handle")
+
+	issuer, err := core.LoadCert(config.Inputs.IssuerCertificatePath)
+	if err != nil {
+		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
+	}
+
+	thisUpdate, err := time.Parse(configDateLayout, config.CRLProfile.ThisUpdate)
+	if err != nil {
+		return fmt.Errorf("unable to parse crl-profile.this-update: %s", err)
+	}
+	nextUpdate, err := time.Parse(configDateLayout, config.CRLProfile.NextUpdate)
+	if err != nil {
+		return fmt.Errorf("unable to parse crl-profile.next-update: %s", err)
+	}
+
+	var revokedCertificates []pkix.RevokedCertificate
+	for _, rc := range config.CRLProfile.RevokedCertificates {
+		cert, err := core.LoadCert(rc.CertificatePath)
+		if err != nil {
+			return fmt.Errorf("failed to load revoked certificate %q: %s", rc.CertificatePath, err)
+		}
+		revokedAt, err := time.Parse(configDateLayout, rc.RevocationDate)
+		if err != nil {
+			return fmt.Errorf("unable to parse crl-profile.revoked-certificates.revocation-date")
+		}
+		revokedCert := pkix.RevokedCertificate{
+			SerialNumber:   cert.SerialNumber,
+			RevocationTime: revokedAt,
+		}
+		encReason, err := asn1.Marshal(rc.RevocationReason)
+		if err != nil {
+			return fmt.Errorf("failed to marshal revocation reason %q: %s", rc.RevocationReason, err)
+		}
+		revokedCert.Extensions = []pkix.Extension{{
+			Id:    asn1.ObjectIdentifier{2, 5, 29, 21}, // id-ce-reasonCode
+			Value: encReason,
+		}}
+		revokedCertificates = append(revokedCertificates, revokedCert)
+	}
+
+	crlBytes, err := generateCRL(signer, issuer, thisUpdate, nextUpdate, config.CRLProfile.Number, revokedCertificates)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Signed CRL PEM:\n%s", crlBytes)
+
+	if err := ioutil.WriteFile(config.Outputs.CRLPath, crlBytes, 0644); err != nil {
+		return fmt.Errorf("failed to write CRL to %q: %s", config.Outputs.CRLPath, err)
 	}
 
 	return nil
@@ -382,7 +651,22 @@ func main() {
 		if err != nil {
 			log.Fatalf("key ceremony failed: %s", err)
 		}
+	case "ocsp-response":
+		err = ocspRespCeremony(configBytes)
+		if err != nil {
+			log.Fatalf("ocsp response ceremony failed: %s", err)
+		}
+	case "crl":
+		err = crlCeremony(configBytes)
+		if err != nil {
+			log.Fatalf("crl ceremony failed: %s", err)
+		}
+	case "crl-signer":
+		err = intermediateCeremony(configBytes, crlCert)
+		if err != nil {
+			log.Fatalf("crl signer ceremony failed: %s", err)
+		}
 	default:
-		log.Fatalf("unknown ceremony-type, must be one of: root, intermediate, ocsp-signer, key")
+		log.Fatalf("unknown ceremony-type, must be one of: root, intermediate, ocsp-signer, crl-signer, key, ocsp-response")
 	}
 }

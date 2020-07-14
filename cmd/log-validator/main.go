@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/hpcloud/tail"
 	"github.com/prometheus/client_golang/prometheus"
@@ -36,16 +37,23 @@ func lineValid(text string) error {
 	//   timestamp hostname datacenter syslogseverity binary-name[pid]: checksum msg
 
 	fields := strings.Split(text, " ")
+	const errorPrefix = "log-validator: "
 	// Extract checksum from line
 	if len(fields) < 6 {
-		return errors.New("line doesn't match expected format")
+		return fmt.Errorf("%sline doesn't match expected format", errorPrefix)
 	}
 	checksum := fields[5]
 	// Reconstruct just the message portion of the line
 	line := strings.Join(fields[6:], " ")
+
+	// If we are fed our own output, treat it as always valid. This
+	// prevents runaway scenarios where we generate ever-longer output.
+	if strings.Contains(text, errorPrefix) {
+		return nil
+	}
 	// Check the extracted checksum against the computed checksum
 	if computedChecksum := blog.LogLineChecksum(line); checksum != computedChecksum {
-		return fmt.Errorf("invalid checksum (expected %q, got %q)", computedChecksum, checksum)
+		return fmt.Errorf("%s invalid checksum (expected %q, got %q)", errorPrefix, computedChecksum, checksum)
 	}
 	return nil
 }
@@ -133,6 +141,11 @@ func main() {
 	}, []string{"filename", "status"})
 	stats.MustRegister(lineCounter)
 
+	// Emit no more than 1 error line per second. This prevents consuming large
+	// amounts of disk space in case there is problem that causes all log lines to
+	// be invalid.
+	outputLimiter := time.NewTicker(time.Second)
+
 	var tailers []*tail.Tail
 	for _, filename := range config.Files {
 		t, err := tail.TailFile(filename, tail.Config{
@@ -151,7 +164,11 @@ func main() {
 				}
 				if err := lineValid(line.Text); err != nil {
 					lineCounter.WithLabelValues(t.Filename, "bad").Inc()
-					logger.Errf("%s: %s %q", t.Filename, err, line.Text)
+					select {
+					case <-outputLimiter.C:
+						logger.Errf("%s: %s %q", t.Filename, err, line.Text)
+					default:
+					}
 				} else {
 					lineCounter.WithLabelValues(t.Filename, "ok").Inc()
 				}

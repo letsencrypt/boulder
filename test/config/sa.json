@@ -24,7 +24,8 @@
       ]
     },
     "features": {
-      "WriteIssuedNamesPrecert": true
+      "StoreIssuerInfo": true,
+      "StoreRevokerInfo": true
     }
   },
 

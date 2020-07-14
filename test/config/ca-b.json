@@ -5,6 +5,7 @@
     "ecdsaProfile": "ecdsaEE",
     "debugAddr": ":8001",
     "weakKeyFile": "test/example-weak-keys.json",
+    "blockedKeyFile": "test/example-blocked-keys.yaml",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/ca.boulder/cert.pem",
@@ -29,11 +30,11 @@
     },
     "Issuers": [{
       "ConfigFile": "test/test-ca.key-pkcs11.json",
-      "CertFile": "test/test-ca2.pem",
+      "CertFile": "/tmp/intermediate-cert-rsa-a.pem",
       "NumSessions": 2
-    }, {
+    },{
       "ConfigFile": "test/test-ca.key-pkcs11.json",
-      "CertFile": "test/test-ca.pem",
+      "CertFile": "/tmp/intermediate-cert-rsa-b.pem",
       "NumSessions": 2
     }],
     "expiry": "2160h",
@@ -68,9 +69,6 @@
                 "Qualifiers": [ {
                   "type": "id-qt-cps",
                   "value": "http://example.com/cps"
-                }, {
-                  "type": "id-qt-unotice",
-                  "value": "Do What Thou Wilt"
                 } ]
               }
             ],
@@ -140,6 +138,7 @@
     "maxConcurrentRPCServerRequests": 100000,
     "orphanQueueDir": "/tmp/orphaned-certificates-b",
     "features": {
+      "StoreIssuerInfo": true
     }
   },
 

@@ -32,6 +32,7 @@ GRANT INSERT,SELECT ON serials TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON precertificates TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON keyHashToSerial TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON blockedKeys TO 'sa'@'localhost';
+GRANT SELECT,INSERT,UPDATE ON newOrdersRL TO 'sa'@'localhost';
 
 -- OCSP Responder
 GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';
@@ -72,7 +73,7 @@ GRANT SELECT,DELETE ON orderToAuthz2 TO 'janitor'@'localhost';
 GRANT SELECT,UPDATE ON blockedKeys TO 'badkeyrevoker'@'localhost';
 GRANT SELECT ON keyHashToSerial TO 'badkeyrevoker'@'localhost';
 GRANT SELECT ON certificateStatus TO 'badkeyrevoker'@'localhost';
-GRANT SELECT ON certificates TO 'badkeyrevoker'@'localhost';
+GRANT SELECT ON precertificates TO 'badkeyrevoker'@'localhost';
 GRANT SELECT ON registrations TO 'badkeyrevoker'@'localhost';
 
 -- Test setup and teardown

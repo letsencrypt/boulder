@@ -57,6 +57,8 @@ const (
 	issuerPath      = "/acme/issuer-cert"
 	buildIDPath     = "/build"
 	rolloverPath    = "/acme/key-change"
+
+	maxRequestSize = 50000
 )
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
@@ -500,8 +502,11 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 		return nil, nil, reg, probs.Malformed("No body on POST")
 	}
 
-	bodyBytes, err := ioutil.ReadAll(request.Body)
+	bodyBytes, err := ioutil.ReadAll(http.MaxBytesReader(nil, request.Body, maxRequestSize))
 	if err != nil {
+		if err.Error() == "http: request body too large" {
+			return nil, nil, reg, probs.Unauthorized("request body too large")
+		}
 		wfe.httpErrorCounter.WithLabelValues("UnableToReadReqBody").Inc()
 		return nil, nil, reg, probs.ServerInternal("unable to read request body")
 	}
@@ -530,7 +535,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 		// to check its quality before doing the verify.
 		if err = wfe.keyPolicy.GoodKey(ctx, submittedKey.Key); err != nil {
 			wfe.joseErrorCounter.WithLabelValues("JWKRejectedByGoodKey").Inc()
-			return nil, nil, reg, probs.Malformed(err.Error())
+			return nil, nil, reg, probs.BadPublicKey(err.Error())
 		}
 		key = submittedKey
 	} else if err != nil {
@@ -974,6 +979,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *web.Re
 	logEvent.Extra["CSRDNSNames"] = certificateRequest.CSR.DNSNames
 	logEvent.Extra["CSREmailAddresses"] = certificateRequest.CSR.EmailAddresses
 	logEvent.Extra["CSRIPAddresses"] = certificateRequest.CSR.IPAddresses
+	logEvent.Extra["KeyType"] = web.KeyTypeToString(certificateRequest.CSR.PublicKey)
 
 	// Inc CSR signature algorithm counter
 	wfe.csrSignatureAlgs.With(prometheus.Labels{"type": certificateRequest.CSR.SignatureAlgorithm.String()}).Inc()

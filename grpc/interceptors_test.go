@@ -76,7 +76,7 @@ func TestClientInterceptor(t *testing.T) {
 // TestFailFastFalse sends a gRPC request to a backend that is
 // unavailable, and ensures that the request doesn't error out until the
 // timeout is reached, i.e. that FailFast is set to false.
-// https://github.com/grpc/grpc/blob/master/doc/wait-for-ready.md
+// https://github.com/grpc/grpc/blob/main/doc/wait-for-ready.md
 func TestFailFastFalse(t *testing.T) {
 	ci := &clientInterceptor{
 		timeout: 100 * time.Millisecond,

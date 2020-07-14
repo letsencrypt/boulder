@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -270,10 +269,6 @@ func (pa *mockPA) WillingToIssueWildcards(idents []identifier.ACMEIdentifier) er
 
 func (pa *mockPA) ChallengeTypeEnabled(t string) bool {
 	return true
-}
-
-func (pa *mockPA) ValidDomain(_ string) error {
-	return nil
 }
 
 func makeBody(s string) io.ReadCloser {
@@ -1100,10 +1095,6 @@ func TestGetChallenge(t *testing.T) {
 }
 
 func TestGetChallengeV2UpRel(t *testing.T) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	wfe, _ := setupWFE(t)
 
 	challengeURL := "http://localhost/acme/chall-v3/1/-ZfxEw"
@@ -2193,6 +2184,18 @@ func TestLengthRequired(t *testing.T) {
 	test.Assert(t, prob != nil, "No error returned for request body missing Content-Length.")
 	test.AssertEquals(t, probs.MalformedProblem, prob.Type)
 	test.AssertEquals(t, http.StatusLengthRequired, prob.HTTPStatus)
+}
+
+func TestRequestTooLong(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	payload := fmt.Sprintf(`{"a":"%s"}`, strings.Repeat("a", 50000))
+
+	_, _, _, prob := wfe.verifyPOST(ctx, newRequestEvent(), makePostRequest(signRequest(t,
+		payload, wfe.nonceService)), false, "n/a")
+	test.Assert(t, prob != nil, "No error returned for too-long request body.")
+	test.AssertEquals(t, probs.UnauthorizedProblem, prob.Type)
+	test.AssertEquals(t, "request body too large", prob.Detail)
+	test.AssertEquals(t, http.StatusForbidden, prob.HTTPStatus)
 }
 
 type mockSAGetRegByKeyFails struct {

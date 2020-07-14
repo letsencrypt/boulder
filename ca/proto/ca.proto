@@ -1,4 +1,4 @@
-syntax = "proto2";
+syntax = "proto3";
 
 package ca;
 option go_package = "github.com/letsencrypt/boulder/ca/proto";
@@ -21,32 +21,32 @@ service OCSPGenerator {
 }
 
 message IssueCertificateRequest {
-  optional bytes csr = 1;
-  optional int64 registrationID = 2;
-  optional int64 orderID = 3;
+  bytes csr = 1;
+  int64 registrationID = 2;
+  int64 orderID = 3;
 }
 
 message IssuePrecertificateResponse {
-  optional bytes DER = 1;
+  bytes DER = 1;
 }
 
 message IssueCertificateForPrecertificateRequest {
-  optional bytes DER = 1;
+  bytes DER = 1;
   repeated bytes SCTs = 2;
-  optional int64 registrationID = 3;
-  optional int64 orderID = 4;
+  int64 registrationID = 3;
+  int64 orderID = 4;
 }
 
 // Exactly one of certDER or [serial and issuerID] must be set.
 message GenerateOCSPRequest {
-  optional bytes certDER = 1;
-  optional string status = 2;
-  optional int32 reason = 3;
-  optional int64 revokedAt = 4;
-  optional string serial = 5;
-  optional int64 issuerID = 6;
+  bytes certDER = 1;
+  string status = 2;
+  int32 reason = 3;
+  int64 revokedAt = 4;
+  string serial = 5;
+  int64 issuerID = 6;
 }
 
 message OCSPResponse {
-  optional bytes response = 1;
+  bytes response = 1;
 }

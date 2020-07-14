@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"fmt"
 	"html/template"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -14,6 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/sa"
@@ -21,13 +21,6 @@ import (
 	"github.com/letsencrypt/boulder/test/vars"
 	"google.golang.org/grpc"
 )
-
-func TestMain(m *testing.M) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		os.Exit(0)
-	}
-	os.Exit(m.Run())
-}
 
 func randHash(t *testing.T) []byte {
 	t.Helper()
@@ -57,7 +50,10 @@ func TestSelectUncheckedRows(t *testing.T) {
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetSATestDatabase(t)()
 
-	bkr := &badKeyRevoker{dbMap: dbMap}
+	bkr := &badKeyRevoker{
+		dbMap:  dbMap,
+		logger: blog.NewMock(),
+	}
 
 	hashA, hashB, hashC := randHash(t), randHash(t), randHash(t)
 	insertBlockedRow(t, dbMap, hashA, 1, true)
@@ -102,7 +98,20 @@ func insertRegistration(t *testing.T, dbMap *db.WrappedMap, addrs ...string) int
 	return regID
 }
 
-func insertCert(t *testing.T, dbMap *db.WrappedMap, keyHash []byte, serial string, regID int64, expired bool, revoked bool) {
+type ExpiredStatus bool
+
+const (
+	Expired   = ExpiredStatus(true)
+	Unexpired = ExpiredStatus(false)
+	Revoked   = core.OCSPStatusRevoked
+	Unrevoked = core.OCSPStatusGood
+)
+
+func insertGoodCert(t *testing.T, dbMap *db.WrappedMap, keyHash []byte, serial string, regID int64) {
+	insertCert(t, dbMap, keyHash, serial, regID, Unexpired, Unrevoked)
+}
+
+func insertCert(t *testing.T, dbMap *db.WrappedMap, keyHash []byte, serial string, regID int64, expiredStatus ExpiredStatus, status core.OCSPStatus) {
 	t.Helper()
 	_, err := dbMap.Exec(
 		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
@@ -112,19 +121,25 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, keyHash []byte, serial strin
 	)
 	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
 
-	status := string(core.StatusValid)
-	if revoked {
-		status = string(core.StatusRevoked)
-	}
 	_, err = dbMap.Exec(
-		"INSERT INTO certificateStatus (serial, status, isExpired, ocspLAstUpdated, revokedDate, revokedReason, lastExpirationNagSent) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		"INSERT INTO certificateStatus (serial, status, isExpired, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent) VALUES (?, ?, ?, ?, ?, ?, ?)",
 		serial,
 		status,
-		expired,
+		expiredStatus,
 		time.Now(),
 		time.Time{},
 		0,
 		time.Time{},
+	)
+	test.AssertNotError(t, err, "failed to insert test certificateStatus row")
+
+	_, err = dbMap.Exec(
+		"INSERT INTO precertificates (serial, registrationID, der, issued, expires) VALUES (?, ?, ?, ?, ?)",
+		serial,
+		regID,
+		[]byte{1, 2, 3},
+		time.Now(),
+		time.Now(),
 	)
 	test.AssertNotError(t, err, "failed to insert test certificateStatus row")
 
@@ -140,22 +155,44 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, keyHash []byte, serial strin
 	test.AssertNotError(t, err, "failed to insert test certificates row")
 }
 
+// Test that we produce an error when a serial from the keyHashToSerial table
+// does not have a corresponding entry in the certificateStatus and
+// precertificates table.
+func TestFindUnrevokedNoRows(t *testing.T) {
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	test.AssertNotError(t, err, "failed setting up db client")
+	defer test.ResetSATestDatabase(t)()
+
+	hashA := randHash(t)
+	_, err = dbMap.Exec(
+		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
+		hashA,
+		time.Now(),
+		"zz",
+	)
+	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
+
+	bkr := &badKeyRevoker{dbMap: dbMap, serialBatchSize: 1, maxRevocations: 10}
+	_, err = bkr.findUnrevoked(uncheckedBlockedKey{KeyHash: hashA})
+	test.Assert(t, db.IsNoRows(err), "expected NoRows error")
+}
+
 func TestFindUnrevoked(t *testing.T) {
 	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetSATestDatabase(t)()
 
-	regID := insertRegistration(t, dbMap, "")
+	regID := insertRegistration(t, dbMap)
 
 	bkr := &badKeyRevoker{dbMap: dbMap, serialBatchSize: 1, maxRevocations: 10}
 
 	hashA := randHash(t)
 	// insert valid, unexpired
-	insertCert(t, dbMap, hashA, "ff", regID, false, false)
+	insertCert(t, dbMap, hashA, "ff", regID, Unexpired, Unrevoked)
 	// insert valid, expired
-	insertCert(t, dbMap, hashA, "ee", regID, true, false)
+	insertCert(t, dbMap, hashA, "ee", regID, Expired, Unrevoked)
 	// insert revoked
-	insertCert(t, dbMap, hashA, "dd", regID, false, true)
+	insertCert(t, dbMap, hashA, "dd", regID, Unexpired, Revoked)
 
 	rows, err := bkr.findUnrevoked(uncheckedBlockedKey{KeyHash: hashA})
 	test.AssertNotError(t, err, "findUnrevoked failed")
@@ -177,7 +214,7 @@ func TestResolveContacts(t *testing.T) {
 
 	bkr := &badKeyRevoker{dbMap: dbMap}
 
-	regIDA := insertRegistration(t, dbMap, "")
+	regIDA := insertRegistration(t, dbMap)
 	regIDB := insertRegistration(t, dbMap, "example.com", "example-2.com")
 	regIDC := insertRegistration(t, dbMap, "example.com")
 	regIDD := insertRegistration(t, dbMap, "example-2.com")
@@ -241,6 +278,40 @@ func TestRevokeCerts(t *testing.T) {
 	test.AssertEquals(t, mm.Messages[0].Body, "ee\n")
 }
 
+func TestCertificateAbsent(t *testing.T) {
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	test.AssertNotError(t, err, "failed setting up db client")
+	defer test.ResetSATestDatabase(t)()
+
+	// populate DB with all the test data
+	regIDA := insertRegistration(t, dbMap, "example.com")
+	hashA := randHash(t)
+	insertBlockedRow(t, dbMap, hashA, regIDA, false)
+
+	// Add an entry to keyHashToSerial but not to certificateStatus or certificate
+	// status, and expect an error.
+	_, err = dbMap.Exec(
+		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
+		hashA,
+		time.Now(),
+		"ffaaee",
+	)
+	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
+
+	bkr := &badKeyRevoker{
+		dbMap:           dbMap,
+		maxRevocations:  1,
+		serialBatchSize: 1,
+		raClient:        &mockRevoker{},
+		mailer:          &mocks.Mailer{},
+		emailSubject:    "testing",
+		emailTemplate:   testTemplate,
+		logger:          blog.NewMock(),
+	}
+	_, err = bkr.invoke()
+	test.AssertError(t, err, "expected error when row in keyHashToSerial didn't have a matching cert")
+}
+
 func TestInvoke(t *testing.T) {
 	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
 	test.AssertNotError(t, err, "failed setting up db client")
@@ -248,19 +319,28 @@ func TestInvoke(t *testing.T) {
 
 	mm := &mocks.Mailer{}
 	mr := &mockRevoker{}
-	bkr := &badKeyRevoker{dbMap: dbMap, maxRevocations: 10, serialBatchSize: 1, raClient: mr, mailer: mm, emailSubject: "testing", emailTemplate: testTemplate}
+	bkr := &badKeyRevoker{
+		dbMap:           dbMap,
+		maxRevocations:  10,
+		serialBatchSize: 1,
+		raClient:        mr,
+		mailer:          mm,
+		emailSubject:    "testing",
+		emailTemplate:   testTemplate,
+		logger:          blog.NewMock(),
+	}
 
 	// populate DB with all the test data
 	regIDA := insertRegistration(t, dbMap, "example.com")
 	regIDB := insertRegistration(t, dbMap, "example.com")
 	regIDC := insertRegistration(t, dbMap, "other.example.com", "uno.example.com")
-	regIDD := insertRegistration(t, dbMap, "")
+	regIDD := insertRegistration(t, dbMap)
 	hashA := randHash(t)
 	insertBlockedRow(t, dbMap, hashA, regIDC, false)
-	insertCert(t, dbMap, hashA, "ff", regIDA, false, false)
-	insertCert(t, dbMap, hashA, "ee", regIDB, false, false)
-	insertCert(t, dbMap, hashA, "dd", regIDC, false, false)
-	insertCert(t, dbMap, hashA, "cc", regIDD, false, false)
+	insertGoodCert(t, dbMap, hashA, "ff", regIDA)
+	insertGoodCert(t, dbMap, hashA, "ee", regIDB)
+	insertGoodCert(t, dbMap, hashA, "dd", regIDC)
+	insertGoodCert(t, dbMap, hashA, "cc", regIDD)
 
 	noWork, err := bkr.invoke()
 	test.AssertNotError(t, err, "invoke failed")
@@ -279,7 +359,7 @@ func TestInvoke(t *testing.T) {
 	// add a row with no associated valid certificates
 	hashB := randHash(t)
 	insertBlockedRow(t, dbMap, hashB, regIDC, false)
-	insertCert(t, dbMap, hashB, "bb", regIDA, true, true)
+	insertCert(t, dbMap, hashB, "bb", regIDA, Expired, Revoked)
 
 	noWork, err = bkr.invoke()
 	test.AssertNotError(t, err, "invoke failed")
@@ -307,7 +387,15 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 
 	mm := &mocks.Mailer{}
 	mr := &mockRevoker{}
-	bkr := &badKeyRevoker{dbMap: dbMap, maxRevocations: 10, serialBatchSize: 1, raClient: mr, mailer: mm, emailSubject: "testing", emailTemplate: testTemplate}
+	bkr := &badKeyRevoker{dbMap: dbMap,
+		maxRevocations:  10,
+		serialBatchSize: 1,
+		raClient:        mr,
+		mailer:          mm,
+		emailSubject:    "testing",
+		emailTemplate:   testTemplate,
+		logger:          blog.NewMock(),
+	}
 
 	// populate DB with all the test data
 	regIDA := insertRegistration(t, dbMap, "a@example.com")
@@ -318,10 +406,10 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 
 	insertBlockedRow(t, dbMap, hashA, regIDA, false)
 
-	insertCert(t, dbMap, hashA, "ee", regIDB, false, false)
-	insertCert(t, dbMap, hashA, "dd", regIDB, false, false)
-	insertCert(t, dbMap, hashA, "cc", regIDC, false, false)
-	insertCert(t, dbMap, hashA, "bb", regIDC, false, false)
+	insertGoodCert(t, dbMap, hashA, "ee", regIDB)
+	insertGoodCert(t, dbMap, hashA, "dd", regIDB)
+	insertGoodCert(t, dbMap, hashA, "cc", regIDC)
+	insertGoodCert(t, dbMap, hashA, "bb", regIDC)
 
 	noWork, err := bkr.invoke()
 	test.AssertNotError(t, err, "invoke failed")

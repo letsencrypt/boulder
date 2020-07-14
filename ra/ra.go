@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"net/mail"
 	"net/url"
 	"reflect"
 	"sort"
@@ -29,6 +28,7 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimit"
@@ -361,7 +361,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 // * A list containing a contact that has a URL scheme other than mailto
 // * A list containing a mailto contact that contains hfields
 // * A list containing a contact that has non-ascii characters
-// * A list containing a contact that doesn't pass `validateEmail`
+// * A list containing a contact that doesn't pass `policy.ValidEmail`
 func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts *[]string) error {
 	if contacts == nil || len(*contacts) == 0 {
 		return nil // Nothing to validate
@@ -394,7 +394,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 				contact,
 			)
 		}
-		if err := ra.validateEmail(parsed.Opaque); err != nil {
+		if err := policy.ValidEmail(parsed.Opaque); err != nil {
 			return err
 		}
 	}
@@ -414,44 +414,6 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 			"too many/too long contact(s). Please use shorter or fewer email addresses")
 	}
 
-	return nil
-}
-
-// forbiddenMailDomains is a map of domain names we do not allow after the
-// @ symbol in contact mailto addresses. These are frequently used when
-// copy-pasting example configurations and would not result in expiration
-// messages and subscriber communications reaching the user that created the
-// registration if allowed.
-var forbiddenMailDomains = map[string]bool{
-	// https://tools.ietf.org/html/rfc2606#section-3
-	"example.com": true,
-	"example.net": true,
-	"example.org": true,
-}
-
-// validateEmail returns an error if the given address is not parseable as an
-// email address or if the domain portion of the email address is invalid or
-// a member of the forbiddenMailDomains map.
-func (ra *RegistrationAuthorityImpl) validateEmail(address string) error {
-	email, err := mail.ParseAddress(address)
-	if err != nil {
-		if len(address) > 254 {
-			address = address[:254]
-		}
-		return berrors.InvalidEmailError("%q is not a valid e-mail address", address)
-	}
-	splitEmail := strings.SplitN(email.Address, "@", -1)
-	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	if err := ra.PA.ValidDomain(domain); err != nil {
-		return berrors.InvalidEmailError(
-			"contact email %q has invalid domain : %s",
-			email.Address, err)
-	}
-	if forbiddenMailDomains[domain] {
-		return berrors.InvalidEmailError(
-			"invalid contact domain. Contact emails @%s are forbidden",
-			domain)
-	}
 	return nil
 }
 
@@ -804,13 +766,13 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	var recheckAuthzs []*core.Authorization
 	// Per Baseline Requirements, CAA must be checked within 8 hours of issuance.
 	// CAA is checked when an authorization is validated, so as long as that was
-	// less than 8 hours ago, we're fine. If it was more than 8 hours ago
-	// we have to recheck. Since we don't record the validation time for
+	// less than 8 hours ago, we're fine. We recheck if that was more than 7 hours
+	// ago, to be on the safe side. Since we don't record the validation time for
 	// authorizations, we instead look at the expiration time and subtract out the
 	// expected authorization lifetime. Note: If we adjust the authorization
 	// lifetime in the future we will need to tweak this correspondingly so it
 	// works correctly during the switchover.
-	caaRecheckTime := now.Add(ra.authorizationLifetime).Add(-8 * time.Hour)
+	caaRecheckTime := now.Add(ra.authorizationLifetime).Add(-7 * time.Hour)
 	for _, name := range names {
 		authz := authzs[name]
 		if authz == nil {
@@ -1218,8 +1180,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	orderIDInt := int64(oID)
 	issueReq := &caPB.IssueCertificateRequest{
 		Csr:            csr.Raw,
-		RegistrationID: &acctIDInt,
-		OrderID:        &orderIDInt,
+		RegistrationID: acctIDInt,
+		OrderID:        orderIDInt,
 	}
 
 	// wrapError adds a prefix to an error. If the error is a boulder error then
@@ -1248,8 +1210,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &caPB.IssueCertificateForPrecertificateRequest{
 		DER:            precert.DER,
 		SCTs:           scts,
-		RegistrationID: &acctIDInt,
-		OrderID:        &orderIDInt,
+		RegistrationID: acctIDInt,
+		OrderID:        orderIDInt,
 	})
 	if err != nil {
 		return emptyCert, wrapError(err, "issuing certificate for precertificate")
@@ -1689,14 +1651,13 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 // revokeCertificate generates a revoked OCSP response for the given certificate, stores
 // the revocation information, and purges OCSP request URLs from Akamai.
 func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, revokedBy int64, source string, comment string) error {
-	status := string(core.OCSPStatusRevoked)
 	reason := int32(code)
 	revokedAt := ra.clk.Now().UnixNano()
 	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
 		CertDER:   cert.Raw,
-		Status:    &status,
-		Reason:    &reason,
-		RevokedAt: &revokedAt,
+		Status:    string(core.OCSPStatusRevoked),
+		Reason:    reason,
+		RevokedAt: revokedAt,
 	})
 	if err != nil {
 		return err
@@ -1714,7 +1675,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	if err != nil {
 		return err
 	}
-	if features.Enabled(features.BlockedKeyTable) && reason == ocsp.KeyCompromise {
+	if reason == ocsp.KeyCompromise {
 		digest, err := core.KeyDigest(cert.PublicKey)
 		if err != nil {
 			return err

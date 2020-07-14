@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"gopkg.in/go-gorp/gorp.v2"
+	"github.com/go-gorp/gorp/v3"
 )
 
 // These interfaces exist to aid in mocking database operations for unit tests.

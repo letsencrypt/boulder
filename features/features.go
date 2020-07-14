@@ -18,6 +18,8 @@ const (
 	CheckRenewalFirst
 	ParallelCheckFailedValidation
 	DeleteUnusedChallenges
+	BlockedKeyTable
+	StoreKeyHashes
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -47,15 +49,15 @@ const (
 	// StoreIssuerInfo enables storage of information identifying the issuer of
 	// a certificate in the certificateStatus table.
 	StoreIssuerInfo
-	// StoreKeyHashes enables storage of SPKI hashes associated with certificates.
-	StoreKeyHashes
-	// BlockedKeyTable enables storage, and checking, of the blockedKeys table in addition
-	// to the blocked key list
-	BlockedKeyTable
 	// StoreRevokerInfo enables storage of the revoker and a bool indicating if the row
-	// was checked for extant unrevoked certificates in the blockedKeys table. It should
-	// only be enabled if BlockedKeyTable is also enabled.
+	// was checked for extant unrevoked certificates in the blockedKeys table.
 	StoreRevokerInfo
+	// RestrictRSAKeySizes enables restriction of acceptable RSA public key moduli to
+	// the common sizes (2048, 3072, and 4096 bits).
+	RestrictRSAKeySizes
+	// FasterNewOrdersRateLimit enables use of a separate table for counting the
+	// new orders rate limit.
+	FasterNewOrdersRateLimit
 )
 
 // List of features and their default value, protected by fMu
@@ -78,8 +80,10 @@ var features = map[FeatureFlag]bool{
 	StoreIssuerInfo:               false,
 	WriteIssuedNamesPrecert:       false,
 	StoreKeyHashes:                false,
-	BlockedKeyTable:               false,
 	StoreRevokerInfo:              false,
+	RestrictRSAKeySizes:           false,
+	FasterNewOrdersRateLimit:      false,
+	BlockedKeyTable:               false,
 }
 
 var fMu = new(sync.RWMutex)

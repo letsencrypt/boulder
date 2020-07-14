@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
+	"errors"
 	"strings"
 
 	"github.com/letsencrypt/boulder/core"
@@ -33,7 +34,7 @@ var goodSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 }
 
 var (
-	invalidPubKey        = berrors.BadPublicKeyError("invalid public key in CSR")
+	invalidPubKey        = berrors.BadCSRError("invalid public key in CSR")
 	unsupportedSigAlg    = berrors.BadCSRError("signature algorithm not supported")
 	invalidSig           = berrors.BadCSRError("invalid signature on CSR")
 	invalidEmailPresent  = berrors.BadCSRError("CSR contains one or more email address fields")
@@ -52,7 +53,10 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 		return invalidPubKey
 	}
 	if err := keyPolicy.GoodKey(ctx, key); err != nil {
-		return berrors.BadPublicKeyError("invalid public key in CSR: %s", err)
+		if errors.Is(err, goodkey.ErrBadKey) {
+			return berrors.BadCSRError("invalid public key in CSR: %s", err)
+		}
+		return berrors.InternalServerError("error checking key validity: %s", err)
 	}
 	if !goodSignatureAlgorithms[csr.SignatureAlgorithm] {
 		return unsupportedSigAlg

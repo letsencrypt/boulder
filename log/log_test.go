@@ -1,6 +1,7 @@
 package log
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"log/syslog"
@@ -339,4 +340,12 @@ func TestStdoutFailure(t *testing.T) {
 
 	// Try to audit log something
 	log.AuditInfo("This should cause a panic, stdout is closed!")
+}
+
+func TestLogAtLevelEscapesNewlines(t *testing.T) {
+	var buf bytes.Buffer
+	w := &bothWriter{nil, 6, 0, clock.New(), &buf}
+	w.logAtLevel(6, "foo\nbar")
+
+	test.Assert(t, strings.Contains(buf.String(), "foo\\nbar"), "failed to escape newline")
 }

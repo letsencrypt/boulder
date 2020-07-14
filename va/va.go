@@ -28,7 +28,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
-	"github.com/letsencrypt/boulder/reloader"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -76,6 +75,7 @@ type RemoteVA struct {
 
 type vaMetrics struct {
 	validationTime                      *prometheus.HistogramVec
+	localValidationTime                 *prometheus.HistogramVec
 	remoteValidationTime                *prometheus.HistogramVec
 	remoteValidationFailures            prometheus.Counter
 	prospectiveRemoteValidationFailures prometheus.Counter
@@ -90,11 +90,19 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 	validationTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "validation_time",
-			Help:    "Time taken to validate a challenge",
+			Help:    "Total time taken to validate a challenge and aggregate results",
 			Buckets: metrics.InternetFacingBuckets,
 		},
 		[]string{"type", "result", "problem_type"})
 	stats.MustRegister(validationTime)
+	localValidationTime := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "local_validation_time",
+			Help:    "Time taken to locally validate a challenge",
+			Buckets: metrics.InternetFacingBuckets,
+		},
+		[]string{"type", "result"})
+	stats.MustRegister(localValidationTime)
 	remoteValidationTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "remote_validation_time",
@@ -149,6 +157,7 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 	return &vaMetrics{
 		validationTime:                      validationTime,
 		remoteValidationTime:                remoteValidationTime,
+		localValidationTime:                 localValidationTime,
 		remoteValidationFailures:            remoteValidationFailures,
 		prospectiveRemoteValidationFailures: prospectiveRemoteValidationFailures,
 		tlsALPNOIDCounter:                   tlsALPNOIDCounter,
@@ -171,7 +180,6 @@ type ValidationAuthorityImpl struct {
 	clk                clock.Clock
 	remoteVAs          []RemoteVA
 	maxRemoteFailures  int
-	multiVAPolicy      *MultiVAPolicy
 	accountURIPrefixes []string
 	singleDialTimeout  time.Duration
 
@@ -190,7 +198,6 @@ func NewValidationAuthorityImpl(
 	clk clock.Clock,
 	logger blog.Logger,
 	accountURIPrefixes []string,
-	multiVAPolicyFile string,
 ) (*ValidationAuthorityImpl, error) {
 	if pc.HTTPPort == 0 {
 		pc.HTTPPort = 80
@@ -226,24 +233,7 @@ func NewValidationAuthorityImpl(
 		singleDialTimeout: 10 * time.Second,
 	}
 
-	// if a multiVAPolicyFile was specified then set up a live reloader and
-	// a MultiVAPolicy instance for the VA to refer to.
-	if multiVAPolicyFile != "" {
-		policy := new(MultiVAPolicy)
-		va.multiVAPolicy = policy
-		_, err := reloader.New(multiVAPolicyFile, policy.LoadPolicy, va.multiVAPolicyLoadError)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return va, nil
-}
-
-// multiVAPolicyError is a small error handler called by the reloader package
-// when the multiVAPolicy file can't be loaded.
-func (va *ValidationAuthorityImpl) multiVAPolicyLoadError(err error) {
-	va.log.AuditErrf("error live-loading multi VA policy file: %v", err)
 }
 
 // Used for audit logging
@@ -631,6 +621,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 
 	records, prob := va.validate(ctx, identifier.DNSIdentifier(domain), challenge, authz)
 	challenge.ValidationRecord = records
+	localValidationLatency := time.Since(vStart)
 
 	// Check for malformed ValidationRecords
 	if !challenge.RecordsSane() && prob == nil {
@@ -670,14 +661,8 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 				remoteResults,
 				len(va.remoteVAs))
 
-			// We consider the multi VA result skippable even though we are enforcing
-			// multi VA if the domain or the account has multi-VA disabled by policy.
-			skippable := !va.multiVAPolicy.EnabledDomain(domain) ||
-				!va.multiVAPolicy.EnabledAccount(authz.RegistrationID)
-
-			// If the remote result was a non-nil problem and the domain/acct aren't
-			// skippable then fail the validation
-			if remoteProb != nil && !skippable {
+			// If the remote result was a non-nil problem then fail the validation
+			if remoteProb != nil {
 				prob = remoteProb
 				challenge.Status = core.StatusInvalid
 				challenge.Error = remoteProb
@@ -698,6 +683,10 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	validationLatency := time.Since(vStart)
 	logEvent.ValidationLatency = validationLatency.Round(time.Millisecond).Seconds()
 
+	va.metrics.localValidationTime.With(prometheus.Labels{
+		"type":   string(challenge.Type),
+		"result": string(challenge.Status),
+	}).Observe(localValidationLatency.Seconds())
 	va.metrics.validationTime.With(prometheus.Labels{
 		"type":         string(challenge.Type),
 		"result":       string(challenge.Status),
