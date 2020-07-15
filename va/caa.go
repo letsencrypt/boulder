@@ -23,15 +23,15 @@ type caaParams struct {
 func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
 	acmeID := identifier.ACMEIdentifier{
 		Type:  identifier.DNS,
-		Value: *req.Domain,
+		Value: req.Domain,
 	}
 	params := &caaParams{
-		accountURIID:     req.AccountURIID,
-		validationMethod: req.ValidationMethod,
+		accountURIID:     &req.AccountURIID,
+		validationMethod: &req.ValidationMethod,
 	}
 	if prob := va.checkCAA(ctx, acmeID, params); prob != nil {
 		typ := string(prob.Type)
-		detail := fmt.Sprintf("While processing CAA for %s: %s", *req.Domain, prob.Detail)
+		detail := fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
 		return &vapb.IsCAAValidResponse{
 			Problem: &corepb.ProblemDetails{
 				ProblemType: &typ,
