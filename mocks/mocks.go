@@ -309,8 +309,10 @@ func (sa *StorageAuthority) GetCertificate(_ context.Context, serial string) (co
 			DER:            cert.Raw,
 			Issued:         sa.clk.Now(),
 		}, nil
+	} else if serial == "000000000000000000000000000000626164" {
+		return core.Certificate{}, errors.New("bad")
 	} else {
-		return core.Certificate{}, errors.New("No cert")
+		return core.Certificate{}, berrors.NotFoundError("No cert")
 	}
 }
 
