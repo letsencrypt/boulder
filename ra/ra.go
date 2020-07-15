@@ -83,6 +83,7 @@ type RegistrationAuthorityImpl struct {
 
 	ctpolicyResults         *prometheus.HistogramVec
 	rateLimitCounter        *prometheus.CounterVec
+	revocationReasonCounter *prometheus.CounterVec
 	namesPerCert            *prometheus.HistogramVec
 	newRegCounter           prometheus.Counter
 	reusedValidAuthzCounter prometheus.Counter
@@ -162,6 +163,12 @@ func NewRegistrationAuthorityImpl(
 	})
 	stats.MustRegister(newCertCounter)
 
+	revocationReasonCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "revocation_reason",
+		Help: "A counter of certificate revocation reasons",
+	}, []string{"reason"})
+	stats.MustRegister(revocationReasonCounter)
+
 	ra := &RegistrationAuthorityImpl{
 		clk:                          clk,
 		log:                          logger,
@@ -186,6 +193,7 @@ func NewRegistrationAuthorityImpl(
 		reusedValidAuthzCounter:      reusedValidAuthzCounter,
 		recheckCAACounter:            recheckCAACounter,
 		newCertCounter:               newCertCounter,
+		revocationReasonCounter:      revocationReasonCounter,
 	}
 	return ra
 }
@@ -1180,8 +1188,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	orderIDInt := int64(oID)
 	issueReq := &caPB.IssueCertificateRequest{
 		Csr:            csr.Raw,
-		RegistrationID: &acctIDInt,
-		OrderID:        &orderIDInt,
+		RegistrationID: acctIDInt,
+		OrderID:        orderIDInt,
 	}
 
 	// wrapError adds a prefix to an error. If the error is a boulder error then
@@ -1210,8 +1218,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &caPB.IssueCertificateForPrecertificateRequest{
 		DER:            precert.DER,
 		SCTs:           scts,
-		RegistrationID: &acctIDInt,
-		OrderID:        &orderIDInt,
+		RegistrationID: acctIDInt,
+		OrderID:        orderIDInt,
 	})
 	if err != nil {
 		return emptyCert, wrapError(err, "issuing certificate for precertificate")
@@ -1651,14 +1659,13 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 // revokeCertificate generates a revoked OCSP response for the given certificate, stores
 // the revocation information, and purges OCSP request URLs from Akamai.
 func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, revokedBy int64, source string, comment string) error {
-	status := string(core.OCSPStatusRevoked)
 	reason := int32(code)
 	revokedAt := ra.clk.Now().UnixNano()
 	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
 		CertDER:   cert.Raw,
-		Status:    &status,
-		Reason:    &reason,
-		RevokedAt: &revokedAt,
+		Status:    string(core.OCSPStatusRevoked),
+		Reason:    reason,
+		RevokedAt: revokedAt,
 	})
 	if err != nil {
 		return err
@@ -1732,6 +1739,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 		return err
 	}
 
+	ra.revocationReasonCounter.WithLabelValues(revocation.ReasonToString[revocationCode]).Inc()
 	state = "Success"
 	return nil
 }
@@ -1764,6 +1772,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		return err
 	}
 
+	ra.revocationReasonCounter.WithLabelValues(revocation.ReasonToString[revocationCode]).Inc()
 	state = "Success"
 	return nil
 }

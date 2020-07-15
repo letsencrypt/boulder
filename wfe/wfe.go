@@ -830,10 +830,15 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 	serial := core.SerialToString(providedCert.SerialNumber)
 	logEvent.Extra["ProvidedCertificateSerial"] = serial
 	cert, err := wfe.SA.GetCertificate(ctx, serial)
-	// TODO(#991): handle db errors better
-	if err != nil || !bytes.Equal(cert.DER, revokeRequest.CertificateDER) {
-		wfe.sendError(response, logEvent, probs.NotFound("No such certificate"), err)
+	if err != nil {
+		if berrors.Is(err, berrors.NotFound) {
+			wfe.sendError(response, logEvent, probs.NotFound("No such certificate"), err)
+		}
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve certificate"), err)
 		return
+	}
+	if !bytes.Equal(cert.DER, revokeRequest.CertificateDER) {
+		wfe.sendError(response, logEvent, probs.NotFound("No such certificate"), err)
 	}
 	parsedCertificate, err := x509.ParseCertificate(cert.DER)
 	if err != nil {
@@ -1442,13 +1447,14 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	logEvent.Extra["RequestedSerial"] = serial
 
 	cert, err := wfe.SA.GetCertificate(ctx, serial)
-	// TODO(#991): handle db errors
 	if err != nil {
 		ierr := fmt.Errorf("unable to get certificate by serial id %#v: %s", serial, err)
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
 			wfe.sendError(response, logEvent, probs.Conflict("Multiple certificates with same short serial"), ierr)
-		} else {
+		} else if berrors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), ierr)
+		} else {
+			wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve certificate"), ierr)
 		}
 		return
 	}

@@ -263,7 +263,7 @@ class SlowHTTPRequestHandler(BaseHTTPRequestHandler):
             time.sleep(sleeptime)
             self.send_response(200)
             self.end_headers()
-            self.wfile.write(b'this is not an ACME key authorization')
+            self.wfile.write(b"this is not an ACME key authorization")
         except:
             pass
 
@@ -360,14 +360,12 @@ def test_issuer():
     store_ctx.verify_certificate()
 
 def test_ocsp():
-    cert_file_pem = os.path.join(tempdir, "cert.pem")
-    auth_and_issue([random_domain()], cert_output=cert_file_pem)
-
-    ee_ocsp_url = "http://localhost:4002"
+    cert_file = temppath('test_ocsp.pem')
+    auth_and_issue([random_domain()], cert_output=cert_file.name)
 
     # As OCSP-Updater is generating responses independently of the CA we sit in a loop
     # checking OCSP until we either see a good response or we timeout (5s).
-    verify_ocsp(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "good")
+    verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "good")
 
 def test_ct_submission():
     hostname = random_domain()
@@ -397,18 +395,16 @@ def test_expiration_mailer():
     email_addr = "integration.%x@letsencrypt.org" % random.randrange(2**16)
     cert, _ = auth_and_issue([random_domain()], email=email_addr)
     # Check that the expiration mailer sends a reminder
-    expiry = datetime.datetime.strptime(cert.body.get_notAfter().decode(), '%Y%m%d%H%M%SZ')
+    expiry = datetime.datetime.strptime(cert.body.get_notAfter().decode(), "%Y%m%d%H%M%SZ")
     no_reminder = expiry + datetime.timedelta(days=-31)
     first_reminder = expiry + datetime.timedelta(days=-13)
     last_reminder = expiry + datetime.timedelta(days=-2)
 
     requests.post("http://localhost:9381/clear", data='')
-    print(get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
-        config_dir, no_reminder))
-    print(get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
-        config_dir, first_reminder))
-    print(get_future_output('./bin/expiration-mailer --config %s/expiration-mailer.json' %
-        config_dir, last_reminder))
+    for time in (no_reminder, first_reminder, last_reminder):
+        print(get_future_output(
+            ["./bin/expiration-mailer", "--config", "%s/expiration-mailer.json" % config_dir],
+            time))
     resp = requests.get("http://localhost:9381/count?to=%s" % email_addr)
     mailcount = int(resp.text)
     if mailcount != 2:
@@ -416,25 +412,20 @@ def test_expiration_mailer():
 
 def test_revoke_by_account():
     client = chisel.make_client()
-    cert, _ = auth_and_issue([random_domain()], client=client)
+    cert_file = temppath('test_revoke_by_account.pem')
+    cert, _ = auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
+
     reset_akamai_purges()
     client.revoke(cert.body, 0)
 
-    cert_file_pem = os.path.join(tempdir, "revokeme.pem")
-    with open(cert_file_pem, "w") as f:
-        f.write(OpenSSL.crypto.dump_certificate(
-            OpenSSL.crypto.FILETYPE_PEM, cert.body.wrapped).decode())
-    ee_ocsp_url = "http://localhost:4002"
-    verify_ocsp(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "revoked")
-    verify_akamai_purge()
-    return 0
+    verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
 
-caa_recheck_authzs = []
-caa_recheck_client = None
+    verify_akamai_purge()
+
+caa_recheck_setup_data = {}
 @register_twenty_days_ago
 def caa_recheck_setup():
-    global caa_recheck_client
-    caa_recheck_client = chisel.make_client()
+    client = chisel.make_client()
     # Issue a certificate with the clock set back, and save the authzs to check
     # later that they are valid (200). They should however require rechecking for
     # CAA purposes.
@@ -442,19 +433,23 @@ def caa_recheck_setup():
     # Generate numNames subdomains of a random domain
     base_domain = random_domain()
     domains = [ "{0}.{1}".format(str(n),base_domain) for n in range(numNames) ]
-    _, authzs = auth_and_issue(domains, client=caa_recheck_client)
-    for a in authzs:
-        caa_recheck_authzs.append(a)
+    _, authzs = auth_and_issue(domains, client=client)
+
+    global caa_recheck_setup_data
+    caa_recheck_setup_data = {
+        'client': client,
+        'authzs': authzs,
+    }
 
 def test_recheck_caa():
     """Request issuance for a domain where we have a old cached authz from when CAA
        was good. We'll set a new CAA record forbidding issuance; the CAA should
        recheck CAA and reject the request.
     """
-    if len(caa_recheck_authzs) == 0:
+    if 'authzs' not in caa_recheck_setup_data:
         raise(Exception("CAA authzs not prepared for test_caa"))
     domains = []
-    for a in caa_recheck_authzs:
+    for a in caa_recheck_setup_data['authzs']:
         response = requests.get(a.uri)
         if response.status_code != 200:
             raise(Exception("Unexpected response for CAA authz: ",
@@ -468,7 +463,7 @@ def test_recheck_caa():
     # Request issuance for the previously-issued domain name, which should
     # now be denied due to CAA.
     chisel.expect_problem("urn:acme:error:caa",
-        lambda: chisel.auth_and_issue(domains, client=caa_recheck_client))
+        lambda: chisel.auth_and_issue(domains, client=caa_recheck_setup_data['client']))
 
 def test_caa_good():
     domain = random_domain()
@@ -574,39 +569,39 @@ def test_oversized_csr():
             lambda: auth_and_issue(domains))
 
 def test_admin_revoker_cert():
-    cert_file_pem = os.path.join(tempdir, "ar-cert.pem")
-    cert, _ = auth_and_issue([random_domain()], cert_output=cert_file_pem)
-    serial = "%x" % cert.body.get_serial_number()
+    cert_file = temppath('test_admin_revoker_cert.pem')
+    cert, _ = auth_and_issue([random_domain()], cert_output=cert_file.name)
+
     # Revoke certificate by serial
     reset_akamai_purges()
-    run("./bin/admin-revoker serial-revoke --config %s/admin-revoker.json %s %d" % (
-        config_dir, serial, 1))
+    serial = "%x" % cert.body.get_serial_number()
+    run(["./bin/admin-revoker", "serial-revoke",
+        "--config", "%s/admin-revoker.json" % config_dir,
+        serial, '1'])
+
     # Wait for OCSP response to indicate revocation took place
-    ee_ocsp_url = "http://localhost:4002"
-    verify_ocsp(cert_file_pem, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "revoked")
+    verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
     verify_akamai_purge()
 
 def test_admin_revoker_batched():
-    certs = []
-    serials = []
-    serialFile = os.path.join(tempdir, "serials.hex")
-    f = open(serialFile, "w")
+    serialFile = tempfile.NamedTemporaryFile(
+        dir=tempdir, suffix='.test_admin_revoker_batched.serials.hex',
+        mode='w+', delete=False)
+    cert_files = [
+        temppath('test_admin_revoker_batched.%d.pem' % x) for x in range(3)
+    ]
 
-    for x in range(3):
-        cert_file_pem = os.path.join(tempdir, "ar-cert-%d.pem" % x)
-        certs.append(cert_file_pem)
-        cert, _ = auth_and_issue([random_domain()], cert_output=cert_file_pem)
-        serial = "%x" % cert.body.get_serial_number()
-        f.write("%s\n" % serial)
-    f.close()
+    for cert_file in cert_files:
+        cert, _ = auth_and_issue([random_domain()], cert_output=cert_file.name)
+        serialFile.write("%x\n" % cert.body.get_serial_number())
+    serialFile.close()
 
-    reset_akamai_purges()
-    run("./bin/admin-revoker batched-serial-revoke --config %s/admin-revoker.json %s %d %d" % (
-        config_dir, serialFile, 0, 2))
+    run(["./bin/admin-revoker", "batched-serial-revoke",
+        "--config", "%s/admin-revoker.json" % config_dir,
+        serialFile.name, '0', '2'])
 
-    ee_ocsp_url = "http://localhost:4002"
-    for cert in certs:
-        verify_ocsp(cert, "/tmp/intermediate-cert-rsa-a.pem", ee_ocsp_url, "revoked")
+    for cert_file in cert_files:
+        verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
 
 def test_sct_embedding():
     certr, authzs = auth_and_issue([random_domain()])

@@ -437,16 +437,16 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *caPB.
 	// that didn't have an IssuerID set when they were created. Once this feature
 	// has been enabled for a full OCSP lifetime cycle we can remove this
 	// functionality.
-	if features.Enabled(features.StoreIssuerInfo) && req.IssuerID != nil {
-		serialInt, err := core.StringToSerial(*req.Serial)
+	if features.Enabled(features.StoreIssuerInfo) && req.IssuerID != 0 {
+		serialInt, err := core.StringToSerial(req.Serial)
 		if err != nil {
 			return nil, err
 		}
 		serial = serialInt
 		var ok bool
-		issuer, ok = ca.idToIssuer[*req.IssuerID]
+		issuer, ok = ca.idToIssuer[req.IssuerID]
 		if !ok {
-			return nil, fmt.Errorf("This CA doesn't have an issuer cert with ID %d", *req.IssuerID)
+			return nil, fmt.Errorf("This CA doesn't have an issuer cert with ID %d", req.IssuerID)
 		}
 	} else {
 		cert, err := x509.ParseCertificate(req.CertDER)
@@ -471,14 +471,14 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *caPB.
 
 	now := ca.clk.Now().Truncate(time.Hour)
 	tbsResponse := ocsp.Response{
-		Status:       ocspStatusToCode[*req.Status],
+		Status:       ocspStatusToCode[req.Status],
 		SerialNumber: serial,
 		ThisUpdate:   now,
 		NextUpdate:   now.Add(ca.ocspLifetime),
 	}
 	if tbsResponse.Status == ocsp.Revoked {
-		tbsResponse.RevokedAt = time.Unix(0, *req.RevokedAt)
-		tbsResponse.RevocationReason = int(*req.Reason)
+		tbsResponse.RevokedAt = time.Unix(0, req.RevokedAt)
+		tbsResponse.RevocationReason = int(req.Reason)
 	}
 
 	ocspResponse, err := ocsp.CreateResponse(issuer.cert, issuer.cert, tbsResponse, issuer.ocspSigner)
@@ -495,7 +495,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	regID := *issueReq.RegistrationID
+	regID := issueReq.RegistrationID
 
 	serialHex := core.SerialToString(serialBigInt)
 	nowNanos := ca.clk.Now().UnixNano()
@@ -515,10 +515,9 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	status := string(core.OCSPStatusGood)
 	ocspResp, err := ca.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
 		CertDER: precertDER,
-		Status:  &status,
+		Status:  string(core.OCSPStatusGood),
 	})
 	if err != nil {
 		err = berrors.InternalServerError(err.Error())
@@ -545,7 +544,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
 		// changes here, you should make sure they are reflected in orphan-finder.
 		ca.log.AuditErrf("Failed RPC to store at SA, orphaning precertificate: serial=[%s] cert=[%s] err=[%v], regID=[%d], orderID=[%d]",
-			serialHex, hex.EncodeToString(precertDER), err, *issueReq.RegistrationID, *issueReq.OrderID)
+			serialHex, hex.EncodeToString(precertDER), err, issueReq.RegistrationID, issueReq.OrderID)
 		if ca.orphanQueue != nil {
 			ca.queueOrphan(&orphanedCert{
 				DER:      precertDER,
@@ -623,7 +622,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] certificate=[%s]",
 		serialHex, strings.Join(precert.DNSNames, ", "), hex.EncodeToString(req.DER),
 		hex.EncodeToString(certDER))
-	return ca.storeCertificate(ctx, *req.RegistrationID, *req.OrderID, precert.SerialNumber, certDER)
+	return ca.storeCertificate(ctx, req.RegistrationID, req.OrderID, precert.SerialNumber, certDER)
 }
 
 type validity struct {
@@ -667,7 +666,7 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		&ca.keyPolicy,
 		ca.pa,
 		ca.forceCNFromSAN,
-		*issueReq.RegistrationID,
+		issueReq.RegistrationID,
 	); err != nil {
 		ca.log.AuditErr(err.Error())
 		// VerifyCSR returns berror instances that can be passed through as-is
