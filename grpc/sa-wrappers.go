@@ -63,7 +63,9 @@ func (sac StorageAuthorityClientWrapper) GetCertificate(ctx context.Context, ser
 	if err != nil {
 		return core.Certificate{}, err
 	}
-
+	if response == nil || response.RegistrationID == nil || response.Serial == nil || response.Digest == nil || response.Der == nil || response.Issued == nil || response.Expires == nil {
+		return core.Certificate{}, errIncompleteResponse
+	}
 	return PBToCert(response)
 }
 
@@ -83,7 +85,9 @@ func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Contex
 	if err != nil {
 		return core.CertificateStatus{}, err
 	}
-
+	if response == nil || response.Serial == nil || response.Status == nil || response.OcspLastUpdated == nil || response.RevokedDate == nil || response.RevokedReason == nil || response.LastExpirationNagSent == nil || response.OcspResponse == nil || response.NotAfter == nil || response.IsExpired == nil {
+		return core.CertificateStatus{}, errIncompleteResponse
+	}
 	return PBToCertStatus(response)
 }
 

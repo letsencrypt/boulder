@@ -416,9 +416,6 @@ func CertToPB(cert core.Certificate) *corepb.Certificate {
 }
 
 func PBToCert(pb *corepb.Certificate) (core.Certificate, error) {
-	if pb == nil || pb.RegistrationID == nil || pb.Serial == nil || pb.Digest == nil || pb.Der == nil || pb.Issued == nil || pb.Expires == nil {
-		return core.Certificate{}, errIncompleteResponse
-	}
 	return core.Certificate{
 		RegistrationID: *pb.RegistrationID,
 		Serial:         *pb.Serial,
@@ -451,9 +448,6 @@ func CertStatusToPB(certStatus core.CertificateStatus) *corepb.CertificateStatus
 }
 
 func PBToCertStatus(pb *corepb.CertificateStatus) (core.CertificateStatus, error) {
-	if pb == nil || pb.Serial == nil || pb.Status == nil || pb.OcspLastUpdated == nil || pb.RevokedDate == nil || pb.RevokedReason == nil || pb.LastExpirationNagSent == nil || pb.OcspResponse == nil || pb.NotAfter == nil || pb.IsExpired == nil {
-		return core.CertificateStatus{}, errIncompleteResponse
-	}
 	return core.CertificateStatus{
 		Serial:                *pb.Serial,
 		Status:                core.OCSPStatus(*pb.Status),
