@@ -7,7 +7,6 @@
       "httpsPort": 5001,
       "tlsPort": 5001
     },
-    "maxConcurrentRPCServerRequests": 100000,
     "dnsTries": 3,
     "dnsResolvers": [
       "127.0.0.1:8053",

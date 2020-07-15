@@ -134,7 +134,6 @@
         }
       }
     },
-    "maxConcurrentRPCServerRequests": 100000,
     "orphanQueueDir": "/tmp/orphaned-certificates-a",
     "features": {
       "StoreIssuerInfo": true
