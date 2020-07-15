@@ -41,7 +41,6 @@
     "backdate": "1h",
     "lifespanOCSP": "96h",
     "maxNames": 100,
-    "enableMustStaple": true,
     "hostnamePolicyFile": "test/hostname-policy.yaml",
     "cfssl": {
       "signing": {
@@ -135,7 +134,6 @@
         }
       }
     },
-    "maxConcurrentRPCServerRequests": 100000,
     "orphanQueueDir": "/tmp/orphaned-certificates-b",
     "features": {
       "StoreIssuerInfo": true
