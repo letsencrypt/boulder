@@ -1247,7 +1247,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 
 		authzPB, err = wfe.RA.PerformValidation(ctx, &rapb.PerformValidationRequest{
 			Authz:          authzPB,
-			ChallengeIndex: &challIndex,
+			ChallengeIndex: challIndex,
 		})
 		if err != nil {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
@@ -1977,7 +1977,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	order, err := wfe.RA.NewOrder(ctx, &rapb.NewOrderRequest{
-		RegistrationID: &acct.ID,
+		RegistrationID: acct.ID,
 		Names:          names,
 	})
 	if err != nil {

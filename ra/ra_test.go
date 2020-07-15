@@ -691,7 +691,7 @@ func TestReuseValidAuthorization(t *testing.T) {
 	challIndex := int64(httpIndex)
 	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
-		ChallengeIndex: &challIndex})
+		ChallengeIndex: challIndex})
 	test.AssertNotError(t, err, "PerformValidation on secondAuthz http failed")
 	secondAuthz, err = bgrpc.PBToAuthz(authzPB)
 	test.AssertNotError(t, err, "Failed to deserialize PerformValidation result for secondAuthz")
@@ -701,7 +701,7 @@ func TestReuseValidAuthorization(t *testing.T) {
 	challIndex = int64(httpIndex)
 	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
-		ChallengeIndex: &challIndex})
+		ChallengeIndex: challIndex})
 	test.AssertNotError(t, err, "PerformValidation on secondAuthz sni failed")
 	secondAuthz, err = bgrpc.PBToAuthz(authzPB)
 	test.AssertNotError(t, err, "Failed to deserialize PerformValidation result for secondAuthz")
@@ -883,7 +883,7 @@ func TestPerformValidationExpired(t *testing.T) {
 	challIndex := int64(ResponseIndex)
 	_, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
-		ChallengeIndex: &challIndex,
+		ChallengeIndex: challIndex,
 	})
 	test.AssertError(t, err, "Updated expired authorization")
 }
@@ -919,7 +919,7 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 	challIndex := int64(ResponseIndex)
 	_, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
-		ChallengeIndex: &challIndex,
+		ChallengeIndex: challIndex,
 	})
 	test.Assert(t, berrors.Is(err, berrors.WrongAuthorizationState),
 		"PerformValidation of valid authz (with reuseValidAuthz disabled) didn't return a berrors.WrongAuthorizationState")
@@ -943,7 +943,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 
 	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
-		ChallengeIndex: &challIdx,
+		ChallengeIndex: challIdx,
 	})
 	test.AssertNotError(t, err, "PerformValidation failed")
 	authz, err = bgrpc.PBToAuthz(authzPB)
@@ -1096,11 +1096,11 @@ func TestNewOrderRateLimiting(t *testing.T) {
 	}
 
 	orderOne := &rapb.NewOrderRequest{
-		RegistrationID: &Registration.ID,
+		RegistrationID: Registration.ID,
 		Names:          []string{"first.example.com"},
 	}
 	orderTwo := &rapb.NewOrderRequest{
-		RegistrationID: &Registration.ID,
+		RegistrationID: Registration.ID,
 		Names:          []string{"second.example.com"},
 	}
 
@@ -1159,7 +1159,7 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 
 	// Request an order for the test domain
 	newOrder := &rapb.NewOrderRequest{
-		RegistrationID: &Registration.ID,
+		RegistrationID: Registration.ID,
 		Names:          []string{domain},
 	}
 
@@ -2024,7 +2024,7 @@ func TestNewOrder(t *testing.T) {
 
 	id := int64(1)
 	orderA, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: &id,
+		RegistrationID: id,
 		Names:          []string{"b.com", "a.com", "a.com", "C.COM"},
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
@@ -2038,7 +2038,7 @@ func TestNewOrder(t *testing.T) {
 
 	// Reuse all existing authorizations
 	orderB, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: &id,
+		RegistrationID: id,
 		Names:          []string{"b.com", "a.com", "C.COM"},
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
@@ -2055,7 +2055,7 @@ func TestNewOrder(t *testing.T) {
 	// add a new one
 	orderA.Names = append(orderA.Names, "d.com")
 	orderC, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: &id,
+		RegistrationID: id,
 		Names:          orderA.Names,
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
@@ -2072,7 +2072,7 @@ func TestNewOrder(t *testing.T) {
 	test.AssertDeepEquals(t, existing, orderA.V2Authorizations)
 
 	_, err = ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: &id,
+		RegistrationID: id,
 		Names:          []string{"a"},
 	})
 	test.AssertError(t, err, "NewOrder with invalid names did not error")
@@ -2093,7 +2093,7 @@ func TestNewOrderLegacyAuthzReuse(t *testing.T) {
 
 	// Create an order request for the same name as the legacy authz
 	order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: &Registration.ID,
+		RegistrationID: Registration.ID,
 		Names:          []string{"not-example.com"},
 	})
 	// It should not produce an error
@@ -2108,7 +2108,7 @@ func TestNewOrderLegacyAuthzReuse(t *testing.T) {
 	// Create an order request for a superset of the names from the order above to
 	// test that V2 reuse still functions.
 	secondOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: &Registration.ID,
+		RegistrationID: Registration.ID,
 		Names:          []string{"not-example.com", "deffo.not-example.com"},
 	})
 	// It should not produce an error
@@ -2142,7 +2142,7 @@ func TestNewOrderReuse(t *testing.T) {
 
 	// Create an initial request with regA and names
 	orderReq := &rapb.NewOrderRequest{
-		RegistrationID: &regA,
+		RegistrationID: regA,
 		Names:          names,
 	}
 
@@ -2176,7 +2176,7 @@ func TestNewOrderReuse(t *testing.T) {
 		{
 			Name: "Subset of order names, same regID",
 			OrderReq: &rapb.NewOrderRequest{
-				RegistrationID: &regA,
+				RegistrationID: regA,
 				Names:          []string{names[1]},
 			},
 			// We do not expect reuse because the order names don't match firstOrder
@@ -2185,7 +2185,7 @@ func TestNewOrderReuse(t *testing.T) {
 		{
 			Name: "Duplicate order, different regID",
 			OrderReq: &rapb.NewOrderRequest{
-				RegistrationID: &secondReg.ID,
+				RegistrationID: secondReg.ID,
 				Names:          names,
 			},
 			// We do not expect reuse because the order regID differs from firstOrder
@@ -2236,7 +2236,7 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 
 	// Create an initial request with regA and names
 	orderReq := &rapb.NewOrderRequest{
-		RegistrationID: &regA,
+		RegistrationID: regA,
 		Names:          names,
 	}
 
@@ -2422,7 +2422,7 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 
 	// Create an initial request with regA and names
 	orderReq := &rapb.NewOrderRequest{
-		RegistrationID: &regA,
+		RegistrationID: regA,
 		Names:          names,
 	}
 
@@ -2452,7 +2452,7 @@ func TestNewOrderAuthzReuseDisabled(t *testing.T) {
 
 	// Create an initial request with regA and names
 	orderReq := &rapb.NewOrderRequest{
-		RegistrationID: &regA,
+		RegistrationID: regA,
 		Names:          names,
 	}
 
@@ -2473,7 +2473,7 @@ func TestNewOrderWildcard(t *testing.T) {
 
 	orderNames := []string{"example.com", "*.welcome.zombo.com"}
 	wildcardOrderRequest := &rapb.NewOrderRequest{
-		RegistrationID: &id,
+		RegistrationID: id,
 		Names:          orderNames,
 	}
 
@@ -2522,7 +2522,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	// challenge and one for the base domain with the normal challenges.
 	orderNames = []string{"zombo.com", "*.zombo.com"}
 	wildcardOrderRequest = &rapb.NewOrderRequest{
-		RegistrationID: &id,
+		RegistrationID: id,
 		Names:          orderNames,
 	}
 	order, err = ra.NewOrder(context.Background(), wildcardOrderRequest)
@@ -2565,7 +2565,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	// Make an order for a single domain, no wildcards. This will create a new
 	// pending authz for the domain
 	normalOrderReq := &rapb.NewOrderRequest{
-		RegistrationID: &id,
+		RegistrationID: id,
 		Names:          []string{"everything.is.possible.zombo.com"},
 	}
 	normalOrder, err := ra.NewOrder(context.Background(), normalOrderReq)
@@ -2591,7 +2591,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	// order since we now require a DNS-01 challenge for the `*.` prefixed name.
 	orderNames = []string{"*.everything.is.possible.zombo.com"}
 	wildcardOrderRequest = &rapb.NewOrderRequest{
-		RegistrationID: &id,
+		RegistrationID: id,
 		Names:          orderNames,
 	}
 	order, err = ra.NewOrder(context.Background(), wildcardOrderRequest)
@@ -2721,7 +2721,7 @@ func TestNewOrderExpiry(t *testing.T) {
 
 	// Create an initial request with regA and names
 	orderReq := &rapb.NewOrderRequest{
-		RegistrationID: &regA,
+		RegistrationID: regA,
 		Names:          names,
 	}
 
@@ -2823,20 +2823,20 @@ func TestFinalizeOrder(t *testing.T) {
 	// will fail because you can't finalize an order that is already being
 	// processed.
 	emptyOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: &Registration.ID,
+		RegistrationID: Registration.ID,
 		Names:          []string{"000.example.com"},
 	})
 	test.AssertNotError(t, err, "Could not add test order for fake order ID")
 
 	// Add a new order for the fake reg ID
 	fakeRegOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: &Registration.ID,
+		RegistrationID: Registration.ID,
 		Names:          []string{"001.example.com"},
 	})
 	test.AssertNotError(t, err, "Could not add test order for fake reg ID order ID")
 
 	missingAuthzOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: &Registration.ID,
+		RegistrationID: Registration.ID,
 		Names:          []string{"002.example.com"},
 	})
 	test.AssertNotError(t, err, "Could not add test order for missing authz order ID")
@@ -3105,7 +3105,7 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	// Create a new order for a wildcard domain
 	orderNames := []string{"*.zombo.com"}
 	wildcardOrderRequest := &rapb.NewOrderRequest{
-		RegistrationID: &Registration.ID,
+		RegistrationID: Registration.ID,
 		Names:          orderNames,
 	}
 	order, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
@@ -3400,7 +3400,7 @@ func TestPerformValidationBadChallengeType(t *testing.T) {
 	var challIndex int64
 	_, err = ra.PerformValidation(context.Background(), &rapb.PerformValidationRequest{
 		Authz:          authzPB,
-		ChallengeIndex: &challIndex,
+		ChallengeIndex: challIndex,
 	})
 	test.AssertError(t, err, "ra.PerformValidation allowed a update to a authorization")
 	test.AssertEquals(t, err.Error(), "challenge type \"http-01\" no longer allowed")

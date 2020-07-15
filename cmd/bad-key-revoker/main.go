@@ -235,8 +235,8 @@ func (bkr *badKeyRevoker) revokeCerts(revokerEmails []string, emailToCerts map[s
 			}
 			_, err := bkr.raClient.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 				Cert:      cert.DER,
-				Code:      &keyCompromiseCode,
-				AdminName: &revokerName,
+				Code:      keyCompromiseCode,
+				AdminName: revokerName,
 			})
 			if err != nil {
 				return err

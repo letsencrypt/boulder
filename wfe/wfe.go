@@ -1200,7 +1200,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 
 		authzPB, err = wfe.RA.PerformValidation(ctx, &rapb.PerformValidationRequest{
 			Authz:          authzPB,
-			ChallengeIndex: &challIndex})
+			ChallengeIndex: challIndex})
 		if err != nil {
 			wfe.sendError(
 				response,

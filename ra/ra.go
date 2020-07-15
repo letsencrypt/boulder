@@ -1551,8 +1551,8 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	}
 
 	authz := base
-	challIndex := int(*req.ChallengeIndex)
-	if challIndex >= len(authz.Challenges) {
+	challIndex := req.ChallengeIndex
+	if challIndex >= int64(len(authz.Challenges)) {
 		return nil,
 			berrors.MalformedError("invalid challenge index '%d'", challIndex)
 	}
@@ -1822,7 +1822,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderNames(names []string) error {
 // NewOrder creates a new order object
 func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
 	order := &corepb.Order{
-		RegistrationID: req.RegistrationID,
+		RegistrationID: &req.RegistrationID,
 		Names:          core.UniqueLowerNames(req.Names),
 	}
 
