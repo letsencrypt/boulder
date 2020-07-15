@@ -3855,6 +3855,8 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	err = ra.RevokeCertificateWithReg(context.Background(), *cert, ocsp.Unspecified, 0)
 	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
 	test.Assert(t, mockSA.added == nil, "blocked key was added when reason was not keyCompromise")
+	test.AssertEquals(t, test.CountCounterVec(
+		"reason", "unspecified", ra.revocationReasonCounter), 1)
 
 	err = ra.RevokeCertificateWithReg(context.Background(), *cert, ocsp.KeyCompromise, 0)
 	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
@@ -3862,6 +3864,8 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	test.Assert(t, bytes.Equal(digest[:], mockSA.added.KeyHash), "key hash mismatch")
 	test.AssertEquals(t, *mockSA.added.Source, "API")
 	test.Assert(t, mockSA.added.Comment == nil, "Comment is not nil")
+	test.AssertEquals(t, test.CountCounterVec(
+		"reason", "keyCompromise", ra.revocationReasonCounter), 1)
 
 	mockSA.added = nil
 	err = ra.AdministrativelyRevokeCertificate(context.Background(), *cert, ocsp.KeyCompromise, "root")
@@ -3871,4 +3875,6 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	test.AssertEquals(t, *mockSA.added.Source, "admin-revoker")
 	test.Assert(t, mockSA.added.Comment != nil, "Comment is nil")
 	test.AssertEquals(t, *mockSA.added.Comment, "revoked by root")
+	test.AssertEquals(t, test.CountCounterVec(
+		"reason", "keyCompromise", ra.revocationReasonCounter), 2)
 }

@@ -83,6 +83,7 @@ type RegistrationAuthorityImpl struct {
 
 	ctpolicyResults         *prometheus.HistogramVec
 	rateLimitCounter        *prometheus.CounterVec
+	revocationReasonCounter *prometheus.CounterVec
 	namesPerCert            *prometheus.HistogramVec
 	newRegCounter           prometheus.Counter
 	reusedValidAuthzCounter prometheus.Counter
@@ -162,6 +163,12 @@ func NewRegistrationAuthorityImpl(
 	})
 	stats.MustRegister(newCertCounter)
 
+	revocationReasonCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "revocation_reason",
+		Help: "A counter of certificate revocation reasons",
+	}, []string{"reason"})
+	stats.MustRegister(revocationReasonCounter)
+
 	ra := &RegistrationAuthorityImpl{
 		clk:                          clk,
 		log:                          logger,
@@ -186,6 +193,7 @@ func NewRegistrationAuthorityImpl(
 		reusedValidAuthzCounter:      reusedValidAuthzCounter,
 		recheckCAACounter:            recheckCAACounter,
 		newCertCounter:               newCertCounter,
+		revocationReasonCounter:      revocationReasonCounter,
 	}
 	return ra
 }
@@ -1731,6 +1739,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 		return err
 	}
 
+	ra.revocationReasonCounter.WithLabelValues(revocation.ReasonToString[revocationCode]).Inc()
 	state = "Success"
 	return nil
 }
@@ -1763,6 +1772,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		return err
 	}
 
+	ra.revocationReasonCounter.WithLabelValues(revocation.ReasonToString[revocationCode]).Inc()
 	state = "Success"
 	return nil
 }
