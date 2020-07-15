@@ -1,4 +1,5 @@
 import atexit
+import collections
 import os
 import shutil
 import signal
@@ -10,6 +11,133 @@ import time
 
 from helpers import waitport, config_dir, CONFIG_NEXT
 
+Service = collections.namedtuple('Service', ('name', 'port', 'cmd', 'deps'))
+
+SERVICES = (
+    Service('bad-key-revoker',
+        8020,
+        ('./bin/bad-key-revoker', '--config', os.path.join(config_dir, 'bad-key-revoker.json')),
+        None),
+    Service('boulder-remoteva-a',
+        8011,
+        ('./bin/boulder-remoteva', '--config', os.path.join(config_dir, 'va-remote-a.json')),
+        None),
+    Service('boulder-remoteva-b',
+        8012,
+        ('./bin/boulder-remoteva', '--config', os.path.join(config_dir, 'va-remote-b.json')),
+        None),
+    Service('sd-test-srv',
+        53,
+        ('./bin/sd-test-srv', '--listen', ':53'),
+        None),
+    Service('boulder-sa-1',
+        8003,
+        ('./bin/boulder-sa', '--config', os.path.join(config_dir, 'sa.json'), '--addr', 'sa1.boulder:9095', '--debug-addr', ':8003'),
+        ('sd-test-srv',)),
+    Service('boulder-sa-2',
+        8103,
+        ('./bin/boulder-sa', '--config', os.path.join(config_dir, 'sa.json'), '--addr', 'sa2.boulder:9095', '--debug-addr', ':8103'),
+        ('sd-test-srv',)),
+    Service('ct-test-srv',
+        4500,
+        ('./bin/ct-test-srv', '--config', 'test/ct-test-srv/ct-test-srv.json'),
+        None),
+    Service('boulder-publisher-1',
+        8009,
+        ('./bin/boulder-publisher', '--config', os.path.join(config_dir, 'publisher.json'), '--addr', 'publisher1.boulder:9091', '--debug-addr', ':8009'),
+        ('sd-test-srv',)),
+    Service('boulder-publisher-2',
+        8109,
+        ('./bin/boulder-publisher', '--config', os.path.join(config_dir, 'publisher.json'), '--addr', 'publisher2.boulder:9091', '--debug-addr', ':8109'),
+        ('sd-test-srv',)),
+    Service('mail-test-srv',
+        9380,
+        ('./bin/mail-test-srv', '--closeFirst', '5', '--cert', 'test/mail-test-srv/localhost/cert.pem', '--key', 'test/mail-test-srv/localhost/key.pem'),
+        None),
+    Service('ocsp-responder',
+        8005,
+        ('./bin/ocsp-responder', '--config', os.path.join(config_dir, 'ocsp-responder.json')),
+        None),
+    Service('boulder-va-1',
+        8004,
+        ('./bin/boulder-va', '--config', os.path.join(config_dir, 'va.json'), '--addr', 'va1.boulder:9092', '--debug-addr', ':8004'),
+        ('sd-test-srv',)),
+    Service('boulder-va-2',
+        8104,
+        ('./bin/boulder-va', '--config', os.path.join(config_dir, 'va.json'), '--addr', 'va2.boulder:9092', '--debug-addr', ':8104'),
+        ('sd-test-srv',)),
+    Service('boulder-ca-a',
+        8001,
+        ('./bin/boulder-ca', '--config', os.path.join(config_dir, 'ca-a.json'), '--ca-addr', 'ca1.boulder:9093', '--ocsp-addr', 'ca1.boulder:9096', '--debug-addr', ':8001'),
+        ('sd-test-srv', 'boulder-sa-1', 'boulder-sa-2')),
+    Service('boulder-ca-b',
+        8101,
+        ('./bin/boulder-ca', '--config', os.path.join(config_dir, 'ca-b.json'), '--ca-addr', 'ca2.boulder:9093', '--ocsp-addr', 'ca2.boulder:9096', '--debug-addr', ':8101'),
+        ('sd-test-srv', 'boulder-sa-1', 'boulder-sa-2')),
+    Service('akamai-test-srv',
+        6789,
+        ('./bin/akamai-test-srv', '--listen', 'localhost:6789', '--secret', 'its-a-secret'),
+        None),
+    Service('akamai-purger',
+        9666,
+        ('./bin/akamai-purger', '--config', os.path.join(config_dir, 'akamai-purger.json')),
+        ('akamai-test-srv',)),
+    Service('ocsp-updater',
+        8006,
+        ('./bin/ocsp-updater', '--config', os.path.join(config_dir, 'ocsp-updater.json')),
+        ('boulder-ca-a', 'boulder-ca-b')),
+    Service('boulder-ra-1',
+        8002,
+        ('./bin/boulder-ra', '--config', os.path.join(config_dir, 'ra.json'), '--addr', 'ra1.boulder:9094', '--debug-addr', ':8002'),
+        ('sd-test-srv', 'boulder-sa-1', 'boulder-sa-2', 'boulder-ca-a', 'boulder-ca-b', 'boulder-va-1', 'boulder-va-2', 'akamai-purger', 'boulder-publisher-1', 'boulder-publisher-2')),
+    Service('boulder-ra-2',
+        8102,
+        ('./bin/boulder-ra', '--config', os.path.join(config_dir, 'ra.json'), '--addr', 'ra2.boulder:9094', '--debug-addr', ':8102'),
+        ('sd-test-srv', 'boulder-sa-1', 'boulder-sa-2', 'boulder-ca-a', 'boulder-ca-b', 'boulder-va-1', 'boulder-va-2', 'akamai-purger', 'boulder-publisher-1', 'boulder-publisher-2')),
+    Service('nonce-service-taro',
+        8111,
+        ('./bin/nonce-service', '--config', os.path.join(config_dir, 'nonce.json'), '--addr', 'nonce1.boulder:9101', '--debug-addr', ':8111', '--prefix', 'taro'),
+        ('sd-test-srv',)),
+    Service('nonce-service-zinc',
+        8112,
+        ('./bin/nonce-service', '--config', os.path.join(config_dir, 'nonce.json'), '--addr', 'nonce2.boulder:9101', '--debug-addr', ':8112', '--prefix', 'zinc'),
+        ('sd-test-srv',)),
+    Service('boulder-wfe2',
+        4001,
+        ('./bin/boulder-wfe2', '--config', os.path.join(config_dir, 'wfe2.json')),
+        ('sd-test-srv', 'boulder-ra-1', 'boulder-ra-2', 'boulder-sa-1', 'boulder-sa-2', 'nonce-service-taro', 'nonce-service-zinc')),
+    Service('boulder-wfe',
+        4000,
+        ('./bin/boulder-wfe', '--config', os.path.join(config_dir, 'wfe.json')),
+        ('sd-test-srv', 'boulder-ra-1', 'boulder-ra-2', 'boulder-sa-1', 'boulder-sa-2', 'nonce-service-taro', 'nonce-service-zinc')),
+    Service('log-validator',
+        8016,
+        ('./bin/log-validator', '--config', os.path.join(config_dir, 'log-validator.json')),
+        None),
+)
+
+def _service_toposort(services):
+    """Yields Service objects in topologically sorted order.
+
+    No service will be yielded until every service listed in its deps value
+    has been yielded.
+    """
+    ready = set([s for s in services if not s.deps])
+    blocked = set(services) - ready
+    done = set()
+    while ready:
+        service = ready.pop()
+        yield service
+        done.add(service.name)
+        new = set([s for s in blocked if all([d in done for d in s.deps])])
+        ready |= new
+        blocked -= new
+    if blocked:
+        print("WARNING: services with unsatisfied dependencies:")
+        for s in blocked:
+            print(s.name, ":", s.deps)
+        raise(Exception("Unable to satisfy service dependencies"))
+
 processes = []
 
 # NOTE(@cpu): We manage the challSrvProcess separately from the other global
@@ -20,8 +148,8 @@ challSrvProcess = None
 def setupHierarchy():
     e = os.environ.copy()
     e.setdefault("GOBIN", "%s/bin" % os.getcwd())
-    subprocess.call("go install ./cmd/ceremony", shell=True, env=e)
-    subprocess.call("go run test/cert-ceremonies/generate.go", shell=True, env=e)
+    subprocess.check_call(["go", "install", "./cmd/ceremony"], env=e)
+    subprocess.check_call(["go", "run", "test/cert-ceremonies/generate.go"], env=e)
 
 
 def install(race_detection):
@@ -39,9 +167,7 @@ def run(cmd, race_detection, fakeclock):
     e.setdefault("GORACE", "halt_on_error=1")
     if fakeclock:
         e.setdefault("FAKECLOCK", fakeclock)
-    # Note: Must use exec here so that killing this process kills the command.
-    cmd = """exec %s""" % cmd
-    p = subprocess.Popen(cmd, shell=True, env=e)
+    p = subprocess.Popen(cmd, env=e)
     p.cmd = cmd
     return p
 
@@ -64,42 +190,15 @@ def start(race_detection, fakeclock):
     # Processes are in order of dependency: Each process should be started
     # before any services that intend to send it RPCs. On shutdown they will be
     # killed in reverse order.
-    progs = []
-    progs.extend([
-        [8020, './bin/bad-key-revoker --config %s' % os.path.join(config_dir, "bad-key-revoker.json")],
-        [8011, './bin/boulder-remoteva --config %s' % os.path.join(config_dir, "va-remote-a.json")],
-        [8012, './bin/boulder-remoteva --config %s' % os.path.join(config_dir, "va-remote-b.json")],
-        [53, './bin/sd-test-srv --listen :53'], # Service discovery DNS server
-        [8003, './bin/boulder-sa --config %s --addr sa1.boulder:9095 --debug-addr :8003' % os.path.join(config_dir, "sa.json")],
-        [8103, './bin/boulder-sa --config %s --addr sa2.boulder:9095 --debug-addr :8103' % os.path.join(config_dir, "sa.json")],
-        [4500, './bin/ct-test-srv --config test/ct-test-srv/ct-test-srv.json'],
-        [8009, './bin/boulder-publisher --config %s --addr publisher1.boulder:9091 --debug-addr :8009' % os.path.join(config_dir, "publisher.json")],
-        [8109, './bin/boulder-publisher --config %s --addr publisher2.boulder:9091 --debug-addr :8109' % os.path.join(config_dir, "publisher.json")],
-        [9380, './bin/mail-test-srv --closeFirst 5 --cert test/mail-test-srv/localhost/cert.pem --key test/mail-test-srv/localhost/key.pem'],
-        [8005, './bin/ocsp-responder --config %s' % os.path.join(config_dir, "ocsp-responder.json")],
-        [8004, './bin/boulder-va --config %s --addr va1.boulder:9092 --debug-addr :8004' % os.path.join(config_dir, "va.json")],
-        [8104, './bin/boulder-va --config %s --addr va2.boulder:9092 --debug-addr :8104' % os.path.join(config_dir, "va.json")],
-        [8001, './bin/boulder-ca --config %s --ca-addr ca1.boulder:9093 --ocsp-addr ca1.boulder:9096 --debug-addr :8001' % os.path.join(config_dir, "ca-a.json")],
-        [8101, './bin/boulder-ca --config %s --ca-addr ca2.boulder:9093 --ocsp-addr ca2.boulder:9096 --debug-addr :8101' % os.path.join(config_dir, "ca-b.json")],
-        [6789, './bin/akamai-test-srv --listen localhost:6789 --secret its-a-secret'],
-        [9666, './bin/akamai-purger --config %s' % os.path.join(config_dir, "akamai-purger.json")],
-        [8006, './bin/ocsp-updater --config %s' % os.path.join(config_dir, "ocsp-updater.json")],
-        [8002, './bin/boulder-ra --config %s --addr ra1.boulder:9094 --debug-addr :8002' % os.path.join(config_dir, "ra.json")],
-        [8102, './bin/boulder-ra --config %s --addr ra2.boulder:9094 --debug-addr :8102' % os.path.join(config_dir, "ra.json")],
-        [8111, './bin/nonce-service --config %s --addr nonce1.boulder:9101 --debug-addr :8111 --prefix taro' % os.path.join(config_dir, "nonce.json")],
-        [8112, './bin/nonce-service --config %s --addr nonce2.boulder:9101 --debug-addr :8112 --prefix zinc' % os.path.join(config_dir, "nonce.json")],
-        [4001, './bin/boulder-wfe2 --config %s' % os.path.join(config_dir, "wfe2.json")],
-        [4000, './bin/boulder-wfe --config %s' % os.path.join(config_dir, "wfe.json")],
-        [8016, './bin/log-validator --config %s' % os.path.join(config_dir, "log-validator.json")],
-    ])
-    for (port, prog) in progs:
+    for service in _service_toposort(SERVICES):
         try:
             global processes
-            processes.append(run(prog, race_detection, fakeclock))
-            if not waitport(port, prog, perTickCheck=check):
+            p = run(service.cmd, race_detection, fakeclock)
+            processes.append(p)
+            if not waitport(service.port, ' '.join(p.args), perTickCheck=check):
                 return False
         except Exception as e:
-            print(e)
+            print("Error starting service %s: %s" % (service.name, e))
             return False
 
     print("All servers running. Hit ^C to kill.")
@@ -140,10 +239,18 @@ def startChallSrv():
     # and TLS-ALPN-01 responses on 5001 for another interface. The choice of
     # which is used is controlled by mock DNS data added by the relevant
     # integration tests.
-    prog = 'pebble-challtestsrv --defaultIPv4 %s --defaultIPv6 "" --dns01 :8053,:8054 --management :8055 --http01 10.77.77.77:5002 -https01 10.77.77.77:5001 --tlsalpn01 10.88.88.88:5001' % os.environ.get("FAKE_DNS")
-    challSrvProcess = run(prog, False, None)
+    challSrvProcess = run([
+        'pebble-challtestsrv',
+        '--defaultIPv4', os.environ.get("FAKE_DNS"),
+        '-defaultIPv6', '',
+        '--dns01', ':8053,:8054',
+        '--management', ':8055',
+        '--http01', '10.77.77.77:5002',
+        '-https01', '10.77.77.77:5001',
+        '--tlsalpn01', '10.88.88.88:5001'],
+        False, None)
     # Wait for the pebble-challtestsrv management port.
-    if not waitport(8055, prog):
+    if not waitport(8055, ' '.join(challSrvProcess.args)):
         return False
 
 def stopChallSrv():

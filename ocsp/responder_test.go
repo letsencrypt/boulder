@@ -98,6 +98,7 @@ func TestOCSP(t *testing.T) {
 			[]string{"type"},
 		),
 		clk: clock.NewFake(),
+		log: blog.NewMock(),
 	}
 
 	for _, tc := range cases {
@@ -133,6 +134,7 @@ func TestRequestTooBig(t *testing.T) {
 			[]string{"type"},
 		),
 		clk: clock.NewFake(),
+		log: blog.NewMock(),
 	}
 
 	rw := httptest.NewRecorder()
@@ -174,6 +176,7 @@ func TestOverrideHeaders(t *testing.T) {
 			[]string{"type"},
 		),
 		clk: clock.NewFake(),
+		log: blog.NewMock(),
 	}
 
 	rw := httptest.NewRecorder()
@@ -204,6 +207,7 @@ func TestCacheHeaders(t *testing.T) {
 			[]string{"type"},
 		),
 		clk: fc,
+		log: blog.NewMock(),
 	}
 
 	rw := httptest.NewRecorder()

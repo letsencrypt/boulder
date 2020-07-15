@@ -13,6 +13,7 @@ ceremony --config path/to/config.yml
 * `crl-signer` - creates a delegated CRL signing certificate and signs it using a signing key already on a HSM, outputting a PEM certificate
 * `key` - generates a signing key on HSM, outputting a PEM public key
 * `ocsp-response` - creates a OCSP response for the provided certificate and signs it using a signing key already on a HSM, outputting a base64 encoded response
+* `crl` - creates a CRL from the provided profile and signs it using a signing key already on a HSM, outputting a PEM CRL
 
 These modes are set in the `ceremony-type` field of the configuration file.
 
@@ -298,7 +299,7 @@ This config generates an ECDSA P-384 key in the HSM with the object label `inter
 Example:
 
 ```yaml
-ceremony-type: intermediate
+ceremony-type: ocsp-response
 pkcs11:
     module: /usr/lib/opensc-pkcs11.so
     signing-key-slot: 0
@@ -316,6 +317,57 @@ ocsp-profile:
 ```
 
 This config generates a OCSP response signed by a key in the HSM, identified by the object label `root signing key` and object ID `ffff`. The response will be for the certificate in `/home/user/certificate.pem`, and will be written to `/home/user/ocsp-resp.b64`.
+
+### CRL ceremony
+
+- `ceremony-type`: string describing the ceremony type, `crl`.
+- `pkcs11`: object containing PKCS#11 related fields.
+    | Field | Description |
+    | --- | --- |
+    | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
+    | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
+    | `signing-key-slot` | Specifies which HSM object slot the signing key is in. |
+    | `signing-key-label` | Specifies the HSM object label for the signing key. |
+    | `signing-key-id` | Specifies the HSM object ID for the signing key. |
+- `inputs`: object containing paths for inputs
+    | Field | Description |
+    | --- | --- |
+    | `issuer-certificate-path` | Path to PEM issuer certificate. |
+- `outputs`: object containing paths to write outputs.
+    | Field | Description |
+    | --- | --- |
+    | `crl-path` | Path to store signed PEM CRL. |
+- `crl-profile`: object containing profile for the CRL.
+    | Field | Description |
+    | --- | --- |
+    | `this-update` | Specifies the CRL thisUpdate date, in the format `2006-01-02 15:04:05`. The time will be interpreted as UTC. |
+    | `next-update` | Specifies the CRL nextUpdate date, in the format `2006-01-02 15:04:05`. The time will be interpreted as UTC. |
+    | `number` | Specifies the CRL number. Each CRL should have a unique monotonically increasing number. |
+    | `revoked-certificates` | Specifies any revoked certificates that should be included in the CRL. May be empty. If present it should be a list of objects with the fields `certificate-path`, containing the path to the revoked certificate, `revocation-date`, containing the date the certificate was revoked, in the format `2006-01-02 15:04:05`, and `revocation-reason`, containing a non-zero CRLReason code for the revocation taken from RFC 5280. |
+
+Example:
+
+```yaml
+ceremony-type: crl
+pkcs11:
+    module: /usr/lib/opensc-pkcs11.so
+    signing-key-slot: 0
+    signing-key-label: root signing key
+    signing-key-id: ffff
+inputs:
+    issuer-certificate-path: /home/user/root-cert.pem
+outputs:
+    crl-path: /home/user/crl.pem
+crl-profile:
+    this-update: 2020-01-01 12:00:00
+    next-update: 2021-01-01 12:00:00
+    number: 80
+    revoked-certificates:
+        - certificate-path: /home/user/revoked-cert.pem
+          revocation-date: 2019-12-31 12:00:00
+```
+
+This config generates a CRL signed by a key in the HSM, identified by the object label `root signing key` and object ID `ffff`. The CRL will have the number `80` and will contain revocation information for the certificate `/home/user/revoked-cert.pem`
 
 ### Certificate profile format
 

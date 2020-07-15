@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"log/syslog"
 	"os"
 	"path"
@@ -60,7 +61,7 @@ func New(log *syslog.Writer, stdoutLogLevel int, syslogLogLevel int) (Logger, er
 		return nil, errors.New("Attempted to use a nil System Logger.")
 	}
 	return &impl{
-		&bothWriter{log, stdoutLogLevel, syslogLogLevel, clock.New()},
+		&bothWriter{log, stdoutLogLevel, syslogLogLevel, clock.New(), os.Stdout},
 	}, nil
 }
 
@@ -118,6 +119,7 @@ type bothWriter struct {
 	stdoutLevel int
 	syslogLevel int
 	clk         clock.Clock
+	stdout      io.Writer
 }
 
 func LogLineChecksum(line string) string {
@@ -138,6 +140,9 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 	const red = "\033[31m\033[1m"
 	const yellow = "\033[33m"
 
+	// Since messages are delimited by newlines, we have to escape any internal or
+	// trailing newlines before generating the checksum or outputting the message.
+	msg = strings.Replace(msg, "\n", "\\n", -1)
 	msg = fmt.Sprintf("%s %s", LogLineChecksum(msg), msg)
 
 	switch syslogAllowed := int(level) <= w.syslogLevel; level {
@@ -175,7 +180,7 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 	}
 
 	if int(level) <= w.stdoutLevel {
-		if _, err := fmt.Printf("%s%s %s %s%s\n",
+		if _, err := fmt.Fprintf(w.stdout, "%s%s %s %s%s\n",
 			prefix,
 			w.clk.Now().Format("150405"),
 			path.Base(os.Args[0]),

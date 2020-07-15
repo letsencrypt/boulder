@@ -19,6 +19,7 @@ const (
 	ParallelCheckFailedValidation
 	DeleteUnusedChallenges
 	BlockedKeyTable
+	StoreKeyHashes
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -48,8 +49,6 @@ const (
 	// StoreIssuerInfo enables storage of information identifying the issuer of
 	// a certificate in the certificateStatus table.
 	StoreIssuerInfo
-	// StoreKeyHashes enables storage of SPKI hashes associated with certificates.
-	StoreKeyHashes
 	// StoreRevokerInfo enables storage of the revoker and a bool indicating if the row
 	// was checked for extant unrevoked certificates in the blockedKeys table.
 	StoreRevokerInfo

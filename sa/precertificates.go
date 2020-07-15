@@ -12,7 +12,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -111,10 +110,8 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		if err := addIssuedNames(txWithCtx, parsed, isRenewal); err != nil {
 			return nil, err
 		}
-		if features.Enabled(features.StoreKeyHashes) {
-			if err := addKeyHash(txWithCtx, parsed); err != nil {
-				return nil, err
-			}
+		if err := addKeyHash(txWithCtx, parsed); err != nil {
+			return nil, err
 		}
 
 		return nil, nil

@@ -60,7 +60,6 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *db.WrappedMap, c
 		fc,
 		dbMap,
 		&mockOCSP{},
-		sa,
 		nil,
 		OCSPUpdaterConfig{
 			OldOCSPBatchSize:         1,
@@ -417,7 +416,7 @@ type mockOCSPRecordIssuer struct {
 }
 
 func (ca *mockOCSPRecordIssuer) GenerateOCSP(_ context.Context, req *caPB.GenerateOCSPRequest, _ ...grpc.CallOption) (*caPB.OCSPResponse, error) {
-	ca.gotIssuer = req.IssuerID != nil && req.Serial != nil
+	ca.gotIssuer = req.IssuerID != 0 && req.Serial != ""
 	return &caPB.OCSPResponse{Response: []byte{1, 2, 3}}, nil
 }
 

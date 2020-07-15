@@ -1180,8 +1180,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	orderIDInt := int64(oID)
 	issueReq := &caPB.IssueCertificateRequest{
 		Csr:            csr.Raw,
-		RegistrationID: &acctIDInt,
-		OrderID:        &orderIDInt,
+		RegistrationID: acctIDInt,
+		OrderID:        orderIDInt,
 	}
 
 	// wrapError adds a prefix to an error. If the error is a boulder error then
@@ -1210,8 +1210,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &caPB.IssueCertificateForPrecertificateRequest{
 		DER:            precert.DER,
 		SCTs:           scts,
-		RegistrationID: &acctIDInt,
-		OrderID:        &orderIDInt,
+		RegistrationID: acctIDInt,
+		OrderID:        orderIDInt,
 	})
 	if err != nil {
 		return emptyCert, wrapError(err, "issuing certificate for precertificate")
@@ -1651,14 +1651,13 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 // revokeCertificate generates a revoked OCSP response for the given certificate, stores
 // the revocation information, and purges OCSP request URLs from Akamai.
 func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, revokedBy int64, source string, comment string) error {
-	status := string(core.OCSPStatusRevoked)
 	reason := int32(code)
 	revokedAt := ra.clk.Now().UnixNano()
 	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
 		CertDER:   cert.Raw,
-		Status:    &status,
-		Reason:    &reason,
-		RevokedAt: &revokedAt,
+		Status:    string(core.OCSPStatusRevoked),
+		Reason:    reason,
+		RevokedAt: revokedAt,
 	})
 	if err != nil {
 		return err
