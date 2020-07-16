@@ -27,18 +27,18 @@ var ErrMissingParameters = CodedError(codes.FailedPrecondition, "required RPC pa
 
 func authzMetaToPB(authz core.Authorization) (*vapb.AuthzMeta, error) {
 	return &vapb.AuthzMeta{
-		Id:    &authz.ID,
-		RegID: &authz.RegistrationID,
+		Id:    authz.ID,
+		RegID: authz.RegistrationID,
 	}, nil
 }
 
 func pbToAuthzMeta(in *vapb.AuthzMeta) (core.Authorization, error) {
-	if in == nil || in.Id == nil || in.RegID == nil {
+	if in == nil || in.Id == "" || in.RegID == 0 {
 		return core.Authorization{}, ErrMissingParameters
 	}
 	return core.Authorization{
-		ID:             *in.Id,
-		RegistrationID: *in.RegID,
+		ID:             in.Id,
+		RegistrationID: in.RegID,
 	}, nil
 }
 
@@ -218,7 +218,7 @@ func pbToValidationResult(in *vapb.ValidationResult) ([]core.ValidationRecord, *
 }
 
 func performValidationReqToArgs(in *vapb.PerformValidationRequest) (string, core.Challenge, core.Authorization, error) {
-	if in == nil || in.Domain == nil {
+	if in == nil || in.Domain == "" {
 		return "", core.Challenge{}, core.Authorization{}, ErrMissingParameters
 	}
 	challenge, err := pbToChallenge(in.Challenge)
@@ -230,7 +230,7 @@ func performValidationReqToArgs(in *vapb.PerformValidationRequest) (string, core
 		return "", core.Challenge{}, core.Authorization{}, err
 	}
 
-	return *in.Domain, challenge, authz, nil
+	return in.Domain, challenge, authz, nil
 }
 
 func argsToPerformValidationRequest(domain string, challenge core.Challenge, authz core.Authorization) (*vapb.PerformValidationRequest, error) {
@@ -243,7 +243,7 @@ func argsToPerformValidationRequest(domain string, challenge core.Challenge, aut
 		return nil, err
 	}
 	return &vapb.PerformValidationRequest{
-		Domain:    &domain,
+		Domain:    domain,
 		Challenge: pbChall,
 		Authz:     authzMeta,
 	}, nil
