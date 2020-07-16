@@ -15,7 +15,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"golang.org/x/crypto/ocsp"
 	"gopkg.in/yaml.v2"
@@ -316,6 +315,20 @@ func (cc crlConfig) validate() error {
 	return nil
 }
 
+// loadCert loads a PEM certificate specified by filename or returns an error
+func loadCert(filename string) (cert *x509.Certificate, err error) {
+	certPEM, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return
+	}
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return nil, fmt.Errorf("No data in cert PEM file %s", filename)
+	}
+	cert, err = x509.ParseCertificate(block.Bytes)
+	return
+}
+
 func equalPubKeys(a, b interface{}) bool {
 	aBytes, err := x509.MarshalPKIXPublicKey(a)
 	if err != nil {
@@ -441,7 +454,7 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse public key: %s", err)
 	}
-	issuer, err := core.LoadCert(config.Inputs.IssuerCertificatePath)
+	issuer, err := loadCert(config.Inputs.IssuerCertificatePath)
 	if err != nil {
 		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
 	}
@@ -496,18 +509,18 @@ func ocspRespCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 
-	cert, err := core.LoadCert(config.Inputs.CertificatePath)
+	cert, err := loadCert(config.Inputs.CertificatePath)
 	if err != nil {
 		return fmt.Errorf("failed to load certificate %q: %s", config.Inputs.CertificatePath, err)
 	}
-	issuer, err := core.LoadCert(config.Inputs.IssuerCertificatePath)
+	issuer, err := loadCert(config.Inputs.IssuerCertificatePath)
 	if err != nil {
 		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
 	}
 	var signer crypto.Signer
 	var delegatedIssuer *x509.Certificate
 	if config.Inputs.DelegatedIssuerCertificatePath != "" {
-		delegatedIssuer, err = core.LoadCert(config.Inputs.DelegatedIssuerCertificatePath)
+		delegatedIssuer, err = loadCert(config.Inputs.DelegatedIssuerCertificatePath)
 		if err != nil {
 			return fmt.Errorf("failed to load delegated issuer certificate %q: %s", config.Inputs.DelegatedIssuerCertificatePath, err)
 		}
@@ -564,7 +577,7 @@ func crlCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 
-	issuer, err := core.LoadCert(config.Inputs.IssuerCertificatePath)
+	issuer, err := loadCert(config.Inputs.IssuerCertificatePath)
 	if err != nil {
 		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
 	}
@@ -584,7 +597,7 @@ func crlCeremony(configBytes []byte) error {
 
 	var revokedCertificates []pkix.RevokedCertificate
 	for _, rc := range config.CRLProfile.RevokedCertificates {
-		cert, err := core.LoadCert(rc.CertificatePath)
+		cert, err := loadCert(rc.CertificatePath)
 		if err != nil {
 			return fmt.Errorf("failed to load revoked certificate %q: %s", rc.CertificatePath, err)
 		}
