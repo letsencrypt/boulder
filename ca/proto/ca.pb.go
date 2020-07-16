@@ -35,9 +35,9 @@ type IssueCertificateRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Csr            []byte `protobuf:"bytes,1,opt,name=csr,proto3" json:"csr,omitempty"`
-	RegistrationID int64  `protobuf:"varint,2,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
-	OrderID        int64  `protobuf:"varint,3,opt,name=orderID,proto3" json:"orderID,omitempty"`
+	Csr            []byte `protobuf:"bytes,1,opt,name=csr" json:"csr,omitempty"`
+	RegistrationID *int64 `protobuf:"varint,2,opt,name=registrationID" json:"registrationID,omitempty"`
+	OrderID        *int64 `protobuf:"varint,3,opt,name=orderID" json:"orderID,omitempty"`
 }
 
 func (x *IssueCertificateRequest) Reset() {
@@ -80,15 +80,15 @@ func (x *IssueCertificateRequest) GetCsr() []byte {
 }
 
 func (x *IssueCertificateRequest) GetRegistrationID() int64 {
-	if x != nil {
-		return x.RegistrationID
+	if x != nil && x.RegistrationID != nil {
+		return *x.RegistrationID
 	}
 	return 0
 }
 
 func (x *IssueCertificateRequest) GetOrderID() int64 {
-	if x != nil {
-		return x.OrderID
+	if x != nil && x.OrderID != nil {
+		return *x.OrderID
 	}
 	return 0
 }
@@ -98,7 +98,7 @@ type IssuePrecertificateResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	DER []byte `protobuf:"bytes,1,opt,name=DER,proto3" json:"DER,omitempty"`
+	DER []byte `protobuf:"bytes,1,opt,name=DER" json:"DER,omitempty"`
 }
 
 func (x *IssuePrecertificateResponse) Reset() {
@@ -145,10 +145,10 @@ type IssueCertificateForPrecertificateRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	DER            []byte   `protobuf:"bytes,1,opt,name=DER,proto3" json:"DER,omitempty"`
-	SCTs           [][]byte `protobuf:"bytes,2,rep,name=SCTs,proto3" json:"SCTs,omitempty"`
-	RegistrationID int64    `protobuf:"varint,3,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
-	OrderID        int64    `protobuf:"varint,4,opt,name=orderID,proto3" json:"orderID,omitempty"`
+	DER            []byte   `protobuf:"bytes,1,opt,name=DER" json:"DER,omitempty"`
+	SCTs           [][]byte `protobuf:"bytes,2,rep,name=SCTs" json:"SCTs,omitempty"`
+	RegistrationID *int64   `protobuf:"varint,3,opt,name=registrationID" json:"registrationID,omitempty"`
+	OrderID        *int64   `protobuf:"varint,4,opt,name=orderID" json:"orderID,omitempty"`
 }
 
 func (x *IssueCertificateForPrecertificateRequest) Reset() {
@@ -198,15 +198,15 @@ func (x *IssueCertificateForPrecertificateRequest) GetSCTs() [][]byte {
 }
 
 func (x *IssueCertificateForPrecertificateRequest) GetRegistrationID() int64 {
-	if x != nil {
-		return x.RegistrationID
+	if x != nil && x.RegistrationID != nil {
+		return *x.RegistrationID
 	}
 	return 0
 }
 
 func (x *IssueCertificateForPrecertificateRequest) GetOrderID() int64 {
-	if x != nil {
-		return x.OrderID
+	if x != nil && x.OrderID != nil {
+		return *x.OrderID
 	}
 	return 0
 }
@@ -217,12 +217,12 @@ type GenerateOCSPRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	CertDER   []byte `protobuf:"bytes,1,opt,name=certDER,proto3" json:"certDER,omitempty"`
-	Status    string `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
-	Reason    int32  `protobuf:"varint,3,opt,name=reason,proto3" json:"reason,omitempty"`
-	RevokedAt int64  `protobuf:"varint,4,opt,name=revokedAt,proto3" json:"revokedAt,omitempty"`
-	Serial    string `protobuf:"bytes,5,opt,name=serial,proto3" json:"serial,omitempty"`
-	IssuerID  int64  `protobuf:"varint,6,opt,name=issuerID,proto3" json:"issuerID,omitempty"`
+	CertDER   []byte  `protobuf:"bytes,1,opt,name=certDER" json:"certDER,omitempty"`
+	Status    *string `protobuf:"bytes,2,opt,name=status" json:"status,omitempty"`
+	Reason    *int32  `protobuf:"varint,3,opt,name=reason" json:"reason,omitempty"`
+	RevokedAt *int64  `protobuf:"varint,4,opt,name=revokedAt" json:"revokedAt,omitempty"`
+	Serial    *string `protobuf:"bytes,5,opt,name=serial" json:"serial,omitempty"`
+	IssuerID  *int64  `protobuf:"varint,6,opt,name=issuerID" json:"issuerID,omitempty"`
 }
 
 func (x *GenerateOCSPRequest) Reset() {
@@ -265,36 +265,36 @@ func (x *GenerateOCSPRequest) GetCertDER() []byte {
 }
 
 func (x *GenerateOCSPRequest) GetStatus() string {
-	if x != nil {
-		return x.Status
+	if x != nil && x.Status != nil {
+		return *x.Status
 	}
 	return ""
 }
 
 func (x *GenerateOCSPRequest) GetReason() int32 {
-	if x != nil {
-		return x.Reason
+	if x != nil && x.Reason != nil {
+		return *x.Reason
 	}
 	return 0
 }
 
 func (x *GenerateOCSPRequest) GetRevokedAt() int64 {
-	if x != nil {
-		return x.RevokedAt
+	if x != nil && x.RevokedAt != nil {
+		return *x.RevokedAt
 	}
 	return 0
 }
 
 func (x *GenerateOCSPRequest) GetSerial() string {
-	if x != nil {
-		return x.Serial
+	if x != nil && x.Serial != nil {
+		return *x.Serial
 	}
 	return ""
 }
 
 func (x *GenerateOCSPRequest) GetIssuerID() int64 {
-	if x != nil {
-		return x.IssuerID
+	if x != nil && x.IssuerID != nil {
+		return *x.IssuerID
 	}
 	return 0
 }
@@ -304,7 +304,7 @@ type OCSPResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Response []byte `protobuf:"bytes,1,opt,name=response,proto3" json:"response,omitempty"`
+	Response []byte `protobuf:"bytes,1,opt,name=response" json:"response,omitempty"`
 }
 
 func (x *OCSPResponse) Reset() {
@@ -410,7 +410,7 @@ var file_ca_proto_ca_proto_rawDesc = []byte{
 	0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x42, 0x29, 0x5a, 0x27, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62,
 	0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x65, 0x74, 0x73, 0x65, 0x6e, 0x63, 0x72, 0x79, 0x70, 0x74,
 	0x2f, 0x62, 0x6f, 0x75, 0x6c, 0x64, 0x65, 0x72, 0x2f, 0x63, 0x61, 0x2f, 0x70, 0x72, 0x6f, 0x74,
-	0x6f, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x6f,
 }
 
 var (

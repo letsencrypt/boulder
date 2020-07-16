@@ -565,7 +565,7 @@ func TestIsCAAValidErrMessage(t *testing.T) {
 	// caaMockDNS.
 	domain := "caa-timeout.com"
 	resp, err := va.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
-		Domain: domain,
+		Domain: &domain,
 	})
 
 	// The lookup itself should not return an error
