@@ -98,10 +98,7 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 }
 
 func pbToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
-	if in == nil {
-		return core.Challenge{}, ErrMissingParameters
-	}
-	if in.Type == nil || in.Status == nil || in.Token == nil {
+	if in == nil || in.Type == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
 	var recordAry []core.ValidationRecord
@@ -157,9 +154,6 @@ func ValidationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecor
 
 func PBToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRecord, err error) {
 	if in == nil {
-		return core.ValidationRecord{}, ErrMissingParameters
-	}
-	if in.AddressUsed == nil || in.Hostname == nil || in.Port == nil || in.Url == nil {
 		return core.ValidationRecord{}, ErrMissingParameters
 	}
 	addrs := make([]net.IP, len(in.AddressesResolved))
@@ -223,26 +217,20 @@ func pbToValidationResult(in *vapb.ValidationResult) ([]core.ValidationRecord, *
 	return recordAry, prob, nil
 }
 
-func performValidationReqToArgs(in *vapb.PerformValidationRequest) (domain string, challenge core.Challenge, authz core.Authorization, err error) {
-	if in == nil {
-		err = ErrMissingParameters
-		return
+func performValidationReqToArgs(in *vapb.PerformValidationRequest) (string, core.Challenge, core.Authorization, error) {
+	if in == nil || in.Domain == nil {
+		return "", core.Challenge{}, core.Authorization{}, ErrMissingParameters
 	}
-	if in.Domain == nil {
-		err = ErrMissingParameters
-		return
-	}
-	domain = *in.Domain
-	challenge, err = pbToChallenge(in.Challenge)
+	challenge, err := pbToChallenge(in.Challenge)
 	if err != nil {
-		return
+		return "", core.Challenge{}, core.Authorization{}, err
 	}
-	authz, err = pbToAuthzMeta(in.Authz)
+	authz, err := pbToAuthzMeta(in.Authz)
 	if err != nil {
-		return
+		return "", core.Challenge{}, core.Authorization{}, err
 	}
 
-	return domain, challenge, authz, nil
+	return *in.Domain, challenge, authz, nil
 }
 
 func argsToPerformValidationRequest(domain string, challenge core.Challenge, authz core.Authorization) (*vapb.PerformValidationRequest, error) {
@@ -377,14 +365,13 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 }
 
 func registrationValid(reg *corepb.Registration) bool {
-	return !(reg.Id == nil || reg.Key == nil || reg.Agreement == nil || reg.InitialIP == nil || reg.CreatedAt == nil || reg.Status == nil || reg.ContactsPresent == nil)
+	return !(reg.Id == nil || reg.Key == nil)
 }
 
 // orderValid checks that a corepb.Order is valid. In addition to the checks
-// from `newOrderValid` it ensures the order ID, the BeganProcessing fields
-// and the Created field are not nil.
+// from `newOrderValid` it ensures the order ID is not nil.
 func orderValid(order *corepb.Order) bool {
-	return order.Id != nil && order.BeganProcessing != nil && order.Created != nil && newOrderValid(order)
+	return !(order.Id == nil || newOrderValid(order))
 }
 
 // newOrderValid checks that a corepb.Order is valid. It allows for a nil
@@ -395,11 +382,11 @@ func orderValid(order *corepb.Order) bool {
 // `order.CertificateSerial` to be nil such that it can be used in places where
 // the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
-	return !(order.RegistrationID == nil || order.Expires == nil || order.V2Authorizations == nil || order.Names == nil)
+	return !(order.RegistrationID == nil || order.Expires == nil || len(order.Names) == 0)
 }
 
 func authorizationValid(authz *corepb.Authorization) bool {
-	return !(authz.Id == nil || authz.Identifier == nil || authz.RegistrationID == nil || authz.Status == nil || authz.Expires == nil)
+	return !(authz.Id == nil || authz.Identifier == nil || authz.RegistrationID == nil)
 }
 
 func CertToPB(cert core.Certificate) *corepb.Certificate {
@@ -415,7 +402,7 @@ func CertToPB(cert core.Certificate) *corepb.Certificate {
 }
 
 func PBToCert(pb *corepb.Certificate) (core.Certificate, error) {
-	if pb == nil || pb.RegistrationID == nil || pb.Serial == nil || pb.Digest == nil || pb.Der == nil || pb.Issued == nil || pb.Expires == nil {
+	if pb == nil || pb.Der == nil {
 		return core.Certificate{}, errIncompleteResponse
 	}
 	return core.Certificate{

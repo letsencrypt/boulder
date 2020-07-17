@@ -347,61 +347,6 @@ func TestOrderValid(t *testing.T) {
 				BeganProcessing:   &falseBool,
 			},
 		},
-		{
-			Name: "Reg ID nil",
-			Order: &corepb.Order{
-				Id:                &testID,
-				Expires:           &testExpires,
-				CertificateSerial: &emptyString,
-				V2Authorizations:  []int64{},
-				Names:             []string{},
-				BeganProcessing:   &falseBool,
-			},
-		},
-		{
-			Name: "Expires nil",
-			Order: &corepb.Order{
-				Id:                &testID,
-				RegistrationID:    &testID,
-				CertificateSerial: &emptyString,
-				V2Authorizations:  []int64{},
-				Names:             []string{},
-				BeganProcessing:   &falseBool,
-			},
-		},
-		{
-			Name: "Authorizations nil",
-			Order: &corepb.Order{
-				Id:                &testID,
-				RegistrationID:    &testID,
-				Expires:           &testExpires,
-				CertificateSerial: &emptyString,
-				Names:             []string{},
-				BeganProcessing:   &falseBool,
-			},
-		},
-		{
-			Name: "BeganProcessing nil",
-			Order: &corepb.Order{
-				Id:                &testID,
-				RegistrationID:    &testID,
-				Expires:           &testExpires,
-				CertificateSerial: &emptyString,
-				V2Authorizations:  []int64{},
-				Names:             []string{},
-			},
-		},
-		{
-			Name: "Names nil",
-			Order: &corepb.Order{
-				Id:                &testID,
-				RegistrationID:    &testID,
-				Expires:           &testExpires,
-				CertificateSerial: &emptyString,
-				V2Authorizations:  []int64{},
-				BeganProcessing:   &falseBool,
-			},
-		},
 	}
 
 	for _, tc := range testCases {
