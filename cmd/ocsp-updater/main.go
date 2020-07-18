@@ -178,14 +178,17 @@ func getCertDER(selector ocspDB, serial string) ([]byte, error) {
 }
 
 func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.CertificateStatus) (*core.CertificateStatus, error) {
+	reason := int32(status.RevokedReason)
+	statusStr := string(status.Status)
+	revokedAt := status.RevokedDate.UnixNano()
 	ocspReq := capb.GenerateOCSPRequest{
-		Reason:    int32(status.RevokedReason),
-		Status:    string(status.Status),
-		RevokedAt: status.RevokedDate.UnixNano(),
+		Reason:    &reason,
+		Status:    &statusStr,
+		RevokedAt: &revokedAt,
 	}
 	if status.IssuerID != nil {
-		ocspReq.Serial = status.Serial
-		ocspReq.IssuerID = *status.IssuerID
+		ocspReq.Serial = &status.Serial
+		ocspReq.IssuerID = status.IssuerID
 	} else {
 		certDER, err := getCertDER(updater.dbMap, status.Serial)
 		if err != nil {

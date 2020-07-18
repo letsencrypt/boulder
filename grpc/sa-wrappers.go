@@ -85,7 +85,7 @@ func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Contex
 		return core.CertificateStatus{}, err
 	}
 
-	if response == nil || response.Serial == nil || response.Status == nil || response.OcspLastUpdated == nil || response.RevokedDate == nil || response.RevokedReason == nil || response.LastExpirationNagSent == nil || response.OcspResponse == nil || response.NotAfter == nil || response.IsExpired == nil {
+	if response == nil || response.OcspResponse == nil {
 		return core.CertificateStatus{}, errIncompleteResponse
 	}
 
@@ -139,7 +139,7 @@ func (sac StorageAuthorityClientWrapper) CountRegistrationsByIP(ctx context.Cont
 		return 0, err
 	}
 
-	if response == nil || response.Count == nil {
+	if response == nil {
 		return 0, errIncompleteResponse
 	}
 
@@ -161,7 +161,7 @@ func (sac StorageAuthorityClientWrapper) CountRegistrationsByIPRange(ctx context
 		return 0, err
 	}
 
-	if response == nil || response.Count == nil {
+	if response == nil {
 		return 0, errIncompleteResponse
 	}
 
@@ -183,7 +183,7 @@ func (sac StorageAuthorityClientWrapper) CountOrders(ctx context.Context, acctID
 		return 0, err
 	}
 
-	if response == nil || response.Count == nil {
+	if response == nil {
 		return 0, errIncompleteResponse
 	}
 
@@ -201,7 +201,7 @@ func (sac StorageAuthorityClientWrapper) CountFQDNSets(ctx context.Context, wind
 		return 0, err
 	}
 
-	if response == nil || response.Count == nil {
+	if response == nil {
 		return 0, errIncompleteResponse
 	}
 
@@ -216,7 +216,7 @@ func (sac StorageAuthorityClientWrapper) PreviousCertificateExists(
 	if err != nil {
 		return nil, err
 	}
-	if exists == nil || exists.Exists == nil {
+	if exists == nil {
 		return nil, errIncompleteResponse
 	}
 	return exists, err
@@ -256,7 +256,7 @@ func (sac StorageAuthorityClientWrapper) FQDNSetExists(ctx context.Context, doma
 		return false, err
 	}
 
-	if response == nil || response.Exists == nil {
+	if response == nil {
 		return false, errIncompleteResponse
 	}
 
@@ -315,7 +315,7 @@ func (sac StorageAuthorityClientWrapper) AddCertificate(
 		return "", err
 	}
 
-	if response == nil || response.Digest == nil {
+	if response == nil {
 		return "", errIncompleteResponse
 	}
 
@@ -445,7 +445,7 @@ func (sas StorageAuthorityClientWrapper) CountPendingAuthorizations2(ctx context
 	if err != nil {
 		return nil, err
 	}
-	if count == nil || count.Count == nil {
+	if count == nil {
 		return nil, errIncompleteResponse
 	}
 	return count, nil
@@ -467,7 +467,7 @@ func (sas StorageAuthorityClientWrapper) CountInvalidAuthorizations2(ctx context
 	if err != nil {
 		return nil, err
 	}
-	if count == nil || count.Count == nil {
+	if count == nil {
 		return nil, errIncompleteResponse
 	}
 	return count, nil
@@ -494,7 +494,7 @@ func (sas StorageAuthorityClientWrapper) SerialExists(ctx context.Context, req *
 	if err != nil {
 		return nil, err
 	}
-	if res == nil || res.Exists == nil {
+	if res == nil {
 		return nil, errIncompleteResponse
 	}
 	return res, nil
@@ -604,7 +604,7 @@ func (sas StorageAuthorityServerWrapper) GetCertificateStatus(ctx context.Contex
 }
 
 func (sas StorageAuthorityServerWrapper) CountCertificatesByNames(ctx context.Context, request *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
-	if request == nil || request.Range == nil || request.Range.Earliest == nil || request.Range.Latest == nil || request.Names == nil {
+	if request == nil || request.Range == nil || len(request.Names) == 0 {
 		return nil, errIncompleteRequest
 	}
 
@@ -617,7 +617,7 @@ func (sas StorageAuthorityServerWrapper) CountCertificatesByNames(ctx context.Co
 }
 
 func (sas StorageAuthorityServerWrapper) CountRegistrationsByIP(ctx context.Context, request *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
-	if request == nil || request.Ip == nil || request.Range == nil || request.Range.Earliest == nil || request.Range.Latest == nil {
+	if request == nil || request.Ip == nil || request.Range == nil {
 		return nil, errIncompleteRequest
 	}
 
@@ -635,7 +635,7 @@ func (sas StorageAuthorityServerWrapper) CountRegistrationsByIP(ctx context.Cont
 }
 
 func (sas StorageAuthorityServerWrapper) CountRegistrationsByIPRange(ctx context.Context, request *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
-	if request == nil || request.Ip == nil || request.Range == nil || request.Range.Earliest == nil || request.Range.Latest == nil {
+	if request == nil || request.Ip == nil || request.Range == nil {
 		return nil, errIncompleteRequest
 	}
 
@@ -653,7 +653,7 @@ func (sas StorageAuthorityServerWrapper) CountRegistrationsByIPRange(ctx context
 }
 
 func (sas StorageAuthorityServerWrapper) CountOrders(ctx context.Context, request *sapb.CountOrdersRequest) (*sapb.Count, error) {
-	if request == nil || request.AccountID == nil || request.Range == nil || request.Range.Earliest == nil || request.Range.Latest == nil {
+	if request == nil || request.AccountID == nil || request.Range == nil {
 		return nil, errIncompleteRequest
 	}
 
@@ -671,7 +671,7 @@ func (sas StorageAuthorityServerWrapper) CountOrders(ctx context.Context, reques
 }
 
 func (sas StorageAuthorityServerWrapper) CountFQDNSets(ctx context.Context, request *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
-	if request == nil || request.Window == nil || request.Domains == nil {
+	if request == nil || len(request.Domains) == 0 {
 		return nil, errIncompleteRequest
 	}
 
@@ -687,7 +687,7 @@ func (sas StorageAuthorityServerWrapper) CountFQDNSets(ctx context.Context, requ
 }
 
 func (sas StorageAuthorityServerWrapper) FQDNSetExists(ctx context.Context, request *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {
-	if request == nil || request.Domains == nil {
+	if request == nil || len(request.Domains) == 0 {
 		return nil, errIncompleteRequest
 	}
 
@@ -699,11 +699,8 @@ func (sas StorageAuthorityServerWrapper) FQDNSetExists(ctx context.Context, requ
 	return &sapb.Exists{Exists: &exists}, nil
 }
 
-func (sac StorageAuthorityServerWrapper) PreviousCertificateExists(
-	ctx context.Context,
-	req *sapb.PreviousCertificateExistsRequest,
-) (*sapb.Exists, error) {
-	if req == nil || req.Domain == nil || req.RegID == nil {
+func (sac StorageAuthorityServerWrapper) PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (*sapb.Exists, error) {
+	if req == nil {
 		return nil, errIncompleteRequest
 	}
 	return sac.inner.PreviousCertificateExists(ctx, req)
@@ -746,7 +743,7 @@ func (sas StorageAuthorityServerWrapper) UpdateRegistration(ctx context.Context,
 }
 
 func (sas StorageAuthorityServerWrapper) AddCertificate(ctx context.Context, request *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
-	if request == nil || request.Der == nil || request.RegID == nil || request.Issued == nil {
+	if request == nil || request.Der == nil {
 		return nil, errIncompleteRequest
 	}
 
@@ -805,7 +802,7 @@ func (sas StorageAuthorityServerWrapper) SetOrderError(ctx context.Context, orde
 }
 
 func (sas StorageAuthorityServerWrapper) FinalizeOrder(ctx context.Context, order *corepb.Order) (*corepb.Empty, error) {
-	if order == nil || !orderValid(order) || order.CertificateSerial == nil {
+	if order == nil || !orderValid(order) {
 		return nil, errIncompleteRequest
 	}
 
@@ -824,9 +821,7 @@ func (sas StorageAuthorityServerWrapper) GetOrder(ctx context.Context, request *
 	return sas.inner.GetOrder(ctx, request)
 }
 
-func (sas StorageAuthorityServerWrapper) GetOrderForNames(
-	ctx context.Context,
-	request *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
+func (sas StorageAuthorityServerWrapper) GetOrderForNames(ctx context.Context, request *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
 	if request == nil || request.AcctID == nil || len(request.Names) == 0 {
 		return nil, errIncompleteRequest
 	}
@@ -842,14 +837,14 @@ func (sas StorageAuthorityServerWrapper) GetAuthorization2(ctx context.Context, 
 }
 
 func (sas StorageAuthorityServerWrapper) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*corepb.Empty, error) {
-	if req == nil || req.Serial == nil || req.Reason == nil || req.Date == nil || req.Response == nil {
+	if req == nil || req.Serial == nil {
 		return nil, errIncompleteRequest
 	}
 	return &corepb.Empty{}, sas.inner.RevokeCertificate(ctx, req)
 }
 
 func (sas StorageAuthorityServerWrapper) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
-	if req == nil || req.Authz == nil {
+	if req == nil || len(req.Authz) == 0 {
 		return nil, errIncompleteRequest
 	}
 
@@ -857,7 +852,7 @@ func (sas StorageAuthorityServerWrapper) NewAuthorizations2(ctx context.Context,
 }
 
 func (sas StorageAuthorityServerWrapper) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if req == nil || req.Domains == nil || req.RequireV2Authzs == nil || req.RegistrationID == nil || req.Now == nil {
+	if req == nil || len(req.Domains) == 0 || req.RegistrationID == nil {
 		return nil, errIncompleteRequest
 	}
 
@@ -865,7 +860,7 @@ func (sas StorageAuthorityServerWrapper) GetAuthorizations2(ctx context.Context,
 }
 
 func (sas StorageAuthorityServerWrapper) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) (*corepb.Empty, error) {
-	if req == nil || req.Status == nil || req.Attempted == nil || req.Expires == nil || req.Id == nil {
+	if req == nil || req.Id == nil {
 		return nil, errIncompleteRequest
 	}
 
@@ -873,7 +868,7 @@ func (sas StorageAuthorityServerWrapper) FinalizeAuthorization2(ctx context.Cont
 }
 
 func (sas StorageAuthorityServerWrapper) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
-	if req == nil || req.RegistrationID == nil || req.IdentifierValue == nil || req.ValidUntil == nil {
+	if req == nil || req.RegistrationID == nil || req.IdentifierValue == nil {
 		return nil, errIncompleteRequest
 	}
 
@@ -897,7 +892,7 @@ func (sas StorageAuthorityServerWrapper) GetValidOrderAuthorizations2(ctx contex
 }
 
 func (sas StorageAuthorityServerWrapper) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
-	if req == nil || req.RegistrationID == nil || req.Hostname == nil || req.Range == nil || req.Range.Earliest == nil || req.Range.Latest == nil {
+	if req == nil || req.RegistrationID == nil || req.Hostname == nil || req.Range == nil {
 		return nil, errIncompleteRequest
 	}
 
@@ -905,7 +900,7 @@ func (sas StorageAuthorityServerWrapper) CountInvalidAuthorizations2(ctx context
 }
 
 func (sas StorageAuthorityServerWrapper) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if req == nil || req.Domains == nil || req.RegistrationID == nil || req.Now == nil {
+	if req == nil || len(req.Domains) == 0 || req.RegistrationID == nil {
 		return nil, errIncompleteRequest
 	}
 

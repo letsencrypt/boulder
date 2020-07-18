@@ -100,7 +100,7 @@ func (cas *CertificateAuthorityServerWrapper) IssueCertificateForPrecertificate(
 }
 
 func (cas *CertificateAuthorityServerWrapper) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
-	if req.CertDER == nil && (req.Serial == "" || req.IssuerID == 0) {
+	if req.CertDER == nil && (req.Serial == nil || req.IssuerID == nil) {
 		return nil, errIncompleteRequest
 	}
 	return cas.inner.GenerateOCSP(ctx, req)
