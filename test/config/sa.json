@@ -24,7 +24,8 @@
     },
     "features": {
       "StoreIssuerInfo": true,
-      "StoreRevokerInfo": true
+      "StoreRevokerInfo": true,
+      "FasterNewOrderRateLimit": true
     }
   },
 
