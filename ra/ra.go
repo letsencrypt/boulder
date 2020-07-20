@@ -16,7 +16,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/akamai"
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
-	caPB "github.com/letsencrypt/boulder/ca/proto"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	csrlib "github.com/letsencrypt/boulder/csr"
@@ -35,7 +35,7 @@ import (
 	"github.com/letsencrypt/boulder/reloader"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	vaPB "github.com/letsencrypt/boulder/va/proto"
+	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
@@ -46,9 +46,9 @@ import (
 type caaChecker interface {
 	IsCAAValid(
 		ctx context.Context,
-		in *vaPB.IsCAAValidRequest,
+		in *vapb.IsCAAValidRequest,
 		opts ...grpc.CallOption,
-	) (*vaPB.IsCAAValidResponse, error)
+	) (*vapb.IsCAAValidResponse, error)
 }
 
 // RegistrationAuthorityImpl defines an RA.
@@ -847,7 +847,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 				return
 			}
 
-			resp, err := ra.caa.IsCAAValid(ctx, &vaPB.IsCAAValidRequest{
+			resp, err := ra.caa.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
 				Domain:           &name,
 				ValidationMethod: &method,
 				AccountURIID:     &authz.RegistrationID,
@@ -1186,7 +1186,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	// Create the certificate and log the result
 	acctIDInt := int64(acctID)
 	orderIDInt := int64(oID)
-	issueReq := &caPB.IssueCertificateRequest{
+	issueReq := &capb.IssueCertificateRequest{
 		Csr:            csr.Raw,
 		RegistrationID: &acctIDInt,
 		OrderID:        &orderIDInt,
@@ -1215,7 +1215,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	if err != nil {
 		return emptyCert, wrapError(err, "getting SCTs")
 	}
-	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &caPB.IssueCertificateForPrecertificateRequest{
+	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:            precert.DER,
 		SCTs:           scts,
 		RegistrationID: &acctIDInt,
@@ -1662,7 +1662,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	status := string(core.OCSPStatusRevoked)
 	reason := int32(code)
 	revokedAt := ra.clk.Now().UnixNano()
-	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
+	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		CertDER:   cert.Raw,
 		Status:    &status,
 		Reason:    &reason,

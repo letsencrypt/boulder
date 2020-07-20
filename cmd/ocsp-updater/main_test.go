@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	akamaiProto "github.com/letsencrypt/boulder/akamai/proto"
-	caPB "github.com/letsencrypt/boulder/ca/proto"
+	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
@@ -35,9 +35,9 @@ type mockOCSP struct {
 	sleepTime time.Duration
 }
 
-func (ca *mockOCSP) GenerateOCSP(_ context.Context, req *caPB.GenerateOCSPRequest, _ ...grpc.CallOption) (*caPB.OCSPResponse, error) {
+func (ca *mockOCSP) GenerateOCSP(_ context.Context, req *capb.GenerateOCSPRequest, _ ...grpc.CallOption) (*capb.OCSPResponse, error) {
 	time.Sleep(ca.sleepTime)
-	return &caPB.OCSPResponse{Response: []byte{1, 2, 3}}, nil
+	return &capb.OCSPResponse{Response: []byte{1, 2, 3}}, nil
 }
 
 var log = blog.UseMock()
@@ -83,7 +83,7 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	issuer, err := core.LoadCert("../../test/test-ca2.pem")
 	test.AssertNotError(t, err, "Couldn't read test issuer certificate")
 	updater.issuer = issuer
-	updater.purgerService = akamaiProto.NewAkamaiPurgerClient(nil)
+	updater.purgerService = akamaipb.NewAkamaiPurgerClient(nil)
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
@@ -415,9 +415,9 @@ type mockOCSPRecordIssuer struct {
 	gotIssuer bool
 }
 
-func (ca *mockOCSPRecordIssuer) GenerateOCSP(_ context.Context, req *caPB.GenerateOCSPRequest, _ ...grpc.CallOption) (*caPB.OCSPResponse, error) {
+func (ca *mockOCSPRecordIssuer) GenerateOCSP(_ context.Context, req *capb.GenerateOCSPRequest, _ ...grpc.CallOption) (*capb.OCSPResponse, error) {
 	ca.gotIssuer = req.IssuerID != nil && req.Serial != nil
-	return &caPB.OCSPResponse{Response: []byte{1, 2, 3}}, nil
+	return &capb.OCSPResponse{Response: []byte{1, 2, 3}}, nil
 }
 
 func TestIssuerInfo(t *testing.T) {
