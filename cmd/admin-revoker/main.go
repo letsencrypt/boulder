@@ -85,51 +85,49 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *db.Wrappe
 	return rac, logger, dbMap, sac
 }
 
-func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, dbMap db.Executor) (err error) {
+func revokeCertificate(ctx context.Context, certObj core.Certificate, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger) error {
 	if reasonCode < 0 || reasonCode == 7 || reasonCode > 10 {
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
+	cert, err := x509.ParseCertificate(certObj.DER)
+	if err != nil {
+		return err
+	}
+	u, err := user.Current()
+	if err != nil {
+		return err
+	}
+	err = rac.AdministrativelyRevokeCertificate(ctx, *cert, reasonCode, u.Username)
+	if err != nil {
+		return err
+	}
+	logger.Infof("Revoked certificate %s with reason '%s'", certObj.Serial, revocation.ReasonToString[reasonCode])
+	return nil
+}
 
-	certObj, err := sa.SelectCertificate(dbMap, "WHERE serial = ?", serial)
+func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, dbMap db.Executor) error {
+	certObj, err := sa.SelectCertificate(dbMap, serial)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return berrors.NotFoundError("certificate with serial %q not found", serial)
 		}
 		return err
 	}
-	cert, err := x509.ParseCertificate(certObj.DER)
-	if err != nil {
-		return
-	}
-
-	u, err := user.Current()
-	if err != nil {
-		return
-	}
-	err = rac.AdministrativelyRevokeCertificate(ctx, *cert, reasonCode, u.Username)
-	if err != nil {
-		return
-	}
-
-	logger.Infof("Revoked certificate %s with reason '%s'", serial, revocation.ReasonToString[reasonCode])
-	return
+	return revokeCertificate(ctx, certObj, reasonCode, rac, logger)
 }
 
-func revokeByReg(ctx context.Context, regID int64, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, dbMap db.Executor) (err error) {
-	var certs []core.Certificate
-	_, err = dbMap.Select(&certs, "SELECT serial FROM certificates WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
+func revokeByReg(ctx context.Context, regID int64, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, dbMap db.Executor) error {
+	certObjs, err := sa.SelectCertificates(dbMap, "WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
 	if err != nil {
-		return
+		return err
 	}
-
-	for _, cert := range certs {
-		err = revokeBySerial(ctx, cert.Serial, reasonCode, rac, logger, dbMap)
+	for _, certObj := range certObjs {
+		err = revokeCertificate(ctx, certObj.Certificate, reasonCode, rac, logger)
 		if err != nil {
-			return
+			return err
 		}
 	}
-
-	return
+	return nil
 }
 
 func revokeBatch(rac core.RegistrationAuthority, logger blog.Logger, dbMap *db.WrappedMap, serialPath string, reasonCode revocation.Reason, parallelism int) error {
