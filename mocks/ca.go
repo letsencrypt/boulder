@@ -6,7 +6,7 @@ import (
 	"encoding/pem"
 	"fmt"
 
-	caPB "github.com/letsencrypt/boulder/ca/proto"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/revocation"
 )
@@ -18,7 +18,7 @@ type MockCA struct {
 }
 
 // IssueCertificate is a mock
-func (ca *MockCA) IssueCertificate(ctx context.Context, _ *caPB.IssueCertificateRequest) (core.Certificate, error) {
+func (ca *MockCA) IssueCertificate(ctx context.Context, _ *capb.IssueCertificateRequest) (core.Certificate, error) {
 	if ca.PEM == nil {
 		return core.Certificate{}, fmt.Errorf("MockCA's PEM field must be set before calling IssueCertificate")
 	}
@@ -33,7 +33,7 @@ func (ca *MockCA) IssueCertificate(ctx context.Context, _ *caPB.IssueCertificate
 }
 
 // IssuePrecertificate is a mock
-func (ca *MockCA) IssuePrecertificate(ctx context.Context, _ *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
+func (ca *MockCA) IssuePrecertificate(ctx context.Context, _ *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
 	if ca.PEM == nil {
 		return nil, fmt.Errorf("MockCA's PEM field must be set before calling IssueCertificate")
 	}
@@ -42,18 +42,18 @@ func (ca *MockCA) IssuePrecertificate(ctx context.Context, _ *caPB.IssueCertific
 	if err != nil {
 		return nil, err
 	}
-	return &caPB.IssuePrecertificateResponse{
+	return &capb.IssuePrecertificateResponse{
 		DER: cert.Raw,
 	}, nil
 }
 
 // IssueCertificateForPrecertificate is a mock
-func (ca *MockCA) IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
+func (ca *MockCA) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
 	return core.Certificate{DER: req.DER}, nil
 }
 
 // GenerateOCSP is a mock
-func (ca *MockCA) GenerateOCSP(ctx context.Context, req *caPB.GenerateOCSPRequest) (*caPB.OCSPResponse, error) {
+func (ca *MockCA) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
 	return nil, nil
 }
 

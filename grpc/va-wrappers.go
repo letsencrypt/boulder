@@ -13,14 +13,14 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/probs"
-	vaPB "github.com/letsencrypt/boulder/va/proto"
+	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
 type ValidationAuthorityGRPCServer struct {
 	impl core.ValidationAuthority
 }
 
-func (s *ValidationAuthorityGRPCServer) PerformValidation(ctx context.Context, in *vaPB.PerformValidationRequest) (*vaPB.ValidationResult, error) {
+func (s *ValidationAuthorityGRPCServer) PerformValidation(ctx context.Context, in *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
 	domain, challenge, authz, err := performValidationReqToArgs(in)
 	if err != nil {
 		return nil, err
@@ -41,16 +41,16 @@ func (s *ValidationAuthorityGRPCServer) PerformValidation(ctx context.Context, i
 
 func RegisterValidationAuthorityGRPCServer(s *ggrpc.Server, impl core.ValidationAuthority) error {
 	rpcSrv := &ValidationAuthorityGRPCServer{impl}
-	vaPB.RegisterVAServer(s, rpcSrv)
+	vapb.RegisterVAServer(s, rpcSrv)
 	return nil
 }
 
 type ValidationAuthorityGRPCClient struct {
-	gc vaPB.VAClient
+	gc vapb.VAClient
 }
 
 func NewValidationAuthorityGRPCClient(cc *ggrpc.ClientConn) core.ValidationAuthority {
-	return &ValidationAuthorityGRPCClient{vaPB.NewVAClient(cc)}
+	return &ValidationAuthorityGRPCClient{vapb.NewVAClient(cc)}
 }
 
 // PerformValidation has the VA revalidate the specified challenge and returns

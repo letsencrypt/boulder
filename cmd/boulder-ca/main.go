@@ -16,7 +16,7 @@ import (
 
 	"github.com/letsencrypt/boulder/ca"
 	ca_config "github.com/letsencrypt/boulder/ca/config"
-	caPB "github.com/letsencrypt/boulder/ca/proto"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -195,7 +195,7 @@ func main() {
 	caSrv, caListener, err := bgrpc.NewServer(c.CA.GRPCCA, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
 	caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
-	caPB.RegisterCertificateAuthorityServer(caSrv, caWrapper)
+	capb.RegisterCertificateAuthorityServer(caSrv, caWrapper)
 	go func() {
 		cmd.FailOnError(cmd.FilterShutdownErrors(caSrv.Serve(caListener)), "CA gRPC service failed")
 	}()
@@ -203,7 +203,7 @@ func main() {
 	ocspSrv, ocspListener, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
 	ocspWrapper := bgrpc.NewCertificateAuthorityServer(cai)
-	caPB.RegisterOCSPGeneratorServer(ocspSrv, ocspWrapper)
+	capb.RegisterOCSPGeneratorServer(ocspSrv, ocspWrapper)
 	go func() {
 		cmd.FailOnError(cmd.FilterShutdownErrors(ocspSrv.Serve(ocspListener)),
 			"OCSPGenerator gRPC service failed")

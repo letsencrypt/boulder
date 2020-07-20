@@ -53,7 +53,7 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	vaPB "github.com/letsencrypt/boulder/va/proto"
+	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/crypto/ocsp"
@@ -1760,10 +1760,10 @@ type noopCAA struct{}
 
 func (cr noopCAA) IsCAAValid(
 	ctx context.Context,
-	in *vaPB.IsCAAValidRequest,
+	in *vapb.IsCAAValidRequest,
 	opts ...grpc.CallOption,
-) (*vaPB.IsCAAValidResponse, error) {
-	return &vaPB.IsCAAValidResponse{}, nil
+) (*vapb.IsCAAValidResponse, error) {
+	return &vapb.IsCAAValidResponse{}, nil
 }
 
 // caaRecorder implements caaChecker, always returning nil, but recording the
@@ -1775,13 +1775,13 @@ type caaRecorder struct {
 
 func (cr *caaRecorder) IsCAAValid(
 	ctx context.Context,
-	in *vaPB.IsCAAValidRequest,
+	in *vapb.IsCAAValidRequest,
 	opts ...grpc.CallOption,
-) (*vaPB.IsCAAValidResponse, error) {
+) (*vapb.IsCAAValidResponse, error) {
 	cr.Lock()
 	defer cr.Unlock()
 	cr.names[*in.Domain] = true
-	return &vaPB.IsCAAValidResponse{}, nil
+	return &vapb.IsCAAValidResponse{}, nil
 }
 
 // A mock SA that returns special authzs for testing rechecking of CAA (in
@@ -1895,10 +1895,10 @@ type caaFailer struct{}
 
 func (cf *caaFailer) IsCAAValid(
 	ctx context.Context,
-	in *vaPB.IsCAAValidRequest,
+	in *vapb.IsCAAValidRequest,
 	opts ...grpc.CallOption,
-) (*vaPB.IsCAAValidResponse, error) {
-	cvrpb := &vaPB.IsCAAValidResponse{}
+) (*vapb.IsCAAValidResponse, error) {
+	cvrpb := &vapb.IsCAAValidResponse{}
 	switch *in.Domain {
 	case "a.com":
 		cvrpb.Problem = &corepb.ProblemDetails{

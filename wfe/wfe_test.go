@@ -38,7 +38,7 @@ import (
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test"
-	vaPB "github.com/letsencrypt/boulder/va/proto"
+	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/letsencrypt/boulder/web"
 	"google.golang.org/grpc"
 	"gopkg.in/square/go-jose.v2"
@@ -823,10 +823,10 @@ type noopCAA struct{}
 
 func (cr noopCAA) IsCAAValid(
 	ctx context.Context,
-	in *vaPB.IsCAAValidRequest,
+	in *vapb.IsCAAValidRequest,
 	opts ...grpc.CallOption,
-) (*vaPB.IsCAAValidResponse, error) {
-	return &vaPB.IsCAAValidResponse{}, nil
+) (*vapb.IsCAAValidResponse, error) {
+	return &vapb.IsCAAValidResponse{}, nil
 }
 
 func TestRelativeDirectory(t *testing.T) {

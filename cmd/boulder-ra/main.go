@@ -8,7 +8,7 @@ import (
 	"time"
 
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
-	caPB "github.com/letsencrypt/boulder/ca/proto"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy"
@@ -17,11 +17,11 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/policy"
-	pubPB "github.com/letsencrypt/boulder/publisher/proto"
+	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/ra"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	vaPB "github.com/letsencrypt/boulder/va/proto"
+	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
 type config struct {
@@ -145,16 +145,16 @@ func main() {
 	cmd.FailOnError(err, "Unable to create VA client")
 	vac := bgrpc.NewValidationAuthorityGRPCClient(vaConn)
 
-	caaClient := vaPB.NewCAAClient(vaConn)
+	caaClient := vapb.NewCAAClient(vaConn)
 
 	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Unable to create CA client")
-	cac := bgrpc.NewCertificateAuthorityClient(caPB.NewCertificateAuthorityClient(caConn))
+	cac := bgrpc.NewCertificateAuthorityClient(capb.NewCertificateAuthorityClient(caConn))
 
 	var ctp *ctpolicy.CTPolicy
 	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
-	pubc := bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
+	pubc := bgrpc.NewPublisherClientWrapper(pubpb.NewPublisherClient(conn))
 
 	var apc akamaipb.AkamaiPurgerClient
 	var issuerCert *x509.Certificate
