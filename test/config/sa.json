@@ -23,6 +23,7 @@
       ]
     },
     "features": {
+      "FasterNewOrdersRateLimit": true,
       "StoreIssuerInfo": true,
       "StoreRevokerInfo": true
     }

@@ -43,6 +43,19 @@ message Certificate {
   optional int64 expires = 6; // Unix timestamp (nanoseconds)
 }
 
+message CertificateStatus {
+        optional string serial = 1;
+        reserved 2; // previously subscriberApproved
+        optional string status = 3;
+        optional int64 ocspLastUpdated = 4;
+        optional int64 revokedDate = 5;
+        optional int64 revokedReason = 6;
+        optional int64 lastExpirationNagSent = 7;
+        optional bytes ocspResponse = 8;
+        optional int64 notAfter = 9;
+        optional bool isExpired = 10;
+}
+
 message Registration {
         optional int64 id = 1;
         optional bytes key = 2;
