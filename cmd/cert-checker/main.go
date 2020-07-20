@@ -83,7 +83,7 @@ type reportEntry struct {
  */
 type certDB interface {
 	Select(i interface{}, query string, args ...interface{}) ([]interface{}, error)
-	SelectOne(holder interface{}, query string, args ...interface{}) error
+	SelectInt(query string, args ...interface{}) (int64, error)
 }
 
 type certChecker struct {
@@ -119,9 +119,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 		now := c.clock.Now()
 		args["now"] = now
 	}
-	var count int
-	err := c.dbMap.SelectOne(
-		&count,
+	count, err := c.dbMap.SelectInt(
 		"SELECT count(*) FROM certificates WHERE issued >= :issued AND expires >= :now",
 		args,
 	)
@@ -129,9 +127,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 		return err
 	}
 
-	var initialID int
-	err = c.dbMap.SelectOne(
-		&initialID,
+	initialID, err := c.dbMap.SelectInt(
 		"SELECT id FROM certificates WHERE issued >= :issued AND expires >= :now LIMIT 1",
 		args,
 	)
@@ -148,7 +144,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	// packet limit.
 	args["limit"] = batchSize
 	args["id"] = initialID
-	for offset := 0; offset < count; {
+	for offset := 0; offset < int(count); {
 		certs, err := sa.SelectCertificates(
 			c.dbMap,
 			"WHERE id > :id AND expires >= :now ORDER BY id LIMIT :limit",

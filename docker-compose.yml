@@ -59,13 +59,6 @@ services:
           - bmysql
         entrypoint: test/entrypoint.sh
         working_dir: /go/src/github.com/letsencrypt/boulder
-        # This works around a kernel bug that is tickled by Go 1.14:
-        # https://github.com/golang/go/issues/37436
-        # Remove once devs are on Linux 5.4.2+
-        ulimits:
-          memlock:
-            soft: -1
-            hard: -1
     bmysql:
         image: mariadb:10.3
         networks:

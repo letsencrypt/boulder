@@ -299,7 +299,7 @@ func (m *mailer) findExpiringCertificates() error {
 		var certs []core.Certificate
 		for _, serial := range serials {
 			var cert core.Certificate
-			cert, err := sa.SelectCertificate(m.dbMap, "WHERE serial = ?", serial)
+			cert, err := sa.SelectCertificate(m.dbMap, serial)
 			if err != nil {
 				// We can get a NoRowsErr when processing a serial number corresponding
 				// to a precertificate with no final certificate. Since this certificate
