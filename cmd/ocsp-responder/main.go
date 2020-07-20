@@ -81,12 +81,6 @@ func NewSourceFromDatabase(
 	return
 }
 
-type dbResponse struct {
-	OCSPResponse    []byte
-	IsExpired       bool
-	OCSPLastUpdated time.Time
-}
-
 // Response is called by the HTTP server to handle a new OCSP request.
 func (src *DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 	if req.HashAlgorithm != crypto.SHA1 {
@@ -114,9 +108,9 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 
 	src.log.Debugf("Searching for OCSP issued by us for serial %s", serialString)
 
-	var response dbResponse
+	var certStatus core.CertificateStatus
 	defer func() {
-		if len(response.OCSPResponse) != 0 {
+		if len(certStatus.OCSPResponse) != 0 {
 			src.log.Debugf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString)
 		}
 	}()
@@ -126,11 +120,7 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 		ctx, cancel = context.WithTimeout(ctx, src.timeout)
 		defer cancel()
 	}
-	err := src.dbMap.WithContext(ctx).SelectOne(
-		&response,
-		"SELECT ocspResponse, isExpired, ocspLastUpdated FROM certificateStatus WHERE serial = :serial",
-		map[string]interface{}{"serial": serialString},
-	)
+	certStatus, err := sa.SelectCertificateStatus(src.dbMap.WithContext(ctx), serialString)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return nil, nil, bocsp.ErrNotFound
@@ -138,13 +128,13 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 		src.log.AuditErrf("Looking up OCSP response: %s", err)
 		return nil, nil, err
 	}
-	if response.OCSPLastUpdated.IsZero() {
+	if certStatus.OCSPLastUpdated.IsZero() {
 		src.log.Debugf("OCSP Response not sent (ocspLastUpdated is zero) for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString)
 		return nil, nil, bocsp.ErrNotFound
-	} else if response.IsExpired {
+	} else if certStatus.IsExpired {
 		return nil, nil, bocsp.ErrNotFound
 	}
-	return response.OCSPResponse, nil, nil
+	return certStatus.OCSPResponse, nil, nil
 }
 
 func makeDBSource(dbMap dbSelector, issuerCert string, reqSerialPrefixes []string, timeout time.Duration, log blog.Logger) (*DBSource, error) {

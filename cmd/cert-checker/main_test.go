@@ -302,13 +302,11 @@ func TestGetAndProcessCerts(t *testing.T) {
 // asked for the actual rows.
 type mismatchedCountDB struct{}
 
-// `getCerts` calls `SelectOne` first to determine how many rows there are
+// `getCerts` calls `SelectInt` first to determine how many rows there are
 // matching the `getCertsCountQuery` criteria. For this mock we return
 // a non-zero number
-func (db mismatchedCountDB) SelectOne(output interface{}, _ string, _ ...interface{}) error {
-	outputPtr, _ := output.(*int)
-	*outputPtr = 99999
-	return nil
+func (db mismatchedCountDB) SelectInt(_ string, _ ...interface{}) (int64, error) {
+	return 99999, nil
 }
 
 // `getCerts` then calls `Select` to retrieve the Certificate rows. We pull
