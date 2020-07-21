@@ -208,6 +208,32 @@ func GetBuildHost() (retID string) {
 	return
 }
 
+// IsAnyNilOrZero returns whether any of the supplied values are nil, or (if not)
+// if any of them it its type's zero-value. This is useful for validating that
+// all required fields on a proto message are present.
+func IsAnyNilOrZero(vals ...interface{}) bool {
+	for _, val := range vals {
+		switch v := val.(type) {
+		case nil:
+			return true
+		case int32, int64, uint32, uint64, float32, float64:
+			if v == 0 {
+				return true
+			}
+		case string:
+			if v == "" {
+				return true
+			}
+		case bool:
+			if v == false {
+				return true
+			}
+		default:
+		}
+	}
+	return false
+}
+
 // UniqueLowerNames returns the set of all unique names in the input after all
 // of them are lowercased. The returned names will be in their lowercased form
 // and sorted alphabetically.
