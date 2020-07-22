@@ -107,6 +107,39 @@ func TestKeyDigestEquals(t *testing.T) {
 	test.Assert(t, !KeyDigestEquals(struct{}{}, struct{}{}), "Unknown key types should not match anything")
 }
 
+func TestIsAnyNilOrZero(t *testing.T) {
+	test.Assert(t, IsAnyNilOrZero(nil), "Nil seen as non-zero")
+
+	zeroBool := false
+	nonZeroBool := true
+	test.Assert(t, IsAnyNilOrZero(zeroBool), "False bool seen as non-zero")
+	test.Assert(t, IsAnyNilOrZero(&zeroBool), "False bool seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(nonZeroBool), "True bool seen as zero")
+	test.Assert(t, !IsAnyNilOrZero(&nonZeroBool), "True bool seen as zero")
+
+	zeroNum := 0
+	nonZeroNum := -12.345
+	test.Assert(t, IsAnyNilOrZero(zeroNum), "Zero num seen as non-zero")
+	test.Assert(t, IsAnyNilOrZero(&zeroNum), "Zero num seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(nonZeroNum), "Non-zero num seen as zero")
+	test.Assert(t, !IsAnyNilOrZero(&nonZeroNum), "Non-zero num seen as zero")
+
+	zeroStr := ""
+	nonZeroStr := "string"
+	test.Assert(t, IsAnyNilOrZero(zeroStr), "Empty string seen as non-zero")
+	test.Assert(t, IsAnyNilOrZero(&zeroStr), "Empty string seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(nonZeroStr), "Non-empty string seen as zero")
+	test.Assert(t, !IsAnyNilOrZero(&nonZeroStr), "Non-empty string seen as zero")
+
+	zeroByte := []byte{}
+	nonZeroByte := []byte("byte")
+	test.Assert(t, IsAnyNilOrZero(zeroByte), "Empty byte slice seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(nonZeroByte), "Non-empty byte slice seen as zero")
+
+	test.Assert(t, IsAnyNilOrZero(1, ""), "Mixed values seen as non-zero")
+	test.Assert(t, IsAnyNilOrZero("", 1), "Mixed values seen as non-zero")
+}
+
 func TestUniqueLowerNames(t *testing.T) {
 	u := UniqueLowerNames([]string{"foobar.com", "fooBAR.com", "baz.com", "foobar.com", "bar.com", "bar.com", "a.com"})
 	sort.Strings(u)
