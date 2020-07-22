@@ -24,14 +24,7 @@ func NewCertificateAuthorityClient(inner capb.CertificateAuthorityClient) *Certi
 }
 
 func (cac CertificateAuthorityClientWrapper) IssuePrecertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
-	resp, err := cac.inner.IssuePrecertificate(ctx, issueReq)
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil || resp.DER == nil {
-		return nil, errIncompleteResponse
-	}
-	return resp, nil
+	return cac.inner.IssuePrecertificate(ctx, issueReq)
 }
 
 func (cac CertificateAuthorityClientWrapper) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
@@ -43,14 +36,7 @@ func (cac CertificateAuthorityClientWrapper) IssueCertificateForPrecertificate(c
 }
 
 func (cac CertificateAuthorityClientWrapper) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
-	res, err := cac.inner.GenerateOCSP(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if res == nil || res.Response == nil {
-		return nil, errIncompleteResponse
-	}
-	return res, nil
+	return cac.inner.GenerateOCSP(ctx, req)
 }
 
 type OCSPGeneratorClientWrapper struct {
@@ -62,14 +48,7 @@ func NewOCSPGeneratorClient(inner capb.OCSPGeneratorClient) *OCSPGeneratorClient
 }
 
 func (ogc OCSPGeneratorClientWrapper) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest, _ ...grpc.CallOption) (*capb.OCSPResponse, error) {
-	res, err := ogc.inner.GenerateOCSP(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if res == nil || res.Response == nil {
-		return nil, errIncompleteResponse
-	}
-	return res, nil
+	return ogc.inner.GenerateOCSP(ctx, req)
 }
 
 // CertificateAuthorityServerWrapper is the gRPC version of a core.CertificateAuthority server
