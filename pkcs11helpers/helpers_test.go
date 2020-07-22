@@ -2,6 +2,7 @@ package pkcs11helpers
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
@@ -113,8 +114,17 @@ func TestRSAPublicKey(t *testing.T) {
 	test.AssertNotError(t, err, "rsaPub failed with valid attributes")
 }
 
-func TestFindObject(t *testing.T) {
+func findObjectsFinalOK(pkcs11.SessionHandle) error {
+	return nil
+}
+
+func findObjectsInitOK(pkcs11.SessionHandle, []*pkcs11.Attribute) error {
+	return nil
+}
+
+func TestFindObjectFailsOnFailedInit(t *testing.T) {
 	ctx := MockCtx{}
+	ctx.FindObjectsFinalFunc = findObjectsFinalOK
 
 	// test FindObject fails when FindObjectsInit fails
 	ctx.FindObjectsInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Attribute) error {
@@ -122,30 +132,51 @@ func TestFindObject(t *testing.T) {
 	}
 	_, err := FindObject(ctx, 0, nil)
 	test.AssertError(t, err, "FindObject didn't fail when FindObjectsInit failed")
+}
+
+func TestFindObjectFailsOnFailedFindObjects(t *testing.T) {
+	ctx := MockCtx{}
+	ctx.FindObjectsInitFunc = findObjectsInitOK
+	ctx.FindObjectsFinalFunc = findObjectsFinalOK
 
 	// test FindObject fails when FindObjects fails
-	ctx.FindObjectsInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Attribute) error {
-		return nil
-	}
 	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
 		return nil, false, errors.New("broken")
 	}
-	_, err = FindObject(ctx, 0, nil)
+	_, err := FindObject(ctx, 0, nil)
 	test.AssertError(t, err, "FindObject didn't fail when FindObjects failed")
+}
+
+func TestFindObjectFailsOnNoHandles(t *testing.T) {
+	ctx := MockCtx{}
+	ctx.FindObjectsInitFunc = findObjectsInitOK
+	ctx.FindObjectsFinalFunc = findObjectsFinalOK
 
 	// test FindObject fails when no handles are returned
 	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
 		return []pkcs11.ObjectHandle{}, false, nil
 	}
-	_, err = FindObject(ctx, 0, nil)
-	test.AssertError(t, err, "FindObject didn't fail when FindObjects returns no handles")
+	_, err := FindObject(ctx, 0, nil)
+	test.AssertEquals(t, err, ErrNoObject)
+}
+
+func TestFindObjectFailsOnMultipleHandles(t *testing.T) {
+	ctx := MockCtx{}
+	ctx.FindObjectsInitFunc = findObjectsInitOK
+	ctx.FindObjectsFinalFunc = findObjectsFinalOK
 
 	// test FindObject fails when multiple handles are returned
 	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
-		return []pkcs11.ObjectHandle{1}, true, nil
+		return []pkcs11.ObjectHandle{1, 2, 3}, false, nil
 	}
-	_, err = FindObject(ctx, 0, nil)
+	_, err := FindObject(ctx, 0, nil)
 	test.AssertError(t, err, "FindObject didn't fail when FindObjects returns multiple handles")
+	test.Assert(t, strings.HasPrefix(err.Error(), "too many objects"), "FindObject failed with wrong error")
+}
+
+func TestFindObjectFailsOnFinalizeFailure(t *testing.T) {
+	ctx := MockCtx{}
+	ctx.FindObjectsInitFunc = findObjectsInitOK
 
 	// test FindObject fails when FindObjectsFinal fails
 	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
@@ -154,13 +185,19 @@ func TestFindObject(t *testing.T) {
 	ctx.FindObjectsFinalFunc = func(pkcs11.SessionHandle) error {
 		return errors.New("broken")
 	}
-	_, err = FindObject(ctx, 0, nil)
+	_, err := FindObject(ctx, 0, nil)
 	test.AssertError(t, err, "FindObject didn't fail when FindObjectsFinal fails")
+}
 
-	// test FindObject works
-	ctx.FindObjectsFinalFunc = func(pkcs11.SessionHandle) error {
-		return nil
+func TestFindObjectSucceeds(t *testing.T) {
+	ctx := MockCtx{}
+
+	ctx.FindObjectsInitFunc = findObjectsInitOK
+	ctx.FindObjectsFinalFunc = findObjectsFinalOK
+	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
+		return []pkcs11.ObjectHandle{1}, false, nil
 	}
+	// test FindObject works
 	handle, err := FindObject(ctx, 0, nil)
 	test.AssertNotError(t, err, "FindObject failed when everything worked as expected")
 	test.AssertEquals(t, handle, pkcs11.ObjectHandle(1))
