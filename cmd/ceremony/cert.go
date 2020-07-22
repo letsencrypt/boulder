@@ -365,7 +365,7 @@ func newSigner(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label stri
 	privateHandle, err := pkcs11helpers.FindObject(ctx, session, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PRIVATE_KEY),
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
-		pkcs11.NewAttribute(pkcs11.CKA_ID, id),
+		//pkcs11.NewAttribute(pkcs11.CKA_ID, id),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve private key handle: %s", err)
@@ -385,7 +385,7 @@ func newSigner(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label stri
 	pubHandle, err := pkcs11helpers.FindObject(ctx, session, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
-		pkcs11.NewAttribute(pkcs11.CKA_ID, id),
+		//pkcs11.NewAttribute(pkcs11.CKA_ID, id),
 		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, attrs[0].Value),
 	})
 	if err != nil {

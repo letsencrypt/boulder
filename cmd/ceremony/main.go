@@ -341,6 +341,15 @@ func equalPubKeys(a, b interface{}) bool {
 	return bytes.Equal(aBytes, bBytes)
 }
 
+func pubKeyPEM(a interface{}) ([]byte, error) {
+	der, err := x509.MarshalPKIXPublicKey(a)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to marshal public key: %s", err)
+	}
+
+	return pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}), nil
+}
+
 func openSigner(cfg PKCS11SigningConfig, issuer *x509.Certificate) (crypto.Signer, *hsmRandReader, error) {
 	ctx, session, err := pkcs11helpers.Initialize(cfg.Module, cfg.SigningSlot, cfg.PIN)
 	if err != nil {
@@ -357,7 +366,16 @@ func openSigner(cfg PKCS11SigningConfig, issuer *x509.Certificate) (crypto.Signe
 		return nil, nil, fmt.Errorf("failed to retrieve private key handle: %s", err)
 	}
 	if !equalPubKeys(signer.Public(), issuer.PublicKey) {
-		return nil, nil, fmt.Errorf("signer pubkey did not match issuer pubkey")
+		issuerPEM, err := pubKeyPEM(issuer.PublicKey)
+		if err != nil {
+			return nil, nil, err
+		}
+		signerPEM, err := pubKeyPEM(signer.Public())
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, nil, fmt.Errorf("signer pubkey did not match issuer pubkey. signer:\n%s\nissuer:\n%s",
+			signerPEM, issuerPEM)
 	}
 	log.Println("Retrieved private key handle")
 	return signer, newRandReader(ctx, session), nil
@@ -389,7 +407,6 @@ func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.Public
 	if err := cert.CheckSignatureFrom(issuer); err != nil {
 		return fmt.Errorf("failed to verify certificate signature: %s", err)
 	}
-	log.Printf("Certificate PEM:\n%s", pemBytes)
 	if err := ioutil.WriteFile(certPath, pemBytes, 0644); err != nil {
 		return fmt.Errorf("failed to write certificate to %q: %s", certPath, err)
 	}
