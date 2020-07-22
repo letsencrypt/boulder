@@ -389,7 +389,6 @@ func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.Public
 	if err := cert.CheckSignatureFrom(issuer); err != nil {
 		return fmt.Errorf("failed to verify certificate signature: %s", err)
 	}
-	log.Printf("Certificate PEM:\n%s", pemBytes)
 	if err := ioutil.WriteFile(certPath, pemBytes, 0644); err != nil {
 		return fmt.Errorf("failed to write certificate to %q: %s", certPath, err)
 	}
