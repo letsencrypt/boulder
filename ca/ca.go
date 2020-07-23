@@ -430,6 +430,12 @@ var ocspStatusToCode = map[string]int{
 
 // GenerateOCSP produces a new OCSP response and returns it
 func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
+	// req.Status, req.Reason, and req.RevokedAt are often 0, for non-revoked certs.
+	// Either CertDER or both (Serial and IssuerID) must be non-zero.
+	if core.IsAnyNilOrZero(req, req.CertDER) && core.IsAnyNilOrZero(req, req.Serial, req.IssuerID) {
+		return nil, berrors.InternalServerError("Incomplete generate OCSP request")
+	}
+
 	var issuer *internalIssuer
 	var serial *big.Int
 	// Once the feature is enabled we need to support both RPCs that include
@@ -490,6 +496,11 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *capb.
 }
 
 func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
+	// issueReq.orderID may be zero, for ACMEv1 requests.
+	if core.IsAnyNilOrZero(issueReq, issueReq.Csr, issueReq.RegistrationID) {
+		return nil, berrors.InternalServerError("Incomplete issue certificate request")
+	}
+
 	serialBigInt, validity, err := ca.generateSerialNumberAndValidity()
 	if err != nil {
 		return nil, err
@@ -586,6 +597,12 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 // serial number at the same time.
 func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
+
+	// issueReq.orderID may be zero, for ACMEv1 requests.
+	if core.IsAnyNilOrZero(req, req.DER, req.SCTs, req.RegistrationID) {
+		return emptyCert, berrors.InternalServerError("Incomplete cert for precertificate request")
+	}
+
 	precert, err := x509.ParseCertificate(req.DER)
 	if err != nil {
 		return emptyCert, err
