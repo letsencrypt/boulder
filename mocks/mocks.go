@@ -641,10 +641,6 @@ func (sa *StorageAuthority) GetPendingAuthorization2(ctx context.Context, req *s
 	return nil, nil
 }
 
-func (sa *StorageAuthority) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
-	return nil, nil
-}
-
 var (
 	authzIdValid       = int64(1)
 	authzIdPending     = int64(2)

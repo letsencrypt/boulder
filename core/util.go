@@ -208,6 +208,80 @@ func GetBuildHost() (retID string) {
 	return
 }
 
+// IsAnyNilOrZero returns whether any of the supplied values are nil, or (if not)
+// if any of them is its type's zero-value. This is useful for validating that
+// all required fields on a proto message are present.
+func IsAnyNilOrZero(vals ...interface{}) bool {
+	for _, val := range vals {
+		switch v := val.(type) {
+		case nil:
+			return true
+		// These are the go types which correspond to proto3's scalar fields.
+		case bool:
+			if v == false {
+				return true
+			}
+		case int, int32, int64, uint, uint32, uint64, float32, float64:
+			if v == 0 {
+				return true
+			}
+		case string:
+			if v == "" {
+				return true
+			}
+		// These are the go types which correspond to proto2's scalar fields.
+		// TODO(#2936): Remove these when all proto2 generated code is gone.
+		case *bool:
+			if *v == false {
+				return true
+			}
+		case *int:
+			if *v == 0 {
+				return true
+			}
+		case *int32:
+			if *v == 0 {
+				return true
+			}
+		case *int64:
+			if *v == 0 {
+				return true
+			}
+		case *uint:
+			if *v == 0 {
+				return true
+			}
+		case *uint32:
+			if *v == 0 {
+				return true
+			}
+		case *uint64:
+			if *v == 0 {
+				return true
+			}
+		case *float32:
+			if *v == 0 {
+				return true
+			}
+		case *float64:
+			if *v == 0 {
+				return true
+			}
+		case *string:
+			if *v == "" {
+				return true
+			}
+		// This is the go type which can be generated for both proto2 and proto3.
+		case []byte:
+			if len(v) == 0 {
+				return true
+			}
+		default:
+		}
+	}
+	return false
+}
+
 // UniqueLowerNames returns the set of all unique names in the input after all
 // of them are lowercased. The returned names will be in their lowercased form
 // and sorted alphabetically.
