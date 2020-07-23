@@ -191,7 +191,7 @@ func FindObject(ctx PKCtx, session pkcs11.SessionHandle, tmpl []*pkcs11.Attribut
 	if err := ctx.FindObjectsInit(session, tmpl); err != nil {
 		return 0, err
 	}
-	handles, _, err := ctx.FindObjects(session, 10)
+	handles, _, err := ctx.FindObjects(session, 2)
 	if err != nil {
 		return 0, err
 	}
