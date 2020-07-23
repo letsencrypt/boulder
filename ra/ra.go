@@ -720,7 +720,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	// Ensure the names from the CSR are free of duplicates & lowercased.
 	names = core.UniqueLowerNames(names)
 	// Check the authorizations to ensure validity for the names required.
-	if err = ra.checkAuthorizationsCAA(ctx, names, authzs, acctIDInt, ra.clk.Now()); err != nil {
+	if err = ra.checkAuthorizationsCAA(ctx, names, authzs, int64(acctID), ra.clk.Now()); err != nil {
 		return nil, err
 	}
 
@@ -1184,12 +1184,10 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
 
 	// Create the certificate and log the result
-	acctIDInt := int64(acctID)
-	orderIDInt := int64(oID)
 	issueReq := &capb.IssueCertificateRequest{
 		Csr:            csr.Raw,
-		RegistrationID: &acctIDInt,
-		OrderID:        &orderIDInt,
+		RegistrationID: int64(acctID),
+		OrderID:        int64(oID),
 	}
 
 	// wrapError adds a prefix to an error. If the error is a boulder error then
@@ -1218,8 +1216,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:            precert.DER,
 		SCTs:           scts,
-		RegistrationID: &acctIDInt,
-		OrderID:        &orderIDInt,
+		RegistrationID: int64(acctID),
+		OrderID:        int64(oID),
 	})
 	if err != nil {
 		return emptyCert, wrapError(err, "issuing certificate for precertificate")
@@ -1663,14 +1661,13 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 // revokeCertificate generates a revoked OCSP response for the given certificate, stores
 // the revocation information, and purges OCSP request URLs from Akamai.
 func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, revokedBy int64, source string, comment string) error {
-	status := string(core.OCSPStatusRevoked)
 	reason := int32(code)
 	revokedAt := ra.clk.Now().UnixNano()
 	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		CertDER:   cert.Raw,
-		Status:    &status,
-		Reason:    &reason,
-		RevokedAt: &revokedAt,
+		Status:    string(core.OCSPStatusRevoked),
+		Reason:    reason,
+		RevokedAt: revokedAt,
 	})
 	if err != nil {
 		return err
@@ -1678,7 +1675,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	serial := core.SerialToString(cert.SerialNumber)
 	// for some reason we use int32 and int64 for the reason in different
 	// protobuf messages, so we have to re-cast it here.
-	reason64 := int64(reason)
+	reason64 := int64(code)
 	err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   &serial,
 		Reason:   &reason64,
