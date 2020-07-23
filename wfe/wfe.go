@@ -833,12 +833,14 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("No such certificate"), err)
+			return
 		}
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve certificate"), err)
 		return
 	}
 	if !bytes.Equal(cert.DER, revokeRequest.CertificateDER) {
 		wfe.sendError(response, logEvent, probs.NotFound("No such certificate"), err)
+		return
 	}
 	parsedCertificate, err := x509.ParseCertificate(cert.DER)
 	if err != nil {
