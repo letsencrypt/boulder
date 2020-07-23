@@ -638,7 +638,22 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] certificate=[%s]",
 		serialHex, strings.Join(precert.DNSNames, ", "), hex.EncodeToString(req.DER),
 		hex.EncodeToString(certDER))
-	return ca.storeCertificate(ctx, *req.RegistrationID, *req.OrderID, precert.SerialNumber, certDER)
+	err = ca.storeCertificate(ctx, *req.RegistrationID, *req.OrderID, precert.SerialNumber, certDER)
+	if err != nil {
+		return nil, err
+	}
+	serialString := core.SerialToString(precert.SerialNumber)
+	digest := core.Fingerprint256(certDER)
+	issued := precert.NotBefore.UnixNano()
+	expires := precert.NotAfter.UnixNano()
+	return &corepb.Certificate{
+		RegistrationID: req.RegistrationID,
+		Serial:         &serialString,
+		Der:            certDER,
+		Digest:         &digest,
+		Issued:         &issued,
+		Expires:        &expires,
+	}, nil
 }
 
 type validity struct {
@@ -792,7 +807,7 @@ func (ca *CertificateAuthorityImpl) storeCertificate(
 	regID int64,
 	orderID int64,
 	serialBigInt *big.Int,
-	certDER []byte) (*corepb.Certificate, error) {
+	certDER []byte) error {
 	var err error
 	now := ca.clk.Now()
 	_, err = ca.sa.AddCertificate(ctx, certDER, regID, nil, &now)
@@ -809,10 +824,9 @@ func (ca *CertificateAuthorityImpl) storeCertificate(
 				RegID: regID,
 			})
 		}
-		return nil, err
+		return err
 	}
-
-	return &corepb.Certificate{Der: certDER}, nil
+	return nil
 }
 
 type orphanedCert struct {

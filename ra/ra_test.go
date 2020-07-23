@@ -3524,8 +3524,8 @@ func (ca *mockCAFailCertForPrecert) IssuePrecertificate(_ context.Context, _ *ca
 
 func (ca *mockCAFailCertForPrecert) IssueCertificateForPrecertificate(
 	_ context.Context,
-	_ *capb.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
-	return core.Certificate{}, ca.err
+	_ *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
+	return &corepb.Certificate{}, ca.err
 }
 
 // TestIssueCertificateInnerErrs tests that errors from the CA caught during

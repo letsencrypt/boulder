@@ -1225,7 +1225,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return emptyCert, wrapError(err, "issuing certificate for precertificate")
 	}
 
-	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
+	parsedCertificate, err := x509.ParseCertificate([]byte(cert.Der))
 	if err != nil {
 		// berrors.InternalServerError because the certificate from the CA should be
 		// parseable.
@@ -1233,7 +1233,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	}
 
 	// Asynchronously submit the final certificate to any configured logs
-	go ra.ctpolicy.SubmitFinalCert(cert.DER, parsedCertificate.NotAfter)
+	go ra.ctpolicy.SubmitFinalCert(cert.Der, parsedCertificate.NotAfter)
 
 	err = ra.MatchesCSR(parsedCertificate, csr)
 	if err != nil {
@@ -1246,7 +1246,11 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	logEvent.NotAfter = parsedCertificate.NotAfter
 
 	ra.newCertCounter.Inc()
-	return cert, nil
+	res, err := bgrpc.PBToCert(cert)
+	if err != nil {
+		return emptyCert, nil
+	}
+	return res, nil
 }
 
 func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte, expiration time.Time) (core.SCTDERs, error) {
