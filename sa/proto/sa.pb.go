@@ -2314,7 +2314,7 @@ var file_sa_proto_sa_proto_rawDesc = []byte{
 	0x65, 0x76, 0x6f, 0x6b, 0x65, 0x64, 0x42, 0x79, 0x22, 0x2d, 0x0a, 0x11, 0x4b, 0x65, 0x79, 0x42,
 	0x6c, 0x6f, 0x63, 0x6b, 0x65, 0x64, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x18, 0x0a,
 	0x07, 0x6b, 0x65, 0x79, 0x48, 0x61, 0x73, 0x68, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x07,
-	0x6b, 0x65, 0x79, 0x48, 0x61, 0x73, 0x68, 0x32, 0x8a, 0x13, 0x0a, 0x10, 0x53, 0x74, 0x6f, 0x72,
+	0x6b, 0x65, 0x79, 0x48, 0x61, 0x73, 0x68, 0x32, 0xe0, 0x12, 0x0a, 0x10, 0x53, 0x74, 0x6f, 0x72,
 	0x61, 0x67, 0x65, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x12, 0x3b, 0x0a, 0x0f,
 	0x47, 0x65, 0x74, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12,
 	0x12, 0x2e, 0x73, 0x61, 0x2e, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x72, 0x61, 0x74, 0x69, 0x6f,
@@ -2461,15 +2461,13 @@ var file_sa_proto_sa_proto_rawDesc = []byte{
 	0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x32, 0x12, 0x14, 0x2e, 0x73, 0x61,
 	0x2e, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x44,
 	0x32, 0x1a, 0x0b, 0x2e, 0x63, 0x6f, 0x72, 0x65, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00,
-	0x12, 0x28, 0x0a, 0x0c, 0x53, 0x65, 0x72, 0x69, 0x61, 0x6c, 0x45, 0x78, 0x69, 0x73, 0x74, 0x73,
-	0x12, 0x0a, 0x2e, 0x73, 0x61, 0x2e, 0x53, 0x65, 0x72, 0x69, 0x61, 0x6c, 0x1a, 0x0a, 0x2e, 0x73,
-	0x61, 0x2e, 0x45, 0x78, 0x69, 0x73, 0x74, 0x73, 0x22, 0x00, 0x12, 0x38, 0x0a, 0x0d, 0x41, 0x64,
-	0x64, 0x42, 0x6c, 0x6f, 0x63, 0x6b, 0x65, 0x64, 0x4b, 0x65, 0x79, 0x12, 0x18, 0x2e, 0x73, 0x61,
-	0x2e, 0x41, 0x64, 0x64, 0x42, 0x6c, 0x6f, 0x63, 0x6b, 0x65, 0x64, 0x4b, 0x65, 0x79, 0x52, 0x65,
-	0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x0b, 0x2e, 0x63, 0x6f, 0x72, 0x65, 0x2e, 0x45, 0x6d, 0x70,
-	0x74, 0x79, 0x22, 0x00, 0x42, 0x29, 0x5a, 0x27, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63,
-	0x6f, 0x6d, 0x2f, 0x6c, 0x65, 0x74, 0x73, 0x65, 0x6e, 0x63, 0x72, 0x79, 0x70, 0x74, 0x2f, 0x62,
-	0x6f, 0x75, 0x6c, 0x64, 0x65, 0x72, 0x2f, 0x73, 0x61, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f,
+	0x12, 0x38, 0x0a, 0x0d, 0x41, 0x64, 0x64, 0x42, 0x6c, 0x6f, 0x63, 0x6b, 0x65, 0x64, 0x4b, 0x65,
+	0x79, 0x12, 0x18, 0x2e, 0x73, 0x61, 0x2e, 0x41, 0x64, 0x64, 0x42, 0x6c, 0x6f, 0x63, 0x6b, 0x65,
+	0x64, 0x4b, 0x65, 0x79, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x0b, 0x2e, 0x63, 0x6f,
+	0x72, 0x65, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00, 0x42, 0x29, 0x5a, 0x27, 0x67, 0x69,
+	0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x65, 0x74, 0x73, 0x65, 0x6e, 0x63,
+	0x72, 0x79, 0x70, 0x74, 0x2f, 0x62, 0x6f, 0x75, 0x6c, 0x64, 0x65, 0x72, 0x2f, 0x73, 0x61, 0x2f,
+	0x70, 0x72, 0x6f, 0x74, 0x6f,
 }
 
 var (
@@ -2581,48 +2579,46 @@ var file_sa_proto_sa_proto_depIdxs = []int32{
 	26, // 45: sa.StorageAuthority.NewAuthorizations2:input_type -> sa.AddPendingAuthorizationsRequest
 	31, // 46: sa.StorageAuthority.FinalizeAuthorization2:input_type -> sa.FinalizeAuthorizationRequest
 	28, // 47: sa.StorageAuthority.DeactivateAuthorization2:input_type -> sa.AuthorizationID2
-	6,  // 48: sa.StorageAuthority.SerialExists:input_type -> sa.Serial
-	32, // 49: sa.StorageAuthority.AddBlockedKey:input_type -> sa.AddBlockedKeyRequest
-	40, // 50: sa.StorageAuthority.GetRegistration:output_type -> core.Registration
-	40, // 51: sa.StorageAuthority.GetRegistrationByKey:output_type -> core.Registration
-	42, // 52: sa.StorageAuthority.GetCertificate:output_type -> core.Certificate
-	42, // 53: sa.StorageAuthority.GetPrecertificate:output_type -> core.Certificate
-	43, // 54: sa.StorageAuthority.GetCertificateStatus:output_type -> core.CertificateStatus
-	10, // 55: sa.StorageAuthority.CountCertificatesByNames:output_type -> sa.CountByNames
-	8,  // 56: sa.StorageAuthority.CountRegistrationsByIP:output_type -> sa.Count
-	8,  // 57: sa.StorageAuthority.CountRegistrationsByIPRange:output_type -> sa.Count
-	8,  // 58: sa.StorageAuthority.CountOrders:output_type -> sa.Count
-	8,  // 59: sa.StorageAuthority.CountFQDNSets:output_type -> sa.Count
-	17, // 60: sa.StorageAuthority.FQDNSetExists:output_type -> sa.Exists
-	17, // 61: sa.StorageAuthority.PreviousCertificateExists:output_type -> sa.Exists
-	37, // 62: sa.StorageAuthority.GetAuthorization2:output_type -> core.Authorization
-	25, // 63: sa.StorageAuthority.GetAuthorizations2:output_type -> sa.Authorizations
-	37, // 64: sa.StorageAuthority.GetPendingAuthorization2:output_type -> core.Authorization
-	8,  // 65: sa.StorageAuthority.CountPendingAuthorizations2:output_type -> sa.Count
-	25, // 66: sa.StorageAuthority.GetValidOrderAuthorizations2:output_type -> sa.Authorizations
-	8,  // 67: sa.StorageAuthority.CountInvalidAuthorizations2:output_type -> sa.Count
-	25, // 68: sa.StorageAuthority.GetValidAuthorizations2:output_type -> sa.Authorizations
-	17, // 69: sa.StorageAuthority.KeyBlocked:output_type -> sa.Exists
-	40, // 70: sa.StorageAuthority.NewRegistration:output_type -> core.Registration
-	44, // 71: sa.StorageAuthority.UpdateRegistration:output_type -> core.Empty
-	20, // 72: sa.StorageAuthority.AddCertificate:output_type -> sa.AddCertificateResponse
-	44, // 73: sa.StorageAuthority.AddPrecertificate:output_type -> core.Empty
-	44, // 74: sa.StorageAuthority.AddSerial:output_type -> core.Empty
-	44, // 75: sa.StorageAuthority.DeactivateRegistration:output_type -> core.Empty
-	41, // 76: sa.StorageAuthority.NewOrder:output_type -> core.Order
-	44, // 77: sa.StorageAuthority.SetOrderProcessing:output_type -> core.Empty
-	44, // 78: sa.StorageAuthority.SetOrderError:output_type -> core.Empty
-	44, // 79: sa.StorageAuthority.FinalizeOrder:output_type -> core.Empty
-	41, // 80: sa.StorageAuthority.GetOrder:output_type -> core.Order
-	41, // 81: sa.StorageAuthority.GetOrderForNames:output_type -> core.Order
-	44, // 82: sa.StorageAuthority.RevokeCertificate:output_type -> core.Empty
-	29, // 83: sa.StorageAuthority.NewAuthorizations2:output_type -> sa.Authorization2IDs
-	44, // 84: sa.StorageAuthority.FinalizeAuthorization2:output_type -> core.Empty
-	44, // 85: sa.StorageAuthority.DeactivateAuthorization2:output_type -> core.Empty
-	17, // 86: sa.StorageAuthority.SerialExists:output_type -> sa.Exists
-	44, // 87: sa.StorageAuthority.AddBlockedKey:output_type -> core.Empty
-	50, // [50:88] is the sub-list for method output_type
-	12, // [12:50] is the sub-list for method input_type
+	32, // 48: sa.StorageAuthority.AddBlockedKey:input_type -> sa.AddBlockedKeyRequest
+	40, // 49: sa.StorageAuthority.GetRegistration:output_type -> core.Registration
+	40, // 50: sa.StorageAuthority.GetRegistrationByKey:output_type -> core.Registration
+	42, // 51: sa.StorageAuthority.GetCertificate:output_type -> core.Certificate
+	42, // 52: sa.StorageAuthority.GetPrecertificate:output_type -> core.Certificate
+	43, // 53: sa.StorageAuthority.GetCertificateStatus:output_type -> core.CertificateStatus
+	10, // 54: sa.StorageAuthority.CountCertificatesByNames:output_type -> sa.CountByNames
+	8,  // 55: sa.StorageAuthority.CountRegistrationsByIP:output_type -> sa.Count
+	8,  // 56: sa.StorageAuthority.CountRegistrationsByIPRange:output_type -> sa.Count
+	8,  // 57: sa.StorageAuthority.CountOrders:output_type -> sa.Count
+	8,  // 58: sa.StorageAuthority.CountFQDNSets:output_type -> sa.Count
+	17, // 59: sa.StorageAuthority.FQDNSetExists:output_type -> sa.Exists
+	17, // 60: sa.StorageAuthority.PreviousCertificateExists:output_type -> sa.Exists
+	37, // 61: sa.StorageAuthority.GetAuthorization2:output_type -> core.Authorization
+	25, // 62: sa.StorageAuthority.GetAuthorizations2:output_type -> sa.Authorizations
+	37, // 63: sa.StorageAuthority.GetPendingAuthorization2:output_type -> core.Authorization
+	8,  // 64: sa.StorageAuthority.CountPendingAuthorizations2:output_type -> sa.Count
+	25, // 65: sa.StorageAuthority.GetValidOrderAuthorizations2:output_type -> sa.Authorizations
+	8,  // 66: sa.StorageAuthority.CountInvalidAuthorizations2:output_type -> sa.Count
+	25, // 67: sa.StorageAuthority.GetValidAuthorizations2:output_type -> sa.Authorizations
+	17, // 68: sa.StorageAuthority.KeyBlocked:output_type -> sa.Exists
+	40, // 69: sa.StorageAuthority.NewRegistration:output_type -> core.Registration
+	44, // 70: sa.StorageAuthority.UpdateRegistration:output_type -> core.Empty
+	20, // 71: sa.StorageAuthority.AddCertificate:output_type -> sa.AddCertificateResponse
+	44, // 72: sa.StorageAuthority.AddPrecertificate:output_type -> core.Empty
+	44, // 73: sa.StorageAuthority.AddSerial:output_type -> core.Empty
+	44, // 74: sa.StorageAuthority.DeactivateRegistration:output_type -> core.Empty
+	41, // 75: sa.StorageAuthority.NewOrder:output_type -> core.Order
+	44, // 76: sa.StorageAuthority.SetOrderProcessing:output_type -> core.Empty
+	44, // 77: sa.StorageAuthority.SetOrderError:output_type -> core.Empty
+	44, // 78: sa.StorageAuthority.FinalizeOrder:output_type -> core.Empty
+	41, // 79: sa.StorageAuthority.GetOrder:output_type -> core.Order
+	41, // 80: sa.StorageAuthority.GetOrderForNames:output_type -> core.Order
+	44, // 81: sa.StorageAuthority.RevokeCertificate:output_type -> core.Empty
+	29, // 82: sa.StorageAuthority.NewAuthorizations2:output_type -> sa.Authorization2IDs
+	44, // 83: sa.StorageAuthority.FinalizeAuthorization2:output_type -> core.Empty
+	44, // 84: sa.StorageAuthority.DeactivateAuthorization2:output_type -> core.Empty
+	44, // 85: sa.StorageAuthority.AddBlockedKey:output_type -> core.Empty
+	49, // [49:86] is the sub-list for method output_type
+	12, // [12:49] is the sub-list for method input_type
 	12, // [12:12] is the sub-list for extension type_name
 	12, // [12:12] is the sub-list for extension extendee
 	0,  // [0:12] is the sub-list for field type_name
@@ -3151,7 +3147,6 @@ type StorageAuthorityClient interface {
 	NewAuthorizations2(ctx context.Context, in *AddPendingAuthorizationsRequest, opts ...grpc.CallOption) (*Authorization2IDs, error)
 	FinalizeAuthorization2(ctx context.Context, in *FinalizeAuthorizationRequest, opts ...grpc.CallOption) (*proto1.Empty, error)
 	DeactivateAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*proto1.Empty, error)
-	SerialExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error)
 	AddBlockedKey(ctx context.Context, in *AddBlockedKeyRequest, opts ...grpc.CallOption) (*proto1.Empty, error)
 }
 
@@ -3487,15 +3482,6 @@ func (c *storageAuthorityClient) DeactivateAuthorization2(ctx context.Context, i
 	return out, nil
 }
 
-func (c *storageAuthorityClient) SerialExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error) {
-	out := new(Exists)
-	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/SerialExists", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *storageAuthorityClient) AddBlockedKey(ctx context.Context, in *AddBlockedKeyRequest, opts ...grpc.CallOption) (*proto1.Empty, error) {
 	out := new(proto1.Empty)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/AddBlockedKey", in, out, opts...)
@@ -3547,7 +3533,6 @@ type StorageAuthorityServer interface {
 	NewAuthorizations2(context.Context, *AddPendingAuthorizationsRequest) (*Authorization2IDs, error)
 	FinalizeAuthorization2(context.Context, *FinalizeAuthorizationRequest) (*proto1.Empty, error)
 	DeactivateAuthorization2(context.Context, *AuthorizationID2) (*proto1.Empty, error)
-	SerialExists(context.Context, *Serial) (*Exists, error)
 	AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*proto1.Empty, error)
 }
 
@@ -3662,9 +3647,6 @@ func (*UnimplementedStorageAuthorityServer) FinalizeAuthorization2(context.Conte
 }
 func (*UnimplementedStorageAuthorityServer) DeactivateAuthorization2(context.Context, *AuthorizationID2) (*proto1.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeactivateAuthorization2 not implemented")
-}
-func (*UnimplementedStorageAuthorityServer) SerialExists(context.Context, *Serial) (*Exists, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method SerialExists not implemented")
 }
 func (*UnimplementedStorageAuthorityServer) AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*proto1.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddBlockedKey not implemented")
@@ -4322,24 +4304,6 @@ func _StorageAuthority_DeactivateAuthorization2_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
-func _StorageAuthority_SerialExists_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Serial)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityServer).SerialExists(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/sa.StorageAuthority/SerialExists",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).SerialExists(ctx, req.(*Serial))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _StorageAuthority_AddBlockedKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AddBlockedKeyRequest)
 	if err := dec(in); err != nil {
@@ -4505,10 +4469,6 @@ var _StorageAuthority_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeactivateAuthorization2",
 			Handler:    _StorageAuthority_DeactivateAuthorization2_Handler,
-		},
-		{
-			MethodName: "SerialExists",
-			Handler:    _StorageAuthority_SerialExists_Handler,
 		},
 		{
 			MethodName: "AddBlockedKey",

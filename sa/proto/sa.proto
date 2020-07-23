@@ -46,7 +46,6 @@ service StorageAuthority {
         rpc NewAuthorizations2(AddPendingAuthorizationsRequest) returns (Authorization2IDs) {}
         rpc FinalizeAuthorization2(FinalizeAuthorizationRequest) returns (core.Empty) {}
         rpc DeactivateAuthorization2(AuthorizationID2) returns (core.Empty) {}
-        rpc SerialExists(Serial) returns (Exists) {}
         rpc AddBlockedKey(AddBlockedKeyRequest) returns (core.Empty) {}
 }
 
