@@ -27,12 +27,8 @@ func (cac CertificateAuthorityClientWrapper) IssuePrecertificate(ctx context.Con
 	return cac.inner.IssuePrecertificate(ctx, issueReq)
 }
 
-func (cac CertificateAuthorityClientWrapper) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
-	res, err := cac.inner.IssueCertificateForPrecertificate(ctx, req)
-	if err != nil {
-		return core.Certificate{}, err
-	}
-	return PBToCert(res)
+func (cac CertificateAuthorityClientWrapper) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
+	return cac.inner.IssueCertificateForPrecertificate(ctx, req)
 }
 
 func (cac CertificateAuthorityClientWrapper) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
@@ -65,11 +61,7 @@ func (cas *CertificateAuthorityServerWrapper) IssuePrecertificate(ctx context.Co
 }
 
 func (cas *CertificateAuthorityServerWrapper) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
-	cert, err := cas.inner.IssueCertificateForPrecertificate(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	return CertToPB(cert), nil
+	return cas.inner.IssueCertificateForPrecertificate(ctx, req)
 }
 
 func (cas *CertificateAuthorityServerWrapper) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {

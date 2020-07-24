@@ -595,52 +595,65 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 // final certificate, but this is just a belt-and-suspenders measure, since
 // there could be race conditions where two goroutines are issuing for the same
 // serial number at the same time.
-func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
-	emptyCert := core.Certificate{}
-
+func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
 	// issueReq.orderID may be zero, for ACMEv1 requests.
 	if core.IsAnyNilOrZero(req, req.DER, req.SCTs, req.RegistrationID) {
-		return emptyCert, berrors.InternalServerError("Incomplete cert for precertificate request")
+		return nil, berrors.InternalServerError("Incomplete cert for precertificate request")
 	}
 
 	precert, err := x509.ParseCertificate(req.DER)
 	if err != nil {
-		return emptyCert, err
+		return nil, err
 	}
 
 	serialHex := core.SerialToString(precert.SerialNumber)
 	if _, err = ca.sa.GetCertificate(ctx, serialHex); err == nil {
 		err = berrors.InternalServerError("issuance of duplicate final certificate requested: %s", serialHex)
 		ca.log.AuditErr(err.Error())
-		return emptyCert, err
+		return nil, err
 	} else if !berrors.Is(err, berrors.NotFound) {
-		return emptyCert, fmt.Errorf("error checking for duplicate issuance of %s: %s", serialHex, err)
+		return nil, fmt.Errorf("error checking for duplicate issuance of %s: %s", serialHex, err)
 	}
 	var scts []ct.SignedCertificateTimestamp
 	for _, sctBytes := range req.SCTs {
 		var sct ct.SignedCertificateTimestamp
 		_, err = cttls.Unmarshal(sctBytes, &sct)
 		if err != nil {
-			return emptyCert, err
+			return nil, err
 		}
 		scts = append(scts, sct)
 	}
 	certPEM, err := ca.defaultIssuer.eeSigner.SignFromPrecert(precert, scts)
 	if err != nil {
-		return emptyCert, err
+		return nil, err
 	}
 	ca.signatureCount.WithLabelValues(string(certType)).Inc()
 	block, _ := pem.Decode(certPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
 		err = berrors.InternalServerError("invalid certificate value returned")
 		ca.log.AuditErrf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]", serialHex, certPEM, err)
-		return emptyCert, err
+		return nil, err
 	}
 	certDER := block.Bytes
 	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] certificate=[%s]",
 		serialHex, strings.Join(precert.DNSNames, ", "), hex.EncodeToString(req.DER),
 		hex.EncodeToString(certDER))
-	return ca.storeCertificate(ctx, *req.RegistrationID, *req.OrderID, precert.SerialNumber, certDER)
+	err = ca.storeCertificate(ctx, *req.RegistrationID, *req.OrderID, precert.SerialNumber, certDER)
+	if err != nil {
+		return nil, err
+	}
+	serialString := core.SerialToString(precert.SerialNumber)
+	digest := core.Fingerprint256(certDER)
+	issued := precert.NotBefore.UnixNano()
+	expires := precert.NotAfter.UnixNano()
+	return &corepb.Certificate{
+		RegistrationID: req.RegistrationID,
+		Serial:         &serialString,
+		Der:            certDER,
+		Digest:         &digest,
+		Issued:         &issued,
+		Expires:        &expires,
+	}, nil
 }
 
 type validity struct {
@@ -794,7 +807,7 @@ func (ca *CertificateAuthorityImpl) storeCertificate(
 	regID int64,
 	orderID int64,
 	serialBigInt *big.Int,
-	certDER []byte) (core.Certificate, error) {
+	certDER []byte) error {
 	var err error
 	now := ca.clk.Now()
 	_, err = ca.sa.AddCertificate(ctx, certDER, regID, nil, &now)
@@ -811,10 +824,9 @@ func (ca *CertificateAuthorityImpl) storeCertificate(
 				RegID: regID,
 			})
 		}
-		return core.Certificate{}, err
+		return err
 	}
-
-	return core.Certificate{DER: certDER}, nil
+	return nil
 }
 
 type orphanedCert struct {

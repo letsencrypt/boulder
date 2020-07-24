@@ -870,7 +870,7 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		OrderID:        new(int64),
 	})
 	test.AssertNotError(t, err, "Failed to issue cert from precert")
-	parsedCert, err := x509.ParseCertificate(cert.DER)
+	parsedCert, err := x509.ParseCertificate(cert.Der)
 	test.AssertNotError(t, err, "Failed to parse cert")
 
 	// Check for SCT list extension
@@ -1111,7 +1111,7 @@ func TestOrphanQueue(t *testing.T) {
 	}
 	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, k.Public(), k)
 	test.AssertNotError(t, err, "Failed to generate test cert")
-	_, err = ca.storeCertificate(
+	err = ca.storeCertificate(
 		context.Background(),
 		1,
 		1,
@@ -1152,7 +1152,7 @@ func TestOrphanQueue(t *testing.T) {
 	// add cert to queue, and recreate queue to make sure it still has the cert
 	qsa.fail = true
 	qsa.duplicate = false
-	_, err = ca.storeCertificate(
+	err = ca.storeCertificate(
 		context.Background(),
 		1,
 		1,
