@@ -1,7 +1,14 @@
 package pkcs11helpers
 
 import (
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/asn1"
 	"errors"
+	"math/big"
 	"strings"
 	"testing"
 
@@ -127,12 +134,16 @@ func findObjectsInitOK(pkcs11.SessionHandle, []*pkcs11.Attribute) error {
 func TestFindObjectFailsOnFailedInit(t *testing.T) {
 	ctx := MockCtx{}
 	ctx.FindObjectsFinalFunc = findObjectsFinalOK
+	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
+		return []pkcs11.ObjectHandle{1}, false, nil
+	}
 
 	// test FindObject fails when FindObjectsInit fails
 	ctx.FindObjectsInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Attribute) error {
 		return errors.New("broken")
 	}
-	_, err := FindObject(ctx, 0, nil)
+	s := &Session{ctx, 0}
+	_, err := s.FindObject(nil)
 	test.AssertError(t, err, "FindObject didn't fail when FindObjectsInit failed")
 }
 
@@ -145,7 +156,8 @@ func TestFindObjectFailsOnFailedFindObjects(t *testing.T) {
 	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
 		return nil, false, errors.New("broken")
 	}
-	_, err := FindObject(ctx, 0, nil)
+	s := &Session{ctx, 0}
+	_, err := s.FindObject(nil)
 	test.AssertError(t, err, "FindObject didn't fail when FindObjects failed")
 }
 
@@ -158,7 +170,8 @@ func TestFindObjectFailsOnNoHandles(t *testing.T) {
 	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
 		return []pkcs11.ObjectHandle{}, false, nil
 	}
-	_, err := FindObject(ctx, 0, nil)
+	s := &Session{ctx, 0}
+	_, err := s.FindObject(nil)
 	test.AssertEquals(t, err, ErrNoObject)
 }
 
@@ -171,7 +184,8 @@ func TestFindObjectFailsOnMultipleHandles(t *testing.T) {
 	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
 		return []pkcs11.ObjectHandle{1, 2, 3}, false, nil
 	}
-	_, err := FindObject(ctx, 0, nil)
+	s := &Session{ctx, 0}
+	_, err := s.FindObject(nil)
 	test.AssertError(t, err, "FindObject didn't fail when FindObjects returns multiple handles")
 	test.Assert(t, strings.HasPrefix(err.Error(), "too many objects"), "FindObject failed with wrong error")
 }
@@ -187,20 +201,22 @@ func TestFindObjectFailsOnFinalizeFailure(t *testing.T) {
 	ctx.FindObjectsFinalFunc = func(pkcs11.SessionHandle) error {
 		return errors.New("broken")
 	}
-	_, err := FindObject(ctx, 0, nil)
+	s := &Session{ctx, 0}
+	_, err := s.FindObject(nil)
 	test.AssertError(t, err, "FindObject didn't fail when FindObjectsFinal fails")
 }
 
 func TestFindObjectSucceeds(t *testing.T) {
 	ctx := MockCtx{}
-
 	ctx.FindObjectsInitFunc = findObjectsInitOK
 	ctx.FindObjectsFinalFunc = findObjectsFinalOK
 	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
 		return []pkcs11.ObjectHandle{1}, false, nil
 	}
+	s := &Session{ctx, 0}
+
 	// test FindObject works
-	handle, err := FindObject(ctx, 0, nil)
+	handle, err := s.FindObject(nil)
 	test.AssertNotError(t, err, "FindObject failed when everything worked as expected")
 	test.AssertEquals(t, handle, pkcs11.ObjectHandle(1))
 }
@@ -237,7 +253,8 @@ func TestX509Signer(t *testing.T) {
 		return append(rBytes, sBytes...), nil
 	}
 	digest := sha256.Sum256([]byte("hello"))
-	signer := &x509Signer{ctx: ctx, keyType: ECDSAKey, pub: tk.Public()}
+	s := &Session{ctx, 0}
+	signer := &x509Signer{session: s, keyType: ECDSAKey, pub: tk.Public()}
 	signature, err := signer.Sign(nil, digest[:], crypto.SHA256)
 	test.AssertNotError(t, err, "x509Signer.Sign failed")
 
