@@ -1,10 +1,11 @@
 linters:
   disable-all: true
   enable:
-    - govet
-    - gofmt
-    - ineffassign
     - errcheck
+    - exportloopref
+    - gofmt
+    - govet
+    - ineffassign
     - misspell
     - staticcheck
 linters-settings:
