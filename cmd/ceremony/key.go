@@ -50,8 +50,7 @@ type keyInfo struct {
 }
 
 func generateKey(session *pkcs11helpers.Session, label string, outputPath string, config keyGenConfig) (*keyInfo, error) {
-	var err error
-	_, err = session.FindObject([]*pkcs11.Attribute{})
+	_, err := session.FindObject([]*pkcs11.Attribute{})
 	if err != pkcs11helpers.ErrNoObject {
 		return nil, fmt.Errorf("expected no objects in slot for key storage. got error: %s", err)
 	}

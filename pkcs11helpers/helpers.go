@@ -343,7 +343,7 @@ func (s *Session) FindObject(tmpl []*pkcs11.Attribute) (pkcs11.ObjectHandle, err
 	if err := s.Module.FindObjectsInit(s.Session, tmpl); err != nil {
 		return 0, err
 	}
-	handles, _, err := s.Module.FindObjects(s.Session, 10)
+	handles, _, err := s.Module.FindObjects(s.Session, 2)
 	if err != nil {
 		return 0, err
 	}

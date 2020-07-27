@@ -478,17 +478,6 @@ func (sas StorageAuthorityClientWrapper) DeactivateAuthorization2(ctx context.Co
 	return nil, err
 }
 
-func (sas StorageAuthorityClientWrapper) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
-	res, err := sas.inner.SerialExists(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if res == nil || res.Exists == nil {
-		return nil, errIncompleteResponse
-	}
-	return res, nil
-}
-
 func (sac StorageAuthorityClientWrapper) AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest) (*corepb.Empty, error) {
 	// All return checking is done at the call site
 	return sac.inner.AddBlockedKey(ctx, req)
@@ -890,13 +879,6 @@ func (sas StorageAuthorityServerWrapper) DeactivateAuthorization2(ctx context.Co
 	}
 
 	return sas.inner.DeactivateAuthorization2(ctx, req)
-}
-
-func (sas StorageAuthorityServerWrapper) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
-	if req == nil || req.Serial == nil {
-		return nil, errIncompleteRequest
-	}
-	return sas.inner.SerialExists(ctx, req)
 }
 
 func (sas StorageAuthorityServerWrapper) AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest) (*corepb.Empty, error) {

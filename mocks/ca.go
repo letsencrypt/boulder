@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
-	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/revocation"
 )
 
@@ -15,21 +15,6 @@ import (
 // IssueCertificate.
 type MockCA struct {
 	PEM []byte
-}
-
-// IssueCertificate is a mock
-func (ca *MockCA) IssueCertificate(ctx context.Context, _ *capb.IssueCertificateRequest) (core.Certificate, error) {
-	if ca.PEM == nil {
-		return core.Certificate{}, fmt.Errorf("MockCA's PEM field must be set before calling IssueCertificate")
-	}
-	block, _ := pem.Decode(ca.PEM)
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		return core.Certificate{}, err
-	}
-	return core.Certificate{
-		DER: cert.Raw,
-	}, nil
 }
 
 // IssuePrecertificate is a mock
@@ -48,8 +33,17 @@ func (ca *MockCA) IssuePrecertificate(ctx context.Context, _ *capb.IssueCertific
 }
 
 // IssueCertificateForPrecertificate is a mock
-func (ca *MockCA) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
-	return core.Certificate{DER: req.DER}, nil
+func (ca *MockCA) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
+	var mockInt = int64(1)
+	var mockString = "mock"
+	return &corepb.Certificate{
+		Der:            req.DER,
+		RegistrationID: &mockInt,
+		Serial:         &mockString,
+		Digest:         &mockString,
+		Issued:         &mockInt,
+		Expires:        &mockInt,
+	}, nil
 }
 
 // GenerateOCSP is a mock
