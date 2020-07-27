@@ -234,12 +234,6 @@ func (p *signingProfile) generateTemplate(clk clock.Clock) *x509.Certificate {
 		template.CRLDistributionPoints = []string{p.crlURL}
 	}
 
-	// template.NotBefore = clk.Now()
-	// if p.backdate != 0 {
-	// 	template.NotBefore = template.NotBefore.Add(-p.backdate)
-	// }
-	// template.NotAfter = template.NotBefore.Add(p.validityPeriod)
-
 	if p.policies != nil {
 		template.ExtraExtensions = []pkix.Extension{*p.policies}
 	}
