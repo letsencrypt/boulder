@@ -88,6 +88,8 @@ func TestGenerateCRL(t *testing.T) {
 		return append(rBytes, sBytes...), nil
 	}
 
-	_, err = generateCRL(&x509Signer{ctx: ctx, keyType: pkcs11helpers.ECDSAKey, pub: k.Public()}, cert, time.Time{}.Add(time.Hour), time.Time{}.Add(time.Hour*2), 1, nil)
+	s := &pkcs11helpers.Session{ctx, 0}
+	signer, err := s.NewSigner("label", k.Public())
+	_, err = generateCRL(signer, cert, time.Time{}.Add(time.Hour), time.Time{}.Add(time.Hour*2), 1, nil)
 	test.AssertNotError(t, err, "generateCRL failed with valid profile")
 }

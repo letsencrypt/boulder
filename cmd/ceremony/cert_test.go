@@ -2,16 +2,11 @@ package main
 
 import (
 	"bytes"
-	"crypto"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/hex"
 	"errors"
-	"math/big"
 	"testing"
 
 	"github.com/letsencrypt/boulder/pkcs11helpers"
@@ -32,7 +27,8 @@ func TestParseOID(t *testing.T) {
 func TestMakeTemplate(t *testing.T) {
 	ctx := pkcs11helpers.MockCtx{}
 	profile := &certProfile{}
-	randReader := newRandReader(&ctx, 0)
+	s := &pkcs11helpers.Session{ctx, 0}
+	randReader := newRandReader(s)
 
 	pubKey, err := hex.DecodeString("3059301306072a8648ce3d020106082a8648ce3d03010703420004b06745ef0375c9c54057098f077964e18d3bed0aacd54545b16eab8c539b5768cc1cea93ba56af1e22a7a01c33048c8885ed17c9c55ede70649b707072689f5e")
 	test.AssertNotError(t, err, "failed to decode test public key")
@@ -116,7 +112,8 @@ func TestMakeTemplateOCSP(t *testing.T) {
 			return r, err
 		},
 	}
-	randReader := newRandReader(&ctx, 0)
+	s := &pkcs11helpers.Session{ctx, 0}
+	randReader := newRandReader(s)
 	profile := &certProfile{
 		SignatureAlgorithm: "SHA256WithRSA",
 		CommonName:         "common name",
@@ -165,7 +162,8 @@ func TestMakeTemplateCRL(t *testing.T) {
 			return r, err
 		},
 	}
-	randReader := newRandReader(&ctx, 0)
+	s := &pkcs11helpers.Session{ctx, 0}
+	randReader := newRandReader(s)
 	profile := &certProfile{
 		SignatureAlgorithm: "SHA256WithRSA",
 		CommonName:         "common name",
@@ -420,7 +418,9 @@ func TestGetKey(t *testing.T) {
 	ctx.FindObjectsInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Attribute) error {
 		return errors.New("broken")
 	}
-	_, err := newSigner(ctx, 0, "label", []byte{255, 255})
+	s := &pkcs11helpers.Session{ctx, 0}
+	pubKey := []byte{255, 255}
+	_, err := s.NewSigner("label", pubKey)
 	test.AssertError(t, err, "newSigner didn't fail when pkcs11helpers.FindObject for private key handle failed")
 
 	// test newSigner fails when GetAttributeValue fails
@@ -436,14 +436,14 @@ func TestGetKey(t *testing.T) {
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return nil, errors.New("broken")
 	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
+	_, err = s.NewSigner("label", pubKey)
 	test.AssertError(t, err, "newSigner didn't fail when GetAttributeValue for private key type failed")
 
 	// test newSigner fails when GetAttributeValue returns no attributes
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return nil, nil
 	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
+	_, err = s.NewSigner("label", pubKey)
 	test.AssertError(t, err, "newSigner didn't fail when GetAttributeValue for private key type returned no attributes")
 
 	// test newSigner fails when pkcs11helpers.FindObject for public key handle fails
@@ -456,7 +456,7 @@ func TestGetKey(t *testing.T) {
 		}
 		return nil
 	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
+	_, err = s.NewSigner("label", pubKey)
 	test.AssertError(t, err, "newSigner didn't fail when pkcs11helpers.FindObject for public key handle failed")
 
 	// test newSigner fails when pkcs11helpers.FindObject for private key returns unknown CKA_KEY_TYPE
@@ -466,21 +466,21 @@ func TestGetKey(t *testing.T) {
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{2, 0, 0, 0, 0, 0, 0, 0})}, nil
 	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
+	_, err = s.NewSigner("label", pubKey)
 	test.AssertError(t, err, "newSigner didn't fail when GetAttributeValue for private key returned unknown key type")
 
 	// test newSigner fails when GetRSAPublicKey fails
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{0, 0, 0, 0, 0, 0, 0, 0})}, nil
 	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
+	_, err = s.NewSigner("label", pubKey)
 	test.AssertError(t, err, "newSigner didn't fail when GetRSAPublicKey fails")
 
 	// test newSigner fails when GetECDSAPublicKey fails
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{3, 0, 0, 0, 0, 0, 0, 0})}, nil
 	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
+	_, err = s.NewSigner("label", pubKey)
 	test.AssertError(t, err, "newSigner didn't fail when GetECDSAPublicKey fails")
 
 	// test newSigner works when everything... works
@@ -500,6 +500,6 @@ func TestGetKey(t *testing.T) {
 		}
 		return returns, nil
 	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
+	_, err = s.NewSigner("label", pubKey)
 	test.AssertNotError(t, err, "newSigner failed when everything worked properly")
 }
