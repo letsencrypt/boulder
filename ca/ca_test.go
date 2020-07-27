@@ -297,6 +297,7 @@ func TestFailNoSerial(t *testing.T) {
 		testCtx.fc,
 		testCtx.stats,
 		testCtx.issuers,
+		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
 		nil)
@@ -390,6 +391,7 @@ func issueCertificateSubTestSetup(t *testing.T) (*CertificateAuthorityImpl, *moc
 		testCtx.fc,
 		testCtx.stats,
 		testCtx.issuers,
+		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
 		nil)
@@ -450,6 +452,7 @@ func TestMultipleIssuers(t *testing.T) {
 		testCtx.fc,
 		testCtx.stats,
 		newIssuers,
+		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
 		nil)
@@ -475,6 +478,7 @@ func TestOCSP(t *testing.T) {
 		testCtx.fc,
 		testCtx.stats,
 		testCtx.issuers,
+		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
 		nil)
@@ -525,6 +529,7 @@ func TestOCSP(t *testing.T) {
 		testCtx.fc,
 		testCtx.stats,
 		newIssuers,
+		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
 		nil)
@@ -622,6 +627,7 @@ func TestInvalidCSRs(t *testing.T) {
 			testCtx.fc,
 			testCtx.stats,
 			testCtx.issuers,
+			nil,
 			testCtx.keyPolicy,
 			testCtx.logger,
 			nil)
@@ -653,6 +659,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 		testCtx.fc,
 		testCtx.stats,
 		testCtx.issuers,
+		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
 		nil)
@@ -707,6 +714,7 @@ func TestSingleAIAEnforcement(t *testing.T) {
 		pa,
 		clock.New(),
 		metrics.NoopRegisterer,
+		nil,
 		nil,
 		goodkey.KeyPolicy{},
 		&blog.Mock{},
@@ -834,6 +842,7 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		testCtx.fc,
 		testCtx.stats,
 		testCtx.issuers,
+		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
 		nil)
@@ -916,6 +925,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.fc,
 		testCtx.stats,
 		testCtx.issuers,
+		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
 		nil)
@@ -953,6 +963,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.fc,
 		testCtx.stats,
 		testCtx.issuers,
+		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
 		nil)
@@ -1026,6 +1037,7 @@ func TestPrecertOrphanQueue(t *testing.T) {
 		testCtx.fc,
 		testCtx.stats,
 		testCtx.issuers,
+		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
 		orphanQueue)
@@ -1088,6 +1100,7 @@ func TestOrphanQueue(t *testing.T) {
 		testCtx.fc,
 		testCtx.stats,
 		testCtx.issuers,
+		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
 		orphanQueue)
@@ -1198,14 +1211,15 @@ func TestIssuePrecertificateLinting(t *testing.T) {
 		testCtx.fc,
 		testCtx.stats,
 		testCtx.issuers,
+		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
 		nil)
 	test.AssertNotError(t, err, "Failed to create CA")
 
-	// Reconfigure the CA's eeSigner to be a linttrapSigner that always returns
+	// Reconfigure the CA's cfsslSigner to be a linttrapSigner that always returns
 	// two LintResults.
-	ca.defaultIssuer.eeSigner = &linttrapSigner{
+	ca.defaultIssuer.cfsslSigner = &linttrapSigner{
 		lintErr: &local.LintError{
 			ErrorResults: map[string]lint.LintResult{
 				"foobar": {
@@ -1253,6 +1267,7 @@ func TestGenerateOCSPWithIssuerID(t *testing.T) {
 		testCtx.fc,
 		testCtx.stats,
 		testCtx.issuers,
+		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
 		nil)

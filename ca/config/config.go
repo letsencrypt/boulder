@@ -5,6 +5,7 @@ import (
 	"github.com/letsencrypt/pkcs11key/v4"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/signer"
 )
 
 // CAConfig structs have configuration information for the certificate
@@ -72,4 +73,7 @@ type IssuerConfig struct {
 	// Number of sessions to open with the HSM. For maximum performance,
 	// this should be equal to the number of cores in the HSM. Defaults to 1.
 	NumSessions int
+	// SignerProfile contains the signer issuance profile, if using the boulder
+	// signer rather than the CFSSL signer.
+	SignerProfile *signer.ProfileConfig
 }

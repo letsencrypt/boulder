@@ -1,6 +1,7 @@
 package signer
 
 import (
+	"crypto"
 	"crypto/dsa"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -22,16 +23,16 @@ import (
 
 func TestNewProfilePolicies(t *testing.T) {
 	profile, err := newProfile(ProfileConfig{
-		AllowRSAKeys:     true,
-		AllowECDSAKeys:   true,
-		AllowMustStaple:  true,
-		AllowCTPoison:    true,
-		AllowSCTList:     true,
-		IssuerURL:        "issuer-url",
-		CRLURL:           "crl-url",
-		OCSPURL:          "ocsp-url",
-		ValidityPeriod:   time.Hour,
-		ValidityBackdate: time.Minute,
+		AllowRSAKeys:        true,
+		AllowECDSAKeys:      true,
+		AllowMustStaple:     true,
+		AllowCTPoison:       true,
+		AllowSCTList:        true,
+		IssuerURL:           "issuer-url",
+		CRLURL:              "crl-url",
+		OCSPURL:             "ocsp-url",
+		MaxValidityPeriod:   time.Hour,
+		MaxValidityBackdate: time.Minute,
 		Policies: []PolicyInformation{
 			{
 				OID: "1.2.3",
@@ -57,12 +58,12 @@ func TestNewProfilePolicies(t *testing.T) {
 		issuerURL:       "issuer-url",
 		crlURL:          "crl-url",
 		ocspURL:         "ocsp-url",
-		validityPeriod:  time.Hour,
-		backdate:        time.Minute,
 		policies: &pkix.Extension{
 			Id:    asn1.ObjectIdentifier{2, 5, 29, 32},
 			Value: []byte{48, 36, 48, 4, 6, 2, 42, 3, 48, 28, 6, 3, 42, 3, 4, 48, 21, 48, 19, 6, 8, 43, 6, 1, 5, 5, 7, 2, 1, 22, 7, 99, 112, 115, 45, 117, 114, 108},
 		},
+		maxBackdate: time.Minute,
+		maxValidity: time.Hour,
 	})
 	var policies []policyInformation
 	_, err = asn1.Unmarshal(profile.policies.Value, &policies)
@@ -121,6 +122,8 @@ func TestNewProfileUnknownQualifierType(t *testing.T) {
 }
 
 func TestRequestValid(t *testing.T) {
+	fc := clock.NewFake()
+	fc.Add(time.Hour * 24)
 	tests := []struct {
 		name          string
 		profile       *signingProfile
@@ -173,8 +176,8 @@ func TestRequestValid(t *testing.T) {
 				allowECDSAKeys: true,
 			},
 			request: &IssuanceRequest{
-				PublicKey:      &ecdsa.PublicKey{},
-				IncludeSCTList: []ct.SignedCertificateTimestamp{},
+				PublicKey: &ecdsa.PublicKey{},
+				SCTList:   []ct.SignedCertificateTimestamp{},
 			},
 			expectedError: "sct list extension cannot be included",
 		},
@@ -188,23 +191,79 @@ func TestRequestValid(t *testing.T) {
 			request: &IssuanceRequest{
 				PublicKey:       &ecdsa.PublicKey{},
 				IncludeCTPoison: true,
-				IncludeSCTList:  []ct.SignedCertificateTimestamp{},
+				SCTList:         []ct.SignedCertificateTimestamp{},
 			},
 			expectedError: "cannot include both ct poison and sct list extensions",
 		},
 		{
-			name: "good",
+			name: "negative validity",
 			profile: &signingProfile{
 				allowECDSAKeys: true,
 			},
 			request: &IssuanceRequest{
 				PublicKey: &ecdsa.PublicKey{},
+				NotBefore: fc.Now().Add(time.Hour),
+				NotAfter:  fc.Now(),
+			},
+			expectedError: "NotAfter must be after NotBefore",
+		},
+		{
+			name: "validity larger than max",
+			profile: &signingProfile{
+				allowECDSAKeys: true,
+				maxValidity:    time.Minute,
+			},
+			request: &IssuanceRequest{
+				PublicKey: &ecdsa.PublicKey{},
+				NotBefore: fc.Now(),
+				NotAfter:  fc.Now().Add(time.Hour),
+			},
+			expectedError: "validity period is more than the maximum allowed period (1h0m0s>1m0s)",
+		},
+		{
+			name: "validity backdated more than max",
+			profile: &signingProfile{
+				allowECDSAKeys: true,
+				maxValidity:    time.Hour * 2,
+				maxBackdate:    time.Hour,
+			},
+			request: &IssuanceRequest{
+				PublicKey: &ecdsa.PublicKey{},
+				NotBefore: fc.Now().Add(-time.Hour * 2),
+				NotAfter:  fc.Now().Add(-time.Hour),
+			},
+			expectedError: "NotBefore is backdated more than the maximum allowed period (2h0m0s>1h0m0s)",
+		},
+		{
+			name: "validity is forward dated",
+			profile: &signingProfile{
+				allowECDSAKeys: true,
+				maxValidity:    time.Hour * 2,
+				maxBackdate:    time.Hour,
+			},
+			request: &IssuanceRequest{
+				PublicKey: &ecdsa.PublicKey{},
+				NotBefore: fc.Now().Add(time.Hour),
+				NotAfter:  fc.Now().Add(time.Hour * 2),
+			},
+			expectedError: "NotBefore is in the future",
+		},
+		{
+			name: "good",
+			profile: &signingProfile{
+				allowECDSAKeys: true,
+				maxValidity:    time.Hour * 2,
+			},
+			request: &IssuanceRequest{
+				PublicKey: &ecdsa.PublicKey{},
+				NotBefore: fc.Now(),
+				NotAfter:  fc.Now().Add(time.Hour),
 			},
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.profile.requestValid(tc.request)
+			err := tc.profile.requestValid(fc, tc.request)
 			if err != nil {
 				if tc.expectedError == "" {
 					t.Errorf("failed with unexpected error: %s", err)
@@ -228,46 +287,23 @@ func TestGenerateTemplate(t *testing.T) {
 		{
 			name: "crl url",
 			profile: &signingProfile{
-				crlURL:         "crl-url",
-				sigAlg:         x509.SHA256WithRSA,
-				keyUsage:       x509.KeyUsageDigitalSignature,
-				validityPeriod: time.Hour,
+				crlURL: "crl-url",
+				sigAlg: x509.SHA256WithRSA,
+				// validityPeriod: time.Hour,
 			},
 			expectedTemplate: &x509.Certificate{
 				SignatureAlgorithm:    x509.SHA256WithRSA,
-				KeyUsage:              x509.KeyUsageDigitalSignature,
 				ExtKeyUsage:           defaultEKU,
 				IssuingCertificateURL: []string{""},
 				OCSPServer:            []string{""},
-				NotBefore:             time.Time{}.Add(time.Hour),
-				NotAfter:              time.Time{}.Add(time.Hour * 2),
 				CRLDistributionPoints: []string{"crl-url"},
-			},
-		},
-		{
-			name: "backdate",
-			profile: &signingProfile{
-				sigAlg:         x509.SHA256WithRSA,
-				keyUsage:       x509.KeyUsageDigitalSignature,
-				validityPeriod: time.Hour,
-				backdate:       time.Minute * 30,
-			},
-			expectedTemplate: &x509.Certificate{
-				SignatureAlgorithm:    x509.SHA256WithRSA,
-				KeyUsage:              x509.KeyUsageDigitalSignature,
-				ExtKeyUsage:           defaultEKU,
-				IssuingCertificateURL: []string{""},
-				OCSPServer:            []string{""},
-				NotBefore:             time.Time{}.Add(time.Minute * 30),
-				NotAfter:              time.Time{}.Add(time.Minute * 90),
 			},
 		},
 		{
 			name: "include policies",
 			profile: &signingProfile{
-				sigAlg:         x509.SHA256WithRSA,
-				keyUsage:       x509.KeyUsageDigitalSignature,
-				validityPeriod: time.Hour,
+				sigAlg: x509.SHA256WithRSA,
+				// validityPeriod: time.Hour,
 				policies: &pkix.Extension{
 					Id:    asn1.ObjectIdentifier{1, 2, 3},
 					Value: []byte{4, 5, 6},
@@ -275,12 +311,9 @@ func TestGenerateTemplate(t *testing.T) {
 			},
 			expectedTemplate: &x509.Certificate{
 				SignatureAlgorithm:    x509.SHA256WithRSA,
-				KeyUsage:              x509.KeyUsageDigitalSignature,
 				ExtKeyUsage:           defaultEKU,
 				IssuingCertificateURL: []string{""},
 				OCSPServer:            []string{""},
-				NotBefore:             time.Time{}.Add(time.Hour),
-				NotAfter:              time.Time{}.Add(time.Hour * 2),
 				ExtraExtensions: []pkix.Extension{
 					{
 						Id:    asn1.ObjectIdentifier{1, 2, 3},
@@ -301,7 +334,7 @@ func TestGenerateTemplate(t *testing.T) {
 }
 
 func TestNewSignerUnsupportedKeyType(t *testing.T) {
-	_, err := NewSigner(&SignerConfig{
+	_, err := NewSigner(&Config{
 		Profile: ProfileConfig{
 			IssuerURL: "issuer-url",
 			OCSPURL:   "ocsp-url",
@@ -317,7 +350,7 @@ func TestNewSignerUnsupportedKeyType(t *testing.T) {
 func TestNewSignerRSAKey(t *testing.T) {
 	mod, ok := big.NewInt(0).SetString("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", 16)
 	test.Assert(t, ok, "failed to set mod")
-	signer, err := NewSigner(&SignerConfig{
+	signer, err := NewSigner(&Config{
 		Profile: ProfileConfig{
 			IssuerURL: "issuer-url",
 			OCSPURL:   "ocsp-url",
@@ -329,13 +362,12 @@ func TestNewSignerRSAKey(t *testing.T) {
 		},
 	})
 	test.AssertNotError(t, err, "NewSigner failed")
-	test.AssertEquals(t, signer.profile.keyUsage, x509.KeyUsageDigitalSignature|x509.KeyUsageKeyEncipherment)
 	_, ok = signer.lintKey.(*rsa.PrivateKey)
 	test.Assert(t, ok, "lint key is not RSA")
 }
 
 func TestNewSignerECDSAKey(t *testing.T) {
-	signer, err := NewSigner(&SignerConfig{
+	signer, err := NewSigner(&Config{
 		Profile: ProfileConfig{
 			IssuerURL: "issuer-url",
 			OCSPURL:   "ocsp-url",
@@ -347,7 +379,6 @@ func TestNewSignerECDSAKey(t *testing.T) {
 		},
 	})
 	test.AssertNotError(t, err, "NewSigner failed")
-	test.AssertEquals(t, signer.profile.keyUsage, x509.KeyUsageDigitalSignature)
 	_, ok := signer.lintKey.(*ecdsa.PrivateKey)
 	test.Assert(t, ok, "lint key is not ECDSA")
 }
@@ -378,30 +409,97 @@ func TestMain(m *testing.M) {
 }
 
 func TestIssue(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		generateFunc func() (crypto.Signer, error)
+		ku           x509.KeyUsage
+	}{
+		{
+			name: "RSA",
+			generateFunc: func() (crypto.Signer, error) {
+				return rsa.GenerateKey(rand.Reader, 2048)
+			},
+			ku: x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		},
+		{
+			name: "ECDSA",
+			generateFunc: func() (crypto.Signer, error) {
+				return ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+			},
+			ku: x509.KeyUsageDigitalSignature,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fc := clock.NewFake()
+			fc.Set(time.Now())
+			signer, err := NewSigner(&Config{
+				Issuer: issuerCert,
+				Signer: issuerSigner,
+				Clk:    fc,
+				Profile: ProfileConfig{
+					AllowECDSAKeys: true,
+					AllowRSAKeys:   true,
+					// ValidityPeriod: time.Hour,
+					IssuerURL: "http://issuer-url",
+					OCSPURL:   "http://ocsp-url",
+					Policies: []PolicyInformation{
+						{OID: "1.2.3"},
+					},
+					MaxValidityPeriod: time.Hour,
+				},
+				IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied"},
+			})
+			test.AssertNotError(t, err, "NewSigner failed")
+			pk, err := tc.generateFunc()
+			test.AssertNotError(t, err, "failed to generate test key")
+			certBytes, err := signer.Issue(&IssuanceRequest{
+				PublicKey: pk.Public(),
+				Serial:    []byte{1, 2, 3},
+				DNSNames:  []string{"example.com"},
+				NotBefore: fc.Now(),
+				NotAfter:  fc.Now().Add(time.Hour),
+			})
+			test.AssertNotError(t, err, "Issue failed")
+			cert, err := x509.ParseCertificate(certBytes)
+			test.AssertNotError(t, err, "failed to parse certificate")
+			err = cert.CheckSignatureFrom(issuerCert)
+			test.AssertNotError(t, err, "signature validation failed")
+			test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3})
+			test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
+			test.AssertEquals(t, len(cert.Extensions), 7) // KU, EKU, SKID, AKID, AIA, SAN, Policies
+			test.AssertEquals(t, cert.KeyUsage, tc.ku)
+		})
+	}
+}
+
+func TestIssueRSA(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	signer, err := NewSigner(&SignerConfig{
+	signer, err := NewSigner(&Config{
 		Issuer: issuerCert,
 		Signer: issuerSigner,
 		Clk:    fc,
 		Profile: ProfileConfig{
-			AllowECDSAKeys: true,
-			ValidityPeriod: time.Hour,
-			IssuerURL:      "http://issuer-url",
-			OCSPURL:        "http://ocsp-url",
+			AllowRSAKeys: true,
+			// ValidityPeriod: time.Hour,
+			IssuerURL: "http://issuer-url",
+			OCSPURL:   "http://ocsp-url",
 			Policies: []PolicyInformation{
 				{OID: "1.2.3"},
 			},
+			MaxValidityPeriod: time.Hour,
 		},
 		IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied"},
 	})
 	test.AssertNotError(t, err, "NewSigner failed")
-	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	pk, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "failed to generate test key")
 	certBytes, err := signer.Issue(&IssuanceRequest{
 		PublicKey: pk.Public(),
 		Serial:    []byte{1, 2, 3},
 		DNSNames:  []string{"example.com"},
+		NotBefore: fc.Now(),
+		NotAfter:  fc.Now().Add(time.Hour),
 	})
 	test.AssertNotError(t, err, "Issue failed")
 	cert, err := x509.ParseCertificate(certBytes)
@@ -411,24 +509,26 @@ func TestIssue(t *testing.T) {
 	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3})
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
 	test.AssertEquals(t, len(cert.Extensions), 7) // KU, EKU, SKID, AKID, AIA, SAN, Policies
+	test.AssertEquals(t, cert.KeyUsage, x509.KeyUsageDigitalSignature|x509.KeyUsageKeyEncipherment)
 }
 
 func TestIssueCTPoison(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	signer, err := NewSigner(&SignerConfig{
+	signer, err := NewSigner(&Config{
 		Issuer: issuerCert,
 		Signer: issuerSigner,
 		Clk:    fc,
 		Profile: ProfileConfig{
 			AllowECDSAKeys: true,
 			AllowCTPoison:  true,
-			ValidityPeriod: time.Hour,
-			IssuerURL:      "http://issuer-url",
-			OCSPURL:        "http://ocsp-url",
+			// ValidityPeriod: time.Hour,
+			IssuerURL: "http://issuer-url",
+			OCSPURL:   "http://ocsp-url",
 			Policies: []PolicyInformation{
 				{OID: "1.2.3"},
 			},
+			MaxValidityPeriod: time.Hour,
 		},
 		IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied"},
 	})
@@ -440,6 +540,8 @@ func TestIssueCTPoison(t *testing.T) {
 		Serial:          []byte{1, 2, 3},
 		DNSNames:        []string{"example.com"},
 		IncludeCTPoison: true,
+		NotBefore:       fc.Now(),
+		NotAfter:        fc.Now().Add(time.Hour),
 	})
 	test.AssertNotError(t, err, "Issue failed")
 	cert, err := x509.ParseCertificate(certBytes)
@@ -455,19 +557,20 @@ func TestIssueCTPoison(t *testing.T) {
 func TestIssueSCTList(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	signer, err := NewSigner(&SignerConfig{
+	signer, err := NewSigner(&Config{
 		Issuer: issuerCert,
 		Signer: issuerSigner,
 		Clk:    fc,
 		Profile: ProfileConfig{
 			AllowECDSAKeys: true,
 			AllowSCTList:   true,
-			ValidityPeriod: time.Hour,
-			IssuerURL:      "http://issuer-url",
-			OCSPURL:        "http://ocsp-url",
+			// ValidityPeriod: time.Hour,
+			IssuerURL: "http://issuer-url",
+			OCSPURL:   "http://ocsp-url",
 			Policies: []PolicyInformation{
 				{OID: "1.2.3"},
 			},
+			MaxValidityPeriod: time.Hour,
 		},
 		IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied"},
 	})
@@ -478,9 +581,11 @@ func TestIssueSCTList(t *testing.T) {
 		PublicKey: pk.Public(),
 		Serial:    []byte{1, 2, 3},
 		DNSNames:  []string{"example.com"},
-		IncludeSCTList: []ct.SignedCertificateTimestamp{
+		SCTList: []ct.SignedCertificateTimestamp{
 			{},
 		},
+		NotBefore: fc.Now(),
+		NotAfter:  fc.Now().Add(time.Hour),
 	})
 	test.AssertNotError(t, err, "Issue failed")
 	cert, err := x509.ParseCertificate(certBytes)
@@ -499,19 +604,20 @@ func TestIssueSCTList(t *testing.T) {
 func TestIssueMustStaple(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	signer, err := NewSigner(&SignerConfig{
+	signer, err := NewSigner(&Config{
 		Issuer: issuerCert,
 		Signer: issuerSigner,
 		Clk:    fc,
 		Profile: ProfileConfig{
 			AllowECDSAKeys:  true,
 			AllowMustStaple: true,
-			ValidityPeriod:  time.Hour,
-			IssuerURL:       "http://issuer-url",
-			OCSPURL:         "http://ocsp-url",
+			// ValidityPeriod:  time.Hour,
+			IssuerURL: "http://issuer-url",
+			OCSPURL:   "http://ocsp-url",
 			Policies: []PolicyInformation{
 				{OID: "1.2.3"},
 			},
+			MaxValidityPeriod: time.Hour,
 		},
 		IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied"},
 	})
@@ -523,6 +629,8 @@ func TestIssueMustStaple(t *testing.T) {
 		Serial:            []byte{1, 2, 3},
 		DNSNames:          []string{"example.com"},
 		IncludeMustStaple: true,
+		NotBefore:         fc.Now(),
+		NotAfter:          fc.Now().Add(time.Hour),
 	})
 	test.AssertNotError(t, err, "Issue failed")
 	cert, err := x509.ParseCertificate(certBytes)
@@ -538,18 +646,19 @@ func TestIssueMustStaple(t *testing.T) {
 func TestIssueBadLint(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	signer, err := NewSigner(&SignerConfig{
+	signer, err := NewSigner(&Config{
 		Issuer: issuerCert,
 		Signer: issuerSigner,
 		Clk:    fc,
 		Profile: ProfileConfig{
 			AllowECDSAKeys: true,
-			ValidityPeriod: time.Hour,
-			IssuerURL:      "http://issuer-url",
-			OCSPURL:        "http://ocsp-url",
+			// ValidityPeriod: time.Hour,
+			IssuerURL: "http://issuer-url",
+			OCSPURL:   "http://ocsp-url",
 			Policies: []PolicyInformation{
 				{OID: "1.2.3"},
 			},
+			MaxValidityPeriod: time.Hour,
 		},
 	})
 	test.AssertNotError(t, err, "NewSigner failed")
@@ -559,6 +668,8 @@ func TestIssueBadLint(t *testing.T) {
 		PublicKey: pk.Public(),
 		Serial:    []byte{1, 2, 3},
 		DNSNames:  []string{"example.com"},
+		NotBefore: fc.Now(),
+		NotAfter:  fc.Now().Add(time.Hour),
 	})
 	test.AssertError(t, err, "Issue didn't fail")
 	test.AssertEquals(t, err.Error(), "tbsCertificate linting failed: w_ct_sct_policy_count_unsatisfied")

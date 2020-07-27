@@ -1,8 +1,10 @@
 package signer
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
@@ -25,16 +27,20 @@ import (
 	"github.com/zmap/zlint/v2/lint"
 )
 
+// IssuanceRequest describes a certificate issuance request
 type IssuanceRequest struct {
 	PublicKey crypto.PublicKey
 
 	Serial []byte
 
+	NotBefore time.Time
+	NotAfter  time.Time
+
 	DNSNames []string
 
 	IncludeMustStaple bool
 	IncludeCTPoison   bool
-	IncludeSCTList    []ct.SignedCertificateTimestamp
+	SCTList           []ct.SignedCertificateTimestamp
 }
 
 type signingProfile struct {
@@ -45,26 +51,29 @@ type signingProfile struct {
 	allowCTPoison   bool
 	allowSCTList    bool
 
-	sigAlg         x509.SignatureAlgorithm
-	keyUsage       x509.KeyUsage
-	ocspURL        string
-	crlURL         string
-	issuerURL      string
-	policies       *pkix.Extension
-	validityPeriod time.Duration
-	backdate       time.Duration
+	sigAlg    x509.SignatureAlgorithm
+	ocspURL   string
+	crlURL    string
+	issuerURL string
+	policies  *pkix.Extension
+
+	maxBackdate time.Duration
+	maxValidity time.Duration
 }
 
+// PolicyQualifier describes a policy qualifier
 type PolicyQualifier struct {
 	Type  string
 	Value string
 }
 
+// PolicyInformation describes a policy
 type PolicyInformation struct {
 	OID        string
 	Qualifiers []PolicyQualifier
 }
 
+// ProfileConfig describes the certificate issuance constraints
 type ProfileConfig struct {
 	AllowRSAKeys    bool
 	AllowECDSAKeys  bool
@@ -72,12 +81,12 @@ type ProfileConfig struct {
 	AllowCTPoison   bool
 	AllowSCTList    bool
 
-	IssuerURL        string
-	OCSPURL          string
-	CRLURL           string
-	Policies         []PolicyInformation
-	ValidityPeriod   time.Duration
-	ValidityBackdate time.Duration
+	IssuerURL           string
+	OCSPURL             string
+	CRLURL              string
+	Policies            []PolicyInformation
+	MaxValidityPeriod   time.Duration
+	MaxValidityBackdate time.Duration
 }
 
 func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
@@ -116,8 +125,8 @@ func newProfile(config ProfileConfig) (*signingProfile, error) {
 		issuerURL:       config.IssuerURL,
 		crlURL:          config.CRLURL,
 		ocspURL:         config.OCSPURL,
-		validityPeriod:  config.ValidityPeriod,
-		backdate:        config.ValidityBackdate,
+		maxBackdate:     config.MaxValidityBackdate,
+		maxValidity:     config.MaxValidityPeriod,
 	}
 	if config.IssuerURL == "" {
 		return nil, errors.New("Issuer URL is required")
@@ -160,7 +169,7 @@ func newProfile(config ProfileConfig) (*signingProfile, error) {
 
 // requestValid verifies the passed IssuanceRequest agains the signingProfile. If the
 // request doesn't match the signing profile an error is returned.
-func (p *signingProfile) requestValid(req *IssuanceRequest) error {
+func (p *signingProfile) requestValid(clk clock.Clock, req *IssuanceRequest) error {
 	switch req.PublicKey.(type) {
 	case *rsa.PublicKey:
 		if !p.allowRSAKeys {
@@ -182,12 +191,27 @@ func (p *signingProfile) requestValid(req *IssuanceRequest) error {
 		return errors.New("ct poison extension cannot be included")
 	}
 
-	if !p.allowSCTList && req.IncludeSCTList != nil {
+	if !p.allowSCTList && req.SCTList != nil {
 		return errors.New("sct list extension cannot be included")
 	}
 
-	if req.IncludeCTPoison && req.IncludeSCTList != nil {
+	if req.IncludeCTPoison && req.SCTList != nil {
 		return errors.New("cannot include both ct poison and sct list extensions")
+	}
+
+	validity := req.NotAfter.Sub(req.NotBefore)
+	if validity <= 0 {
+		return errors.New("NotAfter must be after NotBefore")
+	}
+	if validity > p.maxValidity {
+		return fmt.Errorf("validity period is more than the maximum allowed period (%s>%s)", validity, p.maxValidity)
+	}
+	backdatedBy := clk.Now().Sub(req.NotBefore)
+	if backdatedBy > p.maxBackdate {
+		return fmt.Errorf("NotBefore is backdated more than the maximum allowed period (%s>%s)", backdatedBy, p.maxBackdate)
+	}
+	if backdatedBy < 0 {
+		return errors.New("NotBefore is in the future")
 	}
 
 	return nil
@@ -201,7 +225,6 @@ var defaultEKU = []x509.ExtKeyUsage{
 func (p *signingProfile) generateTemplate(clk clock.Clock) *x509.Certificate {
 	template := &x509.Certificate{
 		SignatureAlgorithm:    p.sigAlg,
-		KeyUsage:              p.keyUsage,
 		ExtKeyUsage:           defaultEKU,
 		OCSPServer:            []string{p.ocspURL},
 		IssuingCertificateURL: []string{p.issuerURL},
@@ -211,11 +234,11 @@ func (p *signingProfile) generateTemplate(clk clock.Clock) *x509.Certificate {
 		template.CRLDistributionPoints = []string{p.crlURL}
 	}
 
-	template.NotBefore = clk.Now()
-	if p.backdate != 0 {
-		template.NotBefore = template.NotBefore.Add(-p.backdate)
-	}
-	template.NotAfter = template.NotBefore.Add(p.validityPeriod)
+	// template.NotBefore = clk.Now()
+	// if p.backdate != 0 {
+	// 	template.NotBefore = template.NotBefore.Add(-p.backdate)
+	// }
+	// template.NotAfter = template.NotBefore.Add(p.validityPeriod)
 
 	if p.policies != nil {
 		template.ExtraExtensions = []pkix.Extension{*p.policies}
@@ -224,6 +247,7 @@ func (p *signingProfile) generateTemplate(clk clock.Clock) *x509.Certificate {
 	return template
 }
 
+// Signer is a certificate signer
 type Signer struct {
 	issuer  *x509.Certificate
 	signer  crypto.Signer
@@ -233,7 +257,8 @@ type Signer struct {
 	lints   lint.Registry
 }
 
-type SignerConfig struct {
+// Config contains the information necessary to construct a Signer
+type Config struct {
 	Issuer       *x509.Certificate
 	Signer       crypto.Signer
 	IgnoredLints []string
@@ -241,7 +266,8 @@ type SignerConfig struct {
 	Profile      ProfileConfig
 }
 
-func NewSigner(config *SignerConfig) (*Signer, error) {
+// NewSigner constructs a Signer from the provided Config
+func NewSigner(config *Config) (*Signer, error) {
 	profile, err := newProfile(config.Profile)
 	if err != nil {
 		return nil, err
@@ -259,13 +285,22 @@ func NewSigner(config *SignerConfig) (*Signer, error) {
 		if err != nil {
 			return nil, err
 		}
-		profile.keyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
+		profile.sigAlg = x509.SHA256WithRSA
 	case *ecdsa.PublicKey:
 		lk, err = ecdsa.GenerateKey(k.Curve, rand.Reader)
 		if err != nil {
 			return nil, err
 		}
-		profile.keyUsage = x509.KeyUsageDigitalSignature
+		switch k.Curve {
+		case elliptic.P256():
+			profile.sigAlg = x509.ECDSAWithSHA256
+		case elliptic.P384():
+			profile.sigAlg = x509.ECDSAWithSHA384
+		case elliptic.P521():
+			profile.sigAlg = x509.ECDSAWithSHA512
+		default:
+			return nil, fmt.Errorf("unsupported ECDSA curve: %s", k.Curve.Params().Name)
+		}
 	default:
 		return nil, errors.New("unsupported issuer key type")
 	}
@@ -331,9 +366,14 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 	return skid[:], nil
 }
 
+// Issue generates a certificate from the provided issuance request and
+// signs it. Before the signing the certificate with the issuers private
+// key it is signed using a throwaway key so that it can be linted using
+// zlint. If the linting fails an error is returned and the certificate
+// is not signed using the issuers key.
 func (s *Signer) Issue(req *IssuanceRequest) ([]byte, error) {
 	// check request is valid according to the issuance profile
-	if err := s.profile.requestValid(req); err != nil {
+	if err := s.profile.requestValid(s.clk, req); err != nil {
 		return nil, err
 	}
 
@@ -342,6 +382,7 @@ func (s *Signer) Issue(req *IssuanceRequest) ([]byte, error) {
 
 	// populate template from the issuance request
 	template.PublicKey = req.PublicKey
+	template.NotBefore, template.NotAfter = req.NotBefore, req.NotAfter
 	template.SerialNumber = big.NewInt(0).SetBytes(req.Serial)
 	template.DNSNames = req.DNSNames
 	template.AuthorityKeyId = s.issuer.SubjectKeyId
@@ -350,11 +391,17 @@ func (s *Signer) Issue(req *IssuanceRequest) ([]byte, error) {
 		return nil, err
 	}
 	template.SubjectKeyId = skid
+	switch template.PublicKey.(type) {
+	case *rsa.PublicKey:
+		template.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
+	case *ecdsa.PublicKey:
+		template.KeyUsage = x509.KeyUsageDigitalSignature
+	}
 
 	if req.IncludeCTPoison {
 		template.ExtraExtensions = append(template.ExtraExtensions, ctPoisonExt)
-	} else if req.IncludeSCTList != nil {
-		sctListExt, err := generateSCTListExt(req.IncludeSCTList)
+	} else if req.SCTList != nil {
+		sctListExt, err := generateSCTListExt(req.SCTList)
 		if err != nil {
 			return nil, err
 		}
@@ -387,4 +434,40 @@ func (s *Signer) Issue(req *IssuanceRequest) ([]byte, error) {
 	}
 
 	return x509.CreateCertificate(rand.Reader, template, s.issuer, req.PublicKey, s.signer)
+}
+
+func containsMustStaple(extensions []pkix.Extension) bool {
+	for _, ext := range extensions {
+		if ext.Id.Equal(mustStapleExt.Id) && bytes.Equal(ext.Value, mustStapleExt.Value) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsCTPoison(extensions []pkix.Extension) bool {
+	for _, ext := range extensions {
+		if ext.Id.Equal(ctPoisonExt.Id) && bytes.Equal(ext.Value, asn1.NullBytes) {
+			return true
+		}
+	}
+	return false
+}
+
+// RequestFromPrecert constructs a final certificate IssuanceRequest matching
+// he provided precertificate. It returns an error if the precertificate doesn't
+// contain the CT poison extension.
+func RequestFromPrecert(precert *x509.Certificate, scts []ct.SignedCertificateTimestamp) (*IssuanceRequest, error) {
+	if !containsCTPoison(precert.Extensions) {
+		return nil, errors.New("provided certificate doesn't contain the CT poison extension")
+	}
+	return &IssuanceRequest{
+		PublicKey:         precert.PublicKey,
+		Serial:            precert.SerialNumber.Bytes(),
+		NotBefore:         precert.NotBefore,
+		NotAfter:          precert.NotAfter,
+		DNSNames:          precert.DNSNames,
+		IncludeMustStaple: containsMustStaple(precert.Extensions),
+		SCTList:           scts,
+	}, nil
 }
