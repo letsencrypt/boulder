@@ -61,7 +61,7 @@ github.com/letsencrypt/challtestsrv
 github.com/letsencrypt/pkcs11key/v4
 # github.com/matttproud/golang_protobuf_extensions v1.0.1
 github.com/matttproud/golang_protobuf_extensions/pbutil
-# github.com/miekg/dns v1.1.8
+# github.com/miekg/dns v1.1.30
 github.com/miekg/dns
 # github.com/miekg/pkcs11 v1.0.3
 github.com/miekg/pkcs11
