@@ -74,7 +74,7 @@ func TestGenerateCRL(t *testing.T) {
 	test.AssertNotError(t, err, "failed to parse test cert")
 
 	signer := emptySigner{}
-	// TODO: Validate output.
+	// TODO(#4988): Validate output.
 	_, err = generateCRL(signer, cert, time.Time{}.Add(time.Hour), time.Time{}.Add(time.Hour*2), 1, nil)
 	test.AssertNotError(t, err, "generateCRL failed with valid profile")
 }
