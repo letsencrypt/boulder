@@ -27,7 +27,7 @@ func TestParseOID(t *testing.T) {
 func TestMakeTemplate(t *testing.T) {
 	ctx := pkcs11helpers.MockCtx{}
 	profile := &certProfile{}
-	s := &pkcs11helpers.Session{ctx, 0}
+	s := &pkcs11helpers.Session{&ctx, 0}
 	randReader := newRandReader(s)
 
 	pubKey, err := hex.DecodeString("3059301306072a8648ce3d020106082a8648ce3d03010703420004b06745ef0375c9c54057098f077964e18d3bed0aacd54545b16eab8c539b5768cc1cea93ba56af1e22a7a01c33048c8885ed17c9c55ede70649b707072689f5e")
@@ -409,97 +409,4 @@ func TestVerifyProfile(t *testing.T) {
 			t.Fatalf("verifyProfile didn't fail, expected %q", tc.expectedErr)
 		}
 	}
-}
-
-func TestGetKey(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{}
-
-	// test newSigner fails when pkcs11helpers.FindObject for private key handle fails
-	ctx.FindObjectsInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Attribute) error {
-		return errors.New("broken")
-	}
-	s := &pkcs11helpers.Session{ctx, 0}
-	pubKey := []byte{255, 255}
-	_, err := s.NewSigner("label", pubKey)
-	test.AssertError(t, err, "newSigner didn't fail when pkcs11helpers.FindObject for private key handle failed")
-
-	// test newSigner fails when GetAttributeValue fails
-	ctx.FindObjectsInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Attribute) error {
-		return nil
-	}
-	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
-		return []pkcs11.ObjectHandle{1}, false, nil
-	}
-	ctx.FindObjectsFinalFunc = func(pkcs11.SessionHandle) error {
-		return nil
-	}
-	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return nil, errors.New("broken")
-	}
-	_, err = s.NewSigner("label", pubKey)
-	test.AssertError(t, err, "newSigner didn't fail when GetAttributeValue for private key type failed")
-
-	// test newSigner fails when GetAttributeValue returns no attributes
-	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return nil, nil
-	}
-	_, err = s.NewSigner("label", pubKey)
-	test.AssertError(t, err, "newSigner didn't fail when GetAttributeValue for private key type returned no attributes")
-
-	// test newSigner fails when pkcs11helpers.FindObject for public key handle fails
-	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_EC)}, nil
-	}
-	ctx.FindObjectsInitFunc = func(_ pkcs11.SessionHandle, tmpl []*pkcs11.Attribute) error {
-		if bytes.Equal(tmpl[0].Value, []byte{2, 0, 0, 0, 0, 0, 0, 0}) {
-			return errors.New("broken")
-		}
-		return nil
-	}
-	_, err = s.NewSigner("label", pubKey)
-	test.AssertError(t, err, "newSigner didn't fail when pkcs11helpers.FindObject for public key handle failed")
-
-	// test newSigner fails when pkcs11helpers.FindObject for private key returns unknown CKA_KEY_TYPE
-	ctx.FindObjectsInitFunc = func(_ pkcs11.SessionHandle, tmpl []*pkcs11.Attribute) error {
-		return nil
-	}
-	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{2, 0, 0, 0, 0, 0, 0, 0})}, nil
-	}
-	_, err = s.NewSigner("label", pubKey)
-	test.AssertError(t, err, "newSigner didn't fail when GetAttributeValue for private key returned unknown key type")
-
-	// test newSigner fails when GetRSAPublicKey fails
-	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{0, 0, 0, 0, 0, 0, 0, 0})}, nil
-	}
-	_, err = s.NewSigner("label", pubKey)
-	test.AssertError(t, err, "newSigner didn't fail when GetRSAPublicKey fails")
-
-	// test newSigner fails when GetECDSAPublicKey fails
-	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{3, 0, 0, 0, 0, 0, 0, 0})}, nil
-	}
-	_, err = s.NewSigner("label", pubKey)
-	test.AssertError(t, err, "newSigner didn't fail when GetECDSAPublicKey fails")
-
-	// test newSigner works when everything... works
-	ctx.GetAttributeValueFunc = func(_ pkcs11.SessionHandle, _ pkcs11.ObjectHandle, attrs []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		var returns []*pkcs11.Attribute
-		for _, attr := range attrs {
-			switch attr.Type {
-			case pkcs11.CKA_KEY_TYPE:
-				returns = append(returns, pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{0, 0, 0, 0, 0, 0, 0, 0}))
-			case pkcs11.CKA_PUBLIC_EXPONENT:
-				returns = append(returns, pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, []byte{1, 2, 3}))
-			case pkcs11.CKA_MODULUS:
-				returns = append(returns, pkcs11.NewAttribute(pkcs11.CKA_MODULUS, []byte{4, 5, 6}))
-			default:
-				return nil, errors.New("GetAttributeValue got unexpected attribute type")
-			}
-		}
-		return returns, nil
-	}
-	_, err = s.NewSigner("label", pubKey)
-	test.AssertNotError(t, err, "newSigner failed when everything worked properly")
 }
