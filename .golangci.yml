@@ -27,8 +27,7 @@ issues:
       # G403: RSA keys should be at least 2048 bits
       # G501: Blacklisted import `crypto/md5`: weak cryptographic primitive
       # G505: Blacklisted import `crypto/sha1`: weak cryptographic primitive
-      # G601: Implicit memory aliasing in for loop.
-      text: "G(101|102|107|201|202|306|401|402|403|501|505|601)"
+      text: "G(101|102|107|201|202|306|401|402|403|501|505)"
     - linters:
       - staticcheck
       text: "(SA1019|ST1005|ST1013|SA6003|SA5011|S1029|SA2002):"
