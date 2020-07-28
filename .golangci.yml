@@ -15,24 +15,20 @@ issues:
   exclude-rules:
     - linters:
       - gosec
-        # TODO: Identify, fix, and remove violations of each of these rules
-        # (sorted in order of decreasing frequency in our codebase).
-        # G104 (CWE-703): Errors unhandled. (Confidence: HIGH, Severity: LOW)
-        # G304 (CWE-22) : Potential file inclusion via variable (Confidence: HIGH, Severity: MEDIUM)
-        # G404 (CWE-338): Use of weak random number generator (math/rand instead of crypto/rand) (Confidence: MEDIUM, Severity: HIGH)
-        # G401 (CWE-326): Use of weak cryptographic primitive (Confidence: HIGH, Severity: MEDIUM)
-        # G306 (CWE-276): Expect WriteFile permissions to be 0600 or less (Confidence: HIGH, Severity: MEDIUM)
-        # G505 (CWE-327): Blocklisted import crypto/sha1: weak cryptographic primitive (Confidence: HIGH, Severity: MEDIUM)
-        # G601 (CWE-118): Implicit memory aliasing in for loop. (Confidence: MEDIUM, Severity: MEDIUM)
-        # G402 (CWE-295): TLS MinVersion too low. (Confidence: HIGH, Severity: HIGH)
-        # G402 (CWE-295): TLS InsecureSkipVerify set true. (Confidence: HIGH, Severity: HIGH)
-        # G204 (CWE-78) : Subprocess launched with variable (Confidence: HIGH, Severity: MEDIUM)
-        # G402 (CWE-295): TLS MaxVersion too low. (Confidence: HIGH, Severity: HIGH)
-        # G501 (CWE-327): Blocklisted import crypto/md5: weak cryptographic primitive (Confidence: HIGH, Severity: MEDIUM)
-        # G403 (CWE-310): RSA keys should be at least 2048 bits (Confidence: HIGH, Severity: MEDIUM)
-        # G307 (CWE-703): Deferring unsafe method "Close" on type "*os.File" (Confidence: HIGH, Severity: MEDIUM)
-        # G107 (CWE-88) : Potential HTTP request made with variable url (Confidence: MEDIUM, Severity: MEDIUM)
-      text: "(G104|G304|G404|G401|G306|G505|G601|G402|G204|G501|F403|G307|G107)"
+      # TODO: Identify, fix, and remove violations of each of these rules
+      # G101: Potential hardcoded credentials
+      # G102: Binds to all network interfaces
+      # G107: Potential HTTP request made with variable url
+      # G201: SQL string formatting
+      # G202: SQL string concatenation
+      # G306: Expect WriteFile permissions to be 0600 or less
+      # G401: Use of weak cryptographic primitive
+      # G402: TLS InsecureSkipVerify set true.
+      # G403: RSA keys should be at least 2048 bits
+      # G501: Blacklisted import `crypto/md5`: weak cryptographic primitive
+      # G505: Blacklisted import `crypto/sha1`: weak cryptographic primitive
+      # G601: Implicit memory aliasing in for loop.
+      text: "G(101|102|107|201|202|306|401|402|403|501|505|601)"
     - linters:
       - staticcheck
       text: "(SA1019|ST1005|ST1013|SA6003|SA5011|S1029|SA2002):"
