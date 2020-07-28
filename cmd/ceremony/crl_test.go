@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/test"
-	"github.com/miekg/pkcs11"
 )
 
 func TestGenerateCRLTimeBounds(t *testing.T) {
@@ -46,13 +45,6 @@ func TestGenerateCRLLength(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "nextUpdate must be less than 12 months after thisUpdate")
 }
 
-func findObjectsInitOK(pkcs11.SessionHandle, []*pkcs11.Attribute) error {
-	return nil
-}
-func findObjectsFinalOK(pkcs11.SessionHandle) error {
-	return nil
-}
-
 type emptySigner struct{}
 
 func (p emptySigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
@@ -82,6 +74,7 @@ func TestGenerateCRL(t *testing.T) {
 	test.AssertNotError(t, err, "failed to parse test cert")
 
 	signer := emptySigner{}
+	// TODO: Validate output.
 	_, err = generateCRL(signer, cert, time.Time{}.Add(time.Hour), time.Time{}.Add(time.Hour*2), 1, nil)
 	test.AssertNotError(t, err, "generateCRL failed with valid profile")
 }
