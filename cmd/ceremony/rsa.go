@@ -108,7 +108,7 @@ func rsaGenerate(session *pkcs11helpers.Session, label string, modulusLen, pubEx
 	}
 	log.Printf("Generating RSA key with %d bit modulus and public exponent %d and ID %x\n", modulusLen, pubExponent, keyID)
 	args := rsaArgs(label, modulusLen, pubExponent, keyID)
-	pub, priv, err := session.Module.GenerateKeyPair(session.Session, args.mechanism, args.publicAttrs, args.privateAttrs)
+	pub, priv, err := session.GenerateKeyPair(args.mechanism, args.publicAttrs, args.privateAttrs)
 	if err != nil {
 		return nil, nil, err
 	}

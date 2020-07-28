@@ -137,7 +137,7 @@ func ecGenerate(session *pkcs11helpers.Session, label, curveStr string) (*ecdsa.
 	}
 	log.Printf("Generating ECDSA key with curve %s and ID %x\n", curveStr, keyID)
 	args := ecArgs(label, curve, keyID)
-	pub, priv, err := session.Module.GenerateKeyPair(session.Session, args.mechanism, args.publicAttrs, args.privateAttrs)
+	pub, priv, err := session.GenerateKeyPair(args.mechanism, args.publicAttrs, args.privateAttrs)
 	if err != nil {
 		return nil, nil, err
 	}

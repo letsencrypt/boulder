@@ -368,7 +368,7 @@ func newSigner(session *pkcs11helpers.Session, label string, id []byte) (crypto.
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve private key handle: %s", err)
 	}
-	attrs, err := session.Module.GetAttributeValue(session.Session, privateHandle, []*pkcs11.Attribute{
+	attrs, err := session.GetAttributeValue(privateHandle, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil)},
 	)
 	if err != nil {

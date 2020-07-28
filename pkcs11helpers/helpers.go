@@ -54,6 +54,14 @@ func Initialize(module string, slot uint, pin string) (*Session, error) {
 	return &Session{ctx, session}, nil
 }
 
+func (s *Session) GetAttributeValue(object pkcs11.ObjectHandle, attributes []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
+	return s.Module.GetAttributeValue(s.Session, object, attributes)
+}
+
+func (s *Session) GenerateKeyPair(m []*pkcs11.Mechanism, pubAttrs []*pkcs11.Attribute, privAttrs []*pkcs11.Attribute) (pkcs11.ObjectHandle, pkcs11.ObjectHandle, error) {
+	return s.Module.GenerateKeyPair(s.Session, m, pubAttrs, privAttrs)
+}
+
 func (s *Session) GetRSAPublicKey(object pkcs11.ObjectHandle) (*rsa.PublicKey, error) {
 	// Retrieve the public exponent and modulus for the public key
 	attrs, err := s.Module.GetAttributeValue(s.Session, object, []*pkcs11.Attribute{
