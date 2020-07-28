@@ -61,7 +61,7 @@ func TestGenerateKeyRSA(t *testing.T) {
 		// Chop of the hash identifier and feed back into rsa.SignPKCS1v15
 		return rsa.SignPKCS1v15(rand.Reader, rsaPriv, crypto.SHA256, msg[19:])
 	}
-	s := &pkcs11helpers.Session{&ctx, 0}
+	s := &pkcs11helpers.Session{Module: &ctx, Session: 0}
 	keyPath := path.Join(tmp, "test-rsa-key.pem")
 	keyInfo, err := generateKey(s, "", keyPath, keyGenConfig{
 		Type:         "rsa",
@@ -94,7 +94,7 @@ func TestGenerateKeyEC(t *testing.T) {
 		return ecPKCS11Sign(ecPriv, msg)
 	}
 	keyPath := path.Join(tmp, "test-ecdsa-key.pem")
-	s := &pkcs11helpers.Session{&ctx, 0}
+	s := &pkcs11helpers.Session{Module: &ctx, Session: 0}
 	keyInfo, err := generateKey(s, "", keyPath, keyGenConfig{
 		Type:       "ecdsa",
 		ECDSACurve: "P-256",
@@ -118,7 +118,7 @@ func TestGenerateKeySlotHasSomething(t *testing.T) {
 		return []pkcs11.ObjectHandle{1}, false, nil
 	}
 	keyPath := path.Join(tmp, "should-not-exist.pem")
-	s := &pkcs11helpers.Session{&ctx, 0}
+	s := &pkcs11helpers.Session{Module: &ctx, Session: 0}
 	_, err = generateKey(s, "", keyPath, keyGenConfig{
 		Type:       "ecdsa",
 		ECDSACurve: "P-256",

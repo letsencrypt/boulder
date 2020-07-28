@@ -14,7 +14,7 @@ import (
 )
 
 func TestRSAPub(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{}
+	s, ctx := pkcs11helpers.NewSessionWithMock()
 
 	// test we fail to construct key with non-matching exp
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
@@ -23,7 +23,6 @@ func TestRSAPub(t *testing.T) {
 			pkcs11.NewAttribute(pkcs11.CKA_MODULUS, []byte{255}),
 		}, nil
 	}
-	s := &pkcs11helpers.Session{ctx, 0}
 	_, err := rsaPub(s, 0, 0, 255)
 	test.AssertError(t, err, "rsaPub didn't fail with non-matching exp")
 
@@ -49,8 +48,7 @@ func TestRSAPub(t *testing.T) {
 }
 
 func TestRSAVerify(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{}
-	s := &pkcs11helpers.Session{&ctx, 0}
+	s, ctx := pkcs11helpers.NewSessionWithMock()
 
 	// test GenerateRandom failing
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
@@ -101,8 +99,7 @@ func TestRSAVerify(t *testing.T) {
 }
 
 func TestRSAGenerate(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{}
-	s := &pkcs11helpers.Session{&ctx, 0}
+	s, ctx := pkcs11helpers.NewSessionWithMock()
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
 		return []byte{1, 2, 3}, nil
 	}

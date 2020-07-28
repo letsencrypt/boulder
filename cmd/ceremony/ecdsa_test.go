@@ -13,13 +13,12 @@ import (
 )
 
 func TestECPub(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{}
+	s, ctx := pkcs11helpers.NewSessionWithMock()
 
 	// test we fail when pkcs11helpers.GetECDSAPublicKey fails
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return nil, errors.New("bad!")
 	}
-	s := &pkcs11helpers.Session{&ctx, 0}
 	_, err := ecPub(s, 0, elliptic.P256())
 	test.AssertError(t, err, "ecPub didn't fail with non-matching curve")
 	test.AssertEquals(t, err.Error(), "Failed to retrieve key attributes: bad!")
@@ -36,9 +35,7 @@ func TestECPub(t *testing.T) {
 }
 
 func TestECVerify(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{}
-	s := &pkcs11helpers.Session{&ctx, 0}
-
+	s, ctx := pkcs11helpers.NewSessionWithMock()
 	// test GenerateRandom failing
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
 		return nil, errors.New("yup")
@@ -85,7 +82,7 @@ func TestECVerify(t *testing.T) {
 
 func TestECGenerate(t *testing.T) {
 	ctx := pkcs11helpers.MockCtx{}
-	s := &pkcs11helpers.Session{&ctx, 0}
+	s := &pkcs11helpers.Session{Module: &ctx, Session: 0}
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
 		return []byte{1, 2, 3}, nil
 	}

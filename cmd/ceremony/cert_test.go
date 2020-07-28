@@ -20,8 +20,7 @@ import (
 )
 
 func TestX509Signer(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{}
-	s := &pkcs11helpers.Session{&ctx, 0}
+	s, ctx := pkcs11helpers.NewSessionWithMock()
 
 	// test that x509Signer.Sign properly converts the PKCS#11 format signature to
 	// the RFC 5480 format signature
@@ -79,9 +78,8 @@ func TestParseOID(t *testing.T) {
 }
 
 func TestMakeTemplate(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{}
+	s, ctx := pkcs11helpers.NewSessionWithMock()
 	profile := &certProfile{}
-	s := &pkcs11helpers.Session{&ctx, 0}
 	randReader := newRandReader(s)
 
 	pubKey, err := hex.DecodeString("3059301306072a8648ce3d020106082a8648ce3d03010703420004b06745ef0375c9c54057098f077964e18d3bed0aacd54545b16eab8c539b5768cc1cea93ba56af1e22a7a01c33048c8885ed17c9c55ede70649b707072689f5e")
@@ -159,14 +157,12 @@ func TestMakeTemplate(t *testing.T) {
 }
 
 func TestMakeTemplateOCSP(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{
-		GenerateRandomFunc: func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
-			r := make([]byte, length)
-			_, err := rand.Read(r)
-			return r, err
-		},
+	s, ctx := pkcs11helpers.NewSessionWithMock()
+	ctx.GenerateRandomFunc = func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
+		r := make([]byte, length)
+		_, err := rand.Read(r)
+		return r, err
 	}
-	s := &pkcs11helpers.Session{ctx, 0}
 	randReader := newRandReader(s)
 	profile := &certProfile{
 		SignatureAlgorithm: "SHA256WithRSA",
@@ -209,14 +205,12 @@ func TestMakeTemplateOCSP(t *testing.T) {
 }
 
 func TestMakeTemplateCRL(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{
-		GenerateRandomFunc: func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
-			r := make([]byte, length)
-			_, err := rand.Read(r)
-			return r, err
-		},
+	s, ctx := pkcs11helpers.NewSessionWithMock()
+	ctx.GenerateRandomFunc = func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
+		r := make([]byte, length)
+		_, err := rand.Read(r)
+		return r, err
 	}
-	s := &pkcs11helpers.Session{ctx, 0}
 	randReader := newRandReader(s)
 	profile := &certProfile{
 		SignatureAlgorithm: "SHA256WithRSA",
@@ -466,8 +460,7 @@ func TestVerifyProfile(t *testing.T) {
 }
 
 func TestGetKey(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{}
-	s := &pkcs11helpers.Session{&ctx, 0}
+	s, ctx := pkcs11helpers.NewSessionWithMock()
 
 	// test newSigner fails when pkcs11helpers.FindObject for private key handle fails
 	ctx.FindObjectsInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Attribute) error {

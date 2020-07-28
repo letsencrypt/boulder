@@ -214,6 +214,15 @@ func (s *Session) FindObject(tmpl []*pkcs11.Attribute) (pkcs11.ObjectHandle, err
 	return handles[0], nil
 }
 
+func NewMock() *MockCtx {
+	return &MockCtx{}
+}
+
+func NewSessionWithMock() (*Session, *MockCtx) {
+	ctx := NewMock()
+	return &Session{ctx, 0}, ctx
+}
+
 type MockCtx struct {
 	GenerateKeyPairFunc   func(pkcs11.SessionHandle, []*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) (pkcs11.ObjectHandle, pkcs11.ObjectHandle, error)
 	GetAttributeValueFunc func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error)
