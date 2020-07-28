@@ -240,55 +240,6 @@ func TestFindObjectSucceeds(t *testing.T) {
 	test.AssertEquals(t, handle, pkcs11.ObjectHandle(1))
 }
 
-func TestX509Signer(t *testing.T) {
-	ctx := MockCtx{}
-
-	// test that x509Signer.Sign properly converts the PKCS#11 format signature to
-	// the RFC 5480 format signature
-	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
-		return nil
-	}
-	tk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "Failed to generate test key")
-	ctx.SignFunc = func(_ pkcs11.SessionHandle, digest []byte) ([]byte, error) {
-		r, s, err := ecdsa.Sign(rand.Reader, tk, digest[:])
-		if err != nil {
-			return nil, err
-		}
-		rBytes := r.Bytes()
-		sBytes := s.Bytes()
-		// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/os/pkcs11-curr-v2.40-os.html
-		// Section 2.3.1: EC Signatures
-		// "If r and s have different octet length, the shorter of both must be padded with
-		// leading zero octets such that both have the same octet length."
-		switch {
-		case len(rBytes) < len(sBytes):
-			padding := make([]byte, len(sBytes)-len(rBytes))
-			rBytes = append(padding, rBytes...)
-		case len(rBytes) > len(sBytes):
-			padding := make([]byte, len(rBytes)-len(sBytes))
-			sBytes = append(padding, sBytes...)
-		}
-		return append(rBytes, sBytes...), nil
-	}
-	digest := sha256.Sum256([]byte("hello"))
-	s := &Session{ctx, 0}
-	signer := &x509Signer{session: s, keyType: ECDSAKey, pub: tk.Public()}
-	signature, err := signer.Sign(nil, digest[:], crypto.SHA256)
-	test.AssertNotError(t, err, "x509Signer.Sign failed")
-
-	var rfcFormat struct {
-		R, S *big.Int
-	}
-	rest, err := asn1.Unmarshal(signature, &rfcFormat)
-	test.AssertNotError(t, err, "asn1.Unmarshal failed trying to parse signature")
-	test.Assert(t, len(rest) == 0, "Signature had trailing garbage")
-	verified := ecdsa.Verify(&tk.PublicKey, digest[:], rfcFormat.R, rfcFormat.S)
-	test.Assert(t, verified, "Failed to verify RFC format signature")
-	// For the sake of coverage
-	test.AssertEquals(t, signer.Public(), tk.Public())
-}
-
 func TestGetKeyWhenGetAttributeValueFails(t *testing.T) {
 	s, ctx := newSessionWithMock()
 	pubKey := &rsa.PublicKey{N: big.NewInt(1), E: 1}

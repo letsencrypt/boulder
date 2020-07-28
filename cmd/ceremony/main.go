@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"flag"
@@ -347,9 +348,16 @@ func openSigner(cfg PKCS11SigningConfig, issuer *x509.Certificate) (crypto.Signe
 			cfg.SigningSlot, err)
 	}
 	log.Printf("Opened PKCS#11 session for slot %d\n", cfg.SigningSlot)
-	signer, err := session.NewSigner(cfg.SigningLabel, issuer.PublicKey)
+	keyID, err := hex.DecodeString(cfg.SigningKeyID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to decode key-id: %s", err)
+	}
+	signer, err := newSigner(session, cfg.SigningLabel, keyID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to retrieve private key handle: %s", err)
+	}
+	if !equalPubKeys(signer.Public(), issuer.PublicKey) {
+		return nil, nil, fmt.Errorf("signer pubkey did not match issuer pubkey")
 	}
 	log.Println("Retrieved private key handle")
 	return signer, newRandReader(session), nil
@@ -406,7 +414,7 @@ func rootCeremony(configBytes []byte) error {
 	if err != nil {
 		return err
 	}
-	signer, err := session.NewSigner(config.PKCS11.StoreLabel, keyInfo.key)
+	signer, err := newSigner(session, config.PKCS11.StoreLabel, keyInfo.id)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve signer: %s", err)
 	}
