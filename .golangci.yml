@@ -1,10 +1,11 @@
 linters:
   disable-all: true
   enable:
-    - govet
-    - gofmt
-    - ineffassign
     - errcheck
+    - gofmt
+    - gosec
+    - govet
+    - ineffassign
     - misspell
     - staticcheck
 linters-settings:
@@ -12,6 +13,22 @@ linters-settings:
     ignore: fmt:[FS]?[Pp]rint*,io:Write,os:Remove,net/http:Write,github.com/miekg/dns:WriteMsg,net:Write,encoding/binary:Write
 issues:
   exclude-rules:
+    - linters:
+      - gosec
+      # TODO: Identify, fix, and remove violations of each of these rules
+      # G101: Potential hardcoded credentials
+      # G102: Binds to all network interfaces
+      # G107: Potential HTTP request made with variable url
+      # G201: SQL string formatting
+      # G202: SQL string concatenation
+      # G306: Expect WriteFile permissions to be 0600 or less
+      # G401: Use of weak cryptographic primitive
+      # G402: TLS InsecureSkipVerify set true.
+      # G403: RSA keys should be at least 2048 bits
+      # G501: Blacklisted import `crypto/md5`: weak cryptographic primitive
+      # G505: Blacklisted import `crypto/sha1`: weak cryptographic primitive
+      # G601: Implicit memory aliasing in for loop.
+      text: "G(101|102|107|201|202|306|401|402|403|501|505|601)"
     - linters:
       - staticcheck
       text: "(SA1019|ST1005|ST1013|SA6003|SA5011|S1029|SA2002):"
