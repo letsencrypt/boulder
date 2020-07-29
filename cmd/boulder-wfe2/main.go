@@ -244,6 +244,7 @@ func setupWFE(c config, logger blog.Logger, stats prometheus.Registerer, clk clo
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to get nonce service")
 		rns = noncepb.NewNonceServiceClient(rnsConn)
 		for prefix, serviceConfig := range c.WFE.RedeemNonceServices {
+			serviceConfig := serviceConfig
 			conn, err := bgrpc.ClientSetup(&serviceConfig, tlsConfig, clientMetrics, clk)
 			cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to redeem nonce service")
 			npm[prefix] = noncepb.NewNonceServiceClient(conn)
