@@ -1,7 +1,16 @@
 package pkcs11helpers
 
 import (
+	"bytes"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/asn1"
 	"errors"
+	"math/big"
 	"strings"
 	"testing"
 
@@ -229,4 +238,153 @@ func TestFindObjectSucceeds(t *testing.T) {
 	handle, err := s.FindObject(nil)
 	test.AssertNotError(t, err, "FindObject failed when everything worked as expected")
 	test.AssertEquals(t, handle, pkcs11.ObjectHandle(1))
+}
+
+func TestX509Signer(t *testing.T) {
+	ctx := MockCtx{}
+
+	// test that x509Signer.Sign properly converts the PKCS#11 format signature to
+	// the RFC 5480 format signature
+	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
+		return nil
+	}
+	tk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "Failed to generate test key")
+	ctx.SignFunc = func(_ pkcs11.SessionHandle, digest []byte) ([]byte, error) {
+		r, s, err := ecdsa.Sign(rand.Reader, tk, digest[:])
+		if err != nil {
+			return nil, err
+		}
+		rBytes := r.Bytes()
+		sBytes := s.Bytes()
+		// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/os/pkcs11-curr-v2.40-os.html
+		// Section 2.3.1: EC Signatures
+		// "If r and s have different octet length, the shorter of both must be padded with
+		// leading zero octets such that both have the same octet length."
+		switch {
+		case len(rBytes) < len(sBytes):
+			padding := make([]byte, len(sBytes)-len(rBytes))
+			rBytes = append(padding, rBytes...)
+		case len(rBytes) > len(sBytes):
+			padding := make([]byte, len(rBytes)-len(sBytes))
+			sBytes = append(padding, sBytes...)
+		}
+		return append(rBytes, sBytes...), nil
+	}
+	digest := sha256.Sum256([]byte("hello"))
+	s := &Session{ctx, 0}
+	signer := &x509Signer{session: s, keyType: ECDSAKey, pub: tk.Public()}
+	signature, err := signer.Sign(nil, digest[:], crypto.SHA256)
+	test.AssertNotError(t, err, "x509Signer.Sign failed")
+
+	var rfcFormat struct {
+		R, S *big.Int
+	}
+	rest, err := asn1.Unmarshal(signature, &rfcFormat)
+	test.AssertNotError(t, err, "asn1.Unmarshal failed trying to parse signature")
+	test.Assert(t, len(rest) == 0, "Signature had trailing garbage")
+	verified := ecdsa.Verify(&tk.PublicKey, digest[:], rfcFormat.R, rfcFormat.S)
+	test.Assert(t, verified, "Failed to verify RFC format signature")
+	// For the sake of coverage
+	test.AssertEquals(t, signer.Public(), tk.Public())
+}
+
+func TestGetKeyWhenGetAttributeValueFails(t *testing.T) {
+	s, ctx := newSessionWithMock()
+	pubKey := &rsa.PublicKey{N: big.NewInt(1), E: 1}
+
+	// test newSigner fails when GetAttributeValue fails
+	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
+		return nil, errors.New("broken")
+	}
+	_, err := s.NewSigner("label", pubKey)
+	test.AssertError(t, err, "newSigner didn't fail when GetAttributeValue for private key type failed")
+}
+
+func TestGetKeyWhenGetAttributeValueReturnsNone(t *testing.T) {
+	s, ctx := newSessionWithMock()
+	pubKey := &rsa.PublicKey{N: big.NewInt(1), E: 1}
+
+	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
+		return nil, errors.New("broken")
+	}
+	// test newSigner fails when GetAttributeValue returns no attributes
+	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
+		return nil, nil
+	}
+	_, err := s.NewSigner("label", pubKey)
+	test.AssertError(t, err, "newSigner didn't fail when GetAttributeValue for private key type returned no attributes")
+}
+
+func TestGetKeyWhenFindObjectForPublicKeyFails(t *testing.T) {
+	s, ctx := newSessionWithMock()
+	pubKey := &rsa.PublicKey{N: big.NewInt(1), E: 1}
+
+	// test newSigner fails when FindObject for public key
+	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
+		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_EC)}, nil
+	}
+	ctx.FindObjectsInitFunc = func(_ pkcs11.SessionHandle, tmpl []*pkcs11.Attribute) error {
+		if bytes.Equal(tmpl[0].Value, []byte{2, 0, 0, 0, 0, 0, 0, 0}) {
+			return errors.New("broken")
+		}
+		return nil
+	}
+	_, err := s.NewSigner("label", pubKey)
+	test.AssertError(t, err, "newSigner didn't fail when FindObject for public key handle failed")
+}
+
+func TestGetKeyWhenFindObjectForPrivateKeyReturnsUnknownType(t *testing.T) {
+	s, ctx := newSessionWithMock()
+	pubKey := &rsa.PublicKey{N: big.NewInt(1), E: 1}
+
+	// test newSigner fails when FindObject for private key returns unknown CKA_KEY_TYPE
+	ctx.FindObjectsInitFunc = func(_ pkcs11.SessionHandle, tmpl []*pkcs11.Attribute) error {
+		return nil
+	}
+	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
+		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{2, 0, 0, 0, 0, 0, 0, 0})}, nil
+	}
+	_, err := s.NewSigner("label", pubKey)
+	test.AssertError(t, err, "newSigner didn't fail when GetAttributeValue for private key returned unknown key type")
+}
+
+func TestGetKeyWhenFindObjectForPrivateKeyFails(t *testing.T) {
+	s, ctx := newSessionWithMock()
+	pubKey := &rsa.PublicKey{N: big.NewInt(1), E: 1}
+
+	// test newSigner fails when FindObject for private key fails
+	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
+		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{0, 0, 0, 0, 0, 0, 0, 0})}, nil
+	}
+	_, err := s.NewSigner("label", pubKey)
+	test.AssertError(t, err, "newSigner didn't fail when GetRSAPublicKey fails")
+
+	// test newSigner fails when GetECDSAPublicKey fails
+	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
+		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{3, 0, 0, 0, 0, 0, 0, 0})}, nil
+	}
+	_, err = s.NewSigner("label", pubKey)
+	test.AssertError(t, err, "newSigner didn't fail when GetECDSAPublicKey fails")
+}
+
+func TestGetKeySucceeds(t *testing.T) {
+	s, ctx := newSessionWithMock()
+	pubKey := &rsa.PublicKey{N: big.NewInt(1), E: 1}
+
+	// test newSigner works when everything... works
+	ctx.GetAttributeValueFunc = func(_ pkcs11.SessionHandle, _ pkcs11.ObjectHandle, attrs []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
+		var returns []*pkcs11.Attribute
+		for _, attr := range attrs {
+			switch attr.Type {
+			case pkcs11.CKA_ID:
+				returns = append(returns, pkcs11.NewAttribute(pkcs11.CKA_ID, []byte{99}))
+			default:
+				return nil, errors.New("GetAttributeValue got unexpected attribute type")
+			}
+		}
+		return returns, nil
+	}
+	_, err := s.NewSigner("label", pubKey)
+	test.AssertNotError(t, err, "newSigner failed when everything worked properly")
 }
