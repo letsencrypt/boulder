@@ -24,32 +24,47 @@ type PKCtx interface {
 	FindObjectsFinal(sh pkcs11.SessionHandle) error
 }
 
-func Initialize(module string, slot uint, pin string) (PKCtx, pkcs11.SessionHandle, error) {
+// Session represents a session with a given PKCS#11 module. It is not safe for
+// concurrent access.
+type Session struct {
+	Module  PKCtx
+	Session pkcs11.SessionHandle
+}
+
+func Initialize(module string, slot uint, pin string) (*Session, error) {
 	ctx := pkcs11.New(module)
 	if ctx == nil {
-		return nil, 0, errors.New("failed to load module")
+		return nil, errors.New("failed to load module")
 	}
 	err := ctx.Initialize()
 	if err != nil {
-		return nil, 0, fmt.Errorf("couldn't initialize context: %s", err)
+		return nil, fmt.Errorf("couldn't initialize context: %s", err)
 	}
 
 	session, err := ctx.OpenSession(slot, pkcs11.CKF_SERIAL_SESSION|pkcs11.CKF_RW_SESSION)
 	if err != nil {
-		return nil, 0, fmt.Errorf("couldn't open session: %s", err)
+		return nil, fmt.Errorf("couldn't open session: %s", err)
 	}
 
 	err = ctx.Login(session, pkcs11.CKU_USER, pin)
 	if err != nil {
-		return nil, 0, fmt.Errorf("couldn't login: %s", err)
+		return nil, fmt.Errorf("couldn't login: %s", err)
 	}
 
-	return ctx, session, nil
+	return &Session{ctx, session}, nil
 }
 
-func GetRSAPublicKey(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle) (*rsa.PublicKey, error) {
+func (s *Session) GetAttributeValue(object pkcs11.ObjectHandle, attributes []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
+	return s.Module.GetAttributeValue(s.Session, object, attributes)
+}
+
+func (s *Session) GenerateKeyPair(m []*pkcs11.Mechanism, pubAttrs []*pkcs11.Attribute, privAttrs []*pkcs11.Attribute) (pkcs11.ObjectHandle, pkcs11.ObjectHandle, error) {
+	return s.Module.GenerateKeyPair(s.Session, m, pubAttrs, privAttrs)
+}
+
+func (s *Session) GetRSAPublicKey(object pkcs11.ObjectHandle) (*rsa.PublicKey, error) {
 	// Retrieve the public exponent and modulus for the public key
-	attrs, err := ctx.GetAttributeValue(session, object, []*pkcs11.Attribute{
+	attrs, err := s.Module.GetAttributeValue(s.Session, object, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_MODULUS, nil),
 	})
@@ -86,9 +101,9 @@ var oidDERToCurve = map[string]elliptic.Curve{
 	"06052B81040023":       elliptic.P521(),
 }
 
-func GetECDSAPublicKey(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle) (*ecdsa.PublicKey, error) {
+func (s *Session) GetECDSAPublicKey(object pkcs11.ObjectHandle) (*ecdsa.PublicKey, error) {
 	// Retrieve the curve and public point for the generated public key
-	attrs, err := ctx.GetAttributeValue(session, object, []*pkcs11.Attribute{
+	attrs, err := s.Module.GetAttributeValue(s.Session, object, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_EC_PARAMS, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, nil),
 	})
@@ -152,7 +167,7 @@ var hashIdentifiers = map[crypto.Hash][]byte{
 	crypto.SHA512: {0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05, 0x00, 0x04, 0x40},
 }
 
-func Sign(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, keyType KeyType, digest []byte, hash crypto.Hash) ([]byte, error) {
+func (s *Session) Sign(object pkcs11.ObjectHandle, keyType KeyType, digest []byte, hash crypto.Hash) ([]byte, error) {
 	if len(digest) != hash.Size() {
 		return nil, errors.New("digest length doesn't match hash length")
 	}
@@ -170,11 +185,11 @@ func Sign(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, k
 		mech[0] = pkcs11.NewMechanism(pkcs11.CKM_ECDSA, nil)
 	}
 
-	err := ctx.SignInit(session, mech, object)
+	err := s.Module.SignInit(s.Session, mech, object)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize signing operation: %s", err)
 	}
-	signature, err := ctx.Sign(session, digest)
+	signature, err := s.Module.Sign(s.Session, digest)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign data: %s", err)
 	}
@@ -187,15 +202,15 @@ var ErrNoObject = errors.New("no objects found matching provided template")
 // FindObject looks up a PKCS#11 object handle based on the provided template.
 // In the case where zero or more than one objects are found to match the
 // template an error is returned.
-func FindObject(ctx PKCtx, session pkcs11.SessionHandle, tmpl []*pkcs11.Attribute) (pkcs11.ObjectHandle, error) {
-	if err := ctx.FindObjectsInit(session, tmpl); err != nil {
+func (s *Session) FindObject(tmpl []*pkcs11.Attribute) (pkcs11.ObjectHandle, error) {
+	if err := s.Module.FindObjectsInit(s.Session, tmpl); err != nil {
 		return 0, err
 	}
-	handles, _, err := ctx.FindObjects(session, 2)
+	handles, _, err := s.Module.FindObjects(s.Session, 2)
 	if err != nil {
 		return 0, err
 	}
-	if err := ctx.FindObjectsFinal(session); err != nil {
+	if err := s.Module.FindObjectsFinal(s.Session); err != nil {
 		return 0, err
 	}
 	if len(handles) == 0 {
@@ -205,6 +220,15 @@ func FindObject(ctx PKCtx, session pkcs11.SessionHandle, tmpl []*pkcs11.Attribut
 		return 0, fmt.Errorf("too many objects (%d) that match the provided template", len(handles))
 	}
 	return handles[0], nil
+}
+
+func NewMock() *MockCtx {
+	return &MockCtx{}
+}
+
+func NewSessionWithMock() (*Session, *MockCtx) {
+	ctx := NewMock()
+	return &Session{ctx, 0}, ctx
 }
 
 type MockCtx struct {

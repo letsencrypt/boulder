@@ -317,9 +317,7 @@ func (fr *failReader) Read([]byte) (int, error) {
 // PKCS#11 ECDSA signature format and the RFC 5480 one which is required
 // for X.509 certificates
 type x509Signer struct {
-	ctx pkcs11helpers.PKCtx
-
-	session      pkcs11.SessionHandle
+	session      *pkcs11helpers.Session
 	objectHandle pkcs11.ObjectHandle
 	keyType      pkcs11helpers.KeyType
 
@@ -330,7 +328,7 @@ type x509Signer struct {
 // is converted from the PKCS#11 format to the RFC 5480 format. For RSA keys a
 // conversion step is not needed.
 func (p *x509Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
-	signature, err := pkcs11helpers.Sign(p.ctx, p.session, p.objectHandle, p.keyType, digest, opts.HashFunc())
+	signature, err := p.session.Sign(p.objectHandle, p.keyType, digest, opts.HashFunc())
 	if err != nil {
 		return nil, err
 	}
@@ -359,10 +357,10 @@ func (p *x509Signer) Public() crypto.PublicKey {
 // having the actual public key object in order to retrieve the private key
 // handle. This is because we already have the key pair object ID, and as such
 // do not need to query the HSM to retrieve it.
-func newSigner(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string, id []byte) (crypto.Signer, error) {
+func newSigner(session *pkcs11helpers.Session, label string, id []byte) (crypto.Signer, error) {
 	// Retrieve the private key handle that will later be used for the certificate
 	// signing operation
-	privateHandle, err := pkcs11helpers.FindObject(ctx, session, []*pkcs11.Attribute{
+	privateHandle, err := session.FindObject([]*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PRIVATE_KEY),
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 		pkcs11.NewAttribute(pkcs11.CKA_ID, id),
@@ -370,7 +368,7 @@ func newSigner(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label stri
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve private key handle: %s", err)
 	}
-	attrs, err := ctx.GetAttributeValue(session, privateHandle, []*pkcs11.Attribute{
+	attrs, err := session.GetAttributeValue(privateHandle, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil)},
 	)
 	if err != nil {
@@ -382,7 +380,7 @@ func newSigner(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label stri
 
 	// Retrieve the public key handle with the same CKA_ID as the private key
 	// and construct a {rsa,ecdsa}.PublicKey for use in x509.CreateCertificate
-	pubHandle, err := pkcs11helpers.FindObject(ctx, session, []*pkcs11.Attribute{
+	pubHandle, err := session.FindObject([]*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 		pkcs11.NewAttribute(pkcs11.CKA_ID, id),
@@ -397,14 +395,14 @@ func newSigner(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label stri
 	// 0x00000000, CKK_RSA
 	case bytes.Equal(attrs[0].Value, []byte{0, 0, 0, 0, 0, 0, 0, 0}):
 		keyType = pkcs11helpers.RSAKey
-		pub, err = pkcs11helpers.GetRSAPublicKey(ctx, session, pubHandle)
+		pub, err = session.GetRSAPublicKey(pubHandle)
 		if err != nil {
 			return nil, fmt.Errorf("failed to retrieve public key: %s", err)
 		}
 	// 0x00000003, CKK_ECDSA
 	case bytes.Equal(attrs[0].Value, []byte{3, 0, 0, 0, 0, 0, 0, 0}):
 		keyType = pkcs11helpers.ECDSAKey
-		pub, err = pkcs11helpers.GetECDSAPublicKey(ctx, session, pubHandle)
+		pub, err = session.GetECDSAPublicKey(pubHandle)
 		if err != nil {
 			return nil, fmt.Errorf("failed to retrieve public key: %s", err)
 		}
@@ -413,7 +411,6 @@ func newSigner(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label stri
 	}
 
 	return &x509Signer{
-		ctx:          ctx,
 		session:      session,
 		objectHandle: privateHandle,
 		keyType:      keyType,

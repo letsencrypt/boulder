@@ -20,7 +20,7 @@ import (
 )
 
 func TestX509Signer(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{}
+	s, ctx := pkcs11helpers.NewSessionWithMock()
 
 	// test that x509Signer.Sign properly converts the PKCS#11 format signature to
 	// the RFC 5480 format signature
@@ -51,7 +51,7 @@ func TestX509Signer(t *testing.T) {
 		return append(rBytes, sBytes...), nil
 	}
 	digest := sha256.Sum256([]byte("hello"))
-	signer := &x509Signer{ctx: ctx, keyType: pkcs11helpers.ECDSAKey, pub: tk.Public()}
+	signer := &x509Signer{session: s, keyType: pkcs11helpers.ECDSAKey, pub: tk.Public()}
 	signature, err := signer.Sign(nil, digest[:], crypto.SHA256)
 	test.AssertNotError(t, err, "x509Signer.Sign failed")
 
@@ -78,9 +78,9 @@ func TestParseOID(t *testing.T) {
 }
 
 func TestMakeTemplate(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{}
+	s, ctx := pkcs11helpers.NewSessionWithMock()
 	profile := &certProfile{}
-	randReader := newRandReader(&ctx, 0)
+	randReader := newRandReader(s)
 
 	pubKey, err := hex.DecodeString("3059301306072a8648ce3d020106082a8648ce3d03010703420004b06745ef0375c9c54057098f077964e18d3bed0aacd54545b16eab8c539b5768cc1cea93ba56af1e22a7a01c33048c8885ed17c9c55ede70649b707072689f5e")
 	test.AssertNotError(t, err, "failed to decode test public key")
@@ -157,14 +157,13 @@ func TestMakeTemplate(t *testing.T) {
 }
 
 func TestMakeTemplateOCSP(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{
-		GenerateRandomFunc: func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
-			r := make([]byte, length)
-			_, err := rand.Read(r)
-			return r, err
-		},
+	s, ctx := pkcs11helpers.NewSessionWithMock()
+	ctx.GenerateRandomFunc = func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
+		r := make([]byte, length)
+		_, err := rand.Read(r)
+		return r, err
 	}
-	randReader := newRandReader(&ctx, 0)
+	randReader := newRandReader(s)
 	profile := &certProfile{
 		SignatureAlgorithm: "SHA256WithRSA",
 		CommonName:         "common name",
@@ -206,14 +205,13 @@ func TestMakeTemplateOCSP(t *testing.T) {
 }
 
 func TestMakeTemplateCRL(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{
-		GenerateRandomFunc: func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
-			r := make([]byte, length)
-			_, err := rand.Read(r)
-			return r, err
-		},
+	s, ctx := pkcs11helpers.NewSessionWithMock()
+	ctx.GenerateRandomFunc = func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
+		r := make([]byte, length)
+		_, err := rand.Read(r)
+		return r, err
 	}
-	randReader := newRandReader(&ctx, 0)
+	randReader := newRandReader(s)
 	profile := &certProfile{
 		SignatureAlgorithm: "SHA256WithRSA",
 		CommonName:         "common name",
@@ -462,13 +460,13 @@ func TestVerifyProfile(t *testing.T) {
 }
 
 func TestGetKey(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{}
+	s, ctx := pkcs11helpers.NewSessionWithMock()
 
 	// test newSigner fails when pkcs11helpers.FindObject for private key handle fails
 	ctx.FindObjectsInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Attribute) error {
 		return errors.New("broken")
 	}
-	_, err := newSigner(ctx, 0, "label", []byte{255, 255})
+	_, err := newSigner(s, "label", []byte{255, 255})
 	test.AssertError(t, err, "newSigner didn't fail when pkcs11helpers.FindObject for private key handle failed")
 
 	// test newSigner fails when GetAttributeValue fails
@@ -484,14 +482,14 @@ func TestGetKey(t *testing.T) {
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return nil, errors.New("broken")
 	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
+	_, err = newSigner(s, "label", []byte{255, 255})
 	test.AssertError(t, err, "newSigner didn't fail when GetAttributeValue for private key type failed")
 
 	// test newSigner fails when GetAttributeValue returns no attributes
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return nil, nil
 	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
+	_, err = newSigner(s, "label", []byte{255, 255})
 	test.AssertError(t, err, "newSigner didn't fail when GetAttributeValue for private key type returned no attributes")
 
 	// test newSigner fails when pkcs11helpers.FindObject for public key handle fails
@@ -504,7 +502,7 @@ func TestGetKey(t *testing.T) {
 		}
 		return nil
 	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
+	_, err = newSigner(s, "label", []byte{255, 255})
 	test.AssertError(t, err, "newSigner didn't fail when pkcs11helpers.FindObject for public key handle failed")
 
 	// test newSigner fails when pkcs11helpers.FindObject for private key returns unknown CKA_KEY_TYPE
@@ -514,21 +512,21 @@ func TestGetKey(t *testing.T) {
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{2, 0, 0, 0, 0, 0, 0, 0})}, nil
 	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
+	_, err = newSigner(s, "label", []byte{255, 255})
 	test.AssertError(t, err, "newSigner didn't fail when GetAttributeValue for private key returned unknown key type")
 
 	// test newSigner fails when GetRSAPublicKey fails
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{0, 0, 0, 0, 0, 0, 0, 0})}, nil
 	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
+	_, err = newSigner(s, "label", []byte{255, 255})
 	test.AssertError(t, err, "newSigner didn't fail when GetRSAPublicKey fails")
 
 	// test newSigner fails when GetECDSAPublicKey fails
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{3, 0, 0, 0, 0, 0, 0, 0})}, nil
 	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
+	_, err = newSigner(s, "label", []byte{255, 255})
 	test.AssertError(t, err, "newSigner didn't fail when GetECDSAPublicKey fails")
 
 	// test newSigner works when everything... works
@@ -548,6 +546,6 @@ func TestGetKey(t *testing.T) {
 		}
 		return returns, nil
 	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
+	_, err = newSigner(s, "label", []byte{255, 255})
 	test.AssertNotError(t, err, "newSigner failed when everything worked properly")
 }

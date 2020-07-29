@@ -342,7 +342,7 @@ func equalPubKeys(a, b interface{}) bool {
 }
 
 func openSigner(cfg PKCS11SigningConfig, issuer *x509.Certificate) (crypto.Signer, *hsmRandReader, error) {
-	ctx, session, err := pkcs11helpers.Initialize(cfg.Module, cfg.SigningSlot, cfg.PIN)
+	session, err := pkcs11helpers.Initialize(cfg.Module, cfg.SigningSlot, cfg.PIN)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s",
 			cfg.SigningSlot, err)
@@ -352,7 +352,7 @@ func openSigner(cfg PKCS11SigningConfig, issuer *x509.Certificate) (crypto.Signe
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to decode key-id: %s", err)
 	}
-	signer, err := newSigner(ctx, session, cfg.SigningLabel, keyID)
+	signer, err := newSigner(session, cfg.SigningLabel, keyID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to retrieve private key handle: %s", err)
 	}
@@ -360,7 +360,7 @@ func openSigner(cfg PKCS11SigningConfig, issuer *x509.Certificate) (crypto.Signe
 		return nil, nil, fmt.Errorf("signer pubkey did not match issuer pubkey")
 	}
 	log.Println("Retrieved private key handle")
-	return signer, newRandReader(ctx, session), nil
+	return signer, newRandReader(session), nil
 }
 
 func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string) error {
@@ -405,20 +405,20 @@ func rootCeremony(configBytes []byte) error {
 	if err := config.validate(); err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
-	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.StoreSlot, config.PKCS11.PIN)
+	session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.StoreSlot, config.PKCS11.PIN)
 	if err != nil {
 		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.StoreSlot, err)
 	}
 	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.StoreSlot)
-	keyInfo, err := generateKey(ctx, session, config.PKCS11.StoreLabel, config.Outputs.PublicKeyPath, config.Key)
+	keyInfo, err := generateKey(session, config.PKCS11.StoreLabel, config.Outputs.PublicKeyPath, config.Key)
 	if err != nil {
 		return err
 	}
-	signer, err := newSigner(ctx, session, config.PKCS11.StoreLabel, keyInfo.id)
+	signer, err := newSigner(session, config.PKCS11.StoreLabel, keyInfo.id)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve signer: %s", err)
 	}
-	template, err := makeTemplate(newRandReader(ctx, session), &config.CertProfile, keyInfo.der, rootCert)
+	template, err := makeTemplate(newRandReader(session), &config.CertProfile, keyInfo.der, rootCert)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
@@ -486,12 +486,12 @@ func keyCeremony(configBytes []byte) error {
 	if err := config.validate(); err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
-	ctx, session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.StoreSlot, config.PKCS11.PIN)
+	session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.StoreSlot, config.PKCS11.PIN)
 	if err != nil {
 		return fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s", config.PKCS11.StoreSlot, err)
 	}
 	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.StoreSlot)
-	if _, err = generateKey(ctx, session, config.PKCS11.StoreLabel, config.Outputs.PublicKeyPath, config.Key); err != nil {
+	if _, err = generateKey(session, config.PKCS11.StoreLabel, config.Outputs.PublicKeyPath, config.Key); err != nil {
 		return err
 	}
 
