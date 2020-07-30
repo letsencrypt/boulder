@@ -1,4 +1,4 @@
-# github.com/beeker1121/goque v0.0.0-20170321141813-4044bc29b280
+# github.com/beeker1121/goque v2.1.0+incompatible
 github.com/beeker1121/goque
 # github.com/beorn7/perks v1.0.1
 github.com/beorn7/perks/quantile

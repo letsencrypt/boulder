@@ -3,6 +3,7 @@ package goque
 import (
 	"bytes"
 	"encoding/gob"
+	"encoding/json"
 	"os"
 	"sync"
 
@@ -126,13 +127,33 @@ func (pq *PriorityQueue) EnqueueString(priority uint8, value string) (*PriorityI
 // EnqueueObject is a helper function for Enqueue that accepts any
 // value type, which is then encoded into a byte slice using
 // encoding/gob.
+//
+// Objects containing pointers with zero values will decode to nil
+// when using this function. This is due to how the encoding/gob
+// package works. Because of this, you should only use this function
+// to encode simple types.
 func (pq *PriorityQueue) EnqueueObject(priority uint8, value interface{}) (*PriorityItem, error) {
 	var buffer bytes.Buffer
 	enc := gob.NewEncoder(&buffer)
 	if err := enc.Encode(value); err != nil {
 		return nil, err
 	}
+
 	return pq.Enqueue(priority, buffer.Bytes())
+}
+
+// EnqueueObjectAsJSON is a helper function for Enqueue that accepts
+// any value type, which is then encoded into a JSON byte slice using
+// encoding/json.
+//
+// Use this function to handle encoding of complex types.
+func (pq *PriorityQueue) EnqueueObjectAsJSON(priority uint8, value interface{}) (*PriorityItem, error) {
+	jsonBytes, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+
+	return pq.Enqueue(priority, jsonBytes)
 }
 
 // Dequeue removes the next item in the priority queue and returns it.
@@ -282,6 +303,11 @@ func (pq *PriorityQueue) UpdateString(priority uint8, id uint64, newValue string
 // UpdateObject is a helper function for Update that accepts any
 // value type, which is then encoded into a byte slice using
 // encoding/gob.
+//
+// Objects containing pointers with zero values will decode to nil
+// when using this function. This is due to how the encoding/gob
+// package works. Because of this, you should only use this function
+// to encode simple types.
 func (pq *PriorityQueue) UpdateObject(priority uint8, id uint64, newValue interface{}) (*PriorityItem, error) {
 	var buffer bytes.Buffer
 	enc := gob.NewEncoder(&buffer)
@@ -289,6 +315,20 @@ func (pq *PriorityQueue) UpdateObject(priority uint8, id uint64, newValue interf
 		return nil, err
 	}
 	return pq.Update(priority, id, buffer.Bytes())
+}
+
+// UpdateObjectAsJSON is a helper function for Update that accepts
+// any value type, which is then encoded into a JSON byte slice using
+// encoding/json.
+//
+// Use this function to handle encoding of complex types.
+func (pq *PriorityQueue) UpdateObjectAsJSON(priority uint8, id uint64, newValue interface{}) (*PriorityItem, error) {
+	jsonBytes, err := json.Marshal(newValue)
+	if err != nil {
+		return nil, err
+	}
+
+	return pq.Update(priority, id, jsonBytes)
 }
 
 // Length returns the total number of items in the priority queue.

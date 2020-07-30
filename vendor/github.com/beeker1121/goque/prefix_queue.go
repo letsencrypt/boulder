@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/gob"
+	"encoding/json"
 	"os"
 	"sync"
 
@@ -123,13 +124,33 @@ func (pq *PrefixQueue) EnqueueString(prefix, value string) (*Item, error) {
 // EnqueueObject is a helper function for Enqueue that accepts any
 // value type, which is then encoded into a byte slice using
 // encoding/gob.
+//
+// Objects containing pointers with zero values will decode to nil
+// when using this function. This is due to how the encoding/gob
+// package works. Because of this, you should only use this function
+// to encode simple types.
 func (pq *PrefixQueue) EnqueueObject(prefix []byte, value interface{}) (*Item, error) {
 	var buffer bytes.Buffer
 	enc := gob.NewEncoder(&buffer)
 	if err := enc.Encode(value); err != nil {
 		return nil, err
 	}
+
 	return pq.Enqueue(prefix, buffer.Bytes())
+}
+
+// EnqueueObjectAsJSON is a helper function for Enqueue that accepts
+// any value type, which is then encoded into a JSON byte slice using
+// encoding/json.
+//
+// Use this function to handle encoding of complex types.
+func (pq *PrefixQueue) EnqueueObjectAsJSON(prefix []byte, value interface{}) (*Item, error) {
+	jsonBytes, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+
+	return pq.Enqueue(prefix, jsonBytes)
 }
 
 // Dequeue removes the next item in the prefix queue and returns it.
@@ -271,6 +292,11 @@ func (pq *PrefixQueue) UpdateString(prefix string, id uint64, value string) (*It
 // UpdateObject is a helper function for Update that accepts any
 // value type, which is then encoded into a byte slice using
 // encoding/gob.
+//
+// Objects containing pointers with zero values will decode to nil
+// when using this function. This is due to how the encoding/gob
+// package works. Because of this, you should only use this function
+// to encode simple types.
 func (pq *PrefixQueue) UpdateObject(prefix []byte, id uint64, newValue interface{}) (*Item, error) {
 	var buffer bytes.Buffer
 	enc := gob.NewEncoder(&buffer)
@@ -278,6 +304,20 @@ func (pq *PrefixQueue) UpdateObject(prefix []byte, id uint64, newValue interface
 		return nil, err
 	}
 	return pq.Update(prefix, id, buffer.Bytes())
+}
+
+// UpdateObjectAsJSON is a helper function for Update that accepts
+// any value type, which is then encoded into a JSON byte slice using
+// encoding/json.
+//
+// Use this function to handle encoding of complex types.
+func (pq *PrefixQueue) UpdateObjectAsJSON(prefix []byte, id uint64, newValue interface{}) (*Item, error) {
+	jsonBytes, err := json.Marshal(newValue)
+	if err != nil {
+		return nil, err
+	}
+
+	return pq.Update(prefix, id, jsonBytes)
 }
 
 // Length returns the total number of items in the prefix queue.

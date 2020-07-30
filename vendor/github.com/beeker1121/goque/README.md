@@ -51,6 +51,8 @@ item, err := s.Push([]byte("item value"))
 item, err := s.PushString("item value")
 // or
 item, err := s.PushObject(Object{X:1})
+// or
+item, err := s.PushObjectAsJSON(Object{X:1})
 ```
 
 Pop an item:
@@ -66,6 +68,12 @@ fmt.Println(item.ToString()) // item value
 // Decode to object.
 var obj Object
 err := item.ToObject(&obj)
+...
+fmt.Printf("%+v\n", obj) // {X:1}
+
+// Decode to object from JSON.
+var obj Object
+err := item.ToObjectFromJSON(&obj)
 ...
 fmt.Printf("%+v\n", obj) // {X:1}
 ```
@@ -88,6 +96,8 @@ item, err := s.Update(1, []byte("new value"))
 item, err := s.UpdateString(1, "new value")
 // or
 item, err := s.UpdateObject(1, Object{X:2})
+// or
+item, err := s.UpdateObjectAsJSON(1, Object{X:2})
 ```
 
 Delete the stack and underlying database:
@@ -118,6 +128,8 @@ item, err := q.Enqueue([]byte("item value"))
 item, err := q.EnqueueString("item value")
 // or
 item, err := q.EnqueueObject(Object{X:1})
+// or
+item, err := q.EnqueueObjectAsJSON(Object{X:1})
 ```
 
 Dequeue an item:
@@ -133,6 +145,12 @@ fmt.Println(item.ToString()) // item value
 // Decode to object.
 var obj Object
 err := item.ToObject(&obj)
+...
+fmt.Printf("%+v\n", obj) // {X:1}
+
+// Decode to object from JSON.
+var obj Object
+err := item.ToObjectFromJSON(&obj)
 ...
 fmt.Printf("%+v\n", obj) // {X:1}
 ```
@@ -155,6 +173,8 @@ item, err := q.Update(1, []byte("new value"))
 item, err := q.UpdateString(1, "new value")
 // or
 item, err := q.UpdateObject(1, Object{X:2})
+// or
+item, err := q.UpdateObjectAsJSON(1, Object{X:2})
 ```
 
 Delete the queue and underlying database:
@@ -185,6 +205,8 @@ item, err := pq.Enqueue(0, []byte("item value"))
 item, err := pq.EnqueueString(0, "item value")
 // or
 item, err := pq.EnqueueObject(0, Object{X:1})
+// or
+item, err := pq.EnqueueObjectAsJSON(0, Object{X:1})
 ```
 
 Dequeue an item:
@@ -203,6 +225,12 @@ fmt.Println(item.ToString()) // item value
 // Decode to object.
 var obj Object
 err := item.ToObject(&obj)
+...
+fmt.Printf("%+v\n", obj) // {X:1}
+
+// Decode to object from JSON.
+var obj Object
+err := item.ToObjectFromJSON(&obj)
 ...
 fmt.Printf("%+v\n", obj) // {X:1}
 ```
@@ -225,6 +253,8 @@ item, err := pq.Update(0, 1, []byte("new value"))
 item, err := pq.UpdateString(0, 1, "new value")
 // or
 item, err := pq.UpdateObject(0, 1, Object{X:2})
+// or
+item, err := pq.UpdateObjectAsJSON(0, 1, Object{X:2})
 ```
 
 Delete the priority queue and underlying database:
@@ -255,6 +285,8 @@ item, err := pq.Enqueue([]byte("prefix"), []byte("item value"))
 item, err := pq.EnqueueString("prefix", "item value")
 // or
 item, err := pq.EnqueueObject([]byte("prefix"), Object{X:1})
+// or
+item, err := pq.EnqueueObjectAsJSON([]byte("prefix"), Object{X:1})
 ```
 
 Dequeue an item:
@@ -272,6 +304,12 @@ fmt.Println(item.ToString()) // item value
 // Decode to object.
 var obj Object
 err := item.ToObject(&obj)
+...
+fmt.Printf("%+v\n", obj) // {X:1}
+
+// Decode to object from JSON.
+var obj Object
+err := item.ToObjectFromJSON(&obj)
 ...
 fmt.Printf("%+v\n", obj) // {X:1}
 ```
@@ -296,6 +334,8 @@ item, err := pq.Update([]byte("prefix"), 1, []byte("new value"))
 item, err := pq.UpdateString("prefix", 1, "new value")
 // or
 item, err := pq.UpdateObject([]byte("prefix"), 1, Object{X:2})
+// or
+item, err := pq.UpdateObjectAsJSON([]byte("prefix"), 1, Object{X:2})
 ```
 
 Delete the prefix queue and underlying database:
