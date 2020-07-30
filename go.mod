@@ -28,7 +28,7 @@ require (
 	github.com/weppos/publicsuffix-go v0.13.1-0.20200721065424-2c0d957a7459
 	github.com/zmap/zcrypto v0.0.0-20191112190257-7f2fe6faf8cf
 	github.com/zmap/zlint/v2 v2.1.0
-	golang.org/x/crypto v0.0.0-20200124225646-8b5121be2f68
+	golang.org/x/crypto v0.0.0-20200728195943-123391ffb6de
 	golang.org/x/net v0.0.0-20200202094626-16171245cfb2
 	golang.org/x/text v0.3.3
 	google.golang.org/grpc v1.29.0
