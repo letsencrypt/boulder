@@ -43,6 +43,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/eggsampler/acme/v3 v3.0.0 h1:Fl1fWD94NcdC7Ensb6Ed/CJZ6S24PpekLo/jZB6Ltg8=
 github.com/eggsampler/acme/v3 v3.0.0/go.mod h1:gw64Ckma6iKulWks9BtE/g/9z/Vdz9D1lM7x7M1X1Ag=
+github.com/eggsampler/acme/v3 v3.1.1 h1:hSze1Cw4bHtCUdiQE2R0GKfXjAuLirSFPUX1IBz9wKw=
+github.com/eggsampler/acme/v3 v3.1.1/go.mod h1:/qh0rKC/Dh7Jj+p4So7DbWmFNzC4dpcpK53r226Fhuo=
 github.com/envoyproxy/go-control-plane v0.9.0/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.4/go.mod h1:6rpuAdCZL397s3pYoYcLgu1mIlRU8Am5FuJP05cCM98=
 github.com/envoyproxy/protoc-gen-validate v0.1.0/go.mod h1:iSmxcyjqTsJpI2R4NaDN7+kN2VEUnK/pcBlmesArF7c=
