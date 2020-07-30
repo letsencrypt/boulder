@@ -33,7 +33,7 @@ github.com/golang/protobuf/ptypes
 github.com/golang/protobuf/ptypes/any
 github.com/golang/protobuf/ptypes/duration
 github.com/golang/protobuf/ptypes/timestamp
-# github.com/golang/snappy v0.0.0-20170215233205-553a64147049
+# github.com/golang/snappy v0.0.1
 github.com/golang/snappy
 # github.com/google/certificate-transparency-go v1.0.22-0.20181127102053-c25855a82c75
 github.com/google/certificate-transparency-go
