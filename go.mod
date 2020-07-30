@@ -3,7 +3,7 @@ module github.com/letsencrypt/boulder
 go 1.12
 
 require (
-	github.com/beeker1121/goque v0.0.0-20170321141813-4044bc29b280
+	github.com/beeker1121/goque v2.1.0+incompatible
 	github.com/cloudflare/cfssl v1.4.2-0.20200324225241-abef926615f4
 	github.com/eggsampler/acme/v3 v3.0.0
 	github.com/go-gorp/gorp/v3 v3.0.2
