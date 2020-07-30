@@ -76,8 +76,8 @@ type TemporalLogClient struct {
 
 // NewTemporalLogClient builds a new client for interacting with a temporal log.
 // The provided config should be contiguous and chronological.
-func NewTemporalLogClient(cfg configpb.TemporalLogConfig, hc *http.Client) (*TemporalLogClient, error) {
-	if len(cfg.Shard) == 0 {
+func NewTemporalLogClient(cfg *configpb.TemporalLogConfig, hc *http.Client) (*TemporalLogClient, error) {
+	if len(cfg.GetShard()) == 0 {
 		return nil, errors.New("empty config")
 	}
 

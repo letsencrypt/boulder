@@ -469,7 +469,7 @@ type AddJSONRequest struct {
 	Data interface{} `json:"data"`
 }
 
-// GetSTHResponse respresents the JSON response to the get-sth GET method from section 4.3.
+// GetSTHResponse represents the JSON response to the get-sth GET method from section 4.3.
 type GetSTHResponse struct {
 	TreeSize          uint64 `json:"tree_size"`           // Number of certs in the current tree
 	Timestamp         uint64 `json:"timestamp"`           // Time that the tree was created

@@ -30,6 +30,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang/glog"
 	ct "github.com/google/certificate-transparency-go"
 	"github.com/google/certificate-transparency-go/x509"
 	"golang.org/x/net/context/ctxhttp"
@@ -175,6 +176,7 @@ func (c *JSONClient) GetAndParse(ctx context.Context, path string, params map[st
 		vals.Add(k, v)
 	}
 	fullURI := fmt.Sprintf("%s%s?%s", c.uri, path, vals.Encode())
+	glog.V(2).Infof("GET %s", fullURI)
 	httpReq, err := http.NewRequest(http.MethodGet, fullURI, nil)
 	if err != nil {
 		return nil, nil, err
@@ -220,6 +222,7 @@ func (c *JSONClient) PostAndParse(ctx context.Context, path string, req, rsp int
 		return nil, nil, err
 	}
 	fullURI := fmt.Sprintf("%s%s", c.uri, path)
+	glog.V(2).Infof("POST %s", fullURI)
 	httpReq, err := http.NewRequest(http.MethodPost, fullURI, bytes.NewReader(postBody))
 	if err != nil {
 		return nil, nil, err
@@ -300,7 +303,7 @@ func (c *JSONClient) PostAndParseWithRetry(ctx context.Context, path string, req
 						b := time.Duration(seconds) * time.Second
 						backoff = &b
 					} else if date, err := time.Parse(time.RFC1123, retryAfter); err == nil {
-						b := date.Sub(time.Now())
+						b := time.Until(date)
 						backoff = &b
 					}
 				}
