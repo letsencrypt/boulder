@@ -45,7 +45,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
-	"github.com/letsencrypt/boulder/probs"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimit"
@@ -135,14 +134,13 @@ func numAuthorizations(o *corepb.Order) int {
 }
 
 type DummyValidationAuthority struct {
-	argument      chan core.Authorization
-	RecordsReturn []core.ValidationRecord
-	ProblemReturn *probs.ProblemDetails
+	request      chan *vapb.PerformValidationRequest
+	ResultReturn vapb.ValidationResult
 }
 
-func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
-	dva.argument <- authz
-	return dva.RecordsReturn, dva.ProblemReturn
+func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
+	dva.request <- req
+	return &dva.ResultReturn, nil
 }
 
 var (
@@ -297,7 +295,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	saDBCleanUp := test.ResetSATestDatabase(t)
 
-	va := &DummyValidationAuthority{argument: make(chan core.Authorization, 1)}
+	va := &DummyValidationAuthority{request: make(chan *vapb.PerformValidationRequest, 1)}
 
 	pa, err := policy.New(map[string]bool{
 		core.ChallengeTypeHTTP01: true,
@@ -911,9 +909,19 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 	authzPB, err := bgrpc.AuthzToPB(authz)
 	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
 
-	va.RecordsReturn = []core.ValidationRecord{
-		{Hostname: "example.com"}}
-	va.ProblemReturn = nil
+	fakeHostname := "example.com"
+	fakePort := "8080"
+	va.ResultReturn = vapb.ValidationResult{
+		Records: []*corepb.ValidationRecord{
+			{
+				AddressUsed: []byte("192.168.0.1"),
+				Hostname:    &fakeHostname,
+				Port:        &fakePort,
+				Url:         &fakeHostname,
+			},
+		},
+		Problems: nil,
+	}
 
 	// A subsequent call to perform validation should return the expected error
 	challIndex := int64(ResponseIndex)
@@ -934,9 +942,20 @@ func TestPerformValidationSuccess(t *testing.T) {
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	challIdx := challTypeIndex(t, authz.Challenges, core.ChallengeTypeDNS01)
-	va.RecordsReturn = []core.ValidationRecord{
-		{Hostname: "example.com"}}
-	va.ProblemReturn = nil
+
+	fakeHostname := "example.com"
+	fakePort := "8080"
+	va.ResultReturn = vapb.ValidationResult{
+		Records: []*corepb.ValidationRecord{
+			{
+				AddressUsed: []byte("192.168.0.1"),
+				Hostname:    &fakeHostname,
+				Port:        &fakePort,
+				Url:         &fakeHostname,
+			},
+		},
+		Problems: nil,
+	}
 
 	authzPB, err := bgrpc.AuthzToPB(authz)
 	test.AssertNotError(t, err, "AuthzToPB failed")
@@ -949,24 +968,26 @@ func TestPerformValidationSuccess(t *testing.T) {
 	authz, err = bgrpc.PBToAuthz(authzPB)
 	test.AssertNotError(t, err, "PBToAuthz failed")
 
-	var vaAuthz core.Authorization
+	var vaRequest *vapb.PerformValidationRequest
 	select {
-	case a := <-va.argument:
-		vaAuthz = a
+	case r := <-va.request:
+		vaRequest = r
 	case <-time.After(time.Second):
 		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
 	}
 
-	// Verify that the VA got the authz, and it's the same as the others
-	assertAuthzEqual(t, authz, vaAuthz)
+	// Verify that the VA got the request, and it's the same as the others
+	test.AssertEquals(t, authz.Challenges[challIdx].Type, *vaRequest.Challenge.Type)
+	test.AssertEquals(t, authz.Challenges[challIdx].Token, *vaRequest.Challenge.Token)
 
 	// Sleep so the RA has a chance to write to the SA
 	time.Sleep(100 * time.Millisecond)
 
 	dbAuthz := getAuthorization(t, authz.ID, sa)
+	t.Log("dbAuthz:", dbAuthz)
 
 	// Verify that the responses are reflected
-	test.Assert(t, len(vaAuthz.Challenges) > 0, "Authz passed to VA has no challenges")
+	test.AssertNotNil(t, vaRequest.Challenge, "Request passed to VA has no challenge")
 	challIdx = challTypeIndex(t, dbAuthz.Challenges, core.ChallengeTypeDNS01)
 	test.Assert(t, dbAuthz.Challenges[challIdx].Status == core.StatusValid, "challenge was not marked as valid")
 
@@ -1234,7 +1255,6 @@ func TestDomainsForRateLimiting(t *testing.T) {
 
 	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk", "co.uk"})
 	test.AssertNotError(t, err, "should not fail on public suffix")
-	fmt.Printf("%#v\n", domains)
 	test.AssertDeepEquals(t, domains, []string{"co.uk", "example.co.uk", "example.com"})
 
 	domains, err = domainsForRateLimiting([]string{"foo.bar.baz.www.example.com", "baz.example.com"})
