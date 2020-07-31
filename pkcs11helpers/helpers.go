@@ -1,6 +1,7 @@
 package pkcs11helpers
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -8,6 +9,7 @@ import (
 	"encoding/asn1"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 
 	"github.com/miekg/pkcs11"
@@ -220,6 +222,111 @@ func (s *Session) FindObject(tmpl []*pkcs11.Attribute) (pkcs11.ObjectHandle, err
 		return 0, fmt.Errorf("too many objects (%d) that match the provided template", len(handles))
 	}
 	return handles[0], nil
+}
+
+// X509Signer is a convenience wrapper used for converting between the
+// PKCS#11 ECDSA signature format and the RFC 5480 one which is required
+// for X.509 certificates
+type X509Signer struct {
+	session      *Session
+	objectHandle pkcs11.ObjectHandle
+	keyType      KeyType
+
+	pub crypto.PublicKey
+}
+
+// Sign signs a digest. If the signing key is ECDSA then the signature
+// is converted from the PKCS#11 format to the RFC 5480 format. For RSA keys a
+// conversion step is not needed.
+func (p *X509Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	signature, err := p.session.Sign(p.objectHandle, p.keyType, digest, opts.HashFunc())
+	if err != nil {
+		return nil, err
+	}
+
+	if p.keyType == ECDSAKey {
+		// Convert from the PKCS#11 format to the RFC 5480 format so that
+		// it can be used in a X.509 certificate
+		r := big.NewInt(0).SetBytes(signature[:len(signature)/2])
+		s := big.NewInt(0).SetBytes(signature[len(signature)/2:])
+		signature, err = asn1.Marshal(struct {
+			R, S *big.Int
+		}{R: r, S: s})
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert signature to RFC 5480 format: %s", err)
+		}
+	}
+	return signature, nil
+}
+
+func (p *X509Signer) Public() crypto.PublicKey {
+	return p.pub
+}
+
+// NewSigner constructs an X509Signer for the private key object associated with the
+// given label and ID. Unlike letsencrypt/pkcs11key this method doesn't rely on
+// having the actual public key object in order to retrieve the private key
+// handle. This is because we already have the key pair object ID, and as such
+// do not need to query the HSM to retrieve it.
+func (s *Session) NewSigner(label string, id []byte) (crypto.Signer, error) {
+	// Retrieve the private key handle that will later be used for the certificate
+	// signing operation
+	privateHandle, err := s.FindObject([]*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PRIVATE_KEY),
+		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
+		pkcs11.NewAttribute(pkcs11.CKA_ID, id),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve private key handle: %s", err)
+	}
+	attrs, err := s.GetAttributeValue(privateHandle, []*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil)},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve key type: %s", err)
+	}
+	if len(attrs) == 0 {
+		return nil, errors.New("failed to retrieve key attributes")
+	}
+
+	// Retrieve the public key handle with the same CKA_ID as the private key
+	// and construct a {rsa,ecdsa}.PublicKey for use in x509.CreateCertificate
+	pubHandle, err := s.FindObject([]*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
+		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
+		pkcs11.NewAttribute(pkcs11.CKA_ID, id),
+		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, attrs[0].Value),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve public key handle: %s", err)
+	}
+	var pub crypto.PublicKey
+	var keyType KeyType
+	switch {
+	// 0x00000000, CKK_RSA
+	case bytes.Equal(attrs[0].Value, []byte{0, 0, 0, 0, 0, 0, 0, 0}):
+		keyType = RSAKey
+		pub, err = s.GetRSAPublicKey(pubHandle)
+		if err != nil {
+			return nil, fmt.Errorf("failed to retrieve public key: %s", err)
+		}
+	// 0x00000003, CKK_ECDSA
+	case bytes.Equal(attrs[0].Value, []byte{3, 0, 0, 0, 0, 0, 0, 0}):
+		keyType = ECDSAKey
+		pub, err = s.GetECDSAPublicKey(pubHandle)
+		if err != nil {
+			return nil, fmt.Errorf("failed to retrieve public key: %s", err)
+		}
+	default:
+		return nil, errors.New("unsupported key type")
+	}
+
+	return &X509Signer{
+		session:      s,
+		objectHandle: privateHandle,
+		keyType:      keyType,
+		pub:          pub,
+	}, nil
 }
 
 func NewMock() *MockCtx {

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"crypto"
 	"crypto/sha1"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -14,9 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/letsencrypt/boulder/pkcs11helpers"
-	"github.com/miekg/pkcs11"
 )
 
 type policyInfoConfig struct {
@@ -311,109 +306,4 @@ type failReader struct{}
 
 func (fr *failReader) Read([]byte) (int, error) {
 	return 0, errors.New("Empty reader used by x509.CreateCertificate")
-}
-
-// x509Signer is a convenience wrapper used for converting between the
-// PKCS#11 ECDSA signature format and the RFC 5480 one which is required
-// for X.509 certificates
-type x509Signer struct {
-	session      *pkcs11helpers.Session
-	objectHandle pkcs11.ObjectHandle
-	keyType      pkcs11helpers.KeyType
-
-	pub crypto.PublicKey
-}
-
-// Sign wraps pkcs11helpers.Sign. If the signing key is ECDSA then the signature
-// is converted from the PKCS#11 format to the RFC 5480 format. For RSA keys a
-// conversion step is not needed.
-func (p *x509Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
-	signature, err := p.session.Sign(p.objectHandle, p.keyType, digest, opts.HashFunc())
-	if err != nil {
-		return nil, err
-	}
-
-	if p.keyType == pkcs11helpers.ECDSAKey {
-		// Convert from the PKCS#11 format to the RFC 5480 format so that
-		// it can be used in a X.509 certificate
-		r := big.NewInt(0).SetBytes(signature[:len(signature)/2])
-		s := big.NewInt(0).SetBytes(signature[len(signature)/2:])
-		signature, err = asn1.Marshal(struct {
-			R, S *big.Int
-		}{R: r, S: s})
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert signature to RFC 5480 format: %s", err)
-		}
-	}
-	return signature, nil
-}
-
-func (p *x509Signer) Public() crypto.PublicKey {
-	return p.pub
-}
-
-// newSigner constructs a x509Signer for the private key object associated with the
-// given label and ID. Unlike letsencrypt/pkcs11key this method doesn't rely on
-// having the actual public key object in order to retrieve the private key
-// handle. This is because we already have the key pair object ID, and as such
-// do not need to query the HSM to retrieve it.
-func newSigner(session *pkcs11helpers.Session, label string, id []byte) (crypto.Signer, error) {
-	// Retrieve the private key handle that will later be used for the certificate
-	// signing operation
-	privateHandle, err := session.FindObject([]*pkcs11.Attribute{
-		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PRIVATE_KEY),
-		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
-		pkcs11.NewAttribute(pkcs11.CKA_ID, id),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve private key handle: %s", err)
-	}
-	attrs, err := session.GetAttributeValue(privateHandle, []*pkcs11.Attribute{
-		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil)},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve key type: %s", err)
-	}
-	if len(attrs) == 0 {
-		return nil, errors.New("failed to retrieve key attributes")
-	}
-
-	// Retrieve the public key handle with the same CKA_ID as the private key
-	// and construct a {rsa,ecdsa}.PublicKey for use in x509.CreateCertificate
-	pubHandle, err := session.FindObject([]*pkcs11.Attribute{
-		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
-		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
-		pkcs11.NewAttribute(pkcs11.CKA_ID, id),
-		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, attrs[0].Value),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve public key handle: %s", err)
-	}
-	var pub crypto.PublicKey
-	var keyType pkcs11helpers.KeyType
-	switch {
-	// 0x00000000, CKK_RSA
-	case bytes.Equal(attrs[0].Value, []byte{0, 0, 0, 0, 0, 0, 0, 0}):
-		keyType = pkcs11helpers.RSAKey
-		pub, err = session.GetRSAPublicKey(pubHandle)
-		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve public key: %s", err)
-		}
-	// 0x00000003, CKK_ECDSA
-	case bytes.Equal(attrs[0].Value, []byte{3, 0, 0, 0, 0, 0, 0, 0}):
-		keyType = pkcs11helpers.ECDSAKey
-		pub, err = session.GetECDSAPublicKey(pubHandle)
-		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve public key: %s", err)
-		}
-	default:
-		return nil, errors.New("unsupported key type")
-	}
-
-	return &x509Signer{
-		session:      session,
-		objectHandle: privateHandle,
-		keyType:      keyType,
-		pub:          pub,
-	}, nil
 }
