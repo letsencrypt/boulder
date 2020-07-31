@@ -70,7 +70,7 @@ var (
 // of the remote gRPC server since the interface (and the underlying gRPC client) doesn't
 // provide a way to extract this metadata which is useful for debugging gRPC connection issues.
 type RemoteVA struct {
-	core.ValidationAuthority
+	vapb.VAClient
 	Address string
 }
 

@@ -26,6 +26,10 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
+func tlsalpnChallenge() core.Challenge {
+	return createChallenge(core.ChallengeTypeTLSALPN01)
+}
+
 func tlsCertTemplate(names []string) *x509.Certificate {
 	return &x509.Certificate{
 		SerialNumber: big.NewInt(1337),
