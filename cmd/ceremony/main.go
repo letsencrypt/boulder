@@ -352,7 +352,7 @@ func openSigner(cfg PKCS11SigningConfig, issuer *x509.Certificate) (crypto.Signe
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to decode key-id: %s", err)
 	}
-	signer, err := newSigner(session, cfg.SigningLabel, keyID)
+	signer, err := session.NewSigner(cfg.SigningLabel, keyID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to retrieve private key handle: %s", err)
 	}
@@ -414,7 +414,7 @@ func rootCeremony(configBytes []byte) error {
 	if err != nil {
 		return err
 	}
-	signer, err := newSigner(session, config.PKCS11.StoreLabel, keyInfo.id)
+	signer, err := session.NewSigner(config.PKCS11.StoreLabel, keyInfo.id)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve signer: %s", err)
 	}
