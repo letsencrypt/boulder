@@ -36,9 +36,9 @@ type IsCAAValidRequest struct {
 	unknownFields protoimpl.UnknownFields
 
 	// NOTE: Domain may be a name with a wildcard prefix (e.g. `*.example.com`)
-	Domain           *string `protobuf:"bytes,1,opt,name=domain" json:"domain,omitempty"`
-	ValidationMethod *string `protobuf:"bytes,2,opt,name=validationMethod" json:"validationMethod,omitempty"`
-	AccountURIID     *int64  `protobuf:"varint,3,opt,name=accountURIID" json:"accountURIID,omitempty"`
+	Domain           string `protobuf:"bytes,1,opt,name=domain,proto3" json:"domain,omitempty"`
+	ValidationMethod string `protobuf:"bytes,2,opt,name=validationMethod,proto3" json:"validationMethod,omitempty"`
+	AccountURIID     int64  `protobuf:"varint,3,opt,name=accountURIID,proto3" json:"accountURIID,omitempty"`
 }
 
 func (x *IsCAAValidRequest) Reset() {
@@ -74,22 +74,22 @@ func (*IsCAAValidRequest) Descriptor() ([]byte, []int) {
 }
 
 func (x *IsCAAValidRequest) GetDomain() string {
-	if x != nil && x.Domain != nil {
-		return *x.Domain
+	if x != nil {
+		return x.Domain
 	}
 	return ""
 }
 
 func (x *IsCAAValidRequest) GetValidationMethod() string {
-	if x != nil && x.ValidationMethod != nil {
-		return *x.ValidationMethod
+	if x != nil {
+		return x.ValidationMethod
 	}
 	return ""
 }
 
 func (x *IsCAAValidRequest) GetAccountURIID() int64 {
-	if x != nil && x.AccountURIID != nil {
-		return *x.AccountURIID
+	if x != nil {
+		return x.AccountURIID
 	}
 	return 0
 }
@@ -100,7 +100,7 @@ type IsCAAValidResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Problem *proto1.ProblemDetails `protobuf:"bytes,1,opt,name=problem" json:"problem,omitempty"`
+	Problem *proto1.ProblemDetails `protobuf:"bytes,1,opt,name=problem,proto3" json:"problem,omitempty"`
 }
 
 func (x *IsCAAValidResponse) Reset() {
@@ -147,9 +147,9 @@ type PerformValidationRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Domain    *string           `protobuf:"bytes,1,opt,name=domain" json:"domain,omitempty"`
-	Challenge *proto1.Challenge `protobuf:"bytes,2,opt,name=challenge" json:"challenge,omitempty"`
-	Authz     *AuthzMeta        `protobuf:"bytes,3,opt,name=authz" json:"authz,omitempty"`
+	Domain    string            `protobuf:"bytes,1,opt,name=domain,proto3" json:"domain,omitempty"`
+	Challenge *proto1.Challenge `protobuf:"bytes,2,opt,name=challenge,proto3" json:"challenge,omitempty"`
+	Authz     *AuthzMeta        `protobuf:"bytes,3,opt,name=authz,proto3" json:"authz,omitempty"`
 }
 
 func (x *PerformValidationRequest) Reset() {
@@ -185,8 +185,8 @@ func (*PerformValidationRequest) Descriptor() ([]byte, []int) {
 }
 
 func (x *PerformValidationRequest) GetDomain() string {
-	if x != nil && x.Domain != nil {
-		return *x.Domain
+	if x != nil {
+		return x.Domain
 	}
 	return ""
 }
@@ -210,8 +210,8 @@ type AuthzMeta struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Id    *string `protobuf:"bytes,1,opt,name=id" json:"id,omitempty"`
-	RegID *int64  `protobuf:"varint,2,opt,name=regID" json:"regID,omitempty"`
+	Id    string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	RegID int64  `protobuf:"varint,2,opt,name=regID,proto3" json:"regID,omitempty"`
 }
 
 func (x *AuthzMeta) Reset() {
@@ -247,15 +247,15 @@ func (*AuthzMeta) Descriptor() ([]byte, []int) {
 }
 
 func (x *AuthzMeta) GetId() string {
-	if x != nil && x.Id != nil {
-		return *x.Id
+	if x != nil {
+		return x.Id
 	}
 	return ""
 }
 
 func (x *AuthzMeta) GetRegID() int64 {
-	if x != nil && x.RegID != nil {
-		return *x.RegID
+	if x != nil {
+		return x.RegID
 	}
 	return 0
 }
@@ -265,8 +265,8 @@ type ValidationResult struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Records  []*proto1.ValidationRecord `protobuf:"bytes,1,rep,name=records" json:"records,omitempty"`
-	Problems *proto1.ProblemDetails     `protobuf:"bytes,2,opt,name=problems" json:"problems,omitempty"`
+	Records  []*proto1.ValidationRecord `protobuf:"bytes,1,rep,name=records,proto3" json:"records,omitempty"`
+	Problems *proto1.ProblemDetails     `protobuf:"bytes,2,opt,name=problems,proto3" json:"problems,omitempty"`
 }
 
 func (x *ValidationResult) Reset() {
@@ -364,7 +364,7 @@ var file_va_proto_va_proto_rawDesc = []byte{
 	0x69, 0x64, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x42, 0x29, 0x5a, 0x27,
 	0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x65, 0x74, 0x73, 0x65,
 	0x6e, 0x63, 0x72, 0x79, 0x70, 0x74, 0x2f, 0x62, 0x6f, 0x75, 0x6c, 0x64, 0x65, 0x72, 0x2f, 0x76,
-	0x61, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f,
+	0x61, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (

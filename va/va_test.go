@@ -81,10 +81,8 @@ var accountURIPrefixes = []string{"http://boulder:4000/acme/reg/"}
 
 func createValidationRequest(domain, challengeType string) *vapb.PerformValidationRequest {
 	status := string(core.StatusPending)
-	authzID := ""
-	authzRegID := int64(0)
 	return &vapb.PerformValidationRequest{
-		Domain: &domain,
+		Domain: domain,
 		Challenge: &corepb.Challenge{
 			Type:              &challengeType,
 			Status:            &status,
@@ -93,8 +91,8 @@ func createValidationRequest(domain, challengeType string) *vapb.PerformValidati
 			KeyAuthorization:  &expectedKeyAuthorization,
 		},
 		Authz: &vapb.AuthzMeta{
-			Id:    &authzID,
-			RegID: &authzRegID,
+			Id:    "",
+			RegID: 0,
 		},
 	}
 }
