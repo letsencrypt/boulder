@@ -2,7 +2,7 @@ version: '3'
 services:
     boulder:
         # To minimize fetching this should be the same version used below
-        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.14.5}:2020-07-14
+        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.14.5}:2020-07-28
         environment:
             - FAKE_DNS=10.77.77.77
             - BOULDER_CONFIG_DIR=test/config
@@ -59,13 +59,6 @@ services:
           - bmysql
         entrypoint: test/entrypoint.sh
         working_dir: /go/src/github.com/letsencrypt/boulder
-        # This works around a kernel bug that is tickled by Go 1.14:
-        # https://github.com/golang/go/issues/37436
-        # Remove once devs are on Linux 5.4.2+
-        ulimits:
-          memlock:
-            soft: -1
-            hard: -1
     bmysql:
         image: mariadb:10.3
         networks:
@@ -83,7 +76,7 @@ services:
         logging:
             driver: none
     netaccess:
-        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.14.5}:2020-07-14
+        image: letsencrypt/boulder-tools-go${TRAVIS_GO_VERSION:-1.14.5}:2020-07-28
         environment:
             GO111MODULE: "on"
             GOFLAGS: "-mod=vendor"

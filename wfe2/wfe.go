@@ -777,7 +777,10 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		// to be a byte-for-byte match with the requested cert.
 		cert, err := wfe.SA.GetCertificate(ctx, serial)
 		if err != nil {
-			return notFoundProb
+			if berrors.Is(err, berrors.NotFound) {
+				return notFoundProb
+			}
+			return probs.ServerInternal("unable to retrieve certificate")
 		}
 		// If the certificate in the DB isn't a byte for byte match, return a problem
 		if !bytes.Equal(cert.DER, revokeRequest.CertificateDER) {
@@ -1577,13 +1580,14 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	logEvent.Extra["RequestedSerial"] = serial
 
 	cert, err := wfe.SA.GetCertificate(ctx, serial)
-	// TODO(#991): handle db errors
 	if err != nil {
 		ierr := fmt.Errorf("unable to get certificate by serial id %#v: %s", serial, err)
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
 			wfe.sendError(response, logEvent, probs.Conflict("Multiple certificates with same short serial"), ierr)
-		} else {
+		} else if berrors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), ierr)
+		} else {
+			wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve certificate"), ierr)
 		}
 		return
 	}

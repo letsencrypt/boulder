@@ -156,11 +156,7 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 }
 
 func getCertDER(selector ocspDB, serial string) ([]byte, error) {
-	cert, err := sa.SelectCertificate(
-		selector,
-		"WHERE serial = ?",
-		serial,
-	)
+	cert, err := sa.SelectCertificate(selector, serial)
 	if err != nil {
 		if db.IsNoRows(err) {
 			cert, err = sa.SelectPrecertificate(selector, serial)

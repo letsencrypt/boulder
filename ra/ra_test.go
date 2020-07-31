@@ -53,7 +53,7 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	vaPB "github.com/letsencrypt/boulder/va/proto"
+	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/crypto/ocsp"
@@ -1760,10 +1760,10 @@ type noopCAA struct{}
 
 func (cr noopCAA) IsCAAValid(
 	ctx context.Context,
-	in *vaPB.IsCAAValidRequest,
+	in *vapb.IsCAAValidRequest,
 	opts ...grpc.CallOption,
-) (*vaPB.IsCAAValidResponse, error) {
-	return &vaPB.IsCAAValidResponse{}, nil
+) (*vapb.IsCAAValidResponse, error) {
+	return &vapb.IsCAAValidResponse{}, nil
 }
 
 // caaRecorder implements caaChecker, always returning nil, but recording the
@@ -1775,13 +1775,13 @@ type caaRecorder struct {
 
 func (cr *caaRecorder) IsCAAValid(
 	ctx context.Context,
-	in *vaPB.IsCAAValidRequest,
+	in *vapb.IsCAAValidRequest,
 	opts ...grpc.CallOption,
-) (*vaPB.IsCAAValidResponse, error) {
+) (*vapb.IsCAAValidResponse, error) {
 	cr.Lock()
 	defer cr.Unlock()
 	cr.names[*in.Domain] = true
-	return &vaPB.IsCAAValidResponse{}, nil
+	return &vapb.IsCAAValidResponse{}, nil
 }
 
 // A mock SA that returns special authzs for testing rechecking of CAA (in
@@ -1895,10 +1895,10 @@ type caaFailer struct{}
 
 func (cf *caaFailer) IsCAAValid(
 	ctx context.Context,
-	in *vaPB.IsCAAValidRequest,
+	in *vapb.IsCAAValidRequest,
 	opts ...grpc.CallOption,
-) (*vaPB.IsCAAValidResponse, error) {
-	cvrpb := &vaPB.IsCAAValidResponse{}
+) (*vapb.IsCAAValidResponse, error) {
+	cvrpb := &vapb.IsCAAValidResponse{}
 	switch *in.Domain {
 	case "a.com":
 		cvrpb.Problem = &corepb.ProblemDetails{
@@ -2493,6 +2493,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	// Check each of the authz IDs in the order
 	for _, authzID := range order.V2Authorizations {
 		// We should be able to retrieve the authz from the db without error
+		authzID := authzID
 		authzPB, err := ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID})
 		test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 		authz, err := bgrpc.PBToAuthz(authzPB)
@@ -2540,6 +2541,7 @@ func TestNewOrderWildcard(t *testing.T) {
 
 	for _, authzID := range order.V2Authorizations {
 		// We should be able to retrieve the authz from the db without error
+		authzID := authzID
 		authzPB, err := ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID})
 		test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 		authz, err := bgrpc.PBToAuthz(authzPB)
@@ -3524,8 +3526,8 @@ func (ca *mockCAFailCertForPrecert) IssuePrecertificate(_ context.Context, _ *ca
 
 func (ca *mockCAFailCertForPrecert) IssueCertificateForPrecertificate(
 	_ context.Context,
-	_ *capb.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
-	return core.Certificate{}, ca.err
+	_ *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
+	return &corepb.Certificate{}, ca.err
 }
 
 // TestIssueCertificateInnerErrs tests that errors from the CA caught during
@@ -3855,6 +3857,8 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	err = ra.RevokeCertificateWithReg(context.Background(), *cert, ocsp.Unspecified, 0)
 	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
 	test.Assert(t, mockSA.added == nil, "blocked key was added when reason was not keyCompromise")
+	test.AssertEquals(t, test.CountCounterVec(
+		"reason", "unspecified", ra.revocationReasonCounter), 1)
 
 	err = ra.RevokeCertificateWithReg(context.Background(), *cert, ocsp.KeyCompromise, 0)
 	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
@@ -3862,6 +3866,8 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	test.Assert(t, bytes.Equal(digest[:], mockSA.added.KeyHash), "key hash mismatch")
 	test.AssertEquals(t, *mockSA.added.Source, "API")
 	test.Assert(t, mockSA.added.Comment == nil, "Comment is not nil")
+	test.AssertEquals(t, test.CountCounterVec(
+		"reason", "keyCompromise", ra.revocationReasonCounter), 1)
 
 	mockSA.added = nil
 	err = ra.AdministrativelyRevokeCertificate(context.Background(), *cert, ocsp.KeyCompromise, "root")
@@ -3871,4 +3877,6 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	test.AssertEquals(t, *mockSA.added.Source, "admin-revoker")
 	test.Assert(t, mockSA.added.Comment != nil, "Comment is nil")
 	test.AssertEquals(t, *mockSA.added.Comment, "revoked by root")
+	test.AssertEquals(t, test.CountCounterVec(
+		"reason", "keyCompromise", ra.revocationReasonCounter), 2)
 }

@@ -237,8 +237,8 @@ func generateOCSP(ctx context.Context, ca ocspGenerator, certDER []byte) ([]byte
 	ocspResponse, err := ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		CertDER:   certDER,
 		Status:    string(core.OCSPStatusGood),
-		Reason:    int32(0),
-		RevokedAt: int64(0),
+		Reason:    0,
+		RevokedAt: 0,
 	})
 	if err != nil {
 		return nil, err

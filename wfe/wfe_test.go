@@ -38,7 +38,7 @@ import (
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test"
-	vaPB "github.com/letsencrypt/boulder/va/proto"
+	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/letsencrypt/boulder/web"
 	"google.golang.org/grpc"
 	"gopkg.in/square/go-jose.v2"
@@ -823,10 +823,10 @@ type noopCAA struct{}
 
 func (cr noopCAA) IsCAAValid(
 	ctx context.Context,
-	in *vaPB.IsCAAValidRequest,
+	in *vapb.IsCAAValidRequest,
 	opts ...grpc.CallOption,
-) (*vaPB.IsCAAValidResponse, error) {
-	return &vaPB.IsCAAValidResponse{}, nil
+) (*vapb.IsCAAValidResponse, error) {
+	return &vapb.IsCAAValidResponse{}, nil
 }
 
 func TestRelativeDirectory(t *testing.T) {
@@ -2124,6 +2124,17 @@ func TestGetCertificate(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 404)
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Certificate not found","status":404}`)
+
+	// Internal server error, no cache
+	mockLog.Clear()
+	responseWriter = httptest.NewRecorder()
+	req, _ = http.NewRequest("GET", "/acme/cert/000000000000000000000000000000626164", nil)
+	req.RemoteAddr = "192.168.0.1"
+	req.Header.Set("X-Forwarded-For", "192.168.99.99")
+	mux.ServeHTTP(responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, 500)
+	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`serverInternal","detail":"Failed to retrieve certificate","status":500}`)
 
 	// Invalid serial, no cache
 	responseWriter = httptest.NewRecorder()

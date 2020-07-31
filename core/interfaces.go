@@ -9,7 +9,7 @@ import (
 
 	jose "gopkg.in/square/go-jose.v2"
 
-	caPB "github.com/letsencrypt/boulder/ca/proto"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/identifier"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
@@ -94,12 +94,12 @@ type RegistrationAuthority interface {
 // CertificateAuthority defines the public interface for the Boulder CA
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	IssuePrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error)
+	IssuePrecertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error)
 
 	// [RegistrationAuthority]
-	IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (Certificate, error)
+	IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error)
 
-	GenerateOCSP(ctx context.Context, ocspReq *caPB.GenerateOCSPRequest) (*caPB.OCSPResponse, error)
+	GenerateOCSP(ctx context.Context, ocspReq *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error)
 }
 
 // PolicyAuthority defines the public interface for the Boulder PA
@@ -134,7 +134,6 @@ type StorageGetter interface {
 	GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error)
 	CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error)
 	GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error)
-	SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error)
 	KeyBlocked(ctx context.Context, req *sapb.KeyBlockedRequest) (*sapb.Exists, error)
 }
 

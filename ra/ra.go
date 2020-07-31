@@ -16,7 +16,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/akamai"
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
-	caPB "github.com/letsencrypt/boulder/ca/proto"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	csrlib "github.com/letsencrypt/boulder/csr"
@@ -35,7 +35,7 @@ import (
 	"github.com/letsencrypt/boulder/reloader"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	vaPB "github.com/letsencrypt/boulder/va/proto"
+	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
@@ -46,9 +46,9 @@ import (
 type caaChecker interface {
 	IsCAAValid(
 		ctx context.Context,
-		in *vaPB.IsCAAValidRequest,
+		in *vapb.IsCAAValidRequest,
 		opts ...grpc.CallOption,
-	) (*vaPB.IsCAAValidResponse, error)
+	) (*vapb.IsCAAValidResponse, error)
 }
 
 // RegistrationAuthorityImpl defines an RA.
@@ -83,6 +83,7 @@ type RegistrationAuthorityImpl struct {
 
 	ctpolicyResults         *prometheus.HistogramVec
 	rateLimitCounter        *prometheus.CounterVec
+	revocationReasonCounter *prometheus.CounterVec
 	namesPerCert            *prometheus.HistogramVec
 	newRegCounter           prometheus.Counter
 	reusedValidAuthzCounter prometheus.Counter
@@ -162,6 +163,12 @@ func NewRegistrationAuthorityImpl(
 	})
 	stats.MustRegister(newCertCounter)
 
+	revocationReasonCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "revocation_reason",
+		Help: "A counter of certificate revocation reasons",
+	}, []string{"reason"})
+	stats.MustRegister(revocationReasonCounter)
+
 	ra := &RegistrationAuthorityImpl{
 		clk:                          clk,
 		log:                          logger,
@@ -186,6 +193,7 @@ func NewRegistrationAuthorityImpl(
 		reusedValidAuthzCounter:      reusedValidAuthzCounter,
 		recheckCAACounter:            recheckCAACounter,
 		newCertCounter:               newCertCounter,
+		revocationReasonCounter:      revocationReasonCounter,
 	}
 	return ra
 }
@@ -712,7 +720,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	// Ensure the names from the CSR are free of duplicates & lowercased.
 	names = core.UniqueLowerNames(names)
 	// Check the authorizations to ensure validity for the names required.
-	if err = ra.checkAuthorizationsCAA(ctx, names, authzs, acctIDInt, ra.clk.Now()); err != nil {
+	if err = ra.checkAuthorizationsCAA(ctx, names, authzs, int64(acctID), ra.clk.Now()); err != nil {
 		return nil, err
 	}
 
@@ -839,7 +847,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 				return
 			}
 
-			resp, err := ra.caa.IsCAAValid(ctx, &vaPB.IsCAAValidRequest{
+			resp, err := ra.caa.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
 				Domain:           &name,
 				ValidationMethod: &method,
 				AccountURIID:     &authz.RegistrationID,
@@ -1176,12 +1184,10 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
 
 	// Create the certificate and log the result
-	acctIDInt := int64(acctID)
-	orderIDInt := int64(oID)
-	issueReq := &caPB.IssueCertificateRequest{
+	issueReq := &capb.IssueCertificateRequest{
 		Csr:            csr.Raw,
-		RegistrationID: acctIDInt,
-		OrderID:        orderIDInt,
+		RegistrationID: int64(acctID),
+		OrderID:        int64(oID),
 	}
 
 	// wrapError adds a prefix to an error. If the error is a boulder error then
@@ -1207,17 +1213,17 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	if err != nil {
 		return emptyCert, wrapError(err, "getting SCTs")
 	}
-	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &caPB.IssueCertificateForPrecertificateRequest{
+	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:            precert.DER,
 		SCTs:           scts,
-		RegistrationID: acctIDInt,
-		OrderID:        orderIDInt,
+		RegistrationID: int64(acctID),
+		OrderID:        int64(oID),
 	})
 	if err != nil {
 		return emptyCert, wrapError(err, "issuing certificate for precertificate")
 	}
 
-	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
+	parsedCertificate, err := x509.ParseCertificate([]byte(cert.Der))
 	if err != nil {
 		// berrors.InternalServerError because the certificate from the CA should be
 		// parseable.
@@ -1225,7 +1231,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	}
 
 	// Asynchronously submit the final certificate to any configured logs
-	go ra.ctpolicy.SubmitFinalCert(cert.DER, parsedCertificate.NotAfter)
+	go ra.ctpolicy.SubmitFinalCert(cert.Der, parsedCertificate.NotAfter)
 
 	err = ra.MatchesCSR(parsedCertificate, csr)
 	if err != nil {
@@ -1238,7 +1244,11 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	logEvent.NotAfter = parsedCertificate.NotAfter
 
 	ra.newCertCounter.Inc()
-	return cert, nil
+	res, err := bgrpc.PBToCert(cert)
+	if err != nil {
+		return emptyCert, nil
+	}
+	return res, nil
 }
 
 func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte, expiration time.Time) (core.SCTDERs, error) {
@@ -1653,7 +1663,7 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, revokedBy int64, source string, comment string) error {
 	reason := int32(code)
 	revokedAt := ra.clk.Now().UnixNano()
-	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
+	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		CertDER:   cert.Raw,
 		Status:    string(core.OCSPStatusRevoked),
 		Reason:    reason,
@@ -1665,7 +1675,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	serial := core.SerialToString(cert.SerialNumber)
 	// for some reason we use int32 and int64 for the reason in different
 	// protobuf messages, so we have to re-cast it here.
-	reason64 := int64(reason)
+	reason64 := int64(code)
 	err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   &serial,
 		Reason:   &reason64,
@@ -1731,6 +1741,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 		return err
 	}
 
+	ra.revocationReasonCounter.WithLabelValues(revocation.ReasonToString[revocationCode]).Inc()
 	state = "Success"
 	return nil
 }
@@ -1763,6 +1774,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		return err
 	}
 
+	ra.revocationReasonCounter.WithLabelValues(revocation.ReasonToString[revocationCode]).Inc()
 	state = "Success"
 	return nil
 }

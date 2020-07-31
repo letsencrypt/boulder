@@ -1845,6 +1845,16 @@ func TestGetCertificate(t *testing.T) {
 			ExpectedBody:   notFound,
 		},
 		{
+			Name:           "Internal server error, no cache",
+			Request:        makeGet("/acme/cert/000000000000000000000000000000626164"),
+			ExpectedStatus: http.StatusInternalServerError,
+			ExpectedBody: `{
+				"type": "urn:ietf:params:acme:error:serverInternal",
+				"status": 500,
+				"detail": "Failed to retrieve certificate"
+			}`,
+		},
+		{
 			Name:           "Invalid serial, no cache",
 			Request:        makeGet("/acme/cert/nothex"),
 			ExpectedStatus: http.StatusNotFound,

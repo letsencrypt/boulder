@@ -97,7 +97,6 @@
     "maxNames": 100,
     "hostnamePolicyFile": "test/hostname-policy.yaml",
     "ignoredLints": ["n_subject_common_name_included"],
-    "maxConcurrentRPCServerRequests": 100000,
     "orphanQueueDir": "/tmp/orphaned-certificates-b",
     "features": {
       "StoreIssuerInfo": true,

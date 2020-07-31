@@ -16,6 +16,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
@@ -415,9 +416,6 @@ func CertToPB(cert core.Certificate) *corepb.Certificate {
 }
 
 func PBToCert(pb *corepb.Certificate) (core.Certificate, error) {
-	if pb == nil || pb.RegistrationID == nil || pb.Serial == nil || pb.Digest == nil || pb.Der == nil || pb.Issued == nil || pb.Expires == nil {
-		return core.Certificate{}, errIncompleteResponse
-	}
 	return core.Certificate{
 		RegistrationID: *pb.RegistrationID,
 		Serial:         *pb.Serial,
@@ -425,6 +423,41 @@ func PBToCert(pb *corepb.Certificate) (core.Certificate, error) {
 		DER:            pb.Der,
 		Issued:         time.Unix(0, *pb.Issued),
 		Expires:        time.Unix(0, *pb.Expires),
+	}, nil
+}
+
+func CertStatusToPB(certStatus core.CertificateStatus) *corepb.CertificateStatus {
+	ocspLastUpdatedNano := certStatus.OCSPLastUpdated.UnixNano()
+	revokedDateNano := certStatus.RevokedDate.UnixNano()
+	lastExpirationNagSentNano := certStatus.LastExpirationNagSent.UnixNano()
+	notAfterNano := certStatus.NotAfter.UnixNano()
+	reason := int64(certStatus.RevokedReason)
+	status := string(certStatus.Status)
+
+	return &corepb.CertificateStatus{
+		Serial:                &certStatus.Serial,
+		Status:                &status,
+		OcspLastUpdated:       &ocspLastUpdatedNano,
+		RevokedDate:           &revokedDateNano,
+		RevokedReason:         &reason,
+		LastExpirationNagSent: &lastExpirationNagSentNano,
+		OcspResponse:          certStatus.OCSPResponse,
+		NotAfter:              &notAfterNano,
+		IsExpired:             &certStatus.IsExpired,
+	}
+}
+
+func PBToCertStatus(pb *corepb.CertificateStatus) (core.CertificateStatus, error) {
+	return core.CertificateStatus{
+		Serial:                *pb.Serial,
+		Status:                core.OCSPStatus(*pb.Status),
+		OCSPLastUpdated:       time.Unix(0, *pb.OcspLastUpdated),
+		RevokedDate:           time.Unix(0, *pb.RevokedDate),
+		RevokedReason:         revocation.Reason(*pb.RevokedReason),
+		LastExpirationNagSent: time.Unix(0, *pb.LastExpirationNagSent),
+		OCSPResponse:          pb.OcspResponse,
+		NotAfter:              time.Unix(0, *pb.NotAfter),
+		IsExpired:             *pb.IsExpired,
 	}, nil
 }
 

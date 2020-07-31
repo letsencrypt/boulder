@@ -1,6 +1,5 @@
 {
   "va": {
-    "CAASERVFAILExceptions": "test/caa-servfail-exceptions.txt",
     "userAgent": "boulder-remote-b",
     "debugAddr": ":8012",
     "portConfig": {

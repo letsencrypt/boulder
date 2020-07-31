@@ -309,7 +309,7 @@ func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, serial strin
 		return core.Certificate{}, err
 	}
 
-	cert, err := SelectCertificate(ssa.dbMap.WithContext(ctx), "WHERE serial = ?", serial)
+	cert, err := SelectCertificate(ssa.dbMap.WithContext(ctx), serial)
 	if db.IsNoRows(err) {
 		return core.Certificate{}, berrors.NotFoundError("certificate with serial %q not found", serial)
 	}
@@ -328,26 +328,12 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 		return core.CertificateStatus{}, err
 	}
 
-	statusModel, err := SelectCertificateStatus(
-		ssa.dbMap.WithContext(ctx),
-		"WHERE serial = ?",
-		serial,
-	)
+	certStatus, err := SelectCertificateStatus(ssa.dbMap.WithContext(ctx), serial)
 	if err != nil {
 		return core.CertificateStatus{}, err
 	}
 
-	return core.CertificateStatus{
-		Serial:                statusModel.Serial,
-		Status:                statusModel.Status,
-		OCSPLastUpdated:       statusModel.OCSPLastUpdated,
-		RevokedDate:           statusModel.RevokedDate,
-		RevokedReason:         statusModel.RevokedReason,
-		LastExpirationNagSent: statusModel.LastExpirationNagSent,
-		OCSPResponse:          statusModel.OCSPResponse,
-		NotAfter:              statusModel.NotAfter,
-		IsExpired:             statusModel.IsExpired,
-	}, nil
+	return certStatus, nil
 }
 
 // NewRegistration stores a new Registration
@@ -897,7 +883,7 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 
 		if features.Enabled(features.FasterNewOrdersRateLimit) {
 			// Increment the order creation count
-			if err := addNewOrdersRateLimit(ctx, txWithCtx, *req.RegistrationID, ssa.clk.Now().Truncate(time.Hour)); err != nil {
+			if err := addNewOrdersRateLimit(ctx, txWithCtx, *req.RegistrationID, ssa.clk.Now().Truncate(time.Minute)); err != nil {
 				return nil, err
 			}
 		}
@@ -1756,20 +1742,6 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 		authzMap[am.IdentifierValue] = am
 	}
 	return authzModelMapToPB(authzMap)
-}
-
-// SerialExists returns a bool indicating whether the provided serial
-// exists in the serial table. This is currently only used to determine
-// if a serial passed to ca.GenerateOCSP is one which we have previously
-// generated a certificate for.
-func (ssa *SQLStorageAuthority) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
-	err := ssa.dbMap.SelectOne(&recordedSerialModel{}, "SELECT * FROM serials WHERE serial = ?", req.Serial)
-	isNoRowsErr := db.IsNoRows(err)
-	if err != nil && !isNoRowsErr {
-		return nil, err
-	}
-	exists := !isNoRowsErr
-	return &sapb.Exists{Exists: &exists}, nil
 }
 
 func addKeyHash(db db.Inserter, cert *x509.Certificate) error {

@@ -18,7 +18,6 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
-	"github.com/letsencrypt/boulder/revocation"
 )
 
 // errBadJSON is an error type returned when a json.Unmarshal performed by the
@@ -66,12 +65,13 @@ func selectRegistration(s db.OneSelector, q string, args ...interface{}) (*regMo
 const certFields = "registrationID, serial, digest, der, issued, expires"
 
 // SelectCertificate selects all fields of one certificate object
-func SelectCertificate(s db.OneSelector, q string, args ...interface{}) (core.Certificate, error) {
+// identified by serial.
+func SelectCertificate(s db.OneSelector, serial string) (core.Certificate, error) {
 	var model core.Certificate
 	err := s.SelectOne(
 		&model,
-		"SELECT "+certFields+" FROM certificates "+q,
-		args...,
+		"SELECT "+certFields+" FROM certificates WHERE serial = ?",
+		serial,
 	)
 	return model, err
 }
@@ -119,12 +119,13 @@ func certStatusFieldsSelect(restOfQuery string) string {
 }
 
 // SelectCertificateStatus selects all fields of one certificate status model
-func SelectCertificateStatus(s db.OneSelector, q string, args ...interface{}) (certStatusModel, error) {
-	var model certStatusModel
+// identified by serial
+func SelectCertificateStatus(s db.OneSelector, serial string) (core.CertificateStatus, error) {
+	var model core.CertificateStatus
 	err := s.SelectOne(
 		&model,
-		certStatusFieldsSelect(q),
-		args...,
+		certStatusFieldsSelect("WHERE serial = ?"),
+		serial,
 	)
 	return model, err
 }
@@ -163,19 +164,6 @@ type regModel struct {
 	CreatedAt time.Time `db:"createdAt"`
 	LockCol   int64
 	Status    string `db:"status"`
-}
-
-type certStatusModel struct {
-	Serial                string            `db:"serial"`
-	Status                core.OCSPStatus   `db:"status"`
-	OCSPLastUpdated       time.Time         `db:"ocspLastUpdated"`
-	RevokedDate           time.Time         `db:"revokedDate"`
-	RevokedReason         revocation.Reason `db:"revokedReason"`
-	LastExpirationNagSent time.Time         `db:"lastExpirationNagSent"`
-	OCSPResponse          []byte            `db:"ocspResponse"`
-	NotAfter              time.Time         `db:"notAfter"`
-	IsExpired             bool              `db:"isExpired"`
-	IssuerID              *int64            `db:"issuerID"`
 }
 
 // challModel is the description of a core.Challenge in the database
