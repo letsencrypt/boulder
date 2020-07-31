@@ -652,7 +652,7 @@ func TestMultiVAPolicy(t *testing.T) {
 
 	// Perform validation for a domain not in the disabledDomains list
 	req := createValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
-	res, err := localVA.PerformValidation(ctx, req)
+	res, _ := localVA.PerformValidation(ctx, req)
 	// It should fail
 	if res.Problems == nil {
 		t.Error("expected prob from PerformValidation, got nil")

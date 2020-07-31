@@ -388,7 +388,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 				// If the non-nil err was a canceled error, ignore it. That's fine: it
 				// just means we cancelled the remote VA request before it was
 				// finished because we didn't care about its result.
-				err = nil
+				va.log.Infof("Remote VA %q.PerformValidation canceled: %s", rva.Address, err)
 			} else if err != nil {
 				// This is a real error, not just a problem with the validation.
 				va.log.Errf("Remote VA %q.PerformValidation failed: %s", rva.Address, err)
