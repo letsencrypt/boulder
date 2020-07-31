@@ -54,8 +54,8 @@ func rsaArgs(label string, modulusLen, exponent uint, keyID []byte) generateArgs
 // handle, and constructs a rsa.PublicKey. It also checks that the key has the
 // correct length modulus and that the public exponent is what was requested in
 // the public key template.
-func rsaPub(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, modulusLen, exponent uint) (*rsa.PublicKey, error) {
-	pubKey, err := pkcs11helpers.GetRSAPublicKey(ctx, session, object)
+func rsaPub(session *pkcs11helpers.Session, object pkcs11.ObjectHandle, modulusLen, exponent uint) (*rsa.PublicKey, error) {
+	pubKey, err := session.GetRSAPublicKey(object)
 	if err != nil {
 		return nil, err
 	}
@@ -74,16 +74,16 @@ func rsaPub(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, object pkcs11
 // private key on the device, specified by the provided object handle, by signing
 // a nonce generated on the device and verifying the returned signature using the
 // public key.
-func rsaVerify(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, pub *rsa.PublicKey) error {
+func rsaVerify(session *pkcs11helpers.Session, object pkcs11.ObjectHandle, pub *rsa.PublicKey) error {
 	nonce := make([]byte, 4)
-	_, err := newRandReader(ctx, session).Read(nonce)
+	_, err := newRandReader(session).Read(nonce)
 	if err != nil {
 		return fmt.Errorf("Failed to retrieve nonce: %s", err)
 	}
 	log.Printf("\tConstructed nonce: %d (%X)\n", big.NewInt(0).SetBytes(nonce), nonce)
 	digest := sha256.Sum256(nonce)
 	log.Printf("\tMessage SHA-256 hash: %X\n", digest)
-	signature, err := pkcs11helpers.Sign(ctx, session, object, pkcs11helpers.RSAKey, digest[:], crypto.SHA256)
+	signature, err := session.Sign(object, pkcs11helpers.RSAKey, digest[:], crypto.SHA256)
 	if err != nil {
 		return fmt.Errorf("Failed to sign data: %s", err)
 	}
@@ -100,27 +100,27 @@ func rsaVerify(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, object pkc
 // specified by modulusLen and with the exponent specified by pubExponent.
 // It returns the public part of the generated key pair as a rsa.PublicKey
 // and the random key ID that the HSM uses to identify the key pair.
-func rsaGenerate(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string, modulusLen, pubExponent uint) (*rsa.PublicKey, []byte, error) {
+func rsaGenerate(session *pkcs11helpers.Session, label string, modulusLen, pubExponent uint) (*rsa.PublicKey, []byte, error) {
 	keyID := make([]byte, 4)
-	_, err := newRandReader(ctx, session).Read(keyID)
+	_, err := newRandReader(session).Read(keyID)
 	if err != nil {
 		return nil, nil, err
 	}
 	log.Printf("Generating RSA key with %d bit modulus and public exponent %d and ID %x\n", modulusLen, pubExponent, keyID)
 	args := rsaArgs(label, modulusLen, pubExponent, keyID)
-	pub, priv, err := ctx.GenerateKeyPair(session, args.mechanism, args.publicAttrs, args.privateAttrs)
+	pub, priv, err := session.GenerateKeyPair(args.mechanism, args.publicAttrs, args.privateAttrs)
 	if err != nil {
 		return nil, nil, err
 	}
 	log.Println("Key generated")
 	log.Println("Extracting public key")
-	pk, err := rsaPub(ctx, session, pub, modulusLen, pubExponent)
+	pk, err := rsaPub(session, pub, modulusLen, pubExponent)
 	if err != nil {
 		return nil, nil, err
 	}
 	log.Println("Extracted public key")
 	log.Println("Verifying public key")
-	err = rsaVerify(ctx, session, priv, pk)
+	err = rsaVerify(session, priv, pk)
 	if err != nil {
 		return nil, nil, err
 	}

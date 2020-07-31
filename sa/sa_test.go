@@ -1857,6 +1857,7 @@ func TestNewAuthorizations2(t *testing.T) {
 	test.AssertNotError(t, err, "sa.NewAuthorizations failed")
 	test.AssertEquals(t, len(ids.Ids), 2)
 	for i, id := range ids.Ids {
+		id := id
 		dbVer, err := sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: &id})
 		test.AssertNotError(t, err, "sa.GetAuthorization failed")
 		// Everything but ID should match
