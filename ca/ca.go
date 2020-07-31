@@ -662,7 +662,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		}
 		certDER = block.Bytes
 	}
-	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] certificate=[%s]",
+	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] csr=[%s] certificate=[%s]",
 		serialHex, strings.Join(precert.DNSNames, ", "), hex.EncodeToString(req.DER),
 		hex.EncodeToString(certDER))
 	return ca.storeCertificate(ctx, req.RegistrationID, req.OrderID, precert.SerialNumber, certDER)
@@ -739,9 +739,12 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		certDER, err = issuer.boulderSigner.Issue(&bsigner.IssuanceRequest{
 			PublicKey:         csr.PublicKey,
 			Serial:            serialBigInt.Bytes(),
+			CommonName:        csr.Subject.CommonName,
 			DNSNames:          csr.DNSNames,
 			IncludeCTPoison:   true,
-			IncludeMustStaple: len(extensions) > 0, // this is bad, but works for now
+			IncludeMustStaple: bsigner.ContainsMustStaple(csr.Extensions),
+			NotBefore:         validity.NotBefore,
+			NotAfter:          validity.NotAfter,
 		})
 		ca.noteSignError(err)
 		if err != nil {

@@ -35,8 +35,9 @@ type CAConfig struct {
 	// field in cfssl config.
 	Backdate cmd.ConfigDuration
 	// The maximum number of subjectAltNames in a single certificate
-	MaxNames int
-	CFSSL    cfsslConfig.Config
+	MaxNames     int
+	CFSSL        cfsslConfig.Config
+	IgnoredLints []string
 
 	// DoNotForceCN is a temporary config setting. It controls whether
 	// to add a certificate's serial to its Subject, and whether to

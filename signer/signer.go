@@ -22,6 +22,7 @@ import (
 	cttls "github.com/google/certificate-transparency-go/tls"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/cmd"
 	zlintx509 "github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v2"
 	"github.com/zmap/zlint/v2/lint"
@@ -36,7 +37,8 @@ type IssuanceRequest struct {
 	NotBefore time.Time
 	NotAfter  time.Time
 
-	DNSNames []string
+	CommonName string
+	DNSNames   []string
 
 	IncludeMustStaple bool
 	IncludeCTPoison   bool
@@ -50,6 +52,7 @@ type signingProfile struct {
 	allowMustStaple bool
 	allowCTPoison   bool
 	allowSCTList    bool
+	allowCommonName bool
 
 	sigAlg    x509.SignatureAlgorithm
 	ocspURL   string
@@ -80,13 +83,14 @@ type ProfileConfig struct {
 	AllowMustStaple bool
 	AllowCTPoison   bool
 	AllowSCTList    bool
+	AllowCommonName bool
 
 	IssuerURL           string
 	OCSPURL             string
 	CRLURL              string
 	Policies            []PolicyInformation
-	MaxValidityPeriod   time.Duration
-	MaxValidityBackdate time.Duration
+	MaxValidityPeriod   cmd.ConfigDuration
+	MaxValidityBackdate cmd.ConfigDuration
 }
 
 func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
@@ -122,11 +126,12 @@ func newProfile(config ProfileConfig) (*signingProfile, error) {
 		allowMustStaple: config.AllowMustStaple,
 		allowCTPoison:   config.AllowCTPoison,
 		allowSCTList:    config.AllowSCTList,
+		allowCommonName: config.AllowCommonName,
 		issuerURL:       config.IssuerURL,
 		crlURL:          config.CRLURL,
 		ocspURL:         config.OCSPURL,
-		maxBackdate:     config.MaxValidityBackdate,
-		maxValidity:     config.MaxValidityPeriod,
+		maxBackdate:     config.MaxValidityBackdate.Duration,
+		maxValidity:     config.MaxValidityPeriod.Duration,
 	}
 	if config.IssuerURL == "" {
 		return nil, errors.New("Issuer URL is required")
@@ -199,6 +204,10 @@ func (p *signingProfile) requestValid(clk clock.Clock, req *IssuanceRequest) err
 		return errors.New("cannot include both ct poison and sct list extensions")
 	}
 
+	if !p.allowCommonName && req.CommonName != "" {
+		return errors.New("common name cannot be included")
+	}
+
 	validity := req.NotAfter.Sub(req.NotBefore)
 	if validity <= 0 {
 		return errors.New("NotAfter must be after NotBefore")
@@ -218,8 +227,8 @@ func (p *signingProfile) requestValid(clk clock.Clock, req *IssuanceRequest) err
 }
 
 var defaultEKU = []x509.ExtKeyUsage{
-	x509.ExtKeyUsageClientAuth,
 	x509.ExtKeyUsageServerAuth,
+	x509.ExtKeyUsageClientAuth,
 }
 
 func (p *signingProfile) generateTemplate(clk clock.Clock) *x509.Certificate {
@@ -228,6 +237,7 @@ func (p *signingProfile) generateTemplate(clk clock.Clock) *x509.Certificate {
 		ExtKeyUsage:           defaultEKU,
 		OCSPServer:            []string{p.ocspURL},
 		IssuingCertificateURL: []string{p.issuerURL},
+		BasicConstraintsValid: true,
 	}
 
 	if p.crlURL != "" {
@@ -267,7 +277,8 @@ func NewSigner(config *Config) (*Signer, error) {
 		return nil, err
 	}
 	lints, err := lint.GlobalRegistry().Filter(lint.FilterOptions{
-		ExcludeNames: config.IgnoredLints,
+		ExcludeNames:   config.IgnoredLints,
+		ExcludeSources: []lint.LintSource{lint.EtsiEsi}, // we don't care about the ETSI lints
 	})
 	if err != nil {
 		return nil, err
@@ -275,7 +286,7 @@ func NewSigner(config *Config) (*Signer, error) {
 	var lk crypto.Signer
 	switch k := config.Issuer.PublicKey.(type) {
 	case *rsa.PublicKey:
-		lk, err = rsa.GenerateKey(rand.Reader, k.Size())
+		lk, err = rsa.GenerateKey(rand.Reader, k.Size()*8)
 		if err != nil {
 			return nil, err
 		}
@@ -310,8 +321,9 @@ func NewSigner(config *Config) (*Signer, error) {
 }
 
 var ctPoisonExt = pkix.Extension{
-	Id:    asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 3},
-	Value: asn1.NullBytes,
+	Id:       asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 3},
+	Value:    asn1.NullBytes,
+	Critical: true,
 }
 
 var sctListOID = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 2}
@@ -378,6 +390,9 @@ func (s *Signer) Issue(req *IssuanceRequest) ([]byte, error) {
 	template.PublicKey = req.PublicKey
 	template.NotBefore, template.NotAfter = req.NotBefore, req.NotAfter
 	template.SerialNumber = big.NewInt(0).SetBytes(req.Serial)
+	if req.CommonName != "" {
+		template.Subject.CommonName = req.CommonName
+	}
 	template.DNSNames = req.DNSNames
 	template.AuthorityKeyId = s.issuer.SubjectKeyId
 	skid, err := generateSKID(req.PublicKey)
@@ -430,7 +445,7 @@ func (s *Signer) Issue(req *IssuanceRequest) ([]byte, error) {
 	return x509.CreateCertificate(rand.Reader, template, s.issuer, req.PublicKey, s.signer)
 }
 
-func containsMustStaple(extensions []pkix.Extension) bool {
+func ContainsMustStaple(extensions []pkix.Extension) bool {
 	for _, ext := range extensions {
 		if ext.Id.Equal(mustStapleExt.Id) && bytes.Equal(ext.Value, mustStapleExt.Value) {
 			return true
@@ -460,8 +475,9 @@ func RequestFromPrecert(precert *x509.Certificate, scts []ct.SignedCertificateTi
 		Serial:            precert.SerialNumber.Bytes(),
 		NotBefore:         precert.NotBefore,
 		NotAfter:          precert.NotAfter,
+		CommonName:        precert.Subject.CommonName,
 		DNSNames:          precert.DNSNames,
-		IncludeMustStaple: containsMustStaple(precert.Extensions),
+		IncludeMustStaple: ContainsMustStaple(precert.Extensions),
 		SCTList:           scts,
 	}, nil
 }

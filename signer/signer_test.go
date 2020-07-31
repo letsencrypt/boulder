@@ -31,8 +31,8 @@ func TestNewProfilePolicies(t *testing.T) {
 		IssuerURL:           "issuer-url",
 		CRLURL:              "crl-url",
 		OCSPURL:             "ocsp-url",
-		MaxValidityPeriod:   time.Hour,
-		MaxValidityBackdate: time.Minute,
+		MaxValidityPeriod:   cmd.ConfigDuration{time.Hour},
+		MaxValidityBackdate: cmd.ConfigDuration{time.Minute},
 		Policies: []PolicyInformation{
 			{
 				OID: "1.2.3",
@@ -196,6 +196,17 @@ func TestRequestValid(t *testing.T) {
 			expectedError: "cannot include both ct poison and sct list extensions",
 		},
 		{
+			name: "common name not allowed",
+			profile: &signingProfile{
+				allowECDSAKeys: true,
+			},
+			request: &IssuanceRequest{
+				PublicKey:  &ecdsa.PublicKey{},
+				CommonName: "cn",
+			},
+			expectedError: "common name cannot be included",
+		},
+		{
 			name: "negative validity",
 			profile: &signingProfile{
 				allowECDSAKeys: true,
@@ -292,6 +303,7 @@ func TestGenerateTemplate(t *testing.T) {
 				// validityPeriod: time.Hour,
 			},
 			expectedTemplate: &x509.Certificate{
+				BasicConstraintsValid: true,
 				SignatureAlgorithm:    x509.SHA256WithRSA,
 				ExtKeyUsage:           defaultEKU,
 				IssuingCertificateURL: []string{""},
@@ -310,6 +322,7 @@ func TestGenerateTemplate(t *testing.T) {
 				},
 			},
 			expectedTemplate: &x509.Certificate{
+				BasicConstraintsValid: true,
 				SignatureAlgorithm:    x509.SHA256WithRSA,
 				ExtKeyUsage:           defaultEKU,
 				IssuingCertificateURL: []string{""},
@@ -437,36 +450,39 @@ func TestIssue(t *testing.T) {
 				Signer: issuerSigner,
 				Clk:    fc,
 				Profile: ProfileConfig{
-					AllowECDSAKeys: true,
-					AllowRSAKeys:   true,
-					// ValidityPeriod: time.Hour,
-					IssuerURL: "http://issuer-url",
-					OCSPURL:   "http://ocsp-url",
+					AllowECDSAKeys:  true,
+					AllowRSAKeys:    true,
+					AllowCommonName: true,
+					IssuerURL:       "http://issuer-url",
+					OCSPURL:         "http://ocsp-url",
 					Policies: []PolicyInformation{
 						{OID: "1.2.3"},
 					},
-					MaxValidityPeriod: time.Hour,
+					MaxValidityPeriod: cmd.ConfigDuration{time.Hour},
 				},
-				IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied"},
+				IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied", "n_subject_common_name_included"},
 			})
 			test.AssertNotError(t, err, "NewSigner failed")
 			pk, err := tc.generateFunc()
 			test.AssertNotError(t, err, "failed to generate test key")
 			certBytes, err := signer.Issue(&IssuanceRequest{
-				PublicKey: pk.Public(),
-				Serial:    []byte{1, 2, 3},
-				DNSNames:  []string{"example.com"},
-				NotBefore: fc.Now(),
-				NotAfter:  fc.Now().Add(time.Hour),
+				PublicKey:  pk.Public(),
+				Serial:     []byte{1, 2, 3},
+				CommonName: "example.com",
+				DNSNames:   []string{"example.com"},
+				NotBefore:  fc.Now(),
+				NotAfter:   fc.Now().Add(time.Hour),
 			})
 			test.AssertNotError(t, err, "Issue failed")
 			cert, err := x509.ParseCertificate(certBytes)
 			test.AssertNotError(t, err, "failed to parse certificate")
 			err = cert.CheckSignatureFrom(issuerCert)
 			test.AssertNotError(t, err, "signature validation failed")
+			test.AssertDeepEquals(t, cert.DNSNames, []string{"example.com"})
+			test.AssertEquals(t, cert.Subject.CommonName, "example.com")
 			test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3})
 			test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
-			test.AssertEquals(t, len(cert.Extensions), 7) // KU, EKU, SKID, AKID, AIA, SAN, Policies
+			test.AssertEquals(t, len(cert.Extensions), 8) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies
 			test.AssertEquals(t, cert.KeyUsage, tc.ku)
 		})
 	}
@@ -487,7 +503,7 @@ func TestIssueRSA(t *testing.T) {
 			Policies: []PolicyInformation{
 				{OID: "1.2.3"},
 			},
-			MaxValidityPeriod: time.Hour,
+			MaxValidityPeriod: cmd.ConfigDuration{time.Hour},
 		},
 		IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied"},
 	})
@@ -508,7 +524,7 @@ func TestIssueRSA(t *testing.T) {
 	test.AssertNotError(t, err, "signature validation failed")
 	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3})
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
-	test.AssertEquals(t, len(cert.Extensions), 7) // KU, EKU, SKID, AKID, AIA, SAN, Policies
+	test.AssertEquals(t, len(cert.Extensions), 8) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies
 	test.AssertEquals(t, cert.KeyUsage, x509.KeyUsageDigitalSignature|x509.KeyUsageKeyEncipherment)
 }
 
@@ -528,7 +544,7 @@ func TestIssueCTPoison(t *testing.T) {
 			Policies: []PolicyInformation{
 				{OID: "1.2.3"},
 			},
-			MaxValidityPeriod: time.Hour,
+			MaxValidityPeriod: cmd.ConfigDuration{time.Hour},
 		},
 		IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied"},
 	})
@@ -550,8 +566,8 @@ func TestIssueCTPoison(t *testing.T) {
 	test.AssertNotError(t, err, "signature validation failed")
 	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3})
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
-	test.AssertEquals(t, len(cert.Extensions), 8) // KU, EKU, SKID, AKID, AIA, SAN, Policies, CT Poison
-	test.AssertDeepEquals(t, cert.Extensions[7], ctPoisonExt)
+	test.AssertEquals(t, len(cert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, CT Poison
+	test.AssertDeepEquals(t, cert.Extensions[8], ctPoisonExt)
 }
 
 func TestIssueSCTList(t *testing.T) {
@@ -570,7 +586,7 @@ func TestIssueSCTList(t *testing.T) {
 			Policies: []PolicyInformation{
 				{OID: "1.2.3"},
 			},
-			MaxValidityPeriod: time.Hour,
+			MaxValidityPeriod: cmd.ConfigDuration{time.Hour},
 		},
 		IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied"},
 	})
@@ -594,8 +610,8 @@ func TestIssueSCTList(t *testing.T) {
 	test.AssertNotError(t, err, "signature validation failed")
 	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3})
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
-	test.AssertEquals(t, len(cert.Extensions), 8) // KU, EKU, SKID, AKID, AIA, SAN, Policies, SCT list
-	test.AssertDeepEquals(t, cert.Extensions[7], pkix.Extension{
+	test.AssertEquals(t, len(cert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, SCT list
+	test.AssertDeepEquals(t, cert.Extensions[8], pkix.Extension{
 		Id:    sctListOID,
 		Value: []byte{4, 51, 0, 49, 0, 47, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 	})
@@ -617,7 +633,7 @@ func TestIssueMustStaple(t *testing.T) {
 			Policies: []PolicyInformation{
 				{OID: "1.2.3"},
 			},
-			MaxValidityPeriod: time.Hour,
+			MaxValidityPeriod: cmd.ConfigDuration{time.Hour},
 		},
 		IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied"},
 	})
@@ -639,8 +655,8 @@ func TestIssueMustStaple(t *testing.T) {
 	test.AssertNotError(t, err, "signature validation failed")
 	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3})
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
-	test.AssertEquals(t, len(cert.Extensions), 8) // KU, EKU, SKID, AKID, AIA, SAN, Policies, Must-Staple
-	test.AssertDeepEquals(t, cert.Extensions[7], mustStapleExt)
+	test.AssertEquals(t, len(cert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, Must-Staple
+	test.AssertDeepEquals(t, cert.Extensions[8], mustStapleExt)
 }
 
 func TestIssueBadLint(t *testing.T) {
@@ -658,7 +674,7 @@ func TestIssueBadLint(t *testing.T) {
 			Policies: []PolicyInformation{
 				{OID: "1.2.3"},
 			},
-			MaxValidityPeriod: time.Hour,
+			MaxValidityPeriod: cmd.ConfigDuration{time.Hour},
 		},
 	})
 	test.AssertNotError(t, err, "NewSigner failed")
