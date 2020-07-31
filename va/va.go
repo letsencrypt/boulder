@@ -686,7 +686,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	}).Observe(validationLatency.Seconds())
 
 	va.log.AuditObject("Validation result", logEvent)
-	va.log.Infof("Validations: %+v", *req.Authz)
 
 	return bgrpc.ValidationResultToPB(records, prob)
 }
