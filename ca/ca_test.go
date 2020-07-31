@@ -102,9 +102,6 @@ var (
 	// * DNSNames = example.com, example2.com
 	ECDSACSR = mustRead("./testdata/ecdsa.der.csr")
 
-	// This is never modified, but it must be a var instead of a const so we can make references to it.
-	arbitraryRegID int64 = 1001
-
 	// OIDExtensionCTPoison is defined in RFC 6962 s3.1.
 	OIDExtensionCTPoison = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 3}
 
@@ -124,6 +121,8 @@ var (
 		{name: "certificate-for-precertificate", issueCertificateForPrecertificate: true},
 	}
 )
+
+const arbitraryRegID int64 = 1001
 
 // CFSSL config
 const rsaProfileName = "rsaEE"
@@ -348,7 +347,7 @@ func TestIssuePrecertificate(t *testing.T) {
 				req, err := x509.ParseCertificateRequest(testCase.csr)
 				test.AssertNotError(t, err, "Certificate request failed to parse")
 
-				issueReq := &capb.IssueCertificateRequest{Csr: testCase.csr, RegistrationID: &arbitraryRegID}
+				issueReq := &capb.IssueCertificateRequest{Csr: testCase.csr, RegistrationID: arbitraryRegID}
 
 				var certDER []byte
 				response, err := ca.IssuePrecertificate(ctx, issueReq)
@@ -456,7 +455,7 @@ func TestMultipleIssuers(t *testing.T) {
 		nil)
 	test.AssertNotError(t, err, "Failed to remake CA")
 
-	issuedCert, err := ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID})
+	issuedCert, err := ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID})
 	test.AssertNotError(t, err, "Failed to issue certificate")
 
 	cert, err := x509.ParseCertificate(issuedCert.DER)
@@ -481,7 +480,7 @@ func TestOCSP(t *testing.T) {
 		nil)
 	test.AssertNotError(t, err, "Failed to create CA")
 
-	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID}
+	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID}
 
 	cert, err := ca.IssuePrecertificate(ctx, &issueReq)
 	test.AssertNotError(t, err, "Failed to issue")
@@ -490,7 +489,7 @@ func TestOCSP(t *testing.T) {
 	status := string(core.OCSPStatusGood)
 	ocspResp, err := ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		CertDER: cert.DER,
-		Status:  &status,
+		Status:  status,
 	})
 	test.AssertNotError(t, err, "Failed to generate OCSP")
 	parsed, err := ocsp.ParseResponse(ocspResp.Response, caCert)
@@ -502,7 +501,7 @@ func TestOCSP(t *testing.T) {
 	// Test that signatures are checked.
 	_, err = ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		CertDER: append(cert.DER, byte(0)),
-		Status:  &status,
+		Status:  status,
 	})
 	test.AssertError(t, err, "Generated OCSP for cert with bad signature")
 
@@ -545,7 +544,7 @@ func TestOCSP(t *testing.T) {
 	// should be signed by caCert.
 	ocspResp2, err := ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		CertDER: append([]byte(nil), cert.DER...),
-		Status:  &status,
+		Status:  status,
 	})
 	test.AssertNotError(t, err, "Failed to sign second OCSP response")
 	_, err = ocsp.ParseResponse(ocspResp2.Response, caCert)
@@ -555,7 +554,7 @@ func TestOCSP(t *testing.T) {
 	// and should be signed by newIssuer.
 	newCertOcspResp, err := ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		CertDER: newCert.DER,
-		Status:  &status,
+		Status:  status,
 	})
 	test.AssertNotError(t, err, "Failed to generate OCSP")
 	parsedNewCertOcspResp, err := ocsp.ParseResponse(newCertOcspResp.Response, newIssuerCert)
@@ -631,7 +630,7 @@ func TestInvalidCSRs(t *testing.T) {
 
 		t.Run(testCase.name, func(t *testing.T) {
 			serializedCSR := mustRead(testCase.csrPath)
-			issueReq := &capb.IssueCertificateRequest{Csr: serializedCSR, RegistrationID: &arbitraryRegID}
+			issueReq := &capb.IssueCertificateRequest{Csr: serializedCSR, RegistrationID: arbitraryRegID}
 			_, err = ca.IssuePrecertificate(ctx, issueReq)
 
 			test.Assert(t, berrors.Is(err, testCase.errorType), "Incorrect error type returned")
@@ -666,7 +665,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to parse time")
 	testCtx.fc.Set(future)
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
-	_, err = ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: NoCNCSR, RegistrationID: &arbitraryRegID})
+	_, err = ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: NoCNCSR, RegistrationID: arbitraryRegID})
 	test.AssertError(t, err, "Cannot issue a certificate that expires after the intermediate certificate")
 	test.Assert(t, berrors.Is(err, berrors.InternalServer), "Incorrect error type returned")
 }
@@ -841,8 +840,7 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		nil)
 	test.AssertNotError(t, err, "Failed to create CA")
 
-	orderID := int64(0)
-	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID, OrderID: &orderID}
+	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID, OrderID: 0}
 	precert, err := ca.IssuePrecertificate(ctx, &issueReq)
 	test.AssertNotError(t, err, "Failed to issue precert")
 	parsedPrecert, err := x509.ParseCertificate(precert.DER)
@@ -866,8 +864,8 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 	cert, err := ca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:            precert.DER,
 		SCTs:           sctBytes,
-		RegistrationID: &arbitraryRegID,
-		OrderID:        new(int64),
+		RegistrationID: arbitraryRegID,
+		OrderID:        0,
 	})
 	test.AssertNotError(t, err, "Failed to issue cert from precert")
 	parsedCert, err := x509.ParseCertificate(cert.Der)
@@ -928,15 +926,14 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	orderID := int64(0)
-	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID, OrderID: &orderID}
+	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID, OrderID: 0}
 	precert, err := ca.IssuePrecertificate(ctx, &issueReq)
 	test.AssertNotError(t, err, "Failed to issue precert")
 	_, err = ca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:            precert.DER,
 		SCTs:           sctBytes,
-		RegistrationID: &arbitraryRegID,
-		OrderID:        new(int64),
+		RegistrationID: arbitraryRegID,
+		OrderID:        0,
 	})
 	if err == nil {
 		t.Error("Expected error issuing duplicate serial but got none.")
@@ -963,8 +960,8 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	_, err = errorca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:            precert.DER,
 		SCTs:           sctBytes,
-		RegistrationID: &arbitraryRegID,
-		OrderID:        new(int64),
+		RegistrationID: arbitraryRegID,
+		OrderID:        0,
 	})
 	if err == nil {
 		t.Fatal("Expected error issuing duplicate serial but got none.")
@@ -1038,10 +1035,9 @@ func TestPrecertOrphanQueue(t *testing.T) {
 		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
 	}
 
-	var one int64 = 1
 	_, err = ca.IssuePrecertificate(context.Background(), &capb.IssueCertificateRequest{
-		RegistrationID: &one,
-		OrderID:        &one,
+		RegistrationID: 1,
+		OrderID:        1,
 		Csr:            CNandSANCSR,
 	})
 	test.AssertError(t, err, "Expected IssuePrecertificate to fail with `failSA`")
@@ -1229,7 +1225,7 @@ func TestIssuePrecertificateLinting(t *testing.T) {
 	// Attempt to issue a pre-certificate
 	_, err = ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{
 		Csr:            CNandSANCSR,
-		RegistrationID: &arbitraryRegID,
+		RegistrationID: arbitraryRegID,
 	})
 	// It should error
 	test.AssertError(t, err, "expected err from IssuePrecertificate with linttrapSigner")
@@ -1262,32 +1258,28 @@ func TestGenerateOCSPWithIssuerID(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	// GenerateOCSP with feature enabled + req contains bad IssuerID
-	issuerID := int64(666)
-	serial := "DEADDEADDEADDEADDEADDEADDEADDEADDEAD"
-	status := string(core.OCSPStatusGood)
 	_, err = ca.GenerateOCSP(context.Background(), &capb.GenerateOCSPRequest{
-		IssuerID: &issuerID,
-		Serial:   &serial,
-		Status:   &status,
+		IssuerID: int64(666),
+		Serial:   "DEADDEADDEADDEADDEADDEADDEADDEADDEAD",
+		Status:   string(core.OCSPStatusGood),
 	})
 	test.AssertError(t, err, "GenerateOCSP didn't fail with invalid IssuerID")
 
 	// GenerateOCSP with feature enabled + req contains good IssuerID
-	issuerID = idForIssuer(ca.defaultIssuer.cert)
 	_, err = ca.GenerateOCSP(context.Background(), &capb.GenerateOCSPRequest{
-		IssuerID: &issuerID,
-		Serial:   &serial,
-		Status:   &status,
+		IssuerID: idForIssuer(ca.defaultIssuer.cert),
+		Serial:   "DEADDEADDEADDEADDEADDEADDEADDEADDEAD",
+		Status:   string(core.OCSPStatusGood),
 	})
 	test.AssertNotError(t, err, "GenerateOCSP failed")
 
 	// GenerateOCSP with feature enabled + req doesn't contain IssuerID
-	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: &arbitraryRegID}
+	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID}
 	cert, err := ca.IssuePrecertificate(ctx, &issueReq)
 	test.AssertNotError(t, err, "Failed to issue")
 	_, err = ca.GenerateOCSP(context.Background(), &capb.GenerateOCSPRequest{
 		CertDER: cert.DER,
-		Status:  &status,
+		Status:  string(core.OCSPStatusGood),
 	})
 	test.AssertNotError(t, err, "GenerateOCSP failed")
 }
