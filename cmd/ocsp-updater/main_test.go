@@ -416,7 +416,7 @@ type mockOCSPRecordIssuer struct {
 }
 
 func (ca *mockOCSPRecordIssuer) GenerateOCSP(_ context.Context, req *capb.GenerateOCSPRequest, _ ...grpc.CallOption) (*capb.OCSPResponse, error) {
-	ca.gotIssuer = req.IssuerID != nil && req.Serial != nil
+	ca.gotIssuer = req.IssuerID != 0 && req.Serial != ""
 	return &capb.OCSPResponse{Response: []byte{1, 2, 3}}, nil
 }
 
