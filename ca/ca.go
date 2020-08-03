@@ -167,7 +167,7 @@ type internalIssuer struct {
 func makeInternalIssuers(issuers []bsigner.Config, lifespanOCSP time.Duration) (map[string]*internalIssuer, error) {
 	internalIssuers := make(map[string]*internalIssuer, len(issuers))
 	for _, issuer := range issuers {
-		signer, err := bsigner.NewSigner(&issuer)
+		signer, err := bsigner.NewSigner(issuer)
 		if err != nil {
 			return nil, err
 		}

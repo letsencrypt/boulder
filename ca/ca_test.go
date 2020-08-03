@@ -287,8 +287,8 @@ func setup(t *testing.T) *testCtx {
 				Policies: []bsigner.PolicyInformation{
 					{OID: "2.23.140.1.2.1"},
 				},
-				MaxValidityPeriod:   cmd.ConfigDuration{time.Hour * 8760},
-				MaxValidityBackdate: cmd.ConfigDuration{time.Hour},
+				MaxValidityPeriod:   cmd.ConfigDuration{Duration: time.Hour * 8760},
+				MaxValidityBackdate: cmd.ConfigDuration{Duration: time.Hour},
 			},
 		},
 	}
@@ -874,7 +874,7 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 	testCtx := setup(t)
 	sa := &mockSA{}
 	for _, nonCFSSL := range []bool{true, false} {
-		features.Set(map[string]bool{"NonCFSSLSigner": nonCFSSL})
+		_ = features.Set(map[string]bool{"NonCFSSLSigner": nonCFSSL})
 		ca, err := NewCertificateAuthorityImpl(
 			testCtx.caConfig,
 			sa,

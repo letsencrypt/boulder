@@ -172,7 +172,7 @@ func newProfile(config ProfileConfig) (*signingProfile, error) {
 	return sp, nil
 }
 
-// requestValid verifies the passed IssuanceRequest agains the signingProfile. If the
+// requestValid verifies the passed IssuanceRequest against the signingProfile. If the
 // request doesn't match the signing profile an error is returned.
 func (p *signingProfile) requestValid(clk clock.Clock, req *IssuanceRequest) error {
 	switch req.PublicKey.(type) {
@@ -271,7 +271,7 @@ type Config struct {
 }
 
 // NewSigner constructs a Signer from the provided Config
-func NewSigner(config *Config) (*Signer, error) {
+func NewSigner(config Config) (*Signer, error) {
 	profile, err := newProfile(config.Profile)
 	if err != nil {
 		return nil, err
