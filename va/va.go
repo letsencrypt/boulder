@@ -263,6 +263,12 @@ func detailedError(err error) *probs.ProblemDetails {
 		return probs.Malformed("Server only speaks HTTP, not TLS")
 	}
 
+	// go1.15 wrapped non-temporary TLS errors in a new type, in order to get to the net.OpError
+	// that we want to unwrap below we must first unwrap this tls.permamentError.
+	if fmt.Sprintf("%T", err) == "*tls.permamentError" {
+		err = errors.Unwrap(err)
+	}
+
 	if netErr, ok := err.(*net.OpError); ok {
 		if fmt.Sprintf("%T", netErr.Err) == "tls.alert" {
 			// All the tls.alert error strings are reasonable to hand back to a
