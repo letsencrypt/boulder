@@ -169,7 +169,6 @@ func (va *ValidationAuthorityImpl) tlsDial(ctx context.Context, hostPort string,
 	conn := tls.Client(netConn, config)
 	err = conn.Handshake()
 	if err != nil {
-		fmt.Printf("client side %s %T\n", err, err)
 		return nil, err
 	}
 	return conn, nil
