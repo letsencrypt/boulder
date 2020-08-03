@@ -952,13 +952,11 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		return nil, err
 	}
 
-	fmt.Println("before", csrOb.Subject.CommonName)
 	if err := csrlib.VerifyCSR(ctx, csrOb, ra.maxNames, &ra.keyPolicy, ra.PA, *req.Order.RegistrationID); err != nil {
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
 		return nil, err
 	}
-	fmt.Println("after", csrOb.Subject.CommonName)
 
 	// Dedupe, lowercase and sort both the names from the CSR and the names in the
 	// order.
@@ -995,7 +993,6 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 	// Attempt issuance for the order. If the order isn't fully authorized this
 	// will return an error.
-	fmt.Println(csrOb.Subject.CommonName)
 	issueReq := core.CertificateRequest{
 		Bytes: req.Csr,
 		CSR:   csrOb,
@@ -1232,7 +1229,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	// Asynchronously submit the final certificate to any configured logs
 	go ra.ctpolicy.SubmitFinalCert(cert.Der, parsedCertificate.NotAfter)
 
-	fmt.Println(parsedCertificate.Subject.CommonName, csr.Subject.CommonName)
 	err = ra.MatchesCSR(parsedCertificate, csr)
 	if err != nil {
 		return emptyCert, err
