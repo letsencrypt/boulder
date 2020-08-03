@@ -167,7 +167,7 @@ func TestVerifyCSR(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		err := VerifyCSR(context.Background(), c.csr, c.maxNames, c.keyPolicy, c.pa, true, c.regID)
+		err := VerifyCSR(context.Background(), c.csr, c.maxNames, c.keyPolicy, c.pa, c.regID)
 		test.AssertDeepEquals(t, c.expectedError, err)
 	}
 }
@@ -178,59 +178,34 @@ func TestNormalizeCSR(t *testing.T) {
 	cases := []struct {
 		name          string
 		csr           *x509.CertificateRequest
-		forceCN       bool
 		expectedCN    string
 		expectedNames []string
 	}{
 		{
-			"force CN, no explicit CN",
+			"no explicit CN",
 			&x509.CertificateRequest{DNSNames: []string{"a.com"}},
-			true,
 			"a.com",
 			[]string{"a.com"},
 		},
 		{
-			"force CN, explicit uppercase CN",
+			"explicit uppercase CN",
 			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "A.com"}, DNSNames: []string{"a.com"}},
-			true,
 			"a.com",
 			[]string{"a.com"},
 		},
 		{
-			"no force CN, no explicit CN",
-			&x509.CertificateRequest{DNSNames: []string{"a.com"}},
-			false,
-			"",
-			[]string{"a.com"},
-		},
-		{
-			"no force CN, no explicit CN, duplicate SAN",
-			&x509.CertificateRequest{DNSNames: []string{"a.com", "a.com"}},
-			false,
-			"",
-			[]string{"a.com"},
-		},
-		{
-			"no force CN, explicit uppercase CN, uppercase SAN",
-			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "A.com"}, DNSNames: []string{"B.com"}},
-			false,
-			"a.com",
-			[]string{"a.com", "b.com"},
-		},
-		{
-			"force CN, no explicit CN, too long leading SANs",
+			"no explicit CN, too long leading SANs",
 			&x509.CertificateRequest{DNSNames: []string{
 				tooLongString + ".a.com",
 				tooLongString + ".b.com",
 				"a.com",
 				"b.com",
 			}},
-			true,
 			"a.com",
 			[]string{"a.com", tooLongString + ".a.com", tooLongString + ".b.com", "b.com"},
 		},
 		{
-			"force CN, explicit CN, too long leading SANs",
+			"explicit CN, too long leading SANs",
 			&x509.CertificateRequest{
 				Subject: pkix.Name{CommonName: "A.com"},
 				DNSNames: []string{
@@ -239,14 +214,13 @@ func TestNormalizeCSR(t *testing.T) {
 					"a.com",
 					"b.com",
 				}},
-			true,
 			"a.com",
 			[]string{"a.com", tooLongString + ".a.com", tooLongString + ".b.com", "b.com"},
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			normalizeCSR(c.csr, c.forceCN)
+			normalizeCSR(c.csr)
 			test.AssertEquals(t, c.expectedCN, c.csr.Subject.CommonName)
 			test.AssertDeepEquals(t, c.expectedNames, c.csr.DNSNames)
 		})

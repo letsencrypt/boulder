@@ -44,10 +44,10 @@ var (
 )
 
 // VerifyCSR checks the validity of a x509.CertificateRequest. Before doing checks it normalizes
-// the CSR which lowers the case of DNS names and subject CN, and if forceCNFromSAN is true it
-// will hoist a DNS name into the CN if it is empty.
-func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.KeyPolicy, pa core.PolicyAuthority, forceCNFromSAN bool, regID int64) error {
-	normalizeCSR(csr, forceCNFromSAN)
+// the CSR which lowers the case of DNS names and subject CN, and hoist a DNS name into the CN
+// if it is empty.
+func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.KeyPolicy, pa core.PolicyAuthority, regID int64) error {
+	normalizeCSR(csr)
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {
 		return invalidPubKey
@@ -73,7 +73,7 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	if len(csr.DNSNames) == 0 && csr.Subject.CommonName == "" {
 		return invalidNoDNS
 	}
-	if forceCNFromSAN && csr.Subject.CommonName == "" {
+	if csr.Subject.CommonName == "" {
 		return invalidAllSANTooLong
 	}
 	if len(csr.Subject.CommonName) > maxCNLength {
@@ -93,9 +93,9 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 }
 
 // normalizeCSR deduplicates and lowers the case of dNSNames and the subject CN.
-// If forceCNFromSAN is true it will also hoist a dNSName into the CN if it is empty.
-func normalizeCSR(csr *x509.CertificateRequest, forceCNFromSAN bool) {
-	if forceCNFromSAN && csr.Subject.CommonName == "" {
+// It will also hoist a dNSName into the CN if it is empty.
+func normalizeCSR(csr *x509.CertificateRequest) {
+	if csr.Subject.CommonName == "" {
 		var forcedCN string
 		// Promote the first SAN that is less than maxCNLength (if any)
 		for _, name := range csr.DNSNames {
