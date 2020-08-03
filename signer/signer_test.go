@@ -31,8 +31,8 @@ func TestNewProfilePolicies(t *testing.T) {
 		IssuerURL:           "issuer-url",
 		CRLURL:              "crl-url",
 		OCSPURL:             "ocsp-url",
-		MaxValidityPeriod:   cmd.ConfigDuration{time.Hour},
-		MaxValidityBackdate: cmd.ConfigDuration{time.Minute},
+		MaxValidityPeriod:   cmd.ConfigDuration{Duration: time.Hour},
+		MaxValidityBackdate: cmd.ConfigDuration{Duration: time.Minute},
 		Policies: []PolicyInformation{
 			{
 				OID: "1.2.3",
@@ -503,7 +503,7 @@ func TestIssueRSA(t *testing.T) {
 			Policies: []PolicyInformation{
 				{OID: "1.2.3"},
 			},
-			MaxValidityPeriod: cmd.ConfigDuration{time.Hour},
+			MaxValidityPeriod: cmd.ConfigDuration{Duration: time.Hour},
 		},
 		IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied"},
 	})
@@ -544,7 +544,7 @@ func TestIssueCTPoison(t *testing.T) {
 			Policies: []PolicyInformation{
 				{OID: "1.2.3"},
 			},
-			MaxValidityPeriod: cmd.ConfigDuration{time.Hour},
+			MaxValidityPeriod: cmd.ConfigDuration{Duration: time.Hour},
 		},
 		IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied"},
 	})
@@ -586,7 +586,7 @@ func TestIssueSCTList(t *testing.T) {
 			Policies: []PolicyInformation{
 				{OID: "1.2.3"},
 			},
-			MaxValidityPeriod: cmd.ConfigDuration{time.Hour},
+			MaxValidityPeriod: cmd.ConfigDuration{Duration: time.Hour},
 		},
 		IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied"},
 	})
@@ -633,7 +633,7 @@ func TestIssueMustStaple(t *testing.T) {
 			Policies: []PolicyInformation{
 				{OID: "1.2.3"},
 			},
-			MaxValidityPeriod: cmd.ConfigDuration{time.Hour},
+			MaxValidityPeriod: cmd.ConfigDuration{Duration: time.Hour},
 		},
 		IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied"},
 	})
@@ -674,7 +674,7 @@ func TestIssueBadLint(t *testing.T) {
 			Policies: []PolicyInformation{
 				{OID: "1.2.3"},
 			},
-			MaxValidityPeriod: cmd.ConfigDuration{time.Hour},
+			MaxValidityPeriod: cmd.ConfigDuration{Duration: time.Hour},
 		},
 	})
 	test.AssertNotError(t, err, "NewSigner failed")
