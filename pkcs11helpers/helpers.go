@@ -57,8 +57,8 @@ func Initialize(module string, slot uint, pin string) (*Session, error) {
 
 // https://tools.ietf.org/html/rfc5759#section-3.2
 var curveOIDs = map[string]asn1.ObjectIdentifier{
-	"P-256": asn1.ObjectIdentifier{1, 2, 840, 10045, 3, 1, 7},
-	"P-384": asn1.ObjectIdentifier{1, 3, 132, 0, 34},
+	"P-256": {1, 2, 840, 10045, 3, 1, 7},
+	"P-384": {1, 3, 132, 0, 34},
 }
 
 // getPublicKeyID looks up the given public key in the PKCS#11 token, and
