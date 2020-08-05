@@ -4,34 +4,34 @@ package core;
 option go_package = "github.com/letsencrypt/boulder/core/proto";
 
 message Challenge {
-	optional int64 id = 1;
-	optional string type = 2;
-	optional string status = 6;
-	optional string uri = 9;
-	optional string token = 3;
-	optional string keyAuthorization = 5;
-	repeated ValidationRecord validationrecords = 10;
-	optional ProblemDetails error = 7;
+  optional int64 id = 1;
+  optional string type = 2;
+  optional string status = 6;
+  optional string uri = 9;
+  optional string token = 3;
+  optional string keyAuthorization = 5;
+  repeated ValidationRecord validationrecords = 10;
+  optional ProblemDetails error = 7;
 }
 
 message ValidationRecord {
-        optional string hostname = 1;
-        optional string port = 2;
-        repeated bytes addressesResolved = 3; // net.IP.MarshalText()
-        optional bytes addressUsed = 4; // net.IP.MarshalText()
+  optional string hostname = 1;
+  optional string port = 2;
+  repeated bytes addressesResolved = 3; // net.IP.MarshalText()
+  optional bytes addressUsed = 4; // net.IP.MarshalText()
 
-        repeated string authorities = 5;
-        optional string url = 6;
-        // A list of addresses tried before the address used (see
-        // core/objects.go and the comment on the ValidationRecord structure
-        // definition for more information.
-        repeated bytes addressesTried = 7; // net.IP.MarshalText()
+  repeated string authorities = 5;
+  optional string url = 6;
+  // A list of addresses tried before the address used (see
+  // core/objects.go and the comment on the ValidationRecord structure
+  // definition for more information.
+  repeated bytes addressesTried = 7; // net.IP.MarshalText()
 }
 
 message ProblemDetails {
-	optional string problemType = 1;
-	optional string detail = 2;
-	optional int32 httpStatus = 3;
+  optional string problemType = 1;
+  optional string detail = 2;
+  optional int32 httpStatus = 3;
 }
 
 message Certificate {
@@ -44,52 +44,52 @@ message Certificate {
 }
 
 message CertificateStatus {
-        optional string serial = 1;
-        reserved 2; // previously subscriberApproved
-        optional string status = 3;
-        optional int64 ocspLastUpdated = 4;
-        optional int64 revokedDate = 5;
-        optional int64 revokedReason = 6;
-        optional int64 lastExpirationNagSent = 7;
-        optional bytes ocspResponse = 8;
-        optional int64 notAfter = 9;
-        optional bool isExpired = 10;
+  optional string serial = 1;
+  reserved 2; // previously subscriberApproved
+  optional string status = 3;
+  optional int64 ocspLastUpdated = 4;
+  optional int64 revokedDate = 5;
+  optional int64 revokedReason = 6;
+  optional int64 lastExpirationNagSent = 7;
+  optional bytes ocspResponse = 8;
+  optional int64 notAfter = 9;
+  optional bool isExpired = 10;
 }
 
 message Registration {
-        optional int64 id = 1;
-        optional bytes key = 2;
-        repeated string contact = 3;
-        optional bool contactsPresent = 4;
-        optional string agreement = 5;
-        optional bytes initialIP = 6;
-        optional int64 createdAt = 7; // Unix timestamp (nanoseconds)
-        optional string status = 8;
+  optional int64 id = 1;
+  optional bytes key = 2;
+  repeated string contact = 3;
+  optional bool contactsPresent = 4;
+  optional string agreement = 5;
+  optional bytes initialIP = 6;
+  optional int64 createdAt = 7; // Unix timestamp (nanoseconds)
+  optional string status = 8;
 }
 
 message Authorization {
-        optional string id = 1;
-        optional string identifier = 2;
-        optional int64 registrationID = 3;
-        optional string status = 4;
-        optional int64 expires = 5; // Unix timestamp (nanoseconds)
-        repeated core.Challenge challenges = 6;
-        reserved 7; // previously combinations
-        reserved 8; // previously v2
+  optional string id = 1;
+  optional string identifier = 2;
+  optional int64 registrationID = 3;
+  optional string status = 4;
+  optional int64 expires = 5; // Unix timestamp (nanoseconds)
+  repeated core.Challenge challenges = 6;
+  reserved 7; // previously combinations
+  reserved 8; // previously v2
 }
 
 message Order {
-        optional int64 id = 1;
-        optional int64 registrationID = 2;
-        optional int64 expires = 3;
-        optional ProblemDetails error = 4;
-        optional string certificateSerial = 5;
-        reserved 6; // previously authorizations, deprecated in favor of v2Authorizations
-        optional string status = 7;
-        repeated string names = 8;
-        optional bool beganProcessing = 9;
-        optional int64 created = 10;
-        repeated int64 v2Authorizations = 11;
+  optional int64 id = 1;
+  optional int64 registrationID = 2;
+  optional int64 expires = 3;
+  optional ProblemDetails error = 4;
+  optional string certificateSerial = 5;
+  reserved 6; // previously authorizations, deprecated in favor of v2Authorizations
+  optional string status = 7;
+  repeated string names = 8;
+  optional bool beganProcessing = 9;
+  optional int64 created = 10;
+  repeated int64 v2Authorizations = 11;
 }
 
 message Empty {}

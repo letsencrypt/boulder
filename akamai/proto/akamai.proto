@@ -6,9 +6,9 @@ option go_package = "github.com/letsencrypt/boulder/akamai/proto";
 import "core/proto/core.proto";
 
 service AkamaiPurger {
-    rpc Purge(PurgeRequest) returns (core.Empty) {}
+  rpc Purge(PurgeRequest) returns (core.Empty) {}
 }
 
 message PurgeRequest {
-    repeated string urls = 1;
+  repeated string urls = 1;
 }
