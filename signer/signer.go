@@ -321,11 +321,13 @@ func NewSigner(config Config) (*Signer, error) {
 }
 
 var ctPoisonExt = pkix.Extension{
+	// OID for CT poison, RFC 6962 (was never assigned a proper id-pe- name)
 	Id:       asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 3},
 	Value:    asn1.NullBytes,
 	Critical: true,
 }
 
+// OID for SCT list, RFC 6962 (was never assigned a proper id-pe- name)
 var sctListOID = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 2}
 
 func generateSCTListExt(scts []ct.SignedCertificateTimestamp) (pkix.Extension, error) {
@@ -352,7 +354,12 @@ func generateSCTListExt(scts []ct.SignedCertificateTimestamp) (pkix.Extension, e
 }
 
 var mustStapleExt = pkix.Extension{
-	Id:    asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24},
+	// RFC 7633: id-pe-tlsfeature OBJECT IDENTIFIER ::=  { id-pe 24 }
+	Id: asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24},
+	// ASN.1 encoding of:
+	// SEQUENCE
+	//   INTEGER 5
+	// where "5" is the status_request feature (RFC 6066)
 	Value: []byte{0x30, 0x03, 0x02, 0x01, 0x05},
 }
 
@@ -387,7 +394,6 @@ func (s *Signer) Issue(req *IssuanceRequest) ([]byte, error) {
 	template := s.profile.generateTemplate(s.clk)
 
 	// populate template from the issuance request
-	template.PublicKey = req.PublicKey
 	template.NotBefore, template.NotAfter = req.NotBefore, req.NotAfter
 	template.SerialNumber = big.NewInt(0).SetBytes(req.Serial)
 	if req.CommonName != "" {
@@ -400,7 +406,7 @@ func (s *Signer) Issue(req *IssuanceRequest) ([]byte, error) {
 		return nil, err
 	}
 	template.SubjectKeyId = skid
-	switch template.PublicKey.(type) {
+	switch req.PublicKey.(type) {
 	case *rsa.PublicKey:
 		template.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
 	case *ecdsa.PublicKey:
@@ -423,7 +429,7 @@ func (s *Signer) Issue(req *IssuanceRequest) ([]byte, error) {
 
 	// check that the tbsCertificate is properly formed by signing it
 	// with a throwaway key and then linting it using zlint
-	lintCertBytes, err := x509.CreateCertificate(rand.Reader, template, s.issuer, template.PublicKey, s.lintKey)
+	lintCertBytes, err := x509.CreateCertificate(rand.Reader, template, s.issuer, req.PublicKey, s.lintKey)
 	if err != nil {
 		return nil, err
 	}
@@ -464,7 +470,7 @@ func containsCTPoison(extensions []pkix.Extension) bool {
 }
 
 // RequestFromPrecert constructs a final certificate IssuanceRequest matching
-// he provided precertificate. It returns an error if the precertificate doesn't
+// the provided precertificate. It returns an error if the precertificate doesn't
 // contain the CT poison extension.
 func RequestFromPrecert(precert *x509.Certificate, scts []ct.SignedCertificateTimestamp) (*IssuanceRequest, error) {
 	if !containsCTPoison(precert.Extensions) {

@@ -243,6 +243,8 @@ func NewCertificateAuthorityImpl(
 
 	var internalIssuers map[string]*internalIssuer
 	var defaultIssuer *internalIssuer
+	// rsaProfile and ecdsaProfile are unused when using the boulder signer
+	// instead of the CFSSL signer
 	var rsaProfile, ecdsaProfile string
 	if features.Enabled(features.NonCFSSLSigner) {
 		internalIssuers, err = makeInternalIssuers(boulderIssuers, config.LifespanOCSP.Duration)

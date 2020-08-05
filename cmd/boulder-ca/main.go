@@ -49,7 +49,7 @@ func loadCFSSLIssuers(c config) ([]ca.Issuer, error) {
 	return issuers, nil
 }
 
-func loadIssuerConfigs(configs []ca_config.IssuerConfig, ignoredLints []string) ([]bsigner.Config, error) {
+func loadBoulderIssuers(configs []ca_config.IssuerConfig, ignoredLints []string) ([]bsigner.Config, error) {
 	boulderConfigs := make([]bsigner.Config, 0, len(configs))
 	for _, issuerConfig := range configs {
 		signer, issuer, err := loadIssuer(issuerConfig)
@@ -178,7 +178,7 @@ func main() {
 	var cfsslIssuers []ca.Issuer
 	var boulderIssuerConfigs []bsigner.Config
 	if features.Enabled(features.NonCFSSLSigner) {
-		boulderIssuerConfigs, err = loadIssuerConfigs(c.CA.Issuers, c.CA.IgnoredLints)
+		boulderIssuerConfigs, err = loadBoulderIssuers(c.CA.Issuers, c.CA.IgnoredLints)
 		cmd.FailOnError(err, "Couldn't load issuers")
 	} else {
 		cfsslIssuers, err = loadCFSSLIssuers(c)
