@@ -1112,7 +1112,7 @@ def test_long_san_no_cn():
     except messages.Error as e:
         if e.typ != "urn:ietf:params:acme:error:badCSR":
             raise(Exception("Expected malformed type problem, got {0}".format(e.typ)))
-        if e.detail != "Error finalizing order :: issuing precertificate: CSR doesn't contain a SAN short enough to fit in CN":
+        if e.detail != "Error finalizing order :: CSR doesn't contain a SAN short enough to fit in CN":
             raise(Exception("Problem detail did not match expected"))
 
 def test_delete_unused_challenges():

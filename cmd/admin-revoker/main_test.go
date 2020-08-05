@@ -54,7 +54,7 @@ func TestRevokeBatch(t *testing.T) {
 	ra := ra.NewRegistrationAuthorityImpl(fc,
 		log,
 		metrics.NoopRegisterer,
-		1, goodkey.KeyPolicy{}, 100, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, nil, 0, nil, nil, &x509.Certificate{})
+		1, goodkey.KeyPolicy{}, 100, true, 300*24*time.Hour, 7*24*time.Hour, nil, nil, 0, nil, nil, &x509.Certificate{})
 	ra.SA = ssa
 	ra.CA = &mockCA{}
 

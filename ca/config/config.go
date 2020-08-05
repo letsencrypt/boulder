@@ -37,11 +37,6 @@ type CAConfig struct {
 	MaxNames int
 	CFSSL    cfsslConfig.Config
 
-	// DoNotForceCN is a temporary config setting. It controls whether
-	// to add a certificate's serial to its Subject, and whether to
-	// not pull a SAN entry to be the CN if no CN was given in a CSR.
-	DoNotForceCN bool
-
 	// WeakKeyFile is the path to a JSON file containing truncated RSA modulus
 	// hashes of known easily enumerable keys.
 	WeakKeyFile string
