@@ -263,7 +263,8 @@ func detailedError(err error) *probs.ProblemDetails {
 		return probs.Malformed("Server only speaks HTTP, not TLS")
 	}
 
-	if netErr, ok := err.(*net.OpError); ok {
+	var netErr *net.OpError
+	if errors.As(err, &netErr) {
 		if fmt.Sprintf("%T", netErr.Err) == "tls.alert" {
 			// All the tls.alert error strings are reasonable to hand back to a
 			// user. Confirmed against Go 1.8.

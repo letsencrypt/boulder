@@ -131,7 +131,6 @@ type CertificateAuthorityImpl struct {
 	validityPeriod     time.Duration
 	backdate           time.Duration
 	maxNames           int
-	forceCNFromSAN     bool
 	signatureCount     *prometheus.CounterVec
 	csrExtensionCount  *prometheus.CounterVec
 	orphanCount        *prometheus.CounterVec
@@ -338,7 +337,6 @@ func NewCertificateAuthorityImpl(
 		clk:                clk,
 		log:                logger,
 		keyPolicy:          keyPolicy,
-		forceCNFromSAN:     !config.DoNotForceCN, // Note the inversion here
 		signatureCount:     signatureCount,
 		csrExtensionCount:  csrExtensionCount,
 		orphanCount:        orphanCount,
@@ -737,7 +735,6 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		ca.maxNames,
 		&ca.keyPolicy,
 		ca.pa,
-		ca.forceCNFromSAN,
 		issueReq.RegistrationID,
 	); err != nil {
 		ca.log.AuditErr(err.Error())
@@ -813,10 +810,6 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 			NotBefore:     validity.NotBefore,
 			NotAfter:      validity.NotAfter,
 			ReturnPrecert: true,
-		}
-
-		if !ca.forceCNFromSAN {
-			req.Subject.SerialNumber = serialHex
 		}
 
 		ca.log.AuditInfof("Signing: serial=[%s] names=[%s] csr=[%s]",

@@ -72,7 +72,6 @@ type RegistrationAuthorityImpl struct {
 	rlPolicies                   ratelimit.Limits
 	maxContactsPerReg            int
 	maxNames                     int
-	forceCNFromSAN               bool
 	reuseValidAuthz              bool
 	orderLifetime                time.Duration
 
@@ -99,7 +98,6 @@ func NewRegistrationAuthorityImpl(
 	maxContactsPerReg int,
 	keyPolicy goodkey.KeyPolicy,
 	maxNames int,
-	forceCNFromSAN bool,
 	reuseValidAuthz bool,
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
@@ -178,7 +176,6 @@ func NewRegistrationAuthorityImpl(
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
 		maxNames:                     maxNames,
-		forceCNFromSAN:               forceCNFromSAN,
 		reuseValidAuthz:              reuseValidAuthz,
 		publisher:                    pubc,
 		caa:                          caaClient,
@@ -651,8 +648,7 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(parsedCertificate *x509.Certific
 	if !core.KeyDigestEquals(parsedCertificate.PublicKey, csr.PublicKey) {
 		return berrors.InternalServerError("generated certificate public key doesn't match CSR public key")
 	}
-	if !ra.forceCNFromSAN && len(csr.Subject.CommonName) > 0 &&
-		parsedCertificate.Subject.CommonName != strings.ToLower(csr.Subject.CommonName) {
+	if parsedCertificate.Subject.CommonName != strings.ToLower(csr.Subject.CommonName) {
 		return berrors.InternalServerError("generated certificate CommonName doesn't match CSR CommonName")
 	}
 	// Sort both slices of names before comparison.
@@ -956,7 +952,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		return nil, err
 	}
 
-	if err := csrlib.VerifyCSR(ctx, csrOb, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, *req.Order.RegistrationID); err != nil {
+	if err := csrlib.VerifyCSR(ctx, csrOb, ra.maxNames, &ra.keyPolicy, ra.PA, *req.Order.RegistrationID); err != nil {
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
 		return nil, err
@@ -1047,7 +1043,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 // NewCertificate requests the issuance of a certificate.
 func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64) (core.Certificate, error) {
 	// Verify the CSR
-	if err := csrlib.VerifyCSR(ctx, req.CSR, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, regID); err != nil {
+	if err := csrlib.VerifyCSR(ctx, req.CSR, ra.maxNames, &ra.keyPolicy, ra.PA, regID); err != nil {
 		return core.Certificate{}, berrors.MalformedError(err.Error())
 	}
 	// NewCertificate provides an order ID of 0, indicating this is a classic ACME
