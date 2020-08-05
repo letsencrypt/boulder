@@ -393,12 +393,11 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 			} else if err != nil {
 				// This is a real error, not just a problem with the validation.
 				va.log.Errf("Remote VA %q.PerformValidation failed: %s", rva.Address, err)
-				result.Problem = probs.ServerInternal(
-					fmt.Sprintf("Remote PerformValidation RPC failed: %s", err))
+				result.Problem = probs.ServerInternal("Remote PerformValidation RPC failed")
 			} else if res.Problems != nil {
 				prob, err := bgrpc.PBToProblemDetails(res.Problems)
 				if err != nil {
-					va.log.Infof("Remove VA %q.PerformValidation returned malformed problem: %s", rva.Address, err)
+					va.log.Infof("Remote VA %q.PerformValidation returned malformed problem: %s", rva.Address, err)
 					result.Problem = probs.ServerInternal(
 						fmt.Sprintf("Remote PerformValidation RPC returned malformed result: %s", err))
 				} else {

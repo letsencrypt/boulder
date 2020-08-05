@@ -416,7 +416,7 @@ func TestMultiVA(t *testing.T) {
 			},
 			AllowedUAs:   allowedUAs,
 			Features:     enforceMultiVA,
-			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed: brokenRemoteVA is broken"),
+			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
 			// The real failure cause should be logged
 			ExpectedLog: expectedInternalErrLine,
 		},
