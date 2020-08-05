@@ -328,7 +328,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,
-		1, testKeyPolicy, 100, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0, ctp, nil, nil)
+		1, testKeyPolicy, 100, true, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0, ctp, nil, nil)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca
@@ -2774,7 +2774,7 @@ func TestNewOrderExpiry(t *testing.T) {
 }
 
 func TestFinalizeOrder(t *testing.T) {
-	_, sa, ra, _, cleanUp := initAuthorities(t)
+	_, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
 
@@ -2832,10 +2832,26 @@ func TestFinalizeOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs, ready status")
 
-	// Swallowing errors here because the CSRPEM is hardcoded test data expected
-	// to parse in all instance
-	validCSRBlock, _ := pem.Decode(CSRPEM)
-	validCSR, _ := x509.ParseCertificateRequest(validCSRBlock.Bytes)
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "failed to generate test key")
+	validCSR := &x509.CertificateRequest{
+		PublicKey: k.Public(),
+		DNSNames:  []string{"not-example.com", "www.not-example.com"},
+	}
+	validCSRDER, err := x509.CreateCertificateRequest(rand.Reader, validCSR, k)
+	test.AssertNotError(t, err, "failed to construct csr")
+	expectedCert := &x509.Certificate{
+		SerialNumber:          big.NewInt(0),
+		Subject:               pkix.Name{CommonName: "not-example.com"},
+		DNSNames:              []string{"not-example.com", "www.not-example.com"},
+		PublicKey:             k.Public(),
+		NotBefore:             fc.Now(),
+		BasicConstraintsValid: true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, expectedCert, expectedCert, k.Public(), k)
+	test.AssertNotError(t, err, "failed to construct test certificate")
+	ra.CA.(*mocks.MockCA).PEM = pem.EncodeToMemory(&pem.Block{Bytes: certDER, Type: "CERTIFICATE"})
 
 	fakeRegID := int64(0xB00)
 
@@ -2900,7 +2916,7 @@ func TestFinalizeOrder(t *testing.T) {
 					Status: &pendingStatus,
 					Names:  []string{"example.com"},
 				},
-				Csr: validCSR.Raw,
+				Csr: validCSRDER,
 			},
 			ExpectIssuance: false,
 			ExpectedErrMsg: `Order's status ("pending") is not acceptable for finalization`,
@@ -2994,7 +3010,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order with correct authorizations, ready status",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: modernFinalOrder,
-				Csr:   validCSR.Raw,
+				Csr:   validCSRDER,
 			},
 			ExpectIssuance: true,
 		},
@@ -3059,6 +3075,7 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 
 	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(12),
+		Subject:               pkix.Name{CommonName: "not-example.com"},
 		DNSNames:              []string{"www.not-example.com", "not-example.com"},
 		NotBefore:             time.Now(),
 		BasicConstraintsValid: true,
@@ -3074,7 +3091,7 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 	}
 
 	_, result := ra.FinalizeOrder(context.Background(), &rapb.FinalizeOrderRequest{Order: mixedOrder, Csr: mixedCSR})
-	test.AssertNotError(t, result, fmt.Sprintf("FinalizeOrder result was %#v, expected nil", result))
+	test.AssertNotError(t, result, "FinalizeOrder failed")
 	// Check that the order now has a serial for the issued certificate
 	updatedOrder, err := sa.GetOrder(
 		context.Background(),
@@ -3107,6 +3124,7 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,
+		Subject:               pkix.Name{CommonName: "*.zombo.com"},
 		DNSNames:              []string{"*.zombo.com"},
 	}
 
@@ -3448,7 +3466,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,
-		1, testKeyPolicy, 0, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0, ctp, nil, nil)
+		1, testKeyPolicy, 0, true, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0, ctp, nil, nil)
 	ra.SA = ssa
 	ra.CA = ca
 
