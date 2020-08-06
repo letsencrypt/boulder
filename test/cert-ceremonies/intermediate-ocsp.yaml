@@ -4,7 +4,6 @@ pkcs11:
     pin: 1234
     signing-key-slot: {{ .SlotID}}
     signing-key-label: root signing key (rsa)
-    signing-key-id: {{ .KeyID }}
 inputs:
     certificate-path: /tmp/intermediate-cert-rsa-a.pem
     issuer-certificate-path: /tmp/root-cert-rsa.pem
