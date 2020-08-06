@@ -59,6 +59,7 @@ func PBToProblemDetails(in *corepb.ProblemDetails) (*probs.ProblemDetails, error
 }
 
 func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
+	ctype := string(challenge.Type)
 	st := string(challenge.Status)
 	prob, err := ProblemDetailsToPB(challenge.Error)
 	if err != nil {
@@ -72,7 +73,7 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 		}
 	}
 	return &corepb.Challenge{
-		Type:              &challenge.Type,
+		Type:              &ctype,
 		Status:            &st,
 		Token:             &challenge.Token,
 		KeyAuthorization:  &challenge.ProvidedKeyAuthorization,
@@ -103,7 +104,7 @@ func PBToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 		return core.Challenge{}, err
 	}
 	ch := core.Challenge{
-		Type:             *in.Type,
+		Type:             core.AcmeChallenge(*in.Type),
 		Status:           core.AcmeStatus(*in.Status),
 		Token:            *in.Token,
 		Error:            prob,

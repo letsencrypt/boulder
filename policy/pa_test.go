@@ -13,7 +13,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-var enabledChallenges = map[string]bool{
+var enabledChallenges = map[core.AcmeChallenge]bool{
 	core.ChallengeTypeHTTP01: true,
 	core.ChallengeTypeDNS01:  true,
 }
@@ -370,7 +370,7 @@ func TestChallengesFor(t *testing.T) {
 
 	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
 
-	seenChalls := make(map[string]bool)
+	seenChalls := make(map[core.AcmeChallenge]bool)
 	for _, challenge := range challenges {
 		test.Assert(t, !seenChalls[challenge.Type], "should not already have seen this type")
 		seenChalls[challenge.Type] = true
@@ -388,7 +388,7 @@ func TestChallengesForWildcard(t *testing.T) {
 		Value: "*.zombo.com",
 	}
 
-	mustConstructPA := func(t *testing.T, enabledChallenges map[string]bool) *AuthorityImpl {
+	mustConstructPA := func(t *testing.T, enabledChallenges map[core.AcmeChallenge]bool) *AuthorityImpl {
 		pa, err := New(enabledChallenges)
 		test.AssertNotError(t, err, "Couldn't create policy implementation")
 		return pa
@@ -396,7 +396,7 @@ func TestChallengesForWildcard(t *testing.T) {
 
 	// First try to get a challenge for the wildcard ident without the
 	// DNS-01 challenge type enabled. This should produce an error
-	var enabledChallenges = map[string]bool{
+	var enabledChallenges = map[core.AcmeChallenge]bool{
 		core.ChallengeTypeHTTP01: true,
 		core.ChallengeTypeDNS01:  false,
 	}

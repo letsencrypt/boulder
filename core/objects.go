@@ -21,12 +21,6 @@ import (
 // AcmeStatus defines the state of a given authorization
 type AcmeStatus string
 
-// AcmeResource values identify different types of ACME resources
-type AcmeResource string
-
-// OCSPStatus defines the state of OCSP for a domain
-type OCSPStatus string
-
 // These statuses are the states of authorizations, challenges, and registrations
 const (
 	StatusUnknown     = AcmeStatus("unknown")     // Unknown status; the default
@@ -38,6 +32,9 @@ const (
 	StatusRevoked     = AcmeStatus("revoked")     // Object no longer valid
 	StatusDeactivated = AcmeStatus("deactivated") // Object has been deactivated
 )
+
+// AcmeResource values identify different types of ACME resources
+type AcmeResource string
 
 // The types of ACME resources
 const (
@@ -51,31 +48,35 @@ const (
 	ResourceKeyChange    = AcmeResource("key-change")
 )
 
-// These status are the states of OCSP
-const (
-	OCSPStatusGood    = OCSPStatus("good")
-	OCSPStatusRevoked = OCSPStatus("revoked")
-)
+// AcmeChallenge values identify different types of ACME challenges
+type AcmeChallenge string
 
 // These types are the available challenges
 // TODO(#5009): Make this a custom type as well.
 const (
-	ChallengeTypeHTTP01    = "http-01"
-	ChallengeTypeDNS01     = "dns-01"
-	ChallengeTypeTLSALPN01 = "tls-alpn-01"
+	ChallengeTypeHTTP01    = AcmeChallenge("http-01")
+	ChallengeTypeDNS01     = AcmeChallenge("dns-01")
+	ChallengeTypeTLSALPN01 = AcmeChallenge("tls-alpn-01")
 )
 
-// ValidChallenge tests whether the provided string names a known challenge
-func ValidChallenge(name string) bool {
-	switch name {
-	case ChallengeTypeHTTP01,
-		ChallengeTypeDNS01,
-		ChallengeTypeTLSALPN01:
+// IsValid tests whether the challenge is a known challenge
+func (c AcmeChallenge) IsValid() bool {
+	switch c {
+	case ChallengeTypeHTTP01, ChallengeTypeDNS01, ChallengeTypeTLSALPN01:
 		return true
 	default:
 		return false
 	}
 }
+
+// OCSPStatus defines the state of OCSP for a domain
+type OCSPStatus string
+
+// These status are the states of OCSP
+const (
+	OCSPStatusGood    = OCSPStatus("good")
+	OCSPStatusRevoked = OCSPStatus("revoked")
+)
 
 // DNSPrefix is attached to DNS names in DNS challenges
 const DNSPrefix = "_acme-challenge"
@@ -190,7 +191,7 @@ func looksLikeKeyAuthorization(str string) error {
 // together with the common metadata elements.
 type Challenge struct {
 	// The type of challenge
-	Type string `json:"type"`
+	Type AcmeChallenge `json:"type"`
 
 	// The status of this challenge
 	Status AcmeStatus `json:"status,omitempty"`
@@ -384,18 +385,18 @@ func (authz *Authorization) FindChallengeByStringID(id string) int {
 }
 
 // SolvedBy will look through the Authorizations challenges, returning the type
-// of the *first* challenge it finds with Status: valid, or "" if no challenge
-// is valid.
-func (authz *Authorization) SolvedBy() string {
+// of the *first* challenge it finds with Status: valid, or an error if no
+// challenge is valid.
+func (authz *Authorization) SolvedBy() (*AcmeChallenge, error) {
 	if len(authz.Challenges) == 0 {
-		return ""
+		return nil, fmt.Errorf("Authorization has no challenges")
 	}
 	for _, chal := range authz.Challenges {
 		if chal.Status == StatusValid {
-			return chal.Type
+			return &chal.Type, nil
 		}
 	}
-	return ""
+	return nil, fmt.Errorf("Authorization not solved by any challenge")
 }
 
 // JSONBuffer fields get encoded and decoded JOSE-style, in base64url encoding
