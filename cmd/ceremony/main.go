@@ -119,7 +119,6 @@ type PKCS11SigningConfig struct {
 	PIN          string `yaml:"pin"`
 	SigningSlot  uint   `yaml:"signing-key-slot"`
 	SigningLabel string `yaml:"signing-key-label"`
-	SigningKeyID string `yaml:"signing-key-id"`
 }
 
 func (psc PKCS11SigningConfig) validate() error {
@@ -128,9 +127,6 @@ func (psc PKCS11SigningConfig) validate() error {
 	}
 	if psc.SigningLabel == "" {
 		return errors.New("pkcs11.signing-key-label is required")
-	}
-	if psc.SigningKeyID == "" {
-		return errors.New("pkcs11.signing-key-id is required")
 	}
 	// key-slot is allowed to be 0 (which is a valid slot).
 	return nil
