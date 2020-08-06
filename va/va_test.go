@@ -21,15 +21,21 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
+	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
 	"gopkg.in/square/go-jose.v2"
 )
+
+var expectedToken = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
+var expectedKeyAuthorization = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
 
 func bigIntFromB64(b64 string) *big.Int {
 	bytes, _ := base64.URLEncoding.DecodeString(b64)
@@ -58,7 +64,7 @@ var accountKey = &jose.JSONWebKey{Key: TheKey.Public()}
 
 // Return an ACME DNS identifier for the given hostname
 func dnsi(hostname string) identifier.ACMEIdentifier {
-	return identifier.ACMEIdentifier{Type: identifier.DNS, Value: hostname}
+	return identifier.DNSIdentifier(hostname)
 }
 
 var ctx context.Context
@@ -73,17 +79,35 @@ func TestMain(m *testing.M) {
 
 var accountURIPrefixes = []string{"http://boulder:4000/acme/reg/"}
 
-// challengeType == "tls-sni-00" or "dns-00", since they're the same
+func createValidationRequest(domain, challengeType string) *vapb.PerformValidationRequest {
+	status := string(core.StatusPending)
+	authzID := ""
+	authzRegID := int64(0)
+	return &vapb.PerformValidationRequest{
+		Domain: &domain,
+		Challenge: &corepb.Challenge{
+			Type:              &challengeType,
+			Status:            &status,
+			Token:             &expectedToken,
+			Validationrecords: nil,
+			KeyAuthorization:  &expectedKeyAuthorization,
+		},
+		Authz: &vapb.AuthzMeta{
+			Id:    &authzID,
+			RegID: &authzRegID,
+		},
+	}
+}
+
 func createChallenge(challengeType string) core.Challenge {
-	chall := core.Challenge{
+	return core.Challenge{
+		// challengeType is a core.ChallengeType* (string constant, not a type).
 		Type:                     challengeType,
 		Status:                   core.StatusPending,
 		Token:                    expectedToken,
 		ValidationRecord:         []core.ValidationRecord{},
 		ProvidedKeyAuthorization: expectedKeyAuthorization,
 	}
-
-	return chall
 }
 
 // setChallengeToken sets the token value, and sets the ProvidedKeyAuthorization
@@ -93,92 +117,7 @@ func setChallengeToken(ch *core.Challenge, token string) {
 	ch.ProvidedKeyAuthorization = token + ".9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
 }
 
-func TestPerformValidationInvalid(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil)
-
-	chalDNS := createChallenge(core.ChallengeTypeDNS01)
-	_, prob := va.PerformValidation(context.Background(), "foo.com", chalDNS, core.Authorization{})
-	test.Assert(t, prob != nil, "validation succeeded")
-
-	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
-		"type":         "dns-01",
-		"result":       "invalid",
-		"problem_type": "unauthorized",
-	}))
-	if samples != 1 {
-		t.Errorf("Wrong number of samples for invalid validation. Expected 1, got %d", samples)
-	}
-}
-
-func TestPerformValidationValid(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil)
-
-	// create a challenge with well known token
-	chalDNS := core.DNSChallenge01("")
-	chalDNS.Token = expectedToken
-	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
-	_, prob := va.PerformValidation(context.Background(), "good-dns01.com", chalDNS, core.Authorization{})
-	test.Assert(t, prob == nil, fmt.Sprintf("validation failed: %#v", prob))
-
-	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
-		"type":         "dns-01",
-		"result":       "valid",
-		"problem_type": "",
-	}))
-	if samples != 1 {
-		t.Errorf("Wrong number of samples for successful validation. Expected 1, got %d", samples)
-	}
-	resultLog := mockLog.GetAllMatching(`Validation result`)
-	if len(resultLog) != 1 {
-		t.Fatalf("Wrong number of matching lines for 'Validation result'")
-	}
-	if !strings.Contains(resultLog[0], `"Hostname":"good-dns01.com"`) {
-		t.Errorf("PerformValidation didn't log validation hostname.")
-	}
-}
-
-// TestPerformValidationWildcard tests that the VA properly strips the `*.`
-// prefix from a wildcard name provided to the PerformValidation function.
-func TestPerformValidationWildcard(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil)
-
-	// create a challenge with well known token
-	chalDNS := core.DNSChallenge01("")
-	chalDNS.Token = expectedToken
-	chalDNS.ProvidedKeyAuthorization = expectedKeyAuthorization
-	// perform a validation for a wildcard name
-	_, prob := va.PerformValidation(context.Background(), "*.good-dns01.com", chalDNS, core.Authorization{})
-	test.Assert(t, prob == nil, fmt.Sprintf("validation failed: %#v", prob))
-
-	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
-		"type":         "dns-01",
-		"result":       "valid",
-		"problem_type": "",
-	}))
-	if samples != 1 {
-		t.Errorf("Wrong number of samples for successful validation. Expected 1, got %d", samples)
-	}
-	resultLog := mockLog.GetAllMatching(`Validation result`)
-	if len(resultLog) != 1 {
-		t.Fatalf("Wrong number of matching lines for 'Validation result'")
-	}
-
-	// We expect that the top level Hostname reflect the wildcard name
-	if !strings.Contains(resultLog[0], `"Hostname":"*.good-dns01.com"`) {
-		t.Errorf("PerformValidation didn't log correct validation hostname.")
-	}
-	// We expect that the ValidationRecord contain the correct non-wildcard
-	// hostname that was validated
-	if !strings.Contains(resultLog[0], `"hostname":"good-dns01.com"`) {
-		t.Errorf("PerformValidation didn't log correct validation record hostname.")
-	}
-}
-
-func setup(
-	srv *httptest.Server,
-	maxRemoteFailures int,
-	userAgent string,
-	remoteVAs []RemoteVA) (*ValidationAuthorityImpl, *blog.Mock) {
+func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remoteVAs []RemoteVA) (*ValidationAuthorityImpl, *blog.Mock) {
 	features.Reset()
 
 	logger := blog.NewMock()
@@ -215,6 +154,14 @@ func setup(
 		va.remoteVAs = remoteVAs
 	}
 	return va, logger
+}
+
+func setupRemote(srv *httptest.Server, maxRemoteFailures int, userAgent string) (vapb.VAClient, *blog.Mock) {
+	innerVA, mockLog := setup(srv, maxRemoteFailures, userAgent, nil)
+	res := localRemoteVA{
+		remote: *innerVA,
+	}
+	return &res, mockLog
 }
 
 type multiSrv struct {
@@ -259,7 +206,7 @@ func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]bool) *multi
 // PerformValidation calls
 type cancelledVA struct{}
 
-func (v cancelledVA) PerformValidation(_ context.Context, _ string, _ core.Challenge, _ core.Authorization) ([]core.ValidationRecord, error) {
+func (v cancelledVA) PerformValidation(_ context.Context, _ *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
 	return nil, context.Canceled
 }
 
@@ -272,20 +219,109 @@ type brokenRemoteVA struct{}
 var errBrokenRemoteVA = errors.New("brokenRemoteVA is broken")
 
 // PerformValidation returns errBrokenRemoteVA unconditionally
-func (b *brokenRemoteVA) PerformValidation(
-	_ context.Context,
-	_ string,
-	_ core.Challenge,
-	_ core.Authorization) ([]core.ValidationRecord, error) {
+func (b brokenRemoteVA) PerformValidation(_ context.Context, _ *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
 	return nil, errBrokenRemoteVA
+}
+
+// localRemoteVA is a wrapper which fulfills the VAClient interface, but then
+// forwards requests directly to its inner ValidationAuthorityImpl rather than
+// over the network. This lets a local in-memory mock VA act like a remote VA.
+type localRemoteVA struct {
+	remote ValidationAuthorityImpl
+}
+
+func (lrva localRemoteVA) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
+	return lrva.remote.PerformValidation(ctx, req)
+}
+
+func TestValidateMalformedChallenge(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil)
+
+	_, prob := va.validateChallenge(ctx, dnsi("example.com"), createChallenge("fake-type-01"))
+
+	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
+}
+
+func TestPerformValidationInvalid(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil)
+
+	req := createValidationRequest("foo.com", core.ChallengeTypeDNS01)
+	res, _ := va.PerformValidation(context.Background(), req)
+	test.Assert(t, res.Problems != nil, "validation succeeded")
+
+	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
+		"type":         "dns-01",
+		"result":       "invalid",
+		"problem_type": "unauthorized",
+	}))
+	if samples != 1 {
+		t.Errorf("Wrong number of samples for invalid validation. Expected 1, got %d", samples)
+	}
+}
+
+func TestPerformValidationValid(t *testing.T) {
+	va, mockLog := setup(nil, 0, "", nil)
+
+	// create a challenge with well known token
+	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
+	res, _ := va.PerformValidation(context.Background(), req)
+	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
+
+	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
+		"type":         "dns-01",
+		"result":       "valid",
+		"problem_type": "",
+	}))
+	if samples != 1 {
+		t.Errorf("Wrong number of samples for successful validation. Expected 1, got %d", samples)
+	}
+	resultLog := mockLog.GetAllMatching(`Validation result`)
+	if len(resultLog) != 1 {
+		t.Fatalf("Wrong number of matching lines for 'Validation result'")
+	}
+	if !strings.Contains(resultLog[0], `"Hostname":"good-dns01.com"`) {
+		t.Errorf("PerformValidation didn't log validation hostname.")
+	}
+}
+
+// TestPerformValidationWildcard tests that the VA properly strips the `*.`
+// prefix from a wildcard name provided to the PerformValidation function.
+func TestPerformValidationWildcard(t *testing.T) {
+	va, mockLog := setup(nil, 0, "", nil)
+
+	// create a challenge with well known token
+	req := createValidationRequest("*.good-dns01.com", core.ChallengeTypeDNS01)
+	// perform a validation for a wildcard name
+	res, _ := va.PerformValidation(context.Background(), req)
+	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
+
+	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
+		"type":         "dns-01",
+		"result":       "valid",
+		"problem_type": "",
+	}))
+	if samples != 1 {
+		t.Errorf("Wrong number of samples for successful validation. Expected 1, got %d", samples)
+	}
+	resultLog := mockLog.GetAllMatching(`Validation result`)
+	if len(resultLog) != 1 {
+		t.Fatalf("Wrong number of matching lines for 'Validation result'")
+	}
+
+	// We expect that the top level Hostname reflect the wildcard name
+	if !strings.Contains(resultLog[0], `"Hostname":"*.good-dns01.com"`) {
+		t.Errorf("PerformValidation didn't log correct validation hostname.")
+	}
+	// We expect that the ValidationRecord contain the correct non-wildcard
+	// hostname that was validated
+	if !strings.Contains(resultLog[0], `"hostname":"good-dns01.com"`) {
+		t.Errorf("PerformValidation didn't log correct validation record hostname.")
+	}
 }
 
 func TestMultiVA(t *testing.T) {
 	// Create a new challenge to use for the httpSrv
-	chall := core.HTTPChallenge01("")
-	setChallengeToken(&chall, core.NewToken())
-	expectedKeyAuthorization, err := chall.ExpectedKeyAuthorization(accountKey)
-	test.AssertNotError(t, err, "could not compute expected key auth value")
+	req := createValidationRequest("localhost", core.ChallengeTypeHTTP01)
 
 	const (
 		remoteUA1 = "remote 1"
@@ -299,11 +335,11 @@ func TestMultiVA(t *testing.T) {
 	}
 
 	// Create an IPv4 test server
-	ms := httpMultiSrv(t, chall.Token, allowedUAs)
+	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1, _ := setup(ms.Server, 0, remoteUA1, nil)
-	remoteVA2, _ := setup(ms.Server, 0, remoteUA2, nil)
+	remoteVA1, _ := setupRemote(ms.Server, 0, remoteUA1)
+	remoteVA2, _ := setupRemote(ms.Server, 0, remoteUA2)
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -475,12 +511,13 @@ func TestMultiVA(t *testing.T) {
 			}
 
 			// Perform all validations
-			_, prob := localVA.PerformValidation(ctx, "localhost", chall, core.Authorization{})
-			if prob == nil && tc.ExpectedProb != nil {
+			res, _ := localVA.PerformValidation(ctx, req)
+			if res.Problems == nil && tc.ExpectedProb != nil {
 				t.Errorf("expected prob %v, got nil", tc.ExpectedProb)
-			} else if prob != nil {
+			} else if res.Problems != nil {
 				// That result should match expected.
-				test.AssertDeepEquals(t, prob, tc.ExpectedProb)
+				test.AssertEquals(t, *res.Problems.ProblemType, string(tc.ExpectedProb.Type))
+				test.AssertEquals(t, *res.Problems.Detail, string(tc.ExpectedProb.Detail))
 			}
 
 			if tc.ExpectedLog != "" {
@@ -492,9 +529,6 @@ func TestMultiVA(t *testing.T) {
 }
 
 func TestMultiVAEarlyReturn(t *testing.T) {
-	chall := core.HTTPChallenge01("")
-	setChallengeToken(&chall, core.NewToken())
-
 	const (
 		remoteUA1 = "remote 1"
 		remoteUA2 = "slow remote"
@@ -506,11 +540,11 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 		remoteUA2: true,
 	}
 
-	ms := httpMultiSrv(t, chall.Token, allowedUAs)
+	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1, _ := setup(ms.Server, 0, remoteUA1, nil)
-	remoteVA2, _ := setup(ms.Server, 0, remoteUA2, nil)
+	remoteVA1, _ := setupRemote(ms.Server, 0, remoteUA1)
+	remoteVA2, _ := setupRemote(ms.Server, 0, remoteUA2)
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -542,6 +576,7 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 		"MultiVAFullResults": true,
 	}
 
+	req := createValidationRequest("localhost", core.ChallengeTypeHTTP01)
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			mockLog.Clear()
@@ -558,9 +593,9 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 			start := time.Now()
 
 			// Perform all validations
-			_, prob := localVA.PerformValidation(ctx, "localhost", chall, core.Authorization{})
+			res, _ := localVA.PerformValidation(ctx, req)
 			// It should always fail
-			if prob == nil {
+			if res.Problems == nil {
 				t.Error("expected prob from PerformValidation, got nil")
 			}
 
@@ -580,9 +615,6 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 }
 
 func TestMultiVAPolicy(t *testing.T) {
-	chall := core.HTTPChallenge01("")
-	setChallengeToken(&chall, core.NewToken())
-
 	const (
 		remoteUA1 = "remote 1"
 		remoteUA2 = "remote 2"
@@ -595,11 +627,11 @@ func TestMultiVAPolicy(t *testing.T) {
 		remoteUA2: false,
 	}
 
-	ms := httpMultiSrv(t, chall.Token, allowedUAs)
+	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1, _ := setup(ms.Server, 0, remoteUA1, nil)
-	remoteVA2, _ := setup(ms.Server, 0, remoteUA2, nil)
+	remoteVA1, _ := setupRemote(ms.Server, 0, remoteUA1)
+	remoteVA2, _ := setupRemote(ms.Server, 0, remoteUA2)
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -619,12 +651,12 @@ func TestMultiVAPolicy(t *testing.T) {
 	defer features.Reset()
 
 	// Perform validation for a domain not in the disabledDomains list
-	_, prob := localVA.PerformValidation(ctx, "letsencrypt.org", chall, core.Authorization{})
+	req := createValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
+	res, _ := localVA.PerformValidation(ctx, req)
 	// It should fail
-	if prob == nil {
+	if res.Problems == nil {
 		t.Error("expected prob from PerformValidation, got nil")
 	}
-
 }
 
 func TestDetailedError(t *testing.T) {
@@ -665,9 +697,9 @@ func TestDetailedError(t *testing.T) {
 
 func TestLogRemoteValidationDifferentials(t *testing.T) {
 	// Create some remote VAs
-	remoteVA1, _ := setup(nil, 0, "remote 1", nil)
-	remoteVA2, _ := setup(nil, 0, "remote 2", nil)
-	remoteVA3, _ := setup(nil, 0, "remote 3", nil)
+	remoteVA1, _ := setupRemote(nil, 0, "remote 1")
+	remoteVA2, _ := setupRemote(nil, 0, "remote 2")
+	remoteVA3, _ := setupRemote(nil, 0, "remote 3")
 	remoteVAs := []RemoteVA{
 		{remoteVA1, "remote 1"},
 		{remoteVA2, "remote 2"},

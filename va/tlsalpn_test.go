@@ -26,6 +26,10 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
+func tlsalpnChallenge() core.Challenge {
+	return createChallenge(core.ChallengeTypeTLSALPN01)
+}
+
 func tlsCertTemplate(names []string) *x509.Certificate {
 	return &x509.Certificate{
 		SerialNumber: big.NewInt(1337),
@@ -136,7 +140,7 @@ func tlsalpn01Srv(
 }
 
 func TestTLSALPN01FailIP(t *testing.T) {
-	chall := createChallenge(core.ChallengeTypeTLSALPN01)
+	chall := tlsalpnChallenge()
 	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "localhost")
 	va, _ := setup(hs, 0, "", nil)
 
@@ -164,7 +168,7 @@ func slowTLSSrv() *httptest.Server {
 }
 
 func TestTLSALPNTimeoutAfterConnect(t *testing.T) {
-	chall := createChallenge(core.ChallengeTypeTLSALPN01)
+	chall := tlsalpnChallenge()
 	hs := slowTLSSrv()
 	va, _ := setup(hs, 0, "", nil)
 
@@ -200,7 +204,7 @@ func TestTLSALPNTimeoutAfterConnect(t *testing.T) {
 }
 
 func TestTLSALPN01DialTimeout(t *testing.T) {
-	chall := createChallenge(core.ChallengeTypeTLSALPN01)
+	chall := tlsalpnChallenge()
 	hs := slowTLSSrv()
 	va, _ := setup(hs, 0, "", nil)
 	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockDNSClient{}}
@@ -249,7 +253,7 @@ func TestTLSALPN01DialTimeout(t *testing.T) {
 }
 
 func TestTLSALPN01Refused(t *testing.T) {
-	chall := createChallenge(core.ChallengeTypeTLSALPN01)
+	chall := tlsalpnChallenge()
 	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "localhost")
 	va, _ := setup(hs, 0, "", nil)
 	// Take down validation server and check that validation fails.
@@ -266,7 +270,7 @@ func TestTLSALPN01Refused(t *testing.T) {
 }
 
 func TestTLSALPN01TalkingToHTTP(t *testing.T) {
-	chall := createChallenge(core.ChallengeTypeTLSALPN01)
+	chall := tlsalpnChallenge()
 	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "localhost")
 	va, _ := setup(hs, 0, "", nil)
 	httpOnly := httpSrv(t, "")
@@ -292,7 +296,7 @@ func brokenTLSSrv() *httptest.Server {
 }
 
 func TestTLSError(t *testing.T) {
-	chall := createChallenge(core.ChallengeTypeTLSALPN01)
+	chall := tlsalpnChallenge()
 	hs := brokenTLSSrv()
 
 	va, _ := setup(hs, 0, "", nil)
@@ -308,7 +312,7 @@ func TestTLSError(t *testing.T) {
 }
 
 func TestDNSError(t *testing.T) {
-	chall := createChallenge(core.ChallengeTypeTLSALPN01)
+	chall := tlsalpnChallenge()
 	hs := brokenTLSSrv()
 
 	va, _ := setup(hs, 0, "", nil)
@@ -361,7 +365,7 @@ func TestCertNames(t *testing.T) {
 }
 
 func TestTLSALPN01Success(t *testing.T) {
-	chall := createChallenge(core.ChallengeTypeTLSALPN01)
+	chall := tlsalpnChallenge()
 	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "localhost")
 
 	va, _ := setup(hs, 0, "", nil)
@@ -373,7 +377,7 @@ func TestTLSALPN01Success(t *testing.T) {
 	test.AssertEquals(t, test.CountCounterVec("oid", IdPeAcmeIdentifier.String(), va.metrics.tlsALPNOIDCounter), 1)
 
 	hs.Close()
-	chall = createChallenge(core.ChallengeTypeTLSALPN01)
+	chall = tlsalpnChallenge()
 	hs = tlsalpn01Srv(t, chall, IdPeAcmeIdentifierV1Obsolete, 0, "localhost")
 
 	va, _ = setup(hs, 0, "", nil)
@@ -386,7 +390,7 @@ func TestTLSALPN01Success(t *testing.T) {
 }
 
 func TestValidateTLSALPN01BadChallenge(t *testing.T) {
-	chall := createChallenge(core.ChallengeTypeTLSALPN01)
+	chall := tlsalpnChallenge()
 	chall2 := chall
 	setChallengeToken(&chall2, "bad token")
 
@@ -412,7 +416,7 @@ func TestValidateTLSALPN01BadChallenge(t *testing.T) {
 }
 
 func TestValidateTLSALPN01BrokenSrv(t *testing.T) {
-	chall := createChallenge(core.ChallengeTypeTLSALPN01)
+	chall := tlsalpnChallenge()
 	hs := brokenTLSSrv()
 
 	va, _ := setup(hs, 0, "", nil)
@@ -425,7 +429,7 @@ func TestValidateTLSALPN01BrokenSrv(t *testing.T) {
 }
 
 func TestValidateTLSALPN01UnawareSrv(t *testing.T) {
-	chall := createChallenge(core.ChallengeTypeTLSALPN01)
+	chall := tlsalpnChallenge()
 	hs := tlssniSrvWithNames(t, chall, "localhost")
 
 	va, _ := setup(hs, 0, "", nil)
@@ -441,7 +445,7 @@ func TestValidateTLSALPN01UnawareSrv(t *testing.T) {
 // a host that returns a certificate with a SAN/CN that contains invalid UTF-8
 // will result in a problem with the invalid UTF-8 replaced.
 func TestValidateTLSALPN01BadUTFSrv(t *testing.T) {
-	chall := createChallenge(core.ChallengeTypeTLSALPN01)
+	chall := tlsalpnChallenge()
 	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "localhost", "\xf0\x28\x8c\xbc")
 	port := getPort(hs)
 	va, _ := setup(hs, 0, "", nil)
@@ -463,7 +467,7 @@ func TestValidateTLSALPN01BadUTFSrv(t *testing.T) {
 // acmeValidation extension value that does not parse or is the wrong length
 // will result in an Unauthorized problem
 func TestValidateTLSALPN01MalformedExtnValue(t *testing.T) {
-	chall := createChallenge(core.ChallengeTypeTLSALPN01)
+	chall := tlsalpnChallenge()
 
 	names := []string{"localhost"}
 	template := tlsCertTemplate(names)
@@ -517,7 +521,7 @@ func TestValidateTLSALPN01MalformedExtnValue(t *testing.T) {
 }
 
 func TestTLSALPN01TLS13(t *testing.T) {
-	chall := createChallenge(core.ChallengeTypeTLSALPN01)
+	chall := tlsalpnChallenge()
 	// Create a server that uses tls.VersionTLS13 as the minimum supported version
 	hs := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, tls.VersionTLS13, "localhost")
 	defer hs.Close()

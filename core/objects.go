@@ -58,6 +58,7 @@ const (
 )
 
 // These types are the available challenges
+// TODO(#5009): Make this a custom type as well.
 const (
 	ChallengeTypeHTTP01    = "http-01"
 	ChallengeTypeDNS01     = "dns-01"

@@ -26,23 +26,6 @@ var ErrMissingParameters = CodedError(codes.FailedPrecondition, "required RPC pa
 // This file defines functions to translate between the protobuf types and the
 // code types.
 
-func authzMetaToPB(authz core.Authorization) (*vapb.AuthzMeta, error) {
-	return &vapb.AuthzMeta{
-		Id:    &authz.ID,
-		RegID: &authz.RegistrationID,
-	}, nil
-}
-
-func pbToAuthzMeta(in *vapb.AuthzMeta) (core.Authorization, error) {
-	if in == nil || in.Id == nil || in.RegID == nil {
-		return core.Authorization{}, ErrMissingParameters
-	}
-	return core.Authorization{
-		ID:             *in.Id,
-		RegistrationID: *in.RegID,
-	}, nil
-}
-
 func ProblemDetailsToPB(prob *probs.ProblemDetails) (*corepb.ProblemDetails, error) {
 	if prob == nil {
 		// nil problemDetails is valid
@@ -98,7 +81,7 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 	}, nil
 }
 
-func pbToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
+func PBToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 	if in == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
@@ -224,45 +207,6 @@ func pbToValidationResult(in *vapb.ValidationResult) ([]core.ValidationRecord, *
 	return recordAry, prob, nil
 }
 
-func performValidationReqToArgs(in *vapb.PerformValidationRequest) (domain string, challenge core.Challenge, authz core.Authorization, err error) {
-	if in == nil {
-		err = ErrMissingParameters
-		return
-	}
-	if in.Domain == nil {
-		err = ErrMissingParameters
-		return
-	}
-	domain = *in.Domain
-	challenge, err = pbToChallenge(in.Challenge)
-	if err != nil {
-		return
-	}
-	authz, err = pbToAuthzMeta(in.Authz)
-	if err != nil {
-		return
-	}
-
-	return domain, challenge, authz, nil
-}
-
-func argsToPerformValidationRequest(domain string, challenge core.Challenge, authz core.Authorization) (*vapb.PerformValidationRequest, error) {
-	pbChall, err := ChallengeToPB(challenge)
-	if err != nil {
-		return nil, err
-	}
-	authzMeta, err := authzMetaToPB(authz)
-	if err != nil {
-		return nil, err
-	}
-	return &vapb.PerformValidationRequest{
-		Domain:    &domain,
-		Challenge: pbChall,
-		Authz:     authzMeta,
-	}, nil
-
-}
-
 func registrationToPB(reg core.Registration) (*corepb.Registration, error) {
 	keyBytes, err := reg.Key.MarshalJSON()
 	if err != nil {
@@ -357,7 +301,7 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 	challs := make([]core.Challenge, len(pb.Challenges))
 	for i, c := range pb.Challenges {
-		chall, err := pbToChallenge(c)
+		chall, err := PBToChallenge(c)
 		if err != nil {
 			return core.Authorization{}, err
 		}

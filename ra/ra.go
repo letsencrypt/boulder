@@ -57,7 +57,7 @@ type caaChecker interface {
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
 	CA        core.CertificateAuthority
-	VA        core.ValidationAuthority
+	VA        vapb.VAClient
 	SA        core.StorageAuthority
 	PA        core.PolicyAuthority
 	publisher core.Publisher
@@ -1609,18 +1609,39 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		challenges := make([]core.Challenge, len(authz.Challenges))
 		copy(challenges, authz.Challenges)
 		authz.Challenges = challenges
+		chall, _ := bgrpc.ChallengeToPB(authz.Challenges[challIndex])
 
-		records, err := ra.VA.PerformValidation(vaCtx, authz.Identifier.Value, authz.Challenges[challIndex], authz)
+		req := vapb.PerformValidationRequest{
+			Domain:    &authz.Identifier.Value,
+			Challenge: chall,
+			Authz: &vapb.AuthzMeta{
+				Id:    &authz.ID,
+				RegID: &authz.RegistrationID,
+			},
+		}
+		res, err := ra.VA.PerformValidation(vaCtx, &req)
+
 		var prob *probs.ProblemDetails
-		if p, ok := err.(*probs.ProblemDetails); ok {
-			prob = p
-		} else if err != nil {
+		if err != nil {
 			prob = probs.ServerInternal("Could not communicate with VA")
 			ra.log.AuditErrf("Could not communicate with VA: %s", err)
+		} else if res.Problems != nil {
+			prob, err = bgrpc.PBToProblemDetails(res.Problems)
+			if err != nil {
+				prob = probs.ServerInternal("Could not communicate with VA")
+				ra.log.AuditErrf("Could not communicate with VA: %s", err)
+			}
 		}
 
 		// Save the updated records
 		challenge := &authz.Challenges[challIndex]
+		records := make([]core.ValidationRecord, len(res.Records))
+		for i, r := range res.Records {
+			records[i], err = bgrpc.PBToValidationRecord(r)
+			if err != nil {
+				prob = probs.ServerInternal("Records for validation corrupt")
+			}
+		}
 		challenge.ValidationRecord = records
 
 		if !challenge.RecordsSane() && prob == nil {
