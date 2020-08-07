@@ -147,12 +147,12 @@ var stringToKeyUsage = map[string]x509.KeyUsage{
 
 type policyQualifier struct {
 	Id    asn1.ObjectIdentifier
-	Value string `asn1:"optional,ia5"`
+	Value string `asn1:"tag:optional,ia5"`
 }
 
 type policyInformation struct {
 	Policy     asn1.ObjectIdentifier
-	Qualifiers []policyQualifier `asn1:"optional"`
+	Qualifiers []policyQualifier `asn1:"tag:optional,omitempty"`
 }
 
 var (

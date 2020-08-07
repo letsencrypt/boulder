@@ -50,7 +50,7 @@ func loadCFSSLIssuers(c config) ([]ca.Issuer, error) {
 }
 
 func loadBoulderIssuers(configs []ca_config.IssuerConfig, ignoredLints []string) ([]bsigner.Config, error) {
-	boulderConfigs := make([]bsigner.Config, 0, len(configs))
+	boulderIssuerConfigs := make([]bsigner.Config, 0, len(configs))
 	for _, issuerConfig := range configs {
 		signer, issuer, err := loadIssuer(issuerConfig)
 		if err != nil {
@@ -59,7 +59,7 @@ func loadBoulderIssuers(configs []ca_config.IssuerConfig, ignoredLints []string)
 		if issuerConfig.SignerProfile == nil {
 			return nil, errors.New("Issuer config is missing SignerProfile")
 		}
-		boulderConfigs = append(boulderConfigs, bsigner.Config{
+		boulderIssuerConfigs = append(boulderIssuerConfigs, bsigner.Config{
 			Issuer:       issuer,
 			Signer:       signer,
 			IgnoredLints: ignoredLints,
@@ -67,7 +67,7 @@ func loadBoulderIssuers(configs []ca_config.IssuerConfig, ignoredLints []string)
 			Profile:      *issuerConfig.SignerProfile,
 		})
 	}
-	return boulderConfigs, nil
+	return boulderIssuerConfigs, nil
 }
 
 func loadIssuer(issuerConfig ca_config.IssuerConfig) (crypto.Signer, *x509.Certificate, error) {

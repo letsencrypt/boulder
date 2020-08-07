@@ -159,6 +159,7 @@ type internalIssuer struct {
 	cert       *x509.Certificate
 	ocspSigner crypto.Signer
 
+	// Only one of cfsslSigner and boulderSigner will be non-nill
 	cfsslSigner   localSigner
 	boulderSigner *bsigner.Signer
 }
@@ -169,6 +170,9 @@ func makeInternalIssuers(issuers []bsigner.Config, lifespanOCSP time.Duration) (
 		signer, err := bsigner.NewSigner(issuer)
 		if err != nil {
 			return nil, err
+		}
+		if internalIssuers[issuer.Issuer.Subject.CommonName] != nil {
+			return nil, errors.New("Multiple issuer certs with the same CommonName are not supported")
 		}
 		internalIssuers[issuer.Issuer.Subject.CommonName] = &internalIssuer{
 			cert:          issuer.Issuer,

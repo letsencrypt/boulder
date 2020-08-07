@@ -100,6 +100,9 @@ func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
 		if err != nil {
 			return nil, err
 		}
+		if i <= 0 {
+			return nil, errors.New("OID components must be >= 1")
+		}
 		oid = append(oid, i)
 	}
 	return oid, nil
@@ -223,6 +226,10 @@ func (p *signingProfile) requestValid(clk clock.Clock, req *IssuanceRequest) err
 		return errors.New("NotBefore is in the future")
 	}
 
+	if len(req.Serial) > 20 || len(req.Serial) < 8 {
+		return errors.New("serial must be between 8 and 20 bytes")
+	}
+
 	return nil
 }
 
@@ -301,8 +308,6 @@ func NewSigner(config Config) (*Signer, error) {
 			profile.sigAlg = x509.ECDSAWithSHA256
 		case elliptic.P384():
 			profile.sigAlg = x509.ECDSAWithSHA384
-		case elliptic.P521():
-			profile.sigAlg = x509.ECDSAWithSHA512
 		default:
 			return nil, fmt.Errorf("unsupported ECDSA curve: %s", k.Curve.Params().Name)
 		}
