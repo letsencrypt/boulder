@@ -977,7 +977,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 	}
 
 	// Verify that the VA got the request, and it's the same as the others
-	test.AssertEquals(t, authz.Challenges[challIdx].Type, *vaRequest.Challenge.Type)
+	test.AssertEquals(t, string(authz.Challenges[challIdx].Type), *vaRequest.Challenge.Type)
 	test.AssertEquals(t, authz.Challenges[challIdx].Token, *vaRequest.Challenge.Token)
 
 	// Sleep so the RA has a chance to write to the SA
