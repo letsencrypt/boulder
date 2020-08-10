@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"flag"
@@ -120,7 +119,6 @@ type PKCS11SigningConfig struct {
 	PIN          string `yaml:"pin"`
 	SigningSlot  uint   `yaml:"signing-key-slot"`
 	SigningLabel string `yaml:"signing-key-label"`
-	SigningKeyID string `yaml:"signing-key-id"`
 }
 
 func (psc PKCS11SigningConfig) validate() error {
@@ -129,9 +127,6 @@ func (psc PKCS11SigningConfig) validate() error {
 	}
 	if psc.SigningLabel == "" {
 		return errors.New("pkcs11.signing-key-label is required")
-	}
-	if psc.SigningKeyID == "" {
-		return errors.New("pkcs11.signing-key-id is required")
 	}
 	// key-slot is allowed to be 0 (which is a valid slot).
 	return nil
@@ -348,11 +343,7 @@ func openSigner(cfg PKCS11SigningConfig, issuer *x509.Certificate) (crypto.Signe
 			cfg.SigningSlot, err)
 	}
 	log.Printf("Opened PKCS#11 session for slot %d\n", cfg.SigningSlot)
-	keyID, err := hex.DecodeString(cfg.SigningKeyID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to decode key-id: %s", err)
-	}
-	signer, err := session.NewSigner(cfg.SigningLabel, keyID)
+	signer, err := session.NewSigner(cfg.SigningLabel, issuer.PublicKey)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to retrieve private key handle: %s", err)
 	}
@@ -414,7 +405,7 @@ func rootCeremony(configBytes []byte) error {
 	if err != nil {
 		return err
 	}
-	signer, err := session.NewSigner(config.PKCS11.StoreLabel, keyInfo.id)
+	signer, err := session.NewSigner(config.PKCS11.StoreLabel, keyInfo.key)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve signer: %s", err)
 	}

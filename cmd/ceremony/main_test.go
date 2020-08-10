@@ -228,22 +228,11 @@ func TestIntermediateConfigValidate(t *testing.T) {
 			expectedError: "pkcs11.signing-key-label is required",
 		},
 		{
-			name: "no pkcs11.key-id",
-			config: intermediateConfig{
-				PKCS11: PKCS11SigningConfig{
-					Module:       "module",
-					SigningLabel: "label",
-				},
-			},
-			expectedError: "pkcs11.signing-key-id is required",
-		},
-		{
 			name: "no inputs.public-key-path",
 			config: intermediateConfig{
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 			},
 			expectedError: "inputs.public-key-path is required",
@@ -254,7 +243,6 @@ func TestIntermediateConfigValidate(t *testing.T) {
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					PublicKeyPath         string `yaml:"public-key-path"`
@@ -271,7 +259,6 @@ func TestIntermediateConfigValidate(t *testing.T) {
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					PublicKeyPath         string `yaml:"public-key-path"`
@@ -289,7 +276,6 @@ func TestIntermediateConfigValidate(t *testing.T) {
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					PublicKeyPath         string `yaml:"public-key-path"`
@@ -312,7 +298,6 @@ func TestIntermediateConfigValidate(t *testing.T) {
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					PublicKeyPath         string `yaml:"public-key-path"`
@@ -448,22 +433,11 @@ func TestOCSPRespConfig(t *testing.T) {
 			expectedError: "pkcs11.signing-key-label is required",
 		},
 		{
-			name: "no pkcs11.key-id",
-			config: ocspRespConfig{
-				PKCS11: PKCS11SigningConfig{
-					Module:       "module",
-					SigningLabel: "label",
-				},
-			},
-			expectedError: "pkcs11.signing-key-id is required",
-		},
-		{
 			name: "no inputs.certificate-path",
 			config: ocspRespConfig{
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 			},
 			expectedError: "inputs.certificate-path is required",
@@ -474,7 +448,6 @@ func TestOCSPRespConfig(t *testing.T) {
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					CertificatePath                string `yaml:"certificate-path"`
@@ -492,7 +465,6 @@ func TestOCSPRespConfig(t *testing.T) {
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					CertificatePath                string `yaml:"certificate-path"`
@@ -511,7 +483,6 @@ func TestOCSPRespConfig(t *testing.T) {
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					CertificatePath                string `yaml:"certificate-path"`
@@ -535,7 +506,6 @@ func TestOCSPRespConfig(t *testing.T) {
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					CertificatePath                string `yaml:"certificate-path"`
@@ -566,7 +536,6 @@ func TestOCSPRespConfig(t *testing.T) {
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					CertificatePath                string `yaml:"certificate-path"`
@@ -598,7 +567,6 @@ func TestOCSPRespConfig(t *testing.T) {
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					CertificatePath                string `yaml:"certificate-path"`
@@ -658,22 +626,11 @@ func TestCRLConfig(t *testing.T) {
 			expectedError: "pkcs11.signing-key-label is required",
 		},
 		{
-			name: "no pkcs11.key-id",
-			config: crlConfig{
-				PKCS11: PKCS11SigningConfig{
-					Module:       "module",
-					SigningLabel: "label",
-				},
-			},
-			expectedError: "pkcs11.signing-key-id is required",
-		},
-		{
 			name: "no inputs.issuer-certificate-path",
 			config: crlConfig{
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 			},
 			expectedError: "inputs.issuer-certificate-path is required",
@@ -684,7 +641,6 @@ func TestCRLConfig(t *testing.T) {
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
@@ -700,7 +656,6 @@ func TestCRLConfig(t *testing.T) {
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
@@ -721,7 +676,6 @@ func TestCRLConfig(t *testing.T) {
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
@@ -754,7 +708,6 @@ func TestCRLConfig(t *testing.T) {
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
@@ -788,7 +741,6 @@ func TestCRLConfig(t *testing.T) {
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
@@ -828,7 +780,6 @@ func TestCRLConfig(t *testing.T) {
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
@@ -870,7 +821,6 @@ func TestCRLConfig(t *testing.T) {
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
@@ -913,7 +863,6 @@ func TestCRLConfig(t *testing.T) {
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
 					SigningLabel: "label",
-					SigningKeyID: "id",
 				},
 				Inputs: struct {
 					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
