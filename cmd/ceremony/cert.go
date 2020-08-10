@@ -102,9 +102,6 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 	}
 
 	if ct == intermediateCert {
-		if profile.OCSPURL == "" {
-			return errors.New("ocsp-url is required for intermediates")
-		}
 		if profile.CRLURL == "" {
 			return errors.New("crl-url is required for intermediates")
 		}
