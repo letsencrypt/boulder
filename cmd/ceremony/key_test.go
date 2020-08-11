@@ -108,21 +108,31 @@ func TestGenerateKeyEC(t *testing.T) {
 	test.AssertDeepEquals(t, diskKey, keyInfo.key)
 }
 
-func TestGenerateKeySlotHasSomething(t *testing.T) {
+func TestGenerateKeySlotHasSomethingWithLabel(t *testing.T) {
 	tmp, err := ioutil.TempDir("", "ceremony-testing-slot-has-something")
 	test.AssertNotError(t, err, "Failed to create temporary directory")
 	defer os.RemoveAll(tmp)
 
 	ctx := setupCtx()
+	label := "someLabel"
+	var objectsFound []pkcs11.ObjectHandle
+	ctx.FindObjectsInitFunc = func(_ pkcs11.SessionHandle, template []*pkcs11.Attribute) error {
+		for _, attr := range template {
+			if attr.Type == pkcs11.CKA_LABEL && string(attr.Value) == label {
+				objectsFound = []pkcs11.ObjectHandle{1}
+			}
+		}
+		return nil
+	}
 	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
-		return []pkcs11.ObjectHandle{1}, false, nil
+		return objectsFound, false, nil
 	}
 	keyPath := path.Join(tmp, "should-not-exist.pem")
 	s := &pkcs11helpers.Session{Module: &ctx, Session: 0}
-	_, err = generateKey(s, "", keyPath, keyGenConfig{
+	_, err = generateKey(s, label, keyPath, keyGenConfig{
 		Type:       "ecdsa",
 		ECDSACurve: "P-256",
 	})
 	test.AssertError(t, err, "expected failure for a slot with an object already in it")
-	test.Assert(t, strings.HasPrefix(err.Error(), "expected no objects"), "wrong error")
+	test.Assert(t, strings.HasPrefix(err.Error(), "expected no preexisting objects with label"), "wrong error")
 }
