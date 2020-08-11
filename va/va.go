@@ -330,9 +330,10 @@ func (va *ValidationAuthorityImpl) validate(
 	// `baseIdentifier`
 	ch := make(chan *probs.ProblemDetails, 1)
 	go func() {
+		validationMethod := string(challenge.Type)
 		params := &caaParams{
 			accountURIID:     &regid,
-			validationMethod: &challenge.Type,
+			validationMethod: &validationMethod,
 		}
 		ch <- va.checkCAA(ctx, identifier, params)
 	}()

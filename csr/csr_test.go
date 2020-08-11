@@ -43,7 +43,7 @@ func (pa *mockPA) WillingToIssueWildcards(idents []identifier.ACMEIdentifier) er
 	return nil
 }
 
-func (pa *mockPA) ChallengeTypeEnabled(t string) bool {
+func (pa *mockPA) ChallengeTypeEnabled(t core.AcmeChallenge) bool {
 	return true
 }
 

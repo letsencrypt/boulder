@@ -79,14 +79,15 @@ func TestMain(m *testing.M) {
 
 var accountURIPrefixes = []string{"http://boulder:4000/acme/reg/"}
 
-func createValidationRequest(domain, challengeType string) *vapb.PerformValidationRequest {
+func createValidationRequest(domain string, challengeType core.AcmeChallenge) *vapb.PerformValidationRequest {
+	ctype := string(challengeType)
 	status := string(core.StatusPending)
 	authzID := ""
 	authzRegID := int64(0)
 	return &vapb.PerformValidationRequest{
 		Domain: &domain,
 		Challenge: &corepb.Challenge{
-			Type:              &challengeType,
+			Type:              &ctype,
 			Status:            &status,
 			Token:             &expectedToken,
 			Validationrecords: nil,
@@ -99,9 +100,8 @@ func createValidationRequest(domain, challengeType string) *vapb.PerformValidati
 	}
 }
 
-func createChallenge(challengeType string) core.Challenge {
+func createChallenge(challengeType core.AcmeChallenge) core.Challenge {
 	return core.Challenge{
-		// challengeType is a core.ChallengeType* (string constant, not a type).
 		Type:                     challengeType,
 		Status:                   core.StatusPending,
 		Token:                    expectedToken,

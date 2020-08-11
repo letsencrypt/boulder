@@ -32,13 +32,13 @@ type AuthorityImpl struct {
 	wildcardExactBlocklist map[string]bool
 	blocklistMu            sync.RWMutex
 
-	enabledChallenges map[string]bool
+	enabledChallenges map[core.AcmeChallenge]bool
 	pseudoRNG         *rand.Rand
 	rngMu             sync.Mutex
 }
 
 // New constructs a Policy Authority.
-func New(challengeTypes map[string]bool) (*AuthorityImpl, error) {
+func New(challengeTypes map[core.AcmeChallenge]bool) (*AuthorityImpl, error) {
 
 	pa := AuthorityImpl{
 		log:               blog.Get(),
@@ -576,7 +576,7 @@ func (pa *AuthorityImpl) ChallengesFor(identifier identifier.ACMEIdentifier) ([]
 }
 
 // ChallengeTypeEnabled returns whether the specified challenge type is enabled
-func (pa *AuthorityImpl) ChallengeTypeEnabled(t string) bool {
+func (pa *AuthorityImpl) ChallengeTypeEnabled(t core.AcmeChallenge) bool {
 	pa.blocklistMu.RLock()
 	defer pa.blocklistMu.RUnlock()
 	return pa.enabledChallenges[t]

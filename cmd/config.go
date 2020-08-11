@@ -75,13 +75,7 @@ type SMTPConfig struct {
 // it should offer.
 type PAConfig struct {
 	DBConfig
-	Challenges map[string]bool
-}
-
-// HostnamePolicyConfig specifies a file from which to load a policy regarding
-// what hostnames to issue for.
-type HostnamePolicyConfig struct {
-	HostnamePolicyFile string
+	Challenges map[core.AcmeChallenge]bool
 }
 
 // CheckChallenges checks whether the list of challenges in the PA config
@@ -90,12 +84,18 @@ func (pc PAConfig) CheckChallenges() error {
 	if len(pc.Challenges) == 0 {
 		return errors.New("empty challenges map in the Policy Authority config is not allowed")
 	}
-	for name := range pc.Challenges {
-		if !core.ValidChallenge(name) {
-			return fmt.Errorf("Invalid challenge in PA config: %s", name)
+	for c := range pc.Challenges {
+		if !c.IsValid() {
+			return fmt.Errorf("Invalid challenge in PA config: %s", c)
 		}
 	}
 	return nil
+}
+
+// HostnamePolicyConfig specifies a file from which to load a policy regarding
+// what hostnames to issue for.
+type HostnamePolicyConfig struct {
+	HostnamePolicyFile string
 }
 
 // TLSConfig represents certificates and a key for authenticated TLS.
