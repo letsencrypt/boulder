@@ -51,7 +51,7 @@ type keyInfo struct {
 
 func generateKey(session *pkcs11helpers.Session, label string, outputPath string, config keyGenConfig) (*keyInfo, error) {
 	_, err := session.FindObject([]*pkcs11.Attribute{
-		&pkcs11.Attribute{Type: pkcs11.CKA_LABEL, Value: []byte(label)},
+		{Type: pkcs11.CKA_LABEL, Value: []byte(label)},
 	})
 	if err != pkcs11helpers.ErrNoObject {
 		return nil, fmt.Errorf("expected no preexisting objects with label %q in slot for key storage. got error: %s", label, err)
