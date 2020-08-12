@@ -112,7 +112,7 @@ func getAuthorization(t *testing.T, id string, sa *sa.SQLStorageAuthority) core.
 	return dbAuthz
 }
 
-func challTypeIndex(t *testing.T, challenges []core.Challenge, typ string) int64 {
+func challTypeIndex(t *testing.T, challenges []core.Challenge, typ core.AcmeChallenge) int64 {
 	t.Helper()
 	var challIdx int64
 	var set bool
@@ -297,7 +297,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	va := &DummyValidationAuthority{request: make(chan *vapb.PerformValidationRequest, 1)}
 
-	pa, err := policy.New(map[string]bool{
+	pa, err := policy.New(map[core.AcmeChallenge]bool{
 		core.ChallengeTypeHTTP01: true,
 		core.ChallengeTypeDNS01:  true,
 	})
@@ -977,7 +977,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 	}
 
 	// Verify that the VA got the request, and it's the same as the others
-	test.AssertEquals(t, authz.Challenges[challIdx].Type, *vaRequest.Challenge.Type)
+	test.AssertEquals(t, string(authz.Challenges[challIdx].Type), *vaRequest.Challenge.Type)
 	test.AssertEquals(t, authz.Challenges[challIdx].Token, *vaRequest.Challenge.Token)
 
 	// Sleep so the RA has a chance to write to the SA
@@ -2270,7 +2270,7 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	test.AssertEquals(t, numAuthorizations(order), 1)
 
 	status := string(core.StatusInvalid)
-	attempted := core.ChallengeTypeDNS01
+	attempted := string(core.ChallengeTypeDNS01)
 	err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:        &order.V2Authorizations[0],
 		Status:    &status,
@@ -3177,7 +3177,7 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 
 	// Finalize the authorization with the challenge validated
 	status := string(core.StatusValid)
-	attempted := core.ChallengeTypeDNS01
+	attempted := string(core.ChallengeTypeDNS01)
 	expInt := ra.clk.Now().Add(time.Hour * 24 * 7).UnixNano()
 	err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:        &validOrder.V2Authorizations[0],
@@ -3370,7 +3370,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 		// The authz entry should have the correct authz ID
 		test.AssertEquals(t, authzEntry.ID, fmt.Sprintf("%d", authzIDs[i]))
 		// The authz entry should have the correct challenge type
-		test.AssertEquals(t, authzEntry.ChallengeType, chalTypes[i])
+		test.AssertEquals(t, string(authzEntry.ChallengeType), chalTypes[i])
 	}
 }
 
@@ -3407,7 +3407,7 @@ func TestUpdateMissingAuthorization(t *testing.T) {
 func TestValidChallengeStillGood(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	pa, err := policy.New(map[string]bool{
+	pa, err := policy.New(map[core.AcmeChallenge]bool{
 		core.ChallengeTypeHTTP01: true,
 	})
 	test.AssertNotError(t, err, "Couldn't create PA")
@@ -3421,7 +3421,7 @@ func TestValidChallengeStillGood(t *testing.T) {
 func TestPerformValidationBadChallengeType(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	pa, err := policy.New(map[string]bool{})
+	pa, err := policy.New(map[core.AcmeChallenge]bool{})
 	test.AssertNotError(t, err, "Couldn't create PA")
 	ra.PA = pa
 
@@ -3603,11 +3603,12 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 		// Finalize the authz
 		status := "valid"
 		expInt := exp.UnixNano()
+		attempted := string(httpChal.Type)
 		err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 			Id:        &ids.Ids[0],
 			Status:    &status,
 			Expires:   &expInt,
-			Attempted: &httpChal.Type,
+			Attempted: &attempted,
 		})
 		test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 		return ids.Ids[0]

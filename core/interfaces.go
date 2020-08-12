@@ -112,7 +112,7 @@ type PolicyAuthority interface {
 	WillingToIssue(domain identifier.ACMEIdentifier) error
 	WillingToIssueWildcards(identifiers []identifier.ACMEIdentifier) error
 	ChallengesFor(domain identifier.ACMEIdentifier) ([]Challenge, error)
-	ChallengeTypeEnabled(t string) bool
+	ChallengeTypeEnabled(t AcmeChallenge) bool
 }
 
 // StorageGetter are the Boulder SA's read-only methods

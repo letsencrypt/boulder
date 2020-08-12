@@ -1084,7 +1084,7 @@ func (wfe *WebFrontEndImpl) ChallengeV2(
 		wfe.getChallenge(ctx, response, request, authz, &challenge, logEvent)
 
 	case "POST":
-		logEvent.ChallengeType = challenge.Type
+		logEvent.ChallengeType = string(challenge.Type)
 		wfe.postChallenge(ctx, response, request, authz, challengeIndex, logEvent)
 	}
 }

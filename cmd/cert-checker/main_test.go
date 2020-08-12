@@ -33,7 +33,7 @@ var pa *policy.AuthorityImpl
 
 func init() {
 	var err error
-	pa, err = policy.New(map[string]bool{})
+	pa, err = policy.New(map[core.AcmeChallenge]bool{})
 	if err != nil {
 		log.Fatal(err)
 	}

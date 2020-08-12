@@ -79,12 +79,13 @@ func TestMain(m *testing.M) {
 
 var accountURIPrefixes = []string{"http://boulder:4000/acme/reg/"}
 
-func createValidationRequest(domain, challengeType string) *vapb.PerformValidationRequest {
+func createValidationRequest(domain string, challengeType core.AcmeChallenge) *vapb.PerformValidationRequest {
+	ctype := string(challengeType)
 	status := string(core.StatusPending)
 	return &vapb.PerformValidationRequest{
 		Domain: domain,
 		Challenge: &corepb.Challenge{
-			Type:              &challengeType,
+			Type:              &ctype,
 			Status:            &status,
 			Token:             &expectedToken,
 			Validationrecords: nil,
@@ -97,9 +98,8 @@ func createValidationRequest(domain, challengeType string) *vapb.PerformValidati
 	}
 }
 
-func createChallenge(challengeType string) core.Challenge {
+func createChallenge(challengeType core.AcmeChallenge) core.Challenge {
 	return core.Challenge{
-		// challengeType is a core.ChallengeType* (string constant, not a type).
 		Type:                     challengeType,
 		Status:                   core.StatusPending,
 		Token:                    expectedToken,
@@ -451,26 +451,26 @@ func TestMultiVA(t *testing.T) {
 				expectedKeyAuthorization)),
 		},
 		{
-			// With one remote VA cancelled there should not be a validation failure
-			// when enforcing multi VA.
+			// When enforcing multi-VA, any cancellations are a problem.
 			Name: "Local VA and one remote VA OK, one cancelled VA, enforce multi VA",
 			RemoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{cancelledVA{}, remoteUA2},
 			},
-			AllowedUAs: allowedUAs,
-			Features:   enforceMultiVA,
+			AllowedUAs:   allowedUAs,
+			Features:     enforceMultiVA,
+			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC canceled"),
 		},
 		{
-			// With two remote VAs cancelled there should not be a validation failure
-			// when enforcing multi VA
-			Name: "Local VA and one remote VA OK, one cancelled VA, enforce multi VA",
+			// When enforcing multi-VA, any cancellations are a problem.
+			Name: "Local VA OK, two cancelled remote VAs, enforce multi VA",
 			RemoteVAs: []RemoteVA{
 				{cancelledVA{}, remoteUA1},
 				{cancelledVA{}, remoteUA2},
 			},
-			AllowedUAs: allowedUAs,
-			Features:   enforceMultiVA,
+			AllowedUAs:   allowedUAs,
+			Features:     enforceMultiVA,
+			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC canceled"),
 		},
 		{
 			// With the local and remote VAs seeing diff problems and the full results

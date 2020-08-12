@@ -471,7 +471,7 @@ func TestCAALogging(t *testing.T) {
 		Name            string
 		Domain          string
 		AccountURIID    int64
-		ChallengeType   string
+		ChallengeType   core.AcmeChallenge
 		ExpectedLogline string
 	}{
 		{
@@ -535,7 +535,7 @@ func TestCAALogging(t *testing.T) {
 
 			params := &caaParams{
 				accountURIID:     tc.AccountURIID,
-				validationMethod: tc.ChallengeType,
+				validationMethod: string(tc.ChallengeType),
 			}
 			_ = va.checkCAA(ctx, identifier.ACMEIdentifier{Type: identifier.DNS, Value: tc.Domain}, params)
 

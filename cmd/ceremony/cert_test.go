@@ -244,18 +244,6 @@ func TestVerifyProfile(t *testing.T) {
 				CommonName:         "d",
 				Organization:       "e",
 				Country:            "f",
-			},
-			certType:    intermediateCert,
-			expectedErr: "ocsp-url is required for intermediates",
-		},
-		{
-			profile: certProfile{
-				NotBefore:          "a",
-				NotAfter:           "b",
-				SignatureAlgorithm: "c",
-				CommonName:         "d",
-				Organization:       "e",
-				Country:            "f",
 				OCSPURL:            "g",
 			},
 			certType:    intermediateCert,
