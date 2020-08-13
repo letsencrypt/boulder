@@ -1,0 +1,26 @@
+name: move PR to main
+on:
+  pull_request:
+    branches: [ master ]
+jobs:
+  comment_and_update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v2
+        with:
+          script: |
+            github.issues.createIssueComment({
+              owner: context.repo()[0],
+              repo: context.repo()[1],
+              issue_number: context.issue(),
+              body: "This PR was created against 'master', but should be against 'main'. Updating the base branch accordingly.",
+            })
+      - uses: actions/github-script@v2
+        with:
+          script: |
+            github.pulls.update({
+              owner: context.repo()[0],
+              repo: context.repo()[1],
+              issue_number: context.issue(),
+              base: "main",
+            })
