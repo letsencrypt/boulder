@@ -10,17 +10,17 @@ jobs:
         with:
           script: |
             github.issues.createComment({
-              owner: context.repo()[0],
-              repo: context.repo()[1],
-              issue_number: context.issue(),
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
               body: "This PR was created against 'master', but should be against 'main'. Updating the base branch accordingly.",
             })
       - uses: actions/github-script@v2
         with:
           script: |
             github.pulls.update({
-              owner: context.repo()[0],
-              repo: context.repo()[1],
-              issue_number: context.issue(),
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
               base: "main",
             })
