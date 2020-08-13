@@ -6,7 +6,7 @@ source test/db-common.sh
 # set db connection for if running in a separate container or not
 dbconn="-u root"
 if [[ $MYSQL_CONTAINER ]]; then
-	dbconn="-u root -h boulder-mysql --port 3306"
+	dbconn="-u root -h ${MYSQL_HOST} --port ${MYSQL_PORT}"
 fi
 
 # MariaDB sets the default binlog_format to STATEMENT,

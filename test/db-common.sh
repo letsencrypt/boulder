@@ -8,3 +8,5 @@ function die() {
 
 DBENVS="test
 integration"
+MYSQL_HOST=${MYSQL_HOST:-boulder-mysql}
+MYSQL_PORT=${MYSQL_PORT:-3306}

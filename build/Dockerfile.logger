@@ -1,0 +1,5 @@
+FROM alpine:3.11
+WORKDIR /srv
+RUN apk add rsyslog=8.1911.0-r1
+EXPOSE 514
+CMD ["rsyslogd", "-n"]

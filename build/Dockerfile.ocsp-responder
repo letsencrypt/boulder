@@ -1,0 +1,13 @@
+FROM alpine:3.11
+WORKDIR /srv
+
+# provide glibc for Go application, Bash for entrypoint and update
+# trusted CA certificates
+RUN apk update && apk add libc6-compat=1.1.24-r2 bash=5.0.11-r1 \
+ca-certificates-cacert=20191127-r1
+
+COPY bin/ocsp-responder bin/ocsp-responder
+COPY build/entrypoint-k8s.sh ./
+EXPOSE 9083 9096
+ENTRYPOINT ["/srv/entrypoint-k8s.sh"]
+CMD ["bin/ocsp-responder", "-config", "config/ocsp-responder.json"]

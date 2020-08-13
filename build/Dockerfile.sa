@@ -1,0 +1,18 @@
+FROM alpine:3.11
+WORKDIR /srv
+RUN apk add --update libc6-compat mysql-client bash ca-certificates-cacert
+#RUN ln -s /logger-unix-socket-ipc/log /dev/log
+COPY bin/boulder-sa bin/boulder-sa
+COPY --from=letsencrypt/boulder-tools-go1.13.2:2020-01-07 /usr/local/bin/goose /usr/local/bin/goose
+COPY sa/_db/ sa/_db/
+COPY sa/_db-next/ sa/_db-next/
+COPY test/create_db.sh test/
+COPY test/db-common.sh test/
+COPY build/entrypoint-sa.sh ./
+COPY build/entrypoint-k8s.sh ./
+COPY test/sa_db_users.sql test/
+EXPOSE 8083 9095
+ENV MYSQL_HOST boulder-mysql
+ENV MYSQL_PORT 3306
+ENTRYPOINT ["/srv/entrypoint-sa.sh"]
+CMD ["bin/boulder-sa", "-config", "config/sa.json"]
