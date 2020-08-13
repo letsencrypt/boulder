@@ -2,6 +2,7 @@ name: move PR to main
 on:
   pull_request:
     branches: [ master ]
+    types: [ opened ]
 jobs:
   comment_and_update:
     runs-on: ubuntu-latest
