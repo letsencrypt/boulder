@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"log"
 
 	"github.com/letsencrypt/boulder/pkcs11helpers"
@@ -79,7 +78,7 @@ func generateKey(session *pkcs11helpers.Session, label string, outputPath string
 
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})
 	log.Printf("Public key PEM:\n%s\n", pemBytes)
-	if err := ioutil.WriteFile(outputPath, pemBytes, 0644); err != nil {
+	if err := writeFile(outputPath, pemBytes); err != nil {
 		return nil, fmt.Errorf("Failed to write public key to %q: %s", outputPath, err)
 	}
 	log.Printf("Public key written to %q\n", outputPath)
