@@ -9,7 +9,7 @@ jobs:
       - uses: actions/github-script@v2
         with:
           script: |
-            github.issues.createIssueComment({
+            github.issues.createComment({
               owner: context.repo()[0],
               repo: context.repo()[1],
               issue_number: context.issue(),
