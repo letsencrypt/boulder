@@ -18,6 +18,7 @@ import (
 	ct "github.com/google/certificate-transparency-go"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/policyasn1"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -68,16 +69,16 @@ func TestNewProfilePolicies(t *testing.T) {
 		maxBackdate: time.Hour,
 		maxValidity: time.Hour,
 	})
-	var policies []policyInformation
+	var policies []policyasn1.PolicyInformation
 	_, err = asn1.Unmarshal(profile.policies.Value, &policies)
 	test.AssertNotError(t, err, "failed to parse policies extension")
 	test.AssertEquals(t, len(policies), 2)
-	test.AssertDeepEquals(t, policies[0], policyInformation{
+	test.AssertDeepEquals(t, policies[0], policyasn1.PolicyInformation{
 		Policy: asn1.ObjectIdentifier{1, 2, 3},
 	})
-	test.AssertDeepEquals(t, policies[1], policyInformation{
+	test.AssertDeepEquals(t, policies[1], policyasn1.PolicyInformation{
 		Policy: asn1.ObjectIdentifier{1, 2, 3, 4},
-		Qualifiers: []policyQualifier{{
+		Qualifiers: []policyasn1.PolicyQualifier{{
 			OID:   asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 2, 1},
 			Value: "cps-url",
 		}},

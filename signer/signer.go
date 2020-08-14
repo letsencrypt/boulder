@@ -23,6 +23,7 @@ import (
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/policyasn1"
 	zlintx509 "github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v2"
 	"github.com/zmap/zlint/v2/lint"
@@ -108,18 +109,8 @@ func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
 	return oid, nil
 }
 
-type policyQualifier struct {
-	OID   asn1.ObjectIdentifier
-	Value string `asn1:"optional,ia5"`
-}
-
-type policyInformation struct {
-	Policy     asn1.ObjectIdentifier
-	Qualifiers []policyQualifier `asn1:"optional"`
-}
-
 var stringToQualifierType = map[string]asn1.ObjectIdentifier{
-	"id-qt-cps": {1, 3, 6, 1, 5, 5, 7, 2, 1},
+	"id-qt-cps": policyasn1.CPSQualifierOID,
 }
 
 func newProfile(config ProfileConfig) (*signingProfile, error) {
@@ -143,19 +134,19 @@ func newProfile(config ProfileConfig) (*signingProfile, error) {
 		return nil, errors.New("OCSP URL is required")
 	}
 	if len(config.Policies) > 0 {
-		var policies []policyInformation
+		var policies []policyasn1.PolicyInformation
 		for _, policyConfig := range config.Policies {
 			id, err := parseOID(policyConfig.OID)
 			if err != nil {
 				return nil, fmt.Errorf("failed parsing policy OID %q: %s", policyConfig.OID, err)
 			}
-			pi := policyInformation{Policy: id}
+			pi := policyasn1.PolicyInformation{Policy: id}
 			for _, qualifierConfig := range policyConfig.Qualifiers {
 				qt, ok := stringToQualifierType[qualifierConfig.Type]
 				if !ok {
 					return nil, fmt.Errorf("unknown qualifier type: %s", qualifierConfig.Type)
 				}
-				pq := policyQualifier{
+				pq := policyasn1.PolicyQualifier{
 					OID:   qt,
 					Value: qualifierConfig.Value,
 				}
