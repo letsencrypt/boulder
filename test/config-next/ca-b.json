@@ -32,65 +32,39 @@
       "ConfigFile": "test/test-ca.key-pkcs11.json",
       "CertFile": "/tmp/intermediate-cert-rsa-a.pem",
       "NumSessions": 2,
-      "SignerProfile": {
-        "allowRSAKeys": true,
-        "allowECDSAKeys": true,
-        "allowMustStaple": true,
-        "allowCTPoison": true,
-        "allowSCTList": true,
-        "allowCommonName": true,
-        "issuerURL": "http://127.0.0.1:4000/acme/issuer-cert",
-        "ocspURL": "http://127.0.0.1:4002/",
-        "crlURL": "http://example.com/crl",
-        "policies": [
-          {
-            "oid": "2.23.140.1.2.1"
-          },
-          {
-            "oid": "1.2.3.4",
-            "qualifiers": [
-              {
-                "type": "id-qt-cps",
-                "value": "http://example.com/cps"
-              }
-            ]
-          }
-        ],
-        "maxValidityPeriod": "2160h",
-        "maxValidityBackdate": "1h5m"
-      }
     },{
       "ConfigFile": "test/test-ca.key-pkcs11.json",
       "CertFile": "/tmp/intermediate-cert-rsa-b.pem",
       "NumSessions": 2,
-      "SignerProfile": {
-        "allowRSAKeys": true,
-        "allowECDSAKeys": true,
-        "allowMustStaple": true,
-        "allowCTPoison": true,
-        "allowSCTList": true,
-        "allowCommonName": true,
-        "issuerURL": "http://127.0.0.1:4000/acme/issuer-cert",
-        "ocspURL": "http://127.0.0.1:4002/",
-        "crlURL": "http://example.com/crl",
-        "policies": [
-          {
-            "oid": "2.23.140.1.2.1"
-          },
-          {
-            "oid": "1.2.3.4",
-            "qualifiers": [
-              {
-                "type": "id-qt-cps",
-                "value": "http://example.com/cps"
-              }
-            ]
-          }
-        ],
-        "maxValidityPeriod": "2160h",
-        "maxValidityBackdate": "1h5m"
-      }
     }],
+
+    "SignerProfile": {
+      "allowRSAKeys": true,
+      "allowECDSAKeys": true,
+      "allowMustStaple": true,
+      "allowCTPoison": true,
+      "allowSCTList": true,
+      "allowCommonName": true,
+      "issuerURL": "http://127.0.0.1:4000/acme/issuer-cert",
+      "ocspURL": "http://127.0.0.1:4002/",
+      "crlURL": "http://example.com/crl",
+      "policies": [
+        {
+          "oid": "2.23.140.1.2.1"
+        },
+        {
+          "oid": "1.2.3.4",
+          "qualifiers": [
+            {
+              "type": "id-qt-cps",
+              "value": "http://example.com/cps"
+            }
+          ]
+        }
+      ],
+      "maxValidityPeriod": "2160h",
+      "maxValidityBackdate": "1h5m"
+    },
     "expiry": "2160h",
     "backdate": "1h",
     "lifespanOCSP": "96h",
