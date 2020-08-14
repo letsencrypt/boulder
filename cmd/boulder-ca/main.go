@@ -4,7 +4,6 @@ import (
 	"crypto"
 	"crypto/x509"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -49,22 +48,19 @@ func loadCFSSLIssuers(c config) ([]ca.Issuer, error) {
 	return issuers, nil
 }
 
-func loadBoulderIssuers(configs []ca_config.IssuerConfig, ignoredLints []string) ([]bsigner.Config, error) {
+func loadBoulderIssuers(configs []ca_config.IssuerConfig, profile bsigner.ProfileConfig, ignoredLints []string) ([]bsigner.Config, error) {
 	boulderIssuerConfigs := make([]bsigner.Config, 0, len(configs))
 	for _, issuerConfig := range configs {
 		signer, issuer, err := loadIssuer(issuerConfig)
 		if err != nil {
 			return nil, err
 		}
-		if issuerConfig.SignerProfile == nil {
-			return nil, errors.New("Issuer config is missing SignerProfile")
-		}
 		boulderIssuerConfigs = append(boulderIssuerConfigs, bsigner.Config{
 			Issuer:       issuer,
 			Signer:       signer,
 			IgnoredLints: ignoredLints,
 			Clk:          cmd.Clock(),
-			Profile:      *issuerConfig.SignerProfile,
+			Profile:      profile,
 		})
 	}
 	return boulderIssuerConfigs, nil
@@ -178,7 +174,7 @@ func main() {
 	var cfsslIssuers []ca.Issuer
 	var boulderIssuerConfigs []bsigner.Config
 	if features.Enabled(features.NonCFSSLSigner) {
-		boulderIssuerConfigs, err = loadBoulderIssuers(c.CA.Issuers, c.CA.IgnoredLints)
+		boulderIssuerConfigs, err = loadBoulderIssuers(c.CA.Issuers, c.CA.SignerProfile, c.CA.IgnoredLints)
 		cmd.FailOnError(err, "Couldn't load issuers")
 	} else {
 		cfsslIssuers, err = loadCFSSLIssuers(c)

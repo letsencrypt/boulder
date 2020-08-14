@@ -25,6 +25,9 @@ type CAConfig struct {
 	// Issuers contains configuration information for each issuer cert and key
 	// this CA knows about. The first in the list is used as the default.
 	Issuers []IssuerConfig
+	// SignerProfile contains the signer issuance profile, if using the boulder
+	// signer rather than the CFSSL signer.
+	SignerProfile signer.ProfileConfig
 	// LifespanOCSP is how long OCSP responses are valid for; It should be longer
 	// than the minTimeToExpiry field for the OCSP Updater.
 	LifespanOCSP cmd.ConfigDuration
@@ -69,7 +72,4 @@ type IssuerConfig struct {
 	// Number of sessions to open with the HSM. For maximum performance,
 	// this should be equal to the number of cores in the HSM. Defaults to 1.
 	NumSessions int
-	// SignerProfile contains the signer issuance profile, if using the boulder
-	// signer rather than the CFSSL signer.
-	SignerProfile *signer.ProfileConfig
 }

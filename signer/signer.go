@@ -284,8 +284,14 @@ func NewSigner(config Config) (*Signer, error) {
 		return nil, err
 	}
 	lints, err := lint.GlobalRegistry().Filter(lint.FilterOptions{
-		ExcludeNames:   config.IgnoredLints,
-		ExcludeSources: []lint.LintSource{lint.EtsiEsi}, // we don't care about the ETSI lints
+		ExcludeNames: config.IgnoredLints,
+		ExcludeSources: []lint.LintSource{
+			// We ignore the ETSI and EVG lints since they do not
+			// apply to the certificates we issue, and not attempting
+			// to apply them will save some cycles.
+			lint.CABFEVGuidelines,
+			lint.EtsiEsi,
+		},
 	})
 	if err != nil {
 		return nil, err
