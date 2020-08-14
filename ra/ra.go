@@ -1622,7 +1622,9 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		}
 		res, err := ra.VA.PerformValidation(vaCtx, &req)
 
+		challenge := &authz.Challenges[challIndex]
 		var prob *probs.ProblemDetails
+
 		if err != nil {
 			prob = probs.ServerInternal("Could not communicate with VA")
 			ra.log.AuditErrf("Could not communicate with VA: %s", err)
@@ -1632,18 +1634,17 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 				prob = probs.ServerInternal("Could not communicate with VA")
 				ra.log.AuditErrf("Could not communicate with VA: %s", err)
 			}
-		}
 
-		// Save the updated records
-		challenge := &authz.Challenges[challIndex]
-		records := make([]core.ValidationRecord, len(res.Records))
-		for i, r := range res.Records {
-			records[i], err = bgrpc.PBToValidationRecord(r)
-			if err != nil {
-				prob = probs.ServerInternal("Records for validation corrupt")
+			// Save the updated records
+			records := make([]core.ValidationRecord, len(res.Records))
+			for i, r := range res.Records {
+				records[i], err = bgrpc.PBToValidationRecord(r)
+				if err != nil {
+					prob = probs.ServerInternal("Records for validation corrupt")
+				}
 			}
+			challenge.ValidationRecord = records
 		}
-		challenge.ValidationRecord = records
 
 		if !challenge.RecordsSane() && prob == nil {
 			prob = probs.ServerInternal("Records for validation failed sanity check")
