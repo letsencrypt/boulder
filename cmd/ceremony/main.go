@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
 	"time"
 
 	"github.com/letsencrypt/boulder/pkcs11helpers"
@@ -77,6 +78,19 @@ func (pkgc PKCS11KeyGenConfig) validate() error {
 	return nil
 }
 
+// checkOutputFile returns an error if the filename is empty,
+// or if a file already exists with that filename.
+func checkOutputFile(filename, fieldname string) error {
+	if filename == "" {
+		return fmt.Errorf("outputs.%s is required", fieldname)
+	}
+	if _, err := os.Stat(filename); !os.IsNotExist(err) {
+		return fmt.Errorf("outputs.%s is %q, which already exists",
+			fieldname, filename)
+	}
+	return nil
+}
+
 type rootConfig struct {
 	CeremonyType string             `yaml:"ceremony-type"`
 	PKCS11       PKCS11KeyGenConfig `yaml:"pkcs11"`
@@ -99,11 +113,11 @@ func (rc rootConfig) validate() error {
 	}
 
 	// Output fields
-	if rc.Outputs.PublicKeyPath == "" {
-		return errors.New("outputs.public-key-path is required")
+	if err := checkOutputFile(rc.Outputs.PublicKeyPath, "public-key-path"); err != nil {
+		return err
 	}
-	if rc.Outputs.CertificatePath == "" {
-		return errors.New("outputs.certificate-path is required")
+	if err := checkOutputFile(rc.Outputs.CertificatePath, "certificate-path"); err != nil {
+		return err
 	}
 
 	// Certificate profile
@@ -159,8 +173,8 @@ func (ic intermediateConfig) validate(ct certType) error {
 	}
 
 	// Output fields
-	if ic.Outputs.CertificatePath == "" {
-		return errors.New("outputs.certificate-path is required")
+	if err := checkOutputFile(ic.Outputs.CertificatePath, "certificate-path"); err != nil {
+		return err
 	}
 
 	// Certificate profile
@@ -191,8 +205,8 @@ func (kc keyConfig) validate() error {
 	}
 
 	// Output fields
-	if kc.Outputs.PublicKeyPath == "" {
-		return errors.New("outputs.public-key-path is required")
+	if err := checkOutputFile(kc.Outputs.PublicKeyPath, "public-key-path"); err != nil {
+		return err
 	}
 
 	return nil
@@ -231,8 +245,8 @@ func (orc ocspRespConfig) validate() error {
 	// DelegatedIssuerCertificatePath may be omitted
 
 	// Output fields
-	if orc.Outputs.ResponsePath == "" {
-		return errors.New("outputs.response-path is required")
+	if err := checkOutputFile(orc.Outputs.ResponsePath, "response-path"); err != nil {
+		return err
 	}
 
 	// OCSP fields
@@ -281,8 +295,8 @@ func (cc crlConfig) validate() error {
 	}
 
 	// Output fields
-	if cc.Outputs.CRLPath == "" {
-		return errors.New("outputs.crl-path is required")
+	if err := checkOutputFile(cc.Outputs.CRLPath, "crl-path"); err != nil {
+		return err
 	}
 
 	// CRL profile fields
@@ -380,7 +394,7 @@ func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.Public
 	if err := cert.CheckSignatureFrom(issuer); err != nil {
 		return fmt.Errorf("failed to verify certificate signature: %s", err)
 	}
-	if err := ioutil.WriteFile(certPath, pemBytes, 0644); err != nil {
+	if err := writeFile(certPath, pemBytes); err != nil {
 		return fmt.Errorf("failed to write certificate to %q: %s", certPath, err)
 	}
 	log.Printf("Certificate written to %q\n", certPath)
@@ -550,7 +564,7 @@ func ocspRespCeremony(configBytes []byte) error {
 		return err
 	}
 
-	if err := ioutil.WriteFile(config.Outputs.ResponsePath, resp, 0644); err != nil {
+	if err := writeFile(config.Outputs.ResponsePath, resp); err != nil {
 		return fmt.Errorf("failed to write OCSP response to %q: %s", config.Outputs.ResponsePath, err)
 	}
 
@@ -617,7 +631,7 @@ func crlCeremony(configBytes []byte) error {
 
 	log.Printf("Signed CRL PEM:\n%s", crlBytes)
 
-	if err := ioutil.WriteFile(config.Outputs.CRLPath, crlBytes, 0644); err != nil {
+	if err := writeFile(config.Outputs.CRLPath, crlBytes); err != nil {
 		return fmt.Errorf("failed to write CRL to %q: %s", config.Outputs.CRLPath, err)
 	}
 
