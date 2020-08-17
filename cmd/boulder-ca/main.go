@@ -24,6 +24,7 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/policy"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	bsigner "github.com/letsencrypt/boulder/signer"
 )
 
 type config struct {
@@ -34,7 +35,7 @@ type config struct {
 	Syslog cmd.SyslogConfig
 }
 
-func loadIssuers(c config) ([]ca.Issuer, error) {
+func loadCFSSLIssuers(c config) ([]ca.Issuer, error) {
 	var issuers []ca.Issuer
 	for _, issuerConfig := range c.CA.Issuers {
 		priv, cert, err := loadIssuer(issuerConfig)
@@ -45,6 +46,24 @@ func loadIssuers(c config) ([]ca.Issuer, error) {
 		})
 	}
 	return issuers, nil
+}
+
+func loadBoulderIssuers(configs []ca_config.IssuerConfig, profile bsigner.ProfileConfig, ignoredLints []string) ([]bsigner.Config, error) {
+	boulderIssuerConfigs := make([]bsigner.Config, 0, len(configs))
+	for _, issuerConfig := range configs {
+		signer, issuer, err := loadIssuer(issuerConfig)
+		if err != nil {
+			return nil, err
+		}
+		boulderIssuerConfigs = append(boulderIssuerConfigs, bsigner.Config{
+			Issuer:       issuer,
+			Signer:       signer,
+			IgnoredLints: ignoredLints,
+			Clk:          cmd.Clock(),
+			Profile:      profile,
+		})
+	}
+	return boulderIssuerConfigs, nil
 }
 
 func loadIssuer(issuerConfig ca_config.IssuerConfig) (crypto.Signer, *x509.Certificate, error) {
@@ -152,8 +171,15 @@ func main() {
 	err = pa.SetHostnamePolicyFile(c.CA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
 
-	issuers, err := loadIssuers(c)
-	cmd.FailOnError(err, "Couldn't load issuers")
+	var cfsslIssuers []ca.Issuer
+	var boulderIssuerConfigs []bsigner.Config
+	if features.Enabled(features.NonCFSSLSigner) {
+		boulderIssuerConfigs, err = loadBoulderIssuers(c.CA.Issuers, c.CA.SignerProfile, c.CA.IgnoredLints)
+		cmd.FailOnError(err, "Couldn't load issuers")
+	} else {
+		cfsslIssuers, err = loadCFSSLIssuers(c)
+		cmd.FailOnError(err, "Couldn't load issuers")
+	}
 
 	tlsConfig, err := c.CA.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
@@ -181,7 +207,8 @@ func main() {
 		pa,
 		clk,
 		scope,
-		issuers,
+		cfsslIssuers,
+		boulderIssuerConfigs,
 		kp,
 		logger,
 		orphanQueue)

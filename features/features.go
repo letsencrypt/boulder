@@ -58,6 +58,9 @@ const (
 	// FasterNewOrdersRateLimit enables use of a separate table for counting the
 	// new orders rate limit.
 	FasterNewOrdersRateLimit
+	// NonCFSSLSigner enables usage of our own certificate signer instead of the
+	// CFSSL signer.
+	NonCFSSLSigner
 )
 
 // List of features and their default value, protected by fMu
@@ -84,6 +87,7 @@ var features = map[FeatureFlag]bool{
 	RestrictRSAKeySizes:           false,
 	FasterNewOrdersRateLimit:      false,
 	BlockedKeyTable:               false,
+	NonCFSSLSigner:                false,
 }
 
 var fMu = new(sync.RWMutex)
