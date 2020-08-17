@@ -79,6 +79,7 @@ const (
 	intermediateCert
 	ocspCert
 	crlCert
+	crossCert
 )
 
 func (profile *certProfile) verifyProfile(ct certType) error {
@@ -269,17 +270,19 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		SubjectKeyId:          subjectKeyID,
 	}
 
-	if ct == ocspCert {
+	switch ct {
+	case ocspCert:
 		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageOCSPSigning}
 		// ASN.1 NULL is 0x05, 0x00
 		ocspNoCheckExt := pkix.Extension{Id: oidOCSPNoCheck, Value: []byte{5, 0}}
 		cert.ExtraExtensions = append(cert.ExtraExtensions, ocspNoCheckExt)
 		cert.IsCA = false
-	} else if ct == crlCert {
+	case crlCert:
 		cert.IsCA = false
-	} else if ct == intermediateCert {
+	case intermediateCert:
 		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
 		cert.MaxPathLenZero = true
+		// rootCert and crossCert do not get EKU or MaxPathZero
 	}
 
 	if len(profile.Policies) > 0 {

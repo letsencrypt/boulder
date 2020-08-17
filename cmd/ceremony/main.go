@@ -663,6 +663,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("root ceremony failed: %s", err)
 		}
+	case "cross-certificate":
+		err = intermediateCeremony(configBytes, crossCert)
+		if err != nil {
+			log.Fatalf("cross-certificate ceremony failed: %s", err)
+		}
 	case "intermediate":
 		err = intermediateCeremony(configBytes, intermediateCert)
 		if err != nil {
