@@ -135,12 +135,13 @@ func numAuthorizations(o *corepb.Order) int {
 
 type DummyValidationAuthority struct {
 	request      chan *vapb.PerformValidationRequest
-	ResultReturn vapb.ValidationResult
+	ResultError  error
+	ResultReturn *vapb.ValidationResult
 }
 
 func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
 	dva.request <- req
-	return &dva.ResultReturn, nil
+	return dva.ResultReturn, dva.ResultError
 }
 
 var (
@@ -911,7 +912,7 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 
 	fakeHostname := "example.com"
 	fakePort := "8080"
-	va.ResultReturn = vapb.ValidationResult{
+	va.ResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
 			{
 				AddressUsed: []byte("192.168.0.1"),
@@ -945,7 +946,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 
 	fakeHostname := "example.com"
 	fakePort := "8080"
-	va.ResultReturn = vapb.ValidationResult{
+	va.ResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
 			{
 				AddressUsed: []byte("192.168.0.1"),
@@ -989,12 +990,61 @@ func TestPerformValidationSuccess(t *testing.T) {
 	// Verify that the responses are reflected
 	test.AssertNotNil(t, vaRequest.Challenge, "Request passed to VA has no challenge")
 	challIdx = challTypeIndex(t, dbAuthz.Challenges, core.ChallengeTypeDNS01)
+	fmt.Println(dbAuthz.Challenges[challIdx])
 	test.Assert(t, dbAuthz.Challenges[challIdx].Status == core.StatusValid, "challenge was not marked as valid")
 
 	// The DB authz's expiry should be equal to the current time plus the
 	// configured authorization lifetime
 	expectedExpires := ra.clk.Now().Add(ra.authorizationLifetime)
 	test.AssertEquals(t, *dbAuthz.Expires, expectedExpires)
+}
+
+func TestPerformValidationVAError(t *testing.T) {
+	va, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization failed")
+
+	challIdx := challTypeIndex(t, authz.Challenges, core.ChallengeTypeDNS01)
+
+	va.ResultError = fmt.Errorf("Something went wrong")
+
+	authzPB, err := bgrpc.AuthzToPB(authz)
+	test.AssertNotError(t, err, "AuthzToPB failed")
+
+	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: &challIdx,
+	})
+
+	test.AssertNotError(t, err, "PerformValidation completely failed")
+	authz, err = bgrpc.PBToAuthz(authzPB)
+	test.AssertNotError(t, err, "PBToAuthz failed")
+
+	var vaRequest *vapb.PerformValidationRequest
+	select {
+	case r := <-va.request:
+		vaRequest = r
+	case <-time.After(time.Second):
+		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
+	}
+
+	// Verify that the VA got the request, and it's the same as the others
+	test.AssertEquals(t, string(authz.Challenges[challIdx].Type), *vaRequest.Challenge.Type)
+	test.AssertEquals(t, authz.Challenges[challIdx].Token, *vaRequest.Challenge.Token)
+
+	// Sleep so the RA has a chance to write to the SA
+	time.Sleep(100 * time.Millisecond)
+
+	dbAuthz := getAuthorization(t, authz.ID, sa)
+	t.Log("dbAuthz:", dbAuthz)
+
+	// Verify that the responses are reflected
+	challIdx = challTypeIndex(t, dbAuthz.Challenges, core.ChallengeTypeDNS01)
+	test.Assert(t, dbAuthz.Challenges[challIdx].Status == core.StatusInvalid, "challenge was not marked as invalid")
+	test.AssertContains(t, dbAuthz.Challenges[challIdx].Error.Error(), "Could not communicate with VA")
+	test.Assert(t, dbAuthz.Challenges[challIdx].ValidationRecord == nil, "challenge had a ValidationRecord")
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
