@@ -330,10 +330,9 @@ func (va *ValidationAuthorityImpl) validate(
 	// `baseIdentifier`
 	ch := make(chan *probs.ProblemDetails, 1)
 	go func() {
-		validationMethod := string(challenge.Type)
 		params := &caaParams{
-			accountURIID:     &regid,
-			validationMethod: &validationMethod,
+			accountURIID:     regid,
+			validationMethod: string(challenge.Type),
 		}
 		ch <- va.checkCAA(ctx, identifier, params)
 	}()
@@ -596,9 +595,9 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
 	logEvent := verificationRequestEvent{
-		ID:        *req.Authz.Id,
-		Requester: *req.Authz.RegID,
-		Hostname:  *req.Domain,
+		ID:        req.Authz.Id,
+		Requester: req.Authz.RegID,
+		Hostname:  req.Domain,
 	}
 	vStart := va.clk.Now()
 
@@ -613,7 +612,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		return nil, probs.ServerInternal("Challenge failed to deserialize")
 	}
 
-	records, prob := va.validate(ctx, identifier.DNSIdentifier(*req.Domain), *req.Authz.RegID, challenge)
+	records, prob := va.validate(ctx, identifier.DNSIdentifier(req.Domain), req.Authz.RegID, challenge)
 	challenge.ValidationRecord = records
 	localValidationLatency := time.Since(vStart)
 
@@ -635,8 +634,8 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 			// routine to avoid blocking the primary VA.
 			go func() {
 				_ = va.processRemoteResults(
-					*req.Domain,
-					*req.Authz.RegID,
+					req.Domain,
+					req.Authz.RegID,
 					string(challenge.Type),
 					prob,
 					remoteResults,
@@ -648,8 +647,8 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 			challenge.Status = core.StatusValid
 		} else if features.Enabled(features.EnforceMultiVA) {
 			remoteProb := va.processRemoteResults(
-				*req.Domain,
-				*req.Authz.RegID,
+				req.Domain,
+				req.Authz.RegID,
 				string(challenge.Type),
 				prob,
 				remoteResults,
@@ -662,7 +661,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 				challenge.Error = remoteProb
 				logEvent.Error = remoteProb.Error()
 				va.log.Infof("Validation failed due to remote failures: identifier=%v err=%s",
-					*req.Domain, remoteProb)
+					req.Domain, remoteProb)
 				va.metrics.remoteValidationFailures.Inc()
 			} else {
 				challenge.Status = core.StatusValid

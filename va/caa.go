@@ -16,14 +16,14 @@ import (
 )
 
 type caaParams struct {
-	accountURIID     *int64
-	validationMethod *string
+	accountURIID     int64
+	validationMethod string
 }
 
 func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
 	acmeID := identifier.ACMEIdentifier{
 		Type:  identifier.DNS,
-		Value: *req.Domain,
+		Value: req.Domain,
 	}
 	params := &caaParams{
 		accountURIID:     req.AccountURIID,
@@ -31,7 +31,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	}
 	if prob := va.checkCAA(ctx, acmeID, params); prob != nil {
 		typ := string(prob.Type)
-		detail := fmt.Sprintf("While processing CAA for %s: %s", *req.Domain, prob.Detail)
+		detail := fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
 		return &vapb.IsCAAValidResponse{
 			Problem: &corepb.ProblemDetails{
 				ProblemType: &typ,
@@ -59,11 +59,11 @@ func (va *ValidationAuthorityImpl) checkCAA(
 	}
 
 	accountID, validationMethod := "unknown", "unknown"
-	if params.accountURIID != nil && *params.accountURIID != 0 {
-		accountID = fmt.Sprintf("%d", *params.accountURIID)
+	if params.accountURIID != 0 {
+		accountID = fmt.Sprintf("%d", params.accountURIID)
 	}
-	if params.validationMethod != nil && *params.validationMethod != "" {
-		validationMethod = *params.validationMethod
+	if params.validationMethod != "" {
+		validationMethod = params.validationMethod
 	}
 
 	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %s, Challenge: %s, Valid for issuance: %t] Records=%s",
@@ -265,10 +265,10 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 			// https://tools.ietf.org/html/draft-ietf-acme-caa-04
 			caaAccountURI, ok := caaParameters["accounturi"]
 			if ok {
-				if params.accountURIID == nil {
+				if params.accountURIID == 0 {
 					continue
 				}
-				if !checkAccountURI(caaAccountURI, va.accountURIPrefixes, *params.accountURIID) {
+				if !checkAccountURI(caaAccountURI, va.accountURIPrefixes, params.accountURIID) {
 					continue
 				}
 			}
@@ -279,10 +279,10 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 			// https://tools.ietf.org/html/draft-ietf-acme-caa-04
 			caaMethods, ok := caaParameters["validationmethods"]
 			if ok {
-				if params.validationMethod == nil {
+				if params.validationMethod == "" {
 					continue
 				}
-				if !containsMethod(caaMethods, *params.validationMethod) {
+				if !containsMethod(caaMethods, params.validationMethod) {
 					continue
 				}
 			}

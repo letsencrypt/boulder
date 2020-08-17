@@ -844,9 +844,9 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 			}
 
 			resp, err := ra.caa.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
-				Domain:           &name,
-				ValidationMethod: &method,
-				AccountURIID:     &authz.RegistrationID,
+				Domain:           name,
+				ValidationMethod: method,
+				AccountURIID:     authz.RegistrationID,
 			})
 			if err != nil {
 				ra.log.AuditErrf("Rechecking CAA: %s", err)
@@ -1613,11 +1613,11 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		chall, _ := bgrpc.ChallengeToPB(authz.Challenges[challIndex])
 
 		req := vapb.PerformValidationRequest{
-			Domain:    &authz.Identifier.Value,
+			Domain:    authz.Identifier.Value,
 			Challenge: chall,
 			Authz: &vapb.AuthzMeta{
-				Id:    &authz.ID,
-				RegID: &authz.RegistrationID,
+				Id:    authz.ID,
+				RegID: authz.RegistrationID,
 			},
 		}
 		res, err := ra.VA.PerformValidation(vaCtx, &req)
