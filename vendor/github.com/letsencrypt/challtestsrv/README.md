@@ -1,9 +1,16 @@
 # Challenge Test Server
 
+[![Build Status](https://travis-ci.org/letsencrypt/challtestsrv.svg?branch=master)](https://travis-ci.org/letsencrypt/challtestsrv)
+[![Coverage Status](https://coveralls.io/repos/github/letsencrypt/challtestsrv/badge.svg)](https://coveralls.io/github/letsencrypt/challtestsrv)
+[![Go Report Card](https://goreportcard.com/badge/github.com/letsencrypt/challtestsrv)](https://goreportcard.com/report/github.com/letsencrypt/challtestsrv)
+[![GolangCI](https://golangci.com/badges/github.com/letsencrypt/challtestsrv.svg)](https://golangci.com/r/github.com/letsencrypt/challtestsrv)
+
 The `challtestsrv` package offers a library/command that can be used by test
 code to respond to HTTP-01, DNS-01, and TLS-ALPN-01 ACME challenges. The
 `challtestsrv` package can also be used as a mock DNS server letting
-developers mock `A`, `AAAA`, and `CAA` DNS data for specific hostnames.
+developers mock `A`, `AAAA`, `CNAME`, and `CAA` DNS data for specific hostnames.
+The mock server will resolve up to one level of `CNAME` aliasing for accepted
+DNS request types.
 
 **Important note: The `challtestsrv` command and library are for TEST USAGE
 ONLY. It is trivially insecure, offering no authentication. Only use

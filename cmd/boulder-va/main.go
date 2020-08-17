@@ -141,8 +141,8 @@ func main() {
 			remotes = append(
 				remotes,
 				va.RemoteVA{
-					ValidationAuthority: bgrpc.NewValidationAuthorityGRPCClient(vaConn),
-					Address:             rva.ServerAddress,
+					VAClient: bgrpc.NewValidationAuthorityGRPCClient(vaConn),
+					Address:  rva.ServerAddress,
 				},
 			)
 		}

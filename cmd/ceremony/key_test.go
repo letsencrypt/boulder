@@ -76,14 +76,11 @@ func TestGenerateKeyRSA(t *testing.T) {
 	test.AssertDeepEquals(t, diskKey, keyInfo.key)
 }
 
-func TestGenerateKeyEC(t *testing.T) {
-	tmp, err := ioutil.TempDir("", "ceremony-testing-ec")
-	test.AssertNotError(t, err, "Failed to create temporary directory")
-	defer os.RemoveAll(tmp)
-
-	ctx := setupCtx()
+func setECGenerateFuncs(ctx *pkcs11helpers.MockCtx) {
 	ecPriv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "Failed to generate a ECDSA test key")
+	if err != nil {
+		panic(err)
+	}
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_EC_PARAMS, []byte{6, 8, 42, 134, 72, 206, 61, 3, 1, 7}),
@@ -93,6 +90,15 @@ func TestGenerateKeyEC(t *testing.T) {
 	ctx.SignFunc = func(_ pkcs11.SessionHandle, msg []byte) ([]byte, error) {
 		return ecPKCS11Sign(ecPriv, msg)
 	}
+}
+
+func TestGenerateKeyEC(t *testing.T) {
+	tmp, err := ioutil.TempDir("", "ceremony-testing-ec")
+	test.AssertNotError(t, err, "Failed to create temporary directory")
+	defer os.RemoveAll(tmp)
+
+	ctx := setupCtx()
+	setECGenerateFuncs(&ctx)
 	keyPath := path.Join(tmp, "test-ecdsa-key.pem")
 	s := &pkcs11helpers.Session{Module: &ctx, Session: 0}
 	keyInfo, err := generateKey(s, "", keyPath, keyGenConfig{
@@ -108,21 +114,56 @@ func TestGenerateKeyEC(t *testing.T) {
 	test.AssertDeepEquals(t, diskKey, keyInfo.key)
 }
 
-func TestGenerateKeySlotHasSomething(t *testing.T) {
+func setFindObjectsFuncs(label string, ctx *pkcs11helpers.MockCtx) {
+	var objectsFound []pkcs11.ObjectHandle
+	ctx.FindObjectsInitFunc = func(_ pkcs11.SessionHandle, template []*pkcs11.Attribute) error {
+		for _, attr := range template {
+			if attr.Type == pkcs11.CKA_LABEL && string(attr.Value) == label {
+				objectsFound = []pkcs11.ObjectHandle{1}
+			}
+		}
+		return nil
+	}
+	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
+		return objectsFound, false, nil
+	}
+	ctx.FindObjectsFinalFunc = func(pkcs11.SessionHandle) error {
+		objectsFound = nil
+		return nil
+	}
+}
+
+func TestGenerateKeySlotHasSomethingWithLabel(t *testing.T) {
 	tmp, err := ioutil.TempDir("", "ceremony-testing-slot-has-something")
 	test.AssertNotError(t, err, "Failed to create temporary directory")
 	defer os.RemoveAll(tmp)
 
 	ctx := setupCtx()
-	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
-		return []pkcs11.ObjectHandle{1}, false, nil
-	}
+	label := "someLabel"
+	setFindObjectsFuncs(label, &ctx)
 	keyPath := path.Join(tmp, "should-not-exist.pem")
 	s := &pkcs11helpers.Session{Module: &ctx, Session: 0}
-	_, err = generateKey(s, "", keyPath, keyGenConfig{
+	_, err = generateKey(s, label, keyPath, keyGenConfig{
 		Type:       "ecdsa",
 		ECDSACurve: "P-256",
 	})
 	test.AssertError(t, err, "expected failure for a slot with an object already in it")
-	test.Assert(t, strings.HasPrefix(err.Error(), "expected no objects"), "wrong error")
+	test.Assert(t, strings.HasPrefix(err.Error(), "expected no preexisting objects with label"), "wrong error")
+}
+
+func TestGenerateKeySlotHasSomethingWithDifferentLabel(t *testing.T) {
+	tmp, err := ioutil.TempDir("", "ceremony-testing-slot-has-something")
+	test.AssertNotError(t, err, "Failed to create temporary directory")
+	defer os.RemoveAll(tmp)
+
+	ctx := setupCtx()
+	setECGenerateFuncs(&ctx)
+	setFindObjectsFuncs("someLabel", &ctx)
+	keyPath := path.Join(tmp, "should-not-exist.pem")
+	s := &pkcs11helpers.Session{Module: &ctx, Session: 0}
+	_, err = generateKey(s, "someOtherLabel", keyPath, keyGenConfig{
+		Type:       "ecdsa",
+		ECDSACurve: "P-256",
+	})
+	test.AssertNotError(t, err, "expected success even though there was an object with a different label")
 }

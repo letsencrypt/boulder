@@ -45,5 +45,5 @@ func generateCRL(signer crypto.Signer, issuer *x509.Certificate, thisUpdate, nex
 		return nil, err
 	}
 
-	return pem.EncodeToMemory(&pem.Block{Type: "x509 CRL", Bytes: crlBytes}), nil
+	return pem.EncodeToMemory(&pem.Block{Type: "X509 CRL", Bytes: crlBytes}), nil
 }

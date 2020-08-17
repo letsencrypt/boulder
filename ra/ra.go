@@ -57,7 +57,7 @@ type caaChecker interface {
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
 	CA        core.CertificateAuthority
-	VA        core.ValidationAuthority
+	VA        vapb.VAClient
 	SA        core.StorageAuthority
 	PA        core.PolicyAuthority
 	publisher core.Publisher
@@ -215,7 +215,7 @@ func (ra *RegistrationAuthorityImpl) rateLimitPoliciesLoadError(err error) {
 // some common analysis easier.
 type certificateRequestAuthz struct {
 	ID            string
-	ChallengeType string
+	ChallengeType core.AcmeChallenge
 }
 
 // certificateRequestEvent is a struct for holding information that is logged as
@@ -829,7 +829,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 			var method string
 			for _, challenge := range authz.Challenges {
 				if challenge.Status == core.StatusValid {
-					method = challenge.Type
+					method = string(challenge.Type)
 					break
 				}
 			}
@@ -1162,16 +1162,16 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	// of each of the valid authorizations we used for this issuance.
 	logEventAuthzs := make(map[string]certificateRequestAuthz, len(names))
 	for name, authz := range authzs {
-		var solvedByChallengeType string
 		// If the authz has no solved by challenge type there has been an internal
 		// consistency violation worth logging a warning about. In this case the
 		// solvedByChallengeType will be logged as the empty string.
-		if solvedByChallengeType = authz.SolvedBy(); solvedByChallengeType == "" {
-			ra.log.Warningf("Authz %q has status %q but empty SolvedBy()", authz.ID, authz.Status)
+		solvedByChallengeType, err := authz.SolvedBy()
+		if err != nil || solvedByChallengeType == nil {
+			ra.log.Warningf("Authz %q has status %q but empty SolvedBy(): %s", authz.ID, authz.Status, err)
 		}
 		logEventAuthzs[name] = certificateRequestAuthz{
 			ID:            authz.ID,
-			ChallengeType: solvedByChallengeType,
+			ChallengeType: *solvedByChallengeType,
 		}
 	}
 	logEvent.Authorizations = logEventAuthzs
@@ -1508,6 +1508,7 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 		return err
 	}
 	status := string(challenge.Status)
+	ctype := string(challenge.Type)
 	var expires int64
 	if challenge.Status == core.StatusInvalid {
 		expires = authExpires.UnixNano()
@@ -1522,7 +1523,7 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 		Id:                &authzID,
 		Status:            &status,
 		Expires:           &expires,
-		Attempted:         &challenge.Type,
+		Attempted:         &ctype,
 		ValidationRecords: vr.Records,
 		ValidationError:   vr.Problems,
 	})
@@ -1609,18 +1610,39 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		challenges := make([]core.Challenge, len(authz.Challenges))
 		copy(challenges, authz.Challenges)
 		authz.Challenges = challenges
+		chall, _ := bgrpc.ChallengeToPB(authz.Challenges[challIndex])
 
-		records, err := ra.VA.PerformValidation(vaCtx, authz.Identifier.Value, authz.Challenges[challIndex], authz)
+		req := vapb.PerformValidationRequest{
+			Domain:    &authz.Identifier.Value,
+			Challenge: chall,
+			Authz: &vapb.AuthzMeta{
+				Id:    &authz.ID,
+				RegID: &authz.RegistrationID,
+			},
+		}
+		res, err := ra.VA.PerformValidation(vaCtx, &req)
+
 		var prob *probs.ProblemDetails
-		if p, ok := err.(*probs.ProblemDetails); ok {
-			prob = p
-		} else if err != nil {
+		if err != nil {
 			prob = probs.ServerInternal("Could not communicate with VA")
 			ra.log.AuditErrf("Could not communicate with VA: %s", err)
+		} else if res.Problems != nil {
+			prob, err = bgrpc.PBToProblemDetails(res.Problems)
+			if err != nil {
+				prob = probs.ServerInternal("Could not communicate with VA")
+				ra.log.AuditErrf("Could not communicate with VA: %s", err)
+			}
 		}
 
 		// Save the updated records
 		challenge := &authz.Challenges[challIndex]
+		records := make([]core.ValidationRecord, len(res.Records))
+		for i, r := range res.Records {
+			records[i], err = bgrpc.PBToValidationRecord(r)
+			if err != nil {
+				prob = probs.ServerInternal("Records for validation corrupt")
+			}
+		}
 		challenge.ValidationRecord = records
 
 		if !challenge.RecordsSane() && prob == nil {
@@ -1919,7 +1941,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// that doesn't meet this criteria from SA.GetAuthorizations but we verify
 		// again to be safe.
 		if strings.HasPrefix(name, "*.") &&
-			len(authz.Challenges) == 1 && *authz.Challenges[0].Type == core.ChallengeTypeDNS01 {
+			len(authz.Challenges) == 1 && core.AcmeChallenge(*authz.Challenges[0].Type) == core.ChallengeTypeDNS01 {
 			authzID, err := strconv.ParseInt(*authz.Id, 10, 64)
 			if err != nil {
 				return nil, err

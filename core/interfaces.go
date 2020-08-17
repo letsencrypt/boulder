@@ -16,6 +16,7 @@ import (
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
 // A WebFrontEnd object supplies methods that can be hooked into
@@ -91,6 +92,10 @@ type RegistrationAuthority interface {
 	AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, adminName string) error
 }
 
+// ValidationAuthority defines the public interface for the Boulder VA
+// TODO(#4956): Remove this unnecessary type alias.
+type ValidationAuthority vapb.VAServer
+
 // CertificateAuthority defines the public interface for the Boulder CA
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
@@ -107,7 +112,7 @@ type PolicyAuthority interface {
 	WillingToIssue(domain identifier.ACMEIdentifier) error
 	WillingToIssueWildcards(identifiers []identifier.ACMEIdentifier) error
 	ChallengesFor(domain identifier.ACMEIdentifier) ([]Challenge, error)
-	ChallengeTypeEnabled(t string) bool
+	ChallengeTypeEnabled(t AcmeChallenge) bool
 }
 
 // StorageGetter are the Boulder SA's read-only methods

@@ -82,7 +82,6 @@ This config generates a ECDSA P-384 key in the HSM with the object label `root s
     | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
     | `signing-key-slot` | Specifies which HSM object slot the signing key is in. |
     | `signing-key-label` | Specifies the HSM object label for the signing key. |
-    | `signing-key-id` | Specifies the HSM object ID for the signing key. |
 - `inputs`: object containing paths for inputs
     | Field | Description |
     | --- | --- |
@@ -102,7 +101,6 @@ pkcs11:
     module: /usr/lib/opensc-pkcs11.so
     signing-key-slot: 0
     signing-key-label: root signing key
-    signing-key-id: ffff
 inputs:
     public-key-path: /home/user/intermediate-signing-pub.pem
     issuer-certificate-path: /home/user/root-cert.pem
@@ -140,7 +138,6 @@ This config generates an intermediate certificate signed by a key in the HSM, id
     | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
     | `signing-key-slot` | Specifies which HSM object slot the signing key is in. |
     | `signing-key-label` | Specifies the HSM object label for the signing key. |
-    | `signing-key-id` | Specifies the HSM object ID for the signing key. |
 - `inputs`: object containing paths for inputs
     | Field | Description |
     | --- | --- |
@@ -162,7 +159,6 @@ pkcs11:
     module: /usr/lib/opensc-pkcs11.so
     signing-key-slot: 0
     signing-key-label: intermediate signing key
-    signing-key-id: ffff
 inputs:
     public-key-path: /home/user/ocsp-signer-signing-pub.pem
     issuer-certificate-path: /home/user/intermediate-cert.pem
@@ -190,7 +186,6 @@ This config generates a delegated OCSP signing certificate signed by a key in th
     | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
     | `signing-key-slot` | Specifies which HSM object slot the signing key is in. |
     | `signing-key-label` | Specifies the HSM object label for the signing key. |
-    | `signing-key-id` | Specifies the HSM object ID for the signing key. |
 - `inputs`: object containing paths for inputs
     | Field | Description |
     | --- | --- |
@@ -212,7 +207,6 @@ pkcs11:
     module: /usr/lib/opensc-pkcs11.so
     signing-key-slot: 0
     signing-key-label: intermediate signing key
-    signing-key-id: ffff
 inputs:
     public-key-path: /home/user/crl-signer-signing-pub.pem
     issuer-certificate-path: /home/user/intermediate-cert.pem
@@ -278,7 +272,6 @@ This config generates an ECDSA P-384 key in the HSM with the object label `inter
     | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
     | `signing-key-slot` | Specifies which HSM object slot the signing key is in. |
     | `signing-key-label` | Specifies the HSM object label for the signing key. |
-    | `signing-key-id` | Specifies the HSM object ID for the signing key. |
 - `inputs`: object containing paths for inputs
     | Field | Description |
     | --- | --- |
@@ -304,7 +297,6 @@ pkcs11:
     module: /usr/lib/opensc-pkcs11.so
     signing-key-slot: 0
     signing-key-label: root signing key
-    signing-key-id: ffff
 inputs:
     certificate-path: /home/user/certificate.pem
     issuer-certificate-path: /home/user/root-cert.pem
@@ -328,7 +320,6 @@ This config generates a OCSP response signed by a key in the HSM, identified by 
     | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
     | `signing-key-slot` | Specifies which HSM object slot the signing key is in. |
     | `signing-key-label` | Specifies the HSM object label for the signing key. |
-    | `signing-key-id` | Specifies the HSM object ID for the signing key. |
 - `inputs`: object containing paths for inputs
     | Field | Description |
     | --- | --- |
@@ -353,7 +344,6 @@ pkcs11:
     module: /usr/lib/opensc-pkcs11.so
     signing-key-slot: 0
     signing-key-label: root signing key
-    signing-key-id: ffff
 inputs:
     issuer-certificate-path: /home/user/root-cert.pem
 outputs:

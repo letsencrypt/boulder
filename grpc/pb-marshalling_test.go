@@ -13,39 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
-	vapb "github.com/letsencrypt/boulder/va/proto"
 )
-
-func TestAuthzMeta(t *testing.T) {
-	authz := core.Authorization{ID: "asd", RegistrationID: 10}
-	pb, err := authzMetaToPB(authz)
-	test.AssertNotError(t, err, "authzMetaToPB failed")
-	test.Assert(t, pb != nil, "return vapb.AuthzMeta is nill")
-	test.Assert(t, pb.Id != nil, "Id field is nil")
-	test.AssertEquals(t, *pb.Id, authz.ID)
-	test.Assert(t, pb.RegID != nil, "RegistrationID field is nil")
-	test.AssertEquals(t, *pb.RegID, authz.RegistrationID)
-
-	recon, err := pbToAuthzMeta(pb)
-	test.AssertNotError(t, err, "pbToAuthzMeta failed")
-	test.AssertEquals(t, recon.ID, authz.ID)
-	test.AssertEquals(t, recon.RegistrationID, authz.RegistrationID)
-
-	_, err = pbToAuthzMeta(nil)
-	test.AssertError(t, err, "pbToAuthzMeta did not fail")
-	test.AssertEquals(t, err, ErrMissingParameters)
-	_, err = pbToAuthzMeta(&vapb.AuthzMeta{})
-	test.AssertError(t, err, "pbToAuthzMeta did not fail")
-	test.AssertEquals(t, err, ErrMissingParameters)
-	empty := ""
-	one := int64(1)
-	_, err = pbToAuthzMeta(&vapb.AuthzMeta{Id: &empty})
-	test.AssertError(t, err, "pbToAuthzMeta did not fail")
-	test.AssertEquals(t, err, ErrMissingParameters)
-	_, err = pbToAuthzMeta(&vapb.AuthzMeta{RegID: &one})
-	test.AssertError(t, err, "pbToAuthzMeta did not fail")
-	test.AssertEquals(t, err, ErrMissingParameters)
-}
 
 const JWK1JSON = `{"kty":"RSA","n":"vuc785P8lBj3fUxyZchF_uZw6WtbxcorqgTyq-qapF5lrO1U82Tp93rpXlmctj6fyFHBVVB5aXnUHJ7LZeVPod7Wnfl8p5OyhlHQHC8BnzdzCqCMKmWZNX5DtETDId0qzU7dPzh0LP0idt5buU7L9QNaabChw3nnaL47iu_1Di5Wp264p2TwACeedv2hfRDjDlJmaQXuS8Rtv9GnRWyC9JBu7XmGvGDziumnJH7Hyzh3VNu-kSPQD3vuAFgMZS6uUzOztCkT0fpOalZI6hqxtWLvXUMj-crXrn-Maavz8qRhpAyp5kcYk3jiHGgQIi7QSK2JIdRJ8APyX9HlmTN5AQ","e":"AQAB"}`
 
@@ -96,8 +64,8 @@ func TestChallenge(t *testing.T) {
 	test.AssertNotError(t, err, "ChallengeToPB failed")
 	test.Assert(t, pb != nil, "Returned corepb.Challenge is nil")
 
-	recon, err := pbToChallenge(pb)
-	test.AssertNotError(t, err, "pbToChallenge failed")
+	recon, err := PBToChallenge(pb)
+	test.AssertNotError(t, err, "PBToChallenge failed")
 	test.AssertDeepEquals(t, recon, chall)
 
 	ip := net.ParseIP("1.1.1.1")
@@ -116,15 +84,15 @@ func TestChallenge(t *testing.T) {
 	test.AssertNotError(t, err, "ChallengeToPB failed")
 	test.Assert(t, pb != nil, "Returned corepb.Challenge is nil")
 
-	recon, err = pbToChallenge(pb)
-	test.AssertNotError(t, err, "pbToChallenge failed")
+	recon, err = PBToChallenge(pb)
+	test.AssertNotError(t, err, "PBToChallenge failed")
 	test.AssertDeepEquals(t, recon, chall)
 
-	_, err = pbToChallenge(nil)
-	test.AssertError(t, err, "pbToChallenge did not fail")
+	_, err = PBToChallenge(nil)
+	test.AssertError(t, err, "PBToChallenge did not fail")
 	test.AssertEquals(t, err, ErrMissingParameters)
-	_, err = pbToChallenge(&corepb.Challenge{})
-	test.AssertError(t, err, "pbToChallenge did not fail")
+	_, err = PBToChallenge(&corepb.Challenge{})
+	test.AssertError(t, err, "PBToChallenge did not fail")
 	test.AssertEquals(t, err, ErrMissingParameters)
 }
 
@@ -177,30 +145,6 @@ func TestValidationResult(t *testing.T) {
 	test.AssertNotError(t, err, "pbToValidationResult failed")
 	test.AssertDeepEquals(t, reconResult, result)
 	test.AssertDeepEquals(t, reconProb, prob)
-}
-
-func TestPerformValidationReq(t *testing.T) {
-	var jwk jose.JSONWebKey
-	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
-	test.AssertNotError(t, err, "Failed to unmarshal test key")
-	domain := "example.com"
-	chall := core.Challenge{
-		Type:                     core.ChallengeTypeDNS01,
-		Status:                   core.StatusPending,
-		Token:                    "asd",
-		ProvidedKeyAuthorization: "keyauth",
-	}
-	authz := core.Authorization{ID: "asd", RegistrationID: 10}
-
-	pb, err := argsToPerformValidationRequest(domain, chall, authz)
-	test.AssertNotError(t, err, "argsToPerformValidationRequest failed")
-	test.Assert(t, pb != nil, "Return vapb.PerformValidationRequest is nil")
-
-	reconDomain, reconChall, reconAuthz, err := performValidationReqToArgs(pb)
-	test.AssertNotError(t, err, "performValidationReqToArgs failed")
-	test.AssertEquals(t, reconDomain, domain)
-	test.AssertDeepEquals(t, reconChall, chall)
-	test.AssertDeepEquals(t, reconAuthz, authz)
 }
 
 func TestRegistration(t *testing.T) {
