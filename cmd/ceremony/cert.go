@@ -271,6 +271,7 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 	}
 
 	switch ct {
+	// rootCert and crossCert do not get EKU or MaxPathZero
 	case ocspCert:
 		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageOCSPSigning}
 		// ASN.1 NULL is 0x05, 0x00
@@ -282,7 +283,6 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 	case intermediateCert:
 		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
 		cert.MaxPathLenZero = true
-		// rootCert and crossCert do not get EKU or MaxPathZero
 	}
 
 	if len(profile.Policies) > 0 {
