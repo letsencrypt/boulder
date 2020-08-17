@@ -382,10 +382,10 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 }
 
 // Issue generates a certificate from the provided issuance request and
-// signs it. Before the signing the certificate with the issuers private
-// key it is signed using a throwaway key so that it can be linted using
-// zlint. If the linting fails an error is returned and the certificate
-// is not signed using the issuers key.
+// signs it. Before  signing the certificate with the issuer's private
+// key, it is signed using a throwaway key so that it can be linted using
+// zlint. If the linting fails, an error is returned and the certificate
+// is not signed using the issuer's key.
 func (s *Signer) Issue(req *IssuanceRequest) ([]byte, error) {
 	// check request is valid according to the issuance profile
 	if err := s.profile.requestValid(s.clk, req); err != nil {

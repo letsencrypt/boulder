@@ -146,7 +146,6 @@ var stringToKeyUsage = map[string]x509.KeyUsage{
 
 var (
 	oidExtensionCertificatePolicies = asn1.ObjectIdentifier{2, 5, 29, 32}
-	oidCPSQualifier                 = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 2, 1}
 
 	oidOCSPNoCheck = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 48, 1, 5}
 )
