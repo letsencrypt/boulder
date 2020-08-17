@@ -1628,11 +1628,13 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		if err != nil {
 			prob = probs.ServerInternal("Could not communicate with VA")
 			ra.log.AuditErrf("Could not communicate with VA: %s", err)
-		} else if res.Problems != nil {
-			prob, err = bgrpc.PBToProblemDetails(res.Problems)
-			if err != nil {
-				prob = probs.ServerInternal("Could not communicate with VA")
-				ra.log.AuditErrf("Could not communicate with VA: %s", err)
+		} else {
+			if res.Problems != nil {
+				prob, err = bgrpc.PBToProblemDetails(res.Problems)
+				if err != nil {
+					prob = probs.ServerInternal("Could not communicate with VA")
+					ra.log.AuditErrf("Could not communicate with VA: %s", err)
+				}
 			}
 
 			// Save the updated records
