@@ -8,7 +8,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/sa"
-	sapb "github.com/letsencrypt/boulder/sa/proto"
+	sapb "github.com/letsencrypt/boulder/sa/proto3"
 )
 
 type config struct {
