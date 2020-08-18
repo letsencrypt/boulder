@@ -13,7 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	sapb "github.com/letsencrypt/boulder/sa/proto"
+	sapb "github.com/letsencrypt/boulder/sa/proto2"
 )
 
 var errIncompleteRequest = errors.New("Incomplete gRPC request message")

@@ -35,7 +35,7 @@ type RegistrationID struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Id *int64 `protobuf:"varint,1,opt,name=id" json:"id,omitempty"`
+	Id int64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 }
 
 func (x *RegistrationID) Reset() {
@@ -71,8 +71,8 @@ func (*RegistrationID) Descriptor() ([]byte, []int) {
 }
 
 func (x *RegistrationID) GetId() int64 {
-	if x != nil && x.Id != nil {
-		return *x.Id
+	if x != nil {
+		return x.Id
 	}
 	return 0
 }
@@ -82,7 +82,7 @@ type JSONWebKey struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Jwk []byte `protobuf:"bytes,1,opt,name=jwk" json:"jwk,omitempty"`
+	Jwk []byte `protobuf:"bytes,1,opt,name=jwk,proto3" json:"jwk,omitempty"`
 }
 
 func (x *JSONWebKey) Reset() {
@@ -129,7 +129,7 @@ type AuthorizationID struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Id *string `protobuf:"bytes,1,opt,name=id" json:"id,omitempty"`
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 }
 
 func (x *AuthorizationID) Reset() {
@@ -165,8 +165,8 @@ func (*AuthorizationID) Descriptor() ([]byte, []int) {
 }
 
 func (x *AuthorizationID) GetId() string {
-	if x != nil && x.Id != nil {
-		return *x.Id
+	if x != nil {
+		return x.Id
 	}
 	return ""
 }
@@ -176,11 +176,11 @@ type GetPendingAuthorizationRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	RegistrationID  *int64  `protobuf:"varint,1,opt,name=registrationID" json:"registrationID,omitempty"`
-	IdentifierType  *string `protobuf:"bytes,2,opt,name=identifierType" json:"identifierType,omitempty"`
-	IdentifierValue *string `protobuf:"bytes,3,opt,name=identifierValue" json:"identifierValue,omitempty"`
+	RegistrationID  int64  `protobuf:"varint,1,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
+	IdentifierType  string `protobuf:"bytes,2,opt,name=identifierType,proto3" json:"identifierType,omitempty"`
+	IdentifierValue string `protobuf:"bytes,3,opt,name=identifierValue,proto3" json:"identifierValue,omitempty"`
 	// Result must be valid until at least this Unix timestamp (nanos)
-	ValidUntil *int64 `protobuf:"varint,4,opt,name=validUntil" json:"validUntil,omitempty"`
+	ValidUntil int64 `protobuf:"varint,4,opt,name=validUntil,proto3" json:"validUntil,omitempty"`
 }
 
 func (x *GetPendingAuthorizationRequest) Reset() {
@@ -216,29 +216,29 @@ func (*GetPendingAuthorizationRequest) Descriptor() ([]byte, []int) {
 }
 
 func (x *GetPendingAuthorizationRequest) GetRegistrationID() int64 {
-	if x != nil && x.RegistrationID != nil {
-		return *x.RegistrationID
+	if x != nil {
+		return x.RegistrationID
 	}
 	return 0
 }
 
 func (x *GetPendingAuthorizationRequest) GetIdentifierType() string {
-	if x != nil && x.IdentifierType != nil {
-		return *x.IdentifierType
+	if x != nil {
+		return x.IdentifierType
 	}
 	return ""
 }
 
 func (x *GetPendingAuthorizationRequest) GetIdentifierValue() string {
-	if x != nil && x.IdentifierValue != nil {
-		return *x.IdentifierValue
+	if x != nil {
+		return x.IdentifierValue
 	}
 	return ""
 }
 
 func (x *GetPendingAuthorizationRequest) GetValidUntil() int64 {
-	if x != nil && x.ValidUntil != nil {
-		return *x.ValidUntil
+	if x != nil {
+		return x.ValidUntil
 	}
 	return 0
 }
@@ -248,9 +248,9 @@ type GetValidAuthorizationsRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	RegistrationID *int64   `protobuf:"varint,1,opt,name=registrationID" json:"registrationID,omitempty"`
-	Domains        []string `protobuf:"bytes,2,rep,name=domains" json:"domains,omitempty"`
-	Now            *int64   `protobuf:"varint,3,opt,name=now" json:"now,omitempty"` // Unix timestamp (nanoseconds)
+	RegistrationID int64    `protobuf:"varint,1,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
+	Domains        []string `protobuf:"bytes,2,rep,name=domains,proto3" json:"domains,omitempty"`
+	Now            int64    `protobuf:"varint,3,opt,name=now,proto3" json:"now,omitempty"` // Unix timestamp (nanoseconds)
 }
 
 func (x *GetValidAuthorizationsRequest) Reset() {
@@ -286,8 +286,8 @@ func (*GetValidAuthorizationsRequest) Descriptor() ([]byte, []int) {
 }
 
 func (x *GetValidAuthorizationsRequest) GetRegistrationID() int64 {
-	if x != nil && x.RegistrationID != nil {
-		return *x.RegistrationID
+	if x != nil {
+		return x.RegistrationID
 	}
 	return 0
 }
@@ -300,8 +300,8 @@ func (x *GetValidAuthorizationsRequest) GetDomains() []string {
 }
 
 func (x *GetValidAuthorizationsRequest) GetNow() int64 {
-	if x != nil && x.Now != nil {
-		return *x.Now
+	if x != nil {
+		return x.Now
 	}
 	return 0
 }
@@ -311,7 +311,7 @@ type ValidAuthorizations struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Valid []*ValidAuthorizations_MapElement `protobuf:"bytes,1,rep,name=valid" json:"valid,omitempty"`
+	Valid []*ValidAuthorizations_MapElement `protobuf:"bytes,1,rep,name=valid,proto3" json:"valid,omitempty"`
 }
 
 func (x *ValidAuthorizations) Reset() {
@@ -358,7 +358,7 @@ type Serial struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Serial *string `protobuf:"bytes,1,opt,name=serial" json:"serial,omitempty"`
+	Serial string `protobuf:"bytes,1,opt,name=serial,proto3" json:"serial,omitempty"`
 }
 
 func (x *Serial) Reset() {
@@ -394,8 +394,8 @@ func (*Serial) Descriptor() ([]byte, []int) {
 }
 
 func (x *Serial) GetSerial() string {
-	if x != nil && x.Serial != nil {
-		return *x.Serial
+	if x != nil {
+		return x.Serial
 	}
 	return ""
 }
@@ -405,8 +405,8 @@ type Range struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Earliest *int64 `protobuf:"varint,1,opt,name=earliest" json:"earliest,omitempty"` // Unix timestamp (nanoseconds)
-	Latest   *int64 `protobuf:"varint,2,opt,name=latest" json:"latest,omitempty"`     // Unix timestamp (nanoseconds)
+	Earliest int64 `protobuf:"varint,1,opt,name=earliest,proto3" json:"earliest,omitempty"` // Unix timestamp (nanoseconds)
+	Latest   int64 `protobuf:"varint,2,opt,name=latest,proto3" json:"latest,omitempty"`     // Unix timestamp (nanoseconds)
 }
 
 func (x *Range) Reset() {
@@ -442,15 +442,15 @@ func (*Range) Descriptor() ([]byte, []int) {
 }
 
 func (x *Range) GetEarliest() int64 {
-	if x != nil && x.Earliest != nil {
-		return *x.Earliest
+	if x != nil {
+		return x.Earliest
 	}
 	return 0
 }
 
 func (x *Range) GetLatest() int64 {
-	if x != nil && x.Latest != nil {
-		return *x.Latest
+	if x != nil {
+		return x.Latest
 	}
 	return 0
 }
@@ -460,7 +460,7 @@ type Count struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Count *int64 `protobuf:"varint,1,opt,name=count" json:"count,omitempty"`
+	Count int64 `protobuf:"varint,1,opt,name=count,proto3" json:"count,omitempty"`
 }
 
 func (x *Count) Reset() {
@@ -496,8 +496,8 @@ func (*Count) Descriptor() ([]byte, []int) {
 }
 
 func (x *Count) GetCount() int64 {
-	if x != nil && x.Count != nil {
-		return *x.Count
+	if x != nil {
+		return x.Count
 	}
 	return 0
 }
@@ -507,8 +507,8 @@ type CountCertificatesByNamesRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Range *Range   `protobuf:"bytes,1,opt,name=range" json:"range,omitempty"`
-	Names []string `protobuf:"bytes,2,rep,name=names" json:"names,omitempty"`
+	Range *Range   `protobuf:"bytes,1,opt,name=range,proto3" json:"range,omitempty"`
+	Names []string `protobuf:"bytes,2,rep,name=names,proto3" json:"names,omitempty"`
 }
 
 func (x *CountCertificatesByNamesRequest) Reset() {
@@ -562,7 +562,7 @@ type CountByNames struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	CountByNames []*CountByNames_MapElement `protobuf:"bytes,1,rep,name=countByNames" json:"countByNames,omitempty"`
+	CountByNames []*CountByNames_MapElement `protobuf:"bytes,1,rep,name=countByNames,proto3" json:"countByNames,omitempty"`
 }
 
 func (x *CountByNames) Reset() {
@@ -609,8 +609,8 @@ type CountRegistrationsByIPRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Ip    []byte `protobuf:"bytes,1,opt,name=ip" json:"ip,omitempty"`
-	Range *Range `protobuf:"bytes,2,opt,name=range" json:"range,omitempty"`
+	Ip    []byte `protobuf:"bytes,1,opt,name=ip,proto3" json:"ip,omitempty"`
+	Range *Range `protobuf:"bytes,2,opt,name=range,proto3" json:"range,omitempty"`
 }
 
 func (x *CountRegistrationsByIPRequest) Reset() {
@@ -664,10 +664,10 @@ type CountInvalidAuthorizationsRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	RegistrationID *int64  `protobuf:"varint,1,opt,name=registrationID" json:"registrationID,omitempty"`
-	Hostname       *string `protobuf:"bytes,2,opt,name=hostname" json:"hostname,omitempty"`
+	RegistrationID int64  `protobuf:"varint,1,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
+	Hostname       string `protobuf:"bytes,2,opt,name=hostname,proto3" json:"hostname,omitempty"`
 	// Count authorizations that expire in this range.
-	Range *Range `protobuf:"bytes,3,opt,name=range" json:"range,omitempty"`
+	Range *Range `protobuf:"bytes,3,opt,name=range,proto3" json:"range,omitempty"`
 }
 
 func (x *CountInvalidAuthorizationsRequest) Reset() {
@@ -703,15 +703,15 @@ func (*CountInvalidAuthorizationsRequest) Descriptor() ([]byte, []int) {
 }
 
 func (x *CountInvalidAuthorizationsRequest) GetRegistrationID() int64 {
-	if x != nil && x.RegistrationID != nil {
-		return *x.RegistrationID
+	if x != nil {
+		return x.RegistrationID
 	}
 	return 0
 }
 
 func (x *CountInvalidAuthorizationsRequest) GetHostname() string {
-	if x != nil && x.Hostname != nil {
-		return *x.Hostname
+	if x != nil {
+		return x.Hostname
 	}
 	return ""
 }
@@ -728,8 +728,8 @@ type CountOrdersRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	AccountID *int64 `protobuf:"varint,1,opt,name=accountID" json:"accountID,omitempty"`
-	Range     *Range `protobuf:"bytes,2,opt,name=range" json:"range,omitempty"`
+	AccountID int64  `protobuf:"varint,1,opt,name=accountID,proto3" json:"accountID,omitempty"`
+	Range     *Range `protobuf:"bytes,2,opt,name=range,proto3" json:"range,omitempty"`
 }
 
 func (x *CountOrdersRequest) Reset() {
@@ -765,8 +765,8 @@ func (*CountOrdersRequest) Descriptor() ([]byte, []int) {
 }
 
 func (x *CountOrdersRequest) GetAccountID() int64 {
-	if x != nil && x.AccountID != nil {
-		return *x.AccountID
+	if x != nil {
+		return x.AccountID
 	}
 	return 0
 }
@@ -783,8 +783,8 @@ type CountFQDNSetsRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Window  *int64   `protobuf:"varint,1,opt,name=window" json:"window,omitempty"`
-	Domains []string `protobuf:"bytes,2,rep,name=domains" json:"domains,omitempty"`
+	Window  int64    `protobuf:"varint,1,opt,name=window,proto3" json:"window,omitempty"`
+	Domains []string `protobuf:"bytes,2,rep,name=domains,proto3" json:"domains,omitempty"`
 }
 
 func (x *CountFQDNSetsRequest) Reset() {
@@ -820,8 +820,8 @@ func (*CountFQDNSetsRequest) Descriptor() ([]byte, []int) {
 }
 
 func (x *CountFQDNSetsRequest) GetWindow() int64 {
-	if x != nil && x.Window != nil {
-		return *x.Window
+	if x != nil {
+		return x.Window
 	}
 	return 0
 }
@@ -838,7 +838,7 @@ type FQDNSetExistsRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Domains []string `protobuf:"bytes,1,rep,name=domains" json:"domains,omitempty"`
+	Domains []string `protobuf:"bytes,1,rep,name=domains,proto3" json:"domains,omitempty"`
 }
 
 func (x *FQDNSetExistsRequest) Reset() {
@@ -885,8 +885,8 @@ type PreviousCertificateExistsRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Domain *string `protobuf:"bytes,1,opt,name=domain" json:"domain,omitempty"`
-	RegID  *int64  `protobuf:"varint,2,opt,name=regID" json:"regID,omitempty"`
+	Domain string `protobuf:"bytes,1,opt,name=domain,proto3" json:"domain,omitempty"`
+	RegID  int64  `protobuf:"varint,2,opt,name=regID,proto3" json:"regID,omitempty"`
 }
 
 func (x *PreviousCertificateExistsRequest) Reset() {
@@ -922,15 +922,15 @@ func (*PreviousCertificateExistsRequest) Descriptor() ([]byte, []int) {
 }
 
 func (x *PreviousCertificateExistsRequest) GetDomain() string {
-	if x != nil && x.Domain != nil {
-		return *x.Domain
+	if x != nil {
+		return x.Domain
 	}
 	return ""
 }
 
 func (x *PreviousCertificateExistsRequest) GetRegID() int64 {
-	if x != nil && x.RegID != nil {
-		return *x.RegID
+	if x != nil {
+		return x.RegID
 	}
 	return 0
 }
@@ -940,7 +940,7 @@ type Exists struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Exists *bool `protobuf:"varint,1,opt,name=exists" json:"exists,omitempty"`
+	Exists bool `protobuf:"varint,1,opt,name=exists,proto3" json:"exists,omitempty"`
 }
 
 func (x *Exists) Reset() {
@@ -976,8 +976,8 @@ func (*Exists) Descriptor() ([]byte, []int) {
 }
 
 func (x *Exists) GetExists() bool {
-	if x != nil && x.Exists != nil {
-		return *x.Exists
+	if x != nil {
+		return x.Exists
 	}
 	return false
 }
@@ -987,10 +987,10 @@ type AddSerialRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	RegID   *int64  `protobuf:"varint,1,opt,name=regID" json:"regID,omitempty"`
-	Serial  *string `protobuf:"bytes,2,opt,name=serial" json:"serial,omitempty"`
-	Created *int64  `protobuf:"varint,3,opt,name=created" json:"created,omitempty"` // Unix timestamp (nanoseconds)
-	Expires *int64  `protobuf:"varint,4,opt,name=expires" json:"expires,omitempty"` // Unix timestamp (nanoseconds)
+	RegID   int64  `protobuf:"varint,1,opt,name=regID,proto3" json:"regID,omitempty"`
+	Serial  string `protobuf:"bytes,2,opt,name=serial,proto3" json:"serial,omitempty"`
+	Created int64  `protobuf:"varint,3,opt,name=created,proto3" json:"created,omitempty"` // Unix timestamp (nanoseconds)
+	Expires int64  `protobuf:"varint,4,opt,name=expires,proto3" json:"expires,omitempty"` // Unix timestamp (nanoseconds)
 }
 
 func (x *AddSerialRequest) Reset() {
@@ -1026,29 +1026,29 @@ func (*AddSerialRequest) Descriptor() ([]byte, []int) {
 }
 
 func (x *AddSerialRequest) GetRegID() int64 {
-	if x != nil && x.RegID != nil {
-		return *x.RegID
+	if x != nil {
+		return x.RegID
 	}
 	return 0
 }
 
 func (x *AddSerialRequest) GetSerial() string {
-	if x != nil && x.Serial != nil {
-		return *x.Serial
+	if x != nil {
+		return x.Serial
 	}
 	return ""
 }
 
 func (x *AddSerialRequest) GetCreated() int64 {
-	if x != nil && x.Created != nil {
-		return *x.Created
+	if x != nil {
+		return x.Created
 	}
 	return 0
 }
 
 func (x *AddSerialRequest) GetExpires() int64 {
-	if x != nil && x.Expires != nil {
-		return *x.Expires
+	if x != nil {
+		return x.Expires
 	}
 	return 0
 }
@@ -1058,16 +1058,16 @@ type AddCertificateRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Der   []byte `protobuf:"bytes,1,opt,name=der" json:"der,omitempty"`
-	RegID *int64 `protobuf:"varint,2,opt,name=regID" json:"regID,omitempty"`
+	Der   []byte `protobuf:"bytes,1,opt,name=der,proto3" json:"der,omitempty"`
+	RegID int64  `protobuf:"varint,2,opt,name=regID,proto3" json:"regID,omitempty"`
 	// A signed OCSP response for the certificate contained in "der".
 	// Note: The certificate status in the OCSP response is assumed to be 0 (good).
-	Ocsp []byte `protobuf:"bytes,3,opt,name=ocsp" json:"ocsp,omitempty"`
-	// An optional issued time. When not present the SA defaults to using
+	Ocsp []byte `protobuf:"bytes,3,opt,name=ocsp,proto3" json:"ocsp,omitempty"`
+	// An issued time. When not present the SA defaults to using
 	// the current time. The orphan-finder uses this parameter to add
 	// certificates with the correct historic issued date
-	Issued   *int64 `protobuf:"varint,4,opt,name=issued" json:"issued,omitempty"`
-	IssuerID *int64 `protobuf:"varint,5,opt,name=issuerID" json:"issuerID,omitempty"`
+	Issued   int64 `protobuf:"varint,4,opt,name=issued,proto3" json:"issued,omitempty"`
+	IssuerID int64 `protobuf:"varint,5,opt,name=issuerID,proto3" json:"issuerID,omitempty"`
 }
 
 func (x *AddCertificateRequest) Reset() {
@@ -1110,8 +1110,8 @@ func (x *AddCertificateRequest) GetDer() []byte {
 }
 
 func (x *AddCertificateRequest) GetRegID() int64 {
-	if x != nil && x.RegID != nil {
-		return *x.RegID
+	if x != nil {
+		return x.RegID
 	}
 	return 0
 }
@@ -1124,15 +1124,15 @@ func (x *AddCertificateRequest) GetOcsp() []byte {
 }
 
 func (x *AddCertificateRequest) GetIssued() int64 {
-	if x != nil && x.Issued != nil {
-		return *x.Issued
+	if x != nil {
+		return x.Issued
 	}
 	return 0
 }
 
 func (x *AddCertificateRequest) GetIssuerID() int64 {
-	if x != nil && x.IssuerID != nil {
-		return *x.IssuerID
+	if x != nil {
+		return x.IssuerID
 	}
 	return 0
 }
@@ -1142,7 +1142,7 @@ type AddCertificateResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Digest *string `protobuf:"bytes,1,opt,name=digest" json:"digest,omitempty"`
+	Digest string `protobuf:"bytes,1,opt,name=digest,proto3" json:"digest,omitempty"`
 }
 
 func (x *AddCertificateResponse) Reset() {
@@ -1178,8 +1178,8 @@ func (*AddCertificateResponse) Descriptor() ([]byte, []int) {
 }
 
 func (x *AddCertificateResponse) GetDigest() string {
-	if x != nil && x.Digest != nil {
-		return *x.Digest
+	if x != nil {
+		return x.Digest
 	}
 	return ""
 }
@@ -1189,8 +1189,8 @@ type OrderRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Id                  *int64 `protobuf:"varint,1,opt,name=id" json:"id,omitempty"`
-	UseV2Authorizations *bool  `protobuf:"varint,2,opt,name=useV2Authorizations" json:"useV2Authorizations,omitempty"`
+	Id                  int64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	UseV2Authorizations bool  `protobuf:"varint,2,opt,name=useV2Authorizations,proto3" json:"useV2Authorizations,omitempty"`
 }
 
 func (x *OrderRequest) Reset() {
@@ -1226,15 +1226,15 @@ func (*OrderRequest) Descriptor() ([]byte, []int) {
 }
 
 func (x *OrderRequest) GetId() int64 {
-	if x != nil && x.Id != nil {
-		return *x.Id
+	if x != nil {
+		return x.Id
 	}
 	return 0
 }
 
 func (x *OrderRequest) GetUseV2Authorizations() bool {
-	if x != nil && x.UseV2Authorizations != nil {
-		return *x.UseV2Authorizations
+	if x != nil {
+		return x.UseV2Authorizations
 	}
 	return false
 }
@@ -1244,8 +1244,8 @@ type GetValidOrderAuthorizationsRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Id     *int64 `protobuf:"varint,1,opt,name=id" json:"id,omitempty"`
-	AcctID *int64 `protobuf:"varint,2,opt,name=acctID" json:"acctID,omitempty"`
+	Id     int64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	AcctID int64 `protobuf:"varint,2,opt,name=acctID,proto3" json:"acctID,omitempty"`
 }
 
 func (x *GetValidOrderAuthorizationsRequest) Reset() {
@@ -1281,15 +1281,15 @@ func (*GetValidOrderAuthorizationsRequest) Descriptor() ([]byte, []int) {
 }
 
 func (x *GetValidOrderAuthorizationsRequest) GetId() int64 {
-	if x != nil && x.Id != nil {
-		return *x.Id
+	if x != nil {
+		return x.Id
 	}
 	return 0
 }
 
 func (x *GetValidOrderAuthorizationsRequest) GetAcctID() int64 {
-	if x != nil && x.AcctID != nil {
-		return *x.AcctID
+	if x != nil {
+		return x.AcctID
 	}
 	return 0
 }
@@ -1299,9 +1299,9 @@ type GetOrderForNamesRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	AcctID              *int64   `protobuf:"varint,1,opt,name=acctID" json:"acctID,omitempty"`
-	Names               []string `protobuf:"bytes,2,rep,name=names" json:"names,omitempty"`
-	UseV2Authorizations *bool    `protobuf:"varint,3,opt,name=useV2Authorizations" json:"useV2Authorizations,omitempty"`
+	AcctID              int64    `protobuf:"varint,1,opt,name=acctID,proto3" json:"acctID,omitempty"`
+	Names               []string `protobuf:"bytes,2,rep,name=names,proto3" json:"names,omitempty"`
+	UseV2Authorizations bool     `protobuf:"varint,3,opt,name=useV2Authorizations,proto3" json:"useV2Authorizations,omitempty"`
 }
 
 func (x *GetOrderForNamesRequest) Reset() {
@@ -1337,8 +1337,8 @@ func (*GetOrderForNamesRequest) Descriptor() ([]byte, []int) {
 }
 
 func (x *GetOrderForNamesRequest) GetAcctID() int64 {
-	if x != nil && x.AcctID != nil {
-		return *x.AcctID
+	if x != nil {
+		return x.AcctID
 	}
 	return 0
 }
@@ -1351,8 +1351,8 @@ func (x *GetOrderForNamesRequest) GetNames() []string {
 }
 
 func (x *GetOrderForNamesRequest) GetUseV2Authorizations() bool {
-	if x != nil && x.UseV2Authorizations != nil {
-		return *x.UseV2Authorizations
+	if x != nil {
+		return x.UseV2Authorizations
 	}
 	return false
 }
@@ -1362,10 +1362,10 @@ type GetAuthorizationsRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	RegistrationID  *int64   `protobuf:"varint,1,opt,name=registrationID" json:"registrationID,omitempty"`
-	Domains         []string `protobuf:"bytes,2,rep,name=domains" json:"domains,omitempty"`
-	Now             *int64   `protobuf:"varint,3,opt,name=now" json:"now,omitempty"`                         // Unix timestamp (nanoseconds)
-	RequireV2Authzs *bool    `protobuf:"varint,4,opt,name=requireV2Authzs" json:"requireV2Authzs,omitempty"` // Do not include legacy V1 authzs
+	RegistrationID  int64    `protobuf:"varint,1,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
+	Domains         []string `protobuf:"bytes,2,rep,name=domains,proto3" json:"domains,omitempty"`
+	Now             int64    `protobuf:"varint,3,opt,name=now,proto3" json:"now,omitempty"`                         // Unix timestamp (nanoseconds)
+	RequireV2Authzs bool     `protobuf:"varint,4,opt,name=requireV2Authzs,proto3" json:"requireV2Authzs,omitempty"` // Do not include legacy V1 authzs
 }
 
 func (x *GetAuthorizationsRequest) Reset() {
@@ -1401,8 +1401,8 @@ func (*GetAuthorizationsRequest) Descriptor() ([]byte, []int) {
 }
 
 func (x *GetAuthorizationsRequest) GetRegistrationID() int64 {
-	if x != nil && x.RegistrationID != nil {
-		return *x.RegistrationID
+	if x != nil {
+		return x.RegistrationID
 	}
 	return 0
 }
@@ -1415,15 +1415,15 @@ func (x *GetAuthorizationsRequest) GetDomains() []string {
 }
 
 func (x *GetAuthorizationsRequest) GetNow() int64 {
-	if x != nil && x.Now != nil {
-		return *x.Now
+	if x != nil {
+		return x.Now
 	}
 	return 0
 }
 
 func (x *GetAuthorizationsRequest) GetRequireV2Authzs() bool {
-	if x != nil && x.RequireV2Authzs != nil {
-		return *x.RequireV2Authzs
+	if x != nil {
+		return x.RequireV2Authzs
 	}
 	return false
 }
@@ -1433,7 +1433,7 @@ type Authorizations struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Authz []*Authorizations_MapElement `protobuf:"bytes,1,rep,name=authz" json:"authz,omitempty"`
+	Authz []*Authorizations_MapElement `protobuf:"bytes,1,rep,name=authz,proto3" json:"authz,omitempty"`
 }
 
 func (x *Authorizations) Reset() {
@@ -1480,7 +1480,7 @@ type AddPendingAuthorizationsRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Authz []*proto1.Authorization `protobuf:"bytes,1,rep,name=authz" json:"authz,omitempty"`
+	Authz []*proto1.Authorization `protobuf:"bytes,1,rep,name=authz,proto3" json:"authz,omitempty"`
 }
 
 func (x *AddPendingAuthorizationsRequest) Reset() {
@@ -1527,7 +1527,7 @@ type AuthorizationIDs struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Ids []string `protobuf:"bytes,1,rep,name=ids" json:"ids,omitempty"`
+	Ids []string `protobuf:"bytes,1,rep,name=ids,proto3" json:"ids,omitempty"`
 }
 
 func (x *AuthorizationIDs) Reset() {
@@ -1574,7 +1574,7 @@ type AuthorizationID2 struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Id *int64 `protobuf:"varint,1,opt,name=id" json:"id,omitempty"`
+	Id int64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 }
 
 func (x *AuthorizationID2) Reset() {
@@ -1610,8 +1610,8 @@ func (*AuthorizationID2) Descriptor() ([]byte, []int) {
 }
 
 func (x *AuthorizationID2) GetId() int64 {
-	if x != nil && x.Id != nil {
-		return *x.Id
+	if x != nil {
+		return x.Id
 	}
 	return 0
 }
@@ -1621,7 +1621,7 @@ type Authorization2IDs struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Ids []int64 `protobuf:"varint,1,rep,name=ids" json:"ids,omitempty"`
+	Ids []int64 `protobuf:"varint,1,rep,packed,name=ids,proto3" json:"ids,omitempty"`
 }
 
 func (x *Authorization2IDs) Reset() {
@@ -1668,10 +1668,10 @@ type RevokeCertificateRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Serial   *string `protobuf:"bytes,1,opt,name=serial" json:"serial,omitempty"`
-	Reason   *int64  `protobuf:"varint,2,opt,name=reason" json:"reason,omitempty"`
-	Date     *int64  `protobuf:"varint,3,opt,name=date" json:"date,omitempty"` // Unix timestamp (nanoseconds)
-	Response []byte  `protobuf:"bytes,4,opt,name=response" json:"response,omitempty"`
+	Serial   string `protobuf:"bytes,1,opt,name=serial,proto3" json:"serial,omitempty"`
+	Reason   int64  `protobuf:"varint,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	Date     int64  `protobuf:"varint,3,opt,name=date,proto3" json:"date,omitempty"` // Unix timestamp (nanoseconds)
+	Response []byte `protobuf:"bytes,4,opt,name=response,proto3" json:"response,omitempty"`
 }
 
 func (x *RevokeCertificateRequest) Reset() {
@@ -1707,22 +1707,22 @@ func (*RevokeCertificateRequest) Descriptor() ([]byte, []int) {
 }
 
 func (x *RevokeCertificateRequest) GetSerial() string {
-	if x != nil && x.Serial != nil {
-		return *x.Serial
+	if x != nil {
+		return x.Serial
 	}
 	return ""
 }
 
 func (x *RevokeCertificateRequest) GetReason() int64 {
-	if x != nil && x.Reason != nil {
-		return *x.Reason
+	if x != nil {
+		return x.Reason
 	}
 	return 0
 }
 
 func (x *RevokeCertificateRequest) GetDate() int64 {
-	if x != nil && x.Date != nil {
-		return *x.Date
+	if x != nil {
+		return x.Date
 	}
 	return 0
 }
@@ -1739,12 +1739,12 @@ type FinalizeAuthorizationRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Id                *int64                     `protobuf:"varint,1,opt,name=id" json:"id,omitempty"`
-	Status            *string                    `protobuf:"bytes,2,opt,name=status" json:"status,omitempty"`
-	Expires           *int64                     `protobuf:"varint,3,opt,name=expires" json:"expires,omitempty"` // Unix timestamp (nanoseconds)
-	Attempted         *string                    `protobuf:"bytes,4,opt,name=attempted" json:"attempted,omitempty"`
-	ValidationRecords []*proto1.ValidationRecord `protobuf:"bytes,5,rep,name=validationRecords" json:"validationRecords,omitempty"`
-	ValidationError   *proto1.ProblemDetails     `protobuf:"bytes,6,opt,name=validationError" json:"validationError,omitempty"`
+	Id                int64                      `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Status            string                     `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	Expires           int64                      `protobuf:"varint,3,opt,name=expires,proto3" json:"expires,omitempty"` // Unix timestamp (nanoseconds)
+	Attempted         string                     `protobuf:"bytes,4,opt,name=attempted,proto3" json:"attempted,omitempty"`
+	ValidationRecords []*proto1.ValidationRecord `protobuf:"bytes,5,rep,name=validationRecords,proto3" json:"validationRecords,omitempty"`
+	ValidationError   *proto1.ProblemDetails     `protobuf:"bytes,6,opt,name=validationError,proto3" json:"validationError,omitempty"`
 }
 
 func (x *FinalizeAuthorizationRequest) Reset() {
@@ -1780,29 +1780,29 @@ func (*FinalizeAuthorizationRequest) Descriptor() ([]byte, []int) {
 }
 
 func (x *FinalizeAuthorizationRequest) GetId() int64 {
-	if x != nil && x.Id != nil {
-		return *x.Id
+	if x != nil {
+		return x.Id
 	}
 	return 0
 }
 
 func (x *FinalizeAuthorizationRequest) GetStatus() string {
-	if x != nil && x.Status != nil {
-		return *x.Status
+	if x != nil {
+		return x.Status
 	}
 	return ""
 }
 
 func (x *FinalizeAuthorizationRequest) GetExpires() int64 {
-	if x != nil && x.Expires != nil {
-		return *x.Expires
+	if x != nil {
+		return x.Expires
 	}
 	return 0
 }
 
 func (x *FinalizeAuthorizationRequest) GetAttempted() string {
-	if x != nil && x.Attempted != nil {
-		return *x.Attempted
+	if x != nil {
+		return x.Attempted
 	}
 	return ""
 }
@@ -1826,11 +1826,11 @@ type AddBlockedKeyRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	KeyHash   []byte  `protobuf:"bytes,1,opt,name=keyHash" json:"keyHash,omitempty"`
-	Added     *int64  `protobuf:"varint,2,opt,name=added" json:"added,omitempty"` // Unix timestamp (nanoseconds)
-	Source    *string `protobuf:"bytes,3,opt,name=source" json:"source,omitempty"`
-	Comment   *string `protobuf:"bytes,4,opt,name=comment" json:"comment,omitempty"`
-	RevokedBy *int64  `protobuf:"varint,5,opt,name=revokedBy" json:"revokedBy,omitempty"`
+	KeyHash   []byte `protobuf:"bytes,1,opt,name=keyHash,proto3" json:"keyHash,omitempty"`
+	Added     int64  `protobuf:"varint,2,opt,name=added,proto3" json:"added,omitempty"` // Unix timestamp (nanoseconds)
+	Source    string `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
+	Comment   string `protobuf:"bytes,4,opt,name=comment,proto3" json:"comment,omitempty"`
+	RevokedBy int64  `protobuf:"varint,5,opt,name=revokedBy,proto3" json:"revokedBy,omitempty"`
 }
 
 func (x *AddBlockedKeyRequest) Reset() {
@@ -1873,29 +1873,29 @@ func (x *AddBlockedKeyRequest) GetKeyHash() []byte {
 }
 
 func (x *AddBlockedKeyRequest) GetAdded() int64 {
-	if x != nil && x.Added != nil {
-		return *x.Added
+	if x != nil {
+		return x.Added
 	}
 	return 0
 }
 
 func (x *AddBlockedKeyRequest) GetSource() string {
-	if x != nil && x.Source != nil {
-		return *x.Source
+	if x != nil {
+		return x.Source
 	}
 	return ""
 }
 
 func (x *AddBlockedKeyRequest) GetComment() string {
-	if x != nil && x.Comment != nil {
-		return *x.Comment
+	if x != nil {
+		return x.Comment
 	}
 	return ""
 }
 
 func (x *AddBlockedKeyRequest) GetRevokedBy() int64 {
-	if x != nil && x.RevokedBy != nil {
-		return *x.RevokedBy
+	if x != nil {
+		return x.RevokedBy
 	}
 	return 0
 }
@@ -1905,7 +1905,7 @@ type KeyBlockedRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	KeyHash []byte `protobuf:"bytes,1,opt,name=keyHash" json:"keyHash,omitempty"`
+	KeyHash []byte `protobuf:"bytes,1,opt,name=keyHash,proto3" json:"keyHash,omitempty"`
 }
 
 func (x *KeyBlockedRequest) Reset() {
@@ -1952,8 +1952,8 @@ type ValidAuthorizations_MapElement struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Domain *string               `protobuf:"bytes,1,opt,name=domain" json:"domain,omitempty"`
-	Authz  *proto1.Authorization `protobuf:"bytes,2,opt,name=authz" json:"authz,omitempty"`
+	Domain string                `protobuf:"bytes,1,opt,name=domain,proto3" json:"domain,omitempty"`
+	Authz  *proto1.Authorization `protobuf:"bytes,2,opt,name=authz,proto3" json:"authz,omitempty"`
 }
 
 func (x *ValidAuthorizations_MapElement) Reset() {
@@ -1989,8 +1989,8 @@ func (*ValidAuthorizations_MapElement) Descriptor() ([]byte, []int) {
 }
 
 func (x *ValidAuthorizations_MapElement) GetDomain() string {
-	if x != nil && x.Domain != nil {
-		return *x.Domain
+	if x != nil {
+		return x.Domain
 	}
 	return ""
 }
@@ -2007,8 +2007,8 @@ type CountByNames_MapElement struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Name  *string `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
-	Count *int64  `protobuf:"varint,2,opt,name=count" json:"count,omitempty"`
+	Name  string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Count int64  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
 }
 
 func (x *CountByNames_MapElement) Reset() {
@@ -2044,15 +2044,15 @@ func (*CountByNames_MapElement) Descriptor() ([]byte, []int) {
 }
 
 func (x *CountByNames_MapElement) GetName() string {
-	if x != nil && x.Name != nil {
-		return *x.Name
+	if x != nil {
+		return x.Name
 	}
 	return ""
 }
 
 func (x *CountByNames_MapElement) GetCount() int64 {
-	if x != nil && x.Count != nil {
-		return *x.Count
+	if x != nil {
+		return x.Count
 	}
 	return 0
 }
@@ -2062,8 +2062,8 @@ type Authorizations_MapElement struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Domain *string               `protobuf:"bytes,1,opt,name=domain" json:"domain,omitempty"`
-	Authz  *proto1.Authorization `protobuf:"bytes,2,opt,name=authz" json:"authz,omitempty"`
+	Domain string                `protobuf:"bytes,1,opt,name=domain,proto3" json:"domain,omitempty"`
+	Authz  *proto1.Authorization `protobuf:"bytes,2,opt,name=authz,proto3" json:"authz,omitempty"`
 }
 
 func (x *Authorizations_MapElement) Reset() {
@@ -2099,8 +2099,8 @@ func (*Authorizations_MapElement) Descriptor() ([]byte, []int) {
 }
 
 func (x *Authorizations_MapElement) GetDomain() string {
-	if x != nil && x.Domain != nil {
-		return *x.Domain
+	if x != nil {
+		return x.Domain
 	}
 	return ""
 }
@@ -2467,7 +2467,7 @@ var file_sa_proto_sa_proto_rawDesc = []byte{
 	0x72, 0x65, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00, 0x42, 0x29, 0x5a, 0x27, 0x67, 0x69,
 	0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x65, 0x74, 0x73, 0x65, 0x6e, 0x63,
 	0x72, 0x79, 0x70, 0x74, 0x2f, 0x62, 0x6f, 0x75, 0x6c, 0x64, 0x65, 0x72, 0x2f, 0x73, 0x61, 0x2f,
-	0x70, 0x72, 0x6f, 0x74, 0x6f,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (

@@ -26,7 +26,7 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
-	sapb "github.com/letsencrypt/boulder/sa/proto"
+	sapb "github.com/letsencrypt/boulder/sa/proto2"
 )
 
 type certCountFunc func(db db.Selector, domain string, earliest, latest time.Time) (int, error)

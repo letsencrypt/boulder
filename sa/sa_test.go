@@ -29,7 +29,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
-	sapb "github.com/letsencrypt/boulder/sa/proto"
+	sapb "github.com/letsencrypt/boulder/sa/proto2"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"

@@ -9,17 +9,72 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	sapb "github.com/letsencrypt/boulder/sa/proto"
+	sapb "github.com/letsencrypt/boulder/sa/proto2"
 )
+
+// storageGetter are the Boulder SA's read-only methods
+type storageGetter interface {
+	GetRegistration(ctx context.Context, regID int64) (core.Registration, error)
+	GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error)
+	GetCertificate(ctx context.Context, serial string) (core.Certificate, error)
+	GetPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
+	GetCertificateStatus(ctx context.Context, serial string) (core.CertificateStatus, error)
+	CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) (countByDomain []*sapb.CountByNames_MapElement, err error)
+	CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error)
+	CountRegistrationsByIPRange(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error)
+	CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error)
+	CountFQDNSets(ctx context.Context, window time.Duration, domains []string) (count int64, err error)
+	FQDNSetExists(ctx context.Context, domains []string) (exists bool, err error)
+	PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (exists *sapb.Exists, err error)
+	GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error)
+	GetOrderForNames(ctx context.Context, req *sapb.GetOrderForNamesRequest) (*corepb.Order, error)
+	// New authz2 methods
+	GetAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Authorization, error)
+	GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error)
+	GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error)
+	CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error)
+	GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error)
+	CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error)
+	GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error)
+	KeyBlocked(ctx context.Context, req *sapb.KeyBlockedRequest) (*sapb.Exists, error)
+}
+
+// storageAdder are the Boulder SA's write/update methods
+type storageAdder interface {
+	NewRegistration(ctx context.Context, reg core.Registration) (created core.Registration, err error)
+	UpdateRegistration(ctx context.Context, reg core.Registration) error
+	AddCertificate(ctx context.Context, der []byte, regID int64, ocsp []byte, issued *time.Time) (digest string, err error)
+	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error)
+	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*corepb.Empty, error)
+	DeactivateRegistration(ctx context.Context, id int64) error
+	NewOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error)
+	SetOrderProcessing(ctx context.Context, order *corepb.Order) error
+	FinalizeOrder(ctx context.Context, order *corepb.Order) error
+	SetOrderError(ctx context.Context, order *corepb.Order) error
+	RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error
+	// New authz2 methods
+	NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error)
+	FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) error
+	DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Empty, error)
+	AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest) (*corepb.Empty, error)
+}
+
+// storageAuthority interface represents a simple key/value
+// store. The add and get interfaces contained within are divided
+// for privilege separation.
+type storageAuthority interface {
+	storageGetter
+	storageAdder
+}
 
 // StorageAuthorityServerWrapper is the gRPC version of a core.ServerAuthority server
 type StorageAuthorityServerWrapper struct {
 	// TODO(#3119): Don't use core.StorageAuthority
-	inner core.StorageAuthority
-	core.StorageAuthority
+	inner storageAuthority
+	storageAuthority
 }
 
-func NewStorageAuthorityServer(inner core.StorageAuthority) *StorageAuthorityServerWrapper {
+func NewStorageAuthorityServer(inner storageAuthority) *StorageAuthorityServerWrapper {
 	return &StorageAuthorityServerWrapper{inner, inner}
 }
 

@@ -415,7 +415,7 @@ func PBToAuthzMap(pb *sapb.Authorizations) (map[string]*core.Authorization, erro
 		if err != nil {
 			return nil, err
 		}
-		m[*v.Domain] = &authz
+		m[v.Domain] = &authz
 	}
 	return m, nil
 }

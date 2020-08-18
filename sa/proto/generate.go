@@ -1,3 +1,3 @@
 package proto
 
-//go:generate sh -c "cd ../.. && protoc --go_opt=paths=source_relative --go_out=plugins=grpc,Mcore/proto/core.proto=github.com/letsencrypt/boulder/core/proto:. sa/proto/sa.proto"
+//go:generate sh -c "cd ../.. && protoc --go_opt=paths=source_relative --go_out=plugins=grpc:. sa/proto/sa.proto"
