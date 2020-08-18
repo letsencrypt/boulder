@@ -323,12 +323,11 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 }
 
 func registrationValid(reg *corepb.Registration) bool {
-	return !(reg.Id == nil || reg.Key == nil || reg.Agreement == nil || reg.InitialIP == nil || reg.CreatedAt == nil || reg.Status == nil)
+	return !(reg.Id == nil || reg.Key == nil || reg.InitialIP == nil || reg.CreatedAt == nil)
 }
 
 // orderValid checks that a corepb.Order is valid. In addition to the checks
-// from `newOrderValid` it ensures the order ID, the BeganProcessing fields
-// and the Created field are not nil.
+// from `newOrderValid` it ensures the order ID and the Created field are not nil.
 func orderValid(order *corepb.Order) bool {
 	return order.Id != nil && order.Created != nil && newOrderValid(order)
 }
