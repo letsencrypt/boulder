@@ -4343,7 +4343,7 @@ func _StorageAuthority_AddBlockedKey_Handler(srv interface{}, ctx context.Contex
 }
 
 var _StorageAuthority_serviceDesc = grpc.ServiceDesc{
-	ServiceName: "saproto2.StorageAuthority",
+	ServiceName: "sa.StorageAuthority",
 	HandlerType: (*StorageAuthorityServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
