@@ -134,7 +134,7 @@ func checkDER(sai certificateStorage, der []byte) (*x509.Certificate, orphanType
 	case certOrphan:
 		_, err = sai.GetCertificate(ctx, orphanSerial)
 	case precertOrphan:
-		_, err = sai.GetPrecertificate(ctx, &sapb.Serial{Serial: &orphanSerial})
+		_, err = sai.GetPrecertificate(ctx, &sapb.Serial{Serial: orphanSerial})
 	default:
 		err = errors.New("unknown orphan type")
 	}
@@ -217,9 +217,9 @@ func storeParsedLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Log
 		issued := issuedDate.UnixNano()
 		_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:    der,
-			RegID:  &regID,
+			RegID:  regID,
 			Ocsp:   response,
-			Issued: &issued,
+			Issued: issued,
 		})
 	default:
 		// Shouldn't happen but be defensive anyway
@@ -358,9 +358,9 @@ func main() {
 			issued := issuedDate.UnixNano()
 			_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 				Der:    der,
-				RegID:  regID,
+				RegID:  *regID,
 				Ocsp:   response,
-				Issued: &issued,
+				Issued: issued,
 			})
 		default:
 			err = errors.New("unknown orphan type")
