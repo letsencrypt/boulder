@@ -1550,7 +1550,12 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	}
 
 	authz := base
-	challIndex := int(*req.ChallengeIndex)
+	var challIndex int
+	if req.ChallengeIndex == nil {
+		challIndex = 0
+	} else {
+		challIndex = int(*req.ChallengeIndex)
+	}
 	if challIndex >= len(authz.Challenges) {
 		return nil,
 			berrors.MalformedError("invalid challenge index '%d'", challIndex)

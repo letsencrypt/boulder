@@ -272,11 +272,17 @@ func (ras *RegistrationAuthorityServerWrapper) RevokeCertificateWithReg(ctx cont
 	if request == nil || request.Cert == nil || request.RegID == nil {
 		return nil, errIncompleteRequest
 	}
+	var code revocation.Reason
+	if request.Code == nil {
+		code = revocation.Reason(0)
+	} else {
+		code = revocation.Reason(*request.Code)
+	}
 	cert, err := x509.ParseCertificate(request.Cert)
 	if err != nil {
 		return nil, err
 	}
-	err = ras.inner.RevokeCertificateWithReg(ctx, *cert, revocation.Reason(*request.Code), *request.RegID)
+	err = ras.inner.RevokeCertificateWithReg(ctx, *cert, code, *request.RegID)
 	if err != nil {
 		return nil, err
 	}
@@ -317,11 +323,17 @@ func (ras *RegistrationAuthorityServerWrapper) AdministrativelyRevokeCertificate
 	if request == nil || request.Cert == nil || request.AdminName == nil {
 		return nil, errIncompleteRequest
 	}
+	var code revocation.Reason
+	if request.Code == nil {
+		code = revocation.Reason(0)
+	} else {
+		code = revocation.Reason(*request.Code)
+	}
 	cert, err := x509.ParseCertificate(request.Cert)
 	if err != nil {
 		return nil, err
 	}
-	err = ras.inner.AdministrativelyRevokeCertificate(ctx, *cert, revocation.Reason(*request.Code), *request.AdminName)
+	err = ras.inner.AdministrativelyRevokeCertificate(ctx, *cert, code, *request.AdminName)
 	if err != nil {
 		return nil, err
 	}
