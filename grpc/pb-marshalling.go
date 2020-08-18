@@ -323,14 +323,14 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 }
 
 func registrationValid(reg *corepb.Registration) bool {
-	return !(reg.Id == nil || reg.Key == nil || reg.Agreement == nil || reg.InitialIP == nil || reg.CreatedAt == nil || reg.Status == nil || reg.ContactsPresent == nil)
+	return !(reg.Id == nil || reg.Key == nil || reg.Agreement == nil || reg.InitialIP == nil || reg.CreatedAt == nil || reg.Status == nil)
 }
 
 // orderValid checks that a corepb.Order is valid. In addition to the checks
 // from `newOrderValid` it ensures the order ID, the BeganProcessing fields
 // and the Created field are not nil.
 func orderValid(order *corepb.Order) bool {
-	return order.Id != nil && order.BeganProcessing != nil && order.Created != nil && newOrderValid(order)
+	return order.Id != nil && order.Created != nil && newOrderValid(order)
 }
 
 // newOrderValid checks that a corepb.Order is valid. It allows for a nil
@@ -341,7 +341,7 @@ func orderValid(order *corepb.Order) bool {
 // `order.CertificateSerial` to be nil such that it can be used in places where
 // the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
-	return !(order.RegistrationID == nil || order.Expires == nil || order.V2Authorizations == nil || order.Names == nil)
+	return !(order.RegistrationID == nil || order.Expires == nil || order.Names == nil)
 }
 
 func authorizationValid(authz *corepb.Authorization) bool {
