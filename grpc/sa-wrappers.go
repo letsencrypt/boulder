@@ -803,7 +803,7 @@ func (sas StorageAuthorityServerWrapper) GetAuthorization2(ctx context.Context, 
 }
 
 func (sas StorageAuthorityServerWrapper) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*corepb.Empty, error) {
-	if req == nil || req.Serial == nil || req.Reason == nil || req.Date == nil || req.Response == nil {
+	if req == nil || req.Serial == nil || req.Date == nil || req.Response == nil {
 		return nil, errIncompleteRequest
 	}
 	return &corepb.Empty{}, sas.inner.RevokeCertificate(ctx, req)
