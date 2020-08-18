@@ -262,14 +262,14 @@ func (ras *RegistrationAuthorityServerWrapper) UpdateRegistration(ctx context.Co
 func (ras *RegistrationAuthorityServerWrapper) PerformValidation(
 	ctx context.Context,
 	request *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
-	if request == nil || !authorizationValid(request.Authz) || request.ChallengeIndex == nil {
+	if request == nil || !authorizationValid(request.Authz) {
 		return nil, errIncompleteRequest
 	}
 	return ras.inner.PerformValidation(ctx, request)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) RevokeCertificateWithReg(ctx context.Context, request *rapb.RevokeCertificateWithRegRequest) (*corepb.Empty, error) {
-	if request == nil || request.Cert == nil || request.Code == nil || request.RegID == nil {
+	if request == nil || request.Cert == nil || request.RegID == nil {
 		return nil, errIncompleteRequest
 	}
 	cert, err := x509.ParseCertificate(request.Cert)
@@ -314,7 +314,7 @@ func (ras *RegistrationAuthorityServerWrapper) DeactivateAuthorization(ctx conte
 }
 
 func (ras *RegistrationAuthorityServerWrapper) AdministrativelyRevokeCertificate(ctx context.Context, request *rapb.AdministrativelyRevokeCertificateRequest) (*corepb.Empty, error) {
-	if request == nil || request.Cert == nil || request.Code == nil || request.AdminName == nil {
+	if request == nil || request.Cert == nil || request.AdminName == nil {
 		return nil, errIncompleteRequest
 	}
 	cert, err := x509.ParseCertificate(request.Cert)
