@@ -91,9 +91,9 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	issued := fc.Now().UnixNano()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    parsedCert.Raw,
-		RegID:  &reg.ID,
+		RegID:  reg.ID,
 		Ocsp:   nil,
-		Issued: &issued,
+		Issued: issued,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
@@ -116,18 +116,18 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	issued := fc.Now().UnixNano()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    parsedCertA.Raw,
-		RegID:  &reg.ID,
+		RegID:  reg.ID,
 		Ocsp:   nil,
-		Issued: &issued,
+		Issued: issued,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 	parsedCertB, err := core.LoadCert("test-cert-b.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    parsedCertB.Raw,
-		RegID:  &reg.ID,
+		RegID:  reg.ID,
 		Ocsp:   nil,
-		Issued: &issued,
+		Issued: issued,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert-b.pem")
 
@@ -173,9 +173,9 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	issued := fc.Now().UnixNano()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    parsedCert.Raw,
-		RegID:  &reg.ID,
+		RegID:  reg.ID,
 		Ocsp:   nil,
-		Issued: &issued,
+		Issued: issued,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
@@ -215,9 +215,9 @@ func TestFindStaleOCSPResponsesRevokedReason(t *testing.T) {
 	issued := fc.Now().UnixNano()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    parsedCert.Raw,
-		RegID:  &reg.ID,
+		RegID:  reg.ID,
 		Ocsp:   nil,
-		Issued: &issued,
+		Issued: issued,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
@@ -248,9 +248,9 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 	issued := fc.Now().UnixNano()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    parsedCert.Raw,
-		RegID:  &reg.ID,
+		RegID:  reg.ID,
 		Ocsp:   nil,
-		Issued: &issued,
+		Issued: issued,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
@@ -280,9 +280,9 @@ func TestOldOCSPResponsesTickIsExpired(t *testing.T) {
 	issued := fc.Now().UnixNano()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    parsedCert.Raw,
-		RegID:  &reg.ID,
+		RegID:  reg.ID,
 		Ocsp:   nil,
-		Issued: &issued,
+		Issued: issued,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
@@ -330,9 +330,9 @@ func TestStoreResponseGuard(t *testing.T) {
 	issued := fc.Now().UnixNano()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    parsedCert.Raw,
-		RegID:  &reg.ID,
+		RegID:  reg.ID,
 		Ocsp:   nil,
-		Issued: &issued,
+		Issued: issued,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
@@ -343,9 +343,9 @@ func TestStoreResponseGuard(t *testing.T) {
 	reason := int64(0)
 	revokedDate := fc.Now().UnixNano()
 	err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
-		Serial: &serialStr,
-		Reason: &reason,
-		Date:   &revokedDate,
+		Serial: serialStr,
+		Reason: reason,
+		Date:   revokedDate,
 	})
 	test.AssertNotError(t, err, "Failed to revoked certificate")
 
@@ -387,9 +387,9 @@ func TestGenerateOCSPResponsePrecert(t *testing.T) {
 	issuedTime := fc.Now().UnixNano()
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    testCert.Raw,
-		RegID:  &regID,
+		RegID:  regID,
 		Ocsp:   ocspResp,
-		Issued: &issuedTime,
+		Issued: issuedTime,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 
@@ -444,17 +444,17 @@ func TestIssuerInfo(t *testing.T) {
 	id := int64(1234)
 	_, err = sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 		Der:      certA,
-		RegID:    &reg.ID,
+		RegID:    reg.ID,
 		Ocsp:     []byte{1, 2, 3},
-		Issued:   &now,
-		IssuerID: &id,
+		Issued:   now,
+		IssuerID: id,
 	})
 	test.AssertNotError(t, err, "sa.AddPrecertificate failed")
 	_, err = sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 		Der:    certB,
-		RegID:  &reg.ID,
+		RegID:  reg.ID,
 		Ocsp:   []byte{1, 2, 3},
-		Issued: &now,
+		Issued: now,
 	})
 	test.AssertNotError(t, err, "sa.AddPrecertificate failed")
 

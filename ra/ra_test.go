@@ -91,21 +91,21 @@ func createFinalizedAuthorization(t *testing.T, sa core.StorageAuthority, domain
 	expInt := exp.UnixNano()
 	attempted := string(core.ChallengeTypeHTTP01)
 	err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
-		Id:        &pendingID,
-		Status:    &status,
-		Expires:   &expInt,
-		Attempted: &attempted,
+		Id:        pendingID,
+		Status:    status,
+		Expires:   expInt,
+		Attempted: attempted,
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorizations2 failed")
 	return pendingID
 }
 
-func getAuthorization(t *testing.T, id string, sa *sa.SQLStorageAuthority) core.Authorization {
+func getAuthorization(t *testing.T, id string, sa core.StorageAuthority) core.Authorization {
 	t.Helper()
 	var dbAuthz core.Authorization
 	idInt, err := strconv.ParseInt(id, 10, 64)
 	test.AssertNotError(t, err, "strconv.ParseInt failed")
-	dbAuthzPB, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &idInt})
+	dbAuthzPB, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: idInt})
 	test.AssertNotError(t, err, "Could not fetch authorization from database")
 	dbAuthz, err = bgrpc.PBToAuthz(dbAuthzPB)
 	test.AssertNotError(t, err, "bgrpc.PBToAuthz failed")
