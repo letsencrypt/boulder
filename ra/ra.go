@@ -422,6 +422,13 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 	return nil
 }
 
+func intPointerToInt(ip *int64) int {
+	if ip != nil {
+		return int(*ip)
+	}
+	return 0
+}
+
 func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.Context, regID int64) error {
 	limit := ra.rlPolicies.PendingAuthorizationsPerAccount()
 	if limit.Enabled() {
@@ -434,7 +441,7 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 		// Most rate limits have a key for overrides, but there is no meaningful key
 		// here.
 		noKey := ""
-		if int(*countPB.Count) >= limit.GetThreshold(noKey, regID) {
+		if intPointerToInt(countPB.Count) >= limit.GetThreshold(noKey, regID) {
 			ra.rateLimitCounter.WithLabelValues("pending_authorizations_by_registration_id", "exceeded").Inc()
 			ra.log.Infof("Rate limit exceeded, PendingAuthorizationsByRegID, regID: %d", regID)
 			return berrors.RateLimitError("too many currently pending authorizations")
@@ -488,7 +495,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	// Most rate limits have a key for overrides, but there is no meaningful key
 	// here.
 	noKey := ""
-	if *count.Count >= int64(limit.GetThreshold(noKey, regID)) {
+	if intPointerToInt(count.Count) >= limit.GetThreshold(noKey, regID) {
 		ra.log.Infof("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID)
 		return berrors.RateLimitError("too many failed authorizations recently")
 	}
@@ -1310,10 +1317,10 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(
 	var badNames []string
 	for _, entry := range counts {
 		// Should not happen, but be defensive.
-		if entry.Count == nil || entry.Name == nil {
-			return nil, fmt.Errorf("CountByNames_MapElement had nil Count or Name")
+		if entry.Name == nil {
+			return nil, fmt.Errorf("CountByNames_MapElement had nil Name")
 		}
-		if int(*entry.Count) >= limit.GetThreshold(*entry.Name, regID) {
+		if intPointerToInt(entry.Count) >= limit.GetThreshold(*entry.Name, regID) {
 			badNames = append(badNames, *entry.Name)
 		}
 	}
