@@ -9,7 +9,7 @@ import (
 
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	sapb "github.com/letsencrypt/boulder/sa/proto"
+	sapb "github.com/letsencrypt/boulder/sa/proto3"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 )
