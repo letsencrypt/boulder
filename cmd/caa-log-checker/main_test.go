@@ -134,9 +134,10 @@ random`,
 	defer os.Remove(stderr.Name())
 
 	timeTolerance := 10 * time.Minute
-	err = checkIssuances(raScanner, checkedMap, timeTolerance, stderr)
+	foundErrors, err := checkIssuances(raScanner, checkedMap, timeTolerance, stderr)
 	test.AssertNotError(t, err, "checkIssuances failed")
 
+	test.Assert(t, foundErrors, "checkIssuances should indicate it found errors")
 	stderrCont, err := ioutil.ReadFile(stderr.Name())
 	test.AssertNotError(t, err, "failed to read temporary file")
 	test.AssertEquals(t, string(stderrCont),

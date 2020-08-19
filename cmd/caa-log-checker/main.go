@@ -52,8 +52,9 @@ func parseTimestamp(line string) (time.Time, error) {
 	return datestamp, nil
 }
 
-func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, timeTolerance time.Duration, stderr *os.File) error {
+func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, timeTolerance time.Duration, stderr *os.File) (bool, error) {
 	lNum := 0
+	foundErrors := false
 	for scanner.Scan() {
 		lNum++
 		line := scanner.Text()
@@ -62,12 +63,12 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, t
 			continue
 		}
 		if len(matches) != 2 {
-			return fmt.Errorf("line %d: unexpected number of regex matches", lNum)
+			return false, fmt.Errorf("line %d: unexpected number of regex matches", lNum)
 		}
 		var ie issuanceEvent
 		err := json.Unmarshal([]byte(matches[1]), &ie)
 		if err != nil {
-			return fmt.Errorf("line %d: failed to unmarshal JSON: %s", lNum, err)
+			return false, fmt.Errorf("line %d: failed to unmarshal JSON: %s", lNum, err)
 		}
 
 		// populate the issuance time from the syslog timestamp, rather than the ResponseTime
@@ -76,7 +77,7 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, t
 		// be tightly coupled anyway.
 		ie.issuanceTime, err = parseTimestamp(line)
 		if err != nil {
-			return fmt.Errorf("line %d: failed to parse timestamp: %s", lNum, err)
+			return false, fmt.Errorf("line %d: failed to parse timestamp: %s", lNum, err)
 		}
 
 		var badNames []string
@@ -108,13 +109,14 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, t
 			}
 		}
 		if len(badNames) > 0 {
+			foundErrors = true
 			fmt.Fprintf(stderr, "Issuance missing CAA checks: issued at=%s, serial=%s, requester=%d, names=%s, missing checks for names=%s, timeError=%.3f\n", ie.issuanceTime, ie.SerialNumber, ie.Requester, ie.Names, badNames, timeErrors)
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return err
+		return false, err
 	}
-	return nil
+	return foundErrors, nil
 }
 
 var vaCAALineRE = regexp.MustCompile(`Checked CAA records for ([a-z0-9-.*]+), \[Present: (true|false)`)
@@ -196,6 +198,10 @@ func main() {
 	raScanner, err := openFile(*raLog)
 	cmd.FailOnError(err, fmt.Sprintf("failed to open %q", *raLog))
 
-	err = checkIssuances(raScanner, checkedMap, *timeTolerance, os.Stderr)
+	foundErrors, err := checkIssuances(raScanner, checkedMap, *timeTolerance, os.Stderr)
 	cmd.FailOnError(err, "failed while processing RA log")
+
+	if foundErrors {
+		os.Exit(1)
+	}
 }
