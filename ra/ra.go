@@ -1757,7 +1757,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 		//   CN
 		//   DNS names
 		//   Revocation reason
-		//   Registration ID of requester
+		//   Registration ID of requester; may be 0 if request is signed with cert key
 		//   Error (if there was one)
 		ra.log.AuditInfof("%s, Request by registration ID: %d",
 			revokeEvent(state, serialString, cert.Subject.CommonName, cert.DNSNames, revocationCode),
