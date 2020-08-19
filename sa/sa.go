@@ -1539,6 +1539,12 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 // RevokeCertificate stores revocation information about a certificate. It will only store this
 // information if the certificate is not already marked as revoked.
 func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error {
+	var reason revocation.Reason
+	if req.Reason == nil {
+		reason = revocation.Reason(0)
+	} else {
+		reason = revocation.Reason(*req.Reason)
+	}
 	revokedDate := time.Unix(0, *req.Date)
 	res, err := ssa.dbMap.Exec(
 		`UPDATE certificateStatus SET
@@ -1549,7 +1555,7 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 				ocspResponse = ?
 			WHERE serial = ? AND status != ?`,
 		string(core.OCSPStatusRevoked),
-		revocation.Reason(*req.Reason),
+		reason,
 		revokedDate,
 		revokedDate,
 		req.Response,

@@ -1850,7 +1850,7 @@ func (cr *caaRecorder) IsCAAValid(
 ) (*vapb.IsCAAValidResponse, error) {
 	cr.Lock()
 	defer cr.Unlock()
-	cr.names[*in.Domain] = true
+	cr.names[in.Domain] = true
 	return &vapb.IsCAAValidResponse{}, nil
 }
 
@@ -1969,7 +1969,7 @@ func (cf *caaFailer) IsCAAValid(
 	opts ...grpc.CallOption,
 ) (*vapb.IsCAAValidResponse, error) {
 	cvrpb := &vapb.IsCAAValidResponse{}
-	switch *in.Domain {
+	switch in.Domain {
 	case "a.com":
 		cvrpb.Problem = &corepb.ProblemDetails{
 			Detail: proto.String("CAA invalid for a.com"),

@@ -392,7 +392,7 @@ func TestCAAChecking(t *testing.T) {
 
 	accountURIID := int64(123)
 	method := "http-01"
-	params := &caaParams{accountURIID: &accountURIID, validationMethod: &method}
+	params := &caaParams{accountURIID: accountURIID, validationMethod: method}
 
 	va, _ := setup(nil, 0, "", nil)
 	if err := features.Set(map[string]bool{"CAAValidationMethods": true, "CAAAccountURI": true}); err != nil {
@@ -533,10 +533,9 @@ func TestCAALogging(t *testing.T) {
 			mockLog := va.log.(*blog.Mock)
 			mockLog.Clear()
 
-			validationMethod := string(tc.ChallengeType)
 			params := &caaParams{
-				accountURIID:     &tc.AccountURIID,
-				validationMethod: &validationMethod,
+				accountURIID:     tc.AccountURIID,
+				validationMethod: string(tc.ChallengeType),
 			}
 			_ = va.checkCAA(ctx, identifier.ACMEIdentifier{Type: identifier.DNS, Value: tc.Domain}, params)
 
@@ -561,7 +560,7 @@ func TestIsCAAValidErrMessage(t *testing.T) {
 	// caaMockDNS.
 	domain := "caa-timeout.com"
 	resp, err := va.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
-		Domain: &domain,
+		Domain: domain,
 	})
 
 	// The lookup itself should not return an error

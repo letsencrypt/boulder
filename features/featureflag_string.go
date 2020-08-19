@@ -30,11 +30,12 @@ func _() {
 	_ = x[StoreRevokerInfo-19]
 	_ = x[RestrictRSAKeySizes-20]
 	_ = x[FasterNewOrdersRateLimit-21]
+	_ = x[NonCFSSLSigner-22]
 }
 
-const _FeatureFlag_name = "unusedWriteIssuedNamesPrecertHeadNonceStatusOKRemoveWFE2AccountIDCheckRenewalFirstParallelCheckFailedValidationDeleteUnusedChallengesBlockedKeyTableStoreKeyHashesCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationV1DisableNewValidationsPrecertificateRevocationStripDefaultSchemePortStoreIssuerInfoStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimit"
+const _FeatureFlag_name = "unusedWriteIssuedNamesPrecertHeadNonceStatusOKRemoveWFE2AccountIDCheckRenewalFirstParallelCheckFailedValidationDeleteUnusedChallengesBlockedKeyTableStoreKeyHashesCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationV1DisableNewValidationsPrecertificateRevocationStripDefaultSchemePortStoreIssuerInfoStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimitNonCFSSLSigner"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 29, 46, 65, 82, 111, 133, 148, 162, 182, 195, 209, 227, 245, 264, 287, 311, 333, 348, 364, 383, 407}
+var _FeatureFlag_index = [...]uint16{0, 6, 29, 46, 65, 82, 111, 133, 148, 162, 182, 195, 209, 227, 245, 264, 287, 311, 333, 348, 364, 383, 407, 421}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {
