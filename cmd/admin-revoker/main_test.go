@@ -75,8 +75,8 @@ func TestRevokeBatch(t *testing.T) {
 		test.AssertNotError(t, err, "failed to generate test cert")
 		_, err = ssa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 			Der:    der,
-			RegID:  &reg.ID,
-			Issued: &issued,
+			RegID:  reg.ID,
+			Issued: issued,
 		})
 		test.AssertNotError(t, err, "failed to add test cert")
 		now := time.Now()

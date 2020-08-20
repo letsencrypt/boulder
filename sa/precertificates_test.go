@@ -9,7 +9,7 @@ import (
 
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	sapb "github.com/letsencrypt/boulder/sa/proto2"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -46,9 +46,9 @@ func TestAddPrecertificate(t *testing.T) {
 		issuedTimeNano := issuedTime.UnixNano()
 		_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:    testCert.Raw,
-			RegID:  &regID,
+			RegID:  regID,
 			Ocsp:   ocspResp,
-			Issued: &issuedTimeNano,
+			Issued: issuedTimeNano,
 		})
 		test.AssertNotError(t, err, "Couldn't add test cert")
 
@@ -88,9 +88,9 @@ func TestAddPrecertificate(t *testing.T) {
 		// error
 		_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:    testCert.Raw,
-			RegID:  &regID,
+			RegID:  regID,
 			Ocsp:   ocspResp,
-			Issued: &issuedTimeNano,
+			Issued: issuedTimeNano,
 		})
 		if err == nil {
 			t.Fatalf("Expected error inserting duplicate precertificate, got none")
@@ -112,9 +112,9 @@ func TestAddPrecertificateKeyHash(t *testing.T) {
 	issued := testCert.NotBefore.UnixNano()
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    testCert.Raw,
-		RegID:  &reg.ID,
+		RegID:  reg.ID,
 		Ocsp:   []byte{1, 2, 3},
-		Issued: &issued,
+		Issued: issued,
 	})
 	test.AssertNotError(t, err, "failed to add precert")
 

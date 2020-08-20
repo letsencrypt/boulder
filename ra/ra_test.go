@@ -1393,8 +1393,8 @@ func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, name
 func nameCount(domain string, count int) *sapb.CountByNames_MapElement {
 	pbInt := int64(count)
 	return &sapb.CountByNames_MapElement{
-		Name:  &domain,
-		Count: &pbInt,
+		Name:  domain,
+		Count: pbInt,
 	}
 }
 
@@ -1694,7 +1694,7 @@ func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, _ time.Duration, nam
 	var count int64
 	for _, name := range names {
 		if entry, ok := m.nameCounts[name]; ok {
-			count += *entry.Count
+			count += entry.Count
 		}
 	}
 	return count, nil
@@ -1805,7 +1805,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 	authz := getAuthorization(t, fmt.Sprintf("%d", authzID), sa)
 	err := ra.DeactivateAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Could not deactivate authorization")
-	deact, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID})
+	deact, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 	test.AssertNotError(t, err, "Could not get deactivated authorization with ID "+authz.ID)
 	test.AssertEquals(t, *deact.Status, string(core.StatusDeactivated))
 }
@@ -2322,15 +2322,15 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	status := string(core.StatusInvalid)
 	attempted := string(core.ChallengeTypeDNS01)
 	err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:        &order.V2Authorizations[0],
-		Status:    &status,
-		Expires:   order.Expires,
-		Attempted: &attempted,
+		Id:        order.V2Authorizations[0],
+		Status:    status,
+		Expires:   *order.Expires,
+		Attempted: attempted,
 	})
 	test.AssertNotError(t, err, "FinalizeAuthorization2 failed")
 
 	// The order associated with the authz should now be invalid
-	updatedOrder, err := ra.SA.GetOrder(ctx, &sapb.OrderRequest{Id: order.Id})
+	updatedOrder, err := ra.SA.GetOrder(ctx, &sapb.OrderRequest{Id: *order.Id})
 	test.AssertNotError(t, err, "Error getting order to check status")
 	test.AssertEquals(t, *updatedOrder.Status, "invalid")
 
@@ -2365,7 +2365,7 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations(
 			// A static fake ID we can check for in a unit test
 			ID:             "bad-bad-not-good",
 			Identifier:     identifier.DNSIdentifier("*.zombo.com"),
-			RegistrationID: *req.RegistrationID,
+			RegistrationID: req.RegistrationID,
 			// Authz is valid
 			Status: "valid",
 			Challenges: []core.Challenge{
@@ -2385,7 +2385,7 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations(
 			// A static fake ID we can check for in a unit test
 			ID:             "reused-valid-authz",
 			Identifier:     identifier.DNSIdentifier("zombo.com"),
-			RegistrationID: *req.RegistrationID,
+			RegistrationID: req.RegistrationID,
 			// Authz is valid
 			Status: "valid",
 			Challenges: []core.Challenge{
@@ -2413,7 +2413,7 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations2(
 			// A static fake ID we can check for in a unit test
 			ID:             "1",
 			Identifier:     identifier.DNSIdentifier("*.zombo.com"),
-			RegistrationID: *req.RegistrationID,
+			RegistrationID: req.RegistrationID,
 			// Authz is valid
 			Status: "valid",
 			Challenges: []core.Challenge{
@@ -2433,7 +2433,7 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations2(
 			// A static fake ID we can check for in a unit test
 			ID:             "2",
 			Identifier:     identifier.DNSIdentifier("zombo.com"),
-			RegistrationID: *req.RegistrationID,
+			RegistrationID: req.RegistrationID,
 			// Authz is valid
 			Status: "valid",
 			Challenges: []core.Challenge{
@@ -2564,7 +2564,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	for _, authzID := range order.V2Authorizations {
 		// We should be able to retrieve the authz from the db without error
 		authzID := authzID
-		authzPB, err := ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID})
+		authzPB, err := ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 		test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 		authz, err := bgrpc.PBToAuthz(authzPB)
 		test.AssertNotError(t, err, "bgrpc.PBToAuthz failed")
@@ -2612,7 +2612,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	for _, authzID := range order.V2Authorizations {
 		// We should be able to retrieve the authz from the db without error
 		authzID := authzID
-		authzPB, err := ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID})
+		authzPB, err := ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 		test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 		authz, err := bgrpc.PBToAuthz(authzPB)
 		test.AssertNotError(t, err, "bgrpc.PBToAuthz failed")
@@ -2647,7 +2647,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	// We expect the order is in Pending status
 	test.AssertEquals(t, *order.Status, string(core.StatusPending))
 	var authz core.Authorization
-	authzPB, err := ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &normalOrder.V2Authorizations[0]})
+	authzPB, err := ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: normalOrder.V2Authorizations[0]})
 	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 	authz, err = bgrpc.PBToAuthz(authzPB)
 	test.AssertNotError(t, err, "bgrpc.PBToAuthz failed")
@@ -2674,7 +2674,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	// The authz should be a different ID than the previous authz
 	test.AssertNotEquals(t, order.V2Authorizations[0], normalOrder.V2Authorizations[0])
 	// We expect the authorization is available
-	authzPB, err = ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &order.V2Authorizations[0]})
+	authzPB, err = ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: order.V2Authorizations[0]})
 	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 	authz, err = bgrpc.PBToAuthz(authzPB)
 	test.AssertNotError(t, err, "bgrpc.PBToAuthz failed")
@@ -2718,7 +2718,7 @@ func (msa *mockSANearExpiredAuthz) GetAuthorizations(
 			// A static fake ID we can check for in a unit test
 			ID:             "near-expired-authz",
 			Identifier:     identifier.DNSIdentifier("zombo.com"),
-			RegistrationID: *req.RegistrationID,
+			RegistrationID: req.RegistrationID,
 			Expires:        &msa.expiry,
 			Status:         "valid",
 			Challenges: []core.Challenge{
@@ -2740,7 +2740,7 @@ func (msa *mockSANearExpiredAuthz) GetAuthorizations2(
 			// A static fake ID we can check for in a unit test
 			ID:             "1",
 			Identifier:     identifier.DNSIdentifier("zombo.com"),
-			RegistrationID: *req.RegistrationID,
+			RegistrationID: req.RegistrationID,
 			Expires:        &msa.expiry,
 			Status:         "valid",
 			Challenges: []core.Challenge{
@@ -3080,7 +3080,7 @@ func TestFinalizeOrder(t *testing.T) {
 				// Check that the order now has a serial for the issued certificate
 				updatedOrder, err := sa.GetOrder(
 					context.Background(),
-					&sapb.OrderRequest{Id: tc.OrderReq.Order.Id})
+					&sapb.OrderRequest{Id: *tc.OrderReq.Order.Id})
 				test.AssertNotError(t, err, "Error getting order to check serial")
 				test.AssertNotEquals(t, *updatedOrder.CertificateSerial, "")
 				test.AssertEquals(t, *updatedOrder.Status, "valid")
@@ -3145,7 +3145,7 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 	// Check that the order now has a serial for the issued certificate
 	updatedOrder, err := sa.GetOrder(
 		context.Background(),
-		&sapb.OrderRequest{Id: mixedOrder.Id})
+		&sapb.OrderRequest{Id: *mixedOrder.Id})
 	test.AssertNotError(t, err, "Error getting order to check serial")
 	test.AssertNotEquals(t, *updatedOrder.CertificateSerial, "")
 	test.AssertEquals(t, *updatedOrder.Status, "valid")
@@ -3222,7 +3222,7 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	test.AssertNotError(t, err, "NewOrder failed for wildcard domain order")
 	test.AssertEquals(t, numAuthorizations(validOrder), 1)
 	// We expect to be able to get the authorization by ID
-	_, err = sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &validOrder.V2Authorizations[0]})
+	_, err = sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: validOrder.V2Authorizations[0]})
 	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 
 	// Finalize the authorization with the challenge validated
@@ -3230,16 +3230,16 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	attempted := string(core.ChallengeTypeDNS01)
 	expInt := ra.clk.Now().Add(time.Hour * 24 * 7).UnixNano()
 	err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:        &validOrder.V2Authorizations[0],
-		Status:    &status,
-		Expires:   &expInt,
-		Attempted: &attempted,
+		Id:        validOrder.V2Authorizations[0],
+		Status:    status,
+		Expires:   expInt,
+		Attempted: attempted,
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
 	// Refresh the order so the SA sets its status
 	validOrder, err = sa.GetOrder(ctx, &sapb.OrderRequest{
-		Id: validOrder.Id,
+		Id: *validOrder.Id,
 	})
 	test.AssertNotError(t, err, "Could not refresh valid order from SA")
 
@@ -3298,10 +3298,10 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 		status := "valid"
 		expInt := exp.UnixNano()
 		err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-			Id:        &ids.Ids[0],
-			Status:    &status,
-			Expires:   &expInt,
-			Attempted: &chalType,
+			Id:        ids.Ids[0],
+			Status:    status,
+			Expires:   expInt,
+			Attempted: chalType,
 		})
 		test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 		return ids.Ids[0]
@@ -3655,10 +3655,10 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 		expInt := exp.UnixNano()
 		attempted := string(httpChal.Type)
 		err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-			Id:        &ids.Ids[0],
-			Status:    &status,
-			Expires:   &expInt,
-			Attempted: &attempted,
+			Id:        ids.Ids[0],
+			Status:    status,
+			Expires:   expInt,
+			Attempted: attempted,
 		})
 		test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 		return ids.Ids[0]
@@ -3777,12 +3777,7 @@ type mockSAPreviousValidations struct {
 }
 
 func (ms *mockSAPreviousValidations) PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (*sapb.Exists, error) {
-	t := true
-	f := false
-	if *req.Domain == ms.existsDomain {
-		return &sapb.Exists{Exists: &t}, nil
-	}
-	return &sapb.Exists{Exists: &f}, nil
+	return &sapb.Exists{Exists: req.Domain == ms.existsDomain}, nil
 }
 
 func (ms *mockSAPreviousValidations) GetPendingAuthorization(_ context.Context, _ *sapb.GetPendingAuthorizationRequest) (*core.Authorization, error) {
@@ -3953,8 +3948,8 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
 	test.Assert(t, mockSA.added != nil, "blocked key was not added when reason was keyCompromise")
 	test.Assert(t, bytes.Equal(digest[:], mockSA.added.KeyHash), "key hash mismatch")
-	test.AssertEquals(t, *mockSA.added.Source, "API")
-	test.Assert(t, mockSA.added.Comment == nil, "Comment is not nil")
+	test.AssertEquals(t, mockSA.added.Source, "API")
+	test.Assert(t, mockSA.added.Comment == "", "Comment is not empty")
 	test.AssertEquals(t, test.CountCounterVec(
 		"reason", "keyCompromise", ra.revocationReasonCounter), 1)
 
@@ -3963,9 +3958,9 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
 	test.Assert(t, mockSA.added != nil, "blocked key was not added when reason was keyCompromise")
 	test.Assert(t, bytes.Equal(digest[:], mockSA.added.KeyHash), "key hash mismatch")
-	test.AssertEquals(t, *mockSA.added.Source, "admin-revoker")
-	test.Assert(t, mockSA.added.Comment != nil, "Comment is nil")
-	test.AssertEquals(t, *mockSA.added.Comment, "revoked by root")
+	test.AssertEquals(t, mockSA.added.Source, "admin-revoker")
+	test.Assert(t, mockSA.added.Comment != "", "Comment is nil")
+	test.AssertEquals(t, mockSA.added.Comment, "revoked by root")
 	test.AssertEquals(t, test.CountCounterVec(
 		"reason", "keyCompromise", ra.revocationReasonCounter), 2)
 }

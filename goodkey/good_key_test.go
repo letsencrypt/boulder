@@ -262,7 +262,7 @@ func TestNonRefKey(t *testing.T) {
 func TestDBBlacklist(t *testing.T) {
 	exists := false
 	testCheck := func(context.Context, *sapb.KeyBlockedRequest) (*sapb.Exists, error) {
-		return &sapb.Exists{Exists: &exists}, nil
+		return &sapb.Exists{Exists: exists}, nil
 	}
 
 	policy, err := NewKeyPolicy("", "", testCheck)

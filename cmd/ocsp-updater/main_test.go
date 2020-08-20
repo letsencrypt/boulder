@@ -453,7 +453,7 @@ func TestIssuerInfo(t *testing.T) {
 	_, err = sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 		Der:    certB,
 		RegID:  reg.ID,
-		Ocsp:   []byte{1, 2, 3},
+		Ocsp:   []byte{3, 2, 1},
 		Issued: now,
 	})
 	test.AssertNotError(t, err, "sa.AddPrecertificate failed")
@@ -463,7 +463,9 @@ func TestIssuerInfo(t *testing.T) {
 	test.AssertNotError(t, err, "findStaleOCSPResponses failed")
 	test.AssertEquals(t, len(statuses), 2)
 	test.AssertEquals(t, *statuses[0].IssuerID, id)
-	test.Assert(t, statuses[1].IssuerID == nil, "second status doesn't have nil IssuerID")
+	fmt.Printf("first %#v\n", statuses[0])
+	fmt.Printf("second %#v\n", statuses[1])
+	test.Assert(t, *statuses[1].IssuerID == 0, "second status doesn't have zero IssuerID")
 
 	_, err = updater.generateResponse(context.Background(), statuses[0])
 	test.AssertNotError(t, err, "generateResponse failed")
