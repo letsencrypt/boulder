@@ -6,7 +6,7 @@ ceremony --config path/to/config.yml
 
 `ceremony` is a tool designed for Certificate Authority specific key and certificate ceremonies. The main design principle is that unlike most ceremony tooling there is a single user input, a configuration file, which is required to complete a root, intermediate, or key ceremony. The goal is to make ceremonies as simple as possible and allow for simple verification of a single file, instead of verification of a large number of independent commands.
 
-`ceremony` operates in one of three modes
+`ceremony` has these modes:
 * `root` - generates a signing key on HSM and creates a self-signed root certificate that uses the generated key, outputting a PEM public key, and a PEM certificate
 * `intermediate` - creates a intermediate certificate and signs it using a signing key already on a HSM, outputting a PEM certificate
 * `cross-certificate` - issues a certificate for one root, signed by another root. This is distinct from an intermediate because there is no path length constraint and there are no EKUs.
