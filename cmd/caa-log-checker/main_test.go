@@ -114,6 +114,10 @@ random
 %s Certificate request - successful JSON={"SerialNumber": "3", "Names":["4.example.com"], "Requester":0}
 %s Certificate request - successful JSON={"SerialNumber": "4", "Names":["5.example.com"], "Requester":0}
 %s Certificate request - successful JSON={"SerialNumber": "5", "Names":["6.example.com"], "Requester":0}
+%s Certificate request - successful JSON={"SerialNumber": "7", "Names":["7.example.com"], "Requester":0}
+%s Certificate request - successful JSON={"SerialNumber": "8", "Names":["8.example.com"], "Requester":0}
+%s Certificate request - successful JSON={"SerialNumber": "9", "Names":["9.example.com"], "Requester":0}
+%s Certificate request - successful JSON={"SerialNumber": "10", "Names":["10.example.com"], "Requester":0}
 random`,
 		// example.com: CAA @ +1:00, Issue @ +2:00, CAA @ +3:00. (PASS, one valid CAA check, one invalid)
 		testTime.Add(time.Hour*2).Format(time.RFC3339Nano),
@@ -126,6 +130,14 @@ random`,
 		testTime.Add(10*time.Hour).Format(time.RFC3339Nano),
 		// 6.example.com: Issue @ +1:00, CAA @ +1:01. (PASS, has CAA check within tolerance)
 		testTime.Add(time.Hour).Format(time.RFC3339Nano),
+		// 7.example.com: Issue @ +12:00 (PASS, no CAA check but issued after checkUntil)
+		testTime.Add(12*time.Hour).Format(time.RFC3339Nano),
+		// 8.example.com: Issue @ +11:00 (FAIL, no CAA check and on checkUntil boundary)
+		testTime.Add(11*time.Hour).Format(time.RFC3339Nano),
+		// 9.example.com: Issue @ -2:00 (PASS, no CAA check but issued before checkFrom)
+		testTime.Add(-2*time.Hour).Format(time.RFC3339Nano),
+		// 10.example.com: Issue @ -1:00 (FAIL, no CAA check and issued at checkFrom boundary)
+		testTime.Add(-1*time.Hour).Format(time.RFC3339Nano),
 	)))
 	raScanner := bufio.NewScanner(raBuf)
 
@@ -134,7 +146,9 @@ random`,
 	defer os.Remove(stderr.Name())
 
 	timeTolerance := 10 * time.Minute
-	err = checkIssuances(raScanner, checkedMap, timeTolerance, stderr)
+	checkFrom := testTime.Add(-1 * time.Hour)
+	checkUntil := testTime.Add(11 * time.Hour)
+	err = checkIssuances(raScanner, checkedMap, timeTolerance, checkFrom, checkUntil, stderr)
 	test.AssertNotError(t, err, "checkIssuances failed")
 
 	stderrCont, err := ioutil.ReadFile(stderr.Name())
@@ -142,5 +156,7 @@ random`,
 	test.AssertEquals(t, string(stderrCont),
 		"Issuance missing CAA checks: issued at=0000-12-31 19:00:00.123456 -0800 -0800, serial=2, requester=0, names=[2.example.com 3.example.com], missing checks for names=[3.example.com], timeError=[+Inf]\n"+
 			"Issuance missing CAA checks: issued at=0000-12-31 17:30:00.123456 -0800 -0800, serial=3, requester=0, names=[4.example.com], missing checks for names=[4.example.com], timeError=[1800.000]\n"+
-			"Issuance missing CAA checks: issued at=0001-01-01 03:00:00.123456 -0800 -0800, serial=4, requester=0, names=[5.example.com], missing checks for names=[5.example.com], timeError=[+Inf]\n")
+			"Issuance missing CAA checks: issued at=0001-01-01 03:00:00.123456 -0800 -0800, serial=4, requester=0, names=[5.example.com], missing checks for names=[5.example.com], timeError=[+Inf]\n"+
+			"Issuance missing CAA checks: issued at=0001-01-01 04:00:00.123456 -0800 -0800, serial=8, requester=0, names=[8.example.com], missing checks for names=[8.example.com], timeError=[+Inf]\n"+
+			"Issuance missing CAA checks: issued at=0000-12-31 16:00:00.123456 -0800 -0800, serial=10, requester=0, names=[10.example.com], missing checks for names=[10.example.com], timeError=[+Inf]\n")
 }

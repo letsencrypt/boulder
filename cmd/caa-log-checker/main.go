@@ -16,6 +16,8 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 )
 
+var debug bool
+
 func openFile(path string) (*bufio.Scanner, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -52,8 +54,11 @@ func parseTimestamp(line string) (time.Time, error) {
 	return datestamp, nil
 }
 
-func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, timeTolerance time.Duration, stderr *os.File) error {
+func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, timeTolerance time.Duration,
+	checkFromDay time.Time, checkUntilDay time.Time, stderr *os.File) error {
 	lNum := 0
+	skipCount := 0
+	evaluatedCount := 0
 	for scanner.Scan() {
 		lNum++
 		line := scanner.Text()
@@ -78,6 +83,12 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, t
 		if err != nil {
 			return fmt.Errorf("line %d: failed to parse timestamp: %s", lNum, err)
 		}
+
+		if ie.issuanceTime.Before(checkFromDay) || ie.issuanceTime.After(checkUntilDay) {
+			skipCount++
+			continue
+		}
+		evaluatedCount++
 
 		var badNames []string
 		var timeErrors []float64
@@ -113,6 +124,9 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, t
 	}
 	if err := scanner.Err(); err != nil {
 		return err
+	}
+	if debug {
+		fmt.Fprintf(stderr, "evaluated %d skipped %d\n", evaluatedCount, skipCount)
 	}
 	return nil
 }
@@ -177,11 +191,20 @@ func main() {
 	raLog := flag.String("ra-log", "", "Path to a single boulder-ra log file")
 	vaLogs := flag.String("va-logs", "", "List of paths to boulder-va logs, separated by commas")
 	timeTolerance := flag.Duration("time-tolerance", 0, "How much slop to allow when comparing timestamps for ordering")
+	checkFromFlag := flag.String("check-from", "", "Day at which to start checking issuances (inclusive). Formatted like '20060102'.")
+	checkUntilFlag := flag.String("check-until", "", "Day at which to stop checking issuances (exclusive). Formatted like '20060102'.")
+	flag.BoolVar(&debug, "debug", false, "Enable debug logging")
+
 	flag.Parse()
 
 	if *timeTolerance < 0 {
 		cmd.Fail("value of -time-tolerance must be non-negative")
 	}
+
+	checkFromDay, err := time.Parse("20060102", *checkFromFlag)
+	cmd.FailOnError(err, "value of -check-from could not be parsed as date")
+	checkUntilDay, err := time.Parse("20060102", *checkUntilFlag)
+	cmd.FailOnError(err, "value of -check-until could not be parsed as date")
 
 	_ = cmd.NewLogger(cmd.SyslogConfig{
 		StdoutLevel: *logStdoutLevel,
@@ -196,6 +219,6 @@ func main() {
 	raScanner, err := openFile(*raLog)
 	cmd.FailOnError(err, fmt.Sprintf("failed to open %q", *raLog))
 
-	err = checkIssuances(raScanner, checkedMap, *timeTolerance, os.Stderr)
+	err = checkIssuances(raScanner, checkedMap, *timeTolerance, checkFromDay, checkUntilDay, os.Stderr)
 	cmd.FailOnError(err, "failed while processing RA log")
 }
