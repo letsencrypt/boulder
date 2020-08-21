@@ -84,7 +84,8 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, t
 			return fmt.Errorf("line %d: failed to parse timestamp: %s", lNum, err)
 		}
 
-		if ie.issuanceTime.Before(checkFromDay) || ie.issuanceTime.After(checkUntilDay) {
+		if !checkFromDay.IsZero() && !checkUntilDay.IsZero() &&
+			(ie.issuanceTime.Before(checkFromDay) || ie.issuanceTime.After(checkUntilDay)) {
 			skipCount++
 			continue
 		}
@@ -126,7 +127,7 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, t
 		return err
 	}
 	if debug {
-		fmt.Fprintf(stderr, "evaluated %d skipped %d\n", evaluatedCount, skipCount)
+		fmt.Fprintf(stderr, "lnum %d evaluated %d skipped %d\n", lNum, evaluatedCount, skipCount)
 	}
 	return nil
 }
@@ -191,8 +192,10 @@ func main() {
 	raLog := flag.String("ra-log", "", "Path to a single boulder-ra log file")
 	vaLogs := flag.String("va-logs", "", "List of paths to boulder-va logs, separated by commas")
 	timeTolerance := flag.Duration("time-tolerance", 0, "How much slop to allow when comparing timestamps for ordering")
-	checkFromFlag := flag.String("check-from", "", "Day at which to start checking issuances (inclusive). Formatted like '20060102'.")
-	checkUntilFlag := flag.String("check-until", "", "Day at which to stop checking issuances (exclusive). Formatted like '20060102'.")
+	checkFromFlag := flag.String("check-from", "", "Day at which to start checking issuances "+
+		"(inclusive). Formatted like '20060102' Optional. If specified, -check-until is required.")
+	checkUntilFlag := flag.String("check-until", "", "Day at which to stop checking issuances "+
+		"(exclusive). Formatted like '20060102'. Optional. If specified, -check-from is required.")
 	flag.BoolVar(&debug, "debug", false, "Enable debug logging")
 
 	flag.Parse()
@@ -201,10 +204,15 @@ func main() {
 		cmd.Fail("value of -time-tolerance must be non-negative")
 	}
 
-	checkFromDay, err := time.Parse("20060102", *checkFromFlag)
-	cmd.FailOnError(err, "value of -check-from could not be parsed as date")
-	checkUntilDay, err := time.Parse("20060102", *checkUntilFlag)
-	cmd.FailOnError(err, "value of -check-until could not be parsed as date")
+	var checkFromDay time.Time
+	var checkUntilDay time.Time
+	if *checkFromFlag != "" || *checkUntilFlag != "" {
+		var err error
+		checkFromDay, err = time.Parse("20060102", *checkFromFlag)
+		cmd.FailOnError(err, "value of -check-from could not be parsed as date")
+		checkUntilDay, err = time.Parse("20060102", *checkUntilFlag)
+		cmd.FailOnError(err, "value of -check-until could not be parsed as date")
+	}
 
 	_ = cmd.NewLogger(cmd.SyslogConfig{
 		StdoutLevel: *logStdoutLevel,

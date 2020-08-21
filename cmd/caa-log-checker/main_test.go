@@ -107,7 +107,7 @@ func TestCheckIssuances(t *testing.T) {
 		},
 	}
 
-	raBuf := bytes.NewBuffer([]byte(fmt.Sprintf(`random
+	raString := fmt.Sprintf(`random
 %s Certificate request - successful JSON={"SerialNumber": "1", "Names":["example.com"], "Requester":0}
 random
 %s Certificate request - successful JSON={"SerialNumber": "2", "Names":["2.example.com", "3.example.com"], "Requester":0}
@@ -138,25 +138,50 @@ random`,
 		testTime.Add(-2*time.Hour).Format(time.RFC3339Nano),
 		// 10.example.com: Issue @ -1:00 (FAIL, no CAA check and issued at checkFrom boundary)
 		testTime.Add(-1*time.Hour).Format(time.RFC3339Nano),
-	)))
-	raScanner := bufio.NewScanner(raBuf)
+	)
 
-	stderr, err := ioutil.TempFile(os.TempDir(), "stderr")
-	test.AssertNotError(t, err, "failed creating temporary file")
-	defer os.Remove(stderr.Name())
+	for _, testCase := range []struct {
+		name           string
+		expectedErrors string
+		checkFrom      time.Time
+		checkUntil     time.Time
+	}{
+		{
+			"with-timespan",
+			"Issuance missing CAA checks: issued at=0000-12-31 19:00:00.123456 -0800 -0800, serial=2, requester=0, names=[2.example.com 3.example.com], missing checks for names=[3.example.com], timeError=[+Inf]\n" +
+				"Issuance missing CAA checks: issued at=0000-12-31 17:30:00.123456 -0800 -0800, serial=3, requester=0, names=[4.example.com], missing checks for names=[4.example.com], timeError=[1800.000]\n" +
+				"Issuance missing CAA checks: issued at=0001-01-01 03:00:00.123456 -0800 -0800, serial=4, requester=0, names=[5.example.com], missing checks for names=[5.example.com], timeError=[+Inf]\n" +
+				"Issuance missing CAA checks: issued at=0001-01-01 04:00:00.123456 -0800 -0800, serial=8, requester=0, names=[8.example.com], missing checks for names=[8.example.com], timeError=[+Inf]\n" +
+				"Issuance missing CAA checks: issued at=0000-12-31 16:00:00.123456 -0800 -0800, serial=10, requester=0, names=[10.example.com], missing checks for names=[10.example.com], timeError=[+Inf]\n",
+			testTime.Add(-1 * time.Hour),
+			testTime.Add(11 * time.Hour),
+		},
+		{
+			"no-timespan",
+			"Issuance missing CAA checks: issued at=0000-12-31 19:00:00.123456 -0800 -0800, serial=2, requester=0, names=[2.example.com 3.example.com], missing checks for names=[3.example.com], timeError=[+Inf]\n" +
+				"Issuance missing CAA checks: issued at=0000-12-31 17:30:00.123456 -0800 -0800, serial=3, requester=0, names=[4.example.com], missing checks for names=[4.example.com], timeError=[1800.000]\n" +
+				"Issuance missing CAA checks: issued at=0001-01-01 03:00:00.123456 -0800 -0800, serial=4, requester=0, names=[5.example.com], missing checks for names=[5.example.com], timeError=[+Inf]\n" +
+				"Issuance missing CAA checks: issued at=0001-01-01 05:00:00.123456 -0800 -0800, serial=7, requester=0, names=[7.example.com], missing checks for names=[7.example.com], timeError=[+Inf]\n" +
+				"Issuance missing CAA checks: issued at=0001-01-01 04:00:00.123456 -0800 -0800, serial=8, requester=0, names=[8.example.com], missing checks for names=[8.example.com], timeError=[+Inf]\n" +
+				"Issuance missing CAA checks: issued at=0000-12-31 15:00:00.123456 -0800 -0800, serial=9, requester=0, names=[9.example.com], missing checks for names=[9.example.com], timeError=[+Inf]\n" +
+				"Issuance missing CAA checks: issued at=0000-12-31 16:00:00.123456 -0800 -0800, serial=10, requester=0, names=[10.example.com], missing checks for names=[10.example.com], timeError=[+Inf]\n",
+			time.Time{},
+			time.Time{},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			raScanner := bufio.NewScanner(bytes.NewBuffer([]byte(raString)))
+			stderr, err := ioutil.TempFile(os.TempDir(), "stderr")
+			test.AssertNotError(t, err, "failed creating temporary file")
+			defer os.Remove(stderr.Name())
 
-	timeTolerance := 10 * time.Minute
-	checkFrom := testTime.Add(-1 * time.Hour)
-	checkUntil := testTime.Add(11 * time.Hour)
-	err = checkIssuances(raScanner, checkedMap, timeTolerance, checkFrom, checkUntil, stderr)
-	test.AssertNotError(t, err, "checkIssuances failed")
+			timeTolerance := 10 * time.Minute
+			err = checkIssuances(raScanner, checkedMap, timeTolerance, testCase.checkFrom, testCase.checkUntil, stderr)
+			test.AssertNotError(t, err, "checkIssuances failed")
 
-	stderrCont, err := ioutil.ReadFile(stderr.Name())
-	test.AssertNotError(t, err, "failed to read temporary file")
-	test.AssertEquals(t, string(stderrCont),
-		"Issuance missing CAA checks: issued at=0000-12-31 19:00:00.123456 -0800 -0800, serial=2, requester=0, names=[2.example.com 3.example.com], missing checks for names=[3.example.com], timeError=[+Inf]\n"+
-			"Issuance missing CAA checks: issued at=0000-12-31 17:30:00.123456 -0800 -0800, serial=3, requester=0, names=[4.example.com], missing checks for names=[4.example.com], timeError=[1800.000]\n"+
-			"Issuance missing CAA checks: issued at=0001-01-01 03:00:00.123456 -0800 -0800, serial=4, requester=0, names=[5.example.com], missing checks for names=[5.example.com], timeError=[+Inf]\n"+
-			"Issuance missing CAA checks: issued at=0001-01-01 04:00:00.123456 -0800 -0800, serial=8, requester=0, names=[8.example.com], missing checks for names=[8.example.com], timeError=[+Inf]\n"+
-			"Issuance missing CAA checks: issued at=0000-12-31 16:00:00.123456 -0800 -0800, serial=10, requester=0, names=[10.example.com], missing checks for names=[10.example.com], timeError=[+Inf]\n")
+			stderrCont, err := ioutil.ReadFile(stderr.Name())
+			test.AssertNotError(t, err, "failed to read temporary file")
+			test.AssertEquals(t, string(stderrCont), testCase.expectedErrors)
+		})
+	}
 }

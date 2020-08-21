@@ -42,7 +42,7 @@ func TestCAALogChecker(t *testing.T) {
 	tmp, err := ioutil.TempFile(os.TempDir(), "boulder-va-empty")
 	test.AssertNotError(t, err, "failed to create temporary file")
 	defer os.Remove(tmp.Name())
-	cmd = exec.Command("bin/caa-log-checker", "-ra-log", "/var/log/boulder-ra.log", "-va-logs", tmp.Name(), "-check-from", "19010101", "-check-until", "30000101")
+	cmd = exec.Command("bin/caa-log-checker", "-ra-log", "/var/log/boulder-ra.log", "-va-logs", tmp.Name())
 	stdErr.Reset()
 	cmd.Stderr = &stdErr
 	out, err = cmd.Output()
