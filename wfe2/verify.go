@@ -23,8 +23,12 @@ import (
 	"github.com/letsencrypt/boulder/web"
 )
 
-// POST requests with a JWS body must have the following Content-Type header
-const expectedJWSContentType = "application/jose+json"
+const (
+	// POST requests with a JWS body must have the following Content-Type header
+	expectedJWSContentType = "application/jose+json"
+
+	maxRequestSize = 50000
+)
 
 func sigAlgorithmForKey(key *jose.JSONWebKey) (jose.SignatureAlgorithm, error) {
 	switch k := key.Key.(type) {
@@ -349,8 +353,11 @@ func (wfe *WebFrontEndImpl) parseJWSRequest(request *http.Request) (*jose.JSONWe
 
 	// Read the POST request body's bytes. validPOSTRequest has already checked
 	// that the body is non-nil
-	bodyBytes, err := ioutil.ReadAll(request.Body)
+	bodyBytes, err := ioutil.ReadAll(http.MaxBytesReader(nil, request.Body, maxRequestSize))
 	if err != nil {
+		if err.Error() == "http: request body too large" {
+			return nil, probs.Unauthorized("request body too large")
+		}
 		wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "UnableToReadReqBody"}).Inc()
 		return nil, probs.ServerInternal("unable to read request body")
 	}

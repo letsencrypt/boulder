@@ -147,16 +147,15 @@ func TestLoadPolicies(t *testing.T) {
 	certsPerFQDN := policy.CertificatesPerFQDNSet()
 	test.AssertEquals(t, certsPerFQDN.Threshold, 5)
 	test.AssertDeepEquals(t, certsPerFQDN.Overrides, map[string]int{
-		"le.wtf":                        10000,
-		"le1.wtf":                       10000,
-		"le2.wtf":                       10000,
-		"le3.wtf":                       10000,
-		"le.wtf,le1.wtf":                10000,
-		"good-caa-reserved.com":         10000,
-		"nginx.wtf":                     10000,
-		"ecdsa.le.wtf":                  10000,
-		"must-staple.le.wtf":            10000,
-		"brokenmultiva.letsencrypt.org": 10000,
+		"le.wtf":                10000,
+		"le1.wtf":               10000,
+		"le2.wtf":               10000,
+		"le3.wtf":               10000,
+		"le.wtf,le1.wtf":        10000,
+		"good-caa-reserved.com": 10000,
+		"nginx.wtf":             10000,
+		"ecdsa.le.wtf":          10000,
+		"must-staple.le.wtf":    10000,
 	})
 	test.AssertEquals(t, len(certsPerFQDN.RegistrationOverrides), 0)
 

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"net/mail"
 	"net/url"
 	"reflect"
 	"sort"
@@ -17,7 +16,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/akamai"
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
-	caPB "github.com/letsencrypt/boulder/ca/proto"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	csrlib "github.com/letsencrypt/boulder/csr"
@@ -29,13 +28,14 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/reloader"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	vaPB "github.com/letsencrypt/boulder/va/proto"
+	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
@@ -46,9 +46,9 @@ import (
 type caaChecker interface {
 	IsCAAValid(
 		ctx context.Context,
-		in *vaPB.IsCAAValidRequest,
+		in *vapb.IsCAAValidRequest,
 		opts ...grpc.CallOption,
-	) (*vaPB.IsCAAValidResponse, error)
+	) (*vapb.IsCAAValidResponse, error)
 }
 
 // RegistrationAuthorityImpl defines an RA.
@@ -57,7 +57,7 @@ type caaChecker interface {
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
 	CA        core.CertificateAuthority
-	VA        core.ValidationAuthority
+	VA        vapb.VAClient
 	SA        core.StorageAuthority
 	PA        core.PolicyAuthority
 	publisher core.Publisher
@@ -72,7 +72,6 @@ type RegistrationAuthorityImpl struct {
 	rlPolicies                   ratelimit.Limits
 	maxContactsPerReg            int
 	maxNames                     int
-	forceCNFromSAN               bool
 	reuseValidAuthz              bool
 	orderLifetime                time.Duration
 
@@ -83,6 +82,7 @@ type RegistrationAuthorityImpl struct {
 
 	ctpolicyResults         *prometheus.HistogramVec
 	rateLimitCounter        *prometheus.CounterVec
+	revocationReasonCounter *prometheus.CounterVec
 	namesPerCert            *prometheus.HistogramVec
 	newRegCounter           prometheus.Counter
 	reusedValidAuthzCounter prometheus.Counter
@@ -98,7 +98,6 @@ func NewRegistrationAuthorityImpl(
 	maxContactsPerReg int,
 	keyPolicy goodkey.KeyPolicy,
 	maxNames int,
-	forceCNFromSAN bool,
 	reuseValidAuthz bool,
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
@@ -162,6 +161,12 @@ func NewRegistrationAuthorityImpl(
 	})
 	stats.MustRegister(newCertCounter)
 
+	revocationReasonCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "revocation_reason",
+		Help: "A counter of certificate revocation reasons",
+	}, []string{"reason"})
+	stats.MustRegister(revocationReasonCounter)
+
 	ra := &RegistrationAuthorityImpl{
 		clk:                          clk,
 		log:                          logger,
@@ -171,7 +176,6 @@ func NewRegistrationAuthorityImpl(
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
 		maxNames:                     maxNames,
-		forceCNFromSAN:               forceCNFromSAN,
 		reuseValidAuthz:              reuseValidAuthz,
 		publisher:                    pubc,
 		caa:                          caaClient,
@@ -186,6 +190,7 @@ func NewRegistrationAuthorityImpl(
 		reusedValidAuthzCounter:      reusedValidAuthzCounter,
 		recheckCAACounter:            recheckCAACounter,
 		newCertCounter:               newCertCounter,
+		revocationReasonCounter:      revocationReasonCounter,
 	}
 	return ra
 }
@@ -210,7 +215,7 @@ func (ra *RegistrationAuthorityImpl) rateLimitPoliciesLoadError(err error) {
 // some common analysis easier.
 type certificateRequestAuthz struct {
 	ID            string
-	ChallengeType string
+	ChallengeType core.AcmeChallenge
 }
 
 // certificateRequestEvent is a struct for holding information that is logged as
@@ -361,7 +366,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 // * A list containing a contact that has a URL scheme other than mailto
 // * A list containing a mailto contact that contains hfields
 // * A list containing a contact that has non-ascii characters
-// * A list containing a contact that doesn't pass `validateEmail`
+// * A list containing a contact that doesn't pass `policy.ValidEmail`
 func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts *[]string) error {
 	if contacts == nil || len(*contacts) == 0 {
 		return nil // Nothing to validate
@@ -394,7 +399,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 				contact,
 			)
 		}
-		if err := ra.validateEmail(parsed.Opaque); err != nil {
+		if err := policy.ValidEmail(parsed.Opaque); err != nil {
 			return err
 		}
 	}
@@ -417,42 +422,11 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 	return nil
 }
 
-// forbiddenMailDomains is a map of domain names we do not allow after the
-// @ symbol in contact mailto addresses. These are frequently used when
-// copy-pasting example configurations and would not result in expiration
-// messages and subscriber communications reaching the user that created the
-// registration if allowed.
-var forbiddenMailDomains = map[string]bool{
-	// https://tools.ietf.org/html/rfc2606#section-3
-	"example.com": true,
-	"example.net": true,
-	"example.org": true,
-}
-
-// validateEmail returns an error if the given address is not parseable as an
-// email address or if the domain portion of the email address is invalid or
-// a member of the forbiddenMailDomains map.
-func (ra *RegistrationAuthorityImpl) validateEmail(address string) error {
-	email, err := mail.ParseAddress(address)
-	if err != nil {
-		if len(address) > 254 {
-			address = address[:254]
-		}
-		return berrors.InvalidEmailError("%q is not a valid e-mail address", address)
+func intPointerToInt(ip *int64) int {
+	if ip != nil {
+		return int(*ip)
 	}
-	splitEmail := strings.SplitN(email.Address, "@", -1)
-	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	if err := ra.PA.ValidDomain(domain); err != nil {
-		return berrors.InvalidEmailError(
-			"contact email %q has invalid domain : %s",
-			email.Address, err)
-	}
-	if forbiddenMailDomains[domain] {
-		return berrors.InvalidEmailError(
-			"invalid contact domain. Contact emails @%s are forbidden",
-			domain)
-	}
-	return nil
+	return 0
 }
 
 func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.Context, regID int64) error {
@@ -467,7 +441,7 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 		// Most rate limits have a key for overrides, but there is no meaningful key
 		// here.
 		noKey := ""
-		if int(*countPB.Count) >= limit.GetThreshold(noKey, regID) {
+		if intPointerToInt(countPB.Count) >= limit.GetThreshold(noKey, regID) {
 			ra.rateLimitCounter.WithLabelValues("pending_authorizations_by_registration_id", "exceeded").Inc()
 			ra.log.Infof("Rate limit exceeded, PendingAuthorizationsByRegID, regID: %d", regID)
 			return berrors.RateLimitError("too many currently pending authorizations")
@@ -521,7 +495,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	// Most rate limits have a key for overrides, but there is no meaningful key
 	// here.
 	noKey := ""
-	if *count.Count >= int64(limit.GetThreshold(noKey, regID)) {
+	if intPointerToInt(count.Count) >= limit.GetThreshold(noKey, regID) {
 		ra.log.Infof("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID)
 		return berrors.RateLimitError("too many failed authorizations recently")
 	}
@@ -681,8 +655,7 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(parsedCertificate *x509.Certific
 	if !core.KeyDigestEquals(parsedCertificate.PublicKey, csr.PublicKey) {
 		return berrors.InternalServerError("generated certificate public key doesn't match CSR public key")
 	}
-	if !ra.forceCNFromSAN && len(csr.Subject.CommonName) > 0 &&
-		parsedCertificate.Subject.CommonName != strings.ToLower(csr.Subject.CommonName) {
+	if parsedCertificate.Subject.CommonName != strings.ToLower(csr.Subject.CommonName) {
 		return berrors.InternalServerError("generated certificate CommonName doesn't match CSR CommonName")
 	}
 	// Sort both slices of names before comparison.
@@ -750,7 +723,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	// Ensure the names from the CSR are free of duplicates & lowercased.
 	names = core.UniqueLowerNames(names)
 	// Check the authorizations to ensure validity for the names required.
-	if err = ra.checkAuthorizationsCAA(ctx, names, authzs, acctIDInt, ra.clk.Now()); err != nil {
+	if err = ra.checkAuthorizationsCAA(ctx, names, authzs, int64(acctID), ra.clk.Now()); err != nil {
 		return nil, err
 	}
 
@@ -804,13 +777,13 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	var recheckAuthzs []*core.Authorization
 	// Per Baseline Requirements, CAA must be checked within 8 hours of issuance.
 	// CAA is checked when an authorization is validated, so as long as that was
-	// less than 8 hours ago, we're fine. If it was more than 8 hours ago
-	// we have to recheck. Since we don't record the validation time for
+	// less than 8 hours ago, we're fine. We recheck if that was more than 7 hours
+	// ago, to be on the safe side. Since we don't record the validation time for
 	// authorizations, we instead look at the expiration time and subtract out the
 	// expected authorization lifetime. Note: If we adjust the authorization
 	// lifetime in the future we will need to tweak this correspondingly so it
 	// works correctly during the switchover.
-	caaRecheckTime := now.Add(ra.authorizationLifetime).Add(-8 * time.Hour)
+	caaRecheckTime := now.Add(ra.authorizationLifetime).Add(-7 * time.Hour)
 	for _, name := range names {
 		authz := authzs[name]
 		if authz == nil {
@@ -863,7 +836,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 			var method string
 			for _, challenge := range authz.Challenges {
 				if challenge.Status == core.StatusValid {
-					method = challenge.Type
+					method = string(challenge.Type)
 					break
 				}
 			}
@@ -877,10 +850,10 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 				return
 			}
 
-			resp, err := ra.caa.IsCAAValid(ctx, &vaPB.IsCAAValidRequest{
-				Domain:           &name,
-				ValidationMethod: &method,
-				AccountURIID:     &authz.RegistrationID,
+			resp, err := ra.caa.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
+				Domain:           name,
+				ValidationMethod: method,
+				AccountURIID:     authz.RegistrationID,
 			})
 			if err != nil {
 				ra.log.AuditErrf("Rechecking CAA: %s", err)
@@ -986,7 +959,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		return nil, err
 	}
 
-	if err := csrlib.VerifyCSR(ctx, csrOb, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, *req.Order.RegistrationID); err != nil {
+	if err := csrlib.VerifyCSR(ctx, csrOb, ra.maxNames, &ra.keyPolicy, ra.PA, *req.Order.RegistrationID); err != nil {
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
 		return nil, err
@@ -1077,7 +1050,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 // NewCertificate requests the issuance of a certificate.
 func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64) (core.Certificate, error) {
 	// Verify the CSR
-	if err := csrlib.VerifyCSR(ctx, req.CSR, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, regID); err != nil {
+	if err := csrlib.VerifyCSR(ctx, req.CSR, ra.maxNames, &ra.keyPolicy, ra.PA, regID); err != nil {
 		return core.Certificate{}, berrors.MalformedError(err.Error())
 	}
 	// NewCertificate provides an order ID of 0, indicating this is a classic ACME
@@ -1196,16 +1169,16 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	// of each of the valid authorizations we used for this issuance.
 	logEventAuthzs := make(map[string]certificateRequestAuthz, len(names))
 	for name, authz := range authzs {
-		var solvedByChallengeType string
 		// If the authz has no solved by challenge type there has been an internal
 		// consistency violation worth logging a warning about. In this case the
 		// solvedByChallengeType will be logged as the empty string.
-		if solvedByChallengeType = authz.SolvedBy(); solvedByChallengeType == "" {
-			ra.log.Warningf("Authz %q has status %q but empty SolvedBy()", authz.ID, authz.Status)
+		solvedByChallengeType, err := authz.SolvedBy()
+		if err != nil || solvedByChallengeType == nil {
+			ra.log.Warningf("Authz %q has status %q but empty SolvedBy(): %s", authz.ID, authz.Status, err)
 		}
 		logEventAuthzs[name] = certificateRequestAuthz{
 			ID:            authz.ID,
-			ChallengeType: solvedByChallengeType,
+			ChallengeType: *solvedByChallengeType,
 		}
 	}
 	logEvent.Authorizations = logEventAuthzs
@@ -1214,12 +1187,10 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
 
 	// Create the certificate and log the result
-	acctIDInt := int64(acctID)
-	orderIDInt := int64(oID)
-	issueReq := &caPB.IssueCertificateRequest{
+	issueReq := &capb.IssueCertificateRequest{
 		Csr:            csr.Raw,
-		RegistrationID: &acctIDInt,
-		OrderID:        &orderIDInt,
+		RegistrationID: int64(acctID),
+		OrderID:        int64(oID),
 	}
 
 	// wrapError adds a prefix to an error. If the error is a boulder error then
@@ -1245,17 +1216,17 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	if err != nil {
 		return emptyCert, wrapError(err, "getting SCTs")
 	}
-	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &caPB.IssueCertificateForPrecertificateRequest{
+	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:            precert.DER,
 		SCTs:           scts,
-		RegistrationID: &acctIDInt,
-		OrderID:        &orderIDInt,
+		RegistrationID: int64(acctID),
+		OrderID:        int64(oID),
 	})
 	if err != nil {
 		return emptyCert, wrapError(err, "issuing certificate for precertificate")
 	}
 
-	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
+	parsedCertificate, err := x509.ParseCertificate([]byte(cert.Der))
 	if err != nil {
 		// berrors.InternalServerError because the certificate from the CA should be
 		// parseable.
@@ -1263,7 +1234,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	}
 
 	// Asynchronously submit the final certificate to any configured logs
-	go ra.ctpolicy.SubmitFinalCert(cert.DER, parsedCertificate.NotAfter)
+	go ra.ctpolicy.SubmitFinalCert(cert.Der, parsedCertificate.NotAfter)
 
 	err = ra.MatchesCSR(parsedCertificate, csr)
 	if err != nil {
@@ -1276,7 +1247,11 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	logEvent.NotAfter = parsedCertificate.NotAfter
 
 	ra.newCertCounter.Inc()
-	return cert, nil
+	res, err := bgrpc.PBToCert(cert)
+	if err != nil {
+		return emptyCert, nil
+	}
+	return res, nil
 }
 
 func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte, expiration time.Time) (core.SCTDERs, error) {
@@ -1342,10 +1317,10 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(
 	var badNames []string
 	for _, entry := range counts {
 		// Should not happen, but be defensive.
-		if entry.Count == nil || entry.Name == nil {
-			return nil, fmt.Errorf("CountByNames_MapElement had nil Count or Name")
+		if entry.Name == nil {
+			return nil, fmt.Errorf("CountByNames_MapElement had nil Name")
 		}
-		if int(*entry.Count) >= limit.GetThreshold(*entry.Name, regID) {
+		if intPointerToInt(entry.Count) >= limit.GetThreshold(*entry.Name, regID) {
 			badNames = append(badNames, *entry.Name)
 		}
 	}
@@ -1540,6 +1515,7 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 		return err
 	}
 	status := string(challenge.Status)
+	ctype := string(challenge.Type)
 	var expires int64
 	if challenge.Status == core.StatusInvalid {
 		expires = authExpires.UnixNano()
@@ -1554,7 +1530,7 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 		Id:                &authzID,
 		Status:            &status,
 		Expires:           &expires,
-		Attempted:         &challenge.Type,
+		Attempted:         &ctype,
 		ValidationRecords: vr.Records,
 		ValidationError:   vr.Problems,
 	})
@@ -1581,7 +1557,12 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	}
 
 	authz := base
-	challIndex := int(*req.ChallengeIndex)
+	var challIndex int
+	if req.ChallengeIndex == nil {
+		challIndex = 0
+	} else {
+		challIndex = int(*req.ChallengeIndex)
+	}
 	if challIndex >= len(authz.Challenges) {
 		return nil,
 			berrors.MalformedError("invalid challenge index '%d'", challIndex)
@@ -1641,19 +1622,43 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		challenges := make([]core.Challenge, len(authz.Challenges))
 		copy(challenges, authz.Challenges)
 		authz.Challenges = challenges
+		chall, _ := bgrpc.ChallengeToPB(authz.Challenges[challIndex])
 
-		records, err := ra.VA.PerformValidation(vaCtx, authz.Identifier.Value, authz.Challenges[challIndex], authz)
+		req := vapb.PerformValidationRequest{
+			Domain:    authz.Identifier.Value,
+			Challenge: chall,
+			Authz: &vapb.AuthzMeta{
+				Id:    authz.ID,
+				RegID: authz.RegistrationID,
+			},
+		}
+		res, err := ra.VA.PerformValidation(vaCtx, &req)
+
+		challenge := &authz.Challenges[challIndex]
 		var prob *probs.ProblemDetails
-		if p, ok := err.(*probs.ProblemDetails); ok {
-			prob = p
-		} else if err != nil {
+
+		if err != nil {
 			prob = probs.ServerInternal("Could not communicate with VA")
 			ra.log.AuditErrf("Could not communicate with VA: %s", err)
-		}
+		} else {
+			if res.Problems != nil {
+				prob, err = bgrpc.PBToProblemDetails(res.Problems)
+				if err != nil {
+					prob = probs.ServerInternal("Could not communicate with VA")
+					ra.log.AuditErrf("Could not communicate with VA: %s", err)
+				}
+			}
 
-		// Save the updated records
-		challenge := &authz.Challenges[challIndex]
-		challenge.ValidationRecord = records
+			// Save the updated records
+			records := make([]core.ValidationRecord, len(res.Records))
+			for i, r := range res.Records {
+				records[i], err = bgrpc.PBToValidationRecord(r)
+				if err != nil {
+					prob = probs.ServerInternal("Records for validation corrupt")
+				}
+			}
+			challenge.ValidationRecord = records
+		}
 
 		if !challenge.RecordsSane() && prob == nil {
 			prob = probs.ServerInternal("Records for validation failed sanity check")
@@ -1689,14 +1694,13 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 // revokeCertificate generates a revoked OCSP response for the given certificate, stores
 // the revocation information, and purges OCSP request URLs from Akamai.
 func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, revokedBy int64, source string, comment string) error {
-	status := string(core.OCSPStatusRevoked)
 	reason := int32(code)
 	revokedAt := ra.clk.Now().UnixNano()
-	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
+	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		CertDER:   cert.Raw,
-		Status:    &status,
-		Reason:    &reason,
-		RevokedAt: &revokedAt,
+		Status:    string(core.OCSPStatusRevoked),
+		Reason:    reason,
+		RevokedAt: revokedAt,
 	})
 	if err != nil {
 		return err
@@ -1704,7 +1708,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	serial := core.SerialToString(cert.SerialNumber)
 	// for some reason we use int32 and int64 for the reason in different
 	// protobuf messages, so we have to re-cast it here.
-	reason64 := int64(reason)
+	reason64 := int64(code)
 	err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   &serial,
 		Reason:   &reason64,
@@ -1714,7 +1718,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	if err != nil {
 		return err
 	}
-	if features.Enabled(features.BlockedKeyTable) && reason == ocsp.KeyCompromise {
+	if reason == ocsp.KeyCompromise {
 		digest, err := core.KeyDigest(cert.PublicKey)
 		if err != nil {
 			return err
@@ -1770,6 +1774,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 		return err
 	}
 
+	ra.revocationReasonCounter.WithLabelValues(revocation.ReasonToString[revocationCode]).Inc()
 	state = "Success"
 	return nil
 }
@@ -1802,6 +1807,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		return err
 	}
 
+	ra.revocationReasonCounter.WithLabelValues(revocation.ReasonToString[revocationCode]).Inc()
 	state = "Success"
 	return nil
 }
@@ -1950,7 +1956,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// that doesn't meet this criteria from SA.GetAuthorizations but we verify
 		// again to be safe.
 		if strings.HasPrefix(name, "*.") &&
-			len(authz.Challenges) == 1 && *authz.Challenges[0].Type == core.ChallengeTypeDNS01 {
+			len(authz.Challenges) == 1 && core.AcmeChallenge(*authz.Challenges[0].Type) == core.ChallengeTypeDNS01 {
 			authzID, err := strconv.ParseInt(*authz.Id, 10, 64)
 			if err != nil {
 				return nil, err

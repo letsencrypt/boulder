@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	caPB "github.com/letsencrypt/boulder/ca/proto"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
@@ -31,8 +31,8 @@ type mockCA struct {
 	mocks.MockCA
 }
 
-func (ca *mockCA) GenerateOCSP(ctx context.Context, req *caPB.GenerateOCSPRequest) (*caPB.OCSPResponse, error) {
-	return &caPB.OCSPResponse{}, nil
+func (ca *mockCA) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
+	return &capb.OCSPResponse{}, nil
 }
 
 func TestRevokeBatch(t *testing.T) {
@@ -54,7 +54,7 @@ func TestRevokeBatch(t *testing.T) {
 	ra := ra.NewRegistrationAuthorityImpl(fc,
 		log,
 		metrics.NoopRegisterer,
-		1, goodkey.KeyPolicy{}, 100, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, nil, 0, nil, nil, &x509.Certificate{})
+		1, goodkey.KeyPolicy{}, 100, true, 300*24*time.Hour, 7*24*time.Hour, nil, nil, 0, nil, nil, &x509.Certificate{})
 	ra.SA = ssa
 	ra.CA = &mockCA{}
 

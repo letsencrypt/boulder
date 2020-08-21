@@ -44,12 +44,10 @@ const (
 	directoryPath = "/directory"
 	newAcctPath   = "/acme/new-acct"
 	acctPath      = "/acme/acct/"
-	authzPath     = "/acme/authz/"
 	// For user-facing URLs we use a "v3" suffix to avoid potential confusiong
 	// regarding ACMEv2.
 	authzv2Path       = "/acme/authz-v3/"
 	challengev2Path   = "/acme/chall-v3/"
-	challengePath     = "/acme/challenge/"
 	certPath          = "/acme/cert/"
 	revokeCertPath    = "/acme/revoke-cert"
 	issuerPath        = "/acme/issuer-cert"
@@ -517,12 +515,17 @@ func (wfe *WebFrontEndImpl) Nonce(
 	}
 
 	statusCode := http.StatusNoContent
-	// The ACME specification says GET requets should receive http.StatusNoContent
+	// The ACME specification says GET requests should receive http.StatusNoContent
 	// and HEAD/POST-as-GET requests should receive http.StatusOK.
 	if request.Method != "GET" {
 		statusCode = http.StatusOK
 	}
 	response.WriteHeader(statusCode)
+
+	// The ACME specification says the server MUST include a Cache-Control header
+	// field with the "no-store" directive in responses for the newNonce resource,
+	// in order to prevent caching of this resource.
+	response.Header().Set("Cache-Control", "no-store")
 }
 
 // sendError wraps web.SendError
@@ -774,7 +777,10 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		// to be a byte-for-byte match with the requested cert.
 		cert, err := wfe.SA.GetCertificate(ctx, serial)
 		if err != nil {
-			return notFoundProb
+			if berrors.Is(err, berrors.NotFound) {
+				return notFoundProb
+			}
+			return probs.ServerInternal("unable to retrieve certificate")
 		}
 		// If the certificate in the DB isn't a byte for byte match, return a problem
 		if !bytes.Equal(cert.DER, revokeRequest.CertificateDER) {
@@ -1077,7 +1083,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 		wfe.getChallenge(ctx, response, request, authz, &challenge, logEvent)
 
 	case "POST":
-		logEvent.ChallengeType = challenge.Type
+		logEvent.ChallengeType = string(challenge.Type)
 		wfe.postChallenge(ctx, response, request, authz, challengeIndex, logEvent)
 	}
 }
@@ -1574,13 +1580,14 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	logEvent.Extra["RequestedSerial"] = serial
 
 	cert, err := wfe.SA.GetCertificate(ctx, serial)
-	// TODO(#991): handle db errors
 	if err != nil {
 		ierr := fmt.Errorf("unable to get certificate by serial id %#v: %s", serial, err)
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
 			wfe.sendError(response, logEvent, probs.Conflict("Multiple certificates with same short serial"), ierr)
-		} else {
+		} else if berrors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), ierr)
+		} else {
+			wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve certificate"), ierr)
 		}
 		return
 	}
@@ -2160,6 +2167,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	logEvent.Extra["CSRDNSNames"] = certificateRequest.CSR.DNSNames
 	logEvent.Extra["CSREmailAddresses"] = certificateRequest.CSR.EmailAddresses
 	logEvent.Extra["CSRIPAddresses"] = certificateRequest.CSR.IPAddresses
+	logEvent.Extra["KeyType"] = web.KeyTypeToString(certificateRequest.CSR.PublicKey)
 
 	// Inc CSR signature algorithm counter
 	wfe.stats.csrSignatureAlgs.With(prometheus.Labels{"type": certificateRequest.CSR.SignatureAlgorithm.String()}).Inc()

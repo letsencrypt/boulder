@@ -18,7 +18,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -905,6 +904,11 @@ func TestNonceEndpoint(t *testing.T) {
 			// And the response should contain a valid nonce in the Replay-Nonce header
 			nonce := responseWriter.Header().Get("Replay-Nonce")
 			test.AssertEquals(t, wfe.nonceService.Valid(nonce), true)
+			// The server MUST include a Cache-Control header field with the "no-store"
+			// directive in responses for the newNonce resource, in order to prevent
+			// caching of this resource.
+			cacheControl := responseWriter.Header().Get("Cache-Control")
+			test.AssertEquals(t, cacheControl, "no-store")
 		})
 	}
 }
@@ -1839,6 +1843,16 @@ func TestGetCertificate(t *testing.T) {
 			Request:        makeGet("/acme/cert/0000000000000000000000000000000000ff"),
 			ExpectedStatus: http.StatusNotFound,
 			ExpectedBody:   notFound,
+		},
+		{
+			Name:           "Internal server error, no cache",
+			Request:        makeGet("/acme/cert/000000000000000000000000000000626164"),
+			ExpectedStatus: http.StatusInternalServerError,
+			ExpectedBody: `{
+				"type": "urn:ietf:params:acme:error:serverInternal",
+				"status": 500,
+				"detail": "Failed to retrieve certificate"
+			}`,
 		},
 		{
 			Name:           "Invalid serial, no cache",
@@ -3186,10 +3200,6 @@ func TestMandatoryPOSTAsGET(t *testing.T) {
 }
 
 func TestGetChallengeUpRel(t *testing.T) {
-	if !strings.HasSuffix(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		return
-	}
-
 	wfe, _ := setupWFE(t)
 
 	challengeURL := "http://localhost/acme/chall-v3/1/-ZfxEw"

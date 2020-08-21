@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	"google.golang.org/grpc/grpclog"
 
@@ -137,7 +138,8 @@ type logWriter struct {
 }
 
 func (lw logWriter) Write(p []byte) (n int, err error) {
-	lw.Logger.Info(string(p))
+	// Lines received by logWriter will always have a trailing newline.
+	lw.Logger.Info(strings.Trim(string(p), "\n"))
 	return
 }
 
@@ -180,6 +182,15 @@ func NewLogger(logConf SyslogConfig) blog.Logger {
 	_ = mysql.SetLogger(mysqlLogger{logger})
 	grpclog.SetLoggerV2(grpcLogger{logger})
 	log.SetOutput(logWriter{logger})
+
+	// Periodically log the current timestamp, to ensure syslog timestamps match
+	// Boulder's conception of time.
+	go func() {
+		for {
+			time.Sleep(time.Minute)
+			logger.Info(fmt.Sprintf("time=%s", time.Now().Format(time.RFC3339Nano)))
+		}
+	}()
 	return logger
 }
 

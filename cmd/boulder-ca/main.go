@@ -16,7 +16,7 @@ import (
 
 	"github.com/letsencrypt/boulder/ca"
 	ca_config "github.com/letsencrypt/boulder/ca/config"
-	caPB "github.com/letsencrypt/boulder/ca/proto"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -24,6 +24,7 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/policy"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	bsigner "github.com/letsencrypt/boulder/signer"
 )
 
 type config struct {
@@ -34,7 +35,7 @@ type config struct {
 	Syslog cmd.SyslogConfig
 }
 
-func loadIssuers(c config) ([]ca.Issuer, error) {
+func loadCFSSLIssuers(c config) ([]ca.Issuer, error) {
 	var issuers []ca.Issuer
 	for _, issuerConfig := range c.CA.Issuers {
 		priv, cert, err := loadIssuer(issuerConfig)
@@ -45,6 +46,24 @@ func loadIssuers(c config) ([]ca.Issuer, error) {
 		})
 	}
 	return issuers, nil
+}
+
+func loadBoulderIssuers(configs []ca_config.IssuerConfig, profile bsigner.ProfileConfig, ignoredLints []string) ([]bsigner.Config, error) {
+	boulderIssuerConfigs := make([]bsigner.Config, 0, len(configs))
+	for _, issuerConfig := range configs {
+		signer, issuer, err := loadIssuer(issuerConfig)
+		if err != nil {
+			return nil, err
+		}
+		boulderIssuerConfigs = append(boulderIssuerConfigs, bsigner.Config{
+			Issuer:       issuer,
+			Signer:       signer,
+			IgnoredLints: ignoredLints,
+			Clk:          cmd.Clock(),
+			Profile:      profile,
+		})
+	}
+	return boulderIssuerConfigs, nil
 }
 
 func loadIssuer(issuerConfig ca_config.IssuerConfig) (crypto.Signer, *x509.Certificate, error) {
@@ -152,8 +171,15 @@ func main() {
 	err = pa.SetHostnamePolicyFile(c.CA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
 
-	issuers, err := loadIssuers(c)
-	cmd.FailOnError(err, "Couldn't load issuers")
+	var cfsslIssuers []ca.Issuer
+	var boulderIssuerConfigs []bsigner.Config
+	if features.Enabled(features.NonCFSSLSigner) {
+		boulderIssuerConfigs, err = loadBoulderIssuers(c.CA.Issuers, c.CA.SignerProfile, c.CA.IgnoredLints)
+		cmd.FailOnError(err, "Couldn't load issuers")
+	} else {
+		cfsslIssuers, err = loadCFSSLIssuers(c)
+		cmd.FailOnError(err, "Couldn't load issuers")
+	}
 
 	tlsConfig, err := c.CA.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
@@ -165,11 +191,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sa := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
 
-	var blockedKeyFunc goodkey.BlockedKeyCheckFunc
-	if features.Enabled(features.BlockedKeyTable) {
-		blockedKeyFunc = sa.KeyBlocked
-	}
-	kp, err := goodkey.NewKeyPolicy(c.CA.WeakKeyFile, c.CA.BlockedKeyFile, blockedKeyFunc)
+	kp, err := goodkey.NewKeyPolicy(c.CA.WeakKeyFile, c.CA.BlockedKeyFile, sa.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	var orphanQueue *goque.Queue
@@ -185,7 +207,8 @@ func main() {
 		pa,
 		clk,
 		scope,
-		issuers,
+		cfsslIssuers,
+		boulderIssuerConfigs,
 		kp,
 		logger,
 		orphanQueue)
@@ -199,7 +222,7 @@ func main() {
 	caSrv, caListener, err := bgrpc.NewServer(c.CA.GRPCCA, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
 	caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
-	caPB.RegisterCertificateAuthorityServer(caSrv, caWrapper)
+	capb.RegisterCertificateAuthorityServer(caSrv, caWrapper)
 	go func() {
 		cmd.FailOnError(cmd.FilterShutdownErrors(caSrv.Serve(caListener)), "CA gRPC service failed")
 	}()
@@ -207,7 +230,7 @@ func main() {
 	ocspSrv, ocspListener, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
 	ocspWrapper := bgrpc.NewCertificateAuthorityServer(cai)
-	caPB.RegisterOCSPGeneratorServer(ocspSrv, ocspWrapper)
+	capb.RegisterOCSPGeneratorServer(ocspSrv, ocspWrapper)
 	go func() {
 		cmd.FailOnError(cmd.FilterShutdownErrors(ocspSrv.Serve(ocspListener)),
 			"OCSPGenerator gRPC service failed")

@@ -194,3 +194,12 @@ func TestReadConfigFile(t *testing.T) {
 	test.AssertNotError(t, err, "ReadConfigFile(../test/config/notify-mailer.json) errored")
 	test.AssertEquals(t, c.NotifyMailer.SMTPConfig.Server, "localhost")
 }
+
+func TestLogWriter(t *testing.T) {
+	mock := blog.UseMock()
+	lw := logWriter{mock}
+	_, _ = lw.Write([]byte("hi\n"))
+	lines := mock.GetAllMatching(".*")
+	test.AssertEquals(t, len(lines), 1)
+	test.AssertEquals(t, lines[0], "INFO: hi")
+}

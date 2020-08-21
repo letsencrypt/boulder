@@ -2,8 +2,6 @@
   "publisher": {
     "userAgent": "boulder/1.0",
     "blockProfileRate": 1000000000,
-    "maxConcurrentRPCServerRequests": 100000,
-    "submissionTimeout": "5s",
     "debugAddr": ":8009",
     "grpc": {
       "address": ":9091",
@@ -28,7 +26,7 @@
 
   "common": {
     "ct": {
-      "intermediateBundleFilename": "test/test-ca2.pem"
+      "intermediateBundleFilename": "/tmp/intermediate-cert-rsa-a.pem"
     }
   }
 }

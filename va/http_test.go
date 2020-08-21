@@ -28,6 +28,10 @@ import (
 	"testing"
 )
 
+func httpChallenge() core.Challenge {
+	return createChallenge(core.ChallengeTypeHTTP01)
+}
+
 // TestDialerMismatchError tests that using a preresolvedDialer for one host for
 // a dial to another host produces the expected dialerMismatchError.
 func TestDialerMismatchError(t *testing.T) {
@@ -997,8 +1001,6 @@ func TestFetchHTTP(t *testing.T) {
 }
 
 // All paths that get assigned to tokens MUST be valid tokens
-const expectedToken = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
-const expectedKeyAuthorization = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
 const pathWrongToken = "i6lNAC4lOOLYCl-A08VJt9z_tKYvVk63Dumo8icsBjQ"
 const path404 = "404"
 const path500 = "500"
@@ -1089,10 +1091,7 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 }
 
 func TestHTTPBadPort(t *testing.T) {
-	chall := core.HTTPChallenge01("")
-	setChallengeToken(&chall, expectedToken)
-
-	hs := httpSrv(t, chall.Token)
+	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
 
 	va, _ := setup(hs, 0, "", nil)
@@ -1103,7 +1102,7 @@ func TestHTTPBadPort(t *testing.T) {
 	badPort := 40000 + mrand.Intn(25000)
 	va.httpPort = badPort
 
-	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), httpChallenge())
 	if prob == nil {
 		t.Fatalf("Server's down; expected refusal. Where did we connect?")
 	}
@@ -1114,9 +1113,6 @@ func TestHTTPBadPort(t *testing.T) {
 }
 
 func TestHTTPKeyAuthorizationFileMismatch(t *testing.T) {
-	chall := core.HTTPChallenge01("")
-	setChallengeToken(&chall, expectedToken)
-
 	m := http.NewServeMux()
 	hs := httptest.NewUnstartedServer(m)
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -1125,7 +1121,7 @@ func TestHTTPKeyAuthorizationFileMismatch(t *testing.T) {
 	hs.Start()
 
 	va, _ := setup(hs, 0, "", nil)
-	_, prob := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	_, prob := va.validateHTTP01(ctx, dnsi("localhost.com"), httpChallenge())
 
 	if prob == nil {
 		t.Fatalf("Expected validation to fail when file mismatched.")
@@ -1137,9 +1133,6 @@ func TestHTTPKeyAuthorizationFileMismatch(t *testing.T) {
 }
 
 func TestHTTP(t *testing.T) {
-	chall := core.HTTPChallenge01("")
-	setChallengeToken(&chall, expectedToken)
-
 	// NOTE: We do not attempt to shut down the server. The problem is that the
 	// "wait-long" handler sleeps for ten seconds, but this test finishes in less
 	// than that. So if we try to call hs.Close() at the end of the test, we'll be
@@ -1148,11 +1141,11 @@ func TestHTTP(t *testing.T) {
 	// that happens, failing the test. So instead, we live with leaving the server
 	// around till the process exits.
 	// TODO(#1989): close hs
-	hs := httpSrv(t, chall.Token)
+	hs := httpSrv(t, expectedToken)
 
 	va, log := setup(hs, 0, "", nil)
 
-	log.Clear()
+	chall := httpChallenge()
 	t.Logf("Trying to validate: %+v\n", chall)
 	_, prob := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	if prob != nil {
@@ -1216,13 +1209,12 @@ func TestHTTP(t *testing.T) {
 }
 
 func TestHTTPTimeout(t *testing.T) {
-	chall := core.HTTPChallenge01("")
-	setChallengeToken(&chall, expectedToken)
-
-	hs := httpSrv(t, chall.Token)
+	hs := httpSrv(t, expectedToken)
 	// TODO(#1989): close hs
 
 	va, _ := setup(hs, 0, "", nil)
+
+	chall := httpChallenge()
 	setChallengeToken(&chall, pathWaitLong)
 
 	expectMatch := regexp.MustCompile(
@@ -1283,7 +1275,7 @@ func TestHTTPDialTimeout(t *testing.T) {
 	// that, just retry until we get something other than "Network unreachable".
 	var prob *probs.ProblemDetails
 	for i := 0; i < 20; i++ {
-		_, prob = va.validateHTTP01(ctx, dnsi("unroutable.invalid"), core.HTTPChallenge01(""))
+		_, prob = va.validateHTTP01(ctx, dnsi("unroutable.invalid"), httpChallenge())
 		if prob != nil && strings.Contains(prob.Detail, "Network unreachable") {
 			continue
 		} else {
@@ -1312,13 +1304,11 @@ func TestHTTPDialTimeout(t *testing.T) {
 }
 
 func TestHTTPRedirectLookup(t *testing.T) {
-	chall := core.HTTPChallenge01("")
-	setChallengeToken(&chall, expectedToken)
-
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
 	va, log := setup(hs, 0, "", nil)
 
+	chall := httpChallenge()
 	setChallengeToken(&chall, pathMoved)
 	_, prob := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	if prob != nil {
@@ -1380,13 +1370,12 @@ func TestHTTPRedirectLookup(t *testing.T) {
 }
 
 func TestHTTPRedirectLoop(t *testing.T) {
-	chall := core.HTTPChallenge01("")
-	setChallengeToken(&chall, "looper")
-
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
 	va, _ := setup(hs, 0, "", nil)
 
+	chall := httpChallenge()
+	setChallengeToken(&chall, "looper")
 	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
 	if prob == nil {
 		t.Fatalf("Challenge should have failed for %s", chall.Token)
@@ -1394,14 +1383,12 @@ func TestHTTPRedirectLoop(t *testing.T) {
 }
 
 func TestHTTPRedirectUserAgent(t *testing.T) {
-	chall := core.HTTPChallenge01("")
-	setChallengeToken(&chall, expectedToken)
-
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
 	va, _ := setup(hs, 0, "", nil)
 	va.userAgent = rejectUserAgent
 
+	chall := httpChallenge()
 	setChallengeToken(&chall, pathMoved)
 	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
 	if prob == nil {

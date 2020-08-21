@@ -7,7 +7,6 @@
       "httpsPort": 5001,
       "tlsPort": 5001
     },
-    "maxConcurrentRPCServerRequests": 100000,
     "dnsTries": 3,
     "dnsResolvers": [
       "127.0.0.1:8053",
@@ -42,7 +41,6 @@
       }
     ],
     "maxRemoteValidationFailures": 1,
-    "multiVAPolicyFile": "test/example-multiva-policy.yaml",
     "accountURIPrefixes": [
       "http://boulder:4000/acme/reg/",
       "http://boulder:4001/acme/acct/"

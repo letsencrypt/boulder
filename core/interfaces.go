@@ -9,13 +9,14 @@ import (
 
 	jose "gopkg.in/square/go-jose.v2"
 
-	caPB "github.com/letsencrypt/boulder/ca/proto"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/identifier"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
 // A WebFrontEnd object supplies methods that can be hooked into
@@ -91,15 +92,19 @@ type RegistrationAuthority interface {
 	AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, adminName string) error
 }
 
+// ValidationAuthority defines the public interface for the Boulder VA
+// TODO(#4956): Remove this unnecessary type alias.
+type ValidationAuthority vapb.VAServer
+
 // CertificateAuthority defines the public interface for the Boulder CA
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	IssuePrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error)
+	IssuePrecertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error)
 
 	// [RegistrationAuthority]
-	IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (Certificate, error)
+	IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error)
 
-	GenerateOCSP(ctx context.Context, ocspReq *caPB.GenerateOCSPRequest) (*caPB.OCSPResponse, error)
+	GenerateOCSP(ctx context.Context, ocspReq *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error)
 }
 
 // PolicyAuthority defines the public interface for the Boulder PA
@@ -107,8 +112,7 @@ type PolicyAuthority interface {
 	WillingToIssue(domain identifier.ACMEIdentifier) error
 	WillingToIssueWildcards(identifiers []identifier.ACMEIdentifier) error
 	ChallengesFor(domain identifier.ACMEIdentifier) ([]Challenge, error)
-	ChallengeTypeEnabled(t string) bool
-	ValidDomain(domain string) error
+	ChallengeTypeEnabled(t AcmeChallenge) bool
 }
 
 // StorageGetter are the Boulder SA's read-only methods
@@ -135,7 +139,6 @@ type StorageGetter interface {
 	GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error)
 	CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error)
 	GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error)
-	SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error)
 	KeyBlocked(ctx context.Context, req *sapb.KeyBlockedRequest) (*sapb.Exists, error)
 }
 

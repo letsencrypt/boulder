@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/go-gorp/gorp/v3"
 	"github.com/go-sql-driver/mysql"
-	"gopkg.in/go-gorp/gorp.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	boulderDB "github.com/letsencrypt/boulder/db"
@@ -130,7 +130,6 @@ func initTables(dbMap *gorp.DbMap) {
 	dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial")
 	dbMap.AddTableWithName(core.CRL{}, "crls").SetKeys(false, "Serial")
 	dbMap.AddTableWithName(core.FQDNSet{}, "fqdnSets").SetKeys(true, "ID")
-	dbMap.AddTableWithName(certStatusModel{}, "certificateStatus").SetKeys(false, "Serial")
 	dbMap.AddTableWithName(orderModel{}, "orders").SetKeys(true, "ID")
 	dbMap.AddTableWithName(orderToAuthzModel{}, "orderToAuthz").SetKeys(false, "OrderID", "AuthzID")
 	dbMap.AddTableWithName(requestedNameModel{}, "requestedNames").SetKeys(false, "OrderID")

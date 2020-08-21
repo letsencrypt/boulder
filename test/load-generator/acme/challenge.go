@@ -29,7 +29,7 @@ const (
 // NewChallengeStrategy returns the ChallengeStrategy for the given
 // ChallengeStrategyName, or an error if it is unknown.
 func NewChallengeStrategy(rawName string) (ChallengeStrategy, error) {
-	var preferredType string
+	var preferredType core.AcmeChallenge
 	switch name := strings.ToUpper(rawName); name {
 	case RandomChallengeStrategy:
 		return &randomChallengeStrategy{}, nil
@@ -74,7 +74,7 @@ func (strategy randomChallengeStrategy) PickChallenge(authz *core.Authorization)
 // always returns the authorization's challenge with type matching the
 // preferredType.
 type preferredTypeChallengeStrategy struct {
-	preferredType string
+	preferredType core.AcmeChallenge
 }
 
 // PickChallenge for a preferredTypeChallengeStrategy returns the authorization

@@ -3,13 +3,9 @@
     "dbConnectFile": "test/secrets/ocsp_updater_dburl",
     "maxDBConns": 10,
     "oldOCSPWindow": "2s",
-    "missingSCTWindow": "1s",
     "oldOCSPBatchSize": 5000,
-    "missingSCTBatchSize": 5000,
     "parallelGenerateOCSPRequests": 10,
     "ocspMinTimeToExpiry": "72h",
-    "ocspStaleMaxAge": "5040h",
-    "oldestIssuedSCT": "72h",
     "signFailureBackoffFactor": 1.2,
     "signFailureBackoffMax": "30m",
     "debugAddr": ":8006",
@@ -27,6 +23,7 @@
       "timeout": "15s"
     },
     "features": {
+      "StoreIssuerInfo": true
     }
   },
 
@@ -36,6 +33,6 @@
   },
 
   "common": {
-    "issuerCert": "test/test-ca2.pem"
+    "issuerCert": "/tmp/intermediate-cert-rsa-a.pem"
   }
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/va"
-	vaPB "github.com/letsencrypt/boulder/va/proto"
+	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
 type config struct {
@@ -43,13 +43,6 @@ type config struct {
 		Features map[string]bool
 
 		AccountURIPrefixes []string
-
-		// A filename pointing to a YAML file containing MultiVAPolicy contents.
-		// This file will be set up to live-reload the contents of the policy file
-		// such that the VA can use the specified disabledDomains and
-		// disabledAccounts lists to determine whether or not to enforce multi-VA
-		// consensus for an account/domain.
-		MultiVAPolicyFile string
 	}
 
 	Syslog cmd.SyslogConfig
@@ -142,13 +135,14 @@ func main() {
 	var remotes []va.RemoteVA
 	if len(c.VA.RemoteVAs) > 0 {
 		for _, rva := range c.VA.RemoteVAs {
+			rva := rva
 			vaConn, err := bgrpc.ClientSetup(&rva, tlsConfig, clientMetrics, clk)
 			cmd.FailOnError(err, "Unable to create remote VA client")
 			remotes = append(
 				remotes,
 				va.RemoteVA{
-					ValidationAuthority: bgrpc.NewValidationAuthorityGRPCClient(vaConn),
-					Address:             rva.ServerAddress,
+					VAClient: bgrpc.NewValidationAuthorityGRPCClient(vaConn),
+					Address:  rva.ServerAddress,
 				},
 			)
 		}
@@ -164,8 +158,7 @@ func main() {
 		scope,
 		clk,
 		logger,
-		c.VA.AccountURIPrefixes,
-		c.VA.MultiVAPolicyFile)
+		c.VA.AccountURIPrefixes)
 	cmd.FailOnError(err, "Unable to create VA server")
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
@@ -173,7 +166,7 @@ func main() {
 	cmd.FailOnError(err, "Unable to setup VA gRPC server")
 	err = bgrpc.RegisterValidationAuthorityGRPCServer(grpcSrv, vai)
 	cmd.FailOnError(err, "Unable to register VA gRPC server")
-	vaPB.RegisterCAAServer(grpcSrv, vai)
+	vapb.RegisterCAAServer(grpcSrv, vai)
 	cmd.FailOnError(err, "Unable to register CAA gRPC server")
 
 	go cmd.CatchSignals(logger, grpcSrv.GracefulStop)

@@ -2,7 +2,6 @@
   "sa": {
     "dbConnectFile": "test/secrets/sa_dburl",
     "maxDBConns": 100,
-    "maxConcurrentRPCServerRequests": 100000,
     "ParallelismPerRPC": 20,
     "debugAddr": ":8003",
     "tls": {
@@ -16,7 +15,6 @@
         "admin-revoker.boulder",
         "ca.boulder",
         "expiration-mailer.boulder",
-        "ocsp-updater.boulder",
         "orphan-finder.boulder",
         "ra.boulder",
         "sa.boulder",
@@ -25,8 +23,8 @@
     },
     "features": {
       "StoreIssuerInfo": true,
-      "StoreKeyHashes": true,
-      "StoreRevokerInfo": true
+      "StoreRevokerInfo": true,
+      "FasterNewOrdersRateLimit": true
     }
   },
 

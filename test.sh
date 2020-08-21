@@ -68,7 +68,9 @@ function run_test_coverage() {
 # Run various linters.
 #
 if [[ "$RUN" =~ "lints" ]] ; then
-  golangci-lint run ./...
+  # golangci-lint is sometimes slow. Travis will kill our job if it goes 10m
+  # without emitting logs, so set the timeout to 9m.
+  golangci-lint run --timeout 9m ./...
   run_and_expect_silence ./test/test-no-outdated-migrations.sh
   python test/grafana/lint.py
   # Check for common spelling errors using codespell.
@@ -107,13 +109,14 @@ fi
 # Test that just ./start.py works, which is a proxy for testing that
 # `docker-compose up` works, since that just runs start.py (via entrypoint.sh).
 if [[ "$RUN" =~ "start" ]] ; then
-  ./start.py &
+  python3 start.py &
   for I in $(seq 1 100); do
     sleep 1
     curl http://localhost:4000/directory && break
   done
   if [[ $I = 100 ]]; then
     echo "Boulder did not come up after ./start.py."
+    exit 1
   fi
 fi
 

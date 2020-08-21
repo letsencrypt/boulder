@@ -12,7 +12,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/publisher"
-	pubPB "github.com/letsencrypt/boulder/publisher/proto"
+	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 )
 
 type config struct {
@@ -93,7 +93,7 @@ func main() {
 	grpcSrv, l, err := bgrpc.NewServer(c.Publisher.GRPC, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup Publisher gRPC server")
 	gw := bgrpc.NewPublisherServerWrapper(pubi)
-	pubPB.RegisterPublisherServer(grpcSrv, gw)
+	pubpb.RegisterPublisherServer(grpcSrv, gw)
 
 	go cmd.CatchSignals(logger, grpcSrv.GracefulStop)
 

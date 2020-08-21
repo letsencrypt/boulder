@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"log"
 
 	"github.com/letsencrypt/boulder/pkcs11helpers"
@@ -13,19 +12,15 @@ import (
 )
 
 type hsmRandReader struct {
-	ctx     pkcs11helpers.PKCtx
-	session pkcs11.SessionHandle
+	*pkcs11helpers.Session
 }
 
-func newRandReader(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle) *hsmRandReader {
-	return &hsmRandReader{
-		ctx:     ctx,
-		session: session,
-	}
+func newRandReader(session *pkcs11helpers.Session) *hsmRandReader {
+	return &hsmRandReader{session}
 }
 
 func (hrr hsmRandReader) Read(p []byte) (n int, err error) {
-	r, err := hrr.ctx.GenerateRandom(hrr.session, len(p))
+	r, err := hrr.Module.GenerateRandom(hrr.Session.Session, len(p))
 	if err != nil {
 		return 0, err
 	}
@@ -53,18 +48,24 @@ type keyInfo struct {
 	id  []byte
 }
 
-func generateKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string, outputPath string, config keyGenConfig) (*keyInfo, error) {
+func generateKey(session *pkcs11helpers.Session, label string, outputPath string, config keyGenConfig) (*keyInfo, error) {
+	_, err := session.FindObject([]*pkcs11.Attribute{
+		{Type: pkcs11.CKA_LABEL, Value: []byte(label)},
+	})
+	if err != pkcs11helpers.ErrNoObject {
+		return nil, fmt.Errorf("expected no preexisting objects with label %q in slot for key storage. got error: %s", label, err)
+	}
+
 	var pubKey crypto.PublicKey
 	var keyID []byte
-	var err error
 	switch config.Type {
 	case "rsa":
-		pubKey, keyID, err = rsaGenerate(ctx, session, label, config.RSAModLength, rsaExp)
+		pubKey, keyID, err = rsaGenerate(session, label, config.RSAModLength, rsaExp)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate RSA key pair: %s", err)
 		}
 	case "ecdsa":
-		pubKey, keyID, err = ecGenerate(ctx, session, label, config.ECDSACurve)
+		pubKey, keyID, err = ecGenerate(session, label, config.ECDSACurve)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate ECDSA key pair: %s", err)
 		}
@@ -77,7 +78,7 @@ func generateKey(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label st
 
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})
 	log.Printf("Public key PEM:\n%s\n", pemBytes)
-	if err := ioutil.WriteFile(outputPath, pemBytes, 0644); err != nil {
+	if err := writeFile(outputPath, pemBytes); err != nil {
 		return nil, fmt.Errorf("Failed to write public key to %q: %s", outputPath, err)
 	}
 	log.Printf("Public key written to %q\n", outputPath)

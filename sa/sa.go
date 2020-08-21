@@ -309,7 +309,7 @@ func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, serial strin
 		return core.Certificate{}, err
 	}
 
-	cert, err := SelectCertificate(ssa.dbMap.WithContext(ctx), "WHERE serial = ?", serial)
+	cert, err := SelectCertificate(ssa.dbMap.WithContext(ctx), serial)
 	if db.IsNoRows(err) {
 		return core.Certificate{}, berrors.NotFoundError("certificate with serial %q not found", serial)
 	}
@@ -328,26 +328,12 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 		return core.CertificateStatus{}, err
 	}
 
-	statusModel, err := SelectCertificateStatus(
-		ssa.dbMap.WithContext(ctx),
-		"WHERE serial = ?",
-		serial,
-	)
+	certStatus, err := SelectCertificateStatus(ssa.dbMap.WithContext(ctx), serial)
 	if err != nil {
 		return core.CertificateStatus{}, err
 	}
 
-	return core.CertificateStatus{
-		Serial:                statusModel.Serial,
-		Status:                statusModel.Status,
-		OCSPLastUpdated:       statusModel.OCSPLastUpdated,
-		RevokedDate:           statusModel.RevokedDate,
-		RevokedReason:         statusModel.RevokedReason,
-		LastExpirationNagSent: statusModel.LastExpirationNagSent,
-		OCSPResponse:          statusModel.OCSPResponse,
-		NotAfter:              statusModel.NotAfter,
-		IsExpired:             statusModel.IsExpired,
-	}, nil
+	return certStatus, nil
 }
 
 // NewRegistration stores a new Registration
@@ -507,6 +493,10 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 }
 
 func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error) {
+	if features.Enabled(features.FasterNewOrdersRateLimit) {
+		return countNewOrders(ctx, ssa.dbMap, acctID, earliest, latest)
+	}
+
 	var count int
 	err := ssa.dbMap.WithContext(ctx).SelectOne(&count,
 		`SELECT count(1) FROM orders
@@ -890,6 +880,14 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 			txWithCtx, req.Names, order.ID, order.RegistrationID, order.Expires); err != nil {
 			return nil, err
 		}
+
+		if features.Enabled(features.FasterNewOrdersRateLimit) {
+			// Increment the order creation count
+			if err := addNewOrdersRateLimit(ctx, txWithCtx, *req.RegistrationID, ssa.clk.Now().Truncate(time.Minute)); err != nil {
+				return nil, err
+			}
+		}
+
 		return req, nil
 	})
 	if overallError != nil {
@@ -1541,6 +1539,12 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 // RevokeCertificate stores revocation information about a certificate. It will only store this
 // information if the certificate is not already marked as revoked.
 func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error {
+	var reason revocation.Reason
+	if req.Reason == nil {
+		reason = revocation.Reason(0)
+	} else {
+		reason = revocation.Reason(*req.Reason)
+	}
 	revokedDate := time.Unix(0, *req.Date)
 	res, err := ssa.dbMap.Exec(
 		`UPDATE certificateStatus SET
@@ -1551,7 +1555,7 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 				ocspResponse = ?
 			WHERE serial = ? AND status != ?`,
 		string(core.OCSPStatusRevoked),
-		revocation.Reason(*req.Reason),
+		reason,
 		revokedDate,
 		revokedDate,
 		req.Response,
@@ -1744,20 +1748,6 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 		authzMap[am.IdentifierValue] = am
 	}
 	return authzModelMapToPB(authzMap)
-}
-
-// SerialExists returns a bool indicating whether the provided serial
-// exists in the serial table. This is currently only used to determine
-// if a serial passed to ca.GenerateOCSP is one which we have previously
-// generated a certificate for.
-func (ssa *SQLStorageAuthority) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
-	err := ssa.dbMap.SelectOne(&recordedSerialModel{}, "SELECT * FROM serials WHERE serial = ?", req.Serial)
-	isNoRowsErr := db.IsNoRows(err)
-	if err != nil && !isNoRowsErr {
-		return nil, err
-	}
-	exists := !isNoRowsErr
-	return &sapb.Exists{Exists: &exists}, nil
 }
 
 func addKeyHash(db db.Inserter, cert *x509.Certificate) error {

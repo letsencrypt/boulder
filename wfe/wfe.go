@@ -57,6 +57,8 @@ const (
 	issuerPath      = "/acme/issuer-cert"
 	buildIDPath     = "/build"
 	rolloverPath    = "/acme/key-change"
+
+	maxRequestSize = 50000
 )
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
@@ -500,8 +502,11 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 		return nil, nil, reg, probs.Malformed("No body on POST")
 	}
 
-	bodyBytes, err := ioutil.ReadAll(request.Body)
+	bodyBytes, err := ioutil.ReadAll(http.MaxBytesReader(nil, request.Body, maxRequestSize))
 	if err != nil {
+		if err.Error() == "http: request body too large" {
+			return nil, nil, reg, probs.Unauthorized("request body too large")
+		}
 		wfe.httpErrorCounter.WithLabelValues("UnableToReadReqBody").Inc()
 		return nil, nil, reg, probs.ServerInternal("unable to read request body")
 	}
@@ -530,7 +535,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 		// to check its quality before doing the verify.
 		if err = wfe.keyPolicy.GoodKey(ctx, submittedKey.Key); err != nil {
 			wfe.joseErrorCounter.WithLabelValues("JWKRejectedByGoodKey").Inc()
-			return nil, nil, reg, probs.Malformed(err.Error())
+			return nil, nil, reg, probs.BadPublicKey(err.Error())
 		}
 		key = submittedKey
 	} else if err != nil {
@@ -825,8 +830,15 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 	serial := core.SerialToString(providedCert.SerialNumber)
 	logEvent.Extra["ProvidedCertificateSerial"] = serial
 	cert, err := wfe.SA.GetCertificate(ctx, serial)
-	// TODO(#991): handle db errors better
-	if err != nil || !bytes.Equal(cert.DER, revokeRequest.CertificateDER) {
+	if err != nil {
+		if berrors.Is(err, berrors.NotFound) {
+			wfe.sendError(response, logEvent, probs.NotFound("No such certificate"), err)
+			return
+		}
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve certificate"), err)
+		return
+	}
+	if !bytes.Equal(cert.DER, revokeRequest.CertificateDER) {
 		wfe.sendError(response, logEvent, probs.NotFound("No such certificate"), err)
 		return
 	}
@@ -974,6 +986,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *web.Re
 	logEvent.Extra["CSRDNSNames"] = certificateRequest.CSR.DNSNames
 	logEvent.Extra["CSREmailAddresses"] = certificateRequest.CSR.EmailAddresses
 	logEvent.Extra["CSRIPAddresses"] = certificateRequest.CSR.IPAddresses
+	logEvent.Extra["KeyType"] = web.KeyTypeToString(certificateRequest.CSR.PublicKey)
 
 	// Inc CSR signature algorithm counter
 	wfe.csrSignatureAlgs.With(prometheus.Labels{"type": certificateRequest.CSR.SignatureAlgorithm.String()}).Inc()
@@ -1071,7 +1084,7 @@ func (wfe *WebFrontEndImpl) ChallengeV2(
 		wfe.getChallenge(ctx, response, request, authz, &challenge, logEvent)
 
 	case "POST":
-		logEvent.ChallengeType = challenge.Type
+		logEvent.ChallengeType = string(challenge.Type)
 		wfe.postChallenge(ctx, response, request, authz, challengeIndex, logEvent)
 	}
 }
@@ -1436,13 +1449,14 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	logEvent.Extra["RequestedSerial"] = serial
 
 	cert, err := wfe.SA.GetCertificate(ctx, serial)
-	// TODO(#991): handle db errors
 	if err != nil {
 		ierr := fmt.Errorf("unable to get certificate by serial id %#v: %s", serial, err)
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
 			wfe.sendError(response, logEvent, probs.Conflict("Multiple certificates with same short serial"), ierr)
-		} else {
+		} else if berrors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), ierr)
+		} else {
+			wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve certificate"), ierr)
 		}
 		return
 	}

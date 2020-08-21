@@ -6,7 +6,6 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"math/big"
 	"net"
 	"net/http/httptest"
@@ -86,10 +85,8 @@ func TestClientTransportCredentials(t *testing.T) {
 	test.AssertNotError(t, err, "rsa.GenerateKey failed")
 
 	temp := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
-			CommonName: "A",
-		},
+		SerialNumber:          big.NewInt(1),
+		DNSNames:              []string{"A"},
 		NotBefore:             time.Unix(1000, 0),
 		NotAfter:              time.Now().AddDate(1, 0, 0),
 		BasicConstraintsValid: true,
@@ -99,7 +96,7 @@ func TestClientTransportCredentials(t *testing.T) {
 	test.AssertNotError(t, err, "x509.CreateCertificate failed")
 	certA, err := x509.ParseCertificate(derA)
 	test.AssertNotError(t, err, "x509.ParserCertificate failed")
-	temp.Subject.CommonName = "B"
+	temp.DNSNames[0] = "B"
 	derB, err := x509.CreateCertificate(rand.Reader, temp, temp, priv.Public(), priv)
 	test.AssertNotError(t, err, "x509.CreateCertificate failed")
 	certB, err := x509.ParseCertificate(derB)

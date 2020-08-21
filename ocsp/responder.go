@@ -43,7 +43,6 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/cloudflare/cfssl/log"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
@@ -146,15 +145,36 @@ var responseTypeToString = map[ocsp.ResponseStatus]string{
 type Responder struct {
 	Source        Source
 	responseTypes *prometheus.CounterVec
+	requestSizes  prometheus.Histogram
 	clk           clock.Clock
+	log           blog.Logger
 }
 
 // NewResponder instantiates a Responder with the give Source.
-func NewResponder(source Source, responseTypes *prometheus.CounterVec) *Responder {
+func NewResponder(source Source, stats prometheus.Registerer, logger blog.Logger) *Responder {
+	requestSizes := prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "ocsp_request_sizes",
+			Help:    "Size of OCSP requests",
+			Buckets: []float64{1, 100, 200, 400, 800, 1200, 2000, 5000, 10000},
+		},
+	)
+	stats.MustRegister(requestSizes)
+	responseTypes := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ocsp_responses",
+			Help: "Number of OCSP responses returned by type",
+		},
+		[]string{"type"},
+	)
+	stats.MustRegister(responseTypes)
+
 	return &Responder{
 		Source:        source,
 		responseTypes: responseTypes,
+		requestSizes:  requestSizes,
 		clk:           clock.New(),
+		log:           logger,
 	}
 }
 
@@ -221,10 +241,10 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		if err != nil {
 			// we log this error at the debug level as if we aren't at that level anyway
 			// we shouldn't really care about marshalling the log event object
-			log.Debugf("failed to marshal log event object: %s", err)
+			rs.log.Debugf("failed to marshal log event object: %s", err)
 			return
 		}
-		log.Debugf("Received request: %s", string(jb))
+		rs.log.Debugf("Received request: %s", string(jb))
 	}()
 	// By default we set a 'max-age=0, no-cache' Cache-Control header, this
 	// is only returned to the client if a valid authorized OCSP response
@@ -238,7 +258,8 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 	case "GET":
 		base64Request, err := url.QueryUnescape(request.URL.Path)
 		if err != nil {
-			log.Debugf("Error decoding URL: %s", request.URL.Path)
+			rs.log.Debugf("Error decoding URL: %s", request.URL.Path)
+			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Malformed]}).Inc()
 			response.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -261,23 +282,26 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		}
 		requestBody, err = base64.StdEncoding.DecodeString(string(base64RequestBytes))
 		if err != nil {
-			log.Debugf("Error decoding base64 from URL: %s", string(base64RequestBytes))
+			rs.log.Debugf("Error decoding base64 from URL: %s", string(base64RequestBytes))
 			response.WriteHeader(http.StatusBadRequest)
+			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Malformed]}).Inc()
 			return
 		}
 	case "POST":
-		requestBody, err = ioutil.ReadAll(request.Body)
+		requestBody, err = ioutil.ReadAll(http.MaxBytesReader(nil, request.Body, 10000))
 		if err != nil {
-			log.Errorf("Problem reading body of POST: %s", err)
+			rs.log.Errf("Problem reading body of POST: %s", err)
 			response.WriteHeader(http.StatusBadRequest)
+			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Malformed]}).Inc()
 			return
 		}
+		rs.requestSizes.Observe(float64(len(requestBody)))
 	default:
 		response.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 	b64Body := base64.StdEncoding.EncodeToString(requestBody)
-	log.Debugf("Received OCSP request: %s", b64Body)
+	rs.log.Debugf("Received OCSP request: %s", b64Body)
 	if request.Method == http.MethodPost {
 		le.Body = b64Body
 	}
@@ -293,7 +317,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 	//      should return unauthorizedRequest instead of malformed.
 	ocspRequest, err := ocsp.ParseRequest(requestBody)
 	if err != nil {
-		log.Debugf("Error decoding request body: %s", b64Body)
+		rs.log.Debugf("Error decoding request body: %s", b64Body)
 		response.WriteHeader(http.StatusBadRequest)
 		response.Write(ocsp.MalformedRequestErrorResponse)
 		rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Malformed]}).Inc()
@@ -308,13 +332,13 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 	ocspResponse, headers, err := rs.Source.Response(ocspRequest)
 	if err != nil {
 		if err == ErrNotFound {
-			log.Infof("No response found for request: serial %x, request body %s",
+			rs.log.Infof("No response found for request: serial %x, request body %s",
 				ocspRequest.SerialNumber, b64Body)
 			response.Write(ocsp.UnauthorizedErrorResponse)
 			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Unauthorized]}).Inc()
 			return
 		}
-		log.Infof("Error retrieving response for request: serial %x, request body %s, error: %s",
+		rs.log.Infof("Error retrieving response for request: serial %x, request body %s, error: %s",
 			ocspRequest.SerialNumber, b64Body, err)
 		response.WriteHeader(http.StatusInternalServerError)
 		response.Write(ocsp.InternalErrorErrorResponse)
@@ -324,8 +348,9 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 
 	parsedResponse, err := ocsp.ParseResponse(ocspResponse, nil)
 	if err != nil {
-		log.Errorf("Error parsing response for serial %x: %s",
-			ocspRequest.SerialNumber, err)
+		rs.log.Errf("Error parsing response for serial %x: %x %s",
+			ocspRequest.SerialNumber, parsedResponse, err)
+		response.WriteHeader(http.StatusInternalServerError)
 		response.Write(ocsp.InternalErrorErrorResponse)
 		rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.InternalError]}).Inc()
 		return

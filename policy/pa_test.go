@@ -13,7 +13,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-var enabledChallenges = map[string]bool{
+var enabledChallenges = map[core.AcmeChallenge]bool{
 	core.ChallengeTypeHTTP01: true,
 	core.ChallengeTypeDNS01:  true,
 }
@@ -370,7 +370,7 @@ func TestChallengesFor(t *testing.T) {
 
 	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
 
-	seenChalls := make(map[string]bool)
+	seenChalls := make(map[core.AcmeChallenge]bool)
 	for _, challenge := range challenges {
 		test.Assert(t, !seenChalls[challenge.Type], "should not already have seen this type")
 		seenChalls[challenge.Type] = true
@@ -388,7 +388,7 @@ func TestChallengesForWildcard(t *testing.T) {
 		Value: "*.zombo.com",
 	}
 
-	mustConstructPA := func(t *testing.T, enabledChallenges map[string]bool) *AuthorityImpl {
+	mustConstructPA := func(t *testing.T, enabledChallenges map[core.AcmeChallenge]bool) *AuthorityImpl {
 		pa, err := New(enabledChallenges)
 		test.AssertNotError(t, err, "Couldn't create policy implementation")
 		return pa
@@ -396,7 +396,7 @@ func TestChallengesForWildcard(t *testing.T) {
 
 	// First try to get a challenge for the wildcard ident without the
 	// DNS-01 challenge type enabled. This should produce an error
-	var enabledChallenges = map[string]bool{
+	var enabledChallenges = map[core.AcmeChallenge]bool{
 		core.ChallengeTypeHTTP01: true,
 		core.ChallengeTypeDNS01:  false,
 	}
@@ -450,4 +450,18 @@ func TestMalformedExactBlocklist(t *testing.T) {
 	err = pa.SetHostnamePolicyFile(f.Name())
 	test.AssertError(t, err, "Loaded invalid exact blocklist content without error")
 	test.AssertEquals(t, err.Error(), "Malformed ExactBlockedNames entry, only one label: \"com\"")
+}
+
+func TestValidEmailError(t *testing.T) {
+	err := ValidEmail("(๑•́ ω •̀๑)")
+	test.AssertEquals(t, err.Error(), "\"(๑•́ ω •̀๑)\" is not a valid e-mail address")
+
+	err = ValidEmail("john.smith@gmail.com #replace with real email")
+	test.AssertEquals(t, err.Error(), "\"john.smith@gmail.com #replace with real email\" is not a valid e-mail address")
+
+	err = ValidEmail("example@example.com")
+	test.AssertEquals(t, err.Error(), "invalid contact domain. Contact emails @example.com are forbidden")
+
+	err = ValidEmail("example@-foobar.com")
+	test.AssertEquals(t, err.Error(), "contact email \"example@-foobar.com\" has invalid domain : Domain name contains an invalid character")
 }

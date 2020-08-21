@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -13,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/go-gorp/gorp.v2"
+	"github.com/go-gorp/gorp/v3"
 
 	"golang.org/x/crypto/ocsp"
 
@@ -22,12 +23,14 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	bocsp "github.com/letsencrypt/boulder/ocsp"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
-	req   = mustRead("./testdata/ocsp.req")
-	resp  = dbResponse{mustRead("./testdata/ocsp.resp"), false, time.Now()}
+	req  = mustRead("./testdata/ocsp.req")
+	resp = core.CertificateStatus{
+		OCSPResponse:    mustRead("./testdata/ocsp.resp"),
+		IsExpired:       false,
+		OCSPLastUpdated: time.Now()}
 	stats = metrics.NoopRegisterer
 )
 
@@ -49,13 +52,7 @@ func TestMux(t *testing.T) {
 		doubleSlashReq.SerialNumber.String(): resp.OCSPResponse,
 	}
 	src := bocsp.NewMemorySource(responses, blog.NewMock())
-	responseTypesCounter := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "ocspResponses-test",
-		},
-		[]string{"type"},
-	)
-	h := mux(stats, "/foobar/", src, responseTypesCounter)
+	h := mux(stats, "/foobar/", src, blog.NewMock())
 	type muxTest struct {
 		method       string
 		path         string
@@ -81,10 +78,6 @@ func TestMux(t *testing.T) {
 		if !bytes.Equal(w.Body.Bytes(), mt.respBody) {
 			t.Errorf("Mismatched body: want %#v, got %#v", mt.respBody, w.Body.Bytes())
 		}
-		if mt.expectedType != "" {
-			test.AssertEquals(t, 1, test.CountCounterVec("type", mt.expectedType, responseTypesCounter))
-			responseTypesCounter.Reset()
-		}
 	}
 }
 
@@ -94,13 +87,7 @@ func TestDBHandler(t *testing.T) {
 		t.Fatalf("makeDBSource: %s", err)
 	}
 
-	responseTypesCounter := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "ocspResponses-test",
-		},
-		[]string{"type"},
-	)
-	h := bocsp.NewResponder(src, responseTypesCounter)
+	h := bocsp.NewResponder(src, stats, blog.NewMock())
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest("POST", "/", bytes.NewReader(req))
 	if err != nil {
@@ -138,7 +125,7 @@ func (bs mockSelector) WithContext(context.Context) gorp.SqlExecutor {
 }
 
 func (bs mockSelector) SelectOne(output interface{}, _ string, _ ...interface{}) error {
-	outputPtr, ok := output.(*dbResponse)
+	outputPtr, ok := output.(*core.CertificateStatus)
 	if !ok {
 		return fmt.Errorf("incorrect output type %T", output)
 	}
@@ -265,7 +252,7 @@ type expiredSelector struct {
 }
 
 func (es expiredSelector) SelectOne(obj interface{}, _ string, _ ...interface{}) error {
-	rows := obj.(*dbResponse)
+	rows := obj.(*core.CertificateStatus)
 	rows.IsExpired = true
 	rows.OCSPLastUpdated = time.Time{}.Add(time.Hour)
 	return nil
@@ -284,4 +271,10 @@ func TestExpiredUnauthorized(t *testing.T) {
 
 	_, _, err = src.Response(ocspReq)
 	test.AssertEquals(t, err, bocsp.ErrNotFound)
+}
+
+func TestKeyHashing(t *testing.T) {
+	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", []string{"00"}, time.Second, blog.NewMock())
+	test.AssertNotError(t, err, "makeDBSource failed")
+	test.AssertEquals(t, hex.EncodeToString(src.caKeyHash), "fb784f12f96015832c9f177f3419b32e36ea4189")
 }

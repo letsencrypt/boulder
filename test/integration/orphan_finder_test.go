@@ -7,6 +7,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -18,6 +19,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/letsencrypt/pkcs11key/v4"
 )
 
 var template = `[AUDIT] Failed RPC to store at SA, orphaning precertificate: serial=[%x] cert=[%x] err=[sa.StorageAuthority.AddCertificate timed out after 5000 ms], regID=[1], orderID=[1]
@@ -71,21 +74,34 @@ func makeFakeCert(precert bool) (*x509.Certificate, error) {
 	if err != nil {
 		return nil, err
 	}
-	issuerKeyBytes, err := ioutil.ReadFile("test/test-ca.key")
+	pubKeyBytes, err := ioutil.ReadFile("/tmp/intermediate-signing-pub-rsa.pem")
 	if err != nil {
 		return nil, err
 	}
-	block, _ := pem.Decode(issuerKeyBytes)
+	block, _ := pem.Decode(pubKeyBytes)
 	if block == nil {
 		return nil, fmt.Errorf("no PEM found")
 	}
-	issuerKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	pubKey, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("parsing private key: %s", err)
+		return nil, fmt.Errorf("parsing issuer public key: %s", err)
+	}
+	var pkcs11Config pkcs11key.Config
+	contents, err := ioutil.ReadFile("test/test-ca.key-pkcs11.json")
+	if err != nil {
+		return nil, err
+	}
+	if err = json.Unmarshal(contents, &pkcs11Config); err != nil {
+		return nil, err
+	}
+	signer, err := pkcs11key.NewPool(1, pkcs11Config.Module,
+		pkcs11Config.TokenLabel, pkcs11Config.PIN, pubKey)
+	if err != nil {
+		return nil, err
 	}
 	issuerTemplate := &x509.Certificate{
 		Subject: pkix.Name{
-			CommonName: "h2ppy h2cker fake CA",
+			CommonName: "CA intermediate (RSA) A",
 		},
 	}
 	template := &x509.Certificate{
@@ -107,7 +123,7 @@ func makeFakeCert(precert bool) (*x509.Certificate, error) {
 		}
 	}
 
-	der, err := x509.CreateCertificate(rand.Reader, template, issuerTemplate, key.Public(), issuerKey)
+	der, err := x509.CreateCertificate(rand.Reader, template, issuerTemplate, key.Public(), signer)
 	if err != nil {
 		return nil, err
 	}

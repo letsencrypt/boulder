@@ -28,7 +28,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
-	"github.com/letsencrypt/boulder/reloader"
+	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -70,12 +70,13 @@ var (
 // of the remote gRPC server since the interface (and the underlying gRPC client) doesn't
 // provide a way to extract this metadata which is useful for debugging gRPC connection issues.
 type RemoteVA struct {
-	core.ValidationAuthority
+	vapb.VAClient
 	Address string
 }
 
 type vaMetrics struct {
 	validationTime                      *prometheus.HistogramVec
+	localValidationTime                 *prometheus.HistogramVec
 	remoteValidationTime                *prometheus.HistogramVec
 	remoteValidationFailures            prometheus.Counter
 	prospectiveRemoteValidationFailures prometheus.Counter
@@ -90,11 +91,19 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 	validationTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "validation_time",
-			Help:    "Time taken to validate a challenge",
+			Help:    "Total time taken to validate a challenge and aggregate results",
 			Buckets: metrics.InternetFacingBuckets,
 		},
 		[]string{"type", "result", "problem_type"})
 	stats.MustRegister(validationTime)
+	localValidationTime := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "local_validation_time",
+			Help:    "Time taken to locally validate a challenge",
+			Buckets: metrics.InternetFacingBuckets,
+		},
+		[]string{"type", "result"})
+	stats.MustRegister(localValidationTime)
 	remoteValidationTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "remote_validation_time",
@@ -149,6 +158,7 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 	return &vaMetrics{
 		validationTime:                      validationTime,
 		remoteValidationTime:                remoteValidationTime,
+		localValidationTime:                 localValidationTime,
 		remoteValidationFailures:            remoteValidationFailures,
 		prospectiveRemoteValidationFailures: prospectiveRemoteValidationFailures,
 		tlsALPNOIDCounter:                   tlsALPNOIDCounter,
@@ -171,7 +181,6 @@ type ValidationAuthorityImpl struct {
 	clk                clock.Clock
 	remoteVAs          []RemoteVA
 	maxRemoteFailures  int
-	multiVAPolicy      *MultiVAPolicy
 	accountURIPrefixes []string
 	singleDialTimeout  time.Duration
 
@@ -190,7 +199,6 @@ func NewValidationAuthorityImpl(
 	clk clock.Clock,
 	logger blog.Logger,
 	accountURIPrefixes []string,
-	multiVAPolicyFile string,
 ) (*ValidationAuthorityImpl, error) {
 	if pc.HTTPPort == 0 {
 		pc.HTTPPort = 80
@@ -226,24 +234,7 @@ func NewValidationAuthorityImpl(
 		singleDialTimeout: 10 * time.Second,
 	}
 
-	// if a multiVAPolicyFile was specified then set up a live reloader and
-	// a MultiVAPolicy instance for the VA to refer to.
-	if multiVAPolicyFile != "" {
-		policy := new(MultiVAPolicy)
-		va.multiVAPolicy = policy
-		_, err := reloader.New(multiVAPolicyFile, policy.LoadPolicy, va.multiVAPolicyLoadError)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return va, nil
-}
-
-// multiVAPolicyError is a small error handler called by the reloader package
-// when the multiVAPolicy file can't be loaded.
-func (va *ValidationAuthorityImpl) multiVAPolicyLoadError(err error) {
-	va.log.AuditErrf("error live-loading multi VA policy file: %v", err)
 }
 
 // Used for audit logging
@@ -273,7 +264,8 @@ func detailedError(err error) *probs.ProblemDetails {
 		return probs.Malformed("Server only speaks HTTP, not TLS")
 	}
 
-	if netErr, ok := err.(*net.OpError); ok {
+	var netErr *net.OpError
+	if errors.As(err, &netErr) {
 		if fmt.Sprintf("%T", netErr.Err) == "tls.alert" {
 			// All the tls.alert error strings are reasonable to hand back to a
 			// user. Confirmed against Go 1.8.
@@ -320,8 +312,8 @@ func detailedError(err error) *probs.ProblemDetails {
 func (va *ValidationAuthorityImpl) validate(
 	ctx context.Context,
 	identifier identifier.ACMEIdentifier,
+	regid int64,
 	challenge core.Challenge,
-	authz core.Authorization,
 ) ([]core.ValidationRecord, *probs.ProblemDetails) {
 
 	// If the identifier is a wildcard domain we need to validate the base
@@ -339,8 +331,8 @@ func (va *ValidationAuthorityImpl) validate(
 	ch := make(chan *probs.ProblemDetails, 1)
 	go func() {
 		params := &caaParams{
-			accountURIID:     &authz.RegistrationID,
-			validationMethod: &challenge.Type,
+			accountURIID:     regid,
+			validationMethod: string(challenge.Type),
 		}
 		ch <- va.checkCAA(ctx, identifier, params)
 	}()
@@ -384,55 +376,37 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 // channel as-is.
 func (va *ValidationAuthorityImpl) performRemoteValidation(
 	ctx context.Context,
-	domain string,
-	challenge core.Challenge,
-	authz core.Authorization,
+	req *vapb.PerformValidationRequest,
 	results chan *remoteValidationResult) {
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]
 		go func(rva RemoteVA, index int) {
-			_, err := rva.PerformValidation(ctx, domain, challenge, authz)
-			if err != nil {
-				// returned error can be a nil *probs.ProblemDetails which breaks the
-				// err != nil check so do a slightly more complicated unwrap check to
-				// make sure we don't choke on that.
-				// TODO(@cpu): Clean this up once boulder issue 2254[0] is resolved
-				// [0] https://github.com/letsencrypt/boulder/issues/2254
-				if p, ok := err.(*probs.ProblemDetails); ok && p != (*probs.ProblemDetails)(nil) {
-					// If the non-nil err was a non-nil *probs.ProblemDetails then we can
-					// log it at an info level. It's a normal non-success validation
-					// result and the remote VA will have logged more detail.
-					va.log.Infof("Remote VA %q.PerformValidation returned problem: %s", rva.Address, err)
-				} else if ok && p == (*probs.ProblemDetails)(nil) {
-					// If the non-nil err was a nil *probs.ProblemDetails then we don't need to do
-					// anything. There isn't really an error here.
-					err = nil
-				} else if canceled.Is(err) {
-					// If the non-nil err was a canceled error, ignore it. That's fine it
-					// just means we cancelled the remote VA request before it was
-					// finished because we didn't care about its result.
-					err = nil
-				} else if !ok {
-					// Otherwise, the non-nil err was *not* a *probs.ProblemDetails and
-					// was *not* a context cancelleded error and represents something that
-					// will later be returned as a server internal error
-					// without detail if the number of errors is >= va.maxRemoteFailures.
-					// Log it at the error level so we can debug from logs.
-					va.log.Errf("Remote VA %q.PerformValidation failed: %s", rva.Address, err)
-				}
-			}
 			result := &remoteValidationResult{
 				VAHostname: rva.Address,
 			}
-			if err == nil {
-				results <- result
-			} else if prob, ok := err.(*probs.ProblemDetails); ok {
-				result.Problem = prob
-				results <- result
-			} else {
+			res, err := rva.PerformValidation(ctx, req)
+			if err != nil && canceled.Is(err) {
+				// If the non-nil err was a canceled error, ignore it. That's fine: it
+				// just means we cancelled the remote VA request before it was
+				// finished because we didn't care about its result. Don't log to avoid
+				// spamming the logs.
+				result.Problem = probs.ServerInternal("Remote PerformValidation RPC canceled")
+			} else if err != nil {
+				// This is a real error, not just a problem with the validation.
+				va.log.Errf("Remote VA %q.PerformValidation failed: %s", rva.Address, err)
 				result.Problem = probs.ServerInternal("Remote PerformValidation RPC failed")
-				results <- result
+			} else if res.Problems != nil {
+				prob, err := bgrpc.PBToProblemDetails(res.Problems)
+				if err != nil {
+					va.log.Infof("Remote VA %q.PerformValidation returned malformed problem: %s", rva.Address, err)
+					result.Problem = probs.ServerInternal(
+						fmt.Sprintf("Remote PerformValidation RPC returned malformed result: %s", err))
+				} else {
+					va.log.Infof("Remote VA %q.PerformValidation returned problem: %s", rva.Address, prob)
+					result.Problem = prob
+				}
 			}
+			results <- result
 		}(remoteVA, i)
 	}
 }
@@ -613,24 +587,34 @@ type remoteValidationResult struct {
 	Problem    *probs.ProblemDetails
 }
 
-// PerformValidation validates the given challenge. It always returns a list of
-// validation records, even when it also returns an error.
-func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
+// PerformValidation validates the challenge for the domain in the request.
+// The returned result will always contain a list of validation records, even
+// when it also contains a problem.
+func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
+	if core.IsAnyNilOrZero(req, req.Domain, req.Challenge, req.Authz) {
+		return nil, berrors.InternalServerError("Incomplete validation request")
+	}
 	logEvent := verificationRequestEvent{
-		ID:        authz.ID,
-		Requester: authz.RegistrationID,
-		Hostname:  domain,
+		ID:        req.Authz.Id,
+		Requester: req.Authz.RegID,
+		Hostname:  req.Domain,
 	}
 	vStart := va.clk.Now()
 
 	var remoteResults chan *remoteValidationResult
 	if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
 		remoteResults = make(chan *remoteValidationResult, remoteVACount)
-		go va.performRemoteValidation(ctx, domain, challenge, authz, remoteResults)
+		go va.performRemoteValidation(ctx, req, remoteResults)
 	}
 
-	records, prob := va.validate(ctx, identifier.DNSIdentifier(domain), challenge, authz)
+	challenge, err := bgrpc.PBToChallenge(req.Challenge)
+	if err != nil {
+		return nil, probs.ServerInternal("Challenge failed to deserialize")
+	}
+
+	records, prob := va.validate(ctx, identifier.DNSIdentifier(req.Domain), req.Authz.RegID, challenge)
 	challenge.ValidationRecord = records
+	localValidationLatency := time.Since(vStart)
 
 	// Check for malformed ValidationRecords
 	if !challenge.RecordsSane() && prob == nil {
@@ -650,8 +634,8 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 			// routine to avoid blocking the primary VA.
 			go func() {
 				_ = va.processRemoteResults(
-					domain,
-					authz.RegistrationID,
+					req.Domain,
+					req.Authz.RegID,
 					string(challenge.Type),
 					prob,
 					remoteResults,
@@ -663,27 +647,21 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 			challenge.Status = core.StatusValid
 		} else if features.Enabled(features.EnforceMultiVA) {
 			remoteProb := va.processRemoteResults(
-				domain,
-				authz.RegistrationID,
+				req.Domain,
+				req.Authz.RegID,
 				string(challenge.Type),
 				prob,
 				remoteResults,
 				len(va.remoteVAs))
 
-			// We consider the multi VA result skippable even though we are enforcing
-			// multi VA if the domain or the account has multi-VA disabled by policy.
-			skippable := !va.multiVAPolicy.EnabledDomain(domain) ||
-				!va.multiVAPolicy.EnabledAccount(authz.RegistrationID)
-
-			// If the remote result was a non-nil problem and the domain/acct aren't
-			// skippable then fail the validation
-			if remoteProb != nil && !skippable {
+			// If the remote result was a non-nil problem then fail the validation
+			if remoteProb != nil {
 				prob = remoteProb
 				challenge.Status = core.StatusInvalid
 				challenge.Error = remoteProb
 				logEvent.Error = remoteProb.Error()
 				va.log.Infof("Validation failed due to remote failures: identifier=%v err=%s",
-					domain, remoteProb)
+					req.Domain, remoteProb)
 				va.metrics.remoteValidationFailures.Inc()
 			} else {
 				challenge.Status = core.StatusValid
@@ -698,6 +676,10 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	validationLatency := time.Since(vStart)
 	logEvent.ValidationLatency = validationLatency.Round(time.Millisecond).Seconds()
 
+	va.metrics.localValidationTime.With(prometheus.Labels{
+		"type":   string(challenge.Type),
+		"result": string(challenge.Status),
+	}).Observe(localValidationLatency.Seconds())
 	va.metrics.validationTime.With(prometheus.Labels{
 		"type":         string(challenge.Type),
 		"result":       string(challenge.Status),
@@ -705,25 +687,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	}).Observe(validationLatency.Seconds())
 
 	va.log.AuditObject("Validation result", logEvent)
-	va.log.Infof("Validations: %+v", authz)
 
-	// Try to marshal the validation results and prob (if any) to protocol
-	// buffers. We log at this layer instead of leaving it up to gRPC because gRPC
-	// doesn't log the actual contents that failed to marshal, making it hard to
-	// figure out what's broken.
-	if _, err := bgrpc.ValidationResultToPB(records, prob); err != nil {
-		va.log.Errf(
-			"failed to marshal records %#v and prob %#v to protocol buffer: %v",
-			records, prob, err)
-	}
-
-	if prob == nil {
-		// This is necessary because if we just naively returned prob, it would be a
-		// non-nil interface value containing a nil pointer, rather than a nil
-		// interface value. See, e.g.
-		// https://stackoverflow.com/questions/29138591/hiding-nil-values-understanding-why-golang-fails-here
-		return records, nil
-	}
-
-	return records, prob
+	return bgrpc.ValidationResultToPB(records, prob)
 }

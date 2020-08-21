@@ -1,6 +1,5 @@
 {
   "va": {
-    "CAASERVFAILExceptions": "test/caa-servfail-exceptions.txt",
     "userAgent": "boulder-remote-b",
     "debugAddr": ":8012",
     "portConfig": {
@@ -30,7 +29,8 @@
       "CAAAccountURI": true
     },
     "accountURIPrefixes": [
-      "http://boulder:4000/acme/reg/"
+      "http://boulder:4000/acme/reg/",
+      "http://boulder:4001/acme/acct/"
     ]
   },
 

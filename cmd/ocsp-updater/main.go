@@ -20,7 +20,6 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
-	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -43,7 +42,6 @@ type OCSPUpdater struct {
 	dbMap ocspDB
 
 	ogc capb.OCSPGeneratorClient
-	sac core.StorageAuthority
 
 	tickWindow    time.Duration
 	batchSize     int
@@ -55,8 +53,6 @@ type OCSPUpdater struct {
 
 	// Used to calculate how far back stale OCSP responses should be looked for
 	ocspMinTimeToExpiry time.Duration
-	// Used to calculate how far back in time the findStaleOCSPResponse will look
-	ocspStaleMaxAge time.Duration
 	// Maximum number of individual OCSP updates to attempt in parallel. Making
 	// these requests in parallel allows us to get higher total throughput.
 	parallelGenerateOCSPRequests int
@@ -75,7 +71,6 @@ func newUpdater(
 	clk clock.Clock,
 	dbMap ocspDB,
 	ogc capb.OCSPGeneratorClient,
-	sac core.StorageAuthority,
 	apc akamaipb.AkamaiPurgerClient,
 	config OCSPUpdaterConfig,
 	issuerPath string,
@@ -86,10 +81,6 @@ func newUpdater(
 	}
 	if config.OldOCSPWindow.Duration == 0 {
 		return nil, fmt.Errorf("Loop window sizes must be non-zero")
-	}
-	if config.OCSPStaleMaxAge.Duration == 0 {
-		// Default to 30 days
-		config.OCSPStaleMaxAge = cmd.ConfigDuration{Duration: time.Hour * 24 * 30}
 	}
 	if config.ParallelGenerateOCSPRequests == 0 {
 		// Default to 1
@@ -122,9 +113,7 @@ func newUpdater(
 		dbMap:                        dbMap,
 		ogc:                          ogc,
 		log:                          log,
-		sac:                          sac,
 		ocspMinTimeToExpiry:          config.OCSPMinTimeToExpiry.Duration,
-		ocspStaleMaxAge:              config.OCSPStaleMaxAge.Duration,
 		parallelGenerateOCSPRequests: config.ParallelGenerateOCSPRequests,
 		purgerService:                apc,
 		genStoreHistogram:            genStoreHistogram,
@@ -149,27 +138,14 @@ func newUpdater(
 }
 
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
-	var statuses []core.CertificateStatus
-	now := updater.clk.Now()
-	maxAgeCutoff := now.Add(-updater.ocspStaleMaxAge)
-
-	certStatusFields := "cs.serial, cs.status, cs.revokedDate, cs.notAfter"
-	if features.Enabled(features.StoreIssuerInfo) {
-		certStatusFields += ", cs.issuerID"
-	}
-	_, err := updater.dbMap.Select(
-		&statuses,
-		fmt.Sprintf(`SELECT
-				%s
-				FROM certificateStatus AS cs
-				WHERE cs.ocspLastUpdated > :maxAge
-				AND cs.ocspLastUpdated < :lastUpdate
-				AND NOT cs.isExpired
-				ORDER BY cs.ocspLastUpdated ASC
-				LIMIT :limit`, certStatusFields),
+	statuses, err := sa.SelectCertificateStatuses(
+		updater.dbMap,
+		`WHERE ocspLastUpdated < :lastUpdate
+		 AND NOT isExpired
+		 ORDER BY ocspLastUpdated ASC
+		 LIMIT :limit`,
 		map[string]interface{}{
 			"lastUpdate": oldestLastUpdatedTime,
-			"maxAge":     maxAgeCutoff,
 			"limit":      batchSize,
 		},
 	)
@@ -180,11 +156,7 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 }
 
 func getCertDER(selector ocspDB, serial string) ([]byte, error) {
-	cert, err := sa.SelectCertificate(
-		selector,
-		"WHERE serial = ?",
-		serial,
-	)
+	cert, err := sa.SelectCertificate(selector, serial)
 	if err != nil {
 		if db.IsNoRows(err) {
 			cert, err = sa.SelectPrecertificate(selector, serial)
@@ -202,17 +174,14 @@ func getCertDER(selector ocspDB, serial string) ([]byte, error) {
 }
 
 func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.CertificateStatus) (*core.CertificateStatus, error) {
-	reason := int32(status.RevokedReason)
-	statusStr := string(status.Status)
-	revokedAt := status.RevokedDate.UnixNano()
 	ocspReq := capb.GenerateOCSPRequest{
-		Reason:    &reason,
-		Status:    &statusStr,
-		RevokedAt: &revokedAt,
+		Reason:    int32(status.RevokedReason),
+		Status:    string(status.Status),
+		RevokedAt: status.RevokedDate.UnixNano(),
 	}
 	if status.IssuerID != nil {
-		ocspReq.Serial = &status.Serial
-		ocspReq.IssuerID = status.IssuerID
+		ocspReq.Serial = status.Serial
+		ocspReq.IssuerID = *status.IssuerID
 	} else {
 		certDER, err := getCertDER(updater.dbMap, status.Serial)
 		if err != nil {
@@ -347,7 +316,6 @@ type OCSPUpdaterConfig struct {
 	OldOCSPBatchSize int
 
 	OCSPMinTimeToExpiry          cmd.ConfigDuration
-	OCSPStaleMaxAge              cmd.ConfigDuration
 	ParallelGenerateOCSPRequests int
 
 	AkamaiBaseURL           string
@@ -370,7 +338,6 @@ type OCSPUpdaterConfig struct {
 
 func setupClients(c OCSPUpdaterConfig, stats prometheus.Registerer, clk clock.Clock) (
 	capb.OCSPGeneratorClient,
-	core.StorageAuthority,
 	akamaipb.AkamaiPurgerClient,
 ) {
 	var tls *tls.Config
@@ -384,10 +351,6 @@ func setupClients(c OCSPUpdaterConfig, stats prometheus.Registerer, clk clock.Cl
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
 	ogc := bgrpc.NewOCSPGeneratorClient(capb.NewOCSPGeneratorClient(caConn))
 
-	saConn, err := bgrpc.ClientSetup(c.SAService, tls, clientMetrics, clk)
-	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
-
 	var apc akamaipb.AkamaiPurgerClient
 	if c.AkamaiPurgerService != nil {
 		apcConn, err := bgrpc.ClientSetup(c.AkamaiPurgerService, tls, clientMetrics, clk)
@@ -395,7 +358,7 @@ func setupClients(c OCSPUpdaterConfig, stats prometheus.Registerer, clk clock.Cl
 		apc = akamaipb.NewAkamaiPurgerClient(apcConn)
 	}
 
-	return ogc, sac, apc
+	return ogc, apc
 }
 
 func (updater *OCSPUpdater) tick() {
@@ -454,14 +417,13 @@ func main() {
 	sa.InitDBMetrics(dbMap, stats)
 
 	clk := cmd.Clock()
-	ogc, sac, apc := setupClients(conf, stats, clk)
+	ogc, apc := setupClients(conf, stats, clk)
 
 	updater, err := newUpdater(
 		stats,
 		clk,
 		dbMap,
 		ogc,
-		sac,
 		apc,
 		// Necessary evil for now
 		conf,

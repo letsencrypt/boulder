@@ -392,7 +392,7 @@ func TestCAAChecking(t *testing.T) {
 
 	accountURIID := int64(123)
 	method := "http-01"
-	params := &caaParams{accountURIID: &accountURIID, validationMethod: &method}
+	params := &caaParams{accountURIID: accountURIID, validationMethod: method}
 
 	va, _ := setup(nil, 0, "", nil)
 	if err := features.Set(map[string]bool{"CAAValidationMethods": true, "CAAAccountURI": true}); err != nil {
@@ -467,68 +467,63 @@ func TestCAALogging(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil)
 	va.dnsClient = caaMockDNS{}
 
-	httpChal := core.ChallengeTypeHTTP01
-	dnsChal := core.ChallengeTypeDNS01
-	acctID := int64(12345)
-
 	testCases := []struct {
 		Name            string
 		Domain          string
-		AccountURIID    *int64
-		ChallengeType   *string
+		AccountURIID    int64
+		ChallengeType   core.AcmeChallenge
 		ExpectedLogline string
 	}{
 		{
 			Domain:          "reserved.com",
-			ChallengeType:   nil,
 			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: unknown, Challenge: unknown, Valid for issuance: false] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issue\",\"Value\":\"ca.com\"}]",
 		},
 		{
 			Domain:          "reserved.com",
-			AccountURIID:    &acctID,
-			ChallengeType:   &httpChal,
+			AccountURIID:    12345,
+			ChallengeType:   core.ChallengeTypeHTTP01,
 			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issue\",\"Value\":\"ca.com\"}]",
 		},
 		{
 			Domain:          "reserved.com",
-			AccountURIID:    &acctID,
-			ChallengeType:   &dnsChal,
+			AccountURIID:    12345,
+			ChallengeType:   core.ChallengeTypeDNS01,
 			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: dns-01, Valid for issuance: false] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issue\",\"Value\":\"ca.com\"}]",
 		},
 		{
 			Domain:          "mixedcase.com",
-			AccountURIID:    &acctID,
-			ChallengeType:   &httpChal,
+			AccountURIID:    12345,
+			ChallengeType:   core.ChallengeTypeHTTP01,
 			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for mixedcase.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"iSsUe\",\"Value\":\"ca.com\"}]",
 		},
 		{
 			Domain:          "critical.com",
-			AccountURIID:    &acctID,
-			ChallengeType:   &httpChal,
+			AccountURIID:    12345,
+			ChallengeType:   core.ChallengeTypeHTTP01,
 			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for critical.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":1,\"Tag\":\"issue\",\"Value\":\"ca.com\"}]",
 		},
 		{
 			Domain:          "present.com",
-			AccountURIID:    &acctID,
-			ChallengeType:   &httpChal,
+			AccountURIID:    12345,
+			ChallengeType:   core.ChallengeTypeHTTP01,
 			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issue\",\"Value\":\"letsencrypt.org\"}]",
 		},
 		{
 			Domain:          "multi-crit-present.com",
-			AccountURIID:    &acctID,
-			ChallengeType:   &httpChal,
+			AccountURIID:    12345,
+			ChallengeType:   core.ChallengeTypeHTTP01,
 			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for multi-crit-present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":1,\"Tag\":\"issue\",\"Value\":\"ca.com\"},{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":1,\"Tag\":\"issue\",\"Value\":\"letsencrypt.org\"}]",
 		},
 		{
 			Domain:          "present-with-parameter.com",
-			AccountURIID:    &acctID,
-			ChallengeType:   &httpChal,
+			AccountURIID:    12345,
+			ChallengeType:   core.ChallengeTypeHTTP01,
 			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present-with-parameter.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issue\",\"Value\":\"  letsencrypt.org  ;foo=bar;baz=bar\"}]",
 		},
 		{
 			Domain:          "satisfiable-wildcard-override.com",
-			AccountURIID:    &acctID,
-			ChallengeType:   &httpChal,
+			AccountURIID:    12345,
+			ChallengeType:   core.ChallengeTypeHTTP01,
 			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for satisfiable-wildcard-override.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issue\",\"Value\":\"ca.com\"},{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issuewild\",\"Value\":\"letsencrypt.org\"}]",
 		},
 	}
@@ -540,7 +535,7 @@ func TestCAALogging(t *testing.T) {
 
 			params := &caaParams{
 				accountURIID:     tc.AccountURIID,
-				validationMethod: tc.ChallengeType,
+				validationMethod: string(tc.ChallengeType),
 			}
 			_ = va.checkCAA(ctx, identifier.ACMEIdentifier{Type: identifier.DNS, Value: tc.Domain}, params)
 
@@ -565,7 +560,7 @@ func TestIsCAAValidErrMessage(t *testing.T) {
 	// caaMockDNS.
 	domain := "caa-timeout.com"
 	resp, err := va.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
-		Domain: &domain,
+		Domain: domain,
 	})
 
 	// The lookup itself should not return an error
@@ -586,7 +581,7 @@ func TestCAAFailure(t *testing.T) {
 	va, _ := setup(hs, 0, "", nil)
 	va.dnsClient = caaMockDNS{}
 
-	_, prob := va.validate(ctx, dnsi("reserved.com"), chall, core.Authorization{})
+	_, prob := va.validate(ctx, dnsi("reserved.com"), 0, chall)
 	if prob == nil {
 		t.Fatalf("Expected CAA rejection for reserved.com, got success")
 	}

@@ -16,6 +16,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
@@ -24,23 +25,6 @@ var ErrMissingParameters = CodedError(codes.FailedPrecondition, "required RPC pa
 
 // This file defines functions to translate between the protobuf types and the
 // code types.
-
-func authzMetaToPB(authz core.Authorization) (*vapb.AuthzMeta, error) {
-	return &vapb.AuthzMeta{
-		Id:    &authz.ID,
-		RegID: &authz.RegistrationID,
-	}, nil
-}
-
-func pbToAuthzMeta(in *vapb.AuthzMeta) (core.Authorization, error) {
-	if in == nil || in.Id == nil || in.RegID == nil {
-		return core.Authorization{}, ErrMissingParameters
-	}
-	return core.Authorization{
-		ID:             *in.Id,
-		RegistrationID: *in.RegID,
-	}, nil
-}
 
 func ProblemDetailsToPB(prob *probs.ProblemDetails) (*corepb.ProblemDetails, error) {
 	if prob == nil {
@@ -75,6 +59,7 @@ func PBToProblemDetails(in *corepb.ProblemDetails) (*probs.ProblemDetails, error
 }
 
 func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
+	ctype := string(challenge.Type)
 	st := string(challenge.Status)
 	prob, err := ProblemDetailsToPB(challenge.Error)
 	if err != nil {
@@ -88,7 +73,7 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 		}
 	}
 	return &corepb.Challenge{
-		Type:              &challenge.Type,
+		Type:              &ctype,
 		Status:            &st,
 		Token:             &challenge.Token,
 		KeyAuthorization:  &challenge.ProvidedKeyAuthorization,
@@ -97,7 +82,7 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 	}, nil
 }
 
-func pbToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
+func PBToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 	if in == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
@@ -119,7 +104,7 @@ func pbToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 		return core.Challenge{}, err
 	}
 	ch := core.Challenge{
-		Type:             *in.Type,
+		Type:             core.AcmeChallenge(*in.Type),
 		Status:           core.AcmeStatus(*in.Status),
 		Token:            *in.Token,
 		Error:            prob,
@@ -223,45 +208,6 @@ func pbToValidationResult(in *vapb.ValidationResult) ([]core.ValidationRecord, *
 	return recordAry, prob, nil
 }
 
-func performValidationReqToArgs(in *vapb.PerformValidationRequest) (domain string, challenge core.Challenge, authz core.Authorization, err error) {
-	if in == nil {
-		err = ErrMissingParameters
-		return
-	}
-	if in.Domain == nil {
-		err = ErrMissingParameters
-		return
-	}
-	domain = *in.Domain
-	challenge, err = pbToChallenge(in.Challenge)
-	if err != nil {
-		return
-	}
-	authz, err = pbToAuthzMeta(in.Authz)
-	if err != nil {
-		return
-	}
-
-	return domain, challenge, authz, nil
-}
-
-func argsToPerformValidationRequest(domain string, challenge core.Challenge, authz core.Authorization) (*vapb.PerformValidationRequest, error) {
-	pbChall, err := ChallengeToPB(challenge)
-	if err != nil {
-		return nil, err
-	}
-	authzMeta, err := authzMetaToPB(authz)
-	if err != nil {
-		return nil, err
-	}
-	return &vapb.PerformValidationRequest{
-		Domain:    &domain,
-		Challenge: pbChall,
-		Authz:     authzMeta,
-	}, nil
-
-}
-
 func registrationToPB(reg core.Registration) (*corepb.Registration, error) {
 	keyBytes, err := reg.Key.MarshalJSON()
 	if err != nil {
@@ -356,7 +302,7 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 	challs := make([]core.Challenge, len(pb.Challenges))
 	for i, c := range pb.Challenges {
-		chall, err := pbToChallenge(c)
+		chall, err := PBToChallenge(c)
 		if err != nil {
 			return core.Authorization{}, err
 		}
@@ -377,14 +323,13 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 }
 
 func registrationValid(reg *corepb.Registration) bool {
-	return !(reg.Id == nil || reg.Key == nil || reg.Agreement == nil || reg.InitialIP == nil || reg.CreatedAt == nil || reg.Status == nil || reg.ContactsPresent == nil)
+	return !(reg.Id == nil || reg.Key == nil || reg.InitialIP == nil || reg.CreatedAt == nil)
 }
 
 // orderValid checks that a corepb.Order is valid. In addition to the checks
-// from `newOrderValid` it ensures the order ID, the BeganProcessing fields
-// and the Created field are not nil.
+// from `newOrderValid` it ensures the order ID and the Created field are not nil.
 func orderValid(order *corepb.Order) bool {
-	return order.Id != nil && order.BeganProcessing != nil && order.Created != nil && newOrderValid(order)
+	return order.Id != nil && order.Created != nil && newOrderValid(order)
 }
 
 // newOrderValid checks that a corepb.Order is valid. It allows for a nil
@@ -395,7 +340,7 @@ func orderValid(order *corepb.Order) bool {
 // `order.CertificateSerial` to be nil such that it can be used in places where
 // the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
-	return !(order.RegistrationID == nil || order.Expires == nil || order.V2Authorizations == nil || order.Names == nil)
+	return !(order.RegistrationID == nil || order.Expires == nil || order.Names == nil)
 }
 
 func authorizationValid(authz *corepb.Authorization) bool {
@@ -415,9 +360,6 @@ func CertToPB(cert core.Certificate) *corepb.Certificate {
 }
 
 func PBToCert(pb *corepb.Certificate) (core.Certificate, error) {
-	if pb == nil || pb.RegistrationID == nil || pb.Serial == nil || pb.Digest == nil || pb.Der == nil || pb.Issued == nil || pb.Expires == nil {
-		return core.Certificate{}, errIncompleteResponse
-	}
 	return core.Certificate{
 		RegistrationID: *pb.RegistrationID,
 		Serial:         *pb.Serial,
@@ -425,6 +367,41 @@ func PBToCert(pb *corepb.Certificate) (core.Certificate, error) {
 		DER:            pb.Der,
 		Issued:         time.Unix(0, *pb.Issued),
 		Expires:        time.Unix(0, *pb.Expires),
+	}, nil
+}
+
+func CertStatusToPB(certStatus core.CertificateStatus) *corepb.CertificateStatus {
+	ocspLastUpdatedNano := certStatus.OCSPLastUpdated.UnixNano()
+	revokedDateNano := certStatus.RevokedDate.UnixNano()
+	lastExpirationNagSentNano := certStatus.LastExpirationNagSent.UnixNano()
+	notAfterNano := certStatus.NotAfter.UnixNano()
+	reason := int64(certStatus.RevokedReason)
+	status := string(certStatus.Status)
+
+	return &corepb.CertificateStatus{
+		Serial:                &certStatus.Serial,
+		Status:                &status,
+		OcspLastUpdated:       &ocspLastUpdatedNano,
+		RevokedDate:           &revokedDateNano,
+		RevokedReason:         &reason,
+		LastExpirationNagSent: &lastExpirationNagSentNano,
+		OcspResponse:          certStatus.OCSPResponse,
+		NotAfter:              &notAfterNano,
+		IsExpired:             &certStatus.IsExpired,
+	}
+}
+
+func PBToCertStatus(pb *corepb.CertificateStatus) (core.CertificateStatus, error) {
+	return core.CertificateStatus{
+		Serial:                *pb.Serial,
+		Status:                core.OCSPStatus(*pb.Status),
+		OCSPLastUpdated:       time.Unix(0, *pb.OcspLastUpdated),
+		RevokedDate:           time.Unix(0, *pb.RevokedDate),
+		RevokedReason:         revocation.Reason(*pb.RevokedReason),
+		LastExpirationNagSent: time.Unix(0, *pb.LastExpirationNagSent),
+		OCSPResponse:          pb.OcspResponse,
+		NotAfter:              time.Unix(0, *pb.NotAfter),
+		IsExpired:             *pb.IsExpired,
 	}, nil
 }
 

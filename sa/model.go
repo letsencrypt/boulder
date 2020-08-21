@@ -8,6 +8,7 @@ import (
 	"math"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	jose "gopkg.in/square/go-jose.v2"
@@ -15,10 +16,8 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
-	"github.com/letsencrypt/boulder/revocation"
 )
 
 // errBadJSON is an error type returned when a json.Unmarshal performed by the
@@ -66,12 +65,13 @@ func selectRegistration(s db.OneSelector, q string, args ...interface{}) (*regMo
 const certFields = "registrationID, serial, digest, der, issued, expires"
 
 // SelectCertificate selects all fields of one certificate object
-func SelectCertificate(s db.OneSelector, q string, args ...interface{}) (core.Certificate, error) {
+// identified by serial.
+func SelectCertificate(s db.OneSelector, serial string) (core.Certificate, error) {
 	var model core.Certificate
 	err := s.SelectOne(
 		&model,
-		"SELECT "+certFields+" FROM certificates "+q,
-		args...,
+		"SELECT "+certFields+" FROM certificates WHERE serial = ?",
+		serial,
 	)
 	return model, err
 }
@@ -109,21 +109,37 @@ func SelectCertificates(s db.Selector, q string, args map[string]interface{}) ([
 	return models, err
 }
 
-const certStatusFields = "serial, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, notAfter, isExpired"
+func certStatusFields() []string {
+	return []string{"serial", "status", "ocspLastUpdated", "revokedDate", "revokedReason", "lastExpirationNagSent", "ocspResponse", "notAfter", "isExpired", "issuerID"}
+}
+
+func certStatusFieldsSelect(restOfQuery string) string {
+	fields := strings.Join(certStatusFields(), ",")
+	return fmt.Sprintf("SELECT %s FROM certificateStatus %s", fields, restOfQuery)
+}
 
 // SelectCertificateStatus selects all fields of one certificate status model
-func SelectCertificateStatus(s db.OneSelector, q string, args ...interface{}) (certStatusModel, error) {
-	fields := certStatusFields
-	if features.Enabled(features.StoreIssuerInfo) {
-		fields += ", issuerID"
-	}
-	var model certStatusModel
+// identified by serial
+func SelectCertificateStatus(s db.OneSelector, serial string) (core.CertificateStatus, error) {
+	var model core.CertificateStatus
 	err := s.SelectOne(
 		&model,
-		"SELECT "+fields+" FROM certificateStatus "+q,
-		args...,
+		certStatusFieldsSelect("WHERE serial = ?"),
+		serial,
 	)
 	return model, err
+}
+
+// SelectCertificateStatuses selects all fields of multiple certificate status
+// objects
+func SelectCertificateStatuses(s db.Selector, q string, args ...interface{}) ([]core.CertificateStatus, error) {
+	var models []core.CertificateStatus
+	_, err := s.Select(
+		&models,
+		certStatusFieldsSelect(q),
+		args...,
+	)
+	return models, err
 }
 
 var mediumBlobSize = int(math.Pow(2, 24))
@@ -150,19 +166,6 @@ type regModel struct {
 	Status    string `db:"status"`
 }
 
-type certStatusModel struct {
-	Serial                string            `db:"serial"`
-	Status                core.OCSPStatus   `db:"status"`
-	OCSPLastUpdated       time.Time         `db:"ocspLastUpdated"`
-	RevokedDate           time.Time         `db:"revokedDate"`
-	RevokedReason         revocation.Reason `db:"revokedReason"`
-	LastExpirationNagSent time.Time         `db:"lastExpirationNagSent"`
-	OCSPResponse          []byte            `db:"ocspResponse"`
-	NotAfter              time.Time         `db:"notAfter"`
-	IsExpired             bool              `db:"isExpired"`
-	IssuerID              *int64            `db:"issuerID"`
-}
-
 // challModel is the description of a core.Challenge in the database
 //
 // The Validation field is a stub; the column is only there for backward compatibility.
@@ -170,12 +173,12 @@ type challModel struct {
 	ID              int64  `db:"id"`
 	AuthorizationID string `db:"authorizationID"`
 
-	Type             string          `db:"type"`
-	Status           core.AcmeStatus `db:"status"`
-	Error            []byte          `db:"error"`
-	Token            string          `db:"token"`
-	KeyAuthorization string          `db:"keyAuthorization"`
-	ValidationRecord []byte          `db:"validationRecord"`
+	Type             core.AcmeChallenge `db:"type"`
+	Status           core.AcmeStatus    `db:"status"`
+	Error            []byte             `db:"error"`
+	Token            string             `db:"token"`
+	KeyAuthorization string             `db:"keyAuthorization"`
+	ValidationRecord []byte             `db:"validationRecord"`
 
 	// TODO(#1818): Remove, this field is unused, but is kept temporarily to avoid a database migration.
 	Validated bool `db:"validated"`

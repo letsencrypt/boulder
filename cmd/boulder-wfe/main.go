@@ -96,6 +96,7 @@ func setupWFE(c config, logger blog.Logger, stats prometheus.Registerer, clk clo
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to get nonce service")
 		rns = noncepb.NewNonceServiceClient(rnsConn)
 		for prefix, serviceConfig := range c.WFE.RedeemNonceServices {
+			serviceConfig := serviceConfig
 			conn, err := bgrpc.ClientSetup(&serviceConfig, tlsConfig, clientMetrics, clk)
 			cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to redeem nonce service")
 			npm[prefix] = noncepb.NewNonceServiceClient(conn)
@@ -143,12 +144,8 @@ func main() {
 	clk := cmd.Clock()
 
 	rac, sac, rns, npm := setupWFE(c, logger, stats, clk)
-	var blockedKeyFunc goodkey.BlockedKeyCheckFunc
-	if features.Enabled(features.BlockedKeyTable) {
-		blockedKeyFunc = sac.KeyBlocked
-	}
 	// don't load any weak keys, but do load blocked keys
-	kp, err := goodkey.NewKeyPolicy("", c.WFE.BlockedKeyFile, blockedKeyFunc)
+	kp, err := goodkey.NewKeyPolicy("", c.WFE.BlockedKeyFile, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 	wfe, err := wfe.NewWebFrontEndImpl(stats, clk, kp, rns, npm, logger)
 	cmd.FailOnError(err, "Unable to create WFE")

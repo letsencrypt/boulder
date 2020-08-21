@@ -38,25 +38,17 @@ race_detection = True
 if os.environ.get('RACE', 'true') != 'true':
     race_detection = False
 
-def run_client_tests():
-    root = os.environ.get("CERTBOT_PATH")
-    assert root is not None, (
-        "Please set CERTBOT_PATH env variable to point at "
-        "initialized (virtualenv) client repo root")
-    cmd = os.path.join(root, 'tests', 'boulder-integration.sh')
-    run(cmd, cwd=root)
-
 def run_go_tests(filterPattern=None):
     """
     run_go_tests launches the Go integration tests. The go test command must
     return zero or an exception will be raised. If the filterPattern is provided
     it is used as the value of the `--test.run` argument to the go test command.
     """
-    cmdLine = [ "go", "test", ]
+    cmdLine = ["go", "test"]
     if filterPattern is not None and filterPattern != "":
         cmdLine = cmdLine + ["--test.run", filterPattern]
     cmdLine = cmdLine + ["-tags", "integration", "-count=1", "-race", "./test/integration"]
-    subprocess.check_call(cmdLine, shell=False, stderr=subprocess.STDOUT)
+    subprocess.check_call(cmdLine, stderr=subprocess.STDOUT)
 
 def run_expired_authz_purger():
     # Note: This test must be run after all other tests that depend on
@@ -65,7 +57,9 @@ def run_expired_authz_purger():
 
     def expect(target_time, num, table):
         tool = "expired-authz-purger2"
-        out = get_future_output("./bin/expired-authz-purger2 --single-run --config cmd/expired-authz-purger2/config.json", target_time)
+        out = get_future_output([
+            "./bin/expired-authz-purger2", "--single-run",
+            "--config", "cmd/expired-authz-purger2/config.json"], target_time)
         if 'via FAKECLOCK' not in out:
             raise(Exception("%s was not built with `integration` build tag" % (tool)))
         if num is None:
@@ -104,9 +98,8 @@ def run_janitor():
     e.setdefault("GORACE", "halt_on_error=1")
     e.setdefault("FAKECLOCK", fakeclock(target_time))
 
-    # Note: Must use exec here so that killing this process kills the command.
-    cmdline = "exec ./bin/boulder-janitor --config {0}/janitor.json".format(config_dir)
-    p = subprocess.Popen(cmdline, shell=True, env=e)
+    cmdline = ["./bin/boulder-janitor", "--config",  "{0}/janitor.json".format(config_dir)]
+    p = subprocess.Popen(cmdline, env=e)
 
     # Wait for the janitor to come up
     waitport(8014, "boulder-janitor", None)
@@ -191,30 +184,19 @@ def run_janitor():
     p.terminate()
 
 def test_single_ocsp():
-    """Run the single-ocsp command, which is used to generate OCSP responses for
-       intermediate certificates on a manual basis. Then start up an
-       ocsp-responder configured to respond using the output of single-ocsp,
-       check that it successfully answers OCSP requests, and shut the responder
-       back down.
+    """Run ocsp-responder with the single OCSP response generated for the intermediate
+       certificate using the ceremony tool during setup and check that it successfully
+       answers OCSP requests, and shut the responder back down.
 
        This is a non-API test.
     """
-    run("./bin/single-ocsp -issuer test/test-root.pem \
-            -responder test/test-root.pem \
-            -target test/test-ca2.pem \
-            -pkcs11 test/test-root.key-pkcs11.json \
-            -thisUpdate 2016-09-02T00:00:00Z \
-            -nextUpdate 2020-09-02T00:00:00Z \
-            -status 0 \
-            -out /tmp/issuer-ocsp-responses.txt")
-
     p = subprocess.Popen(
-        './bin/ocsp-responder --config test/issuer-ocsp-responder.json', shell=True)
-    waitport(4003, './bin/ocsp-responder --config test/issuer-ocsp-responder.json')
+        ["./bin/ocsp-responder", "--config", "test/issuer-ocsp-responder.json"])
+    waitport(4003, ' '.join(p.args))
 
     # Verify that the static OCSP responder, which answers with a
     # pre-signed, long-lived response for the CA cert, works.
-    verify_ocsp("test/test-ca2.pem", "test/test-root.pem", "http://localhost:4003", "good")
+    verify_ocsp("/tmp/intermediate-cert-rsa-a.pem", "/tmp/root-cert-rsa.pem", "http://localhost:4003", "good")
 
     p.send_signal(signal.SIGTERM)
     p.wait()
@@ -243,8 +225,6 @@ exit_status = 1
 
 def main():
     parser = argparse.ArgumentParser(description='Run integration tests')
-    parser.add_argument('--certbot', dest='run_certbot', action='store_true',
-                        help="run the certbot integration tests")
     parser.add_argument('--chisel', dest="run_chisel", action="store_true",
                         help="run integration tests using chisel")
     parser.add_argument('--gotest', dest="run_go", action="store_true",
@@ -254,12 +234,14 @@ def main():
     # allow any ACME client to run custom command for integration
     # testing (without having to implement its own busy-wait loop)
     parser.add_argument('--custom', metavar="CMD", help="run custom command")
-    parser.set_defaults(run_certbot=False, run_chisel=False,
-        test_case_filter="", skip_setup=False)
+    parser.set_defaults(run_chisel=False, test_case_filter="", skip_setup=False)
     args = parser.parse_args()
 
-    if not (args.run_certbot or args.run_chisel or args.custom  or args.run_go is not None):
-        raise(Exception("must run at least one of the letsencrypt or chisel tests with --certbot, --chisel, --gotest, or --custom"))
+    if not (args.run_chisel or args.custom  or args.run_go is not None):
+        raise(Exception("must run at least one of the letsencrypt or chisel tests with --chisel, --gotest, or --custom"))
+
+    # Setup issuance hierarchy
+    startservers.setupHierarchy()
 
     if not args.test_case_filter:
         now = datetime.datetime.utcnow()
@@ -283,14 +265,11 @@ def main():
     if args.run_chisel:
         run_chisel(args.test_case_filter)
 
-    if args.run_certbot:
-        run_client_tests()
-
     if args.run_go:
         run_go_tests(args.test_case_filter)
 
     if args.custom:
-        run(args.custom)
+        run(args.custom.split())
 
     # Skip the last-phase checks when the test case filter is one, because that
     # means we want to quickly iterate on a single test case.
@@ -375,9 +354,9 @@ def run_loadtest():
     # might benefit from the pebble-challtestsrv being restarted.
     startservers.stopChallSrv()
 
-    run("./bin/load-generator \
-            -config test/load-generator/config/integration-test-config.json\
-            -results %s" % latency_data_file)
+    run(["./bin/load-generator",
+        "-config", "test/load-generator/config/integration-test-config.json",
+        "-results", latency_data_file])
 
 def check_balance():
     """Verify that gRPC load balancing across backends is working correctly.
@@ -404,7 +383,7 @@ def check_balance():
                 % address)
 
 def run_cert_checker():
-    run("./bin/cert-checker -config %s/cert-checker.json" % config_dir)
+    run(["./bin/cert-checker", "-config", "%s/cert-checker.json" % config_dir])
 
 if __name__ == "__main__":
     main()

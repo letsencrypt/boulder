@@ -32,7 +32,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 
 	ca_config "github.com/letsencrypt/boulder/ca/config"
-	caPB "github.com/letsencrypt/boulder/ca/proto"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	csrlib "github.com/letsencrypt/boulder/csr"
@@ -41,6 +41,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	bsigner "github.com/letsencrypt/boulder/signer"
 )
 
 // Miscellaneous PKIX OIDs that we need to refer to
@@ -101,7 +102,6 @@ type certificateStorage interface {
 	GetCertificate(context.Context, string) (core.Certificate, error)
 	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error)
 	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*corepb.Empty, error)
-	SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error)
 }
 
 type certificateType string
@@ -131,7 +131,6 @@ type CertificateAuthorityImpl struct {
 	validityPeriod     time.Duration
 	backdate           time.Duration
 	maxNames           int
-	forceCNFromSAN     bool
 	signatureCount     *prometheus.CounterVec
 	csrExtensionCount  *prometheus.CounterVec
 	orphanCount        *prometheus.CounterVec
@@ -158,11 +157,33 @@ type localSigner interface {
 // issuer, including the cfssl signer and OCSP signer objects.
 type internalIssuer struct {
 	cert       *x509.Certificate
-	eeSigner   localSigner
 	ocspSigner crypto.Signer
+
+	// Only one of cfsslSigner and boulderSigner will be non-nill
+	cfsslSigner   localSigner
+	boulderSigner *bsigner.Signer
 }
 
-func makeInternalIssuers(
+func makeInternalIssuers(issuers []bsigner.Config, lifespanOCSP time.Duration) (map[string]*internalIssuer, error) {
+	internalIssuers := make(map[string]*internalIssuer, len(issuers))
+	for _, issuer := range issuers {
+		signer, err := bsigner.NewSigner(issuer)
+		if err != nil {
+			return nil, err
+		}
+		if internalIssuers[issuer.Issuer.Subject.CommonName] != nil {
+			return nil, errors.New("Multiple issuer certs with the same CommonName are not supported")
+		}
+		internalIssuers[issuer.Issuer.Subject.CommonName] = &internalIssuer{
+			cert:          issuer.Issuer,
+			ocspSigner:    issuer.Signer,
+			boulderSigner: signer,
+		}
+	}
+	return internalIssuers, nil
+}
+
+func makeCFSSLInternalIssuers(
 	issuers []Issuer,
 	policy *cfsslConfig.Signing,
 	lifespanOCSP time.Duration,
@@ -175,7 +196,7 @@ func makeInternalIssuers(
 		if iss.Cert == nil || iss.Signer == nil {
 			return nil, errors.New("Issuer with nil cert or signer specified.")
 		}
-		eeSigner, err := local.NewSigner(iss.Signer, iss.Cert, x509.SHA256WithRSA, policy)
+		cfsslSigner, err := local.NewSigner(iss.Signer, iss.Cert, x509.SHA256WithRSA, policy)
 		if err != nil {
 			return nil, err
 		}
@@ -185,9 +206,9 @@ func makeInternalIssuers(
 			return nil, errors.New("Multiple issuer certs with the same CommonName are not supported")
 		}
 		internalIssuers[cn] = &internalIssuer{
-			cert:       iss.Cert,
-			eeSigner:   eeSigner,
-			ocspSigner: iss.Signer,
+			cert:        iss.Cert,
+			cfsslSigner: cfsslSigner,
+			ocspSigner:  iss.Signer,
 		}
 	}
 	return internalIssuers, nil
@@ -210,7 +231,8 @@ func NewCertificateAuthorityImpl(
 	pa core.PolicyAuthority,
 	clk clock.Clock,
 	stats prometheus.Registerer,
-	issuers []Issuer,
+	cfsslIssuers []Issuer,
+	boulderIssuers []bsigner.Config,
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
 	orphanQueue *goque.Queue,
@@ -223,41 +245,53 @@ func NewCertificateAuthorityImpl(
 		return nil, err
 	}
 
-	// CFSSL requires processing JSON configs through its own LoadConfig, so we
-	// serialize and then deserialize.
-	cfsslJSON, err := json.Marshal(config.CFSSL)
-	if err != nil {
-		return nil, err
-	}
-	cfsslConfigObj, err := cfsslConfig.LoadConfig(cfsslJSON)
-	if err != nil {
-		return nil, err
-	}
-
-	if config.LifespanOCSP.Duration == 0 {
-		return nil, errors.New("Config must specify an OCSP lifespan period.")
-	}
-
-	for _, profile := range cfsslConfigObj.Signing.Profiles {
-		if len(profile.IssuerURL) > 1 {
-			return nil, errors.New("only one issuer_url supported")
+	var internalIssuers map[string]*internalIssuer
+	var defaultIssuer *internalIssuer
+	// rsaProfile and ecdsaProfile are unused when using the boulder signer
+	// instead of the CFSSL signer
+	var rsaProfile, ecdsaProfile string
+	if features.Enabled(features.NonCFSSLSigner) {
+		internalIssuers, err = makeInternalIssuers(boulderIssuers, config.LifespanOCSP.Duration)
+		if err != nil {
+			return nil, err
 		}
-	}
+		defaultIssuer = internalIssuers[boulderIssuers[0].Issuer.Subject.CommonName]
+	} else {
+		// CFSSL requires processing JSON configs through its own LoadConfig, so we
+		// serialize and then deserialize.
+		cfsslJSON, err := json.Marshal(config.CFSSL)
+		if err != nil {
+			return nil, err
+		}
+		cfsslConfigObj, err := cfsslConfig.LoadConfig(cfsslJSON)
+		if err != nil {
+			return nil, err
+		}
 
-	internalIssuers, err := makeInternalIssuers(
-		issuers,
-		cfsslConfigObj.Signing,
-		config.LifespanOCSP.Duration)
-	if err != nil {
-		return nil, err
-	}
-	defaultIssuer := internalIssuers[issuers[0].Cert.Subject.CommonName]
+		if config.LifespanOCSP.Duration == 0 {
+			return nil, errors.New("Config must specify an OCSP lifespan period.")
+		}
 
-	rsaProfile := config.RSAProfile
-	ecdsaProfile := config.ECDSAProfile
+		for _, profile := range cfsslConfigObj.Signing.Profiles {
+			if len(profile.IssuerURL) > 1 {
+				return nil, errors.New("only one issuer_url supported")
+			}
+		}
 
-	if rsaProfile == "" || ecdsaProfile == "" {
-		return nil, errors.New("must specify rsaProfile and ecdsaProfile")
+		internalIssuers, err = makeCFSSLInternalIssuers(
+			cfsslIssuers,
+			cfsslConfigObj.Signing,
+			config.LifespanOCSP.Duration)
+		if err != nil {
+			return nil, err
+		}
+
+		rsaProfile, ecdsaProfile = config.RSAProfile, config.ECDSAProfile
+
+		if rsaProfile == "" || ecdsaProfile == "" {
+			return nil, errors.New("must specify rsaProfile and ecdsaProfile")
+		}
+		defaultIssuer = internalIssuers[cfsslIssuers[0].Cert.Subject.CommonName]
 	}
 
 	csrExtensionCount := prometheus.NewCounterVec(
@@ -309,7 +343,6 @@ func NewCertificateAuthorityImpl(
 		clk:                clk,
 		log:                logger,
 		keyPolicy:          keyPolicy,
-		forceCNFromSAN:     !config.DoNotForceCN, // Note the inversion here
 		signatureCount:     signatureCount,
 		csrExtensionCount:  csrExtensionCount,
 		orphanCount:        orphanCount,
@@ -430,7 +463,13 @@ var ocspStatusToCode = map[string]int{
 }
 
 // GenerateOCSP produces a new OCSP response and returns it
-func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *caPB.GenerateOCSPRequest) (*caPB.OCSPResponse, error) {
+func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
+	// req.Status, req.Reason, and req.RevokedAt are often 0, for non-revoked certs.
+	// Either CertDER or both (Serial and IssuerID) must be non-zero.
+	if core.IsAnyNilOrZero(req, req.CertDER) && core.IsAnyNilOrZero(req, req.Serial, req.IssuerID) {
+		return nil, berrors.InternalServerError("Incomplete generate OCSP request")
+	}
+
 	var issuer *internalIssuer
 	var serial *big.Int
 	// Once the feature is enabled we need to support both RPCs that include
@@ -438,23 +477,16 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *caPB.
 	// that didn't have an IssuerID set when they were created. Once this feature
 	// has been enabled for a full OCSP lifetime cycle we can remove this
 	// functionality.
-	if features.Enabled(features.StoreIssuerInfo) && req.IssuerID != nil {
-		serialInt, err := core.StringToSerial(*req.Serial)
+	if features.Enabled(features.StoreIssuerInfo) && req.IssuerID != 0 {
+		serialInt, err := core.StringToSerial(req.Serial)
 		if err != nil {
 			return nil, err
 		}
 		serial = serialInt
 		var ok bool
-		issuer, ok = ca.idToIssuer[*req.IssuerID]
+		issuer, ok = ca.idToIssuer[req.IssuerID]
 		if !ok {
-			return nil, fmt.Errorf("This CA doesn't have an issuer cert with ID %d", *req.IssuerID)
-		}
-		exists, err := ca.sa.SerialExists(ctx, &sapb.Serial{Serial: req.Serial})
-		if err != nil {
-			return nil, err
-		}
-		if !*exists.Exists {
-			return nil, fmt.Errorf("GenerateOCSP was asked to sign OCSP for certification with unknown serial %q", *req.Serial)
+			return nil, fmt.Errorf("This CA doesn't have an issuer cert with ID %d", req.IssuerID)
 		}
 	} else {
 		cert, err := x509.ParseCertificate(req.CertDER)
@@ -479,14 +511,14 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *caPB.
 
 	now := ca.clk.Now().Truncate(time.Hour)
 	tbsResponse := ocsp.Response{
-		Status:       ocspStatusToCode[*req.Status],
+		Status:       ocspStatusToCode[req.Status],
 		SerialNumber: serial,
 		ThisUpdate:   now,
 		NextUpdate:   now.Add(ca.ocspLifetime),
 	}
 	if tbsResponse.Status == ocsp.Revoked {
-		tbsResponse.RevokedAt = time.Unix(0, *req.RevokedAt)
-		tbsResponse.RevocationReason = int(*req.Reason)
+		tbsResponse.RevokedAt = time.Unix(0, req.RevokedAt)
+		tbsResponse.RevocationReason = int(req.Reason)
 	}
 
 	ocspResponse, err := ocsp.CreateResponse(issuer.cert, issuer.cert, tbsResponse, issuer.ocspSigner)
@@ -494,18 +526,22 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *caPB.
 	if err == nil {
 		ca.signatureCount.With(prometheus.Labels{"purpose": "ocsp"}).Inc()
 	}
-	return &caPB.OCSPResponse{Response: ocspResponse}, err
+	return &capb.OCSPResponse{Response: ocspResponse}, err
 }
 
-func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *caPB.IssueCertificateRequest) (*caPB.IssuePrecertificateResponse, error) {
+func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
+	// issueReq.orderID may be zero, for ACMEv1 requests.
+	if core.IsAnyNilOrZero(issueReq, issueReq.Csr, issueReq.RegistrationID) {
+		return nil, berrors.InternalServerError("Incomplete issue certificate request")
+	}
+
 	serialBigInt, validity, err := ca.generateSerialNumberAndValidity()
 	if err != nil {
 		return nil, err
 	}
 
-	regID := *issueReq.RegistrationID
-
 	serialHex := core.SerialToString(serialBigInt)
+	regID := issueReq.RegistrationID
 	nowNanos := ca.clk.Now().UnixNano()
 	expiresNanos := validity.NotAfter.UnixNano()
 	_, err = ca.sa.AddSerial(ctx, &sapb.AddSerialRequest{
@@ -523,10 +559,9 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	status := string(core.OCSPStatusGood)
-	ocspResp, err := ca.GenerateOCSP(ctx, &caPB.GenerateOCSPRequest{
+	ocspResp, err := ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		CertDER: precertDER,
-		Status:  &status,
+		Status:  string(core.OCSPStatusGood),
 	})
 	if err != nil {
 		err = berrors.InternalServerError(err.Error())
@@ -553,7 +588,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
 		// changes here, you should make sure they are reflected in orphan-finder.
 		ca.log.AuditErrf("Failed RPC to store at SA, orphaning precertificate: serial=[%s] cert=[%s] err=[%v], regID=[%d], orderID=[%d]",
-			serialHex, hex.EncodeToString(precertDER), err, *issueReq.RegistrationID, *issueReq.OrderID)
+			serialHex, hex.EncodeToString(precertDER), err, issueReq.RegistrationID, issueReq.OrderID)
 		if ca.orphanQueue != nil {
 			ca.queueOrphan(&orphanedCert{
 				DER:      precertDER,
@@ -565,7 +600,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	return &caPB.IssuePrecertificateResponse{
+	return &capb.IssuePrecertificateResponse{
 		DER: precertDER,
 	}, nil
 }
@@ -592,46 +627,78 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 // final certificate, but this is just a belt-and-suspenders measure, since
 // there could be race conditions where two goroutines are issuing for the same
 // serial number at the same time.
-func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *caPB.IssueCertificateForPrecertificateRequest) (core.Certificate, error) {
-	emptyCert := core.Certificate{}
+func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
+	// issueReq.orderID may be zero, for ACMEv1 requests.
+	if core.IsAnyNilOrZero(req, req.DER, req.SCTs, req.RegistrationID) {
+		return nil, berrors.InternalServerError("Incomplete cert for precertificate request")
+	}
+
 	precert, err := x509.ParseCertificate(req.DER)
 	if err != nil {
-		return emptyCert, err
+		return nil, err
 	}
 
 	serialHex := core.SerialToString(precert.SerialNumber)
 	if _, err = ca.sa.GetCertificate(ctx, serialHex); err == nil {
 		err = berrors.InternalServerError("issuance of duplicate final certificate requested: %s", serialHex)
 		ca.log.AuditErr(err.Error())
-		return emptyCert, err
+		return nil, err
 	} else if !berrors.Is(err, berrors.NotFound) {
-		return emptyCert, fmt.Errorf("error checking for duplicate issuance of %s: %s", serialHex, err)
+		return nil, fmt.Errorf("error checking for duplicate issuance of %s: %s", serialHex, err)
 	}
 	var scts []ct.SignedCertificateTimestamp
 	for _, sctBytes := range req.SCTs {
 		var sct ct.SignedCertificateTimestamp
 		_, err = cttls.Unmarshal(sctBytes, &sct)
 		if err != nil {
-			return emptyCert, err
+			return nil, err
 		}
 		scts = append(scts, sct)
 	}
-	certPEM, err := ca.defaultIssuer.eeSigner.SignFromPrecert(precert, scts)
-	if err != nil {
-		return emptyCert, err
+
+	var certDER []byte
+	if features.Enabled(features.NonCFSSLSigner) {
+		issuanceReq, err := bsigner.RequestFromPrecert(precert, scts)
+		if err != nil {
+			return nil, err
+		}
+		certDER, err = ca.defaultIssuer.boulderSigner.Issue(issuanceReq)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		certPEM, err := ca.defaultIssuer.cfsslSigner.SignFromPrecert(precert, scts)
+		if err != nil {
+			return nil, err
+		}
+		ca.signatureCount.WithLabelValues(string(certType)).Inc()
+		block, _ := pem.Decode(certPEM)
+		if block == nil || block.Type != "CERTIFICATE" {
+			err = berrors.InternalServerError("invalid certificate value returned")
+			ca.log.AuditErrf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]", serialHex, certPEM, err)
+			return nil, err
+		}
+		certDER = block.Bytes
 	}
-	ca.signatureCount.WithLabelValues(string(certType)).Inc()
-	block, _ := pem.Decode(certPEM)
-	if block == nil || block.Type != "CERTIFICATE" {
-		err = berrors.InternalServerError("invalid certificate value returned")
-		ca.log.AuditErrf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]", serialHex, certPEM, err)
-		return emptyCert, err
-	}
-	certDER := block.Bytes
-	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] precertificate=[%s] certificate=[%s]",
+	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] csr=[%s] certificate=[%s]",
 		serialHex, strings.Join(precert.DNSNames, ", "), hex.EncodeToString(req.DER),
 		hex.EncodeToString(certDER))
-	return ca.storeCertificate(ctx, *req.RegistrationID, *req.OrderID, precert.SerialNumber, certDER)
+	err = ca.storeCertificate(ctx, req.RegistrationID, req.OrderID, precert.SerialNumber, certDER)
+	if err != nil {
+		return nil, err
+	}
+	serialString := core.SerialToString(precert.SerialNumber)
+	digest := core.Fingerprint256(certDER)
+	issued := precert.NotBefore.UnixNano()
+	expires := precert.NotAfter.UnixNano()
+	return &corepb.Certificate{
+		RegistrationID: &req.RegistrationID,
+		Serial:         &serialString,
+		Der:            certDER,
+		Digest:         &digest,
+		Issued:         &issued,
+		Expires:        &expires,
+	}, nil
 }
 
 type validity struct {
@@ -662,7 +729,7 @@ func (ca *CertificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	return serialBigInt, validity, nil
 }
 
-func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *caPB.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, error) {
+func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
 		return nil, err
@@ -674,8 +741,7 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		ca.maxNames,
 		&ca.keyPolicy,
 		ca.pa,
-		ca.forceCNFromSAN,
-		*issueReq.RegistrationID,
+		issueReq.RegistrationID,
 	); err != nil {
 		ca.log.AuditErr(err.Error())
 		// VerifyCSR returns berror instances that can be passed through as-is
@@ -696,82 +762,100 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, err
 	}
 
-	// Convert the CSR to PEM
-	csrPEM := string(pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE REQUEST",
-		Bytes: csr.Raw,
-	}))
-
-	var profile string
-	switch csr.PublicKey.(type) {
-	case *rsa.PublicKey:
-		profile = ca.rsaProfile
-	case *ecdsa.PublicKey:
-		profile = ca.ecdsaProfile
-	default:
-		err = berrors.InternalServerError("unsupported key type %T", csr.PublicKey)
-		ca.log.AuditErr(err.Error())
-		return nil, err
-	}
-
-	// Send the cert off for signing
-	req := signer.SignRequest{
-		Request: csrPEM,
-		Profile: profile,
-		Hosts:   csr.DNSNames,
-		Subject: &signer.Subject{
-			CN: csr.Subject.CommonName,
-		},
-		Serial:        serialBigInt,
-		Extensions:    extensions,
-		NotBefore:     validity.NotBefore,
-		NotAfter:      validity.NotAfter,
-		ReturnPrecert: true,
-	}
-
 	serialHex := core.SerialToString(serialBigInt)
 
-	if !ca.forceCNFromSAN {
-		req.Subject.SerialNumber = serialHex
-	}
+	var certDER []byte
+	if features.Enabled(features.NonCFSSLSigner) {
+		ca.log.AuditInfof("Signing: serial=[%s] names=[%s] csr=[%s]",
+			serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw))
+		certDER, err = issuer.boulderSigner.Issue(&bsigner.IssuanceRequest{
+			PublicKey:         csr.PublicKey,
+			Serial:            serialBigInt.Bytes(),
+			CommonName:        csr.Subject.CommonName,
+			DNSNames:          csr.DNSNames,
+			IncludeCTPoison:   true,
+			IncludeMustStaple: bsigner.ContainsMustStaple(csr.Extensions),
+			NotBefore:         validity.NotBefore,
+			NotAfter:          validity.NotAfter,
+		})
+		ca.noteSignError(err)
+		if err != nil {
+			err = berrors.InternalServerError("failed to sign certificate: %s", err)
+			ca.log.AuditErrf("Signing failed: serial=[%s] err=[%v]", serialHex, err)
+			return nil, err
+		}
+	} else {
+		// Convert the CSR to PEM
+		csrPEM := string(pem.EncodeToMemory(&pem.Block{
+			Type:  "CERTIFICATE REQUEST",
+			Bytes: csr.Raw,
+		}))
 
-	ca.log.AuditInfof("Signing: serial=[%s] names=[%s] csr=[%s]",
-		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw))
-
-	certPEM, err := issuer.eeSigner.Sign(req)
-	ca.noteSignError(err)
-	if err != nil {
-		// If the Signing error was a pre-issuance lint error then marshal the
-		// linting errors to include in the audit err msg.
-		if lErr, ok := err.(*local.LintError); ok {
-			// NOTE(@cpu): We throw away the JSON marshal error here. If marshaling
-			// fails for some reason it's acceptable to log an empty string for the
-			// JSON component.
-			lintErrsJSON, _ := json.Marshal(lErr.ErrorResults)
-			ca.log.AuditErrf("Signing failed: serial=[%s] err=[%v] lintErrors=%s",
-				serialHex, err, string(lintErrsJSON))
-			return nil, berrors.InternalServerError("failed to sign certificate: %s", err)
+		var profile string
+		switch csr.PublicKey.(type) {
+		case *rsa.PublicKey:
+			profile = ca.rsaProfile
+		case *ecdsa.PublicKey:
+			profile = ca.ecdsaProfile
+		default:
+			err = berrors.InternalServerError("unsupported key type %T", csr.PublicKey)
+			ca.log.AuditErr(err.Error())
+			return nil, err
 		}
 
-		err = berrors.InternalServerError("failed to sign certificate: %s", err)
-		ca.log.AuditErrf("Signing failed: serial=[%s] err=[%v]", serialHex, err)
-		return nil, err
+		// Send the cert off for signing
+		req := signer.SignRequest{
+			Request: csrPEM,
+			Profile: profile,
+			Hosts:   csr.DNSNames,
+			Subject: &signer.Subject{
+				CN: csr.Subject.CommonName,
+			},
+			Serial:        serialBigInt,
+			Extensions:    extensions,
+			NotBefore:     validity.NotBefore,
+			NotAfter:      validity.NotAfter,
+			ReturnPrecert: true,
+		}
+
+		ca.log.AuditInfof("Signing: serial=[%s] names=[%s] csr=[%s]",
+			serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw))
+
+		certPEM, err := issuer.cfsslSigner.Sign(req)
+		ca.noteSignError(err)
+		if err != nil {
+			// If the Signing error was a pre-issuance lint error then marshal the
+			// linting errors to include in the audit err msg.
+			if lErr, ok := err.(*local.LintError); ok {
+				// NOTE(@cpu): We throw away the JSON marshal error here. If marshaling
+				// fails for some reason it's acceptable to log an empty string for the
+				// JSON component.
+				lintErrsJSON, _ := json.Marshal(lErr.ErrorResults)
+				ca.log.AuditErrf("Signing failed: serial=[%s] err=[%v] lintErrors=%s",
+					serialHex, err, string(lintErrsJSON))
+				return nil, berrors.InternalServerError("failed to sign certificate: %s", err)
+			}
+
+			err = berrors.InternalServerError("failed to sign certificate: %s", err)
+			ca.log.AuditErrf("Signing failed: serial=[%s] err=[%v]", serialHex, err)
+			return nil, err
+		}
+
+		if len(certPEM) == 0 {
+			err = berrors.InternalServerError("no certificate returned by server")
+			ca.log.AuditErrf("PEM empty from Signer: serial=[%s] err=[%v]", serialHex, err)
+			return nil, err
+		}
+
+		block, _ := pem.Decode(certPEM)
+		if block == nil || block.Type != "CERTIFICATE" {
+			err = berrors.InternalServerError("invalid certificate value returned")
+			ca.log.AuditErrf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]", serialHex, certPEM, err)
+			return nil, err
+		}
+		certDER = block.Bytes
 	}
 	ca.signatureCount.WithLabelValues(string(precertType)).Inc()
-
-	if len(certPEM) == 0 {
-		err = berrors.InternalServerError("no certificate returned by server")
-		ca.log.AuditErrf("PEM empty from Signer: serial=[%s] err=[%v]", serialHex, err)
-		return nil, err
-	}
-
-	block, _ := pem.Decode(certPEM)
-	if block == nil || block.Type != "CERTIFICATE" {
-		err = berrors.InternalServerError("invalid certificate value returned")
-		ca.log.AuditErrf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]", serialHex, certPEM, err)
-		return nil, err
-	}
-	certDER := block.Bytes
 
 	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] csr=[%s] precertificate=[%s]",
 		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw),
@@ -785,7 +869,7 @@ func (ca *CertificateAuthorityImpl) storeCertificate(
 	regID int64,
 	orderID int64,
 	serialBigInt *big.Int,
-	certDER []byte) (core.Certificate, error) {
+	certDER []byte) error {
 	var err error
 	now := ca.clk.Now()
 	_, err = ca.sa.AddCertificate(ctx, certDER, regID, nil, &now)
@@ -802,10 +886,9 @@ func (ca *CertificateAuthorityImpl) storeCertificate(
 				RegID: regID,
 			})
 		}
-		return core.Certificate{}, err
+		return err
 	}
-
-	return core.Certificate{DER: certDER}, nil
+	return nil
 }
 
 type orphanedCert struct {
