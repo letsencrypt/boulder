@@ -68,7 +68,7 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, t
 		var ie issuanceEvent
 		err := json.Unmarshal([]byte(matches[1]), &ie)
 		if err != nil {
-			return false, fmt.Errorf("line %d: failed to unmarshal JSON: %s", lNum, err)
+			return foundErrors, fmt.Errorf("line %d: failed to unmarshal JSON: %s", lNum, err)
 		}
 
 		// populate the issuance time from the syslog timestamp, rather than the ResponseTime
@@ -77,7 +77,7 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, t
 		// be tightly coupled anyway.
 		ie.issuanceTime, err = parseTimestamp(line)
 		if err != nil {
-			return false, fmt.Errorf("line %d: failed to parse timestamp: %s", lNum, err)
+			return foundErrors, fmt.Errorf("line %d: failed to parse timestamp: %s", lNum, err)
 		}
 
 		var badNames []string
@@ -114,7 +114,7 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, t
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return false, err
+		return foundErrors, err
 	}
 	return foundErrors, nil
 }
