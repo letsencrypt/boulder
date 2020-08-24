@@ -213,9 +213,6 @@ func (bkr *badKeyRevoker) sendMessage(addr string, serials []string) error {
 	return nil
 }
 
-var keyCompromiseCode = int64(ocsp.KeyCompromise)
-var revokerName = "bad-key-revoker"
-
 // revokeCerts revokes all the certificates associated with a particular key hash and sends
 // emails to the users that issued the certificates. Emails are not sent to the user which
 // requested revocation of the original certificate which marked the key as compromised.
@@ -235,8 +232,8 @@ func (bkr *badKeyRevoker) revokeCerts(revokerEmails []string, emailToCerts map[s
 			}
 			_, err := bkr.raClient.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 				Cert:      cert.DER,
-				Code:      &keyCompromiseCode,
-				AdminName: &revokerName,
+				Code:      int64(ocsp.KeyCompromise),
+				AdminName: "bad-key-revoker",
 			})
 			if err != nil {
 				return err

@@ -1557,12 +1557,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	}
 
 	authz := base
-	var challIndex int
-	if req.ChallengeIndex == nil {
-		challIndex = 0
-	} else {
-		challIndex = int(*req.ChallengeIndex)
-	}
+	challIndex := int(req.ChallengeIndex)
 	if challIndex >= len(authz.Challenges) {
 		return nil,
 			berrors.MalformedError("invalid challenge index '%d'", challIndex)
@@ -1762,7 +1757,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 		//   CN
 		//   DNS names
 		//   Revocation reason
-		//   Registration ID of requester
+		//   Registration ID of requester; may be 0 if request is signed with cert key
 		//   Error (if there was one)
 		ra.log.AuditInfof("%s, Request by registration ID: %d",
 			revokeEvent(state, serialString, cert.Subject.CommonName, cert.DNSNames, revocationCode),
@@ -1857,7 +1852,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderNames(names []string) error {
 // NewOrder creates a new order object
 func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
 	order := &corepb.Order{
-		RegistrationID: req.RegistrationID,
+		RegistrationID: &req.RegistrationID,
 		Names:          core.UniqueLowerNames(req.Names),
 	}
 
