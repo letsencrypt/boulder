@@ -93,8 +93,7 @@ func TestFailFastFalse(t *testing.T) {
 	c := test_proto.NewChillerClient(conn)
 
 	start := time.Now()
-	var second int64 = time.Second.Nanoseconds()
-	_, err = c.Chill(context.Background(), &test_proto.Time{Time: &second})
+	_, err = c.Chill(context.Background(), &test_proto.Time{Time: time.Second.Nanoseconds()})
 	if err == nil {
 		t.Errorf("Successful Chill when we expected failure.")
 	}
@@ -114,9 +113,9 @@ func (s *testServer) Chill(ctx context.Context, in *test_proto.Time) (*test_prot
 	// Sleep for either the requested amount of time, or the context times out or
 	// is canceled.
 	select {
-	case <-time.After(time.Duration(*in.Time) * time.Nanosecond):
+	case <-time.After(time.Duration(in.Time) * time.Nanosecond):
 		spent := int64(time.Since(start) / time.Nanosecond)
-		return &test_proto.Time{Time: &spent}, nil
+		return &test_proto.Time{Time: spent}, nil
 	case <-ctx.Done():
 		return nil, grpc.Errorf(codes.DeadlineExceeded, "the chiller overslept")
 	}
@@ -169,8 +168,7 @@ func TestTimeouts(t *testing.T) {
 		t.Run(tc.timeout.String(), func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), tc.timeout)
 			defer cancel()
-			var second int64 = time.Second.Nanoseconds()
-			_, err := c.Chill(ctx, &test_proto.Time{Time: &second})
+			_, err := c.Chill(ctx, &test_proto.Time{Time: time.Second.Nanoseconds()})
 			if err == nil {
 				t.Fatal("Got no error, expected a timeout")
 			}
@@ -226,7 +224,7 @@ func TestRequestTimeTagging(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	var delayTime int64 = (time.Second * 5).Nanoseconds()
-	if _, err := c.Chill(ctx, &test_proto.Time{Time: &delayTime}); err != nil {
+	if _, err := c.Chill(ctx, &test_proto.Time{Time: delayTime}); err != nil {
 		t.Fatalf("Unexpected error calling Chill RPC: %s", err)
 	}
 
@@ -251,8 +249,7 @@ func (s *blockedServer) Chill(_ context.Context, _ *test_proto.Time) (*test_prot
 	// Wait for the roadblock to be cleared
 	s.roadblock.Wait()
 	// Return a dummy spent value to adhere to the chiller protocol
-	spent := int64(1)
-	return &test_proto.Time{Time: &spent}, nil
+	return &test_proto.Time{Time: int64(1)}, nil
 }
 
 func TestInFlightRPCStat(t *testing.T) {
