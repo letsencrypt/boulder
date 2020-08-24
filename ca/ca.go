@@ -671,7 +671,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		if err != nil {
 			return nil, err
 		}
-		ca.signatureCount.WithLabelValues(string(certType)).Inc()
 		block, _ := pem.Decode(certPEM)
 		if block == nil || block.Type != "CERTIFICATE" {
 			err = berrors.InternalServerError("invalid certificate value returned")
@@ -680,6 +679,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		}
 		certDER = block.Bytes
 	}
+	ca.signatureCount.WithLabelValues(string(certType)).Inc()
 	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] csr=[%s] certificate=[%s]",
 		serialHex, strings.Join(precert.DNSNames, ", "), hex.EncodeToString(req.DER),
 		hex.EncodeToString(certDER))

@@ -1243,11 +1243,10 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to serialize authz"), err)
 			return
 		}
-		challIndex := int64(challengeIndex)
 
 		authzPB, err = wfe.RA.PerformValidation(ctx, &rapb.PerformValidationRequest{
 			Authz:          authzPB,
-			ChallengeIndex: &challIndex,
+			ChallengeIndex: int64(challengeIndex),
 		})
 		if err != nil {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
@@ -1977,7 +1976,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	order, err := wfe.RA.NewOrder(ctx, &rapb.NewOrderRequest{
-		RegistrationID: &acct.ID,
+		RegistrationID: acct.ID,
 		Names:          names,
 	})
 	if err != nil {

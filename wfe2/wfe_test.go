@@ -259,7 +259,7 @@ func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, req *rapb.New
 	status := string(core.StatusPending)
 	return &corepb.Order{
 		Id:               &one,
-		RegistrationID:   req.RegistrationID,
+		RegistrationID:   &req.RegistrationID,
 		Expires:          &zero,
 		Names:            req.Names,
 		Status:           &status,

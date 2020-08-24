@@ -14,6 +14,22 @@ import (
 	"github.com/miekg/pkcs11"
 )
 
+// samplePubkey returns a slice of bytes containing an encoded
+// SubjectPublicKeyInfo for an example public key.
+func samplePubkey() []byte {
+	pubKey, err := hex.DecodeString("3059301306072a8648ce3d020106082a8648ce3d03010703420004b06745ef0375c9c54057098f077964e18d3bed0aacd54545b16eab8c539b5768cc1cea93ba56af1e22a7a01c33048c8885ed17c9c55ede70649b707072689f5e")
+	if err != nil {
+		panic(err)
+	}
+	return pubKey
+}
+
+func realRand(_ pkcs11.SessionHandle, length int) ([]byte, error) {
+	r := make([]byte, length)
+	_, err := rand.Read(r)
+	return r, err
+}
+
 func TestParseOID(t *testing.T) {
 	_, err := parseOID("")
 	test.AssertError(t, err, "parseOID accepted an empty OID")
@@ -28,12 +44,10 @@ func TestMakeTemplate(t *testing.T) {
 	s, ctx := pkcs11helpers.NewSessionWithMock()
 	profile := &certProfile{}
 	randReader := newRandReader(s)
-
-	pubKey, err := hex.DecodeString("3059301306072a8648ce3d020106082a8648ce3d03010703420004b06745ef0375c9c54057098f077964e18d3bed0aacd54545b16eab8c539b5768cc1cea93ba56af1e22a7a01c33048c8885ed17c9c55ede70649b707072689f5e")
-	test.AssertNotError(t, err, "failed to decode test public key")
+	pubKey := samplePubkey()
 
 	profile.NotBefore = "1234"
-	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
+	_, err := makeTemplate(randReader, profile, pubKey, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid not before")
 
 	profile.NotBefore = "2018-05-18 11:31:00"
@@ -53,11 +67,7 @@ func TestMakeTemplate(t *testing.T) {
 	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail when GenerateRandom failed")
 
-	ctx.GenerateRandomFunc = func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
-		r := make([]byte, length)
-		_, err := rand.Read(r)
-		return r, err
-	}
+	ctx.GenerateRandomFunc = realRand
 
 	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with empty key usages")
@@ -103,13 +113,34 @@ func TestMakeTemplate(t *testing.T) {
 	test.AssertEquals(t, cert.ExtKeyUsage[1], x509.ExtKeyUsageServerAuth)
 }
 
+func TestMakeTemplateCrossCertificate(t *testing.T) {
+	s, ctx := pkcs11helpers.NewSessionWithMock()
+	randReader := newRandReader(s)
+	pubKey := samplePubkey()
+	profile := &certProfile{
+		SignatureAlgorithm: "SHA256WithRSA",
+		CommonName:         "common name",
+		Organization:       "organization",
+		Country:            "country",
+		KeyUsages:          []string{"Digital Signature", "CRL Sign"},
+		OCSPURL:            "ocsp",
+		CRLURL:             "crl",
+		IssuerURL:          "issuer",
+		NotAfter:           "2018-05-18 11:31:00",
+		NotBefore:          "2018-05-18 11:31:00",
+	}
+
+	ctx.GenerateRandomFunc = realRand
+
+	cert, err := makeTemplate(randReader, profile, pubKey, crossCert)
+	test.AssertNotError(t, err, "makeTemplate failed when everything worked as expected")
+	test.Assert(t, !cert.MaxPathLenZero, "MaxPathLenZero was set in cross-sign")
+	test.AssertEquals(t, len(cert.ExtKeyUsage), 0)
+}
+
 func TestMakeTemplateOCSP(t *testing.T) {
 	s, ctx := pkcs11helpers.NewSessionWithMock()
-	ctx.GenerateRandomFunc = func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
-		r := make([]byte, length)
-		_, err := rand.Read(r)
-		return r, err
-	}
+	ctx.GenerateRandomFunc = realRand
 	randReader := newRandReader(s)
 	profile := &certProfile{
 		SignatureAlgorithm: "SHA256WithRSA",
@@ -122,8 +153,7 @@ func TestMakeTemplateOCSP(t *testing.T) {
 		NotAfter:           "2018-05-18 11:31:00",
 		NotBefore:          "2018-05-18 11:31:00",
 	}
-	pubKey, err := hex.DecodeString("3059301306072a8648ce3d020106082a8648ce3d03010703420004b06745ef0375c9c54057098f077964e18d3bed0aacd54545b16eab8c539b5768cc1cea93ba56af1e22a7a01c33048c8885ed17c9c55ede70649b707072689f5e")
-	test.AssertNotError(t, err, "failed to decode test public key")
+	pubKey := samplePubkey()
 
 	cert, err := makeTemplate(randReader, profile, pubKey, ocspCert)
 	test.AssertNotError(t, err, "makeTemplate failed")
@@ -153,11 +183,7 @@ func TestMakeTemplateOCSP(t *testing.T) {
 
 func TestMakeTemplateCRL(t *testing.T) {
 	s, ctx := pkcs11helpers.NewSessionWithMock()
-	ctx.GenerateRandomFunc = func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
-		r := make([]byte, length)
-		_, err := rand.Read(r)
-		return r, err
-	}
+	ctx.GenerateRandomFunc = realRand
 	randReader := newRandReader(s)
 	profile := &certProfile{
 		SignatureAlgorithm: "SHA256WithRSA",
@@ -170,8 +196,7 @@ func TestMakeTemplateCRL(t *testing.T) {
 		NotAfter:           "2018-05-18 11:31:00",
 		NotBefore:          "2018-05-18 11:31:00",
 	}
-	pubKey, err := hex.DecodeString("3059301306072a8648ce3d020106082a8648ce3d03010703420004b06745ef0375c9c54057098f077964e18d3bed0aacd54545b16eab8c539b5768cc1cea93ba56af1e22a7a01c33048c8885ed17c9c55ede70649b707072689f5e")
-	test.AssertNotError(t, err, "failed to decode test public key")
+	pubKey := samplePubkey()
 
 	cert, err := makeTemplate(randReader, profile, pubKey, crlCert)
 	test.AssertNotError(t, err, "makeTemplate failed")
