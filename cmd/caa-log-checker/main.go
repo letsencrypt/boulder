@@ -55,7 +55,7 @@ func parseTimestamp(line string) (time.Time, error) {
 }
 
 func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, timeTolerance time.Duration,
-	checkFromDay time.Time, checkUntilDay time.Time, stderr *os.File) error {
+	earliest time.Time, latest time.Time, stderr *os.File) error {
 	linesRead := 0
 	skipCount := 0
 	evaluatedCount := 0
@@ -84,8 +84,8 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, t
 			return fmt.Errorf("line %d: failed to parse timestamp: %s", linesRead, err)
 		}
 
-		if !checkFromDay.IsZero() && !checkUntilDay.IsZero() &&
-			(ie.issuanceTime.Before(checkFromDay) || ie.issuanceTime.After(checkUntilDay)) {
+		if !earliest.IsZero() && !latest.IsZero() &&
+			(ie.issuanceTime.Before(earliest) || ie.issuanceTime.After(latest)) {
 			skipCount++
 			continue
 		}
@@ -192,10 +192,10 @@ func main() {
 	raLog := flag.String("ra-log", "", "Path to a single boulder-ra log file")
 	vaLogs := flag.String("va-logs", "", "List of paths to boulder-va logs, separated by commas")
 	timeTolerance := flag.Duration("time-tolerance", 0, "How much slop to allow when comparing timestamps for ordering")
-	checkFromFlag := flag.String("check-from", "", "Day at which to start checking issuances "+
-		"(inclusive). Formatted like '20060102' Optional. If specified, -check-until is required.")
-	checkUntilFlag := flag.String("check-until", "", "Day at which to stop checking issuances "+
-		"(exclusive). Formatted like '20060102'. Optional. If specified, -check-from is required.")
+	earliestFlag := flag.String("earliest", "", "Day at which to start checking issuances "+
+		"(inclusive). Formatted like '20060102' Optional. If specified, -latest is required.")
+	latestFlag := flag.String("latest", "", "Day at which to stop checking issuances "+
+		"(exclusive). Formatted like '20060102'. Optional. If specified, -earliest is required.")
 
 	flag.Parse()
 
@@ -203,14 +203,21 @@ func main() {
 		cmd.Fail("value of -time-tolerance must be non-negative")
 	}
 
-	var checkFromDay time.Time
-	var checkUntilDay time.Time
-	if *checkFromFlag != "" || *checkUntilFlag != "" {
+	var earliest time.Time
+	var latest time.Time
+	if *earliestFlag != "" || *latestFlag != "" {
+		if *earliestFlag == "" || *latestFlag == "" {
+			cmd.Fail("-earliest and -latest must be both set or both unset")
+		}
 		var err error
-		checkFromDay, err = time.Parse("20060102", *checkFromFlag)
-		cmd.FailOnError(err, "value of -check-from could not be parsed as date")
-		checkUntilDay, err = time.Parse("20060102", *checkUntilFlag)
-		cmd.FailOnError(err, "value of -check-until could not be parsed as date")
+		earliest, err = time.Parse("20060102", *earliestFlag)
+		cmd.FailOnError(err, "value of -earliest could not be parsed as date")
+		latest, err = time.Parse("20060102", *latestFlag)
+		cmd.FailOnError(err, "value of -latest could not be parsed as date")
+
+		if earliest.After(latest) {
+			cmd.Fail("earliest date must be before latest date")
+		}
 	}
 
 	_ = cmd.NewLogger(cmd.SyslogConfig{
@@ -226,6 +233,6 @@ func main() {
 	raScanner, err := openFile(*raLog)
 	cmd.FailOnError(err, fmt.Sprintf("failed to open %q", *raLog))
 
-	err = checkIssuances(raScanner, checkedMap, *timeTolerance, checkFromDay, checkUntilDay, os.Stderr)
+	err = checkIssuances(raScanner, checkedMap, *timeTolerance, earliest, latest, os.Stderr)
 	cmd.FailOnError(err, "failed while processing RA log")
 }

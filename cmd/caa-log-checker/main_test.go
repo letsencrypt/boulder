@@ -130,21 +130,21 @@ random`,
 		testTime.Add(10*time.Hour).Format(time.RFC3339Nano),
 		// 6.example.com: Issue @ +1:00, CAA @ +1:01. (PASS, has CAA check within tolerance)
 		testTime.Add(time.Hour).Format(time.RFC3339Nano),
-		// 7.example.com: Issue @ +12:00 (PASS, no CAA check but issued after checkUntil)
+		// 7.example.com: Issue @ +12:00 (PASS, no CAA check but issued after latest)
 		testTime.Add(12*time.Hour).Format(time.RFC3339Nano),
-		// 8.example.com: Issue @ +11:00 (FAIL, no CAA check and on checkUntil boundary)
+		// 8.example.com: Issue @ +11:00 (FAIL, no CAA check and on latest boundary)
 		testTime.Add(11*time.Hour).Format(time.RFC3339Nano),
-		// 9.example.com: Issue @ -2:00 (PASS, no CAA check but issued before checkFrom)
+		// 9.example.com: Issue @ -2:00 (PASS, no CAA check but issued before earliest)
 		testTime.Add(-2*time.Hour).Format(time.RFC3339Nano),
-		// 10.example.com: Issue @ -1:00 (FAIL, no CAA check and issued at checkFrom boundary)
+		// 10.example.com: Issue @ -1:00 (FAIL, no CAA check and issued at earliest boundary)
 		testTime.Add(-1*time.Hour).Format(time.RFC3339Nano),
 	)
 
 	for _, testCase := range []struct {
 		name           string
 		expectedErrors string
-		checkFrom      time.Time
-		checkUntil     time.Time
+		earliest       time.Time
+		latest         time.Time
 	}{
 		{
 			"with-timespan",
@@ -176,7 +176,7 @@ random`,
 			defer os.Remove(stderr.Name())
 
 			timeTolerance := 10 * time.Minute
-			err = checkIssuances(raScanner, checkedMap, timeTolerance, testCase.checkFrom, testCase.checkUntil, stderr)
+			err = checkIssuances(raScanner, checkedMap, timeTolerance, testCase.earliest, testCase.latest, stderr)
 			test.AssertNotError(t, err, "checkIssuances failed")
 
 			stderrCont, err := ioutil.ReadFile(stderr.Name())
