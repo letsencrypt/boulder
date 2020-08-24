@@ -16,7 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 )
 
-var debug bool
+var debug = flag.Bool("debug", false, "Enable debug logging")
 
 func openFile(path string) (*bufio.Scanner, error) {
 	f, err := os.Open(path)
@@ -56,23 +56,23 @@ func parseTimestamp(line string) (time.Time, error) {
 
 func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, timeTolerance time.Duration,
 	checkFromDay time.Time, checkUntilDay time.Time, stderr *os.File) error {
-	lNum := 0
+	linesRead := 0
 	skipCount := 0
 	evaluatedCount := 0
 	for scanner.Scan() {
-		lNum++
+		linesRead++
 		line := scanner.Text()
 		matches := raIssuanceLineRE.FindStringSubmatch(line)
 		if matches == nil {
 			continue
 		}
 		if len(matches) != 2 {
-			return fmt.Errorf("line %d: unexpected number of regex matches", lNum)
+			return fmt.Errorf("line %d: unexpected number of regex matches", linesRead)
 		}
 		var ie issuanceEvent
 		err := json.Unmarshal([]byte(matches[1]), &ie)
 		if err != nil {
-			return fmt.Errorf("line %d: failed to unmarshal JSON: %s", lNum, err)
+			return fmt.Errorf("line %d: failed to unmarshal JSON: %s", linesRead, err)
 		}
 
 		// populate the issuance time from the syslog timestamp, rather than the ResponseTime
@@ -81,7 +81,7 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, t
 		// be tightly coupled anyway.
 		ie.issuanceTime, err = parseTimestamp(line)
 		if err != nil {
-			return fmt.Errorf("line %d: failed to parse timestamp: %s", lNum, err)
+			return fmt.Errorf("line %d: failed to parse timestamp: %s", linesRead, err)
 		}
 
 		if !checkFromDay.IsZero() && !checkUntilDay.IsZero() &&
@@ -126,8 +126,8 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, t
 	if err := scanner.Err(); err != nil {
 		return err
 	}
-	if debug {
-		fmt.Fprintf(stderr, "lnum %d evaluated %d skipped %d\n", lNum, evaluatedCount, skipCount)
+	if *debug {
+		fmt.Fprintf(stderr, "Issuance log lines read %d evaluated %d skipped %d\n", linesRead, evaluatedCount, skipCount)
 	}
 	return nil
 }
@@ -196,7 +196,6 @@ func main() {
 		"(inclusive). Formatted like '20060102' Optional. If specified, -check-until is required.")
 	checkUntilFlag := flag.String("check-until", "", "Day at which to stop checking issuances "+
 		"(exclusive). Formatted like '20060102'. Optional. If specified, -check-from is required.")
-	flag.BoolVar(&debug, "debug", false, "Enable debug logging")
 
 	flag.Parse()
 
