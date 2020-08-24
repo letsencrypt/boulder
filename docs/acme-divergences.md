@@ -1,6 +1,6 @@
 # Boulder divergences from ACME
 
-While Boulder attempts to implement the ACME specification ([RFC 8555]) as strictly as possible there are places at which we will diverge from the letter of the specification for various reasons. This document describes the difference between RFC 8555 and Boulder's implementation of ACME, informally called ACMEv2 and available at https://acme-v02.api.letsencrypt.org/directory. Boulder's implementation of ACMEv1 differs substantially from the final RFC. Documentation for Boulder's ACMEv1 support is available in acme-divergences-v1.md.
+While Boulder attempts to implement the ACME specification ([RFC 8555]) as strictly as possible there are places at which we will diverge from the letter of the specification for various reasons. This document describes the difference between RFC 8555 and Boulder's implementation of ACME, informally called ACMEv2 and available at https://acme-v02.api.letsencrypt.org/directory. Boulder's implementation of ACMEv1 differs substantially from the final RFC. Documentation for Boulder's ACMEv1 support is available in [acme-divergences-v1.md](acme-divergences-v1.md).
 
 Presently the following protocol features are not implemented:
 
