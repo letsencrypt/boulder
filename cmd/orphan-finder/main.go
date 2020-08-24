@@ -214,12 +214,11 @@ func storeParsedLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Log
 	case certOrphan:
 		_, err = sa.AddCertificate(ctx, der, regID, response, &issuedDate)
 	case precertOrphan:
-		issued := issuedDate.UnixNano()
 		_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:    der,
 			RegID:  regID,
 			Ocsp:   response,
-			Issued: issued,
+			Issued: issuedDate.UnixNano(),
 		})
 	default:
 		// Shouldn't happen but be defensive anyway

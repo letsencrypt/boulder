@@ -672,11 +672,10 @@ func (wfe *WebFrontEndImpl) NewAccount(
 }
 
 func (wfe *WebFrontEndImpl) acctHoldsAuthorizations(ctx context.Context, acctID int64, names []string) (bool, error) {
-	now := wfe.clk.Now().UnixNano()
 	authzMapPB, err := wfe.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 		RegistrationID: acctID,
 		Domains:        names,
-		Now:            now,
+		Now:            wfe.clk.Now().UnixNano(),
 	})
 	if err != nil {
 		return false, err

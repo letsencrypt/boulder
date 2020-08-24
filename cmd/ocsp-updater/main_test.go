@@ -77,6 +77,10 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *db.WrappedMap, c
 	return updater, sa, dbMap, fc, cleanUp
 }
 
+func nowNano(fc clock.Clock) int64 {
+	return fc.Now().UnixNano()
+}
+
 func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	updater, sa, _, fc, cleanUp := setup(t)
 	defer cleanUp()
@@ -88,12 +92,11 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	issued := fc.Now().UnixNano()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    parsedCert.Raw,
 		RegID:  reg.ID,
 		Ocsp:   nil,
-		Issued: issued,
+		Issued: nowNano(fc),
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
@@ -113,12 +116,11 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCertA, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	issued := fc.Now().UnixNano()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    parsedCertA.Raw,
 		RegID:  reg.ID,
 		Ocsp:   nil,
-		Issued: issued,
+		Issued: nowNano(fc),
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 	parsedCertB, err := core.LoadCert("test-cert-b.pem")
@@ -127,7 +129,7 @@ func TestGenerateOCSPResponses(t *testing.T) {
 		Der:    parsedCertB.Raw,
 		RegID:  reg.ID,
 		Ocsp:   nil,
-		Issued: issued,
+		Issued: nowNano(fc),
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert-b.pem")
 
@@ -170,12 +172,11 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	issued := fc.Now().UnixNano()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    parsedCert.Raw,
 		RegID:  reg.ID,
 		Ocsp:   nil,
-		Issued: issued,
+		Issued: nowNano(fc),
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
@@ -212,12 +213,11 @@ func TestFindStaleOCSPResponsesRevokedReason(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	issued := fc.Now().UnixNano()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    parsedCert.Raw,
 		RegID:  reg.ID,
 		Ocsp:   nil,
-		Issued: issued,
+		Issued: nowNano(fc),
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
@@ -245,12 +245,11 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	issued := fc.Now().UnixNano()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    parsedCert.Raw,
 		RegID:  reg.ID,
 		Ocsp:   nil,
-		Issued: issued,
+		Issued: nowNano(fc),
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
@@ -277,12 +276,11 @@ func TestOldOCSPResponsesTickIsExpired(t *testing.T) {
 	serial := core.SerialToString(parsedCert.SerialNumber)
 
 	// Add a new test certificate
-	issued := fc.Now().UnixNano()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    parsedCert.Raw,
 		RegID:  reg.ID,
 		Ocsp:   nil,
-		Issued: issued,
+		Issued: nowNano(fc),
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
@@ -327,12 +325,11 @@ func TestStoreResponseGuard(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	issued := fc.Now().UnixNano()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    parsedCert.Raw,
 		RegID:  reg.ID,
 		Ocsp:   nil,
-		Issued: issued,
+		Issued: nowNano(fc),
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 

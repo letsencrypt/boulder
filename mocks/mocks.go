@@ -386,9 +386,8 @@ func (sa *StorageAuthority) PreviousCertificateExists(
 	_ context.Context,
 	_ *sapb.PreviousCertificateExistsRequest,
 ) (*sapb.Exists, error) {
-	f := false
 	return &sapb.Exists{
-		Exists: f,
+		Exists: false,
 	}, nil
 }
 
@@ -623,9 +622,8 @@ func (sa *StorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sa
 			if err != nil {
 				return nil, err
 			}
-			n := name
 			auths.Authz = append(auths.Authz, &sapb.Authorizations_MapElement{
-				Domain: n,
+				Domain: name,
 				Authz:  authzPB,
 			})
 		}

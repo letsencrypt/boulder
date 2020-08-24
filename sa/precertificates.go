@@ -23,13 +23,11 @@ func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSeri
 	if core.IsAnyNilOrZero(req.Created, req.Expires, req.Serial, req.RegID) {
 		return nil, errIncompleteRequest
 	}
-	created := time.Unix(0, req.Created)
-	expires := time.Unix(0, req.Expires)
 	err := ssa.dbMap.WithContext(ctx).Insert(&recordedSerialModel{
 		Serial:         req.Serial,
 		RegistrationID: req.RegID,
-		Created:        created,
-		Expires:        expires,
+		Created:        time.Unix(0, req.Created),
+		Expires:        time.Unix(0, req.Expires),
 	})
 	if err != nil {
 		return nil, err

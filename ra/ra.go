@@ -471,14 +471,12 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	}
 	latest := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
 	earliest := latest.Add(-limit.Window.Duration)
-	latestNanos := latest.UnixNano()
-	earliestNanos := earliest.UnixNano()
 	req := &sapb.CountInvalidAuthorizationsRequest{
 		RegistrationID: regID,
 		Hostname:       hostname,
 		Range: &sapb.Range{
-			Earliest: earliestNanos,
-			Latest:   latestNanos,
+			Earliest: earliest.UnixNano(),
+			Latest:   latest.UnixNano(),
 		},
 	}
 	count, err := ra.SA.CountInvalidAuthorizations2(ctx, req)
@@ -573,13 +571,12 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		}
 	}
 
-	nowishNano := ra.clk.Now().Add(time.Hour).UnixNano()
 	identifierTypeString := string(identifier.Type)
 	req := &sapb.GetPendingAuthorizationRequest{
 		RegistrationID:  regID,
 		IdentifierType:  identifierTypeString,
 		IdentifierValue: identifier.Value,
-		ValidUntil:      nowishNano,
+		ValidUntil:      ra.clk.Now().Add(time.Hour).UnixNano(),
 	}
 	pendingPB, err := ra.SA.GetPendingAuthorization2(ctx, req)
 	if err != nil && !berrors.Is(err, berrors.NotFound) {
@@ -698,12 +695,10 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	names []string,
 	acctID accountID,
 	orderID orderID) (map[string]*core.Authorization, error) {
-	acctIDInt := int64(acctID)
-	orderIDInt := int64(orderID)
 	// Get all of the valid authorizations for this account/order
 	req := &sapb.GetValidOrderAuthorizationsRequest{
-		Id:     orderIDInt,
-		AcctID: acctIDInt,
+		Id:     int64(orderID),
+		AcctID: int64(acctID),
 	}
 	authzMapPB, err := ra.SA.GetValidOrderAuthorizations2(ctx, req)
 	if err != nil {
@@ -732,11 +727,10 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, na
 	for i := range names {
 		names[i] = strings.ToLower(names[i])
 	}
-	nowUnix := now.UnixNano()
 	authMapPB, err := ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 		RegistrationID: regID,
 		Domains:        names,
-		Now:            nowUnix,
+		Now:            now.UnixNano(),
 	})
 	if err != nil {
 		return nil, err
@@ -1503,8 +1497,6 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	if err != nil {
 		return err
 	}
-	status := string(challenge.Status)
-	ctype := string(challenge.Type)
 	var expires int64
 	if challenge.Status == core.StatusInvalid {
 		expires = authExpires.UnixNano()
@@ -1517,9 +1509,9 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	}
 	err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:                authzID,
-		Status:            status,
+		Status:            string(challenge.Status),
 		Expires:           expires,
-		Attempted:         ctype,
+		Attempted:         string(challenge.Type),
 		ValidationRecords: vr.Records,
 		ValidationError:   vr.Problems,
 	})
@@ -1690,12 +1682,9 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 		return err
 	}
 	serial := core.SerialToString(cert.SerialNumber)
-	// for some reason we use int32 and int64 for the reason in different
-	// protobuf messages, so we have to re-cast it here.
-	reason64 := int64(code)
 	err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   serial,
-		Reason:   reason64,
+		Reason:   int64(code),
 		Date:     revokedAt,
 		Response: ocspResponse.Response,
 	})
@@ -1861,11 +1850,10 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	// See if there is an existing unexpired pending (or ready) order that can be reused
 	// for this account
-	useV2Authzs := true
 	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID:              *order.RegistrationID,
 		Names:               order.Names,
-		UseV2Authorizations: useV2Authzs,
+		UseV2Authorizations: true,
 	})
 	// If there was an error and it wasn't an acceptable "NotFound" error, return
 	// immediately
@@ -1899,12 +1887,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	// We do not want any legacy V1 API authorizations not associated with an
 	// order to be returned from the SA so we set requireV2Authzs to true
-	requireV2Authzs := true
 	getAuthReq := &sapb.GetAuthorizationsRequest{
 		RegistrationID:  *order.RegistrationID,
 		Now:             authzExpiryCutoff,
 		Domains:         order.Names,
-		RequireV2Authzs: requireV2Authzs,
+		RequireV2Authzs: true,
 	}
 	existingAuthz, err := ra.SA.GetAuthorizations2(ctx, getAuthReq)
 	if err != nil {

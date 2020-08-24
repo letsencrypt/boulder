@@ -88,13 +88,11 @@ func createPendingAuthorization(t *testing.T, sa core.StorageAuthority, domain s
 func createFinalizedAuthorization(t *testing.T, sa core.StorageAuthority, domain string, exp time.Time, status string) int64 {
 	t.Helper()
 	pendingID := createPendingAuthorization(t, sa, domain, exp)
-	expInt := exp.UnixNano()
-	attempted := string(core.ChallengeTypeHTTP01)
 	err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id:        pendingID,
 		Status:    status,
-		Expires:   expInt,
-		Attempted: attempted,
+		Expires:   exp.UnixNano(),
+		Attempted: string(core.ChallengeTypeHTTP01),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorizations2 failed")
 	return pendingID
@@ -2312,13 +2310,11 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	// It should have one authorization
 	test.AssertEquals(t, numAuthorizations(order), 1)
 
-	status := string(core.StatusInvalid)
-	attempted := string(core.ChallengeTypeDNS01)
 	err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:        order.V2Authorizations[0],
-		Status:    status,
+		Status:    string(core.StatusInvalid),
 		Expires:   *order.Expires,
-		Attempted: attempted,
+		Attempted: string(core.ChallengeTypeDNS01),
 	})
 	test.AssertNotError(t, err, "FinalizeAuthorization2 failed")
 
@@ -3215,14 +3211,11 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 
 	// Finalize the authorization with the challenge validated
-	status := string(core.StatusValid)
-	attempted := string(core.ChallengeTypeDNS01)
-	expInt := ra.clk.Now().Add(time.Hour * 24 * 7).UnixNano()
 	err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:        validOrder.V2Authorizations[0],
-		Status:    status,
-		Expires:   expInt,
-		Attempted: attempted,
+		Status:    string(core.StatusValid),
+		Expires:   ra.clk.Now().Add(time.Hour * 24 * 7).UnixNano(),
+		Attempted: string(core.ChallengeTypeDNS01),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
@@ -3284,12 +3277,10 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 		})
 		test.AssertNotError(t, err, "sa.NewAuthorzations2 failed")
 		// Finalize the authz
-		status := "valid"
-		expInt := exp.UnixNano()
 		err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 			Id:        ids.Ids[0],
-			Status:    status,
-			Expires:   expInt,
+			Status:    "valid",
+			Expires:   exp.UnixNano(),
 			Attempted: chalType,
 		})
 		test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
@@ -3639,13 +3630,11 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 		})
 		test.AssertNotError(t, err, "sa.NewAuthorzations2 failed")
 		// Finalize the authz
-		status := "valid"
-		expInt := exp.UnixNano()
 		attempted := string(httpChal.Type)
 		err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 			Id:        ids.Ids[0],
-			Status:    status,
-			Expires:   expInt,
+			Status:    "valid",
+			Expires:   exp.UnixNano(),
 			Attempted: attempted,
 		})
 		test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")

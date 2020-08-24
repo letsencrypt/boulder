@@ -27,11 +27,9 @@ func (sa *mockInvalidAuthorizationsAuthority) PreviousCertificateExists(
 }
 
 func (sa *mockInvalidAuthorizationsAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
-	var count int64
 	if req.Hostname == sa.domainWithFailures {
-		count = 1
+		return &sapb.Count{Count: 1}, nil
+	} else {
+		return &sapb.Count{}, nil
 	}
-	return &sapb.Count{
-		Count: count,
-	}, nil
 }
