@@ -46,6 +46,12 @@ func TestGenerateCRLLength(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "nextUpdate must be less than 12 months after thisUpdate")
 }
 
+// wrappedSigner wraps a crypto.Signer. In order to use a crypto.Signer in tests
+// we need to wrap it as we pass a purposefully broken io.Reader to Sign in order
+// to verify that go isn't using it as a source of randomness (we expect this
+// randomness to come from the HSM). If we directly call Sign on the crypto.Signer
+// it would fail, so we wrap it so that we can use a shim rand.Reader in the Sign
+// call.
 type wrappedSigner struct{ k crypto.Signer }
 
 func (p wrappedSigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
