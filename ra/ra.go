@@ -422,18 +422,11 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 	return nil
 }
 
-func intPointerToInt(ip *int64) int {
-	if ip != nil {
-		return int(*ip)
-	}
-	return 0
-}
-
 func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.Context, regID int64) error {
 	limit := ra.rlPolicies.PendingAuthorizationsPerAccount()
 	if limit.Enabled() {
 		countPB, err := ra.SA.CountPendingAuthorizations2(ctx, &sapb.RegistrationID{
-			Id: &regID,
+			Id: regID,
 		})
 		if err != nil {
 			return err
@@ -441,7 +434,7 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 		// Most rate limits have a key for overrides, but there is no meaningful key
 		// here.
 		noKey := ""
-		if intPointerToInt(countPB.Count) >= limit.GetThreshold(noKey, regID) {
+		if int(countPB.Count) >= limit.GetThreshold(noKey, regID) {
 			ra.rateLimitCounter.WithLabelValues("pending_authorizations_by_registration_id", "exceeded").Inc()
 			ra.log.Infof("Rate limit exceeded, PendingAuthorizationsByRegID, regID: %d", regID)
 			return berrors.RateLimitError("too many currently pending authorizations")
@@ -478,14 +471,12 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	}
 	latest := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
 	earliest := latest.Add(-limit.Window.Duration)
-	latestNanos := latest.UnixNano()
-	earliestNanos := earliest.UnixNano()
 	req := &sapb.CountInvalidAuthorizationsRequest{
-		RegistrationID: &regID,
-		Hostname:       &hostname,
+		RegistrationID: regID,
+		Hostname:       hostname,
 		Range: &sapb.Range{
-			Earliest: &earliestNanos,
-			Latest:   &latestNanos,
+			Earliest: earliest.UnixNano(),
+			Latest:   latest.UnixNano(),
 		},
 	}
 	count, err := ra.SA.CountInvalidAuthorizations2(ctx, req)
@@ -495,7 +486,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	// Most rate limits have a key for overrides, but there is no meaningful key
 	// here.
 	noKey := ""
-	if intPointerToInt(count.Count) >= limit.GetThreshold(noKey, regID) {
+	if count.Count >= int64(limit.GetThreshold(noKey, regID)) {
 		ra.log.Infof("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID)
 		return berrors.RateLimitError("too many failed authorizations recently")
 	}
@@ -548,9 +539,9 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	if ra.reuseValidAuthz {
 		now := ra.clk.Now().UnixNano()
 		authzMapPB, err := ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
-			RegistrationID: &regID,
+			RegistrationID: regID,
 			Domains:        []string{identifier.Value},
-			Now:            &now,
+			Now:            now,
 		})
 		if err != nil {
 			outErr := berrors.InternalServerError(
@@ -580,13 +571,12 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		}
 	}
 
-	nowishNano := ra.clk.Now().Add(time.Hour).UnixNano()
 	identifierTypeString := string(identifier.Type)
 	req := &sapb.GetPendingAuthorizationRequest{
-		RegistrationID:  &regID,
-		IdentifierType:  &identifierTypeString,
-		IdentifierValue: &identifier.Value,
-		ValidUntil:      &nowishNano,
+		RegistrationID:  regID,
+		IdentifierType:  identifierTypeString,
+		IdentifierValue: identifier.Value,
+		ValidUntil:      ra.clk.Now().Add(time.Hour).UnixNano(),
 	}
 	pendingPB, err := ra.SA.GetPendingAuthorization2(ctx, req)
 	if err != nil && !berrors.Is(err, berrors.NotFound) {
@@ -601,13 +591,13 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 
 	if features.Enabled(features.V1DisableNewValidations) {
 		exists, err := ra.SA.PreviousCertificateExists(ctx, &sapb.PreviousCertificateExistsRequest{
-			Domain: &identifier.Value,
-			RegID:  &regID,
+			Domain: identifier.Value,
+			RegID:  regID,
 		})
 		if err != nil {
 			return core.Authorization{}, err
 		}
-		if !*exists.Exists {
+		if !exists.Exists {
 			return core.Authorization{}, berrors.UnauthorizedError("Validations for new domains are disabled in the V1 API (https://community.letsencrypt.org/t/end-of-life-plan-for-acmev1/88430)")
 		}
 	}
@@ -705,12 +695,10 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	names []string,
 	acctID accountID,
 	orderID orderID) (map[string]*core.Authorization, error) {
-	acctIDInt := int64(acctID)
-	orderIDInt := int64(orderID)
 	// Get all of the valid authorizations for this account/order
 	req := &sapb.GetValidOrderAuthorizationsRequest{
-		Id:     &orderIDInt,
-		AcctID: &acctIDInt,
+		Id:     int64(orderID),
+		AcctID: int64(acctID),
 	}
 	authzMapPB, err := ra.SA.GetValidOrderAuthorizations2(ctx, req)
 	if err != nil {
@@ -739,11 +727,10 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, na
 	for i := range names {
 		names[i] = strings.ToLower(names[i])
 	}
-	nowUnix := now.UnixNano()
 	authMapPB, err := ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
-		RegistrationID: &regID,
+		RegistrationID: regID,
 		Domains:        names,
-		Now:            &nowUnix,
+		Now:            now.UnixNano(),
 	})
 	if err != nil {
 		return nil, err
@@ -1316,12 +1303,8 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(
 
 	var badNames []string
 	for _, entry := range counts {
-		// Should not happen, but be defensive.
-		if entry.Name == nil {
-			return nil, fmt.Errorf("CountByNames_MapElement had nil Name")
-		}
-		if intPointerToInt(entry.Count) >= limit.GetThreshold(*entry.Name, regID) {
-			badNames = append(badNames, *entry.Name)
+		if int(entry.Count) >= limit.GetThreshold(entry.Name, regID) {
+			badNames = append(badNames, entry.Name)
 		}
 	}
 	return badNames, nil
@@ -1514,8 +1497,6 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	if err != nil {
 		return err
 	}
-	status := string(challenge.Status)
-	ctype := string(challenge.Type)
 	var expires int64
 	if challenge.Status == core.StatusInvalid {
 		expires = authExpires.UnixNano()
@@ -1527,10 +1508,10 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 		return err
 	}
 	err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:                &authzID,
-		Status:            &status,
-		Expires:           &expires,
-		Attempted:         &ctype,
+		Id:                authzID,
+		Status:            string(challenge.Status),
+		Expires:           expires,
+		Attempted:         string(challenge.Type),
 		ValidationRecords: vr.Records,
 		ValidationError:   vr.Problems,
 	})
@@ -1701,13 +1682,10 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 		return err
 	}
 	serial := core.SerialToString(cert.SerialNumber)
-	// for some reason we use int32 and int64 for the reason in different
-	// protobuf messages, so we have to re-cast it here.
-	reason64 := int64(code)
 	err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
-		Serial:   &serial,
-		Reason:   &reason64,
-		Date:     &revokedAt,
+		Serial:   serial,
+		Reason:   int64(code),
+		Date:     revokedAt,
 		Response: ocspResponse.Response,
 	})
 	if err != nil {
@@ -1720,14 +1698,14 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 		}
 		req := &sapb.AddBlockedKeyRequest{
 			KeyHash: digest[:],
-			Added:   &revokedAt,
-			Source:  &source,
+			Added:   revokedAt,
+			Source:  source,
 		}
 		if comment != "" {
-			req.Comment = &comment
+			req.Comment = comment
 		}
 		if features.Enabled(features.StoreRevokerInfo) && revokedBy != 0 {
-			req.RevokedBy = &revokedBy
+			req.RevokedBy = revokedBy
 		}
 		if _, err = ra.SA.AddBlockedKey(ctx, req); err != nil {
 			return err
@@ -1828,7 +1806,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 	if err != nil {
 		return err
 	}
-	if _, err := ra.SA.DeactivateAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID}); err != nil {
+	if _, err := ra.SA.DeactivateAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID}); err != nil {
 		return err
 	}
 	return nil
@@ -1872,11 +1850,10 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	// See if there is an existing unexpired pending (or ready) order that can be reused
 	// for this account
-	useV2Authzs := true
 	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
-		AcctID:              order.RegistrationID,
+		AcctID:              *order.RegistrationID,
 		Names:               order.Names,
-		UseV2Authorizations: &useV2Authzs,
+		UseV2Authorizations: true,
 	})
 	// If there was an error and it wasn't an acceptable "NotFound" error, return
 	// immediately
@@ -1910,12 +1887,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	// We do not want any legacy V1 API authorizations not associated with an
 	// order to be returned from the SA so we set requireV2Authzs to true
-	requireV2Authzs := true
 	getAuthReq := &sapb.GetAuthorizationsRequest{
-		RegistrationID:  order.RegistrationID,
-		Now:             &authzExpiryCutoff,
+		RegistrationID:  *order.RegistrationID,
+		Now:             authzExpiryCutoff,
 		Domains:         order.Names,
-		RequireV2Authzs: &requireV2Authzs,
+		RequireV2Authzs: true,
 	}
 	existingAuthz, err := ra.SA.GetAuthorizations2(ctx, getAuthReq)
 	if err != nil {
@@ -1931,7 +1907,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		if *v.Authz.Status == string(core.StatusValid) && !ra.reuseValidAuthz {
 			continue
 		}
-		nameToExistingAuthz[*v.Domain] = v.Authz
+		nameToExistingAuthz[v.Domain] = v.Authz
 	}
 
 	// For each of the names in the order, if there is an acceptable

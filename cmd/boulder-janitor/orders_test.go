@@ -97,7 +97,7 @@ func TestDeleteOrder(t *testing.T) {
 	test.AssertNotError(t, err, "error calling deleteHandler")
 
 	// The order should be gone
-	_, err = ssa.GetOrder(ctx, &sapb.OrderRequest{Id: testOrder.Id})
+	_, err = ssa.GetOrder(ctx, &sapb.OrderRequest{Id: *testOrder.Id})
 	test.AssertError(t, err, "found order after deleting it")
 	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
 

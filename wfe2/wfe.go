@@ -672,11 +672,10 @@ func (wfe *WebFrontEndImpl) NewAccount(
 }
 
 func (wfe *WebFrontEndImpl) acctHoldsAuthorizations(ctx context.Context, acctID int64, names []string) (bool, error) {
-	now := wfe.clk.Now().UnixNano()
 	authzMapPB, err := wfe.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
-		RegistrationID: &acctID,
+		RegistrationID: acctID,
 		Domains:        names,
-		Now:            &now,
+		Now:            wfe.clk.Now().UnixNano(),
 	})
 	if err != nil {
 		return false, err
@@ -872,7 +871,7 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 			// If there was an error, it was a not found error, and the precertificate
 			// revocation feature is enabled, then try to find a stored precert.
 			pbCert, err := wfe.SA.GetPrecertificate(ctx,
-				&sapb.Serial{Serial: &serial})
+				&sapb.Serial{Serial: serial})
 			if berrors.Is(err, berrors.NotFound) {
 				// If looking up a precert also returned a not found error then return
 				// a not found problem.
@@ -1035,7 +1034,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 		return
 	}
 	challengeID := slug[1]
-	authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authorizationID})
+	authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authorizationID})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
 			notFound()
@@ -1461,7 +1460,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 		return
 	}
 
-	authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID})
+	authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 	if berrors.Is(err, berrors.NotFound) {
 		wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
 		return
@@ -2034,7 +2033,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 	}
 
 	useV2Authzs := true
-	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID, UseV2Authorizations: &useV2Authzs})
+	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: orderID, UseV2Authorizations: useV2Authzs})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
@@ -2104,7 +2103,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	}
 
 	useV2Authzs := true
-	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: &orderID, UseV2Authorizations: &useV2Authzs})
+	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: orderID, UseV2Authorizations: useV2Authzs})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
