@@ -43,12 +43,11 @@ func TestAddPrecertificate(t *testing.T) {
 		ocspResp := []byte{0, 0, 1}
 		regID := reg.ID
 		issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
-		issuedTimeNano := issuedTime.UnixNano()
 		_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:    testCert.Raw,
-			RegID:  &regID,
+			RegID:  regID,
 			Ocsp:   ocspResp,
-			Issued: &issuedTimeNano,
+			Issued: issuedTime.UnixNano(),
 		})
 		test.AssertNotError(t, err, "Couldn't add test cert")
 
@@ -88,9 +87,9 @@ func TestAddPrecertificate(t *testing.T) {
 		// error
 		_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:    testCert.Raw,
-			RegID:  &regID,
+			RegID:  regID,
 			Ocsp:   ocspResp,
-			Issued: &issuedTimeNano,
+			Issued: issuedTime.UnixNano(),
 		})
 		if err == nil {
 			t.Fatalf("Expected error inserting duplicate precertificate, got none")
@@ -109,12 +108,11 @@ func TestAddPrecertificateKeyHash(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 
 	serial, testCert := test.ThrowAwayCert(t, 1)
-	issued := testCert.NotBefore.UnixNano()
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    testCert.Raw,
-		RegID:  &reg.ID,
+		RegID:  reg.ID,
 		Ocsp:   []byte{1, 2, 3},
-		Issued: &issued,
+		Issued: testCert.NotBefore.UnixNano(),
 	})
 	test.AssertNotError(t, err, "failed to add precert")
 

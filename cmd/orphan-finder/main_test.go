@@ -67,13 +67,13 @@ func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificate
 	}
 	precert := core.Certificate{
 		DER:            req.Der,
-		RegistrationID: *req.RegID,
+		RegistrationID: req.RegID,
 		Serial:         core.SerialToString(parsed.SerialNumber),
 	}
-	if req.Issued == nil {
+	if req.Issued == 0 {
 		precert.Issued = m.clk.Now()
 	} else {
-		precert.Issued = time.Unix(0, *req.Issued)
+		precert.Issued = time.Unix(0, req.Issued)
 	}
 	m.precertificates = append(m.precertificates, precert)
 	return &corepb.Empty{}, nil
@@ -84,7 +84,7 @@ func (m *mockSA) GetPrecertificate(ctx context.Context, req *sapb.Serial) (*core
 		return nil, berrors.NotFoundError("no precerts stored")
 	}
 	for _, precert := range m.precertificates {
-		if precert.Serial == *req.Serial {
+		if precert.Serial == req.Serial {
 			return bgrpc.CertToPB(precert), nil
 		}
 	}
@@ -241,7 +241,7 @@ func TestParseLine(t *testing.T) {
 				var storedCert core.Certificate
 				switch typ {
 				case precertOrphan:
-					resp, err := sa.GetPrecertificate(context.Background(), &sapb.Serial{Serial: &testCertSerial})
+					resp, err := sa.GetPrecertificate(context.Background(), &sapb.Serial{Serial: testCertSerial})
 					test.AssertNotError(t, err, "Error getting test precert serial from SA")
 					precert, err := bgrpc.PBToCert(resp)
 					test.AssertNotError(t, err, "Error getting test precert from GetPrecertificate pb response")

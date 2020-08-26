@@ -1,4 +1,4 @@
-syntax = "proto2";
+syntax = "proto3";
 
 option go_package = "github.com/letsencrypt/boulder/grpc/test_proto";
 
@@ -8,5 +8,5 @@ service Chiller {
 }
 
 message Time {
-  optional int64 time = 1; // In nanoseconds
+  int64 time = 1; // In nanoseconds
 }

@@ -1013,7 +1013,7 @@ func (qsa *queueSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertific
 	} else if qsa.duplicate {
 		return nil, berrors.DuplicateError("is a dupe")
 	}
-	issued := time.Unix(0, *req.Issued)
+	issued := time.Unix(0, req.Issued)
 	qsa.issuedPrecert = &issued
 	return nil, nil
 }

@@ -1,4 +1,4 @@
-syntax = "proto3";
+syntax = "proto2";
 
 package ra;
 option go_package = "github.com/letsencrypt/boulder/ra/proto";
@@ -20,49 +20,49 @@ service RegistrationAuthority {
 }
 
 message NewAuthorizationRequest {
-  core.Authorization authz = 1;
-  int64 regID = 2;
+  optional core.Authorization authz = 1;
+  optional int64 regID = 2;
 }
 
 message NewCertificateRequest {
-  bytes csr = 1;
-  int64 regID = 2;
+  optional bytes csr = 1;
+  optional int64 regID = 2;
 }
 
 message UpdateRegistrationRequest {
-  core.Registration base = 1;
-  core.Registration update = 2;
+  optional core.Registration base = 1;
+  optional core.Registration update = 2;
 }
 
 message UpdateAuthorizationRequest {
-  core.Authorization authz = 1;
-  int64 challengeIndex = 2;
-  core.Challenge response = 3;
+  optional core.Authorization authz = 1;
+  optional int64 challengeIndex = 2;
+  optional core.Challenge response = 3;
 }
 
 message PerformValidationRequest {
-  core.Authorization authz = 1;
-  int64 challengeIndex = 2;
+  optional core.Authorization authz = 1;
+  optional int64 challengeIndex = 2;
 }
 
 message RevokeCertificateWithRegRequest {
-  bytes cert = 1;
-  int64 code = 2;
-  int64 regID = 3;
+  optional bytes cert = 1;
+  optional int64 code = 2;
+  optional int64 regID = 3;
 }
 
 message AdministrativelyRevokeCertificateRequest {
-  bytes cert = 1;
-  int64 code = 2;
-  string adminName = 3;
+  optional bytes cert = 1;
+  optional int64 code = 2;
+  optional string adminName = 3;
 }
 
 message NewOrderRequest {
-  int64 registrationID = 1;
+  optional int64 registrationID = 1;
   repeated string names = 2;
 }
 
 message FinalizeOrderRequest {
-  core.Order order = 1;
-  bytes csr = 2;
+  optional core.Order order = 1;
+  optional bytes csr = 2;
 }

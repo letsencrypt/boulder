@@ -572,10 +572,10 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	nowNanos := ca.clk.Now().UnixNano()
 	expiresNanos := validity.NotAfter.UnixNano()
 	_, err = ca.sa.AddSerial(ctx, &sapb.AddSerialRequest{
-		Serial:  &serialHex,
-		RegID:   &regID,
-		Created: &nowNanos,
-		Expires: &expiresNanos,
+		Serial:  serialHex,
+		RegID:   regID,
+		Created: nowNanos,
+		Expires: expiresNanos,
 	})
 	if err != nil {
 		return nil, err
@@ -596,13 +596,12 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	issuerID := idForIssuer(issuer.cert)
 	req := &sapb.AddCertificateRequest{
 		Der:      precertDER,
-		RegID:    &regID,
+		RegID:    regID,
 		Ocsp:     ocspResp.Response,
-		Issued:   &nowNanos,
-		IssuerID: &issuerID,
+		Issued:   nowNanos,
+		IssuerID: idForIssuer(issuer.cert),
 	}
 
 	_, err = ca.sa.AddPrecertificate(ctx, req)
@@ -700,7 +699,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		if err != nil {
 			return nil, err
 		}
-		ca.signatureCount.WithLabelValues(string(certType)).Inc()
 		block, _ := pem.Decode(certPEM)
 		if block == nil || block.Type != "CERTIFICATE" {
 			err = berrors.InternalServerError("invalid certificate value returned")
@@ -709,6 +707,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		}
 		certDER = block.Bytes
 	}
+	ca.signatureCount.WithLabelValues(string(certType)).Inc()
 	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] csr=[%s] certificate=[%s]",
 		serialHex, strings.Join(precert.DNSNames, ", "), hex.EncodeToString(req.DER),
 		hex.EncodeToString(certDER))
@@ -981,9 +980,9 @@ func (ca *CertificateAuthorityImpl) integrateOrphan() error {
 		issuedNanos := issued.UnixNano()
 		_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 			Der:    orphan.DER,
-			RegID:  &orphan.RegID,
+			RegID:  orphan.RegID,
 			Ocsp:   orphan.OCSPResp,
-			Issued: &issuedNanos,
+			Issued: issuedNanos,
 		})
 		if err != nil && !berrors.Is(err, berrors.Duplicate) {
 			return fmt.Errorf("failed to store orphaned precertificate: %s", err)

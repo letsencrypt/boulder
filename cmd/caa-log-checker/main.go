@@ -16,6 +16,8 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 )
 
+var debug = flag.Bool("debug", false, "Enable debug logging")
+
 func openFile(path string) (*bufio.Scanner, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -52,22 +54,25 @@ func parseTimestamp(line string) (time.Time, error) {
 	return datestamp, nil
 }
 
-func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, timeTolerance time.Duration, stderr *os.File) error {
-	lNum := 0
+func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, timeTolerance time.Duration,
+	earliest time.Time, latest time.Time, stderr *os.File) error {
+	linesRead := 0
+	skipCount := 0
+	evaluatedCount := 0
 	for scanner.Scan() {
-		lNum++
+		linesRead++
 		line := scanner.Text()
 		matches := raIssuanceLineRE.FindStringSubmatch(line)
 		if matches == nil {
 			continue
 		}
 		if len(matches) != 2 {
-			return fmt.Errorf("line %d: unexpected number of regex matches", lNum)
+			return fmt.Errorf("line %d: unexpected number of regex matches", linesRead)
 		}
 		var ie issuanceEvent
 		err := json.Unmarshal([]byte(matches[1]), &ie)
 		if err != nil {
-			return fmt.Errorf("line %d: failed to unmarshal JSON: %s", lNum, err)
+			return fmt.Errorf("line %d: failed to unmarshal JSON: %s", linesRead, err)
 		}
 
 		// populate the issuance time from the syslog timestamp, rather than the ResponseTime
@@ -76,8 +81,15 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, t
 		// be tightly coupled anyway.
 		ie.issuanceTime, err = parseTimestamp(line)
 		if err != nil {
-			return fmt.Errorf("line %d: failed to parse timestamp: %s", lNum, err)
+			return fmt.Errorf("line %d: failed to parse timestamp: %s", linesRead, err)
 		}
+
+		if !earliest.IsZero() && !latest.IsZero() &&
+			(ie.issuanceTime.Before(earliest) || ie.issuanceTime.After(latest)) {
+			skipCount++
+			continue
+		}
+		evaluatedCount++
 
 		var badNames []string
 		var timeErrors []float64
@@ -113,6 +125,9 @@ func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, t
 	}
 	if err := scanner.Err(); err != nil {
 		return err
+	}
+	if *debug {
+		fmt.Fprintf(stderr, "Issuance log lines read %d evaluated %d skipped %d\n", linesRead, evaluatedCount, skipCount)
 	}
 	return nil
 }
@@ -177,10 +192,32 @@ func main() {
 	raLog := flag.String("ra-log", "", "Path to a single boulder-ra log file")
 	vaLogs := flag.String("va-logs", "", "List of paths to boulder-va logs, separated by commas")
 	timeTolerance := flag.Duration("time-tolerance", 0, "How much slop to allow when comparing timestamps for ordering")
+	earliestFlag := flag.String("earliest", "", "Day at which to start checking issuances "+
+		"(inclusive). Formatted like '20060102' Optional. If specified, -latest is required.")
+	latestFlag := flag.String("latest", "", "Day at which to stop checking issuances "+
+		"(exclusive). Formatted like '20060102'. Optional. If specified, -earliest is required.")
+
 	flag.Parse()
 
 	if *timeTolerance < 0 {
 		cmd.Fail("value of -time-tolerance must be non-negative")
+	}
+
+	var earliest time.Time
+	var latest time.Time
+	if *earliestFlag != "" || *latestFlag != "" {
+		if *earliestFlag == "" || *latestFlag == "" {
+			cmd.Fail("-earliest and -latest must be both set or both unset")
+		}
+		var err error
+		earliest, err = time.Parse("20060102", *earliestFlag)
+		cmd.FailOnError(err, "value of -earliest could not be parsed as date")
+		latest, err = time.Parse("20060102", *latestFlag)
+		cmd.FailOnError(err, "value of -latest could not be parsed as date")
+
+		if earliest.After(latest) {
+			cmd.Fail("earliest date must be before latest date")
+		}
 	}
 
 	_ = cmd.NewLogger(cmd.SyslogConfig{
@@ -196,6 +233,6 @@ func main() {
 	raScanner, err := openFile(*raLog)
 	cmd.FailOnError(err, fmt.Sprintf("failed to open %q", *raLog))
 
-	err = checkIssuances(raScanner, checkedMap, *timeTolerance, os.Stderr)
+	err = checkIssuances(raScanner, checkedMap, *timeTolerance, earliest, latest, os.Stderr)
 	cmd.FailOnError(err, "failed while processing RA log")
 }

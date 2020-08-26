@@ -26,7 +26,7 @@ func TestCAALogChecker(t *testing.T) {
 	test.AssertEquals(t, len(result.Order.Authorizations), 1)
 
 	// Should be no specific output, since everything is good
-	cmd := exec.Command("bin/caa-log-checker", "-ra-log", "/var/log/boulder-ra.log", "-va-logs", "/var/log/boulder-va.log")
+	cmd := exec.Command("bin/caa-log-checker", "-ra-log", "/var/log/boulder-ra.log", "-va-logs", "/var/log/boulder-va.log", "-earliest", "19010101", "-latest", "30000101")
 	var stdErr bytes.Buffer
 	cmd.Stderr = &stdErr
 	out, err := cmd.Output()
