@@ -116,10 +116,16 @@ const (
 type CertificateAuthorityImpl struct {
 	rsaProfile   string
 	ecdsaProfile string
-	// A map from issuer cert common name to an internalIssuer struct
-	issuers map[string]*internalIssuer
-	// A map from issuer ID to internalIssuer
-	idToIssuer         map[int64]*internalIssuer
+	// Three maps of keys to internalIssuers. Lookup by PublicKeyAlgorithm is
+	// useful for determining which issuer to use to sign a given (pre)cert, based
+	// on its PublicKeyAlgorithm. Lookup by CommonName is useful for determining
+	// which issuer to use to sign an OCSP response, based on the cert's
+	// Issuer CN. Lookup by ID is useful for the same functionality, in cases
+	// where features.StoreIssuerInfo is true and the OCSP request is identified
+	// by Serial and IssuerID rather than by the full cert.
+	issuersByAlg       map[x509.PublicKeyAlgorithm]*internalIssuer
+	issuersByName      map[string]*internalIssuer
+	issuersByID        map[int64]*internalIssuer
 	sa                 certificateStorage
 	pa                 core.PolicyAuthority
 	keyPolicy          goodkey.KeyPolicy
@@ -162,63 +168,83 @@ type internalIssuer struct {
 	boulderSigner *bsigner.Signer
 }
 
-func makeInternalIssuers(issuers []bsigner.Config, lifespanOCSP time.Duration) (map[string]*internalIssuer, error) {
-	internalIssuers := make(map[string]*internalIssuer, len(issuers))
+func makeInternalIssuers(issuers []bsigner.Config, lifespanOCSP time.Duration) (map[x509.PublicKeyAlgorithm]*internalIssuer, map[string]*internalIssuer, map[int64]*internalIssuer, error) {
+	issuersByAlg := make(map[x509.PublicKeyAlgorithm]*internalIssuer, len(issuers))
+	issuersByName := make(map[string]*internalIssuer, len(issuers))
+	issuersByID := make(map[int64]*internalIssuer, len(issuers))
 	for _, issuer := range issuers {
 		signer, err := bsigner.NewSigner(issuer)
 		if err != nil {
-			return nil, err
+			return nil, nil, nil, err
 		}
-		if internalIssuers[issuer.Issuer.Subject.CommonName] != nil {
-			return nil, errors.New("Multiple issuer certs with the same CommonName are not supported")
-		}
-		internalIssuers[issuer.Issuer.Subject.CommonName] = &internalIssuer{
+		ii := &internalIssuer{
 			cert:          issuer.Issuer,
 			ocspSigner:    issuer.Signer,
 			boulderSigner: signer,
 		}
+		if issuer.Profile.UseForRSAKeys {
+			if issuersByAlg[x509.RSA] != nil {
+				return nil, nil, nil, errors.New("Multiple issuer certs for RSA are not allowed")
+			}
+			issuersByAlg[x509.RSA] = ii
+		}
+		if issuer.Profile.UseForECDSAKeys {
+			if issuersByAlg[x509.ECDSA] != nil {
+				return nil, nil, nil, errors.New("Multiple issuer certs for ECDSA are not allowed")
+			}
+			issuersByAlg[x509.ECDSA] = ii
+		}
+		if issuersByName[issuer.Issuer.Subject.CommonName] != nil {
+			return nil, nil, nil, errors.New("Multiple issuer certs with the same CommonName are not supported")
+		}
+		issuersByName[issuer.Issuer.Subject.CommonName] = ii
+		issuersByID[idForIssuer(issuer.Issuer)] = ii
 	}
-	return internalIssuers, nil
+	return issuersByAlg, issuersByName, issuersByID, nil
 }
 
 func makeCFSSLInternalIssuers(
 	issuers []Issuer,
 	policy *cfsslConfig.Signing,
 	lifespanOCSP time.Duration,
-) (map[string]*internalIssuer, error) {
+) (map[x509.PublicKeyAlgorithm]*internalIssuer, map[string]*internalIssuer, map[int64]*internalIssuer, error) {
 	if len(issuers) == 0 {
-		return nil, errors.New("No issuers specified.")
+		return nil, nil, nil, errors.New("No issuers specified.")
 	}
-	internalIssuers := make(map[string]*internalIssuer)
-	for _, iss := range issuers {
+	issuersByAlg := make(map[x509.PublicKeyAlgorithm]*internalIssuer, len(issuers))
+	issuersByName := make(map[string]*internalIssuer, len(issuers))
+	issuersByID := make(map[int64]*internalIssuer, len(issuers))
+	for idx, iss := range issuers {
 		if iss.Cert == nil || iss.Signer == nil {
-			return nil, errors.New("Issuer with nil cert or signer specified.")
+			return nil, nil, nil, errors.New("Issuer with nil cert or signer specified.")
 		}
 		cfsslSigner, err := local.NewSigner(iss.Signer, iss.Cert, x509.SHA256WithRSA, policy)
 		if err != nil {
-			return nil, err
+			return nil, nil, nil, err
+		}
+		cn := iss.Cert.Subject.CommonName
+		if issuersByName[cn] != nil {
+			return nil, nil, nil, errors.New("Multiple issuer certs with the same CommonName are not supported")
 		}
 
-		cn := iss.Cert.Subject.CommonName
-		if internalIssuers[cn] != nil {
-			return nil, errors.New("Multiple issuer certs with the same CommonName are not supported")
-		}
-		internalIssuers[cn] = &internalIssuer{
+		ii := &internalIssuer{
 			cert:        iss.Cert,
 			cfsslSigner: cfsslSigner,
 			ocspSigner:  iss.Signer,
 		}
-	}
-	return internalIssuers, nil
-}
 
-func internalIssuerForAlgorithm(issuers map[string]*internalIssuer, alg x509.PublicKeyAlgorithm) (*internalIssuer, error) {
-	for _, iss := range issuers {
-		if iss.cert.PublicKeyAlgorithm == alg {
-			return iss, nil
+		// Rather than reading a config to pick which issuer to use for each alg,
+		// just fall back to our old behavior of "the first issuer is used by default
+		// for everything". Ensure that the first issuer is an RSA key so that signing
+		// with x509.SHA256WithRSA doesn't break.
+		if idx == 0 {
+			issuersByAlg[x509.RSA] = ii
+			issuersByAlg[x509.ECDSA] = ii
 		}
+		issuersByName[cn] = ii
+		issuersByID[idForIssuer(iss.Cert)] = ii
 	}
-	return nil, berrors.InternalServerError("no issuer found for algorithm %s", alg.String())
+	return issuersByAlg, issuersByName, issuersByID, nil
 }
 
 // idForIssuer generates a stable ID for an issuer certificate. This
@@ -252,12 +278,14 @@ func NewCertificateAuthorityImpl(
 		return nil, err
 	}
 
-	var internalIssuers map[string]*internalIssuer
+	var issuersByAlg map[x509.PublicKeyAlgorithm]*internalIssuer
+	var issuersByName map[string]*internalIssuer
+	var issuersByID map[int64]*internalIssuer
 	// rsaProfile and ecdsaProfile are unused when using the boulder signer
 	// instead of the CFSSL signer
 	var rsaProfile, ecdsaProfile string
 	if features.Enabled(features.NonCFSSLSigner) {
-		internalIssuers, err = makeInternalIssuers(boulderIssuers, config.LifespanOCSP.Duration)
+		issuersByAlg, issuersByName, issuersByID, err = makeInternalIssuers(boulderIssuers, config.LifespanOCSP.Duration)
 		if err != nil {
 			return nil, err
 		}
@@ -283,7 +311,7 @@ func NewCertificateAuthorityImpl(
 			}
 		}
 
-		internalIssuers, err = makeCFSSLInternalIssuers(
+		issuersByAlg, issuersByName, issuersByID, err = makeCFSSLInternalIssuers(
 			cfsslIssuers,
 			cfsslConfigObj.Signing,
 			config.LifespanOCSP.Duration)
@@ -339,7 +367,9 @@ func NewCertificateAuthorityImpl(
 	ca = &CertificateAuthorityImpl{
 		sa:                 sa,
 		pa:                 pa,
-		issuers:            internalIssuers,
+		issuersByAlg:       issuersByAlg,
+		issuersByName:      issuersByName,
+		issuersByID:        issuersByID,
 		rsaProfile:         rsaProfile,
 		ecdsaProfile:       ecdsaProfile,
 		prefix:             config.SerialPrefix,
@@ -353,12 +383,6 @@ func NewCertificateAuthorityImpl(
 		orphanQueue:        orphanQueue,
 		ocspLifetime:       config.LifespanOCSP.Duration,
 		signErrorCounter:   signErrorCounter,
-	}
-
-	ca.idToIssuer = make(map[int64]*internalIssuer)
-	for _, ii := range ca.issuers {
-		id := idForIssuer(ii.cert)
-		ca.idToIssuer[id] = ii
 	}
 
 	if config.Expiry == "" {
@@ -487,7 +511,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *capb.
 		}
 		serial = serialInt
 		var ok bool
-		issuer, ok = ca.idToIssuer[req.IssuerID]
+		issuer, ok = ca.issuersByID[req.IssuerID]
 		if !ok {
 			return nil, fmt.Errorf("This CA doesn't have an issuer cert with ID %d", req.IssuerID)
 		}
@@ -500,7 +524,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *capb.
 
 		serial = cert.SerialNumber
 		cn := cert.Issuer.CommonName
-		issuer = ca.issuers[cn]
+		issuer = ca.issuersByName[cn]
 		if issuer == nil {
 			return nil, fmt.Errorf("This CA doesn't have an issuer cert with CommonName %q", cn)
 		}
@@ -656,9 +680,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		scts = append(scts, sct)
 	}
 
-	issuer, err := internalIssuerForAlgorithm(ca.issuers, precert.PublicKeyAlgorithm)
-	if err != nil {
-		return nil, err
+	issuer, ok := ca.issuersByAlg[precert.PublicKeyAlgorithm]
+	if !ok {
+		return nil, berrors.InternalServerError("no issuer found for public key algorithm %s", precert.PublicKeyAlgorithm)
 	}
 
 	var certDER []byte
@@ -759,9 +783,9 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, err
 	}
 
-	issuer, err := internalIssuerForAlgorithm(ca.issuers, csr.PublicKeyAlgorithm)
-	if err != nil {
-		return nil, nil, err
+	issuer, ok := ca.issuersByAlg[csr.PublicKeyAlgorithm]
+	if !ok {
+		return nil, nil, berrors.InternalServerError("no issuer found for public key algorithm %s", csr.PublicKeyAlgorithm)
 	}
 
 	if issuer.cert.NotAfter.Before(validity.NotAfter) {

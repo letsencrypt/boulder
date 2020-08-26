@@ -47,8 +47,8 @@ type IssuanceRequest struct {
 }
 
 type signingProfile struct {
-	allowRSAKeys   bool
-	allowECDSAKeys bool
+	useForRSAKeys   bool
+	useForECDSAKeys bool
 
 	allowMustStaple bool
 	allowCTPoison   bool
@@ -79,8 +79,9 @@ type PolicyInformation struct {
 
 // ProfileConfig describes the certificate issuance constraints
 type ProfileConfig struct {
-	AllowRSAKeys    bool
-	AllowECDSAKeys  bool
+	UseForRSAKeys   bool
+	UseForECDSAKeys bool
+
 	AllowMustStaple bool
 	AllowCTPoison   bool
 	AllowSCTList    bool
@@ -115,8 +116,8 @@ var stringToQualifierType = map[string]asn1.ObjectIdentifier{
 
 func newProfile(config ProfileConfig) (*signingProfile, error) {
 	sp := &signingProfile{
-		allowRSAKeys:    config.AllowRSAKeys,
-		allowECDSAKeys:  config.AllowECDSAKeys,
+		useForRSAKeys:   config.UseForRSAKeys,
+		useForECDSAKeys: config.UseForECDSAKeys,
 		allowMustStaple: config.AllowMustStaple,
 		allowCTPoison:   config.AllowCTPoison,
 		allowSCTList:    config.AllowSCTList,
@@ -171,12 +172,12 @@ func newProfile(config ProfileConfig) (*signingProfile, error) {
 func (p *signingProfile) requestValid(clk clock.Clock, req *IssuanceRequest) error {
 	switch req.PublicKey.(type) {
 	case *rsa.PublicKey:
-		if !p.allowRSAKeys {
-			return errors.New("RSA keys not allowed")
+		if !p.useForRSAKeys {
+			return errors.New("cannot sign RSA public keys")
 		}
 	case *ecdsa.PublicKey:
-		if !p.allowECDSAKeys {
-			return errors.New("ECDSA keys not allowed")
+		if !p.useForECDSAKeys {
+			return errors.New("cannot sign ECDSA public keys")
 		}
 	default:
 		return errors.New("unsupported public key type")
@@ -287,16 +288,16 @@ func NewSigner(config Config) (*Signer, error) {
 	if err != nil {
 		return nil, err
 	}
-	var lk crypto.Signer
+	var lintKey crypto.Signer
 	switch k := config.Issuer.PublicKey.(type) {
 	case *rsa.PublicKey:
-		lk, err = rsa.GenerateKey(rand.Reader, k.Size()*8)
+		lintKey, err = rsa.GenerateKey(rand.Reader, k.Size()*8)
 		if err != nil {
 			return nil, err
 		}
 		profile.sigAlg = x509.SHA256WithRSA
 	case *ecdsa.PublicKey:
-		lk, err = ecdsa.GenerateKey(k.Curve, rand.Reader)
+		lintKey, err = ecdsa.GenerateKey(k.Curve, rand.Reader)
 		if err != nil {
 			return nil, err
 		}
@@ -316,7 +317,7 @@ func NewSigner(config Config) (*Signer, error) {
 		signer:  config.Signer,
 		clk:     config.Clk,
 		lints:   lints,
-		lintKey: lk,
+		lintKey: lintKey,
 		profile: profile,
 	}
 	return s, nil

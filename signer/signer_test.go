@@ -24,8 +24,8 @@ import (
 
 func defaultProfileConfig() ProfileConfig {
 	return ProfileConfig{
-		AllowECDSAKeys:  true,
-		AllowRSAKeys:    true,
+		UseForECDSAKeys: true,
+		UseForRSAKeys:   true,
 		AllowCommonName: true,
 		AllowCTPoison:   true,
 		AllowSCTList:    true,
@@ -54,8 +54,8 @@ func TestNewProfilePolicies(t *testing.T) {
 	profile, err := newProfile(config)
 	test.AssertNotError(t, err, "newProfile failed")
 	test.AssertDeepEquals(t, *profile, signingProfile{
-		allowRSAKeys:    true,
-		allowECDSAKeys:  true,
+		useForRSAKeys:   true,
+		useForECDSAKeys: true,
 		allowMustStaple: true,
 		allowCTPoison:   true,
 		allowSCTList:    true,
@@ -141,21 +141,21 @@ func TestRequestValid(t *testing.T) {
 			expectedError: "unsupported public key type",
 		},
 		{
-			name:          "rsa keys not allowed",
+			name:          "cannot sign rsa",
 			profile:       &signingProfile{},
 			request:       &IssuanceRequest{PublicKey: &rsa.PublicKey{}},
-			expectedError: "RSA keys not allowed",
+			expectedError: "cannot sign RSA public keys",
 		},
 		{
-			name:          "ecdsa keys not allowed",
+			name:          "cannot sign ecdsa",
 			profile:       &signingProfile{},
 			request:       &IssuanceRequest{PublicKey: &ecdsa.PublicKey{}},
-			expectedError: "ECDSA keys not allowed",
+			expectedError: "cannot sign ECDSA public keys",
 		},
 		{
 			name: "must staple not allowed",
 			profile: &signingProfile{
-				allowECDSAKeys: true,
+				useForECDSAKeys: true,
 			},
 			request: &IssuanceRequest{
 				PublicKey:         &ecdsa.PublicKey{},
@@ -166,7 +166,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "ct poison not allowed",
 			profile: &signingProfile{
-				allowECDSAKeys: true,
+				useForECDSAKeys: true,
 			},
 			request: &IssuanceRequest{
 				PublicKey:       &ecdsa.PublicKey{},
@@ -177,7 +177,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "sct list not allowed",
 			profile: &signingProfile{
-				allowECDSAKeys: true,
+				useForECDSAKeys: true,
 			},
 			request: &IssuanceRequest{
 				PublicKey: &ecdsa.PublicKey{},
@@ -188,9 +188,9 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "sct list and ct poison not allowed",
 			profile: &signingProfile{
-				allowECDSAKeys: true,
-				allowCTPoison:  true,
-				allowSCTList:   true,
+				useForECDSAKeys: true,
+				allowCTPoison:   true,
+				allowSCTList:    true,
 			},
 			request: &IssuanceRequest{
 				PublicKey:       &ecdsa.PublicKey{},
@@ -202,7 +202,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "common name not allowed",
 			profile: &signingProfile{
-				allowECDSAKeys: true,
+				useForECDSAKeys: true,
 			},
 			request: &IssuanceRequest{
 				PublicKey:  &ecdsa.PublicKey{},
@@ -213,7 +213,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "negative validity",
 			profile: &signingProfile{
-				allowECDSAKeys: true,
+				useForECDSAKeys: true,
 			},
 			request: &IssuanceRequest{
 				PublicKey: &ecdsa.PublicKey{},
@@ -225,8 +225,8 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "validity larger than max",
 			profile: &signingProfile{
-				allowECDSAKeys: true,
-				maxValidity:    time.Minute,
+				useForECDSAKeys: true,
+				maxValidity:     time.Minute,
 			},
 			request: &IssuanceRequest{
 				PublicKey: &ecdsa.PublicKey{},
@@ -238,9 +238,9 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "validity backdated more than max",
 			profile: &signingProfile{
-				allowECDSAKeys: true,
-				maxValidity:    time.Hour * 2,
-				maxBackdate:    time.Hour,
+				useForECDSAKeys: true,
+				maxValidity:     time.Hour * 2,
+				maxBackdate:     time.Hour,
 			},
 			request: &IssuanceRequest{
 				PublicKey: &ecdsa.PublicKey{},
@@ -252,9 +252,9 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "validity is forward dated",
 			profile: &signingProfile{
-				allowECDSAKeys: true,
-				maxValidity:    time.Hour * 2,
-				maxBackdate:    time.Hour,
+				useForECDSAKeys: true,
+				maxValidity:     time.Hour * 2,
+				maxBackdate:     time.Hour,
 			},
 			request: &IssuanceRequest{
 				PublicKey: &ecdsa.PublicKey{},
@@ -266,8 +266,8 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "serial too short",
 			profile: &signingProfile{
-				allowECDSAKeys: true,
-				maxValidity:    time.Hour * 2,
+				useForECDSAKeys: true,
+				maxValidity:     time.Hour * 2,
 			},
 			request: &IssuanceRequest{
 				PublicKey: &ecdsa.PublicKey{},
@@ -279,8 +279,8 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "serial too long",
 			profile: &signingProfile{
-				allowECDSAKeys: true,
-				maxValidity:    time.Hour * 2,
+				useForECDSAKeys: true,
+				maxValidity:     time.Hour * 2,
 			},
 			request: &IssuanceRequest{
 				PublicKey: &ecdsa.PublicKey{},
@@ -293,8 +293,8 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "good",
 			profile: &signingProfile{
-				allowECDSAKeys: true,
-				maxValidity:    time.Hour * 2,
+				useForECDSAKeys: true,
+				maxValidity:     time.Hour * 2,
 			},
 			request: &IssuanceRequest{
 				PublicKey: &ecdsa.PublicKey{},
