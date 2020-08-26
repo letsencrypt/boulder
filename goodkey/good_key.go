@@ -128,7 +128,7 @@ func (policy *KeyPolicy) GoodKey(ctx context.Context, key crypto.PublicKey) erro
 		exists, err := policy.dbCheck(ctx, &sapb.KeyBlockedRequest{KeyHash: digest[:]})
 		if err != nil {
 			return err
-		} else if exists.Exists != nil && *exists.Exists {
+		} else if exists.Exists {
 			return badKey("public key is forbidden")
 		}
 	}

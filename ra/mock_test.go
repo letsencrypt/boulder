@@ -21,18 +21,15 @@ func (sa *mockInvalidAuthorizationsAuthority) PreviousCertificateExists(
 	_ context.Context,
 	_ *sapb.PreviousCertificateExistsRequest,
 ) (*sapb.Exists, error) {
-	f := false
 	return &sapb.Exists{
-		Exists: &f,
+		Exists: false,
 	}, nil
 }
 
 func (sa *mockInvalidAuthorizationsAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
-	var count int64
-	if *req.Hostname == sa.domainWithFailures {
-		count = 1
+	if req.Hostname == sa.domainWithFailures {
+		return &sapb.Count{Count: 1}, nil
+	} else {
+		return &sapb.Count{}, nil
 	}
-	return &sapb.Count{
-		Count: &count,
-	}, nil
 }

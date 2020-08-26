@@ -775,11 +775,10 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 }
 
 func (wfe *WebFrontEndImpl) regHoldsAuthorizations(ctx context.Context, regID int64, names []string) (bool, error) {
-	now := wfe.clk.Now().UnixNano()
 	authzMapPB, err := wfe.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
-		RegistrationID: &regID,
+		RegistrationID: regID,
 		Domains:        names,
-		Now:            &now,
+		Now:            wfe.clk.Now().UnixNano(),
 	})
 	if err != nil {
 		return false, err
@@ -1048,7 +1047,7 @@ func (wfe *WebFrontEndImpl) ChallengeV2(
 		return
 	}
 	challengeID := slug[1]
-	authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authorizationID})
+	authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authorizationID})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
 			notFound()
@@ -1198,11 +1197,10 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to serialize authz"), err)
 			return
 		}
-		challIndex := int64(challengeIndex)
 
 		authzPB, err = wfe.RA.PerformValidation(ctx, &rapb.PerformValidationRequest{
 			Authz:          authzPB,
-			ChallengeIndex: &challIndex})
+			ChallengeIndex: int64(challengeIndex)})
 		if err != nil {
 			wfe.sendError(
 				response,
@@ -1377,7 +1375,7 @@ func (wfe *WebFrontEndImpl) AuthorizationV2(ctx context.Context, logEvent *web.R
 		wfe.sendError(response, logEvent, probs.Malformed("Invalid authorization ID"), nil)
 		return
 	}
-	authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: &authzID})
+	authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
 			notFound()

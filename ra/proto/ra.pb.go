@@ -35,8 +35,8 @@ type NewAuthorizationRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Authz *proto1.Authorization `protobuf:"bytes,1,opt,name=authz" json:"authz,omitempty"`
-	RegID *int64                `protobuf:"varint,2,opt,name=regID" json:"regID,omitempty"`
+	Authz *proto1.Authorization `protobuf:"bytes,1,opt,name=authz,proto3" json:"authz,omitempty"`
+	RegID int64                 `protobuf:"varint,2,opt,name=regID,proto3" json:"regID,omitempty"`
 }
 
 func (x *NewAuthorizationRequest) Reset() {
@@ -79,8 +79,8 @@ func (x *NewAuthorizationRequest) GetAuthz() *proto1.Authorization {
 }
 
 func (x *NewAuthorizationRequest) GetRegID() int64 {
-	if x != nil && x.RegID != nil {
-		return *x.RegID
+	if x != nil {
+		return x.RegID
 	}
 	return 0
 }
@@ -90,8 +90,8 @@ type NewCertificateRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Csr   []byte `protobuf:"bytes,1,opt,name=csr" json:"csr,omitempty"`
-	RegID *int64 `protobuf:"varint,2,opt,name=regID" json:"regID,omitempty"`
+	Csr   []byte `protobuf:"bytes,1,opt,name=csr,proto3" json:"csr,omitempty"`
+	RegID int64  `protobuf:"varint,2,opt,name=regID,proto3" json:"regID,omitempty"`
 }
 
 func (x *NewCertificateRequest) Reset() {
@@ -134,8 +134,8 @@ func (x *NewCertificateRequest) GetCsr() []byte {
 }
 
 func (x *NewCertificateRequest) GetRegID() int64 {
-	if x != nil && x.RegID != nil {
-		return *x.RegID
+	if x != nil {
+		return x.RegID
 	}
 	return 0
 }
@@ -145,8 +145,8 @@ type UpdateRegistrationRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Base   *proto1.Registration `protobuf:"bytes,1,opt,name=base" json:"base,omitempty"`
-	Update *proto1.Registration `protobuf:"bytes,2,opt,name=update" json:"update,omitempty"`
+	Base   *proto1.Registration `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`
+	Update *proto1.Registration `protobuf:"bytes,2,opt,name=update,proto3" json:"update,omitempty"`
 }
 
 func (x *UpdateRegistrationRequest) Reset() {
@@ -200,9 +200,9 @@ type UpdateAuthorizationRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Authz          *proto1.Authorization `protobuf:"bytes,1,opt,name=authz" json:"authz,omitempty"`
-	ChallengeIndex *int64                `protobuf:"varint,2,opt,name=challengeIndex" json:"challengeIndex,omitempty"`
-	Response       *proto1.Challenge     `protobuf:"bytes,3,opt,name=response" json:"response,omitempty"`
+	Authz          *proto1.Authorization `protobuf:"bytes,1,opt,name=authz,proto3" json:"authz,omitempty"`
+	ChallengeIndex int64                 `protobuf:"varint,2,opt,name=challengeIndex,proto3" json:"challengeIndex,omitempty"`
+	Response       *proto1.Challenge     `protobuf:"bytes,3,opt,name=response,proto3" json:"response,omitempty"`
 }
 
 func (x *UpdateAuthorizationRequest) Reset() {
@@ -245,8 +245,8 @@ func (x *UpdateAuthorizationRequest) GetAuthz() *proto1.Authorization {
 }
 
 func (x *UpdateAuthorizationRequest) GetChallengeIndex() int64 {
-	if x != nil && x.ChallengeIndex != nil {
-		return *x.ChallengeIndex
+	if x != nil {
+		return x.ChallengeIndex
 	}
 	return 0
 }
@@ -263,8 +263,8 @@ type PerformValidationRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Authz          *proto1.Authorization `protobuf:"bytes,1,opt,name=authz" json:"authz,omitempty"`
-	ChallengeIndex *int64                `protobuf:"varint,2,opt,name=challengeIndex" json:"challengeIndex,omitempty"`
+	Authz          *proto1.Authorization `protobuf:"bytes,1,opt,name=authz,proto3" json:"authz,omitempty"`
+	ChallengeIndex int64                 `protobuf:"varint,2,opt,name=challengeIndex,proto3" json:"challengeIndex,omitempty"`
 }
 
 func (x *PerformValidationRequest) Reset() {
@@ -307,8 +307,8 @@ func (x *PerformValidationRequest) GetAuthz() *proto1.Authorization {
 }
 
 func (x *PerformValidationRequest) GetChallengeIndex() int64 {
-	if x != nil && x.ChallengeIndex != nil {
-		return *x.ChallengeIndex
+	if x != nil {
+		return x.ChallengeIndex
 	}
 	return 0
 }
@@ -318,9 +318,9 @@ type RevokeCertificateWithRegRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Cert  []byte `protobuf:"bytes,1,opt,name=cert" json:"cert,omitempty"`
-	Code  *int64 `protobuf:"varint,2,opt,name=code" json:"code,omitempty"`
-	RegID *int64 `protobuf:"varint,3,opt,name=regID" json:"regID,omitempty"`
+	Cert  []byte `protobuf:"bytes,1,opt,name=cert,proto3" json:"cert,omitempty"`
+	Code  int64  `protobuf:"varint,2,opt,name=code,proto3" json:"code,omitempty"`
+	RegID int64  `protobuf:"varint,3,opt,name=regID,proto3" json:"regID,omitempty"`
 }
 
 func (x *RevokeCertificateWithRegRequest) Reset() {
@@ -363,15 +363,15 @@ func (x *RevokeCertificateWithRegRequest) GetCert() []byte {
 }
 
 func (x *RevokeCertificateWithRegRequest) GetCode() int64 {
-	if x != nil && x.Code != nil {
-		return *x.Code
+	if x != nil {
+		return x.Code
 	}
 	return 0
 }
 
 func (x *RevokeCertificateWithRegRequest) GetRegID() int64 {
-	if x != nil && x.RegID != nil {
-		return *x.RegID
+	if x != nil {
+		return x.RegID
 	}
 	return 0
 }
@@ -381,9 +381,9 @@ type AdministrativelyRevokeCertificateRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Cert      []byte  `protobuf:"bytes,1,opt,name=cert" json:"cert,omitempty"`
-	Code      *int64  `protobuf:"varint,2,opt,name=code" json:"code,omitempty"`
-	AdminName *string `protobuf:"bytes,3,opt,name=adminName" json:"adminName,omitempty"`
+	Cert      []byte `protobuf:"bytes,1,opt,name=cert,proto3" json:"cert,omitempty"`
+	Code      int64  `protobuf:"varint,2,opt,name=code,proto3" json:"code,omitempty"`
+	AdminName string `protobuf:"bytes,3,opt,name=adminName,proto3" json:"adminName,omitempty"`
 }
 
 func (x *AdministrativelyRevokeCertificateRequest) Reset() {
@@ -426,15 +426,15 @@ func (x *AdministrativelyRevokeCertificateRequest) GetCert() []byte {
 }
 
 func (x *AdministrativelyRevokeCertificateRequest) GetCode() int64 {
-	if x != nil && x.Code != nil {
-		return *x.Code
+	if x != nil {
+		return x.Code
 	}
 	return 0
 }
 
 func (x *AdministrativelyRevokeCertificateRequest) GetAdminName() string {
-	if x != nil && x.AdminName != nil {
-		return *x.AdminName
+	if x != nil {
+		return x.AdminName
 	}
 	return ""
 }
@@ -444,8 +444,8 @@ type NewOrderRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	RegistrationID *int64   `protobuf:"varint,1,opt,name=registrationID" json:"registrationID,omitempty"`
-	Names          []string `protobuf:"bytes,2,rep,name=names" json:"names,omitempty"`
+	RegistrationID int64    `protobuf:"varint,1,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
+	Names          []string `protobuf:"bytes,2,rep,name=names,proto3" json:"names,omitempty"`
 }
 
 func (x *NewOrderRequest) Reset() {
@@ -481,8 +481,8 @@ func (*NewOrderRequest) Descriptor() ([]byte, []int) {
 }
 
 func (x *NewOrderRequest) GetRegistrationID() int64 {
-	if x != nil && x.RegistrationID != nil {
-		return *x.RegistrationID
+	if x != nil {
+		return x.RegistrationID
 	}
 	return 0
 }
@@ -499,8 +499,8 @@ type FinalizeOrderRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Order *proto1.Order `protobuf:"bytes,1,opt,name=order" json:"order,omitempty"`
-	Csr   []byte        `protobuf:"bytes,2,opt,name=csr" json:"csr,omitempty"`
+	Order *proto1.Order `protobuf:"bytes,1,opt,name=order,proto3" json:"order,omitempty"`
+	Csr   []byte        `protobuf:"bytes,2,opt,name=csr,proto3" json:"csr,omitempty"`
 }
 
 func (x *FinalizeOrderRequest) Reset() {
@@ -663,7 +663,7 @@ var file_ra_proto_ra_proto_rawDesc = []byte{
 	0x65, 0x2e, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x22, 0x00, 0x42, 0x29, 0x5a, 0x27, 0x67, 0x69, 0x74,
 	0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x65, 0x74, 0x73, 0x65, 0x6e, 0x63, 0x72,
 	0x79, 0x70, 0x74, 0x2f, 0x62, 0x6f, 0x75, 0x6c, 0x64, 0x65, 0x72, 0x2f, 0x72, 0x61, 0x2f, 0x70,
-	0x72, 0x6f, 0x74, 0x6f,
+	0x72, 0x6f, 0x74, 0x6f, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
