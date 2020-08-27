@@ -15,6 +15,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 )
@@ -278,6 +279,32 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 	chosenServerIndex := rand.Intn(len(dnsClient.servers))
 	chosenServer := dnsClient.servers[chosenServerIndex]
 
+	DNSServerHealthChecks := features.Enabled(features.DNSServerHealthChecks)
+	timeoutDuration := time.Millisecond * 50
+	periodDuration := time.Millisecond * 100
+
+	var healthyServers = make(map[string]bool)
+	var hsMX = &sync.RWMutex{}
+
+	if DNSServerHealthChecks {
+		for _, server := range dnsClient.servers {
+			go func(server string) {
+				ticker := time.NewTicker(periodDuration)
+				for ; true; <-ticker.C {
+					isResponsive := dnsClient.IsDNSServerResponsive(server, timeoutDuration)
+					hsMX.Lock()
+					if isResponsive {
+						healthyServers[server] = true
+					} else {
+						healthyServers[server] = false
+					}
+					hsMX.Unlock()
+
+				}
+			}(server)
+		}
+	}
+
 	start := dnsClient.clk.Now()
 	client := dnsClient.dnsClient
 	qtypeStr := dns.TypeToString[qtype]
@@ -298,7 +325,6 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 	}()
 	for {
 		ch := make(chan dnsResp, 1)
-
 		go func() {
 			rsp, rtt, err := client.Exchange(m, chosenServer)
 			result, authenticated := "failed", ""
@@ -353,12 +379,29 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 				hasRetriesLeft := tries < dnsClient.maxTries
 				if isRetryable && hasRetriesLeft {
 					tries++
-					// Chose a new server to retry the query with by incrementing the
-					// chosen server index modulo the number of servers. This ensures that
-					// if one dns server isn't available we retry with the next in the
-					// list.
-					chosenServerIndex = (chosenServerIndex + 1) % len(dnsClient.servers)
-					chosenServer = dnsClient.servers[chosenServerIndex]
+
+					if DNSServerHealthChecks && len(healthyServers) < 1 {
+						//too early to check if there's a healthy server
+						time.Sleep(periodDuration)
+					}
+					if DNSServerHealthChecks && len(healthyServers) >= 1 {
+						hsMX.RLock()
+						for k, v := range healthyServers {
+							if v == true {
+								fmt.Printf("Server %s isresponsive?: %t\n", k, v)
+								chosenServer = k
+								break
+							}
+						}
+						hsMX.RUnlock()
+					} else {
+						// Chose a new server to retry the query with by incrementing the
+						// chosen server index modulo the number of servers. This ensures that
+						// if one dns server isn't available we retry with the next in the
+						// list.
+						chosenServerIndex = (chosenServerIndex + 1) % len(dnsClient.servers)
+						chosenServer = dnsClient.servers[chosenServerIndex]
+					}
 					continue
 				} else if isRetryable && !hasRetriesLeft {
 					dnsClient.timeoutCounter.With(prometheus.Labels{
@@ -562,5 +605,28 @@ func logDNSError(
 			hostname,
 			queryType,
 			underlying)
+	}
+}
+
+// IsDNSServerResponsive will return the status of the dns server.
+func (dnsClient *DNSClientImpl) IsDNSServerResponsive(server string, timeout time.Duration) bool {
+	c := make(chan bool, 1)
+	go func() {
+		client := dnsClient.dnsClient
+		m := new(dns.Msg)
+		m.SetQuestion(dns.Fqdn("version.bind."), dns.TypeTXT)
+		m.Question[0].Qclass = dns.ClassCHAOS
+		rsp, _, err := client.Exchange(m, server)
+		if rsp != nil && err == nil {
+			c <- true
+		} else {
+			c <- false
+		}
+	}()
+	select {
+	case b := <-c:
+		return b
+	case <-time.After(timeout):
+		return false
 	}
 }
