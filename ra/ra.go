@@ -1851,9 +1851,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// See if there is an existing unexpired pending (or ready) order that can be reused
 	// for this account
 	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
-		AcctID:              *order.RegistrationID,
-		Names:               order.Names,
-		UseV2Authorizations: true,
+		AcctID: *order.RegistrationID,
+		Names:  order.Names,
 	})
 	// If there was an error and it wasn't an acceptable "NotFound" error, return
 	// immediately
@@ -1885,13 +1884,10 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// from expiring.
 	authzExpiryCutoff := ra.clk.Now().AddDate(0, 0, 1).UnixNano()
 
-	// We do not want any legacy V1 API authorizations not associated with an
-	// order to be returned from the SA so we set requireV2Authzs to true
 	getAuthReq := &sapb.GetAuthorizationsRequest{
-		RegistrationID:  *order.RegistrationID,
-		Now:             authzExpiryCutoff,
-		Domains:         order.Names,
-		RequireV2Authzs: true,
+		RegistrationID: *order.RegistrationID,
+		Now:            authzExpiryCutoff,
+		Domains:        order.Names,
 	}
 	existingAuthz, err := ra.SA.GetAuthorizations2(ctx, getAuthReq)
 	if err != nil {

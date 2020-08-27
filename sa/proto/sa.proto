@@ -170,7 +170,6 @@ message AddCertificateResponse {
 
 message OrderRequest {
   int64 id = 1;
-  bool useV2Authorizations = 2;
 }
 
 message GetValidOrderAuthorizationsRequest {
@@ -181,14 +180,12 @@ message GetValidOrderAuthorizationsRequest {
 message GetOrderForNamesRequest {
   int64 acctID = 1;
   repeated string names = 2;
-  bool useV2Authorizations = 3;
 }
 
 message GetAuthorizationsRequest {
   int64 registrationID = 1;
   repeated string domains = 2;
   int64 now = 3; // Unix timestamp (nanoseconds)
-  bool requireV2Authzs = 4; // Do not include legacy V1 authzs
 }
 
 message Authorizations {

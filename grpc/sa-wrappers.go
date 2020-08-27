@@ -814,7 +814,7 @@ func (sas StorageAuthorityServerWrapper) NewAuthorizations2(ctx context.Context,
 }
 
 func (sas StorageAuthorityServerWrapper) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if core.IsAnyNilOrZero(req, req.Domains, req.RequireV2Authzs, req.RegistrationID, req.Now) {
+	if core.IsAnyNilOrZero(req, req.Domains, req.RegistrationID, req.Now) {
 		return nil, errIncompleteRequest
 	}
 

@@ -2032,8 +2032,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
-	useV2Authzs := true
-	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: orderID, UseV2Authorizations: useV2Authzs})
+	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: orderID})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
@@ -2102,8 +2101,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	useV2Authzs := true
-	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: orderID, UseV2Authorizations: useV2Authzs})
+	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: orderID})
 	if err != nil {
 		if berrors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
