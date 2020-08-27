@@ -148,8 +148,12 @@ challSrvProcess = None
 def setupHierarchy():
     e = os.environ.copy()
     e.setdefault("GOBIN", "%s/bin" % os.getcwd())
-    subprocess.check_call(["go", "install", "./cmd/ceremony"], env=e)
-    subprocess.check_call(["go", "run", "test/cert-ceremonies/generate.go"], env=e)
+    try:
+        subprocess.check_output(["go", "install", "./cmd/ceremony"], env=e)
+        subprocess.check_output(["go", "run", "test/cert-ceremonies/generate.go"], env=e)
+    except subprocess.CalledProcessError as e:
+        print(e.output)
+        raise
 
 
 def install(race_detection):

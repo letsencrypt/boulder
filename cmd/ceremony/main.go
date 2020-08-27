@@ -379,16 +379,18 @@ func signAndLintCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicK
 	var lintSigner crypto.Signer
 	var err error
 	switch k := realSigner.Public().(type) {
-	case rsa.PublicKey:
+	case *rsa.PublicKey:
 		lintSigner, err = rsa.GenerateKey(rand.Reader, k.Size()*8)
 		if err != nil {
 			return fmt.Errorf("failed to create fake RSA signer for linting: %w", err)
 		}
-	case ecdsa.PublicKey:
+	case *ecdsa.PublicKey:
 		lintSigner, err = ecdsa.GenerateKey(k.Curve, rand.Reader)
 		if err != nil {
 			return fmt.Errorf("failed to create fake ECDSA signer for linting: %w", err)
 		}
+	default:
+		return fmt.Errorf("can't handle real signer key of type: %T", k)
 	}
 	lintCertBytes, err := x509.CreateCertificate(rand.Reader, tbs, issuer, subjectPubKey, lintSigner)
 	if err != nil {
