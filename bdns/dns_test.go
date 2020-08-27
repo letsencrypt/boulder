@@ -147,6 +147,8 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 				record.Hdr = dns.RR_Header{Name: "split-txt.letsencrypt.org.", Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: 0}
 				record.Txt = []string{"a", "b", "c"}
 				appendAnswer(record)
+			} else if q.Name == "version.bind." {
+				m.SetRcode(r, dns.RcodeSuccess)
 			} else {
 				auth := new(dns.SOA)
 				auth.Hdr = dns.RR_Header{Name: "letsencrypt.org.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 0}
@@ -458,6 +460,19 @@ func (te *testExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration
 	te.count++
 
 	return msg, 2 * time.Millisecond, err
+}
+
+func TestIsDNSServerResponsive(t *testing.T) {
+	downDNSLoopbackAddr := "127.0.0.1:5353"
+	dr := NewTestDNSClientImpl(time.Second*10, []string{dnsLoopbackAddr}, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	responsive := dr.IsDNSServerResponsive(dnsLoopbackAddr, time.Millisecond*50)
+	if !responsive {
+		t.Errorf("server got responsive: %t, server want responsive: %t", responsive, true)
+	}
+	responsive = dr.IsDNSServerResponsive(downDNSLoopbackAddr, time.Millisecond*50)
+	if responsive {
+		t.Errorf("server got responsive: %t, server want responsive: %t", responsive, false)
+	}
 }
 
 func TestRetry(t *testing.T) {
