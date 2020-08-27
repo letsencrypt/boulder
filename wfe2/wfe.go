@@ -44,10 +44,10 @@ const (
 	directoryPath = "/directory"
 	newAcctPath   = "/acme/new-acct"
 	acctPath      = "/acme/acct/"
-	// For user-facing URLs we use a "v3" suffix to avoid potential confusiong
+	// When we moved to authzv2, we used a "-v3" suffix to avoid confusion
 	// regarding ACMEv2.
-	authzv2Path       = "/acme/authz-v3/"
-	challengev2Path   = "/acme/chall-v3/"
+	authzPath         = "/acme/authz-v3/"
+	challengePath     = "/acme/chall-v3/"
 	certPath          = "/acme/cert/"
 	revokeCertPath    = "/acme/revoke-cert"
 	issuerPath        = "/acme/issuer-cert"
@@ -58,11 +58,11 @@ const (
 	orderPath         = "/acme/order/"
 	finalizeOrderPath = "/acme/finalize/"
 
-	getAPIPrefix       = "/get/"
-	getOrderPath       = getAPIPrefix + "order/"
-	getAuthzv2Path     = getAPIPrefix + "authz-v3/"
-	getChallengev2Path = getAPIPrefix + "chall-v3/"
-	getCertPath        = getAPIPrefix + "cert/"
+	getAPIPrefix     = "/get/"
+	getOrderPath     = getAPIPrefix + "order/"
+	getAuthzPath     = getAPIPrefix + "authz-v3/"
+	getChallengePath = getAPIPrefix + "chall-v3/"
+	getCertPath      = getAPIPrefix + "cert/"
 )
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
@@ -375,13 +375,13 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	// TODO(@cpu): After November 1st, 2020 support for "GET" to the following
 	// endpoints will be removed, leaving only POST-as-GET support.
 	wfe.HandleFunc(m, orderPath, wfe.GetOrder, "GET", "POST")
-	wfe.HandleFunc(m, authzv2Path, wfe.Authorization, "GET", "POST")
-	wfe.HandleFunc(m, challengev2Path, wfe.Challenge, "GET", "POST")
+	wfe.HandleFunc(m, authzPath, wfe.Authorization, "GET", "POST")
+	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET", "POST")
 	// Boulder-specific GET-able resource endpoints
 	wfe.HandleFunc(m, getOrderPath, wfe.GetOrder, "GET")
-	wfe.HandleFunc(m, getAuthzv2Path, wfe.Authorization, "GET")
-	wfe.HandleFunc(m, getChallengev2Path, wfe.Challenge, "GET")
+	wfe.HandleFunc(m, getAuthzPath, wfe.Authorization, "GET")
+	wfe.HandleFunc(m, getChallengePath, wfe.Challenge, "GET")
 	wfe.HandleFunc(m, getCertPath, wfe.Certificate, "GET")
 
 	// We don't use our special HandleFunc for "/" because it matches everything,
@@ -1012,9 +1012,8 @@ func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateReq
 	wfe.log.AuditObject("Certificate request", csrLog)
 }
 
-// Challenge handles POST requests to challenge URLs belonging to
-// authzv2-style authorizations.  Such requests are clients'
-// responses to the server's challenges.
+// Challenge handles POST requests to challenge URLs.
+// Such requests are clients' responses to the server's challenges.
 func (wfe *WebFrontEndImpl) Challenge(
 	ctx context.Context,
 	logEvent *web.RequestEvent,
@@ -1109,7 +1108,7 @@ func prepAccountForDisplay(acct *core.Registration) {
 // the client by filling in its URL field and clearing its ID and URI fields.
 func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
 	// Update the challenge URL to be relative to the HTTP request Host
-	challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", challengev2Path, authz.ID, challenge.StringID()))
+	challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", challengePath, authz.ID, challenge.StringID()))
 
 	// Ensure the challenge URI isn't written by setting it to
 	// a value that the JSON omitempty tag considers empty
@@ -1912,7 +1911,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		respObj.Error.Type = probs.V2ErrorNS + respObj.Error.Type
 	}
 	for _, v2ID := range order.V2Authorizations {
-		respObj.Authorizations = append(respObj.Authorizations, web.RelativeEndpoint(request, fmt.Sprintf("%s%d", authzv2Path, v2ID)))
+		respObj.Authorizations = append(respObj.Authorizations, web.RelativeEndpoint(request, fmt.Sprintf("%s%d", authzPath, v2ID)))
 	}
 	if respObj.Status == core.StatusValid {
 		certURL := web.RelativeEndpoint(request,
@@ -2204,5 +2203,5 @@ func extractRequesterIP(req *http.Request) (net.IP, error) {
 }
 
 func urlForAuthz(authz core.Authorization, request *http.Request) string {
-	return web.RelativeEndpoint(request, authzv2Path+string(authz.ID))
+	return web.RelativeEndpoint(request, authzPath+string(authz.ID))
 }
