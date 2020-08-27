@@ -491,57 +491,48 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 		return nil, errors.New("very bad")
 	}
 
-	status := string(core.StatusValid)
-	one := int64(1)
-	serial := "serial"
 	created := sa.clk.Now().AddDate(-30, 0, 0).Unix()
 	exp := sa.clk.Now().AddDate(30, 0, 0).Unix()
 	validOrder := &corepb.Order{
-		Id:                &req.Id,
-		RegistrationID:    &one,
-		Created:           &created,
-		Expires:           &exp,
+		Id:                req.Id,
+		RegistrationID:    1,
+		Created:           created,
+		Expires:           exp,
 		Names:             []string{"example.com"},
-		Status:            &status,
+		Status:            string(core.StatusValid),
 		V2Authorizations:  []int64{1},
-		CertificateSerial: &serial,
+		CertificateSerial: "serial",
 		Error:             nil,
 	}
 
 	// Order ID doesn't have a certificate serial yet
 	if req.Id == 4 {
-		pending := string(core.StatusPending)
-		validOrder.Status = &pending
-		validOrder.Id = &req.Id
-		validOrder.CertificateSerial = nil
+		validOrder.Status = string(core.StatusPending)
+		validOrder.Id = req.Id
+		validOrder.CertificateSerial = ""
 		validOrder.Error = nil
 		return validOrder, nil
 	}
 
 	// Order ID 6 belongs to reg ID 6
 	if req.Id == 6 {
-		six := int64(6)
-		validOrder.Id = &req.Id
-		validOrder.RegistrationID = &six
+		validOrder.Id = 6
+		validOrder.RegistrationID = 6
 	}
 
 	// Order ID 7 is ready, but expired
 	if req.Id == 7 {
-		ready := string(core.StatusReady)
-		validOrder.Status = &ready
-		exp = sa.clk.Now().AddDate(-30, 0, 0).Unix()
-		validOrder.Expires = &exp
+		validOrder.Status = string(core.StatusReady)
+		validOrder.Expires = sa.clk.Now().AddDate(-30, 0, 0).Unix()
 	}
 
 	if req.Id == 8 {
-		ready := string(core.StatusReady)
-		validOrder.Status = &ready
+		validOrder.Status = string(core.StatusReady)
 	}
 
 	// Order 9 is fresh
 	if req.Id == 9 {
-		now := sa.clk.Now().Unix()
-		validOrder.Created = &now
+		validOrder.Created = sa.clk.Now().Unix()
 	}
 
 	return validOrder, nil

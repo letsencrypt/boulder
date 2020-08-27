@@ -34,15 +34,13 @@ func (ca *MockCA) IssuePrecertificate(ctx context.Context, _ *capb.IssueCertific
 
 // IssueCertificateForPrecertificate is a mock
 func (ca *MockCA) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
-	var mockInt = int64(1)
-	var mockString = "mock"
 	return &corepb.Certificate{
 		Der:            req.DER,
-		RegistrationID: &mockInt,
-		Serial:         &mockString,
-		Digest:         &mockString,
-		Issued:         &mockInt,
-		Expires:        &mockInt,
+		RegistrationID: 1,
+		Serial:         "mock",
+		Digest:         "mock",
+		Issued:         1,
+		Expires:        1,
 	}, nil
 }
 

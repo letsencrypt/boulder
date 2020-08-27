@@ -29,8 +29,8 @@ func TestDNSValidationEmpty(t *testing.T) {
 	// metrics checked below are incremented.
 	req := createValidationRequest("empty-txts.com", core.ChallengeTypeDNS01)
 	res, _ := va.PerformValidation(context.Background(), req)
-	test.AssertEquals(t, *res.Problems.ProblemType, "unauthorized")
-	test.AssertEquals(t, *res.Problems.Detail, "No TXT record found at _acme-challenge.empty-txts.com")
+	test.AssertEquals(t, res.Problems.ProblemType, "unauthorized")
+	test.AssertEquals(t, res.Problems.Detail, "No TXT record found at _acme-challenge.empty-txts.com")
 
 	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
 		"type":         "dns-01",

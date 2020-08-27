@@ -30,12 +30,10 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		validationMethod: req.ValidationMethod,
 	}
 	if prob := va.checkCAA(ctx, acmeID, params); prob != nil {
-		typ := string(prob.Type)
-		detail := fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
 		return &vapb.IsCAAValidResponse{
 			Problem: &corepb.ProblemDetails{
-				ProblemType: &typ,
-				Detail:      &detail,
+				ProblemType: string(prob.Type),
+				Detail:      fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail),
 			},
 		}, nil
 	}

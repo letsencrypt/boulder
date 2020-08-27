@@ -80,16 +80,14 @@ func TestMain(m *testing.M) {
 var accountURIPrefixes = []string{"http://boulder:4000/acme/reg/"}
 
 func createValidationRequest(domain string, challengeType core.AcmeChallenge) *vapb.PerformValidationRequest {
-	ctype := string(challengeType)
-	status := string(core.StatusPending)
 	return &vapb.PerformValidationRequest{
 		Domain: domain,
 		Challenge: &corepb.Challenge{
-			Type:              &ctype,
-			Status:            &status,
-			Token:             &expectedToken,
+			Type:              string(challengeType),
+			Status:            string(core.StatusPending),
+			Token:             expectedToken,
 			Validationrecords: nil,
-			KeyAuthorization:  &expectedKeyAuthorization,
+			KeyAuthorization:  expectedKeyAuthorization,
 		},
 		Authz: &vapb.AuthzMeta{
 			Id:    "",
@@ -514,8 +512,8 @@ func TestMultiVA(t *testing.T) {
 				t.Errorf("expected prob %v, got nil", tc.ExpectedProb)
 			} else if res.Problems != nil {
 				// That result should match expected.
-				test.AssertEquals(t, *res.Problems.ProblemType, string(tc.ExpectedProb.Type))
-				test.AssertEquals(t, *res.Problems.Detail, string(tc.ExpectedProb.Detail))
+				test.AssertEquals(t, res.Problems.ProblemType, string(tc.ExpectedProb.Type))
+				test.AssertEquals(t, res.Problems.Detail, string(tc.ExpectedProb.Detail))
 			}
 
 			if tc.ExpectedLog != "" {
