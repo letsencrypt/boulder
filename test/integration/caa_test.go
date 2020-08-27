@@ -46,7 +46,7 @@ func TestCAALogChecker(t *testing.T) {
 	stdErr.Reset()
 	cmd.Stderr = &stdErr
 	out, err = cmd.Output()
-	test.AssertNotError(t, err, "caa-log-checker failed")
+	test.AssertError(t, err, "caa-log-checker didn't fail")
 
 	test.AssertEquals(t, string(out), "")
 	test.AssertNotEquals(t, stdErr.String(), "")
