@@ -1088,7 +1088,7 @@ func TestGetChallenge(t *testing.T) {
 		if method == "GET" {
 			test.AssertUnmarshaledEquals(
 				t, resp.Body.String(),
-				`{"type":"dns","token":"token","uri":"http://localhost/acme/chall-v3/1/-ZfxEw"}`)
+				`{"status":"pending","type":"dns","token":"token","uri":"http://localhost/acme/chall-v3/1/-ZfxEw"}`)
 		}
 	}
 }
@@ -1141,7 +1141,7 @@ func TestChallenge(t *testing.T) {
 		`<http://localhost/acme/authz-v3/1>;rel="up"`)
 	test.AssertUnmarshaledEquals(
 		t, responseWriter.Body.String(),
-		`{"type":"dns","token":"token","uri":"http://localhost/acme/chall-v3/1/-ZfxEw"}`)
+		`{"status": "pending", "type":"dns","token":"token","uri":"http://localhost/acme/chall-v3/1/-ZfxEw"}`)
 
 	// Expired challenges should be inaccessible
 	challengeURL = "3/-ZfxEw"
@@ -1200,6 +1200,7 @@ func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 
 	body := responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `{
+		"status": "pending",
 		"type": "dns",
 		"token":"token",
 		"uri": "http://localhost/acme/chall-v3/1/-ZfxEw"
@@ -1890,6 +1891,7 @@ func TestAuthorizationV2(t *testing.T) {
 		"combinations": [[0]],
 		"challenges": [
 			{
+			  "status": "pending",
 				"type": "dns",
 				"token":"token",
 				"uri": "http://localhost/acme/chall-v3/1/-ZfxEw"
@@ -2442,6 +2444,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 			"combinations": [[0]],
 		  "challenges": [
 		    {
+				"status": "pending",
 			  "type": "dns",
 			  "token":"token",
 		      "uri": "http://localhost/acme/chall-v3/1/-ZfxEw"

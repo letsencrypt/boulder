@@ -1085,7 +1085,7 @@ func TestGetChallenge(t *testing.T) {
 		if method == "GET" {
 			test.AssertUnmarshaledEquals(
 				t, resp.Body.String(),
-				`{"type":"dns","token":"token","url":"http://localhost/acme/chall-v3/1/-ZfxEw"}`)
+				`{"status": "pending", "type":"dns","token":"token","url":"http://localhost/acme/chall-v3/1/-ZfxEw"}`)
 		}
 	}
 }
@@ -1120,7 +1120,7 @@ func TestChallenge(t *testing.T) {
 				"Location": "http://localhost/acme/chall-v3/1/-ZfxEw",
 				"Link":     `<http://localhost/acme/authz-v3/1>;rel="up"`,
 			},
-			ExpectedBody: `{"type":"dns","token":"token","url":"http://localhost/acme/chall-v3/1/-ZfxEw"}`,
+			ExpectedBody: `{"status": "pending", "type":"dns","token":"token","url":"http://localhost/acme/chall-v3/1/-ZfxEw"}`,
 		},
 		{
 			Name:           "Expired challenge",
@@ -1150,7 +1150,7 @@ func TestChallenge(t *testing.T) {
 			Name:           "Valid POST-as-GET",
 			Request:        postAsGet(1, "1/-ZfxEw", ""),
 			ExpectedStatus: http.StatusOK,
-			ExpectedBody:   `{"type":"dns", "token":"token", "url": "http://localhost/acme/chall-v3/1/-ZfxEw"}`,
+			ExpectedBody:   `{"status": "pending", "type":"dns", "token":"token", "url": "http://localhost/acme/chall-v3/1/-ZfxEw"}`,
 		},
 	}
 
@@ -1195,6 +1195,7 @@ func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 
 	body := responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `{
+	  "status": "pending",
 		"type": "dns",
 		"token":"token",
 		"url": "http://localhost/acme/chall-v3/1/-ZfxEw"
@@ -1575,6 +1576,7 @@ func TestGetAuthorization(t *testing.T) {
 		"expires": "2070-01-01T00:00:00Z",
 		"challenges": [
 			{
+			  "status": "pending",
 				"type": "dns",
 				"token":"token",
 				"url": "http://localhost/acme/chall-v3/1/-ZfxEw"
@@ -2091,6 +2093,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 		  "expires": "2070-01-01T00:00:00Z",
 		  "challenges": [
 		    {
+				"status": "pending",
 			  "type": "dns",
 			  "token":"token",
 		      "url": "http://localhost/acme/chall-v3/1/-ZfxEw"
