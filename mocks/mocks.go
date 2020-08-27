@@ -607,6 +607,7 @@ func (sa *StorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sa
 					{
 						Status: core.StatusValid,
 						Type:   core.ChallengeTypeDNS01,
+						Token:  "exampleToken",
 					},
 				},
 			})
@@ -623,7 +624,7 @@ func (sa *StorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sa
 }
 
 func (sa *StorageAuthority) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	return nil, nil
+	return &sapb.Authorizations{}, nil
 }
 
 func (sa *StorageAuthority) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
@@ -646,8 +647,9 @@ func (sa *StorageAuthority) GetAuthorization2(ctx context.Context, id *sapb.Auth
 		Identifier:     identifier.DNSIdentifier("not-an-example.com"),
 		Challenges: []core.Challenge{
 			{
-				Token: "token",
-				Type:  "dns",
+				Status: "pending",
+				Token:  "token",
+				Type:   "dns",
 			},
 		},
 	}
@@ -762,7 +764,9 @@ func (sa *SAWithFailedChallenges) GetAuthorization2(ctx context.Context, id *sap
 		Identifier:     identifier.DNSIdentifier("not-an-example.com"),
 		Challenges: []core.Challenge{
 			{
-				Type: "dns",
+				Status: core.StatusInvalid,
+				Type:   "dns",
+				Token:  "exampleToken",
 			},
 		},
 	}
