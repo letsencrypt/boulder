@@ -129,6 +129,8 @@ certificate-profile:
 
 This config generates an intermediate certificate signed by a key in the HSM, identified by the object label `root signing key` and the object ID `ffff`. The subject key used is taken from `/home/user/intermediate-signing-pub.pem` and the issuer is `/home/user/root-cert.pem`, the resulting certificate is written to `/home/user/intermediate-cert.pem`.
 
+Note: Intermdiate certificates always include the extended key usages id-kp-serverAuth and id-kp-clientAuth as required by 7.1.2.2.g of the CABF Baseline Requirements.
+
 ### OCSP Signing Certificate ceremony
 
 - `ceremony-type`: string describing the ceremony type, `ocsp-signer`.
