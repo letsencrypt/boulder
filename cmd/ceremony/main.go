@@ -107,6 +107,7 @@ type rootConfig struct {
 		CertificatePath string `yaml:"certificate-path"`
 	} `yaml:"outputs"`
 	CertProfile certProfile `yaml:"certificate-profile"`
+	SkipLints   []string    `yaml:"skip-lints"`
 }
 
 func (rc rootConfig) validate() error {
@@ -164,6 +165,7 @@ type intermediateConfig struct {
 		CertificatePath string `yaml:"certificate-path"`
 	} `yaml:"outputs"`
 	CertProfile certProfile `yaml:"certificate-profile"`
+	SkipLints   []string    `yaml:"skip-lints"`
 }
 
 func (ic intermediateConfig) validate(ct certType) error {
@@ -375,7 +377,7 @@ func openSigner(cfg PKCS11SigningConfig, issuer *x509.Certificate) (crypto.Signe
 	return signer, newRandReader(session), nil
 }
 
-func signAndLintCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, realSigner crypto.Signer) error {
+func signAndLintCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, realSigner crypto.Signer, skipLints []string) error {
 	var lintSigner crypto.Signer
 	var err error
 	switch k := realSigner.Public().(type) {
@@ -392,6 +394,7 @@ func signAndLintCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicK
 	default:
 		return fmt.Errorf("can't handle real signer key of type: %T", k)
 	}
+
 	lintCertBytes, err := x509.CreateCertificate(rand.Reader, tbs, issuer, subjectPubKey, lintSigner)
 	if err != nil {
 		return fmt.Errorf("failed to create fake certificate for linting: %w", err)
@@ -400,7 +403,19 @@ func signAndLintCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicK
 	if err != nil {
 		return fmt.Errorf("failed to parse fake certificate for linting: %w", err)
 	}
-	lintRes := zlint.LintCertificate(lintCert)
+
+	lintFilter, err := lint.GlobalRegistry().Filter(lint.FilterOptions{
+		ExcludeNames: skipLints,
+		ExcludeSources: []lint.LintSource{
+			lint.CABFEVGuidelines,
+			lint.EtsiEsi,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create lint filter: %w", err)
+	}
+
+	lintRes := zlint.LintCertificateEx(lintCert, lintFilter)
 	if lintRes.NoticesPresent || lintRes.WarningsPresent || lintRes.ErrorsPresent || lintRes.FatalsPresent {
 		var failedLints []string
 		for lintName, result := range lintRes.Results {
@@ -413,8 +428,8 @@ func signAndLintCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicK
 	return nil
 }
 
-func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string) error {
-	err := signAndLintCert(tbs, issuer, subjectPubKey, signer)
+func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string, skipLints []string) error {
+	err := signAndLintCert(tbs, issuer, subjectPubKey, signer, skipLints)
 	if err != nil {
 		return fmt.Errorf("certificate failed pre-issuance lint: %w", err)
 	}
@@ -477,7 +492,7 @@ func rootCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
 
-	err = signAndWriteCert(template, template, keyInfo.key, signer, config.Outputs.CertificatePath)
+	err = signAndWriteCert(template, template, keyInfo.key, signer, config.Outputs.CertificatePath, config.SkipLints)
 	if err != nil {
 		return err
 	}
@@ -523,7 +538,7 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 	}
 	template.AuthorityKeyId = issuer.SubjectKeyId
 
-	err = signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath)
+	err = signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath, config.SkipLints)
 	if err != nil {
 		return err
 	}
