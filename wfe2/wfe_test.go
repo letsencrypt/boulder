@@ -951,13 +951,13 @@ func TestHTTPMethods(t *testing.T) {
 		// TODO(@cpu): Remove GET authz support, support only POST-as-GET
 		{
 			Name:    "Authz path should be GET or POST only",
-			Path:    authzv2Path,
+			Path:    authzPath,
 			Allowed: getOrPost,
 		},
 		// TODO(@cpu): Remove GET challenge support, support only POST-as-GET
 		{
 			Name:    "Challenge path should be GET or POST only",
-			Path:    challengev2Path,
+			Path:    challengePath,
 			Allowed: getOrPost,
 		},
 		// TODO(@cpu): Remove GET certificate support, support only POST-as-GET
@@ -3263,7 +3263,7 @@ func TestGETAPIAuthz(t *testing.T) {
 	tooFreshErr := `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"Authorization is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`
 	for _, tc := range testCases {
 		responseWriter := httptest.NewRecorder()
-		req, logEvent := makeGet(tc.path, getAuthzv2Path)
+		req, logEvent := makeGet(tc.path, getAuthzPath)
 		wfe.Authorization(context.Background(), logEvent, responseWriter, req)
 
 		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
@@ -3302,7 +3302,7 @@ func TestGETAPIChallenge(t *testing.T) {
 	tooFreshErr := `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"Authorization is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`
 	for _, tc := range testCases {
 		responseWriter := httptest.NewRecorder()
-		req, logEvent := makeGet(tc.path, getAuthzv2Path)
+		req, logEvent := makeGet(tc.path, getAuthzPath)
 		wfe.Challenge(context.Background(), logEvent, responseWriter, req)
 
 		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
