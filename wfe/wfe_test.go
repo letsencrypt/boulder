@@ -1069,7 +1069,7 @@ func TestGetChallenge(t *testing.T) {
 		req.URL.Path = "1/-ZfxEw"
 		test.AssertNotError(t, err, "Could not make NewRequest")
 
-		wfe.ChallengeV2(ctx, newRequestEvent(), resp, req)
+		wfe.Challenge(ctx, newRequestEvent(), resp, req)
 		test.AssertEquals(t,
 			resp.Code,
 			http.StatusAccepted)
@@ -1103,7 +1103,7 @@ func TestGetChallengeV2UpRel(t *testing.T) {
 	req.URL.Path = "1/-ZfxEw"
 	test.AssertNotError(t, err, "Could not make NewRequest")
 
-	wfe.ChallengeV2(ctx, newRequestEvent(), resp, req)
+	wfe.Challenge(ctx, newRequestEvent(), resp, req)
 	test.AssertEquals(t,
 		resp.Code,
 		http.StatusAccepted)
@@ -1128,7 +1128,7 @@ func TestChallenge(t *testing.T) {
 
 	challengeURL := "http://localhost/acme/chall-v3/1/-ZfxEw"
 	path := "1/-ZfxEw"
-	wfe.ChallengeV2(ctx, newRequestEvent(), responseWriter,
+	wfe.Challenge(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath(path,
 			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
 
@@ -1146,7 +1146,7 @@ func TestChallenge(t *testing.T) {
 	// Expired challenges should be inaccessible
 	challengeURL = "3/-ZfxEw"
 	responseWriter = httptest.NewRecorder()
-	wfe.ChallengeV2(ctx, newRequestEvent(), responseWriter,
+	wfe.Challenge(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath(challengeURL,
 			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
 	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
@@ -1156,7 +1156,7 @@ func TestChallenge(t *testing.T) {
 	// Challenge Not found
 	challengeURL = ""
 	responseWriter = httptest.NewRecorder()
-	wfe.ChallengeV2(ctx, newRequestEvent(), responseWriter,
+	wfe.Challenge(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath(challengeURL,
 			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
 	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
@@ -1166,7 +1166,7 @@ func TestChallenge(t *testing.T) {
 	// Unspecified database error
 	errorURL := "4/-ZfxEw"
 	responseWriter = httptest.NewRecorder()
-	wfe.ChallengeV2(ctx, newRequestEvent(), responseWriter,
+	wfe.Challenge(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath(errorURL,
 			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
 	test.AssertEquals(t, responseWriter.Code, http.StatusInternalServerError)
@@ -1194,7 +1194,7 @@ func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 
 	path := "1/-ZfxEw"
-	wfe.ChallengeV2(ctx, newRequestEvent(), responseWriter,
+	wfe.Challenge(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath(path,
 			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
 
@@ -1218,7 +1218,7 @@ func TestUpdateChallengeRAError(t *testing.T) {
 	// Update a pending challenge
 	path := "2/-ZfxEw"
 	responseWriter := httptest.NewRecorder()
-	wfe.ChallengeV2(ctx, newRequestEvent(), responseWriter,
+	wfe.Challenge(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath(path,
 			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
 
@@ -1760,9 +1760,9 @@ func TestAuthorization500(t *testing.T) {
 
 	responseWriter := httptest.NewRecorder()
 
-	authzURL := mustParseURL(authzv2Path)
+	authzURL := mustParseURL(authzPath)
 	authzURL.Path = "4"
-	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
 		URL:    authzURL,
 	})
@@ -1852,7 +1852,7 @@ func TestAuthorization(t *testing.T) {
 	// Expired authorizations should be inaccessible
 	authzURL := "3"
 	responseWriter = httptest.NewRecorder()
-	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
 		URL:    mustParseURL(authzURL),
 	})
@@ -1862,7 +1862,7 @@ func TestAuthorization(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	// Ensure that a valid authorization can't be reached with an invalid URL
-	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
 		URL:    mustParseURL("7"),
 		Method: "GET",
 	})
@@ -1875,7 +1875,7 @@ func TestAuthorizationV2(t *testing.T) {
 
 	// Test retrieving a v2 style authorization
 	responseWriter := httptest.NewRecorder()
-	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
 		URL:    mustParseURL("1"),
 		Method: "GET",
 	})
@@ -1902,7 +1902,7 @@ func TestAuthorizationV2(t *testing.T) {
 	// Test that getting a v2 authorization with an invalid ID results in the
 	// expected not found status.
 	responseWriter = httptest.NewRecorder()
-	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
 		URL:    mustParseURL("1junkjunkjunk"),
 		Method: "GET",
 	})
@@ -1927,7 +1927,7 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 	// that has an error with the type already prefixed by the v1 error NS
 	authzURL := "55"
 	responseWriter := httptest.NewRecorder()
-	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
 		URL:    mustParseURL(authzURL),
 	})
@@ -1943,7 +1943,7 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 	// that has an error with the type not prefixed by an error namespace.
 	authzURL = "56"
 	responseWriter = httptest.NewRecorder()
-	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
 		URL:    mustParseURL(authzURL),
 	})
@@ -2423,14 +2423,14 @@ func TestDeactivateAuthorization(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 
 	responseWriter.Body.Reset()
-	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter,
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("1", signRequest(t, `{"resource":"authz","status":""}`, wfe.nonceService)))
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type": "`+probs.V1ErrorNS+`malformed","detail": "Invalid status value","status": 400}`)
 
 	responseWriter.Body.Reset()
-	wfe.AuthorizationV2(ctx, newRequestEvent(), responseWriter,
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("1", signRequest(t, `{"resource":"authz","status":"deactivated"}`, wfe.nonceService)))
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
