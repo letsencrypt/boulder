@@ -140,9 +140,6 @@ func PBToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 	if in == nil {
 		return core.ValidationRecord{}, ErrMissingParameters
 	}
-	if in.AddressUsed == nil || in.Hostname == "" || in.Port == "" || in.Url == "" {
-		return core.ValidationRecord{}, ErrMissingParameters
-	}
 	addrs := make([]net.IP, len(in.AddressesResolved))
 	for i, v := range in.AddressesResolved {
 		addrs[i] = net.IP(v)
@@ -313,8 +310,12 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 	return authz, nil
 }
 
+func newRegistrationValid(reg *corepb.Registration) bool {
+	return !(len(reg.Key) == 0 || len(reg.InitialIP) == 0 || reg.CreatedAt == 0)
+}
+
 func registrationValid(reg *corepb.Registration) bool {
-	return !(reg.Id == 0 || len(reg.Key) == 0 || len(reg.InitialIP) == 0 || reg.CreatedAt == 0)
+	return newRegistrationValid(reg) && reg.Id != 0
 }
 
 // orderValid checks that a corepb.Order is valid. In addition to the checks
@@ -335,7 +336,7 @@ func newOrderValid(order *corepb.Order) bool {
 }
 
 func authorizationValid(authz *corepb.Authorization) bool {
-	return !(authz.Id == "" || authz.Identifier == "" || authz.RegistrationID == 0 || authz.Status == "" || authz.Expires == 0)
+	return !(authz.Id == "" || authz.Identifier == "" || authz.Status == "" || authz.Expires == 0)
 }
 
 func CertToPB(cert core.Certificate) *corepb.Certificate {

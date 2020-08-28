@@ -85,7 +85,7 @@ func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Contex
 	if err != nil {
 		return core.CertificateStatus{}, err
 	}
-	if response == nil || response.Serial == "" || response.Status == "" || response.OcspLastUpdated == 0 || response.RevokedDate == 0 || response.RevokedReason == 0 || response.LastExpirationNagSent == 0 || response.OcspResponse == nil || response.NotAfter == 0 {
+	if response == nil || response.Serial == "" || response.Status == "" || response.OcspLastUpdated == 0 || response.LastExpirationNagSent == 0 || response.OcspResponse == nil || response.NotAfter == 0 {
 		return core.CertificateStatus{}, errIncompleteResponse
 	}
 	return PBToCertStatus(response)
@@ -667,7 +667,7 @@ func (sac StorageAuthorityServerWrapper) PreviousCertificateExists(
 }
 
 func (sas StorageAuthorityServerWrapper) NewRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Registration, error) {
-	if request == nil || !registrationValid(request) {
+	if request == nil || !newRegistrationValid(request) {
 		return nil, errIncompleteRequest
 	}
 
