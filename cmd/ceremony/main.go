@@ -3,9 +3,6 @@ package main
 import (
 	"bytes"
 	"crypto"
-	"crypto/ecdsa"
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -16,13 +13,10 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/lint"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
-	zlintx509 "github.com/zmap/zcrypto/x509"
-	"github.com/zmap/zlint/v2"
-	"github.com/zmap/zlint/v2/lint"
 	"golang.org/x/crypto/ocsp"
 	"gopkg.in/yaml.v2"
 )
@@ -377,59 +371,8 @@ func openSigner(cfg PKCS11SigningConfig, issuer *x509.Certificate) (crypto.Signe
 	return signer, newRandReader(session), nil
 }
 
-func signAndLintCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, realSigner crypto.Signer, skipLints []string) error {
-	var lintSigner crypto.Signer
-	var err error
-	switch k := realSigner.Public().(type) {
-	case *rsa.PublicKey:
-		lintSigner, err = rsa.GenerateKey(rand.Reader, k.Size()*8)
-		if err != nil {
-			return fmt.Errorf("failed to create fake RSA signer for linting: %w", err)
-		}
-	case *ecdsa.PublicKey:
-		lintSigner, err = ecdsa.GenerateKey(k.Curve, rand.Reader)
-		if err != nil {
-			return fmt.Errorf("failed to create fake ECDSA signer for linting: %w", err)
-		}
-	default:
-		return fmt.Errorf("can't handle real signer key of type: %T", k)
-	}
-
-	lintCertBytes, err := x509.CreateCertificate(rand.Reader, tbs, issuer, subjectPubKey, lintSigner)
-	if err != nil {
-		return fmt.Errorf("failed to create fake certificate for linting: %w", err)
-	}
-	lintCert, err := zlintx509.ParseCertificate(lintCertBytes)
-	if err != nil {
-		return fmt.Errorf("failed to parse fake certificate for linting: %w", err)
-	}
-
-	lintFilter, err := lint.GlobalRegistry().Filter(lint.FilterOptions{
-		ExcludeNames: skipLints,
-		ExcludeSources: []lint.LintSource{
-			lint.CABFEVGuidelines,
-			lint.EtsiEsi,
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create lint filter: %w", err)
-	}
-
-	lintRes := zlint.LintCertificateEx(lintCert, lintFilter)
-	if lintRes.NoticesPresent || lintRes.WarningsPresent || lintRes.ErrorsPresent || lintRes.FatalsPresent {
-		var failedLints []string
-		for lintName, result := range lintRes.Results {
-			if result.Status > lint.Pass {
-				failedLints = append(failedLints, lintName)
-			}
-		}
-		return fmt.Errorf("failed lints: %s", strings.Join(failedLints, ", "))
-	}
-	return nil
-}
-
 func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string, skipLints []string) error {
-	err := signAndLintCert(tbs, issuer, subjectPubKey, signer, skipLints)
+	err := lint.Check(tbs, issuer, subjectPubKey, signer, skipLints)
 	if err != nil {
 		return fmt.Errorf("certificate failed pre-issuance lint: %w", err)
 	}
