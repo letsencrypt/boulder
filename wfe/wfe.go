@@ -859,7 +859,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 	certStatus, err := wfe.SA.GetCertificateStatus(ctx, serial)
 	if err != nil {
 		// TODO(#991): handle db errors
-		wfe.sendError(response, logEvent, probs.NotFound("Certificate status not yet available"), err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to get certificate status"), err)
 		return
 	}
 	logEvent.Extra["CertificateStatus"] = certStatus.Status
