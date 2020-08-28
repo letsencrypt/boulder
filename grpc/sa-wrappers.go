@@ -667,7 +667,7 @@ func (sac StorageAuthorityServerWrapper) PreviousCertificateExists(
 }
 
 func (sas StorageAuthorityServerWrapper) NewRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Registration, error) {
-	if request == nil || !registrationValid(request) {
+	if request == nil || !newRegistrationValid(request) {
 		return nil, errIncompleteRequest
 	}
 
