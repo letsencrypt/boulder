@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
@@ -231,6 +232,25 @@ func pollServer() {
 			}
 		}
 	}
+}
+
+type dnsHealthCheckExchanger struct {
+	sync.Mutex
+	downServers map[string]bool
+}
+
+// Exchange for dnsHealthCheckExchanger tracks the `server` argument and
+// if present in `downServers`, returns a temporary error.
+func (d *dnsHealthCheckExchanger) Exchange(m *dns.Msg, server string) (*dns.Msg, time.Duration, error) {
+	d.Lock()
+	defer d.Unlock()
+
+	// If its a broken server, return a retryable error
+	if d.downServers[server] {
+		isTempErr := &net.OpError{Op: "read", Err: tempError(true)}
+		return nil, 2 * time.Millisecond, isTempErr
+	}
+	return m, 2 * time.Millisecond, nil
 }
 
 func TestMain(m *testing.M) {
@@ -472,6 +492,47 @@ func TestIsDNSServerResponsive(t *testing.T) {
 	responsive = dr.IsDNSServerResponsive(downDNSLoopbackAddr, time.Millisecond*50)
 	if responsive {
 		t.Errorf("server got responsive: %t, server want responsive: %t", responsive, false)
+	}
+}
+
+func TestDNSServerHealthChecks(t *testing.T) {
+	_ = features.Set(map[string]bool{"DNSServerHealthChecks": true})
+	defer features.Reset()
+	// Configure three DNS servers, first 2 down, and one always up and responsive.
+	testCases := []struct {
+		name    string
+		servers []string
+	}{
+		{name: "one-healthy-server", servers: []string{"a", "b", dnsLoopbackAddr}},
+		{name: "duplicated-healthy-server", servers: []string{"a", "b", dnsLoopbackAddr, dnsLoopbackAddr}},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Set up a DNS client using these servers that will retry queries up to
+			// a maximum of `maxTries` times. It's important to choose a maxTries value >= the
+			// number of dnsServers to ensure we always get around to trying the one
+			// working server
+			maxTries := 10
+			client := NewTestDNSClientImpl(time.Second*10, tc.servers, metrics.NoopRegisterer, clock.NewFake(), maxTries, blog.UseMock())
+			// Configure a mock exchanger that will always return a retryable error for
+			// the A and B servers. This will force the C server to do all the work once
+			// retries reach it.
+			mock := &dnsHealthCheckExchanger{
+				downServers: map[string]bool{"a": true, "b": true},
+			}
+			client.dnsClient = mock
+			// Perform a bunch of lookups. We choose the initial server randomly. Any time
+			// A or B is chosen there should be an error and a retry using the next server
+			// in the list. Since we configured maxTries to be larger than the number of
+			// servers *all* queries should eventually succeed by being retried against
+			// the C server.
+			for i := 0; i < maxTries*2; i++ {
+				_, err := client.LookupTXT(context.Background(), "example.com")
+				// Any errors are unexpected - the C server should have responded without error.
+				test.AssertNotError(t, err, "Expected no error from eventual retry with responsive server")
+			}
+		})
 	}
 }
 

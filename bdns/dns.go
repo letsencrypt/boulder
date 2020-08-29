@@ -388,7 +388,6 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 						hsMX.RLock()
 						for k, v := range healthyServers {
 							if v == true {
-								fmt.Printf("Server %s isresponsive?: %t\n", k, v)
 								chosenServer = k
 								break
 							}
