@@ -239,7 +239,6 @@ func TestRootConfigValidate(t *testing.T) {
 				SkipLints: []string{
 					"e_ext_authority_key_identifier_missing",
 					"e_ext_authority_key_identifier_no_key_identifier",
-					"e_sub_ca_aia_does_not_contain_ocsp_url",
 					"e_sub_ca_aia_missing",
 					"e_sub_ca_certificate_policies_missing",
 					"e_sub_ca_crl_distribution_points_missing",
