@@ -46,8 +46,8 @@ type IssuanceRequest struct {
 }
 
 type signingProfile struct {
-	useForRSAKeys   bool
-	useForECDSAKeys bool
+	useForRSALeaves   bool
+	useForECDSALeaves bool
 
 	allowMustStaple bool
 	allowCTPoison   bool
@@ -78,8 +78,8 @@ type PolicyInformation struct {
 
 // ProfileConfig describes the certificate issuance constraints
 type ProfileConfig struct {
-	UseForRSAKeys   bool
-	UseForECDSAKeys bool
+	UseForRSALeaves   bool
+	UseForECDSALeaves bool
 
 	AllowMustStaple bool
 	AllowCTPoison   bool
@@ -115,17 +115,17 @@ var stringToQualifierType = map[string]asn1.ObjectIdentifier{
 
 func newProfile(config ProfileConfig) (*signingProfile, error) {
 	sp := &signingProfile{
-		useForRSAKeys:   config.UseForRSAKeys,
-		useForECDSAKeys: config.UseForECDSAKeys,
-		allowMustStaple: config.AllowMustStaple,
-		allowCTPoison:   config.AllowCTPoison,
-		allowSCTList:    config.AllowSCTList,
-		allowCommonName: config.AllowCommonName,
-		issuerURL:       config.IssuerURL,
-		crlURL:          config.CRLURL,
-		ocspURL:         config.OCSPURL,
-		maxBackdate:     config.MaxValidityBackdate.Duration,
-		maxValidity:     config.MaxValidityPeriod.Duration,
+		useForRSALeaves:   config.UseForRSALeaves,
+		useForECDSALeaves: config.UseForECDSALeaves,
+		allowMustStaple:   config.AllowMustStaple,
+		allowCTPoison:     config.AllowCTPoison,
+		allowSCTList:      config.AllowSCTList,
+		allowCommonName:   config.AllowCommonName,
+		issuerURL:         config.IssuerURL,
+		crlURL:            config.CRLURL,
+		ocspURL:           config.OCSPURL,
+		maxBackdate:       config.MaxValidityBackdate.Duration,
+		maxValidity:       config.MaxValidityPeriod.Duration,
 	}
 	if config.IssuerURL == "" {
 		return nil, errors.New("Issuer URL is required")
@@ -171,11 +171,11 @@ func newProfile(config ProfileConfig) (*signingProfile, error) {
 func (p *signingProfile) requestValid(clk clock.Clock, req *IssuanceRequest) error {
 	switch req.PublicKey.(type) {
 	case *rsa.PublicKey:
-		if !p.useForRSAKeys {
+		if !p.useForRSALeaves {
 			return errors.New("cannot sign RSA public keys")
 		}
 	case *ecdsa.PublicKey:
-		if !p.useForECDSAKeys {
+		if !p.useForECDSALeaves {
 			return errors.New("cannot sign ECDSA public keys")
 		}
 	default:
@@ -271,19 +271,6 @@ type Config struct {
 // NewSigner constructs a Signer from the provided Config
 func NewSigner(config Config) (*Signer, error) {
 	profile, err := newProfile(config.Profile)
-	if err != nil {
-		return nil, err
-	}
-	lints, err := lint.GlobalRegistry().Filter(lint.FilterOptions{
-		ExcludeNames: config.IgnoredLints,
-		ExcludeSources: []lint.LintSource{
-			// We ignore the ETSI and EVG lints since they do not
-			// apply to the certificates we issue, and not attempting
-			// to apply them will save some cycles.
-			lint.CABFEVGuidelines,
-			lint.EtsiEsi,
-		},
-	})
 	if err != nil {
 		return nil, err
 	}

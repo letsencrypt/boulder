@@ -173,7 +173,7 @@ type internalIssuer struct {
 }
 
 func makeInternalIssuers(issuers []bsigner.Config, lifespanOCSP time.Duration) (issuerMaps, error) {
-	issuersByAlg := make(map[x509.PublicKeyAlgorithm]*internalIssuer, len(issuers))
+	issuersByAlg := make(map[x509.PublicKeyAlgorithm]*internalIssuer, 2)
 	issuersByName := make(map[string]*internalIssuer, len(issuers))
 	issuersByID := make(map[int64]*internalIssuer, len(issuers))
 	for _, issuer := range issuers {
@@ -186,13 +186,13 @@ func makeInternalIssuers(issuers []bsigner.Config, lifespanOCSP time.Duration) (
 			ocspSigner:    issuer.Signer,
 			boulderSigner: signer,
 		}
-		if issuer.Profile.UseForRSAKeys {
+		if issuer.Profile.UseForRSALeaves {
 			if issuersByAlg[x509.RSA] != nil {
 				return issuerMaps{}, errors.New("Multiple issuer certs for RSA are not allowed")
 			}
 			issuersByAlg[x509.RSA] = ii
 		}
-		if issuer.Profile.UseForECDSAKeys {
+		if issuer.Profile.UseForECDSALeaves {
 			if issuersByAlg[x509.ECDSA] != nil {
 				return issuerMaps{}, errors.New("Multiple issuer certs for ECDSA are not allowed")
 			}
@@ -238,6 +238,9 @@ func makeCFSSLInternalIssuers(issuers []Issuer, policy *cfsslConfig.Signing, lif
 		// for everything". Ensure that the first issuer is an RSA key so that signing
 		// with x509.SHA256WithRSA doesn't break.
 		if idx == 0 {
+			if iss.Cert.PublicKeyAlgorithm != x509.RSA {
+				return issuerMaps{}, errors.New("Default (first) issuer must be RSA when using CFSSL")
+			}
 			issuersByAlg[x509.RSA] = ii
 			issuersByAlg[x509.ECDSA] = ii
 		}
