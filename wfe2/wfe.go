@@ -806,7 +806,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	// already revoked
 	certStatus, err := wfe.SA.GetCertificateStatus(ctx, serial)
 	if err != nil {
-		return probs.NotFound("Certificate status not yet available")
+		return probs.ServerInternal("Failed to get certificate status")
 	}
 	logEvent.Extra["CertificateStatus"] = certStatus.Status
 
