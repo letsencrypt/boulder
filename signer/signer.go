@@ -46,8 +46,8 @@ type IssuanceRequest struct {
 }
 
 type signingProfile struct {
-	allowRSAKeys   bool
-	allowECDSAKeys bool
+	useForRSALeaves   bool
+	useForECDSALeaves bool
 
 	allowMustStaple bool
 	allowCTPoison   bool
@@ -78,8 +78,9 @@ type PolicyInformation struct {
 
 // ProfileConfig describes the certificate issuance constraints
 type ProfileConfig struct {
-	AllowRSAKeys    bool
-	AllowECDSAKeys  bool
+	UseForRSALeaves   bool
+	UseForECDSALeaves bool
+
 	AllowMustStaple bool
 	AllowCTPoison   bool
 	AllowSCTList    bool
@@ -114,17 +115,17 @@ var stringToQualifierType = map[string]asn1.ObjectIdentifier{
 
 func newProfile(config ProfileConfig) (*signingProfile, error) {
 	sp := &signingProfile{
-		allowRSAKeys:    config.AllowRSAKeys,
-		allowECDSAKeys:  config.AllowECDSAKeys,
-		allowMustStaple: config.AllowMustStaple,
-		allowCTPoison:   config.AllowCTPoison,
-		allowSCTList:    config.AllowSCTList,
-		allowCommonName: config.AllowCommonName,
-		issuerURL:       config.IssuerURL,
-		crlURL:          config.CRLURL,
-		ocspURL:         config.OCSPURL,
-		maxBackdate:     config.MaxValidityBackdate.Duration,
-		maxValidity:     config.MaxValidityPeriod.Duration,
+		useForRSALeaves:   config.UseForRSALeaves,
+		useForECDSALeaves: config.UseForECDSALeaves,
+		allowMustStaple:   config.AllowMustStaple,
+		allowCTPoison:     config.AllowCTPoison,
+		allowSCTList:      config.AllowSCTList,
+		allowCommonName:   config.AllowCommonName,
+		issuerURL:         config.IssuerURL,
+		crlURL:            config.CRLURL,
+		ocspURL:           config.OCSPURL,
+		maxBackdate:       config.MaxValidityBackdate.Duration,
+		maxValidity:       config.MaxValidityPeriod.Duration,
 	}
 	if config.IssuerURL == "" {
 		return nil, errors.New("Issuer URL is required")
@@ -170,12 +171,12 @@ func newProfile(config ProfileConfig) (*signingProfile, error) {
 func (p *signingProfile) requestValid(clk clock.Clock, req *IssuanceRequest) error {
 	switch req.PublicKey.(type) {
 	case *rsa.PublicKey:
-		if !p.allowRSAKeys {
-			return errors.New("RSA keys not allowed")
+		if !p.useForRSALeaves {
+			return errors.New("cannot sign RSA public keys")
 		}
 	case *ecdsa.PublicKey:
-		if !p.allowECDSAKeys {
-			return errors.New("ECDSA keys not allowed")
+		if !p.useForECDSALeaves {
+			return errors.New("cannot sign ECDSA public keys")
 		}
 	default:
 		return errors.New("unsupported public key type")
