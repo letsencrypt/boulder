@@ -289,6 +289,36 @@ func TestX509Signer(t *testing.T) {
 	test.AssertEquals(t, signer.Public(), tk.Public())
 }
 
+func TestGetKeyWhenLabelIsWrong(t *testing.T) {
+	s, ctx := newSessionWithMock()
+	pubKey := &rsa.PublicKey{N: big.NewInt(1), E: 1}
+	rightLabel := "label"
+	var objectsToReturn []pkcs11.ObjectHandle
+
+	ctx.FindObjectsInitFunc = func(_ pkcs11.SessionHandle, attr []*pkcs11.Attribute) error {
+		objectsToReturn = []pkcs11.ObjectHandle{1}
+		for _, a := range attr {
+			if a.Type == pkcs11.CKA_LABEL && !bytes.Equal(a.Value, []byte(rightLabel)) {
+				objectsToReturn = nil
+			}
+		}
+		return nil
+	}
+	ctx.FindObjectsFunc = func(_ pkcs11.SessionHandle, _ int) ([]pkcs11.ObjectHandle, bool, error) {
+		return objectsToReturn, false, nil
+	}
+	ctx.FindObjectsFinalFunc = func(_ pkcs11.SessionHandle) error {
+		return nil
+	}
+
+	_, err := s.NewSigner("wrong-label", pubKey)
+	test.AssertError(t, err, "newSigner didn't fail when label was a mismatch for public key")
+	expected := "no objects found matching provided template"
+	if !strings.Contains(err.Error(), expected) {
+		t.Errorf("expected error to contain %q but it was %q", expected, err)
+	}
+}
+
 func TestGetKeyWhenGetAttributeValueFails(t *testing.T) {
 	s, ctx := newSessionWithMock()
 	pubKey := &rsa.PublicKey{N: big.NewInt(1), E: 1}
