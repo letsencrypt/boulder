@@ -23,10 +23,9 @@ import (
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/lint"
 	"github.com/letsencrypt/boulder/policyasn1"
-	zlintx509 "github.com/zmap/zcrypto/x509"
-	"github.com/zmap/zlint/v2"
-	"github.com/zmap/zlint/v2/lint"
+	zlint "github.com/zmap/zlint/v2/lint"
 )
 
 // IssuanceRequest describes a certificate issuance request
@@ -257,7 +256,7 @@ type Signer struct {
 	profile *signingProfile
 	clk     clock.Clock
 	lintKey crypto.Signer
-	lints   lint.Registry
+	lints   zlint.Registry
 }
 
 // Config contains the information necessary to construct a Signer
@@ -288,19 +287,10 @@ func NewSigner(config Config) (*Signer, error) {
 	if err != nil {
 		return nil, err
 	}
-	var lintKey crypto.Signer
 	switch k := config.Issuer.PublicKey.(type) {
 	case *rsa.PublicKey:
-		lintKey, err = rsa.GenerateKey(rand.Reader, k.Size()*8)
-		if err != nil {
-			return nil, err
-		}
 		profile.sigAlg = x509.SHA256WithRSA
 	case *ecdsa.PublicKey:
-		lintKey, err = ecdsa.GenerateKey(k.Curve, rand.Reader)
-		if err != nil {
-			return nil, err
-		}
 		switch k.Curve {
 		case elliptic.P256():
 			profile.sigAlg = x509.ECDSAWithSHA256
@@ -311,6 +301,23 @@ func NewSigner(config Config) (*Signer, error) {
 		}
 	default:
 		return nil, errors.New("unsupported issuer key type")
+	}
+	lintKey, err := lint.MakeSigner(config.Signer)
+	if err != nil {
+		return nil, err
+	}
+	lints, err := zlint.GlobalRegistry().Filter(zlint.FilterOptions{
+		ExcludeNames: config.IgnoredLints,
+		ExcludeSources: []zlint.LintSource{
+			// We ignore the ETSI and EVG lints since they do not
+			// apply to the certificates we issue, and not attempting
+			// to apply them will save some cycles.
+			zlint.CABFEVGuidelines,
+			zlint.EtsiEsi,
+		},
+	})
+	if err != nil {
+		return nil, err
 	}
 	s := &Signer{
 		issuer:  config.Issuer,
@@ -383,7 +390,7 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 }
 
 // Issue generates a certificate from the provided issuance request and
-// signs it. Before  signing the certificate with the issuer's private
+// signs it. Before signing the certificate with the issuer's private
 // key, it is signed using a throwaway key so that it can be linted using
 // zlint. If the linting fails, an error is returned and the certificate
 // is not signed using the issuer's key.
@@ -432,23 +439,13 @@ func (s *Signer) Issue(req *IssuanceRequest) ([]byte, error) {
 
 	// check that the tbsCertificate is properly formed by signing it
 	// with a throwaway key and then linting it using zlint
-	lintCertBytes, err := x509.CreateCertificate(rand.Reader, template, s.issuer, req.PublicKey, s.lintKey)
+	lintCert, err := lint.MakeLintCert(template, s.issuer, req.PublicKey, s.lintKey)
 	if err != nil {
 		return nil, err
 	}
-	lintCert, err := zlintx509.ParseCertificate(lintCertBytes)
+	err = lint.LintCert(lintCert, s.lints)
 	if err != nil {
-		return nil, err
-	}
-	results := zlint.LintCertificateEx(lintCert, s.lints)
-	if results.NoticesPresent || results.WarningsPresent || results.ErrorsPresent || results.FatalsPresent {
-		var badLints []string
-		for lintName, result := range results.Results {
-			if result.Status > lint.Pass {
-				badLints = append(badLints, lintName)
-			}
-		}
-		return nil, fmt.Errorf("tbsCertificate linting failed: %s", strings.Join(badLints, ", "))
+		return nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
 	}
 
 	return x509.CreateCertificate(rand.Reader, template, s.issuer, req.PublicKey, s.signer)

@@ -4,6 +4,7 @@ import (
 	"crypto"
 	"crypto/dsa"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
@@ -380,8 +381,9 @@ func TestNewSignerUnsupportedKeyType(t *testing.T) {
 	_, err := NewSigner(Config{
 		Profile: defaultProfileConfig(),
 		Issuer: &x509.Certificate{
-			PublicKey: &dsa.PublicKey{},
+			PublicKey: &ed25519.PublicKey{},
 		},
+		Signer: &ed25519.PrivateKey{},
 	})
 	test.AssertError(t, err, "NewSigner didn't fail")
 	test.AssertEquals(t, err.Error(), "unsupported issuer key type")
@@ -397,6 +399,11 @@ func TestNewSignerRSAKey(t *testing.T) {
 				N: mod,
 			},
 		},
+		Signer: &rsa.PrivateKey{
+			PublicKey: rsa.PublicKey{
+				N: mod,
+			},
+		},
 	})
 	test.AssertNotError(t, err, "NewSigner failed")
 	_, ok = signer.lintKey.(*rsa.PrivateKey)
@@ -408,6 +415,11 @@ func TestNewSignerECDSAKey(t *testing.T) {
 		Profile: defaultProfileConfig(),
 		Issuer: &x509.Certificate{
 			PublicKey: &ecdsa.PublicKey{
+				Curve: elliptic.P256(),
+			},
+		},
+		Signer: &ecdsa.PrivateKey{
+			PublicKey: ecdsa.PublicKey{
 				Curve: elliptic.P256(),
 			},
 		},
@@ -651,5 +663,5 @@ func TestIssueBadLint(t *testing.T) {
 		NotAfter:  fc.Now().Add(time.Hour),
 	})
 	test.AssertError(t, err, "Issue didn't fail")
-	test.AssertEquals(t, err.Error(), "tbsCertificate linting failed: w_ct_sct_policy_count_unsatisfied")
+	test.AssertEquals(t, err.Error(), "tbsCertificate linting failed: failed lints: w_ct_sct_policy_count_unsatisfied")
 }
