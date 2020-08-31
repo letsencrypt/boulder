@@ -267,15 +267,15 @@ func setup(t *testing.T) *testCtx {
 			Signer: caKey,
 			Clk:    fc,
 			Profile: bsigner.ProfileConfig{
-				AllowECDSAKeys:  true,
-				AllowRSAKeys:    true,
-				AllowMustStaple: true,
-				AllowCTPoison:   true,
-				AllowSCTList:    true,
-				AllowCommonName: true,
-				IssuerURL:       "http://not-example.com/issuer-url",
-				OCSPURL:         "http://not-example.com/ocsp",
-				CRLURL:          "http://not-example.com/crl",
+				UseForECDSALeaves: true,
+				UseForRSALeaves:   true,
+				AllowMustStaple:   true,
+				AllowCTPoison:     true,
+				AllowSCTList:      true,
+				AllowCommonName:   true,
+				IssuerURL:         "http://not-example.com/issuer-url",
+				OCSPURL:           "http://not-example.com/ocsp",
+				CRLURL:            "http://not-example.com/crl",
 				Policies: []bsigner.PolicyInformation{
 					{OID: "2.23.140.1.2.1"},
 				},
@@ -1223,7 +1223,8 @@ func TestIssuePrecertificateLinting(t *testing.T) {
 
 	// Reconfigure the CA's cfsslSigner to be a linttrapSigner that always returns
 	// two LintResults.
-	ca.defaultIssuer.cfsslSigner = &linttrapSigner{
+	rsaIssuer := ca.issuers.byAlg[x509.RSA]
+	rsaIssuer.cfsslSigner = &linttrapSigner{
 		lintErr: &local.LintError{
 			ErrorResults: map[string]lint.LintResult{
 				"foobar": {
@@ -1286,8 +1287,9 @@ func TestGenerateOCSPWithIssuerID(t *testing.T) {
 	test.AssertError(t, err, "GenerateOCSP didn't fail with invalid IssuerID")
 
 	// GenerateOCSP with feature enabled + req contains good IssuerID
+	rsaIssuer := ca.issuers.byAlg[x509.RSA]
 	_, err = ca.GenerateOCSP(context.Background(), &capb.GenerateOCSPRequest{
-		IssuerID: idForIssuer(ca.defaultIssuer.cert),
+		IssuerID: idForIssuer(rsaIssuer.cert),
 		Serial:   "DEADDEADDEADDEADDEADDEADDEADDEADDEAD",
 		Status:   string(core.OCSPStatusGood),
 	})
