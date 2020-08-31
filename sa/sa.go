@@ -878,18 +878,19 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 			return nil, err
 		}
 
-		if features.Enabled(features.FasterNewOrdersRateLimit) {
-			// Increment the order creation count
-			if err := addNewOrdersRateLimit(ctx, txWithCtx, *req.RegistrationID, ssa.clk.Now().Truncate(time.Minute)); err != nil {
-				return nil, err
-			}
-		}
-
 		return req, nil
 	})
 	if overallError != nil {
 		return nil, overallError
 	}
+
+	if features.Enabled(features.FasterNewOrdersRateLimit) {
+		// Increment the order creation count
+		if err := addNewOrdersRateLimit(ctx, ssa.dbMap, *req.RegistrationID, ssa.clk.Now().Truncate(time.Minute)); err != nil {
+			return nil, err
+		}
+	}
+
 	var outputOrder *corepb.Order
 	var ok bool
 	if outputOrder, ok = output.(*corepb.Order); !ok {
