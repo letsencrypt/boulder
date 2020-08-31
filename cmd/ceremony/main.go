@@ -15,6 +15,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/letsencrypt/boulder/lint"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"golang.org/x/crypto/ocsp"
 	"gopkg.in/yaml.v2"
@@ -100,6 +101,7 @@ type rootConfig struct {
 		CertificatePath string `yaml:"certificate-path"`
 	} `yaml:"outputs"`
 	CertProfile certProfile `yaml:"certificate-profile"`
+	SkipLints   []string    `yaml:"skip-lints"`
 }
 
 func (rc rootConfig) validate() error {
@@ -157,6 +159,7 @@ type intermediateConfig struct {
 		CertificatePath string `yaml:"certificate-path"`
 	} `yaml:"outputs"`
 	CertProfile certProfile `yaml:"certificate-profile"`
+	SkipLints   []string    `yaml:"skip-lints"`
 }
 
 func (ic intermediateConfig) validate(ct certType) error {
@@ -368,7 +371,11 @@ func openSigner(cfg PKCS11SigningConfig, issuer *x509.Certificate) (crypto.Signe
 	return signer, newRandReader(session), nil
 }
 
-func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string) error {
+func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string, skipLints []string) error {
+	err := lint.Check(tbs, issuer, subjectPubKey, signer, skipLints)
+	if err != nil {
+		return fmt.Errorf("certificate failed pre-issuance lint: %w", err)
+	}
 	// x509.CreateCertificate uses a io.Reader here for signing methods that require
 	// a source of randomness. Since PKCS#11 based signing generates needed randomness
 	// at the HSM we don't need to pass a real reader. Instead of passing a nil reader
@@ -428,7 +435,7 @@ func rootCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
 
-	err = signAndWriteCert(template, template, keyInfo.key, signer, config.Outputs.CertificatePath)
+	err = signAndWriteCert(template, template, keyInfo.key, signer, config.Outputs.CertificatePath, config.SkipLints)
 	if err != nil {
 		return err
 	}
@@ -474,7 +481,7 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 	}
 	template.AuthorityKeyId = issuer.SubjectKeyId
 
-	err = signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath)
+	err = signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath, config.SkipLints)
 	if err != nil {
 		return err
 	}
