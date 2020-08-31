@@ -144,9 +144,6 @@ func PBToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 	if in == nil {
 		return core.ValidationRecord{}, ErrMissingParameters
 	}
-	if in.AddressUsed == nil || in.Hostname == nil || in.Port == nil || in.Url == nil {
-		return core.ValidationRecord{}, ErrMissingParameters
-	}
 	addrs := make([]net.IP, len(in.AddressesResolved))
 	for i, v := range in.AddressesResolved {
 		addrs[i] = net.IP(v)
@@ -322,14 +319,20 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 	return authz, nil
 }
 
+func newRegistrationValid(reg *corepb.Registration) bool {
+	return !(reg.Key == nil || reg.InitialIP == nil || reg.CreatedAt == nil ||
+		len(reg.Key) == 0 || len(reg.InitialIP) == 0 || *reg.CreatedAt == 0)
+}
+
 func registrationValid(reg *corepb.Registration) bool {
-	return !(reg.Id == nil || reg.Key == nil || reg.InitialIP == nil || reg.CreatedAt == nil)
+	return newRegistrationValid(reg) && reg.Id != nil && *reg.Id != 0
 }
 
 // orderValid checks that a corepb.Order is valid. In addition to the checks
 // from `newOrderValid` it ensures the order ID and the Created field are not nil.
 func orderValid(order *corepb.Order) bool {
-	return order.Id != nil && order.Created != nil && newOrderValid(order)
+	return order.Id != nil && order.Created != nil &&
+		*order.Id != 0 && *order.Created != 0 && newOrderValid(order)
 }
 
 // newOrderValid checks that a corepb.Order is valid. It allows for a nil
@@ -340,11 +343,13 @@ func orderValid(order *corepb.Order) bool {
 // `order.CertificateSerial` to be nil such that it can be used in places where
 // the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
-	return !(order.RegistrationID == nil || order.Expires == nil || order.Names == nil)
+	return !(order.RegistrationID == nil || order.Expires == nil ||
+		*order.RegistrationID == 0 || *order.Expires == 0 || len(order.Names) == 0)
 }
 
 func authorizationValid(authz *corepb.Authorization) bool {
-	return !(authz.Id == nil || authz.Identifier == nil || authz.RegistrationID == nil || authz.Status == nil || authz.Expires == nil)
+	return !(authz.Id == nil || authz.Identifier == nil || authz.Status == nil || authz.Expires == nil ||
+		*authz.Id == "" || *authz.Identifier == "" || *authz.Status == "" || *authz.Expires == 0)
 }
 
 func CertToPB(cert core.Certificate) *corepb.Certificate {
