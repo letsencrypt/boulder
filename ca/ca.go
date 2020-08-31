@@ -965,6 +965,8 @@ func (ca *CertificateAuthorityImpl) integrateOrphan() error {
 	if _, err = ca.orphanQueue.Dequeue(); err != nil {
 		return fmt.Errorf("failed to dequeue integrated orphaned certificate: %s", err)
 	}
+	ca.log.AuditInfof("Incorporated orphaned certificate: serial=[%s] cert=[%s] regID=[%d]",
+		core.SerialToString(cert.SerialNumber), hex.EncodeToString(orphan.DER), orphan.RegID)
 	typ := "cert"
 	if orphan.Precert {
 		typ = "precert"
