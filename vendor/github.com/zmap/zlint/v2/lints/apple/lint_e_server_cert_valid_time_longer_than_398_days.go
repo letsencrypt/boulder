@@ -29,7 +29,7 @@ func (l *serverCertValidityTooLong) Initialize() error {
 }
 
 func (l *serverCertValidityTooLong) CheckApplies(c *x509.Certificate) bool {
-	return util.IsServerAuthCert(c)
+	return util.IsServerAuthCert(c) && !c.IsCA
 }
 
 func (l *serverCertValidityTooLong) Execute(c *x509.Certificate) *lint.LintResult {
