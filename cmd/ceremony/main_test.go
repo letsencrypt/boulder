@@ -236,6 +236,18 @@ func TestRootConfigValidate(t *testing.T) {
 					Organization:       "e",
 					Country:            "f",
 				},
+				SkipLints: []string{
+					"e_ext_authority_key_identifier_missing",
+					"e_ext_authority_key_identifier_no_key_identifier",
+					"e_sub_ca_aia_does_not_contain_ocsp_url",
+					"e_sub_ca_aia_missing",
+					"e_sub_ca_certificate_policies_missing",
+					"e_sub_ca_crl_distribution_points_missing",
+					"n_ca_digital_signature_not_set",
+					"n_mp_allowed_eku",
+					"n_sub_ca_eku_missing",
+					"w_sub_ca_aia_does_not_contain_issuing_ca_url",
+				},
 			},
 		},
 	}
@@ -366,6 +378,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 					CRLURL:             "h",
 					IssuerURL:          "i",
 				},
+				SkipLints: []string{},
 			},
 		},
 	}
