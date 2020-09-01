@@ -470,6 +470,7 @@ func TestGenerateCSR(t *testing.T) {
 	ctx.GenerateRandomFunc = realRand
 
 	signer, err := rsa.GenerateKey(rand.Reader, 1024)
+	test.AssertNotError(t, err, "failed to generate test key")
 
 	csrBytes, err := generateCSR(profile, randReader, pubKeyBytes, pubKey, &wrappedSigner{signer})
 	test.AssertNotError(t, err, "failed to generate CSR")

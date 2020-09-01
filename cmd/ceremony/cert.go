@@ -215,9 +215,6 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		issuingCertificateURL = []string{profile.IssuerURL}
 	}
 
-	if ct != requestCert {
-	}
-
 	subjectKeyID, err := generateSKID(pubKey)
 	if err != nil {
 		return nil, err
