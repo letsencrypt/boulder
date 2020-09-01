@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -35,9 +36,9 @@ func genKey(path string, inSlot string) error {
 	if err != nil {
 		return err
 	}
-	_, err = exec.Command("bin/ceremony", "-config", tmpPath).CombinedOutput()
+	output, err := exec.Command("bin/ceremony", "-config", tmpPath).CombinedOutput()
 	if err != nil {
-		return err
+		return fmt.Errorf("error running ceremony for %s: %s:\n%s", tmpPath, err, string(output))
 	}
 	return nil
 }

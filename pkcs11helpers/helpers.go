@@ -64,12 +64,13 @@ var curveOIDs = map[string]asn1.ObjectIdentifier{
 // getPublicKeyID looks up the given public key in the PKCS#11 token, and
 // returns its ID as a []byte, for use in looking up the corresponding private
 // key.
-func (s *Session) getPublicKeyID(publicKey crypto.PublicKey) ([]byte, error) {
+func (s *Session) getPublicKeyID(label string, publicKey crypto.PublicKey) ([]byte, error) {
 	var template []*pkcs11.Attribute
 	switch key := publicKey.(type) {
 	case *rsa.PublicKey:
 		template = []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
+			pkcs11.NewAttribute(pkcs11.CKA_LABEL, []byte(label)),
 			pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_RSA),
 			pkcs11.NewAttribute(pkcs11.CKA_MODULUS, key.N.Bytes()),
 			pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, big.NewInt(int64(key.E)).Bytes()),
@@ -92,6 +93,7 @@ func (s *Session) getPublicKeyID(publicKey crypto.PublicKey) ([]byte, error) {
 		}
 		template = []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
+			pkcs11.NewAttribute(pkcs11.CKA_LABEL, []byte(label)),
 			pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_EC),
 			pkcs11.NewAttribute(pkcs11.CKA_EC_PARAMS, curveOID),
 			pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, marshalledPoint),
@@ -385,7 +387,7 @@ func (s *Session) NewSigner(label string, publicKey crypto.PublicKey) (crypto.Si
 		return nil, fmt.Errorf("unsupported public key of type %T", publicKey)
 	}
 
-	publicKeyID, err := s.getPublicKeyID(publicKey)
+	publicKeyID, err := s.getPublicKeyID(label, publicKey)
 	if err != nil {
 		return nil, fmt.Errorf("looking up public key: %s", err)
 	}
