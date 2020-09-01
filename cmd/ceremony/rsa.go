@@ -1,11 +1,8 @@
 package main
 
 import (
-	"crypto"
 	"crypto/rsa"
-	"crypto/sha256"
 	"errors"
-	"fmt"
 	"log"
 	"math/big"
 
@@ -70,32 +67,6 @@ func rsaPub(session *pkcs11helpers.Session, object pkcs11.ObjectHandle, modulusL
 	return pubKey, nil
 }
 
-// rsaVerify verifies that the extracted public key corresponds with the generated
-// private key on the device, specified by the provided object handle, by signing
-// a nonce generated on the device and verifying the returned signature using the
-// public key.
-func rsaVerify(session *pkcs11helpers.Session, object pkcs11.ObjectHandle, pub *rsa.PublicKey) error {
-	nonce := make([]byte, 4)
-	_, err := newRandReader(session).Read(nonce)
-	if err != nil {
-		return fmt.Errorf("Failed to retrieve nonce: %s", err)
-	}
-	log.Printf("\tConstructed nonce: %d (%X)\n", big.NewInt(0).SetBytes(nonce), nonce)
-	digest := sha256.Sum256(nonce)
-	log.Printf("\tMessage SHA-256 hash: %X\n", digest)
-	signature, err := session.Sign(object, pkcs11helpers.RSAKey, digest[:], crypto.SHA256)
-	if err != nil {
-		return fmt.Errorf("Failed to sign data: %s", err)
-	}
-	log.Printf("\tMessage signature: %X\n", signature)
-	err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, digest[:], signature)
-	if err != nil {
-		return fmt.Errorf("Failed to verify signature: %s", err)
-	}
-	log.Println("\tSignature verified")
-	return nil
-}
-
 // rsaGenerate is used to generate and verify a RSA key pair of the size
 // specified by modulusLen and with the exponent specified by pubExponent.
 // It returns the public part of the generated key pair as a rsa.PublicKey
@@ -108,7 +79,7 @@ func rsaGenerate(session *pkcs11helpers.Session, label string, modulusLen, pubEx
 	}
 	log.Printf("Generating RSA key with %d bit modulus and public exponent %d and ID %x\n", modulusLen, pubExponent, keyID)
 	args := rsaArgs(label, modulusLen, pubExponent, keyID)
-	pub, priv, err := session.GenerateKeyPair(args.mechanism, args.publicAttrs, args.privateAttrs)
+	pub, _, err := session.GenerateKeyPair(args.mechanism, args.publicAttrs, args.privateAttrs)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -119,10 +90,5 @@ func rsaGenerate(session *pkcs11helpers.Session, label string, modulusLen, pubEx
 		return nil, nil, err
 	}
 	log.Println("Extracted public key")
-	log.Println("Verifying public key")
-	err = rsaVerify(session, priv, pk)
-	if err != nil {
-		return nil, nil, err
-	}
 	return pk, keyID, nil
 }

@@ -47,57 +47,6 @@ func TestRSAPub(t *testing.T) {
 	test.AssertNotError(t, err, "rsaPub failed with valid attributes")
 }
 
-func TestRSAVerify(t *testing.T) {
-	s, ctx := pkcs11helpers.NewSessionWithMock()
-
-	// test GenerateRandom failing
-	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
-		return nil, errors.New("yup")
-	}
-	err := rsaVerify(s, 0, nil)
-	test.AssertError(t, err, "rsaVerify didn't fail on GenerateRandom error")
-
-	// test SignInit failing
-	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
-		return []byte{1, 2, 3}, nil
-	}
-	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
-		return errors.New("yup")
-	}
-	err = rsaVerify(s, 0, nil)
-	test.AssertError(t, err, "rsaVerify didn't fail on SignInit error")
-
-	// test Sign failing
-	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
-		return nil
-	}
-	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
-		return []byte{1, 2, 3, 4}, nil
-	}
-	ctx.SignFunc = func(pkcs11.SessionHandle, []byte) ([]byte, error) {
-		return nil, errors.New("yup")
-	}
-	err = rsaVerify(s, 0, nil)
-	test.AssertError(t, err, "rsaVerify didn't fail on Sign error")
-
-	// test signature verification failing
-	ctx.SignFunc = func(pkcs11.SessionHandle, []byte) ([]byte, error) {
-		return []byte{1, 2, 3}, nil
-	}
-	tk, err := rsa.GenerateKey(rand.Reader, 1024)
-	test.AssertNotError(t, err, "rsa.GenerateKey failed")
-	err = rsaVerify(s, 0, &tk.PublicKey)
-	test.AssertError(t, err, "rsaVerify didn't fail on signature verification error")
-
-	// test we don't fail with valid signature
-	ctx.SignFunc = func(_ pkcs11.SessionHandle, msg []byte) ([]byte, error) {
-		// Chop of the hash identifier and feed back into rsa.SignPKCS1v15
-		return rsa.SignPKCS1v15(rand.Reader, tk, crypto.SHA256, msg[19:])
-	}
-	err = rsaVerify(s, 0, &tk.PublicKey)
-	test.AssertNotError(t, err, "rsaVerify failed with a valid signature")
-}
-
 func TestRSAGenerate(t *testing.T) {
 	s, ctx := pkcs11helpers.NewSessionWithMock()
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
