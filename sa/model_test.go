@@ -57,33 +57,23 @@ func TestModelToRegistrationNonNilContact(t *testing.T) {
 }
 
 func TestAuthzModel(t *testing.T) {
-	id := "1"
-	ident := "example.com"
-	reg := int64(1)
-	status := string(core.StatusValid)
-	expires := int64(1234)
-	challType := string(core.ChallengeTypeHTTP01)
-	token := "MTIz"
-	hostname := "hostname"
-	port := "port"
-	url := "url"
 	authzPB := &corepb.Authorization{
-		Id:             &id,
-		Identifier:     &ident,
-		RegistrationID: &reg,
-		Status:         &status,
-		Expires:        &expires,
+		Id:             "1",
+		Identifier:     "example.com",
+		RegistrationID: 1,
+		Status:         string(core.StatusValid),
+		Expires:        1234,
 		Challenges: []*corepb.Challenge{
 			{
-				Type:   &challType,
-				Status: &status,
-				Token:  &token,
+				Type:   string(core.ChallengeTypeHTTP01),
+				Status: string(core.StatusValid),
+				Token:  "MTIz",
 				Validationrecords: []*corepb.ValidationRecord{
 					{
-						Hostname:          &hostname,
-						Port:              &port,
+						Hostname:          "hostname",
+						Port:              "port",
 						AddressUsed:       []byte("1.2.3.4"),
-						Url:               &url,
+						Url:               "url",
 						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
 						AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
 					},
@@ -99,9 +89,8 @@ func TestAuthzModel(t *testing.T) {
 	test.AssertNotError(t, err, "modelToAuthzPB failed")
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 
-	status = string(core.StatusInvalid)
 	validationErr := probs.ConnectionFailure("weewoo")
-	authzPB.Challenges[0].Status = &status
+	authzPB.Challenges[0].Status = string(core.StatusInvalid)
 	authzPB.Challenges[0].Error, err = grpc.ProblemDetailsToPB(validationErr)
 	test.AssertNotError(t, err, "grpc.ProblemDetailsToPB failed")
 	model, err = authzPBToModel(authzPB)
@@ -111,39 +100,38 @@ func TestAuthzModel(t *testing.T) {
 	test.AssertNotError(t, err, "modelToAuthzPB failed")
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 
-	challType2 := string(core.ChallengeTypeDNS01)
 	authzPB = &corepb.Authorization{
-		Id:             &id,
-		Identifier:     &ident,
-		RegistrationID: &reg,
-		Status:         &status,
-		Expires:        &expires,
+		Id:             "1",
+		Identifier:     "example.com",
+		RegistrationID: 1,
+		Status:         string(core.StatusInvalid),
+		Expires:        1234,
 		Challenges: []*corepb.Challenge{
 			{
-				Type:   &challType,
-				Status: &status,
-				Token:  &token,
+				Type:   string(core.ChallengeTypeHTTP01),
+				Status: string(core.StatusInvalid),
+				Token:  "MTIz",
 				Validationrecords: []*corepb.ValidationRecord{
 					{
-						Hostname:          &hostname,
-						Port:              &port,
+						Hostname:          "hostname",
+						Port:              "port",
 						AddressUsed:       []byte("1.2.3.4"),
-						Url:               &url,
+						Url:               "url",
 						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
 						AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
 					},
 				},
 			},
 			{
-				Type:   &challType2,
-				Status: &status,
-				Token:  &token,
+				Type:   string(core.ChallengeTypeDNS01),
+				Status: string(core.StatusInvalid),
+				Token:  "MTIz",
 				Validationrecords: []*corepb.ValidationRecord{
 					{
-						Hostname:          &hostname,
-						Port:              &port,
+						Hostname:          "hostname",
+						Port:              "port",
 						AddressUsed:       []byte("1.2.3.4"),
-						Url:               &url,
+						Url:               "url",
 						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
 						AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
 					},

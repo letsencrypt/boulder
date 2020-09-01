@@ -1893,10 +1893,10 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		idents[i] = identifier.ACMEIdentifier{Type: identifier.DNS, Value: name}
 	}
 	finalizeURL := web.RelativeEndpoint(request,
-		fmt.Sprintf("%s%d/%d", finalizeOrderPath, *order.RegistrationID, *order.Id))
+		fmt.Sprintf("%s%d/%d", finalizeOrderPath, order.RegistrationID, order.Id))
 	respObj := orderJSON{
-		Status:      core.AcmeStatus(*order.Status),
-		Expires:     time.Unix(0, *order.Expires).UTC(),
+		Status:      core.AcmeStatus(order.Status),
+		Expires:     time.Unix(0, order.Expires).UTC(),
 		Identifiers: idents,
 		Finalize:    finalizeURL,
 	}
@@ -1905,7 +1905,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		prob, err := bgrpc.PBToProblemDetails(order.Error)
 		if err != nil {
 			wfe.log.AuditErrf("Internal error converting order ID %d "+
-				"proto buf prob to problem details: %q", *order.Id, err)
+				"proto buf prob to problem details: %q", order.Id, err)
 		}
 		respObj.Error = prob
 		respObj.Error.Type = probs.V2ErrorNS + respObj.Error.Type
@@ -1915,7 +1915,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 	}
 	if respObj.Status == core.StatusValid {
 		certURL := web.RelativeEndpoint(request,
-			fmt.Sprintf("%s%s", certPath, *order.CertificateSerial))
+			fmt.Sprintf("%s%s", certPath, order.CertificateSerial))
 		respObj.Certificate = certURL
 	}
 	return respObj
@@ -1981,10 +1981,10 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		return
 	}
-	logEvent.Created = fmt.Sprintf("%d", *order.Id)
+	logEvent.Created = fmt.Sprintf("%d", order.Id)
 
 	orderURL := web.RelativeEndpoint(request,
-		fmt.Sprintf("%s%d/%d", orderPath, acct.ID, *order.Id))
+		fmt.Sprintf("%s%d/%d", orderPath, acct.ID, order.Id))
 	response.Header().Set("Location", orderURL)
 
 	respObj := wfe.orderToOrderJSON(request, order)
@@ -2048,7 +2048,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		}
 	}
 
-	if *order.RegistrationID != acctID {
+	if order.RegistrationID != acctID {
 		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acctID)), nil)
 		return
 	}
@@ -2056,7 +2056,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 	// If the requesterAccount is not nil then this was an authenticated
 	// POST-as-GET request and we need to verify the requesterAccount is the
 	// order's owner.
-	if requesterAccount != nil && *order.RegistrationID != requesterAccount.ID {
+	if requesterAccount != nil && order.RegistrationID != requesterAccount.ID {
 		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acctID)), nil)
 		return
 	}
@@ -2110,32 +2110,32 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	if *order.RegistrationID != acctID {
+	if order.RegistrationID != acctID {
 		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acctID)), nil)
 		return
 	}
 
 	// If the authenticated account ID doesn't match the order's registration ID
 	// pretend it doesn't exist and abort.
-	if acct.ID != *order.RegistrationID {
+	if acct.ID != order.RegistrationID {
 		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acct.ID)), nil)
 		return
 	}
 
 	// Only ready orders can be finalized.
-	if *order.Status != string(core.StatusReady) {
+	if order.Status != string(core.StatusReady) {
 		wfe.sendError(response, logEvent,
 			probs.OrderNotReady(
 				"Order's status (%q) is not acceptable for finalization",
-				*order.Status),
+				order.Status),
 			nil)
 		return
 	}
 
 	// If the order is expired we can not finalize it and must return an error
-	orderExpiry := time.Unix(*order.Expires, 0)
+	orderExpiry := time.Unix(order.Expires, 0)
 	if orderExpiry.Before(wfe.clk.Now()) {
-		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("Order %d is expired", *order.Id)), nil)
+		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("Order %d is expired", order.Id)), nil)
 		return
 	}
 
@@ -2177,7 +2177,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	}
 
 	orderURL := web.RelativeEndpoint(request,
-		fmt.Sprintf("%s%d/%d", orderPath, acct.ID, *updatedOrder.Id))
+		fmt.Sprintf("%s%d/%d", orderPath, acct.ID, updatedOrder.Id))
 	response.Header().Set("Location", orderURL)
 
 	respObj := wfe.orderToOrderJSON(request, updatedOrder)

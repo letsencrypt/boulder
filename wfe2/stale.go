@@ -24,7 +24,7 @@ func requiredStale(req *http.Request, logEvent *web.RequestEvent) bool {
 // in the past to be acceptably stale for accessing via the Boulder specific GET
 // API.
 func (wfe *WebFrontEndImpl) staleEnoughToGETOrder(order *corepb.Order) *probs.ProblemDetails {
-	return wfe.staleEnoughToGET("Order", time.Unix(0, *order.Created))
+	return wfe.staleEnoughToGET("Order", time.Unix(0, order.Created))
 }
 
 // staleEnoughToGETCert checks if the given cert was issued long enough in the

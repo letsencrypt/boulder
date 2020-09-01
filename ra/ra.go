@@ -619,8 +619,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	// The current internal authorization objects use a string for the ID, the new
 	// storage format uses a integer ID. In order to maintain compatibility we
 	// convert the integer ID to a string.
-	id := fmt.Sprintf("%d", authzIDs.Ids[0])
-	authzPB.Id = &id
+	authzPB.Id = fmt.Sprintf("%d", authzIDs.Ids[0])
 	return bgrpc.PBToAuthz(authzPB)
 }
 
@@ -849,7 +848,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 					authz.ID, name,
 				)
 			} else if resp.Problem != nil {
-				err = berrors.CAAError(*resp.Problem.Detail)
+				err = berrors.CAAError(resp.Problem.Detail)
 			}
 			ch <- authzCAAResult{
 				authz: authz,
@@ -927,10 +926,10 @@ func (ra *RegistrationAuthorityImpl) failOrder(
 func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
 	order := req.Order
 
-	if *order.Status != string(core.StatusReady) {
+	if order.Status != string(core.StatusReady) {
 		return nil, berrors.OrderNotReadyError(
 			"Order's status (%q) is not acceptable for finalization",
-			*order.Status)
+			order.Status)
 	}
 
 	// There should never be an order with 0 names at the stage the RA is
@@ -946,7 +945,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		return nil, err
 	}
 
-	if err := csrlib.VerifyCSR(ctx, csrOb, ra.maxNames, &ra.keyPolicy, ra.PA, *req.Order.RegistrationID); err != nil {
+	if err := csrlib.VerifyCSR(ctx, csrOb, ra.maxNames, &ra.keyPolicy, ra.PA, req.Order.RegistrationID); err != nil {
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
 		return nil, err
@@ -991,7 +990,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		Bytes: req.Csr,
 		CSR:   csrOb,
 	}
-	cert, err := ra.issueCertificate(ctx, issueReq, accountID(*order.RegistrationID), orderID(*order.Id))
+	cert, err := ra.issueCertificate(ctx, issueReq, accountID(order.RegistrationID), orderID(order.Id))
 	if err != nil {
 		// Fail the order. The problem is computed using
 		// `web.ProblemDetailsForError`, the same function the WFE uses to convert
@@ -1011,10 +1010,9 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		ra.failOrder(ctx, order, probs.ServerInternal("Error parsing certificate DER"))
 		return nil, err
 	}
-	serial := core.SerialToString(parsedCertificate.SerialNumber)
 
 	// Finalize the order with its new CertificateSerial
-	order.CertificateSerial = &serial
+	order.CertificateSerial = core.SerialToString(parsedCertificate.SerialNumber)
 	if err := ra.SA.FinalizeOrder(ctx, order); err != nil {
 		// Fail the order with a server internal error. We weren't able to persist
 		// the certificate serial and that's unexpected & weird.
@@ -1029,8 +1027,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 	// Update the order status locally since the SA doesn't return the updated
 	// order itself after setting the status
-	validStatus := string(core.StatusValid)
-	order.Status = &validStatus
+	order.Status = string(core.StatusValid)
 	return order, nil
 }
 
@@ -1830,7 +1827,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderNames(names []string) error {
 // NewOrder creates a new order object
 func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
 	order := &corepb.Order{
-		RegistrationID: &req.RegistrationID,
+		RegistrationID: req.RegistrationID,
 		Names:          core.UniqueLowerNames(req.Names),
 	}
 
@@ -1851,7 +1848,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// See if there is an existing unexpired pending (or ready) order that can be reused
 	// for this account
 	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
-		AcctID: *order.RegistrationID,
+		AcctID: order.RegistrationID,
 		Names:  order.Names,
 	})
 	// If there was an error and it wasn't an acceptable "NotFound" error, return
@@ -1865,13 +1862,13 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Check if there is rate limit space for a new order within the current window
-	if err := ra.checkNewOrdersPerAccountLimit(ctx, *order.RegistrationID); err != nil {
+	if err := ra.checkNewOrdersPerAccountLimit(ctx, order.RegistrationID); err != nil {
 		return nil, err
 	}
 	// Check if there is rate limit space for issuing a certificate for the new
 	// order's names. If there isn't then it doesn't make sense to allow creating
 	// an order - it will just fail when finalization checks the same limits.
-	if err := ra.checkLimits(ctx, order.Names, *order.RegistrationID); err != nil {
+	if err := ra.checkLimits(ctx, order.Names, order.RegistrationID); err != nil {
 		return nil, err
 	}
 
@@ -1885,7 +1882,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	authzExpiryCutoff := ra.clk.Now().AddDate(0, 0, 1).UnixNano()
 
 	getAuthReq := &sapb.GetAuthorizationsRequest{
-		RegistrationID: *order.RegistrationID,
+		RegistrationID: order.RegistrationID,
 		Now:            authzExpiryCutoff,
 		Domains:        order.Names,
 	}
@@ -1900,7 +1897,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	for _, v := range existingAuthz.Authz {
 		// Don't reuse a valid authorization if the reuseValidAuthz flag is
 		// disabled.
-		if *v.Authz.Status == string(core.StatusValid) && !ra.reuseValidAuthz {
+		if v.Authz.Status == string(core.StatusValid) && !ra.reuseValidAuthz {
 			continue
 		}
 		nameToExistingAuthz[v.Domain] = v.Authz
@@ -1923,8 +1920,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// that doesn't meet this criteria from SA.GetAuthorizations but we verify
 		// again to be safe.
 		if strings.HasPrefix(name, "*.") &&
-			len(authz.Challenges) == 1 && core.AcmeChallenge(*authz.Challenges[0].Type) == core.ChallengeTypeDNS01 {
-			authzID, err := strconv.ParseInt(*authz.Id, 10, 64)
+			len(authz.Challenges) == 1 && core.AcmeChallenge(authz.Challenges[0].Type) == core.ChallengeTypeDNS01 {
+			authzID, err := strconv.ParseInt(authz.Id, 10, 64)
 			if err != nil {
 				return nil, err
 			}
@@ -1932,7 +1929,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			continue
 		} else if !strings.HasPrefix(name, "*.") {
 			// If the identifier isn't a wildcard, we can reuse any authz
-			authzID, err := strconv.ParseInt(*authz.Id, 10, 64)
+			authzID, err := strconv.ParseInt(authz.Id, 10, 64)
 			if err != nil {
 				return nil, err
 			}
@@ -1950,10 +1947,10 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// If the order isn't fully authorized we need to check that the client has
 	// rate limit room for more pending authorizations
 	if len(missingAuthzNames) > 0 {
-		if err := ra.checkPendingAuthorizationLimit(ctx, *order.RegistrationID); err != nil {
+		if err := ra.checkPendingAuthorizationLimit(ctx, order.RegistrationID); err != nil {
 			return nil, err
 		}
-		if err := ra.checkInvalidAuthorizationLimits(ctx, *order.RegistrationID, missingAuthzNames); err != nil {
+		if err := ra.checkInvalidAuthorizationLimits(ctx, order.RegistrationID, missingAuthzNames); err != nil {
 			return nil, err
 		}
 	}
@@ -1962,7 +1959,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// authorization for each.
 	var newAuthzs []*corepb.Authorization
 	for _, name := range missingAuthzNames {
-		pb, err := ra.createPendingAuthz(ctx, *order.RegistrationID, identifier.ACMEIdentifier{
+		pb, err := ra.createPendingAuthz(ctx, order.RegistrationID, identifier.ACMEIdentifier{
 			Type:  identifier.DNS,
 			Value: name,
 		})
@@ -1980,14 +1977,14 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// minExpiry (the order's lifetime)
 	for _, authz := range nameToExistingAuthz {
 		// An authz without an expiry is an unexpected internal server event
-		if authz.Expires == nil {
+		if authz.Expires == 0 {
 			return nil, berrors.InternalServerError(
-				"SA.GetAuthorizations returned an authz (%s) with nil expiry",
-				*authz.Id)
+				"SA.GetAuthorizations returned an authz (%s) with zero expiry",
+				authz.Id)
 		}
 		// If the reused authorization expires before the minExpiry, it's expiry
 		// is the new minExpiry.
-		authzExpiry := time.Unix(0, *authz.Expires)
+		authzExpiry := time.Unix(0, authz.Expires)
 		if authzExpiry.Before(minExpiry) {
 			minExpiry = authzExpiry
 		}
@@ -2016,8 +2013,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	).Observe(float64(len(order.Names)))
 
 	// Set the order's expiry to the minimum expiry
-	minExpiryTS := minExpiry.UnixNano()
-	order.Expires = &minExpiryTS
+	order.Expires = minExpiry.UnixNano()
 	storedOrder, err := ra.SA.NewOrder(ctx, order)
 	if err != nil {
 		return nil, err
@@ -2030,13 +2026,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 // necessary challenges for it and puts this and all of the relevant information
 // into a corepb.Authorization for transmission to the SA to be stored
 func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg int64, identifier identifier.ACMEIdentifier) (*corepb.Authorization, error) {
-	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second).UnixNano()
-	status := string(core.StatusPending)
 	authz := &corepb.Authorization{
-		Identifier:     &identifier.Value,
-		RegistrationID: &reg,
-		Status:         &status,
-		Expires:        &expires,
+		Identifier:     identifier.Value,
+		RegistrationID: reg,
+		Status:         string(core.StatusPending),
+		Expires:        ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second).UnixNano(),
 	}
 
 	// Create challenges. The WFE will update them with URIs before sending them out.

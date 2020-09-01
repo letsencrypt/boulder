@@ -53,7 +53,7 @@ func TestSaleEnoughToGETOrder(t *testing.T) {
 	created := fc.Now().UnixNano()
 	fc.Add(time.Hour)
 	prob := wfe.staleEnoughToGETOrder(&corepb.Order{
-		Created: &created,
+		Created: created,
 	})
 	test.Assert(t, prob == nil, "wfe.staleEnoughToGETOrder returned a non-nil problem")
 }

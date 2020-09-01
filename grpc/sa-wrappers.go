@@ -63,7 +63,7 @@ func (sac StorageAuthorityClientWrapper) GetCertificate(ctx context.Context, ser
 	if err != nil {
 		return core.Certificate{}, err
 	}
-	if response == nil || response.RegistrationID == nil || response.Serial == nil || response.Digest == nil || response.Der == nil || response.Issued == nil || response.Expires == nil {
+	if response == nil || response.RegistrationID == 0 || response.Serial == "" || response.Digest == "" || len(response.Der) == 0 || response.Issued == 0 || response.Expires == 0 {
 		return core.Certificate{}, errIncompleteResponse
 	}
 	return PBToCert(response)
@@ -85,7 +85,7 @@ func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Contex
 	if err != nil {
 		return core.CertificateStatus{}, err
 	}
-	if response == nil || response.Serial == nil || response.Status == nil || response.OcspLastUpdated == nil || response.RevokedDate == nil || response.RevokedReason == nil || response.LastExpirationNagSent == nil || response.OcspResponse == nil || response.NotAfter == nil || response.IsExpired == nil {
+	if response == nil || response.Serial == "" || response.Status == "" || response.OcspLastUpdated == 0 || response.LastExpirationNagSent == 0 || response.OcspResponse == nil || response.NotAfter == 0 {
 		return core.CertificateStatus{}, errIncompleteResponse
 	}
 	return PBToCertStatus(response)
@@ -762,7 +762,7 @@ func (sas StorageAuthorityServerWrapper) SetOrderError(ctx context.Context, orde
 }
 
 func (sas StorageAuthorityServerWrapper) FinalizeOrder(ctx context.Context, order *corepb.Order) (*corepb.Empty, error) {
-	if order == nil || !orderValid(order) || order.CertificateSerial == nil {
+	if order == nil || !orderValid(order) || order.CertificateSerial == "" {
 		return nil, errIncompleteRequest
 	}
 

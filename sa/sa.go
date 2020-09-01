@@ -842,8 +842,8 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 // NewOrder adds a new v2 style order to the database
 func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order) (*corepb.Order, error) {
 	order := &orderModel{
-		RegistrationID: *req.RegistrationID,
-		Expires:        time.Unix(0, *req.Expires),
+		RegistrationID: req.RegistrationID,
+		Expires:        time.Unix(0, req.Expires),
 		Created:        ssa.clk.Now(),
 	}
 
@@ -886,7 +886,7 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 
 	if features.Enabled(features.FasterNewOrdersRateLimit) {
 		// Increment the order creation count
-		if err := addNewOrdersRateLimit(ctx, ssa.dbMap, *req.RegistrationID, ssa.clk.Now().Truncate(time.Minute)); err != nil {
+		if err := addNewOrdersRateLimit(ctx, ssa.dbMap, req.RegistrationID, ssa.clk.Now().Truncate(time.Minute)); err != nil {
 			return nil, err
 		}
 	}
@@ -897,13 +897,11 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 		return nil, fmt.Errorf("shouldn't happen: casting error in NewOrder")
 	}
 	// Update the output with the ID that the order received
-	outputOrder.Id = &order.ID
+	outputOrder.Id = order.ID
 	// Update the output with the created timestamp from the model
-	createdTS := order.Created.UnixNano()
-	outputOrder.Created = &createdTS
+	outputOrder.Created = order.Created.UnixNano()
 	// A new order is never processing because it can't have been finalized yet
-	processingStatus := false
-	outputOrder.BeganProcessing = &processingStatus
+	outputOrder.BeganProcessing = false
 
 	// Calculate the order status before returning it. Since it may have reused all
 	// valid authorizations the order may be "born" in a ready status.
@@ -911,7 +909,7 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 	if err != nil {
 		return nil, err
 	}
-	outputOrder.Status = &status
+	outputOrder.Status = status
 	return outputOrder, nil
 }
 
@@ -926,7 +924,7 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *cor
 		WHERE id = ?
 		AND beganProcessing = ?`,
 			true,
-			*req.Id,
+			req.Id,
 			false)
 		if err != nil {
 			return nil, berrors.InternalServerError("error updating order to beganProcessing status")
@@ -981,8 +979,8 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 		SET certificateSerial = ?
 		WHERE id = ? AND
 		beganProcessing = true`,
-			*req.CertificateSerial,
-			*req.Id)
+			req.CertificateSerial,
+			req.Id)
 		if err != nil {
 			return nil, berrors.InternalServerError("error updating order for finalization")
 		}
@@ -994,7 +992,7 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 
 		// Delete the orderFQDNSet row for the order now that it has been finalized.
 		// We use this table for order reuse and should not reuse a finalized order.
-		if err := deleteOrderFQDNSet(txWithCtx, *req.Id); err != nil {
+		if err := deleteOrderFQDNSet(txWithCtx, req.Id); err != nil {
 			return nil, err
 		}
 
@@ -1048,18 +1046,18 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	if err != nil {
 		return nil, err
 	}
-	orderExp := time.Unix(0, *order.Expires)
+	orderExp := time.Unix(0, order.Expires)
 	if orderExp.Before(ssa.clk.Now()) {
 		return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
 	}
 
-	v2AuthzIDs, err := ssa.authzForOrder(ctx, *order.Id)
+	v2AuthzIDs, err := ssa.authzForOrder(ctx, order.Id)
 	if err != nil {
 		return nil, err
 	}
 	order.V2Authorizations = v2AuthzIDs
 
-	names, err := ssa.namesForOrder(ctx, *order.Id)
+	names, err := ssa.namesForOrder(ctx, order.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -1077,7 +1075,7 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	if err != nil {
 		return nil, err
 	}
-	order.Status = &status
+	order.Status = status
 
 	return order, nil
 }
@@ -1116,7 +1114,7 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 	// in ra.NewOrder), and expired authorizations may be purged from the DB.
 	// Because of this purging fetching the authz's for an expired order may
 	// return fewer authz objects than expected, triggering a 500 error response.
-	orderExpiry := time.Unix(0, *order.Expires)
+	orderExpiry := time.Unix(0, order.Expires)
 	if orderExpiry.Before(ssa.clk.Now()) {
 		return string(core.StatusInvalid), nil
 	}
@@ -1135,7 +1133,7 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 		return "", berrors.InternalServerError(
 			"getAuthorizationStatuses returned the wrong number of authorization statuses "+
 				"(%d vs expected %d) for order %d",
-			len(authzValidityInfo), len(order.V2Authorizations), *order.Id)
+			len(authzValidityInfo), len(order.V2Authorizations), order.Id)
 	}
 
 	// Keep a count of the authorizations seen
@@ -1194,23 +1192,23 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 
 	// If the order is fully authorized and the certificate serial is set then the
 	// order is valid
-	if fullyAuthorized && order.CertificateSerial != nil && *order.CertificateSerial != "" {
+	if fullyAuthorized && order.CertificateSerial != "" {
 		return string(core.StatusValid), nil
 	}
 
 	// If the order is fully authorized, and we have began processing it, then the
 	// order is processing.
-	if fullyAuthorized && order.BeganProcessing != nil && *order.BeganProcessing {
+	if fullyAuthorized && order.BeganProcessing {
 		return string(core.StatusProcessing), nil
 	}
 
-	if fullyAuthorized && order.BeganProcessing != nil && !*order.BeganProcessing {
+	if fullyAuthorized && !order.BeganProcessing {
 		return string(core.StatusReady), nil
 	}
 
 	return "", berrors.InternalServerError(
 		"Order %d is in an invalid state. No state known for this order's "+
-			"authorizations", *order.Id)
+			"authorizations", order.Id)
 }
 
 type authzValidity struct {
@@ -1301,8 +1299,8 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 		return nil, err
 	}
 	// Only return a pending or ready order
-	if *order.Status != string(core.StatusPending) &&
-		*order.Status != string(core.StatusReady) {
+	if order.Status != string(core.StatusPending) &&
+		order.Status != string(core.StatusReady) {
 		return nil, berrors.NotFoundError("no order matching request found")
 	}
 	return order, nil
@@ -1326,7 +1324,7 @@ func AuthzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error
 func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
 	ids := &sapb.Authorization2IDs{}
 	for _, authz := range req.Authz {
-		if *authz.Status != string(core.StatusPending) {
+		if authz.Status != string(core.StatusPending) {
 			return nil, berrors.InternalServerError("authorization must be pending")
 		}
 		am, err := authzPBToModel(authz)

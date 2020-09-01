@@ -30,14 +30,14 @@ type Challenge struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Id                *int64              `protobuf:"varint,1,opt,name=id" json:"id,omitempty"`
-	Type              *string             `protobuf:"bytes,2,opt,name=type" json:"type,omitempty"`
-	Status            *string             `protobuf:"bytes,6,opt,name=status" json:"status,omitempty"`
-	Uri               *string             `protobuf:"bytes,9,opt,name=uri" json:"uri,omitempty"`
-	Token             *string             `protobuf:"bytes,3,opt,name=token" json:"token,omitempty"`
-	KeyAuthorization  *string             `protobuf:"bytes,5,opt,name=keyAuthorization" json:"keyAuthorization,omitempty"`
-	Validationrecords []*ValidationRecord `protobuf:"bytes,10,rep,name=validationrecords" json:"validationrecords,omitempty"`
-	Error             *ProblemDetails     `protobuf:"bytes,7,opt,name=error" json:"error,omitempty"`
+	Id                int64               `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Type              string              `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
+	Status            string              `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	Uri               string              `protobuf:"bytes,9,opt,name=uri,proto3" json:"uri,omitempty"`
+	Token             string              `protobuf:"bytes,3,opt,name=token,proto3" json:"token,omitempty"`
+	KeyAuthorization  string              `protobuf:"bytes,5,opt,name=keyAuthorization,proto3" json:"keyAuthorization,omitempty"`
+	Validationrecords []*ValidationRecord `protobuf:"bytes,10,rep,name=validationrecords,proto3" json:"validationrecords,omitempty"`
+	Error             *ProblemDetails     `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`
 }
 
 func (x *Challenge) Reset() {
@@ -73,43 +73,43 @@ func (*Challenge) Descriptor() ([]byte, []int) {
 }
 
 func (x *Challenge) GetId() int64 {
-	if x != nil && x.Id != nil {
-		return *x.Id
+	if x != nil {
+		return x.Id
 	}
 	return 0
 }
 
 func (x *Challenge) GetType() string {
-	if x != nil && x.Type != nil {
-		return *x.Type
+	if x != nil {
+		return x.Type
 	}
 	return ""
 }
 
 func (x *Challenge) GetStatus() string {
-	if x != nil && x.Status != nil {
-		return *x.Status
+	if x != nil {
+		return x.Status
 	}
 	return ""
 }
 
 func (x *Challenge) GetUri() string {
-	if x != nil && x.Uri != nil {
-		return *x.Uri
+	if x != nil {
+		return x.Uri
 	}
 	return ""
 }
 
 func (x *Challenge) GetToken() string {
-	if x != nil && x.Token != nil {
-		return *x.Token
+	if x != nil {
+		return x.Token
 	}
 	return ""
 }
 
 func (x *Challenge) GetKeyAuthorization() string {
-	if x != nil && x.KeyAuthorization != nil {
-		return *x.KeyAuthorization
+	if x != nil {
+		return x.KeyAuthorization
 	}
 	return ""
 }
@@ -133,16 +133,16 @@ type ValidationRecord struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Hostname          *string  `protobuf:"bytes,1,opt,name=hostname" json:"hostname,omitempty"`
-	Port              *string  `protobuf:"bytes,2,opt,name=port" json:"port,omitempty"`
-	AddressesResolved [][]byte `protobuf:"bytes,3,rep,name=addressesResolved" json:"addressesResolved,omitempty"` // net.IP.MarshalText()
-	AddressUsed       []byte   `protobuf:"bytes,4,opt,name=addressUsed" json:"addressUsed,omitempty"`             // net.IP.MarshalText()
-	Authorities       []string `protobuf:"bytes,5,rep,name=authorities" json:"authorities,omitempty"`
-	Url               *string  `protobuf:"bytes,6,opt,name=url" json:"url,omitempty"`
+	Hostname          string   `protobuf:"bytes,1,opt,name=hostname,proto3" json:"hostname,omitempty"`
+	Port              string   `protobuf:"bytes,2,opt,name=port,proto3" json:"port,omitempty"`
+	AddressesResolved [][]byte `protobuf:"bytes,3,rep,name=addressesResolved,proto3" json:"addressesResolved,omitempty"` // net.IP.MarshalText()
+	AddressUsed       []byte   `protobuf:"bytes,4,opt,name=addressUsed,proto3" json:"addressUsed,omitempty"`             // net.IP.MarshalText()
+	Authorities       []string `protobuf:"bytes,5,rep,name=authorities,proto3" json:"authorities,omitempty"`
+	Url               string   `protobuf:"bytes,6,opt,name=url,proto3" json:"url,omitempty"`
 	// A list of addresses tried before the address used (see
 	// core/objects.go and the comment on the ValidationRecord structure
 	// definition for more information.
-	AddressesTried [][]byte `protobuf:"bytes,7,rep,name=addressesTried" json:"addressesTried,omitempty"` // net.IP.MarshalText()
+	AddressesTried [][]byte `protobuf:"bytes,7,rep,name=addressesTried,proto3" json:"addressesTried,omitempty"` // net.IP.MarshalText()
 }
 
 func (x *ValidationRecord) Reset() {
@@ -178,15 +178,15 @@ func (*ValidationRecord) Descriptor() ([]byte, []int) {
 }
 
 func (x *ValidationRecord) GetHostname() string {
-	if x != nil && x.Hostname != nil {
-		return *x.Hostname
+	if x != nil {
+		return x.Hostname
 	}
 	return ""
 }
 
 func (x *ValidationRecord) GetPort() string {
-	if x != nil && x.Port != nil {
-		return *x.Port
+	if x != nil {
+		return x.Port
 	}
 	return ""
 }
@@ -213,8 +213,8 @@ func (x *ValidationRecord) GetAuthorities() []string {
 }
 
 func (x *ValidationRecord) GetUrl() string {
-	if x != nil && x.Url != nil {
-		return *x.Url
+	if x != nil {
+		return x.Url
 	}
 	return ""
 }
@@ -231,9 +231,9 @@ type ProblemDetails struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	ProblemType *string `protobuf:"bytes,1,opt,name=problemType" json:"problemType,omitempty"`
-	Detail      *string `protobuf:"bytes,2,opt,name=detail" json:"detail,omitempty"`
-	HttpStatus  *int32  `protobuf:"varint,3,opt,name=httpStatus" json:"httpStatus,omitempty"`
+	ProblemType string `protobuf:"bytes,1,opt,name=problemType,proto3" json:"problemType,omitempty"`
+	Detail      string `protobuf:"bytes,2,opt,name=detail,proto3" json:"detail,omitempty"`
+	HttpStatus  int32  `protobuf:"varint,3,opt,name=httpStatus,proto3" json:"httpStatus,omitempty"`
 }
 
 func (x *ProblemDetails) Reset() {
@@ -269,22 +269,22 @@ func (*ProblemDetails) Descriptor() ([]byte, []int) {
 }
 
 func (x *ProblemDetails) GetProblemType() string {
-	if x != nil && x.ProblemType != nil {
-		return *x.ProblemType
+	if x != nil {
+		return x.ProblemType
 	}
 	return ""
 }
 
 func (x *ProblemDetails) GetDetail() string {
-	if x != nil && x.Detail != nil {
-		return *x.Detail
+	if x != nil {
+		return x.Detail
 	}
 	return ""
 }
 
 func (x *ProblemDetails) GetHttpStatus() int32 {
-	if x != nil && x.HttpStatus != nil {
-		return *x.HttpStatus
+	if x != nil {
+		return x.HttpStatus
 	}
 	return 0
 }
@@ -294,12 +294,12 @@ type Certificate struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	RegistrationID *int64  `protobuf:"varint,1,opt,name=registrationID" json:"registrationID,omitempty"`
-	Serial         *string `protobuf:"bytes,2,opt,name=serial" json:"serial,omitempty"`
-	Digest         *string `protobuf:"bytes,3,opt,name=digest" json:"digest,omitempty"`
-	Der            []byte  `protobuf:"bytes,4,opt,name=der" json:"der,omitempty"`
-	Issued         *int64  `protobuf:"varint,5,opt,name=issued" json:"issued,omitempty"`   // Unix timestamp (nanoseconds)
-	Expires        *int64  `protobuf:"varint,6,opt,name=expires" json:"expires,omitempty"` // Unix timestamp (nanoseconds)
+	RegistrationID int64  `protobuf:"varint,1,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
+	Serial         string `protobuf:"bytes,2,opt,name=serial,proto3" json:"serial,omitempty"`
+	Digest         string `protobuf:"bytes,3,opt,name=digest,proto3" json:"digest,omitempty"`
+	Der            []byte `protobuf:"bytes,4,opt,name=der,proto3" json:"der,omitempty"`
+	Issued         int64  `protobuf:"varint,5,opt,name=issued,proto3" json:"issued,omitempty"`   // Unix timestamp (nanoseconds)
+	Expires        int64  `protobuf:"varint,6,opt,name=expires,proto3" json:"expires,omitempty"` // Unix timestamp (nanoseconds)
 }
 
 func (x *Certificate) Reset() {
@@ -335,22 +335,22 @@ func (*Certificate) Descriptor() ([]byte, []int) {
 }
 
 func (x *Certificate) GetRegistrationID() int64 {
-	if x != nil && x.RegistrationID != nil {
-		return *x.RegistrationID
+	if x != nil {
+		return x.RegistrationID
 	}
 	return 0
 }
 
 func (x *Certificate) GetSerial() string {
-	if x != nil && x.Serial != nil {
-		return *x.Serial
+	if x != nil {
+		return x.Serial
 	}
 	return ""
 }
 
 func (x *Certificate) GetDigest() string {
-	if x != nil && x.Digest != nil {
-		return *x.Digest
+	if x != nil {
+		return x.Digest
 	}
 	return ""
 }
@@ -363,15 +363,15 @@ func (x *Certificate) GetDer() []byte {
 }
 
 func (x *Certificate) GetIssued() int64 {
-	if x != nil && x.Issued != nil {
-		return *x.Issued
+	if x != nil {
+		return x.Issued
 	}
 	return 0
 }
 
 func (x *Certificate) GetExpires() int64 {
-	if x != nil && x.Expires != nil {
-		return *x.Expires
+	if x != nil {
+		return x.Expires
 	}
 	return 0
 }
@@ -381,15 +381,15 @@ type CertificateStatus struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Serial                *string `protobuf:"bytes,1,opt,name=serial" json:"serial,omitempty"`
-	Status                *string `protobuf:"bytes,3,opt,name=status" json:"status,omitempty"`
-	OcspLastUpdated       *int64  `protobuf:"varint,4,opt,name=ocspLastUpdated" json:"ocspLastUpdated,omitempty"`
-	RevokedDate           *int64  `protobuf:"varint,5,opt,name=revokedDate" json:"revokedDate,omitempty"`
-	RevokedReason         *int64  `protobuf:"varint,6,opt,name=revokedReason" json:"revokedReason,omitempty"`
-	LastExpirationNagSent *int64  `protobuf:"varint,7,opt,name=lastExpirationNagSent" json:"lastExpirationNagSent,omitempty"`
-	OcspResponse          []byte  `protobuf:"bytes,8,opt,name=ocspResponse" json:"ocspResponse,omitempty"`
-	NotAfter              *int64  `protobuf:"varint,9,opt,name=notAfter" json:"notAfter,omitempty"`
-	IsExpired             *bool   `protobuf:"varint,10,opt,name=isExpired" json:"isExpired,omitempty"`
+	Serial                string `protobuf:"bytes,1,opt,name=serial,proto3" json:"serial,omitempty"`
+	Status                string `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	OcspLastUpdated       int64  `protobuf:"varint,4,opt,name=ocspLastUpdated,proto3" json:"ocspLastUpdated,omitempty"`
+	RevokedDate           int64  `protobuf:"varint,5,opt,name=revokedDate,proto3" json:"revokedDate,omitempty"`
+	RevokedReason         int64  `protobuf:"varint,6,opt,name=revokedReason,proto3" json:"revokedReason,omitempty"`
+	LastExpirationNagSent int64  `protobuf:"varint,7,opt,name=lastExpirationNagSent,proto3" json:"lastExpirationNagSent,omitempty"`
+	OcspResponse          []byte `protobuf:"bytes,8,opt,name=ocspResponse,proto3" json:"ocspResponse,omitempty"`
+	NotAfter              int64  `protobuf:"varint,9,opt,name=notAfter,proto3" json:"notAfter,omitempty"`
+	IsExpired             bool   `protobuf:"varint,10,opt,name=isExpired,proto3" json:"isExpired,omitempty"`
 }
 
 func (x *CertificateStatus) Reset() {
@@ -425,43 +425,43 @@ func (*CertificateStatus) Descriptor() ([]byte, []int) {
 }
 
 func (x *CertificateStatus) GetSerial() string {
-	if x != nil && x.Serial != nil {
-		return *x.Serial
+	if x != nil {
+		return x.Serial
 	}
 	return ""
 }
 
 func (x *CertificateStatus) GetStatus() string {
-	if x != nil && x.Status != nil {
-		return *x.Status
+	if x != nil {
+		return x.Status
 	}
 	return ""
 }
 
 func (x *CertificateStatus) GetOcspLastUpdated() int64 {
-	if x != nil && x.OcspLastUpdated != nil {
-		return *x.OcspLastUpdated
+	if x != nil {
+		return x.OcspLastUpdated
 	}
 	return 0
 }
 
 func (x *CertificateStatus) GetRevokedDate() int64 {
-	if x != nil && x.RevokedDate != nil {
-		return *x.RevokedDate
+	if x != nil {
+		return x.RevokedDate
 	}
 	return 0
 }
 
 func (x *CertificateStatus) GetRevokedReason() int64 {
-	if x != nil && x.RevokedReason != nil {
-		return *x.RevokedReason
+	if x != nil {
+		return x.RevokedReason
 	}
 	return 0
 }
 
 func (x *CertificateStatus) GetLastExpirationNagSent() int64 {
-	if x != nil && x.LastExpirationNagSent != nil {
-		return *x.LastExpirationNagSent
+	if x != nil {
+		return x.LastExpirationNagSent
 	}
 	return 0
 }
@@ -474,15 +474,15 @@ func (x *CertificateStatus) GetOcspResponse() []byte {
 }
 
 func (x *CertificateStatus) GetNotAfter() int64 {
-	if x != nil && x.NotAfter != nil {
-		return *x.NotAfter
+	if x != nil {
+		return x.NotAfter
 	}
 	return 0
 }
 
 func (x *CertificateStatus) GetIsExpired() bool {
-	if x != nil && x.IsExpired != nil {
-		return *x.IsExpired
+	if x != nil {
+		return x.IsExpired
 	}
 	return false
 }
@@ -492,14 +492,14 @@ type Registration struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Id              *int64   `protobuf:"varint,1,opt,name=id" json:"id,omitempty"`
-	Key             []byte   `protobuf:"bytes,2,opt,name=key" json:"key,omitempty"`
-	Contact         []string `protobuf:"bytes,3,rep,name=contact" json:"contact,omitempty"`
-	ContactsPresent *bool    `protobuf:"varint,4,opt,name=contactsPresent" json:"contactsPresent,omitempty"`
-	Agreement       *string  `protobuf:"bytes,5,opt,name=agreement" json:"agreement,omitempty"`
-	InitialIP       []byte   `protobuf:"bytes,6,opt,name=initialIP" json:"initialIP,omitempty"`
-	CreatedAt       *int64   `protobuf:"varint,7,opt,name=createdAt" json:"createdAt,omitempty"` // Unix timestamp (nanoseconds)
-	Status          *string  `protobuf:"bytes,8,opt,name=status" json:"status,omitempty"`
+	Id              int64    `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Key             []byte   `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	Contact         []string `protobuf:"bytes,3,rep,name=contact,proto3" json:"contact,omitempty"`
+	ContactsPresent bool     `protobuf:"varint,4,opt,name=contactsPresent,proto3" json:"contactsPresent,omitempty"`
+	Agreement       string   `protobuf:"bytes,5,opt,name=agreement,proto3" json:"agreement,omitempty"`
+	InitialIP       []byte   `protobuf:"bytes,6,opt,name=initialIP,proto3" json:"initialIP,omitempty"`
+	CreatedAt       int64    `protobuf:"varint,7,opt,name=createdAt,proto3" json:"createdAt,omitempty"` // Unix timestamp (nanoseconds)
+	Status          string   `protobuf:"bytes,8,opt,name=status,proto3" json:"status,omitempty"`
 }
 
 func (x *Registration) Reset() {
@@ -535,8 +535,8 @@ func (*Registration) Descriptor() ([]byte, []int) {
 }
 
 func (x *Registration) GetId() int64 {
-	if x != nil && x.Id != nil {
-		return *x.Id
+	if x != nil {
+		return x.Id
 	}
 	return 0
 }
@@ -556,15 +556,15 @@ func (x *Registration) GetContact() []string {
 }
 
 func (x *Registration) GetContactsPresent() bool {
-	if x != nil && x.ContactsPresent != nil {
-		return *x.ContactsPresent
+	if x != nil {
+		return x.ContactsPresent
 	}
 	return false
 }
 
 func (x *Registration) GetAgreement() string {
-	if x != nil && x.Agreement != nil {
-		return *x.Agreement
+	if x != nil {
+		return x.Agreement
 	}
 	return ""
 }
@@ -577,15 +577,15 @@ func (x *Registration) GetInitialIP() []byte {
 }
 
 func (x *Registration) GetCreatedAt() int64 {
-	if x != nil && x.CreatedAt != nil {
-		return *x.CreatedAt
+	if x != nil {
+		return x.CreatedAt
 	}
 	return 0
 }
 
 func (x *Registration) GetStatus() string {
-	if x != nil && x.Status != nil {
-		return *x.Status
+	if x != nil {
+		return x.Status
 	}
 	return ""
 }
@@ -595,12 +595,12 @@ type Authorization struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Id             *string      `protobuf:"bytes,1,opt,name=id" json:"id,omitempty"`
-	Identifier     *string      `protobuf:"bytes,2,opt,name=identifier" json:"identifier,omitempty"`
-	RegistrationID *int64       `protobuf:"varint,3,opt,name=registrationID" json:"registrationID,omitempty"`
-	Status         *string      `protobuf:"bytes,4,opt,name=status" json:"status,omitempty"`
-	Expires        *int64       `protobuf:"varint,5,opt,name=expires" json:"expires,omitempty"` // Unix timestamp (nanoseconds)
-	Challenges     []*Challenge `protobuf:"bytes,6,rep,name=challenges" json:"challenges,omitempty"`
+	Id             string       `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Identifier     string       `protobuf:"bytes,2,opt,name=identifier,proto3" json:"identifier,omitempty"`
+	RegistrationID int64        `protobuf:"varint,3,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
+	Status         string       `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	Expires        int64        `protobuf:"varint,5,opt,name=expires,proto3" json:"expires,omitempty"` // Unix timestamp (nanoseconds)
+	Challenges     []*Challenge `protobuf:"bytes,6,rep,name=challenges,proto3" json:"challenges,omitempty"`
 }
 
 func (x *Authorization) Reset() {
@@ -636,36 +636,36 @@ func (*Authorization) Descriptor() ([]byte, []int) {
 }
 
 func (x *Authorization) GetId() string {
-	if x != nil && x.Id != nil {
-		return *x.Id
+	if x != nil {
+		return x.Id
 	}
 	return ""
 }
 
 func (x *Authorization) GetIdentifier() string {
-	if x != nil && x.Identifier != nil {
-		return *x.Identifier
+	if x != nil {
+		return x.Identifier
 	}
 	return ""
 }
 
 func (x *Authorization) GetRegistrationID() int64 {
-	if x != nil && x.RegistrationID != nil {
-		return *x.RegistrationID
+	if x != nil {
+		return x.RegistrationID
 	}
 	return 0
 }
 
 func (x *Authorization) GetStatus() string {
-	if x != nil && x.Status != nil {
-		return *x.Status
+	if x != nil {
+		return x.Status
 	}
 	return ""
 }
 
 func (x *Authorization) GetExpires() int64 {
-	if x != nil && x.Expires != nil {
-		return *x.Expires
+	if x != nil {
+		return x.Expires
 	}
 	return 0
 }
@@ -682,16 +682,16 @@ type Order struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Id                *int64          `protobuf:"varint,1,opt,name=id" json:"id,omitempty"`
-	RegistrationID    *int64          `protobuf:"varint,2,opt,name=registrationID" json:"registrationID,omitempty"`
-	Expires           *int64          `protobuf:"varint,3,opt,name=expires" json:"expires,omitempty"`
-	Error             *ProblemDetails `protobuf:"bytes,4,opt,name=error" json:"error,omitempty"`
-	CertificateSerial *string         `protobuf:"bytes,5,opt,name=certificateSerial" json:"certificateSerial,omitempty"`
-	Status            *string         `protobuf:"bytes,7,opt,name=status" json:"status,omitempty"`
-	Names             []string        `protobuf:"bytes,8,rep,name=names" json:"names,omitempty"`
-	BeganProcessing   *bool           `protobuf:"varint,9,opt,name=beganProcessing" json:"beganProcessing,omitempty"`
-	Created           *int64          `protobuf:"varint,10,opt,name=created" json:"created,omitempty"`
-	V2Authorizations  []int64         `protobuf:"varint,11,rep,name=v2Authorizations" json:"v2Authorizations,omitempty"`
+	Id                int64           `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	RegistrationID    int64           `protobuf:"varint,2,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
+	Expires           int64           `protobuf:"varint,3,opt,name=expires,proto3" json:"expires,omitempty"`
+	Error             *ProblemDetails `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
+	CertificateSerial string          `protobuf:"bytes,5,opt,name=certificateSerial,proto3" json:"certificateSerial,omitempty"`
+	Status            string          `protobuf:"bytes,7,opt,name=status,proto3" json:"status,omitempty"`
+	Names             []string        `protobuf:"bytes,8,rep,name=names,proto3" json:"names,omitempty"`
+	BeganProcessing   bool            `protobuf:"varint,9,opt,name=beganProcessing,proto3" json:"beganProcessing,omitempty"`
+	Created           int64           `protobuf:"varint,10,opt,name=created,proto3" json:"created,omitempty"`
+	V2Authorizations  []int64         `protobuf:"varint,11,rep,packed,name=v2Authorizations,proto3" json:"v2Authorizations,omitempty"`
 }
 
 func (x *Order) Reset() {
@@ -727,22 +727,22 @@ func (*Order) Descriptor() ([]byte, []int) {
 }
 
 func (x *Order) GetId() int64 {
-	if x != nil && x.Id != nil {
-		return *x.Id
+	if x != nil {
+		return x.Id
 	}
 	return 0
 }
 
 func (x *Order) GetRegistrationID() int64 {
-	if x != nil && x.RegistrationID != nil {
-		return *x.RegistrationID
+	if x != nil {
+		return x.RegistrationID
 	}
 	return 0
 }
 
 func (x *Order) GetExpires() int64 {
-	if x != nil && x.Expires != nil {
-		return *x.Expires
+	if x != nil {
+		return x.Expires
 	}
 	return 0
 }
@@ -755,15 +755,15 @@ func (x *Order) GetError() *ProblemDetails {
 }
 
 func (x *Order) GetCertificateSerial() string {
-	if x != nil && x.CertificateSerial != nil {
-		return *x.CertificateSerial
+	if x != nil {
+		return x.CertificateSerial
 	}
 	return ""
 }
 
 func (x *Order) GetStatus() string {
-	if x != nil && x.Status != nil {
-		return *x.Status
+	if x != nil {
+		return x.Status
 	}
 	return ""
 }
@@ -776,15 +776,15 @@ func (x *Order) GetNames() []string {
 }
 
 func (x *Order) GetBeganProcessing() bool {
-	if x != nil && x.BeganProcessing != nil {
-		return *x.BeganProcessing
+	if x != nil {
+		return x.BeganProcessing
 	}
 	return false
 }
 
 func (x *Order) GetCreated() int64 {
-	if x != nil && x.Created != nil {
-		return *x.Created
+	if x != nil {
+		return x.Created
 	}
 	return 0
 }
@@ -962,7 +962,8 @@ var file_core_proto_core_proto_rawDesc = []byte{
 	0x08, 0x06, 0x10, 0x07, 0x22, 0x07, 0x0a, 0x05, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x42, 0x2b, 0x5a,
 	0x29, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x65, 0x74, 0x73,
 	0x65, 0x6e, 0x63, 0x72, 0x79, 0x70, 0x74, 0x2f, 0x62, 0x6f, 0x75, 0x6c, 0x64, 0x65, 0x72, 0x2f,
-	0x63, 0x6f, 0x72, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f,
+	0x63, 0x6f, 0x72, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74,
+	0x6f, 0x33,
 }
 
 var (

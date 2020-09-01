@@ -24,7 +24,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	ctasn1 "github.com/google/certificate-transparency-go/asn1"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	ctpkix "github.com/google/certificate-transparency-go/x509/pkix"
@@ -905,15 +904,13 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 	authzPB, err := bgrpc.AuthzToPB(authz)
 	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
 
-	fakeHostname := "example.com"
-	fakePort := "8080"
 	va.ResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
 			{
 				AddressUsed: []byte("192.168.0.1"),
-				Hostname:    &fakeHostname,
-				Port:        &fakePort,
-				Url:         &fakeHostname,
+				Hostname:    "example.com",
+				Port:        "8080",
+				Url:         "http://example.com/",
 			},
 		},
 		Problems: nil,
@@ -938,15 +935,13 @@ func TestPerformValidationSuccess(t *testing.T) {
 
 	challIdx := challTypeIndex(t, authz.Challenges, core.ChallengeTypeDNS01)
 
-	fakeHostname := "example.com"
-	fakePort := "8080"
 	va.ResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
 			{
 				AddressUsed: []byte("192.168.0.1"),
-				Hostname:    &fakeHostname,
-				Port:        &fakePort,
-				Url:         &fakeHostname,
+				Hostname:    "example.com",
+				Port:        "8080",
+				Url:         "http://example.com/",
 			},
 		},
 		Problems: nil,
@@ -972,8 +967,8 @@ func TestPerformValidationSuccess(t *testing.T) {
 	}
 
 	// Verify that the VA got the request, and it's the same as the others
-	test.AssertEquals(t, string(authz.Challenges[challIdx].Type), *vaRequest.Challenge.Type)
-	test.AssertEquals(t, authz.Challenges[challIdx].Token, *vaRequest.Challenge.Token)
+	test.AssertEquals(t, string(authz.Challenges[challIdx].Type), vaRequest.Challenge.Type)
+	test.AssertEquals(t, authz.Challenges[challIdx].Token, vaRequest.Challenge.Token)
 
 	// Sleep so the RA has a chance to write to the SA
 	time.Sleep(100 * time.Millisecond)
@@ -1025,8 +1020,8 @@ func TestPerformValidationVAError(t *testing.T) {
 	}
 
 	// Verify that the VA got the request, and it's the same as the others
-	test.AssertEquals(t, string(authz.Challenges[challIdx].Type), *vaRequest.Challenge.Type)
-	test.AssertEquals(t, authz.Challenges[challIdx].Token, *vaRequest.Challenge.Token)
+	test.AssertEquals(t, string(authz.Challenges[challIdx].Type), vaRequest.Challenge.Type)
+	test.AssertEquals(t, authz.Challenges[challIdx].Token, vaRequest.Challenge.Token)
 
 	// Sleep so the RA has a chance to write to the SA
 	time.Sleep(100 * time.Millisecond)
@@ -1801,7 +1796,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "Could not deactivate authorization")
 	deact, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 	test.AssertNotError(t, err, "Could not get deactivated authorization with ID "+authz.ID)
-	test.AssertEquals(t, *deact.Status, string(core.StatusDeactivated))
+	test.AssertEquals(t, deact.Status, string(core.StatusDeactivated))
 }
 
 func TestDeactivateRegistration(t *testing.T) {
@@ -1967,11 +1962,11 @@ func (cf *caaFailer) IsCAAValid(
 	switch in.Domain {
 	case "a.com":
 		cvrpb.Problem = &corepb.ProblemDetails{
-			Detail: proto.String("CAA invalid for a.com"),
+			Detail: "CAA invalid for a.com",
 		}
 	case "c.com":
 		cvrpb.Problem = &corepb.ProblemDetails{
-			Detail: proto.String("CAA invalid for c.com"),
+			Detail: "CAA invalid for c.com",
 		}
 	case "d.com":
 		return nil, fmt.Errorf("Error checking CAA for d.com")
@@ -2092,12 +2087,12 @@ func TestNewOrder(t *testing.T) {
 		Names:          []string{"b.com", "a.com", "a.com", "C.COM"},
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
-	test.AssertEquals(t, *orderA.RegistrationID, int64(1))
-	test.AssertEquals(t, *orderA.Expires, fc.Now().Add(time.Hour).UnixNano())
+	test.AssertEquals(t, orderA.RegistrationID, int64(1))
+	test.AssertEquals(t, orderA.Expires, fc.Now().Add(time.Hour).UnixNano())
 	test.AssertEquals(t, len(orderA.Names), 3)
 	// We expect the order names to have been sorted, deduped, and lowercased
 	test.AssertDeepEquals(t, orderA.Names, []string{"a.com", "b.com", "c.com"})
-	test.AssertEquals(t, *orderA.Id, int64(1))
+	test.AssertEquals(t, orderA.Id, int64(1))
 	test.AssertEquals(t, numAuthorizations(orderA), 3)
 
 	// Reuse all existing authorizations
@@ -2106,10 +2101,10 @@ func TestNewOrder(t *testing.T) {
 		Names:          []string{"b.com", "a.com", "C.COM"},
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
-	test.AssertEquals(t, *orderB.RegistrationID, int64(1))
-	test.AssertEquals(t, *orderB.Expires, fc.Now().Add(time.Hour).UnixNano())
+	test.AssertEquals(t, orderB.RegistrationID, int64(1))
+	test.AssertEquals(t, orderB.Expires, fc.Now().Add(time.Hour).UnixNano())
 	// We expect orderB's ID to match orderA's because of pending order reuse
-	test.AssertEquals(t, *orderB.Id, *orderA.Id)
+	test.AssertEquals(t, orderB.Id, orderA.Id)
 	test.AssertEquals(t, len(orderB.Names), 3)
 	test.AssertDeepEquals(t, orderB.Names, []string{"a.com", "b.com", "c.com"})
 	test.AssertEquals(t, numAuthorizations(orderB), 3)
@@ -2123,13 +2118,13 @@ func TestNewOrder(t *testing.T) {
 		Names:          orderA.Names,
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
-	test.AssertEquals(t, *orderC.RegistrationID, int64(1))
-	test.AssertEquals(t, *orderC.Expires, fc.Now().Add(time.Hour).UnixNano())
+	test.AssertEquals(t, orderC.RegistrationID, int64(1))
+	test.AssertEquals(t, orderC.Expires, fc.Now().Add(time.Hour).UnixNano())
 	test.AssertEquals(t, len(orderC.Names), 4)
 	test.AssertDeepEquals(t, orderC.Names, []string{"a.com", "b.com", "c.com", "d.com"})
 	// We expect orderC's ID to not match orderA/orderB's because it is for
 	// a different set of names
-	test.AssertNotEquals(t, *orderC.Id, *orderA.Id)
+	test.AssertNotEquals(t, orderC.Id, orderA.Id)
 	test.AssertEquals(t, numAuthorizations(orderC), 4)
 	// Abuse the order of the queries used to extract the reused authorizations
 	existing := orderC.V2Authorizations[:3]
@@ -2167,7 +2162,7 @@ func TestNewOrderLegacyAuthzReuse(t *testing.T) {
 	// The authorization should not be the legacy authz
 	test.AssertNotEquals(t, order.V2Authorizations[0], authzID)
 	// The order should be pending status
-	test.AssertEquals(t, *order.Status, string(core.StatusPending))
+	test.AssertEquals(t, order.Status, string(core.StatusPending))
 
 	// Create an order request for a superset of the names from the order above to
 	// test that V2 reuse still functions.
@@ -2279,11 +2274,11 @@ func TestNewOrderReuse(t *testing.T) {
 			if tc.ExpectReuse {
 				// If we expected order reuse for this testcase assert that the order
 				// has the same ID as the firstOrder
-				test.AssertEquals(t, *firstOrder.Id, *order.Id)
+				test.AssertEquals(t, firstOrder.Id, order.Id)
 			} else {
 				// Otherwise assert that the order doesn't have the same ID as the
 				// firstOrder
-				test.AssertNotEquals(t, *firstOrder.Id, *order.Id)
+				test.AssertNotEquals(t, firstOrder.Id, order.Id)
 			}
 		})
 	}
@@ -2314,24 +2309,24 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:        order.V2Authorizations[0],
 		Status:    string(core.StatusInvalid),
-		Expires:   *order.Expires,
+		Expires:   order.Expires,
 		Attempted: string(core.ChallengeTypeDNS01),
 	})
 	test.AssertNotError(t, err, "FinalizeAuthorization2 failed")
 
 	// The order associated with the authz should now be invalid
-	updatedOrder, err := ra.SA.GetOrder(ctx, &sapb.OrderRequest{Id: *order.Id})
+	updatedOrder, err := ra.SA.GetOrder(ctx, &sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "Error getting order to check status")
-	test.AssertEquals(t, *updatedOrder.Status, "invalid")
+	test.AssertEquals(t, updatedOrder.Status, "invalid")
 
 	// Create a second order for the same names/regID
 	secondOrder, err := ra.NewOrder(ctx, orderReq)
 	// It shouldn't fail
 	test.AssertNotError(t, err, "Adding an initial order for regA failed")
 	// It should have a different ID than the first now-invalid order
-	test.AssertNotEquals(t, *secondOrder.Id, *order.Id)
+	test.AssertNotEquals(t, secondOrder.Id, order.Id)
 	// It should be status pending
-	test.AssertEquals(t, *secondOrder.Status, "pending")
+	test.AssertEquals(t, secondOrder.Status, "pending")
 	test.AssertEquals(t, numAuthorizations(secondOrder), 1)
 	// It should have a different authorization than the first order's now-invalid authorization
 	test.AssertNotEquals(t, secondOrder.V2Authorizations[0], order.V2Authorizations[0])
@@ -2544,7 +2539,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
 
 	// We expect the order to be pending
-	test.AssertEquals(t, *order.Status, string(core.StatusPending))
+	test.AssertEquals(t, order.Status, string(core.StatusPending))
 	// We expect the order to have two names
 	test.AssertEquals(t, len(order.Names), 2)
 	// We expect the order to have the names we requested
@@ -2593,7 +2588,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
 
 	// We expect the order to be pending
-	test.AssertEquals(t, *order.Status, string(core.StatusPending))
+	test.AssertEquals(t, order.Status, string(core.StatusPending))
 	// We expect the order to have two names
 	test.AssertEquals(t, len(order.Names), 2)
 	// We expect the order to have the names we requested
@@ -2638,7 +2633,7 @@ func TestNewOrderWildcard(t *testing.T) {
 
 	test.AssertEquals(t, numAuthorizations(normalOrder), 1)
 	// We expect the order is in Pending status
-	test.AssertEquals(t, *order.Status, string(core.StatusPending))
+	test.AssertEquals(t, order.Status, string(core.StatusPending))
 	var authz core.Authorization
 	authzPB, err := ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: normalOrder.V2Authorizations[0]})
 	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
@@ -2662,7 +2657,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	order, err = ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
 	// We expect the order is in Pending status
-	test.AssertEquals(t, *order.Status, string(core.StatusPending))
+	test.AssertEquals(t, order.Status, string(core.StatusPending))
 	test.AssertEquals(t, numAuthorizations(order), 1)
 	// The authz should be a different ID than the previous authz
 	test.AssertNotEquals(t, order.V2Authorizations[0], normalOrder.V2Authorizations[0])
@@ -2686,7 +2681,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	dupeOrder, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
 	// We expect the order is in Pending status
-	test.AssertEquals(t, *dupeOrder.Status, string(core.StatusPending))
+	test.AssertEquals(t, dupeOrder.Status, string(core.StatusPending))
 	test.AssertEquals(t, numAuthorizations(dupeOrder), 1)
 	// The authz should be the same ID as the previous order's authz. We already
 	// checked that order.Authorizations[0] only has a DNS-01 challenge above so
@@ -2798,7 +2793,7 @@ func TestNewOrderExpiry(t *testing.T) {
 	test.AssertEquals(t, order.V2Authorizations[0], int64(1))
 	// The order's expiry should be the fake authz's expiry since it is sooner
 	// than the order's own expiry.
-	test.AssertEquals(t, *order.Expires, fakeAuthzExpires.UnixNano())
+	test.AssertEquals(t, order.Expires, fakeAuthzExpires.UnixNano())
 
 	// Set the order lifetime to be lower than the fakeAuthzLifetime
 	ra.orderLifetime = 12 * time.Hour
@@ -2812,18 +2807,13 @@ func TestNewOrderExpiry(t *testing.T) {
 	test.AssertEquals(t, order.V2Authorizations[0], int64(1))
 	// The order's expiry should be the order's own expiry since it is sooner than
 	// the fake authz's expiry.
-	test.AssertEquals(t, *order.Expires, expectedOrderExpiry)
+	test.AssertEquals(t, order.Expires, expectedOrderExpiry)
 }
 
 func TestFinalizeOrder(t *testing.T) {
 	_, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
-
-	validStatus := string(core.StatusValid)
-	pendingStatus := string(core.StatusPending)
-	readyStatus := string(core.StatusReady)
-	processingStatus := false
 
 	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "error generating test key")
@@ -2863,14 +2853,13 @@ func TestFinalizeOrder(t *testing.T) {
 
 	// Create an order with valid authzs, it should end up status ready in the
 	// resulting returned order
-	expUnix := exp.UnixNano()
 	modernFinalOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
-		RegistrationID:   &Registration.ID,
-		Expires:          &expUnix,
+		RegistrationID:   Registration.ID,
+		Expires:          exp.UnixNano(),
 		Names:            []string{"not-example.com", "www.not-example.com"},
 		V2Authorizations: []int64{authzIDA, authzIDB},
-		Status:           &readyStatus,
-		BeganProcessing:  &processingStatus,
+		Status:           string(core.StatusReady),
+		BeganProcessing:  false,
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs, ready status")
 
@@ -2921,10 +2910,6 @@ func TestFinalizeOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Could not add test order for missing authz order ID")
 
-	emptyStr := ""
-	falseBool := false
-	fakeCreated := ra.clk.Now().UnixNano()
-
 	testCases := []struct {
 		Name           string
 		OrderReq       *rapb.FinalizeOrderRequest
@@ -2935,7 +2920,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "No names in order",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status: &readyStatus,
+					Status: string(core.StatusReady),
 					Names:  []string{},
 				},
 			},
@@ -2945,7 +2930,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Wrong order state (valid)",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status: &validStatus,
+					Status: string(core.StatusValid),
 					Names:  []string{"example.com"},
 				},
 			},
@@ -2955,7 +2940,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Wrong order state (pending)",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status: &pendingStatus,
+					Status: string(core.StatusPending),
 					Names:  []string{"example.com"},
 				},
 				Csr: validCSRDER,
@@ -2967,7 +2952,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Invalid CSR",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status: &readyStatus,
+					Status: string(core.StatusReady),
 					Names:  []string{"example.com"},
 				},
 				Csr: []byte{0xC0, 0xFF, 0xEE},
@@ -2978,9 +2963,9 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "CSR and Order with diff number of names",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:         &readyStatus,
+					Status:         string(core.StatusReady),
 					Names:          []string{"example.com", "example.org"},
-					RegistrationID: &fakeRegID,
+					RegistrationID: fakeRegID,
 				},
 				Csr: oneDomainCSR,
 			},
@@ -2990,9 +2975,9 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "CSR missing an order name",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:         &readyStatus,
+					Status:         string(core.StatusReady),
 					Names:          []string{"foobar.com"},
-					RegistrationID: &fakeRegID,
+					RegistrationID: fakeRegID,
 				},
 				Csr: oneDomainCSR,
 			},
@@ -3002,13 +2987,13 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "CSR with policy forbidden name",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:            &readyStatus,
+					Status:            string(core.StatusReady),
 					Names:             []string{"example.org"},
-					RegistrationID:    &Registration.ID,
+					RegistrationID:    Registration.ID,
 					Id:                emptyOrder.Id,
-					Expires:           &expUnix,
-					CertificateSerial: &emptyStr,
-					BeganProcessing:   &falseBool,
+					Expires:           exp.UnixNano(),
+					CertificateSerial: "",
+					BeganProcessing:   false,
 				},
 				Csr: policyForbidCSR,
 			},
@@ -3018,14 +3003,14 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order with missing registration",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:            &readyStatus,
+					Status:            string(core.StatusReady),
 					Names:             []string{"a.com", "a.org"},
 					Id:                fakeRegOrder.Id,
-					RegistrationID:    &fakeRegID,
-					Expires:           &expUnix,
-					CertificateSerial: &emptyStr,
-					BeganProcessing:   &falseBool,
-					Created:           &fakeCreated,
+					RegistrationID:    fakeRegID,
+					Expires:           exp.UnixNano(),
+					CertificateSerial: "",
+					BeganProcessing:   false,
+					Created:           ra.clk.Now().UnixNano(),
 				},
 				Csr: twoDomainCSR,
 			},
@@ -3035,14 +3020,14 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order with missing authorizations",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:            &readyStatus,
+					Status:            string(core.StatusReady),
 					Names:             []string{"a.com", "a.org", "b.com"},
 					Id:                missingAuthzOrder.Id,
-					RegistrationID:    &Registration.ID,
-					Expires:           &expUnix,
-					CertificateSerial: &emptyStr,
-					BeganProcessing:   &falseBool,
-					Created:           &fakeCreated,
+					RegistrationID:    Registration.ID,
+					Expires:           exp.UnixNano(),
+					CertificateSerial: "",
+					BeganProcessing:   false,
+					Created:           ra.clk.Now().UnixNano(),
 				},
 				Csr: threeDomainCSR,
 			},
@@ -3072,10 +3057,10 @@ func TestFinalizeOrder(t *testing.T) {
 				// Check that the order now has a serial for the issued certificate
 				updatedOrder, err := sa.GetOrder(
 					context.Background(),
-					&sapb.OrderRequest{Id: *tc.OrderReq.Order.Id})
+					&sapb.OrderRequest{Id: tc.OrderReq.Order.Id})
 				test.AssertNotError(t, err, "Error getting order to check serial")
-				test.AssertNotEquals(t, *updatedOrder.CertificateSerial, "")
-				test.AssertEquals(t, *updatedOrder.Status, "valid")
+				test.AssertNotEquals(t, updatedOrder.CertificateSerial, "")
+				test.AssertEquals(t, updatedOrder.Status, "valid")
 			}
 		})
 	}
@@ -3095,14 +3080,12 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, "valid")
 
 	// Create a new order to finalize with names in SAN and CN
-	expUnix := exp.UnixNano()
-	pendingStatus := "pending"
 	mixedOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
-		RegistrationID:   &Registration.ID,
-		Expires:          &expUnix,
+		RegistrationID:   Registration.ID,
+		Expires:          exp.UnixNano(),
 		Names:            []string{"not-example.com", "www.not-example.com"},
 		V2Authorizations: []int64{authzIDA, authzIDB},
-		Status:           &pendingStatus,
+		Status:           string(core.StatusPending),
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
 	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -3137,10 +3120,10 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 	// Check that the order now has a serial for the issued certificate
 	updatedOrder, err := sa.GetOrder(
 		context.Background(),
-		&sapb.OrderRequest{Id: *mixedOrder.Id})
+		&sapb.OrderRequest{Id: mixedOrder.Id})
 	test.AssertNotError(t, err, "Error getting order to check serial")
-	test.AssertNotEquals(t, *updatedOrder.CertificateSerial, "")
-	test.AssertEquals(t, *updatedOrder.Status, "valid")
+	test.AssertNotEquals(t, updatedOrder.CertificateSerial, "")
+	test.AssertEquals(t, updatedOrder.Status, "valid")
 }
 
 func TestFinalizeOrderWildcard(t *testing.T) {
@@ -3228,7 +3211,7 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 
 	// Refresh the order so the SA sets its status
 	validOrder, err = sa.GetOrder(ctx, &sapb.OrderRequest{
-		Id: *validOrder.Id,
+		Id: validOrder.Id,
 	})
 	test.AssertNotError(t, err, "Could not refresh valid order from SA")
 
@@ -3303,14 +3286,12 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	}
 
 	// Create a pending order for all of the names
-	expUnix := exp.Unix()
-	pendingStatus := "pending"
 	order, err := sa.NewOrder(context.Background(), &corepb.Order{
-		RegistrationID:   &Registration.ID,
-		Expires:          &expUnix,
+		RegistrationID:   Registration.ID,
+		Expires:          exp.UnixNano(),
 		Names:            names,
 		V2Authorizations: authzIDs,
-		Status:           &pendingStatus,
+		Status:           string(core.StatusPending),
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
 
@@ -3359,8 +3340,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	mockLog.Clear()
 
 	// Finalize the order with the CSR
-	status := string(core.StatusReady)
-	order.Status = &status
+	order.Status = string(core.StatusReady)
 	_, err = ra.FinalizeOrder(context.Background(), &rapb.FinalizeOrderRequest{
 		Order: order,
 		Csr:   csr,
@@ -3385,7 +3365,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	// The event requester should be the expected reg ID
 	test.AssertEquals(t, event.Requester, Registration.ID)
 	// The event order ID should be the expected order ID
-	test.AssertEquals(t, event.OrderID, *order.Id)
+	test.AssertEquals(t, event.OrderID, order.Id)
 	// The event serial number should be the expected serial number
 	test.AssertEquals(t, event.SerialNumber, core.SerialToString(template.SerialNumber))
 	// The event verified fields should be the expected value
@@ -3658,14 +3638,12 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 	}
 
 	// Create a pending order for all of the names
-	expUnix := exp.Unix()
-	pendingStatus := "pending"
 	order, err := sa.NewOrder(context.Background(), &corepb.Order{
-		RegistrationID:   &Registration.ID,
-		Expires:          &expUnix,
+		RegistrationID:   Registration.ID,
+		Expires:          exp.UnixNano(),
 		Names:            names,
 		V2Authorizations: authzIDs,
-		Status:           &pendingStatus,
+		Status:           string(core.StatusPending),
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
 
@@ -3736,7 +3714,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			// Mock the CA
 			ra.CA = tc.Mock
 			// Attempt issuance
-			_, err = ra.issueCertificateInner(ctx, req, accountID(Registration.ID), orderID(*order.Id), logEvent)
+			_, err = ra.issueCertificateInner(ctx, req, accountID(Registration.ID), orderID(order.Id), logEvent)
 			// We expect all of the testcases to fail because all use mocked CAs that deliberately error
 			test.AssertError(t, err, "issueCertificateInner with failing mock CA did not fail")
 			// If there is an expected `error` then match the error message

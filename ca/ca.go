@@ -714,17 +714,13 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	if err != nil {
 		return nil, err
 	}
-	serialString := core.SerialToString(precert.SerialNumber)
-	digest := core.Fingerprint256(certDER)
-	issued := precert.NotBefore.UnixNano()
-	expires := precert.NotAfter.UnixNano()
 	return &corepb.Certificate{
-		RegistrationID: &req.RegistrationID,
-		Serial:         &serialString,
+		RegistrationID: req.RegistrationID,
+		Serial:         core.SerialToString(precert.SerialNumber),
 		Der:            certDER,
-		Digest:         &digest,
-		Issued:         &issued,
-		Expires:        &expires,
+		Digest:         core.Fingerprint256(certDER),
+		Issued:         precert.NotBefore.UnixNano(),
+		Expires:        precert.NotAfter.UnixNano(),
 	}, nil
 }
 

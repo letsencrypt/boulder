@@ -209,7 +209,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewRegistration(ctx context.Conte
 }
 
 func (ras *RegistrationAuthorityServerWrapper) NewAuthorization(ctx context.Context, request *rapb.NewAuthorizationRequest) (*corepb.Authorization, error) {
-	if request == nil || request.Authz == nil || request.Authz.Identifier == nil || *request.Authz.Identifier == "" || request.RegID == 0 {
+	if request == nil || request.Authz.Identifier == "" || request.RegID == 0 {
 		return nil, errIncompleteRequest
 	}
 	authz, err := PBToAuthz(request.Authz)

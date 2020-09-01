@@ -254,22 +254,18 @@ func (ra *MockRegistrationAuthority) DeactivateRegistration(ctx context.Context,
 }
 
 func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
-	one := int64(1)
-	zero := int64(0)
-	status := string(core.StatusPending)
 	return &corepb.Order{
-		Id:               &one,
-		RegistrationID:   &req.RegistrationID,
-		Expires:          &zero,
+		Id:               1,
+		RegistrationID:   req.RegistrationID,
+		Expires:          0,
 		Names:            req.Names,
-		Status:           &status,
+		Status:           string(core.StatusPending),
 		V2Authorizations: []int64{1},
 	}, nil
 }
 
 func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
-	statusProcessing := string(core.StatusProcessing)
-	req.Order.Status = &statusProcessing
+	req.Order.Status = string(core.StatusProcessing)
 	return req.Order, nil
 }
 
@@ -3125,15 +3121,12 @@ func TestFinalizeSCTError(t *testing.T) {
 func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 	wfe, fc := setupWFE(t)
 
-	id := int64(1)
-	status := string(core.StatusPending)
-	expires := fc.Now().UnixNano()
 	orderJSON := wfe.orderToOrderJSON(&http.Request{}, &corepb.Order{
-		Id:               &id,
-		RegistrationID:   &id,
+		Id:               1,
+		RegistrationID:   1,
 		Names:            []string{"a"},
-		Status:           &status,
-		Expires:          &expires,
+		Status:           string(core.StatusPending),
+		Expires:          fc.Now().UnixNano(),
 		V2Authorizations: []int64{1, 2},
 	})
 	test.AssertDeepEquals(t, orderJSON.Authorizations, []string{

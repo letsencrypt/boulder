@@ -26,9 +26,9 @@ func TestProblemDetails(t *testing.T) {
 	pb, err = ProblemDetailsToPB(prob)
 	test.AssertNotError(t, err, "problemDetailToPB failed")
 	test.Assert(t, pb != nil, "return corepb.ProblemDetails is nill")
-	test.AssertDeepEquals(t, *pb.ProblemType, string(prob.Type))
-	test.AssertEquals(t, *pb.Detail, prob.Detail)
-	test.AssertEquals(t, int(*pb.HttpStatus), prob.HTTPStatus)
+	test.AssertDeepEquals(t, pb.ProblemType, string(prob.Type))
+	test.AssertEquals(t, pb.Detail, prob.Detail)
+	test.AssertEquals(t, int(pb.HttpStatus), prob.HTTPStatus)
 
 	recon, err := PBToProblemDetails(pb)
 	test.AssertNotError(t, err, "PBToProblemDetails failed")
@@ -40,11 +40,10 @@ func TestProblemDetails(t *testing.T) {
 	_, err = PBToProblemDetails(&corepb.ProblemDetails{})
 	test.AssertError(t, err, "PBToProblemDetails did not fail")
 	test.AssertEquals(t, err, ErrMissingParameters)
-	empty := ""
-	_, err = PBToProblemDetails(&corepb.ProblemDetails{ProblemType: &empty})
+	_, err = PBToProblemDetails(&corepb.ProblemDetails{ProblemType: ""})
 	test.AssertError(t, err, "PBToProblemDetails did not fail")
 	test.AssertEquals(t, err, ErrMissingParameters)
-	_, err = PBToProblemDetails(&corepb.ProblemDetails{Detail: &empty})
+	_, err = PBToProblemDetails(&corepb.ProblemDetails{Detail: ""})
 	test.AssertError(t, err, "PBToProblemDetails did not fail")
 	test.AssertEquals(t, err, ErrMissingParameters)
 }
@@ -239,11 +238,6 @@ func TestCert(t *testing.T) {
 }
 
 func TestOrderValid(t *testing.T) {
-	testID := int64(1)
-	testExpires := int64(1)
-	emptyString := ""
-	falseBool := false
-
 	testCases := []struct {
 		Name          string
 		Order         *corepb.Order
@@ -252,99 +246,80 @@ func TestOrderValid(t *testing.T) {
 		{
 			Name: "All valid",
 			Order: &corepb.Order{
-				Id:                &testID,
-				RegistrationID:    &testID,
-				Expires:           &testExpires,
-				CertificateSerial: &emptyString,
+				Id:                1,
+				RegistrationID:    1,
+				Expires:           1,
+				CertificateSerial: "",
 				V2Authorizations:  []int64{},
 				Names:             []string{"example.com"},
-				BeganProcessing:   &falseBool,
-				Created:           &testExpires,
+				BeganProcessing:   false,
+				Created:           1,
 			},
 			ExpectedValid: true,
 		},
 		{
-			Name: "Serial nil",
+			Name: "Serial empty",
 			Order: &corepb.Order{
-				Id:               &testID,
-				RegistrationID:   &testID,
-				Expires:          &testExpires,
+				Id:               1,
+				RegistrationID:   1,
+				Expires:          1,
 				V2Authorizations: []int64{},
 				Names:            []string{"example.com"},
-				BeganProcessing:  &falseBool,
-				Created:          &testExpires,
+				BeganProcessing:  false,
+				Created:          1,
 			},
 			ExpectedValid: true,
 		},
 		{
-			Name:  "All nil",
+			Name:  "All zero",
 			Order: &corepb.Order{},
 		},
 		{
-			Name: "ID nil",
+			Name: "ID 0",
 			Order: &corepb.Order{
-				RegistrationID:    &testID,
-				Expires:           &testExpires,
-				CertificateSerial: &emptyString,
+				Id:                0,
+				RegistrationID:    1,
+				Expires:           1,
+				CertificateSerial: "",
 				V2Authorizations:  []int64{},
 				Names:             []string{"example.com"},
-				BeganProcessing:   &falseBool,
+				BeganProcessing:   false,
 			},
 		},
 		{
-			Name: "Reg ID nil",
+			Name: "Reg ID zero",
 			Order: &corepb.Order{
-				Id:                &testID,
-				Expires:           &testExpires,
-				CertificateSerial: &emptyString,
+				Id:                1,
+				RegistrationID:    0,
+				Expires:           1,
+				CertificateSerial: "",
 				V2Authorizations:  []int64{},
 				Names:             []string{"example.com"},
-				BeganProcessing:   &falseBool,
+				BeganProcessing:   false,
 			},
 		},
 		{
-			Name: "Expires nil",
+			Name: "Expires 0",
 			Order: &corepb.Order{
-				Id:                &testID,
-				RegistrationID:    &testID,
-				CertificateSerial: &emptyString,
+				Id:                1,
+				RegistrationID:    1,
+				Expires:           0,
+				CertificateSerial: "",
 				V2Authorizations:  []int64{},
 				Names:             []string{"example.com"},
-				BeganProcessing:   &falseBool,
+				BeganProcessing:   false,
 			},
 		},
 		{
-			Name: "Authorizations nil",
+			Name: "Names empty",
 			Order: &corepb.Order{
-				Id:                &testID,
-				RegistrationID:    &testID,
-				Expires:           &testExpires,
-				CertificateSerial: &emptyString,
-				Names:             []string{"example.com"},
-				BeganProcessing:   &falseBool,
-			},
-		},
-		{
-			Name: "BeganProcessing nil",
-			Order: &corepb.Order{
-				Id:                &testID,
-				RegistrationID:    &testID,
-				Expires:           &testExpires,
-				CertificateSerial: &emptyString,
-				Names:             []string{"example.com"},
+				Id:                1,
+				RegistrationID:    1,
+				Expires:           1,
+				CertificateSerial: "",
 				V2Authorizations:  []int64{},
-			},
-		},
-		{
-			Name: "Names nil",
-			Order: &corepb.Order{
-				Id:                &testID,
-				RegistrationID:    &testID,
-				Expires:           &testExpires,
-				CertificateSerial: &emptyString,
-				V2Authorizations:  []int64{},
-				Names:             []string{"example.com"},
-				BeganProcessing:   &falseBool,
+				Names:             []string{},
+				BeganProcessing:   false,
 			},
 		},
 	}
