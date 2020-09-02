@@ -287,9 +287,7 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		cert.IsCA = false
 	case crlCert:
 		cert.IsCA = false
-	case requestCert:
-		fallthrough
-	case intermediateCert:
+	case requestCert, intermediateCert:
 		// id-kp-serverAuth and id-kp-clientAuth are included in intermediate
 		// certificates in order to technically constrain them. id-kp-serverAuth
 		// is required by 7.1.2.2.g of the CABF Baseline Requirements, but
