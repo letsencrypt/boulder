@@ -34,52 +34,6 @@ func TestECPub(t *testing.T) {
 	test.AssertError(t, err, "ecPub didn't fail with non-matching curve")
 }
 
-func TestECVerify(t *testing.T) {
-	s, ctx := pkcs11helpers.NewSessionWithMock()
-	// test GenerateRandom failing
-	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
-		return nil, errors.New("yup")
-	}
-	err := ecVerify(s, 0, nil)
-	test.AssertError(t, err, "ecVerify didn't fail on GenerateRandom error")
-
-	// test SignInit failing
-	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
-		return []byte{1, 2, 3, 4}, nil
-	}
-	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
-		return errors.New("yup")
-	}
-	err = ecVerify(s, 0, &ecdsa.PublicKey{Curve: elliptic.P256()})
-	test.AssertError(t, err, "ecVerify didn't fail on SignInit error")
-
-	// test Sign failing
-	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
-		return nil
-	}
-	ctx.SignFunc = func(pkcs11.SessionHandle, []byte) ([]byte, error) {
-		return nil, errors.New("yup")
-	}
-	err = ecVerify(s, 0, &ecdsa.PublicKey{Curve: elliptic.P256()})
-	test.AssertError(t, err, "ecVerify didn't fail on Sign error")
-
-	// test signature verification failing
-	ctx.SignFunc = func(pkcs11.SessionHandle, []byte) ([]byte, error) {
-		return []byte{1, 2, 3}, nil
-	}
-	tk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
-	err = ecVerify(s, 0, &tk.PublicKey)
-	test.AssertError(t, err, "ecVerify didn't fail on signature verification error")
-
-	// test we don't fail with valid signature
-	ctx.SignFunc = func(_ pkcs11.SessionHandle, msg []byte) ([]byte, error) {
-		return ecPKCS11Sign(tk, msg)
-	}
-	err = ecVerify(s, 0, &tk.PublicKey)
-	test.AssertNotError(t, err, "ecVerify failed with a valid signature")
-}
-
 func TestECGenerate(t *testing.T) {
 	ctx := pkcs11helpers.MockCtx{}
 	s := &pkcs11helpers.Session{Module: &ctx, Session: 0}

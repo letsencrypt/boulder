@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math/big"
 
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/miekg/pkcs11"
@@ -92,35 +91,6 @@ func ecPub(
 	return pubKey, nil
 }
 
-// ecVerify verifies that the extracted public key corresponds with the generated
-// private key on the device, specified by the provided object handle, by signing
-// a nonce generated on the device and verifying the returned signature using the
-// public key.
-func ecVerify(session *pkcs11helpers.Session, object pkcs11.ObjectHandle, pub *ecdsa.PublicKey) error {
-	nonce := make([]byte, 4)
-	_, err := newRandReader(session).Read(nonce)
-	if err != nil {
-		return fmt.Errorf("failed to construct nonce: %s", err)
-	}
-	log.Printf("\tConstructed nonce: %d (%X)\n", big.NewInt(0).SetBytes(nonce), nonce)
-	hashFunc := curveToHash[pub.Curve].New()
-	hashFunc.Write(nonce)
-	digest := hashFunc.Sum(nil)
-	log.Printf("\tMessage %s hash: %X\n", hashToString[curveToHash[pub.Curve]], digest)
-	signature, err := session.Sign(object, pkcs11helpers.ECDSAKey, digest, curveToHash[pub.Curve])
-	if err != nil {
-		return err
-	}
-	log.Printf("\tMessage signature: %X\n", signature)
-	r := big.NewInt(0).SetBytes(signature[:len(signature)/2])
-	s := big.NewInt(0).SetBytes(signature[len(signature)/2:])
-	if !ecdsa.Verify(pub, digest[:], r, s) {
-		return errors.New("failed to verify ECDSA signature over test data")
-	}
-	log.Println("\tSignature verified")
-	return nil
-}
-
 // ecGenerate is used to generate and verify a ECDSA key pair of the type
 // specified by curveStr and with the provided label. It returns the public
 // part of the generated key pair as a ecdsa.PublicKey and the random key ID
@@ -137,7 +107,7 @@ func ecGenerate(session *pkcs11helpers.Session, label, curveStr string) (*ecdsa.
 	}
 	log.Printf("Generating ECDSA key with curve %s and ID %x\n", curveStr, keyID)
 	args := ecArgs(label, curve, keyID)
-	pub, priv, err := session.GenerateKeyPair(args.mechanism, args.publicAttrs, args.privateAttrs)
+	pub, _, err := session.GenerateKeyPair(args.mechanism, args.publicAttrs, args.privateAttrs)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -148,11 +118,5 @@ func ecGenerate(session *pkcs11helpers.Session, label, curveStr string) (*ecdsa.
 		return nil, nil, err
 	}
 	log.Println("Extracted public key")
-	log.Println("Verifying public key")
-	err = ecVerify(session, priv, pk)
-	if err != nil {
-		return nil, nil, err
-	}
-	log.Println("Key verified")
 	return pk, keyID, nil
 }
