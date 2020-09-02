@@ -32,7 +32,7 @@ These modes are set in the `ceremony-type` field of the configuration file.
     | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
     | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
     | `store-key-in-slot` | Specifies which HSM object slot the generated signing key should be stored in. |
-    | `store-key-with-label` | Specifies the HSM object label for the generated signing key. |
+    | `store-key-with-label` | Specifies the HSM object label for the generated signing key. Both public and private key objects are stored with this label. |
 - `key`: object containing key generation related fields.
     | Field | Description |
     | --- | --- |
@@ -83,7 +83,7 @@ This config generates a ECDSA P-384 key in the HSM with the object label `root s
     | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
     | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
     | `signing-key-slot` | Specifies which HSM object slot the signing key is in. |
-    | `signing-key-label` | Specifies the HSM object label for the signing key. |
+    | `signing-key-label` | Specifies the HSM object label for the signing keypair's public key. |
 - `inputs`: object containing paths for inputs
     | Field | Description |
     | --- | --- |
@@ -141,7 +141,7 @@ Note: Intermediate certificates always include the extended key usages id-kp-ser
     | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
     | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
     | `signing-key-slot` | Specifies which HSM object slot the signing key is in. |
-    | `signing-key-label` | Specifies the HSM object label for the signing key. |
+    | `signing-key-label` | Specifies the HSM object label for the signing keypair's public key. |
 - `inputs`: object containing paths for inputs
     | Field | Description |
     | --- | --- |
@@ -192,7 +192,7 @@ This config generates a CSR signed by a key in the HSM, identified by the object
     | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
     | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
     | `signing-key-slot` | Specifies which HSM object slot the signing key is in. |
-    | `signing-key-label` | Specifies the HSM object label for the signing key. |
+    | `signing-key-label` | Specifies the HSM object label for the signing keypair's public key. |
 - `inputs`: object containing paths for inputs
     | Field | Description |
     | --- | --- |
@@ -240,7 +240,7 @@ This config generates a delegated OCSP signing certificate signed by a key in th
     | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
     | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
     | `signing-key-slot` | Specifies which HSM object slot the signing key is in. |
-    | `signing-key-label` | Specifies the HSM object label for the signing key. |
+    | `signing-key-label` | Specifies the HSM object label for the signing keypair's public key. |
 - `inputs`: object containing paths for inputs
     | Field | Description |
     | --- | --- |
@@ -288,7 +288,7 @@ This config generates a delegated CRL signing certificate signed by a key in the
     | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
     | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
     | `store-key-in-slot` | Specifies which HSM object slot the generated signing key should be stored in. |
-    | `store-key-with-label` | Specifies the HSM object label for the generated signing key. |
+    | `store-key-with-label` | Specifies the HSM object label for the generated signing key. Both public and private key objects are stored with this label. |
 - `key`: object containing key generation related fields.
     | Field | Description |
     | --- | --- |
@@ -326,7 +326,7 @@ This config generates an ECDSA P-384 key in the HSM with the object label `inter
     | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
     | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
     | `signing-key-slot` | Specifies which HSM object slot the signing key is in. |
-    | `signing-key-label` | Specifies the HSM object label for the signing key. |
+    | `signing-key-label` | Specifies the HSM object label for the signing keypair's public key. |
 - `inputs`: object containing paths for inputs
     | Field | Description |
     | --- | --- |
@@ -374,7 +374,7 @@ This config generates a OCSP response signed by a key in the HSM, identified by 
     | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
     | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
     | `signing-key-slot` | Specifies which HSM object slot the signing key is in. |
-    | `signing-key-label` | Specifies the HSM object label for the signing key. |
+    | `signing-key-label` | Specifies the HSM object label for the signing keypair's public key. |
 - `inputs`: object containing paths for inputs
     | Field | Description |
     | --- | --- |
