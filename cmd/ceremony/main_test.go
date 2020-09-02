@@ -393,6 +393,111 @@ func TestIntermediateConfigValidate(t *testing.T) {
 	}
 }
 
+func TestCSRConfigValidate(t *testing.T) {
+	cases := []struct {
+		name          string
+		config        csrConfig
+		expectedError string
+	}{
+		{
+			name:          "no pkcs11.module",
+			config:        csrConfig{},
+			expectedError: "pkcs11.module is required",
+		},
+		{
+			name: "no pkcs11.signing-key-label",
+			config: csrConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module: "module",
+				},
+			},
+			expectedError: "pkcs11.signing-key-label is required",
+		},
+		{
+			name: "no inputs.public-key-path",
+			config: csrConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+			},
+			expectedError: "inputs.public-key-path is required",
+		},
+		{
+			name: "no outputs.csr-path",
+			config: csrConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath string `yaml:"public-key-path"`
+				}{
+					PublicKeyPath: "path",
+				},
+			},
+			expectedError: "outputs.csr-path is required",
+		},
+		{
+			name: "bad certificate-profile",
+			config: csrConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath string `yaml:"public-key-path"`
+				}{
+					PublicKeyPath: "path",
+				},
+				Outputs: struct {
+					CSRPath string `yaml:"csr-path"`
+				}{
+					CSRPath: "path",
+				},
+			},
+			expectedError: "common-name is required",
+		},
+		{
+			name: "good config",
+			config: csrConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath string `yaml:"public-key-path"`
+				}{
+					PublicKeyPath: "path",
+				},
+				Outputs: struct {
+					CSRPath string `yaml:"csr-path"`
+				}{
+					CSRPath: "path",
+				},
+				CertProfile: certProfile{
+					CommonName:   "d",
+					Organization: "e",
+					Country:      "f",
+					OCSPURL:      "g",
+					CRLURL:       "h",
+					IssuerURL:    "i",
+				},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.config.validate()
+			if err != nil && err.Error() != tc.expectedError {
+				t.Fatalf("Unexpected error, wanted: %q, got: %q", tc.expectedError, err)
+			} else if err == nil && tc.expectedError != "" {
+				t.Fatalf("validate didn't fail, wanted: %q", err)
+			}
+		})
+	}
+}
+
 func TestKeyConfigValidate(t *testing.T) {
 	cases := []struct {
 		name          string

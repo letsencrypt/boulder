@@ -10,6 +10,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -188,6 +189,41 @@ func (ic intermediateConfig) validate(ct certType) error {
 	return nil
 }
 
+type csrConfig struct {
+	CeremonyType string              `yaml:"ceremony-type"`
+	PKCS11       PKCS11SigningConfig `yaml:"pkcs11"`
+	Inputs       struct {
+		PublicKeyPath string `yaml:"public-key-path"`
+	} `yaml:"inputs"`
+	Outputs struct {
+		CSRPath string `yaml:"csr-path"`
+	} `yaml:"outputs"`
+	CertProfile certProfile `yaml:"certificate-profile"`
+}
+
+func (cc csrConfig) validate() error {
+	if err := cc.PKCS11.validate(); err != nil {
+		return err
+	}
+
+	// Input fields
+	if cc.Inputs.PublicKeyPath == "" {
+		return errors.New("inputs.public-key-path is required")
+	}
+
+	// Output fields
+	if err := checkOutputFile(cc.Outputs.CSRPath, "csr-path"); err != nil {
+		return err
+	}
+
+	// Certificate profile
+	if err := cc.CertProfile.verifyProfile(requestCert); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 type keyConfig struct {
 	CeremonyType string             `yaml:"ceremony-type"`
 	PKCS11       PKCS11KeyGenConfig `yaml:"pkcs11"`
@@ -353,18 +389,18 @@ func equalPubKeys(a, b interface{}) bool {
 	return bytes.Equal(aBytes, bBytes)
 }
 
-func openSigner(cfg PKCS11SigningConfig, issuer *x509.Certificate) (crypto.Signer, *hsmRandReader, error) {
+func openSigner(cfg PKCS11SigningConfig, pubKey crypto.PublicKey) (crypto.Signer, *hsmRandReader, error) {
 	session, err := pkcs11helpers.Initialize(cfg.Module, cfg.SigningSlot, cfg.PIN)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s",
 			cfg.SigningSlot, err)
 	}
 	log.Printf("Opened PKCS#11 session for slot %d\n", cfg.SigningSlot)
-	signer, err := session.NewSigner(cfg.SigningLabel, issuer.PublicKey)
+	signer, err := session.NewSigner(cfg.SigningLabel, pubKey)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to retrieve private key handle: %s", err)
 	}
-	if !equalPubKeys(signer.Public(), issuer.PublicKey) {
+	if !equalPubKeys(signer.Public(), pubKey) {
 		return nil, nil, fmt.Errorf("signer pubkey did not match issuer pubkey")
 	}
 	log.Println("Retrieved private key handle")
@@ -470,7 +506,7 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
 	}
 
-	signer, randReader, err := openSigner(config.PKCS11, issuer)
+	signer, randReader, err := openSigner(config.PKCS11, issuer.PublicKey)
 	if err != nil {
 		return err
 	}
@@ -485,6 +521,64 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 	if err != nil {
 		return err
 	}
+
+	return nil
+}
+
+// csrSelfSigner is a crypto.Signer that returns an empty signature. When generating a CSR we first
+// generate a self-signed certificate so that we can get extension generation for free. Instead of
+// creating a throwaway key to sign that certificate we just use a signer that returns an empty
+// signature, since x509.CreateCertificate doesn't really care about the actual contents of the
+// signature itself.
+type csrSelfSigner struct {
+	pub crypto.PublicKey
+}
+
+func (css *csrSelfSigner) Sign(_ io.Reader, _ []byte, _ crypto.SignerOpts) ([]byte, error) {
+	return []byte{}, nil
+}
+
+func (css *csrSelfSigner) Public() crypto.PublicKey {
+	return css.pub
+}
+
+func csrCeremony(configBytes []byte) error {
+	var config csrConfig
+	err := yaml.UnmarshalStrict(configBytes, &config)
+	if err != nil {
+		return fmt.Errorf("failed to parse config: %s", err)
+	}
+	if err := config.validate(); err != nil {
+		return fmt.Errorf("failed to validate config: %s", err)
+	}
+
+	pubPEMBytes, err := ioutil.ReadFile(config.Inputs.PublicKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read public key %q: %s", config.Inputs.PublicKeyPath, err)
+	}
+	pubPEM, _ := pem.Decode(pubPEMBytes)
+	if pubPEM == nil {
+		return fmt.Errorf("failed to parse public key")
+	}
+	pub, err := x509.ParsePKIXPublicKey(pubPEM.Bytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse public key: %s", err)
+	}
+
+	signer, randReader, err := openSigner(config.PKCS11, pub)
+	if err != nil {
+		return err
+	}
+
+	csrDER, err := generateCSR(&config.CertProfile, randReader, pubPEM.Bytes, pub, signer)
+	if err != nil {
+		return fmt.Errorf("failed to generate CSR: %s", err)
+	}
+	csrPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER})
+	if err := writeFile(config.Outputs.CSRPath, csrPEM); err != nil {
+		return fmt.Errorf("failed to write CSR to %q: %s", config.Outputs.CSRPath, err)
+	}
+	log.Printf("CSR written to %q\n", config.Outputs.CSRPath)
 
 	return nil
 }
@@ -536,12 +630,12 @@ func ocspRespCeremony(configBytes []byte) error {
 			return fmt.Errorf("failed to load delegated issuer certificate %q: %s", config.Inputs.DelegatedIssuerCertificatePath, err)
 		}
 
-		signer, _, err = openSigner(config.PKCS11, delegatedIssuer)
+		signer, _, err = openSigner(config.PKCS11, delegatedIssuer.PublicKey)
 		if err != nil {
 			return err
 		}
 	} else {
-		signer, _, err = openSigner(config.PKCS11, issuer)
+		signer, _, err = openSigner(config.PKCS11, issuer.PublicKey)
 		if err != nil {
 			return err
 		}
@@ -592,7 +686,7 @@ func crlCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
 	}
-	signer, _, err := openSigner(config.PKCS11, issuer)
+	signer, _, err := openSigner(config.PKCS11, issuer.PublicKey)
 	if err != nil {
 		return err
 	}
@@ -679,6 +773,11 @@ func main() {
 		err = intermediateCeremony(configBytes, intermediateCert)
 		if err != nil {
 			log.Fatalf("intermediate ceremony failed: %s", err)
+		}
+	case "cross-csr":
+		err = csrCeremony(configBytes)
+		if err != nil {
+			log.Fatalf("cross-csr ceremony failed: %s", err)
 		}
 	case "ocsp-signer":
 		err = intermediateCeremony(configBytes, ocspCert)

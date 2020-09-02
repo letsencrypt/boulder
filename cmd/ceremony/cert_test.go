@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/hex"
 	"errors"
@@ -45,6 +47,7 @@ func TestMakeTemplate(t *testing.T) {
 	profile := &certProfile{}
 	randReader := newRandReader(s)
 	pubKey := samplePubkey()
+	ctx.GenerateRandomFunc = realRand
 
 	profile.NotBefore = "1234"
 	_, err := makeTemplate(randReader, profile, pubKey, rootCert)
@@ -407,6 +410,27 @@ func TestVerifyProfile(t *testing.T) {
 			},
 			certType: crlCert,
 		},
+		{
+			profile: certProfile{
+				NotBefore: "a",
+			},
+			certType:    requestCert,
+			expectedErr: "not-before cannot be set for a CSR",
+		},
+		{
+			profile: certProfile{
+				NotAfter: "a",
+			},
+			certType:    requestCert,
+			expectedErr: "not-after cannot be set for a CSR",
+		},
+		{
+			profile: certProfile{
+				SignatureAlgorithm: "a",
+			},
+			certType:    requestCert,
+			expectedErr: "signature-algorithm cannot be set for a CSR",
+		},
 	} {
 		err := tc.profile.verifyProfile(tc.certType)
 		if err != nil {
@@ -417,4 +441,58 @@ func TestVerifyProfile(t *testing.T) {
 			t.Fatalf("verifyProfile didn't fail, expected %q", tc.expectedErr)
 		}
 	}
+}
+
+func TestGenerateCSR(t *testing.T) {
+	s, ctx := pkcs11helpers.NewSessionWithMock()
+	randReader := newRandReader(s)
+	pubKeyBytes := samplePubkey()
+	pubKey, err := x509.ParsePKIXPublicKey(pubKeyBytes)
+	test.AssertNotError(t, err, "failed to parse test key")
+	profile := &certProfile{
+		CommonName:   "common name",
+		Organization: "organization",
+		Country:      "country",
+		KeyUsages:    []string{"Digital Signature", "CRL Sign"},
+		OCSPURL:      "ocsp",
+		CRLURL:       "crl",
+		IssuerURL:    "issuer",
+		Policies: []policyInfoConfig{
+			{
+				OID:    "1.2.3",
+				CPSURI: "hello",
+			},
+			{
+				OID: "1.2.3.4",
+			},
+		},
+	}
+	ctx.GenerateRandomFunc = realRand
+
+	signer, err := rsa.GenerateKey(rand.Reader, 1024)
+	test.AssertNotError(t, err, "failed to generate test key")
+
+	csrBytes, err := generateCSR(profile, randReader, pubKeyBytes, pubKey, &wrappedSigner{signer})
+	test.AssertNotError(t, err, "failed to generate CSR")
+
+	csr, err := x509.ParseCertificateRequest(csrBytes)
+	test.AssertNotError(t, err, "failed to parse CSR")
+	test.AssertNotError(t, csr.CheckSignature(), "CSR signature check failed")
+	test.AssertEquals(t, len(csr.Extensions), 7)
+
+	containsExt := func(oid asn1.ObjectIdentifier, extensions []pkix.Extension) bool {
+		for _, ext := range extensions {
+			if ext.Id.Equal(oid) {
+				return true
+			}
+		}
+		return false
+	}
+	test.Assert(t, containsExt(asn1.ObjectIdentifier{2, 5, 29, 15}, csr.Extensions), "CSR doesn't contain keyUsage extension")
+	test.Assert(t, containsExt(asn1.ObjectIdentifier{2, 5, 29, 37}, csr.Extensions), "CSR doesn't contain extKeyUsage extension")
+	test.Assert(t, containsExt(asn1.ObjectIdentifier{2, 5, 29, 19}, csr.Extensions), "CSR doesn't contain basicConstraints extension")
+	test.Assert(t, containsExt(asn1.ObjectIdentifier{2, 5, 29, 14}, csr.Extensions), "CSR doesn't contain subjectKeyIdentifier extension")
+	test.Assert(t, containsExt(asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 1}, csr.Extensions), "CSR doesn't contain authorityInfoAccess extension")
+	test.Assert(t, containsExt(asn1.ObjectIdentifier{2, 5, 29, 31}, csr.Extensions), "CSR doesn't contain cRLDistributionPoints extension")
+	test.Assert(t, containsExt(asn1.ObjectIdentifier{2, 5, 29, 32}, csr.Extensions), "CSR doesn't contain certificatePolicies extension")
 }

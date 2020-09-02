@@ -9,6 +9,7 @@ ceremony --config path/to/config.yml
 `ceremony` has these modes:
 * `root` - generates a signing key on HSM and creates a self-signed root certificate that uses the generated key, outputting a PEM public key, and a PEM certificate
 * `intermediate` - creates a intermediate certificate and signs it using a signing key already on a HSM, outputting a PEM certificate
+* `cross-csr` - creates a CSR for signing by a third party, outputting a PEM CSR.
 * `cross-certificate` - issues a certificate for one root, signed by another root. This is distinct from an intermediate because there is no path length constraint and there are no EKUs.
 * `ocsp-signer` - creates a delegated OCSP signing certificate and signs it using a signing key already on a HSM, outputting a PEM certificate
 * `crl-signer` - creates a delegated CRL signing certificate and signs it using a signing key already on a HSM, outputting a PEM certificate
@@ -130,6 +131,57 @@ certificate-profile:
 This config generates an intermediate certificate signed by a key in the HSM, identified by the object label `root signing key` and the object ID `ffff`. The subject key used is taken from `/home/user/intermediate-signing-pub.pem` and the issuer is `/home/user/root-cert.pem`, the resulting certificate is written to `/home/user/intermediate-cert.pem`.
 
 Note: Intermediate certificates always include the extended key usages id-kp-serverAuth as required by 7.1.2.2.g of the CABF Baseline Requirements. Since we also include id-kp-clientAuth in end-entity certificates in boulder we also include it in intermediates, if this changes we may remove this inclusion.
+
+### Cross-CSR ceremony
+
+- `ceremony-type`: string describing the ceremony type, `cross-csr`.
+- `pkcs11`: object containing PKCS#11 related fields.
+    | Field | Description |
+    | --- | --- |
+    | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
+    | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
+    | `signing-key-slot` | Specifies which HSM object slot the signing key is in. |
+    | `signing-key-label` | Specifies the HSM object label for the signing key. |
+- `inputs`: object containing paths for inputs
+    | Field | Description |
+    | --- | --- |
+    | `public-key-path` | Path to PEM subject public key for certificate. |
+- `outputs`: object containing paths to write outputs.
+    | Field | Description |
+    | --- | --- |
+    | `csr-path` | Path to store PEM CSR for cross-signing, optional. |
+- `certificate-profile`: object containing profile for certificate to generate. Fields are documented [below](#Certificate-profile-format). Cannot include the `signature-algorithm`, `not-before`, and `not-after` fields.
+
+Example:
+
+```yaml
+ceremony-type: cross-csr
+pkcs11:
+    module: /usr/lib/opensc-pkcs11.so
+    signing-key-slot: 0
+    signing-key-label: intermediate signing key
+inputs:
+    public-key-path: /home/user/intermediate-signing-pub.pem
+outputs:
+    csr-path: /home/user/csr.pem
+certificate-profile:
+    common-name: CA root
+    organization: good guys
+    country: US
+    ocsp-url: http://good-guys.com/ocsp
+    crl-url:  http://good-guys.com/crl
+    issuer-url:  http://good-guys.com/root
+    policies:
+        - oid: 1.2.3
+        - oid: 4.5.6
+          cps-uri: "http://example.com/cps"
+    key-usages:
+        - Digital Signature
+        - Cert Sign
+        - CRL Sign
+```
+
+This config generates a CSR signed by a key in the HSM, identified by the object label `intermediate signing key`, and writes it to `/home/user/csr.pem`.
 
 ### OCSP Signing Certificate ceremony
 

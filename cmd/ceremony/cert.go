@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto"
+	"crypto/rand"
 	"crypto/sha1"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -82,17 +84,30 @@ const (
 	ocspCert
 	crlCert
 	crossCert
+	requestCert
 )
 
 func (profile *certProfile) verifyProfile(ct certType) error {
-	if profile.NotBefore == "" {
-		return errors.New("not-before is required")
-	}
-	if profile.NotAfter == "" {
-		return errors.New("not-after is required")
-	}
-	if profile.SignatureAlgorithm == "" {
-		return errors.New("signature-algorithm is required")
+	if ct != requestCert {
+		if profile.NotBefore == "" {
+			return errors.New("not-before is required")
+		}
+		if profile.NotAfter == "" {
+			return errors.New("not-after is required")
+		}
+		if profile.SignatureAlgorithm == "" {
+			return errors.New("signature-algorithm is required")
+		}
+	} else {
+		if profile.NotBefore != "" {
+			return errors.New("not-before cannot be set for a CSR")
+		}
+		if profile.NotAfter != "" {
+			return errors.New("not-after cannot be set for a CSR")
+		}
+		if profile.SignatureAlgorithm != "" {
+			return errors.New("signature-algorithm cannot be set for a CSR")
+		}
 	}
 	if profile.CommonName == "" {
 		return errors.New("common-name is required")
@@ -104,7 +119,7 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 		return errors.New("country is required")
 	}
 
-	if ct == intermediateCert {
+	if ct == intermediateCert || ct == requestCert {
 		if profile.CRLURL == "" {
 			return errors.New("crl-url is required for intermediates")
 		}
@@ -187,15 +202,6 @@ func generateSKID(pk []byte) ([]byte, error) {
 
 // makeTemplate generates the certificate template for use in x509.CreateCertificate
 func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct certType) (*x509.Certificate, error) {
-	notBefore, err := time.Parse(configDateLayout, profile.NotBefore)
-	if err != nil {
-		return nil, err
-	}
-	notAfter, err := time.Parse(configDateLayout, profile.NotAfter)
-	if err != nil {
-		return nil, err
-	}
-
 	var ocspServer []string
 	if profile.OCSPURL != "" {
 		ocspServer = []string{profile.OCSPURL}
@@ -207,11 +213,6 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 	var issuingCertificateURL []string
 	if profile.IssuerURL != "" {
 		issuingCertificateURL = []string{profile.IssuerURL}
-	}
-
-	sigAlg, ok := AllowedSigAlgs[profile.SignatureAlgorithm]
-	if !ok {
-		return nil, fmt.Errorf("unsupported signature algorithm %q", profile.SignatureAlgorithm)
 	}
 
 	subjectKeyID, err := generateSKID(pubKey)
@@ -243,7 +244,6 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 	}
 
 	cert := &x509.Certificate{
-		SignatureAlgorithm:    sigAlg,
 		SerialNumber:          big.NewInt(0).SetBytes(serial),
 		BasicConstraintsValid: true,
 		IsCA:                  true,
@@ -252,13 +252,29 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 			Organization: []string{profile.Organization},
 			Country:      []string{profile.Country},
 		},
-		NotBefore:             notBefore,
-		NotAfter:              notAfter,
 		OCSPServer:            ocspServer,
 		CRLDistributionPoints: crlDistributionPoints,
 		IssuingCertificateURL: issuingCertificateURL,
 		KeyUsage:              ku,
 		SubjectKeyId:          subjectKeyID,
+	}
+
+	if ct != requestCert {
+		sigAlg, ok := AllowedSigAlgs[profile.SignatureAlgorithm]
+		if !ok {
+			return nil, fmt.Errorf("unsupported signature algorithm %q", profile.SignatureAlgorithm)
+		}
+		cert.SignatureAlgorithm = sigAlg
+		notBefore, err := time.Parse(configDateLayout, profile.NotBefore)
+		if err != nil {
+			return nil, err
+		}
+		cert.NotBefore = notBefore
+		notAfter, err := time.Parse(configDateLayout, profile.NotAfter)
+		if err != nil {
+			return nil, err
+		}
+		cert.NotAfter = notAfter
 	}
 
 	switch ct {
@@ -271,6 +287,8 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		cert.IsCA = false
 	case crlCert:
 		cert.IsCA = false
+	case requestCert:
+		fallthrough
 	case intermediateCert:
 		// id-kp-serverAuth and id-kp-clientAuth are included in intermediate
 		// certificates in order to technically constrain them. id-kp-serverAuth
@@ -302,4 +320,34 @@ type failReader struct{}
 
 func (fr *failReader) Read([]byte) (int, error) {
 	return 0, errors.New("Empty reader used by x509.CreateCertificate")
+}
+
+func generateCSR(profile *certProfile, randReader *hsmRandReader, pubBytes []byte, pub crypto.PublicKey, signer crypto.Signer) ([]byte, error) {
+	// currently Go doesn't support all of the convenience fields for x509.CertificateRequest
+	// that x509.Certificate has. Instead of doing all of the manual extension construction
+	// ourselves here we just create a throwaway self-signed certificate and then dump all
+	// of the generated extensions into a x509.CertificateRequest. In the future Go should
+	// support doing this properly itself, but for now this is the easiest approach.
+	template, err := makeTemplate(randReader, profile, pubBytes, requestCert)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create certificate template: %s", err)
+	}
+	selfSignedDER, err := x509.CreateCertificate(rand.Reader, template, template, pub, &csrSelfSigner{pub})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create certificate for CSR: %s", err)
+	}
+	selfSigned, err := x509.ParseCertificate(selfSignedDER)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse certificate template for CSR: %s", err)
+	}
+
+	csrDER, err := x509.CreateCertificateRequest(&failReader{}, &x509.CertificateRequest{
+		Subject:         selfSigned.Subject,
+		ExtraExtensions: selfSigned.Extensions,
+	}, signer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create and sign CSR: %s", err)
+	}
+
+	return csrDER, nil
 }
