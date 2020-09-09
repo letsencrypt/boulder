@@ -617,6 +617,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 				RegID:    regID,
 				OCSPResp: ocspResp.Response,
 				Precert:  true,
+				IssuerID: idForIssuer(issuer.cert),
 			})
 		}
 		return nil, err
@@ -710,7 +711,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] csr=[%s] certificate=[%s]",
 		serialHex, strings.Join(precert.DNSNames, ", "), hex.EncodeToString(req.DER),
 		hex.EncodeToString(certDER))
-	err = ca.storeCertificate(ctx, req.RegistrationID, req.OrderID, precert.SerialNumber, certDER)
+	err = ca.storeCertificate(ctx, req.RegistrationID, req.OrderID, precert.SerialNumber, certDER, idForIssuer(issuer.cert))
 	if err != nil {
 		return nil, err
 	}
@@ -895,7 +896,8 @@ func (ca *CertificateAuthorityImpl) storeCertificate(
 	regID int64,
 	orderID int64,
 	serialBigInt *big.Int,
-	certDER []byte) error {
+	certDER []byte,
+	issuerID int64) error {
 	var err error
 	now := ca.clk.Now()
 	_, err = ca.sa.AddCertificate(ctx, certDER, regID, nil, &now)
@@ -908,8 +910,9 @@ func (ca *CertificateAuthorityImpl) storeCertificate(
 			core.SerialToString(serialBigInt), hex.EncodeToString(certDER), err, regID, orderID)
 		if ca.orphanQueue != nil {
 			ca.queueOrphan(&orphanedCert{
-				DER:   certDER,
-				RegID: regID,
+				DER:      certDER,
+				RegID:    regID,
+				IssuerID: issuerID,
 			})
 		}
 		return err
@@ -922,6 +925,7 @@ type orphanedCert struct {
 	OCSPResp []byte
 	RegID    int64
 	Precert  bool
+	IssuerID int64
 }
 
 func (ca *CertificateAuthorityImpl) queueOrphan(o *orphanedCert) {
@@ -974,10 +978,11 @@ func (ca *CertificateAuthorityImpl) integrateOrphan() error {
 	if orphan.Precert {
 		issuedNanos := issued.UnixNano()
 		_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
-			Der:    orphan.DER,
-			RegID:  orphan.RegID,
-			Ocsp:   orphan.OCSPResp,
-			Issued: issuedNanos,
+			Der:      orphan.DER,
+			RegID:    orphan.RegID,
+			Ocsp:     orphan.OCSPResp,
+			Issued:   issuedNanos,
+			IssuerID: orphan.IssuerID,
 		})
 		if err != nil && !berrors.Is(err, berrors.Duplicate) {
 			return fmt.Errorf("failed to store orphaned precertificate: %s", err)
