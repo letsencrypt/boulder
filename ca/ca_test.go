@@ -1131,6 +1131,7 @@ func TestOrphanQueue(t *testing.T) {
 		1,
 		tmpl.SerialNumber,
 		certDER,
+		1,
 	)
 	test.AssertError(t, err, "storeCertificate didn't fail when AddCertificate failed")
 
@@ -1172,6 +1173,7 @@ func TestOrphanQueue(t *testing.T) {
 		1,
 		tmpl.SerialNumber,
 		certDER,
+		1,
 	)
 	test.AssertError(t, err, "storeCertificate didn't fail when AddCertificate failed")
 	err = orphanQueue.Close()
