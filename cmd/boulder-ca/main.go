@@ -35,9 +35,9 @@ type config struct {
 	Syslog cmd.SyslogConfig
 }
 
-func loadCFSSLIssuers(c config) ([]ca.Issuer, error) {
+func loadCFSSLIssuers(configs []ca_config.IssuerConfig) ([]ca.Issuer, error) {
 	var issuers []ca.Issuer
-	for _, issuerConfig := range c.CA.Issuers {
+	for _, issuerConfig := range configs {
 		priv, cert, err := loadIssuer(issuerConfig)
 		cmd.FailOnError(err, "Couldn't load private key")
 		issuers = append(issuers, ca.Issuer{
@@ -177,7 +177,7 @@ func main() {
 		boulderIssuerConfigs, err = loadBoulderIssuers(c.CA.Issuers, c.CA.SignerProfile, c.CA.IgnoredLints)
 		cmd.FailOnError(err, "Couldn't load issuers")
 	} else {
-		cfsslIssuers, err = loadCFSSLIssuers(c)
+		cfsslIssuers, err = loadCFSSLIssuers(c.CA.Issuers)
 		cmd.FailOnError(err, "Couldn't load issuers")
 	}
 
