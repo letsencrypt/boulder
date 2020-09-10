@@ -19,6 +19,8 @@ ceremony --config path/to/config.yml
 
 These modes are set in the `ceremony-type` field of the configuration file.
 
+This tool always generates keypairs such that the public and private key are both stored on the device with the same label. Ceremony types that use a key on a device ask for a "signing key label". During setup this label is used to find the public key of a keypair. Once the public key is loaded, the private key is looked up by CKA\_ID.
+
 ## Configuration format
 
 `ceremony` uses YAML for its configuration file, mainly as it allows for commenting. Each ceremony type has a different set of configuration fields.
