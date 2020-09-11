@@ -378,7 +378,7 @@ func TestGenerateTemplate(t *testing.T) {
 }
 
 func TestNewSignerUnsupportedKeyType(t *testing.T) {
-	_, err := New(IssuerConfig{
+	_, err := New(PreIssuer{
 		Profile: defaultProfileConfig(),
 		Cert: &x509.Certificate{
 			PublicKey: &ed25519.PublicKey{},
@@ -392,7 +392,7 @@ func TestNewSignerUnsupportedKeyType(t *testing.T) {
 func TestNewSignerRSAKey(t *testing.T) {
 	mod, ok := big.NewInt(0).SetString("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", 16)
 	test.Assert(t, ok, "failed to set mod")
-	signer, err := New(IssuerConfig{
+	signer, err := New(PreIssuer{
 		Profile: defaultProfileConfig(),
 		Cert: &x509.Certificate{
 			PublicKey: &rsa.PublicKey{
@@ -411,7 +411,7 @@ func TestNewSignerRSAKey(t *testing.T) {
 }
 
 func TestNewSignerECDSAKey(t *testing.T) {
-	signer, err := New(IssuerConfig{
+	signer, err := New(PreIssuer{
 		Profile: defaultProfileConfig(),
 		Cert: &x509.Certificate{
 			PublicKey: &ecdsa.PublicKey{
@@ -478,7 +478,7 @@ func TestIssue(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fc := clock.NewFake()
 			fc.Set(time.Now())
-			signer, err := New(IssuerConfig{
+			signer, err := New(PreIssuer{
 				Cert:         issuerCert,
 				Signer:       issuerSigner,
 				Clk:          fc,
@@ -514,7 +514,7 @@ func TestIssue(t *testing.T) {
 func TestIssueRSA(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	signer, err := New(IssuerConfig{
+	signer, err := New(PreIssuer{
 		Cert:         issuerCert,
 		Signer:       issuerSigner,
 		Clk:          fc,
@@ -545,7 +545,7 @@ func TestIssueRSA(t *testing.T) {
 func TestIssueCTPoison(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	signer, err := New(IssuerConfig{
+	signer, err := New(PreIssuer{
 		Cert:         issuerCert,
 		Signer:       issuerSigner,
 		Clk:          fc,
@@ -577,7 +577,7 @@ func TestIssueCTPoison(t *testing.T) {
 func TestIssueSCTList(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	signer, err := New(IssuerConfig{
+	signer, err := New(PreIssuer{
 		Cert:         issuerCert,
 		Signer:       issuerSigner,
 		Clk:          fc,
@@ -614,7 +614,7 @@ func TestIssueSCTList(t *testing.T) {
 func TestIssueMustStaple(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	signer, err := New(IssuerConfig{
+	signer, err := New(PreIssuer{
 		Cert:         issuerCert,
 		Signer:       issuerSigner,
 		Clk:          fc,
@@ -646,7 +646,7 @@ func TestIssueMustStaple(t *testing.T) {
 func TestIssueBadLint(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	signer, err := New(IssuerConfig{
+	signer, err := New(PreIssuer{
 		Cert:    issuerCert,
 		Signer:  issuerSigner,
 		Clk:     fc,

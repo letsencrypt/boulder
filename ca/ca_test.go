@@ -135,7 +135,7 @@ type testCtx struct {
 	caConfig      ca_config.CAConfig
 	pa            core.PolicyAuthority
 	issuers       []Issuer
-	issuerConfigs []issuance.IssuerConfig
+	issuerConfigs []issuance.PreIssuer
 	keyPolicy     goodkey.KeyPolicy
 	fc            clock.FakeClock
 	stats         prometheus.Registerer
@@ -261,7 +261,7 @@ func setup(t *testing.T) *testCtx {
 
 	issuers := []Issuer{{caKey, caCert}}
 
-	issuerConfigs := []issuance.IssuerConfig{
+	issuerConfigs := []issuance.PreIssuer{
 		{
 			Cert:   caCert,
 			Signer: caKey,
@@ -405,7 +405,7 @@ func issueCertificateSubTestSetup(t *testing.T, boulderIssuer bool) (*Certificat
 	testCtx := setup(t)
 	sa := &mockSA{}
 	var issuers []Issuer
-	var issuerConfigs []issuance.IssuerConfig
+	var issuerConfigs []issuance.PreIssuer
 	if boulderIssuer {
 		issuerConfigs = testCtx.issuerConfigs
 		_ = features.Set(map[string]bool{"NonCFSSLSigner": true})
