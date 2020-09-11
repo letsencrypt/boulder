@@ -1,4 +1,4 @@
-package signer
+package issuance
 
 import (
 	"bytes"
@@ -45,25 +45,6 @@ type IssuanceRequest struct {
 	SCTList           []ct.SignedCertificateTimestamp
 }
 
-type signingProfile struct {
-	useForRSALeaves   bool
-	useForECDSALeaves bool
-
-	allowMustStaple bool
-	allowCTPoison   bool
-	allowSCTList    bool
-	allowCommonName bool
-
-	sigAlg    x509.SignatureAlgorithm
-	ocspURL   string
-	crlURL    string
-	issuerURL string
-	policies  *pkix.Extension
-
-	maxBackdate time.Duration
-	maxValidity time.Duration
-}
-
 // PolicyQualifier describes a policy qualifier
 type PolicyQualifier struct {
 	Type  string
@@ -94,6 +75,26 @@ type ProfileConfig struct {
 	MaxValidityBackdate cmd.ConfigDuration
 }
 
+// The internal structure created by reading in ProfileConfigs
+type issuanceProfile struct {
+	useForRSALeaves   bool
+	useForECDSALeaves bool
+
+	allowMustStaple bool
+	allowCTPoison   bool
+	allowSCTList    bool
+	allowCommonName bool
+
+	sigAlg    x509.SignatureAlgorithm
+	ocspURL   string
+	crlURL    string
+	issuerURL string
+	policies  *pkix.Extension
+
+	maxBackdate time.Duration
+	maxValidity time.Duration
+}
+
 func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
 	var oid asn1.ObjectIdentifier
 	for _, a := range strings.Split(oidStr, ".") {
@@ -113,8 +114,14 @@ var stringToQualifierType = map[string]asn1.ObjectIdentifier{
 	"id-qt-cps": policyasn1.CPSQualifierOID,
 }
 
-func newProfile(config ProfileConfig) (*signingProfile, error) {
-	sp := &signingProfile{
+func newProfile(config ProfileConfig) (*issuanceProfile, error) {
+	if config.IssuerURL == "" {
+		return nil, errors.New("Issuer URL is required")
+	}
+	if config.OCSPURL == "" {
+		return nil, errors.New("OCSP URL is required")
+	}
+	sp := &issuanceProfile{
 		useForRSALeaves:   config.UseForRSALeaves,
 		useForECDSALeaves: config.UseForECDSALeaves,
 		allowMustStaple:   config.AllowMustStaple,
@@ -126,12 +133,6 @@ func newProfile(config ProfileConfig) (*signingProfile, error) {
 		ocspURL:           config.OCSPURL,
 		maxBackdate:       config.MaxValidityBackdate.Duration,
 		maxValidity:       config.MaxValidityPeriod.Duration,
-	}
-	if config.IssuerURL == "" {
-		return nil, errors.New("Issuer URL is required")
-	}
-	if config.OCSPURL == "" {
-		return nil, errors.New("OCSP URL is required")
 	}
 	if len(config.Policies) > 0 {
 		var policies []policyasn1.PolicyInformation
@@ -166,9 +167,9 @@ func newProfile(config ProfileConfig) (*signingProfile, error) {
 	return sp, nil
 }
 
-// requestValid verifies the passed IssuanceRequest against the signingProfile. If the
+// requestValid verifies the passed IssuanceRequest against the profile. If the
 // request doesn't match the signing profile an error is returned.
-func (p *signingProfile) requestValid(clk clock.Clock, req *IssuanceRequest) error {
+func (p *issuanceProfile) requestValid(clk clock.Clock, req *IssuanceRequest) error {
 	switch req.PublicKey.(type) {
 	case *rsa.PublicKey:
 		if !p.useForRSALeaves {
@@ -229,7 +230,7 @@ var defaultEKU = []x509.ExtKeyUsage{
 	x509.ExtKeyUsageClientAuth,
 }
 
-func (p *signingProfile) generateTemplate(clk clock.Clock) *x509.Certificate {
+func (p *issuanceProfile) generateTemplate(clk clock.Clock) *x509.Certificate {
 	template := &x509.Certificate{
 		SignatureAlgorithm:    p.sigAlg,
 		ExtKeyUsage:           defaultEKU,
@@ -249,32 +250,32 @@ func (p *signingProfile) generateTemplate(clk clock.Clock) *x509.Certificate {
 	return template
 }
 
-// Signer is a certificate signer
-type Signer struct {
-	issuer  *x509.Certificate
+// Issuer is capable of issuing new certificates
+type Issuer struct {
+	cert    *x509.Certificate
 	signer  crypto.Signer
-	profile *signingProfile
-	clk     clock.Clock
+	profile *issuanceProfile
 	lintKey crypto.Signer
 	lints   zlint.Registry
+	clk     clock.Clock
 }
 
-// Config contains the information necessary to construct a Signer
-type Config struct {
-	Issuer       *x509.Certificate
+// IssuerConfig contains the information necessary to construct an Issuer
+type IssuerConfig struct {
+	Cert         *x509.Certificate
 	Signer       crypto.Signer
+	Profile      ProfileConfig
 	IgnoredLints []string
 	Clk          clock.Clock
-	Profile      ProfileConfig
 }
 
-// NewSigner constructs a Signer from the provided Config
-func NewSigner(config Config) (*Signer, error) {
+// New constructs an Issuer from the provided IssuerConfig
+func New(config IssuerConfig) (*Issuer, error) {
 	profile, err := newProfile(config.Profile)
 	if err != nil {
 		return nil, err
 	}
-	switch k := config.Issuer.PublicKey.(type) {
+	switch k := config.Cert.PublicKey.(type) {
 	case *rsa.PublicKey:
 		profile.sigAlg = x509.SHA256WithRSA
 	case *ecdsa.PublicKey:
@@ -306,15 +307,15 @@ func NewSigner(config Config) (*Signer, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Signer{
-		issuer:  config.Issuer,
+	i := &Issuer{
+		cert:    config.Cert,
 		signer:  config.Signer,
 		clk:     config.Clk,
 		lints:   lints,
 		lintKey: lintKey,
 		profile: profile,
 	}
-	return s, nil
+	return i, nil
 }
 
 var ctPoisonExt = pkix.Extension{
@@ -381,14 +382,14 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 // key, it is signed using a throwaway key so that it can be linted using
 // zlint. If the linting fails, an error is returned and the certificate
 // is not signed using the issuer's key.
-func (s *Signer) Issue(req *IssuanceRequest) ([]byte, error) {
+func (i *Issuer) Issue(req *IssuanceRequest) ([]byte, error) {
 	// check request is valid according to the issuance profile
-	if err := s.profile.requestValid(s.clk, req); err != nil {
+	if err := i.profile.requestValid(i.clk, req); err != nil {
 		return nil, err
 	}
 
 	// generate template from the issuance profile
-	template := s.profile.generateTemplate(s.clk)
+	template := i.profile.generateTemplate(i.clk)
 
 	// populate template from the issuance request
 	template.NotBefore, template.NotAfter = req.NotBefore, req.NotAfter
@@ -397,7 +398,7 @@ func (s *Signer) Issue(req *IssuanceRequest) ([]byte, error) {
 		template.Subject.CommonName = req.CommonName
 	}
 	template.DNSNames = req.DNSNames
-	template.AuthorityKeyId = s.issuer.SubjectKeyId
+	template.AuthorityKeyId = i.cert.SubjectKeyId
 	skid, err := generateSKID(req.PublicKey)
 	if err != nil {
 		return nil, err
@@ -426,16 +427,16 @@ func (s *Signer) Issue(req *IssuanceRequest) ([]byte, error) {
 
 	// check that the tbsCertificate is properly formed by signing it
 	// with a throwaway key and then linting it using zlint
-	lintCert, err := lint.MakeLintCert(template, s.issuer, req.PublicKey, s.lintKey)
+	lintCert, err := lint.MakeLintCert(template, i.cert, req.PublicKey, i.lintKey)
 	if err != nil {
 		return nil, err
 	}
-	err = lint.LintCert(lintCert, s.lints)
+	err = lint.LintCert(lintCert, i.lints)
 	if err != nil {
 		return nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
 	}
 
-	return x509.CreateCertificate(rand.Reader, template, s.issuer, req.PublicKey, s.signer)
+	return x509.CreateCertificate(rand.Reader, template, i.cert, req.PublicKey, i.signer)
 }
 
 func ContainsMustStaple(extensions []pkix.Extension) bool {

@@ -5,7 +5,7 @@ import (
 	"github.com/letsencrypt/pkcs11key/v4"
 
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/signer"
+	"github.com/letsencrypt/boulder/issuance"
 )
 
 // CAConfig structs have configuration information for the certificate
@@ -27,7 +27,7 @@ type CAConfig struct {
 	Issuers []IssuerConfig
 	// SignerProfile contains the signer issuance profile, if using the boulder
 	// signer rather than the CFSSL signer.
-	SignerProfile signer.ProfileConfig
+	SignerProfile issuance.ProfileConfig
 	// LifespanOCSP is how long OCSP responses are valid for; It should be longer
 	// than the minTimeToExpiry field for the OCSP Updater.
 	LifespanOCSP cmd.ConfigDuration

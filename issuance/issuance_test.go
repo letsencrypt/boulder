@@ -1,4 +1,4 @@
-package signer
+package issuance
 
 import (
 	"crypto"
@@ -54,7 +54,7 @@ func TestNewProfilePolicies(t *testing.T) {
 	})
 	profile, err := newProfile(config)
 	test.AssertNotError(t, err, "newProfile failed")
-	test.AssertDeepEquals(t, *profile, signingProfile{
+	test.AssertDeepEquals(t, *profile, issuanceProfile{
 		useForRSALeaves:   true,
 		useForECDSALeaves: true,
 		allowMustStaple:   true,
@@ -131,31 +131,31 @@ func TestRequestValid(t *testing.T) {
 	fc.Add(time.Hour * 24)
 	tests := []struct {
 		name          string
-		profile       *signingProfile
+		profile       *issuanceProfile
 		request       *IssuanceRequest
 		expectedError string
 	}{
 		{
 			name:          "unsupported key type",
-			profile:       &signingProfile{},
+			profile:       &issuanceProfile{},
 			request:       &IssuanceRequest{PublicKey: &dsa.PublicKey{}},
 			expectedError: "unsupported public key type",
 		},
 		{
 			name:          "cannot sign rsa",
-			profile:       &signingProfile{},
+			profile:       &issuanceProfile{},
 			request:       &IssuanceRequest{PublicKey: &rsa.PublicKey{}},
 			expectedError: "cannot sign RSA public keys",
 		},
 		{
 			name:          "cannot sign ecdsa",
-			profile:       &signingProfile{},
+			profile:       &issuanceProfile{},
 			request:       &IssuanceRequest{PublicKey: &ecdsa.PublicKey{}},
 			expectedError: "cannot sign ECDSA public keys",
 		},
 		{
 			name: "must staple not allowed",
-			profile: &signingProfile{
+			profile: &issuanceProfile{
 				useForECDSALeaves: true,
 			},
 			request: &IssuanceRequest{
@@ -166,7 +166,7 @@ func TestRequestValid(t *testing.T) {
 		},
 		{
 			name: "ct poison not allowed",
-			profile: &signingProfile{
+			profile: &issuanceProfile{
 				useForECDSALeaves: true,
 			},
 			request: &IssuanceRequest{
@@ -177,7 +177,7 @@ func TestRequestValid(t *testing.T) {
 		},
 		{
 			name: "sct list not allowed",
-			profile: &signingProfile{
+			profile: &issuanceProfile{
 				useForECDSALeaves: true,
 			},
 			request: &IssuanceRequest{
@@ -188,7 +188,7 @@ func TestRequestValid(t *testing.T) {
 		},
 		{
 			name: "sct list and ct poison not allowed",
-			profile: &signingProfile{
+			profile: &issuanceProfile{
 				useForECDSALeaves: true,
 				allowCTPoison:     true,
 				allowSCTList:      true,
@@ -202,7 +202,7 @@ func TestRequestValid(t *testing.T) {
 		},
 		{
 			name: "common name not allowed",
-			profile: &signingProfile{
+			profile: &issuanceProfile{
 				useForECDSALeaves: true,
 			},
 			request: &IssuanceRequest{
@@ -213,7 +213,7 @@ func TestRequestValid(t *testing.T) {
 		},
 		{
 			name: "negative validity",
-			profile: &signingProfile{
+			profile: &issuanceProfile{
 				useForECDSALeaves: true,
 			},
 			request: &IssuanceRequest{
@@ -225,7 +225,7 @@ func TestRequestValid(t *testing.T) {
 		},
 		{
 			name: "validity larger than max",
-			profile: &signingProfile{
+			profile: &issuanceProfile{
 				useForECDSALeaves: true,
 				maxValidity:       time.Minute,
 			},
@@ -238,7 +238,7 @@ func TestRequestValid(t *testing.T) {
 		},
 		{
 			name: "validity backdated more than max",
-			profile: &signingProfile{
+			profile: &issuanceProfile{
 				useForECDSALeaves: true,
 				maxValidity:       time.Hour * 2,
 				maxBackdate:       time.Hour,
@@ -252,7 +252,7 @@ func TestRequestValid(t *testing.T) {
 		},
 		{
 			name: "validity is forward dated",
-			profile: &signingProfile{
+			profile: &issuanceProfile{
 				useForECDSALeaves: true,
 				maxValidity:       time.Hour * 2,
 				maxBackdate:       time.Hour,
@@ -266,7 +266,7 @@ func TestRequestValid(t *testing.T) {
 		},
 		{
 			name: "serial too short",
-			profile: &signingProfile{
+			profile: &issuanceProfile{
 				useForECDSALeaves: true,
 				maxValidity:       time.Hour * 2,
 			},
@@ -279,7 +279,7 @@ func TestRequestValid(t *testing.T) {
 		},
 		{
 			name: "serial too long",
-			profile: &signingProfile{
+			profile: &issuanceProfile{
 				useForECDSALeaves: true,
 				maxValidity:       time.Hour * 2,
 			},
@@ -293,7 +293,7 @@ func TestRequestValid(t *testing.T) {
 		},
 		{
 			name: "good",
-			profile: &signingProfile{
+			profile: &issuanceProfile{
 				useForECDSALeaves: true,
 				maxValidity:       time.Hour * 2,
 			},
@@ -325,12 +325,12 @@ func TestRequestValid(t *testing.T) {
 func TestGenerateTemplate(t *testing.T) {
 	tests := []struct {
 		name             string
-		profile          *signingProfile
+		profile          *issuanceProfile
 		expectedTemplate *x509.Certificate
 	}{
 		{
 			name: "crl url",
-			profile: &signingProfile{
+			profile: &issuanceProfile{
 				crlURL: "crl-url",
 				sigAlg: x509.SHA256WithRSA,
 			},
@@ -345,7 +345,7 @@ func TestGenerateTemplate(t *testing.T) {
 		},
 		{
 			name: "include policies",
-			profile: &signingProfile{
+			profile: &issuanceProfile{
 				sigAlg: x509.SHA256WithRSA,
 				policies: &pkix.Extension{
 					Id:    asn1.ObjectIdentifier{1, 2, 3},
@@ -378,23 +378,23 @@ func TestGenerateTemplate(t *testing.T) {
 }
 
 func TestNewSignerUnsupportedKeyType(t *testing.T) {
-	_, err := NewSigner(Config{
+	_, err := New(IssuerConfig{
 		Profile: defaultProfileConfig(),
-		Issuer: &x509.Certificate{
+		Cert: &x509.Certificate{
 			PublicKey: &ed25519.PublicKey{},
 		},
 		Signer: &ed25519.PrivateKey{},
 	})
-	test.AssertError(t, err, "NewSigner didn't fail")
+	test.AssertError(t, err, "issuance.New didn't fail")
 	test.AssertEquals(t, err.Error(), "unsupported issuer key type")
 }
 
 func TestNewSignerRSAKey(t *testing.T) {
 	mod, ok := big.NewInt(0).SetString("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", 16)
 	test.Assert(t, ok, "failed to set mod")
-	signer, err := NewSigner(Config{
+	signer, err := New(IssuerConfig{
 		Profile: defaultProfileConfig(),
-		Issuer: &x509.Certificate{
+		Cert: &x509.Certificate{
 			PublicKey: &rsa.PublicKey{
 				N: mod,
 			},
@@ -405,15 +405,15 @@ func TestNewSignerRSAKey(t *testing.T) {
 			},
 		},
 	})
-	test.AssertNotError(t, err, "NewSigner failed")
+	test.AssertNotError(t, err, "issuance.New failed")
 	_, ok = signer.lintKey.(*rsa.PrivateKey)
 	test.Assert(t, ok, "lint key is not RSA")
 }
 
 func TestNewSignerECDSAKey(t *testing.T) {
-	signer, err := NewSigner(Config{
+	signer, err := New(IssuerConfig{
 		Profile: defaultProfileConfig(),
-		Issuer: &x509.Certificate{
+		Cert: &x509.Certificate{
 			PublicKey: &ecdsa.PublicKey{
 				Curve: elliptic.P256(),
 			},
@@ -424,7 +424,7 @@ func TestNewSignerECDSAKey(t *testing.T) {
 			},
 		},
 	})
-	test.AssertNotError(t, err, "NewSigner failed")
+	test.AssertNotError(t, err, "issuance.New failed")
 	_, ok := signer.lintKey.(*ecdsa.PrivateKey)
 	test.Assert(t, ok, "lint key is not ECDSA")
 }
@@ -478,14 +478,14 @@ func TestIssue(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fc := clock.NewFake()
 			fc.Set(time.Now())
-			signer, err := NewSigner(Config{
-				Issuer:       issuerCert,
+			signer, err := New(IssuerConfig{
+				Cert:         issuerCert,
 				Signer:       issuerSigner,
 				Clk:          fc,
 				Profile:      defaultProfileConfig(),
 				IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied", "n_subject_common_name_included"},
 			})
-			test.AssertNotError(t, err, "NewSigner failed")
+			test.AssertNotError(t, err, "issuance.New failed")
 			pk, err := tc.generateFunc()
 			test.AssertNotError(t, err, "failed to generate test key")
 			certBytes, err := signer.Issue(&IssuanceRequest{
@@ -514,14 +514,14 @@ func TestIssue(t *testing.T) {
 func TestIssueRSA(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	signer, err := NewSigner(Config{
-		Issuer:       issuerCert,
+	signer, err := New(IssuerConfig{
+		Cert:         issuerCert,
 		Signer:       issuerSigner,
 		Clk:          fc,
 		Profile:      defaultProfileConfig(),
 		IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied"},
 	})
-	test.AssertNotError(t, err, "NewSigner failed")
+	test.AssertNotError(t, err, "issuance.New failed")
 	pk, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "failed to generate test key")
 	certBytes, err := signer.Issue(&IssuanceRequest{
@@ -545,14 +545,14 @@ func TestIssueRSA(t *testing.T) {
 func TestIssueCTPoison(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	signer, err := NewSigner(Config{
-		Issuer:       issuerCert,
+	signer, err := New(IssuerConfig{
+		Cert:         issuerCert,
 		Signer:       issuerSigner,
 		Clk:          fc,
 		Profile:      defaultProfileConfig(),
 		IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied"},
 	})
-	test.AssertNotError(t, err, "NewSigner failed")
+	test.AssertNotError(t, err, "issuance.New failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
 	certBytes, err := signer.Issue(&IssuanceRequest{
@@ -577,14 +577,14 @@ func TestIssueCTPoison(t *testing.T) {
 func TestIssueSCTList(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	signer, err := NewSigner(Config{
-		Issuer:       issuerCert,
+	signer, err := New(IssuerConfig{
+		Cert:         issuerCert,
 		Signer:       issuerSigner,
 		Clk:          fc,
 		Profile:      defaultProfileConfig(),
 		IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied"},
 	})
-	test.AssertNotError(t, err, "NewSigner failed")
+	test.AssertNotError(t, err, "issuance.New failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
 	certBytes, err := signer.Issue(&IssuanceRequest{
@@ -614,14 +614,14 @@ func TestIssueSCTList(t *testing.T) {
 func TestIssueMustStaple(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	signer, err := NewSigner(Config{
-		Issuer:       issuerCert,
+	signer, err := New(IssuerConfig{
+		Cert:         issuerCert,
 		Signer:       issuerSigner,
 		Clk:          fc,
 		Profile:      defaultProfileConfig(),
 		IgnoredLints: []string{"w_ct_sct_policy_count_unsatisfied"},
 	})
-	test.AssertNotError(t, err, "NewSigner failed")
+	test.AssertNotError(t, err, "issuance.New failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
 	certBytes, err := signer.Issue(&IssuanceRequest{
@@ -646,13 +646,13 @@ func TestIssueMustStaple(t *testing.T) {
 func TestIssueBadLint(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	signer, err := NewSigner(Config{
-		Issuer:  issuerCert,
+	signer, err := New(IssuerConfig{
+		Cert:    issuerCert,
 		Signer:  issuerSigner,
 		Clk:     fc,
 		Profile: defaultProfileConfig(),
 	})
-	test.AssertNotError(t, err, "NewSigner failed")
+	test.AssertNotError(t, err, "issuance.New failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, err = signer.Issue(&IssuanceRequest{

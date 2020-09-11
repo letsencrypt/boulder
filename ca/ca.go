@@ -39,9 +39,9 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	bsigner "github.com/letsencrypt/boulder/signer"
 )
 
 // Miscellaneous PKIX OIDs that we need to refer to
@@ -167,42 +167,42 @@ type internalIssuer struct {
 	cert       *x509.Certificate
 	ocspSigner crypto.Signer
 
-	// Only one of cfsslSigner and boulderSigner will be non-nill
+	// Only one of cfsslSigner and boulderIssuer will be non-nill
 	cfsslSigner   localSigner
-	boulderSigner *bsigner.Signer
+	boulderIssuer *issuance.Issuer
 }
 
-func makeInternalIssuers(issuers []bsigner.Config, lifespanOCSP time.Duration) (issuerMaps, error) {
+func makeInternalIssuers(configs []issuance.IssuerConfig, lifespanOCSP time.Duration) (issuerMaps, error) {
 	issuersByAlg := make(map[x509.PublicKeyAlgorithm]*internalIssuer, 2)
-	issuersByName := make(map[string]*internalIssuer, len(issuers))
-	issuersByID := make(map[int64]*internalIssuer, len(issuers))
-	for _, issuer := range issuers {
-		signer, err := bsigner.NewSigner(issuer)
+	issuersByName := make(map[string]*internalIssuer, len(configs))
+	issuersByID := make(map[int64]*internalIssuer, len(configs))
+	for _, config := range configs {
+		issuer, err := issuance.New(config)
 		if err != nil {
 			return issuerMaps{}, err
 		}
 		ii := &internalIssuer{
-			cert:          issuer.Issuer,
-			ocspSigner:    issuer.Signer,
-			boulderSigner: signer,
+			cert:          config.Cert,
+			ocspSigner:    config.Signer,
+			boulderIssuer: issuer,
 		}
-		if issuer.Profile.UseForRSALeaves {
+		if config.Profile.UseForRSALeaves {
 			if issuersByAlg[x509.RSA] != nil {
 				return issuerMaps{}, errors.New("Multiple issuer certs for RSA are not allowed")
 			}
 			issuersByAlg[x509.RSA] = ii
 		}
-		if issuer.Profile.UseForECDSALeaves {
+		if config.Profile.UseForECDSALeaves {
 			if issuersByAlg[x509.ECDSA] != nil {
 				return issuerMaps{}, errors.New("Multiple issuer certs for ECDSA are not allowed")
 			}
 			issuersByAlg[x509.ECDSA] = ii
 		}
-		if issuersByName[issuer.Issuer.Subject.CommonName] != nil {
+		if issuersByName[config.Cert.Subject.CommonName] != nil {
 			return issuerMaps{}, errors.New("Multiple issuer certs with the same CommonName are not supported")
 		}
-		issuersByName[issuer.Issuer.Subject.CommonName] = ii
-		issuersByID[idForIssuer(issuer.Issuer)] = ii
+		issuersByName[config.Cert.Subject.CommonName] = ii
+		issuersByID[idForCert(config.Cert)] = ii
 	}
 	return issuerMaps{issuersByAlg, issuersByName, issuersByID}, nil
 }
@@ -245,15 +245,15 @@ func makeCFSSLInternalIssuers(issuers []Issuer, policy *cfsslConfig.Signing, lif
 			issuersByAlg[x509.ECDSA] = ii
 		}
 		issuersByName[cn] = ii
-		issuersByID[idForIssuer(iss.Cert)] = ii
+		issuersByID[idForCert(iss.Cert)] = ii
 	}
 	return issuerMaps{issuersByAlg, issuersByName, issuersByID}, nil
 }
 
-// idForIssuer generates a stable ID for an issuer certificate. This
+// idForCert generates a stable ID for an issuer certificate. This
 // is used for identifying which issuer issued a certificate in the
 // certificateStatus table.
-func idForIssuer(cert *x509.Certificate) int64 {
+func idForCert(cert *x509.Certificate) int64 {
 	h := sha256.Sum256(cert.Raw)
 	return big.NewInt(0).SetBytes(h[:4]).Int64()
 }
@@ -268,7 +268,7 @@ func NewCertificateAuthorityImpl(
 	clk clock.Clock,
 	stats prometheus.Registerer,
 	cfsslIssuers []Issuer,
-	boulderIssuers []bsigner.Config,
+	boulderIssuers []issuance.IssuerConfig,
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
 	orphanQueue *goque.Queue,
@@ -600,7 +600,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		RegID:    regID,
 		Ocsp:     ocspResp.Response,
 		Issued:   nowNanos,
-		IssuerID: idForIssuer(issuer.cert),
+		IssuerID: idForCert(issuer.cert),
 	}
 
 	_, err = ca.sa.AddPrecertificate(ctx, req)
@@ -617,7 +617,7 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 				RegID:    regID,
 				OCSPResp: ocspResp.Response,
 				Precert:  true,
-				IssuerID: idForIssuer(issuer.cert),
+				IssuerID: idForCert(issuer.cert),
 			})
 		}
 		return nil, err
@@ -686,11 +686,11 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 
 	var certDER []byte
 	if features.Enabled(features.NonCFSSLSigner) {
-		issuanceReq, err := bsigner.RequestFromPrecert(precert, scts)
+		issuanceReq, err := issuance.RequestFromPrecert(precert, scts)
 		if err != nil {
 			return nil, err
 		}
-		certDER, err = issuer.boulderSigner.Issue(issuanceReq)
+		certDER, err = issuer.boulderIssuer.Issue(issuanceReq)
 		if err != nil {
 			return nil, err
 		}
@@ -711,7 +711,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] csr=[%s] certificate=[%s]",
 		serialHex, strings.Join(precert.DNSNames, ", "), hex.EncodeToString(req.DER),
 		hex.EncodeToString(certDER))
-	err = ca.storeCertificate(ctx, req.RegistrationID, req.OrderID, precert.SerialNumber, certDER, idForIssuer(issuer.cert))
+	err = ca.storeCertificate(ctx, req.RegistrationID, req.OrderID, precert.SerialNumber, certDER, idForCert(issuer.cert))
 	if err != nil {
 		return nil, err
 	}
@@ -795,13 +795,13 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	if features.Enabled(features.NonCFSSLSigner) {
 		ca.log.AuditInfof("Signing: serial=[%s] names=[%s] csr=[%s]",
 			serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw))
-		certDER, err = issuer.boulderSigner.Issue(&bsigner.IssuanceRequest{
+		certDER, err = issuer.boulderIssuer.Issue(&issuance.IssuanceRequest{
 			PublicKey:         csr.PublicKey,
 			Serial:            serialBigInt.Bytes(),
 			CommonName:        csr.Subject.CommonName,
 			DNSNames:          csr.DNSNames,
 			IncludeCTPoison:   true,
-			IncludeMustStaple: bsigner.ContainsMustStaple(csr.Extensions),
+			IncludeMustStaple: issuance.ContainsMustStaple(csr.Extensions),
 			NotBefore:         validity.NotBefore,
 			NotAfter:          validity.NotAfter,
 		})

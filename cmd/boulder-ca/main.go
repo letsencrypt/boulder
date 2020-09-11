@@ -22,9 +22,9 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/policy"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	bsigner "github.com/letsencrypt/boulder/signer"
 )
 
 type config struct {
@@ -48,15 +48,15 @@ func loadCFSSLIssuers(configs []ca_config.IssuerConfig) ([]ca.Issuer, error) {
 	return issuers, nil
 }
 
-func loadBoulderIssuers(configs []ca_config.IssuerConfig, profile bsigner.ProfileConfig, ignoredLints []string) ([]bsigner.Config, error) {
-	boulderIssuerConfigs := make([]bsigner.Config, 0, len(configs))
+func loadBoulderIssuers(configs []ca_config.IssuerConfig, profile issuance.ProfileConfig, ignoredLints []string) ([]issuance.IssuerConfig, error) {
+	boulderIssuerConfigs := make([]issuance.IssuerConfig, 0, len(configs))
 	for _, issuerConfig := range configs {
 		signer, issuer, err := loadIssuer(issuerConfig)
 		if err != nil {
 			return nil, err
 		}
-		boulderIssuerConfigs = append(boulderIssuerConfigs, bsigner.Config{
-			Issuer:       issuer,
+		boulderIssuerConfigs = append(boulderIssuerConfigs, issuance.IssuerConfig{
+			Cert:         issuer,
 			Signer:       signer,
 			IgnoredLints: ignoredLints,
 			Clk:          cmd.Clock(),
@@ -172,7 +172,7 @@ func main() {
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
 
 	var cfsslIssuers []ca.Issuer
-	var boulderIssuerConfigs []bsigner.Config
+	var boulderIssuerConfigs []issuance.IssuerConfig
 	if features.Enabled(features.NonCFSSLSigner) {
 		boulderIssuerConfigs, err = loadBoulderIssuers(c.CA.Issuers, c.CA.SignerProfile, c.CA.IgnoredLints)
 		cmd.FailOnError(err, "Couldn't load issuers")

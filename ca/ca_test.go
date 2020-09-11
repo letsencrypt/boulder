@@ -38,11 +38,11 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	bsigner "github.com/letsencrypt/boulder/signer"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -135,7 +135,7 @@ type testCtx struct {
 	caConfig      ca_config.CAConfig
 	pa            core.PolicyAuthority
 	issuers       []Issuer
-	signerConfigs []bsigner.Config
+	issuerConfigs []issuance.IssuerConfig
 	keyPolicy     goodkey.KeyPolicy
 	fc            clock.FakeClock
 	stats         prometheus.Registerer
@@ -261,12 +261,12 @@ func setup(t *testing.T) *testCtx {
 
 	issuers := []Issuer{{caKey, caCert}}
 
-	signerConfigs := []bsigner.Config{
+	issuerConfigs := []issuance.IssuerConfig{
 		{
-			Issuer: caCert,
+			Cert:   caCert,
 			Signer: caKey,
 			Clk:    fc,
-			Profile: bsigner.ProfileConfig{
+			Profile: issuance.ProfileConfig{
 				UseForECDSALeaves: true,
 				UseForRSALeaves:   true,
 				AllowMustStaple:   true,
@@ -276,7 +276,7 @@ func setup(t *testing.T) *testCtx {
 				IssuerURL:         "http://not-example.com/issuer-url",
 				OCSPURL:           "http://not-example.com/ocsp",
 				CRLURL:            "http://not-example.com/crl",
-				Policies: []bsigner.PolicyInformation{
+				Policies: []issuance.PolicyInformation{
 					{OID: "2.23.140.1.2.1"},
 				},
 				MaxValidityPeriod:   cmd.ConfigDuration{Duration: time.Hour * 8760},
@@ -297,7 +297,7 @@ func setup(t *testing.T) *testCtx {
 		caConfig,
 		pa,
 		issuers,
-		signerConfigs,
+		issuerConfigs,
 		keyPolicy,
 		fc,
 		metrics.NoopRegisterer,
@@ -401,13 +401,13 @@ func TestIssuePrecertificate(t *testing.T) {
 	}
 }
 
-func issueCertificateSubTestSetup(t *testing.T, boulderSigner bool) (*CertificateAuthorityImpl, *mockSA) {
+func issueCertificateSubTestSetup(t *testing.T, boulderIssuer bool) (*CertificateAuthorityImpl, *mockSA) {
 	testCtx := setup(t)
 	sa := &mockSA{}
 	var issuers []Issuer
-	var signerConfigs []bsigner.Config
-	if boulderSigner {
-		signerConfigs = testCtx.signerConfigs
+	var issuerConfigs []issuance.IssuerConfig
+	if boulderIssuer {
+		issuerConfigs = testCtx.issuerConfigs
 		_ = features.Set(map[string]bool{"NonCFSSLSigner": true})
 	} else {
 		issuers = testCtx.issuers
@@ -419,7 +419,7 @@ func issueCertificateSubTestSetup(t *testing.T, boulderSigner bool) (*Certificat
 		testCtx.fc,
 		testCtx.stats,
 		issuers,
-		signerConfigs,
+		issuerConfigs,
 		testCtx.keyPolicy,
 		testCtx.logger,
 		nil)
@@ -847,7 +847,7 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 			testCtx.fc,
 			testCtx.stats,
 			testCtx.issuers,
-			testCtx.signerConfigs,
+			testCtx.issuerConfigs,
 			testCtx.keyPolicy,
 			testCtx.logger,
 			nil)
@@ -1291,7 +1291,7 @@ func TestGenerateOCSPWithIssuerID(t *testing.T) {
 	// GenerateOCSP with feature enabled + req contains good IssuerID
 	rsaIssuer := ca.issuers.byAlg[x509.RSA]
 	_, err = ca.GenerateOCSP(context.Background(), &capb.GenerateOCSPRequest{
-		IssuerID: idForIssuer(rsaIssuer.cert),
+		IssuerID: idForCert(rsaIssuer.cert),
 		Serial:   "DEADDEADDEADDEADDEADDEADDEADDEADDEAD",
 		Status:   string(core.OCSPStatusGood),
 	})
