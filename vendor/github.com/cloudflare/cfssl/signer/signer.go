@@ -11,7 +11,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
-	"fmt"
 	"math/big"
 	"net/http"
 	"strings"
@@ -123,11 +122,8 @@ type Signer interface {
 func Profile(s Signer, profile string) (*config.SigningProfile, error) {
 	var p *config.SigningProfile
 	policy := s.Policy()
-	fmt.Printf("Looking for profile %s in policy %s\n", profile, policy)
 	if policy != nil && policy.Profiles != nil && profile != "" {
-		fmt.Println("Found profile:")
 		p = policy.Profiles[profile]
-		fmt.Println(p)
 	}
 
 	if p == nil && policy != nil {
