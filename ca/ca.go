@@ -126,25 +126,25 @@ type issuerMaps struct {
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
 type CertificateAuthorityImpl struct {
-	rsaProfile         string
-	ecdsaProfile       string
-	issuers            issuerMaps
 	sa                 certificateStorage
 	pa                 core.PolicyAuthority
-	keyPolicy          goodkey.KeyPolicy
-	clk                clock.Clock
-	log                blog.Logger
+	issuers            issuerMaps
+	cfsslRSAProfile    string
+	cfsslECDSAProfile  string
 	prefix             int // Prepended to the serial number
 	validityPeriod     time.Duration
 	backdate           time.Duration
 	maxNames           int
+	ocspLifetime       time.Duration
+	keyPolicy          goodkey.KeyPolicy
+	orphanQueue        *goque.Queue
+	clk                clock.Clock
+	log                blog.Logger
 	signatureCount     *prometheus.CounterVec
 	csrExtensionCount  *prometheus.CounterVec
 	orphanCount        *prometheus.CounterVec
 	adoptedOrphanCount *prometheus.CounterVec
 	signErrorCounter   *prometheus.CounterVec
-	orphanQueue        *goque.Queue
-	ocspLifetime       time.Duration
 }
 
 // Issuer represents a single issuer certificate, along with its key.
@@ -252,23 +252,23 @@ func idForCert(cert *x509.Certificate) int64 {
 // from a single issuer (the first first in the issuers slice), and can sign OCSP
 // for any of the issuer certificates provided.
 func NewCertificateAuthorityImpl(
-	certExpiry time.Duration,
-	certBackdate time.Duration,
-	serialPrefix int,
-	maxNames int,
-	ocspLifetime time.Duration,
 	sa certificateStorage,
 	pa core.PolicyAuthority,
-	clk clock.Clock,
-	stats prometheus.Registerer,
 	cfsslProfiles cfsslConfig.Config,
 	cfsslRSAProfile string,
 	cfsslECDSAProfile string,
 	cfsslIssuers []Issuer,
 	boulderIssuers []*issuance.Issuer,
+	certExpiry time.Duration,
+	certBackdate time.Duration,
+	serialPrefix int,
+	maxNames int,
+	ocspLifetime time.Duration,
 	keyPolicy goodkey.KeyPolicy,
-	logger blog.Logger,
 	orphanQueue *goque.Queue,
+	logger blog.Logger,
+	stats prometheus.Registerer,
+	clk clock.Clock,
 ) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
@@ -285,9 +285,6 @@ func NewCertificateAuthorityImpl(
 		return nil, err
 	}
 	var issuers issuerMaps
-	// rsaProfile and ecdsaProfile are unused when using the boulder signer
-	// instead of the CFSSL signer
-	var rsaProfile, ecdsaProfile string
 	if features.Enabled(features.NonCFSSLSigner) {
 		issuers, err = makeInternalIssuers(boulderIssuers, ocspLifetime)
 		if err != nil {
@@ -367,22 +364,22 @@ func NewCertificateAuthorityImpl(
 		sa:                 sa,
 		pa:                 pa,
 		issuers:            issuers,
+		cfsslRSAProfile:    cfsslRSAProfile,
+		cfsslECDSAProfile:  cfsslECDSAProfile,
 		validityPeriod:     certExpiry,
 		backdate:           certBackdate,
 		prefix:             serialPrefix,
 		maxNames:           maxNames,
 		ocspLifetime:       ocspLifetime,
-		rsaProfile:         rsaProfile,
-		ecdsaProfile:       ecdsaProfile,
-		clk:                clk,
-		log:                logger,
 		keyPolicy:          keyPolicy,
+		orphanQueue:        orphanQueue,
+		log:                logger,
 		signatureCount:     signatureCount,
 		csrExtensionCount:  csrExtensionCount,
 		orphanCount:        orphanCount,
 		adoptedOrphanCount: adoptedOrphanCount,
-		orphanQueue:        orphanQueue,
 		signErrorCounter:   signErrorCounter,
+		clk:                clk,
 	}
 
 	return ca, nil
@@ -804,9 +801,9 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		var profile string
 		switch csr.PublicKey.(type) {
 		case *rsa.PublicKey:
-			profile = ca.rsaProfile
+			profile = ca.cfsslRSAProfile
 		case *ecdsa.PublicKey:
-			profile = ca.ecdsaProfile
+			profile = ca.cfsslECDSAProfile
 		default:
 			err = berrors.InternalServerError("unsupported key type %T", csr.PublicKey)
 			ca.log.AuditErr(err.Error())

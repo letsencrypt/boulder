@@ -27,7 +27,7 @@ import (
 	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/zmap/zlint/v2/lint"
+	zlint "github.com/zmap/zlint/v2/lint"
 	"golang.org/x/crypto/ocsp"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -38,6 +38,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/issuance"
+	"github.com/letsencrypt/boulder/lint"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
@@ -251,38 +252,36 @@ func setup(t *testing.T) *testCtx {
 			},
 		},
 	}
-
 	cfsslIssuers := []Issuer{{caKey, caCert}}
 
-	foo := issuance.Issuer{
-		caCert,
-		caKey,
-		nil,
-		nil,
-		fc,
-	}
+	boulderProfile, _ := issuance.NewProfile(
+		issuance.ProfileConfig{
+			AllowMustStaple: true,
+			AllowCTPoison:   true,
+			AllowSCTList:    true,
+			AllowCommonName: true,
+			Policies: []issuance.PolicyInformation{
+				{OID: "2.23.140.1.2.1"},
+			},
+			MaxValidityPeriod:   cmd.ConfigDuration{Duration: time.Hour * 8760},
+			MaxValidityBackdate: cmd.ConfigDuration{Duration: time.Hour},
+		},
+		issuance.IssuerConfig{
+			UseForECDSALeaves: true,
+			UseForRSALeaves:   true,
+			IssuerURL:         "http://not-example.com/issuer-url",
+			OCSPURL:           "http://not-example.com/ocsp",
+			CRLURL:            "http://not-example.com/crl",
+		},
+	)
+	boulderLinter, _ := lint.NewLinter(caKey, nil)
 	boulderIssuers := []*issuance.Issuer{
 		{
-			Cert:   caCert,
-			Signer: caKey,
-			profile: &issuance.Profile{
-				useForECDSALeaves: true,
-				UseForRSALeaves:   true,
-				AllowMustStaple:   true,
-				AllowCTPoison:     true,
-				AllowSCTList:      true,
-				AllowCommonName:   true,
-				IssuerURL:         "http://not-example.com/issuer-url",
-				OCSPURL:           "http://not-example.com/ocsp",
-				CRLURL:            "http://not-example.com/crl",
-				Policies: []issuance.PolicyInformation{
-					{OID: "2.23.140.1.2.1"},
-				},
-				MaxValidityPeriod:   cmd.ConfigDuration{Duration: time.Hour * 8760},
-				MaxValidityBackdate: cmd.ConfigDuration{Duration: time.Hour},
-			},
-			linter: nil,
-			clk:    fc,
+			Cert:    caCert,
+			Signer:  caKey,
+			Profile: boulderProfile,
+			Linter:  boulderLinter,
+			Clk:     fc,
 		},
 	}
 
@@ -298,11 +297,12 @@ func setup(t *testing.T) *testCtx {
 		certBackdate:      time.Hour,
 		serialPrefix:      17,
 		maxNames:          2,
+		ocspLifetime:      time.Hour,
 		cfsslProfiles:     cfsslProfiles,
 		cfsslRSAProfile:   rsaProfileName,
 		cfsslECDSAProfile: ecdsaProfileName,
 		cfsslIssuers:      cfsslIssuers,
-		boulderIssuers:    issuerConfigs,
+		boulderIssuers:    boulderIssuers,
 		keyPolicy:         keyPolicy,
 		fc:                fc,
 		stats:             metrics.NoopRegisterer,
@@ -314,23 +314,23 @@ func TestFailNoSerialPrefix(t *testing.T) {
 	testCtx := setup(t)
 
 	_, err := NewCertificateAuthorityImpl(
-		testCtx.certExpiry,
-		testCtx.certBackdate,
-		0,
-		testCtx.maxNames,
-		testCtx.ocspLifetime,
 		nil,
 		nil,
-		testCtx.fc,
-		testCtx.stats,
 		testCtx.cfsslProfiles,
 		testCtx.cfsslRSAProfile,
 		testCtx.cfsslECDSAProfile,
 		testCtx.cfsslIssuers,
 		nil,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		0,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
+		nil,
 		testCtx.logger,
-		nil)
+		testCtx.stats,
+		testCtx.fc)
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
 }
 
@@ -415,29 +415,32 @@ func TestIssuePrecertificate(t *testing.T) {
 func issueCertificateSubTestSetup(t *testing.T, boulderIssuer bool) (*CertificateAuthorityImpl, *mockSA) {
 	testCtx := setup(t)
 	sa := &mockSA{}
-	var issuers []Issuer
-	var issuerConfigs []issuance.PreIssuer
+	var cfsslIssuers []Issuer
+	var boulderIssuers []*issuance.Issuer
 	if boulderIssuer {
-		issuerConfigs = testCtx.issuerConfigs
+		boulderIssuers = testCtx.boulderIssuers
 		_ = features.Set(map[string]bool{"NonCFSSLSigner": true})
 	} else {
-		issuers = testCtx.issuers
+		cfsslIssuers = testCtx.cfsslIssuers
 	}
 	ca, err := NewCertificateAuthorityImpl(
+		sa,
+		testCtx.pa,
+		testCtx.cfsslProfiles,
+		testCtx.cfsslRSAProfile,
+		testCtx.cfsslECDSAProfile,
+		cfsslIssuers,
+		boulderIssuers,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.ocspLifetime,
-		sa,
-		testCtx.pa,
-		testCtx.fc,
-		testCtx.stats,
-		issuers,
-		issuerConfigs,
 		testCtx.keyPolicy,
+		nil,
 		testCtx.logger,
-		nil)
+		testCtx.stats,
+		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	return ca, sa
@@ -483,23 +486,23 @@ func TestMultipleIssuers(t *testing.T) {
 	}
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
-		testCtx.certExpiry,
-		testCtx.certBackdate,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.ocspLifetime,
 		sa,
 		testCtx.pa,
-		testCtx.fc,
-		testCtx.stats,
 		testCtx.cfsslProfiles,
 		testCtx.cfsslRSAProfile,
 		testCtx.cfsslECDSAProfile,
 		newIssuers,
 		nil,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
+		nil,
 		testCtx.logger,
-		nil)
+		testCtx.stats,
+		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to remake CA")
 
 	issuedCert, err := ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID})
@@ -516,23 +519,23 @@ func TestOCSP(t *testing.T) {
 	testCtx := setup(t)
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
-		testCtx.certExpiry,
-		testCtx.certBackdate,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.ocspLifetime,
 		sa,
 		testCtx.pa,
-		testCtx.fc,
-		testCtx.stats,
 		testCtx.cfsslProfiles,
 		testCtx.cfsslRSAProfile,
 		testCtx.cfsslECDSAProfile,
 		testCtx.cfsslIssuers,
 		nil,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
+		nil,
 		testCtx.logger,
-		nil)
+		testCtx.stats,
+		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID}
@@ -575,23 +578,23 @@ func TestOCSP(t *testing.T) {
 		},
 	}
 	ca, err = NewCertificateAuthorityImpl(
-		testCtx.certExpiry,
-		testCtx.certBackdate,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.ocspLifetime,
 		sa,
 		testCtx.pa,
-		testCtx.fc,
-		testCtx.stats,
 		testCtx.cfsslProfiles,
 		testCtx.cfsslRSAProfile,
 		testCtx.cfsslECDSAProfile,
 		newIssuers,
 		nil,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
+		nil,
 		testCtx.logger,
-		nil)
+		testCtx.stats,
+		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to remake CA")
 
 	// Now issue a new precert, signed by newIssuerCert
@@ -680,23 +683,23 @@ func TestInvalidCSRs(t *testing.T) {
 		testCtx := setup(t)
 		sa := &mockSA{}
 		ca, err := NewCertificateAuthorityImpl(
-			testCtx.certExpiry,
-			testCtx.certBackdate,
-			testCtx.serialPrefix,
-			testCtx.maxNames,
-			testCtx.ocspLifetime,
 			sa,
 			testCtx.pa,
-			testCtx.fc,
-			testCtx.stats,
 			testCtx.cfsslProfiles,
 			testCtx.cfsslRSAProfile,
 			testCtx.cfsslECDSAProfile,
 			testCtx.cfsslIssuers,
 			nil,
+			testCtx.certExpiry,
+			testCtx.certBackdate,
+			testCtx.serialPrefix,
+			testCtx.maxNames,
+			testCtx.ocspLifetime,
 			testCtx.keyPolicy,
+			nil,
 			testCtx.logger,
-			nil)
+			testCtx.stats,
+			testCtx.fc)
 		test.AssertNotError(t, err, "Failed to create CA")
 
 		t.Run(testCase.name, func(t *testing.T) {
@@ -719,23 +722,23 @@ func TestRejectValidityTooLong(t *testing.T) {
 	testCtx := setup(t)
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
-		testCtx.certExpiry,
-		testCtx.certBackdate,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.ocspLifetime,
 		sa,
 		testCtx.pa,
-		testCtx.fc,
-		testCtx.stats,
 		testCtx.cfsslProfiles,
 		testCtx.cfsslRSAProfile,
 		testCtx.cfsslECDSAProfile,
 		testCtx.cfsslIssuers,
 		nil,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
+		nil,
 		testCtx.logger,
-		nil)
+		testCtx.stats,
+		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	// This time is a few minutes before the notAfter in testdata/ca_cert.pem
@@ -754,44 +757,47 @@ func TestSingleAIAEnforcement(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't create PA")
 
 	_, err = NewCertificateAuthorityImpl(
-		ca_config.CAConfig{
-			SerialPrefix: 1,
-			LifespanOCSP: cmd.ConfigDuration{Duration: time.Second},
-			CFSSL: cfsslConfig.Config{
-				Signing: &cfsslConfig.Signing{
-					Profiles: map[string]*cfsslConfig.SigningProfile{
-						rsaProfileName: {
-							IssuerURL: []string{"http://not-example.com/issuer-url", "bad"},
-							Usage:     []string{"digital signature", "key encipherment", "server auth"},
-							OCSP:      "http://not-example.com/ocsp",
-							CRL:       "http://not-example.com/crl",
-							Policies: []cfsslConfig.CertificatePolicy{
-								{
-									ID: cfsslConfig.OID(asn1.ObjectIdentifier{2, 23, 140, 1, 2, 1}),
-								},
+		&mockSA{},
+		pa,
+		cfsslConfig.Config{
+			Signing: &cfsslConfig.Signing{
+				Profiles: map[string]*cfsslConfig.SigningProfile{
+					rsaProfileName: {
+						IssuerURL: []string{"http://not-example.com/issuer-url", "bad"},
+						Usage:     []string{"digital signature", "key encipherment", "server auth"},
+						OCSP:      "http://not-example.com/ocsp",
+						CRL:       "http://not-example.com/crl",
+						Policies: []cfsslConfig.CertificatePolicy{
+							{
+								ID: cfsslConfig.OID(asn1.ObjectIdentifier{2, 23, 140, 1, 2, 1}),
 							},
-							ExpiryString: "8760h",
-							Backdate:     time.Hour,
-							CSRWhitelist: &cfsslConfig.CSRWhitelist{
-								PublicKeyAlgorithm: true,
-								PublicKey:          true,
-								SignatureAlgorithm: true,
-							},
-							ClientProvidesSerialNumbers: true,
 						},
+						ExpiryString: "8760h",
+						Backdate:     time.Hour,
+						CSRWhitelist: &cfsslConfig.CSRWhitelist{
+							PublicKeyAlgorithm: true,
+							PublicKey:          true,
+							SignatureAlgorithm: true,
+						},
+						ClientProvidesSerialNumbers: true,
 					},
 				},
 			},
 		},
-		&mockSA{},
-		pa,
-		clock.New(),
-		metrics.NoopRegisterer,
+		rsaProfileName,
+		ecdsaProfileName,
 		nil,
 		nil,
+		8760*time.Hour,
+		time.Hour,
+		1,
+		1,
+		time.Second,
 		goodkey.KeyPolicy{},
-		&blog.Mock{},
 		nil,
+		&blog.Mock{},
+		metrics.NoopRegisterer,
+		clock.New(),
 	)
 	test.AssertError(t, err, "NewCertificateAuthorityImpl allowed a profile with multiple issuer_urls")
 	test.AssertEquals(t, err.Error(), "only one issuer_url supported")
@@ -891,23 +897,23 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 	for _, nonCFSSL := range []bool{true, false} {
 		_ = features.Set(map[string]bool{"NonCFSSLSigner": nonCFSSL})
 		ca, err := NewCertificateAuthorityImpl(
-			testCtx.certExpiry,
-			testCtx.certBackdate,
-			testCtx.serialPrefix,
-			testCtx.maxNames,
-			testCtx.ocspLifetime,
 			sa,
 			testCtx.pa,
-			testCtx.fc,
-			testCtx.stats,
 			testCtx.cfsslProfiles,
 			testCtx.cfsslRSAProfile,
 			testCtx.cfsslECDSAProfile,
 			testCtx.cfsslIssuers,
 			testCtx.boulderIssuers,
+			testCtx.certExpiry,
+			testCtx.certBackdate,
+			testCtx.serialPrefix,
+			testCtx.maxNames,
+			testCtx.ocspLifetime,
 			testCtx.keyPolicy,
+			nil,
 			testCtx.logger,
-			nil)
+			testCtx.stats,
+			testCtx.fc)
 		test.AssertNotError(t, err, "Failed to create CA")
 
 		issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID, OrderID: 0}
@@ -981,23 +987,23 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	testCtx := setup(t)
 	sa := &dupeSA{}
 	ca, err := NewCertificateAuthorityImpl(
-		testCtx.certExpiry,
-		testCtx.certBackdate,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.ocspLifetime,
 		sa,
 		testCtx.pa,
-		testCtx.fc,
-		testCtx.stats,
 		testCtx.cfsslProfiles,
 		testCtx.cfsslRSAProfile,
 		testCtx.cfsslECDSAProfile,
 		testCtx.cfsslIssuers,
 		nil,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
+		nil,
 		testCtx.logger,
-		nil)
+		testCtx.stats,
+		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	sctBytes, err := makeSCTs()
@@ -1025,23 +1031,23 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	// for the duplicate.
 	errorsa := &getCertErrorSA{}
 	errorca, err := NewCertificateAuthorityImpl(
-		testCtx.certExpiry,
-		testCtx.certBackdate,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.ocspLifetime,
 		errorsa,
 		testCtx.pa,
-		testCtx.fc,
-		testCtx.stats,
 		testCtx.cfsslProfiles,
 		testCtx.cfsslRSAProfile,
 		testCtx.cfsslECDSAProfile,
 		testCtx.cfsslIssuers,
 		nil,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
+		nil,
 		testCtx.logger,
-		nil)
+		testCtx.stats,
+		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	_, err = errorca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
@@ -1106,23 +1112,23 @@ func TestPrecertOrphanQueue(t *testing.T) {
 	fakeNow := time.Date(2019, 9, 20, 0, 0, 0, 0, time.UTC)
 	testCtx.fc.Set(fakeNow)
 	ca, err := NewCertificateAuthorityImpl(
-		testCtx.certExpiry,
-		testCtx.certBackdate,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.ocspLifetime,
 		qsa,
 		testCtx.pa,
-		testCtx.fc,
-		testCtx.stats,
 		testCtx.cfsslProfiles,
 		testCtx.cfsslRSAProfile,
 		testCtx.cfsslECDSAProfile,
 		testCtx.cfsslIssuers,
 		nil,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
+		orphanQueue,
 		testCtx.logger,
-		orphanQueue)
+		testCtx.stats,
+		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	err = ca.integrateOrphan()
@@ -1176,23 +1182,23 @@ func TestOrphanQueue(t *testing.T) {
 	}
 	testCtx.fc.Set(fakeNow)
 	ca, err := NewCertificateAuthorityImpl(
-		testCtx.certExpiry,
-		testCtx.certBackdate,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.ocspLifetime,
 		qsa,
 		testCtx.pa,
-		testCtx.fc,
-		testCtx.stats,
 		testCtx.cfsslProfiles,
 		testCtx.cfsslRSAProfile,
 		testCtx.cfsslECDSAProfile,
 		testCtx.cfsslIssuers,
 		nil,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
+		orphanQueue,
 		testCtx.logger,
-		orphanQueue)
+		testCtx.stats,
+		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	err = ca.integrateOrphan()
@@ -1296,23 +1302,23 @@ func TestIssuePrecertificateLinting(t *testing.T) {
 	testCtx := setup(t)
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
-		testCtx.certExpiry,
-		testCtx.certBackdate,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.ocspLifetime,
 		sa,
 		testCtx.pa,
-		testCtx.fc,
-		testCtx.stats,
 		testCtx.cfsslProfiles,
 		testCtx.cfsslRSAProfile,
 		testCtx.cfsslECDSAProfile,
 		testCtx.cfsslIssuers,
 		nil,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
+		nil,
 		testCtx.logger,
-		nil)
+		testCtx.stats,
+		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	// Reconfigure the CA's cfsslSigner to be a linttrapSigner that always returns
@@ -1320,13 +1326,13 @@ func TestIssuePrecertificateLinting(t *testing.T) {
 	rsaIssuer := ca.issuers.byAlg[x509.RSA]
 	rsaIssuer.cfsslSigner = &linttrapSigner{
 		lintErr: &local.LintError{
-			ErrorResults: map[string]lint.LintResult{
+			ErrorResults: map[string]zlint.LintResult{
 				"foobar": {
-					Status:  lint.Error,
+					Status:  zlint.Error,
 					Details: "foobar is error",
 				},
 				"foobar2": {
-					Status:  lint.Warn,
+					Status:  zlint.Warn,
 					Details: "foobar2 is warning",
 				},
 			},
@@ -1360,23 +1366,23 @@ func TestGenerateOCSPWithIssuerID(t *testing.T) {
 	sa := &mockSA{}
 	_ = features.Set(map[string]bool{"StoreIssuerInfo": true})
 	ca, err := NewCertificateAuthorityImpl(
-		testCtx.certExpiry,
-		testCtx.certBackdate,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.ocspLifetime,
 		sa,
 		testCtx.pa,
-		testCtx.fc,
-		testCtx.stats,
 		testCtx.cfsslProfiles,
 		testCtx.cfsslRSAProfile,
 		testCtx.cfsslECDSAProfile,
 		testCtx.cfsslIssuers,
 		nil,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
+		nil,
 		testCtx.logger,
-		nil)
+		testCtx.stats,
+		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	// GenerateOCSP with feature enabled + req contains bad IssuerID

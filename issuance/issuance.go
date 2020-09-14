@@ -330,9 +330,9 @@ func (p *Profile) generateTemplate(clk clock.Clock) *x509.Certificate {
 type Issuer struct {
 	Cert    *x509.Certificate
 	Signer  crypto.Signer
-	profile *Profile
-	linter  *lint.Linter
-	clk     clock.Clock
+	Profile *Profile
+	Linter  *lint.Linter
+	Clk     clock.Clock
 }
 
 // NewIssuer constructs an Issuer on the heap, verifying that the profile
@@ -356,9 +356,9 @@ func NewIssuer(cert *x509.Certificate, signer crypto.Signer, profile *Profile, l
 	i := &Issuer{
 		Cert:    cert,
 		Signer:  signer,
-		profile: profile,
-		linter:  linter,
-		clk:     clk,
+		Profile: profile,
+		Linter:  linter,
+		Clk:     clk,
 	}
 	return i, nil
 }
@@ -367,11 +367,11 @@ func NewIssuer(cert *x509.Certificate, signer crypto.Signer, profile *Profile, l
 // this issuer is willing to issue. This is not necessarily the same as the
 // public key algorithm or signature algorithm in this issuer's own cert.
 func (i *Issuer) Algs() []x509.PublicKeyAlgorithm {
-	algs := make([]x509.PublicKeyAlgorithm, 2)
-	if i.profile.useForRSALeaves {
+	var algs []x509.PublicKeyAlgorithm
+	if i.Profile.useForRSALeaves {
 		algs = append(algs, x509.RSA)
 	}
-	if i.profile.useForECDSALeaves {
+	if i.Profile.useForECDSALeaves {
 		algs = append(algs, x509.ECDSA)
 	}
 	return algs
@@ -472,12 +472,12 @@ type IssuanceRequest struct {
 // is not signed using the issuer's key.
 func (i *Issuer) Issue(req *IssuanceRequest) ([]byte, error) {
 	// check request is valid according to the issuance profile
-	if err := i.profile.requestValid(i.clk, req); err != nil {
+	if err := i.Profile.requestValid(i.Clk, req); err != nil {
 		return nil, err
 	}
 
 	// generate template from the issuance profile
-	template := i.profile.generateTemplate(i.clk)
+	template := i.Profile.generateTemplate(i.Clk)
 
 	// populate template from the issuance request
 	template.NotBefore, template.NotAfter = req.NotBefore, req.NotAfter
@@ -515,7 +515,7 @@ func (i *Issuer) Issue(req *IssuanceRequest) ([]byte, error) {
 
 	// check that the tbsCertificate is properly formed by signing it
 	// with a throwaway key and then linting it using zlint
-	err = i.linter.LintTBS(template, i.Cert, req.PublicKey)
+	err = i.Linter.LintTBS(template, i.Cert, req.PublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
 	}

@@ -287,23 +287,23 @@ func main() {
 	}
 
 	cai, err := ca.NewCertificateAuthorityImpl(
-		c.CA.Expiry.Duration,
-		c.CA.Backdate.Duration,
-		c.CA.SerialPrefix,
-		c.CA.MaxNames,
-		c.CA.LifespanOCSP.Duration,
 		sa,
 		pa,
-		clk,
-		scope,
 		c.CA.CFSSL,
 		c.CA.RSAProfile,
 		c.CA.ECDSAProfile,
 		cfsslIssuers,
 		boulderIssuers,
+		c.CA.Expiry.Duration,
+		c.CA.Backdate.Duration,
+		c.CA.SerialPrefix,
+		c.CA.MaxNames,
+		c.CA.LifespanOCSP.Duration,
 		kp,
+		orphanQueue,
 		logger,
-		orphanQueue)
+		scope,
+		clk)
 	cmd.FailOnError(err, "Failed to create CA impl")
 
 	if orphanQueue != nil {
