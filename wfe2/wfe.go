@@ -1971,7 +1971,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			return
 		}
 		if ident.Value == "" {
-			wfe.sendError(response, logEvent, probs.Malformed("NewOrder request included invalid empty domain name"), nil)
+			wfe.sendError(response, logEvent, probs.Malformed("NewOrder request included empty domain name"), nil)
 			return
 		}
 		names[i] = ident.Value
