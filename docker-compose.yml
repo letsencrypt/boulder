@@ -60,7 +60,7 @@ services:
         entrypoint: test/entrypoint.sh
         working_dir: /go/src/github.com/letsencrypt/boulder
     bmysql:
-        image: mariadb:10.3
+        image: mariadb:10.5
         networks:
           bluenet:
             aliases:
