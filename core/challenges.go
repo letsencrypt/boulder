@@ -1,6 +1,6 @@
 package core
 
-func newChallenge(challengeType string, token string) Challenge {
+func newChallenge(challengeType AcmeChallenge, token string) Challenge {
 	return Challenge{
 		Type:   challengeType,
 		Status: StatusPending,

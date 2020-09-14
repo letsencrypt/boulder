@@ -134,7 +134,7 @@ func checkDER(sai certificateStorage, der []byte) (*x509.Certificate, orphanType
 	case certOrphan:
 		_, err = sai.GetCertificate(ctx, orphanSerial)
 	case precertOrphan:
-		_, err = sai.GetPrecertificate(ctx, &sapb.Serial{Serial: &orphanSerial})
+		_, err = sai.GetPrecertificate(ctx, &sapb.Serial{Serial: orphanSerial})
 	default:
 		err = errors.New("unknown orphan type")
 	}
@@ -214,12 +214,11 @@ func storeParsedLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Log
 	case certOrphan:
 		_, err = sa.AddCertificate(ctx, der, regID, response, &issuedDate)
 	case precertOrphan:
-		issued := issuedDate.UnixNano()
 		_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:    der,
-			RegID:  &regID,
+			RegID:  regID,
 			Ocsp:   response,
-			Issued: &issued,
+			Issued: issuedDate.UnixNano(),
 		})
 	default:
 		// Shouldn't happen but be defensive anyway
@@ -234,14 +233,11 @@ func storeParsedLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Log
 
 func generateOCSP(ctx context.Context, ca ocspGenerator, certDER []byte) ([]byte, error) {
 	// generate a fresh OCSP response
-	statusGood := string(core.OCSPStatusGood)
-	zeroInt32 := int32(0)
-	zeroInt64 := int64(0)
 	ocspResponse, err := ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		CertDER:   certDER,
-		Status:    &statusGood,
-		Reason:    &zeroInt32,
-		RevokedAt: &zeroInt64,
+		Status:    string(core.OCSPStatusGood),
+		Reason:    0,
+		RevokedAt: 0,
 	})
 	if err != nil {
 		return nil, err
@@ -361,9 +357,9 @@ func main() {
 			issued := issuedDate.UnixNano()
 			_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 				Der:    der,
-				RegID:  regID,
+				RegID:  *regID,
 				Ocsp:   response,
-				Issued: &issued,
+				Issued: issued,
 			})
 		default:
 			err = errors.New("unknown orphan type")

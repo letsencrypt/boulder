@@ -8,6 +8,7 @@ import (
 	"encoding/asn1"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 
 	"github.com/miekg/pkcs11"
@@ -24,32 +25,159 @@ type PKCtx interface {
 	FindObjectsFinal(sh pkcs11.SessionHandle) error
 }
 
-func Initialize(module string, slot uint, pin string) (PKCtx, pkcs11.SessionHandle, error) {
+// Session represents a session with a given PKCS#11 module. It is not safe for
+// concurrent access.
+type Session struct {
+	Module  PKCtx
+	Session pkcs11.SessionHandle
+}
+
+func Initialize(module string, slot uint, pin string) (*Session, error) {
 	ctx := pkcs11.New(module)
 	if ctx == nil {
-		return nil, 0, errors.New("failed to load module")
+		return nil, errors.New("failed to load module")
 	}
 	err := ctx.Initialize()
 	if err != nil {
-		return nil, 0, fmt.Errorf("couldn't initialize context: %s", err)
+		return nil, fmt.Errorf("couldn't initialize context: %s", err)
 	}
 
 	session, err := ctx.OpenSession(slot, pkcs11.CKF_SERIAL_SESSION|pkcs11.CKF_RW_SESSION)
 	if err != nil {
-		return nil, 0, fmt.Errorf("couldn't open session: %s", err)
+		return nil, fmt.Errorf("couldn't open session: %s", err)
 	}
 
 	err = ctx.Login(session, pkcs11.CKU_USER, pin)
 	if err != nil {
-		return nil, 0, fmt.Errorf("couldn't login: %s", err)
+		return nil, fmt.Errorf("couldn't login: %s", err)
 	}
 
-	return ctx, session, nil
+	return &Session{ctx, session}, nil
 }
 
-func GetRSAPublicKey(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle) (*rsa.PublicKey, error) {
+// https://tools.ietf.org/html/rfc5759#section-3.2
+var curveOIDs = map[string]asn1.ObjectIdentifier{
+	"P-256": {1, 2, 840, 10045, 3, 1, 7},
+	"P-384": {1, 3, 132, 0, 34},
+}
+
+// getPublicKeyID looks up the given public key in the PKCS#11 token, and
+// returns its ID as a []byte, for use in looking up the corresponding private
+// key.
+func (s *Session) getPublicKeyID(label string, publicKey crypto.PublicKey) ([]byte, error) {
+	var template []*pkcs11.Attribute
+	switch key := publicKey.(type) {
+	case *rsa.PublicKey:
+		template = []*pkcs11.Attribute{
+			pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
+			pkcs11.NewAttribute(pkcs11.CKA_LABEL, []byte(label)),
+			pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_RSA),
+			pkcs11.NewAttribute(pkcs11.CKA_MODULUS, key.N.Bytes()),
+			pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, big.NewInt(int64(key.E)).Bytes()),
+		}
+	case *ecdsa.PublicKey:
+		// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/os/pkcs11-curr-v2.40-os.html#_ftn1
+		// PKCS#11 v2.20 specified that the CKA_EC_POINT was to be store in a DER-encoded
+		// OCTET STRING.
+		rawValue := asn1.RawValue{
+			Tag:   4, // in Go 1.6+ this is asn1.TagOctetString
+			Bytes: elliptic.Marshal(key.Curve, key.X, key.Y),
+		}
+		marshalledPoint, err := asn1.Marshal(rawValue)
+		if err != nil {
+			return nil, err
+		}
+		curveOID, err := asn1.Marshal(curveOIDs[key.Curve.Params().Name])
+		if err != nil {
+			return nil, err
+		}
+		template = []*pkcs11.Attribute{
+			pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
+			pkcs11.NewAttribute(pkcs11.CKA_LABEL, []byte(label)),
+			pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_EC),
+			pkcs11.NewAttribute(pkcs11.CKA_EC_PARAMS, curveOID),
+			pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, marshalledPoint),
+		}
+	default:
+		return nil, fmt.Errorf("unsupported public key of type %T", publicKey)
+	}
+
+	publicKeyHandle, err := s.FindObject(template)
+	if err != nil {
+		return nil, err
+	}
+
+	attrs, err := s.Module.GetAttributeValue(s.Session, publicKeyHandle, []*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_ID, nil),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(attrs) == 1 && attrs[0].Type == pkcs11.CKA_ID {
+		return attrs[0].Value, nil
+	}
+	return nil, fmt.Errorf("invalid result from GetAttributeValue")
+}
+
+// getPrivateKey gets a handle to the private key whose CKA_ID matches the
+// provided publicKeyID.
+func (s *Session) getPrivateKey(publicKeyID []byte) (pkcs11.ObjectHandle, error) {
+	return s.FindObject([]*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PRIVATE_KEY),
+		pkcs11.NewAttribute(pkcs11.CKA_ID, publicKeyID),
+	})
+}
+
+// x509Signer is a convenience wrapper used for converting between the
+// PKCS#11 ECDSA signature format and the RFC 5480 one which is required
+// for X.509 certificates. It implements crypt.Signer.
+type x509Signer struct {
+	session      *Session
+	objectHandle pkcs11.ObjectHandle
+	keyType      keyType
+
+	pub crypto.PublicKey
+}
+
+// Sign wraps pkcs11helpers.Sign. If the signing key is ECDSA then the signature
+// is converted from the PKCS#11 format to the RFC 5480 format. For RSA keys a
+// conversion step is not needed.
+func (p *x509Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	signature, err := p.session.Sign(p.objectHandle, p.keyType, digest, opts.HashFunc())
+	if err != nil {
+		return nil, err
+	}
+
+	if p.keyType == ECDSAKey {
+		// Convert from the PKCS#11 format to the RFC 5480 format so that
+		// it can be used in a X.509 certificate
+		r := big.NewInt(0).SetBytes(signature[:len(signature)/2])
+		s := big.NewInt(0).SetBytes(signature[len(signature)/2:])
+		signature, err = asn1.Marshal(struct {
+			R, S *big.Int
+		}{R: r, S: s})
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert signature to RFC 5480 format: %s", err)
+		}
+	}
+	return signature, nil
+}
+
+func (p *x509Signer) Public() crypto.PublicKey {
+	return p.pub
+}
+
+func (s *Session) GetAttributeValue(object pkcs11.ObjectHandle, attributes []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
+	return s.Module.GetAttributeValue(s.Session, object, attributes)
+}
+
+func (s *Session) GenerateKeyPair(m []*pkcs11.Mechanism, pubAttrs []*pkcs11.Attribute, privAttrs []*pkcs11.Attribute) (pkcs11.ObjectHandle, pkcs11.ObjectHandle, error) {
+	return s.Module.GenerateKeyPair(s.Session, m, pubAttrs, privAttrs)
+}
+
+func (s *Session) GetRSAPublicKey(object pkcs11.ObjectHandle) (*rsa.PublicKey, error) {
 	// Retrieve the public exponent and modulus for the public key
-	attrs, err := ctx.GetAttributeValue(session, object, []*pkcs11.Attribute{
+	attrs, err := s.Module.GetAttributeValue(s.Session, object, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_MODULUS, nil),
 	})
@@ -86,9 +214,9 @@ var oidDERToCurve = map[string]elliptic.Curve{
 	"06052B81040023":       elliptic.P521(),
 }
 
-func GetECDSAPublicKey(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle) (*ecdsa.PublicKey, error) {
+func (s *Session) GetECDSAPublicKey(object pkcs11.ObjectHandle) (*ecdsa.PublicKey, error) {
 	// Retrieve the curve and public point for the generated public key
-	attrs, err := ctx.GetAttributeValue(session, object, []*pkcs11.Attribute{
+	attrs, err := s.Module.GetAttributeValue(s.Session, object, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_EC_PARAMS, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, nil),
 	})
@@ -137,10 +265,10 @@ func GetECDSAPublicKey(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.Ob
 	return pubKey, nil
 }
 
-type KeyType int
+type keyType int
 
 const (
-	RSAKey KeyType = iota
+	RSAKey keyType = iota
 	ECDSAKey
 )
 
@@ -152,7 +280,7 @@ var hashIdentifiers = map[crypto.Hash][]byte{
 	crypto.SHA512: {0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05, 0x00, 0x04, 0x40},
 }
 
-func Sign(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, keyType KeyType, digest []byte, hash crypto.Hash) ([]byte, error) {
+func (s *Session) Sign(object pkcs11.ObjectHandle, keyType keyType, digest []byte, hash crypto.Hash) ([]byte, error) {
 	if len(digest) != hash.Size() {
 		return nil, errors.New("digest length doesn't match hash length")
 	}
@@ -170,11 +298,11 @@ func Sign(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, k
 		mech[0] = pkcs11.NewMechanism(pkcs11.CKM_ECDSA, nil)
 	}
 
-	err := ctx.SignInit(session, mech, object)
+	err := s.Module.SignInit(s.Session, mech, object)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize signing operation: %s", err)
 	}
-	signature, err := ctx.Sign(session, digest)
+	signature, err := s.Module.Sign(s.Session, digest)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign data: %s", err)
 	}
@@ -182,27 +310,108 @@ func Sign(ctx PKCtx, session pkcs11.SessionHandle, object pkcs11.ObjectHandle, k
 	return signature, nil
 }
 
+var ErrNoObject = errors.New("no objects found matching provided template")
+
 // FindObject looks up a PKCS#11 object handle based on the provided template.
 // In the case where zero or more than one objects are found to match the
 // template an error is returned.
-func FindObject(ctx PKCtx, session pkcs11.SessionHandle, tmpl []*pkcs11.Attribute) (pkcs11.ObjectHandle, error) {
-	if err := ctx.FindObjectsInit(session, tmpl); err != nil {
+func (s *Session) FindObject(tmpl []*pkcs11.Attribute) (pkcs11.ObjectHandle, error) {
+	if err := s.Module.FindObjectsInit(s.Session, tmpl); err != nil {
 		return 0, err
 	}
-	handles, more, err := ctx.FindObjects(session, 1)
+	handles, _, err := s.Module.FindObjects(s.Session, 2)
 	if err != nil {
 		return 0, err
 	}
-	if len(handles) == 0 {
-		return 0, errors.New("no objects found matching provided template")
-	}
-	if more {
-		return 0, errors.New("more than one object matches provided template")
-	}
-	if err := ctx.FindObjectsFinal(session); err != nil {
+	if err := s.Module.FindObjectsFinal(s.Session); err != nil {
 		return 0, err
 	}
+	if len(handles) == 0 {
+		return 0, ErrNoObject
+	}
+	if len(handles) > 1 {
+		return 0, fmt.Errorf("too many objects (%d) that match the provided template", len(handles))
+	}
 	return handles[0], nil
+}
+
+// X509Signer is a convenience wrapper used for converting between the
+// PKCS#11 ECDSA signature format and the RFC 5480 one which is required
+// for X.509 certificates
+type X509Signer struct {
+	session      *Session
+	objectHandle pkcs11.ObjectHandle
+	keyType      keyType
+
+	pub crypto.PublicKey
+}
+
+// Sign signs a digest. If the signing key is ECDSA then the signature
+// is converted from the PKCS#11 format to the RFC 5480 format. For RSA keys a
+// conversion step is not needed.
+func (p *X509Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	signature, err := p.session.Sign(p.objectHandle, p.keyType, digest, opts.HashFunc())
+	if err != nil {
+		return nil, err
+	}
+
+	if p.keyType == ECDSAKey {
+		// Convert from the PKCS#11 format to the RFC 5480 format so that
+		// it can be used in a X.509 certificate
+		r := big.NewInt(0).SetBytes(signature[:len(signature)/2])
+		s := big.NewInt(0).SetBytes(signature[len(signature)/2:])
+		signature, err = asn1.Marshal(struct {
+			R, S *big.Int
+		}{R: r, S: s})
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert signature to RFC 5480 format: %s", err)
+		}
+	}
+	return signature, nil
+}
+
+func (p *X509Signer) Public() crypto.PublicKey {
+	return p.pub
+}
+
+// NewSigner constructs an X509Signer for the private key object associated with the
+// given label and public key.
+func (s *Session) NewSigner(label string, publicKey crypto.PublicKey) (crypto.Signer, error) {
+	var kt keyType
+	switch publicKey.(type) {
+	case *rsa.PublicKey:
+		kt = RSAKey
+	case *ecdsa.PublicKey:
+		kt = ECDSAKey
+	default:
+		return nil, fmt.Errorf("unsupported public key of type %T", publicKey)
+	}
+
+	publicKeyID, err := s.getPublicKeyID(label, publicKey)
+	if err != nil {
+		return nil, fmt.Errorf("looking up public key: %s", err)
+	}
+
+	// Fetch the private key by matching its id to the public key handle.
+	privateKeyHandle, err := s.getPrivateKey(publicKeyID)
+	if err != nil {
+		return nil, fmt.Errorf("getting private key: %s", err)
+	}
+	return &x509Signer{
+		session:      s,
+		objectHandle: privateKeyHandle,
+		keyType:      kt,
+		pub:          publicKey,
+	}, nil
+}
+
+func NewMock() *MockCtx {
+	return &MockCtx{}
+}
+
+func NewSessionWithMock() (*Session, *MockCtx) {
+	ctx := NewMock()
+	return &Session{ctx, 0}, ctx
 }
 
 type MockCtx struct {

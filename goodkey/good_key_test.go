@@ -259,10 +259,9 @@ func TestNonRefKey(t *testing.T) {
 	test.AssertError(t, testingPolicy.GoodKey(context.Background(), private.PublicKey), "Accepted non-reference key")
 }
 
-func TestDBBlacklist(t *testing.T) {
-	exists := false
+func TestDBBlocklistAccept(t *testing.T) {
 	testCheck := func(context.Context, *sapb.KeyBlockedRequest) (*sapb.Exists, error) {
-		return &sapb.Exists{Exists: &exists}, nil
+		return &sapb.Exists{Exists: false}, nil
 	}
 
 	policy, err := NewKeyPolicy("", "", testCheck)
@@ -272,7 +271,18 @@ func TestDBBlacklist(t *testing.T) {
 	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
 	err = policy.GoodKey(context.Background(), k.Public())
 	test.AssertNotError(t, err, "GoodKey failed with a non-blocked key")
-	exists = true
+}
+
+func TestDBBlocklistReject(t *testing.T) {
+	testCheck := func(context.Context, *sapb.KeyBlockedRequest) (*sapb.Exists, error) {
+		return &sapb.Exists{Exists: true}, nil
+	}
+
+	policy, err := NewKeyPolicy("", "", testCheck)
+	test.AssertNotError(t, err, "NewKeyPolicy failed")
+
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
 	err = policy.GoodKey(context.Background(), k.Public())
 	test.AssertError(t, err, "GoodKey didn't fail with a blocked key")
 	test.Assert(t, errors.Is(err, ErrBadKey), "returned error is wrong type")

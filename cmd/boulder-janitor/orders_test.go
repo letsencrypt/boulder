@@ -43,21 +43,17 @@ func TestDeleteOrder(t *testing.T) {
 	test.AssertNotError(t, err, "error creating test registration")
 
 	// Create a test authorization
-	ident := "test.example.com"
-	pending := string(core.StatusPending)
 	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
-	challType := string(core.ChallengeTypeDNS01)
-	tokenA := "YXNkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	authzA := &corepb.Authorization{
-		Identifier:     &ident,
-		RegistrationID: &reg.ID,
-		Status:         &pending,
-		Expires:        &expires,
+		Identifier:     "test.example.com",
+		RegistrationID: reg.ID,
+		Status:         string(core.StatusPending),
+		Expires:        expires,
 		Challenges: []*corepb.Challenge{
 			{
-				Status: &pending,
-				Type:   &challType,
-				Token:  &tokenA,
+				Status: string(core.StatusPending),
+				Type:   string(core.ChallengeTypeDNS01),
+				Token:  "YXNkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			},
 		},
 	}
@@ -68,9 +64,9 @@ func TestDeleteOrder(t *testing.T) {
 
 	// Create a test order referencing the test registration
 	testOrder, err := ssa.NewOrder(ctx, &corepb.Order{
-		RegistrationID:   &reg.ID,
-		Status:           &pending,
-		Expires:          &expires,
+		RegistrationID:   reg.ID,
+		Status:           string(core.StatusPending),
+		Expires:          expires,
 		Names:            []string{"test.example.com"},
 		V2Authorizations: []int64{ids.Ids[0]},
 	})
@@ -92,7 +88,7 @@ func TestDeleteOrder(t *testing.T) {
 
 	// Create an Orders job and delete the mock order by its ID
 	j := newOrdersJob(janitorDbMap, log, fc, config)
-	err = j.deleteHandler(*testOrder.Id)
+	err = j.deleteHandler(testOrder.Id)
 	// It should not error
 	test.AssertNotError(t, err, "error calling deleteHandler")
 
@@ -106,7 +102,7 @@ func TestDeleteOrder(t *testing.T) {
 	_, err = janitorDbMap.Select(
 		&authzIDs,
 		"SELECT authzID FROM orderToAuthz2 WHERE orderID = ?;",
-		*testOrder.Id)
+		testOrder.Id)
 	test.AssertNotError(t, err, "error finding orderToAuthz2 rows")
 	test.AssertEquals(t, len(authzIDs), 0)
 
@@ -115,7 +111,7 @@ func TestDeleteOrder(t *testing.T) {
 	_, err = janitorDbMap.Select(
 		&requestedNamesIDs,
 		"SELECT id FROM requestedNames WHERE orderID = ?;",
-		*testOrder.Id)
+		testOrder.Id)
 	test.AssertNotError(t, err, "error finding requestedNames rows")
 	test.AssertEquals(t, len(requestedNamesIDs), 0)
 
@@ -124,7 +120,7 @@ func TestDeleteOrder(t *testing.T) {
 	_, err = janitorDbMap.Select(
 		&requestedNamesIDs,
 		"SELECT id FROM orderFqdnSets WHERE orderID = ?;",
-		*testOrder.Id)
+		testOrder.Id)
 	test.AssertNotError(t, err, "error finding orderFqdnSets rows")
 	test.AssertEquals(t, len(orderFqdnSetIDs), 0)
 }

@@ -34,10 +34,10 @@ func TestChallenges(t *testing.T) {
 	tlsalpn01 := TLSALPNChallenge01(token)
 	test.AssertNotError(t, tlsalpn01.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer returned an error")
 
-	test.Assert(t, ValidChallenge(ChallengeTypeHTTP01), "Refused valid challenge")
-	test.Assert(t, ValidChallenge(ChallengeTypeDNS01), "Refused valid challenge")
-	test.Assert(t, ValidChallenge(ChallengeTypeTLSALPN01), "Refused valid challenge")
-	test.Assert(t, !ValidChallenge("nonsense-71"), "Accepted invalid challenge")
+	test.Assert(t, ChallengeTypeHTTP01.IsValid(), "Refused valid challenge")
+	test.Assert(t, ChallengeTypeDNS01.IsValid(), "Refused valid challenge")
+	test.Assert(t, ChallengeTypeTLSALPN01.IsValid(), "Refused valid challenge")
+	test.Assert(t, !AcmeChallenge("nonsense-71").IsValid(), "Accepted invalid challenge")
 }
 
 // objects.go

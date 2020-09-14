@@ -254,22 +254,18 @@ func (ra *MockRegistrationAuthority) DeactivateRegistration(ctx context.Context,
 }
 
 func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
-	one := int64(1)
-	zero := int64(0)
-	status := string(core.StatusPending)
 	return &corepb.Order{
-		Id:               &one,
+		Id:               1,
 		RegistrationID:   req.RegistrationID,
-		Expires:          &zero,
+		Expires:          0,
 		Names:            req.Names,
-		Status:           &status,
+		Status:           string(core.StatusPending),
 		V2Authorizations: []int64{1},
 	}, nil
 }
 
 func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
-	statusProcessing := string(core.StatusProcessing)
-	req.Order.Status = &statusProcessing
+	req.Order.Status = string(core.StatusProcessing)
 	return req.Order, nil
 }
 
@@ -951,13 +947,13 @@ func TestHTTPMethods(t *testing.T) {
 		// TODO(@cpu): Remove GET authz support, support only POST-as-GET
 		{
 			Name:    "Authz path should be GET or POST only",
-			Path:    authzv2Path,
+			Path:    authzPath,
 			Allowed: getOrPost,
 		},
 		// TODO(@cpu): Remove GET challenge support, support only POST-as-GET
 		{
 			Name:    "Challenge path should be GET or POST only",
-			Path:    challengev2Path,
+			Path:    challengePath,
 			Allowed: getOrPost,
 		},
 		// TODO(@cpu): Remove GET certificate support, support only POST-as-GET
@@ -1085,7 +1081,7 @@ func TestGetChallenge(t *testing.T) {
 		if method == "GET" {
 			test.AssertUnmarshaledEquals(
 				t, resp.Body.String(),
-				`{"type":"dns","token":"token","url":"http://localhost/acme/chall-v3/1/-ZfxEw"}`)
+				`{"status": "pending", "type":"dns","token":"token","url":"http://localhost/acme/chall-v3/1/-ZfxEw"}`)
 		}
 	}
 }
@@ -1120,7 +1116,7 @@ func TestChallenge(t *testing.T) {
 				"Location": "http://localhost/acme/chall-v3/1/-ZfxEw",
 				"Link":     `<http://localhost/acme/authz-v3/1>;rel="up"`,
 			},
-			ExpectedBody: `{"type":"dns","token":"token","url":"http://localhost/acme/chall-v3/1/-ZfxEw"}`,
+			ExpectedBody: `{"status": "pending", "type":"dns","token":"token","url":"http://localhost/acme/chall-v3/1/-ZfxEw"}`,
 		},
 		{
 			Name:           "Expired challenge",
@@ -1150,7 +1146,7 @@ func TestChallenge(t *testing.T) {
 			Name:           "Valid POST-as-GET",
 			Request:        postAsGet(1, "1/-ZfxEw", ""),
 			ExpectedStatus: http.StatusOK,
-			ExpectedBody:   `{"type":"dns", "token":"token", "url": "http://localhost/acme/chall-v3/1/-ZfxEw"}`,
+			ExpectedBody:   `{"status": "pending", "type":"dns", "token":"token", "url": "http://localhost/acme/chall-v3/1/-ZfxEw"}`,
 		},
 	}
 
@@ -1195,6 +1191,7 @@ func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 
 	body := responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `{
+	  "status": "pending",
 		"type": "dns",
 		"token":"token",
 		"url": "http://localhost/acme/chall-v3/1/-ZfxEw"
@@ -1575,6 +1572,7 @@ func TestGetAuthorization(t *testing.T) {
 		"expires": "2070-01-01T00:00:00Z",
 		"challenges": [
 			{
+			  "status": "pending",
 				"type": "dns",
 				"token":"token",
 				"url": "http://localhost/acme/chall-v3/1/-ZfxEw"
@@ -2091,6 +2089,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 		  "expires": "2070-01-01T00:00:00Z",
 		  "challenges": [
 		    {
+				"status": "pending",
 			  "type": "dns",
 			  "token":"token",
 		      "url": "http://localhost/acme/chall-v3/1/-ZfxEw"
@@ -3122,15 +3121,12 @@ func TestFinalizeSCTError(t *testing.T) {
 func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 	wfe, fc := setupWFE(t)
 
-	id := int64(1)
-	status := string(core.StatusPending)
-	expires := fc.Now().UnixNano()
 	orderJSON := wfe.orderToOrderJSON(&http.Request{}, &corepb.Order{
-		Id:               &id,
-		RegistrationID:   &id,
+		Id:               1,
+		RegistrationID:   1,
 		Names:            []string{"a"},
-		Status:           &status,
-		Expires:          &expires,
+		Status:           string(core.StatusPending),
+		Expires:          fc.Now().UnixNano(),
 		V2Authorizations: []int64{1, 2},
 	})
 	test.AssertDeepEquals(t, orderJSON.Authorizations, []string{
@@ -3260,7 +3256,7 @@ func TestGETAPIAuthz(t *testing.T) {
 	tooFreshErr := `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"Authorization is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`
 	for _, tc := range testCases {
 		responseWriter := httptest.NewRecorder()
-		req, logEvent := makeGet(tc.path, getAuthzv2Path)
+		req, logEvent := makeGet(tc.path, getAuthzPath)
 		wfe.Authorization(context.Background(), logEvent, responseWriter, req)
 
 		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
@@ -3299,7 +3295,7 @@ func TestGETAPIChallenge(t *testing.T) {
 	tooFreshErr := `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"Authorization is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`
 	for _, tc := range testCases {
 		responseWriter := httptest.NewRecorder()
-		req, logEvent := makeGet(tc.path, getAuthzv2Path)
+		req, logEvent := makeGet(tc.path, getAuthzPath)
 		wfe.Challenge(context.Background(), logEvent, responseWriter, req)
 
 		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {

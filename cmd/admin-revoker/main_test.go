@@ -54,7 +54,7 @@ func TestRevokeBatch(t *testing.T) {
 	ra := ra.NewRegistrationAuthorityImpl(fc,
 		log,
 		metrics.NoopRegisterer,
-		1, goodkey.KeyPolicy{}, 100, true, false, 300*24*time.Hour, 7*24*time.Hour, nil, nil, 0, nil, nil, &x509.Certificate{})
+		1, goodkey.KeyPolicy{}, 100, true, 300*24*time.Hour, 7*24*time.Hour, nil, nil, 0, nil, nil, &x509.Certificate{})
 	ra.SA = ssa
 	ra.CA = &mockCA{}
 
@@ -65,7 +65,6 @@ func TestRevokeBatch(t *testing.T) {
 	serials := []*big.Int{big.NewInt(1), big.NewInt(2), big.NewInt(3)}
 	k, err := rsa.GenerateKey(rand.Reader, 512)
 	test.AssertNotError(t, err, "failed to generate test key")
-	issued := time.Now().UnixNano()
 	for _, serial := range serials {
 		template := &x509.Certificate{
 			SerialNumber: serial,
@@ -75,8 +74,8 @@ func TestRevokeBatch(t *testing.T) {
 		test.AssertNotError(t, err, "failed to generate test cert")
 		_, err = ssa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 			Der:    der,
-			RegID:  &reg.ID,
-			Issued: &issued,
+			RegID:  reg.ID,
+			Issued: time.Now().UnixNano(),
 		})
 		test.AssertNotError(t, err, "failed to add test cert")
 		now := time.Now()

@@ -39,8 +39,7 @@ type config struct {
 		PublisherService    *cmd.GRPCClientConfig
 		AkamaiPurgerService *cmd.GRPCClientConfig
 
-		MaxNames     int
-		DoNotForceCN bool
+		MaxNames int
 
 		// Controls behaviour of the RA when asked to create a new authz for
 		// a name/regID that already has a valid authz. False preserves historic
@@ -218,7 +217,6 @@ func main() {
 		c.RA.MaxContactsPerRegistration,
 		kp,
 		c.RA.MaxNames,
-		c.RA.DoNotForceCN,
 		c.RA.ReuseValidAuthz,
 		authorizationLifetime,
 		pendingAuthorizationLifetime,

@@ -386,9 +386,8 @@ func (sa *StorageAuthority) PreviousCertificateExists(
 	_ context.Context,
 	_ *sapb.PreviousCertificateExistsRequest,
 ) (*sapb.Exists, error) {
-	f := false
 	return &sapb.Exists{
-		Exists: &f,
+		Exists: false,
 	}, nil
 }
 
@@ -486,63 +485,54 @@ func (sa *StorageAuthority) FinalizeOrder(_ context.Context, order *corepb.Order
 
 // GetOrder is a mock
 func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
-	if *req.Id == 2 {
+	if req.Id == 2 {
 		return nil, berrors.NotFoundError("bad")
-	} else if *req.Id == 3 {
+	} else if req.Id == 3 {
 		return nil, errors.New("very bad")
 	}
 
-	status := string(core.StatusValid)
-	one := int64(1)
-	serial := "serial"
 	created := sa.clk.Now().AddDate(-30, 0, 0).Unix()
 	exp := sa.clk.Now().AddDate(30, 0, 0).Unix()
 	validOrder := &corepb.Order{
 		Id:                req.Id,
-		RegistrationID:    &one,
-		Created:           &created,
-		Expires:           &exp,
+		RegistrationID:    1,
+		Created:           created,
+		Expires:           exp,
 		Names:             []string{"example.com"},
-		Status:            &status,
+		Status:            string(core.StatusValid),
 		V2Authorizations:  []int64{1},
-		CertificateSerial: &serial,
+		CertificateSerial: "serial",
 		Error:             nil,
 	}
 
 	// Order ID doesn't have a certificate serial yet
-	if *req.Id == 4 {
-		pending := string(core.StatusPending)
-		validOrder.Status = &pending
+	if req.Id == 4 {
+		validOrder.Status = string(core.StatusPending)
 		validOrder.Id = req.Id
-		validOrder.CertificateSerial = nil
+		validOrder.CertificateSerial = ""
 		validOrder.Error = nil
 		return validOrder, nil
 	}
 
 	// Order ID 6 belongs to reg ID 6
-	if *req.Id == 6 {
-		six := int64(6)
-		validOrder.Id = req.Id
-		validOrder.RegistrationID = &six
+	if req.Id == 6 {
+		validOrder.Id = 6
+		validOrder.RegistrationID = 6
 	}
 
 	// Order ID 7 is ready, but expired
-	if *req.Id == 7 {
-		ready := string(core.StatusReady)
-		validOrder.Status = &ready
-		exp = sa.clk.Now().AddDate(-30, 0, 0).Unix()
-		validOrder.Expires = &exp
+	if req.Id == 7 {
+		validOrder.Status = string(core.StatusReady)
+		validOrder.Expires = sa.clk.Now().AddDate(-30, 0, 0).Unix()
 	}
 
-	if *req.Id == 8 {
-		ready := string(core.StatusReady)
-		validOrder.Status = &ready
+	if req.Id == 8 {
+		validOrder.Status = string(core.StatusReady)
 	}
 
 	// Order 9 is fresh
-	if *req.Id == 9 {
-		now := sa.clk.Now().Unix()
-		validOrder.Created = &now
+	if req.Id == 9 {
+		validOrder.Created = sa.clk.Now().Unix()
 	}
 
 	return validOrder, nil
@@ -597,17 +587,17 @@ func (sa *StorageAuthority) CountInvalidAuthorizations2(ctx context.Context, req
 }
 
 func (sa *StorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if *req.RegistrationID != 1 && *req.RegistrationID != 5 && *req.RegistrationID != 4 {
+	if req.RegistrationID != 1 && req.RegistrationID != 5 && req.RegistrationID != 4 {
 		return &sapb.Authorizations{}, nil
 	}
-	now := time.Unix(0, *req.Now)
+	now := time.Unix(0, req.Now)
 	auths := &sapb.Authorizations{}
 	for _, name := range req.Domains {
 		if sa.authorizedDomains[name] || name == "not-an-example.com" || name == "bad.example.com" {
 			exp := now.AddDate(100, 0, 0)
 			authzPB, err := bgrpc.AuthzToPB(core.Authorization{
 				Status:         core.StatusValid,
-				RegistrationID: *req.RegistrationID,
+				RegistrationID: req.RegistrationID,
 				Expires:        &exp,
 				Identifier: identifier.ACMEIdentifier{
 					Type:  "dns",
@@ -617,15 +607,15 @@ func (sa *StorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sa
 					{
 						Status: core.StatusValid,
 						Type:   core.ChallengeTypeDNS01,
+						Token:  "exampleToken",
 					},
 				},
 			})
 			if err != nil {
 				return nil, err
 			}
-			n := name
 			auths.Authz = append(auths.Authz, &sapb.Authorizations_MapElement{
-				Domain: &n,
+				Domain: name,
 				Authz:  authzPB,
 			})
 		}
@@ -634,14 +624,10 @@ func (sa *StorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sa
 }
 
 func (sa *StorageAuthority) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	return nil, nil
+	return &sapb.Authorizations{}, nil
 }
 
 func (sa *StorageAuthority) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
-	return nil, nil
-}
-
-func (sa *StorageAuthority) SerialExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
 	return nil, nil
 }
 
@@ -661,13 +647,14 @@ func (sa *StorageAuthority) GetAuthorization2(ctx context.Context, id *sapb.Auth
 		Identifier:     identifier.DNSIdentifier("not-an-example.com"),
 		Challenges: []core.Challenge{
 			{
-				Token: "token",
-				Type:  "dns",
+				Status: "pending",
+				Token:  "token",
+				Type:   "dns",
 			},
 		},
 	}
 
-	switch *id.Id {
+	switch id.Id {
 	case authzIdValid:
 		exp := sa.clk.Now().AddDate(100, 0, 0)
 		authz.Expires = &exp
@@ -709,8 +696,7 @@ func (sa *StorageAuthority) AddBlockedKey(context.Context, *sapb.AddBlockedKeyRe
 
 // KeyBlocked is a mock
 func (sa *StorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlockedRequest) (*sapb.Exists, error) {
-	exists := false
-	return &sapb.Exists{Exists: &exists}, nil
+	return &sapb.Exists{Exists: false}, nil
 }
 
 // Publisher is a mock
@@ -778,7 +764,9 @@ func (sa *SAWithFailedChallenges) GetAuthorization2(ctx context.Context, id *sap
 		Identifier:     identifier.DNSIdentifier("not-an-example.com"),
 		Challenges: []core.Challenge{
 			{
-				Type: "dns",
+				Status: core.StatusInvalid,
+				Type:   "dns",
+				Token:  "exampleToken",
 			},
 		},
 	}
@@ -791,14 +779,14 @@ func (sa *SAWithFailedChallenges) GetAuthorization2(ctx context.Context, id *sap
 	authz.Expires = &exp
 	// 55 returns an authz with a failed challenge that has the problem type
 	// statically prefixed by the V1ErrorNS
-	if *id.Id == 55 {
+	if id.Id == 55 {
 		prob.Type = probs.V1ErrorNS + prob.Type
 		authz.Challenges[0].Error = prob
 		return bgrpc.AuthzToPB(authz)
 	}
 	// 56 returns an authz with a failed challenge that has no error
 	// namespace on the problem type.
-	if *id.Id == 56 {
+	if id.Id == 56 {
 		authz.Challenges[0].Error = prob
 		return bgrpc.AuthzToPB(authz)
 	}

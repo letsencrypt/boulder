@@ -1,8 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"crypto"
+	"crypto/rand"
 	"crypto/sha1"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -15,8 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/pkcs11helpers"
-	"github.com/miekg/pkcs11"
+	"github.com/letsencrypt/boulder/policyasn1"
 )
 
 type policyInfoConfig struct {
@@ -59,7 +58,7 @@ type certProfile struct {
 
 	// PolicyOIDs should contain any OIDs to be inserted in a certificate
 	// policies extension. If the CPSURI field of a policyInfoConfig element
-	// is set it will result in a policyInformation structure containing a
+	// is set it will result in a PolicyInformation structure containing a
 	// single id-qt-cps type qualifier indicating the CPS URI.
 	Policies []policyInfoConfig `yaml:"policies"`
 
@@ -84,17 +83,31 @@ const (
 	intermediateCert
 	ocspCert
 	crlCert
+	crossCert
+	requestCert
 )
 
 func (profile *certProfile) verifyProfile(ct certType) error {
-	if profile.NotBefore == "" {
-		return errors.New("not-before is required")
-	}
-	if profile.NotAfter == "" {
-		return errors.New("not-after is required")
-	}
-	if profile.SignatureAlgorithm == "" {
-		return errors.New("signature-algorithm is required")
+	if ct != requestCert {
+		if profile.NotBefore == "" {
+			return errors.New("not-before is required")
+		}
+		if profile.NotAfter == "" {
+			return errors.New("not-after is required")
+		}
+		if profile.SignatureAlgorithm == "" {
+			return errors.New("signature-algorithm is required")
+		}
+	} else {
+		if profile.NotBefore != "" {
+			return errors.New("not-before cannot be set for a CSR")
+		}
+		if profile.NotAfter != "" {
+			return errors.New("not-after cannot be set for a CSR")
+		}
+		if profile.SignatureAlgorithm != "" {
+			return errors.New("signature-algorithm cannot be set for a CSR")
+		}
 	}
 	if profile.CommonName == "" {
 		return errors.New("common-name is required")
@@ -106,10 +119,7 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 		return errors.New("country is required")
 	}
 
-	if ct == intermediateCert {
-		if profile.OCSPURL == "" {
-			return errors.New("ocsp-url is required for intermediates")
-		}
+	if ct == intermediateCert || ct == requestCert {
 		if profile.CRLURL == "" {
 			return errors.New("crl-url is required for intermediates")
 		}
@@ -150,34 +160,23 @@ var stringToKeyUsage = map[string]x509.KeyUsage{
 	"Cert Sign":         x509.KeyUsageCertSign,
 }
 
-type policyQualifier struct {
-	Id    asn1.ObjectIdentifier
-	Value string `asn1:"tag:optional,ia5"`
-}
-
-type policyInformation struct {
-	Policy     asn1.ObjectIdentifier
-	Qualifiers []policyQualifier `asn1:"tag:optional,omitempty"`
-}
-
 var (
 	oidExtensionCertificatePolicies = asn1.ObjectIdentifier{2, 5, 29, 32}
-	oidCPSQualifier                 = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 2, 1}
 
 	oidOCSPNoCheck = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 48, 1, 5}
 )
 
 func buildPolicies(policies []policyInfoConfig) (pkix.Extension, error) {
 	policyExt := pkix.Extension{Id: oidExtensionCertificatePolicies}
-	var policyInfo []policyInformation
+	var policyInfo []policyasn1.PolicyInformation
 	for _, p := range policies {
 		oid, err := parseOID(p.OID)
 		if err != nil {
 			return pkix.Extension{}, err
 		}
-		pi := policyInformation{Policy: oid}
+		pi := policyasn1.PolicyInformation{Policy: oid}
 		if p.CPSURI != "" {
-			pi.Qualifiers = []policyQualifier{{Id: oidCPSQualifier, Value: p.CPSURI}}
+			pi.Qualifiers = []policyasn1.PolicyQualifier{{OID: policyasn1.CPSQualifierOID, Value: p.CPSURI}}
 		}
 		policyInfo = append(policyInfo, pi)
 	}
@@ -203,15 +202,6 @@ func generateSKID(pk []byte) ([]byte, error) {
 
 // makeTemplate generates the certificate template for use in x509.CreateCertificate
 func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct certType) (*x509.Certificate, error) {
-	notBefore, err := time.Parse(configDateLayout, profile.NotBefore)
-	if err != nil {
-		return nil, err
-	}
-	notAfter, err := time.Parse(configDateLayout, profile.NotAfter)
-	if err != nil {
-		return nil, err
-	}
-
 	var ocspServer []string
 	if profile.OCSPURL != "" {
 		ocspServer = []string{profile.OCSPURL}
@@ -223,11 +213,6 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 	var issuingCertificateURL []string
 	if profile.IssuerURL != "" {
 		issuingCertificateURL = []string{profile.IssuerURL}
-	}
-
-	sigAlg, ok := AllowedSigAlgs[profile.SignatureAlgorithm]
-	if !ok {
-		return nil, fmt.Errorf("unsupported signature algorithm %q", profile.SignatureAlgorithm)
 	}
 
 	subjectKeyID, err := generateSKID(pubKey)
@@ -259,7 +244,6 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 	}
 
 	cert := &x509.Certificate{
-		SignatureAlgorithm:    sigAlg,
 		SerialNumber:          big.NewInt(0).SetBytes(serial),
 		BasicConstraintsValid: true,
 		IsCA:                  true,
@@ -268,8 +252,6 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 			Organization: []string{profile.Organization},
 			Country:      []string{profile.Country},
 		},
-		NotBefore:             notBefore,
-		NotAfter:              notAfter,
 		OCSPServer:            ocspServer,
 		CRLDistributionPoints: crlDistributionPoints,
 		IssuingCertificateURL: issuingCertificateURL,
@@ -277,15 +259,40 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		SubjectKeyId:          subjectKeyID,
 	}
 
-	if ct == ocspCert {
+	if ct != requestCert {
+		sigAlg, ok := AllowedSigAlgs[profile.SignatureAlgorithm]
+		if !ok {
+			return nil, fmt.Errorf("unsupported signature algorithm %q", profile.SignatureAlgorithm)
+		}
+		cert.SignatureAlgorithm = sigAlg
+		notBefore, err := time.Parse(configDateLayout, profile.NotBefore)
+		if err != nil {
+			return nil, err
+		}
+		cert.NotBefore = notBefore
+		notAfter, err := time.Parse(configDateLayout, profile.NotAfter)
+		if err != nil {
+			return nil, err
+		}
+		cert.NotAfter = notAfter
+	}
+
+	switch ct {
+	// rootCert and crossCert do not get EKU or MaxPathZero
+	case ocspCert:
 		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageOCSPSigning}
 		// ASN.1 NULL is 0x05, 0x00
 		ocspNoCheckExt := pkix.Extension{Id: oidOCSPNoCheck, Value: []byte{5, 0}}
 		cert.ExtraExtensions = append(cert.ExtraExtensions, ocspNoCheckExt)
 		cert.IsCA = false
-	} else if ct == crlCert {
+	case crlCert:
 		cert.IsCA = false
-	} else if ct == intermediateCert {
+	case requestCert, intermediateCert:
+		// id-kp-serverAuth and id-kp-clientAuth are included in intermediate
+		// certificates in order to technically constrain them. id-kp-serverAuth
+		// is required by 7.1.2.2.g of the CABF Baseline Requirements, but
+		// id-kp-clientAuth isn't. We include id-kp-clientAuth as we also include
+		// it in our end-entity certificates.
 		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
 		cert.MaxPathLenZero = true
 	}
@@ -313,110 +320,32 @@ func (fr *failReader) Read([]byte) (int, error) {
 	return 0, errors.New("Empty reader used by x509.CreateCertificate")
 }
 
-// x509Signer is a convenience wrapper used for converting between the
-// PKCS#11 ECDSA signature format and the RFC 5480 one which is required
-// for X.509 certificates
-type x509Signer struct {
-	ctx pkcs11helpers.PKCtx
-
-	session      pkcs11.SessionHandle
-	objectHandle pkcs11.ObjectHandle
-	keyType      pkcs11helpers.KeyType
-
-	pub crypto.PublicKey
-}
-
-// Sign wraps pkcs11helpers.Sign. If the signing key is ECDSA then the signature
-// is converted from the PKCS#11 format to the RFC 5480 format. For RSA keys a
-// conversion step is not needed.
-func (p *x509Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
-	signature, err := pkcs11helpers.Sign(p.ctx, p.session, p.objectHandle, p.keyType, digest, opts.HashFunc())
+func generateCSR(profile *certProfile, randReader *hsmRandReader, pubBytes []byte, pub crypto.PublicKey, signer crypto.Signer) ([]byte, error) {
+	// currently Go doesn't support all of the convenience fields for x509.CertificateRequest
+	// that x509.Certificate has. Instead of doing all of the manual extension construction
+	// ourselves here we just create a throwaway self-signed certificate and then dump all
+	// of the generated extensions into a x509.CertificateRequest. In the future Go should
+	// support doing this properly itself, but for now this is the easiest approach.
+	template, err := makeTemplate(randReader, profile, pubBytes, requestCert)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create certificate template: %s", err)
 	}
-
-	if p.keyType == pkcs11helpers.ECDSAKey {
-		// Convert from the PKCS#11 format to the RFC 5480 format so that
-		// it can be used in a X.509 certificate
-		r := big.NewInt(0).SetBytes(signature[:len(signature)/2])
-		s := big.NewInt(0).SetBytes(signature[len(signature)/2:])
-		signature, err = asn1.Marshal(struct {
-			R, S *big.Int
-		}{R: r, S: s})
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert signature to RFC 5480 format: %s", err)
-		}
-	}
-	return signature, nil
-}
-
-func (p *x509Signer) Public() crypto.PublicKey {
-	return p.pub
-}
-
-// newSigner constructs a x509Signer for the private key object associated with the
-// given label and ID. Unlike letsencrypt/pkcs11key this method doesn't rely on
-// having the actual public key object in order to retrieve the private key
-// handle. This is because we already have the key pair object ID, and as such
-// do not need to query the HSM to retrieve it.
-func newSigner(ctx pkcs11helpers.PKCtx, session pkcs11.SessionHandle, label string, id []byte) (crypto.Signer, error) {
-	// Retrieve the private key handle that will later be used for the certificate
-	// signing operation
-	privateHandle, err := pkcs11helpers.FindObject(ctx, session, []*pkcs11.Attribute{
-		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PRIVATE_KEY),
-		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
-		pkcs11.NewAttribute(pkcs11.CKA_ID, id),
-	})
+	selfSignedDER, err := x509.CreateCertificate(rand.Reader, template, template, pub, &csrSelfSigner{pub})
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve private key handle: %s", err)
+		return nil, fmt.Errorf("failed to create certificate for CSR: %s", err)
 	}
-	attrs, err := ctx.GetAttributeValue(session, privateHandle, []*pkcs11.Attribute{
-		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil)},
-	)
+	selfSigned, err := x509.ParseCertificate(selfSignedDER)
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve key type: %s", err)
-	}
-	if len(attrs) == 0 {
-		return nil, errors.New("failed to retrieve key attributes")
+		return nil, fmt.Errorf("failed to parse certificate template for CSR: %s", err)
 	}
 
-	// Retrieve the public key handle with the same CKA_ID as the private key
-	// and construct a {rsa,ecdsa}.PublicKey for use in x509.CreateCertificate
-	pubHandle, err := pkcs11helpers.FindObject(ctx, session, []*pkcs11.Attribute{
-		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
-		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
-		pkcs11.NewAttribute(pkcs11.CKA_ID, id),
-		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, attrs[0].Value),
-	})
+	csrDER, err := x509.CreateCertificateRequest(&failReader{}, &x509.CertificateRequest{
+		Subject:         selfSigned.Subject,
+		ExtraExtensions: selfSigned.Extensions,
+	}, signer)
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve public key handle: %s", err)
-	}
-	var pub crypto.PublicKey
-	var keyType pkcs11helpers.KeyType
-	switch {
-	// 0x00000000, CKK_RSA
-	case bytes.Equal(attrs[0].Value, []byte{0, 0, 0, 0, 0, 0, 0, 0}):
-		keyType = pkcs11helpers.RSAKey
-		pub, err = pkcs11helpers.GetRSAPublicKey(ctx, session, pubHandle)
-		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve public key: %s", err)
-		}
-	// 0x00000003, CKK_ECDSA
-	case bytes.Equal(attrs[0].Value, []byte{3, 0, 0, 0, 0, 0, 0, 0}):
-		keyType = pkcs11helpers.ECDSAKey
-		pub, err = pkcs11helpers.GetECDSAPublicKey(ctx, session, pubHandle)
-		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve public key: %s", err)
-		}
-	default:
-		return nil, errors.New("unsupported key type")
+		return nil, fmt.Errorf("failed to create and sign CSR: %s", err)
 	}
 
-	return &x509Signer{
-		ctx:          ctx,
-		session:      session,
-		objectHandle: privateHandle,
-		keyType:      keyType,
-		pub:          pub,
-	}, nil
+	return csrDER, nil
 }

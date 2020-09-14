@@ -28,14 +28,14 @@
         "orphan-finder.boulder"
       ]
     },
-    "Issuers": [{
-      "ConfigFile": "test/test-ca.key-pkcs11.json",
-      "CertFile": "/tmp/intermediate-cert-rsa-a.pem",
-      "NumSessions": 2
+    "issuers": [{
+      "configFile": "test/test-ca.key-pkcs11.json",
+      "certFile": "/tmp/intermediate-cert-rsa-a.pem",
+      "numSessions": 2
     },{
-      "ConfigFile": "test/test-ca.key-pkcs11.json",
-      "CertFile": "/tmp/intermediate-cert-rsa-b.pem",
-      "NumSessions": 2
+      "configFile": "test/test-ca.key-pkcs11.json",
+      "certFile": "/tmp/intermediate-cert-rsa-b.pem",
+      "numSessions": 2
     }],
     "expiry": "2160h",
     "backdate": "1h",

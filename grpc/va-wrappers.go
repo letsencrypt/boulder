@@ -11,68 +11,33 @@ import (
 
 	ggrpc "google.golang.org/grpc"
 
-	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
 type ValidationAuthorityGRPCServer struct {
-	impl core.ValidationAuthority
+	inner vapb.VAServer
 }
 
-func (s *ValidationAuthorityGRPCServer) PerformValidation(ctx context.Context, in *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
-	domain, challenge, authz, err := performValidationReqToArgs(in)
-	if err != nil {
-		return nil, err
-	}
-	records, err := s.impl.PerformValidation(ctx, domain, challenge, authz)
-	// If the type of error was a ProblemDetails, we need to return
-	// both that and the records to the caller (so it can update
-	// the challenge / authz in the SA with the failing records).
-	// The least error-prone way of doing this is to send a struct
-	// as the RPC response and return a nil error on the RPC layer,
-	// then unpack that into (records, error) to the caller.
-	prob, ok := err.(*probs.ProblemDetails)
-	if !ok && err != nil {
-		return nil, err
-	}
-	return ValidationResultToPB(records, prob)
+func (s *ValidationAuthorityGRPCServer) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
+	return s.inner.PerformValidation(ctx, req)
 }
 
-func RegisterValidationAuthorityGRPCServer(s *ggrpc.Server, impl core.ValidationAuthority) error {
-	rpcSrv := &ValidationAuthorityGRPCServer{impl}
+func RegisterValidationAuthorityGRPCServer(s *ggrpc.Server, inner vapb.VAServer) error {
+	rpcSrv := &ValidationAuthorityGRPCServer{inner}
 	vapb.RegisterVAServer(s, rpcSrv)
 	return nil
 }
 
 type ValidationAuthorityGRPCClient struct {
-	gc vapb.VAClient
+	inner vapb.VAClient
 }
 
-func NewValidationAuthorityGRPCClient(cc *ggrpc.ClientConn) core.ValidationAuthority {
+func NewValidationAuthorityGRPCClient(cc *ggrpc.ClientConn) vapb.VAClient {
 	return &ValidationAuthorityGRPCClient{vapb.NewVAClient(cc)}
 }
 
 // PerformValidation has the VA revalidate the specified challenge and returns
 // the updated Challenge object.
-func (vac ValidationAuthorityGRPCClient) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
-	req, err := argsToPerformValidationRequest(domain, challenge, authz)
-	if err != nil {
-		return nil, err
-	}
-	gRecords, err := vac.gc.PerformValidation(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	records, prob, err := pbToValidationResult(gRecords)
-	if err != nil {
-		return nil, err
-	}
-	if prob != nil {
-		return records, prob
-	}
-
-	// We return nil explicitly to avoid "typed nil" problems.
-	// https://golang.org/doc/faq#nil_error
-	return records, nil
+func (vac ValidationAuthorityGRPCClient) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, opts ...ggrpc.CallOption) (*vapb.ValidationResult, error) {
+	return vac.inner.PerformValidation(ctx, req)
 }

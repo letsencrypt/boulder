@@ -6,6 +6,6 @@ pkcs11:
     store-key-with-label: intermediate signing key (rsa)
 key:
     type: rsa
-    rsa-mod-length: 4096
+    rsa-mod-length: 2048
 outputs:
     public-key-path: /tmp/intermediate-signing-pub-rsa.pem

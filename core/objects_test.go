@@ -57,7 +57,7 @@ func TestChallengeSanityCheck(t *testing.T) {
   }`), &accountKey)
 	test.AssertNotError(t, err, "Error unmarshaling JWK")
 
-	types := []string{ChallengeTypeHTTP01, ChallengeTypeDNS01, ChallengeTypeTLSALPN01}
+	types := []AcmeChallenge{ChallengeTypeHTTP01, ChallengeTypeDNS01, ChallengeTypeTLSALPN01}
 	for _, challengeType := range types {
 		chall := Challenge{
 			Type:   challengeType,
@@ -101,12 +101,14 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 	testCases := []struct {
 		Name           string
 		Authz          Authorization
-		ExpectedResult string
+		ExpectedResult AcmeChallenge
+		ExpectedError  string
 	}{
 		// An authz with no challenges should return nil
 		{
-			Name:  "No challenges",
-			Authz: Authorization{},
+			Name:          "No challenges",
+			Authz:         Authorization{},
+			ExpectedError: "Authorization has no challenges",
 		},
 		// An authz with all non-valid challenges should return nil
 		{
@@ -114,6 +116,7 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 			Authz: Authorization{
 				Challenges: []Challenge{HTTPChallenge01(""), DNSChallenge01("")},
 			},
+			ExpectedError: "Authorization not solved by any challenge",
 		},
 		// An authz with one valid HTTP01 challenge amongst other challenges should
 		// return the HTTP01 challenge
@@ -122,7 +125,7 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 			Authz: Authorization{
 				Challenges: []Challenge{HTTPChallenge01(""), validHTTP01, DNSChallenge01("")},
 			},
-			ExpectedResult: "http-01",
+			ExpectedResult: ChallengeTypeHTTP01,
 		},
 		// An authz with both a valid HTTP01 challenge and a valid DNS01 challenge
 		// among other challenges should return whichever valid challenge is first
@@ -132,15 +135,19 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 			Authz: Authorization{
 				Challenges: []Challenge{validDNS01, HTTPChallenge01(""), validHTTP01, DNSChallenge01("")},
 			},
-			ExpectedResult: "dns-01",
+			ExpectedResult: ChallengeTypeDNS01,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			result := tc.Authz.SolvedBy()
-			// Make sure the result was the correct challenge type
-			test.AssertEquals(t, result, tc.ExpectedResult)
+			result, err := tc.Authz.SolvedBy()
+			if tc.ExpectedError != "" {
+				test.AssertEquals(t, err.Error(), tc.ExpectedError)
+			}
+			if tc.ExpectedResult != "" {
+				test.AssertEquals(t, *result, tc.ExpectedResult)
+			}
 		})
 	}
 }

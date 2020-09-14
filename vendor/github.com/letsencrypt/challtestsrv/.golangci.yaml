@@ -1,0 +1,22 @@
+linters-settings:
+  gocyclo:
+    min-complexity: 25
+  govet:
+    check-shadowing: false
+  misspell:
+    locale: "US"
+
+linters:
+  enable-all: true
+  disable:
+    - stylecheck
+    - gosec
+    - dupl
+    - maligned
+    - depguard
+    - lll
+    - prealloc
+    - scopelint
+    - gocritic
+    - gochecknoinits
+    - gochecknoglobals

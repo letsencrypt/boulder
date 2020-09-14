@@ -2,16 +2,13 @@ package main
 
 import (
 	"bytes"
-	"crypto"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha256"
+	"crypto/rsa"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/hex"
 	"errors"
-	"math/big"
 	"testing"
 
 	"github.com/letsencrypt/boulder/pkcs11helpers"
@@ -19,52 +16,20 @@ import (
 	"github.com/miekg/pkcs11"
 )
 
-func TestX509Signer(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{}
+// samplePubkey returns a slice of bytes containing an encoded
+// SubjectPublicKeyInfo for an example public key.
+func samplePubkey() []byte {
+	pubKey, err := hex.DecodeString("3059301306072a8648ce3d020106082a8648ce3d03010703420004b06745ef0375c9c54057098f077964e18d3bed0aacd54545b16eab8c539b5768cc1cea93ba56af1e22a7a01c33048c8885ed17c9c55ede70649b707072689f5e")
+	if err != nil {
+		panic(err)
+	}
+	return pubKey
+}
 
-	// test that x509Signer.Sign properly converts the PKCS#11 format signature to
-	// the RFC 5480 format signature
-	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
-		return nil
-	}
-	tk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "Failed to generate test key")
-	ctx.SignFunc = func(_ pkcs11.SessionHandle, digest []byte) ([]byte, error) {
-		r, s, err := ecdsa.Sign(rand.Reader, tk, digest[:])
-		if err != nil {
-			return nil, err
-		}
-		rBytes := r.Bytes()
-		sBytes := s.Bytes()
-		// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/os/pkcs11-curr-v2.40-os.html
-		// Section 2.3.1: EC Signatures
-		// "If r and s have different octet length, the shorter of both must be padded with
-		// leading zero octets such that both have the same octet length."
-		switch {
-		case len(rBytes) < len(sBytes):
-			padding := make([]byte, len(sBytes)-len(rBytes))
-			rBytes = append(padding, rBytes...)
-		case len(rBytes) > len(sBytes):
-			padding := make([]byte, len(rBytes)-len(sBytes))
-			sBytes = append(padding, sBytes...)
-		}
-		return append(rBytes, sBytes...), nil
-	}
-	digest := sha256.Sum256([]byte("hello"))
-	signer := &x509Signer{ctx: ctx, keyType: pkcs11helpers.ECDSAKey, pub: tk.Public()}
-	signature, err := signer.Sign(nil, digest[:], crypto.SHA256)
-	test.AssertNotError(t, err, "x509Signer.Sign failed")
-
-	var rfcFormat struct {
-		R, S *big.Int
-	}
-	rest, err := asn1.Unmarshal(signature, &rfcFormat)
-	test.AssertNotError(t, err, "asn1.Unmarshal failed trying to parse signature")
-	test.Assert(t, len(rest) == 0, "Signature had trailing garbage")
-	verified := ecdsa.Verify(&tk.PublicKey, digest[:], rfcFormat.R, rfcFormat.S)
-	test.Assert(t, verified, "Failed to verify RFC format signature")
-	// For the sake of coverage
-	test.AssertEquals(t, signer.Public(), tk.Public())
+func realRand(_ pkcs11.SessionHandle, length int) ([]byte, error) {
+	r := make([]byte, length)
+	_, err := rand.Read(r)
+	return r, err
 }
 
 func TestParseOID(t *testing.T) {
@@ -78,15 +43,14 @@ func TestParseOID(t *testing.T) {
 }
 
 func TestMakeTemplate(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{}
+	s, ctx := pkcs11helpers.NewSessionWithMock()
 	profile := &certProfile{}
-	randReader := newRandReader(&ctx, 0)
-
-	pubKey, err := hex.DecodeString("3059301306072a8648ce3d020106082a8648ce3d03010703420004b06745ef0375c9c54057098f077964e18d3bed0aacd54545b16eab8c539b5768cc1cea93ba56af1e22a7a01c33048c8885ed17c9c55ede70649b707072689f5e")
-	test.AssertNotError(t, err, "failed to decode test public key")
+	randReader := newRandReader(s)
+	pubKey := samplePubkey()
+	ctx.GenerateRandomFunc = realRand
 
 	profile.NotBefore = "1234"
-	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
+	_, err := makeTemplate(randReader, profile, pubKey, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid not before")
 
 	profile.NotBefore = "2018-05-18 11:31:00"
@@ -106,11 +70,7 @@ func TestMakeTemplate(t *testing.T) {
 	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail when GenerateRandom failed")
 
-	ctx.GenerateRandomFunc = func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
-		r := make([]byte, length)
-		_, err := rand.Read(r)
-		return r, err
-	}
+	ctx.GenerateRandomFunc = realRand
 
 	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with empty key usages")
@@ -156,15 +116,35 @@ func TestMakeTemplate(t *testing.T) {
 	test.AssertEquals(t, cert.ExtKeyUsage[1], x509.ExtKeyUsageServerAuth)
 }
 
-func TestMakeTemplateOCSP(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{
-		GenerateRandomFunc: func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
-			r := make([]byte, length)
-			_, err := rand.Read(r)
-			return r, err
-		},
+func TestMakeTemplateCrossCertificate(t *testing.T) {
+	s, ctx := pkcs11helpers.NewSessionWithMock()
+	randReader := newRandReader(s)
+	pubKey := samplePubkey()
+	profile := &certProfile{
+		SignatureAlgorithm: "SHA256WithRSA",
+		CommonName:         "common name",
+		Organization:       "organization",
+		Country:            "country",
+		KeyUsages:          []string{"Digital Signature", "CRL Sign"},
+		OCSPURL:            "ocsp",
+		CRLURL:             "crl",
+		IssuerURL:          "issuer",
+		NotAfter:           "2018-05-18 11:31:00",
+		NotBefore:          "2018-05-18 11:31:00",
 	}
-	randReader := newRandReader(&ctx, 0)
+
+	ctx.GenerateRandomFunc = realRand
+
+	cert, err := makeTemplate(randReader, profile, pubKey, crossCert)
+	test.AssertNotError(t, err, "makeTemplate failed when everything worked as expected")
+	test.Assert(t, !cert.MaxPathLenZero, "MaxPathLenZero was set in cross-sign")
+	test.AssertEquals(t, len(cert.ExtKeyUsage), 0)
+}
+
+func TestMakeTemplateOCSP(t *testing.T) {
+	s, ctx := pkcs11helpers.NewSessionWithMock()
+	ctx.GenerateRandomFunc = realRand
+	randReader := newRandReader(s)
 	profile := &certProfile{
 		SignatureAlgorithm: "SHA256WithRSA",
 		CommonName:         "common name",
@@ -176,8 +156,7 @@ func TestMakeTemplateOCSP(t *testing.T) {
 		NotAfter:           "2018-05-18 11:31:00",
 		NotBefore:          "2018-05-18 11:31:00",
 	}
-	pubKey, err := hex.DecodeString("3059301306072a8648ce3d020106082a8648ce3d03010703420004b06745ef0375c9c54057098f077964e18d3bed0aacd54545b16eab8c539b5768cc1cea93ba56af1e22a7a01c33048c8885ed17c9c55ede70649b707072689f5e")
-	test.AssertNotError(t, err, "failed to decode test public key")
+	pubKey := samplePubkey()
 
 	cert, err := makeTemplate(randReader, profile, pubKey, ocspCert)
 	test.AssertNotError(t, err, "makeTemplate failed")
@@ -206,14 +185,9 @@ func TestMakeTemplateOCSP(t *testing.T) {
 }
 
 func TestMakeTemplateCRL(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{
-		GenerateRandomFunc: func(_ pkcs11.SessionHandle, length int) ([]byte, error) {
-			r := make([]byte, length)
-			_, err := rand.Read(r)
-			return r, err
-		},
-	}
-	randReader := newRandReader(&ctx, 0)
+	s, ctx := pkcs11helpers.NewSessionWithMock()
+	ctx.GenerateRandomFunc = realRand
+	randReader := newRandReader(s)
 	profile := &certProfile{
 		SignatureAlgorithm: "SHA256WithRSA",
 		CommonName:         "common name",
@@ -225,8 +199,7 @@ func TestMakeTemplateCRL(t *testing.T) {
 		NotAfter:           "2018-05-18 11:31:00",
 		NotBefore:          "2018-05-18 11:31:00",
 	}
-	pubKey, err := hex.DecodeString("3059301306072a8648ce3d020106082a8648ce3d03010703420004b06745ef0375c9c54057098f077964e18d3bed0aacd54545b16eab8c539b5768cc1cea93ba56af1e22a7a01c33048c8885ed17c9c55ede70649b707072689f5e")
-	test.AssertNotError(t, err, "failed to decode test public key")
+	pubKey := samplePubkey()
 
 	cert, err := makeTemplate(randReader, profile, pubKey, crlCert)
 	test.AssertNotError(t, err, "makeTemplate failed")
@@ -290,18 +263,6 @@ func TestVerifyProfile(t *testing.T) {
 			},
 			certType:    intermediateCert,
 			expectedErr: "country is required",
-		},
-		{
-			profile: certProfile{
-				NotBefore:          "a",
-				NotAfter:           "b",
-				SignatureAlgorithm: "c",
-				CommonName:         "d",
-				Organization:       "e",
-				Country:            "f",
-			},
-			certType:    intermediateCert,
-			expectedErr: "ocsp-url is required for intermediates",
 		},
 		{
 			profile: certProfile{
@@ -449,6 +410,27 @@ func TestVerifyProfile(t *testing.T) {
 			},
 			certType: crlCert,
 		},
+		{
+			profile: certProfile{
+				NotBefore: "a",
+			},
+			certType:    requestCert,
+			expectedErr: "not-before cannot be set for a CSR",
+		},
+		{
+			profile: certProfile{
+				NotAfter: "a",
+			},
+			certType:    requestCert,
+			expectedErr: "not-after cannot be set for a CSR",
+		},
+		{
+			profile: certProfile{
+				SignatureAlgorithm: "a",
+			},
+			certType:    requestCert,
+			expectedErr: "signature-algorithm cannot be set for a CSR",
+		},
 	} {
 		err := tc.profile.verifyProfile(tc.certType)
 		if err != nil {
@@ -461,93 +443,56 @@ func TestVerifyProfile(t *testing.T) {
 	}
 }
 
-func TestGetKey(t *testing.T) {
-	ctx := pkcs11helpers.MockCtx{}
+func TestGenerateCSR(t *testing.T) {
+	s, ctx := pkcs11helpers.NewSessionWithMock()
+	randReader := newRandReader(s)
+	pubKeyBytes := samplePubkey()
+	pubKey, err := x509.ParsePKIXPublicKey(pubKeyBytes)
+	test.AssertNotError(t, err, "failed to parse test key")
+	profile := &certProfile{
+		CommonName:   "common name",
+		Organization: "organization",
+		Country:      "country",
+		KeyUsages:    []string{"Digital Signature", "CRL Sign"},
+		OCSPURL:      "ocsp",
+		CRLURL:       "crl",
+		IssuerURL:    "issuer",
+		Policies: []policyInfoConfig{
+			{
+				OID:    "1.2.3",
+				CPSURI: "hello",
+			},
+			{
+				OID: "1.2.3.4",
+			},
+		},
+	}
+	ctx.GenerateRandomFunc = realRand
 
-	// test newSigner fails when pkcs11helpers.FindObject for private key handle fails
-	ctx.FindObjectsInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Attribute) error {
-		return errors.New("broken")
-	}
-	_, err := newSigner(ctx, 0, "label", []byte{255, 255})
-	test.AssertError(t, err, "newSigner didn't fail when pkcs11helpers.FindObject for private key handle failed")
+	signer, err := rsa.GenerateKey(rand.Reader, 1024)
+	test.AssertNotError(t, err, "failed to generate test key")
 
-	// test newSigner fails when GetAttributeValue fails
-	ctx.FindObjectsInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Attribute) error {
-		return nil
-	}
-	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
-		return []pkcs11.ObjectHandle{1}, false, nil
-	}
-	ctx.FindObjectsFinalFunc = func(pkcs11.SessionHandle) error {
-		return nil
-	}
-	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return nil, errors.New("broken")
-	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
-	test.AssertError(t, err, "newSigner didn't fail when GetAttributeValue for private key type failed")
+	csrBytes, err := generateCSR(profile, randReader, pubKeyBytes, pubKey, &wrappedSigner{signer})
+	test.AssertNotError(t, err, "failed to generate CSR")
 
-	// test newSigner fails when GetAttributeValue returns no attributes
-	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return nil, nil
-	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
-	test.AssertError(t, err, "newSigner didn't fail when GetAttributeValue for private key type returned no attributes")
+	csr, err := x509.ParseCertificateRequest(csrBytes)
+	test.AssertNotError(t, err, "failed to parse CSR")
+	test.AssertNotError(t, csr.CheckSignature(), "CSR signature check failed")
+	test.AssertEquals(t, len(csr.Extensions), 7)
 
-	// test newSigner fails when pkcs11helpers.FindObject for public key handle fails
-	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_EC)}, nil
-	}
-	ctx.FindObjectsInitFunc = func(_ pkcs11.SessionHandle, tmpl []*pkcs11.Attribute) error {
-		if bytes.Equal(tmpl[0].Value, []byte{2, 0, 0, 0, 0, 0, 0, 0}) {
-			return errors.New("broken")
-		}
-		return nil
-	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
-	test.AssertError(t, err, "newSigner didn't fail when pkcs11helpers.FindObject for public key handle failed")
-
-	// test newSigner fails when pkcs11helpers.FindObject for private key returns unknown CKA_KEY_TYPE
-	ctx.FindObjectsInitFunc = func(_ pkcs11.SessionHandle, tmpl []*pkcs11.Attribute) error {
-		return nil
-	}
-	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{2, 0, 0, 0, 0, 0, 0, 0})}, nil
-	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
-	test.AssertError(t, err, "newSigner didn't fail when GetAttributeValue for private key returned unknown key type")
-
-	// test newSigner fails when GetRSAPublicKey fails
-	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{0, 0, 0, 0, 0, 0, 0, 0})}, nil
-	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
-	test.AssertError(t, err, "newSigner didn't fail when GetRSAPublicKey fails")
-
-	// test newSigner fails when GetECDSAPublicKey fails
-	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{3, 0, 0, 0, 0, 0, 0, 0})}, nil
-	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
-	test.AssertError(t, err, "newSigner didn't fail when GetECDSAPublicKey fails")
-
-	// test newSigner works when everything... works
-	ctx.GetAttributeValueFunc = func(_ pkcs11.SessionHandle, _ pkcs11.ObjectHandle, attrs []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		var returns []*pkcs11.Attribute
-		for _, attr := range attrs {
-			switch attr.Type {
-			case pkcs11.CKA_KEY_TYPE:
-				returns = append(returns, pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, []byte{0, 0, 0, 0, 0, 0, 0, 0}))
-			case pkcs11.CKA_PUBLIC_EXPONENT:
-				returns = append(returns, pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, []byte{1, 2, 3}))
-			case pkcs11.CKA_MODULUS:
-				returns = append(returns, pkcs11.NewAttribute(pkcs11.CKA_MODULUS, []byte{4, 5, 6}))
-			default:
-				return nil, errors.New("GetAttributeValue got unexpected attribute type")
+	containsExt := func(oid asn1.ObjectIdentifier, extensions []pkix.Extension) bool {
+		for _, ext := range extensions {
+			if ext.Id.Equal(oid) {
+				return true
 			}
 		}
-		return returns, nil
+		return false
 	}
-	_, err = newSigner(ctx, 0, "label", []byte{255, 255})
-	test.AssertNotError(t, err, "newSigner failed when everything worked properly")
+	test.Assert(t, containsExt(asn1.ObjectIdentifier{2, 5, 29, 15}, csr.Extensions), "CSR doesn't contain keyUsage extension")
+	test.Assert(t, containsExt(asn1.ObjectIdentifier{2, 5, 29, 37}, csr.Extensions), "CSR doesn't contain extKeyUsage extension")
+	test.Assert(t, containsExt(asn1.ObjectIdentifier{2, 5, 29, 19}, csr.Extensions), "CSR doesn't contain basicConstraints extension")
+	test.Assert(t, containsExt(asn1.ObjectIdentifier{2, 5, 29, 14}, csr.Extensions), "CSR doesn't contain subjectKeyIdentifier extension")
+	test.Assert(t, containsExt(asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 1}, csr.Extensions), "CSR doesn't contain authorityInfoAccess extension")
+	test.Assert(t, containsExt(asn1.ObjectIdentifier{2, 5, 29, 31}, csr.Extensions), "CSR doesn't contain cRLDistributionPoints extension")
+	test.Assert(t, containsExt(asn1.ObjectIdentifier{2, 5, 29, 32}, csr.Extensions), "CSR doesn't contain certificatePolicies extension")
 }
