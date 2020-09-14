@@ -30,7 +30,6 @@ import (
 	"github.com/zmap/zlint/v2/lint"
 	"golang.org/x/crypto/ocsp"
 
-	ca_config "github.com/letsencrypt/boulder/ca/config"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -132,14 +131,21 @@ func mustRead(path string) []byte {
 }
 
 type testCtx struct {
-	caConfig      ca_config.CAConfig
-	pa            core.PolicyAuthority
-	issuers       []Issuer
-	issuerConfigs []issuance.PreIssuer
-	keyPolicy     goodkey.KeyPolicy
-	fc            clock.FakeClock
-	stats         prometheus.Registerer
-	logger        *blog.Mock
+	pa                core.PolicyAuthority
+	certExpiry        time.Duration
+	certBackdate      time.Duration
+	serialPrefix      int
+	maxNames          int
+	ocspLifetime      time.Duration
+	cfsslProfiles     cfsslConfig.Config
+	cfsslRSAProfile   string
+	cfsslECDSAProfile string
+	cfsslIssuers      []Issuer
+	boulderIssuers    []*issuance.Issuer
+	keyPolicy         goodkey.KeyPolicy
+	fc                clock.FakeClock
+	stats             prometheus.Registerer
+	logger            *blog.Mock
 }
 
 type mockSA struct {
@@ -194,80 +200,73 @@ func setup(t *testing.T) *testCtx {
 		cfsslConfig.OID(OIDExtensionCTPoison),
 	}
 
-	// Create a CA
-	caConfig := ca_config.CAConfig{
-		RSAProfile:   rsaProfileName,
-		ECDSAProfile: ecdsaProfileName,
-		SerialPrefix: 17,
-		Expiry:       "8760h",
-		// TODO(briansmith): When the defaulting of Backdate is removed, this
-		// will need to be uncommented. Leave it commented for now to test the
-		// defaulting logic.
-		// Backdate:     cmd.ConfigDuration{Duration: time.Hour},
-		LifespanOCSP: cmd.ConfigDuration{Duration: 45 * time.Minute},
-		MaxNames:     2,
-		CFSSL: cfsslConfig.Config{
-			Signing: &cfsslConfig.Signing{
-				Profiles: map[string]*cfsslConfig.SigningProfile{
-					rsaProfileName: {
-						Usage:     []string{"digital signature", "key encipherment", "server auth"},
-						IssuerURL: []string{"http://not-example.com/issuer-url"},
-						OCSP:      "http://not-example.com/ocsp",
-						CRL:       "http://not-example.com/crl",
+	cfsslProfiles := cfsslConfig.Config{
+		Signing: &cfsslConfig.Signing{
+			Profiles: map[string]*cfsslConfig.SigningProfile{
+				rsaProfileName: {
+					Usage:     []string{"digital signature", "key encipherment", "server auth"},
+					IssuerURL: []string{"http://not-example.com/issuer-url"},
+					OCSP:      "http://not-example.com/ocsp",
+					CRL:       "http://not-example.com/crl",
 
-						Policies: []cfsslConfig.CertificatePolicy{
-							{
-								ID: cfsslConfig.OID(asn1.ObjectIdentifier{2, 23, 140, 1, 2, 1}),
-							},
+					Policies: []cfsslConfig.CertificatePolicy{
+						{
+							ID: cfsslConfig.OID(asn1.ObjectIdentifier{2, 23, 140, 1, 2, 1}),
 						},
-						ExpiryString: "8760h",
-						Backdate:     time.Hour,
-						CSRWhitelist: &cfsslConfig.CSRWhitelist{
-							PublicKeyAlgorithm: true,
-							PublicKey:          true,
-							SignatureAlgorithm: true,
-						},
-						ClientProvidesSerialNumbers: true,
-						AllowedExtensions:           allowedExtensions,
 					},
-					ecdsaProfileName: {
-						Usage:     []string{"digital signature", "server auth"},
-						IssuerURL: []string{"http://not-example.com/issuer-url"},
-						OCSP:      "http://not-example.com/ocsp",
-						CRL:       "http://not-example.com/crl",
-
-						Policies: []cfsslConfig.CertificatePolicy{
-							{
-								ID: cfsslConfig.OID(asn1.ObjectIdentifier{2, 23, 140, 1, 2, 1}),
-							},
-						},
-						ExpiryString: "8760h",
-						Backdate:     time.Hour,
-						CSRWhitelist: &cfsslConfig.CSRWhitelist{
-							PublicKeyAlgorithm: true,
-							PublicKey:          true,
-							SignatureAlgorithm: true,
-						},
-						ClientProvidesSerialNumbers: true,
-						AllowedExtensions:           allowedExtensions,
-					},
-				},
-				Default: &cfsslConfig.SigningProfile{
 					ExpiryString: "8760h",
+					Backdate:     time.Hour,
+					CSRWhitelist: &cfsslConfig.CSRWhitelist{
+						PublicKeyAlgorithm: true,
+						PublicKey:          true,
+						SignatureAlgorithm: true,
+					},
+					ClientProvidesSerialNumbers: true,
+					AllowedExtensions:           allowedExtensions,
 				},
+				ecdsaProfileName: {
+					Usage:     []string{"digital signature", "server auth"},
+					IssuerURL: []string{"http://not-example.com/issuer-url"},
+					OCSP:      "http://not-example.com/ocsp",
+					CRL:       "http://not-example.com/crl",
+
+					Policies: []cfsslConfig.CertificatePolicy{
+						{
+							ID: cfsslConfig.OID(asn1.ObjectIdentifier{2, 23, 140, 1, 2, 1}),
+						},
+					},
+					ExpiryString: "8760h",
+					Backdate:     time.Hour,
+					CSRWhitelist: &cfsslConfig.CSRWhitelist{
+						PublicKeyAlgorithm: true,
+						PublicKey:          true,
+						SignatureAlgorithm: true,
+					},
+					ClientProvidesSerialNumbers: true,
+					AllowedExtensions:           allowedExtensions,
+				},
+			},
+			Default: &cfsslConfig.SigningProfile{
+				ExpiryString: "8760h",
 			},
 		},
 	}
 
-	issuers := []Issuer{{caKey, caCert}}
+	cfsslIssuers := []Issuer{{caKey, caCert}}
 
-	issuerConfigs := []issuance.PreIssuer{
+	foo := issuance.Issuer{
+		caCert,
+		caKey,
+		nil,
+		nil,
+		fc,
+	}
+	boulderIssuers := []*issuance.Issuer{
 		{
 			Cert:   caCert,
 			Signer: caKey,
-			Clk:    fc,
-			Profile: issuance.ProfileConfig{
-				UseForECDSALeaves: true,
+			profile: &issuance.Profile{
+				useForECDSALeaves: true,
 				UseForRSALeaves:   true,
 				AllowMustStaple:   true,
 				AllowCTPoison:     true,
@@ -282,6 +281,8 @@ func setup(t *testing.T) *testCtx {
 				MaxValidityPeriod:   cmd.ConfigDuration{Duration: time.Hour * 8760},
 				MaxValidityBackdate: cmd.ConfigDuration{Duration: time.Hour},
 			},
+			linter: nil,
+			clk:    fc,
 		},
 	}
 
@@ -291,31 +292,41 @@ func setup(t *testing.T) *testCtx {
 		AllowECDSANISTP384: true,
 	}
 
-	logger := blog.NewMock()
-
 	return &testCtx{
-		caConfig,
-		pa,
-		issuers,
-		issuerConfigs,
-		keyPolicy,
-		fc,
-		metrics.NoopRegisterer,
-		logger,
+		pa:                pa,
+		certExpiry:        8760 * time.Hour,
+		certBackdate:      time.Hour,
+		serialPrefix:      17,
+		maxNames:          2,
+		cfsslProfiles:     cfsslProfiles,
+		cfsslRSAProfile:   rsaProfileName,
+		cfsslECDSAProfile: ecdsaProfileName,
+		cfsslIssuers:      cfsslIssuers,
+		boulderIssuers:    issuerConfigs,
+		keyPolicy:         keyPolicy,
+		fc:                fc,
+		stats:             metrics.NoopRegisterer,
+		logger:            blog.NewMock(),
 	}
 }
 
-func TestFailNoSerial(t *testing.T) {
+func TestFailNoSerialPrefix(t *testing.T) {
 	testCtx := setup(t)
 
-	testCtx.caConfig.SerialPrefix = 0
 	_, err := NewCertificateAuthorityImpl(
-		testCtx.caConfig,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		0,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		nil,
 		nil,
 		testCtx.fc,
 		testCtx.stats,
-		testCtx.issuers,
+		testCtx.cfsslProfiles,
+		testCtx.cfsslRSAProfile,
+		testCtx.cfsslECDSAProfile,
+		testCtx.cfsslIssuers,
 		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
@@ -413,7 +424,11 @@ func issueCertificateSubTestSetup(t *testing.T, boulderIssuer bool) (*Certificat
 		issuers = testCtx.issuers
 	}
 	ca, err := NewCertificateAuthorityImpl(
-		testCtx.caConfig,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		sa,
 		testCtx.pa,
 		testCtx.fc,
@@ -468,11 +483,18 @@ func TestMultipleIssuers(t *testing.T) {
 	}
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
-		testCtx.caConfig,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		sa,
 		testCtx.pa,
 		testCtx.fc,
 		testCtx.stats,
+		testCtx.cfsslProfiles,
+		testCtx.cfsslRSAProfile,
+		testCtx.cfsslECDSAProfile,
 		newIssuers,
 		nil,
 		testCtx.keyPolicy,
@@ -494,12 +516,19 @@ func TestOCSP(t *testing.T) {
 	testCtx := setup(t)
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
-		testCtx.caConfig,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		sa,
 		testCtx.pa,
 		testCtx.fc,
 		testCtx.stats,
-		testCtx.issuers,
+		testCtx.cfsslProfiles,
+		testCtx.cfsslRSAProfile,
+		testCtx.cfsslECDSAProfile,
+		testCtx.cfsslIssuers,
 		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
@@ -546,11 +575,18 @@ func TestOCSP(t *testing.T) {
 		},
 	}
 	ca, err = NewCertificateAuthorityImpl(
-		testCtx.caConfig,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		sa,
 		testCtx.pa,
 		testCtx.fc,
 		testCtx.stats,
+		testCtx.cfsslProfiles,
+		testCtx.cfsslRSAProfile,
+		testCtx.cfsslECDSAProfile,
 		newIssuers,
 		nil,
 		testCtx.keyPolicy,
@@ -644,12 +680,19 @@ func TestInvalidCSRs(t *testing.T) {
 		testCtx := setup(t)
 		sa := &mockSA{}
 		ca, err := NewCertificateAuthorityImpl(
-			testCtx.caConfig,
+			testCtx.certExpiry,
+			testCtx.certBackdate,
+			testCtx.serialPrefix,
+			testCtx.maxNames,
+			testCtx.ocspLifetime,
 			sa,
 			testCtx.pa,
 			testCtx.fc,
 			testCtx.stats,
-			testCtx.issuers,
+			testCtx.cfsslProfiles,
+			testCtx.cfsslRSAProfile,
+			testCtx.cfsslECDSAProfile,
+			testCtx.cfsslIssuers,
 			nil,
 			testCtx.keyPolicy,
 			testCtx.logger,
@@ -676,12 +719,19 @@ func TestRejectValidityTooLong(t *testing.T) {
 	testCtx := setup(t)
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
-		testCtx.caConfig,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		sa,
 		testCtx.pa,
 		testCtx.fc,
 		testCtx.stats,
-		testCtx.issuers,
+		testCtx.cfsslProfiles,
+		testCtx.cfsslRSAProfile,
+		testCtx.cfsslECDSAProfile,
+		testCtx.cfsslIssuers,
 		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
@@ -841,13 +891,20 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 	for _, nonCFSSL := range []bool{true, false} {
 		_ = features.Set(map[string]bool{"NonCFSSLSigner": nonCFSSL})
 		ca, err := NewCertificateAuthorityImpl(
-			testCtx.caConfig,
+			testCtx.certExpiry,
+			testCtx.certBackdate,
+			testCtx.serialPrefix,
+			testCtx.maxNames,
+			testCtx.ocspLifetime,
 			sa,
 			testCtx.pa,
 			testCtx.fc,
 			testCtx.stats,
-			testCtx.issuers,
-			testCtx.issuerConfigs,
+			testCtx.cfsslProfiles,
+			testCtx.cfsslRSAProfile,
+			testCtx.cfsslECDSAProfile,
+			testCtx.cfsslIssuers,
+			testCtx.boulderIssuers,
 			testCtx.keyPolicy,
 			testCtx.logger,
 			nil)
@@ -924,12 +981,19 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	testCtx := setup(t)
 	sa := &dupeSA{}
 	ca, err := NewCertificateAuthorityImpl(
-		testCtx.caConfig,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		sa,
 		testCtx.pa,
 		testCtx.fc,
 		testCtx.stats,
-		testCtx.issuers,
+		testCtx.cfsslProfiles,
+		testCtx.cfsslRSAProfile,
+		testCtx.cfsslECDSAProfile,
+		testCtx.cfsslIssuers,
 		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
@@ -961,12 +1025,19 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	// for the duplicate.
 	errorsa := &getCertErrorSA{}
 	errorca, err := NewCertificateAuthorityImpl(
-		testCtx.caConfig,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		errorsa,
 		testCtx.pa,
 		testCtx.fc,
 		testCtx.stats,
-		testCtx.issuers,
+		testCtx.cfsslProfiles,
+		testCtx.cfsslRSAProfile,
+		testCtx.cfsslECDSAProfile,
+		testCtx.cfsslIssuers,
 		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
@@ -1035,12 +1106,19 @@ func TestPrecertOrphanQueue(t *testing.T) {
 	fakeNow := time.Date(2019, 9, 20, 0, 0, 0, 0, time.UTC)
 	testCtx.fc.Set(fakeNow)
 	ca, err := NewCertificateAuthorityImpl(
-		testCtx.caConfig,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		qsa,
 		testCtx.pa,
 		testCtx.fc,
 		testCtx.stats,
-		testCtx.issuers,
+		testCtx.cfsslProfiles,
+		testCtx.cfsslRSAProfile,
+		testCtx.cfsslECDSAProfile,
+		testCtx.cfsslIssuers,
 		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
@@ -1098,12 +1176,19 @@ func TestOrphanQueue(t *testing.T) {
 	}
 	testCtx.fc.Set(fakeNow)
 	ca, err := NewCertificateAuthorityImpl(
-		testCtx.caConfig,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		qsa,
 		testCtx.pa,
 		testCtx.fc,
 		testCtx.stats,
-		testCtx.issuers,
+		testCtx.cfsslProfiles,
+		testCtx.cfsslRSAProfile,
+		testCtx.cfsslECDSAProfile,
+		testCtx.cfsslIssuers,
 		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
@@ -1211,12 +1296,19 @@ func TestIssuePrecertificateLinting(t *testing.T) {
 	testCtx := setup(t)
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
-		testCtx.caConfig,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		sa,
 		testCtx.pa,
 		testCtx.fc,
 		testCtx.stats,
-		testCtx.issuers,
+		testCtx.cfsslProfiles,
+		testCtx.cfsslRSAProfile,
+		testCtx.cfsslECDSAProfile,
+		testCtx.cfsslIssuers,
 		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
@@ -1268,12 +1360,19 @@ func TestGenerateOCSPWithIssuerID(t *testing.T) {
 	sa := &mockSA{}
 	_ = features.Set(map[string]bool{"StoreIssuerInfo": true})
 	ca, err := NewCertificateAuthorityImpl(
-		testCtx.caConfig,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.ocspLifetime,
 		sa,
 		testCtx.pa,
 		testCtx.fc,
 		testCtx.stats,
-		testCtx.issuers,
+		testCtx.cfsslProfiles,
+		testCtx.cfsslRSAProfile,
+		testCtx.cfsslECDSAProfile,
+		testCtx.cfsslIssuers,
 		nil,
 		testCtx.keyPolicy,
 		testCtx.logger,
