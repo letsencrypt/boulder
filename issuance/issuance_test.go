@@ -67,7 +67,7 @@ func TestMain(m *testing.M) {
 		Subject: pkix.Name{
 			CommonName: "big ca",
 		},
-		KeyUsage:     x509.KeyUsageCertSign,
+		KeyUsage:     x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
 		SubjectKeyId: []byte{1, 2, 3, 4, 5, 6, 7, 8},
 	}
 	issuer, err := x509.CreateCertificate(rand.Reader, template, template, tk.Public(), tk)
@@ -409,7 +409,18 @@ func TestGenerateTemplate(t *testing.T) {
 	}
 }
 
-func TestNewSignerUnsupportedKeyType(t *testing.T) {
+func TestNewIssuer(t *testing.T) {
+	_, err := NewIssuer(
+		issuerCert,
+		issuerSigner,
+		defaultProfile(),
+		&lint.Linter{},
+		clock.NewFake(),
+	)
+	test.AssertNotError(t, err, "NewIssuer failed")
+}
+
+func TestNewIssuerUnsupportedKeyType(t *testing.T) {
 	_, err := NewIssuer(
 		&x509.Certificate{
 			PublicKey: &ed25519.PublicKey{},
@@ -421,6 +432,59 @@ func TestNewSignerUnsupportedKeyType(t *testing.T) {
 	)
 	test.AssertError(t, err, "NewIssuer didn't fail")
 	test.AssertEquals(t, err.Error(), "unsupported issuer key type")
+}
+
+func TestNewIssuerNoCertSign(t *testing.T) {
+	_, err := NewIssuer(
+		&x509.Certificate{
+			PublicKey: &ecdsa.PublicKey{
+				Curve: elliptic.P256(),
+			},
+			KeyUsage: 0,
+		},
+		issuerSigner,
+		defaultProfile(),
+		&lint.Linter{},
+		clock.NewFake(),
+	)
+	test.AssertError(t, err, "NewIssuer didn't fail")
+	test.AssertEquals(t, err.Error(), "end-entity signing cert does not have keyUsage certSign")
+}
+
+func TestNewIssuerNoDigitalSignature(t *testing.T) {
+	_, err := NewIssuer(
+		&x509.Certificate{
+			PublicKey: &ecdsa.PublicKey{
+				Curve: elliptic.P256(),
+			},
+			KeyUsage: x509.KeyUsageCertSign,
+		},
+		issuerSigner,
+		defaultProfile(),
+		&lint.Linter{},
+		clock.NewFake(),
+	)
+	test.AssertError(t, err, "NewIssuer didn't fail")
+	test.AssertEquals(t, err.Error(), "end-entity ocsp signing cert does not have keyUsage digitalSignature")
+}
+
+func TestNewIssuerOCSPOnly(t *testing.T) {
+	p := defaultProfile()
+	p.useForRSALeaves = false
+	p.useForECDSALeaves = false
+	_, err := NewIssuer(
+		&x509.Certificate{
+			PublicKey: &ecdsa.PublicKey{
+				Curve: elliptic.P256(),
+			},
+			KeyUsage: x509.KeyUsageDigitalSignature,
+		},
+		issuerSigner,
+		p,
+		&lint.Linter{},
+		clock.NewFake(),
+	)
+	test.AssertNotError(t, err, "NewIssuer failed")
 }
 
 func TestIssue(t *testing.T) {

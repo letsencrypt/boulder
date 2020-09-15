@@ -353,6 +353,16 @@ func NewIssuer(cert *x509.Certificate, signer crypto.Signer, profile *Profile, l
 	default:
 		return nil, errors.New("unsupported issuer key type")
 	}
+
+	if profile.useForRSALeaves || profile.useForECDSALeaves {
+		if cert.KeyUsage&x509.KeyUsageCertSign == 0 {
+			return nil, errors.New("end-entity signing cert does not have keyUsage certSign")
+		}
+	}
+	if cert.KeyUsage&x509.KeyUsageDigitalSignature == 0 {
+		return nil, errors.New("end-entity ocsp signing cert does not have keyUsage digitalSignature")
+	}
+
 	i := &Issuer{
 		Cert:    cert,
 		Signer:  signer,
