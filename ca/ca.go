@@ -497,6 +497,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *capb.
 	} else {
 		cert, err := x509.ParseCertificate(req.CertDER)
 		if err != nil {
+			err := fmt.Errorf("parsing certificate for GenerateOCSP: %w", err)
 			ca.log.AuditErr(err.Error())
 			return nil, err
 		}
