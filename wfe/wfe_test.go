@@ -1775,6 +1775,57 @@ func TestAuthorization500(t *testing.T) {
 
 }
 
+func TestNewAuthorizationEmptyDomain(t *testing.T) {
+	responseWriter := httptest.NewRecorder()
+	wfe, _ := setupWFE(t)
+
+	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(signRequest(t, `{
+		  "resource":"new-authz",
+			"identifier": {
+				"Type": "dns",
+				"Value": ""
+			}
+		}`, wfe.nonceService)))
+	test.AssertUnmarshaledEquals(t,
+		responseWriter.Body.String(),
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Invalid new-authorization request: missing fields","status":400}`)
+}
+
+func TestNewAuthorizationEmptyType(t *testing.T) {
+	responseWriter := httptest.NewRecorder()
+	wfe, _ := setupWFE(t)
+
+	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(signRequest(t, `{
+		  "resource":"new-authz",
+			"identifier": {
+				"Type": "",
+				"Value": "example.com"
+			}
+		}`, wfe.nonceService)))
+	test.AssertUnmarshaledEquals(t,
+		responseWriter.Body.String(),
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Invalid new-authorization request: missing fields","status":400}`)
+}
+
+func TestNewAuthorizationNonDNS(t *testing.T) {
+	responseWriter := httptest.NewRecorder()
+	wfe, _ := setupWFE(t)
+
+	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter,
+		makePostRequest(signRequest(t, `{
+		  "resource":"new-authz",
+			"identifier": {
+				"Type": "shibboleth",
+				"Value": "example.com"
+			}
+		}`, wfe.nonceService)))
+	test.AssertUnmarshaledEquals(t,
+		responseWriter.Body.String(),
+		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Invalid new-authorization request: wrong identifier type","status":400}`)
+}
+
 func TestAuthorization(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux := wfe.Handler(metrics.NoopRegisterer)

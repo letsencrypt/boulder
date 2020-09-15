@@ -742,17 +742,34 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 		return
 	}
 
-	var init core.Authorization
-	if err := json.Unmarshal(body, &init); err != nil {
+	var newAuthzRequest struct {
+		Identifier struct {
+			Type  string
+			Value string
+		}
+	}
+	if err := json.Unmarshal(body, &newAuthzRequest); err != nil {
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling JSON"), err)
 		return
 	}
-	if init.Identifier.Type == identifier.DNS {
-		logEvent.DNSName = init.Identifier.Value
+	if newAuthzRequest.Identifier.Type == "" || newAuthzRequest.Identifier.Value == "" {
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid new-authorization request: missing fields"), nil)
+		return
+	}
+	if newAuthzRequest.Identifier.Type == string(identifier.DNS) {
+		logEvent.DNSName = newAuthzRequest.Identifier.Value
+	} else {
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid new-authorization request: wrong identifier type"), nil)
+		return
 	}
 
 	// Create new authz and return
-	authz, err := wfe.RA.NewAuthorization(ctx, init, currReg.ID)
+	authz, err := wfe.RA.NewAuthorization(ctx, core.Authorization{
+		Identifier: identifier.ACMEIdentifier{
+			Type:  identifier.DNS,
+			Value: newAuthzRequest.Identifier.Value,
+		},
+	}, currReg.ID)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
 		return

@@ -2233,6 +2233,11 @@ func TestNewOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
 		},
 		{
+			Name:         "POST, empty domain name identifier",
+			Request:      signAndPost(t, targetPath, signedURL, `{"identifiers":[{"type":"dns","value":""}]}`, 1, wfe.nonceService),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NewOrder request included empty domain name","status":400}`,
+		},
+		{
 			Name:         "POST, no identifiers in payload",
 			Request:      signAndPost(t, targetPath, signedURL, "{}", 1, wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NewOrder request did not specify any identifiers","status":400}`,
