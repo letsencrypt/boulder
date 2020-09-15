@@ -31,7 +31,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 
-	ca_config "github.com/letsencrypt/boulder/ca/config"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -127,25 +126,25 @@ type issuerMaps struct {
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
 type CertificateAuthorityImpl struct {
-	rsaProfile         string
-	ecdsaProfile       string
-	issuers            issuerMaps
 	sa                 certificateStorage
 	pa                 core.PolicyAuthority
-	keyPolicy          goodkey.KeyPolicy
-	clk                clock.Clock
-	log                blog.Logger
+	issuers            issuerMaps
+	cfsslRSAProfile    string
+	cfsslECDSAProfile  string
 	prefix             int // Prepended to the serial number
 	validityPeriod     time.Duration
 	backdate           time.Duration
 	maxNames           int
+	ocspLifetime       time.Duration
+	keyPolicy          goodkey.KeyPolicy
+	orphanQueue        *goque.Queue
+	clk                clock.Clock
+	log                blog.Logger
 	signatureCount     *prometheus.CounterVec
 	csrExtensionCount  *prometheus.CounterVec
 	orphanCount        *prometheus.CounterVec
 	adoptedOrphanCount *prometheus.CounterVec
 	signErrorCounter   *prometheus.CounterVec
-	orphanQueue        *goque.Queue
-	ocspLifetime       time.Duration
 }
 
 // Issuer represents a single issuer certificate, along with its key.
@@ -163,6 +162,7 @@ type localSigner interface {
 
 // internalIssuer represents the fully initialized internal state for a single
 // issuer, including the cfssl signer and OCSP signer objects.
+// TODO(#5086): Remove the ocsp-specific pieces of this as we factor OCSP out.
 type internalIssuer struct {
 	cert       *x509.Certificate
 	ocspSigner crypto.Signer
@@ -172,37 +172,27 @@ type internalIssuer struct {
 	boulderIssuer *issuance.Issuer
 }
 
-func makeInternalIssuers(configs []issuance.IssuerConfig, lifespanOCSP time.Duration) (issuerMaps, error) {
+func makeInternalIssuers(issuers []*issuance.Issuer, lifespanOCSP time.Duration) (issuerMaps, error) {
 	issuersByAlg := make(map[x509.PublicKeyAlgorithm]*internalIssuer, 2)
-	issuersByName := make(map[string]*internalIssuer, len(configs))
-	issuersByID := make(map[int64]*internalIssuer, len(configs))
-	for _, config := range configs {
-		issuer, err := issuance.New(config)
-		if err != nil {
-			return issuerMaps{}, err
-		}
+	issuersByName := make(map[string]*internalIssuer, len(issuers))
+	issuersByID := make(map[int64]*internalIssuer, len(issuers))
+	for _, issuer := range issuers {
 		ii := &internalIssuer{
-			cert:          config.Cert,
-			ocspSigner:    config.Signer,
+			cert:          issuer.Cert,
+			ocspSigner:    issuer.Signer,
 			boulderIssuer: issuer,
 		}
-		if config.Profile.UseForRSALeaves {
-			if issuersByAlg[x509.RSA] != nil {
-				return issuerMaps{}, errors.New("Multiple issuer certs for RSA are not allowed")
+		for _, alg := range issuer.Algs() {
+			if issuersByAlg[alg] != nil {
+				return issuerMaps{}, fmt.Errorf("Multiple issuer certs for %s are not allowed", alg)
 			}
-			issuersByAlg[x509.RSA] = ii
+			issuersByAlg[alg] = ii
 		}
-		if config.Profile.UseForECDSALeaves {
-			if issuersByAlg[x509.ECDSA] != nil {
-				return issuerMaps{}, errors.New("Multiple issuer certs for ECDSA are not allowed")
-			}
-			issuersByAlg[x509.ECDSA] = ii
-		}
-		if issuersByName[config.Cert.Subject.CommonName] != nil {
+		if issuersByName[issuer.Name()] != nil {
 			return issuerMaps{}, errors.New("Multiple issuer certs with the same CommonName are not supported")
 		}
-		issuersByName[config.Cert.Subject.CommonName] = ii
-		issuersByID[idForCert(config.Cert)] = ii
+		issuersByName[issuer.Name()] = ii
+		issuersByID[issuer.ID()] = ii
 	}
 	return issuerMaps{issuersByAlg, issuersByName, issuersByID}, nil
 }
@@ -262,38 +252,48 @@ func idForCert(cert *x509.Certificate) int64 {
 // from a single issuer (the first first in the issuers slice), and can sign OCSP
 // for any of the issuer certificates provided.
 func NewCertificateAuthorityImpl(
-	config ca_config.CAConfig,
 	sa certificateStorage,
 	pa core.PolicyAuthority,
-	clk clock.Clock,
-	stats prometheus.Registerer,
+	cfsslProfiles cfsslConfig.Config,
+	cfsslRSAProfile string,
+	cfsslECDSAProfile string,
 	cfsslIssuers []Issuer,
-	boulderIssuers []issuance.IssuerConfig,
+	boulderIssuers []*issuance.Issuer,
+	certExpiry time.Duration,
+	certBackdate time.Duration,
+	serialPrefix int,
+	maxNames int,
+	ocspLifetime time.Duration,
 	keyPolicy goodkey.KeyPolicy,
-	logger blog.Logger,
 	orphanQueue *goque.Queue,
+	logger blog.Logger,
+	stats prometheus.Registerer,
+	clk clock.Clock,
 ) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
 
-	if config.SerialPrefix <= 0 || config.SerialPrefix >= 256 {
+	// TODO(briansmith): Make the backdate setting mandatory after the
+	// production ca.json has been updated to include it. Until then, manually
+	// default to 1h, which is the backdating duration we currently use.
+	if certBackdate == 0 {
+		certBackdate = time.Hour
+	}
+
+	if serialPrefix <= 0 || serialPrefix >= 256 {
 		err = errors.New("Must have a positive non-zero serial prefix less than 256 for CA.")
 		return nil, err
 	}
-
 	var issuers issuerMaps
-	// rsaProfile and ecdsaProfile are unused when using the boulder signer
-	// instead of the CFSSL signer
-	var rsaProfile, ecdsaProfile string
 	if features.Enabled(features.NonCFSSLSigner) {
-		issuers, err = makeInternalIssuers(boulderIssuers, config.LifespanOCSP.Duration)
+		issuers, err = makeInternalIssuers(boulderIssuers, ocspLifetime)
 		if err != nil {
 			return nil, err
 		}
 	} else {
 		// CFSSL requires processing JSON configs through its own LoadConfig, so we
 		// serialize and then deserialize.
-		cfsslJSON, err := json.Marshal(config.CFSSL)
+		cfsslJSON, err := json.Marshal(cfsslProfiles)
 		if err != nil {
 			return nil, err
 		}
@@ -302,7 +302,7 @@ func NewCertificateAuthorityImpl(
 			return nil, err
 		}
 
-		if config.LifespanOCSP.Duration == 0 {
+		if ocspLifetime == 0 {
 			return nil, errors.New("Config must specify an OCSP lifespan period.")
 		}
 
@@ -312,17 +312,12 @@ func NewCertificateAuthorityImpl(
 			}
 		}
 
-		issuers, err = makeCFSSLInternalIssuers(
-			cfsslIssuers,
-			cfsslConfigObj.Signing,
-			config.LifespanOCSP.Duration)
+		issuers, err = makeCFSSLInternalIssuers(cfsslIssuers, cfsslConfigObj.Signing, ocspLifetime)
 		if err != nil {
 			return nil, err
 		}
 
-		rsaProfile, ecdsaProfile = config.RSAProfile, config.ECDSAProfile
-
-		if rsaProfile == "" || ecdsaProfile == "" {
+		if cfsslRSAProfile == "" || cfsslECDSAProfile == "" {
 			return nil, errors.New("must specify rsaProfile and ecdsaProfile")
 		}
 	}
@@ -369,38 +364,23 @@ func NewCertificateAuthorityImpl(
 		sa:                 sa,
 		pa:                 pa,
 		issuers:            issuers,
-		rsaProfile:         rsaProfile,
-		ecdsaProfile:       ecdsaProfile,
-		prefix:             config.SerialPrefix,
-		clk:                clk,
-		log:                logger,
+		cfsslRSAProfile:    cfsslRSAProfile,
+		cfsslECDSAProfile:  cfsslECDSAProfile,
+		validityPeriod:     certExpiry,
+		backdate:           certBackdate,
+		prefix:             serialPrefix,
+		maxNames:           maxNames,
+		ocspLifetime:       ocspLifetime,
 		keyPolicy:          keyPolicy,
+		orphanQueue:        orphanQueue,
+		log:                logger,
 		signatureCount:     signatureCount,
 		csrExtensionCount:  csrExtensionCount,
 		orphanCount:        orphanCount,
 		adoptedOrphanCount: adoptedOrphanCount,
-		orphanQueue:        orphanQueue,
-		ocspLifetime:       config.LifespanOCSP.Duration,
 		signErrorCounter:   signErrorCounter,
+		clk:                clk,
 	}
-
-	if config.Expiry == "" {
-		return nil, errors.New("Config must specify an expiry period.")
-	}
-	ca.validityPeriod, err = time.ParseDuration(config.Expiry)
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO(briansmith): Make the backdate setting mandatory after the
-	// production ca.json has been updated to include it. Until then, manually
-	// default to 1h, which is the backdating duration we currently use.
-	ca.backdate = config.Backdate.Duration
-	if ca.backdate == 0 {
-		ca.backdate = time.Hour
-	}
-
-	ca.maxNames = config.MaxNames
 
 	return ca, nil
 }
@@ -821,9 +801,9 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		var profile string
 		switch csr.PublicKey.(type) {
 		case *rsa.PublicKey:
-			profile = ca.rsaProfile
+			profile = ca.cfsslRSAProfile
 		case *ecdsa.PublicKey:
-			profile = ca.ecdsaProfile
+			profile = ca.cfsslECDSAProfile
 		default:
 			err = berrors.InternalServerError("unsupported key type %T", csr.PublicKey)
 			ca.log.AuditErr(err.Error())

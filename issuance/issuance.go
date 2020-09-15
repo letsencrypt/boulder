@@ -8,47 +8,41 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"math/big"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cloudflare/cfssl/helpers"
 	ct "github.com/google/certificate-transparency-go"
 	cttls "github.com/google/certificate-transparency-go/tls"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/lint"
 	"github.com/letsencrypt/boulder/policyasn1"
-	zlint "github.com/zmap/zlint/v2/lint"
+	"github.com/letsencrypt/pkcs11key/v4"
 )
 
-// IssuanceRequest describes a certificate issuance request
-type IssuanceRequest struct {
-	PublicKey crypto.PublicKey
+// ProfileConfig describes the certificate issuance constraints for all issuers.
+type ProfileConfig struct {
+	AllowMustStaple bool
+	AllowCTPoison   bool
+	AllowSCTList    bool
+	AllowCommonName bool
 
-	Serial []byte
-
-	NotBefore time.Time
-	NotAfter  time.Time
-
-	CommonName string
-	DNSNames   []string
-
-	IncludeMustStaple bool
-	IncludeCTPoison   bool
-	SCTList           []ct.SignedCertificateTimestamp
-}
-
-// PolicyQualifier describes a policy qualifier
-type PolicyQualifier struct {
-	Type  string
-	Value string
+	Policies            []PolicyInformation
+	MaxValidityPeriod   cmd.ConfigDuration
+	MaxValidityBackdate cmd.ConfigDuration
 }
 
 // PolicyInformation describes a policy
@@ -57,26 +51,105 @@ type PolicyInformation struct {
 	Qualifiers []PolicyQualifier
 }
 
-// ProfileConfig describes the certificate issuance constraints
-type ProfileConfig struct {
+// PolicyQualifier describes a policy qualifier
+type PolicyQualifier struct {
+	Type  string
+	Value string
+}
+
+// IssuerConfig describes the constraints on and URLs used by a single issuer.
+type IssuerConfig struct {
 	UseForRSALeaves   bool
 	UseForECDSALeaves bool
 
-	AllowMustStaple bool
-	AllowCTPoison   bool
-	AllowSCTList    bool
-	AllowCommonName bool
+	IssuerURL string
+	OCSPURL   string
+	CRLURL    string
 
-	IssuerURL           string
-	OCSPURL             string
-	CRLURL              string
-	Policies            []PolicyInformation
-	MaxValidityPeriod   cmd.ConfigDuration
-	MaxValidityBackdate cmd.ConfigDuration
+	Location IssuerLoc
 }
 
-// The internal structure created by reading in ProfileConfigs
-type issuanceProfile struct {
+// IssuerLoc describes the on-disk location and parameters that an issuer
+// should use to retrieve its certificate and private key.
+// Only one of File, ConfigFile, or PKCS11 should be set.
+type IssuerLoc struct {
+	// A file from which a private key will be read and parsed.
+	File string
+	// A file from which a pkcs11key.Config will be read and parsed, if File is not set.
+	ConfigFile string
+	// An in-memory pkcs11key.Config, which will be used if ConfigFile is not set.
+	PKCS11 *pkcs11key.Config
+	// A file from which a certificate will be read and parsed.
+	CertFile string
+	// Number of sessions to open with the HSM. For maximum performance,
+	// this should be equal to the number of cores in the HSM. Defaults to 1.
+	NumSessions int
+}
+
+// LoadIssuer loads a signer (private key) and certificate from the locations specified.
+func LoadIssuer(location IssuerLoc) (*x509.Certificate, crypto.Signer, error) {
+	cert, err := core.LoadCert(location.CertFile)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	signer, err := loadSigner(location, cert)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if !core.KeyDigestEquals(signer.Public(), cert.PublicKey) {
+		return nil, nil, fmt.Errorf("Issuer key did not match issuer cert %s", location.CertFile)
+	}
+	return cert, signer, err
+}
+
+func loadSigner(location IssuerLoc, cert *x509.Certificate) (crypto.Signer, error) {
+	if location.File != "" {
+		keyBytes, err := ioutil.ReadFile(location.File)
+		if err != nil {
+			return nil, fmt.Errorf("Could not read key file %s", location.File)
+		}
+
+		signer, err := helpers.ParsePrivateKeyPEM(keyBytes)
+		if err != nil {
+			return nil, err
+		}
+		return signer, nil
+	}
+
+	var pkcs11Config *pkcs11key.Config
+	if location.ConfigFile != "" {
+		contents, err := ioutil.ReadFile(location.ConfigFile)
+		if err != nil {
+			return nil, err
+		}
+		pkcs11Config = new(pkcs11key.Config)
+		err = json.Unmarshal(contents, pkcs11Config)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		pkcs11Config = location.PKCS11
+	}
+
+	if pkcs11Config.Module == "" ||
+		pkcs11Config.TokenLabel == "" ||
+		pkcs11Config.PIN == "" {
+		return nil, fmt.Errorf("Missing a field in pkcs11Config %#v", pkcs11Config)
+	}
+
+	numSessions := location.NumSessions
+	if numSessions <= 0 {
+		numSessions = 1
+	}
+
+	return pkcs11key.NewPool(numSessions, pkcs11Config.Module,
+		pkcs11Config.TokenLabel, pkcs11Config.PIN, cert.PublicKey)
+}
+
+// Profile is the validated structure created by reading in ProfileConfigs and IssuerConfigs
+type Profile struct {
 	useForRSALeaves   bool
 	useForECDSALeaves bool
 
@@ -114,29 +187,31 @@ var stringToQualifierType = map[string]asn1.ObjectIdentifier{
 	"id-qt-cps": policyasn1.CPSQualifierOID,
 }
 
-func newProfile(config ProfileConfig) (*issuanceProfile, error) {
-	if config.IssuerURL == "" {
+// NewProfile synthesizes the profile config and issuer config into a single
+// object, and checks various aspects for correctness.
+func NewProfile(profileConfig ProfileConfig, issuerConfig IssuerConfig) (*Profile, error) {
+	if issuerConfig.IssuerURL == "" {
 		return nil, errors.New("Issuer URL is required")
 	}
-	if config.OCSPURL == "" {
+	if issuerConfig.OCSPURL == "" {
 		return nil, errors.New("OCSP URL is required")
 	}
-	sp := &issuanceProfile{
-		useForRSALeaves:   config.UseForRSALeaves,
-		useForECDSALeaves: config.UseForECDSALeaves,
-		allowMustStaple:   config.AllowMustStaple,
-		allowCTPoison:     config.AllowCTPoison,
-		allowSCTList:      config.AllowSCTList,
-		allowCommonName:   config.AllowCommonName,
-		issuerURL:         config.IssuerURL,
-		crlURL:            config.CRLURL,
-		ocspURL:           config.OCSPURL,
-		maxBackdate:       config.MaxValidityBackdate.Duration,
-		maxValidity:       config.MaxValidityPeriod.Duration,
+	sp := &Profile{
+		useForRSALeaves:   issuerConfig.UseForRSALeaves,
+		useForECDSALeaves: issuerConfig.UseForECDSALeaves,
+		allowMustStaple:   profileConfig.AllowMustStaple,
+		allowCTPoison:     profileConfig.AllowCTPoison,
+		allowSCTList:      profileConfig.AllowSCTList,
+		allowCommonName:   profileConfig.AllowCommonName,
+		issuerURL:         issuerConfig.IssuerURL,
+		crlURL:            issuerConfig.CRLURL,
+		ocspURL:           issuerConfig.OCSPURL,
+		maxBackdate:       profileConfig.MaxValidityBackdate.Duration,
+		maxValidity:       profileConfig.MaxValidityPeriod.Duration,
 	}
-	if len(config.Policies) > 0 {
+	if len(profileConfig.Policies) > 0 {
 		var policies []policyasn1.PolicyInformation
-		for _, policyConfig := range config.Policies {
+		for _, policyConfig := range profileConfig.Policies {
 			id, err := parseOID(policyConfig.OID)
 			if err != nil {
 				return nil, fmt.Errorf("failed parsing policy OID %q: %s", policyConfig.OID, err)
@@ -169,7 +244,7 @@ func newProfile(config ProfileConfig) (*issuanceProfile, error) {
 
 // requestValid verifies the passed IssuanceRequest against the profile. If the
 // request doesn't match the signing profile an error is returned.
-func (p *issuanceProfile) requestValid(clk clock.Clock, req *IssuanceRequest) error {
+func (p *Profile) requestValid(clk clock.Clock, req *IssuanceRequest) error {
 	switch req.PublicKey.(type) {
 	case *rsa.PublicKey:
 		if !p.useForRSALeaves {
@@ -230,7 +305,7 @@ var defaultEKU = []x509.ExtKeyUsage{
 	x509.ExtKeyUsageClientAuth,
 }
 
-func (p *issuanceProfile) generateTemplate(clk clock.Clock) *x509.Certificate {
+func (p *Profile) generateTemplate(clk clock.Clock) *x509.Certificate {
 	template := &x509.Certificate{
 		SignatureAlgorithm:    p.sigAlg,
 		ExtKeyUsage:           defaultEKU,
@@ -251,31 +326,19 @@ func (p *issuanceProfile) generateTemplate(clk clock.Clock) *x509.Certificate {
 }
 
 // Issuer is capable of issuing new certificates
+// TODO(#5086): make Cert and Signer private when they're no longer needed by ca.internalIssuer
 type Issuer struct {
-	cert    *x509.Certificate
-	signer  crypto.Signer
-	profile *issuanceProfile
-	lintKey crypto.Signer
-	lints   zlint.Registry
-	clk     clock.Clock
+	Cert    *x509.Certificate
+	Signer  crypto.Signer
+	Profile *Profile
+	Linter  *lint.Linter
+	Clk     clock.Clock
 }
 
-// IssuerConfig contains the information necessary to construct an Issuer
-type IssuerConfig struct {
-	Cert         *x509.Certificate
-	Signer       crypto.Signer
-	Profile      ProfileConfig
-	IgnoredLints []string
-	Clk          clock.Clock
-}
-
-// New constructs an Issuer from the provided IssuerConfig
-func New(config IssuerConfig) (*Issuer, error) {
-	profile, err := newProfile(config.Profile)
-	if err != nil {
-		return nil, err
-	}
-	switch k := config.Cert.PublicKey.(type) {
+// NewIssuer constructs an Issuer on the heap, verifying that the profile
+// is well-formed.
+func NewIssuer(cert *x509.Certificate, signer crypto.Signer, profile *Profile, linter *lint.Linter, clk clock.Clock) (*Issuer, error) {
+	switch k := cert.PublicKey.(type) {
 	case *rsa.PublicKey:
 		profile.sigAlg = x509.SHA256WithRSA
 	case *ecdsa.PublicKey:
@@ -290,32 +353,40 @@ func New(config IssuerConfig) (*Issuer, error) {
 	default:
 		return nil, errors.New("unsupported issuer key type")
 	}
-	lintKey, err := lint.MakeSigner(config.Signer)
-	if err != nil {
-		return nil, err
-	}
-	lints, err := zlint.GlobalRegistry().Filter(zlint.FilterOptions{
-		ExcludeNames: config.IgnoredLints,
-		ExcludeSources: []zlint.LintSource{
-			// We ignore the ETSI and EVG lints since they do not
-			// apply to the certificates we issue, and not attempting
-			// to apply them will save some cycles.
-			zlint.CABFEVGuidelines,
-			zlint.EtsiEsi,
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
 	i := &Issuer{
-		cert:    config.Cert,
-		signer:  config.Signer,
-		clk:     config.Clk,
-		lints:   lints,
-		lintKey: lintKey,
-		profile: profile,
+		Cert:    cert,
+		Signer:  signer,
+		Profile: profile,
+		Linter:  linter,
+		Clk:     clk,
 	}
 	return i, nil
+}
+
+// Algs provides the list of leaf certificate public key algorithms for which
+// this issuer is willing to issue. This is not necessarily the same as the
+// public key algorithm or signature algorithm in this issuer's own cert.
+func (i *Issuer) Algs() []x509.PublicKeyAlgorithm {
+	var algs []x509.PublicKeyAlgorithm
+	if i.Profile.useForRSALeaves {
+		algs = append(algs, x509.RSA)
+	}
+	if i.Profile.useForECDSALeaves {
+		algs = append(algs, x509.ECDSA)
+	}
+	return algs
+}
+
+// Name provides the Common Name specified in the issuer's certificate.
+func (i *Issuer) Name() string {
+	return i.Cert.Subject.CommonName
+}
+
+// ID provides a stable ID for an issuer's certificate. This is used for
+// identifying which issuer issued a certificate in the certificateStatus table.
+func (i *Issuer) ID() int64 {
+	h := sha256.Sum256(i.Cert.Raw)
+	return big.NewInt(0).SetBytes(h[:4]).Int64()
 }
 
 var ctPoisonExt = pkix.Extension{
@@ -377,6 +448,23 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 	return skid[:], nil
 }
 
+// IssuanceRequest describes a certificate issuance request
+type IssuanceRequest struct {
+	PublicKey crypto.PublicKey
+
+	Serial []byte
+
+	NotBefore time.Time
+	NotAfter  time.Time
+
+	CommonName string
+	DNSNames   []string
+
+	IncludeMustStaple bool
+	IncludeCTPoison   bool
+	SCTList           []ct.SignedCertificateTimestamp
+}
+
 // Issue generates a certificate from the provided issuance request and
 // signs it. Before signing the certificate with the issuer's private
 // key, it is signed using a throwaway key so that it can be linted using
@@ -384,12 +472,12 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 // is not signed using the issuer's key.
 func (i *Issuer) Issue(req *IssuanceRequest) ([]byte, error) {
 	// check request is valid according to the issuance profile
-	if err := i.profile.requestValid(i.clk, req); err != nil {
+	if err := i.Profile.requestValid(i.Clk, req); err != nil {
 		return nil, err
 	}
 
 	// generate template from the issuance profile
-	template := i.profile.generateTemplate(i.clk)
+	template := i.Profile.generateTemplate(i.Clk)
 
 	// populate template from the issuance request
 	template.NotBefore, template.NotAfter = req.NotBefore, req.NotAfter
@@ -398,7 +486,7 @@ func (i *Issuer) Issue(req *IssuanceRequest) ([]byte, error) {
 		template.Subject.CommonName = req.CommonName
 	}
 	template.DNSNames = req.DNSNames
-	template.AuthorityKeyId = i.cert.SubjectKeyId
+	template.AuthorityKeyId = i.Cert.SubjectKeyId
 	skid, err := generateSKID(req.PublicKey)
 	if err != nil {
 		return nil, err
@@ -427,16 +515,12 @@ func (i *Issuer) Issue(req *IssuanceRequest) ([]byte, error) {
 
 	// check that the tbsCertificate is properly formed by signing it
 	// with a throwaway key and then linting it using zlint
-	lintCert, err := lint.MakeLintCert(template, i.cert, req.PublicKey, i.lintKey)
-	if err != nil {
-		return nil, err
-	}
-	err = lint.LintCert(lintCert, i.lints)
+	err = i.Linter.LintTBS(template, i.Cert, req.PublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
 	}
 
-	return x509.CreateCertificate(rand.Reader, template, i.cert, req.PublicKey, i.signer)
+	return x509.CreateCertificate(rand.Reader, template, i.Cert, req.PublicKey, i.Signer)
 }
 
 func ContainsMustStaple(extensions []pkix.Extension) bool {

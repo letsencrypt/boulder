@@ -2,12 +2,10 @@ package main
 
 import (
 	"testing"
-
-	ca_config "github.com/letsencrypt/boulder/ca/config"
 )
 
 func TestLoadIssuerSuccess(t *testing.T) {
-	signer, cert, err := loadIssuer(ca_config.IssuerConfig{
+	signer, cert, err := loadCFSSLIssuer(IssuerConfig{
 		File:     "../../test/test-ca.key",
 		CertFile: "../../test/test-ca2.pem",
 	})
@@ -23,7 +21,7 @@ func TestLoadIssuerSuccess(t *testing.T) {
 }
 
 func TestLoadIssuerBadKey(t *testing.T) {
-	_, _, err := loadIssuer(ca_config.IssuerConfig{
+	_, _, err := loadCFSSLIssuer(IssuerConfig{
 		File:     "/dev/null",
 		CertFile: "../../test/test-ca2.pem",
 	})
@@ -33,7 +31,7 @@ func TestLoadIssuerBadKey(t *testing.T) {
 }
 
 func TestLoadIssuerBadCert(t *testing.T) {
-	_, _, err := loadIssuer(ca_config.IssuerConfig{
+	_, _, err := loadCFSSLIssuer(IssuerConfig{
 		File:     "../../test/test-ca.key",
 		CertFile: "/dev/null",
 	})

@@ -29,17 +29,11 @@ func Check(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, realSi
 	if err != nil {
 		return err
 	}
-	lints, err := lint.GlobalRegistry().Filter(lint.FilterOptions{
-		ExcludeNames: skipLints,
-		ExcludeSources: []lint.LintSource{
-			lint.CABFEVGuidelines,
-			lint.EtsiEsi,
-		},
-	})
+	reg, err := MakeRegistry(skipLints)
 	if err != nil {
-		return fmt.Errorf("failed to create lint registry: %w", err)
+		return err
 	}
-	return LintCert(lintCert, lints)
+	return LintCert(lintCert, reg)
 }
 
 // MakeSigner creates a throwaway crypto.Signer with the same key algorithm
@@ -63,6 +57,22 @@ func MakeSigner(realSigner crypto.Signer) (crypto.Signer, error) {
 		return nil, fmt.Errorf("unsupported lint signer type: %T", k)
 	}
 	return lintSigner, nil
+}
+
+// MakeRegistry creates a zlint Registry of lints to run, filtering out the
+// EV- and ETSI-specific lints, as well as any others specified.
+func MakeRegistry(skipLints []string) (lint.Registry, error) {
+	reg, err := lint.GlobalRegistry().Filter(lint.FilterOptions{
+		ExcludeNames: skipLints,
+		ExcludeSources: []lint.LintSource{
+			lint.CABFEVGuidelines,
+			lint.EtsiEsi,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create lint registry: %w", err)
+	}
+	return reg, nil
 }
 
 // MakeLintCert creates a throwaway x509.Certificate which can be linted.
@@ -93,4 +103,29 @@ func LintCert(lintCert *zlintx509.Certificate, lints lint.Registry) error {
 		return fmt.Errorf("failed lints: %s", strings.Join(failedLints, ", "))
 	}
 	return nil
+}
+
+type Linter struct {
+	signer   crypto.Signer
+	registry lint.Registry
+}
+
+func NewLinter(realSigner crypto.Signer, skipLints []string) (*Linter, error) {
+	signer, err := MakeSigner(realSigner)
+	if err != nil {
+		return nil, err
+	}
+	reg, err := MakeRegistry(skipLints)
+	if err != nil {
+		return nil, err
+	}
+	return &Linter{signer, reg}, nil
+}
+
+func (l Linter) LintTBS(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey) error {
+	cert, err := MakeLintCert(tbs, issuer, subjectPubKey, l.signer)
+	if err != nil {
+		return err
+	}
+	return LintCert(cert, l.registry)
 }
