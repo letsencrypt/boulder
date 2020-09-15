@@ -359,6 +359,7 @@ func NewIssuer(cert *x509.Certificate, signer crypto.Signer, profile *Profile, l
 			return nil, errors.New("end-entity signing cert does not have keyUsage certSign")
 		}
 	}
+	// TODO(#5086): Only do this check for ocsp-issuing issuers.
 	if cert.KeyUsage&x509.KeyUsageDigitalSignature == 0 {
 		return nil, errors.New("end-entity ocsp signing cert does not have keyUsage digitalSignature")
 	}
