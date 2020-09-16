@@ -39,6 +39,7 @@
       }
     },
     "features": {
+      "RestrictRSAKeySizes": true,
       "StripDefaultSchemePort": true
     }
   },

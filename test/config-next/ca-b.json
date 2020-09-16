@@ -136,7 +136,8 @@
     },
     "orphanQueueDir": "/tmp/orphaned-certificates-b",
     "features": {
-      "StoreIssuerInfo": true
+      "StoreIssuerInfo": true,
+      "RestrictRSAKeySizes": true
     }
   },
 
