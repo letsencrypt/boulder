@@ -9,6 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+
 	"github.com/letsencrypt/boulder/akamai"
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	"github.com/letsencrypt/boulder/cmd"
@@ -168,8 +171,11 @@ func main() {
 	grpcSrv, l, err := bgrpc.NewServer(c.AkamaiPurger.GRPC, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup Akamai purger gRPC server")
 	akamaipb.RegisterAkamaiPurgerServer(grpcSrv, &ap)
+	hs := health.NewServer()
+	healthpb.RegisterHealthServer(grpcSrv, hs)
 
 	go cmd.CatchSignals(logger, func() {
+		hs.Shutdown()
 		grpcSrv.GracefulStop()
 		// Stop the ticker and signal that we want to shutdown by writing to the
 		// stop channel. We wait 15 seconds for any remaining URLs to be emptied

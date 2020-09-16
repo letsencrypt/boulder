@@ -6,6 +6,8 @@ import (
 	"runtime"
 
 	ct "github.com/google/certificate-transparency-go"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -94,8 +96,13 @@ func main() {
 	cmd.FailOnError(err, "Unable to setup Publisher gRPC server")
 	gw := bgrpc.NewPublisherServerWrapper(pubi)
 	pubpb.RegisterPublisherServer(grpcSrv, gw)
+	hs := health.NewServer()
+	healthpb.RegisterHealthServer(grpcSrv, hs)
 
-	go cmd.CatchSignals(logger, grpcSrv.GracefulStop)
+	go cmd.CatchSignals(logger, func() {
+		hs.Shutdown()
+		grpcSrv.GracefulStop()
+	})
 
 	err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
 	cmd.FailOnError(err, "Publisher gRPC service failed")
