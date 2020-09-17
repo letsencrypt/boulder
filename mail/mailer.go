@@ -102,7 +102,9 @@ func (d dryRunClient) Data() (io.WriteCloser, error) {
 }
 
 func (d dryRunClient) Write(p []byte) (n int, err error) {
-	d.log.Debugf("data: %s", string(p))
+	for _, line := range strings.Split(string(p), "\n") {
+		d.log.Debugf("data: %s", line)
+	}
 	return len(p), nil
 }
 
