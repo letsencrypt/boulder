@@ -15,6 +15,7 @@
         "admin-revoker.boulder",
         "ca.boulder",
         "expiration-mailer.boulder",
+        "health-checker.boulder",
         "orphan-finder.boulder",
         "ra.boulder",
         "sa.boulder",

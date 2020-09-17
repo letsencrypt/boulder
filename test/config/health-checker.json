@@ -1,0 +1,5 @@
+{
+  "caCertFile": "test/grpc-creds/minica.pem",
+  "certFile": "test/grpc-creds/health-checker.boulder/cert.pem",
+  "keyFile": "test/grpc-creds/health-checker.boulder/key.pem"
+}

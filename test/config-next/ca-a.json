@@ -18,12 +18,14 @@
     "grpcCA": {
       "address": ":9093",
       "clientNames": [
+        "health-checker.boulder",
         "ra.boulder"
       ]
     },
     "grpcOCSPGenerator": {
       "address": ":9096",
       "clientNames": [
+        "health-checker.boulder",
         "ocsp-updater.boulder",
         "orphan-finder.boulder"
       ]
