@@ -16,6 +16,7 @@ import (
 	"io/ioutil"
 	"math/big"
 	mrand "math/rand"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -217,61 +218,10 @@ func IsAnyNilOrZero(vals ...interface{}) bool {
 		case nil:
 			return true
 		// These are the go types which correspond to proto3's scalar fields.
-		case bool:
-			if v == false {
+		case bool, int, int32, int64, uint, uint32, uint64, float32, float64, string:
+			if reflect.ValueOf(v).IsZero() {
 				return true
 			}
-		case int, int32, int64, uint, uint32, uint64, float32, float64:
-			if v == 0 {
-				return true
-			}
-		case string:
-			if v == "" {
-				return true
-			}
-		// These are the go types which correspond to proto2's scalar fields.
-		// TODO(#2936): Remove these when all proto2 generated code is gone.
-		case *bool:
-			if *v == false {
-				return true
-			}
-		case *int:
-			if *v == 0 {
-				return true
-			}
-		case *int32:
-			if *v == 0 {
-				return true
-			}
-		case *int64:
-			if *v == 0 {
-				return true
-			}
-		case *uint:
-			if *v == 0 {
-				return true
-			}
-		case *uint32:
-			if *v == 0 {
-				return true
-			}
-		case *uint64:
-			if *v == 0 {
-				return true
-			}
-		case *float32:
-			if *v == 0 {
-				return true
-			}
-		case *float64:
-			if *v == 0 {
-				return true
-			}
-		case *string:
-			if *v == "" {
-				return true
-			}
-		// This is the go type which can be generated for both proto2 and proto3.
 		case []byte:
 			if len(v) == 0 {
 				return true
