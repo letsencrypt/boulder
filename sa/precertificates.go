@@ -37,7 +37,7 @@ func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSeri
 
 // AddPrecertificate writes a record of a precertificate generation to the DB.
 func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error) {
-	if core.IsAnyNilOrZero(req.Der, req.Issued, req.RegID) {
+	if core.IsAnyNilOrZero(req.Der, req.Issued, req.RegID, req.IssuerID) {
 		return nil, errIncompleteRequest
 	}
 	parsed, err := x509.ParseCertificate(req.Der)
