@@ -799,7 +799,7 @@ func (sas StorageAuthorityServerWrapper) GetAuthorization2(ctx context.Context, 
 }
 
 func (sas StorageAuthorityServerWrapper) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*corepb.Empty, error) {
-	if core.IsAnyNilOrZero(req, req.Serial, req.Reason, req.Date, req.Response) {
+	if core.IsAnyNilOrZero(req, req.Serial, req.Date, req.Response) {
 		return nil, errIncompleteRequest
 	}
 	return &corepb.Empty{}, sas.inner.RevokeCertificate(ctx, req)
