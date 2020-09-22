@@ -217,16 +217,14 @@ func IsAnyNilOrZero(vals ...interface{}) bool {
 		switch v := val.(type) {
 		case nil:
 			return true
-		// These are the go types which correspond to proto3's scalar fields.
-		case bool, int, int32, int64, uint, uint32, uint64, float32, float64, string:
-			if reflect.ValueOf(v).IsZero() {
-				return true
-			}
 		case []byte:
 			if len(v) == 0 {
 				return true
 			}
 		default:
+			if reflect.ValueOf(v).IsZero() {
+				return true
+			}
 		}
 	}
 	return false

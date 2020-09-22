@@ -123,6 +123,14 @@ func TestIsAnyNilOrZero(t *testing.T) {
 	test.Assert(t, IsAnyNilOrZero([]byte{}), "Empty byte slice seen as non-zero")
 	test.Assert(t, !IsAnyNilOrZero([]byte("byte")), "Non-empty byte slice seen as zero")
 
+	type Foo struct {
+		foo int
+	}
+	test.Assert(t, IsAnyNilOrZero(Foo{}), "Empty struct seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(Foo{5}), "Non-empty struct seen as zero")
+	var f *Foo
+	test.Assert(t, IsAnyNilOrZero(f), "Pointer to uninitialized struct seen as non-zero")
+
 	test.Assert(t, IsAnyNilOrZero(1, ""), "Mixed values seen as non-zero")
 	test.Assert(t, IsAnyNilOrZero("", 1), "Mixed values seen as non-zero")
 }
