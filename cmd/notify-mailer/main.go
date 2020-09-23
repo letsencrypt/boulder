@@ -125,7 +125,7 @@ func (m *mailer) run() error {
 			biggestAddress = k
 		}
 	}
-	m.log.Infof("Most frequent address %q had %d associated accounts", biggestAddress, biggest)
+	m.log.Infof("Most frequent address %q had %d associated lines", biggestAddress, biggest)
 
 	err = m.mailer.Connect()
 	if err != nil {
