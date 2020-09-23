@@ -122,6 +122,7 @@ func TestAddPrecertificateIncomplete(t *testing.T) {
 		RegID:  regID,
 		Ocsp:   ocspResp,
 		Issued: time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC).UnixNano(),
+		// Leaving out IssuerID
 	})
 
 	test.AssertError(t, err, "Adding precert with no issuer did not fail")
