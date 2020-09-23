@@ -44,10 +44,11 @@ func TestAddPrecertificate(t *testing.T) {
 		regID := reg.ID
 		issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
 		_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-			Der:    testCert.Raw,
-			RegID:  regID,
-			Ocsp:   ocspResp,
-			Issued: issuedTime.UnixNano(),
+			Der:      testCert.Raw,
+			RegID:    regID,
+			Ocsp:     ocspResp,
+			Issued:   issuedTime.UnixNano(),
+			IssuerID: 1,
 		})
 		test.AssertNotError(t, err, "Couldn't add test cert")
 
@@ -86,10 +87,11 @@ func TestAddPrecertificate(t *testing.T) {
 		// Adding the same certificate with the same serial should result in an
 		// error
 		_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-			Der:    testCert.Raw,
-			RegID:  regID,
-			Ocsp:   ocspResp,
-			Issued: issuedTime.UnixNano(),
+			Der:      testCert.Raw,
+			RegID:    regID,
+			Ocsp:     ocspResp,
+			Issued:   issuedTime.UnixNano(),
+			IssuerID: 1,
 		})
 		if err == nil {
 			t.Fatalf("Expected error inserting duplicate precertificate, got none")
@@ -102,6 +104,30 @@ func TestAddPrecertificate(t *testing.T) {
 	addPrecert(true)
 }
 
+func TestAddPrecertificateIncomplete(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	// Create a throw-away self signed certificate with a random name and
+	// serial number
+	_, testCert := test.ThrowAwayCert(t, 1)
+
+	// Add the cert as a precertificate
+	ocspResp := []byte{0, 0, 1}
+	regID := reg.ID
+	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    testCert.Raw,
+		RegID:  regID,
+		Ocsp:   ocspResp,
+		Issued: time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC).UnixNano(),
+		// Leaving out IssuerID
+	})
+
+	test.AssertError(t, err, "Adding precert with no issuer did not fail")
+}
+
 func TestAddPrecertificateKeyHash(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
@@ -109,10 +135,11 @@ func TestAddPrecertificateKeyHash(t *testing.T) {
 
 	serial, testCert := test.ThrowAwayCert(t, 1)
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    testCert.Raw,
-		RegID:  reg.ID,
-		Ocsp:   []byte{1, 2, 3},
-		Issued: testCert.NotBefore.UnixNano(),
+		Der:      testCert.Raw,
+		RegID:    reg.ID,
+		Ocsp:     []byte{1, 2, 3},
+		Issued:   testCert.NotBefore.UnixNano(),
+		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "failed to add precert")
 

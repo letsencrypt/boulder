@@ -91,9 +91,21 @@ func (t orphanType) String() string {
 	}
 }
 
+// An orphaned cert log line must contain at least the following tokens:
+// "orphaning", "(pre)?certificate", "cert=[\w+]", "issuerID=[\d+]", and "regID=[\d]".
+// For example:
+// `[AUDIT] Failed RPC to store at SA, orphaning precertificate: serial=[04asdf1234], cert=[MIIdeafbeef], issuerID=[112358], regID=[1001], orderID=[1002], err=[Timed out]`
+// The orphan-finder does not care about the serial, error, or orderID.
+type parsedLine struct {
+	certDER  []byte
+	issuerID int64
+	regID    int64
+}
+
 var (
 	derOrphan        = regexp.MustCompile(`cert=\[([0-9a-f]+)\]`)
 	regOrphan        = regexp.MustCompile(`regID=\[(\d+)\]`)
+	issuerOrphan     = regexp.MustCompile(`issuerID=\[(\d+)\]`)
 	errAlreadyExists = fmt.Errorf("Certificate already exists in DB")
 )
 
@@ -147,6 +159,41 @@ func checkDER(sai certificateStorage, der []byte) (*x509.Certificate, orphanType
 	return nil, orphanTyp, fmt.Errorf("Existing %s lookup failed: %s", orphanTyp, err)
 }
 
+func parseLogLine(line string, logger blog.Logger) (parsedLine, error) {
+	derStr := derOrphan.FindStringSubmatch(line)
+	if len(derStr) <= 1 {
+		return parsedLine{}, fmt.Errorf("unable to find cert der: %s", line)
+	}
+	der, err := hex.DecodeString(derStr[1])
+	if err != nil {
+		return parsedLine{}, fmt.Errorf("unable to decode hex der from [%s]: %s", line, err)
+	}
+
+	regStr := regOrphan.FindStringSubmatch(line)
+	if len(regStr) <= 1 {
+		return parsedLine{}, fmt.Errorf("unable to find regID: %s", line)
+	}
+	regID, err := strconv.ParseInt(regStr[1], 10, 64)
+	if err != nil {
+		return parsedLine{}, fmt.Errorf("unable to parse regID from [%s]: %s", line, err)
+	}
+
+	issuerStr := issuerOrphan.FindStringSubmatch(line)
+	if len(issuerStr) <= 1 {
+		return parsedLine{}, fmt.Errorf("unable to find issuerID: %s", line)
+	}
+	issuerID, err := strconv.ParseInt(issuerStr[1], 10, 64)
+	if err != nil {
+		return parsedLine{}, fmt.Errorf("unable to parse issuerID from [%s]: %s", line, err)
+	}
+
+	return parsedLine{
+		certDER:  der,
+		regID:    regID,
+		issuerID: issuerID,
+	}, nil
+}
+
 // storeParsedLogLine attempts to parse one log line according to the format used when
 // orphaning certificates and precertificates. It returns two booleans and the
 // orphanType: The first boolean is true if the line was a match, and the second
@@ -154,33 +201,23 @@ func checkDER(sai certificateStorage, der []byte) (*x509.Certificate, orphanType
 // orphan to the DB, it requests a fresh OCSP response from the CA to store
 // alongside the precertificate/certificate.
 func storeParsedLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Logger, line string) (found bool, added bool, typ orphanType) {
-	ctx := context.Background()
+	// At a minimum, the log line should contain the word "orphaning" and the token
+	// "cert=". If it doesn't have those, short-circuit.
+	if (!strings.Contains(line, fmt.Sprintf("orphaning %s", certOrphan)) &&
+		!strings.Contains(line, fmt.Sprintf("orphaning %s", precertOrphan))) ||
+		!strings.Contains(line, "cert=") {
+		return false, false, unknownOrphan
+	}
 
-	// The log line should contain a label indicating it is a cert or a precert
-	// orphan. We will determine which it is in checkDER based on the DER instead
-	// of the log line label.
-	if !strings.Contains(line, fmt.Sprintf("orphaning %s", certOrphan)) &&
-		!strings.Contains(line, fmt.Sprintf("orphaning %s", precertOrphan)) {
-		return false, false, unknownOrphan
-	}
-	// The log line should also contain certificate DER
-	if !strings.Contains(line, "cert=") {
-		return false, false, unknownOrphan
-	}
-	// Extract and decode the orphan DER
-	derStr := derOrphan.FindStringSubmatch(line)
-	if len(derStr) <= 1 {
-		logger.AuditErrf("Didn't match regex for cert: %s", line)
-		return true, false, unknownOrphan
-	}
-	der, err := hex.DecodeString(derStr[1])
+	parsed, err := parseLogLine(line, logger)
 	if err != nil {
-		logger.AuditErrf("Couldn't decode hex: %s, [%s]", err, line)
+		logger.AuditErr(fmt.Sprintf("Couldn't parse log line: %s", err))
 		return true, false, unknownOrphan
 	}
+
 	// Parse the DER, determine the orphan type, and ensure it doesn't already
 	// exist in the DB
-	cert, typ, err := checkDER(sa, der)
+	cert, typ, err := checkDER(sa, parsed.certDER)
 	if err != nil {
 		logFunc := logger.Errf
 		if err == errAlreadyExists {
@@ -189,22 +226,15 @@ func storeParsedLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Log
 		logFunc("%s, [%s]", err, line)
 		return true, false, typ
 	}
-	// extract the regID
-	regStr := regOrphan.FindStringSubmatch(line)
-	if len(regStr) <= 1 {
-		logger.AuditErrf("regID variable is empty, [%s]", line)
-		return true, false, typ
-	}
-	regID, err := strconv.ParseInt(regStr[1], 10, 64)
-	if err != nil {
-		logger.AuditErrf("Couldn't parse regID: %s, [%s]", err, line)
-		return true, false, typ
-	}
-	response, err := generateOCSP(ctx, ca, der)
+
+	// generate an OCSP response
+	ctx := context.Background()
+	response, err := generateOCSP(ctx, ca, parsed.certDER)
 	if err != nil {
 		logger.AuditErrf("Couldn't generate OCSP: %s, [%s]", err, line)
 		return true, false, typ
 	}
+
 	// We use `cert.NotBefore` as the issued date to avoid the SA tagging this
 	// certificate with an issued date of the current time when we know it was an
 	// orphan issued in the past. Because certificates are backdated we need to
@@ -212,13 +242,14 @@ func storeParsedLogLine(sa certificateStorage, ca ocspGenerator, logger blog.Log
 	issuedDate := cert.NotBefore.Add(backdateDuration)
 	switch typ {
 	case certOrphan:
-		_, err = sa.AddCertificate(ctx, der, regID, response, &issuedDate)
+		_, err = sa.AddCertificate(ctx, parsed.certDER, parsed.regID, response, &issuedDate)
 	case precertOrphan:
 		_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-			Der:    der,
-			RegID:  regID,
-			Ocsp:   response,
-			Issued: issuedDate.UnixNano(),
+			Der:      parsed.certDER,
+			RegID:    parsed.regID,
+			Ocsp:     response,
+			Issued:   issuedDate.UnixNano(),
+			IssuerID: parsed.issuerID,
 		})
 	default:
 		// Shouldn't happen but be defensive anyway

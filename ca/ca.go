@@ -567,12 +567,14 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
+	issuerID := issuer.cert.ID()
+
 	req := &sapb.AddCertificateRequest{
 		Der:      precertDER,
 		RegID:    regID,
 		Ocsp:     ocspResp.Response,
 		Issued:   nowNanos,
-		IssuerID: int64(issuer.cert.ID()),
+		IssuerID: int64(issuerID),
 	}
 
 	_, err = ca.sa.AddPrecertificate(ctx, req)
@@ -581,15 +583,15 @@ func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		err = berrors.InternalServerError(err.Error())
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
 		// changes here, you should make sure they are reflected in orphan-finder.
-		ca.log.AuditErrf("Failed RPC to store at SA, orphaning precertificate: serial=[%s] cert=[%s] err=[%v], regID=[%d], orderID=[%d]",
-			serialHex, hex.EncodeToString(precertDER), err, issueReq.RegistrationID, issueReq.OrderID)
+		ca.log.AuditErrf("Failed RPC to store at SA, orphaning precertificate: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
+			serialHex, hex.EncodeToString(precertDER), issuerID, issueReq.RegistrationID, issueReq.OrderID, err)
 		if ca.orphanQueue != nil {
 			ca.queueOrphan(&orphanedCert{
 				DER:      precertDER,
 				RegID:    regID,
 				OCSPResp: ocspResp.Response,
 				Precert:  true,
-				IssuerID: int64(issuer.cert.ID()),
+				IssuerID: int64(issuerID),
 			})
 		}
 		return nil, err
