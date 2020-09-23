@@ -643,11 +643,11 @@ func TestPreviousCertificateExists(t *testing.T) {
 	test.AssertNotError(t, err, "reading cert DER")
 
 	issued := sa.clk.Now()
-	issuedUnix := issued.UnixNano()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER,
-		Issued: issuedUnix,
-		RegID:  reg.ID,
+		Der:      certDER,
+		Issued:   issued.UnixNano(),
+		RegID:    reg.ID,
+		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
@@ -1563,12 +1563,12 @@ func TestRevokeCertificate(t *testing.T) {
 	// Add a cert to the DB to test with.
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	issued := sa.clk.Now().UnixNano()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER,
-		RegID:  reg.ID,
-		Ocsp:   nil,
-		Issued: issued,
+		Der:      certDER,
+		RegID:    reg.ID,
+		Ocsp:     nil,
+		Issued:   sa.clk.Now().UnixNano(),
+		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
@@ -1634,11 +1634,11 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
 	// Add the certificate with the same names.
-	issuedUnix := issued.UnixNano()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER,
-		Issued: issuedUnix,
-		RegID:  reg.ID,
+		Der:      certDER,
+		Issued:   issued.UnixNano(),
+		RegID:    reg.ID,
+		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
@@ -1671,11 +1671,11 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	test.AssertNotError(t, err, "Unexpected error parsing test-cert.der test file")
 	names = cert.DNSNames
 
-	issuedUnix = issued.UnixNano()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER,
-		Issued: issuedUnix,
-		RegID:  reg.ID,
+		Der:      certDER,
+		Issued:   issued.UnixNano(),
+		RegID:    reg.ID,
+		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)

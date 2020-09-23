@@ -61,6 +61,9 @@ func (m *mockSA) GetCertificate(ctx context.Context, s string) (core.Certificate
 }
 
 func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error) {
+	if core.IsAnyNilOrZero(req.Der, req.Issued, req.RegID, req.IssuerID) {
+		return nil, berrors.InternalServerError("Incomplete request")
+	}
 	parsed, err := x509.ParseCertificate(req.Der)
 	if err != nil {
 		return nil, err
@@ -122,12 +125,12 @@ func TestParseLine(t *testing.T) {
 
 	testPreCertDER := "308204553082033da003020102021203e1dea6f3349009a90e0306dbb39c3e7ca2300d06092a864886f70d01010b0500304a310b300906035504061302555331163014060355040a130d4c6574277320456e6372797074312330210603550403131a4c6574277320456e637279707420417574686f72697479205833301e170d3139313031363132353431375a170d3230303131343132353431375a30133111300f060355040313086a756e74732e696f30820122300d06092a864886f70d01010105000382010f003082010a0282010100c91926403839aadbf2a73af4f85e3884df553880c7e9d11943121b941f284a2c805b6329a93d7fb2357c1298d811cfce61faa863c334149f948ff52a55a516e56b2d31d137b1d0319f2aabdea0e9d5e8630b54d7e53597e094c323e24a7ec1ab0db5d85651a641ec3fd7841fe5cbc675315c49b714238ead757e55409fd68c4b48d42f14c2124d381800fd2ec417ed7f363b00ab23aaddaf9113d5cf889bbf391431bffb91d425d11a1e79318b7007b8e75cc56633662c3d6c58175b5cab6225aa495361b1124642f19584820d215f23f46bd9fafa3341a0f7f387bf7cdecbccd7fcbcb3e917becb41562771e579884a0d8a1b170536f82ba90b398e9a6932150203010001a382016a30820166300e0603551d0f0101ff0404030205a0301d0603551d250416301406082b0601050507030106082b06010505070302300c0603551d130101ff04023000301d0603551d0e041604144d14d73117ca7f5a27394ed590b0d037eb5888a2301f0603551d23041830168014a84a6a63047dddbae6d139b7a64565eff3a8eca1306f06082b0601050507010104633061302e06082b060105050730018622687474703a2f2f6f6373702e696e742d78332e6c657473656e63727970742e6f7267302f06082b060105050730028623687474703a2f2f636572742e696e742d78332e6c657473656e63727970742e6f72672f30130603551d11040c300a82086a756e74732e696f304c0603551d20044530433008060667810c0102013037060b2b0601040182df130101013028302606082b06010505070201161a687474703a2f2f6370732e6c657473656e63727970742e6f72673013060a2b06010401d6790204030101ff04020500300d06092a864886f70d01010b0500038201010035f9d6620874966f2aa400f069c5f601dc11083f5859a15d20e9b1d2f9d87d3756a71a03cee0ab2a69b5173a4395b698163ba60394167c9eb4b66d20d9b3a76bf94995288e8d15c70bee969f77a71147718803e73df0a7832c1fcae1e3138601ebc61725bc7505c6d1e5b0eaf7797e09161d71e37d76370dc489312b1bf0600d1c952f846edb810c284c0d831f27481a8f2220ad178c87d8c4688023fa3798293dc9fdffa9e5b885a8107d8a2480226cd5f9121d6d7ea83b10292371ad6757e7729b27136a064f2901822b4f0ea52f8149a17860e37d3dc925488b1ba4aa26ef51e60de024e67e3d5e04ac97d8bd79a003e668ea2e1bd1c0b9d77c7cf7bfdc32"
 
-	logLine := func(typ orphanType, der, regID, orderID string) string {
+	logLine := func(typ orphanType, der, issuerID, regID, orderID string) string {
 		return fmt.Sprintf(
 			"0000-00-00T00:00:00+00:00 hostname boulder-ca[pid]: "+
 				"[AUDIT] Failed RPC to store at SA, orphaning %s: "+
-				"cert=[%s] err=[context deadline exceeded], regID=[%s], orderID=[%s]",
-			typ, der, regID, orderID)
+				"serial=[unused], cert=[%s], issuerID=[%s], regID=[%s], orderID=[%s], err=[context deadline exceeded]",
+			typ, der, issuerID, regID, orderID)
 	}
 
 	testCases := []struct {
@@ -148,21 +151,21 @@ func TestParseLine(t *testing.T) {
 		},
 		{
 			Name:           "Empty cert in line",
-			LogLine:        logLine(certOrphan, "", "1337", "0"),
+			LogLine:        logLine(certOrphan, "", "1", "1337", "0"),
 			ExpectFound:    true,
 			ExpectAdded:    false,
 			ExpectNoErrors: false,
 		},
 		{
 			Name:           "Invalid cert in line",
-			LogLine:        logLine(certOrphan, "deadbeef", "", ""),
+			LogLine:        logLine(certOrphan, "deadbeef", "", "", ""),
 			ExpectFound:    true,
 			ExpectAdded:    false,
 			ExpectNoErrors: false,
 		},
 		{
 			Name:           "Valid cert in line",
-			LogLine:        logLine(certOrphan, testCertDER, "1001", "0"),
+			LogLine:        logLine(certOrphan, testCertDER, "1", "1001", "0"),
 			ExpectFound:    true,
 			ExpectAdded:    true,
 			ExpectAddedDER: testCertDER,
@@ -171,7 +174,7 @@ func TestParseLine(t *testing.T) {
 		},
 		{
 			Name:        "Already inserted cert in line",
-			LogLine:     logLine(certOrphan, testCertDER, "1001", "0"),
+			LogLine:     logLine(certOrphan, testCertDER, "1", "1001", "0"),
 			ExpectFound: true,
 			// ExpectAdded is false because we have already added this cert in the
 			// previous "Valid cert in line" test case.
@@ -180,21 +183,21 @@ func TestParseLine(t *testing.T) {
 		},
 		{
 			Name:           "Empty precert in line",
-			LogLine:        logLine(precertOrphan, "", "1337", "0"),
+			LogLine:        logLine(precertOrphan, "", "1", "1337", "0"),
 			ExpectFound:    true,
 			ExpectAdded:    false,
 			ExpectNoErrors: false,
 		},
 		{
 			Name:           "Invalid precert in line",
-			LogLine:        logLine(precertOrphan, "deadbeef", "", ""),
+			LogLine:        logLine(precertOrphan, "deadbeef", "", "", ""),
 			ExpectFound:    true,
 			ExpectAdded:    false,
 			ExpectNoErrors: false,
 		},
 		{
 			Name:           "Valid precert in line",
-			LogLine:        logLine(precertOrphan, testPreCertDER, "9999", "0"),
+			LogLine:        logLine(precertOrphan, testPreCertDER, "1", "9999", "0"),
 			ExpectFound:    true,
 			ExpectAdded:    true,
 			ExpectAddedDER: testPreCertDER,
@@ -203,7 +206,7 @@ func TestParseLine(t *testing.T) {
 		},
 		{
 			Name:        "Already inserted precert in line",
-			LogLine:     logLine(precertOrphan, testPreCertDER, "1001", "0"),
+			LogLine:     logLine(precertOrphan, testPreCertDER, "1", "1001", "0"),
 			ExpectFound: true,
 			// ExpectAdded is false because we have already added this cert in the
 			// previous "Valid cert in line" test case.
@@ -212,8 +215,22 @@ func TestParseLine(t *testing.T) {
 		},
 		{
 			Name:           "Unknown orphan type",
-			LogLine:        logLine(unknownOrphan, testPreCertDER, "1001", "0"),
+			LogLine:        logLine(unknownOrphan, testPreCertDER, "1", "1001", "0"),
 			ExpectFound:    false,
+			ExpectAdded:    false,
+			ExpectNoErrors: false,
+		},
+		{
+			Name:           "Empty issuerID in line",
+			LogLine:        logLine(precertOrphan, testPreCertDER, "", "1001", "0"),
+			ExpectFound:    true,
+			ExpectAdded:    false,
+			ExpectNoErrors: false,
+		},
+		{
+			Name:           "Zero issuerID in line",
+			LogLine:        logLine(precertOrphan, testPreCertDER, "0", "1001", "0"),
+			ExpectFound:    true,
 			ExpectAdded:    false,
 			ExpectNoErrors: false,
 		},

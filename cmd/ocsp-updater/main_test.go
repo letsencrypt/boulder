@@ -93,10 +93,11 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    parsedCert.Raw,
-		RegID:  reg.ID,
-		Ocsp:   nil,
-		Issued: nowNano(fc),
+		Der:      parsedCert.Raw,
+		RegID:    reg.ID,
+		Ocsp:     nil,
+		Issued:   nowNano(fc),
+		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
@@ -117,19 +118,21 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	parsedCertA, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    parsedCertA.Raw,
-		RegID:  reg.ID,
-		Ocsp:   nil,
-		Issued: nowNano(fc),
+		Der:      parsedCertA.Raw,
+		RegID:    reg.ID,
+		Ocsp:     nil,
+		Issued:   nowNano(fc),
+		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 	parsedCertB, err := core.LoadCert("test-cert-b.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    parsedCertB.Raw,
-		RegID:  reg.ID,
-		Ocsp:   nil,
-		Issued: nowNano(fc),
+		Der:      parsedCertB.Raw,
+		RegID:    reg.ID,
+		Ocsp:     nil,
+		Issued:   nowNano(fc),
+		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert-b.pem")
 
@@ -173,10 +176,11 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    parsedCert.Raw,
-		RegID:  reg.ID,
-		Ocsp:   nil,
-		Issued: nowNano(fc),
+		Der:      parsedCert.Raw,
+		RegID:    reg.ID,
+		Ocsp:     nil,
+		Issued:   nowNano(fc),
+		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
@@ -214,10 +218,11 @@ func TestFindStaleOCSPResponsesRevokedReason(t *testing.T) {
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    parsedCert.Raw,
-		RegID:  reg.ID,
-		Ocsp:   nil,
-		Issued: nowNano(fc),
+		Der:      parsedCert.Raw,
+		RegID:    reg.ID,
+		Ocsp:     nil,
+		Issued:   nowNano(fc),
+		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
@@ -246,10 +251,11 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    parsedCert.Raw,
-		RegID:  reg.ID,
-		Ocsp:   nil,
-		Issued: nowNano(fc),
+		Der:      parsedCert.Raw,
+		RegID:    reg.ID,
+		Ocsp:     nil,
+		Issued:   nowNano(fc),
+		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
@@ -277,10 +283,11 @@ func TestOldOCSPResponsesTickIsExpired(t *testing.T) {
 
 	// Add a new test certificate
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    parsedCert.Raw,
-		RegID:  reg.ID,
-		Ocsp:   nil,
-		Issued: nowNano(fc),
+		Der:      parsedCert.Raw,
+		RegID:    reg.ID,
+		Ocsp:     nil,
+		Issued:   nowNano(fc),
+		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
@@ -326,10 +333,11 @@ func TestStoreResponseGuard(t *testing.T) {
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    parsedCert.Raw,
-		RegID:  reg.ID,
-		Ocsp:   nil,
-		Issued: nowNano(fc),
+		Der:      parsedCert.Raw,
+		RegID:    reg.ID,
+		Ocsp:     nil,
+		Issued:   nowNano(fc),
+		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
@@ -383,10 +391,11 @@ func TestGenerateOCSPResponsePrecert(t *testing.T) {
 	regID := reg.ID
 	issuedTime := fc.Now().UnixNano()
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    testCert.Raw,
-		RegID:  regID,
-		Ocsp:   ocspResp,
-		Issued: issuedTime,
+		Der:      testCert.Raw,
+		RegID:    regID,
+		Ocsp:     ocspResp,
+		Issued:   issuedTime,
+		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 
@@ -433,9 +442,6 @@ func TestIssuerInfo(t *testing.T) {
 	}
 	certA, err := x509.CreateCertificate(rand.Reader, template, template, &k.PublicKey, k)
 	test.AssertNotError(t, err, "x509.CreateCertificate failed")
-	template.SerialNumber = big.NewInt(2)
-	certB, err := x509.CreateCertificate(rand.Reader, template, template, &k.PublicKey, k)
-	test.AssertNotError(t, err, "x509.CreateCertificate failed")
 
 	now := fc.Now().UnixNano()
 	id := int64(1234)
@@ -447,27 +453,16 @@ func TestIssuerInfo(t *testing.T) {
 		IssuerID: id,
 	})
 	test.AssertNotError(t, err, "sa.AddPrecertificate failed")
-	_, err = sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
-		Der:    certB,
-		RegID:  reg.ID,
-		Ocsp:   []byte{1, 2, 3},
-		Issued: now,
-	})
-	test.AssertNotError(t, err, "sa.AddPrecertificate failed")
 
 	fc.Add(time.Hour * 24 * 4)
 	statuses, err := updater.findStaleOCSPResponses(fc.Now().Add(-time.Hour), 10)
 	test.AssertNotError(t, err, "findStaleOCSPResponses failed")
-	test.AssertEquals(t, len(statuses), 2)
+	test.AssertEquals(t, len(statuses), 1)
 	test.AssertEquals(t, *statuses[0].IssuerID, id)
-	test.Assert(t, *statuses[1].IssuerID == 0, "second status doesn't have zero IssuerID")
 
 	_, err = updater.generateResponse(context.Background(), statuses[0])
 	test.AssertNotError(t, err, "generateResponse failed")
 	test.Assert(t, m.gotIssuer, "generateResponse didn't send issuer information and serial")
-	_, err = updater.generateResponse(context.Background(), statuses[1])
-	test.AssertNotError(t, err, "generateResponse failed")
-	test.Assert(t, !m.gotIssuer, "generateResponse did send issuer information and serial when it shouldn't")
 }
 
 type brokenDB struct{}
