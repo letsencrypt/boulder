@@ -110,31 +110,26 @@ func TestKeyDigestEquals(t *testing.T) {
 func TestIsAnyNilOrZero(t *testing.T) {
 	test.Assert(t, IsAnyNilOrZero(nil), "Nil seen as non-zero")
 
-	zeroBool := false
-	nonZeroBool := true
-	test.Assert(t, IsAnyNilOrZero(zeroBool), "False bool seen as non-zero")
-	test.Assert(t, IsAnyNilOrZero(&zeroBool), "False bool seen as non-zero")
-	test.Assert(t, !IsAnyNilOrZero(nonZeroBool), "True bool seen as zero")
-	test.Assert(t, !IsAnyNilOrZero(&nonZeroBool), "True bool seen as zero")
+	test.Assert(t, IsAnyNilOrZero(false), "False bool seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(true), "True bool seen as zero")
 
-	zeroNum := 0
-	nonZeroNum := -12.345
-	test.Assert(t, IsAnyNilOrZero(zeroNum), "Zero num seen as non-zero")
-	test.Assert(t, IsAnyNilOrZero(&zeroNum), "Zero num seen as non-zero")
-	test.Assert(t, !IsAnyNilOrZero(nonZeroNum), "Non-zero num seen as zero")
-	test.Assert(t, !IsAnyNilOrZero(&nonZeroNum), "Non-zero num seen as zero")
+	test.Assert(t, IsAnyNilOrZero(0), "Zero num seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(uint32(5)), "Non-zero num seen as zero")
+	test.Assert(t, !IsAnyNilOrZero(-12.345), "Non-zero num seen as zero")
 
-	zeroStr := ""
-	nonZeroStr := "string"
-	test.Assert(t, IsAnyNilOrZero(zeroStr), "Empty string seen as non-zero")
-	test.Assert(t, IsAnyNilOrZero(&zeroStr), "Empty string seen as non-zero")
-	test.Assert(t, !IsAnyNilOrZero(nonZeroStr), "Non-empty string seen as zero")
-	test.Assert(t, !IsAnyNilOrZero(&nonZeroStr), "Non-empty string seen as zero")
+	test.Assert(t, IsAnyNilOrZero(""), "Empty string seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero("string"), "Non-empty string seen as zero")
 
-	zeroByte := []byte{}
-	nonZeroByte := []byte("byte")
-	test.Assert(t, IsAnyNilOrZero(zeroByte), "Empty byte slice seen as non-zero")
-	test.Assert(t, !IsAnyNilOrZero(nonZeroByte), "Non-empty byte slice seen as zero")
+	test.Assert(t, IsAnyNilOrZero([]byte{}), "Empty byte slice seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero([]byte("byte")), "Non-empty byte slice seen as zero")
+
+	type Foo struct {
+		foo int
+	}
+	test.Assert(t, IsAnyNilOrZero(Foo{}), "Empty struct seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(Foo{5}), "Non-empty struct seen as zero")
+	var f *Foo
+	test.Assert(t, IsAnyNilOrZero(f), "Pointer to uninitialized struct seen as non-zero")
 
 	test.Assert(t, IsAnyNilOrZero(1, ""), "Mixed values seen as non-zero")
 	test.Assert(t, IsAnyNilOrZero("", 1), "Mixed values seen as non-zero")

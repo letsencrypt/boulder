@@ -2263,12 +2263,10 @@ func TestAddBlockedKeyUnknownSource(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	added := int64(0)
-	source := "heyo"
 	_, err := sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
 		KeyHash: []byte{1, 2, 3},
-		Added:   added,
-		Source:  source,
+		Added:   1,
+		Source:  "heyo",
 	})
 	test.AssertError(t, err, "AddBlockedKey didn't fail with unknown source")
 	test.AssertEquals(t, err.Error(), "unknown source")
@@ -2282,20 +2280,18 @@ func TestBlockedKeyRevokedBy(t *testing.T) {
 	test.AssertNotError(t, err, "failed to set features")
 	defer features.Reset()
 
-	added := int64(0)
-	source := "API"
 	_, err = sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
 		KeyHash: []byte{1},
-		Added:   added,
-		Source:  source,
+		Added:   1,
+		Source:  "API",
 	})
 	test.AssertNotError(t, err, "AddBlockedKey failed")
-	revoker := int64(1)
+
 	_, err = sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
 		KeyHash:   []byte{2},
-		Added:     added,
-		Source:    source,
-		RevokedBy: revoker,
+		Added:     1,
+		Source:    "API",
+		RevokedBy: 1,
 	})
 	test.AssertNotError(t, err, "AddBlockedKey failed")
 }
