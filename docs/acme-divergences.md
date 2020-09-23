@@ -28,9 +28,8 @@ support this non-essential feature in the future. Please follow Boulder Issue
 
 ## [Section 7.4](https://tools.ietf.org/html/rfc8555#section-7.4)
 
-Boulder does not respect the `notBefore` and `notAfter` fields of a `newOrder`
-request paylod. Boulder always issues certificates with validity starting at or
-near the time of issuance, and validity ending after 90 days.
+Boulder does not accept the optional `notBefore` and `notAfter` fields of a
+`newOrder` request paylod.
 
 ## [Section 7.4.1](https://tools.ietf.org/html/rfc8555#section-7.4.1)
 
