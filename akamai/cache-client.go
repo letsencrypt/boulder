@@ -18,6 +18,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/prometheus/client_golang/prometheus"
@@ -357,13 +358,13 @@ func generateOCSPCacheKeys(req []byte, ocspServer string) []string {
 }
 
 // GeneratePurgeURLs ...
-func GeneratePurgeURLs(der []byte, issuer *x509.Certificate) ([]string, error) {
+func GeneratePurgeURLs(der []byte, issuer *issuance.Certificate) ([]string, error) {
 	cert, err := x509.ParseCertificate(der)
 	if err != nil {
 		return nil, err
 	}
 
-	req, err := ocsp.CreateRequest(cert, issuer, nil)
+	req, err := ocsp.CreateRequest(cert, issuer.Certificate, nil)
 	if err != nil {
 		return nil, err
 	}
