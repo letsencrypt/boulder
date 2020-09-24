@@ -91,8 +91,10 @@ func (t orphanType) String() string {
 	}
 }
 
-// The official supported format of orphaned cert log lines is:
-// `[AUDIT] Failed RPC to store at SA, orphaning [pre]certificate: serial=[\w+], cert=[\w+], err=[.+], issuerID=[\d+], regID=[\d+], orderID=[\d+]`
+// An orphaned cert log line must contain at least the following tokens:
+// "orphaning", "(pre)?certificate", "cert=[\w+]", "issuerID=[\d+]", and "regID=[\d]".
+// For example:
+// `[AUDIT] Failed RPC to store at SA, orphaning precertificate: serial=[04asdf1234], cert=[MIIdeafbeef], issuerID=[112358], regID=[1001], orderID=[1002], err=[Timed out]`
 // The orphan-finder does not care about the serial, error, or orderID.
 type parsedLine struct {
 	certDER  []byte
@@ -178,7 +180,7 @@ func parseLogLine(line string, logger blog.Logger) (parsedLine, error) {
 
 	issuerStr := issuerOrphan.FindStringSubmatch(line)
 	if len(issuerStr) <= 1 {
-		return parsedLine{}, fmt.Errorf("unable to find regID: %s", line)
+		return parsedLine{}, fmt.Errorf("unable to find issuerID: %s", line)
 	}
 	issuerID, err := strconv.ParseInt(issuerStr[1], 10, 64)
 	if err != nil {
