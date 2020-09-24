@@ -52,7 +52,7 @@ func defaultProfile() *Profile {
 	return p
 }
 
-var issuerCert *x509.Certificate
+var issuerCert *Certificate
 var issuerSigner *ecdsa.PrivateKey
 
 func TestMain(m *testing.M) {
@@ -72,8 +72,9 @@ func TestMain(m *testing.M) {
 	}
 	issuer, err := x509.CreateCertificate(rand.Reader, template, template, tk.Public(), tk)
 	cmd.FailOnError(err, "failed to generate test issuer")
-	issuerCert, err = x509.ParseCertificate(issuer)
+	cert, err := x509.ParseCertificate(issuer)
 	cmd.FailOnError(err, "failed to parse test issuer")
+	issuerCert = &Certificate{cert}
 	os.Exit(m.Run())
 }
 
@@ -422,8 +423,10 @@ func TestNewIssuer(t *testing.T) {
 
 func TestNewIssuerUnsupportedKeyType(t *testing.T) {
 	_, err := NewIssuer(
-		&x509.Certificate{
-			PublicKey: &ed25519.PublicKey{},
+		&Certificate{
+			&x509.Certificate{
+				PublicKey: &ed25519.PublicKey{},
+			},
 		},
 		&ed25519.PrivateKey{},
 		defaultProfile(),
@@ -436,11 +439,13 @@ func TestNewIssuerUnsupportedKeyType(t *testing.T) {
 
 func TestNewIssuerNoCertSign(t *testing.T) {
 	_, err := NewIssuer(
-		&x509.Certificate{
-			PublicKey: &ecdsa.PublicKey{
-				Curve: elliptic.P256(),
+		&Certificate{
+			&x509.Certificate{
+				PublicKey: &ecdsa.PublicKey{
+					Curve: elliptic.P256(),
+				},
+				KeyUsage: 0,
 			},
-			KeyUsage: 0,
 		},
 		issuerSigner,
 		defaultProfile(),
@@ -453,11 +458,13 @@ func TestNewIssuerNoCertSign(t *testing.T) {
 
 func TestNewIssuerNoDigitalSignature(t *testing.T) {
 	_, err := NewIssuer(
-		&x509.Certificate{
-			PublicKey: &ecdsa.PublicKey{
-				Curve: elliptic.P256(),
+		&Certificate{
+			&x509.Certificate{
+				PublicKey: &ecdsa.PublicKey{
+					Curve: elliptic.P256(),
+				},
+				KeyUsage: x509.KeyUsageCertSign,
 			},
-			KeyUsage: x509.KeyUsageCertSign,
 		},
 		issuerSigner,
 		defaultProfile(),
@@ -473,11 +480,13 @@ func TestNewIssuerOCSPOnly(t *testing.T) {
 	p.useForRSALeaves = false
 	p.useForECDSALeaves = false
 	_, err := NewIssuer(
-		&x509.Certificate{
-			PublicKey: &ecdsa.PublicKey{
-				Curve: elliptic.P256(),
+		&Certificate{
+			&x509.Certificate{
+				PublicKey: &ecdsa.PublicKey{
+					Curve: elliptic.P256(),
+				},
+				KeyUsage: x509.KeyUsageDigitalSignature,
 			},
-			KeyUsage: x509.KeyUsageDigitalSignature,
 		},
 		issuerSigner,
 		p,
@@ -530,7 +539,7 @@ func TestIssue(t *testing.T) {
 			test.AssertNotError(t, err, "Issue failed")
 			cert, err := x509.ParseCertificate(certBytes)
 			test.AssertNotError(t, err, "failed to parse certificate")
-			err = cert.CheckSignatureFrom(issuerCert)
+			err = cert.CheckSignatureFrom(issuerCert.Certificate)
 			test.AssertNotError(t, err, "signature validation failed")
 			test.AssertDeepEquals(t, cert.DNSNames, []string{"example.com"})
 			test.AssertEquals(t, cert.Subject.CommonName, "example.com")
@@ -563,7 +572,7 @@ func TestIssueRSA(t *testing.T) {
 	test.AssertNotError(t, err, "Issue failed")
 	cert, err := x509.ParseCertificate(certBytes)
 	test.AssertNotError(t, err, "failed to parse certificate")
-	err = cert.CheckSignatureFrom(issuerCert)
+	err = cert.CheckSignatureFrom(issuerCert.Certificate)
 	test.AssertNotError(t, err, "signature validation failed")
 	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8})
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
@@ -593,7 +602,7 @@ func TestIssueCTPoison(t *testing.T) {
 	test.AssertNotError(t, err, "Issue failed")
 	cert, err := x509.ParseCertificate(certBytes)
 	test.AssertNotError(t, err, "failed to parse certificate")
-	err = cert.CheckSignatureFrom(issuerCert)
+	err = cert.CheckSignatureFrom(issuerCert.Certificate)
 	test.AssertNotError(t, err, "signature validation failed")
 	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8})
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
@@ -625,7 +634,7 @@ func TestIssueSCTList(t *testing.T) {
 	test.AssertNotError(t, err, "Issue failed")
 	cert, err := x509.ParseCertificate(certBytes)
 	test.AssertNotError(t, err, "failed to parse certificate")
-	err = cert.CheckSignatureFrom(issuerCert)
+	err = cert.CheckSignatureFrom(issuerCert.Certificate)
 	test.AssertNotError(t, err, "signature validation failed")
 	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8})
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
@@ -658,7 +667,7 @@ func TestIssueMustStaple(t *testing.T) {
 	test.AssertNotError(t, err, "Issue failed")
 	cert, err := x509.ParseCertificate(certBytes)
 	test.AssertNotError(t, err, "failed to parse certificate")
-	err = cert.CheckSignatureFrom(issuerCert)
+	err = cert.CheckSignatureFrom(issuerCert.Certificate)
 	test.AssertNotError(t, err, "signature validation failed")
 	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8})
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())

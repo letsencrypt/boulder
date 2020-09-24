@@ -40,6 +40,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
+	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
@@ -3900,7 +3901,7 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	test.AssertNotError(t, err, "x509.CreateCertificate failed")
 	cert, err := x509.ParseCertificate(der)
 	test.AssertNotError(t, err, "x509.ParseCertificate failed")
-	ra.issuer = cert
+	ra.issuer = &issuance.Certificate{Certificate: cert}
 
 	err = ra.RevokeCertificateWithReg(context.Background(), *cert, ocsp.Unspecified, 0)
 	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")

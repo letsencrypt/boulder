@@ -14,7 +14,7 @@ TRAVIS=${TRAVIS:-false}
 # defaults, because we don't want to run it locally (it could delete local
 # state) We also omit coverage by default on local runs because it generates
 # artifacts on disk that aren't needed.
-RUN=${RUN:-lints unit integration}
+RUN=${RUN:-unit lints integration}
 
 function run_and_expect_silence() {
   echo "$@"
@@ -65,6 +65,13 @@ function run_test_coverage() {
 }
 
 #
+# Unit Tests.
+#
+if [[ "$RUN" =~ "unit" ]] ; then
+  run_unit_tests
+fi
+
+#
 # Run various linters.
 #
 if [[ "$RUN" =~ "lints" ]] ; then
@@ -79,13 +86,6 @@ if [[ "$RUN" =~ "lints" ]] ; then
   run_and_expect_silence codespell \
     --ignore-words=.codespell.ignore.txt \
     --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt,.*.swp
-fi
-
-#
-# Unit Tests.
-#
-if [[ "$RUN" =~ "unit" ]] ; then
-  run_unit_tests
 fi
 
 #

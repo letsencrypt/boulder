@@ -171,7 +171,7 @@ func (m *mockSA) GetCertificate(ctx context.Context, serial string) (core.Certif
 }
 
 var caKey crypto.Signer
-var caCert *x509.Certificate
+var caCert *issuance.Certificate
 var ctx = context.Background()
 
 func init() {
@@ -180,7 +180,7 @@ func init() {
 	if err != nil {
 		panic(fmt.Sprintf("Unable to parse %s: %s", caKeyFile, err))
 	}
-	caCert, err = core.LoadCert(caCertFile)
+	caCert, err = issuance.LoadCertificate(caCertFile)
 	if err != nil {
 		panic(fmt.Sprintf("Unable to parse %s: %s", caCertFile, err))
 	}
@@ -472,7 +472,7 @@ func issueCertificateSubTestValidityUsesCAClock(t *testing.T, i *TestCertificate
 func TestMultipleIssuers(t *testing.T) {
 	testCtx := setup(t)
 	// Load multiple issuers, and ensure the first one in the list is used.
-	newIssuerCert, err := core.LoadCert("../test/test-ca2.pem")
+	newIssuerCert, err := issuance.LoadCertificate("../test/test-ca2.pem")
 	test.AssertNotError(t, err, "Failed to load new cert")
 	newIssuers := []Issuer{
 		{
@@ -511,7 +511,7 @@ func TestMultipleIssuers(t *testing.T) {
 	cert, err := x509.ParseCertificate(issuedCert.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
 	// Verify cert was signed by newIssuerCert, not caCert.
-	err = cert.CheckSignatureFrom(newIssuerCert)
+	err = cert.CheckSignatureFrom(newIssuerCert.Certificate)
 	test.AssertNotError(t, err, "Certificate failed signature validation")
 }
 
@@ -550,7 +550,7 @@ func TestOCSP(t *testing.T) {
 		Status:  status,
 	})
 	test.AssertNotError(t, err, "Failed to generate OCSP")
-	parsed, err := ocsp.ParseResponse(ocspResp.Response, caCert)
+	parsed, err := ocsp.ParseResponse(ocspResp.Response, caCert.Certificate)
 	test.AssertNotError(t, err, "Failed to parse validate OCSP")
 	test.AssertEquals(t, parsed.Status, 0)
 	test.AssertEquals(t, parsed.RevocationReason, 0)
@@ -565,7 +565,7 @@ func TestOCSP(t *testing.T) {
 
 	// Load multiple issuers, including the old issuer, and ensure OCSP is still
 	// signed correctly.
-	newIssuerCert, err := core.LoadCert("../test/test-ca2.pem")
+	newIssuerCert, err := issuance.LoadCertificate("../test/test-ca2.pem")
 	test.AssertNotError(t, err, "Failed to load new cert")
 	newIssuers := []Issuer{
 		{
@@ -603,7 +603,7 @@ func TestOCSP(t *testing.T) {
 	parsedNewCert, err := x509.ParseCertificate(newCert.DER)
 	test.AssertNotError(t, err, "Failed to parse newCert")
 
-	err = parsedNewCert.CheckSignatureFrom(newIssuerCert)
+	err = parsedNewCert.CheckSignatureFrom(newIssuerCert.Certificate)
 	t.Logf("check sig: %s", err)
 
 	// ocspResp2 is a second OCSP response for `cert` (issued by caCert), and
@@ -613,7 +613,7 @@ func TestOCSP(t *testing.T) {
 		Status:  status,
 	})
 	test.AssertNotError(t, err, "Failed to sign second OCSP response")
-	_, err = ocsp.ParseResponse(ocspResp2.Response, caCert)
+	_, err = ocsp.ParseResponse(ocspResp2.Response, caCert.Certificate)
 	test.AssertNotError(t, err, "Failed to parse / validate second OCSP response")
 
 	// newCertOcspResp is an OCSP response for `newCert` (issued by newIssuer),
@@ -623,7 +623,7 @@ func TestOCSP(t *testing.T) {
 		Status:  status,
 	})
 	test.AssertNotError(t, err, "Failed to generate OCSP")
-	parsedNewCertOcspResp, err := ocsp.ParseResponse(newCertOcspResp.Response, newIssuerCert)
+	parsedNewCertOcspResp, err := ocsp.ParseResponse(newCertOcspResp.Response, newIssuerCert.Certificate)
 	test.AssertNotError(t, err, "Failed to parse / validate OCSP for newCert")
 	test.AssertEquals(t, parsedNewCertOcspResp.Status, 0)
 	test.AssertEquals(t, parsedNewCertOcspResp.RevocationReason, 0)
@@ -1396,7 +1396,7 @@ func TestGenerateOCSPWithIssuerID(t *testing.T) {
 	// GenerateOCSP with feature enabled + req contains good IssuerID
 	rsaIssuer := ca.issuers.byAlg[x509.RSA]
 	_, err = ca.GenerateOCSP(context.Background(), &capb.GenerateOCSPRequest{
-		IssuerID: idForCert(rsaIssuer.cert),
+		IssuerID: int64(rsaIssuer.cert.ID()),
 		Serial:   "DEADDEADDEADDEADDEADDEADDEADDEADDEAD",
 		Status:   string(core.OCSPStatusGood),
 	})
