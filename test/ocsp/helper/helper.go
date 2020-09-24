@@ -8,9 +8,11 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"sync"
 	"time"
 
@@ -37,6 +39,7 @@ type Config struct {
 	ignoreExpiredCerts bool
 	expectStatus       int
 	expectReason       int
+	output             io.Writer
 }
 
 // DefaultConfig is a Config populated with the same defaults as if no
@@ -49,6 +52,7 @@ var DefaultConfig = Config{
 	ignoreExpiredCerts: *ignoreExpiredCerts,
 	expectStatus:       *expectStatus,
 	expectReason:       *expectReason,
+	output:             os.Stdout,
 }
 
 var parseFlagsOnce sync.Once
@@ -75,6 +79,14 @@ func ConfigFromFlags() Config {
 func (template Config) WithExpectStatus(status int) Config {
 	ret := template
 	ret.expectStatus = status
+	return ret
+}
+
+// WithOutput returns a new Config with the given output,
+// and all other fields the same as the receiver.
+func (template Config) WithOutput(w io.Writer) Config {
+	ret := template
+	ret.output = w
 	return ret
 }
 
@@ -187,14 +199,14 @@ func ReqDER(der []byte, config Config) (*ocsp.Response, error) {
 		return nil, err
 	}
 
-	httpResp, err := sendHTTPRequest(req, ocspURL, config.method, config.hostOverride)
+	httpResp, err := sendHTTPRequest(req, ocspURL, config.method, config.hostOverride, config.output)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("HTTP %d\n", httpResp.StatusCode)
+	fmt.Fprintf(config.output, "HTTP %d\n", httpResp.StatusCode)
 	for k, v := range httpResp.Header {
 		for _, vv := range v {
-			fmt.Printf("%s: %s\n", k, vv)
+			fmt.Fprintf(config.output, "%s: %s\n", k, vv)
 		}
 	}
 	if httpResp.StatusCode != 200 {
@@ -211,16 +223,22 @@ func ReqDER(der []byte, config Config) (*ocsp.Response, error) {
 	return parseAndPrint(respBytes, cert, issuer, config)
 }
 
-func sendHTTPRequest(req []byte, ocspURL *url.URL, method string, host string) (*http.Response, error) {
+func sendHTTPRequest(
+	req []byte,
+	ocspURL *url.URL,
+	method string,
+	host string,
+	output io.Writer,
+) (*http.Response, error) {
 	encodedReq := base64.StdEncoding.EncodeToString(req)
 	var httpRequest *http.Request
 	var err error
 	if method == "GET" {
 		ocspURL.Path = encodedReq
-		fmt.Printf("Fetching %s\n", ocspURL.String())
+		fmt.Fprintf(output, "Fetching %s\n", ocspURL.String())
 		httpRequest, err = http.NewRequest("GET", ocspURL.String(), http.NoBody)
 	} else if method == "POST" {
-		fmt.Printf("POSTing request, reproduce with: curl -i --data-binary @- %s < <(base64 -d <<<%s)\n",
+		fmt.Fprintf(output, "POSTing request, reproduce with: curl -i --data-binary @- %s < <(base64 -d <<<%s)\n",
 			ocspURL, encodedReq)
 		httpRequest, err = http.NewRequest("POST", ocspURL.String(), bytes.NewBuffer(req))
 	} else {
@@ -259,12 +277,12 @@ func getOCSPURL(cert *x509.Certificate, urlOverride string) (*url.URL, error) {
 // checkSignerTimes checks that the OCSP response is within the
 // validity window of whichever certificate signed it, and that that
 // certificate is currently valid.
-func checkSignerTimes(resp *ocsp.Response, issuer *x509.Certificate) error {
+func checkSignerTimes(resp *ocsp.Response, issuer *x509.Certificate, output io.Writer) error {
 	var ocspSigner = issuer
 	if delegatedSigner := resp.Certificate; delegatedSigner != nil {
 		ocspSigner = delegatedSigner
 
-		fmt.Printf("Using delegated OCSP signer from response: %s\n",
+		fmt.Fprintf(output, "Using delegated OCSP signer from response: %s\n",
 			base64.StdEncoding.EncodeToString(ocspSigner.Raw))
 	}
 
@@ -287,7 +305,7 @@ func checkSignerTimes(resp *ocsp.Response, issuer *x509.Certificate) error {
 }
 
 func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config Config) (*ocsp.Response, error) {
-	fmt.Printf("\nDecoding body: %s\n", base64.StdEncoding.EncodeToString(respBytes))
+	fmt.Fprintf(config.output, "\nDecoding body: %s\n", base64.StdEncoding.EncodeToString(respBytes))
 	resp, err := ocsp.ParseResponseForCert(respBytes, cert, issuer)
 	if err != nil {
 		return nil, fmt.Errorf("parsing response: %s", err)
@@ -306,30 +324,34 @@ func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config Conf
 		errs = append(errs, fmt.Errorf("NextUpdate is too soon: %s", timeTilExpiry))
 	}
 
-	err = checkSignerTimes(resp, issuer)
+	err = checkSignerTimes(resp, issuer, config.output)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("checking signature on delegated signer: %s", err))
 	}
 
-	fmt.Print("\n")
-	fmt.Print("Response:\n")
-	fmt.Printf("  CertStatus %d\n", resp.Status)
-	fmt.Printf("  SerialNumber %036x\n", resp.SerialNumber)
-	fmt.Printf("  ProducedAt %s\n", resp.ProducedAt)
-	fmt.Printf("  ThisUpdate %s\n", resp.ThisUpdate)
-	fmt.Printf("  NextUpdate %s\n", resp.NextUpdate)
-	fmt.Printf("  RevokedAt %s\n", resp.RevokedAt)
-	fmt.Printf("  RevocationReason %d\n", resp.RevocationReason)
-	fmt.Printf("  SignatureAlgorithm %s\n", resp.SignatureAlgorithm)
-	fmt.Printf("  Extensions %#v\n", resp.Extensions)
+	pr := func(s string, v ...interface{}) {
+		fmt.Fprintf(config.output, s, v)
+	}
+
+	pr("\n")
+	pr("Response:\n")
+	pr("  CertStatus %d\n", resp.Status)
+	pr("  SerialNumber %036x\n", resp.SerialNumber)
+	pr("  ProducedAt %s\n", resp.ProducedAt)
+	pr("  ThisUpdate %s\n", resp.ThisUpdate)
+	pr("  NextUpdate %s\n", resp.NextUpdate)
+	pr("  RevokedAt %s\n", resp.RevokedAt)
+	pr("  RevocationReason %d\n", resp.RevocationReason)
+	pr("  SignatureAlgorithm %s\n", resp.SignatureAlgorithm)
+	pr("  Extensions %#v\n", resp.Extensions)
 	if resp.Certificate == nil {
-		fmt.Print("  Certificate: nil\n")
+		pr("  Certificate: nil\n")
 	} else {
-		fmt.Print("  Certificate:\n")
-		fmt.Printf("    Subject: %s\n", resp.Certificate.Subject)
-		fmt.Printf("    Issuer: %s\n", resp.Certificate.Issuer)
-		fmt.Printf("    NotBefore: %s\n", resp.Certificate.NotBefore)
-		fmt.Printf("    NotAfter: %s\n", resp.Certificate.NotAfter)
+		pr("  Certificate:\n")
+		pr("    Subject: %s\n", resp.Certificate.Subject)
+		pr("    Issuer: %s\n", resp.Certificate.Issuer)
+		pr("    NotBefore: %s\n", resp.Certificate.NotBefore)
+		pr("    NotAfter: %s\n", resp.Certificate.NotAfter)
 	}
 
 	if len(errs) > 0 {
