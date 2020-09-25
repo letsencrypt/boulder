@@ -69,22 +69,6 @@ type IssuerConfig struct {
 	Location IssuerLoc
 }
 
-// Certificate embeds an *x509.Certificate and represent the added semantics
-// that this certificate can be used for issuance. It also provides the .ID()
-// method, which returns an internal issuer ID for this certificate.
-type Certificate struct {
-	*x509.Certificate
-}
-
-type IssuerID int64
-
-// ID provides a stable ID for an issuer's certificate. This is used for
-// identifying which issuer issued a certificate in the certificateStatus table.
-func (ic *Certificate) ID() IssuerID {
-	h := sha256.Sum256(ic.Raw)
-	return IssuerID(big.NewInt(0).SetBytes(h[:4]).Int64())
-}
-
 // IssuerLoc describes the on-disk location and parameters that an issuer
 // should use to retrieve its certificate and private key.
 // Only one of File, ConfigFile, or PKCS11 should be set.
@@ -347,6 +331,22 @@ func (p *Profile) generateTemplate(clk clock.Clock) *x509.Certificate {
 	}
 
 	return template
+}
+
+// Certificate embeds an *x509.Certificate and represent the added semantics
+// that this certificate can be used for issuance. It also provides the .ID()
+// method, which returns an internal issuer ID for this certificate.
+type Certificate struct {
+	*x509.Certificate
+}
+
+type IssuerID int64
+
+// ID provides a stable ID for an issuer's certificate. This is used for
+// identifying which issuer issued a certificate in the certificateStatus table.
+func (ic *Certificate) ID() IssuerID {
+	h := sha256.Sum256(ic.Raw)
+	return IssuerID(big.NewInt(0).SetBytes(h[:4]).Int64())
 }
 
 // Issuer is capable of issuing new certificates
