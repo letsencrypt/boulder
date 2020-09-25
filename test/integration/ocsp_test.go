@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -39,7 +40,7 @@ func TestPrecertificateOCSP(t *testing.T) {
 		t.Fatalf("couldn't find rejected precert for %q", domain)
 	}
 
-	ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
+	ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good).WithOutput(ioutil.Discard)
 	_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 	if err != nil {
 		t.Errorf("requesting OCSP for rejected precertificate: %s", err)

@@ -179,7 +179,7 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.Ce
 		Status:    string(status.Status),
 		RevokedAt: status.RevokedDate.UnixNano(),
 	}
-	if status.IssuerID != nil {
+	if status.IssuerID != nil && *status.IssuerID != 0 {
 		ocspReq.Serial = status.Serial
 		ocspReq.IssuerID = *status.IssuerID
 	} else {
