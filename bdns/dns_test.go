@@ -485,11 +485,11 @@ func (te *testExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration
 func TestIsDNSServerResponsive(t *testing.T) {
 	downDNSLoopbackAddr := "127.0.0.1:5353"
 	dr := NewTestDNSClientImpl(time.Second*10, []string{dnsLoopbackAddr}, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
-	responsive := dr.IsDNSServerResponsive(dnsLoopbackAddr, time.Millisecond*50)
+	responsive := IsDNSServerResponsive(dr.dnsClient, dnsLoopbackAddr, time.Millisecond*50)
 	if !responsive {
 		t.Errorf("server got responsive: %t, server want responsive: %t", responsive, true)
 	}
-	responsive = dr.IsDNSServerResponsive(downDNSLoopbackAddr, time.Millisecond*50)
+	responsive = IsDNSServerResponsive(dr.dnsClient, downDNSLoopbackAddr, time.Millisecond*50)
 	if responsive {
 		t.Errorf("server got responsive: %t, server want responsive: %t", responsive, false)
 	}
@@ -534,6 +534,13 @@ func TestDNSServerHealthChecks(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStop(t *testing.T) {
+	_ = features.Set(map[string]bool{"DNSServerHealthChecks": true})
+	defer features.Reset()
+	client := NewTestDNSClientImpl(time.Second*10, []string{dnsLoopbackAddr}, metrics.NoopRegisterer, clock.NewFake(), 20, blog.UseMock())
+	client.Stop()
 }
 
 func TestRetry(t *testing.T) {

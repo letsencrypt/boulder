@@ -161,11 +161,13 @@ type DNSClientImpl struct {
 	maxTries                 int
 	clk                      clock.Clock
 	log                      blog.Logger
-
-	queryTime         *prometheus.HistogramVec
-	totalLookupTime   *prometheus.HistogramVec
-	timeoutCounter    *prometheus.CounterVec
-	idMismatchCounter *prometheus.CounterVec
+	healthyServers           map[string]bool
+	hsMu                     sync.RWMutex
+	stop                     chan struct{}
+	queryTime                *prometheus.HistogramVec
+	totalLookupTime          *prometheus.HistogramVec
+	timeoutCounter           *prometheus.CounterVec
+	idMismatchCounter        *prometheus.CounterVec
 }
 
 var _ DNSClient = &DNSClientImpl{}
@@ -185,7 +187,6 @@ func NewDNSClientImpl(
 	log blog.Logger,
 ) *DNSClientImpl {
 	dnsClient := new(dns.Client)
-
 	// Set timeout for underlying net.Conn
 	dnsClient.ReadTimeout = readTimeout
 	dnsClient.Net = "udp"
@@ -222,6 +223,35 @@ func NewDNSClientImpl(
 	)
 	stats.MustRegister(queryTime, totalLookupTime, timeoutCounter, idMismatchCounter)
 
+	timeoutDuration := time.Millisecond * 50
+	periodDuration := time.Millisecond * 100
+	hsMu := sync.RWMutex{}
+	healthyServers := map[string]bool{}
+	stop := make(chan struct{})
+
+	if features.Enabled(features.DNSServerHealthChecks) {
+		for _, server := range servers {
+			healthyServers[server] = true //servers start always in the healthy state to enable instant query
+			go func(server string) {
+				ticker := time.NewTicker(periodDuration)
+				select {
+				case <-ticker.C:
+					isResponsive := IsDNSServerResponsive(dnsClient, server, timeoutDuration)
+					hsMu.Lock()
+					if isResponsive {
+						healthyServers[server] = true
+					} else {
+						healthyServers[server] = false
+					}
+					hsMu.Unlock()
+				case <-stop:
+					fmt.Println("uoh called")
+					return
+				}
+			}(server)
+		}
+	}
+
 	return &DNSClientImpl{
 		dnsClient:                dnsClient,
 		servers:                  servers,
@@ -233,6 +263,8 @@ func NewDNSClientImpl(
 		timeoutCounter:           timeoutCounter,
 		idMismatchCounter:        idMismatchCounter,
 		log:                      log,
+		healthyServers:           healthyServers,
+		stop:                     stop,
 	}
 }
 
@@ -278,32 +310,6 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 	// Randomly pick a server
 	chosenServerIndex := rand.Intn(len(dnsClient.servers))
 	chosenServer := dnsClient.servers[chosenServerIndex]
-
-	DNSServerHealthChecks := features.Enabled(features.DNSServerHealthChecks)
-	timeoutDuration := time.Millisecond * 50
-	periodDuration := time.Millisecond * 100
-
-	var healthyServers = make(map[string]bool)
-	var hsMX = &sync.RWMutex{}
-
-	if DNSServerHealthChecks {
-		for _, server := range dnsClient.servers {
-			go func(server string) {
-				ticker := time.NewTicker(periodDuration)
-				for ; true; <-ticker.C {
-					isResponsive := dnsClient.IsDNSServerResponsive(server, timeoutDuration)
-					hsMX.Lock()
-					if isResponsive {
-						healthyServers[server] = true
-					} else {
-						healthyServers[server] = false
-					}
-					hsMX.Unlock()
-
-				}
-			}(server)
-		}
-	}
 
 	start := dnsClient.clk.Now()
 	client := dnsClient.dnsClient
@@ -380,27 +386,27 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 				if isRetryable && hasRetriesLeft {
 					tries++
 
-					if DNSServerHealthChecks && len(healthyServers) < 1 {
-						//too early to check if there's a healthy server
-						time.Sleep(periodDuration)
-					}
-					if DNSServerHealthChecks && len(healthyServers) >= 1 {
-						hsMX.RLock()
-						for k, v := range healthyServers {
-							if v == true {
-								chosenServer = k
-								break
-							}
-						}
-						hsMX.RUnlock()
-					} else {
-						// Chose a new server to retry the query with by incrementing the
-						// chosen server index modulo the number of servers. This ensures that
-						// if one dns server isn't available we retry with the next in the
-						// list.
-						chosenServerIndex = (chosenServerIndex + 1) % len(dnsClient.servers)
-						chosenServer = dnsClient.servers[chosenServerIndex]
-					}
+					// if DNSServerHealthChecks && len(healthyServers) < 1 {
+					// 	//too early to check if there's a healthy server
+					// 	time.Sleep(periodDuration)
+					// }
+					// if DNSServerHealthChecks && len(healthyServers) >= 1 {
+					// 	hsMX.RLock()
+					// 	for k, v := range healthyServers {
+					// 		if v == true {
+					// 			chosenServer = k
+					// 			break
+					// 		}
+					// 	}
+					// 	hsMX.RUnlock()
+					// } else {
+					// Chose a new server to retry the query with by incrementing the
+					// chosen server index modulo the number of servers. This ensures that
+					// if one dns server isn't available we retry with the next in the
+					// list.
+					chosenServerIndex = (chosenServerIndex + 1) % len(dnsClient.servers)
+					chosenServer = dnsClient.servers[chosenServerIndex]
+					// }
 					continue
 				} else if isRetryable && !hasRetriesLeft {
 					dnsClient.timeoutCounter.With(prometheus.Labels{
@@ -608,10 +614,10 @@ func logDNSError(
 }
 
 // IsDNSServerResponsive will return the status of the dns server.
-func (dnsClient *DNSClientImpl) IsDNSServerResponsive(server string, timeout time.Duration) bool {
+func IsDNSServerResponsive(dnsClient exchanger, server string, timeout time.Duration) bool {
 	c := make(chan bool, 1)
 	go func() {
-		client := dnsClient.dnsClient
+		client := dnsClient
 		m := new(dns.Msg)
 		m.SetQuestion(dns.Fqdn("version.bind."), dns.TypeTXT)
 		m.Question[0].Qclass = dns.ClassCHAOS
@@ -628,4 +634,10 @@ func (dnsClient *DNSClientImpl) IsDNSServerResponsive(server string, timeout tim
 	case <-time.After(timeout):
 		return false
 	}
+}
+
+//Stop signals a termination for servers background health-check
+func (dnsClient *DNSClientImpl) Stop() {
+	dnsClient.stop <- struct{}{}
+	close(dnsClient.stop)
 }
