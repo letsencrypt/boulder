@@ -1709,7 +1709,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 			return err
 		}
 	}
-	purgeURLs, err := akamai.GeneratePurgeURLs(cert.Raw, ra.issuer)
+	purgeURLs, err := akamai.GeneratePurgeURLs(cert.Raw, ra.issuer.Certificate)
 	if err != nil {
 		return err
 	}
