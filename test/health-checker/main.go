@@ -4,59 +4,71 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"net"
 	"os"
 	"time"
 
-	"google.golang.org/grpc"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/letsencrypt/boulder/cmd"
-	bcreds "github.com/letsencrypt/boulder/grpc/creds"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/metrics"
 )
 
+type config struct {
+	GRPC *cmd.GRPCClientConfig
+	TLS  *cmd.TLSConfig
+}
+
 func main() {
-	serverAddr := flag.String("addr", "", "Address of the gRPC server to check")
+	// Flag and config parsing and validation.
 	configFile := flag.String("config", "", "Path to the TLS configuration file")
-	timeout := flag.String("timeout", "10s", "How long (as a duration string) to try before giving up (default: 10s)")
+	serverAddr := flag.String("addr", "", "Address of the gRPC server to check")
 	flag.Parse()
-	if *serverAddr == "" || *configFile == "" {
+	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
 
-	var tlsConfig cmd.TLSConfig
-	err := cmd.ReadConfigFile(*configFile, &tlsConfig)
+	var c config
+	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "failed to read json config")
 
-	tc, err := tlsConfig.Load()
+	if c.GRPC.ServerAddress == "" && *serverAddr == "" {
+		cmd.Fail("must specify either -addr flag or client.ServerAddress config")
+	} else if c.GRPC.ServerAddress != "" && *serverAddr != "" {
+		cmd.Fail("cannot specify both -addr flag and client.ServerAddress config")
+	} else if c.GRPC.ServerAddress == "" {
+		c.GRPC.ServerAddress = *serverAddr
+	}
+
+	tlsConfig, err := c.TLS.Load()
 	cmd.FailOnError(err, "failed to load TLS credentials")
 
-	host, _, err := net.SplitHostPort(*serverAddr)
-	cmd.FailOnError(err, "failed to parse server address")
-	creds := bcreds.NewClientCredentials(tc.RootCAs, tc.Certificates, host)
+	// GRPC connection prerequisites.
+	clientMetrics := bgrpc.NewClientMetrics(metrics.NoopRegisterer)
+	clk := cmd.Clock()
 
-	duration, err := time.ParseDuration(*timeout)
-	cmd.FailOnError(err, "failed to parse timeout string")
-	ctx, cancel := context.WithTimeout(context.Background(), duration)
-	defer cancel()
-
+	// Health check retry and timeout.
 	ticker := time.NewTicker(100 * time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*c.GRPC.Timeout.Duration)
+	defer cancel()
 
 	for {
 		select {
 		case <-ticker.C:
-			fmt.Printf("Connecting to %s health service\n", *serverAddr)
-			conn, err := grpc.Dial("dns:///"+*serverAddr, grpc.WithTransportCredentials(creds))
-			cmd.FailOnError(err, "failed to connect to service")
+			fmt.Fprintf(os.Stderr, "Connecting to %s health service\n", *serverAddr)
 
+			// Set up the GRPC connection.
+			conn, err := bgrpc.ClientSetup(c.GRPC, tlsConfig, clientMetrics, clk)
+			cmd.FailOnError(err, "failed to connect to service")
 			client := healthpb.NewHealthClient(conn)
-			ctx2, cancel2 := context.WithTimeout(ctx, duration/10)
+			ctx2, cancel2 := context.WithTimeout(ctx, c.GRPC.Timeout.Duration)
 			defer cancel2()
+
+			// Make the health check.
 			req := &healthpb.HealthCheckRequest{
 				Service: "",
 			}
-
 			resp, err := client.Check(ctx2, req)
 
 			if err != nil {

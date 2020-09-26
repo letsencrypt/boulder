@@ -195,6 +195,7 @@ def start(race_detection, fakeclock):
     # before any services that intend to send it RPCs. On shutdown they will be
     # killed in reverse order.
     for service in _service_toposort(SERVICES):
+        print("Starting service", service.name)
         try:
             global processes
             p = run(service.cmd, race_detection, fakeclock)
