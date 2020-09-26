@@ -18,7 +18,7 @@ import (
 func main() {
 	serverAddr := flag.String("addr", "", "Address of the gRPC server to check")
 	configFile := flag.String("config", "", "Path to the TLS configuration file")
-	timeout := flag.String("timeout", "100s", "How long (as a duration string) to try before giving up (default: 10s)")
+	timeout := flag.String("timeout", "10s", "How long (as a duration string) to try before giving up (default: 10s)")
 	flag.Parse()
 	if *serverAddr == "" || *configFile == "" {
 		flag.Usage()
