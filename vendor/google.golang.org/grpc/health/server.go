@@ -24,8 +24,6 @@ package health
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"sync"
 
 	"google.golang.org/grpc/codes"
@@ -56,7 +54,6 @@ func NewServer() *Server {
 
 // Check implements `service Health`.
 func (s *Server) Check(ctx context.Context, in *healthpb.HealthCheckRequest) (*healthpb.HealthCheckResponse, error) {
-	fmt.Fprintf(os.Stderr, "Health Check for service: %s\n", in.Service)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if servingStatus, ok := s.statusMap[in.Service]; ok {

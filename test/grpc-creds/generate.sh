@@ -11,7 +11,7 @@ command -v minica >/dev/null 2>&1 || {
 
 for SERVICE in admin-revoker expiration-mailer ocsp-updater orphan-finder wfe \
   akamai-purger nonce bad-key-revoker health-checker; do
-  minica -domains "${HOSTNAME}.boulder"
+  minica -domains "${SERVICE}.boulder"
 done
 
 for SERVICE in publisher ra ca sa va ; do
