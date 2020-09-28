@@ -14,6 +14,10 @@ from helpers import waithealth, waitport, config_dir, CONFIG_NEXT
 Service = collections.namedtuple('Service', ('name', 'debug_port', 'grpc_addr', 'cmd', 'deps'))
 
 SERVICES = (
+    Service('sd-test-srv',
+        53, None,
+        ('./bin/sd-test-srv', '--listen', ':53'),
+        None),
     Service('bad-key-revoker',
         8020, None,
         ('./bin/bad-key-revoker', '--config', os.path.join(config_dir, 'bad-key-revoker.json')),
@@ -21,15 +25,11 @@ SERVICES = (
     Service('boulder-remoteva-a',
         8011, 'va1.boulder:9097',
         ('./bin/boulder-remoteva', '--config', os.path.join(config_dir, 'va-remote-a.json')),
-        None),
+        ('sd-test-srv',)),
     Service('boulder-remoteva-b',
         8012, 'va1.boulder:9098',
         ('./bin/boulder-remoteva', '--config', os.path.join(config_dir, 'va-remote-b.json')),
-        None),
-    Service('sd-test-srv',
-        53, None,
-        ('./bin/sd-test-srv', '--listen', ':53'),
-        None),
+        ('sd-test-srv',)),
     Service('boulder-sa-1',
         8003, 'sa1.boulder:9095',
         ('./bin/boulder-sa', '--config', os.path.join(config_dir, 'sa.json'), '--addr', 'sa1.boulder:9095', '--debug-addr', ':8003'),
