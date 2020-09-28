@@ -839,7 +839,21 @@ func (wfe *WebFrontEndImpl) processRevocation(
 
 	// Revoke the certificate. AcctID may be 0 if there is no associated account
 	// (e.g. it was a self-authenticated JWS using the certificate public key)
-	if err := wfe.RA.RevokeCertificateWithReg(ctx, *parsedCertificate, reason, acctID); err != nil {
+	err = wfe.RA.RevokeCertificateWithReg(ctx, *parsedCertificate, reason, acctID)
+	if err != nil {
+		if berrors.Is(err, berrors.Duplicate) {
+			// It is possible that between checking the certificate's status and
+			// performing the revocation, a parallel request happened and revoked the
+			// cert. In this case, just retrieve the certificate status again and
+			// return the alreadyRevoked status.
+			certStatus, err = wfe.SA.GetCertificateStatus(ctx, serial)
+			if err != nil {
+				return probs.ServerInternal("Failed to get certificate status")
+			}
+			if certStatus.Status == core.OCSPStatusRevoked {
+				return probs.AlreadyRevoked("Certificate already revoked")
+			}
+		}
 		return web.ProblemDetailsForError(err, "Failed to revoke certificate")
 	}
 
