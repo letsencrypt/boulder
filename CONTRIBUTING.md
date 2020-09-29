@@ -380,7 +380,7 @@ doc](https://github.com/letsencrypt/boulder/blob/main/docs/acme-divergences.md).
 # ACME Protocol Implementation Details
 
 The ACME specification allows developers to make certain decisions as to how
-certain elements in the RFC are implemented. Some of these fully conformant
+various elements in the RFC are implemented. Some of these fully conformant
 decisions are listed in [ACME implementation details
 doc](https://github.com/letsencrypt/boulder/blob/main/docs/acme-implementation_details.md).
 

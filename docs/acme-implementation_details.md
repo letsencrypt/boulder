@@ -4,11 +4,12 @@ The ACME specification ([RFC 8555]) clearly dictates what Clients and Servers
 must do to properly implement the protocol.
 
 The specification is intentionally silent, or vague, on certain points to give
-developers freedom in making certain decisions.  Due to this, two ACME Servers
-might fully conform to the RFC but behave slightly differently.  ACME Clients
-should not "over-fit" on Boulder and the Let's Encrypt production service, and
-aim to be compatible with a wide range of Servers, including the 
-[Pebble](https://github.com/letsencrypt/pebble) test server.
+developers freedom in making certain decisions or to follow guidance from other
+RFCs.  Due to this, two ACME Servers might fully conform to the RFC but behave
+slightly differently.  ACME Clients should not "over-fit" on Boulder or the 
+Let's Encrypt production service, and aim to be compatible with a wide range of
+ACME Servers, including the [Pebble](https://github.com/letsencrypt/pebble)
+test server.
 
 The following items are a partial listing of RFC-conformant design decisions
 Boulder has made.  This listing is not complete, and is based on known details
