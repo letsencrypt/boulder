@@ -71,6 +71,7 @@ func ConfigFromFlags() Config {
 		ignoreExpiredCerts: *ignoreExpiredCerts,
 		expectStatus:       *expectStatus,
 		expectReason:       *expectReason,
+		output:             os.Stdout,
 	}
 }
 
@@ -330,7 +331,7 @@ func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config Conf
 	}
 
 	pr := func(s string, v ...interface{}) {
-		fmt.Fprintf(config.output, s, v)
+		fmt.Fprintf(config.output, s, v...)
 	}
 
 	pr("\n")
