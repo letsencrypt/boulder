@@ -921,6 +921,21 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 
 	err = wfe.RA.RevokeCertificateWithReg(ctx, *parsedCertificate, reason, registration.ID)
 	if err != nil {
+		if berrors.Is(err, berrors.Duplicate) {
+			// It is possible that between checking the certificate's status and
+			// performing the revocation, a parallel request happened and revoked the
+			// cert. In this case, just retrieve the certificate status again and
+			// return 409 Conflict.
+			certStatus, err = wfe.SA.GetCertificateStatus(ctx, serial)
+			if err != nil {
+				wfe.sendError(response, logEvent, probs.ServerInternal("Failed to get certificate status"), err)
+				return
+			}
+			if certStatus.Status == core.OCSPStatusRevoked {
+				wfe.sendError(response, logEvent, probs.Conflict("Certificate already revoked"), nil)
+				return
+			}
+		}
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Failed to revoke certificate"), err)
 	} else {
 		wfe.log.Debugf("Revoked %v", serial)
