@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -174,20 +175,15 @@ func getCertDER(selector ocspDB, serial string) ([]byte, error) {
 }
 
 func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.CertificateStatus) (*core.CertificateStatus, error) {
-	ocspReq := capb.GenerateOCSPRequest{
-		Reason:    int32(status.RevokedReason),
-		Status:    string(status.Status),
-		RevokedAt: status.RevokedDate.UnixNano(),
+	if status.IssuerID == nil || *status.IssuerID == 0 {
+		return nil, errors.New("cert status has nil or 0 IssuerID")
 	}
-	if status.IssuerID != nil && *status.IssuerID != 0 {
-		ocspReq.Serial = status.Serial
-		ocspReq.IssuerID = *status.IssuerID
-	} else {
-		certDER, err := getCertDER(updater.dbMap, status.Serial)
-		if err != nil {
-			return nil, err
-		}
-		ocspReq.CertDER = certDER
+	ocspReq := capb.GenerateOCSPRequest{
+		Serial:    status.Serial,
+		IssuerID:  *status.IssuerID,
+		Status:    string(status.Status),
+		Reason:    int32(status.RevokedReason),
+		RevokedAt: status.RevokedDate.UnixNano(),
 	}
 
 	ocspResponse, err := updater.ogc.GenerateOCSP(ctx, &ocspReq)
