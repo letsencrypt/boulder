@@ -1556,9 +1556,9 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 		return err
 	}
 	if rows == 0 {
-		// DuplicateError because we know this certificate exists but expected it
-		// to not be revoked.
-		return berrors.DuplicateError("no certificate with serial %s and status other than %s", req.Serial, string(core.OCSPStatusRevoked))
+		// InternalServerError because we expected this certificate status to exist and
+		// not be revoked.
+		return berrors.InternalServerError("no certificate with serial %s and status other than %s", req.Serial, string(core.OCSPStatusRevoked))
 	}
 	return nil
 }
