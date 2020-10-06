@@ -377,6 +377,13 @@ specification for various reasons. We detail these divergences (for both the
 V1 and V2 API) in the [ACME divergences
 doc](https://github.com/letsencrypt/boulder/blob/main/docs/acme-divergences.md).
 
+# ACME Protocol Implementation Details
+
+The ACME specification allows developers to make certain decisions as to how
+various elements in the RFC are implemented. Some of these fully conformant
+decisions are listed in [ACME implementation details
+doc](https://github.com/letsencrypt/boulder/blob/main/docs/acme-implementation_details.md).
+
 ## Problems or questions?
 
 The best place to ask dev related questions is on the [Community
