@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/x509"
 	"flag"
 	"fmt"
 	"os"
@@ -13,12 +12,12 @@ import (
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy"
 	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/policy"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/ra"
@@ -158,13 +157,11 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 	pubc := bgrpc.NewPublisherClientWrapper(pubpb.NewPublisherClient(conn))
 
-	var apc akamaipb.AkamaiPurgerClient
-	var issuerCert *x509.Certificate
 	apConn, err := bgrpc.ClientSetup(c.RA.AkamaiPurgerService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Unable to create a Akamai Purger client")
-	apc = akamaipb.NewAkamaiPurgerClient(apConn)
+	apc := akamaipb.NewAkamaiPurgerClient(apConn)
 
-	issuerCert, err = core.LoadCert(c.RA.IssuerCertPath)
+	issuerCert, err := issuance.LoadCertificate(c.RA.IssuerCertPath)
 	cmd.FailOnError(err, "Failed to load issuer certificate")
 
 	// Boulder's components assume that there will always be CT logs configured.
