@@ -1,1 +1,1 @@
-See //test/PKI.md
+See ../test/PKI.md
