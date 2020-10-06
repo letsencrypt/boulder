@@ -175,6 +175,6 @@ def waitport(port, prog, perTickCheck=None):
 
 def waithealth(prog, addr):
     subprocess.check_call([
-        'bin/health-checker',
+        './bin/health-checker',
         '-addr', addr,
         '-config', os.path.join(config_dir, 'health-checker.json')])

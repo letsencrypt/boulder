@@ -73,11 +73,10 @@ func main() {
 
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "got error connecting to health service %s: %s\n", *serverAddr, err)
-			} else {
-				if resp.Status != healthpb.HealthCheckResponse_SERVING {
-					cmd.Fail(fmt.Sprintf("service %s failed health check with status %s", *serverAddr, resp.Status))
-				}
+			} else if resp.Status == healthpb.HealthCheckResponse_SERVING {
 				return
+			} else {
+				cmd.Fail(fmt.Sprintf("service %s failed health check with status %s", *serverAddr, resp.Status))
 			}
 
 		case <-ctx.Done():
