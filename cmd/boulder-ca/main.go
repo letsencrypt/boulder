@@ -10,10 +10,11 @@ import (
 	"os"
 
 	"github.com/beeker1121/goque"
-
 	cfsslConfig "github.com/cloudflare/cfssl/config"
 	"github.com/cloudflare/cfssl/helpers"
 	pkcs11key "github.com/letsencrypt/pkcs11key/v4"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/letsencrypt/boulder/ca"
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -311,10 +312,13 @@ func main() {
 	}
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
+
 	caSrv, caListener, err := bgrpc.NewServer(c.CA.GRPCCA, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
 	caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
 	capb.RegisterCertificateAuthorityServer(caSrv, caWrapper)
+	caHealth := health.NewServer()
+	healthpb.RegisterHealthServer(caSrv, caHealth)
 	go func() {
 		cmd.FailOnError(cmd.FilterShutdownErrors(caSrv.Serve(caListener)), "CA gRPC service failed")
 	}()
@@ -323,12 +327,16 @@ func main() {
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
 	ocspWrapper := bgrpc.NewCertificateAuthorityServer(cai)
 	capb.RegisterOCSPGeneratorServer(ocspSrv, ocspWrapper)
+	ocspHealth := health.NewServer()
+	healthpb.RegisterHealthServer(ocspSrv, ocspHealth)
 	go func() {
 		cmd.FailOnError(cmd.FilterShutdownErrors(ocspSrv.Serve(ocspListener)),
 			"OCSPGenerator gRPC service failed")
 	}()
 
 	go cmd.CatchSignals(logger, func() {
+		caHealth.Shutdown()
+		ocspHealth.Shutdown()
 		caSrv.GracefulStop()
 		ocspSrv.GracefulStop()
 	})

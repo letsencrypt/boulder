@@ -4,6 +4,9 @@ import (
 	"context"
 	"flag"
 
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+
 	"github.com/letsencrypt/boulder/cmd"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -73,8 +76,13 @@ func main() {
 	grpcSrv, l, err := bgrpc.NewServer(c.NonceService.GRPC, tlsConfig, serverMetrics, cmd.Clock())
 	cmd.FailOnError(err, "Unable to setup nonce service gRPC server")
 	noncepb.RegisterNonceServiceServer(grpcSrv, nonceServer)
+	hs := health.NewServer()
+	healthpb.RegisterHealthServer(grpcSrv, hs)
 
-	go cmd.CatchSignals(logger, grpcSrv.GracefulStop)
+	go cmd.CatchSignals(logger, func() {
+		hs.Shutdown()
+		grpcSrv.GracefulStop()
+	})
 
 	err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
 	cmd.FailOnError(err, "Nonce service gRPC server failed")
