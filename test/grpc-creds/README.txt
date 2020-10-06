@@ -1,1 +1,1 @@
-See boulder/test/PKI.txt
+See ../test/PKI.md

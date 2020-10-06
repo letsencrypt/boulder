@@ -21,6 +21,7 @@
     "grpc": {
       "address": ":9098",
       "clientNames": [
+        "health-checker.boulder",
         "va.boulder"
       ]
     },

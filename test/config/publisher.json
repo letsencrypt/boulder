@@ -6,8 +6,9 @@
     "grpc": {
       "address": ":9091",
       "clientNames": [
-        "ra.boulder",
-        "ocsp-updater.boulder"
+        "health-checker.boulder",
+        "ocsp-updater.boulder",
+        "ra.boulder"
       ]
     },
     "tls": {
