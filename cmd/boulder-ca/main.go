@@ -124,13 +124,13 @@ func loadCFSSLIssuers(configs []IssuerConfig) ([]ca.Issuer, error) {
 	return issuers, nil
 }
 
-func loadCFSSLIssuer(issuerConfig IssuerConfig) (crypto.Signer, *x509.Certificate, error) {
-	cert, err := core.LoadCert(issuerConfig.CertFile)
+func loadCFSSLIssuer(issuerConfig IssuerConfig) (crypto.Signer, *issuance.Certificate, error) {
+	cert, err := issuance.LoadCertificate(issuerConfig.CertFile)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	signer, err := loadCFSSLSigner(issuerConfig, cert)
+	signer, err := loadCFSSLSigner(issuerConfig, cert.Certificate)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -87,24 +87,32 @@ type IssuerLoc struct {
 }
 
 // LoadIssuer loads a signer (private key) and certificate from the locations specified.
-func LoadIssuer(location IssuerLoc) (*x509.Certificate, crypto.Signer, error) {
-	cert, err := core.LoadCert(location.CertFile)
+func LoadIssuer(location IssuerLoc) (*Certificate, crypto.Signer, error) {
+	issuerCert, err := LoadCertificate(location.CertFile)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	signer, err := loadSigner(location, cert)
+	signer, err := loadSigner(location, issuerCert)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	if !core.KeyDigestEquals(signer.Public(), cert.PublicKey) {
+	if !core.KeyDigestEquals(signer.Public(), issuerCert.PublicKey) {
 		return nil, nil, fmt.Errorf("Issuer key did not match issuer cert %s", location.CertFile)
 	}
-	return cert, signer, err
+	return issuerCert, signer, err
 }
 
-func loadSigner(location IssuerLoc, cert *x509.Certificate) (crypto.Signer, error) {
+func LoadCertificate(path string) (*Certificate, error) {
+	cert, err := core.LoadCert(path)
+	if err != nil {
+		return nil, err
+	}
+	return &Certificate{cert}, nil
+}
+
+func loadSigner(location IssuerLoc, cert *Certificate) (crypto.Signer, error) {
 	if location.File != "" {
 		keyBytes, err := ioutil.ReadFile(location.File)
 		if err != nil {
@@ -325,10 +333,26 @@ func (p *Profile) generateTemplate(clk clock.Clock) *x509.Certificate {
 	return template
 }
 
+// Certificate embeds an *x509.Certificate and represent the added semantics
+// that this certificate can be used for issuance. It also provides the .ID()
+// method, which returns an internal issuer ID for this certificate.
+type Certificate struct {
+	*x509.Certificate
+}
+
+type IssuerID int64
+
+// ID provides a stable ID for an issuer's certificate. This is used for
+// identifying which issuer issued a certificate in the certificateStatus table.
+func (ic *Certificate) ID() IssuerID {
+	h := sha256.Sum256(ic.Raw)
+	return IssuerID(big.NewInt(0).SetBytes(h[:4]).Int64())
+}
+
 // Issuer is capable of issuing new certificates
 // TODO(#5086): make Cert and Signer private when they're no longer needed by ca.internalIssuer
 type Issuer struct {
-	Cert    *x509.Certificate
+	Cert    *Certificate
 	Signer  crypto.Signer
 	Profile *Profile
 	Linter  *lint.Linter
@@ -337,7 +361,7 @@ type Issuer struct {
 
 // NewIssuer constructs an Issuer on the heap, verifying that the profile
 // is well-formed.
-func NewIssuer(cert *x509.Certificate, signer crypto.Signer, profile *Profile, linter *lint.Linter, clk clock.Clock) (*Issuer, error) {
+func NewIssuer(cert *Certificate, signer crypto.Signer, profile *Profile, linter *lint.Linter, clk clock.Clock) (*Issuer, error) {
 	switch k := cert.PublicKey.(type) {
 	case *rsa.PublicKey:
 		profile.sigAlg = x509.SHA256WithRSA
@@ -395,9 +419,8 @@ func (i *Issuer) Name() string {
 
 // ID provides a stable ID for an issuer's certificate. This is used for
 // identifying which issuer issued a certificate in the certificateStatus table.
-func (i *Issuer) ID() int64 {
-	h := sha256.Sum256(i.Cert.Raw)
-	return big.NewInt(0).SetBytes(h[:4]).Int64()
+func (i *Issuer) ID() IssuerID {
+	return i.Cert.ID()
 }
 
 var ctPoisonExt = pkix.Extension{
@@ -526,12 +549,12 @@ func (i *Issuer) Issue(req *IssuanceRequest) ([]byte, error) {
 
 	// check that the tbsCertificate is properly formed by signing it
 	// with a throwaway key and then linting it using zlint
-	err = i.Linter.LintTBS(template, i.Cert, req.PublicKey)
+	err = i.Linter.LintTBS(template, i.Cert.Certificate, req.PublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
 	}
 
-	return x509.CreateCertificate(rand.Reader, template, i.Cert, req.PublicKey, i.Signer)
+	return x509.CreateCertificate(rand.Reader, template, i.Cert.Certificate, req.PublicKey, i.Signer)
 }
 
 func ContainsMustStaple(extensions []pkix.Extension) bool {

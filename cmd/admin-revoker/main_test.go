@@ -16,6 +16,7 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
@@ -54,7 +55,18 @@ func TestRevokeBatch(t *testing.T) {
 	ra := ra.NewRegistrationAuthorityImpl(fc,
 		log,
 		metrics.NoopRegisterer,
-		1, goodkey.KeyPolicy{}, 100, true, 300*24*time.Hour, 7*24*time.Hour, nil, nil, 0, nil, nil, &x509.Certificate{})
+		1,
+		goodkey.KeyPolicy{},
+		100,
+		true,
+		300*24*time.Hour,
+		7*24*time.Hour,
+		nil,
+		nil,
+		0,
+		nil,
+		nil,
+		&issuance.Certificate{Certificate: &x509.Certificate{}})
 	ra.SA = ssa
 	ra.CA = &mockCA{}
 
