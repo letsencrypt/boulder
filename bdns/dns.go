@@ -3,6 +3,7 @@ package bdns
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
@@ -348,7 +349,8 @@ func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string
 			return
 		case r := <-ch:
 			if r.err != nil {
-				operr, ok := r.err.(*net.OpError)
+				var operr *net.OpError
+				ok := errors.As(r.err, &operr)
 				isRetryable := ok && operr.Temporary()
 				hasRetriesLeft := tries < dnsClient.maxTries
 				if isRetryable && hasRetriesLeft {
