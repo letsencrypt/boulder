@@ -369,7 +369,7 @@ func TestDNSLookupHost(t *testing.T) {
 	test.AssertError(t, err, "Should be an error")
 	expectedErr := DNSError{dns.TypeA, hostname, nil, dns.RcodeRefused}
 	var dnserr *DNSError
-	if !errors.As(err, &dnserr) || *dnserr != expectedErr {
+	if !(errors.As(err, &dnserr) && *dnserr == expectedErr) {
 		t.Errorf("Looking up %s, got %#v, expected %#v", hostname, err, expectedErr)
 	}
 }
@@ -381,13 +381,13 @@ func TestDNSNXDOMAIN(t *testing.T) {
 	_, err := obj.LookupHost(context.Background(), hostname)
 	expected := DNSError{dns.TypeA, hostname, nil, dns.RcodeNameError}
 	var dnserr *DNSError
-	if !errors.As(err, &dnserr) || *dnserr != expected {
+	if !(errors.As(err, &dnserr) && *dnserr == expected) {
 		t.Errorf("Looking up %s, got %#v, expected %#v", hostname, err, expected)
 	}
 
 	_, err = obj.LookupTXT(context.Background(), hostname)
 	expected.recordType = dns.TypeTXT
-	if !errors.As(err, &dnserr) || *dnserr != expected {
+	if !(errors.As(err, &dnserr) && *dnserr == expected) {
 		t.Errorf("Looking up %s, got %#v, expected %#v", hostname, err, expected)
 	}
 }
