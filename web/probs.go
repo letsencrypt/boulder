@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"fmt"
 
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -58,17 +59,18 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 	return outProb
 }
 
-// problemDetailsForError turns an error into a ProblemDetails with the special
+// ProblemDetailsForError turns an error into a ProblemDetails with the special
 // case of returning the same error back if its already a ProblemDetails. If the
 // error is of an type unknown to ProblemDetailsForError, it will return a
 // ServerInternal ProblemDetails.
 func ProblemDetailsForError(err error, msg string) *probs.ProblemDetails {
-	switch e := err.(type) {
-	case *probs.ProblemDetails:
-		return e
-	case *berrors.BoulderError:
-		return problemDetailsForBoulderError(e, msg)
-	default:
+	var problemDetailsErr *probs.ProblemDetails
+	var boulderErr *berrors.BoulderError
+	if errors.As(err, &problemDetailsErr) {
+		return problemDetailsErr
+	} else if errors.As(err, &boulderErr) {
+		return problemDetailsForBoulderError(boulderErr, msg)
+	} else {
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.
 		return probs.ServerInternal(msg)
