@@ -61,9 +61,9 @@ type CachePurgeClient struct {
 
 // errFatal is used by CachePurgeClient.purge to indicate that it failed for a
 // reason that cannot be remediated by retrying a purge request
-type errFatal struct{ msg string }
+type errFatal string
 
-func (e *errFatal) Error() string { return e.msg }
+func (e errFatal) Error() string { return string(e) }
 
 var (
 	// ErrAllRetriesFailed lets the caller of Purge to know if all the purge submission
@@ -183,7 +183,7 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 
 	reqJSON, err := json.Marshal(purgeReq)
 	if err != nil {
-		return &errFatal{err.Error()}
+		return errFatal(err.Error())
 	}
 	req, err := http.NewRequest(
 		"POST",
@@ -191,7 +191,7 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 		bytes.NewBuffer(reqJSON),
 	)
 	if err != nil {
-		return &errFatal{err.Error()}
+		return errFatal(err.Error())
 	}
 
 	// Create authorization header for request
@@ -201,7 +201,7 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 		core.RandomString(16),
 	)
 	if err != nil {
-		return &errFatal{err.Error()}
+		return errFatal(err.Error())
 	}
 	req.Header.Set("Authorization", authHeader)
 	req.Header.Set("Content-Type", "application/json")
@@ -236,7 +236,7 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 	}
 	if purgeInfo.HTTPStatus != http.StatusCreated || resp.StatusCode != http.StatusCreated {
 		if purgeInfo.HTTPStatus == http.StatusForbidden {
-			return &errFatal{fmt.Sprintf("Unauthorized to purge URLs %q", urls)}
+			return errFatal(fmt.Sprintf("Unauthorized to purge URLs %q", urls))
 		}
 		return fmt.Errorf("Unexpected HTTP status code '%d': %s", resp.StatusCode, string(body))
 	}
@@ -254,7 +254,7 @@ func (cpc *CachePurgeClient) purgeBatch(urls []string) error {
 
 		err := cpc.purge(urls)
 		if err != nil {
-			var errorFatal *errFatal
+			var errorFatal errFatal
 			if errors.As(err, &errorFatal) {
 				cpc.purges.WithLabelValues("fatal failure").Inc()
 				return errorFatal
