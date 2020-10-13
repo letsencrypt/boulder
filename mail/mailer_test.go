@@ -303,7 +303,7 @@ func TestBadEmailError(t *testing.T) {
 		t.Errorf("Expected SendMail() to return an RecoverableSMTPError, got nil")
 	}
 	expected := "401: 4.1.3 Bad recipient address syntax"
-	var rcptErr *RecoverableSMTPError
+	var rcptErr RecoverableSMTPError
 	if !errors.As(err, &rcptErr) {
 		t.Errorf("Expected SendMail() to return an RecoverableSMTPError, got a %T error: %v", err, err)
 	} else if rcptErr.Message != expected {

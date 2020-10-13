@@ -159,11 +159,11 @@ func (m *mailer) run() error {
 			return err
 		}
 		if mailBody.Len() == 0 {
-			return fmt.Errorf("email body was empty after interpolation")
+			return fmt.Errorf("email body was empty after interpolation.")
 		}
 		err := m.mailer.SendMail([]string{address}, m.subject, mailBody.String())
 		if err != nil {
-			var recoverableSMTPErr *bmail.RecoverableSMTPError
+			var recoverableSMTPErr bmail.RecoverableSMTPError
 			if errors.As(err, &recoverableSMTPErr) {
 				m.log.Errf("address %q was rejected by server: %s", address, err)
 				continue

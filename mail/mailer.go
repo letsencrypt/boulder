@@ -151,7 +151,7 @@ func New(
 	}
 }
 
-// NewDryRun constructs a Mailer suitable for doing a dry run. It simply logs each
+// New constructs a Mailer suitable for doing a dry run. It simply logs each
 // command that would have been run, at debug level.
 func NewDryRun(from mail.Address, logger blog.Logger) *MailerImpl {
 	return &MailerImpl{
@@ -313,7 +313,7 @@ type RecoverableSMTPError struct {
 	Message string
 }
 
-func (e *RecoverableSMTPError) Error() string {
+func (e RecoverableSMTPError) Error() string {
 	return e.Message
 }
 
@@ -369,7 +369,7 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			m.reconnect()
 		} else if errors.As(err, &protoErr) && recoverableErrorCodes[protoErr.Code] {
 			m.sendMailAttempts.WithLabelValues("failure", fmt.Sprintf("SMTP %d", protoErr.Code)).Inc()
-			return &RecoverableSMTPError{fmt.Sprintf("%d: %s", protoErr.Code, protoErr.Msg)}
+			return RecoverableSMTPError{fmt.Sprintf("%d: %s", protoErr.Code, protoErr.Msg)}
 		} else {
 			// If it wasn't an EOF error or a recoverable SMTP error it is unexpected and we
 			// return from SendMail() with the error
