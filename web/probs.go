@@ -59,7 +59,7 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 	return outProb
 }
 
-// ProblemDetailsForError turns an error into a ProblemDetails with the special
+// problemDetailsForError turns an error into a ProblemDetails with the special
 // case of returning the same error back if its already a ProblemDetails. If the
 // error is of an type unknown to ProblemDetailsForError, it will return a
 // ServerInternal ProblemDetails.
