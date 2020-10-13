@@ -66,7 +66,7 @@ func (ap *akamaiPurger) purge() error {
 		ap.mu.Lock()
 		ap.toPurge = append(urls, ap.toPurge...)
 		ap.mu.Unlock()
-		ap.log.Errf("Failed to purge %d URLs: %s", len(urls), err)
+		ap.log.Errf("Failed to purge %d URLs: %v", len(urls), err)
 		return err
 	}
 	return nil
