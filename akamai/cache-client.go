@@ -257,7 +257,7 @@ func (cpc *CachePurgeClient) purgeBatch(urls []string) error {
 			var errorFatal errFatal
 			if errors.As(err, &errorFatal) {
 				cpc.purges.WithLabelValues("fatal failure").Inc()
-				return errorFatal
+				return err
 			}
 			cpc.log.AuditErrf("Akamai cache purge failed, retrying: %s", err)
 			cpc.purges.WithLabelValues("retryable failure").Inc()
