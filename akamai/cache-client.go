@@ -254,7 +254,8 @@ func (cpc *CachePurgeClient) purgeBatch(urls []string) error {
 
 		err := cpc.purge(urls)
 		if err != nil {
-			if _, ok := err.(errFatal); ok {
+			var errorFatal errFatal
+			if errors.As(err, &errorFatal) {
 				cpc.purges.WithLabelValues("fatal failure").Inc()
 				return err
 			}
