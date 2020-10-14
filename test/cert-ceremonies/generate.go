@@ -89,6 +89,13 @@ func main() {
 	err = genKey("test/cert-ceremonies/intermediate-key-ceremony-rsa.yaml", intermediateKeySlot)
 	cmd.FailOnError(err, "failed to generate intermediate key")
 
+	err = os.Remove("/tmp/intermediate-cert-rsa-a.pem")
+	cmd.FailOnError(err, "removing old intermediate")
+	err = os.Remove("/tmp/intermediate-cert-rsa-b.pem")
+	cmd.FailOnError(err, "removing old intermediate")
+	err = os.Remove("/tmp/root-signing-pub-rsa.pem")
+	cmd.FailOnError(err, "removing old root public key")
+
 	// Create the A intermediate ceremony config file with the root
 	// signing key slot and ID
 	tmpRSAIntermediateA, err := rewriteConfig("test/cert-ceremonies/intermediate-ceremony-rsa.yaml", map[string]string{

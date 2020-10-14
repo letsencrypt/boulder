@@ -5,7 +5,7 @@
     "oldOCSPWindow": "2s",
     "oldOCSPBatchSize": 5000,
     "parallelGenerateOCSPRequests": 10,
-    "ocspMinTimeToExpiry": "72h",
+    "ocspMinTimeToExpiry": "6s",
     "signFailureBackoffFactor": 1.2,
     "signFailureBackoffMax": "30m",
     "debugAddr": ":8006",
