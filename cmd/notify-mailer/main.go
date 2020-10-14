@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -162,14 +163,13 @@ func (m *mailer) run() error {
 		}
 		err := m.mailer.SendMail([]string{address}, m.subject, mailBody.String())
 		if err != nil {
-			switch err.(type) {
-			case bmail.RecoverableSMTPError:
+			var recoverableSMTPErr bmail.RecoverableSMTPError
+			if errors.As(err, &recoverableSMTPErr) {
 				m.log.Errf("address %q was rejected by server: %s", address, err)
 				continue
-			default:
-				return fmt.Errorf("sending mail %d of %d to %q: %s",
-					i, len(sortedAddresses), address, err)
 			}
+			return fmt.Errorf("sending mail %d of %d to %q: %s",
+				i, len(sortedAddresses), address, err)
 		}
 		sent++
 		m.clk.Sleep(m.sleepInterval)

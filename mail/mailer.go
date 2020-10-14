@@ -336,6 +336,7 @@ var recoverableErrorCodes = map[int]bool{
 // SendMail sends an email to the provided list of recipients. The email body
 // is simple text.
 func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
+	var protoErr *textproto.Error
 	for {
 		err := m.sendOne(to, subject, msg)
 		if err == nil {
@@ -348,7 +349,7 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			m.reconnect()
 			// After reconnecting, loop around and try `sendOne` again.
 			continue
-		} else if protoErr, ok := err.(*textproto.Error); ok && protoErr.Code == 421 {
+		} else if errors.As(err, &protoErr) && protoErr.Code == 421 {
 			m.sendMailAttempts.WithLabelValues("failure", "SMTP 421").Inc()
 			/*
 			 *  If the error is an instance of `textproto.Error` with a SMTP error code,
@@ -366,7 +367,7 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			 * [0] - https://github.com/letsencrypt/boulder/issues/2249
 			 */
 			m.reconnect()
-		} else if protoErr, ok := err.(*textproto.Error); ok && recoverableErrorCodes[protoErr.Code] {
+		} else if errors.As(err, &protoErr) && recoverableErrorCodes[protoErr.Code] {
 			m.sendMailAttempts.WithLabelValues("failure", fmt.Sprintf("SMTP %d", protoErr.Code)).Inc()
 			return RecoverableSMTPError{fmt.Sprintf("%d: %s", protoErr.Code, protoErr.Msg)}
 		} else {
