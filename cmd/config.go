@@ -171,7 +171,8 @@ func (d *ConfigDuration) UnmarshalJSON(b []byte) error {
 	s := ""
 	err := json.Unmarshal(b, &s)
 	if err != nil {
-		if _, ok := err.(*json.UnmarshalTypeError); ok {
+		var jsonUnmarshalTypeErr *json.UnmarshalTypeError
+		if errors.As(err, &jsonUnmarshalTypeErr) {
 			return ErrDurationMustBeString
 		}
 		return err
