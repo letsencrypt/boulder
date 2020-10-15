@@ -27,7 +27,7 @@
         "interval": "1s"
     },
     "syslog": {
-        "stdoutlevel": 6,
+        "stdoutlevel": 4,
         "sysloglevel": 4
     }
 }
