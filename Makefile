@@ -15,9 +15,9 @@ CMD_BINS = $(addprefix bin/, $(CMD_BASENAMES) )
 OBJECTS = $(CMD_BINS)
 
 # Build environment variables (referencing core/util.go)
-COMMIT_ID = $(shell git rev-parse --short HEAD)
+COMMIT_ID = $(shell git rev-parse --short=8 HEAD)
 
-BUILD_ID = $(shell git symbolic-ref --short HEAD 2>/dev/null) +$(COMMIT_ID)
+BUILD_ID = $(shell git symbolic-ref --short=8 HEAD 2>/dev/null) +$(COMMIT_ID)
 BUILD_ID_VAR = github.com/letsencrypt/boulder/core.BuildID
 
 BUILD_HOST = $(shell whoami)@$(shell hostname)
