@@ -81,6 +81,15 @@ func nowNano(fc clock.Clock) int64 {
 	return fc.Now().UnixNano()
 }
 
+func TestStalenessHistogram(t *testint.T) {
+	updater, sa, _, fc, cleanUp := setup(t)
+	defer cleanUp()
+	issuer, err := core.LoadCert("../../test/test-ca2.pem")
+	test.AssertNotError(t, err, "Couldn't read test issuer certificate")
+	updater.issuer = issuer
+	updater.purgerService = akamaipb.NewAkamaiPurgerClient(nil)
+}
+
 func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	updater, sa, _, fc, cleanUp := setup(t)
 	defer cleanUp()

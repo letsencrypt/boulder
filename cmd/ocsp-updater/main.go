@@ -164,7 +164,7 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	}
 
 	for _, status := range statuses {
-		staleness := status.OCSPLastUpdated.Sub(oldestLastUpdatedTime).Seconds()
+		staleness := oldestLastUpdatedTime.Sub(status.OCSPLastUpdated).Seconds()
 		updater.stalenessHistogram.Observe(staleness)
 	}
 
