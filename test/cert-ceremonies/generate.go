@@ -73,6 +73,12 @@ func genCert(path string) error {
 }
 
 func main() {
+	// If one of the output files already exists, assume this ran once
+	// already for the container and don't re-run.
+	if _, err := os.Stat("/tmp/root-signing-pub-rsa.pem"); err == nil {
+		fmt.Println("skipping certificate generation: already exists")
+		return
+	}
 	// Create a SoftHSM slot for the root signing key
 	rootKeySlot, err := createSlot("root signing key (rsa)")
 	cmd.FailOnError(err, "failed creating softhsm2 slot for root key")
