@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"regexp"
@@ -75,9 +76,14 @@ func genCert(path string) error {
 func main() {
 	// If one of the output files already exists, assume this ran once
 	// already for the container and don't re-run.
-	if _, err := os.Stat("/tmp/root-signing-pub-rsa.pem"); err == nil {
+	outputFile := "/tmp/root-signing-pub-rsa.pem"
+	if _, err := os.Stat(outputFile); err == nil {
 		fmt.Println("skipping certificate generation: already exists")
 		return
+	} else if os.IsNotExist(err) {
+		// Good to continue
+	} else {
+		log.Fatal("statting %q: %s", outputFile, err)
 	}
 	// Create a SoftHSM slot for the root signing key
 	rootKeySlot, err := createSlot("root signing key (rsa)")
