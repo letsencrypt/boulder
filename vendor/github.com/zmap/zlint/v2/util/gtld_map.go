@@ -3191,7 +3191,7 @@ var tldMap = map[string]GTLDPeriod{
 	"intel": {
 		GTLD:           "intel",
 		DelegationDate: "2016-07-28",
-		RemovalDate:    "",
+		RemovalDate:    "2020-10-07",
 	},
 	"international": {
 		GTLD:           "international",
@@ -4096,7 +4096,7 @@ var tldMap = map[string]GTLDPeriod{
 	"metlife": {
 		GTLD:           "metlife",
 		DelegationDate: "2016-05-11",
-		RemovalDate:    "",
+		RemovalDate:    "2020-09-07",
 	},
 	"mg": {
 		GTLD:           "mg",
