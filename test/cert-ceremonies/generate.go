@@ -77,13 +77,13 @@ func main() {
 	// If one of the output files already exists, assume this ran once
 	// already for the container and don't re-run.
 	outputFile := "/tmp/root-signing-pub-rsa.pem"
-	if _, err := os.Stat(outputFile); err == nil {
+	if loc, err := os.Stat(outputFile); err == nil && loc.Mode().IsRegular() {
 		fmt.Println("skipping certificate generation: already exists")
 		return
-	} else if os.IsNotExist(err) {
-		// Good to continue
-	} else {
-		log.Fatal("statting %q: %s", outputFile, err)
+	} else if err == nil && !loc.Mode().IsRegular() {
+		log.Fatalf("statting %q: not a regular file", outputFile)
+	} else if err != nil && !os.IsNotExist(err) {
+		log.Fatalf("statting %q: %s", outputFile, err)
 	}
 	// Create a SoftHSM slot for the root signing key
 	rootKeySlot, err := createSlot("root signing key (rsa)")
