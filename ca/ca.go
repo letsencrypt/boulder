@@ -829,7 +829,8 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		if err != nil {
 			// If the Signing error was a pre-issuance lint error then marshal the
 			// linting errors to include in the audit err msg.
-			if lErr, ok := err.(*local.LintError); ok {
+			var lErr *local.LintError
+			if errors.As(err, &lErr) {
 				// NOTE(@cpu): We throw away the JSON marshal error here. If marshaling
 				// fails for some reason it's acceptable to log an empty string for the
 				// JSON component.
