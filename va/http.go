@@ -3,6 +3,7 @@ package va
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -414,18 +415,19 @@ func fallbackErr(err error) bool {
 	if err == nil {
 		return false
 	}
-
-	switch err := err.(type) {
-	case *url.Error:
+	var urlError *url.Error
+	var netOpError *net.OpError
+	if errors.As(err, &urlError) {
 		// URL Errors should be unwrapped and tested
-		return fallbackErr(err.Err)
-	case *net.OpError:
+		return fallbackErr(urlError.Err)
+	} else if errors.As(err, &netOpError) {
 		// Net OpErrors are fallback errs only if the operation was a "dial"
-		return err.Op == "dial"
-	default:
+		return netOpError.Op == "dial"
+	} else {
 		// All other errs are not fallback errs
 		return false
 	}
+
 }
 
 // processHTTPValidation performs an HTTP validation for the given host, port
