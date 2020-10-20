@@ -27,7 +27,8 @@ func wrapError(ctx context.Context, err error) error {
 	if err == nil {
 		return nil
 	}
-	if berr, ok := err.(*berrors.BoulderError); ok {
+	var berr *berrors.BoulderError
+	if errors.As(err, &berr) {
 		pairs := []string{
 			"errortype", strconv.Itoa(int(berr.Type)),
 		}
@@ -96,7 +97,9 @@ func unwrapError(err error, md metadata.MD) error {
 					unwrappedErr,
 				)
 			}
-			outErr = (outErr.(*berrors.BoulderError)).WithSubErrors(suberrs)
+			var berr *berrors.BoulderError
+			errors.As(outErr, &berr)
+			outErr = berr.WithSubErrors(suberrs)
 		}
 		return outErr
 	}
