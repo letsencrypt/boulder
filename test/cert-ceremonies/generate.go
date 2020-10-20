@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"regexp"
@@ -75,9 +76,14 @@ func genCert(path string) error {
 func main() {
 	// If one of the output files already exists, assume this ran once
 	// already for the container and don't re-run.
-	if _, err := os.Stat("/tmp/root-signing-pub-rsa.pem"); err == nil {
+	outputFile := "/tmp/root-signing-pub-rsa.pem"
+	if loc, err := os.Stat(outputFile); err == nil && loc.Mode().IsRegular() {
 		fmt.Println("skipping certificate generation: already exists")
 		return
+	} else if err == nil && !loc.Mode().IsRegular() {
+		log.Fatalf("statting %q: not a regular file", outputFile)
+	} else if err != nil && !os.IsNotExist(err) {
+		log.Fatalf("statting %q: %s", outputFile, err)
 	}
 	// Create a SoftHSM slot for the root signing key
 	rootKeySlot, err := createSlot("root signing key (rsa)")
@@ -94,13 +100,6 @@ func main() {
 	// Generate the intermediate signing key
 	err = genKey("test/cert-ceremonies/intermediate-key-ceremony-rsa.yaml", intermediateKeySlot)
 	cmd.FailOnError(err, "failed to generate intermediate key")
-
-	err = os.Remove("/tmp/intermediate-cert-rsa-a.pem")
-	cmd.FailOnError(err, "removing old intermediate")
-	err = os.Remove("/tmp/intermediate-cert-rsa-b.pem")
-	cmd.FailOnError(err, "removing old intermediate")
-	err = os.Remove("/tmp/root-signing-pub-rsa.pem")
-	cmd.FailOnError(err, "removing old root public key")
 
 	// Create the A intermediate ceremony config file with the root
 	// signing key slot and ID

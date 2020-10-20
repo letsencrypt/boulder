@@ -3,6 +3,7 @@ package policy
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
@@ -392,7 +393,8 @@ func (pa *AuthorityImpl) WillingToIssueWildcards(idents []identifier.ACMEIdentif
 	var subErrors []berrors.SubBoulderError
 	for _, ident := range idents {
 		if err := pa.willingToIssueWildcard(ident); err != nil {
-			if bErr, ok := err.(*berrors.BoulderError); ok {
+			var bErr *berrors.BoulderError
+			if errors.As(err, &bErr) {
 				subErrors = append(subErrors, berrors.SubBoulderError{
 					Identifier:   ident,
 					BoulderError: bErr})

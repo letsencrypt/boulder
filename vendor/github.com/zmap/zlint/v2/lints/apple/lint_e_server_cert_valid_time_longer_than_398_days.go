@@ -42,13 +42,13 @@ func (l *serverCertValidityTooLong) Execute(c *x509.Certificate) *lint.LintResul
 	// "We recommend that certificates be issued with a maximum validity of 397 days."
 	warnValidity := 397 * dayLength
 
-	// Calculate the date that the certificate NotAfter must be less than
-	errEndDate := c.NotBefore.Add(maxValidity)
-	warnEndDate := c.NotBefore.Add(warnValidity)
+	// RFC 5280, section 4.1.2.5: "The validity period for a certificate is the period
+	// of time from notBefore through notAfter, inclusive."
+	certValidity := c.NotAfter.Add(1 * time.Second).Sub(c.NotBefore)
 
-	if c.NotAfter.After(errEndDate) {
+	if certValidity > maxValidity {
 		return &lint.LintResult{Status: lint.Error}
-	} else if c.NotAfter.After(warnEndDate) {
+	} else if certValidity > warnValidity {
 		return &lint.LintResult{
 			// RFC 2119 has SHOULD and RECOMMENDED as equal. Since Apple recommends
 			// 397 days we treat this as a lint.Warn result as a violation of
