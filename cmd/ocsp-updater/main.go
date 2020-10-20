@@ -44,8 +44,6 @@ type OCSPUpdater struct {
 
 	ogc capb.OCSPGeneratorClient
 
-	stalenessHistogram prometheus.Histogram
-
 	tickWindow    time.Duration
 	batchSize     int
 	tickHistogram *prometheus.HistogramVec
@@ -64,9 +62,10 @@ type OCSPUpdater struct {
 	// issuer is used to generate OCSP request URLs to purge
 	issuer *x509.Certificate
 
-	genStoreHistogram prometheus.Histogram
-	generatedCounter  *prometheus.CounterVec
-	storedCounter     *prometheus.CounterVec
+	stalenessHistogram prometheus.Histogram
+	genStoreHistogram  prometheus.Histogram
+	generatedCounter   *prometheus.CounterVec
+	storedCounter      *prometheus.CounterVec
 }
 
 func newUpdater(
