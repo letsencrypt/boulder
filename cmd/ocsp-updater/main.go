@@ -31,7 +31,6 @@ import (
  */
 type ocspDB interface {
 	Select(i interface{}, query string, args ...interface{}) ([]interface{}, error)
-	SelectOne(holder interface{}, query string, args ...interface{}) error
 	Exec(query string, args ...interface{}) (sql.Result, error)
 }
 
@@ -154,24 +153,6 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 		return statuses, nil
 	}
 	return statuses, err
-}
-
-func getCertDER(selector ocspDB, serial string) ([]byte, error) {
-	cert, err := sa.SelectCertificate(selector, serial)
-	if err != nil {
-		if db.IsNoRows(err) {
-			cert, err = sa.SelectPrecertificate(selector, serial)
-			// If there was still a non-nil error return it. If we can't find
-			// a precert row something is amiss, we have a certificateStatus row with
-			// no matching certificate or precertificate.
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			return nil, err
-		}
-	}
-	return cert.DER, nil
 }
 
 func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.CertificateStatus) (*core.CertificateStatus, error) {
