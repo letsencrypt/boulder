@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -27,7 +28,8 @@ func TestTooBigOrderError(t *testing.T) {
 	_, err := authAndIssue(nil, nil, domains)
 	test.AssertError(t, err, "authAndIssue failed")
 
-	if prob, ok := err.(acme.Problem); !ok {
+	var prob acme.Problem
+	if !errors.As(err, &prob) {
 		t.Fatalf("expected problem result, got %#v\n", err)
 	} else {
 		test.AssertEquals(t, prob.Type, "urn:ietf:params:acme:error:malformed")
@@ -128,8 +130,9 @@ func TestAccountEmailError(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// First try registering a new account and ensuring the expected problem occurs
+			var prob acme.Problem
 			if _, err := makeClient(tc.contacts...); err != nil {
-				if prob, ok := err.(acme.Problem); !ok {
+				if !errors.As(err, &prob) {
 					t.Fatalf("expected acme.Problem error got %#v", err)
 				} else {
 					test.AssertEquals(t, prob.Type, tc.expectedProbType)
@@ -145,7 +148,7 @@ func TestAccountEmailError(t *testing.T) {
 			c, err := makeClient("mailto:valid@valid.com")
 			test.AssertNotError(t, err, "failed to create account with valid contact")
 			if _, err := c.UpdateAccount(c.Account, tc.contacts...); err != nil {
-				if prob, ok := err.(acme.Problem); !ok {
+				if !errors.As(err, &prob) {
 					t.Fatalf("expected acme.Problem error after updating account got %#v", err)
 				} else {
 					test.AssertEquals(t, prob.Type, tc.expectedProbType)
