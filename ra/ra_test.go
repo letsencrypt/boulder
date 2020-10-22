@@ -2029,7 +2029,7 @@ func TestRecheckCAAFail(t *testing.T) {
 	// NOTE(@cpu): Safe to skip the cast check here because we already checked err
 	// with `berrors.Is(err, berrors.CAA)`
 	var berr *berrors.BoulderError
-	errors.As(err, &berr)
+	test.AssertEquals(t, errors.As(err, &berr), true)
 
 	// There should be two sub errors
 	test.AssertEquals(t, len(berr.SubErrors), 2)
@@ -2063,8 +2063,7 @@ func TestRecheckCAAFail(t *testing.T) {
 	// It should error
 	test.AssertError(t, err, "expected err from recheckCAA")
 	// It should be a berror
-	ok := errors.As(err, &berr)
-	test.AssertEquals(t, ok, true)
+	test.AssertEquals(t, errors.As(err, &berr), true)
 	// There should be *no* suberrors because there was only one overall error
 	test.AssertEquals(t, len(berr.SubErrors), 0)
 }
