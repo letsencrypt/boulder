@@ -172,8 +172,7 @@ func TestModelToChallengeBadJSON(t *testing.T) {
 			_, err := modelToChallenge(tc.Model)
 			test.AssertError(t, err, "expected error from modelToChallenge")
 			var badJSONErr errBadJSON
-			ok := errors.As(err, &badJSONErr)
-			test.AssertEquals(t, ok, true)
+			test.AssertEquals(t, errors.As(err, &badJSONErr), true)
 			test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 		})
 	}
@@ -188,8 +187,7 @@ func TestModelToOrderBadJSON(t *testing.T) {
 	})
 	test.AssertError(t, err, "expected error from modelToOrder")
 	var badJSONErr errBadJSON
-	ok := errors.As(err, &badJSONErr)
-	test.AssertEquals(t, ok, true)
+	test.AssertEquals(t, errors.As(err, &badJSONErr), true)
 	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 }
 
@@ -221,8 +219,7 @@ func TestPopulateAttemptedFieldsBadJSON(t *testing.T) {
 			err := populateAttemptedFields(*tc.Model, &corepb.Challenge{})
 			test.AssertError(t, err, "expected error from populateAttemptedFields")
 			var badJSONErr errBadJSON
-			ok := errors.As(err, &badJSONErr)
-			test.AssertEquals(t, ok, true)
+			test.AssertEquals(t, errors.As(err, &badJSONErr), true)
 			test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 		})
 	}
