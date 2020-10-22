@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 
 	"google.golang.org/grpc"
@@ -98,8 +99,11 @@ func unwrapError(err error, md metadata.MD) error {
 				)
 			}
 			var berr *berrors.BoulderError
-			errors.As(outErr, &berr)
-			outErr = berr.WithSubErrors(suberrs)
+			if errors.As(outErr, &berr) {
+				outErr = berr.WithSubErrors(suberrs)
+			} else {
+				return fmt.Errorf("expected type of outErr to be %T: %q", berr, outErr.Error())
+			}
 		}
 		return outErr
 	}

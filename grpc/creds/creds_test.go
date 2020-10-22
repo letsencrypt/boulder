@@ -196,7 +196,7 @@ func TestClientReset(t *testing.T) {
 	tc := NewClientCredentials(nil, []tls.Certificate{}, "")
 	_, _, err := tc.ClientHandshake(context.Background(), "T:1010", &brokenConn{})
 	test.AssertError(t, err, "ClientHandshake succeeded with brokenConn")
-	var hasTemp interface{ Temporary() bool }
-	ok := errors.As(err, &hasTemp)
+	var netErr net.Error
+	ok := errors.As(err, &netErr)
 	test.Assert(t, ok, "returned error doesn't have a Temporary method")
 }
