@@ -37,8 +37,7 @@ func TestModelToRegistrationBadJSON(t *testing.T) {
 	})
 	test.AssertError(t, err, "expected error from truncated reg model key")
 	var badJSONErr errBadJSON
-	ok := errors.As(err, &badJSONErr)
-	test.AssertEquals(t, ok, true)
+	test.AssertEquals(t, errors.As(err, &badJSONErr), true)
 	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 }
 
