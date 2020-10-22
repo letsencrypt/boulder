@@ -415,12 +415,8 @@ func fallbackErr(err error) bool {
 	if err == nil {
 		return false
 	}
-	var urlError *url.Error
 	var netOpError *net.OpError
-	if errors.As(err, &urlError) {
-		// URL Errors should be unwrapped and tested
-		return fallbackErr(urlError.Err)
-	} else if errors.As(err, &netOpError) {
+	if errors.As(err, &netOpError) {
 		// Net OpErrors are fallback errs only if the operation was a "dial"
 		return netOpError.Op == "dial"
 	} else {
