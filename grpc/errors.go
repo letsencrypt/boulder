@@ -102,7 +102,7 @@ func unwrapError(err error, md metadata.MD) error {
 			if errors.As(outErr, &berr) {
 				outErr = berr.WithSubErrors(suberrs)
 			} else {
-				return fmt.Errorf("expected type of outErr to be %T: %q", berr, outErr.Error())
+				return fmt.Errorf("expected type of outErr to be %T got: %q", berr, outErr.Error())
 			}
 		}
 		return outErr
