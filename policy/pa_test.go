@@ -331,8 +331,7 @@ func TestWillingToIssueWildcards(t *testing.T) {
 	test.AssertError(t, err, "Expected err from WillingToIssueWildcards")
 
 	var berr *berrors.BoulderError
-	ok := errors.As(err, &berr)
-	test.AssertEquals(t, ok, true)
+	test.AssertEquals(t, errors.As(err, &berr), true)
 	test.AssertEquals(t, len(berr.SubErrors), 2)
 	test.AssertEquals(t, berr.Error(), "Cannot issue for \"letsdecrypt.org\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy (and 1 more problems. Refer to sub-problems for more information.)")
 
@@ -357,8 +356,7 @@ func TestWillingToIssueWildcards(t *testing.T) {
 	// It should error
 	test.AssertError(t, err, "Expected err from WillingToIssueWildcards")
 
-	ok = errors.As(err, &berr)
-	test.AssertEquals(t, ok, true)
+	test.AssertEquals(t, errors.As(err, &berr), true)
 	// There should be *no* suberrors because there was only one error overall.
 	test.AssertEquals(t, len(berr.SubErrors), 0)
 	test.AssertEquals(t, berr.Error(), "Cannot issue for \"letsdecrypt.org\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy")
