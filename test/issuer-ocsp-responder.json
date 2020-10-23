@@ -1,6 +1,6 @@
 {
   "ocspResponder": {
-    "source": "file:///tmp/intermediate-ocsp.b64",
+    "source": "file:///tmp/intermediate-ocsp-rsa.b64",
     "path": "/",
     "listenAddress": "0.0.0.0:4003",
     "shutdownStopTimeout": "10s",
