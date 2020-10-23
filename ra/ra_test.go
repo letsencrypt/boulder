@@ -1427,9 +1427,10 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	// Verify it has no sub errors as there is only one bad name
 	test.AssertEquals(t, err.Error(), "too many certificates already issued for: example.com: see https://letsencrypt.org/docs/rate-limits/")
 	var bErr *berrors.BoulderError
-	if errors.As(err, &bErr) {
-		test.AssertEquals(t, len(bErr.SubErrors), 0)
+	if !errors.As(err, &bErr) {
+		t.Errorf("Incorrect error type: got a %T expected %T", err, bErr)
 	}
+	test.AssertEquals(t, len(bErr.SubErrors), 0)
 
 	// Three base domains, two above threshold, one below
 	mockSA.nameCounts["example.com"] = nameCount("example.com", 10)
@@ -1442,9 +1443,10 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	}
 	// Verify it has two sub errors as there are two bad names
 	test.AssertEquals(t, err.Error(), "too many certificates already issued for multiple names (example.com and 2 others): see https://letsencrypt.org/docs/rate-limits/")
-	if errors.As(err, &bErr) {
-		test.AssertEquals(t, len(bErr.SubErrors), 2)
+	if !errors.As(err, &bErr) {
+		t.Errorf("Incorrect error type: got a %T expected %T", err, bErr)
 	}
+	test.AssertEquals(t, len(bErr.SubErrors), 2)
 
 	// SA misbehaved and didn't send back a count for every input name
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"zombo.com", "www.example.com", "example.com"}, rlp, 99)
