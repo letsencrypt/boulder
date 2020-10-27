@@ -49,6 +49,8 @@
   },
 
   "common": {
+    // TODO: make this unnecessary, or capable of handling multiple certs
+    // (both for RSA transition, and for RSA/ECDSA side-by-side).
     "issuerCert": "/tmp/intermediate-cert-rsa-a.pem"
   }
 }

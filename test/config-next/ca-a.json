@@ -52,7 +52,7 @@
       "issuers": [
         {
           "useForRSALeaves": true,
-          "useForECDSALeaves": true,
+          "useForECDSALeaves": false,
           "issuerURL": "http://127.0.0.1:4000/acme/issuer-cert",
           "ocspURL": "http://127.0.0.1:4002/",
           "crlURL": "http://example.com/crl",
@@ -71,6 +71,30 @@
           "location": {
             "configFile": "test/test-ca.key-pkcs11.json",
             "certFile": "/tmp/intermediate-cert-rsa-b.pem",
+            "numSessions": 2
+          }
+        },
+        {
+          "useForRSALeaves": false,
+          "useForECDSALeaves": true,
+          "issuerURL": "http://127.0.0.1:4000/acme/issuer-cert",
+          "ocspURL": "http://127.0.0.1:4002/",
+          "crlURL": "http://example.com/crl",
+          "location": {
+            "configFile": "test/test-ca.key-pkcs11.json",
+            "certFile": "/tmp/intermediate-cert-ecdsa-a.pem",
+            "numSessions": 2
+          }
+        },
+        {
+          "useForRSALeaves": false,
+          "useForECDSALeaves": false,
+          "issuerURL": "http://127.0.0.1:4000/acme/issuer-cert",
+          "ocspURL": "http://127.0.0.1:4002/",
+          "crlURL": "http://example.com/crl",
+          "location": {
+            "configFile": "test/test-ca.key-pkcs11.json",
+            "certFile": "/tmp/intermediate-cert-ecdsa-b.pem",
             "numSessions": 2
           }
         }
