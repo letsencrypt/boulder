@@ -117,7 +117,7 @@ case "$subcommand" in
           trap "outcome_and_exit" EXIT 
           docker-compose run --use-aliases boulder python3 test/integration-test.py --chisel --gotest
           ;;
-        s ) # -f (filter)
+        f ) # -f (filter)
           trap "outcome_and_exit" EXIT 
           docker-compose run --use-aliases boulder python3 test/integration-test.py --chisel --gotest --filter "$OPTARG"
           ;;
