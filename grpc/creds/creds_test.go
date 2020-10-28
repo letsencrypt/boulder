@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"math/big"
 	"net"
 	"net/http/httptest"
@@ -56,8 +57,8 @@ func TestServerTransportCredentials(t *testing.T) {
 		PeerCertificates: []*x509.Certificate{badCert},
 	}
 	err = bcreds.validateClient(wrongState)
-	_, ok := err.(ErrSANNotAccepted)
-	if !ok {
+	var errSANNotAccepted ErrSANNotAccepted
+	if !errors.As(err, &errSANNotAccepted) {
 		t.Errorf("Expected error of type ErrSANNotAccepted, got %T: %s", err, err)
 	}
 
@@ -195,8 +196,7 @@ func TestClientReset(t *testing.T) {
 	tc := NewClientCredentials(nil, []tls.Certificate{}, "")
 	_, _, err := tc.ClientHandshake(context.Background(), "T:1010", &brokenConn{})
 	test.AssertError(t, err, "ClientHandshake succeeded with brokenConn")
-	_, ok := err.(interface {
-		Temporary() bool
-	})
+	var netErr net.Error
+	ok := errors.As(err, &netErr)
 	test.Assert(t, ok, "returned error doesn't have a Temporary method")
 }
