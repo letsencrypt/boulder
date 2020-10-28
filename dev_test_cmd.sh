@@ -1,29 +1,34 @@
 #!/usr/bin/env bash
 
+# Catch any non-flagged use
+if [ $# -eq 0 ]; then
+    echo "Invalid: $(basename "$0") has required flags, use: -h for help"
+    exit 1
+fi
+
+# e: Stops execution in the instance of a command or pipeline error
+# u: Treat unset variables as an error and exit immediately
+set -eu
+
+# Default to FAILED
+STATUS="FAILED"
+
 function outcome_and_exit {
-  if [ $1 -eq 0 ]
+  if [ $STATUS == "SUCCESS" ]
   then
-    passed
+    echo -e "\e[32m$STATUS\e[0m"
   else
-    failed
-    exit $1
+    echo -e "\e[31m$STATUS\e[0m"
   fi
-}
-
-function failed {
-  echo -e "\e[31mFAILED$1\e[0m"
-}
-
-function passed {
-  echo -e "\e[32mPASSED$1\e[0m"
 }
 
 while getopts ":ha" opt; do # Parse options to the `test_cmd` command
   case ${opt} in
-    h ) # -h (help)
+    h )
+      echo
       echo "Usage:"
       echo "    -h             Displays this help message"
-      echo "    -a             Perform all unit and integration tests"
+      echo "    -a             Run all unit and integration tests"
       echo
       echo "Commands:"
       echo "    unit           Unit tests subcommand, run unit -h for more information"
@@ -32,7 +37,6 @@ while getopts ":ha" opt; do # Parse options to the `test_cmd` command
       ;;
     a ) # -a (all)
       docker-compose run --use-aliases boulder ./test.sh
-      outcome_and_exit $?
       ;;
    \? ) # catch invalid options
       echo "Invalid Option: $OPTARG use: -h for help" 1>&2
@@ -43,24 +47,32 @@ done
 shift $((OPTIND -1))
 subcommand=$1; shift
 
+# Catch any non-flagged subcommand usage
+if [ $# -eq 0 ]; then
+    echo "Invalid: $(basename "$0") <COMMAND> has required flags, use: -h for help"
+    exit 1
+fi
+
 case "$subcommand" in
   unit) # Parse options to the unit sub command
     while getopts ":d:ha" opt; do
       case ${opt} in
         h ) # -h (help)
+          echo
           echo "Usage:"
           echo "    -h                Displays this help message"
-          echo "    -a                Perform all unit tests"
-          echo "    -d <DIRECTORY>    Perform unit tests for a specific directory"
+          echo "    -a                Run all unit tests"
+          echo "    -d <DIRECTORY>    Run unit tests for a specific directory"
+          STATUS="HELP"
           exit 0
           ;;
         a )  # -a (all)
+          trap "outcome_and_exit" EXIT 
           docker-compose run -e RUN="unit" --use-aliases boulder ./test.sh
-          outcome_and_exit $?
           ;;
         d ) # -d (directory)
+          trap "outcome_and_exit" EXIT 
           docker-compose run --use-aliases boulder go test $OPTARG
-          outcome_and_exit $?
           ;;
        \? ) # catch invalid options
           echo "Invalid Option: $OPTARG use: -h for help" 1>&2
@@ -81,25 +93,33 @@ case "$subcommand" in
     while getopts ":s:ha" opt; do
       case ${opt} in
         h ) # -h (help)
+          echo
           echo "Usage:"
           echo "    -h                   Displays this help message"
-          echo "    -a                   Perform all integration tests"
-          echo "    -s <FILTER_REGEX>    Perform a subset of integration tests that match a given python regex,"
+          echo "    -a                   Run all integration tests"
+          echo "    -f <FILTER_REGEX>    Run only those tests and examples matching the regular expression."
+          echo "                         For tests, the regular expression is split by unbracketed slash (/)"
+          echo "                         characters into a sequence of regular expressions, and each part"
+          echo "                         of a test's identifier must match the corresponding element in"
+          echo "                         the sequence, if any. Note that possible parents of matches are"
+          echo "                         run too, so that -f X/Y matches and runs and reports the result"
+          echo "                         of all tests matching X, even those without sub-tests matching Y,"
+          echo "                         because it must run them to look for those sub-tests. Note: this"
           echo "                         this option disables the '"back in time"' integration test"
           echo
           echo "List of integration tests:"
           for file in ./test/integration/*.go
-            do cat $file | grep -e "^func" | grep " *testing" | awk '{print $2}' | sed s/\(t// | awk '{print "    " $1}'
+            do cat $file | grep -e '^func Test' | awk '{print $2}' | sed s/\(t// | awk '{print "    " $1}'
           done
           exit 0
           ;;
         a )
-          docker-compose run -e RUN="integration" --use-aliases boulder ./test.sh
-          outcome_and_exit $?
+          trap "outcome_and_exit" EXIT 
+          docker-compose run --use-aliases boulder python3 test/integration-test.py --chisel --gotest
           ;;
-        s ) # -s (subset)
-          docker-compose run -e RUN="integration" -e INT_FILTER="$OPTARG" --use-aliases boulder ./test.sh
-          outcome_and_exit $?
+        s ) # -f (filter)
+          trap "outcome_and_exit" EXIT 
+          docker-compose run --use-aliases boulder python3 test/integration-test.py --chisel --gotest --filter "$OPTARG"
           ;;
        \? ) # catch invalid options
           echo "Invalid Option: $OPTARG use: -h for help" 1>&2
@@ -114,3 +134,6 @@ case "$subcommand" in
     shift $((OPTIND -1))
     ;;
 esac
+
+# set -e stops execution in the instance of a command or pipeline error; if we got here we assume success
+STATUS="SUCCESS"
