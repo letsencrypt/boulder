@@ -34,6 +34,18 @@ var (
 	stats = metrics.NoopRegisterer
 )
 
+func mustRead(path string) []byte {
+	f, err := os.Open(path)
+	if err != nil {
+		panic(fmt.Sprintf("open %#v: %s", path, err))
+	}
+	b, err := ioutil.ReadAll(f)
+	if err != nil {
+		panic(fmt.Sprintf("read all %#v: %s", path, err))
+	}
+	return b
+}
+
 func TestMux(t *testing.T) {
 	ocspReq, err := ocsp.ParseRequest(req)
 	if err != nil {
@@ -82,10 +94,11 @@ func TestMux(t *testing.T) {
 }
 
 func TestDBHandler(t *testing.T) {
-	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", nil, time.Second, blog.NewMock())
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, nil)
 	if err != nil {
-		t.Fatalf("makeDBSource: %s", err)
+		t.Fatalf("newFilter: %s", err)
 	}
+	src := &dbSource{mockSelector{}, f, time.Second, blog.NewMock()}
 
 	h := bocsp.NewResponder(src, stats, blog.NewMock())
 	w := httptest.NewRecorder()
@@ -204,8 +217,11 @@ func (bs brokenSelector) WithContext(context.Context) gorp.SqlExecutor {
 
 func TestErrorLog(t *testing.T) {
 	mockLog := blog.NewMock()
-	src, err := makeDBSource(brokenSelector{}, "./testdata/test-ca.der.pem", nil, time.Second, mockLog)
-	test.AssertNotError(t, err, "Failed to create broken dbMap")
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, nil)
+	if err != nil {
+		t.Fatalf("newFilter: %s", err)
+	}
+	src := &dbSource{brokenSelector{}, f, time.Second, mockLog}
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
@@ -216,33 +232,26 @@ func TestErrorLog(t *testing.T) {
 	test.AssertEquals(t, len(mockLog.GetAllMatching("Looking up OCSP response")), 1)
 }
 
-func mustRead(path string) []byte {
-	f, err := os.Open(path)
-	if err != nil {
-		panic(fmt.Sprintf("open %#v: %s", path, err))
-	}
-	b, err := ioutil.ReadAll(f)
-	if err != nil {
-		panic(fmt.Sprintf("read all %#v: %s", path, err))
-	}
-	return b
-}
-
 func TestRequiredSerialPrefix(t *testing.T) {
-	mockLog := blog.NewMock()
-	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", []string{"nope"}, time.Second, mockLog)
-	test.AssertNotError(t, err, "failed to create DBSource")
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"nope"})
+	if err != nil {
+		t.Fatalf("newFilter: %s", err)
+	}
+	src := &dbSource{mockSelector{}, f, time.Second, blog.NewMock()}
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
 
 	_, _, err = src.Response(ocspReq)
-	test.AssertEquals(t, err, bocsp.ErrNotFound)
+	test.AssertErrorIs(t, err, bocsp.ErrNotFound)
 
 	fmt.Println(core.SerialToString(ocspReq.SerialNumber))
 
-	src, err = makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", []string{"00", "nope"}, time.Second, mockLog)
-	test.AssertNotError(t, err, "failed to create DBSource")
+	f, err = newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"00", "nope"})
+	if err != nil {
+		t.Fatalf("newFilter: %s", err)
+	}
+	src = &dbSource{mockSelector{}, f, time.Second, blog.NewMock()}
 	_, _, err = src.Response(ocspReq)
 	test.AssertNotError(t, err, "src.Response failed with acceptable prefix")
 }
@@ -263,18 +272,23 @@ func (es expiredSelector) WithContext(context.Context) gorp.SqlExecutor {
 }
 
 func TestExpiredUnauthorized(t *testing.T) {
-	src, err := makeDBSource(expiredSelector{}, "./testdata/test-ca.der.pem", []string{"00"}, time.Second, blog.NewMock())
-	test.AssertNotError(t, err, "makeDBSource failed")
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"00"})
+	if err != nil {
+		t.Fatalf("newFilter: %s", err)
+	}
+	src := &dbSource{expiredSelector{}, f, time.Second, blog.NewMock()}
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
 
 	_, _, err = src.Response(ocspReq)
-	test.AssertEquals(t, err, bocsp.ErrNotFound)
+	test.AssertErrorIs(t, err, bocsp.ErrNotFound)
 }
 
 func TestKeyHashing(t *testing.T) {
-	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", []string{"00"}, time.Second, blog.NewMock())
-	test.AssertNotError(t, err, "makeDBSource failed")
-	test.AssertEquals(t, hex.EncodeToString(src.caKeyHash), "fb784f12f96015832c9f177f3419b32e36ea4189")
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"00"})
+	if err != nil {
+		t.Fatalf("newFilter: %s", err)
+	}
+	test.AssertEquals(t, hex.EncodeToString(f.issuerKeyHashes[0]), "fb784f12f96015832c9f177f3419b32e36ea4189")
 }
