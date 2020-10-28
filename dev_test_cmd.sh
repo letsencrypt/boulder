@@ -51,7 +51,7 @@ case "$subcommand" in
           echo "Usage:"
           echo "    -h                Displays this help message"
           echo "    -a                Perform all unit tests"
-          echo "    -d <directory>    Perform unit tests for a specific directory"
+          echo "    -d <DIRECTORY>    Perform unit tests for a specific directory"
           exit 0
           ;;
         a )  # -a (all)
@@ -105,7 +105,7 @@ case "$subcommand" in
           echo "Invalid Option: $OPTARG use: -h for help" 1>&2
           exit 1
           ;;
-        : ) # assigns $OPTARG for -d
+        : ) # assigns $OPTARG for -s
           echo "Invalid Option: $OPTARG requires an argument, use: -h for help" 1>&2
           exit 1
           ;;
