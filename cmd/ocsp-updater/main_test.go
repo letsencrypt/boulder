@@ -81,6 +81,48 @@ func nowNano(fc clock.Clock) int64 {
 	return fc.Now().UnixNano()
 }
 
+func TestStalenessHistogram(t *testing.T) {
+	updater, sa, _, fc, cleanUp := setup(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	parsedCertA, err := core.LoadCert("test-cert.pem")
+	test.AssertNotError(t, err, "Couldn't read test certificate")
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:      parsedCertA.Raw,
+		RegID:    reg.ID,
+		Ocsp:     nil,
+		Issued:   nowNano(fc),
+		IssuerID: 1,
+	})
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
+	parsedCertB, err := core.LoadCert("test-cert-b.pem")
+	test.AssertNotError(t, err, "Couldn't read test certificate")
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:      parsedCertB.Raw,
+		RegID:    reg.ID,
+		Ocsp:     nil,
+		Issued:   nowNano(fc),
+		IssuerID: 1,
+	})
+	test.AssertNotError(t, err, "Couldn't add test-cert-b.pem")
+
+	// Jump time forward by 2 hours so the ocspLastUpdate value will be older than
+	// the earliest lastUpdate time we care about.
+	fc.Set(fc.Now().Add(2 * time.Hour))
+	earliest := fc.Now().Add(-time.Hour)
+
+	// We should have 2 stale responses now.
+	statuses, err := updater.findStaleOCSPResponses(earliest, 10)
+	test.AssertNotError(t, err, "Couldn't find stale responses")
+	test.AssertEquals(t, len(statuses), 2)
+
+	samples := test.CountHistogramSamples(updater.stalenessHistogram)
+	if samples != 2 {
+		t.Errorf("Wrong number of samples for invalid validation. Expected 1, got %d", samples)
+	}
+}
+
 func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	updater, sa, _, fc, cleanUp := setup(t)
 	defer cleanUp()
