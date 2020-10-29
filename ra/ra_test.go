@@ -12,6 +12,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/big"
@@ -1425,7 +1426,11 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	}
 	// Verify it has no sub errors as there is only one bad name
 	test.AssertEquals(t, err.Error(), "too many certificates already issued for: example.com: see https://letsencrypt.org/docs/rate-limits/")
-	test.AssertEquals(t, len(err.(*berrors.BoulderError).SubErrors), 0)
+	var bErr *berrors.BoulderError
+	if !errors.As(err, &bErr) {
+		t.Errorf("Incorrect error type: got a %T expected %T", err, bErr)
+	}
+	test.AssertEquals(t, len(bErr.SubErrors), 0)
 
 	// Three base domains, two above threshold, one below
 	mockSA.nameCounts["example.com"] = nameCount("example.com", 10)
@@ -1438,7 +1443,10 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	}
 	// Verify it has two sub errors as there are two bad names
 	test.AssertEquals(t, err.Error(), "too many certificates already issued for multiple names (example.com and 2 others): see https://letsencrypt.org/docs/rate-limits/")
-	test.AssertEquals(t, len(err.(*berrors.BoulderError).SubErrors), 2)
+	if !errors.As(err, &bErr) {
+		t.Errorf("Incorrect error type: got a %T expected %T", err, bErr)
+	}
+	test.AssertEquals(t, len(bErr.SubErrors), 2)
 
 	// SA misbehaved and didn't send back a count for every input name
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"zombo.com", "www.example.com", "example.com"}, rlp, 99)
@@ -2022,7 +2030,8 @@ func TestRecheckCAAFail(t *testing.T) {
 
 	// NOTE(@cpu): Safe to skip the cast check here because we already checked err
 	// with `berrors.Is(err, berrors.CAA)`
-	berr, _ := err.(*berrors.BoulderError)
+	var berr *berrors.BoulderError
+	test.AssertEquals(t, errors.As(err, &berr), true)
 
 	// There should be two sub errors
 	test.AssertEquals(t, len(berr.SubErrors), 2)
@@ -2056,8 +2065,7 @@ func TestRecheckCAAFail(t *testing.T) {
 	// It should error
 	test.AssertError(t, err, "expected err from recheckCAA")
 	// It should be a berror
-	berr, ok := err.(*berrors.BoulderError)
-	test.AssertEquals(t, ok, true)
+	test.AssertEquals(t, errors.As(err, &berr), true)
 	// There should be *no* suberrors because there was only one overall error
 	test.AssertEquals(t, len(berr.SubErrors), 0)
 }
@@ -3520,8 +3528,8 @@ func TestWildcardOverlap(t *testing.T) {
 	if err == nil {
 		t.Errorf("Got no error, expected one")
 	}
-	berr, ok := err.(*berrors.BoulderError)
-	if !ok {
+	var berr *berrors.BoulderError
+	if !errors.As(err, &berr) {
 		t.Errorf("Error was wrong type: %T", err)
 	}
 	if berr.Type != berrors.Malformed {
@@ -3724,8 +3732,8 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			} else if tc.ExpectedProb != nil {
 				// If there is an expected `berrors.BoulderError` then we expect the
 				// `issueCertificateInner` error to be a `berrors.BoulderError`
-				berr, ok := err.(*berrors.BoulderError)
-				if !ok {
+				var berr *berrors.BoulderError
+				if !errors.As(err, &berr) {
 					t.Fatalf("Expected a boulder error, got %#v\n", err)
 				}
 				// Match the expected berror Type and Detail to the observed
