@@ -60,7 +60,7 @@ not present in the  `subjectAltName`.  Additionally, usage of the `commonName`
 was previously deprecated by the CA/B Forum and in earlier RFCs.
 
 For more information on this see [Pebble Issue #304](https://github.com/letsencrypt/pebble/issues/304)
-and [Pebble Issue #233] https://github.com/letsencrypt/pebble/issues/233
+and [Pebble Issue #233](https://github.com/letsencrypt/pebble/issues/233).
 
 
 ## RSA Key Size
@@ -72,5 +72,5 @@ which LetsEncrypt adheres to.
 Effective 2020-09-17, LetsEncrypt further requires all RSA keys for end-entity
 (leaf) certificates have a modulus of length 2048, 3072, or 4096. Other CAs may
 or may not have the same restricted set of supported RSA key sizes.
-For more information [read the Official Announcement ](https://community.letsencrypt.org/t/issuing-for-common-rsa-key-sizes-only/133839)
-.
+For more information 
+[read the Official Announcement](https://community.letsencrypt.org/t/issuing-for-common-rsa-key-sizes-only/133839).
