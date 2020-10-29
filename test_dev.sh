@@ -24,7 +24,7 @@ function outcome_and_exit {
 
 while getopts ":ha" opt; do # Parse options to the `test_cmd` command
   case ${opt} in
-    h )
+    h)
       echo
       echo "Usage:"
       echo "    -h             Displays this help message"
@@ -35,51 +35,48 @@ while getopts ":ha" opt; do # Parse options to the `test_cmd` command
       echo "    integration    Integration tests subcommand, run integration -h for more information"
       exit 0
       ;;
-    a ) # -a (all)
+    a) # -a (all)
+      trap "outcome_and_exit" EXIT
       docker-compose run --use-aliases boulder ./test.sh
       ;;
-   \? ) # catch invalid options
+    *) # catch invalid options
       echo "Invalid Option: $OPTARG use: -h for help" 1>&2
       exit 1
       ;;
   esac
 done
-shift $((OPTIND -1))
-subcommand=$1; shift
 
-# Catch any non-flagged subcommand usage
-if [ $# -eq 0 ]; then
-    echo "Invalid: $(basename "$0") <COMMAND> has required flags, use: -h for help"
-    exit 1
-fi
+if [ $# -gt 1 ] # Check for subcommands
+then
+  shift $((OPTIND -1))
+  subcommand="${1}"; shift
 
-case "$subcommand" in
+  case "$subcommand" in
   unit) # Parse options to the unit sub command
     while getopts ":d:ha" opt; do
       case ${opt} in
-        h ) # -h (help)
+        h) # -h (help)
           echo
           echo "Usage:"
           echo "    -h                Displays this help message"
           echo "    -a                Run all unit tests"
           echo "    -d <DIRECTORY>    Run unit tests for a specific directory"
-          STATUS="HELP"
           exit 0
           ;;
-        a )  # -a (all)
-          trap "outcome_and_exit" EXIT 
+        a)  # -a (all)
+          trap "outcome_and_exit" EXIT
           docker-compose run -e RUN="unit" --use-aliases boulder ./test.sh
           ;;
-        d ) # -d (directory)
-          trap "outcome_and_exit" EXIT 
+        d) # -d (directory)
+          trap "outcome_and_exit" EXIT
           docker-compose run --use-aliases boulder go test $OPTARG
           ;;
-       \? ) # catch invalid options
-          echo "Invalid Option: $OPTARG use: -h for help" 1>&2
+        :) # assigns $OPTARG for -d
+          echo "Invalid Option: $OPTARG requires an argument, use: -h for help" 1>&2
           exit 1
           ;;
-        : ) # assigns $OPTARG for -d
-          echo "Invalid Option: $OPTARG requires an argument, use: -h for help" 1>&2
+        *) # catch invalid options
+          echo "Invalid Option: $OPTARG use: -h for help" 1>&2
           exit 1
           ;;
       esac
@@ -92,7 +89,7 @@ case "$subcommand" in
   integration) # Parse options to the integration sub command
     while getopts ":f:ha" opt; do
       case ${opt} in
-        h ) # -h (help)
+        h) # -h (help)
           echo
           echo "Usage:"
           echo "    -h                   Displays this help message"
@@ -113,20 +110,20 @@ case "$subcommand" in
           done
           exit 0
           ;;
-        a )
-          trap "outcome_and_exit" EXIT 
+        a)
+          trap "outcome_and_exit" EXIT
           docker-compose run --use-aliases boulder python3 test/integration-test.py --chisel --gotest
           ;;
-        f ) # -f (filter)
-          trap "outcome_and_exit" EXIT 
+        f) # -f (filter)
+          trap "outcome_and_exit" EXIT
           docker-compose run --use-aliases boulder python3 test/integration-test.py --chisel --gotest --filter "$OPTARG"
           ;;
-       \? ) # catch invalid options
-          echo "Invalid Option: $OPTARG use: -h for help" 1>&2
+        :) # assigns $OPTARG for -f
+          echo "Invalid Option: $OPTARG requires an argument, use: -h for help" 1>&2
           exit 1
           ;;
-        : ) # assigns $OPTARG for -f
-          echo "Invalid Option: $OPTARG requires an argument, use: -h for help" 1>&2
+        *) # catch invalid options
+          echo "Invalid Option: $OPTARG use: -h for help" 1>&2
           exit 1
           ;;
       esac
@@ -134,6 +131,6 @@ case "$subcommand" in
     shift $((OPTIND -1))
     ;;
 esac
-
+fi
 # set -e stops execution in the instance of a command or pipeline error; if we got here we assume success
 STATUS="SUCCESS"
