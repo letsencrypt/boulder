@@ -165,7 +165,6 @@ regular expression format:
 ./test_dev.sh integration -h
 ```
 
-
 The configuration in docker-compose.yml mounts your `$GOPATH` on top of its
 own `$GOPATH` so you can edit code on your host and it will be immediately
 reflected inside the Docker containers run with docker-compose.
