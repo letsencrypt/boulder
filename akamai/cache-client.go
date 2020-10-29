@@ -357,13 +357,11 @@ func generateOCSPCacheKeys(req []byte, ocspServer string) []string {
 	}
 }
 
-// GeneratePurgeURLs ...
-func GeneratePurgeURLs(der []byte, issuer *x509.Certificate) ([]string, error) {
-	cert, err := x509.ParseCertificate(der)
-	if err != nil {
-		return nil, err
-	}
-
+// GeneratePurgeURLs generates akamai URLs that can be POSTed to in order to
+// purge akamai's cache of the corresponding OCSP responses. The URLs encode
+// the contents of the OCSP request, so this method constructs a full OCSP
+// request.
+func GeneratePurgeURLs(cert, issuer *x509.Certificate) ([]string, error) {
 	req, err := ocsp.CreateRequest(cert, issuer, nil)
 	if err != nil {
 		return nil, err
