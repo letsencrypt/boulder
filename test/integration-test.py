@@ -8,7 +8,6 @@ and test cases that have to run at a specific point in the cycle (e.g. after all
 other test cases) are also in this file.
 """
 import argparse
-import atexit
 import datetime
 import inspect
 import json
