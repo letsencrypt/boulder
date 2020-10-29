@@ -10,8 +10,8 @@ fi
 # u: Treat unset variables as an error and exit immediately
 set -eu
 
-# Default to FAILED
-STATUS="FAILED"
+# Default to FAILURE
+STATUS="FAILURE"
 
 function outcome_and_exit {
   if [ $STATUS == "SUCCESS" ]
@@ -90,7 +90,7 @@ esac
 
 case "$subcommand" in
   integration) # Parse options to the integration sub command
-    while getopts ":s:ha" opt; do
+    while getopts ":f:ha" opt; do
       case ${opt} in
         h ) # -h (help)
           echo
@@ -125,7 +125,7 @@ case "$subcommand" in
           echo "Invalid Option: $OPTARG use: -h for help" 1>&2
           exit 1
           ;;
-        : ) # assigns $OPTARG for -s
+        : ) # assigns $OPTARG for -f
           echo "Invalid Option: $OPTARG requires an argument, use: -h for help" 1>&2
           exit 1
           ;;

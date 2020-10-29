@@ -387,10 +387,3 @@ def run_cert_checker():
 
 if __name__ == "__main__":
     main()
-
-@atexit.register
-def stop():
-    if exit_status == 0:
-        print("\n\nSUCCESS")
-    else:
-        print("\n\nFAILURE")
