@@ -85,8 +85,7 @@ func TestJSONWebKeyBadJSON(t *testing.T) {
 	err := scanner.Binder(&badJSON, &out)
 	test.AssertError(t, err, "expected error from scanner.Binder")
 	var badJSONErr errBadJSON
-	ok := errors.As(err, &badJSONErr)
-	test.AssertEquals(t, ok, true)
+	test.AssertEquals(t, errors.As(err, &badJSONErr), true)
 	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 }
 
