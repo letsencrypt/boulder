@@ -1,6 +1,7 @@
 package sa
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/letsencrypt/boulder/grpc"
@@ -35,8 +36,8 @@ func TestModelToRegistrationBadJSON(t *testing.T) {
 		Key: badJSON,
 	})
 	test.AssertError(t, err, "expected error from truncated reg model key")
-	badJSONErr, ok := err.(errBadJSON)
-	test.AssertEquals(t, ok, true)
+	var badJSONErr errBadJSON
+	test.AssertEquals(t, errors.As(err, &badJSONErr), true)
 	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 }
 
@@ -170,8 +171,8 @@ func TestModelToChallengeBadJSON(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			_, err := modelToChallenge(tc.Model)
 			test.AssertError(t, err, "expected error from modelToChallenge")
-			badJSONErr, ok := err.(errBadJSON)
-			test.AssertEquals(t, ok, true)
+			var badJSONErr errBadJSON
+			test.AssertEquals(t, errors.As(err, &badJSONErr), true)
 			test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 		})
 	}
@@ -185,8 +186,8 @@ func TestModelToOrderBadJSON(t *testing.T) {
 		Error: badJSON,
 	})
 	test.AssertError(t, err, "expected error from modelToOrder")
-	badJSONErr, ok := err.(errBadJSON)
-	test.AssertEquals(t, ok, true)
+	var badJSONErr errBadJSON
+	test.AssertEquals(t, errors.As(err, &badJSONErr), true)
 	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 }
 
@@ -217,8 +218,8 @@ func TestPopulateAttemptedFieldsBadJSON(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			err := populateAttemptedFields(*tc.Model, &corepb.Challenge{})
 			test.AssertError(t, err, "expected error from populateAttemptedFields")
-			badJSONErr, ok := err.(errBadJSON)
-			test.AssertEquals(t, ok, true)
+			var badJSONErr errBadJSON
+			test.AssertEquals(t, errors.As(err, &badJSONErr), true)
 			test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 		})
 	}
