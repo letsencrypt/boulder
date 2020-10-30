@@ -61,9 +61,10 @@ type OCSPUpdater struct {
 	// issuer is used to generate OCSP request URLs to purge
 	issuer *x509.Certificate
 
-	genStoreHistogram prometheus.Histogram
-	generatedCounter  *prometheus.CounterVec
-	storedCounter     *prometheus.CounterVec
+	stalenessHistogram prometheus.Histogram
+	genStoreHistogram  prometheus.Histogram
+	generatedCounter   *prometheus.CounterVec
+	storedCounter      *prometheus.CounterVec
 }
 
 func newUpdater(
@@ -107,6 +108,12 @@ func newUpdater(
 		Help: "A histogram of ocsp-updater tick latencies labelled by result and whether the tick was considered longer than expected",
 	}, []string{"result", "long"})
 	stats.MustRegister(tickHistogram)
+	stalenessHistogram := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "ocsp_status_staleness",
+		Help:    "How long past the refresh time a status is when we try to refresh it. Will always be > 0, but must stay well below 12 hours.",
+		Buckets: []float64{10, 100, 1000, 10000, 43200},
+	})
+	stats.MustRegister(stalenessHistogram)
 
 	updater := OCSPUpdater{
 		clk:                          clk,
@@ -119,6 +126,7 @@ func newUpdater(
 		genStoreHistogram:            genStoreHistogram,
 		generatedCounter:             generatedCounter,
 		storedCounter:                storedCounter,
+		stalenessHistogram:           stalenessHistogram,
 		tickHistogram:                tickHistogram,
 		tickWindow:                   config.OldOCSPWindow.Duration,
 		batchSize:                    config.OldOCSPBatchSize,
@@ -150,8 +158,14 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 		},
 	)
 	if db.IsNoRows(err) {
-		return statuses, nil
+		return nil, nil
 	}
+
+	for _, status := range statuses {
+		staleness := oldestLastUpdatedTime.Sub(status.OCSPLastUpdated).Seconds()
+		updater.stalenessHistogram.Observe(staleness)
+	}
+
 	return statuses, err
 }
 

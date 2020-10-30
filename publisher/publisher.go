@@ -10,6 +10,7 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -254,8 +255,9 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 			return nil, err
 		}
 		var body string
-		if respErr, ok := err.(jsonclient.RspError); ok && respErr.StatusCode < 500 {
-			body = string(respErr.Body)
+		var rspErr jsonclient.RspError
+		if errors.As(err, &rspErr) && rspErr.StatusCode < 500 {
+			body = string(rspErr.Body)
 		}
 		pub.log.AuditErrf("Failed to submit certificate to CT log at %s: %s Body=%q",
 			ctLog.uri, err, body)
@@ -291,7 +293,8 @@ func (pub *Impl) singleLogSubmit(
 			status = "canceled"
 		}
 		httpStatus := ""
-		if rspError, ok := err.(ctClient.RspError); ok && rspError.StatusCode != 0 {
+		var rspError ctClient.RspError
+		if errors.As(err, &rspError) && rspError.StatusCode != 0 {
 			httpStatus = fmt.Sprintf("%d", rspError.StatusCode)
 		}
 		pub.metrics.submissionLatency.With(prometheus.Labels{

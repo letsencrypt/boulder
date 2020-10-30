@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -864,7 +865,8 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 		// If the result had a CAA boulder error, construct a suberror with the
 		// identifier from the authorization that was checked.
 		if err := recheckResult.err; err != nil {
-			if bErr, _ := err.(*berrors.BoulderError); berrors.Is(err, berrors.CAA) {
+			var bErr *berrors.BoulderError
+			if errors.As(err, &bErr) && bErr.Type == berrors.CAA {
 				subErrors = append(subErrors, berrors.SubBoulderError{
 					Identifier:   recheckResult.authz.Identifier,
 					BoulderError: bErr})
@@ -1709,7 +1711,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 			return err
 		}
 	}
-	purgeURLs, err := akamai.GeneratePurgeURLs(cert.Raw, ra.issuer.Certificate)
+	purgeURLs, err := akamai.GeneratePurgeURLs(&cert, ra.issuer.Certificate)
 	if err != nil {
 		return err
 	}

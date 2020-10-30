@@ -12,10 +12,11 @@ ACME Servers, including the [Pebble](https://github.com/letsencrypt/pebble)
 test server.
 
 The following items are a partial listing of RFC-conformant design decisions
-Boulder has made.  This listing is not complete, and is based on known details
-which have caused issues for developers in the past. This listing may not
-reflect the current status of Boulder or the configuration of LetsEncrypt's
-production instance and is provided only as a reference for client developers.
+Boulder and/or LetsEncrypt have made.  This listing is not complete, and is
+based on known details which have caused issues for developers in the past. This
+listing may not reflect the current status of Boulder or the configuration of
+LetsEncrypt's production instance and is provided only as a reference for client
+developers.
 
 Please note: these design implementation decisions are fully conformant with the
 RFC specification and are not
@@ -58,12 +59,18 @@ extension, and will reject a CSR if a domain specified in the `commonName` is
 not present in the  `subjectAltName`.  Additionally, usage of the `commonName`
 was previously deprecated by the CA/B Forum and in earlier RFCs.
 
-For more information on this see [Pebble Issue #304](https://github.com/letsencrypt/pebble/issues/304) and
-[Pebble Issue #233] https://github.com/letsencrypt/pebble/issues/233
+For more information on this see [Pebble Issue #304](https://github.com/letsencrypt/pebble/issues/304)
+and [Pebble Issue #233](https://github.com/letsencrypt/pebble/issues/233).
 
 
+## RSA Key Size
 
+The ACME specification is silent as to minimum key size.
+The [CA/Browser Forum](https://cabforum.org/) sets the key size requirements
+which LetsEncrypt adheres to.
 
-
-
-
+Effective 2020-09-17, LetsEncrypt further requires all RSA keys for end-entity
+(leaf) certificates have a modulus of length 2048, 3072, or 4096. Other CAs may
+or may not have the same restricted set of supported RSA key sizes.
+For more information 
+[read the Official Announcement](https://community.letsencrypt.org/t/issuing-for-common-rsa-key-sizes-only/133839).

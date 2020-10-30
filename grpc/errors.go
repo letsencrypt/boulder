@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 
 	"google.golang.org/grpc"
@@ -27,7 +28,8 @@ func wrapError(ctx context.Context, err error) error {
 	if err == nil {
 		return nil
 	}
-	if berr, ok := err.(*berrors.BoulderError); ok {
+	var berr *berrors.BoulderError
+	if errors.As(err, &berr) {
 		pairs := []string{
 			"errortype", strconv.Itoa(int(berr.Type)),
 		}
@@ -96,7 +98,16 @@ func unwrapError(err error, md metadata.MD) error {
 					unwrappedErr,
 				)
 			}
-			outErr = (outErr.(*berrors.BoulderError)).WithSubErrors(suberrs)
+			var berr *berrors.BoulderError
+			if errors.As(outErr, &berr) {
+				outErr = berr.WithSubErrors(suberrs)
+			} else {
+				return fmt.Errorf(
+					"expected type of outErr to be %T got %T: %q",
+					berr, outErr,
+					outErr.Error(),
+				)
+			}
 		}
 		return outErr
 	}
