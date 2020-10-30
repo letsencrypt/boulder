@@ -13,7 +13,7 @@ set -eu
 # Default to FAILURE
 STATUS="FAILURE"
 
-function outcome_and_exit {
+function print_outcome {
   if [ $STATUS == "SUCCESS" ]
   then
     echo -e "\e[32m$STATUS\e[0m"
@@ -28,7 +28,7 @@ while getopts ":ha" opt; do # Parse options to the `test_cmd` command
       echo
       echo "Usage:"
       echo "    -h             Displays this help message"
-      echo "    -a             Run all unit and integration tests"
+      echo "    -a             Run all lint, unit, and integration tests"
       echo
       echo "Commands:"
       echo "    unit           Unit tests subcommand, run unit -h for more information"
@@ -36,7 +36,7 @@ while getopts ":ha" opt; do # Parse options to the `test_cmd` command
       exit 0
       ;;
     a) # -a (all)
-      trap "outcome_and_exit" EXIT
+      trap "print_outcome" EXIT
       docker-compose run --use-aliases boulder ./test.sh
       ;;
     *) # catch invalid options
@@ -64,11 +64,11 @@ then
           exit 0
           ;;
         a)  # -a (all)
-          trap "outcome_and_exit" EXIT
-          docker-compose run -e RUN="unit" --use-aliases boulder ./test.sh
+          trap "print_outcome" EXIT
+          docker-compose run --use-aliases boulder go test -p 1 ./...
           ;;
         d) # -d (directory)
-          trap "outcome_and_exit" EXIT
+          trap "print_outcome" EXIT
           docker-compose run --use-aliases boulder go test $OPTARG
           ;;
         :) # assigns $OPTARG for -d
@@ -87,35 +87,37 @@ esac
 
 case "$subcommand" in
   integration) # Parse options to the integration sub command
-    while getopts ":f:ha" opt; do
+    while getopts ":f:lha" opt; do
       case ${opt} in
         h) # -h (help)
           echo
           echo "Usage:"
           echo "    -h                   Displays this help message"
           echo "    -a                   Run all integration tests"
-          echo "    -f <FILTER_REGEX>    Run only those tests and examples matching the regular expression."
-          echo "                         For tests, the regular expression is split by unbracketed slash (/)"
-          echo "                         characters into a sequence of regular expressions, and each part"
-          echo "                         of a test's identifier must match the corresponding element in"
-          echo "                         the sequence, if any. Note that possible parents of matches are"
-          echo "                         run too, so that -f X/Y matches and runs and reports the result"
-          echo "                         of all tests matching X, even those without sub-tests matching Y,"
-          echo "                         because it must run them to look for those sub-tests. Note: this"
-          echo "                         this option disables the '"back in time"' integration test"
+          echo "    -l                   List of available integration tests"
+          echo "    -f <FILTER_REGEX>    Run only those tests and examples matching the regular expression"
           echo
-          echo "List of integration tests:"
-          for file in ./test/integration/*.go
-            do cat $file | grep -e '^func Test' | awk '{print $2}' | sed s/\(t// | awk '{print "    " $1}'
-          done
+          echo "                         Note:"
+          echo "                         This option disables the '"back in time"' integration test setup"
+          echo
+          echo "                         For tests, the regular expression is split by unbracketed slash (/)"
+          echo "                         characters into a sequence of regular expressions"
+          echo
+          echo "                         Example:"
+          echo "                         ./$(basename "$0") integration -f TestAkamaiPurgerDrainQueueFails/TestWFECORS"
           exit 0
           ;;
         a)
-          trap "outcome_and_exit" EXIT
+          trap "print_outcome" EXIT
           docker-compose run --use-aliases boulder python3 test/integration-test.py --chisel --gotest
           ;;
+        l) # -l (list)
+          for file in ./test/integration/*.go
+            do cat $file | grep -e '^func Test' | awk '{print $2}' | sed s/\(t//
+          done
+          ;;
         f) # -f (filter)
-          trap "outcome_and_exit" EXIT
+          trap "print_outcome" EXIT
           docker-compose run --use-aliases boulder python3 test/integration-test.py --chisel --gotest --filter "$OPTARG"
           ;;
         :) # assigns $OPTARG for -f

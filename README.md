@@ -152,17 +152,16 @@ To run all integration tests:
 ./test_dev.sh integration -a
 ```
 
-To run specific integration tests:
+To run specific integration tests (use -h for an example of the regex):
 
 ```shell
 ./test_dev.sh integration -f <FILTER_REGEX>
 ```
 
-To get a list of available integration tests and a description of the
-regular expression format:
+To get a list of available integration tests:
 
 ```shell
-./test_dev.sh integration -h
+./test_dev.sh integration -l
 ```
 
 The configuration in docker-compose.yml mounts your `$GOPATH` on top of its
@@ -198,6 +197,26 @@ address found in the command above)
 
 ```shell
 docker-compose run --use-aliases -e FAKE_DNS=172.17.0.1 --service-ports boulder ./start.py
+```
+
+Running tests without the `./test_dev.sh` wrapper:
+
+Run all unit tests
+
+```shell
+docker-compose run --use-aliases boulder go test -p 1 ./...
+```
+
+Run unit tests for a specific directory:
+
+```shell
+docker-compose run --use-aliases boulder go test $OPTARG
+```
+
+Run integration tests (omit `--pattern <REGEX>` to run all):
+
+```shell
+docker-compose run --use-aliases boulder python3 test/integration-test.py --chisel --gotest --filter <REGEX>
 ```
 
 Boulder's default VA configuration (`test/config/va.json`) is configured to
