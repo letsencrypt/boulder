@@ -85,51 +85,79 @@ func main() {
 	} else if err != nil && !os.IsNotExist(err) {
 		log.Fatalf("statting %q: %s", outputFile, err)
 	}
-	// Create a SoftHSM slot for the root signing key
-	rootKeySlot, err := createSlot("root signing key (rsa)")
+	// Create SoftHSM slots for the root signing keys
+	rsaRootKeySlot, err := createSlot("root signing key (rsa)")
+	cmd.FailOnError(err, "failed creating softhsm2 slot for RSA root key")
+	ecdsaRootKeySlot, err := createSlot("root signing key (ecdsa)")
 	cmd.FailOnError(err, "failed creating softhsm2 slot for root key")
 
-	// Generate the root signing key and certificate
-	err = genKey("test/cert-ceremonies/root-ceremony-rsa.yaml", rootKeySlot)
-	cmd.FailOnError(err, "failed to generate root key + root cert")
+	// Generate the root signing keys and certificates
+	err = genKey("test/cert-ceremonies/root-ceremony-rsa.yaml", rsaRootKeySlot)
+	cmd.FailOnError(err, "failed to generate RSA root key + root cert")
+	err = genKey("test/cert-ceremonies/root-ceremony-ecdsa.yaml", ecdsaRootKeySlot)
+	cmd.FailOnError(err, "failed to generate ECDSA root key + root cert")
 
-	// Create a SoftHSM slot for the intermediate signing key
-	intermediateKeySlot, err := createSlot("intermediate signing key (rsa)")
-	cmd.FailOnError(err, "failed to create softhsm2 slot for intermediate key")
+	// Create SoftHSM slots for the intermediate signing keys
+	rsaIntermediateKeySlot, err := createSlot("intermediate signing key (rsa)")
+	cmd.FailOnError(err, "failed to create softhsm2 slot for RSA intermediate key")
+	ecdsaIntermediateKeySlot, err := createSlot("intermediate signing key (ecdsa)")
+	cmd.FailOnError(err, "failed to create softhsm2 slot for ECDSA intermediate key")
 
-	// Generate the intermediate signing key
-	err = genKey("test/cert-ceremonies/intermediate-key-ceremony-rsa.yaml", intermediateKeySlot)
-	cmd.FailOnError(err, "failed to generate intermediate key")
+	// Generate the intermediate signing keys
+	err = genKey("test/cert-ceremonies/intermediate-key-ceremony-rsa.yaml", rsaIntermediateKeySlot)
+	cmd.FailOnError(err, "failed to generate RSA intermediate key")
+	err = genKey("test/cert-ceremonies/intermediate-key-ceremony-ecdsa.yaml", ecdsaIntermediateKeySlot)
+	cmd.FailOnError(err, "failed to generate ECDSA intermediate key")
 
-	// Create the A intermediate ceremony config file with the root
-	// signing key slot and ID
-	tmpRSAIntermediateA, err := rewriteConfig("test/cert-ceremonies/intermediate-ceremony-rsa.yaml", map[string]string{
-		"SlotID":     rootKeySlot,
+	// Create the A intermediate ceremony config files with the root
+	// signing key slots and IDs
+	rsaTmpIntermediateA, err := rewriteConfig("test/cert-ceremonies/intermediate-ceremony-rsa.yaml", map[string]string{
+		"SlotID":     rsaRootKeySlot,
 		"CertPath":   "/tmp/intermediate-cert-rsa-a.pem",
 		"CommonName": "CA intermediate (RSA) A",
 	})
-	cmd.FailOnError(err, "failed to rewrite intermediate cert config with key ID")
-	// Create the A intermediate certificate
-	err = genCert(tmpRSAIntermediateA)
-	cmd.FailOnError(err, "failed to generate intermediate cert")
+	cmd.FailOnError(err, "failed to rewrite RSA intermediate cert config with key ID")
+	ecdsaTmpIntermediateA, err := rewriteConfig("test/cert-ceremonies/intermediate-ceremony-ecdsa.yaml", map[string]string{
+		"SlotID":     ecdsaRootKeySlot,
+		"CertPath":   "/tmp/intermediate-cert-ecdsa-a.pem",
+		"CommonName": "CA intermediate (ECDSA) A",
+	})
+	cmd.FailOnError(err, "failed to rewrite ECDSA intermediate cert config with key ID")
 
-	// Create the B intermediate ceremony config file with the root
-	// signing key slot and ID
-	tmpRSAIntermediateB, err := rewriteConfig("test/cert-ceremonies/intermediate-ceremony-rsa.yaml", map[string]string{
-		"SlotID":     rootKeySlot,
+	// Create the A intermediate certificates
+	err = genCert(rsaTmpIntermediateA)
+	cmd.FailOnError(err, "failed to generate RSA intermediate cert")
+	err = genCert(ecdsaTmpIntermediateA)
+	cmd.FailOnError(err, "failed to generate ECDSA intermediate cert")
+
+	// Create the B intermediate ceremony config files with the root
+	// signing key slots and IDs
+	rsaTmpIntermediateB, err := rewriteConfig("test/cert-ceremonies/intermediate-ceremony-rsa.yaml", map[string]string{
+		"SlotID":     rsaRootKeySlot,
 		"CertPath":   "/tmp/intermediate-cert-rsa-b.pem",
 		"CommonName": "CA intermediate (RSA) B",
 	})
-	cmd.FailOnError(err, "failed to rewrite intermediate cert config with key ID")
-	// Create the B intermediate certificate
-	err = genCert(tmpRSAIntermediateB)
-	cmd.FailOnError(err, "failed to generate intermediate cert")
-
-	// Create an OCSP response for the A intermediate
-	tmpOCSPConfig, err := rewriteConfig("test/cert-ceremonies/intermediate-ocsp.yaml", map[string]string{
-		"SlotID": rootKeySlot,
+	cmd.FailOnError(err, "failed to rewrite RSA intermediate cert config with key ID")
+	ecdsaTmpIntermediateB, err := rewriteConfig("test/cert-ceremonies/intermediate-ceremony-ecdsa.yaml", map[string]string{
+		"SlotID":     ecdsaRootKeySlot,
+		"CertPath":   "/tmp/intermediate-cert-ecdsa-b.pem",
+		"CommonName": "CA intermediate (ECDSA) B",
 	})
-	cmd.FailOnError(err, "failed to rewrite intermediate OCSP config with key ID")
-	err = genCert(tmpOCSPConfig)
-	cmd.FailOnError(err, "failed to generate intermediate OCSP response")
+	cmd.FailOnError(err, "failed to rewrite ECDSA intermediate cert config with key ID")
+
+	// Create the B intermediate certificates
+	err = genCert(rsaTmpIntermediateB)
+	cmd.FailOnError(err, "failed to generate RSA intermediate cert")
+	err = genCert(ecdsaTmpIntermediateB)
+	cmd.FailOnError(err, "failed to generate ECDSA intermediate cert")
+
+	// Rewrite OCSP configs and generate OCSP responses for the A intermediates
+	rsaTmpOCSPConfig, err := rewriteConfig("test/cert-ceremonies/intermediate-ocsp-rsa.yaml", map[string]string{
+		"SlotID": rsaRootKeySlot,
+	})
+	cmd.FailOnError(err, "failed to rewrite RSA intermediate OCSP config with key ID")
+	err = genCert(rsaTmpOCSPConfig)
+	cmd.FailOnError(err, "failed to generate RSA intermediate OCSP response")
+	// We do not generate OCSP for the ECDSA intermediates, as our new issuers
+	// only use CRLs, not OCSP.
 }

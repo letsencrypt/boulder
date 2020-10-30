@@ -1,6 +1,7 @@
 package errors
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/letsencrypt/boulder/identifier"
@@ -67,11 +68,8 @@ func New(errType ErrorType, msg string, args ...interface{}) error {
 
 // Is is a convenience function for testing the internal type of an BoulderError
 func Is(err error, errType ErrorType) bool {
-	bErr, ok := err.(*BoulderError)
-	if !ok {
-		return false
-	}
-	return bErr.Type == errType
+	var bErr *BoulderError
+	return errors.As(err, &bErr) && bErr.Type == errType
 }
 
 func InternalServerError(msg string, args ...interface{}) error {
