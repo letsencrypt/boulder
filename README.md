@@ -210,10 +210,10 @@ docker-compose run --use-aliases boulder go test -p 1 ./...
 Run unit tests for a specific directory:
 
 ```shell
-docker-compose run --use-aliases boulder go test $OPTARG
+docker-compose run --use-aliases boulder go test <DIRECTORY>
 ```
 
-Run integration tests (omit `--pattern <REGEX>` to run all):
+Run integration tests (omit `--filter <REGEX>` to run all):
 
 ```shell
 docker-compose run --use-aliases boulder python3 test/integration-test.py --chisel --gotest --filter <REGEX>

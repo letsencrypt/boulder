@@ -2,7 +2,7 @@
 
 # Catch any non-flagged use
 if [ $# -eq 0 ]; then
-    echo "Invalid: $(basename "$0") has required flags, use: -h for help"
+    echo "Invalid: "$(basename "$0")" has required flags, use: -h for help"
     exit 1
 fi
 
@@ -10,127 +10,158 @@ fi
 # u: Treat unset variables as an error and exit immediately
 set -eu
 
-# Default to FAILURE
+# Defaults
 STATUS="FAILURE"
+USAGE=""
+OPTARG=""
 
-function print_outcome {
-  if [ $STATUS == "SUCCESS" ]
+function print_outcome() {
+  if [ "$STATUS" == SUCCESS ]
   then
-    echo -e "\e[32m$STATUS\e[0m"
+    echo -e "\e[32m"$STATUS"\e[0m"
   else
-    echo -e "\e[31m$STATUS\e[0m"
+    echo -e "\e[31m"$STATUS"\e[0m"
   fi
 }
 
+function trap_outcome_on_exit() {
+  trap "print_outcome" EXIT
+}
+
+function print_usage_exit() {
+  echo "$USAGE" 1>&2
+  exit 0
+}
+
+function print_invalid_option_missing_argument_exit() {
+  echo "Invalid Option: $OPTARG requires an argument, use: -h for help" 1>&2
+  exit 1
+}
+
+function print_invalid_option_exit() {
+  echo "Invalid Option: $OPTARG use: -h for help" 1>&2
+  exit 1
+}
+
+function print_list_of_integration_tests() {
+  for file in ./test/integration/*.go; do
+    [ -e "$file" ] || continue
+    cat "$file" | grep -e '^func Test' | awk '{print $2}' | sed s/\(t//
+  done
+  exit 0
+}
+
+USAGE="$(cat -- <<-EOM
+Usage:
+    -h             Displays this help message
+    -a             Run all lint, unit, and integration tests
+
+Commands:
+    unit           Unit tests subcommand, run unit -h for more information
+    integration    Integration tests subcommand, run integration -h for more information
+EOM
+)"
+
 while getopts ":ha" opt; do # Parse options to the `test_cmd` command
-  case ${opt} in
-    h)
-      echo
-      echo "Usage:"
-      echo "    -h             Displays this help message"
-      echo "    -a             Run all lint, unit, and integration tests"
-      echo
-      echo "Commands:"
-      echo "    unit           Unit tests subcommand, run unit -h for more information"
-      echo "    integration    Integration tests subcommand, run integration -h for more information"
-      exit 0
+  case "${opt}" in
+    h) 
+      print_usage_exit
       ;;
-    a) # -a (all)
-      trap "print_outcome" EXIT
+    a)
+      trap_outcome_on_exit
       docker-compose run --use-aliases boulder ./test.sh
       ;;
-    *) # catch invalid options
-      echo "Invalid Option: $OPTARG use: -h for help" 1>&2
-      exit 1
+    *)
+      print_invalid_option_exit
       ;;
   esac
 done
 
 if [ $# -gt 1 ] # Check for subcommands
 then
-  shift $((OPTIND -1))
-  subcommand="${1}"; shift
+  shift "$((OPTIND -1))"
+  subcommand="${1}" && shift
+
+USAGE="$(cat -- <<-EOM
+Usage:"
+    -h                Displays this help message
+    -a                Run all unit tests
+    -d <DIRECTORY>    Run unit tests for a specific directory
+EOM
+)"
 
   case "$subcommand" in
   unit) # Parse options to the unit sub command
     while getopts ":d:ha" opt; do
-      case ${opt} in
-        h) # -h (help)
-          echo
-          echo "Usage:"
-          echo "    -h                Displays this help message"
-          echo "    -a                Run all unit tests"
-          echo "    -d <DIRECTORY>    Run unit tests for a specific directory"
-          exit 0
+      case "${opt}" in
+        h) 
+          print_usage_exit
           ;;
-        a)  # -a (all)
-          trap "print_outcome" EXIT
+        a)
+          trap_outcome_on_exit
           docker-compose run --use-aliases boulder go test -p 1 ./...
           ;;
-        d) # -d (directory)
-          trap "print_outcome" EXIT
-          docker-compose run --use-aliases boulder go test $OPTARG
+        d)
+          trap_outcome_on_exit
+          docker-compose run --use-aliases boulder go test "$OPTARG"
           ;;
-        :) # assigns $OPTARG for -d
-          echo "Invalid Option: $OPTARG requires an argument, use: -h for help" 1>&2
-          exit 1
+        :) # <DIRECTORY>
+          print_invalid_option_missing_argument_exit
           ;;
-        *) # catch invalid options
-          echo "Invalid Option: $OPTARG use: -h for help" 1>&2
-          exit 1
+        *)
+          print_invalid_option_exit
           ;;
       esac
     done
-    shift $((OPTIND -1))
+    shift "$((OPTIND -1))"
     ;;
 esac
+
+USAGE="$(cat -- <<-EOM
+Usage:"
+    -h                   Displays this help message"
+    -a                   Run all integration tests"
+    -l                   List of available integration tests"
+    -f <FILTER_REGEX>    Run only those tests and examples matching the regular expression"
+
+                         Note:"
+                         This option disables the '"back in time"' integration test setup"
+
+                         For tests, the regular expression is split by unbracketed slash (/)"
+                         characters into a sequence of regular expressions"
+
+                         Example:"
+                         ./"$(basename -- "$0")" integration -f TestAkamaiPurgerDrainQueueFails/TestWFECORS"
+EOM
+)"
 
 case "$subcommand" in
   integration) # Parse options to the integration sub command
     while getopts ":f:lha" opt; do
-      case ${opt} in
-        h) # -h (help)
-          echo
-          echo "Usage:"
-          echo "    -h                   Displays this help message"
-          echo "    -a                   Run all integration tests"
-          echo "    -l                   List of available integration tests"
-          echo "    -f <FILTER_REGEX>    Run only those tests and examples matching the regular expression"
-          echo
-          echo "                         Note:"
-          echo "                         This option disables the '"back in time"' integration test setup"
-          echo
-          echo "                         For tests, the regular expression is split by unbracketed slash (/)"
-          echo "                         characters into a sequence of regular expressions"
-          echo
-          echo "                         Example:"
-          echo "                         ./$(basename "$0") integration -f TestAkamaiPurgerDrainQueueFails/TestWFECORS"
-          exit 0
+      case "${opt}" in
+        h)
+          print_usage_exit
           ;;
         a)
-          trap "print_outcome" EXIT
+          trap_outcome_on_exit
           docker-compose run --use-aliases boulder python3 test/integration-test.py --chisel --gotest
           ;;
-        l) # -l (list)
-          for file in ./test/integration/*.go
-            do cat $file | grep -e '^func Test' | awk '{print $2}' | sed s/\(t//
-          done
+        l)
+          print_list_of_integration_tests
           ;;
-        f) # -f (filter)
-          trap "print_outcome" EXIT
+        f)
+          trap_outcome_on_exit
           docker-compose run --use-aliases boulder python3 test/integration-test.py --chisel --gotest --filter "$OPTARG"
           ;;
-        :) # assigns $OPTARG for -f
-          echo "Invalid Option: $OPTARG requires an argument, use: -h for help" 1>&2
-          exit 1
+        :) # <FILTER_REGEX>
+          print_invalid_option_missing_argument_exit
           ;;
-        *) # catch invalid options
-          echo "Invalid Option: $OPTARG use: -h for help" 1>&2
-          exit 1
+        *)
+          print_invalid_option_exit
           ;;
       esac
     done
-    shift $((OPTIND -1))
+    shift "$((OPTIND -1))"
     ;;
 esac
 fi
