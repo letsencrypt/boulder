@@ -77,7 +77,7 @@ type RegistrationAuthorityImpl struct {
 	reuseValidAuthz              bool
 	orderLifetime                time.Duration
 
-	issuers map[core.ChainID]*issuance.Certificate
+	issuers map[issuance.IssuerNameID]*issuance.Certificate
 	purger  akamaipb.AkamaiPurgerClient
 
 	ctpolicy *ctpolicy.CTPolicy
@@ -169,9 +169,9 @@ func NewRegistrationAuthorityImpl(
 	}, []string{"reason"})
 	stats.MustRegister(revocationReasonCounter)
 
-	issuersByID := make(map[core.ChainID]*issuance.Certificate)
+	issuersByID := make(map[issuance.IssuerNameID]*issuance.Certificate)
 	for _, issuer := range issuers {
-		issuersByID[core.SubjectChainID(issuer.Certificate)] = issuer
+		issuersByID[issuer.NameID()] = issuer
 	}
 
 	ra := &RegistrationAuthorityImpl{
@@ -1716,7 +1716,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 			return err
 		}
 	}
-	issuer, ok := ra.issuers[core.IssuerChainID(&cert)]
+	issuer, ok := ra.issuers[issuance.GetIssuerNameID(&cert)]
 	if !ok {
 		return fmt.Errorf("unable to identify issuer of revoked certificate: %v", cert)
 	}

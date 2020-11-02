@@ -151,34 +151,6 @@ func PublicKeysEqual(a, b interface{}) (bool, error) {
 	return bytes.Compare(aBytes, bBytes) == 0, nil
 }
 
-// ChainID is a statistically-unique small ID which can be computed from both
-// CA and end-entity certs to link them together into a validation chain.
-type ChainID int64
-
-// SubjectChainID computes a hash over the raw bytes of a certificate's
-// Subject field. When building or validating chains, these raw bytes must be
-// equal to the raw bytes of the Issuer field of any certificates issued by
-// this one. This function returns a truncated hash of these bytes, useful
-// for storing as a lookup key in contexts that don't expect hash collisions.
-func SubjectChainID(cert *x509.Certificate) ChainID {
-	h := crypto.SHA1.New()
-	h.Write(cert.RawSubject)
-	s := h.Sum(nil)
-	return ChainID(big.NewInt(0).SetBytes(s[:7]).Int64())
-}
-
-// IssuerChainID computes a hash over the raw bytes of a certificate's
-// Issuer field. When building or validating chains, these raw bytes must be
-// equal to the raw bytes of the Subject field of the certificate which issued
-// this one. This function returns a truncated hash of these bytes, useful
-// performing lookups in contexts that don't expect hash collisions.
-func IssuerChainID(cert *x509.Certificate) ChainID {
-	h := crypto.SHA1.New()
-	h.Write(cert.RawIssuer)
-	s := h.Sum(nil)
-	return ChainID(big.NewInt(0).SetBytes(s[:7]).Int64())
-}
-
 // SerialToString converts a certificate serial number (big.Int) to a String
 // consistently.
 func SerialToString(serial *big.Int) string {
