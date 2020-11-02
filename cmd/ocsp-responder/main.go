@@ -208,7 +208,7 @@ type config struct {
 	Syslog cmd.SyslogConfig
 
 	Common struct {
-		// TODO(#5119): Remove singular IssuerCert config value.
+		// TODO(#5162): Remove singular IssuerCert config value.
 		IssuerCert  string
 		IssuerCerts []string
 	}
