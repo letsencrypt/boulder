@@ -86,7 +86,7 @@ type config struct {
 
 		// IssuerCertPath is the path to the intermediate used to issue certificates.
 		// It is used to generate OCSP URLs to purge at revocation time.
-		// TODO(#5120): DEPRECATED. Remove this field entirely.
+		// TODO(#5162): DEPRECATED. Remove this field entirely.
 		IssuerCertPath string
 		// IssuerCerts are paths to all intermediate certificates which may have
 		// been used to issue certificates in the last 90 days. These are used to
