@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -60,7 +59,6 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *db.WrappedMap, c
 		fc,
 		dbMap,
 		&mockOCSP{},
-		nil,
 		OCSPUpdaterConfig{
 			OldOCSPBatchSize:         1,
 			OldOCSPWindow:            cmd.ConfigDuration{Duration: time.Second},
@@ -69,7 +67,6 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *db.WrappedMap, c
 				Duration: time.Minute,
 			},
 		},
-		"",
 		blog.NewMock(),
 	)
 	test.AssertNotError(t, err, "Failed to create newUpdater")
@@ -126,10 +123,6 @@ func TestStalenessHistogram(t *testing.T) {
 func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	updater, sa, _, fc, cleanUp := setup(t)
 	defer cleanUp()
-	issuer, err := core.LoadCert("../../test/test-ca2.pem")
-	test.AssertNotError(t, err, "Couldn't read test issuer certificate")
-	updater.issuer = issuer
-	updater.purgerService = akamaipb.NewAkamaiPurgerClient(nil)
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
