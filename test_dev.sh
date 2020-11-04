@@ -13,7 +13,7 @@ STATUS="FAILURE"
 USAGE=""
 OPTARG=""
 UNIT_FILTER="-p 1 ./..."
-INTEGRATION_ARGS=()
+INT_FILTER=()
 TRAVIS="${TRAVIS:-false}"
 BOULDER_CONFIG_DIR="test/config"
 
@@ -34,25 +34,6 @@ function print_outcome() {
   fi
 }
 
-function trap_outcome_on_exit() {
-  trap "print_outcome" EXIT
-}
-
-function print_usage_exit() {
-  echo "$USAGE" 1>&2
-  exit 0
-}
-
-function print_invalid_option_missing_argument_exit() {
-  echo "Invalid Option: $OPTARG requires an argument, use: -h for help" 1>&2
-  exit 1
-}
-
-function print_invalid_option_exit() {
-  echo "Invalid Option: $OPTARG use: -h for help" 1>&2
-  exit 1
-}
-
 function print_list_of_integration_tests() {
   for file in ./test/integration/*.go; do
     [ -e "$file" ] || continue
@@ -61,86 +42,98 @@ function print_list_of_integration_tests() {
   exit 0
 }
 
-function print_heading {
-  echo
-  echo -e "\e[34m\e[1m"$1"\e[0m"
-}
-
-function print_set_dim {
-  echo -e "\e[2m"
-}
-
-function print_set_reset {
-  echo -e "\e[0m"
-}
+function exit_msg() { echo "$*" >&2; exit 2; }  # complain to STDERR and exit with error
+function check_arg() { if [ -z "$OPTARG" ]; then exit_msg "No arg for --$OPT option, use: -h for help">&2; fi; }
+function trap_outcome_on_exit() { trap "print_outcome" EXIT; }
+function print_usage_exit() { echo "$USAGE"; exit 0; }
+function print_heading { echo; echo -e "\e[34m\e[1m"$1"\e[0m"; }
+function print_set_dim { echo -e "\e[2m"; }
+function print_set_reset { echo -e "\e[0m"; }
 
 #
-# Helper Functions
+# Main CLI Parser
 #
+USAGE="$(cat -- <<-EOM
+
+Usage: "$(basename "$0")" [OPTION]...
+Boulder test suite CLI
+
+With no options passed: runs standard battery of tests (lint, unit, and integation)
+
+    -c, --config-next                          Sets BOULDER_CONFIG_DIR from test/config to test/config-next
+    -d, --unit-test-filter        <DIRECTORY>  Run unit tests for a specific boulder component directory
+    -l, --list-integration-tests               List available integration tests
+    -f, --integration-test-filter <REGEX>      Run only those tests and examples matching the regular expression
+
+                                               Note:
+                                                This option disables the '"back in time"' integration test setup
+
+                                                For tests, the regular expression is split by unbracketed slash (/)
+                                                characters into a sequence of regular expressions
+
+                                               Example:
+                                                TestAkamaiPurgerDrainQueueFails/TestWFECORS
+EOM
+)"
+
+while getopts huctlf:d:-: OPT; do
+  if [ "$OPT" = "-" ]; then   # long option: reformulate OPT and OPTARG
+    OPT="${OPTARG%%=*}"       # extract long option name
+    OPTARG="${OPTARG#$OPT}"   # extract long option argument (may be empty)
+    OPTARG="${OPTARG#=}"      # if long option argument, remove assigning `=`
+  fi
+  case "$OPT" in
+    u | unit )                   RUN+=("unit") ;;
+    c | conf-next )              BOULDER_CONFIG_DIR="test/config-next" ;;
+    t | travis )                 TRAVIS="true" ;;
+    d | unit-filter )            check_arg; UNIT_FILTER="${OPTARG}" ;;
+    l | list-integration-tests ) print_list_of_integration_tests ;;
+    f | integration-filter )     check_arg; INT_FILTER+=("--filter" "${OPTARG}") ;;
+    h | help )                   print_usage_exit ;;
+    ??* )                        exit_msg "Illegal option --$OPT" ;;  # bad long option
+    ? )                          exit 2 ;;  # bad short option (error reported via getopts)
+  esac
+done
+shift $((OPTIND-1)) # remove parsed options and args from $@ list
+
+print_heading "Boulder Test Suite CLI"
+print_heading "Settings:"
+trap_outcome_on_exit
+
+# The list of segments to run. To run only some of these segments, pre-set the
+# RUN variable with the ones you want (see .travis.yml for an example).
+# Order doesn't matter. Note: gomod-vendor is specifically left out of the
+# defaults, because we don't want to run it locally (it could delete local
+# state) We also omit coverage by default on local runs because it generates
+# artifacts on disk that aren't needed.
+RUN=${RUN:-("lints" "unit" "integration")}
+
+settings="$(cat -- <<-EOM
+    RUN:                ${RUN[@]}
+    BOULDER_CONFIG_DIR: $BOULDER_CONFIG_DIR
+    UNIT_FILTER:        $UNIT_FILTER
+    INT_FILTER:         ${INT_FILTER[@]}
+
+EOM
+)"
+echo "$settings"
+print_heading "Starting"
+
 function run_and_expect_silence() {
   echo "$@"
-  result_file="$(mktemp -t bouldertestXXXX)"
-  "$@" 2>&1 | tee "${result_file}"
+  result_file=$(mktemp -t bouldertestXXXX)
+  "$@" 2>&1 | tee ${result_file}
 
   # Fail if result_file is nonempty.
-  if [ -s "${result_file}" ]; then
-    rm "${result_file}"
+  if [ -s ${result_file} ]; then
+    rm ${result_file}
     exit 1
   fi
-  rm "${result_file}"
-}
-
-#
-# Test Functions
-#
-function run_standard_test_battery() {
-  trap_outcome_on_exit
-  print_heading "Performing: Lint, Unit Tests, Integration Tests"
-  run_lint_tests
-  run_unit_tests
-  run_integration_tests
-}
-
-function run_lint_tests() {
-  # golangci-lint is sometimes slow. Travis will kill our job if it goes 10m
-  # without emitting logs, so set the timeout to 9m.
-  print_heading "Running Lint Test"
-  golangci-lint run --timeout 9m ./...
-  run_and_expect_silence ./test/test-no-outdated-migrations.sh
-  python test/grafana/lint.py
-  # Check for common spelling errors using codespell.
-  # Update .codespell.ignore.txt if you find false positives (NOTE: ignored
-  # words should be all lowercase).
-   run_and_expect_silence codespell \
-    --ignore-words=.codespell.ignore.txt \
-    --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt,.*.swp
-}
-
-function run_coverage_tests() {
-  # Run each test by itself for Travis, so we can get coverage. We skip using
-  # the -race flag here because we have already done a full test run with
-  # -race in `run_unit_tests` and it adds substantial overhead to run every
-  # test with -race independently
-  print_heading "Running Coverage Tests"
-  print_set_dim
-  echo "running test suite with coverage enabled and without race detection"
-  go test -p 1 -cover -coverprofile="${dir}.coverprofile ./..."
-
-  # Gather all the coverprofiles
-  gover
-
-  # We don't use the run function here because sometimes goveralls fails to
-  # contact the server and exits with non-zero status, but we don't want to
-  # treat that as a failure.
-  goveralls -v -coverprofile=gover.coverprofile -service=travis-pro
-  print_set_reset
+  rm ${result_file}
 }
 
 function run_unit_tests() {
-  print_heading "Running Unit Tests"
-  print_heading "with args: ${UNIT_FILTER:-none}"
-  print_set_dim
-  if [ "${TRAVIS}" == true ]; then
+  if [ "${TRAVIS}" == "true" ]; then
     # Run the full suite of tests once with the -race flag. Since this isn't
     # running tests individually we can't collect coverage information.
     echo "running test suite with race detection"
@@ -153,24 +146,72 @@ function run_unit_tests() {
     # spuriously because one test is modifying a table (especially
     # registrations) while another test is reading it.
     # https://github.com/letsencrypt/boulder/issues/1499
-    go test ${UNIT_FILTER}
+    go test -p 1 ./...
   fi
-  print_set_reset
 }
 
-function run_integration_tests() {
-  print_heading "Running Integration Tests"
-  print_heading "with args: ${INTEGRATION_ARGS[*]:-none}"
-  print_set_dim
-  python3 test/integration-test.py --chisel --gotest "${INTEGRATION_ARGS[@]}"
-  print_set_reset
+function run_test_coverage() {
+  # Run each test by itself for Travis, so we can get coverage. We skip using
+  # the -race flag here because we have already done a full test run with
+  # -race in `run_unit_tests` and it adds substantial overhead to run every
+  # test with -race independently
+  echo "running test suite with coverage enabled and without race detection"
+  go test -p 1 -cover -coverprofile=${dir}.coverprofile ./...
+
+  # Gather all the coverprofiles
+  gover
+
+  # We don't use the run function here because sometimes goveralls fails to
+  # contact the server and exits with non-zero status, but we don't want to
+  # treat that as a failure.
+  goveralls -v -coverprofile=gover.coverprofile -service=travis-pro
 }
 
-function run_start_test() {
-  # Test that just ./start.py works, which is a proxy for testing that
-  # `docker-compose up` works, since that just runs start.py (via entrypoint.sh)
-  print_heading "Running Start Test"
-  print_set_dim
+#
+# Run various linters.
+#
+if [[ "${RUN[@]}" =~ lints ]] ; then
+  # golangci-lint is sometimes slow. Travis will kill our job if it goes 10m
+  # without emitting logs, so set the timeout to 9m.
+  golangci-lint run --timeout 9m ./...
+  run_and_expect_silence ./test/test-no-outdated-migrations.sh
+  python test/grafana/lint.py
+  # Check for common spelling errors using codespell.
+  # Update .codespell.ignore.txt if you find false positives (NOTE: ignored
+  # words should be all lowercase).
+  run_and_expect_silence codespell \
+    --ignore-words=.codespell.ignore.txt \
+    --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt,.*.swp
+fi
+
+#
+# Unit Tests.
+#
+if [[ "${RUN[@]}" =~ unit ]] ; then
+  run_unit_tests
+fi
+
+#
+# Unit Test Coverage.
+#
+if [[ "${RUN[@]}" =~ coverage ]] ; then
+  run_test_coverage
+fi
+
+#
+# Integration tests
+#
+if [[ "${RUN[@]}" =~ integration ]] ; then
+  if [[ "${INT_FILTER:-}" != "" ]]; then
+    args+=("--filter" "${INT_FILTER}")
+  fi
+
+  python3 test/integration-test.py --chisel --gotest "${args[@]}"
+fi
+
+# Test that just ./start.py works, which is a proxy for testing that
+# `docker-compose up` works, since that just runs start.py (via entrypoint.sh).
+if [[ "${RUN[@]}" =~ start ]] ; then
   python3 start.py &
   for I in $(seq 1 100); do
     sleep 1
@@ -180,24 +221,20 @@ function run_start_test() {
     echo "Boulder did not come up after ./start.py."
     exit 1
   fi
-  print_set_reset
-}
+fi
 
-function run_gomod_vendor() {
-  # Run go mod vendor (happens only in Travis) to check that the versions in
-  # vendor/ really exist in the remote repo and match what we have.
-  print_heading "Running Mod Vendor"
-  print_set_dim
+# Run go mod vendor (happens only in Travis) to check that the versions in
+# vendor/ really exist in the remote repo and match what we have.
+if [[ "${RUN[@]}" =~ gomod-vendor ]] ; then
   go mod vendor
   git diff --exit-code
-  print_set_reset
-}
+fi
 
 # Run generate to make sure all our generated code can be re-generated with
 # current tools.
 # Note: Some of the tools we use seemingly don't understand ./vendor yet, and
 # so will fail if imports are not available in $GOPATH.
-function run_generate() {
+if [[ "${RUN[@]}" =~ generate ]] ; then
   # Additionally, we need to run go install before go generate because the stringer command
   # (using in ./grpc/) checks imports, and depends on the presence of a built .a
   # file to determine an import really exists. See
@@ -206,127 +243,16 @@ function run_generate() {
   #   stringer: checking package: grpc/bcodes.go:6:2: could not import
   #     github.com/letsencrypt/boulder/probs (can't find import:
   #     github.com/letsencrypt/boulder/probs)
-  print_heading "Running Generate"
-  print_set_dim
   go install ./probs
   go install ./vendor/google.golang.org/grpc/codes
   run_and_expect_silence go generate ./...
   run_and_expect_silence git diff --exit-code .
-  print_set_reset
-}
-
-function run_rpm() {
-  print_heading "Running RPM"
-  make rpm
-  print_set_reset
-}
-  
-
-#
-# Main CLI Parser
-#
-print_heading "Starting Boulder Test Wrapper..."
-
-USAGE="$(cat -- <<-EOM
-
-Usage: "$(basename "$0")" [OPTION]...
-Boulder test suite runner
-
-    -a    Runs standard battery of tests (lint, unit, and integations)
-    -h    Displays this help message
-    -c    Sets BOULDER_CONFIG_DIR from test/config to test/config-next
-
-Commands:
-    unit           Unit tests subcommand, run unit -h for more information
-    integration    Integration tests subcommand, run integration -h for more information
-EOM
-)"
-while getopts ":hca" opt; do
-  case "${opt}" in
-    a) run_standard_test_battery ;;
-    h) print_usage_exit ;;
-    c) BOULDER_CONFIG_DIR="test/config-next" ;;
-    *) print_invalid_option_exit ;;
-  esac
-done
-
-if [ $# -gt 1 ]
-then
-  shift "$((OPTIND -1))"
-  subcommand="${1}"; shift
-
-#
-# Unit Subcommand Parser
-#
-USAGE="$(cat -- <<-EOM
-
-Usage: Usage: "$(basename "$0") $subcommand" [OPTION]...
-Run unit tests
-
-If no options are supplied, will run all unit tests
-
-    -h                Displays this help message
-    -c                Sets BOULDER_CONFIG_DIR to test/config-next (default: test/config)
-    -d <DIRECTORY>    Run unit tests for a specific directory
-EOM
-)"
-case "$subcommand" in
-  unit)
-    while getopts ":d:hc" opt; do
-      case "${opt}" in
-        h) print_usage_exit ;;
-        d) UNIT_FILTER="${OPTARG}" ;;
-        c) BOULDER_CONFIG_DIR="test/config-next" ;;
-        :) print_invalid_option_missing_argument_exit ;; # <DIRECTORY>
-        *) print_invalid_option_exit ;;
-      esac
-    done
-    trap_outcome_on_exit
-    run_unit_tests
-    shift "$((OPTIND -1))"
-    ;;
-esac
-
-#
-# Integration Subcommand Parser
-#
-USAGE="$(cat -- <<-EOM
-
-Usage:
-    -h                   Displays this help message
-    -l                   List of available integration tests
-    -c                   Sets BOULDER_CONFIG_DIR from test/config to test/config-next
-    -f <FILTER_REGEX>    Run only those tests and examples matching the regular expression
-
-                         Note:
-                           This option disables the '"back in time"' integration test setup
-
-                           For tests, the regular expression is split by unbracketed slash (/)
-                           characters into a sequence of regular expressions
-
-                         Example:
-                           ./"$(basename -- "$0")" integration -f TestAkamaiPurgerDrainQueueFails/TestWFECORS
-EOM
-)"
-case "$subcommand" in
-  integration) # Parse options to the integration sub command
-    while getopts ":f:lhc" opt; do
-      case "${opt}" in
-        h) print_usage_exit ;;
-        l) print_list_of_integration_tests ;;
-        f) INTEGRATION_ARGS+=("--filter" "${OPTARG}") ;;
-        c) BOULDER_CONFIG_DIR="test/config-next" ;;
-        :) print_invalid_option_missing_argument_exit ;; # <FILTER_REGEX>
-        *) print_invalid_option_exit ;;
-      esac
-    done
-    trap_outcome_on_exit
-    run_integration_tests
-    shift "$((OPTIND -1))"
-    ;;
-esac
-
 fi
+
+if [[ "${RUN[@]}" =~ "rpm" ]]; then
+  make rpm
+fi
+
 
 # set -e stops execution in the instance of a command or pipeline error; if we got here we assume success
 STATUS="SUCCESS"
