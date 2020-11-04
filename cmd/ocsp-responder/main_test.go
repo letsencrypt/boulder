@@ -10,7 +10,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
@@ -35,13 +34,9 @@ var (
 )
 
 func mustRead(path string) []byte {
-	f, err := os.Open(path)
+	b, err := ioutil.ReadFile(path)
 	if err != nil {
-		panic(fmt.Sprintf("open %#v: %s", path, err))
-	}
-	b, err := ioutil.ReadAll(f)
-	if err != nil {
-		panic(fmt.Sprintf("read all %#v: %s", path, err))
+		panic(fmt.Sprintf("read %#v: %s", path, err))
 	}
 	return b
 }

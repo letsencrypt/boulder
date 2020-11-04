@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto"
 	"crypto/sha1"
-	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/hex"
@@ -75,6 +74,11 @@ func (f *ocspFilter) check(req *ocsp.Request) error {
 	return nil
 }
 
+// newFilter creates a new ocspFilter which will filter out all requests for
+// certs which were not issued by one of the issuerCerts (here, paths to PEM
+// certs on disk) or which have a serial which does not start with one of the
+// given prefixes. The resulting filter will also reject all requests which
+// identify their issuer with a hash other than sha1.
 func newFilter(issuerCerts []string, serialPrefixes []string) (*ocspFilter, error) {
 	if len(issuerCerts) < 1 {
 		return nil, errors.New("Filter must include at least 1 issuer cert")
@@ -82,17 +86,13 @@ func newFilter(issuerCerts []string, serialPrefixes []string) (*ocspFilter, erro
 	var issuerKeyHashes [][]byte
 	for _, issuerCert := range issuerCerts {
 		// Load the certificate from the file path.
-		caCertDER, err := cmd.LoadCert(issuerCert)
+		caCert, err := core.LoadCert(issuerCert)
 		if err != nil {
-			return nil, fmt.Errorf("Could not read issuer cert %s: %w", issuerCert, err)
-		}
-		caCert, err := x509.ParseCertificate(caCertDER)
-		if err != nil {
-			return nil, fmt.Errorf("Could not parse issuer cert %s: %w", issuerCert, err)
+			return nil, fmt.Errorf("Could not load issuer cert %s: %w", issuerCert, err)
 		}
 		// The issuerKeyHash in OCSP requests is constructed over the DER
 		// encoding of the public key per RFC 6960 (defined in RFC 4055 for
-		// RSA and RFC  5480 for ECDSA). We can't use MarshalPKIXPublicKey
+		// RSA and RFC 5480 for ECDSA). We can't use MarshalPKIXPublicKey
 		// for this since it encodes keys using the SPKI structure itself,
 		// and we just want the contents of the subjectPublicKey for the
 		// hash, so we need to extract it ourselves.
@@ -115,14 +115,12 @@ func newFilter(issuerCerts []string, serialPrefixes []string) (*ocspFilter, erro
 // will not exist in the database.
 //
 // We assume that OCSP responses are stored in a very simple database table,
-// with two columns: serialNumber and response
-//
-// 	CREATE TABLE ocsp_responses (serialNumber TEXT, response BLOB);
+// with at least these two columns: serialNumber (TEXT) and response (BLOB).
 //
 // The serialNumber field may have any type to which Go will match a string,
-// so you can be more efficient than TEXT if you like.  We use it to store the
-// serial number in base64.  You probably want to have an index on the
-// serialNumber field, since we will always query on it.
+// so you can be more efficient than TEXT if you like. We use it to store the
+// serial number in hex. You must have an index on the serialNumber field,
+// since we will always query on it.
 type dbSource struct {
 	dbMap   dbSelector
 	filter  *ocspFilter
