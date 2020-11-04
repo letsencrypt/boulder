@@ -12,7 +12,7 @@ fi
 STATUS="FAILURE"
 USAGE=""
 OPTARG=""
-UNIT_FILTER="-p 1 ./..."
+UNIT_FILTER=("-p" "1" "./...")
 INT_FILTER=()
 TRAVIS="${TRAVIS:-false}"
 BOULDER_CONFIG_DIR="test/config"
@@ -25,7 +25,6 @@ set -eu
 # Print Functions
 #
 function print_outcome() {
-  print_set_reset
   if [ "$STATUS" == SUCCESS ]
   then
     echo -e "\e[32m"$STATUS"\e[0m"
@@ -47,8 +46,6 @@ function check_arg() { if [ -z "$OPTARG" ]; then exit_msg "No arg for --$OPT opt
 function trap_outcome_on_exit() { trap "print_outcome" EXIT; }
 function print_usage_exit() { echo "$USAGE"; exit 0; }
 function print_heading { echo; echo -e "\e[34m\e[1m"$1"\e[0m"; }
-function print_set_dim { echo -e "\e[2m"; }
-function print_set_reset { echo -e "\e[0m"; }
 
 #
 # Main CLI Parser
@@ -60,9 +57,9 @@ Boulder test suite CLI
 
 With no options passed: runs standard battery of tests (lint, unit, and integation)
 
-    -c, --config-next                          Sets BOULDER_CONFIG_DIR from test/config to test/config-next
+    -n, --config-next                          Sets BOULDER_CONFIG_DIR from test/config to test/config-next
     -d, --unit-test-filter        <DIRECTORY>  Run unit tests for a specific boulder component directory
-    -l, --list-integration-tests               List available integration tests
+    -s, --show-integration-tests               List available integration tests
     -f, --integration-test-filter <REGEX>      Run only those tests and examples matching the regular expression
 
                                                Note:
@@ -76,19 +73,26 @@ With no options passed: runs standard battery of tests (lint, unit, and integati
 EOM
 )"
 
-while getopts huctlf:d:-: OPT; do
-  if [ "$OPT" = "-" ]; then   # long option: reformulate OPT and OPTARG
+while getopts luecispvgmnhd:f:-: OPT; do
+  if [ "$OPT" = - ]; then   # long option: reformulate OPT and OPTARG
     OPT="${OPTARG%%=*}"       # extract long option name
     OPTARG="${OPTARG#$OPT}"   # extract long option argument (may be empty)
     OPTARG="${OPTARG#=}"      # if long option argument, remove assigning `=`
   fi
   case "$OPT" in
+    l | lints )                  RUN+=("lints") ;;
     u | unit )                   RUN+=("unit") ;;
-    c | conf-next )              BOULDER_CONFIG_DIR="test/config-next" ;;
-    t | travis )                 TRAVIS="true" ;;
-    d | unit-filter )            check_arg; UNIT_FILTER="${OPTARG}" ;;
-    l | list-integration-tests ) print_list_of_integration_tests ;;
+    d | unit-dir-filter )        check_arg; UNIT_FILTER=(); UNIT_FILTER+=("${OPTARG}") ;;
+    e | enable-race-detector )   TRAVIS="true" ;;
+    c | coverage )               RUN+=("coverage") ;;
+    i | integration )            RUN+=("integration") ;;
+    s | show-integration-tests ) print_list_of_integration_tests ;;
     f | integration-filter )     check_arg; INT_FILTER+=("--filter" "${OPTARG}") ;;
+    p | start )                  RUN+=("start") ;;
+    v | gomod-vendor )           RUN+=("gomod-vendor") ;;
+    g | generate )               RUN+=("generate") ;;
+    m | rpm )                    RUN+=("rpm") ;;
+    n | conf-next )              BOULDER_CONFIG_DIR="test/config-next" ;;
     h | help )                   print_usage_exit ;;
     ??* )                        exit_msg "Illegal option --$OPT" ;;  # bad long option
     ? )                          exit 2 ;;  # bad short option (error reported via getopts)
@@ -111,7 +115,8 @@ RUN=${RUN:-("lints" "unit" "integration")}
 settings="$(cat -- <<-EOM
     RUN:                ${RUN[@]}
     BOULDER_CONFIG_DIR: $BOULDER_CONFIG_DIR
-    UNIT_FILTER:        $UNIT_FILTER
+    UNIT_FILTER:        ${UNIT_FILTER[@]}
+    TRAVIS:             $TRAVIS
     INT_FILTER:         ${INT_FILTER[@]}
 
 EOM
@@ -122,22 +127,21 @@ print_heading "Starting"
 function run_and_expect_silence() {
   echo "$@"
   result_file=$(mktemp -t bouldertestXXXX)
-  "$@" 2>&1 | tee ${result_file}
+  "$@" 2>&1 | tee "${result_file}"
 
   # Fail if result_file is nonempty.
-  if [ -s ${result_file} ]; then
-    rm ${result_file}
+  if [ -s "${result_file}" ]; then
+    rm "${result_file}"
     exit 1
   fi
-  rm ${result_file}
+  rm "${result_file}"
 }
 
 function run_unit_tests() {
-  if [ "${TRAVIS}" == "true" ]; then
+  if [ "${TRAVIS}" == true ]; then
     # Run the full suite of tests once with the -race flag. Since this isn't
     # running tests individually we can't collect coverage information.
-    echo "running test suite with race detection"
-    go test -race -p 1 ./...
+    go test -race "${UNIT_FILTER[@]}"
   else
     # When running locally, we skip the -race flag for speedier test runs. We
     # also pass -p 1 to require the tests to run serially instead of in
@@ -146,7 +150,7 @@ function run_unit_tests() {
     # spuriously because one test is modifying a table (especially
     # registrations) while another test is reading it.
     # https://github.com/letsencrypt/boulder/issues/1499
-    go test -p 1 ./...
+    go test "${UNIT_FILTER[@]}"
   fi
 }
 
@@ -171,6 +175,7 @@ function run_test_coverage() {
 # Run various linters.
 #
 if [[ "${RUN[@]}" =~ lints ]] ; then
+  print_heading "Running Lints"
   # golangci-lint is sometimes slow. Travis will kill our job if it goes 10m
   # without emitting logs, so set the timeout to 9m.
   golangci-lint run --timeout 9m ./...
@@ -187,6 +192,7 @@ fi
 #
 # Unit Tests.
 #
+print_heading "Running Unit Tests"
 if [[ "${RUN[@]}" =~ unit ]] ; then
   run_unit_tests
 fi
@@ -194,6 +200,7 @@ fi
 #
 # Unit Test Coverage.
 #
+print_heading "Running Unit Coverage"
 if [[ "${RUN[@]}" =~ coverage ]] ; then
   run_test_coverage
 fi
@@ -201,23 +208,21 @@ fi
 #
 # Integration tests
 #
+print_heading "Running Integration Tests"
 if [[ "${RUN[@]}" =~ integration ]] ; then
-  if [[ "${INT_FILTER:-}" != "" ]]; then
-    args+=("--filter" "${INT_FILTER}")
-  fi
-
-  python3 test/integration-test.py --chisel --gotest "${args[@]}"
+  python3 test/integration-test.py --chisel --gotest "${INT_FILTER[@]}"
 fi
 
 # Test that just ./start.py works, which is a proxy for testing that
 # `docker-compose up` works, since that just runs start.py (via entrypoint.sh).
 if [[ "${RUN[@]}" =~ start ]] ; then
+  print_heading "Running Start Test"
   python3 start.py &
   for I in $(seq 1 100); do
     sleep 1
     curl http://localhost:4000/directory && break
   done
-  if [[ $I = 100 ]]; then
+  if [[ "$I" = 100 ]]; then
     echo "Boulder did not come up after ./start.py."
     exit 1
   fi
@@ -226,6 +231,7 @@ fi
 # Run go mod vendor (happens only in Travis) to check that the versions in
 # vendor/ really exist in the remote repo and match what we have.
 if [[ "${RUN[@]}" =~ gomod-vendor ]] ; then
+  print_heading "Running Go Mod Vendor"
   go mod vendor
   git diff --exit-code
 fi
@@ -235,6 +241,7 @@ fi
 # Note: Some of the tools we use seemingly don't understand ./vendor yet, and
 # so will fail if imports are not available in $GOPATH.
 if [[ "${RUN[@]}" =~ generate ]] ; then
+  print_heading "Running Generate"
   # Additionally, we need to run go install before go generate because the stringer command
   # (using in ./grpc/) checks imports, and depends on the presence of a built .a
   # file to determine an import really exists. See
@@ -249,10 +256,10 @@ if [[ "${RUN[@]}" =~ generate ]] ; then
   run_and_expect_silence git diff --exit-code .
 fi
 
-if [[ "${RUN[@]}" =~ "rpm" ]]; then
+if [[ "${RUN[@]}" =~ rpm ]]; then
+  print_heading "Running RPM"
   make rpm
 fi
-
 
 # set -e stops execution in the instance of a command or pipeline error; if we got here we assume success
 STATUS="SUCCESS"
