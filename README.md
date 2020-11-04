@@ -128,40 +128,40 @@ To start Boulder in a Docker container, run:
 docker-compose up
 ```
 
-To run all tests:
+To run our standard battery of tests (lints, unit, integration):
 
 ```shell
-./test_dev.sh -a
+docker-compose run --use-aliases boulder ./test_dev.sh
 ```
 
 To run all unit tests:
 
 ```shell
-./test_dev.sh unit -a
+docker-compose run --use-aliases boulder ./test_dev.sh --unit
 ```
 
-To run specific unit tests:
+To run specific unit tests (example is of the ./va directory):
 
 ```shell
-./test_dev.sh unit -d <DIRECTORY>
+docker-compose run --use-aliases boulder ./test_dev.sh --unit-test-filter ./va
 ```
 
 To run all integration tests:
 
 ```shell
-./test_dev.sh integration -a
+docker-compose run --use-aliases boulder ./test_dev.sh --integration
 ```
 
-To run specific integration tests (use -h for an example of the regex):
+To run specific integration tests (example runs TestAkamaiPurgerDrainQueueFails and TestWFECORS):
 
 ```shell
-./test_dev.sh integration -f <FILTER_REGEX>
+docker-compose run --use-aliases boulder ./test_dev.sh --integration-filter TestAkamaiPurgerDrainQueueFails/TestWFECORS
 ```
 
 To get a list of available integration tests:
 
 ```shell
-./test_dev.sh integration -l
+docker-compose run --use-aliases boulder ./test_dev.sh --show-integration-test-list
 ```
 
 The configuration in docker-compose.yml mounts your `$GOPATH` on top of its
