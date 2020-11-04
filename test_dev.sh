@@ -56,20 +56,26 @@ Usage: "$(basename "$0")" [OPTION]...
 Boulder test suite CLI
 
 With no options passed: runs standard battery of tests (lint, unit, and integation)
+    -l, --lints                           Adds lint to the list of tests to run
+    -u, --unit                            Adds unit to the list of tests to run
+    -d, --unit-test-filter <DIRECTORY>    Run unit tests for a specific directory
+    -e, --enable-race-detector            Enable -race flag on unit test runs
+    -n, --config-next                     Changes BOULDER_CONFIG_DIR from test/config to test/config-next
+    -c, --coverage                        Adds coverage to the list of test to run
+    -i, --integration                     Adds integration to the list of test to run
+    -s, --show-integration-tests          Outputs a list of the available integration tests
+    -f, --integration-filter <REGEX>      Run only those tests and examples matching the regular expression
 
-    -n, --config-next                          Sets BOULDER_CONFIG_DIR from test/config to test/config-next
-    -d, --unit-test-filter        <DIRECTORY>  Run unit tests for a specific boulder component directory
-    -s, --show-integration-tests               List available integration tests
-    -f, --integration-test-filter <REGEX>      Run only those tests and examples matching the regular expression
+                                          Note:
+                                           This option disables the '"back in time"' integration test setup
 
-                                               Note:
-                                                This option disables the '"back in time"' integration test setup
+                                           For tests, the regular expression is split by unbracketed slash (/)
+                                           characters into a sequence of regular expressions
 
-                                                For tests, the regular expression is split by unbracketed slash (/)
-                                                characters into a sequence of regular expressions
+                                          Example:
+                                           TestAkamaiPurgerDrainQueueFails/TestWFECORS
+    -h, --help                            Shows this help message
 
-                                               Example:
-                                                TestAkamaiPurgerDrainQueueFails/TestWFECORS
 EOM
 )"
 
