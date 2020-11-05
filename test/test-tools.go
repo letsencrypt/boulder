@@ -56,7 +56,15 @@ func AssertError(t *testing.T, err error, message string) {
 func AssertErrorWraps(t *testing.T, err error, target error) {
 	t.Helper()
 	if !errors.As(err, &target) {
-		t.Fatalf("error does not unwrap to expected error type: %q !> %+T", err.Error(), target)
+		t.Fatalf("error does not wrap an error of the expected type: %q !> %+T", err.Error(), target)
+	}
+}
+
+// AssertErrorIs checks that err wraps the given error
+func AssertErrorIs(t *testing.T, err error, target error) {
+	t.Helper()
+	if !errors.Is(err, target) {
+		t.Fatalf("error does not wrap expected error: %q !> %q", err.Error(), target.Error())
 	}
 }
 
