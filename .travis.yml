@@ -40,8 +40,8 @@ env:
     # Config changes that have landed in main but not yet been applied to
     # production can be made in boulder-config-next.json.
     - TESTFLAGS="in"
-    - TESTFLAGS="ue"
-    - TESTFLAGS="une"
+    - TESTFLAGS="eu"
+    - TESTFLAGS="eun"
     - TESTFLAGS="s"
     # gomod-vendor runs with a separate container because it needs to fetch
     # packages from GitHub et. al., which is incompatible with the DNS server
