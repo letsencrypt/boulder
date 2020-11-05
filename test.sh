@@ -46,6 +46,55 @@ function trap_outcome_on_exit() { trap "print_outcome" EXIT; }
 function print_usage_exit() { echo "$USAGE"; exit 0; }
 function print_heading { echo; echo -e "\e[34m\e[1m"$1"\e[0m"; }
 
+function run_and_expect_silence() {
+  echo "$@"
+  result_file=$(mktemp -t bouldertestXXXX)
+  "$@" 2>&1 | tee "${result_file}"
+
+  # Fail if result_file is nonempty.
+  if [ -s "${result_file}" ]; then
+    rm "${result_file}"
+    exit 1
+  fi
+  rm "${result_file}"
+}
+
+#
+# Testing Helpers
+#
+function run_unit_tests() {
+  if [ "${TRAVIS}" == true ]; then
+    # Run the full suite of tests once with the -race flag. Since this isn't
+    # running tests individually we can't collect coverage information.
+    go test -race "${UNIT_FILTER[@]}"
+  else
+    # When running locally, we skip the -race flag for speedier test runs. We
+    # also pass -p 1 to require the tests to run serially instead of in
+    # parallel. This is because our unittests depend on mutating a database and
+    # then cleaning up after themselves. If they run in parallel, they can fail
+    # spuriously because one test is modifying a table (especially
+    # registrations) while another test is reading it.
+    # https://github.com/letsencrypt/boulder/issues/1499
+    go test "${UNIT_FILTER[@]}"
+  fi
+}
+
+function run_test_coverage() {
+  # Run each test by itself for Travis, so we can get coverage. We skip using
+  # the -race flag here because we have already done a full test run with
+  # -race in `run_unit_tests` and it adds substantial overhead to run every
+  # test with -race independently
+  go test -p 1 -cover -coverprofile=${dir}.coverprofile ./...
+
+  # Gather all the coverprofiles
+  gover
+
+  # We don't use the run function here because sometimes goveralls fails to
+  # contact the server and exits with non-zero status, but we don't want to
+  # treat that as a failure.
+  goveralls -v -coverprofile=gover.coverprofile -service=travis-pro
+}
+
 #
 # Main CLI Parser
 #
@@ -113,7 +162,7 @@ shift $((OPTIND-1)) # remove parsed options and args from $@ list
 # defaults, because we don't want to run it locally (it could delete local
 # state) We also omit coverage by default on local runs because it generates
 # artifacts on disk that aren't needed.
-if [ -z "${RUN[@]}" ]
+if [ -z "${RUN[@]+x}" ]
 then
   RUN+=("lints" "unit" "integration")
 fi
@@ -138,52 +187,6 @@ EOM
 )"
 echo "$settings"
 print_heading "Starting..."
-exit
-function run_and_expect_silence() {
-  echo "$@"
-  result_file=$(mktemp -t bouldertestXXXX)
-  "$@" 2>&1 | tee "${result_file}"
-
-  # Fail if result_file is nonempty.
-  if [ -s "${result_file}" ]; then
-    rm "${result_file}"
-    exit 1
-  fi
-  rm "${result_file}"
-}
-
-function run_unit_tests() {
-  if [ "${TRAVIS}" == true ]; then
-    # Run the full suite of tests once with the -race flag. Since this isn't
-    # running tests individually we can't collect coverage information.
-    go test -race "${UNIT_FILTER[@]}"
-  else
-    # When running locally, we skip the -race flag for speedier test runs. We
-    # also pass -p 1 to require the tests to run serially instead of in
-    # parallel. This is because our unittests depend on mutating a database and
-    # then cleaning up after themselves. If they run in parallel, they can fail
-    # spuriously because one test is modifying a table (especially
-    # registrations) while another test is reading it.
-    # https://github.com/letsencrypt/boulder/issues/1499
-    go test "${UNIT_FILTER[@]}"
-  fi
-}
-
-function run_test_coverage() {
-  # Run each test by itself for Travis, so we can get coverage. We skip using
-  # the -race flag here because we have already done a full test run with
-  # -race in `run_unit_tests` and it adds substantial overhead to run every
-  # test with -race independently
-  go test -p 1 -cover -coverprofile=${dir}.coverprofile ./...
-
-  # Gather all the coverprofiles
-  gover
-
-  # We don't use the run function here because sometimes goveralls fails to
-  # contact the server and exits with non-zero status, but we don't want to
-  # treat that as a failure.
-  goveralls -v -coverprofile=gover.coverprofile -service=travis-pro
-}
 
 #
 # Run various linters.
