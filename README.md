@@ -131,37 +131,37 @@ docker-compose up
 To run our standard battery of tests (lints, unit, integration):
 
 ```shell
-docker-compose run --use-aliases boulder ./test_dev.sh
+docker-compose run --use-aliases boulder ./test.sh
 ```
 
 To run all unit tests:
 
 ```shell
-docker-compose run --use-aliases boulder ./test_dev.sh --unit
+docker-compose run --use-aliases boulder ./test.sh --unit
 ```
 
 To run specific unit tests (example is of the ./va directory):
 
 ```shell
-docker-compose run --use-aliases boulder ./test_dev.sh --unit-test-filter ./va
+docker-compose run --use-aliases boulder ./test.sh --unit-test-filter ./va
 ```
 
 To run all integration tests:
 
 ```shell
-docker-compose run --use-aliases boulder ./test_dev.sh --integration
+docker-compose run --use-aliases boulder ./test.sh --integration
 ```
 
 To run specific integration tests (example runs TestAkamaiPurgerDrainQueueFails and TestWFECORS):
 
 ```shell
-docker-compose run --use-aliases boulder ./test_dev.sh --integration-filter TestAkamaiPurgerDrainQueueFails/TestWFECORS
+docker-compose run --use-aliases boulder ./test.sh --integration-filter TestAkamaiPurgerDrainQueueFails/TestWFECORS
 ```
 
 To get a list of available integration tests:
 
 ```shell
-docker-compose run --use-aliases boulder ./test_dev.sh --show-integration-test-list
+docker-compose run --use-aliases boulder ./test.sh --show-integration-test-list
 ```
 
 The configuration in docker-compose.yml mounts your `$GOPATH` on top of its
@@ -199,7 +199,7 @@ address found in the command above)
 docker-compose run --use-aliases -e FAKE_DNS=172.17.0.1 --service-ports boulder ./start.py
 ```
 
-Running tests without the `./test_dev.sh` wrapper:
+Running tests without the `./test.sh` wrapper:
 
 Run all unit tests
 
