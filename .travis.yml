@@ -52,7 +52,7 @@ env:
 jobs:
   fast_finish: true
   allow_failures:
-    - env: RUN=(coverage) CONTAINER="netaccess"
+    - env: TESTFLAGS="c" CONTAINER="netaccess"
 
 install:
   - docker-compose pull
