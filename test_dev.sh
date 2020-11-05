@@ -15,7 +15,7 @@ RUN="${RUN[@]+"${EMPTY_ARRAY[@]}"}"
 UNIT_FILTER="${UNIT_FILTER[@]+"${EMPTY_ARRAY[@]}"}"
 INT_FILTER="${INT_FILTER[@]+"${EMPTY_ARRAY[@]}"}"
 TRAVIS="${TRAVIS:-false}"
-BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR:-"test/config"}"
+export BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR:-"test/config"}"
 
 # -e Stops execution in the instance of a command or pipeline error
 # -u Treat unset variables as an error and exit immediately
@@ -100,7 +100,7 @@ while getopts luecispvgmnhd:f:-: OPT; do
     v | gomod-vendor )               RUN+=("gomod-vendor") ;;
     g | generate )                   RUN+=("generate") ;;
     m | rpm )                        RUN+=("rpm") ;;
-    n | conf-next )                  BOULDER_CONFIG_DIR="test/config-next" ;;
+    n | conf-next )                  export BOULDER_CONFIG_DIR="test/config-next" ;;
     h | help )                       print_usage_exit ;;
     ??* )                            exit_msg "Illegal option --$OPT" ;;  # bad long option
     ? )                              exit 2 ;;  # bad short option (error reported via getopts)
