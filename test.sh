@@ -109,11 +109,15 @@ With no options passed: runs standard battery of tests (lint, unit, and integati
     -l, --lints                           Adds lint to the list of tests to run
     -u, --unit                            Adds unit to the list of tests to run
     -d, --unit-test-filter <DIRECTORY>    Run unit tests for a specific directory
-    -e, --enable-race-detector            Enable -race flag on unit test runs
+    -e, --enable-race-detector            Sets $TRAVIS to true, enabling -race flag for unit tests
     -n, --config-next                     Changes BOULDER_CONFIG_DIR from test/config to test/config-next
-    -c, --coverage                        Adds coverage to the list of test to run
-    -i, --integration                     Adds integration to the list of test to run
-    -s, --show-integration-test-list      Outputs a list of the available integration tests
+    -c, --coverage                        Adds coverage to the list of tests to run
+    -i, --integration                     Adds integration to the list of tests to run
+    -s, --start-py                        Adds start (py) to the list of tests to run
+    -v, --gomod-vendor                    Adds gomod-vendor to the list of tests to run
+    -g, --generate                        Adds generate to the list of tests to run
+    -r, --rpm                             Adds rpm to the list of tests to run
+    -p, --show-integration-test-list      Outputs a list of the available integration tests
     -f, --integration-filter <REGEX>      Run only those tests and examples matching the regular expression
 
                                           Note:
@@ -129,7 +133,7 @@ With no options passed: runs standard battery of tests (lint, unit, and integati
 EOM
 )"
 
-while getopts luecispvgmnhd:f:-: OPT; do
+while getopts luecipsvgrnhd:f:-: OPT; do
   if [ "$OPT" = - ]; then   # long option: reformulate OPT and OPTARG
     OPT="${OPTARG%%=*}"       # extract long option name
     OPTARG="${OPTARG#$OPT}"   # extract long option argument (may be empty)
@@ -142,12 +146,12 @@ while getopts luecispvgmnhd:f:-: OPT; do
     e | enable-race-detector )       TRAVIS="true" ;;
     c | coverage )                   RUN+=("coverage") ;;
     i | integration )                RUN+=("integration") ;;
-    s | show-integration-test-list ) print_list_of_integration_tests ;;
+    p | show-integration-test-list ) print_list_of_integration_tests ;;
     f | integration-filter )         check_arg; INT_FILTER+=("--filter" "${OPTARG}") ;;
-    p | start )                      RUN+=("start") ;;
+    s | start )                      RUN+=("start") ;;
     v | gomod-vendor )               RUN+=("gomod-vendor") ;;
     g | generate )                   RUN+=("generate") ;;
-    m | rpm )                        RUN+=("rpm") ;;
+    r | rpm )                        RUN+=("rpm") ;;
     n | conf-next )                  export BOULDER_CONFIG_DIR="test/config-next" ;;
     h | help )                       print_usage_exit ;;
     ??* )                            exit_msg "Illegal option --$OPT" ;;  # bad long option
@@ -180,8 +184,8 @@ settings="$(cat -- <<-EOM
     RUN:                ${RUN[@]}
     BOULDER_CONFIG_DIR: $BOULDER_CONFIG_DIR
     UNIT_FILTER:        ${UNIT_FILTER[@]}
-    TRAVIS:             $TRAVIS
     INT_FILTER:         ${INT_FILTER[@]}
+    TRAVIS:             $TRAVIS
 
 EOM
 )"

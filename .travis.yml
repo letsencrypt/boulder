@@ -22,18 +22,18 @@ branches:
     - /^test-.*$/
 
 env:
-    - RUN=(lints integration generate rpm) BOULDER_CONFIG_DIR="test/config"
+    - TESTFLAGS="ligr"
     # Config changes that have landed in main but not yet been applied to
     # production can be made in boulder-config-next.json.
-    - RUN=(integration) BOULDER_CONFIG_DIR="test/config-next"
-    - RUN=(unit)
-    - RUN=(unit) BOULDER_CONFIG_DIR="test/config-next"
-    - RUN=(start) BOULDER_CONFIG_DIR="test/config"
+    - TESTFLAGS="in"
+    - TESTFLAGS="u"
+    - TESTFLAGS="un"
+    - TESTFLAGS="s"
     # gomod-vendor runs with a separate container because it needs to fetch
     # packages from GitHub et. al., which is incompatible with the DNS server
     # override in the boulder container (used for service discovery).
-    - RUN=(gomod-vendor) CONTAINER="netaccess"
-    - RUN=(coverage) CONTAINER="netaccess"
+    - TESTFLAGS="v" CONTAINER="netaccess"
+    - TESTFLAGS="c" CONTAINER="netaccess"
 
 jobs:
   fast_finish: true
@@ -46,10 +46,8 @@ install:
 script:
   - >-
     docker-compose run --use-aliases
-    -e BOULDER_CONFIG_DIR
-    -e RUN
     -e TRAVIS_BRANCH
     -e TRAVIS_JOB_ID
     -e TRAVIS_PULL_REQUEST
     -e COVERALLS_TOKEN
-    ${CONTAINER:-boulder} ./test.sh
+    ${CONTAINER:-boulder} ./test.sh -${TESTFLAGS}
