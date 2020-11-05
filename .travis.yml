@@ -27,7 +27,7 @@ env:
     # production can be made in boulder-config-next.json.
     - RUN=(integration) BOULDER_CONFIG_DIR="test/config-next"
     - RUN=(unit)
-    - RUN=(unit-next) BOULDER_CONFIG_DIR="test/config-next"
+    - RUN=(unit) BOULDER_CONFIG_DIR="test/config-next"
     - RUN=(start) BOULDER_CONFIG_DIR="test/config"
     # gomod-vendor runs with a separate container because it needs to fetch
     # packages from GitHub et. al., which is incompatible with the DNS server
@@ -52,4 +52,4 @@ script:
     -e TRAVIS_JOB_ID
     -e TRAVIS_PULL_REQUEST
     -e COVERALLS_TOKEN
-    ${CONTAINER:-boulder} ./test_dev.sh
+    ${CONTAINER:-boulder} ./test.sh
