@@ -29,6 +29,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/identifier"
+	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
@@ -2131,7 +2132,8 @@ func TestTermsRedirect(t *testing.T) {
 
 func TestIssuer(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.IssuerCert = []byte{0, 0, 1}
+	wfe.IssuerCert = &issuance.Certificate{Certificate: &x509.Certificate{}}
+	wfe.IssuerCert.Raw = []byte{0, 0, 1}
 
 	responseWriter := httptest.NewRecorder()
 
@@ -2139,7 +2141,7 @@ func TestIssuer(t *testing.T) {
 		Method: "GET",
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), wfe.IssuerCert) == 0, "Incorrect bytes returned")
+	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), wfe.IssuerCert.Raw) == 0, "Incorrect bytes returned")
 }
 
 func TestGetCertificate(t *testing.T) {

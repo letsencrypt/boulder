@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"reflect"
@@ -48,6 +49,14 @@ func AssertError(t *testing.T, err error, message string) {
 	t.Helper()
 	if err == nil {
 		t.Fatalf("%s: expected error but received none", message)
+	}
+}
+
+// AssertErrorWraps checks that err can be unwrapped into the given target
+func AssertErrorWraps(t *testing.T, err error, target error) {
+	t.Helper()
+	if !errors.As(err, &target) {
+		t.Fatalf("error does not wrap expected error type: %+v ∌ %+T", err, target)
 	}
 }
 

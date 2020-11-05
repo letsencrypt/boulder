@@ -282,14 +282,17 @@ func LoadCertBundle(filename string) ([]*x509.Certificate, error) {
 func LoadCert(filename string) (cert *x509.Certificate, err error) {
 	certPEM, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return
+		return nil, err
 	}
 	block, _ := pem.Decode(certPEM)
 	if block == nil {
 		return nil, fmt.Errorf("No data in cert PEM file %s", filename)
 	}
 	cert, err = x509.ParseCertificate(block.Bytes)
-	return
+	if err != nil {
+		return nil, err
+	}
+	return cert, nil
 }
 
 // retryJitter is used to prevent bunched retried queries from falling into lockstep
