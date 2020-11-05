@@ -22,12 +22,26 @@ branches:
     - /^test-.*$/
 
 env:
+    # With no options passed: runs lint, unit, and integation
+    # l: Adds lint to the list of tests to run
+    # u: Adds unit to the list of tests to run
+    # d: Run unit tests for a specific directory
+    # e: Sets $TRAVIS to true, enabling -race flag for unit tests
+    # n: Changes BOULDER_CONFIG_DIR from test/config to test/config-next
+    # c: Adds coverage to the list of tests to run
+    # i: Adds integration to the list of tests to run
+    # s: Adds start (py) to the list of tests to run
+    # v: Adds gomod-vendor to the list of tests to run
+    # g: Adds generate to the list of tests to run
+    # r: Adds rpm to the list of tests to run
+    # p: Outputs a list of the available integration tests
+    # f: Run only those tests and examples matching the regular expression
     - TESTFLAGS="ligr"
     # Config changes that have landed in main but not yet been applied to
     # production can be made in boulder-config-next.json.
     - TESTFLAGS="in"
-    - TESTFLAGS="u"
-    - TESTFLAGS="un"
+    - TESTFLAGS="ue"
+    - TESTFLAGS="une"
     - TESTFLAGS="s"
     # gomod-vendor runs with a separate container because it needs to fetch
     # packages from GitHub et. al., which is incompatible with the DNS server

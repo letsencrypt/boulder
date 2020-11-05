@@ -84,7 +84,7 @@ function run_test_coverage() {
   # the -race flag here because we have already done a full test run with
   # -race in `run_unit_tests` and it adds substantial overhead to run every
   # test with -race independently
-  go test -p 1 -cover -coverprofile=${dir}.coverprofile ./...
+  go test -p 1 -cover -coverprofile=.coverprofile ./...
 
   # Gather all the coverprofiles
   gover
