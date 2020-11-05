@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# -e Stops execution in the instance of a command or pipeline error
+# -u Treat unset variables as an error and exit immediately
+set -eu
+
 # Run all tests and coverage checks. Called from Travis automatically, also
 # suitable to run manually. See list of prerequisite packages in .travis.yml
 if type realpath >/dev/null 2>&1 ; then
@@ -10,16 +14,11 @@ fi
 # Defaults
 #
 STATUS="FAILURE"
-EMPTY_ARRAY=()
-RUN="${RUN[@]+"${EMPTY_ARRAY[@]}"}"
-UNIT_FILTER="${UNIT_FILTER[@]+"${EMPTY_ARRAY[@]}"}"
-INT_FILTER="${INT_FILTER[@]+"${EMPTY_ARRAY[@]}"}"
+if [ -z "${RUN+x}" ]; then RUN=(); fi
+if [ -z "${UNIT_FILTER+x}" ]; then UNIT_FILTER=(); fi
+if [ -z "${INT_FILTER+x}" ]; then INT_FILTER=(); fi
 TRAVIS="${TRAVIS:-false}"
 export BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR:-"test/config"}"
-
-# -e Stops execution in the instance of a command or pipeline error
-# -u Treat unset variables as an error and exit immediately
-set -eu
 
 #
 # Print Functions
@@ -90,7 +89,7 @@ while getopts luecispvgmnhd:f:-: OPT; do
   case "$OPT" in
     l | lints )                      RUN+=("lints") ;;
     u | unit )                       RUN+=("unit") ;;
-    d | unit-dir-filter )            check_arg; UNIT_FILTER=(); UNIT_FILTER+=("${OPTARG}") ;;
+    d | unit-dir-filter )            check_arg; UNIT_FILTER+=("${OPTARG}") ;;
     e | enable-race-detector )       TRAVIS="true" ;;
     c | coverage )                   RUN+=("coverage") ;;
     i | integration )                RUN+=("integration") ;;
@@ -129,17 +128,17 @@ print_heading "Settings:"
 trap_outcome_on_exit
 
 settings="$(cat -- <<-EOM
-    RUN:               ${RUN[@]}
+    RUN:                ${RUN[@]}
     BOULDER_CONFIG_DIR: $BOULDER_CONFIG_DIR
-    UNIT_FILTER:       ${UNIT_FILTER[@]}
+    UNIT_FILTER:        ${UNIT_FILTER[@]}
     TRAVIS:             $TRAVIS
-    INT_FILTER:        ${INT_FILTER[@]}
+    INT_FILTER:         ${INT_FILTER[@]}
 
 EOM
 )"
 echo "$settings"
 print_heading "Starting..."
-
+exit
 function run_and_expect_silence() {
   echo "$@"
   result_file=$(mktemp -t bouldertestXXXX)
@@ -157,7 +156,7 @@ function run_unit_tests() {
   if [ "${TRAVIS}" == true ]; then
     # Run the full suite of tests once with the -race flag. Since this isn't
     # running tests individually we can't collect coverage information.
-    go test -race"${UNIT_FILTER[@]}"
+    go test -race "${UNIT_FILTER[@]}"
   else
     # When running locally, we skip the -race flag for speedier test runs. We
     # also pass -p 1 to require the tests to run serially instead of in
@@ -166,7 +165,7 @@ function run_unit_tests() {
     # spuriously because one test is modifying a table (especially
     # registrations) while another test is reading it.
     # https://github.com/letsencrypt/boulder/issues/1499
-    go test"${UNIT_FILTER[@]}"
+    go test "${UNIT_FILTER[@]}"
   fi
 }
 
@@ -225,7 +224,7 @@ fi
 #
 if [[ "${RUN[@]}" =~ integration ]] ; then
   print_heading "Running Integration Tests"
-  python3 test/integration-test.py --chisel --gotest"${INT_FILTER[@]}"
+  python3 test/integration-test.py --chisel --gotest "${INT_FILTER[@]}"
 fi
 
 # Test that just ./start.py works, which is a proxy for testing that
