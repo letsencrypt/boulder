@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
@@ -86,6 +87,47 @@ func TestMux(t *testing.T) {
 			t.Errorf("Mismatched body: want %#v, got %#v", mt.respBody, w.Body.Bytes())
 		}
 	}
+}
+
+func TestNewFilter(t *testing.T) {
+	_, err := newFilter([]string{}, []string{})
+	test.AssertError(t, err, "Didn't error when creating empty filter")
+
+	_, err = newFilter([]string{"/tmp/doesnotexist.foo"}, []string{})
+	test.AssertError(t, err, "Didn't error on non-existent issuer cert")
+
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"00"})
+	test.AssertNotError(t, err, "Errored when creating good filter")
+	test.AssertEquals(t, len(f.issuerKeyHashes), 1)
+	test.AssertEquals(t, len(f.serialPrefixes), 1)
+}
+
+func TestOcspFilter(t *testing.T) {
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"00"})
+	test.AssertNotError(t, err, "Errored when creating good filter")
+
+	ocspReq, err := ocsp.ParseRequest(req)
+	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
+	// Select a bad hash algorithm.
+	ocspReq.HashAlgorithm = crypto.MD5
+	err = f.check(ocspReq)
+	test.AssertError(t, err, "Accepted ocsp request with bad hash algorithm")
+
+	ocspReq, err = ocsp.ParseRequest(req)
+	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
+	// Make the hash invalid.
+	ocspReq.IssuerKeyHash[0]++
+	err = f.check(ocspReq)
+	test.AssertError(t, err, "Accepted ocsp request with bad issuer key hash")
+
+	ocspReq, err = ocsp.ParseRequest(req)
+	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
+	// Make the serial prefix wrong by incrementing the first byte by 1.
+	serialStr := []byte(core.SerialToString(ocspReq.SerialNumber))
+	serialStr[0] = serialStr[0] + 1
+	ocspReq.SerialNumber.SetString(string(serialStr), 16)
+	err = f.check(ocspReq)
+	test.AssertError(t, err, "Accepted ocsp request with bad serial prefix")
 }
 
 func TestDBHandler(t *testing.T) {
