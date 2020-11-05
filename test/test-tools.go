@@ -56,7 +56,7 @@ func AssertError(t *testing.T, err error, message string) {
 func AssertErrorIs(t *testing.T, err error, target error) {
 	t.Helper()
 	if !errors.Is(err, target) {
-		t.Fatalf("error does not wrap expected error: %+v ∌ %+v", err, target)
+		t.Fatalf("error does not wrap expected error: %q !> %q", err.Error(), target.Error())
 	}
 }
 
