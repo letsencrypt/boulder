@@ -361,18 +361,23 @@ type IssuerNameID int64
 // computes a truncated hash over the issuer's Subject Name raw bytes. Useful
 // for storing as a lookup key in contexts that don't expect hash collisions.
 func (ic *Certificate) NameID() IssuerNameID {
-	h := crypto.SHA1.New()
-	h.Write(ic.RawSubject)
-	s := h.Sum(nil)
-	return IssuerNameID(big.NewInt(0).SetBytes(s[:7]).Int64())
+	return truncatedHash(ic.RawSubject)
 }
 
 // GetIssuerNameID computes the IssuerNameID from an end-entity certificate,
 // i.e. it computes a truncated hash over its Issuer Name raw bytes.
 // Useful for performing lookups in contexts that don't expect hash collisions.
 func GetIssuerNameID(ee *x509.Certificate) IssuerNameID {
+	return truncatedHash(ee.RawIssuer)
+}
+
+// truncatedHash computes a truncated SHA1 hash across arbitrary bytes. Uses
+// SHA1 because that is the algorithm most commonly used in OCSP requests.
+// PURPOSEFULLY NOT EXPORTED. Exists only to ensure that the implementations of
+// Certificate.NameID() and GetIssuerNameID() never diverge. Use those instead.
+func truncatedHash(name []byte) IssuerNameID {
 	h := crypto.SHA1.New()
-	h.Write(ee.RawIssuer)
+	h.Write(name)
 	s := h.Sum(nil)
 	return IssuerNameID(big.NewInt(0).SetBytes(s[:7]).Int64())
 }
