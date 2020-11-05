@@ -19,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -346,8 +347,9 @@ func main() {
 	wfe.DirectoryWebsite = c.WFE.DirectoryWebsite
 	wfe.LegacyKeyIDPrefix = c.WFE.LegacyKeyIDPrefix
 
-	wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
-	cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
+	issuerCert, err := core.LoadCert(c.Common.IssuerCert)
+	cmd.FailOnError(err, fmt.Sprintf("Couldn't load issuer cert [%s]", c.Common.IssuerCert))
+	wfe.IssuerCert = &issuance.Certificate{Certificate: issuerCert}
 
 	logger.Infof("WFE using key policy: %#v", kp)
 

@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto"
 	"crypto/sha1"
-	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/hex"
@@ -139,13 +138,9 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 
 func makeDBSource(dbMap dbSelector, issuerCert string, reqSerialPrefixes []string, timeout time.Duration, log blog.Logger) (*DBSource, error) {
 	// Construct the key hash for the issuer
-	caCertDER, err := cmd.LoadCert(issuerCert)
+	caCert, err := core.LoadCert(issuerCert)
 	if err != nil {
-		return nil, fmt.Errorf("Could not read issuer cert %s: %s", issuerCert, err)
-	}
-	caCert, err := x509.ParseCertificate(caCertDER)
-	if err != nil {
-		return nil, fmt.Errorf("Could not parse issuer cert %s: %s", issuerCert, err)
+		return nil, fmt.Errorf("Could not load issuer cert %s: %s", issuerCert, err)
 	}
 	// The issuerKeyHash in OCSP requests is constructed over the DER
 	// encoding of the public key per RFC 6960 (defined in RFC 4055 for
