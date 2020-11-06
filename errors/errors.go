@@ -30,6 +30,10 @@ const (
 	BadCSR
 )
 
+func (ErrorType) Error() string {
+	return "urn:ietf:params:acme:error"
+}
+
 // BoulderError represents internal Boulder errors
 type BoulderError struct {
 	Type      ErrorType
@@ -46,6 +50,10 @@ type SubBoulderError struct {
 
 func (be *BoulderError) Error() string {
 	return be.Detail
+}
+
+func (be *BoulderError) Unwrap() error {
+	return be.Type
 }
 
 // WithSubErrors returns a new BoulderError instance created by adding the
@@ -67,9 +75,9 @@ func New(errType ErrorType, msg string, args ...interface{}) error {
 }
 
 // Is is a convenience function for testing the internal type of an BoulderError
+// FIXME: delete this and replace calls with errors.Is when I'm sure this works.
 func Is(err error, errType ErrorType) bool {
-	var bErr *BoulderError
-	return errors.As(err, &bErr) && bErr.Type == errType
+	return errors.Is(err, errType)
 }
 
 func InternalServerError(msg string, args ...interface{}) error {
