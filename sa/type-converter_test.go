@@ -2,7 +2,6 @@ package sa
 
 import (
 	"encoding/json"
-	"errors"
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
@@ -48,7 +47,7 @@ func TestAcmeIdentifierBadJSON(t *testing.T) {
 	err := scanner.Binder(&badJSON, &out)
 	test.AssertError(t, err, "expected error from scanner.Binder")
 	var badJSONErr errBadJSON
-	test.AssertEquals(t, errors.As(err, &badJSONErr), true)
+	test.AssertErrorWraps(t, err, &badJSONErr)
 	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 }
 
@@ -85,7 +84,7 @@ func TestJSONWebKeyBadJSON(t *testing.T) {
 	err := scanner.Binder(&badJSON, &out)
 	test.AssertError(t, err, "expected error from scanner.Binder")
 	var badJSONErr errBadJSON
-	test.AssertEquals(t, errors.As(err, &badJSONErr), true)
+	test.AssertErrorWraps(t, err, &badJSONErr)
 	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 }
 

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/big"
@@ -304,12 +303,8 @@ func TestBadEmailError(t *testing.T) {
 	}
 	expected := "401: 4.1.3 Bad recipient address syntax"
 	var rcptErr RecoverableSMTPError
-	if !errors.As(err, &rcptErr) {
-		t.Errorf("Expected SendMail() to return an RecoverableSMTPError, got a %T error: %v", err, err)
-	} else if rcptErr.Message != expected {
-		t.Errorf("SendMail() returned RecoverableSMTPError with wrong message. Got %q, expected %q\n",
-			rcptErr.Message, expected)
-	}
+	test.AssertErrorWraps(t, err, &rcptErr)
+	test.AssertEquals(t, rcptErr.Message, expected)
 }
 
 func TestReconnectSMTP421(t *testing.T) {
@@ -383,12 +378,8 @@ func TestOtherError(t *testing.T) {
 	}
 	expected := "999 1.1.1 This would probably be bad?"
 	var rcptErr *textproto.Error
-	if !errors.As(err, &rcptErr) {
-		t.Errorf("Expected SendMail() to return an textproto.Error, got a %T error: %v", err, err)
-	} else if rcptErr.Error() != expected {
-		t.Errorf("SendMail() returned textproto.Error with wrong message. Got %q, expected %q\n",
-			rcptErr.Error(), expected)
-	}
+	test.AssertErrorWraps(t, err, &rcptErr)
+	test.AssertEquals(t, rcptErr.Error(), expected)
 
 	m, l, cleanUp = setup(t)
 	defer cleanUp()
