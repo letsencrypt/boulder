@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/big"
@@ -993,7 +994,7 @@ func TestSetOrderProcessing(t *testing.T) {
 	// Try to set the same order to be processing again. We should get an error.
 	err = sa.SetOrderProcessing(context.Background(), order)
 	test.AssertError(t, err, "Set the same order processing twice. This should have been an error.")
-	if !berrors.Is(err, berrors.OrderNotReady) {
+	if !errors.Is(err, berrors.OrderNotReady) {
 		t.Errorf("Wrong error when setting an order to processing twice. Expected OrderNotReady, got %#v", err)
 	}
 }

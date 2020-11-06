@@ -529,7 +529,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	// Special case: If no registration was found, but regCheck is false, use an
 	// empty registration and the submitted key. The caller is expected to do some
 	// validation on the returned key.
-	if berrors.Is(err, berrors.NotFound) && !regCheck {
+	if errors.Is(err, berrors.NotFound) && !regCheck {
 		// When looking up keys from the registrations DB, we can be confident they
 		// are "good". But when we are verifying against any submitted key, we want
 		// to check its quality before doing the verify.
@@ -541,7 +541,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	} else if err != nil {
 		// For all other errors, or if regCheck is true, return error immediately.
 		logEvent.AddError("unable to fetch registration by the given JWK: %s", err)
-		if berrors.Is(err, berrors.NotFound) {
+		if errors.Is(err, berrors.NotFound) {
 			return nil, nil, reg, probs.Unauthorized(unknownKey)
 		}
 
@@ -639,10 +639,10 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *web.R
 	}
 
 	existingReg, err := wfe.SA.GetRegistrationByKey(ctx, key)
-	if err != nil && !berrors.Is(err, berrors.NotFound) {
+	if err != nil && !errors.Is(err, berrors.NotFound) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("couldn't retrieve the registration"), err)
 		return
-	} else if err == nil || !berrors.Is(err, berrors.NotFound) {
+	} else if err == nil || !errors.Is(err, berrors.NotFound) {
 		response.Header().Set("Location", web.RelativeEndpoint(request, fmt.Sprintf("%s%d", regPath, existingReg.ID)))
 		wfe.sendError(response, logEvent, probs.Conflict("Registration key is already in use"), err)
 		return
@@ -685,7 +685,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *web.R
 
 	reg, err := wfe.RA.NewRegistration(ctx, init)
 	if err != nil {
-		if berrors.Is(err, berrors.Duplicate) {
+		if errors.Is(err, berrors.Duplicate) {
 			existingReg, err := wfe.SA.GetRegistrationByKey(ctx, key)
 			if err != nil {
 				// return error even if berrors.NotFound, as the duplicate key error we got from
@@ -847,7 +847,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 	logEvent.Extra["ProvidedCertificateSerial"] = serial
 	cert, err := wfe.SA.GetCertificate(ctx, serial)
 	if err != nil {
-		if berrors.Is(err, berrors.NotFound) {
+		if errors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("No such certificate"), err)
 			return
 		}
@@ -921,7 +921,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 
 	err = wfe.RA.RevokeCertificateWithReg(ctx, *parsedCertificate, reason, registration.ID)
 	if err != nil {
-		if berrors.Is(err, berrors.Duplicate) {
+		if errors.Is(err, berrors.Duplicate) {
 			// It is possible that between checking the certificate's status and
 			// performing the revocation, a parallel request happened and revoked the
 			// cert. In this case, just retrieve the certificate status again and
@@ -1080,7 +1080,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	challengeID := slug[1]
 	authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authorizationID})
 	if err != nil {
-		if berrors.Is(err, berrors.NotFound) {
+		if errors.Is(err, berrors.NotFound) {
 			notFound()
 		} else {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
@@ -1407,7 +1407,7 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 	}
 	authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 	if err != nil {
-		if berrors.Is(err, berrors.NotFound) {
+		if errors.Is(err, berrors.NotFound) {
 			notFound()
 		} else {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
@@ -1470,7 +1470,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		ierr := fmt.Errorf("unable to get certificate by serial id %#v: %s", serial, err)
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
 			wfe.sendError(response, logEvent, probs.Conflict("Multiple certificates with same short serial"), ierr)
-		} else if berrors.Is(err, berrors.NotFound) {
+		} else if errors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), ierr)
 		} else {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve certificate"), ierr)
