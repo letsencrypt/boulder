@@ -66,7 +66,8 @@ func TestRevokeBatch(t *testing.T) {
 		0,
 		nil,
 		nil,
-		&issuance.Certificate{Certificate: &x509.Certificate{}})
+		[]*issuance.Certificate{{Certificate: &x509.Certificate{}}},
+	)
 	ra.SA = ssa
 	ra.CA = &mockCA{}
 

@@ -11,7 +11,11 @@
     "weakKeyFile": "test/example-weak-keys.json",
     "blockedKeyFile": "test/example-blocked-keys.yaml",
     "orderLifetime": "168h",
-    "issuerCertPath":  "/tmp/intermediate-cert-rsa-a.pem",
+    "issuerCerts": [
+      "/tmp/intermediate-cert-rsa-a.pem",
+      "/tmp/intermediate-cert-rsa-b.pem",
+      "/tmp/intermediate-cert-ecdsa-a.pem"
+    ],
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/ra.boulder/cert.pem",

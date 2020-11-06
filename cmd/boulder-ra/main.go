@@ -86,7 +86,12 @@ type config struct {
 
 		// IssuerCertPath is the path to the intermediate used to issue certificates.
 		// It is used to generate OCSP URLs to purge at revocation time.
+		// TODO(#5162): DEPRECATED. Remove this field entirely.
 		IssuerCertPath string
+		// IssuerCerts are paths to all intermediate certificates which may have
+		// been used to issue certificates in the last 90 days. These are used to
+		// generate OCSP URLs to purge during revocation.
+		IssuerCerts []string
 
 		Features map[string]bool
 	}
@@ -161,8 +166,15 @@ func main() {
 	cmd.FailOnError(err, "Unable to create a Akamai Purger client")
 	apc := akamaipb.NewAkamaiPurgerClient(apConn)
 
-	issuerCert, err := issuance.LoadCertificate(c.RA.IssuerCertPath)
-	cmd.FailOnError(err, "Failed to load issuer certificate")
+	issuerCertPaths := c.RA.IssuerCerts
+	if len(issuerCertPaths) == 0 {
+		issuerCertPaths = []string{c.RA.IssuerCertPath}
+	}
+	issuerCerts := make([]*issuance.Certificate, len(issuerCertPaths))
+	for i, issuerCertPath := range issuerCertPaths {
+		issuerCerts[i], err = issuance.LoadCertificate(issuerCertPath)
+		cmd.FailOnError(err, "Failed to load issuer certificate")
+	}
 
 	// Boulder's components assume that there will always be CT logs configured.
 	// Issuing a certificate without SCTs embedded is a miss-issuance event in the
@@ -225,7 +237,7 @@ func main() {
 		c.RA.OrderLifetime.Duration,
 		ctp,
 		apc,
-		issuerCert,
+		issuerCerts,
 	)
 
 	policyErr := rai.SetRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)

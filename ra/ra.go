@@ -77,8 +77,8 @@ type RegistrationAuthorityImpl struct {
 	reuseValidAuthz              bool
 	orderLifetime                time.Duration
 
-	issuer *issuance.Certificate
-	purger akamaipb.AkamaiPurgerClient
+	issuers map[issuance.IssuerNameID]*issuance.Certificate
+	purger  akamaipb.AkamaiPurgerClient
 
 	ctpolicy *ctpolicy.CTPolicy
 
@@ -108,7 +108,7 @@ func NewRegistrationAuthorityImpl(
 	orderLifetime time.Duration,
 	ctp *ctpolicy.CTPolicy,
 	purger akamaipb.AkamaiPurgerClient,
-	issuer *issuance.Certificate,
+	issuers []*issuance.Certificate,
 ) *RegistrationAuthorityImpl {
 	ctpolicyResults := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -169,6 +169,11 @@ func NewRegistrationAuthorityImpl(
 	}, []string{"reason"})
 	stats.MustRegister(revocationReasonCounter)
 
+	issuersByID := make(map[issuance.IssuerNameID]*issuance.Certificate)
+	for _, issuer := range issuers {
+		issuersByID[issuer.NameID()] = issuer
+	}
+
 	ra := &RegistrationAuthorityImpl{
 		clk:                          clk,
 		log:                          logger,
@@ -185,7 +190,7 @@ func NewRegistrationAuthorityImpl(
 		ctpolicy:                     ctp,
 		ctpolicyResults:              ctpolicyResults,
 		purger:                       purger,
-		issuer:                       issuer,
+		issuers:                      issuersByID,
 		namesPerCert:                 namesPerCert,
 		rateLimitCounter:             rateLimitCounter,
 		newRegCounter:                newRegCounter,
@@ -1711,7 +1716,11 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 			return err
 		}
 	}
-	purgeURLs, err := akamai.GeneratePurgeURLs(&cert, ra.issuer.Certificate)
+	issuer, ok := ra.issuers[issuance.GetIssuerNameID(&cert)]
+	if !ok {
+		return fmt.Errorf("unable to identify issuer of revoked certificate: %v", cert)
+	}
+	purgeURLs, err := akamai.GeneratePurgeURLs(&cert, issuer.Certificate)
 	if err != nil {
 		return err
 	}
