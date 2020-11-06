@@ -156,7 +156,7 @@ func TestValidSerial(t *testing.T) {
 }
 
 func TestLoadCert(t *testing.T) {
-	var osPathErr os.PathError
+	var osPathErr *os.PathError
 	_, err := LoadCert("")
 	test.AssertError(t, err, "Loading empty path did not error")
 	test.AssertErrorWraps(t, err, &osPathErr)
@@ -172,7 +172,7 @@ func TestLoadCert(t *testing.T) {
 	var asnStructuralErr asn1.StructuralError
 	_, err = LoadCert("../test/test-ca.key")
 	test.AssertError(t, err, "Loading non-cert file did not error")
-	test.AssertErrorWraps(t, err, asnStructuralErr)
+	test.AssertErrorWraps(t, err, &asnStructuralErr)
 
 	cert, err := LoadCert("../test/test-ca.pem")
 	test.AssertNotError(t, err, "Failed to load cert file")
