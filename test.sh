@@ -14,10 +14,12 @@ fi
 # Defaults
 #
 STATUS="FAILURE"
+# RUN, UNIT_FILTER, and INT_FILTER vars are here for backwards compatibility,
+# and should be set to () unconditionally in the future.
 if [ -z "${RUN+x}" ]; then RUN=(); fi
 if [ -z "${UNIT_FILTER+x}" ]; then UNIT_FILTER=(); fi
 if [ -z "${INT_FILTER+x}" ]; then INT_FILTER=(); fi
-TRAVIS="${TRAVIS:-false}"
+ENABLE_UNIT_RACE="false"
 export BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR:-"test/config"}"
 
 #
@@ -63,7 +65,7 @@ function run_and_expect_silence() {
 # Testing Helpers
 #
 function run_unit_tests() {
-  if [ "${TRAVIS}" == true ]; then
+  if [ "${ENABLE_UNIT_RACE}" == true ]; then
     # Run the full suite of tests once with the -race flag. Since this isn't
     # running tests individually we can't collect coverage information.
     go test -race "${UNIT_FILTER[@]}"
@@ -109,7 +111,7 @@ With no options passed: runs standard battery of tests (lint, unit, and integati
     -l, --lints                           Adds lint to the list of tests to run
     -u, --unit                            Adds unit to the list of tests to run
     -d, --unit-test-filter <DIRECTORY>    Run unit tests for a specific directory
-    -e, --enable-race-detector            Sets $TRAVIS to true, enabling -race flag for unit tests
+    -e, --enable-unit-race                Enables -race flag for all unit tests
     -n, --config-next                     Changes BOULDER_CONFIG_DIR from test/config to test/config-next
     -c, --coverage                        Adds coverage to the list of tests to run
     -i, --integration                     Adds integration to the list of tests to run
@@ -143,7 +145,7 @@ while getopts luecipsvgrnhd:f:-: OPT; do
     l | lints )                      RUN+=("lints") ;;
     u | unit )                       RUN+=("unit") ;;
     d | unit-dir-filter )            check_arg; UNIT_FILTER+=("${OPTARG}") ;;
-    e | enable-race-detector )       TRAVIS="true" ;;
+    e | enable-unit-race )           ENABLE_UNIT_RACE="true" ;;
     c | coverage )                   RUN+=("coverage") ;;
     i | integration )                RUN+=("integration") ;;
     p | show-integration-test-list ) print_list_of_integration_tests ;;
@@ -160,12 +162,11 @@ while getopts luecipsvgrnhd:f:-: OPT; do
 done
 shift $((OPTIND-1)) # remove parsed options and args from $@ list
 
-# The list of segments to run. To run only some of these segments, pre-set the
-# RUN variable with the ones you want (see .travis.yml for an example).
-# Order doesn't matter. Note: gomod-vendor is specifically left out of the
-# defaults, because we don't want to run it locally (it could delete local
-# state) We also omit coverage by default on local runs because it generates
-# artifacts on disk that aren't needed.
+# The list of segments to run.Order doesn't matter. Note: gomod-vendor 
+# is specifically left out of the defaults, because we don't want to run
+# it locally (it could delete local state) We also omit coverage by default
+# on local runs because it generates artifacts on disk that aren't needed.
+
 if [ -z "${RUN[@]+x}" ]
 then
   RUN+=("lints" "unit" "integration")
@@ -184,8 +185,8 @@ settings="$(cat -- <<-EOM
     RUN:                ${RUN[@]}
     BOULDER_CONFIG_DIR: $BOULDER_CONFIG_DIR
     UNIT_FILTER:        ${UNIT_FILTER[@]}
+    ENABLE_UNIT_RACE:   $ENABLE_UNIT_RACE
     INT_FILTER:         ${INT_FILTER[@]}
-    TRAVIS:             $TRAVIS
 
 EOM
 )"
