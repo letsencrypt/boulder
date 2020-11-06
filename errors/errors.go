@@ -1,13 +1,15 @@
 package errors
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/letsencrypt/boulder/identifier"
 )
 
-// ErrorType provides a coarse category for BoulderErrors
+// ErrorType provides a coarse category for BoulderErrors.
+// Objects of type ErrorType should never be directly returned by other
+// functions; instead use the methods below to create an appropriate
+// BoulderError wrapping one of these types.
 type ErrorType int
 
 const (
@@ -72,12 +74,6 @@ func New(errType ErrorType, msg string, args ...interface{}) error {
 		Type:   errType,
 		Detail: fmt.Sprintf(msg, args...),
 	}
-}
-
-// Is is a convenience function for testing the internal type of an BoulderError
-// FIXME: delete this and replace calls with errors.Is when I'm sure this works.
-func Is(err error, errType ErrorType) bool {
-	return errors.Is(err, errType)
 }
 
 func InternalServerError(msg string, args ...interface{}) error {
