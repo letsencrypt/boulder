@@ -458,7 +458,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 	account, err := wfe.SA.GetRegistration(ctx, accountID)
 	if err != nil {
 		// If the account isn't found, return a suitable problem
-		if berrors.Is(err, berrors.NotFound) {
+		if errors.Is(err, berrors.NotFound) {
 			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSKeyIDNotFound"}).Inc()
 			return nil, nil, probs.AccountDoesNotExist(fmt.Sprintf(
 				"Account %q not found", accountURL))

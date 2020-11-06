@@ -95,7 +95,7 @@ func TestDeleteOrder(t *testing.T) {
 	// The order should be gone
 	_, err = ssa.GetOrder(ctx, &sapb.OrderRequest{Id: testOrder.Id})
 	test.AssertError(t, err, "found order after deleting it")
-	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
+	test.AssertErrorIs(t, err, berrors.NotFound)
 
 	// The orderToAuthz2 rows should be gone
 	var authzIDs []int64

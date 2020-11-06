@@ -1,7 +1,6 @@
 package policy
 
 import (
-	"errors"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -331,7 +330,7 @@ func TestWillingToIssueWildcards(t *testing.T) {
 	test.AssertError(t, err, "Expected err from WillingToIssueWildcards")
 
 	var berr *berrors.BoulderError
-	test.AssertEquals(t, errors.As(err, &berr), true)
+	test.AssertErrorWraps(t, err, &berr)
 	test.AssertEquals(t, len(berr.SubErrors), 2)
 	test.AssertEquals(t, berr.Error(), "Cannot issue for \"letsdecrypt.org\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy (and 1 more problems. Refer to sub-problems for more information.)")
 
@@ -356,7 +355,7 @@ func TestWillingToIssueWildcards(t *testing.T) {
 	// It should error
 	test.AssertError(t, err, "Expected err from WillingToIssueWildcards")
 
-	test.AssertEquals(t, errors.As(err, &berr), true)
+	test.AssertErrorWraps(t, err, &berr)
 	// There should be *no* suberrors because there was only one error overall.
 	test.AssertEquals(t, len(berr.SubErrors), 0)
 	test.AssertEquals(t, berr.Error(), "Cannot issue for \"letsdecrypt.org\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy")
