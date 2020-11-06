@@ -595,7 +595,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	if err == nil {
 		returnExistingAcct(existingAcct)
 		return
-	} else if !berrors.Is(err, berrors.NotFound) {
+	} else if !errors.Is(err, berrors.NotFound) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), err)
 		return
 	}
@@ -632,7 +632,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		InitialIP: ip,
 	})
 	if err != nil {
-		if berrors.Is(err, berrors.Duplicate) {
+		if errors.Is(err, berrors.Duplicate) {
 			existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, key)
 			if err == nil {
 				returnExistingAcct(existingAcct)
@@ -776,7 +776,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		// to be a byte-for-byte match with the requested cert.
 		cert, err := wfe.SA.GetCertificate(ctx, serial)
 		if err != nil {
-			if berrors.Is(err, berrors.NotFound) {
+			if errors.Is(err, berrors.NotFound) {
 				return notFoundProb
 			}
 			return probs.ServerInternal("unable to retrieve certificate")
@@ -841,7 +841,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	// (e.g. it was a self-authenticated JWS using the certificate public key)
 	err = wfe.RA.RevokeCertificateWithReg(ctx, *parsedCertificate, reason, acctID)
 	if err != nil {
-		if berrors.Is(err, berrors.Duplicate) {
+		if errors.Is(err, berrors.Duplicate) {
 			// It is possible that between checking the certificate's status and
 			// performing the revocation, a parallel request happened and revoked the
 			// cert. In this case, just retrieve the certificate status again and
@@ -881,12 +881,12 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 		// Try to find a stored final certificate for the serial number
 		serial := core.SerialToString(parsedCertificate.SerialNumber)
 		cert, err := wfe.SA.GetCertificate(ctx, serial)
-		if berrors.Is(err, berrors.NotFound) && features.Enabled(features.PrecertificateRevocation) {
+		if errors.Is(err, berrors.NotFound) && features.Enabled(features.PrecertificateRevocation) {
 			// If there was an error, it was a not found error, and the precertificate
 			// revocation feature is enabled, then try to find a stored precert.
 			pbCert, err := wfe.SA.GetPrecertificate(ctx,
 				&sapb.Serial{Serial: serial})
-			if berrors.Is(err, berrors.NotFound) {
+			if errors.Is(err, berrors.NotFound) {
 				// If looking up a precert also returned a not found error then return
 				// a not found problem.
 				return probs.NotFound("No such certificate")
@@ -899,7 +899,7 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 			if err != nil {
 				return probs.ServerInternal("Failed to unmarshal protobuf certificate")
 			}
-		} else if berrors.Is(err, berrors.NotFound) {
+		} else if errors.Is(err, berrors.NotFound) {
 			// Otherwise if the err was not nil and was a not found error but the
 			// precertificate revocation feature flag is not enabled, return a not
 			// found error.
@@ -1049,7 +1049,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	challengeID := slug[1]
 	authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authorizationID})
 	if err != nil {
-		if berrors.Is(err, berrors.NotFound) {
+		if errors.Is(err, berrors.NotFound) {
 			notFound()
 		} else {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
@@ -1474,10 +1474,10 @@ func (wfe *WebFrontEndImpl) Authorization(
 	}
 
 	authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
-	if berrors.Is(err, berrors.NotFound) {
+	if errors.Is(err, berrors.NotFound) {
 		wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
 		return
-	} else if berrors.Is(err, berrors.Malformed) {
+	} else if errors.Is(err, berrors.Malformed) {
 		wfe.sendError(response, logEvent, probs.Malformed(err.Error()), nil)
 		return
 	} else if err != nil {
@@ -1595,7 +1595,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		ierr := fmt.Errorf("unable to get certificate by serial id %#v: %s", serial, err)
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
 			wfe.sendError(response, logEvent, probs.Conflict("Multiple certificates with same short serial"), ierr)
-		} else if berrors.Is(err, berrors.NotFound) {
+		} else if errors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), ierr)
 		} else {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve certificate"), ierr)
@@ -1850,7 +1850,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		wfe.sendError(response, logEvent,
 			probs.Conflict("New key is already in use for a different account"), err)
 		return
-	} else if !berrors.Is(err, berrors.NotFound) {
+	} else if !errors.Is(err, berrors.NotFound) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to lookup existing keys"), err)
 		return
 	}
@@ -1858,7 +1858,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	// Update the account key to the new key
 	updatedAcct, err := wfe.RA.UpdateRegistration(ctx, *acct, core.Registration{Key: &newKey})
 	if err != nil {
-		if berrors.Is(err, berrors.Duplicate) {
+		if errors.Is(err, berrors.Duplicate) {
 			// It is possible that between checking for the existing key, and preforming the update
 			// a parallel update or new account request happened and claimed the key. In this case
 			// just retrieve the account again, and return an error as we would above with a Location
@@ -2051,7 +2051,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 
 	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: orderID})
 	if err != nil {
-		if berrors.Is(err, berrors.NotFound) {
+		if errors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
 			return
 		}
@@ -2120,7 +2120,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 
 	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: orderID})
 	if err != nil {
-		if berrors.Is(err, berrors.NotFound) {
+		if errors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
 			return
 		}

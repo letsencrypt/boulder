@@ -126,7 +126,7 @@ func TestGetSCTs(t *testing.T) {
 					t.Errorf("Error %q did not match expected regexp %q", err, tc.errRegexp)
 				}
 				if tc.berrorType != nil {
-					test.AssertEquals(t, berrors.Is(err, *tc.berrorType), true)
+					test.AssertErrorIs(t, err, *tc.berrorType)
 				}
 			}
 		})

@@ -153,7 +153,7 @@ func checkDER(sai certificateStorage, der []byte) (*x509.Certificate, orphanType
 	if err == nil {
 		return nil, orphanTyp, errAlreadyExists
 	}
-	if berrors.Is(err, berrors.NotFound) {
+	if errors.Is(err, berrors.NotFound) {
 		return orphan, orphanTyp, nil
 	}
 	return nil, orphanTyp, fmt.Errorf("Existing %s lookup failed: %s", orphanTyp, err)
