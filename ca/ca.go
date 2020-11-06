@@ -642,7 +642,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		err = berrors.InternalServerError("issuance of duplicate final certificate requested: %s", serialHex)
 		ca.log.AuditErr(err.Error())
 		return nil, err
-	} else if !berrors.Is(err, berrors.NotFound) {
+	} else if !errors.Is(err, berrors.NotFound) {
 		return nil, fmt.Errorf("error checking for duplicate issuance of %s: %s", serialHex, err)
 	}
 	var scts []ct.SignedCertificateTimestamp
@@ -960,12 +960,12 @@ func (ca *CertificateAuthorityImpl) integrateOrphan() error {
 			Issued:   issuedNanos,
 			IssuerID: orphan.IssuerID,
 		})
-		if err != nil && !berrors.Is(err, berrors.Duplicate) {
+		if err != nil && !errors.Is(err, berrors.Duplicate) {
 			return fmt.Errorf("failed to store orphaned precertificate: %s", err)
 		}
 	} else {
 		_, err = ca.sa.AddCertificate(context.Background(), orphan.DER, orphan.RegID, nil, &issued)
-		if err != nil && !berrors.Is(err, berrors.Duplicate) {
+		if err != nil && !errors.Is(err, berrors.Duplicate) {
 			return fmt.Errorf("failed to store orphaned certificate: %s", err)
 		}
 	}

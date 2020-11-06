@@ -707,7 +707,7 @@ func TestInvalidCSRs(t *testing.T) {
 			issueReq := &capb.IssueCertificateRequest{Csr: serializedCSR, RegistrationID: arbitraryRegID}
 			_, err = ca.IssuePrecertificate(ctx, issueReq)
 
-			test.Assert(t, berrors.Is(err, testCase.errorType), "Incorrect error type returned")
+			test.AssertErrorIs(t, err, testCase.errorType)
 			test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 0)
 
 			test.AssertError(t, err, testCase.errorMessage)
@@ -749,7 +749,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	_, err = ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID})
 	test.AssertError(t, err, "Cannot issue a certificate that expires after the intermediate certificate")
-	test.Assert(t, berrors.Is(err, berrors.InternalServer), "Incorrect error type returned")
+	test.AssertErrorIs(t, err, berrors.InternalServer)
 }
 
 func TestSingleAIAEnforcement(t *testing.T) {
@@ -1351,7 +1351,7 @@ func TestIssuePrecertificateLinting(t *testing.T) {
 	test.AssertError(t, err, "expected err from IssuePrecertificate with linttrapSigner")
 	// The local.LintError should have been converted to an internal server error
 	// berror with the correct message.
-	test.Assert(t, berrors.Is(err, berrors.InternalServer), "Incorrect error type returned")
+	test.AssertErrorIs(t, err, berrors.InternalServer)
 	test.AssertEquals(t, err.Error(), "failed to sign certificate: pre-issuance linting found 2 error results")
 
 	// We also expect that an AUDIT level error is logged that includes the expect

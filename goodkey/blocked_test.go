@@ -3,7 +3,6 @@ package goodkey
 import (
 	"context"
 	"crypto"
-	"errors"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -98,6 +97,6 @@ func TestBlockedKeys(t *testing.T) {
 	for _, k := range blockedKeys {
 		err := testingPolicy.GoodKey(context.Background(), k)
 		test.AssertError(t, err, "test key was not blocked by key policy with block list")
-		test.Assert(t, errors.Is(err, ErrBadKey), "err was not goodkey.ErrBadKey")
+		test.AssertErrorIs(t, err, ErrBadKey)
 	}
 }

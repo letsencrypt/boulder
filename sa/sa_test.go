@@ -170,20 +170,14 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 	defer cleanUp()
 
 	_, err := sa.GetRegistration(ctx, 100)
-	if !berrors.Is(err, berrors.NotFound) {
-		t.Errorf("GetRegistration: expected a berrors.NotFound type error, got %T type error (%s)", err, err)
-	}
+	test.AssertErrorIs(t, err, berrors.NotFound)
 
 	jwk := satest.GoodJWK()
 	_, err = sa.GetRegistrationByKey(ctx, jwk)
-	if !berrors.Is(err, berrors.NotFound) {
-		t.Errorf("GetRegistrationByKey: expected a berrors.NotFound type error, got %T type error (%s)", err, err)
-	}
+	test.AssertErrorIs(t, err, berrors.NotFound)
 
 	err = sa.UpdateRegistration(ctx, core.Registration{ID: 100, Key: jwk})
-	if !berrors.Is(err, berrors.NotFound) {
-		t.Errorf("UpdateRegistration: expected a berrors.NotFound type error, got %T type error (%v)", err, err)
-	}
+	test.AssertErrorIs(t, err, berrors.NotFound)
 }
 
 func TestAddCertificate(t *testing.T) {
@@ -993,9 +987,7 @@ func TestSetOrderProcessing(t *testing.T) {
 	// Try to set the same order to be processing again. We should get an error.
 	err = sa.SetOrderProcessing(context.Background(), order)
 	test.AssertError(t, err, "Set the same order processing twice. This should have been an error.")
-	if !berrors.Is(err, berrors.OrderNotReady) {
-		t.Errorf("Wrong error when setting an order to processing twice. Expected OrderNotReady, got %#v", err)
-	}
+	test.AssertErrorIs(t, err, berrors.OrderNotReady)
 }
 
 func TestFinalizeOrder(t *testing.T) {
@@ -1107,7 +1099,7 @@ func TestGetAuthorizationNoRows(t *testing.T) {
 	id := int64(123)
 	_, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: id})
 	test.AssertError(t, err, "Didn't get an error looking up non-existent authz ID")
-	test.Assert(t, berrors.Is(err, berrors.NotFound), "GetAuthorization did not return a berrors.NotFound error")
+	test.AssertErrorIs(t, err, berrors.NotFound)
 }
 
 func TestGetAuthorizations2(t *testing.T) {
@@ -1289,7 +1281,7 @@ func TestGetOrderForNames(t *testing.T) {
 	// We expect the result to return an error
 	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
 	// The error should be a notfound error
-	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
+	test.AssertErrorIs(t, err, berrors.NotFound)
 	// The result should be nil
 	test.Assert(t, result == nil, "sa.GetOrderForNames for non-existent order returned non-nil result")
 
@@ -1326,7 +1318,7 @@ func TestGetOrderForNames(t *testing.T) {
 	// It should error
 	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
 	// The error should be a notfound error
-	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
+	test.AssertErrorIs(t, err, berrors.NotFound)
 	// The result should be nil
 	test.Assert(t, result == nil, "sa.GetOrderForNames for diff AcctID returned non-nil result")
 
@@ -1342,7 +1334,7 @@ func TestGetOrderForNames(t *testing.T) {
 	// It should error since there is no result
 	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
 	// The error should be a notfound error
-	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
+	test.AssertErrorIs(t, err, berrors.NotFound)
 	// The result should be nil because the initial order expired & we don't want
 	// to return expired orders
 	test.Assert(t, result == nil, "sa.GetOrderForNames returned non-nil result for expired order case")
@@ -1395,7 +1387,7 @@ func TestGetOrderForNames(t *testing.T) {
 	// It should error since a valid order should not be reused.
 	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
 	// The error should be a notfound error
-	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
+	test.AssertErrorIs(t, err, berrors.NotFound)
 	// The result should be nil because the one matching order has been finalized
 	// already
 	test.Assert(t, result == nil, "sa.GetOrderForNames returned non-nil result for finalized order case")
@@ -2203,7 +2195,7 @@ func TestGetOrderExpired(t *testing.T) {
 		Id: order.Id,
 	})
 	test.AssertError(t, err, "GetOrder didn't fail for an expired order")
-	test.Assert(t, berrors.Is(err, berrors.NotFound), "GetOrder error wasn't of type NotFound")
+	test.AssertErrorIs(t, err, berrors.NotFound)
 }
 
 func TestBlockedKey(t *testing.T) {

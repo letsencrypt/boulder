@@ -581,7 +581,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		ValidUntil:      ra.clk.Now().Add(time.Hour).UnixNano(),
 	}
 	pendingPB, err := ra.SA.GetPendingAuthorization2(ctx, req)
-	if err != nil && !berrors.Is(err, berrors.NotFound) {
+	if err != nil && !errors.Is(err, berrors.NotFound) {
 		return core.Authorization{}, berrors.InternalServerError(
 			"unable to get pending authorization for regID: %d, identifier: %s: %s",
 			regID,
@@ -1856,7 +1856,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	})
 	// If there was an error and it wasn't an acceptable "NotFound" error, return
 	// immediately
-	if err != nil && !berrors.Is(err, berrors.NotFound) {
+	if err != nil && !errors.Is(err, berrors.NotFound) {
 		return nil, err
 	}
 	// If there was an order, return it

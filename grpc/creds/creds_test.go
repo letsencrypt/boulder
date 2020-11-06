@@ -6,7 +6,6 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"math/big"
 	"net"
 	"net/http/httptest"
@@ -58,9 +57,7 @@ func TestServerTransportCredentials(t *testing.T) {
 	}
 	err = bcreds.validateClient(wrongState)
 	var errSANNotAccepted ErrSANNotAccepted
-	if !errors.As(err, &errSANNotAccepted) {
-		t.Errorf("Expected error of type ErrSANNotAccepted, got %T: %s", err, err)
-	}
+	test.AssertErrorWraps(t, err, &errSANNotAccepted)
 
 	// A creds should accept peers that have a leaf certificate with a SAN
 	// that is on the accepted list
@@ -197,6 +194,5 @@ func TestClientReset(t *testing.T) {
 	_, _, err := tc.ClientHandshake(context.Background(), "T:1010", &brokenConn{})
 	test.AssertError(t, err, "ClientHandshake succeeded with brokenConn")
 	var netErr net.Error
-	ok := errors.As(err, &netErr)
-	test.Assert(t, ok, "returned error doesn't have a Temporary method")
+	test.AssertErrorWraps(t, err, &netErr)
 }

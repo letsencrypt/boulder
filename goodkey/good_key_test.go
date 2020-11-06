@@ -6,7 +6,6 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
-	"errors"
 	"fmt"
 	"math/big"
 	"testing"
@@ -285,7 +284,7 @@ func TestDBBlocklistReject(t *testing.T) {
 	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
 	err = policy.GoodKey(context.Background(), k.Public())
 	test.AssertError(t, err, "GoodKey didn't fail with a blocked key")
-	test.Assert(t, errors.Is(err, ErrBadKey), "returned error is wrong type")
+	test.AssertErrorIs(t, err, ErrBadKey)
 	test.AssertEquals(t, err.Error(), "public key is forbidden")
 }
 

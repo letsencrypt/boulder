@@ -93,12 +93,8 @@ func TestAddPrecertificate(t *testing.T) {
 			Issued:   issuedTime.UnixNano(),
 			IssuerID: 1,
 		})
-		if err == nil {
-			t.Fatalf("Expected error inserting duplicate precertificate, got none")
-		}
-		if !berrors.Is(err, berrors.Duplicate) {
-			t.Fatalf("Expected berrors.Duplicate inserting duplicate precertificate, got %#v", err)
-		}
+		test.AssertError(t, err, "Expected error inserting duplicate precertificate")
+		test.AssertErrorIs(t, err, berrors.Duplicate)
 	}
 
 	addPrecert(true)

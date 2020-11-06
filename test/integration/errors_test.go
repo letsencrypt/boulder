@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -29,12 +28,9 @@ func TestTooBigOrderError(t *testing.T) {
 	test.AssertError(t, err, "authAndIssue failed")
 
 	var prob acme.Problem
-	if !errors.As(err, &prob) {
-		t.Fatalf("expected problem result, got %#v\n", err)
-	} else {
-		test.AssertEquals(t, prob.Type, "urn:ietf:params:acme:error:malformed")
-		test.AssertEquals(t, prob.Detail, "Error creating new order :: Order cannot contain more than 100 DNS names")
-	}
+	test.AssertErrorWraps(t, err, &prob)
+	test.AssertEquals(t, prob.Type, "urn:ietf:params:acme:error:malformed")
+	test.AssertEquals(t, prob.Detail, "Error creating new order :: Order cannot contain more than 100 DNS names")
 }
 
 // TestAccountEmailError tests that registering a new account, or updating an
@@ -132,12 +128,9 @@ func TestAccountEmailError(t *testing.T) {
 			// First try registering a new account and ensuring the expected problem occurs
 			var prob acme.Problem
 			if _, err := makeClient(tc.contacts...); err != nil {
-				if !errors.As(err, &prob) {
-					t.Fatalf("expected acme.Problem error got %#v", err)
-				} else {
-					test.AssertEquals(t, prob.Type, tc.expectedProbType)
-					test.AssertEquals(t, prob.Detail, createErrorPrefix+tc.expectedProbDetail)
-				}
+				test.AssertErrorWraps(t, err, &prob)
+				test.AssertEquals(t, prob.Type, tc.expectedProbType)
+				test.AssertEquals(t, prob.Detail, createErrorPrefix+tc.expectedProbDetail)
 			} else if err == nil {
 				t.Errorf("expected %s type problem for %q, got nil",
 					tc.expectedProbType, strings.Join(tc.contacts, ","))
@@ -148,12 +141,9 @@ func TestAccountEmailError(t *testing.T) {
 			c, err := makeClient("mailto:valid@valid.com")
 			test.AssertNotError(t, err, "failed to create account with valid contact")
 			if _, err := c.UpdateAccount(c.Account, tc.contacts...); err != nil {
-				if !errors.As(err, &prob) {
-					t.Fatalf("expected acme.Problem error after updating account got %#v", err)
-				} else {
-					test.AssertEquals(t, prob.Type, tc.expectedProbType)
-					test.AssertEquals(t, prob.Detail, updateErrorPrefix+tc.expectedProbDetail)
-				}
+				test.AssertErrorWraps(t, err, &prob)
+				test.AssertEquals(t, prob.Type, tc.expectedProbType)
+				test.AssertEquals(t, prob.Detail, updateErrorPrefix+tc.expectedProbDetail)
 			} else if err == nil {
 				t.Errorf("expected %s type problem after updating account to %q, got nil",
 					tc.expectedProbType, strings.Join(tc.contacts, ","))
