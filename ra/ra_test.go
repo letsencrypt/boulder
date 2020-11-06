@@ -858,9 +858,7 @@ func TestNewAuthorizationInvalidName(t *testing.T) {
 	if err == nil {
 		t.Fatalf("NewAuthorization succeeded for 127.0.0.1, should have failed")
 	}
-	if !berrors.Is(err, berrors.Malformed) {
-		t.Errorf("expected berrors.BoulderError with internal type berrors.Malformed, got %T", err)
-	}
+	test.AssertErrorIs(t, err, berrors.Malformed)
 }
 
 func TestPerformValidationExpired(t *testing.T) {
@@ -923,8 +921,7 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 		Authz:          authzPB,
 		ChallengeIndex: int64(ResponseIndex),
 	})
-	test.Assert(t, berrors.Is(err, berrors.WrongAuthorizationState),
-		"PerformValidation of valid authz (with reuseValidAuthz disabled) didn't return a berrors.WrongAuthorizationState")
+	test.AssertErrorIs(t, err, berrors.WrongAuthorizationState)
 }
 
 func TestPerformValidationSuccess(t *testing.T) {
@@ -1421,9 +1418,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	mockSA.nameCounts["good-example.com"] = nameCount("good-example.com", 1)
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "good-example.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit example.com")
-	if !berrors.Is(err, berrors.RateLimit) {
-		t.Errorf("Incorrect error type %#v", err)
-	}
+	test.AssertErrorIs(t, err, berrors.RateLimit)
 	// Verify it has no sub errors as there is only one bad name
 	test.AssertEquals(t, err.Error(), "too many certificates already issued for: example.com: see https://letsencrypt.org/docs/rate-limits/")
 	var bErr *berrors.BoulderError
@@ -1438,9 +1433,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	mockSA.nameCounts["good-example.com"] = nameCount("good-example.com", 1)
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"example.com", "other-example.com", "good-example.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit example.com, other-example.com")
-	if !berrors.Is(err, berrors.RateLimit) {
-		t.Errorf("Incorrect error type %#v", err)
-	}
+	test.AssertErrorIs(t, err, berrors.RateLimit)
 	// Verify it has two sub errors as there are two bad names
 	test.AssertEquals(t, err.Error(), "too many certificates already issued for multiple names (example.com and 2 others): see https://letsencrypt.org/docs/rate-limits/")
 	if !errors.As(err, &bErr) {
@@ -1463,17 +1456,13 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	mockSA.nameCounts["bigissuer.com"] = nameCount("bigissuer.com", 100)
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit bigissuer")
-	if !berrors.Is(err, berrors.RateLimit) {
-		t.Errorf("Incorrect error type")
-	}
+	test.AssertErrorIs(t, err, berrors.RateLimit)
 
 	// One base domain, above its override (which is below threshold)
 	mockSA.nameCounts["smallissuer.co.uk"] = nameCount("smallissuer.co.uk", 1)
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.smallissuer.co.uk"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit smallissuer")
-	if !berrors.Is(err, berrors.RateLimit) {
-		t.Errorf("Incorrect error type %#v", err)
-	}
+	test.AssertErrorIs(t, err, berrors.RateLimit)
 }
 
 // TestCheckExactCertificateLimit tests that the duplicate certificate limit
@@ -2022,14 +2011,11 @@ func TestRecheckCAAFail(t *testing.T) {
 	}
 	err := ra.recheckCAA(context.Background(), authzs)
 
-	if err == nil {
-		t.Fatalf("expected err, got nil")
-	} else if !berrors.Is(err, berrors.CAA) {
-		t.Fatalf("expected CAA error, got %T", err)
-	}
+	test.AssertError(t, err, "expected err, got nil")
+	test.AssertErrorIs(t, err, berrors.CAA)
 
 	// NOTE(@cpu): Safe to skip the cast check here because we already checked err
-	// with `berrors.Is(err, berrors.CAA)`
+	// with `errors.Is(err, berrors.CAA)`
 	var berr *berrors.BoulderError
 	test.AssertEquals(t, errors.As(err, &berr), true)
 
@@ -2079,11 +2065,9 @@ func TestRecheckCAAInternalServerError(t *testing.T) {
 		makeHTTP01Authorization("b.com"),
 		makeHTTP01Authorization("d.com"),
 	}
-	if err := ra.recheckCAA(context.Background(), authzs); err == nil {
-		t.Errorf("expected err, got nil")
-	} else if !berrors.Is(err, berrors.InternalServer) {
-		t.Errorf("expected InternalServer error, got %T", err)
-	}
+	err := ra.recheckCAA(context.Background(), authzs)
+	test.AssertError(t, err, "expected err, got nil")
+	test.AssertErrorIs(t, err, berrors.InternalServer)
 }
 
 func TestNewOrder(t *testing.T) {
@@ -3424,10 +3408,7 @@ func TestUpdateMissingAuthorization(t *testing.T) {
 
 	err = ra.recordValidation(ctx, authz.ID, authz.Expires, &authz.Challenges[0])
 	test.AssertError(t, err, "ra.recordValidation didn't fail")
-	// It should *not* be an internal server error
-	test.AssertEquals(t, berrors.Is(err, berrors.InternalServer), false)
-	// It *should* be a NotFound error
-	test.AssertEquals(t, berrors.Is(err, berrors.NotFound), true)
+	test.AssertErrorIs(t, err, berrors.NotFound)
 }
 
 func TestValidChallengeStillGood(t *testing.T) {
@@ -3808,7 +3789,7 @@ func TestNewOrderMaxNames(t *testing.T) {
 	})
 	test.AssertError(t, err, "NewOrder didn't fail with too many names in request")
 	test.AssertEquals(t, err.Error(), "Order cannot contain more than 2 DNS names")
-	test.AssertEquals(t, berrors.Is(err, berrors.Malformed), true)
+	test.AssertErrorIs(t, err, berrors.Malformed)
 }
 
 // CSR generated by Go:
