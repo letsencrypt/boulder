@@ -128,7 +128,7 @@ With no options passed, runs standard battery of tests (lint, unit, and integati
     -n, --config-next                     Changes BOULDER_CONFIG_DIR from test/config to test/config-next
     -c, --coverage                        Adds coverage to the list of tests to run
     -i, --integration                     Adds integration to the list of tests to run
-    -s, --start-py                        Adds start (py) to the list of tests to run
+    -s, --start-py                        Adds start to the list of tests to run
     -v, --gomod-vendor                    Adds gomod-vendor to the list of tests to run
     -g, --generate                        Adds generate to the list of tests to run
     -r, --rpm                             Adds rpm to the list of tests to run
@@ -163,7 +163,7 @@ while getopts lueciosvgrnhp:f:-: OPT; do
     i | integration )                RUN+=("integration") ;;
     o | list-integration-tests )     print_list_of_integration_tests ;;
     f | filter )                     check_arg; FILTER+=("${OPTARG}") ;;
-    s | start )                      RUN+=("start") ;;
+    s | start-py )                   RUN+=("start") ;;
     v | gomod-vendor )               RUN+=("gomod-vendor") ;;
     g | generate )                   RUN+=("generate") ;;
     r | rpm )                        RUN+=("rpm") ;;
@@ -185,19 +185,19 @@ then
 fi
 
 # Filter is used by unit and integration but should not be used for both at the same time
-if [[ "${RUN[@]}" =~ unit ]] && [[ "${RUN[@]}" =~ integration ]] && [ -n "${FILTER[@]+x}" ]
+if [[ "${RUN[@]}" =~ unit ]] && [[ "${RUN[@]}" =~ integration ]] && [[ -n "${FILTER[@]+x}" ]]
 then
   exit_msg "Illegal option: (-f, --filter) when specifying both (-u, --unit) and (-i, --integration)"
 fi
 
 # If unit + filter: set correct flags for go test
-if [[ "${RUN[@]}" =~ unit ]] &&  [ -n "${FILTER[@]+x}" ]
+if [[ "${RUN[@]}" =~ unit ]] && [[ -n "${FILTER[@]+x}" ]]
 then
   FILTER=(--test.run "${FILTER[@]}")
 fi
 
 # If integration + filter: set correct flags for test/integration-test.py
-if [[ "${RUN[@]}" =~ integration ]] && [ -n "${FILTER[@]+x}" ]
+if [[ "${RUN[@]}" =~ integration ]] && [[ -n "${FILTER[@]+x}" ]]
 then
   FILTER=(--filter "${FILTER[@]}")
 fi
