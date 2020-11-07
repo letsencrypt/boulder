@@ -143,7 +143,7 @@ docker-compose run --use-aliases boulder ./test.sh --unit
 To run specific unit tests (example is of the ./va directory):
 
 ```shell
-docker-compose run --use-aliases boulder ./test.sh --unit-test-filter ./va
+docker-compose run --use-aliases boulder ./test.sh --unit --filter=./va
 ```
 
 To run all integration tests:
@@ -155,13 +155,13 @@ docker-compose run --use-aliases boulder ./test.sh --integration
 To run specific integration tests (example runs TestAkamaiPurgerDrainQueueFails and TestWFECORS):
 
 ```shell
-docker-compose run --use-aliases boulder ./test.sh --integration-filter TestAkamaiPurgerDrainQueueFails/TestWFECORS
+docker-compose run --use-aliases boulder ./test.sh --filter TestAkamaiPurgerDrainQueueFails/TestWFECORS
 ```
 
 To get a list of available integration tests:
 
 ```shell
-docker-compose run --use-aliases boulder ./test.sh --show-integration-test-list
+docker-compose run --use-aliases boulder ./test.sh --list-integration-tests
 ```
 
 The configuration in docker-compose.yml mounts your `$GOPATH` on top of its

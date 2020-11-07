@@ -14,12 +14,10 @@ fi
 # Defaults
 #
 STATUS="FAILURE"
-# RUN, UNIT_FILTER, and INT_FILTER vars are here for backwards compatibility,
-# and should be set to () unconditionally in the future.
-if [ -z "${RUN+x}" ]; then RUN=(); fi
-if [ -z "${UNIT_FILTER+x}" ]; then UNIT_FILTER=(); fi
-if [ -z "${INT_FILTER+x}" ]; then INT_FILTER=(); fi
-ENABLE_UNIT_RACE="false"
+RUN=()
+UNIT_PACKAGES=()
+FILTER=()
+RACE="false"
 export BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR:-"test/config"}"
 
 #
@@ -35,18 +33,32 @@ function print_outcome() {
 }
 
 function print_list_of_integration_tests() {
-  for file in ./test/integration/*.go; do
-    [ -e "$file" ] || continue
-    cat "$file" | grep -e '^func Test' | awk '{print $2}' | sed s/\(t//
-  done
+  go test -tags integration -list=. ./test/integration/... | grep '^Test'
   exit 0
 }
 
-function exit_msg() { echo "$*" >&2; exit 2; }  # complain to STDERR and exit with error
-function check_arg() { if [ -z "$OPTARG" ]; then exit_msg "No arg for --$OPT option, use: -h for help">&2; fi; }
-function trap_outcome_on_exit() { trap "print_outcome" EXIT; }
-function print_usage_exit() { echo "$USAGE"; exit 0; }
-function print_heading { echo; echo -e "\e[34m\e[1m"$1"\e[0m"; }
+function exit_msg() {
+  # complain to STDERR and exit with error
+  echo "$*" >&2
+  exit 2
+}
+
+function check_arg() {
+  if [ -z "$OPTARG" ]
+  then
+    exit_msg "No arg for --$OPT option, use: -h for help">&2
+  fi
+}
+
+function print_usage_exit() {
+  echo "$USAGE"
+  exit 0
+}
+
+function print_heading {
+  echo
+  echo -e "\e[34m\e[1m"$1"\e[0m"
+}
 
 function run_and_expect_silence() {
   echo "$@"
@@ -65,10 +77,10 @@ function run_and_expect_silence() {
 # Testing Helpers
 #
 function run_unit_tests() {
-  if [ "${ENABLE_UNIT_RACE}" == true ]; then
+  if [ "${RACE}" == true ]; then
     # Run the full suite of tests once with the -race flag. Since this isn't
     # running tests individually we can't collect coverage information.
-    go test -race "${UNIT_FILTER[@]}"
+    go test -race "${UNIT_PACKAGES[@]}" "${FILTER[@]}"
   else
     # When running locally, we skip the -race flag for speedier test runs. We
     # also pass -p 1 to require the tests to run serially instead of in
@@ -77,7 +89,7 @@ function run_unit_tests() {
     # spuriously because one test is modifying a table (especially
     # registrations) while another test is reading it.
     # https://github.com/letsencrypt/boulder/issues/1499
-    go test "${UNIT_FILTER[@]}"
+    go test "${UNIT_PACKAGES[@]}" "${FILTER[@]}"
   fi
 }
 
@@ -107,11 +119,12 @@ Boulder test suite CLI, intended to be run inside of a Docker container:
 
   docker-compose run --use-aliases boulder ./$(basename "${0}") [OPTION]...
 
-With no options passed: runs standard battery of tests (lint, unit, and integation)
+With no options passed, runs standard battery of tests (lint, unit, and integation)
+
     -l, --lints                           Adds lint to the list of tests to run
     -u, --unit                            Adds unit to the list of tests to run
-    -d, --unit-test-filter <DIRECTORY>    Run unit tests for a specific directory
-    -e, --enable-unit-race                Enables -race flag for all unit tests
+    -p <DIR>, --unit-test-package=<DIR>   Run unit tests for specific go package(s)
+    -e, --enable-race-detection           Enables -race flag for all unit and integration tests
     -n, --config-next                     Changes BOULDER_CONFIG_DIR from test/config to test/config-next
     -c, --coverage                        Adds coverage to the list of tests to run
     -i, --integration                     Adds integration to the list of tests to run
@@ -119,8 +132,8 @@ With no options passed: runs standard battery of tests (lint, unit, and integati
     -v, --gomod-vendor                    Adds gomod-vendor to the list of tests to run
     -g, --generate                        Adds generate to the list of tests to run
     -r, --rpm                             Adds rpm to the list of tests to run
-    -p, --show-integration-test-list      Outputs a list of the available integration tests
-    -f, --integration-filter <REGEX>      Run only those tests and examples matching the regular expression
+    -o, --list-integration-tests          Outputs a list of the available integration tests
+    -f <REGEX>, --filter=<REGEX>          Run only those tests matching the regular expression
 
                                           Note:
                                            This option disables the '"back in time"' integration test setup
@@ -135,8 +148,8 @@ With no options passed: runs standard battery of tests (lint, unit, and integati
 EOM
 )"
 
-while getopts luecipsvgrnhd:f:-: OPT; do
-  if [ "$OPT" = - ]; then   # long option: reformulate OPT and OPTARG
+while getopts lueciosvgrnhp:f:-: OPT; do
+  if [ "$OPT" = - ]; then     # long option: reformulate OPT and OPTARG
     OPT="${OPTARG%%=*}"       # extract long option name
     OPTARG="${OPTARG#$OPT}"   # extract long option argument (may be empty)
     OPTARG="${OPTARG#=}"      # if long option argument, remove assigning `=`
@@ -144,17 +157,17 @@ while getopts luecipsvgrnhd:f:-: OPT; do
   case "$OPT" in
     l | lints )                      RUN+=("lints") ;;
     u | unit )                       RUN+=("unit") ;;
-    d | unit-dir-filter )            check_arg; UNIT_FILTER+=("${OPTARG}") ;;
-    e | enable-unit-race )           ENABLE_UNIT_RACE="true" ;;
+    p | unit-test-package )          check_arg; UNIT_PACKAGES+=("${OPTARG}") ;;
+    e | enable-race-detection )      RACE="true" && export RACE  ;;
     c | coverage )                   RUN+=("coverage") ;;
     i | integration )                RUN+=("integration") ;;
-    p | show-integration-test-list ) print_list_of_integration_tests ;;
-    f | integration-filter )         check_arg; INT_FILTER+=("--filter" "${OPTARG}") ;;
+    o | list-integration-tests )     print_list_of_integration_tests ;;
+    f | filter )                     check_arg; FILTER+=("${OPTARG}") ;;
     s | start )                      RUN+=("start") ;;
     v | gomod-vendor )               RUN+=("gomod-vendor") ;;
     g | generate )                   RUN+=("generate") ;;
     r | rpm )                        RUN+=("rpm") ;;
-    n | conf-next )                  export BOULDER_CONFIG_DIR="test/config-next" ;;
+    n | config-next )                export BOULDER_CONFIG_DIR="test/config-next" ;;
     h | help )                       print_usage_exit ;;
     ??* )                            exit_msg "Illegal option --$OPT" ;;  # bad long option
     ? )                              exit 2 ;;  # bad short option (error reported via getopts)
@@ -162,34 +175,54 @@ while getopts luecipsvgrnhd:f:-: OPT; do
 done
 shift $((OPTIND-1)) # remove parsed options and args from $@ list
 
-# The list of segments to run.Order doesn't matter. Note: gomod-vendor 
+# The list of segments to run. Order doesn't matter. Note: gomod-vendor 
 # is specifically left out of the defaults, because we don't want to run
 # it locally (it could delete local state) We also omit coverage by default
 # on local runs because it generates artifacts on disk that aren't needed.
-
 if [ -z "${RUN[@]+x}" ]
 then
   RUN+=("lints" "unit" "integration")
 fi
 
-if [ -z "${UNIT_FILTER[@]}" ]
+# Filter is used by unit and integration but should not be used for both at the same time
+if [[ "${RUN[@]}" =~ unit ]] && [[ "${RUN[@]}" =~ integration ]] && [ -n "${FILTER[@]+x}" ]
 then
-  UNIT_FILTER+=("-p" "1" "./...")
+  exit_msg "Illegal option: (-f, --filter) when specifying both (-u, --unit) and (-i, --integration)"
+fi
+
+# If unit + filter: set correct flags for go test
+if [[ "${RUN[@]}" =~ unit ]] &&  [ -n "${FILTER[@]+x}" ]
+then
+  FILTER=(--test.run "${FILTER[@]}")
+fi
+
+# If integration + filter: set correct flags for test/integration-test.py
+if [[ "${RUN[@]}" =~ integration ]] && [ -n "${FILTER[@]+x}" ]
+then
+  FILTER=(--filter "${FILTER[@]}")
+fi
+
+if [ -z "${UNIT_PACKAGES[@]+x}" ]
+then
+  UNIT_PACKAGES+=("-p" "1" "./...")
 fi
 
 print_heading "Boulder Test Suite CLI"
 print_heading "Settings:"
-trap_outcome_on_exit
+
+# on EXIT, trap and print outcome
+trap "print_outcome" EXIT
 
 settings="$(cat -- <<-EOM
     RUN:                ${RUN[@]}
     BOULDER_CONFIG_DIR: $BOULDER_CONFIG_DIR
-    UNIT_FILTER:        ${UNIT_FILTER[@]}
-    ENABLE_UNIT_RACE:   $ENABLE_UNIT_RACE
-    INT_FILTER:         ${INT_FILTER[@]}
+    UNIT_PACKAGES:      ${UNIT_PACKAGES[@]}
+    RACE:               $RACE
+    FILTER:             ${FILTER[@]}
 
 EOM
 )"
+
 echo "$settings"
 print_heading "Starting..."
 
@@ -232,7 +265,7 @@ fi
 #
 if [[ "${RUN[@]}" =~ integration ]] ; then
   print_heading "Running Integration Tests"
-  python3 test/integration-test.py --chisel --gotest "${INT_FILTER[@]}"
+  python3 test/integration-test.py --chisel --gotest "${FILTER[@]}"
 fi
 
 # Test that just ./start.py works, which is a proxy for testing that
