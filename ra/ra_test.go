@@ -3873,7 +3873,10 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	test.AssertNotError(t, err, "x509.CreateCertificate failed")
 	cert, err := x509.ParseCertificate(der)
 	test.AssertNotError(t, err, "x509.ParseCertificate failed")
-	ra.issuer = &issuance.Certificate{Certificate: cert}
+	ic := issuance.Certificate{Certificate: cert}
+	ra.issuers = map[issuance.IssuerNameID]*issuance.Certificate{
+		ic.NameID(): &ic,
+	}
 
 	err = ra.RevokeCertificateWithReg(context.Background(), *cert, ocsp.Unspecified, 0)
 	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")

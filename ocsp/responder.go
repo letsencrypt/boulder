@@ -331,7 +331,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 	// Look up OCSP response from source
 	ocspResponse, headers, err := rs.Source.Response(ocspRequest)
 	if err != nil {
-		if err == ErrNotFound {
+		if errors.Is(err, ErrNotFound) {
 			rs.log.Infof("No response found for request: serial %x, request body %s",
 				ocspRequest.SerialNumber, b64Body)
 			response.Write(ocsp.UnauthorizedErrorResponse)

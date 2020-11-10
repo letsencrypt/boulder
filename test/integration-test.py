@@ -8,7 +8,6 @@ and test cases that have to run at a specific point in the cycle (e.g. after all
 other test cases) are also in this file.
 """
 import argparse
-import atexit
 import datetime
 import inspect
 import json
@@ -387,10 +386,3 @@ def run_cert_checker():
 
 if __name__ == "__main__":
     main()
-
-@atexit.register
-def stop():
-    if exit_status == 0:
-        print("\n\nSUCCESS")
-    else:
-        print("\n\nFAILURE")

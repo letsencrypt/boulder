@@ -160,9 +160,9 @@ func parseCMS(body []byte) (*x509.Certificate, error) {
 	return cert, nil
 }
 
-// Req makes an OCSP request using the given config for the PEM certificate in
-// fileName, and returns the response.
-func Req(fileName string, config Config) (*ocsp.Response, error) {
+// ReqFle makes an OCSP request using the given config for the PEM-encoded
+// certificate in fileName, and returns the response.
+func ReqFile(fileName string, config Config) (*ocsp.Response, error) {
 	contents, err := ioutil.ReadFile(fileName)
 	if err != nil {
 		return nil, err
@@ -180,12 +180,15 @@ func ReqDER(der []byte, config Config) (*ocsp.Response, error) {
 	if time.Now().After(cert.NotAfter) {
 		if config.ignoreExpiredCerts {
 			return nil, nil
-		} else {
-			return nil, fmt.Errorf("certificate expired %s ago: %s",
-				time.Since(cert.NotAfter), cert.NotAfter)
 		}
+		return nil, fmt.Errorf("certificate expired %s ago: %s", time.Since(cert.NotAfter), cert.NotAfter)
 	}
+	return Req(cert, config)
+}
 
+// Req makes an OCSP request using the given config for the given in-memory
+// certificate, and returns the response.
+func Req(cert *x509.Certificate, config Config) (*ocsp.Response, error) {
 	issuer, err := getIssuer(cert)
 	if err != nil {
 		return nil, fmt.Errorf("getting issuer: %s", err)

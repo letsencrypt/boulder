@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
@@ -10,7 +11,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
@@ -33,6 +33,14 @@ var (
 		OCSPLastUpdated: time.Now()}
 	stats = metrics.NoopRegisterer
 )
+
+func mustRead(path string) []byte {
+	b, err := ioutil.ReadFile(path)
+	if err != nil {
+		panic(fmt.Sprintf("read %#v: %s", path, err))
+	}
+	return b
+}
 
 func TestMux(t *testing.T) {
 	ocspReq, err := ocsp.ParseRequest(req)
@@ -81,11 +89,53 @@ func TestMux(t *testing.T) {
 	}
 }
 
+func TestNewFilter(t *testing.T) {
+	_, err := newFilter([]string{}, []string{})
+	test.AssertError(t, err, "Didn't error when creating empty filter")
+
+	_, err = newFilter([]string{"/tmp/doesnotexist.foo"}, []string{})
+	test.AssertError(t, err, "Didn't error on non-existent issuer cert")
+
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"00"})
+	test.AssertNotError(t, err, "Errored when creating good filter")
+	test.AssertEquals(t, len(f.issuerKeyHashes), 1)
+	test.AssertEquals(t, len(f.serialPrefixes), 1)
+}
+
+func TestOcspFilter(t *testing.T) {
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"00"})
+	test.AssertNotError(t, err, "Errored when creating good filter")
+
+	ocspReq, err := ocsp.ParseRequest(req)
+	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
+	// Select a bad hash algorithm.
+	ocspReq.HashAlgorithm = crypto.MD5
+	err = f.check(ocspReq)
+	test.AssertError(t, err, "Accepted ocsp request with bad hash algorithm")
+
+	ocspReq, err = ocsp.ParseRequest(req)
+	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
+	// Make the hash invalid.
+	ocspReq.IssuerKeyHash[0]++
+	err = f.check(ocspReq)
+	test.AssertError(t, err, "Accepted ocsp request with bad issuer key hash")
+
+	ocspReq, err = ocsp.ParseRequest(req)
+	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
+	// Make the serial prefix wrong by incrementing the first byte by 1.
+	serialStr := []byte(core.SerialToString(ocspReq.SerialNumber))
+	serialStr[0] = serialStr[0] + 1
+	ocspReq.SerialNumber.SetString(string(serialStr), 16)
+	err = f.check(ocspReq)
+	test.AssertError(t, err, "Accepted ocsp request with bad serial prefix")
+}
+
 func TestDBHandler(t *testing.T) {
-	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", nil, time.Second, blog.NewMock())
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, nil)
 	if err != nil {
-		t.Fatalf("makeDBSource: %s", err)
+		t.Fatalf("newFilter: %s", err)
 	}
+	src := &dbSource{mockSelector{}, f, time.Second, blog.NewMock()}
 
 	h := bocsp.NewResponder(src, stats, blog.NewMock())
 	w := httptest.NewRecorder()
@@ -204,8 +254,11 @@ func (bs brokenSelector) WithContext(context.Context) gorp.SqlExecutor {
 
 func TestErrorLog(t *testing.T) {
 	mockLog := blog.NewMock()
-	src, err := makeDBSource(brokenSelector{}, "./testdata/test-ca.der.pem", nil, time.Second, mockLog)
-	test.AssertNotError(t, err, "Failed to create broken dbMap")
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, nil)
+	if err != nil {
+		t.Fatalf("newFilter: %s", err)
+	}
+	src := &dbSource{brokenSelector{}, f, time.Second, mockLog}
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
@@ -216,33 +269,26 @@ func TestErrorLog(t *testing.T) {
 	test.AssertEquals(t, len(mockLog.GetAllMatching("Looking up OCSP response")), 1)
 }
 
-func mustRead(path string) []byte {
-	f, err := os.Open(path)
-	if err != nil {
-		panic(fmt.Sprintf("open %#v: %s", path, err))
-	}
-	b, err := ioutil.ReadAll(f)
-	if err != nil {
-		panic(fmt.Sprintf("read all %#v: %s", path, err))
-	}
-	return b
-}
-
 func TestRequiredSerialPrefix(t *testing.T) {
-	mockLog := blog.NewMock()
-	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", []string{"nope"}, time.Second, mockLog)
-	test.AssertNotError(t, err, "failed to create DBSource")
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"nope"})
+	if err != nil {
+		t.Fatalf("newFilter: %s", err)
+	}
+	src := &dbSource{mockSelector{}, f, time.Second, blog.NewMock()}
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
 
 	_, _, err = src.Response(ocspReq)
-	test.AssertEquals(t, err, bocsp.ErrNotFound)
+	test.AssertErrorIs(t, err, bocsp.ErrNotFound)
 
 	fmt.Println(core.SerialToString(ocspReq.SerialNumber))
 
-	src, err = makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", []string{"00", "nope"}, time.Second, mockLog)
-	test.AssertNotError(t, err, "failed to create DBSource")
+	f, err = newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"00", "nope"})
+	if err != nil {
+		t.Fatalf("newFilter: %s", err)
+	}
+	src = &dbSource{mockSelector{}, f, time.Second, blog.NewMock()}
 	_, _, err = src.Response(ocspReq)
 	test.AssertNotError(t, err, "src.Response failed with acceptable prefix")
 }
@@ -263,18 +309,23 @@ func (es expiredSelector) WithContext(context.Context) gorp.SqlExecutor {
 }
 
 func TestExpiredUnauthorized(t *testing.T) {
-	src, err := makeDBSource(expiredSelector{}, "./testdata/test-ca.der.pem", []string{"00"}, time.Second, blog.NewMock())
-	test.AssertNotError(t, err, "makeDBSource failed")
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"00"})
+	if err != nil {
+		t.Fatalf("newFilter: %s", err)
+	}
+	src := &dbSource{expiredSelector{}, f, time.Second, blog.NewMock()}
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
 
 	_, _, err = src.Response(ocspReq)
-	test.AssertEquals(t, err, bocsp.ErrNotFound)
+	test.AssertErrorIs(t, err, bocsp.ErrNotFound)
 }
 
 func TestKeyHashing(t *testing.T) {
-	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", []string{"00"}, time.Second, blog.NewMock())
-	test.AssertNotError(t, err, "makeDBSource failed")
-	test.AssertEquals(t, hex.EncodeToString(src.caKeyHash), "fb784f12f96015832c9f177f3419b32e36ea4189")
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"00"})
+	if err != nil {
+		t.Fatalf("newFilter: %s", err)
+	}
+	test.AssertEquals(t, hex.EncodeToString(f.issuerKeyHashes[0]), "fb784f12f96015832c9f177f3419b32e36ea4189")
 }

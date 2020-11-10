@@ -30,7 +30,7 @@ stale.
 		os.Exit(0)
 	}
 	for _, f := range flag.Args() {
-		_, err := helper.Req(f, helper.ConfigFromFlags())
+		_, err := helper.ReqFile(f, helper.ConfigFromFlags())
 		if err != nil {
 			log.Printf("error for %s: %s\n", f, err)
 			errors = true
