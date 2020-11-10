@@ -13,12 +13,12 @@ fi
 #
 # Defaults
 #
+export RACE="false"
+export BOULDER_CONFIG_DIR="test/config"
 STATUS="FAILURE"
 RUN=()
 UNIT_PACKAGES=()
 FILTER=()
-RACE="false"
-export BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR:-"test/config"}"
 
 #
 # Print Functions
@@ -158,7 +158,7 @@ while getopts lueciosvgrnhp:f:-: OPT; do
     l | lints )                      RUN+=("lints") ;;
     u | unit )                       RUN+=("unit") ;;
     p | unit-test-package )          check_arg; UNIT_PACKAGES+=("${OPTARG}") ;;
-    e | enable-race-detection )      RACE="true" && export RACE  ;;
+    e | enable-race-detection )      RACE="true" ;;
     c | coverage )                   RUN+=("coverage") ;;
     i | integration )                RUN+=("integration") ;;
     o | list-integration-tests )     print_list_of_integration_tests ;;
@@ -167,7 +167,7 @@ while getopts lueciosvgrnhp:f:-: OPT; do
     v | gomod-vendor )               RUN+=("gomod-vendor") ;;
     g | generate )                   RUN+=("generate") ;;
     r | rpm )                        RUN+=("rpm") ;;
-    n | config-next )                export BOULDER_CONFIG_DIR="test/config-next" ;;
+    n | config-next )                BOULDER_CONFIG_DIR="test/config-next" ;;
     h | help )                       print_usage_exit ;;
     ??* )                            exit_msg "Illegal option --$OPT" ;;  # bad long option
     ? )                              exit 2 ;;  # bad short option (error reported via getopts)
