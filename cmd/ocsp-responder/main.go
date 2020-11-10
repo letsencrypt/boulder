@@ -5,10 +5,10 @@ import (
 	"context"
 	"crypto"
 	"crypto/sha1"
-	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -32,27 +32,100 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
-/*
-DBSource maps a given Database schema to a CA Key Hash, so we can pick
-from among them when presented with OCSP requests for different certs.
+// ocspFilter stores information needed to filter OCSP requests (to ensure we
+// aren't trying to serve OCSP for certs which aren't ours), and surfaces one
+// boolean method to determine if a given request should be filtered or not.
+type ocspFilter struct {
+	issuerKeyHashAlgorithm crypto.Hash
+	issuerKeyHashes        [][]byte
+	serialPrefixes         []string
+}
 
-We assume that OCSP responses are stored in a very simple database table,
-with two columns: serialNumber and response
+// check returns a descriptive error if the request does not satisfy any of
+// the requirements of an OCSP request, or nil if the request should be handled.
+func (f *ocspFilter) check(req *ocsp.Request) error {
+	if req.HashAlgorithm != f.issuerKeyHashAlgorithm {
+		return fmt.Errorf("Request ca key hash using unsupported algorithm %s: %w", req.HashAlgorithm, bocsp.ErrNotFound)
+	}
+	// Check that this request is for the proper CA
+	match := false
+	for _, keyHash := range f.issuerKeyHashes {
+		if match = bytes.Equal(req.IssuerKeyHash, keyHash); match {
+			break
+		}
+	}
+	if !match {
+		return fmt.Errorf("Request intended for wrong issuer cert %s: %w", hex.EncodeToString(req.IssuerKeyHash), bocsp.ErrNotFound)
+	}
 
-  CREATE TABLE ocsp_responses (serialNumber TEXT, response BLOB);
+	serialString := core.SerialToString(req.SerialNumber)
+	if len(f.serialPrefixes) > 0 {
+		match := false
+		for _, prefix := range f.serialPrefixes {
+			if match = strings.HasPrefix(serialString, prefix); match {
+				break
+			}
+		}
+		if !match {
+			return fmt.Errorf("Request serial has wrong prefix: %w", bocsp.ErrNotFound)
+		}
+	}
 
-The serialNumber field may have any type to which Go will match a string,
-so you can be more efficient than TEXT if you like.  We use it to store the
-serial number in base64.  You probably want to have an index on the
-serialNumber field, since we will always query on it.
+	return nil
+}
 
-*/
-type DBSource struct {
-	dbMap             dbSelector
-	caKeyHash         []byte
-	reqSerialPrefixes []string
-	timeout           time.Duration
-	log               blog.Logger
+// newFilter creates a new ocspFilter which will filter out all requests for
+// certs which were not issued by one of the issuerCerts (here, paths to PEM
+// certs on disk) or which have a serial which does not start with one of the
+// given prefixes. The resulting filter will also reject all requests which
+// identify their issuer with a hash other than sha1.
+func newFilter(issuerCerts []string, serialPrefixes []string) (*ocspFilter, error) {
+	if len(issuerCerts) < 1 {
+		return nil, errors.New("Filter must include at least 1 issuer cert")
+	}
+	var issuerKeyHashes [][]byte
+	for _, issuerCert := range issuerCerts {
+		// Load the certificate from the file path.
+		caCert, err := core.LoadCert(issuerCert)
+		if err != nil {
+			return nil, fmt.Errorf("Could not load issuer cert %s: %w", issuerCert, err)
+		}
+		// The issuerKeyHash in OCSP requests is constructed over the DER
+		// encoding of the public key per RFC 6960 (defined in RFC 4055 for
+		// RSA and RFC 5480 for ECDSA). We can't use MarshalPKIXPublicKey
+		// for this since it encodes keys using the SPKI structure itself,
+		// and we just want the contents of the subjectPublicKey for the
+		// hash, so we need to extract it ourselves.
+		var spki struct {
+			Algo      pkix.AlgorithmIdentifier
+			BitString asn1.BitString
+		}
+		if _, err := asn1.Unmarshal(caCert.RawSubjectPublicKeyInfo, &spki); err != nil {
+			return nil, err
+		}
+		keyHash := sha1.Sum(spki.BitString.Bytes)
+		issuerKeyHashes = append(issuerKeyHashes, keyHash[:])
+	}
+	return &ocspFilter{crypto.SHA1, issuerKeyHashes, serialPrefixes}, nil
+}
+
+// dbSource represents a database containing pre-generated OCSP responses keyed
+// by serial number. It also allows for filtering requests by their issuer key
+// hash and serial number, to prevent unnecessary lookups for rows that we know
+// will not exist in the database.
+//
+// We assume that OCSP responses are stored in a very simple database table,
+// with at least these two columns: serialNumber (TEXT) and response (BLOB).
+//
+// The serialNumber field may have any type to which Go will match a string,
+// so you can be more efficient than TEXT if you like. We use it to store the
+// serial number in hex. You must have an index on the serialNumber field,
+// since we will always query on it.
+type dbSource struct {
+	dbMap   dbSelector
+	filter  *ocspFilter
+	timeout time.Duration
+	log     blog.Logger
 }
 
 // Define an interface with the needed methods from gorp.
@@ -62,56 +135,21 @@ type dbSelector interface {
 	WithContext(ctx context.Context) gorp.SqlExecutor
 }
 
-// NewSourceFromDatabase produces a DBSource representing the binding of a
-// given DB schema to a CA key.
-func NewSourceFromDatabase(
-	dbMap dbSelector,
-	caKeyHash []byte,
-	reqSerialPrefixes []string,
-	timeout time.Duration,
-	log blog.Logger,
-) (src *DBSource, err error) {
-	src = &DBSource{
-		dbMap:             dbMap,
-		caKeyHash:         caKeyHash,
-		reqSerialPrefixes: reqSerialPrefixes,
-		timeout:           timeout,
-		log:               log,
-	}
-	return
-}
-
 // Response is called by the HTTP server to handle a new OCSP request.
-func (src *DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
-	if req.HashAlgorithm != crypto.SHA1 {
-		// We only support SHA1 requests
-		return nil, nil, bocsp.ErrNotFound
-	}
-	// Check that this request is for the proper CA
-	if !bytes.Equal(req.IssuerKeyHash, src.caKeyHash) {
-		src.log.Debugf("Request intended for CA Cert ID: %s", hex.EncodeToString(req.IssuerKeyHash))
-		return nil, nil, bocsp.ErrNotFound
+func (src *dbSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
+	err := src.filter.check(req)
+	if err != nil {
+		src.log.Debugf("Not responding to filtered OCSP request: %s", err.Error())
+		return nil, nil, err
 	}
 
 	serialString := core.SerialToString(req.SerialNumber)
-	if len(src.reqSerialPrefixes) > 0 {
-		match := false
-		for _, prefix := range src.reqSerialPrefixes {
-			if match = strings.HasPrefix(serialString, prefix); match {
-				break
-			}
-		}
-		if !match {
-			return nil, nil, bocsp.ErrNotFound
-		}
-	}
-
 	src.log.Debugf("Searching for OCSP issued by us for serial %s", serialString)
 
 	var certStatus core.CertificateStatus
 	defer func() {
 		if len(certStatus.OCSPResponse) != 0 {
-			src.log.Debugf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString)
+			src.log.Debugf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
 		}
 	}()
 	ctx := context.Background()
@@ -120,7 +158,7 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 		ctx, cancel = context.WithTimeout(ctx, src.timeout)
 		defer cancel()
 	}
-	certStatus, err := sa.SelectCertificateStatus(src.dbMap.WithContext(ctx), serialString)
+	certStatus, err = sa.SelectCertificateStatus(src.dbMap.WithContext(ctx), serialString)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return nil, nil, bocsp.ErrNotFound
@@ -129,41 +167,12 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 		return nil, nil, err
 	}
 	if certStatus.OCSPLastUpdated.IsZero() {
-		src.log.Debugf("OCSP Response not sent (ocspLastUpdated is zero) for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString)
+		src.log.Debugf("OCSP Response not sent (ocspLastUpdated is zero) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
 		return nil, nil, bocsp.ErrNotFound
 	} else if certStatus.IsExpired {
 		return nil, nil, bocsp.ErrNotFound
 	}
 	return certStatus.OCSPResponse, nil, nil
-}
-
-func makeDBSource(dbMap dbSelector, issuerCert string, reqSerialPrefixes []string, timeout time.Duration, log blog.Logger) (*DBSource, error) {
-	// Construct the key hash for the issuer
-	caCertDER, err := cmd.LoadCert(issuerCert)
-	if err != nil {
-		return nil, fmt.Errorf("Could not read issuer cert %s: %s", issuerCert, err)
-	}
-	caCert, err := x509.ParseCertificate(caCertDER)
-	if err != nil {
-		return nil, fmt.Errorf("Could not parse issuer cert %s: %s", issuerCert, err)
-	}
-	// The issuerKeyHash in OCSP requests is constructed over the DER
-	// encoding of the public key per RFC 6960 (defined in RFC 4055 for
-	// RSA and RFC  5480 for ECDSA). We can't use MarshalPKIXPublicKey
-	// for this since it encodes keys using the SPKI structure itself,
-	// and we just want the contents of the subjectPublicKey for the
-	// hash, so we need  to extract it ourselves.
-	var spki struct {
-		Algo      pkix.AlgorithmIdentifier
-		BitString asn1.BitString
-	}
-	if _, err := asn1.Unmarshal(caCert.RawSubjectPublicKeyInfo, &spki); err != nil {
-		return nil, err
-	}
-	keyHash := sha1.Sum(spki.BitString.Bytes)
-
-	// Construct a DB backed response source
-	return NewSourceFromDatabase(dbMap, keyHash[:], reqSerialPrefixes, timeout, log)
 }
 
 type config struct {
@@ -197,7 +206,9 @@ type config struct {
 	Syslog cmd.SyslogConfig
 
 	Common struct {
-		IssuerCert string
+		// TODO(#5162): Remove singular IssuerCert config value.
+		IssuerCert  string
+		IssuerCerts []string
 	}
 }
 
@@ -251,13 +262,16 @@ as generated by Boulder's ceremony command.
 		sa.SetSQLDebug(dbMap, logger)
 		sa.InitDBMetrics(dbMap, stats)
 
-		source, err = makeDBSource(
-			dbMap,
-			c.Common.IssuerCert,
-			c.OCSPResponder.RequiredSerialPrefixes,
-			c.OCSPResponder.Timeout.Duration,
-			logger)
-		cmd.FailOnError(err, "Couldn't load OCSP DB")
+		issuerCerts := c.Common.IssuerCerts
+		if len(issuerCerts) == 0 {
+			issuerCerts = []string{c.Common.IssuerCert}
+		}
+
+		filter, err := newFilter(issuerCerts, c.OCSPResponder.RequiredSerialPrefixes)
+		cmd.FailOnError(err, "Couldn't create OCSP filter")
+
+		source = &dbSource{dbMap, filter, c.OCSPResponder.Timeout.Duration, logger}
+
 		// Export the MaxDBConns
 		dbConnStat := prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "max_db_connections",
