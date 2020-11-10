@@ -1,10 +1,12 @@
 package core
 
 import (
+	"encoding/asn1"
 	"encoding/json"
 	"fmt"
 	"math"
 	"math/big"
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -151,6 +153,30 @@ func TestValidSerial(t *testing.T) {
 	test.AssertEquals(t, isValidSerial, true)
 	isValidSerial = ValidSerial(length36)
 	test.AssertEquals(t, isValidSerial, true)
+}
+
+func TestLoadCert(t *testing.T) {
+	var osPathErr *os.PathError
+	_, err := LoadCert("")
+	test.AssertError(t, err, "Loading empty path did not error")
+	test.AssertErrorWraps(t, err, &osPathErr)
+
+	_, err = LoadCert("totally/fake/path")
+	test.AssertError(t, err, "Loading nonexistent path did not error")
+	test.AssertErrorWraps(t, err, &osPathErr)
+
+	_, err = LoadCert("../test/test-ca.der")
+	test.AssertError(t, err, "Loading non-PEM file did not error")
+	test.AssertEquals(t, err.Error(), "No data in cert PEM file ../test/test-ca.der")
+
+	var asnStructuralErr asn1.StructuralError
+	_, err = LoadCert("../test/test-ca.key")
+	test.AssertError(t, err, "Loading non-cert file did not error")
+	test.AssertErrorWraps(t, err, &asnStructuralErr)
+
+	cert, err := LoadCert("../test/test-ca.pem")
+	test.AssertNotError(t, err, "Failed to load cert file")
+	test.AssertEquals(t, cert.Subject.CommonName, "happy hacker fake CA")
 }
 
 func TestRetryBackoff(t *testing.T) {

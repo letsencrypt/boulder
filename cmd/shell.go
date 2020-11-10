@@ -3,8 +3,6 @@ package cmd
 
 import (
 	"encoding/json"
-	"encoding/pem"
-	"errors"
 	"expvar"
 	"fmt"
 	"io/ioutil"
@@ -250,28 +248,6 @@ func FailOnError(err error, msg string) {
 		msg := fmt.Sprintf("%s: %s", msg, err)
 		Fail(msg)
 	}
-}
-
-// LoadCert loads a PEM-formatted certificate from the provided path, returning
-// it as a byte array, or an error if it couldn't be decoded.
-func LoadCert(path string) (cert []byte, err error) {
-	if path == "" {
-		err = errors.New("Issuer certificate was not provided in config.")
-		return
-	}
-	pemBytes, err := ioutil.ReadFile(path)
-	if err != nil {
-		return
-	}
-
-	block, _ := pem.Decode(pemBytes)
-	if block == nil || block.Type != "CERTIFICATE" {
-		err = errors.New("Invalid certificate value returned")
-		return
-	}
-
-	cert = block.Bytes
-	return
 }
 
 // ReadConfigFile takes a file path as an argument and attempts to

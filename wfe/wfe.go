@@ -26,6 +26,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
+	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	"github.com/letsencrypt/boulder/nonce"
@@ -74,8 +75,8 @@ type WebFrontEndImpl struct {
 	// URL configuration parameters
 	BaseURL string
 
-	// Issuer certificate (DER) for /acme/issuer-cert
-	IssuerCert []byte
+	// Issuer certificate for /acme/issuer-cert
+	IssuerCert *issuance.Certificate
 
 	// URL to the current subscriber agreement (should contain some version identifier)
 	SubscriberAgreementURL string
@@ -1499,7 +1500,7 @@ func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *web.RequestEve
 	// TODO Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusOK)
-	if _, err := response.Write(wfe.IssuerCert); err != nil {
+	if _, err := response.Write(wfe.IssuerCert.Raw); err != nil {
 		wfe.log.Warningf("Could not write response: %s", err)
 	}
 }
