@@ -31,11 +31,6 @@ func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, metrics serverMet
 		acceptedSANs[name] = struct{}{}
 	}
 
-	// Set the only acceptable TLS version to 1.2 and the only acceptable cipher suite
-	// to ECDHE-RSA-CHACHA20-POLY1305.
-	tlsConfig.MinVersion, tlsConfig.MaxVersion = tls.VersionTLS12, tls.VersionTLS12
-	tlsConfig.CipherSuites = []uint16{tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305}
-
 	creds, err := bcreds.NewServerCredentials(tlsConfig, acceptedSANs)
 	if err != nil {
 		return nil, nil, err

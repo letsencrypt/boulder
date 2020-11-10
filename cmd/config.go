@@ -138,6 +138,11 @@ func (t *TLSConfig) Load() (*tls.Config, error) {
 		ClientCAs:    rootCAs,
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		Certificates: []tls.Certificate{cert},
+		// Set the only acceptable TLS version to 1.2 and the only acceptable cipher suite
+		// to ECDHE-RSA-CHACHA20-POLY1305.
+		MinVersion:   tls.VersionTLS12,
+		MaxVersion:   tls.VersionTLS12,
+		CipherSuites: []uint16{tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305},
 	}, nil
 }
 
