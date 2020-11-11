@@ -920,7 +920,7 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 		Authz:          authzPB,
 		ChallengeIndex: int64(ResponseIndex),
 	})
-	test.AssertErrorIs(t, err, berrors.WrongAuthorizationState)
+	test.AssertErrorIs(t, err, berrors.Malformed)
 }
 
 func TestPerformValidationSuccess(t *testing.T) {
