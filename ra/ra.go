@@ -2023,8 +2023,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		prometheus.Labels{"type": "requested"},
 	).Observe(float64(len(order.Names)))
 
-	// Set the order's expiry to the minimum expiry
-	order.Expires = minExpiry.UnixNano()
+	// Set the order's expiry to the minimum expiry. The db doesn't store
+	// sub-second values, so truncate here.
+	order.Expires = minExpiry.Truncate(time.Second).UnixNano()
 	storedOrder, err := ra.SA.NewOrder(ctx, order)
 	if err != nil {
 		return nil, err
