@@ -22,6 +22,7 @@ const (
 	RejectedIdentifier
 	InvalidEmail
 	ConnectionFailure
+	_ // Reserved, previously WrongAuthorizationState
 	CAA
 	MissingSCTs
 	Duplicate
