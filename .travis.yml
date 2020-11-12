@@ -4,6 +4,7 @@ os: linux
 
 go:
   - "1.15"
+  - "1.15.5"
 
 go_import_path: github.com/letsencrypt/boulder
 
