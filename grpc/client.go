@@ -32,11 +32,6 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 		return nil, errNilTLS
 	}
 
-	// Set the only acceptable TLS version to 1.2 and the only acceptable cipher suite
-	// to ECDHE-RSA-CHACHA20-POLY1305.
-	tlsConfig.MinVersion, tlsConfig.MaxVersion = tls.VersionTLS12, tls.VersionTLS12
-	tlsConfig.CipherSuites = []uint16{tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305}
-
 	ci := clientInterceptor{c.Timeout.Duration, metrics, clk}
 	host, _, err := net.SplitHostPort(c.ServerAddress)
 	if err != nil {
