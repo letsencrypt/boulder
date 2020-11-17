@@ -150,7 +150,7 @@ var (
 type DNSClient interface {
 	LookupTXT(context.Context, string) (txts []string, err error)
 	LookupHost(context.Context, string) ([]net.IP, error)
-	LookupCAA(context.Context, string) ([]*dns.CAA, error)
+	LookupCAA(context.Context, string) ([]*dns.CAA, string, error)
 }
 
 // DNSClientImpl represents a client that talks to an external resolver
@@ -485,15 +485,16 @@ func (dnsClient *DNSClientImpl) LookupHost(ctx context.Context, hostname string)
 
 // LookupCAA sends a DNS query to find all CAA records associated with
 // the provided hostname.
-func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) ([]*dns.CAA, error) {
+func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) ([]*dns.CAA, string, error) {
 	dnsType := dns.TypeCAA
+	var response string
 	r, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
 	if err != nil {
-		return nil, &DNSError{dnsType, hostname, err, -1}
+		return nil, response, &DNSError{dnsType, hostname, err, -1}
 	}
 
 	if r.Rcode == dns.RcodeServerFailure {
-		return nil, &DNSError{dnsType, hostname, nil, r.Rcode}
+		return nil, response, &DNSError{dnsType, hostname, nil, r.Rcode}
 	}
 
 	var CAAs []*dns.CAA
@@ -502,7 +503,12 @@ func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) 
 			CAAs = append(CAAs, caaR)
 		}
 	}
-	return CAAs, nil
+	if len(CAAs) > 0 {
+		response = r.String()
+	} else {
+		response = "CAA query response was empty"
+	}
+	return CAAs, response, nil
 }
 
 // logDNSError logs the provided err result from making a query for hostname to
