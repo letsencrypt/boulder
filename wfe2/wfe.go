@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"strconv"
@@ -52,6 +53,7 @@ const (
 	directoryPath = "/directory"
 	newAcctPath   = "/acme/new-acct"
 	acctPath      = "/acme/acct/"
+	caRootPath    = "/ca-root"
 	// When we moved to authzv2, we used a "-v3" suffix to avoid confusion
 	// regarding ACMEv2.
 	authzPath         = "/acme/authz-v3/"
@@ -414,6 +416,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions
 	// GETable and POST-as-GETable ACME endpoints
 	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET", "POST")
 	wfe.HandleFunc(m, newNoncePath, wfe.Nonce, "GET", "POST")
+	wfe.HandleFunc(m, caRootPath, wfe.CARoot, "GET")
 	// POST-as-GETable ACME endpoints
 	// TODO(@cpu): After November 1st, 2020 support for "GET" to the following
 	// endpoints will be removed, leaving only POST-as-GET support.
@@ -489,6 +492,24 @@ func addRequesterHeader(w http.ResponseWriter, requester int64) {
 	if requester > 0 {
 		w.Header().Set("Boulder-Requester", strconv.FormatInt(requester, 10))
 	}
+}
+
+// CARoot returns Root CA content
+func (wfe *WebFrontEndImpl) CARoot(
+	ctx context.Context,
+	logEvent *web.RequestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+	filePath := "/tmp/root-cert-rsa.pem"
+	caRoot, err := ioutil.ReadFile(filePath)
+
+	if err != nil {
+		prob := probs.ServerInternal(fmt.Sprintf("could not get root ca: %v", err))
+		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+
+	response.Write(caRoot)
 }
 
 // Directory is an HTTP request handler that provides the directory
