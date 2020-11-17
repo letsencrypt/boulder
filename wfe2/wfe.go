@@ -56,6 +56,8 @@ const (
 	directoryPath     = "/directory"
 	newNoncePath      = "/acme/new-nonce"
 	newAcctPath       = "/acme/new-acct"
+    caRootPath        = "/ca-root"
+    caEcdsaRootPath   = "/ca-ecdsa-root"
 	newOrderPath      = "/acme/new-order"
 	rolloverPath      = "/acme/key-change"
 	revokeCertPath    = "/acme/revoke-cert"
@@ -417,6 +419,8 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions
 	// GETable and POST-as-GETable ACME endpoints
 	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET", "POST")
 	wfe.HandleFunc(m, newNoncePath, wfe.Nonce, "GET", "POST")
+	wfe.HandleFunc(m, caRootPath, wfe.CARoot, "GET")
+	wfe.HandleFunc(m, caEcdsaRootPath, wfe.CAEcdsaRoot, "GET")
 	wfe.HandleFunc(m, orderPath, wfe.GetOrder, "GET", "POST")
 	wfe.HandleFunc(m, authzPath, wfe.AuthorizationHandler, "GET", "POST")
 	wfe.HandleFunc(m, challengePath, wfe.ChallengeHandler, "GET", "POST")
@@ -487,6 +491,42 @@ func addRequesterHeader(w http.ResponseWriter, requester int64) {
 	if requester > 0 {
 		w.Header().Set("Boulder-Requester", strconv.FormatInt(requester, 10))
 	}
+}
+
+// CARoot returns Root CA content
+func (wfe *WebFrontEndImpl) CARoot(
+	ctx context.Context,
+	logEvent *web.RequestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+	filePath := "test/certs/webpki/root-rsa.cert.pem"
+	caRoot, err := ioutil.ReadFile(filePath)
+
+	if err != nil {
+		prob := probs.ServerInternal(fmt.Sprintf("could not get root ca: %v", err))
+		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+
+	response.Write(caRoot)
+}
+
+// CAEcdsaRoot returns ecdsa Root CA content
+func (wfe *WebFrontEndImpl) CAEcdsaRoot(
+	ctx context.Context,
+	logEvent *web.RequestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+	filePath := "test/certs/webpki/root-ecdsa.cert.pem"
+	caEcdsaRoot, err := ioutil.ReadFile(filePath)
+
+	if err != nil {
+		prob := probs.ServerInternal(fmt.Sprintf("could not get ecdsa root ca: %v", err))
+		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+
+	response.Write(caEcdsaRoot)
 }
 
 // Directory is an HTTP request handler that provides the directory

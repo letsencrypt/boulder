@@ -24,6 +24,7 @@
 			"Defaults": "test/config/wfe2-ratelimit-defaults.yml",
 			"Overrides": "test/config/wfe2-ratelimit-overrides.yml"
 		},
+		"rateLimitPoliciesFilename": "test/rate-limit-policies-b.yml",
 		"maxContactsPerRegistration": 3,
 		"debugAddr": ":8002",
 		"hostnamePolicyFile": "test/ident-policy.yaml",
@@ -178,7 +179,7 @@
 		}
 	},
 	"syslog": {
-		"stdoutlevel": 6,
-		"sysloglevel": 6
+		"stdoutlevel": 3,
+		"sysloglevel": 3
 	}
 }

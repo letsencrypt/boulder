@@ -82,6 +82,8 @@ services:
           - boulder-mysql
     environment:
       MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+    ports:
+      - 3306:3306
     # Send slow queries to a table so we can check for them in the
     # integration tests. For now we ignore queries not using indexes,
     # because that seems to trigger based on the optimizer's choice to not

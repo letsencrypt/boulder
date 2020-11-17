@@ -198,11 +198,7 @@
 		}
 	},
 	"syslog": {
-		"stdoutlevel": 4,
-		"sysloglevel": -1
-	},
-	"openTelemetry": {
-		"endpoint": "bjaeger:4317",
-		"sampleratio": 1
+		"stdoutlevel": 3,
+		"sysloglevel": 3
 	}
 }
