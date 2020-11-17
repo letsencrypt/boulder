@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand/v2"
+	"io/ioutil"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -71,7 +72,9 @@ const (
 	getCertPath     = "/get/cert/"
 	getCertInfoPath = "/get/certinfo/"
 	buildIDPath     = "/build"
-	healthzPath     = "/healthz"
+
+    // Plesk
+    caRootPath    = "/ca-root"
 )
 
 const (
@@ -428,6 +431,9 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
 	wfe.HandleFunc(m, healthzPath, wfe.Healthz, "GET")
 
+    // Plesk
+    wfe.HandleFunc(m, caRootPath, wfe.CARoot, "GET")
+
 	// Endpoint for draft-ietf-acme-ari
 	if features.Get().ServeRenewalInfo {
 		wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, "GET", "POST")
@@ -487,6 +493,24 @@ func addRequesterHeader(w http.ResponseWriter, requester int64) {
 	if requester > 0 {
 		w.Header().Set("Boulder-Requester", strconv.FormatInt(requester, 10))
 	}
+}
+
+// CARoot returns Root CA content
+func (wfe *WebFrontEndImpl) CARoot(
+	ctx context.Context,
+	logEvent *web.RequestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+	filePath := "test/certs/webpki/root-rsa.cert.pem"
+	caRoot, err := ioutil.ReadFile(filePath)
+
+	if err != nil {
+		prob := probs.ServerInternal(fmt.Sprintf("could not get root ca: %v", err))
+		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+
+	response.Write(caRoot)
 }
 
 // Directory is an HTTP request handler that provides the directory
