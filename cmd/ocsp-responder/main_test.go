@@ -26,11 +26,14 @@ import (
 )
 
 var (
-	req  = mustRead("./testdata/ocsp.req")
-	resp = core.CertificateStatus{
+	issuerID = int64(3568119531)
+	req      = mustRead("./testdata/ocsp.req")
+	resp     = core.CertificateStatus{
 		OCSPResponse:    mustRead("./testdata/ocsp.resp"),
 		IsExpired:       false,
-		OCSPLastUpdated: time.Now()}
+		OCSPLastUpdated: time.Now(),
+		IssuerID:        &issuerID,
+	}
 	stats = metrics.NoopRegisterer
 )
 
@@ -102,22 +105,27 @@ func TestNewFilter(t *testing.T) {
 	test.AssertEquals(t, len(f.serialPrefixes), 1)
 }
 
-func TestOcspFilter(t *testing.T) {
+func TestCheckRequest(t *testing.T) {
 	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"00"})
 	test.AssertNotError(t, err, "Errored when creating good filter")
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
+	err = f.checkRequest(ocspReq)
+	test.AssertNotError(t, err, "Rejected good ocsp request with bad hash algorithm")
+
+	ocspReq, err = ocsp.ParseRequest(req)
+	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
 	// Select a bad hash algorithm.
 	ocspReq.HashAlgorithm = crypto.MD5
-	err = f.check(ocspReq)
+	err = f.checkRequest(ocspReq)
 	test.AssertError(t, err, "Accepted ocsp request with bad hash algorithm")
 
 	ocspReq, err = ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
 	// Make the hash invalid.
 	ocspReq.IssuerKeyHash[0]++
-	err = f.check(ocspReq)
+	err = f.checkRequest(ocspReq)
 	test.AssertError(t, err, "Accepted ocsp request with bad issuer key hash")
 
 	ocspReq, err = ocsp.ParseRequest(req)
@@ -126,8 +134,27 @@ func TestOcspFilter(t *testing.T) {
 	serialStr := []byte(core.SerialToString(ocspReq.SerialNumber))
 	serialStr[0] = serialStr[0] + 1
 	ocspReq.SerialNumber.SetString(string(serialStr), 16)
-	err = f.check(ocspReq)
+	err = f.checkRequest(ocspReq)
 	test.AssertError(t, err, "Accepted ocsp request with bad serial prefix")
+}
+
+func TestCheckResponse(t *testing.T) {
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"00"})
+	test.AssertNotError(t, err, "Errored when creating good filter")
+
+	ocspReq, err := ocsp.ParseRequest(req)
+	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
+	ok := f.checkResponse(ocspReq, resp)
+	test.AssertEquals(t, ok, true)
+
+	ocspReq, err = ocsp.ParseRequest(req)
+	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
+	realID := resp.IssuerID
+	fakeID := int64(123456)
+	resp.IssuerID = &fakeID
+	ok = f.checkResponse(ocspReq, resp)
+	test.AssertEquals(t, ok, false)
+	resp.IssuerID = realID
 }
 
 func TestDBHandler(t *testing.T) {
