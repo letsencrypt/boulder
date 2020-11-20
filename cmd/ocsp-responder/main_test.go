@@ -19,6 +19,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	bocsp "github.com/letsencrypt/boulder/ocsp"
@@ -103,6 +104,7 @@ func TestNewFilter(t *testing.T) {
 	test.AssertNotError(t, err, "Errored when creating good filter")
 	test.AssertEquals(t, len(f.issuerKeyHashes), 1)
 	test.AssertEquals(t, len(f.serialPrefixes), 1)
+	test.AssertEquals(t, hex.EncodeToString(f.issuerKeyHashes[issuance.IssuerID(issuerID)]), "fb784f12f96015832c9f177f3419b32e36ea4189")
 }
 
 func TestCheckRequest(t *testing.T) {
@@ -149,12 +151,15 @@ func TestCheckResponse(t *testing.T) {
 
 	ocspReq, err = ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
-	realID := resp.IssuerID
 	fakeID := int64(123456)
-	resp.IssuerID = &fakeID
-	ok = f.checkResponse(ocspReq, resp)
+	ocspResp := core.CertificateStatus{
+		OCSPResponse:    mustRead("./testdata/ocsp.resp"),
+		IsExpired:       false,
+		OCSPLastUpdated: time.Now(),
+		IssuerID:        &fakeID,
+	}
+	ok = f.checkResponse(ocspReq, ocspResp)
 	test.AssertEquals(t, ok, false)
-	resp.IssuerID = realID
 }
 
 func TestDBHandler(t *testing.T) {
@@ -328,6 +333,8 @@ func (es expiredSelector) SelectOne(obj interface{}, _ string, _ ...interface{})
 	rows := obj.(*core.CertificateStatus)
 	rows.IsExpired = true
 	rows.OCSPLastUpdated = time.Time{}.Add(time.Hour)
+	issuerID = int64(123456)
+	rows.IssuerID = &issuerID
 	return nil
 }
 
@@ -347,12 +354,4 @@ func TestExpiredUnauthorized(t *testing.T) {
 
 	_, _, err = src.Response(ocspReq)
 	test.AssertErrorIs(t, err, bocsp.ErrNotFound)
-}
-
-func TestKeyHashing(t *testing.T) {
-	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"00"})
-	if err != nil {
-		t.Fatalf("newFilter: %s", err)
-	}
-	test.AssertEquals(t, hex.EncodeToString(f.issuerKeyHashes[0]), "fb784f12f96015832c9f177f3419b32e36ea4189")
 }
