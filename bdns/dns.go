@@ -487,14 +487,13 @@ func (dnsClient *DNSClientImpl) LookupHost(ctx context.Context, hostname string)
 // the provided hostname.
 func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) ([]*dns.CAA, string, error) {
 	dnsType := dns.TypeCAA
-	var response string
 	r, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
 	if err != nil {
-		return nil, response, &DNSError{dnsType, hostname, err, -1}
+		return nil, "", &DNSError{dnsType, hostname, err, -1}
 	}
 
 	if r.Rcode == dns.RcodeServerFailure {
-		return nil, response, &DNSError{dnsType, hostname, nil, r.Rcode}
+		return nil, "", &DNSError{dnsType, hostname, nil, r.Rcode}
 	}
 
 	var CAAs []*dns.CAA
@@ -503,10 +502,9 @@ func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) 
 			CAAs = append(CAAs, caaR)
 		}
 	}
+	response := "CAA query response was empty"
 	if len(CAAs) > 0 {
 		response = r.String()
-	} else {
-		response = "CAA query response was empty"
 	}
 	return CAAs, response, nil
 }

@@ -392,7 +392,7 @@ func TestDNSLookupCAA(t *testing.T) {
 	caas, resp, err := obj.LookupCAA(context.Background(), "bracewel.net")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) > 0, "Should have CAA records")
-	expectedResp := `;; opcode: QUERY, status: NOERROR,
+	expectedResp := `;; opcode: QUERY, status: NOERROR, id: XXXX
 ;; flags: qr rd; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0
 
 ;; QUESTION SECTION:
@@ -401,18 +401,18 @@ func TestDNSLookupCAA(t *testing.T) {
 ;; ANSWER SECTION:
 bracewel.net.	0	IN	CAA	1 issue "letsencrypt.org"
 `
-	test.AssertEquals(t, removeIDExp.ReplaceAllString(resp, ""), expectedResp)
+	test.AssertEquals(t, removeIDExp.ReplaceAllString(resp, " id: XXXX"), expectedResp)
 
 	caas, resp, err = obj.LookupCAA(context.Background(), "nonexistent.letsencrypt.org")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) == 0, "Shouldn't have CAA records")
 	expectedResp = "CAA query response was empty"
-	test.AssertEquals(t, removeIDExp.ReplaceAllString(resp, ""), expectedResp)
+	test.AssertEquals(t, resp, expectedResp)
 
 	caas, resp, err = obj.LookupCAA(context.Background(), "cname.example.com")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) > 0, "Should follow CNAME to find CAA")
-	expectedResp = `;; opcode: QUERY, status: NOERROR,
+	expectedResp = `;; opcode: QUERY, status: NOERROR, id: XXXX
 ;; flags: qr rd; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0
 
 ;; QUESTION SECTION:
@@ -421,7 +421,7 @@ bracewel.net.	0	IN	CAA	1 issue "letsencrypt.org"
 ;; ANSWER SECTION:
 caa.example.com.	0	IN	CAA	1 issue "letsencrypt.org"
 `
-	test.AssertEquals(t, removeIDExp.ReplaceAllString(resp, ""), expectedResp)
+	test.AssertEquals(t, removeIDExp.ReplaceAllString(resp, " id: XXXX"), expectedResp)
 }
 
 func TestIsPrivateIP(t *testing.T) {
