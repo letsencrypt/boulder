@@ -1,4 +1,3 @@
-#!/usr/bin/python
 # Check dashboard JSON files for common errors, like forgetting to templatize a
 # datasource.
 import json

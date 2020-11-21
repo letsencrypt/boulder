@@ -1,4 +1,3 @@
-#!/usr/bin/python2.7 -u
 """
 Run a local instance of Boulder for testing purposes.
 

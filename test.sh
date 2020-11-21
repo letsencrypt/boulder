@@ -235,7 +235,7 @@ if [[ "${RUN[@]}" =~ lints ]] ; then
   # without emitting logs, so set the timeout to 9m.
   golangci-lint run --timeout 9m ./...
   run_and_expect_silence ./test/test-no-outdated-migrations.sh
-  python test/grafana/lint.py
+  python3 test/grafana/lint.py
   # Check for common spelling errors using codespell.
   # Update .codespell.ignore.txt if you find false positives (NOTE: ignored
   # words should be all lowercase).

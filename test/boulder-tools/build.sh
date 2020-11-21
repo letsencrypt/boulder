@@ -4,7 +4,7 @@ apt-get update
 
 # Install system deps
 apt-get install -y --no-install-recommends \
-  mariadb-client-core-10.1 \
+  mariadb-client-core-10.3 \
   rpm \
   ruby \
   ruby-dev \
