@@ -1,9 +1,11 @@
+language: go
 dist: focal
 os: linux
-language: go
 
 go:
   - "1.15.5"
+
+go_import_path: github.com/letsencrypt/boulder
 
 services:
   - docker
@@ -39,9 +41,8 @@ jobs:
   allow_failures:
     - env: TESTFLAGS="--coverage" CONTAINER="netaccess"
 
-before_install: docker-compose pull
-
-install: skip
+install:
+  - docker-compose pull
 
 script:
   - >-

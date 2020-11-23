@@ -214,7 +214,6 @@ print_heading "Settings:"
 trap "print_outcome" EXIT
 
 settings="$(cat -- <<-EOM
-    TRAVIS_GO_VERSION:  ${TRAVIS_GO_VERSION-not specified}
     RUN:                ${RUN[@]}
     BOULDER_CONFIG_DIR: $BOULDER_CONFIG_DIR
     UNIT_PACKAGES:      ${UNIT_PACKAGES[@]}
