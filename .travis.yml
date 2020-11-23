@@ -1,7 +1,8 @@
 dist: focal
 os: linux
 
-go_import_path: github.com/letsencrypt/boulder
+go:
+  - "1.15"
 
 services:
   - docker
