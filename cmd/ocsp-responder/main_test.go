@@ -113,22 +113,19 @@ func TestCheckRequest(t *testing.T) {
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
-	err = f.checkRequest(ocspReq)
-	test.AssertNotError(t, err, "Rejected good ocsp request with bad hash algorithm")
+	test.AssertNotError(t, f.checkRequest(ocspReq), "Rejected good ocsp request with bad hash algorithm")
 
 	ocspReq, err = ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
 	// Select a bad hash algorithm.
 	ocspReq.HashAlgorithm = crypto.MD5
-	err = f.checkRequest(ocspReq)
-	test.AssertError(t, err, "Accepted ocsp request with bad hash algorithm")
+	test.AssertError(t, f.checkRequest((ocspReq)), "Accepted ocsp request with bad hash algorithm")
 
 	ocspReq, err = ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
 	// Make the hash invalid.
 	ocspReq.IssuerKeyHash[0]++
-	err = f.checkRequest(ocspReq)
-	test.AssertError(t, err, "Accepted ocsp request with bad issuer key hash")
+	test.AssertError(t, f.checkRequest(ocspReq), "Accepted ocsp request with bad issuer key hash")
 
 	ocspReq, err = ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
@@ -136,8 +133,7 @@ func TestCheckRequest(t *testing.T) {
 	serialStr := []byte(core.SerialToString(ocspReq.SerialNumber))
 	serialStr[0] = serialStr[0] + 1
 	ocspReq.SerialNumber.SetString(string(serialStr), 16)
-	err = f.checkRequest(ocspReq)
-	test.AssertError(t, err, "Accepted ocsp request with bad serial prefix")
+	test.AssertError(t, f.checkRequest(ocspReq), "Accepted ocsp request with bad serial prefix")
 }
 
 func TestCheckResponse(t *testing.T) {
@@ -146,8 +142,7 @@ func TestCheckResponse(t *testing.T) {
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
-	ok := f.checkResponse(ocspReq, resp)
-	test.AssertEquals(t, ok, true)
+	test.AssertEquals(t, f.checkResponse(ocspReq, resp), true)
 
 	ocspReq, err = ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
@@ -158,8 +153,7 @@ func TestCheckResponse(t *testing.T) {
 		OCSPLastUpdated: time.Now(),
 		IssuerID:        &fakeID,
 	}
-	ok = f.checkResponse(ocspReq, ocspResp)
-	test.AssertEquals(t, ok, false)
+	test.AssertEquals(t, f.checkResponse(ocspReq, ocspResp), false)
 }
 
 func TestDBHandler(t *testing.T) {
