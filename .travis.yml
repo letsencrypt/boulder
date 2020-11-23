@@ -1,8 +1,9 @@
 dist: focal
 os: linux
+language: go
 
 go:
-  - "1.15"
+  - "1.15.5"
 
 services:
   - docker
@@ -38,11 +39,11 @@ jobs:
   allow_failures:
     - env: TESTFLAGS="--coverage" CONTAINER="netaccess"
 
-install:
-  - docker-compose pull
+install: skip
 
 script:
   - >-
+    docker-compose pull &&
     docker-compose run --use-aliases
     -e TRAVIS_BRANCH
     -e TRAVIS_JOB_ID
