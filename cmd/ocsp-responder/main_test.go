@@ -136,13 +136,13 @@ func TestCheckRequest(t *testing.T) {
 	test.AssertError(t, f.checkRequest(ocspReq), "Accepted ocsp request with bad serial prefix")
 }
 
-func TestCheckResponse(t *testing.T) {
+func TestResponseMatchesIssuer(t *testing.T) {
 	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"00"})
 	test.AssertNotError(t, err, "Errored when creating good filter")
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
-	test.AssertEquals(t, f.checkResponse(ocspReq, resp), true)
+	test.AssertEquals(t, f.responseMatchesIssuer(ocspReq, resp), true)
 
 	ocspReq, err = ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
@@ -153,7 +153,7 @@ func TestCheckResponse(t *testing.T) {
 		OCSPLastUpdated: time.Now(),
 		IssuerID:        &fakeID,
 	}
-	test.AssertEquals(t, f.checkResponse(ocspReq, ocspResp), false)
+	test.AssertEquals(t, f.responseMatchesIssuer(ocspReq, ocspResp), false)
 }
 
 func TestDBHandler(t *testing.T) {
