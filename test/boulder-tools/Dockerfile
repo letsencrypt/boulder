@@ -1,4 +1,4 @@
-FROM buildpack-deps:stretch-scm
+FROM buildpack-deps:buster-scm
 ARG GO_VERSION
 
 # Copied from https://github.com/docker-library/golang/blob/master/Dockerfile-debian.template

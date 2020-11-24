@@ -1,4 +1,4 @@
-#!/usr/bin/python2.7 -u
+#!/usr/bin/env -S python3 -u
 """
 Run a local instance of Boulder for testing purposes.
 
