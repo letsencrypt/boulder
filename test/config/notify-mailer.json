@@ -8,7 +8,7 @@
     "maxDBConns": 10
   },
   "syslog": {
-    "stdoutLevel": 7,
-    "syslogLevel": 7
+    "stdoutLevel": 4,
+    "syslogLevel": 4
   }
 }

@@ -3,14 +3,13 @@
     "userAgent": "boulder-remote-b",
     "debugAddr": ":8012",
     "portConfig": {
-      "httpPort": 5002,
-      "httpsPort": 5001,
-      "tlsPort": 5001
+      "httpPort": 80,
+      "httpsPort": 443,
+      "tlsPort": 443
     },
     "dnsTries": 3,
     "dnsResolvers": [
-      "127.0.0.1:8053",
-      "127.0.0.1:8054"
+      "8.8.8.8:53"
     ],
     "issuerDomain": "happy-hacker-ca.invalid",
     "tls": {
@@ -36,7 +35,7 @@
   },
 
   "syslog": {
-    "stdoutlevel": 6,
+    "stdoutlevel": 4,
     "sysloglevel": 4
   },
 

@@ -1,6 +1,6 @@
 {
   "ra": {
-    "rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
+    "rateLimitPoliciesFilename": "test/rate-limit-policies-b.yml",
     "maxContactsPerRegistration": 3,
     "debugAddr": ":8002",
     "hostnamePolicyFile": "test/hostname-policy.yaml",
@@ -125,7 +125,7 @@
   },
 
   "syslog": {
-    "stdoutlevel": 6,
-    "sysloglevel": 6
+    "stdoutlevel": 4,
+    "sysloglevel": 4
   }
 }

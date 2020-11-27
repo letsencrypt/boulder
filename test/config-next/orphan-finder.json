@@ -2,8 +2,8 @@
   "backdate": "1h",
 
   "syslog": {
-    "stdoutlevel": 7,
-    "stdoutlevel": 7
+    "stdoutlevel": 4,
+    "stdoutlevel": 4
   },
 
   "tls": {

@@ -1,7 +1,7 @@
 {
   "janitor": {
     "syslog": {
-      "stdoutLevel": 6
+      "stdoutLevel": 4
     },
     "dbConnectFile": "test/secrets/janitor_dburl",
     "maxDBConns": 10,

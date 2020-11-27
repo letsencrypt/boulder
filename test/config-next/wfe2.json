@@ -59,7 +59,7 @@
 
   "syslog": {
     "stdoutlevel": 4,
-    "sysloglevel": 6
+    "sysloglevel": 4
   },
 
   "common": {
