@@ -19,6 +19,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	bocsp "github.com/letsencrypt/boulder/ocsp"
@@ -26,11 +27,14 @@ import (
 )
 
 var (
-	req  = mustRead("./testdata/ocsp.req")
-	resp = core.CertificateStatus{
+	issuerID = int64(3568119531)
+	req      = mustRead("./testdata/ocsp.req")
+	resp     = core.CertificateStatus{
 		OCSPResponse:    mustRead("./testdata/ocsp.resp"),
 		IsExpired:       false,
-		OCSPLastUpdated: time.Now()}
+		OCSPLastUpdated: time.Now(),
+		IssuerID:        &issuerID,
+	}
 	stats = metrics.NoopRegisterer
 )
 
@@ -100,25 +104,28 @@ func TestNewFilter(t *testing.T) {
 	test.AssertNotError(t, err, "Errored when creating good filter")
 	test.AssertEquals(t, len(f.issuerKeyHashes), 1)
 	test.AssertEquals(t, len(f.serialPrefixes), 1)
+	test.AssertEquals(t, hex.EncodeToString(f.issuerKeyHashes[issuance.IssuerID(issuerID)]), "fb784f12f96015832c9f177f3419b32e36ea4189")
 }
 
-func TestOcspFilter(t *testing.T) {
+func TestCheckRequest(t *testing.T) {
 	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"00"})
 	test.AssertNotError(t, err, "Errored when creating good filter")
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
+	test.AssertNotError(t, f.checkRequest(ocspReq), "Rejected good ocsp request with bad hash algorithm")
+
+	ocspReq, err = ocsp.ParseRequest(req)
+	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
 	// Select a bad hash algorithm.
 	ocspReq.HashAlgorithm = crypto.MD5
-	err = f.check(ocspReq)
-	test.AssertError(t, err, "Accepted ocsp request with bad hash algorithm")
+	test.AssertError(t, f.checkRequest((ocspReq)), "Accepted ocsp request with bad hash algorithm")
 
 	ocspReq, err = ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
 	// Make the hash invalid.
 	ocspReq.IssuerKeyHash[0]++
-	err = f.check(ocspReq)
-	test.AssertError(t, err, "Accepted ocsp request with bad issuer key hash")
+	test.AssertError(t, f.checkRequest(ocspReq), "Accepted ocsp request with bad issuer key hash")
 
 	ocspReq, err = ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
@@ -126,8 +133,27 @@ func TestOcspFilter(t *testing.T) {
 	serialStr := []byte(core.SerialToString(ocspReq.SerialNumber))
 	serialStr[0] = serialStr[0] + 1
 	ocspReq.SerialNumber.SetString(string(serialStr), 16)
-	err = f.check(ocspReq)
-	test.AssertError(t, err, "Accepted ocsp request with bad serial prefix")
+	test.AssertError(t, f.checkRequest(ocspReq), "Accepted ocsp request with bad serial prefix")
+}
+
+func TestResponseMatchesIssuer(t *testing.T) {
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"00"})
+	test.AssertNotError(t, err, "Errored when creating good filter")
+
+	ocspReq, err := ocsp.ParseRequest(req)
+	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
+	test.AssertEquals(t, f.responseMatchesIssuer(ocspReq, resp), true)
+
+	ocspReq, err = ocsp.ParseRequest(req)
+	test.AssertNotError(t, err, "Failed to prepare fake ocsp request")
+	fakeID := int64(123456)
+	ocspResp := core.CertificateStatus{
+		OCSPResponse:    mustRead("./testdata/ocsp.resp"),
+		IsExpired:       false,
+		OCSPLastUpdated: time.Now(),
+		IssuerID:        &fakeID,
+	}
+	test.AssertEquals(t, f.responseMatchesIssuer(ocspReq, ocspResp), false)
 }
 
 func TestDBHandler(t *testing.T) {
@@ -301,6 +327,8 @@ func (es expiredSelector) SelectOne(obj interface{}, _ string, _ ...interface{})
 	rows := obj.(*core.CertificateStatus)
 	rows.IsExpired = true
 	rows.OCSPLastUpdated = time.Time{}.Add(time.Hour)
+	issuerID = int64(123456)
+	rows.IssuerID = &issuerID
 	return nil
 }
 
@@ -320,12 +348,4 @@ func TestExpiredUnauthorized(t *testing.T) {
 
 	_, _, err = src.Response(ocspReq)
 	test.AssertErrorIs(t, err, bocsp.ErrNotFound)
-}
-
-func TestKeyHashing(t *testing.T) {
-	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"00"})
-	if err != nil {
-		t.Fatalf("newFilter: %s", err)
-	}
-	test.AssertEquals(t, hex.EncodeToString(f.issuerKeyHashes[0]), "fb784f12f96015832c9f177f3419b32e36ea4189")
 }
