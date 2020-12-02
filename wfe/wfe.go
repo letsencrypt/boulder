@@ -56,8 +56,11 @@ const (
 	revokeCertPath = "/acme/revoke-cert"
 	termsPath      = "/terms"
 	issuerPath     = "/acme/issuer-cert"
-	buildIDPath    = "/build"
-	rolloverPath   = "/acme/key-change"
+	// This path uses a trailing slash to mirror the existing /cert/ path, which
+	// allows us to use subsequent path components to identify specific issuers.
+	newIssuerPath = "/acme/issuer/"
+	buildIDPath   = "/build"
+	rolloverPath  = "/acme/key-change"
 
 	maxRequestSize = 50000
 )
@@ -328,6 +331,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCertificate, "POST")
 	wfe.HandleFunc(m, termsPath, wfe.Terms, "GET")
 	wfe.HandleFunc(m, issuerPath, wfe.Issuer, "GET")
+	wfe.HandleFunc(m, newIssuerPath, wfe.Issuer, "GET")
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
 	wfe.HandleFunc(m, rolloverPath, wfe.KeyRollover, "POST")
 
@@ -1049,7 +1053,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *web.Re
 
 	// TODO Content negotiation
 	response.Header().Add("Location", certURL)
-	relativeIssuerPath := web.RelativeEndpoint(request, issuerPath)
+	relativeIssuerPath := web.RelativeEndpoint(request, newIssuerPath)
 	response.Header().Add("Link", link(relativeIssuerPath, "up"))
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
@@ -1481,7 +1485,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 
 	// TODO Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")
-	relativeIssuerPath := web.RelativeEndpoint(request, issuerPath)
+	relativeIssuerPath := web.RelativeEndpoint(request, newIssuerPath)
 	response.Header().Add("Link", link(relativeIssuerPath, "up"))
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(cert.DER); err != nil {
