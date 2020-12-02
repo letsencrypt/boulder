@@ -2,7 +2,8 @@
 """
 Run a local instance of Boulder for testing purposes.
 
-This runs in non-monolithic mode and requires RabbitMQ on localhost.
+Boulder always runs as a collection of services. This script will
+start them all on their own ports (see test/startservers.py)
 
 Keeps servers alive until ^C. Exit non-zero if any servers fail to
 start, or die before ^C.
