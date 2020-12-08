@@ -1,7 +1,8 @@
-package main
+package janitor
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/jmhodges/clock"
@@ -11,42 +12,48 @@ import (
 
 func TestNewJobs(t *testing.T) {
 	onlyCertStatusConfig := `{
-	"janitor": {
-		"certificates": {
-			"enabled": false
+	"jobConfigs": [
+		{
+			"enabled": false,
+			"table": "certificates"
 		},
-		"certificateStatus": {
+		{
 			"enabled": true,
+			"table": "certificateStatus",
 			"gracePeriod": "2184h",
 			"batchSize": 1,
 			"parallelism": 1
 		},
-		"certificatesPerName": {
-			"enabled": false
+		{
+			"enabled": false,
+			"table": "certificatesPerName"
 		}
-	}
+	]
 }`
 	allConfig := `{
-	"janitor": {
-		"certificates": {
+	"jobConfigs": [
+		{
 			"enabled": true,
+			"table": "certificates",
 			"gracePeriod": "2184h",
 			"batchSize": 1,
 			"parallelism": 1
 		},
-		"certificateStatus": {
+		{
 			"enabled": true,
+			"table": "certificateStatus",
 			"gracePeriod": "2184h",
 			"batchSize": 1,
 			"parallelism": 1
 		},
-		"certificatesPerName": {
+		{
 			"enabled": true,
+			"table": "certificatesPerName",
 			"gracePeriod": "2184h",
 			"batchSize": 1,
 			"parallelism": 1
 		}
-	}
+	]
 }`
 	testCases := []struct {
 		name              string
@@ -73,11 +80,12 @@ func TestNewJobs(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			var config Config
+			var config JanitorConfig
 			err := json.Unmarshal([]byte(tc.config), &config)
 			test.AssertNotError(t, err, "error unmarshaling tc Config")
 
-			jobs, err := newJobs(nil, blog.UseMock(), clock.NewFake(), config)
+			jobs, err := newJobs(config.JobConfigs, nil, blog.UseMock(), clock.NewFake())
+			fmt.Printf("For config %v got error %v\n", config.JobConfigs, err)
 			test.AssertEquals(t, err, tc.expectedError)
 
 			var tableMap map[string]bool
