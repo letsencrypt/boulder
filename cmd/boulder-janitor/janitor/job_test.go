@@ -81,7 +81,8 @@ func TestGetWork(t *testing.T) {
 	resultsExpires := clk.Now().Add(-time.Hour * 2)
 	batchSize := int64(20)
 	workQuery := `
-SELECT :idColumn AS id, :expiresColumn AS expires FROM :table
+SELECT :idColumn AS id, :expiresColumn AS expires
+FROM certificates
 WHERE id > :startID
 LIMIT :limit`
 	mockIDs := []workUnit{
@@ -98,7 +99,6 @@ LIMIT :limit`
 		expectedArgMap: map[string]interface{}{
 			"idColumn":      "id",
 			"expiresColumn": "expires",
-			"table":         table,
 			"startID":       startID,
 			"limit":         batchSize,
 		},

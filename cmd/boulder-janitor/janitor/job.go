@@ -201,8 +201,7 @@ type workUnit struct {
 // be returned, otherwise an error result is returned.
 func (j batchedDBJob) getWork(work chan<- int64, startID int64) (int64, error) {
 	var data []workUnit
-	// This SQL query is used to find more work. It will be provided five parameters:
-	//   * :tableName     - the name of the table to query from.
+	// This SQL query is used to find more work. It will be provided four parameters:
 	//   * :idColumn      - the name of the column to use as unique integer IDs.
 	//   * :expiresColumn - the name of the column to use as expiry timestamps.
 	//   * :startID       - the primary key value to start the work query from.
@@ -210,21 +209,20 @@ func (j batchedDBJob) getWork(work chan<- int64, startID int64) (int64, error) {
 	// It will always return results with two columns:
 	//   * id      - the primary key value for each row.
 	//   * expires - the expiry datetime used to calculate if the row is within the cutoff window.
-	workQuery := `
-SELECT :idColumn AS id, :expiresColumn AS expires FROM :table
+	// Unfortunately, we have to interpolate the table name ourselves, because
+	// you can't parameterize the table name in prepared statements.
+	workQuery := fmt.Sprintf(`
+SELECT :idColumn AS id, :expiresColumn AS expires
+FROM %s
 WHERE id > :startID
-LIMIT :limit`
-	_, err := j.db.Select(
-		&data,
-		workQuery,
-		map[string]interface{}{
-			"idColumn":      j.idColumn,
-			"expiresColumn": j.expiresColumn,
-			"table":         j.table,
-			"startID":       startID,
-			"limit":         j.batchSize,
-		},
-	)
+LIMIT :limit`, j.table)
+	values := map[string]interface{}{
+		"idColumn":      j.idColumn,
+		"expiresColumn": j.expiresColumn,
+		"startID":       startID,
+		"limit":         j.batchSize,
+	}
+	_, err := j.db.Select(&data, workQuery, values)
 	if err != nil && !db.IsNoRows(err) {
 		return 0, err
 	}
