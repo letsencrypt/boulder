@@ -81,7 +81,7 @@ func TestGetWork(t *testing.T) {
 	resultsExpires := clk.Now().Add(-time.Hour * 2)
 	batchSize := int64(20)
 	workQuery := `
-SELECT :idColumn AS id, :expiresColumn AS expires
+SELECT id, expires AS expires
 FROM certificates
 WHERE id > :startID
 LIMIT :limit`
@@ -97,10 +97,8 @@ LIMIT :limit`
 		t:             t,
 		expectedQuery: workQuery,
 		expectedArgMap: map[string]interface{}{
-			"idColumn":      "id",
-			"expiresColumn": "expires",
-			"startID":       startID,
-			"limit":         batchSize,
+			"startID": startID,
+			"limit":   batchSize,
 		},
 	}
 
@@ -111,7 +109,6 @@ LIMIT :limit`
 		log:           log,
 		clk:           clk,
 		table:         table,
-		idColumn:      "id",
 		expiresColumn: "expires",
 		purgeBefore:   time.Hour,
 		batchSize:     batchSize,
@@ -178,7 +175,6 @@ func TestDeleteResource(t *testing.T) {
 		db:            testDB,
 		log:           log,
 		table:         table,
-		idColumn:      "id",
 		expiresColumn: "expires",
 		deleteHandler: deleteDefault,
 	}
@@ -232,7 +228,6 @@ func TestCleanResource(t *testing.T) {
 		db:            db,
 		log:           log,
 		table:         "example",
-		idColumn:      "id",
 		expiresColumn: "expires",
 		// Start with a parallelism of 1
 		parallelism:   1,

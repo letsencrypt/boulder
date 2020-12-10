@@ -58,8 +58,6 @@ type JobConfig struct {
 	Enabled bool
 	// Table is the name of the table which this job will clean up.
 	Table string
-	// IDColumn is the name of the column in `Table` containing unique integer IDs.
-	IDColumn string
 	// ExpiresColumn is the name of the column in `Table` containing expiration datetimes.
 	ExpiresColumn string
 	// GracePeriod controls when a resource is old enough to be cleaned up.
@@ -92,8 +90,6 @@ type batchedDBJob struct {
 	clk clock.Clock
 	// table is the name of the table that this job cleans up.
 	table string
-	// idColumn is the name of the column in `table` containing unique integer IDs.
-	idColumn string
 	// expiresColumn is the name of the column in `table` containing expiration datetimes.
 	expiresColumn string
 	// purgeBefore indicates the cut-off for the the resoruce being cleaned up by
@@ -124,11 +120,6 @@ func newJob(config JobConfig, dbMap db.DatabaseMap, log blog.Logger, clk clock.C
 	}
 	log.Debugf("Creating job from config: %#v", config)
 
-	id := "id"
-	if config.IDColumn != "" {
-		id = config.IDColumn
-	}
-
 	expires := "expires"
 	if config.ExpiresColumn != "" {
 		expires = config.ExpiresColumn
@@ -144,7 +135,6 @@ func newJob(config JobConfig, dbMap db.DatabaseMap, log blog.Logger, clk clock.C
 		log:           log,
 		clk:           clk,
 		table:         config.Table,
-		idColumn:      id,
 		expiresColumn: expires,
 		purgeBefore:   config.GracePeriod.Duration,
 		workSleep:     config.WorkSleep.Duration,
@@ -197,26 +187,23 @@ type workUnit struct {
 // be returned, otherwise an error result is returned.
 func (j batchedDBJob) getWork(work chan<- int64, startID int64) (int64, error) {
 	var data []workUnit
-	// This SQL query is used to find more work. It will be provided four parameters:
-	//   * :idColumn      - the name of the column to use as unique integer IDs.
-	//   * :expiresColumn - the name of the column to use as expiry timestamps.
+	// This SQL query is used to find more work. It will be provided two parameters:
 	//   * :startID       - the primary key value to start the work query from.
 	//   * :limit         - the maximum number of rows to be returned by the query.
 	// It will always return results with two columns:
 	//   * id      - the primary key value for each row.
 	//   * expires - the expiry datetime used to calculate if the row is within the cutoff window.
-	// Unfortunately, we have to interpolate the table name ourselves, because
-	// you can't parameterize the table name in prepared statements.
+	// Unfortunately, we have to interpolate the expires column name and the
+	// table name ourselves, because you can't parameterize those fields in
+	// prepared statements.
 	workQuery := fmt.Sprintf(`
-SELECT :idColumn AS id, :expiresColumn AS expires
+SELECT id, %s AS expires
 FROM %s
 WHERE id > :startID
-LIMIT :limit`, j.table)
+LIMIT :limit`, j.expiresColumn, j.table)
 	values := map[string]interface{}{
-		"idColumn":      j.idColumn,
-		"expiresColumn": j.expiresColumn,
-		"startID":       startID,
-		"limit":         j.batchSize,
+		"startID": startID,
+		"limit":   j.batchSize,
 	}
 	_, err := j.db.Select(&data, workQuery, values)
 	if err != nil && !db.IsNoRows(err) {
