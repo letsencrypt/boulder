@@ -179,7 +179,11 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 		record.Value = "letsencrypt.org"
 		results = append(results, &record)
 	}
-	return results, "", nil
+	var response string
+	if len(results) > 0 {
+		response = "foo"
+	}
+	return results, response, nil
 }
 
 func TestCAATimeout(t *testing.T) {
@@ -476,55 +480,55 @@ func TestCAALogging(t *testing.T) {
 	}{
 		{
 			Domain:          "reserved.com",
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: unknown, Challenge: unknown, Valid for issuance: false] Response=\"\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: unknown, Challenge: unknown, Valid for issuance: false] Response=\"foo\"",
 		},
 		{
 			Domain:          "reserved.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Response=\"\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Response=\"foo\"",
 		},
 		{
 			Domain:          "reserved.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeDNS01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: dns-01, Valid for issuance: false] Response=\"\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: dns-01, Valid for issuance: false] Response=\"foo\"",
 		},
 		{
 			Domain:          "mixedcase.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for mixedcase.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Response=\"\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for mixedcase.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Response=\"foo\"",
 		},
 		{
 			Domain:          "critical.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for critical.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Response=\"\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for critical.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Response=\"foo\"",
 		},
 		{
 			Domain:          "present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Response=\"\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Response=\"foo\"",
 		},
 		{
 			Domain:          "multi-crit-present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for multi-crit-present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Response=\"\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for multi-crit-present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Response=\"foo\"",
 		},
 		{
 			Domain:          "present-with-parameter.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present-with-parameter.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Response=\"\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present-with-parameter.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Response=\"foo\"",
 		},
 		{
 			Domain:          "satisfiable-wildcard-override.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for satisfiable-wildcard-override.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Response=\"\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for satisfiable-wildcard-override.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Response=\"foo\"",
 		},
 	}
 
@@ -615,13 +619,12 @@ func TestParseResults(t *testing.T) {
 	test.Assert(t, s == nil, "set is not nil")
 	test.AssertEquals(t, err.Error(), "")
 	test.AssertEquals(t, response, "")
-	//  A slice of caaResults containing an error sandwiched between CAA
-	//  records should return the first CAA record
+	//  A slice of caaResults containing a good record that precedes an
+	//  error, should return that good record, not the error
 	expected := dns.CAA{Value: "foo"}
 	r = []caaResult{
 		{[]*dns.CAA{&expected}, "foo", nil},
 		{nil, "", errors.New("")},
-		{[]*dns.CAA{{Value: "test"}}, "", nil},
 	}
 	s, response, err = parseResults(r)
 	test.AssertEquals(t, len(s.Unknown), 1)

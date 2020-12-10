@@ -484,7 +484,7 @@ func (dnsClient *DNSClientImpl) LookupHost(ctx context.Context, hostname string)
 }
 
 // LookupCAA sends a DNS query to find all CAA records associated with
-// the provided hostname and the complete dig-style RR `response` this
+// the provided hostname and the complete dig-style RR `response`. This
 // response is quite verbose, however it's only populated when the CAA
 // response is non-empty.
 func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) ([]*dns.CAA, string, error) {
