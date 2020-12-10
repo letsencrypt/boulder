@@ -603,6 +603,7 @@ func TestParseResults(t *testing.T) {
 	}
 	s, response, err = parseResults(r)
 	test.Assert(t, s == nil, "set is not nil")
+	test.AssertEquals(t, response, "")
 	// A slice of caaResults containing an error followed by a CAA
 	// record should return the error
 	r = []caaResult{
@@ -617,16 +618,17 @@ func TestParseResults(t *testing.T) {
 	//  records should return the first CAA record
 	expected := dns.CAA{Value: "foo"}
 	r = []caaResult{
-		{[]*dns.CAA{&expected}, "", nil},
+		{[]*dns.CAA{&expected}, "foo", nil},
 		{nil, "", errors.New("")},
 		{[]*dns.CAA{{Value: "test"}}, "", nil},
 	}
 	s, response, err = parseResults(r)
 	test.AssertEquals(t, len(s.Unknown), 1)
 	test.Assert(t, s.Unknown[0] == &expected, "Incorrect record returned")
+	test.AssertEquals(t, response, "foo")
 	test.AssertNotError(t, err, "no error should be returned")
 	// A slice of caaResults containing multiple CAA records should
-	// return the first
+	// return the first non-empty CAA record
 	r = []caaResult{
 		{[]*dns.CAA{}, "", nil},
 		{[]*dns.CAA{&expected}, "foo", nil},
@@ -635,6 +637,7 @@ func TestParseResults(t *testing.T) {
 	s, response, err = parseResults(r)
 	test.AssertEquals(t, len(s.Unknown), 1)
 	test.Assert(t, s.Unknown[0] == &expected, "Incorrect record returned")
+	test.AssertEquals(t, response, "foo")
 	test.AssertNotError(t, err, "no error should be returned")
 }
 
