@@ -406,7 +406,7 @@ func TestCAAChecking(t *testing.T) {
 		mockLog.Clear()
 		t.Run(caaTest.Name, func(t *testing.T) {
 			ident := identifier.DNSIdentifier(caaTest.Domain)
-			present, valid, _, _, err := va.checkCAARecords(ctx, ident, params)
+			present, valid, _, err := va.checkCAARecords(ctx, ident, params)
 			if err != nil {
 				t.Errorf("checkCAARecords error for %s: %s", caaTest.Domain, err)
 			}
@@ -424,41 +424,41 @@ func TestCAAChecking(t *testing.T) {
 
 	// present-dns-only.com should now be valid even with http-01
 	ident := identifier.DNSIdentifier("present-dns-only.com")
-	present, valid, _, _, err := va.checkCAARecords(ctx, ident, params)
+	present, valid, _, err := va.checkCAARecords(ctx, ident, params)
 	test.AssertNotError(t, err, "present-dns-only.com")
 	test.Assert(t, present, "Present should be true")
 	test.Assert(t, valid, "Valid should be true")
 
 	// present-incorrect-accounturi.com should now be also be valid
 	ident = identifier.DNSIdentifier("present-incorrect-accounturi.com")
-	present, valid, _, _, err = va.checkCAARecords(ctx, ident, params)
+	present, valid, _, err = va.checkCAARecords(ctx, ident, params)
 	test.AssertNotError(t, err, "present-incorrect-accounturi.com")
 	test.Assert(t, present, "Present should be true")
 	test.Assert(t, valid, "Valid should be true")
 
 	// nil params should be valid, too
-	present, valid, _, _, err = va.checkCAARecords(ctx, ident, nil)
+	present, valid, _, err = va.checkCAARecords(ctx, ident, nil)
 	test.AssertNotError(t, err, "present-dns-only.com")
 	test.Assert(t, present, "Present should be true")
 	test.Assert(t, valid, "Valid should be true")
 
 	ident.Value = "servfail.com"
-	present, valid, _, _, err = va.checkCAARecords(ctx, ident, nil)
+	present, valid, _, err = va.checkCAARecords(ctx, ident, nil)
 	test.AssertError(t, err, "servfail.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 
-	if _, _, _, _, err := va.checkCAARecords(ctx, ident, nil); err == nil {
+	if _, _, _, err := va.checkCAARecords(ctx, ident, nil); err == nil {
 		t.Errorf("Should have returned error on CAA lookup, but did not: %s", ident.Value)
 	}
 
 	ident.Value = "servfail.present.com"
-	present, valid, _, _, err = va.checkCAARecords(ctx, ident, nil)
+	present, valid, _, err = va.checkCAARecords(ctx, ident, nil)
 	test.AssertError(t, err, "servfail.present.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 
-	if _, _, _, _, err := va.checkCAARecords(ctx, ident, nil); err == nil {
+	if _, _, _, err := va.checkCAARecords(ctx, ident, nil); err == nil {
 		t.Errorf("Should have returned error on CAA lookup, but did not: %s", ident.Value)
 	}
 }
@@ -476,55 +476,55 @@ func TestCAALogging(t *testing.T) {
 	}{
 		{
 			Domain:          "reserved.com",
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: unknown, Challenge: unknown, Valid for issuance: false] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issue\",\"Value\":\"ca.com\"}] Response=\"\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: unknown, Challenge: unknown, Valid for issuance: false] Response=\"\"",
 		},
 		{
 			Domain:          "reserved.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issue\",\"Value\":\"ca.com\"}] Response=\"\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Response=\"\"",
 		},
 		{
 			Domain:          "reserved.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeDNS01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: dns-01, Valid for issuance: false] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issue\",\"Value\":\"ca.com\"}] Response=\"\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: dns-01, Valid for issuance: false] Response=\"\"",
 		},
 		{
 			Domain:          "mixedcase.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for mixedcase.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"iSsUe\",\"Value\":\"ca.com\"}] Response=\"\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for mixedcase.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Response=\"\"",
 		},
 		{
 			Domain:          "critical.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for critical.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":1,\"Tag\":\"issue\",\"Value\":\"ca.com\"}] Response=\"\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for critical.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Response=\"\"",
 		},
 		{
 			Domain:          "present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issue\",\"Value\":\"letsencrypt.org\"}] Response=\"\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Response=\"\"",
 		},
 		{
 			Domain:          "multi-crit-present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for multi-crit-present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":1,\"Tag\":\"issue\",\"Value\":\"ca.com\"},{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":1,\"Tag\":\"issue\",\"Value\":\"letsencrypt.org\"}] Response=\"\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for multi-crit-present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Response=\"\"",
 		},
 		{
 			Domain:          "present-with-parameter.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present-with-parameter.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issue\",\"Value\":\"  letsencrypt.org  ;foo=bar;baz=bar\"}] Response=\"\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present-with-parameter.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Response=\"\"",
 		},
 		{
 			Domain:          "satisfiable-wildcard-override.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for satisfiable-wildcard-override.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Records=[{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issue\",\"Value\":\"ca.com\"},{\"Hdr\":{\"Name\":\"\",\"Rrtype\":0,\"Class\":0,\"Ttl\":0,\"Rdlength\":0},\"Flag\":0,\"Tag\":\"issuewild\",\"Value\":\"letsencrypt.org\"}] Response=\"\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for satisfiable-wildcard-override.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Response=\"\"",
 		},
 	}
 
@@ -589,27 +589,53 @@ func TestCAAFailure(t *testing.T) {
 }
 
 func TestParseResults(t *testing.T) {
+	// An empty slice of caaResults should return nil, "", nil
 	r := []caaResult{}
-	s, records, _, err := parseResults(r)
+	s, response, err := parseResults(r)
 	test.Assert(t, s == nil, "set is not nil")
 	test.Assert(t, err == nil, "error is not nil")
-	test.Assert(t, records == nil, "records is not nil")
-	test.AssertNotError(t, err, "no error should be returned")
-	r = []caaResult{{nil, "", errors.New("")}, {[]*dns.CAA{{Value: "test"}}, "", nil}}
-	s, records, _, err = parseResults(r)
+	test.Assert(t, response == "", "records is not nil")
+	// A slice of empty caaResults should return nil, "", nil
+	r = []caaResult{
+		{[]*dns.CAA{}, "", nil},
+		{[]*dns.CAA{}, "", nil},
+		{[]*dns.CAA{}, "", nil},
+	}
+	s, response, err = parseResults(r)
+	test.Assert(t, s == nil, "set is not nil")
+	// A slice of caaResults containing an error followed by a CAA
+	// record should return the error
+	r = []caaResult{
+		{nil, "", errors.New("")},
+		{[]*dns.CAA{{Value: "test"}}, "", nil},
+	}
+	s, response, err = parseResults(r)
 	test.Assert(t, s == nil, "set is not nil")
 	test.AssertEquals(t, err.Error(), "")
-	expected := dns.CAA{Value: "other-test"}
-	test.AssertEquals(t, len(records), 0)
-	r = []caaResult{{[]*dns.CAA{&expected}, "", nil}, {[]*dns.CAA{{Value: "test"}}, "", nil}}
-	s, records, _, err = parseResults(r)
+	test.AssertEquals(t, response, "")
+	//  A slice of caaResults containing an error sandwiched between CAA
+	//  records should return the first CAA record
+	expected := dns.CAA{Value: "foo"}
+	r = []caaResult{
+		{[]*dns.CAA{&expected}, "", nil},
+		{nil, "", errors.New("")},
+		{[]*dns.CAA{{Value: "test"}}, "", nil},
+	}
+	s, response, err = parseResults(r)
 	test.AssertEquals(t, len(s.Unknown), 1)
 	test.Assert(t, s.Unknown[0] == &expected, "Incorrect record returned")
 	test.AssertNotError(t, err, "no error should be returned")
-	test.AssertEquals(t, len(records), len(r[0].records))
-	for i, rec := range records {
-		test.AssertEquals(t, rec.String(), r[0].records[i].String())
+	// A slice of caaResults containing multiple CAA records should
+	// return the first
+	r = []caaResult{
+		{[]*dns.CAA{}, "", nil},
+		{[]*dns.CAA{&expected}, "foo", nil},
+		{[]*dns.CAA{{Value: "bar"}}, "bar", nil},
 	}
+	s, response, err = parseResults(r)
+	test.AssertEquals(t, len(s.Unknown), 1)
+	test.Assert(t, s.Unknown[0] == &expected, "Incorrect record returned")
+	test.AssertNotError(t, err, "no error should be returned")
 }
 
 func TestCheckAccountURI(t *testing.T) {

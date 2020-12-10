@@ -484,7 +484,9 @@ func (dnsClient *DNSClientImpl) LookupHost(ctx context.Context, hostname string)
 }
 
 // LookupCAA sends a DNS query to find all CAA records associated with
-// the provided hostname.
+// the provided hostname and the complete dig-style RR `response` this
+// response is quite verbose, however it's only populated when the CAA
+// response is non-empty.
 func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) ([]*dns.CAA, string, error) {
 	dnsType := dns.TypeCAA
 	r, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
@@ -502,7 +504,7 @@ func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) 
 			CAAs = append(CAAs, caaR)
 		}
 	}
-	response := "CAA query response was empty"
+	var response string
 	if len(CAAs) > 0 {
 		response = r.String()
 	}
