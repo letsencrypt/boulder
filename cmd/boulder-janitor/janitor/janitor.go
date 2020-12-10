@@ -2,7 +2,6 @@ package janitor
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
@@ -93,10 +92,7 @@ func New(clk clock.Clock, config JanitorConfig) (*Janitor, error) {
 func newJobs(configs []JobConfig, dbMap db.DatabaseMap, logger blog.Logger, clk clock.Clock) ([]*batchedDBJob, error) {
 	var jobs []*batchedDBJob
 	for _, c := range configs {
-		j, err := newJob(c, dbMap, logger, clk)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to create job: %w", err)
-		}
+		j := newJob(c, dbMap, logger, clk)
 		if j != nil {
 			jobs = append(jobs, j)
 		}

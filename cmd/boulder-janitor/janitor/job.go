@@ -118,9 +118,9 @@ type batchedDBJob struct {
 	deleteHandler func(job *batchedDBJob, id int64) error
 }
 
-func newJob(config JobConfig, dbMap db.DatabaseMap, log blog.Logger, clk clock.Clock) (*batchedDBJob, error) {
+func newJob(config JobConfig, dbMap db.DatabaseMap, log blog.Logger, clk clock.Clock) *batchedDBJob {
 	if !config.Enabled {
-		return nil, nil
+		return nil
 	}
 	log.Debugf("Creating job from config: %#v", config)
 
@@ -134,13 +134,9 @@ func newJob(config JobConfig, dbMap db.DatabaseMap, log blog.Logger, clk clock.C
 		expires = config.ExpiresColumn
 	}
 
-	delete := deleteDefault
-	var ok bool
-	if config.DeleteHandler != "" {
-		delete, ok = deleteHandlers[config.DeleteHandler]
-		if !ok {
-			return nil, fmt.Errorf("Failed to find delete handler: %s", config.DeleteHandler)
-		}
+	delete, ok := deleteHandlers[config.DeleteHandler]
+	if !ok {
+		delete = deleteDefault
 	}
 
 	return &batchedDBJob{
@@ -156,7 +152,7 @@ func newJob(config JobConfig, dbMap db.DatabaseMap, log blog.Logger, clk clock.C
 		maxDPS:        config.MaxDPS,
 		parallelism:   config.Parallelism,
 		deleteHandler: delete,
-	}, nil
+	}
 }
 
 var (

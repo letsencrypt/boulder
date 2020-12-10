@@ -91,8 +91,7 @@ func TestDeleteOrder(t *testing.T) {
 	test.AssertNotError(t, err, "error creating db map")
 
 	// Create an Orders job
-	j, err := newJob(config, janitorDbMap, log, fc)
-	test.AssertNotError(t, err, "error creating test job")
+	j := newJob(config, janitorDbMap, log, fc)
 
 	// Delete the mock order by its ID
 	err = j.deleteHandler(j, testOrder.Id)
