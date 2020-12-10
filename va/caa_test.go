@@ -603,6 +603,7 @@ func TestParseResults(t *testing.T) {
 	}
 	s, response, err = parseResults(r)
 	test.Assert(t, s == nil, "set is not nil")
+	test.Assert(t, err == nil, "error is not nil")
 	test.AssertEquals(t, response, "")
 	// A slice of caaResults containing an error followed by a CAA
 	// record should return the error
@@ -626,7 +627,7 @@ func TestParseResults(t *testing.T) {
 	test.AssertEquals(t, len(s.Unknown), 1)
 	test.Assert(t, s.Unknown[0] == &expected, "Incorrect record returned")
 	test.AssertEquals(t, response, "foo")
-	test.AssertNotError(t, err, "no error should be returned")
+	test.Assert(t, err == nil, "error is not nil")
 	// A slice of caaResults containing multiple CAA records should
 	// return the first non-empty CAA record
 	r = []caaResult{
