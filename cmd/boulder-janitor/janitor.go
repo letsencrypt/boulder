@@ -96,6 +96,9 @@ func newJobs(
 		}
 		jobs = append(jobs, newCertificatesPerNameJob(dbMap, logger, clk, config))
 	}
+	if config.Janitor.KeyHashToSerial.Enabled {
+		jobs = append(jobs, newKeyHashToSerialJob(dbMap, logger, clk, config))
+	}
 	if config.Janitor.Orders.Enabled {
 		jobs = append(jobs, newOrdersJob(dbMap, logger, clk, config.Janitor.Orders))
 	}

@@ -30,6 +30,14 @@
         "parallelism": 2,
         "maxDPS": 50
     },
+    "keyHashToSerial": {
+        "enabled": true,
+        "gracePeriod": "2184h",
+        "batchSize": 100,
+        "workSleep": "500ms",
+        "parallelism": 2,
+        "maxDPS": 50
+    },
     "orders": {
         "enabled": true,
         "gracePeriod": "2184h",

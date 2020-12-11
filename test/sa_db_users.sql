@@ -63,6 +63,7 @@ GRANT SELECT,DELETE ON authz2 TO 'purger'@'localhost';
 GRANT SELECT,DELETE ON certificates TO 'janitor'@'localhost';
 GRANT SELECT,DELETE ON certificateStatus TO 'janitor'@'localhost';
 GRANT SELECT,DELETE ON certificatesPerName TO 'janitor'@'localhost';
+GRANT SELECT,DELETE ON keyHashToSerial TO 'janitor'@'localhost';
 GRANT SELECT,DELETE ON orders TO 'janitor'@'localhost';
 GRANT SELECT,DELETE ON requestedNames TO 'janitor'@'localhost';
 GRANT SELECT,DELETE ON orderFqdnSets TO 'janitor'@'localhost';

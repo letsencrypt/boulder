@@ -71,6 +71,9 @@ type Config struct {
 		// CertificatesPerName describes a cleanup job for the certificatesPerName table.
 		CertificatesPerName CleanupConfig
 
+		// KeyHashToSerial describes a cleanup job for the keyHashToSerial table.
+		KeyHashToSerial CleanupConfig
+
 		// Orders describes a cleanup job for the orders table and related rows
 		// (requestedNames, orderToAuthz2, orderFqdnSets).
 		Orders CleanupConfig
@@ -83,7 +86,13 @@ func (c Config) Valid() error {
 	if c.Janitor.DebugAddr == "" {
 		return errEmptyMetricsAddr
 	}
-	jobConfigs := []CleanupConfig{c.Janitor.Certificates, c.Janitor.CertificateStatus, c.Janitor.CertificatesPerName}
+	jobConfigs := []CleanupConfig{
+		c.Janitor.Certificates,
+		c.Janitor.CertificateStatus,
+		c.Janitor.CertificatesPerName,
+		c.Janitor.KeyHashToSerial,
+		c.Janitor.Orders,
+	}
 	for _, cc := range jobConfigs {
 		if err := cc.Valid(); err != nil {
 			return err
