@@ -97,6 +97,12 @@ func TestOCSP(t *testing.T) {
 			},
 			[]string{"type"},
 		),
+		responseAges: prometheus.NewHistogram(
+			prometheus.HistogramOpts{
+				Name:    "ocspAges-test",
+				Buckets: []float64{43200},
+			},
+		),
 		clk: clock.NewFake(),
 		log: blog.NewMock(),
 	}
@@ -122,6 +128,11 @@ func TestOCSP(t *testing.T) {
 			}
 		})
 	}
+	// Exactly two of the cases above result in an OCSP response being sent.
+	samples := test.CountHistogramSamples(responder.responseAges)
+	if samples != 2 {
+		t.Errorf("Ages histogram updated incorrect number of times: %d", samples)
+	}
 }
 
 func TestRequestTooBig(t *testing.T) {
@@ -132,6 +143,12 @@ func TestRequestTooBig(t *testing.T) {
 				Name: "ocspResponses-test",
 			},
 			[]string{"type"},
+		),
+		responseAges: prometheus.NewHistogram(
+			prometheus.HistogramOpts{
+				Name:    "ocspAges-test",
+				Buckets: []float64{43200},
+			},
 		),
 		clk: clock.NewFake(),
 		log: blog.NewMock(),
@@ -175,6 +192,12 @@ func TestOverrideHeaders(t *testing.T) {
 			},
 			[]string{"type"},
 		),
+		responseAges: prometheus.NewHistogram(
+			prometheus.HistogramOpts{
+				Name:    "ocspAges-test",
+				Buckets: []float64{43200},
+			},
+		),
 		clk: clock.NewFake(),
 		log: blog.NewMock(),
 	}
@@ -205,6 +228,12 @@ func TestCacheHeaders(t *testing.T) {
 				Name: "ocspResponses-test",
 			},
 			[]string{"type"},
+		),
+		responseAges: prometheus.NewHistogram(
+			prometheus.HistogramOpts{
+				Name:    "ocspAges-test",
+				Buckets: []float64{43200},
+			},
 		),
 		clk: fc,
 		log: blog.NewMock(),
