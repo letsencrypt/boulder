@@ -2,7 +2,6 @@ package va
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -46,14 +45,9 @@ func (va *ValidationAuthorityImpl) checkCAA(
 	ctx context.Context,
 	identifier identifier.ACMEIdentifier,
 	params *caaParams) *probs.ProblemDetails {
-	present, valid, records, err := va.checkCAARecords(ctx, identifier, params)
+	present, valid, response, err := va.checkCAARecords(ctx, identifier, params)
 	if err != nil {
 		return probs.DNS(err.Error())
-	}
-
-	recordsStr, err := json.Marshal(&records)
-	if err != nil {
-		return probs.CAA(fmt.Sprintf("CAA records for %s were malformed", identifier.Value))
 	}
 
 	accountID, validationMethod := "unknown", "unknown"
@@ -64,8 +58,8 @@ func (va *ValidationAuthorityImpl) checkCAA(
 		validationMethod = params.validationMethod
 	}
 
-	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %s, Challenge: %s, Valid for issuance: %t] Records=%s",
-		identifier.Value, present, accountID, validationMethod, valid, recordsStr)
+	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %s, Challenge: %s, Valid for issuance: %t] Response=%q",
+		identifier.Value, present, accountID, validationMethod, valid, response)
 	if !valid {
 		return probs.CAA(fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value))
 	}
@@ -120,21 +114,22 @@ func newCAASet(CAAs []*dns.CAA) *CAASet {
 }
 
 type caaResult struct {
-	records []*dns.CAA
-	err     error
+	records  []*dns.CAA
+	response string
+	err      error
 }
 
-func parseResults(results []caaResult) (*CAASet, []*dns.CAA, error) {
+func parseResults(results []caaResult) (*CAASet, string, error) {
 	// Return first result
 	for _, res := range results {
 		if res.err != nil {
-			return nil, nil, res.err
+			return nil, "", res.err
 		}
 		if len(res.records) > 0 {
-			return newCAASet(res.records), res.records, nil
+			return newCAASet(res.records), res.response, nil
 		}
 	}
-	return nil, nil, nil
+	return nil, "", nil
 }
 
 func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name string) []caaResult {
@@ -146,7 +141,7 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 		// Start the concurrent DNS lookup.
 		wg.Add(1)
 		go func(name string, r *caaResult) {
-			r.records, r.err = va.dnsClient.LookupCAA(ctx, name)
+			r.records, r.response, r.err = va.dnsClient.LookupCAA(ctx, name)
 			wg.Done()
 		}(strings.Join(labels[i:], "."), &results[i])
 	}
@@ -155,7 +150,7 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 	return results
 }
 
-func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname string) (*CAASet, []*dns.CAA, error) {
+func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname string) (*CAASet, string, error) {
 	hostname = strings.TrimRight(hostname, ".")
 
 	// See RFC 6844 "Certification Authority Processing" for pseudocode, as
@@ -184,7 +179,7 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 func (va *ValidationAuthorityImpl) checkCAARecords(
 	ctx context.Context,
 	identifier identifier.ACMEIdentifier,
-	params *caaParams) (bool, bool, []*dns.CAA, error) {
+	params *caaParams) (bool, bool, string, error) {
 	hostname := strings.ToLower(identifier.Value)
 	// If this is a wildcard name, remove the prefix
 	var wildcard bool
@@ -192,12 +187,12 @@ func (va *ValidationAuthorityImpl) checkCAARecords(
 		hostname = strings.TrimPrefix(identifier.Value, `*.`)
 		wildcard = true
 	}
-	caaSet, records, err := va.getCAASet(ctx, hostname)
+	caaSet, response, err := va.getCAASet(ctx, hostname)
 	if err != nil {
-		return false, false, nil, err
+		return false, false, "", err
 	}
 	present, valid := va.validateCAASet(caaSet, wildcard, params)
-	return present, valid, records, nil
+	return present, valid, response, nil
 }
 
 func containsMethod(commaSeparatedMethods, method string) bool {
