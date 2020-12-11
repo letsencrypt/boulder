@@ -145,6 +145,7 @@ var responseTypeToString = map[ocsp.ResponseStatus]string{
 type Responder struct {
 	Source        Source
 	responseTypes *prometheus.CounterVec
+	responseAges  prometheus.Histogram
 	requestSizes  prometheus.Histogram
 	clk           clock.Clock
 	log           blog.Logger
@@ -160,6 +161,19 @@ func NewResponder(source Source, stats prometheus.Registerer, logger blog.Logger
 		},
 	)
 	stats.MustRegister(requestSizes)
+
+	// Set up 12-hour-wide buckets, measured in seconds.
+	buckets := make([]float64, 14)
+	for i := range buckets {
+		buckets[i] = 43200 * float64(i)
+	}
+	responseAges := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "ocsp_response_ages",
+		Help:    "How old are the OCSP responses when we serve them. Must stay well below 84 hours.",
+		Buckets: buckets,
+	})
+	stats.MustRegister(responseAges)
+
 	responseTypes := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "ocsp_responses",
@@ -172,6 +186,7 @@ func NewResponder(source Source, stats prometheus.Registerer, logger blog.Logger
 	return &Responder{
 		Source:        source,
 		responseTypes: responseTypes,
+		responseAges:  responseAges,
 		requestSizes:  requestSizes,
 		clk:           clock.New(),
 		log:           logger,
@@ -393,5 +408,6 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 	}
 	response.WriteHeader(http.StatusOK)
 	response.Write(ocspResponse)
+	rs.responseAges.Observe(rs.clk.Now().Sub(parsedResponse.ThisUpdate).Seconds())
 	rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Success]}).Inc()
 }
