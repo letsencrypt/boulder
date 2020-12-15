@@ -203,7 +203,7 @@ type config struct {
 		// If DBConfig has non-empty fields, it takes precedence over this.
 		Source string
 
-		// The list of issuer certificates, against which OCSP requests/reponses
+		// The list of issuer certificates, against which OCSP requests/responses
 		// are checked to ensure we're not responding for anyone else's certs.
 		IssuerCerts []string
 
