@@ -4,6 +4,11 @@
     "maxDBConns": 10,
     "path": "/",
     "listenAddress": "0.0.0.0:4002",
+    "issuerCerts": [
+      "/tmp/intermediate-cert-rsa-a.pem",
+      "/tmp/intermediate-cert-rsa-b.pem",
+      "/tmp/intermediate-cert-ecdsa-a.pem"
+    ],
     "maxAge": "10s",
     "timeout": "4.9s",
     "shutdownStopTimeout": "10s",
@@ -14,13 +19,5 @@
   "syslog": {
    "stdoutlevel": 6,
    "sysloglevel": 6
- },
-
-  "common": {
-    "issuerCerts": [
-      "/tmp/intermediate-cert-rsa-a.pem",
-      "/tmp/intermediate-cert-rsa-b.pem",
-      "/tmp/intermediate-cert-ecdsa-a.pem"
-    ]
-  }
+ }
 }
