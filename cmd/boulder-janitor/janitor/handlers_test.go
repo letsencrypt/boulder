@@ -1,4 +1,4 @@
-package main
+package janitor
 
 import (
 	"context"
@@ -73,11 +73,15 @@ func TestDeleteOrder(t *testing.T) {
 	test.AssertNotError(t, err, "error creating test order")
 
 	// Create a cleanup config for the Orders job
-	config := CleanupConfig{
-		WorkSleep:   cmd.ConfigDuration{Duration: time.Second},
-		BatchSize:   1,
-		MaxDPS:      1,
-		Parallelism: 1,
+	config := JobConfig{
+		Enabled:       true,
+		Table:         "orders",
+		ExpiresColumn: "expires",
+		WorkSleep:     cmd.ConfigDuration{Duration: time.Second},
+		BatchSize:     1,
+		MaxDPS:        1,
+		Parallelism:   1,
+		DeleteHandler: "deleteOrder",
 	}
 
 	// Create a dbMap for the janitor user. We don't want to use the SA dbMap
@@ -86,9 +90,11 @@ func TestDeleteOrder(t *testing.T) {
 	janitorDbMap, err := sa.NewDbMap("janitor@tcp(boulder-mysql:3306)/boulder_sa_test", 0)
 	test.AssertNotError(t, err, "error creating db map")
 
-	// Create an Orders job and delete the mock order by its ID
-	j := newOrdersJob(janitorDbMap, log, fc, config)
-	err = j.deleteHandler(testOrder.Id)
+	// Create an Orders job
+	j := newJob(config, janitorDbMap, log, fc)
+
+	// Delete the mock order by its ID
+	err = j.deleteHandler(j, testOrder.Id)
 	// It should not error
 	test.AssertNotError(t, err, "error calling deleteHandler")
 

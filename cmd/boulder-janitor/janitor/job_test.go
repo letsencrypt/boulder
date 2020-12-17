@@ -1,4 +1,4 @@
-package main
+package janitor
 
 import (
 	"database/sql"
@@ -80,7 +80,11 @@ func TestGetWork(t *testing.T) {
 	clk.Add(time.Hour * 5)
 	resultsExpires := clk.Now().Add(-time.Hour * 2)
 	batchSize := int64(20)
-	workQuery := `SELECT id, time AS expires FROM certificates WHERE id > :startID LIMIT :limit`
+	workQuery := `
+SELECT id, expires AS expires
+FROM certificates
+WHERE id > :startID
+LIMIT :limit`
 	mockIDs := []workUnit{
 		{1, resultsExpires},
 		{2, resultsExpires},
@@ -101,13 +105,13 @@ func TestGetWork(t *testing.T) {
 	workChan := make(chan int64, 5)
 
 	job := &batchedDBJob{
-		db:          testDB,
-		log:         log,
-		clk:         clk,
-		table:       table,
-		purgeBefore: time.Hour,
-		batchSize:   batchSize,
-		workQuery:   workQuery,
+		db:            testDB,
+		log:           log,
+		clk:           clk,
+		table:         table,
+		expiresColumn: "expires",
+		purgeBefore:   time.Hour,
+		batchSize:     batchSize,
 	}
 
 	// Mock Select() to return a non-nil error result
@@ -168,17 +172,16 @@ func TestDeleteResource(t *testing.T) {
 	// create a batchedDBJob with the simpleResourceDelete function as the
 	// deleteHandler
 	job := &batchedDBJob{
-		db:    testDB,
-		log:   log,
-		table: table,
+		db:            testDB,
+		log:           log,
+		table:         table,
+		expiresColumn: "expires",
+		deleteHandler: deleteDefault,
 	}
-	// Normally this would be set when deleteHandler is nil inside of the janitor
-	// newJobs function.
-	job.deleteHandler = job.simpleResourceDelete
 
 	// Mock Exec() to return a non-nil error result
 	testDB.errResult = errors.New("database is on vacation")
-	err := job.deleteHandler(testID)
+	err := job.deleteHandler(job, testID)
 	// We expect an err result back
 	test.AssertError(t, err, "no error returned from deleteHandler with bad DB")
 	// We expect no deletes to have been tracked in the deletedStat
@@ -186,7 +189,7 @@ func TestDeleteResource(t *testing.T) {
 
 	// With the mock error removed we expect no error returned from simpleDeleteResource
 	testDB.errResult = nil
-	err = job.deleteHandler(testID)
+	err = job.deleteHandler(job, testID)
 	test.AssertNotError(t, err, "unexpected error from deleteHandler")
 	// We expect a delete to have been tracked in the deletedStat
 	test.AssertEquals(t, test.CountCounterVec("table", "certificates", deletedStat), 1)
@@ -222,15 +225,14 @@ func TestCleanResource(t *testing.T) {
 	db := slowDB{}
 
 	job := batchedDBJob{
-		db:    db,
-		log:   log,
-		table: "example",
+		db:            db,
+		log:           log,
+		table:         "example",
+		expiresColumn: "expires",
 		// Start with a parallelism of 1
-		parallelism: 1,
+		parallelism:   1,
+		deleteHandler: deleteDefault,
 	}
-	// Normally this would be set when deleteHandler is nil inside of the janitor
-	// newJobs function.
-	job.deleteHandler = job.simpleResourceDelete
 
 	busyWork := func() <-chan int64 {
 		work := make(chan int64, 2)
@@ -349,23 +351,13 @@ func TestBatchedDBJobValid(t *testing.T) {
 			expectedErr: errNoParallelism,
 		},
 		{
-			name: "no workQuery",
-			j: batchedDBJob{
-				table:       "chef's",
-				purgeBefore: minPurgeBefore + time.Hour,
-				batchSize:   1,
-				parallelism: 1,
-			},
-			expectedErr: errNoWorkQuery,
-		},
-		{
 			name: "valid",
 			j: batchedDBJob{
-				table:       "chef's",
-				purgeBefore: time.Hour * 24 * 91,
-				batchSize:   1,
-				parallelism: 1,
-				workQuery:   "GET food FROM kitchen",
+				table:         "chef's",
+				expiresColumn: "kitchen",
+				purgeBefore:   time.Hour * 24 * 91,
+				batchSize:     1,
+				parallelism:   1,
 			},
 			expectedErr: nil,
 		},

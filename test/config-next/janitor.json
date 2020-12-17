@@ -6,45 +6,56 @@
     "dbConnectFile": "test/secrets/janitor_dburl",
     "maxDBConns": 10,
     "debugAddr": ":8014",
-    "certificates": {
-        "enabled": true,
-        "gracePeriod": "2184h",
-        "batchSize": 100,
-        "workSleep": "500ms",
-        "parallelism": 2,
-        "maxDPS": 50
-    },
-    "certificateStatus": {
-        "enabled": true,
-        "gracePeriod": "2184h",
-        "batchSize": 100,
-        "workSleep": "500ms",
-        "parallelism": 2,
-        "maxDPS": 50
-    },
-    "certificatesPerName": {
-        "enabled": true,
-        "gracePeriod": "2184h",
-        "batchSize": 100,
-        "workSleep": "500ms",
-        "parallelism": 2,
-        "maxDPS": 50
-    },
-    "keyHashToSerial": {
-        "enabled": true,
-        "gracePeriod": "2184h",
-        "batchSize": 100,
-        "workSleep": "500ms",
-        "parallelism": 2,
-        "maxDPS": 50
-    },
-    "orders": {
-        "enabled": true,
-        "gracePeriod": "2184h",
-        "batchSize": 100,
-        "workSleep": "500ms",
-        "parallelism": 2,
-        "maxDPS": 50
-    }
+    "jobConfigs": [
+      {
+          "enabled": true,
+          "table": "certificates",
+          "gracePeriod": "2184h",
+          "batchSize": 100,
+          "workSleep": "500ms",
+          "parallelism": 2,
+          "maxDPS": 50
+      },
+      {
+          "enabled": true,
+          "table": "certificateStatus",
+          "expiresColumn": "notAfter",
+          "gracePeriod": "2184h",
+          "batchSize": 100,
+          "workSleep": "500ms",
+          "parallelism": 2,
+          "maxDPS": 50
+      },
+      {
+          "enabled": true,
+          "table": "certificatesPerName",
+          "expiresColumn": "time",
+          "gracePeriod": "2184h",
+          "batchSize": 100,
+          "workSleep": "500ms",
+          "parallelism": 2,
+          "maxDPS": 50
+      },
+      {
+          "enabled": true,
+          "table": "keyHashToSerial",
+          "expiresColumn": "certNotAfter",
+          "gracePeriod": "2184h",
+          "batchSize": 100,
+          "workSleep": "500ms",
+          "parallelism": 2,
+          "maxDPS": 50
+      },
+      {
+          "enabled": true,
+          "table": "orders",
+          "gracePeriod": "2184h",
+          "batchSize": 100,
+          "workSleep": "500ms",
+          "parallelism": 2,
+          "maxDPS": 50,
+          "deleteHandler": "deleteOrder"
+      }
+    ]
   }
 }

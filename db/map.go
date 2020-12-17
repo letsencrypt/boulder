@@ -265,7 +265,7 @@ func (we WrappedExecutor) SelectOne(holder interface{}, query string, args ...in
 
 var (
 	// selectTableRegexp matches the table name from an SQL select statement
-	selectTableRegexp = regexp.MustCompile(`(?i)^\s*select\s+[a-z\d\.\(\), \_\*` + "`" + `]+\s+from\s+([a-z\d\_,` + "`" + `]+)`)
+	selectTableRegexp = regexp.MustCompile(`(?i)^\s*select\s+[a-z\d:\.\(\), \_\*` + "`" + `]+\s+from\s+([a-z\d\_,` + "`" + `]+)`)
 	// insertTableRegexp matches the table name from an SQL insert statement
 	insertTableRegexp = regexp.MustCompile(`(?i)^\s*insert\s+into\s+([a-z\d \_,` + "`" + `]+)\s+(?:set|\()`)
 	// updateTableRegexp matches the table name from an SQL update statement
