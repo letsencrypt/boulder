@@ -112,7 +112,7 @@ github.com/zmap/zlint/v2/lints/etsi
 github.com/zmap/zlint/v2/lints/mozilla
 github.com/zmap/zlint/v2/lints/rfc
 github.com/zmap/zlint/v2/util
-# golang.org/x/crypto v0.0.0-20200124225646-8b5121be2f68
+# golang.org/x/crypto v0.0.0-20201216223049-8b5274cf687f
 golang.org/x/crypto/cryptobyte
 golang.org/x/crypto/cryptobyte/asn1
 golang.org/x/crypto/ed25519
