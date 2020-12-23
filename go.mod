@@ -17,8 +17,6 @@ require (
 	github.com/jmhodges/clock v0.0.0-20160418191101-880ee4c33548
 	github.com/letsencrypt/challtestsrv v1.2.0
 	github.com/letsencrypt/pkcs11key/v4 v4.0.0
-	github.com/lib/pq v1.9.0 // indirect
-	github.com/mattn/go-sqlite3 v1.14.5 // indirect
 	github.com/miekg/dns v1.1.30
 	github.com/miekg/pkcs11 v1.0.3
 	github.com/onsi/ginkgo v1.8.0 // indirect
@@ -34,7 +32,6 @@ require (
 	golang.org/x/net v0.0.0-20201110031124-69a78807bb2b
 	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9 // indirect
 	golang.org/x/text v0.3.4
-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/grpc v1.29.0
 	google.golang.org/protobuf v1.23.0
 	gopkg.in/square/go-jose.v2 v2.4.1
