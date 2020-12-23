@@ -137,6 +137,7 @@ type CertificateAuthorityImpl struct {
 	ocspLifetime       time.Duration
 	keyPolicy          goodkey.KeyPolicy
 	orphanQueue        *goque.Queue
+	ocspLogQueue       chan ocspLog
 	clk                clock.Clock
 	log                blog.Logger
 	signatureCount     *prometheus.CounterVec
@@ -364,6 +365,7 @@ func NewCertificateAuthorityImpl(
 		ocspLifetime:       ocspLifetime,
 		keyPolicy:          keyPolicy,
 		orphanQueue:        orphanQueue,
+		ocspLogQueue:       make(chan ocspLog, 10000),
 		log:                logger,
 		signatureCount:     signatureCount,
 		csrExtensionCount:  csrExtensionCount,
@@ -519,6 +521,12 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *capb.
 	if tbsResponse.Status == ocsp.Revoked {
 		tbsResponse.RevokedAt = time.Unix(0, req.RevokedAt)
 		tbsResponse.RevocationReason = int(req.Reason)
+	}
+
+	ca.ocspLogQueue <- ocspLog{
+		serial: serial.Bytes(),
+		time:   now,
+		status: ocsp.ResponseStatus(tbsResponse.Status),
 	}
 
 	ocspResponse, err := ocsp.CreateResponse(issuer.cert.Certificate, issuer.cert.Certificate, tbsResponse, issuer.ocspSigner)
@@ -896,6 +904,12 @@ func (ca *CertificateAuthorityImpl) storeCertificate(
 	return nil
 }
 
+type ocspLog struct {
+	serial []byte
+	time   time.Time
+	status ocsp.ResponseStatus
+}
+
 type orphanedCert struct {
 	DER      []byte
 	OCSPResp []byte
@@ -922,6 +936,27 @@ func (ca *CertificateAuthorityImpl) OrphanIntegrationLoop() {
 			}
 			ca.log.AuditErrf("failed to integrate orphaned certs: %s", err)
 			time.Sleep(time.Second)
+		}
+	}
+}
+
+// logOCSP consumes events from the ocspLogQueue channel, batches them up, and
+// logs them in batches of 100, or every 500 milliseconds, whichever comes first.
+func (ca *CertificateAuthorityImpl) LogOCSPLoop() error {
+	for {
+		var builder strings.Builder
+		deadline := time.After(500 * time.Millisecond)
+	inner:
+		for i := 0; i < 100; i++ {
+			select {
+			case ol := <-ca.ocspLogQueue:
+				fmt.Fprintf(&builder, "%x:%d,", ol.serial, ol.status)
+			case <-deadline:
+				break inner
+			}
+		}
+		if builder.Len() > 0 {
+			ca.log.AuditInfof("OCSP updates: %s", builder.String())
 		}
 	}
 }

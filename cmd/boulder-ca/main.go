@@ -310,6 +310,7 @@ func main() {
 	if orphanQueue != nil {
 		go cai.OrphanIntegrationLoop()
 	}
+	go cai.LogOCSPLoop()
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 
