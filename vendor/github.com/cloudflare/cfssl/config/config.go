@@ -19,9 +19,9 @@ import (
 	"github.com/cloudflare/cfssl/helpers"
 	"github.com/cloudflare/cfssl/log"
 	ocspConfig "github.com/cloudflare/cfssl/ocsp/config"
-	// empty import of zlint/v2 required to have lints registered.
-	_ "github.com/zmap/zlint/v2"
-	"github.com/zmap/zlint/v2/lint"
+	// empty import of zlint/v3 required to have lints registered.
+	_ "github.com/zmap/zlint/v3"
+	"github.com/zmap/zlint/v3/lint"
 )
 
 // A CSRWhitelist stores booleans for fields in the CSR. If a CSRWhitelist is
@@ -84,7 +84,8 @@ type SigningProfile struct {
 	ExpiryString        string       `json:"expiry"`
 	BackdateString      string       `json:"backdate"`
 	AuthKeyName         string       `json:"auth_key"`
-	PrevAuthKeyName     string       `json:"prev_auth_key"` // to suppport key rotation
+	CopyExtensions      bool         `json:"copy_extensions"`
+	PrevAuthKeyName     string       `json:"prev_auth_key"` // to support key rotation
 	RemoteName          string       `json:"remote"`
 	NotBefore           time.Time    `json:"not_before"`
 	NotAfter            time.Time    `json:"not_after"`

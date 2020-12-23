@@ -27,7 +27,7 @@ import (
 	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
-	zlint "github.com/zmap/zlint/v2/lint"
+	zlint "github.com/zmap/zlint/v3/lint"
 	"golang.org/x/crypto/ocsp"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
