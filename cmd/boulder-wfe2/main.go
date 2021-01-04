@@ -19,7 +19,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -107,10 +106,6 @@ type config struct {
 	}
 
 	Syslog cmd.SyslogConfig
-
-	Common struct {
-		IssuerCert string
-	}
 }
 
 // loadCertificateFile loads a PEM certificate from the certFile provided. It
@@ -346,10 +341,6 @@ func main() {
 	wfe.DirectoryCAAIdentity = c.WFE.DirectoryCAAIdentity
 	wfe.DirectoryWebsite = c.WFE.DirectoryWebsite
 	wfe.LegacyKeyIDPrefix = c.WFE.LegacyKeyIDPrefix
-
-	issuerCert, err := core.LoadCert(c.Common.IssuerCert)
-	cmd.FailOnError(err, fmt.Sprintf("Couldn't load issuer cert [%s]", c.Common.IssuerCert))
-	wfe.IssuerCert = &issuance.Certificate{Certificate: issuerCert}
 
 	logger.Infof("WFE using key policy: %#v", kp)
 

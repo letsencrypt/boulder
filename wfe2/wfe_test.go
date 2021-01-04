@@ -33,7 +33,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/identifier"
-	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
@@ -912,7 +911,6 @@ func TestNonceEndpoint(t *testing.T) {
 
 func TestHTTPMethods(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.IssuerCert = &issuance.Certificate{Certificate: &x509.Certificate{}}
 	mux := wfe.Handler(metrics.NoopRegisterer)
 
 	// NOTE: Boulder's muxer treats HEAD as implicitly allowed if GET is specified
@@ -968,11 +966,6 @@ func TestHTTPMethods(t *testing.T) {
 			Name:    "RevokeCert path should be POST only",
 			Path:    revokeCertPath,
 			Allowed: postOnly,
-		},
-		{
-			Name:    "Issuer path should be GET only",
-			Path:    issuerPath,
-			Allowed: getOnly,
 		},
 		{
 			Name:    "Build ID path should be GET only",
@@ -1742,20 +1735,6 @@ func TestAccount(t *testing.T) {
 		"detail": "Request signing key did not match account key",
 		"status": 403
 	}`)
-}
-
-func TestIssuer(t *testing.T) {
-	wfe, _ := setupWFE(t)
-	wfe.IssuerCert = &issuance.Certificate{Certificate: &x509.Certificate{}}
-	wfe.IssuerCert.Raw = []byte{0, 0, 1}
-
-	responseWriter := httptest.NewRecorder()
-
-	wfe.Issuer(ctx, newRequestEvent(), responseWriter, &http.Request{
-		Method: "GET",
-	})
-	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), wfe.IssuerCert.Raw) == 0, "Incorrect bytes returned")
 }
 
 func TestGetCertificate(t *testing.T) {

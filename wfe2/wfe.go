@@ -23,7 +23,6 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
-	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	"github.com/letsencrypt/boulder/nonce"
@@ -51,7 +50,6 @@ const (
 	challengePath     = "/acme/chall-v3/"
 	certPath          = "/acme/cert/"
 	revokeCertPath    = "/acme/revoke-cert"
-	issuerPath        = "/acme/issuer-cert"
 	buildIDPath       = "/build"
 	rolloverPath      = "/acme/key-change"
 	newNoncePath      = "/acme/new-nonce"
@@ -76,9 +74,6 @@ type WebFrontEndImpl struct {
 	log   blog.Logger
 	clk   clock.Clock
 	stats wfe2Stats
-
-	// Issuer certificate for /acme/issuer-cert
-	IssuerCert *issuance.Certificate
 
 	// certificateChains maps AIA issuer URLs to a slice of []byte containing a leading
 	// newline and one or more PEM encoded certificates separated by a newline,
@@ -358,7 +353,6 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	m := http.NewServeMux()
 	// Boulder specific endpoints
-	wfe.HandleFunc(m, issuerPath, wfe.Issuer, "GET")
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
 
 	// POSTable ACME endpoints
@@ -1697,16 +1691,6 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	response.Header().Set("Content-Type", "application/pem-certificate-chain")
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(responsePEM); err != nil {
-		wfe.log.Warningf("Could not write response: %s", err)
-	}
-}
-
-// Issuer obtains the issuer certificate used by this instance of Boulder.
-func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	// TODO Content negotiation
-	response.Header().Set("Content-Type", "application/pkix-cert")
-	response.WriteHeader(http.StatusOK)
-	if _, err := response.Write(wfe.IssuerCert.Raw); err != nil {
 		wfe.log.Warningf("Could not write response: %s", err)
 	}
 }
