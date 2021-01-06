@@ -4,7 +4,7 @@
       "stdoutLevel": 6
     },
     "dbConnectFile": "test/secrets/janitor_dburl",
-    "maxDBConns": 10,
+    "maxOpenConns": 10,
     "debugAddr": ":8014",
     "jobConfigs": [
       {

@@ -1,7 +1,7 @@
 {
   "certChecker": {
     "dbConnectFile": "test/secrets/cert_checker_dburl",
-    "maxDBConns": 10,
+    "maxOpenConns": 10,
     "hostnamePolicyFile": "test/hostname-policy.yaml",
     "ignoredLints": [
       "n_subject_common_name_included"

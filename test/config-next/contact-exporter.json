@@ -2,6 +2,6 @@
   "contactExporter": {
     "passwordFile": "test/secrets/smtp_password",
     "dbConnectFile": "test/secrets/mailer_dburl",
-    "maxDBConns": 10
+    "maxOpenConns": 10
   }
 }

@@ -371,7 +371,7 @@ func setup(t *testing.T) testCtx {
 	log := blog.UseMock()
 
 	// Using DBConnSAFullPerms to be able to insert registrations and certificates
-	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	if err != nil {
 		t.Fatalf("Couldn't connect the database: %s", err)
 	}

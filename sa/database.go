@@ -3,6 +3,7 @@ package sa
 import (
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/go-gorp/gorp/v3"
 	"github.com/go-sql-driver/mysql"
@@ -12,11 +13,34 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+// DbSettings contains tuning setting for the sql driver. Optional
+// fields should only be applied if their zero value matches the default
+// of the sql driver. SA is the authoritative closer of connections when
+// ConnMaxIdleTime and ConnMaxLifetime are set lower than their mariadb
+// counterparts interactive_timeout and wait_timeout.
+type DbSettings struct {
+	// MaxOpenConns sets the maximum number of open connections to the
+	// database. If left unspecified connections to the database default
+	// to unlimited.
+	MaxOpenConns int
+	// MaxIdleConns is optional. When n > 0 it sets the size of the idle
+	// connection pool. The value is a pointer to an int because if n <=
+	// 0, no idle connections are retained. If nil is specified the sql
+	// driver will use the package default instead.
+	MaxIdleConns *int
+	// ConnMaxLifetime is optional. When n > 0 it sets the maximum
+	// amount of time a connection may be reused.
+	ConnMaxLifetime time.Duration
+	// ConnMaxIdleTime is optional. When n > 0 it sets the maximum
+	// amount of time a connection may be idle.
+	ConnMaxIdleTime time.Duration
+}
+
 // NewDbMap creates a wrapped root gorp mapping object. Create one of these for
 // each database schema you wish to map. Each DbMap contains a list of mapped
 // tables. It automatically maps the tables for the primary parts of Boulder
 // around the Storage Authority.
-func NewDbMap(dbConnect string, maxOpenConns int) (*boulderDB.WrappedMap, error) {
+func NewDbMap(dbConnect string, settings DbSettings) (*boulderDB.WrappedMap, error) {
 	var err error
 	var config *mysql.Config
 
@@ -25,7 +49,7 @@ func NewDbMap(dbConnect string, maxOpenConns int) (*boulderDB.WrappedMap, error)
 		return nil, err
 	}
 
-	return NewDbMapFromConfig(config, maxOpenConns)
+	return NewDbMapFromConfig(config, settings)
 }
 
 // sqlOpen is used in the tests to check that the arguments are properly
@@ -39,9 +63,26 @@ var setMaxOpenConns = func(db *sql.DB, maxOpenConns int) {
 	db.SetMaxOpenConns(maxOpenConns)
 }
 
+// setMaxIdleConns is also used so that we can replace it for testing.
+var setMaxIdleConns = func(db *sql.DB, maxIdleConns *int) {
+	if maxIdleConns != nil {
+		db.SetMaxIdleConns(*maxIdleConns)
+	}
+}
+
+// setConnMaxLifetime is also used so that we can replace it for testing.
+var setConnMaxLifetime = func(db *sql.DB, connMaxLifetime time.Duration) {
+	db.SetConnMaxLifetime(connMaxLifetime)
+}
+
+// setConnMaxIdleTime is also used so that we can replace it for testing.
+var setConnMaxIdleTime = func(db *sql.DB, connMaxIdleTime time.Duration) {
+	db.SetConnMaxIdleTime(connMaxIdleTime)
+}
+
 // NewDbMapFromConfig functions similarly to NewDbMap, but it takes the
 // decomposed form of the connection string, a *mysql.Config.
-func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*boulderDB.WrappedMap, error) {
+func NewDbMapFromConfig(config *mysql.Config, settings DbSettings) (*boulderDB.WrappedMap, error) {
 	adjustMySQLConfig(config)
 
 	db, err := sqlOpen("mysql", config.FormatDSN())
@@ -51,7 +92,10 @@ func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*boulderDB.Wrap
 	if err = db.Ping(); err != nil {
 		return nil, err
 	}
-	setMaxOpenConns(db, maxOpenConns)
+	setMaxOpenConns(db, settings.MaxOpenConns)
+	setMaxIdleConns(db, settings.MaxIdleConns)
+	setConnMaxLifetime(db, settings.ConnMaxLifetime)
+	setConnMaxIdleTime(db, settings.ConnMaxIdleTime)
 
 	dialect := gorp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"}
 	dbmap := &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}

@@ -48,8 +48,12 @@ type ServiceConfig struct {
 type DBConfig struct {
 	DBConnect string
 	// A file containing a connect URL for the DB.
-	DBConnectFile string
-	MaxDBConns    int
+	DBConnectFile   string
+	MaxDBConns      int
+	MaxOpenConns    int
+	MaxIdleConns    *int
+	ConnMaxLifetime ConfigDuration
+	ConnMaxIdleTime ConfigDuration
 }
 
 // URL returns the DBConnect URL represented by this DBConfig object, either
@@ -61,6 +65,16 @@ func (d *DBConfig) URL() (string, error) {
 		return strings.TrimSpace(string(url)), err
 	}
 	return d.DBConnect, nil
+}
+
+// GetMaxOpenConns defaults MaxOpenConns to the value of MaxDBConns if
+// MaxDBConns was specified in the config json. This method can be
+// removed once MaxDBConns has been removed from test/config.
+func (d *DBConfig) GetMaxOpenConns() int {
+	if d.MaxDBConns != 0 {
+		d.MaxOpenConns = d.MaxDBConns
+	}
+	return d.MaxOpenConns
 }
 
 type SMTPConfig struct {

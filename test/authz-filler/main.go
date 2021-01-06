@@ -48,7 +48,13 @@ func main() {
 	dbURL, err := config.Filler.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	// Set max connections equal to parallelism.
-	dbMap, err := sa.NewDbMap(dbURL, int(config.Filler.Parallelism))
+	dbSettings := sa.DbSettings{
+		MaxOpenConns:    int(config.Filler.Parallelism),
+		MaxIdleConns:    nil,
+		ConnMaxLifetime: 0,
+		ConnMaxIdleTime: 0,
+	}
+	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")
 
 	dbMap.AddTableWithName(model{}, "pendingAuthorizations").SetKeys(false, "ID")
