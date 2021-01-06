@@ -109,7 +109,7 @@ const (
 	certType    = certificateType("certificate")
 )
 
-// Three maps of keys to internalIssuers. Lookup by PublicKeyAlgorithm is
+// Four maps of keys to internalIssuers. Lookup by PublicKeyAlgorithm is
 // useful for determining which issuer to use to sign a given (pre)cert, based
 // on its PublicKeyAlgorithm. Lookup by CommonName is useful for determining
 // which issuer to use to sign an OCSP response, based on the cert's
