@@ -27,6 +27,7 @@ message NewAuthorizationRequest {
 message NewCertificateRequest {
   bytes csr = 1;
   int64 regID = 2;
+  int64 issuerNameID = 3;
 }
 
 message UpdateRegistrationRequest {

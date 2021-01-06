@@ -216,7 +216,7 @@ func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, authz
 	return authz, nil
 }
 
-func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req core.CertificateRequest, acctID int64) (core.Certificate, error) {
+func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req core.CertificateRequest, acctID int64, issuerNameID int64) (core.Certificate, error) {
 	return core.Certificate{}, nil
 }
 

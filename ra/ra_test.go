@@ -1053,7 +1053,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	}
 
 	// Registration has key == AccountKeyA
-	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
+	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID, 1)
 	test.AssertError(t, err, "Should have rejected cert with key = account key")
 	test.AssertEquals(t, err.Error(), "certificate public key must be different than account key")
 }
@@ -1070,7 +1070,7 @@ func TestAuthorizationRequired(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
-	_, err := ra.NewCertificate(ctx, certRequest, 1)
+	_, err := ra.NewCertificate(ctx, certRequest, 1, 1)
 	test.Assert(t, err != nil, "Issued certificate with insufficient authorization")
 }
 
@@ -1088,7 +1088,7 @@ func TestNewCertificate(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
-	_, err := ra.NewCertificate(ctx, certRequest, Registration.ID)
+	_, err := ra.NewCertificate(ctx, certRequest, Registration.ID, 1)
 	ExampleCSR.Signature[0]--
 	test.AssertError(t, err, "Failed to check CSR signature")
 
@@ -1098,7 +1098,7 @@ func TestNewCertificate(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
-	cert, err := ra.NewCertificate(ctx, certRequest, Registration.ID)
+	cert, err := ra.NewCertificate(ctx, certRequest, Registration.ID, 1)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 
 	_, err = x509.ParseCertificate(cert.DER)
@@ -3478,7 +3478,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 
 	_, err := ra.issueCertificate(ctx, core.CertificateRequest{
 		CSR: ExampleCSR,
-	}, accountID(Registration.ID), 0)
+	}, accountID(Registration.ID), 0, 0)
 	test.AssertError(t, err, "ra.issueCertificate didn't fail when CTPolicy.GetSCTs timed out")
 	test.AssertEquals(t, test.CountHistogramSamples(ra.ctpolicyResults.With(prometheus.Labels{"result": "failure"})), 1)
 }
@@ -3689,7 +3689,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			// Mock the CA
 			ra.CA = tc.Mock
 			// Attempt issuance
-			_, err = ra.issueCertificateInner(ctx, req, accountID(Registration.ID), orderID(order.Id), logEvent)
+			_, err = ra.issueCertificateInner(ctx, req, accountID(Registration.ID), orderID(order.Id), issuance.IssuerNameID(0), logEvent)
 			// We expect all of the testcases to fail because all use mocked CAs that deliberately error
 			test.AssertError(t, err, "issueCertificateInner with failing mock CA did not fail")
 			// If there is an expected `error` then match the error message
