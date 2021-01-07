@@ -38,7 +38,8 @@ guidelines for Boulder contributions.
   your pull request about what you're trying to accomplish with your patch.
 * Avoid named return values. See
   [#3017](https://github.com/letsencrypt/boulder/pull/3017) for an example of a
-* subtle problem they can cause. Do not include `XXX`s or naked `TODO`s. Use
+  subtle problem they can cause.
+* Do not include `XXX`s or naked `TODO`s. Use
   the formats:
 
   ```go
