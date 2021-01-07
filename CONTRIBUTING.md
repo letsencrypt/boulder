@@ -37,7 +37,8 @@ guidelines for Boulder contributions.
   but make sure it's clear why things are being done. Include information in
   your pull request about what you're trying to accomplish with your patch.
 * Avoid named return values. See
-  [#3017](https://github.com/letsencrypt/boulder/pull/3017) for an example of a subtle problem they can cause.
+  [#3017](https://github.com/letsencrypt/boulder/pull/3017) for an example of a
+  subtle problem they can cause.
 * Do not include `XXX`s or naked `TODO`s. Use
   the formats:
 
