@@ -352,6 +352,8 @@ func NewCertificateAuthorityImpl(
 	}, []string{"type"})
 	stats.MustRegister(signErrorCounter)
 
+	ocspLogQueue := newOCSPLogQueue(4000, 500*time.Millisecond, stats, logger)
+
 	ca = &CertificateAuthorityImpl{
 		sa:                 sa,
 		pa:                 pa,
@@ -365,7 +367,7 @@ func NewCertificateAuthorityImpl(
 		ocspLifetime:       ocspLifetime,
 		keyPolicy:          keyPolicy,
 		orphanQueue:        orphanQueue,
-		ocspLogQueue:       newOCSPLogQueue(stats, logger),
+		ocspLogQueue:       ocspLogQueue,
 		log:                logger,
 		signatureCount:     signatureCount,
 		csrExtensionCount:  csrExtensionCount,
@@ -930,10 +932,18 @@ func (ca *CertificateAuthorityImpl) OrphanIntegrationLoop() {
 	}
 }
 
-/// LogOCSPLoop collects OCSP generation log events into bundles, and logs
-/// them periodically.
+// LogOCSPLoop collects OCSP generation log events into bundles, and logs
+// them periodically.
 func (ca *CertificateAuthorityImpl) LogOCSPLoop() {
 	ca.ocspLogQueue.loop()
+}
+
+// Stop asks this CertificateAuthorityImpl to shut down. It must be called
+// after the corresponding RPC service is shut down and there are no longer
+// any inflight RPCs. It will attempt to drain any logging queues (which may
+// block), and will return only when done.
+func (ca *CertificateAuthorityImpl) Stop() {
+	ca.ocspLogQueue.stop()
 }
 
 // integrateOrpan removes an orphan from the queue and adds it to the database. The

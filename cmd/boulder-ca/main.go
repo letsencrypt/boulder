@@ -340,6 +340,7 @@ func main() {
 		ocspHealth.Shutdown()
 		caSrv.GracefulStop()
 		ocspSrv.GracefulStop()
+		cai.Stop()
 	})
 
 	select {}
