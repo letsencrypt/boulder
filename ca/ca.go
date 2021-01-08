@@ -137,7 +137,7 @@ type CertificateAuthorityImpl struct {
 	ocspLifetime       time.Duration
 	keyPolicy          goodkey.KeyPolicy
 	orphanQueue        *goque.Queue
-	ocspLogQueue       chan ocspLog
+	ocspLogQueue       *ocspLogQueue
 	clk                clock.Clock
 	log                blog.Logger
 	signatureCount     *prometheus.CounterVec
@@ -365,7 +365,7 @@ func NewCertificateAuthorityImpl(
 		ocspLifetime:       ocspLifetime,
 		keyPolicy:          keyPolicy,
 		orphanQueue:        orphanQueue,
-		ocspLogQueue:       make(chan ocspLog, 10000),
+		ocspLogQueue:       newOCSPLogQueue(stats, logger),
 		log:                logger,
 		signatureCount:     signatureCount,
 		csrExtensionCount:  csrExtensionCount,
@@ -523,11 +523,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *capb.
 		tbsResponse.RevocationReason = int(req.Reason)
 	}
 
-	ca.ocspLogQueue <- ocspLog{
-		serial: serial.Bytes(),
-		time:   now,
-		status: ocsp.ResponseStatus(tbsResponse.Status),
-	}
+	ca.ocspLogQueue.enqueue(serial.Bytes(), now, ocsp.ResponseStatus(tbsResponse.Status))
 
 	ocspResponse, err := ocsp.CreateResponse(issuer.cert.Certificate, issuer.cert.Certificate, tbsResponse, issuer.ocspSigner)
 	ca.noteSignError(err)
@@ -904,12 +900,6 @@ func (ca *CertificateAuthorityImpl) storeCertificate(
 	return nil
 }
 
-type ocspLog struct {
-	serial []byte
-	time   time.Time
-	status ocsp.ResponseStatus
-}
-
 type orphanedCert struct {
 	DER      []byte
 	OCSPResp []byte
@@ -940,25 +930,10 @@ func (ca *CertificateAuthorityImpl) OrphanIntegrationLoop() {
 	}
 }
 
-// logOCSP consumes events from the ocspLogQueue channel, batches them up, and
-// logs them in batches of 100, or every 500 milliseconds, whichever comes first.
-func (ca *CertificateAuthorityImpl) LogOCSPLoop() error {
-	for {
-		var builder strings.Builder
-		deadline := time.After(500 * time.Millisecond)
-	inner:
-		for i := 0; i < 100; i++ {
-			select {
-			case ol := <-ca.ocspLogQueue:
-				fmt.Fprintf(&builder, "%x:%d,", ol.serial, ol.status)
-			case <-deadline:
-				break inner
-			}
-		}
-		if builder.Len() > 0 {
-			ca.log.AuditInfof("OCSP updates: %s", builder.String())
-		}
-	}
+/// LogOCSPLoop collects OCSP generation log events into bundles, and logs
+/// them periodically.
+func (ca *CertificateAuthorityImpl) LogOCSPLoop() {
+	ca.ocspLogQueue.loop()
 }
 
 // integrateOrpan removes an orphan from the queue and adds it to the database. The
