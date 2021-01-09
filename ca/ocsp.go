@@ -50,7 +50,7 @@ func newOCSPLogQueue(
 			Help: "Number of OCSP generation log entries waiting to be written",
 		})
 	stats.MustRegister(depth)
-	return &ocspLogQueue{
+	olq := ocspLogQueue{
 		maxLogLen: maxLogLen,
 		period:    period,
 		queue:     make(chan ocspLog, 1000),
@@ -58,6 +58,8 @@ func newOCSPLogQueue(
 		depth:     depth,
 		logger:    logger,
 	}
+	olq.wg.Add(1)
+	return &olq
 }
 
 func (olq *ocspLogQueue) enqueue(serial []byte, time time.Time, status ocsp.ResponseStatus) {
@@ -71,7 +73,6 @@ func (olq *ocspLogQueue) enqueue(serial []byte, time time.Time, status ocsp.Resp
 // loop consumes events from the queue channel, batches them up, and
 // logs them in batches of 100, or every 500 milliseconds, whichever comes first.
 func (olq *ocspLogQueue) loop() {
-	olq.wg.Add(1)
 	defer olq.wg.Done()
 	done := false
 	for !done {
@@ -106,6 +107,8 @@ func (olq *ocspLogQueue) loop() {
 // it's guaranteed that nothing will call enqueue again (for instance, after
 // the OCSPGenerator and CertificateAuthority services are shut down with
 // no RPCs in flight). Otherwise, enqueue will panic.
+// If this is called without previously starting a goroutine running `.loop()`,
+// it will block forever.
 func (olq *ocspLogQueue) stop() {
 	close(olq.queue)
 	olq.wg.Wait()
