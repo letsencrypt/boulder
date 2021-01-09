@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 
@@ -30,6 +31,7 @@ type ocspLogQueue struct {
 	wg     sync.WaitGroup
 	depth  prometheus.Gauge
 	logger blog.Logger
+	clk    clock.Clock
 }
 
 type ocspLog struct {
@@ -57,6 +59,7 @@ func newOCSPLogQueue(
 		wg:        sync.WaitGroup{},
 		depth:     depth,
 		logger:    logger,
+		clk:       clock.Default(),
 	}
 	olq.wg.Add(1)
 	return &olq
@@ -64,7 +67,7 @@ func newOCSPLogQueue(
 
 func (olq *ocspLogQueue) enqueue(serial []byte, time time.Time, status ocsp.ResponseStatus) {
 	olq.queue <- ocspLog{
-		serial: serial,
+		serial: append([]byte{}, serial...),
 		time:   time,
 		status: ocsp.ResponseStatus(status),
 	}
@@ -77,7 +80,7 @@ func (olq *ocspLogQueue) loop() {
 	done := false
 	for !done {
 		var builder strings.Builder
-		deadline := time.After(500 * time.Millisecond)
+		deadline := olq.clk.After(olq.period)
 	inner:
 		// To ensure we don't go over the max log line length,
 		// use a safety margin greater than the expected length of
