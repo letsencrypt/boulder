@@ -328,6 +328,8 @@ func TestFailNoSerialPrefix(t *testing.T) {
 		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
 		nil,
+		0,
+		time.Second,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.fc)
@@ -438,6 +440,8 @@ func issueCertificateSubTestSetup(t *testing.T, boulderIssuer bool) (*Certificat
 		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
 		nil,
+		0,
+		time.Second,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.fc)
@@ -500,6 +504,8 @@ func TestMultipleIssuers(t *testing.T) {
 		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
 		nil,
+		0,
+		time.Second,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.fc)
@@ -533,6 +539,8 @@ func TestOCSP(t *testing.T) {
 		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
 		nil,
+		0,
+		time.Second,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.fc)
@@ -592,6 +600,8 @@ func TestOCSP(t *testing.T) {
 		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
 		nil,
+		0,
+		time.Second,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.fc)
@@ -697,6 +707,8 @@ func TestInvalidCSRs(t *testing.T) {
 			testCtx.ocspLifetime,
 			testCtx.keyPolicy,
 			nil,
+			0,
+			time.Second,
 			testCtx.logger,
 			testCtx.stats,
 			testCtx.fc)
@@ -736,6 +748,8 @@ func TestRejectValidityTooLong(t *testing.T) {
 		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
 		nil,
+		0,
+		time.Second,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.fc)
@@ -795,6 +809,8 @@ func TestSingleAIAEnforcement(t *testing.T) {
 		time.Second,
 		goodkey.KeyPolicy{},
 		nil,
+		0,
+		time.Second,
 		&blog.Mock{},
 		metrics.NoopRegisterer,
 		clock.New(),
@@ -911,6 +927,8 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 			testCtx.ocspLifetime,
 			testCtx.keyPolicy,
 			nil,
+			0,
+			time.Second,
 			testCtx.logger,
 			testCtx.stats,
 			testCtx.fc)
@@ -1001,6 +1019,8 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
 		nil,
+		0,
+		time.Second,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.fc)
@@ -1045,6 +1065,8 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
 		nil,
+		0,
+		time.Second,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.fc)
@@ -1126,6 +1148,8 @@ func TestPrecertOrphanQueue(t *testing.T) {
 		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
 		orphanQueue,
+		0,
+		time.Second,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.fc)
@@ -1196,6 +1220,8 @@ func TestOrphanQueue(t *testing.T) {
 		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
 		orphanQueue,
+		0,
+		time.Second,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.fc)
@@ -1316,6 +1342,8 @@ func TestIssuePrecertificateLinting(t *testing.T) {
 		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
 		nil,
+		0,
+		time.Second,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.fc)
@@ -1380,6 +1408,8 @@ func TestGenerateOCSPWithIssuerID(t *testing.T) {
 		testCtx.ocspLifetime,
 		testCtx.keyPolicy,
 		nil,
+		0,
+		time.Second,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.fc)

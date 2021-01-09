@@ -21,6 +21,7 @@ import (
 // 3900 bytes per log line.
 // Summary of log line usage:
 // serial in hex: 36 bytes, separator characters: 2 bytes, status: 1 byte
+// If maxLogLen is 0, do not perform any accumulation or logging.
 type ocspLogQueue struct {
 	// Maximum length, in bytes, of a single log line.
 	maxLogLen int
@@ -77,6 +78,9 @@ func (olq *ocspLogQueue) enqueue(serial []byte, time time.Time, status ocsp.Resp
 // logs them in batches of 100, or every 500 milliseconds, whichever comes first.
 func (olq *ocspLogQueue) loop() {
 	defer olq.wg.Done()
+	if olq.maxLogLen == 0 {
+		return
+	}
 	done := false
 	for !done {
 		var builder strings.Builder
@@ -113,6 +117,9 @@ func (olq *ocspLogQueue) loop() {
 // If this is called without previously starting a goroutine running `.loop()`,
 // it will block forever.
 func (olq *ocspLogQueue) stop() {
+	if olq.maxLogLen == 0 {
+		return
+	}
 	close(olq.queue)
 	olq.wg.Wait()
 }

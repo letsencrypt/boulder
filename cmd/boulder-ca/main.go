@@ -89,6 +89,20 @@ type config struct {
 		// is not used.
 		OrphanQueueDir string
 
+		// Maximum length (in bytes) of a line accumulating OCSP audit log entries.
+		// Recommended to be around 4000. If this is 0, do not perform OCSP audit
+		// logging.
+		OCSPLogMaxLength int
+
+		// Maximum period (in Go duration format) to wait to accumulate a max-length
+		// OCSP audit log line. We will emit a log line at least once per period,
+		// if there is anything to be logged. Keeping this low minimizes the risk
+		// of losing logs during a catastrophic failure. Making it too high
+		// means logging more often than necessary, which is inefficient in terms
+		// of bytes and log system resources.
+		// Recommended to be around 500ms.
+		OCSPLogPeriod cmd.ConfigDuration
+
 		Features map[string]bool
 	}
 
@@ -302,6 +316,8 @@ func main() {
 		c.CA.LifespanOCSP.Duration,
 		kp,
 		orphanQueue,
+		c.CA.OCSPLogMaxLength,
+		c.CA.OCSPLogPeriod.Duration,
 		logger,
 		scope,
 		clk)

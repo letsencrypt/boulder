@@ -258,6 +258,8 @@ func NewCertificateAuthorityImpl(
 	ocspLifetime time.Duration,
 	keyPolicy goodkey.KeyPolicy,
 	orphanQueue *goque.Queue,
+	ocspLogMaxLength int,
+	ocspLogPeriod time.Duration,
 	logger blog.Logger,
 	stats prometheus.Registerer,
 	clk clock.Clock,
@@ -352,7 +354,7 @@ func NewCertificateAuthorityImpl(
 	}, []string{"type"})
 	stats.MustRegister(signErrorCounter)
 
-	ocspLogQueue := newOCSPLogQueue(4000, 500*time.Millisecond, stats, logger)
+	ocspLogQueue := newOCSPLogQueue(ocspLogMaxLength, ocspLogPeriod, stats, logger)
 
 	ca = &CertificateAuthorityImpl{
 		sa:                 sa,
