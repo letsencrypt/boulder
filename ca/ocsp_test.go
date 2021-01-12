@@ -88,6 +88,20 @@ func TestOcspFlushOnTimeout(t *testing.T) {
 	test.AssertDeepEquals(t, log.GetAll(), expected)
 }
 
+// If the deadline passes and nothing has been logged, we should not log a blank line.
+func TestOcspNoEmptyLines(t *testing.T) {
+	t.Parallel()
+	log := blog.NewMock()
+	stats := metrics.NoopRegisterer
+	queue := newOCSPLogQueue(90000, 10*time.Millisecond, stats, log)
+
+	go queue.loop()
+	time.Sleep(50 * time.Millisecond)
+	queue.stop()
+
+	test.AssertDeepEquals(t, log.GetAll(), []string{})
+}
+
 func TestOcspLogMaxLenZeroMeansNoLog(t *testing.T) {
 	t.Parallel()
 	log := blog.NewMock()
@@ -100,7 +114,7 @@ func TestOcspLogMaxLenZeroMeansNoLog(t *testing.T) {
 	test.AssertDeepEquals(t, log.GetAll(), []string{})
 }
 
-func TestOcspLogPanicsOnEnqueuAfterStop(t *testing.T) {
+func TestOcspLogPanicsOnEnqueueAfterStop(t *testing.T) {
 	t.Parallel()
 
 	log := blog.NewMock()
