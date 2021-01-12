@@ -85,6 +85,8 @@
     "weakKeyFile": "test/example-weak-keys.json",
     "blockedKeyFile": "test/example-blocked-keys.yaml",
     "orphanQueueDir": "/tmp/orphaned-certificates-b",
+    "ocspLogMaxLength": 4000,
+    "ocspLogPeriod": "500ms",
     "features": {
       "NonCFSSLSigner": true,
       "StoreIssuerInfo": true
