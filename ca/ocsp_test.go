@@ -11,6 +11,15 @@ import (
 	"golang.org/x/crypto/ocsp"
 )
 
+func serial(t *testing.T) []byte {
+	serial, err := hex.DecodeString("aabbccddeeffaabbccddeeff000102030405")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return serial
+
+}
+
 // Set up an ocspLogQueue with a very long period and a large maxLen,
 // to ensure any buffered entries get flushed on `.stop()`.
 func TestOcspLogFlushOnExit(t *testing.T) {
@@ -18,12 +27,8 @@ func TestOcspLogFlushOnExit(t *testing.T) {
 	log := blog.NewMock()
 	stats := metrics.NoopRegisterer
 	queue := newOCSPLogQueue(4000, 10000*time.Millisecond, stats, log)
-	serial, err := hex.DecodeString("aabbccddeeffaabbccddeeff000102030405")
-	if err != nil {
-		t.Fatal(err)
-	}
 	go queue.loop()
-	queue.enqueue(serial, time.Now(), ocsp.ResponseStatus(ocsp.Good))
+	queue.enqueue(serial(t), time.Now(), ocsp.ResponseStatus(ocsp.Good))
 	queue.stop()
 
 	expected := []string{
@@ -38,13 +43,9 @@ func TestOcspFlushOnLength(t *testing.T) {
 	log := blog.NewMock()
 	stats := metrics.NoopRegisterer
 	queue := newOCSPLogQueue(100, 100*time.Millisecond, stats, log)
-	serial, err := hex.DecodeString("aabbccddeeffaabbccddeeff000102030405")
-	if err != nil {
-		t.Fatal(err)
-	}
 	go queue.loop()
 	for i := 0; i < 5; i++ {
-		queue.enqueue(serial, time.Now(), ocsp.ResponseStatus(ocsp.Good))
+		queue.enqueue(serial(t), time.Now(), ocsp.ResponseStatus(ocsp.Good))
 	}
 	queue.stop()
 
@@ -62,15 +63,11 @@ func TestOcspFlushOnTimeout(t *testing.T) {
 	log := blog.NewMock()
 	stats := metrics.NoopRegisterer
 	queue := newOCSPLogQueue(90000, 10*time.Millisecond, stats, log)
-	serial, err := hex.DecodeString("aabbccddeeffaabbccddeeff000102030405")
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	go queue.loop()
 	for i := 0; i < 3; i++ {
-		queue.enqueue(serial, time.Now(), ocsp.ResponseStatus(ocsp.Good))
-		queue.enqueue(serial, time.Now(), ocsp.ResponseStatus(ocsp.Good))
+		queue.enqueue(serial(t), time.Now(), ocsp.ResponseStatus(ocsp.Good))
+		queue.enqueue(serial(t), time.Now(), ocsp.ResponseStatus(ocsp.Good))
 		// This gets a little tricky: Each iteration of the `select` in
 		// queue.loop() is a race between the channel that receives log
 		// events and the `<-clk.After(n)` timer. Even if we used
@@ -89,4 +86,34 @@ func TestOcspFlushOnTimeout(t *testing.T) {
 		"INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:0,aabbccddeeffaabbccddeeff000102030405:0,",
 	}
 	test.AssertDeepEquals(t, log.GetAll(), expected)
+}
+
+func TestOcspLogMaxLenZeroMeansNoLog(t *testing.T) {
+	t.Parallel()
+	log := blog.NewMock()
+	stats := metrics.NoopRegisterer
+	queue := newOCSPLogQueue(0, 10000*time.Millisecond, stats, log)
+	go queue.loop()
+	queue.enqueue(serial(t), time.Now(), ocsp.ResponseStatus(ocsp.Good))
+	queue.stop()
+
+	test.AssertDeepEquals(t, log.GetAll(), []string{})
+}
+
+func TestOcspLogPanicsOnEnqueuAfterStop(t *testing.T) {
+	t.Parallel()
+
+	log := blog.NewMock()
+	stats := metrics.NoopRegisterer
+	queue := newOCSPLogQueue(4000, 10000*time.Millisecond, stats, log)
+	go queue.loop()
+	queue.stop()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("The code did not panic")
+		}
+	}()
+
+	queue.enqueue(serial(t), time.Now(), ocsp.ResponseStatus(ocsp.Good))
 }
