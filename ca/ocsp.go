@@ -1,5 +1,7 @@
 package ca
 
+// TODO(##5226): Move the GenerateOCSP service into this file too.
+
 import (
 	"fmt"
 	"strings"
@@ -74,8 +76,13 @@ func (olq *ocspLogQueue) enqueue(serial []byte, time time.Time, status ocsp.Resp
 	}
 }
 
+// To ensure we don't go over the max log line length, use a safety margin
+// equal to the expected length of an entry.
+const ocspSingleLogEntryLen = 39
+
 // loop consumes events from the queue channel, batches them up, and
-// logs them in batches of 100, or every 500 milliseconds, whichever comes first.
+// logs them in batches of maxLogLen / 39, or every `period`,
+// whichever comes first.
 func (olq *ocspLogQueue) loop() {
 	defer olq.wg.Done()
 	if olq.maxLogLen == 0 {
@@ -86,10 +93,7 @@ func (olq *ocspLogQueue) loop() {
 		var builder strings.Builder
 		deadline := olq.clk.After(olq.period)
 	inner:
-		// To ensure we don't go over the max log line length,
-		// use a safety margin greater than the expected length of
-		// each entry.
-		for builder.Len() < olq.maxLogLen-50 {
+		for {
 			olq.depth.Set(float64(len(olq.queue)))
 			select {
 			case ol, ok := <-olq.queue:
@@ -97,11 +101,13 @@ func (olq *ocspLogQueue) loop() {
 					// Channel was closed, finish.
 					done = true
 					break inner
-				} else {
-					fmt.Fprintf(&builder, "%x:%d,", ol.serial, ol.status)
 				}
+				fmt.Fprintf(&builder, "%x:%d,", ol.serial, ol.status)
 			case <-deadline:
 				break inner
+			}
+			if builder.Len()+ocspSingleLogEntryLen > olq.maxLogLen {
+				break
 			}
 		}
 		if builder.Len() > 0 {

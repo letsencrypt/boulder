@@ -65,27 +65,22 @@ func TestOcspFlushOnTimeout(t *testing.T) {
 	queue := newOCSPLogQueue(90000, 10*time.Millisecond, stats, log)
 
 	go queue.loop()
-	for i := 0; i < 3; i++ {
-		queue.enqueue(serial(t), time.Now(), ocsp.ResponseStatus(ocsp.Good))
-		queue.enqueue(serial(t), time.Now(), ocsp.ResponseStatus(ocsp.Good))
-		// This gets a little tricky: Each iteration of the `select` in
-		// queue.loop() is a race between the channel that receives log
-		// events and the `<-clk.After(n)` timer. Even if we used
-		// a fake clock, our loop here would often win that race, producing
-		// inconsistent logging results. For instance, it would be entirely
-		// possible for all of these `enqueues` to win the race, putting
-		// all log entries on one line.
-		// To avoid that, sleep using the wall clock for 50ms.
-		time.Sleep(50 * time.Millisecond)
-	}
-	queue.stop()
+	queue.enqueue(serial(t), time.Now(), ocsp.ResponseStatus(ocsp.Good))
+	// This gets a little tricky: Each iteration of the `select` in
+	// queue.loop() is a race between the channel that receives log
+	// events and the `<-clk.After(n)` timer. Even if we used
+	// a fake clock, our loop here would often win that race, producing
+	// inconsistent logging results. For instance, it would be entirely
+	// possible for all of these `enqueues` to win the race, putting
+	// all log entries on one line.
+	// To avoid that, sleep using the wall clock for 50ms.
+	time.Sleep(50 * time.Millisecond)
 
 	expected := []string{
-		"INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:0,aabbccddeeffaabbccddeeff000102030405:0,",
-		"INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:0,aabbccddeeffaabbccddeeff000102030405:0,",
-		"INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:0,aabbccddeeffaabbccddeeff000102030405:0,",
+		"INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:0,",
 	}
 	test.AssertDeepEquals(t, log.GetAll(), expected)
+	queue.stop()
 }
 
 // If the deadline passes and nothing has been logged, we should not log a blank line.
@@ -102,6 +97,7 @@ func TestOcspNoEmptyLines(t *testing.T) {
 	test.AssertDeepEquals(t, log.GetAll(), []string{})
 }
 
+// If the maxLogLen is 0, don't log anything.
 func TestOcspLogMaxLenZeroMeansNoLog(t *testing.T) {
 	t.Parallel()
 	log := blog.NewMock()
@@ -114,6 +110,7 @@ func TestOcspLogMaxLenZeroMeansNoLog(t *testing.T) {
 	test.AssertDeepEquals(t, log.GetAll(), []string{})
 }
 
+// Enqueueing entries after stop causes panic.
 func TestOcspLogPanicsOnEnqueueAfterStop(t *testing.T) {
 	t.Parallel()
 
