@@ -72,7 +72,7 @@ func (olq *ocspLogQueue) enqueue(serial []byte, time time.Time, status ocsp.Resp
 	olq.queue <- ocspLog{
 		serial: append([]byte{}, serial...),
 		time:   time,
-		status: ocsp.ResponseStatus(status),
+		status: status,
 	}
 }
 
