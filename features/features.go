@@ -20,6 +20,7 @@ const (
 	DeleteUnusedChallenges
 	BlockedKeyTable
 	StoreKeyHashes
+	PrecertificateRevocation
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -40,9 +41,6 @@ const (
 	// V1DisableNewValidations disables validations for new domain names in the V1
 	// API.
 	V1DisableNewValidations
-	// PrecertificateRevocation allows revocation of precertificates with the
-	// ACMEv2 interface.
-	PrecertificateRevocation
 	// StripDefaultSchemePort enables stripping of default scheme ports from HTTP
 	// request Host headers
 	StripDefaultSchemePort

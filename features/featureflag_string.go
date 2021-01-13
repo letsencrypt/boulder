@@ -17,14 +17,14 @@ func _() {
 	_ = x[DeleteUnusedChallenges-6]
 	_ = x[BlockedKeyTable-7]
 	_ = x[StoreKeyHashes-8]
-	_ = x[CAAValidationMethods-9]
-	_ = x[CAAAccountURI-10]
-	_ = x[EnforceMultiVA-11]
-	_ = x[MultiVAFullResults-12]
-	_ = x[MandatoryPOSTAsGET-13]
-	_ = x[AllowV1Registration-14]
-	_ = x[V1DisableNewValidations-15]
-	_ = x[PrecertificateRevocation-16]
+	_ = x[PrecertificateRevocation-9]
+	_ = x[CAAValidationMethods-10]
+	_ = x[CAAAccountURI-11]
+	_ = x[EnforceMultiVA-12]
+	_ = x[MultiVAFullResults-13]
+	_ = x[MandatoryPOSTAsGET-14]
+	_ = x[AllowV1Registration-15]
+	_ = x[V1DisableNewValidations-16]
 	_ = x[StripDefaultSchemePort-17]
 	_ = x[StoreIssuerInfo-18]
 	_ = x[StoreRevokerInfo-19]
@@ -33,9 +33,9 @@ func _() {
 	_ = x[NonCFSSLSigner-22]
 }
 
-const _FeatureFlag_name = "unusedWriteIssuedNamesPrecertHeadNonceStatusOKRemoveWFE2AccountIDCheckRenewalFirstParallelCheckFailedValidationDeleteUnusedChallengesBlockedKeyTableStoreKeyHashesCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationV1DisableNewValidationsPrecertificateRevocationStripDefaultSchemePortStoreIssuerInfoStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimitNonCFSSLSigner"
+const _FeatureFlag_name = "unusedWriteIssuedNamesPrecertHeadNonceStatusOKRemoveWFE2AccountIDCheckRenewalFirstParallelCheckFailedValidationDeleteUnusedChallengesBlockedKeyTableStoreKeyHashesPrecertificateRevocationCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationV1DisableNewValidationsStripDefaultSchemePortStoreIssuerInfoStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimitNonCFSSLSigner"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 29, 46, 65, 82, 111, 133, 148, 162, 182, 195, 209, 227, 245, 264, 287, 311, 333, 348, 364, 383, 407, 421}
+var _FeatureFlag_index = [...]uint16{0, 6, 29, 46, 65, 82, 111, 133, 148, 162, 186, 206, 219, 233, 251, 269, 288, 311, 333, 348, 364, 383, 407, 421}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

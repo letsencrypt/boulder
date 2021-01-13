@@ -1,7 +1,6 @@
 package wfe2
 
 import (
-	"bytes"
 	"context"
 	"crypto/x509"
 	"encoding/hex"
@@ -729,62 +728,32 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	// Compute and record the serial number of the provided certificate
 	serial := core.SerialToString(providedCert.SerialNumber)
 	logEvent.Extra["ProvidedCertificateSerial"] = serial
-	notFoundProb := probs.NotFound("No such certificate")
 
-	var certDER []byte
-	// If the PrecertificateRevocation feature flag is enabled that means we won't
-	// do a byte-for-byte comparison of the providedCert against the stored cert
-	// returned by SA.GetCertificate because a precert will always fail this
-	// check. Instead, perform a signature validation of the providedCert using
-	// the known issuer public keys. If the providedCert signature can not be
-	// validated with any of the known issuers return a not-found error.
-	if features.Enabled(features.PrecertificateRevocation) {
-		// If no issuerCertificates are initialized but the PrecertificateRevocation
-		// feature flag is enabled then return a runtime server internal error
-		// rather than fail open.
-		if len(wfe.issuerCertificates) == 0 {
-			return probs.ServerInternal(
-				"unable to verify provided certificate, empty issuerCertificates")
-		}
-
-		// Try to validate the signature on the provided cert using each of the
-		// known issuer certificates. This is O(n) but we always expect to have
-		// a small number of configured issuers.
-		var validIssuerSignature bool
-		for _, issuer := range wfe.issuerCertificates {
-			if err := providedCert.CheckSignatureFrom(issuer); err == nil {
-				validIssuerSignature = true
-				break
-			}
-		}
-		// If none of the issuers validate the signature on the provided cert then
-		// return an error.
-		if !validIssuerSignature {
-			return notFoundProb
-		}
-		// If the signature validates we can use the provided cert's DER for
-		// revocation safely.
-		certDER = providedCert.Raw
-	} else {
-		// When the precertificate revocation feature flag isn't enabled try to find
-		// a finalized cert in the DB matching the serial. If there is one, it needs
-		// to be a byte-for-byte match with the requested cert.
-		cert, err := wfe.SA.GetCertificate(ctx, serial)
-		if err != nil {
-			if errors.Is(err, berrors.NotFound) {
-				return notFoundProb
-			}
-			return probs.ServerInternal("unable to retrieve certificate")
-		}
-		// If the certificate in the DB isn't a byte for byte match, return a problem
-		if !bytes.Equal(cert.DER, revokeRequest.CertificateDER) {
-			return notFoundProb
-		}
-		certDER = cert.DER
+	// If no issuerCertificates are initialized, return a server internal error
+	// rather than fail open.
+	if len(wfe.issuerCertificates) == 0 {
+		return probs.ServerInternal(
+			"unable to verify provided certificate, empty issuerCertificates")
 	}
 
-	// Parse the certificate into memory
-	parsedCertificate, err := x509.ParseCertificate(certDER)
+	// Try to validate the signature on the provided cert using each of the
+	// known issuer certificates. This is O(n) but we always expect to have
+	// a small number of configured issuers.
+	var validIssuerSignature bool
+	for _, issuer := range wfe.issuerCertificates {
+		if err := providedCert.CheckSignatureFrom(issuer); err == nil {
+			validIssuerSignature = true
+			break
+		}
+	}
+	// If none of the issuers validate the signature on the provided cert then
+	// return an error.
+	if !validIssuerSignature {
+		return probs.NotFound("No such certificate")
+	}
+
+	// Now that we're sure we issued it, parse the certificate into memory.
+	parsedCertificate, err := x509.ParseCertificate(providedCert.Raw)
 	if err != nil {
 		// InternalServerError because certDER came from our own DB, or was
 		// confirmed issued by one of our own issuers.
