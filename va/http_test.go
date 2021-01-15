@@ -517,26 +517,17 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 			http.StatusMovedPermanently)
 	})
 
-	mux.HandleFunc(fmt.Sprintf("/max-redirect"),
-		func(resp http.ResponseWriter, req *http.Request) {
-			http.Redirect(
-				resp,
-				req,
-				fmt.Sprintf("http://example.com:%d/1/max-redirect", httpPort),
-				http.StatusMovedPermanently,
-			)
-		})
 	// A path that sequentually redirects, creating an incrementing redirect
 	// that will terminate when the redirect limit is reached and ensures each
 	// URL is different than the last.
-	for i := 1; i <= maxRedirect+1; i++ {
+	for i := 0; i <= maxRedirect+1; i++ {
 		s, x := strconv.Itoa(i), strconv.Itoa(i+1)
-		mux.HandleFunc(fmt.Sprintf("/%s/max-redirect", s),
+		mux.HandleFunc(fmt.Sprintf("/max-redirect/%s", s),
 			func(resp http.ResponseWriter, req *http.Request) {
 				http.Redirect(
 					resp,
 					req,
-					fmt.Sprintf("http://example.com:%d/%s/max-redirect", httpPort, x),
+					fmt.Sprintf("http://example.com:%d/max-redirect/%s", httpPort, x),
 					http.StatusMovedPermanently,
 				)
 			})
@@ -763,10 +754,10 @@ func TestFetchHTTP(t *testing.T) {
 	// base lookup, giving a termination criteria of > maxRedirect+1
 	expectedTooManyRedirRecords := []core.ValidationRecord{}
 	for i := 0; i <= maxRedirect+1; i++ {
-		// The first request will not have a port # in the URL.
-		url := "http://example.com/max-redirect"
+		//The first request will not have a port # in the URL.
+		url := "http://example.com/max-redirect/0"
 		if i != 0 {
-			url = fmt.Sprintf("http://example.com:%d/%d/max-redirect", httpPort, i)
+			url = fmt.Sprintf("http://example.com:%d/max-redirect/%d", httpPort, i)
 		}
 		expectedTooManyRedirRecords = append(expectedTooManyRedirRecords,
 			core.ValidationRecord{
@@ -829,9 +820,9 @@ func TestFetchHTTP(t *testing.T) {
 		{
 			Name: "Too many redirects",
 			Host: "example.com",
-			Path: "/max-redirect",
+			Path: "/max-redirect/0",
 			ExpectedProblem: probs.ConnectionFailure(fmt.Sprintf(
-				"Fetching http://example.com:%d/12/max-redirect: Too many redirects", httpPort)),
+				"Fetching http://example.com:%d/max-redirect/12: Too many redirects", httpPort)),
 			ExpectedRecords: expectedTooManyRedirRecords,
 		},
 		{
