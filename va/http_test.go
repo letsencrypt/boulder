@@ -508,7 +508,7 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 	})
 
 	// A path that always redirects to itself, creating a loop that will terminate
-	// after maxRedirect.
+	// when detected.
 	mux.HandleFunc("/loop", func(resp http.ResponseWriter, req *http.Request) {
 		http.Redirect(
 			resp,
@@ -516,6 +516,29 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 			fmt.Sprintf("http://example.com:%d/loop", httpPort),
 			http.StatusMovedPermanently)
 	})
+
+	mux.HandleFunc(fmt.Sprintf("/max-redirect"), func(resp http.ResponseWriter, req *http.Request) {
+		http.Redirect(
+			resp,
+			req,
+			fmt.Sprintf("http://example.com:%d/1/max-redirect", httpPort),
+			http.StatusMovedPermanently,
+		)
+	})
+	// A path that sequentually redirects, creating an incrementing redirect
+	// that will terminate when the redirect limit is reached and ensures each
+	// URL is different than the last.
+	for i := 1; i <= maxRedirect+1; i++ {
+		s, x := strconv.Itoa(i), strconv.Itoa(i+1)
+		mux.HandleFunc(fmt.Sprintf("/%s/max-redirect", s), func(resp http.ResponseWriter, req *http.Request) {
+			http.Redirect(
+				resp,
+				req,
+				fmt.Sprintf("http://example.com:%d/%s/max-redirect", httpPort, x),
+				http.StatusMovedPermanently,
+			)
+		})
+	}
 
 	// A path that always redirects to a URL with a non-HTTP/HTTPs protocol scheme
 	mux.HandleFunc("/redir-bad-proto", func(resp http.ResponseWriter, req *http.Request) {
@@ -709,17 +732,41 @@ func TestFetchHTTP(t *testing.T) {
 	// We need to know the randomly assigned HTTP port for testcases as well
 	httpPort := getPort(testSrv)
 
-	// For the looped test case we expect one validation record per redirect up to
-	// maxRedirect (inclusive). There is also +1 record for the base lookup,
-	// giving a termination criteria of > maxRedirect+1
+	// For the looped test case we expect one validation record per until
+	// boulder detects that a url has been used twice indicating a redirect
+	// loop. Because it is hitting the /loop endpoint it will encounter this
+	// scenario after the base url and fail on the second time hitting the
+	// redirect with a port definition. On i=0 it will encounter the first
+	// redirect to the url with a port definition and on i=1 it will encounter
+	// the second redirect to the url with the port and get an expected error.
 	expectedLoopRecords := []core.ValidationRecord{}
-	for i := 0; i <= maxRedirect+1; i++ {
+	for i := 0; i <= 1; i++ {
 		// The first request will not have a port # in the URL.
 		url := "http://example.com/loop"
 		if i != 0 {
 			url = fmt.Sprintf("http://example.com:%d/loop", httpPort)
 		}
 		expectedLoopRecords = append(expectedLoopRecords,
+			core.ValidationRecord{
+				Hostname:          "example.com",
+				Port:              strconv.Itoa(httpPort),
+				URL:               url,
+				AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
+				AddressUsed:       net.ParseIP("127.0.0.1"),
+			})
+	}
+
+	// For the too many redirect test case we expect one validation record per
+	// redirect up to maxRedirect (inclusive). There is also +1 record for the
+	// base lookup, giving a termination criteria of > maxRedirect+1
+	expectedTooManyRedirRecords := []core.ValidationRecord{}
+	for i := 0; i <= maxRedirect+1; i++ {
+		// The first request will not have a port # in the URL.
+		url := "http://example.com/max-redirect"
+		if i != 0 {
+			url = fmt.Sprintf("http://example.com:%d/%d/max-redirect", httpPort, i)
+		}
+		expectedTooManyRedirRecords = append(expectedTooManyRedirRecords,
 			core.ValidationRecord{
 				Hostname:          "example.com",
 				Port:              strconv.Itoa(httpPort),
@@ -774,8 +821,16 @@ func TestFetchHTTP(t *testing.T) {
 			Host: "example.com",
 			Path: "/loop",
 			ExpectedProblem: probs.ConnectionFailure(fmt.Sprintf(
-				"Fetching http://example.com:%d/loop: Too many redirects", httpPort)),
+				"Fetching http://example.com:%d/loop: Redirect loop detected", httpPort)),
 			ExpectedRecords: expectedLoopRecords,
+		},
+		{
+			Name: "Too many redirects",
+			Host: "example.com",
+			Path: "/max-redirect",
+			ExpectedProblem: probs.ConnectionFailure(fmt.Sprintf(
+				"Fetching http://example.com:%d/12/max-redirect: Too many redirects", httpPort)),
+			ExpectedRecords: expectedTooManyRedirRecords,
 		},
 		{
 			Name: "Redirect to bad protocol",
