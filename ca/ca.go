@@ -360,7 +360,10 @@ func NewCertificateAuthorityImpl(
 	}, []string{"type"})
 	stats.MustRegister(signErrorCounter)
 
-	ocspLogQueue := newOCSPLogQueue(ocspLogMaxLength, ocspLogPeriod, stats, logger)
+	var ocspLogQueue *ocspLogQueue
+	if ocspLogMaxLength > 0 {
+		ocspLogQueue = newOCSPLogQueue(ocspLogMaxLength, ocspLogPeriod, stats, logger)
+	}
 
 	ca = &CertificateAuthorityImpl{
 		sa:                 sa,
@@ -533,7 +536,9 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *capb.
 		tbsResponse.RevocationReason = int(req.Reason)
 	}
 
-	ca.ocspLogQueue.enqueue(serial.Bytes(), now, ocsp.ResponseStatus(tbsResponse.Status))
+	if ca.ocspLogQueue != nil {
+		ca.ocspLogQueue.enqueue(serial.Bytes(), now, ocsp.ResponseStatus(tbsResponse.Status))
+	}
 
 	ocspResponse, err := ocsp.CreateResponse(issuer.cert.Certificate, issuer.cert.Certificate, tbsResponse, issuer.ocspSigner)
 	ca.noteSignError(err)
@@ -943,7 +948,9 @@ func (ca *CertificateAuthorityImpl) OrphanIntegrationLoop() {
 // LogOCSPLoop collects OCSP generation log events into bundles, and logs
 // them periodically.
 func (ca *CertificateAuthorityImpl) LogOCSPLoop() {
-	ca.ocspLogQueue.loop()
+	if ca.ocspLogQueue != nil {
+		ca.ocspLogQueue.loop()
+	}
 }
 
 // Stop asks this CertificateAuthorityImpl to shut down. It must be called
@@ -951,7 +958,9 @@ func (ca *CertificateAuthorityImpl) LogOCSPLoop() {
 // any inflight RPCs. It will attempt to drain any logging queues (which may
 // block), and will return only when done.
 func (ca *CertificateAuthorityImpl) Stop() {
-	ca.ocspLogQueue.stop()
+	if ca.ocspLogQueue != nil {
+		ca.ocspLogQueue.stop()
+	}
 }
 
 // integrateOrpan removes an orphan from the queue and adds it to the database. The
