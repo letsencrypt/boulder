@@ -521,13 +521,14 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 	// that will terminate when the redirect limit is reached and ensures each
 	// URL is different than the last.
 	for i := 0; i <= maxRedirect+1; i++ {
-		s, x := strconv.Itoa(i), strconv.Itoa(i+1)
-		mux.HandleFunc(fmt.Sprintf("/max-redirect/%s", s),
+		// Need to re-scope i so it iterates properly in the function
+		i := i
+		mux.HandleFunc(fmt.Sprintf("/max-redirect/%d", i),
 			func(resp http.ResponseWriter, req *http.Request) {
 				http.Redirect(
 					resp,
 					req,
-					fmt.Sprintf("http://example.com:%d/max-redirect/%s", httpPort, x),
+					fmt.Sprintf("http://example.com:%d/max-redirect/%d", httpPort, i+1),
 					http.StatusMovedPermanently,
 				)
 			})
