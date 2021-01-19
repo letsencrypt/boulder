@@ -1560,7 +1560,10 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 }
 
 func TestRevokeCertificateReasons(t *testing.T) {
-	wfe, fc := setupWFE(t)
+	wfe, _ := setupWFE(t)
+	wfe.SA = &mockSANoSuchRegistration{wfe.SA}
+	ra := wfe.RA.(*MockRegistrationAuthority)
+
 	keyPemBytes, err := ioutil.ReadFile("test/238.key")
 	test.AssertNotError(t, err, "Failed to load key")
 	key := loadPrivateKey(t, keyPemBytes)
@@ -1570,13 +1573,10 @@ func TestRevokeCertificateReasons(t *testing.T) {
 	signer := newJoseSigner(t, rsaKey, wfe.nonceService)
 
 	// Valid reason
+	responseWriter := httptest.NewRecorder()
 	keyComp := revocation.Reason(1)
 	revokeRequestJSON, err := makeRevokeRequestJSON(&keyComp)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
-
-	ra := wfe.RA.(*MockRegistrationAuthority)
-	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
-	responseWriter := httptest.NewRecorder()
 
 	result, _ := signer.Sign(revokeRequestJSON)
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
@@ -1663,7 +1663,9 @@ func TestRevokeCertificateWrongKey(t *testing.T) {
 
 // Valid revocation request for already-revoked cert
 func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
-	wfe, fc := setupWFE(t)
+	wfe, _ := setupWFE(t)
+	wfe.SA = &mockSANoSuchRegistration{wfe.SA}
+
 	keyPemBytes, err := ioutil.ReadFile("test/178.key")
 	test.AssertNotError(t, err, "Failed to load key")
 	key := loadPrivateKey(t, keyPemBytes)
@@ -1687,7 +1689,6 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 
 	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 
-	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
 	responseWriter := httptest.NewRecorder()
 	responseWriter.Body.Reset()
 	result, _ := signer.Sign(revokeRequestJSON)
@@ -1700,6 +1701,8 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 
 func TestRevokeCertificateExpired(t *testing.T) {
 	wfe, fc := setupWFE(t)
+	wfe.SA = &mockSANoSuchRegistration{wfe.SA}
+
 	keyPemBytes, err := ioutil.ReadFile("test/178.key")
 	test.AssertNotError(t, err, "Failed to load key")
 	key := loadPrivateKey(t, keyPemBytes)
@@ -1725,7 +1728,6 @@ func TestRevokeCertificateExpired(t *testing.T) {
 	test.AssertNotError(t, err, "failed to parse test cert")
 	fc.Set(parsedCert.NotAfter.Add(time.Hour))
 
-	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
 	responseWriter := httptest.NewRecorder()
 	responseWriter.Body.Reset()
 	result, _ := signer.Sign(revokeRequestJSON)
@@ -1971,9 +1973,7 @@ func TestAuthorizationV2(t *testing.T) {
 // Challenge Problem Types works as expected
 func TestAuthorizationChallengeNamespace(t *testing.T) {
 	wfe, clk := setupWFE(t)
-
-	mockSA := &mocks.SAWithFailedChallenges{Clk: clk}
-	wfe.SA = mockSA
+	wfe.SA = &mocks.SAWithFailedChallenges{Clk: clk}
 
 	// For "oldNS" the SA mock returns an authorization with a failed challenge
 	// that has an error with the type already prefixed by the v1 error NS
@@ -2218,13 +2218,12 @@ func TestLogCsrPem(t *testing.T) {
 	const certificateRequestJSON = `{
 		"csr": "MIICWTCCAUECAQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAycX3ca-fViOuRWF38mssORISFxbJvspDfhPGRBZDxJ63NIqQzupB-6dp48xkcX7Z_KDaRJStcpJT2S0u33moNT4FHLklQBETLhExDk66cmlz6Xibp3LGZAwhWuec7wJoEwIgY8oq4rxihIyGq7HVIJoq9DqZGrUgfZMDeEJqbphukQOaXGEop7mD-eeu8-z5EVkB1LiJ6Yej6R8MAhVPHzG5fyOu6YVo6vY6QgwjRLfZHNj5XthxgPIEETZlUbiSoI6J19GYHvLURBTy5Ys54lYAPIGfNwcIBAH4gtH9FrYcDY68R22rp4iuxdvkf03ZWiT0F2W1y7_C9B2jayTzvQIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAHd6Do9DIZ2hvdt1GwBXYjsqprZidT_DYOMfYcK17KlvdkFT58XrBH88ulLZ72NXEpiFMeTyzfs3XEyGq_Bbe7TBGVYZabUEh-LOskYwhgcOuThVN7tHnH5rhN-gb7cEdysjTb1QL-vOUwYgV75CB6PE5JVYK-cQsMIVvo0Kz4TpNgjJnWzbcH7h0mtvub-fCv92vBPjvYq8gUDLNrok6rbg05tdOJkXsF2G_W-Q6sf2Fvx0bK5JeH4an7P7cXF9VG9nd4sRt5zd-L3IcyvHVKxNhIJXZVH0AOqh_1YrKI9R0QKQiZCEy0xN1okPlcaIVaFhb7IKAHPxTI3r5f72LXY"
 	}`
-	wfe, fc := setupWFE(t)
+	wfe, _ := setupWFE(t)
 	var certificateRequest core.CertificateRequest
 	err := json.Unmarshal([]byte(certificateRequestJSON), &certificateRequest)
 	test.AssertNotError(t, err, "Unable to parse certificateRequest")
 
-	mockSA := mocks.NewStorageAuthority(fc)
-	reg, err := mockSA.GetRegistration(ctx, 789)
+	reg, err := wfe.SA.GetRegistration(ctx, 789)
 	test.AssertNotError(t, err, "Unable to get registration")
 
 	req, err := http.NewRequest("GET", "http://[::1]/", nil)
@@ -2274,8 +2273,8 @@ func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(ctx context.Context, jwk 
 // When SA.GetRegistrationByKey errors (e.g. gRPC timeout), verifyPOST should
 // return internal server errors.
 func TestVerifyPOSTWhenGetRegByKeyFails(t *testing.T) {
-	wfe, fc := setupWFE(t)
-	wfe.SA = &mockSAGetRegByKeyFails{mocks.NewStorageAuthority(fc)}
+	wfe, _ := setupWFE(t)
+	wfe.SA = &mockSAGetRegByKeyFails{wfe.SA}
 	event := newRequestEvent()
 	payload := `{"resource":"ima-payload"}`
 	_, _, _, prob := wfe.verifyPOST(ctx, event, makePostRequest(signRequest(t,
@@ -2291,8 +2290,8 @@ func TestVerifyPOSTWhenGetRegByKeyFails(t *testing.T) {
 // When SA.GetRegistrationByKey errors (e.g. gRPC timeout), NewRegistration should
 // return internal server errors.
 func TestNewRegWhenGetRegByKeyFails(t *testing.T) {
-	wfe, fc := setupWFE(t)
-	wfe.SA = &mockSAGetRegByKeyFails{mocks.NewStorageAuthority(fc)}
+	wfe, _ := setupWFE(t)
+	wfe.SA = &mockSAGetRegByKeyFails{wfe.SA}
 	payload := `{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
 	responseWriter := httptest.NewRecorder()
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
@@ -2316,8 +2315,8 @@ func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(ctx context.Context, j
 // When SA.GetRegistrationByKey returns berrors.NotFound, verifyPOST with
 // regCheck = false (i.e. during a NewRegistration) should succeed.
 func TestVerifyPOSTWhenGetRegByKeyNotFound(t *testing.T) {
-	wfe, fc := setupWFE(t)
-	wfe.SA = &mockSAGetRegByKeyNotFound{mocks.NewStorageAuthority(fc)}
+	wfe, _ := setupWFE(t)
+	wfe.SA = &mockSAGetRegByKeyNotFound{wfe.SA}
 	event := newRequestEvent()
 	payload := `{"resource":"ima-payload"}`
 	_, _, _, err := wfe.verifyPOST(ctx, event, makePostRequest(signRequest(t,
@@ -2330,8 +2329,8 @@ func TestVerifyPOSTWhenGetRegByKeyNotFound(t *testing.T) {
 // When SA.GetRegistrationByKey returns NotFound, NewRegistration should
 // succeed.
 func TestNewRegWhenGetRegByKeyNotFound(t *testing.T) {
-	wfe, fc := setupWFE(t)
-	wfe.SA = &mockSAGetRegByKeyNotFound{mocks.NewStorageAuthority(fc)}
+	wfe, _ := setupWFE(t)
+	wfe.SA = &mockSAGetRegByKeyNotFound{wfe.SA}
 	payload := `{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
 	responseWriter := httptest.NewRecorder()
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
@@ -2374,8 +2373,8 @@ func (sa mockSADifferentStoredKey) GetRegistrationByKey(ctx context.Context, jwk
 }
 
 func TestVerifyPOSTUsesStoredKey(t *testing.T) {
-	wfe, fc := setupWFE(t)
-	wfe.SA = &mockSADifferentStoredKey{mocks.NewStorageAuthority(fc)}
+	wfe, _ := setupWFE(t)
+	wfe.SA = &mockSADifferentStoredKey{wfe.SA}
 	// signRequest signs with test1Key, but our special mock returns a
 	// registration with test2Key
 	_, _, _, err := wfe.verifyPOST(ctx, newRequestEvent(), makePostRequest(signRequest(t, `{"resource":"foo"}`, wfe.nonceService)), true, "foo")
@@ -2735,8 +2734,8 @@ func (sa *mockSAGetRegByKeyNotFoundAfterVerify) GetRegistrationByKey(ctx context
 // out with an internal server error instead of continuing on and attempting to create a new
 // account.
 func TestNewRegistrationGetKeyBroken(t *testing.T) {
-	wfe, fc := setupWFE(t)
-	wfe.SA = &mockSAGetRegByKeyNotFoundAfterVerify{mocks.NewStorageAuthority(fc), false}
+	wfe, _ := setupWFE(t)
+	wfe.SA = &mockSAGetRegByKeyNotFoundAfterVerify{wfe.SA, false}
 	payload := `{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
 	responseWriter := httptest.NewRecorder()
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter,
