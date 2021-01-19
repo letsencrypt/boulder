@@ -734,7 +734,7 @@ func TestFetchHTTP(t *testing.T) {
 	// redirect to the url with a port definition and on i=1 it will encounter
 	// the second redirect to the url with the port and get an expected error.
 	expectedLoopRecords := []core.ValidationRecord{}
-	for i := 0; i <= 1; i++ {
+	for i := 0; i < 2; i++ {
 		// The first request will not have a port # in the URL.
 		url := "http://example.com/loop"
 		if i != 0 {
