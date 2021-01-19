@@ -517,7 +517,7 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 			http.StatusMovedPermanently)
 	})
 
-	// A path that sequentually redirects, creating an incrementing redirect
+	// A path that sequentially redirects, creating an incrementing redirect
 	// that will terminate when the redirect limit is reached and ensures each
 	// URL is different than the last.
 	for i := 0; i <= maxRedirect+1; i++ {
@@ -755,7 +755,7 @@ func TestFetchHTTP(t *testing.T) {
 	// base lookup, giving a termination criteria of > maxRedirect+1
 	expectedTooManyRedirRecords := []core.ValidationRecord{}
 	for i := 0; i <= maxRedirect+1; i++ {
-		//The first request will not have a port # in the URL.
+		// The first request will not have a port # in the URL.
 		url := "http://example.com/max-redirect/0"
 		if i != 0 {
 			url = fmt.Sprintf("http://example.com:%d/max-redirect/%d", httpPort, i)
