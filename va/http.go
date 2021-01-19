@@ -547,10 +547,10 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		// assign to the client transport in order to connect to the redirect target using
 		// the IP address we selected.
 		redirDialer, redirRecord, err := va.setupHTTPValidation(ctx, req.URL.String(), redirTarget)
+		records = append(records, redirRecord)
 		if err != nil {
 			return err
 		}
-		records = append(records, redirRecord)
 
 		va.log.Debugf("following redirect to host %q url %q", req.Host, req.URL.String())
 		// Replace the transport's DialContext with the new preresolvedDialer for
