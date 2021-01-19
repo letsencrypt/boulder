@@ -2656,23 +2656,10 @@ func makeRevokeRequestJSONForCert(der []byte, reason *revocation.Reason) ([]byte
 	return revokeRequestJSON, nil
 }
 
-// A SA mock that always returns a berrors.NotFound type error. This is necessary
-// because the standard mock in our mocks package always returns a given test
-// registration when GetRegistrationByKey is called, and we want to get a
-// berrors.NotFound type error for tests that pass regCheck = false to verifyPOST.
-type mockSANoSuchRegistration struct {
-	core.StorageGetter
-}
-
-func (msa mockSANoSuchRegistration) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
-	return core.Registration{}, berrors.NotFoundError("reg not found")
-}
-
 // Valid revocation request for existing, non-revoked cert, signed with cert
 // key.
 func TestRevokeCertificateCertKey(t *testing.T) {
-	wfe, fc := setupWFE(t)
-	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
+	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
 
 	keyPemBytes, err := ioutil.ReadFile("test/238.key")
@@ -2697,8 +2684,7 @@ func TestRevokePreCertificateFeatureEnabled(t *testing.T) {
 	_ = features.Set(map[string]bool{"PrecertificateRevocation": true})
 	defer features.Reset()
 
-	wfe, fc := setupWFE(t)
-	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
+	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
 
 	keyPemBytes, err := ioutil.ReadFile("test/238.key")
@@ -2746,9 +2732,8 @@ func TestRevokePreCertificateFeatureEnabled(t *testing.T) {
 }
 
 func TestRevokeCertificateReasons(t *testing.T) {
-	wfe, fc := setupWFE(t)
+	wfe, _ := setupWFE(t)
 	ra := wfe.RA.(*MockRegistrationAuthority)
-	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
 	responseWriter := httptest.NewRecorder()
 
 	keyPemBytes, err := ioutil.ReadFile("test/238.key")
@@ -2871,8 +2856,7 @@ func TestRevokeCertificateWrongKey(t *testing.T) {
 
 // Valid revocation request for already-revoked cert
 func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
-	wfe, fc := setupWFE(t)
-	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
+	wfe, _ := setupWFE(t)
 
 	keyPemBytes, err := ioutil.ReadFile("test/178.key")
 	test.AssertNotError(t, err, "Failed to load key")
@@ -2963,8 +2947,8 @@ func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(ctx context.Context, jwk 
 // When SA.GetRegistrationByKey errors (e.g. gRPC timeout), NewAccount should
 // return internal server errors.
 func TestNewAccountWhenGetRegByKeyFails(t *testing.T) {
-	wfe, fc := setupWFE(t)
-	wfe.SA = &mockSAGetRegByKeyFails{mocks.NewStorageAuthority(fc)}
+	wfe, _ := setupWFE(t)
+	wfe.SA = &mockSAGetRegByKeyFails{wfe.SA}
 	key := loadKey(t, []byte(testE2KeyPrivatePEM))
 	_, ok := key.(*ecdsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load ECDSA key")
@@ -2992,8 +2976,8 @@ func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(ctx context.Context, j
 }
 
 func TestNewAccountWhenGetRegByKeyNotFound(t *testing.T) {
-	wfe, fc := setupWFE(t)
-	wfe.SA = &mockSAGetRegByKeyNotFound{mocks.NewStorageAuthority(fc)}
+	wfe, _ := setupWFE(t)
+	wfe.SA = &mockSAGetRegByKeyNotFound{wfe.SA}
 	key := loadKey(t, []byte(testE2KeyPrivatePEM))
 	_, ok := key.(*ecdsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load ECDSA key")
