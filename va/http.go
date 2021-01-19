@@ -528,6 +528,14 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 			redirQuery = req.URL.RawQuery
 		}
 
+		// Check for a redirect loop. If any URL is found twice before the
+		// redirect limit, return error.
+		for _, record := range records {
+			if req.URL.String() == record.URL {
+				return berrors.ConnectionFailureError("Redirect loop detected")
+			}
+		}
+
 		// Create a validation target for the redirect host. This will resolve IP
 		// addresses for the host explicitly.
 		redirTarget, err := va.newHTTPValidationTarget(ctx, redirHost, redirPort, redirPath, redirQuery)
@@ -539,18 +547,10 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		// assign to the client transport in order to connect to the redirect target using
 		// the IP address we selected.
 		redirDialer, redirRecord, err := va.setupHTTPValidation(ctx, req.URL.String(), redirTarget)
+		records = append(records, redirRecord)
 		if err != nil {
 			return err
 		}
-
-		// Check for a redirect loop. If any URL is found twice before the
-		// redirect limit, return error.
-		for _, record := range records {
-			if redirRecord.URL == record.URL {
-				return berrors.ConnectionFailureError("Redirect loop detected")
-			}
-		}
-		records = append(records, redirRecord)
 
 		va.log.Debugf("following redirect to host %q url %q", req.Host, req.URL.String())
 		// Replace the transport's DialContext with the new preresolvedDialer for
