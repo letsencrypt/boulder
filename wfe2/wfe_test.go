@@ -2630,7 +2630,7 @@ func TestGetOrder(t *testing.T) {
 }
 
 func makeRevokeRequestJSON(reason *revocation.Reason) ([]byte, error) {
-	certPemBytes, err := ioutil.ReadFile("test/238.crt")
+	certPemBytes, err := ioutil.ReadFile("../test/test-ee.pem")
 	if err != nil {
 		return nil, err
 	}
@@ -2671,11 +2671,10 @@ func (msa mockSANoSuchRegistration) GetRegistrationByKey(ctx context.Context, jw
 // Valid revocation request for existing, non-revoked cert, signed with cert
 // key.
 func TestRevokeCertificateCertKey(t *testing.T) {
-	wfe, fc := setupWFE(t)
-	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
+	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
 
-	keyPemBytes, err := ioutil.ReadFile("test/238.key")
+	keyPemBytes, err := ioutil.ReadFile("../test/test-ee.key")
 	test.AssertNotError(t, err, "Failed to load key")
 	key := loadKey(t, keyPemBytes)
 
@@ -2687,6 +2686,7 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("revoke-cert", jwsBody))
+	fmt.Printf("Got response: %s\n", responseWriter.Body)
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
 }
@@ -2694,14 +2694,15 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 // Valid revocation request for existing, non-revoked cert, signed with cert
 // key, precertificate revocation feature flag enabled.
 func TestRevokePreCertificateFeatureEnabled(t *testing.T) {
+	wfe, fc := setupWFE(t)
+
 	_ = features.Set(map[string]bool{"PrecertificateRevocation": true})
 	defer features.Reset()
 
-	wfe, fc := setupWFE(t)
 	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
 	responseWriter := httptest.NewRecorder()
 
-	keyPemBytes, err := ioutil.ReadFile("test/238.key")
+	keyPemBytes, err := ioutil.ReadFile("../test/test-ee.key")
 	test.AssertNotError(t, err, "Failed to load key")
 	key := loadKey(t, keyPemBytes)
 

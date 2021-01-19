@@ -740,7 +740,11 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	// known issuer certificates. This is O(n) but we always expect to have
 	// a small number of configured issuers.
 	var validIssuerSignature bool
+	fmt.Printf("Trying to revoke cert with serial, subject, issuer:\n%s\n%s\n%s\n",
+		serial, providedCert.Subject.CommonName, providedCert.Issuer.CommonName)
 	for _, issuer := range wfe.issuerCertificates {
+		fmt.Printf("Seeing if it was issued from cert with subject, issuer:\n%s\n%s\n",
+			issuer.Subject.CommonName, issuer.Issuer.CommonName)
 		if err := providedCert.CheckSignatureFrom(issuer); err == nil {
 			validIssuerSignature = true
 			break
