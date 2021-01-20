@@ -209,7 +209,7 @@ func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, authz
 	return authz, nil
 }
 
-func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64, issuerNameID int64) (core.Certificate, error) {
 	return core.Certificate{}, nil
 }
 
@@ -368,6 +368,8 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 
 	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, nil, nil, blog.NewMock())
 	test.AssertNotError(t, err, "Unable to create WFE")
+	wfe.IssuerCert, err = issuance.LoadCertificate("../test/test-ca.pem")
+	test.AssertNotError(t, err, "Unable to load issuer certificate")
 
 	wfe.SubscriberAgreementURL = agreementURL
 
@@ -2688,7 +2690,7 @@ type noSCTMockRA struct {
 	MockRegistrationAuthority
 }
 
-func (ra *noSCTMockRA) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ra *noSCTMockRA) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64, issuerNameID int64) (core.Certificate, error) {
 	return core.Certificate{}, berrors.MissingSCTsError("noSCTMockRA missing scts error")
 }
 

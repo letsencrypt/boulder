@@ -773,9 +773,18 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, err
 	}
 
-	issuer, ok := ca.issuers.byAlg[csr.PublicKeyAlgorithm]
-	if !ok {
-		return nil, nil, berrors.InternalServerError("no issuer found for public key algorithm %s", csr.PublicKeyAlgorithm)
+	var issuer *internalIssuer
+	var ok bool
+	if issueReq.IssuerNameID == 0 {
+		issuer, ok = ca.issuers.byAlg[csr.PublicKeyAlgorithm]
+		if !ok {
+			return nil, nil, berrors.InternalServerError("no issuer found for public key algorithm %s", csr.PublicKeyAlgorithm)
+		}
+	} else {
+		issuer, ok = ca.issuers.byNameID[issuance.IssuerNameID(issueReq.IssuerNameID)]
+		if !ok {
+			return nil, nil, berrors.InternalServerError("no issuer found for IssuerNameID %d", issueReq.IssuerNameID)
+		}
 	}
 
 	if issuer.cert.NotAfter.Before(validity.NotAfter) {

@@ -998,7 +998,10 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		Bytes: req.Csr,
 		CSR:   csrOb,
 	}
-	cert, err := ra.issueCertificate(ctx, issueReq, accountID(order.RegistrationID), orderID(order.Id))
+	// We use IssuerNameID 0 here because (as of now) only the v1 flow sets this
+	// field. This v2 flow allows the CA to select the issuer based on the CSR's
+	// PublicKeyAlgorithm.
+	cert, err := ra.issueCertificate(ctx, issueReq, accountID(order.RegistrationID), orderID(order.Id), issuance.IssuerNameID(0))
 	if err != nil {
 		// Fail the order. The problem is computed using
 		// `web.ProblemDetailsForError`, the same function the WFE uses to convert
@@ -1039,8 +1042,8 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	return order, nil
 }
 
-// NewCertificate requests the issuance of a certificate.
-func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64) (core.Certificate, error) {
+// NewCertificate requests the issuance of a certificate for the v1 flow.
+func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64, issuerNameID int64) (core.Certificate, error) {
 	// Verify the CSR
 	if err := csrlib.VerifyCSR(ctx, req.CSR, ra.maxNames, &ra.keyPolicy, ra.PA, regID); err != nil {
 		return core.Certificate{}, berrors.MalformedError(err.Error())
@@ -1048,7 +1051,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 	// NewCertificate provides an order ID of 0, indicating this is a classic ACME
 	// v1 issuance request from the new certificate endpoint that is not
 	// associated with an ACME v2 order.
-	return ra.issueCertificate(ctx, req, accountID(regID), orderID(0))
+	return ra.issueCertificate(ctx, req, accountID(regID), orderID(0), issuance.IssuerNameID(issuerNameID))
 }
 
 // To help minimize the chance that an accountID would be used as an order ID
@@ -1059,11 +1062,13 @@ type orderID int64
 
 // issueCertificate sets up a log event structure and captures any errors
 // encountered during issuance, then calls issueCertificateInner.
+// Used by both v1's NewCertificate and v2's FinalizeOrder.
 func (ra *RegistrationAuthorityImpl) issueCertificate(
 	ctx context.Context,
 	req core.CertificateRequest,
 	acctID accountID,
-	oID orderID) (core.Certificate, error) {
+	oID orderID,
+	issuerNameID issuance.IssuerNameID) (core.Certificate, error) {
 	// Construct the log event
 	logEvent := certificateRequestEvent{
 		ID:          core.NewToken(),
@@ -1072,7 +1077,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 		RequestTime: ra.clk.Now(),
 	}
 	var result string
-	cert, err := ra.issueCertificateInner(ctx, req, acctID, oID, &logEvent)
+	cert, err := ra.issueCertificateInner(ctx, req, acctID, oID, issuerNameID, &logEvent)
 	if err != nil {
 		logEvent.Error = err.Error()
 		result = "error"
@@ -1103,6 +1108,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	req core.CertificateRequest,
 	acctID accountID,
 	oID orderID,
+	issuerNameID issuance.IssuerNameID,
 	logEvent *certificateRequestEvent) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	if acctID <= 0 {
@@ -1183,6 +1189,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		Csr:            csr.Raw,
 		RegistrationID: int64(acctID),
 		OrderID:        int64(oID),
+		IssuerNameID:   int64(issuerNameID),
 	}
 
 	// wrapError adds a prefix to an error. If the error is a boulder error then

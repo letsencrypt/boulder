@@ -65,7 +65,7 @@ type RegistrationAuthority interface {
 	NewAuthorization(ctx context.Context, authz Authorization, regID int64) (Authorization, error)
 
 	// [WebFrontEnd]
-	NewCertificate(ctx context.Context, csr CertificateRequest, regID int64) (Certificate, error)
+	NewCertificate(ctx context.Context, csr CertificateRequest, regID int64, issuerNameID int64) (Certificate, error)
 
 	// [WebFrontEnd]
 	UpdateRegistration(ctx context.Context, base, updates Registration) (Registration, error)
