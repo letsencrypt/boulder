@@ -224,7 +224,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewAuthorization(ctx context.Cont
 }
 
 func (ras *RegistrationAuthorityServerWrapper) NewCertificate(ctx context.Context, request *rapb.NewCertificateRequest) (*corepb.Certificate, error) {
-	// TODO(#5216): Add IssuerNameID to thich check. Because this method is
+	// TODO(#5216): Add IssuerNameID to this check. Because this method is
 	// APIv1-only, the IssuerNameID is required so the CA never has to guess on
 	// the issuer for v1 issuance.
 	if request == nil || request.Csr == nil || request.RegID == 0 {
