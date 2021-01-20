@@ -846,7 +846,7 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 		serial := core.SerialToString(parsedCertificate.SerialNumber)
 		cert, err := wfe.SA.GetCertificate(ctx, serial)
 		if errors.Is(err, berrors.NotFound) {
-			// If there was an error, it was a Not Found error, then maybe they're
+			// If there was an error and it was a not found error, then maybe they're
 			// trying to revoke via the precertificate. Try to find that instead.
 			pbCert, err := wfe.SA.GetPrecertificate(ctx, &sapb.Serial{Serial: serial})
 			if errors.Is(err, berrors.NotFound) {

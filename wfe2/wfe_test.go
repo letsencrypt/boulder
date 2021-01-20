@@ -2664,7 +2664,7 @@ type mockSAWithValidCert struct {
 }
 
 // GetCertificate returns a hard-coded cert (test-ee.pem) which was issued by
-// account 1 if the requested serial matches; otherwise returns Not Found.
+// account 1 if the requested serial matches; otherwise returns not found.
 func (sa *mockSAWithValidCert) GetCertificate(_ context.Context, serial string) (core.Certificate, error) {
 	if serial != testEESerial {
 		return core.Certificate{}, berrors.NotFoundError("Certificate with serial %q not found", serial)
