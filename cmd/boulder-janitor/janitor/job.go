@@ -92,7 +92,7 @@ type batchedDBJob struct {
 	table string
 	// expiresColumn is the name of the column in `table` containing expiration datetimes.
 	expiresColumn string
-	// purgeBefore indicates the cut-off for the the resoruce being cleaned up by
+	// purgeBefore indicates the cut-off for the the resource being cleaned up by
 	// the job. Rows that older than now - purgeBefore are deleted.
 	purgeBefore time.Duration
 	// workSleep is a duration that the job will sleep between getWork() calls
