@@ -24,6 +24,7 @@ message IssueCertificateRequest {
   bytes csr = 1;
   int64 registrationID = 2;
   int64 orderID = 3;
+  int64 issuerNameID = 4;
 }
 
 message IssuePrecertificateResponse {
