@@ -740,11 +740,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	// known issuer certificates. This is O(n) but we always expect to have
 	// a small number of configured issuers.
 	var validIssuerSignature bool
-	fmt.Printf("Trying to revoke cert with serial, subject, issuer:\n%s\n%s\n%s\n",
-		serial, providedCert.Subject.CommonName, providedCert.Issuer.CommonName)
 	for _, issuer := range wfe.issuerCertificates {
-		fmt.Printf("Seeing if it was issued from cert with subject, issuer:\n%s\n%s\n",
-			issuer.Subject.CommonName, issuer.Issuer.CommonName)
 		if err := providedCert.CheckSignatureFrom(issuer); err == nil {
 			validIssuerSignature = true
 			break
@@ -849,11 +845,10 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 		// Try to find a stored final certificate for the serial number
 		serial := core.SerialToString(parsedCertificate.SerialNumber)
 		cert, err := wfe.SA.GetCertificate(ctx, serial)
-		if errors.Is(err, berrors.NotFound) && features.Enabled(features.PrecertificateRevocation) {
-			// If there was an error, it was a not found error, and the precertificate
-			// revocation feature is enabled, then try to find a stored precert.
-			pbCert, err := wfe.SA.GetPrecertificate(ctx,
-				&sapb.Serial{Serial: serial})
+		if errors.Is(err, berrors.NotFound) {
+			// If there was an error, it was a Not Found error, then maybe they're
+			// trying to revoke via the precertificate. Try to find that instead.
+			pbCert, err := wfe.SA.GetPrecertificate(ctx, &sapb.Serial{Serial: serial})
 			if errors.Is(err, berrors.NotFound) {
 				// If looking up a precert also returned a not found error then return
 				// a not found problem.
@@ -867,11 +862,6 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 			if err != nil {
 				return probs.ServerInternal("Failed to unmarshal protobuf certificate")
 			}
-		} else if errors.Is(err, berrors.NotFound) {
-			// Otherwise if the err was not nil and was a not found error but the
-			// precertificate revocation feature flag is not enabled, return a not
-			// found error.
-			return probs.NotFound("No such certificate")
 		} else if err != nil {
 			// Otherwise if the err was not nil and not a not found error, return
 			// a server internal problem.
