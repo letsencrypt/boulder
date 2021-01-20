@@ -2907,7 +2907,6 @@ func TestRevokeCertificateWrongKey(t *testing.T) {
 func TestRevokeCertificateExpired(t *testing.T) {
 	wfe, fc := setupWFE(t)
 	wfe.SA = &mockSAWithValidCert{wfe.SA}
-	responseWriter := httptest.NewRecorder()
 
 	keyPemBytes, err := ioutil.ReadFile("../test/test-ee.key")
 	test.AssertNotError(t, err, "Failed to load key")
@@ -2921,11 +2920,12 @@ func TestRevokeCertificateExpired(t *testing.T) {
 
 	cert, err := core.LoadCert("../test/test-ee.pem")
 	test.AssertNotError(t, err, "Failed to load test certificate")
+
 	fc.Set(cert.NotAfter.Add(time.Hour))
 
+	responseWriter := httptest.NewRecorder()
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("revoke-cert", jwsBody))
-
 	test.AssertEquals(t, responseWriter.Code, 403)
 	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"type\": \"urn:ietf:params:acme:error:unauthorized\",\n  \"detail\": \"Certificate is expired\",\n  \"status\": 403\n}")
 }

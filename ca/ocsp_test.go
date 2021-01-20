@@ -97,17 +97,20 @@ func TestOcspNoEmptyLines(t *testing.T) {
 	test.AssertDeepEquals(t, log.GetAll(), []string{})
 }
 
-// If the maxLogLen is 0, don't log anything.
-func TestOcspLogMaxLenZeroMeansNoLog(t *testing.T) {
+// If the maxLogLen is shorter than one entry, log everything immediately.
+func TestOcspLogWhenMaxLogLenIsShort(t *testing.T) {
 	t.Parallel()
 	log := blog.NewMock()
 	stats := metrics.NoopRegisterer
-	queue := newOCSPLogQueue(0, 10000*time.Millisecond, stats, log)
+	queue := newOCSPLogQueue(3, 10000*time.Millisecond, stats, log)
 	go queue.loop()
 	queue.enqueue(serial(t), time.Now(), ocsp.ResponseStatus(ocsp.Good))
 	queue.stop()
 
-	test.AssertDeepEquals(t, log.GetAll(), []string{})
+	expected := []string{
+		"INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:0,",
+	}
+	test.AssertDeepEquals(t, log.GetAll(), expected)
 }
 
 // Enqueueing entries after stop causes panic.
