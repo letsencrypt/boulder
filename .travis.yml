@@ -46,6 +46,11 @@ install:
   - docker-compose pull
 
 script:
+  # This user is stored in the TravisCI repository settings in the UI As
+  # of 2021-01-20 it is a read-only user in DockerHub but is used to
+  # bypass rate limits imposed by DockerHub to non-authenticated
+  # non-paying users.
+  - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin || true
   - >-
     docker-compose run --use-aliases
     -e TRAVIS_BRANCH
