@@ -40,6 +40,7 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/web"
 )
@@ -2630,7 +2631,7 @@ func TestGetOrder(t *testing.T) {
 }
 
 func makeRevokeRequestJSON(reason *revocation.Reason) ([]byte, error) {
-	certPemBytes, err := ioutil.ReadFile("test/238.crt")
+	certPemBytes, err := ioutil.ReadFile("../test/test-ee.pem")
 	if err != nil {
 		return nil, err
 	}
@@ -2656,74 +2657,95 @@ func makeRevokeRequestJSONForCert(der []byte, reason *revocation.Reason) ([]byte
 	return revokeRequestJSON, nil
 }
 
+const testEESerial string = "000000000000000000004f6fc1b8ffe37a23"
+
+type mockSAWithValidCert struct {
+	core.StorageGetter
+}
+
+// GetCertificate returns a hard-coded cert (test-ee.pem) which was issued by
+// account 1 if the requested serial matches; otherwise returns not found.
+func (sa *mockSAWithValidCert) GetCertificate(_ context.Context, serial string) (core.Certificate, error) {
+	if serial != testEESerial {
+		return core.Certificate{}, berrors.NotFoundError("Certificate with serial %q not found", serial)
+	}
+
+	cert, err := core.LoadCert("../test/test-ee.pem")
+	if err != nil {
+		return core.Certificate{}, fmt.Errorf("Failed to load test cert: %w", err)
+	}
+
+	return core.Certificate{
+		RegistrationID: 1,
+		Serial:         core.SerialToString(cert.SerialNumber),
+		DER:            cert.Raw,
+	}, nil
+}
+
+func (sa *mockSAWithValidCert) GetCertificateStatus(_ context.Context, serial string) (core.CertificateStatus, error) {
+	if serial != testEESerial {
+		return core.CertificateStatus{}, berrors.NotFoundError("Status for certificate with serial %q not found", serial)
+	}
+
+	return core.CertificateStatus{
+		Serial: testEESerial,
+		Status: core.OCSPStatusGood,
+	}, nil
+}
+
 // Valid revocation request for existing, non-revoked cert, signed with cert
 // key.
-func TestRevokeCertificateCertKey(t *testing.T) {
+func TestRevokeCertificateValid(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	responseWriter := httptest.NewRecorder()
+	wfe.SA = &mockSAWithValidCert{wfe.SA}
 
-	keyPemBytes, err := ioutil.ReadFile("test/238.key")
+	keyPemBytes, err := ioutil.ReadFile("../test/test-ee.key")
 	test.AssertNotError(t, err, "Failed to load key")
 	key := loadKey(t, keyPemBytes)
 
 	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
-
 	_, _, jwsBody := signRequestEmbed(t,
 		key, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
 
+	responseWriter := httptest.NewRecorder()
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("revoke-cert", jwsBody))
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
 }
 
-// Valid revocation request for existing, non-revoked cert, signed with cert
-// key, precertificate revocation feature flag enabled.
-func TestRevokePreCertificateFeatureEnabled(t *testing.T) {
-	_ = features.Set(map[string]bool{"PrecertificateRevocation": true})
-	defer features.Reset()
-
+// Invalid revocation request: although signed with the cert key, the cert
+// wasn't issued by any issuer the Boulder is aware of.
+func TestRevokeCertificateNotIssued(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	responseWriter := httptest.NewRecorder()
-
-	keyPemBytes, err := ioutil.ReadFile("test/238.key")
-	test.AssertNotError(t, err, "Failed to load key")
-	key := loadKey(t, keyPemBytes)
-
-	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
-	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
-
-	_, _, jwsBody := signRequestEmbed(t,
-		key, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
-
-	// Revoking a certificate that was issued by a known issuer should work
-	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
-		makePostRequestWithPath("revoke-cert", jwsBody))
-	test.AssertEquals(t, responseWriter.Code, 200)
-	test.AssertEquals(t, responseWriter.Body.String(), "")
+	wfe.SA = &mockSAWithValidCert{wfe.SA}
 
 	// Make a self-signed junk certificate
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "unexpected error making random private key")
-	// Use a known serial from the mocks/mocks.go GetCertificate mock. This
-	// shouldn't matter for the precertificate revocation feature flag flow but
-	// will ensure we don't get a 404 response from the feature flag being handled
-	// incorrectly and the GetCertificate() mock not knowing the serial.
-	knownSerial, err := core.StringToSerial("0000000000000000000000000000000000ee")
+	// Use a known serial from the mockSAWithValidCert mock.
+	// This ensures that any failures here are due to the certificate's issuer
+	// not matching up with issuers known by the mock, rather than due to the
+	// certificate's serial not matching up with serials known by the mock.
+	knownSerial, err := core.StringToSerial(testEESerial)
 	test.AssertNotError(t, err, "Unexpected error converting known serial to bigint")
 	template := &x509.Certificate{
 		SerialNumber: knownSerial,
 	}
 	certDER, err := x509.CreateCertificate(rand.Reader, template, template, k.Public(), k)
 	test.AssertNotError(t, err, "Unexpected error creating self-signed junk cert")
-	revokeRequestJSON, err = makeRevokeRequestJSONForCert(certDER, nil)
-	test.AssertNotError(t, err, "Failed to make revokeRequestJSON for certDER")
 
-	// Revoking a certificate that wasn't signed by a known issuer should fail
-	responseWriter = httptest.NewRecorder()
-	_, _, jwsBody = signRequestEmbed(t,
+	keyPemBytes, err := ioutil.ReadFile("../test/test-ee.key")
+	test.AssertNotError(t, err, "Failed to load key")
+	key := loadKey(t, keyPemBytes)
+
+	revokeRequestJSON, err := makeRevokeRequestJSONForCert(certDER, nil)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON for certDER")
+	_, _, jwsBody := signRequestEmbed(t,
 		key, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+
+	responseWriter := httptest.NewRecorder()
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("revoke-cert", jwsBody))
 	// It should result in a 404 response with a problem body
@@ -2733,10 +2755,10 @@ func TestRevokePreCertificateFeatureEnabled(t *testing.T) {
 
 func TestRevokeCertificateReasons(t *testing.T) {
 	wfe, _ := setupWFE(t)
+	wfe.SA = &mockSAWithValidCert{wfe.SA}
 	ra := wfe.RA.(*MockRegistrationAuthority)
-	responseWriter := httptest.NewRecorder()
 
-	keyPemBytes, err := ioutil.ReadFile("test/238.key")
+	keyPemBytes, err := ioutil.ReadFile("../test/test-ee.key")
 	test.AssertNotError(t, err, "Failed to load key")
 	key := loadKey(t, keyPemBytes)
 
@@ -2779,10 +2801,12 @@ func TestRevokeCertificateReasons(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			responseWriter = httptest.NewRecorder()
 			revokeRequestJSON, err := makeRevokeRequestJSON(tc.Reason)
 			test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
-			_, _, jwsBody := signRequestEmbed(t, key, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+			_, _, jwsBody := signRequestEmbed(
+				t, key, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+
+			responseWriter := httptest.NewRecorder()
 			wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 				makePostRequestWithPath("revoke-cert", jwsBody))
 
@@ -2803,14 +2827,17 @@ func TestRevokeCertificateReasons(t *testing.T) {
 // that issued the cert.
 func TestRevokeCertificateIssuingAccount(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	responseWriter := httptest.NewRecorder()
+	wfe.SA = &mockSAWithValidCert{wfe.SA}
+
 	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
-
 	// NOTE: this account doesn't have any authorizations for the
 	// names in the cert, but it is the account that issued it
 	// originally
-	_, _, jwsBody := signRequestKeyID(t, 1, nil, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+	_, _, jwsBody := signRequestKeyID(
+		t, 1, nil, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+
+	responseWriter := httptest.NewRecorder()
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("revoke-cert", jwsBody))
 
@@ -2818,21 +2845,41 @@ func TestRevokeCertificateIssuingAccount(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Body.String(), "")
 }
 
+const testEEName string = "example.ee"
+
+type mockSAWithValidAuthz struct {
+	core.StorageGetter
+}
+
+// GetValidAuthorizations says that all accounts have a valid authorization to
+// issue for the DNS name contained in test-ee.pem
+func (sa mockSAWithValidAuthz) GetValidAuthorizations2(_ context.Context, _ *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
+	res := sapb.Authorizations{}
+	res.Authz = append(res.Authz, &sapb.Authorizations_MapElement{
+		Domain: testEEName,
+		Authz:  &corepb.Authorization{},
+	})
+	return &res, nil
+}
+
 // Valid revocation request for existing, non-revoked cert, signed with account
 // that has authorizations for names in cert
 func TestRevokeCertificateWithAuthorizations(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	responseWriter := httptest.NewRecorder()
+	wfe.SA = mockSAWithValidAuthz{&mockSAWithValidCert{wfe.SA}}
+
 	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
-	// NOTE(@cpu): Account ID #5 is specifically handled in mocks.go
-	// GetValidAuthorizations to have the authz for the certificate used in
-	// `makeRevokeRequestJSON`
-	_, _, jwsBody := signRequestKeyID(t, 5, nil, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+	// We use account 5 here because using account 1 would short-circuit based on
+	// that account having issued the cert, and not make it to the authorization
+	// checking logic.
+	_, _, jwsBody := signRequestKeyID(
+		t, 5, nil, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+
+	responseWriter := httptest.NewRecorder()
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("revoke-cert", jwsBody))
-
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
 }
@@ -2840,43 +2887,77 @@ func TestRevokeCertificateWithAuthorizations(t *testing.T) {
 // A revocation request signed by an unauthorized key.
 func TestRevokeCertificateWrongKey(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	responseWriter := httptest.NewRecorder()
-	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
-	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
+	wfe.SA = &mockSAWithValidCert{wfe.SA}
 
 	test2JWK := loadKey(t, []byte(test2KeyPrivatePEM))
-	_, _, jwsBody := signRequestKeyID(t, 2, test2JWK, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+
+	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
+	_, _, jwsBody := signRequestKeyID(
+		t, 2, test2JWK, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+
+	responseWriter := httptest.NewRecorder()
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("revoke-cert", jwsBody))
-
 	test.AssertEquals(t, responseWriter.Code, 403)
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
 		`{"type":"`+probs.V2ErrorNS+`unauthorized","detail":"The key ID specified in the revocation request does not hold valid authorizations for all names in the certificate to be revoked","status":403}`)
 }
 
-// Valid revocation request for already-revoked cert
-func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
-	wfe, _ := setupWFE(t)
+func TestRevokeCertificateExpired(t *testing.T) {
+	wfe, fc := setupWFE(t)
+	wfe.SA = &mockSAWithValidCert{wfe.SA}
 
-	keyPemBytes, err := ioutil.ReadFile("test/178.key")
+	keyPemBytes, err := ioutil.ReadFile("../test/test-ee.key")
 	test.AssertNotError(t, err, "Failed to load key")
 	key := loadKey(t, keyPemBytes)
 
-	certPemBytes, err := ioutil.ReadFile("test/178.crt")
-	test.AssertNotError(t, err, "Failed to load cert")
-	certBlock, _ := pem.Decode(certPemBytes)
-	test.Assert(t, certBlock != nil, "Failed to decode PEM")
+	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
-	revokeRequest := struct {
-		CertificateDER core.JSONBuffer `json:"certificate"`
-	}{
-		CertificateDER: certBlock.Bytes,
-	}
-	revokeRequestJSON, err := json.Marshal(revokeRequest)
-	test.AssertNotError(t, err, "Failed to marshal request")
+	_, _, jwsBody := signRequestEmbed(
+		t, key, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+
+	cert, err := core.LoadCert("../test/test-ee.pem")
+	test.AssertNotError(t, err, "Failed to load test certificate")
+
+	fc.Set(cert.NotAfter.Add(time.Hour))
 
 	responseWriter := httptest.NewRecorder()
-	responseWriter.Body.Reset()
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath("revoke-cert", jwsBody))
+	test.AssertEquals(t, responseWriter.Code, 403)
+	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"type\": \"urn:ietf:params:acme:error:unauthorized\",\n  \"detail\": \"Certificate is expired\",\n  \"status\": 403\n}")
+}
+
+type mockSAWithRevokedCert struct {
+	core.StorageGetter
+}
+
+func (sa *mockSAWithRevokedCert) GetCertificateStatus(_ context.Context, serial string) (core.CertificateStatus, error) {
+	if serial != testEESerial {
+		return core.CertificateStatus{}, berrors.NotFoundError("Status for certificate with serial %q not found", serial)
+	}
+
+	return core.CertificateStatus{
+		Serial: testEESerial,
+		Status: core.OCSPStatusRevoked,
+	}, nil
+}
+
+// Valid revocation request for already-revoked cert
+func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.SA = &mockSAWithRevokedCert{&mockSAWithValidCert{wfe.SA}}
+
+	responseWriter := httptest.NewRecorder()
+
+	keyPemBytes, err := ioutil.ReadFile("../test/test-ee.key")
+	test.AssertNotError(t, err, "Failed to load key")
+	key := loadKey(t, keyPemBytes)
+
+	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
 	_, _, jwsBody := signRequestEmbed(t, key, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
@@ -2885,55 +2966,6 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 400)
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
 		`{"type":"`+probs.V2ErrorNS+`alreadyRevoked","detail":"Certificate already revoked","status":400}`)
-}
-
-func TestRevokeCertificateWithAuthz(t *testing.T) {
-	wfe, _ := setupWFE(t)
-	responseWriter := httptest.NewRecorder()
-	test4JWK := loadKey(t, []byte(test4KeyPrivatePEM))
-	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
-	test.AssertNotError(t, err, "Unable to create revoke request")
-
-	// NOTE(@cpu): Account ID #4 is specifically handled in mocks.go
-	// GetValidAuthorizations to have an authz for "bad.example.com"
-	_, _, jwsBody := signRequestKeyID(t, 4, test4JWK, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
-	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
-		makePostRequestWithPath("revoke-cert", jwsBody))
-
-	test.AssertEquals(t, responseWriter.Code, 200)
-	test.AssertEquals(t, responseWriter.Body.String(), "")
-}
-
-func TestRevokeCertificateExpired(t *testing.T) {
-	wfe, fc := setupWFE(t)
-	responseWriter := httptest.NewRecorder()
-	test4JWK := loadKey(t, []byte(test4KeyPrivatePEM))
-
-	certPemBytes, err := ioutil.ReadFile("test/238.crt")
-	test.AssertNotError(t, err, "failed to read test/238.crt")
-	certBlock, _ := pem.Decode(certPemBytes)
-	test.AssertNotError(t, err, "failed to parse test/238.crt")
-	reason := revocation.Reason(0)
-	revokeRequest := struct {
-		CertificateDER core.JSONBuffer    `json:"certificate"`
-		Reason         *revocation.Reason `json:"reason"`
-	}{
-		CertificateDER: certBlock.Bytes,
-		Reason:         &reason,
-	}
-	revokeRequestJSON, err := json.Marshal(revokeRequest)
-	test.AssertNotError(t, err, "failed to marshal revocation request")
-
-	parsedCertificate, err := x509.ParseCertificate(certBlock.Bytes)
-	test.AssertNotError(t, err, "failed to parse test cert")
-	fc.Set(parsedCertificate.NotAfter.Add(time.Hour))
-
-	_, _, jwsBody := signRequestKeyID(t, 4, test4JWK, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
-	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
-		makePostRequestWithPath("revoke-cert", jwsBody))
-
-	test.AssertEquals(t, responseWriter.Code, 403)
-	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"type\": \"urn:ietf:params:acme:error:unauthorized\",\n  \"detail\": \"Certificate is expired\",\n  \"status\": 403\n}")
 }
 
 type mockSAGetRegByKeyFails struct {
