@@ -61,7 +61,8 @@ func main() {
 		MaxOpenConns:    saConf.DBConfig.GetMaxOpenConns(),
 		MaxIdleConns:    saConf.DBConfig.MaxIdleConns,
 		ConnMaxLifetime: saConf.DBConfig.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: saConf.DBConfig.ConnMaxIdleTime.Duration}
+		ConnMaxIdleTime: saConf.DBConfig.ConnMaxIdleTime.Duration,
+	}
 
 	dbURL, err := saConf.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")

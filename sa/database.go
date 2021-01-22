@@ -13,11 +13,10 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-// DbSettings contains tuning setting for the sql driver. Optional
-// fields should only be applied if their zero value matches the default
-// of the sql driver. SA is the authoritative closer of connections when
-// ConnMaxIdleTime and ConnMaxLifetime are set lower than their mariadb
-// counterparts interactive_timeout and wait_timeout.
+// DbSettings contains tuning settings for the database/sql driver. The
+// zero value of each field means use the default setting from
+// database/sql. ConnMaxIdleTime and ConnMaxLifetime should be set lower
+// than their mariab counterparts interactive_timeout and wait_timeout.
 type DbSettings struct {
 	// MaxOpenConns sets the maximum number of open connections to the
 	// database. If left unspecified connections to the database default
