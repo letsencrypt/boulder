@@ -43,6 +43,10 @@
       "http://boulder:4430/acme/issuer-cert": [ "/tmp/intermediate-cert-rsa-a.pem" ],
       "http://127.0.0.1:4000/acme/issuer-cert": [ "/tmp/intermediate-cert-rsa-a.pem" ]
     },
+    "alternateCertificateChains": {
+      "http://boulder:4430/acme/issuer-cert": [ "/tmp/intermediate-cert-rsa-a.pem" ],
+      "http://127.0.0.1:4000/acme/issuer-cert": [ "/tmp/intermediate-cert-rsa-a.pem" ]
+    },
     "staleTimeout": "5m",
     "authorizationLifetimeDays": 30,
     "pendingAuthorizationLifetimeDays": 7,
@@ -55,9 +59,5 @@
   "syslog": {
     "stdoutlevel": 4,
     "sysloglevel": 6
-  },
-
-  "common": {
-    "issuerCert": "/tmp/intermediate-cert-rsa-a.pem"
   }
 }
