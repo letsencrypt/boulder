@@ -48,11 +48,39 @@ type ServiceConfig struct {
 type DBConfig struct {
 	DBConnect string
 	// A file containing a connect URL for the DB.
-	DBConnectFile   string
-	MaxDBConns      int
-	MaxOpenConns    int
-	MaxIdleConns    *int
+	DBConnectFile string
+
+	// MaxDBConns sets the maximum number of open connections to the
+	// database. If MaxIdleConns is greater than 0 and MaxOpenConns is
+	// less than MaxIdleConns, then MaxIdleConns will be reduced to
+	// match the new MaxOpenConns limit. If n < 0, then there is no
+	// limit on the number of open connections.
+	// TODO(#5249): This method can be removed once MaxDBConns has been
+	// removed from test/config and all prod and staging configs.
+	MaxDBConns int
+
+	// MaxOpenConns sets the maximum number of open connections to the
+	// database. If MaxIdleConns is greater than 0 and MaxOpenConns is
+	// less than MaxIdleConns, then MaxIdleConns will be reduced to
+	// match the new MaxOpenConns limit. If n < 0, then there is no
+	// limit on the number of open connections.
+	MaxOpenConns int
+
+	// MaxIdleConns sets the maximum number of connections in the idle
+	// connection pool. If MaxOpenConns is greater than 0 but less than
+	// MaxIdleConns, then MaxIdleConns will be reduced to match the
+	// MaxOpenConns limit. If n < 0, no idle connections are retained.
+	MaxIdleConns int
+
+	// ConnMaxLifetime sets the maximum amount of time a connection may
+	// be reused. Expired connections may be closed lazily before reuse.
+	// If d < 0, connections are not closed due to a connection's age.
 	ConnMaxLifetime ConfigDuration
+
+	// ConnMaxIdleTime sets the maximum amount of time a connection may
+	// be idle. Expired connections may be closed lazily before reuse.
+	// If d < 0, connections are not closed due to a connection's idle
+	// time.
 	ConnMaxIdleTime ConfigDuration
 }
 
@@ -68,8 +96,9 @@ func (d *DBConfig) URL() (string, error) {
 }
 
 // GetMaxOpenConns defaults MaxOpenConns to the value of MaxDBConns if
-// MaxDBConns was specified in the config json. This method can be
-// removed once MaxDBConns has been removed from test/config.
+// MaxDBConns was specified in the config json.
+// TODO(#5249): This method can be removed once MaxDBConns has been
+// removed from test/config and all prod and staging configs.
 func (d *DBConfig) GetMaxOpenConns() int {
 	if d.MaxDBConns != 0 {
 		d.MaxOpenConns = d.MaxDBConns

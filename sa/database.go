@@ -13,25 +13,33 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-// DbSettings contains tuning settings for the database/sql driver. The
-// zero value of each field means use the default setting from
-// database/sql. ConnMaxIdleTime and ConnMaxLifetime should be set lower
-// than their mariab counterparts interactive_timeout and wait_timeout.
+// DbSettings contains settings for the database/sql driver. The zero
+// value of each field means use the default setting from database/sql.
+// ConnMaxIdleTime and ConnMaxLifetime should be set lower than their
+// mariab counterparts interactive_timeout and wait_timeout.
 type DbSettings struct {
 	// MaxOpenConns sets the maximum number of open connections to the
-	// database. If left unspecified connections to the database default
-	// to unlimited.
+	// database. If MaxIdleConns is greater than 0 and MaxOpenConns is
+	// less than MaxIdleConns, then MaxIdleConns will be reduced to
+	// match the new MaxOpenConns limit. If n < 0, then there is no
+	// limit on the number of open connections.
 	MaxOpenConns int
-	// MaxIdleConns is optional. When n > 0 it sets the size of the idle
-	// connection pool. The value is a pointer to an int because if n <=
-	// 0, no idle connections are retained. If nil is specified the sql
-	// driver will use the package default instead.
-	MaxIdleConns *int
-	// ConnMaxLifetime is optional. When n > 0 it sets the maximum
-	// amount of time a connection may be reused.
+
+	// MaxIdleConns sets the maximum number of connections in the idle
+	// connection pool. If MaxOpenConns is greater than 0 but less than
+	// MaxIdleConns, then MaxIdleConns will be reduced to match the
+	// MaxOpenConns limit. If n < 0, no idle connections are retained.
+	MaxIdleConns int
+
+	// ConnMaxLifetime sets the maximum amount of time a connection may
+	// be reused. Expired connections may be closed lazily before reuse.
+	// If d < 0, connections are not closed due to a connection's age.
 	ConnMaxLifetime time.Duration
-	// ConnMaxIdleTime is optional. When n > 0 it sets the maximum
-	// amount of time a connection may be idle.
+
+	// ConnMaxIdleTime sets the maximum amount of time a connection may
+	// be idle. Expired connections may be closed lazily before reuse.
+	// If d < 0, connections are not closed due to a connection's idle
+	// time.
 	ConnMaxIdleTime time.Duration
 }
 
@@ -59,24 +67,30 @@ var sqlOpen = func(dbType, connectStr string) (*sql.DB, error) {
 
 // setMaxOpenConns is also used so that we can replace it for testing.
 var setMaxOpenConns = func(db *sql.DB, maxOpenConns int) {
-	db.SetMaxOpenConns(maxOpenConns)
+	if maxOpenConns != 0 {
+		db.SetMaxOpenConns(maxOpenConns)
+	}
 }
 
 // setMaxIdleConns is also used so that we can replace it for testing.
-var setMaxIdleConns = func(db *sql.DB, maxIdleConns *int) {
-	if maxIdleConns != nil {
-		db.SetMaxIdleConns(*maxIdleConns)
+var setMaxIdleConns = func(db *sql.DB, maxIdleConns int) {
+	if maxIdleConns != 0 {
+		db.SetMaxIdleConns(maxIdleConns)
 	}
 }
 
 // setConnMaxLifetime is also used so that we can replace it for testing.
 var setConnMaxLifetime = func(db *sql.DB, connMaxLifetime time.Duration) {
-	db.SetConnMaxLifetime(connMaxLifetime)
+	if connMaxLifetime != 0 {
+		db.SetConnMaxLifetime(connMaxLifetime)
+	}
 }
 
 // setConnMaxIdleTime is also used so that we can replace it for testing.
 var setConnMaxIdleTime = func(db *sql.DB, connMaxIdleTime time.Duration) {
-	db.SetConnMaxIdleTime(connMaxIdleTime)
+	if connMaxIdleTime != 0 {
+		db.SetConnMaxIdleTime(connMaxIdleTime)
+	}
 }
 
 // NewDbMapFromConfig functions similarly to NewDbMap, but it takes the

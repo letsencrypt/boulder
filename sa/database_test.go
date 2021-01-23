@@ -19,6 +19,7 @@ func TestInvalidDSN(t *testing.T) {
 var errExpected = errors.New("expected")
 
 func TestDbSettings(t *testing.T) {
+	// TODO(#5248): Add a full db.mockWrappedMap to sa/database tests
 	oldSetMaxOpenConns := setMaxOpenConns
 	oldSetMaxIdleConns := setMaxIdleConns
 	oldSetConnMaxLifetime := setConnMaxLifetime
@@ -39,9 +40,9 @@ func TestDbSettings(t *testing.T) {
 		maxOpenConns = m
 		oldSetMaxOpenConns(db, maxOpenConns)
 	}
-	setMaxIdleConns = func(db *sql.DB, m *int) {
-		maxIdleConns = *m
-		oldSetMaxIdleConns(db, &maxIdleConns)
+	setMaxIdleConns = func(db *sql.DB, m int) {
+		maxIdleConns = m
+		oldSetMaxIdleConns(db, maxIdleConns)
 	}
 	setConnMaxLifetime = func(db *sql.DB, c time.Duration) {
 		connMaxLifetime = c
@@ -51,10 +52,9 @@ func TestDbSettings(t *testing.T) {
 		connMaxIdleTime = c
 		oldSetConnMaxIdleTime(db, connMaxIdleTime)
 	}
-	testMaxIdleConns := 100
 	dbSettings := DbSettings{
 		MaxOpenConns:    100,
-		MaxIdleConns:    &testMaxIdleConns,
+		MaxIdleConns:    100,
 		ConnMaxLifetime: 100,
 		ConnMaxIdleTime: 100,
 	}
@@ -101,7 +101,7 @@ func TestNewDbMap(t *testing.T) {
 }
 
 func TestStrictness(t *testing.T) {
-	dbMap, err := NewDbMap(vars.DBConnSA, DbSettings{1, nil, 0, 0})
+	dbMap, err := NewDbMap(vars.DBConnSA, DbSettings{1, 0, 0, 0})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestStrictness(t *testing.T) {
 }
 
 func TestTimeouts(t *testing.T) {
-	dbMap, err := NewDbMap(vars.DBConnSA+"?readTimeout=1s", DbSettings{1, nil, 0, 0})
+	dbMap, err := NewDbMap(vars.DBConnSA+"?readTimeout=1s", DbSettings{1, 0, 0, 0})
 	if err != nil {
 		t.Fatal("Error setting up DB:", err)
 	}
@@ -141,7 +141,7 @@ func TestTimeouts(t *testing.T) {
 // databases that have auto_increment columns use BIGINT for the data type. Our
 // data is too big for INT.
 func TestAutoIncrementSchema(t *testing.T) {
-	dbMap, err := NewDbMap(vars.DBInfoSchemaRoot, DbSettings{1, nil, 0, 0})
+	dbMap, err := NewDbMap(vars.DBInfoSchemaRoot, DbSettings{1, 0, 0, 0})
 	test.AssertNotError(t, err, "unexpected err making NewDbMap")
 
 	var count int64

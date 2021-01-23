@@ -382,7 +382,7 @@ func main() {
 	saDbMap, err := sa.NewDbMap(saDbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")
 
-	sa.InitDBMetrics(saDbMap, prometheus.DefaultRegisterer)
+	sa.InitDBMetrics(saDbMap, prometheus.DefaultRegisterer, dbSettings)
 
 	checkerLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name: "cert_checker_latency",

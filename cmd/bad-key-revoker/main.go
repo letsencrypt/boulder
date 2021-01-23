@@ -401,7 +401,7 @@ func main() {
 	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")
 	sa.SetSQLDebug(dbMap, logger)
-	sa.InitDBMetrics(dbMap, scope)
+	sa.InitDBMetrics(dbMap, scope, dbSettings)
 
 	tlsConfig, err := config.BadKeyRevoker.TLS.Load()
 	cmd.FailOnError(err, "TLS config")

@@ -488,7 +488,7 @@ func main() {
 	sa.SetSQLDebug(dbMap, logger)
 
 	// Collect and periodically report DB metrics using the DBMap and prometheus scope.
-	sa.InitDBMetrics(dbMap, scope)
+	sa.InitDBMetrics(dbMap, scope, dbSettings)
 
 	tlsConfig, err := c.Mailer.TLS.Load()
 	cmd.FailOnError(err, "TLS config")

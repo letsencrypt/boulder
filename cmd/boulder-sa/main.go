@@ -71,7 +71,7 @@ func main() {
 	cmd.FailOnError(err, "Couldn't connect to SA database")
 
 	// Collect and periodically report DB metrics using the DBMap and prometheus scope.
-	sa.InitDBMetrics(dbMap, scope)
+	sa.InitDBMetrics(dbMap, scope, saDbSettings)
 
 	clk := cmd.Clock()
 

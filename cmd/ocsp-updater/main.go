@@ -354,7 +354,7 @@ func main() {
 	cmd.FailOnError(err, "Could not connect to database")
 
 	// Collect and periodically report DB metrics using the DBMap and prometheus stats.
-	sa.InitDBMetrics(dbMap, stats)
+	sa.InitDBMetrics(dbMap, stats, dbSettings)
 
 	clk := cmd.Clock()
 
