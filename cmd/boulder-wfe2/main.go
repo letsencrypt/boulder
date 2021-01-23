@@ -62,11 +62,13 @@ type config struct {
 		// Certificates are read into the chain in the order they are defined in the
 		// slice of filenames.
 		// DEPRECATED: See Chains, below.
+		// TODO(5164): Remove this after all configs have migrated to `Chains`.
 		CertificateChains map[string][]string
 
 		// AlternateCertificateChains maps AIA issuer URLs to an optional alternate
 		// certificate chain, represented by an ordered slice of certificate filenames.
 		// DEPRECATED: See Chains, below.
+		// TODO(5164): Remove this after all configs have migrated to `Chains`.
 		AlternateCertificateChains map[string][]string
 
 		// Chains is a list of lists of certificate filenames. Each inner list is
@@ -131,6 +133,7 @@ type config struct {
 // requirements the PEM bytes from the file are returned along with the parsed
 // certificate, otherwise an error is returned. If the PEM contents of
 // a certFile do not have a trailing newline one is added.
+// TODO(5164): Remove this after all configs have migrated to `Chains`.
 func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, *issuance.Certificate, error) {
 	pemBytes, err := ioutil.ReadFile(certFile)
 	if err != nil {
@@ -192,6 +195,7 @@ func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, *issuance.Certi
 // in the results map, keyed by the IssuerNameID. Additionally the first
 // certificate in each chain is parsed and returned in a slice of issuer
 // certificates.
+// TODO(5164): Remove this after all configs have migrated to `Chains`.
 func loadCertificateChains(chainConfig map[string][]string, requireAtLeastOneChain bool) (map[issuance.IssuerNameID][]byte, map[issuance.IssuerNameID]*issuance.Certificate, error) {
 	results := make(map[issuance.IssuerNameID][]byte, len(chainConfig))
 	issuerCerts := make(map[issuance.IssuerNameID]*issuance.Certificate, len(chainConfig))
@@ -368,6 +372,7 @@ func main() {
 			issuerCerts[id] = issuer
 		}
 	} else {
+		// TODO(5164): Remove this after all configs have migrated to `Chains`.
 		var certChains map[issuance.IssuerNameID][]byte
 		certChains, issuerCerts, err = loadCertificateChains(c.WFE.CertificateChains, true)
 		cmd.FailOnError(err, "Couldn't read configured CertificateChains")
