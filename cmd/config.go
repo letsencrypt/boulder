@@ -55,7 +55,7 @@ type DBConfig struct {
 	// less than MaxIdleConns, then MaxIdleConns will be reduced to
 	// match the new MaxOpenConns limit. If n < 0, then there is no
 	// limit on the number of open connections.
-	// TODO(#5249): This method can be removed once MaxDBConns has been
+	// TODO(#5249): This field can be removed once MaxDBConns has been
 	// removed from test/config and all prod and staging configs.
 	MaxDBConns int
 
