@@ -39,7 +39,7 @@ func TestGetMaxOpenConns(t *testing.T) {
 	}{
 		{
 			// Test with config that contains both fields with different values
-			conf:     DBConfig{MaxDBConns: 100, MaxOpenConns: 1},
+			conf:     DBConfig{MaxDBConns: 1, MaxOpenConns: 100},
 			expected: 100,
 		},
 		{
