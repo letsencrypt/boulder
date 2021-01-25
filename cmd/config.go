@@ -100,7 +100,7 @@ func (d *DBConfig) URL() (string, error) {
 // TODO(#5249): This method can be removed once MaxDBConns has been
 // removed from test/config and all prod and staging configs.
 func (d *DBConfig) GetMaxOpenConns() int {
-	if d.MaxDBConns != 0 {
+	if d.MaxOpenConns == 0 {
 		d.MaxOpenConns = d.MaxDBConns
 	}
 	return d.MaxOpenConns
