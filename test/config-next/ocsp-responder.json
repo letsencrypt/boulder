@@ -1,7 +1,7 @@
 {
   "ocspResponder": {
     "dbConnectFile": "test/secrets/ocsp_responder_dburl",
-    "maxDBConns": 10,
+    "maxOpenConns": 10,
     "path": "/",
     "listenAddress": "0.0.0.0:4002",
     "issuerCerts": [

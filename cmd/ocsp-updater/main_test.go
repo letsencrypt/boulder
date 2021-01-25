@@ -42,7 +42,7 @@ func (ca *mockOCSP) GenerateOCSP(_ context.Context, req *capb.GenerateOCSPReques
 var log = blog.UseMock()
 
 func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *db.WrappedMap, clock.FakeClock, func()) {
-	dbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
+	dbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Failed to create dbMap")
 	sa.SetSQLDebug(dbMap, log)
 

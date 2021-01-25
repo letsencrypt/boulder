@@ -374,7 +374,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		Expires: ctx.fc.Now().AddDate(0, 0, 87),
 	}
 
-	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "sa.NewDbMap failed")
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "Couldn't add certA")
@@ -513,7 +513,7 @@ func TestCertIsRenewed(t *testing.T) {
 		},
 	}
 
-	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -605,7 +605,7 @@ func TestLifetimeOfACert(t *testing.T) {
 		DER:            certDerA,
 	}
 
-	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "sa.NewDbMap failed")
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "unable to insert Certificate")
@@ -706,7 +706,7 @@ func TestDontFindRevokedCert(t *testing.T) {
 		DER:            certDerA,
 	}
 
-	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "sa.NewDbMap failed")
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "unable to insert Certificate")
@@ -768,7 +768,7 @@ func TestDedupOnRegistration(t *testing.T) {
 		DER:            certDerB,
 	}
 
-	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "sa.NewDbMap failed")
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "Couldn't add certA")
@@ -812,7 +812,7 @@ type testCtx struct {
 func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	// We use the test_setup user (which has full permissions to everything)
 	// because the SA we return is used for inserting data to set up the test.
-	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	if err != nil {
 		t.Fatalf("Couldn't connect the database: %s", err)
 	}

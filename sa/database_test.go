@@ -5,34 +5,74 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
 func TestInvalidDSN(t *testing.T) {
-	_, err := NewDbMap("invalid", 0)
+	_, err := NewDbMap("invalid", DbSettings{})
 	test.AssertError(t, err, "DB connect string missing the slash separating the database name")
 }
 
 var errExpected = errors.New("expected")
 
-func TestMaxOpenConns(t *testing.T) {
+func TestDbSettings(t *testing.T) {
+	// TODO(#5248): Add a full db.mockWrappedMap to sa/database tests
 	oldSetMaxOpenConns := setMaxOpenConns
+	oldSetMaxIdleConns := setMaxIdleConns
+	oldSetConnMaxLifetime := setConnMaxLifetime
+	oldSetConnMaxIdleTime := setConnMaxIdleTime
 	defer func() {
 		setMaxOpenConns = oldSetMaxOpenConns
+		setMaxIdleConns = oldSetMaxIdleConns
+		setConnMaxLifetime = oldSetConnMaxLifetime
+		setConnMaxIdleTime = oldSetConnMaxIdleTime
 	}()
+
 	maxOpenConns := -1
+	maxIdleConns := -1
+	connMaxLifetime := time.Second * 1
+	connMaxIdleTime := time.Second * 1
+
 	setMaxOpenConns = func(db *sql.DB, m int) {
 		maxOpenConns = m
 		oldSetMaxOpenConns(db, maxOpenConns)
 	}
-	_, err := NewDbMap("sa@tcp(boulder-mysql:3306)/boulder_sa_integration", 100)
+	setMaxIdleConns = func(db *sql.DB, m int) {
+		maxIdleConns = m
+		oldSetMaxIdleConns(db, maxIdleConns)
+	}
+	setConnMaxLifetime = func(db *sql.DB, c time.Duration) {
+		connMaxLifetime = c
+		oldSetConnMaxLifetime(db, connMaxLifetime)
+	}
+	setConnMaxIdleTime = func(db *sql.DB, c time.Duration) {
+		connMaxIdleTime = c
+		oldSetConnMaxIdleTime(db, connMaxIdleTime)
+	}
+	dbSettings := DbSettings{
+		MaxOpenConns:    100,
+		MaxIdleConns:    100,
+		ConnMaxLifetime: 100,
+		ConnMaxIdleTime: 100,
+	}
+	_, err := NewDbMap("sa@tcp(boulder-mysql:3306)/boulder_sa_integration", dbSettings)
 	if err != nil {
 		t.Errorf("connecting to DB: %s", err)
 	}
 	if maxOpenConns != 100 {
 		t.Errorf("maxOpenConns was not set: expected %d, got %d", 100, maxOpenConns)
+	}
+	if maxIdleConns != 100 {
+		t.Errorf("maxIdleConns was not set: expected %d, got %d", 100, maxIdleConns)
+	}
+	if connMaxLifetime != 100 {
+		t.Errorf("connMaxLifetime was not set: expected %d, got %d", 100, connMaxLifetime)
+	}
+	if connMaxIdleTime != 100 {
+		t.Errorf("connMaxIdleTime was not set: expected %d, got %d", 100, connMaxIdleTime)
 	}
 }
 
@@ -50,7 +90,7 @@ func TestNewDbMap(t *testing.T) {
 		return nil, errExpected
 	}
 
-	dbMap, err := NewDbMap(mysqlConnectURL, 0)
+	dbMap, err := NewDbMap(mysqlConnectURL, DbSettings{})
 	if err != errExpected {
 		t.Errorf("got incorrect error. Got %v, expected %v", err, errExpected)
 	}
@@ -61,7 +101,7 @@ func TestNewDbMap(t *testing.T) {
 }
 
 func TestStrictness(t *testing.T) {
-	dbMap, err := NewDbMap(vars.DBConnSA, 1)
+	dbMap, err := NewDbMap(vars.DBConnSA, DbSettings{1, 0, 0, 0})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +117,7 @@ func TestStrictness(t *testing.T) {
 }
 
 func TestTimeouts(t *testing.T) {
-	dbMap, err := NewDbMap(vars.DBConnSA+"?readTimeout=1s", 1)
+	dbMap, err := NewDbMap(vars.DBConnSA+"?readTimeout=1s", DbSettings{1, 0, 0, 0})
 	if err != nil {
 		t.Fatal("Error setting up DB:", err)
 	}
@@ -101,7 +141,7 @@ func TestTimeouts(t *testing.T) {
 // databases that have auto_increment columns use BIGINT for the data type. Our
 // data is too big for INT.
 func TestAutoIncrementSchema(t *testing.T) {
-	dbMap, err := NewDbMap(vars.DBInfoSchemaRoot, 1)
+	dbMap, err := NewDbMap(vars.DBInfoSchemaRoot, DbSettings{1, 0, 0, 0})
 	test.AssertNotError(t, err, "unexpected err making NewDbMap")
 
 	var count int64
