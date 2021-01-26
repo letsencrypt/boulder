@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -278,6 +279,16 @@ func TestPerformValidationValid(t *testing.T) {
 	if !strings.Contains(resultLog[0], `"Hostname":"good-dns01.com"`) {
 		t.Errorf("PerformValidation didn't log validation hostname.")
 	}
+	// Regex to detect if there is a validated field with an RFC3339 timestamp.
+	validatedRegex := `"validated":"([0-9]{4})-([0-9]{2})-([0-9]{2})([Tt]([0-9]{2}):([0-9]{2}):([0-9]{2})(\.[0-9]+)?)?(([Zz]|([+-])([0-9]{2}):([0-9]{2})))?"`
+	timestampExists, err := regexp.MatchString(validatedRegex, resultLog[0])
+	if err != nil {
+		t.Error("There was a problem trying to regex match RFC3339 timestamp.")
+	}
+	if !timestampExists {
+		t.Errorf("RFC3339 validated timestamp not logged.")
+	}
+
 }
 
 // TestPerformValidationWildcard tests that the VA properly strips the `*.`
