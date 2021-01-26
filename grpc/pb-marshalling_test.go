@@ -54,9 +54,10 @@ func TestChallenge(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to unmarshal test key")
 	chall := core.Challenge{
 		Type:                     core.ChallengeTypeDNS01,
-		Status:                   core.StatusPending,
+		Status:                   core.StatusValid,
 		Token:                    "asd",
 		ProvidedKeyAuthorization: "keyauth",
+		Validated:                time.Now().Format(time.RFC3339),
 	}
 
 	pb, err := ChallengeToPB(chall)

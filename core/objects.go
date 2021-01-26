@@ -219,6 +219,8 @@ type Challenge struct {
 	// Contains information about URLs used or redirected to and IPs resolved and
 	// used
 	ValidationRecord []ValidationRecord `json:"validationRecord,omitempty"`
+	// RFC3339 timestamp. Required by RFC8555 if status is valid
+	Validated string `json:"validated,omitempty"`
 }
 
 // ExpectedKeyAuthorization computes the expected KeyAuthorization value for
