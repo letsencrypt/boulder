@@ -185,7 +185,7 @@ func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, *issuance.Certi
 	if pemBytes[len(pemBytes)-1] != '\n' {
 		pemBytes = append(pemBytes, '\n')
 	}
-	return pemBytes, &issuance.Certificate{cert}, nil
+	return pemBytes, &issuance.Certificate{Certificate: cert}, nil
 }
 
 // loadCertificateChains processes the provided chainConfig of AIA Issuer URLs

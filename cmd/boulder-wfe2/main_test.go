@@ -35,7 +35,7 @@ func TestLoadChain_Valid(t *testing.T) {
 	test.AssertByteEquals(t, parsedIssuer.Raw, expectedIssuer.Raw)
 
 	// The chain should contain nothing else.
-	rootIssuerPEM, rest := pem.Decode(rest)
+	rootIssuerPEM, _ := pem.Decode(rest)
 	var nilBlock *pem.Block = nil
 	test.AssertEquals(t, rootIssuerPEM, nilBlock)
 }
