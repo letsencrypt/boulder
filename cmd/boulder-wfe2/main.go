@@ -273,7 +273,7 @@ func loadChain(certFiles []string) (*issuance.Certificate, []byte, error) {
 			cert = firstCert
 		}
 
-		nextCert, err := core.LoadCert(certFiles[i+1])
+		nextCert, err = core.LoadCert(certFiles[i+1])
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to load certificate: %w", err)
 		}
@@ -387,7 +387,7 @@ func main() {
 
 			for nameID, chainPEM := range altCertChains {
 				if _, ok := allCertChains[nameID]; !ok {
-					cmd.Fail(fmt.Sprintf("IssuerNameId %s appeared in AlternateCertificateChains, "+
+					cmd.Fail(fmt.Sprintf("IssuerNameId %q appeared in AlternateCertificateChains, "+
 						"but does not exist in CertificateChains", nameID))
 				}
 				allCertChains[nameID] = append(allCertChains[nameID], chainPEM)

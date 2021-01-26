@@ -33,6 +33,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/identifier"
+	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
@@ -333,16 +334,16 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	chainCrossPEM, err := ioutil.ReadFile("../test/test-ca2-cross.pem")
 	test.AssertNotError(t, err, "Unable to read ../test/test-ca2-cross.pem")
 
-	certChains := map[string][][]byte{
-		"http://localhost:4000/acme/issuer-cert": {
+	certChains := map[issuance.IssuerNameID][][]byte{
+		issuance.IssuerNameID(37287262753088952): {
 			append([]byte{'\n'}, chainPEM...),
 			append([]byte{'\n'}, chainCrossPEM...),
 		},
 	}
 	issuerCert, err := x509.ParseCertificate(chainDER.Bytes)
 	test.AssertNotError(t, err, "Unable to parse issuer cert")
-	issuerCertificates := []*x509.Certificate{
-		issuerCert,
+	issuerCertificates := map[issuance.IssuerNameID]*issuance.Certificate{
+		issuance.IssuerNameID(37287262753088952): &issuance.Certificate{Certificate: issuerCert},
 	}
 
 	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, certChains, issuerCertificates, nil, nil, blog.NewMock(), 10*time.Second, 30*24*time.Hour, 7*24*time.Hour)
