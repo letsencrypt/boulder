@@ -335,7 +335,13 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	test.AssertNotError(t, err, "Unable to read ../test/test-ca2-cross.pem")
 
 	certChains := map[issuance.IssuerNameID][][]byte{
-		issuance.IssuerNameID(37287262753088952): {
+		// The real IssuerNameID of test-ca2
+		issuance.IssuerNameID(18337263084599622): {
+			append([]byte{'\n'}, chainPEM...),
+			append([]byte{'\n'}, chainCrossPEM...),
+		},
+		// The IssuerNameID of wfe2/test/178.pem, pretending to be part of a real chain.
+		issuance.IssuerNameID(66191037641995744): {
 			append([]byte{'\n'}, chainPEM...),
 			append([]byte{'\n'}, chainCrossPEM...),
 		},
@@ -343,7 +349,8 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	issuerCert, err := x509.ParseCertificate(chainDER.Bytes)
 	test.AssertNotError(t, err, "Unable to parse issuer cert")
 	issuerCertificates := map[issuance.IssuerNameID]*issuance.Certificate{
-		issuance.IssuerNameID(37287262753088952): &issuance.Certificate{Certificate: issuerCert},
+		issuance.IssuerNameID(18337263084599622): {Certificate: issuerCert},
+		issuance.IssuerNameID(66191037641995744): {Certificate: issuerCert},
 	}
 
 	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, certChains, issuerCertificates, nil, nil, blog.NewMock(), 10*time.Second, 30*24*time.Hour, 7*24*time.Hour)
@@ -2751,7 +2758,7 @@ func TestRevokeCertificateNotIssued(t *testing.T) {
 		makePostRequestWithPath("revoke-cert", jwsBody))
 	// It should result in a 404 response with a problem body
 	test.AssertEquals(t, responseWriter.Code, 404)
-	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"type\": \"urn:ietf:params:acme:error:malformed\",\n  \"detail\": \"No such certificate\",\n  \"status\": 404\n}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"type\": \"urn:ietf:params:acme:error:malformed\",\n  \"detail\": \"Certificate from unrecognized issuer\",\n  \"status\": 404\n}")
 }
 
 func TestRevokeCertificateReasons(t *testing.T) {

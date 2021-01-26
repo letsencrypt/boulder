@@ -739,8 +739,12 @@ func (wfe *WebFrontEndImpl) processRevocation(
 
 	// Try to validate the signature on the provided cert using its corresponding
 	// issuer certificate.
-	err = providedCert.CheckSignatureFrom(
-		wfe.issuerCertificates[issuance.GetIssuerNameID(providedCert)].Certificate)
+	issuerNameID := issuance.GetIssuerNameID(providedCert)
+	issuerCert, ok := wfe.issuerCertificates[issuerNameID]
+	if !ok || issuerCert == nil {
+		return probs.NotFound("Certificate from unrecognized issuer")
+	}
+	err = providedCert.CheckSignatureFrom(issuerCert.Certificate)
 	if err != nil {
 		return probs.NotFound("No such certificate")
 	}
@@ -1613,18 +1617,8 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 			return
 		}
 
-		// Double check that the signature validates.
-		err = parsedCert.CheckSignatureFrom(wfe.issuerCertificates[issuerNameID].Certificate)
-		if err != nil {
-			wfe.sendError(response, logEvent, probs.ServerInternal(
-				fmt.Sprintf(
-					"Certificate serial %#v has a signature which cannot be verified "+
-						"from issuer %q.",
-					serial,
-					issuerNameID),
-			), nil)
-			return
-		}
+		// TODO(#5225): Check that the signature on parsedCert validates from the
+		// issuer cert in the chain.
 
 		// Prepend the chain with the leaf certificate
 		responsePEM = append(leafPEM, availableChains[requestedChain]...)

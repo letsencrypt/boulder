@@ -355,8 +355,8 @@ func main() {
 	err = features.Set(c.WFE.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	var allCertChains map[issuance.IssuerNameID][][]byte
-	var issuerCerts map[issuance.IssuerNameID]*issuance.Certificate
+	allCertChains := map[issuance.IssuerNameID][][]byte{}
+	issuerCerts := map[issuance.IssuerNameID]*issuance.Certificate{}
 	if c.WFE.Chains != nil {
 		for _, files := range c.WFE.Chains {
 			issuer, chain, err := loadChain(files)

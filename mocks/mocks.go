@@ -303,7 +303,10 @@ func (sa *StorageAuthority) GetCertificate(_ context.Context, serial string) (co
 			Issued:         sa.clk.Now().Add(-1 * time.Hour),
 		}, nil
 	} else if serial == "0000000000000000000000000000000000b3" {
-		_, cert := test.ThrowAwayCertWithSerial(&testing.T{}, 1, big.NewInt(0xb3))
+		certPEM, _ := ioutil.ReadFile("test/178.crt")
+		block, _ := pem.Decode(certPEM)
+		issuer, _ := x509.ParseCertificate(block.Bytes)
+		_, cert := test.ThrowAwayCertWithSerial(&testing.T{}, 1, big.NewInt(0xb3), issuer)
 		return core.Certificate{
 			RegistrationID: 1,
 			DER:            cert.Raw,
