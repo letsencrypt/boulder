@@ -36,8 +36,9 @@ func TestLoadChain_Valid(t *testing.T) {
 
 	// The chain should contain nothing else.
 	rootIssuerPEM, _ := pem.Decode(rest)
-	var nilBlock *pem.Block = nil
-	test.AssertEquals(t, rootIssuerPEM, nilBlock)
+	if rootIssuerPEM != nil {
+		t.Error("Expected chain PEM to contain one cert and nothing else")
+	}
 }
 
 func TestLoadChain_TooShort(t *testing.T) {
