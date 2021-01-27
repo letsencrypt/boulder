@@ -220,7 +220,7 @@ type Challenge struct {
 	// used
 	ValidationRecord []ValidationRecord `json:"validationRecord,omitempty"`
 	// RFC3339 timestamp. Required by RFC8555 if status is valid
-	Validated string `json:"validated,omitempty"`
+	Validated *time.Time `json:"validated,omitempty"`
 }
 
 // ExpectedKeyAuthorization computes the expected KeyAuthorization value for

@@ -52,12 +52,13 @@ func TestChallenge(t *testing.T) {
 	var jwk jose.JSONWebKey
 	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
 	test.AssertNotError(t, err, "Failed to unmarshal test key")
+	validated := time.Now().Round(0).UTC()
 	chall := core.Challenge{
 		Type:                     core.ChallengeTypeDNS01,
 		Status:                   core.StatusValid,
 		Token:                    "asd",
 		ProvidedKeyAuthorization: "keyauth",
-		Validated:                time.Now().Format(time.RFC3339),
+		Validated:                &validated,
 	}
 
 	pb, err := ChallengeToPB(chall)

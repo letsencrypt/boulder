@@ -651,7 +651,8 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 			// validationTime metrics increment has the correct result label.
 			challenge.Status = core.StatusValid
 			// Timestamp the valid challenge.
-			challenge.Validated = time.Now().Format(time.RFC3339)
+			currentTime := time.Now().UTC()
+			challenge.Validated = &currentTime
 		} else if features.Enabled(features.EnforceMultiVA) {
 			remoteProb := va.processRemoteResults(
 				req.Domain,
@@ -673,14 +674,15 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 			} else {
 				challenge.Status = core.StatusValid
 				// Timestamp the valid challenge.
-				challenge.Validated = time.Now().Format(time.RFC3339)
+				currentTime := time.Now().UTC()
+				challenge.Validated = &currentTime
 			}
 		}
 	} else {
 		challenge.Status = core.StatusValid
 		// Timestamp the valid challenge.
-		challenge.Validated = time.Now().Format(time.RFC3339)
-
+		currentTime := time.Now().UTC()
+		challenge.Validated = &currentTime
 	}
 
 	logEvent.Challenge = challenge

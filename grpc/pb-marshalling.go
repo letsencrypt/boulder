@@ -68,6 +68,10 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 			return nil, err
 		}
 	}
+	var validated int64
+	if challenge.Validated != nil {
+		validated = challenge.Validated.UTC().UnixNano()
+	}
 	return &corepb.Challenge{
 		Type:              string(challenge.Type),
 		Status:            string(challenge.Status),
@@ -75,7 +79,7 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 		KeyAuthorization:  challenge.ProvidedKeyAuthorization,
 		Error:             prob,
 		Validationrecords: recordAry,
-		Validated:         challenge.Validated,
+		Validated:         validated,
 	}, nil
 }
 
@@ -100,13 +104,19 @@ func PBToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 	if err != nil {
 		return core.Challenge{}, err
 	}
+	var validated *time.Time
+	if in.Validated != 0 {
+		//validated = time.Unix(0, in.Validated).UTC()
+		val := time.Unix(0, in.Validated).UTC()
+		validated = &val
+	}
 	ch := core.Challenge{
 		Type:             core.AcmeChallenge(in.Type),
 		Status:           core.AcmeStatus(in.Status),
 		Token:            in.Token,
 		Error:            prob,
 		ValidationRecord: recordAry,
-		Validated:        in.Validated,
+		Validated:        validated,
 	}
 	if in.KeyAuthorization != "" {
 		ch.ProvidedKeyAuthorization = in.KeyAuthorization
