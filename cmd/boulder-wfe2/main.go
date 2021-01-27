@@ -255,44 +255,36 @@ func loadChain(certFiles []string) (*issuance.Certificate, []byte, error) {
 			"each chain must have at least two certificates: an intermediate and a root")
 	}
 
-	firstCert, err := core.LoadCert(certFiles[0])
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to load certificate: %w", err)
-	}
-
-	var buf bytes.Buffer
-	var nextCert *x509.Certificate
-
-	// Iterate over all certs except for the last, checking that their signature
-	// comes from the next cert in the list, and appending their pem to the buf.
-	for i := 0; i < len(certFiles)-1; i++ {
-		var cert *x509.Certificate
-		if nextCert != nil {
-			cert = nextCert
-		} else {
-			cert = firstCert
-		}
-
-		nextCert, err = core.LoadCert(certFiles[i+1])
+	// Pre-load all the certificates to make validation easier.
+	certs := make([]*x509.Certificate, len(certFiles))
+	var err error
+	for i := 0; i < len(certFiles); i++ {
+		certs[i], err = core.LoadCert(certFiles[i])
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to load certificate: %w", err)
 		}
+	}
 
-		err = cert.CheckSignatureFrom(nextCert)
+	// Iterate over all certs except for the last, checking that their signature
+	// comes from the next cert in the list, and appending their pem to the buf.
+	var buf bytes.Buffer
+	for i := 0; i < len(certs)-1; i++ {
+		err = certs[i].CheckSignatureFrom(certs[i+1])
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to verify chain: %w", err)
 		}
 
 		buf.Write([]byte("\n"))
-		buf.Write(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}))
+		buf.Write(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certs[i].Raw}))
 	}
 
-	err = nextCert.CheckSignatureFrom(nextCert)
+	err = certs[len(certs)-1].CheckSignatureFrom(certs[len(certs)-1])
 	if err != nil {
-		return nil, nil, fmt.Errorf("final cert in chain must be self-signed: %w", err)
+		return nil, nil, fmt.Errorf(
+			"final cert in chain must be a self-signed (used only for validation): %w", err)
 	}
 
-	return &issuance.Certificate{Certificate: firstCert}, buf.Bytes(), nil
+	return &issuance.Certificate{Certificate: certs[0]}, buf.Bytes(), nil
 }
 
 func setupWFE(c config, logger blog.Logger, stats prometheus.Registerer, clk clock.Clock) (core.RegistrationAuthority, core.StorageAuthority, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient) {
