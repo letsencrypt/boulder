@@ -23,7 +23,7 @@ func TestDeleteOrder(t *testing.T) {
 	log, fc := setup()
 
 	// Create one dbMap for the SA with the SA user.
-	dbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
+	dbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "error creating db map")
 	// Create a SSA backed by the SA user dbMap
 	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NoopRegisterer, 1)
@@ -87,7 +87,7 @@ func TestDeleteOrder(t *testing.T) {
 	// Create a dbMap for the janitor user. We don't want to use the SA dbMap
 	// because it doesn't have DELETE grants.
 	// Create one dbMap for the SA with the SA user.
-	janitorDbMap, err := sa.NewDbMap("janitor@tcp(boulder-mysql:3306)/boulder_sa_test", 0)
+	janitorDbMap, err := sa.NewDbMap("janitor@tcp(boulder-mysql:3306)/boulder_sa_test", sa.DbSettings{})
 	test.AssertNotError(t, err, "error creating db map")
 
 	// Create an Orders job

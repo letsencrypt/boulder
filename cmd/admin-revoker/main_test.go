@@ -41,7 +41,7 @@ func TestRevokeBatch(t *testing.T) {
 	fc := clock.NewFake()
 	// Set to some non-zero time.
 	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
-	dbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
+	dbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}

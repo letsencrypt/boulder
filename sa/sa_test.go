@@ -44,7 +44,7 @@ var ctx = context.Background()
 func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	features.Reset()
 
-	dbMap, err := NewDbMap(vars.DBConnSA, 0)
+	dbMap, err := NewDbMap(vars.DBConnSA, DbSettings{})
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}

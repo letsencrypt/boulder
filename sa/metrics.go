@@ -11,6 +11,21 @@ var (
 		"Maximum number of DB connections allowed.",
 		nil, nil)
 
+	maxIdleConns = prometheus.NewDesc(
+		"db_max_idle_connections",
+		"Maximum number of idle DB connections allowed.",
+		nil, nil)
+
+	connMaxLifetime = prometheus.NewDesc(
+		"db_connection_max_lifetime",
+		"Maximum lifetime of DB connections allowed.",
+		nil, nil)
+
+	connMaxIdleTime = prometheus.NewDesc(
+		"db_connection_max_idle_time",
+		"Maximum lifetime of idle DB connections allowed.",
+		nil, nil)
+
 	openConns = prometheus.NewDesc(
 		"db_open_connections",
 		"Number of established DB connections (in-use and idle).",
@@ -48,7 +63,8 @@ var (
 )
 
 type dbMetricsCollector struct {
-	dbMap *db.WrappedMap
+	dbMap      *db.WrappedMap
+	dbSettings DbSettings
 }
 
 // Describe is implemented with DescribeByCollect. That's possible because the
@@ -77,6 +93,9 @@ func (dbc dbMetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	// Translate the DBMap's db.DBStats counter values into Prometheus metrics.
 	dbMapStats := dbc.dbMap.Db.Stats()
 	writeGauge(maxOpenConns, float64(dbMapStats.MaxOpenConnections))
+	writeGauge(maxIdleConns, float64(dbc.dbSettings.MaxIdleConns))
+	writeGauge(connMaxLifetime, float64(dbc.dbSettings.ConnMaxLifetime))
+	writeGauge(connMaxIdleTime, float64(dbc.dbSettings.ConnMaxIdleTime))
 	writeGauge(openConns, float64(dbMapStats.OpenConnections))
 	writeGauge(inUse, float64(dbMapStats.InUse))
 	writeGauge(idle, float64(dbMapStats.Idle))
@@ -87,10 +106,10 @@ func (dbc dbMetricsCollector) Collect(ch chan<- prometheus.Metric) {
 }
 
 // InitDBMetrics will register a Collector that translates the provided dbMap's
-// stats into Prometheus metrics on the fly. The stat values will be translated
-// from the gorp dbMap's inner sql.DBMap's DBStats structure values.
-func InitDBMetrics(dbMap *db.WrappedMap, stats prometheus.Registerer) {
+// stats and DbSettings into Prometheus metrics on the fly. The stat values will
+// be translated from the gorp dbMap's inner sql.DBMap's DBStats structure values
+func InitDBMetrics(dbMap *db.WrappedMap, stats prometheus.Registerer, dbSettings DbSettings) {
 	// Create a dbMetricsCollector and register it
-	dbc := dbMetricsCollector{dbMap}
+	dbc := dbMetricsCollector{dbMap, dbSettings}
 	stats.MustRegister(dbc)
 }

@@ -477,12 +477,18 @@ func main() {
 	// Configure DB
 	dbURL, err := c.Mailer.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
-	dbMap, err := sa.NewDbMap(dbURL, c.Mailer.DBConfig.MaxDBConns)
+	dbSettings := sa.DbSettings{
+		MaxOpenConns:    c.Mailer.DBConfig.GetMaxOpenConns(),
+		MaxIdleConns:    c.Mailer.DBConfig.MaxIdleConns,
+		ConnMaxLifetime: c.Mailer.DBConfig.ConnMaxLifetime.Duration,
+		ConnMaxIdleTime: c.Mailer.DBConfig.ConnMaxIdleTime.Duration,
+	}
+	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")
 	sa.SetSQLDebug(dbMap, logger)
 
 	// Collect and periodically report DB metrics using the DBMap and prometheus scope.
-	sa.InitDBMetrics(dbMap, scope)
+	sa.InitDBMetrics(dbMap, scope, dbSettings)
 
 	tlsConfig, err := c.Mailer.TLS.Load()
 	cmd.FailOnError(err, "TLS config")

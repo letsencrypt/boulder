@@ -44,7 +44,7 @@ func init() {
 }
 
 func BenchmarkCheckCert(b *testing.B) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
+	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	if err != nil {
 		fmt.Println("Couldn't connect to database")
 		return
@@ -80,7 +80,7 @@ func BenchmarkCheckCert(b *testing.B) {
 }
 
 func TestCheckWildcardCert(t *testing.T) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
+	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	saCleanup := test.ResetSATestDatabase(t)
 	defer func() {
@@ -127,7 +127,7 @@ func TestCheckWildcardCert(t *testing.T) {
 }
 
 func TestCheckCert(t *testing.T) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
+	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	saCleanup := test.ResetSATestDatabase(t)
 	defer func() {
@@ -252,7 +252,7 @@ func TestCheckCert(t *testing.T) {
 }
 
 func TestGetAndProcessCerts(t *testing.T) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
+	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	fc := clock.NewFake()
 
@@ -337,7 +337,7 @@ func (db mismatchedCountDB) Select(output interface{}, _ string, _ ...interface{
  * 0: https://github.com/letsencrypt/boulder/issues/2004
  */
 func TestGetCertsEmptyResults(t *testing.T) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
+	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	fc := clock.NewFake()
 	checker := newChecker(saDbMap, fc, pa, expectedValidityPeriod)
@@ -413,7 +413,7 @@ func TestIsForbiddenDomain(t *testing.T) {
 }
 
 func TestIgnoredLint(t *testing.T) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
+	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	saCleanup := test.ResetSATestDatabase(t)
 	defer func() {

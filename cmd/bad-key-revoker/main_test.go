@@ -46,7 +46,7 @@ func insertBlockedRow(t *testing.T, dbMap *db.WrappedMap, hash []byte, by int64,
 }
 
 func TestSelectUncheckedRows(t *testing.T) {
-	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetSATestDatabase(t)()
 
@@ -159,7 +159,7 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, keyHash []byte, serial strin
 // does not have a corresponding entry in the certificateStatus and
 // precertificates table.
 func TestFindUnrevokedNoRows(t *testing.T) {
-	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetSATestDatabase(t)()
 
@@ -178,7 +178,7 @@ func TestFindUnrevokedNoRows(t *testing.T) {
 }
 
 func TestFindUnrevoked(t *testing.T) {
-	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetSATestDatabase(t)()
 
@@ -208,7 +208,7 @@ func TestFindUnrevoked(t *testing.T) {
 }
 
 func TestResolveContacts(t *testing.T) {
-	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetSATestDatabase(t)()
 
@@ -258,7 +258,7 @@ func (mr *mockRevoker) AdministrativelyRevokeCertificate(ctx context.Context, in
 }
 
 func TestRevokeCerts(t *testing.T) {
-	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetSATestDatabase(t)()
 
@@ -279,7 +279,7 @@ func TestRevokeCerts(t *testing.T) {
 }
 
 func TestCertificateAbsent(t *testing.T) {
-	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetSATestDatabase(t)()
 
@@ -313,7 +313,7 @@ func TestCertificateAbsent(t *testing.T) {
 }
 
 func TestInvoke(t *testing.T) {
-	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetSATestDatabase(t)()
 
@@ -381,7 +381,7 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 	// extant certificates themselves their contact email is still
 	// resolved and we avoid sending any emails to accounts that
 	// share the same email.
-	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetSATestDatabase(t)()
 

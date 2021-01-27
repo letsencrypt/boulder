@@ -176,7 +176,10 @@ func main() {
 
 	dbURL, err := cfg.ContactExporter.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
-	dbMap, err := sa.NewDbMap(dbURL, 10)
+	dbSettings := sa.DbSettings{
+		MaxOpenConns: 10,
+	}
+	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")
 
 	exporter := idExporter{
