@@ -22,6 +22,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
+	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	"github.com/letsencrypt/boulder/nonce"
@@ -74,16 +75,16 @@ type WebFrontEndImpl struct {
 	clk   clock.Clock
 	stats wfe2Stats
 
-	// certificateChains maps AIA issuer URLs to a slice of []byte containing a leading
+	// certificateChains maps IssuerNameIDs to slice of []byte containing a leading
 	// newline and one or more PEM encoded certificates separated by a newline,
 	// sorted from leaf to root. The first []byte is the default certificate chain,
 	// and any subsequent []byte is an alternate certificate chain.
-	certificateChains map[string][][]byte
+	certificateChains map[issuance.IssuerNameID][][]byte
 
-	// issuerCertificates is a slice of known issuer certificates built with the
+	// issuerCertificates is a map of IssuerNameIDs to issuer certificates built with the
 	// first entry from each of the certificateChains. These certificates are used
 	// to verify the signature of certificates provided in revocation requests.
-	issuerCertificates []*x509.Certificate
+	issuerCertificates map[issuance.IssuerNameID]*issuance.Certificate
 
 	// URL to the current subscriber agreement (should contain some version identifier)
 	SubscriberAgreementURL string
@@ -135,8 +136,8 @@ func NewWebFrontEndImpl(
 	stats prometheus.Registerer,
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
-	certificateChains map[string][][]byte,
-	issuerCertificates []*x509.Certificate,
+	certificateChains map[issuance.IssuerNameID][][]byte,
+	issuerCertificates map[issuance.IssuerNameID]*issuance.Certificate,
 	remoteNonceService noncepb.NonceServiceClient,
 	noncePrefixMap map[string]noncepb.NonceServiceClient,
 	logger blog.Logger,
@@ -736,19 +737,15 @@ func (wfe *WebFrontEndImpl) processRevocation(
 			"unable to verify provided certificate, empty issuerCertificates")
 	}
 
-	// Try to validate the signature on the provided cert using each of the
-	// known issuer certificates. This is O(n) but we always expect to have
-	// a small number of configured issuers.
-	var validIssuerSignature bool
-	for _, issuer := range wfe.issuerCertificates {
-		if err := providedCert.CheckSignatureFrom(issuer); err == nil {
-			validIssuerSignature = true
-			break
-		}
+	// Try to validate the signature on the provided cert using its corresponding
+	// issuer certificate.
+	issuerNameID := issuance.GetIssuerNameID(providedCert)
+	issuerCert, ok := wfe.issuerCertificates[issuerNameID]
+	if !ok || issuerCert == nil {
+		return probs.NotFound("Certificate from unrecognized issuer")
 	}
-	// If none of the issuers validate the signature on the provided cert then
-	// return an error.
-	if !validIssuerSignature {
+	err = providedCert.CheckSignatureFrom(issuerCert.Certificate)
+	if err != nil {
 		return probs.NotFound("No such certificate")
 	}
 
@@ -1584,7 +1581,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	var responsePEM []byte
 
 	// If the WFE is configured with certificateChains, construct a chain for this
-	// certificate using its AIA Issuer URL.
+	// certificate using its IssuerNameID.
 	if len(wfe.certificateChains) > 0 {
 		parsedCert, err := x509.ParseCertificate(cert.DER)
 		if err != nil {
@@ -1597,23 +1594,18 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 			return
 		}
 
-		// NOTE(@cpu): Boulder assumes there will only be **ONE** AIA issuer URL
-		// configured in the CA signing profile. At present this is not enforced by
-		// the CA, but should be. See
-		//  https://github.com/letsencrypt/boulder/issues/3374
-		aiaIssuerURL := parsedCert.IssuingCertificateURL[0]
-
-		availableChains, ok := wfe.certificateChains[aiaIssuerURL]
+		issuerNameID := issuance.GetIssuerNameID(parsedCert)
+		availableChains, ok := wfe.certificateChains[issuerNameID]
 		if !ok || len(availableChains) == 0 {
-			// If there is no wfe.certificateChains entry for the AIA Issuer URL there
+			// If there is no wfe.certificateChains entry for the IssuerNameID there
 			// is probably a misconfiguration and we should treat it as an internal
 			// server error.
 			wfe.sendError(response, logEvent, probs.ServerInternal(
 				fmt.Sprintf(
-					"Certificate serial %#v has an unknown AIA Issuer URL %q"+
+					"Certificate serial %#v has an unknown IssuerNameID %q"+
 						"- no PEM certificate chain associated.",
 					serial,
-					aiaIssuerURL),
+					issuerNameID),
 			), nil)
 			return
 		}
@@ -1624,6 +1616,9 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 			wfe.sendError(response, logEvent, probs.NotFound("Unknown issuance chain"), nil)
 			return
 		}
+
+		// TODO(#5225): Check that the signature on parsedCert validates from the
+		// issuer cert in the chain.
 
 		// Prepend the chain with the leaf certificate
 		responsePEM = append(leafPEM, availableChains[requestedChain]...)
