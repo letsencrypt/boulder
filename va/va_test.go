@@ -277,28 +277,28 @@ func TestPerformValidationValid(t *testing.T) {
 		t.Fatalf("Wrong number of matching lines for 'Validation result'")
 	}
 	if !strings.Contains(resultLog[0], `"Hostname":"good-dns01.com"`) {
-		t.Errorf("PerformValidation didn't log validation hostname.")
+		t.Error("PerformValidation didn't log validation hostname.")
 	}
 
 	// Regex to detect if there is a validated field and capture
 	// everything in the value.
 	valRegex, err := regexp.Compile(`"validated":"(.+?)"`)
 	if err != nil {
-		t.Errorf("Could not create regexp.Compile for valTimestamp.")
+		t.Error("Could not create regexp.Compile for valTimestamp.")
 	}
 
 	// Search log for validated timestamp and return []string so we can test
 	// to see if the substring [1] has a properly formatted timestamp.
 	valTimestamp := valRegex.FindStringSubmatch(resultLog[0])
 	if len(valTimestamp) < 1 {
-		t.Errorf("Validated timestamp substring not found in log.")
+		t.Error("Validated timestamp substring not found in log.")
 	} else {
 		// Attempt to parse string found as RFC3339 time.time object. If regex
 		// match fails it will return an empty string which will fail the
 		// conversion.
 		_, err = time.Parse(time.RFC3339, valTimestamp[1])
 		if err != nil {
-			t.Errorf("Could not parse string as RFC3339 time.Time object.")
+			t.Error("Could not parse string as RFC3339 time.Time object.")
 		}
 	}
 }
