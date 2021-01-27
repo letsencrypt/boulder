@@ -106,7 +106,6 @@ func PBToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 	}
 	var validated *time.Time
 	if in.Validated != 0 {
-		//validated = time.Unix(0, in.Validated).UTC()
 		val := time.Unix(0, in.Validated).UTC()
 		validated = &val
 	}
