@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -116,6 +115,7 @@ func setChallengeToken(ch *core.Challenge, token string) {
 
 func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remoteVAs []RemoteVA) (*ValidationAuthorityImpl, *blog.Mock) {
 	features.Reset()
+	fc := clock.NewFake()
 
 	logger := blog.NewMock()
 
@@ -140,7 +140,7 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 		userAgent,
 		"letsencrypt.org",
 		metrics.NoopRegisterer,
-		clock.New(),
+		fc,
 		logger,
 		accountURIPrefixes,
 	)
@@ -280,26 +280,10 @@ func TestPerformValidationValid(t *testing.T) {
 		t.Error("PerformValidation didn't log validation hostname.")
 	}
 
-	// Regex to detect if there is a validated field and capture
-	// everything in the value.
-	valRegex, err := regexp.Compile(`"validated":"(.+?)"`)
-	if err != nil {
-		t.Error("Could not create regexp.Compile for valTimestamp.")
-	}
-
-	// Search log for validated timestamp and return []string so we can test
-	// to see if the substring [1] has a properly formatted timestamp.
-	valTimestamp := valRegex.FindStringSubmatch(resultLog[0])
-	if len(valTimestamp) < 1 {
-		t.Error("Validated timestamp substring not found in log.")
-	} else {
-		// Attempt to parse string found as RFC3339 time.time object. If regex
-		// match fails it will return an empty string which will fail the
-		// conversion.
-		_, err = time.Parse(time.RFC3339, valTimestamp[1])
-		if err != nil {
-			t.Error("Could not parse string as RFC3339 time.Time object.")
-		}
+	// Check log to see if the expected validated string appears. This
+	// should match what is configured in func setup() for the fake clock.
+	if !strings.Contains(resultLog[0], `"validated":"1970-01-01T00:00:00Z"`) {
+		t.Error("Validated timestamp string not found in log.")
 	}
 }
 
