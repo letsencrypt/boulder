@@ -172,7 +172,7 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
 	log                blog.Logger
-	dnsClient          bdns.DNSClient
+	dnsClient          bdns.Client
 	issuerDomain       string
 	httpPort           int
 	httpsPort          int
@@ -190,7 +190,7 @@ type ValidationAuthorityImpl struct {
 // NewValidationAuthorityImpl constructs a new VA
 func NewValidationAuthorityImpl(
 	pc *cmd.PortConfig,
-	resolver bdns.DNSClient,
+	resolver bdns.Client,
 	remoteVAs []RemoteVA,
 	maxRemoteFailures int,
 	userAgent string,

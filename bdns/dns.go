@@ -146,15 +146,15 @@ var (
 	}
 )
 
-// DNSClient queries for DNS records
-type DNSClient interface {
+// Client queries for DNS records
+type Client interface {
 	LookupTXT(context.Context, string) (txts []string, err error)
 	LookupHost(context.Context, string) ([]net.IP, error)
 	LookupCAA(context.Context, string) ([]*dns.CAA, string, error)
 }
 
-// DNSClientImpl represents a client that talks to an external resolver
-type DNSClientImpl struct {
+// ClientImpl represents a client that talks to an external resolver
+type ClientImpl struct {
 	dnsClient                exchanger
 	servers                  []string
 	allowRestrictedAddresses bool
@@ -168,22 +168,22 @@ type DNSClientImpl struct {
 	idMismatchCounter *prometheus.CounterVec
 }
 
-var _ DNSClient = &DNSClientImpl{}
+var _ Client = &ClientImpl{}
 
 type exchanger interface {
 	Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration, error)
 }
 
-// NewDNSClientImpl constructs a new DNS resolver object that utilizes the
+// New constructs a new DNS resolver object that utilizes the
 // provided list of DNS servers for resolution.
-func NewDNSClientImpl(
+func New(
 	readTimeout time.Duration,
 	servers []string,
 	stats prometheus.Registerer,
 	clk clock.Clock,
 	maxTries int,
 	log blog.Logger,
-) *DNSClientImpl {
+) *ClientImpl {
 	dnsClient := new(dns.Client)
 
 	// Set timeout for underlying net.Conn
@@ -222,7 +222,7 @@ func NewDNSClientImpl(
 	)
 	stats.MustRegister(queryTime, totalLookupTime, timeoutCounter, idMismatchCounter)
 
-	return &DNSClientImpl{
+	return &ClientImpl{
 		dnsClient:                dnsClient,
 		servers:                  servers,
 		allowRestrictedAddresses: false,
@@ -236,17 +236,17 @@ func NewDNSClientImpl(
 	}
 }
 
-// NewTestDNSClientImpl constructs a new DNS resolver object that utilizes the
+// NewTest constructs a new DNS resolver object that utilizes the
 // provided list of DNS servers for resolution and will allow loopback addresses.
 // This constructor should *only* be called from tests (unit or integration).
-func NewTestDNSClientImpl(
+func NewTest(
 	readTimeout time.Duration,
 	servers []string,
 	stats prometheus.Registerer,
 	clk clock.Clock,
 	maxTries int,
-	log blog.Logger) *DNSClientImpl {
-	resolver := NewDNSClientImpl(readTimeout, servers, stats, clk, maxTries, log)
+	log blog.Logger) *ClientImpl {
+	resolver := New(readTimeout, servers, stats, clk, maxTries, log)
 	resolver.allowRestrictedAddresses = true
 	return resolver
 }
@@ -255,7 +255,7 @@ func NewTestDNSClientImpl(
 // out of the server list, returning the response, time, and error (if any).
 // We assume that the upstream resolver requests and validates DNSSEC records
 // itself.
-func (dnsClient *DNSClientImpl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (resp *dns.Msg, err error) {
+func (dnsClient *ClientImpl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (resp *dns.Msg, err error) {
 	m := new(dns.Msg)
 	// Set question type
 	m.SetQuestion(dns.Fqdn(hostname), qtype)
@@ -385,7 +385,7 @@ type dnsResp struct {
 // LookupTXT sends a DNS query to find all TXT records associated with
 // the provided hostname which it returns along with the returned
 // DNS authority section.
-func (dnsClient *DNSClientImpl) LookupTXT(ctx context.Context, hostname string) ([]string, error) {
+func (dnsClient *ClientImpl) LookupTXT(ctx context.Context, hostname string) ([]string, error) {
 	var txt []string
 	dnsType := dns.TypeTXT
 	r, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
@@ -425,7 +425,7 @@ func isPrivateV6(ip net.IP) bool {
 	return false
 }
 
-func (dnsClient *DNSClientImpl) lookupIP(ctx context.Context, hostname string, ipType uint16) ([]dns.RR, error) {
+func (dnsClient *ClientImpl) lookupIP(ctx context.Context, hostname string, ipType uint16) ([]dns.RR, error) {
 	resp, err := dnsClient.exchangeOne(ctx, hostname, ipType)
 	if err != nil {
 		return nil, &DNSError{ipType, hostname, err, -1}
@@ -442,7 +442,7 @@ func (dnsClient *DNSClientImpl) lookupIP(ctx context.Context, hostname string, i
 // requests in the case of temporary network errors. It can return net package,
 // context.Canceled, and context.DeadlineExceeded errors, all wrapped in the
 // DNSError type.
-func (dnsClient *DNSClientImpl) LookupHost(ctx context.Context, hostname string) ([]net.IP, error) {
+func (dnsClient *ClientImpl) LookupHost(ctx context.Context, hostname string) ([]net.IP, error) {
 	var recordsA, recordsAAAA []dns.RR
 	var errA, errAAAA error
 	var wg sync.WaitGroup
@@ -487,7 +487,7 @@ func (dnsClient *DNSClientImpl) LookupHost(ctx context.Context, hostname string)
 // the provided hostname and the complete dig-style RR `response`. This
 // response is quite verbose, however it's only populated when the CAA
 // response is non-empty.
-func (dnsClient *DNSClientImpl) LookupCAA(ctx context.Context, hostname string) ([]*dns.CAA, string, error) {
+func (dnsClient *ClientImpl) LookupCAA(ctx context.Context, hostname string) ([]*dns.CAA, string, error) {
 	dnsType := dns.TypeCAA
 	r, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
 	if err != nil {
