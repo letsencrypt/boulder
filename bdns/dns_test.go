@@ -22,6 +22,7 @@ import (
 )
 
 const dnsLoopbackAddr = "127.0.0.1:4053"
+const dnsLoopbackHost = "127.0.0.1"
 
 func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 	m := new(dns.Msg)
@@ -616,7 +617,7 @@ func TestRetry(t *testing.T) {
 			count := test.CountCounter(dr.timeoutCounter.With(prometheus.Labels{
 				"qtype":    "TXT",
 				"type":     "out of retries",
-				"resolver": dnsLoopbackAddr,
+				"resolver": dnsLoopbackHost,
 			}))
 			if count != tc.metricsAllRetries {
 				t.Errorf("wrong count for timeoutCounter: got %d, expected %d", count, tc.metricsAllRetries)
@@ -656,7 +657,7 @@ func TestRetry(t *testing.T) {
 	count := test.CountCounter(dr.timeoutCounter.With(prometheus.Labels{
 		"qtype":    "TXT",
 		"type":     "canceled",
-		"resolver": dnsLoopbackAddr,
+		"resolver": dnsLoopbackHost,
 	}))
 	if count != 1 {
 		t.Errorf("wrong count for timeoutCounter canceled: got %d, expected %d", count, 1)
@@ -665,7 +666,7 @@ func TestRetry(t *testing.T) {
 	count = test.CountCounter(dr.timeoutCounter.With(prometheus.Labels{
 		"qtype":    "TXT",
 		"type":     "deadline exceeded",
-		"resolver": dnsLoopbackAddr,
+		"resolver": dnsLoopbackHost,
 	}))
 	if count != 2 {
 		t.Errorf("wrong count for timeoutCounter deadline exceeded: got %d, expected %d", count, 2)
