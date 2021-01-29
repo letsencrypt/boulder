@@ -187,10 +187,11 @@ func makeInternalIssuers(issuers []*issuance.Issuer, lifespanOCSP time.Duration)
 			boulderIssuer: issuer,
 		}
 		for _, alg := range issuer.Algs() {
-			if issuersByAlg[alg] != nil {
-				return issuerMaps{}, fmt.Errorf("Multiple issuer certs for %s are not allowed", alg)
+			// TODO(#5259): Enforce that there is only one issuer for each algorithm,
+			// instead of taking the first issuer for each algorithm type.
+			if issuersByAlg[alg] == nil {
+				issuersByAlg[alg] = ii
 			}
-			issuersByAlg[alg] = ii
 		}
 		if issuersByName[issuer.Name()] != nil {
 			return issuerMaps{}, errors.New("Multiple issuer certs with the same CommonName are not supported")

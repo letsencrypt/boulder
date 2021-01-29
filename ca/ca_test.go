@@ -122,6 +122,7 @@ const rsaProfileName = "rsaEE"
 const ecdsaProfileName = "ecdsaEE"
 const caKeyFile = "../test/test-ca.key"
 const caCertFile = "../test/test-ca.pem"
+const caCertFile2 = "../test/test-ca2.pem"
 
 func mustRead(path string) []byte {
 	b, err := ioutil.ReadFile(path)
@@ -172,6 +173,7 @@ func (m *mockSA) GetCertificate(ctx context.Context, serial string) (core.Certif
 
 var caKey crypto.Signer
 var caCert *issuance.Certificate
+var caCert2 *issuance.Certificate
 var ctx = context.Background()
 
 func init() {
@@ -183,6 +185,10 @@ func init() {
 	caCert, err = issuance.LoadCertificate(caCertFile)
 	if err != nil {
 		panic(fmt.Sprintf("Unable to parse %s: %s", caCertFile, err))
+	}
+	caCert2, err = issuance.LoadCertificate(caCertFile2)
+	if err != nil {
+		panic(fmt.Sprintf("Unable to parse %s: %s", caCertFile2, err))
 	}
 }
 
@@ -254,32 +260,43 @@ func setup(t *testing.T) *testCtx {
 	}
 	cfsslIssuers := []Issuer{{caKey, caCert}}
 
-	boulderProfile, _ := issuance.NewProfile(
-		issuance.ProfileConfig{
-			AllowMustStaple: true,
-			AllowCTPoison:   true,
-			AllowSCTList:    true,
-			AllowCommonName: true,
-			Policies: []issuance.PolicyInformation{
-				{OID: "2.23.140.1.2.1"},
+	boulderProfile := func(rsa, ecdsa bool) *issuance.Profile {
+		res, _ := issuance.NewProfile(
+			issuance.ProfileConfig{
+				AllowMustStaple: true,
+				AllowCTPoison:   true,
+				AllowSCTList:    true,
+				AllowCommonName: true,
+				Policies: []issuance.PolicyInformation{
+					{OID: "2.23.140.1.2.1"},
+				},
+				MaxValidityPeriod:   cmd.ConfigDuration{Duration: time.Hour * 8760},
+				MaxValidityBackdate: cmd.ConfigDuration{Duration: time.Hour},
 			},
-			MaxValidityPeriod:   cmd.ConfigDuration{Duration: time.Hour * 8760},
-			MaxValidityBackdate: cmd.ConfigDuration{Duration: time.Hour},
-		},
-		issuance.IssuerConfig{
-			UseForECDSALeaves: true,
-			UseForRSALeaves:   true,
-			IssuerURL:         "http://not-example.com/issuer-url",
-			OCSPURL:           "http://not-example.com/ocsp",
-			CRLURL:            "http://not-example.com/crl",
-		},
-	)
+			issuance.IssuerConfig{
+				UseForECDSALeaves: ecdsa,
+				UseForRSALeaves:   rsa,
+				IssuerURL:         "http://not-example.com/issuer-url",
+				OCSPURL:           "http://not-example.com/ocsp",
+				CRLURL:            "http://not-example.com/crl",
+			},
+		)
+		return res
+	}
 	boulderLinter, _ := lint.NewLinter(caKey, nil)
 	boulderIssuers := []*issuance.Issuer{
+		// Must list ECDSA-only issuer first, so it is the default for ECDSA.
+		{
+			Cert:    caCert2,
+			Signer:  caKey,
+			Profile: boulderProfile(false, true),
+			Linter:  boulderLinter,
+			Clk:     fc,
+		},
 		{
 			Cert:    caCert,
 			Signer:  caKey,
-			Profile: boulderProfile,
+			Profile: boulderProfile(true, true),
 			Linter:  boulderLinter,
 			Clk:     fc,
 		},
@@ -522,6 +539,36 @@ func TestMultipleIssuers(t *testing.T) {
 	// Verify cert was signed by newIssuerCert, not caCert.
 	err = cert.CheckSignatureFrom(newIssuerCert.Certificate)
 	test.AssertNotError(t, err, "Certificate failed signature validation")
+}
+
+func TestECDSAAllowList(t *testing.T) {
+	req := &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID}
+
+	// With empty allowlist, issuance should come from ECDSA issuer.
+	ca, _ := issueCertificateSubTestSetup(t, true)
+	result, err := ca.IssuePrecertificate(ctx, req)
+	test.AssertNotError(t, err, "Failed to issue certificate")
+	cert, err := x509.ParseCertificate(result.DER)
+	test.AssertNotError(t, err, "Certificate failed to parse")
+	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
+
+	// With allowlist containing arbitraryRegID, issuance should come from ECDSA issuer.
+	ca, _ = issueCertificateSubTestSetup(t, true)
+	ca.ecdsaAllowedRegIDs[arbitraryRegID] = true
+	result, err = ca.IssuePrecertificate(ctx, req)
+	test.AssertNotError(t, err, "Failed to issue certificate")
+	cert, err = x509.ParseCertificate(result.DER)
+	test.AssertNotError(t, err, "Certificate failed to parse")
+	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
+
+	// With allowlist not containing arbitraryRegID, issuance should come from RSA issuer.
+	ca, _ = issueCertificateSubTestSetup(t, true)
+	ca.ecdsaAllowedRegIDs[2002] = true
+	result, err = ca.IssuePrecertificate(ctx, req)
+	test.AssertNotError(t, err, "Failed to issue certificate")
+	cert, err = x509.ParseCertificate(result.DER)
+	test.AssertNotError(t, err, "Certificate failed to parse")
+	test.AssertByteEquals(t, cert.RawIssuer, caCert.RawSubject)
 }
 
 func TestOCSP(t *testing.T) {
