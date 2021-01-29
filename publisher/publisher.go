@@ -27,6 +27,7 @@ import (
 
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
@@ -196,24 +197,24 @@ func initMetrics(stats prometheus.Registerer) *pubMetrics {
 
 // Impl defines a Publisher
 type Impl struct {
-	log          blog.Logger
-	userAgent    string
-	issuerBundle []ct.ASN1Cert
-	ctLogsCache  logCache
-	metrics      *pubMetrics
+	log           blog.Logger
+	userAgent     string
+	issuerBundles map[issuance.IssuerNameID][]ct.ASN1Cert
+	ctLogsCache   logCache
+	metrics       *pubMetrics
 }
 
 // New creates a Publisher that will submit certificates
 // to requested CT logs
 func New(
-	bundle []ct.ASN1Cert,
+	bundles map[issuance.IssuerNameID][]ct.ASN1Cert,
 	userAgent string,
 	logger blog.Logger,
 	stats prometheus.Registerer,
 ) *Impl {
 	return &Impl{
-		issuerBundle: bundle,
-		userAgent:    userAgent,
+		issuerBundles: bundles,
+		userAgent:     userAgent,
 		ctLogsCache: logCache{
 			logs: make(map[string]*Log),
 		},
@@ -230,8 +231,16 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		pub.log.AuditErrf("Failed to parse certificate: %s", err)
 		return nil, err
 	}
-
-	chain := append([]ct.ASN1Cert{{Data: req.Der}}, pub.issuerBundle...)
+	var chain []ct.ASN1Cert
+	bundle := []ct.ASN1Cert{{Data: req.Der}}
+	id := issuance.GetIssuerNameID(cert)
+	issuerBundle, ok := pub.issuerBundles[id]
+	if !ok {
+		err := fmt.Errorf("No issuerBundle matching issuerNameID: %d", int64(id))
+		pub.log.AuditErrf("Failed to submit certificate to CT log: %s", err)
+		return nil, err
+	}
+	chain = append(bundle, issuerBundle...)
 
 	// Add a log URL/pubkey to the cache, if already present the
 	// existing *Log will be returned, otherwise one will be constructed, added
