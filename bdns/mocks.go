@@ -12,13 +12,13 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-// MockDNSClient is a mock
-type MockDNSClient struct {
+// MockClient is a mock
+type MockClient struct {
 	Log blog.Logger
 }
 
 // LookupTXT is a mock
-func (mock *MockDNSClient) LookupTXT(_ context.Context, hostname string) ([]string, error) {
+func (mock *MockClient) LookupTXT(_ context.Context, hostname string) ([]string, error) {
 	if hostname == "_acme-challenge.servfail.com" {
 		return nil, fmt.Errorf("SERVFAIL")
 	}
@@ -50,8 +50,8 @@ func (mock *MockDNSClient) LookupTXT(_ context.Context, hostname string) ([]stri
 	return []string{"hostname"}, nil
 }
 
-// MockTimeoutError returns a a net.OpError for which Timeout() returns true.
-func MockTimeoutError() *net.OpError {
+// makeTimeoutError returns a a net.OpError for which Timeout() returns true.
+func makeTimeoutError() *net.OpError {
 	return &net.OpError{
 		Err: os.NewSyscallError("ugh timeout", timeoutError{}),
 	}
@@ -67,13 +67,13 @@ func (t timeoutError) Timeout() bool {
 }
 
 // LookupHost is a mock
-func (mock *MockDNSClient) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
+func (mock *MockClient) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
 	if hostname == "always.invalid" ||
 		hostname == "invalid.invalid" {
 		return []net.IP{}, nil
 	}
 	if hostname == "always.timeout" {
-		return []net.IP{}, &DNSError{dns.TypeA, "always.timeout", MockTimeoutError(), -1}
+		return []net.IP{}, &DNSError{dns.TypeA, "always.timeout", makeTimeoutError(), -1}
 	}
 	if hostname == "always.error" {
 		err := &net.OpError{
@@ -119,6 +119,6 @@ func (mock *MockDNSClient) LookupHost(_ context.Context, hostname string) ([]net
 }
 
 // LookupCAA returns mock records for use in tests.
-func (mock *MockDNSClient) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, error) {
+func (mock *MockClient) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, error) {
 	return nil, "", nil
 }

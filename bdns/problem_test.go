@@ -15,7 +15,7 @@ func TestDNSError(t *testing.T) {
 		expected string
 	}{
 		{
-			&DNSError{dns.TypeA, "hostname", MockTimeoutError(), -1},
+			&DNSError{dns.TypeA, "hostname", makeTimeoutError(), -1},
 			"DNS problem: query timed out looking up A for hostname",
 		}, {
 			&DNSError{dns.TypeMX, "hostname", &net.OpError{Err: errors.New("some net error")}, -1},
