@@ -596,7 +596,8 @@ func TestRetry(t *testing.T) {
 	}
 
 	for i, tc := range tests {
-		dr := NewTest(time.Second*10, []string{dnsLoopbackAddr}, metrics.NoopRegisterer, clock.NewFake(), tc.maxTries, blog.UseMock())
+		testClient := NewTest(time.Second*10, []string{dnsLoopbackAddr}, metrics.NoopRegisterer, clock.NewFake(), tc.maxTries, blog.UseMock())
+		dr := testClient.(*impl)
 		dr.dnsClient = tc.te
 		_, err := dr.LookupTXT(context.Background(), "example.com")
 		if err == errTooManyRequests {
@@ -623,7 +624,8 @@ func TestRetry(t *testing.T) {
 		}
 	}
 
-	dr := NewTest(time.Second*10, []string{dnsLoopbackAddr}, metrics.NoopRegisterer, clock.NewFake(), 3, blog.UseMock())
+	testClient := NewTest(time.Second*10, []string{dnsLoopbackAddr}, metrics.NoopRegisterer, clock.NewFake(), 3, blog.UseMock())
+	dr := testClient.(*impl)
 	dr.dnsClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -725,7 +727,7 @@ func TestRotateServerOnErr(t *testing.T) {
 		brokenAddresses: map[string]bool{"a": true, "b": true},
 		lookups:         make(map[string]int),
 	}
-	client.dnsClient = mock
+	client.(*impl).dnsClient = mock
 
 	// Perform a bunch of lookups. We choose the initial server randomly. Any time
 	// A or B is chosen there should be an error and a retry using the next server
