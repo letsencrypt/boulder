@@ -183,7 +183,7 @@ func New(
 	clk clock.Clock,
 	maxTries int,
 	log blog.Logger,
-) *impl {
+) Client {
 	dnsClient := new(dns.Client)
 
 	// Set timeout for underlying net.Conn
@@ -245,9 +245,9 @@ func NewTest(
 	stats prometheus.Registerer,
 	clk clock.Clock,
 	maxTries int,
-	log blog.Logger) *impl {
+	log blog.Logger) Client {
 	resolver := New(readTimeout, servers, stats, clk, maxTries, log)
-	resolver.allowRestrictedAddresses = true
+	resolver.(*impl).allowRestrictedAddresses = true
 	return resolver
 }
 
