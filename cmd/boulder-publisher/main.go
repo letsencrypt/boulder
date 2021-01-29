@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/x509"
 	"flag"
 	"os"
 	"runtime"
@@ -13,6 +14,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/publisher"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 )
@@ -21,20 +23,38 @@ type config struct {
 	Publisher struct {
 		cmd.ServiceConfig
 		Features map[string]bool
+
 		// If this is non-zero, profile blocking events such that one even is
 		// sampled every N nanoseconds.
 		// https://golang.org/pkg/runtime/#SetBlockProfileRate
 		BlockProfileRate int
 		UserAgent        string
+
+		// Chains is a list of lists of certificate filenames. Each inner list is
+		// a chain, starting with the issuing intermediate, followed by one or
+		// more additional certificates, up to and including a root.
+		Chains [][]string
 	}
 
 	Syslog cmd.SyslogConfig
 
+	// TODO(5269): Remove this after all configs have migrated to `Chains`.
 	Common struct {
 		CT struct {
 			IntermediateBundleFilename string
 		}
 	}
+}
+
+// getBundleForChain takes a slice of *x509.Certificate(s) representing
+// a (previously validated) certificate chain and returns a slice of
+// ct.ANS1Cert(s) in the same order
+func getBundleForChain(chain []*x509.Certificate) []ct.ASN1Cert {
+	var bundle []ct.ASN1Cert
+	for _, cert := range chain {
+		bundle = append(bundle, ct.ASN1Cert{Data: cert.Raw})
+	}
+	return bundle
 }
 
 func main() {
@@ -69,15 +89,28 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	if c.Common.CT.IntermediateBundleFilename == "" {
-		logger.AuditErr("No CT submission bundle provided")
+	// TODO(5269): Refactor this after all configs have migrated to `Chains`.
+	if c.Common.CT.IntermediateBundleFilename == "" && c.Publisher.Chains == nil {
+		logger.AuditErr("No CT submission bundle file or chain files provided")
 		os.Exit(1)
 	}
-	pemBundle, err := core.LoadCertBundle(c.Common.CT.IntermediateBundleFilename)
-	cmd.FailOnError(err, "Failed to load CT submission bundle")
-	bundle := []ct.ASN1Cert{}
-	for _, cert := range pemBundle {
-		bundle = append(bundle, ct.ASN1Cert{Data: cert.Raw})
+
+	// TODO(5269): Refactor this after all configs have migrated to `Chains`.
+	bundles := make(map[issuance.IssuerNameID][]ct.ASN1Cert)
+	if len(c.Publisher.Chains) > 0 {
+		for _, files := range c.Publisher.Chains {
+			chain, err := issuance.LoadChain(files)
+			issuer := &issuance.Certificate{Certificate: chain[0]}
+			cmd.FailOnError(err, "Failed to load chain")
+			id := issuer.NameID()
+			bundles[id] = getBundleForChain(chain)
+		}
+	} else {
+		chain, err := core.LoadCertBundle(c.Common.CT.IntermediateBundleFilename)
+		cmd.FailOnError(err, "Failed to load chain")
+		issuer := &issuance.Certificate{Certificate: chain[0]}
+		id := issuer.NameID()
+		bundles[id] = getBundleForChain(chain)
 	}
 
 	tlsConfig, err := c.Publisher.TLS.Load()
@@ -85,11 +118,7 @@ func main() {
 
 	clk := cmd.Clock()
 
-	pubi := publisher.New(
-		bundle,
-		c.Publisher.UserAgent,
-		logger,
-		scope)
+	pubi := publisher.New(bundles, c.Publisher.UserAgent, logger, scope)
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	grpcSrv, l, err := bgrpc.NewServer(c.Publisher.GRPC, tlsConfig, serverMetrics, clk)
