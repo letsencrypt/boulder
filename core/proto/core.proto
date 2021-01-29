@@ -12,6 +12,7 @@ message Challenge {
   string keyAuthorization = 5;
   repeated ValidationRecord validationrecords = 10;
   ProblemDetails error = 7;
+  int64 validated = 11;
 }
 
 message ValidationRecord {

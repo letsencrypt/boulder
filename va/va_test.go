@@ -115,6 +115,7 @@ func setChallengeToken(ch *core.Challenge, token string) {
 
 func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remoteVAs []RemoteVA) (*ValidationAuthorityImpl, *blog.Mock) {
 	features.Reset()
+	fc := clock.NewFake()
 
 	logger := blog.NewMock()
 
@@ -139,7 +140,7 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 		userAgent,
 		"letsencrypt.org",
 		metrics.NoopRegisterer,
-		clock.New(),
+		fc,
 		logger,
 		accountURIPrefixes,
 	)
@@ -276,7 +277,13 @@ func TestPerformValidationValid(t *testing.T) {
 		t.Fatalf("Wrong number of matching lines for 'Validation result'")
 	}
 	if !strings.Contains(resultLog[0], `"Hostname":"good-dns01.com"`) {
-		t.Errorf("PerformValidation didn't log validation hostname.")
+		t.Error("PerformValidation didn't log validation hostname.")
+	}
+
+	// Check log to see if the expected validated string appears. This
+	// should match what is configured in func setup() for the fake clock.
+	if !strings.Contains(resultLog[0], `"validated":"1970-01-01T00:00:00Z"`) {
+		t.Error("Validated timestamp string not found in log.")
 	}
 }
 
@@ -312,6 +319,12 @@ func TestPerformValidationWildcard(t *testing.T) {
 	// hostname that was validated
 	if !strings.Contains(resultLog[0], `"hostname":"good-dns01.com"`) {
 		t.Errorf("PerformValidation didn't log correct validation record hostname.")
+	}
+
+	// Check log to see if the expected validated string appears. This
+	// should match what is configured in func setup() for the fake clock.
+	if !strings.Contains(resultLog[0], `"validated":"1970-01-01T00:00:00Z"`) {
+		t.Error("Validated timestamp string not found in log.")
 	}
 }
 
