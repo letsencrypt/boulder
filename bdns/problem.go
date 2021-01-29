@@ -8,8 +8,8 @@ import (
 	"github.com/miekg/dns"
 )
 
-// DNSError wraps a DNS error with various relevant information
-type DNSError struct {
+// Error wraps a DNS error with various relevant information
+type Error struct {
 	recordType uint16
 	hostname   string
 	// Exactly one of rCode or underlying should be set.
@@ -17,11 +17,11 @@ type DNSError struct {
 	rCode      int
 }
 
-func (d DNSError) Underlying() error {
+func (d Error) Underlying() error {
 	return d.underlying
 }
 
-func (d DNSError) Error() string {
+func (d Error) Error() string {
 	var detail, additional string
 	if d.underlying != nil {
 		if netErr, ok := d.underlying.(*net.OpError); ok {
@@ -50,7 +50,7 @@ func (d DNSError) Error() string {
 }
 
 // Timeout returns true if the underlying error was a timeout
-func (d DNSError) Timeout() bool {
+func (d Error) Timeout() bool {
 	if netErr, ok := d.underlying.(*net.OpError); ok {
 		return netErr.Timeout()
 	} else if d.underlying == context.Canceled || d.underlying == context.DeadlineExceeded {

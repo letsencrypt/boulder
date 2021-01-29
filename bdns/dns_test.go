@@ -368,7 +368,7 @@ func TestDNSLookupHost(t *testing.T) {
 	ip, err = obj.LookupHost(context.Background(), hostname)
 	t.Logf("%s - IP: %s, Err: %s", hostname, ip, err)
 	test.AssertError(t, err, "Should be an error")
-	expectedErr := &DNSError{dns.TypeA, hostname, nil, dns.RcodeRefused}
+	expectedErr := &Error{dns.TypeA, hostname, nil, dns.RcodeRefused}
 	test.AssertDeepEquals(t, err, expectedErr)
 }
 
@@ -377,7 +377,7 @@ func TestDNSNXDOMAIN(t *testing.T) {
 
 	hostname := "nxdomain.letsencrypt.org"
 	_, err := obj.LookupHost(context.Background(), hostname)
-	expected := &DNSError{dns.TypeA, hostname, nil, dns.RcodeNameError}
+	expected := &Error{dns.TypeA, hostname, nil, dns.RcodeNameError}
 	test.AssertDeepEquals(t, err, expected)
 
 	_, err = obj.LookupTXT(context.Background(), hostname)

@@ -390,10 +390,10 @@ func (dnsClient *impl) LookupTXT(ctx context.Context, hostname string) ([]string
 	dnsType := dns.TypeTXT
 	r, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
 	if err != nil {
-		return nil, &DNSError{dnsType, hostname, err, -1}
+		return nil, &Error{dnsType, hostname, err, -1}
 	}
 	if r.Rcode != dns.RcodeSuccess {
-		return nil, &DNSError{dnsType, hostname, nil, r.Rcode}
+		return nil, &Error{dnsType, hostname, nil, r.Rcode}
 	}
 
 	for _, answer := range r.Answer {
@@ -428,10 +428,10 @@ func isPrivateV6(ip net.IP) bool {
 func (dnsClient *impl) lookupIP(ctx context.Context, hostname string, ipType uint16) ([]dns.RR, error) {
 	resp, err := dnsClient.exchangeOne(ctx, hostname, ipType)
 	if err != nil {
-		return nil, &DNSError{ipType, hostname, err, -1}
+		return nil, &Error{ipType, hostname, err, -1}
 	}
 	if resp.Rcode != dns.RcodeSuccess {
-		return nil, &DNSError{ipType, hostname, nil, resp.Rcode}
+		return nil, &Error{ipType, hostname, nil, resp.Rcode}
 	}
 	return resp.Answer, nil
 }
@@ -491,11 +491,11 @@ func (dnsClient *impl) LookupCAA(ctx context.Context, hostname string) ([]*dns.C
 	dnsType := dns.TypeCAA
 	r, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
 	if err != nil {
-		return nil, "", &DNSError{dnsType, hostname, err, -1}
+		return nil, "", &Error{dnsType, hostname, err, -1}
 	}
 
 	if r.Rcode == dns.RcodeServerFailure {
-		return nil, "", &DNSError{dnsType, hostname, nil, r.Rcode}
+		return nil, "", &Error{dnsType, hostname, nil, r.Rcode}
 	}
 
 	var CAAs []*dns.CAA
