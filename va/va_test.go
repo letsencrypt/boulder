@@ -174,6 +174,8 @@ func (s *multiSrv) setAllowedUAs(allowedUAs map[string]bool) {
 	s.allowedUAs = allowedUAs
 }
 
+const slowRemoteSleepMillis = 1000
+
 func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]bool) *multiSrv {
 	m := http.NewServeMux()
 
@@ -182,7 +184,7 @@ func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]bool) *multi
 
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.UserAgent() == "slow remote" {
-			time.Sleep(time.Second * 5)
+			time.Sleep(slowRemoteSleepMillis)
 		}
 		ms.mu.Lock()
 		defer ms.mu.Unlock()
@@ -608,16 +610,17 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 				t.Error("expected prob from PerformValidation, got nil")
 			}
 
-			elapsed := time.Since(start).Round(time.Millisecond).Seconds()
+			elapsed := time.Since(start).Round(time.Millisecond).Milliseconds()
 
-			// The slow UA should sleep for 5 seconds. In the early return case the
-			// first remote VA should fail the overall validation and a prob should be
-			// returned quickly. In the non-early return case we don't expect
-			// a problem for 5s.
-			if tc.EarlyReturn && elapsed > 4.0 {
+			// The slow UA should sleep for `slowRemoteSleepMillis`. In the early return
+			// case the first remote VA should fail the overall validation and a prob
+			// should be returned quickly (i.e. in less than half of `slowRemoteSleepMillis`).
+			// In the non-early return case we don't expect a problem until
+			// `slowRemoteSleepMillis`.
+			if tc.EarlyReturn && elapsed > slowRemoteSleepMillis/2 {
 				t.Errorf(
-					"Expected an early return from PerformValidation in < 4.0s, took %f",
-					elapsed)
+					"Expected an early return from PerformValidation in < %d ms, took %d ms",
+					slowRemoteSleepMillis/2, elapsed)
 			}
 		})
 	}
