@@ -544,24 +544,16 @@ func TestMultipleIssuers(t *testing.T) {
 func TestECDSAAllowList(t *testing.T) {
 	req := &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID}
 
-	// With empty allowlist, issuance should come from ECDSA issuer.
+	// With allowlist containing arbitraryRegID, issuance should come from ECDSA issuer.
 	ca, _ := issueCertificateSubTestSetup(t, true)
+	ca.ecdsaAllowedRegIDs[arbitraryRegID] = true
 	result, err := ca.IssuePrecertificate(ctx, req)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err := x509.ParseCertificate(result.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
 	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
 
-	// With allowlist containing arbitraryRegID, issuance should come from ECDSA issuer.
-	ca, _ = issueCertificateSubTestSetup(t, true)
-	ca.ecdsaAllowedRegIDs[arbitraryRegID] = true
-	result, err = ca.IssuePrecertificate(ctx, req)
-	test.AssertNotError(t, err, "Failed to issue certificate")
-	cert, err = x509.ParseCertificate(result.DER)
-	test.AssertNotError(t, err, "Certificate failed to parse")
-	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
-
-	// With allowlist not containing arbitraryRegID, issuance should come from RSA issuer.
+	// With allowlist not containing arbitraryRegID, issuance should fall back to RSA issuer.
 	ca, _ = issueCertificateSubTestSetup(t, true)
 	ca.ecdsaAllowedRegIDs[2002] = true
 	result, err = ca.IssuePrecertificate(ctx, req)
@@ -569,6 +561,16 @@ func TestECDSAAllowList(t *testing.T) {
 	cert, err = x509.ParseCertificate(result.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
 	test.AssertByteEquals(t, cert.RawIssuer, caCert.RawSubject)
+
+	// With empty allowlist but ECDSAForAll enabled, issuance should come from ECDSA issuer.
+	ca, _ = issueCertificateSubTestSetup(t, true)
+	_ = features.Set(map[string]bool{"ECDSAForAll": true})
+	defer features.Reset()
+	result, err = ca.IssuePrecertificate(ctx, req)
+	test.AssertNotError(t, err, "Failed to issue certificate")
+	cert, err = x509.ParseCertificate(result.DER)
+	test.AssertNotError(t, err, "Certificate failed to parse")
+	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
 }
 
 func TestOCSP(t *testing.T) {

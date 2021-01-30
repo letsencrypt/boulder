@@ -789,7 +789,7 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		// contained in the CSR, unless we have an allowlist of registration IDs
 		// for ECDSA, in which case switch all not-allowed accounts to RSA issuance.
 		alg := csr.PublicKeyAlgorithm
-		if alg == x509.ECDSA && len(ca.ecdsaAllowedRegIDs) != 0 && !ca.ecdsaAllowedRegIDs[issueReq.RegistrationID] {
+		if alg == x509.ECDSA && !features.Enabled(features.ECDSAForAll) && !ca.ecdsaAllowedRegIDs[issueReq.RegistrationID] {
 			alg = x509.RSA
 		}
 		issuer, ok = ca.issuers.byAlg[alg]
