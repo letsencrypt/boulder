@@ -70,7 +70,7 @@ func TestPreresolvedDialerTimeout(t *testing.T) {
 
 	started := time.Now()
 
-	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockDNSClient{}}
+	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockClient{}}
 	// NOTE(@jsha): The only method I've found so far to trigger a connect timeout
 	// is to connect to an unrouteable IP address. This usually generates
 	// a connection timeout, but will rarely return "Network unreachable" instead.
@@ -1299,7 +1299,7 @@ func TestHTTPTimeout(t *testing.T) {
 // unroutable address for LookupHost. This is useful in testing connect
 // timeouts.
 type dnsMockReturnsUnroutable struct {
-	*bdns.MockDNSClient
+	*bdns.MockClient
 }
 
 func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
@@ -1317,7 +1317,7 @@ func TestHTTPDialTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockDNSClient{}}
+	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockClient{}}
 	// The only method I've found so far to trigger a connect timeout is to
 	// connect to an unrouteable IP address. This usually generates a connection
 	// timeout, but will rarely return "Network unreachable" instead. If we get

@@ -107,12 +107,12 @@ func main() {
 		dnsTries = 1
 	}
 	clk := cmd.Clock()
-	var resolver bdns.DNSClient
+	var resolver bdns.Client
 	if len(c.Common.DNSResolver) != 0 {
 		c.VA.DNSResolvers = append(c.VA.DNSResolvers, c.Common.DNSResolver)
 	}
 	if !c.Common.DNSAllowLoopbackAddresses {
-		r := bdns.NewDNSClientImpl(
+		r := bdns.New(
 			dnsTimeout,
 			c.VA.DNSResolvers,
 			scope,
@@ -121,7 +121,7 @@ func main() {
 			logger)
 		resolver = r
 	} else {
-		r := bdns.NewTestDNSClientImpl(
+		r := bdns.NewTest(
 			dnsTimeout,
 			c.VA.DNSResolvers,
 			scope,

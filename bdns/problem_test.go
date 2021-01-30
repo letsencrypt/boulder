@@ -9,31 +9,31 @@ import (
 	"github.com/miekg/dns"
 )
 
-func TestDNSError(t *testing.T) {
+func TestError(t *testing.T) {
 	testCases := []struct {
 		err      error
 		expected string
 	}{
 		{
-			&DNSError{dns.TypeA, "hostname", MockTimeoutError(), -1},
+			&Error{dns.TypeA, "hostname", makeTimeoutError(), -1},
 			"DNS problem: query timed out looking up A for hostname",
 		}, {
-			&DNSError{dns.TypeMX, "hostname", &net.OpError{Err: errors.New("some net error")}, -1},
+			&Error{dns.TypeMX, "hostname", &net.OpError{Err: errors.New("some net error")}, -1},
 			"DNS problem: networking error looking up MX for hostname",
 		}, {
-			&DNSError{dns.TypeTXT, "hostname", nil, dns.RcodeNameError},
+			&Error{dns.TypeTXT, "hostname", nil, dns.RcodeNameError},
 			"DNS problem: NXDOMAIN looking up TXT for hostname - check that a DNS record exists for this domain",
 		}, {
-			&DNSError{dns.TypeTXT, "hostname", context.DeadlineExceeded, -1},
+			&Error{dns.TypeTXT, "hostname", context.DeadlineExceeded, -1},
 			"DNS problem: query timed out looking up TXT for hostname",
 		}, {
-			&DNSError{dns.TypeTXT, "hostname", context.Canceled, -1},
+			&Error{dns.TypeTXT, "hostname", context.Canceled, -1},
 			"DNS problem: query timed out looking up TXT for hostname",
 		}, {
-			&DNSError{dns.TypeCAA, "hostname", nil, dns.RcodeServerFailure},
+			&Error{dns.TypeCAA, "hostname", nil, dns.RcodeServerFailure},
 			"DNS problem: SERVFAIL looking up CAA for hostname - the domain's nameservers may be malfunctioning",
 		}, {
-			&DNSError{dns.TypeA, "hostname", nil, dns.RcodeFormatError},
+			&Error{dns.TypeA, "hostname", nil, dns.RcodeFormatError},
 			"DNS problem: FORMERR looking up A for hostname",
 		},
 	}
