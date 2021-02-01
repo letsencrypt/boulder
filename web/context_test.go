@@ -84,8 +84,6 @@ func (hhh hostHeaderHandler) ServeHTTP(e *RequestEvent, w http.ResponseWriter, r
 }
 
 func TestHostHeaderRewrite(t *testing.T) {
-	err := features.Set(map[string]bool{"StripDefaultSchemePort": true})
-	test.AssertNotError(t, err, "features.Set failed")
 	defer features.Reset()
 
 	mockLog := blog.UseMock()
