@@ -59,6 +59,9 @@ const (
 	// NonCFSSLSigner enables usage of our own certificate signer instead of the
 	// CFSSL signer.
 	NonCFSSLSigner
+	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
+	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
+	ECDSAForAll
 )
 
 // List of features and their default value, protected by fMu
@@ -86,6 +89,7 @@ var features = map[FeatureFlag]bool{
 	FasterNewOrdersRateLimit:      false,
 	BlockedKeyTable:               false,
 	NonCFSSLSigner:                false,
+	ECDSAForAll:                   false,
 }
 
 var fMu = new(sync.RWMutex)

@@ -103,6 +103,15 @@ type config struct {
 		// Recommended to be around 500ms.
 		OCSPLogPeriod cmd.ConfigDuration
 
+		// List of Registration IDs for which ECDSA issuance is allowed. If an
+		// account is in this allowlist *and* requests issuance for an ECDSA key
+		// *and* an ECDSA issuer is configured in the CA, then the certificate
+		// will be issued from that ECDSA issuer. If this list is empty, then
+		// ECDSA issuance is allowed for all accounts.
+		// This is temporary, and will be used for testing and slow roll-out of
+		// ECDSA issuance, but will then be removed.
+		ECDSAAllowedAccounts []int64
+
 		Features map[string]bool
 	}
 
@@ -309,6 +318,7 @@ func main() {
 		c.CA.ECDSAProfile,
 		cfsslIssuers,
 		boulderIssuers,
+		c.CA.ECDSAAllowedAccounts,
 		c.CA.Expiry.Duration,
 		c.CA.Backdate.Duration,
 		c.CA.SerialPrefix,

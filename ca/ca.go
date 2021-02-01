@@ -130,6 +130,7 @@ type CertificateAuthorityImpl struct {
 	sa                 certificateStorage
 	pa                 core.PolicyAuthority
 	issuers            issuerMaps
+	ecdsaAllowedRegIDs map[int64]bool
 	cfsslRSAProfile    string
 	cfsslECDSAProfile  string
 	prefix             int // Prepended to the serial number
@@ -186,10 +187,11 @@ func makeInternalIssuers(issuers []*issuance.Issuer, lifespanOCSP time.Duration)
 			boulderIssuer: issuer,
 		}
 		for _, alg := range issuer.Algs() {
-			if issuersByAlg[alg] != nil {
-				return issuerMaps{}, fmt.Errorf("Multiple issuer certs for %s are not allowed", alg)
+			// TODO(#5259): Enforce that there is only one issuer for each algorithm,
+			// instead of taking the first issuer for each algorithm type.
+			if issuersByAlg[alg] == nil {
+				issuersByAlg[alg] = ii
 			}
-			issuersByAlg[alg] = ii
 		}
 		if issuersByName[issuer.Name()] != nil {
 			return issuerMaps{}, errors.New("Multiple issuer certs with the same CommonName are not supported")
@@ -257,6 +259,7 @@ func NewCertificateAuthorityImpl(
 	cfsslECDSAProfile string,
 	cfsslIssuers []Issuer,
 	boulderIssuers []*issuance.Issuer,
+	ecdsaAllowedRegIDs []int64,
 	certExpiry time.Duration,
 	certBackdate time.Duration,
 	serialPrefix int,
@@ -322,6 +325,11 @@ func NewCertificateAuthorityImpl(
 		}
 	}
 
+	ecdsaAllowedRegIDsMap := make(map[int64]bool, len(ecdsaAllowedRegIDs))
+	for _, regID := range ecdsaAllowedRegIDs {
+		ecdsaAllowedRegIDsMap[regID] = true
+	}
+
 	csrExtensionCount := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "csr_extensions",
@@ -371,6 +379,7 @@ func NewCertificateAuthorityImpl(
 		issuers:            issuers,
 		cfsslRSAProfile:    cfsslRSAProfile,
 		cfsslECDSAProfile:  cfsslECDSAProfile,
+		ecdsaAllowedRegIDs: ecdsaAllowedRegIDsMap,
 		validityPeriod:     certExpiry,
 		backdate:           certBackdate,
 		prefix:             serialPrefix,
@@ -776,7 +785,14 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	var issuer *internalIssuer
 	var ok bool
 	if issueReq.IssuerNameID == 0 {
-		issuer, ok = ca.issuers.byAlg[csr.PublicKeyAlgorithm]
+		// Use the issuer which corresponds to the algorithm of the public key
+		// contained in the CSR, unless we have an allowlist of registration IDs
+		// for ECDSA, in which case switch all not-allowed accounts to RSA issuance.
+		alg := csr.PublicKeyAlgorithm
+		if alg == x509.ECDSA && !features.Enabled(features.ECDSAForAll) && !ca.ecdsaAllowedRegIDs[issueReq.RegistrationID] {
+			alg = x509.RSA
+		}
+		issuer, ok = ca.issuers.byAlg[alg]
 		if !ok {
 			return nil, nil, berrors.InternalServerError("no issuer found for public key algorithm %s", csr.PublicKeyAlgorithm)
 		}
