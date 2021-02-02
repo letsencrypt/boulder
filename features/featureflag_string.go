@@ -9,34 +9,26 @@ func _() {
 	// Re-run the stringer command to generate them again.
 	var x [1]struct{}
 	_ = x[unused-0]
-	_ = x[WriteIssuedNamesPrecert-1]
-	_ = x[HeadNonceStatusOK-2]
-	_ = x[RemoveWFE2AccountID-3]
-	_ = x[CheckRenewalFirst-4]
-	_ = x[ParallelCheckFailedValidation-5]
-	_ = x[DeleteUnusedChallenges-6]
-	_ = x[BlockedKeyTable-7]
-	_ = x[StoreKeyHashes-8]
-	_ = x[PrecertificateRevocation-9]
-	_ = x[CAAValidationMethods-10]
-	_ = x[CAAAccountURI-11]
-	_ = x[EnforceMultiVA-12]
-	_ = x[MultiVAFullResults-13]
-	_ = x[MandatoryPOSTAsGET-14]
-	_ = x[AllowV1Registration-15]
-	_ = x[V1DisableNewValidations-16]
-	_ = x[StripDefaultSchemePort-17]
-	_ = x[StoreIssuerInfo-18]
-	_ = x[StoreRevokerInfo-19]
-	_ = x[RestrictRSAKeySizes-20]
-	_ = x[FasterNewOrdersRateLimit-21]
-	_ = x[NonCFSSLSigner-22]
-	_ = x[ECDSAForAll-23]
+	_ = x[PrecertificateRevocation-1]
+	_ = x[CAAValidationMethods-2]
+	_ = x[CAAAccountURI-3]
+	_ = x[EnforceMultiVA-4]
+	_ = x[MultiVAFullResults-5]
+	_ = x[MandatoryPOSTAsGET-6]
+	_ = x[AllowV1Registration-7]
+	_ = x[V1DisableNewValidations-8]
+	_ = x[StripDefaultSchemePort-9]
+	_ = x[StoreIssuerInfo-10]
+	_ = x[StoreRevokerInfo-11]
+	_ = x[RestrictRSAKeySizes-12]
+	_ = x[FasterNewOrdersRateLimit-13]
+	_ = x[NonCFSSLSigner-14]
+	_ = x[ECDSAForAll-15]
 }
 
-const _FeatureFlag_name = "unusedWriteIssuedNamesPrecertHeadNonceStatusOKRemoveWFE2AccountIDCheckRenewalFirstParallelCheckFailedValidationDeleteUnusedChallengesBlockedKeyTableStoreKeyHashesPrecertificateRevocationCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationV1DisableNewValidationsStripDefaultSchemePortStoreIssuerInfoStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimitNonCFSSLSignerECDSAForAll"
+const _FeatureFlag_name = "unusedPrecertificateRevocationCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationV1DisableNewValidationsStripDefaultSchemePortStoreIssuerInfoStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimitNonCFSSLSignerECDSAForAll"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 29, 46, 65, 82, 111, 133, 148, 162, 186, 206, 219, 233, 251, 269, 288, 311, 333, 348, 364, 383, 407, 421, 432}
+var _FeatureFlag_index = [...]uint16{0, 6, 30, 50, 63, 77, 95, 113, 132, 155, 177, 192, 208, 227, 251, 265, 276}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

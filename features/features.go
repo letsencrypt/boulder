@@ -12,14 +12,6 @@ type FeatureFlag int
 const (
 	unused FeatureFlag = iota // unused is used for testing
 	//   Deprecated features, these can be removed once stripped from production configs
-	WriteIssuedNamesPrecert
-	HeadNonceStatusOK
-	RemoveWFE2AccountID
-	CheckRenewalFirst
-	ParallelCheckFailedValidation
-	DeleteUnusedChallenges
-	BlockedKeyTable
-	StoreKeyHashes
 	PrecertificateRevocation
 
 	//   Currently in-use features
@@ -66,30 +58,22 @@ const (
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                        false,
-	CAAValidationMethods:          false,
-	CAAAccountURI:                 false,
-	HeadNonceStatusOK:             false,
-	EnforceMultiVA:                false,
-	MultiVAFullResults:            false,
-	RemoveWFE2AccountID:           false,
-	CheckRenewalFirst:             false,
-	MandatoryPOSTAsGET:            false,
-	AllowV1Registration:           true,
-	ParallelCheckFailedValidation: false,
-	DeleteUnusedChallenges:        false,
-	V1DisableNewValidations:       false,
-	PrecertificateRevocation:      false,
-	StripDefaultSchemePort:        false,
-	StoreIssuerInfo:               false,
-	WriteIssuedNamesPrecert:       false,
-	StoreKeyHashes:                false,
-	StoreRevokerInfo:              false,
-	RestrictRSAKeySizes:           false,
-	FasterNewOrdersRateLimit:      false,
-	BlockedKeyTable:               false,
-	NonCFSSLSigner:                false,
-	ECDSAForAll:                   false,
+	unused:                   false,
+	CAAValidationMethods:     false,
+	CAAAccountURI:            false,
+	EnforceMultiVA:           false,
+	MultiVAFullResults:       false,
+	MandatoryPOSTAsGET:       false,
+	AllowV1Registration:      true,
+	V1DisableNewValidations:  false,
+	PrecertificateRevocation: false,
+	StripDefaultSchemePort:   false,
+	StoreIssuerInfo:          false,
+	StoreRevokerInfo:         false,
+	RestrictRSAKeySizes:      false,
+	FasterNewOrdersRateLimit: false,
+	NonCFSSLSigner:           false,
+	ECDSAForAll:              false,
 }
 
 var fMu = new(sync.RWMutex)
