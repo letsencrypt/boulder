@@ -632,7 +632,7 @@ func RequestFromPrecert(precert *x509.Certificate, scts []ct.SignedCertificateTi
 // ensures that the resulting chain is valid. The final file is expected to be
 // a root certificate, which the chain will be verified against, but which will
 // not be included in the resulting chain.
-func LoadChain(certFiles []string) ([]*x509.Certificate, error) {
+func LoadChain(certFiles []string) ([]*Certificate, error) {
 	if len(certFiles) < 2 {
 		return nil, errors.New(
 			"each chain must have at least two certificates: an intermediate and a root")
@@ -650,14 +650,14 @@ func LoadChain(certFiles []string) ([]*x509.Certificate, error) {
 
 	// Iterate over all certs except for the last, checking that their signature
 	// comes from the next cert in the list
-	chain := make([]*x509.Certificate, len(certFiles)-1)
+	chain := make([]*Certificate, len(certFiles)-1)
 	for i := 0; i < len(certs)-1; i++ {
 		err = certs[i].CheckSignatureFrom(certs[i+1])
 		if err != nil {
 			return nil, fmt.Errorf("failed to verify chain: %w", err)
 		}
-		// Add each cert to the chain returned
-		chain[i] = certs[i]
+		// Add each cert to the chain.
+		chain[i] = &Certificate{certs[i]}
 	}
 
 	err = certs[len(certs)-1].CheckSignatureFrom(certs[len(certs)-1])

@@ -254,15 +254,14 @@ func loadChain(certFiles []string) (*issuance.Certificate, []byte, error) {
 		return nil, nil, err
 	}
 
-	// Iterate over all certs except for the last, checking that their signature
-	// comes from the next cert in the list, and appending their pem to the buf.
+	// Iterate over all certs appending their pem to the buf.
 	var buf bytes.Buffer
 	for _, cert := range certs {
 		buf.Write([]byte("\n"))
 		buf.Write(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}))
 	}
 
-	return &issuance.Certificate{Certificate: certs[0]}, buf.Bytes(), nil
+	return certs[0], buf.Bytes(), nil
 }
 
 func setupWFE(c config, logger blog.Logger, stats prometheus.Registerer, clk clock.Clock) (core.RegistrationAuthority, core.StorageAuthority, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient) {
