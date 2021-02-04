@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -250,38 +249,17 @@ func loadCertificateChains(chainConfig map[string][]string, requireAtLeastOneCha
 // a root certificate, which the chain will be verified against, but which will
 // not be included in the resulting chain.
 func loadChain(certFiles []string) (*issuance.Certificate, []byte, error) {
-	if len(certFiles) < 2 {
-		return nil, nil, errors.New(
-			"each chain must have at least two certificates: an intermediate and a root")
-	}
-
-	// Pre-load all the certificates to make validation easier.
-	certs := make([]*x509.Certificate, len(certFiles))
-	var err error
-	for i := 0; i < len(certFiles); i++ {
-		certs[i], err = core.LoadCert(certFiles[i])
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to load certificate: %w", err)
-		}
+	certs, err := issuance.LoadChain(certFiles)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	// Iterate over all certs except for the last, checking that their signature
 	// comes from the next cert in the list, and appending their pem to the buf.
 	var buf bytes.Buffer
-	for i := 0; i < len(certs)-1; i++ {
-		err = certs[i].CheckSignatureFrom(certs[i+1])
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to verify chain: %w", err)
-		}
-
+	for _, cert := range certs {
 		buf.Write([]byte("\n"))
-		buf.Write(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certs[i].Raw}))
-	}
-
-	err = certs[len(certs)-1].CheckSignatureFrom(certs[len(certs)-1])
-	if err != nil {
-		return nil, nil, fmt.Errorf(
-			"final cert in chain must be a self-signed (used only for validation): %w", err)
+		buf.Write(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}))
 	}
 
 	return &issuance.Certificate{Certificate: certs[0]}, buf.Bytes(), nil
