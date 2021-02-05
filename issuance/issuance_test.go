@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"io/ioutil"
 	"math/big"
 	"os"
 	"testing"
@@ -19,6 +20,7 @@ import (
 	ct "github.com/google/certificate-transparency-go"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/lint"
 	"github.com/letsencrypt/boulder/policyasn1"
 	"github.com/letsencrypt/boulder/test"
@@ -692,4 +694,56 @@ func TestIssueBadLint(t *testing.T) {
 	})
 	test.AssertError(t, err, "Issue didn't fail")
 	test.AssertEquals(t, err.Error(), "tbsCertificate linting failed: failed lints: w_ct_sct_policy_count_unsatisfied")
+}
+
+func TestLoadChain_Valid(t *testing.T) {
+	chain, err := LoadChain([]string{
+		"../test/test-ca-cross.pem",
+		"../test/test-root2.pem",
+	})
+	test.AssertNotError(t, err, "Should load valid chain")
+
+	expectedIssuer, err := core.LoadCert("../test/test-ca-cross.pem")
+	test.AssertNotError(t, err, "Failed to load test issuer")
+
+	chainIssuer := chain[0]
+	test.AssertNotNil(t, chainIssuer, "Failed to decode chain PEM")
+
+	test.AssertByteEquals(t, chainIssuer.Raw, expectedIssuer.Raw)
+}
+
+func TestLoadChain_TooShort(t *testing.T) {
+	_, err := LoadChain([]string{"/path/to/one/cert.pem"})
+	test.AssertError(t, err, "Should reject too-short chain")
+}
+
+func TestLoadChain_Unloadable(t *testing.T) {
+	_, err := LoadChain([]string{
+		"does-not-exist.pem",
+		"../test/test-root2.pem",
+	})
+	test.AssertError(t, err, "Should reject unloadable chain")
+
+	_, err = LoadChain([]string{
+		"../test/test-ca-cross.pem",
+		"does-not-exist.pem",
+	})
+	test.AssertError(t, err, "Should reject unloadable chain")
+
+	invalidPEMFile, _ := ioutil.TempFile("", "invalid.pem")
+	err = ioutil.WriteFile(invalidPEMFile.Name(), []byte(""), 0640)
+	test.AssertNotError(t, err, "Error writing invalid PEM tmp file")
+	_, err = LoadChain([]string{
+		invalidPEMFile.Name(),
+		"../test/test-root2.pem",
+	})
+	test.AssertError(t, err, "Should reject unloadable chain")
+}
+
+func TestLoadChain_InvalidSig(t *testing.T) {
+	_, err := LoadChain([]string{
+		"../test/test-root2.pem",
+		"../test/test-ca-cross.pem",
+	})
+	test.AssertError(t, err, "Should reject invalid signature")
 }
