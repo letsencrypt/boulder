@@ -1617,8 +1617,18 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 			return
 		}
 
-		// TODO(#5225): Check that the signature on parsedCert validates from the
-		// issuer cert in the chain.
+		// Double check that the signature validates.
+		err = parsedCert.CheckSignatureFrom(wfe.issuerCertificates[issuerNameID].Certificate)
+		if err != nil {
+			wfe.sendError(response, logEvent, probs.ServerInternal(
+				fmt.Sprintf(
+					"Certificate serial %#v has a signature which cannot be verified "+
+						"from issuer %q.",
+					serial,
+					issuerNameID),
+			), nil)
+			return
+		}
 
 		// Prepend the chain with the leaf certificate
 		responsePEM = append(leafPEM, availableChains[requestedChain]...)
