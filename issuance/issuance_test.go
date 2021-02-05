@@ -695,6 +695,7 @@ func TestIssueBadLint(t *testing.T) {
 	test.AssertError(t, err, "Issue didn't fail")
 	test.AssertEquals(t, err.Error(), "tbsCertificate linting failed: failed lints: w_ct_sct_policy_count_unsatisfied")
 }
+
 func TestLoadChain_Valid(t *testing.T) {
 	chain, err := LoadChain([]string{
 		"../test/test-ca-cross.pem",
@@ -705,7 +706,7 @@ func TestLoadChain_Valid(t *testing.T) {
 	expectedIssuer, err := core.LoadCert("../test/test-ca-cross.pem")
 	test.AssertNotError(t, err, "Failed to load test issuer")
 
-	chainIssuer := &Certificate{chain[0]}
+	chainIssuer := chain[0]
 	test.AssertNotNil(t, chainIssuer, "Failed to decode chain PEM")
 
 	test.AssertByteEquals(t, chainIssuer.Raw, expectedIssuer.Raw)

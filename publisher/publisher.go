@@ -231,8 +231,7 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		pub.log.AuditErrf("Failed to parse certificate: %s", err)
 		return nil, err
 	}
-	var chain []ct.ASN1Cert
-	bundle := []ct.ASN1Cert{{Data: req.Der}}
+	chain := []ct.ASN1Cert{{Data: req.Der}}
 	id := issuance.GetIssuerNameID(cert)
 	issuerBundle, ok := pub.issuerBundles[id]
 	if !ok {
@@ -240,7 +239,7 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		pub.log.AuditErrf("Failed to submit certificate to CT log: %s", err)
 		return nil, err
 	}
-	chain = append(bundle, issuerBundle...)
+	chain = append(chain, issuerBundle...)
 
 	// Add a log URL/pubkey to the cache, if already present the
 	// existing *Log will be returned, otherwise one will be constructed, added
@@ -394,4 +393,27 @@ func CreateTestingSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool, tim
 
 	jsonSCT, _ := json.Marshal(jsonSCTObj)
 	return jsonSCT
+}
+
+// GetCTBundleForChain takes a slice of *issuance.Certificate(s)
+// representing a certificate chain and returns a slice of
+// ct.ANS1Cert(s) in the same order
+func GetCTBundleForChain(chain []*issuance.Certificate) []ct.ASN1Cert {
+	var ctBundle []ct.ASN1Cert
+	for _, cert := range chain {
+		ctBundle = append(ctBundle, ct.ASN1Cert{Data: cert.Raw})
+	}
+	return ctBundle
+}
+
+// GetCTBundleForCerts takes a slice of *x509.Certificate(s)
+// representing a certificate chain and returns a slice of
+// ct.ANS1Cert(s) in the same order
+// TODO(5269): Remove this after all configs have migrated to `Chains`.
+func GetCTBundleForCerts(chain []*x509.Certificate) []ct.ASN1Cert {
+	var ctBundle []ct.ASN1Cert
+	for _, cert := range chain {
+		ctBundle = append(ctBundle, ct.ASN1Cert{Data: cert.Raw})
+	}
+	return ctBundle
 }

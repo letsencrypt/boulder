@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/x509"
 	"flag"
 	"os"
 	"runtime"
@@ -46,17 +45,6 @@ type config struct {
 	}
 }
 
-// getBundleForChain takes a slice of *x509.Certificate(s) representing
-// a (previously validated) certificate chain and returns a slice of
-// ct.ANS1Cert(s) in the same order
-func getBundleForChain(chain []*x509.Certificate) []ct.ASN1Cert {
-	var bundle []ct.ASN1Cert
-	for _, cert := range chain {
-		bundle = append(bundle, ct.ASN1Cert{Data: cert.Raw})
-	}
-	return bundle
-}
-
 func main() {
 	grpcAddr := flag.String("addr", "", "gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
@@ -95,22 +83,23 @@ func main() {
 		os.Exit(1)
 	}
 
-	// TODO(5269): Refactor this after all configs have migrated to `Chains`.
 	bundles := make(map[issuance.IssuerNameID][]ct.ASN1Cert)
 	if len(c.Publisher.Chains) > 0 {
 		for _, files := range c.Publisher.Chains {
 			chain, err := issuance.LoadChain(files)
-			issuer := &issuance.Certificate{Certificate: chain[0]}
-			cmd.FailOnError(err, "Failed to load chain")
+			cmd.FailOnError(err, "failed to load chain.")
+			issuer := chain[0]
 			id := issuer.NameID()
-			bundles[id] = getBundleForChain(chain)
+			bundles[id] = publisher.GetCTBundleForChain(chain)
 		}
 	} else {
-		chain, err := core.LoadCertBundle(c.Common.CT.IntermediateBundleFilename)
-		cmd.FailOnError(err, "Failed to load chain")
-		issuer := &issuance.Certificate{Certificate: chain[0]}
+		// TODO(5269): Remove this after all configs have migrated to
+		// `Chains`.
+		certs, err := core.LoadCertBundle(c.Common.CT.IntermediateBundleFilename)
+		cmd.FailOnError(err, "failed to load certs from PEM file")
+		issuer := &issuance.Certificate{Certificate: certs[0]}
 		id := issuer.NameID()
-		bundles[id] = getBundleForChain(chain)
+		bundles[id] = publisher.GetCTBundleForCerts(certs)
 	}
 
 	tlsConfig, err := c.Publisher.TLS.Load()

@@ -118,28 +118,35 @@ func errorBodyLogSrv() *httptest.Server {
 	return server
 }
 
-func setup(t *testing.T) (*Impl, []*x509.Certificate, *ecdsa.PrivateKey) {
-	// Load a chain with two intermediates
-	testCA2Cert, err := core.LoadCert("../test/test-ca2.pem")
-	test.AssertNotError(t, err, "Unable to load ../test/test-ca2.pem")
+func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
+	// Load our first chain using issuance.LoadChain
+	chain1, err := issuance.LoadChain([]string{
+		"../test/test-ca2.pem",
+		"../test/test-root.pem",
+	})
+	test.AssertNotError(t, err, "failed to load chain1.")
 
-	testCA2CrossCert, err := core.LoadCert("../test/test-ca2-cross.pem")
-	test.AssertNotError(t, err, "Unable to load ../test/test-ca2-cross.pem")
+	// Load our second chain using issuance.LoadChain
+	chain2, err := issuance.LoadChain([]string{
+		"../test/test-ca-cross.pem",
+		"../test/test-root2.pem",
+	})
+	test.AssertNotError(t, err, "failed to load chain2.")
 
-	// Create our ct.ASN1Cert bundles mapped to their corresponding
-	// IssueNameID
+	// Load our third chain using core.LoadCertBundle
+	// TODO(5269): Remove this after all configs have migrated to
+	// `Chains`.
+	chain3, err := core.LoadCertBundle("test/testIntermediate.pem")
+	test.AssertNotError(t, err, "failed to load chain3.")
+	chain3Issuer := issuance.Certificate{Certificate: chain3[0]}
+
+	// Create an example issuerNameID to CT bundle mapping
 	issuerBundles := map[issuance.IssuerNameID][]ct.ASN1Cert{
-		// Chain with two intermediates
-		issuance.IssuerNameID(18337263084599622): {
-			ct.ASN1Cert{Data: testCA2Cert.Raw},
-			ct.ASN1Cert{Data: testCA2CrossCert.Raw},
-		},
-		// Chain with two intermediates mapped to the IssuerNameID of
-		// publisher/test/178.pem
-		issuance.IssuerNameID(66191037641995744): {
-			ct.ASN1Cert{Data: testCA2Cert.Raw},
-			ct.ASN1Cert{Data: testCA2CrossCert.Raw},
-		},
+		chain1[0].NameID(): GetCTBundleForChain(chain1),
+		chain2[0].NameID(): GetCTBundleForChain(chain2),
+		// TODO(5269): Remove this after all configs have migrated to
+		// `Chains`.
+		chain3Issuer.NameID(): GetCTBundleForCerts(chain3),
 	}
 	pub := New(
 		issuerBundles,
@@ -147,14 +154,14 @@ func setup(t *testing.T) (*Impl, []*x509.Certificate, *ecdsa.PrivateKey) {
 		log,
 		metrics.NoopRegisterer)
 
-	// Load leaf that corresponds to our chain with two intermediates
-	testEECert, err := core.LoadCert("../test/test-ee.pem")
-	test.AssertNotError(t, err, "Unable to load ../test/test-ee.pem")
+	// Load leaf certificate
+	leaf, err := core.LoadCert("../test/test-ee.pem")
+	test.AssertNotError(t, err, "unable to load ../test/test-ee.pem")
 
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "Couldn't generate test key")
 
-	return pub, []*x509.Certificate{testEECert}, k
+	return pub, leaf, k
 }
 
 func addLog(t *testing.T, pub *Impl, port int, pubKey *ecdsa.PublicKey) *Log {
@@ -302,7 +309,7 @@ func TestLogCache(t *testing.T) {
 }
 
 func TestLogErrorBody(t *testing.T) {
-	pub, leaves, k := setup(t)
+	pub, leaf, k := setup(t)
 
 	srv := errorBodyLogSrv()
 	defer srv.Close()
@@ -317,14 +324,14 @@ func TestLogErrorBody(t *testing.T) {
 	_, err = pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
 		LogURL:       logURI,
 		LogPublicKey: pkB64,
-		Der:          leaves[0].Raw,
+		Der:          leaf.Raw,
 	})
 	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
 	test.AssertEquals(t, len(log.GetAllMatching("well this isn't good now is it")), 1)
 }
 
 func TestHTTPStatusMetric(t *testing.T) {
-	pub, leaves, k := setup(t)
+	pub, leaf, k := setup(t)
 
 	badSrv := errorBodyLogSrv()
 	defer badSrv.Close()
@@ -338,7 +345,7 @@ func TestHTTPStatusMetric(t *testing.T) {
 	_, err = pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
 		LogURL:       logURI,
 		LogPublicKey: pkB64,
-		Der:          leaves[0].Raw,
+		Der:          leaf.Raw,
 	})
 	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
 	test.AssertEquals(t, test.CountHistogramSamples(pub.metrics.submissionLatency.With(prometheus.Labels{
@@ -347,7 +354,7 @@ func TestHTTPStatusMetric(t *testing.T) {
 		"http_status": "400",
 	})), 1)
 
-	pub, leaves, k = setup(t)
+	pub, leaf, k = setup(t)
 	pkDER, err = x509.MarshalPKIXPublicKey(&k.PublicKey)
 	test.AssertNotError(t, err, "Failed to marshal key")
 	pkB64 = base64.StdEncoding.EncodeToString(pkDER)
@@ -360,7 +367,7 @@ func TestHTTPStatusMetric(t *testing.T) {
 	_, err = pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
 		LogURL:       logURI,
 		LogPublicKey: pkB64,
-		Der:          leaves[0].Raw,
+		Der:          leaf.Raw,
 	})
 	test.AssertNotError(t, err, "SubmitToSingleCTWithResult failed")
 	test.AssertEquals(t, test.CountHistogramSamples(pub.metrics.submissionLatency.With(prometheus.Labels{
@@ -368,4 +375,51 @@ func TestHTTPStatusMetric(t *testing.T) {
 		"status":      "success",
 		"http_status": "",
 	})), 1)
+}
+func Test_GetCTBundleForChain(t *testing.T) {
+	chain, err := issuance.LoadChain([]string{
+		"../test/test-ca2-cross.pem",
+		"../test/test-root2.pem",
+	})
+	test.AssertNotError(t, err, "Failed to load chain.")
+	expect := []ct.ASN1Cert{{Data: chain[0].Raw}}
+	type args struct {
+		chain []*issuance.Certificate
+	}
+	tests := []struct {
+		name string
+		args args
+		want []ct.ASN1Cert
+	}{
+		{"Create a ct bundle with a single intermediate", args{chain}, expect},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bundle := GetCTBundleForChain(tt.args.chain)
+			test.AssertDeepEquals(t, bundle, tt.want)
+		})
+	}
+}
+
+// TODO(5269): Remove this after all configs have migrated to `Chains`.
+func Test_GetCTBundleForBundle(t *testing.T) {
+	bundle, err := core.LoadCertBundle("test/testIntermediate.pem")
+	want := []ct.ASN1Cert{{Data: bundle[0].Raw}}
+	test.AssertNotError(t, err, "Unable to read test/testIntermediate.pem")
+	type args struct {
+		chain []*x509.Certificate
+	}
+	tests := []struct {
+		name string
+		args args
+		want []ct.ASN1Cert
+	}{
+		{"Create a ct bundle with a single intermediate", args{bundle}, want},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bundle := GetCTBundleForCerts(tt.args.chain)
+			test.AssertDeepEquals(t, bundle, tt.want)
+		})
+	}
 }
