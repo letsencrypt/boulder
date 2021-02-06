@@ -736,7 +736,6 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		return probs.ServerInternal(
 			"unable to verify provided certificate, empty issuerCertificates")
 	}
-
 	// Try to validate the signature on the provided cert using its corresponding
 	// issuer certificate.
 	issuerNameID := issuance.GetIssuerNameID(providedCert)
