@@ -50,15 +50,6 @@ type DBConfig struct {
 	// A file containing a connect URL for the DB.
 	DBConnectFile string
 
-	// MaxDBConns sets the maximum number of open connections to the
-	// database. If MaxIdleConns is greater than 0 and MaxOpenConns is
-	// less than MaxIdleConns, then MaxIdleConns will be reduced to
-	// match the new MaxOpenConns limit. If n < 0, then there is no
-	// limit on the number of open connections.
-	// TODO(#5249): This field can be removed once MaxDBConns has been
-	// removed from test/config and all prod and staging configs.
-	MaxDBConns int
-
 	// MaxOpenConns sets the maximum number of open connections to the
 	// database. If MaxIdleConns is greater than 0 and MaxOpenConns is
 	// less than MaxIdleConns, then MaxIdleConns will be reduced to
@@ -93,17 +84,6 @@ func (d *DBConfig) URL() (string, error) {
 		return strings.TrimSpace(string(url)), err
 	}
 	return d.DBConnect, nil
-}
-
-// GetMaxOpenConns defaults MaxOpenConns to the value of MaxDBConns if
-// MaxDBConns was specified in the config json.
-// TODO(#5249): This method can be removed once MaxDBConns has been
-// removed from test/config and all prod and staging configs.
-func (d *DBConfig) GetMaxOpenConns() int {
-	if d.MaxOpenConns == 0 {
-		d.MaxOpenConns = d.MaxDBConns
-	}
-	return d.MaxOpenConns
 }
 
 type SMTPConfig struct {

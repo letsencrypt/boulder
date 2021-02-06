@@ -32,39 +32,6 @@ func TestDBConfigURL(t *testing.T) {
 	}
 }
 
-func TestGetMaxOpenConns(t *testing.T) {
-	tests := []struct {
-		conf     DBConfig
-		expected int
-	}{
-		{
-			// Test with config that contains both fields with different values
-			conf:     DBConfig{MaxDBConns: 1, MaxOpenConns: 100},
-			expected: 100,
-		},
-		{
-			// Test with config that contains only MaxDBConns
-			conf:     DBConfig{MaxDBConns: 100},
-			expected: 100,
-		},
-		{
-			// Test with config that contains only MaxOpenConns
-			conf:     DBConfig{MaxOpenConns: 1},
-			expected: 1,
-		},
-		{
-			// Test with config that contains neither field
-			conf:     DBConfig{},
-			expected: 0,
-		},
-	}
-
-	for _, tc := range tests {
-		maxOpenConns := tc.conf.GetMaxOpenConns()
-		test.AssertEquals(t, maxOpenConns, tc.expected)
-	}
-}
-
 func TestPasswordConfig(t *testing.T) {
 	tests := []struct {
 		pc       PasswordConfig

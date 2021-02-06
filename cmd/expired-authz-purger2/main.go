@@ -79,7 +79,7 @@ func main() {
 	dbURL, err := c.ExpiredAuthzPurger2.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{
-		MaxOpenConns:    c.ExpiredAuthzPurger2.DBConfig.GetMaxOpenConns(),
+		MaxOpenConns:    c.ExpiredAuthzPurger2.DBConfig.MaxOpenConns,
 		MaxIdleConns:    c.ExpiredAuthzPurger2.DBConfig.MaxIdleConns,
 		ConnMaxLifetime: c.ExpiredAuthzPurger2.DBConfig.ConnMaxLifetime.Duration,
 		ConnMaxIdleTime: c.ExpiredAuthzPurger2.DBConfig.ConnMaxIdleTime.Duration,

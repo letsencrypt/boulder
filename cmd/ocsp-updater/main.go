@@ -345,7 +345,7 @@ func main() {
 	dbURL, err := conf.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{
-		MaxOpenConns:    conf.DBConfig.GetMaxOpenConns(),
+		MaxOpenConns:    conf.DBConfig.MaxOpenConns,
 		MaxIdleConns:    conf.DBConfig.MaxIdleConns,
 		ConnMaxLifetime: conf.DBConfig.ConnMaxLifetime.Duration,
 		ConnMaxIdleTime: conf.DBConfig.ConnMaxIdleTime.Duration}

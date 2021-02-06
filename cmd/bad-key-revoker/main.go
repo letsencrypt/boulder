@@ -393,7 +393,7 @@ func main() {
 	cmd.FailOnError(err, "Couldn't load DB URL")
 
 	dbSettings := sa.DbSettings{
-		MaxOpenConns:    config.BadKeyRevoker.DBConfig.GetMaxOpenConns(),
+		MaxOpenConns:    config.BadKeyRevoker.DBConfig.MaxOpenConns,
 		MaxIdleConns:    config.BadKeyRevoker.DBConfig.MaxIdleConns,
 		ConnMaxLifetime: config.BadKeyRevoker.DBConfig.ConnMaxLifetime.Duration,
 		ConnMaxIdleTime: config.BadKeyRevoker.DBConfig.ConnMaxIdleTime.Duration,
