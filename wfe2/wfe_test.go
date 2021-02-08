@@ -1770,8 +1770,8 @@ func newMockSAWithCert(t *testing.T, sa core.StorageGetter, valid bool) *mockSAW
 	return &mockSAWithCert{sa, cert, status}
 }
 
-// GetCertificate returns a hard-coded cert (ee-r3.cert.pem) which was issued by
-// account 1 if the requested serial matches; otherwise returns not found.
+// GetCertificate returns the mock SA's hard-coded certificate, issued by the
+// account with regID 1, if the given serial matches. Otherwise, returns not found.
 func (sa *mockSAWithCert) GetCertificate(_ context.Context, serial string) (core.Certificate, error) {
 	if serial != core.SerialToString(sa.cert.SerialNumber) {
 		return core.Certificate{}, berrors.NotFoundError("Certificate with serial %q not found", serial)
@@ -1784,6 +1784,8 @@ func (sa *mockSAWithCert) GetCertificate(_ context.Context, serial string) (core
 	}, nil
 }
 
+// GetCertificateStatus returns the mock SA's status, if the given serial matches.
+// Otherwise, returns not found.
 func (sa *mockSAWithCert) GetCertificateStatus(_ context.Context, serial string) (core.CertificateStatus, error) {
 	if serial != core.SerialToString(sa.cert.SerialNumber) {
 		return core.CertificateStatus{}, berrors.NotFoundError("Status for certificate with serial %q not found", serial)
