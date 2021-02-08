@@ -156,7 +156,7 @@ type Client interface {
 // impl represents a client that talks to an external resolver
 type impl struct {
 	dnsClient                exchanger
-	servers                  []string
+	servers                  []server
 	allowRestrictedAddresses bool
 	maxTries                 int
 	clk                      clock.Clock
@@ -172,6 +172,15 @@ var _ Client = &impl{}
 
 type exchanger interface {
 	Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration, error)
+}
+
+// server represents a single backend server
+type server struct {
+	// hostport is used to connect to this server
+	hostport string
+	// host is used in reporting metrics by host (since one host
+	// may offer service on multiple ports)
+	host string
 }
 
 // New constructs a new DNS resolver object that utilizes the
@@ -222,9 +231,22 @@ func New(
 	)
 	stats.MustRegister(queryTime, totalLookupTime, timeoutCounter, idMismatchCounter)
 
+	var serverStructs []server
+	for _, s := range servers {
+		host, _, err := net.SplitHostPort(s)
+		// host is used only for metrics, so don't stress about errors here
+		if err != nil {
+			host = s
+		}
+		serverStructs = append(serverStructs, server{
+			hostport: s,
+			host:     host,
+		})
+	}
+
 	return &impl{
 		dnsClient:                dnsClient,
-		servers:                  servers,
+		servers:                  serverStructs,
 		allowRestrictedAddresses: false,
 		maxTries:                 maxTries,
 		clk:                      clk,
@@ -294,25 +316,25 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 			"result":             result,
 			"authenticated_data": authenticated,
 			"retries":            strconv.Itoa(tries),
-			"resolver":           chosenServer,
+			"resolver":           chosenServer.host,
 		}).Observe(dnsClient.clk.Since(start).Seconds())
 	}()
 	for {
 		ch := make(chan dnsResp, 1)
 
 		go func() {
-			rsp, rtt, err := client.Exchange(m, chosenServer)
+			rsp, rtt, err := client.Exchange(m, chosenServer.hostport)
 			result, authenticated := "failed", ""
 			if rsp != nil {
 				result = dns.RcodeToString[rsp.Rcode]
 				authenticated = fmt.Sprintf("%t", rsp.AuthenticatedData)
 			}
 			if err != nil {
-				logDNSError(dnsClient.log, chosenServer, hostname, m, rsp, err)
+				logDNSError(dnsClient.log, chosenServer.hostport, hostname, m, rsp, err)
 				if err == dns.ErrId {
 					dnsClient.idMismatchCounter.With(prometheus.Labels{
 						"qtype":    qtypeStr,
-						"resolver": chosenServer,
+						"resolver": chosenServer.host,
 					}).Inc()
 				}
 			}
@@ -320,7 +342,7 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 				"qtype":              qtypeStr,
 				"result":             result,
 				"authenticated_data": authenticated,
-				"resolver":           chosenServer,
+				"resolver":           chosenServer.host,
 			}).Observe(rtt.Seconds())
 			ch <- dnsResp{m: rsp, err: err}
 		}()
@@ -330,19 +352,19 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 				dnsClient.timeoutCounter.With(prometheus.Labels{
 					"qtype":    qtypeStr,
 					"type":     "deadline exceeded",
-					"resolver": chosenServer,
+					"resolver": chosenServer.host,
 				}).Inc()
 			} else if ctx.Err() == context.Canceled {
 				dnsClient.timeoutCounter.With(prometheus.Labels{
 					"qtype":    qtypeStr,
 					"type":     "canceled",
-					"resolver": chosenServer,
+					"resolver": chosenServer.host,
 				}).Inc()
 			} else {
 				dnsClient.timeoutCounter.With(prometheus.Labels{
 					"qtype":    qtypeStr,
 					"type":     "unknown",
-					"resolver": chosenServer,
+					"resolver": chosenServer.host,
 				}).Inc()
 			}
 			err = ctx.Err()
@@ -366,7 +388,7 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 					dnsClient.timeoutCounter.With(prometheus.Labels{
 						"qtype":    qtypeStr,
 						"type":     "out of retries",
-						"resolver": chosenServer,
+						"resolver": chosenServer.host,
 					}).Inc()
 				}
 			}
