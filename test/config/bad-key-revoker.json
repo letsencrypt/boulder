@@ -1,7 +1,7 @@
 {
     "BadKeyRevoker": {
         "dbConnectFile": "test/secrets/badkeyrevoker_dburl",
-        "maxDBConns": 10,
+        "maxOpenConns": 10,
         "debugAddr": ":8020",
         "tls": {
             "caCertFile": "test/grpc-creds/minica.pem",

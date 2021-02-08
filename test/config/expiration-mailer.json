@@ -6,7 +6,7 @@
     "from": "Expiry bot <test@example.com>",
     "passwordFile": "test/secrets/smtp_password",
     "dbConnectFile": "test/secrets/mailer_dburl",
-    "maxDBConns": 10,
+    "maxOpenConns": 10,
     "nagTimes": ["24h", "72h", "168h", "336h"],
     "nagCheckInterval": "24h",
     "emailTemplate": "test/example-expiration-template",

@@ -374,7 +374,7 @@ func main() {
 	saDbURL, err := config.CertChecker.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{
-		MaxOpenConns:    config.CertChecker.DBConfig.GetMaxOpenConns(),
+		MaxOpenConns:    config.CertChecker.DBConfig.MaxOpenConns,
 		MaxIdleConns:    config.CertChecker.DBConfig.MaxIdleConns,
 		ConnMaxLifetime: config.CertChecker.DBConfig.ConnMaxLifetime.Duration,
 		ConnMaxIdleTime: config.CertChecker.DBConfig.ConnMaxIdleTime.Duration,

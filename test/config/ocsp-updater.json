@@ -1,7 +1,7 @@
 {
   "ocspUpdater": {
     "dbConnectFile": "test/secrets/ocsp_updater_dburl",
-    "maxDBConns": 10,
+    "maxOpenConns": 10,
     "oldOCSPWindow": "2s",
     "oldOCSPBatchSize": 5000,
     "parallelGenerateOCSPRequests": 10,

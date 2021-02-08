@@ -76,7 +76,7 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *db.Wrappe
 	dbURL, err := c.Revoker.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{
-		MaxOpenConns:    c.Revoker.DBConfig.GetMaxOpenConns(),
+		MaxOpenConns:    c.Revoker.DBConfig.MaxOpenConns,
 		MaxIdleConns:    c.Revoker.DBConfig.MaxIdleConns,
 		ConnMaxLifetime: c.Revoker.DBConfig.ConnMaxLifetime.Duration,
 		ConnMaxIdleTime: c.Revoker.DBConfig.ConnMaxIdleTime.Duration,

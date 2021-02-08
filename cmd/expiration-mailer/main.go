@@ -478,7 +478,7 @@ func main() {
 	dbURL, err := c.Mailer.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{
-		MaxOpenConns:    c.Mailer.DBConfig.GetMaxOpenConns(),
+		MaxOpenConns:    c.Mailer.DBConfig.MaxOpenConns,
 		MaxIdleConns:    c.Mailer.DBConfig.MaxIdleConns,
 		ConnMaxLifetime: c.Mailer.DBConfig.ConnMaxLifetime.Duration,
 		ConnMaxIdleTime: c.Mailer.DBConfig.ConnMaxIdleTime.Duration,

@@ -58,7 +58,7 @@ func main() {
 
 	saConf := c.SA
 	saDbSettings := sa.DbSettings{
-		MaxOpenConns:    saConf.DBConfig.GetMaxOpenConns(),
+		MaxOpenConns:    saConf.DBConfig.MaxOpenConns,
 		MaxIdleConns:    saConf.DBConfig.MaxIdleConns,
 		ConnMaxLifetime: saConf.DBConfig.ConnMaxLifetime.Duration,
 		ConnMaxIdleTime: saConf.DBConfig.ConnMaxIdleTime.Duration,

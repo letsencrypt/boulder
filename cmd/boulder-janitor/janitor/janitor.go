@@ -68,7 +68,7 @@ func New(clk clock.Clock, config JanitorConfig) (*Janitor, error) {
 		return nil, err
 	}
 	dbSettings := sa.DbSettings{
-		MaxOpenConns:    config.DBConfig.GetMaxOpenConns(),
+		MaxOpenConns:    config.DBConfig.MaxOpenConns,
 		MaxIdleConns:    config.DBConfig.MaxIdleConns,
 		ConnMaxLifetime: config.DBConfig.ConnMaxLifetime.Duration,
 		ConnMaxIdleTime: config.DBConfig.ConnMaxIdleTime.Duration,

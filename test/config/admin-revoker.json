@@ -1,7 +1,7 @@
 {
   "revoker": {
     "dbConnectFile": "test/secrets/revoker_dburl",
-    "maxDBConns": 1,
+    "maxOpenConns": 1,
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/admin-revoker.boulder/cert.pem",
