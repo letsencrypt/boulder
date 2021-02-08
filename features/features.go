@@ -13,6 +13,7 @@ const (
 	unused FeatureFlag = iota // unused is used for testing
 	//   Deprecated features, these can be removed once stripped from production configs
 	PrecertificateRevocation
+	StripDefaultSchemePort
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -33,9 +34,6 @@ const (
 	// V1DisableNewValidations disables validations for new domain names in the V1
 	// API.
 	V1DisableNewValidations
-	// StripDefaultSchemePort enables stripping of default scheme ports from HTTP
-	// request Host headers
-	StripDefaultSchemePort
 	// StoreIssuerInfo enables storage of information identifying the issuer of
 	// a certificate in the certificateStatus table.
 	StoreIssuerInfo
