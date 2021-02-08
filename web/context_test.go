@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -84,8 +83,6 @@ func (hhh hostHeaderHandler) ServeHTTP(e *RequestEvent, w http.ResponseWriter, r
 }
 
 func TestHostHeaderRewrite(t *testing.T) {
-	defer features.Reset()
-
 	mockLog := blog.UseMock()
 	hhh := hostHeaderHandler{f: func(_ *RequestEvent, _ http.ResponseWriter, r *http.Request) {
 		t.Helper()

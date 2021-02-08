@@ -39,6 +39,7 @@
       }
     },
     "features": {
+      "StripDefaultSchemePort": true
     }
   },
 
