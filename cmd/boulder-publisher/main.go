@@ -13,6 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/publisher"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 )
@@ -21,15 +22,22 @@ type config struct {
 	Publisher struct {
 		cmd.ServiceConfig
 		Features map[string]bool
+
 		// If this is non-zero, profile blocking events such that one even is
 		// sampled every N nanoseconds.
 		// https://golang.org/pkg/runtime/#SetBlockProfileRate
 		BlockProfileRate int
 		UserAgent        string
+
+		// Chains is a list of lists of certificate filenames. Each inner list is
+		// a chain, starting with the issuing intermediate, followed by one or
+		// more additional certificates, up to and including a root.
+		Chains [][]string
 	}
 
 	Syslog cmd.SyslogConfig
 
+	// TODO(5269): Remove this after all configs have migrated to `Chains`.
 	Common struct {
 		CT struct {
 			IntermediateBundleFilename string
@@ -69,15 +77,29 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	if c.Common.CT.IntermediateBundleFilename == "" {
-		logger.AuditErr("No CT submission bundle provided")
+	// TODO(5269): Refactor this after all configs have migrated to `Chains`.
+	if c.Common.CT.IntermediateBundleFilename == "" && c.Publisher.Chains == nil {
+		logger.AuditErr("No CT submission bundle file or chain files provided")
 		os.Exit(1)
 	}
-	pemBundle, err := core.LoadCertBundle(c.Common.CT.IntermediateBundleFilename)
-	cmd.FailOnError(err, "Failed to load CT submission bundle")
-	bundle := []ct.ASN1Cert{}
-	for _, cert := range pemBundle {
-		bundle = append(bundle, ct.ASN1Cert{Data: cert.Raw})
+
+	bundles := make(map[issuance.IssuerNameID][]ct.ASN1Cert)
+	if len(c.Publisher.Chains) > 0 {
+		for _, files := range c.Publisher.Chains {
+			chain, err := issuance.LoadChain(files)
+			cmd.FailOnError(err, "failed to load chain.")
+			issuer := chain[0]
+			id := issuer.NameID()
+			bundles[id] = publisher.GetCTBundleForChain(chain)
+		}
+	} else {
+		// TODO(5269): Remove this after all configs have migrated to
+		// `Chains`.
+		certs, err := core.LoadCertBundle(c.Common.CT.IntermediateBundleFilename)
+		cmd.FailOnError(err, "failed to load certs from PEM file")
+		issuer := &issuance.Certificate{Certificate: certs[0]}
+		id := issuer.NameID()
+		bundles[id] = publisher.GetCTBundleForCerts(certs)
 	}
 
 	tlsConfig, err := c.Publisher.TLS.Load()
@@ -85,11 +107,7 @@ func main() {
 
 	clk := cmd.Clock()
 
-	pubi := publisher.New(
-		bundle,
-		c.Publisher.UserAgent,
-		logger,
-		scope)
+	pubi := publisher.New(bundles, c.Publisher.UserAgent, logger, scope)
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	grpcSrv, l, err := bgrpc.NewServer(c.Publisher.GRPC, tlsConfig, serverMetrics, clk)
