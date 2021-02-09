@@ -1760,11 +1760,7 @@ type mockSAWithCert struct {
 	status core.OCSPStatus
 }
 
-func newMockSAWithCert(t *testing.T, sa core.StorageGetter, valid bool) *mockSAWithCert {
-	status := core.OCSPStatusGood
-	if valid == false {
-		status = core.OCSPStatusRevoked
-	}
+func newMockSAWithCert(t *testing.T, sa core.StorageGetter, status core.OCSPStatus) *mockSAWithCert {
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
 	test.AssertNotError(t, err, "Failed to load test cert")
 	return &mockSAWithCert{sa, cert, status}
@@ -1799,7 +1795,7 @@ func (sa *mockSAWithCert) GetCertificateStatus(_ context.Context, serial string)
 
 func TestGetCertificate(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, true)
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
 	mux := wfe.Handler(metrics.NoopRegisterer)
 
 	makeGet := func(path string) *http.Request {
@@ -2148,7 +2144,7 @@ func TestGetCertificateNew(t *testing.T) {
 // body from being sent like the net/http Server's actually do.
 func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, true)
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
 
 	certPemBytes, _ := ioutil.ReadFile("../test/hierarchy/ee-r3.cert.pem")
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
@@ -2873,7 +2869,7 @@ func makeRevokeRequestJSONForCert(der []byte, reason *revocation.Reason) ([]byte
 // key.
 func TestRevokeCertificateValid(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, true)
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
 
 	keyPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-r3.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
@@ -2895,7 +2891,7 @@ func TestRevokeCertificateValid(t *testing.T) {
 // wasn't issued by any issuer the Boulder is aware of.
 func TestRevokeCertificateNotIssued(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, true)
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
 
 	// Make a self-signed junk certificate
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -2931,7 +2927,7 @@ func TestRevokeCertificateNotIssued(t *testing.T) {
 
 func TestRevokeCertificateReasons(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, true)
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
 	ra := wfe.RA.(*MockRegistrationAuthority)
 
 	keyPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-r3.key.pem")
@@ -3003,7 +2999,7 @@ func TestRevokeCertificateReasons(t *testing.T) {
 // that issued the cert.
 func TestRevokeCertificateIssuingAccount(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, true)
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
 
 	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
@@ -3040,7 +3036,7 @@ func (sa mockSAWithValidAuthz) GetValidAuthorizations2(_ context.Context, _ *sap
 // that has authorizations for names in cert
 func TestRevokeCertificateWithAuthorizations(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = mockSAWithValidAuthz{newMockSAWithCert(t, wfe.SA, true)}
+	wfe.SA = mockSAWithValidAuthz{newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)}
 
 	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
@@ -3061,7 +3057,7 @@ func TestRevokeCertificateWithAuthorizations(t *testing.T) {
 // A revocation request signed by an unauthorized key.
 func TestRevokeCertificateWrongKey(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, true)
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
 
 	test2JWK := loadKey(t, []byte(test2KeyPrivatePEM))
 
@@ -3080,7 +3076,7 @@ func TestRevokeCertificateWrongKey(t *testing.T) {
 
 func TestRevokeCertificateExpired(t *testing.T) {
 	wfe, fc := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, true)
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
 
 	keyPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-r3.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
@@ -3107,7 +3103,7 @@ func TestRevokeCertificateExpired(t *testing.T) {
 // Valid revocation request for already-revoked cert
 func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, false)
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusRevoked)
 
 	responseWriter := httptest.NewRecorder()
 
@@ -3471,7 +3467,7 @@ func TestGETAPIChallenge(t *testing.T) {
 
 func TestGetAPIAndMandatoryPOSTAsGET(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, true)
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
