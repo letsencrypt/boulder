@@ -1601,8 +1601,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 			// server error.
 			wfe.sendError(response, logEvent, probs.ServerInternal(
 				fmt.Sprintf(
-					"Certificate serial %#v has an unknown IssuerNameID %q"+
-						"- no PEM certificate chain associated.",
+					"Certificate serial %#v has an unknown IssuerNameID %d - no PEM certificate chain associated.",
 					serial,
 					issuerNameID),
 			), nil)
@@ -1621,8 +1620,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		if err != nil {
 			wfe.sendError(response, logEvent, probs.ServerInternal(
 				fmt.Sprintf(
-					"Certificate serial %#v has a signature which cannot be verified "+
-						"from issuer %q.",
+					"Certificate serial %#v has a signature which cannot be verified from issuer %d.",
 					serial,
 					issuerNameID),
 			), nil)
