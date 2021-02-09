@@ -327,30 +327,38 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	fc := clock.NewFake()
 	stats := metrics.NoopRegisterer
 
-	chainPEM, err := ioutil.ReadFile("../test/test-ca2.pem")
-	test.AssertNotError(t, err, "Unable to read ../test/test-ca2.pem")
-	chainDER, _ := pem.Decode(chainPEM)
-
-	chainCrossPEM, err := ioutil.ReadFile("../test/test-ca2-cross.pem")
-	test.AssertNotError(t, err, "Unable to read ../test/test-ca2-cross.pem")
-
-	certChains := map[issuance.IssuerNameID][][]byte{
-		// The real IssuerNameID of test-ca2
-		issuance.IssuerNameID(18337263084599622): {
-			append([]byte{'\n'}, chainPEM...),
-			append([]byte{'\n'}, chainCrossPEM...),
+	certChains := map[issuance.IssuerNameID][][]byte{}
+	issuerCertificates := map[issuance.IssuerNameID]*issuance.Certificate{}
+	for _, files := range [][]string{
+		{
+			"../test/hierarchy/int-r3.cert.pem",
+			"../test/hierarchy/root-x1.cert.pem",
 		},
-		// The IssuerNameID of wfe2/test/178.pem, pretending to be part of a real chain.
-		issuance.IssuerNameID(66191037641995744): {
-			append([]byte{'\n'}, chainPEM...),
-			append([]byte{'\n'}, chainCrossPEM...),
+		{
+			"../test/hierarchy/int-r3-cross.cert.pem",
+			"../test/hierarchy/root-dst.cert.pem",
 		},
-	}
-	issuerCert, err := x509.ParseCertificate(chainDER.Bytes)
-	test.AssertNotError(t, err, "Unable to parse issuer cert")
-	issuerCertificates := map[issuance.IssuerNameID]*issuance.Certificate{
-		issuance.IssuerNameID(18337263084599622): {Certificate: issuerCert},
-		issuance.IssuerNameID(66191037641995744): {Certificate: issuerCert},
+		{
+			"../test/hierarchy/int-e1.cert.pem",
+			"../test/hierarchy/root-x2.cert.pem",
+		},
+		{
+			"../test/hierarchy/int-e1.cert.pem",
+			"../test/hierarchy/root-x2-cross.cert.pem",
+			"../test/hierarchy/root-x1-cross.cert.pem",
+			"../test/hierarchy/root-dst.cert.pem",
+		},
+	} {
+		certs, err := issuance.LoadChain(files)
+		test.AssertNotError(t, err, "Unable to load chain")
+		var buf bytes.Buffer
+		for _, cert := range certs {
+			buf.Write([]byte("\n"))
+			buf.Write(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}))
+		}
+		id := certs[0].NameID()
+		certChains[id] = append(certChains[id], buf.Bytes())
+		issuerCertificates[id] = certs[0]
 	}
 
 	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, certChains, issuerCertificates, nil, nil, blog.NewMock(), 10*time.Second, 30*24*time.Hour, 7*24*time.Hour)
@@ -1746,8 +1754,48 @@ func TestAccount(t *testing.T) {
 	}`)
 }
 
+type mockSAWithCert struct {
+	core.StorageGetter
+	cert   *x509.Certificate
+	status core.OCSPStatus
+}
+
+func newMockSAWithCert(t *testing.T, sa core.StorageGetter, status core.OCSPStatus) *mockSAWithCert {
+	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
+	test.AssertNotError(t, err, "Failed to load test cert")
+	return &mockSAWithCert{sa, cert, status}
+}
+
+// GetCertificate returns the mock SA's hard-coded certificate, issued by the
+// account with regID 1, if the given serial matches. Otherwise, returns not found.
+func (sa *mockSAWithCert) GetCertificate(_ context.Context, serial string) (core.Certificate, error) {
+	if serial != core.SerialToString(sa.cert.SerialNumber) {
+		return core.Certificate{}, berrors.NotFoundError("Certificate with serial %q not found", serial)
+	}
+
+	return core.Certificate{
+		RegistrationID: 1,
+		Serial:         core.SerialToString(sa.cert.SerialNumber),
+		DER:            sa.cert.Raw,
+	}, nil
+}
+
+// GetCertificateStatus returns the mock SA's status, if the given serial matches.
+// Otherwise, returns not found.
+func (sa *mockSAWithCert) GetCertificateStatus(_ context.Context, serial string) (core.CertificateStatus, error) {
+	if serial != core.SerialToString(sa.cert.SerialNumber) {
+		return core.CertificateStatus{}, berrors.NotFoundError("Status for certificate with serial %q not found", serial)
+	}
+
+	return core.CertificateStatus{
+		Serial: core.SerialToString(sa.cert.SerialNumber),
+		Status: sa.status,
+	}, nil
+}
+
 func TestGetCertificate(t *testing.T) {
 	wfe, _ := setupWFE(t)
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
 	mux := wfe.Handler(metrics.NoopRegisterer)
 
 	makeGet := func(path string) *http.Request {
@@ -1763,19 +1811,19 @@ func TestGetCertificate(t *testing.T) {
 	_, ok := altKey.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 
-	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
+	certPemBytes, _ := ioutil.ReadFile("../test/hierarchy/ee-r3.cert.pem")
+	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
+	test.AssertNotError(t, err, "failed to load test certificate")
+
+	chainPemBytes, err := ioutil.ReadFile("../test/hierarchy/int-r3.cert.pem")
+	test.AssertNotError(t, err, "Error reading ../test/hierarchy/int-r3.cert.pem")
+
+	chainCrossPemBytes, err := ioutil.ReadFile("../test/hierarchy/int-r3-cross.cert.pem")
+	test.AssertNotError(t, err, "Error reading ../test/hierarchy/int-r3-cross.cert.pem")
+
+	reqPath := fmt.Sprintf("/acme/cert/%s", core.SerialToString(cert.SerialNumber))
 	pkixContent := "application/pem-certificate-chain"
-
-	chainPemBytes, err := ioutil.ReadFile("../test/test-ca2.pem")
-	test.AssertNotError(t, err, "Error reading ../test/test-ca2.pem")
-
-	chainCrossPemBytes, err := ioutil.ReadFile("../test/test-ca2-cross.pem")
-	test.AssertNotError(t, err, "Error reading ../test/test-ca2-cross.pem")
-
 	noCache := "public, max-age=0, no-cache"
-	newSerial := "/acme/cert/0000000000000000000000000000000000b3"
-	newGetSerial := "/get/cert/0000000000000000000000000000000000b3"
-	goodSerial := "/acme/cert/0000000000000000000000000000000000b2"
 	notFound := `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Certificate not found","status":404}`
 
 	testCases := []struct {
@@ -1790,17 +1838,17 @@ func TestGetCertificate(t *testing.T) {
 	}{
 		{
 			Name:           "Valid serial",
-			Request:        makeGet(goodSerial),
+			Request:        makeGet(reqPath),
 			ExpectedStatus: http.StatusOK,
 			ExpectedHeaders: map[string]string{
 				"Content-Type": pkixContent,
 			},
 			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainPemBytes...)...),
-			ExpectedLink: fmt.Sprintf(`<http://localhost%s/1>;rel="alternate"`, goodSerial),
+			ExpectedLink: fmt.Sprintf(`<http://localhost%s/1>;rel="alternate"`, reqPath),
 		},
 		{
 			Name:           "Valid serial, POST-as-GET",
-			Request:        makePost(1, nil, goodSerial, ""),
+			Request:        makePost(1, nil, reqPath, ""),
 			ExpectedStatus: http.StatusOK,
 			ExpectedHeaders: map[string]string{
 				"Content-Type": pkixContent,
@@ -1809,7 +1857,7 @@ func TestGetCertificate(t *testing.T) {
 		},
 		{
 			Name:           "Valid serial, bad POST-as-GET",
-			Request:        makePost(1, nil, goodSerial, "{}"),
+			Request:        makePost(1, nil, reqPath, "{}"),
 			ExpectedStatus: http.StatusBadRequest,
 			ExpectedBody: `{
 				"type": "urn:ietf:params:acme:error:malformed",
@@ -1819,7 +1867,7 @@ func TestGetCertificate(t *testing.T) {
 		},
 		{
 			Name:           "Valid serial, POST-as-GET from wrong account",
-			Request:        makePost(2, altKey, goodSerial, ""),
+			Request:        makePost(2, altKey, reqPath, ""),
 			ExpectedStatus: http.StatusForbidden,
 			ExpectedBody: `{
 				"type": "urn:ietf:params:acme:error:unauthorized",
@@ -1829,19 +1877,9 @@ func TestGetCertificate(t *testing.T) {
 		},
 		{
 			Name:           "Unused serial, no cache",
-			Request:        makeGet("/acme/cert/0000000000000000000000000000000000ff"),
+			Request:        makeGet("/acme/cert/000000000000000000000000000000000001"),
 			ExpectedStatus: http.StatusNotFound,
 			ExpectedBody:   notFound,
-		},
-		{
-			Name:           "Internal server error, no cache",
-			Request:        makeGet("/acme/cert/000000000000000000000000000000626164"),
-			ExpectedStatus: http.StatusInternalServerError,
-			ExpectedBody: `{
-				"type": "urn:ietf:params:acme:error:serverInternal",
-				"status": 500,
-				"detail": "Failed to retrieve certificate"
-			}`,
 		},
 		{
 			Name:           "Invalid serial, no cache",
@@ -1856,62 +1894,34 @@ func TestGetCertificate(t *testing.T) {
 			ExpectedBody:   notFound,
 		},
 		{
-			Name:           "New cert",
-			Request:        makeGet(newGetSerial),
-			ExpectedStatus: http.StatusForbidden,
-			ExpectedBody: `{
-				"type": "` + probs.V2ErrorNS + `unauthorized",
-				"detail": "Certificate is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago",
-				"status": 403
-			}`,
-		},
-		{
-			Name:           "New cert, old endpoint",
-			Request:        makeGet(newSerial),
-			ExpectedStatus: http.StatusOK,
-			ExpectedHeaders: map[string]string{
-				"Content-Type": pkixContent,
-			},
-			AnyCert: true,
-		},
-		{
-			Name:           "New cert, POST-as-GET",
-			Request:        makePost(1, nil, newSerial, ""),
-			ExpectedStatus: http.StatusOK,
-			ExpectedHeaders: map[string]string{
-				"Content-Type": pkixContent,
-			},
-			AnyCert: true,
-		},
-		{
 			Name:           "Valid serial (explicit default chain)",
-			Request:        makeGet(goodSerial + "/0"),
+			Request:        makeGet(reqPath + "/0"),
 			ExpectedStatus: http.StatusOK,
 			ExpectedHeaders: map[string]string{
 				"Content-Type": pkixContent,
 			},
-			ExpectedLink: fmt.Sprintf(`<http://localhost%s/1>;rel="alternate"`, goodSerial),
+			ExpectedLink: fmt.Sprintf(`<http://localhost%s/1>;rel="alternate"`, reqPath),
 			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainPemBytes...)...),
 		},
 		{
 			Name:           "Valid serial (explicit alternate chain)",
-			Request:        makeGet(goodSerial + "/1"),
+			Request:        makeGet(reqPath + "/1"),
 			ExpectedStatus: http.StatusOK,
 			ExpectedHeaders: map[string]string{
 				"Content-Type": pkixContent,
 			},
-			ExpectedLink: fmt.Sprintf(`<http://localhost%s/0>;rel="alternate"`, goodSerial),
+			ExpectedLink: fmt.Sprintf(`<http://localhost%s/0>;rel="alternate"`, reqPath),
 			ExpectedCert: append(certPemBytes, append([]byte("\n"), chainCrossPemBytes...)...),
 		},
 		{
 			Name:           "Valid serial (explicit non-existent alternate chain)",
-			Request:        makeGet(goodSerial + "/2"),
+			Request:        makeGet(reqPath + "/2"),
 			ExpectedStatus: http.StatusNotFound,
 			ExpectedBody:   `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Unknown issuance chain","status":404}`,
 		},
 		{
 			Name:           "Valid serial (explicit negative alternate chain)",
-			Request:        makeGet(goodSerial + "/-1"),
+			Request:        makeGet(reqPath + "/-1"),
 			ExpectedStatus: http.StatusBadRequest,
 			ExpectedBody:   `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Chain ID must be a non-negative integer","status":400}`,
 		},
@@ -1984,14 +1994,165 @@ func TestGetCertificate(t *testing.T) {
 	}
 }
 
+type mockSAWithNewCert struct {
+	core.StorageGetter
+	clk clock.Clock
+}
+
+func (sa *mockSAWithNewCert) GetCertificate(_ context.Context, serial string) (core.Certificate, error) {
+	issuer, err := core.LoadCert("../test/hierarchy/int-e1.cert.pem")
+	if err != nil {
+		return core.Certificate{}, fmt.Errorf("failed to load test issuer cert: %w", err)
+	}
+
+	issuerKeyPem, err := ioutil.ReadFile("../test/hierarchy/int-e1.key.pem")
+	if err != nil {
+		return core.Certificate{}, fmt.Errorf("failed to load test issuer key: %w", err)
+	}
+	issuerKey := loadKey(&testing.T{}, issuerKeyPem)
+
+	newKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return core.Certificate{}, fmt.Errorf("failed to create test key: %w", err)
+	}
+
+	sn, err := core.StringToSerial(serial)
+	if err != nil {
+		return core.Certificate{}, fmt.Errorf("failed to parse test serial: %w", err)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber: sn,
+		DNSNames:     []string{"new.ee.boulder.test"},
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, issuer, &newKey.PublicKey, issuerKey)
+	if err != nil {
+		return core.Certificate{}, fmt.Errorf("failed to issue test cert: %w", err)
+	}
+
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		return core.Certificate{}, fmt.Errorf("failed to parse test cert: %w", err)
+	}
+
+	return core.Certificate{
+		RegistrationID: 1,
+		Serial:         core.SerialToString(cert.SerialNumber),
+		Issued:         sa.clk.Now().Add(-1 * time.Second),
+		DER:            cert.Raw,
+	}, nil
+}
+
+// TestGetCertificateNew tests for the case when the certificate is new (by
+// dynamically generating it at test time), and therefore isn't served by the
+// GET api.
+func TestGetCertificateNew(t *testing.T) {
+	wfe, fc := setupWFE(t)
+	wfe.SA = &mockSAWithNewCert{wfe.SA, fc}
+	mux := wfe.Handler(metrics.NoopRegisterer)
+
+	makeGet := func(path string) *http.Request {
+		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"}
+	}
+
+	makePost := func(keyID int64, key interface{}, path, body string) *http.Request {
+		_, _, jwsBody := signRequestKeyID(t, keyID, key, fmt.Sprintf("http://localhost%s", path), body, wfe.nonceService)
+		return makePostRequestWithPath(path, jwsBody)
+	}
+
+	altKey := loadKey(t, []byte(test2KeyPrivatePEM))
+	_, ok := altKey.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+
+	pkixContent := "application/pem-certificate-chain"
+	noCache := "public, max-age=0, no-cache"
+
+	testCases := []struct {
+		Name            string
+		Request         *http.Request
+		ExpectedStatus  int
+		ExpectedHeaders map[string]string
+		ExpectedBody    string
+	}{
+		{
+			Name:           "Get",
+			Request:        makeGet("/get/cert/000000000000000000000000000000000001"),
+			ExpectedStatus: http.StatusForbidden,
+			ExpectedBody: `{
+				"type": "` + probs.V2ErrorNS + `unauthorized",
+				"detail": "Certificate is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago",
+				"status": 403
+			}`,
+		},
+		{
+			Name:           "ACME Get",
+			Request:        makeGet("/acme/cert/000000000000000000000000000000000002"),
+			ExpectedStatus: http.StatusOK,
+			ExpectedHeaders: map[string]string{
+				"Content-Type": pkixContent,
+			},
+		},
+		{
+			Name:           "ACME POST-as-GET",
+			Request:        makePost(1, nil, "/acme/cert/000000000000000000000000000000000003", ""),
+			ExpectedStatus: http.StatusOK,
+			ExpectedHeaders: map[string]string{
+				"Content-Type": pkixContent,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			responseWriter := httptest.NewRecorder()
+			mockLog := wfe.log.(*blog.Mock)
+			mockLog.Clear()
+
+			// Mux a request for a certificate
+			mux.ServeHTTP(responseWriter, tc.Request)
+			headers := responseWriter.Header()
+
+			// Assert that the status code written is as expected
+			test.AssertEquals(t, responseWriter.Code, tc.ExpectedStatus)
+
+			// All of the responses should have the correct cache control header
+			test.AssertEquals(t, headers.Get("Cache-Control"), noCache)
+
+			// If the test cases expects additional headers, check those too
+			for h, v := range tc.ExpectedHeaders {
+				test.AssertEquals(t, headers.Get(h), v)
+			}
+
+			// If we're expecting a particular body (because of an error), check that.
+			if tc.ExpectedBody != "" {
+				body := responseWriter.Body.String()
+				test.AssertUnmarshaledEquals(t, body, tc.ExpectedBody)
+
+				// Unsuccessful requests should be logged as such
+				reqlogs := mockLog.GetAllMatching(fmt.Sprintf(`INFO: [^ ]+ [^ ]+ [^ ]+ %d .*`, tc.ExpectedStatus))
+				if len(reqlogs) != 1 {
+					t.Errorf("Didn't find info logs with code %d. Instead got:\n%s\n",
+						tc.ExpectedStatus, strings.Join(mockLog.GetAllMatching(`.*`), "\n"))
+				}
+			}
+		})
+	}
+}
+
 // This uses httptest.NewServer because ServeMux.ServeHTTP won't prevent the
 // body from being sent like the net/http Server's actually do.
 func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	wfe, _ := setupWFE(t)
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
 
-	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
-	chainPemBytes, _ := ioutil.ReadFile("../test/test-ca2.pem")
-	chain := fmt.Sprintf("%s\n%s", string(chainPemBytes), string(certPemBytes))
+	certPemBytes, _ := ioutil.ReadFile("../test/hierarchy/ee-r3.cert.pem")
+	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
+	test.AssertNotError(t, err, "failed to load test certificate")
+
+	chainPemBytes, err := ioutil.ReadFile("../test/hierarchy/int-r3.cert.pem")
+	test.AssertNotError(t, err, "Error reading ../test/hierarchy/int-r3.cert.pem")
+	chain := fmt.Sprintf("%s\n%s", string(certPemBytes), string(chainPemBytes))
 	chainLen := strconv.Itoa(len(chain))
 
 	mockLog := wfe.log.(*blog.Mock)
@@ -2000,7 +2161,8 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	mux := wfe.Handler(metrics.NoopRegisterer)
 	s := httptest.NewServer(mux)
 	defer s.Close()
-	req, _ := http.NewRequest("HEAD", s.URL+"/acme/cert/0000000000000000000000000000000000b2", nil)
+	req, _ := http.NewRequest(
+		"HEAD", fmt.Sprintf("%s/acme/cert/%s", s.URL, core.SerialToString(cert.SerialNumber)), nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		test.AssertNotError(t, err, "do error")
@@ -2016,6 +2178,44 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	test.AssertEquals(t, resp.StatusCode, 200)
 	test.AssertEquals(t, chainLen, resp.Header.Get("Content-Length"))
 	test.AssertEquals(t, 0, len(body))
+}
+
+type mockSAWithError struct {
+	core.StorageGetter
+}
+
+func (sa *mockSAWithError) GetCertificate(_ context.Context, serial string) (core.Certificate, error) {
+	return core.Certificate{}, errors.New("Oops")
+}
+
+func TestGetCertificateServerError(t *testing.T) {
+	// TODO: add tests for failure to parse the retrieved cert, a cert whose
+	// IssuerNameID is unknown, and a cert whose signature can't be verified.
+	wfe, _ := setupWFE(t)
+	wfe.SA = &mockSAWithError{wfe.SA}
+	mux := wfe.Handler(metrics.NoopRegisterer)
+
+	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
+	test.AssertNotError(t, err, "failed to load test certificate")
+
+	reqPath := fmt.Sprintf("/acme/cert/%s", core.SerialToString(cert.SerialNumber))
+	req := &http.Request{URL: &url.URL{Path: reqPath}, Method: "GET"}
+
+	// Mux a request for a certificate
+	responseWriter := httptest.NewRecorder()
+	mux.ServeHTTP(responseWriter, req)
+
+	test.AssertEquals(t, responseWriter.Code, http.StatusInternalServerError)
+
+	noCache := "public, max-age=0, no-cache"
+	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), noCache)
+
+	body := `{
+		"type": "urn:ietf:params:acme:error:serverInternal",
+		"status": 500,
+		"detail": "Failed to retrieve certificate"
+	}`
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), body)
 }
 
 func newRequestEvent() *web.RequestEvent {
@@ -2639,7 +2839,7 @@ func TestGetOrder(t *testing.T) {
 }
 
 func makeRevokeRequestJSON(reason *revocation.Reason) ([]byte, error) {
-	certPemBytes, err := ioutil.ReadFile("../test/test-ee.pem")
+	certPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-r3.cert.pem")
 	if err != nil {
 		return nil, err
 	}
@@ -2665,49 +2865,13 @@ func makeRevokeRequestJSONForCert(der []byte, reason *revocation.Reason) ([]byte
 	return revokeRequestJSON, nil
 }
 
-const testEESerial string = "000000000000000000004f6fc1b8ffe37a23"
-
-type mockSAWithValidCert struct {
-	core.StorageGetter
-}
-
-// GetCertificate returns a hard-coded cert (test-ee.pem) which was issued by
-// account 1 if the requested serial matches; otherwise returns not found.
-func (sa *mockSAWithValidCert) GetCertificate(_ context.Context, serial string) (core.Certificate, error) {
-	if serial != testEESerial {
-		return core.Certificate{}, berrors.NotFoundError("Certificate with serial %q not found", serial)
-	}
-
-	cert, err := core.LoadCert("../test/test-ee.pem")
-	if err != nil {
-		return core.Certificate{}, fmt.Errorf("Failed to load test cert: %w", err)
-	}
-
-	return core.Certificate{
-		RegistrationID: 1,
-		Serial:         core.SerialToString(cert.SerialNumber),
-		DER:            cert.Raw,
-	}, nil
-}
-
-func (sa *mockSAWithValidCert) GetCertificateStatus(_ context.Context, serial string) (core.CertificateStatus, error) {
-	if serial != testEESerial {
-		return core.CertificateStatus{}, berrors.NotFoundError("Status for certificate with serial %q not found", serial)
-	}
-
-	return core.CertificateStatus{
-		Serial: testEESerial,
-		Status: core.OCSPStatusGood,
-	}, nil
-}
-
 // Valid revocation request for existing, non-revoked cert, signed with cert
 // key.
 func TestRevokeCertificateValid(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = &mockSAWithValidCert{wfe.SA}
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
 
-	keyPemBytes, err := ioutil.ReadFile("../test/test-ee.key")
+	keyPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-r3.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
 	key := loadKey(t, keyPemBytes)
 
@@ -2727,7 +2891,7 @@ func TestRevokeCertificateValid(t *testing.T) {
 // wasn't issued by any issuer the Boulder is aware of.
 func TestRevokeCertificateNotIssued(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = &mockSAWithValidCert{wfe.SA}
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
 
 	// Make a self-signed junk certificate
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -2736,15 +2900,15 @@ func TestRevokeCertificateNotIssued(t *testing.T) {
 	// This ensures that any failures here are due to the certificate's issuer
 	// not matching up with issuers known by the mock, rather than due to the
 	// certificate's serial not matching up with serials known by the mock.
-	knownSerial, err := core.StringToSerial(testEESerial)
-	test.AssertNotError(t, err, "Unexpected error converting known serial to bigint")
+	knownCert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
+	test.AssertNotError(t, err, "Unexpected error loading test cert")
 	template := &x509.Certificate{
-		SerialNumber: knownSerial,
+		SerialNumber: knownCert.SerialNumber,
 	}
 	certDER, err := x509.CreateCertificate(rand.Reader, template, template, k.Public(), k)
 	test.AssertNotError(t, err, "Unexpected error creating self-signed junk cert")
 
-	keyPemBytes, err := ioutil.ReadFile("../test/test-ee.key")
+	keyPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-r3.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
 	key := loadKey(t, keyPemBytes)
 
@@ -2763,10 +2927,10 @@ func TestRevokeCertificateNotIssued(t *testing.T) {
 
 func TestRevokeCertificateReasons(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = &mockSAWithValidCert{wfe.SA}
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
 	ra := wfe.RA.(*MockRegistrationAuthority)
 
-	keyPemBytes, err := ioutil.ReadFile("../test/test-ee.key")
+	keyPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-r3.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
 	key := loadKey(t, keyPemBytes)
 
@@ -2835,7 +2999,7 @@ func TestRevokeCertificateReasons(t *testing.T) {
 // that issued the cert.
 func TestRevokeCertificateIssuingAccount(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = &mockSAWithValidCert{wfe.SA}
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
 
 	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
@@ -2853,18 +3017,16 @@ func TestRevokeCertificateIssuingAccount(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Body.String(), "")
 }
 
-const testEEName string = "example.ee"
-
 type mockSAWithValidAuthz struct {
 	core.StorageGetter
 }
 
 // GetValidAuthorizations says that all accounts have a valid authorization to
-// issue for the DNS name contained in test-ee.pem
+// issue for the DNS name contained in ee-r3.cert.pem
 func (sa mockSAWithValidAuthz) GetValidAuthorizations2(_ context.Context, _ *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
 	res := sapb.Authorizations{}
 	res.Authz = append(res.Authz, &sapb.Authorizations_MapElement{
-		Domain: testEEName,
+		Domain: "ee.int-r3.boulder.test",
 		Authz:  &corepb.Authorization{},
 	})
 	return &res, nil
@@ -2874,7 +3036,7 @@ func (sa mockSAWithValidAuthz) GetValidAuthorizations2(_ context.Context, _ *sap
 // that has authorizations for names in cert
 func TestRevokeCertificateWithAuthorizations(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = mockSAWithValidAuthz{&mockSAWithValidCert{wfe.SA}}
+	wfe.SA = mockSAWithValidAuthz{newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)}
 
 	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
@@ -2895,7 +3057,7 @@ func TestRevokeCertificateWithAuthorizations(t *testing.T) {
 // A revocation request signed by an unauthorized key.
 func TestRevokeCertificateWrongKey(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = &mockSAWithValidCert{wfe.SA}
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
 
 	test2JWK := loadKey(t, []byte(test2KeyPrivatePEM))
 
@@ -2914,9 +3076,9 @@ func TestRevokeCertificateWrongKey(t *testing.T) {
 
 func TestRevokeCertificateExpired(t *testing.T) {
 	wfe, fc := setupWFE(t)
-	wfe.SA = &mockSAWithValidCert{wfe.SA}
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
 
-	keyPemBytes, err := ioutil.ReadFile("../test/test-ee.key")
+	keyPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-r3.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
 	key := loadKey(t, keyPemBytes)
 
@@ -2926,7 +3088,7 @@ func TestRevokeCertificateExpired(t *testing.T) {
 	_, _, jwsBody := signRequestEmbed(
 		t, key, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
 
-	cert, err := core.LoadCert("../test/test-ee.pem")
+	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
 	test.AssertNotError(t, err, "Failed to load test certificate")
 
 	fc.Set(cert.NotAfter.Add(time.Hour))
@@ -2938,29 +3100,14 @@ func TestRevokeCertificateExpired(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"type\": \"urn:ietf:params:acme:error:unauthorized\",\n  \"detail\": \"Certificate is expired\",\n  \"status\": 403\n}")
 }
 
-type mockSAWithRevokedCert struct {
-	core.StorageGetter
-}
-
-func (sa *mockSAWithRevokedCert) GetCertificateStatus(_ context.Context, serial string) (core.CertificateStatus, error) {
-	if serial != testEESerial {
-		return core.CertificateStatus{}, berrors.NotFoundError("Status for certificate with serial %q not found", serial)
-	}
-
-	return core.CertificateStatus{
-		Serial: testEESerial,
-		Status: core.OCSPStatusRevoked,
-	}, nil
-}
-
 // Valid revocation request for already-revoked cert
 func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = &mockSAWithRevokedCert{&mockSAWithValidCert{wfe.SA}}
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusRevoked)
 
 	responseWriter := httptest.NewRecorder()
 
-	keyPemBytes, err := ioutil.ReadFile("../test/test-ee.key")
+	keyPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-r3.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
 	key := loadKey(t, keyPemBytes)
 
@@ -3320,6 +3467,8 @@ func TestGETAPIChallenge(t *testing.T) {
 
 func TestGetAPIAndMandatoryPOSTAsGET(t *testing.T) {
 	wfe, _ := setupWFE(t)
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
+
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
 			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]interface{}{}}
@@ -3327,8 +3476,10 @@ func TestGetAPIAndMandatoryPOSTAsGET(t *testing.T) {
 	_ = features.Set(map[string]bool{"MandatoryPOSTAsGET": true})
 	defer features.Reset()
 
-	oldSerial := "0000000000000000000000000000000000b2"
-	req, event := makeGet(oldSerial, getCertPath)
+	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
+	test.AssertNotError(t, err, "failed to load test certificate")
+
+	req, event := makeGet(core.SerialToString(cert.SerialNumber), getCertPath)
 	resp := httptest.NewRecorder()
 	wfe.Certificate(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, 200)

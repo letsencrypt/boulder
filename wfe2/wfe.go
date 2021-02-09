@@ -736,7 +736,6 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		return probs.ServerInternal(
 			"unable to verify provided certificate, empty issuerCertificates")
 	}
-
 	// Try to validate the signature on the provided cert using its corresponding
 	// issuer certificate.
 	issuerNameID := issuance.GetIssuerNameID(providedCert)
@@ -1602,8 +1601,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 			// server error.
 			wfe.sendError(response, logEvent, probs.ServerInternal(
 				fmt.Sprintf(
-					"Certificate serial %#v has an unknown IssuerNameID %q"+
-						"- no PEM certificate chain associated.",
+					"Certificate serial %#v has an unknown IssuerNameID %d - no PEM certificate chain associated.",
 					serial,
 					issuerNameID),
 			), nil)
@@ -1617,8 +1615,17 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 			return
 		}
 
-		// TODO(#5225): Check that the signature on parsedCert validates from the
-		// issuer cert in the chain.
+		// Double check that the signature validates.
+		err = parsedCert.CheckSignatureFrom(wfe.issuerCertificates[issuerNameID].Certificate)
+		if err != nil {
+			wfe.sendError(response, logEvent, probs.ServerInternal(
+				fmt.Sprintf(
+					"Certificate serial %#v has a signature which cannot be verified from issuer %d.",
+					serial,
+					issuerNameID),
+			), nil)
+			return
+		}
 
 		// Prepend the chain with the leaf certificate
 		responsePEM = append(leafPEM, availableChains[requestedChain]...)
