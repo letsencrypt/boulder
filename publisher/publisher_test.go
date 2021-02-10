@@ -144,7 +144,7 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	// TODO(5269): Remove this after all configs have migrated to
 	// `Chains`.
 	chain4, err := core.LoadCertBundle("test/testIntermediate.pem")
-	test.AssertNotError(t, err, "failed to load chain3.")
+	test.AssertNotError(t, err, "failed to load chain4.")
 	chain4Issuer := issuance.Certificate{Certificate: chain4[0]}
 
 	// Create an example issuerNameID to CT bundle mapping
