@@ -410,7 +410,7 @@ func (wfe *WebFrontEndImpl) Index(ctx context.Context, logEvent *web.RequestEven
 	response.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(response, `<html>
 		<body>
-			This is an <a href="https://github.com/ietf-wg-acme/acme/">ACME</a>
+			This is an <a href="https://tools.ietf.org/html/rfc8555">ACME</a>
 			Certificate Authority running <a href="https://github.com/letsencrypt/boulder">Boulder</a>.
 			JSON directory is available at <a href="%s">%s</a>.
 		</body>
