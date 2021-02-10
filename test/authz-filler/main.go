@@ -19,7 +19,9 @@ import (
 
 type fillerConfig struct {
 	Filler struct {
-		cmd.DBConfig
+		// TODO(#5275): Remove once all configs in dev, staging and prod
+		// have been updated to contain `dbconfig` field
+		cmd.DatabaseConfig
 		Parallelism uint
 	}
 }
@@ -44,6 +46,9 @@ func main() {
 	err = json.Unmarshal(configJSON, &config)
 	cmd.FailOnError(err, "Failed to parse config")
 
+	// TODO(#5275): Remove once all configs in dev, staging and prod
+	// have been updated to contain `dbconfig` field
+	cmd.DefaultDBConfig(&config.Filler.DBConfig, &config.Filler.DatabaseConfig)
 	// Configure DB
 	dbURL, err := config.Filler.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")

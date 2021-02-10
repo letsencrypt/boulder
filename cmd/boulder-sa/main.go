@@ -17,7 +17,10 @@ import (
 type config struct {
 	SA struct {
 		cmd.ServiceConfig
-		cmd.DBConfig
+		DBConfig cmd.DBConfig
+		// TODO(#5275): Remove once all configs in dev, staging and prod
+		// have been updated to contain `dbconfig` field
+		cmd.DatabaseConfig
 
 		Features map[string]bool
 
@@ -57,6 +60,11 @@ func main() {
 	logger.Info(cmd.VersionString())
 
 	saConf := c.SA
+
+	// TODO(#5275): Remove once all configs in dev, staging and prod
+	// have been updated to contain `dbconfig` field
+	cmd.DefaultDBConfig(&saConf.DBConfig, &saConf.DatabaseConfig)
+
 	saDbSettings := sa.DbSettings{
 		MaxOpenConns:    saConf.DBConfig.MaxOpenConns,
 		MaxIdleConns:    saConf.DBConfig.MaxIdleConns,

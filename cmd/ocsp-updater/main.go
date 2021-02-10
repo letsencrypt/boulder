@@ -279,7 +279,11 @@ type config struct {
 // for the OCSP (and SCT) updater
 type OCSPUpdaterConfig struct {
 	cmd.ServiceConfig
-	cmd.DBConfig
+	DBConfig cmd.DBConfig
+
+	// TODO(#5275): Remove once all configs in dev, staging and prod
+	// have been updated to contain `dbconfig` field
+	cmd.DatabaseConfig
 
 	OldOCSPWindow    cmd.ConfigDuration
 	OldOCSPBatchSize int
@@ -341,6 +345,9 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
+	// TODO(#5275): Remove once all configs in dev, staging and prod
+	// have been updated to contain `dbconfig` field
+	cmd.DefaultDBConfig(&conf.DBConfig, &conf.DatabaseConfig)
 	// Configure DB
 	dbURL, err := conf.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")

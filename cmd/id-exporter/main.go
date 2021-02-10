@@ -145,7 +145,10 @@ func main() {
 	domainsFile := flag.String("domains", "", "If provided only output contacts for certificates that contain at least one of the domains in the provided file. Provided file should contain one domain per line")
 	type config struct {
 		ContactExporter struct {
-			cmd.DBConfig
+			DBConfig cmd.DBConfig
+			// TODO(#5275): Remove once all configs in dev, staging and prod
+			// have been updated to contain `dbconfig` field
+			cmd.DatabaseConfig
 			cmd.PasswordConfig
 			Features map[string]bool
 		}
@@ -174,6 +177,9 @@ func main() {
 	err = features.Set(cfg.ContactExporter.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
+	// TODO(#5275): Remove once all configs in dev, staging and prod
+	// have been updated to contain `dbconfig` field
+	cmd.DefaultDBConfig(&cfg.ContactExporter.DBConfig, &cfg.ContactExporter.DatabaseConfig)
 	dbURL, err := cfg.ContactExporter.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{

@@ -406,7 +406,10 @@ func main() {
 	reconnMax := flag.Duration("reconnectMax", 5*60*time.Second, "Max sleep duration between reconnect attempts after exponential backoff")
 	type config struct {
 		NotifyMailer struct {
-			cmd.DBConfig
+			DBConfig cmd.DBConfig
+			// TODO(#5275): Remove once all configs in dev, staging and prod
+			// have been updated to contain `dbconfig` field
+			cmd.DatabaseConfig
 			cmd.PasswordConfig
 			cmd.SMTPConfig
 			Features map[string]bool
@@ -439,6 +442,9 @@ func main() {
 	log := cmd.NewLogger(cfg.Syslog)
 	defer log.AuditPanic()
 
+	// TODO(#5275): Remove once all configs in dev, staging and prod
+	// have been updated to contain `dbconfig` field
+	cmd.DefaultDBConfig(&cfg.NotifyMailer.DBConfig, &cfg.NotifyMailer.DatabaseConfig)
 	dbURL, err := cfg.NotifyMailer.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{

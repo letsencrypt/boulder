@@ -15,11 +15,17 @@ func TestDBConfigURL(t *testing.T) {
 	}{
 		{
 			// Test with one config file that has no trailing newline
+			// TODO(#5275): Refactor once each component struct and all
+			// configs in dev, staging and prod have been updated to
+			// contain the named `DBConfig` field
 			conf:     DBConfig{DBConnectFile: "testdata/test_dburl"},
 			expected: "test@tcp(testhost:3306)/testDB?readTimeout=800ms&writeTimeout=800ms",
 		},
 		{
 			// Test with a config file that *has* a trailing newline
+			// TODO(#5275): Refactor once each component struct and all
+			// configs in dev, staging and prod have been updated to
+			// contain the named `DBConfig` field
 			conf:     DBConfig{DBConnectFile: "testdata/test_dburl_newline"},
 			expected: "test@tcp(testhost:3306)/testDB?readTimeout=800ms&writeTimeout=800ms",
 		},
@@ -97,4 +103,31 @@ func TestTLSConfigLoad(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDefaultDBConfig(t *testing.T) {
+	exampleDBConfig := &DBConfig{}
+	exampleDatabaseConfig := &DatabaseConfig{
+		DBConfig{
+			DBConnect:       "some secret",
+			DBConnectFile:   "foo/bar",
+			MaxOpenConns:    100,
+			MaxIdleConns:    100,
+			ConnMaxLifetime: ConfigDuration{10000},
+			ConnMaxIdleTime: ConfigDuration{10000},
+		},
+	}
+	DefaultDBConfig(exampleDBConfig, exampleDatabaseConfig)
+	test.AssertEquals(t, *exampleDBConfig, exampleDatabaseConfig.DBConfig)
+	exampleDBConfig = &DBConfig{
+		DBConnect:       "some secret",
+		DBConnectFile:   "foo/bar",
+		MaxOpenConns:    100,
+		MaxIdleConns:    100,
+		ConnMaxLifetime: ConfigDuration{10000},
+		ConnMaxIdleTime: ConfigDuration{10000},
+	}
+	exampleDatabaseConfig = &DatabaseConfig{}
+	DefaultDBConfig(exampleDBConfig, exampleDatabaseConfig)
+	test.AssertEquals(t, exampleDBConfig.MaxOpenConns, 100)
 }

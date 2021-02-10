@@ -46,7 +46,10 @@ args:
 
 type config struct {
 	Revoker struct {
-		cmd.DBConfig
+		DBConfig cmd.DBConfig
+		// TODO(#5275): Remove once all configs in dev, staging and prod
+		// have been updated to contain `dbconfig` field
+		cmd.DatabaseConfig
 		// Similarly, the Revoker needs a TLSConfig to set up its GRPC client certs,
 		// but doesn't get the TLS field from ServiceConfig, so declares its own.
 		TLS cmd.TLSConfig
@@ -73,6 +76,9 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *db.Wrappe
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 	rac := bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(raConn))
 
+	// TODO(#5275): Remove once all configs in dev, staging and prod
+	// have been updated to contain `dbconfig` field
+	cmd.DefaultDBConfig(&c.Revoker.DBConfig, &c.Revoker.DatabaseConfig)
 	dbURL, err := c.Revoker.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{

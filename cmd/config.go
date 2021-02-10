@@ -45,6 +45,9 @@ type ServiceConfig struct {
 // DBConfig defines how to connect to a database. The connect string may be
 // stored in a file separate from the config, because it can contain a password,
 // which we want to keep out of configs.
+// TODO(#5275): Refactor once each component struct and all configs in
+// dev, staging and prod have been updated to contain the named
+// `DBConfig` field
 type DBConfig struct {
 	DBConnect string
 	// A file containing a connect URL for the DB.
@@ -75,6 +78,15 @@ type DBConfig struct {
 	ConnMaxIdleTime ConfigDuration
 }
 
+// DatabaseConfig is a temporary struct that acts as a receiver for
+// fields unmarshalled from the root of a component's JSON config
+// (deprecated).
+// TODO(#5275): Remove once all configs in dev, staging and prod
+// have been updated to contain `dbconfig` field
+type DatabaseConfig struct {
+	DBConfig
+}
+
 // URL returns the DBConnect URL represented by this DBConfig object, either
 // loading it from disk or returning a default value. Leading and trailing
 // whitespace is stripped.
@@ -84,6 +96,24 @@ func (d *DBConfig) URL() (string, error) {
 		return strings.TrimSpace(string(url)), err
 	}
 	return d.DBConnect, nil
+}
+
+// DefaultDBConfig is a temporary helper function that copies DBConfig
+// fields unmarshalled from the root of a component's JSON config
+// (deprecated) to the named `DBConfig` substruct of the service config.
+// TODO(#5275): Remove once all configs in dev, staging and prod
+// have been updated to contain `dbconfig` field
+func DefaultDBConfig(dbConfig *DBConfig, databaseConfig *DatabaseConfig) {
+	if databaseConfig.DBConnectFile == "" {
+		// dbConfig was specified properly in the JSON return early
+		return
+	}
+	dbConfig.DBConnect = databaseConfig.DBConnect
+	dbConfig.DBConnectFile = databaseConfig.DBConnectFile
+	dbConfig.MaxOpenConns = databaseConfig.MaxOpenConns
+	dbConfig.MaxIdleConns = databaseConfig.MaxIdleConns
+	dbConfig.ConnMaxIdleTime = databaseConfig.ConnMaxIdleTime
+	dbConfig.ConnMaxLifetime = databaseConfig.ConnMaxLifetime
 }
 
 type SMTPConfig struct {

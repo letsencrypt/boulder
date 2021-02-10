@@ -26,8 +26,13 @@ type JanitorConfig struct {
 	DebugAddr string
 	// Features holds potential Feature flags.
 	Features map[string]bool
+
 	// Common database connection configuration.
-	cmd.DBConfig
+	DBConfig cmd.DBConfig
+
+	// TODO(#5275): Remove once all configs in dev, staging and prod
+	// have been updated to contain `dbconfig` field
+	cmd.DatabaseConfig
 
 	// JobConfigs is a list of configs for individual cleanup jobs.
 	JobConfigs []JobConfig
@@ -62,6 +67,9 @@ func New(clk clock.Clock, config JanitorConfig) (*Janitor, error) {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
+	// TODO(#5275): Remove once all configs in dev, staging and prod
+	// have been updated to contain `dbconfig` field
+	cmd.DefaultDBConfig(&config.DBConfig, &config.DatabaseConfig)
 	// Create DB Map
 	dbURL, err := config.DBConfig.URL()
 	if err != nil {

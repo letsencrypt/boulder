@@ -363,7 +363,10 @@ func (ds durationSlice) Swap(a, b int) {
 type config struct {
 	Mailer struct {
 		cmd.ServiceConfig
-		cmd.DBConfig
+		DBConfig cmd.DBConfig
+		// TODO(#5275): Remove once all configs in dev, staging and prod
+		// have been updated to contain `dbconfig` field
+		cmd.DatabaseConfig
 		cmd.SMTPConfig
 
 		From    string
@@ -474,6 +477,9 @@ func main() {
 		c.Mailer.CertLimit = 100
 	}
 
+	// TODO(#5275): Remove once all configs in dev, staging and prod
+	// have been updated to contain `dbconfig` field
+	cmd.DefaultDBConfig(&c.Mailer.DBConfig, &c.Mailer.DatabaseConfig)
 	// Configure DB
 	dbURL, err := c.Mailer.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
