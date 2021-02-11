@@ -140,7 +140,7 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	})
 	test.AssertNotError(t, err, "failed to load chain3.")
 
-	// Load our third chain using core.LoadCertBundle
+	// Load our fourth chain using core.LoadCertBundle
 	// TODO(5269): Remove this after all configs have migrated to
 	// `Chains`.
 	chain4, err := core.LoadCertBundle("test/testIntermediate.pem")
