@@ -119,34 +119,42 @@ func errorBodyLogSrv() *httptest.Server {
 }
 
 func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
-	// Load our first chain using issuance.LoadChain
+	// Load chain: R3 <- Root DST
 	chain1, err := issuance.LoadChain([]string{
-		"../test/test-ca2.pem",
-		"../test/test-root.pem",
+		"../test/hierarchy/int-r3-cross.cert.pem",
+		"../test/hierarchy/root-dst.cert.pem",
 	})
 	test.AssertNotError(t, err, "failed to load chain1.")
 
-	// Load our second chain using issuance.LoadChain
+	// Load chain: R3 <- Root X1
 	chain2, err := issuance.LoadChain([]string{
-		"../test/test-ca-cross.pem",
-		"../test/test-root2.pem",
+		"../test/hierarchy/int-r3.cert.pem",
+		"../test/hierarchy/root-x1.cert.pem",
 	})
 	test.AssertNotError(t, err, "failed to load chain2.")
 
-	// Load our third chain using core.LoadCertBundle
+	// Load chain: E1 <- Root X2
+	chain3, err := issuance.LoadChain([]string{
+		"../test/hierarchy/int-e1.cert.pem",
+		"../test/hierarchy/root-x2.cert.pem",
+	})
+	test.AssertNotError(t, err, "failed to load chain3.")
+
+	// Load our fourth chain using core.LoadCertBundle
 	// TODO(5269): Remove this after all configs have migrated to
 	// `Chains`.
-	chain3, err := core.LoadCertBundle("test/testIntermediate.pem")
-	test.AssertNotError(t, err, "failed to load chain3.")
-	chain3Issuer := issuance.Certificate{Certificate: chain3[0]}
+	chain4, err := core.LoadCertBundle("test/testIntermediate.pem")
+	test.AssertNotError(t, err, "failed to load chain4.")
+	chain4Issuer := issuance.Certificate{Certificate: chain4[0]}
 
 	// Create an example issuerNameID to CT bundle mapping
 	issuerBundles := map[issuance.IssuerNameID][]ct.ASN1Cert{
 		chain1[0].NameID(): GetCTBundleForChain(chain1),
 		chain2[0].NameID(): GetCTBundleForChain(chain2),
+		chain3[0].NameID(): GetCTBundleForChain(chain3),
 		// TODO(5269): Remove this after all configs have migrated to
 		// `Chains`.
-		chain3Issuer.NameID(): GetCTBundleForCerts(chain3),
+		chain4Issuer.NameID(): GetCTBundleForCerts(chain4),
 	}
 	pub := New(
 		issuerBundles,
@@ -155,8 +163,8 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 		metrics.NoopRegisterer)
 
 	// Load leaf certificate
-	leaf, err := core.LoadCert("../test/test-ee.pem")
-	test.AssertNotError(t, err, "unable to load ../test/test-ee.pem")
+	leaf, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
+	test.AssertNotError(t, err, "unable to load leaf certificate.")
 
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "Couldn't generate test key")
@@ -378,8 +386,8 @@ func TestHTTPStatusMetric(t *testing.T) {
 }
 func Test_GetCTBundleForChain(t *testing.T) {
 	chain, err := issuance.LoadChain([]string{
-		"../test/test-ca2-cross.pem",
-		"../test/test-root2.pem",
+		"../test/hierarchy/int-r3.cert.pem",
+		"../test/hierarchy/root-x1.cert.pem",
 	})
 	test.AssertNotError(t, err, "Failed to load chain.")
 	expect := []ct.ASN1Cert{{Data: chain[0].Raw}}
