@@ -15,6 +15,7 @@ fi
 #
 export RACE="false"
 export BOULDER_CONFIG_DIR="test/config"
+STAGE="starting"
 STATUS="FAILURE"
 RUN=()
 UNIT_PACKAGES=()
@@ -28,7 +29,7 @@ function print_outcome() {
   then
     echo -e "\e[32m"$STATUS"\e[0m"
   else
-    echo -e "\e[31m"$STATUS"\e[0m"
+    echo -e "\e[31m"$STATUS"\e[0m while running \e[31m"$STAGE"\e[0m"
   fi
 }
 
@@ -231,6 +232,7 @@ print_heading "Starting..."
 #
 if [[ "${RUN[@]}" =~ lints ]] ; then
   print_heading "Running Lints"
+  STAGE="lints"
   # golangci-lint is sometimes slow. Travis will kill our job if it goes 10m
   # without emitting logs, so set the timeout to 9m.
   golangci-lint run --timeout 9m ./...
@@ -249,6 +251,7 @@ fi
 #
 if [[ "${RUN[@]}" =~ unit ]] ; then
   print_heading "Running Unit Tests"
+  STAGE="unit"
   run_unit_tests
 fi
 
@@ -257,6 +260,7 @@ fi
 #
 if [[ "${RUN[@]}" =~ coverage ]] ; then
   print_heading "Running Unit Coverage"
+  STAGE="coverage"
   run_test_coverage
 fi
 
@@ -265,6 +269,7 @@ fi
 #
 if [[ "${RUN[@]}" =~ integration ]] ; then
   print_heading "Running Integration Tests"
+  STAGE="integration"
   python3 test/integration-test.py --chisel --gotest "${FILTER[@]}"
 fi
 
@@ -272,6 +277,7 @@ fi
 # `docker-compose up` works, since that just runs start.py (via entrypoint.sh).
 if [[ "${RUN[@]}" =~ start ]] ; then
   print_heading "Running Start Test"
+  STAGE="start"
   python3 start.py &
   for I in $(seq 1 100); do
     sleep 1
@@ -287,6 +293,7 @@ fi
 # vendor/ really exist in the remote repo and match what we have.
 if [[ "${RUN[@]}" =~ gomod-vendor ]] ; then
   print_heading "Running Go Mod Vendor"
+  STAGE="gomod-vendor"
   go mod vendor
   git diff --exit-code
 fi
@@ -297,6 +304,7 @@ fi
 # so will fail if imports are not available in $GOPATH.
 if [[ "${RUN[@]}" =~ generate ]] ; then
   print_heading "Running Generate"
+  STAGE="generate"
   # Additionally, we need to run go install before go generate because the stringer command
   # (using in ./grpc/) checks imports, and depends on the presence of a built .a
   # file to determine an import really exists. See
