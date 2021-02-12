@@ -282,7 +282,7 @@ type OCSPUpdaterConfig struct {
 	DBConfig cmd.DBConfig
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
-	// have been updated to contain `dbconfig` field
+	// have been updated to contain the `dbconfig` field
 	cmd.DatabaseConfig
 
 	OldOCSPWindow    cmd.ConfigDuration
@@ -346,7 +346,7 @@ func main() {
 	logger.Info(cmd.VersionString())
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
-	// have been updated to contain `dbconfig` field
+	// have been updated to contain the `dbconfig` field
 	cmd.DefaultDBConfig(&conf.DBConfig, &conf.DatabaseConfig)
 	// Configure DB
 	dbURL, err := conf.DBConfig.URL()

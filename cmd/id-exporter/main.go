@@ -147,7 +147,7 @@ func main() {
 		ContactExporter struct {
 			DBConfig cmd.DBConfig
 			// TODO(#5275): Remove once all configs in dev, staging and prod
-			// have been updated to contain `dbconfig` field
+			// have been updated to contain the `dbconfig` field
 			cmd.DatabaseConfig
 			cmd.PasswordConfig
 			Features map[string]bool
@@ -178,7 +178,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to set feature flags")
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
-	// have been updated to contain `dbconfig` field
+	// have been updated to contain the `dbconfig` field
 	cmd.DefaultDBConfig(&cfg.ContactExporter.DBConfig, &cfg.ContactExporter.DatabaseConfig)
 	dbURL, err := cfg.ContactExporter.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")

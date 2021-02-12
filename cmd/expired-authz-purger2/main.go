@@ -19,7 +19,7 @@ type config struct {
 	ExpiredAuthzPurger2 struct {
 		DBConfig cmd.DBConfig
 		// TODO(#5275): Remove once all configs in dev, staging and prod
-		// have been updated to contain `dbconfig` field
+		// have been updated to contain the `dbconfig` field
 		cmd.DatabaseConfig
 		DebugAddr string
 		Syslog    cmd.SyslogConfig
@@ -80,7 +80,7 @@ func main() {
 	clk := cmd.Clock()
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
-	// have been updated to contain `dbconfig` field
+	// have been updated to contain the `dbconfig` field
 	cmd.DefaultDBConfig(&c.ExpiredAuthzPurger2.DBConfig, &c.ExpiredAuthzPurger2.DatabaseConfig)
 	dbURL, err := c.ExpiredAuthzPurger2.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")

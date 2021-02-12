@@ -31,7 +31,7 @@ type JanitorConfig struct {
 	DBConfig cmd.DBConfig
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
-	// have been updated to contain `dbconfig` field
+	// have been updated to contain the `dbconfig` field
 	cmd.DatabaseConfig
 
 	// JobConfigs is a list of configs for individual cleanup jobs.
@@ -68,7 +68,7 @@ func New(clk clock.Clock, config JanitorConfig) (*Janitor, error) {
 	logger.Info(cmd.VersionString())
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
-	// have been updated to contain `dbconfig` field
+	// have been updated to contain the `dbconfig` field
 	cmd.DefaultDBConfig(&config.DBConfig, &config.DatabaseConfig)
 	// Create DB Map
 	dbURL, err := config.DBConfig.URL()

@@ -19,7 +19,7 @@ type config struct {
 		cmd.ServiceConfig
 		DBConfig cmd.DBConfig
 		// TODO(#5275): Remove once all configs in dev, staging and prod
-		// have been updated to contain `dbconfig` field
+		// have been updated to contain the `dbconfig` field
 		cmd.DatabaseConfig
 
 		Features map[string]bool
@@ -62,7 +62,7 @@ func main() {
 	saConf := c.SA
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
-	// have been updated to contain `dbconfig` field
+	// have been updated to contain the `dbconfig` field
 	cmd.DefaultDBConfig(&saConf.DBConfig, &saConf.DatabaseConfig)
 
 	saDbSettings := sa.DbSettings{

@@ -311,7 +311,7 @@ type config struct {
 	CertChecker struct {
 		DBConfig cmd.DBConfig
 		// TODO(#5275): Remove once all configs in dev, staging and prod
-		// have been updated to contain `dbconfig` field
+		// have been updated to contain the `dbconfig` field
 		cmd.DatabaseConfig
 		cmd.HostnamePolicyConfig
 
@@ -375,7 +375,7 @@ func main() {
 	cmd.FailOnError(config.PA.CheckChallenges(), "Invalid PA configuration")
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
-	// have been updated to contain `dbconfig` field
+	// have been updated to contain the `dbconfig` field
 	cmd.DefaultDBConfig(&config.CertChecker.DBConfig, &config.CertChecker.DatabaseConfig)
 	saDbURL, err := config.CertChecker.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")

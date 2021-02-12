@@ -45,9 +45,6 @@ type ServiceConfig struct {
 // DBConfig defines how to connect to a database. The connect string may be
 // stored in a file separate from the config, because it can contain a password,
 // which we want to keep out of configs.
-// TODO(#5275): Refactor once each component struct and all configs in
-// dev, staging and prod have been updated to contain the named
-// `DBConfig` field
 type DBConfig struct {
 	DBConnect string
 	// A file containing a connect URL for the DB.
@@ -82,7 +79,7 @@ type DBConfig struct {
 // fields unmarshalled from the root of a component's JSON config
 // (deprecated).
 // TODO(#5275): Remove once all configs in dev, staging and prod
-// have been updated to contain `dbconfig` field
+// have been updated to contain the `dbconfig` field
 type DatabaseConfig struct {
 	DBConfig
 }
@@ -102,7 +99,7 @@ func (d *DBConfig) URL() (string, error) {
 // fields unmarshalled from the root of a component's JSON config
 // (deprecated) to the named `DBConfig` substruct of the service config.
 // TODO(#5275): Remove once all configs in dev, staging and prod
-// have been updated to contain `dbconfig` field
+// have been updated to contain the `dbconfig` field
 func DefaultDBConfig(dbConfig *DBConfig, databaseConfig *DatabaseConfig) {
 	if databaseConfig.DBConnectFile == "" {
 		// dbConfig was specified properly in the JSON return early

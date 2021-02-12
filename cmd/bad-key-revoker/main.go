@@ -341,7 +341,7 @@ func main() {
 		BadKeyRevoker struct {
 			DBConfig cmd.DBConfig
 			// TODO(#5275): Remove once all configs in dev, staging and prod
-			// have been updated to contain `dbconfig` field
+			// have been updated to contain the `dbconfig` field
 			cmd.DatabaseConfig
 			DebugAddr string
 
@@ -393,7 +393,7 @@ func main() {
 	scope.MustRegister(mailErrors)
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
-	// have been updated to contain `dbconfig` field
+	// have been updated to contain the `dbconfig` field
 	cmd.DefaultDBConfig(&config.BadKeyRevoker.DBConfig, &config.BadKeyRevoker.DatabaseConfig)
 	dbURL, err := config.BadKeyRevoker.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")

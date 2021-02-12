@@ -365,7 +365,7 @@ type config struct {
 		cmd.ServiceConfig
 		DBConfig cmd.DBConfig
 		// TODO(#5275): Remove once all configs in dev, staging and prod
-		// have been updated to contain `dbconfig` field
+		// have been updated to contain the `dbconfig` field
 		cmd.DatabaseConfig
 		cmd.SMTPConfig
 
@@ -478,7 +478,7 @@ func main() {
 	}
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
-	// have been updated to contain `dbconfig` field
+	// have been updated to contain the `dbconfig` field
 	cmd.DefaultDBConfig(&c.Mailer.DBConfig, &c.Mailer.DatabaseConfig)
 	// Configure DB
 	dbURL, err := c.Mailer.DBConfig.URL()

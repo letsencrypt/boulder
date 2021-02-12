@@ -408,7 +408,7 @@ func main() {
 		NotifyMailer struct {
 			DBConfig cmd.DBConfig
 			// TODO(#5275): Remove once all configs in dev, staging and prod
-			// have been updated to contain `dbconfig` field
+			// have been updated to contain the `dbconfig` field
 			cmd.DatabaseConfig
 			cmd.PasswordConfig
 			cmd.SMTPConfig
@@ -443,7 +443,7 @@ func main() {
 	defer log.AuditPanic()
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
-	// have been updated to contain `dbconfig` field
+	// have been updated to contain the `dbconfig` field
 	cmd.DefaultDBConfig(&cfg.NotifyMailer.DBConfig, &cfg.NotifyMailer.DatabaseConfig)
 	dbURL, err := cfg.NotifyMailer.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
