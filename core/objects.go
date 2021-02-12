@@ -556,8 +556,6 @@ type SignedCertificateTimestamp struct {
 
 	// The serial of the certificate this SCT is for
 	CertificateSerial string `db:"certificateSerial"`
-
-	LockCol int64
 }
 
 // FQDNSet contains the SHA256 hash of the lowercased, comma joined dNSNames
