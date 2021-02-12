@@ -309,7 +309,7 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 
 type config struct {
 	CertChecker struct {
-		DBConfig cmd.DBConfig
+		DB cmd.DBConfig
 		// TODO(#5275): Remove once all configs in dev, staging and prod
 		// have been updated to contain the `dbconfig` field
 		cmd.DeprecatedDBConfig
@@ -376,14 +376,14 @@ func main() {
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
 	// have been updated to contain the `dbconfig` field
-	cmd.DefaultDBConfig(&config.CertChecker.DBConfig, &config.CertChecker.DeprecatedDBConfig)
-	saDbURL, err := config.CertChecker.DBConfig.URL()
+	cmd.DefaultDBConfig(&config.CertChecker.DB, &config.CertChecker.DeprecatedDBConfig)
+	saDbURL, err := config.CertChecker.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{
-		MaxOpenConns:    config.CertChecker.DBConfig.MaxOpenConns,
-		MaxIdleConns:    config.CertChecker.DBConfig.MaxIdleConns,
-		ConnMaxLifetime: config.CertChecker.DBConfig.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: config.CertChecker.DBConfig.ConnMaxIdleTime.Duration,
+		MaxOpenConns:    config.CertChecker.DB.MaxOpenConns,
+		MaxIdleConns:    config.CertChecker.DB.MaxIdleConns,
+		ConnMaxLifetime: config.CertChecker.DB.ConnMaxLifetime.Duration,
+		ConnMaxIdleTime: config.CertChecker.DB.ConnMaxIdleTime.Duration,
 	}
 	saDbMap, err := sa.NewDbMap(saDbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")

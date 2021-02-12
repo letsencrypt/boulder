@@ -1,6 +1,6 @@
 {
   "revoker": {
-    "dbconfig": {
+    "db": {
       "dbConnectFile": "test/secrets/revoker_dburl",
       "maxOpenConns": 1
     },

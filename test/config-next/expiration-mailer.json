@@ -5,7 +5,7 @@
     "username": "cert-manager@example.com",
     "from": "Expiry bot <test@example.com>",
     "passwordFile": "test/secrets/smtp_password",
-    "dbconfig": {
+    "db": {
       "dbConnectFile": "test/secrets/mailer_dburl",
       "maxOpenConns": 10
     },

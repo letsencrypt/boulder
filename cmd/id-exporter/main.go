@@ -145,7 +145,7 @@ func main() {
 	domainsFile := flag.String("domains", "", "If provided only output contacts for certificates that contain at least one of the domains in the provided file. Provided file should contain one domain per line")
 	type config struct {
 		ContactExporter struct {
-			DBConfig cmd.DBConfig
+			DB cmd.DBConfig
 			// TODO(#5275): Remove once all configs in dev, staging and prod
 			// have been updated to contain the `dbconfig` field
 			cmd.DeprecatedDBConfig
@@ -179,8 +179,8 @@ func main() {
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
 	// have been updated to contain the `dbconfig` field
-	cmd.DefaultDBConfig(&cfg.ContactExporter.DBConfig, &cfg.ContactExporter.DeprecatedDBConfig)
-	dbURL, err := cfg.ContactExporter.DBConfig.URL()
+	cmd.DefaultDBConfig(&cfg.ContactExporter.DB, &cfg.ContactExporter.DeprecatedDBConfig)
+	dbURL, err := cfg.ContactExporter.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{
 		MaxOpenConns: 10,

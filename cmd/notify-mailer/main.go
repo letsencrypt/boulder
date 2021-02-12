@@ -406,7 +406,7 @@ func main() {
 	reconnMax := flag.Duration("reconnectMax", 5*60*time.Second, "Max sleep duration between reconnect attempts after exponential backoff")
 	type config struct {
 		NotifyMailer struct {
-			DBConfig cmd.DBConfig
+			DB cmd.DBConfig
 			// TODO(#5275): Remove once all configs in dev, staging and prod
 			// have been updated to contain the `dbconfig` field
 			cmd.DeprecatedDBConfig
@@ -444,8 +444,8 @@ func main() {
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
 	// have been updated to contain the `dbconfig` field
-	cmd.DefaultDBConfig(&cfg.NotifyMailer.DBConfig, &cfg.NotifyMailer.DeprecatedDBConfig)
-	dbURL, err := cfg.NotifyMailer.DBConfig.URL()
+	cmd.DefaultDBConfig(&cfg.NotifyMailer.DB, &cfg.NotifyMailer.DeprecatedDBConfig)
+	dbURL, err := cfg.NotifyMailer.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{
 		MaxOpenConns: 10,

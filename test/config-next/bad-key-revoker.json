@@ -1,6 +1,6 @@
 {
     "BadKeyRevoker": {
-        "dbconfig": {
+        "db": {
             "dbConnectFile": "test/secrets/badkeyrevoker_dburl",
             "maxOpenConns": 10
         },

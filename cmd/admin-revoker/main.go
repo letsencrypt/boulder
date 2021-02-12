@@ -46,7 +46,7 @@ args:
 
 type config struct {
 	Revoker struct {
-		DBConfig cmd.DBConfig
+		DB cmd.DBConfig
 		// TODO(#5275): Remove once all configs in dev, staging and prod
 		// have been updated to contain the `dbconfig` field
 		cmd.DeprecatedDBConfig
@@ -78,14 +78,14 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *db.Wrappe
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
 	// have been updated to contain the `dbconfig` field
-	cmd.DefaultDBConfig(&c.Revoker.DBConfig, &c.Revoker.DeprecatedDBConfig)
-	dbURL, err := c.Revoker.DBConfig.URL()
+	cmd.DefaultDBConfig(&c.Revoker.DB, &c.Revoker.DeprecatedDBConfig)
+	dbURL, err := c.Revoker.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{
-		MaxOpenConns:    c.Revoker.DBConfig.MaxOpenConns,
-		MaxIdleConns:    c.Revoker.DBConfig.MaxIdleConns,
-		ConnMaxLifetime: c.Revoker.DBConfig.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: c.Revoker.DBConfig.ConnMaxIdleTime.Duration,
+		MaxOpenConns:    c.Revoker.DB.MaxOpenConns,
+		MaxIdleConns:    c.Revoker.DB.MaxIdleConns,
+		ConnMaxLifetime: c.Revoker.DB.ConnMaxLifetime.Duration,
+		ConnMaxIdleTime: c.Revoker.DB.ConnMaxIdleTime.Duration,
 	}
 	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
 	cmd.FailOnError(err, "Couldn't setup database connection")

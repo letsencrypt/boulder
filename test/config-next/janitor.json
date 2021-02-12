@@ -3,7 +3,7 @@
     "syslog": {
       "stdoutLevel": 6
     },
-    "dbconfig": {
+    "db": {
       "dbConnectFile": "test/secrets/janitor_dburl",
       "maxOpenConns": 10
     },

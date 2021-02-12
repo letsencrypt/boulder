@@ -1,7 +1,7 @@
 {
   "Filler": {
     "Parallelism": 20,
-    "dbconfig": {
+    "db": {
       "dbConnectFile": "test/secrets/sa_dburl"
     }
   }

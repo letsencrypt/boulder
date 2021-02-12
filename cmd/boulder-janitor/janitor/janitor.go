@@ -28,7 +28,7 @@ type JanitorConfig struct {
 	Features map[string]bool
 
 	// Common database connection configuration.
-	DBConfig cmd.DBConfig
+	DB cmd.DBConfig
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
 	// have been updated to contain the `dbconfig` field
@@ -69,17 +69,17 @@ func New(clk clock.Clock, config JanitorConfig) (*Janitor, error) {
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
 	// have been updated to contain the `dbconfig` field
-	cmd.DefaultDBConfig(&config.DBConfig, &config.DeprecatedDBConfig)
+	cmd.DefaultDBConfig(&config.DB, &config.DeprecatedDBConfig)
 	// Create DB Map
-	dbURL, err := config.DBConfig.URL()
+	dbURL, err := config.DB.URL()
 	if err != nil {
 		return nil, err
 	}
 	dbSettings := sa.DbSettings{
-		MaxOpenConns:    config.DBConfig.MaxOpenConns,
-		MaxIdleConns:    config.DBConfig.MaxIdleConns,
-		ConnMaxLifetime: config.DBConfig.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: config.DBConfig.ConnMaxIdleTime.Duration,
+		MaxOpenConns:    config.DB.MaxOpenConns,
+		MaxIdleConns:    config.DB.MaxIdleConns,
+		ConnMaxLifetime: config.DB.ConnMaxLifetime.Duration,
+		ConnMaxIdleTime: config.DB.ConnMaxIdleTime.Duration,
 	}
 	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
 	if err != nil {

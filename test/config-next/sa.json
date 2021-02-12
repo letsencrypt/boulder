@@ -1,6 +1,6 @@
 {
   "sa": {
-    "dbconfig": {
+    "db": {
       "dbConnectFile": "test/secrets/sa_dburl",
       "maxOpenConns": 100
     },

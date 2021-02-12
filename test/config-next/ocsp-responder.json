@@ -1,6 +1,6 @@
 {
   "ocspResponder": {
-    "dbconfig": {
+    "db": {
       "dbConnectFile": "test/secrets/ocsp_responder_dburl",
       "maxOpenConns": 10
     },

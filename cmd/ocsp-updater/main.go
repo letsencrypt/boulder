@@ -279,7 +279,7 @@ type config struct {
 // for the OCSP (and SCT) updater
 type OCSPUpdaterConfig struct {
 	cmd.ServiceConfig
-	DBConfig cmd.DBConfig
+	DB cmd.DBConfig
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
 	// have been updated to contain the `dbconfig` field
@@ -347,15 +347,15 @@ func main() {
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
 	// have been updated to contain the `dbconfig` field
-	cmd.DefaultDBConfig(&conf.DBConfig, &conf.DeprecatedDBConfig)
+	cmd.DefaultDBConfig(&conf.DB, &conf.DeprecatedDBConfig)
 	// Configure DB
-	dbURL, err := conf.DBConfig.URL()
+	dbURL, err := conf.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{
-		MaxOpenConns:    conf.DBConfig.MaxOpenConns,
-		MaxIdleConns:    conf.DBConfig.MaxIdleConns,
-		ConnMaxLifetime: conf.DBConfig.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: conf.DBConfig.ConnMaxIdleTime.Duration}
+		MaxOpenConns:    conf.DB.MaxOpenConns,
+		MaxIdleConns:    conf.DB.MaxIdleConns,
+		ConnMaxLifetime: conf.DB.ConnMaxLifetime.Duration,
+		ConnMaxIdleTime: conf.DB.ConnMaxIdleTime.Duration}
 
 	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")
