@@ -409,7 +409,7 @@ func main() {
 			DBConfig cmd.DBConfig
 			// TODO(#5275): Remove once all configs in dev, staging and prod
 			// have been updated to contain the `dbconfig` field
-			cmd.DatabaseConfig
+			cmd.DeprecatedDBConfig
 			cmd.PasswordConfig
 			cmd.SMTPConfig
 			Features map[string]bool
@@ -444,7 +444,7 @@ func main() {
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
 	// have been updated to contain the `dbconfig` field
-	cmd.DefaultDBConfig(&cfg.NotifyMailer.DBConfig, &cfg.NotifyMailer.DatabaseConfig)
+	cmd.DefaultDBConfig(&cfg.NotifyMailer.DBConfig, &cfg.NotifyMailer.DeprecatedDBConfig)
 	dbURL, err := cfg.NotifyMailer.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{

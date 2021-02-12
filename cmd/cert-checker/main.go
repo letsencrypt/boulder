@@ -312,7 +312,7 @@ type config struct {
 		DBConfig cmd.DBConfig
 		// TODO(#5275): Remove once all configs in dev, staging and prod
 		// have been updated to contain the `dbconfig` field
-		cmd.DatabaseConfig
+		cmd.DeprecatedDBConfig
 		cmd.HostnamePolicyConfig
 
 		Workers             int
@@ -376,7 +376,7 @@ func main() {
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
 	// have been updated to contain the `dbconfig` field
-	cmd.DefaultDBConfig(&config.CertChecker.DBConfig, &config.CertChecker.DatabaseConfig)
+	cmd.DefaultDBConfig(&config.CertChecker.DBConfig, &config.CertChecker.DeprecatedDBConfig)
 	saDbURL, err := config.CertChecker.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{

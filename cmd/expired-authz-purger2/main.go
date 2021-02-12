@@ -20,7 +20,7 @@ type config struct {
 		DBConfig cmd.DBConfig
 		// TODO(#5275): Remove once all configs in dev, staging and prod
 		// have been updated to contain the `dbconfig` field
-		cmd.DatabaseConfig
+		cmd.DeprecatedDBConfig
 		DebugAddr string
 		Syslog    cmd.SyslogConfig
 		Features  map[string]bool
@@ -81,7 +81,7 @@ func main() {
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
 	// have been updated to contain the `dbconfig` field
-	cmd.DefaultDBConfig(&c.ExpiredAuthzPurger2.DBConfig, &c.ExpiredAuthzPurger2.DatabaseConfig)
+	cmd.DefaultDBConfig(&c.ExpiredAuthzPurger2.DBConfig, &c.ExpiredAuthzPurger2.DeprecatedDBConfig)
 	dbURL, err := c.ExpiredAuthzPurger2.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{

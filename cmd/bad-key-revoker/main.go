@@ -342,7 +342,7 @@ func main() {
 			DBConfig cmd.DBConfig
 			// TODO(#5275): Remove once all configs in dev, staging and prod
 			// have been updated to contain the `dbconfig` field
-			cmd.DatabaseConfig
+			cmd.DeprecatedDBConfig
 			DebugAddr string
 
 			TLS       cmd.TLSConfig
@@ -394,7 +394,7 @@ func main() {
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
 	// have been updated to contain the `dbconfig` field
-	cmd.DefaultDBConfig(&config.BadKeyRevoker.DBConfig, &config.BadKeyRevoker.DatabaseConfig)
+	cmd.DefaultDBConfig(&config.BadKeyRevoker.DBConfig, &config.BadKeyRevoker.DeprecatedDBConfig)
 	dbURL, err := config.BadKeyRevoker.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 

@@ -19,9 +19,10 @@ import (
 
 type fillerConfig struct {
 	Filler struct {
+		DBConfig cmd.DBConfig
 		// TODO(#5275): Remove once all configs in dev, staging and prod
 		// have been updated to contain the `dbconfig` field
-		cmd.DatabaseConfig
+		cmd.DeprecatedDBConfig
 		Parallelism uint
 	}
 }
@@ -48,7 +49,7 @@ func main() {
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
 	// have been updated to contain the `dbconfig` field
-	cmd.DefaultDBConfig(&config.Filler.DBConfig, &config.Filler.DatabaseConfig)
+	cmd.DefaultDBConfig(&config.Filler.DBConfig, &config.Filler.DeprecatedDBConfig)
 	// Configure DB
 	dbURL, err := config.Filler.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")

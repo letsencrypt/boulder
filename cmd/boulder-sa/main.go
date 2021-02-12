@@ -20,7 +20,7 @@ type config struct {
 		DBConfig cmd.DBConfig
 		// TODO(#5275): Remove once all configs in dev, staging and prod
 		// have been updated to contain the `dbconfig` field
-		cmd.DatabaseConfig
+		cmd.DeprecatedDBConfig
 
 		Features map[string]bool
 
@@ -63,7 +63,7 @@ func main() {
 
 	// TODO(#5275): Remove once all configs in dev, staging and prod
 	// have been updated to contain the `dbconfig` field
-	cmd.DefaultDBConfig(&saConf.DBConfig, &saConf.DatabaseConfig)
+	cmd.DefaultDBConfig(&saConf.DBConfig, &saConf.DeprecatedDBConfig)
 
 	saDbSettings := sa.DbSettings{
 		MaxOpenConns:    saConf.DBConfig.MaxOpenConns,

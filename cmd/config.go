@@ -75,14 +75,12 @@ type DBConfig struct {
 	ConnMaxIdleTime ConfigDuration
 }
 
-// DatabaseConfig is a temporary struct that acts as a receiver for
+// DeprecatedDBConfig is a temporary type that acts as a receiver for
 // fields unmarshalled from the root of a component's JSON config
 // (deprecated).
 // TODO(#5275): Remove once all configs in dev, staging and prod
 // have been updated to contain the `dbconfig` field
-type DatabaseConfig struct {
-	DBConfig
-}
+type DeprecatedDBConfig DBConfig
 
 // URL returns the DBConnect URL represented by this DBConfig object, either
 // loading it from disk or returning a default value. Leading and trailing
@@ -100,8 +98,8 @@ func (d *DBConfig) URL() (string, error) {
 // (deprecated) to the named `DBConfig` substruct of the service config.
 // TODO(#5275): Remove once all configs in dev, staging and prod
 // have been updated to contain the `dbconfig` field
-func DefaultDBConfig(dbConfig *DBConfig, databaseConfig *DatabaseConfig) {
-	if databaseConfig.DBConnectFile == "" {
+func DefaultDBConfig(dbConfig *DBConfig, databaseConfig *DeprecatedDBConfig) {
+	if dbConfig.DBConnectFile != "" {
 		// dbConfig was specified properly in the JSON return early
 		return
 	}
