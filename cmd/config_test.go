@@ -15,17 +15,11 @@ func TestDBConfigURL(t *testing.T) {
 	}{
 		{
 			// Test with one config file that has no trailing newline
-			// TODO(#5275): Refactor once each component struct and all
-			// configs in dev, staging and prod have been updated to
-			// contain the named `DBConfig` field
 			conf:     DBConfig{DBConnectFile: "testdata/test_dburl"},
 			expected: "test@tcp(testhost:3306)/testDB?readTimeout=800ms&writeTimeout=800ms",
 		},
 		{
 			// Test with a config file that *has* a trailing newline
-			// TODO(#5275): Refactor once each component struct and all
-			// configs in dev, staging and prod have been updated to
-			// contain the named `DBConfig` field
 			conf:     DBConfig{DBConnectFile: "testdata/test_dburl_newline"},
 			expected: "test@tcp(testhost:3306)/testDB?readTimeout=800ms&writeTimeout=800ms",
 		},
