@@ -19,7 +19,10 @@ import (
 
 type fillerConfig struct {
 	Filler struct {
-		cmd.DBConfig
+		DB cmd.DBConfig
+		// TODO(#5275): Remove once all configs in dev, staging and prod
+		// have been updated to contain the `dbconfig` field
+		cmd.DeprecatedDBConfig
 		Parallelism uint
 	}
 }
@@ -44,8 +47,11 @@ func main() {
 	err = json.Unmarshal(configJSON, &config)
 	cmd.FailOnError(err, "Failed to parse config")
 
+	// TODO(#5275): Remove once all configs in dev, staging and prod
+	// have been updated to contain the `dbconfig` field
+	cmd.DefaultDBConfig(&config.Filler.DB, &config.Filler.DeprecatedDBConfig)
 	// Configure DB
-	dbURL, err := config.Filler.DBConfig.URL()
+	dbURL, err := config.Filler.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	// Set max connections equal to parallelism.
 	dbSettings := sa.DbSettings{

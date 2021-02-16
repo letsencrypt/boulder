@@ -46,7 +46,10 @@ args:
 
 type config struct {
 	Revoker struct {
-		cmd.DBConfig
+		DB cmd.DBConfig
+		// TODO(#5275): Remove once all configs in dev, staging and prod
+		// have been updated to contain the `dbconfig` field
+		cmd.DeprecatedDBConfig
 		// Similarly, the Revoker needs a TLSConfig to set up its GRPC client certs,
 		// but doesn't get the TLS field from ServiceConfig, so declares its own.
 		TLS cmd.TLSConfig
@@ -73,13 +76,16 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *db.Wrappe
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 	rac := bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(raConn))
 
-	dbURL, err := c.Revoker.DBConfig.URL()
+	// TODO(#5275): Remove once all configs in dev, staging and prod
+	// have been updated to contain the `dbconfig` field
+	cmd.DefaultDBConfig(&c.Revoker.DB, &c.Revoker.DeprecatedDBConfig)
+	dbURL, err := c.Revoker.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{
-		MaxOpenConns:    c.Revoker.DBConfig.MaxOpenConns,
-		MaxIdleConns:    c.Revoker.DBConfig.MaxIdleConns,
-		ConnMaxLifetime: c.Revoker.DBConfig.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: c.Revoker.DBConfig.ConnMaxIdleTime.Duration,
+		MaxOpenConns:    c.Revoker.DB.MaxOpenConns,
+		MaxIdleConns:    c.Revoker.DB.MaxIdleConns,
+		ConnMaxLifetime: c.Revoker.DB.ConnMaxLifetime.Duration,
+		ConnMaxIdleTime: c.Revoker.DB.ConnMaxIdleTime.Duration,
 	}
 	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
 	cmd.FailOnError(err, "Couldn't setup database connection")

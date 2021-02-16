@@ -17,7 +17,10 @@ import (
 
 type config struct {
 	ExpiredAuthzPurger2 struct {
-		cmd.DBConfig
+		DB cmd.DBConfig
+		// TODO(#5275): Remove once all configs in dev, staging and prod
+		// have been updated to contain the `dbconfig` field
+		cmd.DeprecatedDBConfig
 		DebugAddr string
 		Syslog    cmd.SyslogConfig
 		Features  map[string]bool
@@ -76,13 +79,16 @@ func main() {
 
 	clk := cmd.Clock()
 
-	dbURL, err := c.ExpiredAuthzPurger2.DBConfig.URL()
+	// TODO(#5275): Remove once all configs in dev, staging and prod
+	// have been updated to contain the `dbconfig` field
+	cmd.DefaultDBConfig(&c.ExpiredAuthzPurger2.DB, &c.ExpiredAuthzPurger2.DeprecatedDBConfig)
+	dbURL, err := c.ExpiredAuthzPurger2.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{
-		MaxOpenConns:    c.ExpiredAuthzPurger2.DBConfig.MaxOpenConns,
-		MaxIdleConns:    c.ExpiredAuthzPurger2.DBConfig.MaxIdleConns,
-		ConnMaxLifetime: c.ExpiredAuthzPurger2.DBConfig.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: c.ExpiredAuthzPurger2.DBConfig.ConnMaxIdleTime.Duration,
+		MaxOpenConns:    c.ExpiredAuthzPurger2.DB.MaxOpenConns,
+		MaxIdleConns:    c.ExpiredAuthzPurger2.DB.MaxIdleConns,
+		ConnMaxLifetime: c.ExpiredAuthzPurger2.DB.ConnMaxLifetime.Duration,
+		ConnMaxIdleTime: c.ExpiredAuthzPurger2.DB.ConnMaxIdleTime.Duration,
 	}
 	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")
