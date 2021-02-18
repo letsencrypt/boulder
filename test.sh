@@ -321,6 +321,7 @@ fi
 
 if [[ "${RUN[@]}" =~ rpm ]]; then
   print_heading "Running RPM"
+  STAGE="rpm"
   make rpm
 fi
 
