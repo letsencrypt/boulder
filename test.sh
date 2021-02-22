@@ -16,11 +16,9 @@ fi
 export RACE="false"
 export BOULDER_CONFIG_DIR="test/config"
 STAGE="starting"
-BYPASS_CACHE="false"
 STATUS="FAILURE"
 RUN=()
 UNIT_PACKAGES=()
-UNIT_OPTIONS=()
 FILTER=()
 
 #
@@ -83,7 +81,7 @@ function run_unit_tests() {
   if [ "${RACE}" == true ]; then
     # Run the full suite of tests once with the -race flag. Since this isn't
     # running tests individually we can't collect coverage information.
-    go test "${UNIT_OPTIONS[@]}" -race "${UNIT_PACKAGES[@]}" "${FILTER[@]}"
+    go test -race "${UNIT_PACKAGES[@]}" "${FILTER[@]}"
   else
     # When running locally, we skip the -race flag for speedier test runs. We
     # also pass -p 1 to require the tests to run serially instead of in
@@ -92,7 +90,7 @@ function run_unit_tests() {
     # spuriously because one test is modifying a table (especially
     # registrations) while another test is reading it.
     # https://github.com/letsencrypt/boulder/issues/1499
-    go test "${UNIT_OPTIONS[@]}" "${UNIT_PACKAGES[@]}" "${FILTER[@]}"
+    go test "${UNIT_PACKAGES[@]}" "${FILTER[@]}"
   fi
 }
 
@@ -128,7 +126,6 @@ With no options passed, runs standard battery of tests (lint, unit, and integati
     -u, --unit                            Adds unit to the list of tests to run
     -p <DIR>, --unit-test-package=<DIR>   Run unit tests for specific go package(s)
     -e, --enable-race-detection           Enables -race flag for all unit and integration tests
-    -b, --bypass-go-test-cache            Enables -count=1 flag to bypass cache for all unit tests
     -n, --config-next                     Changes BOULDER_CONFIG_DIR from test/config to test/config-next
     -c, --coverage                        Adds coverage to the list of tests to run
     -i, --integration                     Adds integration to the list of tests to run
@@ -152,7 +149,7 @@ With no options passed, runs standard battery of tests (lint, unit, and integati
 EOM
 )"
 
-while getopts luebciosvgrnhp:f:-: OPT; do
+while getopts lueciosvgrnhp:f:-: OPT; do
   if [ "$OPT" = - ]; then     # long option: reformulate OPT and OPTARG
     OPT="${OPTARG%%=*}"       # extract long option name
     OPTARG="${OPTARG#$OPT}"   # extract long option argument (may be empty)
@@ -163,7 +160,6 @@ while getopts luebciosvgrnhp:f:-: OPT; do
     u | unit )                       RUN+=("unit") ;;
     p | unit-test-package )          check_arg; UNIT_PACKAGES+=("${OPTARG}") ;;
     e | enable-race-detection )      RACE="true" ;;
-    b | bypass-go-test-cache )       BYPASS_CACHE="true" && UNIT_OPTIONS+=("-count=1") ;;
     c | coverage )                   RUN+=("coverage") ;;
     i | integration )                RUN+=("integration") ;;
     o | list-integration-tests )     print_list_of_integration_tests ;;
@@ -231,7 +227,6 @@ settings="$(cat -- <<-EOM
     BOULDER_CONFIG_DIR: $BOULDER_CONFIG_DIR
     UNIT_PACKAGES:      ${UNIT_PACKAGES[@]}
     RACE:               $RACE
-    BYPASS_CACHE:       $BYPASS_CACHE
     FILTER:             ${FILTER[@]}
 
 EOM
@@ -243,9 +238,9 @@ print_heading "Starting..."
 #
 # Run various linters.
 #
-if [[ "${RUN[@]}" =~ lints ]] ; then
+STAGE="lints"
+if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Lints"
-  STAGE="lints"
   # golangci-lint is sometimes slow. Travis will kill our job if it goes 10m
   # without emitting logs, so set the timeout to 9m.
   golangci-lint run --timeout 9m ./...
@@ -262,35 +257,35 @@ fi
 #
 # Unit Tests.
 #
-if [[ "${RUN[@]}" =~ unit ]] ; then
+STAGE="unit"
+if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Unit Tests"
-  STAGE="unit"
   run_unit_tests
 fi
 
 #
 # Unit Test Coverage.
 #
-if [[ "${RUN[@]}" =~ coverage ]] ; then
-  print_heading "Running Unit Coverage"
-  STAGE="coverage"
+STAGE="coverage"
+if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
+  print_heading "Running Unit Coverage" 
   run_test_coverage
 fi
 
 #
 # Integration tests
 #
-if [[ "${RUN[@]}" =~ integration ]] ; then
+STAGE="integration"
+if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Integration Tests"
-  STAGE="integration"
   python3 test/integration-test.py --chisel --gotest "${FILTER[@]}"
 fi
 
 # Test that just ./start.py works, which is a proxy for testing that
 # `docker-compose up` works, since that just runs start.py (via entrypoint.sh).
-if [[ "${RUN[@]}" =~ start ]] ; then
+STAGE="start"
+if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Start Test"
-  STAGE="start"
   python3 start.py &
   for I in $(seq 1 100); do
     sleep 1
@@ -304,9 +299,9 @@ fi
 
 # Run go mod vendor (happens only in Travis) to check that the versions in
 # vendor/ really exist in the remote repo and match what we have.
-if [[ "${RUN[@]}" =~ gomod-vendor ]] ; then
+STAGE="gomod-vendor"
+if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Go Mod Vendor"
-  STAGE="gomod-vendor"
   go mod vendor
   git diff --exit-code
 fi
@@ -315,9 +310,9 @@ fi
 # current tools.
 # Note: Some of the tools we use seemingly don't understand ./vendor yet, and
 # so will fail if imports are not available in $GOPATH.
-if [[ "${RUN[@]}" =~ generate ]] ; then
+STAGE="generate"
+if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Generate"
-  STAGE="generate"
   # Additionally, we need to run go install before go generate because the stringer command
   # (using in ./grpc/) checks imports, and depends on the presence of a built .a
   # file to determine an import really exists. See
@@ -332,9 +327,9 @@ if [[ "${RUN[@]}" =~ generate ]] ; then
   run_and_expect_silence git diff --exit-code .
 fi
 
-if [[ "${RUN[@]}" =~ rpm ]]; then
+STAGE="rpm"
+if [[ "${RUN[@]}" =~ "$STAGE" ]]; then
   print_heading "Running RPM"
-  STAGE="rpm"
   make rpm
 fi
 
