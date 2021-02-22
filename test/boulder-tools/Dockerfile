@@ -1,4 +1,4 @@
-FROM buildpack-deps:buster-scm
+FROM buildpack-deps:focal-scm
 ARG GO_VERSION
 
 # Copied from https://github.com/docker-library/golang/blob/master/Dockerfile-debian.template
@@ -12,3 +12,5 @@ COPY requirements.txt /tmp/requirements.txt
 COPY boulder.rsyslog.conf /etc/rsyslog.d/
 COPY build.sh /tmp/build.sh
 RUN /tmp/build.sh
+RUN sed -i '/$ActionFileDefaultTemplate/s/^/#/' /etc/rsyslog.conf
+RUN sed -i '/imklog/s/^/#/' /etc/rsyslog.conf
