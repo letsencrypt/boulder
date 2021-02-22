@@ -182,8 +182,6 @@ type challModel struct {
 
 	// TODO(#1818): Remove, this field is unused, but is kept temporarily to avoid a database migration.
 	Validated bool `db:"validated"`
-
-	LockCol int64
 }
 
 // newReg creates a reg model object from a core.Registration
