@@ -3,13 +3,13 @@
 
 package publicsuffix
 
-const defaultListVersion = "PSL version f2cce8 (Thu Jan 21 11:57:05 2021)"
+const defaultListVersion = "PSL version fad56f (Thu Feb 18 20:10:12 2021)"
 
-func DefaultRules() [9117]Rule {
+func DefaultRules() [9136]Rule {
 	return r
 }
 
-var r = [9117]Rule{
+var r = [9136]Rule{
 	{1, "ac", 1, false},
 	{1, "com.ac", 2, false},
 	{1, "edu.ac", 2, false},
@@ -4141,13 +4141,14 @@ var r = [9117]Rule{
 	{1, "edu.mx", 2, false},
 	{1, "net.mx", 2, false},
 	{1, "my", 1, false},
+	{1, "biz.my", 2, false},
 	{1, "com.my", 2, false},
-	{1, "net.my", 2, false},
-	{1, "org.my", 2, false},
-	{1, "gov.my", 2, false},
 	{1, "edu.my", 2, false},
+	{1, "gov.my", 2, false},
 	{1, "mil.my", 2, false},
 	{1, "name.my", 2, false},
+	{1, "net.my", 2, false},
+	{1, "org.my", 2, false},
 	{1, "mz", 1, false},
 	{1, "ac.mz", 2, false},
 	{1, "adv.mz", 2, false},
@@ -6059,6 +6060,7 @@ var r = [9117]Rule{
 	{1, "xn--y9a3aq", 1, false},
 	{1, "xn--54b7fta0cc", 1, false},
 	{1, "xn--90ae", 1, false},
+	{1, "xn--mgbcpq6gpa1a", 1, false},
 	{1, "xn--90ais", 1, false},
 	{1, "xn--fiqs8s", 1, false},
 	{1, "xn--fiqz9s", 1, false},
@@ -6097,6 +6099,7 @@ var r = [9117]Rule{
 	{1, "xn--mgbayh7gpa", 1, false},
 	{1, "xn--3e0b707e", 1, false},
 	{1, "xn--80ao21a", 1, false},
+	{1, "xn--q7ce6a", 1, false},
 	{1, "xn--fzc2c9e2c", 1, false},
 	{1, "xn--xkc2al3hye2a", 1, false},
 	{1, "xn--mgbc0a9azcg", 1, false},
@@ -7398,6 +7401,7 @@ var r = [9117]Rule{
 	{1, "us-west-2.elasticbeanstalk.com", 3, true},
 	{2, "elb.amazonaws.com", 4, true},
 	{2, "elb.amazonaws.com.cn", 5, true},
+	{1, "awsglobalaccelerator.com", 2, true},
 	{1, "s3.amazonaws.com", 3, true},
 	{1, "s3-ap-northeast-1.amazonaws.com", 3, true},
 	{1, "s3-ap-northeast-2.amazonaws.com", 3, true},
@@ -7456,6 +7460,8 @@ var r = [9117]Rule{
 	{1, "t3l3p0rt.net", 2, true},
 	{1, "tele.amune.org", 3, true},
 	{1, "apigee.io", 2, true},
+	{1, "appspacehosted.com", 2, true},
+	{1, "appspaceusercontent.com", 2, true},
 	{1, "on-aptible.com", 2, true},
 	{1, "user.aseinet.ne.jp", 4, true},
 	{1, "gv.vc", 2, true},
@@ -7543,6 +7549,7 @@ var r = [9117]Rule{
 	{2, "lcl.dev", 3, true},
 	{2, "stg.dev", 3, true},
 	{1, "clic2000.net", 2, true},
+	{1, "clickrising.net", 2, true},
 	{1, "c66.me", 2, true},
 	{1, "cloud66.ws", 2, true},
 	{1, "cloud66.zone", 2, true},
@@ -8021,6 +8028,7 @@ var r = [9117]Rule{
 	{1, "tr.eu.org", 3, true},
 	{1, "uk.eu.org", 3, true},
 	{1, "us.eu.org", 3, true},
+	{1, "eurodir.ru", 2, true},
 	{1, "eu-1.evennode.com", 3, true},
 	{1, "eu-2.evennode.com", 3, true},
 	{1, "eu-3.evennode.com", 3, true},
@@ -8110,6 +8118,7 @@ var r = [9117]Rule{
 	{1, "vologda.su", 2, true},
 	{1, "channelsdvr.net", 2, true},
 	{1, "u.channelsdvr.net", 3, true},
+	{1, "edgecompute.app", 2, true},
 	{1, "fastly-terrarium.com", 2, true},
 	{1, "fastlylb.net", 2, true},
 	{1, "map.fastlylb.net", 3, true},
@@ -8477,6 +8486,8 @@ var r = [9117]Rule{
 	{1, "uni5.net", 2, true},
 	{1, "knightpoint.systems", 2, true},
 	{1, "oya.to", 2, true},
+	{1, "kuleuven.cloud", 2, true},
+	{1, "ezproxy.kuleuven.be", 3, true},
 	{1, "co.krd", 2, true},
 	{1, "edu.krd", 2, true},
 	{1, "krellian.net", 2, true},
@@ -8546,7 +8557,9 @@ var r = [9117]Rule{
 	{1, "mayfirst.org", 2, true},
 	{1, "hb.cldmail.ru", 3, true},
 	{1, "mcpe.me", 2, true},
+	{1, "mcdir.me", 2, true},
 	{1, "mcdir.ru", 2, true},
+	{1, "mcpre.ru", 2, true},
 	{1, "vps.mcdir.ru", 3, true},
 	{1, "miniserver.com", 2, true},
 	{1, "memset.net", 2, true},
@@ -8610,6 +8623,8 @@ var r = [9117]Rule{
 	{1, "ngrok.io", 2, true},
 	{1, "nh-serv.co.uk", 3, true},
 	{1, "nfshost.com", 2, true},
+	{2, "northflank.app", 3, true},
+	{2, "code.run", 3, true},
 	{1, "dnsking.ch", 2, true},
 	{1, "mypi.co", 2, true},
 	{1, "n4t.co", 2, true},
@@ -8790,6 +8805,8 @@ var r = [9117]Rule{
 	{1, "operaunite.com", 2, true},
 	{1, "skygearapp.com", 2, true},
 	{1, "outsystemscloud.com", 2, true},
+	{2, "webpaas.ovh.net", 4, true},
+	{2, "hosting.ovh.net", 4, true},
 	{1, "ownprovider.com", 2, true},
 	{1, "own.pm", 2, true},
 	{2, "owo.codes", 3, true},
@@ -8961,6 +8978,8 @@ var r = [9117]Rule{
 	{1, "arvo.network", 2, true},
 	{1, "azimuth.network", 2, true},
 	{1, "tlon.network", 2, true},
+	{1, "torproject.net", 2, true},
+	{1, "pages.torproject.net", 3, true},
 	{1, "bloxcms.com", 2, true},
 	{1, "townnews-staging.com", 2, true},
 	{1, "12hp.at", 2, true},
