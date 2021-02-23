@@ -197,12 +197,6 @@ then
   FILTER=(--test.run "${FILTER[@]}")
 fi
 
-# If unit + filter: set correct flags for go test
-if [[ "${RUN[@]}" =~ unit ]] && [[ -n "${FILTER[@]+x}" ]]
-then
-  FILTER=(--test.run "${FILTER[@]}")
-fi
-
 # If integration + filter: set correct flags for test/integration-test.py
 if [[ "${RUN[@]}" =~ integration ]] && [[ -n "${FILTER[@]+x}" ]]
 then
