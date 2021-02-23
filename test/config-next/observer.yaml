@@ -1,0 +1,54 @@
+--- 
+debugAddr: :8040
+syslog: 
+  stdoutlevel: 6
+  sysloglevel: 6
+timeout: 10
+monitors: 
+  - 
+    enabled: true
+    period: 10
+    plugin:
+      name: DNS
+      path: "./observer/plugins/dns.so"
+    settings:
+      qproto: udp
+      qrecurse: false
+      qname: letsencrypt.org
+      qtype: A
+      qserver: "owen.ns.cloudflare.com:53"
+      
+  - 
+    enabled: true
+    period: 10
+    plugin:
+      name: DNS
+      path: "./observer/plugins/dns.so"
+    settings:
+      qproto: udp
+      qrecurse: true
+      qname: google.com
+      qtype: A
+      qserver: "8.8.8.8:53"
+
+  - 
+    enabled: true
+    period: 10
+    plugin:
+      name: DNS
+      path: "./observer/plugins/dns.so"
+    settings:
+      qproto: tcp
+      qrecurse: true
+      qname: google.com
+      qtype: A
+      qserver: "8.8.8.8:53"
+  - 
+    enabled: true
+    period: 2
+    plugin:
+      name: HTTP
+      path: "./observer/plugins/http.so"
+    settings: 
+      url: https://letsencrypt.org
+      rcode: 200
