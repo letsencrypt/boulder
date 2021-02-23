@@ -15,6 +15,7 @@ fi
 #
 export RACE="false"
 export BOULDER_CONFIG_DIR="test/config"
+STAGE="starting"
 STATUS="FAILURE"
 RUN=()
 UNIT_PACKAGES=()
@@ -28,7 +29,7 @@ function print_outcome() {
   then
     echo -e "\e[32m"$STATUS"\e[0m"
   else
-    echo -e "\e[31m"$STATUS"\e[0m"
+    echo -e "\e[31m"$STATUS"\e[0m while running \e[31m"$STAGE"\e[0m"
   fi
 }
 
@@ -202,6 +203,8 @@ then
   FILTER=(--filter "${FILTER[@]}")
 fi
 
+# If unit test packages are not specified: set flags to run unit tests
+# for all boulder packages
 if [ -z "${UNIT_PACKAGES[@]+x}" ]
 then
   UNIT_PACKAGES+=("-p" "1" "./...")
@@ -210,7 +213,7 @@ fi
 print_heading "Boulder Test Suite CLI"
 print_heading "Settings:"
 
-# on EXIT, trap and print outcome
+# On EXIT, trap and print outcome
 trap "print_outcome" EXIT
 
 settings="$(cat -- <<-EOM
@@ -229,7 +232,8 @@ print_heading "Starting..."
 #
 # Run various linters.
 #
-if [[ "${RUN[@]}" =~ lints ]] ; then
+STAGE="lints"
+if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Lints"
   # golangci-lint is sometimes slow. Travis will kill our job if it goes 10m
   # without emitting logs, so set the timeout to 9m.
@@ -247,7 +251,8 @@ fi
 #
 # Unit Tests.
 #
-if [[ "${RUN[@]}" =~ unit ]] ; then
+STAGE="unit"
+if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Unit Tests"
   run_unit_tests
 fi
@@ -255,22 +260,25 @@ fi
 #
 # Unit Test Coverage.
 #
-if [[ "${RUN[@]}" =~ coverage ]] ; then
-  print_heading "Running Unit Coverage"
+STAGE="coverage"
+if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
+  print_heading "Running Unit Coverage" 
   run_test_coverage
 fi
 
 #
 # Integration tests
 #
-if [[ "${RUN[@]}" =~ integration ]] ; then
+STAGE="integration"
+if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Integration Tests"
   python3 test/integration-test.py --chisel --gotest "${FILTER[@]}"
 fi
 
 # Test that just ./start.py works, which is a proxy for testing that
 # `docker-compose up` works, since that just runs start.py (via entrypoint.sh).
-if [[ "${RUN[@]}" =~ start ]] ; then
+STAGE="start"
+if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Start Test"
   python3 start.py &
   for I in $(seq 1 100); do
@@ -285,7 +293,8 @@ fi
 
 # Run go mod vendor (happens only in Travis) to check that the versions in
 # vendor/ really exist in the remote repo and match what we have.
-if [[ "${RUN[@]}" =~ gomod-vendor ]] ; then
+STAGE="gomod-vendor"
+if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Go Mod Vendor"
   go mod vendor
   git diff --exit-code
@@ -295,7 +304,8 @@ fi
 # current tools.
 # Note: Some of the tools we use seemingly don't understand ./vendor yet, and
 # so will fail if imports are not available in $GOPATH.
-if [[ "${RUN[@]}" =~ generate ]] ; then
+STAGE="generate"
+if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Generate"
   # Additionally, we need to run go install before go generate because the stringer command
   # (using in ./grpc/) checks imports, and depends on the presence of a built .a
@@ -311,10 +321,12 @@ if [[ "${RUN[@]}" =~ generate ]] ; then
   run_and_expect_silence git diff --exit-code .
 fi
 
-if [[ "${RUN[@]}" =~ rpm ]]; then
+STAGE="rpm"
+if [[ "${RUN[@]}" =~ "$STAGE" ]]; then
   print_heading "Running RPM"
   make rpm
 fi
 
-# set -e stops execution in the instance of a command or pipeline error; if we got here we assume success
+# Because set -e stops execution in the instance of a command or pipeline
+# error; if we got here we assume success
 STATUS="SUCCESS"
