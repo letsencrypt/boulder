@@ -16,7 +16,7 @@ on:
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   #  Boulder_ci_tests job. This looks like a single job, but the matrix
-  #  items will mulitiply it. For example every entry in the
+  #  items will mulitply it. For example every entry in the
   #  BOULDER_TOOLS_TAG list will run with every test. If there were two
   #  tags and 5 tests there would be 10 jobs run.
   boulder_ci_tests:
@@ -28,7 +28,7 @@ jobs:
       fail-fast: true
       # Test matrix.
       matrix:
-        # Add additional docker image tags here and all tests will be ran with the additional image.
+        # Add additional docker image tags here and all tests will be run with the additional image.
         BOULDER_TOOLS_TAG:
           - go1.15.7_a1df5bd3
         # Tests command definitions. Use the entire docker-compose command you want to run.
@@ -56,7 +56,7 @@ jobs:
 
     # Sequence of tasks that will be executed as part of the job.
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      # Checks out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
 
       - name: Docker Login
