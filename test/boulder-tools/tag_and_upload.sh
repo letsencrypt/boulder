@@ -2,15 +2,15 @@
 
 cd $(dirname $0)
 
+DATESTAMP=$(date +%Y-%m-%d)
 DOCKER_REPO="letsencrypt/boulder-tools"
-GIT_HASH="$(git rev-parse --short HEAD)"
 
 GO_VERSIONS=( "1.15.7" "1.16" )
 
 # Build a tagged image for each GO_VERSION
 for GO_VERSION in "${GO_VERSIONS[@]}"
 do
-  TAG_NAME="$DOCKER_REPO:go${GO_VERSION}_${GIT_HASH}"
+  TAG_NAME="$DOCKER_REPO:go${GO_VERSION}_${DATESTAMP}"
   echo "Building boulder-tools image $TAG_NAME"
 
   # Build the docker image using the templated Dockerfile, tagging it with
@@ -27,7 +27,7 @@ docker login
 # Upload a tagged image for each GO_VERSION
 for GO_VERSION in "${GO_VERSIONS[@]}"
 do
-  TAG_NAME="$DOCKER_REPO:go${GO_VERSION}_${GIT_HASH}"
+  TAG_NAME="$DOCKER_REPO:go${GO_VERSION}_${DATESTAMP}"
   echo "Pushing ${TAG_NAME} to Dockerhub"
   docker push ${TAG_NAME}
 done
