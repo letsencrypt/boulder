@@ -8,6 +8,7 @@
     },
     "hostnamePolicyFile": "test/hostname-policy.yaml",
     "grpcCA": {
+      "maxConnectionAge": "30s",
       "address": ":9093",
       "clientNames": [
         "health-checker.boulder",
@@ -15,6 +16,7 @@
       ]
     },
     "grpcOCSPGenerator": {
+      "maxConnectionAge": "30s",
       "address": ":9096",
       "clientNames": [
         "health-checker.boulder",

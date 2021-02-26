@@ -19,6 +19,7 @@
       "keyFile": "test/grpc-creds/va.boulder/key.pem"
     },
     "grpc": {
+      "maxConnectionAge": "30s",
       "address": ":9098",
       "clientNames": [
         "health-checker.boulder",

@@ -5,12 +5,13 @@ import (
 	"errors"
 	"net"
 
-	"github.com/grpc-ecosystem/go-grpc-prometheus"
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 )
 
 // CodedError is a alias required to appease go vet
@@ -42,10 +43,17 @@ func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, metrics serverMet
 	}
 
 	si := newServerInterceptor(metrics, clk)
-	return grpc.NewServer(
+	options := []grpc.ServerOption{
 		grpc.Creds(creds),
 		grpc.UnaryInterceptor(si.intercept),
-	), l, nil
+	}
+	if c.MaxConnectionAge.Duration > 0 {
+		options = append(options,
+			grpc.KeepaliveParams(keepalive.ServerParameters{
+				MaxConnectionAge: c.MaxConnectionAge.Duration,
+			}))
+	}
+	return grpc.NewServer(options...), l, nil
 }
 
 // serverMetrics is a struct type used to return a few registered metrics from
