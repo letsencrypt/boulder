@@ -25,7 +25,7 @@ jobs:
 
     strategy:
       # When set to true, GitHub cancels all in-progress jobs if any matrix job fails. Default: true
-      fail-fast: true
+      fail-fast: false
       # Test matrix.
       matrix:
         # Add additional docker image tags here and all tests will be run with the additional image.
