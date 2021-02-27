@@ -241,7 +241,7 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 		return fmt.Errorf("Unexpected HTTP status code '%d': %s", resp.StatusCode, string(body))
 	}
 
-	cpc.log.Infof("Sent successful purge request purgeID: %s, purge expected in: %ds, for URLs: %s",
+	cpc.log.AuditInfof("Sent successful purge request purgeID: %s, purge expected in: %ds, for URLs: %s",
 		purgeInfo.PurgeID, purgeInfo.EstimatedSeconds, urls)
 
 	return nil
