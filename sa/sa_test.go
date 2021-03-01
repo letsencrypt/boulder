@@ -1870,7 +1870,10 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	ids, err := sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{apb}})
 	test.AssertNotError(t, err, "sa.NewAuthorization failed")
 
+	fc.Set(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC))
 	expires = fc.Now().Add(time.Hour * 2).UTC().UnixNano()
+	attemptedAt := fc.Now().UnixNano()
+
 	ip, _ := net.ParseIP("1.1.1.1").MarshalText()
 	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id: ids.Ids[0],
@@ -1882,9 +1885,10 @@ func TestFinalizeAuthorization2(t *testing.T) {
 				AddressUsed: ip,
 			},
 		},
-		Status:    string(core.StatusValid),
-		Expires:   expires,
-		Attempted: string(core.ChallengeTypeDNS01),
+		Status:      string(core.StatusValid),
+		Expires:     expires,
+		Attempted:   string(core.ChallengeTypeDNS01),
+		AttemptedAt: attemptedAt,
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
@@ -1894,6 +1898,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	test.AssertEquals(t, time.Unix(0, dbVer.Expires).UTC(), fc.Now().Add(time.Hour*2).UTC())
 	test.AssertEquals(t, dbVer.Challenges[0].Status, string(core.StatusValid))
 	test.AssertEquals(t, len(dbVer.Challenges[0].Validationrecords), 1)
+	test.AssertEquals(t, time.Unix(0, dbVer.Challenges[0].Validated).UTC(), fc.Now().UTC())
 
 	apb2 := &corepb.Authorization{
 		Identifier:     "aaa",
