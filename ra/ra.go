@@ -1519,11 +1519,16 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	if err != nil {
 		return err
 	}
+	var validated int64
+	if challenge.Validated != nil {
+		validated = challenge.Validated.UTC().UnixNano()
+	}
 	err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:                authzID,
 		Status:            string(challenge.Status),
 		Expires:           expires,
 		Attempted:         string(challenge.Type),
+		AttemptedAt:       validated,
 		ValidationRecords: vr.Records,
 		ValidationError:   vr.Problems,
 	})
@@ -1539,6 +1544,10 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 func (ra *RegistrationAuthorityImpl) PerformValidation(
 	ctx context.Context,
 	req *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
+
+	// Clock for start of PerformValidation.
+	vStart := ra.clk.Now()
+
 	authz, err := bgrpc.PBToAuthz(req.Authz)
 	if err != nil {
 		return nil, err
@@ -1653,9 +1662,11 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 
 		if prob != nil {
 			challenge.Status = core.StatusInvalid
+			challenge.Validated = &vStart
 			challenge.Error = prob
 		} else {
 			challenge.Status = core.StatusValid
+			challenge.Validated = &vStart
 		}
 		authz.Challenges[challIndex] = *challenge
 

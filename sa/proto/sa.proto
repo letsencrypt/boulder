@@ -226,6 +226,7 @@ message FinalizeAuthorizationRequest {
   string attempted = 4;
   repeated core.ValidationRecord validationRecords = 5;
   core.ProblemDetails validationError = 6;
+  int64 attemptedAt = 7; // Unix timestamp (nanoseconds)
 }
 
 message AddBlockedKeyRequest {
