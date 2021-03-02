@@ -14,6 +14,7 @@
     },
     "grpc": {
       "address": ":9099",
+      "maxConnectionAge": "30s",
       "clientNames": [
         "health-checker.boulder",
         "ra.boulder"

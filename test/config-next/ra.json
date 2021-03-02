@@ -42,6 +42,7 @@
       "timeout": "15s"
     },
     "grpc": {
+      "maxConnectionAge": "30s",
       "address": ":9094",
       "clientNames": [
         "admin-revoker.boulder",

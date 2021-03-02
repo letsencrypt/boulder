@@ -269,6 +269,12 @@ type GRPCServerConfig struct {
 	// (SANs). The server will reject clients that do not present a certificate
 	// with a SAN present on the `ClientNames` list.
 	ClientNames []string `json:"clientNames"`
+	// MaxConnectionAge specifies how long a connection may live before the server sends a GoAway to the
+	// client. Because gRPC connections re-resolve DNS after a connection close,
+	// this controls how long it takes before a client learns about changes to its
+	// backends.
+	// https://pkg.go.dev/google.golang.org/grpc/keepalive#ServerParameters
+	MaxConnectionAge ConfigDuration
 }
 
 // PortConfig specifies what ports the VA should call to on the remote
