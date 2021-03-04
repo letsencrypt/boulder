@@ -1,86 +1,127 @@
 # boulder-observer
-A modular config driven approach to black box monitoring with Prometheus
+A modular config driven approach to black box monitoring with
+Prometheus.
 
+## Metrics
+Observer provides the following metrics.
+
+### obs_monitors
+Count of configured monitors.
+
+**Labels:**
+
+`name`: name of the monitor
+
+`type`: type of prober the monitor is configured to use
+
+`valid`: whether the monitor configuration was valid
+
+### obs_observations
+Time taken, in seconds, for a monitor to perform a request/ query.
+
+**Labels:**
+
+`name`: name of the monitor
+
+`type`: type of prober the monitor is configured to use
+
+`result`: whether the query/ request was successful
+
+**Buckets:**
+
+`.1, .25, .5, 1, 2.5, 5, 7.5, 10, 15, 30, 45`
 
 ## Usage
-### Starting the `observer` daemon
-```shell
-$ ./observer/plugins/build.sh && go run ./cmd/boulder-observer/main.go -config test/config-next/observer.yaml
-Building plugins:
-⚙️ observer/plugins/dns.so
-✅dns.so
-⚙️ observer/plugins/http.so
-✅http.so
-OK
-I191418 main ksKu7w4 Versions: main=(Unspecified Unspecified) Golang=(go1.15.7) BuildHost=(Unspecified)
-I191418 main o9me0QI Initializing boulder-observer daemon from config: test/config-next/observer.yaml
-I191420 main wv7tug0 HTTP monitor "https://letsencrypt.org-200" succeeded while taking:=120.900665ms
-I191422 main ss-hzQ8 HTTP monitor "https://letsencrypt.org-200" succeeded while taking:=23.051998ms
-I191424 main -fD46gg HTTP monitor "https://letsencrypt.org-200" succeeded while taking:=23.419121ms
-I191426 main urmy8AM HTTP monitor "https://letsencrypt.org-200" succeeded while taking:=23.875478ms
-I191428 main qaGe0Qc DNS monitor "udp-8.8.8.8:53-google.com-A" succeeded while taking:=5.088261ms
-I191428 main i677rw0 DNS monitor "tcp-8.8.8.8:53-google.com-A" succeeded while taking:=5.156114ms
-I191428 main ooyq_Qo DNS monitor "udp-owen.ns.cloudflare.com:53-letsencrypt.org-A" succeeded while taking:=15.858563ms
-```
 
-### Help
 ```shell
 $ go run ./cmd/boulder-observer/main.go -help
 main:
   -config string
-        Path to boulder-observer configuration file (default "config.yaml")
+        Path to boulder-observer configuration file (default "config.yml")
 ```
+
+### Starting the boulder-observer daemon
+```shell
+$ go run ./cmd/boulder-observer/main.go -config test/config-next/observer.yml
+I142601 main ksKu7w4 Versions: main=(Unspecified Unspecified) Golang=(go1.15.7) BuildHost=(Unspecified)
+I142601 main q_D84gk Initializing boulder-observer daemon from config: test/config-next/observer.yml
+I142603 main o4Cp-Q0 type=[HTTP] result=[true] duration=[0.123472] name=[http://letsencrypt.org-200]
+I142603 main n4iSrAM type=[HTTP] result=[true] duration=[0.123751] name=[https://letsencrypt.org-200]
+I142605 main qe3Gugc type=[HTTP] result=[true] duration=[0.023499] name=[https://letsencrypt.org-200]
+I142605 main _J2k0wo type=[HTTP] result=[true] duration=[0.044429] name=[http://letsencrypt.org-200]
+I142606 main zomKjwc type=[DNS] result=[false] duration=[0.000017] name=[udp-2606:4700:4700::1111:53-google.com-A]
+I142606 main 6parpwM type=[DNS] result=[false] duration=[0.000014] name=[tcp-2606:4700:4700::1111:53-google.com-A]
+I142606 main pJqFmAs type=[DNS] result=[true] duration=[0.004667] name=[udp-1.1.1.1:53-google.com-A]
+I142606 main 9f7d2AM type=[DNS] result=[true] duration=[0.008965] name=[tcp-1.1.1.1:53-google.com-A]
+I142606 main 962rkgM type=[DNS] result=[true] duration=[0.013107] name=[udp-owen.ns.cloudflare.com:53-letsencrypt.org-A]
+I142606 main l-r29gc type=[DNS] result=[true] duration=[0.016294] name=[tcp-owen.ns.cloudflare.com:53-letsencrypt.org-A]
+I142607 main t_vrtAQ type=[HTTP] result=[true] duration=[0.022378] name=[https://letsencrypt.org-200]
+I142607 main v7SjtQM type=[HTTP] result=[true] duration=[0.043780] name=[http://letsencrypt.org-200]
+I142609 main ptjWkQM type=[HTTP] result=[true] duration=[0.021068] name=[https://letsencrypt.org-200]
+I142609 main jPzToww type=[HTTP] result=[true] duration=[0.042141] name=[http://letsencrypt.org-200]
+I142611 main 5IygqAI type=[DNS] result=[false] duration=[0.000019] name=[udp-2606:4700:4700::1111:53-google.com-A]
+I142611 main zqe61Qk type=[DNS] result=[false] duration=[0.000012] name=[tcp-2606:4700:4700::1111:53-google.com-A]
+I142611 main k9Xh1AU type=[DNS] result=[true] duration=[0.008134] name=[udp-8.8.8.8:53-google.com-A]
+I142611 main trL2mwU type=[DNS] result=[true] duration=[0.008801] name=[udp-1.1.1.1:53-google.com-A]
+I142611 main _qLDgwk type=[DNS] result=[true] duration=[0.011323] name=[tcp-8.8.8.8:53-google.com-A]
+I142611 main rJDj2AI type=[DNS] result=[true] duration=[0.012559] name=[tcp-1.1.1.1:53-google.com-A]
+I142611 main teWD6Qs type=[DNS] result=[true] duration=[0.015299] name=[udp-owen.ns.cloudflare.com:53-letsencrypt.org-A]
+I142611 main kPrnlg4 type=[DNS] result=[true] duration=[0.019022] name=[tcp-owen.ns.cloudflare.com:53-letsencrypt.org-A]
+I142611 main xb_w9gs type=[HTTP] result=[true] duration=[0.025506] name=[https://letsencrypt.org-200]
+I142611 main oKi2ggk type=[HTTP] result=[true] duration=[0.074734] name=[http://letsencrypt.org-200]
+I142613 main wPqP-gg type=[HTTP] result=[true] duration=[0.021814] name=[https://letsencrypt.org-200]
+I142613 main 4IrYoQY type=[HTTP] result=[true] duration=[0.041857] name=[http://letsencrypt.org-200]
+```
+
 ## Configuration
+
+### Observer
 ```yaml
-debugAddr: 8040
-syslog: 
+debugAddr: :8040
+syslog:
   stdoutlevel: 6
   sysloglevel: 6
-timeout: 5
-monitors: []
+monitors:
+  -
+    ...
 ```
 
 ### Monitors
 
-#### Using the DNS plugin
+#### Configuring a DNS monitor
 ```yaml
 monitors:
   - 
-    enabled: true
-    period: 1
-    plugin:
-      name: DNS
-      path: "./cmd/boulder-observer/observer/plugins/dns.so"
+    period: 10s
+    type: DNS
     settings:
-      qproto: udp
-      qrecurse: false
-      qname: letsencrypt.org
-      qtype: A
-      qserver: "owen.ns.cloudflare.com:53"
+      protocol: tcp
+      server: 8.8.8.8:53
+      recurse: true
+      query_name: google.com
+      query_type: A
 ```
 
-#### Using the HTTP plugin
+#### Configuring an HTTP monitor
 ```yaml
 monitors:
   - 
-    enabled: true
-    period: 1
-    plugin:
-      name: HTTP
-      path: "./cmd/boulder-observer/observer/plugins/http.so"
+    period: 2s
+    type: HTTP
     settings: 
       url: https://letsencrypt.org
       rcode: 200
 ```
 
-### Plugins
-**Building plugins**
+## Development
+
+### Starting Prometheus locally
+Please note, this requires a local prometheus binary.
 ```shell
-$ ./observer/plugins/build.sh
-Building plugins:
-⚙️ observer/plugins/dns.so
-✅dns.so
-⚙️ observer/plugins/http.so
-✅http.so
-OK
+prometheus --config.file=boulder/test/prometheus/prometheus.yml
 ```
+
+### Viewing metrics locally
+When developing with a local prometheus instance, you can use this link
+to view metrics:
+[link](http://0.0.0.0:9090/graph?g0.expr=sum%20by(name)%20(%0Arate(obs_observations_bucket%7Bresult%3D%22true%22%7D%5B1m%5D)%0A)&g0.tab=0&g0.stacked=0&g0.range_input=1h&g1.expr=sum%20by(name)%20(%0Arate(obs_observations_bucket%7Bresult%3D%22false%22%7D%5B1m%5D)%0A)&g1.tab=0&g1.stacked=0&g1.range_input=1h&g2.expr=count%20by(valid)%20(%0Aobs_monitors%7Bvalid%3D%22true%22%7D%0A)&g2.tab=0&g2.stacked=0&g2.range_input=1h)

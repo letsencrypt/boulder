@@ -1,44 +1,60 @@
 package observer
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/letsencrypt/boulder/observer/plugins"
+	"github.com/letsencrypt/boulder/cmd"
+	p "github.com/letsencrypt/boulder/observer/probes"
+	"gopkg.in/yaml.v2"
 )
 
-var (
-	errNewMonEmpty   = errors.New("monitor config is empty")
-	errNewMonInvalid = errors.New("monitor config is invalid")
-)
+type settings map[string]interface{}
 
-// MonConf is exported to receive the supplied monitor config
+// MonConf is exported to receive yaml configuration
 type MonConf struct {
-	Enabled  bool                   `yaml:"enabled"`
-	Period   int                    `yaml:"period"`
-	Timeout  int                    `yaml:"timeout"`
-	Plugin   plugins.Info           `yaml:"plugin"`
-	Settings map[string]interface{} `yaml:"settings"`
+	Valid    bool
+	Period   cmd.ConfigDuration `yaml:"period"`
+	Timeout  int                `yaml:"timeout"`
+	Kind     string             `yaml:"type"`
+	Settings settings           `yaml:"settings"`
 }
 
 func (c MonConf) normalize() {
-	c.Plugin.Name = strings.ToLower(c.Plugin.Name)
-	c.Plugin.Path = strings.ToLower(c.Plugin.Path)
+	c.Kind = strings.ToLower(c.Kind)
+}
+
+func (c MonConf) unmashalProbeSettings() (p.Configurer, error) {
+	probeConf, err := p.GetProbeConf(c.Kind, c.Settings)
+	if err != nil {
+		return nil, err
+	}
+	s, _ := yaml.Marshal(c.Settings)
+	probeConf, err = probeConf.UnmarshalSettings(s)
+	if err != nil {
+		return nil, err
+	}
+	return probeConf, nil
 }
 
 // validate normalizes and validates the received monitor config
-func (c MonConf) validate() error {
+func (c *MonConf) validate() error {
 	c.normalize()
-	pluginConf, err := plugins.GetPluginConf(c.Settings, c.Plugin.Path, c.Plugin.Name)
+	probeConf, err := c.unmashalProbeSettings()
 	if err != nil {
-		if err != nil {
-			return fmt.Errorf("failed to get plugin: %w", err)
-		}
+		return err
 	}
-	err = pluginConf.Validate()
+	err = probeConf.Validate()
 	if err != nil {
-		return fmt.Errorf("failed to validate plugin settings: %w", err)
+		return fmt.Errorf(
+			"failed to validate: %s prober with settings: %+v due to: %w",
+			c.Kind, probeConf, err)
 	}
+	c.Valid = true
 	return nil
+}
+
+func (c MonConf) getProber() p.Prober {
+	probeConf, _ := c.unmashalProbeSettings()
+	return probeConf.AsProbe()
 }

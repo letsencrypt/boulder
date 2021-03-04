@@ -1,54 +1,44 @@
 package observer
 
 import (
+	"strconv"
 	"time"
 
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/observer/plugins"
+	p "github.com/letsencrypt/boulder/observer/probes"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// monitor contains the parsed, normalized, and validated configuration
+// describing a given oberver monitor
 type monitor struct {
-	name     string
-	period   time.Duration
-	timeout  time.Duration
-	pluginIs string
-	probe    plugins.Plugin
-	logger   blog.Logger
-	metric   prometheus.Registerer
+	valid  bool
+	period time.Duration
+	prober p.Prober
+	logger blog.Logger
+	metric prometheus.Registerer
 }
 
+// start creates a ticker channel then spins off a prober goroutine for
+// each period specified in the monitor config and a timeout inferred
+// from that period. This is not perfect, it means that the effective
+// deadline for a prober goroutine will be TTL + time-to-schedule, but
+// it's close enough for our purposes
 func (m monitor) start() *time.Ticker {
 	ticker := time.NewTicker(m.period)
 	go func() {
 		for {
 			select {
-			case tick := <-ticker.C:
-				success, took := m.probe.Do(tick, m.timeout)
-				statTotalObservations.WithLabelValues(m.pluginIs, m.name).Add(1)
-				if !success {
-					statTotalErrors.WithLabelValues(m.pluginIs, m.name).Add(1)
-					m.logger.Infof("%s monitor %q failed while taking:=%s", m.pluginIs, m.name, took.String())
-					return
-				}
-				m.logger.Infof("%s monitor %q succeeded while taking:=%s", m.pluginIs, m.name, took.String())
+			case <-ticker.C:
+				result, dur := m.prober.Do(m.period)
+				statObservations.WithLabelValues(
+					m.prober.Name(), m.prober.Type(), strconv.FormatBool(result)).
+					Observe(dur.Seconds())
+				m.logger.Infof(
+					"type=[%s] result=[%v] duration=[%f] name=[%s]",
+					m.prober.Type(), result, dur.Seconds(), m.prober.Name())
 			}
 		}
 	}()
 	return ticker
-}
-
-func (m monitor) New(c MonConf, log blog.Logger, prom prometheus.Registerer, t int) *monitor {
-	if c.Timeout == 0 {
-		c.Timeout = t
-	}
-	plugin, _ := plugins.GetPluginConf(c.Settings, c.Plugin.Path, c.Plugin.Name)
-	m.name = plugin.GetMonitorName()
-	m.period = time.Duration(c.Period * 1000000000)
-	m.timeout = time.Duration(c.Timeout * 1000000000)
-	m.pluginIs = c.Plugin.Name
-	m.probe = plugin.AsProbe()
-	m.logger = log
-	m.metric = prom
-	return &m
 }

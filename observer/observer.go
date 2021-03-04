@@ -1,72 +1,68 @@
 package observer
 
 import (
-	"time"
+	"strconv"
 
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
+
+	// _ are probes imported to trigger init func
+	_ "github.com/letsencrypt/boulder/observer/probes/dns"
+	_ "github.com/letsencrypt/boulder/observer/probes/http"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
-	statTotalMonitors = prometheus.NewCounterVec(
+	statMonitors = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "obs_monitors",
 			Help: "count of configured monitors",
 		},
-		[]string{"plugin", "name"},
+		[]string{"name", "type", "valid"},
 	)
-	statTotalErrors = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "obs_errors",
-			Help: "count of errors encountered by all monitors",
+	statObservations = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "obs_observations",
+			Help:    "time taken for a monitor to perform a request/query",
+			Buckets: metrics.InternetFacingBuckets,
 		},
-		[]string{"plugin", "name"},
-	)
-	statTotalObservations = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "obs_oberservations",
-			Help: "count of observations performed by all monitors",
-		},
-		[]string{"plugin", "name"},
+		[]string{"name", "type", "result"},
 	)
 )
 
-// Observer acts as the
+// Observer contains the parsed, normalized, and validated configuration
+// describing a collection of monitors and the metrics to be collected
 type Observer struct {
-	Timeout  time.Duration
 	Logger   blog.Logger
 	Metric   prometheus.Registerer
 	Monitors []*monitor
 }
 
-// Start acts as the supervisor for all monitor goroutines
+// Start registers global metrics and spins off a goroutine for each of
+// the configured monitors
 func (o Observer) Start() {
-	runningChan := make(chan bool)
-
 	// register metrics
-	o.Metric.MustRegister(statTotalErrors)
-	o.Metric.MustRegister(statTotalMonitors)
-	o.Metric.MustRegister(statTotalObservations)
+	o.Metric.MustRegister(statMonitors)
+	o.Metric.MustRegister(statObservations)
 
 	// start each monitor
 	for _, mon := range o.Monitors {
-		statTotalMonitors.WithLabelValues(mon.pluginIs, mon.name).Inc()
-		go mon.start()
+		if mon.valid {
+			// TODO(@beautifulentropy): track and restart unhealthy goroutines
+			go mon.start()
+		}
+		statMonitors.WithLabelValues(
+			mon.prober.Name(), mon.prober.Type(), strconv.FormatBool(mon.valid)).Inc()
 	}
-
 	// run forever
-	<-runningChan
+	select {}
 }
 
-// New initializes new Observer objects
+// New creates new observer and it's corresponding monitor objects
 func New(c ObsConf, l blog.Logger, p prometheus.Registerer) *Observer {
-	var o Observer
-	o.Timeout = time.Duration(c.Timeout * 1000000000)
-	o.Logger = l
-	o.Metric = p
-	for _, monConf := range c.NewMons {
-		var mon monitor
-		o.Monitors = append(o.Monitors, mon.New(monConf, l, p, c.Timeout))
+	var monitors []*monitor
+	for _, c := range c.MonConfs {
+		monitors = append(monitors, &monitor{c.Valid, c.Period.Duration, c.getProber(), l, p})
 	}
-	return &o
+	return &Observer{l, p, monitors}
 }
