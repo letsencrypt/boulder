@@ -1662,12 +1662,11 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 
 		if prob != nil {
 			challenge.Status = core.StatusInvalid
-			challenge.Validated = &vStart
 			challenge.Error = prob
 		} else {
 			challenge.Status = core.StatusValid
-			challenge.Validated = &vStart
 		}
+		challenge.Validated = &vStart
 		authz.Challenges[challIndex] = *challenge
 
 		if err := ra.recordValidation(vaCtx, authz.ID, authz.Expires, challenge); err != nil {
