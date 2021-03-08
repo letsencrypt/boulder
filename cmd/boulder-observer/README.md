@@ -2,40 +2,11 @@
 A modular config driven approach to black box monitoring with
 Prometheus.
 
-## Metrics
-Observer provides the following metrics.
-
-### obs_monitors
-Count of configured monitors.
-
-**Labels:**
-
-`name`: name of the monitor
-
-`type`: type of prober the monitor is configured to use
-
-`valid`: whether the monitor configuration was valid
-
-### obs_observations
-Time taken, in seconds, for a monitor to perform a request/ query.
-
-**Labels:**
-
-`name`: name of the monitor
-
-`type`: type of prober the monitor is configured to use
-
-`result`: whether the query/ request was successful
-
-**Buckets:**
-
-`.1, .25, .5, 1, 2.5, 5, 7.5, 10, 15, 30, 45`
-
 ## Usage
 
+### Options
 ```shell
 $ go run ./cmd/boulder-observer/main.go -help
-main:
   -config string
         Path to boulder-observer configuration file (default "config.yml")
 ```
@@ -74,10 +45,28 @@ I142613 main 4IrYoQY type=[HTTP] result=[true] duration=[0.041857] name=[http://
 ```
 
 ## Configuration
+Configuration is provided via a YAML file.
 
-### Observer
+`debugaddr`: is the Prometheus scrape port expressed as `:` + `port
+number`
+
+`syslog`: a map of log levels for `stdoutlevel` and `sysloglevel`
+```text
+  0: EMERG
+  1: ALERT
+  2: CRIT
+  3: ERR
+  4: WARN
+  5: NOTICE
+  6: INFO
+  7: DEBUG
+```
+
+`monitors`: a list of monitors, see [configuration/monitors](#monitors)
+
+example:
 ```yaml
-debugAddr: :8040
+debugaddr: :8040
 syslog:
   stdoutlevel: 6
   sysloglevel: 6
@@ -87,31 +76,97 @@ monitors:
 ```
 
 ### Monitors
+`period`: the interval, in seconds, to attempt a query/ request
 
-#### Configuring a DNS monitor
+`kind`: the kind of prober to use for the query/ request
+
+`settings:` is map of Prober settings, the schema for which is
+determined by the prober. See [probers/DNS](#DNS) and
+[probers/HTTP](#HTTP).
+
+example:
 ```yaml
 monitors:
   - 
-    period: 10s
-    type: DNS
+    period: 5s
+    kind: DNS
+    settings:
+        ...
+```
+### Probers
+
+#### DNS
+`protocol`: `udp` or `tcp`
+
+`server`: (`hostname` or `ipv4/6 address`) + `port` (e.g.
+`example.com:53` or `1.1.1.1:53` or `2606:4700:4700::1111:53`)
+
+`recurse`: `true` if recursive resolution is desired else `false`
+
+`query_name`: `name` to query (e.g. `example.com`)
+
+`query_type`: record type to query, supported options are: `A`, `AAAA`,
+`TXT`, or `CAA`
+
+example:
+```yaml
+monitors:
+  - 
+    period: 5s
+    kind: DNS
     settings:
       protocol: tcp
-      server: 8.8.8.8:53
-      recurse: true
-      query_name: google.com
+      server: owen.ns.cloudflare.com:53
+      recurse: false
+      query_name: letsencrypt.org
       query_type: A
 ```
 
-#### Configuring an HTTP monitor
+#### HTTP
+`url`: `scheme` + `hostname` to send a request to (e.g.
+https://example.com)
+
+`rcodes`: list of expected 'successful' HTTP response codes
+
+example:
 ```yaml
 monitors:
   - 
     period: 2s
-    type: HTTP
+    kind: HTTP
     settings: 
-      url: https://letsencrypt.org
-      rcode: 200
+      url: http://letsencrypt.org/FOO
+      rcodes: [200, 404]
 ```
+
+## Metrics
+Observer provides the following metrics.
+
+### obs_monitors
+Count of configured monitors.
+
+**Labels:**
+
+`name`: name of the monitor
+
+`type`: type of prober the monitor is configured to use
+
+`valid`: whether the monitor configuration was valid
+
+### obs_observations
+Time taken, in seconds, for a monitor to perform a query/ request.
+
+**Labels:**
+
+`name`: name of the monitor
+
+`type`: type of prober the monitor is configured to use
+
+`result`: whether the query/ request was successful
+
+**Bucketed response times:**
+
+`.1, .25, .5, 1, 2.5, 5, 7.5, 10, 15, 30, 45`
 
 ## Development
 

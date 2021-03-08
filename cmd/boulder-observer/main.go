@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"io/ioutil"
 
@@ -12,7 +11,7 @@ import (
 
 func main() {
 	configPath := flag.String(
-		"config", "config.yaml", "Path to boulder-observer configuration file")
+		"config", "config.yml", "Path to boulder-observer configuration file")
 	flag.Parse()
 
 	configYAML, err := ioutil.ReadFile(*configPath)
@@ -22,27 +21,14 @@ func main() {
 	var config observer.ObsConf
 	err = yaml.Unmarshal(configYAML, &config)
 	if err != nil {
-		cmd.FailOnError(err, "failed to parse yaml config")
+		cmd.FailOnError(err, "failed to parse YAML config")
 	}
-
-	if config.DebugAddr == "" {
-		cmd.FailOnError(errors.New(""), "debugaddr is not defined")
-	}
-
-	// start monitoring and logging
-	prom, logger := cmd.StatsAndLogging(config.Syslog, config.DebugAddr)
-	defer logger.AuditPanic()
-	logger.Info(cmd.VersionString())
-
-	// validate config
-	err = config.Validate(logger)
+	// validate config and create an observer object
+	observer, err := observer.New(config, *configPath)
 	if err != nil {
 		cmd.FailOnError(err, "config failed validation")
 	}
 
 	// start daemon
-	logger.Infof("Initializing boulder-observer daemon from config: %s", *configPath)
-	logger.Debugf("Using config: %+v", config)
-	observer := observer.New(config, logger, prom)
 	observer.Start()
 }

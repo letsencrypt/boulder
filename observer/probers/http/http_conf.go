@@ -5,14 +5,14 @@ import (
 	"net/url"
 	"strings"
 
-	p "github.com/letsencrypt/boulder/observer/probes"
+	p "github.com/letsencrypt/boulder/observer/probers"
 	"gopkg.in/yaml.v2"
 )
 
 // HTTPConf is exported to receive the supplied probe config
 type HTTPConf struct {
-	URL   string `yaml:"url"`
-	RCode int    `yaml:"rcode"`
+	URL    string `yaml:"url"`
+	RCodes []int  `yaml:"rcodes"`
 }
 
 // UnmarshalSettings takes YAML as bytes and unmarshals it to the
@@ -26,11 +26,14 @@ func (c HTTPConf) UnmarshalSettings(settings []byte) (p.Configurer, error) {
 	return conf, nil
 }
 
+// normalize trims and lowers the string fields of `HTTPConf`
 func (c HTTPConf) normalize() {
 	c.URL = strings.Trim(strings.ToLower(c.URL), " ")
 }
 
-// Validate normalizes and validates the received probe config
+// Validate normalizes and validates the received `HTTPConf`. If the
+// `DNSConf` cannot be validated, an error appropriate for end-user
+// consumption is returned
 func (c HTTPConf) Validate() error {
 	c.normalize()
 
@@ -38,26 +41,27 @@ func (c HTTPConf) Validate() error {
 	url, err := url.Parse(c.URL)
 	if err != nil {
 		return fmt.Errorf(
-			"invalid url, got: %q, expected a valid url", c.URL)
+			"invalid 'url', got: %q, expected a valid url", c.URL)
 	}
 	if url.Scheme == "" {
 		return fmt.Errorf(
-			"invalid url, got: %q, missing scheme", c.URL)
+			"invalid 'url', got: %q, missing scheme", c.URL)
 	}
-	if c.RCode == 0 {
+	// validate `rcodes`
+	if c.RCodes == nil {
 		return fmt.Errorf(
-			"invalid rcode, got: %q, please specify a response code", c.RCode)
+			"invalid 'rcodes', got: %q, please specify at least one", c.RCodes)
 	}
 	return nil
 }
 
 // AsProbe returns the NewHTTP object as an HTTP probe
 func (c HTTPConf) AsProbe() p.Prober {
-	url, _ := url.Parse(c.URL)
-	return HTTPProbe{URL: *url, RCode: c.RCode}
+	return HTTPProbe{c.URL, c.RCodes}
 }
 
-// init is called on observer start and registers HTTP as a probe type
+// init is called at runtime and registers `HTTPConf`, a probe
+// `Configurer` type, as "HTTP"
 func init() {
 	p.Register("HTTP", HTTPConf{})
 }

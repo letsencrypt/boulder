@@ -17,18 +17,20 @@ type DNSProbe struct {
 	QType   uint16
 }
 
-// Name returns a name that uniquely identifies the monitor
+// Name returns a name that uniquely identifies the monitor that
+// configured this `Prober`. Used for metrics and logging
 func (p DNSProbe) Name() string {
 	return fmt.Sprintf("%s-%s-%s-%s", p.Proto, p.Server, p.QName, dns.TypeToString[p.QType])
 }
 
-// Type returns a name that uniquely identifies the monitor
-func (p DNSProbe) Type() string {
+// Kind returns a name that uniquely identifies the `Kind` of `Prober`.
+// Used for metrics and logging
+func (p DNSProbe) Kind() string {
 	return "DNS"
 }
 
-// Do is the query handler for HTTP probes
-func (p DNSProbe) Do(timeout time.Duration) (bool, time.Duration) {
+// Probe attempts the configured DNS query
+func (p DNSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(p.QName), p.QType)
 	m.RecursionDesired = p.Recurse

@@ -6,7 +6,7 @@ syslog:
 monitors:
   -
     period: 5s
-    type: DNS
+    kind: DNS
     settings:
       protocol: udp
       server: owen.ns.cloudflare.com:53
@@ -15,7 +15,7 @@ monitors:
       query_type: A
   -
     period: 5s
-    type: DNS
+    kind: DNS
     settings:
       protocol: udp
       server: 1.1.1.1:53
@@ -24,7 +24,7 @@ monitors:
       query_type: A
   -
     period: 10s
-    type: DNS
+    kind: DNS
     settings:
       protocol: tcp
       server: 8.8.8.8:53
@@ -33,13 +33,13 @@ monitors:
       query_type: A
   - 
     period: 2s
-    type: HTTP
+    kind: HTTP
     settings: 
       url: https://letsencrypt.org
-      rcode: 200
+      rcodes: [200]
   -
     period: 5s
-    type: DNS
+    kind: DNS
     settings:
       protocol: tcp
       server: owen.ns.cloudflare.com:53
@@ -48,7 +48,7 @@ monitors:
       query_type: A
   -
     period: 5s
-    type: DNS
+    kind: DNS
     settings:
       protocol: tcp
       server: 1.1.1.1:53
@@ -57,7 +57,7 @@ monitors:
       query_type: A
   -
     period: 10s
-    type: DNS
+    kind: DNS
     settings:
       protocol: udp
       server: 8.8.8.8:53
@@ -66,7 +66,7 @@ monitors:
       query_type: A
   -
     period: 5s
-    type: DNS
+    kind: DNS
     settings:
       protocol: tcp
       server: 2606:4700:4700::1111:53
@@ -75,7 +75,7 @@ monitors:
       query_type: A
   -
     period: 5s
-    type: DNS
+    kind: DNS
     settings:
       protocol: udp
       server: 2606:4700:4700::1111:53
@@ -84,7 +84,7 @@ monitors:
       query_type: A
   - 
     period: 2s
-    type: HTTP
+    kind: HTTP
     settings: 
-      url: http://letsencrypt.org
-      rcode: 200
+      url: http://letsencrypt.org/FOO
+      rcodes: [200, 404]
