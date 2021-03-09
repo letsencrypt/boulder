@@ -14,7 +14,6 @@ fi
 # Defaults
 #
 export RACE="false"
-export BOULDER_CONFIG_DIR="test/config"
 STAGE="starting"
 STATUS="FAILURE"
 RUN=()
