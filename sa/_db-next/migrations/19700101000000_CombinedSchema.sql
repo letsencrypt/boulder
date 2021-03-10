@@ -1,1 +1,0 @@
-../../_db/migrations/19700101000000_CombinedSchema.sql
