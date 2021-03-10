@@ -11,7 +11,6 @@ import (
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	"google.golang.org/grpc"
 )
 
 type CertificateAuthorityClientWrapper struct {
@@ -36,12 +35,4 @@ func (cac CertificateAuthorityClientWrapper) GenerateOCSP(ctx context.Context, r
 
 type OCSPGeneratorClientWrapper struct {
 	inner capb.OCSPGeneratorClient
-}
-
-func NewOCSPGeneratorClient(inner capb.OCSPGeneratorClient) *OCSPGeneratorClientWrapper {
-	return &OCSPGeneratorClientWrapper{inner}
-}
-
-func (ogc OCSPGeneratorClientWrapper) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest, _ ...grpc.CallOption) (*capb.OCSPResponse, error) {
-	return ogc.inner.GenerateOCSP(ctx, req)
 }
