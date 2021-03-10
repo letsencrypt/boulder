@@ -7,8 +7,7 @@ if type realpath >/dev/null 2>&1 ; then
 fi
 
 # posix compliant escape sequence
-esc=$'\033'
-aesc="${esc}["
+esc=$'\033'"["
 
 #
 # Defaults
@@ -24,9 +23,9 @@ RUN=()
 function print_outcome() {
   if [ "$OUTCOME" == OK ]
   then
-    echo -e "${aesc}0;32;1m""$OUTCOME""${aesc}0m"
+    echo -e "${esc}0;32;1m""$OUTCOME""${esc}0m"
   else
-    echo -e "${aesc}0;31;1m""$OUTCOME""${aesc}0m"
+    echo -e "${esc}0;31;1m""$OUTCOME""${esc}0m"
   fi
 }
 
@@ -37,15 +36,15 @@ function print_usage_exit() {
 
 function print_heading() {
   echo
-  echo -e "${aesc}0;34;1m"$1"${aesc}0m"
+  echo -e "${esc}0;34;1m"$1"${esc}0m"
 }
 
 function print_from() {
-  echo -e "from: ${aesc}0;36;1m"$1"${aesc}0m"
+  echo -e "from: ${esc}0;36;1m"$1"${esc}0m"
 }
 
 function print_to() {
-  echo -e "to:   ${aesc}0;32;1m"$1"${aesc}0m"
+  echo -e "to:   ${esc}0;32;1m"$1"${esc}0m"
 }
 
 #

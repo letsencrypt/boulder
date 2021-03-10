@@ -4,12 +4,11 @@ cd $(dirname $0)/..
 source test/db-common.sh
 
 # posix compliant escape sequence
-esc=$'\033' 
-aesc="${esc}["
+esc=$'\033'"["
 
 function print_heading() {
   echo
-  echo -e "${aesc}0;34;1m"$1"${aesc}0m"
+  echo -e "${esc}0;34;1m"$1"${esc}0m"
 }
 
 function get_migrations() {
