@@ -96,17 +96,7 @@ func (profile *certProfile) Subject() pkix.Name {
 }
 
 func (profile *certProfile) verifyProfile(ct certType) error {
-	if ct != requestCert {
-		if profile.NotBefore == "" {
-			return errors.New("not-before is required")
-		}
-		if profile.NotAfter == "" {
-			return errors.New("not-after is required")
-		}
-		if profile.SignatureAlgorithm == "" {
-			return errors.New("signature-algorithm is required")
-		}
-	} else {
+	if ct == requestCert {
 		if profile.NotBefore != "" {
 			return errors.New("not-before cannot be set for a CSR")
 		}
@@ -130,6 +120,16 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 		}
 		if profile.KeyUsages != nil {
 			return errors.New("key-usages cannot be set for a CSR")
+		}
+	} else {
+		if profile.NotBefore == "" {
+			return errors.New("not-before is required")
+		}
+		if profile.NotAfter == "" {
+			return errors.New("not-after is required")
+		}
+		if profile.SignatureAlgorithm == "" {
+			return errors.New("signature-algorithm is required")
 		}
 	}
 	if profile.CommonName == "" {
@@ -266,12 +266,11 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		return nil, errors.New("at least one key usage must be set")
 	}
 
-	templateSubject := profile.Subject()
 	cert := &x509.Certificate{
 		SerialNumber:          big.NewInt(0).SetBytes(serial),
 		BasicConstraintsValid: true,
 		IsCA:                  true,
-		Subject:               templateSubject,
+		Subject:               profile.Subject(),
 		OCSPServer:            ocspServer,
 		CRLDistributionPoints: crlDistributionPoints,
 		IssuingCertificateURL: issuingCertificateURL,
@@ -341,9 +340,8 @@ func (fr *failReader) Read([]byte) (int, error) {
 }
 
 func generateCSR(profile *certProfile, signer crypto.Signer) ([]byte, error) {
-	csrSubject := profile.Subject()
 	csrDER, err := x509.CreateCertificateRequest(&failReader{}, &x509.CertificateRequest{
-		Subject: csrSubject,
+		Subject: profile.Subject(),
 	}, signer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create and sign CSR: %s", err)
