@@ -152,7 +152,7 @@ Note: Intermediate certificates always include the extended key usages id-kp-ser
     | Field | Description |
     | --- | --- |
     | `csr-path` | Path to store PEM CSR for cross-signing, optional. |
-- `certificate-profile`: object containing profile for certificate to generate. Fields are documented [below](#Certificate-profile-format). Cannot include the `signature-algorithm`, `not-before`, and `not-after` fields.
+- `certificate-profile`: object containing profile for certificate to generate. Fields are documented [below](#Certificate-profile-format). Should only include Subject related fields `common-name`, `organization`, `country`.
 
 Example:
 
@@ -170,17 +170,6 @@ certificate-profile:
     common-name: CA root
     organization: good guys
     country: US
-    ocsp-url: http://good-guys.com/ocsp
-    crl-url:  http://good-guys.com/crl
-    issuer-url:  http://good-guys.com/root
-    policies:
-        - oid: 1.2.3
-        - oid: 4.5.6
-          cps-uri: "http://example.com/cps"
-    key-usages:
-        - Digital Signature
-        - Cert Sign
-        - CRL Sign
 ```
 
 This config generates a CSR signed by a key in the HSM, identified by the object label `intermediate signing key`, and writes it to `/home/user/csr.pem`.
