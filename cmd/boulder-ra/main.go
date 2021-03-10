@@ -160,7 +160,7 @@ func main() {
 	var ctp *ctpolicy.CTPolicy
 	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
-	pubc := bgrpc.NewPublisherClientWrapper(pubpb.NewPublisherClient(conn))
+	pubc := pubpb.NewPublisherClient(conn)
 
 	apConn, err := bgrpc.ClientSetup(c.RA.AkamaiPurgerService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Unable to create a Akamai Purger client")

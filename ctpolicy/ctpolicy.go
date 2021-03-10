@@ -18,7 +18,7 @@ import (
 // CTPolicy is used to hold information about SCTs required from various
 // groupings
 type CTPolicy struct {
-	pub           core.Publisher
+	pub           pubpb.PublisherClient
 	groups        []ctconfig.CTGroup
 	informational []ctconfig.LogDescription
 	finalLogs     []ctconfig.LogDescription
@@ -28,7 +28,7 @@ type CTPolicy struct {
 }
 
 // New creates a new CTPolicy struct
-func New(pub core.Publisher,
+func New(pub pubpb.PublisherClient,
 	groups []ctconfig.CTGroup,
 	informational []ctconfig.LogDescription,
 	log blog.Logger,

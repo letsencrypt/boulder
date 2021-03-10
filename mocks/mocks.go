@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"google.golang.org/grpc"
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
@@ -690,12 +691,12 @@ func (sa *StorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlocked
 }
 
 // Publisher is a mock
-type Publisher struct {
+type PublisherClient struct {
 	// empty
 }
 
 // SubmitToSingleCTWithResult is a mock
-func (*Publisher) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request) (*pubpb.Result, error) {
+func (*PublisherClient) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
 	return nil, nil
 }
 

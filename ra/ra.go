@@ -32,6 +32,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
+	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/reloader"
@@ -62,7 +63,7 @@ type RegistrationAuthorityImpl struct {
 	VA        vapb.VAClient
 	SA        core.StorageAuthority
 	PA        core.PolicyAuthority
-	publisher core.Publisher
+	publisher pubpb.PublisherClient
 	caa       caaChecker
 
 	clk       clock.Clock
@@ -103,7 +104,7 @@ func NewRegistrationAuthorityImpl(
 	reuseValidAuthz bool,
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
-	pubc core.Publisher,
+	pubc pubpb.PublisherClient,
 	caaClient caaChecker,
 	orderLifetime time.Duration,
 	ctp *ctpolicy.CTPolicy,
