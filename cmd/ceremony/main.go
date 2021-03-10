@@ -10,7 +10,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -525,23 +524,6 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 	return nil
 }
 
-// csrSelfSigner is a crypto.Signer that returns an empty signature. When generating a CSR we first
-// generate a self-signed certificate so that we can get extension generation for free. Instead of
-// creating a throwaway key to sign that certificate we just use a signer that returns an empty
-// signature, since x509.CreateCertificate doesn't really care about the actual contents of the
-// signature itself.
-type csrSelfSigner struct {
-	pub crypto.PublicKey
-}
-
-func (css *csrSelfSigner) Sign(_ io.Reader, _ []byte, _ crypto.SignerOpts) ([]byte, error) {
-	return []byte{}, nil
-}
-
-func (css *csrSelfSigner) Public() crypto.PublicKey {
-	return css.pub
-}
-
 func csrCeremony(configBytes []byte) error {
 	var config csrConfig
 	err := yaml.UnmarshalStrict(configBytes, &config)
@@ -565,12 +547,12 @@ func csrCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to parse public key: %s", err)
 	}
 
-	signer, randReader, err := openSigner(config.PKCS11, pub)
+	signer, _, err := openSigner(config.PKCS11, pub)
 	if err != nil {
 		return err
 	}
 
-	csrDER, err := generateCSR(&config.CertProfile, randReader, pubPEM.Bytes, pub, signer)
+	csrDER, err := generateCSR(&config.CertProfile, signer)
 	if err != nil {
 		return fmt.Errorf("failed to generate CSR: %s", err)
 	}
