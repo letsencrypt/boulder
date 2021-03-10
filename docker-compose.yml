@@ -1,21 +1,21 @@
 version: '3'
 services:
-    boulder: &boulder_service
+    boulder:
         # To minimize fetching this should be the same version used below
         image: letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.15.7_2021-02-25}
-        environment: &boulder_service_environment
-            FAKE_DNS: 10.77.77.77
-            BOULDER_CONFIG_DIR: test/config
-            GOFLAGS: -mod=vendor
+        environment:
+            - FAKE_DNS=10.77.77.77
+            - BOULDER_CONFIG_DIR=test/config
+            - GOFLAGS=-mod=vendor
             # This is required so Python doesn't throw an error when printing
             # non-ASCII to stdout.
-            PYTHONIOENCODING: utf-8
+            - PYTHONIOENCODING=utf-8
             # These are variables you can set to affect what tests get run or
             # how they are run. Including them here with no value means they are
             # passed through from the environment.
-            RUN: ""
-            INT_FILTER: ""
-            RACE: ""
+            - RUN
+            - INT_FILTER
+            - RACE
         volumes:
           - .:/go/src/github.com/letsencrypt/boulder:cached
           - ./.gocache:/root/.cache/go-build:cached
@@ -23,7 +23,6 @@ services:
           bluenet:
             ipv4_address: 10.77.77.77
             aliases:
-              - boulder
               - sa1.boulder
               - ca1.boulder
               - ra1.boulder
@@ -35,7 +34,6 @@ services:
           rednet:
             ipv4_address: 10.88.88.88
             aliases:
-              - boulder
               - sa2.boulder
               - ca2.boulder
               - ra2.boulder
@@ -61,11 +59,6 @@ services:
           - bmysql
         entrypoint: test/entrypoint.sh
         working_dir: /go/src/github.com/letsencrypt/boulder
-    bouldernext:
-      <<: *boulder_service
-      environment:
-        <<: *boulder_service_environment
-        BOULDER_CONFIG_DIR: test/config-next
     bmysql:
         image: mariadb:10.5
         networks:
