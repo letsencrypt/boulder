@@ -14,20 +14,6 @@ import (
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
-type ValidationAuthorityGRPCServer struct {
-	inner vapb.VAServer
-}
-
-func (s *ValidationAuthorityGRPCServer) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
-	return s.inner.PerformValidation(ctx, req)
-}
-
-func RegisterValidationAuthorityGRPCServer(s *ggrpc.Server, inner vapb.VAServer) error {
-	rpcSrv := &ValidationAuthorityGRPCServer{inner}
-	vapb.RegisterVAServer(s, rpcSrv)
-	return nil
-}
-
 type ValidationAuthorityGRPCClient struct {
 	inner vapb.VAClient
 }

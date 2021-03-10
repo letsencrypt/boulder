@@ -167,7 +167,7 @@ func main() {
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	grpcSrv, l, err := bgrpc.NewServer(c.VA.GRPC, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup VA gRPC server")
-	err = bgrpc.RegisterValidationAuthorityGRPCServer(grpcSrv, vai)
+	vapb.RegisterVAServer(grpcSrv, vai)
 	cmd.FailOnError(err, "Unable to register VA gRPC server")
 	vapb.RegisterCAAServer(grpcSrv, vai)
 	cmd.FailOnError(err, "Unable to register CAA gRPC server")
