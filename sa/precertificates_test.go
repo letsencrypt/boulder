@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/db"
-	berrors "github.com/letsencrypt/boulder/errors"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
@@ -83,18 +82,6 @@ func TestAddPrecertificate(t *testing.T) {
 			// AddCertificate not AddPrecertificate will be updating this table.
 			test.AssertEquals(t, db.IsNoRows(err), true)
 		}
-
-		// Adding the same certificate with the same serial should result in an
-		// error
-		_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-			Der:      testCert.Raw,
-			RegID:    regID,
-			Ocsp:     ocspResp,
-			Issued:   issuedTime.UnixNano(),
-			IssuerID: 1,
-		})
-		test.AssertError(t, err, "Expected error inserting duplicate precertificate")
-		test.AssertErrorIs(t, err, berrors.Duplicate)
 	}
 
 	addPrecert(true)
