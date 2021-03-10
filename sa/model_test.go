@@ -65,9 +65,10 @@ func TestAuthzModel(t *testing.T) {
 		Expires:        1234,
 		Challenges: []*corepb.Challenge{
 			{
-				Type:   string(core.ChallengeTypeHTTP01),
-				Status: string(core.StatusValid),
-				Token:  "MTIz",
+				Type:      string(core.ChallengeTypeHTTP01),
+				Status:    string(core.StatusValid),
+				Token:     "MTIz",
+				Validated: 1234,
 				Validationrecords: []*corepb.ValidationRecord{
 					{
 						Hostname:          "hostname",

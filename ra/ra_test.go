@@ -924,7 +924,7 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 }
 
 func TestPerformValidationSuccess(t *testing.T) {
-	va, sa, ra, _, cleanUp := initAuthorities(t)
+	va, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization
@@ -982,12 +982,16 @@ func TestPerformValidationSuccess(t *testing.T) {
 
 	// The DB authz's expiry should be equal to the current time plus the
 	// configured authorization lifetime
-	expectedExpires := ra.clk.Now().Add(ra.authorizationLifetime)
+	expectedExpires := fc.Now().Add(ra.authorizationLifetime)
 	test.AssertEquals(t, *dbAuthz.Expires, expectedExpires)
+
+	// Check that validated timestamp was recorded, stored, and retrieved
+	expectedValidated := fc.Now()
+	test.Assert(t, *dbAuthz.Challenges[challIdx].Validated == expectedValidated, "Validated timestamp incorrect or missing")
 }
 
 func TestPerformValidationVAError(t *testing.T) {
-	va, sa, ra, _, cleanUp := initAuthorities(t)
+	va, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
@@ -1032,6 +1036,10 @@ func TestPerformValidationVAError(t *testing.T) {
 	test.Assert(t, dbAuthz.Challenges[challIdx].Status == core.StatusInvalid, "challenge was not marked as invalid")
 	test.AssertContains(t, dbAuthz.Challenges[challIdx].Error.Error(), "Could not communicate with VA")
 	test.Assert(t, dbAuthz.Challenges[challIdx].ValidationRecord == nil, "challenge had a ValidationRecord")
+
+	// Check that validated timestamp was recorded, stored, and retrieved
+	expectedValidated := fc.Now()
+	test.Assert(t, *dbAuthz.Challenges[challIdx].Validated == expectedValidated, "Validated timestamp incorrect or missing")
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {

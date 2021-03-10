@@ -86,16 +86,19 @@ func createPendingAuthorization(t *testing.T, sa core.StorageAuthority, domain s
 	return ids.Ids[0]
 }
 
-func createFinalizedAuthorization(t *testing.T, sa core.StorageAuthority, domain string, exp time.Time, status string) int64 {
+func createFinalizedAuthorization(t *testing.T, sa core.StorageAuthority, domain string, exp time.Time,
+	status string, attemptedAt time.Time) int64 {
 	t.Helper()
 	pendingID := createPendingAuthorization(t, sa, domain, exp)
 	expInt := exp.UnixNano()
 	attempted := string(core.ChallengeTypeHTTP01)
+	attemptedAtInt := attemptedAt.UnixNano()
 	err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
-		Id:        pendingID,
-		Status:    status,
-		Expires:   expInt,
-		Attempted: attempted,
+		Id:          pendingID,
+		Status:      status,
+		Expires:     expInt,
+		Attempted:   attempted,
+		AttemptedAt: attemptedAtInt,
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorizations2 failed")
 	return pendingID
@@ -679,12 +682,13 @@ func TestDeactivateAuthorization2(t *testing.T) {
 
 	// deactivate a pending authorization
 	expires := fc.Now().Add(time.Hour).UTC()
+	attemptedAt := fc.Now()
 	authzID := createPendingAuthorization(t, sa, "example.com", expires)
 	_, err := sa.DeactivateAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
 	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
 
 	// deactivate a valid authorization"
-	authzID = createFinalizedAuthorization(t, sa, "example.com", expires, "valid")
+	authzID = createFinalizedAuthorization(t, sa, "example.com", expires, "valid", attemptedAt)
 	_, err = sa.DeactivateAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
 	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
 }
@@ -956,9 +960,10 @@ func TestSetOrderProcessing(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't create test registration")
 
-	// Add one pending authz
+	// Add one valid authz
 	expires := fc.Now().Add(time.Hour)
-	authzID := createFinalizedAuthorization(t, sa, "example.com", expires, "valid")
+	attemptedAt := fc.Now()
+	authzID := createFinalizedAuthorization(t, sa, "example.com", expires, "valid", attemptedAt)
 
 	order := &corepb.Order{
 		RegistrationID:   reg.ID,
@@ -1001,9 +1006,10 @@ func TestFinalizeOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't create test registration")
 
-	// Add one pending authz
+	// Add one valid authz
 	expires := fc.Now().Add(time.Hour)
-	authzID := createFinalizedAuthorization(t, sa, "example.com", expires, "valid")
+	attemptedAt := fc.Now()
+	authzID := createFinalizedAuthorization(t, sa, "example.com", expires, "valid", attemptedAt)
 
 	order := &corepb.Order{
 		RegistrationID:   reg.ID,
@@ -1108,6 +1114,7 @@ func TestGetAuthorizations2(t *testing.T) {
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 	exp := fc.Now().AddDate(0, 0, 10).UTC()
+	attemptedAt := fc.Now()
 
 	identA := "aaa"
 	identB := "bbb"
@@ -1115,7 +1122,7 @@ func TestGetAuthorizations2(t *testing.T) {
 	identD := "ddd"
 	idents := []string{identA, identB, identC}
 
-	authzIDA := createFinalizedAuthorization(t, sa, "aaa", exp, "valid")
+	authzIDA := createFinalizedAuthorization(t, sa, "aaa", exp, "valid", attemptedAt)
 	authzIDB := createPendingAuthorization(t, sa, "bbb", exp)
 	nearbyExpires := fc.Now().UTC().Add(time.Hour)
 	authzIDC := createPendingAuthorization(t, sa, "ccc", nearbyExpires)
@@ -1341,8 +1348,9 @@ func TestGetOrderForNames(t *testing.T) {
 
 	// Create two valid authorizations
 	authzExpires = fc.Now().Add(time.Hour)
-	authzIDC := createFinalizedAuthorization(t, sa, "zombo.com", authzExpires, "valid")
-	authzIDD := createFinalizedAuthorization(t, sa, "welcome.to.zombo.com", authzExpires, "valid")
+	attemptedAt := fc.Now()
+	authzIDC := createFinalizedAuthorization(t, sa, "zombo.com", authzExpires, "valid", attemptedAt)
+	authzIDD := createFinalizedAuthorization(t, sa, "welcome.to.zombo.com", authzExpires, "valid", attemptedAt)
 
 	// Add a fresh order that uses the authorizations created above
 	names = []string{"zombo.com", "welcome.to.zombo.com"}
@@ -1401,6 +1409,7 @@ func TestStatusForOrder(t *testing.T) {
 	expires := fc.Now().Add(time.Hour)
 	expiresNano := expires.UnixNano()
 	alreadyExpired := expires.Add(-2 * time.Hour)
+	attemptedAt := fc.Now()
 
 	// Create a registration to work with
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -1409,8 +1418,8 @@ func TestStatusForOrder(t *testing.T) {
 	// and a valid authz
 	pendingID := createPendingAuthorization(t, sa, "pending.your.order.is.up", expires)
 	expiredID := createPendingAuthorization(t, sa, "expired.your.order.is.up", alreadyExpired)
-	invalidID := createFinalizedAuthorization(t, sa, "invalid.your.order.is.up", expires, "invalid")
-	validID := createFinalizedAuthorization(t, sa, "valid.your.order.is.up", expires, "valid")
+	invalidID := createFinalizedAuthorization(t, sa, "invalid.your.order.is.up", expires, "invalid", attemptedAt)
+	validID := createFinalizedAuthorization(t, sa, "valid.your.order.is.up", expires, "valid", attemptedAt)
 	deactivatedID := createPendingAuthorization(t, sa, "deactivated.your.order.is.up", expires)
 	_, err := sa.DeactivateAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: deactivatedID})
 	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
@@ -1529,9 +1538,10 @@ func TestUpdateChallengesDeleteUnused(t *testing.T) {
 
 	expires := fc.Now().Add(time.Hour)
 	ctx := context.Background()
+	attemptedAt := fc.Now()
 
-	// Create a pending authz
-	authzID := createFinalizedAuthorization(t, sa, "example.com", expires, "valid")
+	// Create a valid authz
+	authzID := createFinalizedAuthorization(t, sa, "example.com", expires, "valid", attemptedAt)
 
 	result, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
@@ -1860,7 +1870,10 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	ids, err := sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{apb}})
 	test.AssertNotError(t, err, "sa.NewAuthorization failed")
 
+	fc.Set(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC))
 	expires = fc.Now().Add(time.Hour * 2).UTC().UnixNano()
+	attemptedAt := fc.Now().UnixNano()
+
 	ip, _ := net.ParseIP("1.1.1.1").MarshalText()
 	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id: ids.Ids[0],
@@ -1872,9 +1885,10 @@ func TestFinalizeAuthorization2(t *testing.T) {
 				AddressUsed: ip,
 			},
 		},
-		Status:    string(core.StatusValid),
-		Expires:   expires,
-		Attempted: string(core.ChallengeTypeDNS01),
+		Status:      string(core.StatusValid),
+		Expires:     expires,
+		Attempted:   string(core.ChallengeTypeDNS01),
+		AttemptedAt: attemptedAt,
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
@@ -1884,6 +1898,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	test.AssertEquals(t, time.Unix(0, dbVer.Expires).UTC(), fc.Now().Add(time.Hour*2).UTC())
 	test.AssertEquals(t, dbVer.Challenges[0].Status, string(core.StatusValid))
 	test.AssertEquals(t, len(dbVer.Challenges[0].Validationrecords), 1)
+	test.AssertEquals(t, time.Unix(0, dbVer.Challenges[0].Validated).UTC(), fc.Now().UTC())
 
 	apb2 := &corepb.Authorization{
 		Identifier:     "aaa",
@@ -2072,8 +2087,10 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 	identA := "a.example.com"
 	identB := "b.example.com"
 	expires := fc.Now().Add(time.Hour * 24 * 7).UTC()
-	authzIDA := createFinalizedAuthorization(t, sa, identA, expires, "valid")
-	authzIDB := createFinalizedAuthorization(t, sa, identB, expires, "valid")
+	attemptedAt := fc.Now()
+
+	authzIDA := createFinalizedAuthorization(t, sa, identA, expires, "valid", attemptedAt)
+	authzIDB := createFinalizedAuthorization(t, sa, identB, expires, "valid", attemptedAt)
 
 	order, err := sa.NewOrder(context.Background(), &corepb.Order{
 		RegistrationID:   reg.ID,
@@ -2137,7 +2154,8 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 	ident := "aaa"
 	expiresA := fc.Now().Add(time.Hour).UTC()
 	expiresB := fc.Now().Add(time.Hour * 3).UTC()
-	_ = createFinalizedAuthorization(t, sa, ident, expiresA, "invalid")
+	attemptedAt := fc.Now()
+	_ = createFinalizedAuthorization(t, sa, ident, expiresA, "invalid", attemptedAt)
 	_ = createPendingAuthorization(t, sa, ident, expiresB)
 
 	earliest, latest := fc.Now().Add(-time.Hour).UTC().UnixNano(), fc.Now().Add(time.Hour*5).UTC().UnixNano()
@@ -2160,7 +2178,8 @@ func TestGetValidAuthorizations2(t *testing.T) {
 	// Create a valid authorization
 	ident := "aaa"
 	expires := fc.Now().Add(time.Hour).UTC()
-	authzID := createFinalizedAuthorization(t, sa, ident, expires, "valid")
+	attemptedAt := fc.Now()
+	authzID := createFinalizedAuthorization(t, sa, ident, expires, "valid", attemptedAt)
 
 	now := fc.Now().UTC().UnixNano()
 	regID := int64(1)
