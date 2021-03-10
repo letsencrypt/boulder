@@ -169,7 +169,7 @@ if [[ "${RUN[@]}" =~ "$STEP" ]] ; then
     print_from "$promote"
     print_to "$promoted_path"
     mv "$promote" "$promoted_path"
-    ln -s "$(realpath "$promoted_path")" "$DB_NEXT_PATH"
+    ln -s "$(realpath --relative-to="$DB_NEXT_PATH" "$promoted_path")" "$DB_NEXT_PATH"
   fi
 fi
 
