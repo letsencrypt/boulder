@@ -149,8 +149,7 @@ func main() {
 	clientMetrics := bgrpc.NewClientMetrics(scope)
 	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Unable to create VA client")
-	vac := bgrpc.NewValidationAuthorityGRPCClient(vaConn)
-
+	vac := vapb.NewVAClient(vaConn)
 	caaClient := vapb.NewCAAClient(vaConn)
 
 	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tlsConfig, clientMetrics, clk)

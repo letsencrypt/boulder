@@ -16,7 +16,6 @@ import (
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
 // A WebFrontEnd object supplies methods that can be hooked into
@@ -91,10 +90,6 @@ type RegistrationAuthority interface {
 	// [AdminRevoker]
 	AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, adminName string) error
 }
-
-// ValidationAuthority defines the public interface for the Boulder VA
-// TODO(#4956): Remove this unnecessary type alias.
-type ValidationAuthority vapb.VAServer
 
 // CertificateAuthority defines the public interface for the Boulder CA
 type CertificateAuthority interface {
