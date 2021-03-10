@@ -1689,18 +1689,36 @@ func TestAddCertificateBadRatelimitUpdate(t *testing.T) {
 
 	// Manually add an fqdn set for the certificate serial. This will cause the
 	// real fqdn set update in AddCertificate to fail due to the duplicate serial.
-	err := addFQDNSet(
-		sa.dbMap,
-		cert.DNSNames,
-		serial,
-		cert.NotBefore,
-		cert.NotAfter)
-	test.AssertNotError(t, err, "Couldn't manually add fqdnSet")
+	for i := 0; i < 3; i++ {
+		ai, err := sa.dbMap.SelectInt("SELECT `AUTO_INCREMENT` FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'boulder_sa_test' AND TABLE_NAME = 'fqdnSets'")
+		test.AssertNotError(t, err, "Couldn't get current auto_increment")
+		fmt.Printf("ai: %d\n", ai)
+
+		err = addFQDNSet(
+			sa.dbMap,
+			cert.DNSNames,
+			serial,
+			cert.NotBefore,
+			cert.NotAfter)
+		test.AssertNotError(t, err, "Couldn't manually add fqdnSet")
+
+		id, err := sa.dbMap.SelectInt("SELECT id FROM fqdnSets ORDER BY id DESC LIMIT 1")
+		test.AssertNotError(t, err, "Couldn't get fqdnSet's ID")
+		fmt.Printf("id: %d\n", id)
+	}
+	_, err := sa.dbMap.Exec("ALTER TABLE fqdnSets AUTO_INCREMENT=1")
+	test.AssertNotError(t, err, "Couldn't reset auto_increment of fqdnSet table")
 
 	// Add the test certificate, it shouldn't error even though part of the rate
 	// limit updates failed.
+	ai, err := sa.dbMap.SelectInt("SELECT `AUTO_INCREMENT` FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'boulder_sa_test' AND TABLE_NAME = 'fqdnSets'")
+	test.AssertNotError(t, err, "Couldn't get current auto_increment")
+	fmt.Printf("ai: %d\n", ai)
 	_, err = sa.AddCertificate(ctx, cert.Raw, reg.ID, nil, &issued)
 	test.AssertNotError(t, err, "Couldn't add testCert")
+	id, err := sa.dbMap.SelectInt("SELECT id FROM fqdnSets ORDER BY id DESC LIMIT 1")
+	test.AssertNotError(t, err, "Couldn't get fqdnSet's ID")
+	fmt.Printf("id: %d\n", id)
 
 	// The rate limit transaction failure stat should have been incremented
 	test.AssertEquals(t, test.CountCounter(sa.rateLimitWriteErrors), 1)
