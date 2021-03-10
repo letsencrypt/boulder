@@ -90,17 +90,18 @@ function print_migrations(){
 USAGE="$(cat -- <<-EOM
 
 Usage:
-Boulder DB Migrations CLI:
+  
+  Boulder DB Migrations CLI
 
   Helper for listing, promoting, and demoting Boulder schema files
 
   ./$(basename "${0}") [OPTION]...
 
-  -l, --list-next               Lists schemas exclusively present in sa/db-next
-  -c, --list-current            Lists schemas exclusively present in sa/db
-  -p, --promote                 Promotes a given schema from sa/db-next to sa/db
-  -d, --demote                  Demotes a given schema from sa/db to sa/db-next
-  -h, --help                    Shows this help message
+  -l, --list-next           Lists schema files present in sa/_db-next
+  -c, --list-current        Lists schema files promoted from sa/_db-next to sa/_db 
+  -p, --promote             Select and promote a schema from sa/_db-next to sa/_db
+  -d, --demote              Select and demote a schema from sa/_db to sa/_db-next
+  -h, --help                Shows this help message
 
 EOM
 )"
@@ -112,16 +113,16 @@ while getopts nchpd-: OPT; do
     OPTARG="${OPTARG#=}"      # if long option argument, remove assigning `=`
   fi
   case "$OPT" in
-    n | list-next )              RUN+=("list_next") ;;
-    c | list-current )           RUN+=("list_current") ;;
-    p | promote )                RUN+=("promote") ;;
-    d | demote )                 RUN+=("demote") ;;
-    h | help )                   print_usage_exit ;;
-    ??* )                        exit_msg "Illegal option --$OPT" ;;  # bad long option
-    ? )                          exit 2 ;;  # bad short option (error reported via getopts)
+    n | list-next )           RUN+=("list_next") ;;
+    c | list-current )        RUN+=("list_current") ;;
+    p | promote )             RUN+=("promote") ;;
+    d | demote )              RUN+=("demote") ;;
+    h | help )                print_usage_exit ;;
+    ??* )                     exit_msg "Illegal option --$OPT" ;;  # bad long option
+    ? )                       exit 2 ;;  # bad short option (error reported via getopts)
   esac
 done
-shift $((OPTIND-1)) # remove parsed migrations and args from $@ list
+shift $((OPTIND-1)) # remove parsed opts and args from $@ list
 
 # On EXIT, trap and print outcome
 trap "print_outcome" EXIT
