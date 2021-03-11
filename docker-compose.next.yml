@@ -1,0 +1,16 @@
+version: '3'
+services:
+    boulder:
+      environment:
+          FAKE_DNS: 10.77.77.77
+          BOULDER_CONFIG_DIR: test/config-next
+          GOFLAGS: -mod=vendor
+          # This is required so Python doesn't throw an error when printing
+          # non-ASCII to stdout.
+          PYTHONIOENCODING: utf-8
+          # These are variables you can set to affect what tests get run or
+          # how they are run. Including them here with no value means they are
+          # passed through from the environment.
+          RUN: ""
+          INT_FILTER: ""
+          RACE: ""

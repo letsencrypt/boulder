@@ -16,12 +16,13 @@ import (
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
 )
 
 type mockPub struct {
 }
 
-func (mp *mockPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request) (*pubpb.Result, error) {
+func (mp *mockPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
 	return &pubpb.Result{Sct: []byte{0}}, nil
 }
 
@@ -29,7 +30,7 @@ type alwaysFail struct {
 	mockPub
 }
 
-func (mp *alwaysFail) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request) (*pubpb.Result, error) {
+func (mp *alwaysFail) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
 	return nil, errors.New("BAD")
 }
 
@@ -39,7 +40,7 @@ func TestGetSCTs(t *testing.T) {
 	missingSCTErr := berrors.MissingSCTs
 	testCases := []struct {
 		name       string
-		mock       core.Publisher
+		mock       pubpb.PublisherClient
 		groups     []ctconfig.CTGroup
 		ctx        context.Context
 		result     core.SCTDERs
@@ -139,7 +140,7 @@ type failOne struct {
 	badURL string
 }
 
-func (mp *failOne) SubmitToSingleCTWithResult(_ context.Context, req *pubpb.Request) (*pubpb.Result, error) {
+func (mp *failOne) SubmitToSingleCTWithResult(_ context.Context, req *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
 	if req.LogURL == mp.badURL {
 		return nil, errors.New("BAD")
 	}
@@ -150,7 +151,7 @@ type slowPublisher struct {
 	mockPub
 }
 
-func (sp *slowPublisher) SubmitToSingleCTWithResult(_ context.Context, req *pubpb.Request) (*pubpb.Result, error) {
+func (sp *slowPublisher) SubmitToSingleCTWithResult(_ context.Context, req *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
 	time.Sleep(time.Second)
 	return &pubpb.Result{Sct: []byte{0}}, nil
 }
@@ -219,7 +220,7 @@ type countEm struct {
 	count int
 }
 
-func (ce *countEm) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request) (*pubpb.Result, error) {
+func (ce *countEm) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
 	ce.count++
 	return &pubpb.Result{Sct: []byte{0}}, nil
 }

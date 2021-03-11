@@ -8,7 +8,7 @@ import (
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	"github.com/letsencrypt/boulder/revocation"
+	"google.golang.org/grpc"
 )
 
 // MockCA is a mock of a CA that always returns the cert from PEM in response to
@@ -18,7 +18,7 @@ type MockCA struct {
 }
 
 // IssuePrecertificate is a mock
-func (ca *MockCA) IssuePrecertificate(ctx context.Context, _ *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
+func (ca *MockCA) IssuePrecertificate(ctx context.Context, _ *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
 	if ca.PEM == nil {
 		return nil, fmt.Errorf("MockCA's PEM field must be set before calling IssueCertificate")
 	}
@@ -33,7 +33,7 @@ func (ca *MockCA) IssuePrecertificate(ctx context.Context, _ *capb.IssueCertific
 }
 
 // IssueCertificateForPrecertificate is a mock
-func (ca *MockCA) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
+func (ca *MockCA) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	return &corepb.Certificate{
 		Der:            req.DER,
 		RegistrationID: 1,
@@ -45,11 +45,6 @@ func (ca *MockCA) IssueCertificateForPrecertificate(ctx context.Context, req *ca
 }
 
 // GenerateOCSP is a mock
-func (ca *MockCA) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
+func (ca *MockCA) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest, _ ...grpc.CallOption) (*capb.OCSPResponse, error) {
 	return nil, nil
-}
-
-// RevokeCertificate is a mock
-func (ca *MockCA) RevokeCertificate(ctx context.Context, serial string, reasonCode revocation.Reason) (err error) {
-	return
 }

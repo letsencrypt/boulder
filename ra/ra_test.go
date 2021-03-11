@@ -322,7 +322,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		Status:    core.StatusValid,
 	})
 
-	ctp := ctpolicy.New(&mocks.Publisher{}, nil, nil, log, metrics.NoopRegisterer)
+	ctp := ctpolicy.New(&mocks.PublisherClient{}, nil, nil, log, metrics.NoopRegisterer)
 
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
@@ -924,7 +924,7 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 }
 
 func TestPerformValidationSuccess(t *testing.T) {
-	va, sa, ra, _, cleanUp := initAuthorities(t)
+	va, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization
@@ -982,12 +982,16 @@ func TestPerformValidationSuccess(t *testing.T) {
 
 	// The DB authz's expiry should be equal to the current time plus the
 	// configured authorization lifetime
-	expectedExpires := ra.clk.Now().Add(ra.authorizationLifetime)
+	expectedExpires := fc.Now().Add(ra.authorizationLifetime)
 	test.AssertEquals(t, *dbAuthz.Expires, expectedExpires)
+
+	// Check that validated timestamp was recorded, stored, and retrieved
+	expectedValidated := fc.Now()
+	test.Assert(t, *dbAuthz.Challenges[challIdx].Validated == expectedValidated, "Validated timestamp incorrect or missing")
 }
 
 func TestPerformValidationVAError(t *testing.T) {
-	va, sa, ra, _, cleanUp := initAuthorities(t)
+	va, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
@@ -1032,6 +1036,10 @@ func TestPerformValidationVAError(t *testing.T) {
 	test.Assert(t, dbAuthz.Challenges[challIdx].Status == core.StatusInvalid, "challenge was not marked as invalid")
 	test.AssertContains(t, dbAuthz.Challenges[challIdx].Error.Error(), "Could not communicate with VA")
 	test.Assert(t, dbAuthz.Challenges[challIdx].ValidationRecord == nil, "challenge had a ValidationRecord")
+
+	// Check that validated timestamp was recorded, stored, and retrieved
+	expectedValidated := fc.Now()
+	test.Assert(t, *dbAuthz.Challenges[challIdx].Validated == expectedValidated, "Validated timestamp incorrect or missing")
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
@@ -3447,7 +3455,7 @@ func TestPerformValidationBadChallengeType(t *testing.T) {
 type timeoutPub struct {
 }
 
-func (mp *timeoutPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request) (*pubpb.Result, error) {
+func (mp *timeoutPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
 	return nil, context.DeadlineExceeded
 }
 
@@ -3518,8 +3526,9 @@ type mockCAFailPrecert struct {
 }
 
 func (ca *mockCAFailPrecert) IssuePrecertificate(
-	_ context.Context,
-	_ *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
+	context.Context,
+	*capb.IssueCertificateRequest,
+	...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
 	return nil, ca.err
 }
 
@@ -3531,7 +3540,10 @@ type mockCAFailCertForPrecert struct {
 }
 
 // IssuePrecertificate needs to be mocked for mockCAFailCertForPrecert's `IssueCertificateForPrecertificate` to get called.
-func (ca *mockCAFailCertForPrecert) IssuePrecertificate(_ context.Context, _ *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
+func (ca *mockCAFailCertForPrecert) IssuePrecertificate(
+	context.Context,
+	*capb.IssueCertificateRequest,
+	...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
@@ -3556,8 +3568,9 @@ func (ca *mockCAFailCertForPrecert) IssuePrecertificate(_ context.Context, _ *ca
 }
 
 func (ca *mockCAFailCertForPrecert) IssueCertificateForPrecertificate(
-	_ context.Context,
-	_ *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
+	context.Context,
+	*capb.IssueCertificateForPrecertificateRequest,
+	...grpc.CallOption) (*corepb.Certificate, error) {
 	return &corepb.Certificate{}, ca.err
 }
 
@@ -3644,7 +3657,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 
 	testCases := []struct {
 		Name         string
-		Mock         core.CertificateAuthority
+		Mock         capb.CertificateAuthorityClient
 		ExpectedErr  error
 		ExpectedProb *berrors.BoulderError
 	}{
@@ -3844,7 +3857,7 @@ type mockCAOCSP struct {
 	mocks.MockCA
 }
 
-func (mcao *mockCAOCSP) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
+func (mcao *mockCAOCSP) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...grpc.CallOption) (*capb.OCSPResponse, error) {
 	return &capb.OCSPResponse{Response: []byte{1, 2, 3}}, nil
 }
 
