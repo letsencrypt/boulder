@@ -209,7 +209,7 @@ func (v cancelledVA) PerformValidation(_ context.Context, _ *vapb.PerformValidat
 	return nil, context.Canceled
 }
 
-// brokenRemoteVA is a mock for the core.ValidationAuthority interface mocked to
+// brokenRemoteVA is a mock for the vapb.VAClient interface mocked to
 // always return errors.
 type brokenRemoteVA struct{}
 
