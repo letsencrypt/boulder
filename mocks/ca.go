@@ -8,7 +8,6 @@ import (
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	"github.com/letsencrypt/boulder/revocation"
 	"google.golang.org/grpc"
 )
 
@@ -48,9 +47,4 @@ func (ca *MockCA) IssueCertificateForPrecertificate(ctx context.Context, req *ca
 // GenerateOCSP is a mock
 func (ca *MockCA) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest, _ ...grpc.CallOption) (*capb.OCSPResponse, error) {
 	return nil, nil
-}
-
-// RevokeCertificate is a mock
-func (ca *MockCA) RevokeCertificate(ctx context.Context, serial string, reasonCode revocation.Reason) (err error) {
-	return
 }
