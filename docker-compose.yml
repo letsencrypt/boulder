@@ -80,6 +80,7 @@ services:
         environment:
             GO111MODULE: "on"
             GOFLAGS: "-mod=vendor"
+            BOULDER_CONFIG_DIR: test/config
         networks:
           - bluenet
         volumes:

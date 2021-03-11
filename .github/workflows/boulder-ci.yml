@@ -39,9 +39,12 @@ jobs:
           - "docker-compose run --use-aliases boulder ./test.sh --integration"
           # Config changes that have landed in main but not yet been applied to
           # production can be made in boulder-config-next.json.
-          - "docker-compose run --use-aliases boulder ./test.sh --integration --config-next"
+          # Database migrations in `sa/_db-next/migrations` are only performed 
+          # when `docker-compose` is called using `-f docker-compose.yml -f 
+          # docker-compose.next.yml`
+          - "docker-compose -f docker-compose.yml -f docker-compose.next.yml run --use-aliases boulder ./test.sh --integration"
           - "docker-compose run --use-aliases boulder ./test.sh --unit --enable-race-detection"
-          - "docker-compose run --use-aliases boulder ./test.sh --unit --enable-race-detection --config-next"
+          - "docker-compose -f docker-compose.yml -f docker-compose.next.yml run --use-aliases boulder ./test.sh --unit --enable-race-detection"
           - "docker-compose run --use-aliases boulder ./test.sh --start-py"
           # gomod-vendor runs with a separate network access definition
           # because it needs to fetch packages from GitHub et. al., which
