@@ -9,6 +9,7 @@ import (
 	"encoding/asn1"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/letsencrypt/boulder/pkcs11helpers"
@@ -40,6 +41,20 @@ func TestParseOID(t *testing.T) {
 	oid, err := parseOID("1.2.3")
 	test.AssertNotError(t, err, "parseOID failed with a valid OID")
 	test.Assert(t, oid.Equal(asn1.ObjectIdentifier{1, 2, 3}), "parseOID returned incorrect OID")
+}
+
+func TestMakeSubject(t *testing.T) {
+	profile := &certProfile{
+		CommonName:   "common name",
+		Organization: "organization",
+		Country:      "country",
+	}
+	expectedSubject := pkix.Name{
+		CommonName:   "common name",
+		Organization: []string{"organization"},
+		Country:      []string{"country"},
+	}
+	test.AssertDeepEquals(t, profile.Subject(), expectedSubject)
 }
 
 func TestMakeTemplate(t *testing.T) {
@@ -431,6 +446,42 @@ func TestVerifyProfile(t *testing.T) {
 			certType:    requestCert,
 			expectedErr: "signature-algorithm cannot be set for a CSR",
 		},
+		{
+			profile: certProfile{
+				OCSPURL: "a",
+			},
+			certType:    requestCert,
+			expectedErr: "ocsp-url cannot be set for a CSR",
+		},
+		{
+			profile: certProfile{
+				CRLURL: "a",
+			},
+			certType:    requestCert,
+			expectedErr: "crl-url cannot be set for a CSR",
+		},
+		{
+			profile: certProfile{
+				IssuerURL: "a",
+			},
+			certType:    requestCert,
+			expectedErr: "issuer-url cannot be set for a CSR",
+		},
+		{
+			profile: certProfile{
+				Policies: []policyInfoConfig{
+					{OID: "1.2.3"}, {OID: "1.2.3.4", CPSURI: "hello"}},
+			},
+			certType:    requestCert,
+			expectedErr: "policies cannot be set for a CSR",
+		},
+		{
+			profile: certProfile{
+				KeyUsages: []string{"a"},
+			},
+			certType:    requestCert,
+			expectedErr: "key-usages cannot be set for a CSR",
+		},
 	} {
 		err := tc.profile.verifyProfile(tc.certType)
 		if err != nil {
@@ -444,55 +495,23 @@ func TestVerifyProfile(t *testing.T) {
 }
 
 func TestGenerateCSR(t *testing.T) {
-	s, ctx := pkcs11helpers.NewSessionWithMock()
-	randReader := newRandReader(s)
-	pubKeyBytes := samplePubkey()
-	pubKey, err := x509.ParsePKIXPublicKey(pubKeyBytes)
-	test.AssertNotError(t, err, "failed to parse test key")
 	profile := &certProfile{
 		CommonName:   "common name",
 		Organization: "organization",
 		Country:      "country",
-		KeyUsages:    []string{"Digital Signature", "CRL Sign"},
-		OCSPURL:      "ocsp",
-		CRLURL:       "crl",
-		IssuerURL:    "issuer",
-		Policies: []policyInfoConfig{
-			{
-				OID:    "1.2.3",
-				CPSURI: "hello",
-			},
-			{
-				OID: "1.2.3.4",
-			},
-		},
 	}
-	ctx.GenerateRandomFunc = realRand
 
 	signer, err := rsa.GenerateKey(rand.Reader, 1024)
 	test.AssertNotError(t, err, "failed to generate test key")
 
-	csrBytes, err := generateCSR(profile, randReader, pubKeyBytes, pubKey, &wrappedSigner{signer})
+	csrBytes, err := generateCSR(profile, &wrappedSigner{signer})
 	test.AssertNotError(t, err, "failed to generate CSR")
 
 	csr, err := x509.ParseCertificateRequest(csrBytes)
 	test.AssertNotError(t, err, "failed to parse CSR")
 	test.AssertNotError(t, csr.CheckSignature(), "CSR signature check failed")
-	test.AssertEquals(t, len(csr.Extensions), 7)
+	test.AssertEquals(t, len(csr.Extensions), 0)
 
-	containsExt := func(oid asn1.ObjectIdentifier, extensions []pkix.Extension) bool {
-		for _, ext := range extensions {
-			if ext.Id.Equal(oid) {
-				return true
-			}
-		}
-		return false
-	}
-	test.Assert(t, containsExt(asn1.ObjectIdentifier{2, 5, 29, 15}, csr.Extensions), "CSR doesn't contain keyUsage extension")
-	test.Assert(t, containsExt(asn1.ObjectIdentifier{2, 5, 29, 37}, csr.Extensions), "CSR doesn't contain extKeyUsage extension")
-	test.Assert(t, containsExt(asn1.ObjectIdentifier{2, 5, 29, 19}, csr.Extensions), "CSR doesn't contain basicConstraints extension")
-	test.Assert(t, containsExt(asn1.ObjectIdentifier{2, 5, 29, 14}, csr.Extensions), "CSR doesn't contain subjectKeyIdentifier extension")
-	test.Assert(t, containsExt(asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 1}, csr.Extensions), "CSR doesn't contain authorityInfoAccess extension")
-	test.Assert(t, containsExt(asn1.ObjectIdentifier{2, 5, 29, 31}, csr.Extensions), "CSR doesn't contain cRLDistributionPoints extension")
-	test.Assert(t, containsExt(asn1.ObjectIdentifier{2, 5, 29, 32}, csr.Extensions), "CSR doesn't contain certificatePolicies extension")
+	test.AssertEquals(t, csr.Subject.String(), fmt.Sprintf("CN=%s,O=%s,C=%s",
+		profile.CommonName, profile.Organization, profile.Country))
 }

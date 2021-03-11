@@ -281,12 +281,6 @@ func TestPerformValidationValid(t *testing.T) {
 	if !strings.Contains(resultLog[0], `"Hostname":"good-dns01.com"`) {
 		t.Error("PerformValidation didn't log validation hostname.")
 	}
-
-	// Check log to see if the expected validated string appears. This
-	// should match what is configured in func setup() for the fake clock.
-	if !strings.Contains(resultLog[0], `"validated":"1970-01-01T00:00:00Z"`) {
-		t.Error("Validated timestamp string not found in log.")
-	}
 }
 
 // TestPerformValidationWildcard tests that the VA properly strips the `*.`
@@ -321,12 +315,6 @@ func TestPerformValidationWildcard(t *testing.T) {
 	// hostname that was validated
 	if !strings.Contains(resultLog[0], `"hostname":"good-dns01.com"`) {
 		t.Errorf("PerformValidation didn't log correct validation record hostname.")
-	}
-
-	// Check log to see if the expected validated string appears. This
-	// should match what is configured in func setup() for the fake clock.
-	if !strings.Contains(resultLog[0], `"validated":"1970-01-01T00:00:00Z"`) {
-		t.Error("Validated timestamp string not found in log.")
 	}
 }
 

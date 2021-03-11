@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto"
-	"crypto/rand"
 	"crypto/sha1"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -87,18 +86,17 @@ const (
 	requestCert
 )
 
+// Subject returns a pkix.Name from the appropriate certProfile fields
+func (profile *certProfile) Subject() pkix.Name {
+	return pkix.Name{
+		CommonName:   profile.CommonName,
+		Organization: []string{profile.Organization},
+		Country:      []string{profile.Country},
+	}
+}
+
 func (profile *certProfile) verifyProfile(ct certType) error {
-	if ct != requestCert {
-		if profile.NotBefore == "" {
-			return errors.New("not-before is required")
-		}
-		if profile.NotAfter == "" {
-			return errors.New("not-after is required")
-		}
-		if profile.SignatureAlgorithm == "" {
-			return errors.New("signature-algorithm is required")
-		}
-	} else {
+	if ct == requestCert {
 		if profile.NotBefore != "" {
 			return errors.New("not-before cannot be set for a CSR")
 		}
@@ -107,6 +105,31 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 		}
 		if profile.SignatureAlgorithm != "" {
 			return errors.New("signature-algorithm cannot be set for a CSR")
+		}
+		if profile.OCSPURL != "" {
+			return errors.New("ocsp-url cannot be set for a CSR")
+		}
+		if profile.CRLURL != "" {
+			return errors.New("crl-url cannot be set for a CSR")
+		}
+		if profile.IssuerURL != "" {
+			return errors.New("issuer-url cannot be set for a CSR")
+		}
+		if profile.Policies != nil {
+			return errors.New("policies cannot be set for a CSR")
+		}
+		if profile.KeyUsages != nil {
+			return errors.New("key-usages cannot be set for a CSR")
+		}
+	} else {
+		if profile.NotBefore == "" {
+			return errors.New("not-before is required")
+		}
+		if profile.NotAfter == "" {
+			return errors.New("not-after is required")
+		}
+		if profile.SignatureAlgorithm == "" {
+			return errors.New("signature-algorithm is required")
 		}
 	}
 	if profile.CommonName == "" {
@@ -119,7 +142,7 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 		return errors.New("country is required")
 	}
 
-	if ct == intermediateCert || ct == requestCert {
+	if ct == intermediateCert {
 		if profile.CRLURL == "" {
 			return errors.New("crl-url is required for intermediates")
 		}
@@ -247,11 +270,7 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		SerialNumber:          big.NewInt(0).SetBytes(serial),
 		BasicConstraintsValid: true,
 		IsCA:                  true,
-		Subject: pkix.Name{
-			CommonName:   profile.CommonName,
-			Organization: []string{profile.Organization},
-			Country:      []string{profile.Country},
-		},
+		Subject:               profile.Subject(),
 		OCSPServer:            ocspServer,
 		CRLDistributionPoints: crlDistributionPoints,
 		IssuingCertificateURL: issuingCertificateURL,
@@ -320,32 +339,12 @@ func (fr *failReader) Read([]byte) (int, error) {
 	return 0, errors.New("Empty reader used by x509.CreateCertificate")
 }
 
-func generateCSR(profile *certProfile, randReader *hsmRandReader, pubBytes []byte, pub crypto.PublicKey, signer crypto.Signer) ([]byte, error) {
-	// currently Go doesn't support all of the convenience fields for x509.CertificateRequest
-	// that x509.Certificate has. Instead of doing all of the manual extension construction
-	// ourselves here we just create a throwaway self-signed certificate and then dump all
-	// of the generated extensions into a x509.CertificateRequest. In the future Go should
-	// support doing this properly itself, but for now this is the easiest approach.
-	template, err := makeTemplate(randReader, profile, pubBytes, requestCert)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create certificate template: %s", err)
-	}
-	selfSignedDER, err := x509.CreateCertificate(rand.Reader, template, template, pub, &csrSelfSigner{pub})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create certificate for CSR: %s", err)
-	}
-	selfSigned, err := x509.ParseCertificate(selfSignedDER)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse certificate template for CSR: %s", err)
-	}
-
+func generateCSR(profile *certProfile, signer crypto.Signer) ([]byte, error) {
 	csrDER, err := x509.CreateCertificateRequest(&failReader{}, &x509.CertificateRequest{
-		Subject:         selfSigned.Subject,
-		ExtraExtensions: selfSigned.Extensions,
+		Subject: profile.Subject(),
 	}, signer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create and sign CSR: %s", err)
 	}
-
 	return csrDER, nil
 }

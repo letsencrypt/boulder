@@ -9,7 +9,6 @@ import (
 
 	jose "gopkg.in/square/go-jose.v2"
 
-	capb "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/identifier"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
@@ -89,17 +88,6 @@ type RegistrationAuthority interface {
 
 	// [AdminRevoker]
 	AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, adminName string) error
-}
-
-// CertificateAuthority defines the public interface for the Boulder CA
-type CertificateAuthority interface {
-	// [RegistrationAuthority]
-	IssuePrecertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error)
-
-	// [RegistrationAuthority]
-	IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error)
-
-	GenerateOCSP(ctx context.Context, ocspReq *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error)
 }
 
 // PolicyAuthority defines the public interface for the Boulder PA
