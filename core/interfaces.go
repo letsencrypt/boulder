@@ -11,7 +11,6 @@ import (
 
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/identifier"
-	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -156,9 +155,4 @@ type StorageAdder interface {
 type StorageAuthority interface {
 	StorageGetter
 	StorageAdder
-}
-
-// Publisher defines the public interface for the Boulder Publisher
-type Publisher interface {
-	SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error)
 }

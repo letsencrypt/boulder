@@ -322,7 +322,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		Status:    core.StatusValid,
 	})
 
-	ctp := ctpolicy.New(&mocks.Publisher{}, nil, nil, log, metrics.NoopRegisterer)
+	ctp := ctpolicy.New(&mocks.PublisherClient{}, nil, nil, log, metrics.NoopRegisterer)
 
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
@@ -3455,7 +3455,7 @@ func TestPerformValidationBadChallengeType(t *testing.T) {
 type timeoutPub struct {
 }
 
-func (mp *timeoutPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request) (*pubpb.Result, error) {
+func (mp *timeoutPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
 	return nil, context.DeadlineExceeded
 }
 

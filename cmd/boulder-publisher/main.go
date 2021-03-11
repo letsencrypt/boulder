@@ -112,8 +112,7 @@ func main() {
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	grpcSrv, l, err := bgrpc.NewServer(c.Publisher.GRPC, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup Publisher gRPC server")
-	gw := bgrpc.NewPublisherServerWrapper(pubi)
-	pubpb.RegisterPublisherServer(grpcSrv, gw)
+	pubpb.RegisterPublisherServer(grpcSrv, pubi)
 	hs := health.NewServer()
 	healthpb.RegisterHealthServer(grpcSrv, hs)
 
