@@ -48,7 +48,7 @@ GO111MODULE=on go get \
 
 # Pebble's latest version is v2+, but it's not properly go mod compatible, so we
 # fetch it in GOPATH mode.
-go get github.com/letsencrypt/pebble/cmd/pebble-challtestsrv
+GO111MODULE=off go get github.com/letsencrypt/pebble/cmd/pebble-challtestsrv
 
 go clean -cache
 go clean -modcache

@@ -2,7 +2,7 @@ version: '3'
 services:
     boulder:
         # To minimize fetching this should be the same version used below
-        image: letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.15.7_2021-02-25}
+        image: letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.15.7_2021-03-11}
         environment:
             - FAKE_DNS=10.77.77.77
             - BOULDER_CONFIG_DIR=test/config
@@ -76,7 +76,7 @@ services:
         logging:
             driver: none
     netaccess:
-        image: letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.15.7_2021-02-25}
+        image: letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.15.7_2021-03-11}
         environment:
             GO111MODULE: "on"
             GOFLAGS: "-mod=vendor"
