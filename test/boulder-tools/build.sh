@@ -38,7 +38,6 @@ curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/insta
 # and vice versa.
 GO111MODULE=on go get \
   bitbucket.org/liamstask/goose/cmd/goose \
-  github.com/golang/mock/mockgen@v1.3.0 \
   github.com/golang/protobuf/proto@v1.4.0 \
   github.com/golang/protobuf/protoc-gen-go@v1.4.0 \
   github.com/mattn/goveralls@v0.0.3 \
