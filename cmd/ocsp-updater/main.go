@@ -370,7 +370,7 @@ func main() {
 	clientMetrics := bgrpc.NewClientMetrics(stats)
 	caConn, err := bgrpc.ClientSetup(c.OCSPUpdater.OCSPGeneratorService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
-	ogc := bgrpc.NewOCSPGeneratorClient(capb.NewOCSPGeneratorClient(caConn))
+	ogc := capb.NewOCSPGeneratorClient(caConn)
 
 	updater, err := newUpdater(
 		stats,

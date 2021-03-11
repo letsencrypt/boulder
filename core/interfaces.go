@@ -9,7 +9,6 @@ import (
 
 	jose "gopkg.in/square/go-jose.v2"
 
-	capb "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/identifier"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
@@ -95,17 +94,6 @@ type RegistrationAuthority interface {
 // ValidationAuthority defines the public interface for the Boulder VA
 // TODO(#4956): Remove this unnecessary type alias.
 type ValidationAuthority vapb.VAServer
-
-// CertificateAuthority defines the public interface for the Boulder CA
-type CertificateAuthority interface {
-	// [RegistrationAuthority]
-	IssuePrecertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error)
-
-	// [RegistrationAuthority]
-	IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error)
-
-	GenerateOCSP(ctx context.Context, ocspReq *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error)
-}
 
 // PolicyAuthority defines the public interface for the Boulder PA
 type PolicyAuthority interface {

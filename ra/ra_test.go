@@ -3526,8 +3526,9 @@ type mockCAFailPrecert struct {
 }
 
 func (ca *mockCAFailPrecert) IssuePrecertificate(
-	_ context.Context,
-	_ *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
+	context.Context,
+	*capb.IssueCertificateRequest,
+	...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
 	return nil, ca.err
 }
 
@@ -3539,7 +3540,10 @@ type mockCAFailCertForPrecert struct {
 }
 
 // IssuePrecertificate needs to be mocked for mockCAFailCertForPrecert's `IssueCertificateForPrecertificate` to get called.
-func (ca *mockCAFailCertForPrecert) IssuePrecertificate(_ context.Context, _ *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
+func (ca *mockCAFailCertForPrecert) IssuePrecertificate(
+	context.Context,
+	*capb.IssueCertificateRequest,
+	...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
@@ -3564,8 +3568,9 @@ func (ca *mockCAFailCertForPrecert) IssuePrecertificate(_ context.Context, _ *ca
 }
 
 func (ca *mockCAFailCertForPrecert) IssueCertificateForPrecertificate(
-	_ context.Context,
-	_ *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
+	context.Context,
+	*capb.IssueCertificateForPrecertificateRequest,
+	...grpc.CallOption) (*corepb.Certificate, error) {
 	return &corepb.Certificate{}, ca.err
 }
 
@@ -3652,7 +3657,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 
 	testCases := []struct {
 		Name         string
-		Mock         core.CertificateAuthority
+		Mock         capb.CertificateAuthorityClient
 		ExpectedErr  error
 		ExpectedProb *berrors.BoulderError
 	}{
@@ -3852,7 +3857,7 @@ type mockCAOCSP struct {
 	mocks.MockCA
 }
 
-func (mcao *mockCAOCSP) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
+func (mcao *mockCAOCSP) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...grpc.CallOption) (*capb.OCSPResponse, error) {
 	return &capb.OCSPResponse{Response: []byte{1, 2, 3}}, nil
 }
 

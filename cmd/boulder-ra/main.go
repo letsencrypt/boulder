@@ -155,7 +155,7 @@ func main() {
 
 	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Unable to create CA client")
-	cac := bgrpc.NewCertificateAuthorityClient(capb.NewCertificateAuthorityClient(caConn))
+	cac := capb.NewCertificateAuthorityClient(caConn)
 
 	var ctp *ctpolicy.CTPolicy
 	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics, clk)
