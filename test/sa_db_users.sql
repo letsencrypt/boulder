@@ -76,6 +76,3 @@ GRANT SELECT ON registrations TO 'badkeyrevoker'@'localhost';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';
-
--- Test only privilege, not reflective of prod
-GRANT ALTER on fqdnSets TO 'sa'@'localhost';
