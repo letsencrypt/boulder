@@ -237,7 +237,6 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   # golangci-lint is sometimes slow. Travis will kill our job if it goes 10m
   # without emitting logs, so set the timeout to 9m.
   golangci-lint run --timeout 9m ./...
-  run_and_expect_silence ./test/test-no-outdated-migrations.sh
   python3 test/grafana/lint.py
   # Check for common spelling errors using codespell.
   # Update .codespell.ignore.txt if you find false positives (NOTE: ignored
