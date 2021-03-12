@@ -1,94 +1,86 @@
 version: '3'
 services:
-    boulder:
-        # To minimize fetching this should be the same version used below
-        image: letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.15.7_2021-03-11}
-        environment:
-            - FAKE_DNS=10.77.77.77
-            - BOULDER_CONFIG_DIR=test/config
-            - GOFLAGS=-mod=vendor
-            # This is required so Python doesn't throw an error when printing
-            # non-ASCII to stdout.
-            - PYTHONIOENCODING=utf-8
-            # These are variables you can set to affect what tests get run or
-            # how they are run. Including them here with no value means they are
-            # passed through from the environment.
-            - RUN
-            - INT_FILTER
-            - RACE
-        volumes:
-          - .:/go/src/github.com/letsencrypt/boulder:cached
-          - ./.gocache:/root/.cache/go-build:cached
-        networks:
-          bluenet:
-            ipv4_address: 10.77.77.77
-            aliases:
-              - sa1.boulder
-              - ca1.boulder
-              - ra1.boulder
-              - va1.boulder
-              - publisher1.boulder
-              - ocsp-updater.boulder
-              - admin-revoker.boulder
-              - nonce1.boulder
-          rednet:
-            ipv4_address: 10.88.88.88
-            aliases:
-              - sa2.boulder
-              - ca2.boulder
-              - ra2.boulder
-              - va2.boulder
-              - publisher2.boulder
-              - nonce2.boulder
-        # Use sd-test-srv as a backup to Docker's embedded DNS server
-        # (https://docs.docker.com/config/containers/container-networking/#dns-services).
-        # If there's a name Docker's DNS server doesn't know about, it will
-        # forward the query to this IP (running sd-test-srv). We have
-        # special logic there that will return multiple IP addresses for
-        # service names.
-        dns: 10.77.77.77
-        ports:
-          - 4000:4000 # ACME
-          - 4001:4001 # ACMEv2
-          - 4002:4002 # OCSP
-          - 4003:4003 # OCSP
-          - 4430:4430 # ACME via HTTPS
-          - 4431:4431 # ACMEv2 via HTTPS
-          - 8055:8055 # dns-test-srv updates
-        depends_on:
-          - bmysql
-        entrypoint: test/entrypoint.sh
-        working_dir: /go/src/github.com/letsencrypt/boulder
-    bmysql:
-        image: mariadb:10.5
-        networks:
-          bluenet:
-            aliases:
-              - boulder-mysql
-        environment:
-            MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
-        # Send slow queries to a table so we can check for them in the
-        # integration tests. For now we ignore queries not using indexes,
-        # because that seems to trigger based on the optimizer's choice to not
-        # use an index for certain queries, particularly when tables are still
-        # small.
-        command: mysqld --bind-address=0.0.0.0 --slow-query-log --log-output=TABLE --log-queries-not-using-indexes=ON
-        logging:
-            driver: none
-    netaccess:
-        image: letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.15.7_2021-03-11}
-        environment:
-            GO111MODULE: "on"
-            GOFLAGS: "-mod=vendor"
-            BOULDER_CONFIG_DIR: test/config
-        networks:
-          - bluenet
-        volumes:
-          - .:/go/src/github.com/letsencrypt/boulder
-        working_dir: /go/src/github.com/letsencrypt/boulder
-        entrypoint: test/entrypoint-netaccess.sh
-        depends_on:
-          - bmysql
+  boulder:
+    image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.15.7_2021-03-11}
+    environment:
+      FAKE_DNS: 10.77.77.77
+      BOULDER_CONFIG_DIR: test/config
+      GOFLAGS: -mod=vendor
+    volumes:
+      - .:/go/src/github.com/letsencrypt/boulder:cached
+      - ./.gocache:/root/.cache/go-build:cached
+    networks:
+      bluenet:
+        ipv4_address: 10.77.77.77
+        aliases:
+          - sa1.boulder
+          - ca1.boulder
+          - ra1.boulder
+          - va1.boulder
+          - publisher1.boulder
+          - ocsp-updater.boulder
+          - admin-revoker.boulder
+          - nonce1.boulder
+      rednet:
+        ipv4_address: 10.88.88.88
+        aliases:
+          - sa2.boulder
+          - ca2.boulder
+          - ra2.boulder
+          - va2.boulder
+          - publisher2.boulder
+          - nonce2.boulder
+    # Use sd-test-srv as a backup to Docker's embedded DNS server
+    # (https://docs.docker.com/config/containers/container-networking/#dns-services).
+    # If there's a name Docker's DNS server doesn't know about, it will
+    # forward the query to this IP (running sd-test-srv). We have
+    # special logic there that will return multiple IP addresses for
+    # service names.
+    dns: 10.77.77.77
+    ports:
+      - 4000:4000 # ACME
+      - 4001:4001 # ACMEv2
+      - 4002:4002 # OCSP
+      - 4003:4003 # OCSP
+      - 4430:4430 # ACME via HTTPS
+      - 4431:4431 # ACMEv2 via HTTPS
+      - 8055:8055 # dns-test-srv updates
+    depends_on:
+      - bmysql
+    entrypoint: test/entrypoint.sh
+    working_dir: &boulder_working_dir /go/src/github.com/letsencrypt/boulder
+
+  bmysql:
+    image: mariadb:10.5
+    networks:
+      bluenet:
+        aliases:
+          - boulder-mysql
+    environment:
+        MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+    # Send slow queries to a table so we can check for them in the
+    # integration tests. For now we ignore queries not using indexes,
+    # because that seems to trigger based on the optimizer's choice to not
+    # use an index for certain queries, particularly when tables are still
+    # small.
+    command: mysqld --bind-address=0.0.0.0 --slow-query-log --log-output=TABLE --log-queries-not-using-indexes=ON
+    logging:
+        driver: none
+
+  netaccess:
+    image: *boulder_image
+    environment:
+        GO111MODULE: "on"
+        GOFLAGS: -mod=vendor
+        BOULDER_CONFIG_DIR: test/config
+    networks:
+      - bluenet
+    volumes:
+      - .:/go/src/github.com/letsencrypt/boulder
+    working_dir: *boulder_working_dir
+    entrypoint: test/entrypoint-netaccess.sh
+    depends_on:
+      - bmysql
 
 networks:
   bluenet:
