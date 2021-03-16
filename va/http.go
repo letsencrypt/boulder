@@ -616,7 +616,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// resulting payload is the same size as maxResponseSize fail
 	if len(body) >= maxResponseSize {
 		return nil, records, berrors.UnauthorizedError("Invalid response from %s [%s]: %q",
-			records[len(records)-1].URL, records[len(records)-1].AddressUsed, body)
+			records[len(records)-1].URL, records[len(records)-1].AddressUsed, replaceInvalidUTF8(body))
 	}
 	if httpResponse.StatusCode != 200 {
 		return nil, records, berrors.UnauthorizedError("Invalid response from %s [%s]: %d",
