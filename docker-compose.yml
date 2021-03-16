@@ -1,7 +1,7 @@
 version: '3'
 services:
   boulder:
-    image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.15.7_2021-03-11}
+    image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.15.7_2021-03-16}
     environment:
       FAKE_DNS: 10.77.77.77
       BOULDER_CONFIG_DIR: test/config
