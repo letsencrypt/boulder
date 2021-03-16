@@ -66,9 +66,10 @@ var (
 	h2SettingsFrameErrRegex = regexp.MustCompile(`(?:net\/http\: HTTP\/1\.x transport connection broken: )?malformed HTTP response \"\\x00\\x00\\x[a-f0-9]{2}\\x04\\x00\\x00\\x00\\x00\\x00.*"`)
 )
 
-// RemoteVA wraps the core.ValidationAuthority interface and adds a field containing the address
-// of the remote gRPC server since the interface (and the underlying gRPC client) doesn't
-// provide a way to extract this metadata which is useful for debugging gRPC connection issues.
+// RemoteVA wraps the vapb.VAClient interface and adds a field containing the
+// address of the remote gRPC server since the underlying gRPC client doesn't
+// provide a way to extract this metadata which is useful for debugging gRPC
+// connection issues.
 type RemoteVA struct {
 	vapb.VAClient
 	Address string
@@ -650,8 +651,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 			// `processRemoteResults` set the challenge status to valid so the
 			// validationTime metrics increment has the correct result label.
 			challenge.Status = core.StatusValid
-			// Timestamp the valid challenge.
-			challenge.Validated = &vStart
 		} else if features.Enabled(features.EnforceMultiVA) {
 			remoteProb := va.processRemoteResults(
 				req.Domain,
@@ -672,14 +671,10 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 				va.metrics.remoteValidationFailures.Inc()
 			} else {
 				challenge.Status = core.StatusValid
-				// Timestamp the valid challenge.
-				challenge.Validated = &vStart
 			}
 		}
 	} else {
 		challenge.Status = core.StatusValid
-		// Timestamp the valid challenge.
-		challenge.Validated = &vStart
 	}
 
 	logEvent.Challenge = challenge

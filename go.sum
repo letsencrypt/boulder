@@ -207,6 +207,8 @@ github.com/weppos/publicsuffix-go v0.13.1-0.20201231103007-cb9948bdd70d h1:IQSbc
 github.com/weppos/publicsuffix-go v0.13.1-0.20201231103007-cb9948bdd70d/go.mod h1:HYux0V0Zi04bHNwOHy4cXJVz/TQjYonnF6aoYhj+3QE=
 github.com/weppos/publicsuffix-go v0.13.1-0.20210123135404-5fd73613514e h1:X8mSlwys/CsazsP+x4De5k6JaltoDTpx72EV7KdEtNk=
 github.com/weppos/publicsuffix-go v0.13.1-0.20210123135404-5fd73613514e/go.mod h1:HYux0V0Zi04bHNwOHy4cXJVz/TQjYonnF6aoYhj+3QE=
+github.com/weppos/publicsuffix-go v0.13.1-0.20210219130033-d67cf1da5bfc h1:/HJVwjVjKUhLjkdlqz4hszODjEPAz1WN+/4ukRZJg0c=
+github.com/weppos/publicsuffix-go v0.13.1-0.20210219130033-d67cf1da5bfc/go.mod h1:HYux0V0Zi04bHNwOHy4cXJVz/TQjYonnF6aoYhj+3QE=
 github.com/ziutek/mymysql v1.5.4 h1:GB0qdRGsTwQSBVYuVShFBKaXSnSnYYC2d9knnE1LHFs=
 github.com/ziutek/mymysql v1.5.4/go.mod h1:LMSpPZ6DbqWFxNCHW77HeMg9I646SAhApZ/wKdgO/C0=
 github.com/zmap/rc2 v0.0.0-20131011165748-24b9757f5521/go.mod h1:3YZ9o3WnatTIZhuOtot4IcUfzoKVjUHqu6WALIyI0nE=

@@ -75,6 +75,13 @@ type DBConfig struct {
 	ConnMaxIdleTime ConfigDuration
 }
 
+// DeprecatedDBConfig is a temporary type that acts as a receiver for
+// fields unmarshalled from the root of a component's JSON config
+// (deprecated).
+// TODO(#5275): Remove once all configs in dev, staging and prod
+// have been updated to contain the `dbconfig` field
+type DeprecatedDBConfig DBConfig
+
 // URL returns the DBConnect URL represented by this DBConfig object, either
 // loading it from disk or returning a default value. Leading and trailing
 // whitespace is stripped.
@@ -84,6 +91,24 @@ func (d *DBConfig) URL() (string, error) {
 		return strings.TrimSpace(string(url)), err
 	}
 	return d.DBConnect, nil
+}
+
+// DefaultDBConfig is a temporary helper function that copies DBConfig
+// fields unmarshalled from the root of a component's JSON config
+// (deprecated) to the named `DBConfig` substruct of the service config.
+// TODO(#5275): Remove once all configs in dev, staging and prod
+// have been updated to contain the `dbconfig` field
+func DefaultDBConfig(dbConfig *DBConfig, databaseConfig *DeprecatedDBConfig) {
+	if dbConfig.DBConnectFile != "" {
+		// dbConfig was specified properly in the JSON return early
+		return
+	}
+	dbConfig.DBConnect = databaseConfig.DBConnect
+	dbConfig.DBConnectFile = databaseConfig.DBConnectFile
+	dbConfig.MaxOpenConns = databaseConfig.MaxOpenConns
+	dbConfig.MaxIdleConns = databaseConfig.MaxIdleConns
+	dbConfig.ConnMaxIdleTime = databaseConfig.ConnMaxIdleTime
+	dbConfig.ConnMaxLifetime = databaseConfig.ConnMaxLifetime
 }
 
 type SMTPConfig struct {
@@ -244,6 +269,12 @@ type GRPCServerConfig struct {
 	// (SANs). The server will reject clients that do not present a certificate
 	// with a SAN present on the `ClientNames` list.
 	ClientNames []string `json:"clientNames"`
+	// MaxConnectionAge specifies how long a connection may live before the server sends a GoAway to the
+	// client. Because gRPC connections re-resolve DNS after a connection close,
+	// this controls how long it takes before a client learns about changes to its
+	// backends.
+	// https://pkg.go.dev/google.golang.org/grpc/keepalive#ServerParameters
+	MaxConnectionAge ConfigDuration
 }
 
 // PortConfig specifies what ports the VA should call to on the remote

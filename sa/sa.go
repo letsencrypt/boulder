@@ -1478,6 +1478,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 	query := `UPDATE authz2 SET
 		status = :status,
 		attempted = :attempted,
+		attemptedAt = :attemptedAt,
 		validationRecord = :validationRecord,
 		validationError = :validationError,
 		expires = :expires
@@ -1506,9 +1507,19 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 		}
 		veJSON = j
 	}
+	// Check to see if the AttemptedAt time is non zero and convert to
+	// *time.Time if so. If it is zero, leave nil and don't convert. Keep
+	// the the database attemptedAt field Null instead of
+	// 1970-01-01 00:00:00.
+	var attemptedTime *time.Time
+	if req.AttemptedAt != 0 {
+		val := time.Unix(0, req.AttemptedAt).UTC()
+		attemptedTime = &val
+	}
 	params := map[string]interface{}{
 		"status":           statusToUint[req.Status],
 		"attempted":        challTypeToUint[req.Attempted],
+		"attemptedAt":      attemptedTime,
 		"validationRecord": vrJSON,
 		"id":               req.Id,
 		"pending":          statusUint(core.StatusPending),

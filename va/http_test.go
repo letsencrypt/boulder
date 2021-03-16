@@ -579,6 +579,20 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 		fmt.Fprint(resp, tooLargeBuf)
 	})
 
+	// Create a buffer that starts with invalid UTF8 and is bigger than
+	// maxResponseSize
+	tooLargeInvalidUTF8 := bytes.NewBuffer([]byte{})
+	tooLargeInvalidUTF8.WriteString("f\xffoo")
+	tooLargeInvalidUTF8.Write(tooLargeBuf.Bytes())
+	// invalid-utf8-body Responds with body that is larger than
+	// maxResponseSize and starts with an invalid UTF8 string. This is to
+	// test the codepath where invalid UTF8 is converted to valid UTF8
+	// that can be passed as an error message via grpc.
+	mux.HandleFunc("/invalid-utf8-body", func(resp http.ResponseWriter, req *http.Request) {
+		resp.WriteHeader(http.StatusOK)
+		fmt.Fprint(resp, tooLargeInvalidUTF8)
+	})
+
 	mux.HandleFunc("/redir-path-too-long", func(resp http.ResponseWriter, req *http.Request) {
 		http.Redirect(
 			resp,
@@ -1047,6 +1061,23 @@ func TestFetchHTTP(t *testing.T) {
 			test.AssertMarshaledEquals(t, records, tc.ExpectedRecords)
 		})
 	}
+}
+
+func TestFetchHTTPInvalidUTF8(t *testing.T) {
+	testSrv := httpTestSrv(t)
+	defer testSrv.Close()
+	va, _ := setup(testSrv, 0, "", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
+	defer cancel()
+	_, _, prob := va.fetchHTTP(ctx, "example.com", "/invalid-utf8-body")
+	expectedResult := "f\ufffdoo"
+	// If the body of the http response is larger than the maxResponseSize
+	// a truncated body is returned as part of the error detail. If the
+	// body contains invalid UTF-8 the invalid characters must be replaced
+	// before the error is marshalled for grpc. This tests that the
+	// invalid string "f\xffoo" is expected to be converted to
+	// "f\ufffdoo".
+	test.AssertContains(t, string(prob.Detail), expectedResult)
 }
 
 // All paths that get assigned to tokens MUST be valid tokens

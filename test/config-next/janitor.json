@@ -3,8 +3,10 @@
     "syslog": {
       "stdoutLevel": 6
     },
-    "dbConnectFile": "test/secrets/janitor_dburl",
-    "maxOpenConns": 10,
+    "db": {
+      "dbConnectFile": "test/secrets/janitor_dburl",
+      "maxOpenConns": 10
+    },
     "debugAddr": ":8014",
     "jobConfigs": [
       {

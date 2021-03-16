@@ -8,7 +8,7 @@ require (
 	github.com/eggsampler/acme/v3 v3.0.0
 	github.com/go-gorp/gorp/v3 v3.0.2
 	github.com/go-sql-driver/mysql v1.5.0
-	github.com/golang/mock v1.3.1
+	github.com/golang/mock v1.3.1 // indirect
 	github.com/golang/protobuf v1.4.2
 	github.com/golang/snappy v0.0.0-20170215233205-553a64147049 // indirect
 	github.com/google/certificate-transparency-go v1.0.22-0.20181127102053-c25855a82c75
@@ -25,7 +25,7 @@ require (
 	github.com/prometheus/client_model v0.2.0
 	github.com/syndtr/goleveldb v0.0.0-20180331014930-714f901b98fd // indirect
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
-	github.com/weppos/publicsuffix-go v0.13.1-0.20210123135404-5fd73613514e
+	github.com/weppos/publicsuffix-go v0.13.1-0.20210219130033-d67cf1da5bfc
 	github.com/zmap/zcrypto v0.0.0-20200513165325-16679db567ff
 	github.com/zmap/zlint/v2 v2.2.1
 	golang.org/x/crypto v0.0.0-20201216223049-8b5274cf687f

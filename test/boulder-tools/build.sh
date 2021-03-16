@@ -38,7 +38,6 @@ curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/insta
 # and vice versa.
 GO111MODULE=on go get \
   bitbucket.org/liamstask/goose/cmd/goose \
-  github.com/golang/mock/mockgen@v1.3.0 \
   github.com/golang/protobuf/proto@v1.4.0 \
   github.com/golang/protobuf/protoc-gen-go@v1.4.0 \
   github.com/mattn/goveralls@v0.0.3 \
@@ -48,7 +47,7 @@ GO111MODULE=on go get \
 
 # Pebble's latest version is v2+, but it's not properly go mod compatible, so we
 # fetch it in GOPATH mode.
-go get github.com/letsencrypt/pebble/cmd/pebble-challtestsrv
+GO111MODULE=off go get github.com/letsencrypt/pebble/cmd/pebble-challtestsrv
 
 go clean -cache
 go clean -modcache

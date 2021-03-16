@@ -149,18 +149,17 @@ func main() {
 	clientMetrics := bgrpc.NewClientMetrics(scope)
 	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Unable to create VA client")
-	vac := bgrpc.NewValidationAuthorityGRPCClient(vaConn)
-
+	vac := vapb.NewVAClient(vaConn)
 	caaClient := vapb.NewCAAClient(vaConn)
 
 	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Unable to create CA client")
-	cac := bgrpc.NewCertificateAuthorityClient(capb.NewCertificateAuthorityClient(caConn))
+	cac := capb.NewCertificateAuthorityClient(caConn)
 
 	var ctp *ctpolicy.CTPolicy
 	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
-	pubc := bgrpc.NewPublisherClientWrapper(pubpb.NewPublisherClient(conn))
+	pubc := pubpb.NewPublisherClient(conn)
 
 	apConn, err := bgrpc.ClientSetup(c.RA.AkamaiPurgerService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Unable to create a Akamai Purger client")

@@ -339,7 +339,10 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 func main() {
 	var config struct {
 		BadKeyRevoker struct {
-			cmd.DBConfig
+			DB cmd.DBConfig
+			// TODO(#5275): Remove once all configs in dev, staging and prod
+			// have been updated to contain the `dbconfig` field
+			cmd.DeprecatedDBConfig
 			DebugAddr string
 
 			TLS       cmd.TLSConfig
@@ -389,14 +392,17 @@ func main() {
 	scope.MustRegister(certsRevoked)
 	scope.MustRegister(mailErrors)
 
-	dbURL, err := config.BadKeyRevoker.DBConfig.URL()
+	// TODO(#5275): Remove once all configs in dev, staging and prod
+	// have been updated to contain the `dbconfig` field
+	cmd.DefaultDBConfig(&config.BadKeyRevoker.DB, &config.BadKeyRevoker.DeprecatedDBConfig)
+	dbURL, err := config.BadKeyRevoker.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 
 	dbSettings := sa.DbSettings{
-		MaxOpenConns:    config.BadKeyRevoker.DBConfig.MaxOpenConns,
-		MaxIdleConns:    config.BadKeyRevoker.DBConfig.MaxIdleConns,
-		ConnMaxLifetime: config.BadKeyRevoker.DBConfig.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: config.BadKeyRevoker.DBConfig.ConnMaxIdleTime.Duration,
+		MaxOpenConns:    config.BadKeyRevoker.DB.MaxOpenConns,
+		MaxIdleConns:    config.BadKeyRevoker.DB.MaxIdleConns,
+		ConnMaxLifetime: config.BadKeyRevoker.DB.ConnMaxLifetime.Duration,
+		ConnMaxIdleTime: config.BadKeyRevoker.DB.ConnMaxIdleTime.Duration,
 	}
 	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")

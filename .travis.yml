@@ -26,9 +26,9 @@ env:
     - TESTFLAGS="--lints --integration --generate --rpm"
     # Config changes that have landed in main but not yet been applied to
     # production can be made in boulder-config-next.json.
-    - TESTFLAGS="--integration --config-next"
+    - TESTFLAGS="--integration" OVERRIDES="-f docker-compose.yml -f docker-compose.next.yml"
     - TESTFLAGS="--unit --enable-race-detection"
-    - TESTFLAGS="--unit --enable-race-detection --config-next"
+    - TESTFLAGS="--unit --enable-race-detection" OVERRIDES="-f docker-compose.yml -f docker-compose.next.yml"
     - TESTFLAGS="--start-py"
     # gomod-vendor runs with a separate container because it needs to fetch
     # packages from GitHub et. al., which is incompatible with the DNS server
@@ -51,7 +51,7 @@ before_script:
 
 script:
   - >-
-    docker-compose run --use-aliases
+    docker-compose ${OVERRIDES} run --use-aliases
     -e TRAVIS_BRANCH
     -e TRAVIS_JOB_ID
     -e TRAVIS_PULL_REQUEST

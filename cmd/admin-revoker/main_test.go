@@ -26,13 +26,14 @@ import (
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	"google.golang.org/grpc"
 )
 
 type mockCA struct {
 	mocks.MockCA
 }
 
-func (ca *mockCA) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
+func (ca *mockCA) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...grpc.CallOption) (*capb.OCSPResponse, error) {
 	return &capb.OCSPResponse{}, nil
 }
 

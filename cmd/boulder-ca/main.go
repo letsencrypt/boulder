@@ -33,6 +33,10 @@ import (
 type config struct {
 	CA struct {
 		cmd.ServiceConfig
+
+		// TODO(#5275): Refactor to named field once all configs in dev,
+		// staging and prod have been updated to contain `dbconfig`
+		// field
 		cmd.DBConfig
 		cmd.HostnamePolicyConfig
 
@@ -344,8 +348,7 @@ func main() {
 
 	caSrv, caListener, err := bgrpc.NewServer(c.CA.GRPCCA, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
-	caWrapper := bgrpc.NewCertificateAuthorityServer(cai)
-	capb.RegisterCertificateAuthorityServer(caSrv, caWrapper)
+	capb.RegisterCertificateAuthorityServer(caSrv, cai)
 	caHealth := health.NewServer()
 	healthpb.RegisterHealthServer(caSrv, caHealth)
 	wg.Add(1)
@@ -356,8 +359,7 @@ func main() {
 
 	ocspSrv, ocspListener, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
-	ocspWrapper := bgrpc.NewCertificateAuthorityServer(cai)
-	capb.RegisterOCSPGeneratorServer(ocspSrv, ocspWrapper)
+	capb.RegisterOCSPGeneratorServer(ocspSrv, cai)
 	ocspHealth := health.NewServer()
 	healthpb.RegisterHealthServer(ocspSrv, ocspHealth)
 	wg.Add(1)

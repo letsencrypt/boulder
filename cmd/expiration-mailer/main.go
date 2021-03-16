@@ -363,7 +363,10 @@ func (ds durationSlice) Swap(a, b int) {
 type config struct {
 	Mailer struct {
 		cmd.ServiceConfig
-		cmd.DBConfig
+		DB cmd.DBConfig
+		// TODO(#5275): Remove once all configs in dev, staging and prod
+		// have been updated to contain the `dbconfig` field
+		cmd.DeprecatedDBConfig
 		cmd.SMTPConfig
 
 		From    string
@@ -474,14 +477,17 @@ func main() {
 		c.Mailer.CertLimit = 100
 	}
 
+	// TODO(#5275): Remove once all configs in dev, staging and prod
+	// have been updated to contain the `dbconfig` field
+	cmd.DefaultDBConfig(&c.Mailer.DB, &c.Mailer.DeprecatedDBConfig)
 	// Configure DB
-	dbURL, err := c.Mailer.DBConfig.URL()
+	dbURL, err := c.Mailer.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{
-		MaxOpenConns:    c.Mailer.DBConfig.MaxOpenConns,
-		MaxIdleConns:    c.Mailer.DBConfig.MaxIdleConns,
-		ConnMaxLifetime: c.Mailer.DBConfig.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: c.Mailer.DBConfig.ConnMaxIdleTime.Duration,
+		MaxOpenConns:    c.Mailer.DB.MaxOpenConns,
+		MaxIdleConns:    c.Mailer.DB.MaxIdleConns,
+		ConnMaxLifetime: c.Mailer.DB.ConnMaxLifetime.Duration,
+		ConnMaxIdleTime: c.Mailer.DB.ConnMaxIdleTime.Duration,
 	}
 	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")

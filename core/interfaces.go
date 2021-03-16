@@ -9,14 +9,11 @@ import (
 
 	jose "gopkg.in/square/go-jose.v2"
 
-	capb "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/identifier"
-	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
 // A WebFrontEnd object supplies methods that can be hooked into
@@ -92,21 +89,6 @@ type RegistrationAuthority interface {
 	AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, adminName string) error
 }
 
-// ValidationAuthority defines the public interface for the Boulder VA
-// TODO(#4956): Remove this unnecessary type alias.
-type ValidationAuthority vapb.VAServer
-
-// CertificateAuthority defines the public interface for the Boulder CA
-type CertificateAuthority interface {
-	// [RegistrationAuthority]
-	IssuePrecertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error)
-
-	// [RegistrationAuthority]
-	IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error)
-
-	GenerateOCSP(ctx context.Context, ocspReq *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error)
-}
-
 // PolicyAuthority defines the public interface for the Boulder PA
 type PolicyAuthority interface {
 	WillingToIssue(domain identifier.ACMEIdentifier) error
@@ -168,9 +150,4 @@ type StorageAdder interface {
 type StorageAuthority interface {
 	StorageGetter
 	StorageAdder
-}
-
-// Publisher defines the public interface for the Boulder Publisher
-type Publisher interface {
-	SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error)
 }
