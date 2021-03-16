@@ -36,6 +36,9 @@ func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSeri
 }
 
 // AddPrecertificate writes a record of a precertificate generation to the DB.
+// Note: this is not idempotent: it does not protect against inserting the same
+// certificate multiple times. Calling code needs to first insert the cert's
+// serial into the Serials table to ensure uniqueness.
 func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error) {
 	if core.IsAnyNilOrZero(req.Der, req.Issued, req.RegID, req.IssuerID) {
 		return nil, errIncompleteRequest
@@ -57,9 +60,6 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		if err := txWithCtx.Insert(preCertModel); err != nil {
-			if db.IsDuplicate(err) {
-				return nil, berrors.DuplicateError("cannot add a duplicate precertificate")
-			}
 			return nil, err
 		}
 

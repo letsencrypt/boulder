@@ -1689,37 +1689,6 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	}
 }
 
-func TestAddCertificateBadRatelimitUpdate(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
-
-	reg := satest.CreateWorkingRegistration(t, sa)
-	issued := sa.clk.Now()
-	serial, cert := test.ThrowAwayCert(t, 1)
-
-	// Manually add an fqdn set for the certificate serial. This will cause the
-	// real fqdn set update in AddCertificate to fail due to the duplicate serial.
-	err := addFQDNSet(
-		sa.dbMap,
-		cert.DNSNames,
-		serial,
-		cert.NotBefore,
-		cert.NotAfter)
-	test.AssertNotError(t, err, "Couldn't manually add fqdnSet")
-
-	// Add the test certificate, it shouldn't error even though part of the rate
-	// limit updates failed.
-	_, err = sa.AddCertificate(ctx, cert.Raw, reg.ID, nil, &issued)
-	test.AssertNotError(t, err, "Couldn't add testCert")
-
-	// The rate limit transaction failure stat should have been incremented
-	test.AssertEquals(t, test.CountCounter(sa.rateLimitWriteErrors), 1)
-
-	// The rate limit transaction failure should have been audit logged
-	logLines := log.GetAllMatching(`ERR: \[AUDIT\] failed AddCertificate ratelimit update transaction: failed to insert \*core.FQDNSet: Error 1062: Duplicate entry '.*' for key 'serial'`)
-	test.AssertEquals(t, len(logLines), 1)
-}
-
 func TestCountCertificatesRenewalBit(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
