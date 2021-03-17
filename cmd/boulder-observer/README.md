@@ -14,34 +14,33 @@ $ go run ./cmd/boulder-observer/main.go -help
 ### Starting the boulder-observer daemon
 ```shell
 $ go run ./cmd/boulder-observer/main.go -config test/config-next/observer.yml
-I142601 main ksKu7w4 Versions: main=(Unspecified Unspecified) Golang=(go1.15.7) BuildHost=(Unspecified)
-I142601 main q_D84gk Initializing boulder-observer daemon from config: test/config-next/observer.yml
-I142603 main o4Cp-Q0 type=[HTTP] result=[true] duration=[0.123472] name=[http://letsencrypt.org-200]
-I142603 main n4iSrAM type=[HTTP] result=[true] duration=[0.123751] name=[https://letsencrypt.org-200]
-I142605 main qe3Gugc type=[HTTP] result=[true] duration=[0.023499] name=[https://letsencrypt.org-200]
-I142605 main _J2k0wo type=[HTTP] result=[true] duration=[0.044429] name=[http://letsencrypt.org-200]
-I142606 main zomKjwc type=[DNS] result=[false] duration=[0.000017] name=[udp-2606:4700:4700::1111:53-google.com-A]
-I142606 main 6parpwM type=[DNS] result=[false] duration=[0.000014] name=[tcp-2606:4700:4700::1111:53-google.com-A]
-I142606 main pJqFmAs type=[DNS] result=[true] duration=[0.004667] name=[udp-1.1.1.1:53-google.com-A]
-I142606 main 9f7d2AM type=[DNS] result=[true] duration=[0.008965] name=[tcp-1.1.1.1:53-google.com-A]
-I142606 main 962rkgM type=[DNS] result=[true] duration=[0.013107] name=[udp-owen.ns.cloudflare.com:53-letsencrypt.org-A]
-I142606 main l-r29gc type=[DNS] result=[true] duration=[0.016294] name=[tcp-owen.ns.cloudflare.com:53-letsencrypt.org-A]
-I142607 main t_vrtAQ type=[HTTP] result=[true] duration=[0.022378] name=[https://letsencrypt.org-200]
-I142607 main v7SjtQM type=[HTTP] result=[true] duration=[0.043780] name=[http://letsencrypt.org-200]
-I142609 main ptjWkQM type=[HTTP] result=[true] duration=[0.021068] name=[https://letsencrypt.org-200]
-I142609 main jPzToww type=[HTTP] result=[true] duration=[0.042141] name=[http://letsencrypt.org-200]
-I142611 main 5IygqAI type=[DNS] result=[false] duration=[0.000019] name=[udp-2606:4700:4700::1111:53-google.com-A]
-I142611 main zqe61Qk type=[DNS] result=[false] duration=[0.000012] name=[tcp-2606:4700:4700::1111:53-google.com-A]
-I142611 main k9Xh1AU type=[DNS] result=[true] duration=[0.008134] name=[udp-8.8.8.8:53-google.com-A]
-I142611 main trL2mwU type=[DNS] result=[true] duration=[0.008801] name=[udp-1.1.1.1:53-google.com-A]
-I142611 main _qLDgwk type=[DNS] result=[true] duration=[0.011323] name=[tcp-8.8.8.8:53-google.com-A]
-I142611 main rJDj2AI type=[DNS] result=[true] duration=[0.012559] name=[tcp-1.1.1.1:53-google.com-A]
-I142611 main teWD6Qs type=[DNS] result=[true] duration=[0.015299] name=[udp-owen.ns.cloudflare.com:53-letsencrypt.org-A]
-I142611 main kPrnlg4 type=[DNS] result=[true] duration=[0.019022] name=[tcp-owen.ns.cloudflare.com:53-letsencrypt.org-A]
-I142611 main xb_w9gs type=[HTTP] result=[true] duration=[0.025506] name=[https://letsencrypt.org-200]
-I142611 main oKi2ggk type=[HTTP] result=[true] duration=[0.074734] name=[http://letsencrypt.org-200]
-I142613 main wPqP-gg type=[HTTP] result=[true] duration=[0.021814] name=[https://letsencrypt.org-200]
-I142613 main 4IrYoQY type=[HTTP] result=[true] duration=[0.041857] name=[http://letsencrypt.org-200]
+I185326 main _KzylQI Versions: main=(Unspecified Unspecified) Golang=(go1.16.2) BuildHost=(Unspecified)
+I185326 main q_D84gk Initializing boulder-observer daemon from config: test/config-next/observer.yml
+I185326 main 7aq68AQ all monitors passed validation
+I185328 main 9fmV0AM kind=[HTTP] result=[true] duration=[0.131400] name=[https://letsencrypt.org-[200]]
+I185328 main xrWn-wg kind=[HTTP] result=[true] duration=[0.264118] name=[http://letsencrypt.org/FOO-[200 404]]
+I185330 main kun_-wY kind=[HTTP] result=[true] duration=[0.024320] name=[https://letsencrypt.org-[200]]
+I185330 main 59SEzwg kind=[HTTP] result=[true] duration=[0.046738] name=[http://letsencrypt.org/FOO-[200 404]]
+I185331 main wNjHxw8 kind=[DNS] result=[false] duration=[0.000007] name=[udp-2606:4700:4700::1111:53-google.com-A]
+I185331 main 9ezMXAA kind=[DNS] result=[false] duration=[0.000021] name=[tcp-2606:4700:4700::1111:53-google.com-A]
+I185331 main 7tWG5Qo kind=[DNS] result=[true] duration=[0.006060] name=[udp-1.1.1.1:53-google.com-A]
+I185331 main 0MnQjwI kind=[DNS] result=[true] duration=[0.008671] name=[tcp-1.1.1.1:53-google.com-A]
+I185331 main oYD05wQ kind=[DNS] result=[true] duration=[0.015981] name=[udp-owen.ns.cloudflare.com:53-letsencrypt.org-A]
+I185331 main zJaK0gE kind=[DNS] result=[true] duration=[0.024325] name=[tcp-owen.ns.cloudflare.com:53-letsencrypt.org-A]
+I185332 main zvftBQA kind=[HTTP] result=[true] duration=[0.024269] name=[https://letsencrypt.org-[200]]
+I185332 main w_Ck9A0 kind=[HTTP] result=[true] duration=[0.047069] name=[http://letsencrypt.org/FOO-[200 404]]
+I185334 main _cPGpgM kind=[HTTP] result=[true] duration=[0.023966] name=[https://letsencrypt.org-[200]]
+I185334 main krvDoAs kind=[HTTP] result=[true] duration=[0.047156] name=[http://letsencrypt.org/FOO-[200 404]]
+I185336 main nJrE8Qs kind=[DNS] result=[false] duration=[0.000009] name=[tcp-2606:4700:4700::1111:53-google.com-A]
+I185336 main m-6pwQI kind=[DNS] result=[false] duration=[0.000008] name=[udp-2606:4700:4700::1111:53-google.com-A]
+I185336 main _u-sgAI kind=[DNS] result=[true] duration=[0.004496] name=[udp-8.8.8.8:53-google.com-A]
+I185336 main 1a-5uAg kind=[DNS] result=[true] duration=[0.005195] name=[udp-1.1.1.1:53-google.com-A]
+I185336 main 0c7k6g0 kind=[DNS] result=[true] duration=[0.007354] name=[tcp-8.8.8.8:53-google.com-A]
+I185336 main _uLH2Ak kind=[DNS] result=[true] duration=[0.008231] name=[tcp-1.1.1.1:53-google.com-A]
+I185336 main 68iH-gk kind=[DNS] result=[true] duration=[0.012076] name=[udp-owen.ns.cloudflare.com:53-letsencrypt.org-A]
+I185336 main mbnX8Ao kind=[DNS] result=[true] duration=[0.017215] name=[tcp-owen.ns.cloudflare.com:53-letsencrypt.org-A]
+I185336 main uPW9NgA kind=[HTTP] result=[true] duration=[0.023477] name=[https://letsencrypt.org-[200]]
+I185336 main yJft8wk kind=[HTTP] result=[true] duration=[0.046534] name=[http://letsencrypt.org/FOO-[200 404]]
 ```
 
 ## Configuration
