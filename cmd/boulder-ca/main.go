@@ -1,26 +1,18 @@
 package main
 
 import (
-	"crypto"
-	"crypto/x509"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"sync"
 
 	"github.com/beeker1121/goque"
-	cfsslConfig "github.com/cloudflare/cfssl/config"
-	"github.com/cloudflare/cfssl/helpers"
-	pkcs11key "github.com/letsencrypt/pkcs11key/v4"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/letsencrypt/boulder/ca"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -45,30 +37,17 @@ type config struct {
 
 		SAService *cmd.GRPCClientConfig
 
-		// CFSSL contains CFSSL-specific configs as specified by that library.
-		CFSSL cfsslConfig.Config
-		// RSAProfile and ECDSAProfile name which of the profiles specified in the
-		// CFSSL config should be used when issuing RSA and ECDSA certs, respectively.
-		RSAProfile   string
-		ECDSAProfile string
-		// Issuers contains configuration information for each issuer cert and key
-		// this CA knows about. The first in the list is used as the default.
-		// Only used by CFSSL.
-		Issuers []IssuerConfig
-
-		// Issuance contains all information necessary to load and initialize non-CFSSL issuers.
+		// Issuance contains all information necessary to load and initialize issuers.
 		Issuance struct {
 			Profile      issuance.ProfileConfig
 			Issuers      []issuance.IssuerConfig
 			IgnoredLints []string
 		}
 
-		// How long issued certificates are valid for, should match expiry field
-		// in cfssl config.
+		// How long issued certificates are valid for.
 		Expiry cmd.ConfigDuration
 
-		// How far back certificates should be backdated, should match backdate
-		// field in cfssl config.
+		// How far back certificates should be backdated.
 		Backdate cmd.ConfigDuration
 
 		// What digits we should prepend to serials after randomly generating them.
@@ -123,91 +102,6 @@ type config struct {
 	PA cmd.PAConfig
 
 	Syslog cmd.SyslogConfig
-}
-
-// IssuerConfig contains info about an issuer: private key and issuer cert.
-// It should contain either a File path to a PEM-format private key,
-// or a PKCS11Config defining how to load a module for an HSM. Used by CFSSL.
-type IssuerConfig struct {
-	// A file from which a pkcs11key.Config will be read and parsed, if present
-	ConfigFile string
-	File       string
-	PKCS11     *pkcs11key.Config
-	CertFile   string
-	// Number of sessions to open with the HSM. For maximum performance,
-	// this should be equal to the number of cores in the HSM. Defaults to 1.
-	NumSessions int
-}
-
-func loadCFSSLIssuers(configs []IssuerConfig) ([]ca.Issuer, error) {
-	var issuers []ca.Issuer
-	for _, issuerConfig := range configs {
-		signer, cert, err := loadCFSSLIssuer(issuerConfig)
-		cmd.FailOnError(err, "Couldn't load private key")
-		issuers = append(issuers, ca.Issuer{
-			Signer: signer,
-			Cert:   cert,
-		})
-	}
-	return issuers, nil
-}
-
-func loadCFSSLIssuer(issuerConfig IssuerConfig) (crypto.Signer, *issuance.Certificate, error) {
-	cert, err := issuance.LoadCertificate(issuerConfig.CertFile)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	signer, err := loadCFSSLSigner(issuerConfig, cert.Certificate)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if !core.KeyDigestEquals(signer.Public(), cert.PublicKey) {
-		return nil, nil, fmt.Errorf("Issuer key did not match issuer cert %s", issuerConfig.CertFile)
-	}
-	return signer, cert, err
-}
-
-func loadCFSSLSigner(issuerConfig IssuerConfig, cert *x509.Certificate) (crypto.Signer, error) {
-	if issuerConfig.File != "" {
-		keyBytes, err := ioutil.ReadFile(issuerConfig.File)
-		if err != nil {
-			return nil, fmt.Errorf("Could not read key file %s", issuerConfig.File)
-		}
-
-		signer, err := helpers.ParsePrivateKeyPEM(keyBytes)
-		if err != nil {
-			return nil, err
-		}
-		return signer, nil
-	}
-
-	var pkcs11Config *pkcs11key.Config
-	if issuerConfig.ConfigFile != "" {
-		contents, err := ioutil.ReadFile(issuerConfig.ConfigFile)
-		if err != nil {
-			return nil, err
-		}
-		pkcs11Config = new(pkcs11key.Config)
-		err = json.Unmarshal(contents, pkcs11Config)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		pkcs11Config = issuerConfig.PKCS11
-	}
-	if pkcs11Config.Module == "" ||
-		pkcs11Config.TokenLabel == "" ||
-		pkcs11Config.PIN == "" {
-		return nil, fmt.Errorf("Missing a field in pkcs11Config %#v", pkcs11Config)
-	}
-	numSessions := issuerConfig.NumSessions
-	if numSessions <= 0 {
-		numSessions = 1
-	}
-	return pkcs11key.NewPool(numSessions, pkcs11Config.Module,
-		pkcs11Config.TokenLabel, pkcs11Config.PIN, cert.PublicKey)
 }
 
 func loadBoulderIssuers(profileConfig issuance.ProfileConfig, issuerConfigs []issuance.IssuerConfig, ignoredLints []string) ([]*issuance.Issuer, error) {
@@ -285,15 +179,9 @@ func main() {
 	err = pa.SetHostnamePolicyFile(c.CA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
 
-	var cfsslIssuers []ca.Issuer
 	var boulderIssuers []*issuance.Issuer
-	if features.Enabled(features.NonCFSSLSigner) {
-		boulderIssuers, err = loadBoulderIssuers(c.CA.Issuance.Profile, c.CA.Issuance.Issuers, c.CA.Issuance.IgnoredLints)
-		cmd.FailOnError(err, "Couldn't load issuers")
-	} else {
-		cfsslIssuers, err = loadCFSSLIssuers(c.CA.Issuers)
-		cmd.FailOnError(err, "Couldn't load issuers")
-	}
+	boulderIssuers, err = loadBoulderIssuers(c.CA.Issuance.Profile, c.CA.Issuance.Issuers, c.CA.Issuance.IgnoredLints)
+	cmd.FailOnError(err, "Couldn't load issuers")
 
 	tlsConfig, err := c.CA.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
@@ -318,10 +206,6 @@ func main() {
 	cai, err := ca.NewCertificateAuthorityImpl(
 		sa,
 		pa,
-		c.CA.CFSSL,
-		c.CA.RSAProfile,
-		c.CA.ECDSAProfile,
-		cfsslIssuers,
 		boulderIssuers,
 		c.CA.ECDSAAllowedAccounts,
 		c.CA.Expiry.Duration,
