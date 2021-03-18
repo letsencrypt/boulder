@@ -58,7 +58,7 @@ def run_expired_authz_purger():
         tool = "expired-authz-purger2"
         out = get_future_output([
             "./bin/expired-authz-purger2", "--single-run",
-            "--config", f"{config_dir}/expired-authz-purger2.json"], target_time)
+            "--config", "config_dir", "/expired-authz-purger2.json"], target_time)
         if 'via FAKECLOCK' not in out:
             raise(Exception("%s was not built with `integration` build tag" % (tool)))
         if num is None:
