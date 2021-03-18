@@ -20,7 +20,6 @@ import (
 
 	"google.golang.org/grpc/grpclog"
 
-	cfsslLog "github.com/cloudflare/cfssl/log"
 	"github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -48,20 +47,6 @@ type mysqlLogger struct {
 
 func (m mysqlLogger) Print(v ...interface{}) {
 	m.AuditErrf("[mysql] %s", fmt.Sprint(v...))
-}
-
-// cfsslLogger provides two additional methods that are expected by CFSSL's
-// logger but not supported by Boulder's Logger.
-type cfsslLogger struct {
-	blog.Logger
-}
-
-func (cl cfsslLogger) Crit(msg string) {
-	cl.AuditErr(msg)
-}
-
-func (cl cfsslLogger) Emerg(msg string) {
-	cl.AuditErr(msg)
 }
 
 type grpcLogger struct {
@@ -146,7 +131,7 @@ func (lw logWriter) Write(p []byte) (n int, err error) {
 // server on the provided port to report the stats and provide pprof profiling
 // handlers. NewLogger and newStatsRegistry will call os.Exit on errors.
 // Also sets the constructed AuditLogger as the default logger, and configures
-// the cfssl, mysql, and grpc packages to use our logger.
+// the mysql and grpc packages to use our logger.
 // This must be called before any gRPC code is called, because gRPC's SetLogger
 // doesn't use any locking.
 func StatsAndLogging(logConf SyslogConfig, addr string) (prometheus.Registerer, blog.Logger) {
@@ -170,13 +155,6 @@ func NewLogger(logConf SyslogConfig) blog.Logger {
 	FailOnError(err, "Could not connect to Syslog")
 
 	_ = blog.Set(logger)
-	// We set the cfssl logging level to Debug as it
-	// won't actually call logging methods for any
-	// level less than what is set. We will ignore
-	// any logging we don't care about at the syslog
-	// level, so this doesn't cause extraneous logging.
-	cfsslLog.Level = cfsslLog.LevelDebug
-	cfsslLog.SetLogger(cfsslLogger{logger})
 	_ = mysql.SetLogger(mysqlLogger{logger})
 	grpclog.SetLoggerV2(grpcLogger{logger})
 	log.SetOutput(logWriter{logger})
