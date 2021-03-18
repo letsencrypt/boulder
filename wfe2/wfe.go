@@ -574,6 +574,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		response.Header().Set("Location",
 			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, acct.ID)))
 		logEvent.Requester = acct.ID
+		addRequesterHeader(response, acct.ID)
 
 		prepAccountForDisplay(&acct)
 
