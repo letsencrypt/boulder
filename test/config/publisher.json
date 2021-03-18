@@ -2,6 +2,24 @@
   "publisher": {
     "userAgent": "boulder/1.0",
     "blockProfileRate": 1000000000,
+    "chains": [
+      [
+        "/tmp/intermediate-cert-rsa-a.pem",
+        "/tmp/root-cert-rsa.pem"
+      ],
+      [
+        "/tmp/intermediate-cert-rsa-b.pem",
+        "/tmp/root-cert-rsa.pem"
+      ],
+      [
+        "/tmp/intermediate-cert-ecdsa-a.pem",
+        "/tmp/root-cert-ecdsa.pem"
+      ],
+      [
+        "/tmp/intermediate-cert-ecdsa-b.pem",
+        "/tmp/root-cert-ecdsa.pem"
+      ]
+    ],
     "debugAddr": ":8009",
     "grpc": {
       "address": ":9091",
@@ -23,11 +41,5 @@
   "syslog": {
     "stdoutlevel": 6,
     "sysloglevel": 6
-  },
-
-  "common": {
-    "ct": {
-      "intermediateBundleFilename": "/tmp/intermediate-cert-rsa-a.pem"
-    }
   }
 }

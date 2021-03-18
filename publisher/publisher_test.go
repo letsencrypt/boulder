@@ -140,21 +140,11 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	})
 	test.AssertNotError(t, err, "failed to load chain3.")
 
-	// Load our fourth chain using core.LoadCertBundle
-	// TODO(5269): Remove this after all configs have migrated to
-	// `Chains`.
-	chain4, err := core.LoadCertBundle("test/testIntermediate.pem")
-	test.AssertNotError(t, err, "failed to load chain4.")
-	chain4Issuer := issuance.Certificate{Certificate: chain4[0]}
-
 	// Create an example issuerNameID to CT bundle mapping
 	issuerBundles := map[issuance.IssuerNameID][]ct.ASN1Cert{
 		chain1[0].NameID(): GetCTBundleForChain(chain1),
 		chain2[0].NameID(): GetCTBundleForChain(chain2),
 		chain3[0].NameID(): GetCTBundleForChain(chain3),
-		// TODO(5269): Remove this after all configs have migrated to
-		// `Chains`.
-		chain4Issuer.NameID(): GetCTBundleForCerts(chain4),
 	}
 	pub := New(
 		issuerBundles,
@@ -404,29 +394,6 @@ func Test_GetCTBundleForChain(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			bundle := GetCTBundleForChain(tt.args.chain)
-			test.AssertDeepEquals(t, bundle, tt.want)
-		})
-	}
-}
-
-// TODO(5269): Remove this after all configs have migrated to `Chains`.
-func Test_GetCTBundleForBundle(t *testing.T) {
-	bundle, err := core.LoadCertBundle("test/testIntermediate.pem")
-	want := []ct.ASN1Cert{{Data: bundle[0].Raw}}
-	test.AssertNotError(t, err, "Unable to read test/testIntermediate.pem")
-	type args struct {
-		chain []*x509.Certificate
-	}
-	tests := []struct {
-		name string
-		args args
-		want []ct.ASN1Cert
-	}{
-		{"Create a ct bundle with a single intermediate", args{bundle}, want},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			bundle := GetCTBundleForCerts(tt.args.chain)
 			test.AssertDeepEquals(t, bundle, tt.want)
 		})
 	}
