@@ -5,19 +5,11 @@ github.com/beorn7/perks/quantile
 # github.com/cespare/xxhash/v2 v2.1.1
 github.com/cespare/xxhash/v2
 # github.com/cloudflare/cfssl v1.4.2-0.20200324225241-abef926615f4
-github.com/cloudflare/cfssl/auth
-github.com/cloudflare/cfssl/certdb
-github.com/cloudflare/cfssl/config
 github.com/cloudflare/cfssl/crypto/pkcs7
-github.com/cloudflare/cfssl/csr
 github.com/cloudflare/cfssl/errors
 github.com/cloudflare/cfssl/helpers
 github.com/cloudflare/cfssl/helpers/derhelpers
-github.com/cloudflare/cfssl/info
 github.com/cloudflare/cfssl/log
-github.com/cloudflare/cfssl/ocsp/config
-github.com/cloudflare/cfssl/signer
-github.com/cloudflare/cfssl/signer/local
 # github.com/eggsampler/acme/v3 v3.0.0
 github.com/eggsampler/acme/v3
 # github.com/go-gorp/gorp/v3 v3.0.2
