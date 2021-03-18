@@ -14,6 +14,7 @@ const (
 	//   Deprecated features, these can be removed once stripped from production configs
 	PrecertificateRevocation
 	StripDefaultSchemePort
+	NonCFSSLSigner
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -46,9 +47,6 @@ const (
 	// FasterNewOrdersRateLimit enables use of a separate table for counting the
 	// new orders rate limit.
 	FasterNewOrdersRateLimit
-	// NonCFSSLSigner enables usage of our own certificate signer instead of the
-	// CFSSL signer.
-	NonCFSSLSigner
 	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
 	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
 	ECDSAForAll
