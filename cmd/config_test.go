@@ -98,36 +98,3 @@ func TestTLSConfigLoad(t *testing.T) {
 		})
 	}
 }
-
-func TestDefaultDBConfig(t *testing.T) {
-	exampleDBConfig := &DBConfig{}
-	exampleDatabaseConfig := &DeprecatedDBConfig{
-		DBConnect:       "some secret",
-		DBConnectFile:   "foo/bar",
-		MaxOpenConns:    100,
-		MaxIdleConns:    100,
-		ConnMaxLifetime: ConfigDuration{10000},
-		ConnMaxIdleTime: ConfigDuration{10000},
-	}
-	expected := &DBConfig{
-		DBConnect:       "some secret",
-		DBConnectFile:   "foo/bar",
-		MaxOpenConns:    100,
-		MaxIdleConns:    100,
-		ConnMaxLifetime: ConfigDuration{10000},
-		ConnMaxIdleTime: ConfigDuration{10000},
-	}
-	DefaultDBConfig(exampleDBConfig, exampleDatabaseConfig)
-	test.AssertDeepEquals(t, exampleDBConfig, expected)
-
-	exampleDBConfig = &DBConfig{
-		DBConnect:       "some secret",
-		DBConnectFile:   "foo/bar",
-		MaxOpenConns:    100,
-		MaxIdleConns:    100,
-		ConnMaxLifetime: ConfigDuration{10000},
-		ConnMaxIdleTime: ConfigDuration{10000}}
-	exampleDatabaseConfig = &DeprecatedDBConfig{}
-	DefaultDBConfig(exampleDBConfig, exampleDatabaseConfig)
-	test.AssertDeepEquals(t, exampleDBConfig, expected)
-}

@@ -281,10 +281,6 @@ type OCSPUpdaterConfig struct {
 	cmd.ServiceConfig
 	DB cmd.DBConfig
 
-	// TODO(#5275): Remove once all configs in dev, staging and prod
-	// have been updated to contain the `dbconfig` field
-	cmd.DeprecatedDBConfig
-
 	OldOCSPWindow    cmd.ConfigDuration
 	OldOCSPBatchSize int
 
@@ -345,9 +341,6 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	// TODO(#5275): Remove once all configs in dev, staging and prod
-	// have been updated to contain the `dbconfig` field
-	cmd.DefaultDBConfig(&conf.DB, &conf.DeprecatedDBConfig)
 	// Configure DB
 	dbURL, err := conf.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")

@@ -26,10 +26,7 @@ type config struct {
 	CA struct {
 		cmd.ServiceConfig
 
-		// TODO(#5275): Refactor to named field once all configs in dev,
-		// staging and prod have been updated to contain `dbconfig`
-		// field
-		cmd.DBConfig
+		DB cmd.DBConfig
 		cmd.HostnamePolicyConfig
 
 		GRPCCA            *cmd.GRPCServerConfig
