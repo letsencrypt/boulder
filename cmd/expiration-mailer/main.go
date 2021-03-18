@@ -364,9 +364,6 @@ type config struct {
 	Mailer struct {
 		cmd.ServiceConfig
 		DB cmd.DBConfig
-		// TODO(#5275): Remove once all configs in dev, staging and prod
-		// have been updated to contain the `dbconfig` field
-		cmd.DeprecatedDBConfig
 		cmd.SMTPConfig
 
 		From    string
@@ -477,9 +474,6 @@ func main() {
 		c.Mailer.CertLimit = 100
 	}
 
-	// TODO(#5275): Remove once all configs in dev, staging and prod
-	// have been updated to contain the `dbconfig` field
-	cmd.DefaultDBConfig(&c.Mailer.DB, &c.Mailer.DeprecatedDBConfig)
 	// Configure DB
 	dbURL, err := c.Mailer.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")

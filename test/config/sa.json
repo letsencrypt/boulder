@@ -1,7 +1,9 @@
 {
   "sa": {
-    "dbConnectFile": "test/secrets/sa_dburl",
-    "maxOpenConns": 100,
+    "db": {
+      "dbConnectFile": "test/secrets/sa_dburl",
+      "maxOpenConns": 100
+    },
     "ParallelismPerRPC": 20,
     "debugAddr": ":8003",
     "tls": {

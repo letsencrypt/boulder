@@ -30,10 +30,6 @@ type JanitorConfig struct {
 	// Common database connection configuration.
 	DB cmd.DBConfig
 
-	// TODO(#5275): Remove once all configs in dev, staging and prod
-	// have been updated to contain the `dbconfig` field
-	cmd.DeprecatedDBConfig
-
 	// JobConfigs is a list of configs for individual cleanup jobs.
 	JobConfigs []JobConfig
 }
@@ -67,9 +63,6 @@ func New(clk clock.Clock, config JanitorConfig) (*Janitor, error) {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	// TODO(#5275): Remove once all configs in dev, staging and prod
-	// have been updated to contain the `dbconfig` field
-	cmd.DefaultDBConfig(&config.DB, &config.DeprecatedDBConfig)
 	// Create DB Map
 	dbURL, err := config.DB.URL()
 	if err != nil {
