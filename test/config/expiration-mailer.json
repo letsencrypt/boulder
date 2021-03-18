@@ -5,8 +5,10 @@
     "username": "cert-manager@example.com",
     "from": "Expiry bot <test@example.com>",
     "passwordFile": "test/secrets/smtp_password",
-    "dbConnectFile": "test/secrets/mailer_dburl",
-    "maxOpenConns": 10,
+    "db": {
+      "dbConnectFile": "test/secrets/mailer_dburl",
+      "maxOpenConns": 10
+    },
     "nagTimes": ["24h", "72h", "168h", "336h"],
     "nagCheckInterval": "24h",
     "emailTemplate": "test/example-expiration-template",

@@ -339,10 +339,7 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 func main() {
 	var config struct {
 		BadKeyRevoker struct {
-			DB cmd.DBConfig
-			// TODO(#5275): Remove once all configs in dev, staging and prod
-			// have been updated to contain the `dbconfig` field
-			cmd.DeprecatedDBConfig
+			DB        cmd.DBConfig
 			DebugAddr string
 
 			TLS       cmd.TLSConfig
@@ -392,9 +389,6 @@ func main() {
 	scope.MustRegister(certsRevoked)
 	scope.MustRegister(mailErrors)
 
-	// TODO(#5275): Remove once all configs in dev, staging and prod
-	// have been updated to contain the `dbconfig` field
-	cmd.DefaultDBConfig(&config.BadKeyRevoker.DB, &config.BadKeyRevoker.DeprecatedDBConfig)
 	dbURL, err := config.BadKeyRevoker.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 

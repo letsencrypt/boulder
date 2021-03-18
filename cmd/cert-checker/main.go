@@ -310,9 +310,6 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 type config struct {
 	CertChecker struct {
 		DB cmd.DBConfig
-		// TODO(#5275): Remove once all configs in dev, staging and prod
-		// have been updated to contain the `dbconfig` field
-		cmd.DeprecatedDBConfig
 		cmd.HostnamePolicyConfig
 
 		Workers             int
@@ -362,7 +359,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to set audit logger")
 
 	if *connect != "" {
-		config.CertChecker.DBConnect = *connect
+		config.CertChecker.DB.DBConnect = *connect
 	}
 	if *workers != 0 {
 		config.CertChecker.Workers = *workers
@@ -374,9 +371,6 @@ func main() {
 	// Validate PA config and set defaults if needed
 	cmd.FailOnError(config.PA.CheckChallenges(), "Invalid PA configuration")
 
-	// TODO(#5275): Remove once all configs in dev, staging and prod
-	// have been updated to contain the `dbconfig` field
-	cmd.DefaultDBConfig(&config.CertChecker.DB, &config.CertChecker.DeprecatedDBConfig)
 	saDbURL, err := config.CertChecker.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{

@@ -4,8 +4,10 @@
     "port": "9380",
     "username": "cert-manager@example.com",
     "passwordFile": "test/secrets/smtp_password",
-    "dbConnectFile": "test/secrets/mailer_dburl",
-    "maxOpenConns": 10
+    "db": {
+      "dbConnectFile": "test/secrets/mailer_dburl",
+      "maxOpenConns": 10
+    }
   },
   "syslog": {
     "stdoutLevel": 7,

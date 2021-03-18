@@ -3,8 +3,10 @@
         "syslog": {
           "stdoutLevel": 6
         },
-        "dbConnectFile": "test/secrets/purger_dburl",
-        "maxOpenConns": 10,
+        "db": {
+          "dbConnectFile": "test/secrets/purger_dburl",
+          "maxOpenConns": 10
+        },
         "gracePeriod": "168h",
         "batchSize": 1000,
         "debugAddr": ":8015"

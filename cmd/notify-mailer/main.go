@@ -407,9 +407,6 @@ func main() {
 	type config struct {
 		NotifyMailer struct {
 			DB cmd.DBConfig
-			// TODO(#5275): Remove once all configs in dev, staging and prod
-			// have been updated to contain the `dbconfig` field
-			cmd.DeprecatedDBConfig
 			cmd.PasswordConfig
 			cmd.SMTPConfig
 			Features map[string]bool
@@ -442,9 +439,6 @@ func main() {
 	log := cmd.NewLogger(cfg.Syslog)
 	defer log.AuditPanic()
 
-	// TODO(#5275): Remove once all configs in dev, staging and prod
-	// have been updated to contain the `dbconfig` field
-	cmd.DefaultDBConfig(&cfg.NotifyMailer.DB, &cfg.NotifyMailer.DeprecatedDBConfig)
 	dbURL, err := cfg.NotifyMailer.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbSettings := sa.DbSettings{
