@@ -4,12 +4,6 @@ github.com/beeker1121/goque
 github.com/beorn7/perks/quantile
 # github.com/cespare/xxhash/v2 v2.1.1
 github.com/cespare/xxhash/v2
-# github.com/cloudflare/cfssl v1.4.2-0.20200324225241-abef926615f4
-github.com/cloudflare/cfssl/crypto/pkcs7
-github.com/cloudflare/cfssl/errors
-github.com/cloudflare/cfssl/helpers
-github.com/cloudflare/cfssl/helpers/derhelpers
-github.com/cloudflare/cfssl/log
 # github.com/eggsampler/acme/v3 v3.0.0
 github.com/eggsampler/acme/v3
 # github.com/go-gorp/gorp/v3 v3.0.2
@@ -108,8 +102,6 @@ golang.org/x/crypto/ed25519
 golang.org/x/crypto/ed25519/internal/edwards25519
 golang.org/x/crypto/ocsp
 golang.org/x/crypto/pbkdf2
-golang.org/x/crypto/pkcs12
-golang.org/x/crypto/pkcs12/internal/rc2
 # golang.org/x/net v0.0.0-20200202094626-16171245cfb2
 golang.org/x/net/bpf
 golang.org/x/net/context
