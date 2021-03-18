@@ -10,7 +10,6 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
@@ -36,13 +35,6 @@ type config struct {
 	}
 
 	Syslog cmd.SyslogConfig
-
-	// TODO(5269): Remove this after all configs have migrated to `Chains`.
-	Common struct {
-		CT struct {
-			IntermediateBundleFilename string
-		}
-	}
 }
 
 func main() {
@@ -77,29 +69,18 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	// TODO(5269): Refactor this after all configs have migrated to `Chains`.
-	if c.Common.CT.IntermediateBundleFilename == "" && c.Publisher.Chains == nil {
-		logger.AuditErr("No CT submission bundle file or chain files provided")
+	if c.Publisher.Chains == nil {
+		logger.AuditErr("No chain files provided")
 		os.Exit(1)
 	}
 
 	bundles := make(map[issuance.IssuerNameID][]ct.ASN1Cert)
-	if len(c.Publisher.Chains) > 0 {
-		for _, files := range c.Publisher.Chains {
-			chain, err := issuance.LoadChain(files)
-			cmd.FailOnError(err, "failed to load chain.")
-			issuer := chain[0]
-			id := issuer.NameID()
-			bundles[id] = publisher.GetCTBundleForChain(chain)
-		}
-	} else {
-		// TODO(5269): Remove this after all configs have migrated to
-		// `Chains`.
-		certs, err := core.LoadCertBundle(c.Common.CT.IntermediateBundleFilename)
-		cmd.FailOnError(err, "failed to load certs from PEM file")
-		issuer := &issuance.Certificate{Certificate: certs[0]}
+	for _, files := range c.Publisher.Chains {
+		chain, err := issuance.LoadChain(files)
+		cmd.FailOnError(err, "failed to load chain.")
+		issuer := chain[0]
 		id := issuer.NameID()
-		bundles[id] = publisher.GetCTBundleForCerts(certs)
+		bundles[id] = publisher.GetCTBundleForChain(chain)
 	}
 
 	tlsConfig, err := c.Publisher.TLS.Load()
