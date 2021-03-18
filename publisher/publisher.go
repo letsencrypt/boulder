@@ -405,15 +405,3 @@ func GetCTBundleForChain(chain []*issuance.Certificate) []ct.ASN1Cert {
 	}
 	return ctBundle
 }
-
-// GetCTBundleForCerts takes a slice of *x509.Certificate(s)
-// representing a certificate chain and returns a slice of
-// ct.ANS1Cert(s) in the same order
-// TODO(5269): Remove this after all configs have migrated to `Chains`.
-func GetCTBundleForCerts(chain []*x509.Certificate) []ct.ASN1Cert {
-	var ctBundle []ct.ASN1Cert
-	for _, cert := range chain {
-		ctBundle = append(ctBundle, ct.ASN1Cert{Data: cert.Raw})
-	}
-	return ctBundle
-}
