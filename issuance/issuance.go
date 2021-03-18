@@ -116,7 +116,7 @@ func loadSigner(location IssuerLoc, cert *Certificate) (crypto.Signer, error) {
 	if location.File != "" {
 		keyBytes, err := ioutil.ReadFile(location.File)
 		if err != nil {
-			return nil, fmt.Errorf("Could not read key file %s", location.File)
+			return nil, fmt.Errorf("Could not read key file %q", location.File)
 		}
 
 		var keyDER *pem.Block
@@ -127,7 +127,7 @@ func loadSigner(location IssuerLoc, cert *Certificate) (crypto.Signer, error) {
 			}
 		}
 		if keyDER == nil {
-			return nil, fmt.Errorf("No key block found in %s", location.File)
+			return nil, fmt.Errorf("No key block found in %q", location.File)
 		}
 
 		// Try to interpret the bytes first as a generic PKCS8 key, then fall back
@@ -151,7 +151,7 @@ func loadSigner(location IssuerLoc, cert *Certificate) (crypto.Signer, error) {
 		if err == nil {
 			return ecdsaSigner, nil
 		}
-		return nil, fmt.Errorf("Unable to parse %s", location.File)
+		return nil, fmt.Errorf("Unable to parse %q", location.File)
 	}
 
 	var pkcs11Config *pkcs11key.Config

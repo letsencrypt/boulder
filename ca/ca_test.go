@@ -176,11 +176,11 @@ func init() {
 		CertFile: caCertFile,
 	})
 	if err != nil {
-		panic(fmt.Sprintf("Unable to load %s and %s: %s", caKeyFile, caCertFile, err))
+		panic(fmt.Sprintf("Unable to load %q and %q: %s", caKeyFile, caCertFile, err))
 	}
 	caCert2, err = issuance.LoadCertificate(caCertFile2)
 	if err != nil {
-		panic(fmt.Sprintf("Unable to parse %s: %s", caCertFile2, err))
+		panic(fmt.Sprintf("Unable to parse %q: %s", caCertFile2, err))
 	}
 }
 
