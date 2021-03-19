@@ -1,0 +1,14 @@
+{
+    "expiredAuthzPurger2": {
+        "syslog": {
+          "stdoutLevel": 6
+        },
+        "db": {
+          "dbConnectFile": "test/secrets/purger_dburl",
+          "maxOpenConns": 10
+        },
+        "gracePeriod": "168h",
+        "batchSize": 1000,
+        "debugAddr": ":8015"
+    }
+}
