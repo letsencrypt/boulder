@@ -91,38 +91,6 @@ func TestMysqlLogger(t *testing.T) {
 	}
 }
 
-func TestCfsslLogger(t *testing.T) {
-	log := blog.UseMock()
-	cLog := cfsslLogger{log}
-
-	testCases := []struct {
-		msg, expected string
-	}{
-		{
-			"",
-			"ERR: [AUDIT] ",
-		},
-		{
-			"Test",
-			"ERR: [AUDIT] Test",
-		},
-	}
-
-	for _, tc := range testCases {
-		// cfsslLogger proxies blog.AuditLogger to provide Crit() and Emerg()
-		// methods that are expected by CFSSL's logger
-		cLog.Crit(tc.msg)
-		cLog.Emerg(tc.msg)
-		logged := log.GetAll()
-		// Calling Crit and Emerg should produce two AuditErr outputs matching the
-		// testCase expected output
-		test.AssertEquals(t, len(logged), 2)
-		test.AssertEquals(t, logged[0], tc.expected)
-		test.AssertEquals(t, logged[1], tc.expected)
-		log.Clear()
-	}
-}
-
 func TestCaptureStdlibLog(t *testing.T) {
 	logger := blog.UseMock()
 	oldDest := log.Writer()
