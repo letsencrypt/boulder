@@ -13,6 +13,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -21,7 +22,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloudflare/cfssl/helpers"
 	ct "github.com/google/certificate-transparency-go"
 	cttls "github.com/google/certificate-transparency-go/tls"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
@@ -116,14 +116,42 @@ func loadSigner(location IssuerLoc, cert *Certificate) (crypto.Signer, error) {
 	if location.File != "" {
 		keyBytes, err := ioutil.ReadFile(location.File)
 		if err != nil {
-			return nil, fmt.Errorf("Could not read key file %s", location.File)
+			return nil, fmt.Errorf("Could not read key file %q", location.File)
 		}
 
-		signer, err := helpers.ParsePrivateKeyPEM(keyBytes)
-		if err != nil {
-			return nil, err
+		var keyDER *pem.Block
+		for {
+			keyDER, keyBytes = pem.Decode(keyBytes)
+			if keyDER == nil || keyDER.Type != "EC PARAMETERS" {
+				break
+			}
 		}
-		return signer, nil
+		if keyDER == nil {
+			return nil, fmt.Errorf("No key block found in %q", location.File)
+		}
+
+		// Try to interpret the bytes first as a generic PKCS8 key, then fall back
+		// to a PKCS1 RSA key, then fall back to an EC key.
+		// These blocks use the opposite of normal error checking patterns, to let
+		// us early-return once we successfully parse once.
+		signer, err := x509.ParsePKCS8PrivateKey(keyDER.Bytes)
+		if err == nil {
+			switch signer.(type) {
+			case *rsa.PrivateKey:
+				return signer.(*rsa.PrivateKey), nil
+			case *ecdsa.PrivateKey:
+				return signer.(*ecdsa.PrivateKey), nil
+			}
+		}
+		rsaSigner, err := x509.ParsePKCS1PrivateKey(keyDER.Bytes)
+		if err == nil {
+			return rsaSigner, nil
+		}
+		ecdsaSigner, err := x509.ParseECPrivateKey(keyDER.Bytes)
+		if err == nil {
+			return ecdsaSigner, nil
+		}
+		return nil, fmt.Errorf("Unable to parse %q", location.File)
 	}
 
 	var pkcs11Config *pkcs11key.Config

@@ -19,9 +19,9 @@ import (
 	"time"
 
 	"github.com/beeker1121/goque"
-	"github.com/cloudflare/cfssl/helpers"
 	ct "github.com/google/certificate-transparency-go"
 	cttls "github.com/google/certificate-transparency-go/tls"
+	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
@@ -171,17 +171,16 @@ var ctx = context.Background()
 
 func init() {
 	var err error
-	caKey, err = helpers.ParsePrivateKeyPEM(mustRead(caKeyFile))
+	caCert, caKey, err = issuance.LoadIssuer(issuance.IssuerLoc{
+		File:     caKeyFile,
+		CertFile: caCertFile,
+	})
 	if err != nil {
-		panic(fmt.Sprintf("Unable to parse %s: %s", caKeyFile, err))
-	}
-	caCert, err = issuance.LoadCertificate(caCertFile)
-	if err != nil {
-		panic(fmt.Sprintf("Unable to parse %s: %s", caCertFile, err))
+		panic(fmt.Sprintf("Unable to load %q and %q: %s", caKeyFile, caCertFile, err))
 	}
 	caCert2, err = issuance.LoadCertificate(caCertFile2)
 	if err != nil {
-		panic(fmt.Sprintf("Unable to parse %s: %s", caCertFile2, err))
+		panic(fmt.Sprintf("Unable to parse %q: %s", caCertFile2, err))
 	}
 }
 
@@ -782,9 +781,35 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 	var rawValue []byte
 	_, err = asn1.Unmarshal(sctListExtension.Value, &rawValue)
 	test.AssertNotError(t, err, "Failed to unmarshal extension value")
-	sctList, err := helpers.DeserializeSCTList(rawValue)
+	sctList, err := deserializeSCTList(rawValue)
 	test.AssertNotError(t, err, "Failed to deserialize SCT list")
 	test.Assert(t, len(sctList) == 1, fmt.Sprintf("Wrong number of SCTs, wanted: 1, got: %d", len(sctList)))
+}
+
+// deserializeSCTList deserializes a list of SCTs.
+// Forked from github.com/cloudflare/cfssl/helpers
+func deserializeSCTList(serializedSCTList []byte) ([]ct.SignedCertificateTimestamp, error) {
+	var sctList ctx509.SignedCertificateTimestampList
+	rest, err := cttls.Unmarshal(serializedSCTList, &sctList)
+	if err != nil {
+		return nil, err
+	}
+	if len(rest) != 0 {
+		return nil, errors.New("serialized SCT list contained trailing garbage")
+	}
+	list := make([]ct.SignedCertificateTimestamp, len(sctList.SCTList))
+	for i, serializedSCT := range sctList.SCTList {
+		var sct ct.SignedCertificateTimestamp
+		rest, err := cttls.Unmarshal(serializedSCT.Val, &sct)
+		if err != nil {
+			return nil, err
+		}
+		if len(rest) != 0 {
+			return nil, errors.New("serialized SCT contained trailing garbage")
+		}
+		list[i] = sct
+	}
+	return list, nil
 }
 
 // dupeSA returns a non-error to GetCertificate in order to simulate a request
