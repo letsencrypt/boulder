@@ -12,6 +12,8 @@
       "127.0.0.1:8053",
       "127.0.0.1:8054"
     ],
+    "dnsTimeout": "1s",
+    "dnsAllowLoopbackAddresses": true,
     "issuerDomain": "happy-hacker-ca.invalid",
     "tls": {
       "caCertfile": "test/grpc-creds/minica.pem",
@@ -39,10 +41,5 @@
   "syslog": {
     "stdoutlevel": 6,
     "sysloglevel": 4
-  },
-
-  "common": {
-    "dnsTimeout": "1s",
-    "dnsAllowLoopbackAddresses": true
   }
 }

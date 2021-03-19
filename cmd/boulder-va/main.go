@@ -37,8 +37,10 @@ type config struct {
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
-		DNSTries     int
-		DNSResolvers []string
+		DNSTries                  int
+		DNSResolvers              []string
+		DNSTimeout                string
+		DNSAllowLoopbackAddresses bool
 
 		RemoteVAs                   []cmd.GRPCClientConfig
 		MaxRemoteValidationFailures int
@@ -51,7 +53,6 @@ type config struct {
 	Syslog cmd.SyslogConfig
 
 	Common struct {
-		DNSResolver               string
 		DNSTimeout                string
 		DNSAllowLoopbackAddresses bool
 	}
@@ -100,7 +101,12 @@ func main() {
 		pc.TLSPort = c.VA.PortConfig.TLSPort
 	}
 
-	dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
+	var dnsTimeout time.Duration
+	if c.VA.DNSTimeout != "" {
+		dnsTimeout, err = time.ParseDuration(c.VA.DNSTimeout)
+	} else {
+		dnsTimeout, err = time.ParseDuration(c.Common.DNSTimeout)
+	}
 	cmd.FailOnError(err, "Couldn't parse DNS timeout")
 	dnsTries := c.VA.DNSTries
 	if dnsTries < 1 {
@@ -108,27 +114,22 @@ func main() {
 	}
 	clk := cmd.Clock()
 	var resolver bdns.Client
-	if len(c.Common.DNSResolver) != 0 {
-		c.VA.DNSResolvers = append(c.VA.DNSResolvers, c.Common.DNSResolver)
-	}
-	if !c.Common.DNSAllowLoopbackAddresses {
-		r := bdns.New(
+	if !(c.VA.DNSAllowLoopbackAddresses || c.Common.DNSAllowLoopbackAddresses) {
+		resolver = bdns.New(
 			dnsTimeout,
 			c.VA.DNSResolvers,
 			scope,
 			clk,
 			dnsTries,
 			logger)
-		resolver = r
 	} else {
-		r := bdns.NewTest(
+		resolver = bdns.NewTest(
 			dnsTimeout,
 			c.VA.DNSResolvers,
 			scope,
 			clk,
 			dnsTries,
 			logger)
-		resolver = r
 	}
 
 	tlsConfig, err := c.VA.TLS.Load()
