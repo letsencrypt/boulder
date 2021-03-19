@@ -1,6 +1,5 @@
 # Boulder - An ACME CA
 
-[![Build Status](https://travis-ci.com/letsencrypt/boulder.svg?branch=main)](https://travis-ci.com/letsencrypt/boulder)
 [![Coverage Status](https://coveralls.io/repos/github/letsencrypt/boulder/badge.svg?branch=main)](https://coveralls.io/github/letsencrypt/boulder?branch=main)
 
 This is an implementation of an ACME-based CA. The [ACME

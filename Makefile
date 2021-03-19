@@ -1,6 +1,3 @@
-# This Makefile also tricks Travis into not running 'go get' for our
-# build. See http://docs.travis-ci.com/user/languages/go/
-
 OBJDIR ?= $(shell pwd)/bin
 DESTDIR ?= /usr/local/bin
 ARCHIVEDIR ?= /tmp

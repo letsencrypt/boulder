@@ -4,8 +4,6 @@
 # -u Treat unset variables as an error and exit immediately
 set -eu
 
-# Run all tests and coverage checks. Called from Travis automatically, also
-# suitable to run manually. See list of prerequisite packages in .travis.yml
 if type realpath >/dev/null 2>&1 ; then
   cd "$(realpath -- $(dirname -- "$0"))"
 fi
@@ -94,7 +92,7 @@ function run_unit_tests() {
 }
 
 function run_test_coverage() {
-  # Run each test by itself for Travis, so we can get coverage. We skip using
+  # Run each test by itself for CI, so we can get coverage. We skip using
   # the -race flag here because we have already done a full test run with
   # -race in `run_unit_tests` and it adds substantial overhead to run every
   # test with -race independently
@@ -106,7 +104,10 @@ function run_test_coverage() {
   # We don't use the run function here because sometimes goveralls fails to
   # contact the server and exits with non-zero status, but we don't want to
   # treat that as a failure.
-  goveralls -v -coverprofile=gover.coverprofile -service=travis-pro
+
+  # note: not currently enabled in CI passes due to coveralls failing to map
+  # our github actions token to our coveralls account
+  goveralls -v -coverprofile=gover.coverprofile -service=github
 }
 
 #
@@ -234,8 +235,6 @@ print_heading "Starting..."
 STAGE="lints"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Lints"
-  # golangci-lint is sometimes slow. Travis will kill our job if it goes 10m
-  # without emitting logs, so set the timeout to 9m.
   golangci-lint run --timeout 9m ./...
   python3 test/grafana/lint.py
   # Check for common spelling errors using codespell.
@@ -289,7 +288,7 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   fi
 fi
 
-# Run go mod vendor (happens only in Travis) to check that the versions in
+# Run go mod vendor (happens only in CI) to check that the versions in
 # vendor/ really exist in the remote repo and match what we have.
 STAGE="gomod-vendor"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
