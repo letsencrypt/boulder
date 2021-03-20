@@ -1,6 +1,6 @@
 # Boulder - An ACME CA
 
-[![Coverage Status](https://coveralls.io/repos/github/letsencrypt/boulder/badge.svg?branch=main)](https://coveralls.io/github/letsencrypt/boulder?branch=main)
+[![Build Status](https://github.com/letsencrypt/boulder/actions/workflows/boulder-ci.yml/badge.svg?branch=main)](https://github.com/letsencrypt/boulder/actions/workflows/boulder-ci.yml?query=branch%3Amain)
 
 This is an implementation of an ACME-based CA. The [ACME
 protocol](https://github.com/ietf-wg-acme/acme/) allows the CA to
