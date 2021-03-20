@@ -34,14 +34,17 @@ jobs:
           - go1.16.2_2021-03-16
         # Tests command definitions. Use the entire docker-compose command you want to run.
         tests:
-          # Run ./test.sh --help for a description of each of the flags
+          # Run ./test.sh --help for a description of each of the flags.
           - "docker-compose run --use-aliases boulder ./test.sh --lints --generate --rpm"
           - "docker-compose run --use-aliases boulder ./test.sh --integration"
+          # Testing Config Changes:
           # Config changes that have landed in main but not yet been applied to
-          # production can be made in boulder-config-next.json.
+          # production can be made in `test/config-next/<component>.json`.
+          #
+          # Testing DB Schema Changes:
           # Database migrations in `sa/_db-next/migrations` are only performed 
           # when `docker-compose` is called using `-f docker-compose.yml -f 
-          # docker-compose.next.yml`
+          # docker-compose.next.yml`.
           - "docker-compose -f docker-compose.yml -f docker-compose.next.yml run --use-aliases boulder ./test.sh --integration"
           - "docker-compose run --use-aliases boulder ./test.sh --unit --enable-race-detection"
           - "docker-compose -f docker-compose.yml -f docker-compose.next.yml run --use-aliases boulder ./test.sh --unit --enable-race-detection"

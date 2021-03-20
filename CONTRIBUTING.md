@@ -59,7 +59,7 @@ each commit are small, keeping them separate makes it easier for us to review
 incremental changes to a pull request. Rest assured that those tiny changes
 will get squashed into a nice meaningful-size commit when we merge.
 
-If the Travis tests are failing on your branch, you should look at the logs
+If the CI tests are failing on your branch, you should look at the logs
 to figure out why. Sometimes (though rarely) they fail spuriously, in which
 case you can post a comment requesting that a project owner kick the build.
 
@@ -340,7 +340,7 @@ docs](https://github.com/golang/go/wiki/Modules#how-to-upgrade-and-downgrade-dep
 Typically you want `go get <dependency>` rather than `go get -u
 <dependency>`, which can introduce a lot of unexpected updates. After running
 `go get`, make sure to run `go mod vendor && git add vendor/` to update the
-vendor directory. If you forget, Travis tests will catch this.
+vendor directory. If you forget, CI tests will catch this.
 
 If you are updating a dependency to a version which is not a tagged release,
 see the note above about how to run all of a dependency's tests and note that

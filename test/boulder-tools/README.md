@@ -10,13 +10,16 @@ things we separate all of Boulder's build dependencies into its own
 Rather than install multiple versions of Go within the same `boulder-tools`
 container we maintain separate images for each Go version we support.
 
-When a new Go version is available we perform several steps to integrate it to our workflow:
+When a new Go version is available we perform several steps to integrate it
+to our workflow:
 
 1. We add it to the `GO_VERSIONS` array in `tag_and_upload.sh`.
 2. We run the `tag_and_upload.sh` script to build, tag, and upload
    a `boulder-tools` image for each of the `GO_VERSIONS`
-3. We update `.travis.yml`, adding the new Go version to the `go` section.
+3. We update `.github/workflows/boulder-ci.yml`, adding the new docker image tag(s)
+   to the `BOULDER_TOOLS_TAG` section.
 
 After some time when we have spot checked the new Go release and coordinated
 a staging/prod environment upgrade with the operations team we can remove the
-old `GO_VERSIONS` entries and delete their respective build matrix items.
+old `GO_VERSIONS` entries, delete their respective build matrix items, and update
+`docker-compose.yml`.
