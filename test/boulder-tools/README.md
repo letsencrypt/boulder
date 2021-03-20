@@ -22,5 +22,4 @@ to our workflow:
 After some time when we have spot checked the new Go release and coordinated
 a staging/prod environment upgrade with the operations team we can remove the
 old `GO_VERSIONS` entries, delete their respective build matrix items, and update
-`docker-compose.yml`, adding the new docker image to the `services/boulder/image`
-section.
+`docker-compose.yml`.
