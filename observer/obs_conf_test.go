@@ -6,46 +6,46 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
-	p "github.com/letsencrypt/boulder/observer/probers"
+	"github.com/letsencrypt/boulder/observer/probers"
 	_ "github.com/letsencrypt/boulder/observer/probers/mock"
 )
 
 const (
-	dbzErrMsg = "over 9000"
+	debugAddr = ":8040"
+	errDBZMsg = "over 9000"
+	mockConf  = "MockConf"
 )
 
-var dbzErr = errors.New(dbzErrMsg)
-
-var validMonSettings = p.Settings{"valid": true, "pname": "foo", "pkind": "bar"}
-var invalidMonSettings = p.Settings{"valid": false, "errmsg": dbzErrMsg, "pname": "foo", "pkind": "bar"}
-
-var cfgSyslog = cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: 6}
-var cfgDur = cmd.ConfigDuration{Duration: time.Second * 5}
-
-var validMonConf = &MonConf{cfgDur, 10, "MockConf", validMonSettings, true}
-var invalidMonConf = &MonConf{cfgDur, 10, "MockConf", invalidMonSettings, false}
-
 func TestObsConf_validateMonConfs(t *testing.T) {
+	var errDBZ = errors.New(errDBZMsg)
+	var cfgSyslog = cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: 6}
+	var cfgDur = cmd.ConfigDuration{Duration: time.Second * 5}
+	var validMonConf = &MonConf{
+		cfgDur, 10, mockConf, probers.Settings{"valid": true, "pname": "foo", "pkind": "bar"}}
+	var invalidMonConf = &MonConf{
+		cfgDur, 10, mockConf, probers.Settings{"valid": false, "errmsg": errDBZMsg, "pname": "foo", "pkind": "bar"}}
 	type fields struct {
 		Syslog    cmd.SyslogConfig
 		DebugAddr string
 		MonConfs  []*MonConf
 	}
 	tests := []struct {
-		name   string
-		fields fields
-		errs   []error
-		ok     bool
+		name    string
+		fields  fields
+		errs    []error
+		wantErr bool
 	}{
 		// valid
-		{"1 valid", fields{cfgSyslog, ":9090", []*MonConf{validMonConf}}, []error{}, true},
+		{"1 valid", fields{cfgSyslog, debugAddr, []*MonConf{validMonConf}}, nil, false},
+		{"2 valid", fields{
+			cfgSyslog, debugAddr, []*MonConf{validMonConf, validMonConf}}, nil, false},
 		{"1 valid, 1 invalid", fields{
-			cfgSyslog, ":9090", []*MonConf{validMonConf, invalidMonConf}}, []error{dbzErr}, true},
-		{"1 invalid, 2 invalid", fields{
-			cfgSyslog, ":9090", []*MonConf{validMonConf, invalidMonConf, invalidMonConf}}, []error{dbzErr, dbzErr}, true},
+			cfgSyslog, debugAddr, []*MonConf{validMonConf, invalidMonConf}}, []error{errDBZ}, false},
+		{"1 valid, 2 invalid", fields{
+			cfgSyslog, debugAddr, []*MonConf{invalidMonConf, validMonConf, invalidMonConf}}, []error{errDBZ, errDBZ}, false},
 		// invalid
-		{"no valid mons", fields{cfgSyslog, ":9090", []*MonConf{invalidMonConf}}, []error{dbzErr}, false},
-		{"no mons at all", fields{cfgSyslog, ":9090", []*MonConf{}}, []error{errors.New("no monitors provided")}, false},
+		{"1 invalid", fields{cfgSyslog, debugAddr, []*MonConf{invalidMonConf}}, []error{errDBZ}, true},
+		{"0", fields{cfgSyslog, debugAddr, []*MonConf{}}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -54,13 +54,13 @@ func TestObsConf_validateMonConfs(t *testing.T) {
 				DebugAddr: tt.fields.DebugAddr,
 				MonConfs:  tt.fields.MonConfs,
 			}
-			errs, ok := c.validateMonConfs()
+			errs, err := c.validateMonConfs()
 			if len(errs) != len(tt.errs) {
 				t.Errorf("ObsConf.validateMonConfs() errs = %d, want %d", len(errs), len(tt.errs))
-				t.Log(errs)
+				t.Logf("%v", errs)
 			}
-			if ok != tt.ok {
-				t.Errorf("ObsConf.validateMonConfs() ok = %v, want %v", ok, tt.ok)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ObsConf.validateMonConfs() err = %v, want %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -76,9 +76,12 @@ func TestObsConf_ValidateDebugAddr(t *testing.T) {
 		wantErr bool
 	}{
 		// valid
-		{"valid", fields{":8080"}, false},
+		{"max len and range", fields{":65535"}, false},
+		{"min len and range", fields{":1"}, false},
+		{"2 digits", fields{":80"}, false},
 		// invalid
 		{"out of range high", fields{":65536"}, true},
+		{"cannot start with 0", fields{":01234"}, true},
 		{"out of range low", fields{":0"}, true},
 		{"not even a port", fields{":foo"}, true},
 		{"missing :", fields{"foo"}, true},
@@ -110,7 +113,10 @@ func TestObsConf_validateSyslog(t *testing.T) {
 		// invalid
 		{"both too high", fields{cmd.SyslogConfig{StdoutLevel: 9, SyslogLevel: 9}}, true},
 		{"stdout too high", fields{cmd.SyslogConfig{StdoutLevel: 9, SyslogLevel: 6}}, true},
-		{"stderr too high", fields{cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: 9}}, true},
+		{"syslog too high", fields{cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: 9}}, true},
+		{"both too low", fields{cmd.SyslogConfig{StdoutLevel: -1, SyslogLevel: -1}}, true},
+		{"stdout too low", fields{cmd.SyslogConfig{StdoutLevel: -1, SyslogLevel: 6}}, true},
+		{"syslog too low", fields{cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: -1}}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

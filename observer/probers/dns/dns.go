@@ -1,4 +1,4 @@
-package observer
+package probers
 
 import (
 	"fmt"
@@ -7,8 +7,8 @@ import (
 	"github.com/miekg/dns"
 )
 
-// DNSProbe is the exported handler object for monitors configured to
-// perform DNS queries
+// DNSProbe is the exported 'Prober' object for monitors configured to
+// perform DNS requests.
 type DNSProbe struct {
 	Proto   string
 	Server  string
@@ -17,19 +17,24 @@ type DNSProbe struct {
 	QType   uint16
 }
 
-// Name returns a name that uniquely identifies the monitor that
-// configured this `Prober`. Used for metrics and logging
+// Name returns a string that uniquely identifies the monitor.
 func (p DNSProbe) Name() string {
-	return fmt.Sprintf("%s-%s-%s-%s", p.Proto, p.Server, p.QName, dns.TypeToString[p.QType])
+	recursion := func() string {
+		if p.Recurse {
+			return "recurse"
+		}
+		return "no-recurse"
+	}()
+	return fmt.Sprintf(
+		"%s-%s-%s-%s-%s", p.Server, p.Proto, recursion, dns.TypeToString[p.QType], p.QName)
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Prober`.
-// Used for metrics and logging
 func (p DNSProbe) Kind() string {
 	return "DNS"
 }
 
-// Probe attempts the configured DNS query
+// Probe performs the configured DNS query.
 func (p DNSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(p.QName), p.QType)

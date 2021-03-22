@@ -1,4 +1,4 @@
-package observer
+package probers
 
 import (
 	"testing"
@@ -22,12 +22,12 @@ func TestDNSConf_validateServer(t *testing.T) {
 		{"ipv4 port out of range low", fields{"1.1.1.1:0"}, true},
 
 		// ipv6 cases
-		{"ipv6 with port", fields{"2606:4700:4700::1111:53"}, false},
-		{"ipv6 without port", fields{"2606:4700:4700::1111"}, true},
-		{"ipv6 port num missing", fields{"2606:4700:4700::1111:"}, true},
-		{"ipv6 string for port", fields{"2606:4700:4700:foo"}, true},
-		{"ipv6 port out of range high", fields{"2606:4700:4700::1111:65536"}, true},
-		{"ipv6 port out of range low", fields{"2606:4700:4700::1111:0"}, true},
+		{"ipv6 with port", fields{"[2606:4700:4700::1111]:53"}, false},
+		{"ipv6 without port", fields{"[2606:4700:4700::1111]"}, true},
+		{"ipv6 port num missing", fields{"[2606:4700:4700::1111]:"}, true},
+		{"ipv6 string for port", fields{"[2606:4700:4700::1111]:foo"}, true},
+		{"ipv6 port out of range high", fields{"[2606:4700:4700::1111]:65536"}, true},
+		{"ipv6 port out of range low", fields{"[2606:4700:4700::1111]:0"}, true},
 
 		// hostname cases
 		{"hostname with port", fields{"foo:53"}, false},

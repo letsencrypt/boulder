@@ -9,35 +9,37 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 )
 
-// ObsConf is exported to receive yaml configuration
+var addrExp = regexp.MustCompile("^:([1-9][0-9]{0,4})$")
+
+// ObsConf is exported to receive YAML configuration.
 type ObsConf struct {
 	Syslog    cmd.SyslogConfig `yaml:"syslog"`
 	DebugAddr string           `yaml:"debugaddr"`
 	MonConfs  []*MonConf       `yaml:"monitors"`
 }
 
-// validateSyslog ensures the the `Syslog` received by `ObsConf`
-// contains valid loglevels
+// validateSyslog ensures the the `Syslog` field received by `ObsConf`
+// contains valid log levels.
 func (c *ObsConf) validateSyslog() error {
-
-	if (c.Syslog.StdoutLevel > 7) || (c.Syslog.SyslogLevel > 7) {
+	stdout := c.Syslog.StdoutLevel
+	syslog := c.Syslog.SyslogLevel
+	if stdout < 0 || stdout > 7 || syslog < 0 || syslog > 7 {
 		return fmt.Errorf(
-			"invalid `syslog`, %q, log level cannot exceed 7", c.Syslog)
+			"invalid `syslog`, %q, log level must be 0-7", c.Syslog)
 	}
 	return nil
 }
 
-// validateDebugAddr ensures the `debugAddr` received by `ObsConf`
-// is properly formatted and a valid port
+// validateDebugAddr ensures the `debugAddr` received by `ObsConf` is
+// properly formatted and a valid port.
 func (c *ObsConf) validateDebugAddr() error {
-	addrExp := regexp.MustCompile("^:([[:digit:]]{1,5})$")
 	if !addrExp.MatchString(c.DebugAddr) {
 		return fmt.Errorf(
 			"invalid `debugaddr`, %q, not expected format", c.DebugAddr)
 	}
 	addrExpMatches := addrExp.FindAllStringSubmatch(c.DebugAddr, -1)
 	port, _ := strconv.Atoi(addrExpMatches[0][1])
-	if !(port > 0 && port < 65535) {
+	if port <= 0 || port > 65535 {
 		return fmt.Errorf(
 			"invalid `debugaddr`, %q, is not a valid port", port)
 	}
@@ -45,13 +47,12 @@ func (c *ObsConf) validateDebugAddr() error {
 }
 
 // validateMonConfs calls the validate method for each `MonConf`. If a
-// valiation error is encountered, this is appended to a slice of
+// validation error is encountered, this is appended to a slice of
 // errors. If no valid `MonConf` remain, the slice of errors is returned
-// along with `false`, indicating that observer should not start
-func (c *ObsConf) validateMonConfs() ([]error, bool) {
-	// failed to provide any monitors
+// along with and error indicating that Observer should not be started.
+func (c *ObsConf) validateMonConfs() ([]error, error) {
 	if len(c.MonConfs) == 0 {
-		return []error{errors.New("no monitors provided")}, false
+		return nil, errors.New("no monitors provided")
 	}
 
 	var errs []error
@@ -62,26 +63,18 @@ func (c *ObsConf) validateMonConfs() ([]error, bool) {
 		}
 	}
 	if len(c.MonConfs) == len(errs) {
-		// all configured monitors are invalid, cannot continue
-		return errs, false
+		return errs, fmt.Errorf("no valid monitors, cannot continue")
 	}
-	return errs, true
+	return errs, nil
 }
 
-// validate normalizes then validates the config received the `ObsConf`
-// and each of it's `MonConf`. If no valid `MonConf` remain, an error
-// indicating that Observer cannot be started is returned. In all
-// instances the rationale for invalidating a 'MonConf' will logged to
-// stderr
+// validate ensures the configuration received by `ObsConf` is valid.
 func (c *ObsConf) validate() error {
-
-	// validate `syslog`
 	err := c.validateSyslog()
 	if err != nil {
 		return err
 	}
 
-	// validate `debugaddr`
 	err = c.validateDebugAddr()
 	if err != nil {
 		return err

@@ -17,18 +17,18 @@ func main() {
 	configYAML, err := ioutil.ReadFile(*configPath)
 	cmd.FailOnError(err, "failed to read config file")
 
-	// parse YAML config
+	// Parse the YAML config file.
 	var config observer.ObsConf
 	err = yaml.Unmarshal(configYAML, &config)
 	if err != nil {
 		cmd.FailOnError(err, "failed to parse YAML config")
 	}
-	// validate config and create an observer object
+	// Validate the received config and create an `Observer` object.
 	observer, err := observer.New(config, *configPath)
 	if err != nil {
 		cmd.FailOnError(err, "config failed validation")
 	}
 
-	// start daemon
+	// Start the `Observer` daemon.
 	observer.Start()
 }

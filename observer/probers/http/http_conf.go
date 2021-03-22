@@ -1,23 +1,22 @@
-package observer
+package probers
 
 import (
 	"fmt"
 	"net/url"
-	"strings"
 
-	p "github.com/letsencrypt/boulder/observer/probers"
+	"github.com/letsencrypt/boulder/observer/probers"
 	"gopkg.in/yaml.v2"
 )
 
-// HTTPConf is exported to receive the supplied probe config
+// HTTPConf is exported to receive YAML configuration.
 type HTTPConf struct {
 	URL    string `yaml:"url"`
 	RCodes []int  `yaml:"rcodes"`
 }
 
 // UnmarshalSettings takes YAML as bytes and unmarshals it to the
-// to a HTTPConf object
-func (c HTTPConf) UnmarshalSettings(settings []byte) (p.Configurer, error) {
+// to an HTTPConf object.
+func (c HTTPConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
 	var conf HTTPConf
 	err := yaml.Unmarshal(settings, &conf)
 	if err != nil {
@@ -26,17 +25,10 @@ func (c HTTPConf) UnmarshalSettings(settings []byte) (p.Configurer, error) {
 	return conf, nil
 }
 
-// normalize trims and lowers the string fields of `HTTPConf`
-func (c HTTPConf) normalize() {
-	c.URL = strings.Trim(strings.ToLower(c.URL), " ")
-}
-
-// Validate normalizes and validates the received `HTTPConf`. If the
-// `DNSConf` cannot be validated, an error appropriate for end-user
-// consumption is returned
+// Validate ensures the configuration received by `HTTPConf` is valid. If
+// the `HTTPConf` cannot be validated, an error appropriate for end-user
+// consumption is returned.
 func (c HTTPConf) Validate() error {
-	c.normalize()
-
 	// validate `url`
 	url, err := url.Parse(c.URL)
 	if err != nil {
@@ -55,13 +47,13 @@ func (c HTTPConf) Validate() error {
 	return nil
 }
 
-// AsProbe returns the NewHTTP object as an HTTP probe
-func (c HTTPConf) AsProbe() p.Prober {
+// MakeProber returns a `Prober` object for HTTP requests.
+func (c HTTPConf) MakeProber() probers.Prober {
 	return HTTPProbe{c.URL, c.RCodes}
 }
 
-// init is called at runtime and registers `HTTPConf`, a probe
-// `Configurer` type, as "HTTP"
+// init is called at runtime and registers `HTTPConf`, a `Prober`
+// `Configurer` type, as "HTTP".
 func init() {
-	p.Register("HTTP", HTTPConf{})
+	probers.Register("HTTP", HTTPConf{})
 }

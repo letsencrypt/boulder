@@ -1,10 +1,10 @@
-package observer
+package probers
 
 import (
 	"errors"
 
 	"github.com/letsencrypt/boulder/cmd"
-	p "github.com/letsencrypt/boulder/observer/probers"
+	"github.com/letsencrypt/boulder/observer/probers"
 	"gopkg.in/yaml.v2"
 )
 
@@ -17,7 +17,7 @@ type MockConfigurer struct {
 	PSuccess bool               `yaml:"psuccess"`
 }
 
-func (c MockConfigurer) UnmarshalSettings(settings []byte) (p.Configurer, error) {
+func (c MockConfigurer) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
 	var conf MockConfigurer
 	err := yaml.Unmarshal(settings, &conf)
 	if err != nil {
@@ -33,10 +33,10 @@ func (c MockConfigurer) Validate() error {
 	return nil
 }
 
-func (c MockConfigurer) AsProbe() p.Prober {
+func (c MockConfigurer) MakeProber() probers.Prober {
 	return MockProber{c.PName, c.PKind, c.PTook, c.PSuccess}
 }
 
 func init() {
-	p.Register("MockConf", MockConfigurer{})
+	probers.Register("MockConf", MockConfigurer{})
 }

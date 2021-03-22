@@ -5,26 +5,24 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/boulder/cmd"
-	p "github.com/letsencrypt/boulder/observer/probers"
+	"github.com/letsencrypt/boulder/observer/probers"
 	"gopkg.in/yaml.v2"
 )
 
-// MonConf is exported to receive yaml configuration
+// MonConf is exported to receive YAML configuration in `ObsConf`.
 type MonConf struct {
 	Period   cmd.ConfigDuration `yaml:"period"`
 	Timeout  int                `yaml:"timeout"`
 	Kind     string             `yaml:"kind"`
-	Settings p.Settings         `yaml:"settings"`
-	Valid    bool
+	Settings probers.Settings   `yaml:"settings"`
 }
 
-// normalize trims and lowers the string fields of `MonConf`
-func (c MonConf) normalize() {
-	c.Kind = strings.Trim(strings.ToLower(c.Kind), " ")
-}
-
-func (c MonConf) unmashalProbeSettings() (p.Configurer, error) {
-	configurer, err := p.GetConfigurer(c.Kind, c.Settings)
+// unmarshalProbeSettings attempts to unmarshal the value of the
+// `Settings` field to the `Configurer` type specified by the `Kind`
+// field.
+func (c MonConf) unmarshalProbeSettings() (probers.Configurer, error) {
+	kind := strings.Trim(strings.ToLower(c.Kind), " ")
+	configurer, err := probers.GetConfigurer(kind, c.Settings)
 	if err != nil {
 		return nil, err
 	}
@@ -36,12 +34,11 @@ func (c MonConf) unmashalProbeSettings() (p.Configurer, error) {
 	return configurer, nil
 }
 
-// validate normalizes the received `MonConf` and validates the provided
-// `Settings` by calling the validation method of the configured prober
-// `Configurer`
+// validate ensures the received `MonConf` is valid by calling
+// `Validate` method of the `Configurer`type specified by the `Kind`
+// field.
 func (c *MonConf) validate() error {
-	c.normalize()
-	configurer, err := c.unmashalProbeSettings()
+	configurer, err := c.unmarshalProbeSettings()
 	if err != nil {
 		return err
 	}
@@ -52,11 +49,10 @@ func (c *MonConf) validate() error {
 			"failed to validate: %s configurer with settings: %+v due to: %w",
 			c.Kind, c.Settings, err)
 	}
-	c.Valid = true
 	return nil
 }
 
-func (c MonConf) getProber() p.Prober {
-	probeConf, _ := c.unmashalProbeSettings()
-	return probeConf.AsProbe()
+func (c MonConf) makeProber() probers.Prober {
+	probeConf, _ := c.unmarshalProbeSettings()
+	return probeConf.MakeProber()
 }

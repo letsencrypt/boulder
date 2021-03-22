@@ -69,7 +69,7 @@ monitors:
     kind: DNS
     settings:
       protocol: tcp
-      server: 2606:4700:4700::1111:53
+      server: "[2606:4700:4700::1111]:53"
       recurse: true
       query_name: google.com
       query_type: A
@@ -78,7 +78,7 @@ monitors:
     kind: DNS
     settings:
       protocol: udp
-      server: 2606:4700:4700::1111:53
+      server: "[2606:4700:4700::1111]:53"
       recurse: true
       query_name: google.com
       query_type: A
@@ -86,5 +86,5 @@ monitors:
     period: 2s
     kind: HTTP
     settings: 
-      url: http://letsencrypt.org/FOO
+      url: http://letsencrypt.org/foo
       rcodes: [200, 404]
