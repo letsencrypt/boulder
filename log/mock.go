@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/syslog"
 	"regexp"
+	"time"
 )
 
 // UseMock sets a mock logger as the default logger, and returns it.
@@ -16,6 +17,13 @@ func UseMock() *Mock {
 // NewMock creates a mock logger.
 func NewMock() *Mock {
 	return &Mock{impl{newMockWriter()}}
+}
+
+// NewWaitingMock creates a mock logger implementing the writer interface.
+// It stores all logged messages in a buffer for inspection by test
+// functions.
+func NewWaitingMock() *Mock {
+	return &Mock{impl{newWaitingMockWriter()}}
 }
 
 // Mock is a logger that stores all log messages in memory to be examined by a
@@ -107,4 +115,40 @@ func (m *Mock) GetAllMatching(reString string) []string {
 func (m *Mock) Clear() {
 	w := m.w.(*mockWriter)
 	w.clearChan <- struct{}{}
+}
+
+type waitingMockWriter struct {
+	logChan chan string
+}
+
+// newWaitingMockWriter returns a new waitingMockWriter
+func newWaitingMockWriter() *waitingMockWriter {
+	logChan := make(chan string)
+	return &waitingMockWriter{
+		logChan,
+	}
+}
+
+func (m *waitingMockWriter) logAtLevel(p syslog.Priority, msg string) {
+	m.logChan <- fmt.Sprintf("%s: %s", levelName[p&7], msg)
+}
+
+// WaitForMatch returns the first log line matching a regex. It accepts a
+// regexp string and timeout. If the timeout value is met before the
+// matching pattern is read from the channel, an error is returned.
+func (m *Mock) WaitForMatch(reString string, timeout time.Duration) (string, error) {
+	w := m.w.(*waitingMockWriter)
+	deadline := time.After(timeout)
+	re := regexp.MustCompile(reString)
+	for {
+		select {
+		case logLine := <-w.logChan:
+			if re.MatchString(logLine) {
+				close(w.logChan)
+				return logLine, nil
+			}
+		case <-deadline:
+			return "", fmt.Errorf("timeout waiting for match: %q", reString)
+		}
+	}
 }
