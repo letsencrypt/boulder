@@ -113,11 +113,19 @@ func main() {
 		dnsTries = 1
 	}
 	clk := cmd.Clock()
+
+	var servers bdns.ServerProvider
+	if len(c.VA.DNSResolvers) == 1 {
+		servers, err = bdns.StartDynamicProvider(c.VA.DNSResolvers[0], 60*time.Second)
+	} else {
+		servers = bdns.NewStaticProvider(c.VA.DNSResolvers)
+	}
+
 	var resolver bdns.Client
 	if !(c.VA.DNSAllowLoopbackAddresses || c.Common.DNSAllowLoopbackAddresses) {
 		resolver = bdns.New(
 			dnsTimeout,
-			c.VA.DNSResolvers,
+			servers,
 			scope,
 			clk,
 			dnsTries,
@@ -125,7 +133,7 @@ func main() {
 	} else {
 		resolver = bdns.NewTest(
 			dnsTimeout,
-			c.VA.DNSResolvers,
+			servers,
 			scope,
 			clk,
 			dnsTries,
