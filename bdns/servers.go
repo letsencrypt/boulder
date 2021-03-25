@@ -49,9 +49,11 @@ func (sp *staticProvider) Stop() {}
 // addresses, and refreshes it regularly using a goroutine started by its
 // constructor.
 type dynamicProvider struct {
-	host   string
+	host string
+	// A map of IP addresses (Target fields in SRV records) to ports (Port fields
+	// in SRV records) associated with those addresses.
 	addrs  map[string][]uint16
-	mut    sync.RWMutex
+	mu     sync.RWMutex
 	cancel chan interface{}
 }
 
@@ -69,7 +71,6 @@ func StartDynamicProvider(server string, refresh time.Duration) (*dynamicProvide
 	dp := dynamicProvider{
 		host:   server,
 		addrs:  make(map[string][]uint16),
-		mut:    sync.RWMutex{},
 		cancel: make(chan interface{}),
 	}
 	err := dp.update()
@@ -109,9 +110,9 @@ func (dp *dynamicProvider) update() error {
 		addrs[srv.Target] = append(addrs[srv.Target], srv.Port)
 	}
 
-	dp.mut.Lock()
+	dp.mu.Lock()
 	dp.addrs = addrs
-	dp.mut.Unlock()
+	dp.mu.Unlock()
 	return nil
 }
 
@@ -119,13 +120,13 @@ func (dp *dynamicProvider) update() error {
 // two IP/port pairs will share the same IP.
 func (dp *dynamicProvider) Addrs() ([]string, error) {
 	var r []string
-	dp.mut.RLock()
+	dp.mu.RLock()
 	for ip, ports := range dp.addrs {
 		port := ports[rand.Intn(len(ports))]
 		addr := fmt.Sprintf("%s:%d", ip, port)
 		r = append(r, addr)
 	}
-	dp.mut.RUnlock()
+	dp.mu.RUnlock()
 	rand.Shuffle(len(r), func(i, j int) {
 		r[i], r[j] = r[j], r[i]
 	})
