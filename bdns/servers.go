@@ -64,7 +64,7 @@ var _ ServerProvider = &dynamicProvider{}
 // attributes of the SRV records.
 func StartDynamicProvider(server string, refresh time.Duration) (*dynamicProvider, error) {
 	if server == "" {
-
+		return nil, fmt.Errorf("no DNS host provided")
 	}
 	dp := dynamicProvider{
 		host:   server,

@@ -117,6 +117,7 @@ func main() {
 	var servers bdns.ServerProvider
 	if len(c.VA.DNSResolvers) == 1 {
 		servers, err = bdns.StartDynamicProvider(c.VA.DNSResolvers[0], 60*time.Second)
+		cmd.FailOnError(err, "Couldn't start dynamic DNS server resolver")
 	} else {
 		servers = bdns.NewStaticProvider(c.VA.DNSResolvers)
 	}
