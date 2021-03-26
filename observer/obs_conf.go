@@ -19,20 +19,14 @@ var (
 		},
 		[]string{"kind", "valid"},
 	)
-	histObservations = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "obs_observations",
-			Help:    "details of each probe attempt",
-			Buckets: []float64{.001, .002, .005, .01, .05, .1, .5, 1, 2, 5, 10},
-		},
-		[]string{"name", "kind", "success"},
-	)
+	histObservations *prometheus.HistogramVec
 )
 
 // ObsConf is exported to receive YAML configuration.
 type ObsConf struct {
-	Syslog    cmd.SyslogConfig `yaml:"syslog"`
 	DebugAddr string           `yaml:"debugaddr"`
+	Buckets   []float64        `yaml:"buckets"`
+	Syslog    cmd.SyslogConfig `yaml:"syslog"`
 	MonConfs  []*MonConf       `yaml:"monitors"`
 }
 
@@ -112,8 +106,18 @@ func (c *ObsConf) MakeObserver() (*Observer, error) {
 		return nil, errors.New("no monitors provided")
 	}
 
+	if len(c.Buckets) == 0 {
+		return nil, errors.New("no histogram buckets provided")
+	}
+
 	// Start monitoring and logging.
 	metrics, logger := cmd.StatsAndLogging(c.Syslog, c.DebugAddr)
+	histObservations = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "obs_observations",
+			Help:    "details of each probe attempt",
+			Buckets: c.Buckets,
+		}, []string{"name", "kind", "success"})
 	metrics.MustRegister(countMonitors)
 	metrics.MustRegister(histObservations)
 	defer logger.AuditPanic()
@@ -130,7 +134,6 @@ func (c *ObsConf) MakeObserver() (*Observer, error) {
 	} else {
 		logger.Info("all monitors passed validation")
 	}
-
 	if err != nil {
 		return nil, err
 	}

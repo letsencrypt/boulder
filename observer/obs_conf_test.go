@@ -20,12 +20,14 @@ func TestObsConf_makeMonitors(t *testing.T) {
 	var errDBZ = errors.New(errDBZMsg)
 	var cfgSyslog = cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: 6}
 	var cfgDur = cmd.ConfigDuration{Duration: time.Second * 5}
+	var cfgBuckets = []float64{.001}
 	var validMonConf = &MonConf{
 		cfgDur, mockConf, probers.Settings{"valid": true, "pname": "foo", "pkind": "bar"}}
 	var invalidMonConf = &MonConf{
 		cfgDur, mockConf, probers.Settings{"valid": false, "errmsg": errDBZMsg, "pname": "foo", "pkind": "bar"}}
 	type fields struct {
 		Syslog    cmd.SyslogConfig
+		Buckets   []float64
 		DebugAddr string
 		MonConfs  []*MonConf
 	}
@@ -36,21 +38,22 @@ func TestObsConf_makeMonitors(t *testing.T) {
 		wantErr bool
 	}{
 		// valid
-		{"1 valid", fields{cfgSyslog, debugAddr, []*MonConf{validMonConf}}, nil, false},
+		{"1 valid", fields{cfgSyslog, cfgBuckets, debugAddr, []*MonConf{validMonConf}}, nil, false},
 		{"2 valid", fields{
-			cfgSyslog, debugAddr, []*MonConf{validMonConf, validMonConf}}, nil, false},
+			cfgSyslog, cfgBuckets, debugAddr, []*MonConf{validMonConf, validMonConf}}, nil, false},
 		{"1 valid, 1 invalid", fields{
-			cfgSyslog, debugAddr, []*MonConf{validMonConf, invalidMonConf}}, []error{errDBZ}, false},
+			cfgSyslog, cfgBuckets, debugAddr, []*MonConf{validMonConf, invalidMonConf}}, []error{errDBZ}, false},
 		{"1 valid, 2 invalid", fields{
-			cfgSyslog, debugAddr, []*MonConf{invalidMonConf, validMonConf, invalidMonConf}}, []error{errDBZ, errDBZ}, false},
+			cfgSyslog, cfgBuckets, debugAddr, []*MonConf{invalidMonConf, validMonConf, invalidMonConf}}, []error{errDBZ, errDBZ}, false},
 		// invalid
-		{"1 invalid", fields{cfgSyslog, debugAddr, []*MonConf{invalidMonConf}}, []error{errDBZ}, true},
-		{"0", fields{cfgSyslog, debugAddr, []*MonConf{}}, nil, true},
+		{"1 invalid", fields{cfgSyslog, cfgBuckets, debugAddr, []*MonConf{invalidMonConf}}, []error{errDBZ}, true},
+		{"0", fields{cfgSyslog, cfgBuckets, debugAddr, []*MonConf{}}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &ObsConf{
 				Syslog:    tt.fields.Syslog,
+				Buckets:   tt.fields.Buckets,
 				DebugAddr: tt.fields.DebugAddr,
 				MonConfs:  tt.fields.MonConfs,
 			}

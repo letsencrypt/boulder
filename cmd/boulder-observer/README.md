@@ -67,6 +67,9 @@ Configuration is provided via a YAML file.
 `debugaddr`: The Prometheus scrape port prefixed with a single colon
 (e.g. `:8040`).
 
+`buckets`: List of floats representing Prometheus histogram buckets (e.g
+`[.001, .002, .005, .01, .02, .05, .1, .2, .5, 1, 2, 5, 10]`)
+
 `syslog`: Map of log levels, see schema below.
 
 - `stdoutlevel`: Log level for stdout, see legend below.
@@ -81,10 +84,10 @@ Configuration is provided via a YAML file.
 
 ```yaml
 debugaddr: :8040
+buckets: [.001, .002, .005, .01, .02, .05, .1, .2, .5, 1, 2, 5, 10]
 syslog:
   stdoutlevel: 6
   sysloglevel: 6
-monitors:
   -
     ...
 ```
@@ -195,7 +198,7 @@ successful.
 
 **Bucketed response times:**
 
-`.001, .002, .005, .01, .05, .1, .5, 1, 2, 5, 10`
+This is configurable, see `buckets` under [root/schema](#schema).
 
 ## Development
 

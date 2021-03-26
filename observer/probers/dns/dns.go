@@ -39,8 +39,8 @@ func (p DNSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(p.qname), p.qtype)
 	m.RecursionDesired = p.recurse
-	start := time.Now()
 	c := dns.Client{Timeout: timeout, Net: p.proto}
+	start := time.Now()
 	r, _, err := c.Exchange(m, p.server)
 	if err != nil {
 		return false, time.Since(start)
