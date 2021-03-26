@@ -1588,7 +1588,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		if err != nil {
 			// If we can't parse one of our own certs there's a serious problem
 			return nil, probs.ServerInternal(
-				fmt.Sprintf("unable to parse Boulder issued certificate with serial %#v", cert.Serial))
+				fmt.Sprintf("unable to parse Boulder issued certificate with serial %#v", serial))
 		}
 
 		issuerNameID := issuance.GetIssuerNameID(parsedCert)
@@ -1604,7 +1604,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 			return nil, probs.ServerInternal(
 				fmt.Sprintf(
 					"Certificate serial %#v has an unknown IssuerNameID %d - no PEM certificate chain associated.",
-					cert.Serial,
+					serial,
 					issuerNameID),
 			)
 		}
