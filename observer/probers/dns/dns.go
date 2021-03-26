@@ -10,23 +10,23 @@ import (
 // DNSProbe is the exported 'Prober' object for monitors configured to
 // perform DNS requests.
 type DNSProbe struct {
-	Proto   string
-	Server  string
-	Recurse bool
-	QName   string
-	QType   uint16
+	proto   string
+	server  string
+	recurse bool
+	qname   string
+	qtype   uint16
 }
 
 // Name returns a string that uniquely identifies the monitor.
 func (p DNSProbe) Name() string {
 	recursion := func() string {
-		if p.Recurse {
+		if p.recurse {
 			return "recurse"
 		}
 		return "no-recurse"
 	}()
 	return fmt.Sprintf(
-		"%s-%s-%s-%s-%s", p.Server, p.Proto, recursion, dns.TypeToString[p.QType], p.QName)
+		"%s-%s-%s-%s-%s", p.server, p.proto, recursion, dns.TypeToString[p.qtype], p.qname)
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Prober`.
@@ -37,11 +37,11 @@ func (p DNSProbe) Kind() string {
 // Probe performs the configured DNS query.
 func (p DNSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(p.QName), p.QType)
-	m.RecursionDesired = p.Recurse
+	m.SetQuestion(dns.Fqdn(p.qname), p.qtype)
+	m.RecursionDesired = p.recurse
 	start := time.Now()
-	c := dns.Client{Timeout: timeout, Net: p.Proto}
-	r, _, err := c.Exchange(m, p.Server)
+	c := dns.Client{Timeout: timeout, Net: p.proto}
+	r, _, err := c.Exchange(m, p.server)
 	if err != nil {
 		return false, time.Since(start)
 	}

@@ -1,8 +1,9 @@
 package observer
 
 import (
-	"fmt"
+	"errors"
 	"strings"
+	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/observer/probers"
@@ -12,47 +13,51 @@ import (
 // MonConf is exported to receive YAML configuration in `ObsConf`.
 type MonConf struct {
 	Period   cmd.ConfigDuration `yaml:"period"`
-	Timeout  int                `yaml:"timeout"`
 	Kind     string             `yaml:"kind"`
 	Settings probers.Settings   `yaml:"settings"`
 }
 
-// unmarshalProbeSettings attempts to unmarshal the value of the
-// `Settings` field to the `Configurer` type specified by the `Kind`
-// field.
-func (c MonConf) unmarshalProbeSettings() (probers.Configurer, error) {
+// validatePeriod ensures the received `Period` field is at least 1µs.
+func (c *MonConf) validatePeriod() error {
+	if c.Period.Duration < 1*time.Microsecond {
+		return errors.New("period must be at least 1µs")
+	}
+	return nil
+}
+
+// unmarshalConfigurer constructs a `Configurer` by marshaling the
+// value of the `Settings` field back to bytes, then passing it to the
+// `UnmarshallSettings` method of the `Configurer` type specified by the
+// `Kind` field.
+func (c MonConf) unmarshalConfigurer() (probers.Configurer, error) {
 	kind := strings.Trim(strings.ToLower(c.Kind), " ")
 	configurer, err := probers.GetConfigurer(kind, c.Settings)
 	if err != nil {
 		return nil, err
 	}
-	s, _ := yaml.Marshal(c.Settings)
-	configurer, err = configurer.UnmarshalSettings(s)
+	settings, _ := yaml.Marshal(c.Settings)
+	configurer, err = configurer.UnmarshalSettings(settings)
 	if err != nil {
 		return nil, err
 	}
 	return configurer, nil
 }
 
-// validate ensures the received `MonConf` is valid by calling
-// `Validate` method of the `Configurer`type specified by the `Kind`
-// field.
-func (c *MonConf) validate() error {
-	configurer, err := c.unmarshalProbeSettings()
+// makeMonitor constructs a `monitor` object from the contents of the
+// bound `MonConf`. If the `MonConf` cannot be validated, an error
+// appropriate for end-user consumption is returned instead.
+func (c MonConf) makeMonitor() (*monitor, error) {
+	err := c.validatePeriod()
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	err = configurer.Validate()
+	probeConf, err := c.unmarshalConfigurer()
 	if err != nil {
-		return fmt.Errorf(
-			"failed to validate: %s configurer with settings: %+v due to: %w",
-			c.Kind, c.Settings, err)
+		return nil, err
 	}
-	return nil
-}
-
-func (c MonConf) makeProber() probers.Prober {
-	probeConf, _ := c.unmarshalProbeSettings()
-	return probeConf.MakeProber()
+	prober, err := probeConf.MakeProber()
+	if err != nil {
+		return nil, err
+	}
+	return &monitor{c.Period.Duration, prober}, nil
 }

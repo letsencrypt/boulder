@@ -36,12 +36,11 @@ type Configurer interface {
 	// object.
 	UnmarshalSettings([]byte) (Configurer, error)
 
-	// Validate ensures that the unmarshalled settings are valid or
-	// returns an error appropriate for operator consumption.
-	Validate() error
-
-	// MakeProber should be called last and return a `Prober` object.
-	MakeProber() Prober
+	// MakeProber constructs a `Prober` object from the contents of the
+	// bound `Configurer` object. If the `Configurer` cannot be
+	// validated, an error appropriate for end-user consumption is
+	// returned instead.
+	MakeProber() (Prober, error)
 }
 
 // Settings is exported as a temporary receiver for the `settings` field

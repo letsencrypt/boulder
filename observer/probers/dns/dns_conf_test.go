@@ -1,7 +1,11 @@
 package probers
 
 import (
+	"reflect"
 	"testing"
+
+	"github.com/letsencrypt/boulder/observer/probers"
+	"gopkg.in/yaml.v2"
 )
 
 func TestDNSConf_validateServer(t *testing.T) {
@@ -109,6 +113,82 @@ func TestDNSConf_validateProto(t *testing.T) {
 			}
 			if err := c.validateProto(); (err != nil) != tt.wantErr {
 				t.Errorf("DNSConf.validateProto() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestDNSConf_MakeProber(t *testing.T) {
+	type fields struct {
+		Proto   string
+		Server  string
+		Recurse bool
+		QName   string
+		QType   string
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		wantErr bool
+	}{
+		// valid
+		{"valid", fields{"udp", "1.1.1.1:53", true, "google.com", "A"}, false},
+		// invalid
+		{"bad proto", fields{"can with string", "1.1.1.1:53", true, "google.com", "A"}, true},
+		{"bad server", fields{"udp", "1.1.1.1:9000000", true, "google.com", "A"}, true},
+		{"bad qtype", fields{"udp", "1.1.1.1:9000000", true, "google.com", "BAZ"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := DNSConf{
+				Proto:   tt.fields.Proto,
+				Server:  tt.fields.Server,
+				Recurse: tt.fields.Recurse,
+				QName:   tt.fields.QName,
+				QType:   tt.fields.QType,
+			}
+			if _, err := c.MakeProber(); (err != nil) != tt.wantErr {
+				t.Errorf("HTTPConf.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestDNSConf_UnmarshalSettings(t *testing.T) {
+	type fields struct {
+		protocol   interface{}
+		server     interface{}
+		recurse    interface{}
+		query_name interface{}
+		query_type interface{}
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		want    probers.Configurer
+		wantErr bool
+	}{
+		{"valid", fields{"udp", "1.1.1.1:53", true, "google.com", "A"}, DNSConf{"udp", "1.1.1.1:53", true, "google.com", "A"}, false},
+		{"invalid", fields{42, 42, 42, 42, 42}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			settings := probers.Settings{
+				"protocol":   tt.fields.protocol,
+				"server":     tt.fields.server,
+				"recurse":    tt.fields.recurse,
+				"query_name": tt.fields.query_name,
+				"query_type": tt.fields.query_type,
+			}
+			settingsBytes, _ := yaml.Marshal(settings)
+			c := DNSConf{}
+			got, err := c.UnmarshalSettings(settingsBytes)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("DNSConf.UnmarshalSettings() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("DNSConf.UnmarshalSettings() = %v, want %v", got, tt.want)
 			}
 		})
 	}

@@ -14,8 +14,8 @@ type HTTPConf struct {
 	RCodes []int  `yaml:"rcodes"`
 }
 
-// UnmarshalSettings takes YAML as bytes and unmarshals it to the
-// to an HTTPConf object.
+// UnmarshalSettings takes YAML as bytes and unmarshals it to the to an
+// HTTPConf object.
 func (c HTTPConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
 	var conf HTTPConf
 	err := yaml.Unmarshal(settings, &conf)
@@ -25,11 +25,7 @@ func (c HTTPConf) UnmarshalSettings(settings []byte) (probers.Configurer, error)
 	return conf, nil
 }
 
-// Validate ensures the configuration received by `HTTPConf` is valid. If
-// the `HTTPConf` cannot be validated, an error appropriate for end-user
-// consumption is returned.
-func (c HTTPConf) Validate() error {
-	// validate `url`
+func (c HTTPConf) validateURL() error {
 	url, err := url.Parse(c.URL)
 	if err != nil {
 		return fmt.Errorf(
@@ -39,17 +35,40 @@ func (c HTTPConf) Validate() error {
 		return fmt.Errorf(
 			"invalid 'url', got: %q, missing scheme", c.URL)
 	}
-	// validate `rcodes`
-	if c.RCodes == nil {
+	return nil
+}
+
+func (c HTTPConf) validateRCodes() error {
+	if len(c.RCodes) == 0 {
 		return fmt.Errorf(
 			"invalid 'rcodes', got: %q, please specify at least one", c.RCodes)
+	}
+	for _, c := range c.RCodes {
+		// ensure rcode entry is in range 100-599
+		if c < 100 || c > 599 {
+			return fmt.Errorf(
+				"'rcodes' contains an invalid HTTP response code, '%d'", c)
+		}
 	}
 	return nil
 }
 
-// MakeProber returns a `Prober` object for HTTP requests.
-func (c HTTPConf) MakeProber() probers.Prober {
-	return HTTPProbe{c.URL, c.RCodes}
+// MakeProber constructs a `HTTPProbe` object from the contents of the
+// bound `HTTPConf` object. If the `HTTPConf` cannot be validated, an
+// error appropriate for end-user consumption is returned instead.
+func (c HTTPConf) MakeProber() (probers.Prober, error) {
+	// validate `url`
+	err := c.validateURL()
+	if err != nil {
+		return nil, err
+	}
+
+	// validate `rcodes`
+	err = c.validateRCodes()
+	if err != nil {
+		return nil, err
+	}
+	return HTTPProbe{c.URL, c.RCodes}, nil
 }
 
 // init is called at runtime and registers `HTTPConf`, a `Prober`

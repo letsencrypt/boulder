@@ -23,8 +23,9 @@ func main() {
 	if err != nil {
 		cmd.FailOnError(err, "failed to parse YAML config")
 	}
-	// Validate the received config and create an `Observer` object.
-	observer, err := observer.New(config, *configPath)
+
+	// Make an `Observer` object.
+	observer, err := config.MakeObserver()
 	if err != nil {
 		cmd.FailOnError(err, "config failed validation")
 	}

@@ -6,31 +6,32 @@ import (
 
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/observer/probers"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type monitor struct {
 	period time.Duration
 	prober probers.Prober
-	logger blog.Logger
-	metric prometheus.Registerer
 }
 
-// start spins off a goroutine that attempts to probe for each period
-// specified in the monitor config.
-func (m monitor) start() {
+// start spins off a 'Prober' goroutine on an interval of `m.period`
+// with a timeout of half `m.period`
+func (m monitor) start(logger blog.Logger) {
+	ticker := time.NewTicker(m.period)
+	timeout := m.period / 2
 	go func() {
 		for {
 			select {
-			case <-time.NewTicker(m.period).C:
+			case <-ticker.C:
 				// Attempt to probe the configured target.
-				success, dur := m.prober.Probe(m.period)
+				success, dur := m.prober.Probe(timeout)
+
 				// Produce metrics to be scraped by Prometheus.
-				statObservations.WithLabelValues(
+				histObservations.WithLabelValues(
 					m.prober.Name(), m.prober.Kind(), strconv.FormatBool(success),
 				).Observe(dur.Seconds())
+
 				// Log the outcome of the probe attempt.
-				m.logger.Infof(
+				logger.Infof(
 					"kind=[%s] success=[%v] duration=[%f] name=[%s]",
 					m.prober.Kind(), success, dur.Seconds(), m.prober.Name())
 			}

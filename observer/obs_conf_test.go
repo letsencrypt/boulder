@@ -16,14 +16,14 @@ const (
 	mockConf  = "MockConf"
 )
 
-func TestObsConf_validateMonConfs(t *testing.T) {
+func TestObsConf_makeMonitors(t *testing.T) {
 	var errDBZ = errors.New(errDBZMsg)
 	var cfgSyslog = cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: 6}
 	var cfgDur = cmd.ConfigDuration{Duration: time.Second * 5}
 	var validMonConf = &MonConf{
-		cfgDur, 10, mockConf, probers.Settings{"valid": true, "pname": "foo", "pkind": "bar"}}
+		cfgDur, mockConf, probers.Settings{"valid": true, "pname": "foo", "pkind": "bar"}}
 	var invalidMonConf = &MonConf{
-		cfgDur, 10, mockConf, probers.Settings{"valid": false, "errmsg": errDBZMsg, "pname": "foo", "pkind": "bar"}}
+		cfgDur, mockConf, probers.Settings{"valid": false, "errmsg": errDBZMsg, "pname": "foo", "pkind": "bar"}}
 	type fields struct {
 		Syslog    cmd.SyslogConfig
 		DebugAddr string
@@ -54,7 +54,7 @@ func TestObsConf_validateMonConfs(t *testing.T) {
 				DebugAddr: tt.fields.DebugAddr,
 				MonConfs:  tt.fields.MonConfs,
 			}
-			errs, err := c.validateMonConfs()
+			_, errs, err := c.makeMonitors()
 			if len(errs) != len(tt.errs) {
 				t.Errorf("ObsConf.validateMonConfs() errs = %d, want %d", len(errs), len(tt.errs))
 				t.Logf("%v", errs)

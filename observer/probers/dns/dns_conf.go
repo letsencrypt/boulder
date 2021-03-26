@@ -24,8 +24,7 @@ type DNSConf struct {
 	QType   string `yaml:"query_type"`
 }
 
-// UnmarshalSettings takes YAML as bytes and unmarshals it to the to an
-// DNSConf object.
+// UnmarshalSettings constructs a DNSConf object from YAML as bytes.
 func (c DNSConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
 	var conf DNSConf
 	err := yaml.Unmarshal(settings, &conf)
@@ -90,44 +89,41 @@ func (c DNSConf) validateQType() error {
 		"invalid `query_type`, got: %q, expected one in %s", c.QType, q)
 }
 
-// Validate ensures the configuration received by `DNSConf` is valid. If
-// the `DNSConf` cannot be validated, an error appropriate for end-user
-// consumption is returned.
-func (c DNSConf) Validate() error {
+// MakeProber constructs a `DNSProbe` object from the contents of the
+// bound `DNSConf` object. If the `DNSConf` cannot be validated, an
+// error appropriate for end-user consumption is returned instead.
+func (c DNSConf) MakeProber() (probers.Prober, error) {
 	// validate `query_name`
 	if !dns.IsFqdn(dns.Fqdn(c.QName)) {
-		return fmt.Errorf("invalid `query_name`, %q is not an fqdn", c.QName)
+		return nil, fmt.Errorf(
+			"invalid `query_name`, %q is not an fqdn", c.QName)
 	}
 
 	// validate `server`
 	err := c.validateServer()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// validate `protocol`
 	err = c.validateProto()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// validate `query_type`
 	err = c.validateQType()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
-}
 
-// MakeProber returns a `Prober` object for DNS queries.
-func (c DNSConf) MakeProber() probers.Prober {
 	return DNSProbe{
-		Proto:   c.Proto,
-		Recurse: c.Recurse,
-		QName:   c.QName,
-		Server:  c.Server,
-		QType:   validQTypes[c.QType],
-	}
+		proto:   strings.Trim(strings.ToLower(c.Proto), " "),
+		recurse: c.Recurse,
+		qname:   c.QName,
+		server:  c.Server,
+		qtype:   validQTypes[strings.Trim(strings.ToUpper(c.QType), " ")],
+	}, nil
 }
 
 // init is called at runtime and registers `DNSConf`, a `Prober`

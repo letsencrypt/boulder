@@ -175,11 +175,10 @@ Count of configured monitors.
 
 **Labels:**
 
-`name`: Name of the monitor.
+`kind`: Kind of Prober the monitor is configured to use.
 
-`kind`: Kind of prober the monitor is configured to use.
-
-`valid`: Bool indicating whether the result of the probe attempt.
+`valid`: Bool indicating whether settings provided could be validated
+for the `kind` of Prober specified.
 
 ### obs_observations
 
@@ -191,7 +190,8 @@ Count of configured monitors.
 
 `duration`: Duration of the probing in seconds.
 
-`success`: Bool indicating whether the result of the probe attempt.
+`success`: Bool indicating whether the result of the probe attempt was
+successful.
 
 **Bucketed response times:**
 

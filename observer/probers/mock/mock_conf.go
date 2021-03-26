@@ -26,15 +26,11 @@ func (c MockConfigurer) UnmarshalSettings(settings []byte) (probers.Configurer, 
 	return conf, nil
 }
 
-func (c MockConfigurer) Validate() error {
+func (c MockConfigurer) MakeProber() (probers.Prober, error) {
 	if !c.Valid {
-		return errors.New(c.ErrMsg)
+		return nil, errors.New("could not be validated")
 	}
-	return nil
-}
-
-func (c MockConfigurer) MakeProber() probers.Prober {
-	return MockProber{c.PName, c.PKind, c.PTook, c.PSuccess}
+	return MockProber{c.PName, c.PKind, c.PTook, c.PSuccess}, nil
 }
 
 func init() {
