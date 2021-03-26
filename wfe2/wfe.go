@@ -1588,7 +1588,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		if err != nil {
 			// If we can't parse one of our own certs there's a serious problem
 			return nil, probs.ServerInternal(
-				fmt.Sprintf("unable to parse Boulder issued certificate with serial %#v", serial))
+				fmt.Sprintf("unable to parse Boulder issued certificate with serial %#v: %s", serial, err))
 		}
 
 		issuerNameID := issuance.GetIssuerNameID(parsedCert)
