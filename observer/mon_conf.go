@@ -27,11 +27,11 @@ func (c *MonConf) validatePeriod() error {
 
 // unmarshalConfigurer constructs a `Configurer` by marshaling the
 // value of the `Settings` field back to bytes, then passing it to the
-// `UnmarshallSettings` method of the `Configurer` type specified by the
+// `UnmarshalSettings` method of the `Configurer` type specified by the
 // `Kind` field.
 func (c MonConf) unmarshalConfigurer() (probers.Configurer, error) {
 	kind := strings.Trim(strings.ToLower(c.Kind), " ")
-	configurer, err := probers.GetConfigurer(kind, c.Settings)
+	configurer, err := probers.GetConfigurer(kind)
 	if err != nil {
 		return nil, err
 	}

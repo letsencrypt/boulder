@@ -3,7 +3,7 @@ package observer
 import (
 	"errors"
 	"fmt"
-	"regexp"
+	"net"
 	"strconv"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -11,7 +11,6 @@ import (
 )
 
 var (
-	addrExp       = regexp.MustCompile("^:([1-9][0-9]{0,4})$")
 	countMonitors = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "obs_monitors",
@@ -44,12 +43,12 @@ func (c *ObsConf) validateSyslog() error {
 // validateDebugAddr ensures the `debugAddr` received by `ObsConf` is
 // properly formatted and a valid port.
 func (c *ObsConf) validateDebugAddr() error {
-	if !addrExp.MatchString(c.DebugAddr) {
+	_, p, err := net.SplitHostPort(c.DebugAddr)
+	if err != nil {
 		return fmt.Errorf(
 			"invalid 'debugaddr', %q, not expected format", c.DebugAddr)
 	}
-	addrExpMatches := addrExp.FindAllStringSubmatch(c.DebugAddr, -1)
-	port, _ := strconv.Atoi(addrExpMatches[0][1])
+	port, _ := strconv.Atoi(p)
 	if port <= 0 || port > 65535 {
 		return fmt.Errorf(
 			"invalid 'debugaddr','%d' is not a valid port", port)
@@ -70,19 +69,17 @@ func (c *ObsConf) makeMonitors() ([]*monitor, []error, error) {
 					"'monitors' entry #%s couldn't be validated: %v", entry, err))
 
 			// increment metrics
-			countMonitors.WithLabelValues(
-				m.Kind, "false").Inc()
+			countMonitors.WithLabelValues(m.Kind, "false").Inc()
 		} else {
 			// append monitor to monitors
 			monitors = append(monitors, monitor)
 
 			// increment metrics
-			countMonitors.WithLabelValues(
-				m.Kind, "true").Inc()
+			countMonitors.WithLabelValues(m.Kind, "true").Inc()
 		}
 	}
 	if len(c.MonConfs) == len(errs) {
-		return nil, errs, fmt.Errorf("no valid monitors, cannot continue")
+		return nil, errs, errors.New("no valid monitors, cannot continue")
 	}
 	return monitors, errs, nil
 }
@@ -91,7 +88,6 @@ func (c *ObsConf) makeMonitors() ([]*monitor, []error, error) {
 // bound `ObsConf`. If the `ObsConf` cannot be validated, an error
 // appropriate for end-user consumption is returned instead.
 func (c *ObsConf) MakeObserver() (*Observer, error) {
-
 	err := c.validateSyslog()
 	if err != nil {
 		return nil, err

@@ -84,7 +84,6 @@ func TestObsConf_ValidateDebugAddr(t *testing.T) {
 		{"2 digits", fields{":80"}, false},
 		// invalid
 		{"out of range high", fields{":65536"}, true},
-		{"cannot start with 0", fields{":01234"}, true},
 		{"out of range low", fields{":0"}, true},
 		{"not even a port", fields{":foo"}, true},
 		{"missing :", fields{"foo"}, true},
