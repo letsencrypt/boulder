@@ -40,9 +40,6 @@ GO111MODULE=on go get \
   bitbucket.org/liamstask/goose/cmd/goose \
   github.com/golang/protobuf/proto@v1.4.0 \
   github.com/golang/protobuf/protoc-gen-go@v1.4.0 \
-  github.com/mattn/goveralls@v0.0.3 \
-  github.com/modocache/gover \
-  golang.org/x/tools/cover \
   golang.org/x/tools/cmd/stringer
 
 # Pebble's latest version is v2+, but it's not properly go mod compatible, so we
