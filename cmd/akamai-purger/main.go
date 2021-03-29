@@ -39,6 +39,7 @@ type config struct {
 }
 
 type akamaiPurger struct {
+	akamaipb.UnimplementedAkamaiPurgerServer
 	mu      sync.Mutex
 	toPurge []string
 

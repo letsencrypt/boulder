@@ -197,6 +197,7 @@ func initMetrics(stats prometheus.Registerer) *pubMetrics {
 
 // Impl defines a Publisher
 type Impl struct {
+	pubpb.UnimplementedPublisherServer
 	log           blog.Logger
 	userAgent     string
 	issuerBundles map[issuance.IssuerNameID][]ct.ASN1Cert

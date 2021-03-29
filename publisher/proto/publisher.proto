@@ -1,5 +1,5 @@
 syntax = "proto3";
-option go_package = ".;publisher";
+option go_package = "github.com/letsencrypt/boulder/publisher/proto";
 
 service Publisher {
   rpc SubmitToSingleCTWithResult(Request) returns (Result) {}
