@@ -1573,63 +1573,62 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	leafPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: cert.DER,
-	})
+	responsePEM, prob := func() ([]byte, *probs.ProblemDetails) {
+		leafPEM := pem.EncodeToMemory(&pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: cert.DER,
+		})
 
-	var responsePEM []byte
+		// If we don't have any certificateChains configured, just return the cert.
+		if len(wfe.certificateChains) == 0 {
+			return leafPEM, nil
+		}
 
-	// If the WFE is configured with certificateChains, construct a chain for this
-	// certificate using its IssuerNameID.
-	if len(wfe.certificateChains) > 0 {
 		parsedCert, err := x509.ParseCertificate(cert.DER)
 		if err != nil {
 			// If we can't parse one of our own certs there's a serious problem
-			wfe.sendError(response, logEvent, probs.ServerInternal(
+			return nil, probs.ServerInternal(
 				fmt.Sprintf(
-					"unable to parse Boulder issued certificate with serial %#v",
-					serial),
-			), err)
-			return
+					"unable to parse Boulder issued certificate with serial %#v: %s",
+					serial,
+					err),
+			)
 		}
 
 		issuerNameID := issuance.GetIssuerNameID(parsedCert)
 		availableChains, ok := wfe.certificateChains[issuerNameID]
 		if !ok || len(availableChains) == 0 {
-			// If there is no wfe.certificateChains entry for the IssuerNameID there
-			// is probably a misconfiguration and we should treat it as an internal
-			// server error.
-			wfe.sendError(response, logEvent, probs.ServerInternal(
+			// If there is no wfe.certificateChains entry for the IssuerNameID then
+			// we can't provide a chain for this cert. If the certificate is expired,
+			// just return the bare cert. If the cert is still valid, then there is
+			// a misconfiguration and we should treat it as an internal server error.
+			if parsedCert.NotAfter.Before(wfe.clk.Now()) {
+				return leafPEM, nil
+			}
+			return nil, probs.ServerInternal(
 				fmt.Sprintf(
 					"Certificate serial %#v has an unknown IssuerNameID %d - no PEM certificate chain associated.",
 					serial,
 					issuerNameID),
-			), nil)
-			return
+			)
 		}
 
 		// If the requested chain is outside the bounds of the available chains,
 		// then it is an error by the client - not found.
 		if requestedChain < 0 || requestedChain >= len(availableChains) {
-			wfe.sendError(response, logEvent, probs.NotFound("Unknown issuance chain"), nil)
-			return
+			return nil, probs.NotFound("Unknown issuance chain")
 		}
 
 		// Double check that the signature validates.
 		err = parsedCert.CheckSignatureFrom(wfe.issuerCertificates[issuerNameID].Certificate)
 		if err != nil {
-			wfe.sendError(response, logEvent, probs.ServerInternal(
+			return nil, probs.ServerInternal(
 				fmt.Sprintf(
 					"Certificate serial %#v has a signature which cannot be verified from issuer %d.",
 					serial,
 					issuerNameID),
-			), nil)
-			return
+			)
 		}
-
-		// Prepend the chain with the leaf certificate
-		responsePEM = append(leafPEM, availableChains[requestedChain]...)
 
 		// Add rel="alternate" links for every chain available for this issuer,
 		// excluding the currently requested chain.
@@ -1642,10 +1641,12 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 			response.Header().Add("Link", link(chainURL, "alternate"))
 		}
 
-	} else {
-		// Otherwise, with no configured certificateChains just serve the leaf
-		// certificate.
-		responsePEM = leafPEM
+		// Prepend the chain with the leaf certificate
+		return append(leafPEM, availableChains[requestedChain]...), nil
+	}()
+	if prob != nil {
+		wfe.sendError(response, logEvent, prob, nil)
+		return
 	}
 
 	// NOTE(@cpu): We must explicitly set the Content-Length header here. The Go
