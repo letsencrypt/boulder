@@ -145,6 +145,14 @@ func NewWebFrontEndImpl(
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
 ) (WebFrontEndImpl, error) {
+	if issuerCertificates == nil || len(issuerCertificates) == 0 {
+		return WebFrontEndImpl{}, errors.New("must provide at least one issuer certificate")
+	}
+
+	if certificateChains == nil || len(certificateChains) == 0 {
+		return WebFrontEndImpl{}, errors.New("must provide at least one certificate chain")
+	}
+
 	wfe := WebFrontEndImpl{
 		log:                          logger,
 		clk:                          clk,
@@ -731,12 +739,6 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	serial := core.SerialToString(providedCert.SerialNumber)
 	logEvent.Extra["ProvidedCertificateSerial"] = serial
 
-	// If no issuerCertificates are initialized, return a server internal error
-	// rather than fail open.
-	if len(wfe.issuerCertificates) == 0 {
-		return probs.ServerInternal(
-			"unable to verify provided certificate, empty issuerCertificates")
-	}
 	// Try to validate the signature on the provided cert using its corresponding
 	// issuer certificate.
 	issuerNameID := issuance.GetIssuerNameID(providedCert)
@@ -1578,11 +1580,6 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 			Type:  "CERTIFICATE",
 			Bytes: cert.DER,
 		})
-
-		// If we don't have any certificateChains configured, just return the cert.
-		if len(wfe.certificateChains) == 0 {
-			return leafPEM, nil
-		}
 
 		parsedCert, err := x509.ParseCertificate(cert.DER)
 		if err != nil {
