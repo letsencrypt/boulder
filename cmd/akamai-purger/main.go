@@ -21,11 +21,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var gaugePurgeQueueLength = prometheus.NewGauge(
-	prometheus.GaugeOpts{
-		Name: "ccu_purge_queue_length", Help: "length of the akamai-purger queue"},
-)
-
 type config struct {
 	AkamaiPurger struct {
 		cmd.ServiceConfig
@@ -59,8 +54,6 @@ func (ap *akamaiPurger) len() int {
 }
 
 func (ap *akamaiPurger) purge() error {
-	// Set queue length gauge before each purge attempt.
-	gaugePurgeQueueLength.Set(float64(ap.len()))
 	ap.mu.Lock()
 	urls := ap.toPurge[:]
 	ap.toPurge = []string{}
@@ -146,7 +139,13 @@ func main() {
 		log:    logger,
 	}
 
-	// Register queue length gauge.
+	var gaugePurgeQueueLength = prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "ccu_purge_queue_length",
+			Help: "The length of the akamai-purger queue. Captured on each prometheus scrape.",
+		},
+		func() float64 { return float64(ap.len()) },
+	)
 	scope.MustRegister(gaugePurgeQueueLength)
 
 	stop, stopped := make(chan bool, 1), make(chan bool, 1)
@@ -192,8 +191,6 @@ func main() {
 		// stop channel. We wait 15 seconds for any remaining URLs to be emptied
 		// from the current queue, if we pass that deadline we exit early.
 		ticker.Stop()
-		// Set queue length gauge on exit.
-		gaugePurgeQueueLength.Set(float64(ap.len()))
 		stop <- true
 		select {
 		case <-time.After(time.Second * 15):
