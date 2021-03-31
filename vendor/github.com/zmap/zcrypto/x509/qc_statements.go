@@ -3,6 +3,7 @@ package x509
 import (
 	"encoding/asn1"
 	"encoding/json"
+	"errors"
 )
 
 type QCStatementASN struct {
@@ -110,6 +111,9 @@ func (q *QCStatements) Parse(in *QCStatementsASN) error {
 		q.StatementIDs[i] = s.StatementID.String()
 		if s.StatementID.Equal(oidEtsiQcsQcCompliance) {
 			known.ETSICompliance = append(known.ETSICompliance, true)
+			if val != nil {
+				return errors.New("EtsiQcsQcCompliance QCStatement must not contain a statementInfo")
+			}
 		} else if s.StatementID.Equal(oidEtsiQcsQcLimitValue) {
 			// TODO
 			mvs := monetaryValueASNString{}
@@ -135,6 +139,9 @@ func (q *QCStatements) Parse(in *QCStatementsASN) error {
 			known.RetentionPeriod = append(known.RetentionPeriod, retentionPeriod)
 		} else if s.StatementID.Equal(oidEtsiQcsQcSSCD) {
 			known.SSCD = append(known.SSCD, true)
+			if val != nil {
+				return errors.New("EtsiQcsQcSSCD QCStatement must not contain a statementInfo")
+			}
 		} else if s.StatementID.Equal(oidEtsiQcsQcEuPDS) {
 			locations := make([]PDSLocation, 0)
 			if _, err := asn1.Unmarshal(val, &locations); err != nil {
