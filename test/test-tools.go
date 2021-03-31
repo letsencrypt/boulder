@@ -159,14 +159,13 @@ func AssertNotContains(t *testing.T, haystack string, needle string) {
 
 // AssertMetricEquals determines whether the value held by a prometheus Collector
 // (e.g. Gauge, Counter, CounterVec, etc) is equal to the expected integer.
-// In the case of vector collectors, it collects and sums the values from all
-// metrics in the vector prior to comparison; this is so that users can easily
-// make assertions about one of many field dimensions (e.g. for a CounterVec with
-// fields "host" and "valid", being able to assert that two "valid": "true"
-// incremets occurred, without caring which host did each increment). To make
-// assertions about subsets of a vector's metrics, use the MetricVec's .CurryWith
-// or .GetMetricWith methods. Only works for integer metrics (Counters and Gauges),
-// does not work for Histograms.
+// In order to make useful assertions about just a subset of labels (e.g. for a
+// CounterVec with fields "host" and "valid", being able to assert that two
+// "valid": "true" increments occurred, without caring which host was tagged in
+// each), takes a set of labels and ignores any metrics which have different
+// label values.
+// Only works for integer metrics (Counters and Gauges), or for the *count*
+// (not value) of data points in a Histogram.
 func AssertMetricWithLabelsEquals(t *testing.T, c prometheus.Collector, l prometheus.Labels, expected int) {
 	ch := make(chan prometheus.Metric)
 	done := make(chan struct{})
@@ -193,28 +192,14 @@ loop:
 					break metric
 				}
 			}
-			// Exactly one of the Counter or Gauge values will be populated by the
-			// .Write() operation, so just add both because the other will be 0.
+			// Exactly one of the Counter, Gauge, or Histogram values will be set by
+			// the .Write() operation, so just add all because the others will be 0.
 			total += int(iom.Counter.GetValue())
 			total += int(iom.Gauge.GetValue())
+			total += int(iom.Histogram.GetSampleCount())
 		}
 	}
 	AssertEquals(t, total, expected)
-}
-
-func CountHistogramSamples(obs prometheus.Observer) int {
-	hist := obs.(prometheus.Histogram)
-	ch := make(chan prometheus.Metric, 10)
-	hist.Collect(ch)
-	var m prometheus.Metric
-	select {
-	case <-time.After(time.Second):
-		panic("timed out collecting metrics")
-	case m = <-ch:
-	}
-	var iom io_prometheus_client.Metric
-	_ = m.Write(&iom)
-	return int(iom.Histogram.GetSampleCount())
 }
 
 var throwawayCertIssuer *x509.Certificate

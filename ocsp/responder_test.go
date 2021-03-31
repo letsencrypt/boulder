@@ -131,10 +131,7 @@ func TestOCSP(t *testing.T) {
 		})
 	}
 	// Exactly two of the cases above result in an OCSP response being sent.
-	samples := test.CountHistogramSamples(responder.responseAges)
-	if samples != 2 {
-		t.Errorf("Ages histogram updated incorrect number of times: %d", samples)
-	}
+	test.AssertMetricWithLabelsEquals(t, responder.responseAges, prometheus.Labels{}, 2)
 }
 
 func TestRequestTooBig(t *testing.T) {

@@ -3488,7 +3488,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 		CSR: ExampleCSR,
 	}, accountID(Registration.ID), 0, 0)
 	test.AssertError(t, err, "ra.issueCertificate didn't fail when CTPolicy.GetSCTs timed out")
-	test.AssertEquals(t, test.CountHistogramSamples(ra.ctpolicyResults.With(prometheus.Labels{"result": "failure"})), 1)
+	test.AssertMetricWithLabelsEquals(t, ra.ctpolicyResults, prometheus.Labels{"result": "failure"}, 1)
 }
 
 func TestWildcardOverlap(t *testing.T) {
