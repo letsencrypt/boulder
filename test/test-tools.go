@@ -202,21 +202,6 @@ loop:
 	AssertEquals(t, total, expected)
 }
 
-// CountCounter returns the count by label and value of a prometheus metric
-func CountCounter(counter prometheus.Counter) int {
-	ch := make(chan prometheus.Metric, 10)
-	counter.Collect(ch)
-	var m prometheus.Metric
-	select {
-	case <-time.After(time.Second):
-		panic("timed out collecting metrics")
-	case m = <-ch:
-	}
-	var iom io_prometheus_client.Metric
-	_ = m.Write(&iom)
-	return int(iom.Counter.GetValue())
-}
-
 func CountHistogramSamples(obs prometheus.Observer) int {
 	hist := obs.(prometheus.Histogram)
 	ch := make(chan prometheus.Metric, 10)
