@@ -22,13 +22,18 @@ func NewMock() *Mock {
 // NewWaitingMock creates a mock logger implementing the writer interface.
 // It stores all logged messages in a buffer for inspection by test
 // functions.
-func NewWaitingMock() *Mock {
-	return &Mock{impl{newWaitingMockWriter()}}
+func NewWaitingMock() *WaitingMock {
+	return &WaitingMock{impl{newWaitingMockWriter()}}
 }
 
 // Mock is a logger that stores all log messages in memory to be examined by a
 // test.
 type Mock struct {
+	impl
+}
+
+// WaitingMock is a logger that stores all messages in memory to be examined by a test with methods
+type WaitingMock struct {
 	impl
 }
 
@@ -123,7 +128,7 @@ type waitingMockWriter struct {
 
 // newWaitingMockWriter returns a new waitingMockWriter
 func newWaitingMockWriter() *waitingMockWriter {
-	logChan := make(chan string)
+	logChan := make(chan string, 1000)
 	return &waitingMockWriter{
 		logChan,
 	}
@@ -136,7 +141,7 @@ func (m *waitingMockWriter) logAtLevel(p syslog.Priority, msg string) {
 // WaitForMatch returns the first log line matching a regex. It accepts a
 // regexp string and timeout. If the timeout value is met before the
 // matching pattern is read from the channel, an error is returned.
-func (m *Mock) WaitForMatch(reString string, timeout time.Duration) (string, error) {
+func (m *WaitingMock) WaitForMatch(reString string, timeout time.Duration) (string, error) {
 	w := m.w.(*waitingMockWriter)
 	deadline := time.After(timeout)
 	re := regexp.MustCompile(reString)

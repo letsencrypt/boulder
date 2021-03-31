@@ -68,7 +68,7 @@ func TestOcspFlushOnTimeout(t *testing.T) {
 	queue.enqueue(serial(t), time.Now(), ocsp.ResponseStatus(ocsp.Good))
 
 	expected := "INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:0,"
-	logLines, err := log.WaitForMatch("INFO", 50*time.Millisecond)
+	logLines, err := log.WaitForMatch("OCSP signed", 50*time.Millisecond)
 	test.AssertNotError(t, err, "error in mock log")
 	test.AssertDeepEquals(t, logLines, expected)
 	queue.stop()
