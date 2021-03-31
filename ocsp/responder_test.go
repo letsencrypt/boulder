@@ -122,9 +122,11 @@ func TestOCSP(t *testing.T) {
 				t.Errorf("Incorrect response code: got %d, wanted %d", rw.Code, tc.expected)
 			}
 			if rw.Code == http.StatusOK {
-				test.AssertEquals(t, 1, test.CountCounterVec("type", "Success", responder.responseTypes))
+				test.AssertMetricWithLabelsEquals(
+					t, responder.responseTypes, prometheus.Labels{"type": "Success"}, 1)
 			} else if rw.Code == http.StatusBadRequest {
-				test.AssertEquals(t, 1, test.CountCounterVec("type", "Malformed", responder.responseTypes))
+				test.AssertMetricWithLabelsEquals(
+					t, responder.responseTypes, prometheus.Labels{"type": "Malformed"}, 1)
 			}
 		})
 	}

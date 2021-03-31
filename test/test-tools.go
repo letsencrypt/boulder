@@ -202,11 +202,6 @@ loop:
 	AssertEquals(t, total, expected)
 }
 
-// CountCounterVec returns the count by label and value of a prometheus metric
-func CountCounterVec(labelName string, value string, counterVec *prometheus.CounterVec) int {
-	return CountCounter(counterVec.With(prometheus.Labels{labelName: value}))
-}
-
 // CountCounter returns the count by label and value of a prometheus metric
 func CountCounter(counter prometheus.Counter) int {
 	ch := make(chan prometheus.Metric, 10)
