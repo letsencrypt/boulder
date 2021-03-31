@@ -18,6 +18,7 @@ apt-get install -y --no-install-recommends \
   gcc \
   ca-certificates \
   openssl \
+  softhsm2 \
   pkg-config \
   libtool \
   autoconf \
@@ -50,20 +51,6 @@ go clean -cache
 go clean -modcache
 
 pip3 install -r /tmp/requirements.txt
-
-# Install a newer version (2.5.0) of SoftHSM2 than is available from the debian
-# repository
-git clone https://github.com/opendnssec/SoftHSMv2.git /tmp/softhsm2 --branch 2.5.0 --depth 1
-cd /tmp/softhsm2
-sh autogen.sh
-./configure --disable-gost
-make && make install
-cd - && rm -r /tmp/softhsm2
-
-# Setup SoftHSM
-mkdir -p /etc/softhsm
-echo "directories.tokendir = /var/lib/softhsm/tokens/" > /etc/softhsm/softhsm2.conf
-mkdir -p /var/lib/softhsm/tokens
 
 gem install --no-document fpm
 
