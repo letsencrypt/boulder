@@ -33,7 +33,6 @@ type certCountFunc func(db db.Selector, domain string, earliest, latest time.Tim
 
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
-	sapb.UnimplementedStorageAuthorityServer
 	dbMap *db.WrappedMap
 	clk   clock.Clock
 	log   blog.Logger
