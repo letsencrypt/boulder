@@ -78,23 +78,23 @@ github.com/syndtr/goleveldb/leveldb/util
 github.com/titanous/rocacheck
 # github.com/weppos/publicsuffix-go v0.13.1-0.20210219130033-d67cf1da5bfc
 github.com/weppos/publicsuffix-go/publicsuffix
-# github.com/zmap/zcrypto v0.0.0-20200513165325-16679db567ff
+# github.com/zmap/zcrypto v0.0.0-20210123152837-9cf5beac6d91
 github.com/zmap/zcrypto/json
 github.com/zmap/zcrypto/util
 github.com/zmap/zcrypto/x509
 github.com/zmap/zcrypto/x509/ct
 github.com/zmap/zcrypto/x509/pkix
-# github.com/zmap/zlint/v2 v2.2.1
-github.com/zmap/zlint/v2
-github.com/zmap/zlint/v2/lint
-github.com/zmap/zlint/v2/lints/apple
-github.com/zmap/zlint/v2/lints/cabf_br
-github.com/zmap/zlint/v2/lints/cabf_ev
-github.com/zmap/zlint/v2/lints/community
-github.com/zmap/zlint/v2/lints/etsi
-github.com/zmap/zlint/v2/lints/mozilla
-github.com/zmap/zlint/v2/lints/rfc
-github.com/zmap/zlint/v2/util
+# github.com/zmap/zlint/v3 v3.1.0
+github.com/zmap/zlint/v3
+github.com/zmap/zlint/v3/lint
+github.com/zmap/zlint/v3/lints/apple
+github.com/zmap/zlint/v3/lints/cabf_br
+github.com/zmap/zlint/v3/lints/cabf_ev
+github.com/zmap/zlint/v3/lints/community
+github.com/zmap/zlint/v3/lints/etsi
+github.com/zmap/zlint/v3/lints/mozilla
+github.com/zmap/zlint/v3/lints/rfc
+github.com/zmap/zlint/v3/util
 # golang.org/x/crypto v0.0.0-20201216223049-8b5274cf687f
 golang.org/x/crypto/cryptobyte
 golang.org/x/crypto/cryptobyte/asn1
@@ -102,7 +102,7 @@ golang.org/x/crypto/ed25519
 golang.org/x/crypto/ed25519/internal/edwards25519
 golang.org/x/crypto/ocsp
 golang.org/x/crypto/pbkdf2
-# golang.org/x/net v0.0.0-20200202094626-16171245cfb2
+# golang.org/x/net v0.0.0-20201110031124-69a78807bb2b
 golang.org/x/net/bpf
 golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
@@ -116,11 +116,11 @@ golang.org/x/net/internal/timeseries
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
 golang.org/x/net/trace
-# golang.org/x/sys v0.0.0-20200615200032-f1bc736245b1
+# golang.org/x/sys v0.0.0-20201126233918-771906719818
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/text v0.3.3
+# golang.org/x/text v0.3.4
 golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi

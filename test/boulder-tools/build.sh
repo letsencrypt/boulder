@@ -18,6 +18,7 @@ apt-get install -y --no-install-recommends \
   gcc \
   ca-certificates \
   openssl \
+  softhsm2 \
   pkg-config \
   libtool \
   autoconf \
@@ -40,9 +41,6 @@ GO111MODULE=on go get \
   bitbucket.org/liamstask/goose/cmd/goose \
   github.com/golang/protobuf/proto@v1.4.0 \
   github.com/golang/protobuf/protoc-gen-go@v1.4.0 \
-  github.com/mattn/goveralls@v0.0.3 \
-  github.com/modocache/gover \
-  golang.org/x/tools/cover \
   golang.org/x/tools/cmd/stringer
 
 # Pebble's latest version is v2+, but it's not properly go mod compatible, so we
@@ -53,20 +51,6 @@ go clean -cache
 go clean -modcache
 
 pip3 install -r /tmp/requirements.txt
-
-# Install a newer version (2.5.0) of SoftHSM2 than is available from the debian
-# repository
-git clone https://github.com/opendnssec/SoftHSMv2.git /tmp/softhsm2 --branch 2.5.0 --depth 1
-cd /tmp/softhsm2
-sh autogen.sh
-./configure --disable-gost
-make && make install
-cd - && rm -r /tmp/softhsm2
-
-# Setup SoftHSM
-mkdir -p /etc/softhsm
-echo "directories.tokendir = /var/lib/softhsm/tokens/" > /etc/softhsm/softhsm2.conf
-mkdir -p /var/lib/softhsm/tokens
 
 gem install --no-document fpm
 

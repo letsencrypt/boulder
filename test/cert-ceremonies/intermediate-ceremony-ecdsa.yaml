@@ -1,6 +1,6 @@
 ceremony-type: intermediate
 pkcs11:
-    module: /usr/local/lib/softhsm/libsofthsm2.so
+    module: /usr/lib/softhsm/libsofthsm2.so
     pin: 1234
     signing-key-slot: {{ .SlotID}}
     signing-key-label: root signing key (ecdsa)
