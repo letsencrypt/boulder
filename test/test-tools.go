@@ -163,7 +163,7 @@ func AssertNotContains(t *testing.T, haystack string, needle string) {
 // metrics in the vector prior to comparison; this is so that users can easily
 // make assertions about one of many field dimensions (e.g. for a CounterVec with
 // fields "host" and "valid", being able to assert that two "valid": "true"
-// incremets occurred, without caring which host did each increment). To make
+// increments occurred, without caring which host did each increment). To make
 // assertions about subsets of a vector's metrics, use the MetricVec's .CurryWith
 // or .GetMetricWith methods. Only works for integer metrics (Counters and Gauges),
 // does not work for Histograms.
