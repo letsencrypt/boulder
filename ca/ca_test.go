@@ -550,6 +550,7 @@ func TestOCSP(t *testing.T) {
 	test.AssertError(t, err, "GenerateOCSP didn't fail with invalid Serial")
 
 	// GenerateOCSP with the old certDER codepath should fail.
+	// TODO(#5079): Remove this test when the proto drops this field entirely.
 	_, err = ca.GenerateOCSP(context.Background(), &capb.GenerateOCSPRequest{
 		CertDER: rsaCertPB.DER,
 		Status:  string(core.OCSPStatusGood),
