@@ -489,7 +489,7 @@ func TestRetry(t *testing.T) {
 		te                *testExchanger
 		expected          error
 		expectedCount     int
-		metricsAllRetries int
+		metricsAllRetries float64
 	}
 	tests := []*testCase{
 		// The success on first try case

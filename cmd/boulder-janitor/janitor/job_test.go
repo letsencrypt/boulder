@@ -138,7 +138,7 @@ LIMIT :limit`
 
 	// We expect the work gauge for this table has been updated
 	test.AssertMetricWithLabelsEquals(
-		t, workStat, prometheus.Labels{"table": table}, len(mockIDs))
+		t, workStat, prometheus.Labels{"table": table}, float64(len(mockIDs)))
 
 	// Set the third item in mockIDs to have an expiry after the purge cutoff
 	// so we expect to only get the first two items returned from getWork

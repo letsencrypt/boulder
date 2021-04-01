@@ -322,7 +322,7 @@ func TestInFlightRPCStat(t *testing.T) {
 	}
 
 	// We expect the inFlightRPCs gauge for the Chiller.Chill RPCs to be equal to numRPCs.
-	test.AssertMetricWithLabelsEquals(t, ci.metrics.inFlightRPCs, labels, numRPCs)
+	test.AssertMetricWithLabelsEquals(t, ci.metrics.inFlightRPCs, labels, float64(numRPCs))
 
 	// Unblock the blockedServer to let all of the Chiller.Chill RPCs complete
 	server.roadblock.Done()
