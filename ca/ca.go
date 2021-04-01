@@ -195,7 +195,7 @@ func NewCertificateAuthorityImpl(
 			Name: "signatures",
 			Help: "Number of signatures",
 		},
-		[]string{"purpose"})
+		[]string{"purpose", "issuer"})
 	stats.MustRegister(signatureCount)
 
 	orphanCount := prometheus.NewCounterVec(
@@ -331,7 +331,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *capb.
 	ocspResponse, err := ocsp.CreateResponse(issuer.cert.Certificate, issuer.cert.Certificate, tbsResponse, issuer.ocspSigner)
 	ca.noteSignError(err)
 	if err == nil {
-		ca.signatureCount.With(prometheus.Labels{"purpose": "ocsp"}).Inc()
+		ca.signatureCount.With(prometheus.Labels{"purpose": "ocsp", "issuer": issuer.boulderIssuer.Name()}).Inc()
 	}
 	return &capb.OCSPResponse{Response: ocspResponse}, err
 }
@@ -475,7 +475,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	if err != nil {
 		return nil, err
 	}
-	ca.signatureCount.WithLabelValues(string(certType)).Inc()
+	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.boulderIssuer.Name()}).Inc()
 	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] csr=[%s] certificate=[%s]",
 		serialHex, strings.Join(precert.DNSNames, ", "), hex.EncodeToString(req.DER),
 		hex.EncodeToString(certDER))
@@ -588,7 +588,7 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		ca.log.AuditErrf("Signing failed: serial=[%s] err=[%v]", serialHex, err)
 		return nil, nil, err
 	}
-	ca.signatureCount.WithLabelValues(string(precertType)).Inc()
+	ca.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.boulderIssuer.Name()}).Inc()
 
 	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] csr=[%s] precertificate=[%s]",
 		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw),

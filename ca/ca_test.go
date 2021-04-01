@@ -608,7 +608,7 @@ func TestInvalidCSRs(t *testing.T) {
 			_, err = ca.IssuePrecertificate(ctx, issueReq)
 
 			test.AssertErrorIs(t, err, testCase.errorType)
-			test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 0)
+			test.AssertMetricWithLabelsEquals(t, ca.signatureCount, prometheus.Labels{"purpose": "cert"}, 0)
 
 			test.AssertError(t, err, testCase.errorMessage)
 			if testCase.check != nil {
@@ -679,12 +679,12 @@ func countMustStaple(t *testing.T, cert *x509.Certificate) (count int) {
 }
 
 func issueCertificateSubTestMustStaple(t *testing.T, i *TestCertificateIssuance) {
-	test.AssertEquals(t, signatureCountByPurpose("precertificate", i.ca.signatureCount), 1)
+	test.AssertMetricWithLabelsEquals(t, i.ca.signatureCount, prometheus.Labels{"purpose": "precertificate"}, 1)
 	test.AssertEquals(t, countMustStaple(t, i.cert), 1)
 }
 
 func issueCertificateSubTestUnknownExtension(t *testing.T, i *TestCertificateIssuance) {
-	test.AssertEquals(t, signatureCountByPurpose("precertificate", i.ca.signatureCount), 1)
+	test.AssertMetricWithLabelsEquals(t, i.ca.signatureCount, prometheus.Labels{"purpose": "precertificate"}, 1)
 
 	// NOTE: The hard-coded value here will have to change over time as Boulder
 	// adds new (unrequested) extensions to certificates.
@@ -693,7 +693,7 @@ func issueCertificateSubTestUnknownExtension(t *testing.T, i *TestCertificateIss
 }
 
 func issueCertificateSubTestCTPoisonExtension(t *testing.T, i *TestCertificateIssuance) {
-	test.AssertEquals(t, signatureCountByPurpose("precertificate", i.ca.signatureCount), 1)
+	test.AssertMetricWithLabelsEquals(t, i.ca.signatureCount, prometheus.Labels{"purpose": "precertificate"}, 1)
 }
 
 func findExtension(extensions []pkix.Extension, id asn1.ObjectIdentifier) *pkix.Extension {
@@ -703,10 +703,6 @@ func findExtension(extensions []pkix.Extension, id asn1.ObjectIdentifier) *pkix.
 		}
 	}
 	return nil
-}
-
-func signatureCountByPurpose(signatureType string, signatureCount *prometheus.CounterVec) int {
-	return test.CountCounterVec("purpose", signatureType, signatureCount)
 }
 
 func makeSCTs() ([][]byte, error) {
