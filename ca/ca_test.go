@@ -477,7 +477,6 @@ func TestECDSAAllowList(t *testing.T) {
 
 func TestOCSP(t *testing.T) {
 	testCtx := setup(t)
-	_ = features.Set(map[string]bool{"NonCFSSLSigner": true})
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
 		sa,
@@ -550,7 +549,14 @@ func TestOCSP(t *testing.T) {
 	})
 	test.AssertError(t, err, "GenerateOCSP didn't fail with invalid Serial")
 
-	// GenerateOCSP with a valid-but-nonexistent Serial should fail.
+	// GenerateOCSP with the old certDER codepath should fail.
+	_, err = ca.GenerateOCSP(context.Background(), &capb.GenerateOCSPRequest{
+		CertDER: rsaCertPB.DER,
+		Status:  string(core.OCSPStatusGood),
+	})
+	test.AssertError(t, err, "GenerateOCSP didn't fail when only given certDER")
+
+	// GenerateOCSP with a valid-but-nonexistent Serial should *not* fail.
 	_, err = ca.GenerateOCSP(context.Background(), &capb.GenerateOCSPRequest{
 		Serial:   "03DEADBEEFBADDECAFFADEFACECAFE30",
 		IssuerID: int64(rsaIssuerID),
