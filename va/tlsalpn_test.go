@@ -24,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func tlsalpnChallenge() core.Challenge {
@@ -392,7 +393,8 @@ func TestTLSALPN01Success(t *testing.T) {
 	if prob != nil {
 		t.Errorf("Validation failed: %v", prob)
 	}
-	test.AssertEquals(t, test.CountCounterVec("oid", IdPeAcmeIdentifier.String(), va.metrics.tlsALPNOIDCounter), 1)
+	test.AssertMetricWithLabelsEquals(
+		t, va.metrics.tlsALPNOIDCounter, prometheus.Labels{"oid": IdPeAcmeIdentifier.String()}, 1)
 
 	hs.Close()
 	chall = tlsalpnChallenge()
@@ -405,7 +407,8 @@ func TestTLSALPN01Success(t *testing.T) {
 	if prob != nil {
 		t.Errorf("Validation failed: %v", prob)
 	}
-	test.AssertEquals(t, test.CountCounterVec("oid", IdPeAcmeIdentifierV1Obsolete.String(), va.metrics.tlsALPNOIDCounter), 1)
+	test.AssertMetricWithLabelsEquals(
+		t, va.metrics.tlsALPNOIDCounter, prometheus.Labels{"oid": IdPeAcmeIdentifierV1Obsolete.String()}, 1)
 }
 
 func TestValidateTLSALPN01BadChallenge(t *testing.T) {
@@ -544,7 +547,6 @@ func TestTLSALPN01TLS13(t *testing.T) {
 		t.Errorf("Validation failed: %v", prob)
 	}
 	// The correct TLS-ALPN-01 OID counter should have been incremented
-	test.AssertEquals(t, test.CountCounterVec(
-		"oid", IdPeAcmeIdentifier.String(), va.metrics.tlsALPNOIDCounter),
-		1)
+	test.AssertMetricWithLabelsEquals(
+		t, va.metrics.tlsALPNOIDCounter, prometheus.Labels{"oid": IdPeAcmeIdentifier.String()}, 1)
 }

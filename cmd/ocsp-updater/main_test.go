@@ -25,6 +25,7 @@ import (
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 )
 
@@ -114,10 +115,7 @@ func TestStalenessHistogram(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't find stale responses")
 	test.AssertEquals(t, len(statuses), 2)
 
-	samples := test.CountHistogramSamples(updater.stalenessHistogram)
-	if samples != 2 {
-		t.Errorf("Wrong number of samples for invalid validation. Expected 1, got %d", samples)
-	}
+	test.AssertMetricWithLabelsEquals(t, updater.stalenessHistogram, prometheus.Labels{}, 2)
 }
 
 func TestGenerateAndStoreOCSPResponse(t *testing.T) {

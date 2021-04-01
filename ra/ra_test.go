@@ -3488,7 +3488,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 		CSR: ExampleCSR,
 	}, accountID(Registration.ID), 0, 0)
 	test.AssertError(t, err, "ra.issueCertificate didn't fail when CTPolicy.GetSCTs timed out")
-	test.AssertEquals(t, test.CountHistogramSamples(ra.ctpolicyResults.With(prometheus.Labels{"result": "failure"})), 1)
+	test.AssertMetricWithLabelsEquals(t, ra.ctpolicyResults, prometheus.Labels{"result": "failure"}, 1)
 }
 
 func TestWildcardOverlap(t *testing.T) {
@@ -3894,8 +3894,8 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	err = ra.RevokeCertificateWithReg(context.Background(), *cert, ocsp.Unspecified, 0)
 	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
 	test.Assert(t, mockSA.added == nil, "blocked key was added when reason was not keyCompromise")
-	test.AssertEquals(t, test.CountCounterVec(
-		"reason", "unspecified", ra.revocationReasonCounter), 1)
+	test.AssertMetricWithLabelsEquals(
+		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 1)
 
 	err = ra.RevokeCertificateWithReg(context.Background(), *cert, ocsp.KeyCompromise, 0)
 	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
@@ -3903,8 +3903,8 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	test.Assert(t, bytes.Equal(digest[:], mockSA.added.KeyHash), "key hash mismatch")
 	test.AssertEquals(t, mockSA.added.Source, "API")
 	test.Assert(t, mockSA.added.Comment == "", "Comment is not empty")
-	test.AssertEquals(t, test.CountCounterVec(
-		"reason", "keyCompromise", ra.revocationReasonCounter), 1)
+	test.AssertMetricWithLabelsEquals(
+		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "keyCompromise"}, 1)
 
 	mockSA.added = nil
 	err = ra.AdministrativelyRevokeCertificate(context.Background(), *cert, ocsp.KeyCompromise, "root")
@@ -3914,6 +3914,6 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	test.AssertEquals(t, mockSA.added.Source, "admin-revoker")
 	test.Assert(t, mockSA.added.Comment != "", "Comment is nil")
 	test.AssertEquals(t, mockSA.added.Comment, "revoked by root")
-	test.AssertEquals(t, test.CountCounterVec(
-		"reason", "keyCompromise", ra.revocationReasonCounter), 2)
+	test.AssertMetricWithLabelsEquals(
+		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "keyCompromise"}, 2)
 }

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
@@ -2712,8 +2713,8 @@ func TestKeyRollover(t *testing.T) {
 			wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("key-change", outer))
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedResponse)
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounterVec(
-					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
+				test.AssertMetricWithLabelsEquals(
+					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
 			}
 		})
 	}
