@@ -229,8 +229,7 @@ func TestRequestTimeTagging(t *testing.T) {
 	}
 
 	// There should be one histogram sample in the serverInterceptor rpcLag stat
-	count := test.CountHistogramSamples(si.metrics.rpcLag)
-	test.AssertEquals(t, count, 1)
+	test.AssertMetricWithLabelsEquals(t, si.metrics.rpcLag, prometheus.Labels{}, 1)
 }
 
 // blockedServer implements a ChillerServer with a Chill method that:
@@ -322,11 +321,8 @@ func TestInFlightRPCStat(t *testing.T) {
 		"method":  "Chill",
 	}
 
-	// Retrieve the gauge for inflight Chiller.Chill RPCs
-	inFlightCount, err := test.GaugeValueWithLabels(ci.metrics.inFlightRPCs, labels)
-	test.AssertNotError(t, err, "Error collecting gauge value for inFlightRPCs")
 	// We expect the inFlightRPCs gauge for the Chiller.Chill RPCs to be equal to numRPCs.
-	test.AssertEquals(t, inFlightCount, numRPCs)
+	test.AssertMetricWithLabelsEquals(t, ci.metrics.inFlightRPCs, labels, float64(numRPCs))
 
 	// Unblock the blockedServer to let all of the Chiller.Chill RPCs complete
 	server.roadblock.Done()
@@ -334,9 +330,5 @@ func TestInFlightRPCStat(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// Check the gauge value again
-	inFlightCount, err = test.GaugeValueWithLabels(ci.metrics.inFlightRPCs, labels)
-	test.AssertNotError(t, err, "Error collecting gauge value for inFlightRPCs")
-	// There should now be zero in flight chill requests.
-	// What a ~ ~ Chill Sitch ~ ~
-	test.AssertEquals(t, inFlightCount, 0)
+	test.AssertMetricWithLabelsEquals(t, ci.metrics.inFlightRPCs, labels, 0)
 }
