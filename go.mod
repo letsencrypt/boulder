@@ -25,11 +25,11 @@ require (
 	github.com/syndtr/goleveldb v0.0.0-20180331014930-714f901b98fd // indirect
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 	github.com/weppos/publicsuffix-go v0.13.1-0.20210219130033-d67cf1da5bfc
-	github.com/zmap/zcrypto v0.0.0-20200513165325-16679db567ff
-	github.com/zmap/zlint/v2 v2.2.1
+	github.com/zmap/zcrypto v0.0.0-20210123152837-9cf5beac6d91
+	github.com/zmap/zlint/v3 v3.1.0
 	golang.org/x/crypto v0.0.0-20201216223049-8b5274cf687f
-	golang.org/x/net v0.0.0-20200202094626-16171245cfb2
-	golang.org/x/text v0.3.3
+	golang.org/x/net v0.0.0-20201110031124-69a78807bb2b
+	golang.org/x/text v0.3.4
 	google.golang.org/grpc v1.29.0
 	google.golang.org/protobuf v1.23.0
 	gopkg.in/square/go-jose.v2 v2.4.1

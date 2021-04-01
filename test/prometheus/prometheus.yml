@@ -16,3 +16,4 @@ scrape_configs:
         - boulder:8008
         - boulder:8009
         - boulder:8010
+        - boulder:8040

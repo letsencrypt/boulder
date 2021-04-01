@@ -60,26 +60,17 @@ func TestOcspFlushOnLength(t *testing.T) {
 // Ensure log lines are sent after a timeout.
 func TestOcspFlushOnTimeout(t *testing.T) {
 	t.Parallel()
-	log := blog.NewMock()
+	log := blog.NewWaitingMock()
 	stats := metrics.NoopRegisterer
 	queue := newOCSPLogQueue(90000, 10*time.Millisecond, stats, log)
 
 	go queue.loop()
 	queue.enqueue(serial(t), time.Now(), ocsp.ResponseStatus(ocsp.Good))
-	// This gets a little tricky: Each iteration of the `select` in
-	// queue.loop() is a race between the channel that receives log
-	// events and the `<-clk.After(n)` timer. Even if we used
-	// a fake clock, our loop here would often win that race, producing
-	// inconsistent logging results. For instance, it would be entirely
-	// possible for all of these `enqueues` to win the race, putting
-	// all log entries on one line.
-	// To avoid that, sleep using the wall clock for 50ms.
-	time.Sleep(50 * time.Millisecond)
 
-	expected := []string{
-		"INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:0,",
-	}
-	test.AssertDeepEquals(t, log.GetAll(), expected)
+	expected := "INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:0,"
+	logLines, err := log.WaitForMatch("OCSP signed", 50*time.Millisecond)
+	test.AssertNotError(t, err, "error in mock log")
+	test.AssertDeepEquals(t, logLines, expected)
 	queue.stop()
 }
 

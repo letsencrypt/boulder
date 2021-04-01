@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	zlintx509 "github.com/zmap/zcrypto/x509"
-	"github.com/zmap/zlint/v2"
-	"github.com/zmap/zlint/v2/lint"
+	"github.com/zmap/zlint/v3"
+	"github.com/zmap/zlint/v3/lint"
 )
 
 // Check accomplishes the entire process of linting: it generates a throwaway

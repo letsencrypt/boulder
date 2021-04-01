@@ -48,13 +48,6 @@ func certNames(cert *x509.Certificate) []string {
 	}
 	names = append(names, cert.DNSNames...)
 	names = core.UniqueLowerNames(names)
-	// TODO(#5321): This for loop can be deleted after new builds of boulder use
-	// golang 1.16. In 1.16, code was added to crypto/x509 to not allow
-	// invalid unicode into a DNSName in a SAN. An error will be caught in
-	// the standard library before it gets to this point.
-	for i, n := range names {
-		names[i] = replaceInvalidUTF8([]byte(n))
-	}
 	return names
 }
 

@@ -76,8 +76,7 @@ function run_and_expect_silence() {
 #
 function run_unit_tests() {
   if [ "${RACE}" == true ]; then
-    # Run the full suite of tests once with the -race flag. Since this isn't
-    # running tests individually we can't collect coverage information.
+    # Run the full suite of tests once with the -race flag.
     go test -race "${UNIT_PACKAGES[@]}" "${FILTER[@]}"
   else
     # When running locally, we skip the -race flag for speedier test runs. We
@@ -89,25 +88,6 @@ function run_unit_tests() {
     # https://github.com/letsencrypt/boulder/issues/1499
     go test "${UNIT_PACKAGES[@]}" "${FILTER[@]}"
   fi
-}
-
-function run_test_coverage() {
-  # Run each test by itself for CI, so we can get coverage. We skip using
-  # the -race flag here because we have already done a full test run with
-  # -race in `run_unit_tests` and it adds substantial overhead to run every
-  # test with -race independently
-  go test -p 1 -cover -coverprofile=.coverprofile ./...
-
-  # Gather all the coverprofiles
-  gover
-
-  # We don't use the run function here because sometimes goveralls fails to
-  # contact the server and exits with non-zero status, but we don't want to
-  # treat that as a failure.
-
-  # note: not currently enabled in CI passes due to coveralls failing to map
-  # our github actions token to our coveralls account
-  goveralls -v -coverprofile=gover.coverprofile -service=github
 }
 
 #
@@ -127,7 +107,6 @@ With no options passed, runs standard battery of tests (lint, unit, and integati
     -p <DIR>, --unit-test-package=<DIR>   Run unit tests for specific go package(s)
     -e, --enable-race-detection           Enables -race flag for all unit and integration tests
     -n, --config-next                     Changes BOULDER_CONFIG_DIR from test/config to test/config-next
-    -c, --coverage                        Adds coverage to the list of tests to run
     -i, --integration                     Adds integration to the list of tests to run
     -s, --start-py                        Adds start to the list of tests to run
     -v, --gomod-vendor                    Adds gomod-vendor to the list of tests to run
@@ -160,7 +139,6 @@ while getopts lueciosvgrnhp:f:-: OPT; do
     u | unit )                       RUN+=("unit") ;;
     p | unit-test-package )          check_arg; UNIT_PACKAGES+=("${OPTARG}") ;;
     e | enable-race-detection )      RACE="true" ;;
-    c | coverage )                   RUN+=("coverage") ;;
     i | integration )                RUN+=("integration") ;;
     o | list-integration-tests )     print_list_of_integration_tests ;;
     f | filter )                     check_arg; FILTER+=("${OPTARG}") ;;
@@ -178,8 +156,7 @@ shift $((OPTIND-1)) # remove parsed options and args from $@ list
 
 # The list of segments to run. Order doesn't matter. Note: gomod-vendor 
 # is specifically left out of the defaults, because we don't want to run
-# it locally (it could delete local state) We also omit coverage by default
-# on local runs because it generates artifacts on disk that aren't needed.
+# it locally (it could delete local state).
 if [ -z "${RUN[@]+x}" ]
 then
   RUN+=("lints" "unit" "integration")
@@ -252,15 +229,6 @@ STAGE="unit"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Unit Tests"
   run_unit_tests
-fi
-
-#
-# Unit Test Coverage.
-#
-STAGE="coverage"
-if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
-  print_heading "Running Unit Coverage" 
-  run_test_coverage
 fi
 
 #

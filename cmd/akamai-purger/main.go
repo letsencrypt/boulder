@@ -18,6 +18,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type config struct {
@@ -137,6 +138,15 @@ func main() {
 		client: ccu,
 		log:    logger,
 	}
+
+	var gaugePurgeQueueLength = prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "ccu_purge_queue_length",
+			Help: "The length of the akamai-purger queue. Captured on each prometheus scrape.",
+		},
+		func() float64 { return float64(ap.len()) },
+	)
+	scope.MustRegister(gaugePurgeQueueLength)
 
 	stop, stopped := make(chan bool, 1), make(chan bool, 1)
 	ticker := time.NewTicker(c.AkamaiPurger.PurgeInterval.Duration)
