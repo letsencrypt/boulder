@@ -1692,10 +1692,17 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 // revokeCertificate generates a revoked OCSP response for the given certificate, stores
 // the revocation information, and purges OCSP request URLs from Akamai.
 func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, revokedBy int64, source string, comment string) error {
+	issuer, ok := ra.issuers[issuance.GetIssuerNameID(&cert)]
+	if !ok {
+		return fmt.Errorf("unable to identify issuer of certificate to revoke: %v", cert)
+	}
+	serial := core.SerialToString(cert.SerialNumber)
 	reason := int32(code)
 	revokedAt := ra.clk.Now().UnixNano()
+
 	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-		CertDER:   cert.Raw,
+		Serial:    serial,
+		IssuerID:  int64(issuer.ID()),
 		Status:    string(core.OCSPStatusRevoked),
 		Reason:    reason,
 		RevokedAt: revokedAt,
@@ -1703,7 +1710,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	if err != nil {
 		return err
 	}
-	serial := core.SerialToString(cert.SerialNumber)
+
 	err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   serial,
 		Reason:   int64(code),
@@ -1713,6 +1720,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	if err != nil {
 		return err
 	}
+
 	if reason == ocsp.KeyCompromise {
 		digest, err := core.KeyDigest(cert.PublicKey)
 		if err != nil {
@@ -1733,10 +1741,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 			return err
 		}
 	}
-	issuer, ok := ra.issuers[issuance.GetIssuerNameID(&cert)]
-	if !ok {
-		return fmt.Errorf("unable to identify issuer of revoked certificate: %v", cert)
-	}
+
 	purgeURLs, err := akamai.GeneratePurgeURLs(&cert, issuer.Certificate)
 	if err != nil {
 		return err
