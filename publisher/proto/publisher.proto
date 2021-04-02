@@ -10,7 +10,6 @@ message Request {
   string LogURL = 2;
   string LogPublicKey = 3;
   bool precert = 4;
-  bool storeSCT = 5;
 }
 
 message Result {
