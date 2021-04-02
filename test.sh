@@ -128,7 +128,7 @@ With no options passed, runs standard battery of tests (lint, unit, and integati
 EOM
 )"
 
-while getopts lueciosvgrnhp:f:-: OPT; do
+while getopts lueciosvgmnhp:f:-: OPT; do
   if [ "$OPT" = - ]; then     # long option: reformulate OPT and OPTARG
     OPT="${OPTARG%%=*}"       # extract long option name
     OPTARG="${OPTARG#$OPT}"   # extract long option argument (may be empty)
