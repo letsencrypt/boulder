@@ -1,13 +1,13 @@
 version: '3'
 services:
   boulder:
-    image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.15.7_2021-03-30}
+    image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.16.3_2021-04-02}
     environment:
       FAKE_DNS: 10.77.77.77
       BOULDER_CONFIG_DIR: test/config
       GOFLAGS: -mod=vendor
     volumes:
-      - .:/go/src/github.com/letsencrypt/boulder:cached
+      - .:/boulder:cached
       - ./.gocache:/root/.cache/go-build:cached
     networks:
       bluenet:
@@ -48,7 +48,7 @@ services:
     depends_on:
       - bmysql
     entrypoint: test/entrypoint.sh
-    working_dir: &boulder_working_dir /go/src/github.com/letsencrypt/boulder
+    working_dir: &boulder_working_dir /boulder
 
   bmysql:
     image: mariadb:10.5
