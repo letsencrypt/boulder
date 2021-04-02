@@ -34,7 +34,7 @@ jobs:
         # Tests command definitions. Use the entire docker-compose command you want to run.
         tests:
           # Run ./test.sh --help for a description of each of the flags.
-          - "docker-compose run --use-aliases boulder ./test.sh --lints --generate --rpm"
+          - "docker-compose run --use-aliases boulder ./test.sh --lints --generate --make-artifacts"
           - "docker-compose run --use-aliases boulder ./test.sh --integration"
           # Testing Config Changes:
           # Config changes that have landed in main but not yet been applied to
