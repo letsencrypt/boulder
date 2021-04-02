@@ -289,7 +289,7 @@ fi
 STAGE="package"
 if [[ "${RUN[@]}" =~ "$STAGE" ]]; then
   print_heading "Running deb and rpm packaging"
-  make -k deb rpm
+  make deb rpm
 fi
 
 # Because set -e stops execution in the instance of a command or pipeline
