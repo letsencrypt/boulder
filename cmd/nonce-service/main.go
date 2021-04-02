@@ -24,6 +24,7 @@ type config struct {
 }
 
 type nonceServer struct {
+	noncepb.UnimplementedNonceServiceServer
 	inner *nonce.NonceService
 }
 

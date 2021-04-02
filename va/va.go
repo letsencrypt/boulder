@@ -172,6 +172,8 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
+	vapb.UnimplementedVAServer
+	vapb.UnimplementedCAAServer
 	log                blog.Logger
 	dnsClient          bdns.Client
 	issuerDomain       string

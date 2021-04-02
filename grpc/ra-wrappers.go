@@ -186,11 +186,12 @@ func (ras *RegistrationAuthorityClientWrapper) FinalizeOrder(ctx context.Context
 
 // RegistrationAuthorityServerWrapper is the gRPC version of a core.RegistrationAuthority server
 type RegistrationAuthorityServerWrapper struct {
+	rapb.UnimplementedRegistrationAuthorityServer
 	inner core.RegistrationAuthority
 }
 
 func NewRegistrationAuthorityServer(inner core.RegistrationAuthority) *RegistrationAuthorityServerWrapper {
-	return &RegistrationAuthorityServerWrapper{inner}
+	return &RegistrationAuthorityServerWrapper{inner: inner}
 }
 
 func (ras *RegistrationAuthorityServerWrapper) NewRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Registration, error) {

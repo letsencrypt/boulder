@@ -73,6 +73,8 @@ type issuerMaps struct {
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
 type CertificateAuthorityImpl struct {
+	capb.UnimplementedCertificateAuthorityServer
+	capb.UnimplementedOCSPGeneratorServer
 	sa                 certificateStorage
 	pa                 core.PolicyAuthority
 	issuers            issuerMaps
