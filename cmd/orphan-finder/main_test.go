@@ -287,7 +287,7 @@ func TestNotOrphan(t *testing.T) {
 	test.AssertEquals(t, typ, unknownOrphan)
 	logs := opf.logger.(*blog.Mock).GetAllMatching("ERR:")
 	if len(logs) != 0 {
-		t.Errorf("Found error logs:")
+		t.Error("Found error logs:")
 		for _, ll := range logs {
 			t.Error(ll)
 		}
