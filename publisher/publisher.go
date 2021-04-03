@@ -166,6 +166,7 @@ type ctSubmissionRequest struct {
 type pubMetrics struct {
 	submissionLatency *prometheus.HistogramVec
 	probeLatency      *prometheus.HistogramVec
+	errorCount        *prometheus.CounterVec
 }
 
 func initMetrics(stats prometheus.Registerer) *pubMetrics {
@@ -189,10 +190,16 @@ func initMetrics(stats prometheus.Registerer) *pubMetrics {
 	)
 	stats.MustRegister(probeLatency)
 
-	return &pubMetrics{
-		submissionLatency: submissionLatency,
-		probeLatency:      probeLatency,
-	}
+	errorCount := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ct_errors_count",
+			Help: "Count of errors by type",
+		},
+		[]string{"type"},
+	)
+	stats.MustRegister(errorCount)
+
+	return &pubMetrics{submissionLatency, probeLatency, errorCount}
 }
 
 // Impl defines a Publisher
@@ -311,6 +318,11 @@ func (pub *Impl) singleLogSubmit(
 			"status":      status,
 			"http_status": httpStatus,
 		}).Observe(took)
+		if isPrecert {
+			pub.metrics.errorCount.WithLabelValues("precert").Inc()
+		} else {
+			pub.metrics.errorCount.WithLabelValues("final").Inc()
+		}
 		return nil, err
 	}
 	pub.metrics.submissionLatency.With(prometheus.Labels{
