@@ -206,7 +206,6 @@ func (ctp *CTPolicy) SubmitFinalCert(cert []byte, expiration time.Time) {
 				LogPublicKey: key,
 				Der:          cert,
 				Precert:      false,
-				StoreSCT:     false,
 			})
 			if err != nil {
 				ctp.log.Warningf("ct submission of final cert to log %q failed: %s", uri, err)

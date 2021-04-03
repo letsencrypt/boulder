@@ -253,7 +253,6 @@ func (opf *orphanFinder) parseCALog(logPath string) {
 
 	var certOrphansFound, certOrphansAdded, precertOrphansFound, precertOrphansAdded int64
 	for _, line := range strings.Split(string(logData), "\n") {
-		fmt.Printf("Parsing line: %q\n", line)
 		if line == "" {
 			continue
 		}

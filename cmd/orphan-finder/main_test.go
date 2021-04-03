@@ -124,8 +124,6 @@ func TestParseLine(t *testing.T) {
 	}
 	precertDER, err := x509.CreateCertificate(rand.Reader, &precertTmpl, issuer.Certificate, key.Public(), key)
 	test.AssertNotError(t, err, "failed to generate test precert")
-	precert, err := x509.ParseCertificate(precertDER)
-	test.AssertNotError(t, err, "failed to parse test precert")
 	precertStr := hex.EncodeToString(precertDER)
 
 	opf := &orphanFinder{
@@ -270,12 +268,12 @@ func TestParseLine(t *testing.T) {
 				var storedCert core.Certificate
 				switch typ {
 				case precertOrphan:
-					resp, err := opf.sa.GetPrecertificate(context.Background(), &sapb.Serial{Serial: testCertSerial})
+					resp, err := opf.sa.GetPrecertificate(ctx, &sapb.Serial{Serial: testCertSerial})
 					test.AssertNotError(t, err, "Error getting test precert serial from SA")
 					storedCert, err = bgrpc.PBToCert(resp)
 					test.AssertNotError(t, err, "Error getting test precert from GetPrecertificate pb response")
 				case certOrphan:
-					storedCert, err = opf.sa.GetCertificate(context.Background(), testCertSerial)
+					storedCert, err = opf.sa.GetCertificate(ctx, testCertSerial)
 					test.AssertNotError(t, err, "Error getting test cert serial from SA")
 				default:
 					t.Fatalf("unknown orphan type returned: %s", typ)
@@ -307,7 +305,7 @@ func TestNotOrphan(t *testing.T) {
 	test.AssertEquals(t, typ, unknownOrphan)
 	logs := opf.logger.(*blog.Mock).GetAllMatching("ERR:")
 	if len(logs) != 0 {
-		t.Errorf("Found error logs:")
+		t.Error("Found error logs:")
 		for _, ll := range logs {
 			t.Error(ll)
 		}
