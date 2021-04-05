@@ -28,7 +28,7 @@ func TestError(t *testing.T) {
 			"DNS problem: query timed out looking up TXT for hostname",
 		}, {
 			&Error{dns.TypeTXT, "hostname", context.Canceled, -1},
-			"DNS problem: query timed out looking up TXT for hostname",
+			"DNS problem: query timed out (and was canceled) looking up TXT for hostname",
 		}, {
 			&Error{dns.TypeCAA, "hostname", nil, dns.RcodeServerFailure},
 			"DNS problem: SERVFAIL looking up CAA for hostname - the domain's nameservers may be malfunctioning",
