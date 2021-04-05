@@ -630,7 +630,7 @@ func TestRetry(t *testing.T) {
 	cancel()
 	_, err := dr.LookupTXT(ctx, "example.com")
 	if err == nil ||
-		err.Error() != "DNS problem: query timed out looking up TXT for example.com" {
+		err.Error() != "DNS problem: query timed out (and was canceled) looking up TXT for example.com" {
 		t.Errorf("expected %s, got %s", context.Canceled, err)
 	}
 
