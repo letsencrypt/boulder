@@ -216,6 +216,7 @@ type GenerateOCSPRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
+	// TODO(#5079): Remove certDER field.
 	CertDER   []byte `protobuf:"bytes,1,opt,name=certDER,proto3" json:"certDER,omitempty"`
 	Status    string `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
 	Reason    int32  `protobuf:"varint,3,opt,name=reason,proto3" json:"reason,omitempty"`
