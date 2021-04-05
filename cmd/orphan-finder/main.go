@@ -23,6 +23,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -51,7 +52,11 @@ type config struct {
 	// to the original issued date. It should match the value used in
 	// `test/config/ca.json` for the CA "backdate" value.
 	Backdate cmd.ConfigDuration
-	Features map[string]bool
+	// IssuerCerts is a list of paths to all intermediate certificates which may
+	// have been used to issue certificates in the last 90 days. These are used
+	// to form OCSP generation requests.
+	IssuerCerts []string
+	Features    map[string]bool
 }
 
 type certificateStorage interface {
@@ -192,24 +197,11 @@ func parseLogLine(line string, logger blog.Logger) (parsedLine, error) {
 	}, nil
 }
 
-func generateOCSP(ctx context.Context, ca ocspGenerator, certDER []byte) ([]byte, error) {
-	// generate a fresh OCSP response
-	ocspResponse, err := ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-		CertDER:   certDER,
-		Status:    string(core.OCSPStatusGood),
-		Reason:    0,
-		RevokedAt: 0,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return ocspResponse.Response, nil
-}
-
 type orphanFinder struct {
 	sa       certificateStorage
 	ca       ocspGenerator
 	logger   blog.Logger
+	issuers  map[issuance.IssuerNameID]*issuance.Certificate
 	backdate time.Duration
 }
 
@@ -235,10 +227,18 @@ func newOrphanFinder(configFile string) *orphanFinder {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
 	cac := capb.NewOCSPGeneratorClient(caConn)
 
+	issuers := make(map[issuance.IssuerNameID]*issuance.Certificate)
+	for _, issuerCertPath := range conf.IssuerCerts {
+		c, err := issuance.LoadCertificate(issuerCertPath)
+		cmd.FailOnError(err, "Failed to load issuer certificate")
+		issuers[c.NameID()] = c
+	}
+
 	return &orphanFinder{
 		sa:       sac,
 		ca:       cac,
 		logger:   logger,
+		issuers:  issuers,
 		backdate: conf.Backdate.Duration,
 	}
 }
@@ -247,6 +247,7 @@ func newOrphanFinder(configFile string) *orphanFinder {
 // each line of it. It outputs stats about how many cert and precert orphans it
 // found, and how many it successfully stored.
 func (opf *orphanFinder) parseCALog(logPath string) {
+	ctx := context.Background()
 	logData, err := ioutil.ReadFile(logPath)
 	cmd.FailOnError(err, "Failed to read log file")
 
@@ -255,7 +256,7 @@ func (opf *orphanFinder) parseCALog(logPath string) {
 		if line == "" {
 			continue
 		}
-		found, added, typ := opf.storeLogLine(line)
+		found, added, typ := opf.storeLogLine(ctx, line)
 		var foundStat, addStat *int64
 		switch typ {
 		case certOrphan:
@@ -285,7 +286,7 @@ func (opf *orphanFinder) parseCALog(logPath string) {
 // is true if the orphan was successfully added to the DB. As part of adding an
 // orphan to the DB, it requests a fresh OCSP response from the CA to store
 // alongside the precertificate/certificate.
-func (opf *orphanFinder) storeLogLine(line string) (found bool, added bool, typ orphanType) {
+func (opf *orphanFinder) storeLogLine(ctx context.Context, line string) (found bool, added bool, typ orphanType) {
 	// At a minimum, the log line should contain the word "orphaning" and the token
 	// "cert=". If it doesn't have those, short-circuit.
 	if (!strings.Contains(line, fmt.Sprintf("orphaning %s", certOrphan)) &&
@@ -313,8 +314,7 @@ func (opf *orphanFinder) storeLogLine(line string) (found bool, added bool, typ 
 	}
 
 	// generate an OCSP response
-	ctx := context.Background()
-	response, err := generateOCSP(ctx, opf.ca, parsed.certDER)
+	response, err := opf.generateOCSP(ctx, cert)
 	if err != nil {
 		opf.logger.AuditErrf("Couldn't generate OCSP: %s, [%s]", err, line)
 		return true, false, typ
@@ -349,6 +349,7 @@ func (opf *orphanFinder) storeLogLine(line string) (found bool, added bool, typ 
 
 // parseDER loads and attempts to store a single orphan from a single DER file.
 func (opf *orphanFinder) parseDER(derPath string, regID int64) {
+	ctx := context.Background()
 	der, err := ioutil.ReadFile(derPath)
 	cmd.FailOnError(err, "Failed to read DER file")
 	cert, typ, err := checkDER(opf.sa, der)
@@ -356,8 +357,7 @@ func (opf *orphanFinder) parseDER(derPath string, regID int64) {
 	// Because certificates are backdated we need to add the backdate duration
 	// to find the true issued time.
 	issuedDate := cert.NotBefore.Add(1 * opf.backdate)
-	ctx := context.Background()
-	response, err := generateOCSP(ctx, opf.ca, der)
+	response, err := opf.generateOCSP(ctx, cert)
 	cmd.FailOnError(err, "Generating OCSP")
 
 	switch typ {
@@ -375,6 +375,38 @@ func (opf *orphanFinder) parseDER(derPath string, regID int64) {
 		err = errors.New("unknown orphan type")
 	}
 	cmd.FailOnError(err, "Failed to add certificate to database")
+}
+
+// generateOCSP asks the CA to generate a new OCSP response for the given cert.
+func (opf *orphanFinder) generateOCSP(ctx context.Context, cert *x509.Certificate) ([]byte, error) {
+	if opf.issuers == nil || len(opf.issuers) == 0 {
+		// TODO(#5149): Remove this legacy codepath
+		ocspResponse, err := opf.ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
+			CertDER:   cert.Raw,
+			Status:    string(core.OCSPStatusGood),
+			Reason:    0,
+			RevokedAt: 0,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return ocspResponse.Response, nil
+	}
+	issuer, ok := opf.issuers[issuance.GetIssuerNameID(cert)]
+	if !ok {
+		return nil, errors.New("unrecognized issuer for orphan")
+	}
+	ocspResponse, err := opf.ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
+		Serial:    core.SerialToString(cert.SerialNumber),
+		IssuerID:  int64(issuer.ID()),
+		Status:    string(core.OCSPStatusGood),
+		Reason:    0,
+		RevokedAt: 0,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ocspResponse.Response, nil
 }
 
 func main() {

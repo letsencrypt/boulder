@@ -2,9 +2,15 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"testing"
 	"time"
 
@@ -16,6 +22,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -101,18 +108,31 @@ func (ca *mockCA) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...gr
 }
 
 func TestParseLine(t *testing.T) {
-	fc := clock.NewFake()
-	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "failed to generate test key")
+	issuer, err := issuance.LoadCertificate("../../test/test-ca2.pem")
+	test.AssertNotError(t, err, "failed to load test issuer")
+	cert, err := core.LoadCert("../../test/test-ee.pem")
+	test.AssertNotError(t, err, "failed to load test cert")
+	certStr := hex.EncodeToString(cert.Raw)
+	precertTmpl := x509.Certificate{
+		SerialNumber: big.NewInt(0),
+		NotBefore:    time.Now(),
+		ExtraExtensions: []pkix.Extension{
+			{Id: asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 3}, Critical: true, Value: []byte{0x05, 0x00}},
+		},
+	}
+	precertDER, err := x509.CreateCertificate(rand.Reader, &precertTmpl, issuer.Certificate, key.Public(), key)
+	test.AssertNotError(t, err, "failed to generate test precert")
+	precertStr := hex.EncodeToString(precertDER)
+
 	opf := &orphanFinder{
 		sa:       &mockSA{},
 		ca:       &mockCA{},
 		logger:   blog.UseMock(),
+		issuers:  map[issuance.IssuerNameID]*issuance.Certificate{issuer.NameID(): issuer},
 		backdate: time.Hour,
 	}
-
-	testCertDER := "3082045b30820343a003020102021300ffa0160630d618b2eb5c0510824b14274856300d06092a864886f70d01010b0500301f311d301b06035504030c146861707079206861636b65722066616b65204341301e170d3135313030333035323130305a170d3136303130313035323130305a3018311630140603550403130d6578616d706c652e636f2e626e30820122300d06092a864886f70d01010105000382010f003082010a02820101009ea3f1d21fade5596e36a6a77095a94758e4b72466b7444ada4f7c4cf6fde9b1d470b93b65c1fdd896917f248ccae49b57c80dc21c64b010699432130d059d2d8392346e8a179c7c947835549c64a7a5680c518faf0a5cbea48e684fca6304775c8fa9239c34f1d5cb2d063b098bd1c17183c7521efc884641b2f0b41402ac87c7076848d4347cef59dd5a9c174ad25467db933c95ef48c578ba762f527b21666a198fb5e1fe2d8299b4dceb1791e96ad075e3ecb057c776d764fad8f0829d43c32ddf985a3a36fade6966cec89468721a1ec47ab38eac8da4514060ded51d283a787b7c69971bda01f49f76baa41b1f9b4348aa4279e0fa55645d6616441f0d0203010001a382019530820191300e0603551d0f0101ff0404030205a0301d0603551d250416301406082b0601050507030106082b06010505070302300c0603551d130101ff04023000301d0603551d0e04160414369d0c100452b9eb3ffe7ae852e9e839a3ae5adb301f0603551d23041830168014fb784f12f96015832c9f177f3419b32e36ea4189306a06082b06010505070101045e305c302606082b06010505073001861a687474703a2f2f6c6f63616c686f73743a343030322f6f637370303206082b060105050730028626687474703a2f2f6c6f63616c686f73743a343030302f61636d652f6973737565722d6365727430180603551d110411300f820d6578616d706c652e636f2e626e30270603551d1f0420301e301ca01aa0188616687474703a2f2f6578616d706c652e636f6d2f63726c30630603551d20045c305a300a060667810c0102013000304c06032a03043045302206082b060105050702011616687474703a2f2f6578616d706c652e636f6d2f637073301f06082b0601050507020230130c11446f20576861742054686f752057696c74300d06092a864886f70d01010b05000382010100bbb4b994971cafa2e56e2258db46d88bfb361d8bfcd75521c03174e471eaa9f3ff2e719059bb57cc064079496d8550577c127baa84a18e792ddd36bf4f7b874b6d40d1d14288c15d38e4d6be25eb7805b1c3756b3735702eb4585d1886bc8af2c14086d3ce506e55184913c83aaaa8dfe6160bd035e42cda6d97697ed3ee3124c9bf9620a9fe6602191c1b746533c1d4a30023bbe902cb4aa661901177ed924eb836c94cc062dd0ce439c4ece9ee1dfe0499a42cbbcb2ea7243c59f4df4fdd7058229bacf9a640632dbd776b21633137b2df1c41f0765a66f448777aeec7ed4c0cdeb9d8a2356ff813820a287e11d52efde1aa543b4ef2ee992a7a9d5ccf7da4"
-
-	testPreCertDER := "308204553082033da003020102021203e1dea6f3349009a90e0306dbb39c3e7ca2300d06092a864886f70d01010b0500304a310b300906035504061302555331163014060355040a130d4c6574277320456e6372797074312330210603550403131a4c6574277320456e637279707420417574686f72697479205833301e170d3139313031363132353431375a170d3230303131343132353431375a30133111300f060355040313086a756e74732e696f30820122300d06092a864886f70d01010105000382010f003082010a0282010100c91926403839aadbf2a73af4f85e3884df553880c7e9d11943121b941f284a2c805b6329a93d7fb2357c1298d811cfce61faa863c334149f948ff52a55a516e56b2d31d137b1d0319f2aabdea0e9d5e8630b54d7e53597e094c323e24a7ec1ab0db5d85651a641ec3fd7841fe5cbc675315c49b714238ead757e55409fd68c4b48d42f14c2124d381800fd2ec417ed7f363b00ab23aaddaf9113d5cf889bbf391431bffb91d425d11a1e79318b7007b8e75cc56633662c3d6c58175b5cab6225aa495361b1124642f19584820d215f23f46bd9fafa3341a0f7f387bf7cdecbccd7fcbcb3e917becb41562771e579884a0d8a1b170536f82ba90b398e9a6932150203010001a382016a30820166300e0603551d0f0101ff0404030205a0301d0603551d250416301406082b0601050507030106082b06010505070302300c0603551d130101ff04023000301d0603551d0e041604144d14d73117ca7f5a27394ed590b0d037eb5888a2301f0603551d23041830168014a84a6a63047dddbae6d139b7a64565eff3a8eca1306f06082b0601050507010104633061302e06082b060105050730018622687474703a2f2f6f6373702e696e742d78332e6c657473656e63727970742e6f7267302f06082b060105050730028623687474703a2f2f636572742e696e742d78332e6c657473656e63727970742e6f72672f30130603551d11040c300a82086a756e74732e696f304c0603551d20044530433008060667810c0102013037060b2b0601040182df130101013028302606082b06010505070201161a687474703a2f2f6370732e6c657473656e63727970742e6f72673013060a2b06010401d6790204030101ff04020500300d06092a864886f70d01010b0500038201010035f9d6620874966f2aa400f069c5f601dc11083f5859a15d20e9b1d2f9d87d3756a71a03cee0ab2a69b5173a4395b698163ba60394167c9eb4b66d20d9b3a76bf94995288e8d15c70bee969f77a71147718803e73df0a7832c1fcae1e3138601ebc61725bc7505c6d1e5b0eaf7797e09161d71e37d76370dc489312b1bf0600d1c952f846edb810c284c0d831f27481a8f2220ad178c87d8c4688023fa3798293dc9fdffa9e5b885a8107d8a2480226cd5f9121d6d7ea83b10292371ad6757e7729b27136a064f2901822b4f0ea52f8149a17860e37d3dc925488b1ba4aa26ef51e60de024e67e3d5e04ac97d8bd79a003e668ea2e1bd1c0b9d77c7cf7bfdc32"
 
 	logLine := func(typ orphanType, der, issuerID, regID, orderID string) string {
 		return fmt.Sprintf(
@@ -154,16 +174,16 @@ func TestParseLine(t *testing.T) {
 		},
 		{
 			Name:           "Valid cert in line",
-			LogLine:        logLine(certOrphan, testCertDER, "1", "1001", "0"),
+			LogLine:        logLine(certOrphan, certStr, "1", "1001", "0"),
 			ExpectFound:    true,
 			ExpectAdded:    true,
-			ExpectAddedDER: testCertDER,
+			ExpectAddedDER: certStr,
 			ExpectRegID:    1001,
 			ExpectNoErrors: true,
 		},
 		{
 			Name:        "Already inserted cert in line",
-			LogLine:     logLine(certOrphan, testCertDER, "1", "1001", "0"),
+			LogLine:     logLine(certOrphan, certStr, "1", "1001", "0"),
 			ExpectFound: true,
 			// ExpectAdded is false because we have already added this cert in the
 			// previous "Valid cert in line" test case.
@@ -186,16 +206,16 @@ func TestParseLine(t *testing.T) {
 		},
 		{
 			Name:           "Valid precert in line",
-			LogLine:        logLine(precertOrphan, testPreCertDER, "1", "9999", "0"),
+			LogLine:        logLine(precertOrphan, precertStr, "1", "9999", "0"),
 			ExpectFound:    true,
 			ExpectAdded:    true,
-			ExpectAddedDER: testPreCertDER,
+			ExpectAddedDER: precertStr,
 			ExpectRegID:    9999,
 			ExpectNoErrors: true,
 		},
 		{
 			Name:        "Already inserted precert in line",
-			LogLine:     logLine(precertOrphan, testPreCertDER, "1", "1001", "0"),
+			LogLine:     logLine(precertOrphan, precertStr, "1", "1001", "0"),
 			ExpectFound: true,
 			// ExpectAdded is false because we have already added this cert in the
 			// previous "Valid cert in line" test case.
@@ -204,21 +224,21 @@ func TestParseLine(t *testing.T) {
 		},
 		{
 			Name:           "Unknown orphan type",
-			LogLine:        logLine(unknownOrphan, testPreCertDER, "1", "1001", "0"),
+			LogLine:        logLine(unknownOrphan, precertStr, "1", "1001", "0"),
 			ExpectFound:    false,
 			ExpectAdded:    false,
 			ExpectNoErrors: false,
 		},
 		{
 			Name:           "Empty issuerID in line",
-			LogLine:        logLine(precertOrphan, testPreCertDER, "", "1001", "0"),
+			LogLine:        logLine(precertOrphan, precertStr, "", "1001", "0"),
 			ExpectFound:    true,
 			ExpectAdded:    false,
 			ExpectNoErrors: false,
 		},
 		{
 			Name:           "Zero issuerID in line",
-			LogLine:        logLine(precertOrphan, testPreCertDER, "0", "1001", "0"),
+			LogLine:        logLine(precertOrphan, precertStr, "0", "1001", "0"),
 			ExpectFound:    true,
 			ExpectAdded:    false,
 			ExpectNoErrors: false,
@@ -227,8 +247,9 @@ func TestParseLine(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
+			ctx := context.Background()
 			opf.logger.(*blog.Mock).Clear()
-			found, added, typ := opf.storeLogLine(tc.LogLine)
+			found, added, typ := opf.storeLogLine(ctx, tc.LogLine)
 			test.AssertEquals(t, found, tc.ExpectFound)
 			test.AssertEquals(t, added, tc.ExpectAdded)
 			logs := opf.logger.(*blog.Mock).GetAllMatching("ERR:")
@@ -247,21 +268,19 @@ func TestParseLine(t *testing.T) {
 				var storedCert core.Certificate
 				switch typ {
 				case precertOrphan:
-					resp, err := opf.sa.GetPrecertificate(context.Background(), &sapb.Serial{Serial: testCertSerial})
+					resp, err := opf.sa.GetPrecertificate(ctx, &sapb.Serial{Serial: testCertSerial})
 					test.AssertNotError(t, err, "Error getting test precert serial from SA")
-					precert, err := bgrpc.PBToCert(resp)
+					storedCert, err = bgrpc.PBToCert(resp)
 					test.AssertNotError(t, err, "Error getting test precert from GetPrecertificate pb response")
-					storedCert = precert
 				case certOrphan:
-					cert, err := opf.sa.GetCertificate(context.Background(), testCertSerial)
+					storedCert, err = opf.sa.GetCertificate(ctx, testCertSerial)
 					test.AssertNotError(t, err, "Error getting test cert serial from SA")
-					storedCert = cert
 				default:
 					t.Fatalf("unknown orphan type returned: %s", typ)
 				}
 				// The orphan should have been added with the correct registration ID from the log line
 				test.AssertEquals(t, storedCert.RegistrationID, int64(tc.ExpectRegID))
-				// The Issued timestamp should be the certificate's NotBefore timestamp offset by the backdateDuration
+				// The Issued timestamp should be the certificate's NotBefore timestamp offset by the backdate
 				expectedIssued := testCert.NotBefore.Add(opf.backdate)
 				test.Assert(t, storedCert.Issued.Equal(expectedIssued),
 					fmt.Sprintf("stored cert issued date (%s) was not equal to expected (%s)",
@@ -272,8 +291,7 @@ func TestParseLine(t *testing.T) {
 }
 
 func TestNotOrphan(t *testing.T) {
-	fc := clock.NewFake()
-	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
+	ctx := context.Background()
 	opf := &orphanFinder{
 		sa:       &mockSA{},
 		ca:       &mockCA{},
@@ -281,7 +299,7 @@ func TestNotOrphan(t *testing.T) {
 		backdate: time.Hour,
 	}
 
-	found, added, typ := opf.storeLogLine("cert=fakeout")
+	found, added, typ := opf.storeLogLine(ctx, "cert=fakeout")
 	test.AssertEquals(t, found, false)
 	test.AssertEquals(t, added, false)
 	test.AssertEquals(t, typ, unknownOrphan)
