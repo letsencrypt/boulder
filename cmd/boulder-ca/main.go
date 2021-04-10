@@ -84,14 +84,9 @@ type config struct {
 		// Recommended to be around 500ms.
 		OCSPLogPeriod cmd.ConfigDuration
 
-		// List of Registration IDs for which ECDSA issuance is allowed. If an
-		// account is in this allowlist *and* requests issuance for an ECDSA key
-		// *and* an ECDSA issuer is configured in the CA, then the certificate
-		// will be issued from that ECDSA issuer. If this list is empty, then
-		// ECDSA issuance is allowed for all accounts.
-		// This is temporary, and will be used for testing and slow roll-out of
-		// ECDSA issuance, but will then be removed.
-		ECDSAAllowedAccounts []int64
+		// Path of a YAML file containing the list of int64 RegIDs
+		// allowed to request ECDSA issuance
+		ECDSAAllowedAccountsFilename string
 
 		Features map[string]bool
 	}
@@ -134,6 +129,8 @@ func main() {
 	ocspAddr := flag.String("ocsp-addr", "", "OCSP gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	ecdsaAllowedListFilename := flag.String(
+		"ecdsa-allowed-list", "", "File path to the ECDSA allowed list YAML file")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
@@ -155,6 +152,9 @@ func main() {
 	}
 	if *debugAddr != "" {
 		c.CA.DebugAddr = *debugAddr
+	}
+	if *ecdsaAllowedListFilename != "" {
+		c.CA.ECDSAAllowedAccountsFilename = *ecdsaAllowedListFilename
 	}
 
 	if c.CA.MaxNames == 0 {
@@ -204,7 +204,6 @@ func main() {
 		sa,
 		pa,
 		boulderIssuers,
-		c.CA.ECDSAAllowedAccounts,
 		c.CA.Expiry.Duration,
 		c.CA.Backdate.Duration,
 		c.CA.SerialPrefix,
@@ -218,6 +217,11 @@ func main() {
 		scope,
 		clk)
 	cmd.FailOnError(err, "Failed to create CA impl")
+
+	if c.CA.ECDSAAllowedAccountsFilename != "" {
+		ecdsaAllowedListErr := cai.SetECDSAAllowedListFile(c.CA.ECDSAAllowedAccountsFilename)
+		cmd.FailOnError(ecdsaAllowedListErr, "Couldn't load ECDSA allowed list file")
+	}
 
 	if orphanQueue != nil {
 		go cai.OrphanIntegrationLoop()

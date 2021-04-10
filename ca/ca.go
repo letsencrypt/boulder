@@ -29,6 +29,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/reloader"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -75,7 +76,7 @@ type CertificateAuthorityImpl struct {
 	sa                 certificateStorage
 	pa                 core.PolicyAuthority
 	issuers            issuerMaps
-	ecdsaAllowedRegIDs map[int64]bool
+	ecdsaAllowedList   ecdsaAllowedList
 	prefix             int // Prepended to the serial number
 	validityPeriod     time.Duration
 	backdate           time.Duration
@@ -138,7 +139,6 @@ func NewCertificateAuthorityImpl(
 	sa certificateStorage,
 	pa core.PolicyAuthority,
 	boulderIssuers []*issuance.Issuer,
-	ecdsaAllowedRegIDs []int64,
 	certExpiry time.Duration,
 	certBackdate time.Duration,
 	serialPrefix int,
@@ -169,11 +169,6 @@ func NewCertificateAuthorityImpl(
 	issuers, err := makeInternalIssuers(boulderIssuers, ocspLifetime)
 	if err != nil {
 		return nil, err
-	}
-
-	ecdsaAllowedRegIDsMap := make(map[int64]bool, len(ecdsaAllowedRegIDs))
-	for _, regID := range ecdsaAllowedRegIDs {
-		ecdsaAllowedRegIDsMap[regID] = true
 	}
 
 	csrExtensionCount := prometheus.NewCounterVec(
@@ -223,7 +218,7 @@ func NewCertificateAuthorityImpl(
 		sa:                 sa,
 		pa:                 pa,
 		issuers:            issuers,
-		ecdsaAllowedRegIDs: ecdsaAllowedRegIDsMap,
+		ecdsaAllowedList:   newECDSAAllowedList(),
 		validityPeriod:     certExpiry,
 		backdate:           certBackdate,
 		prefix:             serialPrefix,
@@ -242,6 +237,19 @@ func NewCertificateAuthorityImpl(
 	}
 
 	return ca, nil
+}
+
+func (ca *CertificateAuthorityImpl) ecdsaAllowedListLoadError(err error) {
+	ca.log.Errf("error reloading ECDSA allowed list: %s", err)
+}
+
+func (ca *CertificateAuthorityImpl) SetECDSAAllowedListFile(filename string) error {
+	_, err := reloader.New(filename, ca.ecdsaAllowedList.load, ca.ecdsaAllowedListLoadError)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // noteSignError is called after operations that may cause a PKCS11 signing error.
@@ -512,7 +520,7 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		// contained in the CSR, unless we have an allowlist of registration IDs
 		// for ECDSA, in which case switch all not-allowed accounts to RSA issuance.
 		alg := csr.PublicKeyAlgorithm
-		if alg == x509.ECDSA && !features.Enabled(features.ECDSAForAll) && !ca.ecdsaAllowedRegIDs[issueReq.RegistrationID] {
+		if alg == x509.ECDSA && !features.Enabled(features.ECDSAForAll) && !ca.ecdsaAllowedList.regIDAllowed(issueReq.RegistrationID) {
 			alg = x509.RSA
 		}
 		issuer, ok = ca.issuers.byAlg[alg]
