@@ -32,8 +32,10 @@ func (d Error) Error() string {
 			}
 			// Note: we check d.underlying here even though `Timeout()` does this because the call to `netErr.Timeout()` above only
 			// happens for `*net.OpError` underlying types!
-		} else if d.underlying == context.Canceled || d.underlying == context.DeadlineExceeded {
+		} else if d.underlying == context.DeadlineExceeded {
 			detail = detailDNSTimeout
+		} else if d.underlying == context.Canceled {
+			detail = detailCanceled
 		} else {
 			detail = detailServerFailure
 		}
@@ -60,6 +62,7 @@ func (d Error) Timeout() bool {
 }
 
 const detailDNSTimeout = "query timed out"
+const detailCanceled = "query timed out (and was canceled)"
 const detailDNSNetFailure = "networking error"
 const detailServerFailure = "server failure at resolver"
 
