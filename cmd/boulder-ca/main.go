@@ -84,6 +84,19 @@ type config struct {
 		// Recommended to be around 500ms.
 		OCSPLogPeriod cmd.ConfigDuration
 
+		// TODO(#5394): This is deprecated and exists to support
+		// deployability until `ECDSAAllowedAccounts` is replaced by
+		// `ECDSAAllowedAccountsFilename` in all staging and production
+		// configs.
+		//
+		// List of Registration IDs for which ECDSA issuance is allowed.
+		// If an account is in this allowlist *and* requests issuance
+		// for an ECDSA key *and* an ECDSA issuer is configured in the
+		// CA, then the certificate will be issued from that ECDSA
+		// issuer. This is temporary, and will be used for testing and
+		// slow roll-out of ECDSA issuance, but will then be removed.
+		ECDSAAllowedAccounts []int64
+
 		// Path of a YAML file containing the list of int64 RegIDs
 		// allowed to request ECDSA issuance
 		ECDSAAllowedAccountsFilename string
@@ -217,6 +230,14 @@ func main() {
 		scope,
 		clk)
 	cmd.FailOnError(err, "Failed to create CA impl")
+
+	// TODO(#5394): This is deprecated and exists to support
+	// deployability until `ECDSAAllowedAccounts` is replaced by
+	// `ECDSAAllowedAccountsFilename` in all staging and production
+	// configs.
+	if len(c.CA.ECDSAAllowedAccounts) > 0 {
+		cai.ECDSAAllowedList.LoadFromConfig(c.CA.ECDSAAllowedAccounts)
+	}
 
 	if c.CA.ECDSAAllowedAccountsFilename != "" {
 		ecdsaAllowedListErr := cai.SetECDSAAllowedListFile(c.CA.ECDSAAllowedAccountsFilename)

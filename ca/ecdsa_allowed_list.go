@@ -23,8 +23,8 @@ type ecdsaAllowedList struct {
 }
 
 // load unmarshals a list of allowed registration IDs from YAML as bytes
-// (typically read from disk by a reloader) and updates the `regIDsMap`
-// with the resulting list.
+// (typically read from disk by a reloader) and updates the inner
+// `regIDsMap` with the resulting list.
 func (e *ecdsaAllowedList) load(contents []byte) error {
 	var regIDsList []int64
 	err := yaml.Unmarshal(contents, &regIDsList)
@@ -40,6 +40,23 @@ func (e *ecdsaAllowedList) load(contents []byte) error {
 	e.regIDsMap = newRegIDsMap
 	e.Unlock()
 	return nil
+}
+
+// LoadFromList is exported to allow boulder-ca to set the inner
+// `regIDsMap` with using a list of allowed registration IDs received in
+// the CA config JSON.
+//
+// TODO(#5394): This is deprecated and exists to support deployability
+// until `ECDSAAllowedAccounts` is replaced by
+// `ECDSAAllowedAccountsFilename` in all staging and production configs.
+func (e *ecdsaAllowedList) LoadFromConfig(regIDsList []int64) {
+	e.Lock()
+	newRegIDsMap := make(map[int64]bool)
+	for _, regID := range regIDsList {
+		newRegIDsMap[regID] = true
+	}
+	e.regIDsMap = newRegIDsMap
+	e.Unlock()
 }
 
 // regIDAllowed checks if a given registration ID is on the ECDSA

@@ -73,10 +73,14 @@ type issuerMaps struct {
 type CertificateAuthorityImpl struct {
 	capb.UnimplementedCertificateAuthorityServer
 	capb.UnimplementedOCSPGeneratorServer
-	sa                 certificateStorage
-	pa                 core.PolicyAuthority
-	issuers            issuerMaps
-	ecdsaAllowedList   ecdsaAllowedList
+	sa      certificateStorage
+	pa      core.PolicyAuthority
+	issuers issuerMaps
+	// TODO(#5394): This is only exported to support deployability
+	// until `ECDSAAllowedAccounts` is replaced by
+	// `ECDSAAllowedAccountsFilename` in all staging and production
+	// configs.
+	ECDSAAllowedList   ecdsaAllowedList
 	prefix             int // Prepended to the serial number
 	validityPeriod     time.Duration
 	backdate           time.Duration
@@ -215,10 +219,14 @@ func NewCertificateAuthorityImpl(
 	}
 
 	ca = &CertificateAuthorityImpl{
-		sa:                 sa,
-		pa:                 pa,
-		issuers:            issuers,
-		ecdsaAllowedList:   newECDSAAllowedList(),
+		sa:      sa,
+		pa:      pa,
+		issuers: issuers,
+		// TODO(#5394): This is only exported to support deployability
+		// until `ECDSAAllowedAccounts` is replaced by
+		// `ECDSAAllowedAccountsFilename` in all staging and production
+		// configs.
+		ECDSAAllowedList:   newECDSAAllowedList(),
 		validityPeriod:     certExpiry,
 		backdate:           certBackdate,
 		prefix:             serialPrefix,
@@ -244,7 +252,7 @@ func (ca *CertificateAuthorityImpl) ecdsaAllowedListLoadError(err error) {
 }
 
 func (ca *CertificateAuthorityImpl) SetECDSAAllowedListFile(filename string) error {
-	_, err := reloader.New(filename, ca.ecdsaAllowedList.load, ca.ecdsaAllowedListLoadError)
+	_, err := reloader.New(filename, ca.ECDSAAllowedList.load, ca.ecdsaAllowedListLoadError)
 	if err != nil {
 		return err
 	}
@@ -520,7 +528,7 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		// contained in the CSR, unless we have an allowlist of registration IDs
 		// for ECDSA, in which case switch all not-allowed accounts to RSA issuance.
 		alg := csr.PublicKeyAlgorithm
-		if alg == x509.ECDSA && !features.Enabled(features.ECDSAForAll) && !ca.ecdsaAllowedList.regIDAllowed(issueReq.RegistrationID) {
+		if alg == x509.ECDSA && !features.Enabled(features.ECDSAForAll) && !ca.ECDSAAllowedList.regIDAllowed(issueReq.RegistrationID) {
 			alg = x509.RSA
 		}
 		issuer, ok = ca.issuers.byAlg[alg]
