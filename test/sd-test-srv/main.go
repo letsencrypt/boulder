@@ -4,6 +4,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"strings"
@@ -23,6 +24,8 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 		w.WriteMsg(m)
 		return
 	}
+
+	fmt.Printf("sd-test-srv: got query with question name %q\n", r.Question[0].Name)
 	if !strings.HasSuffix(r.Question[0].Name, ".boulder.") {
 		m.Rcode = dns.RcodeServerFailure
 		w.WriteMsg(m)
@@ -52,6 +55,7 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 	}
 
 	if r.Question[0].Qtype == dns.TypeSRV {
+		fmt.Printf("sd-test-srv: Sending SRV record response!\n")
 		hdr := dns.RR_Header{
 			Name:   r.Question[0].Name,
 			Rrtype: dns.TypeSRV,
@@ -67,14 +71,6 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 		// local resolver runs.
 		m.Answer = append(m.Answer, &dns.SRV{
 			Target: "dns1.boulder",
-			Port:   8053,
-			Hdr:    hdr,
-		}, &dns.SRV{
-			Target: "dns1.boulder",
-			Port:   8054,
-			Hdr:    hdr,
-		}, &dns.SRV{
-			Target: "dns2.boulder",
 			Port:   8053,
 			Hdr:    hdr,
 		}, &dns.SRV{

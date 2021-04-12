@@ -8,7 +8,7 @@
       "tlsPort": 5001
     },
     "dnsTries": 3,
-    "dnsResolver": "dns.boulder",
+    "dnsResolver": "boulder",
     "dnsTimeout": "1s",
     "dnsAllowLoopbackAddresses": true,
     "issuerDomain": "happy-hacker-ca.invalid",

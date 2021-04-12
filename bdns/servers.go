@@ -97,21 +97,30 @@ func StartDynamicProvider(server string, refresh time.Duration) (*dynamicProvide
 }
 
 func (dp *dynamicProvider) update() error {
-	_, srvs, err := net.LookupSRV(dp.host, "", "")
+	fmt.Printf("**va: looking up SRV records\n")
+	_, srvs, err := net.LookupSRV("dns", "", dp.host)
+	fmt.Printf("**va: got result from LookupSRV\n")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to lookup SRV records for %q: %w", dp.host, err)
 	}
 	if srvs == nil || len(srvs) == 0 {
-		return fmt.Errorf("failed to find SRV records for: %q", dp.host)
+		return fmt.Errorf("no SRV records found for %q", dp.host)
 	}
+	fmt.Printf("va: got SRV records: %v\n", srvs)
 
-	addrs := make(map[string][]uint16)
+	addrPorts := make(map[string][]uint16)
 	for _, srv := range srvs {
-		addrs[srv.Target] = append(addrs[srv.Target], srv.Port)
+		addrs, err := net.LookupHost(srv.Target)
+		if err != nil {
+			return fmt.Errorf("failed to resolve SRV Target %q: %w", srv.Target, err)
+		}
+		for _, addr := range addrs {
+			addrPorts[addr] = append(addrPorts[addr], srv.Port)
+		}
 	}
 
 	dp.mu.Lock()
-	dp.addrs = addrs
+	dp.addrs = addrPorts
 	dp.mu.Unlock()
 	return nil
 }
