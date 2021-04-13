@@ -97,16 +97,13 @@ func StartDynamicProvider(server string, refresh time.Duration) (*dynamicProvide
 }
 
 func (dp *dynamicProvider) update() error {
-	fmt.Printf("**va: looking up SRV records\n")
 	_, srvs, err := net.LookupSRV("dns", "", dp.host)
-	fmt.Printf("**va: got result from LookupSRV\n")
 	if err != nil {
 		return fmt.Errorf("failed to lookup SRV records for %q: %w", dp.host, err)
 	}
 	if srvs == nil || len(srvs) == 0 {
 		return fmt.Errorf("no SRV records found for %q", dp.host)
 	}
-	fmt.Printf("va: got SRV records: %v\n", srvs)
 
 	addrPorts := make(map[string][]uint16)
 	for _, srv := range srvs {

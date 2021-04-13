@@ -4,7 +4,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"net"
 	"strings"
@@ -21,14 +20,19 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 
 	if len(r.Question) != 1 {
 		m.Rcode = dns.RcodeServerFailure
-		w.WriteMsg(m)
+		err := w.WriteMsg(m)
+		if err != nil {
+			log.Printf("ERROR: Failed to write message %q: %v", m, err)
+		}
 		return
 	}
 
-	fmt.Printf("sd-test-srv: got query with question name %q\n", r.Question[0].Name)
 	if !strings.HasSuffix(r.Question[0].Name, ".boulder.") {
 		m.Rcode = dns.RcodeServerFailure
-		w.WriteMsg(m)
+		err := w.WriteMsg(m)
+		if err != nil {
+			log.Printf("ERROR: Failed to write message %q: %v", m, err)
+		}
 		return
 	}
 
@@ -50,12 +54,14 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 			A:   net.ParseIP("10.88.88.88"),
 			Hdr: hdr,
 		})
-		w.WriteMsg(m)
+		err := w.WriteMsg(m)
+		if err != nil {
+			log.Printf("ERROR: Failed to write message %q: %v", m, err)
+		}
 		return
 	}
 
 	if r.Question[0].Qtype == dns.TypeSRV {
-		fmt.Printf("sd-test-srv: Sending SRV record response!\n")
 		hdr := dns.RR_Header{
 			Name:   r.Question[0].Name,
 			Rrtype: dns.TypeSRV,
@@ -70,20 +76,26 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 		// in docker-compose.yml, which in turn point to the local IPs on which our
 		// local resolver runs.
 		m.Answer = append(m.Answer, &dns.SRV{
-			Target: "dns1.boulder",
+			Target: "dns1.boulder.",
 			Port:   8053,
 			Hdr:    hdr,
 		}, &dns.SRV{
-			Target: "dns2.boulder",
+			Target: "dns2.boulder.",
 			Port:   8054,
 			Hdr:    hdr,
 		})
-		w.WriteMsg(m)
+		err := w.WriteMsg(m)
+		if err != nil {
+			log.Printf("ERROR: Failed to write message %q: %v", m, err)
+		}
 		return
 	}
 
 	// Just return a NOERROR message for non-A, non-SRV questions
-	w.WriteMsg(m)
+	err := w.WriteMsg(m)
+	if err != nil {
+		log.Printf("ERROR: Failed to write message %q: %v", m, err)
+	}
 	return
 }
 
