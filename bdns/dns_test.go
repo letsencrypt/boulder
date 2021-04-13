@@ -621,7 +621,7 @@ func TestRetry(t *testing.T) {
 					t, dr.timeoutCounter, prometheus.Labels{
 						"qtype":    "TXT",
 						"type":     "out of retries",
-						"resolver": dnsLoopbackHost,
+						"resolver": dnsLoopbackAddr,
 					}, tc.metricsAllRetries)
 			}
 		})
