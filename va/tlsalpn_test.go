@@ -24,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func tlsalpnChallenge() core.Challenge {
@@ -392,7 +393,8 @@ func TestTLSALPN01Success(t *testing.T) {
 	if prob != nil {
 		t.Errorf("Validation failed: %v", prob)
 	}
-	test.AssertEquals(t, test.CountCounterVec("oid", IdPeAcmeIdentifier.String(), va.metrics.tlsALPNOIDCounter), 1)
+	test.AssertMetricWithLabelsEquals(
+		t, va.metrics.tlsALPNOIDCounter, prometheus.Labels{"oid": IdPeAcmeIdentifier.String()}, 1)
 
 	hs.Close()
 	chall = tlsalpnChallenge()
@@ -405,7 +407,8 @@ func TestTLSALPN01Success(t *testing.T) {
 	if prob != nil {
 		t.Errorf("Validation failed: %v", prob)
 	}
-	test.AssertEquals(t, test.CountCounterVec("oid", IdPeAcmeIdentifierV1Obsolete.String(), va.metrics.tlsALPNOIDCounter), 1)
+	test.AssertMetricWithLabelsEquals(
+		t, va.metrics.tlsALPNOIDCounter, prometheus.Labels{"oid": IdPeAcmeIdentifierV1Obsolete.String()}, 1)
 }
 
 func TestValidateTLSALPN01BadChallenge(t *testing.T) {
@@ -464,34 +467,11 @@ func TestValidateTLSALPN01UnawareSrv(t *testing.T) {
 
 // TestValidateTLSALPN01BadUTFSrv tests that validating TLS-ALPN-01 against
 // a host that returns a certificate with a SAN/CN that contains invalid UTF-8
-// will result in a problem with the invalid UTF-8 replaced.
+// will result in a problem with the invalid UTF-8.
 func TestValidateTLSALPN01BadUTFSrv(t *testing.T) {
 	chall := tlsalpnChallenge()
-	hs, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "localhost", "\xf0\x28\x8c\xbc")
-	// TODO(#5321): Remove this comment and the err check below. In go1.16 and
-	// greater tlsalpn01Srv is expected to fail because of invalid unicode
-	// attempted in the certificate creation. If that error occurs, then
-	// the standard library has done it's job and this test is satisfied.
-	// If the error is for any other reason, the unit test will fail. In
-	// 1.15.x this error is not expected and the other test cases will
-	// continue.
-	if err != nil {
-		test.AssertContains(t, err.Error(), "cannot be encoded as an IA5String")
-		return
-	}
-	port := getPort(hs)
-	va, _ := setup(hs, 0, "", nil)
-
-	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
-	if prob == nil {
-		t.Fatalf("TLS ALPN validation should have failed.")
-	}
-	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
-	test.AssertEquals(t, prob.Detail, fmt.Sprintf(
-		"Incorrect validation certificate for tls-alpn-01 challenge. "+
-			"Requested localhost from 127.0.0.1:%d. Received 1 certificate(s), "+
-			`first certificate had names "localhost, %s"`,
-		port, "\ufffd(\ufffd\ufffd"))
+	_, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "localhost", "\xf0\x28\x8c\xbc")
+	test.AssertContains(t, err.Error(), "cannot be encoded as an IA5String")
 }
 
 // TestValidateTLSALPN01MalformedExtnValue tests that validating TLS-ALPN-01
@@ -567,7 +547,6 @@ func TestTLSALPN01TLS13(t *testing.T) {
 		t.Errorf("Validation failed: %v", prob)
 	}
 	// The correct TLS-ALPN-01 OID counter should have been incremented
-	test.AssertEquals(t, test.CountCounterVec(
-		"oid", IdPeAcmeIdentifier.String(), va.metrics.tlsALPNOIDCounter),
-		1)
+	test.AssertMetricWithLabelsEquals(
+		t, va.metrics.tlsALPNOIDCounter, prometheus.Labels{"oid": IdPeAcmeIdentifier.String()}, 1)
 }

@@ -13,8 +13,10 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -37,6 +39,12 @@ func (ca *mockCA) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...gr
 	return &capb.OCSPResponse{}, nil
 }
 
+type mockPurger struct{}
+
+func (mp *mockPurger) Purge(context.Context, *akamaipb.PurgeRequest, ...grpc.CallOption) (*corepb.Empty, error) {
+	return &corepb.Empty{}, nil
+}
+
 func TestRevokeBatch(t *testing.T) {
 	log := blog.UseMock()
 	fc := clock.NewFake()
@@ -53,6 +61,9 @@ func TestRevokeBatch(t *testing.T) {
 	defer test.ResetSATestDatabase(t)
 	reg := satest.CreateWorkingRegistration(t, ssa)
 
+	issuer, err := core.LoadCert("../../test/test-ca.pem")
+	test.AssertNotError(t, err, "Failed to load test issuer")
+
 	ra := ra.NewRegistrationAuthorityImpl(fc,
 		log,
 		metrics.NoopRegisterer,
@@ -66,8 +77,8 @@ func TestRevokeBatch(t *testing.T) {
 		nil,
 		0,
 		nil,
-		nil,
-		[]*issuance.Certificate{{Certificate: &x509.Certificate{}}},
+		&mockPurger{},
+		[]*issuance.Certificate{{Certificate: issuer}},
 	)
 	ra.SA = ssa
 	ra.CA = &mockCA{}
@@ -84,7 +95,7 @@ func TestRevokeBatch(t *testing.T) {
 			SerialNumber: serial,
 			DNSNames:     []string{"asd"},
 		}
-		der, err := x509.CreateCertificate(rand.Reader, template, template, &k.PublicKey, k)
+		der, err := x509.CreateCertificate(rand.Reader, template, issuer, &k.PublicKey, k)
 		test.AssertNotError(t, err, "failed to generate test cert")
 		_, err = ssa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 			Der:      der,

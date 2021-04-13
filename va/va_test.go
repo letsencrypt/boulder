@@ -248,14 +248,11 @@ func TestPerformValidationInvalid(t *testing.T) {
 	res, _ := va.PerformValidation(context.Background(), req)
 	test.Assert(t, res.Problems != nil, "validation succeeded")
 
-	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
+	test.AssertMetricWithLabelsEquals(t, va.metrics.validationTime, prometheus.Labels{
 		"type":         "dns-01",
 		"result":       "invalid",
 		"problem_type": "unauthorized",
-	}))
-	if samples != 1 {
-		t.Errorf("Wrong number of samples for invalid validation. Expected 1, got %d", samples)
-	}
+	}, 1)
 }
 
 func TestPerformValidationValid(t *testing.T) {
@@ -266,14 +263,11 @@ func TestPerformValidationValid(t *testing.T) {
 	res, _ := va.PerformValidation(context.Background(), req)
 	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
 
-	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
+	test.AssertMetricWithLabelsEquals(t, va.metrics.validationTime, prometheus.Labels{
 		"type":         "dns-01",
 		"result":       "valid",
 		"problem_type": "",
-	}))
-	if samples != 1 {
-		t.Errorf("Wrong number of samples for successful validation. Expected 1, got %d", samples)
-	}
+	}, 1)
 	resultLog := mockLog.GetAllMatching(`Validation result`)
 	if len(resultLog) != 1 {
 		t.Fatalf("Wrong number of matching lines for 'Validation result'")
@@ -294,14 +288,11 @@ func TestPerformValidationWildcard(t *testing.T) {
 	res, _ := va.PerformValidation(context.Background(), req)
 	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
 
-	samples := test.CountHistogramSamples(va.metrics.validationTime.With(prometheus.Labels{
+	test.AssertMetricWithLabelsEquals(t, va.metrics.validationTime, prometheus.Labels{
 		"type":         "dns-01",
 		"result":       "valid",
 		"problem_type": "",
-	}))
-	if samples != 1 {
-		t.Errorf("Wrong number of samples for successful validation. Expected 1, got %d", samples)
-	}
+	}, 1)
 	resultLog := mockLog.GetAllMatching(`Validation result`)
 	if len(resultLog) != 1 {
 		t.Fatalf("Wrong number of matching lines for 'Validation result'")

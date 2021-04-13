@@ -498,13 +498,15 @@ func TestOCSP(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	// Issue a certificate from the RSA issuer caCert, then check OCSP comes from the same issuer.
+	rsaIssuerID := ca.issuers.byAlg[x509.RSA].cert.ID()
 	rsaCertPB, err := ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID})
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	rsaCert, err := x509.ParseCertificate(rsaCertPB.DER)
 	test.AssertNotError(t, err, "Failed to parse rsaCert")
 	rsaOCSPPB, err := ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-		CertDER: rsaCertPB.DER,
-		Status:  string(core.OCSPStatusGood),
+		Serial:   core.SerialToString(rsaCert.SerialNumber),
+		IssuerID: int64(rsaIssuerID),
+		Status:   string(core.OCSPStatusGood),
 	})
 	test.AssertNotError(t, err, "Failed to generate OCSP")
 	rsaOCSP, err := ocsp.ParseResponse(rsaOCSPPB.Response, caCert.Certificate)
@@ -514,13 +516,15 @@ func TestOCSP(t *testing.T) {
 	test.AssertEquals(t, rsaOCSP.SerialNumber.Cmp(rsaCert.SerialNumber), 0)
 
 	// Issue a certificate from the ECDSA issuer caCert2, then check OCSP comes from the same issuer.
+	ecdsaIssuerID := ca.issuers.byAlg[x509.ECDSA].cert.ID()
 	ecdsaCertPB, err := ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID})
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	ecdsaCert, err := x509.ParseCertificate(ecdsaCertPB.DER)
 	test.AssertNotError(t, err, "Failed to parse ecdsaCert")
 	ecdsaOCSPPB, err := ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-		CertDER: ecdsaCertPB.DER,
-		Status:  string(core.OCSPStatusGood),
+		Serial:   core.SerialToString(ecdsaCert.SerialNumber),
+		IssuerID: int64(ecdsaIssuerID),
+		Status:   string(core.OCSPStatusGood),
 	})
 	test.AssertNotError(t, err, "Failed to generate OCSP")
 	ecdsaOCSP, err := ocsp.ParseResponse(ecdsaOCSPPB.Response, caCert2.Certificate)
@@ -529,12 +533,37 @@ func TestOCSP(t *testing.T) {
 	test.AssertEquals(t, ecdsaOCSP.RevocationReason, 0)
 	test.AssertEquals(t, ecdsaOCSP.SerialNumber.Cmp(ecdsaCert.SerialNumber), 0)
 
-	// Test that signatures are checked.
-	_, err = ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-		CertDER: append(rsaCertPB.DER, byte(0)),
+	// GenerateOCSP with a bad IssuerID should fail.
+	_, err = ca.GenerateOCSP(context.Background(), &capb.GenerateOCSPRequest{
+		Serial:   core.SerialToString(rsaCert.SerialNumber),
+		IssuerID: int64(666),
+		Status:   string(core.OCSPStatusGood),
+	})
+	test.AssertError(t, err, "GenerateOCSP didn't fail with invalid IssuerID")
+
+	// GenerateOCSP with a bad Serial should fail.
+	_, err = ca.GenerateOCSP(context.Background(), &capb.GenerateOCSPRequest{
+		Serial:   "BADDECAF",
+		IssuerID: int64(rsaIssuerID),
+		Status:   string(core.OCSPStatusGood),
+	})
+	test.AssertError(t, err, "GenerateOCSP didn't fail with invalid Serial")
+
+	// GenerateOCSP with the old certDER codepath should fail.
+	// TODO(#5079): Remove this test when the proto drops this field entirely.
+	_, err = ca.GenerateOCSP(context.Background(), &capb.GenerateOCSPRequest{
+		CertDER: rsaCertPB.DER,
 		Status:  string(core.OCSPStatusGood),
 	})
-	test.AssertError(t, err, "Generated OCSP for cert with bad signature")
+	test.AssertError(t, err, "GenerateOCSP didn't fail when only given certDER")
+
+	// GenerateOCSP with a valid-but-nonexistent Serial should *not* fail.
+	_, err = ca.GenerateOCSP(context.Background(), &capb.GenerateOCSPRequest{
+		Serial:   "03DEADBEEFBADDECAFFADEFACECAFE30",
+		IssuerID: int64(rsaIssuerID),
+		Status:   string(core.OCSPStatusGood),
+	})
+	test.AssertNotError(t, err, "GenerateOCSP failed with fake-but-valid Serial")
 }
 
 func TestInvalidCSRs(t *testing.T) {
@@ -608,7 +637,7 @@ func TestInvalidCSRs(t *testing.T) {
 			_, err = ca.IssuePrecertificate(ctx, issueReq)
 
 			test.AssertErrorIs(t, err, testCase.errorType)
-			test.AssertEquals(t, signatureCountByPurpose("cert", ca.signatureCount), 0)
+			test.AssertMetricWithLabelsEquals(t, ca.signatureCount, prometheus.Labels{"purpose": "cert"}, 0)
 
 			test.AssertError(t, err, testCase.errorMessage)
 			if testCase.check != nil {
@@ -679,12 +708,12 @@ func countMustStaple(t *testing.T, cert *x509.Certificate) (count int) {
 }
 
 func issueCertificateSubTestMustStaple(t *testing.T, i *TestCertificateIssuance) {
-	test.AssertEquals(t, signatureCountByPurpose("precertificate", i.ca.signatureCount), 1)
+	test.AssertMetricWithLabelsEquals(t, i.ca.signatureCount, prometheus.Labels{"purpose": "precertificate"}, 1)
 	test.AssertEquals(t, countMustStaple(t, i.cert), 1)
 }
 
 func issueCertificateSubTestUnknownExtension(t *testing.T, i *TestCertificateIssuance) {
-	test.AssertEquals(t, signatureCountByPurpose("precertificate", i.ca.signatureCount), 1)
+	test.AssertMetricWithLabelsEquals(t, i.ca.signatureCount, prometheus.Labels{"purpose": "precertificate"}, 1)
 
 	// NOTE: The hard-coded value here will have to change over time as Boulder
 	// adds new (unrequested) extensions to certificates.
@@ -693,7 +722,7 @@ func issueCertificateSubTestUnknownExtension(t *testing.T, i *TestCertificateIss
 }
 
 func issueCertificateSubTestCTPoisonExtension(t *testing.T, i *TestCertificateIssuance) {
-	test.AssertEquals(t, signatureCountByPurpose("precertificate", i.ca.signatureCount), 1)
+	test.AssertMetricWithLabelsEquals(t, i.ca.signatureCount, prometheus.Labels{"purpose": "precertificate"}, 1)
 }
 
 func findExtension(extensions []pkix.Extension, id asn1.ObjectIdentifier) *pkix.Extension {
@@ -703,10 +732,6 @@ func findExtension(extensions []pkix.Extension, id asn1.ObjectIdentifier) *pkix.
 		}
 	}
 	return nil
-}
-
-func signatureCountByPurpose(signatureType string, signatureCount *prometheus.CounterVec) int {
-	return test.CountCounterVec("purpose", signatureType, signatureCount)
 }
 
 func makeSCTs() ([][]byte, error) {
@@ -994,8 +1019,8 @@ func TestPrecertOrphanQueue(t *testing.T) {
 			strings.Join(testCtx.logger.GetAllMatching(".*"), "\n"))
 	}
 
-	orphanCount := test.CountCounterVec("type", "precert", ca.orphanCount)
-	test.AssertEquals(t, orphanCount, 1)
+	test.AssertMetricWithLabelsEquals(
+		t, ca.orphanCount, prometheus.Labels{"type": "precert"}, 1)
 
 	qsa.fail = false
 	err = ca.integrateOrphan()
@@ -1008,8 +1033,8 @@ func TestPrecertOrphanQueue(t *testing.T) {
 		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
 	}
 
-	adoptedCount := test.CountCounterVec("type", "precert", ca.adoptedOrphanCount)
-	test.AssertEquals(t, adoptedCount, 1)
+	test.AssertMetricWithLabelsEquals(
+		t, ca.adoptedOrphanCount, prometheus.Labels{"type": "precert"}, 1)
 }
 
 func TestOrphanQueue(t *testing.T) {
@@ -1128,55 +1153,4 @@ func TestOrphanQueue(t *testing.T) {
 	if err != goque.ErrEmpty {
 		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
 	}
-}
-
-func TestGenerateOCSPWithIssuerID(t *testing.T) {
-	testCtx := setup(t)
-	sa := &mockSA{}
-	_ = features.Set(map[string]bool{"StoreIssuerInfo": true})
-	ca, err := NewCertificateAuthorityImpl(
-		sa,
-		testCtx.pa,
-		testCtx.boulderIssuers,
-		nil,
-		testCtx.certExpiry,
-		testCtx.certBackdate,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.ocspLifetime,
-		testCtx.keyPolicy,
-		nil,
-		0,
-		time.Second,
-		testCtx.logger,
-		testCtx.stats,
-		testCtx.fc)
-	test.AssertNotError(t, err, "Failed to create CA")
-
-	// GenerateOCSP with feature enabled + req contains bad IssuerID
-	_, err = ca.GenerateOCSP(context.Background(), &capb.GenerateOCSPRequest{
-		IssuerID: int64(666),
-		Serial:   "DEADDEADDEADDEADDEADDEADDEADDEADDEAD",
-		Status:   string(core.OCSPStatusGood),
-	})
-	test.AssertError(t, err, "GenerateOCSP didn't fail with invalid IssuerID")
-
-	// GenerateOCSP with feature enabled + req contains good IssuerID
-	rsaIssuer := ca.issuers.byAlg[x509.RSA]
-	_, err = ca.GenerateOCSP(context.Background(), &capb.GenerateOCSPRequest{
-		IssuerID: int64(rsaIssuer.cert.ID()),
-		Serial:   "DEADDEADDEADDEADDEADDEADDEADDEADDEAD",
-		Status:   string(core.OCSPStatusGood),
-	})
-	test.AssertNotError(t, err, "GenerateOCSP failed")
-
-	// GenerateOCSP with feature enabled + req doesn't contain IssuerID
-	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID}
-	cert, err := ca.IssuePrecertificate(ctx, &issueReq)
-	test.AssertNotError(t, err, "Failed to issue")
-	_, err = ca.GenerateOCSP(context.Background(), &capb.GenerateOCSPRequest{
-		CertDER: cert.DER,
-		Status:  string(core.OCSPStatusGood),
-	})
-	test.AssertNotError(t, err, "GenerateOCSP failed")
 }

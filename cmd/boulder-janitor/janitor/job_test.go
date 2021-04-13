@@ -11,6 +11,7 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func setup() (*blog.Mock, clock.FakeClock) {
@@ -136,8 +137,8 @@ LIMIT :limit`
 	}
 
 	// We expect the work gauge for this table has been updated
-	workCount := test.CountCounterVec("table", table, workStat)
-	test.AssertEquals(t, workCount, len(mockIDs))
+	test.AssertMetricWithLabelsEquals(
+		t, workStat, prometheus.Labels{"table": table}, float64(len(mockIDs)))
 
 	// Set the third item in mockIDs to have an expiry after the purge cutoff
 	// so we expect to only get the first two items returned from getWork
@@ -153,8 +154,8 @@ LIMIT :limit`
 		got := <-workChan
 		test.AssertEquals(t, got, mockIDs[i].ID)
 	}
-	workCount = test.CountCounterVec("table", table, workStat)
-	test.AssertEquals(t, workCount, 2)
+	test.AssertMetricWithLabelsEquals(
+		t, workStat, prometheus.Labels{"table": table}, 2)
 }
 
 func TestDeleteResource(t *testing.T) {
@@ -185,14 +186,16 @@ func TestDeleteResource(t *testing.T) {
 	// We expect an err result back
 	test.AssertError(t, err, "no error returned from deleteHandler with bad DB")
 	// We expect no deletes to have been tracked in the deletedStat
-	test.AssertEquals(t, test.CountCounterVec("table", "certificates", deletedStat), 0)
+	test.AssertMetricWithLabelsEquals(
+		t, deletedStat, prometheus.Labels{"table": "certificates"}, 0)
 
 	// With the mock error removed we expect no error returned from simpleDeleteResource
 	testDB.errResult = nil
 	err = job.deleteHandler(job, testID)
 	test.AssertNotError(t, err, "unexpected error from deleteHandler")
 	// We expect a delete to have been tracked in the deletedStat
-	test.AssertEquals(t, test.CountCounterVec("table", "certificates", deletedStat), 1)
+	test.AssertMetricWithLabelsEquals(
+		t, deletedStat, prometheus.Labels{"table": "certificates"}, 1)
 }
 
 type slowDB struct{}

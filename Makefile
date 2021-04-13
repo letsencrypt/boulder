@@ -1,6 +1,3 @@
-# This Makefile also tricks Travis into not running 'go get' for our
-# build. See http://docs.travis-ci.com/user/languages/go/
-
 OBJDIR ?= $(shell pwd)/bin
 DESTDIR ?= /usr/local/bin
 ARCHIVEDIR ?= /tmp
@@ -54,6 +51,16 @@ rpm: build
 		--url "https://github.com/letsencrypt/boulder" --prefix=/opt/boulder \
 		--version "$(VERSION)" --iteration "$(COMMIT_ID)" --epoch "$(EPOCH)" \
 		--package "$(ARCHIVEDIR)/boulder-$(VERSION)-$(COMMIT_ID).x86_64.rpm" \
+		--description "Boulder is an ACME-compatible X.509 Certificate Authority" \
+		--depends "libtool-ltdl" --maintainer "$(MAINTAINER)" \
+		test/config/ sa/_db data/ $(OBJECTS)
+
+deb: build
+	fpm -f -s dir -t deb --name "boulder" \
+		--license "Mozilla Public License v2.0" --vendor "ISRG" \
+		--url "https://github.com/letsencrypt/boulder" --prefix=/opt/boulder \
+		--version "$(VERSION)" --iteration "$(COMMIT_ID)" --epoch "$(EPOCH)" \
+		--package "$(ARCHIVEDIR)/boulder-$(VERSION)-$(COMMIT_ID).x86_64.deb" \
 		--description "Boulder is an ACME-compatible X.509 Certificate Authority" \
 		--depends "libtool-ltdl" --maintainer "$(MAINTAINER)" \
 		test/config/ sa/_db data/ $(OBJECTS)

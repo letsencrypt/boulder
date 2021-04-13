@@ -1,5 +1,5 @@
 syntax = "proto3";
-option go_package = ".;publisher";
+option go_package = "github.com/letsencrypt/boulder/publisher/proto";
 
 service Publisher {
   rpc SubmitToSingleCTWithResult(Request) returns (Result) {}
@@ -10,7 +10,6 @@ message Request {
   string LogURL = 2;
   string LogPublicKey = 3;
   bool precert = 4;
-  bool storeSCT = 5;
 }
 
 message Result {

@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/pkcs11key/v4"
 )
 
@@ -99,10 +100,9 @@ func makeFakeCert(precert bool) (*x509.Certificate, error) {
 	if err != nil {
 		return nil, err
 	}
-	issuerTemplate := &x509.Certificate{
-		Subject: pkix.Name{
-			CommonName: "CA intermediate (RSA) A",
-		},
+	issuer, err := issuance.LoadCertificate("/tmp/intermediate-cert-rsa-a.pem")
+	if err != nil {
+		return nil, err
 	}
 	template := &x509.Certificate{
 		Subject: pkix.Name{
@@ -123,7 +123,7 @@ func makeFakeCert(precert bool) (*x509.Certificate, error) {
 		}
 	}
 
-	der, err := x509.CreateCertificate(rand.Reader, template, issuerTemplate, key.Public(), signer)
+	der, err := x509.CreateCertificate(rand.Reader, template, issuer.Certificate, key.Public(), signer)
 	if err != nil {
 		return nil, err
 	}

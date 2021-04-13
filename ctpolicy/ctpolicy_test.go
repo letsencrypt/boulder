@@ -175,8 +175,8 @@ func TestGetSCTsMetrics(t *testing.T) {
 	}, nil, blog.NewMock(), metrics.NoopRegisterer)
 	_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
 	test.AssertNotError(t, err, "GetSCTs failed")
-	test.AssertEquals(t, test.CountCounter(ctp.winnerCounter.With(prometheus.Labels{"log": "ghi", "group": "a"})), 1)
-	test.AssertEquals(t, test.CountCounter(ctp.winnerCounter.With(prometheus.Labels{"log": "ghi", "group": "b"})), 1)
+	test.AssertMetricWithLabelsEquals(t, ctp.winnerCounter, prometheus.Labels{"log": "ghi", "group": "a"}, 1)
+	test.AssertMetricWithLabelsEquals(t, ctp.winnerCounter, prometheus.Labels{"log": "ghi", "group": "b"}, 1)
 }
 
 func TestGetSCTsFailMetrics(t *testing.T) {
@@ -194,7 +194,7 @@ func TestGetSCTsFailMetrics(t *testing.T) {
 	if err == nil {
 		t.Fatal("GetSCTs should have failed")
 	}
-	test.AssertEquals(t, test.CountCounter(ctp.winnerCounter.With(prometheus.Labels{"log": "all_failed", "group": "a"})), 1)
+	test.AssertMetricWithLabelsEquals(t, ctp.winnerCounter, prometheus.Labels{"log": "all_failed", "group": "a"}, 1)
 
 	// Same thing, but for when an entire log group times out.
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -212,7 +212,7 @@ func TestGetSCTsFailMetrics(t *testing.T) {
 	if err == nil {
 		t.Fatal("GetSCTs should have failed")
 	}
-	test.AssertEquals(t, test.CountCounter(ctp.winnerCounter.With(prometheus.Labels{"log": "timeout", "group": "a"})), 1)
+	test.AssertMetricWithLabelsEquals(t, ctp.winnerCounter, prometheus.Labels{"log": "timeout", "group": "a"}, 1)
 }
 
 // A mock publisher that counts submissions

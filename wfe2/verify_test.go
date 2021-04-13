@@ -17,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/web"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"gopkg.in/square/go-jose.v2"
 )
@@ -450,8 +451,8 @@ func TestValidPOSTRequest(t *testing.T) {
 			test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 			test.AssertEquals(t, prob.HTTPStatus, tc.HTTPStatus)
 			test.AssertEquals(t, prob.Detail, tc.ProblemDetail)
-			test.AssertEquals(t, test.CountCounterVec(
-				"type", tc.ErrorStatType, wfe.stats.httpErrorCount), 1)
+			test.AssertMetricWithLabelsEquals(
+				t, wfe.stats.httpErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
 		})
 	}
 }
@@ -548,8 +549,8 @@ func TestEnforceJWSAuthType(t *testing.T) {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedResult)
 			}
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounterVec(
-					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
+				test.AssertMetricWithLabelsEquals(
+					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
 			}
 		})
 	}
@@ -618,8 +619,8 @@ func TestValidNonce(t *testing.T) {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedResult)
 			}
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounterVec(
-					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
+				test.AssertMetricWithLabelsEquals(
+					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
 			}
 		})
 	}
@@ -738,8 +739,8 @@ func TestValidPOSTURL(t *testing.T) {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedResult)
 			}
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounterVec(
-					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
+				test.AssertMetricWithLabelsEquals(
+					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
 			}
 		})
 	}
@@ -904,8 +905,8 @@ func TestParseJWSRequest(t *testing.T) {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounterVec(
-					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
+				test.AssertMetricWithLabelsEquals(
+					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
 			}
 		})
 	}
@@ -1121,8 +1122,8 @@ func TestLookupJWK(t *testing.T) {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounterVec(
-					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
+				test.AssertMetricWithLabelsEquals(
+					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
 			}
 		})
 	}
@@ -1252,8 +1253,8 @@ func TestValidJWSForKey(t *testing.T) {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounterVec(
-					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
+				test.AssertMetricWithLabelsEquals(
+					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
 			}
 		})
 	}
@@ -1348,8 +1349,8 @@ func TestValidPOSTForAccount(t *testing.T) {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounterVec(
-					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
+				test.AssertMetricWithLabelsEquals(
+					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
 			}
 		})
 	}
@@ -1506,8 +1507,8 @@ func TestValidSelfAuthenticatedPOST(t *testing.T) {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounterVec(
-					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
+				test.AssertMetricWithLabelsEquals(
+					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
 			}
 		})
 	}
@@ -1589,8 +1590,8 @@ func TestMatchJWSURLs(t *testing.T) {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
 			if tc.ErrorStatType != "" {
-				test.AssertEquals(t, test.CountCounterVec(
-					"type", tc.ErrorStatType, wfe.stats.joseErrorCount), 1)
+				test.AssertMetricWithLabelsEquals(
+					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
 			}
 		})
 	}

@@ -346,11 +346,11 @@ func TestHTTPStatusMetric(t *testing.T) {
 		Der:          leaf.Raw,
 	})
 	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
-	test.AssertEquals(t, test.CountHistogramSamples(pub.metrics.submissionLatency.With(prometheus.Labels{
+	test.AssertMetricWithLabelsEquals(t, pub.metrics.submissionLatency, prometheus.Labels{
 		"log":         logURI,
 		"status":      "error",
 		"http_status": "400",
-	})), 1)
+	}, 1)
 
 	pub, leaf, k = setup(t)
 	pkDER, err = x509.MarshalPKIXPublicKey(&k.PublicKey)
@@ -368,11 +368,11 @@ func TestHTTPStatusMetric(t *testing.T) {
 		Der:          leaf.Raw,
 	})
 	test.AssertNotError(t, err, "SubmitToSingleCTWithResult failed")
-	test.AssertEquals(t, test.CountHistogramSamples(pub.metrics.submissionLatency.With(prometheus.Labels{
+	test.AssertMetricWithLabelsEquals(t, pub.metrics.submissionLatency, prometheus.Labels{
 		"log":         logURI,
 		"status":      "success",
 		"http_status": "",
-	})), 1)
+	}, 1)
 }
 func Test_GetCTBundleForChain(t *testing.T) {
 	chain, err := issuance.LoadChain([]string{

@@ -570,6 +570,16 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 		fmt.Fprint(resp, "sorry, I'm gone")
 	})
 
+	// A path that always responds with a 303 redirect
+	mux.HandleFunc("/other", func(resp http.ResponseWriter, req *http.Request) {
+		http.Redirect(
+			resp,
+			req,
+			"http://example.org/other",
+			http.StatusSeeOther,
+		)
+	})
+
 	tooLargeBuf := bytes.NewBuffer([]byte{})
 	for i := 0; i < maxResponseSize+10; i++ {
 		tooLargeBuf.WriteByte(byte(97))
@@ -920,6 +930,22 @@ func TestFetchHTTP(t *testing.T) {
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/bad-status-code",
+					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
+					AddressUsed:       net.ParseIP("127.0.0.1"),
+				},
+			},
+		},
+		{
+			Name: "HTTP status code 303 redirect",
+			Host: "example.com",
+			Path: "/other",
+			ExpectedProblem: probs.ConnectionFailure(
+				"Fetching http://example.org/other: Cannot follow HTTP 303 redirects"),
+			ExpectedRecords: []core.ValidationRecord{
+				{
+					Hostname:          "example.com",
+					Port:              strconv.Itoa(httpPort),
+					URL:               "http://example.com/other",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 				},

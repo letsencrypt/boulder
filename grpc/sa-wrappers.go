@@ -490,13 +490,20 @@ func (sac StorageAuthorityClientWrapper) KeyBlocked(ctx context.Context, req *sa
 
 // StorageAuthorityServerWrapper is the gRPC version of a core.ServerAuthority server
 type StorageAuthorityServerWrapper struct {
-	// TODO(#3119): Don't use core.StorageAuthority
+	sapb.UnimplementedStorageAuthorityServer
 	inner core.StorageAuthority
-	core.StorageAuthority
 }
 
 func NewStorageAuthorityServer(inner core.StorageAuthority) *StorageAuthorityServerWrapper {
-	return &StorageAuthorityServerWrapper{inner, inner}
+	return &StorageAuthorityServerWrapper{inner: inner}
+}
+
+func (sas *StorageAuthorityServerWrapper) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error) {
+	return sas.inner.AddPrecertificate(ctx, req)
+}
+
+func (sas *StorageAuthorityServerWrapper) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*corepb.Empty, error) {
+	return sas.inner.AddSerial(ctx, req)
 }
 
 func (sas StorageAuthorityServerWrapper) GetRegistration(ctx context.Context, request *sapb.RegistrationID) (*corepb.Registration, error) {
