@@ -20,9 +20,7 @@
       "serverAddress": "ca.boulder:9096",
       "timeout": "15s"
     },
-    "features": {
-      "StoreIssuerInfo": true
-    }
+    "features": {}
   },
 
   "syslog": {
