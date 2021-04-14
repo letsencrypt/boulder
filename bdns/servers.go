@@ -6,6 +6,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // serverProvider represents a type which can provide a list of addresses for
@@ -68,6 +70,13 @@ func StartDynamicProvider(server string, refresh time.Duration) (*dynamicProvide
 	if server == "" {
 		return nil, fmt.Errorf("no DNS host provided")
 	}
+	updateCounter := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "dns_update",
+			Help: "Counter of attempts to update a dynamic provider",
+		},
+		[]string{"success"},
+	)
 	dp := dynamicProvider{
 		host:   server,
 		addrs:  make(map[string][]uint16),
@@ -85,8 +94,14 @@ func StartDynamicProvider(server string, refresh time.Duration) (*dynamicProvide
 			case <-t.C:
 				err := dp.update()
 				if err != nil {
+					updateCounter.With(prometheus.Labels{
+						"success": "false",
+					}).Inc()
 					continue
 				}
+				updateCounter.With(prometheus.Labels{
+					"success": "true",
+				}).Inc()
 			case <-dp.cancel:
 				return
 			}
