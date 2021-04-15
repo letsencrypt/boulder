@@ -1,6 +1,7 @@
 package bdns
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"net"
@@ -33,7 +34,7 @@ func NewStaticProvider(servers []string) *staticProvider {
 }
 
 func (sp *staticProvider) Addrs() ([]string, error) {
-	if sp.servers == nil || len(sp.servers) == 0 {
+	if len(sp.servers) == 0 {
 		return nil, fmt.Errorf("no servers configured")
 	}
 	r := make([]string, len(sp.servers))
@@ -51,12 +52,18 @@ func (sp *staticProvider) Stop() {}
 // addresses, and refreshes it regularly using a goroutine started by its
 // constructor.
 type dynamicProvider struct {
-	host string
-	// A map of IP addresses (Target fields in SRV records) to ports (Port fields
-	// in SRV records) associated with those addresses.
-	addrs  map[string][]uint16
-	mu     sync.RWMutex
-	cancel chan interface{}
+	// The domain name which should be used for DNS. Will be uses as the basis of
+	// a SRV query to locate DNS services on this domain, which will in turn be
+	// used as the basis for A queries to cache IP addrs for those services.
+	name string
+	// A map of IP addresses (results of A record lookups for SRV Targets) to
+	// ports (Port fields in SRV records) associated with those addresses.
+	addrs map[string][]uint16
+	// Other internal bookkeeping state.
+	cancel        chan interface{}
+	mu            sync.RWMutex
+	refresh       time.Duration
+	updateCounter *prometheus.CounterVec
 }
 
 var _ ServerProvider = &dynamicProvider{}
@@ -65,64 +72,78 @@ var _ ServerProvider = &dynamicProvider{}
 // auto-update goroutine. The auto-update process queries DNS for SRV records
 // at refresh intervals and uses the resulting IP/port combos to populate the
 // list returned by Addrs. The update process ignores the Priority and Weight
-// attributes of the SRV records.
+// attributes of the SRV records. The given server name should be a full domain
+// name, which will result in SRV queries for _dns._udp.example.com.
 func StartDynamicProvider(server string, refresh time.Duration) (*dynamicProvider, error) {
 	if server == "" {
-		return nil, fmt.Errorf("no DNS host provided")
+		return nil, fmt.Errorf("no DNS domain name provided")
 	}
-	updateCounter := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "dns_update",
-			Help: "Counter of attempts to update a dynamic provider",
-		},
-		[]string{"success"},
-	)
 	dp := dynamicProvider{
-		host:   server,
-		addrs:  make(map[string][]uint16),
-		cancel: make(chan interface{}),
+		name:    server,
+		addrs:   make(map[string][]uint16),
+		cancel:  make(chan interface{}),
+		refresh: refresh,
+		updateCounter: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "dns_update",
+				Help: "Counter of attempts to update a dynamic provider",
+			},
+			[]string{"success"},
+		),
 	}
+
+	// Update once immediately, so we can know whether that was successful, then
+	// kick off the long-running update goroutine.
 	err := dp.update()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start dynamic provider: %w", err)
 	}
-
-	go func() {
-		t := time.NewTicker(refresh)
-		for {
-			select {
-			case <-t.C:
-				err := dp.update()
-				if err != nil {
-					updateCounter.With(prometheus.Labels{
-						"success": "false",
-					}).Inc()
-					continue
-				}
-				updateCounter.With(prometheus.Labels{
-					"success": "true",
-				}).Inc()
-			case <-dp.cancel:
-				return
-			}
-		}
-	}()
+	go dp.run()
 
 	return &dp, nil
 }
 
+// run loops forever, calling dp.update() every dp.refresh interval. Does not
+// halt until the dp.cancel channel is closed, so should be run in a goroutine.
+func (dp *dynamicProvider) run() {
+	t := time.NewTicker(dp.refresh)
+	for {
+		select {
+		case <-t.C:
+			err := dp.update()
+			if err != nil {
+				dp.updateCounter.With(prometheus.Labels{
+					"success": "false",
+				}).Inc()
+				continue
+			}
+			dp.updateCounter.With(prometheus.Labels{
+				"success": "true",
+			}).Inc()
+		case <-dp.cancel:
+			return
+		}
+	}
+}
+
+// update performs the SRV and A record queries necessary to map the given DNS
+// domain name to a set of cacheable IP addresses and ports, and stores the
+// results in dp.addrs.
 func (dp *dynamicProvider) update() error {
-	_, srvs, err := net.LookupSRV("dns", "", dp.host)
+	ctx, cancel := context.WithTimeout(context.Background(), dp.refresh/2)
+	defer cancel()
+
+	_, srvs, err := net.DefaultResolver.LookupSRV(ctx, "dns", "udp", dp.name)
 	if err != nil {
-		return fmt.Errorf("failed to lookup SRV records for %q: %w", dp.host, err)
+		return fmt.Errorf("failed to lookup SRV records for %q: %w", dp.name, err)
 	}
 	if srvs == nil || len(srvs) == 0 {
-		return fmt.Errorf("no SRV records found for %q", dp.host)
+		return fmt.Errorf("no SRV records found for %q", dp.name)
 	}
 
 	addrPorts := make(map[string][]uint16)
 	for _, srv := range srvs {
-		addrs, err := net.LookupHost(srv.Target)
+		addrs, err := net.DefaultResolver.LookupHost(ctx, srv.Target)
 		if err != nil {
 			return fmt.Errorf("failed to resolve SRV Target %q: %w", srv.Target, err)
 		}
@@ -154,6 +175,8 @@ func (dp *dynamicProvider) Addrs() ([]string, error) {
 	return r, nil
 }
 
+// Stop tells the background update goroutine to cease. It does not wait for
+// confirmation that it has done so.
 func (dp *dynamicProvider) Stop() {
 	close(dp.cancel)
 }
