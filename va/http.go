@@ -505,6 +505,11 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		numRedirects++
 		va.metrics.http01Redirects.Inc()
 
+		// If the response contains an HTTP 303 redirect, do not follow.
+		if req.Response.StatusCode == 303 {
+			return berrors.ConnectionFailureError("Cannot follow HTTP 303 redirects")
+		}
+
 		// Lowercase the redirect host immediately, as the dialer and redirect
 		// validation expect it to have been lowercased already.
 		req.URL.Host = strings.ToLower(req.URL.Host)
