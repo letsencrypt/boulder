@@ -52,7 +52,7 @@ func (sp *staticProvider) Stop() {}
 // addresses, and refreshes it regularly using a goroutine started by its
 // constructor.
 type dynamicProvider struct {
-	// The domain name which should be used for DNS. Will be uses as the basis of
+	// The domain name which should be used for DNS. Will be used as the basis of
 	// a SRV query to locate DNS services on this domain, which will in turn be
 	// used as the basis for A queries to cache IP addrs for those services.
 	name string
@@ -73,7 +73,7 @@ var _ ServerProvider = &dynamicProvider{}
 // at refresh intervals and uses the resulting IP/port combos to populate the
 // list returned by Addrs. The update process ignores the Priority and Weight
 // attributes of the SRV records. The given server name should be a full domain
-// name, which will result in SRV queries for _dns._udp.example.com.
+// name like `example.com`, which will result in SRV queries for `_dns._udp.example.com`.
 func StartDynamicProvider(server string, refresh time.Duration) (*dynamicProvider, error) {
 	if server == "" {
 		return nil, fmt.Errorf("no DNS domain name provided")
