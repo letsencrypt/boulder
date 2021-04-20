@@ -37,7 +37,7 @@ func (sac StorageAuthorityClientWrapper) GetRegistration(ctx context.Context, re
 		return core.Registration{}, errIncompleteResponse
 	}
 
-	return pbToRegistration(response)
+	return PbToRegistration(response)
 }
 
 func (sac StorageAuthorityClientWrapper) GetRegistrationByKey(ctx context.Context, key *jose.JSONWebKey) (core.Registration, error) {
@@ -55,7 +55,7 @@ func (sac StorageAuthorityClientWrapper) GetRegistrationByKey(ctx context.Contex
 		return core.Registration{}, errIncompleteResponse
 	}
 
-	return pbToRegistration(response)
+	return PbToRegistration(response)
 }
 
 func (sac StorageAuthorityClientWrapper) GetCertificate(ctx context.Context, serial string) (core.Certificate, error) {
@@ -253,7 +253,7 @@ func (sac StorageAuthorityClientWrapper) FQDNSetExists(ctx context.Context, doma
 }
 
 func (sac StorageAuthorityClientWrapper) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
-	regPB, err := registrationToPB(reg)
+	regPB, err := RegistrationToPB(reg)
 	if err != nil {
 		return core.Registration{}, err
 	}
@@ -267,11 +267,11 @@ func (sac StorageAuthorityClientWrapper) NewRegistration(ctx context.Context, re
 		return core.Registration{}, errIncompleteResponse
 	}
 
-	return pbToRegistration(response)
+	return PbToRegistration(response)
 }
 
 func (sac StorageAuthorityClientWrapper) UpdateRegistration(ctx context.Context, reg core.Registration) error {
-	regPB, err := registrationToPB(reg)
+	regPB, err := RegistrationToPB(reg)
 	if err != nil {
 		return err
 	}
@@ -516,7 +516,7 @@ func (sas StorageAuthorityServerWrapper) GetRegistration(ctx context.Context, re
 		return nil, err
 	}
 
-	return registrationToPB(reg)
+	return RegistrationToPB(reg)
 }
 
 func (sas StorageAuthorityServerWrapper) GetRegistrationByKey(ctx context.Context, request *sapb.JSONWebKey) (*corepb.Registration, error) {
@@ -535,7 +535,7 @@ func (sas StorageAuthorityServerWrapper) GetRegistrationByKey(ctx context.Contex
 		return nil, err
 	}
 
-	return registrationToPB(reg)
+	return RegistrationToPB(reg)
 }
 
 func (sas StorageAuthorityServerWrapper) GetCertificate(ctx context.Context, request *sapb.Serial) (*corepb.Certificate, error) {
@@ -678,7 +678,7 @@ func (sas StorageAuthorityServerWrapper) NewRegistration(ctx context.Context, re
 		return nil, errIncompleteRequest
 	}
 
-	reg, err := pbToRegistration(request)
+	reg, err := PbToRegistration(request)
 	if err != nil {
 		return nil, err
 	}
@@ -688,7 +688,7 @@ func (sas StorageAuthorityServerWrapper) NewRegistration(ctx context.Context, re
 		return nil, err
 	}
 
-	return registrationToPB(newReg)
+	return RegistrationToPB(newReg)
 }
 
 func (sas StorageAuthorityServerWrapper) UpdateRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Empty, error) {
@@ -696,7 +696,7 @@ func (sas StorageAuthorityServerWrapper) UpdateRegistration(ctx context.Context,
 		return nil, errIncompleteRequest
 	}
 
-	reg, err := pbToRegistration(request)
+	reg, err := PbToRegistration(request)
 	if err != nil {
 		return nil, err
 	}

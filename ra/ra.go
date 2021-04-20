@@ -333,12 +333,24 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 }
 
 // NewRegistration constructs a new Registration from a request.
-func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init core.Registration) (core.Registration, error) {
+func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Registration, error) {
+	// Func to return false if the key length or ip are zero
+	newRegistrationValid := func(reg *corepb.Registration) bool {
+		return !(len(reg.Key) == 0 || len(reg.InitialIP) == 0)
+	}
+	// Error if the request is nil or the registration valid check fails
+	if request == nil || !newRegistrationValid(request) {
+		return nil, errors.New("incomplete gRPC request message")
+	}
+	init, err := bgrpc.PbToRegistration(request)
+	if err != nil {
+		return nil, err
+	}
 	if err := ra.keyPolicy.GoodKey(ctx, init.Key.Key); err != nil {
-		return core.Registration{}, berrors.MalformedError("invalid public key: %s", err.Error())
+		return &corepb.Registration{}, berrors.MalformedError("invalid public key: %s", err.Error())
 	}
 	if err := ra.checkRegistrationLimits(ctx, init.InitialIP); err != nil {
-		return core.Registration{}, err
+		return &corepb.Registration{}, err
 	}
 
 	reg := core.Registration{
@@ -352,17 +364,22 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	reg.InitialIP = init.InitialIP
 
 	if err := ra.validateContacts(ctx, reg.Contact); err != nil {
-		return core.Registration{}, err
+		return &corepb.Registration{}, err
 	}
 
 	// Store the authorization object, then return it
-	reg, err := ra.SA.NewRegistration(ctx, reg)
+	reg, err = ra.SA.NewRegistration(ctx, reg)
 	if err != nil {
-		return core.Registration{}, err
+		return &corepb.Registration{}, err
 	}
 
 	ra.newRegCounter.Inc()
-	return reg, nil
+	regPB, err := bgrpc.RegistrationToPB(reg)
+	if err != nil {
+		return &corepb.Registration{}, err
+	}
+
+	return regPB, nil
 }
 
 // validateContacts checks the provided list of contacts, returning an error if
