@@ -44,6 +44,7 @@ import (
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/crypto/ocsp"
 	grpc "google.golang.org/grpc"
+	"gopkg.in/square/go-jose.v2"
 )
 
 type caaChecker interface {
@@ -342,21 +343,40 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	if request == nil || !newRegistrationValid(request) {
 		return nil, errors.New("incomplete gRPC request message")
 	}
-	init, err := bgrpc.PbToRegistration(request)
+
+	// Convert key bytes to key
+	var key jose.JSONWebKey
+	err := key.UnmarshalJSON(request.Key)
 	if err != nil {
-		return nil, err
+		berrors.InternalServerError("failed to unmarshal account key: %s", err.Error())
 	}
-	if err := ra.keyPolicy.GoodKey(ctx, init.Key.Key); err != nil {
+	// Check if account key is acceptable for use
+	if err := ra.keyPolicy.GoodKey(ctx, key.Key); err != nil {
 		return &corepb.Registration{}, berrors.MalformedError("invalid public key: %s", err.Error())
 	}
-	if err := ra.checkRegistrationLimits(ctx, init.InitialIP); err != nil {
+
+	// Convert IP from bytes
+	var ipAddr net.IP
+	err = ipAddr.UnmarshalText(request.InitialIP)
+	if err != nil {
+		berrors.InternalServerError("failed to unmarshal ip address: %s", err.Error())
+	}
+
+	if err := ra.checkRegistrationLimits(ctx, ipAddr); err != nil {
 		return &corepb.Registration{}, err
 	}
 
 	reg := core.Registration{
-		Key:    init.Key,
+		Key:    &key,
 		Status: core.StatusValid,
 	}
+
+	// Convert request to core.Registration for merge and SA rpc
+	init, err := bgrpc.PbToRegistration(request)
+	if err != nil {
+		return &corepb.Registration{}, err
+	}
+
 	_ = mergeUpdate(&reg, init)
 
 	// This field isn't updatable by the end user, so it isn't copied by
