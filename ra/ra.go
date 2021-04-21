@@ -346,8 +346,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 
 	// Convert key bytes to key
 	var key jose.JSONWebKey
-	err := key.UnmarshalJSON(request.Key)
-	if err != nil {
+	if err := key.UnmarshalJSON(request.Key); err != nil {
 		return &corepb.Registration{}, berrors.InternalServerError("failed to unmarshal account key: %s", err.Error())
 	}
 	// Check if account key is acceptable for use
@@ -357,8 +356,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 
 	// Convert IP from bytes
 	var ipAddr net.IP
-	err = ipAddr.UnmarshalText(request.InitialIP)
-	if err != nil {
+	if err := ipAddr.UnmarshalText(request.InitialIP); err != nil {
 		return &corepb.Registration{}, berrors.InternalServerError("failed to unmarshal ip address: %s", err.Error())
 	}
 
