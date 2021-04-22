@@ -335,33 +335,29 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 
 // NewRegistration constructs a new Registration from a request.
 func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Registration, error) {
-	// Func to return false if the key length or ip are zero
-	newRegistrationValid := func(reg *corepb.Registration) bool {
-		return !(len(reg.Key) == 0 || len(reg.InitialIP) == 0)
-	}
-	// Error if the request is nil or the registration valid check fails
-	if request == nil || !newRegistrationValid(request) {
+	// Error if the request is nil, there is no account key or IP address
+	if request == nil || len(request.Key) == 0 || len(request.InitialIP) == 0 {
 		return nil, errors.New("incomplete gRPC request message")
 	}
 
 	// Convert key bytes to key
 	var key jose.JSONWebKey
 	if err := key.UnmarshalJSON(request.Key); err != nil {
-		return &corepb.Registration{}, berrors.InternalServerError("failed to unmarshal account key: %s", err.Error())
+		return nil, berrors.InternalServerError("failed to unmarshal account key: %s", err.Error())
 	}
 	// Check if account key is acceptable for use
 	if err := ra.keyPolicy.GoodKey(ctx, key.Key); err != nil {
-		return &corepb.Registration{}, berrors.MalformedError("invalid public key: %s", err.Error())
+		return nil, berrors.MalformedError("invalid public key: %s", err.Error())
 	}
 
 	// Convert IP from bytes
 	var ipAddr net.IP
 	if err := ipAddr.UnmarshalText(request.InitialIP); err != nil {
-		return &corepb.Registration{}, berrors.InternalServerError("failed to unmarshal ip address: %s", err.Error())
+		return nil, berrors.InternalServerError("failed to unmarshal ip address: %s", err.Error())
 	}
 
 	if err := ra.checkRegistrationLimits(ctx, ipAddr); err != nil {
-		return &corepb.Registration{}, err
+		return nil, err
 	}
 
 	reg := core.Registration{
@@ -372,7 +368,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	// Convert request to core.Registration for merge and SA rpc
 	init, err := bgrpc.PbToRegistration(request)
 	if err != nil {
-		return &corepb.Registration{}, err
+		return nil, err
 	}
 
 	_ = mergeUpdate(&reg, init)
@@ -382,19 +378,19 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	reg.InitialIP = init.InitialIP
 
 	if err := ra.validateContacts(ctx, reg.Contact); err != nil {
-		return &corepb.Registration{}, err
+		return nil, err
 	}
 
 	// Store the authorization object, then return it
 	reg, err = ra.SA.NewRegistration(ctx, reg)
 	if err != nil {
-		return &corepb.Registration{}, err
+		return nil, err
 	}
 
 	ra.newRegCounter.Inc()
 	regPB, err := bgrpc.RegistrationToPB(reg)
 	if err != nil {
-		return &corepb.Registration{}, err
+		return nil, err
 	}
 
 	return regPB, nil
