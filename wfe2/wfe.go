@@ -677,7 +677,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	// TODO Andrew: Is this tested?
 	registrationValid := func(reg *corepb.Registration) bool {
 		return !(len(reg.Key) == 0 || len(reg.InitialIP) == 0) && reg.Id != 0
 	}
