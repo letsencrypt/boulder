@@ -462,6 +462,70 @@ func TestNewRegistration(t *testing.T) {
 	test.Assert(t, core.KeyDigestEquals(reg.Key, AccountKeyB), "Retrieved registration differed.")
 }
 
+func TestNewRegistrationContactsPresent(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	testCases := []struct {
+		Name        string
+		Reg         *corepb.Registration
+		ExpectedErr error
+	}{
+		{
+			Name: "No contacts provided by client ContactsPresent false",
+			Reg: &corepb.Registration{
+				Key:       newAcctKey(t),
+				InitialIP: parseAndMarshalIP(t, "7.6.6.5"),
+			},
+			ExpectedErr: nil,
+		},
+		{
+			Name: "Empty contact provided by client ContactsPresent true",
+			Reg: &corepb.Registration{
+				Contact:         []string{},
+				ContactsPresent: true,
+				Key:             newAcctKey(t),
+				InitialIP:       parseAndMarshalIP(t, "7.6.6.4"),
+			},
+			ExpectedErr: nil,
+		},
+		{
+			Name: "Valid contact provided by client ContactsPresent true",
+			Reg: &corepb.Registration{
+				Contact:         []string{"mailto:foo@letsencrypt.org"},
+				ContactsPresent: true,
+				Key:             newAcctKey(t),
+				InitialIP:       parseAndMarshalIP(t, "7.6.4.3"),
+			},
+			ExpectedErr: nil,
+		},
+		{
+			Name: "Valid contact provided by client ContactsPresent false",
+			Reg: &corepb.Registration{
+				Contact:         []string{"mailto:foo@letsencrypt.org"},
+				ContactsPresent: false,
+				Key:             newAcctKey(t),
+				InitialIP:       parseAndMarshalIP(t, "7.6.6.2"),
+			},
+			ExpectedErr: fmt.Errorf("account contacts present but contactsPresent false"),
+		},
+	}
+	// For each test case we check that the NewRegistration works as
+	// intended with variations of Contact and ContactsPresent fields
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			// Create new registration
+			_, err := ra.NewRegistration(ctx, tc.Reg)
+			// Check error output
+			if tc.ExpectedErr == nil {
+				test.AssertNotError(t, err, "expected no error for NewRegistration")
+			} else {
+				test.AssertError(t, err, "expected error for NewRegistration")
+				test.AssertEquals(t, err.Error(), tc.ExpectedErr.Error())
+			}
+		})
+	}
+}
+
 type mockSAFailsNewRegistration struct {
 	mocks.StorageAuthority
 }
