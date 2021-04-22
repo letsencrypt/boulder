@@ -643,9 +643,10 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 	var contacts []string
-	contactsPresent := accountCreateRequest.Contact != nil
+	var contactsPresent bool
 	if accountCreateRequest.Contact != nil {
-		contacts = *accountCreateRequest.Contact
+	        contactsPresent = true
+ 		contacts = *accountCreateRequest.Contact
 	}
 
 	// Create corepb.Registration from provided account information
