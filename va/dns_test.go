@@ -138,7 +138,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 	va, log := setup(nil, 0, "", nil)
 	va.dnsClient = bdns.NewTest(
 		time.Second*5,
-		nil,
+		bdns.NewStaticProvider([]string{}),
 		metrics.NoopRegisterer,
 		clock.New(),
 		1,

@@ -361,7 +361,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	}
 
 	if err := validateContactsPresent(request.Contact, request.ContactsPresent); err != nil {
-		return &corepb.Registration{}, err
+		return nil, err
 	}
 
 	reg := core.Registration{

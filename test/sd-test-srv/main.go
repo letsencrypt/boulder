@@ -20,40 +20,83 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 
 	if len(r.Question) != 1 {
 		m.Rcode = dns.RcodeServerFailure
-		w.WriteMsg(m)
+		err := w.WriteMsg(m)
+		if err != nil {
+			log.Printf("ERROR: Failed to write message %q: %v", m, err)
+		}
 		return
 	}
+
 	if !strings.HasSuffix(r.Question[0].Name, ".boulder.") {
 		m.Rcode = dns.RcodeServerFailure
-		w.WriteMsg(m)
+		err := w.WriteMsg(m)
+		if err != nil {
+			log.Printf("ERROR: Failed to write message %q: %v", m, err)
+		}
 		return
 	}
-	if r.Question[0].Qtype != dns.TypeA {
-		// Just return a NOERROR message for non-A questions
-		w.WriteMsg(m)
+
+	if r.Question[0].Qtype == dns.TypeA {
+		hdr := dns.RR_Header{
+			Name:   r.Question[0].Name,
+			Rrtype: dns.TypeA,
+			Class:  dns.ClassINET,
+			Ttl:    0,
+		}
+		// These two hardcoded IPs correspond to the configured addresses for boulder
+		// in docker-compose.yml. In our Docker setup, boulder is present on two
+		// networks, rednet and bluenet, with a different IP address on each. This
+		// allows us to test load balance across gRPC backends.
+		m.Answer = append(m.Answer, &dns.A{
+			A:   net.ParseIP("10.77.77.77"),
+			Hdr: hdr,
+		}, &dns.A{
+			A:   net.ParseIP("10.88.88.88"),
+			Hdr: hdr,
+		})
+		err := w.WriteMsg(m)
+		if err != nil {
+			log.Printf("ERROR: Failed to write message %q: %v", m, err)
+		}
 		return
 	}
 
-	hdr := dns.RR_Header{
-		Name:   r.Question[0].Name,
-		Rrtype: dns.TypeA,
-		Class:  dns.ClassINET,
-		Ttl:    0,
+	if r.Question[0].Qtype == dns.TypeSRV {
+		hdr := dns.RR_Header{
+			Name:   r.Question[0].Name,
+			Rrtype: dns.TypeSRV,
+			Class:  dns.ClassINET,
+			Ttl:    0,
+		}
+		// These two hardcoded IPs correspond to the configured addresses for boulder
+		// in docker-compose.yml. In our Docker setup, boulder is present on two
+		// networks, rednet and bluenet, with a different IP address on each. This
+		// allows us to test load balance across gRPC backends.
+		// These two hardcoded names:port combos correspond to the configured names
+		// in docker-compose.yml, which in turn point to the local IPs on which our
+		// local resolver runs.
+		m.Answer = append(m.Answer, &dns.SRV{
+			Target: "dns1.boulder.",
+			Port:   8053,
+			Hdr:    hdr,
+		}, &dns.SRV{
+			Target: "dns2.boulder.",
+			Port:   8054,
+			Hdr:    hdr,
+		})
+		err := w.WriteMsg(m)
+		if err != nil {
+			log.Printf("ERROR: Failed to write message %q: %v", m, err)
+		}
+		return
 	}
 
-	// These two hardcoded IPs correspond to the configured addresses for boulder
-	// in docker-compose.yml. In our Docker setup, boulder is present on two
-	// networks, rednet and bluenet, with a different IP address on each. This
-	// allows us to test load balance across gRPC backends.
-	m.Answer = append(m.Answer, &dns.A{
-		A:   net.ParseIP("10.77.77.77"),
-		Hdr: hdr,
-	}, &dns.A{
-		A:   net.ParseIP("10.88.88.88"),
-		Hdr: hdr,
-	})
-
-	w.WriteMsg(m)
+	// Just return a NOERROR message for non-A, non-SRV questions
+	err := w.WriteMsg(m)
+	if err != nil {
+		log.Printf("ERROR: Failed to write message %q: %v", m, err)
+	}
+	return
 }
 
 func main() {

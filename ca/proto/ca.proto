@@ -40,8 +40,6 @@ message IssueCertificateForPrecertificateRequest {
 
 // Exactly one of certDER or [serial and issuerID] must be set.
 message GenerateOCSPRequest {
-  // TODO(#5079): Remove certDER field.
-  bytes certDER = 1;
   string status = 2;
   int32 reason = 3;
   int64 revokedAt = 4;

@@ -379,19 +379,6 @@ func (opf *orphanFinder) parseDER(derPath string, regID int64) {
 
 // generateOCSP asks the CA to generate a new OCSP response for the given cert.
 func (opf *orphanFinder) generateOCSP(ctx context.Context, cert *x509.Certificate) ([]byte, error) {
-	if opf.issuers == nil || len(opf.issuers) == 0 {
-		// TODO(#5149): Remove this legacy codepath
-		ocspResponse, err := opf.ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-			CertDER:   cert.Raw,
-			Status:    string(core.OCSPStatusGood),
-			Reason:    0,
-			RevokedAt: 0,
-		})
-		if err != nil {
-			return nil, err
-		}
-		return ocspResponse.Response, nil
-	}
 	issuer, ok := opf.issuers[issuance.GetIssuerNameID(cert)]
 	if !ok {
 		return nil, errors.New("unrecognized issuer for orphan")
