@@ -128,7 +128,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	}
 
 	initialID, err := c.dbMap.SelectInt(
-		"SELECT id FROM certificates WHERE issued >= :issued AND expires >= :now LIMIT 1",
+		"SELECT id FROM certificates WHERE issued >= :issued AND expires >= :now ORDER BY id ASC LIMIT 1",
 		args,
 	)
 	if err != nil {
