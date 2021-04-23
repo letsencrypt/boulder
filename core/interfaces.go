@@ -56,7 +56,7 @@ type WebFrontEnd interface {
 // RegistrationAuthority defines the public interface for the Boulder RA
 type RegistrationAuthority interface {
 	// [WebFrontEnd]
-	NewRegistration(ctx context.Context, reg Registration) (Registration, error)
+	NewRegistration(ctx context.Context, reg *corepb.Registration) (*corepb.Registration, error)
 
 	// [WebFrontEnd]
 	NewAuthorization(ctx context.Context, authz Authorization, regID int64) (Authorization, error)

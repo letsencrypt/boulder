@@ -208,8 +208,9 @@ type MockRegistrationAuthority struct {
 	lastRevocationReason revocation.Reason
 }
 
-func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, acct core.Registration) (core.Registration, error) {
-	acct.ID = 1
+func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, acct *corepb.Registration) (*corepb.Registration, error) {
+	acct.Id = 1
+	acct.CreatedAt = time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()
 	return acct, nil
 }
 
@@ -1539,7 +1540,7 @@ func TestNewAccountNoID(t *testing.T) {
 			"mailto:person@mail.com"
 		],
 		"initialIp": "1.1.1.1",
-		"createdAt": "0001-01-01T00:00:00Z",
+		"createdAt": "2021-01-01T00:00:00Z",
 		"status": ""
 	}`)
 }

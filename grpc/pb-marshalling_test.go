@@ -168,26 +168,26 @@ func TestRegistration(t *testing.T) {
 		CreatedAt: time.Now().Round(0),
 		Status:    core.StatusValid,
 	}
-	pbReg, err := registrationToPB(inReg)
+	pbReg, err := RegistrationToPB(inReg)
 	test.AssertNotError(t, err, "registrationToPB failed")
-	outReg, err := pbToRegistration(pbReg)
-	test.AssertNotError(t, err, "pbToRegistration failed")
+	outReg, err := PbToRegistration(pbReg)
+	test.AssertNotError(t, err, "PbToRegistration failed")
 	test.AssertDeepEquals(t, inReg, outReg)
 
 	inReg.Contact = nil
-	pbReg, err = registrationToPB(inReg)
+	pbReg, err = RegistrationToPB(inReg)
 	test.AssertNotError(t, err, "registrationToPB failed")
 	pbReg.Contact = []string{}
-	outReg, err = pbToRegistration(pbReg)
-	test.AssertNotError(t, err, "pbToRegistration failed")
+	outReg, err = PbToRegistration(pbReg)
+	test.AssertNotError(t, err, "PbToRegistration failed")
 	test.AssertDeepEquals(t, inReg, outReg)
 
 	var empty []string
 	inReg.Contact = &empty
-	pbReg, err = registrationToPB(inReg)
+	pbReg, err = RegistrationToPB(inReg)
 	test.AssertNotError(t, err, "registrationToPB failed")
-	outReg, err = pbToRegistration(pbReg)
-	test.AssertNotError(t, err, "pbToRegistration failed")
+	outReg, err = PbToRegistration(pbReg)
+	test.AssertNotError(t, err, "PbToRegistration failed")
 	test.Assert(t, *outReg.Contact != nil, "Empty slice was converted to a nil slice")
 }
 

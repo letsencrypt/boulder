@@ -629,12 +629,37 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	acct, err := wfe.RA.NewRegistration(ctx, core.Registration{
-		Contact:   accountCreateRequest.Contact,
-		Agreement: wfe.SubscriberAgreementURL,
-		Key:       key,
-		InitialIP: ip,
-	})
+	// Prepare account information to create corepb.Registration
+	keyBytes, err := key.MarshalJSON()
+	if err != nil {
+		wfe.sendError(response, logEvent,
+			web.ProblemDetailsForError(err, "Error creating new account"), err)
+		return
+	}
+	ipBytes, err := ip.MarshalText()
+	if err != nil {
+		wfe.sendError(response, logEvent,
+			web.ProblemDetailsForError(err, "Error creating new account"), err)
+		return
+	}
+	var contacts []string
+	var contactsPresent bool
+	if accountCreateRequest.Contact != nil {
+		contactsPresent = true
+		contacts = *accountCreateRequest.Contact
+	}
+
+	// Create corepb.Registration from provided account information
+	reg := corepb.Registration{
+		Contact:         contacts,
+		ContactsPresent: contactsPresent,
+		Agreement:       wfe.SubscriberAgreementURL,
+		Key:             keyBytes,
+		InitialIP:       ipBytes,
+	}
+
+	// Send the registration to the RA via grpc
+	acctPB, err := wfe.RA.NewRegistration(ctx, &reg)
 	if err != nil {
 		if errors.Is(err, berrors.Duplicate) {
 			existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, key)
@@ -647,6 +672,22 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), err)
 			return
 		}
+		wfe.sendError(response, logEvent,
+			web.ProblemDetailsForError(err, "Error creating new account"), err)
+		return
+	}
+
+	registrationValid := func(reg *corepb.Registration) bool {
+		return !(len(reg.Key) == 0 || len(reg.InitialIP) == 0) && reg.Id != 0
+	}
+
+	if acctPB == nil || !registrationValid(acctPB) {
+		wfe.sendError(response, logEvent,
+			web.ProblemDetailsForError(err, "Error creating new account"), err)
+		return
+	}
+	acct, err := bgrpc.PbToRegistration(acctPB)
+	if err != nil {
 		wfe.sendError(response, logEvent,
 			web.ProblemDetailsForError(err, "Error creating new account"), err)
 		return

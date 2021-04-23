@@ -265,6 +265,19 @@ func (r *dummyRateLimitConfig) LoadPolicies(contents []byte) error {
 	return nil // NOP - unrequired behaviour for this mock
 }
 
+func parseAndMarshalIP(t *testing.T, ip string) []byte {
+	ipBytes, err := net.ParseIP(ip).MarshalText()
+	test.AssertNotError(t, err, "failed to marshal ip")
+	return ipBytes
+}
+
+func newAcctKey(t *testing.T) []byte {
+	key := &jose.JSONWebKey{Key: testKey()}
+	acctKey, err := key.MarshalJSON()
+	test.AssertNotError(t, err, "failed to marshal account key")
+	return acctKey
+}
+
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
@@ -426,23 +439,25 @@ func TestNewRegistration(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	mailto := "mailto:foo@letsencrypt.org"
-	input := core.Registration{
-		Contact:   &[]string{mailto},
-		Key:       &AccountKeyB,
-		InitialIP: net.ParseIP("7.6.6.5"),
+	acctKeyB, err := AccountKeyB.MarshalJSON()
+	test.AssertNotError(t, err, "failed to marshal account key")
+	input := &corepb.Registration{
+		Contact:         []string{mailto},
+		ContactsPresent: true,
+		Key:             acctKeyB,
+		InitialIP:       parseAndMarshalIP(t, "7.6.6.5"),
 	}
 
 	result, err := ra.NewRegistration(ctx, input)
 	if err != nil {
 		t.Fatalf("could not create new registration: %s", err)
 	}
-
-	test.Assert(t, core.KeyDigestEquals(result.Key, AccountKeyB), "Key didn't match")
-	test.Assert(t, len(*result.Contact) == 1, "Wrong number of contacts")
-	test.Assert(t, mailto == (*result.Contact)[0], "Contact didn't match")
+	test.AssertByteEquals(t, result.Key, acctKeyB)
+	test.Assert(t, len(result.Contact) == 1, "Wrong number of contacts")
+	test.Assert(t, mailto == (result.Contact)[0], "Contact didn't match")
 	test.Assert(t, result.Agreement == "", "Agreement didn't default empty")
 
-	reg, err := sa.GetRegistration(ctx, result.ID)
+	reg, err := sa.GetRegistration(ctx, result.Id)
 	test.AssertNotError(t, err, "Failed to retrieve registration")
 	test.Assert(t, core.KeyDigestEquals(reg.Key, AccountKeyB), "Retrieved registration differed.")
 }
@@ -459,13 +474,15 @@ func TestNewRegistrationSAFailure(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.SA = &mockSAFailsNewRegistration{}
-	input := core.Registration{
-		Contact:   &[]string{"mailto:test@example.com"},
-		Key:       &AccountKeyB,
-		InitialIP: net.ParseIP("7.6.6.5"),
+	acctKeyB, err := AccountKeyB.MarshalJSON()
+	test.AssertNotError(t, err, "failed to marshal account key")
+	input := corepb.Registration{
+		Contact:         []string{"mailto:test@example.com"},
+		ContactsPresent: true,
+		Key:             acctKeyB,
+		InitialIP:       parseAndMarshalIP(t, "7.6.6.5"),
 	}
-
-	result, err := ra.NewRegistration(ctx, input)
+	result, err := ra.NewRegistration(ctx, &input)
 	if err == nil {
 		t.Fatalf("NewRegistration should have failed when SA.NewRegistration failed %#v", result.Key)
 	}
@@ -475,18 +492,20 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	mailto := "mailto:foo@letsencrypt.org"
-	input := core.Registration{
-		ID:        23,
-		Key:       &AccountKeyC,
-		Contact:   &[]string{mailto},
-		Agreement: "I agreed",
-		InitialIP: net.ParseIP("5.0.5.0"),
+	acctKeyC, err := AccountKeyC.MarshalJSON()
+	test.AssertNotError(t, err, "failed to marshal account key")
+	input := &corepb.Registration{
+		Id:              23,
+		Key:             acctKeyC,
+		Contact:         []string{mailto},
+		ContactsPresent: true,
+		Agreement:       "I agreed",
+		InitialIP:       parseAndMarshalIP(t, "5.0.5.0"),
 	}
 
 	result, err := ra.NewRegistration(ctx, input)
 	test.AssertNotError(t, err, "Could not create new registration")
-
-	test.Assert(t, result.ID != 23, "ID shouldn't be set by user")
+	test.Assert(t, result.Id != 23, "ID shouldn't be set by user")
 	// TODO: Enable this test case once we validate terms agreement.
 	//test.Assert(t, result.Agreement != "I agreed", "Agreement shouldn't be set with invalid URL")
 }
@@ -495,12 +514,14 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	mailto := "mailto:foo@letsencrypt.org"
-	input := core.Registration{
-		Contact: &[]string{mailto},
-		Key:     &ShortKey,
+	shortKey, err := ShortKey.MarshalJSON()
+	test.AssertNotError(t, err, "failed to marshal account key")
+	input := &corepb.Registration{
+		Contact:         []string{mailto},
+		ContactsPresent: true,
+		Key:             shortKey,
 	}
-
-	_, err := ra.NewRegistration(ctx, input)
+	_, err = ra.NewRegistration(ctx, input)
 	test.AssertError(t, err, "Should have rejected authorization with short key")
 }
 
@@ -529,18 +550,18 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 
 	// Create one registration for an IPv4 address
 	mailto := "mailto:foo@letsencrypt.org"
-	reg := core.Registration{
-		Contact:   &[]string{mailto},
-		Key:       &jose.JSONWebKey{Key: testKey()},
-		InitialIP: net.ParseIP("7.6.6.5"),
+	reg := &corepb.Registration{
+		Contact:         []string{mailto},
+		ContactsPresent: true,
+		Key:             newAcctKey(t),
+		InitialIP:       parseAndMarshalIP(t, "7.6.6.5"),
 	}
-
 	// There should be no errors - it is within the RegistrationsPerIP rate limit
 	_, err := ra.NewRegistration(ctx, reg)
 	test.AssertNotError(t, err, "Unexpected error adding new IPv4 registration")
 
 	// Create another registration for the same IPv4 address by changing the key
-	reg.Key = &jose.JSONWebKey{Key: testKey()}
+	reg.Key = newAcctKey(t)
 
 	// There should be an error since a 2nd registration will exceed the
 	// RegistrationsPerIP rate limit
@@ -549,15 +570,15 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "too many registrations for this IP: see https://letsencrypt.org/docs/rate-limits/")
 
 	// Create a registration for an IPv6 address
-	reg.Key = &jose.JSONWebKey{Key: testKey()}
-	reg.InitialIP = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652")
+	reg.Key = newAcctKey(t)
+	reg.InitialIP = parseAndMarshalIP(t, "2001:cdba:1234:5678:9101:1121:3257:9652")
 
 	// There should be no errors - it is within the RegistrationsPerIP rate limit
 	_, err = ra.NewRegistration(ctx, reg)
 	test.AssertNotError(t, err, "Unexpected error adding a new IPv6 registration")
 
 	// Create a 2nd registration for the IPv6 address by changing the key
-	reg.Key = &jose.JSONWebKey{Key: testKey()}
+	reg.Key = newAcctKey(t)
 
 	// There should be an error since a 2nd reg for the same IPv6 address will
 	// exceed the RegistrationsPerIP rate limit
@@ -566,8 +587,8 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "too many registrations for this IP: see https://letsencrypt.org/docs/rate-limits/")
 
 	// Create a registration for an IPv6 address in the same /48
-	reg.Key = &jose.JSONWebKey{Key: testKey()}
-	reg.InitialIP = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653")
+	reg.Key = newAcctKey(t)
+	reg.InitialIP = parseAndMarshalIP(t, "2001:cdba:1234:5678:9101:1121:3257:9653")
 
 	// There should be no errors since two IPv6 addresses in the same /48 is
 	// within the RegistrationsPerIPRange limit
@@ -575,8 +596,8 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	test.AssertNotError(t, err, "Unexpected error adding second IPv6 registration in the same /48")
 
 	// Create a registration for yet another IPv6 address in the same /48
-	reg.Key = &jose.JSONWebKey{Key: testKey()}
-	reg.InitialIP = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9654")
+	reg.Key = newAcctKey(t)
+	reg.InitialIP = parseAndMarshalIP(t, "2001:cdba:1234:5678:9101:1121:3257:9654")
 
 	// There should be an error since three registrations within the same IPv6
 	// /48 is outside of the RegistrationsPerIPRange limit
@@ -599,31 +620,38 @@ func TestUpdateRegistrationSame(t *testing.T) {
 	mailto := "mailto:foo@letsencrypt.org"
 
 	// Make a new registration with AccountKeyC and a Contact
-	input := core.Registration{
-		Key:       &AccountKeyC,
-		Contact:   &[]string{mailto},
-		Agreement: "I agreed",
-		InitialIP: net.ParseIP("5.0.5.0"),
+	acctKeyC, err := AccountKeyC.MarshalJSON()
+	test.AssertNotError(t, err, "failed to marshal account key")
+	input := &corepb.Registration{
+		Key:             acctKeyC,
+		Contact:         []string{mailto},
+		ContactsPresent: true,
+		Agreement:       "I agreed",
+		InitialIP:       parseAndMarshalIP(t, "5.0.5.0"),
 	}
-	createResult, err := ra.NewRegistration(ctx, input)
+	result, err := ra.NewRegistration(ctx, input)
 	test.AssertNotError(t, err, "Could not create new registration")
-	id := createResult.ID
+	id := result.Id
 
 	// Switch to a mock SA that will always error if UpdateRegistration() is called
 	ra.SA = &NoUpdateSA{}
 
 	// Make an update to the registration with the same Contact & Agreement values.
-	updateSame := core.Registration{
-		ID:        id,
-		Key:       &AccountKeyC,
-		Contact:   &[]string{mailto},
+	updateSamePB := &corepb.Registration{
+		Id:        id,
+		Key:       acctKeyC,
+		Contact:   []string{mailto},
 		Agreement: "I agreed",
 	}
 
 	// The update operation should *not* error, even with the NoUpdateSA because
 	// UpdateRegistration() should not be called when the update content doesn't
 	// actually differ from the existing content
-	_, err = ra.UpdateRegistration(ctx, input, updateSame)
+	reg, err := bgrpc.PbToRegistration(input)
+	test.AssertNotError(t, err, "PbToRegistration failed")
+	updateSame, err := bgrpc.PbToRegistration(updateSamePB)
+	test.AssertNotError(t, err, "PbToRegistration failed")
+	_, err = ra.UpdateRegistration(ctx, reg, updateSame)
 	test.AssertNotError(t, err, "Error updating registration")
 }
 
@@ -2196,13 +2224,14 @@ func TestNewOrderReuse(t *testing.T) {
 	}
 
 	// Create a second registration to reference
-	secondReg := core.Registration{
-		Key:       &AccountKeyB,
-		InitialIP: net.ParseIP("42.42.42.42"),
+	acctKeyB, err := AccountKeyB.MarshalJSON()
+	test.AssertNotError(t, err, "failed to marshal account key")
+	input := &corepb.Registration{
+		Key:       acctKeyB,
+		InitialIP: parseAndMarshalIP(t, "42.42.42.42"),
 	}
-	secondReg, err := ra.NewRegistration(ctx, secondReg)
+	secondReg, err := ra.NewRegistration(ctx, input)
 	test.AssertNotError(t, err, "Error creating a second test registration")
-
 	// First, add an order with `names` for regA
 	firstOrder, err := ra.NewOrder(context.Background(), orderReq)
 	// It shouldn't fail
@@ -2234,7 +2263,7 @@ func TestNewOrderReuse(t *testing.T) {
 		{
 			Name: "Duplicate order, different regID",
 			OrderReq: &rapb.NewOrderRequest{
-				RegistrationID: secondReg.ID,
+				RegistrationID: secondReg.Id,
 				Names:          names,
 			},
 			// We do not expect reuse because the order regID differs from firstOrder
