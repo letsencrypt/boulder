@@ -360,6 +360,10 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 		return nil, err
 	}
 
+	if err := validateContactsPresent(request.Contact, request.ContactsPresent); err != nil {
+		return nil, err
+	}
+
 	reg := core.Registration{
 		Key:    &key,
 		Status: core.StatusValid,
@@ -2152,6 +2156,20 @@ func wildcardOverlap(dnsNames []string) error {
 			return berrors.MalformedError(
 				"Domain name %q is redundant with a wildcard domain in the same request. Remove one or the other from the certificate request.", name)
 		}
+	}
+	return nil
+}
+
+// validateContactsPresent will return an error if the contacts []string
+// len is greater than zero and the contactsPresent bool is false. We
+// don't care about any other cases. If the length of the contacts is zero
+// and contactsPresent is true, it seems like a mismatch but we have to
+// assume that the client is requesting to update the contacts field with
+// by removing the existing contacts value so we don't want to return an
+// error here.
+func validateContactsPresent(contacts []string, contactsPresent bool) error {
+	if len(contacts) > 0 && !contactsPresent {
+		return berrors.InternalServerError("account contacts present but contactsPresent false")
 	}
 	return nil
 }
