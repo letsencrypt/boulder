@@ -67,8 +67,10 @@ type issuerMaps struct {
 // OCSP responses.
 type certificateAuthorityImpl struct {
 	capb.UnimplementedCertificateAuthorityServer
+	capb.UnimplementedOCSPGeneratorServer
 	sa                 certificateStorage
 	pa                 core.PolicyAuthority
+	ocsp               capb.OCSPGeneratorServer
 	issuers            issuerMaps
 	ecdsaAllowedRegIDs map[int64]bool
 	prefix             int // Prepended to the serial number
@@ -108,6 +110,7 @@ func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
 func NewCertificateAuthorityImpl(
 	sa certificateStorage,
 	pa core.PolicyAuthority,
+	ocsp capb.OCSPGeneratorServer,
 	boulderIssuers []*issuance.Issuer,
 	ecdsaAllowedRegIDs []int64,
 	certExpiry time.Duration,
@@ -237,7 +240,7 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	}
 	issuerID := issuer.Cert.ID()
 
-	ocspResp, err := ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
+	ocspResp, err := ca.ocsp.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		Serial:   serialHex,
 		IssuerID: int64(issuerID),
 		Status:   string(core.OCSPStatusGood),
@@ -580,4 +583,11 @@ func (ca *certificateAuthorityImpl) integrateOrphan() error {
 	}
 	ca.adoptedOrphanCount.With(prometheus.Labels{"type": typ}).Inc()
 	return nil
+}
+
+// GenerateOCSP is simply a passthrough to ocspImpl.GenerateOCSP so that other
+// services which need to talk to the CA anyway can do so without configuring
+// two separate gRPC service backends.
+func (ca *certificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
+	return ca.ocsp.GenerateOCSP(ctx, req)
 }

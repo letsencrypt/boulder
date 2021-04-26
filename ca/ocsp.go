@@ -1,7 +1,5 @@
 package ca
 
-// TODO(##5226): Move the GenerateOCSP service into this file too.
-
 import (
 	"context"
 	"errors"

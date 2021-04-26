@@ -217,9 +217,37 @@ func main() {
 		defer func() { _ = orphanQueue.Close() }()
 	}
 
+	ocspi, err := ca.NewOCSPImpl(
+		sa,
+		boulderIssuers,
+		c.CA.LifespanOCSP.Duration,
+		c.CA.OCSPLogMaxLength,
+		c.CA.OCSPLogPeriod.Duration,
+		logger,
+		scope,
+		signatureCount,
+		signErrorCount,
+		clk,
+	)
+	cmd.FailOnError(err, "Failed to create OCSP impl")
+	go ocspi.LogOCSPLoop()
+
+	ocspSrv, ocspListener, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tlsConfig, serverMetrics, clk)
+	cmd.FailOnError(err, "Unable to setup CA gRPC server")
+	capb.RegisterOCSPGeneratorServer(ocspSrv, ocspi)
+	ocspHealth := health.NewServer()
+	healthpb.RegisterHealthServer(ocspSrv, ocspHealth)
+	wg.Add(1)
+	go func() {
+		cmd.FailOnError(cmd.FilterShutdownErrors(ocspSrv.Serve(ocspListener)),
+			"OCSPGenerator gRPC service failed")
+		wg.Done()
+	}()
+
 	cai, err := ca.NewCertificateAuthorityImpl(
 		sa,
 		pa,
+		ocspi,
 		boulderIssuers,
 		c.CA.ECDSAAllowedAccounts,
 		c.CA.Expiry.Duration,
@@ -250,33 +278,6 @@ func main() {
 	wg.Add(1)
 	go func() {
 		cmd.FailOnError(cmd.FilterShutdownErrors(caSrv.Serve(caListener)), "CA gRPC service failed")
-		wg.Done()
-	}()
-
-	ocspi, err := ca.NewOCSPImpl(
-		sa,
-		boulderIssuers,
-		c.CA.LifespanOCSP.Duration,
-		c.CA.OCSPLogMaxLength,
-		c.CA.OCSPLogPeriod.Duration,
-		logger,
-		scope,
-		signatureCount,
-		signErrorCount,
-		clk,
-	)
-	cmd.FailOnError(err, "Failed to create OCSP impl")
-	go ocspi.LogOCSPLoop()
-
-	ocspSrv, ocspListener, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tlsConfig, serverMetrics, clk)
-	cmd.FailOnError(err, "Unable to setup CA gRPC server")
-	capb.RegisterOCSPGeneratorServer(ocspSrv, ocspi)
-	ocspHealth := health.NewServer()
-	healthpb.RegisterHealthServer(ocspSrv, ocspHealth)
-	wg.Add(1)
-	go func() {
-		cmd.FailOnError(cmd.FilterShutdownErrors(ocspSrv.Serve(ocspListener)),
-			"OCSPGenerator gRPC service failed")
 		wg.Done()
 	}()
 
