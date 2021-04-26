@@ -83,7 +83,7 @@ type certificateAuthorityImpl struct {
 	csrExtensionCount  *prometheus.CounterVec
 	orphanCount        *prometheus.CounterVec
 	adoptedOrphanCount *prometheus.CounterVec
-	signErrorCounter   *prometheus.CounterVec
+	signErrorCount     *prometheus.CounterVec
 }
 
 func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
@@ -118,6 +118,8 @@ func NewCertificateAuthorityImpl(
 	orphanQueue *goque.Queue,
 	logger blog.Logger,
 	stats prometheus.Registerer,
+	signatureCount *prometheus.CounterVec,
+	signErrorCount *prometheus.CounterVec,
 	clk clock.Clock,
 ) (*certificateAuthorityImpl, error) {
 	var ca *certificateAuthorityImpl
@@ -152,14 +154,6 @@ func NewCertificateAuthorityImpl(
 		[]string{csrExtensionCategory})
 	stats.MustRegister(csrExtensionCount)
 
-	signatureCount := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "signatures",
-			Help: "Number of signatures",
-		},
-		[]string{"purpose", "issuer"})
-	stats.MustRegister(signatureCount)
-
 	orphanCount := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "orphans",
@@ -176,12 +170,6 @@ func NewCertificateAuthorityImpl(
 		[]string{"type"})
 	stats.MustRegister(adoptedOrphanCount)
 
-	signErrorCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "signature_errors",
-		Help: "A counter of signature errors labelled by error type",
-	}, []string{"type"})
-	stats.MustRegister(signErrorCounter)
-
 	ca = &certificateAuthorityImpl{
 		sa:                 sa,
 		pa:                 pa,
@@ -197,7 +185,7 @@ func NewCertificateAuthorityImpl(
 		csrExtensionCount:  csrExtensionCount,
 		orphanCount:        orphanCount,
 		adoptedOrphanCount: adoptedOrphanCount,
-		signErrorCounter:   signErrorCounter,
+		signErrorCount:     signErrorCount,
 		clk:                clk,
 	}
 
@@ -208,7 +196,7 @@ func NewCertificateAuthorityImpl(
 func (ca *certificateAuthorityImpl) noteSignError(err error) {
 	var pkcs11Error *pkcs11.Error
 	if errors.As(err, &pkcs11Error) {
-		ca.signErrorCounter.WithLabelValues("HSM").Inc()
+		ca.signErrorCount.WithLabelValues("HSM").Inc()
 	}
 }
 
@@ -247,7 +235,7 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	if err != nil {
 		return nil, err
 	}
-	issuerID := issuer.cert.ID()
+	issuerID := issuer.Cert.ID()
 
 	ocspResp, err := ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		Serial:   serialHex,
@@ -353,15 +341,15 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	if err != nil {
 		return nil, err
 	}
-	certDER, err := issuer.boulderIssuer.Issue(issuanceReq)
+	certDER, err := issuer.Issue(issuanceReq)
 	if err != nil {
 		return nil, err
 	}
-	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.boulderIssuer.Name()}).Inc()
+	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
 	ca.log.AuditInfof("Signing success: serial=[%s] names=[%s] csr=[%s] certificate=[%s]",
 		serialHex, strings.Join(precert.DNSNames, ", "), hex.EncodeToString(req.DER),
 		hex.EncodeToString(certDER))
-	err = ca.storeCertificate(ctx, req.RegistrationID, req.OrderID, precert.SerialNumber, certDER, int64(issuer.cert.ID()))
+	err = ca.storeCertificate(ctx, req.RegistrationID, req.OrderID, precert.SerialNumber, certDER, int64(issuer.Cert.ID()))
 	if err != nil {
 		return nil, err
 	}

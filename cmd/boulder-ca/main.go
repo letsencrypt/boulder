@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/beeker1121/goque"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
@@ -165,6 +166,22 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
+	// These two metrics are created and registered here so they can be shared
+	// between NewCertificateAuthorityImpl and NewOCSPImpl.
+	signatureCount := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "signatures",
+			Help: "Number of signatures",
+		},
+		[]string{"purpose", "issuer"})
+	scope.MustRegister(signatureCount)
+
+	signErrorCount := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "signature_errors",
+		Help: "A counter of signature errors labelled by error type",
+	}, []string{"type"})
+	scope.MustRegister(signErrorCount)
+
 	cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
 
 	pa, err := policy.New(c.PA.Challenges)
@@ -213,6 +230,8 @@ func main() {
 		orphanQueue,
 		logger,
 		scope,
+		signatureCount,
+		signErrorCount,
 		clk)
 	cmd.FailOnError(err, "Failed to create CA impl")
 
@@ -236,11 +255,14 @@ func main() {
 
 	ocspi, err := ca.NewOCSPImpl(
 		sa,
+		boulderIssuers,
 		c.CA.LifespanOCSP.Duration,
 		c.CA.OCSPLogMaxLength,
 		c.CA.OCSPLogPeriod.Duration,
 		logger,
 		scope,
+		signatureCount,
+		signErrorCount,
 		clk,
 	)
 	cmd.FailOnError(err, "Failed to create OCSP impl")

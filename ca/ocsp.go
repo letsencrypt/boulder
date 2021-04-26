@@ -4,12 +4,14 @@ package ca
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 
@@ -25,11 +27,13 @@ type ocspImpl struct {
 	capb.UnimplementedOCSPGeneratorServer
 	sa certificateStorage
 	// TODO(#5152): Replace IssuerID with IssuerNameID.
-	issuers      map[issuance.IssuerID]*issuance.Issuer
-	ocspLifetime time.Duration
-	ocspLogQueue *ocspLogQueue
-	log          blog.Logger
-	clk          clock.Clock
+	issuers        map[issuance.IssuerID]*issuance.Issuer
+	ocspLifetime   time.Duration
+	ocspLogQueue   *ocspLogQueue
+	log            blog.Logger
+	signatureCount *prometheus.CounterVec
+	signErrorCount *prometheus.CounterVec
+	clk            clock.Clock
 }
 
 func NewOCSPImpl(
@@ -40,6 +44,8 @@ func NewOCSPImpl(
 	ocspLogPeriod time.Duration,
 	logger blog.Logger,
 	stats prometheus.Registerer,
+	signatureCount *prometheus.CounterVec,
+	signErrorCount *prometheus.CounterVec,
 	clk clock.Clock,
 ) (*ocspImpl, error) {
 	issuersByID := make(map[issuance.IssuerID]*issuance.Issuer, len(issuers))
@@ -53,12 +59,14 @@ func NewOCSPImpl(
 	}
 
 	oi := &ocspImpl{
-		sa:           sa,
-		issuers:      issuersByID,
-		ocspLifetime: ocspLifetime,
-		ocspLogQueue: ocspLogQueue,
-		log:          logger,
-		clk:          clk,
+		sa:             sa,
+		issuers:        issuersByID,
+		ocspLifetime:   ocspLifetime,
+		ocspLogQueue:   ocspLogQueue,
+		log:            logger,
+		signatureCount: signatureCount,
+		signErrorCount: signErrorCount,
+		clk:            clk,
 	}
 	return oi, nil
 }
@@ -118,9 +126,13 @@ func (oi *ocspImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequ
 	}
 
 	ocspResponse, err := ocsp.CreateResponse(issuer.Cert.Certificate, issuer.Cert.Certificate, tbsResponse, issuer.Signer)
-	oi.noteSignError(err)
 	if err == nil {
 		oi.signatureCount.With(prometheus.Labels{"purpose": "ocsp", "issuer": issuer.Name()}).Inc()
+	} else {
+		var pkcs11Error *pkcs11.Error
+		if errors.As(err, &pkcs11Error) {
+			oi.signErrorCount.WithLabelValues("HSM").Inc()
+		}
 	}
 	return &capb.OCSPResponse{Response: ocspResponse}, err
 }
