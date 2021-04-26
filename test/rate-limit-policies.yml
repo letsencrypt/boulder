@@ -50,7 +50,7 @@ certificatesPerFQDNSet:
     ecdsa.le.wtf: 10000
     must-staple.le.wtf: 10000
 certificatesPerFQDNSetFast:
-  window: 1h
+  window: 2h
   threshold: 2
   overrides:
     le.wtf: 100
