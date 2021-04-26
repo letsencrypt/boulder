@@ -281,7 +281,7 @@ func TestFailNoSerialPrefix(t *testing.T) {
 }
 
 type TestCertificateIssuance struct {
-	ca      *CertificateAuthorityImpl
+	ca      *certificateAuthorityImpl
 	sa      *mockSA
 	req     *x509.CertificateRequest
 	mode    IssuanceMode
@@ -356,7 +356,7 @@ func TestIssuePrecertificate(t *testing.T) {
 	}
 }
 
-func issueCertificateSubTestSetup(t *testing.T) (*CertificateAuthorityImpl, *mockSA) {
+func issueCertificateSubTestSetup(t *testing.T) (*certificateAuthorityImpl, *mockSA) {
 	testCtx := setup(t)
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
@@ -562,7 +562,7 @@ func TestInvalidCSRs(t *testing.T) {
 	testCases := []struct {
 		name         string
 		csrPath      string
-		check        func(t *testing.T, ca *CertificateAuthorityImpl, sa *mockSA)
+		check        func(t *testing.T, ca *certificateAuthorityImpl, sa *mockSA)
 		errorMessage string
 		errorType    berrors.ErrorType
 	}{

@@ -209,11 +209,8 @@ func main() {
 		c.CA.Backdate.Duration,
 		c.CA.SerialPrefix,
 		c.CA.MaxNames,
-		c.CA.LifespanOCSP.Duration,
 		kp,
 		orphanQueue,
-		c.CA.OCSPLogMaxLength,
-		c.CA.OCSPLogPeriod.Duration,
 		logger,
 		scope,
 		clk)
@@ -222,7 +219,6 @@ func main() {
 	if orphanQueue != nil {
 		go cai.OrphanIntegrationLoop()
 	}
-	go cai.LogOCSPLoop()
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	var wg sync.WaitGroup
@@ -238,9 +234,21 @@ func main() {
 		wg.Done()
 	}()
 
+	ocspi, err := ca.NewOCSPImpl(
+		sa,
+		c.CA.LifespanOCSP.Duration,
+		c.CA.OCSPLogMaxLength,
+		c.CA.OCSPLogPeriod.Duration,
+		logger,
+		scope,
+		clk,
+	)
+	cmd.FailOnError(err, "Failed to create OCSP impl")
+	go ocspi.LogOCSPLoop()
+
 	ocspSrv, ocspListener, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
-	capb.RegisterOCSPGeneratorServer(ocspSrv, cai)
+	capb.RegisterOCSPGeneratorServer(ocspSrv, ocspi)
 	ocspHealth := health.NewServer()
 	healthpb.RegisterHealthServer(ocspSrv, ocspHealth)
 	wg.Add(1)
@@ -256,7 +264,7 @@ func main() {
 		caSrv.GracefulStop()
 		ocspSrv.GracefulStop()
 		wg.Wait()
-		cai.Stop()
+		ocspi.Stop()
 	})
 
 	select {}
