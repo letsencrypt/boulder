@@ -223,6 +223,7 @@ type dummyRateLimitConfig struct {
 	NewOrdersPerAccountPolicy             ratelimit.RateLimitPolicy
 	InvalidAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
 	CertificatesPerFQDNSetPolicy          ratelimit.RateLimitPolicy
+	CertificatesPerFQDNSetFastPolicy      ratelimit.RateLimitPolicy
 }
 
 func (r *dummyRateLimitConfig) TotalCertificates() ratelimit.RateLimitPolicy {
@@ -259,6 +260,10 @@ func (r *dummyRateLimitConfig) InvalidAuthorizationsPerAccount() ratelimit.RateL
 
 func (r *dummyRateLimitConfig) CertificatesPerFQDNSet() ratelimit.RateLimitPolicy {
 	return r.CertificatesPerFQDNSetPolicy
+}
+
+func (r *dummyRateLimitConfig) CertificatesPerFQDNSetFast() ratelimit.RateLimitPolicy {
+	return r.CertificatesPerFQDNSetFastPolicy
 }
 
 func (r *dummyRateLimitConfig) LoadPolicies(contents []byte) error {
@@ -1336,8 +1341,10 @@ func TestRateLimitLiveReload(t *testing.T) {
 	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le.wtf"], 10000)
 	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP().Overrides["127.0.0.1"], 1000000)
 	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount().Threshold, 150)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Threshold, 6)
 	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Overrides["le.wtf"], 10000)
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Threshold, 5)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSetFast().Threshold, 2)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSetFast().Overrides["le.wtf"], 100)
 
 	// Write a different  policy YAML to the monitored file, expect a reload.
 	// Sleep a few milliseconds before writing so the timestamp isn't identical to

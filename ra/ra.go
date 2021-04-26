@@ -1403,6 +1403,14 @@ func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []st
 		}
 	}
 
+	fqdnFastLimits := ra.rlPolicies.CertificatesPerFQDNSetFast()
+	if fqdnFastLimits.Enabled() {
+		err := ra.checkCertificatesPerFQDNSetLimit(ctx, names, fqdnFastLimits, regID)
+		if err != nil {
+			return err
+		}
+	}
+
 	fqdnLimits := ra.rlPolicies.CertificatesPerFQDNSet()
 	if fqdnLimits.Enabled() {
 		err := ra.checkCertificatesPerFQDNSetLimit(ctx, names, fqdnLimits, regID)

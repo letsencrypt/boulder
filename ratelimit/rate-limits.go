@@ -18,6 +18,7 @@ type Limits interface {
 	PendingAuthorizationsPerAccount() RateLimitPolicy
 	InvalidAuthorizationsPerAccount() RateLimitPolicy
 	CertificatesPerFQDNSet() RateLimitPolicy
+	CertificatesPerFQDNSetFast() RateLimitPolicy
 	PendingOrdersPerAccount() RateLimitPolicy
 	NewOrdersPerAccount() RateLimitPolicy
 	LoadPolicies(contents []byte) error
@@ -84,6 +85,15 @@ func (r *limitsImpl) CertificatesPerFQDNSet() RateLimitPolicy {
 		return RateLimitPolicy{}
 	}
 	return r.rlPolicy.CertificatesPerFQDNSet
+}
+
+func (r *limitsImpl) CertificatesPerFQDNSetFast() RateLimitPolicy {
+	r.RLock()
+	defer r.RUnlock()
+	if r.rlPolicy == nil {
+		return RateLimitPolicy{}
+	}
+	return r.rlPolicy.CertificatesPerFQDNSetFast
 }
 
 func (r *limitsImpl) PendingOrdersPerAccount() RateLimitPolicy {
@@ -157,6 +167,10 @@ type rateLimitConfig struct {
 	// Number of certificates that can be extant containing a specific set
 	// of DNS names.
 	CertificatesPerFQDNSet RateLimitPolicy `yaml:"certificatesPerFQDNSet"`
+	// Same as above, but intended to both trigger and reset faster (i.e. a
+	// lower threshold and smaller window), so that clients don't have to wait
+	// a long time after a small burst of accidental duplicate issuance.
+	CertificatesPerFQDNSetFast RateLimitPolicy `yaml:"certificatesPerFQDNSetFast"`
 }
 
 // RateLimitPolicy describes a general limiting policy
@@ -170,14 +184,14 @@ type RateLimitPolicy struct {
 	// The key is defined on a per-limit basis and should match the key it counts on.
 	// For instance, a rate limit on the number of certificates per name uses name as
 	// a key, while a rate limit on the number of registrations per IP subnet would
-	// use subnet as a key.
-	// Note that a zero entry in the overrides map does not mean "not limit," it
-	// means a limit of zero.
+	// use subnet as a key. Note that a zero entry in the overrides map does not
+	// mean "no limit," it means a limit of zero.
 	Overrides map[string]int `yaml:"overrides"`
 	// A per-registration override setting. This can be used, e.g. if there are
 	// hosting providers that we would like to grant a higher rate of issuance
 	// than the default. If both key-based and registration-based overrides are
-	// available, the registration-based on takes priority.
+	// available, whichever is larger takes priority. Note that a zero entry in
+	// the overrides map does not mean "no limit", it means a limit of zero.
 	RegistrationOverrides map[int64]int `yaml:"registrationOverrides"`
 }
 
