@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/honeycombio/beeline-go"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -370,7 +371,8 @@ func main() {
 			}
 		}
 
-		Syslog cmd.SyslogConfig
+		Syslog  cmd.SyslogConfig
+		Beeline cmd.BeelineConfig
 	}
 	configPath := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
@@ -381,6 +383,9 @@ func main() {
 	}
 	err := cmd.ReadConfigFile(*configPath, &config)
 	cmd.FailOnError(err, "Failed reading config file")
+
+	beeline.Init(config.Beeline.Get())
+	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(config.Syslog, config.BadKeyRevoker.DebugAddr)
 	clk := cmd.Clock()

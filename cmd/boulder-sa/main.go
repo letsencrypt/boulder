@@ -7,6 +7,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/honeycombio/beeline-go"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -25,7 +26,8 @@ type config struct {
 		ParallelismPerRPC int
 	}
 
-	Syslog cmd.SyslogConfig
+	Syslog  cmd.SyslogConfig
+	Beeline cmd.BeelineConfig
 }
 
 func main() {
@@ -51,6 +53,9 @@ func main() {
 	if *debugAddr != "" {
 		c.SA.DebugAddr = *debugAddr
 	}
+
+	beeline.Init(c.Beeline.Get())
+	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.SA.DebugAddr)
 	defer logger.AuditPanic()

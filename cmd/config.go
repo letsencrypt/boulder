@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/honeycombio/beeline-go"
 	"github.com/letsencrypt/boulder/core"
 )
 
@@ -258,4 +259,30 @@ type PortConfig struct {
 	HTTPPort  int
 	HTTPSPort int
 	TLSPort   int
+}
+
+// BeelineConfig provides config options for the Honeycomb beeline-go library,
+// which are passed to its beeline.Init() method.
+type BeelineConfig struct {
+	// WriteKey is the API key needed to send data Honeycomb. Never check in a
+	// value for this config parameter in a publicly-readable repository.
+	WriteKey string
+	// Dataset is the event collection, e.g. Staging or Prod.
+	Dataset string
+	// ServiceName is the name of this service, e.g. WFE or RA.
+	ServiceName string
+	// Mute disables honeycomb entirely; useful in test environments.
+	Mute bool
+	// Many other fields of beeline.Config are omitted as they are not yet used.
+}
+
+// Get converts a BeelineConfig to a beeline.Config, performing any necessary
+// conversions.
+func (bc *BeelineConfig) Get() beeline.Config {
+	return beeline.Config{
+		WriteKey:    bc.WriteKey,
+		Dataset:     bc.Dataset,
+		ServiceName: bc.ServiceName,
+		Mute:        bc.Mute,
+	}
 }
