@@ -5,7 +5,9 @@ import (
 	"errors"
 	"net"
 
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
+	"github.com/honeycombio/beeline-go/wrappers/hnygrpc"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
@@ -45,7 +47,12 @@ func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, metrics serverMet
 	si := newServerInterceptor(metrics, clk)
 	options := []grpc.ServerOption{
 		grpc.Creds(creds),
-		grpc.UnaryInterceptor(si.intercept),
+		grpc.UnaryInterceptor(
+			grpc_middleware.ChainUnaryServer(
+				si.intercept,
+				hnygrpc.UnaryServerInterceptor(),
+			),
+		),
 	}
 	if c.MaxConnectionAge.Duration > 0 {
 		options = append(options,
