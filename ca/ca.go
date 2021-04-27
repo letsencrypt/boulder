@@ -63,8 +63,8 @@ type issuerMaps struct {
 	byNameID map[issuance.IssuerNameID]*issuance.Issuer
 }
 
-// certificateAuthorityImpl represents a CA that signs certificates, CRLs, and
-// OCSP responses.
+// certificateAuthorityImpl represents a CA that signs certificates.
+// It can sign OCSP responses as well, but only via delegation to an ocspImpl.
 type certificateAuthorityImpl struct {
 	capb.UnimplementedCertificateAuthorityServer
 	capb.UnimplementedOCSPGeneratorServer
@@ -176,6 +176,7 @@ func NewCertificateAuthorityImpl(
 	ca = &certificateAuthorityImpl{
 		sa:                 sa,
 		pa:                 pa,
+		ocsp:               ocsp,
 		issuers:            issuers,
 		ecdsaAllowedRegIDs: ecdsaAllowedRegIDsMap,
 		validityPeriod:     certExpiry,
@@ -183,6 +184,7 @@ func NewCertificateAuthorityImpl(
 		prefix:             serialPrefix,
 		maxNames:           maxNames,
 		keyPolicy:          keyPolicy,
+		orphanQueue:        orphanQueue,
 		log:                logger,
 		signatureCount:     signatureCount,
 		csrExtensionCount:  csrExtensionCount,

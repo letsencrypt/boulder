@@ -217,6 +217,9 @@ func main() {
 		defer func() { _ = orphanQueue.Close() }()
 	}
 
+	serverMetrics := bgrpc.NewServerMetrics(scope)
+	var wg sync.WaitGroup
+
 	ocspi, err := ca.NewOCSPImpl(
 		sa,
 		boulderIssuers,
@@ -266,9 +269,6 @@ func main() {
 	if orphanQueue != nil {
 		go cai.OrphanIntegrationLoop()
 	}
-
-	serverMetrics := bgrpc.NewServerMetrics(scope)
-	var wg sync.WaitGroup
 
 	caSrv, caListener, err := bgrpc.NewServer(c.CA.GRPCCA, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
