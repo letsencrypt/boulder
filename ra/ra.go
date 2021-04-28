@@ -1385,10 +1385,11 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 		return fmt.Errorf("checking duplicate certificate limit for %q: %s", names, err)
 	}
 	names = core.UniqueLowerNames(names)
-	if int(count) >= limit.GetThreshold(strings.Join(names, ","), regID) {
+	threshold := limit.GetThreshold(strings.Join(names, ","), regID)
+	if int(count) >= threshold {
 		return berrors.RateLimitError(
-			"too many certificates already issued for exact set of domains: %s",
-			strings.Join(names, ","),
+			"too many certificates (%d) already issued for this exact set of domains in the last %s: %s",
+			threshold, limit.Window.Duration, strings.Join(names, ","),
 		)
 	}
 	return nil
