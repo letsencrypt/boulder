@@ -70,7 +70,7 @@ type certificateAuthorityImpl struct {
 	capb.UnimplementedOCSPGeneratorServer
 	sa                 certificateStorage
 	pa                 core.PolicyAuthority
-	ocsp               capb.OCSPGeneratorServer
+	ocsp               *ocspImpl
 	issuers            issuerMaps
 	ecdsaAllowedRegIDs map[int64]bool
 	prefix             int // Prepended to the serial number
@@ -105,12 +105,12 @@ func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
 }
 
 // NewCertificateAuthorityImpl creates a CA instance that can sign certificates
-// from a single issuer (the first first in the issuers slice), and can sign OCSP
-// for any of the issuer certificates provided.
+// from any number of issuance.Issuers according to their profiles, and can sign
+// OCSP (via delegation to an ocspImpl and its issuers).
 func NewCertificateAuthorityImpl(
 	sa certificateStorage,
 	pa core.PolicyAuthority,
-	ocsp capb.OCSPGeneratorServer,
+	ocsp *ocspImpl,
 	boulderIssuers []*issuance.Issuer,
 	ecdsaAllowedRegIDs []int64,
 	certExpiry time.Duration,
