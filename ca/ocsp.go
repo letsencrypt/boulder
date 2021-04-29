@@ -1,19 +1,139 @@
 package ca
 
-// TODO(##5226): Move the GenerateOCSP service into this file too.
-
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 
+	capb "github.com/letsencrypt/boulder/ca/proto"
+	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 )
+
+// ocspImpl provides a backing implementation for the OCSP gRPC service.
+type ocspImpl struct {
+	capb.UnimplementedOCSPGeneratorServer
+	sa certificateStorage
+	// TODO(#5152): Replace IssuerID with IssuerNameID.
+	issuers        map[issuance.IssuerID]*issuance.Issuer
+	ocspLifetime   time.Duration
+	ocspLogQueue   *ocspLogQueue
+	log            blog.Logger
+	signatureCount *prometheus.CounterVec
+	signErrorCount *prometheus.CounterVec
+	clk            clock.Clock
+}
+
+func NewOCSPImpl(
+	sa certificateStorage,
+	issuers []*issuance.Issuer,
+	ocspLifetime time.Duration,
+	ocspLogMaxLength int,
+	ocspLogPeriod time.Duration,
+	logger blog.Logger,
+	stats prometheus.Registerer,
+	signatureCount *prometheus.CounterVec,
+	signErrorCount *prometheus.CounterVec,
+	clk clock.Clock,
+) (*ocspImpl, error) {
+	issuersByID := make(map[issuance.IssuerID]*issuance.Issuer, len(issuers))
+	for _, issuer := range issuers {
+		issuersByID[issuer.ID()] = issuer
+	}
+
+	var ocspLogQueue *ocspLogQueue
+	if ocspLogMaxLength > 0 {
+		ocspLogQueue = newOCSPLogQueue(ocspLogMaxLength, ocspLogPeriod, stats, logger)
+	}
+
+	oi := &ocspImpl{
+		sa:             sa,
+		issuers:        issuersByID,
+		ocspLifetime:   ocspLifetime,
+		ocspLogQueue:   ocspLogQueue,
+		log:            logger,
+		signatureCount: signatureCount,
+		signErrorCount: signErrorCount,
+		clk:            clk,
+	}
+	return oi, nil
+}
+
+// LogOCSPLoop collects OCSP generation log events into bundles, and logs
+// them periodically.
+func (oi *ocspImpl) LogOCSPLoop() {
+	if oi.ocspLogQueue != nil {
+		oi.ocspLogQueue.loop()
+	}
+}
+
+// Stop asks this ocspImpl to shut down. It must be called after the
+// corresponding RPC service is shut down and there are no longer any inflight
+// RPCs. It will attempt to drain any logging queues (which may block), and will
+// return only when done.
+func (oi *ocspImpl) Stop() {
+	if oi.ocspLogQueue != nil {
+		oi.ocspLogQueue.stop()
+	}
+}
+
+// GenerateOCSP produces a new OCSP response and returns it
+func (oi *ocspImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
+	// req.Status, req.Reason, and req.RevokedAt are often 0, for non-revoked certs.
+	if core.IsAnyNilOrZero(req, req.Serial, req.IssuerID) {
+		return nil, berrors.InternalServerError("Incomplete generate OCSP request")
+	}
+
+	serialInt, err := core.StringToSerial(req.Serial)
+	if err != nil {
+		return nil, err
+	}
+	serial := serialInt
+
+	// TODO(#5152): Replace IssuerID with IssuerNameID.
+	var ok bool
+	issuer, ok := oi.issuers[issuance.IssuerID(req.IssuerID)]
+	if !ok {
+		return nil, fmt.Errorf("This CA doesn't have an issuer cert with ID %d", req.IssuerID)
+	}
+
+	now := oi.clk.Now().Truncate(time.Hour)
+	tbsResponse := ocsp.Response{
+		Status:       ocspStatusToCode[req.Status],
+		SerialNumber: serial,
+		ThisUpdate:   now,
+		NextUpdate:   now.Add(oi.ocspLifetime),
+	}
+	if tbsResponse.Status == ocsp.Revoked {
+		tbsResponse.RevokedAt = time.Unix(0, req.RevokedAt)
+		tbsResponse.RevocationReason = int(req.Reason)
+	}
+
+	if oi.ocspLogQueue != nil {
+		oi.ocspLogQueue.enqueue(serial.Bytes(), now, ocsp.ResponseStatus(tbsResponse.Status))
+	}
+
+	ocspResponse, err := ocsp.CreateResponse(issuer.Cert.Certificate, issuer.Cert.Certificate, tbsResponse, issuer.Signer)
+	if err == nil {
+		oi.signatureCount.With(prometheus.Labels{"purpose": "ocsp", "issuer": issuer.Name()}).Inc()
+	} else {
+		var pkcs11Error *pkcs11.Error
+		if errors.As(err, &pkcs11Error) {
+			oi.signErrorCount.WithLabelValues("HSM").Inc()
+		}
+	}
+	return &capb.OCSPResponse{Response: ocspResponse}, err
+}
 
 // ocspLogQueue accumulates OCSP logging events and writes several of them
 // in a single log line. This reduces the number of log lines and bytes,

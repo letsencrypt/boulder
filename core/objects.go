@@ -490,6 +490,7 @@ type CertificateStatus struct {
 	NotAfter  time.Time `db:"notAfter"`
 	IsExpired bool      `db:"isExpired"`
 
+	// TODO(#5152): Replace IssuerID with IssuerNameID.
 	IssuerID *int64
 }
 

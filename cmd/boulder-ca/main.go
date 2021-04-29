@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/beeker1121/goque"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
@@ -165,6 +166,22 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
+	// These two metrics are created and registered here so they can be shared
+	// between NewCertificateAuthorityImpl and NewOCSPImpl.
+	signatureCount := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "signatures",
+			Help: "Number of signatures",
+		},
+		[]string{"purpose", "issuer"})
+	scope.MustRegister(signatureCount)
+
+	signErrorCount := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "signature_errors",
+		Help: "A counter of signature errors labelled by error type",
+	}, []string{"type"})
+	scope.MustRegister(signErrorCount)
+
 	cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
 
 	pa, err := policy.New(c.PA.Challenges)
@@ -200,32 +217,58 @@ func main() {
 		defer func() { _ = orphanQueue.Close() }()
 	}
 
+	serverMetrics := bgrpc.NewServerMetrics(scope)
+	var wg sync.WaitGroup
+
+	ocspi, err := ca.NewOCSPImpl(
+		sa,
+		boulderIssuers,
+		c.CA.LifespanOCSP.Duration,
+		c.CA.OCSPLogMaxLength,
+		c.CA.OCSPLogPeriod.Duration,
+		logger,
+		scope,
+		signatureCount,
+		signErrorCount,
+		clk,
+	)
+	cmd.FailOnError(err, "Failed to create OCSP impl")
+	go ocspi.LogOCSPLoop()
+
+	ocspSrv, ocspListener, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tlsConfig, serverMetrics, clk)
+	cmd.FailOnError(err, "Unable to setup CA gRPC server")
+	capb.RegisterOCSPGeneratorServer(ocspSrv, ocspi)
+	ocspHealth := health.NewServer()
+	healthpb.RegisterHealthServer(ocspSrv, ocspHealth)
+	wg.Add(1)
+	go func() {
+		cmd.FailOnError(cmd.FilterShutdownErrors(ocspSrv.Serve(ocspListener)),
+			"OCSPGenerator gRPC service failed")
+		wg.Done()
+	}()
+
 	cai, err := ca.NewCertificateAuthorityImpl(
 		sa,
 		pa,
+		ocspi,
 		boulderIssuers,
 		c.CA.ECDSAAllowedAccounts,
 		c.CA.Expiry.Duration,
 		c.CA.Backdate.Duration,
 		c.CA.SerialPrefix,
 		c.CA.MaxNames,
-		c.CA.LifespanOCSP.Duration,
 		kp,
 		orphanQueue,
-		c.CA.OCSPLogMaxLength,
-		c.CA.OCSPLogPeriod.Duration,
 		logger,
 		scope,
+		signatureCount,
+		signErrorCount,
 		clk)
 	cmd.FailOnError(err, "Failed to create CA impl")
 
 	if orphanQueue != nil {
 		go cai.OrphanIntegrationLoop()
 	}
-	go cai.LogOCSPLoop()
-
-	serverMetrics := bgrpc.NewServerMetrics(scope)
-	var wg sync.WaitGroup
 
 	caSrv, caListener, err := bgrpc.NewServer(c.CA.GRPCCA, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
@@ -238,25 +281,13 @@ func main() {
 		wg.Done()
 	}()
 
-	ocspSrv, ocspListener, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tlsConfig, serverMetrics, clk)
-	cmd.FailOnError(err, "Unable to setup CA gRPC server")
-	capb.RegisterOCSPGeneratorServer(ocspSrv, cai)
-	ocspHealth := health.NewServer()
-	healthpb.RegisterHealthServer(ocspSrv, ocspHealth)
-	wg.Add(1)
-	go func() {
-		cmd.FailOnError(cmd.FilterShutdownErrors(ocspSrv.Serve(ocspListener)),
-			"OCSPGenerator gRPC service failed")
-		wg.Done()
-	}()
-
 	go cmd.CatchSignals(logger, func() {
 		caHealth.Shutdown()
 		ocspHealth.Shutdown()
 		caSrv.GracefulStop()
 		ocspSrv.GracefulStop()
 		wg.Wait()
-		cai.Stop()
+		ocspi.Stop()
 	})
 
 	select {}

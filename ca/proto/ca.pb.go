@@ -220,7 +220,8 @@ type GenerateOCSPRequest struct {
 	Reason    int32  `protobuf:"varint,3,opt,name=reason,proto3" json:"reason,omitempty"`
 	RevokedAt int64  `protobuf:"varint,4,opt,name=revokedAt,proto3" json:"revokedAt,omitempty"`
 	Serial    string `protobuf:"bytes,5,opt,name=serial,proto3" json:"serial,omitempty"`
-	IssuerID  int64  `protobuf:"varint,6,opt,name=issuerID,proto3" json:"issuerID,omitempty"`
+	// TODO(#5152): Replace issuerID with issuerNameID.
+	IssuerID int64 `protobuf:"varint,6,opt,name=issuerID,proto3" json:"issuerID,omitempty"`
 }
 
 func (x *GenerateOCSPRequest) Reset() {
