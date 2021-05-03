@@ -384,6 +384,11 @@ func main() {
 
 	sa.InitDBMetrics(saDbMap, prometheus.DefaultRegisterer, dbSettings)
 
+	_, err = saDbMap.Exec(
+		"SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;",
+	)
+	cmd.FailOnError(err, "Failed to set transaction isolation level at the DB")
+
 	checkerLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name: "cert_checker_latency",
 		Help: "Histogram of latencies a cert-checker worker takes to complete a batch",
