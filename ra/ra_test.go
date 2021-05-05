@@ -1513,12 +1513,12 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 		{
 			Name:        "FQDN set issuances equal to limit",
 			Domain:      "equal.example.com",
-			ExpectedErr: fmt.Errorf("too many certificates (3) already issued for this exact set of domains in the last 23h0m0s: equal.example.com: see https://letsencrypt.org/docs/rate-limits/"),
+			ExpectedErr: fmt.Errorf("too many certificates (3) already issued for this exact set of domains in the last 23 hours: equal.example.com: see https://letsencrypt.org/docs/rate-limits/"),
 		},
 		{
 			Name:        "FQDN set issuances above limit",
 			Domain:      "over.example.com",
-			ExpectedErr: fmt.Errorf("too many certificates (3) already issued for this exact set of domains in the last 23h0m0s: over.example.com: see https://letsencrypt.org/docs/rate-limits/"),
+			ExpectedErr: fmt.Errorf("too many certificates (3) already issued for this exact set of domains in the last 23 hours: over.example.com: see https://letsencrypt.org/docs/rate-limits/"),
 		},
 	}
 

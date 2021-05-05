@@ -1388,8 +1388,8 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 	threshold := limit.GetThreshold(strings.Join(names, ","), regID)
 	if int(count) >= threshold {
 		return berrors.RateLimitError(
-			"too many certificates (%d) already issued for this exact set of domains in the last %s: %s",
-			threshold, limit.Window.Duration, strings.Join(names, ","),
+			"too many certificates (%d) already issued for this exact set of domains in the last %.0f hours: %s",
+			threshold, limit.Window.Duration.Hours(), strings.Join(names, ","),
 		)
 	}
 	return nil
