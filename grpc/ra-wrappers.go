@@ -25,23 +25,8 @@ func NewRegistrationAuthorityClient(inner rapb.RegistrationAuthorityClient) *Reg
 	return &RegistrationAuthorityClientWrapper{inner}
 }
 
-func (rac RegistrationAuthorityClientWrapper) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
-	req, err := registrationToPB(reg)
-	if err != nil {
-		return core.Registration{}, err
-	}
-
-	response, err := rac.inner.NewRegistration(ctx, req)
-	if err != nil {
-		return core.Registration{}, err
-	}
-
-	if response == nil || !registrationValid(response) {
-		return core.Registration{}, errIncompleteResponse
-	}
-
-	r, err := pbToRegistration(response)
-	return r, err
+func (rac RegistrationAuthorityClientWrapper) NewRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Registration, error) {
+	return rac.inner.NewRegistration(ctx, request)
 }
 
 func (rac RegistrationAuthorityClientWrapper) NewAuthorization(ctx context.Context, authz core.Authorization, regID int64) (core.Authorization, error) {
@@ -72,11 +57,11 @@ func (rac RegistrationAuthorityClientWrapper) NewCertificate(ctx context.Context
 }
 
 func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Context, base, updates core.Registration) (core.Registration, error) {
-	basePB, err := registrationToPB(base)
+	basePB, err := RegistrationToPB(base)
 	if err != nil {
 		return core.Registration{}, err
 	}
-	updatePB, err := registrationToPB(updates)
+	updatePB, err := RegistrationToPB(updates)
 	if err != nil {
 		return core.Registration{}, err
 	}
@@ -90,7 +75,7 @@ func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Con
 		return core.Registration{}, errIncompleteResponse
 	}
 
-	return pbToRegistration(response)
+	return PbToRegistration(response)
 }
 
 func (rac RegistrationAuthorityClientWrapper) PerformValidation(
@@ -122,7 +107,7 @@ func (rac RegistrationAuthorityClientWrapper) RevokeCertificateWithReg(ctx conte
 }
 
 func (rac RegistrationAuthorityClientWrapper) DeactivateRegistration(ctx context.Context, reg core.Registration) error {
-	regPB, err := registrationToPB(reg)
+	regPB, err := RegistrationToPB(reg)
 	if err != nil {
 		return err
 	}
@@ -195,18 +180,7 @@ func NewRegistrationAuthorityServer(inner core.RegistrationAuthority) *Registrat
 }
 
 func (ras *RegistrationAuthorityServerWrapper) NewRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Registration, error) {
-	if request == nil || !newRegistrationValid(request) {
-		return nil, errIncompleteRequest
-	}
-	reg, err := pbToRegistration(request)
-	if err != nil {
-		return nil, err
-	}
-	newReg, err := ras.inner.NewRegistration(ctx, reg)
-	if err != nil {
-		return nil, err
-	}
-	return registrationToPB(newReg)
+	return ras.inner.NewRegistration(ctx, request)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) NewAuthorization(ctx context.Context, request *rapb.NewAuthorizationRequest) (*corepb.Authorization, error) {
@@ -246,11 +220,11 @@ func (ras *RegistrationAuthorityServerWrapper) UpdateRegistration(ctx context.Co
 	if request == nil || !registrationValid(request.Base) {
 		return nil, errIncompleteRequest
 	}
-	base, err := pbToRegistration(request.Base)
+	base, err := PbToRegistration(request.Base)
 	if err != nil {
 		return nil, err
 	}
-	update, err := pbToRegistration(request.Update)
+	update, err := PbToRegistration(request.Update)
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +232,7 @@ func (ras *RegistrationAuthorityServerWrapper) UpdateRegistration(ctx context.Co
 	if err != nil {
 		return nil, err
 	}
-	return registrationToPB(newReg)
+	return RegistrationToPB(newReg)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) PerformValidation(
@@ -289,7 +263,7 @@ func (ras *RegistrationAuthorityServerWrapper) DeactivateRegistration(ctx contex
 	if request == nil || !registrationValid(request) {
 		return nil, errIncompleteRequest
 	}
-	reg, err := pbToRegistration(request)
+	reg, err := PbToRegistration(request)
 	if err != nil {
 		return nil, err
 	}

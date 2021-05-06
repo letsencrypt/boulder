@@ -243,15 +243,20 @@ func TestMain(m *testing.M) {
 }
 
 func TestDNSNoServers(t *testing.T) {
-	obj := NewTest(time.Hour, []string{}, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	obj := NewTest(time.Hour, NewStaticProvider([]string{}), metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
 
 	_, err := obj.LookupHost(context.Background(), "letsencrypt.org")
+	test.AssertError(t, err, "No servers")
 
+	_, err = obj.LookupTXT(context.Background(), "letsencrypt.org")
+	test.AssertError(t, err, "No servers")
+
+	_, _, err = obj.LookupCAA(context.Background(), "letsencrypt.org")
 	test.AssertError(t, err, "No servers")
 }
 
 func TestDNSOneServer(t *testing.T) {
-	obj := NewTest(time.Second*10, []string{dnsLoopbackAddr}, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	obj := NewTest(time.Second*10, NewStaticProvider([]string{dnsLoopbackAddr}), metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
 
 	_, err := obj.LookupHost(context.Background(), "letsencrypt.org")
 
@@ -259,28 +264,15 @@ func TestDNSOneServer(t *testing.T) {
 }
 
 func TestDNSDuplicateServers(t *testing.T) {
-	obj := NewTest(time.Second*10, []string{dnsLoopbackAddr, dnsLoopbackAddr}, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	obj := NewTest(time.Second*10, NewStaticProvider([]string{dnsLoopbackAddr, dnsLoopbackAddr}), metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
 
 	_, err := obj.LookupHost(context.Background(), "letsencrypt.org")
 
 	test.AssertNotError(t, err, "No message")
 }
 
-func TestDNSLookupsNoServer(t *testing.T) {
-	obj := NewTest(time.Second*10, []string{}, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
-
-	_, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
-	test.AssertError(t, err, "No servers")
-
-	_, err = obj.LookupHost(context.Background(), "letsencrypt.org")
-	test.AssertError(t, err, "No servers")
-
-	_, _, err = obj.LookupCAA(context.Background(), "letsencrypt.org")
-	test.AssertError(t, err, "No servers")
-}
-
 func TestDNSServFail(t *testing.T) {
-	obj := NewTest(time.Second*10, []string{dnsLoopbackAddr}, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	obj := NewTest(time.Second*10, NewStaticProvider([]string{dnsLoopbackAddr}), metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
 	bad := "servfail.com"
 
 	_, err := obj.LookupTXT(context.Background(), bad)
@@ -295,7 +287,7 @@ func TestDNSServFail(t *testing.T) {
 }
 
 func TestDNSLookupTXT(t *testing.T) {
-	obj := NewTest(time.Second*10, []string{dnsLoopbackAddr}, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	obj := NewTest(time.Second*10, NewStaticProvider([]string{dnsLoopbackAddr}), metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
 
 	a, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
 	t.Logf("A: %v", a)
@@ -309,7 +301,7 @@ func TestDNSLookupTXT(t *testing.T) {
 }
 
 func TestDNSLookupHost(t *testing.T) {
-	obj := NewTest(time.Second*10, []string{dnsLoopbackAddr}, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	obj := NewTest(time.Second*10, NewStaticProvider([]string{dnsLoopbackAddr}), metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
 
 	ip, err := obj.LookupHost(context.Background(), "servfail.com")
 	t.Logf("servfail.com - IP: %s, Err: %s", ip, err)
@@ -374,7 +366,7 @@ func TestDNSLookupHost(t *testing.T) {
 }
 
 func TestDNSNXDOMAIN(t *testing.T) {
-	obj := NewTest(time.Second*10, []string{dnsLoopbackAddr}, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	obj := NewTest(time.Second*10, NewStaticProvider([]string{dnsLoopbackAddr}), metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
 
 	hostname := "nxdomain.letsencrypt.org"
 	_, err := obj.LookupHost(context.Background(), hostname)
@@ -387,7 +379,7 @@ func TestDNSNXDOMAIN(t *testing.T) {
 }
 
 func TestDNSLookupCAA(t *testing.T) {
-	obj := NewTest(time.Second*10, []string{dnsLoopbackAddr}, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	obj := NewTest(time.Second*10, NewStaticProvider([]string{dnsLoopbackAddr}), metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
 	removeIDExp := regexp.MustCompile(" id: [[:digit:]]+")
 
 	caas, resp, err := obj.LookupCAA(context.Background(), "bracewel.net")
@@ -485,6 +477,7 @@ func TestRetry(t *testing.T) {
 	servFailError := errors.New("DNS problem: server failure at resolver looking up TXT for example.com")
 	netError := errors.New("DNS problem: networking error looking up TXT for example.com")
 	type testCase struct {
+		name              string
 		maxTries          int
 		te                *testExchanger
 		expected          error
@@ -494,6 +487,7 @@ func TestRetry(t *testing.T) {
 	tests := []*testCase{
 		// The success on first try case
 		{
+			name:     "success",
 			maxTries: 3,
 			te: &testExchanger{
 				errs: []error{nil},
@@ -503,6 +497,7 @@ func TestRetry(t *testing.T) {
 		},
 		// Immediate non-OpError, error returns immediately
 		{
+			name:     "non-operror",
 			maxTries: 3,
 			te: &testExchanger{
 				errs: []error{errors.New("nope")},
@@ -512,6 +507,7 @@ func TestRetry(t *testing.T) {
 		},
 		// Temporary err, then non-OpError stops at two tries
 		{
+			name:     "err-then-non-operror",
 			maxTries: 3,
 			te: &testExchanger{
 				errs: []error{isTempErr, errors.New("nope")},
@@ -521,6 +517,7 @@ func TestRetry(t *testing.T) {
 		},
 		// Temporary error given always
 		{
+			name:     "persistent-temp-error",
 			maxTries: 3,
 			te: &testExchanger{
 				errs: []error{
@@ -536,6 +533,7 @@ func TestRetry(t *testing.T) {
 		// Even with maxTries at 0, we should still let a single request go
 		// through
 		{
+			name:     "zero-maxtries",
 			maxTries: 0,
 			te: &testExchanger{
 				errs: []error{nil},
@@ -545,6 +543,7 @@ func TestRetry(t *testing.T) {
 		},
 		// Temporary error given just once causes two tries
 		{
+			name:     "single-temp-error",
 			maxTries: 3,
 			te: &testExchanger{
 				errs: []error{
@@ -557,6 +556,7 @@ func TestRetry(t *testing.T) {
 		},
 		// Temporary error given twice causes three tries
 		{
+			name:     "double-temp-error",
 			maxTries: 3,
 			te: &testExchanger{
 				errs: []error{
@@ -570,6 +570,7 @@ func TestRetry(t *testing.T) {
 		},
 		// Temporary error given thrice causes three tries and fails
 		{
+			name:     "triple-temp-error",
 			maxTries: 3,
 			te: &testExchanger{
 				errs: []error{
@@ -584,6 +585,7 @@ func TestRetry(t *testing.T) {
 		},
 		// temporary then non-Temporary error causes two retries
 		{
+			name:     "temp-nontemp-error",
 			maxTries: 3,
 			te: &testExchanger{
 				errs: []error{
@@ -597,33 +599,35 @@ func TestRetry(t *testing.T) {
 	}
 
 	for i, tc := range tests {
-		testClient := NewTest(time.Second*10, []string{dnsLoopbackAddr}, metrics.NoopRegisterer, clock.NewFake(), tc.maxTries, blog.UseMock())
-		dr := testClient.(*impl)
-		dr.dnsClient = tc.te
-		_, err := dr.LookupTXT(context.Background(), "example.com")
-		if err == errTooManyRequests {
-			t.Errorf("#%d, sent more requests than the test case handles", i)
-		}
-		expectedErr := tc.expected
-		if (expectedErr == nil && err != nil) ||
-			(expectedErr != nil && err == nil) ||
-			(expectedErr != nil && expectedErr.Error() != err.Error()) {
-			t.Errorf("#%d, error, expected %v, got %v", i, expectedErr, err)
-		}
-		if tc.expectedCount != tc.te.count {
-			t.Errorf("#%d, error, expectedCount %v, got %v", i, tc.expectedCount, tc.te.count)
-		}
-		if tc.metricsAllRetries > 0 {
-			test.AssertMetricWithLabelsEquals(
-				t, dr.timeoutCounter, prometheus.Labels{
-					"qtype":    "TXT",
-					"type":     "out of retries",
-					"resolver": dnsLoopbackHost,
-				}, tc.metricsAllRetries)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			testClient := NewTest(time.Second*10, NewStaticProvider([]string{dnsLoopbackAddr}), metrics.NoopRegisterer, clock.NewFake(), tc.maxTries, blog.UseMock())
+			dr := testClient.(*impl)
+			dr.dnsClient = tc.te
+			_, err := dr.LookupTXT(context.Background(), "example.com")
+			if err == errTooManyRequests {
+				t.Errorf("#%d, sent more requests than the test case handles", i)
+			}
+			expectedErr := tc.expected
+			if (expectedErr == nil && err != nil) ||
+				(expectedErr != nil && err == nil) ||
+				(expectedErr != nil && expectedErr.Error() != err.Error()) {
+				t.Errorf("#%d, error, expected %v, got %v", i, expectedErr, err)
+			}
+			if tc.expectedCount != tc.te.count {
+				t.Errorf("#%d, error, expectedCount %v, got %v", i, tc.expectedCount, tc.te.count)
+			}
+			if tc.metricsAllRetries > 0 {
+				test.AssertMetricWithLabelsEquals(
+					t, dr.timeoutCounter, prometheus.Labels{
+						"qtype":    "TXT",
+						"type":     "out of retries",
+						"resolver": dnsLoopbackAddr,
+					}, tc.metricsAllRetries)
+			}
+		})
 	}
 
-	testClient := NewTest(time.Second*10, []string{dnsLoopbackAddr}, metrics.NoopRegisterer, clock.NewFake(), 3, blog.UseMock())
+	testClient := NewTest(time.Second*10, NewStaticProvider([]string{dnsLoopbackAddr}), metrics.NoopRegisterer, clock.NewFake(), 3, blog.UseMock())
 	dr := testClient.(*impl)
 	dr.dnsClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -656,14 +660,14 @@ func TestRetry(t *testing.T) {
 		t, dr.timeoutCounter, prometheus.Labels{
 			"qtype":    "TXT",
 			"type":     "canceled",
-			"resolver": dnsLoopbackHost,
+			"resolver": dnsLoopbackAddr,
 		}, 1)
 
 	test.AssertMetricWithLabelsEquals(
 		t, dr.timeoutCounter, prometheus.Labels{
 			"qtype":    "TXT",
 			"type":     "deadline exceeded",
-			"resolver": dnsLoopbackHost,
+			"resolver": dnsLoopbackAddr,
 		}, 2)
 }
 
@@ -713,7 +717,7 @@ func TestRotateServerOnErr(t *testing.T) {
 	// number of dnsServers to ensure we always get around to trying the one
 	// working server
 	maxTries := 5
-	client := NewTest(time.Second*10, dnsServers, metrics.NoopRegisterer, clock.NewFake(), maxTries, blog.UseMock())
+	client := NewTest(time.Second*10, NewStaticProvider(dnsServers), metrics.NoopRegisterer, clock.NewFake(), maxTries, blog.UseMock())
 
 	// Configure a mock exchanger that will always return a retryable error for
 	// the A and B servers. This will force the C server to do all the work once

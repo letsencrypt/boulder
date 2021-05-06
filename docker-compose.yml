@@ -21,6 +21,7 @@ services:
           - ocsp-updater.boulder
           - admin-revoker.boulder
           - nonce1.boulder
+          - dns1.boulder
       rednet:
         ipv4_address: 10.88.88.88
         aliases:
@@ -30,6 +31,7 @@ services:
           - va2.boulder
           - publisher2.boulder
           - nonce2.boulder
+          - dns2.boulder
     # Use sd-test-srv as a backup to Docker's embedded DNS server
     # (https://docs.docker.com/config/containers/container-networking/#dns-services).
     # If there's a name Docker's DNS server doesn't know about, it will

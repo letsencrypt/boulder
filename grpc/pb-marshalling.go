@@ -212,7 +212,7 @@ func pbToValidationResult(in *vapb.ValidationResult) ([]core.ValidationRecord, *
 	return recordAry, prob, nil
 }
 
-func registrationToPB(reg core.Registration) (*corepb.Registration, error) {
+func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 	keyBytes, err := reg.Key.MarshalJSON()
 	if err != nil {
 		return nil, err
@@ -241,7 +241,7 @@ func registrationToPB(reg core.Registration) (*corepb.Registration, error) {
 	}, nil
 }
 
-func pbToRegistration(pb *corepb.Registration) (core.Registration, error) {
+func PbToRegistration(pb *corepb.Registration) (core.Registration, error) {
 	var key jose.JSONWebKey
 	err := key.UnmarshalJSON(pb.Key)
 	if err != nil {

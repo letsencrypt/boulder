@@ -44,6 +44,7 @@ import (
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/crypto/ocsp"
 	grpc "google.golang.org/grpc"
+	"gopkg.in/square/go-jose.v2"
 )
 
 type caaChecker interface {
@@ -333,18 +334,47 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 }
 
 // NewRegistration constructs a new Registration from a request.
-func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init core.Registration) (core.Registration, error) {
-	if err := ra.keyPolicy.GoodKey(ctx, init.Key.Key); err != nil {
-		return core.Registration{}, berrors.MalformedError("invalid public key: %s", err.Error())
+func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Registration, error) {
+	// Error if the request is nil, there is no account key or IP address
+	if request == nil || len(request.Key) == 0 || len(request.InitialIP) == 0 {
+		return nil, errors.New("incomplete gRPC request message")
 	}
-	if err := ra.checkRegistrationLimits(ctx, init.InitialIP); err != nil {
-		return core.Registration{}, err
+
+	// Convert key bytes to key
+	var key jose.JSONWebKey
+	if err := key.UnmarshalJSON(request.Key); err != nil {
+		return nil, berrors.InternalServerError("failed to unmarshal account key: %s", err.Error())
+	}
+	// Check if account key is acceptable for use
+	if err := ra.keyPolicy.GoodKey(ctx, key.Key); err != nil {
+		return nil, berrors.MalformedError("invalid public key: %s", err.Error())
+	}
+
+	// Convert IP from bytes
+	var ipAddr net.IP
+	if err := ipAddr.UnmarshalText(request.InitialIP); err != nil {
+		return nil, berrors.InternalServerError("failed to unmarshal ip address: %s", err.Error())
+	}
+
+	if err := ra.checkRegistrationLimits(ctx, ipAddr); err != nil {
+		return nil, err
+	}
+
+	if err := validateContactsPresent(request.Contact, request.ContactsPresent); err != nil {
+		return nil, err
 	}
 
 	reg := core.Registration{
-		Key:    init.Key,
+		Key:    &key,
 		Status: core.StatusValid,
 	}
+
+	// Convert request to core.Registration for merge and SA rpc
+	init, err := bgrpc.PbToRegistration(request)
+	if err != nil {
+		return nil, err
+	}
+
 	_ = mergeUpdate(&reg, init)
 
 	// This field isn't updatable by the end user, so it isn't copied by
@@ -352,17 +382,22 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	reg.InitialIP = init.InitialIP
 
 	if err := ra.validateContacts(ctx, reg.Contact); err != nil {
-		return core.Registration{}, err
+		return nil, err
 	}
 
 	// Store the authorization object, then return it
-	reg, err := ra.SA.NewRegistration(ctx, reg)
+	reg, err = ra.SA.NewRegistration(ctx, reg)
 	if err != nil {
-		return core.Registration{}, err
+		return nil, err
 	}
 
 	ra.newRegCounter.Inc()
-	return reg, nil
+	regPB, err := bgrpc.RegistrationToPB(reg)
+	if err != nil {
+		return nil, err
+	}
+
+	return regPB, nil
 }
 
 // validateContacts checks the provided list of contacts, returning an error if
@@ -2121,6 +2156,20 @@ func wildcardOverlap(dnsNames []string) error {
 			return berrors.MalformedError(
 				"Domain name %q is redundant with a wildcard domain in the same request. Remove one or the other from the certificate request.", name)
 		}
+	}
+	return nil
+}
+
+// validateContactsPresent will return an error if the contacts []string
+// len is greater than zero and the contactsPresent bool is false. We
+// don't care about any other cases. If the length of the contacts is zero
+// and contactsPresent is true, it seems like a mismatch but we have to
+// assume that the client is requesting to update the contacts field with
+// by removing the existing contacts value so we don't want to return an
+// error here.
+func validateContactsPresent(contacts []string, contactsPresent bool) error {
+	if len(contacts) > 0 && !contactsPresent {
+		return berrors.InternalServerError("account contacts present but contactsPresent false")
 	}
 	return nil
 }

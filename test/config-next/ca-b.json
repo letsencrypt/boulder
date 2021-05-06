@@ -90,8 +90,7 @@
     "ocspLogMaxLength": 4000,
     "ocspLogPeriod": "500ms",
     "features": {
-      "NonCFSSLSigner": true,
-      "StoreIssuerInfo": true
+      "NonCFSSLSigner": true
     }
   },
 

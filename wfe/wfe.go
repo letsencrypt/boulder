@@ -24,6 +24,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/grpc"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
@@ -683,8 +684,13 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *web.R
 			return
 		}
 	}
-
-	reg, err := wfe.RA.NewRegistration(ctx, init)
+	newRegPB, err := grpc.RegistrationToPB(init)
+	if err != nil {
+		wfe.sendError(response, logEvent,
+			web.ProblemDetailsForError(err, "Error creating new account"), err)
+		return
+	}
+	regPB, err := wfe.RA.NewRegistration(ctx, newRegPB)
 	if err != nil {
 		if errors.Is(err, berrors.Duplicate) {
 			existingReg, err := wfe.SA.GetRegistrationByKey(ctx, key)
@@ -699,6 +705,12 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *web.R
 			return
 		}
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new registration"), err)
+		return
+	}
+	reg, err := bgrpc.PbToRegistration(regPB)
+	if err != nil {
+		wfe.sendError(response, logEvent,
+			web.ProblemDetailsForError(err, "Error creating new account"), err)
 		return
 	}
 	logEvent.Requester = reg.ID

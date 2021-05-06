@@ -128,7 +128,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	}
 
 	initialID, err := c.dbMap.SelectInt(
-		"SELECT id FROM certificates WHERE issued >= :issued AND expires >= :now LIMIT 1",
+		"SELECT MIN(id) FROM certificates WHERE issued >= :issued AND expires >= :now",
 		args,
 	)
 	if err != nil {
@@ -383,6 +383,11 @@ func main() {
 	cmd.FailOnError(err, "Could not connect to database")
 
 	sa.InitDBMetrics(saDbMap, prometheus.DefaultRegisterer, dbSettings)
+
+	_, err = saDbMap.Exec(
+		"SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;",
+	)
+	cmd.FailOnError(err, "Failed to set transaction isolation level at the DB")
 
 	checkerLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name: "cert_checker_latency",

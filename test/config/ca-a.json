@@ -86,8 +86,7 @@
     "blockedKeyFile": "test/example-blocked-keys.yaml",
     "orphanQueueDir": "/tmp/orphaned-certificates-a",
     "features": {
-      "NonCFSSLSigner": true,
-      "StoreIssuerInfo": true
+      "NonCFSSLSigner": true
     }
   },
 

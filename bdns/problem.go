@@ -17,10 +17,6 @@ type Error struct {
 	rCode      int
 }
 
-func (d Error) Underlying() error {
-	return d.underlying
-}
-
 func (d Error) Error() string {
 	var detail, additional string
 	if d.underlying != nil {
@@ -49,16 +45,6 @@ func (d Error) Error() string {
 	}
 	return fmt.Sprintf("DNS problem: %s looking up %s for %s%s", detail,
 		dns.TypeToString[d.recordType], d.hostname, additional)
-}
-
-// Timeout returns true if the underlying error was a timeout
-func (d Error) Timeout() bool {
-	if netErr, ok := d.underlying.(*net.OpError); ok {
-		return netErr.Timeout()
-	} else if d.underlying == context.Canceled || d.underlying == context.DeadlineExceeded {
-		return true
-	}
-	return false
 }
 
 const detailDNSTimeout = "query timed out"
