@@ -86,17 +86,17 @@ type config struct {
 		// Recommended to be around 500ms.
 		OCSPLogPeriod cmd.ConfigDuration
 
-		// TODO(#5394): This is deprecated and exists to support
-		// deployability until `ECDSAAllowedAccounts` is replaced by
-		// `ECDSAAllowedListFilename` in all staging and production
-		// configs.
-		//
 		// List of Registration IDs for which ECDSA issuance is allowed.
 		// If an account is in this allowlist *and* requests issuance
 		// for an ECDSA key *and* an ECDSA issuer is configured in the
 		// CA, then the certificate will be issued from that ECDSA
 		// issuer. This is temporary, and will be used for testing and
 		// slow roll-out of ECDSA issuance, but will then be removed.
+		//
+		// TODO(#5394): This is deprecated and exists to support
+		// deployability until `ECDSAAllowedAccounts` is replaced by
+		// `ECDSAAllowListFilename` in all staging and production
+		// configs.
 		ECDSAAllowedAccounts []int64
 
 		// Path of a YAML file containing the list of int64 RegIDs
@@ -248,8 +248,8 @@ func main() {
 		logger.Infof("Created a reloadable allow list, it was initialized with %d entries", entries)
 
 	} else if len(c.CA.ECDSAAllowedAccounts) > 0 {
-		// TODO(#5394): This clause is deprecated and exists to support
-		// deployability until `ECDSAAllowedAccounts` is replaced by
+		// TODO(#5394): This clause exists to support deployability
+		// until `ECDSAAllowedAccounts` is replaced by
 		// `ECDSAAllowListFilename` in all staging and production
 		// configs.
 		ecdsaAllowList, err = ca.NewECDSAAllowListFromConfig(c.CA.ECDSAAllowedAccounts)

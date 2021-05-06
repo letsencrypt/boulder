@@ -172,15 +172,10 @@ func NewCertificateAuthorityImpl(
 	stats.MustRegister(adoptedOrphanCount)
 
 	ca = &certificateAuthorityImpl{
-		sa:      sa,
-		pa:      pa,
-		ocsp:    ocsp,
-		issuers: issuers,
-		// TODO(#5394): This is only exported to support deployability
-		// until `ECDSAAllowedAccounts` is replaced by
-		// `ECDSAAllowedListFilename` in all staging and production
-		// configs.
-		ecdsaAllowList:     ecdsaAllowList,
+		sa:                 sa,
+		pa:                 pa,
+		ocsp:               ocsp,
+		issuers:            issuers,
 		validityPeriod:     certExpiry,
 		backdate:           certBackdate,
 		prefix:             serialPrefix,
@@ -194,6 +189,7 @@ func NewCertificateAuthorityImpl(
 		adoptedOrphanCount: adoptedOrphanCount,
 		signErrorCount:     signErrorCount,
 		clk:                clk,
+		ecdsaAllowList:     ecdsaAllowList,
 	}
 
 	return ca, nil
