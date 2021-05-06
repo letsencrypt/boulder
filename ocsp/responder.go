@@ -48,6 +48,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -251,7 +252,10 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		Path:     request.URL.Path,
 		Received: time.Now(),
 	}
-	beeline.AddField()
+	beeline.AddField(ctx, "real_ip", request.RemoteAddr)
+	beeline.AddField(ctx, "method", request.Method)
+	beeline.AddField(ctx, "user_agent", request.UserAgent())
+	beeline.AddField(ctx, "path", request.URL.Path)
 	defer func() {
 		le.Headers = response.Header()
 		le.Took = time.Since(le.Received)
@@ -342,9 +346,13 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		return
 	}
 	le.Serial = fmt.Sprintf("%x", ocspRequest.SerialNumber.Bytes())
+	beeline.AddField(ctx, "request.serial", core.SerialToString(ocspRequest.SerialNumber))
 	le.IssuerKeyHash = fmt.Sprintf("%x", ocspRequest.IssuerKeyHash)
+	beeline.AddField(ctx, "ocsp.issuer_key_hash", ocspRequest.IssuerKeyHash)
 	le.IssuerNameHash = fmt.Sprintf("%x", ocspRequest.IssuerNameHash)
+	beeline.AddField(ctx, "ocsp.issuer_name_hash", ocspRequest.IssuerNameHash)
 	le.HashAlg = hashToString[ocspRequest.HashAlgorithm]
+	beeline.AddField(ctx, "ocsp.hash_asg", hashToString[ocspRequest.HashAlgorithm])
 
 	// Look up OCSP response from source
 	ocspResponse, headers, err := rs.Source.Response(ocspRequest)
