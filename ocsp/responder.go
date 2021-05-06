@@ -43,6 +43,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
@@ -242,6 +243,7 @@ var hashToString = map[crypto.Hash]string{
 // strings of repeated '/' into a single '/', which will break the base64
 // encoding.
 func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+	ctx := request.Context()
 	le := logEvent{
 		IP:       request.RemoteAddr,
 		UA:       request.UserAgent(),
@@ -249,6 +251,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		Path:     request.URL.Path,
 		Received: time.Now(),
 	}
+	beeline.AddField()
 	defer func() {
 		le.Headers = response.Header()
 		le.Took = time.Since(le.Received)

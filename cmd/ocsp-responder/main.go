@@ -19,6 +19,7 @@ import (
 
 	"github.com/go-gorp/gorp/v3"
 	"github.com/honeycombio/beeline-go"
+	"github.com/honeycombio/beeline-go/wrappers/hnynethttp"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
@@ -353,5 +354,5 @@ func mux(stats prometheus.Registerer, responderPath string, source bocsp.Source,
 		}
 		stripPrefix.ServeHTTP(w, r)
 	})
-	return measured_http.New(&ocspMux{h}, cmd.Clock(), stats)
+	return hnynethttp.WrapHandler(measured_http.New(&ocspMux{h}, cmd.Clock(), stats))
 }
