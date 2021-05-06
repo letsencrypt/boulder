@@ -72,7 +72,6 @@ type certificateAuthorityImpl struct {
 	pa                 core.PolicyAuthority
 	ocsp               *ocspImpl
 	issuers            issuerMaps
-	ecdsaAllowList     *ECDSAAllowList
 	prefix             int // Prepended to the serial number
 	validityPeriod     time.Duration
 	backdate           time.Duration
@@ -86,6 +85,10 @@ type certificateAuthorityImpl struct {
 	orphanCount        *prometheus.CounterVec
 	adoptedOrphanCount *prometheus.CounterVec
 	signErrorCount     *prometheus.CounterVec
+
+	// This is temporary, and will be used for testing and slow roll-out
+	// of ECDSA issuance, but will then be removed.
+	ecdsaAllowList *ECDSAAllowList
 }
 
 func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
@@ -112,7 +115,6 @@ func NewCertificateAuthorityImpl(
 	pa core.PolicyAuthority,
 	ocsp *ocspImpl,
 	boulderIssuers []*issuance.Issuer,
-	ecdsaAllowList *ECDSAAllowList,
 	certExpiry time.Duration,
 	certBackdate time.Duration,
 	serialPrefix int,
@@ -124,6 +126,7 @@ func NewCertificateAuthorityImpl(
 	signatureCount *prometheus.CounterVec,
 	signErrorCount *prometheus.CounterVec,
 	clk clock.Clock,
+	ecdsaAllowList *ECDSAAllowList,
 ) (*certificateAuthorityImpl, error) {
 	var ca *certificateAuthorityImpl
 	var err error
@@ -422,7 +425,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		// contained in the CSR, unless we have an allowlist of registration IDs
 		// for ECDSA, in which case switch all not-allowed accounts to RSA issuance.
 		alg := csr.PublicKeyAlgorithm
-		if alg == x509.ECDSA && !features.Enabled(features.ECDSAForAll) && ca.ecdsaAllowList != nil && !ca.ecdsaAllowList.regIDAllowed(issueReq.RegistrationID) {
+		if alg == x509.ECDSA && !features.Enabled(features.ECDSAForAll) && ca.ecdsaAllowList != nil && !ca.ecdsaAllowList.permitted(issueReq.RegistrationID) {
 			alg = x509.RSA
 		}
 		issuer, ok = ca.issuers.byAlg[alg]

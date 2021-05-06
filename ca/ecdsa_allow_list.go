@@ -10,26 +10,19 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// ECDSAAllowList acts as a container for a `regIDsMap` and a mutex.
-// This allows `regIDsMap` to be updated safely when the list changes.
+// ECDSAAllowList acts as a container for a map of Registration IDs, a
+// mutex, and a file reloader. This allows the map of IDs to be updated
+// safely if changes to the allow list are detected.
 type ECDSAAllowList struct {
 	sync.RWMutex
-
-	// List of Registration IDs for which ECDSA issuance is allowed. If
-	// an account is in this allowlist *and* requests issuance for an
-	// ECDSA key *and* an ECDSA issuer is configured in the CA, then the
-	// certificate will be issued from that ECDSA issuer.
-	//
-	// This is temporary, and will be used for testing and slow roll-out
-	// of ECDSA issuance, but will then be removed.
-	regIDsMap map[int64]bool
-	reloader  *reloader.Reloader
-	logger    log.Logger
-	metric    *prometheus.GaugeVec
+	regIDsMap   map[int64]bool
+	reloader    *reloader.Reloader
+	logger      log.Logger
+	statusGauge *prometheus.GaugeVec
 }
 
-// Update is an exported method, typically specified as a callback to a
-// file reloader, that replaces the inner `regIDsMap` with the contents
+// Update is an exported method (typically specified as a callback to a
+// file reloader) that replaces the inner `regIDsMap` with the contents
 // of a YAML list (as bytes)
 func (e *ECDSAAllowList) Update(contents []byte) error {
 	newRegIDsMap, err := unmarshalAllowList(contents)
@@ -40,33 +33,34 @@ func (e *ECDSAAllowList) Update(contents []byte) error {
 	defer e.Unlock()
 	e.regIDsMap = newRegIDsMap
 	// nil check for testing purposes
-	if e.metric != nil {
-		e.metric.WithLabelValues("succeeded").Set(float64(len(e.regIDsMap)))
+	if e.statusGauge != nil {
+		e.statusGauge.WithLabelValues("succeeded").Set(float64(len(e.regIDsMap)))
 	}
 	return nil
 }
 
-// UpdateErr is an exported method, typically specified as a callback to
-// a file reloader, that records failed ecdsa allow list reload attempts
+// UpdateErr is an exported method,(typically specified as a callback to
+// a file reloader) that records failed allow list file reload attempts.
 func (e *ECDSAAllowList) UpdateErr(err error) {
 	e.logger.Errf("error reloading ECDSA allowed list: %s", err)
 	e.RLock()
 	defer e.RUnlock()
 	// nil check for testing purposes
-	if e.metric != nil {
-		e.metric.WithLabelValues("failed").Set(float64(len(e.regIDsMap)))
+	if e.statusGauge != nil {
+		e.statusGauge.WithLabelValues("failed").Set(float64(len(e.regIDsMap)))
 	}
 }
 
-// regIDAllowed checks if ECDSA issuance is permitted for the specified
+// permitted checks if ECDSA issuance is permitted for the specified
 // Registration ID.
-func (e *ECDSAAllowList) regIDAllowed(regID int64) bool {
+func (e *ECDSAAllowList) permitted(regID int64) bool {
 	e.RLock()
 	defer e.RUnlock()
 	return e.regIDsMap[regID]
 }
 
-// Stop stops an active allow list reloader.
+// Stop stops an active allow list reloader. Typically called during
+// boulder-ca shutdown.
 func (e *ECDSAAllowList) Stop() {
 	e.Lock()
 	defer e.Unlock()
@@ -92,7 +86,10 @@ func makeRegIDsMap(regIDs []int64) map[int64]bool {
 	return regIDsMap
 }
 
-// NewECDSAAllowListFromFile is exported to allow boulder-ca to
+// NewECDSAAllowListFromFile is exported to allow `boulder-ca` to
+// construct a new `ECDSAAllowList` object and set the initial allow
+// list using the contents of a YAML file. An initial entry count is
+// returned to `boulder-ca` for logging purposes.
 func NewECDSAAllowListFromFile(filename string, reloader *reloader.Reloader, logger log.Logger, metric *prometheus.GaugeVec) (*ECDSAAllowList, int, error) {
 	contents, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -102,17 +99,17 @@ func NewECDSAAllowListFromFile(filename string, reloader *reloader.Reloader, log
 	if err != nil {
 		return nil, 0, err
 	}
-	return &ECDSAAllowList{regIDsMap: regIDsMap, reloader: reloader, logger: logger, metric: metric}, len(regIDsMap), nil
+	return &ECDSAAllowList{regIDsMap: regIDsMap, reloader: reloader, logger: logger, statusGauge: metric}, len(regIDsMap), nil
 }
 
-// NewECDSAAllowListFromConfig is exported to allow boulder-ca to set
-// the inner `regIDsMap` from a list of registration IDs received in the
-// CA config JSON.
+// NewECDSAAllowListFromConfig is exported to allow `boulder-ca` to
+// construct a new `ECDSAAllowList` object and set the inner `regIDsMap`
+// from a list of registration IDs received in the CA config JSON.
 //
 // TODO(#5394): This is deprecated and exists to support deployability
 // until `ECDSAAllowedAccounts` is replaced by `ECDSAAllowListFilename`
 // in all staging and production configs.
 func NewECDSAAllowListFromConfig(regIDs []int64) (*ECDSAAllowList, error) {
 	regIDsMap := makeRegIDsMap(regIDs)
-	return &ECDSAAllowList{regIDsMap: regIDsMap, reloader: nil, logger: nil, metric: nil}, nil
+	return &ECDSAAllowList{regIDsMap: regIDsMap, reloader: nil, logger: nil, statusGauge: nil}, nil
 }

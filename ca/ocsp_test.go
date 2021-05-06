@@ -31,7 +31,6 @@ func TestOCSP(t *testing.T) {
 		testCtx.pa,
 		testCtx.ocsp,
 		testCtx.boulderIssuers,
-		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -42,7 +41,8 @@ func TestOCSP(t *testing.T) {
 		testCtx.stats,
 		testCtx.signatureCount,
 		testCtx.signErrorCount,
-		testCtx.fc)
+		testCtx.fc,
+		nil)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ocspi := testCtx.ocsp
 

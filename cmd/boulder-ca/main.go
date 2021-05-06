@@ -229,11 +229,11 @@ func main() {
 	var ecdsaAllowList *ca.ECDSAAllowList
 	if c.CA.ECDSAAllowListFilename != "" {
 		// Create a gauge vector to track allow list reloads.
-		allowListUpdateGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		allowListStatusGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "ecdsa_allow_list_status",
 			Help: "Number of ECDSA allow list entries and status of most recent update attempt",
 		}, []string{"result"})
-		scope.MustRegister(allowListUpdateGauge)
+		scope.MustRegister(allowListStatusGauge)
 
 		// Create a file reloader.
 		reloader, err := reloader.New(
@@ -243,7 +243,7 @@ func main() {
 		// Create a reloadable allow list object.
 		var entries int
 		ecdsaAllowList, entries, err = ca.NewECDSAAllowListFromFile(
-			c.CA.ECDSAAllowListFilename, reloader, logger, allowListUpdateGauge)
+			c.CA.ECDSAAllowListFilename, reloader, logger, allowListStatusGauge)
 		cmd.FailOnError(err, "Unable to load ECDSA allow list from YAML file")
 		logger.Infof("Created a reloadable allow list, it was initialized with %d entries", entries)
 
@@ -292,7 +292,6 @@ func main() {
 		pa,
 		ocspi,
 		boulderIssuers,
-		ecdsaAllowList,
 		c.CA.Expiry.Duration,
 		c.CA.Backdate.Duration,
 		c.CA.SerialPrefix,
@@ -303,7 +302,8 @@ func main() {
 		scope,
 		signatureCount,
 		signErrorCount,
-		clk)
+		clk,
+		ecdsaAllowList)
 	cmd.FailOnError(err, "Failed to create CA impl")
 
 	if orphanQueue != nil {
