@@ -228,14 +228,25 @@ func main() {
 
 	var ecdsaAllowList *ca.ECDSAAllowList
 	if c.CA.ECDSAAllowListFilename != "" {
+		// Create a gauge vector to track allow list reloads.
+		allowListUpdateGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "ecdsa_allow_list_status",
+			Help: "Number of ECDSA allow list entries and status of most recent update attempt",
+		}, []string{"result"})
+		scope.MustRegister(allowListUpdateGauge)
+
+		// Create a file reloader.
 		reloader, err := reloader.New(
-			c.CA.ECDSAAllowListFilename,
-			ecdsaAllowList.Update,
-			func(err error) { logger.Errf("error reloading ECDSA allowed list: %s", err) },
-		)
+			c.CA.ECDSAAllowListFilename, ecdsaAllowList.Update, ecdsaAllowList.UpdateErr)
 		cmd.FailOnError(err, "Unable to initialize ECDSA allow list reloader")
-		ecdsaAllowList, err = ca.NewECDSAAllowListFromFile(c.CA.ECDSAAllowListFilename, reloader)
+
+		// Create a reloadable allow list object.
+		var entries int
+		ecdsaAllowList, entries, err = ca.NewECDSAAllowListFromFile(
+			c.CA.ECDSAAllowListFilename, reloader, logger, allowListUpdateGauge)
 		cmd.FailOnError(err, "Unable to load ECDSA allow list from YAML file")
+		logger.Infof("Created a reloadable allow list, it was initialized with %d entries", entries)
+
 	} else if len(c.CA.ECDSAAllowedAccounts) > 0 {
 		// TODO(#5394): This clause is deprecated and exists to support
 		// deployability until `ECDSAAllowedAccounts` is replaced by
@@ -243,6 +254,7 @@ func main() {
 		// configs.
 		ecdsaAllowList, err = ca.NewECDSAAllowListFromConfig(c.CA.ECDSAAllowedAccounts)
 		cmd.FailOnError(err, "Unable to load ECDSA allow list from JSON config")
+		logger.Infof("Created an allow list from JSON config containing %d entries", len(c.CA.ECDSAAllowedAccounts))
 	}
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
@@ -312,6 +324,7 @@ func main() {
 	go cmd.CatchSignals(logger, func() {
 		caHealth.Shutdown()
 		ocspHealth.Shutdown()
+		ecdsaAllowList.Stop()
 		caSrv.GracefulStop()
 		ocspSrv.GracefulStop()
 		wg.Wait()
