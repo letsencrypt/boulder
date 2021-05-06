@@ -265,6 +265,7 @@ func TestFailNoSerialPrefix(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		0,
@@ -317,7 +318,7 @@ func TestIssuePrecertificate(t *testing.T) {
 		// the precertificates previously generated from the preceding
 		// "precertificate" test. See also the comment above |issuanceModes|.
 		for _, mode := range issuanceModes {
-			ca, sa := issueCertificateSubTestSetup(t, 0)
+			ca, sa := issueCertificateSubTestSetup(t)
 
 			t.Run(fmt.Sprintf("%s - %s", mode.name, testCase.name), func(t *testing.T) {
 				req, err := x509.ParseCertificateRequest(testCase.csr)
@@ -363,13 +364,14 @@ func makeECDSAAllowListBytes(regID int64) []byte {
 	return append(contents, regIDBytes...)
 }
 
-func issueCertificateSubTestSetup(t *testing.T, allowedECDSARegID int64) (*CertificateAuthorityImpl, *mockSA) {
+func issueCertificateSubTestSetup(t *testing.T) (*CertificateAuthorityImpl, *mockSA) {
 	testCtx := setup(t)
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
 		sa,
 		testCtx.pa,
 		testCtx.boulderIssuers,
+		&ECDSAAllowList{},
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -383,14 +385,6 @@ func issueCertificateSubTestSetup(t *testing.T, allowedECDSARegID int64) (*Certi
 		testCtx.stats,
 		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
-	if allowedECDSARegID != 0 {
-		contents := makeECDSAAllowListBytes(allowedECDSARegID)
-		err := ca.ECDSAAllowedList.load(contents)
-		if err != nil {
-			t.Errorf("%s %s", yamlLoadErrMsg, err)
-			t.FailNow()
-		}
-	}
 	return ca, sa
 }
 
@@ -424,6 +418,7 @@ func TestMultipleIssuers(t *testing.T) {
 		sa,
 		testCtx.pa,
 		testCtx.boulderIssuers,
+		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -459,7 +454,13 @@ func TestECDSAAllowList(t *testing.T) {
 	req := &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID}
 
 	// With allowlist containing arbitraryRegID, issuance should come from ECDSA issuer.
-	ca, _ := issueCertificateSubTestSetup(t, arbitraryRegID)
+	ca, _ := issueCertificateSubTestSetup(t)
+	contents := makeECDSAAllowListBytes(int64(arbitraryRegID))
+	err := ca.ecdsaAllowList.Update(contents)
+	if err != nil {
+		t.Errorf("%s %s", yamlLoadErrMsg, err)
+		t.FailNow()
+	}
 	result, err := ca.IssuePrecertificate(ctx, req)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err := x509.ParseCertificate(result.DER)
@@ -467,8 +468,8 @@ func TestECDSAAllowList(t *testing.T) {
 	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
 
 	// With allowlist not containing arbitraryRegID, issuance should fall back to RSA issuer.
-	contents := makeECDSAAllowListBytes(int64(2002))
-	err = ca.ECDSAAllowedList.load(contents)
+	contents = makeECDSAAllowListBytes(int64(2002))
+	err = ca.ecdsaAllowList.Update(contents)
 	if err != nil {
 		t.Errorf("%s %s", yamlLoadErrMsg, err)
 		t.FailNow()
@@ -480,7 +481,7 @@ func TestECDSAAllowList(t *testing.T) {
 	test.AssertByteEquals(t, cert.RawIssuer, caCert.RawSubject)
 
 	// With empty allowlist but ECDSAForAll enabled, issuance should come from ECDSA issuer.
-	ca, _ = issueCertificateSubTestSetup(t, 0)
+	ca, _ = issueCertificateSubTestSetup(t)
 	_ = features.Set(map[string]bool{"ECDSAForAll": true})
 	defer features.Reset()
 	result, err = ca.IssuePrecertificate(ctx, req)
@@ -491,14 +492,15 @@ func TestECDSAAllowList(t *testing.T) {
 }
 
 // TODO(#5394): This is deprecated and exists to support deployability
-// until `ECDSAAllowedAccounts` is replaced by
-// `ECDSAAllowedAccountsFilename` in all staging and production configs.
+// until `ECDSAAllowedAccounts` is replaced by `ECDSAAllowListFilename`
+// in all staging and production configs.
 func TestDeprecatedECDSAAllowList(t *testing.T) {
 	req := &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID}
 
 	// With allowlist containing arbitraryRegID, issuance should come from ECDSA issuer.
-	ca, _ := issueCertificateSubTestSetup(t, 0)
-	ca.ECDSAAllowedList.LoadFromConfig([]int64{arbitraryRegID})
+	ca, _ := issueCertificateSubTestSetup(t)
+	ca.ecdsaAllowList.regIDsMap = make(map[int64]bool)
+	ca.ecdsaAllowList.regIDsMap[arbitraryRegID] = true
 	result, err := ca.IssuePrecertificate(ctx, req)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err := x509.ParseCertificate(result.DER)
@@ -506,7 +508,8 @@ func TestDeprecatedECDSAAllowList(t *testing.T) {
 	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
 
 	// With allowlist not containing arbitraryRegID, issuance should fall back to RSA issuer.
-	ca.ECDSAAllowedList.LoadFromConfig([]int64{2002})
+	delete(ca.ecdsaAllowList.regIDsMap, arbitraryRegID)
+	ca.ecdsaAllowList.regIDsMap[2002] = true
 	result, err = ca.IssuePrecertificate(ctx, req)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err = x509.ParseCertificate(result.DER)
@@ -514,7 +517,7 @@ func TestDeprecatedECDSAAllowList(t *testing.T) {
 	test.AssertByteEquals(t, cert.RawIssuer, caCert.RawSubject)
 
 	// With empty allowlist but ECDSAForAll enabled, issuance should come from ECDSA issuer.
-	ca, _ = issueCertificateSubTestSetup(t, 0)
+	ca, _ = issueCertificateSubTestSetup(t)
 	_ = features.Set(map[string]bool{"ECDSAForAll": true})
 	defer features.Reset()
 	result, err = ca.IssuePrecertificate(ctx, req)
@@ -531,6 +534,7 @@ func TestOCSP(t *testing.T) {
 		sa,
 		testCtx.pa,
 		testCtx.boulderIssuers,
+		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -664,6 +668,7 @@ func TestInvalidCSRs(t *testing.T) {
 			sa,
 			testCtx.pa,
 			testCtx.boulderIssuers,
+			nil,
 			testCtx.certExpiry,
 			testCtx.certBackdate,
 			testCtx.serialPrefix,
@@ -701,6 +706,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 		sa,
 		testCtx.pa,
 		testCtx.boulderIssuers,
+		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -802,6 +808,7 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		sa,
 		testCtx.pa,
 		testCtx.boulderIssuers,
+		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -908,6 +915,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		sa,
 		testCtx.pa,
 		testCtx.boulderIssuers,
+		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -950,6 +958,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		errorsa,
 		testCtx.pa,
 		testCtx.boulderIssuers,
+		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -1029,6 +1038,7 @@ func TestPrecertOrphanQueue(t *testing.T) {
 		qsa,
 		testCtx.pa,
 		testCtx.boulderIssuers,
+		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -1097,6 +1107,7 @@ func TestOrphanQueue(t *testing.T) {
 		qsa,
 		testCtx.pa,
 		testCtx.boulderIssuers,
+		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,

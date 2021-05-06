@@ -19,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/lint"
 	"github.com/letsencrypt/boulder/policy"
+	"github.com/letsencrypt/boulder/reloader"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -86,7 +87,7 @@ type config struct {
 
 		// TODO(#5394): This is deprecated and exists to support
 		// deployability until `ECDSAAllowedAccounts` is replaced by
-		// `ECDSAAllowedAccountsFilename` in all staging and production
+		// `ECDSAAllowedListFilename` in all staging and production
 		// configs.
 		//
 		// List of Registration IDs for which ECDSA issuance is allowed.
@@ -99,7 +100,7 @@ type config struct {
 
 		// Path of a YAML file containing the list of int64 RegIDs
 		// allowed to request ECDSA issuance
-		ECDSAAllowedAccountsFilename string
+		ECDSAAllowListFilename string
 
 		Features map[string]bool
 	}
@@ -142,8 +143,6 @@ func main() {
 	ocspAddr := flag.String("ocsp-addr", "", "OCSP gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
-	ecdsaAllowedListFilename := flag.String(
-		"ecdsa-allowed-list", "", "File path to the ECDSA allowed list YAML file")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
@@ -165,9 +164,6 @@ func main() {
 	}
 	if *debugAddr != "" {
 		c.CA.DebugAddr = *debugAddr
-	}
-	if *ecdsaAllowedListFilename != "" {
-		c.CA.ECDSAAllowedAccountsFilename = *ecdsaAllowedListFilename
 	}
 
 	if c.CA.MaxNames == 0 {
@@ -213,10 +209,30 @@ func main() {
 		defer func() { _ = orphanQueue.Close() }()
 	}
 
+	var ecdsaAllowList *ca.ECDSAAllowList
+	if c.CA.ECDSAAllowListFilename != "" {
+		reloader, err := reloader.New(
+			c.CA.ECDSAAllowListFilename,
+			ecdsaAllowList.Update,
+			func(err error) { logger.Errf("error reloading ECDSA allowed list: %s", err) },
+		)
+		cmd.FailOnError(err, "Unable to initialize ECDSA allow list reloader")
+		ecdsaAllowList, err = ca.NewECDSAAllowListFromFile(c.CA.ECDSAAllowListFilename, reloader)
+		cmd.FailOnError(err, "Unable to load ECDSA allow list from YAML file")
+	} else if len(c.CA.ECDSAAllowedAccounts) > 0 {
+		// TODO(#5394): This clause is deprecated and exists to support
+		// deployability until `ECDSAAllowedAccounts` is replaced by
+		// `ECDSAAllowListFilename` in all staging and production
+		// configs.
+		ecdsaAllowList, err = ca.NewECDSAAllowListFromConfig(c.CA.ECDSAAllowedAccounts)
+		cmd.FailOnError(err, "Unable to load ECDSA allow list from JSON config")
+	}
+
 	cai, err := ca.NewCertificateAuthorityImpl(
 		sa,
 		pa,
 		boulderIssuers,
+		ecdsaAllowList,
 		c.CA.Expiry.Duration,
 		c.CA.Backdate.Duration,
 		c.CA.SerialPrefix,
@@ -230,19 +246,6 @@ func main() {
 		scope,
 		clk)
 	cmd.FailOnError(err, "Failed to create CA impl")
-
-	// TODO(#5394): This is deprecated and exists to support
-	// deployability until `ECDSAAllowedAccounts` is replaced by
-	// `ECDSAAllowedAccountsFilename` in all staging and production
-	// configs.
-	if len(c.CA.ECDSAAllowedAccounts) > 0 {
-		cai.ECDSAAllowedList.LoadFromConfig(c.CA.ECDSAAllowedAccounts)
-	}
-
-	if c.CA.ECDSAAllowedAccountsFilename != "" {
-		ecdsaAllowedListErr := cai.SetECDSAAllowedListFile(c.CA.ECDSAAllowedAccountsFilename)
-		cmd.FailOnError(ecdsaAllowedListErr, "Couldn't load ECDSA allowed list file")
-	}
 
 	if orphanQueue != nil {
 		go cai.OrphanIntegrationLoop()

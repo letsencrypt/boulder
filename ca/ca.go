@@ -29,7 +29,6 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/reloader"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -73,14 +72,10 @@ type issuerMaps struct {
 type CertificateAuthorityImpl struct {
 	capb.UnimplementedCertificateAuthorityServer
 	capb.UnimplementedOCSPGeneratorServer
-	sa      certificateStorage
-	pa      core.PolicyAuthority
-	issuers issuerMaps
-	// TODO(#5394): This is only exported to support deployability
-	// until `ECDSAAllowedAccounts` is replaced by
-	// `ECDSAAllowedAccountsFilename` in all staging and production
-	// configs.
-	ECDSAAllowedList   ecdsaAllowedList
+	sa                 certificateStorage
+	pa                 core.PolicyAuthority
+	issuers            issuerMaps
+	ecdsaAllowList     *ECDSAAllowList
 	prefix             int // Prepended to the serial number
 	validityPeriod     time.Duration
 	backdate           time.Duration
@@ -143,6 +138,7 @@ func NewCertificateAuthorityImpl(
 	sa certificateStorage,
 	pa core.PolicyAuthority,
 	boulderIssuers []*issuance.Issuer,
+	ecdsaAllowList *ECDSAAllowList,
 	certExpiry time.Duration,
 	certBackdate time.Duration,
 	serialPrefix int,
@@ -224,9 +220,9 @@ func NewCertificateAuthorityImpl(
 		issuers: issuers,
 		// TODO(#5394): This is only exported to support deployability
 		// until `ECDSAAllowedAccounts` is replaced by
-		// `ECDSAAllowedAccountsFilename` in all staging and production
+		// `ECDSAAllowedListFilename` in all staging and production
 		// configs.
-		ECDSAAllowedList:   newECDSAAllowedList(),
+		ecdsaAllowList:     ecdsaAllowList,
 		validityPeriod:     certExpiry,
 		backdate:           certBackdate,
 		prefix:             serialPrefix,
@@ -245,19 +241,6 @@ func NewCertificateAuthorityImpl(
 	}
 
 	return ca, nil
-}
-
-func (ca *CertificateAuthorityImpl) ecdsaAllowedListLoadError(err error) {
-	ca.log.Errf("error reloading ECDSA allowed list: %s", err)
-}
-
-func (ca *CertificateAuthorityImpl) SetECDSAAllowedListFile(filename string) error {
-	_, err := reloader.New(filename, ca.ECDSAAllowedList.load, ca.ecdsaAllowedListLoadError)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // noteSignError is called after operations that may cause a PKCS11 signing error.
@@ -528,7 +511,7 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		// contained in the CSR, unless we have an allowlist of registration IDs
 		// for ECDSA, in which case switch all not-allowed accounts to RSA issuance.
 		alg := csr.PublicKeyAlgorithm
-		if alg == x509.ECDSA && !features.Enabled(features.ECDSAForAll) && !ca.ECDSAAllowedList.regIDAllowed(issueReq.RegistrationID) {
+		if alg == x509.ECDSA && !features.Enabled(features.ECDSAForAll) && ca.ecdsaAllowList != nil && !ca.ecdsaAllowList.regIDAllowed(issueReq.RegistrationID) {
 			alg = x509.RSA
 		}
 		issuer, ok = ca.issuers.byAlg[alg]
