@@ -34,5 +34,10 @@
   "syslog": {
     "stdoutlevel": 6,
     "sysloglevel": 6
+  },
+  "beeline": {
+      "mute": true,
+      "dataset": "Test",
+      "servicename": "SA"
   }
 }

@@ -3,6 +3,11 @@
         "syslog": {
           "stdoutLevel": 6
         },
+        "beeline": {
+            "mute": true,
+            "dataset": "Test",
+            "servicename": "ExpiredAuthz2Purger"
+        },
         "db": {
           "dbConnectFile": "test/secrets/purger_dburl",
           "maxOpenConns": 10

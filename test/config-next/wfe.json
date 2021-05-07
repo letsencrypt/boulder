@@ -46,6 +46,11 @@
     "stdoutlevel": 4,
     "sysloglevel": 6
   },
+  "beeline": {
+      "mute": true,
+      "dataset": "Test",
+      "servicename": "WFE1"
+  },
 
   "common": {
     "issuerCert": "/tmp/intermediate-cert-rsa-a.pem"
