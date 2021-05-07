@@ -237,7 +237,7 @@ func main() {
 
 		// Create a file reloader.
 		reloader, err := reloader.New(
-			c.CA.ECDSAAllowListFilename, ecdsaAllowList.Update, ecdsaAllowList.UpdateErr)
+			c.CA.ECDSAAllowListFilename, ecdsaAllowList.Update, ecdsaAllowList.UpdateCallbackErr)
 		cmd.FailOnError(err, "Unable to initialize ECDSA allow list reloader")
 
 		// Create a reloadable allow list object.
@@ -252,9 +252,10 @@ func main() {
 		// until `ECDSAAllowedAccounts` is replaced by
 		// `ECDSAAllowListFilename` in all staging and production
 		// configs.
-		ecdsaAllowList, err = ca.NewECDSAAllowListFromConfig(c.CA.ECDSAAllowedAccounts)
+		var entries int
+		ecdsaAllowList, entries, err = ca.NewECDSAAllowListFromConfig(c.CA.ECDSAAllowedAccounts)
 		cmd.FailOnError(err, "Unable to load ECDSA allow list from JSON config")
-		logger.Infof("Created an allow list from JSON config containing %d entries", len(c.CA.ECDSAAllowedAccounts))
+		logger.Infof("Created an allow list from JSON config containing %d entries", entries)
 	}
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
@@ -292,6 +293,7 @@ func main() {
 		pa,
 		ocspi,
 		boulderIssuers,
+		ecdsaAllowList,
 		c.CA.Expiry.Duration,
 		c.CA.Backdate.Duration,
 		c.CA.SerialPrefix,
@@ -302,8 +304,7 @@ func main() {
 		scope,
 		signatureCount,
 		signErrorCount,
-		clk,
-		ecdsaAllowList)
+		clk)
 	cmd.FailOnError(err, "Failed to create CA impl")
 
 	if orphanQueue != nil {

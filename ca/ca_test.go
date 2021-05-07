@@ -293,6 +293,7 @@ func TestFailNoSerialPrefix(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		0,
@@ -303,8 +304,7 @@ func TestFailNoSerialPrefix(t *testing.T) {
 		testCtx.stats,
 		nil,
 		nil,
-		testCtx.fc,
-		nil)
+		testCtx.fc)
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
 }
 
@@ -399,6 +399,7 @@ func issueCertificateSubTestSetup(t *testing.T) (*certificateAuthorityImpl, *moc
 		testCtx.pa,
 		testCtx.ocsp,
 		testCtx.boulderIssuers,
+		&ECDSAAllowList{},
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -409,8 +410,7 @@ func issueCertificateSubTestSetup(t *testing.T) (*certificateAuthorityImpl, *moc
 		testCtx.stats,
 		testCtx.signatureCount,
 		testCtx.signErrorCount,
-		testCtx.fc,
-		&ECDSAAllowList{})
+		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 	return ca, sa
 }
@@ -446,6 +446,7 @@ func TestMultipleIssuers(t *testing.T) {
 		testCtx.pa,
 		testCtx.ocsp,
 		testCtx.boulderIssuers,
+		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -456,8 +457,7 @@ func TestMultipleIssuers(t *testing.T) {
 		testCtx.stats,
 		testCtx.signatureCount,
 		testCtx.signErrorCount,
-		testCtx.fc,
-		nil)
+		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to remake CA")
 
 	// Test that an RSA CSR gets issuance from the RSA issuer, caCert.
@@ -618,6 +618,7 @@ func TestInvalidCSRs(t *testing.T) {
 			testCtx.pa,
 			testCtx.ocsp,
 			testCtx.boulderIssuers,
+			nil,
 			testCtx.certExpiry,
 			testCtx.certBackdate,
 			testCtx.serialPrefix,
@@ -628,8 +629,7 @@ func TestInvalidCSRs(t *testing.T) {
 			testCtx.stats,
 			testCtx.signatureCount,
 			testCtx.signErrorCount,
-			testCtx.fc,
-			nil)
+			testCtx.fc)
 		test.AssertNotError(t, err, "Failed to create CA")
 
 		t.Run(testCase.name, func(t *testing.T) {
@@ -656,6 +656,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 		testCtx.pa,
 		testCtx.ocsp,
 		testCtx.boulderIssuers,
+		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -666,8 +667,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 		testCtx.stats,
 		nil,
 		nil,
-		testCtx.fc,
-		nil)
+		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	// This time is a few minutes before the notAfter in testdata/ca_cert.pem
@@ -758,6 +758,7 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		testCtx.pa,
 		testCtx.ocsp,
 		testCtx.boulderIssuers,
+		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -768,8 +769,7 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		testCtx.stats,
 		testCtx.signatureCount,
 		testCtx.signErrorCount,
-		testCtx.fc,
-		nil)
+		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID, OrderID: 0}
@@ -865,6 +865,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.pa,
 		testCtx.ocsp,
 		testCtx.boulderIssuers,
+		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -875,8 +876,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.stats,
 		testCtx.signatureCount,
 		testCtx.signErrorCount,
-		testCtx.fc,
-		nil)
+		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	sctBytes, err := makeSCTs()
@@ -908,6 +908,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.pa,
 		testCtx.ocsp,
 		testCtx.boulderIssuers,
+		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -918,8 +919,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.stats,
 		testCtx.signatureCount,
 		testCtx.signErrorCount,
-		testCtx.fc,
-		nil)
+		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	_, err = errorca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
@@ -988,6 +988,7 @@ func TestPrecertOrphanQueue(t *testing.T) {
 		testCtx.pa,
 		testCtx.ocsp,
 		testCtx.boulderIssuers,
+		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -998,8 +999,7 @@ func TestPrecertOrphanQueue(t *testing.T) {
 		testCtx.stats,
 		testCtx.signatureCount,
 		testCtx.signErrorCount,
-		testCtx.fc,
-		nil)
+		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	err = ca.integrateOrphan()
@@ -1057,6 +1057,7 @@ func TestOrphanQueue(t *testing.T) {
 		testCtx.pa,
 		testCtx.ocsp,
 		testCtx.boulderIssuers,
+		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -1067,8 +1068,7 @@ func TestOrphanQueue(t *testing.T) {
 		testCtx.stats,
 		nil,
 		nil,
-		testCtx.fc,
-		nil)
+		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	err = ca.integrateOrphan()
