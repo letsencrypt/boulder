@@ -1991,7 +1991,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 	if !hasValidCNLen {
 		wfe.sendError(response, logEvent,
-			probs.Malformed("NewOrder request did not include a SAN short enough to fit in CN"),
+			probs.RejectedIdentifier("NewOrder request did not include a SAN short enough to fit in CN"),
 			nil)
 		return
 	}
