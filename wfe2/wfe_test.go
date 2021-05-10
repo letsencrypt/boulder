@@ -2473,7 +2473,7 @@ func TestNewOrder(t *testing.T) {
 		{
 			Name:         "POST, no potential CNs 64 bytes or smaller",
 			Request:      signAndPost(t, targetPath, signedURL, tooLongCNBody, 1, wfe.nonceService),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NewOrder request did not include a SAN short enough to fit in CN","status":400}`,
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `rejectedIdentifier","detail":"NewOrder request did not include a SAN short enough to fit in CN","status":400}`,
 		},
 		{
 			Name:    "POST, good payload, one potential CNs less than 64 bytes and one longer",
