@@ -20,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/lint"
 	"github.com/letsencrypt/boulder/policy"
+	"github.com/letsencrypt/boulder/reloader"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -85,14 +86,22 @@ type config struct {
 		// Recommended to be around 500ms.
 		OCSPLogPeriod cmd.ConfigDuration
 
-		// List of Registration IDs for which ECDSA issuance is allowed. If an
-		// account is in this allowlist *and* requests issuance for an ECDSA key
-		// *and* an ECDSA issuer is configured in the CA, then the certificate
-		// will be issued from that ECDSA issuer. If this list is empty, then
-		// ECDSA issuance is allowed for all accounts.
-		// This is temporary, and will be used for testing and slow roll-out of
-		// ECDSA issuance, but will then be removed.
+		// List of Registration IDs for which ECDSA issuance is allowed.
+		// If an account is in this allowlist *and* requests issuance
+		// for an ECDSA key *and* an ECDSA issuer is configured in the
+		// CA, then the certificate will be issued from that ECDSA
+		// issuer. This is temporary, and will be used for testing and
+		// slow roll-out of ECDSA issuance, but will then be removed.
+		//
+		// TODO(#5394): This is deprecated and exists to support
+		// deployability until `ECDSAAllowedAccounts` is replaced by
+		// `ECDSAAllowListFilename` in all staging and production
+		// configs.
 		ECDSAAllowedAccounts []int64
+
+		// Path of a YAML file containing the list of int64 RegIDs
+		// allowed to request ECDSA issuance
+		ECDSAAllowListFilename string
 
 		Features map[string]bool
 	}
@@ -217,6 +226,38 @@ func main() {
 		defer func() { _ = orphanQueue.Close() }()
 	}
 
+	var ecdsaAllowList *ca.ECDSAAllowList
+	if c.CA.ECDSAAllowListFilename != "" {
+		// Create a gauge vector to track allow list reloads.
+		allowListStatusGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "ecdsa_allow_list_status",
+			Help: "Number of ECDSA allow list entries and status of most recent update attempt",
+		}, []string{"result"})
+		scope.MustRegister(allowListStatusGauge)
+
+		// Create a file reloader.
+		reloader, err := reloader.New(
+			c.CA.ECDSAAllowListFilename, ecdsaAllowList.Update, ecdsaAllowList.UpdateCallbackErr)
+		cmd.FailOnError(err, "Unable to initialize ECDSA allow list reloader")
+
+		// Create a reloadable allow list object.
+		var entries int
+		ecdsaAllowList, entries, err = ca.NewECDSAAllowListFromFile(
+			c.CA.ECDSAAllowListFilename, reloader, logger, allowListStatusGauge)
+		cmd.FailOnError(err, "Unable to load ECDSA allow list from YAML file")
+		logger.Infof("Created a reloadable allow list, it was initialized with %d entries", entries)
+
+	} else if len(c.CA.ECDSAAllowedAccounts) > 0 {
+		// TODO(#5394): This clause exists to support deployability
+		// until `ECDSAAllowedAccounts` is replaced by
+		// `ECDSAAllowListFilename` in all staging and production
+		// configs.
+		var entries int
+		ecdsaAllowList, entries, err = ca.NewECDSAAllowListFromConfig(c.CA.ECDSAAllowedAccounts)
+		cmd.FailOnError(err, "Unable to load ECDSA allow list from JSON config")
+		logger.Infof("Created an allow list from JSON config containing %d entries", entries)
+	}
+
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	var wg sync.WaitGroup
 
@@ -252,7 +293,7 @@ func main() {
 		pa,
 		ocspi,
 		boulderIssuers,
-		c.CA.ECDSAAllowedAccounts,
+		ecdsaAllowList,
 		c.CA.Expiry.Duration,
 		c.CA.Backdate.Duration,
 		c.CA.SerialPrefix,
@@ -284,6 +325,7 @@ func main() {
 	go cmd.CatchSignals(logger, func() {
 		caHealth.Shutdown()
 		ocspHealth.Shutdown()
+		ecdsaAllowList.Stop()
 		caSrv.GracefulStop()
 		ocspSrv.GracefulStop()
 		wg.Wait()

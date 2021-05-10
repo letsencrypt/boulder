@@ -114,6 +114,7 @@ var (
 )
 
 const arbitraryRegID int64 = 1001
+const yamlLoadErrMsg = "Error loading YAML bytes for ECDSA allow list:"
 
 // Useful key and certificate files.
 const caKeyFile = "../test/test-ca.key"
@@ -383,6 +384,13 @@ func TestIssuePrecertificate(t *testing.T) {
 	}
 }
 
+func makeECDSAAllowListBytes(regID int64) []byte {
+	regIDBytes := []byte(fmt.Sprintf("%d", regID))
+	contents := []byte(`
+- `)
+	return append(contents, regIDBytes...)
+}
+
 func issueCertificateSubTestSetup(t *testing.T) (*certificateAuthorityImpl, *mockSA) {
 	testCtx := setup(t)
 	sa := &mockSA{}
@@ -391,7 +399,7 @@ func issueCertificateSubTestSetup(t *testing.T) (*certificateAuthorityImpl, *moc
 		testCtx.pa,
 		testCtx.ocsp,
 		testCtx.boulderIssuers,
-		nil,
+		&ECDSAAllowList{},
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -404,7 +412,6 @@ func issueCertificateSubTestSetup(t *testing.T) (*certificateAuthorityImpl, *moc
 		testCtx.signErrorCount,
 		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
-
 	return ca, sa
 }
 
@@ -475,7 +482,65 @@ func TestECDSAAllowList(t *testing.T) {
 
 	// With allowlist containing arbitraryRegID, issuance should come from ECDSA issuer.
 	ca, _ := issueCertificateSubTestSetup(t)
-	ca.ecdsaAllowedRegIDs[arbitraryRegID] = true
+	contents := makeECDSAAllowListBytes(int64(arbitraryRegID))
+	err := ca.ecdsaAllowList.Update(contents)
+	if err != nil {
+		t.Errorf("%s %s", yamlLoadErrMsg, err)
+		t.FailNow()
+	}
+	result, err := ca.IssuePrecertificate(ctx, req)
+	test.AssertNotError(t, err, "Failed to issue certificate")
+	cert, err := x509.ParseCertificate(result.DER)
+	test.AssertNotError(t, err, "Certificate failed to parse")
+	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
+
+	// Attempts to update the allow list with malformed YAML should
+	// fail, but the allowlist should still contain arbitraryRegID, so
+	// issuance should come from ECDSA issuer
+	malformed_yaml := []byte(`
+)(\/=`)
+	err = ca.ecdsaAllowList.Update(malformed_yaml)
+	test.AssertError(t, err, "Update method accepted malformed YAML")
+	result, err = ca.IssuePrecertificate(ctx, req)
+	test.AssertNotError(t, err, "Failed to issue certificate after Update was called with malformed YAML")
+	cert, err = x509.ParseCertificate(result.DER)
+	test.AssertNotError(t, err, "Certificate failed to parse")
+	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
+
+	// With allowlist not containing arbitraryRegID, issuance should fall back to RSA issuer.
+	contents = makeECDSAAllowListBytes(int64(2002))
+	err = ca.ecdsaAllowList.Update(contents)
+	if err != nil {
+		t.Errorf("%s %s", yamlLoadErrMsg, err)
+		t.FailNow()
+	}
+	result, err = ca.IssuePrecertificate(ctx, req)
+	test.AssertNotError(t, err, "Failed to issue certificate")
+	cert, err = x509.ParseCertificate(result.DER)
+	test.AssertNotError(t, err, "Certificate failed to parse")
+	test.AssertByteEquals(t, cert.RawIssuer, caCert.RawSubject)
+
+	// With empty allowlist but ECDSAForAll enabled, issuance should come from ECDSA issuer.
+	ca, _ = issueCertificateSubTestSetup(t)
+	_ = features.Set(map[string]bool{"ECDSAForAll": true})
+	defer features.Reset()
+	result, err = ca.IssuePrecertificate(ctx, req)
+	test.AssertNotError(t, err, "Failed to issue certificate")
+	cert, err = x509.ParseCertificate(result.DER)
+	test.AssertNotError(t, err, "Certificate failed to parse")
+	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
+}
+
+// TODO(#5394): This is deprecated and exists to support deployability
+// until `ECDSAAllowedAccounts` is replaced by `ECDSAAllowListFilename`
+// in all staging and production configs.
+func TestDeprecatedECDSAAllowList(t *testing.T) {
+	req := &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID}
+
+	// With allowlist containing arbitraryRegID, issuance should come from ECDSA issuer.
+	ca, _ := issueCertificateSubTestSetup(t)
+	ca.ecdsaAllowList.regIDsMap = make(map[int64]bool)
+	ca.ecdsaAllowList.regIDsMap[arbitraryRegID] = true
 	result, err := ca.IssuePrecertificate(ctx, req)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err := x509.ParseCertificate(result.DER)
@@ -483,8 +548,8 @@ func TestECDSAAllowList(t *testing.T) {
 	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
 
 	// With allowlist not containing arbitraryRegID, issuance should fall back to RSA issuer.
-	ca, _ = issueCertificateSubTestSetup(t)
-	ca.ecdsaAllowedRegIDs[2002] = true
+	delete(ca.ecdsaAllowList.regIDsMap, arbitraryRegID)
+	ca.ecdsaAllowList.regIDsMap[2002] = true
 	result, err = ca.IssuePrecertificate(ctx, req)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err = x509.ParseCertificate(result.DER)
