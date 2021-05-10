@@ -1963,8 +1963,11 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	// Collect up all of the DNS identifier values into a []string for subsequent
-	// layers to process. We reject anything with a non-DNS type identifier here.
+	var hasValidCNLen bool
+	// Collect up all of the DNS identifier values into a []string for
+	// subsequent layers to process. We reject anything with a non-DNS
+	// type identifier here. Check to make sure one of the strings is
+	// short enough to meet the max CN bytes requirement.
 	names := make([]string, len(newOrderRequest.Identifiers))
 	for i, ident := range newOrderRequest.Identifiers {
 		if ident.Type != identifier.DNS {
@@ -1979,6 +1982,18 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			return
 		}
 		names[i] = ident.Value
+		// The max length of a CommonName is 64 bytes. Check to make sure
+		// at least one DNS name meets this requirement to be promoted to
+		// the CN.
+		if len(names[i]) <= 64 {
+			hasValidCNLen = true
+		}
+	}
+	if !hasValidCNLen {
+		wfe.sendError(response, logEvent,
+			probs.RejectedIdentifier("NewOrder request did not include a SAN short enough to fit in CN"),
+			nil)
+		return
 	}
 
 	order, err := wfe.RA.NewOrder(ctx, &rapb.NewOrderRequest{

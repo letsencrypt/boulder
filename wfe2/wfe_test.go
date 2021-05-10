@@ -2398,6 +2398,31 @@ func TestNewOrder(t *testing.T) {
 		]
 	}`
 
+	// Body with a SAN that is longer than 64 bytes. This one is 65 bytes.
+	tooLongCNBody := `
+	{
+		"Identifiers": [
+			{
+				"type": "dns",
+				"value": "thisreallylongexampledomainisabytelongerthanthemaxcnbytelimit.com"
+			}
+		]
+	}`
+
+	oneLongOneShortCNBody := `
+	{
+		"Identifiers": [
+			{
+				"type": "dns",
+				"value": "thisreallylongexampledomainisabytelongerthanthemaxcnbytelimit.com"
+			},
+			{
+				"type": "dns",
+				"value": "not-example.com"
+			}	
+		]
+	}`
+
 	testCases := []struct {
 		Name            string
 		Request         *http.Request
@@ -2444,6 +2469,28 @@ func TestNewOrder(t *testing.T) {
 			Name:         "POST, notAfter and notBefore in payload",
 			Request:      signAndPost(t, targetPath, signedURL, `{"identifiers":[{"type": "dns", "value": "not-example.com"}], "notBefore":"now", "notAfter": "later"}`, 1, wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NotBefore and NotAfter are not supported","status":400}`,
+		},
+		{
+			Name:         "POST, no potential CNs 64 bytes or smaller",
+			Request:      signAndPost(t, targetPath, signedURL, tooLongCNBody, 1, wfe.nonceService),
+			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `rejectedIdentifier","detail":"NewOrder request did not include a SAN short enough to fit in CN","status":400}`,
+		},
+		{
+			Name:    "POST, good payload, one potential CNs less than 64 bytes and one longer",
+			Request: signAndPost(t, targetPath, signedURL, oneLongOneShortCNBody, 1, wfe.nonceService),
+			ExpectedBody: `
+			{
+				"status": "pending",
+				"expires": "1970-01-01T00:00:00Z",
+				"identifiers": [
+					{ "type": "dns", "value": "thisreallylongexampledomainisabytelongerthanthemaxcnbytelimit.com"},
+					{ "type": "dns", "value": "not-example.com"}
+				],
+				"authorizations": [
+					"http://localhost/acme/authz-v3/1"
+				],
+				"finalize": "http://localhost/acme/finalize/1/1"
+			}`,
 		},
 		{
 			Name:    "POST, good payload",
