@@ -1,17 +1,25 @@
 #!/bin/bash
 set -o errexit
 cd $(dirname $0)/..
-source test/db-common.sh
+
+DBENVS="test
+integration"
 
 # posix compliant escape sequence
 esc=$'\033'"["
 res="${esc}0m"
 
-
 function print_heading() {
   echo
   # newline + bold magenta
   echo -e "${esc}0;34;1m${1}${res}"
+}
+
+function exit_err() {
+  if [ ! -z "$1" ]; then
+    echo $1 > /dev/stderr
+  fi
+  exit 1
 }
 
 function exit_msg() {
@@ -38,7 +46,7 @@ function create_empty_db() {
   local db="${1}"
   local dbconn="${2}"
   create_script="drop database if exists \`${db}\`; create database if not exists \`${db}\`;"
-  mysql ${dbconn} -e "${create_script}" || die "unable to create ${db}"
+  mysql ${dbconn} -e "${create_script}" || exit_err "unable to create ${db}"
   echo "created empty "$db" database"
 }
 
@@ -50,7 +58,7 @@ function apply_migrations() {
   if [[ "${migrations[@]}" ]]
   then
     echo "applying migrations from ${db_mig_path}"
-    goose -path="${dbpath}" -env="${dbenv}" up || die "unable to migrate ${db} with ${dbpath}"
+    goose -path="${dbpath}" -env="${dbenv}" up || exit_err "unable to migrate ${db} with ${dbpath}"
   else
     echo "no migrations at ${dbpath}"
   fi
@@ -130,10 +138,10 @@ for dbenv in $DBENVS; do
   USERS_SQL=test/sa_db_users.sql
   if [[ ${MYSQL_CONTAINER} ]]; then
     sed -e "s/'localhost'/'%'/g" < ${USERS_SQL} | \
-      mysql $dbconn -D $db -f || die "unable to add users to ${db}"
+      mysql $dbconn -D $db -f || exit_err "unable to add users to ${db}"
   else
     sed -e "s/'localhost'/'127.%'/g" < $USERS_SQL | \
-      mysql $dbconn -D $db -f < $USERS_SQL || die "unable to add users to ${db}"
+      mysql $dbconn -D $db -f < $USERS_SQL || exit_err "unable to add users to ${db}"
   fi
   echo "added users to ${db}"
 done
