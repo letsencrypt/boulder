@@ -13,7 +13,7 @@ require (
 	github.com/google/certificate-transparency-go v1.0.22-0.20181127102053-c25855a82c75
 	github.com/grpc-ecosystem/go-grpc-middleware v1.0.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
-	github.com/honeycombio/beeline-go v1.0.0
+	github.com/honeycombio/beeline-go v1.0.1-0.20210512164401-9ba5ee2be5aa
 	github.com/hpcloud/tail v1.0.0
 	github.com/jmhodges/clock v0.0.0-20160418191101-880ee4c33548
 	github.com/letsencrypt/challtestsrv v1.2.0
@@ -37,5 +37,3 @@ require (
 	gopkg.in/square/go-jose.v2 v2.4.1
 	gopkg.in/yaml.v2 v2.3.0
 )
-
-replace github.com/honeycombio/beeline-go => github.com/aarongable/beeline-go v1.0.1-0.20210507172330-294a13dce7ef

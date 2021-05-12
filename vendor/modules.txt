@@ -39,7 +39,7 @@ github.com/google/certificate-transparency-go/x509/pkix
 github.com/grpc-ecosystem/go-grpc-middleware
 # github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 github.com/grpc-ecosystem/go-grpc-prometheus
-# github.com/honeycombio/beeline-go v1.0.0 => github.com/aarongable/beeline-go v1.0.1-0.20210507172330-294a13dce7ef
+# github.com/honeycombio/beeline-go v1.0.1-0.20210512164401-9ba5ee2be5aa
 github.com/honeycombio/beeline-go
 github.com/honeycombio/beeline-go/client
 github.com/honeycombio/beeline-go/propagation
