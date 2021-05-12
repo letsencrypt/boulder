@@ -37,7 +37,6 @@
   },
   "beeline": {
       "mute": true,
-      "dataset": "Test",
-      "servicename": "SA"
+      "dataset": "Test"
   }
 }

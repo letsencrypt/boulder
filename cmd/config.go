@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -264,25 +266,34 @@ type PortConfig struct {
 // BeelineConfig provides config options for the Honeycomb beeline-go library,
 // which are passed to its beeline.Init() method.
 type BeelineConfig struct {
-	// WriteKey is the API key needed to send data Honeycomb. Never check in a
-	// value for this config parameter in a publicly-readable repository.
-	WriteKey string
+	// WriteKey is the API key needed to send data Honeycomb. This can be given
+	// directly in the JSON config for local development, or as a path to a
+	// separate file for production deployment.
+	WriteKey PasswordConfig
 	// Dataset is the event collection, e.g. Staging or Prod.
 	Dataset string
-	// ServiceName is the name of this service, e.g. WFE or RA.
-	ServiceName string
 	// Mute disables honeycomb entirely; useful in test environments.
 	Mute bool
 	// Many other fields of beeline.Config are omitted as they are not yet used.
 }
 
-// Get converts a BeelineConfig to a beeline.Config, performing any necessary
-// conversions.
-func (bc *BeelineConfig) Get() beeline.Config {
-	return beeline.Config{
-		WriteKey:    bc.WriteKey,
-		Dataset:     bc.Dataset,
-		ServiceName: bc.ServiceName,
-		Mute:        bc.Mute,
+// Load converts a BeelineConfig to a beeline.Config, loading the api WriteKey
+// and setting the ServiceName automatically.
+func (bc *BeelineConfig) Load() (beeline.Config, error) {
+	exec, err := os.Executable()
+	if err != nil {
+		return beeline.Config{}, fmt.Errorf("failed to get executable name: %w", err)
 	}
+
+	writekey, err := bc.WriteKey.Pass()
+	if err != nil {
+		return beeline.Config{}, fmt.Errorf("failed to get write key: %w", err)
+	}
+
+	return beeline.Config{
+		WriteKey:    writekey,
+		Dataset:     bc.Dataset,
+		ServiceName: path.Base(exec),
+		Mute:        bc.Mute,
+	}, nil
 }

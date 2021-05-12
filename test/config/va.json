@@ -52,8 +52,7 @@
   },
   "beeline": {
       "mute": true,
-      "dataset": "Test",
-      "servicename": "VA"
+      "dataset": "Test"
   },
 
   "common": {

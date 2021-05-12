@@ -137,7 +137,9 @@ func main() {
 	err = json.Unmarshal(configBytes, &config)
 	cmd.FailOnError(err, "failed to parse config file")
 
-	beeline.Init(config.Beeline.Get())
+	bc, err := config.Beeline.Load()
+	cmd.FailOnError(err, "Failed to load Beeline config")
+	beeline.Init(bc)
 	defer beeline.Close()
 
 	stats, logger := cmd.StatsAndLogging(config.Syslog, config.DebugAddr)

@@ -384,7 +384,9 @@ func main() {
 	err := cmd.ReadConfigFile(*configPath, &config)
 	cmd.FailOnError(err, "Failed reading config file")
 
-	beeline.Init(config.Beeline.Get())
+	bc, err := config.Beeline.Load()
+	cmd.FailOnError(err, "Failed to load Beeline config")
+	beeline.Init(bc)
 	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(config.Syslog, config.BadKeyRevoker.DebugAddr)

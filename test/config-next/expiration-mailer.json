@@ -32,7 +32,6 @@
   },
   "beeline": {
       "mute": true,
-      "dataset": "Test",
-      "servicename": "ExpirationMailer"
+      "dataset": "Test"
   }
 }

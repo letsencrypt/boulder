@@ -8,8 +8,7 @@
         },
         "beeline": {
             "mute": true,
-            "dataset": "Test",
-            "servicename": "Nonce"
+            "dataset": "Test"
         },
         "debugAddr": ":8111",
         "grpc": {

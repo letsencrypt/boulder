@@ -4,8 +4,7 @@
   },
   "beeline": {
       "mute": true,
-      "dataset": "Test",
-      "servicename": "LogValidator"
+      "dataset": "Test"
   },
   "debugAddr": ":8016",
   "files": [

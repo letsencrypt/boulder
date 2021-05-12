@@ -66,7 +66,9 @@ func main() {
 	err = features.Set(c.ExpiredAuthzPurger2.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	beeline.Init(c.ExpiredAuthzPurger2.Beeline.Get())
+	bc, err := c.ExpiredAuthzPurger2.Beeline.Load()
+	cmd.FailOnError(err, "Failed to load Beeline config")
+	beeline.Init(bc)
 	defer beeline.Close()
 
 	var logger blog.Logger

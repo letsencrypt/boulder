@@ -86,7 +86,9 @@ func main() {
 		c.VA.DebugAddr = *debugAddr
 	}
 
-	beeline.Init(c.Beeline.Get())
+	bc, err := c.Beeline.Load()
+	cmd.FailOnError(err, "Failed to load Beeline config")
+	beeline.Init(bc)
 	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.VA.DebugAddr)

@@ -29,7 +29,6 @@
   },
   "beeline": {
       "mute": true,
-      "dataset": "Test",
-      "servicename": "OCSPUpdater"
+      "dataset": "Test"
   }
 }

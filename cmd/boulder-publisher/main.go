@@ -67,7 +67,9 @@ func main() {
 		c.Publisher.UserAgent = "certificate-transparency-go/1.0"
 	}
 
-	beeline.Init(c.Beeline.Get())
+	bc, err := c.Beeline.Load()
+	cmd.FailOnError(err, "Failed to load Beeline config")
+	beeline.Init(bc)
 	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.Publisher.DebugAddr)

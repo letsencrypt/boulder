@@ -44,7 +44,6 @@
   },
   "beeline": {
       "mute": true,
-      "dataset": "Test",
-      "servicename": "Publisher"
+      "dataset": "Test"
   }
 }

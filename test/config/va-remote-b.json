@@ -41,8 +41,7 @@
   },
   "beeline": {
       "mute": true,
-      "dataset": "Test",
-      "servicename": "RemoteVA"
+      "dataset": "Test"
   },
 
   "common": {

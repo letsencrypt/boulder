@@ -24,7 +24,6 @@
  },
   "beeline": {
       "mute": true,
-      "dataset": "Test",
-      "servicename": "OCSPResponder"
+      "dataset": "Test"
   }
 }

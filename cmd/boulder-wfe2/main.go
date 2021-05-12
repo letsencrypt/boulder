@@ -366,7 +366,9 @@ func main() {
 		}
 	}
 
-	beeline.Init(c.Beeline.Get())
+	bc, err := c.Beeline.Load()
+	cmd.FailOnError(err, "Failed to load Beeline config")
+	beeline.Init(bc)
 	defer beeline.Close()
 
 	stats, logger := cmd.StatsAndLogging(c.Syslog, c.WFE.DebugAddr)

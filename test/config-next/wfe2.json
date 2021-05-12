@@ -72,7 +72,6 @@
   },
   "beeline": {
       "mute": true,
-      "dataset": "Test",
-      "servicename": "WFE"
+      "dataset": "Test"
   }
 }

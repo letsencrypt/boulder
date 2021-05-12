@@ -48,8 +48,7 @@
   },
   "beeline": {
       "mute": true,
-      "dataset": "Test",
-      "servicename": "WFE1"
+      "dataset": "Test"
   },
 
   "common": {

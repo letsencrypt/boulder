@@ -65,7 +65,9 @@ func main() {
 		c.NonceService.NoncePrefix = *prefixOverride
 	}
 
-	beeline.Init(c.NonceService.Beeline.Get())
+	bc, err := c.NonceService.Beeline.Load()
+	cmd.FailOnError(err, "Failed to load Beeline config")
+	beeline.Init(bc)
 	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(c.NonceService.Syslog, c.NonceService.DebugAddr)

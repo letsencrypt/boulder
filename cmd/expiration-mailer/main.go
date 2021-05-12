@@ -464,7 +464,9 @@ func main() {
 	err = features.Set(c.Mailer.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	beeline.Init(c.Beeline.Get())
+	bc, err := c.Beeline.Load()
+	cmd.FailOnError(err, "Failed to load Beeline config")
+	beeline.Init(bc)
 	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.Mailer.DebugAddr)

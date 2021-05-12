@@ -28,7 +28,6 @@
   },
   "beeline": {
       "mute": true,
-      "dataset": "Test",
-      "servicename": "AkamaiPurger"
+      "dataset": "Test"
   }
 }

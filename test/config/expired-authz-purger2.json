@@ -5,8 +5,7 @@
         },
         "beeline": {
             "mute": true,
-            "dataset": "Test",
-            "servicename": "ExpiredAuthz2Purger"
+            "dataset": "Test"
         },
         "db": {
           "dbConnectFile": "test/secrets/purger_dburl",
