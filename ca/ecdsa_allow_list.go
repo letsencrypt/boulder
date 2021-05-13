@@ -86,8 +86,7 @@ func makeRegIDsMap(regIDs []int64) map[int64]bool {
 }
 
 // NewECDSAAllowListFromFile is exported to allow `boulder-ca` to
-// construct a new `ECDSAAllowList` object and set the initial allow
-// list using the contents of a YAML file. An initial entry count is
+// construct a new `ECDSAAllowList` object. An initial entry count is
 // returned to `boulder-ca` for logging purposes.
 func NewECDSAAllowListFromFile(filename string, logger log.Logger, metric *prometheus.GaugeVec) (*ECDSAAllowList, int, error) {
 	allowList := &ECDSAAllowList{logger: logger, statusGauge: metric}
