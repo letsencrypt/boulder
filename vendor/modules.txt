@@ -8,7 +8,7 @@ github.com/cespare/xxhash/v2
 github.com/eggsampler/acme/v3
 # github.com/go-gorp/gorp/v3 v3.0.2
 github.com/go-gorp/gorp/v3
-# github.com/go-sql-driver/mysql v1.5.0
+# github.com/go-sql-driver/mysql v1.6.0
 github.com/go-sql-driver/mysql
 # github.com/golang/protobuf v1.4.2
 github.com/golang/protobuf/proto
@@ -212,5 +212,5 @@ gopkg.in/square/go-jose.v2/cipher
 gopkg.in/square/go-jose.v2/json
 # gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
 gopkg.in/tomb.v1
-# gopkg.in/yaml.v2 v2.2.5
+# gopkg.in/yaml.v2 v2.4.0
 gopkg.in/yaml.v2
