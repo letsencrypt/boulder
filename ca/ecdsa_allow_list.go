@@ -1,7 +1,6 @@
 package ca
 
 import (
-	"io/ioutil"
 	"sync"
 
 	"github.com/letsencrypt/boulder/log"
@@ -90,16 +89,13 @@ func makeRegIDsMap(regIDs []int64) map[int64]bool {
 // construct a new `ECDSAAllowList` object and set the initial allow
 // list using the contents of a YAML file. An initial entry count is
 // returned to `boulder-ca` for logging purposes.
-func NewECDSAAllowListFromFile(filename string, reloader *reloader.Reloader, logger log.Logger, metric *prometheus.GaugeVec) (*ECDSAAllowList, int, error) {
-	contents, err := ioutil.ReadFile(filename)
+func NewECDSAAllowListFromFile(filename string, logger log.Logger, metric *prometheus.GaugeVec) (*ECDSAAllowList, int, error) {
+	allowList := &ECDSAAllowList{logger: logger, statusGauge: metric}
+	reloader, err := reloader.New(filename, allowList.Update, allowList.UpdateCallbackErr)
 	if err != nil {
 		return nil, 0, err
 	}
-	allowList := &ECDSAAllowList{reloader: reloader, logger: logger, statusGauge: metric}
-	err = allowList.Update(contents)
-	if err != nil {
-		return nil, 0, err
-	}
+	allowList.reloader = reloader
 	return allowList, allowList.length(), nil
 }
 
