@@ -228,16 +228,15 @@ func main() {
 	var ecdsaAllowList *ca.ECDSAAllowList
 	if c.CA.ECDSAAllowListFilename != "" {
 		// Create a gauge vector to track allow list reloads.
-		allowListStatusGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		allowListGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "ecdsa_allow_list_status",
 			Help: "Number of ECDSA allow list entries and status of most recent update attempt",
 		}, []string{"result"})
-		scope.MustRegister(allowListStatusGauge)
+		scope.MustRegister(allowListGauge)
 
 		// Create a reloadable allow list object.
 		var entries int
-		ecdsaAllowList, entries, err = ca.NewECDSAAllowListFromFile(
-			c.CA.ECDSAAllowListFilename, logger, allowListStatusGauge)
+		ecdsaAllowList, entries, err = ca.NewECDSAAllowListFromFile(c.CA.ECDSAAllowListFilename, logger, allowListGauge)
 		cmd.FailOnError(err, "Unable to load ECDSA allow list from YAML file")
 		logger.Infof("Created a reloadable allow list, it was initialized with %d entries", entries)
 

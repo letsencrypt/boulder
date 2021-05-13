@@ -31,7 +31,7 @@ func TestNewECDSAAllowListFromFile(t *testing.T) {
 			wantErrBool:       false,
 		},
 		{
-			name:              "one entry but not registration ID 1337",
+			name:              "one entry but it's not 1337",
 			args:              args{"testdata/ecdsa_allow_list2.yml", nil, nil, nil},
 			want1337Permitted: false,
 			wantEntries:       1,

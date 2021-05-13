@@ -91,6 +91,8 @@ func makeRegIDsMap(regIDs []int64) map[int64]bool {
 // returned to `boulder-ca` for logging purposes.
 func NewECDSAAllowListFromFile(filename string, logger log.Logger, metric *prometheus.GaugeVec) (*ECDSAAllowList, int, error) {
 	allowList := &ECDSAAllowList{logger: logger, statusGauge: metric}
+	// Create an allow list reloader. This also populates the inner
+	// allowList regIDsMap.
 	reloader, err := reloader.New(filename, allowList.Update, allowList.UpdateCallbackErr)
 	if err != nil {
 		return nil, 0, err
