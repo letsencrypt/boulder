@@ -24,7 +24,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -145,10 +144,6 @@ func (m *mailer) run() error {
 	for i, address := range sortedAddresses {
 		if !m.targetRange.includes(address) {
 			m.log.Debugf("skipping %q: out of target range")
-			continue
-		}
-		if err := policy.ValidEmail(address); err != nil {
-			m.log.Infof("skipping %q: %s", address, err)
 			continue
 		}
 		recipients := addressesToRecipients[address]
