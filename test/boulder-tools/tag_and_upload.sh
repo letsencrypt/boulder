@@ -5,7 +5,7 @@ cd $(dirname $0)
 DATESTAMP=$(date +%Y-%m-%d)
 DOCKER_REPO="letsencrypt/boulder-tools"
 
-GO_VERSIONS=( "1.16.2" "1.16.4" )
+GO_VERSIONS=( "1.16.4" )
 
 # Build a tagged image for each GO_VERSION
 for GO_VERSION in "${GO_VERSIONS[@]}"
