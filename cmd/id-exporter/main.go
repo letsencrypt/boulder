@@ -92,8 +92,8 @@ func (c idExporter) findIDs() (*idExporterResults, error) {
 	return &holder, nil
 }
 
-// Find all registration IDs with unexpired certificates and collect an
-// example hostnames.
+// Find all registration IDs with unexpired certificates and gather an
+// example hostname.
 func (c idExporter) findIDsWithExampleHostnames() (*idExporterResults, error) {
 	var holder idExporterResults
 	_, err := c.dbMap.Select(
