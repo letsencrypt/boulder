@@ -259,7 +259,7 @@ func main() {
 
 	var results *idExporterResults
 	if *domainsFile != "" {
-		// Gather IDs for the domains listed in the `domainsFile`
+		// Gather IDs for the domains listed in the `domainsFile`.
 		df, err := ioutil.ReadFile(*domainsFile)
 		cmd.FailOnError(err, fmt.Sprintf("Could not read domains file %q", *domainsFile))
 
@@ -267,17 +267,17 @@ func main() {
 		cmd.FailOnError(err, "Could not find IDs")
 
 	} else if *withExampleHostnames {
-		// Gather subscriber IDs and hostnames
+		// Gather subscriber IDs and hostnames.
 		results, err = exporter.findIDsWithExampleHostnames()
 		cmd.FailOnError(err, "Could not find IDs")
 
 	} else {
-		// Gather only subscriber IDs
+		// Gather only subscriber IDs.
 		results, err = exporter.findIDs()
 		cmd.FailOnError(err, "Could not find IDs")
 	}
 
-	// Write result to file
+	// Write results to file.
 	err = results.writeToFile(*outFile)
 	cmd.FailOnError(err, fmt.Sprintf("Could not write result to outfile %q", *outFile))
 }
