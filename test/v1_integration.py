@@ -531,11 +531,11 @@ def test_account_update():
 
 def test_renewal_exemption():
     """
-    Under a single domain, issue one certificate, then two renewals of that
-    certificate, then one more different certificate (with a different
-    subdomain). Since the certificatesPerName rate limit in testing is 2 per 90
-    days, and the renewals should be discounted under the renewal exemption,
-    each of these issuances should succeed. Then do one last issuance that we
+    Under a single domain, issue two certificates for different subdomains of
+    the same name, then renewals of each of them. Since the certificatesPerName
+    rate limit in testing is 2 per 90 days, and the renewals should not be
+    counted under the renewal exemption, each of these issuances should succeed.
+    Then do one last issuance (for a third subdomain of the same name) that we
     expect to be rate limited, just to check that the rate limit is actually 2,
     and we are testing what we think we are testing. See
     https://letsencrypt.org/docs/rate-limits/ for more details.
@@ -545,9 +545,9 @@ def test_renewal_exemption():
     auth_and_issue(["www." + base_domain])
     # First Renewal
     auth_and_issue(["www." + base_domain])
-    # Second Renewal
-    auth_and_issue(["www." + base_domain])
     # Issuance of a different cert
+    auth_and_issue(["blog." + base_domain])
+    # Renew that one
     auth_and_issue(["blog." + base_domain])
     # Final, failed issuance, for another different cert
     chisel.expect_problem("urn:acme:error:rateLimited",
