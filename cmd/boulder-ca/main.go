@@ -20,7 +20,6 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/lint"
 	"github.com/letsencrypt/boulder/policy"
-	"github.com/letsencrypt/boulder/reloader"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -229,21 +228,15 @@ func main() {
 	var ecdsaAllowList *ca.ECDSAAllowList
 	if c.CA.ECDSAAllowListFilename != "" {
 		// Create a gauge vector to track allow list reloads.
-		allowListStatusGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		allowListGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "ecdsa_allow_list_status",
 			Help: "Number of ECDSA allow list entries and status of most recent update attempt",
 		}, []string{"result"})
-		scope.MustRegister(allowListStatusGauge)
-
-		// Create a file reloader.
-		reloader, err := reloader.New(
-			c.CA.ECDSAAllowListFilename, ecdsaAllowList.Update, ecdsaAllowList.UpdateCallbackErr)
-		cmd.FailOnError(err, "Unable to initialize ECDSA allow list reloader")
+		scope.MustRegister(allowListGauge)
 
 		// Create a reloadable allow list object.
 		var entries int
-		ecdsaAllowList, entries, err = ca.NewECDSAAllowListFromFile(
-			c.CA.ECDSAAllowListFilename, reloader, logger, allowListStatusGauge)
+		ecdsaAllowList, entries, err = ca.NewECDSAAllowListFromFile(c.CA.ECDSAAllowListFilename, logger, allowListGauge)
 		cmd.FailOnError(err, "Unable to load ECDSA allow list from YAML file")
 		logger.Infof("Created a reloadable allow list, it was initialized with %d entries", entries)
 

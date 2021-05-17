@@ -87,7 +87,8 @@
     "orphanQueueDir": "/tmp/orphaned-certificates-b",
     "features": {
       "NonCFSSLSigner": true
-    }
+    },
+    "ECDSAAllowedAccounts": [1337]
   },
 
   "pa": {
