@@ -94,19 +94,9 @@ func (c idExporter) findIDs() (idExporterResults, error) {
 func (c idExporter) findIDsWithExampleHostnames() (idExporterResults, error) {
 	var holder idExporterResults
 	_, err := c.dbMap.Select(
-		// A previous version of this query resulted in an off-by-one
-		// error, the resulting change removed `ANY_VALUE(...)` for the
-		// hostname. This query now relies upon undefined behavior.
-		// Though, the use of `ANY_VALUE` was itself a defined but
-		// nondeterministic behavior.
-		//
-		// It turns out that MariaDB also has a configuration option to
-		// prohibit this undefined behavior
-		// (https://mariadb.com/kb/en/sql-mode/#only_full_group_by) but
-		// it defaults to off, letting us access the multiverse of
-		// possibilities that only undefined behavior can truly tap.
 		&holder,
-		`SELECT SQL_BIG_RESULT cert.registrationID AS id,
+		`SELECT SQL_BIG_RESULT
+			cert.registrationID AS id,
 			name.reversedName AS hostname
 		FROM certificates AS cert
 			INNER JOIN issuedNames AS name ON name.serial = cert.serial
