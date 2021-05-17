@@ -51,7 +51,7 @@ func TestFindIDs(t *testing.T) {
 	// the above registrations, no IDs should be found.
 	results, err := testCtx.c.findIDs()
 	test.AssertNotError(t, err, "findIDs() produced error")
-	test.AssertEquals(t, len(results.ids), 0)
+	test.AssertEquals(t, len(results), 0)
 
 	// Now add some certificates
 	testCtx.addCertificates(t)
@@ -63,10 +63,10 @@ func TestFindIDs(t *testing.T) {
 	// contact field anymore - this is the duty of the notify-mailer.
 	results, err = testCtx.c.findIDs()
 	test.AssertNotError(t, err, "findIDs() produced error")
-	test.AssertEquals(t, len(results.ids), 3)
-	test.AssertEquals(t, results.ids[0].ID, regA.ID)
-	test.AssertEquals(t, results.ids[1].ID, regC.ID)
-	test.AssertEquals(t, results.ids[2].ID, regD.ID)
+	test.AssertEquals(t, len(results), 3)
+	test.AssertEquals(t, results[0].ID, regA.ID)
+	test.AssertEquals(t, results[1].ID, regC.ID)
+	test.AssertEquals(t, results[2].ID, regD.ID)
 
 	// Allow a 1 year grace period
 	testCtx.c.grace = 360 * 24 * time.Hour
@@ -74,11 +74,11 @@ func TestFindIDs(t *testing.T) {
 	test.AssertNotError(t, err, "findIDs() produced error")
 	// Now all four registration should be returned, including RegB since its
 	// certificate expired within the grace period
-	test.AssertEquals(t, len(results.ids), 4)
-	test.AssertEquals(t, results.ids[0].ID, regA.ID)
-	test.AssertEquals(t, results.ids[1].ID, regB.ID)
-	test.AssertEquals(t, results.ids[2].ID, regC.ID)
-	test.AssertEquals(t, results.ids[3].ID, regD.ID)
+	test.AssertEquals(t, len(results), 4)
+	test.AssertEquals(t, results[0].ID, regA.ID)
+	test.AssertEquals(t, results[1].ID, regB.ID)
+	test.AssertEquals(t, results[2].ID, regC.ID)
+	test.AssertEquals(t, results[3].ID, regD.ID)
 }
 
 func TestFindIDsWithExampleHostnames(t *testing.T) {
@@ -93,7 +93,7 @@ func TestFindIDsWithExampleHostnames(t *testing.T) {
 	// found.
 	results, err := testCtx.c.findIDsWithExampleHostnames()
 	test.AssertNotError(t, err, "findIDs() produced error")
-	test.AssertEquals(t, len(results.ids), 0)
+	test.AssertEquals(t, len(results), 0)
 
 	// Now add some certificates
 	testCtx.addCertificates(t)
@@ -104,13 +104,13 @@ func TestFindIDsWithExampleHostnames(t *testing.T) {
 	// their certificate has already expired.
 	results, err = testCtx.c.findIDsWithExampleHostnames()
 	test.AssertNotError(t, err, "findIDs() produced error")
-	test.AssertEquals(t, len(results.ids), 3)
-	test.AssertEquals(t, results.ids[0].ID, regA.ID)
-	test.AssertEquals(t, results.ids[1].ID, regC.ID)
-	test.AssertEquals(t, results.ids[2].ID, regD.ID)
-	test.AssertEquals(t, results.ids[0].Hostname, "example-a.com")
-	test.AssertEquals(t, results.ids[1].Hostname, "example-c.com")
-	test.AssertEquals(t, results.ids[2].Hostname, "example-d.com")
+	test.AssertEquals(t, len(results), 3)
+	test.AssertEquals(t, results[0].ID, regA.ID)
+	test.AssertEquals(t, results[1].ID, regC.ID)
+	test.AssertEquals(t, results[2].ID, regD.ID)
+	test.AssertEquals(t, results[0].Hostname, "example-a.com")
+	test.AssertEquals(t, results[1].Hostname, "example-c.com")
+	test.AssertEquals(t, results[2].Hostname, "example-d.com")
 
 	// Allow a 1 year grace period
 	testCtx.c.grace = 360 * 24 * time.Hour
@@ -119,15 +119,15 @@ func TestFindIDsWithExampleHostnames(t *testing.T) {
 
 	// Now all four registrations should be returned, including RegB
 	// since it expired within the grace period
-	test.AssertEquals(t, len(results.ids), 4)
-	test.AssertEquals(t, results.ids[0].ID, regA.ID)
-	test.AssertEquals(t, results.ids[1].ID, regB.ID)
-	test.AssertEquals(t, results.ids[2].ID, regC.ID)
-	test.AssertEquals(t, results.ids[3].ID, regD.ID)
-	test.AssertEquals(t, results.ids[0].Hostname, "example-a.com")
-	test.AssertEquals(t, results.ids[1].Hostname, "example-b.com")
-	test.AssertEquals(t, results.ids[2].Hostname, "example-c.com")
-	test.AssertEquals(t, results.ids[3].Hostname, "example-d.com")
+	test.AssertEquals(t, len(results), 4)
+	test.AssertEquals(t, results[0].ID, regA.ID)
+	test.AssertEquals(t, results[1].ID, regB.ID)
+	test.AssertEquals(t, results[2].ID, regC.ID)
+	test.AssertEquals(t, results[3].ID, regD.ID)
+	test.AssertEquals(t, results[0].Hostname, "example-a.com")
+	test.AssertEquals(t, results[1].Hostname, "example-b.com")
+	test.AssertEquals(t, results[2].Hostname, "example-c.com")
+	test.AssertEquals(t, results[3].Hostname, "example-d.com")
 }
 
 func TestFindIDsForDomains(t *testing.T) {
@@ -141,22 +141,22 @@ func TestFindIDsForDomains(t *testing.T) {
 	// the above registrations, no IDs should be found.
 	results, err := testCtx.c.findIDsForDomains([]string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
 	test.AssertNotError(t, err, "findIDs() produced error")
-	test.AssertEquals(t, len(results.ids), 0)
+	test.AssertEquals(t, len(results), 0)
 
 	// Now add some certificates
 	testCtx.addCertificates(t)
 
 	results, err = testCtx.c.findIDsForDomains([]string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
 	test.AssertNotError(t, err, "findIDsForDomains() failed")
-	test.AssertEquals(t, len(results.ids), 3)
-	test.AssertEquals(t, results.ids[0].ID, regA.ID)
-	test.AssertEquals(t, results.ids[1].ID, regC.ID)
-	test.AssertEquals(t, results.ids[2].ID, regD.ID)
+	test.AssertEquals(t, len(results), 3)
+	test.AssertEquals(t, results[0].ID, regA.ID)
+	test.AssertEquals(t, results[1].ID, regC.ID)
+	test.AssertEquals(t, results[2].ID, regD.ID)
 }
 
 func TestWriteToFile(t *testing.T) {
 	expected := `[{"id":1},{"id":2},{"id":3}]`
-	mockResults := &idExporterResults{[]*resultEntry{{ID: 1}, {ID: 2}, {ID: 3}}}
+	mockResults := idExporterResults{{ID: 1}, {ID: 2}, {ID: 3}}
 	dir := os.TempDir()
 
 	f, err := ioutil.TempFile(dir, "ids_test")

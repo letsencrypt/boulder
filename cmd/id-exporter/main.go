@@ -41,17 +41,14 @@ func (r *resultEntry) reverseHostname() {
 	r.Hostname = sa.ReverseName(r.Hostname)
 }
 
-// idExporterResults is a container for a slice of pointers to
-// `resultEntry` objects. The `ids` field is passed as a selectable
-// 'holder' in calls to `dbMap.Select()`.
-type idExporterResults struct {
-	ids []*resultEntry
-}
+// idExporterResults is passed as a selectable 'holder' for the results
+// of id-exporter database queries
+type idExporterResults []*resultEntry
 
-// makeJSON returns JSON as bytes for all elements of the inner `id`
+// marshalToJSON returns JSON as bytes for all elements of the inner `id`
 // slice.
-func (i *idExporterResults) makeJSON() ([]byte, error) {
-	data, err := json.Marshal(i.ids)
+func (i *idExporterResults) marshalToJSON() ([]byte, error) {
+	data, err := json.Marshal(i)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +59,7 @@ func (i *idExporterResults) makeJSON() ([]byte, error) {
 // writeToFile writes the contents of the inner `ids` slice, as JSON, to
 // a file
 func (i *idExporterResults) writeToFile(outfile string) error {
-	data, err := i.makeJSON()
+	data, err := i.marshalToJSON()
 	if err != nil {
 		return err
 	}
@@ -70,10 +67,10 @@ func (i *idExporterResults) writeToFile(outfile string) error {
 }
 
 // Find all registration IDs with unexpired certificates.
-func (c idExporter) findIDs() (*idExporterResults, error) {
+func (c idExporter) findIDs() (idExporterResults, error) {
 	var holder idExporterResults
 	_, err := c.dbMap.Select(
-		&holder.ids,
+		&holder,
 		`SELECT id
 		FROM registrations
 		WHERE contact != 'null' AND
@@ -89,12 +86,12 @@ func (c idExporter) findIDs() (*idExporterResults, error) {
 		c.log.AuditErrf("Error finding IDs: %s", err)
 		return nil, err
 	}
-	return &holder, nil
+	return holder, nil
 }
 
 // Find all registration IDs with unexpired certificates and gather an
 // example hostname.
-func (c idExporter) findIDsWithExampleHostnames() (*idExporterResults, error) {
+func (c idExporter) findIDsWithExampleHostnames() (idExporterResults, error) {
 	var holder idExporterResults
 	_, err := c.dbMap.Select(
 		// A previous version of this query resulted in an off-by-one
@@ -108,9 +105,9 @@ func (c idExporter) findIDsWithExampleHostnames() (*idExporterResults, error) {
 		// (https://mariadb.com/kb/en/sql-mode/#only_full_group_by) but
 		// it defaults to off, letting us access the multiverse of
 		// possibilities that only undefined behavior can truly tap.
-		&holder.ids,
-		`SELECT SQL_BIG_RESULT cert.registrationID as id,
-			name.reversedName as hostname
+		&holder,
+		`SELECT SQL_BIG_RESULT cert.registrationID AS id,
+			name.reversedName AS hostname
 		FROM certificates AS cert
 			INNER JOIN issuedNames AS name ON name.serial = cert.serial
 		WHERE cert.expires >= :expireCutoff
@@ -123,20 +120,20 @@ func (c idExporter) findIDsWithExampleHostnames() (*idExporterResults, error) {
 		return nil, err
 	}
 
-	for _, result := range holder.ids {
+	for _, result := range holder {
 		result.reverseHostname()
 	}
-	return &holder, nil
+	return holder, nil
 }
 
-func (c idExporter) findIDsForDomains(domains []string) (*idExporterResults, error) {
+func (c idExporter) findIDsForDomains(domains []string) (idExporterResults, error) {
 	var holder idExporterResults
 	for _, domain := range domains {
 		// Pass the same list in each time, gorp will happily just append to the slice
 		// instead of overwriting it each time
 		// https://github.com/go-gorp/gorp/blob/2ae7d174a4cf270240c4561092402affba25da5e/select.go#L348-L355
 		_, err := c.dbMap.Select(
-			&holder.ids,
+			&holder,
 			`SELECT registrationID AS id FROM certificates
                          WHERE expires >= :expireCutoff AND
                          serial IN (
@@ -156,7 +153,7 @@ func (c idExporter) findIDsForDomains(domains []string) (*idExporterResults, err
 		}
 	}
 
-	return &holder, nil
+	return holder, nil
 }
 
 const usageIntro = `
@@ -257,19 +254,19 @@ func main() {
 		grace: *grace,
 	}
 
-	var results *idExporterResults
+	var results idExporterResults
 	if *domainsFile != "" {
 		// Gather IDs for the domains listed in the `domainsFile`.
 		df, err := ioutil.ReadFile(*domainsFile)
 		cmd.FailOnError(err, fmt.Sprintf("Could not read domains file %q", *domainsFile))
 
 		results, err = exporter.findIDsForDomains(strings.Split(string(df), "\n"))
-		cmd.FailOnError(err, "Could not find IDs")
+		cmd.FailOnError(err, "Could not find IDs for domains")
 
 	} else if *withExampleHostnames {
 		// Gather subscriber IDs and hostnames.
 		results, err = exporter.findIDsWithExampleHostnames()
-		cmd.FailOnError(err, "Could not find IDs")
+		cmd.FailOnError(err, "Could not find IDs with hostnames")
 
 	} else {
 		// Gather only subscriber IDs.
