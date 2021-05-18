@@ -202,6 +202,17 @@ func registrationToModel(r *core.Registration) (*regModel, error) {
 	if r.Contact == nil {
 		r.Contact = &[]string{}
 	}
+	var createdAt time.Time
+	if r.CreatedAt != nil {
+		createdAt = *r.CreatedAt
+		// return nil, fmt.Errorf("createdAt was nil")
+	}
+	// var createdAt *time.Time
+	// if r.CreatedAt != 0 {
+	// 	val := time.Unix(0, chall.Validated).UTC()
+	// 	validated = &val
+	// }
+	//am.AttemptedAt = validated
 	rm := regModel{
 		ID:        r.ID,
 		Key:       key,
@@ -209,7 +220,7 @@ func registrationToModel(r *core.Registration) (*regModel, error) {
 		Contact:   *r.Contact,
 		Agreement: r.Agreement,
 		InitialIP: []byte(r.InitialIP.To16()),
-		CreatedAt: r.CreatedAt,
+		CreatedAt: createdAt,
 		Status:    string(r.Status),
 	}
 
@@ -241,7 +252,7 @@ func modelToRegistration(reg *regModel) (core.Registration, error) {
 		Contact:   contact,
 		Agreement: reg.Agreement,
 		InitialIP: net.IP(reg.InitialIP),
-		CreatedAt: reg.CreatedAt,
+		CreatedAt: &reg.CreatedAt,
 		Status:    core.AcmeStatus(reg.Status),
 	}
 

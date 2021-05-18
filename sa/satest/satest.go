@@ -41,11 +41,12 @@ func GoodJWK() *jose.JSONWebKey {
 func CreateWorkingRegistration(t *testing.T, sa core.StorageAdder) core.Registration {
 	contact := "mailto:foo@example.com"
 	contacts := &[]string{contact}
+	createdAt := time.Date(2003, 5, 10, 0, 0, 0, 0, time.UTC)
 	reg, err := sa.NewRegistration(context.Background(), core.Registration{
 		Key:       GoodJWK(),
 		Contact:   contacts,
 		InitialIP: net.ParseIP("88.77.66.11"),
-		CreatedAt: time.Date(2003, 5, 10, 0, 0, 0, 0, time.UTC),
+		CreatedAt: &createdAt,
 		Status:    core.StatusValid,
 	})
 	if err != nil {
