@@ -64,9 +64,16 @@ func TestFindIDs(t *testing.T) {
 	results, err = testCtx.c.findIDs()
 	test.AssertNotError(t, err, "findIDs() produced error")
 	test.AssertEquals(t, len(results), 3)
-	test.AssertEquals(t, results[0].ID, regA.ID)
-	test.AssertEquals(t, results[1].ID, regC.ID)
-	test.AssertEquals(t, results[2].ID, regD.ID)
+	for _, entry := range results {
+		switch entry.ID {
+		case 1:
+			test.AssertEquals(t, entry.ID, regA.ID)
+		case 2:
+			test.AssertEquals(t, entry.ID, regC.ID)
+		case 4:
+			test.AssertEquals(t, entry.ID, regD.ID)
+		}
+	}
 
 	// Allow a 1 year grace period
 	testCtx.c.grace = 360 * 24 * time.Hour
@@ -74,11 +81,18 @@ func TestFindIDs(t *testing.T) {
 	test.AssertNotError(t, err, "findIDs() produced error")
 	// Now all four registration should be returned, including RegB since its
 	// certificate expired within the grace period
-	test.AssertEquals(t, len(results), 4)
-	test.AssertEquals(t, results[0].ID, regA.ID)
-	test.AssertEquals(t, results[1].ID, regB.ID)
-	test.AssertEquals(t, results[2].ID, regC.ID)
-	test.AssertEquals(t, results[3].ID, regD.ID)
+	for _, entry := range results {
+		switch entry.ID {
+		case 1:
+			test.AssertEquals(t, entry.ID, regA.ID)
+		case 2:
+			test.AssertEquals(t, entry.ID, regB.ID)
+		case 3:
+			test.AssertEquals(t, entry.ID, regC.ID)
+		case 4:
+			test.AssertEquals(t, entry.ID, regD.ID)
+		}
+	}
 }
 
 func TestFindIDsWithExampleHostnames(t *testing.T) {
@@ -105,12 +119,19 @@ func TestFindIDsWithExampleHostnames(t *testing.T) {
 	results, err = testCtx.c.findIDsWithExampleHostnames()
 	test.AssertNotError(t, err, "findIDs() produced error")
 	test.AssertEquals(t, len(results), 3)
-	test.AssertEquals(t, results[0].ID, regA.ID)
-	test.AssertEquals(t, results[1].ID, regC.ID)
-	test.AssertEquals(t, results[2].ID, regD.ID)
-	test.AssertEquals(t, results[0].Hostname, "example-a.com")
-	test.AssertEquals(t, results[1].Hostname, "example-c.com")
-	test.AssertEquals(t, results[2].Hostname, "example-d.com")
+	for _, entry := range results {
+		switch entry.ID {
+		case 1:
+			test.AssertEquals(t, entry.ID, regA.ID)
+			test.AssertEquals(t, entry.Hostname, "example-a.com")
+		case 2:
+			test.AssertEquals(t, entry.ID, regC.ID)
+			test.AssertEquals(t, entry.Hostname, "example-c.com")
+		case 4:
+			test.AssertEquals(t, entry.ID, regD.ID)
+			test.AssertEquals(t, entry.Hostname, "example-d.com")
+		}
+	}
 
 	// Allow a 1 year grace period
 	testCtx.c.grace = 360 * 24 * time.Hour
@@ -120,14 +141,22 @@ func TestFindIDsWithExampleHostnames(t *testing.T) {
 	// Now all four registrations should be returned, including RegB
 	// since it expired within the grace period
 	test.AssertEquals(t, len(results), 4)
-	test.AssertEquals(t, results[0].ID, regA.ID)
-	test.AssertEquals(t, results[1].ID, regB.ID)
-	test.AssertEquals(t, results[2].ID, regC.ID)
-	test.AssertEquals(t, results[3].ID, regD.ID)
-	test.AssertEquals(t, results[0].Hostname, "example-a.com")
-	test.AssertEquals(t, results[1].Hostname, "example-b.com")
-	test.AssertEquals(t, results[2].Hostname, "example-c.com")
-	test.AssertEquals(t, results[3].Hostname, "example-d.com")
+	for _, entry := range results {
+		switch entry.ID {
+		case 1:
+			test.AssertEquals(t, entry.ID, regA.ID)
+			test.AssertEquals(t, entry.Hostname, "example-a.com")
+		case 2:
+			test.AssertEquals(t, entry.ID, regB.ID)
+			test.AssertEquals(t, entry.Hostname, "example-b.com")
+		case 3:
+			test.AssertEquals(t, entry.ID, regC.ID)
+			test.AssertEquals(t, entry.Hostname, "example-c.com")
+		case 4:
+			test.AssertEquals(t, entry.ID, regD.ID)
+			test.AssertEquals(t, entry.Hostname, "example-d.com")
+		}
+	}
 }
 
 func TestFindIDsForDomains(t *testing.T) {
@@ -149,9 +178,16 @@ func TestFindIDsForDomains(t *testing.T) {
 	results, err = testCtx.c.findIDsForDomains([]string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
 	test.AssertNotError(t, err, "findIDsForDomains() failed")
 	test.AssertEquals(t, len(results), 3)
-	test.AssertEquals(t, results[0].ID, regA.ID)
-	test.AssertEquals(t, results[1].ID, regC.ID)
-	test.AssertEquals(t, results[2].ID, regD.ID)
+	for _, entry := range results {
+		switch entry.ID {
+		case 1:
+			test.AssertEquals(t, entry.ID, regA.ID)
+		case 2:
+			test.AssertEquals(t, entry.ID, regC.ID)
+		case 4:
+			test.AssertEquals(t, entry.ID, regD.ID)
+		}
+	}
 }
 
 func TestWriteToFile(t *testing.T) {
