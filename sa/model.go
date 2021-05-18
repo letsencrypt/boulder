@@ -205,14 +205,8 @@ func registrationToModel(r *core.Registration) (*regModel, error) {
 	var createdAt time.Time
 	if r.CreatedAt != nil {
 		createdAt = *r.CreatedAt
-		// return nil, fmt.Errorf("createdAt was nil")
 	}
-	// var createdAt *time.Time
-	// if r.CreatedAt != 0 {
-	// 	val := time.Unix(0, chall.Validated).UTC()
-	// 	validated = &val
-	// }
-	//am.AttemptedAt = validated
+
 	rm := regModel{
 		ID:        r.ID,
 		Key:       key,
