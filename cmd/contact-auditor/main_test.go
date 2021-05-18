@@ -80,7 +80,6 @@ func TestMailAuditor(t *testing.T) {
 	// With none expired, we should get A, B, C, and D. Only A, B, and C
 	// should have email addresses in their contact.
 	test.AssertEquals(t, len(results), 4)
-
 	for _, entry := range results {
 		switch entry.ID {
 		case 1:
