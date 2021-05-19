@@ -145,7 +145,7 @@ func TestLoadPolicies(t *testing.T) {
 
 	// Test that the CertificatesPerFQDN section parsed correctly
 	certsPerFQDN := policy.CertificatesPerFQDNSet()
-	test.AssertEquals(t, certsPerFQDN.Threshold, 5)
+	test.AssertEquals(t, certsPerFQDN.Threshold, 6)
 	test.AssertDeepEquals(t, certsPerFQDN.Overrides, map[string]int{
 		"le.wtf":                10000,
 		"le1.wtf":               10000,
@@ -158,6 +158,12 @@ func TestLoadPolicies(t *testing.T) {
 		"must-staple.le.wtf":    10000,
 	})
 	test.AssertEquals(t, len(certsPerFQDN.RegistrationOverrides), 0)
+	certsPerFQDNFast := policy.CertificatesPerFQDNSetFast()
+	test.AssertEquals(t, certsPerFQDNFast.Threshold, 2)
+	test.AssertDeepEquals(t, certsPerFQDNFast.Overrides, map[string]int{
+		"le.wtf": 100,
+	})
+	test.AssertEquals(t, len(certsPerFQDNFast.RegistrationOverrides), 0)
 
 	// Test that loading invalid YAML generates an error
 	err = policy.LoadPolicies([]byte("err"))

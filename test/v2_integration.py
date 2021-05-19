@@ -1110,9 +1110,9 @@ def test_long_san_no_cn():
         # if we get to this raise the auth_and_issue call didn't fail, so fail the test
         raise(Exception("Issuance didn't fail when the only SAN in a certificate was longer than the max CN length"))
     except messages.Error as e:
-        if e.typ != "urn:ietf:params:acme:error:badCSR":
+        if e.typ != "urn:ietf:params:acme:error:rejectedIdentifier":
             raise(Exception("Expected malformed type problem, got {0}".format(e.typ)))
-        if e.detail != "Error finalizing order :: CSR doesn't contain a SAN short enough to fit in CN":
+        if e.detail != "NewOrder request did not include a SAN short enough to fit in CN":
             raise(Exception("Problem detail did not match expected"))
 
 def test_delete_unused_challenges():
@@ -1424,11 +1424,11 @@ def test_account_update():
 
 def test_renewal_exemption():
     """
-    Under a single domain, issue one certificate, then two renewals of that
-    certificate, then one more different certificate (with a different
-    subdomain). Since the certificatesPerName rate limit in testing is 2 per 90
-    days, and the renewals should be discounted under the renewal exemption,
-    each of these issuances should succeed. Then do one last issuance that we
+    Under a single domain, issue two certificates for different subdomains of
+    the same name, then renewals of each of them. Since the certificatesPerName
+    rate limit in testing is 2 per 90 days, and the renewals should not be
+    counted under the renewal exemption, each of these issuances should succeed.
+    Then do one last issuance (for a third subdomain of the same name) that we
     expect to be rate limited, just to check that the rate limit is actually 2,
     and we are testing what we think we are testing. See
     https://letsencrypt.org/docs/rate-limits/ for more details.
@@ -1438,9 +1438,9 @@ def test_renewal_exemption():
     chisel2.auth_and_issue(["www." + base_domain])
     # First Renewal
     chisel2.auth_and_issue(["www." + base_domain])
-    # Second Renewal
-    chisel2.auth_and_issue(["www." + base_domain])
     # Issuance of a different cert
+    chisel2.auth_and_issue(["blog." + base_domain])
+    # Renew that one
     chisel2.auth_and_issue(["blog." + base_domain])
     # Final, failed issuance, for another different cert
     chisel2.expect_problem("urn:ietf:params:acme:error:rateLimited",

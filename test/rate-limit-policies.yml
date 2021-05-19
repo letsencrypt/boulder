@@ -37,8 +37,8 @@ newOrdersPerAccount:
   window: 3h
   threshold: 1500
 certificatesPerFQDNSet:
-  window: 24h
-  threshold: 5
+  window: 168h
+  threshold: 6
   overrides:
     le.wtf: 10000
     le1.wtf: 10000
@@ -49,3 +49,8 @@ certificatesPerFQDNSet:
     nginx.wtf: 10000
     ecdsa.le.wtf: 10000
     must-staple.le.wtf: 10000
+certificatesPerFQDNSetFast:
+  window: 2h
+  threshold: 2
+  overrides:
+    le.wtf: 100
