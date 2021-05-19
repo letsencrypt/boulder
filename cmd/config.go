@@ -272,6 +272,9 @@ type BeelineConfig struct {
 	WriteKey PasswordConfig
 	// Dataset is the event collection, e.g. Staging or Prod.
 	Dataset string
+	// SampleRate is the (positive integer) denominator of the sample rate.
+	// Default: 1 (meaning all traces are sent). Set higher to send fewer traces.
+	SampleRate uint
 	// Mute disables honeycomb entirely; useful in test environments.
 	Mute bool
 	// Many other fields of beeline.Config are omitted as they are not yet used.
@@ -290,10 +293,16 @@ func (bc *BeelineConfig) Load() (beeline.Config, error) {
 		return beeline.Config{}, fmt.Errorf("failed to get write key: %w", err)
 	}
 
+	samplerate := uint(1)
+	if bc.SampleRate > 1 {
+		samplerate = bc.SampleRate
+	}
+
 	return beeline.Config{
 		WriteKey:    writekey,
 		Dataset:     bc.Dataset,
 		ServiceName: path.Base(exec),
+		SampleRate:  samplerate,
 		Mute:        bc.Mute,
 	}, nil
 }
