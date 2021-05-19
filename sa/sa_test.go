@@ -146,6 +146,7 @@ func TestAddRegistration(t *testing.T) {
 	}
 	test.AssertEquals(t, dbReg.ID, expectedReg.ID)
 	test.Assert(t, core.KeyDigestEquals(dbReg.Key, expectedReg.Key), "Stored key != expected")
+	test.AssertDeepEquals(t, expectedReg.CreatedAt, dbReg.CreatedAt)
 
 	newReg := core.Registration{
 		ID:        reg.ID,
