@@ -8,7 +8,7 @@ github.com/cespare/xxhash/v2
 github.com/eggsampler/acme/v3
 # github.com/go-gorp/gorp/v3 v3.0.2
 github.com/go-gorp/gorp/v3
-# github.com/go-sql-driver/mysql v1.6.0
+# github.com/go-sql-driver/mysql v1.5.0
 github.com/go-sql-driver/mysql
 # github.com/golang/protobuf v1.4.2
 github.com/golang/protobuf/proto
