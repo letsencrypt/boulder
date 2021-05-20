@@ -52,7 +52,7 @@ rpm: build
 		--version "$(VERSION)" --iteration "$(COMMIT_ID)" --epoch "$(EPOCH)" \
 		--package "$(ARCHIVEDIR)/boulder-$(VERSION)-$(COMMIT_ID).x86_64.rpm" \
 		--description "Boulder is an ACME-compatible X.509 Certificate Authority" \
-		--depends "libtool-ltdl" --maintainer "$(MAINTAINER)" \
+		--maintainer "$(MAINTAINER)" \
 		test/config/ sa/_db data/ $(OBJECTS)
 
 deb: build
@@ -62,5 +62,5 @@ deb: build
 		--version "$(VERSION)" --iteration "$(COMMIT_ID)" --epoch "$(EPOCH)" \
 		--package "$(ARCHIVEDIR)/boulder-$(VERSION)-$(COMMIT_ID).x86_64.deb" \
 		--description "Boulder is an ACME-compatible X.509 Certificate Authority" \
-		--depends "libtool-ltdl" --maintainer "$(MAINTAINER)" \
+		--maintainer "$(MAINTAINER)" \
 		test/config/ sa/_db data/ $(OBJECTS)
