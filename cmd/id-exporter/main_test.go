@@ -66,12 +66,11 @@ func TestFindIDs(t *testing.T) {
 	test.AssertEquals(t, len(results), 3)
 	for _, entry := range results {
 		switch entry.ID {
-		case 1:
-			test.AssertEquals(t, entry.ID, regA.ID)
-		case 2:
-			test.AssertEquals(t, entry.ID, regC.ID)
-		case 4:
-			test.AssertEquals(t, entry.ID, regD.ID)
+		case regA.ID:
+		case regC.ID:
+		case regD.ID:
+		default:
+			t.Errorf("ID: %d not expected", entry.ID)
 		}
 	}
 
@@ -83,14 +82,12 @@ func TestFindIDs(t *testing.T) {
 	// certificate expired within the grace period
 	for _, entry := range results {
 		switch entry.ID {
-		case 1:
-			test.AssertEquals(t, entry.ID, regA.ID)
-		case 2:
-			test.AssertEquals(t, entry.ID, regB.ID)
-		case 3:
-			test.AssertEquals(t, entry.ID, regC.ID)
-		case 4:
-			test.AssertEquals(t, entry.ID, regD.ID)
+		case regA.ID:
+		case regB.ID:
+		case regC.ID:
+		case regD.ID:
+		default:
+			t.Errorf("ID: %d not expected", entry.ID)
 		}
 	}
 }
@@ -121,15 +118,14 @@ func TestFindIDsWithExampleHostnames(t *testing.T) {
 	test.AssertEquals(t, len(results), 3)
 	for _, entry := range results {
 		switch entry.ID {
-		case 1:
-			test.AssertEquals(t, entry.ID, regA.ID)
+		case regA.ID:
 			test.AssertEquals(t, entry.Hostname, "example-a.com")
-		case 2:
-			test.AssertEquals(t, entry.ID, regC.ID)
+		case regC.ID:
 			test.AssertEquals(t, entry.Hostname, "example-c.com")
-		case 4:
-			test.AssertEquals(t, entry.ID, regD.ID)
+		case regD.ID:
 			test.AssertEquals(t, entry.Hostname, "example-d.com")
+		default:
+			t.Errorf("ID: %d not expected", entry.ID)
 		}
 	}
 
@@ -143,18 +139,16 @@ func TestFindIDsWithExampleHostnames(t *testing.T) {
 	test.AssertEquals(t, len(results), 4)
 	for _, entry := range results {
 		switch entry.ID {
-		case 1:
-			test.AssertEquals(t, entry.ID, regA.ID)
+		case regA.ID:
 			test.AssertEquals(t, entry.Hostname, "example-a.com")
-		case 2:
-			test.AssertEquals(t, entry.ID, regB.ID)
+		case regB.ID:
 			test.AssertEquals(t, entry.Hostname, "example-b.com")
-		case 3:
-			test.AssertEquals(t, entry.ID, regC.ID)
+		case regC.ID:
 			test.AssertEquals(t, entry.Hostname, "example-c.com")
-		case 4:
-			test.AssertEquals(t, entry.ID, regD.ID)
+		case regD.ID:
 			test.AssertEquals(t, entry.Hostname, "example-d.com")
+		default:
+			t.Errorf("ID: %d not expected", entry.ID)
 		}
 	}
 }
@@ -180,12 +174,11 @@ func TestFindIDsForDomains(t *testing.T) {
 	test.AssertEquals(t, len(results), 3)
 	for _, entry := range results {
 		switch entry.ID {
-		case 1:
-			test.AssertEquals(t, entry.ID, regA.ID)
-		case 2:
-			test.AssertEquals(t, entry.ID, regC.ID)
-		case 4:
-			test.AssertEquals(t, entry.ID, regD.ID)
+		case regA.ID:
+		case regC.ID:
+		case regD.ID:
+		default:
+			t.Errorf("ID: %d not expected", entry.ID)
 		}
 	}
 }
