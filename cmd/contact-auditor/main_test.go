@@ -59,16 +59,15 @@ func TestMailAuditor(t *testing.T) {
 	test.AssertEquals(t, len(results), 3)
 	for _, entry := range results {
 		switch entry.ID {
-		case 1:
-			test.AssertEquals(t, entry.ID, regA.ID)
+		case regA.ID:
 			test.AssertDeepEquals(t, entry.addresses, []string{"test@example.com"})
-		case 3:
-			test.AssertEquals(t, entry.ID, regC.ID)
+		case regC.ID:
 			test.AssertDeepEquals(t, entry.addresses, []string{"test-example@example.com"})
-		case 4:
-			test.AssertEquals(t, entry.ID, regD.ID)
+		case regD.ID:
 			// Should be empty.
 			test.AssertEquals(t, len(entry.addresses), 0)
+		default:
+			t.Errorf("ID: %d was not expected", entry.ID)
 		}
 	}
 
@@ -82,19 +81,17 @@ func TestMailAuditor(t *testing.T) {
 	test.AssertEquals(t, len(results), 4)
 	for _, entry := range results {
 		switch entry.ID {
-		case 1:
-			test.AssertEquals(t, entry.ID, regA.ID)
+		case regA.ID:
 			test.AssertDeepEquals(t, entry.addresses, []string{"test@example.com"})
-		case 2:
-			test.AssertEquals(t, entry.ID, regB.ID)
+		case regB.ID:
 			test.AssertDeepEquals(t, entry.addresses, []string{"example@example.com"})
-		case 3:
-			test.AssertEquals(t, entry.ID, regC.ID)
+		case regC.ID:
 			test.AssertDeepEquals(t, entry.addresses, []string{"test-example@example.com"})
-		case 4:
-			test.AssertEquals(t, entry.ID, regD.ID)
+		case regD.ID:
 			// Should be empty.
 			test.AssertEquals(t, len(entry.addresses), 0)
+		default:
+			t.Errorf("ID: %d was not expected", entry.ID)
 		}
 	}
 }
