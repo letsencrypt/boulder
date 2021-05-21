@@ -293,7 +293,7 @@ func main() {
 		// UNCOMMITTED' for better performance at the cost of
 		// consistency.
 		_, err := dbMap.Exec("SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;")
-		cmd.FailOnError(err, "Could not find IDs with hostnames")
+		cmd.FailOnError(err, "Could not set transaction isolation level")
 	}
 
 	if *hostnamesFile != "" {
