@@ -206,17 +206,20 @@ func Test_unmarshalHostnames(t *testing.T) {
 	testFile, err := ioutil.TempFile(testDir, "ids_test")
 	test.AssertNotError(t, err, "ioutil.TempFile produced an error")
 
-	// One hostname present in the hostnamesFile
+	// Non-existent hostnamesFile
+	_, err = unmarshalHostnames("file_does_not_exist")
+	test.AssertError(t, err, "expected error for non-existent file")
+
+	// Empty hostnamesFile
 	err = ioutil.WriteFile(testFile.Name(), []byte(""), 0644)
 	test.AssertNotError(t, err, "ioutil.WriteFile produced an error")
-	results, err := unmarshalHostnames(testFile.Name())
+	_, err = unmarshalHostnames(testFile.Name())
 	test.AssertError(t, err, "expected error for file containing 0 entries")
-	test.AssertEquals(t, len(results), 0)
 
 	// One hostname present in the hostnamesFile
 	err = ioutil.WriteFile(testFile.Name(), []byte("example-a.com"), 0644)
 	test.AssertNotError(t, err, "ioutil.WriteFile produced an error")
-	results, err = unmarshalHostnames(testFile.Name())
+	results, err := unmarshalHostnames(testFile.Name())
 	test.AssertNotError(t, err, "error when unmarshalling hostnamesFile with a single hostname")
 	test.AssertEquals(t, len(results), 1)
 
