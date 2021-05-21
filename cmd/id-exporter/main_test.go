@@ -153,24 +153,24 @@ func TestFindIDsWithExampleHostnames(t *testing.T) {
 	}
 }
 
-func TestFindIDsForDomains(t *testing.T) {
+func TestFindIDsForHostnames(t *testing.T) {
 	testCtx := setup(t)
 	defer testCtx.cleanUp()
 
 	// Add some test registrations
 	testCtx.addRegistrations(t)
 
-	// Run findIDsForDomains - since no certificates have been added corresponding to
+	// Run findIDsForHostnames - since no certificates have been added corresponding to
 	// the above registrations, no IDs should be found.
-	results, err := testCtx.c.findIDsForDomains([]string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
+	results, err := testCtx.c.findIDsForHostnames([]string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
 	test.AssertNotError(t, err, "findIDs() produced error")
 	test.AssertEquals(t, len(results), 0)
 
 	// Now add some certificates
 	testCtx.addCertificates(t)
 
-	results, err = testCtx.c.findIDsForDomains([]string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
-	test.AssertNotError(t, err, "findIDsForDomains() failed")
+	results, err = testCtx.c.findIDsForHostnames([]string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
+	test.AssertNotError(t, err, "findIDsForHostnames() failed")
 	test.AssertEquals(t, len(results), 3)
 	for _, entry := range results {
 		switch entry.ID {
