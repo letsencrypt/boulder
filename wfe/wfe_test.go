@@ -2537,7 +2537,6 @@ func TestDeactivateRegistration(t *testing.T) {
 		  ],
 		  "agreement": "http://example.invalid/terms",
 		  "initialIp": "",
-		  "createdAt": "0001-01-01T00:00:00Z",
 		  "status": "deactivated"
 		}`)
 
@@ -2558,7 +2557,6 @@ func TestDeactivateRegistration(t *testing.T) {
 		  ],
 		  "agreement": "http://example.invalid/terms",
 		  "initialIp": "",
-		  "createdAt": "0001-01-01T00:00:00Z",
 		  "status": "deactivated"
 		}`)
 
@@ -2648,7 +2646,6 @@ func TestKeyRollover(t *testing.T) {
 		     ],
 		     "agreement": "http://example.invalid/terms",
 		     "initialIp": "",
-		     "createdAt": "0001-01-01T00:00:00Z",
 		     "status": "valid"
 		   }`,
 		},

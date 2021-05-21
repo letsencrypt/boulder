@@ -338,7 +338,8 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 
 // NewRegistration stores a new Registration
 func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
-	reg.CreatedAt = ssa.clk.Now()
+	createdAt := ssa.clk.Now()
+	reg.CreatedAt = &createdAt
 	rm, err := registrationToModel(&reg)
 	if err != nil {
 		return reg, err

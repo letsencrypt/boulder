@@ -159,13 +159,14 @@ func TestRegistration(t *testing.T) {
 		}
 	`), &key)
 	test.AssertNotError(t, err, "Could not unmarshal testing key")
+	createdAt := time.Now().Round(0).UTC()
 	inReg := core.Registration{
 		ID:        1,
 		Key:       &key,
 		Contact:   &contacts,
 		Agreement: "yup",
 		InitialIP: net.ParseIP("1.1.1.1"),
-		CreatedAt: time.Now().Round(0),
+		CreatedAt: &createdAt,
 		Status:    core.StatusValid,
 	}
 	pbReg, err := RegistrationToPB(inReg)

@@ -1309,7 +1309,6 @@ func TestNewECDSAAccount(t *testing.T) {
 			"y": "S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk"
 		},
 		"initialIp": "",
-		"createdAt": "0001-01-01T00:00:00Z",
 		"status": ""
 		}`)
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/3")
@@ -1491,7 +1490,6 @@ func TestNewAccount(t *testing.T) {
 			"mailto:person@mail.com"
 		],
 		"initialIp": "",
-		"createdAt": "0001-01-01T00:00:00Z",
 		"status": "valid"
 	}`)
 }
@@ -2325,7 +2323,6 @@ func TestDeactivateAccount(t *testing.T) {
 		    "mailto:person@mail.com"
 		  ],
 		  "initialIp": "",
-		  "createdAt": "0001-01-01T00:00:00Z",
 		  "status": "deactivated"
 		}`)
 
@@ -2346,7 +2343,6 @@ func TestDeactivateAccount(t *testing.T) {
 		    "mailto:person@mail.com"
 		  ],
 		  "initialIp": "",
-		  "createdAt": "0001-01-01T00:00:00Z",
 		  "status": "deactivated"
 		}`)
 
@@ -2419,7 +2415,7 @@ func TestNewOrder(t *testing.T) {
 			{
 				"type": "dns",
 				"value": "not-example.com"
-			}	
+			}
 		]
 	}`
 
@@ -2745,7 +2741,6 @@ func TestKeyRollover(t *testing.T) {
 		       "mailto:person@mail.com"
 		     ],
 		     "initialIp": "",
-		     "createdAt": "0001-01-01T00:00:00Z",
 		     "status": "valid"
 		   }`,
 			NewKey: newKeyPriv,

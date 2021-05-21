@@ -138,7 +138,8 @@ func (sa *StorageAuthority) GetRegistration(_ context.Context, id int64) (core.R
 	}
 
 	goodReg.InitialIP = net.ParseIP("5.6.7.8")
-	goodReg.CreatedAt = time.Date(2003, 9, 27, 0, 0, 0, 0, time.UTC)
+	createdAt := time.Date(2003, 9, 27, 0, 0, 0, 0, time.UTC)
+	goodReg.CreatedAt = &createdAt
 	return goodReg, nil
 }
 

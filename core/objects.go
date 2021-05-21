@@ -137,7 +137,7 @@ type Registration struct {
 	InitialIP net.IP `json:"initialIp"`
 
 	// CreatedAt is the time the registration was created.
-	CreatedAt time.Time `json:"createdAt"`
+	CreatedAt *time.Time `json:"createdAt,omitempty"`
 
 	Status AcmeStatus `json:"status"`
 }
