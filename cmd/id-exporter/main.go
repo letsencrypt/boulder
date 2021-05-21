@@ -232,13 +232,14 @@ func main() {
 		"use-default-isolation-level", false, "Use database default transaction isolation level. (default is READ UNCOMMITTED)")
 	configFile := flag.String("config", "", "File containing a JSON config.")
 
-	// Parse flags and check required.
-	flag.Parse()
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "%s\n\n", usageIntro)
 		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
 		flag.PrintDefaults()
 	}
+
+	// Parse flags and check required.
+	flag.Parse()
 	if *outFile == "" || *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
