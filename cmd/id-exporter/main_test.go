@@ -201,6 +201,39 @@ func TestWriteToFile(t *testing.T) {
 	test.AssertEquals(t, string(contents), expected+"\n")
 }
 
+func Test_unmarshalHostnames(t *testing.T) {
+	testDir := os.TempDir()
+	testFile, err := ioutil.TempFile(testDir, "ids_test")
+	test.AssertNotError(t, err, "ioutil.TempFile produced an error")
+
+	// One hostname present in the hostnamesFile
+	err = ioutil.WriteFile(testFile.Name(), []byte(""), 0644)
+	test.AssertNotError(t, err, "ioutil.WriteFile produced an error")
+	results, err := unmarshalHostnames(testFile.Name())
+	test.AssertError(t, err, "expected error for file containing 0 entries")
+	test.AssertEquals(t, len(results), 0)
+
+	// One hostname present in the hostnamesFile
+	err = ioutil.WriteFile(testFile.Name(), []byte("example-a.com"), 0644)
+	test.AssertNotError(t, err, "ioutil.WriteFile produced an error")
+	results, err = unmarshalHostnames(testFile.Name())
+	test.AssertNotError(t, err, "error when unmarshalling hostnamesFile with a single hostname")
+	test.AssertEquals(t, len(results), 1)
+
+	// Two hostnames present in the hostnamesFile
+	err = ioutil.WriteFile(testFile.Name(), []byte("example-a.com\nexample-b.com"), 0644)
+	test.AssertNotError(t, err, "ioutil.WriteFile produced an error")
+	results, err = unmarshalHostnames(testFile.Name())
+	test.AssertNotError(t, err, "error when unmarshalling hostnamesFile with a two hostnames")
+	test.AssertEquals(t, len(results), 2)
+
+	// Three hostnames present in the hostnamesFile but two are separated only by a space
+	err = ioutil.WriteFile(testFile.Name(), []byte("example-a.com\nexample-b.com example-c.com"), 0644)
+	test.AssertNotError(t, err, "ioutil.WriteFile produced an error")
+	_, err = unmarshalHostnames(testFile.Name())
+	test.AssertError(t, err, "error when unmarshalling hostnamesFile with three space separated domains")
+}
+
 type testCtx struct {
 	c       idExporter
 	ssa     core.StorageAdder

@@ -76,7 +76,7 @@ func (c idExporter) findIDs() (idExporterResults, error) {
 		`SELECT DISTINCT r.id
 		FROM registrations AS r
 			INNER JOIN certificates AS c on c.registrationID = r.id
-		WHERE r.contact != '[]'
+		WHERE r.contact NOT IN ('[]', 'null')
 			AND c.expires >= :expireCutoff;`,
 		map[string]interface{}{
 			"expireCutoff": c.clk.Now().Add(-c.grace),
@@ -193,7 +193,7 @@ Required arguments:
 - config
 - outfile`
 
-// unmarshalHostnames unmarshals a hotnames file and ensures that the file
+// unmarshalHostnames unmarshals a hostnames file and ensures that the file
 // contained at least one entry.
 func unmarshalHostnames(filePath string) ([]string, error) {
 	file, err := os.Open(filePath)
@@ -225,7 +225,7 @@ func main() {
 	outFile := flag.String("outfile", "", "File to output results JSON to.")
 	grace := flag.Duration("grace", 2*24*time.Hour, "Include results with certificates that expired in < grace ago.")
 	hostnamesFile := flag.String(
-		"hostnames", "", "Only include results with unexpired certificates that contain hostnames listed in this file.")
+		"hostnames", "", "Only include results with unexpired certificates that contain hostnames\nlisted (newline separated) in this file.")
 	withExampleHostnames := flag.Bool(
 		"with-example-hostnames", false, "Include an example hostname for each registration ID with an unexpired certificate.")
 	useDefaultIsolationLevel := flag.Bool(
