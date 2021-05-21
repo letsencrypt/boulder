@@ -57,7 +57,7 @@ func (c contactAuditor) collectContacts() (queryResults, error) {
 		`SELECT DISTINCT r.id, r.contact
 	    FROM registrations AS r
 		    INNER JOIN certificates AS c on c.registrationID = r.id
-	    WHERE r.contact != '[]'
+	    WHERE r.contact NOT IN ('[]', 'null')
 		    AND c.expires >= :expireCutoff`,
 		map[string]interface{}{
 			"expireCutoff": c.clk.Now().Add(-c.grace),
