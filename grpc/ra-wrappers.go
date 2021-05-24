@@ -56,26 +56,8 @@ func (rac RegistrationAuthorityClientWrapper) NewCertificate(ctx context.Context
 	return PBToCert(response)
 }
 
-func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Context, base, updates core.Registration) (core.Registration, error) {
-	basePB, err := RegistrationToPB(base)
-	if err != nil {
-		return core.Registration{}, err
-	}
-	updatePB, err := RegistrationToPB(updates)
-	if err != nil {
-		return core.Registration{}, err
-	}
-
-	response, err := rac.inner.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: basePB, Update: updatePB})
-	if err != nil {
-		return core.Registration{}, err
-	}
-
-	if response == nil || !registrationValid(response) {
-		return core.Registration{}, errIncompleteResponse
-	}
-
-	return PbToRegistration(response)
+func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Context, base, updates *corepb.Registration) (*corepb.Registration, error) {
+	return rac.inner.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: base, Update: updates})
 }
 
 func (rac RegistrationAuthorityClientWrapper) PerformValidation(
@@ -217,22 +199,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewCertificate(ctx context.Contex
 }
 
 func (ras *RegistrationAuthorityServerWrapper) UpdateRegistration(ctx context.Context, request *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
-	if request == nil || !registrationValid(request.Base) {
-		return nil, errIncompleteRequest
-	}
-	base, err := PbToRegistration(request.Base)
-	if err != nil {
-		return nil, err
-	}
-	update, err := PbToRegistration(request.Update)
-	if err != nil {
-		return nil, err
-	}
-	newReg, err := ras.inner.UpdateRegistration(ctx, base, update)
-	if err != nil {
-		return nil, err
-	}
-	return RegistrationToPB(newReg)
+	return ras.inner.UpdateRegistration(ctx, request.Base, request.Update)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) PerformValidation(
