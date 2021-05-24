@@ -48,6 +48,7 @@ func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, metrics serverMet
 		grpc.Creds(creds),
 		grpc.ChainUnaryInterceptor(
 			si.intercept,
+			si.metrics.grpcMetrics.UnaryServerInterceptor(),
 			hnygrpc.UnaryServerInterceptor(),
 		),
 	}

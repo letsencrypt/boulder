@@ -45,6 +45,7 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 		grpc.WithTransportCredentials(creds),
 		grpc.WithChainUnaryInterceptor(
 			ci.intercept,
+			ci.metrics.grpcMetrics.UnaryClientInterceptor(),
 			hnygrpc.UnaryClientInterceptor(),
 		),
 	)
