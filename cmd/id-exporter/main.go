@@ -229,7 +229,7 @@ func main() {
 	withExampleHostnames := flag.Bool(
 		"with-example-hostnames", false, "Include an example hostname for each registration ID with an unexpired certificate.")
 	useDefaultIsolationLevel := flag.Bool(
-		"use-default-isolation-level", false, "Use database default transaction isolation level. (default is READ UNCOMMITTED)")
+		"use-default-isolation-level", false, "Do not override database transaction isolation level to READ UNCOMMITTED")
 	configFile := flag.String("config", "", "File containing a JSON config.")
 
 	flag.Usage = func() {
