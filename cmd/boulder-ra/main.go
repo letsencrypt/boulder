@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/honeycombio/beeline-go"
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
@@ -98,7 +99,8 @@ type config struct {
 
 	PA cmd.PAConfig
 
-	Syslog cmd.SyslogConfig
+	Syslog  cmd.SyslogConfig
+	Beeline cmd.BeelineConfig
 }
 
 func main() {
@@ -124,6 +126,11 @@ func main() {
 	if *debugAddr != "" {
 		c.RA.DebugAddr = *debugAddr
 	}
+
+	bc, err := c.Beeline.Load()
+	cmd.FailOnError(err, "Failed to load Beeline config")
+	beeline.Init(bc)
+	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.RA.DebugAddr)
 	defer logger.AuditPanic()

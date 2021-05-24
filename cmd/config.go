@@ -7,9 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"os"
+	"path"
 	"strings"
 	"time"
 
+	"github.com/honeycombio/beeline-go"
 	"github.com/letsencrypt/boulder/core"
 )
 
@@ -258,4 +261,48 @@ type PortConfig struct {
 	HTTPPort  int
 	HTTPSPort int
 	TLSPort   int
+}
+
+// BeelineConfig provides config options for the Honeycomb beeline-go library,
+// which are passed to its beeline.Init() method.
+type BeelineConfig struct {
+	// WriteKey is the API key needed to send data Honeycomb. This can be given
+	// directly in the JSON config for local development, or as a path to a
+	// separate file for production deployment.
+	WriteKey PasswordConfig
+	// Dataset is the event collection, e.g. Staging or Prod.
+	Dataset string
+	// SampleRate is the (positive integer) denominator of the sample rate.
+	// Default: 1 (meaning all traces are sent). Set higher to send fewer traces.
+	SampleRate uint
+	// Mute disables honeycomb entirely; useful in test environments.
+	Mute bool
+	// Many other fields of beeline.Config are omitted as they are not yet used.
+}
+
+// Load converts a BeelineConfig to a beeline.Config, loading the api WriteKey
+// and setting the ServiceName automatically.
+func (bc *BeelineConfig) Load() (beeline.Config, error) {
+	exec, err := os.Executable()
+	if err != nil {
+		return beeline.Config{}, fmt.Errorf("failed to get executable name: %w", err)
+	}
+
+	writekey, err := bc.WriteKey.Pass()
+	if err != nil {
+		return beeline.Config{}, fmt.Errorf("failed to get write key: %w", err)
+	}
+
+	samplerate := uint(1)
+	if bc.SampleRate > 1 {
+		samplerate = bc.SampleRate
+	}
+
+	return beeline.Config{
+		WriteKey:    writekey,
+		Dataset:     bc.Dataset,
+		ServiceName: path.Base(exec),
+		SampleRate:  samplerate,
+		Mute:        bc.Mute,
+	}, nil
 }

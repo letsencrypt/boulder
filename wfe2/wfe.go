@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/honeycombio/beeline-go"
+	"github.com/honeycombio/beeline-go/wrappers/hnynethttp"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -242,8 +244,10 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 			}
 
 			logEvent.Endpoint = pattern
+			beeline.AddFieldToTrace(ctx, "endpoint", pattern)
 			if request.URL != nil {
 				logEvent.Slug = request.URL.Path
+				beeline.AddFieldToTrace(ctx, "slug", request.URL.Path)
 			}
 
 			switch request.Method {
@@ -391,7 +395,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
 	m.Handle("/", web.NewTopHandler(wfe.log, web.WFEHandlerFunc(wfe.Index)))
-	return measured_http.New(m, wfe.clk, stats)
+	return hnynethttp.WrapHandler(measured_http.New(m, wfe.clk, stats))
 }
 
 // Method implementations
@@ -459,6 +463,7 @@ func (wfe *WebFrontEndImpl) Directory(
 			return
 		}
 		logEvent.Requester = acct.ID
+		beeline.AddFieldToTrace(ctx, "acct.id", acct.ID)
 	}
 
 	// Add a random key to the directory in order to make sure that clients don't hardcode an
@@ -515,6 +520,7 @@ func (wfe *WebFrontEndImpl) Nonce(
 			return
 		}
 		logEvent.Requester = acct.ID
+		beeline.AddFieldToTrace(ctx, "acct.id", acct.ID)
 	}
 
 	statusCode := http.StatusNoContent
@@ -582,6 +588,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		response.Header().Set("Location",
 			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, acct.ID)))
 		logEvent.Requester = acct.ID
+		beeline.AddFieldToTrace(ctx, "acct.id", acct.ID)
 		addRequesterHeader(response, acct.ID)
 
 		prepAccountForDisplay(&acct)
@@ -693,9 +700,11 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 	logEvent.Requester = acct.ID
+	beeline.AddFieldToTrace(ctx, "acct.id", acct.ID)
 	addRequesterHeader(response, acct.ID)
 	if acct.Contact != nil {
 		logEvent.Contacts = *acct.Contact
+		beeline.AddFieldToTrace(ctx, "contacts", *acct.Contact)
 	}
 
 	acctURL := web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, acct.ID))
@@ -779,6 +788,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	// Compute and record the serial number of the provided certificate
 	serial := core.SerialToString(providedCert.SerialNumber)
 	logEvent.Extra["ProvidedCertificateSerial"] = serial
+	beeline.AddFieldToTrace(ctx, "request.serial", serial)
 
 	// Try to validate the signature on the provided cert using its corresponding
 	// issuer certificate.
@@ -800,7 +810,9 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		return probs.ServerInternal("invalid parse of stored certificate")
 	}
 	logEvent.Extra["RetrievedCertificateSerial"] = serial
+	beeline.AddFieldToTrace(ctx, "cert.serial", serial)
 	logEvent.Extra["RetrievedCertificateDNSNames"] = parsedCertificate.DNSNames
+	beeline.AddFieldToTrace(ctx, "cert.dnsnames", parsedCertificate.DNSNames)
 
 	if parsedCertificate.NotAfter.Before(wfe.clk.Now()) {
 		return probs.Unauthorized("Certificate is expired")
@@ -813,6 +825,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		return probs.ServerInternal("Failed to get certificate status")
 	}
 	logEvent.Extra["CertificateStatus"] = certStatus.Status
+	beeline.AddFieldToTrace(ctx, "cert.status", certStatus.Status)
 
 	if certStatus.Status == core.OCSPStatusRevoked {
 		return probs.AlreadyRevoked("Certificate already revoked")
@@ -1084,8 +1097,10 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	if authz.Identifier.Type == identifier.DNS {
 		logEvent.DNSName = authz.Identifier.Value
+		beeline.AddFieldToTrace(ctx, "authz.dnsname", authz.Identifier.Value)
 	}
 	logEvent.Status = string(authz.Status)
+	beeline.AddFieldToTrace(ctx, "authz.status", authz.Status)
 
 	challenge := authz.Challenges[challengeIndex]
 	switch request.Method {
@@ -1094,6 +1109,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	case "POST":
 		logEvent.ChallengeType = string(challenge.Type)
+		beeline.AddFieldToTrace(ctx, "authz.challenge.type", challenge.Type)
 		wfe.postChallenge(ctx, response, request, authz, challengeIndex, logEvent)
 	}
 }
@@ -1491,8 +1507,10 @@ func (wfe *WebFrontEndImpl) Authorization(
 
 	if authz.Identifier.Type == identifier.DNS {
 		logEvent.DNSName = authz.Identifier.Value
+		beeline.AddFieldToTrace(ctx, "authz.dnsname", authz.Identifier.Value)
 	}
 	logEvent.Status = string(authz.Status)
+	beeline.AddFieldToTrace(ctx, "authz.status", authz.Status)
 
 	// After expiring, authorizations are inaccessible
 	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {
@@ -1587,6 +1605,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		return
 	}
 	logEvent.Extra["RequestedSerial"] = serial
+	beeline.AddFieldToTrace(ctx, "request.serial", serial)
 
 	cert, err := wfe.SA.GetCertificate(ctx, serial)
 	if err != nil {
@@ -2005,6 +2024,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 	logEvent.Created = fmt.Sprintf("%d", order.Id)
+	beeline.AddFieldToTrace(ctx, "order.id", order.Id)
 
 	orderURL := web.RelativeEndpoint(request,
 		fmt.Sprintf("%s%d/%d", orderPath, acct.ID, order.Id))
@@ -2183,9 +2203,13 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	wfe.logCsr(request, certificateRequest, *acct)
 
 	logEvent.Extra["CSRDNSNames"] = certificateRequest.CSR.DNSNames
+	beeline.AddFieldToTrace(ctx, "csr.dnsnames", certificateRequest.CSR.DNSNames)
 	logEvent.Extra["CSREmailAddresses"] = certificateRequest.CSR.EmailAddresses
+	beeline.AddFieldToTrace(ctx, "csr.email_addrs", certificateRequest.CSR.EmailAddresses)
 	logEvent.Extra["CSRIPAddresses"] = certificateRequest.CSR.IPAddresses
+	beeline.AddFieldToTrace(ctx, "csr.ip_addrs", certificateRequest.CSR.IPAddresses)
 	logEvent.Extra["KeyType"] = web.KeyTypeToString(certificateRequest.CSR.PublicKey)
+	beeline.AddFieldToTrace(ctx, "csr.key_type", web.KeyTypeToString(certificateRequest.CSR.PublicKey))
 
 	// Inc CSR signature algorithm counter
 	wfe.stats.csrSignatureAlgs.With(prometheus.Labels{"type": certificateRequest.CSR.SignatureAlgorithm.String()}).Inc()

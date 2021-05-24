@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/honeycombio/beeline-go/wrappers/hnynethttp"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	jose "gopkg.in/square/go-jose.v2"
@@ -336,7 +337,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
 	m.Handle("/", web.NewTopHandler(wfe.log, web.WFEHandlerFunc(wfe.Index)))
-	return measured_http.New(m, wfe.clk, stats)
+	return hnynethttp.WrapHandler(measured_http.New(m, wfe.clk, stats))
 }
 
 // Method implementations

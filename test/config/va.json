@@ -50,6 +50,10 @@
     "stdoutlevel": 6,
     "sysloglevel": 6
   },
+  "beeline": {
+      "mute": true,
+      "dataset": "Test"
+  },
 
   "common": {
     "dnsTimeout": "1s",

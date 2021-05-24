@@ -2,6 +2,10 @@
   "syslog": {
     "stdoutLevel": 7
   },
+  "beeline": {
+      "mute": true,
+      "dataset": "Test"
+  },
   "debugAddr": ":8016",
   "files": [
     "/var/log/akamai-purger.log",

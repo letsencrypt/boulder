@@ -5,7 +5,9 @@ import (
 	"errors"
 	"net"
 
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
+	"github.com/honeycombio/beeline-go/wrappers/hnygrpc"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
@@ -42,7 +44,12 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 		"dns:///"+c.ServerAddress,
 		grpc.WithBalancerName("round_robin"),
 		grpc.WithTransportCredentials(creds),
-		grpc.WithUnaryInterceptor(ci.intercept),
+		grpc.WithUnaryInterceptor(
+			grpc_middleware.ChainUnaryClient(
+				ci.intercept,
+				hnygrpc.UnaryClientInterceptor(),
+			),
+		),
 	)
 }
 

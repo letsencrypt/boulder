@@ -7,6 +7,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/honeycombio/beeline-go"
 	"github.com/letsencrypt/boulder/cmd"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -17,9 +18,12 @@ import (
 type config struct {
 	NonceService struct {
 		cmd.ServiceConfig
-		Syslog      cmd.SyslogConfig
+
 		MaxUsed     int
 		NoncePrefix string
+
+		Syslog  cmd.SyslogConfig
+		Beeline cmd.BeelineConfig
 	}
 }
 
@@ -60,6 +64,11 @@ func main() {
 	if *prefixOverride != "" {
 		c.NonceService.NoncePrefix = *prefixOverride
 	}
+
+	bc, err := c.NonceService.Beeline.Load()
+	cmd.FailOnError(err, "Failed to load Beeline config")
+	beeline.Init(bc)
+	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(c.NonceService.Syslog, c.NonceService.DebugAddr)
 	defer logger.AuditPanic()

@@ -17,6 +17,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -390,7 +391,8 @@ type config struct {
 		Features map[string]bool
 	}
 
-	Syslog cmd.SyslogConfig
+	Syslog  cmd.SyslogConfig
+	Beeline cmd.BeelineConfig
 }
 
 func initStats(stats prometheus.Registerer) mailerStats {
@@ -461,6 +463,11 @@ func main() {
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 	err = features.Set(c.Mailer.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
+
+	bc, err := c.Beeline.Load()
+	cmd.FailOnError(err, "Failed to load Beeline config")
+	beeline.Init(bc)
+	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.Mailer.DebugAddr)
 	defer logger.AuditPanic()

@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"time"
 
+	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/db"
@@ -17,14 +18,16 @@ import (
 
 type config struct {
 	ExpiredAuthzPurger2 struct {
-		DB        cmd.DBConfig
-		DebugAddr string
-		Syslog    cmd.SyslogConfig
-		Features  map[string]bool
-
 		GracePeriod  cmd.ConfigDuration
 		BatchSize    int
 		WaitDuration cmd.ConfigDuration
+
+		DB        cmd.DBConfig
+		DebugAddr string
+		Features  map[string]bool
+
+		Syslog  cmd.SyslogConfig
+		Beeline cmd.BeelineConfig
 	}
 }
 
@@ -62,6 +65,11 @@ func main() {
 	cmd.FailOnError(err, "Failed to parse config file")
 	err = features.Set(c.ExpiredAuthzPurger2.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
+
+	bc, err := c.ExpiredAuthzPurger2.Beeline.Load()
+	cmd.FailOnError(err, "Failed to load Beeline config")
+	beeline.Init(bc)
+	defer beeline.Close()
 
 	var logger blog.Logger
 	if c.ExpiredAuthzPurger2.DebugAddr != "" {

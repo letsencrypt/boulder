@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/honeycombio/beeline-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/square/go-jose.v2"
 
@@ -482,8 +483,10 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 
 	// Update the logEvent with the account information and return the JWK
 	logEvent.Requester = account.ID
+	beeline.AddFieldToTrace(ctx, "acct.id", account.ID)
 	if account.Contact != nil {
 		logEvent.Contacts = *account.Contact
+		beeline.AddFieldToTrace(ctx, "contacts", *account.Contact)
 	}
 	return account.Key, &account, nil
 }
@@ -520,6 +523,7 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	}
 	// Store the verified payload in the logEvent
 	logEvent.Payload = string(payload)
+	beeline.AddFieldToTrace(ctx, "payload", string(payload))
 
 	// Check that the JWS contains a correct Nonce header
 	if prob := wfe.validNonce(ctx, jws); prob != nil {
@@ -613,6 +617,7 @@ func (wfe *WebFrontEndImpl) validPOSTAsGETForAccount(
 	// method "POST-as-GET" to the logEvent's Method, replacing the
 	// http.MethodPost value.
 	logEvent.Method = "POST-as-GET"
+	beeline.AddFieldToTrace(ctx, "method", "POST-as-GET")
 	return reg, prob
 }
 

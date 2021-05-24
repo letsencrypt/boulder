@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
@@ -273,7 +274,8 @@ func (updater *OCSPUpdater) updateOCSPResponses(ctx context.Context, batchSize i
 type config struct {
 	OCSPUpdater OCSPUpdaterConfig
 
-	Syslog cmd.SyslogConfig
+	Syslog  cmd.SyslogConfig
+	Beeline cmd.BeelineConfig
 }
 
 // OCSPUpdaterConfig provides the various window tick times and batch sizes needed
@@ -337,6 +339,11 @@ func main() {
 	conf := c.OCSPUpdater
 	err = features.Set(conf.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
+
+	bc, err := c.Beeline.Load()
+	cmd.FailOnError(err, "Failed to load Beeline config")
+	beeline.Init(bc)
+	defer beeline.Close()
 
 	stats, logger := cmd.StatsAndLogging(c.Syslog, conf.DebugAddr)
 	defer logger.AuditPanic()

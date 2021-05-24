@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/honeycombio/beeline-go"
 	"github.com/hpcloud/tail"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -125,14 +126,21 @@ func main() {
 	}
 
 	var config struct {
-		Syslog    cmd.SyslogConfig
+		Files []string
+
 		DebugAddr string
-		Files     []string
+		Syslog    cmd.SyslogConfig
+		Beeline   cmd.BeelineConfig
 	}
 	configBytes, err := ioutil.ReadFile(*configPath)
 	cmd.FailOnError(err, "failed to read config file")
 	err = json.Unmarshal(configBytes, &config)
 	cmd.FailOnError(err, "failed to parse config file")
+
+	bc, err := config.Beeline.Load()
+	cmd.FailOnError(err, "Failed to load Beeline config")
+	beeline.Init(bc)
+	defer beeline.Close()
 
 	stats, logger := cmd.StatsAndLogging(config.Syslog, config.DebugAddr)
 	lineCounter := prometheus.NewCounterVec(prometheus.CounterOpts{

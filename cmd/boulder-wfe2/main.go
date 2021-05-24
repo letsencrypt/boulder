@@ -13,6 +13,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -123,7 +124,8 @@ type config struct {
 		PendingAuthorizationLifetimeDays int
 	}
 
-	Syslog cmd.SyslogConfig
+	Syslog  cmd.SyslogConfig
+	Beeline cmd.BeelineConfig
 }
 
 // loadCertificateFile loads a PEM certificate from the certFile provided. It
@@ -363,6 +365,11 @@ func main() {
 			}
 		}
 	}
+
+	bc, err := c.Beeline.Load()
+	cmd.FailOnError(err, "Failed to load Beeline config")
+	beeline.Init(bc)
+	defer beeline.Close()
 
 	stats, logger := cmd.StatsAndLogging(c.Syslog, c.WFE.DebugAddr)
 	defer logger.AuditPanic()

@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/honeycombio/beeline-go"
 	"github.com/letsencrypt/boulder/akamai"
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	"github.com/letsencrypt/boulder/cmd"
@@ -36,7 +37,8 @@ type config struct {
 		PurgeRetries      int
 		PurgeRetryBackoff cmd.ConfigDuration
 	}
-	Syslog cmd.SyslogConfig
+	Syslog  cmd.SyslogConfig
+	Beeline cmd.BeelineConfig
 }
 
 type akamaiPurger struct {
@@ -108,6 +110,11 @@ func main() {
 	if *debugAddr != "" {
 		c.AkamaiPurger.DebugAddr = *debugAddr
 	}
+
+	bc, err := c.Beeline.Load()
+	cmd.FailOnError(err, "Failed to load Beeline config")
+	beeline.Init(bc)
+	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.AkamaiPurger.DebugAddr)
 	defer logger.AuditPanic()
