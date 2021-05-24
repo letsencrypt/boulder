@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -96,5 +97,51 @@ func TestTLSConfigLoad(t *testing.T) {
 				t.Errorf("got error %q, wanted %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestSampler(t *testing.T) {
+	type testCase struct {
+		input   string
+		sampled bool
+	}
+	testCases := []struct {
+		rate uint32
+		ids  []testCase
+	}{
+		// At sample rate 1, everything should get sampled.
+		{1, []testCase{
+			{"", true},
+			{"asdf", true},
+		}},
+		// At sample rate 0, it should default to sample rate 1 instead.
+		{0, []testCase{
+			{"", true},
+			{"asdf", true},
+		}},
+		// At sample rate 2, only one of these should be sampled.
+		{2, []testCase{
+			{"", false},
+			{"asdf", true},
+		}},
+		// At sample rate 100, neither of these should be sampled.
+		{100, []testCase{
+			{"", false},
+			{"asdf", false},
+		}},
+	}
+	for _, tc := range testCases {
+		s := makeSampler(tc.rate)
+		for _, id := range tc.ids {
+			t.Run(fmt.Sprintf("Rate(%d) Id(%s)", tc.rate, id.input), func(t *testing.T) {
+				b, i := s(map[string]interface{}{"trace.trace_id": id.input})
+				test.AssertEquals(t, b, id.sampled)
+				if tc.rate == 0 {
+					test.AssertEquals(t, i, 1)
+				} else {
+					test.AssertEquals(t, i, int(tc.rate))
+				}
+			})
+		}
 	}
 }

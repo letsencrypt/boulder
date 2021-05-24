@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"crypto/sha1"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"os"
 	"path"
 	"strings"
@@ -274,10 +276,27 @@ type BeelineConfig struct {
 	Dataset string
 	// SampleRate is the (positive integer) denominator of the sample rate.
 	// Default: 1 (meaning all traces are sent). Set higher to send fewer traces.
-	SampleRate uint
+	SampleRate uint32
 	// Mute disables honeycomb entirely; useful in test environments.
 	Mute bool
 	// Many other fields of beeline.Config are omitted as they are not yet used.
+}
+
+// makeSampler constructs a SamplerHook which will deterministically decide if
+// any given span should be sampled based on its TraceID, which is shared by all
+// spans within a trace.
+func makeSampler(rate uint32) func(fields map[string]interface{}) (bool, int) {
+	if rate == 0 {
+		rate = 1
+	}
+	upperBound := math.MaxUint32 / rate
+
+	return func(fields map[string]interface{}) (bool, int) {
+		h := sha1.Sum([]byte(fields["trace.trace_id"].(string)))
+		t := h[:4]
+		v := uint32(t[3]) | (uint32(t[2]) << 8) | (uint32(t[1]) << 16) | (uint32(t[0]) << 24)
+		return v < upperBound, int(rate)
+	}
 }
 
 // Load converts a BeelineConfig to a beeline.Config, loading the api WriteKey
@@ -293,16 +312,11 @@ func (bc *BeelineConfig) Load() (beeline.Config, error) {
 		return beeline.Config{}, fmt.Errorf("failed to get write key: %w", err)
 	}
 
-	samplerate := uint(1)
-	if bc.SampleRate > 1 {
-		samplerate = bc.SampleRate
-	}
-
 	return beeline.Config{
 		WriteKey:    writekey,
 		Dataset:     bc.Dataset,
 		ServiceName: path.Base(exec),
-		SampleRate:  samplerate,
+		SamplerHook: makeSampler(bc.SampleRate),
 		Mute:        bc.Mute,
 	}, nil
 }
