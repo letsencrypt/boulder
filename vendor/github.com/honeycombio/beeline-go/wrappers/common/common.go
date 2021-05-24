@@ -89,6 +89,10 @@ func GetRequestProps(req *http.Request) map[string]interface{} {
 	userAgent := req.UserAgent()
 	xForwardedFor := req.Header.Get("x-forwarded-for")
 	xForwardedProto := req.Header.Get("x-forwarded-proto")
+	host := req.Host
+	if host == "" {
+		host = req.URL.Hostname()
+	}
 
 	reqProps := make(map[string]interface{})
 	// identify the type of event
@@ -101,7 +105,7 @@ func GetRequestProps(req *http.Request) map[string]interface{} {
 		reqProps["request.query"] = req.URL.RawQuery
 	}
 	reqProps["request.url"] = req.URL.String()
-	reqProps["request.host"] = req.Host
+	reqProps["request.host"] = host
 	reqProps["request.http_version"] = req.Proto
 	reqProps["request.content_length"] = req.ContentLength
 	reqProps["request.remote_addr"] = req.RemoteAddr
