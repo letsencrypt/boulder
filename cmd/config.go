@@ -16,24 +16,18 @@ import (
 	"github.com/letsencrypt/boulder/core"
 )
 
-// PasswordConfig either contains a password or the path to a file
-// containing a password
+// PasswordConfig contains a path to a file containing a password.
 type PasswordConfig struct {
-	Password     string
 	PasswordFile string
 }
 
-// Pass returns a password, either directly from the configuration
-// struct or by reading from a specified file
+// Pass returns a password, extracted from the PasswordConfig's PasswordFile
 func (pc *PasswordConfig) Pass() (string, error) {
-	if pc.PasswordFile != "" {
-		contents, err := ioutil.ReadFile(pc.PasswordFile)
-		if err != nil {
-			return "", err
-		}
-		return strings.TrimRight(string(contents), "\n"), nil
+	contents, err := ioutil.ReadFile(pc.PasswordFile)
+	if err != nil {
+		return "", err
 	}
-	return pc.Password, nil
+	return strings.TrimRight(string(contents), "\n"), nil
 }
 
 // ServiceConfig contains config items that are common to all our services, to
