@@ -137,14 +137,16 @@ func TestAddRegistration(t *testing.T) {
 	dbReg, err := sa.GetRegistration(ctx, reg.ID)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
 
+	createdAt := clk.Now()
 	expectedReg := core.Registration{
 		ID:        reg.ID,
 		Key:       jwk,
 		InitialIP: net.ParseIP("43.34.43.34"),
-		CreatedAt: clk.Now(),
+		CreatedAt: &createdAt,
 	}
 	test.AssertEquals(t, dbReg.ID, expectedReg.ID)
 	test.Assert(t, core.KeyDigestEquals(dbReg.Key, expectedReg.Key), "Stored key != expected")
+	test.AssertDeepEquals(t, expectedReg.CreatedAt, dbReg.CreatedAt)
 
 	newReg := core.Registration{
 		ID:        reg.ID,

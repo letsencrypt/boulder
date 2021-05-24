@@ -24,15 +24,53 @@ type idExporter struct {
 	grace time.Duration
 }
 
-type id struct {
+// resultEntry is a JSON marshalable exporter result entry.
+type resultEntry struct {
+	// ID is exported to support marshaling to JSON.
 	ID int64 `json:"id"`
+
+	// Hostname is exported to support marshaling to JSON. Not all queries
+	// will fill this field, so it's JSON field tag marks at as
+	// omittable.
+	Hostname string `json:"hostname,omitempty"`
+}
+
+// reverseHostname converts (reversed) names sourced from the
+// registrations table to standard hostnames.
+func (r *resultEntry) reverseHostname() {
+	r.Hostname = sa.ReverseName(r.Hostname)
+}
+
+// idExporterResults is passed as a selectable 'holder' for the results
+// of id-exporter database queries
+type idExporterResults []*resultEntry
+
+// marshalToJSON returns JSON as bytes for all elements of the inner `id`
+// slice.
+func (i *idExporterResults) marshalToJSON() ([]byte, error) {
+	data, err := json.Marshal(i)
+	if err != nil {
+		return nil, err
+	}
+	data = append(data, '\n')
+	return data, nil
+}
+
+// writeToFile writes the contents of the inner `ids` slice, as JSON, to
+// a file
+func (i *idExporterResults) writeToFile(outfile string) error {
+	data, err := i.marshalToJSON()
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(outfile, data, 0644)
 }
 
 // Find all registration IDs with unexpired certificates.
-func (c idExporter) findIDs() ([]id, error) {
-	var idsList []id
+func (c idExporter) findIDs() (idExporterResults, error) {
+	var holder idExporterResults
 	_, err := c.dbMap.Select(
-		&idsList,
+		&holder,
 		`SELECT id
 		FROM registrations
 		WHERE contact != 'null' AND
@@ -48,18 +86,44 @@ func (c idExporter) findIDs() ([]id, error) {
 		c.log.AuditErrf("Error finding IDs: %s", err)
 		return nil, err
 	}
-
-	return idsList, nil
+	return holder, nil
 }
 
-func (c idExporter) findIDsForDomains(domains []string) ([]id, error) {
-	var idsList []id
+// Find all registration IDs with unexpired certificates and gather an
+// example hostname.
+func (c idExporter) findIDsWithExampleHostnames() (idExporterResults, error) {
+	var holder idExporterResults
+	_, err := c.dbMap.Select(
+		&holder,
+		`SELECT SQL_BIG_RESULT
+			cert.registrationID AS id,
+			name.reversedName AS hostname
+		FROM certificates AS cert
+			INNER JOIN issuedNames AS name ON name.serial = cert.serial
+		WHERE cert.expires >= :expireCutoff
+		GROUP BY cert.registrationID;`,
+		map[string]interface{}{
+			"expireCutoff": c.clk.Now().Add(-c.grace),
+		})
+	if err != nil {
+		c.log.AuditErrf("Error finding IDs and example hostnames: %s", err)
+		return nil, err
+	}
+
+	for _, result := range holder {
+		result.reverseHostname()
+	}
+	return holder, nil
+}
+
+func (c idExporter) findIDsForDomains(domains []string) (idExporterResults, error) {
+	var holder idExporterResults
 	for _, domain := range domains {
 		// Pass the same list in each time, gorp will happily just append to the slice
 		// instead of overwriting it each time
 		// https://github.com/go-gorp/gorp/blob/2ae7d174a4cf270240c4561092402affba25da5e/select.go#L348-L355
 		_, err := c.dbMap.Select(
-			&idsList,
+			&holder,
 			`SELECT registrationID AS id FROM certificates
                          WHERE expires >= :expireCutoff AND
                          serial IN (
@@ -79,24 +143,7 @@ func (c idExporter) findIDsForDomains(domains []string) ([]id, error) {
 		}
 	}
 
-	return idsList, nil
-}
-
-// The `writeIDs` function produces a file containing JSON serialized
-// contact objects
-func writeIDs(idsList []id, outfile string) error {
-	data, err := json.Marshal(idsList)
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-
-	if outfile != "" {
-		return ioutil.WriteFile(outfile, data, 0644)
-	}
-
-	fmt.Printf("%s", data)
-	return nil
+	return holder, nil
 }
 
 const usageIntro = `
@@ -117,11 +164,18 @@ mailing is underway, ensuring we use the correct address if a user has updated
 their contact information between the time of export and the time of
 notification.
 
-The ID exporter's output will be JSON of the form:
+By default, the ID exporter's output will be JSON of the form:
   [
-   { "id": 1 },
-   ...
-   { "id": n }
+    { "id": 1 },
+    ...
+    { "id": n }
+  ]
+
+Operations that return a hostname will be JSON of the form:
+  [
+    { "id": 1, "hostname": "example-1.com" },
+    ...
+    { "id": n, "hostname": "example-n.com" }
   ]
 
 Examples:
@@ -143,6 +197,7 @@ func main() {
 	outFile := flag.String("outfile", "", "File to write contacts to (defaults to stdout).")
 	grace := flag.Duration("grace", 2*24*time.Hour, "Include contacts with certificates that expired in < grace ago")
 	domainsFile := flag.String("domains", "", "If provided only output contacts for certificates that contain at least one of the domains in the provided file. Provided file should contain one domain per line")
+	withExampleHostnames := flag.Bool("with-example-hostnames", false, "In addition to IDs, gather an example domain name that corresponds to that ID")
 	type config struct {
 		ContactExporter struct {
 			DB cmd.DBConfig
@@ -189,17 +244,27 @@ func main() {
 		grace: *grace,
 	}
 
-	var ids []id
+	var results idExporterResults
 	if *domainsFile != "" {
+		// Gather IDs for the domains listed in the `domainsFile`.
 		df, err := ioutil.ReadFile(*domainsFile)
 		cmd.FailOnError(err, fmt.Sprintf("Could not read domains file %q", *domainsFile))
-		ids, err = exporter.findIDsForDomains(strings.Split(string(df), "\n"))
-		cmd.FailOnError(err, "Could not find IDs")
+
+		results, err = exporter.findIDsForDomains(strings.Split(string(df), "\n"))
+		cmd.FailOnError(err, "Could not find IDs for domains")
+
+	} else if *withExampleHostnames {
+		// Gather subscriber IDs and hostnames.
+		results, err = exporter.findIDsWithExampleHostnames()
+		cmd.FailOnError(err, "Could not find IDs with hostnames")
+
 	} else {
-		ids, err = exporter.findIDs()
+		// Gather only subscriber IDs.
+		results, err = exporter.findIDs()
 		cmd.FailOnError(err, "Could not find IDs")
 	}
 
-	err = writeIDs(ids, *outFile)
-	cmd.FailOnError(err, fmt.Sprintf("Could not write IDs to outfile %q", *outFile))
+	// Write results to file.
+	err = results.writeToFile(*outFile)
+	cmd.FailOnError(err, fmt.Sprintf("Could not write result to outfile %q", *outFile))
 }
