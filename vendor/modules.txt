@@ -1,4 +1,4 @@
-# github.com/beeker1121/goque v0.0.0-20170321141813-4044bc29b280
+# github.com/beeker1121/goque v1.0.3-0.20191103205551-d618510128af
 github.com/beeker1121/goque
 # github.com/beorn7/perks v1.0.1
 github.com/beorn7/perks/quantile
@@ -24,7 +24,7 @@ github.com/golang/protobuf/ptypes
 github.com/golang/protobuf/ptypes/any
 github.com/golang/protobuf/ptypes/duration
 github.com/golang/protobuf/ptypes/timestamp
-# github.com/golang/snappy v0.0.0-20170215233205-553a64147049
+# github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db
 github.com/golang/snappy
 # github.com/google/certificate-transparency-go v1.0.22-0.20181127102053-c25855a82c75
 github.com/google/certificate-transparency-go
@@ -91,7 +91,7 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/syndtr/goleveldb v0.0.0-20180331014930-714f901b98fd
+# github.com/syndtr/goleveldb v1.0.0
 github.com/syndtr/goleveldb/leveldb
 github.com/syndtr/goleveldb/leveldb/cache
 github.com/syndtr/goleveldb/leveldb/comparer
