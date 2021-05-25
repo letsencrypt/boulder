@@ -23,6 +23,10 @@ type PasswordConfig struct {
 
 // Pass returns a password, extracted from the PasswordConfig's PasswordFile
 func (pc *PasswordConfig) Pass() (string, error) {
+	// Make PasswordConfigs optional, for backwards compatibility.
+	if pc.PasswordFile == "" {
+		return "", nil
+	}
 	contents, err := ioutil.ReadFile(pc.PasswordFile)
 	if err != nil {
 		return "", err
