@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -66,19 +68,16 @@ func (i *idExporterResults) writeToFile(outfile string) error {
 	return ioutil.WriteFile(outfile, data, 0644)
 }
 
-// Find all registration IDs with unexpired certificates.
+// findIDs gathers all registration IDs with unexpired certificates.
 func (c idExporter) findIDs() (idExporterResults, error) {
 	var holder idExporterResults
 	_, err := c.dbMap.Select(
 		&holder,
-		`SELECT id
-		FROM registrations
-		WHERE contact != 'null' AND
-			id IN (
-				SELECT registrationID
-				FROM certificates
-				WHERE expires >= :expireCutoff
-			);`,
+		`SELECT DISTINCT r.id
+		FROM registrations AS r
+			INNER JOIN certificates AS c on c.registrationID = r.id
+		WHERE r.contact NOT IN ('[]', 'null')
+			AND c.expires >= :expireCutoff;`,
 		map[string]interface{}{
 			"expireCutoff": c.clk.Now().Add(-c.grace),
 		})
@@ -89,8 +88,8 @@ func (c idExporter) findIDs() (idExporterResults, error) {
 	return holder, nil
 }
 
-// Find all registration IDs with unexpired certificates and gather an
-// example hostname.
+// findIDsWithExampleHostnames gathers all registration IDs with
+// unexpired certificates and a corresponding example hostname.
 func (c idExporter) findIDsWithExampleHostnames() (idExporterResults, error) {
 	var holder idExporterResults
 	_, err := c.dbMap.Select(
@@ -116,23 +115,24 @@ func (c idExporter) findIDsWithExampleHostnames() (idExporterResults, error) {
 	return holder, nil
 }
 
-func (c idExporter) findIDsForDomains(domains []string) (idExporterResults, error) {
+// findIDsForHostnames gathers all registration IDs with unexpired
+// certificates for each `hostnames` entry.
+func (c idExporter) findIDsForHostnames(hostnames []string) (idExporterResults, error) {
 	var holder idExporterResults
-	for _, domain := range domains {
+	for _, hostname := range hostnames {
 		// Pass the same list in each time, gorp will happily just append to the slice
 		// instead of overwriting it each time
 		// https://github.com/go-gorp/gorp/blob/2ae7d174a4cf270240c4561092402affba25da5e/select.go#L348-L355
 		_, err := c.dbMap.Select(
 			&holder,
-			`SELECT registrationID AS id FROM certificates
-                         WHERE expires >= :expireCutoff AND
-                         serial IN (
-                           SELECT serial FROM issuedNames
-                            WHERE reversedName = :reversedName
-                         )`,
+			`SELECT DISTINCT c.registrationID AS id
+			FROM certificates AS c
+				INNER JOIN issuedNames AS n ON c.serial = n.serial
+			WHERE c.expires >= :expireCutoff
+				AND n.reversedName = :reversedName;`,
 			map[string]interface{}{
 				"expireCutoff": c.clk.Now().Add(-c.grace),
-				"reversedName": sa.ReverseName(domain),
+				"reversedName": sa.ReverseName(hostname),
 			},
 		)
 		if err != nil {
@@ -193,18 +193,43 @@ Required arguments:
 - config
 - outfile`
 
-func main() {
-	outFile := flag.String("outfile", "", "File to write contacts to (defaults to stdout).")
-	grace := flag.Duration("grace", 2*24*time.Hour, "Include contacts with certificates that expired in < grace ago")
-	domainsFile := flag.String("domains", "", "If provided only output contacts for certificates that contain at least one of the domains in the provided file. Provided file should contain one domain per line")
-	withExampleHostnames := flag.Bool("with-example-hostnames", false, "In addition to IDs, gather an example domain name that corresponds to that ID")
-	type config struct {
-		ContactExporter struct {
-			DB cmd.DBConfig
-			cmd.PasswordConfig
-			Features map[string]bool
-		}
+// unmarshalHostnames unmarshals a hostnames file and ensures that the file
+// contained at least one entry.
+func unmarshalHostnames(filePath string) ([]string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
 	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Split(bufio.ScanLines)
+
+	var hostnames []string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, " ") {
+			return nil, fmt.Errorf(
+				"line: %q contains more than one entry, entries must be separated by newlines", line)
+		}
+		hostnames = append(hostnames, line)
+	}
+
+	if len(hostnames) == 0 {
+		return nil, errors.New("provided file contains 0 hostnames")
+	}
+	return hostnames, nil
+}
+
+func main() {
+	outFile := flag.String("outfile", "", "File to output results JSON to.")
+	grace := flag.Duration("grace", 2*24*time.Hour, "Include results with certificates that expired in < grace ago.")
+	hostnamesFile := flag.String(
+		"hostnames", "", "Only include results with unexpired certificates that contain hostnames\nlisted (newline separated) in this file.")
+	withExampleHostnames := flag.Bool(
+		"with-example-hostnames", false, "Include an example hostname for each registration ID with an unexpired certificate.")
+	useDefaultIsolationLevel := flag.Bool(
+		"use-default-isolation-level", false, "Do not override database transaction isolation level to READ UNCOMMITTED")
 	configFile := flag.String("config", "", "File containing a JSON config.")
 
 	flag.Usage = func() {
@@ -213,6 +238,7 @@ func main() {
 		flag.PrintDefaults()
 	}
 
+	// Parse flags and check required.
 	flag.Parse()
 	if *outFile == "" || *configFile == "" {
 		flag.Usage()
@@ -221,19 +247,37 @@ func main() {
 
 	log := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 7})
 
+	// Load configuration file.
 	configData, err := ioutil.ReadFile(*configFile)
 	cmd.FailOnError(err, fmt.Sprintf("Reading %q", *configFile))
+
+	type config struct {
+		ContactExporter struct {
+			DB cmd.DBConfig
+			cmd.PasswordConfig
+			Features map[string]bool
+		}
+	}
+
+	// Unmarshal JSON config file.
 	var cfg config
 	err = json.Unmarshal(configData, &cfg)
 	cmd.FailOnError(err, "Unmarshaling config")
+
 	err = features.Set(cfg.ContactExporter.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
 	dbURL, err := cfg.ContactExporter.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
+
 	dbSettings := sa.DbSettings{
-		MaxOpenConns: 10,
+		MaxOpenConns:    cfg.ContactExporter.DB.MaxOpenConns,
+		MaxIdleConns:    cfg.ContactExporter.DB.MaxIdleConns,
+		ConnMaxLifetime: cfg.ContactExporter.DB.ConnMaxLifetime.Duration,
+		ConnMaxIdleTime: cfg.ContactExporter.DB.ConnMaxIdleTime.Duration,
 	}
+
+	// Setup database client.
 	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")
 
@@ -245,26 +289,30 @@ func main() {
 	}
 
 	var results idExporterResults
-	if *domainsFile != "" {
-		// Gather IDs for the domains listed in the `domainsFile`.
-		df, err := ioutil.ReadFile(*domainsFile)
-		cmd.FailOnError(err, fmt.Sprintf("Could not read domains file %q", *domainsFile))
+	if !*useDefaultIsolationLevel {
+		// By default we set the transaction isolation level to 'READ
+		// UNCOMMITTED' for better performance at the cost of
+		// consistency.
+		_, err := dbMap.Exec("SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;")
+		cmd.FailOnError(err, "Could not set transaction isolation level")
+	}
 
-		results, err = exporter.findIDsForDomains(strings.Split(string(df), "\n"))
-		cmd.FailOnError(err, "Could not find IDs for domains")
+	if *hostnamesFile != "" {
+		hostnames, err := unmarshalHostnames(*hostnamesFile)
+		cmd.FailOnError(err, "Problem unmarshalling hostnames")
+
+		results, err = exporter.findIDsForHostnames(hostnames)
+		cmd.FailOnError(err, "Could not find IDs for hostnames")
 
 	} else if *withExampleHostnames {
-		// Gather subscriber IDs and hostnames.
 		results, err = exporter.findIDsWithExampleHostnames()
 		cmd.FailOnError(err, "Could not find IDs with hostnames")
 
 	} else {
-		// Gather only subscriber IDs.
 		results, err = exporter.findIDs()
 		cmd.FailOnError(err, "Could not find IDs")
 	}
 
-	// Write results to file.
 	err = results.writeToFile(*outFile)
 	cmd.FailOnError(err, fmt.Sprintf("Could not write result to outfile %q", *outFile))
 }

@@ -153,24 +153,24 @@ func TestFindIDsWithExampleHostnames(t *testing.T) {
 	}
 }
 
-func TestFindIDsForDomains(t *testing.T) {
+func TestFindIDsForHostnames(t *testing.T) {
 	testCtx := setup(t)
 	defer testCtx.cleanUp()
 
 	// Add some test registrations
 	testCtx.addRegistrations(t)
 
-	// Run findIDsForDomains - since no certificates have been added corresponding to
+	// Run findIDsForHostnames - since no certificates have been added corresponding to
 	// the above registrations, no IDs should be found.
-	results, err := testCtx.c.findIDsForDomains([]string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
+	results, err := testCtx.c.findIDsForHostnames([]string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
 	test.AssertNotError(t, err, "findIDs() produced error")
 	test.AssertEquals(t, len(results), 0)
 
 	// Now add some certificates
 	testCtx.addCertificates(t)
 
-	results, err = testCtx.c.findIDsForDomains([]string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
-	test.AssertNotError(t, err, "findIDsForDomains() failed")
+	results, err = testCtx.c.findIDsForHostnames([]string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
+	test.AssertNotError(t, err, "findIDsForHostnames() failed")
 	test.AssertEquals(t, len(results), 3)
 	for _, entry := range results {
 		switch entry.ID {
@@ -199,6 +199,42 @@ func TestWriteToFile(t *testing.T) {
 	test.AssertNotError(t, err, fmt.Sprintf("ioutil.ReadFile produced an error reading from %s", f.Name()))
 
 	test.AssertEquals(t, string(contents), expected+"\n")
+}
+
+func Test_unmarshalHostnames(t *testing.T) {
+	testDir := os.TempDir()
+	testFile, err := ioutil.TempFile(testDir, "ids_test")
+	test.AssertNotError(t, err, "ioutil.TempFile produced an error")
+
+	// Non-existent hostnamesFile
+	_, err = unmarshalHostnames("file_does_not_exist")
+	test.AssertError(t, err, "expected error for non-existent file")
+
+	// Empty hostnamesFile
+	err = ioutil.WriteFile(testFile.Name(), []byte(""), 0644)
+	test.AssertNotError(t, err, "ioutil.WriteFile produced an error")
+	_, err = unmarshalHostnames(testFile.Name())
+	test.AssertError(t, err, "expected error for file containing 0 entries")
+
+	// One hostname present in the hostnamesFile
+	err = ioutil.WriteFile(testFile.Name(), []byte("example-a.com"), 0644)
+	test.AssertNotError(t, err, "ioutil.WriteFile produced an error")
+	results, err := unmarshalHostnames(testFile.Name())
+	test.AssertNotError(t, err, "error when unmarshalling hostnamesFile with a single hostname")
+	test.AssertEquals(t, len(results), 1)
+
+	// Two hostnames present in the hostnamesFile
+	err = ioutil.WriteFile(testFile.Name(), []byte("example-a.com\nexample-b.com"), 0644)
+	test.AssertNotError(t, err, "ioutil.WriteFile produced an error")
+	results, err = unmarshalHostnames(testFile.Name())
+	test.AssertNotError(t, err, "error when unmarshalling hostnamesFile with a two hostnames")
+	test.AssertEquals(t, len(results), 2)
+
+	// Three hostnames present in the hostnamesFile but two are separated only by a space
+	err = ioutil.WriteFile(testFile.Name(), []byte("example-a.com\nexample-b.com example-c.com"), 0644)
+	test.AssertNotError(t, err, "ioutil.WriteFile produced an error")
+	_, err = unmarshalHostnames(testFile.Name())
+	test.AssertError(t, err, "error when unmarshalling hostnamesFile with three space separated domains")
 }
 
 type testCtx struct {
