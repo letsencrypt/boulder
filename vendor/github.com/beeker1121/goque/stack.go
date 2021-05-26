@@ -3,6 +3,7 @@ package goque
 import (
 	"bytes"
 	"encoding/gob"
+	"encoding/json"
 	"os"
 	"sync"
 
@@ -90,13 +91,33 @@ func (s *Stack) PushString(value string) (*Item, error) {
 // PushObject is a helper function for Push that accepts any
 // value type, which is then encoded into a byte slice using
 // encoding/gob.
+//
+// Objects containing pointers with zero values will decode to nil
+// when using this function. This is due to how the encoding/gob
+// package works. Because of this, you should only use this function
+// to encode simple types.
 func (s *Stack) PushObject(value interface{}) (*Item, error) {
 	var buffer bytes.Buffer
 	enc := gob.NewEncoder(&buffer)
 	if err := enc.Encode(value); err != nil {
 		return nil, err
 	}
+
 	return s.Push(buffer.Bytes())
+}
+
+// PushObjectAsJSON is a helper function for Push that accepts any
+// value type, which is then encoded into a JSON byte slice using
+// encoding/json.
+//
+// Use this function to handle encoding of complex types.
+func (s *Stack) PushObjectAsJSON(value interface{}) (*Item, error) {
+	jsonBytes, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.Push(jsonBytes)
 }
 
 // Pop removes the next item in the stack and returns it.
@@ -205,6 +226,11 @@ func (s *Stack) UpdateString(id uint64, newValue string) (*Item, error) {
 // UpdateObject is a helper function for Update that accepts any
 // value type, which is then encoded into a byte slice using
 // encoding/gob.
+//
+// Objects containing pointers with zero values will decode to nil
+// when using this function. This is due to how the encoding/gob
+// package works. Because of this, you should only use this function
+// to encode simple types.
 func (s *Stack) UpdateObject(id uint64, newValue interface{}) (*Item, error) {
 	var buffer bytes.Buffer
 	enc := gob.NewEncoder(&buffer)
@@ -212,6 +238,20 @@ func (s *Stack) UpdateObject(id uint64, newValue interface{}) (*Item, error) {
 		return nil, err
 	}
 	return s.Update(id, buffer.Bytes())
+}
+
+// UpdateObjectAsJSON is a helper function for Update that accepts
+// any value type, which is then encoded into a JSON byte slice using
+// encoding/json.
+//
+// Use this function to handle encoding of complex types.
+func (s *Stack) UpdateObjectAsJSON(id uint64, newValue interface{}) (*Item, error) {
+	jsonBytes, err := json.Marshal(newValue)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.Update(id, jsonBytes)
 }
 
 // Length returns the total number of items in the stack.
