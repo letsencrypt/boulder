@@ -236,18 +236,7 @@ func (ras *RegistrationAuthorityServerWrapper) PerformValidation(
 }
 
 func (ras *RegistrationAuthorityServerWrapper) RevokeCertificateWithReg(ctx context.Context, request *rapb.RevokeCertificateWithRegRequest) (*corepb.Empty, error) {
-	if request == nil || request.Cert == nil {
-		return nil, errIncompleteRequest
-	}
-	cert, err := x509.ParseCertificate(request.Cert)
-	if err != nil {
-		return nil, err
-	}
-	err = ras.inner.RevokeCertificateWithReg(ctx, *cert, revocation.Reason(request.Code), request.RegID)
-	if err != nil {
-		return nil, err
-	}
-	return &corepb.Empty{}, nil
+	return ras.inner.RevokeCertificateWithReg(ctx, request)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) DeactivateRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Empty, error) {
