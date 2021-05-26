@@ -284,7 +284,8 @@ type BeelineConfig struct {
 
 // makeSampler constructs a SamplerHook which will deterministically decide if
 // any given span should be sampled based on its TraceID, which is shared by all
-// spans within a trace.
+// spans within a trace. A sample rate of 0 defaults to a sample rate of 1
+// (i.e. all events are sent).
 func makeSampler(rate uint32) func(fields map[string]interface{}) (bool, int) {
 	if rate == 0 {
 		rate = 1
@@ -293,8 +294,8 @@ func makeSampler(rate uint32) func(fields map[string]interface{}) (bool, int) {
 
 	return func(fields map[string]interface{}) (bool, int) {
 		h := sha1.Sum([]byte(fields["trace.trace_id"].(string)))
-		t := h[:4]
-		v := uint32(t[3]) | (uint32(t[2]) << 8) | (uint32(t[1]) << 16) | (uint32(t[0]) << 24)
+		// Pack the first four bytes of the sha1 into a single uint32.
+		v := (uint32(h[0]) << 24) | (uint32(h[1]) << 16) | (uint32(h[2]) << 8) | uint32(h[3])
 		return v < upperBound, int(rate)
 	}
 }
