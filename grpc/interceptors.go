@@ -75,7 +75,7 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 	ctx, cancel = context.WithDeadline(ctx, deadline)
 	defer cancel()
 
-	resp, err := si.metrics.grpcMetrics.UnaryServerInterceptor()(ctx, req, info, handler)
+	resp, err := handler(ctx, req)
 	if err != nil {
 		err = wrapError(ctx, err)
 	}
@@ -180,7 +180,7 @@ func (ci *clientInterceptor) intercept(
 	defer ci.metrics.inFlightRPCs.With(labels).Dec()
 	// Handle the RPC
 	begin := ci.clk.Now()
-	err := ci.metrics.grpcMetrics.UnaryClientInterceptor()(localCtx, fullMethod, req, reply, cc, invoker, opts...)
+	err := invoker(localCtx, fullMethod, req, reply, cc, opts...)
 	if err != nil {
 		err = unwrapError(err, respMD)
 	}
