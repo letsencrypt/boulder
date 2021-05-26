@@ -6,8 +6,10 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"net"
 	"testing"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
@@ -32,8 +35,8 @@ var (
 
 const (
 	emailARaw = "test@example.com"
-	emailBRaw = "example@example.com"
-	emailCRaw = "test-example@example.com"
+	emailBRaw = "example@notexample.com"
+	emailCRaw = "test-example@notexample.com"
 	telNum    = "666-666-7777"
 )
 
@@ -47,25 +50,31 @@ func TestMailAuditor(t *testing.T) {
 	// Should be 0 since we haven't added registrations.
 	results, err := testCtx.c.run()
 	test.AssertNotError(t, err, "received error")
-	test.AssertEquals(t, len(results), 0)
+	test.AssertEquals(t, len(results.entries), 0)
 
 	// Now add some certificates.
 	testCtx.addCertificates(t)
 
 	// With B expired, we should get A, C, and D but only A and C have
-	// email addresses in their contact.
+	// email contacts in their contact.
 	results, err = testCtx.c.run()
 	test.AssertNotError(t, err, "received error")
-	test.AssertEquals(t, len(results), 3)
-	for _, entry := range results {
+	test.AssertEquals(t, len(results.entries), 3)
+	for _, entry := range results.entries {
+		err := entry.validateContact()
 		switch entry.ID {
 		case regA.ID:
-			test.AssertDeepEquals(t, entry.addresses, []string{"test@example.com"})
+			// Contact validation policy sad path.
+			test.AssertDeepEquals(t, entry.contacts, []string{"mailto:test@example.com"})
+			test.AssertError(t, err, "failed to error on a contact that violates our e-mail policy")
 		case regC.ID:
-			test.AssertDeepEquals(t, entry.addresses, []string{"test-example@example.com"})
+			// Contact validation happy path.
+			test.AssertDeepEquals(t, entry.contacts, []string{"mailto:test-example@notexample.com"})
+			test.AssertNotError(t, err, "received error for a valid contact entry")
 		case regD.ID:
-			// Should be empty.
-			test.AssertEquals(t, len(entry.addresses), 0)
+			// Contact validation prefix sad path.
+			test.AssertDeepEquals(t, entry.contacts, []string{"tel:666-666-7777"})
+			test.AssertError(t, err, "failed to error on an invalid contact entry")
 		default:
 			t.Errorf("ID: %d was not expected", entry.ID)
 		}
@@ -77,19 +86,44 @@ func TestMailAuditor(t *testing.T) {
 	test.AssertNotError(t, err, "received error")
 
 	// With none expired, we should get A, B, C, and D. Only A, B, and C
-	// should have email addresses in their contact.
-	test.AssertEquals(t, len(results), 4)
-	for _, entry := range results {
+	// should have email contacts in their contact.
+	test.AssertEquals(t, len(results.entries), 4)
+	for _, entry := range results.entries {
+		err := entry.validateContact()
 		switch entry.ID {
 		case regA.ID:
-			test.AssertDeepEquals(t, entry.addresses, []string{"test@example.com"})
+			// Contact validation policy sad path.
+			test.AssertDeepEquals(t, entry.contacts, []string{"mailto:test@example.com"})
+			test.AssertError(t, err, "failed to error on a contact that violates our e-mail policy")
 		case regB.ID:
-			test.AssertDeepEquals(t, entry.addresses, []string{"example@example.com"})
+			// Ensure grace period was respected.
+			test.AssertDeepEquals(t, entry.contacts, []string{"mailto:example@notexample.com"})
+			test.AssertNotError(t, err, "received error for a valid contact entry")
 		case regC.ID:
-			test.AssertDeepEquals(t, entry.addresses, []string{"test-example@example.com"})
+			// Contact validation happy path.
+			test.AssertDeepEquals(t, entry.contacts, []string{"mailto:test-example@notexample.com"})
+			test.AssertNotError(t, err, "received error for a valid contact entry")
+
+			// Unmarshal Contact sad path.
+			entry.Contact = []byte("[ mailto:test@example.com ]")
+			err = entry.unmarshalContact()
+			test.AssertError(t, err, "failed to error while unmarshaling invalid Contact JSON")
+
+			// Fix our JSON and ensure that the contact field returns
+			// errors for our 2 additional contacts
+			entry.Contact = []byte(`[ "mailto:test@example.com", "tel:666-666-7777" ]`)
+			err = entry.unmarshalContact()
+			test.AssertNotError(t, err, "received error while unmarshaling valid Contact JSON")
+
+			// Ensure Contact validation now fails.
+			err = entry.validateContact()
+			test.AssertError(t, err, "failed to error on 2 invalid Contact entries")
+
+			// Ensure all policy violations are returned.
+			test.AssertDeepEquals(t, err.Error(), `[ "mailto:test@example.com": "invalid contact domain. Contact emails @example.com are forbidden" ] [ "tel:666-666-7777": "missing 'mailto:' prefix" ] `)
 		case regD.ID:
-			// Should be empty.
-			test.AssertEquals(t, len(entry.addresses), 0)
+			test.AssertDeepEquals(t, entry.contacts, []string{"tel:666-666-7777"})
+			test.AssertError(t, err, "failed to error on an invalid contact entry")
 		default:
 			t.Errorf("ID: %d was not expected", entry.ID)
 		}
@@ -98,7 +132,8 @@ func TestMailAuditor(t *testing.T) {
 
 type testCtx struct {
 	c       contactAuditor
-	ssa     core.StorageAdder
+	dbMap   *db.WrappedMap
+	ssa     *sa.SQLStorageAuthority
 	cleanUp func()
 }
 
@@ -237,9 +272,9 @@ func (ctx testCtx) addCertificates(t *testing.T) {
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
 	}
-	err := ctx.c.dbMap.Insert(certA)
+	err := ctx.dbMap.Insert(certA)
 	test.AssertNotError(t, err, "Couldn't add certA")
-	_, err = ctx.c.dbMap.Exec(
+	_, err = ctx.dbMap.Exec(
 		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
 		"com.example-a",
 		serial1String,
@@ -262,9 +297,9 @@ func (ctx testCtx) addCertificates(t *testing.T) {
 		Expires:        rawCertB.NotAfter,
 		DER:            certDerB,
 	}
-	err = ctx.c.dbMap.Insert(certB)
+	err = ctx.dbMap.Insert(certB)
 	test.AssertNotError(t, err, "Couldn't add certB")
-	_, err = ctx.c.dbMap.Exec(
+	_, err = ctx.dbMap.Exec(
 		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
 		"com.example-b",
 		serial2String,
@@ -287,9 +322,9 @@ func (ctx testCtx) addCertificates(t *testing.T) {
 		Expires:        rawCertC.NotAfter,
 		DER:            certDerC,
 	}
-	err = ctx.c.dbMap.Insert(certC)
+	err = ctx.dbMap.Insert(certC)
 	test.AssertNotError(t, err, "Couldn't add certC")
-	_, err = ctx.c.dbMap.Exec(
+	_, err = ctx.dbMap.Exec(
 		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
 		"com.example-c",
 		serial3String,
@@ -312,9 +347,9 @@ func (ctx testCtx) addCertificates(t *testing.T) {
 		Expires:        rawCertD.NotAfter,
 		DER:            certDerD,
 	}
-	err = ctx.c.dbMap.Insert(certD)
+	err = ctx.dbMap.Insert(certD)
 	test.AssertNotError(t, err, "Couldn't add certD")
-	_, err = ctx.c.dbMap.Exec(
+	_, err = ctx.dbMap.Exec(
 		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
 		"com.example-d",
 		serial4String,
@@ -329,9 +364,14 @@ func setup(t *testing.T) testCtx {
 	// certificates
 	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	if err != nil {
-		t.Fatalf("Couldn't connect the database: %s", err)
+		t.Fatalf("Couldn't connect to the database: %s", err)
 	}
 	cleanUp := test.ResetSATestDatabase(t)
+
+	db, err := sql.Open("mysql", fmt.Sprintf("%s?readTimeout=14s&writeTimeout=14s&timeout=1s", vars.DBConnSAFullPerms))
+	if err != nil {
+		t.Fatalf("Couldn't connect to the database: %s", err)
+	}
 
 	fc := newFakeClock(t)
 	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NoopRegisterer, 1)
@@ -341,10 +381,11 @@ func setup(t *testing.T) testCtx {
 
 	return testCtx{
 		c: contactAuditor{
-			dbMap:  dbMap,
+			db:     db,
 			logger: blog.NewMock(),
 			clk:    fc,
 		},
+		dbMap:   dbMap,
 		ssa:     ssa,
 		cleanUp: cleanUp,
 	}
