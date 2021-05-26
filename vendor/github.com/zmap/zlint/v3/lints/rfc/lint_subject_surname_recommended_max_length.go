@@ -1,5 +1,3 @@
-package rfc
-
 /*
  * ZLint Copyright 2021 Regents of the University of Michigan
  *
@@ -14,6 +12,8 @@ package rfc
  * permissions and limitations under the License.
  */
 
+package rfc
+
 import (
 	"unicode/utf8"
 
@@ -22,57 +22,40 @@ import (
 	"github.com/zmap/zlint/v3/util"
 )
 
-type subjectGivenNameMaxLength struct{}
-
 /************************************************
 RFC 5280: A.1
--- Naming attributes of type X520name
-
-id-at-givenName           AttributeType ::= { id-at 42 }
-
--- Naming attributes of type X520Name:
---   X520name ::= DirectoryString (SIZE (1..ub-name))
---
--- Expanded to avoid parameterized type:
-X520name ::= CHOICE {
-      teletexString     TeletexString   (SIZE (1..ub-name)),
-      printableString   PrintableString (SIZE (1..ub-name)),
-      universalString   UniversalString (SIZE (1..ub-name)),
-      utf8String        UTF8String      (SIZE (1..ub-name)),
-      bmpString         BMPString       (SIZE (1..ub-name)) }
-
 --  specifications of Upper Bounds MUST be regarded as mandatory
 --  from Annex B of ITU-T X.411 Reference Definition of MTS Parameter
 --  Upper Bounds
-
--- Upper Bounds
-ub-name INTEGER ::= 32768
 ************************************************/
 
 func init() {
 	lint.RegisterLint(&lint.Lint{
-		Name:          "e_subject_given_name_max_length",
-		Description:   "The 'GivenName' field of the subject MUST be less than 32769 characters",
-		Citation:      "RFC 5280: A.1",
+		Name: "w_subject_surname_recommended_max_length",
+		Description: "X.411 (1988) describes ub-common-name-length to be 64 bytes long. As systems may have " +
+			"targeted this length, for compatibility purposes it may be prudent to limit surnames to this length.",
+		Citation:      "ITU-T Rec. X.411 (11/1988), Annex B Reference Definition of MTS Parameter Upper Bounds",
 		Source:        lint.RFC5280,
 		EffectiveDate: util.RFC2459Date,
-		Lint:          &subjectGivenNameMaxLength{},
+		Lint:          &SubjectSurnameRecommendedMaxLength{},
 	})
 }
 
-func (l *subjectGivenNameMaxLength) Initialize() error {
+type SubjectSurnameRecommendedMaxLength struct{}
+
+func (l *SubjectSurnameRecommendedMaxLength) Initialize() error {
 	return nil
 }
 
-func (l *subjectGivenNameMaxLength) CheckApplies(c *x509.Certificate) bool {
+func (l *SubjectSurnameRecommendedMaxLength) CheckApplies(c *x509.Certificate) bool {
 	return true
 }
 
-func (l *subjectGivenNameMaxLength) Execute(c *x509.Certificate) *lint.LintResult {
-	for _, givenName := range c.Subject.GivenName {
+func (l *SubjectSurnameRecommendedMaxLength) Execute(c *x509.Certificate) *lint.LintResult {
+	for _, givenName := range c.Subject.Surname {
 		characters := utf8.RuneCountInString(givenName)
-		if characters > 32768 {
-			return &lint.LintResult{Status: lint.Error}
+		if characters > 64 {
+			return &lint.LintResult{Status: lint.Warn}
 		}
 	}
 	return &lint.LintResult{Status: lint.Pass}

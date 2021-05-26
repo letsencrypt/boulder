@@ -1116,7 +1116,7 @@ var tldMap = map[string]GTLDPeriod{
 	"caseih": {
 		GTLD:           "caseih",
 		DelegationDate: "2016-10-30",
-		RemovalDate:    "",
+		RemovalDate:    "2021-02-19",
 	},
 	"cash": {
 		GTLD:           "cash",
@@ -2416,7 +2416,7 @@ var tldMap = map[string]GTLDPeriod{
 	"fujixerox": {
 		GTLD:           "fujixerox",
 		DelegationDate: "2016-07-15",
-		RemovalDate:    "",
+		RemovalDate:    "2021-03-26",
 	},
 	"fun": {
 		GTLD:           "fun",
@@ -3276,7 +3276,7 @@ var tldMap = map[string]GTLDPeriod{
 	"iveco": {
 		GTLD:           "iveco",
 		DelegationDate: "2016-10-30",
-		RemovalDate:    "",
+		RemovalDate:    "2021-04-21",
 	},
 	"iwc": {
 		GTLD:           "iwc",
@@ -4401,7 +4401,7 @@ var tldMap = map[string]GTLDPeriod{
 	"nationwide": {
 		GTLD:           "nationwide",
 		DelegationDate: "2016-07-15",
-		RemovalDate:    "",
+		RemovalDate:    "2021-04-16",
 	},
 	"natura": {
 		GTLD:           "natura",
@@ -4466,7 +4466,7 @@ var tldMap = map[string]GTLDPeriod{
 	"newholland": {
 		GTLD:           "newholland",
 		DelegationDate: "2016-10-30",
-		RemovalDate:    "",
+		RemovalDate:    "2021-02-19",
 	},
 	"news": {
 		GTLD:           "news",
@@ -4706,7 +4706,7 @@ var tldMap = map[string]GTLDPeriod{
 	"onyourside": {
 		GTLD:           "onyourside",
 		DelegationDate: "2016-07-15",
-		RemovalDate:    "",
+		RemovalDate:    "2021-04-16",
 	},
 	"ooo": {
 		GTLD:           "ooo",
@@ -5916,7 +5916,7 @@ var tldMap = map[string]GTLDPeriod{
 	"spreadbetting": {
 		GTLD:           "spreadbetting",
 		DelegationDate: "2015-03-13",
-		RemovalDate:    "",
+		RemovalDate:    "2021-04-21",
 	},
 	"sr": {
 		GTLD:           "sr",
@@ -7031,6 +7031,11 @@ var tldMap = map[string]GTLDPeriod{
 	"xn--45q11c": {
 		GTLD:           "xn--45q11c",
 		DelegationDate: "2014-11-17",
+		RemovalDate:    "",
+	},
+	"xn--4dbrk0ce": {
+		GTLD:           "xn--4dbrk0ce",
+		DelegationDate: "1985-01-01",
 		RemovalDate:    "",
 	},
 	"xn--4gbrim": {

@@ -58,20 +58,34 @@ type Lint struct {
 
 	// Lints automatically returns NE for all certificates where CheckApplies() is
 	// true but with NotBefore < EffectiveDate. This check is bypassed if
-	// EffectiveDate is zero.
+	// EffectiveDate is zero. Please see CheckEffective for more information.
 	EffectiveDate time.Time `json:"-"`
+
+	// Lints automatically returns NE for all certificates where CheckApplies() is
+	// true but with NotBefore >= IneffectiveDate. This check is bypassed if
+	// IneffectiveDate is zero. Please see CheckEffective for more information.
+	IneffectiveDate time.Time `json:"-"`
 
 	// The implementation of the lint logic.
 	Lint LintInterface `json:"-"`
 }
 
-// CheckEffective returns true if c was issued on or after the EffectiveDate. If
-// EffectiveDate is zero, CheckEffective always returns true.
+// CheckEffective returns true if c was issued on or after the EffectiveDate
+// AND before (but not on) the Ineffective date. That is, CheckEffective
+// returns true if...
+//
+// 	c.NotBefore in [EffectiveDate, IneffectiveDate)
+//
+// If EffectiveDate is zero, then only IneffectiveDate is checked. Conversely,
+// if IneffectiveDate is zero then only EffectiveDate is checked. If both EffectiveDate
+// and IneffectiveDate are zero then CheckEffective always returns true.
 func (l *Lint) CheckEffective(c *x509.Certificate) bool {
-	if l.EffectiveDate.IsZero() || !l.EffectiveDate.After(c.NotBefore) {
-		return true
-	}
-	return false
+	afterOrOnEffective := l.EffectiveDate.IsZero() ||
+		c.NotBefore.After(l.EffectiveDate) ||
+		c.NotBefore.Equal(l.EffectiveDate)
+	beforeIneffective := l.IneffectiveDate.IsZero() ||
+		c.NotBefore.Before(l.IneffectiveDate)
+	return afterOrOnEffective && beforeIneffective
 }
 
 // Execute runs the lint against a certificate. For lints that are
