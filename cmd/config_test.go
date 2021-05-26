@@ -38,8 +38,6 @@ func TestPasswordConfig(t *testing.T) {
 		expected string
 	}{
 		{pc: PasswordConfig{}, expected: ""},
-		{pc: PasswordConfig{Password: "config"}, expected: "config"},
-		{pc: PasswordConfig{Password: "config", PasswordFile: "testdata/test_secret"}, expected: "secret"},
 		{pc: PasswordConfig{PasswordFile: "testdata/test_secret"}, expected: "secret"},
 	}
 
