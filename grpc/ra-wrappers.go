@@ -93,17 +93,8 @@ func (rac RegistrationAuthorityClientWrapper) PerformValidation(
 	return authz, nil
 }
 
-func (rac RegistrationAuthorityClientWrapper) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, code revocation.Reason, regID int64) error {
-	_, err := rac.inner.RevokeCertificateWithReg(ctx, &rapb.RevokeCertificateWithRegRequest{
-		Cert:  cert.Raw,
-		Code:  int64(code),
-		RegID: regID,
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
+func (rac RegistrationAuthorityClientWrapper) RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*corepb.Empty, error) {
+	return rac.inner.RevokeCertificateWithReg(ctx, req)
 }
 
 func (rac RegistrationAuthorityClientWrapper) DeactivateRegistration(ctx context.Context, reg core.Registration) error {
