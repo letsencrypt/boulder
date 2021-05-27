@@ -99,52 +99,42 @@ func TestTLSConfigLoad(t *testing.T) {
 }
 
 func TestSampler(t *testing.T) {
-	type subcase struct {
-		span    map[string]interface{}
-		sampled bool
-		rate    int
-	}
 	testCases := []struct {
-		rate  uint32
-		cases []subcase
+		samplerate uint32
+		span       map[string]interface{}
+		sampled    bool
+		rate       int
 	}{
-		// At sample rate 1, both of the well-formed spans should get sampled.
-		{1, []subcase{
-			{map[string]interface{}{"trace.trace_id": "foo"}, true, 1},
-			{map[string]interface{}{"trace.trace_id": ""}, true, 1},
-			{map[string]interface{}{"trace.trace_id": 1}, true, 0},
-			{map[string]interface{}{}, true, 0},
-		}},
+		// At sample rate 1, both of these should get sampled.
+		{1, map[string]interface{}{"trace.trace_id": "foo"}, true, 1},
+		{1, map[string]interface{}{"trace.trace_id": ""}, true, 1},
 		// At sample rate 0, it should behave the same as sample rate 1.
-		{0, []subcase{
-			{map[string]interface{}{"trace.trace_id": "foo"}, true, 1},
-			{map[string]interface{}{"trace.trace_id": ""}, true, 1},
-			{map[string]interface{}{"trace.trace_id": 1}, true, 0},
-			{map[string]interface{}{}, true, 0},
-		}},
-		// At sample rate 2, only one of the well-formed spans should be sampled.
-		{2, []subcase{
-			{map[string]interface{}{"trace.trace_id": "foo"}, true, 2},
-			{map[string]interface{}{"trace.trace_id": ""}, false, 2},
-			{map[string]interface{}{"trace.trace_id": 1}, true, 0},
-			{map[string]interface{}{}, true, 0},
-		}},
-		// At sample rate 100, neither of the well-formed spans should be sampled.
-		{100, []subcase{
-			{map[string]interface{}{"trace.trace_id": "foo"}, false, 100},
-			{map[string]interface{}{"trace.trace_id": ""}, false, 100},
-			{map[string]interface{}{"trace.trace_id": 1}, true, 0},
-			{map[string]interface{}{}, true, 0},
-		}},
+		{0, map[string]interface{}{"trace.trace_id": "foo"}, true, 1},
+		{0, map[string]interface{}{"trace.trace_id": ""}, true, 1},
+		// At sample rate 2, only one of these should be sampled.
+		{2, map[string]interface{}{"trace.trace_id": "foo"}, true, 2},
+		{2, map[string]interface{}{"trace.trace_id": ""}, false, 2},
+		// At sample rate 100, neither of these should be sampled.
+		{100, map[string]interface{}{"trace.trace_id": "foo"}, false, 100},
+		{100, map[string]interface{}{"trace.trace_id": ""}, false, 100},
+		// A span with meta.type grpc_client should never be sampled.
+		{1, map[string]interface{}{"trace.trace_id": "foo", "meta.type": "grpc_client"}, false, 0},
+		{100, map[string]interface{}{"trace.trace_id": "foo", "meta.type": "grpc_client"}, false, 0},
+		// Any other meta.type should not affect sampling.
+		{1, map[string]interface{}{"trace.trace_id": "foo", "meta.type": "grpc_server"}, true, 1},
+		{1, map[string]interface{}{"trace.trace_id": "foo", "meta.type": 123}, true, 1},
+		{100, map[string]interface{}{"trace.trace_id": "foo", "meta.type": "grpc_server"}, false, 100},
+		{100, map[string]interface{}{"trace.trace_id": "foo", "meta.type": 123}, false, 100},
+		// A missing or non-string trace_id should result in sampling.
+		{100, map[string]interface{}{}, true, 0},
+		{100, map[string]interface{}{"trace.trace_id": 123}, true, 0},
 	}
 	for _, tc := range testCases {
-		s := makeSampler(tc.rate)
-		for _, c := range tc.cases {
-			t.Run(fmt.Sprintf("Rate(%d) Id(%s)", tc.rate, c.span["trace.trace_id"]), func(t *testing.T) {
-				b, i := s(c.span)
-				test.AssertEquals(t, b, c.sampled)
-				test.AssertEquals(t, i, c.rate)
-			})
-		}
+		t.Run(fmt.Sprintf("Rate(%d) Span(%s)", tc.samplerate, tc.span), func(t *testing.T) {
+			s := makeSampler(tc.samplerate)
+			b, i := s(tc.span)
+			test.AssertEquals(t, b, tc.sampled)
+			test.AssertEquals(t, i, tc.rate)
+		})
 	}
 }
