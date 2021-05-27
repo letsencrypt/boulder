@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io/ioutil"
+	"math"
 	"os"
 	"path"
 	"strings"
@@ -272,10 +274,34 @@ type BeelineConfig struct {
 	Dataset string
 	// SampleRate is the (positive integer) denominator of the sample rate.
 	// Default: 1 (meaning all traces are sent). Set higher to send fewer traces.
-	SampleRate uint
+	SampleRate uint32
 	// Mute disables honeycomb entirely; useful in test environments.
 	Mute bool
 	// Many other fields of beeline.Config are omitted as they are not yet used.
+}
+
+// makeSampler constructs a SamplerHook which will deterministically decide if
+// any given span should be sampled based on its TraceID, which is shared by all
+// spans within a trace. If a trace_id can't be found, the span will be sampled.
+// A sample rate of 0 defaults to a sample rate of 1 (i.e. all events are sent).
+func makeSampler(rate uint32) func(fields map[string]interface{}) (bool, int) {
+	if rate == 0 {
+		rate = 1
+	}
+	upperBound := math.MaxUint32 / rate
+
+	return func(fields map[string]interface{}) (bool, int) {
+		id, ok := fields["trace.trace_id"].(string)
+		if !ok {
+			return true, 0
+		}
+		h := fnv.New32()
+		_, err := h.Write([]byte(id))
+		if err != nil {
+			return true, 0
+		}
+		return h.Sum32() < upperBound, int(rate)
+	}
 }
 
 // Load converts a BeelineConfig to a beeline.Config, loading the api WriteKey
@@ -291,16 +317,11 @@ func (bc *BeelineConfig) Load() (beeline.Config, error) {
 		return beeline.Config{}, fmt.Errorf("failed to get write key: %w", err)
 	}
 
-	samplerate := uint(1)
-	if bc.SampleRate > 1 {
-		samplerate = bc.SampleRate
-	}
-
 	return beeline.Config{
 		WriteKey:    writekey,
 		Dataset:     bc.Dataset,
 		ServiceName: path.Base(exec),
-		SampleRate:  samplerate,
+		SamplerHook: makeSampler(bc.SampleRate),
 		Mute:        bc.Mute,
 	}, nil
 }
