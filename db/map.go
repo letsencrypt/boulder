@@ -81,6 +81,12 @@ func IsDuplicate(err error) bool {
 
 // WrappedMap wraps a *gorp.DbMap such that its major functions wrap error
 // results in ErrDatabaseOp instances before returning them to the caller.
+//
+// It also overrides WithContext to provide a context that copies only
+// deadline information, not the cancel channel, from the parent. This avoids
+// propagating cancellation down to the database layer, where it causes a
+// connection to close. Closing a connection may wind up being more expensive
+// than allowing the query to complete, if the query was cheap enough.
 type WrappedMap struct {
 	*gorp.DbMap
 }
@@ -114,7 +120,13 @@ func (m *WrappedMap) Exec(query string, args ...interface{}) (sql.Result, error)
 }
 
 func (m *WrappedMap) WithContext(ctx context.Context) gorp.SqlExecutor {
-	return WrappedExecutor{SqlExecutor: m.DbMap.WithContext(ctx)}
+	ctx2 := context.Background()
+	var cancel func()
+	if deadline, ok := ctx.Deadline(); ok {
+		ctx2, cancel = context.WithDeadline(ctx, deadline)
+		defer cancel()
+	}
+	return WrappedExecutor{SqlExecutor: m.DbMap.WithContext(ctx2)}
 }
 
 func (m *WrappedMap) Begin() (Transaction, error) {
