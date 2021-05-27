@@ -301,10 +301,7 @@ func makeSampler(rate uint32) func(fields map[string]interface{}) (bool, int) {
 			return true, 0
 		}
 		h := fnv.New32()
-		_, err := h.Write([]byte(id))
-		if err != nil {
-			return true, 0
-		}
+		h.Write([]byte(id))
 		return h.Sum32() < upperBound, int(rate)
 	}
 }
