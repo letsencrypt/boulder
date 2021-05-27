@@ -101,46 +101,51 @@ func TestTLSConfigLoad(t *testing.T) {
 }
 
 func TestSampler(t *testing.T) {
-	type testCase struct {
-		input   string
+	type subcase struct {
+		span    map[string]interface{}
 		sampled bool
+		rate    int
 	}
 	testCases := []struct {
-		rate uint32
-		ids  []testCase
+		rate  uint32
+		cases []subcase
 	}{
-		// At sample rate 1, everything should get sampled.
-		{1, []testCase{
-			{"", true},
-			{"asdf", true},
+		// At sample rate 1, both of the well-formed spans should get sampled.
+		{1, []subcase{
+			{map[string]interface{}{"trace.trace_id": "foo"}, true, 1},
+			{map[string]interface{}{"trace.trace_id": ""}, true, 1},
+			{map[string]interface{}{"trace.trace_id": 1}, true, 0},
+			{map[string]interface{}{}, true, 0},
 		}},
-		// At sample rate 0, it should default to sample rate 1 instead.
-		{0, []testCase{
-			{"", true},
-			{"asdf", true},
+		// At sample rate 0, it should behave the same as sample rate 1.
+		{0, []subcase{
+			{map[string]interface{}{"trace.trace_id": "foo"}, true, 1},
+			{map[string]interface{}{"trace.trace_id": ""}, true, 1},
+			{map[string]interface{}{"trace.trace_id": 1}, true, 0},
+			{map[string]interface{}{}, true, 0},
 		}},
-		// At sample rate 2, only one of these should be sampled.
-		{2, []testCase{
-			{"", false},
-			{"asdf", true},
+		// At sample rate 2, only one of the well-formed spans should be sampled.
+		{2, []subcase{
+			{map[string]interface{}{"trace.trace_id": "foo"}, true, 2},
+			{map[string]interface{}{"trace.trace_id": ""}, false, 2},
+			{map[string]interface{}{"trace.trace_id": 1}, true, 0},
+			{map[string]interface{}{}, true, 0},
 		}},
-		// At sample rate 100, neither of these should be sampled.
-		{100, []testCase{
-			{"", false},
-			{"asdf", false},
+		// At sample rate 100, neither of the well-formed spans should be sampled.
+		{100, []subcase{
+			{map[string]interface{}{"trace.trace_id": "foo"}, false, 100},
+			{map[string]interface{}{"trace.trace_id": ""}, false, 100},
+			{map[string]interface{}{"trace.trace_id": 1}, true, 0},
+			{map[string]interface{}{}, true, 0},
 		}},
 	}
 	for _, tc := range testCases {
 		s := makeSampler(tc.rate)
-		for _, id := range tc.ids {
-			t.Run(fmt.Sprintf("Rate(%d) Id(%s)", tc.rate, id.input), func(t *testing.T) {
-				b, i := s(map[string]interface{}{"trace.trace_id": id.input})
-				test.AssertEquals(t, b, id.sampled)
-				if tc.rate == 0 {
-					test.AssertEquals(t, i, 1)
-				} else {
-					test.AssertEquals(t, i, int(tc.rate))
-				}
+		for _, c := range tc.cases {
+			t.Run(fmt.Sprintf("Rate(%d) Id(%s)", tc.rate, c.span["trace.trace_id"]), func(t *testing.T) {
+				b, i := s(c.span)
+				test.AssertEquals(t, b, c.sampled)
+				test.AssertEquals(t, i, c.rate)
 			})
 		}
 	}

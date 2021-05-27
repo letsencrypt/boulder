@@ -1,12 +1,12 @@
 package cmd
 
 import (
-	"crypto/sha1"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io/ioutil"
 	"math"
 	"os"
@@ -284,8 +284,8 @@ type BeelineConfig struct {
 
 // makeSampler constructs a SamplerHook which will deterministically decide if
 // any given span should be sampled based on its TraceID, which is shared by all
-// spans within a trace. A sample rate of 0 defaults to a sample rate of 1
-// (i.e. all events are sent).
+// spans within a trace. If a trace_id can't be found, the span will be sampled.
+// A sample rate of 0 defaults to a sample rate of 1 (i.e. all events are sent).
 func makeSampler(rate uint32) func(fields map[string]interface{}) (bool, int) {
 	if rate == 0 {
 		rate = 1
@@ -293,10 +293,16 @@ func makeSampler(rate uint32) func(fields map[string]interface{}) (bool, int) {
 	upperBound := math.MaxUint32 / rate
 
 	return func(fields map[string]interface{}) (bool, int) {
-		h := sha1.Sum([]byte(fields["trace.trace_id"].(string)))
-		// Pack the first four bytes of the sha1 into a single uint32.
-		v := (uint32(h[0]) << 24) | (uint32(h[1]) << 16) | (uint32(h[2]) << 8) | uint32(h[3])
-		return v < upperBound, int(rate)
+		id, ok := fields["trace.trace_id"].(string)
+		if !ok {
+			return true, 0
+		}
+		h := fnv.New32()
+		_, err := h.Write([]byte(id))
+		if err != nil {
+			return true, 0
+		}
+		return h.Sum32() < upperBound, int(rate)
 	}
 }
 
