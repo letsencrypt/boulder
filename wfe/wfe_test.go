@@ -214,9 +214,8 @@ func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req cor
 	return core.Certificate{}, nil
 }
 
-func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, reg core.Registration, updated core.Registration) (core.Registration, error) {
-	keysMatch, _ := core.PublicKeysEqual(reg.Key.Key, updated.Key.Key)
-	if !keysMatch {
+func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, reg *corepb.Registration, updated *corepb.Registration) (*corepb.Registration, error) {
+	if !bytes.Equal(reg.Key, updated.Key) {
 		reg.Key = updated.Key
 	}
 	return reg, nil

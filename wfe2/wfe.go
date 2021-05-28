@@ -1373,16 +1373,30 @@ func (wfe *WebFrontEndImpl) updateAccount(
 		Status  core.AcmeStatus `json:"status"`
 	}
 
-	err := json.Unmarshal(requestBody, &accountUpdateRequest)
-	if err != nil {
+	if err := json.Unmarshal(requestBody, &accountUpdateRequest); err != nil {
 		return nil, probs.Malformed("Error unmarshaling account")
+	}
+
+	// Convert existing account to corepb.Registration
+	basePb, err := bgrpc.RegistrationToPB(*currAcct)
+	if err != nil {
+		return nil, probs.ServerInternal("Error updating account")
+	}
+
+	var contacts []string
+	var contactsPresent bool
+	if accountUpdateRequest.Contact != nil {
+		contactsPresent = true
+		contacts = *accountUpdateRequest.Contact
 	}
 
 	// Copy over the fields from the request to the registration object used for
 	// the RA updates.
-	update := core.Registration{
-		Contact: accountUpdateRequest.Contact,
-		Status:  accountUpdateRequest.Status,
+	// Create corepb.Registration from provided account information
+	updatePb := &corepb.Registration{
+		Contact:         contacts,
+		ContactsPresent: contactsPresent,
+		Status:          string(accountUpdateRequest.Status),
 	}
 
 	// People *will* POST their full accounts to this endpoint, including
@@ -1393,8 +1407,8 @@ func (wfe *WebFrontEndImpl) updateAccount(
 	// If a user tries to send both a deactivation request and an update to their
 	// contacts or subscriber agreement URL the deactivation will take place and
 	// return before an update would be performed.
-	if update.Status != "" && update.Status != currAcct.Status {
-		if update.Status != core.StatusDeactivated {
+	if updatePb.Status != "" && updatePb.Status != basePb.Status {
+		if updatePb.Status != string(core.StatusDeactivated) {
 			return nil, probs.Malformed("Invalid value provided for status field")
 		}
 		if err := wfe.RA.DeactivateRegistration(ctx, *currAcct); err != nil {
@@ -1409,13 +1423,20 @@ func (wfe *WebFrontEndImpl) updateAccount(
 	// update the key we just copy the existing one into the update object here. This
 	// ensures the key isn't changed and that we can cleanly serialize the update as
 	// JSON to send via RPC to the RA.
-	update.Key = currAcct.Key
+	updatePb.Key = basePb.Key
 
-	updatedAcct, err := wfe.RA.UpdateRegistration(ctx, *currAcct, update)
+	updatedAcct, err := wfe.RA.UpdateRegistration(ctx, basePb, updatePb)
 	if err != nil {
 		return nil, web.ProblemDetailsForError(err, "Unable to update account")
 	}
-	return &updatedAcct, nil
+
+	// Convert proto to core.Registration for return
+	updatedReg, err := bgrpc.PbToRegistration(updatedAcct)
+	if err != nil {
+		return nil, probs.ServerInternal("Error updating account")
+	}
+
+	return &updatedReg, nil
 }
 
 // deactivateAuthorization processes the given JWS POST body as a request to
@@ -1863,9 +1884,20 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to lookup existing keys"), err)
 		return
 	}
+	// Convert account to proto for grpc
+	regPb, err := bgrpc.RegistrationToPB(*acct)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling Registration to proto"), err)
+		return
+	}
+	// Marshal key to bytes
+	newKeyBytes, err := newKey.MarshalJSON()
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling new key"), err)
+	}
 
 	// Update the account key to the new key
-	updatedAcct, err := wfe.RA.UpdateRegistration(ctx, *acct, core.Registration{Key: &newKey})
+	updatedAcctPb, err := wfe.RA.UpdateRegistration(ctx, regPb, &corepb.Registration{Key: newKeyBytes})
 	if err != nil {
 		if errors.Is(err, berrors.Duplicate) {
 			// It is possible that between checking for the existing key, and preforming the update
@@ -1887,7 +1919,12 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 			web.ProblemDetailsForError(err, "Unable to update account with new key"), err)
 		return
 	}
-
+	// Convert proto to registration for display
+	updatedAcct, err := bgrpc.PbToRegistration(updatedAcctPb)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling proto to registration"), err)
+		return
+	}
 	prepAccountForDisplay(&updatedAcct)
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, updatedAcct)

@@ -1471,28 +1471,54 @@ func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []st
 // UpdateRegistration updates an existing Registration with new values. Caller
 // is responsible for making sure that update.Key is only different from base.Key
 // if it is being called from the WFE key change endpoint.
-func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, base core.Registration, update core.Registration) (core.Registration, error) {
-	if changed := mergeUpdate(&base, update); !changed {
+func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, base, update *corepb.Registration) (*corepb.Registration, error) {
+	// Error if the request is nil, there is no account key or IP address
+	if base == nil || len(base.Key) == 0 || len(base.InitialIP) == 0 || base.Id == 0 {
+		return nil, errors.New("incomplete gRPC request message")
+	}
+
+	if err := validateContactsPresent(base.Contact, base.ContactsPresent); err != nil {
+		return nil, err
+	}
+
+	baseReg, err := bgrpc.PbToRegistration(base)
+	if err != nil {
+		return nil, err
+	}
+
+	updateReg, err := bgrpc.PbToRegistration(update)
+	if err != nil {
+		return nil, err
+	}
+
+	if changed := mergeUpdate(&baseReg, updateReg); !changed {
 		// If merging the update didn't actually change the base then our work is
 		// done, we can return before calling ra.SA.UpdateRegistration since there's
 		// nothing for the SA to do
-		return base, nil
+		regPb, err := bgrpc.RegistrationToPB(baseReg)
+		if err != nil {
+			return nil, err
+		}
+		return regPb, nil
 	}
 
-	err := ra.validateContacts(ctx, base.Contact)
-	if err != nil {
-		return core.Registration{}, err
+	if err := ra.validateContacts(ctx, baseReg.Contact); err != nil {
+		return nil, err
 	}
 
-	err = ra.SA.UpdateRegistration(ctx, base)
+	err = ra.SA.UpdateRegistration(ctx, baseReg)
 	if err != nil {
 		// berrors.InternalServerError since the user-data was validated before being
 		// passed to the SA.
 		err = berrors.InternalServerError("Could not update registration: %s", err)
-		return core.Registration{}, err
+		return nil, err
 	}
 
-	return base, nil
+	regPb, err := bgrpc.RegistrationToPB(baseReg)
+	if err != nil {
+		return nil, err
+	}
+	return regPb, nil
 }
 
 func contactsEqual(r *core.Registration, other core.Registration) bool {

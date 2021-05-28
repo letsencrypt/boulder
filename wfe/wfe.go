@@ -1351,7 +1351,18 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *web.Requ
 	// JSON to send via RPC to the RA.
 	update.Key = currReg.Key
 
-	updatedReg, err := wfe.RA.UpdateRegistration(ctx, currReg, update)
+	currRegPb, err := bgrpc.RegistrationToPB(currReg)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling Registration to proto"), err)
+		return
+	}
+	updateRegPb, err := bgrpc.RegistrationToPB(update)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling Registration update to proto"), err)
+		return
+	}
+
+	updatedRegPb, err := wfe.RA.UpdateRegistration(ctx, currRegPb, updateRegPb)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update registration"), err)
 		return
@@ -1362,6 +1373,11 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *web.Requ
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
 
+	updatedReg, err := bgrpc.PbToRegistration(updatedRegPb)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling proto to Registration"), err)
+		return
+	}
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusAccepted, updatedReg)
 	if err != nil {
 		// ServerInternal because we just generated the reg, it should be OK
@@ -1626,11 +1642,29 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *web.Reque
 		wfe.sendError(response, logEvent, probs.Malformed("New JWK in inner payload doesn't match key used to sign inner JWS"), nil)
 		return
 	}
+	// Convert account to proto for grpc
+	regPb, err := bgrpc.RegistrationToPB(reg)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling Registration to proto"), err)
+		return
+	}
+	// Marshal key to bytes
+	newKeyBytes, err := newKey.MarshalJSON()
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling new key"), err)
+	}
 
 	// Update registration key
-	updatedReg, err := wfe.RA.UpdateRegistration(ctx, reg, core.Registration{Key: newKey})
+	updatedRegPb, err := wfe.RA.UpdateRegistration(ctx, regPb, &corepb.Registration{Key: newKeyBytes})
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update registration"), err)
+		return
+	}
+
+	// Convert proto to registration for display
+	updatedReg, err := bgrpc.PbToRegistration(updatedRegPb)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling proto to registration"), err)
 		return
 	}
 

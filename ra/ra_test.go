@@ -691,23 +691,22 @@ func TestUpdateRegistrationSame(t *testing.T) {
 	// Make a new registration with AccountKeyC and a Contact
 	acctKeyC, err := AccountKeyC.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
-	input := &corepb.Registration{
+	reg := &corepb.Registration{
 		Key:             acctKeyC,
 		Contact:         []string{mailto},
 		ContactsPresent: true,
 		Agreement:       "I agreed",
 		InitialIP:       parseAndMarshalIP(t, "5.0.5.0"),
 	}
-	result, err := ra.NewRegistration(ctx, input)
+	result, err := ra.NewRegistration(ctx, reg)
 	test.AssertNotError(t, err, "Could not create new registration")
-	id := result.Id
 
 	// Switch to a mock SA that will always error if UpdateRegistration() is called
 	ra.SA = &NoUpdateSA{}
 
 	// Make an update to the registration with the same Contact & Agreement values.
-	updateSamePB := &corepb.Registration{
-		Id:        id,
+	updateSame := &corepb.Registration{
+		Id:        result.Id,
 		Key:       acctKeyC,
 		Contact:   []string{mailto},
 		Agreement: "I agreed",
@@ -716,11 +715,7 @@ func TestUpdateRegistrationSame(t *testing.T) {
 	// The update operation should *not* error, even with the NoUpdateSA because
 	// UpdateRegistration() should not be called when the update content doesn't
 	// actually differ from the existing content
-	reg, err := bgrpc.PbToRegistration(input)
-	test.AssertNotError(t, err, "PbToRegistration failed")
-	updateSame, err := bgrpc.PbToRegistration(updateSamePB)
-	test.AssertNotError(t, err, "PbToRegistration failed")
-	_, err = ra.UpdateRegistration(ctx, reg, updateSame)
+	_, err = ra.UpdateRegistration(ctx, result, updateSame)
 	test.AssertNotError(t, err, "Error updating registration")
 }
 
