@@ -120,13 +120,10 @@ func (m *WrappedMap) Exec(query string, args ...interface{}) (sql.Result, error)
 }
 
 func (m *WrappedMap) WithContext(ctx context.Context) gorp.SqlExecutor {
-	ctx2 := context.Background()
-	var cancel func()
 	if deadline, ok := ctx.Deadline(); ok {
-		ctx2, cancel = context.WithDeadline(ctx, deadline)
-		defer cancel()
+		ctx, _ = context.WithDeadline(ctx, deadline)
 	}
-	return WrappedExecutor{SqlExecutor: m.DbMap.WithContext(ctx2)}
+	return WrappedExecutor{SqlExecutor: m.DbMap.WithContext(ctx)}
 }
 
 func (m *WrappedMap) Begin() (Transaction, error) {
