@@ -715,7 +715,7 @@ func TestUpdateRegistrationSame(t *testing.T) {
 	// The update operation should *not* error, even with the NoUpdateSA because
 	// UpdateRegistration() should not be called when the update content doesn't
 	// actually differ from the existing content
-	_, err = ra.UpdateRegistration(ctx, result, updateSame)
+	_, err = ra.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: result, Update: updateSame})
 	test.AssertNotError(t, err, "Error updating registration")
 }
 
