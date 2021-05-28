@@ -126,8 +126,8 @@ func TestSampler(t *testing.T) {
 		{100, map[string]interface{}{"trace.trace_id": "foo", "meta.type": "grpc_server"}, false, 100},
 		{100, map[string]interface{}{"trace.trace_id": "foo", "meta.type": 123}, false, 100},
 		// A missing or non-string trace_id should result in sampling.
-		{100, map[string]interface{}{}, true, 0},
-		{100, map[string]interface{}{"trace.trace_id": 123}, true, 0},
+		{100, map[string]interface{}{}, true, 1},
+		{100, map[string]interface{}{"trace.trace_id": 123}, true, 1},
 	}
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("Rate(%d) Span(%s)", tc.samplerate, tc.span), func(t *testing.T) {
