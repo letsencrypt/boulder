@@ -1812,7 +1812,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 // RevokeCertificateWithReg terminates trust in the certificate provided.
 func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*corepb.Empty, error) {
 	if req == nil || req.Cert == nil {
-		return nil, errors.New("Incomplete gRPC request message")
+		return nil, errors.New("incomplete gRPC request message")
 	}
 
 	cert, err := x509.ParseCertificate(req.Cert)
