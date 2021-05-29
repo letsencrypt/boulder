@@ -1654,7 +1654,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *web.Reque
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling new key"), err)
 	}
 
-	// Copy new key into an emtpy registration to provide as the update
+	// Copy new key into an empty registration to provide as the update
 	updatePb := &corepb.Registration{Key: newKeyBytes}
 
 	// Update registration key
