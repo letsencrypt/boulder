@@ -48,19 +48,21 @@ func TestMailAuditor(t *testing.T) {
 	testCtx.addRegistrations(t)
 
 	// Should be 0 since we haven't added registrations.
-	results, err := testCtx.c.run()
+	resChan := make(chan *result, 10)
+	err := testCtx.c.run(resChan)
 	test.AssertNotError(t, err, "received error")
-	test.AssertEquals(t, len(results.entries), 0)
+	test.AssertEquals(t, len(resChan), 0)
 
 	// Now add some certificates.
 	testCtx.addCertificates(t)
 
 	// With B expired, we should get A, C, and D but only A and C have
 	// email contacts in their contact.
-	results, err = testCtx.c.run()
+	resChan = make(chan *result, 10)
+	err = testCtx.c.run(resChan)
+	test.AssertEquals(t, len(resChan), 3)
 	test.AssertNotError(t, err, "received error")
-	test.AssertEquals(t, len(results.entries), 3)
-	for _, entry := range results.entries {
+	for entry := range resChan {
 		err := entry.validateContact()
 		switch entry.ID {
 		case regA.ID:
@@ -82,13 +84,14 @@ func TestMailAuditor(t *testing.T) {
 
 	// Allow a 1 year grace period
 	testCtx.c.grace = 360 * 24 * time.Hour
-	results, err = testCtx.c.run()
+	resChan = make(chan *result, 10)
+	err = testCtx.c.run(resChan)
 	test.AssertNotError(t, err, "received error")
 
 	// With none expired, we should get A, B, C, and D. Only A, B, and C
 	// should have email contacts in their contact.
-	test.AssertEquals(t, len(results.entries), 4)
-	for _, entry := range results.entries {
+	test.AssertEquals(t, len(resChan), 4)
+	for entry := range resChan {
 		err := entry.validateContact()
 		switch entry.ID {
 		case regA.ID:

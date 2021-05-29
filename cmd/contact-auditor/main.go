@@ -71,41 +71,9 @@ func (r *result) validateContact() error {
 	return nil
 }
 
-type results struct {
-	entries []*result
-	logger  blog.Logger
-}
-
-func (r *results) unmarshalContacts() {
-	for _, result := range r.entries {
-		err := result.unmarshalContact()
-		if err != nil {
-			r.logger.Errf("Unmarshal failed for ID: %d due to: %s", result.ID, err)
-			continue
-		}
-	}
-}
-
-func (r results) validateContacts() {
-	for _, result := range r.entries {
-		err := result.validateContact()
-		if err != nil {
-			r.logger.Errf("Validation failed for ID: %s due to: %s", result.ID, err)
-			continue
-		}
-	}
-}
-
-// collectContacts queries the database for all IDs and contacts with
-// unexpired certificates.
-func (c contactAuditor) collectContacts() (*results, error) {
-	// Setting isolation level to `READ UNCOMMITTED` improves
-	// performance at the cost of consistency.
-	_, err := c.db.Exec("SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;")
-	if err != nil {
-		return nil, fmt.Errorf("error setting db trancaction isolation level: %s", err)
-	}
-
+// beginAuditQuery executes the audit query and returns a cursor used to
+// stream the results.
+func (c contactAuditor) beginAuditQuery() (*sql.Rows, error) {
 	rows, err := c.db.Query(
 		fmt.Sprintf(
 			"%s '%s';",
@@ -119,18 +87,41 @@ func (c contactAuditor) collectContacts() (*results, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error performing db query: %s", err)
 	}
+	return rows, nil
+}
 
-	c.logger.Infof("Gathering query results")
-	results := results{logger: c.logger}
-	for rows.Next() {
-		var result result
-		err := rows.Scan(&result.ID, &result.Contact)
-		if err != nil {
-			return nil, err
-		}
-		results.entries = append(results.entries, &result)
+// run retrieves a cursor from `beginAuditQuery` and then audits the
+// `contact` column of all returned rows for abnormalities or policy
+// violations.
+func (c contactAuditor) run(resChan chan *result) error {
+	c.logger.Infof("Beginning database query")
+	rows, err := c.beginAuditQuery()
+	if err != nil {
+		return err
 	}
 
+	for rows.Next() {
+		var res result
+		err := rows.Scan(&res.ID, &res.Contact)
+		if err != nil {
+			return err
+		}
+
+		err = res.unmarshalContact()
+		if err != nil {
+			c.logger.Errf("Unmarshal failed for ID: %d due to: %s", res.ID, err)
+		}
+
+		err = res.validateContact()
+		if err != nil {
+			c.logger.Errf("Validation failed for ID: %s due to: %s", res.ID, err)
+		}
+
+		// Only used for testing.
+		if resChan != nil {
+			resChan <- &res
+		}
+	}
 	// Ensure the query wasn't interrupted before it could complete.
 	err = rows.Close()
 	if err != nil {
@@ -140,20 +131,13 @@ func (c contactAuditor) collectContacts() (*results, error) {
 	} else {
 		c.logger.Info("Query completed successfully")
 	}
-	return &results, nil
-}
 
-func (c contactAuditor) run() (*results, error) {
-	c.logger.Infof("Beginning database query")
-	results, err := c.collectContacts()
-	if err != nil {
-		return nil, err
+	// Only used for testing.
+	if resChan != nil {
+		close(resChan)
 	}
 
-	c.logger.Infof("Processing %d results", len(results.entries))
-	results.unmarshalContacts()
-	results.validateContacts()
-	return results, nil
+	return nil
 }
 
 func main() {
@@ -192,6 +176,11 @@ func main() {
 	db.SetConnMaxLifetime(cfg.ContactAuditor.DB.ConnMaxLifetime.Duration)
 	db.SetConnMaxIdleTime(cfg.ContactAuditor.DB.ConnMaxIdleTime.Duration)
 
+	// Setting isolation level to `READ UNCOMMITTED` improves
+	// performance at the cost of consistency.
+	_, err = db.Exec("SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;")
+	cmd.FailOnError(err, "error setting db trancaction isolation level")
+
 	// Setup and run contact-auditor.
 	auditor := contactAuditor{
 		db:     db,
@@ -202,7 +191,7 @@ func main() {
 
 	logger.Infof("Running contact-auditor with a grace period of >= %s", grace.String())
 
-	_, err = auditor.run()
+	err = auditor.run(nil)
 	cmd.FailOnError(err, "Audit was interrupted")
 
 	if queryInterrupted {
@@ -210,4 +199,5 @@ func main() {
 	} else {
 		logger.Info("Audit finished successfully")
 	}
+
 }
