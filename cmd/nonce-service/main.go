@@ -4,12 +4,12 @@ import (
 	"context"
 	"flag"
 
+	"github.com/honeycombio/beeline-go"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/honeycombio/beeline-go"
 	"github.com/letsencrypt/boulder/cmd"
-	corepb "github.com/letsencrypt/boulder/core/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/nonce"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
@@ -36,7 +36,7 @@ func (ns *nonceServer) Redeem(ctx context.Context, msg *noncepb.NonceMessage) (*
 	return &noncepb.ValidMessage{Valid: ns.inner.Valid(msg.Nonce)}, nil
 }
 
-func (ns *nonceServer) Nonce(_ context.Context, _ *corepb.Empty) (*noncepb.NonceMessage, error) {
+func (ns *nonceServer) Nonce(_ context.Context, _ *emptypb.Empty) (*noncepb.NonceMessage, error) {
 	nonce, err := ns.inner.Nonce()
 	if err != nil {
 		return nil, err
