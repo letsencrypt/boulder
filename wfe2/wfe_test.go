@@ -224,11 +224,11 @@ func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req cor
 	return core.Certificate{}, nil
 }
 
-func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, acct *corepb.Registration, updated *corepb.Registration) (*corepb.Registration, error) {
-	if !bytes.Equal(acct.Key, updated.Key) {
-		acct.Key = updated.Key
+func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
+	if !bytes.Equal(req.Base.Key, req.Update.Key) {
+		req.Base.Key = req.Update.Key
 	}
-	return acct, nil
+	return req.Base, nil
 }
 
 func (ra *MockRegistrationAuthority) PerformValidation(_ context.Context, _ *rapb.PerformValidationRequest) (*corepb.Authorization, error) {

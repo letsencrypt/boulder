@@ -1366,7 +1366,7 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *web.Requ
 		return
 	}
 
-	updatedRegPb, err := wfe.RA.UpdateRegistration(ctx, currRegPb, updateRegPb)
+	updatedRegPb, err := wfe.RA.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: currRegPb, Update: updateRegPb})
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update registration"), err)
 		return
@@ -1658,8 +1658,11 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *web.Reque
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling new key"), err)
 	}
 
+	// Copy new key into an empty registration to provide as the update
+	updatePb := &corepb.Registration{Key: newKeyBytes}
+
 	// Update registration key
-	updatedRegPb, err := wfe.RA.UpdateRegistration(ctx, regPb, &corepb.Registration{Key: newKeyBytes})
+	updatedRegPb, err := wfe.RA.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: regPb, Update: updatePb})
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update registration"), err)
 		return

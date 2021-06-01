@@ -1471,22 +1471,22 @@ func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []st
 // UpdateRegistration updates an existing Registration with new values. Caller
 // is responsible for making sure that update.Key is only different from base.Key
 // if it is being called from the WFE key change endpoint.
-func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, base, update *corepb.Registration) (*corepb.Registration, error) {
+func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
 	// Error if the request is nil, there is no account key or IP address
-	if base == nil || len(base.Key) == 0 || len(base.InitialIP) == 0 || base.Id == 0 {
+	if req.Base == nil || len(req.Base.Key) == 0 || len(req.Base.InitialIP) == 0 || req.Base.Id == 0 {
 		return nil, errors.New("incomplete gRPC request message")
 	}
 
-	if err := validateContactsPresent(base.Contact, base.ContactsPresent); err != nil {
+	if err := validateContactsPresent(req.Base.Contact, req.Base.ContactsPresent); err != nil {
 		return nil, err
 	}
 
-	baseReg, err := bgrpc.PbToRegistration(base)
+	baseReg, err := bgrpc.PbToRegistration(req.Base)
 	if err != nil {
 		return nil, err
 	}
 
-	updateReg, err := bgrpc.PbToRegistration(update)
+	updateReg, err := bgrpc.PbToRegistration(req.Update)
 	if err != nil {
 		return nil, err
 	}

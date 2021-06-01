@@ -56,8 +56,8 @@ func (rac RegistrationAuthorityClientWrapper) NewCertificate(ctx context.Context
 	return PBToCert(response)
 }
 
-func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Context, base, updates *corepb.Registration) (*corepb.Registration, error) {
-	return rac.inner.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: base, Update: updates})
+func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
+	return rac.inner.UpdateRegistration(ctx, req)
 }
 
 func (rac RegistrationAuthorityClientWrapper) PerformValidation(
@@ -189,8 +189,8 @@ func (ras *RegistrationAuthorityServerWrapper) NewCertificate(ctx context.Contex
 	return CertToPB(cert), nil
 }
 
-func (ras *RegistrationAuthorityServerWrapper) UpdateRegistration(ctx context.Context, request *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
-	return ras.inner.UpdateRegistration(ctx, request.Base, request.Update)
+func (ras *RegistrationAuthorityServerWrapper) UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
+	return ras.inner.UpdateRegistration(ctx, req)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) PerformValidation(
