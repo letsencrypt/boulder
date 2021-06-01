@@ -105,7 +105,9 @@ func TestFailFastFalse(t *testing.T) {
 
 // testServer is used to implement TestTimeouts, and will attempt to sleep for
 // the given amount of time (unless it hits a timeout or cancel).
-type testServer struct{}
+type testServer struct {
+	test_proto.UnimplementedChillerServer
+}
 
 // Chill implements ChillerServer.Chill
 func (s *testServer) Chill(ctx context.Context, in *test_proto.Time) (*test_proto.Time, error) {
@@ -238,6 +240,7 @@ func TestRequestTimeTagging(t *testing.T) {
 // This is used by TestInFlightRPCStat to test that the gauge for in-flight RPCs
 // is incremented and decremented as expected.
 type blockedServer struct {
+	test_proto.UnimplementedChillerServer
 	roadblock, received sync.WaitGroup
 }
 

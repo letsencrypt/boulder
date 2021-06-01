@@ -11,6 +11,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/grpc/test_proto"
 	testproto "github.com/letsencrypt/boulder/grpc/test_proto"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/metrics"
@@ -18,6 +19,7 @@ import (
 )
 
 type errorServer struct {
+	test_proto.UnimplementedChillerServer
 	err error
 }
 
