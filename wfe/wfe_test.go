@@ -43,6 +43,7 @@ import (
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"gopkg.in/square/go-jose.v2"
 )
 
@@ -225,9 +226,9 @@ func (ra *MockRegistrationAuthority) PerformValidation(_ context.Context, _ *rap
 	return nil, nil
 }
 
-func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*corepb.Empty, error) {
+func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*emptypb.Empty, error) {
 	ra.lastRevocationReason = revocation.Reason(req.Code)
-	return &corepb.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
 func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, reason revocation.Reason, user string) error {

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"google.golang.org/protobuf/types/known/emptypb"
 	jose "gopkg.in/square/go-jose.v2"
 
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -71,7 +72,7 @@ type RegistrationAuthority interface {
 	PerformValidation(ctx context.Context, req *rapb.PerformValidationRequest) (*corepb.Authorization, error)
 
 	// [WebFrontEnd]
-	RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*corepb.Empty, error)
+	RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*emptypb.Empty, error)
 
 	// [WebFrontEnd]
 	DeactivateRegistration(ctx context.Context, reg Registration) error
