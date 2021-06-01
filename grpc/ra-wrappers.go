@@ -75,17 +75,8 @@ func (rac RegistrationAuthorityClientWrapper) PerformValidation(
 	return authz, nil
 }
 
-func (rac RegistrationAuthorityClientWrapper) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, code revocation.Reason, regID int64) error {
-	_, err := rac.inner.RevokeCertificateWithReg(ctx, &rapb.RevokeCertificateWithRegRequest{
-		Cert:  cert.Raw,
-		Code:  int64(code),
-		RegID: regID,
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
+func (rac RegistrationAuthorityClientWrapper) RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*corepb.Empty, error) {
+	return rac.inner.RevokeCertificateWithReg(ctx, req)
 }
 
 func (rac RegistrationAuthorityClientWrapper) DeactivateRegistration(ctx context.Context, reg core.Registration) error {
@@ -212,18 +203,7 @@ func (ras *RegistrationAuthorityServerWrapper) PerformValidation(
 }
 
 func (ras *RegistrationAuthorityServerWrapper) RevokeCertificateWithReg(ctx context.Context, request *rapb.RevokeCertificateWithRegRequest) (*corepb.Empty, error) {
-	if request == nil || request.Cert == nil {
-		return nil, errIncompleteRequest
-	}
-	cert, err := x509.ParseCertificate(request.Cert)
-	if err != nil {
-		return nil, err
-	}
-	err = ras.inner.RevokeCertificateWithReg(ctx, *cert, revocation.Reason(request.Code), request.RegID)
-	if err != nil {
-		return nil, err
-	}
-	return &corepb.Empty{}, nil
+	return ras.inner.RevokeCertificateWithReg(ctx, request)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) DeactivateRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Empty, error) {

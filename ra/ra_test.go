@@ -3986,13 +3986,21 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 		ic.NameID(): &ic,
 	}
 
-	err = ra.RevokeCertificateWithReg(context.Background(), *cert, ocsp.Unspecified, 0)
+	_, err = ra.RevokeCertificateWithReg(context.Background(), &rapb.RevokeCertificateWithRegRequest{
+		Cert:  cert.Raw,
+		Code:  ocsp.Unspecified,
+		RegID: 0,
+	})
 	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
 	test.Assert(t, mockSA.added == nil, "blocked key was added when reason was not keyCompromise")
 	test.AssertMetricWithLabelsEquals(
 		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 1)
 
-	err = ra.RevokeCertificateWithReg(context.Background(), *cert, ocsp.KeyCompromise, 0)
+	_, err = ra.RevokeCertificateWithReg(context.Background(), &rapb.RevokeCertificateWithRegRequest{
+		Cert:  cert.Raw,
+		Code:  ocsp.KeyCompromise,
+		RegID: 0,
+	})
 	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
 	test.Assert(t, mockSA.added != nil, "blocked key was not added when reason was keyCompromise")
 	test.Assert(t, bytes.Equal(digest[:], mockSA.added.KeyHash), "key hash mismatch")

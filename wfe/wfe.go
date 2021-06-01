@@ -933,7 +933,11 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 		reason = *revokeRequest.Reason
 	}
 
-	err = wfe.RA.RevokeCertificateWithReg(ctx, *parsedCertificate, reason, registration.ID)
+	_, err = wfe.RA.RevokeCertificateWithReg(ctx, &rapb.RevokeCertificateWithRegRequest{
+		Cert:  parsedCertificate.Raw,
+		Code:  int64(reason),
+		RegID: registration.ID,
+	})
 	if err != nil {
 		if errors.Is(err, berrors.Duplicate) {
 			// It is possible that between checking the certificate's status and

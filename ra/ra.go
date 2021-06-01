@@ -1836,9 +1836,20 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 }
 
 // RevokeCertificateWithReg terminates trust in the certificate provided.
-func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, regID int64) error {
+func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*corepb.Empty, error) {
+	if req == nil || req.Cert == nil {
+		return nil, errors.New("incomplete gRPC request message")
+	}
+
+	cert, err := x509.ParseCertificate(req.Cert)
+	if err != nil {
+		return nil, err
+	}
+
 	serialString := core.SerialToString(cert.SerialNumber)
-	err := ra.revokeCertificate(ctx, cert, revocationCode, regID, "API", "")
+	revocationCode := revocation.Reason(req.Code)
+
+	err = ra.revokeCertificate(ctx, *cert, revocationCode, req.RegID, "API", "")
 
 	state := "Failure"
 	defer func() {
@@ -1851,17 +1862,17 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 		//   Error (if there was one)
 		ra.log.AuditInfof("%s, Request by registration ID: %d",
 			revokeEvent(state, serialString, cert.Subject.CommonName, cert.DNSNames, revocationCode),
-			regID)
+			req.RegID)
 	}()
 
 	if err != nil {
 		state = fmt.Sprintf("Failure -- %s", err)
-		return err
+		return nil, err
 	}
 
 	ra.revocationReasonCounter.WithLabelValues(revocation.ReasonToString[revocationCode]).Inc()
 	state = "Success"
-	return nil
+	return &corepb.Empty{}, nil
 }
 
 // AdministrativelyRevokeCertificate terminates trust in the certificate provided and

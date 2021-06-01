@@ -856,7 +856,11 @@ func (wfe *WebFrontEndImpl) processRevocation(
 
 	// Revoke the certificate. AcctID may be 0 if there is no associated account
 	// (e.g. it was a self-authenticated JWS using the certificate public key)
-	err = wfe.RA.RevokeCertificateWithReg(ctx, *parsedCertificate, reason, acctID)
+	_, err = wfe.RA.RevokeCertificateWithReg(ctx, &rapb.RevokeCertificateWithRegRequest{
+		Cert:  parsedCertificate.Raw,
+		Code:  int64(reason),
+		RegID: acctID,
+	})
 	if err != nil {
 		if errors.Is(err, berrors.Duplicate) {
 			// It is possible that between checking the certificate's status and

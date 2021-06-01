@@ -71,7 +71,7 @@ type RegistrationAuthority interface {
 	PerformValidation(ctx context.Context, req *rapb.PerformValidationRequest) (*corepb.Authorization, error)
 
 	// [WebFrontEnd]
-	RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, code revocation.Reason, regID int64) error
+	RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*corepb.Empty, error)
 
 	// [WebFrontEnd]
 	DeactivateRegistration(ctx context.Context, reg Registration) error

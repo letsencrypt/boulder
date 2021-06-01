@@ -225,9 +225,9 @@ func (ra *MockRegistrationAuthority) PerformValidation(_ context.Context, _ *rap
 	return nil, nil
 }
 
-func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, reason revocation.Reason, reg int64) error {
-	ra.lastRevocationReason = reason
-	return nil
+func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*corepb.Empty, error) {
+	ra.lastRevocationReason = revocation.Reason(req.Code)
+	return &corepb.Empty{}, nil
 }
 
 func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, reason revocation.Reason, user string) error {
