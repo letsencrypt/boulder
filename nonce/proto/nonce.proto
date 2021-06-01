@@ -3,10 +3,10 @@ syntax = "proto3";
 package nonce;
 option go_package = "github.com/letsencrypt/boulder/nonce/proto";
 
-import "core/proto/core.proto";
+import "google/protobuf/empty.proto";
 
 service NonceService {
-  rpc Nonce(core.Empty) returns (NonceMessage) {}
+  rpc Nonce(google.protobuf.Empty) returns (NonceMessage) {}
   rpc Redeem(NonceMessage) returns (ValidMessage) {}
 }
 

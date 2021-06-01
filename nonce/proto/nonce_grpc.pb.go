@@ -4,10 +4,10 @@ package proto
 
 import (
 	context "context"
-	proto "github.com/letsencrypt/boulder/core/proto"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -19,7 +19,7 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type NonceServiceClient interface {
-	Nonce(ctx context.Context, in *proto.Empty, opts ...grpc.CallOption) (*NonceMessage, error)
+	Nonce(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*NonceMessage, error)
 	Redeem(ctx context.Context, in *NonceMessage, opts ...grpc.CallOption) (*ValidMessage, error)
 }
 
@@ -31,7 +31,7 @@ func NewNonceServiceClient(cc grpc.ClientConnInterface) NonceServiceClient {
 	return &nonceServiceClient{cc}
 }
 
-func (c *nonceServiceClient) Nonce(ctx context.Context, in *proto.Empty, opts ...grpc.CallOption) (*NonceMessage, error) {
+func (c *nonceServiceClient) Nonce(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*NonceMessage, error) {
 	out := new(NonceMessage)
 	err := c.cc.Invoke(ctx, "/nonce.NonceService/Nonce", in, out, opts...)
 	if err != nil {
@@ -53,7 +53,7 @@ func (c *nonceServiceClient) Redeem(ctx context.Context, in *NonceMessage, opts 
 // All implementations must embed UnimplementedNonceServiceServer
 // for forward compatibility
 type NonceServiceServer interface {
-	Nonce(context.Context, *proto.Empty) (*NonceMessage, error)
+	Nonce(context.Context, *emptypb.Empty) (*NonceMessage, error)
 	Redeem(context.Context, *NonceMessage) (*ValidMessage, error)
 	mustEmbedUnimplementedNonceServiceServer()
 }
@@ -62,7 +62,7 @@ type NonceServiceServer interface {
 type UnimplementedNonceServiceServer struct {
 }
 
-func (UnimplementedNonceServiceServer) Nonce(context.Context, *proto.Empty) (*NonceMessage, error) {
+func (UnimplementedNonceServiceServer) Nonce(context.Context, *emptypb.Empty) (*NonceMessage, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Nonce not implemented")
 }
 func (UnimplementedNonceServiceServer) Redeem(context.Context, *NonceMessage) (*ValidMessage, error) {
@@ -82,7 +82,7 @@ func RegisterNonceServiceServer(s grpc.ServiceRegistrar, srv NonceServiceServer)
 }
 
 func _NonceService_Nonce_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(proto.Empty)
+	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func _NonceService_Nonce_Handler(srv interface{}, ctx context.Context, dec func(
 		FullMethod: "/nonce.NonceService/Nonce",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NonceServiceServer).Nonce(ctx, req.(*proto.Empty))
+		return srv.(NonceServiceServer).Nonce(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
