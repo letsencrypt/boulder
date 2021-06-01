@@ -3944,9 +3944,9 @@ type mockSABlockedKey struct {
 	added *sapb.AddBlockedKeyRequest
 }
 
-func (msabk *mockSABlockedKey) AddBlockedKey(_ context.Context, req *sapb.AddBlockedKeyRequest) (*corepb.Empty, error) {
+func (msabk *mockSABlockedKey) AddBlockedKey(_ context.Context, req *sapb.AddBlockedKeyRequest) (*emptypb.Empty, error) {
 	msabk.added = req
-	return &corepb.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
 type mockCAOCSP struct {

@@ -130,8 +130,8 @@ type StorageAdder interface {
 	NewRegistration(ctx context.Context, reg Registration) (created Registration, err error)
 	UpdateRegistration(ctx context.Context, reg Registration) error
 	AddCertificate(ctx context.Context, der []byte, regID int64, ocsp []byte, issued *time.Time) (digest string, err error)
-	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error)
-	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*corepb.Empty, error)
+	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error)
+	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*emptypb.Empty, error)
 	DeactivateRegistration(ctx context.Context, id int64) error
 	NewOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error)
 	SetOrderProcessing(ctx context.Context, order *corepb.Order) error
@@ -141,8 +141,8 @@ type StorageAdder interface {
 	// New authz2 methods
 	NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error)
 	FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) error
-	DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Empty, error)
-	AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest) (*corepb.Empty, error)
+	DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*emptypb.Empty, error)
+	AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest) (*emptypb.Empty, error)
 }
 
 // StorageAuthority interface represents a simple key/value
