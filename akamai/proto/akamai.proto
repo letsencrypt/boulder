@@ -3,10 +3,10 @@ syntax = "proto3";
 package akamai;
 option go_package = "github.com/letsencrypt/boulder/akamai/proto";
 
-import "core/proto/core.proto";
+import "google/protobuf/empty.proto";
 
 service AkamaiPurger {
-  rpc Purge(PurgeRequest) returns (core.Empty) {}
+  rpc Purge(PurgeRequest) returns (google.protobuf.Empty) {}
 }
 
 message PurgeRequest {

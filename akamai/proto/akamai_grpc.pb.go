@@ -4,10 +4,10 @@ package proto
 
 import (
 	context "context"
-	proto "github.com/letsencrypt/boulder/core/proto"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -19,7 +19,7 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AkamaiPurgerClient interface {
-	Purge(ctx context.Context, in *PurgeRequest, opts ...grpc.CallOption) (*proto.Empty, error)
+	Purge(ctx context.Context, in *PurgeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type akamaiPurgerClient struct {
@@ -30,8 +30,8 @@ func NewAkamaiPurgerClient(cc grpc.ClientConnInterface) AkamaiPurgerClient {
 	return &akamaiPurgerClient{cc}
 }
 
-func (c *akamaiPurgerClient) Purge(ctx context.Context, in *PurgeRequest, opts ...grpc.CallOption) (*proto.Empty, error) {
-	out := new(proto.Empty)
+func (c *akamaiPurgerClient) Purge(ctx context.Context, in *PurgeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/akamai.AkamaiPurger/Purge", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -43,7 +43,7 @@ func (c *akamaiPurgerClient) Purge(ctx context.Context, in *PurgeRequest, opts .
 // All implementations must embed UnimplementedAkamaiPurgerServer
 // for forward compatibility
 type AkamaiPurgerServer interface {
-	Purge(context.Context, *PurgeRequest) (*proto.Empty, error)
+	Purge(context.Context, *PurgeRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedAkamaiPurgerServer()
 }
 
@@ -51,7 +51,7 @@ type AkamaiPurgerServer interface {
 type UnimplementedAkamaiPurgerServer struct {
 }
 
-func (UnimplementedAkamaiPurgerServer) Purge(context.Context, *PurgeRequest) (*proto.Empty, error) {
+func (UnimplementedAkamaiPurgerServer) Purge(context.Context, *PurgeRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Purge not implemented")
 }
 func (UnimplementedAkamaiPurgerServer) mustEmbedUnimplementedAkamaiPurgerServer() {}
