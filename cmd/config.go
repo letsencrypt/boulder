@@ -298,7 +298,7 @@ func makeSampler(rate uint32) func(fields map[string]interface{}) (bool, int) {
 		}
 		id, ok := fields["trace.trace_id"].(string)
 		if !ok {
-			return true, 0
+			return true, 1
 		}
 		h := fnv.New32()
 		h.Write([]byte(id))
