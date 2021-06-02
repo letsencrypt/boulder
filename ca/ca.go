@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
@@ -362,8 +363,8 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		Serial:         core.SerialToString(precert.SerialNumber),
 		Der:            certDER,
 		Digest:         core.Fingerprint256(certDER),
-		Issued:         precert.NotBefore.UnixNano(),
-		Expires:        precert.NotAfter.UnixNano(),
+		Issued:         timestamppb.New(precert.NotBefore),
+		Expires:        timestamppb.New(precert.NotAfter),
 	}, nil
 }
 

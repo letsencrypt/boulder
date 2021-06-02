@@ -64,7 +64,7 @@ func (sac StorageAuthorityClientWrapper) GetCertificate(ctx context.Context, ser
 	if err != nil {
 		return core.Certificate{}, err
 	}
-	if response == nil || response.RegistrationID == 0 || response.Serial == "" || response.Digest == "" || len(response.Der) == 0 || response.Issued == 0 || response.Expires == 0 {
+	if response == nil || response.RegistrationID == 0 || response.Serial == "" || response.Digest == "" || len(response.Der) == 0 || !response.Issued.IsValid() || !response.Expires.IsValid() {
 		return core.Certificate{}, errIncompleteResponse
 	}
 	return PBToCert(response)

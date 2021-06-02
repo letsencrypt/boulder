@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
@@ -365,8 +366,8 @@ func CertToPB(cert core.Certificate) *corepb.Certificate {
 		Serial:         cert.Serial,
 		Digest:         cert.Digest,
 		Der:            cert.DER,
-		Issued:         cert.Issued.UnixNano(),
-		Expires:        cert.Expires.UnixNano(),
+		Issued:         timestamppb.New(cert.Issued),
+		Expires:        timestamppb.New(cert.Expires),
 	}
 }
 
@@ -376,8 +377,8 @@ func PBToCert(pb *corepb.Certificate) (core.Certificate, error) {
 		Serial:         pb.Serial,
 		Digest:         pb.Digest,
 		DER:            pb.Der,
-		Issued:         time.Unix(0, pb.Issued),
-		Expires:        time.Unix(0, pb.Expires),
+		Issued:         pb.Issued.AsTime(),
+		Expires:        pb.Expires.AsTime(),
 	}, nil
 }
 
