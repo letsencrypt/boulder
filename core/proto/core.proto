@@ -3,6 +3,8 @@ syntax = "proto3";
 package core;
 option go_package = "github.com/letsencrypt/boulder/core/proto";
 
+import "google/protobuf/timestamp.proto";
+
 message Challenge {
   int64 id = 1;
   string type = 2;
@@ -40,8 +42,8 @@ message Certificate {
   string serial = 2;
   string digest = 3;
   bytes der = 4;
-  int64 issued = 5;  // Unix timestamp (nanoseconds)
-  int64 expires = 6; // Unix timestamp (nanoseconds)
+  google.protobuf.Timestamp issued = 5;
+  google.protobuf.Timestamp expires = 6;
 }
 
 message CertificateStatus {
