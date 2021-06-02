@@ -65,7 +65,7 @@ type RegistrationAuthority interface {
 	NewCertificate(ctx context.Context, csr CertificateRequest, regID int64, issuerNameID int64) (Certificate, error)
 
 	// [WebFrontEnd]
-	UpdateRegistration(ctx context.Context, base, updates *corepb.Registration) (*corepb.Registration, error)
+	UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error)
 
 	// [WebFrontEnd]
 	PerformValidation(ctx context.Context, req *rapb.PerformValidationRequest) (*corepb.Authorization, error)

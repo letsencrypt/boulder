@@ -1429,7 +1429,7 @@ func (wfe *WebFrontEndImpl) updateAccount(
 	// JSON to send via RPC to the RA.
 	updatePb.Key = basePb.Key
 
-	updatedAcct, err := wfe.RA.UpdateRegistration(ctx, basePb, updatePb)
+	updatedAcct, err := wfe.RA.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: basePb, Update: updatePb})
 	if err != nil {
 		return nil, web.ProblemDetailsForError(err, "Unable to update account")
 	}
@@ -1900,8 +1900,11 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling new key"), err)
 	}
 
+	// Copy new key into an empty registration to provide as the update
+	updatePb := &corepb.Registration{Key: newKeyBytes}
+
 	// Update the account key to the new key
-	updatedAcctPb, err := wfe.RA.UpdateRegistration(ctx, regPb, &corepb.Registration{Key: newKeyBytes})
+	updatedAcctPb, err := wfe.RA.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: regPb, Update: updatePb})
 	if err != nil {
 		if errors.Is(err, berrors.Duplicate) {
 			// It is possible that between checking for the existing key, and preforming the update
