@@ -24,7 +24,7 @@ var errNilTLS = errors.New("boulder/grpc: received nil tls.Config")
 // verifies that clients present a certificate that (a) is signed by one of
 // the configured ClientCAs, and (b) contains at least one
 // subjectAlternativeName matching the accepted list from GRPCServerConfig.
-func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, metrics serverMetrics, clk clock.Clock) (*grpc.Server, net.Listener, error) {
+func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, metrics serverMetrics, clk clock.Clock, interceptors ...grpc.UnaryServerInterceptor) (*grpc.Server, net.Listener, error) {
 	if tlsConfig == nil {
 		return nil, nil, errNilTLS
 	}
@@ -44,13 +44,15 @@ func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, metrics serverMet
 	}
 
 	si := newServerInterceptor(metrics, clk)
+	allInterceptors := []grpc.UnaryServerInterceptor{
+		si.intercept,
+		si.metrics.grpcMetrics.UnaryServerInterceptor(),
+		hnygrpc.UnaryServerInterceptor(),
+	}
+	allInterceptors = append(allInterceptors, interceptors...)
 	options := []grpc.ServerOption{
 		grpc.Creds(creds),
-		grpc.ChainUnaryInterceptor(
-			si.intercept,
-			si.metrics.grpcMetrics.UnaryServerInterceptor(),
-			hnygrpc.UnaryServerInterceptor(),
-		),
+		grpc.ChainUnaryInterceptor(allInterceptors...),
 	}
 	if c.MaxConnectionAge.Duration > 0 {
 		options = append(options,

@@ -335,3 +335,25 @@ func TestInFlightRPCStat(t *testing.T) {
 	// Check the gauge value again
 	test.AssertMetricWithLabelsEquals(t, ci.metrics.inFlightRPCs, labels, 0)
 }
+
+func TestNoCancelInterceptor(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel2 := context.WithDeadline(ctx, time.Now().Add(time.Second))
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		select {
+		case <-ctx.Done():
+			return nil, errors.New("oh no canceled")
+		case <-time.After(50 * time.Millisecond):
+		}
+		return nil, nil
+	}
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		cancel()
+		cancel2()
+	}()
+	_, err := NoCancelInterceptor(ctx, nil, nil, handler)
+	if err != nil {
+		t.Error(err)
+	}
+}

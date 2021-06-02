@@ -24,6 +24,20 @@ const (
 	serverLatencyKey       = "server-latency"
 )
 
+// NoCancelInterceptor is a gRPC interceptor that creates a new context,
+// separate from the original context, that has the same deadline but does
+// not propagate cancellation. This is used by SA.
+func NoCancelInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+	cancel := func() {}
+	if deadline, ok := ctx.Deadline(); ok {
+		ctx, cancel = context.WithDeadline(context.Background(), deadline)
+	} else {
+		ctx = context.Background()
+	}
+	defer cancel()
+	return handler(ctx, req)
+}
+
 // serverInterceptor is a gRPC interceptor that adds Prometheus
 // metrics to requests handled by a gRPC server, and wraps Boulder-specific
 // errors for transmission in a grpc/metadata trailer (see bcodes.go).
