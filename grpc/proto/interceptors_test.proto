@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "github.com/letsencrypt/boulder/grpc/test_proto";
+option go_package = "github.com/letsencrypt/boulder/grpc/proto";
 
 service Chiller {
   // Sleep for the given amount of time, and return the amount of time slept.

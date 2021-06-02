@@ -17,7 +17,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/letsencrypt/boulder/grpc/test_proto"
+	testpb "github.com/letsencrypt/boulder/grpc/proto"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -90,10 +90,10 @@ func TestFailFastFalse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("did not connect: %v", err)
 	}
-	c := test_proto.NewChillerClient(conn)
+	c := testpb.NewChillerClient(conn)
 
 	start := time.Now()
-	_, err = c.Chill(context.Background(), &test_proto.Time{Time: time.Second.Nanoseconds()})
+	_, err = c.Chill(context.Background(), &testpb.Time{Time: time.Second.Nanoseconds()})
 	if err == nil {
 		t.Errorf("Successful Chill when we expected failure.")
 	}
@@ -106,18 +106,18 @@ func TestFailFastFalse(t *testing.T) {
 // testServer is used to implement TestTimeouts, and will attempt to sleep for
 // the given amount of time (unless it hits a timeout or cancel).
 type testServer struct {
-	test_proto.UnimplementedChillerServer
+	testpb.UnimplementedChillerServer
 }
 
 // Chill implements ChillerServer.Chill
-func (s *testServer) Chill(ctx context.Context, in *test_proto.Time) (*test_proto.Time, error) {
+func (s *testServer) Chill(ctx context.Context, in *testpb.Time) (*testpb.Time, error) {
 	start := time.Now()
 	// Sleep for either the requested amount of time, or the context times out or
 	// is canceled.
 	select {
 	case <-time.After(time.Duration(in.Time) * time.Nanosecond):
 		spent := int64(time.Since(start) / time.Nanosecond)
-		return &test_proto.Time{Time: spent}, nil
+		return &testpb.Time{Time: spent}, nil
 	case <-ctx.Done():
 		return nil, grpc.Errorf(codes.DeadlineExceeded, "the chiller overslept")
 	}
@@ -134,7 +134,7 @@ func TestTimeouts(t *testing.T) {
 	serverMetrics := NewServerMetrics(metrics.NoopRegisterer)
 	si := newServerInterceptor(serverMetrics, clock.NewFake())
 	s := grpc.NewServer(grpc.UnaryInterceptor(si.intercept))
-	test_proto.RegisterChillerServer(s, &testServer{})
+	testpb.RegisterChillerServer(s, &testServer{})
 	go func() {
 		start := time.Now()
 		if err := s.Serve(lis); err != nil &&
@@ -156,7 +156,7 @@ func TestTimeouts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("did not connect: %v", err)
 	}
-	c := test_proto.NewChillerClient(conn)
+	c := testpb.NewChillerClient(conn)
 
 	testCases := []struct {
 		timeout             time.Duration
@@ -170,7 +170,7 @@ func TestTimeouts(t *testing.T) {
 		t.Run(tc.timeout.String(), func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), tc.timeout)
 			defer cancel()
-			_, err := c.Chill(ctx, &test_proto.Time{Time: time.Second.Nanoseconds()})
+			_, err := c.Chill(ctx, &testpb.Time{Time: time.Second.Nanoseconds()})
 			if err == nil {
 				t.Fatal("Got no error, expected a timeout")
 			}
@@ -195,7 +195,7 @@ func TestRequestTimeTagging(t *testing.T) {
 	serverMetrics := NewServerMetrics(metrics.NoopRegisterer)
 	si := newServerInterceptor(serverMetrics, clk)
 	s := grpc.NewServer(grpc.UnaryInterceptor(si.intercept))
-	test_proto.RegisterChillerServer(s, &testServer{})
+	testpb.RegisterChillerServer(s, &testServer{})
 	// Chill until ill
 	go func() {
 		start := time.Now()
@@ -219,14 +219,14 @@ func TestRequestTimeTagging(t *testing.T) {
 		t.Fatalf("did not connect: %v", err)
 	}
 	// Create a ChillerClient with the connection to the ChillerServer
-	c := test_proto.NewChillerClient(conn)
+	c := testpb.NewChillerClient(conn)
 
 	// Make an RPC request with the ChillerClient with a timeout higher than the
 	// requested ChillerServer delay so that the RPC completes normally
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	var delayTime int64 = (time.Second * 5).Nanoseconds()
-	if _, err := c.Chill(ctx, &test_proto.Time{Time: delayTime}); err != nil {
+	if _, err := c.Chill(ctx, &testpb.Time{Time: delayTime}); err != nil {
 		t.Fatalf("Unexpected error calling Chill RPC: %s", err)
 	}
 
@@ -240,18 +240,18 @@ func TestRequestTimeTagging(t *testing.T) {
 // This is used by TestInFlightRPCStat to test that the gauge for in-flight RPCs
 // is incremented and decremented as expected.
 type blockedServer struct {
-	test_proto.UnimplementedChillerServer
+	testpb.UnimplementedChillerServer
 	roadblock, received sync.WaitGroup
 }
 
 // Chill implements ChillerServer.Chill
-func (s *blockedServer) Chill(_ context.Context, _ *test_proto.Time) (*test_proto.Time, error) {
+func (s *blockedServer) Chill(_ context.Context, _ *testpb.Time) (*testpb.Time, error) {
 	// Note that a client RPC arrived
 	s.received.Done()
 	// Wait for the roadblock to be cleared
 	s.roadblock.Wait()
 	// Return a dummy spent value to adhere to the chiller protocol
-	return &test_proto.Time{Time: int64(1)}, nil
+	return &testpb.Time{Time: int64(1)}, nil
 }
 
 func TestInFlightRPCStat(t *testing.T) {
@@ -280,7 +280,7 @@ func TestInFlightRPCStat(t *testing.T) {
 	serverMetrics := NewServerMetrics(metrics.NoopRegisterer)
 	si := newServerInterceptor(serverMetrics, clk)
 	s := grpc.NewServer(grpc.UnaryInterceptor(si.intercept))
-	test_proto.RegisterChillerServer(s, server)
+	testpb.RegisterChillerServer(s, server)
 	// Chill until ill
 	go func() {
 		start := time.Now()
@@ -304,13 +304,13 @@ func TestInFlightRPCStat(t *testing.T) {
 		t.Fatalf("did not connect: %v", err)
 	}
 	// Create a ChillerClient with the connection to the ChillerServer
-	c := test_proto.NewChillerClient(conn)
+	c := testpb.NewChillerClient(conn)
 
 	// Fire off a few RPCs. They will block on the blockedServer's roadblock wg
 	for i := 0; i < numRPCs; i++ {
 		go func() {
 			// Ignore errors, just chilllll.
-			_, _ = c.Chill(context.Background(), &test_proto.Time{})
+			_, _ = c.Chill(context.Background(), &testpb.Time{})
 		}()
 	}
 
