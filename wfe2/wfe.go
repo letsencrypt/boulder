@@ -402,6 +402,13 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 
 // Index serves a simple identification page. It is not part of the ACME spec.
 func (wfe *WebFrontEndImpl) Index(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	// All requests that are not handled by our ACME endpoints ends up
+	// here. Set the our logEvent endpoint to "/" and the slug to the path
+	// minus "/" to make sure that we properly set log information about
+	// the request, even in the case of a 404
+	logEvent.Endpoint = "/"
+	logEvent.Slug = request.URL.Path[1:]
+
 	// http://golang.org/pkg/net/http/#example_ServeMux_Handle
 	// The "/" pattern matches everything, so we need to check
 	// that we're at the root here.

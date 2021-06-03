@@ -3508,6 +3508,29 @@ func TestGETAPIChallenge(t *testing.T) {
 	}
 }
 
+// TestGet404 tests that a 404 is served and that the expected endpoint of
+// "/" is logged when an unknown path is requested. This will test the
+// codepath to the wfe.Index() handler which handles "/" and all non-api
+// endpoint requests to make sure the endpoint is set properly in the logs.
+func TestIndexGet404(t *testing.T) {
+	// Setup
+	wfe, _ := setupWFE(t)
+	path := "/nopathhere/nope/nofilehere"
+	req := &http.Request{URL: &url.URL{Path: path}, Method: "GET"}
+	logEvent := &web.RequestEvent{}
+	responseWriter := httptest.NewRecorder()
+
+	// Send a request to wfe.Index()
+	wfe.Index(context.Background(), logEvent, responseWriter, req)
+
+	// Test that a 404 is received as expected
+	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
+	// Test that we logged the "/" endpoint
+	test.AssertEquals(t, logEvent.Endpoint, "/")
+	// Test that the rest of the path is logged as the slug
+	test.AssertEquals(t, logEvent.Slug, path[1:])
+}
+
 func TestGetAPIAndMandatoryPOSTAsGET(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
