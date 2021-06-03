@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/jmhodges/clock"
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -65,7 +66,7 @@ func (m *mockSA) GetCertificate(ctx context.Context, s string) (core.Certificate
 	return core.Certificate{}, berrors.NotFoundError("no cert stored for requested serial")
 }
 
-func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error) {
+func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(req.Der, req.Issued, req.RegID, req.IssuerID) {
 		return nil, berrors.InternalServerError("Incomplete request")
 	}
@@ -84,7 +85,7 @@ func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificate
 		precert.Issued = time.Unix(0, req.Issued)
 	}
 	m.precertificates = append(m.precertificates, precert)
-	return &corepb.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
 func (m *mockSA) GetPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {

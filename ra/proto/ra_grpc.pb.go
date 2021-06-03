@@ -8,6 +8,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -24,10 +25,10 @@ type RegistrationAuthorityClient interface {
 	NewCertificate(ctx context.Context, in *NewCertificateRequest, opts ...grpc.CallOption) (*proto.Certificate, error)
 	UpdateRegistration(ctx context.Context, in *UpdateRegistrationRequest, opts ...grpc.CallOption) (*proto.Registration, error)
 	PerformValidation(ctx context.Context, in *PerformValidationRequest, opts ...grpc.CallOption) (*proto.Authorization, error)
-	RevokeCertificateWithReg(ctx context.Context, in *RevokeCertificateWithRegRequest, opts ...grpc.CallOption) (*proto.Empty, error)
-	DeactivateRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Empty, error)
-	DeactivateAuthorization(ctx context.Context, in *proto.Authorization, opts ...grpc.CallOption) (*proto.Empty, error)
-	AdministrativelyRevokeCertificate(ctx context.Context, in *AdministrativelyRevokeCertificateRequest, opts ...grpc.CallOption) (*proto.Empty, error)
+	RevokeCertificateWithReg(ctx context.Context, in *RevokeCertificateWithRegRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	DeactivateRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	DeactivateAuthorization(ctx context.Context, in *proto.Authorization, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	AdministrativelyRevokeCertificate(ctx context.Context, in *AdministrativelyRevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	NewOrder(ctx context.Context, in *NewOrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	FinalizeOrder(ctx context.Context, in *FinalizeOrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
 }
@@ -85,8 +86,8 @@ func (c *registrationAuthorityClient) PerformValidation(ctx context.Context, in 
 	return out, nil
 }
 
-func (c *registrationAuthorityClient) RevokeCertificateWithReg(ctx context.Context, in *RevokeCertificateWithRegRequest, opts ...grpc.CallOption) (*proto.Empty, error) {
-	out := new(proto.Empty)
+func (c *registrationAuthorityClient) RevokeCertificateWithReg(ctx context.Context, in *RevokeCertificateWithRegRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/ra.RegistrationAuthority/RevokeCertificateWithReg", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -94,8 +95,8 @@ func (c *registrationAuthorityClient) RevokeCertificateWithReg(ctx context.Conte
 	return out, nil
 }
 
-func (c *registrationAuthorityClient) DeactivateRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Empty, error) {
-	out := new(proto.Empty)
+func (c *registrationAuthorityClient) DeactivateRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/ra.RegistrationAuthority/DeactivateRegistration", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -103,8 +104,8 @@ func (c *registrationAuthorityClient) DeactivateRegistration(ctx context.Context
 	return out, nil
 }
 
-func (c *registrationAuthorityClient) DeactivateAuthorization(ctx context.Context, in *proto.Authorization, opts ...grpc.CallOption) (*proto.Empty, error) {
-	out := new(proto.Empty)
+func (c *registrationAuthorityClient) DeactivateAuthorization(ctx context.Context, in *proto.Authorization, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/ra.RegistrationAuthority/DeactivateAuthorization", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -112,8 +113,8 @@ func (c *registrationAuthorityClient) DeactivateAuthorization(ctx context.Contex
 	return out, nil
 }
 
-func (c *registrationAuthorityClient) AdministrativelyRevokeCertificate(ctx context.Context, in *AdministrativelyRevokeCertificateRequest, opts ...grpc.CallOption) (*proto.Empty, error) {
-	out := new(proto.Empty)
+func (c *registrationAuthorityClient) AdministrativelyRevokeCertificate(ctx context.Context, in *AdministrativelyRevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/ra.RegistrationAuthority/AdministrativelyRevokeCertificate", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -148,10 +149,10 @@ type RegistrationAuthorityServer interface {
 	NewCertificate(context.Context, *NewCertificateRequest) (*proto.Certificate, error)
 	UpdateRegistration(context.Context, *UpdateRegistrationRequest) (*proto.Registration, error)
 	PerformValidation(context.Context, *PerformValidationRequest) (*proto.Authorization, error)
-	RevokeCertificateWithReg(context.Context, *RevokeCertificateWithRegRequest) (*proto.Empty, error)
-	DeactivateRegistration(context.Context, *proto.Registration) (*proto.Empty, error)
-	DeactivateAuthorization(context.Context, *proto.Authorization) (*proto.Empty, error)
-	AdministrativelyRevokeCertificate(context.Context, *AdministrativelyRevokeCertificateRequest) (*proto.Empty, error)
+	RevokeCertificateWithReg(context.Context, *RevokeCertificateWithRegRequest) (*emptypb.Empty, error)
+	DeactivateRegistration(context.Context, *proto.Registration) (*emptypb.Empty, error)
+	DeactivateAuthorization(context.Context, *proto.Authorization) (*emptypb.Empty, error)
+	AdministrativelyRevokeCertificate(context.Context, *AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error)
 	NewOrder(context.Context, *NewOrderRequest) (*proto.Order, error)
 	FinalizeOrder(context.Context, *FinalizeOrderRequest) (*proto.Order, error)
 	mustEmbedUnimplementedRegistrationAuthorityServer()
@@ -176,16 +177,16 @@ func (UnimplementedRegistrationAuthorityServer) UpdateRegistration(context.Conte
 func (UnimplementedRegistrationAuthorityServer) PerformValidation(context.Context, *PerformValidationRequest) (*proto.Authorization, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PerformValidation not implemented")
 }
-func (UnimplementedRegistrationAuthorityServer) RevokeCertificateWithReg(context.Context, *RevokeCertificateWithRegRequest) (*proto.Empty, error) {
+func (UnimplementedRegistrationAuthorityServer) RevokeCertificateWithReg(context.Context, *RevokeCertificateWithRegRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RevokeCertificateWithReg not implemented")
 }
-func (UnimplementedRegistrationAuthorityServer) DeactivateRegistration(context.Context, *proto.Registration) (*proto.Empty, error) {
+func (UnimplementedRegistrationAuthorityServer) DeactivateRegistration(context.Context, *proto.Registration) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeactivateRegistration not implemented")
 }
-func (UnimplementedRegistrationAuthorityServer) DeactivateAuthorization(context.Context, *proto.Authorization) (*proto.Empty, error) {
+func (UnimplementedRegistrationAuthorityServer) DeactivateAuthorization(context.Context, *proto.Authorization) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeactivateAuthorization not implemented")
 }
-func (UnimplementedRegistrationAuthorityServer) AdministrativelyRevokeCertificate(context.Context, *AdministrativelyRevokeCertificateRequest) (*proto.Empty, error) {
+func (UnimplementedRegistrationAuthorityServer) AdministrativelyRevokeCertificate(context.Context, *AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AdministrativelyRevokeCertificate not implemented")
 }
 func (UnimplementedRegistrationAuthorityServer) NewOrder(context.Context, *NewOrderRequest) (*proto.Order, error) {

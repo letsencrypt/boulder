@@ -28,6 +28,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 var usageString = `
@@ -61,7 +62,7 @@ type config struct {
 
 type certificateStorage interface {
 	AddCertificate(context.Context, []byte, int64, []byte, *time.Time) (string, error)
-	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*corepb.Empty, error)
+	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error)
 	GetCertificate(ctx context.Context, serial string) (core.Certificate, error)
 	GetPrecertificate(ctx context.Context, reqSerial *sapb.Serial) (*corepb.Certificate, error)
 }

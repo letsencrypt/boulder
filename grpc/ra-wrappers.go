@@ -14,6 +14,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 // RegistrationAuthorityClientWrapper is the gRPC version of a core.RegistrationAuthority client
@@ -75,7 +76,7 @@ func (rac RegistrationAuthorityClientWrapper) PerformValidation(
 	return authz, nil
 }
 
-func (rac RegistrationAuthorityClientWrapper) RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*corepb.Empty, error) {
+func (rac RegistrationAuthorityClientWrapper) RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*emptypb.Empty, error) {
 	return rac.inner.RevokeCertificateWithReg(ctx, req)
 }
 
@@ -202,11 +203,11 @@ func (ras *RegistrationAuthorityServerWrapper) PerformValidation(
 	return ras.inner.PerformValidation(ctx, request)
 }
 
-func (ras *RegistrationAuthorityServerWrapper) RevokeCertificateWithReg(ctx context.Context, request *rapb.RevokeCertificateWithRegRequest) (*corepb.Empty, error) {
+func (ras *RegistrationAuthorityServerWrapper) RevokeCertificateWithReg(ctx context.Context, request *rapb.RevokeCertificateWithRegRequest) (*emptypb.Empty, error) {
 	return ras.inner.RevokeCertificateWithReg(ctx, request)
 }
 
-func (ras *RegistrationAuthorityServerWrapper) DeactivateRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Empty, error) {
+func (ras *RegistrationAuthorityServerWrapper) DeactivateRegistration(ctx context.Context, request *corepb.Registration) (*emptypb.Empty, error) {
 	if request == nil || !registrationValid(request) {
 		return nil, errIncompleteRequest
 	}
@@ -218,10 +219,10 @@ func (ras *RegistrationAuthorityServerWrapper) DeactivateRegistration(ctx contex
 	if err != nil {
 		return nil, err
 	}
-	return &corepb.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (ras *RegistrationAuthorityServerWrapper) DeactivateAuthorization(ctx context.Context, request *corepb.Authorization) (*corepb.Empty, error) {
+func (ras *RegistrationAuthorityServerWrapper) DeactivateAuthorization(ctx context.Context, request *corepb.Authorization) (*emptypb.Empty, error) {
 	if request == nil || !authorizationValid(request) {
 		return nil, errIncompleteRequest
 	}
@@ -233,10 +234,10 @@ func (ras *RegistrationAuthorityServerWrapper) DeactivateAuthorization(ctx conte
 	if err != nil {
 		return nil, err
 	}
-	return &corepb.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (ras *RegistrationAuthorityServerWrapper) AdministrativelyRevokeCertificate(ctx context.Context, request *rapb.AdministrativelyRevokeCertificateRequest) (*corepb.Empty, error) {
+func (ras *RegistrationAuthorityServerWrapper) AdministrativelyRevokeCertificate(ctx context.Context, request *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
 	if request == nil || request.Cert == nil || request.AdminName == "" {
 		return nil, errIncompleteRequest
 	}
@@ -248,7 +249,7 @@ func (ras *RegistrationAuthorityServerWrapper) AdministrativelyRevokeCertificate
 	if err != nil {
 		return nil, err
 	}
-	return &corepb.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
 func (ras *RegistrationAuthorityServerWrapper) NewOrder(ctx context.Context, request *rapb.NewOrderRequest) (*corepb.Order, error) {

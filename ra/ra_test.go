@@ -57,6 +57,7 @@ import (
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 	jose "gopkg.in/square/go-jose.v2"
 )
 
@@ -3943,9 +3944,9 @@ type mockSABlockedKey struct {
 	added *sapb.AddBlockedKeyRequest
 }
 
-func (msabk *mockSABlockedKey) AddBlockedKey(_ context.Context, req *sapb.AddBlockedKeyRequest) (*corepb.Empty, error) {
+func (msabk *mockSABlockedKey) AddBlockedKey(_ context.Context, req *sapb.AddBlockedKeyRequest) (*emptypb.Empty, error) {
 	msabk.added = req
-	return &corepb.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
 type mockCAOCSP struct {
@@ -3958,8 +3959,8 @@ func (mcao *mockCAOCSP) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest,
 
 type mockPurger struct{}
 
-func (mp *mockPurger) Purge(context.Context, *akamaipb.PurgeRequest, ...grpc.CallOption) (*corepb.Empty, error) {
-	return &corepb.Empty{}, nil
+func (mp *mockPurger) Purge(context.Context, *akamaipb.PurgeRequest, ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
 func TestRevocationAddBlockedKey(t *testing.T) {

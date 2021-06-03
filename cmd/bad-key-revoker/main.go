@@ -16,7 +16,6 @@ import (
 	"github.com/honeycombio/beeline-go"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/log"
@@ -25,8 +24,8 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
-
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 var keysProcessed = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -46,7 +45,7 @@ var mailErrors = prometheus.NewCounter(prometheus.CounterOpts{
 // to only the single method we need to use, this makes testing significantly
 // simpler
 type revoker interface {
-	AdministrativelyRevokeCertificate(ctx context.Context, in *rapb.AdministrativelyRevokeCertificateRequest, opts ...grpc.CallOption) (*corepb.Empty, error)
+	AdministrativelyRevokeCertificate(ctx context.Context, in *rapb.AdministrativelyRevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type badKeyRevoker struct {

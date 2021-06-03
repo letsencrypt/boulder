@@ -8,6 +8,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -44,22 +45,22 @@ type StorageAuthorityClient interface {
 	KeyBlocked(ctx context.Context, in *KeyBlockedRequest, opts ...grpc.CallOption) (*Exists, error)
 	// Adders
 	NewRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Registration, error)
-	UpdateRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Empty, error)
+	UpdateRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AddCertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*AddCertificateResponse, error)
-	AddPrecertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*proto.Empty, error)
-	AddSerial(ctx context.Context, in *AddSerialRequest, opts ...grpc.CallOption) (*proto.Empty, error)
-	DeactivateRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*proto.Empty, error)
+	AddPrecertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	AddSerial(ctx context.Context, in *AddSerialRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	DeactivateRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	NewOrder(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*proto.Order, error)
-	SetOrderProcessing(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*proto.Empty, error)
-	SetOrderError(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*proto.Empty, error)
-	FinalizeOrder(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*proto.Empty, error)
+	SetOrderProcessing(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	SetOrderError(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	FinalizeOrder(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetOrder(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	GetOrderForNames(ctx context.Context, in *GetOrderForNamesRequest, opts ...grpc.CallOption) (*proto.Order, error)
-	RevokeCertificate(ctx context.Context, in *RevokeCertificateRequest, opts ...grpc.CallOption) (*proto.Empty, error)
+	RevokeCertificate(ctx context.Context, in *RevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	NewAuthorizations2(ctx context.Context, in *AddPendingAuthorizationsRequest, opts ...grpc.CallOption) (*Authorization2IDs, error)
-	FinalizeAuthorization2(ctx context.Context, in *FinalizeAuthorizationRequest, opts ...grpc.CallOption) (*proto.Empty, error)
-	DeactivateAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*proto.Empty, error)
-	AddBlockedKey(ctx context.Context, in *AddBlockedKeyRequest, opts ...grpc.CallOption) (*proto.Empty, error)
+	FinalizeAuthorization2(ctx context.Context, in *FinalizeAuthorizationRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	DeactivateAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	AddBlockedKey(ctx context.Context, in *AddBlockedKeyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type storageAuthorityClient struct {
@@ -259,8 +260,8 @@ func (c *storageAuthorityClient) NewRegistration(ctx context.Context, in *proto.
 	return out, nil
 }
 
-func (c *storageAuthorityClient) UpdateRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Empty, error) {
-	out := new(proto.Empty)
+func (c *storageAuthorityClient) UpdateRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/UpdateRegistration", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -277,8 +278,8 @@ func (c *storageAuthorityClient) AddCertificate(ctx context.Context, in *AddCert
 	return out, nil
 }
 
-func (c *storageAuthorityClient) AddPrecertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*proto.Empty, error) {
-	out := new(proto.Empty)
+func (c *storageAuthorityClient) AddPrecertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/AddPrecertificate", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -286,8 +287,8 @@ func (c *storageAuthorityClient) AddPrecertificate(ctx context.Context, in *AddC
 	return out, nil
 }
 
-func (c *storageAuthorityClient) AddSerial(ctx context.Context, in *AddSerialRequest, opts ...grpc.CallOption) (*proto.Empty, error) {
-	out := new(proto.Empty)
+func (c *storageAuthorityClient) AddSerial(ctx context.Context, in *AddSerialRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/AddSerial", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -295,8 +296,8 @@ func (c *storageAuthorityClient) AddSerial(ctx context.Context, in *AddSerialReq
 	return out, nil
 }
 
-func (c *storageAuthorityClient) DeactivateRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*proto.Empty, error) {
-	out := new(proto.Empty)
+func (c *storageAuthorityClient) DeactivateRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/DeactivateRegistration", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -313,8 +314,8 @@ func (c *storageAuthorityClient) NewOrder(ctx context.Context, in *proto.Order, 
 	return out, nil
 }
 
-func (c *storageAuthorityClient) SetOrderProcessing(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*proto.Empty, error) {
-	out := new(proto.Empty)
+func (c *storageAuthorityClient) SetOrderProcessing(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/SetOrderProcessing", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -322,8 +323,8 @@ func (c *storageAuthorityClient) SetOrderProcessing(ctx context.Context, in *pro
 	return out, nil
 }
 
-func (c *storageAuthorityClient) SetOrderError(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*proto.Empty, error) {
-	out := new(proto.Empty)
+func (c *storageAuthorityClient) SetOrderError(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/SetOrderError", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -331,8 +332,8 @@ func (c *storageAuthorityClient) SetOrderError(ctx context.Context, in *proto.Or
 	return out, nil
 }
 
-func (c *storageAuthorityClient) FinalizeOrder(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*proto.Empty, error) {
-	out := new(proto.Empty)
+func (c *storageAuthorityClient) FinalizeOrder(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/FinalizeOrder", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -358,8 +359,8 @@ func (c *storageAuthorityClient) GetOrderForNames(ctx context.Context, in *GetOr
 	return out, nil
 }
 
-func (c *storageAuthorityClient) RevokeCertificate(ctx context.Context, in *RevokeCertificateRequest, opts ...grpc.CallOption) (*proto.Empty, error) {
-	out := new(proto.Empty)
+func (c *storageAuthorityClient) RevokeCertificate(ctx context.Context, in *RevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/RevokeCertificate", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -376,8 +377,8 @@ func (c *storageAuthorityClient) NewAuthorizations2(ctx context.Context, in *Add
 	return out, nil
 }
 
-func (c *storageAuthorityClient) FinalizeAuthorization2(ctx context.Context, in *FinalizeAuthorizationRequest, opts ...grpc.CallOption) (*proto.Empty, error) {
-	out := new(proto.Empty)
+func (c *storageAuthorityClient) FinalizeAuthorization2(ctx context.Context, in *FinalizeAuthorizationRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/FinalizeAuthorization2", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -385,8 +386,8 @@ func (c *storageAuthorityClient) FinalizeAuthorization2(ctx context.Context, in 
 	return out, nil
 }
 
-func (c *storageAuthorityClient) DeactivateAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*proto.Empty, error) {
-	out := new(proto.Empty)
+func (c *storageAuthorityClient) DeactivateAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/DeactivateAuthorization2", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -394,8 +395,8 @@ func (c *storageAuthorityClient) DeactivateAuthorization2(ctx context.Context, i
 	return out, nil
 }
 
-func (c *storageAuthorityClient) AddBlockedKey(ctx context.Context, in *AddBlockedKeyRequest, opts ...grpc.CallOption) (*proto.Empty, error) {
-	out := new(proto.Empty)
+func (c *storageAuthorityClient) AddBlockedKey(ctx context.Context, in *AddBlockedKeyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/AddBlockedKey", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -432,22 +433,22 @@ type StorageAuthorityServer interface {
 	KeyBlocked(context.Context, *KeyBlockedRequest) (*Exists, error)
 	// Adders
 	NewRegistration(context.Context, *proto.Registration) (*proto.Registration, error)
-	UpdateRegistration(context.Context, *proto.Registration) (*proto.Empty, error)
+	UpdateRegistration(context.Context, *proto.Registration) (*emptypb.Empty, error)
 	AddCertificate(context.Context, *AddCertificateRequest) (*AddCertificateResponse, error)
-	AddPrecertificate(context.Context, *AddCertificateRequest) (*proto.Empty, error)
-	AddSerial(context.Context, *AddSerialRequest) (*proto.Empty, error)
-	DeactivateRegistration(context.Context, *RegistrationID) (*proto.Empty, error)
+	AddPrecertificate(context.Context, *AddCertificateRequest) (*emptypb.Empty, error)
+	AddSerial(context.Context, *AddSerialRequest) (*emptypb.Empty, error)
+	DeactivateRegistration(context.Context, *RegistrationID) (*emptypb.Empty, error)
 	NewOrder(context.Context, *proto.Order) (*proto.Order, error)
-	SetOrderProcessing(context.Context, *proto.Order) (*proto.Empty, error)
-	SetOrderError(context.Context, *proto.Order) (*proto.Empty, error)
-	FinalizeOrder(context.Context, *proto.Order) (*proto.Empty, error)
+	SetOrderProcessing(context.Context, *proto.Order) (*emptypb.Empty, error)
+	SetOrderError(context.Context, *proto.Order) (*emptypb.Empty, error)
+	FinalizeOrder(context.Context, *proto.Order) (*emptypb.Empty, error)
 	GetOrder(context.Context, *OrderRequest) (*proto.Order, error)
 	GetOrderForNames(context.Context, *GetOrderForNamesRequest) (*proto.Order, error)
-	RevokeCertificate(context.Context, *RevokeCertificateRequest) (*proto.Empty, error)
+	RevokeCertificate(context.Context, *RevokeCertificateRequest) (*emptypb.Empty, error)
 	NewAuthorizations2(context.Context, *AddPendingAuthorizationsRequest) (*Authorization2IDs, error)
-	FinalizeAuthorization2(context.Context, *FinalizeAuthorizationRequest) (*proto.Empty, error)
-	DeactivateAuthorization2(context.Context, *AuthorizationID2) (*proto.Empty, error)
-	AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*proto.Empty, error)
+	FinalizeAuthorization2(context.Context, *FinalizeAuthorizationRequest) (*emptypb.Empty, error)
+	DeactivateAuthorization2(context.Context, *AuthorizationID2) (*emptypb.Empty, error)
+	AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedStorageAuthorityServer()
 }
 
@@ -518,31 +519,31 @@ func (UnimplementedStorageAuthorityServer) KeyBlocked(context.Context, *KeyBlock
 func (UnimplementedStorageAuthorityServer) NewRegistration(context.Context, *proto.Registration) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NewRegistration not implemented")
 }
-func (UnimplementedStorageAuthorityServer) UpdateRegistration(context.Context, *proto.Registration) (*proto.Empty, error) {
+func (UnimplementedStorageAuthorityServer) UpdateRegistration(context.Context, *proto.Registration) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateRegistration not implemented")
 }
 func (UnimplementedStorageAuthorityServer) AddCertificate(context.Context, *AddCertificateRequest) (*AddCertificateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddCertificate not implemented")
 }
-func (UnimplementedStorageAuthorityServer) AddPrecertificate(context.Context, *AddCertificateRequest) (*proto.Empty, error) {
+func (UnimplementedStorageAuthorityServer) AddPrecertificate(context.Context, *AddCertificateRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddPrecertificate not implemented")
 }
-func (UnimplementedStorageAuthorityServer) AddSerial(context.Context, *AddSerialRequest) (*proto.Empty, error) {
+func (UnimplementedStorageAuthorityServer) AddSerial(context.Context, *AddSerialRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddSerial not implemented")
 }
-func (UnimplementedStorageAuthorityServer) DeactivateRegistration(context.Context, *RegistrationID) (*proto.Empty, error) {
+func (UnimplementedStorageAuthorityServer) DeactivateRegistration(context.Context, *RegistrationID) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeactivateRegistration not implemented")
 }
 func (UnimplementedStorageAuthorityServer) NewOrder(context.Context, *proto.Order) (*proto.Order, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NewOrder not implemented")
 }
-func (UnimplementedStorageAuthorityServer) SetOrderProcessing(context.Context, *proto.Order) (*proto.Empty, error) {
+func (UnimplementedStorageAuthorityServer) SetOrderProcessing(context.Context, *proto.Order) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetOrderProcessing not implemented")
 }
-func (UnimplementedStorageAuthorityServer) SetOrderError(context.Context, *proto.Order) (*proto.Empty, error) {
+func (UnimplementedStorageAuthorityServer) SetOrderError(context.Context, *proto.Order) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetOrderError not implemented")
 }
-func (UnimplementedStorageAuthorityServer) FinalizeOrder(context.Context, *proto.Order) (*proto.Empty, error) {
+func (UnimplementedStorageAuthorityServer) FinalizeOrder(context.Context, *proto.Order) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FinalizeOrder not implemented")
 }
 func (UnimplementedStorageAuthorityServer) GetOrder(context.Context, *OrderRequest) (*proto.Order, error) {
@@ -551,19 +552,19 @@ func (UnimplementedStorageAuthorityServer) GetOrder(context.Context, *OrderReque
 func (UnimplementedStorageAuthorityServer) GetOrderForNames(context.Context, *GetOrderForNamesRequest) (*proto.Order, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetOrderForNames not implemented")
 }
-func (UnimplementedStorageAuthorityServer) RevokeCertificate(context.Context, *RevokeCertificateRequest) (*proto.Empty, error) {
+func (UnimplementedStorageAuthorityServer) RevokeCertificate(context.Context, *RevokeCertificateRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RevokeCertificate not implemented")
 }
 func (UnimplementedStorageAuthorityServer) NewAuthorizations2(context.Context, *AddPendingAuthorizationsRequest) (*Authorization2IDs, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NewAuthorizations2 not implemented")
 }
-func (UnimplementedStorageAuthorityServer) FinalizeAuthorization2(context.Context, *FinalizeAuthorizationRequest) (*proto.Empty, error) {
+func (UnimplementedStorageAuthorityServer) FinalizeAuthorization2(context.Context, *FinalizeAuthorizationRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FinalizeAuthorization2 not implemented")
 }
-func (UnimplementedStorageAuthorityServer) DeactivateAuthorization2(context.Context, *AuthorizationID2) (*proto.Empty, error) {
+func (UnimplementedStorageAuthorityServer) DeactivateAuthorization2(context.Context, *AuthorizationID2) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeactivateAuthorization2 not implemented")
 }
-func (UnimplementedStorageAuthorityServer) AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*proto.Empty, error) {
+func (UnimplementedStorageAuthorityServer) AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddBlockedKey not implemented")
 }
 func (UnimplementedStorageAuthorityServer) mustEmbedUnimplementedStorageAuthorityServer() {}

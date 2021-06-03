@@ -15,6 +15,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/protobuf/types/known/emptypb"
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
@@ -824,7 +825,7 @@ func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, id i
 
 // DeactivateAuthorization2 deactivates a currently valid or pending authorization.
 // This method is intended to deprecate DeactivateAuthorization.
-func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Empty, error) {
+func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*emptypb.Empty, error) {
 	_, err := ssa.dbMap.Exec(
 		`UPDATE authz2 SET status = :deactivated WHERE id = :id and status IN (:valid,:pending)`,
 		map[string]interface{}{
@@ -837,7 +838,7 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 	if err != nil {
 		return nil, err
 	}
-	return &corepb.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
 // NewOrder adds a new v2 style order to the database
@@ -1770,7 +1771,7 @@ func addKeyHash(db db.Inserter, cert *x509.Certificate) error {
 var blockedKeysColumns = "keyHash, added, source, comment"
 
 // AddBlockedKey adds a key hash to the blockedKeys table
-func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest) (*corepb.Empty, error) {
+func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(req.KeyHash, req.Added, req.Source) {
 		return nil, errIncompleteRequest
 	}
@@ -1798,11 +1799,11 @@ func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.Add
 		if db.IsDuplicate(err) {
 			// Ignore duplicate inserts so multiple certs with the same key can
 			// be revoked.
-			return &corepb.Empty{}, nil
+			return &emptypb.Empty{}, nil
 		}
 		return nil, err
 	}
-	return &corepb.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
 // KeyBlocked checks if a key, indicated by a hash, is present in the blockedKeys table

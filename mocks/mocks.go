@@ -13,6 +13,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
@@ -330,12 +331,12 @@ func (sa *StorageAuthority) GetCertificateStatus(_ context.Context, serial strin
 }
 
 // AddPrecertificate is a mock
-func (sa *StorageAuthority) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (empty *corepb.Empty, err error) {
+func (sa *StorageAuthority) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (empty *emptypb.Empty, err error) {
 	return
 }
 
 // AddSerial is a mock
-func (sa *StorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (empty *corepb.Empty, err error) {
+func (sa *StorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (empty *emptypb.Empty, err error) {
 	return
 }
 
@@ -562,7 +563,7 @@ func (sa *StorageAuthority) FinalizeAuthorization2(ctx context.Context, req *sap
 	return nil
 }
 
-func (sa *StorageAuthority) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Empty, error) {
+func (sa *StorageAuthority) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*emptypb.Empty, error) {
 	return nil, nil
 }
 
@@ -682,8 +683,8 @@ func (sa *StorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.Rev
 }
 
 // AddBlockedKey is a mock
-func (sa *StorageAuthority) AddBlockedKey(context.Context, *sapb.AddBlockedKeyRequest) (*corepb.Empty, error) {
-	return &corepb.Empty{}, nil
+func (sa *StorageAuthority) AddBlockedKey(context.Context, *sapb.AddBlockedKeyRequest) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
 // KeyBlocked is a mock

@@ -35,6 +35,7 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/protobuf/types/known/emptypb"
 	jose "gopkg.in/square/go-jose.v2"
 )
 
@@ -220,7 +221,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 				// clearer both in our metrics and to the client that
 				// something is wrong.
 				if wfe.remoteNonceService != nil {
-					nonceMsg, err := wfe.remoteNonceService.Nonce(ctx, &corepb.Empty{})
+					nonceMsg, err := wfe.remoteNonceService.Nonce(ctx, &emptypb.Empty{})
 					if err != nil {
 						wfe.sendError(response, logEvent, probs.ServerInternal("unable to get nonce"), err)
 						return

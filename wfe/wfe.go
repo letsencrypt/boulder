@@ -38,6 +38,7 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/web"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods.
@@ -204,7 +205,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 			// clearer both in our metrics and to the client that
 			// something is wrong.
 			if wfe.remoteNonceService != nil {
-				nonceMsg, err := wfe.remoteNonceService.Nonce(ctx, &corepb.Empty{})
+				nonceMsg, err := wfe.remoteNonceService.Nonce(ctx, &emptypb.Empty{})
 				if err != nil {
 					wfe.sendError(response, logEvent, probs.ServerInternal("unable to get nonce"), err)
 					return

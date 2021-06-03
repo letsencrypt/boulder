@@ -92,5 +92,3 @@ message Order {
   int64 created = 10;
   repeated int64 v2Authorizations = 11;
 }
-
-message Empty {}

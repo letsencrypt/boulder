@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"testing"
 
-	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/metrics"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/test"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func TestValidNonce(t *testing.T) {
@@ -150,7 +150,7 @@ func (mnc *malleableNonceClient) Redeem(ctx context.Context, in *noncepb.NonceMe
 	return mnc.redeem(ctx, in, opts...)
 }
 
-func (mnc *malleableNonceClient) Nonce(ctx context.Context, in *corepb.Empty, opts ...grpc.CallOption) (*noncepb.NonceMessage, error) {
+func (mnc *malleableNonceClient) Nonce(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*noncepb.NonceMessage, error) {
 	return nil, errors.New("unimplemented")
 }
 
