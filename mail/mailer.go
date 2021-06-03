@@ -17,6 +17,7 @@ import (
 	"net/textproto"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -349,6 +350,13 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			m.reconnect()
 			// After reconnecting, loop around and try `sendOne` again.
 			continue
+		} else if errors.Is(err, syscall.ECONNRESET) {
+			m.sendMailAttempts.WithLabelValues("failure", "TCP RST").Inc()
+			// If the error is `syscall.ECONNRESET`, we should try to reconnect on a backoff
+			// schedule, sleeping between attempts.
+			m.reconnect()
+			// After reconnecting, loop around and try `sendOne` again.
+			continue
 		} else if errors.As(err, &protoErr) && protoErr.Code == 421 {
 			m.sendMailAttempts.WithLabelValues("failure", "SMTP 421").Inc()
 			/*
@@ -367,6 +375,8 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			 * [0] - https://github.com/letsencrypt/boulder/issues/2249
 			 */
 			m.reconnect()
+			// After reconnecting, loop around and try `sendOne` again.
+			continue
 		} else if errors.As(err, &protoErr) && recoverableErrorCodes[protoErr.Code] {
 			m.sendMailAttempts.WithLabelValues("failure", fmt.Sprintf("SMTP %d", protoErr.Code)).Inc()
 			return RecoverableSMTPError{fmt.Sprintf("%d: %s", protoErr.Code, protoErr.Msg)}
