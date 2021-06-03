@@ -1,1 +1,0 @@
-../../grpc/gen.go.tmpl
