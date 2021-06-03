@@ -212,6 +212,12 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 	methodsStr := strings.Join(methods, ", ")
 	handler := http.StripPrefix(pattern, web.NewTopHandler(wfe.log,
 		web.WFEHandlerFunc(func(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+			logEvent.Endpoint = pattern
+			beeline.AddFieldToTrace(ctx, "endpoint", pattern)
+			if request.URL != nil {
+				logEvent.Slug = request.URL.Path
+				beeline.AddFieldToTrace(ctx, "slug", request.URL.Path)
+			}
 			if request.Method != "GET" || pattern == newNoncePath {
 				// Historically we did not return a error to the client
 				// if we failed to get a new nonce. We preserve that
@@ -242,13 +248,6 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 			if pattern != directoryPath {
 				directoryURL := web.RelativeEndpoint(request, directoryPath)
 				response.Header().Add("Link", link(directoryURL, "index"))
-			}
-
-			logEvent.Endpoint = pattern
-			beeline.AddFieldToTrace(ctx, "endpoint", pattern)
-			if request.URL != nil {
-				logEvent.Slug = request.URL.Path
-				beeline.AddFieldToTrace(ctx, "slug", request.URL.Path)
 			}
 
 			switch request.Method {
