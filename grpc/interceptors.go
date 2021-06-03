@@ -27,6 +27,10 @@ const (
 // NoCancelInterceptor is a gRPC interceptor that creates a new context,
 // separate from the original context, that has the same deadline but does
 // not propagate cancellation. This is used by SA.
+//
+// Because this interceptor throws away annotations on the context, it
+// breaks tracing for events that get the modified context. To minimize that
+// impact, this interceptor should always be last.
 func NoCancelInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
 	cancel := func() {}
 	if deadline, ok := ctx.Deadline(); ok {
