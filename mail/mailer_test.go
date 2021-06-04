@@ -76,21 +76,23 @@ func expect(t *testing.T, buf *bufio.Reader, expected string) error {
 type connHandler func(int, *testing.T, net.Conn, *net.TCPConn)
 
 func listenForever(l *net.TCPListener, t *testing.T, handler connHandler) {
+	keyPair, err := tls.LoadX509KeyPair("../test/mail-test-srv/localhost/cert.pem", "../test/mail-test-srv/localhost/key.pem")
+	if err != nil {
+		t.Errorf("loading keypair: %s", err)
+
+	}
+	tlsConf := &tls.Config{
+		Certificates: []tls.Certificate{keyPair},
+	}
 	connID := 0
 	for {
 		tcpConn, err := l.AcceptTCP()
 		if err != nil {
+			t.Log(err)
 			return
 		}
 
-		keyPair, err := tls.LoadX509KeyPair("../test/mail-test-srv/localhost/cert.pem", "../test/mail-test-srv/localhost/key.pem")
-		if err != nil {
-			t.Fatalf("loading keypair: %s", err)
-		}
-
-		tlsConn := tls.Server(tcpConn, &tls.Config{
-			Certificates: []tls.Certificate{keyPair},
-		})
+		tlsConn := tls.Server(tcpConn, tlsConf)
 		connID++
 		go handler(connID, t, tlsConn, tcpConn)
 	}
@@ -156,9 +158,9 @@ func disconnectHandler(closeFirst int, goodbyeMsg string) connHandler {
 			// before closing
 			if goodbyeMsg != "" {
 				_, _ = fmt.Fprintf(conn, "%s\r\n", goodbyeMsg)
-				fmt.Printf("Wrote goodbye msg: %s\n", goodbyeMsg)
+				t.Logf("Wrote goodbye msg: %s", goodbyeMsg)
 			}
-			fmt.Printf("Cutting off client early\n")
+			t.Log("Cutting off client early")
 			return
 		}
 		_, _ = conn.Write([]byte("250 Sure. Go on. \r\n"))
@@ -231,9 +233,10 @@ func rstHandler(rstFirst int) connHandler {
 		if connID <= rstFirst {
 			err := tcpConn.SetLinger(0)
 			if err != nil {
+				t.Error(err)
 				return
 			}
-			fmt.Printf("Socket set for abruptive close. Cutting off client early\n")
+			t.Log("Socket set for abruptive close. Cutting off client early")
 			return
 		}
 		_, _ = tlsConn.Write([]byte("250 Sure. Go on. \r\n"))
