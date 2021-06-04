@@ -6,12 +6,14 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math/big"
 	"net"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,48 +54,27 @@ func TestMailAuditor(t *testing.T) {
 	err := testCtx.c.run(resChan)
 	test.AssertNotError(t, err, "received error")
 	test.AssertEquals(t, len(resChan), 0)
+}
+
+func TestMailAuditorWithResults(t *testing.T) {
+	testCtx := setup(t)
+	defer testCtx.cleanUp()
+
+	// Add some test registrations.
+	testCtx.addRegistrations(t)
 
 	// Now add some certificates.
 	testCtx.addCertificates(t)
 
-	// With B expired, we should get A, C, and D but only A and C have
-	// email contacts in their contact.
-	resChan = make(chan *result, 10)
-	err = testCtx.c.run(resChan)
-	test.AssertEquals(t, len(resChan), 3)
-	test.AssertNotError(t, err, "received error")
-	for entry := range resChan {
-		err := entry.validateContact()
-		switch entry.ID {
-		case regA.ID:
-			// Contact validation policy sad path.
-			test.AssertDeepEquals(t, entry.contacts, []string{"mailto:test@example.com"})
-			test.AssertError(t, err, "failed to error on a contact that violates our e-mail policy")
-		case regC.ID:
-			// Contact validation happy path.
-			test.AssertDeepEquals(t, entry.contacts, []string{"mailto:test-example@notexample.com"})
-			test.AssertNotError(t, err, "received error for a valid contact entry")
-		case regD.ID:
-			// Contact validation prefix sad path.
-			test.AssertDeepEquals(t, entry.contacts, []string{"tel:666-666-7777"})
-			test.AssertError(t, err, "failed to error on an invalid contact entry")
-		default:
-			t.Errorf("ID: %d was not expected", entry.ID)
-		}
-	}
-
-	// Allow a 1 year grace period
-	testCtx.c.grace = 360 * 24 * time.Hour
-	resChan = make(chan *result, 10)
-	err = testCtx.c.run(resChan)
+	resChan := make(chan *result, 10)
+	err := testCtx.c.run(resChan)
 	test.AssertNotError(t, err, "received error")
 
-	// With none expired, we should get A, B, C, and D. Only A, B, and C
-	// should have email contacts in their contact.
+	// We should get back A, B, C, and D
 	test.AssertEquals(t, len(resChan), 4)
 	for entry := range resChan {
-		err := entry.validateContact()
-		switch entry.ID {
+		err := validateContacts(entry.id, entry.createdAt, entry.contacts)
+		switch entry.id {
 		case regA.ID:
 			// Contact validation policy sad path.
 			test.AssertDeepEquals(t, entry.contacts, []string{"mailto:test@example.com"})
@@ -108,28 +89,38 @@ func TestMailAuditor(t *testing.T) {
 			test.AssertNotError(t, err, "received error for a valid contact entry")
 
 			// Unmarshal Contact sad path.
-			entry.Contact = []byte("[ mailto:test@example.com ]")
-			err = entry.unmarshalContact()
+			_, err := unmarshalContact([]byte("[ mailto:test@example.com ]"))
 			test.AssertError(t, err, "failed to error while unmarshaling invalid Contact JSON")
 
 			// Fix our JSON and ensure that the contact field returns
 			// errors for our 2 additional contacts
-			entry.Contact = []byte(`[ "mailto:test@example.com", "tel:666-666-7777" ]`)
-			err = entry.unmarshalContact()
+			contacts, err := unmarshalContact([]byte(`[ "mailto:test@example.com", "tel:666-666-7777" ]`))
 			test.AssertNotError(t, err, "received error while unmarshaling valid Contact JSON")
 
 			// Ensure Contact validation now fails.
-			err = entry.validateContact()
+			err = validateContacts(entry.id, entry.createdAt, contacts)
 			test.AssertError(t, err, "failed to error on 2 invalid Contact entries")
-
-			// Ensure all policy violations are returned.
-			test.AssertDeepEquals(t, err.Error(), `[ "mailto:test@example.com": "invalid contact domain. Contact emails @example.com are forbidden" ] [ "tel:666-666-7777": "missing 'mailto:' prefix" ] `)
 		case regD.ID:
 			test.AssertDeepEquals(t, entry.contacts, []string{"tel:666-666-7777"})
 			test.AssertError(t, err, "failed to error on an invalid contact entry")
 		default:
-			t.Errorf("ID: %d was not expected", entry.ID)
+			t.Errorf("ID: %d was not expected", entry.id)
 		}
+	}
+
+	// Load results file.
+	data, err := ioutil.ReadFile(testCtx.c.resultsFile.Name())
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Results file should contain 2 newlines, 1 for each result.
+	contentLines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	test.AssertEquals(t, len(contentLines), 2)
+
+	// Each result entry should contain five tab separated columns.
+	for _, line := range contentLines {
+		test.AssertEquals(t, len(strings.Split(line, "\t")), 5)
 	}
 }
 
@@ -369,24 +360,34 @@ func setup(t *testing.T) testCtx {
 	if err != nil {
 		t.Fatalf("Couldn't connect to the database: %s", err)
 	}
-	cleanUp := test.ResetSATestDatabase(t)
 
-	db, err := sql.Open("mysql", fmt.Sprintf("%s?readTimeout=14s&writeTimeout=14s&timeout=1s", vars.DBConnSAFullPerms))
+	// Make temp results file
+	file, err := ioutil.TempFile("", fmt.Sprintf("audit-%s", time.Now().Format("2006-01-02T15:04")))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cleanUp := func() {
+		test.ResetSATestDatabase(t)
+		file.Close()
+		os.Remove(file.Name())
+	}
+
+	db, err := makeDBConnection()
 	if err != nil {
 		t.Fatalf("Couldn't connect to the database: %s", err)
 	}
 
-	fc := newFakeClock(t)
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NoopRegisterer, 1)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, clock.New(), log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}
 
 	return testCtx{
 		c: contactAuditor{
-			db:     db,
-			logger: blog.NewMock(),
-			clk:    fc,
+			db:          db,
+			resultsFile: file,
+			logger:      blog.NewMock(),
 		},
 		dbMap:   dbMap,
 		ssa:     ssa,

@@ -1,4 +1,5 @@
 # Contact-Auditor
+
 Audits subscriber registrations for e-mail addresses that
 `notify-mailer` is currently configured to skip.
 
@@ -7,53 +8,59 @@ Audits subscriber registrations for e-mail addresses that
 ```shell
   -config string
       File containing a JSON config.
-  -grace duration
-      Include contacts of subscribers with certificates that expired <grace>
-       period from now (default 48h0m0s)
+  -to-file
+      Write the audit results to a file.
+  -to-stdout
+      Print the audit results to stdout.
+```
+
+## Results format:
+
+```
+<id>    <createdAt>    <problem type>    "<contact contents or entry>"    "<error msg>"
 ```
 
 ## Example output:
 
-**Successful run with no violations encountered:**
+### Successful run with no violations encountered and `--to-file`:
 
 ```
-I004823 contact-auditor nfWK_gM Running contact-auditor with a grace period of >= 48h0m0s
+I004823 contact-auditor nfWK_gM Running contact-auditor
 I004823 contact-auditor qJ_zsQ4 Beginning database query
 I004823 contact-auditor je7V9QM Query completed successfully
 I004823 contact-auditor 7LzGvQI Audit finished successfully
+I004823 contact-auditor 5Pbk_QM Audit results were written to: audit-2006-01-02T15:04.tsv
 ```
 
-**Contact JSON is valid but contains entries that are malformed or violate policy:**
+### Contact contains entries that violate policy and `--to-stdout`:
 
 ```
-I004823 contact-auditor nfWK_gM Running contact-auditor with a grace period of >= 48h0m0s
+I004823 contact-auditor nfWK_gM Running contact-auditor
 I004823 contact-auditor qJ_zsQ4 Beginning database query
 I004823 contact-auditor je7V9QM Query completed successfully
-I004823 contact-auditor 1JX1rQ8 Validation failed for ID: 100 due to: [ "<contact entry>": "<reason>" ] [ "<contact entry>": "<reason>" ] ...
+1    2006-01-02 15:04:05    validation    "<contact entry>"    "<error msg>"
 ...
 I004823 contact-auditor 2fv7-QY Audit finished successfully
 ```
 
-**Contact is not valid JSON:**
+### Contact is not valid JSON and `--to-stdout`:
 
 ```
-I004823 contact-auditor nfWK_gM Running contact-auditor with a grace period of >= 48h0m0s
+I004823 contact-auditor nfWK_gM Running contact-auditor
 I004823 contact-auditor qJ_zsQ4 Beginning database query
 I004823 contact-auditor je7V9QM Query completed successfully
-I004823 contact-auditor qJ_zsQ4 Unmarshal failed for ID: 100 due to: <error msg>
+3    2006-01-02 15:04:05    unmarshal    "<contact contents>"    "<error msg>"
 ...
 I004823 contact-auditor 2fv7-QY Audit finished successfully
 ```
 
-**Audit incomplete, query ended prematurely:**
+### Audit incomplete, query ended prematurely:
 
 ```
-I004823 contact-auditor nfWK_gM Running contact-auditor with a grace period of >= 48h0m0s
+I004823 contact-auditor nfWK_gM Running contact-auditor
 I004823 contact-auditor qJ_zsQ4 Beginning database query
-I004823 contact-auditor ydTVgA4 [AUDIT] Query was interrupted due to: <error msg>
 ...
-E004823 contact-auditor 8LmTgww [AUDIT] Audit was interrupted, results may be incomplete, see log for details
-Audit was interrupted, results may be incomplete, see log for details
+E004823 contact-auditor 8LmTgww [AUDIT] Audit was interrupted, results may be incomplete: <error msg>
 exit status 1
 ```
 
@@ -64,10 +71,11 @@ following the `-config` flag.
 ```json
 {
     "contactAuditor": {
-      "passwordFile": "path/to/secretFile",
       "db": {
-        "dbConnectFile": "path/to/secretFile",
-        "maxOpenConns": 10
+        "maxOpenConns": <int>,
+        "maxIdleConns": <int>,
+	      "connMaxLifetime": <int>,
+	      "connMaxIdleTime": <int>
       }
     }
   }
