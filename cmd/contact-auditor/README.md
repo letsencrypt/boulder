@@ -72,6 +72,7 @@ following the `-config` flag.
 {
     "contactAuditor": {
       "db": {
+        "dbConnectFile": <string>,
         "maxOpenConns": <int>,
         "maxIdleConns": <int>,
 	      "connMaxLifetime": <int>,

@@ -373,7 +373,7 @@ func setup(t *testing.T) testCtx {
 		os.Remove(file.Name())
 	}
 
-	db, err := makeDBConnection()
+	db, err := makeDBConnection(vars.DBConnSAMailer)
 	if err != nil {
 		t.Fatalf("Couldn't connect to the database: %s", err)
 	}

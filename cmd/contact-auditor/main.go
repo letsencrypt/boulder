@@ -15,7 +15,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
-	"github.com/letsencrypt/boulder/test/vars"
 )
 
 type contactAuditor struct {
@@ -47,9 +46,7 @@ func validateContacts(id int64, createdAt string, contacts []string) error {
 	// Helper to write validation problems to our buffer.
 	writeProb := func(contact string, prob string) {
 		// Add validation problem to buffer.
-		probsBuff.WriteString(
-			fmt.Sprintf("%d\t%s\tvalidation\t%q\t%q\n", id, createdAt, contact, prob),
-		)
+		fmt.Fprintf(&probsBuff, "%d\t%s\tvalidation\t%q\t%q\n", id, createdAt, contact, prob)
 	}
 
 	for _, contact := range contacts {
@@ -120,17 +117,12 @@ func (c contactAuditor) run(resChan chan *result) error {
 
 		contacts, err := unmarshalContact(contact)
 		if err != nil {
-			if c.writeToStdout || c.resultsFile != nil {
-				c.writeResults(fmt.Sprintf("%d\t%s\tunmarshal\t%q\t%q\n", id, createdAt, contact, err))
-
-			}
+			c.writeResults(fmt.Sprintf("%d\t%s\tunmarshal\t%q\t%q\n", id, createdAt, contact, err))
 		}
 
 		err = validateContacts(id, createdAt, contacts)
 		if err != nil {
-			if c.writeToStdout || c.resultsFile != nil {
-				c.writeResults(err.Error())
-			}
+			c.writeResults(err.Error())
 		}
 
 		// Only used for testing.
@@ -154,15 +146,16 @@ func (c contactAuditor) run(resChan chan *result) error {
 	return nil
 }
 
-func makeDBConnection() (*sql.DB, error) {
-	conf, err := mysql.ParseDSN(vars.DBConnSAMailer)
-	conf.Params = make(map[string]string)
+func makeDBConnection(dsn string) (*sql.DB, error) {
+	conf, err := mysql.ParseDSN(dsn)
+	if err != nil {
+		return nil, err
+	}
 
 	// Transaction isolation level READ UNCOMMITTED trades consistency
 	// for performance.
-	conf.Params["tx_isolation"] = "'READ-UNCOMMITTED'"
-	if err != nil {
-		return nil, err
+	conf.Params = map[string]string{
+		"tx_isolation": "'READ-UNCOMMITTED'",
 	}
 	return sql.Open("mysql", conf.FormatDSN())
 }
@@ -190,7 +183,9 @@ func main() {
 	cmd.FailOnError(err, "Couldn't unmarshal config")
 
 	// Setup database client.
-	db, err := makeDBConnection()
+	dbURL, err := cfg.ContactAuditor.DB.URL()
+	cmd.FailOnError(err, "Couldn't load dbURL")
+	db, err := makeDBConnection(dbURL)
 	cmd.FailOnError(err, "Couldn't setup database client")
 
 	// Apply database settings.
