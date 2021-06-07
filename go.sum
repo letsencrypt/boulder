@@ -357,8 +357,8 @@ github.com/zmap/rc2 v0.0.0-20131011165748-24b9757f5521/go.mod h1:3YZ9o3WnatTIZhu
 github.com/zmap/zcertificate v0.0.0-20180516150559-0e3d58b1bac4/go.mod h1:5iU54tB79AMBcySS0R2XIyZBAVmeHranShAFELYx7is=
 github.com/zmap/zcrypto v0.0.0-20210513123304-ea3fdbd5ea27 h1:UJR+QCP6UfWb1dQF/Q0RSjWFxmvRDbyT7HR5rvETXHg=
 github.com/zmap/zcrypto v0.0.0-20210513123304-ea3fdbd5ea27/go.mod h1:M+NpodK20wxxR34wiF1hYGKFfCf21ZfEwCwtXoEAyOY=
-github.com/zmap/zlint/v3 v3.2.0-rc1 h1:67XXcViBAfs18m57Cx8Wtbe6x6ZX2ZwehA7RZQ/Xaq0=
-github.com/zmap/zlint/v3 v3.2.0-rc1/go.mod h1:Cg0VunVotKVXQyPMXtgrYoHW0guvugb13+p/6EgET/M=
+github.com/zmap/zlint/v3 v3.2.0 h1:EtNuXmHcDTKl27AAUrYvQ+Bjj8MT9j1mZ5OrK0Iqrz8=
+github.com/zmap/zlint/v3 v3.2.0/go.mod h1:Cg0VunVotKVXQyPMXtgrYoHW0guvugb13+p/6EgET/M=
 go.etcd.io/bbolt v1.3.2/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
 go.opentelemetry.io/contrib/propagators v0.19.0 h1:HrixVNZYFjUl/Db+Tr3DhqzLsVW9GeVf/Gye+C5dNUY=
 go.opentelemetry.io/contrib/propagators v0.19.0/go.mod h1:4QOdZClXISU5S43xZxk5tYaWcpb+lehqfKtE6PK6msE=
