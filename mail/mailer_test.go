@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/mail"
 	"net/textproto"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -74,17 +73,28 @@ func expect(t *testing.T, buf *bufio.Reader, expected string) error {
 	return nil
 }
 
-type connHandler func(int, *testing.T, net.Conn)
+type connHandler func(int, *testing.T, net.Conn, *net.TCPConn)
 
-func listenForever(l net.Listener, t *testing.T, handler connHandler) {
+func listenForever(l *net.TCPListener, t *testing.T, handler connHandler) {
+	keyPair, err := tls.LoadX509KeyPair("../test/mail-test-srv/localhost/cert.pem", "../test/mail-test-srv/localhost/key.pem")
+	if err != nil {
+		t.Errorf("loading keypair: %s", err)
+
+	}
+	tlsConf := &tls.Config{
+		Certificates: []tls.Certificate{keyPair},
+	}
 	connID := 0
 	for {
-		conn, err := l.Accept()
+		tcpConn, err := l.AcceptTCP()
 		if err != nil {
+			t.Log(err)
 			return
 		}
+
+		tlsConn := tls.Server(tcpConn, tlsConf)
 		connID++
-		go handler(connID, t, conn)
+		go handler(connID, t, tlsConn, tcpConn)
 	}
 }
 
@@ -110,14 +120,14 @@ func authenticateClient(t *testing.T, conn net.Conn) {
 
 // The normal handler authenticates the client and then disconnects without
 // further command processing. It is sufficient for TestConnect()
-func normalHandler(connID int, t *testing.T, conn net.Conn) {
+func normalHandler(connID int, t *testing.T, tlsConn net.Conn, tcpConn *net.TCPConn) {
 	defer func() {
-		err := conn.Close()
+		err := tlsConn.Close()
 		if err != nil {
 			t.Errorf("conn.Close: %s", err)
 		}
 	}()
-	authenticateClient(t, conn)
+	authenticateClient(t, tlsConn)
 }
 
 // The disconnectHandler authenticates the client like the normalHandler but
@@ -128,7 +138,7 @@ func normalHandler(connID int, t *testing.T, conn net.Conn) {
 // closing. In this way the first `closeFirst` connections will not complete
 // normally and can be tested for reconnection logic.
 func disconnectHandler(closeFirst int, goodbyeMsg string) connHandler {
-	return func(connID int, t *testing.T, conn net.Conn) {
+	return func(connID int, t *testing.T, conn net.Conn, _ *net.TCPConn) {
 		defer func() {
 			err := conn.Close()
 			if err != nil {
@@ -148,9 +158,9 @@ func disconnectHandler(closeFirst int, goodbyeMsg string) connHandler {
 			// before closing
 			if goodbyeMsg != "" {
 				_, _ = fmt.Fprintf(conn, "%s\r\n", goodbyeMsg)
-				fmt.Printf("Wrote goodbye msg: %s\n", goodbyeMsg)
+				t.Logf("Wrote goodbye msg: %s", goodbyeMsg)
 			}
-			fmt.Printf("Cutting off client early\n")
+			t.Log("Cutting off client early")
 			return
 		}
 		_, _ = conn.Write([]byte("250 Sure. Go on. \r\n"))
@@ -169,7 +179,7 @@ func disconnectHandler(closeFirst int, goodbyeMsg string) connHandler {
 }
 
 func badEmailHandler(messagesToProcess int) connHandler {
-	return func(_ int, t *testing.T, conn net.Conn) {
+	return func(_ int, t *testing.T, conn net.Conn, _ *net.TCPConn) {
 		defer func() {
 			err := conn.Close()
 			if err != nil {
@@ -196,23 +206,70 @@ func badEmailHandler(messagesToProcess int) connHandler {
 	}
 }
 
-func setup(t *testing.T) (*MailerImpl, net.Listener, func()) {
+// The rstHandler authenticates the client like the normalHandler but
+// additionally processes an email flow (e.g. MAIL, RCPT and DATA
+// commands). When the `connID` is <= `rstFirst` the socket of the
+// listening connection is set to abruptively close (sends TCP RST but
+// no FIN). The listening connection is closed immediately after the
+// MAIL command is received and prior to issuing a 250 response. In this
+// way the first `rstFirst` connections will not complete normally and
+// can be tested for reconnection logic.
+func rstHandler(rstFirst int) connHandler {
+	return func(connID int, t *testing.T, tlsConn net.Conn, tcpConn *net.TCPConn) {
+		defer func() {
+			err := tcpConn.Close()
+			if err != nil {
+				t.Errorf("conn.Close: %s", err)
+			}
+		}()
+		authenticateClient(t, tlsConn)
+
+		buf := bufio.NewReader(tlsConn)
+		if err := expect(t, buf, "MAIL FROM:<<you-are-a-winner@example.com>> BODY=8BITMIME"); err != nil {
+			return
+		}
+		// Set the socket of the listening connection to abruptively
+		// close.
+		if connID <= rstFirst {
+			err := tcpConn.SetLinger(0)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			t.Log("Socket set for abruptive close. Cutting off client early")
+			return
+		}
+		_, _ = tlsConn.Write([]byte("250 Sure. Go on. \r\n"))
+
+		if err := expect(t, buf, "RCPT TO:<hi@bye.com>"); err != nil {
+			return
+		}
+		_, _ = tlsConn.Write([]byte("250 Tell Me More \r\n"))
+
+		if err := expect(t, buf, "DATA"); err != nil {
+			return
+		}
+		_, _ = tlsConn.Write([]byte("354 Cool Data\r\n"))
+		_, _ = tlsConn.Write([]byte("250 Peace Out\r\n"))
+	}
+}
+
+func setup(t *testing.T) (*MailerImpl, *net.TCPListener, func()) {
 	fromAddress, _ := mail.ParseAddress("you-are-a-winner@example.com")
 	log := blog.UseMock()
 
-	keyPair, err := tls.LoadX509KeyPair("../test/mail-test-srv/localhost/cert.pem", "../test/mail-test-srv/localhost/key.pem")
-	if err != nil {
-		t.Fatalf("loading keypair: %s", err)
-	}
 	// Listen on port 0 to get any free available port
-	l, err := tls.Listen("tcp", ":0", &tls.Config{
-		Certificates: []tls.Certificate{keyPair},
-	})
+	tcpAddr, err := net.ResolveTCPAddr("tcp", ":0")
+	if err != nil {
+		t.Fatalf("resolving tcp addr: %s", err)
+	}
+	tcpl, err := net.ListenTCP("tcp", tcpAddr)
 	if err != nil {
 		t.Fatalf("listen: %s", err)
 	}
+
 	cleanUp := func() {
-		err := l.Close()
+		err := tcpl.Close()
 		if err != nil {
 			t.Errorf("listen.Close: %s", err)
 		}
@@ -230,12 +287,15 @@ func setup(t *testing.T) (*MailerImpl, net.Listener, func()) {
 
 	// We can look at the listener Addr() to figure out which free port was
 	// assigned by the operating system
-	addr := l.Addr().(*net.TCPAddr)
-	port := addr.Port
+
+	_, port, err := net.SplitHostPort(tcpl.Addr().String())
+	if err != nil {
+		t.Fatal("failed parsing port from tcp listen")
+	}
 
 	m := New(
 		"localhost",
-		strconv.Itoa(port),
+		port,
 		"user@example.com",
 		"passwd",
 		smtpRoots,
@@ -244,7 +304,7 @@ func setup(t *testing.T) (*MailerImpl, net.Listener, func()) {
 		metrics.NoopRegisterer,
 		time.Second*2, time.Second*10)
 
-	return m, l, cleanUp
+	return m, tcpl, cleanUp
 }
 
 func TestConnect(t *testing.T) {
@@ -337,7 +397,7 @@ func TestOtherError(t *testing.T) {
 	m, l, cleanUp := setup(t)
 	defer cleanUp()
 
-	go listenForever(l, t, func(_ int, t *testing.T, conn net.Conn) {
+	go listenForever(l, t, func(_ int, t *testing.T, conn net.Conn, _ *net.TCPConn) {
 		defer func() {
 			err := conn.Close()
 			if err != nil {
@@ -384,7 +444,7 @@ func TestOtherError(t *testing.T) {
 	m, l, cleanUp = setup(t)
 	defer cleanUp()
 
-	go listenForever(l, t, func(_ int, t *testing.T, conn net.Conn) {
+	go listenForever(l, t, func(_ int, t *testing.T, conn net.Conn, _ *net.TCPConn) {
 		defer func() {
 			err := conn.Close()
 			if err != nil {
@@ -421,4 +481,26 @@ func TestOtherError(t *testing.T) {
 	// We expect there to be an error
 	test.AssertError(t, err, "SendMail didn't fail as expected")
 	test.AssertEquals(t, err.Error(), "999 1.1.1 This would probably be bad? (also, on sending RSET: short response: nop)")
+}
+
+func TestReconnectAfterRST(t *testing.T) {
+	m, l, cleanUp := setup(t)
+	defer cleanUp()
+	const rstConns = 5
+
+	// Configure a test server that will RST and disconnect the first
+	// `closedConns` connections
+	go listenForever(l, t, rstHandler(rstConns))
+
+	// With a mailer client that has a max attempt > `closedConns` we expect no
+	// error. The message should be delivered after `closedConns` reconnect
+	// attempts.
+	err := m.Connect()
+	if err != nil {
+		t.Errorf("Failed to connect: %s", err)
+	}
+	err = m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
+	if err != nil {
+		t.Errorf("Expected SendMail() to not fail. Got err: %s", err)
+	}
 }
