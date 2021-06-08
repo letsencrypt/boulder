@@ -36,6 +36,7 @@ $(OBJDIR):
 $(CMD_BINS): build_cmds
 
 build_cmds: | $(OBJDIR)
+	echo $(OBJECTS)
 	GOBIN=$(OBJDIR) GO111MODULE=on go install -mod=vendor $(GO_BUILD_FLAGS) ./...
 	cp $(OBJDIR)/boulder-va $(OBJDIR)/boulder-remoteva
 
@@ -63,4 +64,4 @@ deb: build
 		--package "$(ARCHIVEDIR)/boulder-$(VERSION)-$(COMMIT_ID).x86_64.deb" \
 		--description "Boulder is an ACME-compatible X.509 Certificate Authority" \
 		--maintainer "$(MAINTAINER)" \
-		test/config/ sa/_db data/ $(OBJECTS)
+		test/config/ sa/_db data/ $(OBJECTS) bin/ct-test-srv
