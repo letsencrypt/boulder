@@ -39,37 +39,172 @@ func TestIntervalOK(t *testing.T) {
 	}
 }
 
-// makeFile writes the given content into a temporary file, returning
-// the filename (which should be deleted when done).
-func makeFile(content string) (string, error) {
-	tmpfile, err := ioutil.TempFile("", "")
-	if err != nil {
-		return "", err
-	}
+func setupMakeRecipientList(t *testing.T, contents string) string {
+	entryFile, err := ioutil.TempFile("", "")
+	test.AssertNotError(t, err, "couldn't create temp file")
 
-	if _, err := tmpfile.Write([]byte(content)); err != nil {
-		return "", err
-	}
-	if err := tmpfile.Close(); err != nil {
-		return "", err
-	}
-	return tmpfile.Name(), nil
+	_, err = entryFile.WriteString(contents)
+	test.AssertNotError(t, err, "couldn't write contents to temp file")
+
+	err = entryFile.Close()
+	test.AssertNotError(t, err, "couldn't close temp file")
+	return entryFile.Name()
 }
 
-func TestReadRecipientsListMismatchedColumns(t *testing.T) {
-	bad := `id, domainName, date
+// `MakeRecipientList` Happy Paths
+
+func TestMakeRecipientList(t *testing.T) {
+	contents := `id, domainName, date
+10,example.com,2018-11-21
+23,example.net,2018-11-22`
+
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	list, err := makeRecipientList(entryFile, "")
+	fmt.Println(list)
+	test.AssertNotError(t, err, "received an error for a valid CSV file")
+
+	expected := []recipient{
+		{id: 10, Extra: map[string]string{"date": "2018-11-21", "domainName": "example.com"}},
+		{id: 23, Extra: map[string]string{"date": "2018-11-22", "domainName": "example.net"}},
+	}
+	test.AssertDeepEquals(t, list, expected)
+
+	contents = `id	domainName	date
+10	example.com	2018-11-21
+23	example.net	2018-11-22`
+
+	entryFile = setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	list, err = makeRecipientList("", entryFile)
+	test.AssertNotError(t, err, "received an error for a valid TSV file")
+	test.AssertDeepEquals(t, list, expected)
+}
+
+func TestMakeRecipientListNoExtraColumns(t *testing.T) {
+	contents := `id
+10
+23`
+
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, err := makeRecipientList(entryFile, "")
+	test.AssertNotError(t, err, "received an error for a valid CSV file")
+}
+
+// `MakeRecipientList` Sad Paths
+func TestMakeRecipientsListFileNoExist(t *testing.T) {
+	_, err := makeRecipientList("i_do_not_exist.csv", "")
+	test.AssertError(t, err, "expected error for CSV file that doesn't exist")
+
+	_, err = makeRecipientList("", "i_do_not_exist.tsv")
+	test.AssertError(t, err, "expected error for TSV file that doesn't exist")
+}
+
+func TestMakeRecipientListsWithTrailingDelimiters(t *testing.T) {
+	contents := `id, domainName, date
+10,example.com,2018-11-21
+23,example.net,`
+
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, err := makeRecipientList(entryFile, "")
+	test.AssertError(t, err, "failed to error on CSV file with trailing delimiter in entry")
+
+	contents = `id, domainName, date,
 10,example.com,2018-11-21
 23,example.net`
-	badFileName, err := makeFile(bad)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(badFileName)
-	recipients, err := readRecipientsList(badFileName)
-	if err == nil {
-		t.Fatalf("reading bad CSV file should have errored, but got %v",
-			recipients)
-	}
+
+	entryFile = setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, err = makeRecipientList(entryFile, "")
+	test.AssertError(t, err, "failed to error on CSV file with trailing delimiter in header")
+
+	contents = `id	domainName	date
+10	example.com	2018-11-21
+23	example.net	`
+
+	entryFile = setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, err = makeRecipientList("", entryFile)
+	test.AssertError(t, err, "failed to error on TSV file with trailing delimiter in entry")
+
+	contents = `id	domainName	date	
+10	example.com	2018-11-21
+23	example.net`
+
+	entryFile = setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, err = makeRecipientList("", entryFile)
+	test.AssertError(t, err, "failed to error on TSV file with trailing delimiter in header")
+}
+
+func TestMakeRecipientListWithEmptyLine(t *testing.T) {
+	contents := `id, domainName, date
+10,example.com,2018-11-21
+
+23,example.net,2018-11-22`
+
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, err := makeRecipientList(entryFile, "")
+	test.AssertNotError(t, err, "received an error for a valid CSV file")
+}
+
+func TestMakeRecipientListWithMismatchedColumns(t *testing.T) {
+	contents := `id, domainName, date
+10,example.com,2018-11-21
+23,example.net`
+
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, err := makeRecipientList(entryFile, "")
+	test.AssertError(t, err, "failed to error on CSV file with mismatched columns")
+}
+
+func TestMakeRecipientListWithDuplicateIDs(t *testing.T) {
+	contents := `id, domainName, date
+10,example.com,2018-11-21
+10,example.net,2018-11-22`
+
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, err := makeRecipientList(entryFile, "")
+	test.AssertError(t, err, "expected error for CSV file that contains duplicate IDs")
+}
+
+func TestMakeRecipientListWithUnparsableID(t *testing.T) {
+	contents := `id, domainName, date
+10,example.com,2018-11-21
+twenty,example.net,2018-11-22`
+
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, err := makeRecipientList(entryFile, "")
+	test.AssertError(t, err, "expected error for CSV file that contains an unparsable registration ID")
+}
+
+func TestMakeRecipientListWithoutIDHeader(t *testing.T) {
+	contents := `notId, domainName, date
+10,example.com,2018-11-21
+twenty,example.net,2018-11-22`
+
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, err := makeRecipientList(entryFile, "")
+	test.AssertError(t, err, "expected error for CSV file missing header field `id`")
 }
 
 func TestSleepInterval(t *testing.T) {
@@ -86,7 +221,7 @@ func TestSleepInterval(t *testing.T) {
 		sleepInterval: sleepLen * time.Second,
 		targetRange:   interval{start: "", end: "\xFF"},
 		clk:           newFakeClock(t),
-		destinations:  recipients,
+		recipients:    recipients,
 		dbMap:         dbMap,
 	}
 
@@ -94,7 +229,7 @@ func TestSleepInterval(t *testing.T) {
 	// After it returns, we expect (sleepLen * number of destinations) seconds has
 	// elapsed
 	err := m.run()
-	test.AssertNotError(t, err, "error calling mailer run()")
+	test.AssertNotError(t, err, "unexpected error when calling mailer.run()")
 	expectedEnd := newFakeClock(t)
 	expectedEnd.Add(time.Second * time.Duration(sleepLen*len(recipients)))
 	test.AssertEquals(t, m.clk.Now(), expectedEnd.Now())
@@ -107,14 +242,14 @@ func TestSleepInterval(t *testing.T) {
 		sleepInterval: 0,
 		targetRange:   interval{end: "\xFF"},
 		clk:           newFakeClock(t),
-		destinations:  recipients,
+		recipients:    recipients,
 		dbMap:         dbMap,
 	}
 
 	// Call run() - this should blast through all destinations without sleep
 	// After it returns, we expect no clock time to have elapsed on the fake clock
 	err = m.run()
-	test.AssertNotError(t, err, "error calling mailer run()")
+	test.AssertNotError(t, err, "unexpected error when calling mailer.run()")
 	expectedEnd = newFakeClock(t)
 	test.AssertEquals(t, m.clk.Now(), expectedEnd.Now())
 }
@@ -135,7 +270,7 @@ func TestMailIntervals(t *testing.T) {
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
-		destinations:  recipients,
+		recipients:    recipients,
 		emailTemplate: tmpl,
 		targetRange:   interval{start: "\xFF", end: "\xFF\xFF"},
 		sleepInterval: 0,
@@ -154,7 +289,7 @@ func TestMailIntervals(t *testing.T) {
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
-		destinations:  recipients,
+		recipients:    recipients,
 		emailTemplate: tmpl,
 		targetRange:   interval{},
 		sleepInterval: -10,
@@ -165,7 +300,7 @@ func TestMailIntervals(t *testing.T) {
 	mc.Clear()
 	err = m.run()
 	test.AssertEquals(t, len(mc.Messages), 0)
-	test.AssertEquals(t, err.Error(), "sleep interval (-10) is < 0")
+	test.AssertEquals(t, err.Error(), "sleep interval cannot be negative, got: -10")
 
 	// Create a mailer with an interval starting with a specific email address.
 	// It should send email to that address and others alphabetically higher.
@@ -174,7 +309,7 @@ func TestMailIntervals(t *testing.T) {
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
-		destinations:  []recipient{{id: 1}, {id: 2}, {id: 3}, {id: 4}},
+		recipients:    []recipient{{id: 1}, {id: 2}, {id: 3}, {id: 4}},
 		emailTemplate: tmpl,
 		targetRange:   interval{start: "test-example-updated@letsencrypt.org", end: "\xFF"},
 		sleepInterval: 0,
@@ -206,7 +341,7 @@ func TestMailIntervals(t *testing.T) {
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
-		destinations:  []recipient{{id: 1}, {id: 2}, {id: 3}, {id: 4}},
+		recipients:    []recipient{{id: 1}, {id: 2}, {id: 3}, {id: 4}},
 		emailTemplate: tmpl,
 		targetRange:   interval{end: "test-example-updated@letsencrypt.org"},
 		sleepInterval: 0,
@@ -243,7 +378,7 @@ func TestMessageContentStatic(t *testing.T) {
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
-		destinations:  []recipient{{id: 1}},
+		recipients:    []recipient{{id: 1}},
 		emailTemplate: template.Must(template.New("letter").Parse("an email body")),
 		targetRange:   interval{end: "\xFF"},
 		sleepInterval: 0,
@@ -275,11 +410,11 @@ func TestMessageContentInterpolated(t *testing.T) {
 	dbMap := mockEmailResolver{}
 	mc := &mocks.Mailer{}
 	m := &mailer{
-		log:          blog.UseMock(),
-		mailer:       mc,
-		dbMap:        dbMap,
-		subject:      "Test Subject",
-		destinations: recipients,
+		log:        blog.UseMock(),
+		mailer:     mc,
+		dbMap:      dbMap,
+		subject:    "Test Subject",
+		recipients: recipients,
 		emailTemplate: template.Must(template.New("letter").Parse(
 			`issued by {{range .}}{{ .Extra.validationMethod }}{{end}}`)),
 		targetRange:   interval{end: "\xFF"},
@@ -331,11 +466,11 @@ func TestMessageContentInterpolatedMultiple(t *testing.T) {
 	dbMap := mockEmailResolver{}
 	mc := &mocks.Mailer{}
 	m := &mailer{
-		log:          blog.UseMock(),
-		mailer:       mc,
-		dbMap:        dbMap,
-		subject:      "Test Subject",
-		destinations: recipients,
+		log:        blog.UseMock(),
+		mailer:     mc,
+		dbMap:      dbMap,
+		subject:    "Test Subject",
+		recipients: recipients,
 		emailTemplate: template.Must(template.New("letter").Parse(
 			`issued for:
 {{range .}}{{ .Extra.domain }}
@@ -371,7 +506,7 @@ type mockEmailResolver struct{}
 // into a list of anonymous structs
 func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...interface{}) error {
 	// The "dbList" is just a list of contact records in memory
-	dbList := []contactJSON{
+	dbList := []queryResult{
 		{
 			ID:      1,
 			Contact: []byte(`["mailto:example@letsencrypt.org"]`),
@@ -423,21 +558,21 @@ func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...inte
 	}
 
 	// Play the type cast game so that we can dig into the arguments map and get
-	// out an integer "id" parameter
+	// out an int64 `id` parameter.
 	argsRaw := args[0]
 	argsMap, ok := argsRaw.(map[string]interface{})
 	if !ok {
 		return fmt.Errorf("incorrect args type %T", args)
 	}
 	idRaw := argsMap["id"]
-	id, ok := idRaw.(int)
+	id, ok := idRaw.(int64)
 	if !ok {
 		return fmt.Errorf("incorrect args ID type %T", id)
 	}
 
-	// Play the type cast game to get a pointer to the output `contactJSON`
-	// pointer so we can write the result from the db list
-	outputPtr, ok := output.(*contactJSON)
+	// Play the type cast game to get a `*queryResult` so we can write the
+	// result from the db list
+	outputPtr, ok := output.(*queryResult)
 	if !ok {
 		return fmt.Errorf("incorrect output type %T", output)
 	}
@@ -455,6 +590,11 @@ func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...inte
 		}
 	}
 	return nil
+}
+
+func (bs mockEmailResolver) Exec(query string, args ...interface{}) (sql.Result, error) {
+	var result sql.Result
+	return result, nil
 }
 
 func TestResolveEmails(t *testing.T) {
@@ -508,7 +648,7 @@ func TestResolveEmails(t *testing.T) {
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       "Test",
-		destinations:  recipients,
+		recipients:    recipients,
 		emailTemplate: tmpl,
 		targetRange:   interval{end: "\xFF"},
 		sleepInterval: 0,
