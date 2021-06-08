@@ -1,5 +1,3 @@
-package cabf_br
-
 /*
  * ZLint Copyright 2021 Regents of the University of Michigan
  *
@@ -14,44 +12,39 @@ package cabf_br
  * permissions and limitations under the License.
  */
 
-import (
-	"github.com/zmap/zcrypto/dsa"
+package cabf_br
 
+import (
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
 	"github.com/zmap/zlint/v3/util"
 )
 
-type dsaParamsMissing struct{}
+type prohibitDSAUsage struct{}
 
 func init() {
 	lint.RegisterLint(&lint.Lint{
-		Name:            "e_dsa_params_missing",
-		Description:     "DSA: Certificates MUST include all domain parameters",
-		Citation:        "BRs v1.7.0: 6.1.6",
-		Source:          lint.CABFBaselineRequirements,
-		EffectiveDate:   util.CABEffectiveDate,
-		IneffectiveDate: util.CABFBRs_1_7_1_Date,
-		Lint:            &dsaParamsMissing{},
+		Name:          "e_br_prohibit_dsa_usage",
+		Description:   "DSA was removed from the Baseline Requirements as a valid signature algorithm in 1.7.1.",
+		Citation:      "BRs: v1.7.1",
+		Source:        lint.CABFBaselineRequirements,
+		EffectiveDate: util.CABFBRs_1_7_1_Date,
+		Lint:          &prohibitDSAUsage{},
 	})
 }
 
-func (l *dsaParamsMissing) Initialize() error {
+func (l *prohibitDSAUsage) Initialize() error {
 	return nil
 }
 
-func (l *dsaParamsMissing) CheckApplies(c *x509.Certificate) bool {
-	return c.PublicKeyAlgorithm == x509.DSA
+func (l *prohibitDSAUsage) CheckApplies(c *x509.Certificate) bool {
+	return true
 }
 
-func (l *dsaParamsMissing) Execute(c *x509.Certificate) *lint.LintResult {
-	dsaKey, ok := c.PublicKey.(*dsa.PublicKey)
-	if !ok {
-		return &lint.LintResult{Status: lint.Fatal}
-	}
-	params := dsaKey.Parameters
-	if params.P.BitLen() == 0 || params.Q.BitLen() == 0 || params.G.BitLen() == 0 {
+func (l *prohibitDSAUsage) Execute(c *x509.Certificate) *lint.LintResult {
+	if c.PublicKeyAlgorithm == x509.DSA {
 		return &lint.LintResult{Status: lint.Error}
 	}
+
 	return &lint.LintResult{Status: lint.Pass}
 }

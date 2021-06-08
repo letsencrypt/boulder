@@ -25,6 +25,17 @@ import (
 	"github.com/zmap/zlint/v3/util"
 )
 
+func init() {
+	lint.RegisterLint(&lint.Lint{
+		Name:          "e_subject_printable_string_badalpha",
+		Description:   "PrintableString type's alphabet only includes a-z, A-Z, 0-9, and 11 special characters",
+		Citation:      "RFC 5280: Appendix B. ASN.1 Notes",
+		Source:        lint.RFC5280,
+		EffectiveDate: util.RFC2459Date,
+		Lint:          &subjectPrintableStringBadAlpha{},
+	})
+}
+
 var (
 	// Per RFC 5280, Appendix B. ASN.1 Notes:
 	//   The character string type PrintableString supports a very basic Latin
@@ -44,17 +55,6 @@ func validatePrintableString(rawPS []byte) error {
 }
 
 type subjectPrintableStringBadAlpha struct {
-}
-
-func init() {
-	lint.RegisterLint(&lint.Lint{
-		Name:          "e_subject_printable_string_badalpha",
-		Description:   "PrintableString type's alphabet only includes a-z, A-Z, 0-9, and 11 special characters",
-		Citation:      "RFC 5280: Appendix B. ASN.1 Notes",
-		Source:        lint.RFC5280,
-		EffectiveDate: util.RFC2459Date,
-		Lint:          &subjectPrintableStringBadAlpha{},
-	})
 }
 
 func (l *subjectPrintableStringBadAlpha) Initialize() error {

@@ -15,7 +15,7 @@ package cabf_br
  */
 
 import (
-	"crypto/dsa"
+	"github.com/zmap/zcrypto/dsa"
 
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"

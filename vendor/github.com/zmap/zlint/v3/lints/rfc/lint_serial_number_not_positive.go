@@ -59,7 +59,9 @@ func (l *SerialNumberNotPositive) CheckApplies(cert *x509.Certificate) bool {
 }
 
 func (l *SerialNumberNotPositive) Execute(cert *x509.Certificate) *lint.LintResult {
-	if cert.SerialNumber.Sign() == -1 { // -1 Means negative when using big.Sign()
+	// -1 Means negative when using big.Sign()
+	// As per the BitLen docs, "The bit length of 0 is 0."
+	if cert.SerialNumber.Sign() == -1 || cert.SerialNumber.BitLen() == 0 {
 		return &lint.LintResult{Status: lint.Error}
 	} else {
 		return &lint.LintResult{Status: lint.Pass}
