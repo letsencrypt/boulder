@@ -207,6 +207,16 @@ twenty,example.net,2018-11-22`
 	test.AssertError(t, err, "expected error for CSV file missing header field `id`")
 }
 
+func TestMakeRecipientListWithOnlyHeader(t *testing.T) {
+	contents := `id, domainName, date
+`
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, err := makeRecipientList(entryFile, "")
+	test.AssertError(t, err, "expected error for CSV file containing only a header")
+}
+
 func TestSleepInterval(t *testing.T) {
 	const sleepLen = 10
 	mc := &mocks.Mailer{}
