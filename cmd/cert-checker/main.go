@@ -255,7 +255,11 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 		validityPeriod := parsedCert.NotAfter.Sub(parsedCert.NotBefore)
 		if validityPeriod > expectedValidityPeriod {
 			problems = append(problems, fmt.Sprintf("Certificate has a validity period longer than %s", expectedValidityPeriod))
-		} else if validityPeriod < expectedValidityPeriod {
+		} else if validityPeriod.Seconds() < expectedValidityPeriod.Seconds()-1 {
+			// TODO: FIX ME. This is a hack. We need to make cert-checker much more
+			// flexible, so that we don't have to do this every time we change our
+			// validity period. For now, both the expected validity period, and that
+			// period less one second, are acceptable by cert-checker.
 			problems = append(problems, fmt.Sprintf("Certificate has a validity period shorter than %s", expectedValidityPeriod))
 		}
 		// Check the stored issuance time isn't too far back/forward dated
