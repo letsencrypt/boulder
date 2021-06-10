@@ -531,42 +531,6 @@ func TestECDSAAllowList(t *testing.T) {
 	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
 }
 
-// TODO(#5394): This is deprecated and exists to support deployability
-// until `ECDSAAllowedAccounts` is replaced by `ECDSAAllowListFilename`
-// in all staging and production configs.
-func TestDeprecatedECDSAAllowList(t *testing.T) {
-	req := &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID}
-
-	// With allowlist containing arbitraryRegID, issuance should come from ECDSA issuer.
-	ca, _ := issueCertificateSubTestSetup(t)
-	ca.ecdsaAllowList.regIDsMap = make(map[int64]bool)
-	ca.ecdsaAllowList.regIDsMap[arbitraryRegID] = true
-	result, err := ca.IssuePrecertificate(ctx, req)
-	test.AssertNotError(t, err, "Failed to issue certificate")
-	cert, err := x509.ParseCertificate(result.DER)
-	test.AssertNotError(t, err, "Certificate failed to parse")
-	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
-
-	// With allowlist not containing arbitraryRegID, issuance should fall back to RSA issuer.
-	delete(ca.ecdsaAllowList.regIDsMap, arbitraryRegID)
-	ca.ecdsaAllowList.regIDsMap[2002] = true
-	result, err = ca.IssuePrecertificate(ctx, req)
-	test.AssertNotError(t, err, "Failed to issue certificate")
-	cert, err = x509.ParseCertificate(result.DER)
-	test.AssertNotError(t, err, "Certificate failed to parse")
-	test.AssertByteEquals(t, cert.RawIssuer, caCert.RawSubject)
-
-	// With empty allowlist but ECDSAForAll enabled, issuance should come from ECDSA issuer.
-	ca, _ = issueCertificateSubTestSetup(t)
-	_ = features.Set(map[string]bool{"ECDSAForAll": true})
-	defer features.Reset()
-	result, err = ca.IssuePrecertificate(ctx, req)
-	test.AssertNotError(t, err, "Failed to issue certificate")
-	cert, err = x509.ParseCertificate(result.DER)
-	test.AssertNotError(t, err, "Certificate failed to parse")
-	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
-}
-
 func TestInvalidCSRs(t *testing.T) {
 	testCases := []struct {
 		name         string
