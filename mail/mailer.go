@@ -306,15 +306,15 @@ func (m *MailerImpl) sendOne(to []string, subject, msg string) error {
 	return nil
 }
 
-// RecoverableSMTPError is returned by SendMail when the server rejects a message
+// BadAddressSMTPError is returned by SendMail when the server rejects a message
 // but for a reason that doesn't prevent us from continuing to send mail. The
 // error message contains the error code and the error message returned from the
 // server.
-type RecoverableSMTPError struct {
+type BadAddressSMTPError struct {
 	Message string
 }
 
-func (e RecoverableSMTPError) Error() string {
+func (e BadAddressSMTPError) Error() string {
 	return e.Message
 }
 
@@ -379,7 +379,7 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			continue
 		} else if errors.As(err, &protoErr) && recoverableErrorCodes[protoErr.Code] {
 			m.sendMailAttempts.WithLabelValues("failure", fmt.Sprintf("SMTP %d", protoErr.Code)).Inc()
-			return RecoverableSMTPError{fmt.Sprintf("%d: %s", protoErr.Code, protoErr.Msg)}
+			return BadAddressSMTPError{fmt.Sprintf("%d: %s", protoErr.Code, protoErr.Msg)}
 		} else {
 			// If it wasn't an EOF error or a recoverable SMTP error it is unexpected and we
 			// return from SendMail() with the error

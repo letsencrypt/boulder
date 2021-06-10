@@ -362,9 +362,9 @@ func TestBadEmailError(t *testing.T) {
 		t.Errorf("Expected SendMail() to return an RecoverableSMTPError, got nil")
 	}
 	expected := "401: 4.1.3 Bad recipient address syntax"
-	var rcptErr RecoverableSMTPError
-	test.AssertErrorWraps(t, err, &rcptErr)
-	test.AssertEquals(t, rcptErr.Message, expected)
+	var badAddrErr BadAddressSMTPError
+	test.AssertErrorWraps(t, err, &badAddrErr)
+	test.AssertEquals(t, badAddrErr.Message, expected)
 }
 
 func TestReconnectSMTP421(t *testing.T) {
