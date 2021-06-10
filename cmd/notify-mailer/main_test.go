@@ -61,8 +61,7 @@ func TestMakeRecipientList(t *testing.T) {
 	entryFile := setupMakeRecipientList(t, contents)
 	defer os.Remove(entryFile)
 
-	list, err := makeRecipientList(entryFile, "")
-	fmt.Println(list)
+	list, err := makeRecipientList(&entryFile, nil)
 	test.AssertNotError(t, err, "received an error for a valid CSV file")
 
 	expected := []recipient{
@@ -78,7 +77,7 @@ func TestMakeRecipientList(t *testing.T) {
 	entryFile = setupMakeRecipientList(t, contents)
 	defer os.Remove(entryFile)
 
-	list, err = makeRecipientList("", entryFile)
+	list, err = makeRecipientList(nil, &entryFile)
 	test.AssertNotError(t, err, "received an error for a valid TSV file")
 	test.AssertDeepEquals(t, list, expected)
 }
@@ -91,16 +90,17 @@ func TestMakeRecipientListNoExtraColumns(t *testing.T) {
 	entryFile := setupMakeRecipientList(t, contents)
 	defer os.Remove(entryFile)
 
-	_, err := makeRecipientList(entryFile, "")
+	_, err := makeRecipientList(&entryFile, nil)
 	test.AssertNotError(t, err, "received an error for a valid CSV file")
 }
 
 // `MakeRecipientList` Sad Paths
 func TestMakeRecipientsListFileNoExist(t *testing.T) {
-	_, err := makeRecipientList("i_do_not_exist.csv", "")
+	var nilFilename *string
+	_, err := makeRecipientList(nilFilename, nil)
 	test.AssertError(t, err, "expected error for CSV file that doesn't exist")
 
-	_, err = makeRecipientList("", "i_do_not_exist.tsv")
+	_, err = makeRecipientList(nil, nilFilename)
 	test.AssertError(t, err, "expected error for TSV file that doesn't exist")
 }
 
@@ -112,7 +112,7 @@ func TestMakeRecipientListsWithTrailingDelimiters(t *testing.T) {
 	entryFile := setupMakeRecipientList(t, contents)
 	defer os.Remove(entryFile)
 
-	_, err := makeRecipientList(entryFile, "")
+	_, err := makeRecipientList(&entryFile, nil)
 	test.AssertError(t, err, "failed to error on CSV file with trailing delimiter in entry")
 
 	contents = `id, domainName, date,
@@ -122,7 +122,7 @@ func TestMakeRecipientListsWithTrailingDelimiters(t *testing.T) {
 	entryFile = setupMakeRecipientList(t, contents)
 	defer os.Remove(entryFile)
 
-	_, err = makeRecipientList(entryFile, "")
+	_, err = makeRecipientList(&entryFile, nil)
 	test.AssertError(t, err, "failed to error on CSV file with trailing delimiter in header")
 
 	contents = `id	domainName	date
@@ -132,7 +132,7 @@ func TestMakeRecipientListsWithTrailingDelimiters(t *testing.T) {
 	entryFile = setupMakeRecipientList(t, contents)
 	defer os.Remove(entryFile)
 
-	_, err = makeRecipientList("", entryFile)
+	_, err = makeRecipientList(&entryFile, nil)
 	test.AssertError(t, err, "failed to error on TSV file with trailing delimiter in entry")
 
 	contents = `id	domainName	date	
@@ -142,7 +142,7 @@ func TestMakeRecipientListsWithTrailingDelimiters(t *testing.T) {
 	entryFile = setupMakeRecipientList(t, contents)
 	defer os.Remove(entryFile)
 
-	_, err = makeRecipientList("", entryFile)
+	_, err = makeRecipientList(&entryFile, nil)
 	test.AssertError(t, err, "failed to error on TSV file with trailing delimiter in header")
 }
 
@@ -155,7 +155,7 @@ func TestMakeRecipientListWithEmptyLine(t *testing.T) {
 	entryFile := setupMakeRecipientList(t, contents)
 	defer os.Remove(entryFile)
 
-	_, err := makeRecipientList(entryFile, "")
+	_, err := makeRecipientList(&entryFile, nil)
 	test.AssertNotError(t, err, "received an error for a valid CSV file")
 }
 
@@ -167,7 +167,7 @@ func TestMakeRecipientListWithMismatchedColumns(t *testing.T) {
 	entryFile := setupMakeRecipientList(t, contents)
 	defer os.Remove(entryFile)
 
-	_, err := makeRecipientList(entryFile, "")
+	_, err := makeRecipientList(&entryFile, nil)
 	test.AssertError(t, err, "failed to error on CSV file with mismatched columns")
 }
 
@@ -179,7 +179,7 @@ func TestMakeRecipientListWithDuplicateIDs(t *testing.T) {
 	entryFile := setupMakeRecipientList(t, contents)
 	defer os.Remove(entryFile)
 
-	_, err := makeRecipientList(entryFile, "")
+	_, err := makeRecipientList(&entryFile, nil)
 	test.AssertError(t, err, "expected error for CSV file that contains duplicate IDs")
 }
 
@@ -191,7 +191,7 @@ twenty,example.net,2018-11-22`
 	entryFile := setupMakeRecipientList(t, contents)
 	defer os.Remove(entryFile)
 
-	_, err := makeRecipientList(entryFile, "")
+	_, err := makeRecipientList(&entryFile, nil)
 	test.AssertError(t, err, "expected error for CSV file that contains an unparsable registration ID")
 }
 
@@ -203,7 +203,7 @@ twenty,example.net,2018-11-22`
 	entryFile := setupMakeRecipientList(t, contents)
 	defer os.Remove(entryFile)
 
-	_, err := makeRecipientList(entryFile, "")
+	_, err := makeRecipientList(&entryFile, nil)
 	test.AssertError(t, err, "expected error for CSV file missing header field `id`")
 }
 
@@ -213,7 +213,7 @@ func TestMakeRecipientListWithOnlyHeader(t *testing.T) {
 	entryFile := setupMakeRecipientList(t, contents)
 	defer os.Remove(entryFile)
 
-	_, err := makeRecipientList(entryFile, "")
+	_, err := makeRecipientList(&entryFile, nil)
 	test.AssertError(t, err, "expected error for CSV file containing only a header")
 }
 

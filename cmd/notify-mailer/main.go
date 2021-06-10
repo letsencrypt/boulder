@@ -363,16 +363,16 @@ func parseRecipientList(recipientList *csv.Reader) ([]recipient, error) {
 
 // makeRecipientList determines the format of the recipient list file,
 // constructs a reader, and returns the result of parsing with that reader.
-func makeRecipientList(csvFilename, tsvFilename string) ([]recipient, error) {
+func makeRecipientList(csvFilename, tsvFilename *string) ([]recipient, error) {
 	var filename string
 	var delimiter rune
 
-	if csvFilename != "" {
-		filename = csvFilename
-	} else if tsvFilename != "" {
+	if csvFilename != nil {
+		filename = *csvFilename
+	} else if tsvFilename != nil {
 		// We can use a `*csv.Reader` to parse a TSV file, we just have to
 		// supply a custom delimiter in rune form.
-		filename = tsvFilename
+		filename = *tsvFilename
 		delimiter = '\t'
 	}
 
@@ -535,7 +535,7 @@ func main() {
 	address, err := mail.ParseAddress(*from)
 	cmd.FailOnError(err, fmt.Sprintf("Parsing %q", *from))
 
-	recipients, err := makeRecipientList(*recipientListCSV, *recipientListTSV)
+	recipients, err := makeRecipientList(recipientListCSV, recipientListTSV)
 	cmd.FailOnError(err, "Couldn't populate recipients from provided recipient list")
 
 	var mailClient bmail.Mailer
