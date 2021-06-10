@@ -49,6 +49,8 @@ import (
 	"gopkg.in/square/go-jose.v2"
 )
 
+var errIncompleteGRPCRequest = errors.New("incomplete gRPC request message")
+
 type caaChecker interface {
 	IsCAAValid(
 		ctx context.Context,
@@ -339,7 +341,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Registration, error) {
 	// Error if the request is nil, there is no account key or IP address
 	if request == nil || len(request.Key) == 0 || len(request.InitialIP) == 0 {
-		return nil, errors.New("incomplete gRPC request message")
+		return nil, errIncompleteGRPCRequest
 	}
 
 	// Convert key bytes to key
@@ -1475,7 +1477,7 @@ func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []st
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
 	// Error if the request is nil, there is no account key or IP address
 	if req.Base == nil || len(req.Base.Key) == 0 || len(req.Base.InitialIP) == 0 || req.Base.Id == 0 {
-		return nil, errors.New("incomplete gRPC request message")
+		return nil, errIncompleteGRPCRequest
 	}
 
 	if err := validateContactsPresent(req.Base.Contact, req.Base.ContactsPresent); err != nil {
@@ -1630,6 +1632,10 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
+
+	if req.Authz == nil || req.Authz.Id == "" || req.Authz.Identifier == "" || req.Authz.Status == "" || req.Authz.Expires == 0 {
+		return nil, errIncompleteGRPCRequest
+	}
 
 	authz, err := bgrpc.PBToAuthz(req.Authz)
 	if err != nil {
@@ -1839,7 +1845,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 // RevokeCertificateWithReg terminates trust in the certificate provided.
 func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*emptypb.Empty, error) {
 	if req == nil || req.Cert == nil {
-		return nil, errors.New("incomplete gRPC request message")
+		return nil, errIncompleteGRPCRequest
 	}
 
 	cert, err := x509.ParseCertificate(req.Cert)
