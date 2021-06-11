@@ -1283,7 +1283,8 @@ func (wfe *WebFrontEndImpl) postChallenge(
 
 		authzPB, err = wfe.RA.PerformValidation(ctx, &rapb.PerformValidationRequest{
 			Authz:          authzPB,
-			ChallengeIndex: int64(challengeIndex)})
+			ChallengeIndex: int64(challengeIndex),
+		})
 		if err != nil || authzPB == nil || authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
 			return
