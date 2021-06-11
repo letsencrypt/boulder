@@ -3,7 +3,6 @@ package probers
 import (
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -17,8 +16,7 @@ type HTTPProbe struct {
 
 // Name returns a string that uniquely identifies the monitor.
 func (p HTTPProbe) Name() string {
-	// Trim trailing hyphen if useragent is not provided
-	return strings.TrimSuffix(fmt.Sprintf("%s-%d-%s", p.url, p.rcodes, p.useragent), "-")
+	return fmt.Sprintf("%s-%d-%s", p.url, p.rcodes, p.useragent)
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Prober`.
