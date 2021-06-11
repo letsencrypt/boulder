@@ -321,7 +321,7 @@ func (e BadAddressSMTPError) Error() string {
 // Based on reading of various SMTP documents these are a handful
 // of errors we are likely to be able to continue sending mail after
 // receiving. The majority of these errors boil down to 'bad address'.
-var recoverableErrorCodes = map[int]bool{
+var badAddressErrorCodes = map[int]bool{
 	401: true, // Invalid recipient
 	422: true, // Recipient mailbox is full
 	441: true, // Recipient server is not responding
@@ -377,7 +377,7 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			m.reconnect()
 			// After reconnecting, loop around and try `sendOne` again.
 			continue
-		} else if errors.As(err, &protoErr) && recoverableErrorCodes[protoErr.Code] {
+		} else if errors.As(err, &protoErr) && badAddressErrorCodes[protoErr.Code] {
 			m.sendMailAttempts.WithLabelValues("failure", fmt.Sprintf("SMTP %d", protoErr.Code)).Inc()
 			return BadAddressSMTPError{fmt.Sprintf("%d: %s", protoErr.Code, protoErr.Msg)}
 		} else {

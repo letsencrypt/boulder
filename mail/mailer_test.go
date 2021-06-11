@@ -359,7 +359,7 @@ func TestBadEmailError(t *testing.T) {
 	err = m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
 	// We expect there to be an error
 	if err == nil {
-		t.Errorf("Expected SendMail() to return an RecoverableSMTPError, got nil")
+		t.Errorf("Expected SendMail() to return an BadAddressSMTPError, got nil")
 	}
 	expected := "401: 4.1.3 Bad recipient address syntax"
 	var badAddrErr BadAddressSMTPError
