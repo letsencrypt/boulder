@@ -79,29 +79,30 @@ func TestHTTPConf_UnmarshalSettings(t *testing.T) {
 }
 
 func TestHTTPProberName(t *testing.T) {
-	// Test without optional field `useragent`
+	// Test with blank `useragent`
 	proberYAML := `
 url: https://www.google.com
 rcodes: [ 200 ]
+useragent: ""
 `
 	c := HTTPConf{}
 	configurer, err := c.UnmarshalSettings([]byte(proberYAML))
 	test.AssertNotError(t, err, "Got error for valid prober config")
 	prober, err := configurer.MakeProber()
 	test.AssertNotError(t, err, "Got error for valid prober config")
-	test.AssertEquals(t, prober.Name(), "https://www.google.com-[200]")
+	test.AssertEquals(t, prober.Name(), "https://www.google.com-[200]-letsencrypt/boulder-observer-http-client")
 
-	// Test with optional field `useragent`
+	// Test with custom `useragent`
 	proberYAML = `
 url: https://www.google.com
 rcodes: [ 200 ]
-useragent: boulder_observer
+useragent: fancy-custom-http-client
 `
 	c = HTTPConf{}
 	configurer, err = c.UnmarshalSettings([]byte(proberYAML))
 	test.AssertNotError(t, err, "Got error for valid prober config")
 	prober, err = configurer.MakeProber()
 	test.AssertNotError(t, err, "Got error for valid prober config")
-	test.AssertEquals(t, prober.Name(), "https://www.google.com-[200]-boulder_observer")
+	test.AssertEquals(t, prober.Name(), "https://www.google.com-[200]-fancy-custom-http-client")
 
 }

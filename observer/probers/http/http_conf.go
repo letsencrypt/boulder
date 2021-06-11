@@ -69,6 +69,11 @@ func (c HTTPConf) MakeProber() (probers.Prober, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Set default User-Agent if none set.
+	if c.UserAgent == "" {
+		c.UserAgent = "letsencrypt/boulder-observer-http-client"
+	}
 	return HTTPProbe{c.URL, c.RCodes, c.UserAgent}, nil
 }
 

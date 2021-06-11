@@ -156,7 +156,8 @@ monitors:
 
 `rcodes`: List of expected HTTP response codes.
 
-`useragent`: String to set HTTP header User-Agent.
+`useragent`: String to set HTTP header User-Agent. If no useragent string
+is provided it will default to `letsencrypt/boulder-observer-http-client`.
 
 ##### Example
 
