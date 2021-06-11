@@ -169,7 +169,7 @@ monitors:
     settings: 
       url: http://letsencrypt.org/FOO
       rcodes: [200, 404]
-      useragent: boulder_observer
+      useragent: letsencrypt/boulder-observer-http-client
 ```
 
 ## Metrics
