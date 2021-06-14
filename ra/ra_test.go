@@ -3878,6 +3878,7 @@ func TestNewOrderMaxNames(t *testing.T) {
 
 	ra.maxNames = 2
 	_, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: 1,
 		Names: []string{
 			"a",
 			"b",

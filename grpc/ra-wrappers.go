@@ -110,15 +110,8 @@ func (rac RegistrationAuthorityClientWrapper) AdministrativelyRevokeCertificate(
 	return nil
 }
 
-func (ras *RegistrationAuthorityClientWrapper) NewOrder(ctx context.Context, request *rapb.NewOrderRequest) (*corepb.Order, error) {
-	resp, err := ras.inner.NewOrder(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil || !orderValid(resp) {
-		return nil, errIncompleteResponse
-	}
-	return resp, nil
+func (rac *RegistrationAuthorityClientWrapper) NewOrder(ctx context.Context, request *rapb.NewOrderRequest) (*corepb.Order, error) {
+	return rac.inner.NewOrder(ctx, request)
 }
 
 func (ras *RegistrationAuthorityClientWrapper) FinalizeOrder(ctx context.Context, request *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
@@ -237,9 +230,6 @@ func (ras *RegistrationAuthorityServerWrapper) AdministrativelyRevokeCertificate
 }
 
 func (ras *RegistrationAuthorityServerWrapper) NewOrder(ctx context.Context, request *rapb.NewOrderRequest) (*corepb.Order, error) {
-	if request == nil || request.RegistrationID == 0 {
-		return nil, errIncompleteRequest
-	}
 	return ras.inner.NewOrder(ctx, request)
 }
 

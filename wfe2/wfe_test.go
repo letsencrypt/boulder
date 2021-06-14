@@ -261,7 +261,8 @@ func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, req *rapb.New
 	return &corepb.Order{
 		Id:               1,
 		RegistrationID:   req.RegistrationID,
-		Expires:          0,
+		Created:          time.Date(2021, 1, 1, 1, 1, 1, 0, time.UTC).UnixNano(),
+		Expires:          time.Date(2021, 2, 1, 1, 1, 1, 0, time.UTC).UnixNano(),
 		Names:            req.Names,
 		Status:           string(core.StatusPending),
 		V2Authorizations: []int64{1},
@@ -2477,7 +2478,7 @@ func TestNewOrder(t *testing.T) {
 			ExpectedBody: `
 			{
 				"status": "pending",
-				"expires": "1970-01-01T00:00:00Z",
+				"expires": "2021-02-01T01:01:01Z",
 				"identifiers": [
 					{ "type": "dns", "value": "thisreallylongexampledomainisabytelongerthanthemaxcnbytelimit.com"},
 					{ "type": "dns", "value": "not-example.com"}
@@ -2494,7 +2495,7 @@ func TestNewOrder(t *testing.T) {
 			ExpectedBody: `
 					{
 						"status": "pending",
-						"expires": "1970-01-01T00:00:00Z",
+						"expires": "2021-02-01T01:01:01Z",
 						"identifiers": [
 							{ "type": "dns", "value": "not-example.com"},
 							{ "type": "dns", "value": "www.not-example.com"}
