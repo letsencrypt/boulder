@@ -981,6 +981,7 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 	// Create a finalized authorization
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 	authz := core.Authorization{
+		ID:             "1337",
 		Identifier:     identifier.DNSIdentifier("not-example.com"),
 		RegistrationID: 1,
 		Status:         "valid",
@@ -3528,6 +3529,10 @@ func TestPerformValidationBadChallengeType(t *testing.T) {
 
 	exp := fc.Now().Add(10 * time.Hour)
 	authz := core.Authorization{
+		ID:             "1337",
+		Identifier:     identifier.DNSIdentifier("not-example.com"),
+		RegistrationID: 1,
+		Status:         "valid",
 		Challenges: []core.Challenge{
 			{
 				Status: core.StatusValid,
