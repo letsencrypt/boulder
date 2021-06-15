@@ -156,6 +156,9 @@ monitors:
 
 `rcodes`: List of expected HTTP response codes.
 
+`useragent`: String to set HTTP header User-Agent. If no useragent string
+is provided it will default to `letsencrypt/boulder-observer-http-client`.
+
 ##### Example
 
 ```yaml
@@ -166,6 +169,7 @@ monitors:
     settings: 
       url: http://letsencrypt.org/FOO
       rcodes: [200, 404]
+      useragent: letsencrypt/boulder-observer-http-client
 ```
 
 ## Metrics

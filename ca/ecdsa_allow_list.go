@@ -99,17 +99,3 @@ func NewECDSAAllowListFromFile(filename string, logger log.Logger, metric *prome
 	allowList.reloader = reloader
 	return allowList, allowList.length(), nil
 }
-
-// NewECDSAAllowListFromConfig is exported to allow `boulder-ca` to
-// construct a new `ECDSAAllowList` object and set the inner `regIDsMap`
-// from a list of registration IDs received in the CA config JSON.
-//
-// TODO(#5394): This is deprecated and exists to support deployability
-// until `ECDSAAllowedAccounts` is replaced by `ECDSAAllowListFilename`
-// in all staging and production configs. An initial entry count is
-// returned to `boulder-ca` for logging purposes.
-func NewECDSAAllowListFromConfig(regIDs []int64) (*ECDSAAllowList, int, error) {
-	regIDsMap := makeRegIDsMap(regIDs)
-	allowList := &ECDSAAllowList{regIDsMap: regIDsMap, reloader: nil, logger: nil, statusGauge: nil}
-	return allowList, allowList.length(), nil
-}
