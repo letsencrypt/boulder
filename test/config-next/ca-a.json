@@ -92,7 +92,7 @@
     "features": {
       "NonCFSSLSigner": true
     },
-    "ECDSAAllowListFilename": "test/config-next/ecdsaAllowList.yml"
+    "ecdsaAllowListFilename": "test/config-next/ecdsaAllowList.yml"
   },
 
   "pa": {

@@ -88,7 +88,7 @@
     "features": {
       "NonCFSSLSigner": true
     },
-    "ECDSAAllowListFilename": "test/config/ecdsaAllowList.yml"
+    "ecdsaAllowListFilename": "test/config/ecdsaAllowList.yml"
   },
 
   "pa": {
