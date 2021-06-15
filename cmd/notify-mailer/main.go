@@ -170,9 +170,9 @@ func (m *mailer) run() error {
 
 		err := m.mailer.SendMail([]string{address}, m.subject, messageBody.String())
 		if err != nil {
-			var recoverableSMTPErr bmail.RecoverableSMTPError
-			if errors.As(err, &recoverableSMTPErr) {
-				m.log.Errf("Address %q was rejected by the server due to: %s", address, err)
+			var badAddrErr bmail.BadAddressSMTPError
+			if errors.As(err, &badAddrErr) {
+				m.log.Errf("address %q was rejected by server: %s", address, err)
 				continue
 			}
 			return fmt.Errorf("while sending mail (%d) of (%d) to address %q: %s",
