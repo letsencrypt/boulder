@@ -86,7 +86,7 @@ func TestSleepInterval(t *testing.T) {
 		sleepInterval: sleepLen * time.Second,
 		targetRange:   interval{start: "", end: "\xFF"},
 		clk:           newFakeClock(t),
-		destinations:  recipients,
+		recipients:    recipients,
 		dbMap:         dbMap,
 	}
 
@@ -107,7 +107,7 @@ func TestSleepInterval(t *testing.T) {
 		sleepInterval: 0,
 		targetRange:   interval{end: "\xFF"},
 		clk:           newFakeClock(t),
-		destinations:  recipients,
+		recipients:    recipients,
 		dbMap:         dbMap,
 	}
 
@@ -135,7 +135,7 @@ func TestMailIntervals(t *testing.T) {
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
-		destinations:  recipients,
+		recipients:    recipients,
 		emailTemplate: tmpl,
 		targetRange:   interval{start: "\xFF", end: "\xFF\xFF"},
 		sleepInterval: 0,
@@ -154,7 +154,7 @@ func TestMailIntervals(t *testing.T) {
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
-		destinations:  recipients,
+		recipients:    recipients,
 		emailTemplate: tmpl,
 		targetRange:   interval{},
 		sleepInterval: -10,
@@ -174,7 +174,7 @@ func TestMailIntervals(t *testing.T) {
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
-		destinations:  []recipient{{id: 1}, {id: 2}, {id: 3}, {id: 4}},
+		recipients:    []recipient{{id: 1}, {id: 2}, {id: 3}, {id: 4}},
 		emailTemplate: tmpl,
 		targetRange:   interval{start: "test-example-updated@letsencrypt.org", end: "\xFF"},
 		sleepInterval: 0,
@@ -206,7 +206,7 @@ func TestMailIntervals(t *testing.T) {
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
-		destinations:  []recipient{{id: 1}, {id: 2}, {id: 3}, {id: 4}},
+		recipients:    []recipient{{id: 1}, {id: 2}, {id: 3}, {id: 4}},
 		emailTemplate: tmpl,
 		targetRange:   interval{end: "test-example-updated@letsencrypt.org"},
 		sleepInterval: 0,
@@ -243,7 +243,7 @@ func TestMessageContentStatic(t *testing.T) {
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       testSubject,
-		destinations:  []recipient{{id: 1}},
+		recipients:    []recipient{{id: 1}},
 		emailTemplate: template.Must(template.New("letter").Parse("an email body")),
 		targetRange:   interval{end: "\xFF"},
 		sleepInterval: 0,
@@ -267,7 +267,7 @@ func TestMessageContentInterpolated(t *testing.T) {
 	recipients := []recipient{
 		{
 			id: 1,
-			Extra: map[string]string{
+			Data: map[string]string{
 				"validationMethod": "eyeballing it",
 			},
 		},
@@ -275,13 +275,13 @@ func TestMessageContentInterpolated(t *testing.T) {
 	dbMap := mockEmailResolver{}
 	mc := &mocks.Mailer{}
 	m := &mailer{
-		log:          blog.UseMock(),
-		mailer:       mc,
-		dbMap:        dbMap,
-		subject:      "Test Subject",
-		destinations: recipients,
+		log:        blog.UseMock(),
+		mailer:     mc,
+		dbMap:      dbMap,
+		subject:    "Test Subject",
+		recipients: recipients,
 		emailTemplate: template.Must(template.New("letter").Parse(
-			`issued by {{range .}}{{ .Extra.validationMethod }}{{end}}`)),
+			`issued by {{range .}}{{ .Data.validationMethod }}{{end}}`)),
 		targetRange:   interval{end: "\xFF"},
 		sleepInterval: 0,
 		clk:           newFakeClock(t),
@@ -305,25 +305,25 @@ func TestMessageContentInterpolatedMultiple(t *testing.T) {
 	recipients := []recipient{
 		{
 			id: 200,
-			Extra: map[string]string{
+			Data: map[string]string{
 				"domain": "blog.example.com",
 			},
 		},
 		{
 			id: 201,
-			Extra: map[string]string{
+			Data: map[string]string{
 				"domain": "nas.example.net",
 			},
 		},
 		{
 			id: 202,
-			Extra: map[string]string{
+			Data: map[string]string{
 				"domain": "mail.example.org",
 			},
 		},
 		{
 			id: 203,
-			Extra: map[string]string{
+			Data: map[string]string{
 				"domain": "panel.example.net",
 			},
 		},
@@ -331,14 +331,14 @@ func TestMessageContentInterpolatedMultiple(t *testing.T) {
 	dbMap := mockEmailResolver{}
 	mc := &mocks.Mailer{}
 	m := &mailer{
-		log:          blog.UseMock(),
-		mailer:       mc,
-		dbMap:        dbMap,
-		subject:      "Test Subject",
-		destinations: recipients,
+		log:        blog.UseMock(),
+		mailer:     mc,
+		dbMap:      dbMap,
+		subject:    "Test Subject",
+		recipients: recipients,
 		emailTemplate: template.Must(template.New("letter").Parse(
 			`issued for:
-{{range .}}{{ .Extra.domain }}
+{{range .}}{{ .Data.domain }}
 {{end}}Thanks`)),
 		targetRange:   interval{end: "\xFF"},
 		sleepInterval: 0,
@@ -371,7 +371,7 @@ type mockEmailResolver struct{}
 // into a list of anonymous structs
 func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...interface{}) error {
 	// The "dbList" is just a list of contact records in memory
-	dbList := []contactJSON{
+	dbList := []contactQueryResult{
 		{
 			ID:      1,
 			Contact: []byte(`["mailto:example@letsencrypt.org"]`),
@@ -423,21 +423,21 @@ func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...inte
 	}
 
 	// Play the type cast game so that we can dig into the arguments map and get
-	// out an integer "id" parameter
+	// out an int64 `id` parameter.
 	argsRaw := args[0]
 	argsMap, ok := argsRaw.(map[string]interface{})
 	if !ok {
 		return fmt.Errorf("incorrect args type %T", args)
 	}
 	idRaw := argsMap["id"]
-	id, ok := idRaw.(int)
+	id, ok := idRaw.(int64)
 	if !ok {
 		return fmt.Errorf("incorrect args ID type %T", id)
 	}
 
-	// Play the type cast game to get a pointer to the output `contactJSON`
-	// pointer so we can write the result from the db list
-	outputPtr, ok := output.(*contactJSON)
+	// Play the type cast game to get a `*contactQueryResult` so we can write
+	// the result from the db list.
+	outputPtr, ok := output.(*contactQueryResult)
 	if !ok {
 		return fmt.Errorf("incorrect output type %T", output)
 	}
@@ -508,14 +508,14 @@ func TestResolveEmails(t *testing.T) {
 		mailer:        mc,
 		dbMap:         dbMap,
 		subject:       "Test",
-		destinations:  recipients,
+		recipients:    recipients,
 		emailTemplate: tmpl,
 		targetRange:   interval{end: "\xFF"},
 		sleepInterval: 0,
 		clk:           newFakeClock(t),
 	}
 
-	addressesToRecipients, err := m.resolveEmailAddresses()
+	addressesToRecipients, err := m.resolveAddresses()
 	test.AssertNotError(t, err, "failed to resolveEmailAddresses")
 
 	expected := []string{
