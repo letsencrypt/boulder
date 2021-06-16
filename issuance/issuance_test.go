@@ -267,9 +267,22 @@ func TestRequestValid(t *testing.T) {
 			request: &IssuanceRequest{
 				PublicKey: &ecdsa.PublicKey{},
 				NotBefore: fc.Now(),
-				NotAfter:  fc.Now().Add(time.Hour),
+				NotAfter:  fc.Now().Add(time.Hour - time.Second),
 			},
 			expectedError: "validity period is more than the maximum allowed period (1h0m0s>1m0s)",
+		},
+		{
+			name: "validity larger than max due to inclusivity",
+			profile: &Profile{
+				useForECDSALeaves: true,
+				maxValidity:       time.Hour,
+			},
+			request: &IssuanceRequest{
+				PublicKey: &ecdsa.PublicKey{},
+				NotBefore: fc.Now(),
+				NotAfter:  fc.Now().Add(time.Hour),
+			},
+			expectedError: "validity period is more than the maximum allowed period (1h0m1s>1h0m0s)",
 		},
 		{
 			name: "validity backdated more than max",
@@ -536,7 +549,7 @@ func TestIssue(t *testing.T) {
 				CommonName: "example.com",
 				DNSNames:   []string{"example.com"},
 				NotBefore:  fc.Now(),
-				NotAfter:   fc.Now().Add(time.Hour),
+				NotAfter:   fc.Now().Add(time.Hour - time.Second),
 			})
 			test.AssertNotError(t, err, "Issue failed")
 			cert, err := x509.ParseCertificate(certBytes)
@@ -569,7 +582,7 @@ func TestIssueRSA(t *testing.T) {
 		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8},
 		DNSNames:  []string{"example.com"},
 		NotBefore: fc.Now(),
-		NotAfter:  fc.Now().Add(time.Hour),
+		NotAfter:  fc.Now().Add(time.Hour - time.Second),
 	})
 	test.AssertNotError(t, err, "Issue failed")
 	cert, err := x509.ParseCertificate(certBytes)
@@ -599,7 +612,7 @@ func TestIssueCTPoison(t *testing.T) {
 		DNSNames:        []string{"example.com"},
 		IncludeCTPoison: true,
 		NotBefore:       fc.Now(),
-		NotAfter:        fc.Now().Add(time.Hour),
+		NotAfter:        fc.Now().Add(time.Hour - time.Second),
 	})
 	test.AssertNotError(t, err, "Issue failed")
 	cert, err := x509.ParseCertificate(certBytes)
@@ -631,7 +644,7 @@ func TestIssueSCTList(t *testing.T) {
 			{},
 		},
 		NotBefore: fc.Now(),
-		NotAfter:  fc.Now().Add(time.Hour),
+		NotAfter:  fc.Now().Add(time.Hour - time.Second),
 	})
 	test.AssertNotError(t, err, "Issue failed")
 	cert, err := x509.ParseCertificate(certBytes)
@@ -664,7 +677,7 @@ func TestIssueMustStaple(t *testing.T) {
 		DNSNames:          []string{"example.com"},
 		IncludeMustStaple: true,
 		NotBefore:         fc.Now(),
-		NotAfter:          fc.Now().Add(time.Hour),
+		NotAfter:          fc.Now().Add(time.Hour - time.Second),
 	})
 	test.AssertNotError(t, err, "Issue failed")
 	cert, err := x509.ParseCertificate(certBytes)
@@ -690,7 +703,7 @@ func TestIssueBadLint(t *testing.T) {
 		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8},
 		DNSNames:  []string{"example.com"},
 		NotBefore: fc.Now(),
-		NotAfter:  fc.Now().Add(time.Hour),
+		NotAfter:  fc.Now().Add(time.Hour - time.Second),
 	})
 	test.AssertError(t, err, "Issue didn't fail")
 	test.AssertEquals(t, err.Error(), "tbsCertificate linting failed: failed lints: w_ct_sct_policy_count_unsatisfied")
