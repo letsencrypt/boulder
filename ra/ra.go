@@ -1959,6 +1959,10 @@ func (ra *RegistrationAuthorityImpl) checkOrderNames(names []string) error {
 
 // NewOrder creates a new order object
 func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
+	if req == nil || req.RegistrationID == 0 {
+		return nil, errIncompleteGRPCRequest
+	}
+
 	order := &corepb.Order{
 		RegistrationID: req.RegistrationID,
 		Names:          core.UniqueLowerNames(req.Names),
