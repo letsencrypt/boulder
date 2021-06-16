@@ -95,7 +95,7 @@ func TestCheckWildcardCert(t *testing.T) {
 	fc := clock.NewFake()
 	checker := newChecker(saDbMap, fc, pa, time.Hour, testValidityPeriods)
 	issued := checker.clock.Now().Add(-time.Minute)
-	goodExpiry := issued.Add(testValidityPeriod).Add(-time.Second)
+	goodExpiry := issued.Add(testValidityPeriod - time.Second)
 	serial := big.NewInt(1337)
 
 	wildcardCert := x509.Certificate{
@@ -157,7 +157,7 @@ func TestCheckCert(t *testing.T) {
 	}
 
 	issued := checker.clock.Now().Add(-time.Minute)
-	goodExpiry := issued.Add(testValidityPeriod).Add(-time.Second)
+	goodExpiry := issued.Add(testValidityPeriod - time.Second)
 	serial := big.NewInt(1337)
 	longName := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeexample.com"
 	rawCert := x509.Certificate{
@@ -430,7 +430,7 @@ func TestIgnoredLint(t *testing.T) {
 		},
 		SerialNumber: serial,
 		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(testValidityPeriod).Add(-time.Second),
+		NotAfter:     time.Now().Add(testValidityPeriod - time.Second),
 		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		PolicyIdentifiers: []asn1.ObjectIdentifier{
