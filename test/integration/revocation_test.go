@@ -33,7 +33,7 @@ func isPrecert(cert *x509.Certificate) bool {
 
 // TestPrecertificateRevocation tests that a precertificate without a matching
 // certificate can be revoked using all of the available RFC 8555 revocation
-// authentication mechansims.
+// authentication mechanisms.
 func TestPrecertificateRevocation(t *testing.T) {
 	t.Parallel()
 	// Create a base account to use for revocation tests.

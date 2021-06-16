@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/observer/probers"
+	"github.com/letsencrypt/boulder/test"
 	"gopkg.in/yaml.v2"
 )
 
@@ -43,8 +44,9 @@ func TestHTTPConf_MakeProber(t *testing.T) {
 
 func TestHTTPConf_UnmarshalSettings(t *testing.T) {
 	type fields struct {
-		url    interface{}
-		rcodes interface{}
+		url       interface{}
+		rcodes    interface{}
+		useragent interface{}
 	}
 	tests := []struct {
 		name    string
@@ -52,14 +54,15 @@ func TestHTTPConf_UnmarshalSettings(t *testing.T) {
 		want    probers.Configurer
 		wantErr bool
 	}{
-		{"valid", fields{"google.com", []int{200}}, HTTPConf{"google.com", []int{200}}, false},
-		{"invalid", fields{42, 42}, nil, true},
+		{"valid", fields{"google.com", []int{200}, "boulder_observer"}, HTTPConf{"google.com", []int{200}, "boulder_observer"}, false},
+		{"invalid", fields{42, 42, 42}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			settings := probers.Settings{
-				"url":    tt.fields.url,
-				"rcodes": tt.fields.rcodes,
+				"url":       tt.fields.url,
+				"rcodes":    tt.fields.rcodes,
+				"useragent": tt.fields.useragent,
 			}
 			settingsBytes, _ := yaml.Marshal(settings)
 			c := HTTPConf{}
@@ -73,4 +76,33 @@ func TestHTTPConf_UnmarshalSettings(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHTTPProberName(t *testing.T) {
+	// Test with blank `useragent`
+	proberYAML := `
+url: https://www.google.com
+rcodes: [ 200 ]
+useragent: ""
+`
+	c := HTTPConf{}
+	configurer, err := c.UnmarshalSettings([]byte(proberYAML))
+	test.AssertNotError(t, err, "Got error for valid prober config")
+	prober, err := configurer.MakeProber()
+	test.AssertNotError(t, err, "Got error for valid prober config")
+	test.AssertEquals(t, prober.Name(), "https://www.google.com-[200]-letsencrypt/boulder-observer-http-client")
+
+	// Test with custom `useragent`
+	proberYAML = `
+url: https://www.google.com
+rcodes: [ 200 ]
+useragent: fancy-custom-http-client
+`
+	c = HTTPConf{}
+	configurer, err = c.UnmarshalSettings([]byte(proberYAML))
+	test.AssertNotError(t, err, "Got error for valid prober config")
+	prober, err = configurer.MakeProber()
+	test.AssertNotError(t, err, "Got error for valid prober config")
+	test.AssertEquals(t, prober.Name(), "https://www.google.com-[200]-fancy-custom-http-client")
+
 }

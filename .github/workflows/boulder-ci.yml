@@ -6,9 +6,13 @@ name: Boulder CI
 on:
   # Triggers the workflow on push or pull request events but only for the main branch
   push:
-    branches: [ main ]
+    branches: 
+      - main
+      - release-branch-*
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
+      - release-branch-*
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -30,7 +34,7 @@ jobs:
       matrix:
         # Add additional docker image tags here and all tests will be run with the additional image.
         BOULDER_TOOLS_TAG:
-          - go1.16.4_2021-05-06
+          - go1.16.5_2021-06-11
         # Tests command definitions. Use the entire docker-compose command you want to run.
         tests:
           # Run ./test.sh --help for a description of each of the flags.

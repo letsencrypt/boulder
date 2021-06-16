@@ -1,7 +1,6 @@
 package ca
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/letsencrypt/boulder/log"
@@ -67,42 +66,6 @@ func TestNewECDSAAllowListFromFile(t *testing.T) {
 			}
 			if got1 != tt.wantEntries {
 				t.Errorf("NewECDSAAllowListFromFile() got1 = %v, want %v", got1, tt.wantEntries)
-			}
-		})
-	}
-}
-
-func TestNewECDSAAllowListFromConfig(t *testing.T) {
-	type args struct {
-		regIDs []int64
-	}
-	tests := []struct {
-		name          string
-		args          args
-		wantAllowList *ECDSAAllowList
-		wantEntries   int
-		wantErrBool   bool
-	}{
-		{
-			name:          "one entry",
-			args:          args{[]int64{1337}},
-			wantAllowList: &ECDSAAllowList{regIDsMap: map[int64]bool{1337: true}, reloader: nil, logger: nil, statusGauge: nil},
-			wantEntries:   1,
-			wantErrBool:   false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, got1, err := NewECDSAAllowListFromConfig(tt.args.regIDs)
-			if (err != nil) != tt.wantErrBool {
-				t.Errorf("NewECDSAAllowListFromConfig() error = %v, wantErr %v", err, tt.wantErrBool)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.wantAllowList) {
-				t.Errorf("NewECDSAAllowListFromConfig() got = %v, want %v", got, tt.wantAllowList)
-			}
-			if got1 != tt.wantEntries {
-				t.Errorf("NewECDSAAllowListFromConfig() got1 = %v, want %v", got1, tt.wantEntries)
 			}
 		})
 	}

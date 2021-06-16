@@ -38,7 +38,6 @@ monitors:
     settings: 
       url: https://letsencrypt.org
       rcodes: [200]
-      useragent: "letsencrypt/boulder-observer-http-client"
   -
     period: 5s
     kind: DNS
@@ -90,4 +89,3 @@ monitors:
     settings: 
       url: http://letsencrypt.org/foo
       rcodes: [200, 404]
-      useragent: "letsencrypt/boulder-observer-http-client"

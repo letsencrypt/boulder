@@ -10,8 +10,9 @@ import (
 
 // HTTPConf is exported to receive YAML configuration.
 type HTTPConf struct {
-	URL    string `yaml:"url"`
-	RCodes []int  `yaml:"rcodes"`
+	URL       string `yaml:"url"`
+	RCodes    []int  `yaml:"rcodes"`
+	UserAgent string `yaml:"useragent"`
 }
 
 // UnmarshalSettings takes YAML as bytes and unmarshals it to the to an
@@ -68,7 +69,12 @@ func (c HTTPConf) MakeProber() (probers.Prober, error) {
 	if err != nil {
 		return nil, err
 	}
-	return HTTPProbe{c.URL, c.RCodes}, nil
+
+	// Set default User-Agent if none set.
+	if c.UserAgent == "" {
+		c.UserAgent = "letsencrypt/boulder-observer-http-client"
+	}
+	return HTTPProbe{c.URL, c.RCodes, c.UserAgent}, nil
 }
 
 // init is called at runtime and registers `HTTPConf`, a `Prober`
