@@ -457,16 +457,24 @@ func main() {
 	defer log.AuditPanic()
 
 	// Setup database client.
-	dsn, err := cfg.NotifyMailer.DB.URL()
+	dbURL, err := cfg.NotifyMailer.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 
-	conf, err := mysql.ParseDSN(dsn)
+	conf, err := mysql.ParseDSN(dbURL)
 	cmd.FailOnError(err, "Couldn't parse DB URL as DSN")
 
 	// Transaction isolation level READ UNCOMMITTED trades consistency for
 	// performance.
-	conf.Params = map[string]string{
-		"tx_isolation": "'READ-UNCOMMITTED'",
+	const (
+		readUncommitted = "'READ-UNCOMMITTED'"
+		txIsolation     = "tx_isolation"
+	)
+	if len(conf.Params) == 0 {
+		conf.Params = map[string]string{
+			txIsolation: readUncommitted,
+		}
+	} else {
+		conf.Params[txIsolation] = readUncommitted
 	}
 
 	dbSettings := sa.DbSettings{
