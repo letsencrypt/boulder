@@ -53,9 +53,7 @@ func setupMakeRecipientList(t *testing.T, contents string) string {
 	return entryFile.Name()
 }
 
-// `MakeRecipientList` Happy Paths
-
-func TestMakeRecipientList(t *testing.T) {
+func TestReadRecipientList(t *testing.T) {
 	contents := `id, domainName, date
 10,example.com,2018-11-21
 23,example.net,2018-11-22`
@@ -84,7 +82,7 @@ func TestMakeRecipientList(t *testing.T) {
 	test.AssertDeepEquals(t, list, expected)
 }
 
-func TestMakeRecipientListNoExtraColumns(t *testing.T) {
+func TestReadRecipientListNoExtraColumns(t *testing.T) {
 	contents := `id
 10
 23`
@@ -96,13 +94,12 @@ func TestMakeRecipientListNoExtraColumns(t *testing.T) {
 	test.AssertNotError(t, err, "received an error for a valid CSV file")
 }
 
-// `MakeRecipientList` Sad Paths
-func TestMakeRecipientsListFileNoExist(t *testing.T) {
+func TestReadRecipientsListFileNoExist(t *testing.T) {
 	_, _, err := readRecipientsList("doesNotExist", ',')
 	test.AssertError(t, err, "expected error for a file that doesn't exist")
 }
 
-func TestMakeRecipientListWithEmptyColumnInHeader(t *testing.T) {
+func TestReadRecipientListWithEmptyColumnInHeader(t *testing.T) {
 	contents := `id, domainName,,date
 10,example.com,2018-11-21
 23,example.net`
@@ -115,7 +112,7 @@ func TestMakeRecipientListWithEmptyColumnInHeader(t *testing.T) {
 	test.AssertDeepEquals(t, err, errors.New("header contains an empty column"))
 }
 
-func TestMakeRecipientListWithProblems(t *testing.T) {
+func TestReadRecipientListWithProblems(t *testing.T) {
 	contents := `id, domainName, date
 10,example.com,2018-11-21
 23,example.net,
@@ -148,7 +145,7 @@ func TestMakeRecipientListWithProblems(t *testing.T) {
 	test.AssertEquals(t, probs, "ID(s) [23 42] contained empty columns")
 }
 
-func TestMakeRecipientListWithEmptyLine(t *testing.T) {
+func TestReadRecipientListWithEmptyLine(t *testing.T) {
 	contents := `id, domainName, date
 10,example.com,2018-11-21
 
@@ -161,7 +158,7 @@ func TestMakeRecipientListWithEmptyLine(t *testing.T) {
 	test.AssertNotError(t, err, "received an error for a valid CSV file")
 }
 
-func TestMakeRecipientListWithMismatchedColumns(t *testing.T) {
+func TestReadRecipientListWithMismatchedColumns(t *testing.T) {
 	contents := `id, domainName, date
 10,example.com,2018-11-21
 23,example.net`
@@ -173,7 +170,7 @@ func TestMakeRecipientListWithMismatchedColumns(t *testing.T) {
 	test.AssertError(t, err, "failed to error on CSV file with mismatched columns")
 }
 
-func TestMakeRecipientListWithDuplicateIDs(t *testing.T) {
+func TestReadRecipientListWithDuplicateIDs(t *testing.T) {
 	contents := `id, domainName, date
 10,example.com,2018-11-21
 10,example.net,2018-11-22`
@@ -185,7 +182,7 @@ func TestMakeRecipientListWithDuplicateIDs(t *testing.T) {
 	test.AssertNotError(t, err, "received an error for a valid CSV file")
 }
 
-func TestMakeRecipientListWithUnparsableID(t *testing.T) {
+func TestReadRecipientListWithUnparsableID(t *testing.T) {
 	contents := `id, domainName, date
 10,example.com,2018-11-21
 twenty,example.net,2018-11-22`
@@ -197,7 +194,7 @@ twenty,example.net,2018-11-22`
 	test.AssertError(t, err, "expected error for CSV file that contains an unparsable registration ID")
 }
 
-func TestMakeRecipientListWithoutIDHeader(t *testing.T) {
+func TestReadRecipientListWithoutIDHeader(t *testing.T) {
 	contents := `notId, domainName, date
 10,example.com,2018-11-21
 twenty,example.net,2018-11-22`
@@ -209,7 +206,7 @@ twenty,example.net,2018-11-22`
 	test.AssertError(t, err, "expected error for CSV file missing header field `id`")
 }
 
-func TestMakeRecipientListWithNoRecords(t *testing.T) {
+func TestReadRecipientListWithNoRecords(t *testing.T) {
 	contents := `id, domainName, date
 `
 	entryFile := setupMakeRecipientList(t, contents)
@@ -219,7 +216,7 @@ func TestMakeRecipientListWithNoRecords(t *testing.T) {
 	test.AssertError(t, err, "expected error for CSV file containing only a header")
 }
 
-func TestMakeRecipientListWithNoHeaderOrRecords(t *testing.T) {
+func TestReadRecipientListWithNoHeaderOrRecords(t *testing.T) {
 	contents := ``
 	entryFile := setupMakeRecipientList(t, contents)
 	defer os.Remove(entryFile)
