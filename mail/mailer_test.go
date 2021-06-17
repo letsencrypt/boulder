@@ -88,7 +88,6 @@ func listenForever(l *net.TCPListener, t *testing.T, handler connHandler) {
 	for {
 		tcpConn, err := l.AcceptTCP()
 		if err != nil {
-			t.Log(err)
 			return
 		}
 
