@@ -46,7 +46,7 @@
             ]
           }
         ],
-        "maxValidityPeriod": "2160h",
+        "maxValidityPeriod": "7775999s",
         "maxValidityBackdate": "1h5m"
       },
       "issuers": [
@@ -77,7 +77,7 @@
       ],
       "ignoredLints": ["n_subject_common_name_included"]
     },
-    "expiry": "2160h",
+    "expiry": "7775999s",
     "backdate": "1h",
     "serialPrefix": 255,
     "maxNames": 100,
