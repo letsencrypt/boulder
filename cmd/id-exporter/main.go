@@ -278,8 +278,16 @@ func main() {
 
 		// Transaction isolation level READ UNCOMMITTED trades consistency for
 		// performance.
-		conf.Params = map[string]string{
-			"tx_isolation": "'READ-UNCOMMITTED'",
+		const (
+			readUncommitted = "'READ-UNCOMMITTED'"
+			txIsolation     = "tx_isolation"
+		)
+		if len(conf.Params) == 0 {
+			conf.Params = map[string]string{
+				txIsolation: readUncommitted,
+			}
+		} else {
+			conf.Params[txIsolation] = readUncommitted
 		}
 
 		dbURL = conf.FormatDSN()
