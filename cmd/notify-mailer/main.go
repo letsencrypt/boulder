@@ -465,17 +465,10 @@ func main() {
 
 	// Transaction isolation level READ UNCOMMITTED trades consistency for
 	// performance.
-	const (
-		readUncommitted = "'READ-UNCOMMITTED'"
-		txIsolation     = "tx_isolation"
-	)
 	if len(conf.Params) == 0 {
-		conf.Params = map[string]string{
-			txIsolation: readUncommitted,
-		}
-	} else {
-		conf.Params[txIsolation] = readUncommitted
+		conf.Params = make(map[string]string)
 	}
+	conf.Params["tx_isolation"] = "'READ-UNCOMMITTED'"
 
 	dbSettings := sa.DbSettings{
 		MaxOpenConns:    cfg.NotifyMailer.DB.MaxOpenConns,
