@@ -23,6 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
@@ -301,7 +302,7 @@ func (m *mailer) findExpiringCertificates() error {
 		for _, serial := range serials {
 			var cert core.Certificate
 			cert, err := sa.SelectCertificate(m.dbMap, serial)
-			if err != nil {
+			if err != nil && !errors.Is(err, berrors.Duplicate) {
 				// We can get a NoRowsErr when processing a serial number corresponding
 				// to a precertificate with no final certificate. Since this certificate
 				// is not being used by a subscriber, we don't send expiration email about
@@ -311,6 +312,9 @@ func (m *mailer) findExpiringCertificates() error {
 				}
 				m.log.AuditErrf("expiration-mailer: Error loading cert %q: %s", cert.Serial, err)
 				return err
+			}
+			if errors.Is(err, berrors.Duplicate) {
+				m.log.Err(err.Error())
 			}
 			certs = append(certs, cert)
 		}

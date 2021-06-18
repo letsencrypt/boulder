@@ -314,9 +314,14 @@ func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, serial strin
 	if db.IsNoRows(err) {
 		return core.Certificate{}, berrors.NotFoundError("certificate with serial %q not found", serial)
 	}
-	if err != nil {
+	if err != nil && !errors.Is(err, berrors.Duplicate) {
 		return core.Certificate{}, err
 	}
+	if errors.Is(err, berrors.Duplicate) {
+		ssa.log.Err(err.Error())
+		return cert, nil
+	}
+	fmt.Println("got to end")
 	return cert, err
 }
 

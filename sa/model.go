@@ -16,6 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
 )
@@ -64,15 +65,22 @@ func selectRegistration(s db.OneSelector, q string, args ...interface{}) (*regMo
 
 const certFields = "registrationID, serial, digest, der, issued, expires"
 
-// SelectCertificate selects all fields of one certificate object
-// identified by serial.
+// SelectCertificate selects all fields of one certificate object identified by
+// a serial. If more than one certificate contains the same serial only the
+// first is returned (along with a `berrors.DuplicateError`).
 func SelectCertificate(s db.OneSelector, serial string) (core.Certificate, error) {
 	var model core.Certificate
-	err := s.SelectOne(
-		&model,
-		"SELECT "+certFields+" FROM certificates WHERE serial = ?",
-		serial,
-	)
+	query := "SELECT " + certFields + " FROM certificates WHERE serial = ?"
+	err := s.SelectOne(&model, query, serial)
+	if errors.Is(err, fmt.Errorf("gorp: multiple rows returned for: %s - %v", query, serial)) {
+		// Re-attempt but limit our query to just one result.
+		err = s.SelectOne(&model, query+" LIMIT 1", serial)
+		if err != nil {
+			return model, err
+		} else {
+			return model, berrors.DuplicateError("multiple certificates for serial %s", serial)
+		}
+	}
 	return model, err
 }
 

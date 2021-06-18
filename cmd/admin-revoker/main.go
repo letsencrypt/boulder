@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/x509"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -113,11 +114,15 @@ func revokeCertificate(ctx context.Context, certObj core.Certificate, reasonCode
 
 func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, dbMap db.Executor) error {
 	certObj, err := sa.SelectCertificate(dbMap, serial)
-	if err != nil {
+	if err != nil && !errors.Is(err, berrors.Duplicate) {
 		if db.IsNoRows(err) {
 			return berrors.NotFoundError("certificate with serial %q not found", serial)
 		}
 		return err
+	}
+
+	if errors.Is(err, berrors.Duplicate) {
+		logger.Err(err.Error())
 	}
 	return revokeCertificate(ctx, certObj, reasonCode, rac, logger)
 }
