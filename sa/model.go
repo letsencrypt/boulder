@@ -72,7 +72,8 @@ func SelectCertificate(s db.OneSelector, serial string) (core.Certificate, error
 	err := s.SelectOne(
 		&model,
 		"SELECT "+certFields+" FROM certificates WHERE serial = ? LIMIT 1",
-		serial)
+		serial,
+	)
 	return model, err
 }
 
