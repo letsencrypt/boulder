@@ -245,7 +245,7 @@ func TestAddCertificateDuplicate(t *testing.T) {
 
 	issuedTime := clk.Now()
 	_, err := sa.AddCertificate(ctx, testCert.Raw, reg.ID, nil, &issuedTime)
-	test.AssertNotError(t, err, "Couldn't add testCert")
+	test.AssertNotError(t, err, "Couldn't add test certificate")
 
 	_, err = sa.AddCertificate(ctx, testCert.Raw, reg.ID, nil, &issuedTime)
 	test.AssertDeepEquals(t, err, berrors.DuplicateError("cannot add a duplicate cert"))
