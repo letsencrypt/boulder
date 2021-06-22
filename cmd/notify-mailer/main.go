@@ -16,6 +16,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/db"
@@ -225,7 +226,7 @@ func getAddressForID(id int64, dbMap dbSelector) ([]string, error) {
 		`SELECT id,
 			contact
 		FROM registrations
-		WHERE contact != 'null'
+		WHERE contact NOT IN ('[]', 'null')
 			AND id = :id;`,
 		map[string]interface{}{"id": id})
 	if err != nil {
@@ -459,7 +460,24 @@ func main() {
 	dbURL, err := cfg.NotifyMailer.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 
-	dbMap, err := sa.NewDbMap(dbURL, sa.DbSettings{MaxOpenConns: 10})
+	conf, err := mysql.ParseDSN(dbURL)
+	cmd.FailOnError(err, "Couldn't parse DB URL as DSN")
+
+	// Transaction isolation level READ UNCOMMITTED trades consistency for
+	// performance.
+	if len(conf.Params) == 0 {
+		conf.Params = make(map[string]string)
+	}
+	conf.Params["tx_isolation"] = "'READ-UNCOMMITTED'"
+
+	dbSettings := sa.DbSettings{
+		MaxOpenConns:    cfg.NotifyMailer.DB.MaxOpenConns,
+		MaxIdleConns:    cfg.NotifyMailer.DB.MaxIdleConns,
+		ConnMaxLifetime: cfg.NotifyMailer.DB.ConnMaxLifetime.Duration,
+		ConnMaxIdleTime: cfg.NotifyMailer.DB.ConnMaxIdleTime.Duration,
+	}
+
+	dbMap, err := sa.NewDbMap(conf.FormatDSN(), dbSettings)
 	cmd.FailOnError(err, "Couldn't create database connection")
 
 	// Load and parse message body.
