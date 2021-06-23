@@ -72,7 +72,7 @@ func SelectCertificate(s db.OneSelector, serial string) (core.Certificate, error
 	query := fmt.Sprintf(`
 SELECT %s
 FROM
-    (SELECT %s FROM certificates WHERE serial = %s) certs
+    (SELECT %s FROM certificates WHERE serial = %q) certs
 GROUP BY
     serial, der`, certFields, certFields, serial)
 	err := s.SelectOne(

@@ -253,7 +253,7 @@ func TestCerficatesTableContainsDuplicateSerials(t *testing.T) {
 	test.AssertNotError(t, err, "couldn't insert valid certificate")
 
 	// Despite a duplicate being present, this shouldn't error because the
-	// serial and DER bytes of `certA`, `certB` are equivalent.
+	// serial and DER bytes of `certA`, `expectA` are equivalent.
 	expectA, err := SelectCertificate(sa.dbMap, serialString)
 	test.AssertNotError(t, err, "received an error for a valid query")
 
@@ -261,8 +261,8 @@ func TestCerficatesTableContainsDuplicateSerials(t *testing.T) {
 	test.AssertByteEquals(t, certA.DER, expectA.DER)
 
 	// Insert a certificate with a serial of `1337` but for a different
-	// hostname.
-	err = insertCertificate(sa.dbMap, fc, "1337.net", "leet", 1337, 1)
+	// hostname and cn.
+	err = insertCertificate(sa.dbMap, fc, "1337.net", "feet", 1337, 1)
 	test.AssertNotError(t, err, "couldn't insert valid certificate")
 
 	// This should error because, despite sharing the same serial, `certA` and
