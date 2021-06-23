@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/db"
@@ -267,8 +268,22 @@ func main() {
 	err = features.Set(cfg.ContactExporter.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
+	// Setup database client.
 	dbURL, err := cfg.ContactExporter.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
+
+	if !*useDefaultIsolationLevel {
+		conf, err := mysql.ParseDSN(dbURL)
+		cmd.FailOnError(err, "Couldn't parse DB URL as DSN")
+
+		// Transaction isolation level READ UNCOMMITTED trades consistency for
+		// performance.
+		if len(conf.Params) == 0 {
+			conf.Params = make(map[string]string)
+		}
+		conf.Params["tx_isolation"] = "'READ-UNCOMMITTED'"
+		dbURL = conf.FormatDSN()
+	}
 
 	dbSettings := sa.DbSettings{
 		MaxOpenConns:    cfg.ContactExporter.DB.MaxOpenConns,
@@ -277,7 +292,6 @@ func main() {
 		ConnMaxIdleTime: cfg.ContactExporter.DB.ConnMaxIdleTime.Duration,
 	}
 
-	// Setup database client.
 	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")
 
@@ -289,14 +303,6 @@ func main() {
 	}
 
 	var results idExporterResults
-	if !*useDefaultIsolationLevel {
-		// By default we set the transaction isolation level to 'READ
-		// UNCOMMITTED' for better performance at the cost of
-		// consistency.
-		_, err := dbMap.Exec("SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;")
-		cmd.FailOnError(err, "Could not set transaction isolation level")
-	}
-
 	if *hostnamesFile != "" {
 		hostnames, err := unmarshalHostnames(*hostnamesFile)
 		cmd.FailOnError(err, "Problem unmarshalling hostnames")

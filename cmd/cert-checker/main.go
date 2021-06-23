@@ -29,10 +29,6 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
-const (
-	expectedValidityPeriod = time.Hour * 24 * 90
-)
-
 // For defense-in-depth in addition to using the PA & its hostnamePolicy to
 // check domain names we also perform a check against the regex's from the
 // forbiddenDomains array
@@ -87,25 +83,27 @@ type certDB interface {
 }
 
 type certChecker struct {
-	pa           core.PolicyAuthority
-	dbMap        certDB
-	certs        chan core.Certificate
-	clock        clock.Clock
-	rMu          *sync.Mutex
-	issuedReport report
-	checkPeriod  time.Duration
+	pa                        core.PolicyAuthority
+	dbMap                     certDB
+	certs                     chan core.Certificate
+	clock                     clock.Clock
+	rMu                       *sync.Mutex
+	issuedReport              report
+	checkPeriod               time.Duration
+	acceptableValidityPeriods map[uint]bool
 }
 
-func newChecker(saDbMap certDB, clk clock.Clock, pa core.PolicyAuthority, period time.Duration) certChecker {
+func newChecker(saDbMap certDB, clk clock.Clock, pa core.PolicyAuthority, period time.Duration, avps map[uint]bool) certChecker {
 	c := certChecker{
-		pa:          pa,
-		dbMap:       saDbMap,
-		certs:       make(chan core.Certificate, batchSize),
-		rMu:         new(sync.Mutex),
-		clock:       clk,
-		checkPeriod: period,
+		pa:                        pa,
+		dbMap:                     saDbMap,
+		certs:                     make(chan core.Certificate, batchSize),
+		rMu:                       new(sync.Mutex),
+		clock:                     clk,
+		issuedReport:              report{Entries: make(map[string]reportEntry)},
+		checkPeriod:               period,
+		acceptableValidityPeriods: avps,
 	}
-	c.issuedReport.Entries = make(map[string]reportEntry)
 
 	return c
 }
@@ -251,16 +249,11 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 		if parsedCert.IsCA {
 			problems = append(problems, "Certificate can sign other certificates")
 		}
-		// Check the cert has the correct validity period
-		validityPeriod := parsedCert.NotAfter.Sub(parsedCert.NotBefore)
-		if validityPeriod > expectedValidityPeriod {
-			problems = append(problems, fmt.Sprintf("Certificate has a validity period longer than %s", expectedValidityPeriod))
-		} else if validityPeriod.Seconds() < expectedValidityPeriod.Seconds()-1 {
-			// TODO: FIX ME. This is a hack. We need to make cert-checker much more
-			// flexible, so that we don't have to do this every time we change our
-			// validity period. For now, both the expected validity period, and that
-			// period less one second, are acceptable by cert-checker.
-			problems = append(problems, fmt.Sprintf("Certificate has a validity period shorter than %s", expectedValidityPeriod))
+		// Check the cert has the correct validity period. The validity period is
+		// computed inclusive of the whole final second indicated by notAfter.
+		validityPeriod := parsedCert.NotAfter.Add(time.Second).Sub(parsedCert.NotBefore)
+		if _, ok := c.acceptableValidityPeriods[uint(validityPeriod.Seconds())]; !ok {
+			problems = append(problems, fmt.Sprintf("Certificate has unacceptable validity period"))
 		}
 		// Check the stored issuance time isn't too far back/forward dated
 		if parsedCert.NotBefore.Before(cert.Issued.Add(-6*time.Hour)) || parsedCert.NotBefore.After(cert.Issued.Add(6*time.Hour)) {
@@ -322,6 +315,10 @@ type config struct {
 		BadResultsOnly      bool
 		CheckPeriod         cmd.ConfigDuration
 
+		// AcceptableValidityPeriods is a list of lengths (in seconds) which are
+		// acceptable Validity Periods for certificates we issue.
+		AcceptableValidityPeriods []uint
+
 		// IgnoredLints is a list of zlint names. Any lint results from a lint in
 		// the IgnoredLists list are ignored regardless of LintStatus level.
 		IgnoredLints []string
@@ -372,6 +369,17 @@ func main() {
 	config.CertChecker.BadResultsOnly = *badResultsOnly
 	config.CertChecker.CheckPeriod.Duration = *cp
 
+	avps := make(map[uint]bool)
+	if len(config.CertChecker.AcceptableValidityPeriods) == 0 {
+		// For backwards compatibility, assume only a single valid validity period
+		// of exactly 90 days if none is configured.
+		avps[uint((time.Hour * 24 * 90).Seconds())] = true
+	} else {
+		for _, period := range config.CertChecker.AcceptableValidityPeriods {
+			avps[period] = true
+		}
+	}
+
 	// Validate PA config and set defaults if needed
 	cmd.FailOnError(config.PA.CheckChallenges(), "Invalid PA configuration")
 
@@ -409,6 +417,7 @@ func main() {
 		cmd.Clock(),
 		pa,
 		config.CertChecker.CheckPeriod.Duration,
+		avps,
 	)
 	fmt.Fprintf(os.Stderr, "# Getting certificates issued in the last %s\n", config.CertChecker.CheckPeriod)
 
