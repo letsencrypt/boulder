@@ -338,7 +338,7 @@ func (c testCtx) setupCertificate1337A(t *testing.T) {
 	c.insertCertificate(t, "1337.com", 1337, 1)
 }
 
-// setupCertificate1337A registers and inserts a record into the `certificates`
+// setupCertificate1337B registers and inserts a record into the `certificates`
 // table with a domain of `1337.net`, `registrationID` of `1` and a `serial` of
 // `1337`.
 func (c testCtx) setupCertificate1337B(t *testing.T) {
