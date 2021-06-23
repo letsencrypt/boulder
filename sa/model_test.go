@@ -14,7 +14,6 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
-	"github.com/letsencrypt/boulder/test/vars"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -236,69 +235,58 @@ func TestPopulateAttemptedFieldsBadJSON(t *testing.T) {
 }
 
 func TestCerficatesTableContainsDuplicateSerials(t *testing.T) {
-	testCtx := setup(t)
-	defer testCtx.cleanUp()
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
 
 	serialString := core.SerialToString(big.NewInt(1337))
 
 	// Insert a certificate with a serial of `1337`.
-	testCtx.insertCertificate(t, "1337.com", 1337, 1)
+	err := insertCertificate(sa.dbMap, fc, "1337.com", "leet", 1337, 1)
+	test.AssertNotError(t, err, "couldn't insert valid certificate")
 
 	// This should return the certificate that we just inserted.
-	certA, err := SelectCertificate(testCtx.db, serialString)
+	certA, err := SelectCertificate(sa.dbMap, serialString)
 	test.AssertNotError(t, err, "received an error for a valid query")
 
 	// Insert a certificate with a serial of `1337` but for a different
 	// hostname.
-	testCtx.insertCertificate(t, "1337.net", 1337, 1)
+	err = insertCertificate(sa.dbMap, fc, "1337.net", "leet", 1337, 1)
+	test.AssertNotError(t, err, "couldn't insert valid certificate")
 
 	// Despite a duplicate being present, this shouldn't error.
-	expectA, err := SelectCertificate(testCtx.db, serialString)
+	expectA, err := SelectCertificate(sa.dbMap, serialString)
 	test.AssertNotError(t, err, "received an error for a valid query")
 
 	// Ensure that `certA` and `expectA` are the same.
 	test.AssertByteEquals(t, certA.DER, expectA.DER)
 }
 
-type testCtx struct {
-	db      *db.WrappedMap
-	ssa     *SQLStorageAuthority
-	cleanUp func()
-	fc      clock.FakeClock
-}
-
-func (ctx testCtx) insertCertificate(t *testing.T, hostname string, serial, regID int64) {
+func insertCertificate(dbMap *db.WrappedMap, fc clock.FakeClock, hostname, cn string, serial, regID int64) error {
 	serialBigInt := big.NewInt(serial)
 	serialString := core.SerialToString(serialBigInt)
 
-	rawCert := x509.Certificate{
+	template := x509.Certificate{
 		Subject: pkix.Name{
-			CommonName: "leet",
+			CommonName: cn,
 		},
-		NotAfter:     ctx.fc.Now().Add(30 * 24 * time.Hour),
+		NotAfter:     fc.Now().Add(30 * 24 * time.Hour),
 		DNSNames:     []string{hostname},
 		SerialNumber: serialBigInt,
 	}
 
 	testKey := makeKey()
-
-	certDer, _ := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, &testKey)
+	certDer, _ := x509.CreateCertificate(rand.Reader, &template, &template, &testKey.PublicKey, &testKey)
 	cert := &core.Certificate{
 		RegistrationID: regID,
 		Serial:         serialString,
-		Expires:        rawCert.NotAfter,
+		Expires:        template.NotAfter,
 		DER:            certDer,
 	}
-	err := ctx.db.Insert(cert)
-	test.AssertNotError(t, err, "Couldn't insert certificate")
-}
-
-func setup(t *testing.T) testCtx {
-	dbMap, err := NewDbMap(vars.DBConnSAFullPerms, DbSettings{})
-	test.AssertNotError(t, err, "Couldn't create database connection")
-
-	ssa, fc, cleanUp := initSA(t)
-	return testCtx{dbMap, ssa, cleanUp, fc}
+	err := dbMap.Insert(cert)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func bigIntFromB64(b64 string) *big.Int {
@@ -308,13 +296,9 @@ func bigIntFromB64(b64 string) *big.Int {
 	return x
 }
 
-func intFromB64(b64 string) int {
-	return int(bigIntFromB64(b64).Int64())
-}
-
 func makeKey() rsa.PrivateKey {
 	n := bigIntFromB64("n4EPtAOCc9AlkeQHPzHStgAbgs7bTZLwUBZdR8_KuKPEHLd4rHVTeT-O-XV2jRojdNhxJWTDvNd7nqQ0VEiZQHz_AJmSCpMaJMRBSFKrKb2wqVwGU_NsYOYL-QtiWN2lbzcEe6XC0dApr5ydQLrHqkHHig3RBordaZ6Aj-oBHqFEHYpPe7Tpe-OfVfHd1E6cS6M1FZcD1NNLYD5lFHpPI9bTwJlsde3uhGqC0ZCuEHg8lhzwOHrtIQbS0FVbb9k3-tVTU4fg_3L_vniUFAKwuCLqKnS2BYwdq_mzSnbLY7h_qixoR7jig3__kRhuaxwUkRz5iaiQkqgc5gHdrNP5zw==")
-	e := intFromB64("AQAB")
+	e := int(bigIntFromB64("AQAB").Int64())
 	d := bigIntFromB64("bWUC9B-EFRIo8kpGfh0ZuyGPvMNKvYWNtB_ikiH9k20eT-O1q_I78eiZkpXxXQ0UTEs2LsNRS-8uJbvQ-A1irkwMSMkK1J3XTGgdrhCku9gRldY7sNA_AKZGh-Q661_42rINLRCe8W-nZ34ui_qOfkLnK9QWDDqpaIsA-bMwWWSDFu2MUBYwkHTMEzLYGqOe04noqeq1hExBTHBOBdkMXiuFhUq1BU6l-DqEiWxqg82sXt2h-LMnT3046AOYJoRioz75tSUQfGCshWTBnP5uDjd18kKhyv07lhfSJdrPdM5Plyl21hsFf4L_mHCuoFau7gdsPfHPxxjVOcOpBrQzwQ==")
 	p := bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc=")
 	q := bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc=")
