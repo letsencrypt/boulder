@@ -434,7 +434,7 @@ func issueCertificateSubTestIssuePrecertificate(t *testing.T, i *TestCertificate
 
 func issueCertificateSubTestValidityUsesCAClock(t *testing.T, i *TestCertificateIssuance) {
 	test.AssertEquals(t, i.cert.NotBefore, i.ca.clk.Now().Add(-1*i.ca.backdate))
-	test.AssertEquals(t, i.cert.NotAfter, i.cert.NotBefore.Add(i.ca.validityPeriod))
+	test.AssertEquals(t, i.cert.NotAfter.Add(time.Second).Sub(i.cert.NotBefore), i.ca.validityPeriod)
 }
 
 // Test issuing when multiple issuers are present.

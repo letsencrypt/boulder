@@ -314,7 +314,9 @@ func (p *Profile) requestValid(clk clock.Clock, req *IssuanceRequest) error {
 		return errors.New("common name cannot be included")
 	}
 
-	validity := req.NotAfter.Sub(req.NotBefore)
+	// The validity period is calculated inclusive of the whole second represented
+	// by the notAfter timestamp.
+	validity := req.NotAfter.Add(time.Second).Sub(req.NotBefore)
 	if validity <= 0 {
 		return errors.New("NotAfter must be after NotBefore")
 	}

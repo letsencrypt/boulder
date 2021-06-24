@@ -5,7 +5,7 @@
       "maxOpenConns": 10
     },
     "hostnamePolicyFile": "test/hostname-policy.yaml",
-    "acceptableValidityPeriods": [7775999, 7776000],
+    "acceptableValidityPeriods": [7776000],
     "ignoredLints": [
       "n_subject_common_name_included"
     ]

@@ -386,10 +386,10 @@ func (ca *certificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	serialBigInt := big.NewInt(0)
 	serialBigInt = serialBigInt.SetBytes(serialBytes)
 
-	notBefore := ca.clk.Now().Add(-1 * ca.backdate)
+	notBefore := ca.clk.Now().Add(-ca.backdate)
 	validity := validity{
 		NotBefore: notBefore,
-		NotAfter:  notBefore.Add(ca.validityPeriod),
+		NotAfter:  notBefore.Add(ca.validityPeriod - time.Second),
 	}
 
 	return serialBigInt, validity, nil

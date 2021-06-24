@@ -48,7 +48,7 @@
             ]
           }
         ],
-        "maxValidityPeriod": "7775999s",
+        "maxValidityPeriod": "7776000s",
         "maxValidityBackdate": "1h5m"
       },
       "issuers": [
@@ -79,7 +79,7 @@
       ],
       "ignoredLints": ["n_subject_common_name_included"]
     },
-    "expiry": "7775999s",
+    "expiry": "7776000s",
     "backdate": "1h",
     "serialPrefix": 255,
     "maxNames": 100,
