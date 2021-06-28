@@ -2,12 +2,15 @@ package bdns
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 
+	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -29,8 +32,52 @@ type staticProvider struct {
 
 var _ ServerProvider = &staticProvider{}
 
-func NewStaticProvider(servers []string) *staticProvider {
-	return &staticProvider{servers: servers}
+// validateServerAddress ensures that a given server address is formatted in
+// such a way that it can be dialed. The provided server address must include a
+// host/IP and port separated by colon. Additionally, if the host is a literal
+// IPv6 address, it must be enclosed in square brackets.
+// (https://golang.org/src/net/dial.go?s=9833:9881#L281)
+func validateServerAddress(address string) error {
+	// Ensure the host and port portions of `address` can be split.
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+
+	// Ensure `address` contains both a `host` and `port` portion.
+	if host == "" || port == "" {
+		return errors.New("port cannot be missing")
+	}
+
+	// Ensure the `port` portion of `address` is a valid port.
+	portNum, err := strconv.Atoi(port)
+	if err != nil {
+		return errors.New("port must be an integer: %s")
+	}
+	if portNum <= 0 || portNum > 65535 {
+		return errors.New("port must be an integer between 0 - 65535")
+	}
+
+	// Ensure the `host` portion of `address` is a valid FQDN or IP address.
+	IPv6 := net.ParseIP(host).To16()
+	IPv4 := net.ParseIP(host).To4()
+	FQDN := dns.IsFqdn(dns.Fqdn(host))
+	if IPv6 == nil && IPv4 == nil && !FQDN {
+		return errors.New("host is not an FQDN or IP address")
+	}
+	return nil
+}
+
+func NewStaticProvider(servers []string) (*staticProvider, error) {
+	var serverAddrs []string
+	for _, server := range servers {
+		err := validateServerAddress(server)
+		if err != nil {
+			return nil, fmt.Errorf("server address %q invalid: %s", server, err)
+		}
+		serverAddrs = append(serverAddrs, server)
+	}
+	return &staticProvider{servers: serverAddrs}, nil
 }
 
 func (sp *staticProvider) Addrs() ([]string, error) {
@@ -137,7 +184,7 @@ func (dp *dynamicProvider) update() error {
 	if err != nil {
 		return fmt.Errorf("failed to lookup SRV records for %q: %w", dp.name, err)
 	}
-	if srvs == nil || len(srvs) == 0 {
+	if len(srvs) == 0 {
 		return fmt.Errorf("no SRV records found for %q", dp.name)
 	}
 
@@ -148,6 +195,11 @@ func (dp *dynamicProvider) update() error {
 			return fmt.Errorf("failed to resolve SRV Target %q: %w", srv.Target, err)
 		}
 		for _, addr := range addrs {
+			joinedHostPort := net.JoinHostPort(addr, fmt.Sprint(srv.Port))
+			err := validateServerAddress(joinedHostPort)
+			if err != nil {
+				return fmt.Errorf("invalid SRV addr %q: %w", joinedHostPort, err)
+			}
 			addrPorts[addr] = append(addrPorts[addr], srv.Port)
 		}
 	}
@@ -164,8 +216,8 @@ func (dp *dynamicProvider) Addrs() ([]string, error) {
 	var r []string
 	dp.mu.RLock()
 	for ip, ports := range dp.addrs {
-		port := ports[rand.Intn(len(ports))]
-		addr := fmt.Sprintf("%s:%d", ip, port)
+		port := fmt.Sprint(ports[rand.Intn(len(ports))])
+		addr := net.JoinHostPort(ip, port)
 		r = append(r, addr)
 	}
 	dp.mu.RUnlock()
