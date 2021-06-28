@@ -2,7 +2,9 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -39,37 +41,189 @@ func TestIntervalOK(t *testing.T) {
 	}
 }
 
-// makeFile writes the given content into a temporary file, returning
-// the filename (which should be deleted when done).
-func makeFile(content string) (string, error) {
-	tmpfile, err := ioutil.TempFile("", "")
-	if err != nil {
-		return "", err
-	}
+func setupMakeRecipientList(t *testing.T, contents string) string {
+	entryFile, err := ioutil.TempFile("", "")
+	test.AssertNotError(t, err, "couldn't create temp file")
 
-	if _, err := tmpfile.Write([]byte(content)); err != nil {
-		return "", err
-	}
-	if err := tmpfile.Close(); err != nil {
-		return "", err
-	}
-	return tmpfile.Name(), nil
+	_, err = entryFile.WriteString(contents)
+	test.AssertNotError(t, err, "couldn't write contents to temp file")
+
+	err = entryFile.Close()
+	test.AssertNotError(t, err, "couldn't close temp file")
+	return entryFile.Name()
 }
 
-func TestReadRecipientsListMismatchedColumns(t *testing.T) {
-	bad := `id, domainName, date
+func TestReadRecipientList(t *testing.T) {
+	contents := `id, domainName, date
+10,example.com,2018-11-21
+23,example.net,2018-11-22`
+
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	list, _, err := readRecipientsList(entryFile, ',')
+	test.AssertNotError(t, err, "received an error for a valid CSV file")
+
+	expected := []recipient{
+		{id: 10, Data: map[string]string{"date": "2018-11-21", "domainName": "example.com"}},
+		{id: 23, Data: map[string]string{"date": "2018-11-22", "domainName": "example.net"}},
+	}
+	test.AssertDeepEquals(t, list, expected)
+
+	contents = `id	domainName	date
+10	example.com	2018-11-21
+23	example.net	2018-11-22`
+
+	entryFile = setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	list, _, err = readRecipientsList(entryFile, '\t')
+	test.AssertNotError(t, err, "received an error for a valid TSV file")
+	test.AssertDeepEquals(t, list, expected)
+}
+
+func TestReadRecipientListNoExtraColumns(t *testing.T) {
+	contents := `id
+10
+23`
+
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, _, err := readRecipientsList(entryFile, ',')
+	test.AssertNotError(t, err, "received an error for a valid CSV file")
+}
+
+func TestReadRecipientsListFileNoExist(t *testing.T) {
+	_, _, err := readRecipientsList("doesNotExist", ',')
+	test.AssertError(t, err, "expected error for a file that doesn't exist")
+}
+
+func TestReadRecipientListWithEmptyColumnInHeader(t *testing.T) {
+	contents := `id, domainName,,date
 10,example.com,2018-11-21
 23,example.net`
-	badFileName, err := makeFile(bad)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(badFileName)
-	recipients, err := readRecipientsList(badFileName)
-	if err == nil {
-		t.Fatalf("reading bad CSV file should have errored, but got %v",
-			recipients)
-	}
+
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, _, err := readRecipientsList(entryFile, ',')
+	test.AssertError(t, err, "failed to error on CSV file with trailing delimiter in header")
+	test.AssertDeepEquals(t, err, errors.New("header contains an empty column"))
+}
+
+func TestReadRecipientListWithProblems(t *testing.T) {
+	contents := `id, domainName, date
+10,example.com,2018-11-21
+23,example.net,
+10,example.com,2018-11-22
+42,example.net,
+24,example.com,2018-11-21
+24,example.com,2018-11-21
+`
+
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	recipients, probs, err := readRecipientsList(entryFile, ',')
+	test.AssertNotError(t, err, "received an error for a valid CSV file")
+	test.AssertEquals(t, probs, "ID(s) [23 42] contained empty columns and ID(s) [10 24] were skipped as duplicates")
+	test.AssertEquals(t, len(recipients), 4)
+
+	// Ensure trailing " and " is trimmed from single problem.
+	contents = `id, domainName, date
+23,example.net,
+10,example.com,2018-11-21
+42,example.net,
+`
+
+	entryFile = setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, probs, err = readRecipientsList(entryFile, ',')
+	test.AssertNotError(t, err, "received an error for a valid CSV file")
+	test.AssertEquals(t, probs, "ID(s) [23 42] contained empty columns")
+}
+
+func TestReadRecipientListWithEmptyLine(t *testing.T) {
+	contents := `id, domainName, date
+10,example.com,2018-11-21
+
+23,example.net,2018-11-22`
+
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, _, err := readRecipientsList(entryFile, ',')
+	test.AssertNotError(t, err, "received an error for a valid CSV file")
+}
+
+func TestReadRecipientListWithMismatchedColumns(t *testing.T) {
+	contents := `id, domainName, date
+10,example.com,2018-11-21
+23,example.net`
+
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, _, err := readRecipientsList(entryFile, ',')
+	test.AssertError(t, err, "failed to error on CSV file with mismatched columns")
+}
+
+func TestReadRecipientListWithDuplicateIDs(t *testing.T) {
+	contents := `id, domainName, date
+10,example.com,2018-11-21
+10,example.net,2018-11-22`
+
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, _, err := readRecipientsList(entryFile, ',')
+	test.AssertNotError(t, err, "received an error for a valid CSV file")
+}
+
+func TestReadRecipientListWithUnparsableID(t *testing.T) {
+	contents := `id, domainName, date
+10,example.com,2018-11-21
+twenty,example.net,2018-11-22`
+
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, _, err := readRecipientsList(entryFile, ',')
+	test.AssertError(t, err, "expected error for CSV file that contains an unparsable registration ID")
+}
+
+func TestReadRecipientListWithoutIDHeader(t *testing.T) {
+	contents := `notId, domainName, date
+10,example.com,2018-11-21
+twenty,example.net,2018-11-22`
+
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, _, err := readRecipientsList(entryFile, ',')
+	test.AssertError(t, err, "expected error for CSV file missing header field `id`")
+}
+
+func TestReadRecipientListWithNoRecords(t *testing.T) {
+	contents := `id, domainName, date
+`
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, _, err := readRecipientsList(entryFile, ',')
+	test.AssertError(t, err, "expected error for CSV file containing only a header")
+}
+
+func TestReadRecipientListWithNoHeaderOrRecords(t *testing.T) {
+	contents := ``
+	entryFile := setupMakeRecipientList(t, contents)
+	defer os.Remove(entryFile)
+
+	_, _, err := readRecipientsList(entryFile, ',')
+	test.AssertError(t, err, "expected error for CSV file containing only a header")
+	test.AssertErrorIs(t, err, io.EOF)
 }
 
 func TestSleepInterval(t *testing.T) {

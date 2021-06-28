@@ -265,66 +265,98 @@ type addressToRecipientMap map[string][]recipient
 
 // readRecipientsList parses the contents of a recipient list file into a list
 // of `recipient` objects.
-func readRecipientsList(filename string) ([]recipient, error) {
+func readRecipientsList(filename string, delimiter rune) ([]recipient, string, error) {
 	f, err := os.Open(filename)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	reader := csv.NewReader(f)
+	reader.Comma = delimiter
+
+	// Parse header.
 	record, err := reader.Read()
 	if err != nil {
-		return nil, err
-	}
-
-	if len(record) == 0 {
-		return nil, errors.New("no records in CSV")
+		return nil, "", fmt.Errorf("failed to parse header: %w", err)
 	}
 
 	if record[0] != "id" {
-		return nil, errors.New("first field of CSV input must be \"id\"")
+		return nil, "", errors.New("header must begin with \"id\"")
 	}
 
+	// Collect the names of each header column after `id`.
 	var dataColumns []string
 	for _, v := range record[1:] {
 		dataColumns = append(dataColumns, strings.TrimSpace(v))
+		if len(v) == 0 {
+			return nil, "", errors.New("header contains an empty column")
+		}
 	}
 
+	var recordsWithEmptyColumns []int64
+	var recordsWithDuplicateIDs []int64
+	var probsBuff strings.Builder
+	stringProbs := func() string {
+		if len(recordsWithEmptyColumns) != 0 {
+			fmt.Fprintf(&probsBuff, "ID(s) %v contained empty columns and ",
+				recordsWithEmptyColumns)
+		}
+
+		if len(recordsWithDuplicateIDs) != 0 {
+			fmt.Fprintf(&probsBuff, "ID(s) %v were skipped as duplicates",
+				recordsWithDuplicateIDs)
+		}
+
+		if probsBuff.Len() == 0 {
+			return ""
+		}
+		return strings.TrimSuffix(probsBuff.String(), " and ")
+	}
+
+	// Parse records.
+	recipientIDs := make(map[int64]bool)
 	var recipients []recipient
 	for {
 		record, err := reader.Read()
 		if errors.Is(err, io.EOF) {
 			// Finished parsing the file.
 			if len(recipients) == 0 {
-				return nil, fmt.Errorf("no records after the header in CSV")
+				return nil, stringProbs(), errors.New("no records after header")
 			}
-			return recipients, nil
+			return recipients, stringProbs(), nil
 		} else if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 
-		if len(record) == 0 {
-			return nil, fmt.Errorf("empty line in CSV")
-		}
-
-		if len(record) != len(dataColumns)+1 {
-			return nil, fmt.Errorf("got (%d) columns, for (%d) header columns, for line %q",
-				len(record), len(dataColumns)+1, record)
-		}
-
-		// Ensure the ID in the record can be parsed as a valid ID.
+		// Ensure the first column of each record can be parsed as a valid
+		// registration ID.
 		recordID := record[0]
 		id, err := strconv.ParseInt(recordID, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf(
+			return nil, "", fmt.Errorf(
 				"%q couldn't be parsed as a registration ID due to: %s", recordID, err)
 		}
 
-		// Create a mapping of column names to extra data columns (anything
-		// after `id`).
+		// Skip records that have the same ID as those read previously.
+		if recipientIDs[id] {
+			recordsWithDuplicateIDs = append(recordsWithDuplicateIDs, id)
+			continue
+		}
+		recipientIDs[id] = true
+
+		// Collect the columns of data after `id` into a map.
+		var emptyColumn bool
 		data := make(map[string]string)
 		for i, v := range record[1:] {
+			if len(v) == 0 {
+				emptyColumn = true
+			}
 			data[dataColumns[i]] = v
+		}
+
+		// Only used for logging.
+		if emptyColumn {
+			recordsWithEmptyColumns = append(recordsWithEmptyColumns, id)
 		}
 
 		recipients = append(recipients, recipient{id, data})
@@ -414,6 +446,7 @@ func main() {
 	from := flag.String("from", "", "From header for emails. Must be a bare email address.")
 	subject := flag.String("subject", "", "Subject of emails")
 	recipientListFile := flag.String("recipientList", "", "File containing a CSV list of registration IDs and extra info.")
+	parseAsTSV := flag.Bool("tsv", false, "Parse the recipient list file as a TSV.")
 	bodyFile := flag.String("body", "", "File containing the email body in Golang template format.")
 	dryRun := flag.Bool("dryRun", true, "Whether to do a dry run.")
 	sleep := flag.Duration("sleep", 500*time.Millisecond, "How long to sleep between emails.")
@@ -487,8 +520,16 @@ func main() {
 	address, err := mail.ParseAddress(*from)
 	cmd.FailOnError(err, fmt.Sprintf("Couldn't parse %q to address", *from))
 
-	recipients, err := readRecipientsList(*recipientListFile)
+	recipientListDelimiter := ','
+	if *parseAsTSV {
+		recipientListDelimiter = '\t'
+	}
+	recipients, probs, err := readRecipientsList(*recipientListFile, recipientListDelimiter)
 	cmd.FailOnError(err, "Couldn't populate recipients")
+
+	if probs != "" {
+		log.Infof("While reading the recipient list file %s", probs)
+	}
 
 	var mailClient bmail.Mailer
 	if *dryRun {
