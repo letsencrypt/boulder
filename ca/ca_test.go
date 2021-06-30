@@ -33,7 +33,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/issuance"
-	"github.com/letsencrypt/boulder/lint"
+	"github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
@@ -219,14 +219,15 @@ func setup(t *testing.T) *testCtx {
 		)
 		return res
 	}
-	boulderLinter, _ := lint.NewLinter(caKey, []string{"n_subject_common_name_included"})
+	boulderLinter, _ := linter.New(caCert.Certificate, caKey, []string{"n_subject_common_name_included"})
+	boulderLinter2, _ := linter.New(caCert2.Certificate, caKey, []string{"n_subject_common_name_included"})
 	boulderIssuers := []*issuance.Issuer{
 		// Must list ECDSA-only issuer first, so it is the default for ECDSA.
 		{
 			Cert:    caCert2,
 			Signer:  caKey,
 			Profile: boulderProfile(false, true),
-			Linter:  boulderLinter,
+			Linter:  boulderLinter2,
 			Clk:     fc,
 		},
 		{
