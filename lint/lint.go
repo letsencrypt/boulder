@@ -12,6 +12,10 @@ import (
 	zlintx509 "github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3"
 	"github.com/zmap/zlint/v3/lint"
+
+	_ "github.com/letsencrypt/boulder/lint/lints/intermediate"
+	_ "github.com/letsencrypt/boulder/lint/lints/root"
+	_ "github.com/letsencrypt/boulder/lint/lints/subscriber"
 )
 
 // Check accomplishes the entire process of linting: it generates a throwaway
