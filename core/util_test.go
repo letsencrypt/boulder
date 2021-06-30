@@ -1,7 +1,6 @@
 package core
 
 import (
-	"encoding/asn1"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -169,10 +168,9 @@ func TestLoadCert(t *testing.T) {
 	test.AssertError(t, err, "Loading non-PEM file did not error")
 	test.AssertEquals(t, err.Error(), "No data in cert PEM file ../test/test-ca.der")
 
-	var asnStructuralErr asn1.StructuralError
 	_, err = LoadCert("../test/test-ca.key")
 	test.AssertError(t, err, "Loading non-cert file did not error")
-	test.AssertErrorWraps(t, err, &asnStructuralErr)
+	test.AssertEquals(t, err.Error(), "x509: malformed tbs certificate")
 
 	cert, err := LoadCert("../test/test-ca.pem")
 	test.AssertNotError(t, err, "Failed to load cert file")
