@@ -1918,9 +1918,6 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 // DeactivateRegistration deactivates a valid registration
 func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context, reg *corepb.Registration) (*emptypb.Empty, error) {
 	// Error if the request is nil, there is no account key, IP address, or regID
-	if reg == nil || len(reg.Key) == 0 { // || len(reg.InitialIP) == 0 || reg.Id == 0 {
-		return nil, fmt.Errorf("andrew error")
-	}
 	if reg == nil || len(reg.Key) == 0 || len(reg.InitialIP) == 0 || reg.Id == 0 {
 		return nil, errIncompleteGRPCRequest
 	}
