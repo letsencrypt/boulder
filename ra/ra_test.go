@@ -1900,12 +1900,32 @@ func TestDeactivateRegistration(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	err := ra.DeactivateRegistration(context.Background(), core.Registration{ID: 1})
+	// Create a complete, deactivated registration
+	reg := &corepb.Registration{
+		Id:              1,
+		Contact:         []string{"mailto:foo@letsencrypt.org"},
+		ContactsPresent: true,
+		Key:             newAcctKey(t),
+		InitialIP:       parseAndMarshalIP(t, "7.6.6.2"),
+		Status:          string(core.StatusDeactivated),
+	}
+
+	// Deactivate failure because incomplete registration provided
+	_, err := ra.DeactivateRegistration(context.Background(), &corepb.Registration{Id: 1})
 	test.AssertError(t, err, "DeactivateRegistration failed with a non-valid registration")
-	err = ra.DeactivateRegistration(context.Background(), core.Registration{ID: 1, Status: core.StatusDeactivated})
+
+	// Deactivate failure because registration status already deactivated
+	_, err = ra.DeactivateRegistration(context.Background(), reg)
 	test.AssertError(t, err, "DeactivateRegistration failed with a non-valid registration")
-	err = ra.DeactivateRegistration(context.Background(), core.Registration{ID: 1, Status: core.StatusValid})
+
+	// Set reg status to valid
+	reg.Status = string(core.StatusValid)
+
+	// Deactivate success with valid registration
+	_, err = ra.DeactivateRegistration(context.Background(), reg)
 	test.AssertNotError(t, err, "DeactivateRegistration failed")
+
+	// Check db to make sure account is deactivated
 	dbReg, err := ra.SA.GetRegistration(context.Background(), 1)
 	test.AssertNotError(t, err, "GetRegistration failed")
 	test.AssertEquals(t, dbReg.Status, core.StatusDeactivated)
