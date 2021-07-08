@@ -417,12 +417,19 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 	}
 
 	isRenewalRaw, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+		// Select to see if cert exists
+		var row struct {
+			Count int64
+		}
+		if err := txWithCtx.SelectOne(&row, "SELECT count(1) as count FROM certificates WHERE serial=?", serial); err != nil {
+			return nil, err
+		}
+		if row.Count > 0 {
+			return nil, berrors.DuplicateError("cannot add a duplicate cert")
+		}
 		// Save the final certificate
 		err = txWithCtx.Insert(cert)
 		if err != nil {
-			if db.IsDuplicate(err) {
-				return nil, berrors.DuplicateError("cannot add a duplicate cert")
-			}
 			return nil, err
 		}
 

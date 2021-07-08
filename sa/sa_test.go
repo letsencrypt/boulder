@@ -235,6 +235,23 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 }
 
+func TestAddCertificateDuplicate(t *testing.T) {
+	sa, clk, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	_, testCert := test.ThrowAwayCert(t, 1)
+
+	issuedTime := clk.Now()
+	_, err := sa.AddCertificate(ctx, testCert.Raw, reg.ID, nil, &issuedTime)
+	test.AssertNotError(t, err, "Couldn't add test certificate")
+
+	_, err = sa.AddCertificate(ctx, testCert.Raw, reg.ID, nil, &issuedTime)
+	test.AssertDeepEquals(t, err, berrors.DuplicateError("cannot add a duplicate cert"))
+
+}
+
 func TestCountCertificatesByNames(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
