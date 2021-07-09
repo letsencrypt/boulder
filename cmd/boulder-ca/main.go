@@ -19,7 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
-	"github.com/letsencrypt/boulder/lint"
+	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/policy"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -112,7 +112,7 @@ func loadBoulderIssuers(profileConfig issuance.ProfileConfig, issuerConfigs []is
 			return nil, err
 		}
 
-		linter, err := lint.NewLinter(signer, ignoredLints)
+		linter, err := linter.New(cert.Certificate, signer, ignoredLints)
 		if err != nil {
 			return nil, err
 		}
