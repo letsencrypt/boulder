@@ -21,7 +21,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/lint"
+	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/policyasn1"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -63,14 +63,12 @@ func TestMain(m *testing.M) {
 	issuerSigner = tk
 	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(123),
-		PublicKey:             tk.Public(),
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 		Subject: pkix.Name{
 			CommonName: "big ca",
 		},
-		KeyUsage:     x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
-		SubjectKeyId: []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
 	}
 	issuer, err := x509.CreateCertificate(rand.Reader, template, template, tk.Public(), tk)
 	cmd.FailOnError(err, "failed to generate test issuer")
@@ -430,7 +428,7 @@ func TestNewIssuer(t *testing.T) {
 		issuerCert,
 		issuerSigner,
 		defaultProfile(),
-		&lint.Linter{},
+		&linter.Linter{},
 		clock.NewFake(),
 	)
 	test.AssertNotError(t, err, "NewIssuer failed")
@@ -445,7 +443,7 @@ func TestNewIssuerUnsupportedKeyType(t *testing.T) {
 		},
 		&ed25519.PrivateKey{},
 		defaultProfile(),
-		&lint.Linter{},
+		&linter.Linter{},
 		clock.NewFake(),
 	)
 	test.AssertError(t, err, "NewIssuer didn't fail")
@@ -464,7 +462,7 @@ func TestNewIssuerNoCertSign(t *testing.T) {
 		},
 		issuerSigner,
 		defaultProfile(),
-		&lint.Linter{},
+		&linter.Linter{},
 		clock.NewFake(),
 	)
 	test.AssertError(t, err, "NewIssuer didn't fail")
@@ -483,7 +481,7 @@ func TestNewIssuerNoDigitalSignature(t *testing.T) {
 		},
 		issuerSigner,
 		defaultProfile(),
-		&lint.Linter{},
+		&linter.Linter{},
 		clock.NewFake(),
 	)
 	test.AssertError(t, err, "NewIssuer didn't fail")
@@ -505,7 +503,7 @@ func TestNewIssuerOCSPOnly(t *testing.T) {
 		},
 		issuerSigner,
 		p,
-		&lint.Linter{},
+		&linter.Linter{},
 		clock.NewFake(),
 	)
 	test.AssertNotError(t, err, "NewIssuer failed")
@@ -535,10 +533,12 @@ func TestIssue(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fc := clock.NewFake()
 			fc.Set(time.Now())
-			linter, _ := lint.NewLinter(
+			linter, err := linter.New(
+				issuerCert.Certificate,
 				issuerSigner,
 				[]string{"w_ct_sct_policy_count_unsatisfied", "n_subject_common_name_included"},
 			)
+			test.AssertNotError(t, err, "failed to create linter")
 			signer, err := NewIssuer(issuerCert, issuerSigner, defaultProfile(), linter, fc)
 			test.AssertNotError(t, err, "NewIssuer failed")
 			pk, err := tc.generateFunc()
@@ -569,10 +569,12 @@ func TestIssue(t *testing.T) {
 func TestIssueRSA(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	linter, _ := lint.NewLinter(
+	linter, err := linter.New(
+		issuerCert.Certificate,
 		issuerSigner,
 		[]string{"w_ct_sct_policy_count_unsatisfied"},
 	)
+	test.AssertNotError(t, err, "failed to create linter")
 	signer, err := NewIssuer(issuerCert, issuerSigner, defaultProfile(), linter, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -598,10 +600,12 @@ func TestIssueRSA(t *testing.T) {
 func TestIssueCTPoison(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	linter, _ := lint.NewLinter(
+	linter, err := linter.New(
+		issuerCert.Certificate,
 		issuerSigner,
 		[]string{"w_ct_sct_policy_count_unsatisfied"},
 	)
+	test.AssertNotError(t, err, "failed to create linter")
 	signer, err := NewIssuer(issuerCert, issuerSigner, defaultProfile(), linter, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -628,10 +632,12 @@ func TestIssueCTPoison(t *testing.T) {
 func TestIssueSCTList(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	linter, _ := lint.NewLinter(
+	linter, err := linter.New(
+		issuerCert.Certificate,
 		issuerSigner,
 		[]string{"w_ct_sct_policy_count_unsatisfied"},
 	)
+	test.AssertNotError(t, err, "failed to create linter")
 	signer, err := NewIssuer(issuerCert, issuerSigner, defaultProfile(), linter, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -663,10 +669,12 @@ func TestIssueSCTList(t *testing.T) {
 func TestIssueMustStaple(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	linter, _ := lint.NewLinter(
+	linter, err := linter.New(
+		issuerCert.Certificate,
 		issuerSigner,
 		[]string{"w_ct_sct_policy_count_unsatisfied"},
 	)
+	test.AssertNotError(t, err, "failed to create linter")
 	signer, err := NewIssuer(issuerCert, issuerSigner, defaultProfile(), linter, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -693,7 +701,8 @@ func TestIssueMustStaple(t *testing.T) {
 func TestIssueBadLint(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	linter, _ := lint.NewLinter(issuerSigner, []string{})
+	linter, err := linter.New(issuerCert.Certificate, issuerSigner, []string{})
+	test.AssertNotError(t, err, "failed to create linter")
 	signer, err := NewIssuer(issuerCert, issuerSigner, defaultProfile(), linter, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

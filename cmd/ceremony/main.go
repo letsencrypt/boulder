@@ -15,7 +15,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/letsencrypt/boulder/lint"
+	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"golang.org/x/crypto/ocsp"
 	"gopkg.in/yaml.v2"
@@ -407,7 +407,7 @@ func openSigner(cfg PKCS11SigningConfig, pubKey crypto.PublicKey) (crypto.Signer
 }
 
 func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string, skipLints []string) error {
-	err := lint.Check(tbs, issuer, subjectPubKey, signer, skipLints)
+	err := linter.Check(tbs, subjectPubKey, issuer, signer, skipLints)
 	if err != nil {
 		return fmt.Errorf("certificate failed pre-issuance lint: %w", err)
 	}
