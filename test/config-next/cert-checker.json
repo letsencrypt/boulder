@@ -5,6 +5,10 @@
       "maxOpenConns": 10
     },
     "hostnamePolicyFile": "test/hostname-policy.yaml",
+    "workers": 16,
+    "unexpiredOnly": true,
+    "badResultsOnly": true,
+    "checkPeriod": "72h",
     "acceptableValidityPeriods": [7776000],
     "ignoredLints": [
       "n_subject_common_name_included"
