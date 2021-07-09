@@ -28,7 +28,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/lint"
+	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/policyasn1"
 	"github.com/letsencrypt/pkcs11key/v4"
 )
@@ -418,13 +418,13 @@ type Issuer struct {
 	Cert    *Certificate
 	Signer  crypto.Signer
 	Profile *Profile
-	Linter  *lint.Linter
+	Linter  *linter.Linter
 	Clk     clock.Clock
 }
 
 // NewIssuer constructs an Issuer on the heap, verifying that the profile
 // is well-formed.
-func NewIssuer(cert *Certificate, signer crypto.Signer, profile *Profile, linter *lint.Linter, clk clock.Clock) (*Issuer, error) {
+func NewIssuer(cert *Certificate, signer crypto.Signer, profile *Profile, linter *linter.Linter, clk clock.Clock) (*Issuer, error) {
 	switch k := cert.PublicKey.(type) {
 	case *rsa.PublicKey:
 		profile.sigAlg = x509.SHA256WithRSA
@@ -612,7 +612,7 @@ func (i *Issuer) Issue(req *IssuanceRequest) ([]byte, error) {
 
 	// check that the tbsCertificate is properly formed by signing it
 	// with a throwaway key and then linting it using zlint
-	err = i.Linter.LintTBS(template, i.Cert.Certificate, req.PublicKey)
+	err = i.Linter.Check(template, req.PublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
 	}

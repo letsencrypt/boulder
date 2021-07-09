@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/db"
+	berrors "github.com/letsencrypt/boulder/errors"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
@@ -85,6 +86,32 @@ func TestAddPrecertificate(t *testing.T) {
 	}
 
 	addPrecert(true)
+}
+
+func TestAddPreCertificateDuplicate(t *testing.T) {
+	sa, clk, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	_, testCert := test.ThrowAwayCert(t, 1)
+
+	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:      testCert.Raw,
+		Issued:   clk.Now().UnixNano(),
+		RegID:    reg.ID,
+		IssuerID: 1,
+	})
+	test.AssertNotError(t, err, "Couldn't add test certificate")
+
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:      testCert.Raw,
+		Issued:   clk.Now().UnixNano(),
+		RegID:    reg.ID,
+		IssuerID: 1,
+	})
+	test.AssertDeepEquals(t, err, berrors.DuplicateError("cannot add a duplicate cert"))
+
 }
 
 func TestAddPrecertificateIncomplete(t *testing.T) {
