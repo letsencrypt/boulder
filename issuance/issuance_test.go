@@ -62,15 +62,13 @@ func TestMain(m *testing.M) {
 	cmd.FailOnError(err, "failed to generate test key")
 	issuerSigner = tk
 	template := &x509.Certificate{
-		SerialNumber: big.NewInt(123),
-		// PublicKey:             tk.Public(),
+		SerialNumber:          big.NewInt(123),
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 		Subject: pkix.Name{
 			CommonName: "big ca",
 		},
 		KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
-		// SubjectKeyId: []byte{1, 2, 3, 4, 5, 6, 7, 8},
 	}
 	issuer, err := x509.CreateCertificate(rand.Reader, template, template, tk.Public(), tk)
 	cmd.FailOnError(err, "failed to generate test issuer")

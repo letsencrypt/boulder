@@ -61,6 +61,16 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 	}
 
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+		// Select to see if precert exists
+		var row struct {
+			Count int64
+		}
+		if err := txWithCtx.SelectOne(&row, "SELECT count(1) as count FROM precertificates WHERE serial=?", serialHex); err != nil {
+			return nil, err
+		}
+		if row.Count > 0 {
+			return nil, berrors.DuplicateError("cannot add a duplicate cert")
+		}
 		if err := txWithCtx.Insert(preCertModel); err != nil {
 			return nil, err
 		}
