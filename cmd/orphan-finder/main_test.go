@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -109,11 +107,11 @@ func (ca *mockCA) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...gr
 }
 
 func TestParseLine(t *testing.T) {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "failed to generate test key")
-	issuer, err := issuance.LoadCertificate("../../test/test-ca2.pem")
+	issuer, err := issuance.LoadCertificate("../../test/hierarchy/int-e1.cert.pem")
 	test.AssertNotError(t, err, "failed to load test issuer")
-	cert, err := core.LoadCert("../../test/test-ee.pem")
+	signer, err := test.LoadSigner("../../test/hierarchy/int-e1.key.pem")
+	test.AssertNotError(t, err, "failed to load test signer")
+	cert, err := core.LoadCert("../../test/hierarchy/ee-e1.cert.pem")
 	test.AssertNotError(t, err, "failed to load test cert")
 	certStr := hex.EncodeToString(cert.Raw)
 	precertTmpl := x509.Certificate{
@@ -123,7 +121,7 @@ func TestParseLine(t *testing.T) {
 			{Id: asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 3}, Critical: true, Value: []byte{0x05, 0x00}},
 		},
 	}
-	precertDER, err := x509.CreateCertificate(rand.Reader, &precertTmpl, issuer.Certificate, key.Public(), key)
+	precertDER, err := x509.CreateCertificate(rand.Reader, &precertTmpl, issuer.Certificate, signer.Public(), signer)
 	test.AssertNotError(t, err, "failed to generate test precert")
 	precertStr := hex.EncodeToString(precertDER)
 
