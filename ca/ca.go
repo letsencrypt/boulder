@@ -92,6 +92,10 @@ type certificateAuthorityImpl struct {
 	signErrorCount     *prometheus.CounterVec
 }
 
+// makeIssuerMaps processes a list of issuers into a set of maps, mapping
+// nearly-unique identifiers of those issuers to the issuers themselves. Note
+// that, if two issuers have the same nearly-unique ID, the *latter* one in
+// the input list "wins".
 func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
 	issuersByAlg := make(map[x509.PublicKeyAlgorithm]*issuance.Issuer, 2)
 	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Issuer, len(issuers))
