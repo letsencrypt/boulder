@@ -3983,7 +3983,7 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	digest, err := core.KeyDigest(k.Public())
 	test.AssertNotError(t, err, "core.KeyDigest failed")
 
-	template := x509.Certificate{PublicKey: k, SerialNumber: big.NewInt(257)}
+	template := x509.Certificate{SerialNumber: big.NewInt(257)}
 	der, err := x509.CreateCertificate(rand.Reader, &template, &template, k.Public(), k)
 	test.AssertNotError(t, err, "x509.CreateCertificate failed")
 	cert, err := x509.ParseCertificate(der)

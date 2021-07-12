@@ -111,7 +111,7 @@ github.com/vmihailenco/msgpack/v4/codes
 github.com/vmihailenco/tagparser
 github.com/vmihailenco/tagparser/internal
 github.com/vmihailenco/tagparser/internal/parser
-# github.com/weppos/publicsuffix-go v0.15.1-0.20210513073137-f2f762ef3452
+# github.com/weppos/publicsuffix-go v0.15.1-0.20210627075608-6c05b413dffb
 github.com/weppos/publicsuffix-go/publicsuffix
 # github.com/zmap/zcrypto v0.0.0-20210513123304-ea3fdbd5ea27
 github.com/zmap/zcrypto/dsa

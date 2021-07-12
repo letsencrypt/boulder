@@ -181,11 +181,11 @@ func (src *dbSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 		src.log.AuditErrf("Looking up OCSP response: %s", err)
 		return nil, nil, err
 	}
-	if certStatus.OCSPLastUpdated.IsZero() {
-		src.log.Warningf("OCSP Response not sent (ocspLastUpdated is zero) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
+	if certStatus.IsExpired {
+		src.log.Infof("OCSP Response not sent (expired) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
 		return nil, nil, bocsp.ErrNotFound
-	} else if certStatus.IsExpired {
-		src.log.Warningf("OCSP Response not sent (expired) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
+	} else if certStatus.OCSPLastUpdated.IsZero() {
+		src.log.Warningf("OCSP Response not sent (ocspLastUpdated is zero) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
 		return nil, nil, bocsp.ErrNotFound
 	} else if !src.filter.responseMatchesIssuer(req, certStatus) {
 		src.log.Warningf("OCSP Response not sent (issuer and serial mismatch) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)

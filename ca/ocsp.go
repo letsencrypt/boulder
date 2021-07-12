@@ -20,18 +20,38 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+// TODO(#5152): Remove this when we're only using IssuerNameIDs.
+type ocspIssuerMaps struct {
+	byID     map[issuance.IssuerID]*issuance.Issuer
+	byNameID map[issuance.IssuerNameID]*issuance.Issuer
+}
+
 // ocspImpl provides a backing implementation for the OCSP gRPC service.
 type ocspImpl struct {
 	capb.UnimplementedOCSPGeneratorServer
 	sa certificateStorage
 	// TODO(#5152): Replace IssuerID with IssuerNameID.
-	issuers        map[issuance.IssuerID]*issuance.Issuer
+	issuers        ocspIssuerMaps
 	ocspLifetime   time.Duration
 	ocspLogQueue   *ocspLogQueue
 	log            blog.Logger
 	signatureCount *prometheus.CounterVec
 	signErrorCount *prometheus.CounterVec
 	clk            clock.Clock
+}
+
+// makeOCSPIssuerMaps processes a list of issuers into a set of maps, mapping
+// nearly-unique identifiers of those issuers to the issuers themselves. Note
+// that, if two issuers have the same nearly-unique ID, the *latter* one in
+// the input list "wins".
+func makeOCSPIssuerMaps(issuers []*issuance.Issuer) (ocspIssuerMaps, error) {
+	issuersByID := make(map[issuance.IssuerID]*issuance.Issuer, len(issuers))
+	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Issuer, len(issuers))
+	for _, issuer := range issuers {
+		issuersByID[issuer.ID()] = issuer
+		issuersByNameID[issuer.Cert.NameID()] = issuer
+	}
+	return ocspIssuerMaps{issuersByID, issuersByNameID}, nil
 }
 
 func NewOCSPImpl(
@@ -56,9 +76,14 @@ func NewOCSPImpl(
 		ocspLogQueue = newOCSPLogQueue(ocspLogMaxLength, ocspLogPeriod, stats, logger)
 	}
 
+	issuerMaps, err := makeOCSPIssuerMaps(issuers)
+	if err != nil {
+		return nil, err
+	}
+
 	oi := &ocspImpl{
 		sa:             sa,
-		issuers:        issuersByID,
+		issuers:        issuerMaps,
 		ocspLifetime:   ocspLifetime,
 		ocspLogQueue:   ocspLogQueue,
 		log:            logger,
@@ -100,11 +125,13 @@ func (oi *ocspImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequ
 	}
 	serial := serialInt
 
-	// TODO(#5152): Replace IssuerID with IssuerNameID.
-	var ok bool
-	issuer, ok := oi.issuers[issuance.IssuerID(req.IssuerID)]
+	issuer, ok := oi.issuers.byNameID[issuance.IssuerNameID(req.IssuerID)]
 	if !ok {
-		return nil, fmt.Errorf("This CA doesn't have an issuer cert with ID %d", req.IssuerID)
+		// TODO(#5152): Remove this fallback to old-style IssuerIDs.
+		issuer, ok = oi.issuers.byID[issuance.IssuerID(req.IssuerID)]
+		if !ok {
+			return nil, fmt.Errorf("This CA doesn't have an issuer cert with ID %d", req.IssuerID)
+		}
 	}
 
 	now := oi.clk.Now().Truncate(time.Hour)

@@ -7,7 +7,7 @@ import (
 	"github.com/zmap/zlint/v3/lint"
 	"github.com/zmap/zlint/v3/util"
 
-	"github.com/letsencrypt/boulder/lint/lints"
+	"github.com/letsencrypt/boulder/linter/lints"
 )
 
 type intermediateCertValidityTooLong struct{}

@@ -64,13 +64,14 @@ func selectRegistration(s db.OneSelector, q string, args ...interface{}) (*regMo
 
 const certFields = "registrationID, serial, digest, der, issued, expires"
 
-// SelectCertificate selects all fields of one certificate object
-// identified by serial.
+// SelectCertificate selects all fields of one certificate object identified by
+// a serial. If more than one row contains the same serial only the first is
+// returned.
 func SelectCertificate(s db.OneSelector, serial string) (core.Certificate, error) {
 	var model core.Certificate
 	err := s.SelectOne(
 		&model,
-		"SELECT "+certFields+" FROM certificates WHERE serial = ?",
+		"SELECT "+certFields+" FROM certificates WHERE serial = ? LIMIT 1",
 		serial,
 	)
 	return model, err

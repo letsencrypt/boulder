@@ -1,4 +1,4 @@
-package lint
+package linter
 
 import (
 	"crypto/ecdsa"
@@ -19,8 +19,8 @@ func TestMakeSigner_RSA(t *testing.T) {
 			N: rsaMod,
 		},
 	}
-	lintSigner, err := MakeSigner(realSigner)
-	test.AssertNotError(t, err, "MakeSigner failed")
+	lintSigner, err := makeSigner(realSigner)
+	test.AssertNotError(t, err, "makeSigner failed")
 	_, ok = lintSigner.(*rsa.PrivateKey)
 	test.Assert(t, ok, "lint signer is not RSA")
 }
@@ -31,14 +31,18 @@ func TestMakeSigner_ECDSA(t *testing.T) {
 			Curve: elliptic.P256(),
 		},
 	}
-	lintSigner, err := MakeSigner(realSigner)
-	test.AssertNotError(t, err, "MakeSigner failed")
+	lintSigner, err := makeSigner(realSigner)
+	test.AssertNotError(t, err, "makeSigner failed")
 	_, ok := lintSigner.(*ecdsa.PrivateKey)
 	test.Assert(t, ok, "lint signer is not ECDSA")
 }
 
 func TestMakeSigner_Unsupported(t *testing.T) {
 	realSigner := ed25519.NewKeyFromSeed([]byte("0123456789abcdef0123456789abcdef"))
-	_, err := MakeSigner(realSigner)
-	test.AssertError(t, err, "MakeSigner shouldn't have succeeded")
+	_, err := makeSigner(realSigner)
+	test.AssertError(t, err, "makeSigner shouldn't have succeeded")
+}
+
+func TestMakeIssuer(t *testing.T) {
+
 }
