@@ -1900,25 +1900,18 @@ func TestDeactivateRegistration(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	// Create a complete, deactivated registration
-	reg := &corepb.Registration{
-		Id:     1,
-		Status: string(core.StatusDeactivated),
-	}
-
 	// Deactivate failure because incomplete registration provided
 	_, err := ra.DeactivateRegistration(context.Background(), &corepb.Registration{})
 	test.AssertDeepEquals(t, err, fmt.Errorf("incomplete gRPC request message"))
 
 	// Deactivate failure because registration status already deactivated
-	_, err = ra.DeactivateRegistration(context.Background(), reg)
+	_, err = ra.DeactivateRegistration(context.Background(),
+		&corepb.Registration{Id: 1, Status: string(core.StatusDeactivated)})
 	test.AssertError(t, err, "DeactivateRegistration failed with a non-valid registration")
 
-	// Set reg status to valid
-	reg.Status = string(core.StatusValid)
-
 	// Deactivate success with valid registration
-	_, err = ra.DeactivateRegistration(context.Background(), reg)
+	_, err = ra.DeactivateRegistration(context.Background(),
+		&corepb.Registration{Id: 1, Status: string(core.StatusValid)})
 	test.AssertNotError(t, err, "DeactivateRegistration failed")
 
 	// Check db to make sure account is deactivated
