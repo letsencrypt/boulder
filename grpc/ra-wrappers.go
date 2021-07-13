@@ -69,18 +69,8 @@ func (rac RegistrationAuthorityClientWrapper) RevokeCertificateWithReg(ctx conte
 	return rac.inner.RevokeCertificateWithReg(ctx, req)
 }
 
-func (rac RegistrationAuthorityClientWrapper) DeactivateRegistration(ctx context.Context, reg core.Registration) error {
-	regPB, err := RegistrationToPB(reg)
-	if err != nil {
-		return err
-	}
-
-	_, err = rac.inner.DeactivateRegistration(ctx, regPB)
-	if err != nil {
-		return err
-	}
-
-	return nil
+func (rac RegistrationAuthorityClientWrapper) DeactivateRegistration(ctx context.Context, reg *corepb.Registration) (*emptypb.Empty, error) {
+	return rac.inner.DeactivateRegistration(ctx, reg)
 }
 
 func (rac RegistrationAuthorityClientWrapper) DeactivateAuthorization(ctx context.Context, auth core.Authorization) error {
@@ -185,18 +175,7 @@ func (ras *RegistrationAuthorityServerWrapper) RevokeCertificateWithReg(ctx cont
 }
 
 func (ras *RegistrationAuthorityServerWrapper) DeactivateRegistration(ctx context.Context, request *corepb.Registration) (*emptypb.Empty, error) {
-	if request == nil || !registrationValid(request) {
-		return nil, errIncompleteRequest
-	}
-	reg, err := PbToRegistration(request)
-	if err != nil {
-		return nil, err
-	}
-	err = ras.inner.DeactivateRegistration(ctx, reg)
-	if err != nil {
-		return nil, err
-	}
-	return &emptypb.Empty{}, nil
+	return ras.inner.DeactivateRegistration(ctx, request)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) DeactivateAuthorization(ctx context.Context, request *corepb.Authorization) (*emptypb.Empty, error) {

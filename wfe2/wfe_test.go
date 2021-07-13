@@ -253,8 +253,8 @@ func (ra *MockRegistrationAuthority) DeactivateAuthorization(ctx context.Context
 	return nil
 }
 
-func (ra *MockRegistrationAuthority) DeactivateRegistration(ctx context.Context, _ core.Registration) error {
-	return nil
+func (ra *MockRegistrationAuthority) DeactivateRegistration(ctx context.Context, _ *corepb.Registration) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
 func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {

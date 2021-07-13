@@ -75,7 +75,7 @@ type RegistrationAuthority interface {
 	RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*emptypb.Empty, error)
 
 	// [WebFrontEnd]
-	DeactivateRegistration(ctx context.Context, reg Registration) error
+	DeactivateRegistration(ctx context.Context, reg *corepb.Registration) (*emptypb.Empty, error)
 
 	// [WebFrontEnd]
 	DeactivateAuthorization(ctx context.Context, auth Authorization) error

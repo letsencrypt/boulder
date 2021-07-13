@@ -1916,15 +1916,18 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 }
 
 // DeactivateRegistration deactivates a valid registration
-func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context, reg core.Registration) error {
-	if reg.Status != core.StatusValid {
-		return berrors.MalformedError("only valid registrations can be deactivated")
+func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context, reg *corepb.Registration) (*emptypb.Empty, error) {
+	if reg == nil || reg.Id == 0 {
+		return nil, errIncompleteGRPCRequest
 	}
-	err := ra.SA.DeactivateRegistration(ctx, reg.ID)
+	if reg.Status != string(core.StatusValid) {
+		return nil, berrors.MalformedError("only valid registrations can be deactivated")
+	}
+	err := ra.SA.DeactivateRegistration(ctx, reg.Id)
 	if err != nil {
-		return berrors.InternalServerError(err.Error())
+		return nil, berrors.InternalServerError(err.Error())
 	}
-	return nil
+	return &emptypb.Empty{}, nil
 }
 
 // DeactivateAuthorization deactivates a currently valid authorization

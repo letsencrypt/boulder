@@ -1423,7 +1423,8 @@ func (wfe *WebFrontEndImpl) updateAccount(
 		if updatePb.Status != string(core.StatusDeactivated) {
 			return nil, probs.Malformed("Invalid value provided for status field")
 		}
-		if err := wfe.RA.DeactivateRegistration(ctx, *currAcct); err != nil {
+		_, err := wfe.RA.DeactivateRegistration(ctx, basePb)
+		if err != nil {
 			return nil, web.ProblemDetailsForError(err, "Unable to deactivate account")
 		}
 		currAcct.Status = core.StatusDeactivated

@@ -1684,7 +1684,11 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *web.Reque
 }
 
 func (wfe *WebFrontEndImpl) deactivateRegistration(ctx context.Context, reg core.Registration, response http.ResponseWriter, request *http.Request, logEvent *web.RequestEvent) {
-	err := wfe.RA.DeactivateRegistration(ctx, reg)
+	regPb := &corepb.Registration{
+		Id:     reg.ID,
+		Status: string(reg.Status),
+	}
+	_, err := wfe.RA.DeactivateRegistration(ctx, regPb)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error deactivating registration"), err)
 		return
