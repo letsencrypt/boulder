@@ -6,7 +6,7 @@ require (
 	github.com/beeker1121/goque v1.0.3-0.20191103205551-d618510128af
 	github.com/eggsampler/acme/v3 v3.0.0
 	github.com/go-gorp/gorp/v3 v3.0.2
-	github.com/go-sql-driver/mysql v1.6.0
+	github.com/go-sql-driver/mysql v1.5.0
 	github.com/google/certificate-transparency-go v1.0.22-0.20181127102053-c25855a82c75
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/honeycombio/beeline-go v1.1.1
@@ -30,3 +30,8 @@ require (
 	gopkg.in/square/go-jose.v2 v2.4.1
 	gopkg.in/yaml.v2 v2.4.0
 )
+
+// This version is required by parts of the honeycombio/beeline-go package
+// that we do not rely upon. It appears to introduce performance regressions
+// for us.
+exclude github.com/go-sql-driver/mysql v1.6.0
