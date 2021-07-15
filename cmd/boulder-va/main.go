@@ -128,7 +128,8 @@ func main() {
 		servers, err = bdns.StartDynamicProvider(c.VA.DNSResolver, 60*time.Second)
 		cmd.FailOnError(err, "Couldn't start dynamic DNS server resolver")
 	} else {
-		servers = bdns.NewStaticProvider(c.VA.DNSResolvers)
+		servers, err = bdns.NewStaticProvider(c.VA.DNSResolvers)
+		cmd.FailOnError(err, "Couldn't parse static DNS server(s)")
 	}
 
 	var resolver bdns.Client
