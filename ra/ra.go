@@ -1790,7 +1790,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 
 	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		Serial:    serial,
-		IssuerID:  int64(issuer.ID()),
+		IssuerID:  int64(issuer.NameID()),
 		Status:    string(core.OCSPStatusRevoked),
 		Reason:    reason,
 		RevokedAt: revokedAt,
