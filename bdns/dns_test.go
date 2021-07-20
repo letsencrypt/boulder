@@ -243,9 +243,12 @@ func TestMain(m *testing.M) {
 }
 
 func TestDNSNoServers(t *testing.T) {
-	obj := NewTest(time.Hour, NewStaticProvider([]string{}), metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	staticProvider, err := NewStaticProvider([]string{})
+	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	_, err := obj.LookupHost(context.Background(), "letsencrypt.org")
+	obj := NewTest(time.Hour, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+
+	_, err = obj.LookupHost(context.Background(), "letsencrypt.org")
 	test.AssertError(t, err, "No servers")
 
 	_, err = obj.LookupTXT(context.Background(), "letsencrypt.org")
@@ -256,26 +259,35 @@ func TestDNSNoServers(t *testing.T) {
 }
 
 func TestDNSOneServer(t *testing.T) {
-	obj := NewTest(time.Second*10, NewStaticProvider([]string{dnsLoopbackAddr}), metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
+	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	_, err := obj.LookupHost(context.Background(), "letsencrypt.org")
+	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+
+	_, err = obj.LookupHost(context.Background(), "letsencrypt.org")
 
 	test.AssertNotError(t, err, "No message")
 }
 
 func TestDNSDuplicateServers(t *testing.T) {
-	obj := NewTest(time.Second*10, NewStaticProvider([]string{dnsLoopbackAddr, dnsLoopbackAddr}), metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr, dnsLoopbackAddr})
+	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	_, err := obj.LookupHost(context.Background(), "letsencrypt.org")
+	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+
+	_, err = obj.LookupHost(context.Background(), "letsencrypt.org")
 
 	test.AssertNotError(t, err, "No message")
 }
 
 func TestDNSServFail(t *testing.T) {
-	obj := NewTest(time.Second*10, NewStaticProvider([]string{dnsLoopbackAddr}), metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
+	test.AssertNotError(t, err, "Got error creating StaticProvider")
+
+	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
 	bad := "servfail.com"
 
-	_, err := obj.LookupTXT(context.Background(), bad)
+	_, err = obj.LookupTXT(context.Background(), bad)
 	test.AssertError(t, err, "LookupTXT didn't return an error")
 
 	_, err = obj.LookupHost(context.Background(), bad)
@@ -287,7 +299,10 @@ func TestDNSServFail(t *testing.T) {
 }
 
 func TestDNSLookupTXT(t *testing.T) {
-	obj := NewTest(time.Second*10, NewStaticProvider([]string{dnsLoopbackAddr}), metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
+	test.AssertNotError(t, err, "Got error creating StaticProvider")
+
+	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
 
 	a, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
 	t.Logf("A: %v", a)
@@ -301,7 +316,10 @@ func TestDNSLookupTXT(t *testing.T) {
 }
 
 func TestDNSLookupHost(t *testing.T) {
-	obj := NewTest(time.Second*10, NewStaticProvider([]string{dnsLoopbackAddr}), metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
+	test.AssertNotError(t, err, "Got error creating StaticProvider")
+
+	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
 
 	ip, err := obj.LookupHost(context.Background(), "servfail.com")
 	t.Logf("servfail.com - IP: %s, Err: %s", ip, err)
@@ -366,10 +384,13 @@ func TestDNSLookupHost(t *testing.T) {
 }
 
 func TestDNSNXDOMAIN(t *testing.T) {
-	obj := NewTest(time.Second*10, NewStaticProvider([]string{dnsLoopbackAddr}), metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
+	test.AssertNotError(t, err, "Got error creating StaticProvider")
+
+	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
 
 	hostname := "nxdomain.letsencrypt.org"
-	_, err := obj.LookupHost(context.Background(), hostname)
+	_, err = obj.LookupHost(context.Background(), hostname)
 	expected := &Error{dns.TypeA, hostname, nil, dns.RcodeNameError}
 	test.AssertDeepEquals(t, err, expected)
 
@@ -379,7 +400,10 @@ func TestDNSNXDOMAIN(t *testing.T) {
 }
 
 func TestDNSLookupCAA(t *testing.T) {
-	obj := NewTest(time.Second*10, NewStaticProvider([]string{dnsLoopbackAddr}), metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
+	test.AssertNotError(t, err, "Got error creating StaticProvider")
+
+	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
 	removeIDExp := regexp.MustCompile(" id: [[:digit:]]+")
 
 	caas, resp, err := obj.LookupCAA(context.Background(), "bracewel.net")
@@ -600,10 +624,13 @@ func TestRetry(t *testing.T) {
 
 	for i, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			testClient := NewTest(time.Second*10, NewStaticProvider([]string{dnsLoopbackAddr}), metrics.NoopRegisterer, clock.NewFake(), tc.maxTries, blog.UseMock())
+			staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
+			test.AssertNotError(t, err, "Got error creating StaticProvider")
+
+			testClient := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), tc.maxTries, blog.UseMock())
 			dr := testClient.(*impl)
 			dr.dnsClient = tc.te
-			_, err := dr.LookupTXT(context.Background(), "example.com")
+			_, err = dr.LookupTXT(context.Background(), "example.com")
 			if err == errTooManyRequests {
 				t.Errorf("#%d, sent more requests than the test case handles", i)
 			}
@@ -627,12 +654,15 @@ func TestRetry(t *testing.T) {
 		})
 	}
 
-	testClient := NewTest(time.Second*10, NewStaticProvider([]string{dnsLoopbackAddr}), metrics.NoopRegisterer, clock.NewFake(), 3, blog.UseMock())
+	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
+	test.AssertNotError(t, err, "Got error creating StaticProvider")
+
+	testClient := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, blog.UseMock())
 	dr := testClient.(*impl)
 	dr.dnsClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := dr.LookupTXT(ctx, "example.com")
+	_, err = dr.LookupTXT(ctx, "example.com")
 	if err == nil ||
 		err.Error() != "DNS problem: query timed out (and was canceled) looking up TXT for example.com" {
 		t.Errorf("expected %s, got %s", context.Canceled, err)
@@ -710,21 +740,29 @@ func (e *rotateFailureExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.
 func TestRotateServerOnErr(t *testing.T) {
 	// Configure three DNS servers
 	dnsServers := []string{
-		"a", "b", "c",
+		"a:53", "b:53", "[2606:4700:4700::1111]:53",
 	}
+
 	// Set up a DNS client using these servers that will retry queries up to
 	// a maximum of 5 times. It's important to choose a maxTries value >= the
 	// number of dnsServers to ensure we always get around to trying the one
 	// working server
+	staticProvider, err := NewStaticProvider(dnsServers)
+	test.AssertNotError(t, err, "Got error creating StaticProvider")
+	fmt.Println(staticProvider.servers)
+
 	maxTries := 5
-	client := NewTest(time.Second*10, NewStaticProvider(dnsServers), metrics.NoopRegisterer, clock.NewFake(), maxTries, blog.UseMock())
+	client := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), maxTries, blog.UseMock())
 
 	// Configure a mock exchanger that will always return a retryable error for
-	// the A and B servers. This will force the C server to do all the work once
-	// retries reach it.
+	// servers A and B. This will force server "[2606:4700:4700::1111]:53" to do
+	// all the work once retries reach it.
 	mock := &rotateFailureExchanger{
-		brokenAddresses: map[string]bool{"a": true, "b": true},
-		lookups:         make(map[string]int),
+		brokenAddresses: map[string]bool{
+			"a:53": true,
+			"b:53": true,
+		},
+		lookups: make(map[string]int),
 	}
 	client.(*impl).dnsClient = mock
 
@@ -732,16 +770,21 @@ func TestRotateServerOnErr(t *testing.T) {
 	// A or B is chosen there should be an error and a retry using the next server
 	// in the list. Since we configured maxTries to be larger than the number of
 	// servers *all* queries should eventually succeed by being retried against
-	// the C server.
+	// server "[2606:4700:4700::1111]:53".
 	for i := 0; i < maxTries*2; i++ {
 		_, err := client.LookupTXT(context.Background(), "example.com")
-		// Any errors are unexpected - the C server should have responded without error.
+		// Any errors are unexpected - server "[2606:4700:4700::1111]:53" should
+		// have responded without error.
 		test.AssertNotError(t, err, "Expected no error from eventual retry with functional server")
 	}
 
-	// We expect that the A and B servers had a non-zero number of lookups attempted
-	test.Assert(t, mock.lookups["a"] > 0, "Expected A server to have non-zero lookup attempts")
-	test.Assert(t, mock.lookups["b"] > 0, "Expected B server to have non-zero lookup attempts")
-	// We expect that the C server eventually served all of the lookups attempted
-	test.AssertEquals(t, mock.lookups["c"], maxTries*2)
+	// We expect that the A and B servers had a non-zero number of lookups
+	// attempted.
+	test.Assert(t, mock.lookups["a:53"] > 0, "Expected A server to have non-zero lookup attempts")
+	test.Assert(t, mock.lookups["b:53"] > 0, "Expected B server to have non-zero lookup attempts")
+
+	// We expect that the server "[2606:4700:4700::1111]:53" eventually served
+	// all of the lookups attempted.
+	test.AssertEquals(t, mock.lookups["[2606:4700:4700::1111]:53"], maxTries*2)
+
 }
