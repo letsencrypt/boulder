@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/probs"
 )
 
 const (
@@ -208,6 +209,9 @@ func (ci *clientInterceptor) intercept(
 			method:  method,
 			latency: ci.clk.Since(begin),
 		}
+	}
+	if status.Code(err) == codes.Canceled {
+		return probs.Canceled(err.Error())
 	}
 	return err
 }

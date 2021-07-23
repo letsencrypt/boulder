@@ -27,6 +27,7 @@ const (
 	BadPublicKeyProblem          = ProblemType("badPublicKey")
 	BadRevocationReasonProblem   = ProblemType("badRevocationReason")
 	BadCSRProblem                = ProblemType("badCSR")
+	CanceledProblem              = ProblemType("requesterCanceled")
 
 	V1ErrorNS = "urn:acme:error:"
 	V2ErrorNS = "urn:ietf:params:acme:error:"
@@ -158,6 +159,19 @@ func Malformed(detail string, args ...interface{}) *ProblemDetails {
 		Type:       MalformedProblem,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// Canceled returns a ProblemDetails with a CanceledProblem and a 408 Request
+// Timeout status code.
+func Canceled(detail string, args ...interface{}) *ProblemDetails {
+	if len(args) > 0 {
+		detail = fmt.Sprintf(detail, args...)
+	}
+	return &ProblemDetails{
+		Type:       CanceledProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusRequestTimeout,
 	}
 }
 
