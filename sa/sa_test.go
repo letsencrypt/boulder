@@ -117,6 +117,7 @@ func TestAddRegistration(t *testing.T) {
 	defer cleanUp()
 
 	jwk := satest.GoodJWK()
+	jwkJSON, _ := jwk.MarshalJSON()
 
 	contact := "mailto:foo@example.com"
 	contacts := &[]string{contact}
@@ -131,22 +132,16 @@ func TestAddRegistration(t *testing.T) {
 	test.Assert(t, reg.ID != 0, "ID shouldn't be 0")
 	test.AssertDeepEquals(t, reg.Contact, contacts)
 
-	_, err = sa.GetRegistration(ctx, 0)
+	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: 0})
 	test.AssertError(t, err, "Registration object for ID 0 was returned")
 
-	dbReg, err := sa.GetRegistration(ctx, reg.ID)
+	dbReg, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.ID})
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
 
 	createdAt := clk.Now()
-	expectedReg := core.Registration{
-		ID:        reg.ID,
-		Key:       jwk,
-		InitialIP: net.ParseIP("43.34.43.34"),
-		CreatedAt: &createdAt,
-	}
-	test.AssertEquals(t, dbReg.ID, expectedReg.ID)
-	test.Assert(t, core.KeyDigestEquals(dbReg.Key, expectedReg.Key), "Stored key != expected")
-	test.AssertDeepEquals(t, expectedReg.CreatedAt, dbReg.CreatedAt)
+	test.AssertEquals(t, dbReg.Id, reg.ID)
+	test.AssertByteEquals(t, dbReg.Key, jwkJSON)
+	test.AssertDeepEquals(t, dbReg.CreatedAt, createdAt.UnixNano())
 
 	newReg := core.Registration{
 		ID:        reg.ID,
@@ -157,11 +152,11 @@ func TestAddRegistration(t *testing.T) {
 	}
 	err = sa.UpdateRegistration(ctx, newReg)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
-	dbReg, err = sa.GetRegistrationByKey(ctx, jwk)
+	dbReg2, err := sa.GetRegistrationByKey(ctx, jwk)
 	test.AssertNotError(t, err, "Couldn't get registration by key")
 
-	test.AssertEquals(t, dbReg.ID, newReg.ID)
-	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
+	test.AssertEquals(t, dbReg2.ID, newReg.ID)
+	test.AssertEquals(t, dbReg2.Agreement, newReg.Agreement)
 
 	var anotherJWK jose.JSONWebKey
 	err = json.Unmarshal([]byte(anotherKey), &anotherJWK)
@@ -174,7 +169,7 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	_, err := sa.GetRegistration(ctx, 100)
+	_, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: 100})
 	test.AssertErrorIs(t, err, berrors.NotFound)
 
 	jwk := satest.GoodJWK()
@@ -721,9 +716,9 @@ func TestDeactivateAccount(t *testing.T) {
 	err := sa.DeactivateRegistration(context.Background(), reg.ID)
 	test.AssertNotError(t, err, "DeactivateRegistration failed")
 
-	dbReg, err := sa.GetRegistration(context.Background(), reg.ID)
+	dbReg, err := sa.GetRegistration(context.Background(), &sapb.RegistrationID{Id: reg.ID})
 	test.AssertNotError(t, err, "GetRegistration failed")
-	test.AssertEquals(t, dbReg.Status, core.StatusDeactivated)
+	test.AssertEquals(t, core.AcmeStatus(dbReg.Status), core.StatusDeactivated)
 }
 
 func TestReverseName(t *testing.T) {

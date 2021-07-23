@@ -98,17 +98,21 @@ func NewSQLStorageAuthority(
 }
 
 // GetRegistration obtains a Registration by ID
-func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
-	const query = "WHERE id = ?"
-	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, id)
-	if err != nil {
-		if db.IsNoRows(err) {
-			return core.Registration{}, berrors.NotFoundError("registration with ID '%d' not found", id)
-		}
-		return core.Registration{}, err
+func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, req *sapb.RegistrationID) (*corepb.Registration, error) {
+	if core.IsAnyNilOrZero(req, req.Id) {
+		return nil, errIncompleteRequest
 	}
 
-	return modelToRegistration(model)
+	const query = "WHERE id = ?"
+	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, req.Id)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return nil, berrors.NotFoundError("registration with ID '%d' not found", req.Id)
+		}
+		return nil, err
+	}
+
+	return registrationModelToPB(model)
 }
 
 // GetRegistrationByKey obtains a Registration by JWK

@@ -18,12 +18,14 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -44,19 +46,19 @@ func intFromB64(b64 string) int {
 }
 
 type fakeRegStore struct {
-	RegByID map[int64]core.Registration
+	RegByID map[int64]*corepb.Registration
 }
 
-func (f fakeRegStore) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
-	r, ok := f.RegByID[id]
+func (f fakeRegStore) GetRegistration(ctx context.Context, req *sapb.RegistrationID) (*corepb.Registration, error) {
+	r, ok := f.RegByID[req.Id]
 	if !ok {
-		return r, berrors.NotFoundError("no registration found for %q", id)
+		return r, berrors.NotFoundError("no registration found for %q", req.Id)
 	}
 	return r, nil
 }
 
 func newFakeRegStore() fakeRegStore {
-	return fakeRegStore{RegByID: make(map[int64]core.Registration)}
+	return fakeRegStore{RegByID: make(map[int64]*corepb.Registration)}
 }
 
 func newFakeClock(t *testing.T) clock.FakeClock {

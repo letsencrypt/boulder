@@ -28,6 +28,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -38,6 +39,7 @@ import (
 	"github.com/letsencrypt/boulder/ra"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/letsencrypt/boulder/web"
@@ -2227,8 +2229,10 @@ func TestLogCsrPem(t *testing.T) {
 	err := json.Unmarshal([]byte(certificateRequestJSON), &certificateRequest)
 	test.AssertNotError(t, err, "Unable to parse certificateRequest")
 
-	reg, err := wfe.SA.GetRegistration(ctx, 789)
+	regPB, err := wfe.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: 789})
 	test.AssertNotError(t, err, "Unable to get registration")
+	reg, err := bgrpc.PbToRegistration(regPB)
+	test.AssertNotError(t, err, "Unable to unmarshal registration")
 
 	req, err := http.NewRequest("GET", "http://[::1]/", nil)
 	test.AssertNotError(t, err, "NewRequest failed")

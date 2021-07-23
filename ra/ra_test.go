@@ -463,9 +463,9 @@ func TestNewRegistration(t *testing.T) {
 	test.Assert(t, mailto == (result.Contact)[0], "Contact didn't match")
 	test.Assert(t, result.Agreement == "", "Agreement didn't default empty")
 
-	reg, err := sa.GetRegistration(ctx, result.Id)
+	reg, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: result.Id})
 	test.AssertNotError(t, err, "Failed to retrieve registration")
-	test.Assert(t, core.KeyDigestEquals(reg.Key, AccountKeyB), "Retrieved registration differed.")
+	test.AssertByteEquals(t, reg.Key, acctKeyB)
 }
 
 func TestNewRegistrationContactsPresent(t *testing.T) {
@@ -1915,9 +1915,9 @@ func TestDeactivateRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "DeactivateRegistration failed")
 
 	// Check db to make sure account is deactivated
-	dbReg, err := ra.SA.GetRegistration(context.Background(), 1)
+	dbReg, err := ra.SA.GetRegistration(context.Background(), &sapb.RegistrationID{Id: 1})
 	test.AssertNotError(t, err, "GetRegistration failed")
-	test.AssertEquals(t, dbReg.Status, core.StatusDeactivated)
+	test.AssertEquals(t, dbReg.Status, string(core.StatusDeactivated))
 }
 
 // noopCAA implements caaChecker, always returning nil

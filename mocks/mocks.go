@@ -74,73 +74,62 @@ const (
 )
 
 // GetRegistration is a mock
-func (sa *StorageAuthority) GetRegistration(_ context.Context, id int64) (core.Registration, error) {
-	if id == 100 {
+func (sa *StorageAuthority) GetRegistration(_ context.Context, req *sapb.RegistrationID) (*corepb.Registration, error) {
+	if req.Id == 100 {
 		// Tag meaning "Missing"
-		return core.Registration{}, errors.New("missing")
+		return &corepb.Registration{}, errors.New("missing")
 	}
-	if id == 101 {
+	if req.Id == 101 {
 		// Tag meaning "Malformed"
-		return core.Registration{}, nil
+		return &corepb.Registration{}, nil
 	}
-	if id == 102 {
+	if req.Id == 102 {
 		// Tag meaning "Not Found"
-		return core.Registration{}, berrors.NotFoundError("Dave's not here man")
+		return &corepb.Registration{}, berrors.NotFoundError("Dave's not here man")
 	}
 
-	keyJSON := []byte(test1KeyPublicJSON)
-	var parsedKey jose.JSONWebKey
-	err := parsedKey.UnmarshalJSON(keyJSON)
-	if err != nil {
-		return core.Registration{}, err
-	}
-
-	contacts := []string{"mailto:person@mail.com"}
-	goodReg := core.Registration{
-		ID:        id,
-		Key:       &parsedKey,
-		Agreement: agreementURL,
-		Contact:   &contacts,
-		Status:    core.StatusValid,
+	goodReg := &corepb.Registration{
+		Id:              req.Id,
+		Key:             []byte(test1KeyPublicJSON),
+		Agreement:       agreementURL,
+		Contact:         []string{"mailto:person@mail.com"},
+		ContactsPresent: true,
+		Status:          string(core.StatusValid),
 	}
 
 	// Return a populated registration with contacts for ID == 1 or ID == 5
-	if id == 1 || id == 5 {
+	if req.Id == 1 || req.Id == 5 {
 		return goodReg, nil
 	}
 
-	var test2KeyPublic jose.JSONWebKey
-	_ = test2KeyPublic.UnmarshalJSON([]byte(test2KeyPublicJSON))
-	if id == 2 {
-		goodReg.Key = &test2KeyPublic
+	// Return a populated registration with a different key for ID == 2
+	if req.Id == 2 {
+		goodReg.Key = []byte(test2KeyPublicJSON)
 		return goodReg, nil
 	}
 
-	var test3KeyPublic jose.JSONWebKey
-	_ = test3KeyPublic.UnmarshalJSON([]byte(test3KeyPublicJSON))
-	// deactivated registration
-	if id == 3 {
-		goodReg.Key = &test3KeyPublic
-		goodReg.Status = core.StatusDeactivated
+	// Return a deactivated registration with a different key for ID == 3
+	if req.Id == 3 {
+		goodReg.Key = []byte(test3KeyPublicJSON)
+		goodReg.Status = string(core.StatusDeactivated)
 		return goodReg, nil
 	}
 
-	var test4KeyPublic jose.JSONWebKey
-	_ = test4KeyPublic.UnmarshalJSON([]byte(test4KeyPublicJSON))
-	if id == 4 {
-		goodReg.Key = &test4KeyPublic
+	// Return a populated registration with a different key for ID == 4
+	if req.Id == 4 {
+		goodReg.Key = []byte(test4KeyPublicJSON)
 		return goodReg, nil
 	}
 
-	// ID 6 == an account without the agreement set
-	if id == 6 {
+	// Return a registration without the agreement set for ID == 6
+	if req.Id == 6 {
 		goodReg.Agreement = ""
 		return goodReg, nil
 	}
 
-	goodReg.InitialIP = net.ParseIP("5.6.7.8")
+	goodReg.InitialIP, _ = net.ParseIP("5.6.7.8").MarshalText()
 	createdAt := time.Date(2003, 9, 27, 0, 0, 0, 0, time.UTC)
-	goodReg.CreatedAt = &createdAt
+	goodReg.CreatedAt = createdAt.UnixNano()
 	return goodReg, nil
 }
 

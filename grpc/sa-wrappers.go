@@ -28,17 +28,8 @@ func NewStorageAuthorityClient(inner sapb.StorageAuthorityClient) *StorageAuthor
 	return &StorageAuthorityClientWrapper{inner}
 }
 
-func (sac StorageAuthorityClientWrapper) GetRegistration(ctx context.Context, regID int64) (core.Registration, error) {
-	response, err := sac.inner.GetRegistration(ctx, &sapb.RegistrationID{Id: regID})
-	if err != nil {
-		return core.Registration{}, err
-	}
-
-	if response == nil || !registrationValid(response) {
-		return core.Registration{}, errIncompleteResponse
-	}
-
-	return PbToRegistration(response)
+func (sac StorageAuthorityClientWrapper) GetRegistration(ctx context.Context, req *sapb.RegistrationID) (*corepb.Registration, error) {
+	return sac.inner.GetRegistration(ctx, req)
 }
 
 func (sac StorageAuthorityClientWrapper) GetRegistrationByKey(ctx context.Context, key *jose.JSONWebKey) (core.Registration, error) {
@@ -508,16 +499,7 @@ func (sas *StorageAuthorityServerWrapper) AddSerial(ctx context.Context, req *sa
 }
 
 func (sas StorageAuthorityServerWrapper) GetRegistration(ctx context.Context, request *sapb.RegistrationID) (*corepb.Registration, error) {
-	if core.IsAnyNilOrZero(request, request.Id) {
-		return nil, errIncompleteRequest
-	}
-
-	reg, err := sas.inner.GetRegistration(ctx, request.Id)
-	if err != nil {
-		return nil, err
-	}
-
-	return RegistrationToPB(reg)
+	return sas.inner.GetRegistration(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) GetRegistrationByKey(ctx context.Context, request *sapb.JSONWebKey) (*corepb.Registration, error) {

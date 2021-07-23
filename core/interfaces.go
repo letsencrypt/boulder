@@ -100,7 +100,7 @@ type PolicyAuthority interface {
 
 // StorageGetter are the Boulder SA's read-only methods
 type StorageGetter interface {
-	GetRegistration(ctx context.Context, regID int64) (Registration, error)
+	GetRegistration(ctx context.Context, req *sapb.RegistrationID) (*corepb.Registration, error)
 	GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (Registration, error)
 	GetCertificate(ctx context.Context, serial string) (Certificate, error)
 	GetPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)

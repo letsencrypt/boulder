@@ -254,6 +254,38 @@ func modelToRegistration(reg *regModel) (core.Registration, error) {
 	return r, nil
 }
 
+func registrationModelToPB(reg *regModel) (*corepb.Registration, error) {
+	if reg.ID == 0 || len(reg.Key) == 0 || len(reg.InitialIP) == 0 {
+		return nil, errors.New("incomplete Registration retrieved from DB")
+	}
+
+	var contact []string
+	contactsPresent := false
+	if reg.Contact != nil {
+		contact = reg.Contact
+		contactsPresent = true
+	}
+
+	// For some reason we use different serialization formats for InitialIP
+	// in database models and in protobufs, despite the fact that both formats
+	// are just []byte.
+	ipBytes, err := net.IP(reg.InitialIP).MarshalText()
+	if err != nil {
+		return nil, err
+	}
+
+	return &corepb.Registration{
+		Id:              reg.ID,
+		Key:             reg.Key,
+		Contact:         contact,
+		ContactsPresent: contactsPresent,
+		Agreement:       reg.Agreement,
+		InitialIP:       ipBytes,
+		CreatedAt:       reg.CreatedAt.UTC().UnixNano(),
+		Status:          reg.Status,
+	}, nil
+}
+
 func modelToChallenge(cm *challModel) (core.Challenge, error) {
 	c := core.Challenge{
 		Type:                     cm.Type,

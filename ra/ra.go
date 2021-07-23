@@ -1165,7 +1165,11 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return emptyCert, berrors.MalformedError("invalid order ID: %d", oID)
 	}
 
-	account, err := ra.SA.GetRegistration(ctx, int64(acctID))
+	regPB, err := ra.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: int64(acctID)})
+	if err != nil {
+		return emptyCert, err
+	}
+	account, err := bgrpc.PbToRegistration(regPB)
 	if err != nil {
 		return emptyCert, err
 	}
@@ -1674,7 +1678,11 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	}
 
 	// Look up the account key for this authorization
-	reg, err := ra.SA.GetRegistration(ctx, authz.RegistrationID)
+	regPB, err := ra.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: authz.RegistrationID})
+	if err != nil {
+		return nil, berrors.InternalServerError(err.Error())
+	}
+	reg, err := bgrpc.PbToRegistration(regPB)
 	if err != nil {
 		return nil, berrors.InternalServerError(err.Error())
 	}

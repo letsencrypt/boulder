@@ -22,6 +22,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -39,7 +40,7 @@ const (
 )
 
 type regStore interface {
-	GetRegistration(context.Context, int64) (core.Registration, error)
+	GetRegistration(ctx context.Context, req *sapb.RegistrationID) (*corepb.Registration, error)
 }
 
 type mailer struct {
@@ -194,7 +195,7 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 	}()
 
 	for regID, certs := range regIDToCerts {
-		reg, err := m.rs.GetRegistration(ctx, regID)
+		reg, err := m.rs.GetRegistration(ctx, &sapb.RegistrationID{Id: regID})
 		if err != nil {
 			m.log.AuditErrf("Error fetching registration %d: %s", regID, err)
 			m.stats.errorCount.With(prometheus.Labels{"type": "GetRegistration"}).Inc()
@@ -236,7 +237,7 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 			continue
 		}
 
-		err = m.sendNags(*reg.Contact, parsedCerts)
+		err = m.sendNags(reg.Contact, parsedCerts)
 		if err != nil {
 			m.stats.errorCount.With(prometheus.Labels{"type": "SendNags"}).Inc()
 			m.log.AuditErrf("Error sending nag emails: %s", err)
