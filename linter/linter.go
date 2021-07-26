@@ -162,8 +162,6 @@ func makeRegistry(skipLints []string) (lint.Registry, error) {
 }
 
 func makeLintCert(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, issuer *x509.Certificate, signer crypto.Signer) (*zlintx509.Certificate, error) {
-	fmt.Printf("issuer pub key: %v\n", issuer.PublicKey)
-	fmt.Printf("signer pub key: %v\n", signer.Public())
 	lintCertBytes, err := x509.CreateCertificate(rand.Reader, tbs, issuer, subjectPubKey, signer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create lint certificate: %w", err)
