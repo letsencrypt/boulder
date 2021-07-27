@@ -3172,8 +3172,8 @@ type mockSAGetRegByKeyFails struct {
 	core.StorageGetter
 }
 
-func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
-	return core.Registration{}, fmt.Errorf("whoops")
+func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error) {
+	return nil, fmt.Errorf("whoops")
 }
 
 // When SA.GetRegistrationByKey errors (e.g. gRPC timeout), NewAccount should
@@ -3203,8 +3203,8 @@ type mockSAGetRegByKeyNotFound struct {
 	core.StorageGetter
 }
 
-func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
-	return core.Registration{}, berrors.NotFoundError("not found")
+func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error) {
+	return nil, berrors.NotFoundError("not found")
 }
 
 func TestNewAccountWhenGetRegByKeyNotFound(t *testing.T) {

@@ -1535,8 +1535,8 @@ type mockSANoSuchRegistration struct {
 	core.StorageGetter
 }
 
-func (msa mockSANoSuchRegistration) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
-	return core.Registration{}, berrors.NotFoundError("reg not found")
+func (msa mockSANoSuchRegistration) GetRegistrationByKey(_ context.Context, _ *sapb.JSONWebKey) (*corepb.Registration, error) {
+	return nil, berrors.NotFoundError("reg not found")
 }
 
 // Valid revocation request for existing, non-revoked cert, signed with cert
@@ -2242,7 +2242,7 @@ func TestLogCsrPem(t *testing.T) {
 	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
 
-	wfe.logCsr(req, certificateRequest, reg)
+	wfe.logCsr(req, certificateRequest, reg.ID)
 
 	assertCsrLogged(t, mockLog)
 }
@@ -2274,8 +2274,8 @@ type mockSAGetRegByKeyFails struct {
 	core.StorageGetter
 }
 
-func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
-	return core.Registration{}, fmt.Errorf("whoops")
+func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(_ context.Context, _ *sapb.JSONWebKey) (*corepb.Registration, error) {
+	return nil, fmt.Errorf("whoops")
 }
 
 // When SA.GetRegistrationByKey errors (e.g. gRPC timeout), verifyPOST should
@@ -2316,8 +2316,8 @@ type mockSAGetRegByKeyNotFound struct {
 	core.StorageGetter
 }
 
-func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
-	return core.Registration{}, berrors.NotFoundError("not found")
+func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(_ context.Context, _ *sapb.JSONWebKey) (*corepb.Registration, error) {
+	return nil, berrors.NotFoundError("not found")
 }
 
 // When SA.GetRegistrationByKey returns berrors.NotFound, verifyPOST with
@@ -2367,16 +2367,9 @@ type mockSADifferentStoredKey struct {
 	core.StorageGetter
 }
 
-func (sa mockSADifferentStoredKey) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
-	keyJSON := []byte(test2KeyPublicJSON)
-	var parsedKey jose.JSONWebKey
-	err := parsedKey.UnmarshalJSON(keyJSON)
-	if err != nil {
-		panic(err)
-	}
-
-	return core.Registration{
-		Key: &parsedKey,
+func (sa mockSADifferentStoredKey) GetRegistrationByKey(_ context.Context, _ *sapb.JSONWebKey) (*corepb.Registration, error) {
+	return &corepb.Registration{
+		Key: []byte(test2KeyPublicJSON),
 	}, nil
 }
 
@@ -2727,12 +2720,12 @@ type mockSAGetRegByKeyNotFoundAfterVerify struct {
 	verified bool
 }
 
-func (sa *mockSAGetRegByKeyNotFoundAfterVerify) GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
+func (sa *mockSAGetRegByKeyNotFoundAfterVerify) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error) {
 	if !sa.verified {
 		sa.verified = true
-		return sa.StorageGetter.GetRegistrationByKey(ctx, jwk)
+		return sa.StorageGetter.GetRegistrationByKey(ctx, req)
 	}
-	return core.Registration{}, errors.New("broke")
+	return nil, errors.New("broke")
 }
 
 // If GetRegistrationByKey returns a non berrors.NotFound error NewRegistration should fail

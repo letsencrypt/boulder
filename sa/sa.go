@@ -116,24 +116,31 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, req *sapb.R
 }
 
 // GetRegistrationByKey obtains a Registration by JWK
-func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *jose.JSONWebKey) (core.Registration, error) {
-	const query = "WHERE jwk_sha256 = ?"
-	if key == nil {
-		return core.Registration{}, fmt.Errorf("key argument to GetRegistrationByKey must not be nil")
-	}
-	sha, err := core.KeyDigestB64(key.Key)
-	if err != nil {
-		return core.Registration{}, err
-	}
-	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, sha)
-	if db.IsNoRows(err) {
-		return core.Registration{}, berrors.NotFoundError("no registrations with public key sha256 %q", sha)
-	}
-	if err != nil {
-		return core.Registration{}, err
+func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error) {
+	if core.IsAnyNilOrZero(req, req.Jwk) {
+		return nil, errIncompleteRequest
 	}
 
-	return modelToRegistration(model)
+	var jwk jose.JSONWebKey
+	err := jwk.UnmarshalJSON(req.Jwk)
+	if err != nil {
+		return nil, err
+	}
+
+	const query = "WHERE jwk_sha256 = ?"
+	sha, err := core.KeyDigestB64(jwk.Key)
+	if err != nil {
+		return nil, err
+	}
+	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, sha)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return nil, berrors.NotFoundError("no registrations with public key sha256 %q", sha)
+		}
+		return nil, err
+	}
+
+	return registrationModelToPB(model)
 }
 
 // incrementIP returns a copy of `ip` incremented at a bit index `index`,

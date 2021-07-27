@@ -6,7 +6,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"math/big"
@@ -152,16 +151,13 @@ func TestAddRegistration(t *testing.T) {
 	}
 	err = sa.UpdateRegistration(ctx, newReg)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
-	dbReg2, err := sa.GetRegistrationByKey(ctx, jwk)
+	dbReg, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: jwkJSON})
 	test.AssertNotError(t, err, "Couldn't get registration by key")
 
-	test.AssertEquals(t, dbReg2.ID, newReg.ID)
-	test.AssertEquals(t, dbReg2.Agreement, newReg.Agreement)
+	test.AssertEquals(t, dbReg.Id, newReg.ID)
+	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
 
-	var anotherJWK jose.JSONWebKey
-	err = json.Unmarshal([]byte(anotherKey), &anotherJWK)
-	test.AssertNotError(t, err, "couldn't unmarshal anotherJWK")
-	_, err = sa.GetRegistrationByKey(ctx, &anotherJWK)
+	_, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: []byte(anotherKey)})
 	test.AssertError(t, err, "Registration object for invalid key was returned")
 }
 
@@ -173,7 +169,8 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 	test.AssertErrorIs(t, err, berrors.NotFound)
 
 	jwk := satest.GoodJWK()
-	_, err = sa.GetRegistrationByKey(ctx, jwk)
+	jwkJSON, _ := jwk.MarshalJSON()
+	_, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: jwkJSON})
 	test.AssertErrorIs(t, err, berrors.NotFound)
 
 	err = sa.UpdateRegistration(ctx, core.Registration{ID: 100, Key: jwk})

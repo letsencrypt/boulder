@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/types/known/emptypb"
-	jose "gopkg.in/square/go-jose.v2"
 
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/identifier"
@@ -101,7 +100,7 @@ type PolicyAuthority interface {
 // StorageGetter are the Boulder SA's read-only methods
 type StorageGetter interface {
 	GetRegistration(ctx context.Context, req *sapb.RegistrationID) (*corepb.Registration, error)
-	GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (Registration, error)
+	GetRegistrationByKey(ctx context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error)
 	GetCertificate(ctx context.Context, serial string) (Certificate, error)
 	GetPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
 	GetCertificateStatus(ctx context.Context, serial string) (CertificateStatus, error)

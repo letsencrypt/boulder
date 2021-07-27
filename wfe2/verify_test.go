@@ -1116,7 +1116,6 @@ func TestLookupJWK(t *testing.T) {
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
-				fmt.Printf("Acct: %#v\n", acct)
 				inThumb, _ := tc.ExpectedKey.Thumbprint(crypto.SHA256)
 				outThumb, _ := jwk.Thumbprint(crypto.SHA256)
 				test.AssertDeepEquals(t, inThumb, outThumb)
