@@ -205,7 +205,7 @@ func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, reg *c
 	return reg, nil
 }
 
-func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, authz core.Authorization, regID int64) (core.Authorization, error) {
+func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, request *rapb.NewAuthorizationRequest) (*corepb.Authorization, error) {
 	authz.RegistrationID = regID
 	authz.ID = "1"
 	return authz, nil
