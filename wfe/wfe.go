@@ -779,7 +779,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 	}
 
 	// Create new authz and return
-	authzPb, err := wfe.RA.NewAuthorization(ctx, &rapb.NewAuthorizationRequest{
+	authzPB, err := wfe.RA.NewAuthorization(ctx, &rapb.NewAuthorizationRequest{
 		Authz: &corepb.Authorization{
 			Identifier: string(newAuthzRequest.Identifier.Value),
 		},
@@ -789,12 +789,12 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
 		return
 	}
-	if authzPb == nil || authzPb.Id == "" || authzPb.Identifier == "" || authzPb.Status == "" || authzPb.Expires == 0 {
+	if authzPB == nil || authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
 		return
 	}
 
-	authz, err := bgrpc.PBToAuthz(authzPb)
+	authz, err := bgrpc.PBToAuthz(authzPB)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
 		return
