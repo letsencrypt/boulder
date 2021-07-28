@@ -397,8 +397,8 @@ func (sa *StorageAuthority) DeactivateAuthorization(_ context.Context, _ string)
 }
 
 // DeactivateRegistration is a mock
-func (sa *StorageAuthority) DeactivateRegistration(_ context.Context, _ int64) error {
-	return nil
+func (sa *StorageAuthority) DeactivateRegistration(_ context.Context, _ *sapb.RegistrationID) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
 // NewOrder is a mock

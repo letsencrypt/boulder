@@ -274,13 +274,8 @@ func (sac StorageAuthorityClientWrapper) AddCertificate(
 	return response.Digest, nil
 }
 
-func (sac StorageAuthorityClientWrapper) DeactivateRegistration(ctx context.Context, id int64) error {
-	_, err := sac.inner.DeactivateRegistration(ctx, &sapb.RegistrationID{Id: id})
-	if err != nil {
-		return err
-	}
-
-	return nil
+func (sac StorageAuthorityClientWrapper) DeactivateRegistration(ctx context.Context, request *sapb.RegistrationID) (*emptypb.Empty, error) {
+	return sac.inner.DeactivateRegistration(ctx, request)
 }
 
 func (sas StorageAuthorityClientWrapper) NewOrder(ctx context.Context, request *corepb.Order) (*corepb.Order, error) {
@@ -649,16 +644,7 @@ func (sas StorageAuthorityServerWrapper) AddCertificate(ctx context.Context, req
 }
 
 func (sas StorageAuthorityServerWrapper) DeactivateRegistration(ctx context.Context, request *sapb.RegistrationID) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(request, request.Id) {
-		return nil, errIncompleteRequest
-	}
-
-	err := sas.inner.DeactivateRegistration(ctx, request.Id)
-	if err != nil {
-		return nil, err
-	}
-
-	return &emptypb.Empty{}, nil
+	return sas.inner.DeactivateRegistration(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) NewOrder(ctx context.Context, request *corepb.Order) (*corepb.Order, error) {

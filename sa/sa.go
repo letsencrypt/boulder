@@ -836,14 +836,17 @@ func (ssa *SQLStorageAuthority) PreviousCertificateExists(
 }
 
 // DeactivateRegistration deactivates a currently valid registration
-func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, id int64) error {
+func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, req *sapb.RegistrationID) (*emptypb.Empty, error) {
+	if req == nil || req.Id == 0 {
+		return &emptypb.Empty{}, errIncompleteRequest
+	}
 	_, err := ssa.dbMap.WithContext(ctx).Exec(
 		"UPDATE registrations SET status = ? WHERE status = ? AND id = ?",
 		string(core.StatusDeactivated),
 		string(core.StatusValid),
-		id,
+		req.Id,
 	)
-	return err
+	return &emptypb.Empty{}, err
 }
 
 // DeactivateAuthorization2 deactivates a currently valid or pending authorization.

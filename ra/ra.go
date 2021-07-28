@@ -1917,7 +1917,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 	if reg.Status != string(core.StatusValid) {
 		return nil, berrors.MalformedError("only valid registrations can be deactivated")
 	}
-	err := ra.SA.DeactivateRegistration(ctx, reg.Id)
+	_, err := ra.SA.DeactivateRegistration(ctx, &sapb.RegistrationID{Id: reg.Id})
 	if err != nil {
 		return nil, berrors.InternalServerError(err.Error())
 	}

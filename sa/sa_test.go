@@ -722,7 +722,7 @@ func TestDeactivateAccount(t *testing.T) {
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 
-	err := sa.DeactivateRegistration(context.Background(), reg.Id)
+	_, err := sa.DeactivateRegistration(context.Background(), &sapb.RegistrationID{Id: reg.Id})
 	test.AssertNotError(t, err, "DeactivateRegistration failed")
 
 	dbReg, err := sa.GetRegistration(context.Background(), &sapb.RegistrationID{Id: reg.Id})
