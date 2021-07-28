@@ -112,7 +112,7 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, req *sapb.R
 		return nil, err
 	}
 
-	return registrationModelToPB(model)
+	return registrationModelToPb(model)
 }
 
 // GetRegistrationByKey obtains a Registration by JWK
@@ -140,7 +140,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, req *s
 		return nil, err
 	}
 
-	return registrationModelToPB(model)
+	return registrationModelToPb(model)
 }
 
 // incrementIP returns a copy of `ip` incremented at a bit index `index`,
@@ -349,23 +349,28 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 }
 
 // NewRegistration stores a new Registration
-func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
-	createdAt := ssa.clk.Now()
-	reg.CreatedAt = &createdAt
-	rm, err := registrationToModel(&reg)
-	if err != nil {
-		return reg, err
+func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, req *corepb.Registration) (*corepb.Registration, error) {
+	if len(req.Key) == 0 || len(req.InitialIP) == 0 {
+		return nil, errIncompleteRequest
 	}
-	err = ssa.dbMap.WithContext(ctx).Insert(rm)
+
+	reg, err := registrationPbToModel(req)
+	if err != nil {
+		return nil, err
+	}
+
+	reg.CreatedAt = ssa.clk.Now()
+
+	err = ssa.dbMap.WithContext(ctx).Insert(reg)
 	if err != nil {
 		if db.IsDuplicate(err) {
 			// duplicate entry error can only happen when jwk_sha256 collides, indicate
 			// to caller that the provided key is already in use
-			return reg, berrors.DuplicateError("key is already in use for a different account")
+			return nil, berrors.DuplicateError("key is already in use for a different account")
 		}
-		return reg, err
+		return nil, err
 	}
-	return modelToRegistration(rm)
+	return registrationModelToPb(reg)
 }
 
 // UpdateRegistration stores an updated Registration

@@ -35,10 +35,11 @@ func TestDeleteOrder(t *testing.T) {
 	}()
 
 	// Create a test registration
-	jwk := satest.GoodJWK()
-	reg, err := ssa.NewRegistration(ctx, core.Registration{
+	jwk, _ := satest.GoodJWK().MarshalJSON()
+	initialIP, _ := net.ParseIP("127.0.0.1").MarshalText()
+	reg, err := ssa.NewRegistration(ctx, &corepb.Registration{
 		Key:       jwk,
-		InitialIP: net.ParseIP("127.0.0.1"),
+		InitialIP: initialIP,
 	})
 	test.AssertNotError(t, err, "error creating test registration")
 
@@ -46,7 +47,7 @@ func TestDeleteOrder(t *testing.T) {
 	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
 	authzA := &corepb.Authorization{
 		Identifier:     "test.example.com",
-		RegistrationID: reg.ID,
+		RegistrationID: reg.Id,
 		Status:         string(core.StatusPending),
 		Expires:        expires,
 		Challenges: []*corepb.Challenge{
@@ -64,7 +65,7 @@ func TestDeleteOrder(t *testing.T) {
 
 	// Create a test order referencing the test registration
 	testOrder, err := ssa.NewOrder(ctx, &corepb.Order{
-		RegistrationID:   reg.ID,
+		RegistrationID:   reg.Id,
 		Status:           string(core.StatusPending),
 		Expires:          expires,
 		Names:            []string{"test.example.com"},

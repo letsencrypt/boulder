@@ -283,7 +283,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 		certDER, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 		test.AssertNotError(t, err, "Couldn't create certificate")
 		issued := fc.Now()
-		_, err = sa.AddCertificate(context.Background(), certDER, reg.ID, nil, &issued)
+		_, err = sa.AddCertificate(context.Background(), certDER, reg.Id, nil, &issued)
 		test.AssertNotError(t, err, "Couldn't add certificate")
 	}
 

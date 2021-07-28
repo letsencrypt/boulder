@@ -344,64 +344,50 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 		return nil, errIncompleteGRPCRequest
 	}
 
-	// Convert key bytes to key
+	// Check if account key is acceptable for use.
 	var key jose.JSONWebKey
 	if err := key.UnmarshalJSON(request.Key); err != nil {
 		return nil, berrors.InternalServerError("failed to unmarshal account key: %s", err.Error())
 	}
-	// Check if account key is acceptable for use
 	if err := ra.keyPolicy.GoodKey(ctx, key.Key); err != nil {
 		return nil, berrors.MalformedError("invalid public key: %s", err.Error())
 	}
 
-	// Convert IP from bytes
+	// Check IP address rate limits.
 	var ipAddr net.IP
 	if err := ipAddr.UnmarshalText(request.InitialIP); err != nil {
 		return nil, berrors.InternalServerError("failed to unmarshal ip address: %s", err.Error())
 	}
-
 	if err := ra.checkRegistrationLimits(ctx, ipAddr); err != nil {
 		return nil, err
 	}
 
+	// Check that contacts conform to our expectations.
 	if err := validateContactsPresent(request.Contact, request.ContactsPresent); err != nil {
 		return nil, err
 	}
-
-	reg := core.Registration{
-		Key:    &key,
-		Status: core.StatusValid,
-	}
-
-	// Convert request to core.Registration for merge and SA rpc
-	init, err := bgrpc.PbToRegistration(request)
-	if err != nil {
+	if err := ra.validateContacts(ctx, request.Contact); err != nil {
 		return nil, err
 	}
 
-	_ = mergeUpdate(&reg, init)
-
-	// This field isn't updatable by the end user, so it isn't copied by
-	// MergeUpdate. But we need to fill it in for new registrations.
-	reg.InitialIP = init.InitialIP
-
-	if err := ra.validateContacts(ctx, reg.Contact); err != nil {
-		return nil, err
+	// Don't populate ID or CreatedAt because those will be set by the SA.
+	req := &corepb.Registration{
+		Key:             request.Key,
+		Contact:         request.Contact,
+		ContactsPresent: request.ContactsPresent,
+		Agreement:       request.Agreement,
+		InitialIP:       request.InitialIP,
+		Status:          string(core.StatusValid),
 	}
 
-	// Store the authorization object, then return it
-	reg, err = ra.SA.NewRegistration(ctx, reg)
+	// Store the registration object, then return the version that got stored.
+	res, err := ra.SA.NewRegistration(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
 	ra.newRegCounter.Inc()
-	regPB, err := bgrpc.RegistrationToPB(reg)
-	if err != nil {
-		return nil, err
-	}
-
-	return regPB, nil
+	return res, nil
 }
 
 // validateContacts checks the provided list of contacts, returning an error if
@@ -414,19 +400,19 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 // * A list containing a mailto contact that contains hfields
 // * A list containing a contact that has non-ascii characters
 // * A list containing a contact that doesn't pass `policy.ValidEmail`
-func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts *[]string) error {
-	if contacts == nil || len(*contacts) == 0 {
+func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts []string) error {
+	if len(contacts) == 0 {
 		return nil // Nothing to validate
 	}
-	if ra.maxContactsPerReg > 0 && len(*contacts) > ra.maxContactsPerReg {
+	if ra.maxContactsPerReg > 0 && len(contacts) > ra.maxContactsPerReg {
 		return berrors.MalformedError(
 			"too many contacts provided: %d > %d",
-			len(*contacts),
+			len(contacts),
 			ra.maxContactsPerReg,
 		)
 	}
 
-	for _, contact := range *contacts {
+	for _, contact := range contacts {
 		if contact == "" {
 			return berrors.InvalidEmailError("empty contact")
 		}
@@ -456,11 +442,11 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 	// `registrations` table. At the time of writing this field is VARCHAR(191)
 	// That means the largest marshalled JSON value we can store is 191 bytes.
 	const maxContactBytes = 191
-	if jsonBytes, err := json.Marshal(*contacts); err != nil {
+	if jsonBytes, err := json.Marshal(contacts); err != nil {
 		// This shouldn't happen with a simple []string but if it does we want the
 		// error to be logged internally but served as a 500 to the user so we
 		// return a bare error and not a berror here.
-		return fmt.Errorf("failed to marshal reg.Contact to JSON: %#v", *contacts)
+		return fmt.Errorf("failed to marshal reg.Contact to JSON: %#v", contacts)
 	} else if len(jsonBytes) >= maxContactBytes {
 		return berrors.InvalidEmailError(
 			"too many/too long contact(s). Please use shorter or fewer email addresses")
@@ -1509,7 +1495,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req
 		return regPb, nil
 	}
 
-	if err := ra.validateContacts(ctx, baseReg.Contact); err != nil {
+	if err := ra.validateContacts(ctx, *baseReg.Contact); err != nil {
 		return nil, err
 	}
 

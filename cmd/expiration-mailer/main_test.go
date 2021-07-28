@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"math/big"
 	"net"
@@ -31,7 +30,6 @@ import (
 	"github.com/letsencrypt/boulder/test/vars"
 	"github.com/prometheus/client_golang/prometheus"
 	io_prometheus_client "github.com/prometheus/client_model/go"
-	"gopkg.in/square/go-jose.v2"
 )
 
 func bigIntFromB64(b64 string) *big.Int {
@@ -249,52 +247,33 @@ func TestFindExpiringCertificates(t *testing.T) {
 
 func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	// Add some expiring certificates and registrations
-	var keyA jose.JSONWebKey
-	var keyB jose.JSONWebKey
-	var keyC jose.JSONWebKey
-	err := json.Unmarshal(jsonKeyA, &keyA)
-	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
-	err = json.Unmarshal(jsonKeyB, &keyB)
-	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
-	err = json.Unmarshal(jsonKeyC, &keyC)
-	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
-	regA := core.Registration{
-		ID: 1,
-		Contact: &[]string{
-			emailA,
-		},
-		Key:       &keyA,
-		InitialIP: net.ParseIP("2.3.2.3"),
+	ipA, _ := net.ParseIP("2.3.2.3").MarshalText()
+	regA := &corepb.Registration{
+		Id:        1,
+		Contact:   []string{emailA},
+		Key:       jsonKeyA,
+		InitialIP: ipA,
 	}
-	regB := core.Registration{
-		ID: 2,
-		Contact: &[]string{
-			emailB,
-		},
-		Key:       &keyB,
-		InitialIP: net.ParseIP("2.3.2.3"),
+	regB := &corepb.Registration{
+		Id:        2,
+		Contact:   []string{emailB},
+		Key:       jsonKeyB,
+		InitialIP: ipA,
 	}
-	regC := core.Registration{
-		ID: 3,
-		Contact: &[]string{
-			emailB,
-		},
-		Key:       &keyC,
-		InitialIP: net.ParseIP("210.3.2.3"),
+	ipC, _ := net.ParseIP("210.3.2.3").MarshalText()
+	regC := &corepb.Registration{
+		Id:        3,
+		Contact:   []string{emailB},
+		Key:       jsonKeyC,
+		InitialIP: ipC,
 	}
 	bg := context.Background()
-	regA, err = ctx.ssa.NewRegistration(bg, regA)
-	if err != nil {
-		t.Fatalf("Couldn't store regA: %s", err)
-	}
+	regA, err := ctx.ssa.NewRegistration(bg, regA)
+	test.AssertNotError(t, err, "Couldn't store regA")
 	regB, err = ctx.ssa.NewRegistration(bg, regB)
-	if err != nil {
-		t.Fatalf("Couldn't store regB: %s", err)
-	}
+	test.AssertNotError(t, err, "Couldn't store regB")
 	regC, err = ctx.ssa.NewRegistration(bg, regC)
-	if err != nil {
-		t.Fatalf("Couldn't store regC: %s", err)
-	}
+	test.AssertNotError(t, err, "Couldn't store regC")
 
 	// Expires in <1d, last nag was the 4d nag
 	rawCertA := x509.Certificate{
@@ -307,7 +286,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	}
 	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
 	certA := &core.Certificate{
-		RegistrationID: regA.ID,
+		RegistrationID: regA.Id,
 		Serial:         serial1String,
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
@@ -324,7 +303,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	}
 	certDerB, _ := x509.CreateCertificate(rand.Reader, &rawCertB, &rawCertB, &testKey.PublicKey, &testKey)
 	certB := &core.Certificate{
-		RegistrationID: regA.ID,
+		RegistrationID: regA.Id,
 		Serial:         serial2String,
 		Expires:        rawCertB.NotAfter,
 		DER:            certDerB,
@@ -341,7 +320,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	}
 	certDerC, _ := x509.CreateCertificate(rand.Reader, &rawCertC, &rawCertC, &testKey.PublicKey, &testKey)
 	certC := &core.Certificate{
-		RegistrationID: regB.ID,
+		RegistrationID: regB.Id,
 		Serial:         serial3String,
 		Expires:        rawCertC.NotAfter,
 		DER:            certDerC,
@@ -358,7 +337,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	}
 	certDerD, _ := x509.CreateCertificate(rand.Reader, &rawCertD, &rawCertD, &testKey.PublicKey, &testKey)
 	certD := &core.Certificate{
-		RegistrationID: regC.ID,
+		RegistrationID: regC.Id,
 		Serial:         serial4String,
 		Expires:        rawCertD.NotAfter,
 		DER:            certDerD,
@@ -537,7 +516,7 @@ func TestCertIsRenewed(t *testing.T) {
 			t.Fatal(err)
 		}
 		cert := &core.Certificate{
-			RegistrationID: reg.ID,
+			RegistrationID: reg.Id,
 			Serial:         testData.stringSerial,
 			Issued:         testData.NotBefore,
 			Expires:        testData.NotAfter,
@@ -574,22 +553,16 @@ func TestLifetimeOfACert(t *testing.T) {
 	testCtx := setup(t, []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7})
 	defer testCtx.cleanUp()
 
-	var keyA jose.JSONWebKey
-	err := json.Unmarshal(jsonKeyA, &keyA)
-	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
-
-	regA := core.Registration{
-		ID: 1,
-		Contact: &[]string{
-			emailA,
-		},
-		Key:       &keyA,
-		InitialIP: net.ParseIP("1.2.2.1"),
+	ipA, err := net.ParseIP("1.2.2.1").MarshalText()
+	test.AssertNotError(t, err, "Couldn't create initialIP")
+	regA := &corepb.Registration{
+		Id:        1,
+		Contact:   []string{emailA},
+		Key:       jsonKeyA,
+		InitialIP: ipA,
 	}
 	regA, err = testCtx.ssa.NewRegistration(ctx, regA)
-	if err != nil {
-		t.Fatalf("Couldn't store regA: %s", err)
-	}
+	test.AssertNotError(t, err, "Couldn't store regA")
 	rawCertA := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy A",
@@ -601,7 +574,7 @@ func TestLifetimeOfACert(t *testing.T) {
 	}
 	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
 	certA := &core.Certificate{
-		RegistrationID: regA.ID,
+		RegistrationID: regA.Id,
 		Serial:         serial1String,
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
@@ -673,24 +646,18 @@ func TestDontFindRevokedCert(t *testing.T) {
 	expiresIn := 24 * time.Hour
 	testCtx := setup(t, []time.Duration{expiresIn})
 
-	var keyA jose.JSONWebKey
-	err := json.Unmarshal(jsonKeyA, &keyA)
-	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
-
 	emailA := "mailto:one@mail.com"
 
-	regA := core.Registration{
-		ID: 1,
-		Contact: &[]string{
-			emailA,
-		},
-		Key:       &keyA,
-		InitialIP: net.ParseIP("6.5.5.6"),
+	ipA, err := net.ParseIP("1.2.2.1").MarshalText()
+	test.AssertNotError(t, err, "Couldn't create initialIP")
+	regA := &corepb.Registration{
+		Id:        1,
+		Contact:   []string{emailA},
+		Key:       jsonKeyA,
+		InitialIP: ipA,
 	}
 	regA, err = testCtx.ssa.NewRegistration(ctx, regA)
-	if err != nil {
-		t.Fatalf("Couldn't store regA: %s", err)
-	}
+	test.AssertNotError(t, err, "Couldn't store regA")
 	rawCertA := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy A",
@@ -702,7 +669,7 @@ func TestDontFindRevokedCert(t *testing.T) {
 	}
 	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
 	certA := &core.Certificate{
-		RegistrationID: regA.ID,
+		RegistrationID: regA.Id,
 		Serial:         serial1String,
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
@@ -727,22 +694,16 @@ func TestDedupOnRegistration(t *testing.T) {
 	expiresIn := 96 * time.Hour
 	testCtx := setup(t, []time.Duration{expiresIn})
 
-	var keyA jose.JSONWebKey
-	err := json.Unmarshal(jsonKeyA, &keyA)
-	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
-
-	regA := core.Registration{
-		ID: 1,
-		Contact: &[]string{
-			emailA,
-		},
-		Key:       &keyA,
-		InitialIP: net.ParseIP("6.5.5.6"),
+	ipA, err := net.ParseIP("1.2.2.1").MarshalText()
+	test.AssertNotError(t, err, "Couldn't create initialIP")
+	regA := &corepb.Registration{
+		Id:        1,
+		Contact:   []string{emailA},
+		Key:       jsonKeyA,
+		InitialIP: ipA,
 	}
 	regA, err = testCtx.ssa.NewRegistration(ctx, regA)
-	if err != nil {
-		t.Fatalf("Couldn't store regA: %s", err)
-	}
+	test.AssertNotError(t, err, "Couldn't store regA")
 	rawCertA := newX509Cert("happy A",
 		testCtx.fc.Now().Add(72*time.Hour),
 		[]string{"example-a.com", "shared-example.com"},
@@ -751,7 +712,7 @@ func TestDedupOnRegistration(t *testing.T) {
 
 	certDerA, _ := x509.CreateCertificate(rand.Reader, rawCertA, rawCertA, &testKey.PublicKey, &testKey)
 	certA := &core.Certificate{
-		RegistrationID: regA.ID,
+		RegistrationID: regA.Id,
 		Serial:         serial1String,
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
@@ -764,7 +725,7 @@ func TestDedupOnRegistration(t *testing.T) {
 	)
 	certDerB, _ := x509.CreateCertificate(rand.Reader, rawCertB, rawCertB, &testKey.PublicKey, &testKey)
 	certB := &core.Certificate{
-		RegistrationID: regA.ID,
+		RegistrationID: regA.Id,
 		Serial:         serial2String,
 		Expires:        rawCertB.NotAfter,
 		DER:            certDerB,

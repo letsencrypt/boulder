@@ -7,6 +7,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"math/big"
+	"net"
 	"testing"
 	"time"
 
@@ -20,50 +21,42 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestModelToRegistrationNilContact(t *testing.T) {
-	reg, err := modelToRegistration(&regModel{
-		Key:     []byte(`{"kty":"RSA","n":"AQAB","e":"AQAB"}`),
-		Contact: nil,
+func TestRegistrationModelToPb(t *testing.T) {
+	badCases := []struct {
+		name  string
+		input regModel
+	}{
+		{
+			name:  "No ID",
+			input: regModel{ID: 0, Key: []byte("foo"), InitialIP: []byte("foo")},
+		},
+		{
+			name:  "No Key",
+			input: regModel{ID: 1, Key: nil, InitialIP: []byte("foo")},
+		},
+		{
+			name:  "No IP",
+			input: regModel{ID: 1, Key: []byte("foo"), InitialIP: nil},
+		},
+		{
+			name:  "Bad IP",
+			input: regModel{ID: 1, Key: []byte("foo"), InitialIP: []byte("foo")},
+		},
+	}
+	for _, tc := range badCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := registrationModelToPb(&tc.input)
+			test.AssertError(t, err, "Should fail")
+		})
+	}
+
+	_, err := registrationModelToPb(&regModel{
+		ID: 1, Key: []byte("foo"), InitialIP: net.ParseIP("1.2.3.4"),
 	})
-	if err != nil {
-		t.Errorf("Got error from modelToRegistration: %s", err)
-	}
-	if reg.Contact == nil {
-		t.Errorf("Expected non-nil Contact field, got %#v", reg.Contact)
-	}
-	if len(*reg.Contact) != 0 {
-		t.Errorf("Expected empty Contact field, got %#v", reg.Contact)
-	}
+	test.AssertNotError(t, err, "Should pass")
 }
 
-// TestModelToRegistrationBadJSON tests that converting a model with an invalid
-// JWK JSON produces the expected bad JSON error.
-func TestModelToRegistrationBadJSON(t *testing.T) {
-	badJSON := []byte(`{`)
-	_, err := modelToRegistration(&regModel{
-		Key: badJSON,
-	})
-	test.AssertError(t, err, "expected error from truncated reg model key")
-	var badJSONErr errBadJSON
-	test.AssertErrorWraps(t, err, &badJSONErr)
-	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
-}
-
-func TestModelToRegistrationNonNilContact(t *testing.T) {
-	reg, err := modelToRegistration(&regModel{
-		Key:     []byte(`{"kty":"RSA","n":"AQAB","e":"AQAB"}`),
-		Contact: []string{},
-	})
-	if err != nil {
-		t.Errorf("Got error from modelToRegistration: %s", err)
-	}
-	if reg.Contact == nil {
-		t.Errorf("Expected non-nil Contact field, got %#v", reg.Contact)
-	}
-	if len(*reg.Contact) != 0 {
-		t.Errorf("Expected empty Contact field, got %#v", reg.Contact)
-	}
-}
+func TestRegistrationPbToModel(t *testing.T) {}
 
 func TestAuthzModel(t *testing.T) {
 	authzPB := &corepb.Authorization{

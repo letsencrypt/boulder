@@ -126,7 +126,7 @@ type StorageGetter interface {
 
 // StorageAdder are the Boulder SA's write/update methods
 type StorageAdder interface {
-	NewRegistration(ctx context.Context, reg Registration) (created Registration, err error)
+	NewRegistration(ctx context.Context, req *corepb.Registration) (*corepb.Registration, error)
 	UpdateRegistration(ctx context.Context, reg Registration) error
 	AddCertificate(ctx context.Context, der []byte, regID int64, ocsp []byte, issued *time.Time) (digest string, err error)
 	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error)

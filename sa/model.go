@@ -222,46 +222,57 @@ func registrationToModel(r *core.Registration) (*regModel, error) {
 	return &rm, nil
 }
 
-func modelToRegistration(reg *regModel) (core.Registration, error) {
-	k := &jose.JSONWebKey{}
-	err := json.Unmarshal(reg.Key, k)
+func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
+	// Even though we don't need to convert from JSON to an in-memory JSONWebKey
+	// for the sake of the `Key` field, we do need to do the conversion in order
+	// to compute the SHA256 key digest.
+	var jwk jose.JSONWebKey
+	err := jwk.UnmarshalJSON(reg.Key)
 	if err != nil {
-		return core.Registration{},
-			badJSONError(
-				"failed to unmarshal registration model's key",
-				reg.Key,
-				err)
+		return nil, err
 	}
-	var contact *[]string
-	// Contact can be nil when the DB contains the literal string "null". We
-	// prefer to represent this in memory as a pointer to an empty slice rather
-	// than a nil pointer.
-	if reg.Contact == nil {
-		contact = &[]string{}
-	} else {
-		contact = &reg.Contact
-	}
-	r := core.Registration{
-		ID:        reg.ID,
-		Key:       k,
-		Contact:   contact,
-		Agreement: reg.Agreement,
-		InitialIP: net.IP(reg.InitialIP),
-		CreatedAt: &reg.CreatedAt,
-		Status:    core.AcmeStatus(reg.Status),
+	sha, err := core.KeyDigestB64(jwk.Key)
+	if err != nil {
+		return nil, err
 	}
 
-	return r, nil
+	// For some reason we use different serialization formats for InitialIP
+	// in database models and in protobufs, despite the fact that both formats
+	// are just []byte.
+	var initialIP net.IP
+	err = initialIP.UnmarshalText(reg.InitialIP)
+	if err != nil {
+		return nil, err
+	}
+
+	// Converting the int64 zero-value to a UTC unix timestamp does not produce
+	// the time.Time zero-value (the former is 1970; the latter is year 0),
+	// so we have to do this check.
+	var createdAt time.Time
+	if reg.CreatedAt != 0 {
+		createdAt = time.Unix(0, reg.CreatedAt).UTC()
+	}
+
+	return &regModel{
+		ID:        reg.Id,
+		Key:       reg.Key,
+		KeySHA256: sha,
+		Contact:   reg.Contact,
+		Agreement: reg.Agreement,
+		InitialIP: []byte(initialIP.To16()),
+		CreatedAt: createdAt,
+		Status:    reg.Status,
+	}, nil
 }
 
-func registrationModelToPB(reg *regModel) (*corepb.Registration, error) {
+func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
 	if reg.ID == 0 || len(reg.Key) == 0 || len(reg.InitialIP) == 0 {
 		return nil, errors.New("incomplete Registration retrieved from DB")
 	}
 
 	var contact []string
 	contactsPresent := false
-	if reg.Contact != nil {
+	if len(reg.Contact) != 0 {
 		contact = reg.Contact
 		contactsPresent = true
 	}

@@ -229,22 +229,8 @@ func (sac StorageAuthorityClientWrapper) FQDNSetExists(ctx context.Context, doma
 	return response.Exists, nil
 }
 
-func (sac StorageAuthorityClientWrapper) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
-	regPB, err := RegistrationToPB(reg)
-	if err != nil {
-		return core.Registration{}, err
-	}
-
-	response, err := sac.inner.NewRegistration(ctx, regPB)
-	if err != nil {
-		return core.Registration{}, err
-	}
-
-	if response == nil || !registrationValid(response) {
-		return core.Registration{}, errIncompleteResponse
-	}
-
-	return PbToRegistration(response)
+func (sac StorageAuthorityClientWrapper) NewRegistration(ctx context.Context, req *corepb.Registration) (*corepb.Registration, error) {
+	return sac.inner.NewRegistration(ctx, req)
 }
 
 func (sac StorageAuthorityClientWrapper) UpdateRegistration(ctx context.Context, reg core.Registration) error {
@@ -627,21 +613,7 @@ func (sac StorageAuthorityServerWrapper) PreviousCertificateExists(
 }
 
 func (sas StorageAuthorityServerWrapper) NewRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Registration, error) {
-	if request == nil || !newRegistrationValid(request) {
-		return nil, errIncompleteRequest
-	}
-
-	reg, err := PbToRegistration(request)
-	if err != nil {
-		return nil, err
-	}
-
-	newReg, err := sas.inner.NewRegistration(ctx, reg)
-	if err != nil {
-		return nil, err
-	}
-
-	return RegistrationToPB(newReg)
+	return sas.inner.NewRegistration(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) UpdateRegistration(ctx context.Context, request *corepb.Registration) (*emptypb.Empty, error) {
