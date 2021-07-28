@@ -973,7 +973,7 @@ func (ra *RegistrationAuthorityImpl) failOrder(
 // to poll while awaiting finalization to occur.
 func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
 	if req == nil || req.Order == nil {
-		return nil, berrors.InternalServerError(bgrpc.ErrIncompleteRequest.Error())
+		return nil, berrors.InternalServerError("Incomplete gRPC request message")
 	}
 
 	order := req.Order

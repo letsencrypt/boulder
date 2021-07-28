@@ -15,8 +15,8 @@ import (
 )
 
 var (
-	ErrIncompleteRequest  = errors.New("Incomplete gRPC request message")
-	ErrIncompleteResponse = errors.New("Incomplete gRPC response message")
+	errIncompleteRequest  = errors.New("Incomplete gRPC request message")
+	errIncompleteResponse = errors.New("Incomplete gRPC response message")
 )
 
 // wrapError wraps the internal error types we use for transport across the gRPC

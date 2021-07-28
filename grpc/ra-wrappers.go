@@ -42,7 +42,7 @@ func (rac RegistrationAuthorityClientWrapper) NewAuthorization(ctx context.Conte
 	}
 
 	if response == nil || !authorizationValid(response) {
-		return core.Authorization{}, ErrIncompleteResponse
+		return core.Authorization{}, errIncompleteResponse
 	}
 
 	return PBToAuthz(response)
@@ -124,7 +124,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewRegistration(ctx context.Conte
 
 func (ras *RegistrationAuthorityServerWrapper) NewAuthorization(ctx context.Context, request *rapb.NewAuthorizationRequest) (*corepb.Authorization, error) {
 	if request == nil || request.Authz.Identifier == "" || request.RegID == 0 {
-		return nil, ErrIncompleteRequest
+		return nil, errIncompleteRequest
 	}
 	authz, err := PBToAuthz(request.Authz)
 	if err != nil {
@@ -142,7 +142,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewCertificate(ctx context.Contex
 	// APIv1-only, the IssuerNameID is required so the CA never has to guess on
 	// the issuer for v1 issuance.
 	if request == nil || request.Csr == nil || request.RegID == 0 {
-		return nil, ErrIncompleteRequest
+		return nil, errIncompleteRequest
 	}
 	csr, err := x509.ParseCertificateRequest(request.Csr)
 	if err != nil {
@@ -173,7 +173,7 @@ func (ras *RegistrationAuthorityServerWrapper) DeactivateRegistration(ctx contex
 
 func (ras *RegistrationAuthorityServerWrapper) DeactivateAuthorization(ctx context.Context, request *corepb.Authorization) (*emptypb.Empty, error) {
 	if request == nil || !authorizationValid(request) {
-		return nil, ErrIncompleteRequest
+		return nil, errIncompleteRequest
 	}
 	authz, err := PBToAuthz(request)
 	if err != nil {
@@ -188,7 +188,7 @@ func (ras *RegistrationAuthorityServerWrapper) DeactivateAuthorization(ctx conte
 
 func (ras *RegistrationAuthorityServerWrapper) AdministrativelyRevokeCertificate(ctx context.Context, request *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
 	if request == nil || request.Cert == nil || request.AdminName == "" {
-		return nil, ErrIncompleteRequest
+		return nil, errIncompleteRequest
 	}
 	cert, err := x509.ParseCertificate(request.Cert)
 	if err != nil {
