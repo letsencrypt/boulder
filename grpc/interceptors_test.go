@@ -13,15 +13,16 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/grpc/test_proto"
-	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/probs"
-	"github.com/letsencrypt/boulder/test"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"github.com/letsencrypt/boulder/grpc/test_proto"
+	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/test"
 )
 
 var fc = clock.NewFake()
@@ -35,15 +36,10 @@ func testHandler(_ context.Context, i interface{}) (interface{}, error) {
 }
 
 func testInvoker(_ context.Context, method string, _, _ interface{}, _ *grpc.ClientConn, opts ...grpc.CallOption) error {
-	if method == "-service-brokeTest" {
+	switch method {
+	case "-service-brokeTest":
 		return errors.New("")
-	}
-	fc.Sleep(time.Second)
-	return nil
-}
-
-func testRequesterCancelledInvoker(_ context.Context, method string, _, _ interface{}, _ *grpc.ClientConn, opts ...grpc.CallOption) error {
-	if method == "-requester-cancelled" {
+	case "-service-requesterCanceledTest":
 		return status.Error(1, context.Canceled.Error())
 	}
 	fc.Sleep(time.Second)
@@ -81,6 +77,14 @@ func TestClientInterceptor(t *testing.T) {
 
 	err = ci.intercept(context.Background(), "-service-brokeTest", nil, nil, nil, testInvoker)
 	test.AssertError(t, err, "ci.intercept didn't fail when handler returned a error")
+
+	err = ci.intercept(context.Background(), "-service-requesterCanceledTest", nil, nil, nil, testInvoker)
+	test.AssertError(t, err, "ci.intercept didn't fail when handler returned a error")
+
+	var probDetails *probs.ProblemDetails
+	test.AssertErrorWraps(t, err, &probDetails)
+	test.AssertEquals(t, probDetails.Type, probs.MalformedProblem)
+	test.AssertEquals(t, probDetails.HTTPStatus, http.StatusRequestTimeout)
 }
 
 // TestFailFastFalse sends a gRPC request to a backend that is
@@ -366,23 +370,4 @@ func TestNoCancelInterceptor(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-}
-
-func TestClientCancelledInterceptor(t *testing.T) {
-	ci := clientInterceptor{
-		timeout: time.Second,
-		metrics: NewClientMetrics(metrics.NoopRegisterer),
-		clk:     clock.NewFake(),
-	}
-	err := ci.intercept(context.Background(), "-service-test", nil, nil, nil, testRequesterCancelledInvoker)
-	test.AssertNotError(t, err, "ci.intercept failed with a non-nil grpc.UnaryServerInfo")
-
-	err = ci.intercept(context.Background(), "-requester-cancelled", nil, nil, nil, testRequesterCancelledInvoker)
-	test.AssertError(t, err, "ci.intercept didn't fail when handler returned a error")
-
-	var probDetails *probs.ProblemDetails
-	test.AssertErrorWraps(t, err, &probDetails)
-	test.AssertEquals(t, probDetails.Type, probs.CanceledProblem)
-	test.AssertEquals(t, probDetails.HTTPStatus, http.StatusRequestTimeout)
-
 }
