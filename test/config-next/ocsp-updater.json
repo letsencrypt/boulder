@@ -4,6 +4,10 @@
       "dbConnectFile": "test/secrets/ocsp_updater_dburl",
       "maxOpenConns": 10
     },
+    "readOnlyDB": {
+      "dbConnectFile": "test/secrets/ocsp_updater_ro_dburl",
+      "maxOpenConns": 100
+    },
     "oldOCSPWindow": "2s",
     "oldOCSPBatchSize": 5000,
     "parallelGenerateOCSPRequests": 10,
