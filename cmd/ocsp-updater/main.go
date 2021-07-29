@@ -365,6 +365,12 @@ func main() {
 	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")
 
+	dbAddr, dbUser, err := conf.DB.DSNAddressAndUser()
+	cmd.FailOnError(err, "Could not determine address or user of DB DSN")
+
+	// Collect and periodically report DB metrics using the DBMap and prometheus stats.
+	sa.InitDBMetrics(dbMap, stats, dbSettings, dbAddr, dbUser)
+
 	var dbReadOnlyMap *db.WrappedMap
 
 	dbReadOnlyURL, err := conf.ReadOnlyDB.URL()
@@ -380,10 +386,12 @@ func main() {
 
 		dbReadOnlyMap, err = sa.NewDbMap(dbReadOnlyURL, roDbSettings)
 		cmd.FailOnError(err, "Could not connect to read-only database")
-	}
 
-	// Collect and periodically report DB metrics using the DBMap and prometheus stats.
-	sa.InitDBMetrics(dbMap, stats, dbSettings)
+		roDbAddr, roDbUser, err := conf.ReadOnlyDB.DSNAddressAndUser()
+		cmd.FailOnError(err, "Could not determine address or user of read-only DB DSN")
+
+		sa.InitDBMetrics(dbReadOnlyMap, stats, roDbSettings, roDbAddr, roDbUser)
+	}
 
 	clk := cmd.Clock()
 
