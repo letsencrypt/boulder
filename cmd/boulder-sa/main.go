@@ -104,7 +104,7 @@ func main() {
 		dbReadOnlyAddr, dbReadOnlyUser, err := saConf.ReadOnlyDB.DSNAddressAndUser()
 		cmd.FailOnError(err, "Could not determine address or user of read-only DB DSN")
 
-		sa.InitDBMetrics(dbReadOnlyMap, scope, saDbSettings, dbReadOnlyAddr, dbReadOnlyUser)
+		sa.InitDBMetrics(dbReadOnlyMap, scope, roDbSettings, dbReadOnlyAddr, dbReadOnlyUser)
 	}
 
 	clk := cmd.Clock()
