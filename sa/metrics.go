@@ -63,11 +63,11 @@ func (dbc dbMetricsCollector) Collect(ch chan<- prometheus.Metric) {
 // InitDBMetrics will register a Collector that translates the provided dbMap's
 // stats and DbSettings into Prometheus metrics on the fly. The stat values will
 // be translated from the gorp dbMap's inner sql.DBMap's DBStats structure values
-func InitDBMetrics(dbMap *db.WrappedMap, stats prometheus.Registerer, dbSettings DbSettings, hostAndPort string, user string) {
+func InitDBMetrics(dbMap *db.WrappedMap, stats prometheus.Registerer, dbSettings DbSettings, address string, user string) {
 	// Create a dbMetricsCollector and register it
 	dbc := dbMetricsCollector{dbMap: dbMap, dbSettings: dbSettings}
 
-	labels := prometheus.Labels{"hostAndPort": hostAndPort, "user": user}
+	labels := prometheus.Labels{"address": address, "user": user}
 
 	dbc.maxOpenConns = prometheus.NewDesc(
 		"db_max_open_connections",
