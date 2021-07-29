@@ -186,42 +186,6 @@ type challModel struct {
 	Validated bool `db:"validated"`
 }
 
-// newReg creates a reg model object from a core.Registration
-func registrationToModel(r *core.Registration) (*regModel, error) {
-	key, err := json.Marshal(r.Key)
-	if err != nil {
-		return nil, err
-	}
-
-	sha, err := core.KeyDigestB64(r.Key)
-	if err != nil {
-		return nil, err
-	}
-	if r.InitialIP == nil {
-		return nil, fmt.Errorf("initialIP was nil")
-	}
-	if r.Contact == nil {
-		r.Contact = &[]string{}
-	}
-	var createdAt time.Time
-	if r.CreatedAt != nil {
-		createdAt = *r.CreatedAt
-	}
-
-	rm := regModel{
-		ID:        r.ID,
-		Key:       key,
-		KeySHA256: sha,
-		Contact:   *r.Contact,
-		Agreement: r.Agreement,
-		InitialIP: []byte(r.InitialIP.To16()),
-		CreatedAt: createdAt,
-		Status:    string(r.Status),
-	}
-
-	return &rm, nil
-}
-
 func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 	// Even though we don't need to convert from JSON to an in-memory JSONWebKey
 	// for the sake of the `Key` field, we do need to do the conversion in order

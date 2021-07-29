@@ -142,19 +142,20 @@ func TestAddRegistration(t *testing.T) {
 	test.AssertByteEquals(t, dbReg.Key, jwkJSON)
 	test.AssertDeepEquals(t, dbReg.CreatedAt, createdAt.UnixNano())
 
-	newReg := core.Registration{
-		ID:        reg.Id,
-		Key:       jwk,
-		Contact:   &[]string{"test.com"},
-		InitialIP: net.ParseIP("72.72.72.72"),
+	initialIP, _ = net.ParseIP("72.72.72.72").MarshalText()
+	newReg := &corepb.Registration{
+		Id:        reg.Id,
+		Key:       jwkJSON,
+		Contact:   []string{"test.com"},
+		InitialIP: initialIP,
 		Agreement: "yes",
 	}
-	err = sa.UpdateRegistration(ctx, newReg)
+	_, err = sa.UpdateRegistration(ctx, newReg)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.Id))
 	dbReg, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: jwkJSON})
 	test.AssertNotError(t, err, "Couldn't get registration by key")
 
-	test.AssertEquals(t, dbReg.Id, newReg.ID)
+	test.AssertEquals(t, dbReg.Id, newReg.Id)
 	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
 
 	_, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: []byte(anotherKey)})
@@ -170,10 +171,11 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 
 	jwk := satest.GoodJWK()
 	jwkJSON, _ := jwk.MarshalJSON()
+
 	_, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: jwkJSON})
 	test.AssertErrorIs(t, err, berrors.NotFound)
 
-	err = sa.UpdateRegistration(ctx, core.Registration{ID: 100, Key: jwk})
+	_, err = sa.UpdateRegistration(ctx, &corepb.Registration{Id: 100, Key: jwkJSON, InitialIP: []byte("foo")})
 	test.AssertErrorIs(t, err, berrors.NotFound)
 }
 

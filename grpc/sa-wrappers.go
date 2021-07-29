@@ -233,18 +233,8 @@ func (sac StorageAuthorityClientWrapper) NewRegistration(ctx context.Context, re
 	return sac.inner.NewRegistration(ctx, req)
 }
 
-func (sac StorageAuthorityClientWrapper) UpdateRegistration(ctx context.Context, reg core.Registration) error {
-	regPB, err := RegistrationToPB(reg)
-	if err != nil {
-		return err
-	}
-
-	_, err = sac.inner.UpdateRegistration(ctx, regPB)
-	if err != nil {
-		return err
-	}
-
-	return nil
+func (sac StorageAuthorityClientWrapper) UpdateRegistration(ctx context.Context, req *corepb.Registration) (*emptypb.Empty, error) {
+	return sac.inner.UpdateRegistration(ctx, req)
 }
 
 func (sac StorageAuthorityClientWrapper) AddCertificate(
@@ -612,21 +602,7 @@ func (sas StorageAuthorityServerWrapper) NewRegistration(ctx context.Context, re
 }
 
 func (sas StorageAuthorityServerWrapper) UpdateRegistration(ctx context.Context, request *corepb.Registration) (*emptypb.Empty, error) {
-	if request == nil || !registrationValid(request) {
-		return nil, errIncompleteRequest
-	}
-
-	reg, err := PbToRegistration(request)
-	if err != nil {
-		return nil, err
-	}
-
-	err = sas.inner.UpdateRegistration(ctx, reg)
-	if err != nil {
-		return nil, err
-	}
-
-	return &emptypb.Empty{}, nil
+	return sas.inner.UpdateRegistration(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) AddCertificate(ctx context.Context, request *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {

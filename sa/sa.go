@@ -374,38 +374,42 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, req *corepb
 }
 
 // UpdateRegistration stores an updated Registration
-func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core.Registration) error {
-	const query = "WHERE id = ?"
-	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, reg.ID)
-	if err != nil {
-		if db.IsNoRows(err) {
-			return berrors.NotFoundError("registration with ID '%d' not found", reg.ID)
-		}
-		return err
+func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *corepb.Registration) (*emptypb.Empty, error) {
+	if req == nil || req.Id == 0 || len(req.Key) == 0 || len(req.InitialIP) == 0 {
+		return &emptypb.Empty{}, errIncompleteRequest
 	}
 
-	updatedRegModel, err := registrationToModel(&reg)
+	const query = "WHERE id = ?"
+	curr, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, req.Id)
 	if err != nil {
-		return err
+		if db.IsNoRows(err) {
+			return nil, berrors.NotFoundError("registration with ID '%d' not found", req.Id)
+		}
+		return nil, err
+	}
+
+	update, err := registrationPbToModel(req)
+	if err != nil {
+		return nil, err
 	}
 
 	// Copy the existing registration model's LockCol to the new updated
 	// registration model's LockCol
-	updatedRegModel.LockCol = model.LockCol
-	n, err := ssa.dbMap.WithContext(ctx).Update(updatedRegModel)
+	update.LockCol = curr.LockCol
+	n, err := ssa.dbMap.WithContext(ctx).Update(update)
 	if err != nil {
 		if db.IsDuplicate(err) {
 			// duplicate entry error can only happen when jwk_sha256 collides, indicate
 			// to caller that the provided key is already in use
-			return berrors.DuplicateError("key is already in use for a different account")
+			return nil, berrors.DuplicateError("key is already in use for a different account")
 		}
-		return err
+		return nil, err
 	}
 	if n == 0 {
-		return berrors.NotFoundError("registration with ID '%d' not found", reg.ID)
+		return nil, berrors.NotFoundError("registration with ID '%d' not found", req.Id)
 	}
 
-	return nil
+	return &emptypb.Empty{}, nil
 }
 
 // AddCertificate stores an issued certificate and returns the digest as

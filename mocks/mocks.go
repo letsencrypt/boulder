@@ -306,8 +306,8 @@ func (sa *StorageAuthority) NewRegistration(_ context.Context, _ *corepb.Registr
 }
 
 // UpdateRegistration is a mock
-func (sa *StorageAuthority) UpdateRegistration(_ context.Context, reg core.Registration) (err error) {
-	return
+func (sa *StorageAuthority) UpdateRegistration(_ context.Context, _ *corepb.Registration) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
 // CountFQDNSets is a mock

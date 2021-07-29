@@ -682,8 +682,8 @@ type NoUpdateSA struct {
 	mocks.StorageAuthority
 }
 
-func (sa NoUpdateSA) UpdateRegistration(_ context.Context, _ core.Registration) error {
-	return fmt.Errorf("UpdateRegistration() is mocked to always error")
+func (sa NoUpdateSA) UpdateRegistration(_ context.Context, _ *corepb.Registration) (*emptypb.Empty, error) {
+	return nil, fmt.Errorf("UpdateRegistration() is mocked to always error")
 }
 
 func TestUpdateRegistrationSame(t *testing.T) {
@@ -1629,107 +1629,90 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 func TestRegistrationUpdate(t *testing.T) {
 	oldURL := "http://old.invalid"
 	newURL := "http://new.invalid"
-	reg := core.Registration{
-		ID:        1,
-		Contact:   &[]string{oldURL},
+	base := &corepb.Registration{
+		Id:        1,
+		Contact:   []string{oldURL},
 		Agreement: "",
 	}
-	update := core.Registration{
-		Contact:   &[]string{newURL},
-		Agreement: "totally!",
+	update := &corepb.Registration{
+		Contact:         []string{newURL},
+		ContactsPresent: true,
+		Agreement:       "totally!",
 	}
 
-	changed := mergeUpdate(&reg, update)
+	res, changed := mergeUpdate(base, update)
 	test.AssertEquals(t, changed, true)
-	test.Assert(t, len(*reg.Contact) == 1 && (*reg.Contact)[0] == (*update.Contact)[0], "Contact was not updated %v != %v")
-	test.Assert(t, reg.Agreement == update.Agreement, "Agreement was not updated")
+	test.AssertEquals(t, res.Contact[0], update.Contact[0])
+	test.AssertEquals(t, res.Agreement, update.Agreement)
 
 	// Make sure that a `MergeUpdate` call with an empty string doesn't produce an
 	// error and results in a change to the base reg.
-	emptyUpdate := core.Registration{
-		Contact:   &[]string{""},
-		Agreement: "totally!",
+	emptyUpdate := &corepb.Registration{
+		Contact:         []string{""},
+		ContactsPresent: true,
+		Agreement:       "totally!",
 	}
-	changed = mergeUpdate(&reg, emptyUpdate)
+	_, changed = mergeUpdate(res, emptyUpdate)
 	test.AssertEquals(t, changed, true)
 }
 
 func TestRegistrationContactUpdate(t *testing.T) {
 	contactURL := "mailto://example@example.com"
-	fullReg := core.Registration{
-		ID:        1,
-		Contact:   &[]string{contactURL},
-		Agreement: "totally!",
-	}
 
 	// Test that a registration contact can be removed by updating with an empty
 	// Contact slice.
-	reg := fullReg
-	var contactRemoveUpdate core.Registration
-	contactRemoveJSON := []byte(`
-	{
-		"key": {
-			"e": "AQAB",
-			"kty": "RSA",
-			"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_"
-		},
-		"id": 1,
-		"contact": [],
-		"agreement": "totally!"
+	base := &corepb.Registration{
+		Id:        1,
+		Contact:   []string{contactURL},
+		Agreement: "totally!",
 	}
-	`)
-	err := json.Unmarshal(contactRemoveJSON, &contactRemoveUpdate)
-	test.AssertNotError(t, err, "Failed to unmarshal contactRemoveJSON")
-	changed := mergeUpdate(&reg, contactRemoveUpdate)
+	update := &corepb.Registration{
+		Id:              1,
+		Contact:         []string{},
+		ContactsPresent: true,
+		Agreement:       "totally!",
+	}
+	res, changed := mergeUpdate(base, update)
 	test.AssertEquals(t, changed, true)
-	test.Assert(t, len(*reg.Contact) == 0, "Contact was not deleted in update")
+	test.Assert(t, len(res.Contact) == 0, "Contact was not deleted in update")
 
 	// Test that a registration contact isn't changed when an update is performed
 	// with no Contact field
-	reg = fullReg
-	var contactSameUpdate core.Registration
-	contactSameJSON := []byte(`
-	{
-		"key": {
-			"e": "AQAB",
-			"kty": "RSA",
-			"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_"
-		},
-		"id": 1,
-		"agreement": "totally!"
+	base = &corepb.Registration{
+		Id:        1,
+		Contact:   []string{contactURL},
+		Agreement: "totally!",
 	}
-	`)
-	err = json.Unmarshal(contactSameJSON, &contactSameUpdate)
-	test.AssertNotError(t, err, "Failed to unmarshal contactSameJSON")
-	changed = mergeUpdate(&reg, contactSameUpdate)
+	update = &corepb.Registration{
+		Id:        1,
+		Agreement: "totally!",
+	}
+	res, changed = mergeUpdate(base, update)
 	test.AssertEquals(t, changed, false)
-	test.Assert(t, len(*reg.Contact) == 1, "len(Contact) was updated unexpectedly")
-	test.Assert(t, (*reg.Contact)[0] == "mailto://example@example.com", "Contact was changed unexpectedly")
+	test.Assert(t, len(res.Contact) == 1, "len(Contact) was updated unexpectedly")
+	test.Assert(t, (res.Contact)[0] == contactURL, "Contact was changed unexpectedly")
 }
 
 func TestRegistrationKeyUpdate(t *testing.T) {
 	oldKey, err := rsa.GenerateKey(rand.Reader, 512)
 	test.AssertNotError(t, err, "rsa.GenerateKey() for oldKey failed")
+	oldKeyJSON, err := jose.JSONWebKey{Key: oldKey}.MarshalJSON()
+	test.AssertNotError(t, err, "MarshalJSON for oldKey failed")
 
-	rA, rB := core.Registration{Key: &jose.JSONWebKey{Key: oldKey}}, core.Registration{}
-
-	changed := mergeUpdate(&rA, rB)
-	if changed {
-		t.Fatal("mergeUpdate changed the key with empty update")
-	}
+	base := &corepb.Registration{Key: oldKeyJSON}
+	update := &corepb.Registration{}
+	_, changed := mergeUpdate(base, update)
+	test.Assert(t, !changed, "mergeUpdate changed the key with empty update")
 
 	newKey, err := rsa.GenerateKey(rand.Reader, 1024)
 	test.AssertNotError(t, err, "rsa.GenerateKey() for newKey failed")
-	rB.Key = &jose.JSONWebKey{Key: newKey.Public()}
+	newKeyJSON, err := jose.JSONWebKey{Key: newKey}.MarshalJSON()
+	test.AssertNotError(t, err, "MarshalJSON for newKey failed")
 
-	changed = mergeUpdate(&rA, rB)
-	if !changed {
-		t.Fatal("mergeUpdate didn't change the key with non-empty update")
-	}
-	keysMatch, _ := core.PublicKeysEqual(rA.Key.Key, rB.Key.Key)
-	if !keysMatch {
-		t.Fatal("mergeUpdate didn't change the key despite setting returned bool")
-	}
+	update = &corepb.Registration{Key: newKeyJSON}
+	res, changed := mergeUpdate(base, update)
+	test.Assert(t, changed, "mergeUpdate didn't change the key with non-empty update")
+	test.AssertByteEquals(t, res.Key, update.Key)
 }
 
 // A mockSAWithFQDNSet is a mock StorageAuthority that supports
