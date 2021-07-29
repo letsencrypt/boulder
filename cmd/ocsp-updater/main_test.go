@@ -59,6 +59,7 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *db.WrappedMap, c
 		metrics.NoopRegisterer,
 		fc,
 		dbMap,
+		roDbMap,
 		&mockOCSP{},
 		OCSPUpdaterConfig{
 			OldOCSPBatchSize:         1,
@@ -513,7 +514,7 @@ func TestTickSleep(t *testing.T) {
 	updater, _, dbMap, fc, cleanUp := setup(t)
 	defer cleanUp()
 	m := &brokenDB{}
-	updater.dbMap = m
+	updater.readOnlyDbMap = m
 
 	// Test when updateOCSPResponses fails the failure counter is incremented
 	// and the clock moved forward by more than updater.tickWindow
@@ -526,7 +527,7 @@ func TestTickSleep(t *testing.T) {
 
 	// Test when updateOCSPResponses works the failure counter is reset to zero
 	// and the clock only moves by updater.tickWindow
-	updater.dbMap = dbMap
+	updater.readOnlyDbMap = dbMap
 	before = fc.Now()
 	updater.tick()
 	test.AssertEquals(t, updater.tickFailures, 0)
