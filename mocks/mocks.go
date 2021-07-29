@@ -54,7 +54,7 @@ const (
 func (sa *StorageAuthority) GetRegistration(_ context.Context, req *sapb.RegistrationID) (*corepb.Registration, error) {
 	if req.Id == 100 {
 		// Tag meaning "Missing"
-		return &corepb.Registration{}, errors.New("missing")
+		return nil, errors.New("missing")
 	}
 	if req.Id == 101 {
 		// Tag meaning "Malformed"
@@ -62,7 +62,7 @@ func (sa *StorageAuthority) GetRegistration(_ context.Context, req *sapb.Registr
 	}
 	if req.Id == 102 {
 		// Tag meaning "Not Found"
-		return &corepb.Registration{}, berrors.NotFoundError("Dave's not here man")
+		return nil, berrors.NotFoundError("Dave's not here man")
 	}
 
 	goodReg := &corepb.Registration{

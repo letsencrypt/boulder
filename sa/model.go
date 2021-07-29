@@ -209,12 +209,12 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 		return nil, err
 	}
 
-	// Converting the int64 zero-value to a UTC unix timestamp does not produce
+	// Converting the int64 zero-value to a unix timestamp does not produce
 	// the time.Time zero-value (the former is 1970; the latter is year 0),
 	// so we have to do this check.
 	var createdAt time.Time
 	if reg.CreatedAt != 0 {
-		createdAt = time.Unix(0, reg.CreatedAt).UTC()
+		createdAt = time.Unix(0, reg.CreatedAt)
 	}
 
 	return &regModel{
