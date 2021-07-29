@@ -11,6 +11,8 @@ import (
 
 	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -19,7 +21,6 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 /*
@@ -357,43 +358,39 @@ func main() {
 	logger.Info(cmd.VersionString())
 
 	// Configure DB
-	dbURL, err := conf.DB.URL()
-	cmd.FailOnError(err, "Couldn't load DB URL")
-	dbSettings := sa.DbSettings{
-		MaxOpenConns:    conf.DB.MaxOpenConns,
-		MaxIdleConns:    conf.DB.MaxIdleConns,
-		ConnMaxLifetime: conf.DB.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: conf.DB.ConnMaxIdleTime.Duration}
+	configureDb := func(scope prometheus.Registerer, databaseConfig cmd.DBConfig) *db.WrappedMap {
+		dbSettings := sa.DbSettings{
+			MaxOpenConns:    databaseConfig.MaxOpenConns,
+			MaxIdleConns:    databaseConfig.MaxIdleConns,
+			ConnMaxLifetime: databaseConfig.ConnMaxLifetime.Duration,
+			ConnMaxIdleTime: databaseConfig.ConnMaxIdleTime.Duration,
+		}
 
-	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
-	cmd.FailOnError(err, "Could not connect to database")
+		dbDSN, err := databaseConfig.URL()
+		cmd.FailOnError(err, "Couldn't load DB URL")
 
-	dbAddr, dbUser, err := conf.DB.DSNAddressAndUser()
-	cmd.FailOnError(err, "Could not determine address or user of DB DSN")
+		dbMap, err := sa.NewDbMap(dbDSN, dbSettings)
+		cmd.FailOnError(err, "Couldn't connect to SA database")
 
-	// Collect and periodically report DB metrics using the DBMap and prometheus stats.
-	sa.InitDBMetrics(dbMap, stats, dbSettings, dbAddr, dbUser)
+		dbAddr, dbUser, err := databaseConfig.DSNAddressAndUser()
+		cmd.FailOnError(err, "Could not determine address or user of DB DSN")
 
-	var dbReadOnlyMap *db.WrappedMap
+		// Collect and periodically report DB metrics using the DBMap and prometheus scope.
+		sa.InitDBMetrics(dbMap, scope, dbSettings, dbAddr, dbUser)
+
+		return dbMap
+	}
+
+	dbMap := configureDb(stats, conf.DB)
 
 	dbReadOnlyURL, err := conf.ReadOnlyDB.URL()
 	cmd.FailOnError(err, "Couldn't load read-only DB URL")
+
+	var dbReadOnlyMap *db.WrappedMap
 	if dbReadOnlyURL == "" {
 		dbReadOnlyMap = dbMap
 	} else {
-		roDbSettings := sa.DbSettings{
-			MaxOpenConns:    conf.ReadOnlyDB.MaxOpenConns,
-			MaxIdleConns:    conf.ReadOnlyDB.MaxIdleConns,
-			ConnMaxLifetime: conf.ReadOnlyDB.ConnMaxLifetime.Duration,
-			ConnMaxIdleTime: conf.ReadOnlyDB.ConnMaxIdleTime.Duration}
-
-		dbReadOnlyMap, err = sa.NewDbMap(dbReadOnlyURL, roDbSettings)
-		cmd.FailOnError(err, "Could not connect to read-only database")
-
-		roDbAddr, roDbUser, err := conf.ReadOnlyDB.DSNAddressAndUser()
-		cmd.FailOnError(err, "Could not determine address or user of read-only DB DSN")
-
-		sa.InitDBMetrics(dbReadOnlyMap, stats, roDbSettings, roDbAddr, roDbUser)
+		dbReadOnlyMap = configureDb(stats, conf.ReadOnlyDB)
 	}
 
 	clk := cmd.Clock()
