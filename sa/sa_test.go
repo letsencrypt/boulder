@@ -49,12 +49,10 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
 
-	roDbMap := dbMap
-
 	fc := clock.NewFake()
 	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 
-	sa, err := NewSQLStorageAuthority(dbMap, roDbMap, fc, log, metrics.NoopRegisterer, 1)
+	sa, err := NewSQLStorageAuthority(dbMap, dbMap, fc, log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
