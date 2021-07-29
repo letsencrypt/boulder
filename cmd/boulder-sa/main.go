@@ -9,6 +9,7 @@ import (
 
 	"github.com/honeycombio/beeline-go"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/sa"
@@ -18,7 +19,8 @@ import (
 type config struct {
 	SA struct {
 		cmd.ServiceConfig
-		DB cmd.DBConfig
+		DB         cmd.DBConfig
+		ReadOnlyDB cmd.DBConfig
 
 		Features map[string]bool
 
@@ -80,13 +82,30 @@ func main() {
 	// Collect and periodically report DB metrics using the DBMap and prometheus scope.
 	sa.InitDBMetrics(dbMap, scope, saDbSettings)
 
+	var dbReadOnlyMap *db.WrappedMap
+
+	dbReadOnlyURL, err := saConf.ReadOnlyDB.URL()
+	cmd.FailOnError(err, "Couldn't load read-only DB URL")
+	if dbReadOnlyURL == "" {
+		dbReadOnlyMap = dbMap
+	} else {
+		roDbSettings := sa.DbSettings{
+			MaxOpenConns:    saConf.ReadOnlyDB.MaxOpenConns,
+			MaxIdleConns:    saConf.ReadOnlyDB.MaxIdleConns,
+			ConnMaxLifetime: saConf.ReadOnlyDB.ConnMaxLifetime.Duration,
+			ConnMaxIdleTime: saConf.ReadOnlyDB.ConnMaxIdleTime.Duration}
+
+		dbReadOnlyMap, err = sa.NewDbMap(dbReadOnlyURL, roDbSettings)
+		cmd.FailOnError(err, "Could not connect to read-only database")
+	}
+
 	clk := cmd.Clock()
 
 	parallel := saConf.ParallelismPerRPC
 	if parallel < 1 {
 		parallel = 1
 	}
-	sai, err := sa.NewSQLStorageAuthority(dbMap, clk, logger, scope, parallel)
+	sai, err := sa.NewSQLStorageAuthority(dbMap, dbReadOnlyMap, clk, logger, scope, parallel)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
 	tls, err := c.SA.TLS.Load()

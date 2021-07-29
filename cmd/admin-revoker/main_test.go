@@ -53,7 +53,8 @@ func TestRevokeBatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NoopRegisterer, 1)
+	roDbMap := dbMap
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, roDbMap, fc, log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}

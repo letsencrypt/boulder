@@ -34,9 +34,10 @@ type certCountFunc func(db db.Selector, domain string, earliest, latest time.Tim
 
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
-	dbMap *db.WrappedMap
-	clk   clock.Clock
-	log   blog.Logger
+	dbMap         *db.WrappedMap
+	dbReadOnlyMap *db.WrappedMap
+	clk           clock.Clock
+	log           blog.Logger
 
 	// For RPCs that generate multiple, parallelizable SQL queries, this is the
 	// max parallelism they will use (to avoid consuming too many MariaDB
@@ -71,6 +72,7 @@ type orderFQDNSet struct {
 // Boulder. It will modify the given gorp.DbMap by adding relevant tables.
 func NewSQLStorageAuthority(
 	dbMap *db.WrappedMap,
+	dbReadOnlyMap *db.WrappedMap,
 	clk clock.Clock,
 	logger blog.Logger,
 	stats prometheus.Registerer,
@@ -86,6 +88,7 @@ func NewSQLStorageAuthority(
 
 	ssa := &SQLStorageAuthority{
 		dbMap:                dbMap,
+		dbReadOnlyMap:        dbReadOnlyMap,
 		clk:                  clk,
 		log:                  logger,
 		parallelismPerRPC:    parallelismPerRPC,

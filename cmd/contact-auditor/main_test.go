@@ -361,6 +361,8 @@ func setup(t *testing.T) testCtx {
 		t.Fatalf("Couldn't connect to the database: %s", err)
 	}
 
+	roDbMap := dbMap
+
 	// Make temp results file
 	file, err := ioutil.TempFile("", fmt.Sprintf("audit-%s", time.Now().Format("2006-01-02T15:04")))
 	if err != nil {
@@ -378,7 +380,7 @@ func setup(t *testing.T) testCtx {
 		t.Fatalf("Couldn't connect to the database: %s", err)
 	}
 
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, clock.New(), log, metrics.NoopRegisterer, 1)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, roDbMap, clock.New(), log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}

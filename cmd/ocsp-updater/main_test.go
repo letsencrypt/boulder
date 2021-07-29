@@ -45,11 +45,12 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *db.WrappedMap, c
 	dbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Failed to create dbMap")
 	sa.SetSQLDebug(dbMap, log)
+	roDbMap := dbMap
 
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
 
-	sa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NoopRegisterer, 1)
+	sa, err := sa.NewSQLStorageAuthority(dbMap, roDbMap, fc, log, metrics.NoopRegisterer, 1)
 	test.AssertNotError(t, err, "Failed to create SA")
 
 	cleanUp := test.ResetSATestDatabase(t)
