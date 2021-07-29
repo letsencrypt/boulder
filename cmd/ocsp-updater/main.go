@@ -23,12 +23,15 @@ import (
 )
 
 /*
- * ocspDB is an interface collecting the gorp.DbMap functions that the
- * various parts of OCSPUpdater rely on. Using this adapter shim allows tests to
+ * ocspDB and ocspReadOnlyDB are interfaces collecting the gorp.DbMap functions that
+ * the various parts of OCSPUpdater rely on. Using this adapter shim allows tests to
  * swap out the dbMap implementation.
  */
-type ocspDB interface {
+type ocspReadOnlyDB interface {
 	Select(i interface{}, query string, args ...interface{}) ([]interface{}, error)
+}
+type ocspDB interface {
+	ocspReadOnlyDB
 	Exec(query string, args ...interface{}) (sql.Result, error)
 }
 
@@ -38,7 +41,7 @@ type OCSPUpdater struct {
 	clk clock.Clock
 
 	dbMap         ocspDB
-	readOnlyDbMap ocspDB
+	readOnlyDbMap ocspReadOnlyDB
 
 	ogc capb.OCSPGeneratorClient
 
@@ -66,7 +69,7 @@ func newUpdater(
 	stats prometheus.Registerer,
 	clk clock.Clock,
 	dbMap ocspDB,
-	readOnlyDbMap ocspDB,
+	readOnlyDbMap ocspReadOnlyDB,
 	ogc capb.OCSPGeneratorClient,
 	config OCSPUpdaterConfig,
 	log blog.Logger,
