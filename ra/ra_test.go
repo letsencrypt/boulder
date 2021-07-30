@@ -1148,14 +1148,14 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	}
 	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csr, AccountPrivateKey.Key)
 	test.AssertNotError(t, err, "Failed to sign CSR")
-	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
-	test.AssertNotError(t, err, "Failed to parse CSR")
-	certRequest := core.CertificateRequest{
-		CSR: parsedCSR,
-	}
 
 	// Registration has key == AccountKeyA
-	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID, 1)
+	_, err = ra.NewCertificate(ctx,
+		&rapb.NewCertificateRequest{
+			Csr:          csrBytes,
+			RegID:        Registration.ID,
+			IssuerNameID: 1,
+		})
 	test.AssertError(t, err, "Should have rejected cert with key = account key")
 	test.AssertEquals(t, err.Error(), "certificate public key must be different than account key")
 }
@@ -1172,7 +1172,12 @@ func TestAuthorizationRequired(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
-	_, err := ra.NewCertificate(ctx, certRequest, 1, 1)
+	_, err := ra.NewCertificate(ctx,
+		&rapb.NewCertificateRequest{
+			Csr:          certRequest.Bytes,
+			RegID:        1,
+			IssuerNameID: 1,
+		})
 	test.Assert(t, err != nil, "Issued certificate with insufficient authorization")
 }
 
@@ -1186,23 +1191,30 @@ func TestNewCertificate(t *testing.T) {
 
 	// Check that we fail if the CSR signature is invalid
 	ExampleCSR.Signature[0]++
-	certRequest := core.CertificateRequest{
-		CSR: ExampleCSR,
-	}
 
-	_, err := ra.NewCertificate(ctx, certRequest, Registration.ID, 1)
+	_, err := ra.NewCertificate(ctx,
+		&rapb.NewCertificateRequest{
+			Csr:          ExampleCSR.Raw,
+			RegID:        Registration.ID,
+			IssuerNameID: 1,
+		})
 	ExampleCSR.Signature[0]--
 	test.AssertError(t, err, "Failed to check CSR signature")
 
 	// Check that we don't fail on case mismatches
 	ExampleCSR.Subject.CommonName = "www.NOT-example.com"
-	certRequest = core.CertificateRequest{
-		CSR: ExampleCSR,
-	}
 
-	cert, err := ra.NewCertificate(ctx, certRequest, Registration.ID, 1)
+	certPB, err := ra.NewCertificate(ctx,
+		&rapb.NewCertificateRequest{
+			Csr:          ExampleCSR.Raw,
+			RegID:        Registration.ID,
+			IssuerNameID: 1,
+		})
 	test.AssertNotError(t, err, "Failed to issue certificate")
-
+	cert, err := bgrpc.PBToCert(certPB)
+	test.AssertNotError(t, err, "Failed to deserialize cert")
+	cert2, _ := x509.ParseCertificate(cert.DER)
+	fmt.Println(cert2.Subject)
 	_, err = x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Failed to parse certificate")
 }

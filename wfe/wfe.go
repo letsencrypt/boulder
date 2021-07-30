@@ -1047,7 +1047,17 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *web.Re
 	// authorized for target site, they could cause issuance for that site by
 	// lying to the RA. We should probably pass a copy of the whole request to the
 	// RA for secondary validation.
-	cert, err := wfe.RA.NewCertificate(ctx, certificateRequest, reg.ID, int64(wfe.IssuerCert.NameID()))
+	certPB, err := wfe.RA.NewCertificate(ctx,
+		&rapb.NewCertificateRequest{
+			Csr:          certificateRequest.Bytes,
+			RegID:        reg.ID,
+			IssuerNameID: int64(wfe.IssuerCert.NameID()),
+		})
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new cert"), err)
+		return
+	}
+	cert, err := bgrpc.PBToCert(certPB)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new cert"), err)
 		return

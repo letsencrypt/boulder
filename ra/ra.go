@@ -1083,15 +1083,30 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 }
 
 // NewCertificate requests the issuance of a certificate for the v1 flow.
-func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64, issuerNameID int64) (core.Certificate, error) {
+func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req *rapb.NewCertificateRequest) (*corepb.Certificate, error) {
+	// Verify request
+	if req == nil || req.Csr == nil || req.RegID == 0 {
+		return nil, errIncompleteGRPCRequest
+	}
+	// Deserialize csr
+	csr, err := x509.ParseCertificateRequest(req.Csr)
+	if err != nil {
+		return nil, err
+	}
+
 	// Verify the CSR
-	if err := csrlib.VerifyCSR(ctx, req.CSR, ra.maxNames, &ra.keyPolicy, ra.PA, regID); err != nil {
-		return core.Certificate{}, berrors.MalformedError(err.Error())
+	if err := csrlib.VerifyCSR(ctx, csr, ra.maxNames, &ra.keyPolicy, ra.PA, req.RegID); err != nil {
+		return nil, berrors.MalformedError(err.Error())
 	}
 	// NewCertificate provides an order ID of 0, indicating this is a classic ACME
 	// v1 issuance request from the new certificate endpoint that is not
 	// associated with an ACME v2 order.
-	return ra.issueCertificate(ctx, req, accountID(regID), orderID(0), issuance.IssuerNameID(issuerNameID))
+	cert, err := ra.issueCertificate(ctx, core.CertificateRequest{CSR: csr, Bytes: req.Csr},
+		accountID(req.RegID), orderID(0), issuance.IssuerNameID(req.IssuerNameID))
+	if err != nil {
+		return nil, err
+	}
+	return bgrpc.CertToPB(cert), nil
 }
 
 // To help minimize the chance that an accountID would be used as an order ID
