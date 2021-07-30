@@ -23,14 +23,16 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
-/*
- * ocspDB and ocspReadOnlyDB are interfaces collecting the gorp.DbMap functions that
- * the various parts of OCSPUpdater rely on. Using this adapter shim allows tests to
- * swap out the dbMap implementation.
- */
+// ocspDB and ocspReadOnlyDB are interfaces collecting the gorp.DbMap functions that
+// the various parts of OCSPUpdater rely on. Using this adapter shim allows tests to
+// swap out the dbMap implementation.
+
+// ocspReadOnlyDB provides only read-only portions of the gorp.DbMap interface
 type ocspReadOnlyDB interface {
 	Select(i interface{}, query string, args ...interface{}) ([]interface{}, error)
 }
+
+// ocspDB provides read-write portions of the gorp.DbMap interface
 type ocspDB interface {
 	ocspReadOnlyDB
 	Exec(query string, args ...interface{}) (sql.Result, error)
