@@ -161,6 +161,19 @@ func Malformed(detail string, args ...interface{}) *ProblemDetails {
 	}
 }
 
+// Canceled returns a ProblemDetails with a MalformedProblem and a 408 Request
+// Timeout status code.
+func Canceled(detail string, args ...interface{}) *ProblemDetails {
+	if len(args) > 0 {
+		detail = fmt.Sprintf(detail, args...)
+	}
+	return &ProblemDetails{
+		Type:       MalformedProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusRequestTimeout,
+	}
+}
+
 // BadSignatureAlgorithm returns a ProblemDetails with a BadSignatureAlgorithmProblem
 // and a 400 Bad Request status code.
 func BadSignatureAlgorithm(detail string, a ...interface{}) *ProblemDetails {
