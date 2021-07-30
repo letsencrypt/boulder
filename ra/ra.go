@@ -1474,7 +1474,10 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req
 	if err := validateContactsPresent(req.Base.Contact, req.Base.ContactsPresent); err != nil {
 		return nil, err
 	}
-	if err := ra.validateContacts(ctx, req.Base.Contact); err != nil {
+	if err := validateContactsPresent(req.Update.Contact, req.Update.ContactsPresent); err != nil {
+		return nil, err
+	}
+	if err := ra.validateContacts(ctx, req.Update.Contact); err != nil {
 		return nil, err
 	}
 

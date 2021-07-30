@@ -709,10 +709,11 @@ func TestUpdateRegistrationSame(t *testing.T) {
 
 	// Make an update to the registration with the same Contact & Agreement values.
 	updateSame := &corepb.Registration{
-		Id:        result.Id,
-		Key:       acctKeyC,
-		Contact:   []string{mailto},
-		Agreement: "I agreed",
+		Id:              result.Id,
+		Key:             acctKeyC,
+		Contact:         []string{mailto},
+		ContactsPresent: true,
+		Agreement:       "I agreed",
 	}
 
 	// The update operation should *not* error, even with the NoUpdateSA because
