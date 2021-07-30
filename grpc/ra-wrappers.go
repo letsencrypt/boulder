@@ -31,7 +31,7 @@ func (rac RegistrationAuthorityClientWrapper) NewRegistration(ctx context.Contex
 }
 
 func (rac RegistrationAuthorityClientWrapper) NewAuthorization(ctx context.Context, request *rapb.NewAuthorizationRequest) (*corepb.Authorization, error) {
-	return rac.inner.NewAuthorization(ctx, &rapb.NewAuthorizationRequest{Authz: request.Authz, RegID: request.RegID})
+	return rac.inner.NewAuthorization(ctx, request)
 }
 
 func (rac RegistrationAuthorityClientWrapper) NewCertificate(ctx context.Context, csr core.CertificateRequest, regID int64, issuerNameID int64) (core.Certificate, error) {
