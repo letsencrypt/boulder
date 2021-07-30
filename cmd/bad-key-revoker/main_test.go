@@ -113,10 +113,16 @@ func insertGoodCert(t *testing.T, dbMap *db.WrappedMap, keyHash []byte, serial s
 
 func insertCert(t *testing.T, dbMap *db.WrappedMap, keyHash []byte, serial string, regID int64, expiredStatus ExpiredStatus, status core.OCSPStatus) {
 	t.Helper()
+
+	expiresOffset := time.Second * 0
+	if !expiredStatus {
+		expiresOffset = time.Hour * 12
+	}
+
 	_, err := dbMap.Exec(
 		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
 		keyHash,
-		time.Now(),
+		time.Now().Add(expiresOffset),
 		serial,
 	)
 	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
@@ -139,7 +145,7 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, keyHash []byte, serial strin
 		regID,
 		[]byte{1, 2, 3},
 		time.Now(),
-		time.Now(),
+		time.Now().Add(expiresOffset),
 	)
 	test.AssertNotError(t, err, "failed to insert test certificateStatus row")
 
@@ -150,7 +156,7 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, keyHash []byte, serial strin
 		[]byte{1, 2, 3},
 		[]byte{},
 		time.Now(),
-		time.Now(),
+		time.Now().Add(expiresOffset),
 	)
 	test.AssertNotError(t, err, "failed to insert test certificates row")
 }
@@ -167,7 +173,7 @@ func TestFindUnrevokedNoRows(t *testing.T) {
 	_, err = dbMap.Exec(
 		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
 		hashA,
-		time.Now(),
+		time.Now().Add(time.Hour * 12),
 		"zz",
 	)
 	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
@@ -293,7 +299,7 @@ func TestCertificateAbsent(t *testing.T) {
 	_, err = dbMap.Exec(
 		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
 		hashA,
-		time.Now(),
+		time.Now().Add(time.Hour * 12),
 		"ffaaee",
 	)
 	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")

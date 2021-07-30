@@ -110,9 +110,10 @@ func (bkr *badKeyRevoker) findUnrevoked(unchecked uncheckedBlockedKey) ([]unrevo
 		}
 		_, err := bkr.dbMap.Select(
 			&batch,
-			"SELECT id, certserial FROM keyHashToSerial WHERE keyHash = ? AND id > ? ORDER BY id LIMIT ?",
+			"SELECT id, certSerial FROM keyHashToSerial WHERE keyHash = ? AND id > ? AND certNotAfter > ? ORDER BY id LIMIT ?",
 			unchecked.KeyHash,
 			initialID,
+			time.Now(),
 			bkr.serialBatchSize,
 		)
 		if err != nil {
