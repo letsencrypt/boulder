@@ -173,7 +173,7 @@ func TestFindUnrevokedNoRows(t *testing.T) {
 	_, err = dbMap.Exec(
 		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
 		hashA,
-		time.Now().Add(time.Hour * 12),
+		time.Now().Add(time.Hour*12),
 		"zz",
 	)
 	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
@@ -299,7 +299,7 @@ func TestCertificateAbsent(t *testing.T) {
 	_, err = dbMap.Exec(
 		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
 		hashA,
-		time.Now().Add(time.Hour * 12),
+		time.Now().Add(time.Hour*12),
 		"ffaaee",
 	)
 	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
