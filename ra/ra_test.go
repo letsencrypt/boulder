@@ -1185,8 +1185,6 @@ func TestNewCertificate(t *testing.T) {
 
 	// Check that we fail if the CSR signature is invalid
 	ExampleCSR.Raw[len(ExampleCSR.Raw)-1]++
-	fmt.Println(ExampleCSR.Subject.CommonName)
-	fmt.Println(ExampleCSR.DNSNames)
 	_, err := ra.NewCertificate(ctx,
 		&rapb.NewCertificateRequest{
 			Csr:          ExampleCSR.Raw,
