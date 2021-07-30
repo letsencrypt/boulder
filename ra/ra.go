@@ -566,15 +566,15 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 
 // NewAuthorization constructs a new Authz from a request. Values (domains) in
 // request.Identifier will be lowercased before storage.
-func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, request *rapb.NewAuthorizationRequest) (*corepb.Authorization, error) {
-	if request == nil || request.Authz.Identifier == "" || request.RegID == 0 {
+func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, req *rapb.NewAuthorizationRequest) (*corepb.Authorization, error) {
+	if req == nil || req.Authz.Identifier == "" || req.RegID == 0 {
 		return nil, errIncompleteGRPCRequest
 	}
 
 	// Create ACMEIdentifier. Assume Type DNS.
 	acmeIdentifier := identifier.ACMEIdentifier{
 		Type:  identifier.DNS,
-		Value: strings.ToLower(request.Authz.Identifier),
+		Value: strings.ToLower(req.Authz.Identifier),
 	}
 
 	// Check that the identifier is present and appropriate
@@ -582,25 +582,25 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		return nil, err
 	}
 
-	if err := ra.checkPendingAuthorizationLimit(ctx, request.RegID); err != nil {
+	if err := ra.checkPendingAuthorizationLimit(ctx, req.RegID); err != nil {
 		return nil, err
 	}
 
-	if err := ra.checkInvalidAuthorizationLimit(ctx, request.RegID, acmeIdentifier.Value); err != nil {
+	if err := ra.checkInvalidAuthorizationLimit(ctx, req.RegID, acmeIdentifier.Value); err != nil {
 		return nil, err
 	}
 
 	if ra.reuseValidAuthz {
 		now := ra.clk.Now().UnixNano()
 		authzMapPB, err := ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
-			RegistrationID: request.RegID,
+			RegistrationID: req.RegID,
 			Domains:        []string{acmeIdentifier.Value},
 			Now:            now,
 		})
 		if err != nil {
 			outErr := berrors.InternalServerError(
 				"unable to get existing validations for request.RegID: %d, acmeIdentifier: %s, %s",
-				request.RegID,
+				req.RegID,
 				acmeIdentifier.Value,
 				err,
 			)
@@ -626,17 +626,17 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	}
 
 	identifierTypeString := string(acmeIdentifier.Type)
-	req := &sapb.GetPendingAuthorizationRequest{
-		RegistrationID:  request.RegID,
+	saReq := &sapb.GetPendingAuthorizationRequest{
+		RegistrationID:  req.RegID,
 		IdentifierType:  identifierTypeString,
 		IdentifierValue: acmeIdentifier.Value,
 		ValidUntil:      ra.clk.Now().Add(time.Hour).UnixNano(),
 	}
-	pendingPB, err := ra.SA.GetPendingAuthorization2(ctx, req)
+	pendingPB, err := ra.SA.GetPendingAuthorization2(ctx, saReq)
 	if err != nil && !errors.Is(err, berrors.NotFound) {
 		return nil, berrors.InternalServerError(
 			"unable to get pending authorization for regID: %d, identifier: %s: %s",
-			request.RegID,
+			req.RegID,
 			acmeIdentifier.Value,
 			err)
 	} else if err == nil {
@@ -646,7 +646,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	if features.Enabled(features.V1DisableNewValidations) {
 		exists, err := ra.SA.PreviousCertificateExists(ctx, &sapb.PreviousCertificateExistsRequest{
 			Domain: acmeIdentifier.Value,
-			RegID:  request.RegID,
+			RegID:  req.RegID,
 		})
 		if err != nil {
 			return nil, err
@@ -656,7 +656,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		}
 	}
 
-	authzPB, err := ra.createPendingAuthz(ctx, request.RegID, acmeIdentifier)
+	authzPB, err := ra.createPendingAuthz(ctx, req.RegID, acmeIdentifier)
 	if err != nil {
 		return nil, err
 	}
