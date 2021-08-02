@@ -494,8 +494,11 @@ func main() {
 	cmd.FailOnError(err, "Could not connect to database")
 	sa.SetSQLDebug(dbMap, logger)
 
+	dbAddr, dbUser, err := c.Mailer.DB.DSNAddressAndUser()
+	cmd.FailOnError(err, "Could not determine address or user of DB DSN")
+
 	// Collect and periodically report DB metrics using the DBMap and prometheus scope.
-	sa.InitDBMetrics(dbMap, scope, dbSettings)
+	sa.InitDBMetrics(dbMap, scope, dbSettings, dbAddr, dbUser)
 
 	tlsConfig, err := c.Mailer.TLS.Load()
 	cmd.FailOnError(err, "TLS config")

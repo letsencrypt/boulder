@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/honeycombio/beeline-go"
 	"github.com/letsencrypt/boulder/core"
 )
@@ -87,6 +88,20 @@ func (d *DBConfig) URL() (string, error) {
 		return strings.TrimSpace(string(url)), err
 	}
 	return d.DBConnect, nil
+}
+
+// DSNAddressAndUser returns the Address and User of the DBConnect DSN from
+// this object.
+func (d *DBConfig) DSNAddressAndUser() (string, string, error) {
+	dsnStr, err := d.URL()
+	if err != nil {
+		return "", "", err
+	}
+	config, err := mysql.ParseDSN(dsnStr)
+	if err != nil {
+		return "", "", err
+	}
+	return config.Addr, config.User, nil
 }
 
 type SMTPConfig struct {

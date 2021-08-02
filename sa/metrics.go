@@ -5,66 +5,21 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var (
-	maxOpenConns = prometheus.NewDesc(
-		"db_max_open_connections",
-		"Maximum number of DB connections allowed.",
-		nil, nil)
-
-	maxIdleConns = prometheus.NewDesc(
-		"db_max_idle_connections",
-		"Maximum number of idle DB connections allowed.",
-		nil, nil)
-
-	connMaxLifetime = prometheus.NewDesc(
-		"db_connection_max_lifetime",
-		"Maximum lifetime of DB connections allowed.",
-		nil, nil)
-
-	connMaxIdleTime = prometheus.NewDesc(
-		"db_connection_max_idle_time",
-		"Maximum lifetime of idle DB connections allowed.",
-		nil, nil)
-
-	openConns = prometheus.NewDesc(
-		"db_open_connections",
-		"Number of established DB connections (in-use and idle).",
-		nil, nil)
-
-	inUse = prometheus.NewDesc(
-		"db_inuse",
-		"Number of DB connections currently in use.",
-		nil, nil)
-
-	idle = prometheus.NewDesc(
-		"db_idle",
-		"Number of idle DB connections.",
-		nil, nil)
-
-	waitCount = prometheus.NewDesc(
-		"db_wait_count",
-		"Total number of DB connections waited for.",
-		nil, nil)
-
-	waitDuration = prometheus.NewDesc(
-		"db_wait_duration_seconds",
-		"The total time blocked waiting for a new connection.",
-		nil, nil)
-
-	maxIdleClosed = prometheus.NewDesc(
-		"db_max_idle_closed",
-		"Total number of connections closed due to SetMaxIdleConns.",
-		nil, nil)
-
-	maxLifetimeClosed = prometheus.NewDesc(
-		"db_max_lifetime_closed",
-		"Total number of connections closed due to SetConnMaxLifetime.",
-		nil, nil)
-)
-
 type dbMetricsCollector struct {
 	dbMap      *db.WrappedMap
 	dbSettings DbSettings
+
+	maxOpenConns      *prometheus.Desc
+	maxIdleConns      *prometheus.Desc
+	connMaxLifetime   *prometheus.Desc
+	connMaxIdleTime   *prometheus.Desc
+	openConns         *prometheus.Desc
+	inUse             *prometheus.Desc
+	idle              *prometheus.Desc
+	waitCount         *prometheus.Desc
+	waitDuration      *prometheus.Desc
+	maxIdleClosed     *prometheus.Desc
+	maxLifetimeClosed *prometheus.Desc
 }
 
 // Describe is implemented with DescribeByCollect. That's possible because the
@@ -92,24 +47,82 @@ func (dbc dbMetricsCollector) Collect(ch chan<- prometheus.Metric) {
 
 	// Translate the DBMap's db.DBStats counter values into Prometheus metrics.
 	dbMapStats := dbc.dbMap.Db.Stats()
-	writeGauge(maxOpenConns, float64(dbMapStats.MaxOpenConnections))
-	writeGauge(maxIdleConns, float64(dbc.dbSettings.MaxIdleConns))
-	writeGauge(connMaxLifetime, float64(dbc.dbSettings.ConnMaxLifetime))
-	writeGauge(connMaxIdleTime, float64(dbc.dbSettings.ConnMaxIdleTime))
-	writeGauge(openConns, float64(dbMapStats.OpenConnections))
-	writeGauge(inUse, float64(dbMapStats.InUse))
-	writeGauge(idle, float64(dbMapStats.Idle))
-	writeCounter(waitCount, float64(dbMapStats.WaitCount))
-	writeCounter(waitDuration, dbMapStats.WaitDuration.Seconds())
-	writeCounter(maxIdleClosed, float64(dbMapStats.MaxIdleClosed))
-	writeCounter(maxLifetimeClosed, float64(dbMapStats.MaxLifetimeClosed))
+	writeGauge(dbc.maxOpenConns, float64(dbMapStats.MaxOpenConnections))
+	writeGauge(dbc.maxIdleConns, float64(dbc.dbSettings.MaxIdleConns))
+	writeGauge(dbc.connMaxLifetime, float64(dbc.dbSettings.ConnMaxLifetime))
+	writeGauge(dbc.connMaxIdleTime, float64(dbc.dbSettings.ConnMaxIdleTime))
+	writeGauge(dbc.openConns, float64(dbMapStats.OpenConnections))
+	writeGauge(dbc.inUse, float64(dbMapStats.InUse))
+	writeGauge(dbc.idle, float64(dbMapStats.Idle))
+	writeCounter(dbc.waitCount, float64(dbMapStats.WaitCount))
+	writeCounter(dbc.waitDuration, dbMapStats.WaitDuration.Seconds())
+	writeCounter(dbc.maxIdleClosed, float64(dbMapStats.MaxIdleClosed))
+	writeCounter(dbc.maxLifetimeClosed, float64(dbMapStats.MaxLifetimeClosed))
 }
 
 // InitDBMetrics will register a Collector that translates the provided dbMap's
 // stats and DbSettings into Prometheus metrics on the fly. The stat values will
 // be translated from the gorp dbMap's inner sql.DBMap's DBStats structure values
-func InitDBMetrics(dbMap *db.WrappedMap, stats prometheus.Registerer, dbSettings DbSettings) {
+func InitDBMetrics(dbMap *db.WrappedMap, stats prometheus.Registerer, dbSettings DbSettings, address string, user string) {
 	// Create a dbMetricsCollector and register it
-	dbc := dbMetricsCollector{dbMap, dbSettings}
+	dbc := dbMetricsCollector{dbMap: dbMap, dbSettings: dbSettings}
+
+	labels := prometheus.Labels{"address": address, "user": user}
+
+	dbc.maxOpenConns = prometheus.NewDesc(
+		"db_max_open_connections",
+		"Maximum number of DB connections allowed.",
+		nil, labels)
+
+	dbc.maxIdleConns = prometheus.NewDesc(
+		"db_max_idle_connections",
+		"Maximum number of idle DB connections allowed.",
+		nil, labels)
+
+	dbc.connMaxLifetime = prometheus.NewDesc(
+		"db_connection_max_lifetime",
+		"Maximum lifetime of DB connections allowed.",
+		nil, labels)
+
+	dbc.connMaxIdleTime = prometheus.NewDesc(
+		"db_connection_max_idle_time",
+		"Maximum lifetime of idle DB connections allowed.",
+		nil, labels)
+
+	dbc.openConns = prometheus.NewDesc(
+		"db_open_connections",
+		"Number of established DB connections (in-use and idle).",
+		nil, labels)
+
+	dbc.inUse = prometheus.NewDesc(
+		"db_inuse",
+		"Number of DB connections currently in use.",
+		nil, labels)
+
+	dbc.idle = prometheus.NewDesc(
+		"db_idle",
+		"Number of idle DB connections.",
+		nil, labels)
+
+	dbc.waitCount = prometheus.NewDesc(
+		"db_wait_count",
+		"Total number of DB connections waited for.",
+		nil, labels)
+
+	dbc.waitDuration = prometheus.NewDesc(
+		"db_wait_duration_seconds",
+		"The total time blocked waiting for a new connection.",
+		nil, labels)
+
+	dbc.maxIdleClosed = prometheus.NewDesc(
+		"db_max_idle_closed",
+		"Total number of connections closed due to SetMaxIdleConns.",
+		nil, labels)
+
+	dbc.maxLifetimeClosed = prometheus.NewDesc(
+		"db_max_lifetime_closed",
+		"Total number of connections closed due to SetConnMaxLifetime.",
+		nil, labels)
+
 	stats.MustRegister(dbc)
 }

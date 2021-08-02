@@ -4,12 +4,14 @@
 -- These lines require MariaDB 10.1+
 CREATE USER IF NOT EXISTS 'policy'@'localhost';
 CREATE USER IF NOT EXISTS 'sa'@'localhost';
+CREATE USER IF NOT EXISTS 'sa_ro'@'localhost';
 CREATE USER IF NOT EXISTS 'ocsp_resp'@'localhost';
 CREATE USER IF NOT EXISTS 'revoker'@'localhost';
 CREATE USER IF NOT EXISTS 'importer'@'localhost';
 CREATE USER IF NOT EXISTS 'mailer'@'localhost';
 CREATE USER IF NOT EXISTS 'cert_checker'@'localhost';
 CREATE USER IF NOT EXISTS 'ocsp_update'@'localhost';
+CREATE USER IF NOT EXISTS 'ocsp_update_ro'@'localhost';
 CREATE USER IF NOT EXISTS 'test_setup'@'localhost';
 CREATE USER IF NOT EXISTS 'purger'@'localhost';
 CREATE USER IF NOT EXISTS 'janitor'@'localhost';
@@ -33,6 +35,22 @@ GRANT SELECT,INSERT ON keyHashToSerial TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON blockedKeys TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON newOrdersRL TO 'sa'@'localhost';
 
+GRANT SELECT ON certificates TO 'sa_ro'@'localhost';
+GRANT SELECT ON certificateStatus TO 'sa_ro'@'localhost';
+GRANT SELECT ON issuedNames TO 'sa_ro'@'localhost';
+GRANT SELECT ON certificatesPerName TO 'sa_ro'@'localhost';
+GRANT SELECT ON registrations TO 'sa_ro'@'localhost';
+GRANT SELECT on fqdnSets TO 'sa_ro'@'localhost';
+GRANT SELECT ON orders TO 'sa_ro'@'localhost';
+GRANT SELECT ON requestedNames TO 'sa_ro'@'localhost';
+GRANT SELECT ON orderFqdnSets TO 'sa_ro'@'localhost';
+GRANT SELECT ON authz2 TO 'sa_ro'@'localhost';
+GRANT SELECT ON orderToAuthz2 TO 'sa_ro'@'localhost';
+GRANT SELECT ON precertificates TO 'sa_ro'@'localhost';
+GRANT SELECT ON keyHashToSerial TO 'sa_ro'@'localhost';
+GRANT SELECT ON blockedKeys TO 'sa_ro'@'localhost';
+GRANT SELECT ON newOrdersRL TO 'sa_ro'@'localhost';
+
 -- OCSP Responder
 GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';
 
@@ -40,6 +58,10 @@ GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';
 GRANT SELECT ON certificates TO 'ocsp_update'@'localhost';
 GRANT SELECT,UPDATE ON certificateStatus TO 'ocsp_update'@'localhost';
 GRANT SELECT ON precertificates TO 'ocsp_update'@'localhost';
+
+GRANT SELECT ON certificates TO 'ocsp_update_ro'@'localhost';
+GRANT SELECT ON certificateStatus TO 'ocsp_update_ro'@'localhost';
+GRANT SELECT ON precertificates TO 'ocsp_update_ro'@'localhost';
 
 -- Revoker Tool
 GRANT SELECT ON registrations TO 'revoker'@'localhost';

@@ -407,7 +407,11 @@ func main() {
 	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")
 	sa.SetSQLDebug(dbMap, logger)
-	sa.InitDBMetrics(dbMap, scope, dbSettings)
+
+	dbAddr, dbUser, err := config.BadKeyRevoker.DB.DSNAddressAndUser()
+	cmd.FailOnError(err, "Could not determine address or user of DB DSN")
+
+	sa.InitDBMetrics(dbMap, scope, dbSettings, dbAddr, dbUser)
 
 	tlsConfig, err := config.BadKeyRevoker.TLS.Load()
 	cmd.FailOnError(err, "TLS config")

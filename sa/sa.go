@@ -34,9 +34,10 @@ type certCountFunc func(db db.Selector, domain string, earliest, latest time.Tim
 
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
-	dbMap *db.WrappedMap
-	clk   clock.Clock
-	log   blog.Logger
+	dbMap         *db.WrappedMap
+	dbReadOnlyMap *db.WrappedMap
+	clk           clock.Clock
+	log           blog.Logger
 
 	// For RPCs that generate multiple, parallelizable SQL queries, this is the
 	// max parallelism they will use (to avoid consuming too many MariaDB
@@ -71,6 +72,7 @@ type orderFQDNSet struct {
 // Boulder. It will modify the given gorp.DbMap by adding relevant tables.
 func NewSQLStorageAuthority(
 	dbMap *db.WrappedMap,
+	dbReadOnlyMap *db.WrappedMap,
 	clk clock.Clock,
 	logger blog.Logger,
 	stats prometheus.Registerer,
@@ -86,6 +88,7 @@ func NewSQLStorageAuthority(
 
 	ssa := &SQLStorageAuthority{
 		dbMap:                dbMap,
+		dbReadOnlyMap:        dbReadOnlyMap,
 		clk:                  clk,
 		log:                  logger,
 		parallelismPerRPC:    parallelismPerRPC,
@@ -182,7 +185,7 @@ func ipRange(ip net.IP) (net.IP, net.IP) {
 // time range for a single IP address.
 func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest time.Time, latest time.Time) (int, error) {
 	var count int64
-	err := ssa.dbMap.WithContext(ctx).SelectOne(
+	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM registrations
 		 WHERE
@@ -207,7 +210,7 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, ip n
 func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context, ip net.IP, earliest time.Time, latest time.Time) (int, error) {
 	var count int64
 	beginIP, endIP := ipRange(ip)
-	err := ssa.dbMap.WithContext(ctx).SelectOne(
+	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM registrations
 		 WHERE
@@ -263,7 +266,7 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, do
 				default:
 				}
 				currentCount, err := ssa.countCertificatesByName(
-					ssa.dbMap.WithContext(ctx), domain, earliest, latest)
+					ssa.dbReadOnlyMap.WithContext(ctx), domain, earliest, latest)
 				if err != nil {
 					results <- result{err: err}
 					// Skip any further work
@@ -503,11 +506,11 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 
 func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error) {
 	if features.Enabled(features.FasterNewOrdersRateLimit) {
-		return countNewOrders(ctx, ssa.dbMap, acctID, earliest, latest)
+		return countNewOrders(ctx, ssa.dbReadOnlyMap, acctID, earliest, latest)
 	}
 
 	var count int
-	err := ssa.dbMap.WithContext(ctx).SelectOne(&count,
+	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(&count,
 		`SELECT count(1) FROM orders
 		WHERE registrationID = :acctID AND
 		created >= :windowLeft AND
@@ -607,7 +610,7 @@ func addIssuedNames(db db.Execer, cert *x509.Certificate, isRenewal bool) error 
 // |window|
 func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, window time.Duration, names []string) (int64, error) {
 	var count int64
-	err := ssa.dbMap.WithContext(ctx).SelectOne(
+	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM fqdnSets
 		WHERE setHash = ?
@@ -1625,7 +1628,7 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, re
 // for the given registration. This method is intended to deprecate CountPendingAuthorizations.
 func (ssa *SQLStorageAuthority) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error) {
 	var count int64
-	err := ssa.dbMap.WithContext(ctx).SelectOne(&count,
+	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(&count,
 		`SELECT COUNT(1) FROM authz2 WHERE
 		registrationID = :regID AND
 		expires > :expires AND
@@ -1687,7 +1690,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 // This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
 	var count int64
-	err := ssa.dbMap.WithContext(ctx).SelectOne(
+	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM authz2 WHERE
 		registrationID = :regID AND

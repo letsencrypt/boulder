@@ -11,6 +11,8 @@ import (
 
 	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -19,16 +21,20 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
-/*
- * ocspDB is an interface collecting the gorp.DbMap functions that the
- * various parts of OCSPUpdater rely on. Using this adapter shim allows tests to
- * swap out the dbMap implementation.
- */
-type ocspDB interface {
+// ocspDB and ocspReadOnlyDB are interfaces collecting the gorp.DbMap functions that
+// the various parts of OCSPUpdater rely on. Using this adapter shim allows tests to
+// swap out the dbMap implementation.
+
+// ocspReadOnlyDB provides only read-only portions of the gorp.DbMap interface
+type ocspReadOnlyDB interface {
 	Select(i interface{}, query string, args ...interface{}) ([]interface{}, error)
+}
+
+// ocspDB provides read-write portions of the gorp.DbMap interface
+type ocspDB interface {
+	ocspReadOnlyDB
 	Exec(query string, args ...interface{}) (sql.Result, error)
 }
 
@@ -37,7 +43,8 @@ type OCSPUpdater struct {
 	log blog.Logger
 	clk clock.Clock
 
-	dbMap ocspDB
+	dbMap         ocspDB
+	readOnlyDbMap ocspReadOnlyDB
 
 	ogc capb.OCSPGeneratorClient
 
@@ -65,6 +72,7 @@ func newUpdater(
 	stats prometheus.Registerer,
 	clk clock.Clock,
 	dbMap ocspDB,
+	readOnlyDbMap ocspReadOnlyDB,
 	ogc capb.OCSPGeneratorClient,
 	config OCSPUpdaterConfig,
 	log blog.Logger,
@@ -110,6 +118,7 @@ func newUpdater(
 	updater := OCSPUpdater{
 		clk:                          clk,
 		dbMap:                        dbMap,
+		readOnlyDbMap:                readOnlyDbMap,
 		ogc:                          ogc,
 		log:                          log,
 		ocspMinTimeToExpiry:          config.OCSPMinTimeToExpiry.Duration,
@@ -130,7 +139,7 @@ func newUpdater(
 
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
 	statuses, err := sa.SelectCertificateStatuses(
-		updater.dbMap,
+		updater.readOnlyDbMap,
 		`WHERE ocspLastUpdated < :lastUpdate
 		 AND NOT isExpired
 		 ORDER BY ocspLastUpdated ASC
@@ -282,7 +291,8 @@ type config struct {
 // for the OCSP (and SCT) updater
 type OCSPUpdaterConfig struct {
 	cmd.ServiceConfig
-	DB cmd.DBConfig
+	DB         cmd.DBConfig
+	ReadOnlyDB cmd.DBConfig
 
 	OldOCSPWindow    cmd.ConfigDuration
 	OldOCSPBatchSize int
@@ -350,19 +360,40 @@ func main() {
 	logger.Info(cmd.VersionString())
 
 	// Configure DB
-	dbURL, err := conf.DB.URL()
-	cmd.FailOnError(err, "Couldn't load DB URL")
-	dbSettings := sa.DbSettings{
-		MaxOpenConns:    conf.DB.MaxOpenConns,
-		MaxIdleConns:    conf.DB.MaxIdleConns,
-		ConnMaxLifetime: conf.DB.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: conf.DB.ConnMaxIdleTime.Duration}
+	configureDb := func(scope prometheus.Registerer, databaseConfig cmd.DBConfig) *db.WrappedMap {
+		dbSettings := sa.DbSettings{
+			MaxOpenConns:    databaseConfig.MaxOpenConns,
+			MaxIdleConns:    databaseConfig.MaxIdleConns,
+			ConnMaxLifetime: databaseConfig.ConnMaxLifetime.Duration,
+			ConnMaxIdleTime: databaseConfig.ConnMaxIdleTime.Duration,
+		}
 
-	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
-	cmd.FailOnError(err, "Could not connect to database")
+		dbDSN, err := databaseConfig.URL()
+		cmd.FailOnError(err, "Couldn't load DB URL")
 
-	// Collect and periodically report DB metrics using the DBMap and prometheus stats.
-	sa.InitDBMetrics(dbMap, stats, dbSettings)
+		dbMap, err := sa.NewDbMap(dbDSN, dbSettings)
+		cmd.FailOnError(err, "Couldn't connect to SA database")
+
+		dbAddr, dbUser, err := databaseConfig.DSNAddressAndUser()
+		cmd.FailOnError(err, "Could not determine address or user of DB DSN")
+
+		// Collect and periodically report DB metrics using the DBMap and prometheus scope.
+		sa.InitDBMetrics(dbMap, scope, dbSettings, dbAddr, dbUser)
+
+		return dbMap
+	}
+
+	dbMap := configureDb(stats, conf.DB)
+
+	dbReadOnlyURL, err := conf.ReadOnlyDB.URL()
+	cmd.FailOnError(err, "Couldn't load read-only DB URL")
+
+	var dbReadOnlyMap *db.WrappedMap
+	if dbReadOnlyURL == "" {
+		dbReadOnlyMap = dbMap
+	} else {
+		dbReadOnlyMap = configureDb(stats, conf.ReadOnlyDB)
+	}
 
 	clk := cmd.Clock()
 
@@ -377,6 +408,7 @@ func main() {
 		stats,
 		clk,
 		dbMap,
+		dbReadOnlyMap,
 		ogc,
 		// Necessary evil for now
 		conf,
