@@ -2275,7 +2275,7 @@ type mockSAGetRegByKeyFails struct {
 }
 
 func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(_ context.Context, _ *sapb.JSONWebKey) (*corepb.Registration, error) {
-	return nil, fmt.Errorf("whoops")
+	return nil, errors.New("whoops")
 }
 
 // When SA.GetRegistrationByKey errors (e.g. gRPC timeout), verifyPOST should

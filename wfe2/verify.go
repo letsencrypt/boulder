@@ -494,7 +494,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 	acct, err := grpc.PbToRegistration(account)
 	if err != nil {
 		return nil, nil, probs.ServerInternal(fmt.Sprintf(
-			"Error unmarhsalling account %q", accountURL))
+			"Error unmarshalling account %q", accountURL))
 	}
 	return acct.Key, &acct, nil
 }
