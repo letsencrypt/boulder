@@ -475,7 +475,7 @@ func main() {
 		} else {
 			if noWork {
 				logger.Info(fmt.Sprintf(
-					"No work to do. Sleeping for %s", config.BadKeyRevoker.Interval.Duration))
+					"No work to do. Sleeping for at most %s", config.BadKeyRevoker.Interval.Duration))
 			} else {
 				keysProcessed.WithLabelValues("success").Inc()
 			}
