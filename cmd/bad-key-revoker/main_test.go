@@ -111,11 +111,11 @@ const (
 	Unrevoked = core.OCSPStatusGood
 )
 
-func insertGoodCert(t *testing.T, fc clock.Clock, dbMap *db.WrappedMap, keyHash []byte, serial string, regID int64) {
-	insertCert(t, fc, dbMap, keyHash, serial, regID, Unexpired, Unrevoked)
+func insertGoodCert(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, keyHash []byte, serial string, regID int64) {
+	insertCert(t, dbMap, fc, keyHash, serial, regID, Unexpired, Unrevoked)
 }
 
-func insertCert(t *testing.T, fc clock.Clock, dbMap *db.WrappedMap, keyHash []byte, serial string, regID int64, expiredStatus ExpiredStatus, status core.OCSPStatus) {
+func insertCert(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, keyHash []byte, serial string, regID int64, expiredStatus ExpiredStatus, status core.OCSPStatus) {
 	t.Helper()
 
 	expiresOffset := 0*time.Second
@@ -202,11 +202,11 @@ func TestFindUnrevoked(t *testing.T) {
 
 	hashA := randHash(t)
 	// insert valid, unexpired
-	insertCert(t, fc, dbMap, hashA, "ff", regID, Unexpired, Unrevoked)
+	insertCert(t, dbMap, fc, hashA, "ff", regID, Unexpired, Unrevoked)
 	// insert valid, expired
-	insertCert(t, fc, dbMap, hashA, "ee", regID, Expired, Unrevoked)
+	insertCert(t, dbMap, fc, hashA, "ee", regID, Expired, Unrevoked)
 	// insert revoked
-	insertCert(t, fc, dbMap, hashA, "dd", regID, Unexpired, Revoked)
+	insertCert(t, dbMap, fc, hashA, "dd", regID, Unexpired, Revoked)
 
 	rows, err := bkr.findUnrevoked(uncheckedBlockedKey{KeyHash: hashA})
 	test.AssertNotError(t, err, "findUnrevoked failed")
@@ -361,10 +361,10 @@ func TestInvoke(t *testing.T) {
 	regIDD := insertRegistration(t, dbMap, fc)
 	hashA := randHash(t)
 	insertBlockedRow(t, dbMap, fc, hashA, regIDC, false)
-	insertGoodCert(t, fc, dbMap, hashA, "ff", regIDA)
-	insertGoodCert(t, fc, dbMap, hashA, "ee", regIDB)
-	insertGoodCert(t, fc, dbMap, hashA, "dd", regIDC)
-	insertGoodCert(t, fc, dbMap, hashA, "cc", regIDD)
+	insertGoodCert(t, dbMap, fc, hashA, "ff", regIDA)
+	insertGoodCert(t, dbMap, fc, hashA, "ee", regIDB)
+	insertGoodCert(t, dbMap, fc, hashA, "dd", regIDC)
+	insertGoodCert(t, dbMap, fc, hashA, "cc", regIDD)
 
 	noWork, err := bkr.invoke()
 	test.AssertNotError(t, err, "invoke failed")
@@ -383,7 +383,7 @@ func TestInvoke(t *testing.T) {
 	// add a row with no associated valid certificates
 	hashB := randHash(t)
 	insertBlockedRow(t, dbMap, fc, hashB, regIDC, false)
-	insertCert(t, fc, dbMap, hashB, "bb", regIDA, Expired, Revoked)
+	insertCert(t, dbMap, fc, hashB, "bb", regIDA, Expired, Revoked)
 
 	noWork, err = bkr.invoke()
 	test.AssertNotError(t, err, "invoke failed")
@@ -433,10 +433,10 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 
 	insertBlockedRow(t, dbMap, fc, hashA, regIDA, false)
 
-	insertGoodCert(t, fc, dbMap, hashA, "ee", regIDB)
-	insertGoodCert(t, fc, dbMap, hashA, "dd", regIDB)
-	insertGoodCert(t, fc, dbMap, hashA, "cc", regIDC)
-	insertGoodCert(t, fc, dbMap, hashA, "bb", regIDC)
+	insertGoodCert(t, dbMap, fc, hashA, "ee", regIDB)
+	insertGoodCert(t, dbMap, fc, hashA, "dd", regIDB)
+	insertGoodCert(t, dbMap, fc, hashA, "cc", regIDC)
+	insertGoodCert(t, dbMap, fc, hashA, "bb", regIDC)
 
 	noWork, err := bkr.invoke()
 	test.AssertNotError(t, err, "invoke failed")
