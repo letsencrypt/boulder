@@ -120,7 +120,7 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, keyHash []by
 
 	expiresOffset := 0 * time.Second
 	if !expiredStatus {
-		expiresOffset = 90*24*time.Hour-1*time.Second // 90 days exclusive
+		expiresOffset = 90*24*time.Hour - 1*time.Second // 90 days exclusive
 	}
 
 	_, err := dbMap.Exec(
