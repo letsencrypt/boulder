@@ -463,19 +463,23 @@ func main() {
 		emailTemplate:   emailTemplate,
 		logger:          logger,
 	}
+
+	// Don't loop faster than our interval
+	min_iter_speed_ticker := time.NewTicker(config.BadKeyRevoker.Interval.Duration)
+
 	for {
 		noWork, err := bkr.invoke()
 		if err != nil {
 			keysProcessed.WithLabelValues("error").Inc()
 			logger.AuditErrf("failed to process blockedKeys row: %s", err)
-			continue
-		}
-		if noWork {
-			logger.Info(fmt.Sprintf(
-				"No work to do. Sleeping for %s", config.BadKeyRevoker.Interval.Duration))
-			time.Sleep(config.BadKeyRevoker.Interval.Duration)
 		} else {
-			keysProcessed.WithLabelValues("success").Inc()
+			if noWork {
+				logger.Info(fmt.Sprintf(
+					"No work to do. Sleeping for %s", config.BadKeyRevoker.Interval.Duration))
+			} else {
+				keysProcessed.WithLabelValues("success").Inc()
+			}
 		}
+		<-min_iter_speed_ticker.C
 	}
 }
