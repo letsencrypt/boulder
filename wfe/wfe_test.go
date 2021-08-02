@@ -211,8 +211,8 @@ func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, authz
 	return authz, nil
 }
 
-func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64, issuerNameID int64) (core.Certificate, error) {
-	return core.Certificate{}, nil
+func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req *rapb.NewCertificateRequest) (*corepb.Certificate, error) {
+	return &corepb.Certificate{}, nil
 }
 
 func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
@@ -2689,8 +2689,8 @@ type noSCTMockRA struct {
 	MockRegistrationAuthority
 }
 
-func (ra *noSCTMockRA) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64, issuerNameID int64) (core.Certificate, error) {
-	return core.Certificate{}, berrors.MissingSCTsError("noSCTMockRA missing scts error")
+func (ra *noSCTMockRA) NewCertificate(ctx context.Context, req *rapb.NewCertificateRequest) (*corepb.Certificate, error) {
+	return nil, berrors.MissingSCTsError("noSCTMockRA missing scts error")
 }
 
 func TestNewCertificateSCTError(t *testing.T) {

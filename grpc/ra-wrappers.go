@@ -48,13 +48,8 @@ func (rac RegistrationAuthorityClientWrapper) NewAuthorization(ctx context.Conte
 	return PBToAuthz(response)
 }
 
-func (rac RegistrationAuthorityClientWrapper) NewCertificate(ctx context.Context, csr core.CertificateRequest, regID int64, issuerNameID int64) (core.Certificate, error) {
-	response, err := rac.inner.NewCertificate(ctx, &rapb.NewCertificateRequest{Csr: csr.Bytes, RegID: regID, IssuerNameID: issuerNameID})
-	if err != nil {
-		return core.Certificate{}, err
-	}
-
-	return PBToCert(response)
+func (rac RegistrationAuthorityClientWrapper) NewCertificate(ctx context.Context, req *rapb.NewCertificateRequest) (*corepb.Certificate, error) {
+	return rac.inner.NewCertificate(ctx, req)
 }
 
 func (rac RegistrationAuthorityClientWrapper) UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
@@ -145,21 +140,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewAuthorization(ctx context.Cont
 }
 
 func (ras *RegistrationAuthorityServerWrapper) NewCertificate(ctx context.Context, request *rapb.NewCertificateRequest) (*corepb.Certificate, error) {
-	// TODO(#5216): Add IssuerNameID to this check. Because this method is
-	// APIv1-only, the IssuerNameID is required so the CA never has to guess on
-	// the issuer for v1 issuance.
-	if request == nil || request.Csr == nil || request.RegID == 0 {
-		return nil, errIncompleteRequest
-	}
-	csr, err := x509.ParseCertificateRequest(request.Csr)
-	if err != nil {
-		return nil, err
-	}
-	cert, err := ras.inner.NewCertificate(ctx, core.CertificateRequest{CSR: csr, Bytes: request.Csr}, request.RegID, request.IssuerNameID)
-	if err != nil {
-		return nil, err
-	}
-	return CertToPB(cert), nil
+	return ras.inner.NewCertificate(ctx, request)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
