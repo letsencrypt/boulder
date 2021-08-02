@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/honeycombio/beeline-go"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
@@ -57,6 +58,7 @@ type badKeyRevoker struct {
 	emailSubject    string
 	emailTemplate   *template.Template
 	logger          log.Logger
+	clk             clock.Clock
 }
 
 // uncheckedBlockedKey represents a row in the blockedKeys table
@@ -113,7 +115,7 @@ func (bkr *badKeyRevoker) findUnrevoked(unchecked uncheckedBlockedKey) ([]unrevo
 			"SELECT id, certSerial FROM keyHashToSerial WHERE keyHash = ? AND id > ? AND certNotAfter > ? ORDER BY id LIMIT ?",
 			unchecked.KeyHash,
 			initialID,
-			time.Now(),
+			bkr.clk.Now(),
 			bkr.serialBatchSize,
 		)
 		if err != nil {
@@ -463,6 +465,7 @@ func main() {
 		emailSubject:    config.BadKeyRevoker.Mailer.EmailSubject,
 		emailTemplate:   emailTemplate,
 		logger:          logger,
+		clk:             clk,
 	}
 	for {
 		noWork, err := bkr.invoke()
