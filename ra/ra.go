@@ -626,13 +626,14 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, req *
 	}
 
 	identifierTypeString := string(acmeIdentifier.Type)
-	saReq := &sapb.GetPendingAuthorizationRequest{
-		RegistrationID:  req.RegID,
-		IdentifierType:  identifierTypeString,
-		IdentifierValue: acmeIdentifier.Value,
-		ValidUntil:      ra.clk.Now().Add(time.Hour).UnixNano(),
-	}
-	pendingPB, err := ra.SA.GetPendingAuthorization2(ctx, saReq)
+
+	pendingPB, err := ra.SA.GetPendingAuthorization2(ctx,
+		&sapb.GetPendingAuthorizationRequest{
+			RegistrationID:  req.RegID,
+			IdentifierType:  identifierTypeString,
+			IdentifierValue: acmeIdentifier.Value,
+			ValidUntil:      ra.clk.Now().Add(time.Hour).UnixNano(),
+		})
 	if err != nil && !errors.Is(err, berrors.NotFound) {
 		return nil, berrors.InternalServerError(
 			"unable to get pending authorization for regID: %d, identifier: %s: %s",

@@ -790,6 +790,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 		return
 	}
 	if authzPB == nil || authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+		err = errors.New("Incomplete gRPC response message")
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
 		return
 	}

@@ -194,15 +194,15 @@ var (
 
 	Registration = core.Registration{ID: 1}
 
+	AuthzRequest = &rapb.NewAuthorizationRequest{
+		Authz: &corepb.Authorization{
+			Identifier: "not-example.com",
+		},
+		RegID: Registration.ID,
+	}
+
 	log = blog.UseMock()
 )
-
-var AuthzRequest = &rapb.NewAuthorizationRequest{
-	Authz: &corepb.Authorization{
-		Identifier: "not-example.com",
-	},
-	RegID: Registration.ID,
-}
 
 var testKeyPolicy = goodkey.KeyPolicy{
 	AllowRSA:           true,
