@@ -980,6 +980,10 @@ func (ra *RegistrationAuthorityImpl) failOrder(
 // If successful the order will be returned in processing status for the client
 // to poll while awaiting finalization to occur.
 func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
+	if req == nil || req.Order == nil {
+		return nil, errIncompleteGRPCRequest
+	}
+
 	order := req.Order
 
 	if order.Status != string(core.StatusReady) {

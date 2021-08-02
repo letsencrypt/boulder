@@ -75,14 +75,7 @@ func (ras *RegistrationAuthorityClientWrapper) NewOrder(ctx context.Context, req
 }
 
 func (ras *RegistrationAuthorityClientWrapper) FinalizeOrder(ctx context.Context, request *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
-	resp, err := ras.inner.FinalizeOrder(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil || !orderValid(resp) {
-		return nil, errIncompleteResponse
-	}
-	return resp, nil
+	return ras.inner.FinalizeOrder(ctx, request)
 }
 
 // RegistrationAuthorityServerWrapper is the gRPC version of a core.RegistrationAuthority server
@@ -147,9 +140,5 @@ func (ras *RegistrationAuthorityServerWrapper) NewOrder(ctx context.Context, req
 }
 
 func (ras *RegistrationAuthorityServerWrapper) FinalizeOrder(ctx context.Context, request *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
-	if request == nil || request.Order == nil || request.Csr == nil {
-		return nil, errIncompleteRequest
-	}
-
 	return ras.inner.FinalizeOrder(ctx, request)
 }
