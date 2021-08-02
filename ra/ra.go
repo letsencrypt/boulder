@@ -1900,6 +1900,13 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 
 	state := "Failure"
 	defer func() {
+		// Needed:
+		//   Serial
+		//   CN
+		//   DNS names
+		//   Revocation reason
+		//   Name of admin-revoker user
+		//   Error (if there was one)
 		ra.log.AuditInfof(
 			"%s, admin-revoker user: %s",
 			revokeEvent(state, serialString, cert.Subject.CommonName, cert.DNSNames, revocationCode),
