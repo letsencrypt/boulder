@@ -120,7 +120,7 @@ func insertCert(t *testing.T, fc clock.Clock, dbMap *db.WrappedMap, keyHash []by
 
 	expiresOffset := 0*time.Second
 	if !expiredStatus {
-		expiresOffset = 2160*time.Hour - 1*time.Second // 90 days exclusive
+		expiresOffset = 90*24*time.Hour - 1*time.Second // 90 days exclusive
 	}
 
 	_, err := dbMap.Exec(
@@ -179,7 +179,7 @@ func TestFindUnrevokedNoRows(t *testing.T) {
 	_, err = dbMap.Exec(
 		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
 		hashA,
-		fc.Now().Add(2160*time.Hour - 1*time.Second), // 90 days exclusive
+		fc.Now().Add(90*24*time.Hour - 1*time.Second), // 90 days exclusive
 		"zz",
 	)
 	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
@@ -313,7 +313,7 @@ func TestCertificateAbsent(t *testing.T) {
 	_, err = dbMap.Exec(
 		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
 		hashA,
-		fc.Now().Add(2160*time.Hour - 1*time.Second), // 90 days exclusive
+		fc.Now().Add(90*24*time.Hour - 1*time.Second), // 90 days exclusive
 		"ffaaee",
 	)
 	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
