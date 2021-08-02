@@ -241,8 +241,8 @@ func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Contex
 	return &emptypb.Empty{}, nil
 }
 
-func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, reason revocation.Reason, user string) error {
-	return nil
+func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
 func (ra *MockRegistrationAuthority) OnValidationUpdate(ctx context.Context, authz core.Authorization) error {

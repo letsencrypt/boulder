@@ -4029,7 +4029,11 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "keyCompromise"}, 1)
 
 	mockSA.added = nil
-	err = ra.AdministrativelyRevokeCertificate(context.Background(), *cert, ocsp.KeyCompromise, "root")
+	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
+		Cert:      cert.Raw,
+		Code:      ocsp.KeyCompromise,
+		AdminName: "root",
+	})
 	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
 	test.Assert(t, mockSA.added != nil, "blocked key was not added when reason was keyCompromise")
 	test.Assert(t, bytes.Equal(digest[:], mockSA.added.KeyHash), "key hash mismatch")
@@ -4038,4 +4042,18 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	test.AssertEquals(t, mockSA.added.Comment, "revoked by root")
 	test.AssertMetricWithLabelsEquals(
 		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "keyCompromise"}, 2)
+	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
+		Cert:      cert.Raw,
+		Code:      ocsp.KeyCompromise,
+		AdminName: "",
+	})
+	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with empty string for `AdminName`")
+	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{})
+	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed for nil request object")
+	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
+		Cert:      []byte{},
+		Code:      ocsp.KeyCompromise,
+		AdminName: "",
+	})
+	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed for nil `Cert`")
 }

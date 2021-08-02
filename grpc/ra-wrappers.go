@@ -8,12 +8,10 @@ package grpc
 
 import (
 	"context"
-	"crypto/x509"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
-	"github.com/letsencrypt/boulder/revocation"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -68,17 +66,8 @@ func (rac RegistrationAuthorityClientWrapper) DeactivateAuthorization(ctx contex
 	return nil
 }
 
-func (rac RegistrationAuthorityClientWrapper) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, adminName string) error {
-	_, err := rac.inner.AdministrativelyRevokeCertificate(ctx, &rapb.AdministrativelyRevokeCertificateRequest{
-		Cert:      cert.Raw,
-		Code:      int64(code),
-		AdminName: adminName,
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
+func (rac RegistrationAuthorityClientWrapper) AdministrativelyRevokeCertificate(ctx context.Context, request *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
+	return rac.inner.AdministrativelyRevokeCertificate(ctx, request)
 }
 
 func (ras *RegistrationAuthorityClientWrapper) NewOrder(ctx context.Context, request *rapb.NewOrderRequest) (*corepb.Order, error) {
@@ -150,18 +139,7 @@ func (ras *RegistrationAuthorityServerWrapper) DeactivateAuthorization(ctx conte
 }
 
 func (ras *RegistrationAuthorityServerWrapper) AdministrativelyRevokeCertificate(ctx context.Context, request *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
-	if request == nil || request.Cert == nil || request.AdminName == "" {
-		return nil, errIncompleteRequest
-	}
-	cert, err := x509.ParseCertificate(request.Cert)
-	if err != nil {
-		return nil, err
-	}
-	err = ras.inner.AdministrativelyRevokeCertificate(ctx, *cert, revocation.Reason(request.Code), request.AdminName)
-	if err != nil {
-		return nil, err
-	}
-	return &emptypb.Empty{}, nil
+	return ras.inner.AdministrativelyRevokeCertificate(ctx, request)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) NewOrder(ctx context.Context, request *rapb.NewOrderRequest) (*corepb.Order, error) {

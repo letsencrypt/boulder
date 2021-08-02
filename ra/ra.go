@@ -1908,11 +1908,18 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 // AdministrativelyRevokeCertificate terminates trust in the certificate provided and
 // does not require the registration ID of the requester since this method is only
 // called from the admin-revoker tool.
-func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, user string) error {
+func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
+	if req == nil || req.Cert == nil || req.AdminName == "" {
+		return nil, errIncompleteGRPCRequest
+	}
+
+	cert, err := x509.ParseCertificate(req.Cert)
+	if err != nil {
+		return nil, err
+	}
+
+	revocationCode := revocation.Reason(req.Code)
 	serialString := core.SerialToString(cert.SerialNumber)
-	// TODO(#4774): allow setting the comment via the RPC, format should be:
-	// "revoked by %s: %s", user, comment
-	err := ra.revokeCertificate(ctx, cert, revocationCode, 0, "admin-revoker", fmt.Sprintf("revoked by %s", user))
 
 	state := "Failure"
 	defer func() {
@@ -1923,19 +1930,21 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		//   Revocation reason
 		//   Name of admin-revoker user
 		//   Error (if there was one)
-		ra.log.AuditInfof("%s, admin-revoker user: %s",
+		ra.log.AuditInfof(
+			"%s, admin-revoker user: %s",
 			revokeEvent(state, serialString, cert.Subject.CommonName, cert.DNSNames, revocationCode),
-			user)
+			req.AdminName)
 	}()
 
+	err = ra.revokeCertificate(ctx, *cert, revocationCode, 0, "admin-revoker", fmt.Sprintf("revoked by %s", req.AdminName))
 	if err != nil {
 		state = fmt.Sprintf("Failure -- %s", err)
-		return err
+		return nil, err
 	}
 
 	ra.revocationReasonCounter.WithLabelValues(revocation.ReasonToString[revocationCode]).Inc()
 	state = "Success"
-	return nil
+	return &emptypb.Empty{}, nil
 }
 
 // DeactivateRegistration deactivates a valid registration
