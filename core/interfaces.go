@@ -60,7 +60,7 @@ type RegistrationAuthority interface {
 	NewRegistration(ctx context.Context, reg *corepb.Registration) (*corepb.Registration, error)
 
 	// [WebFrontEnd]
-	NewAuthorization(ctx context.Context, authz Authorization, regID int64) (Authorization, error)
+	NewAuthorization(ctx context.Context, req *rapb.NewAuthorizationRequest) (*corepb.Authorization, error)
 
 	// [WebFrontEnd]
 	NewCertificate(ctx context.Context, req *rapb.NewCertificateRequest) (*corepb.Certificate, error)

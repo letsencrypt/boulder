@@ -215,10 +215,10 @@ func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, acct *
 	return acct, nil
 }
 
-func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, authz core.Authorization, acctID int64) (core.Authorization, error) {
-	authz.RegistrationID = acctID
-	authz.ID = "bkrPh2u0JUf18-rVBZtOOWWb3GuIiliypL-hBM9Ak1Q"
-	return authz, nil
+func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, request *rapb.NewAuthorizationRequest) (*corepb.Authorization, error) {
+	request.Authz.RegistrationID = request.RegID
+	request.Authz.Id = "bkrPh2u0JUf18-rVBZtOOWWb3GuIiliypL-hBM9Ak1Q"
+	return request.Authz, nil
 }
 
 func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req *rapb.NewCertificateRequest) (*corepb.Certificate, error) {

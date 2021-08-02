@@ -30,22 +30,8 @@ func (rac RegistrationAuthorityClientWrapper) NewRegistration(ctx context.Contex
 	return rac.inner.NewRegistration(ctx, request)
 }
 
-func (rac RegistrationAuthorityClientWrapper) NewAuthorization(ctx context.Context, authz core.Authorization, regID int64) (core.Authorization, error) {
-	req, err := AuthzToPB(authz)
-	if err != nil {
-		return core.Authorization{}, err
-	}
-
-	response, err := rac.inner.NewAuthorization(ctx, &rapb.NewAuthorizationRequest{Authz: req, RegID: regID})
-	if err != nil {
-		return core.Authorization{}, err
-	}
-
-	if response == nil || !authorizationValid(response) {
-		return core.Authorization{}, errIncompleteResponse
-	}
-
-	return PBToAuthz(response)
+func (rac RegistrationAuthorityClientWrapper) NewAuthorization(ctx context.Context, request *rapb.NewAuthorizationRequest) (*corepb.Authorization, error) {
+	return rac.inner.NewAuthorization(ctx, request)
 }
 
 func (rac RegistrationAuthorityClientWrapper) NewCertificate(ctx context.Context, req *rapb.NewCertificateRequest) (*corepb.Certificate, error) {
@@ -125,18 +111,7 @@ func (ras *RegistrationAuthorityServerWrapper) NewRegistration(ctx context.Conte
 }
 
 func (ras *RegistrationAuthorityServerWrapper) NewAuthorization(ctx context.Context, request *rapb.NewAuthorizationRequest) (*corepb.Authorization, error) {
-	if request == nil || request.Authz.Identifier == "" || request.RegID == 0 {
-		return nil, errIncompleteRequest
-	}
-	authz, err := PBToAuthz(request.Authz)
-	if err != nil {
-		return nil, err
-	}
-	newAuthz, err := ras.inner.NewAuthorization(ctx, authz, request.RegID)
-	if err != nil {
-		return nil, err
-	}
-	return AuthzToPB(newAuthz)
+	return ras.inner.NewAuthorization(ctx, request)
 }
 
 func (ras *RegistrationAuthorityServerWrapper) NewCertificate(ctx context.Context, request *rapb.NewCertificateRequest) (*corepb.Certificate, error) {

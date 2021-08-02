@@ -205,10 +205,12 @@ func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, reg *c
 	return reg, nil
 }
 
-func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, authz core.Authorization, regID int64) (core.Authorization, error) {
-	authz.RegistrationID = regID
-	authz.ID = "1"
-	return authz, nil
+func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, request *rapb.NewAuthorizationRequest) (*corepb.Authorization, error) {
+	request.Authz.RegistrationID = request.RegID
+	request.Authz.Id = "1"
+	request.Authz.Status = string(core.StatusValid)
+	request.Authz.Expires = time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()
+	return request.Authz, nil
 }
 
 func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req *rapb.NewCertificateRequest) (*corepb.Certificate, error) {
@@ -1901,7 +1903,7 @@ func TestAuthorization(t *testing.T) {
 		t, responseWriter.Header().Get("Link"),
 		`<http://localhost/acme/new-cert>;rel="next"`)
 
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"identifier":{"type":"dns","value":"test.com"}}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"identifier":{"type":"dns","value":"test.com"},"status": "valid","expires":"2021-01-01T00:00:00Z"}`)
 
 	var authz core.Authorization
 	err := json.Unmarshal(responseWriter.Body.Bytes(), &authz)

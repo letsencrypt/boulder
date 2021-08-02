@@ -779,12 +779,23 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 	}
 
 	// Create new authz and return
-	authz, err := wfe.RA.NewAuthorization(ctx, core.Authorization{
-		Identifier: identifier.ACMEIdentifier{
-			Type:  identifier.DNS,
-			Value: newAuthzRequest.Identifier.Value,
+	authzPB, err := wfe.RA.NewAuthorization(ctx, &rapb.NewAuthorizationRequest{
+		Authz: &corepb.Authorization{
+			Identifier: string(newAuthzRequest.Identifier.Value),
 		},
-	}, currReg.ID)
+		RegID: currReg.ID,
+	})
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
+		return
+	}
+	if authzPB == nil || authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+		err = errors.New("Incomplete gRPC response message")
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
+		return
+	}
+
+	authz, err := bgrpc.PBToAuthz(authzPB)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
 		return
