@@ -103,7 +103,11 @@ func revokeCertificate(ctx context.Context, certObj core.Certificate, reasonCode
 	if err != nil {
 		return err
 	}
-	err = rac.AdministrativelyRevokeCertificate(ctx, *cert, reasonCode, u.Username)
+	_, err = rac.AdministrativelyRevokeCertificate(ctx, &rapb.AdministrativelyRevokeCertificateRequest{
+		Cert:      cert.Raw,
+		Code:      int64(reasonCode),
+		AdminName: u.Username,
+	})
 	if err != nil {
 		return err
 	}

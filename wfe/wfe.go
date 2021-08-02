@@ -791,12 +791,23 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 	}
 
 	// Create new authz and return
-	authz, err := wfe.RA.NewAuthorization(ctx, core.Authorization{
-		Identifier: identifier.ACMEIdentifier{
-			Type:  identifier.DNS,
-			Value: newAuthzRequest.Identifier.Value,
+	authzPB, err := wfe.RA.NewAuthorization(ctx, &rapb.NewAuthorizationRequest{
+		Authz: &corepb.Authorization{
+			Identifier: string(newAuthzRequest.Identifier.Value),
 		},
-	}, currReg.Id)
+		RegID: currReg.Id,
+	})
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
+		return
+	}
+	if authzPB == nil || authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+		err = errors.New("Incomplete gRPC response message")
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
+		return
+	}
+
+	authz, err := bgrpc.PBToAuthz(authzPB)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
 		return
@@ -1059,7 +1070,17 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *web.Re
 	// authorized for target site, they could cause issuance for that site by
 	// lying to the RA. We should probably pass a copy of the whole request to the
 	// RA for secondary validation.
-	cert, err := wfe.RA.NewCertificate(ctx, certificateRequest, reg.Id, int64(wfe.IssuerCert.NameID()))
+	certPB, err := wfe.RA.NewCertificate(ctx,
+		&rapb.NewCertificateRequest{
+			Csr:          certificateRequest.Bytes,
+			RegID:        reg.Id,
+			IssuerNameID: int64(wfe.IssuerCert.NameID()),
+		})
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new cert"), err)
+		return
+	}
+	cert, err := bgrpc.PBToCert(certPB)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new cert"), err)
 		return

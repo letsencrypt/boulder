@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/probs"
 )
 
 const (
@@ -201,12 +202,15 @@ func (ci *clientInterceptor) intercept(
 	err := invoker(localCtx, fullMethod, req, reply, cc, opts...)
 	if err != nil {
 		err = unwrapError(err, respMD)
-	}
-	if status.Code(err) == codes.DeadlineExceeded {
-		return deadlineDetails{
-			service: service,
-			method:  method,
-			latency: ci.clk.Since(begin),
+		switch status.Code(err) {
+		case codes.DeadlineExceeded:
+			return deadlineDetails{
+				service: service,
+				method:  method,
+				latency: ci.clk.Since(begin),
+			}
+		case codes.Canceled:
+			return probs.Canceled(err.Error())
 		}
 	}
 	return err

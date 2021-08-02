@@ -26,7 +26,7 @@ func TestDeleteOrder(t *testing.T) {
 	dbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "error creating db map")
 	// Create a SSA backed by the SA user dbMap
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log, metrics.NoopRegisterer, 1)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, fc, log, metrics.NoopRegisterer, 1)
 	test.AssertNotError(t, err, "error creating SA")
 
 	// Don't forget to cleanup!

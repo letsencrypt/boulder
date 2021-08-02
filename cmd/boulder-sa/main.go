@@ -4,11 +4,13 @@ import (
 	"flag"
 	"os"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/honeycombio/beeline-go"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/sa"
@@ -18,7 +20,8 @@ import (
 type config struct {
 	SA struct {
 		cmd.ServiceConfig
-		DB cmd.DBConfig
+		DB         cmd.DBConfig
+		ReadOnlyDB cmd.DBConfig
 
 		Features map[string]bool
 
@@ -63,30 +66,48 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	saConf := c.SA
-	saDbSettings := sa.DbSettings{
-		MaxOpenConns:    saConf.DB.MaxOpenConns,
-		MaxIdleConns:    saConf.DB.MaxIdleConns,
-		ConnMaxLifetime: saConf.DB.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: saConf.DB.ConnMaxIdleTime.Duration,
+	configureDb := func(scope prometheus.Registerer, databaseConfig cmd.DBConfig) *db.WrappedMap {
+		dbSettings := sa.DbSettings{
+			MaxOpenConns:    databaseConfig.MaxOpenConns,
+			MaxIdleConns:    databaseConfig.MaxIdleConns,
+			ConnMaxLifetime: databaseConfig.ConnMaxLifetime.Duration,
+			ConnMaxIdleTime: databaseConfig.ConnMaxIdleTime.Duration,
+		}
+
+		dbDSN, err := databaseConfig.URL()
+		cmd.FailOnError(err, "Couldn't load DB URL")
+
+		dbMap, err := sa.NewDbMap(dbDSN, dbSettings)
+		cmd.FailOnError(err, "Couldn't connect to SA database")
+
+		dbAddr, dbUser, err := databaseConfig.DSNAddressAndUser()
+		cmd.FailOnError(err, "Could not determine address or user of DB DSN")
+
+		// Collect and periodically report DB metrics using the DBMap and prometheus scope.
+		sa.InitDBMetrics(dbMap, scope, dbSettings, dbAddr, dbUser)
+
+		return dbMap
 	}
 
-	dbURL, err := saConf.DB.URL()
-	cmd.FailOnError(err, "Couldn't load DB URL")
+	dbMap := configureDb(scope, c.SA.DB)
 
-	dbMap, err := sa.NewDbMap(dbURL, saDbSettings)
-	cmd.FailOnError(err, "Couldn't connect to SA database")
+	dbReadOnlyURL, err := c.SA.ReadOnlyDB.URL()
+	cmd.FailOnError(err, "Couldn't load read-only DB URL")
 
-	// Collect and periodically report DB metrics using the DBMap and prometheus scope.
-	sa.InitDBMetrics(dbMap, scope, saDbSettings)
+	var dbReadOnlyMap *db.WrappedMap
+	if dbReadOnlyURL == "" {
+		dbReadOnlyMap = dbMap
+	} else {
+		dbReadOnlyMap = configureDb(scope, c.SA.ReadOnlyDB)
+	}
 
 	clk := cmd.Clock()
 
-	parallel := saConf.ParallelismPerRPC
+	parallel := c.SA.ParallelismPerRPC
 	if parallel < 1 {
 		parallel = 1
 	}
-	sai, err := sa.NewSQLStorageAuthority(dbMap, clk, logger, scope, parallel)
+	sai, err := sa.NewSQLStorageAuthority(dbMap, dbReadOnlyMap, clk, logger, scope, parallel)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
 	tls, err := c.SA.TLS.Load()

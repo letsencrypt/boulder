@@ -215,14 +215,14 @@ func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, acct *
 	return acct, nil
 }
 
-func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, authz core.Authorization, acctID int64) (core.Authorization, error) {
-	authz.RegistrationID = acctID
-	authz.ID = "bkrPh2u0JUf18-rVBZtOOWWb3GuIiliypL-hBM9Ak1Q"
-	return authz, nil
+func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, request *rapb.NewAuthorizationRequest) (*corepb.Authorization, error) {
+	request.Authz.RegistrationID = request.RegID
+	request.Authz.Id = "bkrPh2u0JUf18-rVBZtOOWWb3GuIiliypL-hBM9Ak1Q"
+	return request.Authz, nil
 }
 
-func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req core.CertificateRequest, acctID int64, issuerNameID int64) (core.Certificate, error) {
-	return core.Certificate{}, nil
+func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req *rapb.NewCertificateRequest) (*corepb.Certificate, error) {
+	return &corepb.Certificate{}, nil
 }
 
 func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
@@ -241,8 +241,8 @@ func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Contex
 	return &emptypb.Empty{}, nil
 }
 
-func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, reason revocation.Reason, user string) error {
-	return nil
+func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
 func (ra *MockRegistrationAuthority) OnValidationUpdate(ctx context.Context, authz core.Authorization) error {

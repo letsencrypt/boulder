@@ -552,108 +552,116 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 
 // NewAuthorization constructs a new Authz from a request. Values (domains) in
 // request.Identifier will be lowercased before storage.
-func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, request core.Authorization, regID int64) (core.Authorization, error) {
-	identifier := request.Identifier
-	identifier.Value = strings.ToLower(identifier.Value)
+func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, req *rapb.NewAuthorizationRequest) (*corepb.Authorization, error) {
+	if req == nil || req.Authz.Identifier == "" || req.RegID == 0 {
+		return nil, errIncompleteGRPCRequest
+	}
+
+	// Create ACMEIdentifier. Assume Type DNS.
+	acmeIdentifier := identifier.ACMEIdentifier{
+		Type:  identifier.DNS,
+		Value: strings.ToLower(req.Authz.Identifier),
+	}
 
 	// Check that the identifier is present and appropriate
-	if err := ra.PA.WillingToIssue(identifier); err != nil {
-		return core.Authorization{}, err
+	if err := ra.PA.WillingToIssue(acmeIdentifier); err != nil {
+		return nil, err
 	}
 
-	if err := ra.checkPendingAuthorizationLimit(ctx, regID); err != nil {
-		return core.Authorization{}, err
+	if err := ra.checkPendingAuthorizationLimit(ctx, req.RegID); err != nil {
+		return nil, err
 	}
 
-	if err := ra.checkInvalidAuthorizationLimit(ctx, regID, identifier.Value); err != nil {
-		return core.Authorization{}, err
+	if err := ra.checkInvalidAuthorizationLimit(ctx, req.RegID, acmeIdentifier.Value); err != nil {
+		return nil, err
 	}
 
 	if ra.reuseValidAuthz {
 		now := ra.clk.Now().UnixNano()
 		authzMapPB, err := ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
-			RegistrationID: regID,
-			Domains:        []string{identifier.Value},
+			RegistrationID: req.RegID,
+			Domains:        []string{acmeIdentifier.Value},
 			Now:            now,
 		})
 		if err != nil {
 			outErr := berrors.InternalServerError(
-				"unable to get existing validations for regID: %d, identifier: %s, %s",
-				regID,
-				identifier.Value,
+				"unable to get existing validations for request.RegID: %d, acmeIdentifier: %s, %s",
+				req.RegID,
+				acmeIdentifier.Value,
 				err,
 			)
 			ra.log.Warning(outErr.Error())
-			return core.Authorization{}, outErr
+			return nil, outErr
 		}
 		auths, err := bgrpc.PBToAuthzMap(authzMapPB)
 		if err != nil {
-			return core.Authorization{}, err
+			return nil, err
 		}
 
-		if existingAuthz, ok := auths[identifier.Value]; ok {
+		if existingAuthz, ok := auths[acmeIdentifier.Value]; ok {
 			if ra.authzValidChallengeEnabled(existingAuthz) {
 				// The existing authorization must not expire within the next 24 hours for
 				// it to be OK for reuse
 				reuseCutOff := ra.clk.Now().Add(time.Hour * 24)
 				if existingAuthz.Expires.After(reuseCutOff) {
 					ra.reusedValidAuthzCounter.Inc()
-					return *existingAuthz, nil
+					return bgrpc.AuthzToPB(*existingAuthz)
 				}
 			}
 		}
 	}
 
-	identifierTypeString := string(identifier.Type)
-	req := &sapb.GetPendingAuthorizationRequest{
-		RegistrationID:  regID,
-		IdentifierType:  identifierTypeString,
-		IdentifierValue: identifier.Value,
-		ValidUntil:      ra.clk.Now().Add(time.Hour).UnixNano(),
-	}
-	pendingPB, err := ra.SA.GetPendingAuthorization2(ctx, req)
+	identifierTypeString := string(acmeIdentifier.Type)
+
+	pendingPB, err := ra.SA.GetPendingAuthorization2(ctx,
+		&sapb.GetPendingAuthorizationRequest{
+			RegistrationID:  req.RegID,
+			IdentifierType:  identifierTypeString,
+			IdentifierValue: acmeIdentifier.Value,
+			ValidUntil:      ra.clk.Now().Add(time.Hour).UnixNano(),
+		})
 	if err != nil && !errors.Is(err, berrors.NotFound) {
-		return core.Authorization{}, berrors.InternalServerError(
+		return nil, berrors.InternalServerError(
 			"unable to get pending authorization for regID: %d, identifier: %s: %s",
-			regID,
-			identifier.Value,
+			req.RegID,
+			acmeIdentifier.Value,
 			err)
 	} else if err == nil {
-		return bgrpc.PBToAuthz(pendingPB)
+		return pendingPB, nil
 	}
 
 	if features.Enabled(features.V1DisableNewValidations) {
 		exists, err := ra.SA.PreviousCertificateExists(ctx, &sapb.PreviousCertificateExistsRequest{
-			Domain: identifier.Value,
-			RegID:  regID,
+			Domain: acmeIdentifier.Value,
+			RegID:  req.RegID,
 		})
 		if err != nil {
-			return core.Authorization{}, err
+			return nil, err
 		}
 		if !exists.Exists {
-			return core.Authorization{}, berrors.UnauthorizedError("Validations for new domains are disabled in the V1 API (https://community.letsencrypt.org/t/end-of-life-plan-for-acmev1/88430)")
+			return nil, berrors.UnauthorizedError("Validations for new domains are disabled in the V1 API (https://community.letsencrypt.org/t/end-of-life-plan-for-acmev1/88430)")
 		}
 	}
 
-	authzPB, err := ra.createPendingAuthz(ctx, regID, identifier)
+	authzPB, err := ra.createPendingAuthz(ctx, req.RegID, acmeIdentifier)
 	if err != nil {
-		return core.Authorization{}, err
+		return nil, err
 	}
 
 	authzIDs, err := ra.SA.NewAuthorizations2(ctx, &sapb.AddPendingAuthorizationsRequest{
 		Authz: []*corepb.Authorization{authzPB},
 	})
 	if err != nil {
-		return core.Authorization{}, err
+		return nil, err
 	}
 	if len(authzIDs.Ids) != 1 {
-		return core.Authorization{}, berrors.InternalServerError("unexpected number of authorization IDs returned from NewAuthorizations2: expected 1, got %d", len(authzIDs.Ids))
+		return nil, berrors.InternalServerError("unexpected number of authorization IDs returned from NewAuthorizations2: expected 1, got %d", len(authzIDs.Ids))
 	}
 	// The current internal authorization objects use a string for the ID, the new
 	// storage format uses a integer ID. In order to maintain compatibility we
 	// convert the integer ID to a string.
 	authzPB.Id = fmt.Sprintf("%d", authzIDs.Ids[0])
-	return bgrpc.PBToAuthz(authzPB)
+	return authzPB, nil
 }
 
 // MatchesCSR tests the contents of a generated certificate to make sure
@@ -958,6 +966,10 @@ func (ra *RegistrationAuthorityImpl) failOrder(
 // If successful the order will be returned in processing status for the client
 // to poll while awaiting finalization to occur.
 func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
+	if req == nil || req.Order == nil {
+		return nil, errIncompleteGRPCRequest
+	}
+
 	order := req.Order
 
 	if order.Status != string(core.StatusReady) {
@@ -1069,15 +1081,30 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 }
 
 // NewCertificate requests the issuance of a certificate for the v1 flow.
-func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64, issuerNameID int64) (core.Certificate, error) {
+func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req *rapb.NewCertificateRequest) (*corepb.Certificate, error) {
+	// Verify request
+	if req == nil || req.Csr == nil || req.RegID == 0 {
+		return nil, errIncompleteGRPCRequest
+	}
+	// Deserialize csr
+	csr, err := x509.ParseCertificateRequest(req.Csr)
+	if err != nil {
+		return nil, err
+	}
+
 	// Verify the CSR
-	if err := csrlib.VerifyCSR(ctx, req.CSR, ra.maxNames, &ra.keyPolicy, ra.PA, regID); err != nil {
-		return core.Certificate{}, berrors.MalformedError(err.Error())
+	if err := csrlib.VerifyCSR(ctx, csr, ra.maxNames, &ra.keyPolicy, ra.PA, req.RegID); err != nil {
+		return nil, berrors.MalformedError(err.Error())
 	}
 	// NewCertificate provides an order ID of 0, indicating this is a classic ACME
 	// v1 issuance request from the new certificate endpoint that is not
 	// associated with an ACME v2 order.
-	return ra.issueCertificate(ctx, req, accountID(regID), orderID(0), issuance.IssuerNameID(issuerNameID))
+	cert, err := ra.issueCertificate(ctx, core.CertificateRequest{CSR: csr, Bytes: req.Csr},
+		accountID(req.RegID), orderID(0), issuance.IssuerNameID(req.IssuerNameID))
+	if err != nil {
+		return nil, err
+	}
+	return bgrpc.CertToPB(cert), nil
 }
 
 // To help minimize the chance that an accountID would be used as an order ID
@@ -1783,7 +1810,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 
 	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		Serial:    serial,
-		IssuerID:  int64(issuer.ID()),
+		IssuerID:  int64(issuer.NameID()),
 		Status:    string(core.OCSPStatusRevoked),
 		Reason:    reason,
 		RevokedAt: revokedAt,
@@ -1878,11 +1905,18 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 // AdministrativelyRevokeCertificate terminates trust in the certificate provided and
 // does not require the registration ID of the requester since this method is only
 // called from the admin-revoker tool.
-func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, revocationCode revocation.Reason, user string) error {
+func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
+	if req == nil || req.Cert == nil || req.AdminName == "" {
+		return nil, errIncompleteGRPCRequest
+	}
+
+	cert, err := x509.ParseCertificate(req.Cert)
+	if err != nil {
+		return nil, err
+	}
+
+	revocationCode := revocation.Reason(req.Code)
 	serialString := core.SerialToString(cert.SerialNumber)
-	// TODO(#4774): allow setting the comment via the RPC, format should be:
-	// "revoked by %s: %s", user, comment
-	err := ra.revokeCertificate(ctx, cert, revocationCode, 0, "admin-revoker", fmt.Sprintf("revoked by %s", user))
 
 	state := "Failure"
 	defer func() {
@@ -1893,19 +1927,21 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		//   Revocation reason
 		//   Name of admin-revoker user
 		//   Error (if there was one)
-		ra.log.AuditInfof("%s, admin-revoker user: %s",
+		ra.log.AuditInfof(
+			"%s, admin-revoker user: %s",
 			revokeEvent(state, serialString, cert.Subject.CommonName, cert.DNSNames, revocationCode),
-			user)
+			req.AdminName)
 	}()
 
+	err = ra.revokeCertificate(ctx, *cert, revocationCode, 0, "admin-revoker", fmt.Sprintf("revoked by %s", req.AdminName))
 	if err != nil {
 		state = fmt.Sprintf("Failure -- %s", err)
-		return err
+		return nil, err
 	}
 
 	ra.revocationReasonCounter.WithLabelValues(revocation.ReasonToString[revocationCode]).Inc()
 	state = "Success"
-	return nil
+	return &emptypb.Empty{}, nil
 }
 
 // DeactivateRegistration deactivates a valid registration

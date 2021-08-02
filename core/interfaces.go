@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"crypto/x509"
 	"net"
 	"net/http"
 	"time"
@@ -12,7 +11,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/identifier"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
-	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -59,10 +57,10 @@ type RegistrationAuthority interface {
 	NewRegistration(ctx context.Context, reg *corepb.Registration) (*corepb.Registration, error)
 
 	// [WebFrontEnd]
-	NewAuthorization(ctx context.Context, authz Authorization, regID int64) (Authorization, error)
+	NewAuthorization(ctx context.Context, req *rapb.NewAuthorizationRequest) (*corepb.Authorization, error)
 
 	// [WebFrontEnd]
-	NewCertificate(ctx context.Context, csr CertificateRequest, regID int64, issuerNameID int64) (Certificate, error)
+	NewCertificate(ctx context.Context, req *rapb.NewCertificateRequest) (*corepb.Certificate, error)
 
 	// [WebFrontEnd]
 	UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error)
@@ -86,7 +84,7 @@ type RegistrationAuthority interface {
 	FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error)
 
 	// [AdminRevoker]
-	AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, adminName string) error
+	AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error)
 }
 
 // PolicyAuthority defines the public interface for the Boulder PA
