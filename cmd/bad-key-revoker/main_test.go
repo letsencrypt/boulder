@@ -118,9 +118,9 @@ func insertGoodCert(t *testing.T, fc clock.Clock, dbMap *db.WrappedMap, keyHash 
 func insertCert(t *testing.T, fc clock.Clock, dbMap *db.WrappedMap, keyHash []byte, serial string, regID int64, expiredStatus ExpiredStatus, status core.OCSPStatus) {
 	t.Helper()
 
-	expiresOffset := time.Second * 0
+	expiresOffset := 0*time.Second
 	if !expiredStatus {
-		expiresOffset = time.Day * 90
+		expiresOffset = 2160*time.Hour - 1*time.Second // 90 days exclusive
 	}
 
 	_, err := dbMap.Exec(
@@ -179,7 +179,7 @@ func TestFindUnrevokedNoRows(t *testing.T) {
 	_, err = dbMap.Exec(
 		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
 		hashA,
-		fc.Now().Add(time.Day*90),
+		fc.Now().Add(2160*time.Hour - 1*time.Second), // 90 days exclusive
 		"zz",
 	)
 	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
@@ -313,7 +313,7 @@ func TestCertificateAbsent(t *testing.T) {
 	_, err = dbMap.Exec(
 		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
 		hashA,
-		fc.Now().Add(time.Day*90),
+		fc.Now().Add(2160*time.Hour - 1*time.Second), // 90 days exclusive
 		"ffaaee",
 	)
 	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
