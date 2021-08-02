@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,9 +17,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"github.com/letsencrypt/boulder/grpc/test_proto"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -33,8 +36,11 @@ func testHandler(_ context.Context, i interface{}) (interface{}, error) {
 }
 
 func testInvoker(_ context.Context, method string, _, _ interface{}, _ *grpc.ClientConn, opts ...grpc.CallOption) error {
-	if method == "-service-brokeTest" {
+	switch method {
+	case "-service-brokeTest":
 		return errors.New("")
+	case "-service-requesterCanceledTest":
+		return status.Error(1, context.Canceled.Error())
 	}
 	fc.Sleep(time.Second)
 	return nil
@@ -71,6 +77,14 @@ func TestClientInterceptor(t *testing.T) {
 
 	err = ci.intercept(context.Background(), "-service-brokeTest", nil, nil, nil, testInvoker)
 	test.AssertError(t, err, "ci.intercept didn't fail when handler returned a error")
+
+	err = ci.intercept(context.Background(), "-service-requesterCanceledTest", nil, nil, nil, testInvoker)
+	test.AssertError(t, err, "ci.intercept didn't fail when handler returned a error")
+
+	var probDetails *probs.ProblemDetails
+	test.AssertErrorWraps(t, err, &probDetails)
+	test.AssertEquals(t, probDetails.Type, probs.MalformedProblem)
+	test.AssertEquals(t, probDetails.HTTPStatus, http.StatusRequestTimeout)
 }
 
 // TestFailFastFalse sends a gRPC request to a backend that is

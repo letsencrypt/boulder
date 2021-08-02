@@ -394,7 +394,10 @@ func main() {
 	saDbMap, err := sa.NewDbMap(saDbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")
 
-	sa.InitDBMetrics(saDbMap, prometheus.DefaultRegisterer, dbSettings)
+	dbAddr, dbUser, err := config.CertChecker.DB.DSNAddressAndUser()
+	cmd.FailOnError(err, "Could not determine address or user of DB DSN")
+
+	sa.InitDBMetrics(saDbMap, prometheus.DefaultRegisterer, dbSettings, dbAddr, dbUser)
 
 	_, err = saDbMap.Exec(
 		"SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;",
