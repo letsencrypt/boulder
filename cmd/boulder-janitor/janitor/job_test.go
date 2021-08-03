@@ -115,47 +115,83 @@ LIMIT :limit`
 		batchSize:     batchSize,
 	}
 
-	// Mock Select() to return a non-nil error result
+	// Mock Select() to return a non-nil error result, and expect to get back
+	// an error.
 	testDB.errResult = errors.New("database is on vacation")
 	_, err := job.getWork(workChan, startID)
-	// We expect to get back an error
 	test.AssertError(t, err, "no error returned from getWork with bad DB")
 
-	// Mock Select() to return good results and a nil error
+	// Mock Select() to return good results and a nil error. Expect to get back
+	// the correct lastID, and expect that we can read the correct number of items
+	// from the work channel and that the metrics have been updated.
 	testDB.errResult = nil
 	testDB.selectResult = mockIDs
 
-	// We expect to get back no error and the correct lastID
 	lastID, err := job.getWork(workChan, startID)
 	test.AssertNotError(t, err, "unexpected error from getWork")
 	test.AssertEquals(t, lastID, mockIDs[len(mockIDs)-1].ID)
 
-	// We should be able to read one item per mockID and it should match the expected ID
+	test.AssertEquals(t, len(workChan), 5)
 	for i := 0; i < len(mockIDs); i++ {
 		got := <-workChan
 		test.AssertEquals(t, got, mockIDs[i].ID)
 	}
+	test.AssertEquals(t, len(workChan), 0)
 
-	// We expect the work gauge for this table has been updated
 	test.AssertMetricWithLabelsEquals(
 		t, workStat, prometheus.Labels{"table": table}, float64(len(mockIDs)))
 
 	// Set the third item in mockIDs to have an expiry after the purge cutoff
-	// so we expect to only get the first two items returned from getWork
+	// so we expect to have one "out-of-order" row reported and skipped. This
+	// should result in the same lastID as above, and the metrics should show
+	// only four rows processed and one skipped.
 	testDB.selectResult[2].Expires = clk.Now()
 	workStat.Reset()
+	outOfOrderStat.Reset()
 
-	// We expect to get back no error and the correct lastID
+	lastID, err = job.getWork(workChan, startID)
+	test.AssertNotError(t, err, "unexpected error from getWork")
+	test.AssertEquals(t, lastID, mockIDs[len(mockIDs)-1].ID)
+
+	test.AssertEquals(t, len(workChan), 4)
+	for i := 0; i < 5; i++ {
+		if i == 2 {
+			continue
+		}
+		got := <-workChan
+		test.AssertEquals(t, got, mockIDs[i].ID)
+	}
+	test.AssertEquals(t, len(workChan), 0)
+
+	test.AssertMetricWithLabelsEquals(
+		t, workStat, prometheus.Labels{"table": table}, float64(len(mockIDs))-1)
+	test.AssertMetricWithLabelsEquals(
+		t, outOfOrderStat, prometheus.Labels{"table": table}, 1)
+
+	// Set all the other items to also have expiries after the purge cutoff
+	// so we expect to only get the first two items returned from getWork. Also
+	// expect to only receive two items on the work channel, and that the metrics
+	// should reflect 0 rows of work done but also no out-of-order rows.
+	testDB.selectResult[3].Expires = clk.Now()
+	testDB.selectResult[4].Expires = clk.Now()
+	workStat.Reset()
+	outOfOrderStat.Reset()
+
 	lastID, err = job.getWork(workChan, startID)
 	test.AssertNotError(t, err, "unexpected error from getWork")
 	test.AssertEquals(t, lastID, testDB.selectResult[1].ID)
 
+	test.AssertEquals(t, len(workChan), 2)
 	for i := 0; i < 2; i++ {
 		got := <-workChan
 		test.AssertEquals(t, got, mockIDs[i].ID)
 	}
+	test.AssertEquals(t, len(workChan), 0)
+
 	test.AssertMetricWithLabelsEquals(
 		t, workStat, prometheus.Labels{"table": table}, 2)
+	test.AssertMetricWithLabelsEquals(
+		t, outOfOrderStat, prometheus.Labels{"table": table}, 0)
 }
 
 func TestDeleteResource(t *testing.T) {

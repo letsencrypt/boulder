@@ -49,6 +49,16 @@ var (
 			Help: "Number of items of work by table the boulder-janitor queued for deletion.",
 		},
 		[]string{"table"})
+	// outOfOrderStat is a prometheus counter vector tracking the number of rows
+	// found during a batchedJob's getWork stage, but ignored because their expiry
+	// was in the future despite their ID being contiguous with already-expired
+	// rows.
+	outOfOrderStat = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "janitor_ignores",
+			Help: "Number of items of work by table the boulder-janitor ignored.",
+		},
+		[]string{"table"})
 )
 
 // JobConfig describes common configuration parameters shared by all cleanup
@@ -211,19 +221,27 @@ LIMIT :limit`, j.expiresColumn, j.table)
 	}
 	lastID := startID
 	rows := 0
+	oooRows := 0
 	cutoff := j.clk.Now().Add(-j.purgeBefore)
 	for _, v := range data {
 		// We check for the expiration in code rather than doing so in the
 		// database query as it allows us to impose a bound on the number
-		// of rows that the database will examine. If a row is return that
-		// has an expiry after the cutoff all of the successive rows
-		// should also have an expiry after the cutoff so we break from
-		// the loop and ignore the rest of the results.
+		// of rows that the database will examine. If a row is returned that
+		// has an expiry after the cutoff, then we ignore that row but continue
+		// examining the rest, as it is unfortunately possible for AUTO_INCREMENT
+		// columns to be assigned in non-monotonically-increasing order. These rows
+		// are only considered to be out-of-order if an in-order row is subsequently
+		// found later in the same batch.
 		if v.Expires.After(cutoff) {
-			break
+			oooRows++
+			continue
 		}
 		work <- v.ID
 		rows++
+		if oooRows > 0 {
+			outOfOrderStat.WithLabelValues(j.table).Add(float64(oooRows))
+			oooRows = 0
+		}
 		lastID = v.ID
 	}
 	workStat.WithLabelValues(j.table).Add(float64(rows))
