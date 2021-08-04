@@ -102,7 +102,7 @@ func NewSQLStorageAuthority(
 
 // GetRegistration obtains a Registration by ID
 func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, req *sapb.RegistrationID) (*corepb.Registration, error) {
-	if core.IsAnyNilOrZero(req, req.Id) {
+	if req == nil || req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
 
@@ -120,7 +120,7 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, req *sapb.R
 
 // GetRegistrationByKey obtains a Registration by JWK
 func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error) {
-	if core.IsAnyNilOrZero(req, req.Jwk) {
+	if req == nil || len(req.Jwk) == 0 {
 		return nil, errIncompleteRequest
 	}
 
@@ -379,7 +379,7 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, req *corepb
 // UpdateRegistration stores an updated Registration
 func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *corepb.Registration) (*emptypb.Empty, error) {
 	if req == nil || req.Id == 0 || len(req.Key) == 0 || len(req.InitialIP) == 0 {
-		return &emptypb.Empty{}, errIncompleteRequest
+		return nil, errIncompleteRequest
 	}
 
 	const query = "WHERE id = ?"
@@ -845,7 +845,7 @@ func (ssa *SQLStorageAuthority) PreviousCertificateExists(
 // DeactivateRegistration deactivates a currently valid registration
 func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, req *sapb.RegistrationID) (*emptypb.Empty, error) {
 	if req == nil || req.Id == 0 {
-		return &emptypb.Empty{}, errIncompleteRequest
+		return nil, errIncompleteRequest
 	}
 	_, err := ssa.dbMap.WithContext(ctx).Exec(
 		"UPDATE registrations SET status = ? WHERE status = ? AND id = ?",
@@ -853,7 +853,10 @@ func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, req 
 		string(core.StatusValid),
 		req.Id,
 	)
-	return &emptypb.Empty{}, err
+	if err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
 }
 
 // DeactivateAuthorization2 deactivates a currently valid or pending authorization.
