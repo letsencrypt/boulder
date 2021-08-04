@@ -7,9 +7,10 @@ Presently, Boulder diverges from the RFC 8555 ACME spec in the following ways:
 
 ## [Section 6.3](https://tools.ietf.org/html/rfc8555#section-6.3)
 
-We support POST-as-GET but do not yet mandate it. We
-[plan to mandate](https://community.letsencrypt.org/t/acme-v2-scheduled-deprecation-of-unauthenticated-resource-gets/74380)
-POST-as-GET for all ACMEv2 requests in November 2020.
+Boulder supports POST-as-GET but does not mandate it by default for requests
+that simply fetch a resource (certificate, order, authorization, or challenge).
+This behavior is configurable with a flag: Let's Encrypt's Staging environment
+does mandate POST-as-GET, while the Production environment does not.
 
 ## [Section 6.6](https://tools.ietf.org/html/rfc8555#section-6.6)
 
