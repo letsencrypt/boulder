@@ -41,7 +41,7 @@ func TestAddPrecertificate(t *testing.T) {
 
 		// Add the cert as a precertificate
 		ocspResp := []byte{0, 0, 1}
-		regID := reg.ID
+		regID := reg.Id
 		issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
 		_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:      testCert.Raw,
@@ -99,7 +99,7 @@ func TestAddPreCertificateDuplicate(t *testing.T) {
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      testCert.Raw,
 		Issued:   clk.Now().UnixNano(),
-		RegID:    reg.ID,
+		RegID:    reg.Id,
 		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test certificate")
@@ -107,7 +107,7 @@ func TestAddPreCertificateDuplicate(t *testing.T) {
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      testCert.Raw,
 		Issued:   clk.Now().UnixNano(),
-		RegID:    reg.ID,
+		RegID:    reg.Id,
 		IssuerID: 1,
 	})
 	test.AssertDeepEquals(t, err, berrors.DuplicateError("cannot add a duplicate cert"))
@@ -126,7 +126,7 @@ func TestAddPrecertificateIncomplete(t *testing.T) {
 
 	// Add the cert as a precertificate
 	ocspResp := []byte{0, 0, 1}
-	regID := reg.ID
+	regID := reg.Id
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    testCert.Raw,
 		RegID:  regID,
@@ -146,7 +146,7 @@ func TestAddPrecertificateKeyHash(t *testing.T) {
 	serial, testCert := test.ThrowAwayCert(t, 1)
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      testCert.Raw,
-		RegID:    reg.ID,
+		RegID:    reg.Id,
 		Ocsp:     []byte{1, 2, 3},
 		Issued:   testCert.NotBefore.UnixNano(),
 		IssuerID: 1,

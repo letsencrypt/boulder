@@ -192,13 +192,13 @@ var (
 
 	ExampleCSR = &x509.CertificateRequest{}
 
-	Registration = core.Registration{ID: 1}
+	Registration = &corepb.Registration{Id: 1}
 
 	AuthzRequest = &rapb.NewAuthorizationRequest{
 		Authz: &corepb.Authorization{
 			Identifier: "not-example.com",
 		},
-		RegID: Registration.ID,
+		RegID: Registration.Id,
 	}
 
 	log = blog.UseMock()
@@ -335,10 +335,12 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	block, _ := pem.Decode(CSRPEM)
 	ExampleCSR, _ = x509.ParseCertificateRequest(block.Bytes)
 
-	Registration, _ = ssa.NewRegistration(ctx, core.Registration{
-		Key:       &AccountKeyA,
-		InitialIP: net.ParseIP("3.2.3.3"),
-		Status:    core.StatusValid,
+	initialIP, err := net.ParseIP("3.2.3.3").MarshalText()
+	test.AssertNotError(t, err, "Couldn't create initial IP")
+	Registration, _ = ssa.NewRegistration(ctx, &corepb.Registration{
+		Key:       AccountKeyJSONA,
+		InitialIP: initialIP,
+		Status:    string(core.StatusValid),
 	})
 
 	ctp := ctpolicy.New(&mocks.PublisherClient{}, nil, nil, log, metrics.NoopRegisterer)
@@ -385,46 +387,46 @@ func TestValidateContacts(t *testing.T) {
 	unparsable := "mailto:a@email.com, b@email.com"
 	forbidden := "mailto:a@example.org"
 
-	err := ra.validateContacts(context.Background(), &[]string{})
+	err := ra.validateContacts(context.Background(), []string{})
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = ra.validateContacts(context.Background(), &[]string{validEmail, otherValidEmail})
+	err = ra.validateContacts(context.Background(), []string{validEmail, otherValidEmail})
 	test.AssertError(t, err, "Too Many Contacts")
 
-	err = ra.validateContacts(context.Background(), &[]string{validEmail})
+	err = ra.validateContacts(context.Background(), []string{validEmail})
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = ra.validateContacts(context.Background(), &[]string{malformedEmail})
+	err = ra.validateContacts(context.Background(), []string{malformedEmail})
 	test.AssertError(t, err, "Malformed Email")
 
-	err = ra.validateContacts(context.Background(), &[]string{ansible})
+	err = ra.validateContacts(context.Background(), []string{ansible})
 	test.AssertError(t, err, "Unknown scheme")
 
-	err = ra.validateContacts(context.Background(), &[]string{""})
+	err = ra.validateContacts(context.Background(), []string{""})
 	test.AssertError(t, err, "Empty URL")
 
-	err = ra.validateContacts(context.Background(), &[]string{nonASCII})
+	err = ra.validateContacts(context.Background(), []string{nonASCII})
 	test.AssertError(t, err, "Non ASCII email")
 
-	err = ra.validateContacts(context.Background(), &[]string{unparsable})
+	err = ra.validateContacts(context.Background(), []string{unparsable})
 	test.AssertError(t, err, "Unparsable email")
 
-	err = ra.validateContacts(context.Background(), &[]string{forbidden})
+	err = ra.validateContacts(context.Background(), []string{forbidden})
 	test.AssertError(t, err, "Forbidden email")
 
-	err = ra.validateContacts(context.Background(), &[]string{"mailto:admin@localhost"})
+	err = ra.validateContacts(context.Background(), []string{"mailto:admin@localhost"})
 	test.AssertError(t, err, "Forbidden email")
 
-	err = ra.validateContacts(context.Background(), &[]string{"mailto:admin@example.not.a.iana.suffix"})
+	err = ra.validateContacts(context.Background(), []string{"mailto:admin@example.not.a.iana.suffix"})
 	test.AssertError(t, err, "Forbidden email")
 
-	err = ra.validateContacts(context.Background(), &[]string{"mailto:admin@1.2.3.4"})
+	err = ra.validateContacts(context.Background(), []string{"mailto:admin@1.2.3.4"})
 	test.AssertError(t, err, "Forbidden email")
 
-	err = ra.validateContacts(context.Background(), &[]string{"mailto:admin@[1.2.3.4]"})
+	err = ra.validateContacts(context.Background(), []string{"mailto:admin@[1.2.3.4]"})
 	test.AssertError(t, err, "Forbidden email")
 
-	err = ra.validateContacts(context.Background(), &[]string{"mailto:admin@a.com?no-reminder-emails"})
+	err = ra.validateContacts(context.Background(), []string{"mailto:admin@a.com?no-reminder-emails"})
 	test.AssertError(t, err, "No hfields in email")
 
 	// The registrations.contact field is VARCHAR(191). 175 'a' characters plus
@@ -437,7 +439,7 @@ func TestValidateContacts(t *testing.T) {
 	}
 	longStringBuf.WriteString("@a.com")
 
-	err = ra.validateContacts(context.Background(), &[]string{longStringBuf.String()})
+	err = ra.validateContacts(context.Background(), []string{longStringBuf.String()})
 	test.AssertError(t, err, "Too long contacts")
 }
 
@@ -463,9 +465,9 @@ func TestNewRegistration(t *testing.T) {
 	test.Assert(t, mailto == (result.Contact)[0], "Contact didn't match")
 	test.Assert(t, result.Agreement == "", "Agreement didn't default empty")
 
-	reg, err := sa.GetRegistration(ctx, result.Id)
+	reg, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: result.Id})
 	test.AssertNotError(t, err, "Failed to retrieve registration")
-	test.Assert(t, core.KeyDigestEquals(reg.Key, AccountKeyB), "Retrieved registration differed.")
+	test.AssertByteEquals(t, reg.Key, acctKeyB)
 }
 
 func TestNewRegistrationContactsPresent(t *testing.T) {
@@ -536,8 +538,8 @@ type mockSAFailsNewRegistration struct {
 	mocks.StorageAuthority
 }
 
-func (ms *mockSAFailsNewRegistration) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
-	return core.Registration{}, fmt.Errorf("too bad")
+func (sa *mockSAFailsNewRegistration) NewRegistration(_ context.Context, _ *corepb.Registration) (*corepb.Registration, error) {
+	return &corepb.Registration{}, fmt.Errorf("too bad")
 }
 
 func TestNewRegistrationSAFailure(t *testing.T) {
@@ -680,8 +682,8 @@ type NoUpdateSA struct {
 	mocks.StorageAuthority
 }
 
-func (sa NoUpdateSA) UpdateRegistration(_ context.Context, _ core.Registration) error {
-	return fmt.Errorf("UpdateRegistration() is mocked to always error")
+func (sa NoUpdateSA) UpdateRegistration(_ context.Context, _ *corepb.Registration) (*emptypb.Empty, error) {
+	return nil, fmt.Errorf("UpdateRegistration() is mocked to always error")
 }
 
 func TestUpdateRegistrationSame(t *testing.T) {
@@ -707,10 +709,11 @@ func TestUpdateRegistrationSame(t *testing.T) {
 
 	// Make an update to the registration with the same Contact & Agreement values.
 	updateSame := &corepb.Registration{
-		Id:        result.Id,
-		Key:       acctKeyC,
-		Contact:   []string{mailto},
-		Agreement: "I agreed",
+		Id:              result.Id,
+		Key:             acctKeyC,
+		Contact:         []string{mailto},
+		ContactsPresent: true,
+		Agreement:       "I agreed",
 	}
 
 	// The update operation should *not* error, even with the NoUpdateSA because
@@ -734,7 +737,7 @@ func TestNewAuthorization(t *testing.T) {
 	assertAuthzEqual(t, authz, dbAuthzPB)
 
 	// Verify that the returned authz has the right information
-	test.Assert(t, authz.RegistrationID == Registration.ID, "Initial authz did not get the right registration ID")
+	test.Assert(t, authz.RegistrationID == Registration.Id, "Initial authz did not get the right registration ID")
 	test.Assert(t, authz.Identifier == AuthzRequest.Authz.Identifier, "Initial authz had wrong identifier")
 	test.Assert(t, authz.Status == string(core.StatusPending), "Initial authz not pending")
 
@@ -806,7 +809,7 @@ func TestReusePendingAuthorization(t *testing.T) {
 			RegistrationID: 1,
 			Status:         "pending",
 		},
-		RegID: Registration.ID,
+		RegID: Registration.Id,
 	})
 	test.AssertNotError(t, err, "Could not store test pending authorization")
 
@@ -815,7 +818,7 @@ func TestReusePendingAuthorization(t *testing.T) {
 		Authz: &corepb.Authorization{
 			Identifier: "not-example.com",
 		},
-		RegID: Registration.ID,
+		RegID: Registration.Id,
 	})
 	test.AssertNotError(t, err, "Could not store test pending authorization")
 
@@ -823,10 +826,10 @@ func TestReusePendingAuthorization(t *testing.T) {
 	test.AssertEquals(t, firstAuthz.Id, secondAuthz.Id)
 	test.AssertEquals(t, secondAuthz.Status, string(core.StatusPending))
 
-	otherReg, err := sa.NewRegistration(ctx, core.Registration{
-		Key:       &AccountKeyB,
-		InitialIP: net.ParseIP("3.2.3.3"),
-		Status:    core.StatusValid,
+	// An authz created under another registration ID should not be reused.
+	otherReg, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       AccountKeyJSONB,
+		InitialIP: Registration.InitialIP,
 	})
 	test.AssertNotError(t, err, "Creating otherReg")
 	// An authz created under another registration ID should not be reused.
@@ -834,7 +837,7 @@ func TestReusePendingAuthorization(t *testing.T) {
 		Authz: &corepb.Authorization{
 			Identifier: "not-example.com",
 		},
-		RegID: otherReg.ID,
+		RegID: otherReg.Id,
 	})
 	test.AssertNotError(t, err, "Could not store test pending authorization")
 	if thirdAuthz.Id == firstAuthz.Id {
@@ -933,7 +936,7 @@ func TestNewAuthorizationCapitalLetters(t *testing.T) {
 		Authz: &corepb.Authorization{
 			Identifier: "NOT-example.COM",
 		},
-		RegID: Registration.ID,
+		RegID: Registration.Id,
 	})
 	test.AssertNotError(t, err, "NewAuthorization failed")
 	test.AssertEquals(t, "not-example.com", authz.Identifier)
@@ -952,7 +955,7 @@ func TestNewAuthorizationInvalidName(t *testing.T) {
 		Authz: &corepb.Authorization{
 			Identifier: "127.0.0.1",
 		},
-		RegID: Registration.ID,
+		RegID: Registration.Id,
 	})
 	if err == nil {
 		t.Fatalf("NewAuthorization succeeded for 127.0.0.1, should have failed")
@@ -1073,7 +1076,6 @@ func TestPerformValidationSuccess(t *testing.T) {
 	// Verify that the responses are reflected
 	test.AssertNotNil(t, vaRequest.Challenge, "Request passed to VA has no challenge")
 	challIdx = challTypeIndex(t, dbAuthz.Challenges, core.ChallengeTypeDNS01)
-	fmt.Println(dbAuthz.Challenges[challIdx])
 	test.Assert(t, dbAuthz.Challenges[challIdx].Status == core.StatusValid, "challenge was not marked as valid")
 
 	// The DB authz's expiry should be equal to the current time plus the
@@ -1154,7 +1156,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	_, err = ra.NewCertificate(ctx,
 		&rapb.NewCertificateRequest{
 			Csr:          csrBytes,
-			RegID:        Registration.ID,
+			RegID:        Registration.Id,
 			IssuerNameID: 1,
 		})
 	test.AssertError(t, err, "Should have rejected cert with key = account key")
@@ -1189,7 +1191,7 @@ func TestNewCertificate(t *testing.T) {
 	_, err := ra.NewCertificate(ctx,
 		&rapb.NewCertificateRequest{
 			Csr:          ExampleCSR.Raw,
-			RegID:        Registration.ID,
+			RegID:        Registration.Id,
 			IssuerNameID: 1,
 		})
 	ExampleCSR.Raw[len(ExampleCSR.Raw)-1]--
@@ -1248,11 +1250,11 @@ func TestNewOrderRateLimiting(t *testing.T) {
 	}
 
 	orderOne := &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          []string{"first.example.com"},
 	}
 	orderTwo := &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          []string{"second.example.com"},
 	}
 
@@ -1311,7 +1313,7 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 
 	// Request an order for the test domain
 	newOrder := &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          []string{domain},
 	}
 
@@ -1346,7 +1348,7 @@ func TestAuthzFailedRateLimiting(t *testing.T) {
 		Authz: &corepb.Authorization{
 			Identifier: "ifail.com",
 		},
-		RegID: Registration.ID,
+		RegID: Registration.Id,
 	})
 	test.AssertError(t, err, "NewAuthorization did not encounter expected rate limit error")
 	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/rate-limits/")
@@ -1365,7 +1367,7 @@ func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
 
 	testcase := func() {
 		ra.SA = &mockInvalidAuthorizationsAuthority{domainWithFailures: "all.i.do.is.lose.com"}
-		err := ra.checkInvalidAuthorizationLimits(ctx, Registration.ID,
+		err := ra.checkInvalidAuthorizationLimits(ctx, Registration.Id,
 			[]string{"charlie.brown.com", "all.i.do.is.lose.com"})
 		test.AssertError(t, err, "checkInvalidAuthorizationLimits did not encounter expected rate limit error")
 		test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/rate-limits/")
@@ -1624,107 +1626,90 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 func TestRegistrationUpdate(t *testing.T) {
 	oldURL := "http://old.invalid"
 	newURL := "http://new.invalid"
-	reg := core.Registration{
-		ID:        1,
-		Contact:   &[]string{oldURL},
+	base := &corepb.Registration{
+		Id:        1,
+		Contact:   []string{oldURL},
 		Agreement: "",
 	}
-	update := core.Registration{
-		Contact:   &[]string{newURL},
-		Agreement: "totally!",
+	update := &corepb.Registration{
+		Contact:         []string{newURL},
+		ContactsPresent: true,
+		Agreement:       "totally!",
 	}
 
-	changed := mergeUpdate(&reg, update)
+	res, changed := mergeUpdate(base, update)
 	test.AssertEquals(t, changed, true)
-	test.Assert(t, len(*reg.Contact) == 1 && (*reg.Contact)[0] == (*update.Contact)[0], "Contact was not updated %v != %v")
-	test.Assert(t, reg.Agreement == update.Agreement, "Agreement was not updated")
+	test.AssertEquals(t, res.Contact[0], update.Contact[0])
+	test.AssertEquals(t, res.Agreement, update.Agreement)
 
 	// Make sure that a `MergeUpdate` call with an empty string doesn't produce an
 	// error and results in a change to the base reg.
-	emptyUpdate := core.Registration{
-		Contact:   &[]string{""},
-		Agreement: "totally!",
+	emptyUpdate := &corepb.Registration{
+		Contact:         []string{""},
+		ContactsPresent: true,
+		Agreement:       "totally!",
 	}
-	changed = mergeUpdate(&reg, emptyUpdate)
+	_, changed = mergeUpdate(res, emptyUpdate)
 	test.AssertEquals(t, changed, true)
 }
 
 func TestRegistrationContactUpdate(t *testing.T) {
 	contactURL := "mailto://example@example.com"
-	fullReg := core.Registration{
-		ID:        1,
-		Contact:   &[]string{contactURL},
-		Agreement: "totally!",
-	}
 
 	// Test that a registration contact can be removed by updating with an empty
 	// Contact slice.
-	reg := fullReg
-	var contactRemoveUpdate core.Registration
-	contactRemoveJSON := []byte(`
-	{
-		"key": {
-			"e": "AQAB",
-			"kty": "RSA",
-			"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_"
-		},
-		"id": 1,
-		"contact": [],
-		"agreement": "totally!"
+	base := &corepb.Registration{
+		Id:        1,
+		Contact:   []string{contactURL},
+		Agreement: "totally!",
 	}
-	`)
-	err := json.Unmarshal(contactRemoveJSON, &contactRemoveUpdate)
-	test.AssertNotError(t, err, "Failed to unmarshal contactRemoveJSON")
-	changed := mergeUpdate(&reg, contactRemoveUpdate)
+	update := &corepb.Registration{
+		Id:              1,
+		Contact:         []string{},
+		ContactsPresent: true,
+		Agreement:       "totally!",
+	}
+	res, changed := mergeUpdate(base, update)
 	test.AssertEquals(t, changed, true)
-	test.Assert(t, len(*reg.Contact) == 0, "Contact was not deleted in update")
+	test.Assert(t, len(res.Contact) == 0, "Contact was not deleted in update")
 
 	// Test that a registration contact isn't changed when an update is performed
 	// with no Contact field
-	reg = fullReg
-	var contactSameUpdate core.Registration
-	contactSameJSON := []byte(`
-	{
-		"key": {
-			"e": "AQAB",
-			"kty": "RSA",
-			"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_"
-		},
-		"id": 1,
-		"agreement": "totally!"
+	base = &corepb.Registration{
+		Id:        1,
+		Contact:   []string{contactURL},
+		Agreement: "totally!",
 	}
-	`)
-	err = json.Unmarshal(contactSameJSON, &contactSameUpdate)
-	test.AssertNotError(t, err, "Failed to unmarshal contactSameJSON")
-	changed = mergeUpdate(&reg, contactSameUpdate)
+	update = &corepb.Registration{
+		Id:        1,
+		Agreement: "totally!",
+	}
+	res, changed = mergeUpdate(base, update)
 	test.AssertEquals(t, changed, false)
-	test.Assert(t, len(*reg.Contact) == 1, "len(Contact) was updated unexpectedly")
-	test.Assert(t, (*reg.Contact)[0] == "mailto://example@example.com", "Contact was changed unexpectedly")
+	test.Assert(t, len(res.Contact) == 1, "len(Contact) was updated unexpectedly")
+	test.Assert(t, (res.Contact)[0] == contactURL, "Contact was changed unexpectedly")
 }
 
 func TestRegistrationKeyUpdate(t *testing.T) {
 	oldKey, err := rsa.GenerateKey(rand.Reader, 512)
 	test.AssertNotError(t, err, "rsa.GenerateKey() for oldKey failed")
+	oldKeyJSON, err := jose.JSONWebKey{Key: oldKey}.MarshalJSON()
+	test.AssertNotError(t, err, "MarshalJSON for oldKey failed")
 
-	rA, rB := core.Registration{Key: &jose.JSONWebKey{Key: oldKey}}, core.Registration{}
-
-	changed := mergeUpdate(&rA, rB)
-	if changed {
-		t.Fatal("mergeUpdate changed the key with empty update")
-	}
+	base := &corepb.Registration{Key: oldKeyJSON}
+	update := &corepb.Registration{}
+	_, changed := mergeUpdate(base, update)
+	test.Assert(t, !changed, "mergeUpdate changed the key with empty update")
 
 	newKey, err := rsa.GenerateKey(rand.Reader, 1024)
 	test.AssertNotError(t, err, "rsa.GenerateKey() for newKey failed")
-	rB.Key = &jose.JSONWebKey{Key: newKey.Public()}
+	newKeyJSON, err := jose.JSONWebKey{Key: newKey}.MarshalJSON()
+	test.AssertNotError(t, err, "MarshalJSON for newKey failed")
 
-	changed = mergeUpdate(&rA, rB)
-	if !changed {
-		t.Fatal("mergeUpdate didn't change the key with non-empty update")
-	}
-	keysMatch, _ := core.PublicKeysEqual(rA.Key.Key, rB.Key.Key)
-	if !keysMatch {
-		t.Fatal("mergeUpdate didn't change the key despite setting returned bool")
-	}
+	update = &corepb.Registration{Key: newKeyJSON}
+	res, changed := mergeUpdate(base, update)
+	test.Assert(t, changed, "mergeUpdate didn't change the key with non-empty update")
+	test.AssertByteEquals(t, res.Key, update.Key)
 }
 
 // A mockSAWithFQDNSet is a mock StorageAuthority that supports
@@ -1910,9 +1895,9 @@ func TestDeactivateRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "DeactivateRegistration failed")
 
 	// Check db to make sure account is deactivated
-	dbReg, err := ra.SA.GetRegistration(context.Background(), 1)
+	dbReg, err := ra.SA.GetRegistration(context.Background(), &sapb.RegistrationID{Id: 1})
 	test.AssertNotError(t, err, "GetRegistration failed")
-	test.AssertEquals(t, dbReg.Status, core.StatusDeactivated)
+	test.AssertEquals(t, dbReg.Status, string(core.StatusDeactivated))
 }
 
 // noopCAA implements caaChecker, always returning nil
@@ -2174,7 +2159,7 @@ func TestNewOrder(t *testing.T) {
 	ra.orderLifetime = time.Hour
 
 	orderA, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          []string{"b.com", "a.com", "a.com", "C.COM"},
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
@@ -2188,7 +2173,7 @@ func TestNewOrder(t *testing.T) {
 
 	// Reuse all existing authorizations
 	orderB, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          []string{"b.com", "a.com", "C.COM"},
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
@@ -2205,7 +2190,7 @@ func TestNewOrder(t *testing.T) {
 	// add a new one
 	orderA.Names = append(orderA.Names, "d.com")
 	orderC, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          orderA.Names,
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
@@ -2222,7 +2207,7 @@ func TestNewOrder(t *testing.T) {
 	test.AssertDeepEquals(t, existing, orderA.V2Authorizations)
 
 	_, err = ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          []string{"a"},
 	})
 	test.AssertError(t, err, "NewOrder with invalid names did not error")
@@ -2243,7 +2228,7 @@ func TestNewOrderLegacyAuthzReuse(t *testing.T) {
 
 	// Create an order request for the same name as the legacy authz
 	order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          []string{"not-example.com"},
 	})
 	// It should not produce an error
@@ -2258,7 +2243,7 @@ func TestNewOrderLegacyAuthzReuse(t *testing.T) {
 	// Create an order request for a superset of the names from the order above to
 	// test that V2 reuse still functions.
 	secondOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          []string{"not-example.com", "deffo.not-example.com"},
 	})
 	// It should not produce an error
@@ -2291,7 +2276,7 @@ func TestNewOrderReuse(t *testing.T) {
 
 	// Create an initial request with regA and names
 	orderReq := &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          names,
 	}
 
@@ -2326,7 +2311,7 @@ func TestNewOrderReuse(t *testing.T) {
 		{
 			Name: "Subset of order names, same regID",
 			OrderReq: &rapb.NewOrderRequest{
-				RegistrationID: Registration.ID,
+				RegistrationID: Registration.Id,
 				Names:          []string{names[1]},
 			},
 			// We do not expect reuse because the order names don't match firstOrder
@@ -2385,7 +2370,7 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 
 	// Create an initial request with regA and names
 	orderReq := &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          names,
 	}
 
@@ -2574,7 +2559,7 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 
 	// Create an initial request with regA and names
 	orderReq := &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          names,
 	}
 
@@ -2603,7 +2588,7 @@ func TestNewOrderAuthzReuseDisabled(t *testing.T) {
 
 	// Create an initial request with regA and names
 	orderReq := &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          names,
 	}
 
@@ -2623,7 +2608,7 @@ func TestNewOrderWildcard(t *testing.T) {
 
 	orderNames := []string{"example.com", "*.welcome.zombo.com"}
 	wildcardOrderRequest := &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          orderNames,
 	}
 
@@ -2673,7 +2658,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	// challenge and one for the base domain with the normal challenges.
 	orderNames = []string{"zombo.com", "*.zombo.com"}
 	wildcardOrderRequest = &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          orderNames,
 	}
 	order, err = ra.NewOrder(context.Background(), wildcardOrderRequest)
@@ -2717,7 +2702,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	// Make an order for a single domain, no wildcards. This will create a new
 	// pending authz for the domain
 	normalOrderReq := &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          []string{"everything.is.possible.zombo.com"},
 	}
 	normalOrder, err := ra.NewOrder(context.Background(), normalOrderReq)
@@ -2743,7 +2728,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	// order since we now require a DNS-01 challenge for the `*.` prefixed name.
 	orderNames = []string{"*.everything.is.possible.zombo.com"}
 	wildcardOrderRequest = &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          orderNames,
 	}
 	order, err = ra.NewOrder(context.Background(), wildcardOrderRequest)
@@ -2872,7 +2857,7 @@ func TestNewOrderExpiry(t *testing.T) {
 
 	// Create an initial request with regA and names
 	orderReq := &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          names,
 	}
 
@@ -2946,7 +2931,7 @@ func TestFinalizeOrder(t *testing.T) {
 	// Create an order with valid authzs, it should end up status ready in the
 	// resulting returned order
 	modernFinalOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
-		RegistrationID:   Registration.ID,
+		RegistrationID:   Registration.Id,
 		Expires:          exp.UnixNano(),
 		Names:            []string{"not-example.com", "www.not-example.com"},
 		V2Authorizations: []int64{authzIDA, authzIDB},
@@ -2984,20 +2969,20 @@ func TestFinalizeOrder(t *testing.T) {
 	// will fail because you can't finalize an order that is already being
 	// processed.
 	emptyOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          []string{"000.example.com"},
 	})
 	test.AssertNotError(t, err, "Could not add test order for fake order ID")
 
 	// Add a new order for the fake reg ID
 	fakeRegOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          []string{"001.example.com"},
 	})
 	test.AssertNotError(t, err, "Could not add test order for fake reg ID order ID")
 
 	missingAuthzOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          []string{"002.example.com"},
 	})
 	test.AssertNotError(t, err, "Could not add test order for missing authz order ID")
@@ -3081,7 +3066,7 @@ func TestFinalizeOrder(t *testing.T) {
 				Order: &corepb.Order{
 					Status:            string(core.StatusReady),
 					Names:             []string{"example.org"},
-					RegistrationID:    Registration.ID,
+					RegistrationID:    Registration.Id,
 					Id:                emptyOrder.Id,
 					Expires:           exp.UnixNano(),
 					CertificateSerial: "",
@@ -3115,7 +3100,7 @@ func TestFinalizeOrder(t *testing.T) {
 					Status:            string(core.StatusReady),
 					Names:             []string{"a.com", "a.org", "b.com"},
 					Id:                missingAuthzOrder.Id,
-					RegistrationID:    Registration.ID,
+					RegistrationID:    Registration.Id,
 					Expires:           exp.UnixNano(),
 					CertificateSerial: "",
 					BeganProcessing:   false,
@@ -3166,14 +3151,14 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 	// Pick an expiry in the future
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 
-	// Create one finalized authorization for Registration.ID for not-example.com and
-	// one finalized authorization for Registration.ID for www.not-example.org
+	// Create one finalized authorization for Registration.Id for not-example.com and
+	// one finalized authorization for Registration.Id for www.not-example.org
 	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid")
 	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, "valid")
 
 	// Create a new order to finalize with names in SAN and CN
 	mixedOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
-		RegistrationID:   Registration.ID,
+		RegistrationID:   Registration.Id,
 		Expires:          exp.UnixNano(),
 		Names:            []string{"not-example.com", "www.not-example.com"},
 		V2Authorizations: []int64{authzIDA, authzIDB},
@@ -3262,13 +3247,13 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	// Create a new order for a wildcard domain
 	orderNames := []string{"*.zombo.com"}
 	wildcardOrderRequest := &rapb.NewOrderRequest{
-		RegistrationID: Registration.ID,
+		RegistrationID: Registration.Id,
 		Names:          orderNames,
 	}
 	order, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertNotError(t, err, "NewOrder failed for wildcard domain order")
 
-	// Create one standard finalized authorization for Registration.ID for zombo.com
+	// Create one standard finalized authorization for Registration.Id for zombo.com
 	_ = createFinalizedAuthorization(t, sa, "zombo.com", exp, "valid")
 
 	// Finalizing the order should *not* work since the existing validated authz
@@ -3331,7 +3316,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 				Type:  "dns",
 				Value: domain,
 			},
-			RegistrationID: Registration.ID,
+			RegistrationID: Registration.Id,
 			Status:         "pending",
 			Expires:        &exp,
 		}
@@ -3379,7 +3364,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 
 	// Create a pending order for all of the names
 	order, err := sa.NewOrder(context.Background(), &corepb.Order{
-		RegistrationID:   Registration.ID,
+		RegistrationID:   Registration.Id,
 		Expires:          exp.UnixNano(),
 		Names:            names,
 		V2Authorizations: authzIDs,
@@ -3455,7 +3440,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	// The event should have no error
 	test.AssertEquals(t, event.Error, "")
 	// The event requester should be the expected reg ID
-	test.AssertEquals(t, event.Requester, Registration.ID)
+	test.AssertEquals(t, event.Requester, Registration.Id)
 	// The event order ID should be the expected order ID
 	test.AssertEquals(t, event.OrderID, order.Id)
 	// The event serial number should be the expected serial number
@@ -3593,7 +3578,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 
 	_, err := ra.issueCertificate(ctx, core.CertificateRequest{
 		CSR: ExampleCSR,
-	}, accountID(Registration.ID), 0, 0)
+	}, accountID(Registration.Id), 0, 0)
 	test.AssertError(t, err, "ra.issueCertificate didn't fail when CTPolicy.GetSCTs timed out")
 	test.AssertMetricWithLabelsEquals(t, ra.ctpolicyResults, prometheus.Labels{"result": "failure"}, 1)
 }
@@ -3697,7 +3682,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 				Type:  "dns",
 				Value: domain,
 			},
-			RegistrationID: Registration.ID,
+			RegistrationID: Registration.Id,
 			Status:         "pending",
 			Expires:        &exp,
 		}
@@ -3734,7 +3719,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 
 	// Create a pending order for all of the names
 	order, err := sa.NewOrder(context.Background(), &corepb.Order{
-		RegistrationID:   Registration.ID,
+		RegistrationID:   Registration.Id,
 		Expires:          exp.UnixNano(),
 		Names:            names,
 		V2Authorizations: authzIDs,
@@ -3809,7 +3794,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			// Mock the CA
 			ra.CA = tc.Mock
 			// Attempt issuance
-			_, err = ra.issueCertificateInner(ctx, req, accountID(Registration.ID), orderID(order.Id), issuance.IssuerNameID(0), logEvent)
+			_, err = ra.issueCertificateInner(ctx, req, accountID(Registration.Id), orderID(order.Id), issuance.IssuerNameID(0), logEvent)
 			// We expect all of the testcases to fail because all use mocked CAs that deliberately error
 			test.AssertError(t, err, "issueCertificateInner with failing mock CA did not fail")
 			// If there is an expected `error` then match the error message

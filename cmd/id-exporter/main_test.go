@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"math/big"
@@ -18,19 +17,19 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	"gopkg.in/square/go-jose.v2"
 )
 
 var (
-	regA core.Registration
-	regB core.Registration
-	regC core.Registration
-	regD core.Registration
+	regA *corepb.Registration
+	regB *corepb.Registration
+	regC *corepb.Registration
+	regD *corepb.Registration
 )
 
 const (
@@ -66,9 +65,9 @@ func TestFindIDs(t *testing.T) {
 	test.AssertEquals(t, len(results), 3)
 	for _, entry := range results {
 		switch entry.ID {
-		case regA.ID:
-		case regC.ID:
-		case regD.ID:
+		case regA.Id:
+		case regC.Id:
+		case regD.Id:
 		default:
 			t.Errorf("ID: %d not expected", entry.ID)
 		}
@@ -82,10 +81,10 @@ func TestFindIDs(t *testing.T) {
 	// certificate expired within the grace period
 	for _, entry := range results {
 		switch entry.ID {
-		case regA.ID:
-		case regB.ID:
-		case regC.ID:
-		case regD.ID:
+		case regA.Id:
+		case regB.Id:
+		case regC.Id:
+		case regD.Id:
 		default:
 			t.Errorf("ID: %d not expected", entry.ID)
 		}
@@ -118,11 +117,11 @@ func TestFindIDsWithExampleHostnames(t *testing.T) {
 	test.AssertEquals(t, len(results), 3)
 	for _, entry := range results {
 		switch entry.ID {
-		case regA.ID:
+		case regA.Id:
 			test.AssertEquals(t, entry.Hostname, "example-a.com")
-		case regC.ID:
+		case regC.Id:
 			test.AssertEquals(t, entry.Hostname, "example-c.com")
-		case regD.ID:
+		case regD.Id:
 			test.AssertEquals(t, entry.Hostname, "example-d.com")
 		default:
 			t.Errorf("ID: %d not expected", entry.ID)
@@ -139,13 +138,13 @@ func TestFindIDsWithExampleHostnames(t *testing.T) {
 	test.AssertEquals(t, len(results), 4)
 	for _, entry := range results {
 		switch entry.ID {
-		case regA.ID:
+		case regA.Id:
 			test.AssertEquals(t, entry.Hostname, "example-a.com")
-		case regB.ID:
+		case regB.Id:
 			test.AssertEquals(t, entry.Hostname, "example-b.com")
-		case regC.ID:
+		case regC.Id:
 			test.AssertEquals(t, entry.Hostname, "example-c.com")
-		case regD.ID:
+		case regD.Id:
 			test.AssertEquals(t, entry.Hostname, "example-d.com")
 		default:
 			t.Errorf("ID: %d not expected", entry.ID)
@@ -174,9 +173,9 @@ func TestFindIDsForHostnames(t *testing.T) {
 	test.AssertEquals(t, len(results), 3)
 	for _, entry := range results {
 		switch entry.ID {
-		case regA.ID:
-		case regC.ID:
-		case regD.ID:
+		case regA.Id:
+		case regC.Id:
+		case regD.Id:
 		default:
 			t.Errorf("ID: %d not expected", entry.ID)
 		}
@@ -271,72 +270,46 @@ func (c testCtx) addRegistrations(t *testing.T) {
   "e":"AQAB"
 }`)
 
-	var keyA jose.JSONWebKey
-	var keyB jose.JSONWebKey
-	var keyC jose.JSONWebKey
-	var keyD jose.JSONWebKey
-	err := json.Unmarshal(jsonKeyA, &keyA)
-	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
-	err = json.Unmarshal(jsonKeyB, &keyB)
-	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
-	err = json.Unmarshal(jsonKeyC, &keyC)
-	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
-	err = json.Unmarshal(jsonKeyD, &keyD)
-	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
+	initialIP, err := net.ParseIP("127.0.0.1").MarshalText()
+	test.AssertNotError(t, err, "Couldn't create initialIP")
 
 	// Regs A through C have `mailto:` contact ACME URL's
-	regA = core.Registration{
-		ID: 1,
-		Contact: &[]string{
-			emailA,
-		},
-		Key:       &keyA,
-		InitialIP: net.ParseIP("127.0.0.1"),
+	regA = &corepb.Registration{
+		Id:        1,
+		Contact:   []string{emailA},
+		Key:       jsonKeyA,
+		InitialIP: initialIP,
 	}
-	regB = core.Registration{
-		ID: 2,
-		Contact: &[]string{
-			emailB,
-		},
-		Key:       &keyB,
-		InitialIP: net.ParseIP("127.0.0.1"),
+	regB = &corepb.Registration{
+		Id:        2,
+		Contact:   []string{emailB},
+		Key:       jsonKeyB,
+		InitialIP: initialIP,
 	}
-	regC = core.Registration{
-		ID: 3,
-		Contact: &[]string{
-			emailC,
-		},
-		Key:       &keyC,
-		InitialIP: net.ParseIP("127.0.0.1"),
+	regC = &corepb.Registration{
+		Id:        3,
+		Contact:   []string{emailC},
+		Key:       jsonKeyC,
+		InitialIP: initialIP,
 	}
 	// Reg D has a `tel:` contact ACME URL
-	regD = core.Registration{
-		ID: 4,
-		Contact: &[]string{
-			tel,
-		},
-		Key:       &keyD,
-		InitialIP: net.ParseIP("127.0.0.1"),
+	regD = &corepb.Registration{
+		Id:        4,
+		Contact:   []string{tel},
+		Key:       jsonKeyD,
+		InitialIP: initialIP,
 	}
 
 	// Add the four test registrations
 	ctx := context.Background()
 	regA, err = c.ssa.NewRegistration(ctx, regA)
-	if err != nil {
-		t.Fatalf("Couldn't store regA: %s", err)
-	}
+	test.AssertNotError(t, err, "Couldn't store regA")
 	regB, err = c.ssa.NewRegistration(ctx, regB)
-	if err != nil {
-		t.Fatalf("Couldn't store regB: %s", err)
-	}
+	test.AssertNotError(t, err, "Couldn't store regB")
 	regC, err = c.ssa.NewRegistration(ctx, regC)
-	if err != nil {
-		t.Fatalf("Couldn't store regC: %s", err)
-	}
+	test.AssertNotError(t, err, "Couldn't store regC")
 	regD, err = c.ssa.NewRegistration(ctx, regD)
-	if err != nil {
-		t.Fatalf("Couldn't store regD: %s", err)
-	}
+	test.AssertNotError(t, err, "Couldn't store regD")
 }
 
 func (ctx testCtx) addCertificates(t *testing.T) {
@@ -373,7 +346,7 @@ func (ctx testCtx) addCertificates(t *testing.T) {
 	}
 	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
 	certA := &core.Certificate{
-		RegistrationID: regA.ID,
+		RegistrationID: regA.Id,
 		Serial:         serial1String,
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
@@ -398,7 +371,7 @@ func (ctx testCtx) addCertificates(t *testing.T) {
 	}
 	certDerB, _ := x509.CreateCertificate(rand.Reader, &rawCertB, &rawCertB, &testKey.PublicKey, &testKey)
 	certB := &core.Certificate{
-		RegistrationID: regB.ID,
+		RegistrationID: regB.Id,
 		Serial:         serial2String,
 		Expires:        rawCertB.NotAfter,
 		DER:            certDerB,
@@ -423,7 +396,7 @@ func (ctx testCtx) addCertificates(t *testing.T) {
 	}
 	certDerC, _ := x509.CreateCertificate(rand.Reader, &rawCertC, &rawCertC, &testKey.PublicKey, &testKey)
 	certC := &core.Certificate{
-		RegistrationID: regC.ID,
+		RegistrationID: regC.Id,
 		Serial:         serial3String,
 		Expires:        rawCertC.NotAfter,
 		DER:            certDerC,
@@ -448,7 +421,7 @@ func (ctx testCtx) addCertificates(t *testing.T) {
 	}
 	certDerD, _ := x509.CreateCertificate(rand.Reader, &rawCertD, &rawCertD, &testKey.PublicKey, &testKey)
 	certD := &core.Certificate{
-		RegistrationID: regD.ID,
+		RegistrationID: regD.Id,
 		Serial:         serial4String,
 		Expires:        rawCertD.NotAfter,
 		DER:            certDerD,

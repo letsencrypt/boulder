@@ -101,38 +101,49 @@ func NewSQLStorageAuthority(
 }
 
 // GetRegistration obtains a Registration by ID
-func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
-	const query = "WHERE id = ?"
-	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, id)
-	if err != nil {
-		if db.IsNoRows(err) {
-			return core.Registration{}, berrors.NotFoundError("registration with ID '%d' not found", id)
-		}
-		return core.Registration{}, err
+func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, req *sapb.RegistrationID) (*corepb.Registration, error) {
+	if req == nil || req.Id == 0 {
+		return nil, errIncompleteRequest
 	}
 
-	return modelToRegistration(model)
+	const query = "WHERE id = ?"
+	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, req.Id)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return nil, berrors.NotFoundError("registration with ID '%d' not found", req.Id)
+		}
+		return nil, err
+	}
+
+	return registrationModelToPb(model)
 }
 
 // GetRegistrationByKey obtains a Registration by JWK
-func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key *jose.JSONWebKey) (core.Registration, error) {
-	const query = "WHERE jwk_sha256 = ?"
-	if key == nil {
-		return core.Registration{}, fmt.Errorf("key argument to GetRegistrationByKey must not be nil")
-	}
-	sha, err := core.KeyDigestB64(key.Key)
-	if err != nil {
-		return core.Registration{}, err
-	}
-	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, sha)
-	if db.IsNoRows(err) {
-		return core.Registration{}, berrors.NotFoundError("no registrations with public key sha256 %q", sha)
-	}
-	if err != nil {
-		return core.Registration{}, err
+func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error) {
+	if req == nil || len(req.Jwk) == 0 {
+		return nil, errIncompleteRequest
 	}
 
-	return modelToRegistration(model)
+	var jwk jose.JSONWebKey
+	err := jwk.UnmarshalJSON(req.Jwk)
+	if err != nil {
+		return nil, err
+	}
+
+	const query = "WHERE jwk_sha256 = ?"
+	sha, err := core.KeyDigestB64(jwk.Key)
+	if err != nil {
+		return nil, err
+	}
+	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, sha)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return nil, berrors.NotFoundError("no registrations with public key sha256 %q", sha)
+		}
+		return nil, err
+	}
+
+	return registrationModelToPb(model)
 }
 
 // incrementIP returns a copy of `ip` incremented at a bit index `index`,
@@ -341,58 +352,67 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial
 }
 
 // NewRegistration stores a new Registration
-func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
-	createdAt := ssa.clk.Now()
-	reg.CreatedAt = &createdAt
-	rm, err := registrationToModel(&reg)
-	if err != nil {
-		return reg, err
+func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, req *corepb.Registration) (*corepb.Registration, error) {
+	if len(req.Key) == 0 || len(req.InitialIP) == 0 {
+		return nil, errIncompleteRequest
 	}
-	err = ssa.dbMap.WithContext(ctx).Insert(rm)
+
+	reg, err := registrationPbToModel(req)
+	if err != nil {
+		return nil, err
+	}
+
+	reg.CreatedAt = ssa.clk.Now()
+
+	err = ssa.dbMap.WithContext(ctx).Insert(reg)
 	if err != nil {
 		if db.IsDuplicate(err) {
 			// duplicate entry error can only happen when jwk_sha256 collides, indicate
 			// to caller that the provided key is already in use
-			return reg, berrors.DuplicateError("key is already in use for a different account")
+			return nil, berrors.DuplicateError("key is already in use for a different account")
 		}
-		return reg, err
+		return nil, err
 	}
-	return modelToRegistration(rm)
+	return registrationModelToPb(reg)
 }
 
 // UpdateRegistration stores an updated Registration
-func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core.Registration) error {
-	const query = "WHERE id = ?"
-	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, reg.ID)
-	if err != nil {
-		if db.IsNoRows(err) {
-			return berrors.NotFoundError("registration with ID '%d' not found", reg.ID)
-		}
-		return err
+func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *corepb.Registration) (*emptypb.Empty, error) {
+	if req == nil || req.Id == 0 || len(req.Key) == 0 || len(req.InitialIP) == 0 {
+		return nil, errIncompleteRequest
 	}
 
-	updatedRegModel, err := registrationToModel(&reg)
+	const query = "WHERE id = ?"
+	curr, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, req.Id)
 	if err != nil {
-		return err
+		if db.IsNoRows(err) {
+			return nil, berrors.NotFoundError("registration with ID '%d' not found", req.Id)
+		}
+		return nil, err
+	}
+
+	update, err := registrationPbToModel(req)
+	if err != nil {
+		return nil, err
 	}
 
 	// Copy the existing registration model's LockCol to the new updated
 	// registration model's LockCol
-	updatedRegModel.LockCol = model.LockCol
-	n, err := ssa.dbMap.WithContext(ctx).Update(updatedRegModel)
+	update.LockCol = curr.LockCol
+	n, err := ssa.dbMap.WithContext(ctx).Update(update)
 	if err != nil {
 		if db.IsDuplicate(err) {
 			// duplicate entry error can only happen when jwk_sha256 collides, indicate
 			// to caller that the provided key is already in use
-			return berrors.DuplicateError("key is already in use for a different account")
+			return nil, berrors.DuplicateError("key is already in use for a different account")
 		}
-		return err
+		return nil, err
 	}
 	if n == 0 {
-		return berrors.NotFoundError("registration with ID '%d' not found", reg.ID)
+		return nil, berrors.NotFoundError("registration with ID '%d' not found", req.Id)
 	}
 
-	return nil
+	return &emptypb.Empty{}, nil
 }
 
 // AddCertificate stores an issued certificate and returns the digest as
@@ -823,14 +843,20 @@ func (ssa *SQLStorageAuthority) PreviousCertificateExists(
 }
 
 // DeactivateRegistration deactivates a currently valid registration
-func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, id int64) error {
+func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, req *sapb.RegistrationID) (*emptypb.Empty, error) {
+	if req == nil || req.Id == 0 {
+		return nil, errIncompleteRequest
+	}
 	_, err := ssa.dbMap.WithContext(ctx).Exec(
 		"UPDATE registrations SET status = ? WHERE status = ? AND id = ?",
 		string(core.StatusDeactivated),
 		string(core.StatusValid),
-		id,
+		req.Id,
 	)
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
 }
 
 // DeactivateAuthorization2 deactivates a currently valid or pending authorization.

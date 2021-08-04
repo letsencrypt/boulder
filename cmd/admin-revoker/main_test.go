@@ -98,13 +98,13 @@ func TestRevokeBatch(t *testing.T) {
 		test.AssertNotError(t, err, "failed to generate test cert")
 		_, err = ssa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 			Der:      der,
-			RegID:    reg.ID,
+			RegID:    reg.Id,
 			Issued:   time.Now().UnixNano(),
 			IssuerID: 1,
 		})
 		test.AssertNotError(t, err, "failed to add test cert")
 		now := time.Now()
-		_, err = ssa.AddCertificate(context.Background(), der, reg.ID, nil, &now)
+		_, err = ssa.AddCertificate(context.Background(), der, reg.Id, nil, &now)
 		test.AssertNotError(t, err, "failed to add test cert")
 		_, err = serialFile.WriteString(fmt.Sprintf("%s\n", core.SerialToString(serial)))
 		test.AssertNotError(t, err, "failed to write serial to temp file")

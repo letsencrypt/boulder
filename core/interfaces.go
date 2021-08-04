@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/types/known/emptypb"
-	jose "gopkg.in/square/go-jose.v2"
 
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/identifier"
@@ -98,8 +97,8 @@ type PolicyAuthority interface {
 
 // StorageGetter are the Boulder SA's read-only methods
 type StorageGetter interface {
-	GetRegistration(ctx context.Context, regID int64) (Registration, error)
-	GetRegistrationByKey(ctx context.Context, jwk *jose.JSONWebKey) (Registration, error)
+	GetRegistration(ctx context.Context, req *sapb.RegistrationID) (*corepb.Registration, error)
+	GetRegistrationByKey(ctx context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error)
 	GetCertificate(ctx context.Context, serial string) (Certificate, error)
 	GetPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
 	GetCertificateStatus(ctx context.Context, serial string) (CertificateStatus, error)
@@ -125,12 +124,12 @@ type StorageGetter interface {
 
 // StorageAdder are the Boulder SA's write/update methods
 type StorageAdder interface {
-	NewRegistration(ctx context.Context, reg Registration) (created Registration, err error)
-	UpdateRegistration(ctx context.Context, reg Registration) error
+	NewRegistration(ctx context.Context, req *corepb.Registration) (*corepb.Registration, error)
+	UpdateRegistration(ctx context.Context, req *corepb.Registration) (*emptypb.Empty, error)
 	AddCertificate(ctx context.Context, der []byte, regID int64, ocsp []byte, issued *time.Time) (digest string, err error)
 	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error)
 	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*emptypb.Empty, error)
-	DeactivateRegistration(ctx context.Context, id int64) error
+	DeactivateRegistration(ctx context.Context, req *sapb.RegistrationID) (*emptypb.Empty, error)
 	NewOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error)
 	SetOrderProcessing(ctx context.Context, order *corepb.Order) error
 	FinalizeOrder(ctx context.Context, order *corepb.Order) error

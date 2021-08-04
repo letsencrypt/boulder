@@ -344,64 +344,50 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 		return nil, errIncompleteGRPCRequest
 	}
 
-	// Convert key bytes to key
+	// Check if account key is acceptable for use.
 	var key jose.JSONWebKey
 	if err := key.UnmarshalJSON(request.Key); err != nil {
 		return nil, berrors.InternalServerError("failed to unmarshal account key: %s", err.Error())
 	}
-	// Check if account key is acceptable for use
 	if err := ra.keyPolicy.GoodKey(ctx, key.Key); err != nil {
 		return nil, berrors.MalformedError("invalid public key: %s", err.Error())
 	}
 
-	// Convert IP from bytes
+	// Check IP address rate limits.
 	var ipAddr net.IP
 	if err := ipAddr.UnmarshalText(request.InitialIP); err != nil {
 		return nil, berrors.InternalServerError("failed to unmarshal ip address: %s", err.Error())
 	}
-
 	if err := ra.checkRegistrationLimits(ctx, ipAddr); err != nil {
 		return nil, err
 	}
 
+	// Check that contacts conform to our expectations.
 	if err := validateContactsPresent(request.Contact, request.ContactsPresent); err != nil {
 		return nil, err
 	}
-
-	reg := core.Registration{
-		Key:    &key,
-		Status: core.StatusValid,
-	}
-
-	// Convert request to core.Registration for merge and SA rpc
-	init, err := bgrpc.PbToRegistration(request)
-	if err != nil {
+	if err := ra.validateContacts(ctx, request.Contact); err != nil {
 		return nil, err
 	}
 
-	_ = mergeUpdate(&reg, init)
-
-	// This field isn't updatable by the end user, so it isn't copied by
-	// MergeUpdate. But we need to fill it in for new registrations.
-	reg.InitialIP = init.InitialIP
-
-	if err := ra.validateContacts(ctx, reg.Contact); err != nil {
-		return nil, err
+	// Don't populate ID or CreatedAt because those will be set by the SA.
+	req := &corepb.Registration{
+		Key:             request.Key,
+		Contact:         request.Contact,
+		ContactsPresent: request.ContactsPresent,
+		Agreement:       request.Agreement,
+		InitialIP:       request.InitialIP,
+		Status:          string(core.StatusValid),
 	}
 
-	// Store the authorization object, then return it
-	reg, err = ra.SA.NewRegistration(ctx, reg)
+	// Store the registration object, then return the version that got stored.
+	res, err := ra.SA.NewRegistration(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
 	ra.newRegCounter.Inc()
-	regPB, err := bgrpc.RegistrationToPB(reg)
-	if err != nil {
-		return nil, err
-	}
-
-	return regPB, nil
+	return res, nil
 }
 
 // validateContacts checks the provided list of contacts, returning an error if
@@ -414,19 +400,19 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 // * A list containing a mailto contact that contains hfields
 // * A list containing a contact that has non-ascii characters
 // * A list containing a contact that doesn't pass `policy.ValidEmail`
-func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts *[]string) error {
-	if contacts == nil || len(*contacts) == 0 {
+func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts []string) error {
+	if len(contacts) == 0 {
 		return nil // Nothing to validate
 	}
-	if ra.maxContactsPerReg > 0 && len(*contacts) > ra.maxContactsPerReg {
+	if ra.maxContactsPerReg > 0 && len(contacts) > ra.maxContactsPerReg {
 		return berrors.MalformedError(
 			"too many contacts provided: %d > %d",
-			len(*contacts),
+			len(contacts),
 			ra.maxContactsPerReg,
 		)
 	}
 
-	for _, contact := range *contacts {
+	for _, contact := range contacts {
 		if contact == "" {
 			return berrors.InvalidEmailError("empty contact")
 		}
@@ -456,11 +442,11 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 	// `registrations` table. At the time of writing this field is VARCHAR(191)
 	// That means the largest marshalled JSON value we can store is 191 bytes.
 	const maxContactBytes = 191
-	if jsonBytes, err := json.Marshal(*contacts); err != nil {
+	if jsonBytes, err := json.Marshal(contacts); err != nil {
 		// This shouldn't happen with a simple []string but if it does we want the
 		// error to be logged internally but served as a 500 to the user so we
 		// return a bare error and not a berror here.
-		return fmt.Errorf("failed to marshal reg.Contact to JSON: %#v", *contacts)
+		return fmt.Errorf("failed to marshal reg.Contact to JSON: %#v", contacts)
 	} else if len(jsonBytes) >= maxContactBytes {
 		return berrors.InvalidEmailError(
 			"too many/too long contact(s). Please use shorter or fewer email addresses")
@@ -1192,7 +1178,11 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return emptyCert, berrors.MalformedError("invalid order ID: %d", oID)
 	}
 
-	account, err := ra.SA.GetRegistration(ctx, int64(acctID))
+	regPB, err := ra.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: int64(acctID)})
+	if err != nil {
+		return emptyCert, err
+	}
+	account, err := bgrpc.PbToRegistration(regPB)
 	if err != nil {
 		return emptyCert, err
 	}
@@ -1501,6 +1491,7 @@ func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []st
 // UpdateRegistration updates an existing Registration with new values. Caller
 // is responsible for making sure that update.Key is only different from base.Key
 // if it is being called from the WFE key change endpoint.
+// TODO(#5554): Split this into separate methods for updating Contacts vs Key.
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
 	// Error if the request is nil, there is no account key or IP address
 	if req.Base == nil || len(req.Base.Key) == 0 || len(req.Base.InitialIP) == 0 || req.Base.Id == 0 {
@@ -1510,33 +1501,22 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req
 	if err := validateContactsPresent(req.Base.Contact, req.Base.ContactsPresent); err != nil {
 		return nil, err
 	}
-
-	baseReg, err := bgrpc.PbToRegistration(req.Base)
-	if err != nil {
+	if err := validateContactsPresent(req.Update.Contact, req.Update.ContactsPresent); err != nil {
+		return nil, err
+	}
+	if err := ra.validateContacts(ctx, req.Update.Contact); err != nil {
 		return nil, err
 	}
 
-	updateReg, err := bgrpc.PbToRegistration(req.Update)
-	if err != nil {
-		return nil, err
-	}
-
-	if changed := mergeUpdate(&baseReg, updateReg); !changed {
+	update, changed := mergeUpdate(req.Base, req.Update)
+	if !changed {
 		// If merging the update didn't actually change the base then our work is
 		// done, we can return before calling ra.SA.UpdateRegistration since there's
 		// nothing for the SA to do
-		regPb, err := bgrpc.RegistrationToPB(baseReg)
-		if err != nil {
-			return nil, err
-		}
-		return regPb, nil
+		return req.Base, nil
 	}
 
-	if err := ra.validateContacts(ctx, baseReg.Contact); err != nil {
-		return nil, err
-	}
-
-	err = ra.SA.UpdateRegistration(ctx, baseReg)
+	_, err := ra.SA.UpdateRegistration(ctx, update)
 	if err != nil {
 		// berrors.InternalServerError since the user-data was validated before being
 		// passed to the SA.
@@ -1544,17 +1524,11 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req
 		return nil, err
 	}
 
-	regPb, err := bgrpc.RegistrationToPB(baseReg)
-	if err != nil {
-		return nil, err
-	}
-	return regPb, nil
+	return update, nil
 }
 
-func contactsEqual(r *core.Registration, other core.Registration) bool {
-	// If there is no existing contact slice, or the contact slice lengths
-	// differ, then the other contact is not equal
-	if r.Contact == nil || len(*other.Contact) != len(*r.Contact) {
+func contactsEqual(a []string, b []string) bool {
+	if len(a) != len(b) {
 		return false
 	}
 
@@ -1562,11 +1536,9 @@ func contactsEqual(r *core.Registration, other core.Registration) bool {
 	// new contact slice we need to look at each contact to determine if there
 	// is a change being made. Use `sort.Strings` here to ensure a consistent
 	// comparison
-	a := *other.Contact
-	b := *r.Contact
 	sort.Strings(a)
 	sort.Strings(b)
-	for i := 0; i < len(a); i++ {
+	for i := 0; i < len(b); i++ {
 		// If the contact's string representation differs at any index they aren't
 		// equal
 		if a[i] != b[i] {
@@ -1578,40 +1550,57 @@ func contactsEqual(r *core.Registration, other core.Registration) bool {
 	return true
 }
 
-// MergeUpdate copies a subset of information from the input Registration
-// into the Registration r. It returns true if an update was performed and the base object
-// was changed, and false if no change was made.
-func mergeUpdate(r *core.Registration, input core.Registration) bool {
+// MergeUpdate returns a new corepb.Registration with the majority of its fields
+// copies from the base Registration, and a subset (Contact, Agreement, and Key)
+// copied from the update Registration. It also returns a boolean indicating
+// whether or not this operation resulted in a Registration which differs from
+// the base.
+func mergeUpdate(base *corepb.Registration, update *corepb.Registration) (*corepb.Registration, bool) {
 	var changed bool
 
-	// Note: we allow input.Contact to overwrite r.Contact even if the former is
-	// empty in order to allow users to remove the contact associated with
-	// a registration. Since the field type is a pointer to slice of pointers we
-	// can perform a nil check to differentiate between an empty value and a nil
-	// (e.g. not provided) value
-	if input.Contact != nil && !contactsEqual(r, input) {
-		r.Contact = input.Contact
+	// Start by copying all of the fields.
+	res := &corepb.Registration{
+		Id:              base.Id,
+		Key:             base.Key,
+		Contact:         base.Contact,
+		ContactsPresent: base.ContactsPresent,
+		Agreement:       base.Agreement,
+		InitialIP:       base.InitialIP,
+		CreatedAt:       base.CreatedAt,
+		Status:          base.Status,
+	}
+
+	// Note: we allow update.Contact to overwrite base.Contact even if the former
+	// is empty in order to allow users to remove the contact associated with
+	// a registration. If the update has ContactsPresent set to false, then we
+	// know it is not attempting to update the contacts field.
+	if update.ContactsPresent && !contactsEqual(base.Contact, update.Contact) {
+		res.Contact = update.Contact
+		res.ContactsPresent = update.ContactsPresent
 		changed = true
 	}
 
-	// If there is an agreement in the input and it's not the same as the base,
-	// then we update the base
-	if len(input.Agreement) > 0 && input.Agreement != r.Agreement {
-		r.Agreement = input.Agreement
+	if len(update.Agreement) > 0 && update.Agreement != base.Agreement {
+		res.Agreement = update.Agreement
 		changed = true
 	}
 
-	if input.Key != nil {
-		if r.Key != nil {
-			sameKey, _ := core.PublicKeysEqual(r.Key.Key, input.Key.Key)
-			if !sameKey {
-				r.Key = input.Key
-				changed = true
+	if len(update.Key) > 0 {
+		if len(update.Key) != len(base.Key) {
+			res.Key = update.Key
+			changed = true
+		} else {
+			for i := 0; i < len(base.Key); i++ {
+				if update.Key[i] != base.Key[i] {
+					res.Key = update.Key
+					changed = true
+					break
+				}
 			}
 		}
 	}
 
-	return changed
+	return res, changed
 }
 
 // recordValidation records an authorization validation event,
@@ -1701,7 +1690,11 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	}
 
 	// Look up the account key for this authorization
-	reg, err := ra.SA.GetRegistration(ctx, authz.RegistrationID)
+	regPB, err := ra.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: authz.RegistrationID})
+	if err != nil {
+		return nil, berrors.InternalServerError(err.Error())
+	}
+	reg, err := bgrpc.PbToRegistration(regPB)
 	if err != nil {
 		return nil, berrors.InternalServerError(err.Error())
 	}
@@ -1959,7 +1952,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 	if reg.Status != string(core.StatusValid) {
 		return nil, berrors.MalformedError("only valid registrations can be deactivated")
 	}
-	err := ra.SA.DeactivateRegistration(ctx, reg.Id)
+	_, err := ra.SA.DeactivateRegistration(ctx, &sapb.RegistrationID{Id: reg.Id})
 	if err != nil {
 		return nil, berrors.InternalServerError(err.Error())
 	}

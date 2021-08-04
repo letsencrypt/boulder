@@ -22,6 +22,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/grpc"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
@@ -583,8 +584,8 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	returnExistingAcct := func(acct core.Registration) {
-		if acct.Status == core.StatusDeactivated {
+	returnExistingAcct := func(acctPB *corepb.Registration) {
+		if core.AcmeStatus(acctPB.Status) == core.StatusDeactivated {
 			// If there is an existing, but deactivated account, then return an unauthorized
 			// problem informing the user that this account was deactivated
 			wfe.sendError(response, logEvent, probs.Unauthorized(
@@ -593,11 +594,16 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		}
 
 		response.Header().Set("Location",
-			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, acct.ID)))
-		logEvent.Requester = acct.ID
-		beeline.AddFieldToTrace(ctx, "acct.id", acct.ID)
-		addRequesterHeader(response, acct.ID)
+			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, acctPB.Id)))
+		logEvent.Requester = acctPB.Id
+		beeline.AddFieldToTrace(ctx, "acct.id", acctPB.Id)
+		addRequesterHeader(response, acctPB.Id)
 
+		acct, err := grpc.PbToRegistration(acctPB)
+		if err != nil {
+			wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling account"), err)
+			return
+		}
 		prepAccountForDisplay(&acct)
 
 		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, acct)
@@ -609,7 +615,13 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		}
 	}
 
-	existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, key)
+	keyBytes, err := key.MarshalJSON()
+	if err != nil {
+		wfe.sendError(response, logEvent,
+			web.ProblemDetailsForError(err, "Error creating new account"), err)
+		return
+	}
+	existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: keyBytes})
 	if err == nil {
 		returnExistingAcct(existingAcct)
 		return
@@ -644,12 +656,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 
 	// Prepare account information to create corepb.Registration
-	keyBytes, err := key.MarshalJSON()
-	if err != nil {
-		wfe.sendError(response, logEvent,
-			web.ProblemDetailsForError(err, "Error creating new account"), err)
-		return
-	}
 	ipBytes, err := ip.MarshalText()
 	if err != nil {
 		wfe.sendError(response, logEvent,
@@ -676,7 +682,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	acctPB, err := wfe.RA.NewRegistration(ctx, &reg)
 	if err != nil {
 		if errors.Is(err, berrors.Duplicate) {
-			existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, key)
+			existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: keyBytes})
 			if err == nil {
 				returnExistingAcct(existingAcct)
 				return
@@ -1886,10 +1892,15 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		return
 	}
 
+	// Marshal key to bytes
+	newKeyBytes, err := newKey.MarshalJSON()
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling new key"), err)
+	}
 	// Check that the new key isn't already being used for an existing account
-	if existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &newKey); err == nil {
+	if existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: newKeyBytes}); err == nil {
 		response.Header().Set("Location",
-			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
+			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.Id)))
 		wfe.sendError(response, logEvent,
 			probs.Conflict("New key is already in use for a different account"), err)
 		return
@@ -1903,11 +1914,6 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling Registration to proto"), err)
 		return
 	}
-	// Marshal key to bytes
-	newKeyBytes, err := newKey.MarshalJSON()
-	if err != nil {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling new key"), err)
-	}
 
 	// Copy new key into an empty registration to provide as the update
 	updatePb := &corepb.Registration{Key: newKeyBytes}
@@ -1920,13 +1926,13 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 			// a parallel update or new account request happened and claimed the key. In this case
 			// just retrieve the account again, and return an error as we would above with a Location
 			// header
-			existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &newKey)
+			existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: newKeyBytes})
 			if err != nil {
 				wfe.sendError(response, logEvent, probs.ServerInternal("Failed to lookup existing keys"), err)
 				return
 			}
 			response.Header().Set("Location",
-				web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.ID)))
+				web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.Id)))
 			wfe.sendError(response, logEvent,
 				probs.Conflict("New key is already in use for a different account"), err)
 			return

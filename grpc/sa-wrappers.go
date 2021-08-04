@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/types/known/emptypb"
-	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -28,35 +27,12 @@ func NewStorageAuthorityClient(inner sapb.StorageAuthorityClient) *StorageAuthor
 	return &StorageAuthorityClientWrapper{inner}
 }
 
-func (sac StorageAuthorityClientWrapper) GetRegistration(ctx context.Context, regID int64) (core.Registration, error) {
-	response, err := sac.inner.GetRegistration(ctx, &sapb.RegistrationID{Id: regID})
-	if err != nil {
-		return core.Registration{}, err
-	}
-
-	if response == nil || !registrationValid(response) {
-		return core.Registration{}, errIncompleteResponse
-	}
-
-	return PbToRegistration(response)
+func (sac StorageAuthorityClientWrapper) GetRegistration(ctx context.Context, req *sapb.RegistrationID) (*corepb.Registration, error) {
+	return sac.inner.GetRegistration(ctx, req)
 }
 
-func (sac StorageAuthorityClientWrapper) GetRegistrationByKey(ctx context.Context, key *jose.JSONWebKey) (core.Registration, error) {
-	keyBytes, err := key.MarshalJSON()
-	if err != nil {
-		return core.Registration{}, err
-	}
-
-	response, err := sac.inner.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: keyBytes})
-	if err != nil {
-		return core.Registration{}, err
-	}
-
-	if response == nil || !registrationValid(response) {
-		return core.Registration{}, errIncompleteResponse
-	}
-
-	return PbToRegistration(response)
+func (sac StorageAuthorityClientWrapper) GetRegistrationByKey(ctx context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error) {
+	return sac.inner.GetRegistrationByKey(ctx, req)
 }
 
 func (sac StorageAuthorityClientWrapper) GetCertificate(ctx context.Context, serial string) (core.Certificate, error) {
@@ -253,36 +229,12 @@ func (sac StorageAuthorityClientWrapper) FQDNSetExists(ctx context.Context, doma
 	return response.Exists, nil
 }
 
-func (sac StorageAuthorityClientWrapper) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
-	regPB, err := RegistrationToPB(reg)
-	if err != nil {
-		return core.Registration{}, err
-	}
-
-	response, err := sac.inner.NewRegistration(ctx, regPB)
-	if err != nil {
-		return core.Registration{}, err
-	}
-
-	if response == nil || !registrationValid(response) {
-		return core.Registration{}, errIncompleteResponse
-	}
-
-	return PbToRegistration(response)
+func (sac StorageAuthorityClientWrapper) NewRegistration(ctx context.Context, req *corepb.Registration) (*corepb.Registration, error) {
+	return sac.inner.NewRegistration(ctx, req)
 }
 
-func (sac StorageAuthorityClientWrapper) UpdateRegistration(ctx context.Context, reg core.Registration) error {
-	regPB, err := RegistrationToPB(reg)
-	if err != nil {
-		return err
-	}
-
-	_, err = sac.inner.UpdateRegistration(ctx, regPB)
-	if err != nil {
-		return err
-	}
-
-	return nil
+func (sac StorageAuthorityClientWrapper) UpdateRegistration(ctx context.Context, req *corepb.Registration) (*emptypb.Empty, error) {
+	return sac.inner.UpdateRegistration(ctx, req)
 }
 
 func (sac StorageAuthorityClientWrapper) AddCertificate(
@@ -312,13 +264,8 @@ func (sac StorageAuthorityClientWrapper) AddCertificate(
 	return response.Digest, nil
 }
 
-func (sac StorageAuthorityClientWrapper) DeactivateRegistration(ctx context.Context, id int64) error {
-	_, err := sac.inner.DeactivateRegistration(ctx, &sapb.RegistrationID{Id: id})
-	if err != nil {
-		return err
-	}
-
-	return nil
+func (sac StorageAuthorityClientWrapper) DeactivateRegistration(ctx context.Context, request *sapb.RegistrationID) (*emptypb.Empty, error) {
+	return sac.inner.DeactivateRegistration(ctx, request)
 }
 
 func (sas StorageAuthorityClientWrapper) NewOrder(ctx context.Context, request *corepb.Order) (*corepb.Order, error) {
@@ -508,35 +455,11 @@ func (sas *StorageAuthorityServerWrapper) AddSerial(ctx context.Context, req *sa
 }
 
 func (sas StorageAuthorityServerWrapper) GetRegistration(ctx context.Context, request *sapb.RegistrationID) (*corepb.Registration, error) {
-	if core.IsAnyNilOrZero(request, request.Id) {
-		return nil, errIncompleteRequest
-	}
-
-	reg, err := sas.inner.GetRegistration(ctx, request.Id)
-	if err != nil {
-		return nil, err
-	}
-
-	return RegistrationToPB(reg)
+	return sas.inner.GetRegistration(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) GetRegistrationByKey(ctx context.Context, request *sapb.JSONWebKey) (*corepb.Registration, error) {
-	if request == nil || request.Jwk == nil {
-		return nil, errIncompleteRequest
-	}
-
-	var jwk jose.JSONWebKey
-	err := jwk.UnmarshalJSON(request.Jwk)
-	if err != nil {
-		return nil, err
-	}
-
-	reg, err := sas.inner.GetRegistrationByKey(ctx, &jwk)
-	if err != nil {
-		return nil, err
-	}
-
-	return RegistrationToPB(reg)
+	return sas.inner.GetRegistrationByKey(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) GetCertificate(ctx context.Context, request *sapb.Serial) (*corepb.Certificate, error) {
@@ -675,39 +598,11 @@ func (sac StorageAuthorityServerWrapper) PreviousCertificateExists(
 }
 
 func (sas StorageAuthorityServerWrapper) NewRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Registration, error) {
-	if request == nil || !newRegistrationValid(request) {
-		return nil, errIncompleteRequest
-	}
-
-	reg, err := PbToRegistration(request)
-	if err != nil {
-		return nil, err
-	}
-
-	newReg, err := sas.inner.NewRegistration(ctx, reg)
-	if err != nil {
-		return nil, err
-	}
-
-	return RegistrationToPB(newReg)
+	return sas.inner.NewRegistration(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) UpdateRegistration(ctx context.Context, request *corepb.Registration) (*emptypb.Empty, error) {
-	if request == nil || !registrationValid(request) {
-		return nil, errIncompleteRequest
-	}
-
-	reg, err := PbToRegistration(request)
-	if err != nil {
-		return nil, err
-	}
-
-	err = sas.inner.UpdateRegistration(ctx, reg)
-	if err != nil {
-		return nil, err
-	}
-
-	return &emptypb.Empty{}, nil
+	return sas.inner.UpdateRegistration(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) AddCertificate(ctx context.Context, request *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
@@ -725,16 +620,7 @@ func (sas StorageAuthorityServerWrapper) AddCertificate(ctx context.Context, req
 }
 
 func (sas StorageAuthorityServerWrapper) DeactivateRegistration(ctx context.Context, request *sapb.RegistrationID) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(request, request.Id) {
-		return nil, errIncompleteRequest
-	}
-
-	err := sas.inner.DeactivateRegistration(ctx, request.Id)
-	if err != nil {
-		return nil, err
-	}
-
-	return &emptypb.Empty{}, nil
+	return sas.inner.DeactivateRegistration(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) NewOrder(ctx context.Context, request *corepb.Order) (*corepb.Order, error) {

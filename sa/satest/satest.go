@@ -7,8 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/core"
 	jose "gopkg.in/square/go-jose.v2"
+
+	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 )
 
 var theKey = `{
@@ -38,16 +40,14 @@ func GoodJWK() *jose.JSONWebKey {
 // full-fledged SQLSAImpl. Long term, when the CA tests no longer need
 // CreateWorkingRegistration, this and CreateWorkingRegistration can
 // be pushed back into the SA tests proper.
-func CreateWorkingRegistration(t *testing.T, sa core.StorageAdder) core.Registration {
-	contact := "mailto:foo@example.com"
-	contacts := &[]string{contact}
-	createdAt := time.Date(2003, 5, 10, 0, 0, 0, 0, time.UTC)
-	reg, err := sa.NewRegistration(context.Background(), core.Registration{
-		Key:       GoodJWK(),
-		Contact:   contacts,
-		InitialIP: net.ParseIP("88.77.66.11"),
-		CreatedAt: &createdAt,
-		Status:    core.StatusValid,
+func CreateWorkingRegistration(t *testing.T, sa core.StorageAdder) *corepb.Registration {
+	initialIP, _ := net.ParseIP("88.77.66.11").MarshalText()
+	reg, err := sa.NewRegistration(context.Background(), &corepb.Registration{
+		Key:       []byte(theKey),
+		Contact:   []string{"mailto:foo@example.com"},
+		InitialIP: initialIP,
+		CreatedAt: time.Date(2003, 5, 10, 0, 0, 0, 0, time.UTC).UnixNano(),
+		Status:    string(core.StatusValid),
 	})
 	if err != nil {
 		t.Fatalf("Unable to create new registration: %s", err)

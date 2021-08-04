@@ -186,72 +186,79 @@ type challModel struct {
 	Validated bool `db:"validated"`
 }
 
-// newReg creates a reg model object from a core.Registration
-func registrationToModel(r *core.Registration) (*regModel, error) {
-	key, err := json.Marshal(r.Key)
+func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
+	// Even though we don't need to convert from JSON to an in-memory JSONWebKey
+	// for the sake of the `Key` field, we do need to do the conversion in order
+	// to compute the SHA256 key digest.
+	var jwk jose.JSONWebKey
+	err := jwk.UnmarshalJSON(reg.Key)
+	if err != nil {
+		return nil, err
+	}
+	sha, err := core.KeyDigestB64(jwk.Key)
 	if err != nil {
 		return nil, err
 	}
 
-	sha, err := core.KeyDigestB64(r.Key)
+	// For some reason we use different serialization formats for InitialIP
+	// in database models and in protobufs, despite the fact that both formats
+	// are just []byte.
+	var initialIP net.IP
+	err = initialIP.UnmarshalText(reg.InitialIP)
 	if err != nil {
 		return nil, err
 	}
-	if r.InitialIP == nil {
-		return nil, fmt.Errorf("initialIP was nil")
-	}
-	if r.Contact == nil {
-		r.Contact = &[]string{}
-	}
+
+	// Converting the int64 zero-value to a unix timestamp does not produce
+	// the time.Time zero-value (the former is 1970; the latter is year 0),
+	// so we have to do this check.
 	var createdAt time.Time
-	if r.CreatedAt != nil {
-		createdAt = *r.CreatedAt
+	if reg.CreatedAt != 0 {
+		createdAt = time.Unix(0, reg.CreatedAt)
 	}
 
-	rm := regModel{
-		ID:        r.ID,
-		Key:       key,
+	return &regModel{
+		ID:        reg.Id,
+		Key:       reg.Key,
 		KeySHA256: sha,
-		Contact:   *r.Contact,
-		Agreement: r.Agreement,
-		InitialIP: []byte(r.InitialIP.To16()),
+		Contact:   reg.Contact,
+		Agreement: reg.Agreement,
+		InitialIP: []byte(initialIP.To16()),
 		CreatedAt: createdAt,
-		Status:    string(r.Status),
-	}
-
-	return &rm, nil
+		Status:    reg.Status,
+	}, nil
 }
 
-func modelToRegistration(reg *regModel) (core.Registration, error) {
-	k := &jose.JSONWebKey{}
-	err := json.Unmarshal(reg.Key, k)
-	if err != nil {
-		return core.Registration{},
-			badJSONError(
-				"failed to unmarshal registration model's key",
-				reg.Key,
-				err)
-	}
-	var contact *[]string
-	// Contact can be nil when the DB contains the literal string "null". We
-	// prefer to represent this in memory as a pointer to an empty slice rather
-	// than a nil pointer.
-	if reg.Contact == nil {
-		contact = &[]string{}
-	} else {
-		contact = &reg.Contact
-	}
-	r := core.Registration{
-		ID:        reg.ID,
-		Key:       k,
-		Contact:   contact,
-		Agreement: reg.Agreement,
-		InitialIP: net.IP(reg.InitialIP),
-		CreatedAt: &reg.CreatedAt,
-		Status:    core.AcmeStatus(reg.Status),
+func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
+	if reg.ID == 0 || len(reg.Key) == 0 || len(reg.InitialIP) == 0 {
+		return nil, errors.New("incomplete Registration retrieved from DB")
 	}
 
-	return r, nil
+	var contact []string
+	contactsPresent := false
+	if len(reg.Contact) != 0 {
+		contact = reg.Contact
+		contactsPresent = true
+	}
+
+	// For some reason we use different serialization formats for InitialIP
+	// in database models and in protobufs, despite the fact that both formats
+	// are just []byte.
+	ipBytes, err := net.IP(reg.InitialIP).MarshalText()
+	if err != nil {
+		return nil, err
+	}
+
+	return &corepb.Registration{
+		Id:              reg.ID,
+		Key:             reg.Key,
+		Contact:         contact,
+		ContactsPresent: contactsPresent,
+		Agreement:       reg.Agreement,
+		InitialIP:       ipBytes,
+		CreatedAt:       reg.CreatedAt.UTC().UnixNano(),
+		Status:          reg.Status,
+	}, nil
 }
 
 func modelToChallenge(cm *challModel) (core.Challenge, error) {

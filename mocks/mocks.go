@@ -1,6 +1,7 @@
 package mocks
 
 import (
+	"bytes"
 	"context"
 	"crypto/x509"
 	"encoding/pem"
@@ -39,203 +40,147 @@ func NewStorageAuthority(clk clock.Clock) *StorageAuthority {
 }
 
 const (
-	test1KeyPublicJSON = `
-{
-	"kty":"RSA",
-	"n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
-	"e":"AAEAAQ"
-}`
-	test2KeyPublicJSON = `{
-		"kty":"RSA",
-		"n":"qnARLrT7Xz4gRcKyLdydmCr-ey9OuPImX4X40thk3on26FkMznR3fRjs66eLK7mmPcBZ6uOJseURU6wAaZNmemoYx1dMvqvWWIyiQleHSD7Q8vBrhR6uIoO4jAzJZR-ChzZuSDt7iHN-3xUVspu5XGwXU_MVJZshTwp4TaFx5elHIT_ObnTvTOU3Xhish07AbgZKmWsVbXh5s-CrIicU4OexJPgunWZ_YJJueOKmTvnLlTV4MzKR2oZlBKZ27S0-SfdV_QDx_ydle5oMAyKVtlAV35cyPMIsYNwgUGBCdY_2Uzi5eX0lTc7MPRwz6qR1kip-i59VcGcUQgqHV6Fyqw",
-		"e":"AAEAAQ"
-	}`
-
-	testE1KeyPublicJSON = `{
-     "kty":"EC",
-     "crv":"P-256",
-     "x":"FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao",
-     "y":"S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk"
-   }`
-	testE2KeyPublicJSON = `{
-     "kty":"EC",
-     "crv":"P-256",
-     "x":"S8FOmrZ3ywj4yyFqt0etAD90U-EnkNaOBSLfQmf7pNg",
-     "y":"vMvpDyqFDRHjGfZ1siDOm5LS6xNdR5xTpyoQGLDOX2Q"
-   }`
-	test3KeyPublicJSON = `{"kty":"RSA","n":"uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w","e":"AQAB"}`
-	test4KeyPublicJSON = `{
-    "kty":"RSA",
-    "n":"qih-cx32M0wq8MhhN-kBi2xPE-wnw4_iIg1hWO5wtBfpt2PtWikgPuBT6jvK9oyQwAWbSfwqlVZatMPY_-3IyytMNb9R9OatNr6o5HROBoyZnDVSiC4iMRd7bRl_PWSIqj_MjhPNa9cYwBdW5iC3jM5TaOgmp0-YFm4tkLGirDcIBDkQYlnv9NKILvuwqkapZ7XBixeqdCcikUcTRXW5unqygO6bnapzw-YtPsPPlj4Ih3SvK4doyziPV96U8u5lbNYYEzYiW1mbu9n0KLvmKDikGcdOpf6-yRa_10kMZyYQatY1eclIKI0xb54kbluEl0GQDaL5FxLmiKeVnsapzw",
-    "e":"AQAB"
-  }`
+	test1KeyPublicJSON  = `{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"}`
+	test2KeyPublicJSON  = `{"kty":"RSA","n":"qnARLrT7Xz4gRcKyLdydmCr-ey9OuPImX4X40thk3on26FkMznR3fRjs66eLK7mmPcBZ6uOJseURU6wAaZNmemoYx1dMvqvWWIyiQleHSD7Q8vBrhR6uIoO4jAzJZR-ChzZuSDt7iHN-3xUVspu5XGwXU_MVJZshTwp4TaFx5elHIT_ObnTvTOU3Xhish07AbgZKmWsVbXh5s-CrIicU4OexJPgunWZ_YJJueOKmTvnLlTV4MzKR2oZlBKZ27S0-SfdV_QDx_ydle5oMAyKVtlAV35cyPMIsYNwgUGBCdY_2Uzi5eX0lTc7MPRwz6qR1kip-i59VcGcUQgqHV6Fyqw","e":"AQAB"}`
+	testE1KeyPublicJSON = `{"kty":"EC","crv":"P-256","x":"FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao","y":"S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk"}`
+	testE2KeyPublicJSON = `{"kty":"EC","crv":"P-256","x":"S8FOmrZ3ywj4yyFqt0etAD90U-EnkNaOBSLfQmf7pNg","y":"vMvpDyqFDRHjGfZ1siDOm5LS6xNdR5xTpyoQGLDOX2Q"}`
+	test3KeyPublicJSON  = `{"kty":"RSA","n":"uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w","e":"AQAB"}`
+	test4KeyPublicJSON  = `{"kty":"RSA","n":"qih-cx32M0wq8MhhN-kBi2xPE-wnw4_iIg1hWO5wtBfpt2PtWikgPuBT6jvK9oyQwAWbSfwqlVZatMPY_-3IyytMNb9R9OatNr6o5HROBoyZnDVSiC4iMRd7bRl_PWSIqj_MjhPNa9cYwBdW5iC3jM5TaOgmp0-YFm4tkLGirDcIBDkQYlnv9NKILvuwqkapZ7XBixeqdCcikUcTRXW5unqygO6bnapzw-YtPsPPlj4Ih3SvK4doyziPV96U8u5lbNYYEzYiW1mbu9n0KLvmKDikGcdOpf6-yRa_10kMZyYQatY1eclIKI0xb54kbluEl0GQDaL5FxLmiKeVnsapzw","e":"AQAB"}`
 
 	agreementURL = "http://example.invalid/terms"
 )
 
 // GetRegistration is a mock
-func (sa *StorageAuthority) GetRegistration(_ context.Context, id int64) (core.Registration, error) {
-	if id == 100 {
+func (sa *StorageAuthority) GetRegistration(_ context.Context, req *sapb.RegistrationID) (*corepb.Registration, error) {
+	if req.Id == 100 {
 		// Tag meaning "Missing"
-		return core.Registration{}, errors.New("missing")
+		return nil, errors.New("missing")
 	}
-	if id == 101 {
+	if req.Id == 101 {
 		// Tag meaning "Malformed"
-		return core.Registration{}, nil
+		return &corepb.Registration{}, nil
 	}
-	if id == 102 {
+	if req.Id == 102 {
 		// Tag meaning "Not Found"
-		return core.Registration{}, berrors.NotFoundError("Dave's not here man")
+		return nil, berrors.NotFoundError("Dave's not here man")
 	}
 
-	keyJSON := []byte(test1KeyPublicJSON)
-	var parsedKey jose.JSONWebKey
-	err := parsedKey.UnmarshalJSON(keyJSON)
-	if err != nil {
-		return core.Registration{}, err
-	}
-
-	contacts := []string{"mailto:person@mail.com"}
-	goodReg := core.Registration{
-		ID:        id,
-		Key:       &parsedKey,
-		Agreement: agreementURL,
-		Contact:   &contacts,
-		Status:    core.StatusValid,
+	goodReg := &corepb.Registration{
+		Id:              req.Id,
+		Key:             []byte(test1KeyPublicJSON),
+		Agreement:       agreementURL,
+		Contact:         []string{"mailto:person@mail.com"},
+		ContactsPresent: true,
+		Status:          string(core.StatusValid),
 	}
 
 	// Return a populated registration with contacts for ID == 1 or ID == 5
-	if id == 1 || id == 5 {
+	if req.Id == 1 || req.Id == 5 {
 		return goodReg, nil
 	}
 
-	var test2KeyPublic jose.JSONWebKey
-	_ = test2KeyPublic.UnmarshalJSON([]byte(test2KeyPublicJSON))
-	if id == 2 {
-		goodReg.Key = &test2KeyPublic
+	// Return a populated registration with a different key for ID == 2
+	if req.Id == 2 {
+		goodReg.Key = []byte(test2KeyPublicJSON)
 		return goodReg, nil
 	}
 
-	var test3KeyPublic jose.JSONWebKey
-	_ = test3KeyPublic.UnmarshalJSON([]byte(test3KeyPublicJSON))
-	// deactivated registration
-	if id == 3 {
-		goodReg.Key = &test3KeyPublic
-		goodReg.Status = core.StatusDeactivated
+	// Return a deactivated registration with a different key for ID == 3
+	if req.Id == 3 {
+		goodReg.Key = []byte(test3KeyPublicJSON)
+		goodReg.Status = string(core.StatusDeactivated)
 		return goodReg, nil
 	}
 
-	var test4KeyPublic jose.JSONWebKey
-	_ = test4KeyPublic.UnmarshalJSON([]byte(test4KeyPublicJSON))
-	if id == 4 {
-		goodReg.Key = &test4KeyPublic
+	// Return a populated registration with a different key for ID == 4
+	if req.Id == 4 {
+		goodReg.Key = []byte(test4KeyPublicJSON)
 		return goodReg, nil
 	}
 
-	// ID 6 == an account without the agreement set
-	if id == 6 {
+	// Return a registration without the agreement set for ID == 6
+	if req.Id == 6 {
 		goodReg.Agreement = ""
 		return goodReg, nil
 	}
 
-	goodReg.InitialIP = net.ParseIP("5.6.7.8")
+	goodReg.InitialIP, _ = net.ParseIP("5.6.7.8").MarshalText()
 	createdAt := time.Date(2003, 9, 27, 0, 0, 0, 0, time.UTC)
-	goodReg.CreatedAt = &createdAt
+	goodReg.CreatedAt = createdAt.UnixNano()
 	return goodReg, nil
 }
 
 // GetRegistrationByKey is a mock
-func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk *jose.JSONWebKey) (core.Registration, error) {
-	var test1KeyPublic jose.JSONWebKey
-	var test2KeyPublic jose.JSONWebKey
-	var test3KeyPublic jose.JSONWebKey
-	var test4KeyPublic jose.JSONWebKey
-	var testE1KeyPublic jose.JSONWebKey
-	var testE2KeyPublic jose.JSONWebKey
-	var err error
-	err = test1KeyPublic.UnmarshalJSON([]byte(test1KeyPublicJSON))
+func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error) {
+	test5KeyBytes, err := ioutil.ReadFile("../test/test-key-5.der")
 	if err != nil {
-		return core.Registration{}, err
+		return nil, err
 	}
-	err = test2KeyPublic.UnmarshalJSON([]byte(test2KeyPublicJSON))
+	test5KeyPriv, err := x509.ParsePKCS1PrivateKey(test5KeyBytes)
 	if err != nil {
-		return core.Registration{}, err
+		return nil, err
 	}
-	err = test3KeyPublic.UnmarshalJSON([]byte(test3KeyPublicJSON))
+	test5KeyPublic := jose.JSONWebKey{Key: test5KeyPriv.Public()}
+	test5KeyPublicJSON, err := test5KeyPublic.MarshalJSON()
 	if err != nil {
-		return core.Registration{}, err
-	}
-	err = test4KeyPublic.UnmarshalJSON([]byte(test4KeyPublicJSON))
-	if err != nil {
-		return core.Registration{}, err
-	}
-	newKeyBytes, err := ioutil.ReadFile("../test/test-key-5.der")
-	if err != nil {
-		return core.Registration{}, err
-	}
-	newKeyPriv, err := x509.ParsePKCS1PrivateKey(newKeyBytes)
-	if err != nil {
-		return core.Registration{}, err
-	}
-	test5KeyPublic := jose.JSONWebKey{Key: newKeyPriv.Public()}
-
-	err = testE1KeyPublic.UnmarshalJSON([]byte(testE1KeyPublicJSON))
-	if err != nil {
-		panic(err)
-	}
-	err = testE2KeyPublic.UnmarshalJSON([]byte(testE2KeyPublicJSON))
-	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	contacts := []string{"mailto:person@mail.com"}
 
-	if core.KeyDigestEquals(jwk, test1KeyPublic) {
-		return core.Registration{
-			ID:        1,
-			Key:       jwk,
-			Agreement: agreementURL,
-			Contact:   &contacts,
-			Status:    core.StatusValid,
+	if bytes.Equal(req.Jwk, []byte(test1KeyPublicJSON)) {
+		return &corepb.Registration{
+			Id:              1,
+			Key:             req.Jwk,
+			Agreement:       agreementURL,
+			Contact:         contacts,
+			ContactsPresent: true,
+			Status:          string(core.StatusValid),
 		}, nil
 	}
 
-	if core.KeyDigestEquals(jwk, test2KeyPublic) {
+	if bytes.Equal(req.Jwk, []byte(test2KeyPublicJSON)) {
 		// No key found
-		return core.Registration{ID: 2}, berrors.NotFoundError("reg not found")
+		return &corepb.Registration{Id: 2}, berrors.NotFoundError("reg not found")
 	}
 
-	if core.KeyDigestEquals(jwk, test4KeyPublic) {
+	if bytes.Equal(req.Jwk, []byte(test4KeyPublicJSON)) {
 		// No key found
-		return core.Registration{ID: 5}, berrors.NotFoundError("reg not found")
+		return &corepb.Registration{Id: 5}, berrors.NotFoundError("reg not found")
 	}
 
-	if core.KeyDigestEquals(jwk, test5KeyPublic) {
+	if bytes.Equal(req.Jwk, []byte(test5KeyPublicJSON)) {
 		// No key found
-		return core.Registration{ID: 5}, berrors.NotFoundError("reg not found")
+		return &corepb.Registration{Id: 5}, berrors.NotFoundError("reg not found")
 	}
 
-	if core.KeyDigestEquals(jwk, testE1KeyPublic) {
-		return core.Registration{ID: 3, Key: jwk, Agreement: agreementURL}, nil
+	if bytes.Equal(req.Jwk, []byte(testE1KeyPublicJSON)) {
+		return &corepb.Registration{Id: 3, Key: req.Jwk, Agreement: agreementURL}, nil
 	}
 
-	if core.KeyDigestEquals(jwk, testE2KeyPublic) {
-		return core.Registration{ID: 4}, berrors.NotFoundError("reg not found")
+	if bytes.Equal(req.Jwk, []byte(testE2KeyPublicJSON)) {
+		return &corepb.Registration{Id: 4}, berrors.NotFoundError("reg not found")
 	}
 
-	if core.KeyDigestEquals(jwk, test3KeyPublic) {
+	if bytes.Equal(req.Jwk, []byte(test3KeyPublicJSON)) {
 		// deactivated registration
-		return core.Registration{
-			ID:        2,
-			Key:       jwk,
-			Agreement: agreementURL,
-			Contact:   &contacts,
-			Status:    core.StatusDeactivated,
+		return &corepb.Registration{
+			Id:              2,
+			Key:             req.Jwk,
+			Agreement:       agreementURL,
+			Contact:         contacts,
+			ContactsPresent: true,
+			Status:          string(core.StatusDeactivated),
 		}, nil
 	}
 
 	// Return a fake registration. Make sure to fill the key field to avoid marshaling errors.
-	return core.Registration{ID: 1, Key: &test1KeyPublic, Agreement: agreementURL, Status: core.StatusValid}, nil
+	return &corepb.Registration{
+		Id:        1,
+		Key:       []byte(test1KeyPublicJSON),
+		Agreement: agreementURL,
+		Status:    string(core.StatusValid),
+	}, nil
 }
 
 // GetAuthorization is a mock
@@ -356,13 +301,13 @@ func (sa *StorageAuthority) NewPendingAuthorization(_ context.Context, authz cor
 }
 
 // NewRegistration is a mock
-func (sa *StorageAuthority) NewRegistration(_ context.Context, reg core.Registration) (regR core.Registration, err error) {
-	return
+func (sa *StorageAuthority) NewRegistration(_ context.Context, _ *corepb.Registration) (*corepb.Registration, error) {
+	return &corepb.Registration{}, nil
 }
 
 // UpdateRegistration is a mock
-func (sa *StorageAuthority) UpdateRegistration(_ context.Context, reg core.Registration) (err error) {
-	return
+func (sa *StorageAuthority) UpdateRegistration(_ context.Context, _ *corepb.Registration) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
 // CountFQDNSets is a mock
@@ -452,8 +397,8 @@ func (sa *StorageAuthority) DeactivateAuthorization(_ context.Context, _ string)
 }
 
 // DeactivateRegistration is a mock
-func (sa *StorageAuthority) DeactivateRegistration(_ context.Context, _ int64) error {
-	return nil
+func (sa *StorageAuthority) DeactivateRegistration(_ context.Context, _ *sapb.RegistrationID) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
 // NewOrder is a mock

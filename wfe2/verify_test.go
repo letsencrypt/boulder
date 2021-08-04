@@ -13,8 +13,11 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/probs"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
@@ -1010,7 +1013,8 @@ func TestLookupJWK(t *testing.T) {
 	nonNumericKeyIDJWS, nonNumericKeyIDJWSBody := signRequestSpecifyKeyID(t, wfe.LegacyKeyIDPrefix+"abcd", wfe.nonceService)
 
 	validJWS, validKey, validJWSBody := signRequestKeyID(t, 1, nil, "", "", wfe.nonceService)
-	validAccount, _ := wfe.SA.GetRegistration(context.Background(), 1)
+	validAccountPB, _ := wfe.SA.GetRegistration(context.Background(), &sapb.RegistrationID{Id: 1})
+	validAccount, _ := grpc.PbToRegistration(validAccountPB)
 
 	// good key, log event requester is set
 
@@ -1264,7 +1268,8 @@ func TestValidPOSTForAccount(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
 	validJWS, _, validJWSBody := signRequestKeyID(t, 1, nil, "http://localhost/test", `{"test":"passed"}`, wfe.nonceService)
-	validAccount, _ := wfe.SA.GetRegistration(context.Background(), 1)
+	validAccountPB, _ := wfe.SA.GetRegistration(context.Background(), &sapb.RegistrationID{Id: 1})
+	validAccount, _ := grpc.PbToRegistration(validAccountPB)
 
 	// ID 102 is mocked to return missing
 	_, _, missingJWSBody := signRequestKeyID(t, 102, nil, "http://localhost/test", "{}", wfe.nonceService)
@@ -1415,16 +1420,10 @@ type mockSADifferentStoredKey struct {
 
 // mockSADifferentStoredKey has a GetRegistration that will always return an
 // account with the test 2 key, no matter the provided ID
-func (sa mockSADifferentStoredKey) GetRegistration(_ context.Context, _ int64) (core.Registration, error) {
-	keyJSON := []byte(test2KeyPublicJSON)
-	var parsedKey jose.JSONWebKey
-	err := parsedKey.UnmarshalJSON(keyJSON)
-	if err != nil {
-		panic(err)
-	}
-	return core.Registration{
-		Key:    &parsedKey,
-		Status: core.StatusValid,
+func (sa mockSADifferentStoredKey) GetRegistration(_ context.Context, _ *sapb.RegistrationID) (*corepb.Registration, error) {
+	return &corepb.Registration{
+		Key:    []byte(test2KeyPublicJSON),
+		Status: string(core.StatusValid),
 	}, nil
 }
 

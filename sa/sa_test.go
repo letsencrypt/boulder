@@ -6,7 +6,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"math/big"
@@ -117,56 +116,49 @@ func TestAddRegistration(t *testing.T) {
 	defer cleanUp()
 
 	jwk := satest.GoodJWK()
+	jwkJSON, _ := jwk.MarshalJSON()
 
-	contact := "mailto:foo@example.com"
-	contacts := &[]string{contact}
-	reg, err := sa.NewRegistration(ctx, core.Registration{
-		Key:       jwk,
+	contacts := []string{"mailto:foo@example.com"}
+	initialIP, _ := net.ParseIP("43.34.43.34").MarshalText()
+	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       jwkJSON,
 		Contact:   contacts,
-		InitialIP: net.ParseIP("43.34.43.34"),
+		InitialIP: initialIP,
 	})
 	if err != nil {
 		t.Fatalf("Couldn't create new registration: %s", err)
 	}
-	test.Assert(t, reg.ID != 0, "ID shouldn't be 0")
+	test.Assert(t, reg.Id != 0, "ID shouldn't be 0")
 	test.AssertDeepEquals(t, reg.Contact, contacts)
 
-	_, err = sa.GetRegistration(ctx, 0)
+	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: 0})
 	test.AssertError(t, err, "Registration object for ID 0 was returned")
 
-	dbReg, err := sa.GetRegistration(ctx, reg.ID)
-	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
+	dbReg, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id})
+	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.Id))
 
 	createdAt := clk.Now()
-	expectedReg := core.Registration{
-		ID:        reg.ID,
-		Key:       jwk,
-		InitialIP: net.ParseIP("43.34.43.34"),
-		CreatedAt: &createdAt,
-	}
-	test.AssertEquals(t, dbReg.ID, expectedReg.ID)
-	test.Assert(t, core.KeyDigestEquals(dbReg.Key, expectedReg.Key), "Stored key != expected")
-	test.AssertDeepEquals(t, expectedReg.CreatedAt, dbReg.CreatedAt)
+	test.AssertEquals(t, dbReg.Id, reg.Id)
+	test.AssertByteEquals(t, dbReg.Key, jwkJSON)
+	test.AssertDeepEquals(t, dbReg.CreatedAt, createdAt.UnixNano())
 
-	newReg := core.Registration{
-		ID:        reg.ID,
-		Key:       jwk,
-		Contact:   &[]string{"test.com"},
-		InitialIP: net.ParseIP("72.72.72.72"),
+	initialIP, _ = net.ParseIP("72.72.72.72").MarshalText()
+	newReg := &corepb.Registration{
+		Id:        reg.Id,
+		Key:       jwkJSON,
+		Contact:   []string{"test.com"},
+		InitialIP: initialIP,
 		Agreement: "yes",
 	}
-	err = sa.UpdateRegistration(ctx, newReg)
-	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
-	dbReg, err = sa.GetRegistrationByKey(ctx, jwk)
+	_, err = sa.UpdateRegistration(ctx, newReg)
+	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.Id))
+	dbReg, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: jwkJSON})
 	test.AssertNotError(t, err, "Couldn't get registration by key")
 
-	test.AssertEquals(t, dbReg.ID, newReg.ID)
+	test.AssertEquals(t, dbReg.Id, newReg.Id)
 	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
 
-	var anotherJWK jose.JSONWebKey
-	err = json.Unmarshal([]byte(anotherKey), &anotherJWK)
-	test.AssertNotError(t, err, "couldn't unmarshal anotherJWK")
-	_, err = sa.GetRegistrationByKey(ctx, &anotherJWK)
+	_, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: []byte(anotherKey)})
 	test.AssertError(t, err, "Registration object for invalid key was returned")
 }
 
@@ -174,14 +166,16 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	_, err := sa.GetRegistration(ctx, 100)
+	_, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: 100})
 	test.AssertErrorIs(t, err, berrors.NotFound)
 
 	jwk := satest.GoodJWK()
-	_, err = sa.GetRegistrationByKey(ctx, jwk)
+	jwkJSON, _ := jwk.MarshalJSON()
+
+	_, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: jwkJSON})
 	test.AssertErrorIs(t, err, berrors.NotFound)
 
-	err = sa.UpdateRegistration(ctx, core.Registration{ID: 100, Key: jwk})
+	_, err = sa.UpdateRegistration(ctx, &corepb.Registration{Id: 100, Key: jwkJSON, InitialIP: []byte("foo")})
 	test.AssertErrorIs(t, err, berrors.NotFound)
 }
 
@@ -197,7 +191,7 @@ func TestAddCertificate(t *testing.T) {
 
 	// Calling AddCertificate with a non-nil issued should succeed
 	issued := sa.clk.Now()
-	digest, err := sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
+	digest, err := sa.AddCertificate(ctx, certDER, reg.Id, nil, &issued)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 	test.AssertEquals(t, digest, "qWoItDZmR4P9eFbeYgXXP3SR4ApnkQj8x4LsB_ORKBo")
 
@@ -216,7 +210,7 @@ func TestAddCertificate(t *testing.T) {
 
 	// Add the certificate with a specific issued time instead of nil
 	issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
-	digest2, err := sa.AddCertificate(ctx, certDER2, reg.ID, nil, &issuedTime)
+	digest2, err := sa.AddCertificate(ctx, certDER2, reg.Id, nil, &issuedTime)
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 	test.AssertEquals(t, digest2, "vrlPN5wIPME1D2PPsCy-fGnTWh8dMyyYQcXPRkjHAQI")
 
@@ -231,7 +225,7 @@ func TestAddCertificate(t *testing.T) {
 	certDER3, err := ioutil.ReadFile("test-cert2.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	ocspResp := []byte{0, 0, 1}
-	_, err = sa.AddCertificate(ctx, certDER3, reg.ID, ocspResp, &issuedTime)
+	_, err = sa.AddCertificate(ctx, certDER3, reg.Id, ocspResp, &issuedTime)
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 }
 
@@ -244,10 +238,10 @@ func TestAddCertificateDuplicate(t *testing.T) {
 	_, testCert := test.ThrowAwayCert(t, 1)
 
 	issuedTime := clk.Now()
-	_, err := sa.AddCertificate(ctx, testCert.Raw, reg.ID, nil, &issuedTime)
+	_, err := sa.AddCertificate(ctx, testCert.Raw, reg.Id, nil, &issuedTime)
 	test.AssertNotError(t, err, "Couldn't add test certificate")
 
-	_, err = sa.AddCertificate(ctx, testCert.Raw, reg.ID, nil, &issuedTime)
+	_, err = sa.AddCertificate(ctx, testCert.Raw, reg.Id, nil, &issuedTime)
 	test.AssertDeepEquals(t, err, berrors.DuplicateError("cannot add a duplicate cert"))
 
 }
@@ -282,7 +276,7 @@ func TestCountCertificatesByNames(t *testing.T) {
 	// Add the test cert and query for its names.
 	reg := satest.CreateWorkingRegistration(t, sa)
 	issued := sa.clk.Now()
-	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
+	_, err = sa.AddCertificate(ctx, certDER, reg.Id, nil, &issued)
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 
 	// Time range including now should find the cert
@@ -325,7 +319,7 @@ func TestCountCertificatesByNames(t *testing.T) {
 
 	certDER2, err := ioutil.ReadFile("test-cert2.der")
 	test.AssertNotError(t, err, "Couldn't read test-cert2.der")
-	_, err = sa.AddCertificate(ctx, certDER2, reg.ID, nil, &issued)
+	_, err = sa.AddCertificate(ctx, certDER2, reg.Id, nil, &issued)
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 	counts, err = sa.CountCertificatesByNames(ctx, names, yesterday, now.Add(10000*time.Hour))
 	test.AssertNotError(t, err, "Error counting certs.")
@@ -348,26 +342,32 @@ func TestCountRegistrationsByIP(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	contact := "mailto:foo@example.com"
+	contact := []string{"mailto:foo@example.com"}
 
 	// Create one IPv4 registration
-	_, err := sa.NewRegistration(ctx, core.Registration{
-		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
-		Contact:   &[]string{contact},
-		InitialIP: net.ParseIP("43.34.43.34"),
+	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
+	initialIP, _ := net.ParseIP("43.34.43.34").MarshalText()
+	_, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
+		Contact:   contact,
 	})
 	// Create two IPv6 registrations, both within the same /48
+	key, _ = jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}}.MarshalJSON()
+	initialIP, _ = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652").MarshalText()
 	test.AssertNotError(t, err, "Couldn't insert registration")
-	_, err = sa.NewRegistration(ctx, core.Registration{
-		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}},
-		Contact:   &[]string{contact},
-		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"),
+	_, err = sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
+		Contact:   contact,
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
-	_, err = sa.NewRegistration(ctx, core.Registration{
-		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}},
-		Contact:   &[]string{contact},
-		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653"),
+	key, _ = jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}}.MarshalJSON()
+	initialIP, _ = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653").MarshalText()
+	_, err = sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
+		Contact:   contact,
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
 
@@ -405,26 +405,32 @@ func TestCountRegistrationsByIPRange(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	contact := "mailto:foo@example.com"
+	contact := []string{"mailto:foo@example.com"}
 
 	// Create one IPv4 registration
-	_, err := sa.NewRegistration(ctx, core.Registration{
-		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
-		Contact:   &[]string{contact},
-		InitialIP: net.ParseIP("43.34.43.34"),
+	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
+	initialIP, _ := net.ParseIP("43.34.43.34").MarshalText()
+	_, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
+		Contact:   contact,
 	})
 	// Create two IPv6 registrations, both within the same /48
+	key, _ = jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}}.MarshalJSON()
+	initialIP, _ = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652").MarshalText()
 	test.AssertNotError(t, err, "Couldn't insert registration")
-	_, err = sa.NewRegistration(ctx, core.Registration{
-		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}},
-		Contact:   &[]string{contact},
-		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"),
+	_, err = sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
+		Contact:   contact,
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
-	_, err = sa.NewRegistration(ctx, core.Registration{
-		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}},
-		Contact:   &[]string{contact},
-		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653"),
+	key, _ = jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}}.MarshalJSON()
+	initialIP, _ = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653").MarshalText()
+	_, err = sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
+		Contact:   contact,
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
 
@@ -662,11 +668,11 @@ func TestPreviousCertificateExists(t *testing.T) {
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      certDER,
 		Issued:   issued.UnixNano(),
-		RegID:    reg.ID,
+		RegID:    reg.Id,
 		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
-	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
+	_, err = sa.AddCertificate(ctx, certDER, reg.Id, nil, &issued)
 	test.AssertNotError(t, err, "calling AddCertificate")
 
 	cases := []struct {
@@ -675,8 +681,8 @@ func TestPreviousCertificateExists(t *testing.T) {
 		regID    int64
 		expected bool
 	}{
-		{"matches", "www.eff.org", reg.ID, true},
-		{"wrongDomain", "wwoof.org", reg.ID, false},
+		{"matches", "www.eff.org", reg.Id, true},
+		{"wrongDomain", "wwoof.org", reg.Id, false},
 		{"wrongAccount", "www.eff.org", 3333, false},
 	}
 
@@ -718,12 +724,12 @@ func TestDeactivateAccount(t *testing.T) {
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 
-	err := sa.DeactivateRegistration(context.Background(), reg.ID)
+	_, err := sa.DeactivateRegistration(context.Background(), &sapb.RegistrationID{Id: reg.Id})
 	test.AssertNotError(t, err, "DeactivateRegistration failed")
 
-	dbReg, err := sa.GetRegistration(context.Background(), reg.ID)
+	dbReg, err := sa.GetRegistration(context.Background(), &sapb.RegistrationID{Id: reg.Id})
 	test.AssertNotError(t, err, "GetRegistration failed")
-	test.AssertEquals(t, dbReg.Status, core.StatusDeactivated)
+	test.AssertEquals(t, core.AcmeStatus(dbReg.Status), core.StatusDeactivated)
 }
 
 func TestReverseName(t *testing.T) {
@@ -935,14 +941,16 @@ func TestNewOrder(t *testing.T) {
 	defer cleanup()
 
 	// Create a test registration to reference
-	reg, err := sa.NewRegistration(ctx, core.Registration{
-		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
-		InitialIP: net.ParseIP("42.42.42.42"),
+	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
+	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
+	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
 	})
 	test.AssertNotError(t, err, "Couldn't create test registration")
 
 	order, err := sa.NewOrder(context.Background(), &corepb.Order{
-		RegistrationID:   reg.ID,
+		RegistrationID:   reg.Id,
 		Expires:          1,
 		Names:            []string{"example.com", "just.another.example.com"},
 		V2Authorizations: []int64{1, 2, 3},
@@ -973,9 +981,11 @@ func TestSetOrderProcessing(t *testing.T) {
 	defer cleanup()
 
 	// Create a test registration to reference
-	reg, err := sa.NewRegistration(ctx, core.Registration{
-		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
-		InitialIP: net.ParseIP("42.42.42.42"),
+	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
+	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
+	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
 	})
 	test.AssertNotError(t, err, "Couldn't create test registration")
 
@@ -985,7 +995,7 @@ func TestSetOrderProcessing(t *testing.T) {
 	authzID := createFinalizedAuthorization(t, sa, "example.com", expires, "valid", attemptedAt)
 
 	order := &corepb.Order{
-		RegistrationID:   reg.ID,
+		RegistrationID:   reg.Id,
 		Expires:          sa.clk.Now().Add(365 * 24 * time.Hour).UnixNano(),
 		Names:            []string{"example.com"},
 		V2Authorizations: []int64{authzID},
@@ -1019,9 +1029,11 @@ func TestFinalizeOrder(t *testing.T) {
 	defer cleanup()
 
 	// Create a test registration to reference
-	reg, err := sa.NewRegistration(ctx, core.Registration{
-		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
-		InitialIP: net.ParseIP("42.42.42.42"),
+	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
+	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
+	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
 	})
 	test.AssertNotError(t, err, "Couldn't create test registration")
 
@@ -1031,7 +1043,7 @@ func TestFinalizeOrder(t *testing.T) {
 	authzID := createFinalizedAuthorization(t, sa, "example.com", expires, "valid", attemptedAt)
 
 	order := &corepb.Order{
-		RegistrationID:   reg.ID,
+		RegistrationID:   reg.Id,
 		Expires:          sa.clk.Now().Add(365 * 24 * time.Hour).UnixNano(),
 		Names:            []string{"example.com"},
 		V2Authorizations: []int64{authzID},
@@ -1065,9 +1077,11 @@ func TestOrder(t *testing.T) {
 	defer cleanup()
 
 	// Create a test registration to reference
-	reg, err := sa.NewRegistration(ctx, core.Registration{
-		Key:       &jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
-		InitialIP: net.ParseIP("42.42.42.42"),
+	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
+	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
+	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
 	})
 	test.AssertNotError(t, err, "Couldn't create test registration")
 
@@ -1078,7 +1092,7 @@ func TestOrder(t *testing.T) {
 	expires := fc.Now().Add(2 * time.Hour).UnixNano()
 
 	inputOrder := &corepb.Order{
-		RegistrationID:   reg.ID,
+		RegistrationID:   reg.Id,
 		Expires:          expires,
 		Names:            []string{"example.com"},
 		V2Authorizations: []int64{authzID},
@@ -1170,7 +1184,7 @@ func TestGetAuthorizations2(t *testing.T) {
 	expiryCutoff := fc.Now().AddDate(0, 0, 1).UnixNano()
 	// Get authorizations for the names used above.
 	authz, err := sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
-		RegistrationID: reg.ID,
+		RegistrationID: reg.Id,
 		Domains:        idents,
 		Now:            expiryCutoff,
 	})
@@ -1182,7 +1196,7 @@ func TestGetAuthorizations2(t *testing.T) {
 
 	// Get authorizations for the names used above, and one name that doesn't exist
 	authz, err = sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
-		RegistrationID: reg.ID,
+		RegistrationID: reg.Id,
 		Domains:        append(idents, identD),
 		Now:            expiryCutoff,
 	})
@@ -1214,7 +1228,7 @@ func TestCountOrders(t *testing.T) {
 	// Add one pending order
 	expiresNano := expires.UnixNano()
 	order, err := sa.NewOrder(ctx, &corepb.Order{
-		RegistrationID:   reg.ID,
+		RegistrationID:   reg.Id,
 		Expires:          expiresNano,
 		Names:            []string{"example.com"},
 		V2Authorizations: []int64{authzID},
@@ -1222,7 +1236,7 @@ func TestCountOrders(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't create new pending order")
 
 	// Counting new orders for the reg ID should now yield 1
-	count, err = sa.CountOrders(ctx, reg.ID, earliest, latest)
+	count, err = sa.CountOrders(ctx, reg.Id, earliest, latest)
 	test.AssertNotError(t, err, "Couldn't count new orders for reg ID")
 	test.AssertEquals(t, count, 1)
 
@@ -1230,7 +1244,7 @@ func TestCountOrders(t *testing.T) {
 	// count to 0
 	earliest = time.Unix(0, order.Created).Add(time.Minute)
 	latest = earliest.Add(time.Hour)
-	count, err = sa.CountOrders(ctx, reg.ID, earliest, latest)
+	count, err = sa.CountOrders(ctx, reg.Id, earliest, latest)
 	test.AssertNotError(t, err, "Couldn't count new orders for reg ID")
 	test.AssertEquals(t, count, 0)
 }
@@ -1242,9 +1256,11 @@ func TestFasterGetOrderForNames(t *testing.T) {
 	domain := "example.com"
 	expires := fc.Now().Add(time.Hour)
 
-	reg, err := sa.NewRegistration(ctx, core.Registration{
-		Key:       satest.GoodJWK(),
-		InitialIP: net.ParseIP("42.42.42.42"),
+	key, _ := satest.GoodJWK().MarshalJSON()
+	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
+	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
 	})
 	test.AssertNotError(t, err, "Couldn't create test registration")
 
@@ -1252,7 +1268,7 @@ func TestFasterGetOrderForNames(t *testing.T) {
 
 	expiresNano := expires.UnixNano()
 	_, err = sa.NewOrder(ctx, &corepb.Order{
-		RegistrationID:   reg.ID,
+		RegistrationID:   reg.Id,
 		Expires:          expiresNano,
 		V2Authorizations: []int64{authzIDs},
 		Names:            []string{domain},
@@ -1260,7 +1276,7 @@ func TestFasterGetOrderForNames(t *testing.T) {
 	test.AssertNotError(t, err, "sa.NewOrder failed")
 
 	_, err = sa.NewOrder(ctx, &corepb.Order{
-		RegistrationID:   reg.ID,
+		RegistrationID:   reg.Id,
 		Expires:          expiresNano,
 		V2Authorizations: []int64{authzIDs},
 		Names:            []string{domain},
@@ -1268,7 +1284,7 @@ func TestFasterGetOrderForNames(t *testing.T) {
 	test.AssertNotError(t, err, "sa.NewOrder failed")
 
 	_, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
-		AcctID: reg.ID,
+		AcctID: reg.Id,
 		Names:  []string{domain},
 	})
 	test.AssertNotError(t, err, "sa.GetOrderForNames failed")
@@ -1283,9 +1299,11 @@ func TestGetOrderForNames(t *testing.T) {
 	expires := fc.Now().Add(orderLifetime).UnixNano()
 
 	// Create two test registrations to associate with orders
-	regA, err := sa.NewRegistration(ctx, core.Registration{
-		Key:       satest.GoodJWK(),
-		InitialIP: net.ParseIP("42.42.42.42"),
+	key, _ := satest.GoodJWK().MarshalJSON()
+	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
+	regA, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
 	})
 	test.AssertNotError(t, err, "Couldn't create test registration")
 
@@ -1301,7 +1319,7 @@ func TestGetOrderForNames(t *testing.T) {
 	// Call GetOrderForNames for a set of names we haven't created an order for
 	// yet
 	result, err := sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
-		AcctID: regA.ID,
+		AcctID: regA.Id,
 		Names:  names,
 	})
 	// We expect the result to return an error
@@ -1313,7 +1331,7 @@ func TestGetOrderForNames(t *testing.T) {
 
 	// Add a new order for a set of names
 	order, err := sa.NewOrder(ctx, &corepb.Order{
-		RegistrationID:   regA.ID,
+		RegistrationID:   regA.Id,
 		Expires:          expires,
 		V2Authorizations: []int64{authzIDA, authzIDB},
 		Names:            names,
@@ -1326,7 +1344,7 @@ func TestGetOrderForNames(t *testing.T) {
 	// Call GetOrderForNames with the same account ID and set of names as the
 	// above NewOrder call
 	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
-		AcctID: regA.ID,
+		AcctID: regA.Id,
 		Names:  names,
 	})
 	// It shouldn't error
@@ -1354,7 +1372,7 @@ func TestGetOrderForNames(t *testing.T) {
 	// Call GetOrderForNames again with the same account ID and set of names as
 	// the initial NewOrder call
 	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
-		AcctID: regA.ID,
+		AcctID: regA.Id,
 		Names:  names,
 	})
 	// It should error since there is no result
@@ -1374,7 +1392,7 @@ func TestGetOrderForNames(t *testing.T) {
 	// Add a fresh order that uses the authorizations created above
 	names = []string{"zombo.com", "welcome.to.zombo.com"}
 	order, err = sa.NewOrder(ctx, &corepb.Order{
-		RegistrationID:   regA.ID,
+		RegistrationID:   regA.Id,
 		Expires:          fc.Now().Add(orderLifetime).UnixNano(),
 		V2Authorizations: []int64{authzIDC, authzIDD},
 		Names:            names,
@@ -1387,7 +1405,7 @@ func TestGetOrderForNames(t *testing.T) {
 	// Call GetOrderForNames with the same account ID and set of names as
 	// the earlier NewOrder call
 	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
-		AcctID: regA.ID,
+		AcctID: regA.Id,
 		Names:  names,
 	})
 	// It should not error since a ready order can be reused.
@@ -1408,7 +1426,7 @@ func TestGetOrderForNames(t *testing.T) {
 	// Call GetOrderForNames with the same account ID and set of names as
 	// the earlier NewOrder call
 	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
-		AcctID: regA.ID,
+		AcctID: regA.Id,
 		Names:  names,
 	})
 	// It should error since a valid order should not be reused.
@@ -1521,7 +1539,7 @@ func TestStatusForOrder(t *testing.T) {
 				orderExpiry = expiresNano
 			}
 			newOrder, err := sa.NewOrder(ctx, &corepb.Order{
-				RegistrationID:   reg.ID,
+				RegistrationID:   reg.Id,
 				Expires:          orderExpiry,
 				V2Authorizations: tc.AuthorizationIDs,
 				Names:            tc.OrderNames,
@@ -1586,7 +1604,7 @@ func TestRevokeCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      certDER,
-		RegID:    reg.ID,
+		RegID:    reg.Id,
 		Ocsp:     nil,
 		Issued:   sa.clk.Now().UnixNano(),
 		IssuerID: 1,
@@ -1658,11 +1676,11 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      certDER,
 		Issued:   issued.UnixNano(),
-		RegID:    reg.ID,
+		RegID:    reg.Id,
 		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
-	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
+	_, err = sa.AddCertificate(ctx, certDER, reg.Id, nil, &issued)
 	test.AssertNotError(t, err, "Failed to add certificate")
 
 	assertIsRenewal := func(t *testing.T, name string, expected bool) {
@@ -1695,11 +1713,11 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      certDER,
 		Issued:   issued.UnixNano(),
-		RegID:    reg.ID,
+		RegID:    reg.Id,
 		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
-	_, err = sa.AddCertificate(ctx, certDER, reg.ID, nil, &issued)
+	_, err = sa.AddCertificate(ctx, certDER, reg.Id, nil, &issued)
 	test.AssertNotError(t, err, "Failed to add certificate")
 
 	// None of the names should have a issuedNames row marking it as a renewal.
@@ -1765,7 +1783,7 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 
 	// Add the first certificate - it won't be considered a renewal.
 	issued := certA.NotBefore
-	_, err = sa.AddCertificate(ctx, certADER, reg.ID, nil, &issued)
+	_, err = sa.AddCertificate(ctx, certADER, reg.Id, nil, &issued)
 	test.AssertNotError(t, err, "Failed to add CertA test certificate")
 
 	// The count for the base domain should be 1 - just certA has been added.
@@ -1773,7 +1791,7 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 
 	// Add the second certificate - it should be considered a renewal
 	issued = certB.NotBefore
-	_, err = sa.AddCertificate(ctx, certBDER, reg.ID, nil, &issued)
+	_, err = sa.AddCertificate(ctx, certBDER, reg.Id, nil, &issued)
 	test.AssertNotError(t, err, "Failed to add CertB test certificate")
 
 	// The count for the base domain should still be 1, just certA. CertB should
@@ -1781,7 +1799,7 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	test.AssertEquals(t, countName(t, "not-example.com"), int64(1))
 
 	// Add the third certificate - it should not be considered a renewal
-	_, err = sa.AddCertificate(ctx, certCDER, reg.ID, nil, &issued)
+	_, err = sa.AddCertificate(ctx, certCDER, reg.Id, nil, &issued)
 	test.AssertNotError(t, err, "Failed to add CertC test certificate")
 
 	// The count for the base domain should be 2 now: certA and certC.
@@ -1797,7 +1815,7 @@ func TestNewAuthorizations2(t *testing.T) {
 	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
 	apbA := &corepb.Authorization{
 		Identifier:     "aaa",
-		RegistrationID: reg.ID,
+		RegistrationID: reg.Id,
 		Status:         string(core.StatusPending),
 		Expires:        expires,
 		Challenges: []*corepb.Challenge{
@@ -1810,7 +1828,7 @@ func TestNewAuthorizations2(t *testing.T) {
 	}
 	apbB := &corepb.Authorization{
 		Identifier:     "aaa",
-		RegistrationID: reg.ID,
+		RegistrationID: reg.Id,
 		Status:         string(core.StatusPending),
 		Expires:        expires,
 		Challenges: []*corepb.Challenge{
@@ -1844,7 +1862,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
 	apb := &corepb.Authorization{
 		Identifier:     "aaa",
-		RegistrationID: reg.ID,
+		RegistrationID: reg.Id,
 		Status:         string(core.StatusPending),
 		Expires:        expires,
 		Challenges: []*corepb.Challenge{
@@ -1890,7 +1908,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 
 	apb2 := &corepb.Authorization{
 		Identifier:     "aaa",
-		RegistrationID: reg.ID,
+		RegistrationID: reg.Id,
 		Status:         string(core.StatusPending),
 		Expires:        expires,
 		Challenges: []*corepb.Challenge{
@@ -2081,7 +2099,7 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 	authzIDB := createFinalizedAuthorization(t, sa, identB, expires, "valid", attemptedAt)
 
 	order, err := sa.NewOrder(context.Background(), &corepb.Order{
-		RegistrationID:   reg.ID,
+		RegistrationID:   reg.Id,
 		Expires:          fc.Now().Truncate(time.Second).UnixNano(),
 		Names:            []string{"a.example.com", "b.example.com"},
 		V2Authorizations: []int64{authzIDA, authzIDB},
@@ -2093,7 +2111,7 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 		context.Background(),
 		&sapb.GetValidOrderAuthorizationsRequest{
 			Id:     order.Id,
-			AcctID: reg.ID,
+			AcctID: reg.Id,
 		})
 	test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
 	test.AssertNotNil(t, authzMap, "sa.GetValidOrderAuthorizations result was nil")
@@ -2114,7 +2132,7 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 		context.Background(),
 		&sapb.GetValidOrderAuthorizationsRequest{
 			Id:     missingID,
-			AcctID: reg.ID,
+			AcctID: reg.Id,
 		})
 	test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
 	test.AssertEquals(t, len(authzMap.Authz), 0)
@@ -2148,7 +2166,7 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 
 	earliest, latest := fc.Now().Add(-time.Hour).UTC().UnixNano(), fc.Now().Add(time.Hour*5).UTC().UnixNano()
 	count, err := sa.CountInvalidAuthorizations2(context.Background(), &sapb.CountInvalidAuthorizationsRequest{
-		RegistrationID: reg.ID,
+		RegistrationID: reg.Id,
 		Hostname:       ident,
 		Range: &sapb.Range{
 			Earliest: earliest,
@@ -2192,7 +2210,7 @@ func TestGetOrderExpired(t *testing.T) {
 	fc.Add(time.Hour * 5)
 	reg := satest.CreateWorkingRegistration(t, sa)
 	order, err := sa.NewOrder(context.Background(), &corepb.Order{
-		RegistrationID:   reg.ID,
+		RegistrationID:   reg.Id,
 		Expires:          fc.Now().Add(-time.Hour).UnixNano(),
 		Names:            []string{"example.com"},
 		V2Authorizations: []int64{666},

@@ -19,8 +19,10 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/web"
 )
 
@@ -456,7 +458,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 	}
 
 	// Try to find the account for this account ID
-	account, err := wfe.SA.GetRegistration(ctx, accountID)
+	account, err := wfe.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: accountID})
 	if err != nil {
 		// If the account isn't found, return a suitable problem
 		if errors.Is(err, berrors.NotFound) {
@@ -475,20 +477,26 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 	}
 
 	// Verify the account is not deactivated
-	if account.Status != core.StatusValid {
+	if core.AcmeStatus(account.Status) != core.StatusValid {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSKeyIDAccountInvalid"}).Inc()
 		return nil, nil, probs.Unauthorized(
 			fmt.Sprintf("Account is not valid, has status %q", account.Status))
 	}
 
 	// Update the logEvent with the account information and return the JWK
-	logEvent.Requester = account.ID
-	beeline.AddFieldToTrace(ctx, "acct.id", account.ID)
+	logEvent.Requester = account.Id
+	beeline.AddFieldToTrace(ctx, "acct.id", account.Id)
 	if account.Contact != nil {
-		logEvent.Contacts = *account.Contact
-		beeline.AddFieldToTrace(ctx, "contacts", *account.Contact)
+		logEvent.Contacts = account.Contact
+		beeline.AddFieldToTrace(ctx, "contacts", account.Contact)
 	}
-	return account.Key, &account, nil
+
+	acct, err := grpc.PbToRegistration(account)
+	if err != nil {
+		return nil, nil, probs.ServerInternal(fmt.Sprintf(
+			"Error unmarshalling account %q", accountURL))
+	}
+	return acct.Key, &acct, nil
 }
 
 // validJWSForKey checks a provided JWS for a given HTTP request validates

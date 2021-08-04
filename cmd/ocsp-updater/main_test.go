@@ -88,7 +88,7 @@ func TestStalenessHistogram(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCertA.Raw,
-		RegID:    reg.ID,
+		RegID:    reg.Id,
 		Ocsp:     nil,
 		Issued:   nowNano(fc),
 		IssuerID: 1,
@@ -98,7 +98,7 @@ func TestStalenessHistogram(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCertB.Raw,
-		RegID:    reg.ID,
+		RegID:    reg.Id,
 		Ocsp:     nil,
 		Issued:   nowNano(fc),
 		IssuerID: 1,
@@ -127,7 +127,7 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCert.Raw,
-		RegID:    reg.ID,
+		RegID:    reg.Id,
 		Ocsp:     nil,
 		Issued:   nowNano(fc),
 		IssuerID: 1,
@@ -152,7 +152,7 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCertA.Raw,
-		RegID:    reg.ID,
+		RegID:    reg.Id,
 		Ocsp:     nil,
 		Issued:   nowNano(fc),
 		IssuerID: 1,
@@ -162,7 +162,7 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCertB.Raw,
-		RegID:    reg.ID,
+		RegID:    reg.Id,
 		Ocsp:     nil,
 		Issued:   nowNano(fc),
 		IssuerID: 1,
@@ -210,7 +210,7 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCert.Raw,
-		RegID:    reg.ID,
+		RegID:    reg.Id,
 		Ocsp:     nil,
 		Issued:   nowNano(fc),
 		IssuerID: 1,
@@ -252,7 +252,7 @@ func TestFindStaleOCSPResponsesRevokedReason(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCert.Raw,
-		RegID:    reg.ID,
+		RegID:    reg.Id,
 		Ocsp:     nil,
 		Issued:   nowNano(fc),
 		IssuerID: 1,
@@ -285,7 +285,7 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCert.Raw,
-		RegID:    reg.ID,
+		RegID:    reg.Id,
 		Ocsp:     nil,
 		Issued:   nowNano(fc),
 		IssuerID: 1,
@@ -317,7 +317,7 @@ func TestOldOCSPResponsesTickIsExpired(t *testing.T) {
 	// Add a new test certificate
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCert.Raw,
-		RegID:    reg.ID,
+		RegID:    reg.Id,
 		Ocsp:     nil,
 		Issued:   nowNano(fc),
 		IssuerID: 1,
@@ -367,7 +367,7 @@ func TestStoreResponseGuard(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCert.Raw,
-		RegID:    reg.ID,
+		RegID:    reg.Id,
 		Ocsp:     nil,
 		Issued:   nowNano(fc),
 		IssuerID: 1,
@@ -421,7 +421,7 @@ func TestGenerateOCSPResponsePrecert(t *testing.T) {
 	// Use AddPrecertificate to set up a precertificate, serials, and
 	// certificateStatus row for the testcert.
 	ocspResp := []byte{0, 0, 1}
-	regID := reg.ID
+	regID := reg.Id
 	issuedTime := fc.Now().UnixNano()
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      testCert.Raw,
@@ -479,7 +479,7 @@ func TestIssuerInfo(t *testing.T) {
 	id := int64(1234)
 	_, err = sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 		Der:      certA,
-		RegID:    reg.ID,
+		RegID:    reg.Id,
 		Ocsp:     []byte{1, 2, 3},
 		Issued:   now,
 		IssuerID: id,

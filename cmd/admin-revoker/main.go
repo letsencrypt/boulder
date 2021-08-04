@@ -248,7 +248,7 @@ func main() {
 		rac, logger, dbMap, sac := setupContext(c)
 		defer logger.AuditPanic()
 
-		_, err = sac.GetRegistration(ctx, regID)
+		_, err = sac.GetRegistration(ctx, &sapb.RegistrationID{Id: regID})
 		if err != nil {
 			cmd.FailOnError(err, "Couldn't fetch registration")
 		}

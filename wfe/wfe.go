@@ -489,30 +489,25 @@ func (wfe *WebFrontEndImpl) extractJWSKey(body string) (*jose.JSONWebKey, *jose.
 // the key itself.  verifyPOST also appends its errors to web.RequestEvent.Errors so
 // code calling it does not need to if they immediately return a response to the
 // user.
-func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.RequestEvent, request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JSONWebKey, core.Registration, *probs.ProblemDetails) {
-	// TODO: We should return a pointer to a registration, which can be nil,
-	// rather the a registration value with a sentinel value.
-	// https://github.com/letsencrypt/boulder/issues/877
-	reg := core.Registration{ID: 0}
-
+func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.RequestEvent, request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JSONWebKey, *corepb.Registration, *probs.ProblemDetails) {
 	if _, ok := request.Header["Content-Length"]; !ok {
 		wfe.httpErrorCounter.WithLabelValues("ContentLengthRequired").Inc()
-		return nil, nil, reg, probs.ContentLengthRequired()
+		return nil, nil, nil, probs.ContentLengthRequired()
 	}
 
 	// Read body
 	if request.Body == nil {
 		wfe.httpErrorCounter.WithLabelValues("NoPOSTBody").Inc()
-		return nil, nil, reg, probs.Malformed("No body on POST")
+		return nil, nil, nil, probs.Malformed("No body on POST")
 	}
 
 	bodyBytes, err := ioutil.ReadAll(http.MaxBytesReader(nil, request.Body, maxRequestSize))
 	if err != nil {
 		if err.Error() == "http: request body too large" {
-			return nil, nil, reg, probs.Unauthorized("request body too large")
+			return nil, nil, nil, probs.Unauthorized("request body too large")
 		}
 		wfe.httpErrorCounter.WithLabelValues("UnableToReadReqBody").Inc()
-		return nil, nil, reg, probs.ServerInternal("unable to read request body")
+		return nil, nil, nil, probs.ServerInternal("unable to read request body")
 	}
 
 	body := string(bodyBytes)
@@ -525,11 +520,16 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	// the signature itself.
 	submittedKey, parsedJws, err := wfe.extractJWSKey(body)
 	if err != nil {
-		return nil, nil, reg, probs.Malformed(err.Error())
+		return nil, nil, nil, probs.Malformed(err.Error())
+	}
+	submittedKeyJSON, err := submittedKey.MarshalJSON()
+	if err != nil {
+		return nil, nil, nil, probs.Malformed(err.Error())
 	}
 
-	var key *jose.JSONWebKey
-	reg, err = wfe.SA.GetRegistrationByKey(ctx, submittedKey)
+	key := &jose.JSONWebKey{}
+	reg, err := wfe.SA.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: submittedKeyJSON})
+
 	// Special case: If no registration was found, but regCheck is false, use an
 	// empty registration and the submitted key. The caller is expected to do some
 	// validation on the returned key.
@@ -539,34 +539,41 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 		// to check its quality before doing the verify.
 		if err = wfe.keyPolicy.GoodKey(ctx, submittedKey.Key); err != nil {
 			wfe.joseErrorCounter.WithLabelValues("JWKRejectedByGoodKey").Inc()
-			return nil, nil, reg, probs.BadPublicKey(err.Error())
+			return nil, nil, nil, probs.BadPublicKey(err.Error())
+		}
+		if reg == nil {
+			reg = &corepb.Registration{}
 		}
 		key = submittedKey
 	} else if err != nil {
 		// For all other errors, or if regCheck is true, return error immediately.
 		logEvent.AddError("unable to fetch registration by the given JWK: %s", err)
 		if errors.Is(err, berrors.NotFound) {
-			return nil, nil, reg, probs.Unauthorized(unknownKey)
+			return nil, nil, nil, probs.Unauthorized(unknownKey)
 		}
 
-		return nil, nil, reg, probs.ServerInternal("Failed to get registration by key")
+		return nil, nil, nil, probs.ServerInternal("Failed to get registration by key")
 	} else {
 		// If the lookup was successful, use that key.
-		key = reg.Key
-		logEvent.Requester = reg.ID
+		err = key.UnmarshalJSON(reg.Key)
+		if err != nil {
+			wfe.joseErrorCounter.WithLabelValues("UnableToUnmarshalJWK").Inc()
+			return nil, nil, nil, probs.ServerInternal("Unable to unmarshal JWK")
+		}
+		logEvent.Requester = reg.Id
 		if reg.Contact != nil {
-			logEvent.Contacts = *reg.Contact
+			logEvent.Contacts = reg.Contact
 		}
 	}
 
 	// Only check for validity if we are actually checking the registration
-	if regCheck && reg.Status != core.StatusValid {
-		return nil, nil, reg, probs.Unauthorized(fmt.Sprintf("Registration is not valid, has status '%s'", reg.Status))
+	if regCheck && core.AcmeStatus(reg.Status) != core.StatusValid {
+		return nil, nil, nil, probs.Unauthorized(fmt.Sprintf("Registration is not valid, has status '%s'", reg.Status))
 	}
 
 	if statName, err := checkAlgorithm(key, parsedJws); err != nil {
 		wfe.joseErrorCounter.WithLabelValues(statName).Inc()
-		return nil, nil, reg, probs.Malformed(err.Error())
+		return nil, nil, nil, probs.Malformed(err.Error())
 	}
 
 	payload, err := parsedJws.Verify(key)
@@ -577,7 +584,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 			n = 100
 		}
 		logEvent.AddError("verification of JWS with the JWK failed: %v; body: %s", err, body[:n])
-		return nil, nil, reg, probs.Malformed("JWS verification error")
+		return nil, nil, nil, probs.Malformed("JWS verification error")
 	}
 	logEvent.Payload = string(payload)
 
@@ -585,13 +592,13 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	nonceStr := parsedJws.Signatures[0].Header.Nonce
 	if len(nonceStr) == 0 {
 		wfe.joseErrorCounter.WithLabelValues("JWSMissingNonce").Inc()
-		return nil, nil, reg, probs.BadNonce("JWS has no anti-replay nonce")
+		return nil, nil, nil, probs.BadNonce("JWS has no anti-replay nonce")
 	}
 	var nonceValid bool
 	if wfe.remoteNonceService != nil {
 		valid, err := nonce.RemoteRedeem(ctx, wfe.noncePrefixMap, nonceStr)
 		if err != nil {
-			return nil, nil, reg, probs.ServerInternal(fmt.Sprintf("failed to verify nonce validity: %s", err))
+			return nil, nil, nil, probs.ServerInternal(fmt.Sprintf("failed to verify nonce validity: %s", err))
 		}
 		nonceValid = valid
 	} else {
@@ -599,7 +606,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	}
 	if !nonceValid {
 		wfe.joseErrorCounter.WithLabelValues("JWSInvalidNonce").Inc()
-		return nil, nil, reg, probs.BadNonce(fmt.Sprintf("JWS has invalid anti-replay nonce %s", nonceStr))
+		return nil, nil, nil, probs.BadNonce(fmt.Sprintf("JWS has invalid anti-replay nonce %s", nonceStr))
 	}
 
 	// Check that the "resource" field is present and has the correct value
@@ -609,14 +616,14 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *web.Reques
 	err = json.Unmarshal([]byte(payload), &parsedRequest)
 	if err != nil {
 		wfe.joseErrorCounter.WithLabelValues("JWSBodyUnmarshalFailed").Inc()
-		return nil, nil, reg, probs.Malformed("Request payload did not parse as JSON")
+		return nil, nil, nil, probs.Malformed("Request payload did not parse as JSON")
 	}
 	if parsedRequest.Resource == "" {
 		wfe.joseErrorCounter.WithLabelValues("NoResourceInJWSPayload").Inc()
-		return nil, nil, reg, probs.Malformed("Request payload does not specify a resource")
+		return nil, nil, nil, probs.Malformed("Request payload does not specify a resource")
 	} else if resource != core.AcmeResource(parsedRequest.Resource) {
 		wfe.joseErrorCounter.WithLabelValues("MismatchedResourceInJWSPayload").Inc()
-		return nil, nil, reg, probs.Malformed("JWS resource payload does not match the HTTP resource: %s != %s", parsedRequest.Resource, resource)
+		return nil, nil, nil, probs.Malformed("JWS resource payload does not match the HTTP resource: %s != %s", parsedRequest.Resource, resource)
 	}
 
 	return []byte(payload), key, reg, nil
@@ -642,12 +649,17 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *web.R
 		return
 	}
 
-	existingReg, err := wfe.SA.GetRegistrationByKey(ctx, key)
+	keyBytes, err := key.MarshalJSON()
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("couldn't marshal jwk"), err)
+		return
+	}
+	existingReg, err := wfe.SA.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: keyBytes})
 	if err != nil && !errors.Is(err, berrors.NotFound) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("couldn't retrieve the registration"), err)
 		return
 	} else if err == nil || !errors.Is(err, berrors.NotFound) {
-		response.Header().Set("Location", web.RelativeEndpoint(request, fmt.Sprintf("%s%d", regPath, existingReg.ID)))
+		response.Header().Set("Location", web.RelativeEndpoint(request, fmt.Sprintf("%s%d", regPath, existingReg.Id)))
 		wfe.sendError(response, logEvent, probs.Conflict("Registration key is already in use"), err)
 		return
 	}
@@ -695,14 +707,14 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *web.R
 	regPB, err := wfe.RA.NewRegistration(ctx, newRegPB)
 	if err != nil {
 		if errors.Is(err, berrors.Duplicate) {
-			existingReg, err := wfe.SA.GetRegistrationByKey(ctx, key)
+			existingReg, err := wfe.SA.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: keyBytes})
 			if err != nil {
 				// return error even if berrors.NotFound, as the duplicate key error we got from
 				// ra.NewRegistration indicates it _does_ already exist.
 				wfe.sendError(response, logEvent, probs.ServerInternal("couldn't retrieve the registration"), err)
 				return
 			}
-			response.Header().Set("Location", web.RelativeEndpoint(request, fmt.Sprintf("%s%d", regPath, existingReg.ID)))
+			response.Header().Set("Location", web.RelativeEndpoint(request, fmt.Sprintf("%s%d", regPath, existingReg.Id)))
 			wfe.sendError(response, logEvent, probs.Conflict("Registration key is already in use"), err)
 			return
 		}
@@ -783,7 +795,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 		Authz: &corepb.Authorization{
 			Identifier: string(newAuthzRequest.Identifier.Value),
 		},
-		RegID: currReg.ID,
+		RegID: currReg.Id,
 	})
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
@@ -912,8 +924,8 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 		return
 	}
 
-	if !(core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) || registration.ID == cert.RegistrationID) {
-		valid, err := wfe.regHoldsAuthorizations(ctx, registration.ID, parsedCertificate.DNSNames)
+	if !(core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) || registration.Id == cert.RegistrationID) {
+		valid, err := wfe.regHoldsAuthorizations(ctx, registration.Id, parsedCertificate.DNSNames)
 		if err != nil {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve authorizations for names in certificate"), err)
 			return
@@ -948,7 +960,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 	_, err = wfe.RA.RevokeCertificateWithReg(ctx, &rapb.RevokeCertificateWithRegRequest{
 		Cert:  parsedCertificate.Raw,
 		Code:  int64(reason),
-		RegID: registration.ID,
+		RegID: registration.Id,
 	})
 	if err != nil {
 		if errors.Is(err, berrors.Duplicate) {
@@ -973,7 +985,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 	}
 }
 
-func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateRequest, registration core.Registration) {
+func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateRequest, regID int64) {
 	var csrLog = struct {
 		ClientAddr string
 		CSR        string
@@ -981,7 +993,7 @@ func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateReq
 	}{
 		ClientAddr: web.GetClientAddr(request),
 		CSR:        hex.EncodeToString(cr.Bytes),
-		Requester:  registration.ID,
+		Requester:  regID,
 	}
 	wfe.log.AuditObject("Certificate request", csrLog)
 }
@@ -1033,7 +1045,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *web.Re
 		wfe.sendError(response, logEvent, probs.Malformed("Error parsing certificate request: %s", err), err)
 		return
 	}
-	wfe.logCsr(request, certificateRequest, reg)
+	wfe.logCsr(request, certificateRequest, reg.Id)
 	// Check that the key in the CSR is good. This will also be checked in the CA
 	// component, but we want to discard CSRs with bad keys as early as possible
 	// because (a) it's an easy check and we can save unnecessary requests and
@@ -1061,7 +1073,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *web.Re
 	certPB, err := wfe.RA.NewCertificate(ctx,
 		&rapb.NewCertificateRequest{
 			Csr:          certificateRequest.Bytes,
-			RegID:        reg.ID,
+			RegID:        reg.Id,
 			IssuerNameID: int64(wfe.IssuerCert.NameID()),
 		})
 	if err != nil {
@@ -1240,11 +1252,11 @@ func (wfe *WebFrontEndImpl) postChallenge(
 
 	// Check that the registration ID matching the key used matches
 	// the registration ID on the authz object
-	if currReg.ID != authz.RegistrationID {
+	if currReg.Id != authz.RegistrationID {
 		wfe.sendError(response,
 			logEvent,
 			probs.Unauthorized("User registration ID doesn't match registration ID in authorization"),
-			fmt.Errorf("User registration id: %d != Authorization registration id: %v", currReg.ID, authz.RegistrationID),
+			fmt.Errorf("User registration id: %d != Authorization registration id: %v", currReg.Id, authz.RegistrationID),
 		)
 		return
 	}
@@ -1304,11 +1316,16 @@ func (wfe *WebFrontEndImpl) postChallenge(
 // Registration is used by a client to submit an update to their registration.
 func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 
-	body, _, currReg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceRegistration)
+	body, _, currRegPb, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceRegistration)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		// verifyPOST handles its own setting of logEvent.Errors
 		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+	currReg, err := bgrpc.PbToRegistration(currRegPb)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error unmarshaling Registration from proto"), err)
 		return
 	}
 
@@ -1374,11 +1391,6 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *web.Requ
 	// JSON to send via RPC to the RA.
 	update.Key = currReg.Key
 
-	currRegPb, err := bgrpc.RegistrationToPB(currReg)
-	if err != nil {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling Registration to proto"), err)
-		return
-	}
 	updateRegPb, err := bgrpc.RegistrationToPB(update)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling Registration update to proto"), err)
@@ -1416,7 +1428,7 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(ctx context.Context, authz *
 		wfe.sendError(response, logEvent, prob, nil)
 		return false
 	}
-	if reg.ID != authz.RegistrationID {
+	if reg.Id != authz.RegistrationID {
 		wfe.sendError(response, logEvent, probs.Unauthorized("Registration ID doesn't match ID for authorization"), nil)
 		return false
 	}
@@ -1651,7 +1663,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	if web.RelativeEndpoint(request, fmt.Sprintf("%s%d", regPath, reg.ID)) != rolloverRequest.Account {
+	if web.RelativeEndpoint(request, fmt.Sprintf("%s%d", regPath, reg.Id)) != rolloverRequest.Account {
 		wfe.sendError(response, logEvent, probs.Malformed("Incorrect account URL provided in payload"), nil)
 		return
 	}
@@ -1665,12 +1677,6 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *web.Reque
 		wfe.sendError(response, logEvent, probs.Malformed("New JWK in inner payload doesn't match key used to sign inner JWS"), nil)
 		return
 	}
-	// Convert account to proto for grpc
-	regPb, err := bgrpc.RegistrationToPB(reg)
-	if err != nil {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling Registration to proto"), err)
-		return
-	}
 	// Marshal key to bytes
 	newKeyBytes, err := newKey.MarshalJSON()
 	if err != nil {
@@ -1681,7 +1687,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(ctx context.Context, logEvent *web.Reque
 	updatePb := &corepb.Registration{Key: newKeyBytes}
 
 	// Update registration key
-	updatedRegPb, err := wfe.RA.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: regPb, Update: updatePb})
+	updatedRegPb, err := wfe.RA.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: reg, Update: updatePb})
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update registration"), err)
 		return
