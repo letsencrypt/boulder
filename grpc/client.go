@@ -39,7 +39,7 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 		ci.metrics.grpcMetrics.UnaryClientInterceptor(),
 		hnygrpc.UnaryClientInterceptor(),
 	}
-	allInterceptors = append(allInterceptors, interceptors...)
+	allInterceptors = append(interceptors, allInterceptors...)
 	host, _, err := net.SplitHostPort(c.ServerAddress)
 	if err != nil {
 		return nil, err

@@ -214,8 +214,8 @@ func (ci *clientInterceptor) intercept(
 }
 
 // CancelTo408Interceptor calls the underlying invoker, checks to see if the
-// resulting error was a gRPC Cancelled error (because this client cancelled
-// the request, likely because the ACME client itself cancelled the HTTP
+// resulting error was a gRPC Canceled error (because this client cancelled
+// the request, likely because the ACME client itself canceled the HTTP
 // request), and converts that into a Problem which can be "returned" to the
 // (now missing) client, and into our logs. This should be the outermost client
 // interceptor, and should only be enabled in the WFEs.
