@@ -7,16 +7,27 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 )
 
-var debug = flag.Bool("debug", false, "Enable debug logging")
+var raIssuanceLineRE = regexp.MustCompile(`Certificate request - successful JSON=(.*)`)
+
+// TODO: Extract the "Valid for issuance: (true|false)" field too.
+var vaCAALineRE = regexp.MustCompile(`Checked CAA records for ([a-z0-9-.*]+), \[Present: (true|false)`)
+
+type issuanceEvent struct {
+	SerialNumber string
+	Names        []string
+	Requester    int64
+
+	issuanceTime time.Time
+}
 
 func openFile(path string) (*bufio.Scanner, error) {
 	f, err := os.Open(path)
@@ -35,16 +46,6 @@ func openFile(path string) (*bufio.Scanner, error) {
 	return scanner, nil
 }
 
-type issuanceEvent struct {
-	SerialNumber string
-	Names        []string
-	Requester    int64
-
-	issuanceTime time.Time
-}
-
-var raIssuanceLineRE = regexp.MustCompile(`Certificate request - successful JSON=(.*)`)
-
 func parseTimestamp(line string) (time.Time, error) {
 	datestampText := line[0:32]
 	datestamp, err := time.Parse(time.RFC3339, datestampText)
@@ -54,138 +55,151 @@ func parseTimestamp(line string) (time.Time, error) {
 	return datestamp, nil
 }
 
-func checkIssuances(scanner *bufio.Scanner, checkedMap map[string][]time.Time, timeTolerance time.Duration,
-	earliest time.Time, latest time.Time, stderr *os.File) (bool, error) {
-	linesRead := 0
-	skipCount := 0
-	evaluatedCount := 0
-	foundErrors := false
+// loadIssuanceLog processes a single issuance (RA) log file. It returns a map
+// of names to slices of timestamps at which certificates for those names were
+// issued.
+// TODO: plumb through earliest and latest for parity with old implementation.
+func loadIssuanceLog(path string) (map[string][]time.Time, error) {
+	scanner, err := openFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open %q: %w", path, err)
+	}
+
+	linesCount := 0
+	issuancesCount := 0
+
+	issuanceMap := map[string][]time.Time{}
 	for scanner.Scan() {
-		linesRead++
 		line := scanner.Text()
+		linesCount++
+
 		matches := raIssuanceLineRE.FindStringSubmatch(line)
 		if matches == nil {
 			continue
 		}
 		if len(matches) != 2 {
-			return foundErrors, fmt.Errorf("line %d: unexpected number of regex matches", linesRead)
+			return nil, fmt.Errorf("line %d: unexpected number of regex matches", linesCount)
 		}
+
 		var ie issuanceEvent
 		err := json.Unmarshal([]byte(matches[1]), &ie)
 		if err != nil {
-			return foundErrors, fmt.Errorf("line %d: failed to unmarshal JSON: %s", linesRead, err)
+			return nil, fmt.Errorf("line %d: failed to unmarshal JSON: %w", linesCount, err)
 		}
 
-		// populate the issuance time from the syslog timestamp, rather than the ResponseTime
-		// member of the JSON. This makes testing a lot simpler because of how we mess with
-		// time sometimes. Given these timestamps are generated on the same system they should
-		// be tightly coupled anyway.
+		// Populate the issuance time from the syslog timestamp, rather than the
+		// ResponseTime member of the JSON. This makes testing a lot simpler because
+		// of how we mess with time sometimes. Given that these timestamps are
+		// generated on the same system, they should be tightly coupled anyway.
 		ie.issuanceTime, err = parseTimestamp(line)
 		if err != nil {
-			return foundErrors, fmt.Errorf("line %d: failed to parse timestamp: %s", linesRead, err)
+			return nil, fmt.Errorf("line %d: failed to parse timestamp: %w", linesCount, err)
 		}
 
-		if !earliest.IsZero() && !latest.IsZero() &&
-			(ie.issuanceTime.Before(earliest) || ie.issuanceTime.After(latest)) {
-			skipCount++
-			continue
-		}
-		evaluatedCount++
-
-		var badNames []string
-		var timeErrors []float64
-
+		issuancesCount++
 		for _, name := range ie.Names {
-			nameOk := false
-
-			var minTimeError float64 = math.Inf(+1)
-
-			for _, t := range checkedMap[name] {
-				validStart := ie.issuanceTime.Add(-8 * time.Hour)
-				validEnd := ie.issuanceTime
-				if t.After(validStart) && t.Before(validEnd.Add(timeTolerance)) {
-					nameOk = true
-				} else if t.After(validStart) {
-					// If the check didn't pass and the check is in the future, calculate how much tolerance
-					// we'd need for it to pass, to make it easier to diagnose log timestamp desync.
-					timeError := t.Sub(validEnd)
-					// ...however only if its <1h, otherwise it's probably not a match
-					if timeError < timeTolerance+time.Hour {
-						minTimeError = math.Min(minTimeError, float64(timeError)/float64(time.Second))
-					}
-				}
-			}
-			if !nameOk {
-				badNames = append(badNames, name)
-				timeErrors = append(timeErrors, minTimeError)
-			}
-		}
-		if len(badNames) > 0 {
-			foundErrors = true
-			fmt.Fprintf(stderr, "Issuance missing CAA checks: issued at=%s, serial=%s, requester=%d, names=%s, missing checks for names=%s, timeError=%.3f\n", ie.issuanceTime, ie.SerialNumber, ie.Requester, ie.Names, badNames, timeErrors)
+			issuanceMap[name] = append(issuanceMap[name], ie.issuanceTime)
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return foundErrors, err
+		return nil, err
 	}
-	if *debug {
-		fmt.Fprintf(stderr, "Issuance log lines read %d evaluated %d skipped %d\n", linesRead, evaluatedCount, skipCount)
-	}
-	return foundErrors, nil
+
+	return issuanceMap, nil
 }
 
-var vaCAALineRE = regexp.MustCompile(`Checked CAA records for ([a-z0-9-.*]+), \[Present: (true|false)`)
+// processCAALog processes a single CAA (VA) log file. It modifies the input map
+// (of issuance names to times, as returned by `loadIssuanceLog`) to remove any
+// timestamps which are covered by (i.e. less than 8 hours after) a CAA check
+// for that name in the log file. It also prunes any names whose slice of
+// issuance times becomes empty.
+func processCAALog(path string, issuances map[string][]time.Time) error {
+	scanner, err := openFile(path)
+	if err != nil {
+		return fmt.Errorf("failed to open %q: %w", path, err)
+	}
 
-func processVALog(checkedMap map[string][]time.Time, scanner *bufio.Scanner) error {
-	lNum := 0
+	linesCount := 0
+
 	for scanner.Scan() {
-		lNum++
 		line := scanner.Text()
+		linesCount++
+
 		matches := vaCAALineRE.FindStringSubmatch(line)
 		if matches == nil {
 			continue
 		}
 		if len(matches) != 3 {
-			return fmt.Errorf("line %d: unexpected number of regex matches", lNum)
+			return fmt.Errorf("line %d: unexpected number of regex matches", linesCount)
 		}
-		domain := matches[1]
-		labels := strings.Split(domain, ".")
+		name := matches[1]
 		present := matches[2]
 
-		datestamp, err := parseTimestamp(line)
+		checkTime, err := parseTimestamp(line)
 		if err != nil {
-			return fmt.Errorf("line %d: failed to parse timestamp: %s", lNum, err)
+			return fmt.Errorf("line %d: failed to parse timestamp: %w", linesCount, err)
 		}
 
-		checkedMap[domain] = append(checkedMap[domain], datestamp)
-		// If we checked x.y.z, and the result was Present: false, that means we
-		// also checked y.z and z, and found no records there.
-		// We'll add y.z to the map, but not z (to save memory space, since we don't issue
-		// for z).
+		// TODO: Only remove covered issuance timestamps if the CAA check actually
+		// said that we're allowed to issue (i.e. had "Valid for issuance: true").
+		issuances[name] = removeCoveredTimestamps(issuances[name], checkTime)
+		if len(issuances[name]) == 0 {
+			delete(issuances, name)
+		}
+
+		// If the CAA check didn't find any CAA records for w.x.y.z, then that means
+		// that we checked the CAA records for x.y.z, y.z, and z as well, and are
+		// covered for any issuance for those names.
 		if present == "false" {
+			labels := strings.Split(name, ".")
 			for i := 1; i < len(labels)-1; i++ {
-				parent := strings.Join(labels[i:], ".")
-				checkedMap[parent] = append(checkedMap[parent], datestamp)
+				tailName := strings.Join(labels[i:], ".")
+				issuances[tailName] = removeCoveredTimestamps(issuances[tailName], checkTime)
+				if len(issuances[tailName]) == 0 {
+					delete(issuances, tailName)
+				}
 			}
 		}
 	}
+
 	return scanner.Err()
 }
 
-func loadMap(paths []string) (map[string][]time.Time, error) {
-	var checkedMap = make(map[string][]time.Time)
-
-	for _, path := range paths {
-		scanner, err := openFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("failed to open %q: %s", path, err)
+// removeCoveredTimestamps returns a new slice of timestamps which contains all
+// timestamps that are *not* within 8 hours after the input timestamp.
+// TODO: plumb through time-tolerance to account for slight slop.
+func removeCoveredTimestamps(timestamps []time.Time, cover time.Time) []time.Time {
+	r := make([]time.Time, len(timestamps))
+	for _, ts := range timestamps {
+		// Copy the timestamp into the results slice if it is before the covering
+		// timestamp, or more than 8 hours after the covering timestamp (i.e. if
+		// it is *not* covered by the covering timestamp).
+		diff := ts.Sub(cover)
+		if diff < 0 || diff > 8*time.Hour {
+			ts := ts
+			r = append(r, ts)
 		}
-		if err = processVALog(checkedMap, scanner); err != nil {
-			return nil, fmt.Errorf("failed to process %q: %s", path, err)
+	}
+	return r
+}
+
+// formatErrors returns nil if the input map is empty. Otherwise, it returns an
+// error containing a listing of every name and issuance time that was not
+// covered by a CAA check.
+func formatErrors(remaining map[string][]time.Time) error {
+	if len(remaining) == 0 {
+		return nil
+	}
+
+	messages := make([]string, len(remaining))
+	for name, timestamps := range remaining {
+		for _, timestamp := range timestamps {
+			messages = append(messages, fmt.Sprintf("%v: %s", timestamp, name))
 		}
 	}
 
-	return checkedMap, nil
+	sort.Strings(messages)
+	return fmt.Errorf("\n%s", strings.Join(messages, "\n"))
 }
 
 func main() {
@@ -227,18 +241,17 @@ func main() {
 		SyslogLevel: *logSyslogLevel,
 	})
 
-	// Build a map from hostnames to a list of times those hostnames were checked
-	// for CAA.
-	checkedMap, err := loadMap(strings.Split(*vaLogs, ","))
-	cmd.FailOnError(err, "failed while loading VA logs")
+	// Build a map from hostnames to times at which those names were issued for.
+	issuanceMap, err := loadIssuanceLog(*raLog)
+	cmd.FailOnError(err, "failed to load issuance logs")
 
-	raScanner, err := openFile(*raLog)
-	cmd.FailOnError(err, fmt.Sprintf("failed to open %q", *raLog))
-
-	foundErrors, err := checkIssuances(raScanner, checkedMap, *timeTolerance, earliest, latest, os.Stderr)
-	cmd.FailOnError(err, "failed while processing RA log")
-
-	if foundErrors {
-		os.Exit(1)
+	// Try to pare the issuance map down to nothing by removing every entry which
+	// is covered by a CAA check.
+	for _, vaLog := range strings.Split(*vaLogs, ",") {
+		err = processCAALog(vaLog, issuanceMap)
+		cmd.FailOnError(err, "failed to process CAA checking logs")
 	}
+
+	err = formatErrors(issuanceMap)
+	cmd.FailOnError(err, "the following issuances were missing CAA checks")
 }
