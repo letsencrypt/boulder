@@ -1960,18 +1960,25 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 }
 
 // DeactivateAuthorization deactivates a currently valid authorization
-func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, auth core.Authorization) error {
-	if auth.Status != core.StatusValid && auth.Status != core.StatusPending {
-		return berrors.MalformedError("only valid and pending authorizations can be deactivated")
+func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, req *corepb.Authorization) (*emptypb.Empty, error) {
+	if req == nil || req.Id == "" || req.Identifier == "" || req.Status == "" || req.Expires == 0 {
+		return nil, errIncompleteGRPCRequest
 	}
-	authzID, err := strconv.ParseInt(auth.ID, 10, 64)
+	authz, err := bgrpc.PBToAuthz(req)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	if authz.Status != core.StatusValid && authz.Status != core.StatusPending {
+		return nil, berrors.MalformedError("only valid and pending authorizations can be deactivated")
+	}
+	authzID, err := strconv.ParseInt(authz.ID, 10, 64)
+	if err != nil {
+		return nil, err
 	}
 	if _, err := ra.SA.DeactivateAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID}); err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return &emptypb.Empty{}, nil
 }
 
 // checkOrderNames validates that the RA's policy authority allows issuing for

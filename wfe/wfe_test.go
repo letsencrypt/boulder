@@ -243,8 +243,8 @@ func (ra *MockRegistrationAuthority) OnValidationUpdate(ctx context.Context, aut
 	return nil
 }
 
-func (ra *MockRegistrationAuthority) DeactivateAuthorization(ctx context.Context, authz core.Authorization) error {
-	return nil
+func (ra *MockRegistrationAuthority) DeactivateAuthorization(ctx context.Context, authz *corepb.Authorization) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
 func (ra *MockRegistrationAuthority) DeactivateRegistration(ctx context.Context, _ *corepb.Registration) (*emptypb.Empty, error) {

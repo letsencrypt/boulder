@@ -1444,7 +1444,12 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(ctx context.Context, authz *
 		wfe.sendError(response, logEvent, probs.Malformed("Invalid status value"), err)
 		return false
 	}
-	err = wfe.RA.DeactivateAuthorization(ctx, *authz)
+	pbAuthz, err := grpc.AuthzToPB(*authz)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.Malformed("Error marshalling core.Authorization to corepb.Authorization"), err)
+		return false
+	}
+	_, err = wfe.RA.DeactivateAuthorization(ctx, pbAuthz)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error deactivating authorization"), err)
 		return false
