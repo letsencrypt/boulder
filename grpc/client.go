@@ -22,7 +22,7 @@ import (
 // a client certificate and validates the the server certificate based
 // on the provided *tls.Config.
 // It dials the remote service and returns a grpc.ClientConn if successful.
-func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientMetrics, clk clock.Clock) (*grpc.ClientConn, error) {
+func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientMetrics, clk clock.Clock, interceptors ...grpc.UnaryClientInterceptor) (*grpc.ClientConn, error) {
 	if c == nil {
 		return nil, errors.New("nil gRPC client config provided. JSON config is probably missing a fooService section.")
 	}
@@ -34,6 +34,12 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 	}
 
 	ci := clientInterceptor{c.Timeout.Duration, metrics, clk}
+	allInterceptors := []grpc.UnaryClientInterceptor{
+		ci.intercept,
+		ci.metrics.grpcMetrics.UnaryClientInterceptor(),
+		hnygrpc.UnaryClientInterceptor(),
+	}
+	allInterceptors = append(interceptors, allInterceptors...)
 	host, _, err := net.SplitHostPort(c.ServerAddress)
 	if err != nil {
 		return nil, err
@@ -43,11 +49,7 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 		"dns:///"+c.ServerAddress,
 		grpc.WithBalancerName("round_robin"),
 		grpc.WithTransportCredentials(creds),
-		grpc.WithChainUnaryInterceptor(
-			ci.intercept,
-			ci.metrics.grpcMetrics.UnaryClientInterceptor(),
-			hnygrpc.UnaryClientInterceptor(),
-		),
+		grpc.WithChainUnaryInterceptor(allInterceptors...),
 	)
 }
 

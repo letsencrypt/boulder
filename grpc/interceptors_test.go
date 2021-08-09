@@ -77,9 +77,14 @@ func TestClientInterceptor(t *testing.T) {
 
 	err = ci.intercept(context.Background(), "-service-brokeTest", nil, nil, nil, testInvoker)
 	test.AssertError(t, err, "ci.intercept didn't fail when handler returned a error")
+}
 
-	err = ci.intercept(context.Background(), "-service-requesterCanceledTest", nil, nil, nil, testInvoker)
-	test.AssertError(t, err, "ci.intercept didn't fail when handler returned a error")
+func TestCancelTo408Interceptor(t *testing.T) {
+	err := CancelTo408Interceptor(context.Background(), "-service-test", nil, nil, nil, testInvoker)
+	test.AssertNotError(t, err, "CancelTo408Interceptor returned an error when it shouldn't")
+
+	err = CancelTo408Interceptor(context.Background(), "-service-requesterCanceledTest", nil, nil, nil, testInvoker)
+	test.AssertError(t, err, "CancelTo408Interceptor didn't return an error when it should")
 
 	var probDetails *probs.ProblemDetails
 	test.AssertErrorWraps(t, err, &probDetails)

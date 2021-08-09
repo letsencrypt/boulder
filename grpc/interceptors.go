@@ -202,16 +202,27 @@ func (ci *clientInterceptor) intercept(
 	err := invoker(localCtx, fullMethod, req, reply, cc, opts...)
 	if err != nil {
 		err = unwrapError(err, respMD)
-		switch status.Code(err) {
-		case codes.DeadlineExceeded:
+		if status.Code(err) == codes.DeadlineExceeded {
 			return deadlineDetails{
 				service: service,
 				method:  method,
 				latency: ci.clk.Since(begin),
 			}
-		case codes.Canceled:
-			return probs.Canceled(err.Error())
 		}
+	}
+	return err
+}
+
+// CancelTo408Interceptor calls the underlying invoker, checks to see if the
+// resulting error was a gRPC Canceled error (because this client cancelled
+// the request, likely because the ACME client itself canceled the HTTP
+// request), and converts that into a Problem which can be "returned" to the
+// (now missing) client, and into our logs. This should be the outermost client
+// interceptor, and should only be enabled in the WFEs.
+func CancelTo408Interceptor(ctx context.Context, fullMethod string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	err := invoker(ctx, fullMethod, req, reply, cc, opts...)
+	if err != nil && status.Code(err) == codes.Canceled {
+		return probs.Canceled(err.Error())
 	}
 	return err
 }
