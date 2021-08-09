@@ -87,101 +87,6 @@ def run_expired_authz_purger():
     expect(now, 0, "authz")
     expect(after_grace_period, 1, "authz")
 
-def run_janitor():
-    # Set the fake clock to a year in the future such that all of the database
-    # rows created during the integration tests are older than the grace period.
-    now = datetime.datetime.utcnow()
-    target_time = now+datetime.timedelta(days=+365)
-
-    e = os.environ.copy()
-    e.setdefault("GORACE", "halt_on_error=1")
-    e.setdefault("FAKECLOCK", fakeclock(target_time))
-
-    cmdline = ["./bin/boulder-janitor", "--config",  "{0}/janitor.json".format(config_dir)]
-    p = subprocess.Popen(cmdline, env=e)
-
-    # Wait for the janitor to come up
-    waitport(8014, "boulder-janitor", None)
-
-    def statline(statname, table):
-        # NOTE: we omit the trailing "}}" to make this match general enough to
-        # permit new labels in the future.
-        return "janitor_{0}{{table=\"{1}\"".format(statname, table)
-
-    def get_stat_line(port, stat):
-        url = "http://localhost:%d/metrics" % port
-        response = requests.get(url)
-        for l in response.text.split("\n"):
-            if l.strip().startswith(stat):
-                return l
-        return None
-
-    def stat_value(line):
-        parts = line.split(" ")
-        if len(parts) != 2:
-            raise(Exception("stat line {0} was missing required parts".format(line)))
-        return parts[1]
-
-    # Wait for the janitor to finish its work. The easiest way to tell this
-    # externally is to watch for the work batch counters to stabilize for
-    # a period longer than the configured workSleep.
-    attempts = 0
-    while True:
-        if attempts > 5:
-            raise(Exception("timed out waiting for janitor workbatch counts to stabilize"))
-
-        certStatusWorkBatch = get_stat_line(8014, statline("workbatch", "certificateStatus"))
-        certsWorkBatch = get_stat_line(8014, statline("workbatch", "certificates"))
-        certsPerNameWorkBatch = get_stat_line(8014, statline("workbatch", "certificatesPerName"))
-        ordersWorkBatch = get_stat_line(8014, statline("workbatch", "orders"))
-
-        # sleep for double the configured workSleep for each job
-        time.sleep(1)
-
-        newCertStatusWorkBatch = get_stat_line(8014, statline("workbatch", "certificateStatus"))
-        newCertsWorkBatch = get_stat_line(8014, statline("workbatch", "certificates"))
-        newCertsPerNameWorkBatch = get_stat_line(8014, statline("workbatch", "certificatesPerName"))
-        newOrdersWorkBatch = get_stat_line(8014, statline("workbatch", "orders"))
-
-        if (certStatusWorkBatch == newCertStatusWorkBatch 
-            and certsWorkBatch == newCertsWorkBatch 
-            and certsPerNameWorkBatch == newCertsPerNameWorkBatch
-            and ordersWorkBatch == newOrdersWorkBatch):
-            break
-
-        attempts = attempts + 1
-
-    # Check deletion stats are not empty/zero
-    for i in range(10):
-        certStatusDeletes = get_stat_line(8014, statline("deletions", "certificateStatus"))
-        certsDeletes = get_stat_line(8014, statline("deletions", "certificates"))
-        certsPerNameDeletes = get_stat_line(8014, statline("deletions", "certificatesPerName"))
-        ordersDeletes = get_stat_line(8014, statline("deletions", "orders"))
-
-        if certStatusDeletes is None or certsDeletes is None or certsPerNameDeletes is None or ordersDeletes is None:
-            print("delete stats not present after check {0}. Sleeping".format(i))
-            time.sleep(2)
-            continue
-
-        for l in [certStatusDeletes, certsDeletes, certsPerNameDeletes, ordersDeletes]:
-            if stat_value(l) == "0":
-                raise(Exception("Expected a non-zero number of deletes to be performed. Found {0}".format(l)))
-
-    # Check that all error stats are empty
-    errorStats = [
-      statline("errors", "certificateStatus"),
-      statline("errors", "certificates"),
-      statline("errors", "certificatesPerName"),
-      statline("errors", "orders"),
-    ]
-    for eStat in errorStats:
-        actual = get_stat_line(8014, eStat)
-        if actual is not None:
-            raise(Exception("Expected to find no error stat lines but found {0}\n".format(eStat)))
-
-    # Terminate the janitor
-    p.terminate()
-
 def test_single_ocsp():
     """Run ocsp-responder with the single OCSP response generated for the intermediate
        certificate using the ceremony tool during setup and check that it successfully
@@ -277,11 +182,6 @@ def main():
         check_balance()
         if not CONFIG_NEXT:
             run_expired_authz_purger()
-
-        # Run the boulder-janitor. This should happen after all other tests because
-        # it runs with the fake clock set to the future and deletes rows that may
-        # otherwise be referenced by tests.
-        run_janitor()
 
         # Run the load-generator last. run_loadtest will stop the
         # pebble-challtestsrv before running the load-generator and will not restart
