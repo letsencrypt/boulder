@@ -114,8 +114,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 
 	args := map[string]interface{}{"issued": c.issuedReport.begin, "now": 0}
 	if unexpiredOnly {
-		now := c.clock.Now()
-		args["now"] = now
+		args["now"] = c.clock.Now()
 	}
 	count, err := c.dbMap.SelectInt(
 		"SELECT count(*) FROM certificates WHERE issued >= :issued AND expires >= :now",
@@ -145,7 +144,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	for offset := 0; offset < int(count); {
 		certs, err := sa.SelectCertificates(
 			c.dbMap,
-			"WHERE id > :id AND expires >= :now ORDER BY id LIMIT :limit",
+			"WHERE id > :id AND issued >= :issued AND expires >= :now ORDER BY id LIMIT :limit",
 			args,
 		)
 		if err != nil {
