@@ -1961,17 +1961,10 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 
 // DeactivateAuthorization deactivates a currently valid authorization
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, req *corepb.Authorization) (*emptypb.Empty, error) {
-	if req == nil || req.Id == "" || req.Identifier == "" || req.Status == "" || req.Expires == 0 {
+	if req == nil || req.Id == "" || req.Status == "" {
 		return nil, errIncompleteGRPCRequest
 	}
-	authz, err := bgrpc.PBToAuthz(req)
-	if err != nil {
-		return nil, err
-	}
-	if authz.Status != core.StatusValid && authz.Status != core.StatusPending {
-		return nil, berrors.MalformedError("only valid and pending authorizations can be deactivated")
-	}
-	authzID, err := strconv.ParseInt(authz.ID, 10, 64)
+	authzID, err := strconv.ParseInt(req.Id, 10, 64)
 	if err != nil {
 		return nil, err
 	}

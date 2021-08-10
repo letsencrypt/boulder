@@ -1466,6 +1466,7 @@ func (wfe *WebFrontEndImpl) updateAccount(
 func (wfe *WebFrontEndImpl) deactivateAuthorization(
 	ctx context.Context,
 	authz *core.Authorization,
+	authzPB *corepb.Authorization,
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	body []byte) bool {
@@ -1481,12 +1482,7 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 		wfe.sendError(response, logEvent, probs.Malformed("Invalid status value"), err)
 		return false
 	}
-	pbAuthz, err := grpc.AuthzToPB(*authz)
-	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Error marshalling core.Authorization to corepb.Authorization"), err)
-		return false
-	}
-	_, err = wfe.RA.DeactivateAuthorization(ctx, pbAuthz)
+	_, err = wfe.RA.DeactivateAuthorization(ctx, authzPB)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error deactivating authorization"), err)
 		return false
@@ -1585,7 +1581,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 		// If the deactivation fails return early as errors and return codes
 		// have already been set. Otherwise continue so that the user gets
 		// sent the deactivated authorization.
-		if !wfe.deactivateAuthorization(ctx, &authz, logEvent, response, requestBody) {
+		if !wfe.deactivateAuthorization(ctx, &authz, authzPB, logEvent, response, requestBody) {
 			return
 		}
 	}
