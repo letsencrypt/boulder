@@ -1207,7 +1207,7 @@ func TestAuthzRateLimiting(t *testing.T) {
 
 	// Second one should trigger rate limit
 	_, err = ra.NewAuthorization(ctx, AuthzRequest)
-	test.AssertError(t, err, "Pending Authorization rate limi1t failed.")
+	test.AssertError(t, err, "Pending Authorization rate limit failed.")
 
 	// Finalize pending authz
 	challenge, err := bgrpc.PBToChallenge(authzPB.Challenges[0])
