@@ -13,7 +13,6 @@ CREATE USER IF NOT EXISTS 'cert_checker'@'localhost';
 CREATE USER IF NOT EXISTS 'ocsp_update'@'localhost';
 CREATE USER IF NOT EXISTS 'ocsp_update_ro'@'localhost';
 CREATE USER IF NOT EXISTS 'test_setup'@'localhost';
-CREATE USER IF NOT EXISTS 'purger'@'localhost';
 CREATE USER IF NOT EXISTS 'badkeyrevoker'@'localhost';
 
 -- Storage Authority
@@ -74,9 +73,6 @@ GRANT SELECT ON fqdnSets TO 'mailer'@'localhost';
 
 -- Cert checker
 GRANT SELECT ON certificates TO 'cert_checker'@'localhost';
-
--- Expired authorization purger
-GRANT SELECT,DELETE ON authz2 TO 'purger'@'localhost';
 
 -- Bad Key Revoker
 GRANT SELECT,UPDATE ON blockedKeys TO 'badkeyrevoker'@'localhost';

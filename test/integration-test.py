@@ -49,44 +49,6 @@ def run_go_tests(filterPattern=None):
     cmdLine = cmdLine + ["-tags", "integration", "-count=1", "-race", "./test/integration"]
     subprocess.check_call(cmdLine, stderr=subprocess.STDOUT)
 
-def run_expired_authz_purger():
-    # Note: This test must be run after all other tests that depend on
-    # authorizations added to the database during setup
-    # (e.g. test_expired_authzs_404).
-
-    def expect(target_time, num, table):
-        tool = "expired-authz-purger2"
-        out = get_future_output([
-            "./bin/expired-authz-purger2", "--single-run",
-            "--config", "%s/expired-authz-purger2.json" % (config_dir)], target_time)
-        if 'via FAKECLOCK' not in out:
-            raise(Exception("%s was not built with `integration` build tag" % (tool)))
-        if num is None:
-            return
-        expected_output = 'deleted %d expired authorizations' % (num)
-        if expected_output not in out:
-            raise(Exception("%s did not print '%s'.  Output:\n%s" % (
-                  tool, expected_output, out)))
-
-    now = datetime.datetime.utcnow()
-
-    # Run the purger once to clear out any backlog so we have a clean slate.
-    expect(now+datetime.timedelta(days=+365), None, "")
-
-    # Make an authz, but don't attempt its challenges.
-    chisel.make_client().request_domain_challenges("eap-test.com")
-
-    # Run the authz twice: Once immediate, expecting nothing to be purged, and
-    # once as if it were the future, expecting one purged authz.
-    after_grace_period = now + datetime.timedelta(days=+14, minutes=+3)
-    expect(now, 0, "pendingAuthorizations")
-    expect(after_grace_period, 1, "pendingAuthorizations")
-
-    auth_and_issue([random_domain()])
-    after_grace_period = now + datetime.timedelta(days=+67, minutes=+3)
-    expect(now, 0, "authz")
-    expect(after_grace_period, 1, "authz")
-
 def test_single_ocsp():
     """Run ocsp-responder with the single OCSP response generated for the intermediate
        certificate using the ceremony tool during setup and check that it successfully
@@ -180,8 +142,6 @@ def main():
     if not args.test_case_filter:
         run_cert_checker()
         check_balance()
-        if not CONFIG_NEXT:
-            run_expired_authz_purger()
 
         # Run the load-generator last. run_loadtest will stop the
         # pebble-challtestsrv before running the load-generator and will not restart
