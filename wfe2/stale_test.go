@@ -67,11 +67,11 @@ func TestStaleEnoughToGETAuthzDeactivated(t *testing.T) {
 		authorizationLifetime:        30 * 24 * time.Hour,
 	}
 	fc.Add(time.Hour * 24)
-	expires := fc.Now().Add(wfe.authorizationLifetime)
+	expires := fc.Now().Add(wfe.authorizationLifetime).UnixNano()
 	fc.Add(time.Hour)
-	prob := wfe.staleEnoughToGETAuthz(core.Authorization{
-		Status:  core.StatusDeactivated,
-		Expires: &expires,
+	prob := wfe.staleEnoughToGETAuthz(&corepb.Authorization{
+		Status:  string(core.StatusDeactivated),
+		Expires: expires,
 	})
 	test.Assert(t, prob == nil, "wfe.staleEnoughToGETOrder returned a non-nil problem")
 }

@@ -38,23 +38,23 @@ func (wfe *WebFrontEndImpl) staleEnoughToGETCert(cert core.Certificate) *probs.P
 // specific GET API. Since authorization creation date is not tracked directly
 // the appropriate lifetime for the authz is subtracted from the expiry to find
 // the creation date.
-func (wfe *WebFrontEndImpl) staleEnoughToGETAuthz(authz core.Authorization) *probs.ProblemDetails {
+func (wfe *WebFrontEndImpl) staleEnoughToGETAuthz(authzPB *corepb.Authorization) *probs.ProblemDetails {
 	// If the authorization was deactivated we cannot reliably tell what the creation date was
 	// because we can't easily tell if it was pending or finalized before deactivation.
 	// As these authorizations can no longer be used for anything, just make them immediately
 	// available for access.
-	if authz.Status == core.StatusDeactivated {
+	if core.AcmeStatus(authzPB.Status) == core.StatusDeactivated {
 		return nil
 	}
 	// We don't directly track authorization creation time. Instead subtract the
 	// pendingAuthorization lifetime from the expiry. This will be inaccurate if
 	// we change the pendingAuthorizationLifetime but is sufficient for the weak
 	// staleness requirements of the GET API.
-	createdTime := authz.Expires.Add(-wfe.pendingAuthorizationLifetime)
+	createdTime := time.Unix(0, authzPB.Expires).Add(-wfe.pendingAuthorizationLifetime)
 	// if the authz is valid then we need to subtract the authorizationLifetime
 	// instead of the pendingAuthorizationLifetime.
-	if authz.Status == core.StatusValid {
-		createdTime = authz.Expires.Add(-wfe.authorizationLifetime)
+	if core.AcmeStatus(authzPB.Status) == core.StatusValid {
+		createdTime = time.Unix(0, authzPB.Expires).Add(-wfe.authorizationLifetime)
 	}
 	return wfe.staleEnoughToGET("Authorization", createdTime)
 }
