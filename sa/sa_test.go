@@ -1860,8 +1860,7 @@ func TestNewAuthorizations2_100(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	expires := fc.Now().Add(time.Hour).UnixNano()
 
-	var allAuthz [100]*corepb.Authorization
-
+	allAuthz := make([]*corepb.Authorization, 100)
 	for i := 0; i < 100; i++ {
 		allAuthz[i] = &corepb.Authorization{
 			Identifier:     fmt.Sprintf("%08x", i),
@@ -1878,7 +1877,7 @@ func TestNewAuthorizations2_100(t *testing.T) {
 		}
 	}
 
-	req := &sapb.AddPendingAuthorizationsRequest{Authz: allAuthz[:]}
+	req := &sapb.AddPendingAuthorizationsRequest{Authz: allAuthz}
 	ids, err := sa.NewAuthorizations2(context.Background(), req)
 	test.AssertNotError(t, err, "sa.NewAuthorizations failed")
 	test.AssertEquals(t, len(ids.Ids), 100)
