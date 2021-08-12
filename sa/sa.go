@@ -1380,8 +1380,8 @@ func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sap
 		}
 
 		// Each authz needs a (?,?...), in the VALUES block. We need one
-		// for each element in the authzFields string with no trailing ','.
-		fmt.Fprintf(&questionsBuf, "(%s),", strings.TrimRight(strings.Repeat(" ?,", 11), ","))
+		// for each element in the authzFields string.
+		fmt.Fprint(&questionsBuf, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),")
 
 		// The query arguments must follow the order of the authzFields string.
 		// Note that the AttemptedAt field is not included in the authzFields.
@@ -1413,6 +1413,7 @@ func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sap
 		var idField int64
 		err = rows.Scan(&idField)
 		if err != nil {
+			_ = rows.Close()
 			return nil, err
 		}
 		ids.Ids = append(ids.Ids, idField)
