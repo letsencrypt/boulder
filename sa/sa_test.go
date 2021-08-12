@@ -1858,7 +1858,7 @@ func TestNewAuthorizations2_100(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
-	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
+	expires := fc.Now().Add(time.Hour).UnixNano()
 
 	var allAuthz [100]*corepb.Authorization
 
