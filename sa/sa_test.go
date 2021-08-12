@@ -1853,6 +1853,45 @@ func TestNewAuthorizations2(t *testing.T) {
 	}
 }
 
+func TestNewAuthorizations2_100(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
+
+	var all_authz [100]*corepb.Authorization
+
+	for i := 0; i < 100; i++ {
+		all_authz[i] = &corepb.Authorization{
+			Identifier:     fmt.Sprintf("%08x", i),
+			RegistrationID: reg.Id,
+			Status:         string(core.StatusPending),
+			Expires:        expires,
+			Challenges: []*corepb.Challenge{
+				{
+					Status: string(core.StatusPending),
+					Type:   string(core.ChallengeTypeDNS01),
+					Token:  core.NewToken(),
+				},
+			},
+		}
+	}
+
+	req := &sapb.AddPendingAuthorizationsRequest{Authz: all_authz[:]}
+	ids, err := sa.NewAuthorizations2(context.Background(), req)
+	test.AssertNotError(t, err, "sa.NewAuthorizations failed")
+	test.AssertEquals(t, len(ids.Ids), 100)
+	for i, id := range ids.Ids {
+		id := id
+		dbVer, err := sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: id})
+		test.AssertNotError(t, err, "sa.GetAuthorization failed")
+		// Everything but ID should match
+		req.Authz[i].Id = dbVer.Id
+		test.AssertDeepEquals(t, req.Authz[i], dbVer)
+	}
+}
+
 func TestFinalizeAuthorization2(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()

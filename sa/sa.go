@@ -1367,6 +1367,9 @@ func AuthzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error
 // objects if the V2 field is set. This method is intended to deprecate AddPendingAuthorizations
 func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
 	ids := &sapb.Authorization2IDs{}
+	var vals []interface{}
+	var qs strings.Builder
+
 	for _, authz := range req.Authz {
 		if authz.Status != string(core.StatusPending) {
 			return nil, berrors.InternalServerError("authorization must be pending")
@@ -1375,11 +1378,38 @@ func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sap
 		if err != nil {
 			return nil, err
 		}
-		err = ssa.dbMap.Insert(am)
+
+		// Each authz needs a (?,?...), in the VALUES block
+		qs.WriteString(fmt.Sprintf("(%s),", strings.TrimRight(strings.Repeat(" ?,", 11), ",")))
+		// Must follow the order of authzFields
+		vals = append(vals, am.ID)
+		vals = append(vals, am.IdentifierType)
+		vals = append(vals, am.IdentifierValue)
+		vals = append(vals, am.RegistrationID)
+		vals = append(vals, am.Status)
+		vals = append(vals, am.Expires)
+		vals = append(vals, am.Challenges)
+		vals = append(vals, am.Attempted)
+		// AttemptedAt is not included in the authzFields
+		vals = append(vals, am.Token)
+		vals = append(vals, am.ValidationError)
+		vals = append(vals, am.ValidationRecord)
+	}
+	// The VALUES block question-string has a trailing comma, remove it
+	qs_trimmed := strings.TrimRight(qs.String(), ",")
+	query := fmt.Sprintf("INSERT INTO authz2 (%s) VALUES %s RETURNING id;", authzFields, qs_trimmed)
+	rows, err := ssa.dbMap.Db.QueryContext(ctx, query, vals...)
+	if err != nil {
+		return nil, fmt.Errorf("%s %s", err, query)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id_field int64
+		err = rows.Scan(&id_field)
 		if err != nil {
 			return nil, err
 		}
-		ids.Ids = append(ids.Ids, am.ID)
+		ids.Ids = append(ids.Ids, id_field)
 	}
 	return ids, nil
 }
