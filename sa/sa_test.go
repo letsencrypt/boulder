@@ -1863,7 +1863,7 @@ func TestNewAuthorizations2_100(t *testing.T) {
 	var allAuthz [100]*corepb.Authorization
 
 	for i := 0; i < 100; i++ {
-		all_authz[i] = &corepb.Authorization{
+		allAuthz[i] = &corepb.Authorization{
 			Identifier:     fmt.Sprintf("%08x", i),
 			RegistrationID: reg.Id,
 			Status:         string(core.StatusPending),
