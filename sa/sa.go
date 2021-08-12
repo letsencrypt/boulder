@@ -1409,7 +1409,6 @@ func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sap
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	for rows.Next() {
 		var idField int64
 		err = rows.Scan(&idField)
@@ -1417,6 +1416,12 @@ func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sap
 			return nil, err
 		}
 		ids.Ids = append(ids.Ids, idField)
+	}
+
+	// Ensure the query wasn't interrupted before it could complete.
+	err = rows.Close()
+	if err != nil {
+		return nil, err
 	}
 	return ids, nil
 }
