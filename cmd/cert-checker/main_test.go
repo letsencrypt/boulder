@@ -30,9 +30,9 @@ import (
 )
 
 var (
-	testValidityPeriod  = 24 * 90 * time.Hour
-	testValidityPeriods = map[uint]bool{uint(testValidityPeriod.Seconds()): true}
-	pa                  *policy.AuthorityImpl
+	testValidityDuration  = 24 * 90 * time.Hour
+	testValidityDurations = map[time.Duration]bool{testValidityDuration: true}
+	pa                    *policy.AuthorityImpl
 )
 
 func init() {
@@ -57,7 +57,7 @@ func BenchmarkCheckCert(b *testing.B) {
 		test.ResetSATestDatabase(b)()
 	}()
 
-	checker := newChecker(saDbMap, clock.New(), pa, time.Hour, testValidityPeriods)
+	checker := newChecker(saDbMap, clock.New(), pa, time.Hour, testValidityDurations)
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
 	expiry := time.Now().AddDate(0, 0, 1)
 	serial := big.NewInt(1337)
@@ -93,9 +93,9 @@ func TestCheckWildcardCert(t *testing.T) {
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	fc := clock.NewFake()
-	checker := newChecker(saDbMap, fc, pa, time.Hour, testValidityPeriods)
+	checker := newChecker(saDbMap, fc, pa, time.Hour, testValidityDurations)
 	issued := checker.clock.Now().Add(-time.Minute)
-	goodExpiry := issued.Add(testValidityPeriod - time.Second)
+	goodExpiry := issued.Add(testValidityDuration - time.Second)
 	serial := big.NewInt(1337)
 
 	wildcardCert := x509.Certificate{
@@ -139,7 +139,7 @@ func TestCheckCert(t *testing.T) {
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 
-	checker := newChecker(saDbMap, clock.NewFake(), pa, time.Hour, testValidityPeriods)
+	checker := newChecker(saDbMap, clock.NewFake(), pa, time.Hour, testValidityDurations)
 
 	// Create a RFC 7633 OCSP Must Staple Extension.
 	// OID 1.3.6.1.5.5.7.1.24
@@ -157,7 +157,7 @@ func TestCheckCert(t *testing.T) {
 	}
 
 	issued := checker.clock.Now().Add(-time.Minute)
-	goodExpiry := issued.Add(testValidityPeriod - time.Second)
+	goodExpiry := issued.Add(testValidityDuration - time.Second)
 	serial := big.NewInt(1337)
 	longName := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeexample.com"
 	rawCert := x509.Certificate{
@@ -257,7 +257,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	fc := clock.NewFake()
 
-	checker := newChecker(saDbMap, fc, pa, time.Hour, testValidityPeriods)
+	checker := newChecker(saDbMap, fc, pa, time.Hour, testValidityDurations)
 	sa, err := sa.NewSQLStorageAuthority(saDbMap, saDbMap, fc, blog.NewMock(), metrics.NoopRegisterer, 1)
 	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
 	saCleanUp := test.ResetSATestDatabase(t)
@@ -340,7 +340,7 @@ func (db mismatchedCountDB) Select(output interface{}, _ string, _ ...interface{
 func TestGetCertsEmptyResults(t *testing.T) {
 	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't connect to database")
-	checker := newChecker(saDbMap, clock.NewFake(), pa, time.Hour, testValidityPeriods)
+	checker := newChecker(saDbMap, clock.NewFake(), pa, time.Hour, testValidityDurations)
 	checker.dbMap = mismatchedCountDB{}
 
 	batchSize = 3
@@ -421,7 +421,7 @@ func TestIgnoredLint(t *testing.T) {
 	}()
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
-	checker := newChecker(saDbMap, clock.NewFake(), pa, time.Hour, testValidityPeriods)
+	checker := newChecker(saDbMap, clock.NewFake(), pa, time.Hour, testValidityDurations)
 	serial := big.NewInt(1337)
 
 	template := &x509.Certificate{
@@ -430,7 +430,7 @@ func TestIgnoredLint(t *testing.T) {
 		},
 		SerialNumber: serial,
 		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(testValidityPeriod - time.Second),
+		NotAfter:     time.Now().Add(testValidityDuration - time.Second),
 		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		PolicyIdentifiers: []asn1.ObjectIdentifier{
