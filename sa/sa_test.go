@@ -1844,10 +1844,10 @@ func TestNewAuthorizations2(t *testing.T) {
 	test.AssertNotError(t, err, "sa.NewAuthorizations failed")
 	test.AssertEquals(t, len(ids.Ids), 2)
 	for i, id := range ids.Ids {
-		id := id
 		dbVer, err := sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: id})
 		test.AssertNotError(t, err, "sa.GetAuthorization failed")
-		// Everything but ID should match
+
+		// Everything but ID should match.
 		req.Authz[i].Id = dbVer.Id
 		test.AssertDeepEquals(t, req.Authz[i], dbVer)
 	}
@@ -1883,7 +1883,6 @@ func TestNewAuthorizations2_100(t *testing.T) {
 	test.AssertNotError(t, err, "sa.NewAuthorizations failed")
 	test.AssertEquals(t, len(ids.Ids), 100)
 	for i, id := range ids.Ids {
-		id := id
 		dbVer, err := sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: id})
 		test.AssertNotError(t, err, "sa.GetAuthorization failed")
 		// Everything but the ID should match.
