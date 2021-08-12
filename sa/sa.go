@@ -1367,8 +1367,8 @@ func AuthzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error
 // objects if the V2 field is set. This method is intended to deprecate AddPendingAuthorizations
 func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
 	ids := &sapb.Authorization2IDs{}
-	var vals []interface{}
-	var qs strings.Builder
+	var queryArgs []interface{}
+	var questionsBuf strings.Builder
 
 	for _, authz := range req.Authz {
 		if authz.Status != string(core.StatusPending) {
@@ -1379,37 +1379,44 @@ func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sap
 			return nil, err
 		}
 
-		// Each authz needs a (?,?...), in the VALUES block
-		qs.WriteString(fmt.Sprintf("(%s),", strings.TrimRight(strings.Repeat(" ?,", 11), ",")))
-		// Must follow the order of authzFields
-		vals = append(vals, am.ID)
-		vals = append(vals, am.IdentifierType)
-		vals = append(vals, am.IdentifierValue)
-		vals = append(vals, am.RegistrationID)
-		vals = append(vals, am.Status)
-		vals = append(vals, am.Expires)
-		vals = append(vals, am.Challenges)
-		vals = append(vals, am.Attempted)
-		// AttemptedAt is not included in the authzFields
-		vals = append(vals, am.Token)
-		vals = append(vals, am.ValidationError)
-		vals = append(vals, am.ValidationRecord)
+		// Each authz needs a (?,?...), in the VALUES block. We need one
+		// for each element in the authzFields string with no trailing ','.
+		fmt.Fprintf(&questionsBuf, "(%s),", strings.TrimRight(strings.Repeat(" ?,", 11), ","))
+
+		// The query arguments must follow the order of the authzFields string.
+		// Note that the AttemptedAt field is not included in the authzFields.
+		queryArgs = append(queryArgs,
+			am.ID,
+			am.IdentifierType,
+			am.IdentifierValue,
+			am.RegistrationID,
+			am.Status,
+			am.Expires,
+			am.Challenges,
+			am.Attempted,
+			am.Token,
+			am.ValidationError,
+			am.ValidationRecord,
+		)
 	}
-	// The VALUES block question-string has a trailing comma, remove it
-	qs_trimmed := strings.TrimRight(qs.String(), ",")
-	query := fmt.Sprintf("INSERT INTO authz2 (%s) VALUES %s RETURNING id;", authzFields, qs_trimmed)
-	rows, err := ssa.dbMap.Db.QueryContext(ctx, query, vals...)
+
+	// At this point, the VALUES block question-string has a trailing comma, we need
+	// to remove it to make sure we're valid SQL.
+	questionsTrimmed := strings.TrimRight(questionsBuf.String(), ",")
+	query := fmt.Sprintf("INSERT INTO authz2 (%s) VALUES %s RETURNING id;", authzFields, questionsTrimmed)
+
+	rows, err := ssa.dbMap.Db.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
-		return nil, fmt.Errorf("%s %s", err, query)
+		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var id_field int64
-		err = rows.Scan(&id_field)
+		var idField int64
+		err = rows.Scan(&idField)
 		if err != nil {
 			return nil, err
 		}
-		ids.Ids = append(ids.Ids, id_field)
+		ids.Ids = append(ids.Ids, idField)
 	}
 	return ids, nil
 }
