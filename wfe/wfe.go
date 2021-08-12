@@ -1421,14 +1421,14 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *web.Requ
 	}
 }
 
-func (wfe *WebFrontEndImpl) deactivateAuthorization(ctx context.Context, authz *core.Authorization, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) bool {
+func (wfe *WebFrontEndImpl) deactivateAuthorization(ctx context.Context, authzPB *corepb.Authorization, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) bool {
 	body, _, reg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceAuthz)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		wfe.sendError(response, logEvent, prob, nil)
 		return false
 	}
-	if reg.Id != authz.RegistrationID {
+	if reg.Id != authzPB.RegistrationID {
 		wfe.sendError(response, logEvent, probs.Unauthorized("Registration ID doesn't match ID for authorization"), nil)
 		return false
 	}
@@ -1444,15 +1444,15 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(ctx context.Context, authz *
 		wfe.sendError(response, logEvent, probs.Malformed("Invalid status value"), err)
 		return false
 	}
-	err = wfe.RA.DeactivateAuthorization(ctx, *authz)
+	_, err = wfe.RA.DeactivateAuthorization(ctx, authzPB)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error deactivating authorization"), err)
 		return false
 	}
 	// Since the authorization passed to DeactivateAuthorization isn't
 	// mutated locally by the function we must manually set the status
-	// here before displaying the authorization to the user
-	authz.Status = core.StatusDeactivated
+	// here before displaying the authorization to the user.
+	authzPB.Status = string(core.StatusDeactivated)
 	return true
 }
 
@@ -1460,7 +1460,7 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(ctx context.Context, authz *
 func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	// Requests to this handler should have a path that leads to a known authz
 	id := request.URL.Path
-	var authz core.Authorization
+
 	var err error
 	notFound := func() {
 		wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
@@ -1479,19 +1479,14 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 		}
 		return
 	}
-	authz, err = bgrpc.PBToAuthz(authzPB)
-	if err != nil {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
-		return
-	}
 
-	if authz.Identifier.Type == identifier.DNS {
-		logEvent.DNSName = authz.Identifier.Value
+	if identifier.IdentifierType(authzPB.Identifier) == identifier.DNS {
+		logEvent.DNSName = authzPB.Identifier
 	}
-	logEvent.Status = string(authz.Status)
+	logEvent.Status = string(authzPB.Status)
 
 	// After expiring, authorizations are inaccessible
-	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {
+	if authzPB.Expires == 0 || time.Unix(0, authzPB.Expires).Before(wfe.clk.Now()) {
 		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
 		return
 	}
@@ -1500,9 +1495,15 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 		// If the deactivation fails return early as errors and return codes
 		// have already been set. Otherwise continue so that the user gets
 		// sent the deactivated authorization.
-		if !wfe.deactivateAuthorization(ctx, &authz, logEvent, response, request) {
+		if !wfe.deactivateAuthorization(ctx, authzPB, logEvent, response, request) {
 			return
 		}
+	}
+
+	authz, err := bgrpc.PBToAuthz(authzPB)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+		return
 	}
 
 	wfe.prepAuthorizationForDisplay(request, &authz)

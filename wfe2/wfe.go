@@ -1106,7 +1106,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 
 	if requiredStale(request, logEvent) {
-		if prob := wfe.staleEnoughToGETAuthz(authz); prob != nil {
+		if prob := wfe.staleEnoughToGETAuthz(authzPB); prob != nil {
 			wfe.sendError(response, logEvent, prob, nil)
 			return
 		}
@@ -1465,7 +1465,7 @@ func (wfe *WebFrontEndImpl) updateAccount(
 // assumed that this check is performed prior to calling deactivateAuthorzation.
 func (wfe *WebFrontEndImpl) deactivateAuthorization(
 	ctx context.Context,
-	authz *core.Authorization,
+	authzPB *corepb.Authorization,
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	body []byte) bool {
@@ -1481,7 +1481,7 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 		wfe.sendError(response, logEvent, probs.Malformed("Invalid status value"), err)
 		return false
 	}
-	err = wfe.RA.DeactivateAuthorization(ctx, *authz)
+	_, err = wfe.RA.DeactivateAuthorization(ctx, authzPB)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error deactivating authorization"), err)
 		return false
@@ -1489,7 +1489,7 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 	// Since the authorization passed to DeactivateAuthorization isn't
 	// mutated locally by the function we must manually set the status
 	// here before displaying the authorization to the user
-	authz.Status = core.StatusDeactivated
+	authzPB.Status = string(core.StatusDeactivated)
 	return true
 }
 
@@ -1539,27 +1539,21 @@ func (wfe *WebFrontEndImpl) Authorization(
 		return
 	}
 
-	authz, err := bgrpc.PBToAuthz(authzPB)
-	if err != nil {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
-		return
+	if identifier.IdentifierType(authzPB.Identifier) == identifier.DNS {
+		logEvent.DNSName = authzPB.Identifier
+		beeline.AddFieldToTrace(ctx, "authz.dnsname", authzPB.Identifier)
 	}
-
-	if authz.Identifier.Type == identifier.DNS {
-		logEvent.DNSName = authz.Identifier.Value
-		beeline.AddFieldToTrace(ctx, "authz.dnsname", authz.Identifier.Value)
-	}
-	logEvent.Status = string(authz.Status)
-	beeline.AddFieldToTrace(ctx, "authz.status", authz.Status)
+	logEvent.Status = string(authzPB.Status)
+	beeline.AddFieldToTrace(ctx, "authz.status", authzPB.Status)
 
 	// After expiring, authorizations are inaccessible
-	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {
+	if authzPB.Expires == 0 || time.Unix(0, authzPB.Expires).Before(wfe.clk.Now()) {
 		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
 		return
 	}
 
 	if requiredStale(request, logEvent) {
-		if prob := wfe.staleEnoughToGETAuthz(authz); prob != nil {
+		if prob := wfe.staleEnoughToGETAuthz(authzPB); prob != nil {
 			wfe.sendError(response, logEvent, prob, nil)
 			return
 		}
@@ -1568,7 +1562,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 	// If this was a POST that has an associated requestAccount and that account
 	// doesn't own the authorization, abort before trying to deactivate the authz
 	// or return its details
-	if requestAccount != nil && requestAccount.ID != authz.RegistrationID {
+	if requestAccount != nil && requestAccount.ID != authzPB.RegistrationID {
 		wfe.sendError(response, logEvent,
 			probs.Unauthorized("Account ID doesn't match ID for authorization"), nil)
 		return
@@ -1580,9 +1574,15 @@ func (wfe *WebFrontEndImpl) Authorization(
 		// If the deactivation fails return early as errors and return codes
 		// have already been set. Otherwise continue so that the user gets
 		// sent the deactivated authorization.
-		if !wfe.deactivateAuthorization(ctx, &authz, logEvent, response, requestBody) {
+		if !wfe.deactivateAuthorization(ctx, authzPB, logEvent, response, requestBody) {
 			return
 		}
+	}
+
+	authz, err := bgrpc.PBToAuthz(authzPB)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+		return
 	}
 
 	wfe.prepAuthorizationForDisplay(request, &authz)
