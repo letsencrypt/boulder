@@ -1413,7 +1413,7 @@ func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sap
 		var idField int64
 		err = rows.Scan(&idField)
 		if err != nil {
-			_ = rows.Close()
+			rows.Close()
 			return nil, err
 		}
 		ids.Ids = append(ids.Ids, idField)
