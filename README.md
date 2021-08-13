@@ -78,7 +78,7 @@ want to be remote, it is necessary to instantiate a "client" and "server" for
 that component. The client implements the component's Go interface, while the
 server has the actual logic for the component. A high level overview for this
 communication model can be found in the [gRPC
-documentation](http://www.grpc.io/docs/).
+documentation](https://www.grpc.io/docs/).
 
 The full details of how the various ACME operations happen in Boulder are
 laid out in
