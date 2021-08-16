@@ -357,9 +357,15 @@ func main() {
 			// keyHashToSerial table at once
 			FindCertificatesBatchSize int
 
-			// Interval specifies how long bad-key-revoker should sleep between attempting to find
-			// blockedKeys rows to process when there is no work to do
+			// Interval specifies the minimum duration bad-key-revoker
+			// should sleep between attempting to find blockedKeys rows to
+			// process when there is no work to do.
 			Interval cmd.ConfigDuration
+
+			// MaxBackoff specifies a maximum amount of time the
+			// backoff algorithm will wait before retrying in the event of
+			// error or no work to do.
+			MaxBackoff cmd.ConfigDuration
 
 			Mailer struct {
 				cmd.SMTPConfig
@@ -471,19 +477,81 @@ func main() {
 		logger:          logger,
 		clk:             clk,
 	}
+
+	// If the MaxBackoff.Duration was not set via the config, set it now
+	// so that it can't increase so high that it will not try on a
+	// reasonable timeframe.
+	if config.BadKeyRevoker.MaxBackoff.Duration == 0 {
+		config.BadKeyRevoker.MaxBackoff.Duration = time.Second * 60
+	}
+
+	// Set the backup policy
+	backoff := &BackoffPolicy{
+		Limit:   config.BadKeyRevoker.MaxBackoff.Duration,
+		Minimum: config.BadKeyRevoker.Interval.Duration,
+		Factor:  1.3,
+	}
+
+	// Run bad key revoker in a loop. Backoff if no work or errors. Increment error or backoff metrics.
 	for {
 		noWork, err := bkr.invoke()
 		if err != nil {
 			keysProcessed.WithLabelValues("error").Inc()
 			logger.AuditErrf("failed to process blockedKeys row: %s", err)
+			// Backoff on error
+			backoff.increase()
+			logger.Infof("error. Trying again in %f seconds. Backoff counter: %d", backoff.Value.Seconds(), backoff.Counter)
 			continue
 		}
 		if noWork {
-			logger.Info(fmt.Sprintf(
-				"No work to do. Sleeping for %s", config.BadKeyRevoker.Interval.Duration))
-			time.Sleep(config.BadKeyRevoker.Interval.Duration)
+			// Backoff on no work to do
+			backoff.increase()
+			logger.Infof("No work to do. Trying again in %f seconds. Backoff counter: %d", backoff.Value.Seconds(), backoff.Counter)
 		} else {
 			keysProcessed.WithLabelValues("success").Inc()
+			// Successfully processed. Reset backoff.
+			backoff.reset()
 		}
+		// Sleep for duration defined in the backoff policy
+		bkr.clk.Sleep(backoff.Value)
 	}
+}
+
+// Policy for backing off requests for BadKeyRevoker runs. BadKeyRevoker
+// doesn't use goroutines, so we don't need jitter to stagger
+// concurrent retries.
+type BackoffPolicy struct {
+	Limit   time.Duration // Maximum backoff time
+	Value   time.Duration // Current backoff time
+	Counter int64         // Backoff counter
+	Minimum time.Duration // Minimum time to wait to do work
+	Factor  float64       // Backoff factor
+}
+
+// increase increases the BackoffPolicy.Time by BackoffPolicy.Factor if
+// not already at BackoffPolicy.Limit. If it would set it higher than the
+// limit, the limit is used instead.
+func (b *BackoffPolicy) increase() {
+	b.Counter++
+	// If the current backoff value is 0s then set it to the minimum
+	if b.Value == 0 {
+		b.Value = b.Minimum
+		return
+	}
+	// If the backup limit has not yet been reached, adjust the backoff
+	// value.
+	if b.Value < b.Limit {
+		newVal := float64(b.Value) * b.Factor
+		b.Value = time.Duration(newVal)
+	}
+	// If value was set over the limit, set to the limit.
+	if b.Value > b.Limit {
+		b.Value = b.Limit
+	}
+}
+
+// reset sets the BackoffPolicy time down to zero.
+func (b *BackoffPolicy) reset() {
+	b.Counter = 0
+	b.Value = 0
 }

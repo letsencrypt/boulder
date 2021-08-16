@@ -445,3 +445,22 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 	test.AssertEquals(t, len(mm.Messages), 1)
 	test.AssertEquals(t, mm.Messages[0].To, "b@example.com")
 }
+
+func TestBackoffPolicy(t *testing.T) {
+	backoff := &BackoffPolicy{Limit: time.Second * 60, Value: time.Second * 1, Minimum: time.Second * 1, Factor: 1.3}
+
+	// Make sure the backoff increased by the desired backoff.Factor
+	backoff.increase()
+	test.AssertEquals(t, backoff.Value, time.Duration(float64(backoff.Minimum)*backoff.Factor))
+
+	// Increase a bunch of times to make sure the limit is hit and not exceeded.
+	for i := 0; i < 30; i++ {
+		backoff.increase()
+	}
+	// backoff should have incremented to backoff.Limit
+	test.AssertEquals(t, backoff.Limit, backoff.Value)
+
+	backoff.reset()
+	// reset() should have set the backoff.Value to backoff.Minimum
+	test.AssertEquals(t, time.Duration(0), backoff.Value)
+}
