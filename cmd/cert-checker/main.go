@@ -251,7 +251,6 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 		_, ok := c.acceptableValidityDurations[validityDuration]
 		if !ok {
 			problems = append(problems, "Certificate has unacceptable validity period")
-			problems = append(problems, fmt.Sprintf("Certificate %q has unacceptable validity period of '%d' nanoseconds", parsedCert.DNSNames, validityDuration.Nanoseconds()))
 		}
 		// Check that the stored issuance time isn't too far back/forward dated.
 		if parsedCert.NotBefore.Before(cert.Issued.Add(-6*time.Hour)) || parsedCert.NotBefore.After(cert.Issued.Add(6*time.Hour)) {
@@ -268,7 +267,6 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 		// + CommonName.
 		for _, name := range append(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
 			id := identifier.ACMEIdentifier{Type: identifier.DNS, Value: name}
-			// TODO(#3371): Distinguish between certificates issued by v1 and v2 API.
 			err = c.pa.WillingToIssueWildcards([]identifier.ACMEIdentifier{id})
 			if err != nil {
 				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
@@ -316,7 +314,7 @@ type config struct {
 		BadResultsOnly      bool
 		CheckPeriod         cmd.ConfigDuration
 
-		// TODO(): This branch is deprecated and can be removed once staging
+		// TODO(#5581): This field is deprecated and can be removed once staging
 		// and production configs use `acceptableValidityDurations`.
 		//
 		// AcceptableValidityPeriods is a list of lengths (in seconds) which are
@@ -387,7 +385,7 @@ func main() {
 			}
 		}
 		if len(config.CertChecker.AcceptableValidityPeriods) > 0 {
-			// TODO(#5581): This branch is deprecated and can be removed once
+			// TODO(#5581): This conditional is deprecated and can be removed once
 			// staging and production configs use `acceptableValidityDurations`.
 			for _, period := range config.CertChecker.AcceptableValidityPeriods {
 				duration, err := time.ParseDuration(fmt.Sprintf("%ds", period))
