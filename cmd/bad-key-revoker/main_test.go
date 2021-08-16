@@ -463,4 +463,9 @@ func TestBackoffPolicy(t *testing.T) {
 	backoff.reset()
 	// reset() should have set the backoff.Value to backoff.Minimum
 	test.AssertEquals(t, time.Duration(0), backoff.Value)
+
+	// Make sure a minimum of zero sets backoff.Value to 1 second
+	backoff.Minimum = 0
+	backoff.increase()
+	test.AssertEquals(t, backoff.Value, time.Duration(float64(time.Second*1)))
 }

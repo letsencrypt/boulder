@@ -533,6 +533,10 @@ type BackoffPolicy struct {
 // limit, the limit is used instead.
 func (b *BackoffPolicy) increase() {
 	b.Counter++
+	// If the minimum is zero, set to 1 second
+	if b.Minimum == 0 {
+		b.Minimum = time.Second * 1
+	}
 	// If the current backoff value is 0s then set it to the minimum
 	if b.Value == 0 {
 		b.Value = b.Minimum
