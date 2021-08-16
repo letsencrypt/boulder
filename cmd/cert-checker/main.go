@@ -208,12 +208,12 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 	if cert.Digest != core.Fingerprint256(cert.DER) {
 		problems = append(problems, "Stored digest doesn't match certificate digest")
 	}
-	// Parse certificate
+	// Parse the certificate.
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	if err != nil {
 		problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
 	} else {
-		// Run zlint checks
+		// Run zlint checks.
 		results := zlint.LintCertificate(parsedCert)
 		for name, res := range results.Results {
 			if ignoredLints[name] || res.Status <= lint.Pass {
@@ -268,8 +268,7 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 		// + CommonName.
 		for _, name := range append(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
 			id := identifier.ACMEIdentifier{Type: identifier.DNS, Value: name}
-			// TODO(https://github.com/letsencrypt/boulder/issues/3371): Distinguish
-			// between certificates issued by v1 and v2 API.
+			// TODO(#3371): Distinguish between certificates issued by v1 and v2 API.
 			err = c.pa.WillingToIssueWildcards([]identifier.ACMEIdentifier{id})
 			if err != nil {
 				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
@@ -369,8 +368,8 @@ func main() {
 	err = blog.Set(logger)
 	cmd.FailOnError(err, "Failed to set audit logger")
 
-	// TODO(): This check can be removed once staging and production configs use
-	// `acceptableValidityDurations`.
+	// TODO(#5581): This check can be removed once staging and production configs
+	// use `acceptableValidityDurations`.
 	if len(config.CertChecker.AcceptableValidityDurations) > 0 && len(config.CertChecker.AcceptableValidityPeriods) > 0 {
 		cmd.Fail("Config specifies both 'acceptableValidityDurations' and 'acceptableValidityPeriods'")
 	}
@@ -388,8 +387,8 @@ func main() {
 			}
 		}
 		if len(config.CertChecker.AcceptableValidityPeriods) > 0 {
-			// TODO(): This branch is deprecated and can be removed once staging
-			// and production configs use `acceptableValidityDurations`.
+			// TODO(#5581): This branch is deprecated and can be removed once
+			// staging and production configs use `acceptableValidityDurations`.
 			for _, period := range config.CertChecker.AcceptableValidityPeriods {
 				duration, err := time.ParseDuration(fmt.Sprintf("%ds", period))
 				if err != nil {
@@ -400,7 +399,7 @@ func main() {
 		}
 	}
 
-	// Validate PA config and set defaults if needed
+	// Validate PA config and set defaults if needed.
 	cmd.FailOnError(config.PA.CheckChallenges(), "Invalid PA configuration")
 
 	saDbURL, err := config.CertChecker.DB.URL()
@@ -484,5 +483,4 @@ func main() {
 	)
 	err = checker.issuedReport.dump()
 	cmd.FailOnError(err, "Failed to dump results: %s\n")
-
 }
