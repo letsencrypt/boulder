@@ -1367,6 +1367,9 @@ func AuthzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error
 // objects if the V2 field is set. This method is intended to deprecate AddPendingAuthorizations
 func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
 	ids := &sapb.Authorization2IDs{}
+	var queryArgs []interface{}
+	var questionsBuf strings.Builder
+
 	for _, authz := range req.Authz {
 		if authz.Status != string(core.StatusPending) {
 			return nil, berrors.InternalServerError("authorization must be pending")
@@ -1375,11 +1378,51 @@ func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sap
 		if err != nil {
 			return nil, err
 		}
-		err = ssa.dbMap.Insert(am)
+
+		// Each authz needs a (?,?...), in the VALUES block. We need one
+		// for each element in the authzFields string.
+		fmt.Fprint(&questionsBuf, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),")
+
+		// The query arguments must follow the order of the authzFields string.
+		// Note that the AttemptedAt field is not included in the authzFields.
+		queryArgs = append(queryArgs,
+			am.ID,
+			am.IdentifierType,
+			am.IdentifierValue,
+			am.RegistrationID,
+			am.Status,
+			am.Expires,
+			am.Challenges,
+			am.Attempted,
+			am.Token,
+			am.ValidationError,
+			am.ValidationRecord,
+		)
+	}
+
+	// At this point, the VALUES block question-string has a trailing comma, we need
+	// to remove it to make sure we're valid SQL.
+	questionsTrimmed := strings.TrimRight(questionsBuf.String(), ",")
+	query := fmt.Sprintf("INSERT INTO authz2 (%s) VALUES %s RETURNING id;", authzFields, questionsTrimmed)
+
+	rows, err := ssa.dbMap.Db.QueryContext(ctx, query, queryArgs...)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var idField int64
+		err = rows.Scan(&idField)
 		if err != nil {
+			rows.Close()
 			return nil, err
 		}
-		ids.Ids = append(ids.Ids, am.ID)
+		ids.Ids = append(ids.Ids, idField)
+	}
+
+	// Ensure the query wasn't interrupted before it could complete.
+	err = rows.Close()
+	if err != nil {
+		return nil, err
 	}
 	return ids, nil
 }
