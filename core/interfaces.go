@@ -75,7 +75,7 @@ type RegistrationAuthority interface {
 	DeactivateRegistration(ctx context.Context, reg *corepb.Registration) (*emptypb.Empty, error)
 
 	// [WebFrontEnd]
-	DeactivateAuthorization(ctx context.Context, auth Authorization) error
+	DeactivateAuthorization(ctx context.Context, auth *corepb.Authorization) (*emptypb.Empty, error)
 
 	// [WebFrontEnd]
 	NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error)

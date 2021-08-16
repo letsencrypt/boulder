@@ -99,24 +99,21 @@ func createFinalizedAuthorization(t *testing.T, sa core.StorageAuthority, domain
 	return pendingID
 }
 
-func getAuthorization(t *testing.T, id string, sa core.StorageAuthority) core.Authorization {
+func getAuthorization(t *testing.T, id string, sa core.StorageAuthority) *corepb.Authorization {
 	t.Helper()
-	var dbAuthz core.Authorization
 	idInt, err := strconv.ParseInt(id, 10, 64)
 	test.AssertNotError(t, err, "strconv.ParseInt failed")
-	dbAuthzPB, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: idInt})
+	dbAuthz, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: idInt})
 	test.AssertNotError(t, err, "Could not fetch authorization from database")
-	dbAuthz, err = bgrpc.PBToAuthz(dbAuthzPB)
-	test.AssertNotError(t, err, "bgrpc.PBToAuthz failed")
 	return dbAuthz
 }
 
-func challTypeIndex(t *testing.T, challenges []core.Challenge, typ core.AcmeChallenge) int64 {
+func challTypeIndex(t *testing.T, challenges []*corepb.Challenge, typ core.AcmeChallenge) int64 {
 	t.Helper()
 	var challIdx int64
 	var set bool
 	for i, ch := range challenges {
-		if ch.Type == typ {
+		if core.AcmeChallenge(ch.Type) == typ {
 			challIdx = int64(i)
 			set = true
 			break
@@ -731,9 +728,7 @@ func TestNewAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	// Verify that returned authz same as DB
-	dbAuthz := getAuthorization(t, authz.Id, sa)
-	dbAuthzPB, err := bgrpc.AuthzToPB(dbAuthz)
-	test.AssertNotError(t, err, "failed to serialize authz")
+	dbAuthzPB := getAuthorization(t, authz.Id, sa)
 	assertAuthzEqual(t, authz, dbAuthzPB)
 
 	// Verify that the returned authz has the right information
@@ -932,19 +927,17 @@ func TestNewAuthorizationCapitalLetters(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	authz, err := ra.NewAuthorization(ctx, &rapb.NewAuthorizationRequest{
+	authzPB, err := ra.NewAuthorization(ctx, &rapb.NewAuthorizationRequest{
 		Authz: &corepb.Authorization{
 			Identifier: "NOT-example.COM",
 		},
 		RegID: Registration.Id,
 	})
 	test.AssertNotError(t, err, "NewAuthorization failed")
-	test.AssertEquals(t, "not-example.com", authz.Identifier)
+	test.AssertEquals(t, "not-example.com", authzPB.Identifier)
 
-	dbAuthz := getAuthorization(t, authz.Id, sa)
-	dbAuthzPB, err := bgrpc.AuthzToPB(dbAuthz)
-	test.AssertNotError(t, err, "failed to serialze authz")
-	assertAuthzEqual(t, authz, dbAuthzPB)
+	dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
+	assertAuthzEqual(t, authzPB, dbAuthzPB)
 }
 
 func TestNewAuthorizationInvalidName(t *testing.T) {
@@ -1031,9 +1024,6 @@ func TestPerformValidationSuccess(t *testing.T) {
 	// We know this is OK because of TestNewAuthorization
 	authzPB, err := ra.NewAuthorization(ctx, AuthzRequest)
 	test.AssertNotError(t, err, "NewAuthorization failed")
-	authz, err := bgrpc.PBToAuthz(authzPB)
-	test.AssertNotError(t, err, "failed to deserialze authz")
-	challIdx := challTypeIndex(t, authz.Challenges, core.ChallengeTypeDNS01)
 
 	va.ResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
@@ -1047,13 +1037,12 @@ func TestPerformValidationSuccess(t *testing.T) {
 		Problems: nil,
 	}
 
+	challIdx := challTypeIndex(t, authzPB.Challenges, core.ChallengeTypeDNS01)
 	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: challIdx,
 	})
 	test.AssertNotError(t, err, "PerformValidation failed")
-	authz, err = bgrpc.PBToAuthz(authzPB)
-	test.AssertNotError(t, err, "PBToAuthz failed")
 
 	var vaRequest *vapb.PerformValidationRequest
 	select {
@@ -1064,28 +1053,30 @@ func TestPerformValidationSuccess(t *testing.T) {
 	}
 
 	// Verify that the VA got the request, and it's the same as the others
-	test.AssertEquals(t, string(authz.Challenges[challIdx].Type), vaRequest.Challenge.Type)
-	test.AssertEquals(t, authz.Challenges[challIdx].Token, vaRequest.Challenge.Token)
+	test.AssertEquals(t, string(authzPB.Challenges[challIdx].Type), vaRequest.Challenge.Type)
+	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
 
 	// Sleep so the RA has a chance to write to the SA
 	time.Sleep(100 * time.Millisecond)
 
-	dbAuthz := getAuthorization(t, authz.ID, sa)
-	t.Log("dbAuthz:", dbAuthz)
+	dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
+	t.Log("dbAuthz:", dbAuthzPB)
 
 	// Verify that the responses are reflected
+	challIdx = challTypeIndex(t, dbAuthzPB.Challenges, core.ChallengeTypeDNS01)
+	challenge, err := bgrpc.PBToChallenge(dbAuthzPB.Challenges[challIdx])
+	test.AssertNotError(t, err, "Failed to marshall corepb.Challenge to core.Challenge.")
+
 	test.AssertNotNil(t, vaRequest.Challenge, "Request passed to VA has no challenge")
-	challIdx = challTypeIndex(t, dbAuthz.Challenges, core.ChallengeTypeDNS01)
-	test.Assert(t, dbAuthz.Challenges[challIdx].Status == core.StatusValid, "challenge was not marked as valid")
+	test.Assert(t, challenge.Status == core.StatusValid, "challenge was not marked as valid")
 
 	// The DB authz's expiry should be equal to the current time plus the
 	// configured authorization lifetime
-	expectedExpires := fc.Now().Add(ra.authorizationLifetime)
-	test.AssertEquals(t, *dbAuthz.Expires, expectedExpires)
+	test.AssertEquals(t, time.Unix(0, dbAuthzPB.Expires).String(), fc.Now().Add(ra.authorizationLifetime).String())
 
 	// Check that validated timestamp was recorded, stored, and retrieved
 	expectedValidated := fc.Now()
-	test.Assert(t, *dbAuthz.Challenges[challIdx].Validated == expectedValidated, "Validated timestamp incorrect or missing")
+	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
 }
 
 func TestPerformValidationVAError(t *testing.T) {
@@ -1094,21 +1085,16 @@ func TestPerformValidationVAError(t *testing.T) {
 
 	authzPB, err := ra.NewAuthorization(ctx, AuthzRequest)
 	test.AssertNotError(t, err, "NewAuthorization failed")
-	authz, err := bgrpc.PBToAuthz(authzPB)
-	test.AssertNotError(t, err, "failed to deserialize authz")
-
-	challIdx := challTypeIndex(t, authz.Challenges, core.ChallengeTypeDNS01)
 
 	va.ResultError = fmt.Errorf("Something went wrong")
 
+	challIdx := challTypeIndex(t, authzPB.Challenges, core.ChallengeTypeDNS01)
 	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: challIdx,
 	})
 
 	test.AssertNotError(t, err, "PerformValidation completely failed")
-	authz, err = bgrpc.PBToAuthz(authzPB)
-	test.AssertNotError(t, err, "PBToAuthz failed")
 
 	var vaRequest *vapb.PerformValidationRequest
 	select {
@@ -1119,24 +1105,26 @@ func TestPerformValidationVAError(t *testing.T) {
 	}
 
 	// Verify that the VA got the request, and it's the same as the others
-	test.AssertEquals(t, string(authz.Challenges[challIdx].Type), vaRequest.Challenge.Type)
-	test.AssertEquals(t, authz.Challenges[challIdx].Token, vaRequest.Challenge.Token)
+	test.AssertEquals(t, string(authzPB.Challenges[challIdx].Type), vaRequest.Challenge.Type)
+	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
 
 	// Sleep so the RA has a chance to write to the SA
 	time.Sleep(100 * time.Millisecond)
 
-	dbAuthz := getAuthorization(t, authz.ID, sa)
-	t.Log("dbAuthz:", dbAuthz)
+	dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
+	t.Log("dbAuthz:", dbAuthzPB)
 
 	// Verify that the responses are reflected
-	challIdx = challTypeIndex(t, dbAuthz.Challenges, core.ChallengeTypeDNS01)
-	test.Assert(t, dbAuthz.Challenges[challIdx].Status == core.StatusInvalid, "challenge was not marked as invalid")
-	test.AssertContains(t, dbAuthz.Challenges[challIdx].Error.Error(), "Could not communicate with VA")
-	test.Assert(t, dbAuthz.Challenges[challIdx].ValidationRecord == nil, "challenge had a ValidationRecord")
+	challIdx = challTypeIndex(t, dbAuthzPB.Challenges, core.ChallengeTypeDNS01)
+	challenge, err := bgrpc.PBToChallenge(dbAuthzPB.Challenges[challIdx])
+	test.AssertNotError(t, err, "Failed to marshall corepb.Challenge to core.Challenge.")
+	test.Assert(t, challenge.Status == core.StatusInvalid, "challenge was not marked as invalid")
+	test.AssertContains(t, challenge.Error.Error(), "Could not communicate with VA")
+	test.Assert(t, challenge.ValidationRecord == nil, "challenge had a ValidationRecord")
 
 	// Check that validated timestamp was recorded, stored, and retrieved
 	expectedValidated := fc.Now()
-	test.Assert(t, *dbAuthz.Challenges[challIdx].Validated == expectedValidated, "Validated timestamp incorrect or missing")
+	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
@@ -1214,8 +1202,6 @@ func TestAuthzRateLimiting(t *testing.T) {
 	// Should be able to create an authzRequest
 	authzPB, err := ra.NewAuthorization(ctx, AuthzRequest)
 	test.AssertNotError(t, err, "NewAuthorization failed")
-	authz, err := bgrpc.PBToAuthz(authzPB)
-	test.AssertNotError(t, err, "failed to deserialze authz")
 
 	fc.Add(time.Hour)
 
@@ -1224,8 +1210,12 @@ func TestAuthzRateLimiting(t *testing.T) {
 	test.AssertError(t, err, "Pending Authorization rate limit failed.")
 
 	// Finalize pending authz
-	authz.Challenges[0].Status = core.StatusInvalid
-	err = ra.recordValidation(ctx, authz.ID, authz.Expires, &authz.Challenges[0])
+	challenge, err := bgrpc.PBToChallenge(authzPB.Challenges[0])
+	test.AssertNotError(t, err, "Failed to marshall corepb.Challenge to core.Challenge.")
+
+	challenge.Status = core.StatusInvalid
+	authExpires := time.Unix(0, authzPB.Expires)
+	err = ra.recordValidation(ctx, authzPB.Id, &authExpires, &challenge)
 	test.AssertNotError(t, err, "recordValidation failed")
 
 	// Try to create a new authzRequest, should be fine now.
@@ -1868,11 +1858,11 @@ func TestDeactivateAuthorization(t *testing.T) {
 
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 	authzID := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid")
-	authz := getAuthorization(t, fmt.Sprintf("%d", authzID), sa)
-	err := ra.DeactivateAuthorization(ctx, authz)
+	dbAuthzPB := getAuthorization(t, fmt.Sprint(authzID), sa)
+	_, err := ra.DeactivateAuthorization(ctx, dbAuthzPB)
 	test.AssertNotError(t, err, "Could not deactivate authorization")
 	deact, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
-	test.AssertNotError(t, err, "Could not get deactivated authorization with ID "+authz.ID)
+	test.AssertNotError(t, err, "Could not get deactivated authorization with ID "+dbAuthzPB.Id)
 	test.AssertEquals(t, deact.Status, string(core.StatusDeactivated))
 }
 

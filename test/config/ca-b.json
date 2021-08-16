@@ -8,6 +8,7 @@
     },
     "hostnamePolicyFile": "test/hostname-policy.yaml",
     "grpcCA": {
+      "maxConnectionAge": "30s",
       "address": ":9093",
       "clientNames": [
         "health-checker.boulder",
@@ -15,6 +16,7 @@
       ]
     },
     "grpcOCSPGenerator": {
+      "maxConnectionAge": "30s",
       "address": ":9096",
       "clientNames": [
         "health-checker.boulder",
@@ -46,7 +48,7 @@
             ]
           }
         ],
-        "maxValidityPeriod": "7775999s",
+        "maxValidityPeriod": "7776000s",
         "maxValidityBackdate": "1h5m"
       },
       "issuers": [
@@ -77,7 +79,7 @@
       ],
       "ignoredLints": ["n_subject_common_name_included"]
     },
-    "expiry": "7775999s",
+    "expiry": "7776000s",
     "backdate": "1h",
     "serialPrefix": 255,
     "maxNames": 100,
@@ -85,6 +87,8 @@
     "weakKeyFile": "test/example-weak-keys.json",
     "blockedKeyFile": "test/example-blocked-keys.yaml",
     "orphanQueueDir": "/tmp/orphaned-certificates-b",
+    "ocspLogMaxLength": 4000,
+    "ocspLogPeriod": "500ms",
     "features": {
       "NonCFSSLSigner": true
     },
