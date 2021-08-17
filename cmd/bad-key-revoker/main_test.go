@@ -447,25 +447,33 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 }
 
 func TestBackoffPolicy(t *testing.T) {
-	backoff := &BackoffPolicy{Limit: time.Second * 60, Value: time.Second * 1, Minimum: time.Second * 1, Factor: 1.3}
+	backoff := &backoffPolicy{
+		limit:   time.Second * 60,
+		value:   time.Second * 1,
+		minimum: time.Second * 1,
+		factor:  1.3,
+	}
 
-	// Make sure the backoff increased by the desired backoff.Factor
+	// Make sure the backoff increased by the desired `backoff.factor`.
 	backoff.increase()
-	test.AssertEquals(t, backoff.Value, time.Duration(float64(backoff.Minimum)*backoff.Factor))
+	test.AssertEquals(t, backoff.value, time.Duration(float64(backoff.minimum)*backoff.factor))
 
 	// Increase a bunch of times to make sure the limit is hit and not exceeded.
 	for i := 0; i < 30; i++ {
 		backoff.increase()
 	}
-	// backoff should have incremented to backoff.Limit
-	test.AssertEquals(t, backoff.Limit, backoff.Value)
 
+	// `backoff.value` should have incremented to `backoff.limit`.
+	test.AssertEquals(t, backoff.limit, backoff.value)
+
+	// Reset `backoff.value`.
 	backoff.reset()
-	// reset() should have set the backoff.Value to backoff.Minimum
-	test.AssertEquals(t, time.Duration(0), backoff.Value)
 
-	// Make sure a minimum of zero sets backoff.Value to 1 second
-	backoff.Minimum = 0
+	// Calling reset() should have set the `backoff.value` to `backoff.minimum`.
+	test.AssertEquals(t, time.Duration(0), backoff.value)
+
+	// Make sure a minimum of zero sets `backoff.value` to 1 second.
+	backoff.minimum = 0
 	backoff.increase()
-	test.AssertEquals(t, backoff.Value, time.Duration(float64(time.Second*1)))
+	test.AssertEquals(t, backoff.value, time.Duration(float64(time.Second*1)))
 }

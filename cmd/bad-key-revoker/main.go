@@ -478,84 +478,88 @@ func main() {
 		clk:             clk,
 	}
 
-	// If the MaxBackoff.Duration was not set via the config, set it now
-	// so that it can't increase so high that it will not try on a
-	// reasonable timeframe.
+	// If the MaxBackoff.Duration was not set via the config, set it to 60
+	// seconds. This will avoid a tight loop on error but not be an
+	// excessive delay if the config value was not deliberately set.
 	if config.BadKeyRevoker.MaxBackoff.Duration == 0 {
 		config.BadKeyRevoker.MaxBackoff.Duration = time.Second * 60
 	}
 
-	// Set the backup policy
-	backoff := &BackoffPolicy{
-		Limit:   config.BadKeyRevoker.MaxBackoff.Duration,
-		Minimum: config.BadKeyRevoker.Interval.Duration,
-		Factor:  1.3,
+	// Set the backup policy.
+	backoff := &backoffPolicy{
+		limit:   config.BadKeyRevoker.MaxBackoff.Duration,
+		minimum: config.BadKeyRevoker.Interval.Duration,
+		factor:  1.3,
 	}
 
-	// Run bad key revoker in a loop. Backoff if no work or errors. Increment error or backoff metrics.
+	// Run bad-key-revoker in a loop. Backoff if no work or errors.
 	for {
 		noWork, err := bkr.invoke()
 		if err != nil {
 			keysProcessed.WithLabelValues("error").Inc()
 			logger.AuditErrf("failed to process blockedKeys row: %s", err)
-			// Backoff on error
+			// Backoff on error.
 			backoff.increase()
-			logger.Infof("error. Trying again in %f seconds. Backoff counter: %d", backoff.Value.Seconds(), backoff.Counter)
+			logger.Infof("error. Trying again in %f seconds. Backoff counter %d", backoff.value.Seconds(), backoff.counter)
 			continue
 		}
 		if noWork {
-			// Backoff on no work to do
+			// Backoff on no work to do.
 			backoff.increase()
-			logger.Infof("No work to do. Trying again in %f seconds. Backoff counter: %d", backoff.Value.Seconds(), backoff.Counter)
+			logger.Infof("No work to do. Trying again in %f seconds. Backoff counter %d", backoff.value.Seconds(), backoff.counter)
 		} else {
 			keysProcessed.WithLabelValues("success").Inc()
-			// Successfully processed. Reset backoff.
+			// Successfully processed, reset backoff.
 			backoff.reset()
 		}
-		// Sleep for duration defined in the backoff policy
-		bkr.clk.Sleep(backoff.Value)
+		// Sleep for duration defined in the backoff policy.
+		bkr.clk.Sleep(backoff.value)
 	}
 }
 
-// Policy for backing off requests for BadKeyRevoker runs. BadKeyRevoker
-// doesn't use goroutines, so we don't need jitter to stagger
-// concurrent retries.
-type BackoffPolicy struct {
-	Limit   time.Duration // Maximum backoff time
-	Value   time.Duration // Current backoff time
-	Counter int64         // Backoff counter
-	Minimum time.Duration // Minimum time to wait to do work
-	Factor  float64       // Backoff factor
+// backoffPolicy contains the values needed to calculate backoff timing
+// for bad-key-revoker. bad-key-revoker doesn't use goroutines, so we
+// don't need jitter to stagger concurrent retries.
+type backoffPolicy struct {
+	limit   time.Duration // Maximum backoff time.
+	value   time.Duration // Current backoff time.
+	counter int64         // Backoff counter.
+	minimum time.Duration // Minimum time to wait to do work.
+	factor  float64       // Backoff factor.
 }
 
-// increase increases the BackoffPolicy.Time by BackoffPolicy.Factor if
-// not already at BackoffPolicy.Limit. If it would set it higher than the
-// limit, the limit is used instead.
-func (b *BackoffPolicy) increase() {
-	b.Counter++
-	// If the minimum is zero, set to 1 second
-	if b.Minimum == 0 {
-		b.Minimum = time.Second * 1
+// increase increases the `backoffPolicy.time` by `backoffPolicy.factor`
+// if not already at `backoffPolicy.limit`. If it would set it higher than
+// the limit, the limit is used instead.
+func (b *backoffPolicy) increase() {
+	b.counter++
+
+	// If the minimum is zero, set to 1 second.
+	if b.minimum == 0 {
+		b.minimum = time.Second * 1
 	}
-	// If the current backoff value is 0s then set it to the minimum
-	if b.Value == 0 {
-		b.Value = b.Minimum
+
+	// If the current backoff value is 0s then set it to the minimum.
+	if b.value == 0 {
+		b.value = b.minimum
 		return
 	}
+
 	// If the backup limit has not yet been reached, adjust the backoff
 	// value.
-	if b.Value < b.Limit {
-		newVal := float64(b.Value) * b.Factor
-		b.Value = time.Duration(newVal)
+	if b.value < b.limit {
+		newVal := float64(b.value) * b.factor
+		b.value = time.Duration(newVal)
 	}
+
 	// If value was set over the limit, set to the limit.
-	if b.Value > b.Limit {
-		b.Value = b.Limit
+	if b.value > b.limit {
+		b.value = b.limit
 	}
 }
 
-// reset sets the BackoffPolicy time down to zero.
-func (b *BackoffPolicy) reset() {
-	b.Counter = 0
-	b.Value = 0
+// reset sets the `backoffPolicy` time to zero.
+func (b *backoffPolicy) reset() {
+	b.counter = 0
+	b.value = 0
 }
