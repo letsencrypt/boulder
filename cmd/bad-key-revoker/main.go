@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
+	"errors"
 	"flag"
 	"fmt"
 	"html/template"
@@ -362,10 +363,10 @@ func main() {
 			// process when there is no work to do.
 			Interval cmd.ConfigDuration
 
-			// MaxBackoff specifies a maximum amount of time the
+			// MaxInterval specifies a maximum amount of time the
 			// backoff algorithm will wait before retrying in the event of
 			// error or no work to do.
-			MaxBackoff cmd.ConfigDuration
+			MaxInterval cmd.ConfigDuration
 
 			Mailer struct {
 				cmd.SMTPConfig
@@ -481,15 +482,23 @@ func main() {
 	// If the MaxBackoff.Duration was not set via the config, set it to 60
 	// seconds. This will avoid a tight loop on error but not be an
 	// excessive delay if the config value was not deliberately set.
-	if config.BadKeyRevoker.MaxBackoff.Duration == 0 {
-		config.BadKeyRevoker.MaxBackoff.Duration = time.Second * 60
+	if config.BadKeyRevoker.MaxInterval.Duration == 0 {
+		config.BadKeyRevoker.MaxInterval.Duration = time.Second * 60
 	}
 
 	// Set the backup policy.
+	backoff2, err := newBackoffPolicy(
+		config.BadKeyRevoker.MaxInterval.Duration,
+		config.BadKeyRevoker.Interval.Duration,
+		1.3,
+	)
+	if err != nil {
+		//
+	}
 	backoff := &backoffPolicy{
-		limit:   config.BadKeyRevoker.MaxBackoff.Duration,
-		minimum: config.BadKeyRevoker.Interval.Duration,
-		factor:  1.3,
+		maxInterval: config.BadKeyRevoker.MaxInterval.Duration,
+		minInterval: config.BadKeyRevoker.Interval.Duration,
+		factor:      1.3,
 	}
 
 	// Run bad-key-revoker in a loop. Backoff if no work or errors.
@@ -521,40 +530,55 @@ func main() {
 // for bad-key-revoker. bad-key-revoker doesn't use goroutines, so we
 // don't need jitter to stagger concurrent retries.
 type backoffPolicy struct {
-	limit   time.Duration // Maximum backoff time.
-	value   time.Duration // Current backoff time.
-	counter int64         // Backoff counter.
-	minimum time.Duration // Minimum time to wait to do work.
-	factor  float64       // Backoff factor.
+	maxInterval time.Duration // Maximum backoff time.
+	value       time.Duration // Current backoff time.
+	counter     int64         // Backoff counter.
+	minInterval time.Duration // Minimum time to wait to do work.
+	factor      float64       // Backoff factor.
 }
 
-// increase increases the `backoffPolicy.time` by `backoffPolicy.factor`
-// if not already at `backoffPolicy.limit`. If it would set it higher than
+// newBackoffPolicy creates a `backoffPolicy` with the specified parameters.
+func newBackoffPolicy(maxInterval time.Duration, minInterval time.Duration, factor float64) (*backoffPolicy, error) {
+	if maxInterval <= 0 || minInterval <= 0 {
+		return nil, errors.New("minInterval and maxInterval must greater than zero")
+	}
+
+	// Make sure the backoff factor is greater than 1 so it doesn't decay
+	// instead of increase.
+	if factor <= 1 {
+		return nil, errors.New("backoff factor must be greater than 1")
+	}
+
+	return &backoffPolicy{maxInterval: maxInterval, minInterval: minInterval, factor: factor}, nil
+}
+
+// increase increases the `backoffPolicy.current` by `backoffPolicy.factor`
+// if not already at `backoffPolicy.max`. If it would set it higher than
 // the limit, the limit is used instead.
 func (b *backoffPolicy) increase() {
 	b.counter++
 
 	// If the minimum is zero, set to 1 second.
-	if b.minimum == 0 {
-		b.minimum = time.Second * 1
+	if b.minInterval == 0 {
+		b.minInterval = time.Second * 1
 	}
 
 	// If the current backoff value is 0s then set it to the minimum.
 	if b.value == 0 {
-		b.value = b.minimum
+		b.value = b.minInterval
 		return
 	}
 
 	// If the backup limit has not yet been reached, adjust the backoff
 	// value.
-	if b.value < b.limit {
+	if b.value < b.maxInterval {
 		newVal := float64(b.value) * b.factor
 		b.value = time.Duration(newVal)
 	}
 
 	// If value was set over the limit, set to the limit.
-	if b.value > b.limit {
-		b.value = b.limit
+	if b.value > b.maxInterval {
+		b.value = b.maxInterval
 	}
 }
 
