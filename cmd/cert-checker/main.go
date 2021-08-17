@@ -72,40 +72,36 @@ type reportEntry struct {
 	Problems []string `json:"problems,omitempty"`
 }
 
-/*
- * certDB is an interface collecting the gorp.DbMap functions that the
- * various parts of cert-checker rely on. Using this adapter shim allows tests to
- * swap out the dbMap implementation.
- */
+// certDB is an interface collecting the gorp.saDbMap functions that the various
+// parts of cert-checker rely on. Using this adapter shim allows tests to swap
+// out the saDbMap implementation.
 type certDB interface {
 	Select(i interface{}, query string, args ...interface{}) ([]interface{}, error)
 	SelectInt(query string, args ...interface{}) (int64, error)
 }
 
 type certChecker struct {
-	pa                        core.PolicyAuthority
-	dbMap                     certDB
-	certs                     chan core.Certificate
-	clock                     clock.Clock
-	rMu                       *sync.Mutex
-	issuedReport              report
-	checkPeriod               time.Duration
-	acceptableValidityPeriods map[uint]bool
+	pa                          core.PolicyAuthority
+	dbMap                       certDB
+	certs                       chan core.Certificate
+	clock                       clock.Clock
+	rMu                         *sync.Mutex
+	issuedReport                report
+	checkPeriod                 time.Duration
+	acceptableValidityDurations map[time.Duration]bool
 }
 
-func newChecker(saDbMap certDB, clk clock.Clock, pa core.PolicyAuthority, period time.Duration, avps map[uint]bool) certChecker {
-	c := certChecker{
-		pa:                        pa,
-		dbMap:                     saDbMap,
-		certs:                     make(chan core.Certificate, batchSize),
-		rMu:                       new(sync.Mutex),
-		clock:                     clk,
-		issuedReport:              report{Entries: make(map[string]reportEntry)},
-		checkPeriod:               period,
-		acceptableValidityPeriods: avps,
+func newChecker(saDbMap certDB, clk clock.Clock, pa core.PolicyAuthority, period time.Duration, avd map[time.Duration]bool) certChecker {
+	return certChecker{
+		pa:                          pa,
+		dbMap:                       saDbMap,
+		certs:                       make(chan core.Certificate, batchSize),
+		rMu:                         new(sync.Mutex),
+		clock:                       clk,
+		issuedReport:                report{Entries: make(map[string]reportEntry)},
+		checkPeriod:                 period,
+		acceptableValidityDurations: avd,
 	}
-
-	return c
 }
 
 func (c *certChecker) getCerts(unexpiredOnly bool) error {
@@ -207,17 +203,16 @@ var expectedExtensionContent = map[string][]byte{
 }
 
 func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]bool) (problems []string) {
-	// Check digests match
+	// Check that the digests match.
 	if cert.Digest != core.Fingerprint256(cert.DER) {
 		problems = append(problems, "Stored digest doesn't match certificate digest")
 	}
-
-	// Parse certificate
+	// Parse the certificate.
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	if err != nil {
 		problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
 	} else {
-		// Run zlint checks
+		// Run zlint checks.
 		results := zlint.LintCertificate(parsedCert)
 		for name, res := range results.Results {
 			if ignoredLints[name] || res.Status <= lint.Pass {
@@ -229,48 +224,50 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 			}
 			problems = append(problems, prob)
 		}
-		// Check stored serial is correct
+		// Check if stored serial is correct.
 		storedSerial, err := core.StringToSerial(cert.Serial)
 		if err != nil {
 			problems = append(problems, "Stored serial is invalid")
 		} else if parsedCert.SerialNumber.Cmp(storedSerial) != 0 {
 			problems = append(problems, "Stored serial doesn't match certificate serial")
 		}
-		// Check we have the right expiration time
+		// Check that we have the correct expiration time.
 		if !parsedCert.NotAfter.Equal(cert.Expires) {
 			problems = append(problems, "Stored expiration doesn't match certificate NotAfter")
 		}
-		// Check basic constraints are set
+		// Check if basic constraints are set.
 		if !parsedCert.BasicConstraintsValid {
 			problems = append(problems, "Certificate doesn't have basic constraints set")
 		}
-		// Check the cert isn't able to sign other certificates
+		// Check that the cert isn't able to sign other certificates.
 		if parsedCert.IsCA {
 			problems = append(problems, "Certificate can sign other certificates")
 		}
-		// Check the cert has the correct validity period. The validity period is
-		// computed inclusive of the whole final second indicated by notAfter.
-		validityPeriod := parsedCert.NotAfter.Add(time.Second).Sub(parsedCert.NotBefore)
-		if _, ok := c.acceptableValidityPeriods[uint(validityPeriod.Seconds())]; !ok {
-			problems = append(problems, fmt.Sprintf("Certificate has unacceptable validity period"))
+		// Check that the cert has a valid validity period. The validity
+		// period is computed inclusive of the whole final second indicated by
+		// notAfter.
+		validityDuration := parsedCert.NotAfter.Add(time.Second).Sub(parsedCert.NotBefore)
+		_, ok := c.acceptableValidityDurations[validityDuration]
+		if !ok {
+			problems = append(problems, "Certificate has unacceptable validity period")
 		}
-		// Check the stored issuance time isn't too far back/forward dated
+		// Check that the stored issuance time isn't too far back/forward dated.
 		if parsedCert.NotBefore.Before(cert.Issued.Add(-6*time.Hour)) || parsedCert.NotBefore.After(cert.Issued.Add(6*time.Hour)) {
 			problems = append(problems, "Stored issuance date is outside of 6 hour window of certificate NotBefore")
 		}
-		// Check CommonName is <= 64 characters
+		// Check if the CommonName is <= 64 characters.
 		if len(parsedCert.Subject.CommonName) > 64 {
 			problems = append(
 				problems,
 				fmt.Sprintf("Certificate has common name >64 characters long (%d)", len(parsedCert.Subject.CommonName)),
 			)
 		}
-		// Check that the PA is still willing to issue for each name in DNSNames + CommonName
+		// Check that the PA is still willing to issue for each name in DNSNames
+		// + CommonName.
 		for _, name := range append(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
 			id := identifier.ACMEIdentifier{Type: identifier.DNS, Value: name}
-			// TODO(https://github.com/letsencrypt/boulder/issues/3371): Distinguish
-			// between certificates issued by v1 and v2 API.
-			if err = c.pa.WillingToIssueWildcards([]identifier.ACMEIdentifier{id}); err != nil {
+			err = c.pa.WillingToIssueWildcards([]identifier.ACMEIdentifier{id})
+			if err != nil {
 				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
 			} else {
 				// For defense-in-depth, even if the PA was willing to issue for a name
@@ -290,10 +287,12 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 		}
 
 		for _, ext := range parsedCert.Extensions {
-			if _, ok := allowedExtensions[ext.Id.String()]; !ok {
+			_, ok := allowedExtensions[ext.Id.String()]
+			if !ok {
 				problems = append(problems, fmt.Sprintf("Certificate contains an unexpected extension: %s", ext.Id))
 			}
-			if expectedContent, ok := expectedExtensionContent[ext.Id.String()]; ok {
+			expectedContent, ok := expectedExtensionContent[ext.Id.String()]
+			if ok {
 				if !bytes.Equal(ext.Value, expectedContent) {
 					problems = append(problems, fmt.Sprintf("Certificate extension %s contains unexpected content: has %x, expected %x", ext.Id, ext.Value, expectedContent))
 				}
@@ -314,19 +313,23 @@ type config struct {
 		BadResultsOnly      bool
 		CheckPeriod         cmd.ConfigDuration
 
+		// TODO(#5581): This field is deprecated and can be removed once staging
+		// and production configs use `acceptableValidityDurations`.
+		//
 		// AcceptableValidityPeriods is a list of lengths (in seconds) which are
 		// acceptable Validity Periods for certificates we issue.
 		AcceptableValidityPeriods []uint
 
+		// AcceptableValidityDurations is a list of durations (in seconds) which are
+		// acceptable Validity durations for certificates we issue.
+		AcceptableValidityDurations []cmd.ConfigDuration
+
 		// IgnoredLints is a list of zlint names. Any lint results from a lint in
 		// the IgnoredLists list are ignored regardless of LintStatus level.
 		IgnoredLints []string
-
-		Features map[string]bool
+		Features     map[string]bool
 	}
-
-	PA cmd.PAConfig
-
+	PA     cmd.PAConfig
 	Syslog cmd.SyslogConfig
 }
 
@@ -355,46 +358,69 @@ func main() {
 
 	syslogger, err := syslog.Dial("", "", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
 	cmd.FailOnError(err, "Failed to dial syslog")
+
 	logger, err := blog.New(syslogger, 0, 0)
 	cmd.FailOnError(err, "Failed to construct logger")
+
 	err = blog.Set(logger)
 	cmd.FailOnError(err, "Failed to set audit logger")
 
-	avps := make(map[uint]bool)
-	if len(config.CertChecker.AcceptableValidityPeriods) == 0 {
-		// For backwards compatibility, assume only a single valid validity period
-		// of exactly 90 days if none is configured.
-		avps[uint((time.Hour * 24 * 90).Seconds())] = true
+	// TODO(#5581): This check can be removed once staging and production configs
+	// use `acceptableValidityDurations`.
+	if len(config.CertChecker.AcceptableValidityDurations) > 0 && len(config.CertChecker.AcceptableValidityPeriods) > 0 {
+		cmd.Fail("Config specifies both 'acceptableValidityDurations' and 'acceptableValidityPeriods'")
+	}
+
+	acceptableValidityDurations := make(map[time.Duration]bool)
+	if len(config.CertChecker.AcceptableValidityDurations) == 0 && len(config.CertChecker.AcceptableValidityPeriods) == 0 {
+		// For backwards compatibility, assume only a single valid validity
+		// period of exactly 90 days if none is configured.
+		ninetyDays := (time.Hour * 24) * 90
+		acceptableValidityDurations[ninetyDays] = true
 	} else {
-		for _, period := range config.CertChecker.AcceptableValidityPeriods {
-			avps[period] = true
+		if len(config.CertChecker.AcceptableValidityDurations) > 0 {
+			for _, duration := range config.CertChecker.AcceptableValidityDurations {
+				acceptableValidityDurations[duration.Duration] = true
+			}
+		}
+		if len(config.CertChecker.AcceptableValidityPeriods) > 0 {
+			// TODO(#5581): This conditional is deprecated and can be removed once
+			// staging and production configs use `acceptableValidityDurations`.
+			for _, period := range config.CertChecker.AcceptableValidityPeriods {
+				duration, err := time.ParseDuration(fmt.Sprintf("%ds", period))
+				if err != nil {
+					cmd.FailOnError(err, "Failed to marshal period to time.Duration")
+				}
+				acceptableValidityDurations[duration] = true
+			}
 		}
 	}
 
-	// Validate PA config and set defaults if needed
+	// Validate PA config and set defaults if needed.
 	cmd.FailOnError(config.PA.CheckChallenges(), "Invalid PA configuration")
 
 	saDbURL, err := config.CertChecker.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
+
 	dbSettings := sa.DbSettings{
 		MaxOpenConns:    config.CertChecker.DB.MaxOpenConns,
 		MaxIdleConns:    config.CertChecker.DB.MaxIdleConns,
 		ConnMaxLifetime: config.CertChecker.DB.ConnMaxLifetime.Duration,
 		ConnMaxIdleTime: config.CertChecker.DB.ConnMaxIdleTime.Duration,
 	}
+
 	saDbMap, err := sa.NewDbMap(saDbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")
-
-	dbAddr, dbUser, err := config.CertChecker.DB.DSNAddressAndUser()
-	cmd.FailOnError(err, "Could not determine address or user of DB DSN")
-
-	sa.InitDBMetrics(saDbMap, prometheus.DefaultRegisterer, dbSettings, dbAddr, dbUser)
 
 	_, err = saDbMap.Exec(
 		"SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;",
 	)
 	cmd.FailOnError(err, "Failed to set transaction isolation level at the DB")
 
+	dbAddr, dbUser, err := config.CertChecker.DB.DSNAddressAndUser()
+	cmd.FailOnError(err, "Could not determine address or user of DB DSN")
+
+	sa.InitDBMetrics(saDbMap, prometheus.DefaultRegisterer, dbSettings, dbAddr, dbUser)
 	checkerLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name: "cert_checker_latency",
 		Help: "Histogram of latencies a cert-checker worker takes to complete a batch",
@@ -403,6 +429,7 @@ func main() {
 
 	pa, err := policy.New(config.PA.Challenges)
 	cmd.FailOnError(err, "Failed to create PA")
+
 	err = pa.SetHostnamePolicyFile(config.CertChecker.HostnamePolicyFile)
 	cmd.FailOnError(err, "Failed to load HostnamePolicyFile")
 
@@ -411,7 +438,7 @@ func main() {
 		cmd.Clock(),
 		pa,
 		config.CertChecker.CheckPeriod.Duration,
-		avps,
+		acceptableValidityDurations,
 	)
 	fmt.Fprintf(os.Stderr, "# Getting certificates issued in the last %s\n", config.CertChecker.CheckPeriod)
 
@@ -448,5 +475,4 @@ func main() {
 	)
 	err = checker.issuedReport.dump()
 	cmd.FailOnError(err, "Failed to dump results: %s\n")
-
 }
