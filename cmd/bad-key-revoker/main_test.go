@@ -469,7 +469,7 @@ func TestBackoffPolicy(t *testing.T) {
 	// Reset `backoff.value`.
 	backoff.reset()
 
-	// Calling reset() should have set the `backoff.value` to `backoff.minimum`.
+	// Calling reset should have set the `backoff.value` to `backoff.minimum`.
 	test.AssertEquals(t, time.Duration(0), backoff.value)
 
 	// Make sure a minimum of zero sets `backoff.value` to 1 second.
