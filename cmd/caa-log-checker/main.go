@@ -180,7 +180,7 @@ func processCAALog(path string, issuances map[string][]time.Time, earliest time.
 // removeCoveredTimestamps returns a new slice of timestamps which contains all
 // timestamps that are *not* within 8 hours after the input timestamp.
 func removeCoveredTimestamps(timestamps []time.Time, cover time.Time, tolerance time.Duration) []time.Time {
-	r := make([]time.Time, len(timestamps))
+	r := make([]time.Time, 0)
 	for _, ts := range timestamps {
 		// Copy the timestamp into the results slice if it is before the covering
 		// timestamp, or more than 8 hours after the covering timestamp (i.e. if
@@ -258,7 +258,7 @@ func main() {
 	// Try to pare the issuance map down to nothing by removing every entry which
 	// is covered by a CAA check.
 	for _, vaLog := range strings.Split(*vaLogs, ",") {
-		err = processCAALog(vaLog, issuanceMap, earliest, latest, timeTolerance)
+		err = processCAALog(vaLog, issuanceMap, earliest, latest, *timeTolerance)
 		cmd.FailOnError(err, "failed to process CAA checking logs")
 	}
 
