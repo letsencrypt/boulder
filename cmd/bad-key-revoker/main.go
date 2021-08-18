@@ -364,7 +364,7 @@ func main() {
 
 			// Interval specifies the minimum duration bad-key-revoker
 			// should sleep between attempting to find blockedKeys rows to
-			// process when there is no work to do.
+			// process when there is an error or no work to do.
 			Interval cmd.ConfigDuration
 
 			// BackoffDurationMax specifies a maximum amount of time the
