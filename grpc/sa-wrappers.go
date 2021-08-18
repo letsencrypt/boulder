@@ -40,14 +40,7 @@ func (sac StorageAuthorityClientWrapper) GetCertificate(ctx context.Context, req
 }
 
 func (sac StorageAuthorityClientWrapper) GetPrecertificate(ctx context.Context, serial *sapb.Serial) (*corepb.Certificate, error) {
-	resp, err := sac.inner.GetPrecertificate(ctx, serial)
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil {
-		return nil, errIncompleteResponse
-	}
-	return resp, nil
+	return sac.inner.GetPrecertificate(ctx, serial)
 }
 
 func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Context, serial string) (core.CertificateStatus, error) {
@@ -460,9 +453,6 @@ func (sas StorageAuthorityServerWrapper) GetCertificate(ctx context.Context, req
 }
 
 func (sas StorageAuthorityServerWrapper) GetPrecertificate(ctx context.Context, request *sapb.Serial) (*corepb.Certificate, error) {
-	if core.IsAnyNilOrZero(request, request.Serial) {
-		return nil, errIncompleteRequest
-	}
 	return sas.inner.GetPrecertificate(ctx, request)
 }
 
