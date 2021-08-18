@@ -883,7 +883,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 
 	serial := core.SerialToString(providedCert.SerialNumber)
 	logEvent.Extra["ProvidedCertificateSerial"] = serial
-	cert, err := wfe.SA.GetCertificate(ctx, serial)
+	cert, err := wfe.SA.GetCertificate(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
 		if errors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("No such certificate"), err)
@@ -892,11 +892,11 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve certificate"), err)
 		return
 	}
-	if !bytes.Equal(cert.DER, revokeRequest.CertificateDER) {
+	if !bytes.Equal(cert.Der, revokeRequest.CertificateDER) {
 		wfe.sendError(response, logEvent, probs.NotFound("No such certificate"), err)
 		return
 	}
-	parsedCertificate, err := x509.ParseCertificate(cert.DER)
+	parsedCertificate, err := x509.ParseCertificate(cert.Der)
 	if err != nil {
 		// InternalServerError because this is a failure to decode from our DB.
 		wfe.sendError(response, logEvent, probs.ServerInternal("invalid parse of stored certificate"), err)
@@ -1531,7 +1531,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	}
 	logEvent.Extra["RequestedSerial"] = serial
 
-	cert, err := wfe.SA.GetCertificate(ctx, serial)
+	cert, err := wfe.SA.GetCertificate(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
 		ierr := fmt.Errorf("unable to get certificate by serial id %#v: %s", serial, err)
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
@@ -1549,7 +1549,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	relativeIssuerPath := web.RelativeEndpoint(request, issuerPath)
 	response.Header().Add("Link", link(relativeIssuerPath, "up"))
 	response.WriteHeader(http.StatusOK)
-	if _, err = response.Write(cert.DER); err != nil {
+	if _, err = response.Write(cert.Der); err != nil {
 		wfe.log.Warningf("Could not write response: %s", err)
 	}
 }

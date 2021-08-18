@@ -914,11 +914,11 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 	authorizedToRevoke := func(parsedCertificate *x509.Certificate) *probs.ProblemDetails {
 		// Try to find a stored final certificate for the serial number
 		serial := core.SerialToString(parsedCertificate.SerialNumber)
-		cert, err := wfe.SA.GetCertificate(ctx, serial)
+		cert, err := wfe.SA.GetCertificate(ctx, &sapb.Serial{Serial: serial})
 		if errors.Is(err, berrors.NotFound) {
 			// If there was an error and it was a not found error, then maybe they're
 			// trying to revoke via the precertificate. Try to find that instead.
-			pbCert, err := wfe.SA.GetPrecertificate(ctx, &sapb.Serial{Serial: serial})
+			cert, err = wfe.SA.GetPrecertificate(ctx, &sapb.Serial{Serial: serial})
 			if errors.Is(err, berrors.NotFound) {
 				// If looking up a precert also returned a not found error then return
 				// a not found problem.
@@ -927,10 +927,6 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 				// If there was any other error looking up the precert then return
 				// a server internal problem.
 				return probs.ServerInternal("Failed to retrieve certificate")
-			}
-			cert, err = bgrpc.PBToCert(pbCert)
-			if err != nil {
-				return probs.ServerInternal("Failed to unmarshal protobuf certificate")
 			}
 		} else if err != nil {
 			// Otherwise if the err was not nil and not a not found error, return
@@ -1647,7 +1643,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	logEvent.Extra["RequestedSerial"] = serial
 	beeline.AddFieldToTrace(ctx, "request.serial", serial)
 
-	cert, err := wfe.SA.GetCertificate(ctx, serial)
+	cert, err := wfe.SA.GetCertificate(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
 		ierr := fmt.Errorf("unable to get certificate by serial id %#v: %s", serial, err)
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
@@ -1678,10 +1674,10 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	responsePEM, prob := func() ([]byte, *probs.ProblemDetails) {
 		leafPEM := pem.EncodeToMemory(&pem.Block{
 			Type:  "CERTIFICATE",
-			Bytes: cert.DER,
+			Bytes: cert.Der,
 		})
 
-		parsedCert, err := x509.ParseCertificate(cert.DER)
+		parsedCert, err := x509.ParseCertificate(cert.Der)
 		if err != nil {
 			// If we can't parse one of our own certs there's a serious problem
 			return nil, probs.ServerInternal(
