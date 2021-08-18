@@ -197,9 +197,9 @@ func removeCoveredTimestamps(timestamps []time.Time, cover time.Time, tolerance 
 // formatErrors returns nil if the input map is empty. Otherwise, it returns an
 // error containing a listing of every name and issuance time that was not
 // covered by a CAA check.
-func formatErrors(remaining map[string][]time.Time) error {
+func formatErrors(remaining map[string][]time.Time) string {
 	if len(remaining) == 0 {
-		return nil
+		return ""
 	}
 
 	messages := make([]string, len(remaining))
@@ -210,7 +210,7 @@ func formatErrors(remaining map[string][]time.Time) error {
 	}
 
 	sort.Strings(messages)
-	return fmt.Errorf("\n%s", strings.Join(messages, "\n"))
+	return strings.Join(messages, "\n")
 }
 
 func main() {
@@ -228,22 +228,8 @@ func main() {
 		cmd.Fail("value of -time-tolerance must be non-negative")
 	}
 
-	var earliest time.Time
-	var latest time.Time
 	if *earliestFlag != "" || *latestFlag != "" {
 		fmt.Printf("The -earliest and -lastest flags are deprecated and ignored.")
-		if *earliestFlag == "" || *latestFlag == "" {
-			cmd.Fail("-earliest and -latest must be both set or both unset")
-		}
-		var err error
-		earliest, err = time.Parse("20060102", *earliestFlag)
-		cmd.FailOnError(err, "value of -earliest could not be parsed as date")
-		latest, err = time.Parse("20060102", *latestFlag)
-		cmd.FailOnError(err, "value of -latest could not be parsed as date")
-
-		if earliest.After(latest) {
-			cmd.Fail("earliest date must be before latest date")
-		}
 	}
 
 	_ = cmd.NewLogger(cmd.SyslogConfig{
@@ -252,6 +238,8 @@ func main() {
 	})
 
 	// Build a map from hostnames to times at which those names were issued for.
+	// Also retrieve the earliest and latest issuance times represented in the
+	// data, so we can be more efficient when examining entries from the CAA log.
 	issuanceMap, earliest, latest, err := loadIssuanceLog(*raLog)
 	cmd.FailOnError(err, "failed to load issuance logs")
 
@@ -262,6 +250,9 @@ func main() {
 		cmd.FailOnError(err, "failed to process CAA checking logs")
 	}
 
-	err = formatErrors(issuanceMap)
-	cmd.FailOnError(err, "the following issuances were missing CAA checks")
+	errStr := formatErrors(issuanceMap)
+	if errStr != "" {
+		fmt.Fprintf(os.Stderr, "The following issuances were missing CAA checks:\n%s", errStr)
+		os.Exit(1)
+	}
 }
