@@ -68,6 +68,8 @@ const (
 	getCertPath      = getAPIPrefix + "cert/"
 )
 
+var errIncompleteResponse = errors.New("Incomplete gRPC response message")
+
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
 // i.e., ACME.  Its members configure the paths for various ACME functions,
 // plus a few other data items used in ACME.  Its methods are primarily handlers
@@ -1084,6 +1086,13 @@ func (wfe *WebFrontEndImpl) Challenge(
 		}
 		return
 	}
+
+	// Ensure gRPC response is complete.
+	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteResponse)
+		return
+	}
+
 	authz, err := bgrpc.PBToAuthz(authzPB)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
@@ -1539,6 +1548,12 @@ func (wfe *WebFrontEndImpl) Authorization(
 		return
 	}
 
+	// Ensure gRPC response is complete.
+	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteResponse)
+		return
+	}
+
 	if identifier.IdentifierType(authzPB.Identifier) == identifier.DNS {
 		logEvent.DNSName = authzPB.Identifier
 		beeline.AddFieldToTrace(ctx, "authz.dnsname", authzPB.Identifier)
@@ -1547,7 +1562,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 	beeline.AddFieldToTrace(ctx, "authz.status", authzPB.Status)
 
 	// After expiring, authorizations are inaccessible
-	if authzPB.Expires == 0 || time.Unix(0, authzPB.Expires).Before(wfe.clk.Now()) {
+	if time.Unix(0, authzPB.Expires).Before(wfe.clk.Now()) {
 		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
 		return
 	}
@@ -2282,8 +2297,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 	if updatedOrder == nil || order.Id == 0 || order.Created == 0 || order.RegistrationID == 0 || order.Expires == 0 || len(order.Names) == 0 {
-		err = errors.New("Incomplete gRPC response message")
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteResponse)
 		return
 	}
 

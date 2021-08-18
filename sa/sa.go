@@ -1430,13 +1430,16 @@ func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sap
 // GetAuthorization2 returns the authz2 style authorization identified by the provided ID or an error.
 // If no authorization is found matching the ID a berrors.NotFound type error is returned. This method
 // is intended to deprecate GetAuthorization.
-func (ssa *SQLStorageAuthority) GetAuthorization2(ctx context.Context, id *sapb.AuthorizationID2) (*corepb.Authorization, error) {
-	obj, err := ssa.dbMap.Get(authzModel{}, id.Id)
+func (ssa *SQLStorageAuthority) GetAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Authorization, error) {
+	if req == nil || req.Id == 0 {
+		return nil, errIncompleteRequest
+	}
+	obj, err := ssa.dbMap.Get(authzModel{}, req.Id)
 	if err != nil {
 		return nil, err
 	}
 	if obj == nil {
-		return nil, berrors.NotFoundError("authorization %d not found", id.Id)
+		return nil, berrors.NotFoundError("authorization %d not found", req.Id)
 	}
 	return modelToAuthzPB(*(obj.(*authzModel)))
 }

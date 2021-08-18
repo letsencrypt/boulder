@@ -324,14 +324,7 @@ func (sas StorageAuthorityClientWrapper) GetOrderForNames(
 }
 
 func (sas StorageAuthorityClientWrapper) GetAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Authorization, error) {
-	resp, err := sas.inner.GetAuthorization2(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil || !authorizationValid(resp) {
-		return nil, errIncompleteResponse
-	}
-	return resp, nil
+	return sas.inner.GetAuthorization2(ctx, req)
 }
 
 func (sas StorageAuthorityClientWrapper) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error {
@@ -685,10 +678,6 @@ func (sas StorageAuthorityServerWrapper) GetOrderForNames(
 }
 
 func (sas StorageAuthorityServerWrapper) GetAuthorization2(ctx context.Context, request *sapb.AuthorizationID2) (*corepb.Authorization, error) {
-	if core.IsAnyNilOrZero(request, request.Id) {
-		return nil, errIncompleteRequest
-	}
-
 	return sas.inner.GetAuthorization2(ctx, request)
 }
 
