@@ -229,7 +229,7 @@ func main() {
 	}
 
 	if *earliestFlag != "" || *latestFlag != "" {
-		fmt.Printf("The -earliest and -lastest flags are deprecated and ignored.")
+		fmt.Printf("The -earliest and -latest flags are deprecated and ignored.")
 	}
 
 	_ = cmd.NewLogger(cmd.SyslogConfig{
