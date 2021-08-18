@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
-	"errors"
 	"flag"
 	"fmt"
 	"html/template"
@@ -51,15 +50,20 @@ type revoker interface {
 }
 
 type badKeyRevoker struct {
-	dbMap           *db.WrappedMap
-	maxRevocations  int
-	serialBatchSize int
-	raClient        revoker
-	mailer          mail.Mailer
-	emailSubject    string
-	emailTemplate   *template.Template
-	logger          log.Logger
-	clk             clock.Clock
+	dbMap               *db.WrappedMap
+	maxRevocations      int
+	serialBatchSize     int
+	raClient            revoker
+	mailer              mail.Mailer
+	emailSubject        string
+	emailTemplate       *template.Template
+	logger              log.Logger
+	clk                 clock.Clock
+	backoffDurationBase time.Duration
+	backoffDurationMax  time.Duration
+	backoffFactor       float64
+	backoffTicker       int
+	backoffDuration     time.Duration
 }
 
 // uncheckedBlockedKey represents a row in the blockedKeys table
@@ -363,10 +367,10 @@ func main() {
 			// process when there is no work to do.
 			Interval cmd.ConfigDuration
 
-			// MaxInterval specifies a maximum amount of time the
+			// BackoffDurationMax specifies a maximum amount of time the
 			// backoff algorithm will wait before retrying in the event of
 			// error or no work to do.
-			MaxInterval cmd.ConfigDuration
+			BackoffDurationMax cmd.ConfigDuration
 
 			Mailer struct {
 				cmd.SMTPConfig
@@ -468,37 +472,31 @@ func main() {
 	cmd.FailOnError(err, fmt.Sprintf("failed to parse email template %q: %s", config.BadKeyRevoker.Mailer.EmailTemplate, err))
 
 	bkr := &badKeyRevoker{
-		dbMap:           dbMap,
-		maxRevocations:  config.BadKeyRevoker.MaximumRevocations,
-		serialBatchSize: config.BadKeyRevoker.FindCertificatesBatchSize,
-		raClient:        rac,
-		mailer:          mailClient,
-		emailSubject:    config.BadKeyRevoker.Mailer.EmailSubject,
-		emailTemplate:   emailTemplate,
-		logger:          logger,
-		clk:             clk,
+		dbMap:               dbMap,
+		maxRevocations:      config.BadKeyRevoker.MaximumRevocations,
+		serialBatchSize:     config.BadKeyRevoker.FindCertificatesBatchSize,
+		raClient:            rac,
+		mailer:              mailClient,
+		emailSubject:        config.BadKeyRevoker.Mailer.EmailSubject,
+		emailTemplate:       emailTemplate,
+		logger:              logger,
+		clk:                 clk,
+		backoffDurationMax:  config.BadKeyRevoker.BackoffDurationMax.Duration,
+		backoffDurationBase: config.BadKeyRevoker.Interval.Duration,
+		backoffFactor:       1.3,
 	}
 
-	// If the MaxBackoff.Duration was not set via the config, set it to 60
+	// If `BackoffDurationMax` was not set via the config, set it to 60
 	// seconds. This will avoid a tight loop on error but not be an
 	// excessive delay if the config value was not deliberately set.
-	if config.BadKeyRevoker.MaxInterval.Duration == 0 {
-		config.BadKeyRevoker.MaxInterval.Duration = time.Second * 60
+	if config.BadKeyRevoker.BackoffDurationMax.Duration == 0 {
+		bkr.backoffDurationMax = time.Second * 60
 	}
 
-	// Set the backup policy.
-	backoff2, err := newBackoffPolicy(
-		config.BadKeyRevoker.MaxInterval.Duration,
-		config.BadKeyRevoker.Interval.Duration,
-		1.3,
-	)
-	if err != nil {
-		//
-	}
-	backoff := &backoffPolicy{
-		maxInterval: config.BadKeyRevoker.MaxInterval.Duration,
-		minInterval: config.BadKeyRevoker.Interval.Duration,
-		factor:      1.3,
+	// If `Interval` is not set in the config then set
+	// `bkr.backoffDurationBase` to a default 1 second.
+	if config.BadKeyRevoker.Interval.Duration == 0 {
+		bkr.backoffDurationBase = time.Second
 	}
 
 	// Run bad-key-revoker in a loop. Backoff if no work or errors.
@@ -507,83 +505,41 @@ func main() {
 		if err != nil {
 			keysProcessed.WithLabelValues("error").Inc()
 			logger.AuditErrf("failed to process blockedKeys row: %s", err)
-			// Backoff on error.
-			backoff.increase()
-			logger.Infof("error. Trying again in %f seconds. Backoff counter %d", backoff.value.Seconds(), backoff.counter)
+			// Increase backoff duration.
+			bkr.backoffTick()
+			logger.Infof("backoff on error, trying again in %f seconds.", bkr.backoffDuration.Seconds())
+			// Sleep for backoff duration.
+			bkr.clk.Sleep(bkr.backoffDuration)
 			continue
 		}
 		if noWork {
-			// Backoff on no work to do.
-			backoff.increase()
-			logger.Infof("No work to do. Trying again in %f seconds. Backoff counter %d", backoff.value.Seconds(), backoff.counter)
+			// Increase backoff duration.
+			bkr.backoffTick()
+			logger.Infof("no work to do, trying again in %f seconds", bkr.backoffDuration.Seconds())
+			// Sleep for `backoffDuration`
+			bkr.clk.Sleep(bkr.backoffDuration)
 		} else {
 			keysProcessed.WithLabelValues("success").Inc()
 			// Successfully processed, reset backoff.
-			backoff.reset()
+			bkr.backoffReset()
 		}
-		// Sleep for duration defined in the backoff policy.
-		bkr.clk.Sleep(backoff.value)
 	}
 }
 
-// backoffPolicy contains the values needed to calculate backoff timing
-// for bad-key-revoker. bad-key-revoker doesn't use goroutines, so we
-// don't need jitter to stagger concurrent retries.
-type backoffPolicy struct {
-	maxInterval time.Duration // Maximum backoff time.
-	value       time.Duration // Current backoff time.
-	counter     int64         // Backoff counter.
-	minInterval time.Duration // Minimum time to wait to do work.
-	factor      float64       // Backoff factor.
+// backoffTick increments the backoffTicker and calls core.RetryBackoff
+// to calculate a new backoff duration and set `bkr.backoffDuration`.
+func (bkr *badKeyRevoker) backoffTick() {
+	bkr.backoffTicker++
+	bkr.backoffDuration = core.RetryBackoff(
+		bkr.backoffTicker,
+		bkr.backoffDurationBase,
+		bkr.backoffDurationMax,
+		bkr.backoffFactor,
+	)
 }
 
-// newBackoffPolicy creates a `backoffPolicy` with the specified parameters.
-func newBackoffPolicy(maxInterval time.Duration, minInterval time.Duration, factor float64) (*backoffPolicy, error) {
-	if maxInterval <= 0 || minInterval <= 0 {
-		return nil, errors.New("minInterval and maxInterval must greater than zero")
-	}
-
-	// Make sure the backoff factor is greater than 1 so it doesn't decay
-	// instead of increase.
-	if factor <= 1 {
-		return nil, errors.New("backoff factor must be greater than 1")
-	}
-
-	return &backoffPolicy{maxInterval: maxInterval, minInterval: minInterval, factor: factor}, nil
-}
-
-// increase increases the `backoffPolicy.current` by `backoffPolicy.factor`
-// if not already at `backoffPolicy.max`. If it would set it higher than
-// the limit, the limit is used instead.
-func (b *backoffPolicy) increase() {
-	b.counter++
-
-	// If the minimum is zero, set to 1 second.
-	if b.minInterval == 0 {
-		b.minInterval = time.Second * 1
-	}
-
-	// If the current backoff value is 0s then set it to the minimum.
-	if b.value == 0 {
-		b.value = b.minInterval
-		return
-	}
-
-	// If the backup limit has not yet been reached, adjust the backoff
-	// value.
-	if b.value < b.maxInterval {
-		newVal := float64(b.value) * b.factor
-		b.value = time.Duration(newVal)
-	}
-
-	// If value was set over the limit, set to the limit.
-	if b.value > b.maxInterval {
-		b.value = b.maxInterval
-	}
-}
-
-// reset sets the `backoffPolicy` time to zero.
-func (b *backoffPolicy) reset() {
-	b.counter = 0
-	b.value = 0
+// reset sets the backoff ticker and duration to zero.
+func (bkr *badKeyRevoker) backoffReset() {
+	bkr.backoffTicker = 0
+	bkr.backoffDuration = 0
 }

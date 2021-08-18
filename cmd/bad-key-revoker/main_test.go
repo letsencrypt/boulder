@@ -447,33 +447,47 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 }
 
 func TestBackoffPolicy(t *testing.T) {
-	backoff := &backoffPolicy{
-		limit:   time.Second * 60,
-		value:   time.Second * 1,
-		minimum: time.Second * 1,
-		factor:  1.3,
+	bkr := &badKeyRevoker{
+		backoffDuration:     0,
+		backoffDurationMax:  time.Second * 60,
+		backoffDurationBase: time.Second * 1,
+		backoffFactor:       1.3,
 	}
 
-	// Make sure the backoff increased by the desired `backoff.factor`.
-	backoff.increase()
-	test.AssertEquals(t, backoff.value, time.Duration(float64(backoff.minimum)*backoff.factor))
+	retryJitter := 0.2
 
-	// Increase a bunch of times to make sure the limit is hit and not exceeded.
-	for i := 0; i < 30; i++ {
-		backoff.increase()
+	// Make sure the backoff increased by the desired `bkr.backoffFactor`
+	// plus or minus jitter. In this case it should be 1 second plus or
+	// minus no greater than 0.2 seconds.
+	bkr.backoffTick()
+	test.Assert(t,
+		time.Second >= time.Duration(float64(bkr.backoffDuration.Nanoseconds())*(1-retryJitter)),
+		"backoff duration is lower than expected range")
+	test.Assert(t,
+		time.Second <= time.Duration(float64(bkr.backoffDuration.Nanoseconds())*(1+retryJitter)),
+		"backoff duration is higher than expected range")
+
+	// Increase a bunch of times to make sure we get to the backoff max.
+	for i := 0; i < 20; i++ {
+		bkr.backoffTick()
 	}
 
-	// `backoff.value` should have incremented to `backoff.limit`.
-	test.AssertEquals(t, backoff.limit, backoff.value)
+	// `backoffDuration` should have increased to `backoffDurationMax`
+	// plus or minus jitter.
+	test.Assert(t,
+		bkr.backoffDuration >= time.Duration(float64(bkr.backoffDurationMax.Nanoseconds())*(1-retryJitter)),
+		"backoff duration is lower than expected range")
+	test.Assert(t,
+		bkr.backoffDuration <= time.Duration(float64(bkr.backoffDurationMax.Nanoseconds())*(1+retryJitter)),
+		"backoff duration is higher than expected range")
 
-	// Reset `backoff.value`.
-	backoff.reset()
+	// Reset backoff.
+	bkr.backoffReset()
 
-	// Calling reset should have set the `backoff.value` to `backoff.minimum`.
-	test.AssertEquals(t, time.Duration(0), backoff.value)
+	// Calling reset should have set `bkr.backoffDuration` to zero.
+	test.AssertEquals(t, time.Duration(0), bkr.backoffDuration)
 
-	// Make sure a minimum of zero sets `backoff.value` to 1 second.
-	backoff.minimum = 0
-	backoff.increase()
-	test.AssertEquals(t, backoff.value, time.Duration(float64(time.Second*1)))
+	// Calling reset should have set `bkr.backoffTicker` to zero.
+	test.AssertEquals(t, 0, bkr.backoffTicker)
+
 }

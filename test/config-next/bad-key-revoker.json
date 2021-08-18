@@ -27,7 +27,7 @@
         "maximumRevocations": 15,
         "findCertificatesBatchSize": 10,
         "interval": "1s",
-        "maxBackoff": "120s"
+        "backoffDurationMax": "60s"
     },
     "syslog": {
         "stdoutlevel": 4,
