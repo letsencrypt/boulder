@@ -59,11 +59,11 @@ type badKeyRevoker struct {
 	emailTemplate       *template.Template
 	logger              log.Logger
 	clk                 clock.Clock
+	backoffDuration     time.Duration
 	backoffDurationBase time.Duration
 	backoffDurationMax  time.Duration
 	backoffFactor       float64
 	backoffTicker       int
-	backoffDuration     time.Duration
 }
 
 // uncheckedBlockedKey represents a row in the blockedKeys table
