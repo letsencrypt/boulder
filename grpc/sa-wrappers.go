@@ -368,14 +368,7 @@ func (sas StorageAuthorityClientWrapper) CountPendingAuthorizations2(ctx context
 }
 
 func (sas StorageAuthorityClientWrapper) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
-	authorizations, err := sas.inner.GetValidOrderAuthorizations2(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if authorizations == nil {
-		return nil, errIncompleteResponse
-	}
-	return authorizations, nil
+	return sas.inner.GetValidOrderAuthorizations2(ctx, req)
 }
 
 func (sas StorageAuthorityClientWrapper) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
@@ -707,10 +700,6 @@ func (sas StorageAuthorityServerWrapper) CountPendingAuthorizations2(ctx context
 }
 
 func (sas StorageAuthorityServerWrapper) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if core.IsAnyNilOrZero(req, req.AcctID, req.Id) {
-		return nil, errIncompleteRequest
-	}
-
 	return sas.inner.GetValidOrderAuthorizations2(ctx, req)
 }
 

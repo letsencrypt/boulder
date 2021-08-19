@@ -1727,6 +1727,10 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations2(ctx context.Context,
 // associated with a specific order and account ID. This method is intended to
 // deprecate GetValidOrderAuthorizations.
 func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
+	if req.AcctID == 0 || req.Id == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	var ams []authzModel
 	_, err := ssa.dbMap.WithContext(ctx).Select(
 		&ams,
