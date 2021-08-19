@@ -29,8 +29,8 @@ func (wfe *WebFrontEndImpl) staleEnoughToGETOrder(order *corepb.Order) *probs.Pr
 
 // staleEnoughToGETCert checks if the given cert was issued long enough in the
 // past to be acceptably stale for accessing via the Boulder specific GET API.
-func (wfe *WebFrontEndImpl) staleEnoughToGETCert(cert core.Certificate) *probs.ProblemDetails {
-	return wfe.staleEnoughToGET("Certificate", cert.Issued)
+func (wfe *WebFrontEndImpl) staleEnoughToGETCert(cert *corepb.Certificate) *probs.ProblemDetails {
+	return wfe.staleEnoughToGET("Certificate", time.Unix(0, cert.Issued))
 }
 
 // staleEnoughToGETAuthz checks if the given authorization was created long

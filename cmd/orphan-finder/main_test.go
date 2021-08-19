@@ -28,7 +28,7 @@ import (
 )
 
 type mockSA struct {
-	certificates    []core.Certificate
+	certificates    []*corepb.Certificate
 	precertificates []core.Certificate
 	clk             clock.FakeClock
 }
@@ -38,30 +38,30 @@ func (m *mockSA) AddCertificate(ctx context.Context, der []byte, regID int64, _ 
 	if err != nil {
 		return "", err
 	}
-	cert := core.Certificate{
-		DER:            der,
+	cert := &corepb.Certificate{
+		Der:            der,
 		RegistrationID: regID,
 		Serial:         core.SerialToString(parsed.SerialNumber),
 	}
 	if issued == nil {
-		cert.Issued = m.clk.Now()
+		cert.Issued = m.clk.Now().UnixNano()
 	} else {
-		cert.Issued = *issued
+		cert.Issued = issued.UnixNano()
 	}
 	m.certificates = append(m.certificates, cert)
 	return "", nil
 }
 
-func (m *mockSA) GetCertificate(ctx context.Context, s string) (core.Certificate, error) {
+func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
 	if len(m.certificates) == 0 {
-		return core.Certificate{}, berrors.NotFoundError("no certs stored")
+		return nil, berrors.NotFoundError("no certs stored")
 	}
 	for _, cert := range m.certificates {
-		if cert.Serial == s {
+		if cert.Serial == req.Serial {
 			return cert, nil
 		}
 	}
-	return core.Certificate{}, berrors.NotFoundError("no cert stored for requested serial")
+	return nil, berrors.NotFoundError("no cert stored for requested serial")
 }
 
 func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
@@ -264,15 +264,13 @@ func TestParseLine(t *testing.T) {
 				testCertSerial := core.SerialToString(testCert.SerialNumber)
 
 				// Fetch the precert/cert using the correct mock SA function
-				var storedCert core.Certificate
+				var storedCert *corepb.Certificate
 				switch typ {
 				case precertOrphan:
-					resp, err := opf.sa.GetPrecertificate(ctx, &sapb.Serial{Serial: testCertSerial})
+					storedCert, err = opf.sa.GetPrecertificate(ctx, &sapb.Serial{Serial: testCertSerial})
 					test.AssertNotError(t, err, "Error getting test precert serial from SA")
-					storedCert, err = bgrpc.PBToCert(resp)
-					test.AssertNotError(t, err, "Error getting test precert from GetPrecertificate pb response")
 				case certOrphan:
-					storedCert, err = opf.sa.GetCertificate(ctx, testCertSerial)
+					storedCert, err = opf.sa.GetCertificate(ctx, &sapb.Serial{Serial: testCertSerial})
 					test.AssertNotError(t, err, "Error getting test cert serial from SA")
 				default:
 					t.Fatalf("unknown orphan type returned: %s", typ)
@@ -280,10 +278,8 @@ func TestParseLine(t *testing.T) {
 				// The orphan should have been added with the correct registration ID from the log line
 				test.AssertEquals(t, storedCert.RegistrationID, int64(tc.ExpectRegID))
 				// The Issued timestamp should be the certificate's NotBefore timestamp offset by the backdate
-				expectedIssued := testCert.NotBefore.Add(opf.backdate)
-				test.Assert(t, storedCert.Issued.Equal(expectedIssued),
-					fmt.Sprintf("stored cert issued date (%s) was not equal to expected (%s)",
-						storedCert.Issued, expectedIssued))
+				expectedIssued := testCert.NotBefore.Add(opf.backdate).UnixNano()
+				test.AssertEquals(t, storedCert.Issued, expectedIssued)
 			}
 		})
 	}

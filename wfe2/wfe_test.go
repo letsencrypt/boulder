@@ -1769,15 +1769,18 @@ func newMockSAWithCert(t *testing.T, sa core.StorageGetter, status core.OCSPStat
 
 // GetCertificate returns the mock SA's hard-coded certificate, issued by the
 // account with regID 1, if the given serial matches. Otherwise, returns not found.
-func (sa *mockSAWithCert) GetCertificate(_ context.Context, serial string) (core.Certificate, error) {
-	if serial != core.SerialToString(sa.cert.SerialNumber) {
-		return core.Certificate{}, berrors.NotFoundError("Certificate with serial %q not found", serial)
+func (sa *mockSAWithCert) GetCertificate(_ context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+	if req.Serial != core.SerialToString(sa.cert.SerialNumber) {
+		return nil, berrors.NotFoundError("Certificate with serial %q not found", req.Serial)
 	}
 
-	return core.Certificate{
+	return &corepb.Certificate{
 		RegistrationID: 1,
 		Serial:         core.SerialToString(sa.cert.SerialNumber),
-		DER:            sa.cert.Raw,
+		// Just for the sake of TestGetAPIAndMandatoryPOSTAsGET, we set the Issued
+		// timestamp of this certificate to be very old (the year 0).
+		Issued: time.Time{}.UnixNano(),
+		Der:    sa.cert.Raw,
 	}, nil
 }
 
@@ -2000,26 +2003,26 @@ type mockSAWithNewCert struct {
 	clk clock.Clock
 }
 
-func (sa *mockSAWithNewCert) GetCertificate(_ context.Context, serial string) (core.Certificate, error) {
+func (sa *mockSAWithNewCert) GetCertificate(_ context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
 	issuer, err := core.LoadCert("../test/hierarchy/int-e1.cert.pem")
 	if err != nil {
-		return core.Certificate{}, fmt.Errorf("failed to load test issuer cert: %w", err)
+		return nil, fmt.Errorf("failed to load test issuer cert: %w", err)
 	}
 
 	issuerKeyPem, err := ioutil.ReadFile("../test/hierarchy/int-e1.key.pem")
 	if err != nil {
-		return core.Certificate{}, fmt.Errorf("failed to load test issuer key: %w", err)
+		return nil, fmt.Errorf("failed to load test issuer key: %w", err)
 	}
 	issuerKey := loadKey(&testing.T{}, issuerKeyPem)
 
 	newKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return core.Certificate{}, fmt.Errorf("failed to create test key: %w", err)
+		return nil, fmt.Errorf("failed to create test key: %w", err)
 	}
 
-	sn, err := core.StringToSerial(serial)
+	sn, err := core.StringToSerial(req.Serial)
 	if err != nil {
-		return core.Certificate{}, fmt.Errorf("failed to parse test serial: %w", err)
+		return nil, fmt.Errorf("failed to parse test serial: %w", err)
 	}
 
 	template := &x509.Certificate{
@@ -2029,19 +2032,19 @@ func (sa *mockSAWithNewCert) GetCertificate(_ context.Context, serial string) (c
 
 	certDER, err := x509.CreateCertificate(rand.Reader, template, issuer, &newKey.PublicKey, issuerKey)
 	if err != nil {
-		return core.Certificate{}, fmt.Errorf("failed to issue test cert: %w", err)
+		return nil, fmt.Errorf("failed to issue test cert: %w", err)
 	}
 
 	cert, err := x509.ParseCertificate(certDER)
 	if err != nil {
-		return core.Certificate{}, fmt.Errorf("failed to parse test cert: %w", err)
+		return nil, fmt.Errorf("failed to parse test cert: %w", err)
 	}
 
-	return core.Certificate{
+	return &corepb.Certificate{
 		RegistrationID: 1,
 		Serial:         core.SerialToString(cert.SerialNumber),
-		Issued:         sa.clk.Now().Add(-1 * time.Second),
-		DER:            cert.Raw,
+		Issued:         sa.clk.Now().Add(-1 * time.Second).UnixNano(),
+		Der:            cert.Raw,
 	}, nil
 }
 
@@ -2185,8 +2188,8 @@ type mockSAWithError struct {
 	core.StorageGetter
 }
 
-func (sa *mockSAWithError) GetCertificate(_ context.Context, serial string) (core.Certificate, error) {
-	return core.Certificate{}, errors.New("Oops")
+func (sa *mockSAWithError) GetCertificate(_ context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+	return nil, errors.New("Oops")
 }
 
 func TestGetCertificateServerError(t *testing.T) {
@@ -3533,6 +3536,9 @@ func TestIndexGet404(t *testing.T) {
 	test.AssertEquals(t, logEvent.Slug, path[1:])
 }
 
+// TestGetAPIAndMandatoryPOSTAsGet that, even when MandatoryPOSTAsGet is on,
+// we are still willing to allow a GET request for a certificate that is old
+// enough that we're no longer worried about stale info being cached.
 func TestGetAPIAndMandatoryPOSTAsGET(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
