@@ -162,12 +162,12 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 }
 
 func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.CertificateStatus) (*core.CertificateStatus, error) {
-	if status.IssuerID == nil || *status.IssuerID == 0 {
-		return nil, errors.New("cert status has nil or 0 IssuerID")
+	if status.IssuerID == 0 {
+		return nil, errors.New("cert status has 0 IssuerID")
 	}
 	ocspReq := capb.GenerateOCSPRequest{
 		Serial:    status.Serial,
-		IssuerID:  *status.IssuerID,
+		IssuerID:  status.IssuerID,
 		Status:    string(status.Status),
 		Reason:    int32(status.RevokedReason),
 		RevokedAt: status.RevokedDate.UnixNano(),

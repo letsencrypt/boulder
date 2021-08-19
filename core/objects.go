@@ -490,7 +490,9 @@ type CertificateStatus struct {
 	NotAfter  time.Time `db:"notAfter"`
 	IsExpired bool      `db:"isExpired"`
 
-	IssuerID *int64
+	// TODO(#5152): Change this to an issuance.Issuer(Name)ID after it no longer
+	// has to support both IssuerNameIDs and IssuerIDs.
+	IssuerID int64
 }
 
 // FQDNSet contains the SHA256 hash of the lowercased, comma joined dNSNames
