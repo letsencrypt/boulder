@@ -353,14 +353,7 @@ func (sas StorageAuthorityClientWrapper) FinalizeAuthorization2(ctx context.Cont
 }
 
 func (sas StorageAuthorityClientWrapper) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
-	authz, err := sas.inner.GetPendingAuthorization2(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if authz == nil || !authorizationValid(authz) {
-		return nil, errIncompleteResponse
-	}
-	return authz, nil
+	return sas.inner.GetPendingAuthorization2(ctx, req)
 }
 
 func (sas StorageAuthorityClientWrapper) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error) {
@@ -702,10 +695,6 @@ func (sas StorageAuthorityServerWrapper) FinalizeAuthorization2(ctx context.Cont
 }
 
 func (sas StorageAuthorityServerWrapper) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
-	if core.IsAnyNilOrZero(req, req.RegistrationID, req.IdentifierValue, req.ValidUntil) {
-		return nil, errIncompleteRequest
-	}
-
 	return sas.inner.GetPendingAuthorization2(ctx, req)
 }
 

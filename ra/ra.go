@@ -611,23 +611,24 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, req *
 		}
 	}
 
-	identifierTypeString := string(acmeIdentifier.Type)
-
-	pendingPB, err := ra.SA.GetPendingAuthorization2(ctx,
-		&sapb.GetPendingAuthorizationRequest{
-			RegistrationID:  req.RegID,
-			IdentifierType:  identifierTypeString,
-			IdentifierValue: acmeIdentifier.Value,
-			ValidUntil:      ra.clk.Now().Add(time.Hour).UnixNano(),
-		})
+	pendingAuthzRequest := &sapb.GetPendingAuthorizationRequest{
+		RegistrationID:  req.RegID,
+		IdentifierType:  string(acmeIdentifier.Type),
+		IdentifierValue: acmeIdentifier.Value,
+		ValidUntil:      ra.clk.Now().Add(time.Hour).UnixNano(),
+	}
+	pendingAuthzPB, err := ra.SA.GetPendingAuthorization2(ctx, pendingAuthzRequest)
 	if err != nil && !errors.Is(err, berrors.NotFound) {
 		return nil, berrors.InternalServerError(
 			"unable to get pending authorization for regID: %d, identifier: %s: %s",
 			req.RegID,
 			acmeIdentifier.Value,
-			err)
+			err,
+		)
 	} else if err == nil {
-		return pendingPB, nil
+		// No need to check if the response was incomplete here, it's already
+		// checked by WFE.
+		return pendingAuthzPB, nil
 	}
 
 	if features.Enabled(features.V1DisableNewValidations) {

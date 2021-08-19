@@ -1671,6 +1671,9 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 // the given identifier, if available. This method is intended to deprecate
 // GetPendingAuthorization. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
+	if req.RegistrationID == 0 || req.IdentifierValue == "" || req.ValidUntil == 0 {
+		return nil, errIncompleteRequest
+	}
 	var am authzModel
 	err := ssa.dbMap.WithContext(ctx).SelectOne(
 		&am,
