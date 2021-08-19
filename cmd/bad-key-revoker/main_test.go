@@ -445,3 +445,26 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 	test.AssertEquals(t, len(mm.Messages), 1)
 	test.AssertEquals(t, mm.Messages[0].To, "b@example.com")
 }
+
+func TestBackoffPolicy(t *testing.T) {
+	fc := clock.NewFake()
+	mocklog := blog.NewMock()
+	bkr := &badKeyRevoker{
+		clk:                 fc,
+		backoffIntervalMax:  time.Second * 60,
+		backoffIntervalBase: time.Second * 1,
+		backoffFactor:       1.3,
+		logger:              mocklog,
+	}
+
+	// Backoff once. Check to make sure the backoff is logged.
+	bkr.backoff()
+	resultLog := mocklog.GetAllMatching("INFO: backoff trying again in")
+	if len(resultLog) == 0 {
+		t.Fatalf("no backoff loglines found")
+	}
+
+	// Make sure `backoffReset` resets the ticker.
+	bkr.backoffReset()
+	test.AssertEquals(t, bkr.backoffTicker, 0)
+}
