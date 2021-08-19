@@ -447,47 +447,24 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 }
 
 func TestBackoffPolicy(t *testing.T) {
+	fc := clock.NewFake()
+	mocklog := blog.NewMock()
 	bkr := &badKeyRevoker{
-		backoffDuration:     0,
-		backoffDurationMax:  time.Second * 60,
-		backoffDurationBase: time.Second * 1,
+		clk:                 fc,
+		backoffIntervalMax:  time.Second * 60,
+		backoffIntervalBase: time.Second * 1,
 		backoffFactor:       1.3,
+		logger:              mocklog,
 	}
 
-	retryJitter := 0.2
-
-	// Make sure the backoff increased by the desired `bkr.backoffFactor`
-	// plus or minus jitter. In this case it should be 1 second plus or
-	// minus no greater than 0.2 seconds.
-	bkr.backoffTick()
-	test.Assert(t,
-		time.Second >= time.Duration(float64(bkr.backoffDuration.Nanoseconds())*(1-retryJitter)),
-		"backoff duration is lower than expected range")
-	test.Assert(t,
-		time.Second <= time.Duration(float64(bkr.backoffDuration.Nanoseconds())*(1+retryJitter)),
-		"backoff duration is higher than expected range")
-
-	// Increase a bunch of times to make sure we get to the backoff max.
-	for i := 0; i < 20; i++ {
-		bkr.backoffTick()
+	// Backoff once. Check to make sure the backoff is logged.
+	bkr.backoff()
+	resultLog := mocklog.GetAllMatching("INFO: backoff trying again in")
+	if len(resultLog) == 0 {
+		t.Fatalf("no backoff loglines found")
 	}
 
-	// `backoffDuration` should have increased to `backoffDurationMax`
-	// plus or minus jitter.
-	test.Assert(t,
-		bkr.backoffDuration >= time.Duration(float64(bkr.backoffDurationMax.Nanoseconds())*(1-retryJitter)),
-		"backoff duration is lower than expected range")
-	test.Assert(t,
-		bkr.backoffDuration <= time.Duration(float64(bkr.backoffDurationMax.Nanoseconds())*(1+retryJitter)),
-		"backoff duration is higher than expected range")
-
-	// Reset backoff.
+	// Make sure `backoffReset` resets the ticker.
 	bkr.backoffReset()
-
-	// Calling reset should have set `bkr.backoffDuration` to zero.
-	test.AssertEquals(t, time.Duration(0), bkr.backoffDuration)
-
-	// Calling reset should have set `bkr.backoffTicker` to zero.
-	test.AssertEquals(t, 0, bkr.backoffTicker)
-
+	test.AssertEquals(t, bkr.backoffTicker, 0)
 }
