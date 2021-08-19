@@ -46,9 +46,8 @@ func openFile(path string) (*bufio.Scanner, error) {
 	return scanner, nil
 }
 
-func parseTimestamp(line string) (time.Time, error) {
-	datestampText := line[0:32]
-	datestamp, err := time.Parse(time.RFC3339, datestampText)
+func parseTimestamp(line []byte) (time.Time, error) {
+	datestamp, err := time.Parse(time.RFC3339, string(line[0:32]))
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -71,10 +70,10 @@ func loadIssuanceLog(path string) (map[string][]time.Time, time.Time, time.Time,
 
 	issuanceMap := map[string][]time.Time{}
 	for scanner.Scan() {
-		line := scanner.Text()
+		line := scanner.Bytes()
 		linesCount++
 
-		matches := raIssuanceLineRE.FindStringSubmatch(line)
+		matches := raIssuanceLineRE.FindSubmatch(line)
 		if matches == nil {
 			continue
 		}
@@ -83,7 +82,7 @@ func loadIssuanceLog(path string) (map[string][]time.Time, time.Time, time.Time,
 		}
 
 		var ie issuanceEvent
-		err := json.Unmarshal([]byte(matches[1]), &ie)
+		err := json.Unmarshal(matches[1], &ie)
 		if err != nil {
 			return nil, earliest, latest, fmt.Errorf("line %d: failed to unmarshal JSON: %w", linesCount, err)
 		}
@@ -128,18 +127,18 @@ func processCAALog(path string, issuances map[string][]time.Time, earliest time.
 	linesCount := 0
 
 	for scanner.Scan() {
-		line := scanner.Text()
+		line := scanner.Bytes()
 		linesCount++
 
-		matches := vaCAALineRE.FindStringSubmatch(line)
+		matches := vaCAALineRE.FindSubmatch(line)
 		if matches == nil {
 			continue
 		}
 		if len(matches) != 3 {
 			return fmt.Errorf("line %d: unexpected number of regex matches", linesCount)
 		}
-		name := matches[1]
-		present := matches[2]
+		name := string(matches[1])
+		present := string(matches[2])
 
 		checkTime, err := parseTimestamp(line)
 		if err != nil {
