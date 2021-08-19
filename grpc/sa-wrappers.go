@@ -344,14 +344,7 @@ func (sas StorageAuthorityClientWrapper) NewAuthorizations2(ctx context.Context,
 }
 
 func (sas StorageAuthorityClientWrapper) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	resp, err := sas.inner.GetAuthorizations2(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil {
-		return nil, errIncompleteResponse
-	}
-	return resp, nil
+	return sas.inner.GetAuthorizations2(ctx, req)
 }
 
 func (sas StorageAuthorityClientWrapper) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) error {
@@ -697,10 +690,6 @@ func (sas StorageAuthorityServerWrapper) NewAuthorizations2(ctx context.Context,
 }
 
 func (sas StorageAuthorityServerWrapper) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if core.IsAnyNilOrZero(req, req.Domains, req.RegistrationID, req.Now) {
-		return nil, errIncompleteRequest
-	}
-
 	return sas.inner.GetAuthorizations2(ctx, req)
 }
 
