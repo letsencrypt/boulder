@@ -162,7 +162,6 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 }
 
 func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.CertificateStatus) (*core.CertificateStatus, error) {
-	// TODO(#5152): Replace IssuerID with IssuerNameID.
 	if status.IssuerID == nil || *status.IssuerID == 0 {
 		return nil, errors.New("cert status has nil or 0 IssuerID")
 	}
