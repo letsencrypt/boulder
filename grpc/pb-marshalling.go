@@ -392,6 +392,7 @@ func CertStatusToPB(certStatus core.CertificateStatus) *corepb.CertificateStatus
 		OcspResponse:          certStatus.OCSPResponse,
 		NotAfter:              certStatus.NotAfter.UnixNano(),
 		IsExpired:             certStatus.IsExpired,
+		IssuerID:              certStatus.IssuerID,
 	}
 }
 
@@ -406,6 +407,7 @@ func PBToCertStatus(pb *corepb.CertificateStatus) (core.CertificateStatus, error
 		OCSPResponse:          pb.OcspResponse,
 		NotAfter:              time.Unix(0, pb.NotAfter),
 		IsExpired:             pb.IsExpired,
+		IssuerID:              pb.IssuerID,
 	}, nil
 }
 
