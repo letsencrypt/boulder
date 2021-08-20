@@ -22,7 +22,7 @@ var errIncompleteRequest = errors.New("Incomplete gRPC request message")
 
 // AddSerial writes a record of a serial number generation to the DB.
 func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(req.Created, req.Expires, req.Serial, req.RegID) {
+	if req.Serial == "" || req.RegID == 0 || req.Created == 0 || req.Expires == 0 {
 		return nil, errIncompleteRequest
 	}
 	err := ssa.dbMap.WithContext(ctx).Insert(&recordedSerialModel{
