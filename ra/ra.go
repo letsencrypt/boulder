@@ -1819,7 +1819,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 		return err
 	}
 
-	err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
+	_, err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   serial,
 		Reason:   int64(code),
 		Date:     revokedAt,

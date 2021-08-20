@@ -1655,7 +1655,7 @@ func TestRevokeCertificate(t *testing.T) {
 	dateUnix := now.UnixNano()
 	reason := int64(1)
 	response := []byte{1, 2, 3}
-	err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial:   serial,
 		Date:     dateUnix,
 		Reason:   reason,
@@ -1671,7 +1671,7 @@ func TestRevokeCertificate(t *testing.T) {
 	test.AssertEquals(t, status.OCSPLastUpdated, now)
 	test.AssertDeepEquals(t, status.OCSPResponse, response)
 
-	err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial:   serial,
 		Date:     dateUnix,
 		Reason:   reason,

@@ -35,7 +35,7 @@ type mockCA struct {
 }
 
 func (ca *mockCA) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...grpc.CallOption) (*capb.OCSPResponse, error) {
-	return &capb.OCSPResponse{}, nil
+	return &capb.OCSPResponse{Response: []byte("fakeocspbytes")}, nil
 }
 
 type mockPurger struct{}

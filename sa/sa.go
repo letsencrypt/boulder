@@ -1628,7 +1628,10 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 
 // RevokeCertificate stores revocation information about a certificate. It will only store this
 // information if the certificate is not already marked as revoked.
-func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error {
+func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error) {
+	if req.Serial == "" || req.Date == 0 || req.Response == nil {
+		return nil, errIncompleteRequest
+	}
 	revokedDate := time.Unix(0, req.Date)
 	res, err := ssa.dbMap.Exec(
 		`UPDATE certificateStatus SET
@@ -1647,18 +1650,18 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 		string(core.OCSPStatusRevoked),
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	rows, err := res.RowsAffected()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if rows == 0 {
 		// InternalServerError because we expected this certificate status to exist and
 		// not be revoked.
-		return berrors.InternalServerError("no certificate with serial %s and status other than %s", req.Serial, string(core.OCSPStatusRevoked))
+		return nil, berrors.InternalServerError("no certificate with serial %s and status other than %s", req.Serial, string(core.OCSPStatusRevoked))
 	}
-	return nil
+	return &emptypb.Empty{}, nil
 }
 
 // GetPendingAuthorization2 returns the most recent Pending authorization with
