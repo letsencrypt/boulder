@@ -123,10 +123,10 @@ func (f *ocspFilter) checkRequest(req *ocsp.Request) error {
 // This filters out, for example, responses which are for a serial that we
 // issued, but from a different issuer than that contained in the request.
 func (f *ocspFilter) responseMatchesIssuer(req *ocsp.Request, status core.CertificateStatus) bool {
-	issuerKeyHash, ok := f.issuerNameKeyHashes[issuance.IssuerNameID(*status.IssuerID)]
+	issuerKeyHash, ok := f.issuerNameKeyHashes[issuance.IssuerNameID(status.IssuerID)]
 	if !ok {
 		// TODO(#5152): Remove this fallback to old-style IssuerIDs.
-		issuerKeyHash, ok = f.issuerKeyHashes[issuance.IssuerID(*status.IssuerID)]
+		issuerKeyHash, ok = f.issuerKeyHashes[issuance.IssuerID(status.IssuerID)]
 		if !ok {
 			return false
 		}

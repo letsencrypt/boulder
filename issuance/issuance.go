@@ -385,6 +385,8 @@ func (ic *Certificate) ID() IssuerID {
 // both CA and end-entity certs to link them together into a validation chain.
 // It is computed as a truncated hash over the issuer Subject Name bytes, or
 // over the end-entity's Issuer Name bytes, which are required to be equal.
+// TODO(#5152): Rename this "IssuerID" when we've fully deprecated the old-style
+// IssuerIDs and replaced them with NameIDs.
 type IssuerNameID int64
 
 // NameID computes the IssuerNameID from an issuer certificate, i.e. it

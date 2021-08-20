@@ -35,26 +35,12 @@ func (sac StorageAuthorityClientWrapper) GetRegistrationByKey(ctx context.Contex
 	return sac.inner.GetRegistrationByKey(ctx, req)
 }
 
-func (sac StorageAuthorityClientWrapper) GetCertificate(ctx context.Context, serial string) (core.Certificate, error) {
-	response, err := sac.inner.GetCertificate(ctx, &sapb.Serial{Serial: serial})
-	if err != nil {
-		return core.Certificate{}, err
-	}
-	if response == nil || response.RegistrationID == 0 || response.Serial == "" || response.Digest == "" || len(response.Der) == 0 || response.Issued == 0 || response.Expires == 0 {
-		return core.Certificate{}, errIncompleteResponse
-	}
-	return PBToCert(response)
+func (sac StorageAuthorityClientWrapper) GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+	return sac.inner.GetCertificate(ctx, req)
 }
 
 func (sac StorageAuthorityClientWrapper) GetPrecertificate(ctx context.Context, serial *sapb.Serial) (*corepb.Certificate, error) {
-	resp, err := sac.inner.GetPrecertificate(ctx, serial)
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil {
-		return nil, errIncompleteResponse
-	}
-	return resp, nil
+	return sac.inner.GetPrecertificate(ctx, serial)
 }
 
 func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Context, serial string) (core.CertificateStatus, error) {
@@ -463,22 +449,10 @@ func (sas StorageAuthorityServerWrapper) GetRegistrationByKey(ctx context.Contex
 }
 
 func (sas StorageAuthorityServerWrapper) GetCertificate(ctx context.Context, request *sapb.Serial) (*corepb.Certificate, error) {
-	if core.IsAnyNilOrZero(request, request.Serial) {
-		return nil, errIncompleteRequest
-	}
-
-	cert, err := sas.inner.GetCertificate(ctx, request.Serial)
-	if err != nil {
-		return nil, err
-	}
-
-	return CertToPB(cert), nil
+	return sas.inner.GetCertificate(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) GetPrecertificate(ctx context.Context, request *sapb.Serial) (*corepb.Certificate, error) {
-	if core.IsAnyNilOrZero(request, request.Serial) {
-		return nil, errIncompleteRequest
-	}
 	return sas.inner.GetPrecertificate(ctx, request)
 }
 
