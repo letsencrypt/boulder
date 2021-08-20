@@ -490,7 +490,7 @@ func TestIssuerInfo(t *testing.T) {
 	statuses, err := updater.findStaleOCSPResponses(fc.Now().Add(-time.Hour), 10)
 	test.AssertNotError(t, err, "findStaleOCSPResponses failed")
 	test.AssertEquals(t, len(statuses), 1)
-	test.AssertEquals(t, *statuses[0].IssuerID, id)
+	test.AssertEquals(t, statuses[0].IssuerID, id)
 
 	_, err = updater.generateResponse(context.Background(), statuses[0])
 	test.AssertNotError(t, err, "generateResponse failed")
