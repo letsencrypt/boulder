@@ -383,14 +383,7 @@ func (sas StorageAuthorityClientWrapper) CountInvalidAuthorizations2(ctx context
 }
 
 func (sas StorageAuthorityClientWrapper) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
-	authorizations, err := sas.inner.GetValidAuthorizations2(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if authorizations == nil {
-		return nil, errIncompleteResponse
-	}
-	return authorizations, nil
+	return sas.inner.GetValidAuthorizations2(ctx, req)
 }
 
 func (sas StorageAuthorityClientWrapper) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*emptypb.Empty, error) {
@@ -712,10 +705,6 @@ func (sas StorageAuthorityServerWrapper) CountInvalidAuthorizations2(ctx context
 }
 
 func (sas StorageAuthorityServerWrapper) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if core.IsAnyNilOrZero(req, req.Domains, req.RegistrationID, req.Now) {
-		return nil, errIncompleteRequest
-	}
-
 	return sas.inner.GetValidAuthorizations2(ctx, req)
 }
 

@@ -1801,6 +1801,10 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context,
 // intended to deprecate GetValidAuthorizations. This method only supports
 // DNS identifier types.
 func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
+	if req.Domains == nil || req.RegistrationID == 0 || req.Now == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	var authzModels []authzModel
 	params := []interface{}{
 		req.RegistrationID,
