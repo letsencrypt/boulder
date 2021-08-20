@@ -150,9 +150,9 @@ type mockSA struct {
 	certificate core.Certificate
 }
 
-func (m *mockSA) AddCertificate(ctx context.Context, der []byte, _ int64, _ []byte, _ *time.Time) (string, error) {
-	m.certificate.DER = der
-	return "", nil
+func (m *mockSA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
+	m.certificate.DER = req.Der
+	return nil, nil
 }
 
 func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
@@ -908,18 +908,18 @@ type queueSA struct {
 	fail      bool
 	duplicate bool
 
-	issued        *time.Time
-	issuedPrecert *time.Time
+	issued        time.Time
+	issuedPrecert time.Time
 }
 
-func (qsa *queueSA) AddCertificate(_ context.Context, _ []byte, _ int64, _ []byte, issued *time.Time) (string, error) {
+func (qsa *queueSA) AddCertificate(_ context.Context, req *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
 	if qsa.fail {
-		return "", errors.New("bad")
+		return nil, errors.New("bad")
 	} else if qsa.duplicate {
-		return "", berrors.DuplicateError("is a dupe")
+		return nil, berrors.DuplicateError("is a dupe")
 	}
-	qsa.issued = issued
-	return "", nil
+	qsa.issued = time.Unix(0, req.Issued).UTC()
+	return nil, nil
 }
 
 func (qsa *queueSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
@@ -928,8 +928,7 @@ func (qsa *queueSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertific
 	} else if qsa.duplicate {
 		return nil, berrors.DuplicateError("is a dupe")
 	}
-	issued := time.Unix(0, req.Issued)
-	qsa.issuedPrecert = &issued
+	qsa.issuedPrecert = time.Unix(0, req.Issued).UTC()
 	return nil, nil
 }
 
@@ -978,7 +977,7 @@ func TestPrecertOrphanQueue(t *testing.T) {
 		OrderID:        1,
 		Csr:            CNandSANCSR,
 	})
-	test.AssertError(t, err, "Expected IssuePrecertificate to fail with `failSA`")
+	test.AssertError(t, err, "Expected IssuePrecertificate to fail with `qsa.fail = true`")
 
 	matches := testCtx.logger.GetAllMatching(`orphaning precertificate.* regID=\[1\], orderID=\[1\]`)
 	if len(matches) != 1 {
@@ -993,7 +992,7 @@ func TestPrecertOrphanQueue(t *testing.T) {
 	err = ca.integrateOrphan()
 	test.AssertNotError(t, err, "integrateOrphan failed")
 	if !qsa.issuedPrecert.Equal(fakeNow) {
-		t.Errorf("expected issued time to be %s, got %s", fakeNow, *qsa.issued)
+		t.Errorf("expected issued time to be %s, got %s", fakeNow, qsa.issuedPrecert)
 	}
 	err = ca.integrateOrphan()
 	if err != goque.ErrEmpty {
@@ -1066,7 +1065,7 @@ func TestOrphanQueue(t *testing.T) {
 	err = ca.integrateOrphan()
 	test.AssertNotError(t, err, "integrateOrphan failed")
 	if !qsa.issued.Equal(fakeNow) {
-		t.Errorf("expected issued time to be %s, got %s", fakeNow, *qsa.issued)
+		t.Errorf("expected issued time to be %s, got %s", fakeNow, qsa.issued)
 	}
 	err = ca.integrateOrphan()
 	if err != goque.ErrEmpty {
@@ -1084,7 +1083,7 @@ func TestOrphanQueue(t *testing.T) {
 	err = ca.integrateOrphan()
 	test.AssertNotError(t, err, "integrateOrphan failed with duplicate cert")
 	if !qsa.issued.Equal(fakeNow) {
-		t.Errorf("expected issued time to be %s, got %s", fakeNow, *qsa.issued)
+		t.Errorf("expected issued time to be %s, got %s", fakeNow, qsa.issued)
 	}
 	err = ca.integrateOrphan()
 	if err != goque.ErrEmpty {
@@ -1114,7 +1113,7 @@ func TestOrphanQueue(t *testing.T) {
 	err = ca.integrateOrphan()
 	test.AssertNotError(t, err, "integrateOrphan failed")
 	if !qsa.issued.Equal(fakeNow) {
-		t.Errorf("expected issued time to be %s, got %s", fakeNow, *qsa.issued)
+		t.Errorf("expected issued time to be %s, got %s", fakeNow, qsa.issued)
 	}
 	err = ca.integrateOrphan()
 	if err != goque.ErrEmpty {

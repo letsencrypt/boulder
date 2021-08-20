@@ -126,7 +126,7 @@ type StorageGetter interface {
 type StorageAdder interface {
 	NewRegistration(ctx context.Context, req *corepb.Registration) (*corepb.Registration, error)
 	UpdateRegistration(ctx context.Context, req *corepb.Registration) (*emptypb.Empty, error)
-	AddCertificate(ctx context.Context, der []byte, regID int64, ocsp []byte, issued *time.Time) (digest string, err error)
+	AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error)
 	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error)
 	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*emptypb.Empty, error)
 	DeactivateRegistration(ctx context.Context, req *sapb.RegistrationID) (*emptypb.Empty, error)

@@ -76,7 +76,11 @@ func TestAddPrecertificate(t *testing.T) {
 			// We should also be able to call AddCertificate with the same cert
 			// without it being an error. The duplicate err on inserting to
 			// issuedNames should be ignored.
-			_, err := sa.AddCertificate(ctx, testCert.Raw, regID, nil, &issuedTime)
+			_, err := sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+				Der:    testCert.Raw,
+				RegID:  regID,
+				Issued: issuedTime.UnixNano(),
+			})
 			test.AssertNotError(t, err, "unexpected err adding final cert after precert")
 		} else {
 			// Otherwise we expect an ErrDatabaseOp that indicates NoRows because

@@ -286,8 +286,8 @@ func (sa *StorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSerialRe
 }
 
 // AddCertificate is a mock
-func (sa *StorageAuthority) AddCertificate(_ context.Context, certDER []byte, regID int64, _ []byte, _ *time.Time) (digest string, err error) {
-	return
+func (sa *StorageAuthority) AddCertificate(_ context.Context, _ *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
+	return nil, nil
 }
 
 // FinalizeAuthorization is a mock

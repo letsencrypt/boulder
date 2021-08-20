@@ -419,25 +419,23 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *cor
 
 // AddCertificate stores an issued certificate and returns the digest as
 // a string, or an error if any occurred.
-func (ssa *SQLStorageAuthority) AddCertificate(
-	ctx context.Context,
-	certDER []byte,
-	regID int64,
-	ocspResponse []byte,
-	issued *time.Time) (string, error) {
-	parsedCertificate, err := x509.ParseCertificate(certDER)
-	if err != nil {
-		return "", err
+func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
+	if req.Der == nil || req.RegID == 0 || req.Issued == 0 {
+		return nil, errIncompleteRequest
 	}
-	digest := core.Fingerprint256(certDER)
+	parsedCertificate, err := x509.ParseCertificate(req.Der)
+	if err != nil {
+		return nil, err
+	}
+	digest := core.Fingerprint256(req.Der)
 	serial := core.SerialToString(parsedCertificate.SerialNumber)
 
 	cert := &core.Certificate{
-		RegistrationID: regID,
+		RegistrationID: req.RegID,
 		Serial:         serial,
 		Digest:         digest,
-		DER:            certDER,
-		Issued:         *issued,
+		DER:            req.Der,
+		Issued:         time.Unix(0, req.Issued),
 		Expires:        parsedCertificate.NotAfter,
 	}
 
@@ -474,14 +472,14 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		return isRenewal, err
 	})
 	if overallError != nil {
-		return "", overallError
+		return nil, overallError
 	}
 
 	// Recast the interface{} return from db.WithTransaction as a bool, returning
 	// an error if we can't.
 	var isRenewal bool
 	if boolVal, ok := isRenewalRaw.(bool); !ok {
-		return "", fmt.Errorf(
+		return nil, fmt.Errorf(
 			"AddCertificate db.WithTransaction returned %T out var, expected bool",
 			isRenewalRaw)
 	} else {
@@ -523,7 +521,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		ssa.log.AuditErrf("failed AddCertificate ratelimit update transaction: %v", rlTransactionErr)
 	}
 
-	return digest, nil
+	return &sapb.AddCertificateResponse{Digest: digest}, nil
 }
 
 func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error) {

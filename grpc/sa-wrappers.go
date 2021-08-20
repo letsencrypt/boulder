@@ -223,31 +223,8 @@ func (sac StorageAuthorityClientWrapper) UpdateRegistration(ctx context.Context,
 	return sac.inner.UpdateRegistration(ctx, req)
 }
 
-func (sac StorageAuthorityClientWrapper) AddCertificate(
-	ctx context.Context,
-	der []byte,
-	regID int64,
-	ocspResponse []byte,
-	issued *time.Time) (string, error) {
-	issuedTS := int64(0)
-	if issued != nil {
-		issuedTS = issued.UnixNano()
-	}
-	response, err := sac.inner.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    der,
-		RegID:  regID,
-		Ocsp:   ocspResponse,
-		Issued: issuedTS,
-	})
-	if err != nil {
-		return "", err
-	}
-
-	if response == nil {
-		return "", errIncompleteResponse
-	}
-
-	return response.Digest, nil
+func (sac StorageAuthorityClientWrapper) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
+	return sac.inner.AddCertificate(ctx, req)
 }
 
 func (sac StorageAuthorityClientWrapper) DeactivateRegistration(ctx context.Context, request *sapb.RegistrationID) (*emptypb.Empty, error) {
@@ -580,17 +557,7 @@ func (sas StorageAuthorityServerWrapper) UpdateRegistration(ctx context.Context,
 }
 
 func (sas StorageAuthorityServerWrapper) AddCertificate(ctx context.Context, request *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
-	if core.IsAnyNilOrZero(request, request.Der, request.RegID, request.Issued) {
-		return nil, errIncompleteRequest
-	}
-
-	reqIssued := time.Unix(0, request.Issued)
-	digest, err := sas.inner.AddCertificate(ctx, request.Der, request.RegID, request.Ocsp, &reqIssued)
-	if err != nil {
-		return nil, err
-	}
-
-	return &sapb.AddCertificateResponse{Digest: digest}, nil
+	return sas.inner.AddCertificate(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) DeactivateRegistration(ctx context.Context, request *sapb.RegistrationID) (*emptypb.Empty, error) {
