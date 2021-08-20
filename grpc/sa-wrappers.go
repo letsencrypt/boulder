@@ -174,18 +174,8 @@ func (sac StorageAuthorityClientWrapper) PreviousCertificateExists(
 	return exists, err
 }
 
-func (sac StorageAuthorityClientWrapper) AddPrecertificate(
-	ctx context.Context,
-	req *sapb.AddCertificateRequest,
-) (*emptypb.Empty, error) {
-	empty, err := sac.inner.AddPrecertificate(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if empty == nil {
-		return nil, errIncompleteResponse
-	}
-	return empty, nil
+func (sac StorageAuthorityClientWrapper) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
+	return sac.inner.AddPrecertificate(ctx, req)
 }
 
 func (sac StorageAuthorityClientWrapper) AddSerial(
