@@ -1366,6 +1366,10 @@ func AuthzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error
 // either the IDs of the authorizations or an error. It will only process corepb.Authorization
 // objects if the V2 field is set. This method is intended to deprecate AddPendingAuthorizations
 func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
+	if req.Authz == nil {
+		return nil, errIncompleteRequest
+	}
+
 	ids := &sapb.Authorization2IDs{}
 	var queryArgs []interface{}
 	var questionsBuf strings.Builder

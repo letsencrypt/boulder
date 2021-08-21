@@ -333,14 +333,7 @@ func (sas StorageAuthorityClientWrapper) RevokeCertificate(ctx context.Context, 
 }
 
 func (sas StorageAuthorityClientWrapper) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
-	resp, err := sas.inner.NewAuthorizations2(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil || resp.Ids == nil {
-		return nil, errIncompleteResponse
-	}
-	return resp, nil
+	return sas.inner.NewAuthorizations2(ctx, req)
 }
 
 func (sas StorageAuthorityClientWrapper) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
@@ -661,10 +654,6 @@ func (sas StorageAuthorityServerWrapper) RevokeCertificate(ctx context.Context, 
 }
 
 func (sas StorageAuthorityServerWrapper) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
-	if req == nil || req.Authz == nil {
-		return nil, errIncompleteRequest
-	}
-
 	return sas.inner.NewAuthorizations2(ctx, req)
 }
 

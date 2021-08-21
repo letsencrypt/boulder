@@ -50,6 +50,7 @@ import (
 )
 
 var errIncompleteGRPCRequest = errors.New("incomplete gRPC request message")
+var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 
 type caaChecker interface {
 	IsCAAValid(
@@ -2167,6 +2168,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		authzIDs, err := ra.SA.NewAuthorizations2(ctx, &req)
 		if err != nil {
 			return nil, err
+		}
+		if authzIDs.Ids == nil {
+			return nil, errIncompleteGRPCResponse
 		}
 		order.V2Authorizations = append(order.V2Authorizations, authzIDs.Ids...)
 		// If the newly created pending authz's have an expiry closer than the
