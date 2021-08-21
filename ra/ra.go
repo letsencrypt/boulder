@@ -1626,7 +1626,7 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	if challenge.Validated != nil {
 		validated = challenge.Validated.UTC().UnixNano()
 	}
-	err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
+	_, err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:                authzID,
 		Status:            string(challenge.Status),
 		Expires:           expires,

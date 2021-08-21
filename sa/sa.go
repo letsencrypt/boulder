@@ -1562,9 +1562,13 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 // the authorization is being moved to invalid the validationError field must be set. If the
 // authorization is being moved to valid the validationRecord and expires fields must be set.
 // This method is intended to deprecate the FinalizeAuthorization method.
-func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) error {
+func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) (*emptypb.Empty, error) {
+	if req.Status == "" || req.Attempted == "" || req.Expires == 0 || req.Id == 0 {
+		return &emptypb.Empty{}, errIncompleteRequest
+	}
+
 	if req.Status != string(core.StatusValid) && req.Status != string(core.StatusInvalid) {
-		return berrors.InternalServerError("authorization must have status valid or invalid")
+		return &emptypb.Empty{}, berrors.InternalServerError("authorization must have status valid or invalid")
 	}
 	query := `UPDATE authz2 SET
 		status = :status,
@@ -1578,23 +1582,23 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 	for _, recordPB := range req.ValidationRecords {
 		record, err := bgrpc.PBToValidationRecord(recordPB)
 		if err != nil {
-			return err
+			return &emptypb.Empty{}, err
 		}
 		validationRecords = append(validationRecords, record)
 	}
 	vrJSON, err := json.Marshal(validationRecords)
 	if err != nil {
-		return err
+		return &emptypb.Empty{}, err
 	}
 	var veJSON []byte
 	if req.ValidationError != nil {
 		validationError, err := bgrpc.PBToProblemDetails(req.ValidationError)
 		if err != nil {
-			return err
+			return &emptypb.Empty{}, err
 		}
 		j, err := json.Marshal(validationError)
 		if err != nil {
-			return err
+			return &emptypb.Empty{}, err
 		}
 		veJSON = j
 	}
@@ -1622,18 +1626,18 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 
 	res, err := ssa.dbMap.Exec(query, params)
 	if err != nil {
-		return err
+		return &emptypb.Empty{}, err
 	}
 	rows, err := res.RowsAffected()
 	if err != nil {
-		return err
+		return &emptypb.Empty{}, err
 	}
 	if rows == 0 {
-		return berrors.NotFoundError("authorization with id %d not found", req.Id)
+		return &emptypb.Empty{}, berrors.NotFoundError("authorization with id %d not found", req.Id)
 	} else if rows > 1 {
-		return berrors.InternalServerError("multiple rows updated for authorization id %d", req.Id)
+		return &emptypb.Empty{}, berrors.InternalServerError("multiple rows updated for authorization id %d", req.Id)
 	}
-	return nil
+	return &emptypb.Empty{}, nil
 }
 
 // RevokeCertificate stores revocation information about a certificate. It will only store this

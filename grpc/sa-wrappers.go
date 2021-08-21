@@ -340,9 +340,8 @@ func (sas StorageAuthorityClientWrapper) GetAuthorizations2(ctx context.Context,
 	return sas.inner.GetAuthorizations2(ctx, req)
 }
 
-func (sas StorageAuthorityClientWrapper) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) error {
-	_, err := sas.inner.FinalizeAuthorization2(ctx, req)
-	return err
+func (sas StorageAuthorityClientWrapper) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) (*emptypb.Empty, error) {
+	return sas.inner.FinalizeAuthorization2(ctx, req)
 }
 
 func (sas StorageAuthorityClientWrapper) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
@@ -662,11 +661,7 @@ func (sas StorageAuthorityServerWrapper) GetAuthorizations2(ctx context.Context,
 }
 
 func (sas StorageAuthorityServerWrapper) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(req, req.Status, req.Attempted, req.Expires, req.Id) {
-		return nil, errIncompleteRequest
-	}
-
-	return &emptypb.Empty{}, sas.inner.FinalizeAuthorization2(ctx, req)
+	return sas.inner.FinalizeAuthorization2(ctx, req)
 }
 
 func (sas StorageAuthorityServerWrapper) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {

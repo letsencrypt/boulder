@@ -89,7 +89,7 @@ func createPendingAuthorization(t *testing.T, sa core.StorageAuthority, domain s
 func createFinalizedAuthorization(t *testing.T, sa core.StorageAuthority, domain string, exp time.Time, status string) int64 {
 	t.Helper()
 	pendingID := createPendingAuthorization(t, sa, domain, exp)
-	err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+	_, err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id:        pendingID,
 		Status:    status,
 		Expires:   exp.UnixNano(),
@@ -2373,7 +2373,7 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	// It should have one authorization
 	test.AssertEquals(t, numAuthorizations(order), 1)
 
-	err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
+	_, err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:        order.V2Authorizations[0],
 		Status:    string(core.StatusInvalid),
 		Expires:   order.Expires,
@@ -3268,7 +3268,7 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 
 	// Finalize the authorization with the challenge validated
-	err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
+	_, err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:        validOrder.V2Authorizations[0],
 		Status:    string(core.StatusValid),
 		Expires:   ra.clk.Now().Add(time.Hour * 24 * 7).UnixNano(),
@@ -3334,7 +3334,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 		})
 		test.AssertNotError(t, err, "sa.NewAuthorzations2 failed")
 		// Finalize the authz
-		err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
+		_, err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 			Id:        ids.Ids[0],
 			Status:    "valid",
 			Expires:   exp.UnixNano(),
@@ -3690,7 +3690,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 		test.AssertNotError(t, err, "sa.NewAuthorzations2 failed")
 		// Finalize the authz
 		attempted := string(httpChal.Type)
-		err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
+		_, err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 			Id:        ids.Ids[0],
 			Status:    "valid",
 			Expires:   exp.UnixNano(),
