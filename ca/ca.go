@@ -43,7 +43,7 @@ const (
 
 type certificateStorage interface {
 	AddCertificate(context.Context, []byte, int64, []byte, *time.Time) (string, error)
-	GetCertificate(context.Context, string) (core.Certificate, error)
+	GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
 	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error)
 	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*emptypb.Empty, error)
 }
@@ -323,7 +323,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	}
 
 	serialHex := core.SerialToString(precert.SerialNumber)
-	if _, err = ca.sa.GetCertificate(ctx, serialHex); err == nil {
+	if _, err = ca.sa.GetCertificate(ctx, &sapb.Serial{Serial: serialHex}); err == nil {
 		err = berrors.InternalServerError("issuance of duplicate final certificate requested: %s", serialHex)
 		ca.log.AuditErr(err.Error())
 		return nil, err

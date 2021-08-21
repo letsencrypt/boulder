@@ -33,7 +33,7 @@ var (
 		OCSPResponse:    mustRead("./testdata/ocsp.resp"),
 		IsExpired:       false,
 		OCSPLastUpdated: time.Now(),
-		IssuerID:        &issuerID,
+		IssuerID:        issuerID,
 	}
 	stats = metrics.NoopRegisterer
 )
@@ -151,7 +151,7 @@ func TestResponseMatchesIssuer(t *testing.T) {
 		OCSPResponse:    mustRead("./testdata/ocsp.resp"),
 		IsExpired:       false,
 		OCSPLastUpdated: time.Now(),
-		IssuerID:        &fakeID,
+		IssuerID:        fakeID,
 	}
 	test.AssertEquals(t, f.responseMatchesIssuer(ocspReq, ocspResp), false)
 }
@@ -328,7 +328,7 @@ func (es expiredSelector) SelectOne(obj interface{}, _ string, _ ...interface{})
 	rows.IsExpired = true
 	rows.OCSPLastUpdated = time.Time{}.Add(time.Hour)
 	issuerID = int64(123456)
-	rows.IssuerID = &issuerID
+	rows.IssuerID = issuerID
 	return nil
 }
 

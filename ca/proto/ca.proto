@@ -44,7 +44,6 @@ message GenerateOCSPRequest {
   int32 reason = 3;
   int64 revokedAt = 4;
   string serial = 5;
-  // TODO(#5152): Replace issuerID with issuerNameID.
   int64 issuerID = 6;
 }
 

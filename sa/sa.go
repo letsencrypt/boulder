@@ -318,20 +318,22 @@ func ReverseName(domain string) string {
 
 // GetCertificate takes a serial number and returns the corresponding
 // certificate, or error if it does not exist.
-func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, serial string) (core.Certificate, error) {
-	if !core.ValidSerial(serial) {
-		err := fmt.Errorf("Invalid certificate serial %s", serial)
-		return core.Certificate{}, err
+func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+	if req == nil || req.Serial == "" {
+		return nil, errIncompleteRequest
+	}
+	if !core.ValidSerial(req.Serial) {
+		return nil, fmt.Errorf("Invalid certificate serial %s", req.Serial)
 	}
 
-	cert, err := SelectCertificate(ssa.dbMap.WithContext(ctx), serial)
+	cert, err := SelectCertificate(ssa.dbMap.WithContext(ctx), req.Serial)
 	if db.IsNoRows(err) {
-		return core.Certificate{}, berrors.NotFoundError("certificate with serial %q not found", serial)
+		return nil, berrors.NotFoundError("certificate with serial %q not found", req.Serial)
 	}
 	if err != nil {
-		return core.Certificate{}, err
+		return nil, err
 	}
-	return cert, err
+	return bgrpc.CertToPB(cert), nil
 }
 
 // GetCertificateStatus takes a hexadecimal string representing the full 128-bit serial
