@@ -379,8 +379,7 @@ func (sas StorageAuthorityClientWrapper) GetValidAuthorizations2(ctx context.Con
 }
 
 func (sas StorageAuthorityClientWrapper) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*emptypb.Empty, error) {
-	_, err := sas.inner.DeactivateAuthorization2(ctx, req)
-	return nil, err
+	return sas.inner.DeactivateAuthorization2(ctx, req)
 }
 
 func (sac StorageAuthorityClientWrapper) AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest) (*emptypb.Empty, error) {
@@ -693,10 +692,6 @@ func (sas StorageAuthorityServerWrapper) GetValidAuthorizations2(ctx context.Con
 }
 
 func (sas StorageAuthorityServerWrapper) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(req, req.Id) {
-		return nil, errIncompleteRequest
-	}
-
 	return sas.inner.DeactivateAuthorization2(ctx, req)
 }
 
