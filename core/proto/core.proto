@@ -55,6 +55,7 @@ message CertificateStatus {
   bytes ocspResponse = 8;
   int64 notAfter = 9;
   bool isExpired = 10;
+  int64 issuerID = 11;
 }
 
 message Registration {

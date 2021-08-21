@@ -195,12 +195,12 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 	test.AssertEquals(t, digest, "qWoItDZmR4P9eFbeYgXXP3SR4ApnkQj8x4LsB_ORKBo")
 
-	retrievedCert, err := sa.GetCertificate(ctx, "000000000000000000000000000000021bd4")
+	retrievedCert, err := sa.GetCertificate(ctx, &sapb.Serial{Serial: "000000000000000000000000000000021bd4"})
 	test.AssertNotError(t, err, "Couldn't get www.eff.org.der by full serial")
-	test.AssertByteEquals(t, certDER, retrievedCert.DER)
+	test.AssertByteEquals(t, certDER, retrievedCert.Der)
 	// Because nil was provided as the Issued time we expect the cert was stored
 	// with an issued time equal to now
-	test.AssertEquals(t, retrievedCert.Issued, clk.Now())
+	test.AssertEquals(t, retrievedCert.Issued, clk.Now().UnixNano())
 
 	// Test cert generated locally by Boulder / CFSSL, names [example.com,
 	// www.example.com, admin.example.com]
@@ -214,12 +214,12 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 	test.AssertEquals(t, digest2, "vrlPN5wIPME1D2PPsCy-fGnTWh8dMyyYQcXPRkjHAQI")
 
-	retrievedCert2, err := sa.GetCertificate(ctx, serial)
+	retrievedCert2, err := sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
 	test.AssertNotError(t, err, "Couldn't get test-cert.der")
-	test.AssertByteEquals(t, certDER2, retrievedCert2.DER)
+	test.AssertByteEquals(t, certDER2, retrievedCert2.Der)
 	// The cert should have been added with the specific issued time we provided
 	// as the issued field.
-	test.AssertEquals(t, retrievedCert2.Issued, issuedTime)
+	test.AssertEquals(t, retrievedCert2.Issued, issuedTime.UnixNano())
 
 	// Test adding OCSP response with cert
 	certDER3, err := ioutil.ReadFile("test-cert2.der")

@@ -63,8 +63,8 @@ type config struct {
 type certificateStorage interface {
 	AddCertificate(context.Context, []byte, int64, []byte, *time.Time) (string, error)
 	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error)
-	GetCertificate(ctx context.Context, serial string) (core.Certificate, error)
-	GetPrecertificate(ctx context.Context, reqSerial *sapb.Serial) (*corepb.Certificate, error)
+	GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
+	GetPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
 }
 
 type ocspGenerator interface {
@@ -148,7 +148,7 @@ func checkDER(sai certificateStorage, der []byte) (*x509.Certificate, orphanType
 
 	switch orphanTyp {
 	case certOrphan:
-		_, err = sai.GetCertificate(ctx, orphanSerial)
+		_, err = sai.GetCertificate(ctx, &sapb.Serial{Serial: orphanSerial})
 	case precertOrphan:
 		_, err = sai.GetPrecertificate(ctx, &sapb.Serial{Serial: orphanSerial})
 	default:
@@ -380,13 +380,14 @@ func (opf *orphanFinder) parseDER(derPath string, regID int64) {
 
 // generateOCSP asks the CA to generate a new OCSP response for the given cert.
 func (opf *orphanFinder) generateOCSP(ctx context.Context, cert *x509.Certificate) ([]byte, error) {
-	issuer, ok := opf.issuers[issuance.GetIssuerNameID(cert)]
+	issuerID := issuance.GetIssuerNameID(cert)
+	_, ok := opf.issuers[issuerID]
 	if !ok {
 		return nil, errors.New("unrecognized issuer for orphan")
 	}
 	ocspResponse, err := opf.ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		Serial:    core.SerialToString(cert.SerialNumber),
-		IssuerID:  int64(issuer.ID()),
+		IssuerID:  int64(issuerID),
 		Status:    string(core.OCSPStatusGood),
 		Reason:    0,
 		RevokedAt: 0,

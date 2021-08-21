@@ -99,7 +99,7 @@ type PolicyAuthority interface {
 type StorageGetter interface {
 	GetRegistration(ctx context.Context, req *sapb.RegistrationID) (*corepb.Registration, error)
 	GetRegistrationByKey(ctx context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error)
-	GetCertificate(ctx context.Context, serial string) (Certificate, error)
+	GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
 	GetPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
 	GetCertificateStatus(ctx context.Context, serial string) (CertificateStatus, error)
 	CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) (countByDomain []*sapb.CountByNames_MapElement, err error)

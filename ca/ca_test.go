@@ -29,6 +29,7 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -162,8 +163,8 @@ func (m *mockSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*em
 	return &emptypb.Empty{}, nil
 }
 
-func (m *mockSA) GetCertificate(ctx context.Context, serial string) (core.Certificate, error) {
-	return core.Certificate{}, berrors.NotFoundError("cannot find the cert")
+func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+	return nil, berrors.NotFoundError("cannot find the cert")
 }
 
 var caKey crypto.Signer
@@ -809,8 +810,8 @@ type dupeSA struct {
 	mockSA
 }
 
-func (m *dupeSA) GetCertificate(ctx context.Context, serial string) (core.Certificate, error) {
-	return core.Certificate{}, nil
+func (m *dupeSA) GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+	return nil, nil
 }
 
 // getCertErrorSA always returns an error for GetCertificate
@@ -818,8 +819,8 @@ type getCertErrorSA struct {
 	mockSA
 }
 
-func (m *getCertErrorSA) GetCertificate(ctx context.Context, serial string) (core.Certificate, error) {
-	return core.Certificate{}, fmt.Errorf("i don't like it")
+func (m *getCertErrorSA) GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+	return nil, fmt.Errorf("i don't like it")
 }
 
 func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {

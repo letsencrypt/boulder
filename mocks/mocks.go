@@ -229,28 +229,28 @@ func (sa *StorageAuthority) GetAuthorization(_ context.Context, id string) (core
 }
 
 // GetCertificate is a mock
-func (sa *StorageAuthority) GetCertificate(_ context.Context, serial string) (core.Certificate, error) {
+func (sa *StorageAuthority) GetCertificate(_ context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
 	// Serial ee == 238.crt
-	if serial == "0000000000000000000000000000000000ee" {
+	if req.Serial == "0000000000000000000000000000000000ee" {
 		certPemBytes, _ := ioutil.ReadFile("test/238.crt")
 		certBlock, _ := pem.Decode(certPemBytes)
-		return core.Certificate{
+		return &corepb.Certificate{
 			RegistrationID: 1,
-			DER:            certBlock.Bytes,
-			Issued:         sa.clk.Now().Add(-1 * time.Hour),
+			Der:            certBlock.Bytes,
+			Issued:         sa.clk.Now().Add(-1 * time.Hour).UnixNano(),
 		}, nil
-	} else if serial == "0000000000000000000000000000000000b2" {
+	} else if req.Serial == "0000000000000000000000000000000000b2" {
 		certPemBytes, _ := ioutil.ReadFile("test/178.crt")
 		certBlock, _ := pem.Decode(certPemBytes)
-		return core.Certificate{
+		return &corepb.Certificate{
 			RegistrationID: 1,
-			DER:            certBlock.Bytes,
-			Issued:         sa.clk.Now().Add(-1 * time.Hour),
+			Der:            certBlock.Bytes,
+			Issued:         sa.clk.Now().Add(-1 * time.Hour).UnixNano(),
 		}, nil
-	} else if serial == "000000000000000000000000000000626164" {
-		return core.Certificate{}, errors.New("bad")
+	} else if req.Serial == "000000000000000000000000000000626164" {
+		return nil, errors.New("bad")
 	} else {
-		return core.Certificate{}, berrors.NotFoundError("No cert")
+		return nil, berrors.NotFoundError("No cert")
 	}
 }
 

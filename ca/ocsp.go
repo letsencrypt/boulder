@@ -20,7 +20,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-// TODO(#5152): Remove this when we're only using IssuerNameIDs.
+// TODO(#5152): Simplify this when we've fully deprecated old-style IssuerIDs.
 type ocspIssuerMaps struct {
 	byID     map[issuance.IssuerID]*issuance.Issuer
 	byNameID map[issuance.IssuerNameID]*issuance.Issuer
@@ -29,8 +29,7 @@ type ocspIssuerMaps struct {
 // ocspImpl provides a backing implementation for the OCSP gRPC service.
 type ocspImpl struct {
 	capb.UnimplementedOCSPGeneratorServer
-	sa certificateStorage
-	// TODO(#5152): Replace IssuerID with IssuerNameID.
+	sa             certificateStorage
 	issuers        ocspIssuerMaps
 	ocspLifetime   time.Duration
 	ocspLogQueue   *ocspLogQueue

@@ -134,17 +134,19 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 
 // GetPrecertificate takes a serial number and returns the corresponding
 // precertificate, or error if it does not exist.
-func (ssa *SQLStorageAuthority) GetPrecertificate(ctx context.Context, reqSerial *sapb.Serial) (*corepb.Certificate, error) {
-	if !core.ValidSerial(reqSerial.Serial) {
-		return nil,
-			fmt.Errorf("Invalid precertificate serial %q", reqSerial.Serial)
+func (ssa *SQLStorageAuthority) GetPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+	if req == nil || req.Serial == "" {
+		return nil, errIncompleteRequest
 	}
-	cert, err := SelectPrecertificate(ssa.dbMap.WithContext(ctx), reqSerial.Serial)
+	if !core.ValidSerial(req.Serial) {
+		return nil, fmt.Errorf("Invalid precertificate serial %q", req.Serial)
+	}
+	cert, err := SelectPrecertificate(ssa.dbMap.WithContext(ctx), req.Serial)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return nil, berrors.NotFoundError(
 				"precertificate with serial %q not found",
-				reqSerial.Serial)
+				req.Serial)
 		}
 		return nil, err
 	}
