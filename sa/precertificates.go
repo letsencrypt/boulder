@@ -42,7 +42,7 @@ func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSeri
 // certificate multiple times. Calling code needs to first insert the cert's
 // serial into the Serials table to ensure uniqueness.
 func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
-	if req.Der == nil || req.RegID == 0 || req.Issued == 0 || req.IssuerID == 0 {
+	if len(req.Der) == 0 || req.RegID == 0 || req.Issued == 0 || req.IssuerID == 0 {
 		return nil, errIncompleteRequest
 	}
 	parsed, err := x509.ParseCertificate(req.Der)

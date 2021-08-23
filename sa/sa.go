@@ -420,7 +420,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *cor
 // AddCertificate stores an issued certificate and returns the digest as
 // a string, or an error if any occurred.
 func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
-	if req.Der == nil || req.RegID == 0 || req.Issued == 0 {
+	if len(req.Der) == 0 || req.RegID == 0 || req.Issued == 0 {
 		return nil, errIncompleteRequest
 	}
 	parsedCertificate, err := x509.ParseCertificate(req.Der)
