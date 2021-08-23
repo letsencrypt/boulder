@@ -38,6 +38,7 @@ service StorageAuthority {
   rpc AddSerial(AddSerialRequest) returns (google.protobuf.Empty) {}
   rpc DeactivateRegistration(RegistrationID) returns (google.protobuf.Empty) {}
   rpc NewOrder(core.Order) returns (core.Order) {}
+  rpc NewOrderAndAuthzs(NewOrderAndAuthzsRequest) returns (core.Order) {}
   rpc SetOrderProcessing(core.Order) returns (google.protobuf.Empty) {}
   rpc SetOrderError(core.Order) returns (google.protobuf.Empty) {}
   rpc FinalizeOrder(core.Order) returns (google.protobuf.Empty) {}
@@ -199,6 +200,11 @@ message Authorizations {
 
 message AddPendingAuthorizationsRequest {
   repeated core.Authorization authz = 1;
+}
+
+message NewOrderAndAuthzsRequest {
+  core.Order order = 1;
+  repeated core.Authorization newAuthzs = 2;
 }
 
 message AuthorizationIDs {
