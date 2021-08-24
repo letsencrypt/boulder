@@ -1441,7 +1441,7 @@ func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sap
 // If no authorization is found matching the ID a berrors.NotFound type error is returned. This method
 // is intended to deprecate GetAuthorization.
 func (ssa *SQLStorageAuthority) GetAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Authorization, error) {
-	if req == nil || req.Id == 0 {
+	if req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
 	obj, err := ssa.dbMap.Get(authzModel{}, req.Id)
@@ -1475,7 +1475,7 @@ func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 // WFE v2 API (in GetAuthorizations this feature was, now somewhat confusingly, called RequireV2Authzs).
 // This method is intended to deprecate GetAuthorizations. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if req == nil || req.Domains == nil || req.RegistrationID == 0 || req.Now == 0 {
+	if req.Domains == nil || req.RegistrationID == 0 || req.Now == 0 {
 		return nil, errIncompleteRequest
 	}
 	var authzModels []authzModel
@@ -1570,11 +1570,11 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 // This method is intended to deprecate the FinalizeAuthorization method.
 func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) (*emptypb.Empty, error) {
 	if req.Status == "" || req.Attempted == "" || req.Expires == 0 || req.Id == 0 {
-		return &emptypb.Empty{}, errIncompleteRequest
+		return nil, errIncompleteRequest
 	}
 
 	if req.Status != string(core.StatusValid) && req.Status != string(core.StatusInvalid) {
-		return &emptypb.Empty{}, berrors.InternalServerError("authorization must have status valid or invalid")
+		return nil, berrors.InternalServerError("authorization must have status valid or invalid")
 	}
 	query := `UPDATE authz2 SET
 		status = :status,
@@ -1588,23 +1588,23 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 	for _, recordPB := range req.ValidationRecords {
 		record, err := bgrpc.PBToValidationRecord(recordPB)
 		if err != nil {
-			return &emptypb.Empty{}, err
+			return nil, err
 		}
 		validationRecords = append(validationRecords, record)
 	}
 	vrJSON, err := json.Marshal(validationRecords)
 	if err != nil {
-		return &emptypb.Empty{}, err
+		return nil, err
 	}
 	var veJSON []byte
 	if req.ValidationError != nil {
 		validationError, err := bgrpc.PBToProblemDetails(req.ValidationError)
 		if err != nil {
-			return &emptypb.Empty{}, err
+			return nil, err
 		}
 		j, err := json.Marshal(validationError)
 		if err != nil {
-			return &emptypb.Empty{}, err
+			return nil, err
 		}
 		veJSON = j
 	}
@@ -1632,16 +1632,16 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 
 	res, err := ssa.dbMap.Exec(query, params)
 	if err != nil {
-		return &emptypb.Empty{}, err
+		return nil, err
 	}
 	rows, err := res.RowsAffected()
 	if err != nil {
-		return &emptypb.Empty{}, err
+		return nil, err
 	}
 	if rows == 0 {
-		return &emptypb.Empty{}, berrors.NotFoundError("authorization with id %d not found", req.Id)
+		return nil, berrors.NotFoundError("authorization with id %d not found", req.Id)
 	} else if rows > 1 {
-		return &emptypb.Empty{}, berrors.InternalServerError("multiple rows updated for authorization id %d", req.Id)
+		return nil, berrors.InternalServerError("multiple rows updated for authorization id %d", req.Id)
 	}
 	return &emptypb.Empty{}, nil
 }
