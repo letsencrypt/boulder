@@ -1372,7 +1372,7 @@ func AuthzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error
 // either the IDs of the authorizations or an error. It will only process corepb.Authorization
 // objects if the V2 field is set. This method is intended to deprecate AddPendingAuthorizations
 func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
-	if req.Authz == nil {
+	if len(req.Authz) == 0 {
 		return nil, errIncompleteRequest
 	}
 
@@ -1475,7 +1475,7 @@ func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 // WFE v2 API (in GetAuthorizations this feature was, now somewhat confusingly, called RequireV2Authzs).
 // This method is intended to deprecate GetAuthorizations. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if req.Domains == nil || req.RegistrationID == 0 || req.Now == 0 {
+	if len(req.Domains) == 0 || req.RegistrationID == 0 || req.Now == 0 {
 		return nil, errIncompleteRequest
 	}
 	var authzModels []authzModel
@@ -1815,7 +1815,7 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context,
 // intended to deprecate GetValidAuthorizations. This method only supports
 // DNS identifier types.
 func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if req.Domains == nil || req.RegistrationID == 0 || req.Now == 0 {
+	if len(req.Domains) == 0 || req.RegistrationID == 0 || req.Now == 0 {
 		return nil, errIncompleteRequest
 	}
 

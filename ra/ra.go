@@ -2169,8 +2169,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		if err != nil {
 			return nil, err
 		}
-		if authzIDs.Ids == nil {
-			return nil, errIncompleteGRPCResponse
+		if len(authzIDs.Ids) == 0 {
+			// This should never happen.
+			return nil, errors.New("received 0 authzIDs after requesting new authzs")
 		}
 		order.V2Authorizations = append(order.V2Authorizations, authzIDs.Ids...)
 		// If the newly created pending authz's have an expiry closer than the
