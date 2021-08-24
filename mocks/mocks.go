@@ -470,7 +470,7 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 
 	// Order 9 is fresh
 	if req.Id == 9 {
-		validOrder.Created = sa.clk.Now().Unix()
+		validOrder.Created = sa.clk.Now().AddDate(0, 0, 1).Unix()
 	}
 
 	return validOrder, nil
