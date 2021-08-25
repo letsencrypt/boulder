@@ -2168,40 +2168,54 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			minExpiry = authzExpiry
 		}
 	}
-
-	// If new authorizations are needed, call AddPendingAuthorizations. Also check
-	// whether the newly created pending authz's have an expiry lower than minExpiry
+	// If the newly created pending authz's have an expiry closer than the
+	// minExpiry the minExpiry is the pending authz expiry.
 	if len(newAuthzs) > 0 {
-		req := sapb.AddPendingAuthorizationsRequest{Authz: newAuthzs}
-		authzIDs, err := ra.SA.NewAuthorizations2(ctx, &req)
-		if err != nil {
-			return nil, err
-		}
-		if len(authzIDs.Ids) == 0 {
-			// This should never happen.
-			return nil, errors.New("received 0 authzIDs after requesting new authzs")
-		}
-		order.V2Authorizations = append(order.V2Authorizations, authzIDs.Ids...)
-		// If the newly created pending authz's have an expiry closer than the
-		// minExpiry the minExpiry is the pending authz expiry.
 		newPendingAuthzExpires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
 		if newPendingAuthzExpires.Before(minExpiry) {
 			minExpiry = newPendingAuthzExpires
+		}
+	}
+	// Set the order's expiry to the minimum expiry. The db doesn't store
+	// sub-second values, so truncate here.
+	order.Expires = minExpiry.Truncate(time.Second).UnixNano()
+
+	var storedOrder *corepb.Order
+	if features.Enabled(features.StreamlineOrderAndAuthzs) {
+		newOrderAndAuthzsReq := &sapb.NewOrderAndAuthzsRequest{
+			Order:     order,
+			NewAuthzs: newAuthzs,
+		}
+		storedOrder, err = ra.SA.NewOrderAndAuthzs(ctx, newOrderAndAuthzsReq)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// If new authorizations are needed, call AddPendingAuthorizations. Also check
+		// whether the newly created pending authz's have an expiry lower than minExpiry
+		if len(newAuthzs) > 0 {
+			req := sapb.AddPendingAuthorizationsRequest{Authz: newAuthzs}
+			authzIDs, err := ra.SA.NewAuthorizations2(ctx, &req)
+			if err != nil {
+				return nil, err
+			}
+			if len(authzIDs.Ids) == 0 {
+				// This should never happen.
+				return nil, errors.New("received 0 authzIDs after requesting new authzs")
+			}
+			order.V2Authorizations = append(order.V2Authorizations, authzIDs.Ids...)
+		}
+
+		storedOrder, err = ra.SA.NewOrder(ctx, order)
+		if err != nil {
+			return nil, err
 		}
 	}
 
 	// Note how many names are being requested in this certificate order.
 	ra.namesPerCert.With(
 		prometheus.Labels{"type": "requested"},
-	).Observe(float64(len(order.Names)))
-
-	// Set the order's expiry to the minimum expiry. The db doesn't store
-	// sub-second values, so truncate here.
-	order.Expires = minExpiry.Truncate(time.Second).UnixNano()
-	storedOrder, err := ra.SA.NewOrder(ctx, order)
-	if err != nil {
-		return nil, err
-	}
+	).Observe(float64(len(storedOrder.Names)))
 
 	return storedOrder, nil
 }
