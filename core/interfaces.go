@@ -131,6 +131,7 @@ type StorageAdder interface {
 	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*emptypb.Empty, error)
 	DeactivateRegistration(ctx context.Context, req *sapb.RegistrationID) (*emptypb.Empty, error)
 	NewOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error)
+	NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest) (*corepb.Order, error)
 	SetOrderProcessing(ctx context.Context, order *corepb.Order) error
 	FinalizeOrder(ctx context.Context, order *corepb.Order) error
 	SetOrderError(ctx context.Context, order *corepb.Order) error
