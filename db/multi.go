@@ -21,7 +21,7 @@ type MultiInserter struct {
 // name and list of fields.
 func NewMultiInserter(table string, fields string, retCol string) (*MultiInserter, error) {
 	numFields := len(strings.Split(fields, ","))
-	if len(table) == 0 || numFields == 0 {
+	if len(table) == 0 || len(fields) == 0 || numFields == 0 {
 		return nil, fmt.Errorf("empty table name or fields list")
 	}
 
