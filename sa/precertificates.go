@@ -3,7 +3,6 @@ package sa
 import (
 	"context"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -17,8 +16,6 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
-
-var errIncompleteRequest = errors.New("Incomplete gRPC request message")
 
 // AddSerial writes a record of a serial number generation to the DB.
 func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*emptypb.Empty, error) {

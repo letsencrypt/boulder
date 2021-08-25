@@ -285,14 +285,7 @@ func (sac StorageAuthorityClientWrapper) FinalizeOrder(ctx context.Context, orde
 }
 
 func (sas StorageAuthorityClientWrapper) GetOrder(ctx context.Context, request *sapb.OrderRequest) (*corepb.Order, error) {
-	resp, err := sas.inner.GetOrder(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil || !orderValid(resp) {
-		return nil, errIncompleteResponse
-	}
-	return resp, nil
+	return sas.inner.GetOrder(ctx, request)
 }
 
 func (sas StorageAuthorityClientWrapper) GetOrderForNames(
@@ -642,10 +635,6 @@ func (sas StorageAuthorityServerWrapper) FinalizeOrder(ctx context.Context, orde
 }
 
 func (sas StorageAuthorityServerWrapper) GetOrder(ctx context.Context, request *sapb.OrderRequest) (*corepb.Order, error) {
-	if core.IsAnyNilOrZero(request, request.Id) {
-		return nil, errIncompleteRequest
-	}
-
 	return sas.inner.GetOrder(ctx, request)
 }
 

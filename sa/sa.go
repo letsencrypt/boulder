@@ -30,6 +30,8 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
+var errIncompleteRequest = errors.New("incomplete gRPC request message")
+
 type certCountFunc func(db db.Selector, domain string, earliest, latest time.Time) (int, error)
 
 // SQLStorageAuthority defines a Storage Authority
@@ -1078,6 +1080,10 @@ func (ssa *SQLStorageAuthority) namesForOrder(ctx context.Context, orderID int64
 
 // GetOrder is used to retrieve an already existing order object
 func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
+	if req == nil || req.Id == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	omObj, err := ssa.dbMap.WithContext(ctx).Get(orderModel{}, req.Id)
 	if err != nil {
 		if db.IsNoRows(err) {
