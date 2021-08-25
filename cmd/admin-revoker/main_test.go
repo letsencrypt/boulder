@@ -35,7 +35,7 @@ type mockCA struct {
 }
 
 func (ca *mockCA) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...grpc.CallOption) (*capb.OCSPResponse, error) {
-	return &capb.OCSPResponse{}, nil
+	return &capb.OCSPResponse{Response: []byte("fakeocspbytes")}, nil
 }
 
 type mockPurger struct{}
@@ -103,8 +103,11 @@ func TestRevokeBatch(t *testing.T) {
 			IssuerID: 1,
 		})
 		test.AssertNotError(t, err, "failed to add test cert")
-		now := time.Now()
-		_, err = ssa.AddCertificate(context.Background(), der, reg.Id, nil, &now)
+		_, err = ssa.AddCertificate(context.Background(), &sapb.AddCertificateRequest{
+			Der:    der,
+			RegID:  reg.Id,
+			Issued: time.Now().UnixNano(),
+		})
 		test.AssertNotError(t, err, "failed to add test cert")
 		_, err = serialFile.WriteString(fmt.Sprintf("%s\n", core.SerialToString(serial)))
 		test.AssertNotError(t, err, "failed to write serial to temp file")

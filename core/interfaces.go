@@ -126,7 +126,7 @@ type StorageGetter interface {
 type StorageAdder interface {
 	NewRegistration(ctx context.Context, req *corepb.Registration) (*corepb.Registration, error)
 	UpdateRegistration(ctx context.Context, req *corepb.Registration) (*emptypb.Empty, error)
-	AddCertificate(ctx context.Context, der []byte, regID int64, ocsp []byte, issued *time.Time) (digest string, err error)
+	AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error)
 	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error)
 	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*emptypb.Empty, error)
 	DeactivateRegistration(ctx context.Context, req *sapb.RegistrationID) (*emptypb.Empty, error)
@@ -134,7 +134,7 @@ type StorageAdder interface {
 	SetOrderProcessing(ctx context.Context, order *corepb.Order) error
 	FinalizeOrder(ctx context.Context, order *corepb.Order) error
 	SetOrderError(ctx context.Context, order *corepb.Order) error
-	RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error
+	RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error)
 	// New authz2 methods
 	NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error)
 	FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) error

@@ -380,23 +380,24 @@ func TestStoreResponseGuard(t *testing.T) {
 	serialStr := core.SerialToString(parsedCert.SerialNumber)
 	reason := int64(0)
 	revokedDate := fc.Now().UnixNano()
-	err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
-		Serial: serialStr,
-		Reason: reason,
-		Date:   revokedDate,
+	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		Serial:   serialStr,
+		Reason:   reason,
+		Date:     revokedDate,
+		Response: []byte("fakeocspbytes"),
 	})
 	test.AssertNotError(t, err, "Failed to revoked certificate")
 
 	// Attempt to update OCSP response where status.Status is good but stored status
 	// is revoked, this should fail silently
-	status.OCSPResponse = []byte{0, 1, 1}
+	status.OCSPResponse = []byte("newfakeocspbytes")
 	err = updater.storeResponse(&status)
 	test.AssertNotError(t, err, "Failed to update certificate status")
 
 	// Make sure the OCSP response hasn't actually changed
 	unchangedStatus, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
 	test.AssertNotError(t, err, "Failed to get certificate status")
-	test.AssertEquals(t, len(unchangedStatus.OCSPResponse), 0)
+	test.AssertEquals(t, string(unchangedStatus.OCSPResponse), "fakeocspbytes")
 
 	// Changing the status to the stored status should allow the update to occur
 	status.Status = core.OCSPStatusRevoked
@@ -406,7 +407,7 @@ func TestStoreResponseGuard(t *testing.T) {
 	// Make sure the OCSP response has been updated
 	changedStatus, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
 	test.AssertNotError(t, err, "Failed to get certificate status")
-	test.AssertEquals(t, len(changedStatus.OCSPResponse), 3)
+	test.AssertEquals(t, string(changedStatus.OCSPResponse), "newfakeocspbytes")
 }
 
 func TestGenerateOCSPResponsePrecert(t *testing.T) {
