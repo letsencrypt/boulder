@@ -1300,7 +1300,7 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	ctx context.Context,
 	req *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
 
-	if req == nil || req.AcctID == 0 || len(req.Names) == 0 {
+	if req.AcctID == 0 || len(req.Names) == 0 {
 		return nil, errIncompleteRequest
 	}
 
