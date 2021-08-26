@@ -968,7 +968,7 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *sap
 	if req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
-	_, err := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		result, err := txWithCtx.Exec(`
 		UPDATE orders
 		SET beganProcessing = ?
@@ -988,8 +988,8 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *sap
 
 		return nil, nil
 	})
-	if err != nil {
-		return nil, err
+	if overallError != nil {
+		return nil, overallError
 	}
 	return &emptypb.Empty{}, nil
 }
