@@ -50,7 +50,6 @@ import (
 )
 
 var errIncompleteGRPCRequest = errors.New("incomplete gRPC request message")
-var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 
 type caaChecker interface {
 	IsCAAValid(
