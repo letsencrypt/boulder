@@ -190,10 +190,13 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 
 	// Calling AddCertificate with a non-nil issued should succeed
-	issued := sa.clk.Now()
-	digest, err := sa.AddCertificate(ctx, certDER, reg.Id, nil, &issued)
+	digest, err := sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    certDER,
+		RegID:  reg.Id,
+		Issued: sa.clk.Now().UnixNano(),
+	})
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
-	test.AssertEquals(t, digest, "qWoItDZmR4P9eFbeYgXXP3SR4ApnkQj8x4LsB_ORKBo")
+	test.AssertEquals(t, digest.Digest, "qWoItDZmR4P9eFbeYgXXP3SR4ApnkQj8x4LsB_ORKBo")
 
 	retrievedCert, err := sa.GetCertificate(ctx, &sapb.Serial{Serial: "000000000000000000000000000000021bd4"})
 	test.AssertNotError(t, err, "Couldn't get www.eff.org.der by full serial")
@@ -210,9 +213,13 @@ func TestAddCertificate(t *testing.T) {
 
 	// Add the certificate with a specific issued time instead of nil
 	issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
-	digest2, err := sa.AddCertificate(ctx, certDER2, reg.Id, nil, &issuedTime)
+	digest2, err := sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    certDER2,
+		RegID:  reg.Id,
+		Issued: issuedTime.UnixNano(),
+	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
-	test.AssertEquals(t, digest2, "vrlPN5wIPME1D2PPsCy-fGnTWh8dMyyYQcXPRkjHAQI")
+	test.AssertEquals(t, digest2.Digest, "vrlPN5wIPME1D2PPsCy-fGnTWh8dMyyYQcXPRkjHAQI")
 
 	retrievedCert2, err := sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
 	test.AssertNotError(t, err, "Couldn't get test-cert.der")
@@ -225,7 +232,12 @@ func TestAddCertificate(t *testing.T) {
 	certDER3, err := ioutil.ReadFile("test-cert2.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	ocspResp := []byte{0, 0, 1}
-	_, err = sa.AddCertificate(ctx, certDER3, reg.Id, ocspResp, &issuedTime)
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    certDER3,
+		RegID:  reg.Id,
+		Ocsp:   ocspResp,
+		Issued: issuedTime.UnixNano(),
+	})
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 }
 
@@ -238,10 +250,18 @@ func TestAddCertificateDuplicate(t *testing.T) {
 	_, testCert := test.ThrowAwayCert(t, 1)
 
 	issuedTime := clk.Now()
-	_, err := sa.AddCertificate(ctx, testCert.Raw, reg.Id, nil, &issuedTime)
+	_, err := sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    testCert.Raw,
+		RegID:  reg.Id,
+		Issued: issuedTime.UnixNano(),
+	})
 	test.AssertNotError(t, err, "Couldn't add test certificate")
 
-	_, err = sa.AddCertificate(ctx, testCert.Raw, reg.Id, nil, &issuedTime)
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    testCert.Raw,
+		RegID:  reg.Id,
+		Issued: issuedTime.UnixNano(),
+	})
 	test.AssertDeepEquals(t, err, berrors.DuplicateError("cannot add a duplicate cert"))
 
 }
@@ -276,7 +296,11 @@ func TestCountCertificatesByNames(t *testing.T) {
 	// Add the test cert and query for its names.
 	reg := satest.CreateWorkingRegistration(t, sa)
 	issued := sa.clk.Now()
-	_, err = sa.AddCertificate(ctx, certDER, reg.Id, nil, &issued)
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    certDER,
+		RegID:  reg.Id,
+		Issued: issued.UnixNano(),
+	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 
 	// Time range including now should find the cert
@@ -319,7 +343,11 @@ func TestCountCertificatesByNames(t *testing.T) {
 
 	certDER2, err := ioutil.ReadFile("test-cert2.der")
 	test.AssertNotError(t, err, "Couldn't read test-cert2.der")
-	_, err = sa.AddCertificate(ctx, certDER2, reg.Id, nil, &issued)
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    certDER2,
+		RegID:  reg.Id,
+		Issued: issued.UnixNano(),
+	})
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 	counts, err = sa.CountCertificatesByNames(ctx, names, yesterday, now.Add(10000*time.Hour))
 	test.AssertNotError(t, err, "Error counting certs.")
@@ -672,7 +700,11 @@ func TestPreviousCertificateExists(t *testing.T) {
 		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
-	_, err = sa.AddCertificate(ctx, certDER, reg.Id, nil, &issued)
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    certDER,
+		RegID:  reg.Id,
+		Issued: issued.UnixNano(),
+	})
 	test.AssertNotError(t, err, "calling AddCertificate")
 
 	cases := []struct {
@@ -1623,7 +1655,7 @@ func TestRevokeCertificate(t *testing.T) {
 	dateUnix := now.UnixNano()
 	reason := int64(1)
 	response := []byte{1, 2, 3}
-	err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial:   serial,
 		Date:     dateUnix,
 		Reason:   reason,
@@ -1639,7 +1671,7 @@ func TestRevokeCertificate(t *testing.T) {
 	test.AssertEquals(t, status.OCSPLastUpdated, now)
 	test.AssertDeepEquals(t, status.OCSPResponse, response)
 
-	err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial:   serial,
 		Date:     dateUnix,
 		Reason:   reason,
@@ -1680,7 +1712,11 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
-	_, err = sa.AddCertificate(ctx, certDER, reg.Id, nil, &issued)
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    certDER,
+		RegID:  reg.Id,
+		Issued: issued.UnixNano(),
+	})
 	test.AssertNotError(t, err, "Failed to add certificate")
 
 	assertIsRenewal := func(t *testing.T, name string, expected bool) {
@@ -1717,7 +1753,11 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
-	_, err = sa.AddCertificate(ctx, certDER, reg.Id, nil, &issued)
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    certDER,
+		RegID:  reg.Id,
+		Issued: issued.UnixNano(),
+	})
 	test.AssertNotError(t, err, "Failed to add certificate")
 
 	// None of the names should have a issuedNames row marking it as a renewal.
@@ -1783,7 +1823,11 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 
 	// Add the first certificate - it won't be considered a renewal.
 	issued := certA.NotBefore
-	_, err = sa.AddCertificate(ctx, certADER, reg.Id, nil, &issued)
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    certADER,
+		RegID:  reg.Id,
+		Issued: issued.UnixNano(),
+	})
 	test.AssertNotError(t, err, "Failed to add CertA test certificate")
 
 	// The count for the base domain should be 1 - just certA has been added.
@@ -1791,7 +1835,11 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 
 	// Add the second certificate - it should be considered a renewal
 	issued = certB.NotBefore
-	_, err = sa.AddCertificate(ctx, certBDER, reg.Id, nil, &issued)
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    certBDER,
+		RegID:  reg.Id,
+		Issued: issued.UnixNano(),
+	})
 	test.AssertNotError(t, err, "Failed to add CertB test certificate")
 
 	// The count for the base domain should still be 1, just certA. CertB should
@@ -1799,7 +1847,11 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	test.AssertEquals(t, countName(t, "not-example.com"), int64(1))
 
 	// Add the third certificate - it should not be considered a renewal
-	_, err = sa.AddCertificate(ctx, certCDER, reg.Id, nil, &issued)
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    certCDER,
+		RegID:  reg.Id,
+		Issued: issued.UnixNano(),
+	})
 	test.AssertNotError(t, err, "Failed to add CertC test certificate")
 
 	// The count for the base domain should be 2 now: certA and certC.

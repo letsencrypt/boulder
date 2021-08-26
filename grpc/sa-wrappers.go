@@ -174,32 +174,12 @@ func (sac StorageAuthorityClientWrapper) PreviousCertificateExists(
 	return exists, err
 }
 
-func (sac StorageAuthorityClientWrapper) AddPrecertificate(
-	ctx context.Context,
-	req *sapb.AddCertificateRequest,
-) (*emptypb.Empty, error) {
-	empty, err := sac.inner.AddPrecertificate(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if empty == nil {
-		return nil, errIncompleteResponse
-	}
-	return empty, nil
+func (sac StorageAuthorityClientWrapper) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
+	return sac.inner.AddPrecertificate(ctx, req)
 }
 
-func (sac StorageAuthorityClientWrapper) AddSerial(
-	ctx context.Context,
-	req *sapb.AddSerialRequest,
-) (*emptypb.Empty, error) {
-	empty, err := sac.inner.AddSerial(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if empty == nil {
-		return nil, errIncompleteResponse
-	}
-	return empty, nil
+func (sac StorageAuthorityClientWrapper) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*emptypb.Empty, error) {
+	return sac.inner.AddSerial(ctx, req)
 }
 
 func (sac StorageAuthorityClientWrapper) FQDNSetExists(ctx context.Context, domains []string) (bool, error) {
@@ -223,31 +203,8 @@ func (sac StorageAuthorityClientWrapper) UpdateRegistration(ctx context.Context,
 	return sac.inner.UpdateRegistration(ctx, req)
 }
 
-func (sac StorageAuthorityClientWrapper) AddCertificate(
-	ctx context.Context,
-	der []byte,
-	regID int64,
-	ocspResponse []byte,
-	issued *time.Time) (string, error) {
-	issuedTS := int64(0)
-	if issued != nil {
-		issuedTS = issued.UnixNano()
-	}
-	response, err := sac.inner.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    der,
-		RegID:  regID,
-		Ocsp:   ocspResponse,
-		Issued: issuedTS,
-	})
-	if err != nil {
-		return "", err
-	}
-
-	if response == nil {
-		return "", errIncompleteResponse
-	}
-
-	return response.Digest, nil
+func (sac StorageAuthorityClientWrapper) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
+	return sac.inner.AddCertificate(ctx, req)
 }
 
 func (sac StorageAuthorityClientWrapper) DeactivateRegistration(ctx context.Context, request *sapb.RegistrationID) (*emptypb.Empty, error) {
@@ -285,14 +242,7 @@ func (sac StorageAuthorityClientWrapper) FinalizeOrder(ctx context.Context, orde
 }
 
 func (sas StorageAuthorityClientWrapper) GetOrder(ctx context.Context, request *sapb.OrderRequest) (*corepb.Order, error) {
-	resp, err := sas.inner.GetOrder(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil || !orderValid(resp) {
-		return nil, errIncompleteResponse
-	}
-	return resp, nil
+	return sas.inner.GetOrder(ctx, request)
 }
 
 func (sas StorageAuthorityClientWrapper) GetOrderForNames(
@@ -313,9 +263,8 @@ func (sas StorageAuthorityClientWrapper) GetAuthorization2(ctx context.Context, 
 	return sas.inner.GetAuthorization2(ctx, req)
 }
 
-func (sas StorageAuthorityClientWrapper) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error {
-	_, err := sas.inner.RevokeCertificate(ctx, req)
-	return err
+func (sas StorageAuthorityClientWrapper) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error) {
+	return sas.inner.RevokeCertificate(ctx, req)
 }
 
 func (sas StorageAuthorityClientWrapper) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
@@ -536,17 +485,7 @@ func (sas StorageAuthorityServerWrapper) UpdateRegistration(ctx context.Context,
 }
 
 func (sas StorageAuthorityServerWrapper) AddCertificate(ctx context.Context, request *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
-	if core.IsAnyNilOrZero(request, request.Der, request.RegID, request.Issued) {
-		return nil, errIncompleteRequest
-	}
-
-	reqIssued := time.Unix(0, request.Issued)
-	digest, err := sas.inner.AddCertificate(ctx, request.Der, request.RegID, request.Ocsp, &reqIssued)
-	if err != nil {
-		return nil, err
-	}
-
-	return &sapb.AddCertificateResponse{Digest: digest}, nil
+	return sas.inner.AddCertificate(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) DeactivateRegistration(ctx context.Context, request *sapb.RegistrationID) (*emptypb.Empty, error) {
@@ -598,10 +537,6 @@ func (sas StorageAuthorityServerWrapper) FinalizeOrder(ctx context.Context, orde
 }
 
 func (sas StorageAuthorityServerWrapper) GetOrder(ctx context.Context, request *sapb.OrderRequest) (*corepb.Order, error) {
-	if core.IsAnyNilOrZero(request, request.Id) {
-		return nil, errIncompleteRequest
-	}
-
 	return sas.inner.GetOrder(ctx, request)
 }
 
@@ -619,10 +554,7 @@ func (sas StorageAuthorityServerWrapper) GetAuthorization2(ctx context.Context, 
 }
 
 func (sas StorageAuthorityServerWrapper) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(req, req.Serial, req.Date, req.Response) {
-		return nil, errIncompleteRequest
-	}
-	return &emptypb.Empty{}, sas.inner.RevokeCertificate(ctx, req)
+	return sas.inner.RevokeCertificate(ctx, req)
 }
 
 func (sas StorageAuthorityServerWrapper) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {

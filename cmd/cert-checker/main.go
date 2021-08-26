@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/zmap/zcrypto/x509"
@@ -409,13 +410,18 @@ func main() {
 		ConnMaxIdleTime: config.CertChecker.DB.ConnMaxIdleTime.Duration,
 	}
 
+	conf, err := mysql.ParseDSN(saDbURL)
+	cmd.FailOnError(err, "Couldn't parse DB URL as DSN")
+
+	// Set transaction isolation level to READ UNCOMMITTED. This trades
+	// consistency for performance.
+	if len(conf.Params) == 0 {
+		conf.Params = make(map[string]string)
+	}
+	conf.Params["tx_isolation"] = "'READ-UNCOMMITTED'"
+	saDbURL = conf.FormatDSN()
 	saDbMap, err := sa.NewDbMap(saDbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")
-
-	_, err = saDbMap.Exec(
-		"SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;",
-	)
-	cmd.FailOnError(err, "Failed to set transaction isolation level at the DB")
 
 	dbAddr, dbUser, err := config.CertChecker.DB.DSNAddressAndUser()
 	cmd.FailOnError(err, "Could not determine address or user of DB DSN")

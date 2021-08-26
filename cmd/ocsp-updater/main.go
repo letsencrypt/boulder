@@ -111,7 +111,7 @@ func newUpdater(
 	stalenessHistogram := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "ocsp_status_staleness",
 		Help:    "How long past the refresh time a status is when we try to refresh it. Will always be > 0, but must stay well below 12 hours.",
-		Buckets: []float64{10, 100, 1000, 10000, 43200},
+		Buckets: []float64{10, 100, 1000, 10000, 21600, 32400, 36000, 39600, 43200},
 	})
 	stats.MustRegister(stalenessHistogram)
 

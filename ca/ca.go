@@ -42,7 +42,7 @@ const (
 )
 
 type certificateStorage interface {
-	AddCertificate(context.Context, []byte, int64, []byte, *time.Time) (string, error)
+	AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error)
 	GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
 	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error)
 	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*emptypb.Empty, error)
@@ -483,8 +483,11 @@ func (ca *certificateAuthorityImpl) storeCertificate(
 	certDER []byte,
 	issuerID int64) error {
 	var err error
-	now := ca.clk.Now()
-	_, err = ca.sa.AddCertificate(ctx, certDER, regID, nil, &now)
+	_, err = ca.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    certDER,
+		RegID:  regID,
+		Issued: ca.clk.Now().UnixNano(),
+	})
 	if err != nil {
 		ca.orphanCount.With(prometheus.Labels{"type": "cert"}).Inc()
 		err = berrors.InternalServerError(err.Error())
@@ -560,19 +563,22 @@ func (ca *certificateAuthorityImpl) integrateOrphan() error {
 	// we reverse the process and add ca.backdate.
 	issued := cert.NotBefore.Add(ca.backdate)
 	if orphan.Precert {
-		issuedNanos := issued.UnixNano()
 		_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 			Der:      orphan.DER,
 			RegID:    orphan.RegID,
 			Ocsp:     orphan.OCSPResp,
-			Issued:   issuedNanos,
+			Issued:   issued.UnixNano(),
 			IssuerID: orphan.IssuerID,
 		})
 		if err != nil && !errors.Is(err, berrors.Duplicate) {
 			return fmt.Errorf("failed to store orphaned precertificate: %s", err)
 		}
 	} else {
-		_, err = ca.sa.AddCertificate(context.Background(), orphan.DER, orphan.RegID, nil, &issued)
+		_, err = ca.sa.AddCertificate(context.Background(), &sapb.AddCertificateRequest{
+			Der:    orphan.DER,
+			RegID:  orphan.RegID,
+			Issued: issued.UnixNano(),
+		})
 		if err != nil && !errors.Is(err, berrors.Duplicate) {
 			return fmt.Errorf("failed to store orphaned certificate: %s", err)
 		}

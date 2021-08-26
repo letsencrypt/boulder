@@ -61,7 +61,7 @@ type config struct {
 }
 
 type certificateStorage interface {
-	AddCertificate(context.Context, []byte, int64, []byte, *time.Time) (string, error)
+	AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error)
 	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error)
 	GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
 	GetPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
@@ -328,7 +328,12 @@ func (opf *orphanFinder) storeLogLine(ctx context.Context, line string) (found b
 	issuedDate := cert.NotBefore.Add(opf.backdate)
 	switch typ {
 	case certOrphan:
-		_, err = opf.sa.AddCertificate(ctx, parsed.certDER, parsed.regID, response, &issuedDate)
+		_, err = opf.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+			Der:    parsed.certDER,
+			RegID:  parsed.regID,
+			Ocsp:   response,
+			Issued: issuedDate.UnixNano(),
+		})
 	case precertOrphan:
 		_, err = opf.sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:      parsed.certDER,
@@ -363,14 +368,18 @@ func (opf *orphanFinder) parseDER(derPath string, regID int64) {
 
 	switch typ {
 	case certOrphan:
-		_, err = opf.sa.AddCertificate(ctx, der, regID, response, &issuedDate)
+		_, err = opf.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+			Der:    der,
+			RegID:  regID,
+			Ocsp:   response,
+			Issued: issuedDate.UnixNano(),
+		})
 	case precertOrphan:
-		issued := issuedDate.UnixNano()
 		_, err = opf.sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:    der,
 			RegID:  regID,
 			Ocsp:   response,
-			Issued: issued,
+			Issued: issuedDate.UnixNano(),
 		})
 	default:
 		err = errors.New("unknown orphan type")

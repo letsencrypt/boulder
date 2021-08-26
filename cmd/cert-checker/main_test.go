@@ -24,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -282,8 +283,11 @@ func TestGetAndProcessCerts(t *testing.T) {
 		rawCert.SerialNumber = big.NewInt(mrand.Int63())
 		certDER, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 		test.AssertNotError(t, err, "Couldn't create certificate")
-		issued := fc.Now()
-		_, err = sa.AddCertificate(context.Background(), certDER, reg.Id, nil, &issued)
+		_, err = sa.AddCertificate(context.Background(), &sapb.AddCertificateRequest{
+			Der:    certDER,
+			RegID:  reg.Id,
+			Issued: fc.Now().Add(time.Hour).UnixNano(),
+		})
 		test.AssertNotError(t, err, "Couldn't add certificate")
 	}
 

@@ -40,8 +40,10 @@ import (
 // methods to determine if a given request should be filtered or not.
 type ocspFilter struct {
 	issuerKeyHashAlgorithm crypto.Hash
-	issuerKeyHashes        map[issuance.IssuerID][]byte
-	serialPrefixes         []string
+	// TODO(#5152): Simplify this when we've fully deprecated old-style IssuerIDs.
+	issuerKeyHashes     map[issuance.IssuerID][]byte
+	issuerNameKeyHashes map[issuance.IssuerNameID][]byte
+	serialPrefixes      []string
 }
 
 // newFilter creates a new ocspFilter which will accept a request only if it
@@ -53,6 +55,7 @@ func newFilter(issuerCerts []string, serialPrefixes []string) (*ocspFilter, erro
 		return nil, errors.New("Filter must include at least 1 issuer cert")
 	}
 	issuerKeyHashes := make(map[issuance.IssuerID][]byte, 0)
+	issuerNameKeyHashes := make(map[issuance.IssuerNameID][]byte, 0)
 	for _, issuerCert := range issuerCerts {
 		// Load the certificate from the file path.
 		cert, err := core.LoadCert(issuerCert)
@@ -75,8 +78,9 @@ func newFilter(issuerCerts []string, serialPrefixes []string) (*ocspFilter, erro
 		}
 		keyHash := sha1.Sum(spki.BitString.Bytes)
 		issuerKeyHashes[caCert.ID()] = keyHash[:]
+		issuerNameKeyHashes[caCert.NameID()] = keyHash[:]
 	}
-	return &ocspFilter{crypto.SHA1, issuerKeyHashes, serialPrefixes}, nil
+	return &ocspFilter{crypto.SHA1, issuerKeyHashes, issuerNameKeyHashes, serialPrefixes}, nil
 }
 
 // checkRequest returns a descriptive error if the request does not satisfy any of
@@ -85,7 +89,9 @@ func (f *ocspFilter) checkRequest(req *ocsp.Request) error {
 	if req.HashAlgorithm != f.issuerKeyHashAlgorithm {
 		return fmt.Errorf("Request ca key hash using unsupported algorithm %s: %w", req.HashAlgorithm, bocsp.ErrNotFound)
 	}
-	// Check that this request is for the proper CA
+	// Check that this request is for the proper CA. We only iterate over
+	// issuerKeyHashes here because it is guaranteed to have the same values
+	// as issuerNameKeyHashes.
 	match := false
 	for _, keyHash := range f.issuerKeyHashes {
 		if match = bytes.Equal(req.IssuerKeyHash, keyHash); match {
@@ -117,9 +123,13 @@ func (f *ocspFilter) checkRequest(req *ocsp.Request) error {
 // This filters out, for example, responses which are for a serial that we
 // issued, but from a different issuer than that contained in the request.
 func (f *ocspFilter) responseMatchesIssuer(req *ocsp.Request, status core.CertificateStatus) bool {
-	issuerKeyHash, ok := f.issuerKeyHashes[issuance.IssuerID(status.IssuerID)]
+	issuerKeyHash, ok := f.issuerNameKeyHashes[issuance.IssuerNameID(status.IssuerID)]
 	if !ok {
-		return false
+		// TODO(#5152): Remove this fallback to old-style IssuerIDs.
+		issuerKeyHash, ok = f.issuerKeyHashes[issuance.IssuerID(status.IssuerID)]
+		if !ok {
+			return false
+		}
 	}
 	return bytes.Equal(issuerKeyHash, req.IssuerKeyHash)
 }

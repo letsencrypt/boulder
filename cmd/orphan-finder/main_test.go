@@ -33,23 +33,19 @@ type mockSA struct {
 	clk             clock.FakeClock
 }
 
-func (m *mockSA) AddCertificate(ctx context.Context, der []byte, regID int64, _ []byte, issued *time.Time) (string, error) {
-	parsed, err := x509.ParseCertificate(der)
+func (m *mockSA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
+	parsed, err := x509.ParseCertificate(req.Der)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	cert := &corepb.Certificate{
-		Der:            der,
-		RegistrationID: regID,
+		Der:            req.Der,
+		RegistrationID: req.RegID,
 		Serial:         core.SerialToString(parsed.SerialNumber),
-	}
-	if issued == nil {
-		cert.Issued = m.clk.Now().UnixNano()
-	} else {
-		cert.Issued = issued.UnixNano()
+		Issued:         req.Issued,
 	}
 	m.certificates = append(m.certificates, cert)
-	return "", nil
+	return nil, nil
 }
 
 func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {

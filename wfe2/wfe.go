@@ -68,7 +68,7 @@ const (
 	getCertPath      = getAPIPrefix + "cert/"
 )
 
-var errIncompleteResponse = errors.New("Incomplete gRPC response message")
+var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
 // i.e., ACME.  Its members configure the paths for various ACME functions,
@@ -1085,7 +1085,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	// Ensure gRPC response is complete.
 	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteResponse)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
 
@@ -1546,7 +1546,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 
 	// Ensure gRPC response is complete.
 	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteResponse)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
 
@@ -2154,6 +2154,11 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
+	if order.Id == 0 || order.Created == 0 || order.Status == "" || order.RegistrationID == 0 || order.Expires == 0 || len(order.Names) == 0 {
+		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
+		return
+	}
+
 	if requiredStale(request, logEvent) {
 		if prob := wfe.staleEnoughToGETOrder(order); prob != nil {
 			wfe.sendError(response, logEvent, prob, nil)
@@ -2220,6 +2225,11 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 			return
 		}
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
+		return
+	}
+
+	if order.Id == 0 || order.Created == 0 || order.Status == "" || order.RegistrationID == 0 || order.Expires == 0 || len(order.Names) == 0 {
+		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
 	}
 
@@ -2293,7 +2303,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 	if updatedOrder == nil || order.Id == 0 || order.Created == 0 || order.RegistrationID == 0 || order.Expires == 0 || len(order.Names) == 0 {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteResponse)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
 		return
 	}
 
