@@ -131,7 +131,7 @@ type StorageAdder interface {
 	NewOrder(ctx context.Context, req *sapb.NewOrderRequest) (*corepb.Order, error)
 	SetOrderProcessing(ctx context.Context, req *sapb.OrderRequest) (*emptypb.Empty, error)
 	FinalizeOrder(ctx context.Context, req *sapb.FinalizeOrderRequest) (*emptypb.Empty, error)
-	SetOrderError(ctx context.Context, order *corepb.Order) error
+	SetOrderError(ctx context.Context, req *sapb.SetOrderErrorRequest) (*emptypb.Empty, error)
 	RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error)
 	// New authz2 methods
 	NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error)
