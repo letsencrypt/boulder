@@ -92,7 +92,7 @@ func createFinalizedAuthorization(t *testing.T, sa core.StorageAuthority, domain
 	expInt := exp.UnixNano()
 	attempted := string(core.ChallengeTypeHTTP01)
 	attemptedAtInt := attemptedAt.UnixNano()
-	err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+	_, err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id:          pendingID,
 		Status:      status,
 		Expires:     expInt,
@@ -1970,7 +1970,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	attemptedAt := fc.Now().UnixNano()
 
 	ip, _ := net.ParseIP("1.1.1.1").MarshalText()
-	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id: ids.Ids[0],
 		ValidationRecords: []*corepb.ValidationRecord{
 			{
@@ -2011,7 +2011,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	ids, err = sa.NewAuthorizations2(context.Background(), &sapb.AddPendingAuthorizationsRequest{Authz: []*corepb.Authorization{apb2}})
 	test.AssertNotError(t, err, "sa.NewAuthorization failed")
 	prob, _ := bgrpc.ProblemDetailsToPB(probs.ConnectionFailure("it went bad captain"))
-	err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id: ids.Ids[0],
 		ValidationRecords: []*corepb.ValidationRecord{
 			{

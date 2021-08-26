@@ -65,6 +65,8 @@ const (
 	maxRequestSize = 50000
 )
 
+var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
+
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
 // i.e., ACME.  Its members configure the paths for various ACME functions,
 // plus a few other data items used in ACME.  Its methods are primarily handlers
@@ -801,9 +803,9 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
 		return
 	}
+	// Ensure gRPC response is complete.
 	if authzPB == nil || authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
-		err = errors.New("Incomplete gRPC response message")
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), errIncompleteGRPCResponse)
 		return
 	}
 
@@ -1139,6 +1141,13 @@ func (wfe *WebFrontEndImpl) Challenge(
 		}
 		return
 	}
+
+	// Ensure gRPC response is complete.
+	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
+		return
+	}
+
 	authz, err := bgrpc.PBToAuthz(authzPB)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
@@ -1480,13 +1489,19 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 		return
 	}
 
+	// Ensure gRPC response is complete.
+	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
+		return
+	}
+
 	if identifier.IdentifierType(authzPB.Identifier) == identifier.DNS {
 		logEvent.DNSName = authzPB.Identifier
 	}
 	logEvent.Status = string(authzPB.Status)
 
 	// After expiring, authorizations are inaccessible
-	if authzPB.Expires == 0 || time.Unix(0, authzPB.Expires).Before(wfe.clk.Now()) {
+	if time.Unix(0, authzPB.Expires).Before(wfe.clk.Now()) {
 		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
 		return
 	}

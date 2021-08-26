@@ -1082,6 +1082,13 @@ func (wfe *WebFrontEndImpl) Challenge(
 		}
 		return
 	}
+
+	// Ensure gRPC response is complete.
+	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
+		return
+	}
+
 	authz, err := bgrpc.PBToAuthz(authzPB)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
@@ -1537,6 +1544,12 @@ func (wfe *WebFrontEndImpl) Authorization(
 		return
 	}
 
+	// Ensure gRPC response is complete.
+	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
+		return
+	}
+
 	if identifier.IdentifierType(authzPB.Identifier) == identifier.DNS {
 		logEvent.DNSName = authzPB.Identifier
 		beeline.AddFieldToTrace(ctx, "authz.dnsname", authzPB.Identifier)
@@ -1545,7 +1558,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 	beeline.AddFieldToTrace(ctx, "authz.status", authzPB.Status)
 
 	// After expiring, authorizations are inaccessible
-	if authzPB.Expires == 0 || time.Unix(0, authzPB.Expires).Before(wfe.clk.Now()) {
+	if time.Unix(0, authzPB.Expires).Before(wfe.clk.Now()) {
 		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
 		return
 	}

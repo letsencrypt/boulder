@@ -504,8 +504,8 @@ func (sa *StorageAuthority) NewAuthorizations2(ctx context.Context, req *sapb.Ad
 	return &sapb.Authorization2IDs{}, nil
 }
 
-func (sa *StorageAuthority) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) error {
-	return nil
+func (sa *StorageAuthority) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
 func (sa *StorageAuthority) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*emptypb.Empty, error) {
