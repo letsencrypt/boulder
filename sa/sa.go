@@ -761,14 +761,15 @@ func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(
 
 // FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
 // exists in the database
-func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []string) (bool, error) {
-	exists, err := ssa.checkFQDNSetExists(
-		ssa.dbMap.WithContext(ctx).SelectOne,
-		names)
-	if err != nil {
-		return false, err
+func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {
+	if len(req.Domains) == 0 {
+		return nil, errIncompleteRequest
 	}
-	return exists, nil
+	exists, err := ssa.checkFQDNSetExists(ssa.dbMap.WithContext(ctx).SelectOne, req.Domains)
+	if err != nil {
+		return nil, err
+	}
+	return &sapb.Exists{Exists: exists}, nil
 }
 
 // oneSelectorFunc is a func type that matches both gorp.Transaction.SelectOne
