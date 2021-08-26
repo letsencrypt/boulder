@@ -311,24 +311,24 @@ func (m *mailer) findExpiringCertificates() error {
 		}
 		m.stats.nagsAtCapacity.With(prometheus.Labels{"nag_group": expiresIn.String()}).Set(atCapacity)
 
-		// Now we can sequentially retrieve the certificate details for each of the
-		// certificate status rows
-		var certs []core.Certificate
-		for _, serial := range serials {
-			var cert core.Certificate
-			cert, err := sa.SelectCertificate(m.dbMap, serial)
-			if err != nil {
-				// We can get a NoRowsErr when processing a serial number corresponding
-				// to a precertificate with no final certificate. Since this certificate
-				// is not being used by a subscriber, we don't send expiration email about
-				// it.
-				if db.IsNoRows(err) {
-					continue
-				}
-				m.log.AuditErrf("expiration-mailer: Error loading cert %q: %s", cert.Serial, err)
-				return err
-			}
-			certs = append(certs, cert)
+		if len(serials) == 0 {
+			continue // nothing to do
+		}
+
+		// Now we can retrieve the certificate details for all of the status rows.
+		certWithIDs, err := sa.SelectCertificates(
+			m.dbMap,
+			fmt.Sprintf("WHERE serial IN (%s)", strings.Join(serials, ",")),
+			nil,
+		)
+		if err != nil {
+			m.log.AuditErrf("expiration-mailer: error retrieving certs: %s", err)
+			return err
+		}
+
+		certs := make([]core.Certificate, len(certWithIDs))
+		for i, c := range certWithIDs {
+			certs[i] = c.Certificate
 		}
 
 		m.log.Infof("Found %d certificates expiring between %s and %s", len(certs),
