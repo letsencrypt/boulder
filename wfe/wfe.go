@@ -65,7 +65,7 @@ const (
 	maxRequestSize = 50000
 )
 
-var errIncompleteResponse = errors.New("Incomplete gRPC response message")
+var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
 // i.e., ACME.  Its members configure the paths for various ACME functions,
@@ -805,7 +805,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 	}
 	// Ensure gRPC response is complete.
 	if authzPB == nil || authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), errIncompleteResponse)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), errIncompleteGRPCResponse)
 		return
 	}
 
@@ -1144,7 +1144,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	// Ensure gRPC response is complete.
 	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteResponse)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
 
@@ -1491,7 +1491,7 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 
 	// Ensure gRPC response is complete.
 	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteResponse)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
 
