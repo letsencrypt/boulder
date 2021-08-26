@@ -245,18 +245,8 @@ func (sas StorageAuthorityClientWrapper) GetOrder(ctx context.Context, request *
 	return sas.inner.GetOrder(ctx, request)
 }
 
-func (sas StorageAuthorityClientWrapper) GetOrderForNames(
-	ctx context.Context,
-	request *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
-	resp, err := sas.inner.GetOrderForNames(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	// If there is an order response, it must be a valid order
-	if resp == nil || !orderValid(resp) {
-		return nil, errIncompleteResponse
-	}
-	return resp, nil
+func (sas StorageAuthorityClientWrapper) GetOrderForNames(ctx context.Context, request *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
+	return sas.inner.GetOrderForNames(ctx, request)
 }
 
 func (sas StorageAuthorityClientWrapper) GetAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Authorization, error) {
@@ -584,12 +574,7 @@ func (sas StorageAuthorityServerWrapper) GetOrder(ctx context.Context, request *
 	return sas.inner.GetOrder(ctx, request)
 }
 
-func (sas StorageAuthorityServerWrapper) GetOrderForNames(
-	ctx context.Context,
-	request *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
-	if core.IsAnyNilOrZero(request, request.AcctID, len(request.Names)) {
-		return nil, errIncompleteRequest
-	}
+func (sas StorageAuthorityServerWrapper) GetOrderForNames(ctx context.Context, request *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
 	return sas.inner.GetOrderForNames(ctx, request)
 }
 

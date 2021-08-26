@@ -1304,6 +1304,10 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	ctx context.Context,
 	req *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
 
+	if req.AcctID == 0 || len(req.Names) == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	// Hash the names requested for lookup in the orderFqdnSets table
 	fqdnHash := hashNames(req.Names)
 

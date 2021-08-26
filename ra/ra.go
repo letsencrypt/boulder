@@ -49,7 +49,10 @@ import (
 	"gopkg.in/square/go-jose.v2"
 )
 
-var errIncompleteGRPCRequest = errors.New("incomplete gRPC request message")
+var (
+	errIncompleteGRPCRequest  = errors.New("incomplete gRPC request message")
+	errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
+)
 
 type caaChecker interface {
 	IsCAAValid(
@@ -2025,8 +2028,14 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	if err != nil && !errors.Is(err, berrors.NotFound) {
 		return nil, err
 	}
-	// If there was an order, return it
+
+	// If there was an order, make sure it has expected fields and return it
+	// Error if an incomplete order is returned.
 	if existingOrder != nil {
+		// Check to see if the expected fields of the existing order are set.
+		if existingOrder.Id == 0 || existingOrder.Created == 0 || existingOrder.Status == "" || existingOrder.RegistrationID == 0 || existingOrder.Expires == 0 || len(existingOrder.Names) == 0 {
+			return nil, errIncompleteGRPCResponse
+		}
 		return existingOrder, nil
 	}
 
