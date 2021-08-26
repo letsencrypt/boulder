@@ -153,18 +153,8 @@ func (sac StorageAuthorityClientWrapper) CountFQDNSets(ctx context.Context, wind
 	return response.Count, nil
 }
 
-func (sac StorageAuthorityClientWrapper) PreviousCertificateExists(
-	ctx context.Context,
-	req *sapb.PreviousCertificateExistsRequest,
-) (*sapb.Exists, error) {
-	exists, err := sac.inner.PreviousCertificateExists(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if exists == nil {
-		return nil, errIncompleteResponse
-	}
-	return exists, err
+func (sac StorageAuthorityClientWrapper) PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (*sapb.Exists, error) {
+	return sac.inner.PreviousCertificateExists(ctx, req)
 }
 
 func (sac StorageAuthorityClientWrapper) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
@@ -476,13 +466,7 @@ func (sas StorageAuthorityServerWrapper) FQDNSetExists(ctx context.Context, requ
 	return sas.inner.FQDNSetExists(ctx, request)
 }
 
-func (sac StorageAuthorityServerWrapper) PreviousCertificateExists(
-	ctx context.Context,
-	req *sapb.PreviousCertificateExistsRequest,
-) (*sapb.Exists, error) {
-	if core.IsAnyNilOrZero(req, req.Domain, req.RegID) {
-		return nil, errIncompleteRequest
-	}
+func (sac StorageAuthorityServerWrapper) PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (*sapb.Exists, error) {
 	return sac.inner.PreviousCertificateExists(ctx, req)
 }
 
