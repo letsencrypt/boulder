@@ -796,10 +796,11 @@ func (ssa *SQLStorageAuthority) checkFQDNSetExists(selector oneSelectorFunc, nam
 // used to determine if a certificate has previously been issued for a given
 // domain name in order to determine if validations should be allowed during
 // the v1 API shutoff.
-func (ssa *SQLStorageAuthority) PreviousCertificateExists(
-	ctx context.Context,
-	req *sapb.PreviousCertificateExistsRequest,
-) (*sapb.Exists, error) {
+func (ssa *SQLStorageAuthority) PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (*sapb.Exists, error) {
+	if req.Domain == "" || req.RegID == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	exists := &sapb.Exists{Exists: true}
 	notExists := &sapb.Exists{Exists: false}
 
