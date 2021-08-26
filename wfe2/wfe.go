@@ -835,14 +835,14 @@ func (wfe *WebFrontEndImpl) processRevocation(
 
 	// Check the certificate status for the provided certificate to see if it is
 	// already revoked
-	certStatus, err := wfe.SA.GetCertificateStatus(ctx, serial)
-	if err != nil {
+	certStatus, err := wfe.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	if err != nil || certStatus.Status == "" {
 		return probs.ServerInternal("Failed to get certificate status")
 	}
 	logEvent.Extra["CertificateStatus"] = certStatus.Status
 	beeline.AddFieldToTrace(ctx, "cert.status", certStatus.Status)
 
-	if certStatus.Status == core.OCSPStatusRevoked {
+	if core.OCSPStatus(certStatus.Status) == core.OCSPStatusRevoked {
 		return probs.AlreadyRevoked("Certificate already revoked")
 	}
 
@@ -882,11 +882,11 @@ func (wfe *WebFrontEndImpl) processRevocation(
 			// performing the revocation, a parallel request happened and revoked the
 			// cert. In this case, just retrieve the certificate status again and
 			// return the alreadyRevoked status.
-			certStatus, err = wfe.SA.GetCertificateStatus(ctx, serial)
-			if err != nil {
+			certStatus, err = wfe.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+			if err != nil || certStatus.Status == "" {
 				return probs.ServerInternal("Failed to get certificate status")
 			}
-			if certStatus.Status == core.OCSPStatusRevoked {
+			if core.OCSPStatus(certStatus.Status) == core.OCSPStatusRevoked {
 				return probs.AlreadyRevoked("Certificate already revoked")
 			}
 		}
