@@ -407,8 +407,8 @@ func (sa *StorageAuthority) NewOrder(_ context.Context, order *corepb.Order) (*c
 }
 
 // SetOrderProcessing is a mock
-func (sa *StorageAuthority) SetOrderProcessing(_ context.Context, order *corepb.Order) error {
-	return nil
+func (sa *StorageAuthority) SetOrderProcessing(_ context.Context, req *sapb.OrderRequest) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
 // SetOrderError is a mock

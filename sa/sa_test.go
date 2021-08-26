@@ -1006,7 +1006,7 @@ func TestSetOrderProcessing(t *testing.T) {
 	test.AssertNotError(t, err, "NewOrder failed")
 
 	// Set the order to be processing
-	err = sa.SetOrderProcessing(context.Background(), order)
+	_, err = sa.SetOrderProcessing(context.Background(), &sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "SetOrderProcessing failed")
 
 	// Read the order by ID from the DB to check the status was correctly updated
@@ -1019,7 +1019,7 @@ func TestSetOrderProcessing(t *testing.T) {
 	test.AssertEquals(t, updatedOrder.BeganProcessing, true)
 
 	// Try to set the same order to be processing again. We should get an error.
-	err = sa.SetOrderProcessing(context.Background(), order)
+	_, err = sa.SetOrderProcessing(context.Background(), &sapb.OrderRequest{Id: order.Id})
 	test.AssertError(t, err, "Set the same order processing twice. This should have been an error.")
 	test.AssertErrorIs(t, err, berrors.OrderNotReady)
 }
@@ -1054,7 +1054,7 @@ func TestFinalizeOrder(t *testing.T) {
 	test.AssertNotError(t, err, "NewOrder failed")
 
 	// Set the order to processing so it can be finalized
-	err = sa.SetOrderProcessing(ctx, order)
+	_, err = sa.SetOrderProcessing(ctx, &sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "SetOrderProcessing failed")
 
 	// Finalize the order with a certificate serial
@@ -1415,7 +1415,7 @@ func TestGetOrderForNames(t *testing.T) {
 	test.AssertEquals(t, result.Id, order.Id)
 
 	// Set the order processing so it can be finalized
-	err = sa.SetOrderProcessing(ctx, order)
+	_, err = sa.SetOrderProcessing(ctx, &sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "sa.SetOrderProcessing failed")
 
 	// Finalize the order
@@ -1548,7 +1548,7 @@ func TestStatusForOrder(t *testing.T) {
 			test.AssertNotError(t, err, "NewOrder errored unexpectedly")
 			// If requested, set the order to processing
 			if tc.SetProcessing {
-				err := sa.SetOrderProcessing(ctx, newOrder)
+				_, err := sa.SetOrderProcessing(ctx, &sapb.OrderRequest{Id: newOrder.Id})
 				test.AssertNotError(t, err, "Error setting order to processing status")
 			}
 			// If requested, finalize the order
