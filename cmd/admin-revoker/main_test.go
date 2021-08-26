@@ -117,8 +117,8 @@ func TestRevokeBatch(t *testing.T) {
 	test.AssertNotError(t, err, "revokeBatch failed")
 
 	for _, serial := range serials {
-		status, err := ssa.GetCertificateStatus(context.Background(), core.SerialToString(serial))
+		status, err := ssa.GetCertificateStatus(context.Background(), &sapb.Serial{Serial: core.SerialToString(serial)})
 		test.AssertNotError(t, err, "failed to retrieve certificate status")
-		test.AssertEquals(t, status.Status, core.OCSPStatusRevoked)
+		test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
 	}
 }

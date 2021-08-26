@@ -260,18 +260,18 @@ func (sa *StorageAuthority) GetPrecertificate(_ context.Context, _ *sapb.Serial)
 }
 
 // GetCertificateStatus is a mock
-func (sa *StorageAuthority) GetCertificateStatus(_ context.Context, serial string) (core.CertificateStatus, error) {
+func (sa *StorageAuthority) GetCertificateStatus(_ context.Context, req *sapb.Serial) (*corepb.CertificateStatus, error) {
 	// Serial ee == 238.crt
-	if serial == "0000000000000000000000000000000000ee" {
-		return core.CertificateStatus{
-			Status: core.OCSPStatusGood,
+	if req.Serial == "0000000000000000000000000000000000ee" {
+		return &corepb.CertificateStatus{
+			Status: string(core.OCSPStatusGood),
 		}, nil
-	} else if serial == "0000000000000000000000000000000000b2" {
-		return core.CertificateStatus{
-			Status: core.OCSPStatusRevoked,
+	} else if req.Serial == "0000000000000000000000000000000000b2" {
+		return &corepb.CertificateStatus{
+			Status: string(core.OCSPStatusRevoked),
 		}, nil
 	} else {
-		return core.CertificateStatus{}, errors.New("No cert status")
+		return nil, errors.New("No cert status")
 	}
 }
 

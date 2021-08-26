@@ -53,18 +53,14 @@ func TestAddPrecertificate(t *testing.T) {
 		test.AssertNotError(t, err, "Couldn't add test cert")
 
 		// It should have the expected certificate status
-		certStatus, err := sa.GetCertificateStatus(ctx, serial)
+		certStatus, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
 		test.AssertNotError(t, err, "Couldn't get status for test cert")
 		test.Assert(
 			t,
-			bytes.Compare(certStatus.OCSPResponse, ocspResp) == 0,
-			fmt.Sprintf("OCSP responses don't match, expected: %x, got %x", certStatus.OCSPResponse, ocspResp),
+			bytes.Compare(certStatus.OcspResponse, ocspResp) == 0,
+			fmt.Sprintf("OCSP responses don't match, expected: %x, got %x", certStatus.OcspResponse, ocspResp),
 		)
-		test.Assert(
-			t,
-			clk.Now().Equal(certStatus.OCSPLastUpdated),
-			fmt.Sprintf("OCSPLastUpdated doesn't match, expected %s, got %s", clk.Now(), certStatus.OCSPLastUpdated),
-		)
+		test.AssertEquals(t, clk.Now().UnixNano(), certStatus.OcspLastUpdated)
 
 		issuedNamesSerial, err := findIssuedName(sa.dbMap, testCert.DNSNames[0])
 		if expectIssuedNamesUpdate {

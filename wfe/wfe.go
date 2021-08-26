@@ -913,15 +913,15 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 	logEvent.Extra["RetrievedCertificateEmailAddresses"] = parsedCertificate.EmailAddresses
 	logEvent.Extra["RetrievedCertificateIPAddresses"] = parsedCertificate.IPAddresses
 
-	certStatus, err := wfe.SA.GetCertificateStatus(ctx, serial)
-	if err != nil {
+	certStatus, err := wfe.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	if err != nil || certStatus.Status == "" {
 		// TODO(#991): handle db errors
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to get certificate status"), err)
 		return
 	}
 	logEvent.Extra["CertificateStatus"] = certStatus.Status
 
-	if certStatus.Status == core.OCSPStatusRevoked {
+	if core.OCSPStatus(certStatus.Status) == core.OCSPStatusRevoked {
 		wfe.sendError(response, logEvent, probs.Conflict("Certificate already revoked"), nil)
 		return
 	}
@@ -970,12 +970,12 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 			// performing the revocation, a parallel request happened and revoked the
 			// cert. In this case, just retrieve the certificate status again and
 			// return 409 Conflict.
-			certStatus, err = wfe.SA.GetCertificateStatus(ctx, serial)
-			if err != nil {
+			certStatus, err = wfe.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+			if err != nil || certStatus.Status == "" {
 				wfe.sendError(response, logEvent, probs.ServerInternal("Failed to get certificate status"), err)
 				return
 			}
-			if certStatus.Status == core.OCSPStatusRevoked {
+			if core.OCSPStatus(certStatus.Status) == core.OCSPStatusRevoked {
 				wfe.sendError(response, logEvent, probs.Conflict("Certificate already revoked"), nil)
 				return
 			}
