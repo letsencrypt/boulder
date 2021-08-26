@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -60,7 +61,7 @@ func TestCertsPerNameRateLimitTable(t *testing.T) {
 	testCases := []struct {
 		caseName   string
 		domainName string
-		expected   int
+		expected   int64
 	}{
 		{"name doesn't exist", "non.example.org", 0},
 		{"base name gets dinged for all certs including it", "example.com", 3},
@@ -74,7 +75,11 @@ func TestCertsPerNameRateLimitTable(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
-			count, err := sa.countCertificatesByName(sa.dbMap, tc.domainName, aprilFirst.Add(-1*time.Second), aprilFirst.Add(aWeek))
+			timeRange := &sapb.Range{
+				Earliest: aprilFirst.Add(-1 * time.Second).UnixNano(),
+				Latest:   aprilFirst.Add(aWeek).UnixNano(),
+			}
+			count, err := sa.countCertificatesByName(sa.dbMap, tc.domainName, timeRange)
 			if err != nil {
 				t.Fatal(err)
 			}

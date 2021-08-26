@@ -1451,21 +1451,22 @@ type mockSAWithNameCounts struct {
 	clk        clock.FakeClock
 }
 
-func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, names []string, earliest, latest time.Time) (ret []*sapb.CountByNames_MapElement, err error) {
-	if latest != m.clk.Now() {
-		m.t.Errorf("incorrect latest: was %s, expected %s", latest, m.clk.Now())
+func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
+	expectedLatest := m.clk.Now().UnixNano()
+	if req.Range.Latest != expectedLatest {
+		m.t.Errorf("incorrect latest: got '%d', expected '%d'", req.Range.Latest, expectedLatest)
 	}
-	expectedEarliest := m.clk.Now().Add(-23 * time.Hour)
-	if earliest != expectedEarliest {
-		m.t.Errorf("incorrect earliest: was %s, expected %s", earliest, expectedEarliest)
+	expectedEarliest := m.clk.Now().Add(-23 * time.Hour).UnixNano()
+	if req.Range.Earliest != expectedEarliest {
+		m.t.Errorf("incorrect earliest: got '%d', expected '%d'", req.Range.Earliest, expectedEarliest)
 	}
 	var results []*sapb.CountByNames_MapElement
-	for _, name := range names {
+	for _, name := range req.Names {
 		if entry, ok := m.nameCounts[name]; ok {
 			results = append(results, entry)
 		}
 	}
-	return results, nil
+	return &sapb.CountByNames{CountByNames: results}, nil
 }
 
 func nameCount(domain string, count int) *sapb.CountByNames_MapElement {
@@ -1736,14 +1737,14 @@ func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, names []string) (boo
 }
 
 // Return a map of domain -> certificate count.
-func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, names []string, earliest, latest time.Time) (ret []*sapb.CountByNames_MapElement, err error) {
+func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
 	var results []*sapb.CountByNames_MapElement
-	for _, name := range names {
+	for _, name := range req.Names {
 		if entry, ok := m.nameCounts[name]; ok {
 			results = append(results, entry)
 		}
 	}
-	return results, nil
+	return &sapb.CountByNames{CountByNames: results}, nil
 }
 
 func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, _ time.Duration, names []string) (int64, error) {

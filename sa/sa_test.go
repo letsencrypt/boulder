@@ -282,16 +282,23 @@ func TestCountCertificatesByNames(t *testing.T) {
 	// hour to account for rounding.
 	clk.Add(time.Hour - clk.Now().Sub(cert.NotBefore))
 	now := clk.Now()
-	yesterday := clk.Now().Add(-24 * time.Hour)
-	twoDaysAgo := clk.Now().Add(-48 * time.Hour)
-	tomorrow := clk.Now().Add(24 * time.Hour)
+	yesterday := clk.Now().Add(-24 * time.Hour).UnixNano()
+	twoDaysAgo := clk.Now().Add(-48 * time.Hour).UnixNano()
+	tomorrow := clk.Now().Add(24 * time.Hour).UnixNano()
 
 	// Count for a name that doesn't have any certs
-	counts, err := sa.CountCertificatesByNames(ctx, []string{"example.com"}, yesterday, now)
+	req := &sapb.CountCertificatesByNamesRequest{
+		Names: []string{"example.com"},
+		Range: &sapb.Range{
+			Earliest: yesterday,
+			Latest:   now.UnixNano(),
+		},
+	}
+	counts, err := sa.CountCertificatesByNames(ctx, req)
 	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, len(counts), 1)
-	test.AssertEquals(t, counts[0].Name, "example.com")
-	test.AssertEquals(t, counts[0].Count, int64(0))
+	test.AssertEquals(t, len(counts.CountByNames), 1)
+	test.AssertEquals(t, counts.CountByNames[0].Name, "example.com")
+	test.AssertEquals(t, counts.CountByNames[0].Count, int64(0))
 
 	// Add the test cert and query for its names.
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -304,26 +311,30 @@ func TestCountCertificatesByNames(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 
 	// Time range including now should find the cert
-	counts, err = sa.CountCertificatesByNames(ctx, []string{"example.com"}, yesterday, now)
+	counts, err = sa.CountCertificatesByNames(ctx, req)
 	test.AssertNotError(t, err, "sa.CountCertificatesByName failed")
-	test.AssertEquals(t, len(counts), 1)
-	test.AssertEquals(t, counts[0].Name, "example.com")
-	test.AssertEquals(t, counts[0].Count, int64(1))
+	test.AssertEquals(t, len(counts.CountByNames), 1)
+	test.AssertEquals(t, counts.CountByNames[0].Name, "example.com")
+	test.AssertEquals(t, counts.CountByNames[0].Count, int64(1))
 
 	// Time range between two days ago and yesterday should not.
-	counts, err = sa.CountCertificatesByNames(ctx, []string{"example.com"}, twoDaysAgo, yesterday)
+	req.Range.Earliest = twoDaysAgo
+	req.Range.Latest = yesterday
+	counts, err = sa.CountCertificatesByNames(ctx, req)
 	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, len(counts), 1)
-	test.AssertEquals(t, counts[0].Name, "example.com")
-	test.AssertEquals(t, counts[0].Count, int64(0))
+	test.AssertEquals(t, len(counts.CountByNames), 1)
+	test.AssertEquals(t, counts.CountByNames[0].Name, "example.com")
+	test.AssertEquals(t, counts.CountByNames[0].Count, int64(0))
 
 	// Time range between now and tomorrow also should not (time ranges are
 	// inclusive at the tail end, but not the beginning end).
-	counts, err = sa.CountCertificatesByNames(ctx, []string{"example.com"}, now, tomorrow)
+	req.Range.Earliest = now.UnixNano()
+	req.Range.Latest = tomorrow
+	counts, err = sa.CountCertificatesByNames(ctx, req)
 	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, len(counts), 1)
-	test.AssertEquals(t, counts[0].Name, "example.com")
-	test.AssertEquals(t, counts[0].Count, int64(0))
+	test.AssertEquals(t, len(counts.CountByNames), 1)
+	test.AssertEquals(t, counts.CountByNames[0].Name, "example.com")
+	test.AssertEquals(t, counts.CountByNames[0].Count, int64(0))
 
 	// Add a second test cert (for example.co.bn) and query for multiple names.
 	names := []string{"example.com", "foo.com", "example.co.bn"}
@@ -335,10 +346,10 @@ func TestCountCertificatesByNames(t *testing.T) {
 	interlocker.Add(len(names))
 	sa.parallelismPerRPC = len(names)
 	oldCertCountFunc := sa.countCertificatesByName
-	sa.countCertificatesByName = func(sel db.Selector, domain string, earliest, latest time.Time) (int, error) {
+	sa.countCertificatesByName = func(sel db.Selector, domain string, timeRange *sapb.Range) (int64, error) {
 		interlocker.Done()
 		interlocker.Wait()
-		return oldCertCountFunc(sel, domain, earliest, latest)
+		return oldCertCountFunc(sel, domain, timeRange)
 	}
 
 	certDER2, err := ioutil.ReadFile("test-cert2.der")
@@ -349,16 +360,19 @@ func TestCountCertificatesByNames(t *testing.T) {
 		Issued: issued.UnixNano(),
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
-	counts, err = sa.CountCertificatesByNames(ctx, names, yesterday, now.Add(10000*time.Hour))
+	req.Names = names
+	req.Range.Earliest = yesterday
+	req.Range.Latest = now.Add(10000 * time.Hour).UnixNano()
+	counts, err = sa.CountCertificatesByNames(ctx, req)
 	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, len(counts), 3)
+	test.AssertEquals(t, len(counts.CountByNames), 3)
 
 	expected := map[string]int{
 		"example.co.bn": 1,
 		"foo.com":       0,
 		"example.com":   1,
 	}
-	for _, entry := range counts {
+	for _, entry := range counts.CountByNames {
 		domain := entry.Name
 		actualCount := entry.Count
 		expectedCount := int64(expected[domain])
@@ -1807,13 +1821,16 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create test cert C")
 
 	countName := func(t *testing.T, name string) int64 {
-		counts, err := sa.CountCertificatesByNames(
-			context.Background(),
-			[]string{name},
-			fc.Now().Add(-5*time.Hour),
-			fc.Now().Add(5*time.Hour))
+		req := &sapb.CountCertificatesByNamesRequest{
+			Names: []string{name},
+			Range: &sapb.Range{
+				Earliest: fc.Now().Add(-5 * time.Hour).UnixNano(),
+				Latest:   fc.Now().Add(5 * time.Hour).UnixNano(),
+			},
+		}
+		counts, err := sa.CountCertificatesByNames(context.Background(), req)
 		test.AssertNotError(t, err, "Unexpected err from CountCertificatesByNames")
-		for _, elem := range counts {
+		for _, elem := range counts.CountByNames {
 			if elem.Name == name {
 				return elem.Count
 			}
