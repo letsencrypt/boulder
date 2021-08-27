@@ -2214,9 +2214,17 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Set the order's expiry to the minimum expiry. The db doesn't store
 	// sub-second values, so truncate here.
 	order.Expires = minExpiry.Truncate(time.Second).UnixNano()
-	storedOrder, err := ra.SA.NewOrder(ctx, order)
+	storedOrder, err := ra.SA.NewOrder(ctx, &sapb.NewOrderRequest{
+		RegistrationID:   order.RegistrationID,
+		Expires:          order.Expires,
+		Names:            order.Names,
+		V2Authorizations: order.V2Authorizations,
+	})
 	if err != nil {
 		return nil, err
+	}
+	if storedOrder.Id == 0 || storedOrder.Created == 0 || storedOrder.Status == "" || storedOrder.RegistrationID == 0 || storedOrder.Expires == 0 || len(storedOrder.Names) == 0 {
+		return nil, errIncompleteGRPCResponse
 	}
 
 	return storedOrder, nil
