@@ -513,7 +513,7 @@ func (sa *StorageAuthority) DeactivateAuthorization2(ctx context.Context, req *s
 }
 
 func (sa *StorageAuthority) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error) {
-	return nil, nil
+	return &sapb.Count{}, nil
 }
 
 func (sa *StorageAuthority) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
@@ -521,7 +521,7 @@ func (sa *StorageAuthority) GetValidOrderAuthorizations2(ctx context.Context, re
 }
 
 func (sa *StorageAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
-	return nil, nil
+	return &sapb.Count{}, nil
 }
 
 func (sa *StorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {

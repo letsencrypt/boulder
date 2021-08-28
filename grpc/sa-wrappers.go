@@ -205,14 +205,7 @@ func (sas StorageAuthorityClientWrapper) GetPendingAuthorization2(ctx context.Co
 }
 
 func (sas StorageAuthorityClientWrapper) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error) {
-	count, err := sas.inner.CountPendingAuthorizations2(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if count == nil {
-		return nil, errIncompleteResponse
-	}
-	return count, nil
+	return sas.inner.CountPendingAuthorizations2(ctx, req)
 }
 
 func (sas StorageAuthorityClientWrapper) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
@@ -220,14 +213,7 @@ func (sas StorageAuthorityClientWrapper) GetValidOrderAuthorizations2(ctx contex
 }
 
 func (sas StorageAuthorityClientWrapper) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
-	count, err := sas.inner.CountInvalidAuthorizations2(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if count == nil {
-		return nil, errIncompleteResponse
-	}
-	return count, nil
+	return sas.inner.CountInvalidAuthorizations2(ctx, req)
 }
 
 func (sas StorageAuthorityClientWrapper) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
@@ -440,10 +426,6 @@ func (sas StorageAuthorityServerWrapper) GetPendingAuthorization2(ctx context.Co
 }
 
 func (sas StorageAuthorityServerWrapper) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error) {
-	if core.IsAnyNilOrZero(req, req.Id) {
-		return nil, errIncompleteRequest
-	}
-
 	return sas.inner.CountPendingAuthorizations2(ctx, req)
 }
 
@@ -452,10 +434,6 @@ func (sas StorageAuthorityServerWrapper) GetValidOrderAuthorizations2(ctx contex
 }
 
 func (sas StorageAuthorityServerWrapper) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
-	if core.IsAnyNilOrZero(req, req.RegistrationID, req.Hostname, req.Range, req.Range.Earliest, req.Range.Latest) {
-		return nil, errIncompleteRequest
-	}
-
 	return sas.inner.CountInvalidAuthorizations2(ctx, req)
 }
 

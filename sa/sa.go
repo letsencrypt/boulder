@@ -1751,6 +1751,10 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, re
 // CountPendingAuthorizations2 returns the number of pending, unexpired authorizations
 // for the given registration. This method is intended to deprecate CountPendingAuthorizations.
 func (ssa *SQLStorageAuthority) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error) {
+	if req.Id == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(&count,
 		`SELECT COUNT(1) FROM authz2 WHERE
@@ -1817,6 +1821,10 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 // in a given time range. This method is intended to deprecate CountInvalidAuthorizations.
 // This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
+	if req.RegistrationID == 0 || req.Hostname == "" || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
