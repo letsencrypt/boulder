@@ -534,26 +534,33 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 	return &sapb.AddCertificateResponse{Digest: digest}, nil
 }
 
-func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error) {
-	if features.Enabled(features.FasterNewOrdersRateLimit) {
-		return countNewOrders(ctx, ssa.dbReadOnlyMap, acctID, earliest, latest)
+func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, req *sapb.CountOrdersRequest) (*sapb.Count, error) {
+	if req.AccountID == 0 || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+		return nil, errIncompleteRequest
 	}
 
-	var count int
-	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(&count,
+	if features.Enabled(features.FasterNewOrdersRateLimit) {
+		return countNewOrders(ctx, ssa.dbReadOnlyMap, req)
+	}
+
+	var count int64
+	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
+		&count,
 		`SELECT count(1) FROM orders
 		WHERE registrationID = :acctID AND
-		created >= :windowLeft AND
-		created < :windowRight`,
+		created >= :earliest AND
+		created < :latest`,
 		map[string]interface{}{
-			"acctID":      acctID,
-			"windowLeft":  earliest,
-			"windowRight": latest,
-		})
+			"acctID":   req.AccountID,
+			"earliest": time.Unix(0, req.Range.Earliest),
+			"latest":   time.Unix(0, req.Range.Latest),
+		},
+	)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return count, nil
+
+	return &sapb.Count{Count: count}, nil
 }
 
 func hashNames(names []string) []byte {

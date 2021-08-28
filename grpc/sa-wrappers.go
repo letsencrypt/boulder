@@ -83,26 +83,8 @@ func (sac StorageAuthorityClientWrapper) CountRegistrationsByIPRange(ctx context
 	return sac.inner.CountRegistrationsByIPRange(ctx, req)
 }
 
-func (sac StorageAuthorityClientWrapper) CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error) {
-	earliestNano := earliest.UnixNano()
-	latestNano := latest.UnixNano()
-
-	response, err := sac.inner.CountOrders(ctx, &sapb.CountOrdersRequest{
-		AccountID: acctID,
-		Range: &sapb.Range{
-			Earliest: earliestNano,
-			Latest:   latestNano,
-		},
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	if response == nil {
-		return 0, errIncompleteResponse
-	}
-
-	return int(response.Count), nil
+func (sac StorageAuthorityClientWrapper) CountOrders(ctx context.Context, req *sapb.CountOrdersRequest) (*sapb.Count, error) {
+	return sac.inner.CountOrders(ctx, req)
 }
 
 func (sac StorageAuthorityClientWrapper) CountFQDNSets(ctx context.Context, window time.Duration, domains []string) (int64, error) {
@@ -349,20 +331,7 @@ func (sas StorageAuthorityServerWrapper) CountRegistrationsByIPRange(ctx context
 }
 
 func (sas StorageAuthorityServerWrapper) CountOrders(ctx context.Context, request *sapb.CountOrdersRequest) (*sapb.Count, error) {
-	if core.IsAnyNilOrZero(request, request.AccountID, request.Range, request.Range.Earliest, request.Range.Latest) {
-		return nil, errIncompleteRequest
-	}
-
-	count, err := sas.inner.CountOrders(ctx,
-		request.AccountID,
-		time.Unix(0, request.Range.Earliest),
-		time.Unix(0, request.Range.Latest),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return &sapb.Count{Count: int64(count)}, nil
+	return sas.inner.CountOrders(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) CountFQDNSets(ctx context.Context, request *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/db"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 )
 
@@ -113,8 +114,8 @@ func addNewOrdersRateLimit(ctx context.Context, dbMap db.SelectExecer, regID int
 
 // countNewOrders returns the count of orders created in the given time range
 // for the given registration ID
-func countNewOrders(ctx context.Context, dbMap db.Selector, regID int64, earliest, latest time.Time) (int, error) {
-	var counts []int
+func countNewOrders(ctx context.Context, dbMap db.Selector, req *sapb.CountOrdersRequest) (*sapb.Count, error) {
+	var counts []int64
 	_, err := dbMap.Select(
 		&counts,
 		`SELECT count FROM newOrdersRL
@@ -122,20 +123,20 @@ func countNewOrders(ctx context.Context, dbMap db.Selector, regID int64, earlies
 		time > :earliest AND
 		time <= :latest`,
 		map[string]interface{}{
-			"regID":    regID,
-			"earliest": earliest,
-			"latest":   latest,
+			"regID":    req.AccountID,
+			"earliest": time.Unix(0, req.Range.Earliest),
+			"latest":   time.Unix(0, req.Range.Latest),
 		},
 	)
 	if err != nil {
 		if db.IsNoRows(err) {
-			return 0, nil
+			return &sapb.Count{Count: 0}, nil
 		}
-		return 0, err
+		return nil, err
 	}
-	var total int
+	var total int64
 	for _, count := range counts {
 		total += count
 	}
-	return total, nil
+	return &sapb.Count{Count: total}, nil
 }

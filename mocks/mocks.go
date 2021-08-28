@@ -387,8 +387,8 @@ func (sa *StorageAuthority) CountPendingAuthorizations(_ context.Context, _ int6
 }
 
 // CountOrders is a mock
-func (sa *StorageAuthority) CountOrders(_ context.Context, _ int64, _, _ time.Time) (int, error) {
-	return 0, nil
+func (sa *StorageAuthority) CountOrders(_ context.Context, _ *sapb.CountOrdersRequest) (*sapb.Count, error) {
+	return &sapb.Count{}, nil
 }
 
 // DeactivateAuthorization is a mock

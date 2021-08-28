@@ -296,7 +296,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(ctx context.Contex
 		return err
 	}
 
-	if int(count.Count) >= limit.GetThreshold(ip.String(), noRegistrationID) {
+	if count.Count >= limit.GetThreshold(ip.String(), noRegistrationID) {
 		return berrors.RateLimitError("too many registrations for this IP")
 	}
 
@@ -471,7 +471,7 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 		// Most rate limits have a key for overrides, but there is no meaningful key
 		// here.
 		noKey := ""
-		if int(countPB.Count) >= limit.GetThreshold(noKey, regID) {
+		if countPB.Count >= limit.GetThreshold(noKey, regID) {
 			ra.rateLimitCounter.WithLabelValues("pending_authorizations_by_registration_id", "exceeded").Inc()
 			ra.log.Infof("Rate limit exceeded, PendingAuthorizationsByRegID, regID: %d", regID)
 			return berrors.RateLimitError("too many currently pending authorizations")
@@ -538,15 +538,21 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 	if !limit.Enabled() {
 		return nil
 	}
-	latest := ra.clk.Now()
-	earliest := latest.Add(-limit.Window.Duration)
-	count, err := ra.SA.CountOrders(ctx, acctID, earliest, latest)
+	now := ra.clk.Now()
+	req := &sapb.CountOrdersRequest{
+		AccountID: acctID,
+		Range: &sapb.Range{
+			Earliest: now.Add(-limit.Window.Duration).UnixNano(),
+			Latest:   now.UnixNano(),
+		},
+	}
+	count, err := ra.SA.CountOrders(ctx, req)
 	if err != nil {
 		return err
 	}
 	// There is no meaningful override key to use for this rate limit
 	noKey := ""
-	if count >= limit.GetThreshold(noKey, acctID) {
+	if count.Count >= limit.GetThreshold(noKey, acctID) {
 		ra.rateLimitCounter.WithLabelValues("new_order_by_registration_id", "exceeded").Inc()
 		return berrors.RateLimitError("too many new orders recently")
 	}
@@ -1387,7 +1393,7 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(
 
 	var badNames []string
 	for _, entry := range counts {
-		if int(entry.Count) >= limit.GetThreshold(entry.Name, regID) {
+		if entry.Count >= limit.GetThreshold(entry.Name, regID) {
 			badNames = append(badNames, entry.Name)
 		}
 	}
@@ -1457,7 +1463,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 	}
 	names = core.UniqueLowerNames(names)
 	threshold := limit.GetThreshold(strings.Join(names, ","), regID)
-	if int(count) >= threshold {
+	if count >= threshold {
 		return berrors.RateLimitError(
 			"too many certificates (%d) already issued for this exact set of domains in the last %.0f hours: %s",
 			threshold, limit.Window.Duration.Hours(), strings.Join(names, ","),

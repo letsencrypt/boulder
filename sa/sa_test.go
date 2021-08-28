@@ -1265,39 +1265,45 @@ func TestCountOrders(t *testing.T) {
 	now := sa.clk.Now()
 	expires := now.Add(24 * time.Hour)
 
-	earliest := now.Add(-time.Hour)
-	latest := now.Add(time.Second)
+	req := &sapb.CountOrdersRequest{
+		AccountID: 12345,
+		Range: &sapb.Range{
+			Earliest: now.Add(-time.Hour).UnixNano(),
+			Latest:   now.Add(time.Second).UnixNano(),
+		},
+	}
 
 	// Counting new orders for a reg ID that doesn't exist should return 0
-	count, err := sa.CountOrders(ctx, 12345, earliest, latest)
+	count, err := sa.CountOrders(ctx, req)
 	test.AssertNotError(t, err, "Couldn't count new orders for fake reg ID")
-	test.AssertEquals(t, count, 0)
+	test.AssertEquals(t, count.Count, int64(0))
 
 	// Add a pending authorization
 	authzID := createPendingAuthorization(t, sa, "example.com", expires)
 
 	// Add one pending order
-	expiresNano := expires.UnixNano()
 	order, err := sa.NewOrder(ctx, &corepb.Order{
 		RegistrationID:   reg.Id,
-		Expires:          expiresNano,
+		Expires:          expires.UnixNano(),
 		Names:            []string{"example.com"},
 		V2Authorizations: []int64{authzID},
 	})
 	test.AssertNotError(t, err, "Couldn't create new pending order")
 
 	// Counting new orders for the reg ID should now yield 1
-	count, err = sa.CountOrders(ctx, reg.Id, earliest, latest)
+	req.AccountID = reg.Id
+	count, err = sa.CountOrders(ctx, req)
 	test.AssertNotError(t, err, "Couldn't count new orders for reg ID")
-	test.AssertEquals(t, count, 1)
+	test.AssertEquals(t, count.Count, int64(1))
 
 	// Moving the count window to after the order was created should return the
 	// count to 0
-	earliest = time.Unix(0, order.Created).Add(time.Minute)
-	latest = earliest.Add(time.Hour)
-	count, err = sa.CountOrders(ctx, reg.Id, earliest, latest)
+	earliest := time.Unix(0, order.Created).Add(time.Minute)
+	req.Range.Earliest = earliest.UnixNano()
+	req.Range.Latest = earliest.Add(time.Hour).UnixNano()
+	count, err = sa.CountOrders(ctx, req)
 	test.AssertNotError(t, err, "Couldn't count new orders for reg ID")
-	test.AssertEquals(t, count, 0)
+	test.AssertEquals(t, count.Count, int64(0))
 }
 
 func TestFasterGetOrderForNames(t *testing.T) {

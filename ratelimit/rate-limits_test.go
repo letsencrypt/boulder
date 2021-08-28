@@ -30,11 +30,11 @@ func TestNotEnabled(t *testing.T) {
 func TestGetThreshold(t *testing.T) {
 	policy := RateLimitPolicy{
 		Threshold: 1,
-		Overrides: map[string]int{
+		Overrides: map[string]int64{
 			"key": 2,
 			"baz": 99,
 		},
-		RegistrationOverrides: map[int64]int{
+		RegistrationOverrides: map[int64]int64{
 			101: 3,
 		},
 	}
@@ -43,7 +43,7 @@ func TestGetThreshold(t *testing.T) {
 		Name     string
 		Key      string
 		RegID    int64
-		Expected int
+		Expected int64
 	}{
 
 		{
@@ -111,8 +111,8 @@ func TestLoadPolicies(t *testing.T) {
 
 	// Test that the CertificatesPerName section parsed correctly
 	certsPerName := policy.CertificatesPerName()
-	test.AssertEquals(t, certsPerName.Threshold, 2)
-	test.AssertDeepEquals(t, certsPerName.Overrides, map[string]int{
+	test.AssertEquals(t, certsPerName.Threshold, int64(2))
+	test.AssertDeepEquals(t, certsPerName.Overrides, map[string]int64{
 		"ratelimit.me":          1,
 		"lim.it":                0,
 		"le.wtf":                10000,
@@ -125,28 +125,28 @@ func TestLoadPolicies(t *testing.T) {
 		"ecdsa.le.wtf":          10000,
 		"must-staple.le.wtf":    10000,
 	})
-	test.AssertDeepEquals(t, certsPerName.RegistrationOverrides, map[int64]int{
+	test.AssertDeepEquals(t, certsPerName.RegistrationOverrides, map[int64]int64{
 		101: 1000,
 	})
 
 	// Test that the RegistrationsPerIP section parsed correctly
 	regsPerIP := policy.RegistrationsPerIP()
-	test.AssertEquals(t, regsPerIP.Threshold, 10000)
-	test.AssertDeepEquals(t, regsPerIP.Overrides, map[string]int{
+	test.AssertEquals(t, regsPerIP.Threshold, int64(10000))
+	test.AssertDeepEquals(t, regsPerIP.Overrides, map[string]int64{
 		"127.0.0.1": 1000000,
 	})
 	test.AssertEquals(t, len(regsPerIP.RegistrationOverrides), 0)
 
 	// Test that the PendingAuthorizationsPerAccount section parsed correctly
 	pendingAuthsPerAcct := policy.PendingAuthorizationsPerAccount()
-	test.AssertEquals(t, pendingAuthsPerAcct.Threshold, 150)
+	test.AssertEquals(t, pendingAuthsPerAcct.Threshold, int64(150))
 	test.AssertEquals(t, len(pendingAuthsPerAcct.Overrides), 0)
 	test.AssertEquals(t, len(pendingAuthsPerAcct.RegistrationOverrides), 0)
 
 	// Test that the CertificatesPerFQDN section parsed correctly
 	certsPerFQDN := policy.CertificatesPerFQDNSet()
-	test.AssertEquals(t, certsPerFQDN.Threshold, 6)
-	test.AssertDeepEquals(t, certsPerFQDN.Overrides, map[string]int{
+	test.AssertEquals(t, certsPerFQDN.Threshold, int64(6))
+	test.AssertDeepEquals(t, certsPerFQDN.Overrides, map[string]int64{
 		"le.wtf":                10000,
 		"le1.wtf":               10000,
 		"le2.wtf":               10000,
@@ -159,8 +159,8 @@ func TestLoadPolicies(t *testing.T) {
 	})
 	test.AssertEquals(t, len(certsPerFQDN.RegistrationOverrides), 0)
 	certsPerFQDNFast := policy.CertificatesPerFQDNSetFast()
-	test.AssertEquals(t, certsPerFQDNFast.Threshold, 2)
-	test.AssertDeepEquals(t, certsPerFQDNFast.Overrides, map[string]int{
+	test.AssertEquals(t, certsPerFQDNFast.Threshold, int64(2))
+	test.AssertDeepEquals(t, certsPerFQDNFast.Overrides, map[string]int64{
 		"le.wtf": 100,
 	})
 	test.AssertEquals(t, len(certsPerFQDNFast.RegistrationOverrides), 0)
@@ -170,7 +170,7 @@ func TestLoadPolicies(t *testing.T) {
 	test.AssertError(t, err, "Failed to generate error loading invalid yaml policy file")
 	// Re-check a field of policy to make sure a LoadPolicies error doesn't
 	// corrupt the existing policies
-	test.AssertDeepEquals(t, policy.RegistrationsPerIP().Overrides, map[string]int{
+	test.AssertDeepEquals(t, policy.RegistrationsPerIP().Overrides, map[string]int64{
 		"127.0.0.1": 1000000,
 	})
 
@@ -178,9 +178,9 @@ func TestLoadPolicies(t *testing.T) {
 	// `LoadPolicy` call, and instead return empty RateLimitPolicy objects with default
 	// values.
 	emptyPolicy := New()
-	test.AssertEquals(t, emptyPolicy.CertificatesPerName().Threshold, 0)
-	test.AssertEquals(t, emptyPolicy.RegistrationsPerIP().Threshold, 0)
-	test.AssertEquals(t, emptyPolicy.RegistrationsPerIP().Threshold, 0)
-	test.AssertEquals(t, emptyPolicy.PendingAuthorizationsPerAccount().Threshold, 0)
-	test.AssertEquals(t, emptyPolicy.CertificatesPerFQDNSet().Threshold, 0)
+	test.AssertEquals(t, emptyPolicy.CertificatesPerName().Threshold, int64(0))
+	test.AssertEquals(t, emptyPolicy.RegistrationsPerIP().Threshold, int64(0))
+	test.AssertEquals(t, emptyPolicy.RegistrationsPerIP().Threshold, int64(0))
+	test.AssertEquals(t, emptyPolicy.PendingAuthorizationsPerAccount().Threshold, int64(0))
+	test.AssertEquals(t, emptyPolicy.CertificatesPerFQDNSet().Threshold, int64(0))
 }
