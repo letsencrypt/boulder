@@ -1746,14 +1746,14 @@ func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, names [
 	return results, nil
 }
 
-func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, _ time.Duration, names []string) (int64, error) {
+func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
 	var count int64
-	for _, name := range names {
+	for _, name := range req.Domains {
 		if entry, ok := m.nameCounts[name]; ok {
 			count += entry.Count
 		}
 	}
-	return count, nil
+	return &sapb.Count{Count: count}, nil
 }
 
 // Tests for boulder issue 1925[0] - that the `checkCertificatesPerNameLimit`

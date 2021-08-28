@@ -563,6 +563,8 @@ func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, req *sapb.Count
 	return &sapb.Count{Count: count}, nil
 }
 
+// hashNames returns a hash of the names requested. This is intended for use
+// when interacting with the orderFqdnSets table.
 func hashNames(names []string) []byte {
 	names = core.UniqueLowerNames(names)
 	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
@@ -643,19 +645,23 @@ func addIssuedNames(db db.Execer, cert *x509.Certificate, isRenewal bool) error 
 	return err
 }
 
-// CountFQDNSets returns the number of sets with hash |setHash| within the window
-// |window|
-func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, window time.Duration, names []string) (int64, error) {
+// CountFQDNSets counts the total number of issuances, for a set of domains,
+// that occurred during a given window of time.
+func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
+	if req.Window == 0 || len(req.Domains) == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM fqdnSets
 		WHERE setHash = ?
 		AND issued > ?`,
-		hashNames(names),
-		ssa.clk.Now().Add(-window),
+		hashNames(req.Domains),
+		ssa.clk.Now().Add(-time.Duration(req.Window)),
 	)
-	return count, err
+	return &sapb.Count{Count: count}, err
 }
 
 // setHash is a []byte representing the hash of an FQDN Set

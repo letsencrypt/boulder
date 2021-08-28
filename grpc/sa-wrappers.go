@@ -87,22 +87,8 @@ func (sac StorageAuthorityClientWrapper) CountOrders(ctx context.Context, req *s
 	return sac.inner.CountOrders(ctx, req)
 }
 
-func (sac StorageAuthorityClientWrapper) CountFQDNSets(ctx context.Context, window time.Duration, domains []string) (int64, error) {
-	windowNanos := window.Nanoseconds()
-
-	response, err := sac.inner.CountFQDNSets(ctx, &sapb.CountFQDNSetsRequest{
-		Window:  windowNanos,
-		Domains: domains,
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	if response == nil {
-		return 0, errIncompleteResponse
-	}
-
-	return response.Count, nil
+func (sac StorageAuthorityClientWrapper) CountFQDNSets(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
+	return sac.inner.CountFQDNSets(ctx, req)
 }
 
 func (sac StorageAuthorityClientWrapper) PreviousCertificateExists(
@@ -335,18 +321,7 @@ func (sas StorageAuthorityServerWrapper) CountOrders(ctx context.Context, reques
 }
 
 func (sas StorageAuthorityServerWrapper) CountFQDNSets(ctx context.Context, request *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
-	if core.IsAnyNilOrZero(request, request.Window, request.Domains) {
-		return nil, errIncompleteRequest
-	}
-
-	window := time.Duration(request.Window)
-
-	count, err := sas.inner.CountFQDNSets(ctx, window, request.Domains)
-	if err != nil {
-		return nil, err
-	}
-
-	return &sapb.Count{Count: int64(count)}, nil
+	return sas.inner.CountFQDNSets(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) FQDNSetExists(ctx context.Context, request *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {

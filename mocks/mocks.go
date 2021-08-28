@@ -311,8 +311,8 @@ func (sa *StorageAuthority) UpdateRegistration(_ context.Context, _ *corepb.Regi
 }
 
 // CountFQDNSets is a mock
-func (sa *StorageAuthority) CountFQDNSets(_ context.Context, since time.Duration, names []string) (int64, error) {
-	return 0, nil
+func (sa *StorageAuthority) CountFQDNSets(_ context.Context, _ *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
+	return &sapb.Count{}, nil
 }
 
 // FQDNSetExists is a mock

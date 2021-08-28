@@ -1457,13 +1457,17 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 }
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
-	count, err := ra.SA.CountFQDNSets(ctx, limit.Window.Duration, names)
+	req := &sapb.CountFQDNSetsRequest{
+		Domains: names,
+		Window:  limit.Window.Duration.Nanoseconds(),
+	}
+	count, err := ra.SA.CountFQDNSets(ctx, req)
 	if err != nil {
 		return fmt.Errorf("checking duplicate certificate limit for %q: %s", names, err)
 	}
 	names = core.UniqueLowerNames(names)
 	threshold := limit.GetThreshold(strings.Join(names, ","), regID)
-	if count >= threshold {
+	if count.Count >= threshold {
 		return berrors.RateLimitError(
 			"too many certificates (%d) already issued for this exact set of domains in the last %.0f hours: %s",
 			threshold, limit.Window.Duration.Hours(), strings.Join(names, ","),

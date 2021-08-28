@@ -105,7 +105,7 @@ type StorageGetter interface {
 	CountRegistrationsByIP(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error)
 	CountRegistrationsByIPRange(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error)
 	CountOrders(ctx context.Context, req *sapb.CountOrdersRequest) (*sapb.Count, error)
-	CountFQDNSets(ctx context.Context, window time.Duration, domains []string) (count int64, err error)
+	CountFQDNSets(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Count, error)
 	FQDNSetExists(ctx context.Context, domains []string) (exists bool, err error)
 	PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (exists *sapb.Exists, err error)
 	GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error)

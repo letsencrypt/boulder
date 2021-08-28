@@ -524,16 +524,21 @@ func TestFQDNSets(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to add name set")
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
-	// only one valid
 	threeHours := time.Hour * 3
-	count, err := sa.CountFQDNSets(ctx, threeHours, names)
+	req := &sapb.CountFQDNSetsRequest{
+		Domains: names,
+		Window:  threeHours.Nanoseconds(),
+	}
+	// only one valid
+	count, err := sa.CountFQDNSets(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
-	test.AssertEquals(t, count, int64(1))
+	test.AssertEquals(t, count.Count, int64(1))
 
 	// check hash isn't affected by changing name order/casing
-	count, err = sa.CountFQDNSets(ctx, threeHours, []string{"b.example.com", "A.example.COM"})
+	req.Domains = []string{"b.example.com", "A.example.COM"}
+	count, err = sa.CountFQDNSets(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
-	test.AssertEquals(t, count, int64(1))
+	test.AssertEquals(t, count.Count, int64(1))
 
 	// add another valid set
 	tx, err = sa.dbMap.Begin()
@@ -543,9 +548,10 @@ func TestFQDNSets(t *testing.T) {
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
 	// only two valid
-	count, err = sa.CountFQDNSets(ctx, threeHours, names)
+	req.Domains = names
+	count, err = sa.CountFQDNSets(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
-	test.AssertEquals(t, count, int64(2))
+	test.AssertEquals(t, count.Count, int64(2))
 
 	// add an expired set
 	tx, err = sa.dbMap.Begin()
@@ -561,9 +567,9 @@ func TestFQDNSets(t *testing.T) {
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
 	// only two valid
-	count, err = sa.CountFQDNSets(ctx, threeHours, names)
+	count, err = sa.CountFQDNSets(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
-	test.AssertEquals(t, count, int64(2))
+	test.AssertEquals(t, count.Count, int64(2))
 }
 
 func TestFQDNSetsExists(t *testing.T) {
