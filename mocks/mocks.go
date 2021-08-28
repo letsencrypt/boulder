@@ -372,13 +372,13 @@ func (sa *StorageAuthority) CountCertificatesByNames(_ context.Context, _ []stri
 }
 
 // CountRegistrationsByIP is a mock
-func (sa *StorageAuthority) CountRegistrationsByIP(_ context.Context, _ net.IP, _, _ time.Time) (int, error) {
-	return 0, nil
+func (sa *StorageAuthority) CountRegistrationsByIP(_ context.Context, _ *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
+	return &sapb.Count{}, nil
 }
 
 // CountRegistrationsByIPRange is a mock
-func (sa *StorageAuthority) CountRegistrationsByIPRange(_ context.Context, _ net.IP, _, _ time.Time) (int, error) {
-	return 0, nil
+func (sa *StorageAuthority) CountRegistrationsByIPRange(_ context.Context, _ *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
+	return &sapb.Count{}, nil
 }
 
 // CountPendingAuthorizations is a mock

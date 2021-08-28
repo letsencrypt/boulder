@@ -8,7 +8,6 @@ package grpc
 
 import (
 	"context"
-	"net"
 	"time"
 
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -76,48 +75,12 @@ func (sac StorageAuthorityClientWrapper) CountCertificatesByNames(ctx context.Co
 	return response.CountByNames, nil
 }
 
-func (sac StorageAuthorityClientWrapper) CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error) {
-	earliestNano := earliest.UnixNano()
-	latestNano := latest.UnixNano()
-
-	response, err := sac.inner.CountRegistrationsByIP(ctx, &sapb.CountRegistrationsByIPRequest{
-		Range: &sapb.Range{
-			Earliest: earliestNano,
-			Latest:   latestNano,
-		},
-		Ip: ip,
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	if response == nil {
-		return 0, errIncompleteResponse
-	}
-
-	return int(response.Count), nil
+func (sac StorageAuthorityClientWrapper) CountRegistrationsByIP(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
+	return sac.inner.CountRegistrationsByIP(ctx, req)
 }
 
-func (sac StorageAuthorityClientWrapper) CountRegistrationsByIPRange(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error) {
-	earliestNano := earliest.UnixNano()
-	latestNano := latest.UnixNano()
-
-	response, err := sac.inner.CountRegistrationsByIPRange(ctx, &sapb.CountRegistrationsByIPRequest{
-		Range: &sapb.Range{
-			Earliest: earliestNano,
-			Latest:   latestNano,
-		},
-		Ip: ip,
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	if response == nil {
-		return 0, errIncompleteResponse
-	}
-
-	return int(response.Count), nil
+func (sac StorageAuthorityClientWrapper) CountRegistrationsByIPRange(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
+	return sac.inner.CountRegistrationsByIPRange(ctx, req)
 }
 
 func (sac StorageAuthorityClientWrapper) CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error) {
@@ -378,37 +341,11 @@ func (sas StorageAuthorityServerWrapper) CountCertificatesByNames(ctx context.Co
 }
 
 func (sas StorageAuthorityServerWrapper) CountRegistrationsByIP(ctx context.Context, request *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
-	if core.IsAnyNilOrZero(request, request.Range, request.Range.Earliest, request.Range.Latest, request.Ip) {
-		return nil, errIncompleteRequest
-	}
-
-	count, err := sas.inner.CountRegistrationsByIP(
-		ctx,
-		net.IP(request.Ip),
-		time.Unix(0, request.Range.Earliest),
-		time.Unix(0, request.Range.Latest))
-	if err != nil {
-		return nil, err
-	}
-
-	return &sapb.Count{Count: int64(count)}, nil
+	return sas.inner.CountRegistrationsByIP(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) CountRegistrationsByIPRange(ctx context.Context, request *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
-	if core.IsAnyNilOrZero(request, request.Range, request.Range.Earliest, request.Range.Latest, request.Ip) {
-		return nil, errIncompleteRequest
-	}
-
-	count, err := sas.inner.CountRegistrationsByIPRange(
-		ctx,
-		net.IP(request.Ip),
-		time.Unix(0, request.Range.Earliest),
-		time.Unix(0, request.Range.Latest))
-	if err != nil {
-		return nil, err
-	}
-
-	return &sapb.Count{Count: int64(count)}, nil
+	return sas.inner.CountRegistrationsByIPRange(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) CountOrders(ctx context.Context, request *sapb.CountOrdersRequest) (*sapb.Count, error) {

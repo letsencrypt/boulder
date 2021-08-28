@@ -271,31 +271,32 @@ type certificateRequestEvent struct {
 // registration-based overrides are necessary.
 const noRegistrationID = -1
 
-// registrationCounter is a type to abstract the use of
-// ra.SA.CountRegistrationsByIP or ra.SA.CountRegistrationsByIPRange
-type registrationCounter func(context.Context, net.IP, time.Time, time.Time) (int, error)
+// registrationCounter is a type to abstract the use of `CountRegistrationsByIP`
+// or `CountRegistrationsByIPRange` SA methods.
+type registrationCounter func(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error)
 
 // checkRegistrationIPLimit checks a specific registraton limit by using the
 // provided registrationCounter function to determine if the limit has been
 // exceeded for a given IP or IP range
-func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(
-	ctx context.Context,
-	limit ratelimit.RateLimitPolicy,
-	ip net.IP,
-	counter registrationCounter) error {
-
+func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(ctx context.Context, limit ratelimit.RateLimitPolicy, ip net.IP, counter registrationCounter) error {
 	if !limit.Enabled() {
 		return nil
 	}
 
 	now := ra.clk.Now()
-	windowBegin := limit.WindowBegin(now)
-	count, err := counter(ctx, ip, windowBegin, now)
+	req := &sapb.CountRegistrationsByIPRequest{
+		Ip: ip,
+		Range: &sapb.Range{
+			Earliest: limit.WindowBegin(now).UnixNano(),
+			Latest:   now.UnixNano(),
+		},
+	}
+	count, err := counter(ctx, req)
 	if err != nil {
 		return err
 	}
 
-	if count >= limit.GetThreshold(ip.String(), noRegistrationID) {
+	if int(count.Count) >= limit.GetThreshold(ip.String(), noRegistrationID) {
 		return berrors.RateLimitError("too many registrations for this IP")
 	}
 

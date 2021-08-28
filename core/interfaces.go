@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"net"
 	"net/http"
 	"time"
 
@@ -103,8 +102,8 @@ type StorageGetter interface {
 	GetPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
 	GetCertificateStatus(ctx context.Context, serial string) (CertificateStatus, error)
 	CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) (countByDomain []*sapb.CountByNames_MapElement, err error)
-	CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error)
-	CountRegistrationsByIPRange(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error)
+	CountRegistrationsByIP(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error)
+	CountRegistrationsByIPRange(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error)
 	CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error)
 	CountFQDNSets(ctx context.Context, window time.Duration, domains []string) (count int64, err error)
 	FQDNSetExists(ctx context.Context, domains []string) (exists bool, err error)

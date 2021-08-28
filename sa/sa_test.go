@@ -399,34 +399,43 @@ func TestCountRegistrationsByIP(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
 
-	earliest := fc.Now().Add(-time.Hour * 24)
-	latest := fc.Now()
+	req := &sapb.CountRegistrationsByIPRequest{
+		Ip: net.ParseIP("1.1.1.1"),
+		Range: &sapb.Range{
+			Earliest: fc.Now().Add(-time.Hour * 24).UnixNano(),
+			Latest:   fc.Now().UnixNano(),
+		},
+	}
 
 	// There should be 0 registrations for an IPv4 address we didn't add
 	// a registration for
-	count, err := sa.CountRegistrationsByIP(ctx, net.ParseIP("1.1.1.1"), earliest, latest)
+	count, err := sa.CountRegistrationsByIP(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 0)
+	test.AssertEquals(t, count.Count, int64(0))
 	// There should be 1 registration for the IPv4 address we did add
-	// a registration for
-	count, err = sa.CountRegistrationsByIP(ctx, net.ParseIP("43.34.43.34"), earliest, latest)
+	// a registration for.
+	req.Ip = net.ParseIP("43.34.43.34")
+	count, err = sa.CountRegistrationsByIP(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 1)
+	test.AssertEquals(t, count.Count, int64(1))
 	// There should be 1 registration for the first IPv6 address we added
 	// a registration for
-	count, err = sa.CountRegistrationsByIP(ctx, net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"), earliest, latest)
+	req.Ip = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652")
+	count, err = sa.CountRegistrationsByIP(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 1)
+	test.AssertEquals(t, count.Count, int64(1))
 	// There should be 1 registration for the second IPv6 address we added
 	// a registration for as well
-	count, err = sa.CountRegistrationsByIP(ctx, net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653"), earliest, latest)
+	req.Ip = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653")
+	count, err = sa.CountRegistrationsByIP(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 1)
+	test.AssertEquals(t, count.Count, int64(1))
 	// There should be 0 registrations for an IPv6 address in the same /48 as the
 	// two IPv6 addresses with registrations
-	count, err = sa.CountRegistrationsByIP(ctx, net.ParseIP("2001:cdba:1234:0000:0000:0000:0000:0000"), earliest, latest)
+	req.Ip = net.ParseIP("2001:cdba:1234:0000:0000:0000:0000:0000")
+	count, err = sa.CountRegistrationsByIP(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 0)
+	test.AssertEquals(t, count.Count, int64(0))
 }
 
 func TestCountRegistrationsByIPRange(t *testing.T) {
@@ -462,34 +471,44 @@ func TestCountRegistrationsByIPRange(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
 
-	earliest := fc.Now().Add(-time.Hour * 24)
-	latest := fc.Now()
+	req := &sapb.CountRegistrationsByIPRequest{
+		Ip: net.ParseIP("1.1.1.1"),
+		Range: &sapb.Range{
+			Earliest: fc.Now().Add(-time.Hour * 24).UnixNano(),
+			Latest:   fc.Now().UnixNano(),
+		},
+	}
 
 	// There should be 0 registrations in the range for an IPv4 address we didn't
 	// add a registration for
-	count, err := sa.CountRegistrationsByIPRange(ctx, net.ParseIP("1.1.1.1"), earliest, latest)
+	req.Ip = net.ParseIP("1.1.1.1")
+	count, err := sa.CountRegistrationsByIPRange(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 0)
+	test.AssertEquals(t, count.Count, int64(0))
 	// There should be 1 registration in the range for the IPv4 address we did
 	// add a registration for
-	count, err = sa.CountRegistrationsByIPRange(ctx, net.ParseIP("43.34.43.34"), earliest, latest)
+	req.Ip = net.ParseIP("43.34.43.34")
+	count, err = sa.CountRegistrationsByIPRange(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 1)
+	test.AssertEquals(t, count.Count, int64(1))
 	// There should be 2 registrations in the range for the first IPv6 address we added
 	// a registration for because it's in the same /48
-	count, err = sa.CountRegistrationsByIPRange(ctx, net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"), earliest, latest)
+	req.Ip = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652")
+	count, err = sa.CountRegistrationsByIPRange(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 2)
+	test.AssertEquals(t, count.Count, int64(2))
 	// There should be 2 registrations in the range for the second IPv6 address
 	// we added a registration for as well, because it too is in the same /48
-	count, err = sa.CountRegistrationsByIPRange(ctx, net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653"), earliest, latest)
+	req.Ip = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653")
+	count, err = sa.CountRegistrationsByIPRange(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 2)
+	test.AssertEquals(t, count.Count, int64(2))
 	// There should also be 2 registrations in the range for an arbitrary IPv6 address in
 	// the same /48 as the registrations we added
-	count, err = sa.CountRegistrationsByIPRange(ctx, net.ParseIP("2001:cdba:1234:0000:0000:0000:0000:0000"), earliest, latest)
+	req.Ip = net.ParseIP("2001:cdba:1234:0000:0000:0000:0000:0000")
+	count, err = sa.CountRegistrationsByIPRange(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 2)
+	test.AssertEquals(t, count.Count, int64(2))
 }
 
 func TestFQDNSets(t *testing.T) {
