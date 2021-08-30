@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/db"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 )
 
@@ -59,17 +60,10 @@ func (ssa *SQLStorageAuthority) addCertificatesPerName(
 	return nil
 }
 
-// countCertificates returns, for a single domain, the count of
-// certificates issued in the given time range for that domain's eTLD+1 (aka
-// base domain). It uses the certificatesPerName table to make this lookup fast.
-func (ssa *SQLStorageAuthority) countCertificates(
-	dbMap db.Selector,
-	domain string,
-	earliest,
-	latest time.Time,
-) (int, error) {
-	base := baseDomain(domain)
-	var counts []int
+// countCertificates returns the count of certificates issued for a domain's
+// eTLD+1 (aka base domain), during a given time range.
+func (ssa *SQLStorageAuthority) countCertificates(dbMap db.Selector, domain string, timeRange *sapb.Range) (int64, error) {
+	var counts []int64
 	_, err := dbMap.Select(
 		&counts,
 		`SELECT count FROM certificatesPerName
@@ -77,9 +71,9 @@ func (ssa *SQLStorageAuthority) countCertificates(
 		 time > :earliest AND
 		 time <= :latest`,
 		map[string]interface{}{
-			"baseDomain": base,
-			"earliest":   earliest,
-			"latest":     latest,
+			"baseDomain": baseDomain(domain),
+			"earliest":   time.Unix(0, timeRange.Earliest),
+			"latest":     time.Unix(0, timeRange.Latest),
 		})
 	if err != nil {
 		if db.IsNoRows(err) {
@@ -87,7 +81,7 @@ func (ssa *SQLStorageAuthority) countCertificates(
 		}
 		return 0, err
 	}
-	var total int
+	var total int64
 	for _, count := range counts {
 		total += count
 	}
@@ -113,8 +107,8 @@ func addNewOrdersRateLimit(ctx context.Context, dbMap db.SelectExecer, regID int
 
 // countNewOrders returns the count of orders created in the given time range
 // for the given registration ID
-func countNewOrders(ctx context.Context, dbMap db.Selector, regID int64, earliest, latest time.Time) (int, error) {
-	var counts []int
+func countNewOrders(ctx context.Context, dbMap db.Selector, req *sapb.CountOrdersRequest) (*sapb.Count, error) {
+	var counts []int64
 	_, err := dbMap.Select(
 		&counts,
 		`SELECT count FROM newOrdersRL
@@ -122,20 +116,20 @@ func countNewOrders(ctx context.Context, dbMap db.Selector, regID int64, earlies
 		time > :earliest AND
 		time <= :latest`,
 		map[string]interface{}{
-			"regID":    regID,
-			"earliest": earliest,
-			"latest":   latest,
+			"regID":    req.AccountID,
+			"earliest": time.Unix(0, req.Range.Earliest),
+			"latest":   time.Unix(0, req.Range.Latest),
 		},
 	)
 	if err != nil {
 		if db.IsNoRows(err) {
-			return 0, nil
+			return &sapb.Count{Count: 0}, nil
 		}
-		return 0, err
+		return nil, err
 	}
-	var total int
+	var total int64
 	for _, count := range counts {
 		total += count
 	}
-	return total, nil
+	return &sapb.Count{Count: total}, nil
 }
