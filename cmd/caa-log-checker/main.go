@@ -223,18 +223,18 @@ func main() {
 
 	flag.Parse()
 
+	logger := cmd.NewLogger(cmd.SyslogConfig{
+		StdoutLevel: *logStdoutLevel,
+		SyslogLevel: *logSyslogLevel,
+	})
+
 	if *timeTolerance < 0 {
 		cmd.Fail("value of -time-tolerance must be non-negative")
 	}
 
 	if *earliestFlag != "" || *latestFlag != "" {
-		fmt.Printf("The -earliest and -latest flags are deprecated and ignored.")
+		logger.Info("The -earliest and -latest flags are deprecated and ignored.")
 	}
-
-	_ = cmd.NewLogger(cmd.SyslogConfig{
-		StdoutLevel: *logStdoutLevel,
-		SyslogLevel: *logSyslogLevel,
-	})
 
 	// Build a map from hostnames to times at which those names were issued for.
 	// Also retrieve the earliest and latest issuance times represented in the
@@ -251,7 +251,7 @@ func main() {
 
 	errStr := formatErrors(issuanceMap)
 	if errStr != "" {
-		fmt.Fprintf(os.Stderr, "The following issuances were missing CAA checks:\n%s", errStr)
+		logger.AuditErrf("The following issuances were missing CAA checks:\n%s", errStr)
 		os.Exit(1)
 	}
 }
