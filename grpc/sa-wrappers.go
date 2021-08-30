@@ -290,10 +290,6 @@ func (sas StorageAuthorityServerWrapper) SetOrderError(ctx context.Context, orde
 }
 
 func (sas StorageAuthorityServerWrapper) FinalizeOrder(ctx context.Context, req *sapb.FinalizeOrderRequest) (*emptypb.Empty, error) {
-	// if order == nil || !orderValid(order) || order.CertificateSerial == "" {
-	// 	return nil, errIncompleteRequest
-	// }
-
 	return sas.inner.FinalizeOrder(ctx, req)
 }
 
