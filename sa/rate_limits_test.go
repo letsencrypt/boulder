@@ -94,10 +94,16 @@ func TestNewOrdersRateLimitTable(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	zeroCountRegID := int64(1)
 	manyCountRegID := int64(2)
-
 	start := time.Now().Truncate(time.Minute)
+	req := &sapb.CountOrdersRequest{
+		AccountID: 1,
+		Range: &sapb.Range{
+			Earliest: start.UnixNano(),
+			Latest:   start.Add(time.Minute * 10).UnixNano(),
+		},
+	}
+
 	for i := 0; i <= 10; i++ {
 		tx, err := sa.dbMap.Begin()
 		test.AssertNotError(t, err, "failed to open tx")
@@ -108,14 +114,18 @@ func TestNewOrdersRateLimitTable(t *testing.T) {
 		test.AssertNotError(t, tx.Commit(), "failed to commit tx")
 	}
 
-	count, err := countNewOrders(context.Background(), sa.dbMap, zeroCountRegID, start, start.Add(time.Minute*10))
+	count, err := countNewOrders(context.Background(), sa.dbMap, req)
 	test.AssertNotError(t, err, "countNewOrders failed")
-	test.AssertEquals(t, count, 0)
+	test.AssertEquals(t, count.Count, int64(0))
 
-	count, err = countNewOrders(context.Background(), sa.dbMap, manyCountRegID, start, start.Add(time.Minute*10))
+	req.AccountID = manyCountRegID
+	count, err = countNewOrders(context.Background(), sa.dbMap, req)
 	test.AssertNotError(t, err, "countNewOrders failed")
-	test.AssertEquals(t, count, 65)
-	count, err = countNewOrders(context.Background(), sa.dbMap, manyCountRegID, start.Add(time.Minute*5), start.Add(time.Minute*10))
+	test.AssertEquals(t, count.Count, int64(65))
+
+	req.Range.Earliest = start.Add(time.Minute * 5).UnixNano()
+	req.Range.Latest = start.Add(time.Minute * 10).UnixNano()
+	count, err = countNewOrders(context.Background(), sa.dbMap, req)
 	test.AssertNotError(t, err, "countNewOrders failed")
-	test.AssertEquals(t, count, 45)
+	test.AssertEquals(t, count.Count, int64(45))
 }

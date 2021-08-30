@@ -1291,7 +1291,7 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 			Window:    cmd.ConfigDuration{Duration: rateLimitDuration},
 			// Setting the Threshold to 0 skips applying the rate limit. Setting an
 			// override to 0 does the trick.
-			Overrides: map[string]int{
+			Overrides: map[string]int64{
 				domain: 0,
 			},
 		},
@@ -1414,13 +1414,13 @@ func TestRateLimitLiveReload(t *testing.T) {
 	test.AssertNotError(t, err, "failed to SetRateLimitPoliciesFile")
 
 	// Test some fields of the initial policy to ensure it loaded correctly
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le.wtf"], 10000)
-	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP().Overrides["127.0.0.1"], 1000000)
-	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount().Threshold, 150)
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Threshold, 6)
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Overrides["le.wtf"], 10000)
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSetFast().Threshold, 2)
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSetFast().Overrides["le.wtf"], 100)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le.wtf"], int64(10000))
+	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP().Overrides["127.0.0.1"], int64(1000000))
+	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount().Threshold, int64(150))
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Threshold, int64(6))
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Overrides["le.wtf"], int64(10000))
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSetFast().Threshold, int64(2))
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSetFast().Overrides["le.wtf"], int64(100))
 
 	// Write a different  policy YAML to the monitored file, expect a reload.
 	// Sleep a few milliseconds before writing so the timestamp isn't identical to
@@ -1436,12 +1436,12 @@ func TestRateLimitLiveReload(t *testing.T) {
 
 	// Test fields of the policy to make sure writing the new policy to the monitored file
 	// resulted in the runtime values being updated
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le.wtf"], 9999)
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le4.wtf"], 9999)
-	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP().Overrides["127.0.0.1"], 999990)
-	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount().Threshold, 999)
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Overrides["le.wtf"], 9999)
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Threshold, 99999)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le.wtf"], int64(9999))
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le4.wtf"], int64(9999))
+	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP().Overrides["127.0.0.1"], int64(999990))
+	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount().Threshold, int64(999))
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Overrides["le.wtf"], int64(9999))
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Threshold, int64(99999))
 }
 
 type mockSAWithNameCounts struct {
@@ -1484,7 +1484,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	rlp := ratelimit.RateLimitPolicy{
 		Threshold: 3,
 		Window:    cmd.ConfigDuration{Duration: 23 * time.Hour},
-		Overrides: map[string]int{
+		Overrides: map[string]int64{
 			"bigissuer.com":     100,
 			"smallissuer.co.uk": 1,
 		},
@@ -1747,14 +1747,14 @@ func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, req *sa
 	return &sapb.CountByNames{CountByNames: results}, nil
 }
 
-func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, _ time.Duration, names []string) (int64, error) {
+func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
 	var count int64
-	for _, name := range names {
+	for _, name := range req.Domains {
 		if entry, ok := m.nameCounts[name]; ok {
 			count += entry.Count
 		}
 	}
-	return count, nil
+	return &sapb.Count{Count: count}, nil
 }
 
 // Tests for boulder issue 1925[0] - that the `checkCertificatesPerNameLimit`

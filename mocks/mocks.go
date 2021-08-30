@@ -311,8 +311,8 @@ func (sa *StorageAuthority) UpdateRegistration(_ context.Context, _ *corepb.Regi
 }
 
 // CountFQDNSets is a mock
-func (sa *StorageAuthority) CountFQDNSets(_ context.Context, since time.Duration, names []string) (int64, error) {
-	return 0, nil
+func (sa *StorageAuthority) CountFQDNSets(_ context.Context, _ *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
+	return &sapb.Count{}, nil
 }
 
 // FQDNSetExists is a mock
@@ -372,13 +372,13 @@ func (sa *StorageAuthority) CountCertificatesByNames(_ context.Context, _ *sapb.
 }
 
 // CountRegistrationsByIP is a mock
-func (sa *StorageAuthority) CountRegistrationsByIP(_ context.Context, _ net.IP, _, _ time.Time) (int, error) {
-	return 0, nil
+func (sa *StorageAuthority) CountRegistrationsByIP(_ context.Context, _ *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
+	return &sapb.Count{}, nil
 }
 
 // CountRegistrationsByIPRange is a mock
-func (sa *StorageAuthority) CountRegistrationsByIPRange(_ context.Context, _ net.IP, _, _ time.Time) (int, error) {
-	return 0, nil
+func (sa *StorageAuthority) CountRegistrationsByIPRange(_ context.Context, _ *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
+	return &sapb.Count{}, nil
 }
 
 // CountPendingAuthorizations is a mock
@@ -387,8 +387,8 @@ func (sa *StorageAuthority) CountPendingAuthorizations(_ context.Context, _ int6
 }
 
 // CountOrders is a mock
-func (sa *StorageAuthority) CountOrders(_ context.Context, _ int64, _, _ time.Time) (int, error) {
-	return 0, nil
+func (sa *StorageAuthority) CountOrders(_ context.Context, _ *sapb.CountOrdersRequest) (*sapb.Count, error) {
+	return &sapb.Count{}, nil
 }
 
 // DeactivateAuthorization is a mock
@@ -513,7 +513,7 @@ func (sa *StorageAuthority) DeactivateAuthorization2(ctx context.Context, req *s
 }
 
 func (sa *StorageAuthority) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error) {
-	return nil, nil
+	return &sapb.Count{}, nil
 }
 
 func (sa *StorageAuthority) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
@@ -521,7 +521,7 @@ func (sa *StorageAuthority) GetValidOrderAuthorizations2(ctx context.Context, re
 }
 
 func (sa *StorageAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
-	return nil, nil
+	return &sapb.Count{}, nil
 }
 
 func (sa *StorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {

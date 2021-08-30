@@ -196,7 +196,11 @@ func ipRange(ip net.IP) (net.IP, net.IP) {
 
 // CountRegistrationsByIP returns the number of registrations created in the
 // time range for a single IP address.
-func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest time.Time, latest time.Time) (int, error) {
+func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
+	if len(req.Ip) == 0 || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
@@ -206,23 +210,27 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, ip n
 		 :earliest < createdAt AND
 		 createdAt <= :latest`,
 		map[string]interface{}{
-			"ip":       []byte(ip),
-			"earliest": earliest,
-			"latest":   latest,
+			"ip":       req.Ip,
+			"earliest": time.Unix(0, req.Range.Earliest),
+			"latest":   time.Unix(0, req.Range.Latest),
 		})
 	if err != nil {
-		return -1, err
+		return &sapb.Count{Count: -1}, err
 	}
-	return int(count), nil
+	return &sapb.Count{Count: count}, nil
 }
 
 // CountRegistrationsByIPRange returns the number of registrations created in
 // the time range in an IP range. For IPv4 addresses, that range is limited to
 // the single IP. For IPv6 addresses, that range is a /48, since it's not
 // uncommon for one person to have a /48 to themselves.
-func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context, ip net.IP, earliest time.Time, latest time.Time) (int, error) {
+func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
+	if len(req.Ip) == 0 || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	var count int64
-	beginIP, endIP := ipRange(ip)
+	beginIP, endIP := ipRange(req.Ip)
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM registrations
@@ -232,15 +240,15 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context,
 		 :earliest < createdAt AND
 		 createdAt <= :latest`,
 		map[string]interface{}{
-			"earliest": earliest,
-			"latest":   latest,
-			"beginIP":  []byte(beginIP),
-			"endIP":    []byte(endIP),
+			"earliest": time.Unix(0, req.Range.Earliest),
+			"latest":   time.Unix(0, req.Range.Latest),
+			"beginIP":  beginIP,
+			"endIP":    endIP,
 		})
 	if err != nil {
-		return -1, err
+		return &sapb.Count{Count: -1}, err
 	}
-	return int(count), nil
+	return &sapb.Count{Count: count}, nil
 }
 
 // CountCertificatesByNames counts, for each input domain, the number of
@@ -528,28 +536,37 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 	return &sapb.AddCertificateResponse{Digest: digest}, nil
 }
 
-func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error) {
-	if features.Enabled(features.FasterNewOrdersRateLimit) {
-		return countNewOrders(ctx, ssa.dbReadOnlyMap, acctID, earliest, latest)
+func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, req *sapb.CountOrdersRequest) (*sapb.Count, error) {
+	if req.AccountID == 0 || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+		return nil, errIncompleteRequest
 	}
 
-	var count int
-	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(&count,
+	if features.Enabled(features.FasterNewOrdersRateLimit) {
+		return countNewOrders(ctx, ssa.dbReadOnlyMap, req)
+	}
+
+	var count int64
+	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
+		&count,
 		`SELECT count(1) FROM orders
 		WHERE registrationID = :acctID AND
-		created >= :windowLeft AND
-		created < :windowRight`,
+		created >= :earliest AND
+		created < :latest`,
 		map[string]interface{}{
-			"acctID":      acctID,
-			"windowLeft":  earliest,
-			"windowRight": latest,
-		})
+			"acctID":   req.AccountID,
+			"earliest": time.Unix(0, req.Range.Earliest),
+			"latest":   time.Unix(0, req.Range.Latest),
+		},
+	)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return count, nil
+
+	return &sapb.Count{Count: count}, nil
 }
 
+// hashNames returns a hash of the names requested. This is intended for use
+// when interacting with the orderFqdnSets table.
 func hashNames(names []string) []byte {
 	names = core.UniqueLowerNames(names)
 	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
@@ -630,19 +647,23 @@ func addIssuedNames(db db.Execer, cert *x509.Certificate, isRenewal bool) error 
 	return err
 }
 
-// CountFQDNSets returns the number of sets with hash |setHash| within the window
-// |window|
-func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, window time.Duration, names []string) (int64, error) {
+// CountFQDNSets counts the total number of issuances, for a set of domains,
+// that occurred during a given window of time.
+func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
+	if req.Window == 0 || len(req.Domains) == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM fqdnSets
 		WHERE setHash = ?
 		AND issued > ?`,
-		hashNames(names),
-		ssa.clk.Now().Add(-window),
+		hashNames(req.Domains),
+		ssa.clk.Now().Add(-time.Duration(req.Window)),
 	)
-	return count, err
+	return &sapb.Count{Count: count}, err
 }
 
 // setHash is a []byte representing the hash of an FQDN Set
@@ -1732,6 +1753,10 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, re
 // CountPendingAuthorizations2 returns the number of pending, unexpired authorizations
 // for the given registration. This method is intended to deprecate CountPendingAuthorizations.
 func (ssa *SQLStorageAuthority) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error) {
+	if req.Id == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(&count,
 		`SELECT COUNT(1) FROM authz2 WHERE
@@ -1798,6 +1823,10 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 // in a given time range. This method is intended to deprecate CountInvalidAuthorizations.
 // This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
+	if req.RegistrationID == 0 || req.Hostname == "" || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,

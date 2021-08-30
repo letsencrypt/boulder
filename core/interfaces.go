@@ -2,9 +2,7 @@ package core
 
 import (
 	"context"
-	"net"
 	"net/http"
-	"time"
 
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -103,10 +101,10 @@ type StorageGetter interface {
 	GetPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
 	GetCertificateStatus(ctx context.Context, serial string) (CertificateStatus, error)
 	CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error)
-	CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error)
-	CountRegistrationsByIPRange(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error)
-	CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error)
-	CountFQDNSets(ctx context.Context, window time.Duration, domains []string) (count int64, err error)
+	CountRegistrationsByIP(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error)
+	CountRegistrationsByIPRange(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error)
+	CountOrders(ctx context.Context, req *sapb.CountOrdersRequest) (*sapb.Count, error)
+	CountFQDNSets(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Count, error)
 	FQDNSetExists(ctx context.Context, domains []string) (exists bool, err error)
 	PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (exists *sapb.Exists, err error)
 	GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error)
