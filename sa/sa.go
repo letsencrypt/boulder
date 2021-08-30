@@ -1056,7 +1056,10 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, order *corepb
 // CertificateSerial and a valid status to the database. No fields other than
 // CertificateSerial and the order ID on the provided order are processed (e.g.
 // this is not a generic update RPC).
-func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.Order) error {
+func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.FinalizeOrderRequest) (*emptypb.Empty, error) {
+	if req.Id == 0 || req.CertificateSerial == "" {
+		return nil, errIncompleteRequest
+	}
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		result, err := txWithCtx.Exec(`
 		UPDATE orders
@@ -1082,7 +1085,10 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 
 		return nil, nil
 	})
-	return overallError
+	if overallError != nil {
+		return nil, overallError
+	}
+	return &emptypb.Empty{}, nil
 }
 
 // authzForOrder retrieves the authorization IDs for an order. It returns these

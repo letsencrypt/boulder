@@ -1072,7 +1072,8 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 	// Finalize the order with its new CertificateSerial
 	order.CertificateSerial = core.SerialToString(parsedCertificate.SerialNumber)
-	if err := ra.SA.FinalizeOrder(ctx, order); err != nil {
+	_, err = ra.SA.FinalizeOrder(ctx, &sapb.FinalizeOrderRequest{Id: order.Id, CertificateSerial: order.CertificateSerial})
+	if err != nil {
 		// Fail the order with a server internal error. We weren't able to persist
 		// the certificate serial and that's unexpected & weird.
 		ra.failOrder(ctx, order, probs.ServerInternal("Error persisting finalized order"))
