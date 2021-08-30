@@ -32,7 +32,7 @@ import (
 
 var errIncompleteRequest = errors.New("incomplete gRPC request message")
 
-type certCountFunc func(db db.Selector, domain string, earliest, latest time.Time) (int, error)
+type certCountFunc func(db db.Selector, domain string, timeRange *sapb.Range) (int64, error)
 
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
@@ -249,15 +249,19 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context,
 // contain an entry for each input domain, so long as err is nil.
 // Queries will be run in parallel. If any of them error, only one error will
 // be returned.
-func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) ([]*sapb.CountByNames_MapElement, error) {
-	work := make(chan string, len(domains))
+func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
+	if len(req.Names) == 0 || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+		return nil, errIncompleteRequest
+	}
+
+	work := make(chan string, len(req.Names))
 	type result struct {
 		err    error
-		count  int
+		count  int64
 		domain string
 	}
-	results := make(chan result, len(domains))
-	for _, domain := range domains {
+	results := make(chan result, len(req.Names))
+	for _, domain := range req.Names {
 		work <- domain
 	}
 	close(work)
@@ -278,8 +282,7 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, do
 					return
 				default:
 				}
-				currentCount, err := ssa.countCertificatesByName(
-					ssa.dbReadOnlyMap.WithContext(ctx), domain, earliest, latest)
+				currentCount, err := ssa.countCertificatesByName(ssa.dbReadOnlyMap.WithContext(ctx), domain, req.Range)
 				if err != nil {
 					results <- result{err: err}
 					// Skip any further work
@@ -295,19 +298,18 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, do
 	}
 	wg.Wait()
 	close(results)
-	var ret []*sapb.CountByNames_MapElement
+	var nameCounts []*sapb.CountByNames_MapElement
 	for r := range results {
 		if r.err != nil {
 			return nil, r.err
 		}
-		name := string(r.domain)
-		pbCount := int64(r.count)
-		ret = append(ret, &sapb.CountByNames_MapElement{
-			Name:  name,
-			Count: pbCount,
-		})
+		nameCount := &sapb.CountByNames_MapElement{
+			Name:  r.domain,
+			Count: r.count,
+		}
+		nameCounts = append(nameCounts, nameCount)
 	}
-	return ret, nil
+	return &sapb.CountByNames{CountByNames: nameCounts}, nil
 }
 
 func ReverseName(domain string) string {

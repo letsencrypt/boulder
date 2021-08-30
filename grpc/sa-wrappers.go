@@ -54,26 +54,8 @@ func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Contex
 	return PBToCertStatus(response)
 }
 
-func (sac StorageAuthorityClientWrapper) CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) ([]*sapb.CountByNames_MapElement, error) {
-	earliestNano := earliest.UnixNano()
-	latestNano := latest.UnixNano()
-
-	response, err := sac.inner.CountCertificatesByNames(ctx, &sapb.CountCertificatesByNamesRequest{
-		Names: domains,
-		Range: &sapb.Range{
-			Earliest: earliestNano,
-			Latest:   latestNano,
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	if response == nil || response.CountByNames == nil {
-		return nil, errIncompleteResponse
-	}
-
-	return response.CountByNames, nil
+func (sac StorageAuthorityClientWrapper) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
+	return sac.inner.CountCertificatesByNames(ctx, req)
 }
 
 func (sac StorageAuthorityClientWrapper) CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error) {
@@ -364,17 +346,8 @@ func (sas StorageAuthorityServerWrapper) GetCertificateStatus(ctx context.Contex
 	return CertStatusToPB(certStatus), nil
 }
 
-func (sas StorageAuthorityServerWrapper) CountCertificatesByNames(ctx context.Context, request *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
-	if core.IsAnyNilOrZero(request, request.Range, request.Range.Earliest, request.Range.Latest, request.Names) {
-		return nil, errIncompleteRequest
-	}
-
-	byNames, err := sas.inner.CountCertificatesByNames(ctx, request.Names, time.Unix(0, request.Range.Earliest), time.Unix(0, request.Range.Latest))
-	if err != nil {
-		return nil, err
-	}
-
-	return &sapb.CountByNames{CountByNames: byNames}, nil
+func (sas StorageAuthorityServerWrapper) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
+	return sas.inner.CountCertificatesByNames(ctx, req)
 }
 
 func (sas StorageAuthorityServerWrapper) CountRegistrationsByIP(ctx context.Context, request *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {

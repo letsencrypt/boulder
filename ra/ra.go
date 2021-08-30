@@ -1371,21 +1371,27 @@ func domainsForRateLimiting(names []string) ([]string, error) {
 // for each of the names. If the count for any of the names exceeds the limit
 // for the given registration then the names out of policy are returned to be
 // used for a rate limit error.
-func (ra *RegistrationAuthorityImpl) enforceNameCounts(
-	ctx context.Context,
-	names []string,
-	limit ratelimit.RateLimitPolicy,
-	regID int64) ([]string, error) {
-
+func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) ([]string, error) {
 	now := ra.clk.Now()
-	windowBegin := limit.WindowBegin(now)
-	counts, err := ra.SA.CountCertificatesByNames(ctx, names, windowBegin, now)
+	req := &sapb.CountCertificatesByNamesRequest{
+		Names: names,
+		Range: &sapb.Range{
+			Earliest: limit.WindowBegin(now).UnixNano(),
+			Latest:   now.UnixNano(),
+		},
+	}
+
+	response, err := ra.SA.CountCertificatesByNames(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
+	if len(response.CountByNames) == 0 {
+		return nil, errIncompleteGRPCResponse
+	}
+
 	var badNames []string
-	for _, entry := range counts {
+	for _, entry := range response.CountByNames {
 		if int(entry.Count) >= limit.GetThreshold(entry.Name, regID) {
 			badNames = append(badNames, entry.Name)
 		}
