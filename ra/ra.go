@@ -284,14 +284,13 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(ctx context.Contex
 	}
 
 	now := ra.clk.Now()
-	req := &sapb.CountRegistrationsByIPRequest{
+	count, err := counter(ctx, &sapb.CountRegistrationsByIPRequest{
 		Ip: ip,
 		Range: &sapb.Range{
 			Earliest: limit.WindowBegin(now).UnixNano(),
 			Latest:   now.UnixNano(),
 		},
-	}
-	count, err := counter(ctx, req)
+	})
 	if err != nil {
 		return err
 	}
@@ -539,14 +538,13 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 		return nil
 	}
 	now := ra.clk.Now()
-	req := &sapb.CountOrdersRequest{
+	count, err := ra.SA.CountOrders(ctx, &sapb.CountOrdersRequest{
 		AccountID: acctID,
 		Range: &sapb.Range{
 			Earliest: now.Add(-limit.Window.Duration).UnixNano(),
 			Latest:   now.UnixNano(),
 		},
-	}
-	count, err := ra.SA.CountOrders(ctx, req)
+	})
 	if err != nil {
 		return err
 	}
@@ -1457,11 +1455,10 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 }
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
-	req := &sapb.CountFQDNSetsRequest{
+	count, err := ra.SA.CountFQDNSets(ctx, &sapb.CountFQDNSetsRequest{
 		Domains: names,
 		Window:  limit.Window.Duration.Nanoseconds(),
-	}
-	count, err := ra.SA.CountFQDNSets(ctx, req)
+	})
 	if err != nil {
 		return fmt.Errorf("checking duplicate certificate limit for %q: %s", names, err)
 	}
