@@ -367,8 +367,8 @@ func (sa *StorageAuthority) GetValidAuthorizations(_ context.Context, regID int6
 }
 
 // CountCertificatesByNames is a mock
-func (sa *StorageAuthority) CountCertificatesByNames(_ context.Context, _ []string, _, _ time.Time) (ret []*sapb.CountByNames_MapElement, err error) {
-	return
+func (sa *StorageAuthority) CountCertificatesByNames(_ context.Context, _ *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
+	return &sapb.CountByNames{}, nil
 }
 
 // CountRegistrationsByIP is a mock
