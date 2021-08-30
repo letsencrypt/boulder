@@ -1786,14 +1786,14 @@ func (sa *mockSAWithCert) GetCertificate(_ context.Context, req *sapb.Serial) (*
 
 // GetCertificateStatus returns the mock SA's status, if the given serial matches.
 // Otherwise, returns not found.
-func (sa *mockSAWithCert) GetCertificateStatus(_ context.Context, serial string) (core.CertificateStatus, error) {
-	if serial != core.SerialToString(sa.cert.SerialNumber) {
-		return core.CertificateStatus{}, berrors.NotFoundError("Status for certificate with serial %q not found", serial)
+func (sa *mockSAWithCert) GetCertificateStatus(_ context.Context, req *sapb.Serial) (*corepb.CertificateStatus, error) {
+	if req.Serial != core.SerialToString(sa.cert.SerialNumber) {
+		return nil, berrors.NotFoundError("Status for certificate with serial %q not found", req.Serial)
 	}
 
-	return core.CertificateStatus{
+	return &corepb.CertificateStatus{
 		Serial: core.SerialToString(sa.cert.SerialNumber),
-		Status: sa.status,
+		Status: string(sa.status),
 	}, nil
 }
 
