@@ -351,18 +351,21 @@ func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, req *sapb.Se
 // GetCertificateStatus takes a hexadecimal string representing the full 128-bit serial
 // number of a certificate and returns data about that certificate's current
 // validity.
-func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial string) (core.CertificateStatus, error) {
-	if !core.ValidSerial(serial) {
-		err := fmt.Errorf("Invalid certificate serial %s", serial)
-		return core.CertificateStatus{}, err
+func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, req *sapb.Serial) (*corepb.CertificateStatus, error) {
+	if req.Serial == "" {
+		return nil, errIncompleteRequest
+	}
+	if !core.ValidSerial(req.Serial) {
+		err := fmt.Errorf("Invalid certificate serial %s", req.Serial)
+		return nil, err
 	}
 
-	certStatus, err := SelectCertificateStatus(ssa.dbMap.WithContext(ctx), serial)
+	certStatus, err := SelectCertificateStatus(ssa.dbMap.WithContext(ctx), req.Serial)
 	if err != nil {
-		return core.CertificateStatus{}, err
+		return nil, err
 	}
 
-	return certStatus, nil
+	return bgrpc.CertStatusToPB(certStatus), nil
 }
 
 // NewRegistration stores a new Registration

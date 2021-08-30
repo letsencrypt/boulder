@@ -99,7 +99,7 @@ type StorageGetter interface {
 	GetRegistrationByKey(ctx context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error)
 	GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
 	GetPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
-	GetCertificateStatus(ctx context.Context, serial string) (CertificateStatus, error)
+	GetCertificateStatus(ctx context.Context, req *sapb.Serial) (*corepb.CertificateStatus, error)
 	CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error)
 	CountRegistrationsByIP(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error)
 	CountRegistrationsByIPRange(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error)

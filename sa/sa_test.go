@@ -27,7 +27,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
-	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
@@ -1690,35 +1689,34 @@ func TestRevokeCertificate(t *testing.T) {
 
 	serial := "000000000000000000000000000000021bd4"
 
-	status, err := sa.GetCertificateStatus(ctx, serial)
+	status, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
 	test.AssertNotError(t, err, "GetCertificateStatus failed")
-	test.AssertEquals(t, status.Status, core.OCSPStatusGood)
+	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusGood)
 
 	fc.Add(1 * time.Hour)
 
 	now := fc.Now()
-	dateUnix := now.UnixNano()
 	reason := int64(1)
 	response := []byte{1, 2, 3}
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial:   serial,
-		Date:     dateUnix,
+		Date:     now.UnixNano(),
 		Reason:   reason,
 		Response: response,
 	})
 	test.AssertNotError(t, err, "RevokeCertificate failed")
 
-	status, err = sa.GetCertificateStatus(ctx, serial)
+	status, err = sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
 	test.AssertNotError(t, err, "GetCertificateStatus failed")
-	test.AssertEquals(t, status.Status, core.OCSPStatusRevoked)
-	test.AssertEquals(t, status.RevokedReason, revocation.Reason(reason))
-	test.AssertEquals(t, status.RevokedDate, now)
-	test.AssertEquals(t, status.OCSPLastUpdated, now)
-	test.AssertDeepEquals(t, status.OCSPResponse, response)
+	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
+	test.AssertEquals(t, status.RevokedReason, reason)
+	test.AssertEquals(t, status.RevokedDate, now.UnixNano())
+	test.AssertEquals(t, status.OcspLastUpdated, now.UnixNano())
+	test.AssertDeepEquals(t, status.OcspResponse, response)
 
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial:   serial,
-		Date:     dateUnix,
+		Date:     now.UnixNano(),
 		Reason:   reason,
 		Response: response,
 	})

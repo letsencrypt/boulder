@@ -41,15 +41,8 @@ func (sac StorageAuthorityClientWrapper) GetPrecertificate(ctx context.Context, 
 	return sac.inner.GetPrecertificate(ctx, serial)
 }
 
-func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Context, serial string) (core.CertificateStatus, error) {
-	response, err := sac.inner.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
-	if err != nil {
-		return core.CertificateStatus{}, err
-	}
-	if response == nil || response.Serial == "" || response.Status == "" || response.OcspLastUpdated == 0 || response.LastExpirationNagSent == 0 || response.OcspResponse == nil || response.NotAfter == 0 {
-		return core.CertificateStatus{}, errIncompleteResponse
-	}
-	return PBToCertStatus(response)
+func (sac StorageAuthorityClientWrapper) GetCertificateStatus(ctx context.Context, req *sapb.Serial) (*corepb.CertificateStatus, error) {
+	return sac.inner.GetCertificateStatus(ctx, req)
 }
 
 func (sac StorageAuthorityClientWrapper) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
@@ -250,16 +243,7 @@ func (sas StorageAuthorityServerWrapper) GetPrecertificate(ctx context.Context, 
 }
 
 func (sas StorageAuthorityServerWrapper) GetCertificateStatus(ctx context.Context, request *sapb.Serial) (*corepb.CertificateStatus, error) {
-	if core.IsAnyNilOrZero(request, request.Serial) {
-		return nil, errIncompleteRequest
-	}
-
-	certStatus, err := sas.inner.GetCertificateStatus(ctx, request.Serial)
-	if err != nil {
-		return nil, err
-	}
-
-	return CertStatusToPB(certStatus), nil
+	return sas.inner.GetCertificateStatus(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
