@@ -40,7 +40,7 @@ service StorageAuthority {
   rpc NewOrder(core.Order) returns (core.Order) {}
   rpc SetOrderProcessing(OrderRequest) returns (google.protobuf.Empty) {}
   rpc SetOrderError(core.Order) returns (google.protobuf.Empty) {}
-  rpc FinalizeOrder(core.Order) returns (google.protobuf.Empty) {}
+  rpc FinalizeOrder(FinalizeOrderRequest) returns (google.protobuf.Empty) {}
   rpc GetOrder(OrderRequest) returns (core.Order) {}
   rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
   rpc RevokeCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
@@ -181,6 +181,11 @@ message GetValidOrderAuthorizationsRequest {
 message GetOrderForNamesRequest {
   int64 acctID = 1;
   repeated string names = 2;
+}
+
+message FinalizeOrderRequest {
+  int64 id = 1;
+  string certificateSerial = 2;
 }
 
 message GetAuthorizationsRequest {

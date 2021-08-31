@@ -1129,7 +1129,7 @@ func TestFinalizeOrder(t *testing.T) {
 
 	// Finalize the order with a certificate serial
 	order.CertificateSerial = "eat.serial.for.breakfast"
-	err = sa.FinalizeOrder(context.Background(), order)
+	_, err = sa.FinalizeOrder(context.Background(), &sapb.FinalizeOrderRequest{Id: order.Id, CertificateSerial: order.CertificateSerial})
 	test.AssertNotError(t, err, "FinalizeOrder failed")
 
 	// Read the order by ID from the DB to check the certificate serial and status
@@ -1496,7 +1496,7 @@ func TestGetOrderForNames(t *testing.T) {
 
 	// Finalize the order
 	order.CertificateSerial = "cinnamon toast crunch"
-	err = sa.FinalizeOrder(ctx, order)
+	_, err = sa.FinalizeOrder(ctx, &sapb.FinalizeOrderRequest{Id: order.Id, CertificateSerial: order.CertificateSerial})
 	test.AssertNotError(t, err, "sa.FinalizeOrder failed")
 
 	// Call GetOrderForNames with the same account ID and set of names as
@@ -1630,7 +1630,7 @@ func TestStatusForOrder(t *testing.T) {
 			// If requested, finalize the order
 			if tc.Finalize {
 				newOrder.CertificateSerial = "lucky charms"
-				err := sa.FinalizeOrder(ctx, newOrder)
+				_, err = sa.FinalizeOrder(ctx, &sapb.FinalizeOrderRequest{Id: newOrder.Id, CertificateSerial: newOrder.CertificateSerial})
 				test.AssertNotError(t, err, "Error finalizing order")
 			}
 			// Fetch the order by ID to get its calculated status
