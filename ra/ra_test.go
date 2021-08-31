@@ -1728,12 +1728,12 @@ func (m mockSAWithFQDNSet) addFQDNSet(names []string) {
 }
 
 // Search for a set of domain names in the FQDN set map
-func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, names []string) (bool, error) {
-	hash := m.hashNames(names)
+func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, req *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {
+	hash := m.hashNames(req.Domains)
 	if _, exists := m.fqdnSet[hash]; exists {
-		return true, nil
+		return &sapb.Exists{Exists: true}, nil
 	}
-	return false, nil
+	return &sapb.Exists{Exists: false}, nil
 }
 
 // Return a map of domain -> certificate count.

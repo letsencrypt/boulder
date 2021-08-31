@@ -316,8 +316,8 @@ func (sa *StorageAuthority) CountFQDNSets(_ context.Context, _ *sapb.CountFQDNSe
 }
 
 // FQDNSetExists is a mock
-func (sa *StorageAuthority) FQDNSetExists(_ context.Context, names []string) (bool, error) {
-	return false, nil
+func (sa *StorageAuthority) FQDNSetExists(_ context.Context, _ *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {
+	return &sapb.Exists{Exists: false}, nil
 }
 
 func (sa *StorageAuthority) PreviousCertificateExists(

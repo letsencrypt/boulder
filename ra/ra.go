@@ -1408,11 +1408,11 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 	// check if there is already an existing certificate for
 	// the exact name set we are issuing for. If so bypass the
 	// the certificatesPerName limit.
-	exists, err := ra.SA.FQDNSetExists(ctx, names)
+	exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Domains: names})
 	if err != nil {
 		return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
 	}
-	if exists {
+	if exists.Exists {
 		ra.rateLimitCounter.WithLabelValues("certificates_for_domain", "FQDN set bypass").Inc()
 		return nil
 	}
@@ -1432,11 +1432,11 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 		// check if there is already an existing certificate for
 		// the exact name set we are issuing for. If so bypass the
 		// the certificatesPerName limit.
-		exists, err := ra.SA.FQDNSetExists(ctx, names)
+		exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Domains: names})
 		if err != nil {
 			return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
 		}
-		if exists {
+		if exists.Exists {
 			ra.rateLimitCounter.WithLabelValues("certificates_for_domain", "FQDN set bypass").Inc()
 			return nil
 		}

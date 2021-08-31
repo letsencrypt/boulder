@@ -787,14 +787,15 @@ func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(
 
 // FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
 // exists in the database
-func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []string) (bool, error) {
-	exists, err := ssa.checkFQDNSetExists(
-		ssa.dbMap.WithContext(ctx).SelectOne,
-		names)
-	if err != nil {
-		return false, err
+func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {
+	if len(req.Domains) == 0 {
+		return nil, errIncompleteRequest
 	}
-	return exists, nil
+	exists, err := ssa.checkFQDNSetExists(ssa.dbMap.WithContext(ctx).SelectOne, req.Domains)
+	if err != nil {
+		return nil, err
+	}
+	return &sapb.Exists{Exists: exists}, nil
 }
 
 // oneSelectorFunc is a func type that matches both gorp.Transaction.SelectOne
@@ -821,10 +822,11 @@ func (ssa *SQLStorageAuthority) checkFQDNSetExists(selector oneSelectorFunc, nam
 // used to determine if a certificate has previously been issued for a given
 // domain name in order to determine if validations should be allowed during
 // the v1 API shutoff.
-func (ssa *SQLStorageAuthority) PreviousCertificateExists(
-	ctx context.Context,
-	req *sapb.PreviousCertificateExistsRequest,
-) (*sapb.Exists, error) {
+func (ssa *SQLStorageAuthority) PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (*sapb.Exists, error) {
+	if req.Domain == "" || req.RegID == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	exists := &sapb.Exists{Exists: true}
 	notExists := &sapb.Exists{Exists: false}
 

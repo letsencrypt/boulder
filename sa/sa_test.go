@@ -590,9 +590,9 @@ func TestFQDNSetsExists(t *testing.T) {
 	defer cleanUp()
 
 	names := []string{"a.example.com", "B.example.com"}
-	exists, err := sa.FQDNSetExists(ctx, names)
+	exists, err := sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Domains: names})
 	test.AssertNotError(t, err, "Failed to check FQDN set existence")
-	test.Assert(t, !exists, "FQDN set shouldn't exist")
+	test.Assert(t, !exists.Exists, "FQDN set shouldn't exist")
 
 	tx, err := sa.dbMap.Begin()
 	test.AssertNotError(t, err, "Failed to open transaction")
@@ -602,9 +602,9 @@ func TestFQDNSetsExists(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to add name set")
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
-	exists, err = sa.FQDNSetExists(ctx, names)
+	exists, err = sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Domains: names})
 	test.AssertNotError(t, err, "Failed to check FQDN set existence")
-	test.Assert(t, exists, "FQDN set does exist")
+	test.Assert(t, exists.Exists, "FQDN set does exist")
 }
 
 type execRecorder struct {
