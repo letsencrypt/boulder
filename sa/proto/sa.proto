@@ -103,11 +103,7 @@ message CountCertificatesByNamesRequest {
 }
 
 message CountByNames {
-  message MapElement {
-          string name = 1;
-          int64 count = 2;
-  }
-  repeated MapElement countByNames = 1;
+  map<string, int64> counts = 1;
 }
 
 message CountRegistrationsByIPRequest {
