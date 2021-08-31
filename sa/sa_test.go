@@ -1025,8 +1025,6 @@ func TestNewOrder(t *testing.T) {
 		Names:            []string{"example.com", "just.another.example.com"},
 		V2Authorizations: []int64{1, 2, 3},
 	})
-	//	Status:           string(core.StatusPending),
-
 	test.AssertNotError(t, err, "sa.NewOrder failed")
 	test.AssertEquals(t, order.Id, int64(1))
 
