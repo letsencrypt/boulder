@@ -313,15 +313,8 @@ type config struct {
 		BadResultsOnly      bool
 		CheckPeriod         cmd.ConfigDuration
 
-		// TODO(#5581): This field is deprecated and can be removed once staging
-		// and production configs use `acceptableValidityDurations`.
-		//
-		// AcceptableValidityPeriods is a list of lengths (in seconds) which are
-		// acceptable Validity Periods for certificates we issue.
-		AcceptableValidityPeriods []uint
-
-		// AcceptableValidityDurations is a list of durations (in seconds) which are
-		// acceptable Validity durations for certificates we issue.
+		// AcceptableValidityDurations is a list of durations which are
+		// acceptable for certificates we issue.
 		AcceptableValidityDurations []cmd.ConfigDuration
 
 		// IgnoredLints is a list of zlint names. Any lint results from a lint in
@@ -357,35 +350,16 @@ func main() {
 	err = blog.Set(logger)
 	cmd.FailOnError(err, "Failed to set audit logger")
 
-	// TODO(#5581): This check can be removed once staging and production configs
-	// use `acceptableValidityDurations`.
-	if len(config.CertChecker.AcceptableValidityDurations) > 0 && len(config.CertChecker.AcceptableValidityPeriods) > 0 {
-		cmd.Fail("Config specifies both 'acceptableValidityDurations' and 'acceptableValidityPeriods'")
-	}
-
 	acceptableValidityDurations := make(map[time.Duration]bool)
-	if len(config.CertChecker.AcceptableValidityDurations) == 0 && len(config.CertChecker.AcceptableValidityPeriods) == 0 {
+	if len(config.CertChecker.AcceptableValidityDurations) > 0 {
+		for _, entry := range config.CertChecker.AcceptableValidityDurations {
+			acceptableValidityDurations[entry.Duration] = true
+		}
+	} else {
 		// For backwards compatibility, assume only a single valid validity
 		// period of exactly 90 days if none is configured.
 		ninetyDays := (time.Hour * 24) * 90
 		acceptableValidityDurations[ninetyDays] = true
-	} else {
-		if len(config.CertChecker.AcceptableValidityDurations) > 0 {
-			for _, duration := range config.CertChecker.AcceptableValidityDurations {
-				acceptableValidityDurations[duration.Duration] = true
-			}
-		}
-		if len(config.CertChecker.AcceptableValidityPeriods) > 0 {
-			// TODO(#5581): This conditional is deprecated and can be removed once
-			// staging and production configs use `acceptableValidityDurations`.
-			for _, period := range config.CertChecker.AcceptableValidityPeriods {
-				duration, err := time.ParseDuration(fmt.Sprintf("%ds", period))
-				if err != nil {
-					cmd.FailOnError(err, "Failed to marshal period to time.Duration")
-				}
-				acceptableValidityDurations[duration] = true
-			}
-		}
 	}
 
 	// Validate PA config and set defaults if needed.
