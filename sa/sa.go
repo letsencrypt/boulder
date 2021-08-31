@@ -991,10 +991,13 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 	return res, nil
 }
 
-// SetOrderProcessing updates a provided *corepb.Order in pending status to be
-// in processing status by updating the `beganProcessing` field of the
-// corresponding Order table row in the DB.
-func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *corepb.Order) error {
+// SetOrderProcessing updates an order from pending status to processing
+// status by updating the `beganProcessing` field of the corresponding
+// Order table row in the DB.
+func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *sapb.OrderRequest) (*emptypb.Empty, error) {
+	if req.Id == 0 {
+		return nil, errIncompleteRequest
+	}
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		result, err := txWithCtx.Exec(`
 		UPDATE orders
@@ -1015,7 +1018,10 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *cor
 
 		return nil, nil
 	})
-	return overallError
+	if overallError != nil {
+		return nil, overallError
+	}
+	return &emptypb.Empty{}, nil
 }
 
 // SetOrderError updates a provided Order's error field.

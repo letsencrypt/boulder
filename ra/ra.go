@@ -1032,7 +1032,8 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	// Otherwise the order will be "stuck" in processing state. It can not be
 	// finalized because it isn't pending, but we aren't going to process it
 	// further because we already did and encountered an error.
-	if err := ra.SA.SetOrderProcessing(ctx, order); err != nil {
+	_, err = ra.SA.SetOrderProcessing(ctx, &sapb.OrderRequest{Id: order.Id})
+	if err != nil {
 		// Fail the order with a server internal error - we weren't able to set the
 		// status to processing and that's unexpected & weird.
 		ra.failOrder(ctx, order, probs.ServerInternal("Error setting order processing"))
