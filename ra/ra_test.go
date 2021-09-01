@@ -2921,13 +2921,11 @@ func TestFinalizeOrder(t *testing.T) {
 
 	// Create an order with valid authzs, it should end up status ready in the
 	// resulting returned order
-	modernFinalOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
+	modernFinalOrder, err := sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
 		RegistrationID:   Registration.Id,
 		Expires:          exp.UnixNano(),
 		Names:            []string{"not-example.com", "www.not-example.com"},
 		V2Authorizations: []int64{authzIDA, authzIDB},
-		Status:           string(core.StatusReady),
-		BeganProcessing:  false,
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs, ready status")
 
@@ -3148,12 +3146,11 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, "valid")
 
 	// Create a new order to finalize with names in SAN and CN
-	mixedOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
+	mixedOrder, err := sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
 		RegistrationID:   Registration.Id,
 		Expires:          exp.UnixNano(),
 		Names:            []string{"not-example.com", "www.not-example.com"},
 		V2Authorizations: []int64{authzIDA, authzIDB},
-		Status:           string(core.StatusPending),
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
 	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -3354,12 +3351,11 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	}
 
 	// Create a pending order for all of the names
-	order, err := sa.NewOrder(context.Background(), &corepb.Order{
+	order, err := sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
 		RegistrationID:   Registration.Id,
 		Expires:          exp.UnixNano(),
 		Names:            names,
 		V2Authorizations: authzIDs,
-		Status:           string(core.StatusPending),
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
 
@@ -3709,12 +3705,11 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 	}
 
 	// Create a pending order for all of the names
-	order, err := sa.NewOrder(context.Background(), &corepb.Order{
+	order, err := sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
 		RegistrationID:   Registration.Id,
 		Expires:          exp.UnixNano(),
 		Names:            names,
 		V2Authorizations: authzIDs,
-		Status:           string(core.StatusPending),
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
 

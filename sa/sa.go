@@ -912,8 +912,13 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 }
 
 // NewOrder adds a new v2 style order to the database
-func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order) (*corepb.Order, error) {
+func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *sapb.NewOrderRequest) (*corepb.Order, error) {
 	output, err := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+		// Check new order request fields.
+		if req.RegistrationID == 0 || req.Expires == 0 || len(req.Names) == 0 {
+			return nil, errIncompleteRequest
+		}
+
 		order := &orderModel{
 			RegistrationID: req.RegistrationID,
 			Expires:        time.Unix(0, req.Expires),
