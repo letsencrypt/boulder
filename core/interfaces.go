@@ -2,9 +2,7 @@ package core
 
 import (
 	"context"
-	"net"
 	"net/http"
-	"time"
 
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -101,13 +99,13 @@ type StorageGetter interface {
 	GetRegistrationByKey(ctx context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error)
 	GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
 	GetPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
-	GetCertificateStatus(ctx context.Context, serial string) (CertificateStatus, error)
-	CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) (countByDomain []*sapb.CountByNames_MapElement, err error)
-	CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error)
-	CountRegistrationsByIPRange(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error)
-	CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error)
-	CountFQDNSets(ctx context.Context, window time.Duration, domains []string) (count int64, err error)
-	FQDNSetExists(ctx context.Context, domains []string) (exists bool, err error)
+	GetCertificateStatus(ctx context.Context, req *sapb.Serial) (*corepb.CertificateStatus, error)
+	CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error)
+	CountRegistrationsByIP(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error)
+	CountRegistrationsByIPRange(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error)
+	CountOrders(ctx context.Context, req *sapb.CountOrdersRequest) (*sapb.Count, error)
+	CountFQDNSets(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Count, error)
+	FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest) (*sapb.Exists, error)
 	PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (exists *sapb.Exists, err error)
 	GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error)
 	GetOrderForNames(ctx context.Context, req *sapb.GetOrderForNamesRequest) (*corepb.Order, error)
@@ -130,11 +128,11 @@ type StorageAdder interface {
 	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error)
 	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*emptypb.Empty, error)
 	DeactivateRegistration(ctx context.Context, req *sapb.RegistrationID) (*emptypb.Empty, error)
-	NewOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error)
+	NewOrder(ctx context.Context, req *sapb.NewOrderRequest) (*corepb.Order, error)
 	NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest) (*corepb.Order, error)
-	SetOrderProcessing(ctx context.Context, order *corepb.Order) error
-	FinalizeOrder(ctx context.Context, order *corepb.Order) error
-	SetOrderError(ctx context.Context, order *corepb.Order) error
+	SetOrderProcessing(ctx context.Context, req *sapb.OrderRequest) (*emptypb.Empty, error)
+	FinalizeOrder(ctx context.Context, req *sapb.FinalizeOrderRequest) (*emptypb.Empty, error)
+	SetOrderError(ctx context.Context, req *sapb.SetOrderErrorRequest) (*emptypb.Empty, error)
 	RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error)
 	// New authz2 methods
 	NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error)

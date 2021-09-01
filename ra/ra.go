@@ -271,31 +271,31 @@ type certificateRequestEvent struct {
 // registration-based overrides are necessary.
 const noRegistrationID = -1
 
-// registrationCounter is a type to abstract the use of
-// ra.SA.CountRegistrationsByIP or ra.SA.CountRegistrationsByIPRange
-type registrationCounter func(context.Context, net.IP, time.Time, time.Time) (int, error)
+// registrationCounter is a type to abstract the use of `CountRegistrationsByIP`
+// or `CountRegistrationsByIPRange` SA methods.
+type registrationCounter func(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error)
 
 // checkRegistrationIPLimit checks a specific registraton limit by using the
 // provided registrationCounter function to determine if the limit has been
 // exceeded for a given IP or IP range
-func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(
-	ctx context.Context,
-	limit ratelimit.RateLimitPolicy,
-	ip net.IP,
-	counter registrationCounter) error {
-
+func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(ctx context.Context, limit ratelimit.RateLimitPolicy, ip net.IP, counter registrationCounter) error {
 	if !limit.Enabled() {
 		return nil
 	}
 
 	now := ra.clk.Now()
-	windowBegin := limit.WindowBegin(now)
-	count, err := counter(ctx, ip, windowBegin, now)
+	count, err := counter(ctx, &sapb.CountRegistrationsByIPRequest{
+		Ip: ip,
+		Range: &sapb.Range{
+			Earliest: limit.WindowBegin(now).UnixNano(),
+			Latest:   now.UnixNano(),
+		},
+	})
 	if err != nil {
 		return err
 	}
 
-	if count >= limit.GetThreshold(ip.String(), noRegistrationID) {
+	if count.Count >= limit.GetThreshold(ip.String(), noRegistrationID) {
 		return berrors.RateLimitError("too many registrations for this IP")
 	}
 
@@ -470,7 +470,7 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 		// Most rate limits have a key for overrides, but there is no meaningful key
 		// here.
 		noKey := ""
-		if int(countPB.Count) >= limit.GetThreshold(noKey, regID) {
+		if countPB.Count >= limit.GetThreshold(noKey, regID) {
 			ra.rateLimitCounter.WithLabelValues("pending_authorizations_by_registration_id", "exceeded").Inc()
 			ra.log.Infof("Rate limit exceeded, PendingAuthorizationsByRegID, regID: %d", regID)
 			return berrors.RateLimitError("too many currently pending authorizations")
@@ -537,15 +537,20 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 	if !limit.Enabled() {
 		return nil
 	}
-	latest := ra.clk.Now()
-	earliest := latest.Add(-limit.Window.Duration)
-	count, err := ra.SA.CountOrders(ctx, acctID, earliest, latest)
+	now := ra.clk.Now()
+	count, err := ra.SA.CountOrders(ctx, &sapb.CountOrdersRequest{
+		AccountID: acctID,
+		Range: &sapb.Range{
+			Earliest: now.Add(-limit.Window.Duration).UnixNano(),
+			Latest:   now.UnixNano(),
+		},
+	})
 	if err != nil {
 		return err
 	}
 	// There is no meaningful override key to use for this rate limit
 	noKey := ""
-	if count >= limit.GetThreshold(noKey, acctID) {
+	if count.Count >= limit.GetThreshold(noKey, acctID) {
 		ra.rateLimitCounter.WithLabelValues("new_order_by_registration_id", "exceeded").Inc()
 		return berrors.RateLimitError("too many new orders recently")
 	}
@@ -956,7 +961,11 @@ func (ra *RegistrationAuthorityImpl) failOrder(
 
 	// Assign the protobuf problem to the field and save it via the SA
 	order.Error = pbProb
-	if err := ra.SA.SetOrderError(ctx, order); err != nil {
+	_, err = ra.SA.SetOrderError(ctx, &sapb.SetOrderErrorRequest{
+		Id:    order.Id,
+		Error: order.Error,
+	})
+	if err != nil {
 		ra.log.AuditErrf("Could not persist order error: %q", err)
 	}
 	return order
@@ -1027,7 +1036,8 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	// Otherwise the order will be "stuck" in processing state. It can not be
 	// finalized because it isn't pending, but we aren't going to process it
 	// further because we already did and encountered an error.
-	if err := ra.SA.SetOrderProcessing(ctx, order); err != nil {
+	_, err = ra.SA.SetOrderProcessing(ctx, &sapb.OrderRequest{Id: order.Id})
+	if err != nil {
 		// Fail the order with a server internal error - we weren't able to set the
 		// status to processing and that's unexpected & weird.
 		ra.failOrder(ctx, order, probs.ServerInternal("Error setting order processing"))
@@ -1066,7 +1076,8 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 	// Finalize the order with its new CertificateSerial
 	order.CertificateSerial = core.SerialToString(parsedCertificate.SerialNumber)
-	if err := ra.SA.FinalizeOrder(ctx, order); err != nil {
+	_, err = ra.SA.FinalizeOrder(ctx, &sapb.FinalizeOrderRequest{Id: order.Id, CertificateSerial: order.CertificateSerial})
+	if err != nil {
 		// Fail the order with a server internal error. We weren't able to persist
 		// the certificate serial and that's unexpected & weird.
 		ra.failOrder(ctx, order, probs.ServerInternal("Error persisting finalized order"))
@@ -1371,22 +1382,28 @@ func domainsForRateLimiting(names []string) ([]string, error) {
 // for each of the names. If the count for any of the names exceeds the limit
 // for the given registration then the names out of policy are returned to be
 // used for a rate limit error.
-func (ra *RegistrationAuthorityImpl) enforceNameCounts(
-	ctx context.Context,
-	names []string,
-	limit ratelimit.RateLimitPolicy,
-	regID int64) ([]string, error) {
-
+func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) ([]string, error) {
 	now := ra.clk.Now()
-	windowBegin := limit.WindowBegin(now)
-	counts, err := ra.SA.CountCertificatesByNames(ctx, names, windowBegin, now)
+	req := &sapb.CountCertificatesByNamesRequest{
+		Names: names,
+		Range: &sapb.Range{
+			Earliest: limit.WindowBegin(now).UnixNano(),
+			Latest:   now.UnixNano(),
+		},
+	}
+
+	response, err := ra.SA.CountCertificatesByNames(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
+	if len(response.CountByNames) == 0 {
+		return nil, errIncompleteGRPCResponse
+	}
+
 	var badNames []string
-	for _, entry := range counts {
-		if int(entry.Count) >= limit.GetThreshold(entry.Name, regID) {
+	for _, entry := range response.CountByNames {
+		if entry.Count >= limit.GetThreshold(entry.Name, regID) {
 			badNames = append(badNames, entry.Name)
 		}
 	}
@@ -1397,11 +1414,11 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 	// check if there is already an existing certificate for
 	// the exact name set we are issuing for. If so bypass the
 	// the certificatesPerName limit.
-	exists, err := ra.SA.FQDNSetExists(ctx, names)
+	exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Domains: names})
 	if err != nil {
 		return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
 	}
-	if exists {
+	if exists.Exists {
 		ra.rateLimitCounter.WithLabelValues("certificates_for_domain", "FQDN set bypass").Inc()
 		return nil
 	}
@@ -1421,11 +1438,11 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 		// check if there is already an existing certificate for
 		// the exact name set we are issuing for. If so bypass the
 		// the certificatesPerName limit.
-		exists, err := ra.SA.FQDNSetExists(ctx, names)
+		exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Domains: names})
 		if err != nil {
 			return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
 		}
-		if exists {
+		if exists.Exists {
 			ra.rateLimitCounter.WithLabelValues("certificates_for_domain", "FQDN set bypass").Inc()
 			return nil
 		}
@@ -1450,13 +1467,16 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 }
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
-	count, err := ra.SA.CountFQDNSets(ctx, limit.Window.Duration, names)
+	count, err := ra.SA.CountFQDNSets(ctx, &sapb.CountFQDNSetsRequest{
+		Domains: names,
+		Window:  limit.Window.Duration.Nanoseconds(),
+	})
 	if err != nil {
 		return fmt.Errorf("checking duplicate certificate limit for %q: %s", names, err)
 	}
 	names = core.UniqueLowerNames(names)
 	threshold := limit.GetThreshold(strings.Join(names, ","), regID)
-	if int(count) >= threshold {
+	if count.Count >= threshold {
 		return berrors.RateLimitError(
 			"too many certificates (%d) already issued for this exact set of domains in the last %.0f hours: %s",
 			threshold, limit.Window.Duration.Hours(), strings.Join(names, ","),
@@ -2183,13 +2203,15 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	var storedOrder *corepb.Order
 	if features.Enabled(features.StreamlineOrderAndAuthzs) {
 		newOrderAndAuthzsReq := &sapb.NewOrderAndAuthzsRequest{
-			Order:     order,
+			NewOrder: &sapb.NewOrderRequest{
+				RegistrationID:   order.RegistrationID,
+				Expires:          order.Expires,
+				Names:            order.Names,
+				V2Authorizations: order.V2Authorizations,
+			},
 			NewAuthzs: newAuthzs,
 		}
 		storedOrder, err = ra.SA.NewOrderAndAuthzs(ctx, newOrderAndAuthzsReq)
-		if err != nil {
-			return nil, err
-		}
 	} else {
 		// If new authorizations are needed, call AddPendingAuthorizations. Also check
 		// whether the newly created pending authz's have an expiry lower than minExpiry
@@ -2206,10 +2228,18 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			order.V2Authorizations = append(order.V2Authorizations, authzIDs.Ids...)
 		}
 
-		storedOrder, err = ra.SA.NewOrder(ctx, order)
-		if err != nil {
-			return nil, err
-		}
+		storedOrder, err = ra.SA.NewOrder(ctx, &sapb.NewOrderRequest{
+			RegistrationID:   order.RegistrationID,
+			Expires:          order.Expires,
+			Names:            order.Names,
+			V2Authorizations: order.V2Authorizations,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	if storedOrder.Id == 0 || storedOrder.Created == 0 || storedOrder.Status == "" || storedOrder.RegistrationID == 0 || storedOrder.Expires == 0 || len(storedOrder.Names) == 0 {
+		return nil, errIncompleteGRPCResponse
 	}
 
 	// Note how many names are being requested in this certificate order.

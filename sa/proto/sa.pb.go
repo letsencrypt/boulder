@@ -1223,6 +1223,187 @@ func (x *OrderRequest) GetId() int64 {
 	return 0
 }
 
+type NewOrderRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	RegistrationID   int64    `protobuf:"varint,1,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
+	Expires          int64    `protobuf:"varint,2,opt,name=expires,proto3" json:"expires,omitempty"`
+	Names            []string `protobuf:"bytes,3,rep,name=names,proto3" json:"names,omitempty"`
+	V2Authorizations []int64  `protobuf:"varint,4,rep,packed,name=v2Authorizations,proto3" json:"v2Authorizations,omitempty"`
+}
+
+func (x *NewOrderRequest) Reset() {
+	*x = NewOrderRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_sa_proto_msgTypes[22]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *NewOrderRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NewOrderRequest) ProtoMessage() {}
+
+func (x *NewOrderRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sa_proto_msgTypes[22]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NewOrderRequest.ProtoReflect.Descriptor instead.
+func (*NewOrderRequest) Descriptor() ([]byte, []int) {
+	return file_sa_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *NewOrderRequest) GetRegistrationID() int64 {
+	if x != nil {
+		return x.RegistrationID
+	}
+	return 0
+}
+
+func (x *NewOrderRequest) GetExpires() int64 {
+	if x != nil {
+		return x.Expires
+	}
+	return 0
+}
+
+func (x *NewOrderRequest) GetNames() []string {
+	if x != nil {
+		return x.Names
+	}
+	return nil
+}
+
+func (x *NewOrderRequest) GetV2Authorizations() []int64 {
+	if x != nil {
+		return x.V2Authorizations
+	}
+	return nil
+}
+
+type NewOrderAndAuthzsRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	NewOrder  *NewOrderRequest       `protobuf:"bytes,1,opt,name=newOrder,proto3" json:"newOrder,omitempty"`
+	NewAuthzs []*proto.Authorization `protobuf:"bytes,2,rep,name=newAuthzs,proto3" json:"newAuthzs,omitempty"`
+}
+
+func (x *NewOrderAndAuthzsRequest) Reset() {
+	*x = NewOrderAndAuthzsRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_sa_proto_msgTypes[23]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *NewOrderAndAuthzsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NewOrderAndAuthzsRequest) ProtoMessage() {}
+
+func (x *NewOrderAndAuthzsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sa_proto_msgTypes[23]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NewOrderAndAuthzsRequest.ProtoReflect.Descriptor instead.
+func (*NewOrderAndAuthzsRequest) Descriptor() ([]byte, []int) {
+	return file_sa_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *NewOrderAndAuthzsRequest) GetNewOrder() *NewOrderRequest {
+	if x != nil {
+		return x.NewOrder
+	}
+	return nil
+}
+
+func (x *NewOrderAndAuthzsRequest) GetNewAuthzs() []*proto.Authorization {
+	if x != nil {
+		return x.NewAuthzs
+	}
+	return nil
+}
+
+type SetOrderErrorRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Id    int64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Error *proto.ProblemDetails `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+}
+
+func (x *SetOrderErrorRequest) Reset() {
+	*x = SetOrderErrorRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_sa_proto_msgTypes[24]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *SetOrderErrorRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetOrderErrorRequest) ProtoMessage() {}
+
+func (x *SetOrderErrorRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sa_proto_msgTypes[24]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetOrderErrorRequest.ProtoReflect.Descriptor instead.
+func (*SetOrderErrorRequest) Descriptor() ([]byte, []int) {
+	return file_sa_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *SetOrderErrorRequest) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *SetOrderErrorRequest) GetError() *proto.ProblemDetails {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
 type GetValidOrderAuthorizationsRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1235,7 +1416,7 @@ type GetValidOrderAuthorizationsRequest struct {
 func (x *GetValidOrderAuthorizationsRequest) Reset() {
 	*x = GetValidOrderAuthorizationsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_sa_proto_msgTypes[22]
+		mi := &file_sa_proto_msgTypes[25]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1248,7 +1429,7 @@ func (x *GetValidOrderAuthorizationsRequest) String() string {
 func (*GetValidOrderAuthorizationsRequest) ProtoMessage() {}
 
 func (x *GetValidOrderAuthorizationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sa_proto_msgTypes[22]
+	mi := &file_sa_proto_msgTypes[25]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1261,7 +1442,7 @@ func (x *GetValidOrderAuthorizationsRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use GetValidOrderAuthorizationsRequest.ProtoReflect.Descriptor instead.
 func (*GetValidOrderAuthorizationsRequest) Descriptor() ([]byte, []int) {
-	return file_sa_proto_rawDescGZIP(), []int{22}
+	return file_sa_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetValidOrderAuthorizationsRequest) GetId() int64 {
@@ -1290,7 +1471,7 @@ type GetOrderForNamesRequest struct {
 func (x *GetOrderForNamesRequest) Reset() {
 	*x = GetOrderForNamesRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_sa_proto_msgTypes[23]
+		mi := &file_sa_proto_msgTypes[26]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1303,7 +1484,7 @@ func (x *GetOrderForNamesRequest) String() string {
 func (*GetOrderForNamesRequest) ProtoMessage() {}
 
 func (x *GetOrderForNamesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sa_proto_msgTypes[23]
+	mi := &file_sa_proto_msgTypes[26]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1316,7 +1497,7 @@ func (x *GetOrderForNamesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOrderForNamesRequest.ProtoReflect.Descriptor instead.
 func (*GetOrderForNamesRequest) Descriptor() ([]byte, []int) {
-	return file_sa_proto_rawDescGZIP(), []int{23}
+	return file_sa_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *GetOrderForNamesRequest) GetAcctID() int64 {
@@ -1333,6 +1514,61 @@ func (x *GetOrderForNamesRequest) GetNames() []string {
 	return nil
 }
 
+type FinalizeOrderRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Id                int64  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	CertificateSerial string `protobuf:"bytes,2,opt,name=certificateSerial,proto3" json:"certificateSerial,omitempty"`
+}
+
+func (x *FinalizeOrderRequest) Reset() {
+	*x = FinalizeOrderRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_sa_proto_msgTypes[27]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *FinalizeOrderRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FinalizeOrderRequest) ProtoMessage() {}
+
+func (x *FinalizeOrderRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sa_proto_msgTypes[27]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FinalizeOrderRequest.ProtoReflect.Descriptor instead.
+func (*FinalizeOrderRequest) Descriptor() ([]byte, []int) {
+	return file_sa_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *FinalizeOrderRequest) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *FinalizeOrderRequest) GetCertificateSerial() string {
+	if x != nil {
+		return x.CertificateSerial
+	}
+	return ""
+}
+
 type GetAuthorizationsRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1346,7 +1582,7 @@ type GetAuthorizationsRequest struct {
 func (x *GetAuthorizationsRequest) Reset() {
 	*x = GetAuthorizationsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_sa_proto_msgTypes[24]
+		mi := &file_sa_proto_msgTypes[28]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1359,7 +1595,7 @@ func (x *GetAuthorizationsRequest) String() string {
 func (*GetAuthorizationsRequest) ProtoMessage() {}
 
 func (x *GetAuthorizationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sa_proto_msgTypes[24]
+	mi := &file_sa_proto_msgTypes[28]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1372,7 +1608,7 @@ func (x *GetAuthorizationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAuthorizationsRequest.ProtoReflect.Descriptor instead.
 func (*GetAuthorizationsRequest) Descriptor() ([]byte, []int) {
-	return file_sa_proto_rawDescGZIP(), []int{24}
+	return file_sa_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *GetAuthorizationsRequest) GetRegistrationID() int64 {
@@ -1407,7 +1643,7 @@ type Authorizations struct {
 func (x *Authorizations) Reset() {
 	*x = Authorizations{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_sa_proto_msgTypes[25]
+		mi := &file_sa_proto_msgTypes[29]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1420,7 +1656,7 @@ func (x *Authorizations) String() string {
 func (*Authorizations) ProtoMessage() {}
 
 func (x *Authorizations) ProtoReflect() protoreflect.Message {
-	mi := &file_sa_proto_msgTypes[25]
+	mi := &file_sa_proto_msgTypes[29]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1433,7 +1669,7 @@ func (x *Authorizations) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Authorizations.ProtoReflect.Descriptor instead.
 func (*Authorizations) Descriptor() ([]byte, []int) {
-	return file_sa_proto_rawDescGZIP(), []int{25}
+	return file_sa_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *Authorizations) GetAuthz() []*Authorizations_MapElement {
@@ -1454,7 +1690,7 @@ type AddPendingAuthorizationsRequest struct {
 func (x *AddPendingAuthorizationsRequest) Reset() {
 	*x = AddPendingAuthorizationsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_sa_proto_msgTypes[26]
+		mi := &file_sa_proto_msgTypes[30]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1467,7 +1703,7 @@ func (x *AddPendingAuthorizationsRequest) String() string {
 func (*AddPendingAuthorizationsRequest) ProtoMessage() {}
 
 func (x *AddPendingAuthorizationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sa_proto_msgTypes[26]
+	mi := &file_sa_proto_msgTypes[30]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1480,67 +1716,12 @@ func (x *AddPendingAuthorizationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddPendingAuthorizationsRequest.ProtoReflect.Descriptor instead.
 func (*AddPendingAuthorizationsRequest) Descriptor() ([]byte, []int) {
-	return file_sa_proto_rawDescGZIP(), []int{26}
+	return file_sa_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *AddPendingAuthorizationsRequest) GetAuthz() []*proto.Authorization {
 	if x != nil {
 		return x.Authz
-	}
-	return nil
-}
-
-type NewOrderAndAuthzsRequest struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
-	Order     *proto.Order           `protobuf:"bytes,1,opt,name=order,proto3" json:"order,omitempty"`
-	NewAuthzs []*proto.Authorization `protobuf:"bytes,2,rep,name=newAuthzs,proto3" json:"newAuthzs,omitempty"`
-}
-
-func (x *NewOrderAndAuthzsRequest) Reset() {
-	*x = NewOrderAndAuthzsRequest{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_sa_proto_msgTypes[27]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
-}
-
-func (x *NewOrderAndAuthzsRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*NewOrderAndAuthzsRequest) ProtoMessage() {}
-
-func (x *NewOrderAndAuthzsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sa_proto_msgTypes[27]
-	if protoimpl.UnsafeEnabled && x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use NewOrderAndAuthzsRequest.ProtoReflect.Descriptor instead.
-func (*NewOrderAndAuthzsRequest) Descriptor() ([]byte, []int) {
-	return file_sa_proto_rawDescGZIP(), []int{27}
-}
-
-func (x *NewOrderAndAuthzsRequest) GetOrder() *proto.Order {
-	if x != nil {
-		return x.Order
-	}
-	return nil
-}
-
-func (x *NewOrderAndAuthzsRequest) GetNewAuthzs() []*proto.Authorization {
-	if x != nil {
-		return x.NewAuthzs
 	}
 	return nil
 }
@@ -1556,7 +1737,7 @@ type AuthorizationIDs struct {
 func (x *AuthorizationIDs) Reset() {
 	*x = AuthorizationIDs{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_sa_proto_msgTypes[28]
+		mi := &file_sa_proto_msgTypes[31]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1569,7 +1750,7 @@ func (x *AuthorizationIDs) String() string {
 func (*AuthorizationIDs) ProtoMessage() {}
 
 func (x *AuthorizationIDs) ProtoReflect() protoreflect.Message {
-	mi := &file_sa_proto_msgTypes[28]
+	mi := &file_sa_proto_msgTypes[31]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1582,7 +1763,7 @@ func (x *AuthorizationIDs) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizationIDs.ProtoReflect.Descriptor instead.
 func (*AuthorizationIDs) Descriptor() ([]byte, []int) {
-	return file_sa_proto_rawDescGZIP(), []int{28}
+	return file_sa_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *AuthorizationIDs) GetIds() []string {
@@ -1603,7 +1784,7 @@ type AuthorizationID2 struct {
 func (x *AuthorizationID2) Reset() {
 	*x = AuthorizationID2{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_sa_proto_msgTypes[29]
+		mi := &file_sa_proto_msgTypes[32]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1616,7 +1797,7 @@ func (x *AuthorizationID2) String() string {
 func (*AuthorizationID2) ProtoMessage() {}
 
 func (x *AuthorizationID2) ProtoReflect() protoreflect.Message {
-	mi := &file_sa_proto_msgTypes[29]
+	mi := &file_sa_proto_msgTypes[32]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1629,7 +1810,7 @@ func (x *AuthorizationID2) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizationID2.ProtoReflect.Descriptor instead.
 func (*AuthorizationID2) Descriptor() ([]byte, []int) {
-	return file_sa_proto_rawDescGZIP(), []int{29}
+	return file_sa_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *AuthorizationID2) GetId() int64 {
@@ -1650,7 +1831,7 @@ type Authorization2IDs struct {
 func (x *Authorization2IDs) Reset() {
 	*x = Authorization2IDs{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_sa_proto_msgTypes[30]
+		mi := &file_sa_proto_msgTypes[33]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1663,7 +1844,7 @@ func (x *Authorization2IDs) String() string {
 func (*Authorization2IDs) ProtoMessage() {}
 
 func (x *Authorization2IDs) ProtoReflect() protoreflect.Message {
-	mi := &file_sa_proto_msgTypes[30]
+	mi := &file_sa_proto_msgTypes[33]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1676,7 +1857,7 @@ func (x *Authorization2IDs) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Authorization2IDs.ProtoReflect.Descriptor instead.
 func (*Authorization2IDs) Descriptor() ([]byte, []int) {
-	return file_sa_proto_rawDescGZIP(), []int{30}
+	return file_sa_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *Authorization2IDs) GetIds() []int64 {
@@ -1700,7 +1881,7 @@ type RevokeCertificateRequest struct {
 func (x *RevokeCertificateRequest) Reset() {
 	*x = RevokeCertificateRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_sa_proto_msgTypes[31]
+		mi := &file_sa_proto_msgTypes[34]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1713,7 +1894,7 @@ func (x *RevokeCertificateRequest) String() string {
 func (*RevokeCertificateRequest) ProtoMessage() {}
 
 func (x *RevokeCertificateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sa_proto_msgTypes[31]
+	mi := &file_sa_proto_msgTypes[34]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1726,7 +1907,7 @@ func (x *RevokeCertificateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeCertificateRequest.ProtoReflect.Descriptor instead.
 func (*RevokeCertificateRequest) Descriptor() ([]byte, []int) {
-	return file_sa_proto_rawDescGZIP(), []int{31}
+	return file_sa_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *RevokeCertificateRequest) GetSerial() string {
@@ -1774,7 +1955,7 @@ type FinalizeAuthorizationRequest struct {
 func (x *FinalizeAuthorizationRequest) Reset() {
 	*x = FinalizeAuthorizationRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_sa_proto_msgTypes[32]
+		mi := &file_sa_proto_msgTypes[35]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1787,7 +1968,7 @@ func (x *FinalizeAuthorizationRequest) String() string {
 func (*FinalizeAuthorizationRequest) ProtoMessage() {}
 
 func (x *FinalizeAuthorizationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sa_proto_msgTypes[32]
+	mi := &file_sa_proto_msgTypes[35]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1800,7 +1981,7 @@ func (x *FinalizeAuthorizationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FinalizeAuthorizationRequest.ProtoReflect.Descriptor instead.
 func (*FinalizeAuthorizationRequest) Descriptor() ([]byte, []int) {
-	return file_sa_proto_rawDescGZIP(), []int{32}
+	return file_sa_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *FinalizeAuthorizationRequest) GetId() int64 {
@@ -1867,7 +2048,7 @@ type AddBlockedKeyRequest struct {
 func (x *AddBlockedKeyRequest) Reset() {
 	*x = AddBlockedKeyRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_sa_proto_msgTypes[33]
+		mi := &file_sa_proto_msgTypes[36]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1880,7 +2061,7 @@ func (x *AddBlockedKeyRequest) String() string {
 func (*AddBlockedKeyRequest) ProtoMessage() {}
 
 func (x *AddBlockedKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sa_proto_msgTypes[33]
+	mi := &file_sa_proto_msgTypes[36]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1893,7 +2074,7 @@ func (x *AddBlockedKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddBlockedKeyRequest.ProtoReflect.Descriptor instead.
 func (*AddBlockedKeyRequest) Descriptor() ([]byte, []int) {
-	return file_sa_proto_rawDescGZIP(), []int{33}
+	return file_sa_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *AddBlockedKeyRequest) GetKeyHash() []byte {
@@ -1942,7 +2123,7 @@ type KeyBlockedRequest struct {
 func (x *KeyBlockedRequest) Reset() {
 	*x = KeyBlockedRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_sa_proto_msgTypes[34]
+		mi := &file_sa_proto_msgTypes[37]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1955,7 +2136,7 @@ func (x *KeyBlockedRequest) String() string {
 func (*KeyBlockedRequest) ProtoMessage() {}
 
 func (x *KeyBlockedRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sa_proto_msgTypes[34]
+	mi := &file_sa_proto_msgTypes[37]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1968,7 +2149,7 @@ func (x *KeyBlockedRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KeyBlockedRequest.ProtoReflect.Descriptor instead.
 func (*KeyBlockedRequest) Descriptor() ([]byte, []int) {
-	return file_sa_proto_rawDescGZIP(), []int{34}
+	return file_sa_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *KeyBlockedRequest) GetKeyHash() []byte {
@@ -1990,7 +2171,7 @@ type ValidAuthorizations_MapElement struct {
 func (x *ValidAuthorizations_MapElement) Reset() {
 	*x = ValidAuthorizations_MapElement{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_sa_proto_msgTypes[35]
+		mi := &file_sa_proto_msgTypes[38]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2003,7 +2184,7 @@ func (x *ValidAuthorizations_MapElement) String() string {
 func (*ValidAuthorizations_MapElement) ProtoMessage() {}
 
 func (x *ValidAuthorizations_MapElement) ProtoReflect() protoreflect.Message {
-	mi := &file_sa_proto_msgTypes[35]
+	mi := &file_sa_proto_msgTypes[38]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2045,7 +2226,7 @@ type CountByNames_MapElement struct {
 func (x *CountByNames_MapElement) Reset() {
 	*x = CountByNames_MapElement{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_sa_proto_msgTypes[36]
+		mi := &file_sa_proto_msgTypes[39]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2058,7 +2239,7 @@ func (x *CountByNames_MapElement) String() string {
 func (*CountByNames_MapElement) ProtoMessage() {}
 
 func (x *CountByNames_MapElement) ProtoReflect() protoreflect.Message {
-	mi := &file_sa_proto_msgTypes[36]
+	mi := &file_sa_proto_msgTypes[39]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2100,7 +2281,7 @@ type Authorizations_MapElement struct {
 func (x *Authorizations_MapElement) Reset() {
 	*x = Authorizations_MapElement{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_sa_proto_msgTypes[37]
+		mi := &file_sa_proto_msgTypes[40]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2113,7 +2294,7 @@ func (x *Authorizations_MapElement) String() string {
 func (*Authorizations_MapElement) ProtoMessage() {}
 
 func (x *Authorizations_MapElement) ProtoReflect() protoreflect.Message {
-	mi := &file_sa_proto_msgTypes[37]
+	mi := &file_sa_proto_msgTypes[40]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2126,7 +2307,7 @@ func (x *Authorizations_MapElement) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Authorizations_MapElement.ProtoReflect.Descriptor instead.
 func (*Authorizations_MapElement) Descriptor() ([]byte, []int) {
-	return file_sa_proto_rawDescGZIP(), []int{25, 0}
+	return file_sa_proto_rawDescGZIP(), []int{29, 0}
 }
 
 func (x *Authorizations_MapElement) GetDomain() string {
@@ -2263,45 +2444,66 @@ var file_sa_proto_rawDesc = []byte{
 	0x67, 0x65, 0x73, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x64, 0x69, 0x67, 0x65,
 	0x73, 0x74, 0x22, 0x1e, 0x0a, 0x0c, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65,
 	0x73, 0x74, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x02,
-	0x69, 0x64, 0x22, 0x4c, 0x0a, 0x22, 0x47, 0x65, 0x74, 0x56, 0x61, 0x6c, 0x69, 0x64, 0x4f, 0x72,
-	0x64, 0x65, 0x72, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e,
-	0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01,
-	0x20, 0x01, 0x28, 0x03, 0x52, 0x02, 0x69, 0x64, 0x12, 0x16, 0x0a, 0x06, 0x61, 0x63, 0x63, 0x74,
-	0x49, 0x44, 0x18, 0x02, 0x20, 0x01, 0x28, 0x03, 0x52, 0x06, 0x61, 0x63, 0x63, 0x74, 0x49, 0x44,
-	0x22, 0x47, 0x0a, 0x17, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x46, 0x6f, 0x72, 0x4e,
-	0x61, 0x6d, 0x65, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x16, 0x0a, 0x06, 0x61,
-	0x63, 0x63, 0x74, 0x49, 0x44, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x06, 0x61, 0x63, 0x63,
-	0x74, 0x49, 0x44, 0x12, 0x14, 0x0a, 0x05, 0x6e, 0x61, 0x6d, 0x65, 0x73, 0x18, 0x02, 0x20, 0x03,
-	0x28, 0x09, 0x52, 0x05, 0x6e, 0x61, 0x6d, 0x65, 0x73, 0x22, 0x6e, 0x0a, 0x18, 0x47, 0x65, 0x74,
-	0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65,
-	0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x26, 0x0a, 0x0e, 0x72, 0x65, 0x67, 0x69, 0x73, 0x74, 0x72,
-	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x44, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0e, 0x72,
-	0x65, 0x67, 0x69, 0x73, 0x74, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x44, 0x12, 0x18, 0x0a,
-	0x07, 0x64, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28, 0x09, 0x52, 0x07,
-	0x64, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x73, 0x12, 0x10, 0x0a, 0x03, 0x6e, 0x6f, 0x77, 0x18, 0x03,
-	0x20, 0x01, 0x28, 0x03, 0x52, 0x03, 0x6e, 0x6f, 0x77, 0x22, 0x96, 0x01, 0x0a, 0x0e, 0x41, 0x75,
-	0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x33, 0x0a, 0x05,
-	0x61, 0x75, 0x74, 0x68, 0x7a, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x1d, 0x2e, 0x73, 0x61,
-	0x2e, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x2e,
-	0x4d, 0x61, 0x70, 0x45, 0x6c, 0x65, 0x6d, 0x65, 0x6e, 0x74, 0x52, 0x05, 0x61, 0x75, 0x74, 0x68,
-	0x7a, 0x1a, 0x4f, 0x0a, 0x0a, 0x4d, 0x61, 0x70, 0x45, 0x6c, 0x65, 0x6d, 0x65, 0x6e, 0x74, 0x12,
-	0x16, 0x0a, 0x06, 0x64, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52,
-	0x06, 0x64, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x12, 0x29, 0x0a, 0x05, 0x61, 0x75, 0x74, 0x68, 0x7a,
-	0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x13, 0x2e, 0x63, 0x6f, 0x72, 0x65, 0x2e, 0x41, 0x75,
+	0x69, 0x64, 0x22, 0x95, 0x01, 0x0a, 0x0f, 0x4e, 0x65, 0x77, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x26, 0x0a, 0x0e, 0x72, 0x65, 0x67, 0x69, 0x73, 0x74,
+	0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x44, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0e,
+	0x72, 0x65, 0x67, 0x69, 0x73, 0x74, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x44, 0x12, 0x18,
+	0x0a, 0x07, 0x65, 0x78, 0x70, 0x69, 0x72, 0x65, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x03, 0x52,
+	0x07, 0x65, 0x78, 0x70, 0x69, 0x72, 0x65, 0x73, 0x12, 0x14, 0x0a, 0x05, 0x6e, 0x61, 0x6d, 0x65,
+	0x73, 0x18, 0x03, 0x20, 0x03, 0x28, 0x09, 0x52, 0x05, 0x6e, 0x61, 0x6d, 0x65, 0x73, 0x12, 0x2a,
+	0x0a, 0x10, 0x76, 0x32, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f,
+	0x6e, 0x73, 0x18, 0x04, 0x20, 0x03, 0x28, 0x03, 0x52, 0x10, 0x76, 0x32, 0x41, 0x75, 0x74, 0x68,
+	0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x22, 0x7e, 0x0a, 0x18, 0x4e, 0x65,
+	0x77, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x41, 0x6e, 0x64, 0x41, 0x75, 0x74, 0x68, 0x7a, 0x73, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x2f, 0x0a, 0x08, 0x6e, 0x65, 0x77, 0x4f, 0x72, 0x64,
+	0x65, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x13, 0x2e, 0x73, 0x61, 0x2e, 0x4e, 0x65,
+	0x77, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x52, 0x08, 0x6e,
+	0x65, 0x77, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x12, 0x31, 0x0a, 0x09, 0x6e, 0x65, 0x77, 0x41, 0x75,
+	0x74, 0x68, 0x7a, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x13, 0x2e, 0x63, 0x6f, 0x72,
+	0x65, 0x2e, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52,
+	0x09, 0x6e, 0x65, 0x77, 0x41, 0x75, 0x74, 0x68, 0x7a, 0x73, 0x22, 0x52, 0x0a, 0x14, 0x53, 0x65,
+	0x74, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x45, 0x72, 0x72, 0x6f, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65,
+	0x73, 0x74, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x02,
+	0x69, 0x64, 0x12, 0x2a, 0x0a, 0x05, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x18, 0x02, 0x20, 0x01, 0x28,
+	0x0b, 0x32, 0x14, 0x2e, 0x63, 0x6f, 0x72, 0x65, 0x2e, 0x50, 0x72, 0x6f, 0x62, 0x6c, 0x65, 0x6d,
+	0x44, 0x65, 0x74, 0x61, 0x69, 0x6c, 0x73, 0x52, 0x05, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x22, 0x4c,
+	0x0a, 0x22, 0x47, 0x65, 0x74, 0x56, 0x61, 0x6c, 0x69, 0x64, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x41,
+	0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x71,
+	0x75, 0x65, 0x73, 0x74, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03,
+	0x52, 0x02, 0x69, 0x64, 0x12, 0x16, 0x0a, 0x06, 0x61, 0x63, 0x63, 0x74, 0x49, 0x44, 0x18, 0x02,
+	0x20, 0x01, 0x28, 0x03, 0x52, 0x06, 0x61, 0x63, 0x63, 0x74, 0x49, 0x44, 0x22, 0x47, 0x0a, 0x17,
+	0x47, 0x65, 0x74, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x46, 0x6f, 0x72, 0x4e, 0x61, 0x6d, 0x65, 0x73,
+	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x16, 0x0a, 0x06, 0x61, 0x63, 0x63, 0x74, 0x49,
+	0x44, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x06, 0x61, 0x63, 0x63, 0x74, 0x49, 0x44, 0x12,
+	0x14, 0x0a, 0x05, 0x6e, 0x61, 0x6d, 0x65, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28, 0x09, 0x52, 0x05,
+	0x6e, 0x61, 0x6d, 0x65, 0x73, 0x22, 0x54, 0x0a, 0x14, 0x46, 0x69, 0x6e, 0x61, 0x6c, 0x69, 0x7a,
+	0x65, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x0e, 0x0a,
+	0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x02, 0x69, 0x64, 0x12, 0x2c, 0x0a,
+	0x11, 0x63, 0x65, 0x72, 0x74, 0x69, 0x66, 0x69, 0x63, 0x61, 0x74, 0x65, 0x53, 0x65, 0x72, 0x69,
+	0x61, 0x6c, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x11, 0x63, 0x65, 0x72, 0x74, 0x69, 0x66,
+	0x69, 0x63, 0x61, 0x74, 0x65, 0x53, 0x65, 0x72, 0x69, 0x61, 0x6c, 0x22, 0x6e, 0x0a, 0x18, 0x47,
+	0x65, 0x74, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73,
+	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x26, 0x0a, 0x0e, 0x72, 0x65, 0x67, 0x69, 0x73,
+	0x74, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x44, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52,
+	0x0e, 0x72, 0x65, 0x67, 0x69, 0x73, 0x74, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x44, 0x12,
+	0x18, 0x0a, 0x07, 0x64, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28, 0x09,
+	0x52, 0x07, 0x64, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x73, 0x12, 0x10, 0x0a, 0x03, 0x6e, 0x6f, 0x77,
+	0x18, 0x03, 0x20, 0x01, 0x28, 0x03, 0x52, 0x03, 0x6e, 0x6f, 0x77, 0x22, 0x96, 0x01, 0x0a, 0x0e,
+	0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x33,
+	0x0a, 0x05, 0x61, 0x75, 0x74, 0x68, 0x7a, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x1d, 0x2e,
+	0x73, 0x61, 0x2e, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e,
+	0x73, 0x2e, 0x4d, 0x61, 0x70, 0x45, 0x6c, 0x65, 0x6d, 0x65, 0x6e, 0x74, 0x52, 0x05, 0x61, 0x75,
+	0x74, 0x68, 0x7a, 0x1a, 0x4f, 0x0a, 0x0a, 0x4d, 0x61, 0x70, 0x45, 0x6c, 0x65, 0x6d, 0x65, 0x6e,
+	0x74, 0x12, 0x16, 0x0a, 0x06, 0x64, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x09, 0x52, 0x06, 0x64, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x12, 0x29, 0x0a, 0x05, 0x61, 0x75, 0x74,
+	0x68, 0x7a, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x13, 0x2e, 0x63, 0x6f, 0x72, 0x65, 0x2e,
+	0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x05, 0x61,
+	0x75, 0x74, 0x68, 0x7a, 0x22, 0x4c, 0x0a, 0x1f, 0x41, 0x64, 0x64, 0x50, 0x65, 0x6e, 0x64, 0x69,
+	0x6e, 0x67, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73,
+	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x29, 0x0a, 0x05, 0x61, 0x75, 0x74, 0x68, 0x7a,
+	0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x13, 0x2e, 0x63, 0x6f, 0x72, 0x65, 0x2e, 0x41, 0x75,
 	0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x05, 0x61, 0x75, 0x74,
-	0x68, 0x7a, 0x22, 0x4c, 0x0a, 0x1f, 0x41, 0x64, 0x64, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67,
-	0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65,
-	0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x29, 0x0a, 0x05, 0x61, 0x75, 0x74, 0x68, 0x7a, 0x18, 0x01,
-	0x20, 0x03, 0x28, 0x0b, 0x32, 0x13, 0x2e, 0x63, 0x6f, 0x72, 0x65, 0x2e, 0x41, 0x75, 0x74, 0x68,
-	0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x05, 0x61, 0x75, 0x74, 0x68, 0x7a,
-	0x22, 0x70, 0x0a, 0x18, 0x4e, 0x65, 0x77, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x41, 0x6e, 0x64, 0x41,
-	0x75, 0x74, 0x68, 0x7a, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x21, 0x0a, 0x05,
-	0x6f, 0x72, 0x64, 0x65, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x0b, 0x2e, 0x63, 0x6f,
-	0x72, 0x65, 0x2e, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x05, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x12,
-	0x31, 0x0a, 0x09, 0x6e, 0x65, 0x77, 0x41, 0x75, 0x74, 0x68, 0x7a, 0x73, 0x18, 0x02, 0x20, 0x03,
-	0x28, 0x0b, 0x32, 0x13, 0x2e, 0x63, 0x6f, 0x72, 0x65, 0x2e, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72,
-	0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x09, 0x6e, 0x65, 0x77, 0x41, 0x75, 0x74, 0x68,
-	0x7a, 0x73, 0x22, 0x24, 0x0a, 0x10, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74,
+	0x68, 0x7a, 0x22, 0x24, 0x0a, 0x10, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74,
 	0x69, 0x6f, 0x6e, 0x49, 0x44, 0x73, 0x12, 0x10, 0x0a, 0x03, 0x69, 0x64, 0x73, 0x18, 0x01, 0x20,
 	0x03, 0x28, 0x09, 0x52, 0x03, 0x69, 0x64, 0x73, 0x22, 0x22, 0x0a, 0x10, 0x41, 0x75, 0x74, 0x68,
 	0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x44, 0x32, 0x12, 0x0e, 0x0a, 0x02,
@@ -2347,7 +2549,7 @@ var file_sa_proto_rawDesc = []byte{
 	0x79, 0x22, 0x2d, 0x0a, 0x11, 0x4b, 0x65, 0x79, 0x42, 0x6c, 0x6f, 0x63, 0x6b, 0x65, 0x64, 0x52,
 	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x18, 0x0a, 0x07, 0x6b, 0x65, 0x79, 0x48, 0x61, 0x73,
 	0x68, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x07, 0x6b, 0x65, 0x79, 0x48, 0x61, 0x73, 0x68,
-	0x32, 0x9b, 0x14, 0x0a, 0x10, 0x53, 0x74, 0x6f, 0x72, 0x61, 0x67, 0x65, 0x41, 0x75, 0x74, 0x68,
+	0x32, 0xc2, 0x14, 0x0a, 0x10, 0x53, 0x74, 0x6f, 0x72, 0x61, 0x67, 0x65, 0x41, 0x75, 0x74, 0x68,
 	0x6f, 0x72, 0x69, 0x74, 0x79, 0x12, 0x3b, 0x0a, 0x0f, 0x47, 0x65, 0x74, 0x52, 0x65, 0x67, 0x69,
 	0x73, 0x74, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x12, 0x2e, 0x73, 0x61, 0x2e, 0x52, 0x65,
 	0x67, 0x69, 0x73, 0x74, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x44, 0x1a, 0x12, 0x2e, 0x63,
@@ -2460,59 +2662,61 @@ var file_sa_proto_rawDesc = []byte{
 	0x74, 0x69, 0x6f, 0x6e, 0x12, 0x12, 0x2e, 0x73, 0x61, 0x2e, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74,
 	0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x44, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c,
 	0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79,
-	0x22, 0x00, 0x12, 0x26, 0x0a, 0x08, 0x4e, 0x65, 0x77, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x12, 0x0b,
-	0x2e, 0x63, 0x6f, 0x72, 0x65, 0x2e, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x1a, 0x0b, 0x2e, 0x63, 0x6f,
-	0x72, 0x65, 0x2e, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x22, 0x00, 0x12, 0x40, 0x0a, 0x11, 0x4e, 0x65,
-	0x77, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x41, 0x6e, 0x64, 0x41, 0x75, 0x74, 0x68, 0x7a, 0x73, 0x12,
-	0x1c, 0x2e, 0x73, 0x61, 0x2e, 0x4e, 0x65, 0x77, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x41, 0x6e, 0x64,
-	0x41, 0x75, 0x74, 0x68, 0x7a, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x0b, 0x2e,
-	0x63, 0x6f, 0x72, 0x65, 0x2e, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x22, 0x00, 0x12, 0x3b, 0x0a, 0x12,
-	0x53, 0x65, 0x74, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x50, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x69,
-	0x6e, 0x67, 0x12, 0x0b, 0x2e, 0x63, 0x6f, 0x72, 0x65, 0x2e, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x1a,
-	0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75,
-	0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00, 0x12, 0x36, 0x0a, 0x0d, 0x53, 0x65, 0x74,
-	0x4f, 0x72, 0x64, 0x65, 0x72, 0x45, 0x72, 0x72, 0x6f, 0x72, 0x12, 0x0b, 0x2e, 0x63, 0x6f, 0x72,
-	0x65, 0x2e, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65,
-	0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22,
-	0x00, 0x12, 0x36, 0x0a, 0x0d, 0x46, 0x69, 0x6e, 0x61, 0x6c, 0x69, 0x7a, 0x65, 0x4f, 0x72, 0x64,
-	0x65, 0x72, 0x12, 0x0b, 0x2e, 0x63, 0x6f, 0x72, 0x65, 0x2e, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x1a,
-	0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75,
-	0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00, 0x12, 0x2b, 0x0a, 0x08, 0x47, 0x65, 0x74,
-	0x4f, 0x72, 0x64, 0x65, 0x72, 0x12, 0x10, 0x2e, 0x73, 0x61, 0x2e, 0x4f, 0x72, 0x64, 0x65, 0x72,
-	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x0b, 0x2e, 0x63, 0x6f, 0x72, 0x65, 0x2e, 0x4f,
-	0x72, 0x64, 0x65, 0x72, 0x22, 0x00, 0x12, 0x3e, 0x0a, 0x10, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x64,
-	0x65, 0x72, 0x46, 0x6f, 0x72, 0x4e, 0x61, 0x6d, 0x65, 0x73, 0x12, 0x1b, 0x2e, 0x73, 0x61, 0x2e,
-	0x47, 0x65, 0x74, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x46, 0x6f, 0x72, 0x4e, 0x61, 0x6d, 0x65, 0x73,
-	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x0b, 0x2e, 0x63, 0x6f, 0x72, 0x65, 0x2e, 0x4f,
-	0x72, 0x64, 0x65, 0x72, 0x22, 0x00, 0x12, 0x4b, 0x0a, 0x11, 0x52, 0x65, 0x76, 0x6f, 0x6b, 0x65,
-	0x43, 0x65, 0x72, 0x74, 0x69, 0x66, 0x69, 0x63, 0x61, 0x74, 0x65, 0x12, 0x1c, 0x2e, 0x73, 0x61,
-	0x2e, 0x52, 0x65, 0x76, 0x6f, 0x6b, 0x65, 0x43, 0x65, 0x72, 0x74, 0x69, 0x66, 0x69, 0x63, 0x61,
-	0x74, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67,
-	0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74,
-	0x79, 0x22, 0x00, 0x12, 0x52, 0x0a, 0x12, 0x4e, 0x65, 0x77, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72,
-	0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x32, 0x12, 0x23, 0x2e, 0x73, 0x61, 0x2e, 0x41,
-	0x64, 0x64, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69,
-	0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x15,
-	0x2e, 0x73, 0x61, 0x2e, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f,
-	0x6e, 0x32, 0x49, 0x44, 0x73, 0x22, 0x00, 0x12, 0x54, 0x0a, 0x16, 0x46, 0x69, 0x6e, 0x61, 0x6c,
-	0x69, 0x7a, 0x65, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e,
-	0x32, 0x12, 0x20, 0x2e, 0x73, 0x61, 0x2e, 0x46, 0x69, 0x6e, 0x61, 0x6c, 0x69, 0x7a, 0x65, 0x41,
-	0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75,
-	0x65, 0x73, 0x74, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f,
-	0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00, 0x12, 0x4a, 0x0a,
-	0x18, 0x44, 0x65, 0x61, 0x63, 0x74, 0x69, 0x76, 0x61, 0x74, 0x65, 0x41, 0x75, 0x74, 0x68, 0x6f,
-	0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x32, 0x12, 0x14, 0x2e, 0x73, 0x61, 0x2e, 0x41,
-	0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x44, 0x32, 0x1a,
-	0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75,
-	0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00, 0x12, 0x43, 0x0a, 0x0d, 0x41, 0x64, 0x64,
-	0x42, 0x6c, 0x6f, 0x63, 0x6b, 0x65, 0x64, 0x4b, 0x65, 0x79, 0x12, 0x18, 0x2e, 0x73, 0x61, 0x2e,
-	0x41, 0x64, 0x64, 0x42, 0x6c, 0x6f, 0x63, 0x6b, 0x65, 0x64, 0x4b, 0x65, 0x79, 0x52, 0x65, 0x71,
-	0x75, 0x65, 0x73, 0x74, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72,
-	0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00, 0x42, 0x29,
-	0x5a, 0x27, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x65, 0x74,
-	0x73, 0x65, 0x6e, 0x63, 0x72, 0x79, 0x70, 0x74, 0x2f, 0x62, 0x6f, 0x75, 0x6c, 0x64, 0x65, 0x72,
-	0x2f, 0x73, 0x61, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f,
-	0x33,
+	0x22, 0x00, 0x12, 0x2e, 0x0a, 0x08, 0x4e, 0x65, 0x77, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x12, 0x13,
+	0x2e, 0x73, 0x61, 0x2e, 0x4e, 0x65, 0x77, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x65, 0x71, 0x75,
+	0x65, 0x73, 0x74, 0x1a, 0x0b, 0x2e, 0x63, 0x6f, 0x72, 0x65, 0x2e, 0x4f, 0x72, 0x64, 0x65, 0x72,
+	0x22, 0x00, 0x12, 0x40, 0x0a, 0x11, 0x4e, 0x65, 0x77, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x41, 0x6e,
+	0x64, 0x41, 0x75, 0x74, 0x68, 0x7a, 0x73, 0x12, 0x1c, 0x2e, 0x73, 0x61, 0x2e, 0x4e, 0x65, 0x77,
+	0x4f, 0x72, 0x64, 0x65, 0x72, 0x41, 0x6e, 0x64, 0x41, 0x75, 0x74, 0x68, 0x7a, 0x73, 0x52, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x0b, 0x2e, 0x63, 0x6f, 0x72, 0x65, 0x2e, 0x4f, 0x72, 0x64,
+	0x65, 0x72, 0x22, 0x00, 0x12, 0x40, 0x0a, 0x12, 0x53, 0x65, 0x74, 0x4f, 0x72, 0x64, 0x65, 0x72,
+	0x50, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x69, 0x6e, 0x67, 0x12, 0x10, 0x2e, 0x73, 0x61, 0x2e,
+	0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x16, 0x2e, 0x67,
+	0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45,
+	0x6d, 0x70, 0x74, 0x79, 0x22, 0x00, 0x12, 0x43, 0x0a, 0x0d, 0x53, 0x65, 0x74, 0x4f, 0x72, 0x64,
+	0x65, 0x72, 0x45, 0x72, 0x72, 0x6f, 0x72, 0x12, 0x18, 0x2e, 0x73, 0x61, 0x2e, 0x53, 0x65, 0x74,
+	0x4f, 0x72, 0x64, 0x65, 0x72, 0x45, 0x72, 0x72, 0x6f, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
+	0x74, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f,
+	0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00, 0x12, 0x43, 0x0a, 0x0d, 0x46,
+	0x69, 0x6e, 0x61, 0x6c, 0x69, 0x7a, 0x65, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x12, 0x18, 0x2e, 0x73,
+	0x61, 0x2e, 0x46, 0x69, 0x6e, 0x61, 0x6c, 0x69, 0x7a, 0x65, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00,
+	0x12, 0x2b, 0x0a, 0x08, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x12, 0x10, 0x2e, 0x73,
+	0x61, 0x2e, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x0b,
+	0x2e, 0x63, 0x6f, 0x72, 0x65, 0x2e, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x22, 0x00, 0x12, 0x3e, 0x0a,
+	0x10, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x46, 0x6f, 0x72, 0x4e, 0x61, 0x6d, 0x65,
+	0x73, 0x12, 0x1b, 0x2e, 0x73, 0x61, 0x2e, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x46,
+	0x6f, 0x72, 0x4e, 0x61, 0x6d, 0x65, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x0b,
+	0x2e, 0x63, 0x6f, 0x72, 0x65, 0x2e, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x22, 0x00, 0x12, 0x4b, 0x0a,
+	0x11, 0x52, 0x65, 0x76, 0x6f, 0x6b, 0x65, 0x43, 0x65, 0x72, 0x74, 0x69, 0x66, 0x69, 0x63, 0x61,
+	0x74, 0x65, 0x12, 0x1c, 0x2e, 0x73, 0x61, 0x2e, 0x52, 0x65, 0x76, 0x6f, 0x6b, 0x65, 0x43, 0x65,
+	0x72, 0x74, 0x69, 0x66, 0x69, 0x63, 0x61, 0x74, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
+	0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62,
+	0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00, 0x12, 0x52, 0x0a, 0x12, 0x4e, 0x65,
+	0x77, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x32,
+	0x12, 0x23, 0x2e, 0x73, 0x61, 0x2e, 0x41, 0x64, 0x64, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67,
+	0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x15, 0x2e, 0x73, 0x61, 0x2e, 0x41, 0x75, 0x74, 0x68, 0x6f,
+	0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x32, 0x49, 0x44, 0x73, 0x22, 0x00, 0x12, 0x54,
+	0x0a, 0x16, 0x46, 0x69, 0x6e, 0x61, 0x6c, 0x69, 0x7a, 0x65, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72,
+	0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x32, 0x12, 0x20, 0x2e, 0x73, 0x61, 0x2e, 0x46, 0x69,
+	0x6e, 0x61, 0x6c, 0x69, 0x7a, 0x65, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74,
+	0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f,
+	0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70,
+	0x74, 0x79, 0x22, 0x00, 0x12, 0x4a, 0x0a, 0x18, 0x44, 0x65, 0x61, 0x63, 0x74, 0x69, 0x76, 0x61,
+	0x74, 0x65, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x32,
+	0x12, 0x14, 0x2e, 0x73, 0x61, 0x2e, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x7a, 0x61, 0x74,
+	0x69, 0x6f, 0x6e, 0x49, 0x44, 0x32, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00,
+	0x12, 0x43, 0x0a, 0x0d, 0x41, 0x64, 0x64, 0x42, 0x6c, 0x6f, 0x63, 0x6b, 0x65, 0x64, 0x4b, 0x65,
+	0x79, 0x12, 0x18, 0x2e, 0x73, 0x61, 0x2e, 0x41, 0x64, 0x64, 0x42, 0x6c, 0x6f, 0x63, 0x6b, 0x65,
+	0x64, 0x4b, 0x65, 0x79, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x16, 0x2e, 0x67, 0x6f,
+	0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d,
+	0x70, 0x74, 0x79, 0x22, 0x00, 0x42, 0x29, 0x5a, 0x27, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e,
+	0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x65, 0x74, 0x73, 0x65, 0x6e, 0x63, 0x72, 0x79, 0x70, 0x74, 0x2f,
+	0x62, 0x6f, 0x75, 0x6c, 0x64, 0x65, 0x72, 0x2f, 0x73, 0x61, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f,
+	0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -2527,7 +2731,7 @@ func file_sa_proto_rawDescGZIP() []byte {
 	return file_sa_proto_rawDescData
 }
 
-var file_sa_proto_msgTypes = make([]protoimpl.MessageInfo, 38)
+var file_sa_proto_msgTypes = make([]protoimpl.MessageInfo, 41)
 var file_sa_proto_goTypes = []interface{}{
 	(*RegistrationID)(nil),                     // 0: sa.RegistrationID
 	(*JSONWebKey)(nil),                         // 1: sa.JSONWebKey
@@ -2551,127 +2755,131 @@ var file_sa_proto_goTypes = []interface{}{
 	(*AddCertificateRequest)(nil),              // 19: sa.AddCertificateRequest
 	(*AddCertificateResponse)(nil),             // 20: sa.AddCertificateResponse
 	(*OrderRequest)(nil),                       // 21: sa.OrderRequest
-	(*GetValidOrderAuthorizationsRequest)(nil), // 22: sa.GetValidOrderAuthorizationsRequest
-	(*GetOrderForNamesRequest)(nil),            // 23: sa.GetOrderForNamesRequest
-	(*GetAuthorizationsRequest)(nil),           // 24: sa.GetAuthorizationsRequest
-	(*Authorizations)(nil),                     // 25: sa.Authorizations
-	(*AddPendingAuthorizationsRequest)(nil),    // 26: sa.AddPendingAuthorizationsRequest
-	(*NewOrderAndAuthzsRequest)(nil),           // 27: sa.NewOrderAndAuthzsRequest
-	(*AuthorizationIDs)(nil),                   // 28: sa.AuthorizationIDs
-	(*AuthorizationID2)(nil),                   // 29: sa.AuthorizationID2
-	(*Authorization2IDs)(nil),                  // 30: sa.Authorization2IDs
-	(*RevokeCertificateRequest)(nil),           // 31: sa.RevokeCertificateRequest
-	(*FinalizeAuthorizationRequest)(nil),       // 32: sa.FinalizeAuthorizationRequest
-	(*AddBlockedKeyRequest)(nil),               // 33: sa.AddBlockedKeyRequest
-	(*KeyBlockedRequest)(nil),                  // 34: sa.KeyBlockedRequest
-	(*ValidAuthorizations_MapElement)(nil),     // 35: sa.ValidAuthorizations.MapElement
-	(*CountByNames_MapElement)(nil),            // 36: sa.CountByNames.MapElement
-	(*Authorizations_MapElement)(nil),          // 37: sa.Authorizations.MapElement
-	(*proto.Authorization)(nil),                // 38: core.Authorization
-	(*proto.Order)(nil),                        // 39: core.Order
-	(*proto.ValidationRecord)(nil),             // 40: core.ValidationRecord
-	(*proto.ProblemDetails)(nil),               // 41: core.ProblemDetails
-	(*proto.Registration)(nil),                 // 42: core.Registration
-	(*proto.Certificate)(nil),                  // 43: core.Certificate
-	(*proto.CertificateStatus)(nil),            // 44: core.CertificateStatus
-	(*emptypb.Empty)(nil),                      // 45: google.protobuf.Empty
+	(*NewOrderRequest)(nil),                    // 22: sa.NewOrderRequest
+	(*NewOrderAndAuthzsRequest)(nil),           // 23: sa.NewOrderAndAuthzsRequest
+	(*SetOrderErrorRequest)(nil),               // 24: sa.SetOrderErrorRequest
+	(*GetValidOrderAuthorizationsRequest)(nil), // 25: sa.GetValidOrderAuthorizationsRequest
+	(*GetOrderForNamesRequest)(nil),            // 26: sa.GetOrderForNamesRequest
+	(*FinalizeOrderRequest)(nil),               // 27: sa.FinalizeOrderRequest
+	(*GetAuthorizationsRequest)(nil),           // 28: sa.GetAuthorizationsRequest
+	(*Authorizations)(nil),                     // 29: sa.Authorizations
+	(*AddPendingAuthorizationsRequest)(nil),    // 30: sa.AddPendingAuthorizationsRequest
+	(*AuthorizationIDs)(nil),                   // 31: sa.AuthorizationIDs
+	(*AuthorizationID2)(nil),                   // 32: sa.AuthorizationID2
+	(*Authorization2IDs)(nil),                  // 33: sa.Authorization2IDs
+	(*RevokeCertificateRequest)(nil),           // 34: sa.RevokeCertificateRequest
+	(*FinalizeAuthorizationRequest)(nil),       // 35: sa.FinalizeAuthorizationRequest
+	(*AddBlockedKeyRequest)(nil),               // 36: sa.AddBlockedKeyRequest
+	(*KeyBlockedRequest)(nil),                  // 37: sa.KeyBlockedRequest
+	(*ValidAuthorizations_MapElement)(nil),     // 38: sa.ValidAuthorizations.MapElement
+	(*CountByNames_MapElement)(nil),            // 39: sa.CountByNames.MapElement
+	(*Authorizations_MapElement)(nil),          // 40: sa.Authorizations.MapElement
+	(*proto.Authorization)(nil),                // 41: core.Authorization
+	(*proto.ProblemDetails)(nil),               // 42: core.ProblemDetails
+	(*proto.ValidationRecord)(nil),             // 43: core.ValidationRecord
+	(*proto.Registration)(nil),                 // 44: core.Registration
+	(*proto.Certificate)(nil),                  // 45: core.Certificate
+	(*proto.CertificateStatus)(nil),            // 46: core.CertificateStatus
+	(*emptypb.Empty)(nil),                      // 47: google.protobuf.Empty
+	(*proto.Order)(nil),                        // 48: core.Order
 }
 var file_sa_proto_depIdxs = []int32{
-	35, // 0: sa.ValidAuthorizations.valid:type_name -> sa.ValidAuthorizations.MapElement
+	38, // 0: sa.ValidAuthorizations.valid:type_name -> sa.ValidAuthorizations.MapElement
 	7,  // 1: sa.CountCertificatesByNamesRequest.range:type_name -> sa.Range
-	36, // 2: sa.CountByNames.countByNames:type_name -> sa.CountByNames.MapElement
+	39, // 2: sa.CountByNames.countByNames:type_name -> sa.CountByNames.MapElement
 	7,  // 3: sa.CountRegistrationsByIPRequest.range:type_name -> sa.Range
 	7,  // 4: sa.CountInvalidAuthorizationsRequest.range:type_name -> sa.Range
 	7,  // 5: sa.CountOrdersRequest.range:type_name -> sa.Range
-	37, // 6: sa.Authorizations.authz:type_name -> sa.Authorizations.MapElement
-	38, // 7: sa.AddPendingAuthorizationsRequest.authz:type_name -> core.Authorization
-	39, // 8: sa.NewOrderAndAuthzsRequest.order:type_name -> core.Order
-	38, // 9: sa.NewOrderAndAuthzsRequest.newAuthzs:type_name -> core.Authorization
-	40, // 10: sa.FinalizeAuthorizationRequest.validationRecords:type_name -> core.ValidationRecord
-	41, // 11: sa.FinalizeAuthorizationRequest.validationError:type_name -> core.ProblemDetails
-	38, // 12: sa.ValidAuthorizations.MapElement.authz:type_name -> core.Authorization
-	38, // 13: sa.Authorizations.MapElement.authz:type_name -> core.Authorization
-	0,  // 14: sa.StorageAuthority.GetRegistration:input_type -> sa.RegistrationID
-	1,  // 15: sa.StorageAuthority.GetRegistrationByKey:input_type -> sa.JSONWebKey
-	6,  // 16: sa.StorageAuthority.GetCertificate:input_type -> sa.Serial
-	6,  // 17: sa.StorageAuthority.GetPrecertificate:input_type -> sa.Serial
-	6,  // 18: sa.StorageAuthority.GetCertificateStatus:input_type -> sa.Serial
-	9,  // 19: sa.StorageAuthority.CountCertificatesByNames:input_type -> sa.CountCertificatesByNamesRequest
-	11, // 20: sa.StorageAuthority.CountRegistrationsByIP:input_type -> sa.CountRegistrationsByIPRequest
-	11, // 21: sa.StorageAuthority.CountRegistrationsByIPRange:input_type -> sa.CountRegistrationsByIPRequest
-	13, // 22: sa.StorageAuthority.CountOrders:input_type -> sa.CountOrdersRequest
-	14, // 23: sa.StorageAuthority.CountFQDNSets:input_type -> sa.CountFQDNSetsRequest
-	15, // 24: sa.StorageAuthority.FQDNSetExists:input_type -> sa.FQDNSetExistsRequest
-	16, // 25: sa.StorageAuthority.PreviousCertificateExists:input_type -> sa.PreviousCertificateExistsRequest
-	29, // 26: sa.StorageAuthority.GetAuthorization2:input_type -> sa.AuthorizationID2
-	24, // 27: sa.StorageAuthority.GetAuthorizations2:input_type -> sa.GetAuthorizationsRequest
-	3,  // 28: sa.StorageAuthority.GetPendingAuthorization2:input_type -> sa.GetPendingAuthorizationRequest
-	0,  // 29: sa.StorageAuthority.CountPendingAuthorizations2:input_type -> sa.RegistrationID
-	22, // 30: sa.StorageAuthority.GetValidOrderAuthorizations2:input_type -> sa.GetValidOrderAuthorizationsRequest
-	12, // 31: sa.StorageAuthority.CountInvalidAuthorizations2:input_type -> sa.CountInvalidAuthorizationsRequest
-	4,  // 32: sa.StorageAuthority.GetValidAuthorizations2:input_type -> sa.GetValidAuthorizationsRequest
-	34, // 33: sa.StorageAuthority.KeyBlocked:input_type -> sa.KeyBlockedRequest
-	42, // 34: sa.StorageAuthority.NewRegistration:input_type -> core.Registration
-	42, // 35: sa.StorageAuthority.UpdateRegistration:input_type -> core.Registration
-	19, // 36: sa.StorageAuthority.AddCertificate:input_type -> sa.AddCertificateRequest
-	19, // 37: sa.StorageAuthority.AddPrecertificate:input_type -> sa.AddCertificateRequest
-	18, // 38: sa.StorageAuthority.AddSerial:input_type -> sa.AddSerialRequest
-	0,  // 39: sa.StorageAuthority.DeactivateRegistration:input_type -> sa.RegistrationID
-	39, // 40: sa.StorageAuthority.NewOrder:input_type -> core.Order
-	27, // 41: sa.StorageAuthority.NewOrderAndAuthzs:input_type -> sa.NewOrderAndAuthzsRequest
-	39, // 42: sa.StorageAuthority.SetOrderProcessing:input_type -> core.Order
-	39, // 43: sa.StorageAuthority.SetOrderError:input_type -> core.Order
-	39, // 44: sa.StorageAuthority.FinalizeOrder:input_type -> core.Order
-	21, // 45: sa.StorageAuthority.GetOrder:input_type -> sa.OrderRequest
-	23, // 46: sa.StorageAuthority.GetOrderForNames:input_type -> sa.GetOrderForNamesRequest
-	31, // 47: sa.StorageAuthority.RevokeCertificate:input_type -> sa.RevokeCertificateRequest
-	26, // 48: sa.StorageAuthority.NewAuthorizations2:input_type -> sa.AddPendingAuthorizationsRequest
-	32, // 49: sa.StorageAuthority.FinalizeAuthorization2:input_type -> sa.FinalizeAuthorizationRequest
-	29, // 50: sa.StorageAuthority.DeactivateAuthorization2:input_type -> sa.AuthorizationID2
-	33, // 51: sa.StorageAuthority.AddBlockedKey:input_type -> sa.AddBlockedKeyRequest
-	42, // 52: sa.StorageAuthority.GetRegistration:output_type -> core.Registration
-	42, // 53: sa.StorageAuthority.GetRegistrationByKey:output_type -> core.Registration
-	43, // 54: sa.StorageAuthority.GetCertificate:output_type -> core.Certificate
-	43, // 55: sa.StorageAuthority.GetPrecertificate:output_type -> core.Certificate
-	44, // 56: sa.StorageAuthority.GetCertificateStatus:output_type -> core.CertificateStatus
-	10, // 57: sa.StorageAuthority.CountCertificatesByNames:output_type -> sa.CountByNames
-	8,  // 58: sa.StorageAuthority.CountRegistrationsByIP:output_type -> sa.Count
-	8,  // 59: sa.StorageAuthority.CountRegistrationsByIPRange:output_type -> sa.Count
-	8,  // 60: sa.StorageAuthority.CountOrders:output_type -> sa.Count
-	8,  // 61: sa.StorageAuthority.CountFQDNSets:output_type -> sa.Count
-	17, // 62: sa.StorageAuthority.FQDNSetExists:output_type -> sa.Exists
-	17, // 63: sa.StorageAuthority.PreviousCertificateExists:output_type -> sa.Exists
-	38, // 64: sa.StorageAuthority.GetAuthorization2:output_type -> core.Authorization
-	25, // 65: sa.StorageAuthority.GetAuthorizations2:output_type -> sa.Authorizations
-	38, // 66: sa.StorageAuthority.GetPendingAuthorization2:output_type -> core.Authorization
-	8,  // 67: sa.StorageAuthority.CountPendingAuthorizations2:output_type -> sa.Count
-	25, // 68: sa.StorageAuthority.GetValidOrderAuthorizations2:output_type -> sa.Authorizations
-	8,  // 69: sa.StorageAuthority.CountInvalidAuthorizations2:output_type -> sa.Count
-	25, // 70: sa.StorageAuthority.GetValidAuthorizations2:output_type -> sa.Authorizations
-	17, // 71: sa.StorageAuthority.KeyBlocked:output_type -> sa.Exists
-	42, // 72: sa.StorageAuthority.NewRegistration:output_type -> core.Registration
-	45, // 73: sa.StorageAuthority.UpdateRegistration:output_type -> google.protobuf.Empty
-	20, // 74: sa.StorageAuthority.AddCertificate:output_type -> sa.AddCertificateResponse
-	45, // 75: sa.StorageAuthority.AddPrecertificate:output_type -> google.protobuf.Empty
-	45, // 76: sa.StorageAuthority.AddSerial:output_type -> google.protobuf.Empty
-	45, // 77: sa.StorageAuthority.DeactivateRegistration:output_type -> google.protobuf.Empty
-	39, // 78: sa.StorageAuthority.NewOrder:output_type -> core.Order
-	39, // 79: sa.StorageAuthority.NewOrderAndAuthzs:output_type -> core.Order
-	45, // 80: sa.StorageAuthority.SetOrderProcessing:output_type -> google.protobuf.Empty
-	45, // 81: sa.StorageAuthority.SetOrderError:output_type -> google.protobuf.Empty
-	45, // 82: sa.StorageAuthority.FinalizeOrder:output_type -> google.protobuf.Empty
-	39, // 83: sa.StorageAuthority.GetOrder:output_type -> core.Order
-	39, // 84: sa.StorageAuthority.GetOrderForNames:output_type -> core.Order
-	45, // 85: sa.StorageAuthority.RevokeCertificate:output_type -> google.protobuf.Empty
-	30, // 86: sa.StorageAuthority.NewAuthorizations2:output_type -> sa.Authorization2IDs
-	45, // 87: sa.StorageAuthority.FinalizeAuthorization2:output_type -> google.protobuf.Empty
-	45, // 88: sa.StorageAuthority.DeactivateAuthorization2:output_type -> google.protobuf.Empty
-	45, // 89: sa.StorageAuthority.AddBlockedKey:output_type -> google.protobuf.Empty
-	52, // [52:90] is the sub-list for method output_type
-	14, // [14:52] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	22, // 6: sa.NewOrderAndAuthzsRequest.newOrder:type_name -> sa.NewOrderRequest
+	41, // 7: sa.NewOrderAndAuthzsRequest.newAuthzs:type_name -> core.Authorization
+	42, // 8: sa.SetOrderErrorRequest.error:type_name -> core.ProblemDetails
+	40, // 9: sa.Authorizations.authz:type_name -> sa.Authorizations.MapElement
+	41, // 10: sa.AddPendingAuthorizationsRequest.authz:type_name -> core.Authorization
+	43, // 11: sa.FinalizeAuthorizationRequest.validationRecords:type_name -> core.ValidationRecord
+	42, // 12: sa.FinalizeAuthorizationRequest.validationError:type_name -> core.ProblemDetails
+	41, // 13: sa.ValidAuthorizations.MapElement.authz:type_name -> core.Authorization
+	41, // 14: sa.Authorizations.MapElement.authz:type_name -> core.Authorization
+	0,  // 15: sa.StorageAuthority.GetRegistration:input_type -> sa.RegistrationID
+	1,  // 16: sa.StorageAuthority.GetRegistrationByKey:input_type -> sa.JSONWebKey
+	6,  // 17: sa.StorageAuthority.GetCertificate:input_type -> sa.Serial
+	6,  // 18: sa.StorageAuthority.GetPrecertificate:input_type -> sa.Serial
+	6,  // 19: sa.StorageAuthority.GetCertificateStatus:input_type -> sa.Serial
+	9,  // 20: sa.StorageAuthority.CountCertificatesByNames:input_type -> sa.CountCertificatesByNamesRequest
+	11, // 21: sa.StorageAuthority.CountRegistrationsByIP:input_type -> sa.CountRegistrationsByIPRequest
+	11, // 22: sa.StorageAuthority.CountRegistrationsByIPRange:input_type -> sa.CountRegistrationsByIPRequest
+	13, // 23: sa.StorageAuthority.CountOrders:input_type -> sa.CountOrdersRequest
+	14, // 24: sa.StorageAuthority.CountFQDNSets:input_type -> sa.CountFQDNSetsRequest
+	15, // 25: sa.StorageAuthority.FQDNSetExists:input_type -> sa.FQDNSetExistsRequest
+	16, // 26: sa.StorageAuthority.PreviousCertificateExists:input_type -> sa.PreviousCertificateExistsRequest
+	32, // 27: sa.StorageAuthority.GetAuthorization2:input_type -> sa.AuthorizationID2
+	28, // 28: sa.StorageAuthority.GetAuthorizations2:input_type -> sa.GetAuthorizationsRequest
+	3,  // 29: sa.StorageAuthority.GetPendingAuthorization2:input_type -> sa.GetPendingAuthorizationRequest
+	0,  // 30: sa.StorageAuthority.CountPendingAuthorizations2:input_type -> sa.RegistrationID
+	25, // 31: sa.StorageAuthority.GetValidOrderAuthorizations2:input_type -> sa.GetValidOrderAuthorizationsRequest
+	12, // 32: sa.StorageAuthority.CountInvalidAuthorizations2:input_type -> sa.CountInvalidAuthorizationsRequest
+	4,  // 33: sa.StorageAuthority.GetValidAuthorizations2:input_type -> sa.GetValidAuthorizationsRequest
+	37, // 34: sa.StorageAuthority.KeyBlocked:input_type -> sa.KeyBlockedRequest
+	44, // 35: sa.StorageAuthority.NewRegistration:input_type -> core.Registration
+	44, // 36: sa.StorageAuthority.UpdateRegistration:input_type -> core.Registration
+	19, // 37: sa.StorageAuthority.AddCertificate:input_type -> sa.AddCertificateRequest
+	19, // 38: sa.StorageAuthority.AddPrecertificate:input_type -> sa.AddCertificateRequest
+	18, // 39: sa.StorageAuthority.AddSerial:input_type -> sa.AddSerialRequest
+	0,  // 40: sa.StorageAuthority.DeactivateRegistration:input_type -> sa.RegistrationID
+	22, // 41: sa.StorageAuthority.NewOrder:input_type -> sa.NewOrderRequest
+	23, // 42: sa.StorageAuthority.NewOrderAndAuthzs:input_type -> sa.NewOrderAndAuthzsRequest
+	21, // 43: sa.StorageAuthority.SetOrderProcessing:input_type -> sa.OrderRequest
+	24, // 44: sa.StorageAuthority.SetOrderError:input_type -> sa.SetOrderErrorRequest
+	27, // 45: sa.StorageAuthority.FinalizeOrder:input_type -> sa.FinalizeOrderRequest
+	21, // 46: sa.StorageAuthority.GetOrder:input_type -> sa.OrderRequest
+	26, // 47: sa.StorageAuthority.GetOrderForNames:input_type -> sa.GetOrderForNamesRequest
+	34, // 48: sa.StorageAuthority.RevokeCertificate:input_type -> sa.RevokeCertificateRequest
+	30, // 49: sa.StorageAuthority.NewAuthorizations2:input_type -> sa.AddPendingAuthorizationsRequest
+	35, // 50: sa.StorageAuthority.FinalizeAuthorization2:input_type -> sa.FinalizeAuthorizationRequest
+	32, // 51: sa.StorageAuthority.DeactivateAuthorization2:input_type -> sa.AuthorizationID2
+	36, // 52: sa.StorageAuthority.AddBlockedKey:input_type -> sa.AddBlockedKeyRequest
+	44, // 53: sa.StorageAuthority.GetRegistration:output_type -> core.Registration
+	44, // 54: sa.StorageAuthority.GetRegistrationByKey:output_type -> core.Registration
+	45, // 55: sa.StorageAuthority.GetCertificate:output_type -> core.Certificate
+	45, // 56: sa.StorageAuthority.GetPrecertificate:output_type -> core.Certificate
+	46, // 57: sa.StorageAuthority.GetCertificateStatus:output_type -> core.CertificateStatus
+	10, // 58: sa.StorageAuthority.CountCertificatesByNames:output_type -> sa.CountByNames
+	8,  // 59: sa.StorageAuthority.CountRegistrationsByIP:output_type -> sa.Count
+	8,  // 60: sa.StorageAuthority.CountRegistrationsByIPRange:output_type -> sa.Count
+	8,  // 61: sa.StorageAuthority.CountOrders:output_type -> sa.Count
+	8,  // 62: sa.StorageAuthority.CountFQDNSets:output_type -> sa.Count
+	17, // 63: sa.StorageAuthority.FQDNSetExists:output_type -> sa.Exists
+	17, // 64: sa.StorageAuthority.PreviousCertificateExists:output_type -> sa.Exists
+	41, // 65: sa.StorageAuthority.GetAuthorization2:output_type -> core.Authorization
+	29, // 66: sa.StorageAuthority.GetAuthorizations2:output_type -> sa.Authorizations
+	41, // 67: sa.StorageAuthority.GetPendingAuthorization2:output_type -> core.Authorization
+	8,  // 68: sa.StorageAuthority.CountPendingAuthorizations2:output_type -> sa.Count
+	29, // 69: sa.StorageAuthority.GetValidOrderAuthorizations2:output_type -> sa.Authorizations
+	8,  // 70: sa.StorageAuthority.CountInvalidAuthorizations2:output_type -> sa.Count
+	29, // 71: sa.StorageAuthority.GetValidAuthorizations2:output_type -> sa.Authorizations
+	17, // 72: sa.StorageAuthority.KeyBlocked:output_type -> sa.Exists
+	44, // 73: sa.StorageAuthority.NewRegistration:output_type -> core.Registration
+	47, // 74: sa.StorageAuthority.UpdateRegistration:output_type -> google.protobuf.Empty
+	20, // 75: sa.StorageAuthority.AddCertificate:output_type -> sa.AddCertificateResponse
+	47, // 76: sa.StorageAuthority.AddPrecertificate:output_type -> google.protobuf.Empty
+	47, // 77: sa.StorageAuthority.AddSerial:output_type -> google.protobuf.Empty
+	47, // 78: sa.StorageAuthority.DeactivateRegistration:output_type -> google.protobuf.Empty
+	48, // 79: sa.StorageAuthority.NewOrder:output_type -> core.Order
+	48, // 80: sa.StorageAuthority.NewOrderAndAuthzs:output_type -> core.Order
+	47, // 81: sa.StorageAuthority.SetOrderProcessing:output_type -> google.protobuf.Empty
+	47, // 82: sa.StorageAuthority.SetOrderError:output_type -> google.protobuf.Empty
+	47, // 83: sa.StorageAuthority.FinalizeOrder:output_type -> google.protobuf.Empty
+	48, // 84: sa.StorageAuthority.GetOrder:output_type -> core.Order
+	48, // 85: sa.StorageAuthority.GetOrderForNames:output_type -> core.Order
+	47, // 86: sa.StorageAuthority.RevokeCertificate:output_type -> google.protobuf.Empty
+	33, // 87: sa.StorageAuthority.NewAuthorizations2:output_type -> sa.Authorization2IDs
+	47, // 88: sa.StorageAuthority.FinalizeAuthorization2:output_type -> google.protobuf.Empty
+	47, // 89: sa.StorageAuthority.DeactivateAuthorization2:output_type -> google.protobuf.Empty
+	47, // 90: sa.StorageAuthority.AddBlockedKey:output_type -> google.protobuf.Empty
+	53, // [53:91] is the sub-list for method output_type
+	15, // [15:53] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_sa_proto_init() }
@@ -2945,7 +3153,7 @@ func file_sa_proto_init() {
 			}
 		}
 		file_sa_proto_msgTypes[22].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*GetValidOrderAuthorizationsRequest); i {
+			switch v := v.(*NewOrderRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -2957,54 +3165,6 @@ func file_sa_proto_init() {
 			}
 		}
 		file_sa_proto_msgTypes[23].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*GetOrderForNamesRequest); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_sa_proto_msgTypes[24].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*GetAuthorizationsRequest); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_sa_proto_msgTypes[25].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*Authorizations); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_sa_proto_msgTypes[26].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*AddPendingAuthorizationsRequest); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_sa_proto_msgTypes[27].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*NewOrderAndAuthzsRequest); i {
 			case 0:
 				return &v.state
@@ -3016,8 +3176,56 @@ func file_sa_proto_init() {
 				return nil
 			}
 		}
+		file_sa_proto_msgTypes[24].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*SetOrderErrorRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_sa_proto_msgTypes[25].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*GetValidOrderAuthorizationsRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_sa_proto_msgTypes[26].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*GetOrderForNamesRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_sa_proto_msgTypes[27].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*FinalizeOrderRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 		file_sa_proto_msgTypes[28].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*AuthorizationIDs); i {
+			switch v := v.(*GetAuthorizationsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3029,7 +3237,7 @@ func file_sa_proto_init() {
 			}
 		}
 		file_sa_proto_msgTypes[29].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*AuthorizationID2); i {
+			switch v := v.(*Authorizations); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3041,7 +3249,7 @@ func file_sa_proto_init() {
 			}
 		}
 		file_sa_proto_msgTypes[30].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*Authorization2IDs); i {
+			switch v := v.(*AddPendingAuthorizationsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3053,7 +3261,7 @@ func file_sa_proto_init() {
 			}
 		}
 		file_sa_proto_msgTypes[31].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*RevokeCertificateRequest); i {
+			switch v := v.(*AuthorizationIDs); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3065,7 +3273,7 @@ func file_sa_proto_init() {
 			}
 		}
 		file_sa_proto_msgTypes[32].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*FinalizeAuthorizationRequest); i {
+			switch v := v.(*AuthorizationID2); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3077,7 +3285,7 @@ func file_sa_proto_init() {
 			}
 		}
 		file_sa_proto_msgTypes[33].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*AddBlockedKeyRequest); i {
+			switch v := v.(*Authorization2IDs); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3089,7 +3297,7 @@ func file_sa_proto_init() {
 			}
 		}
 		file_sa_proto_msgTypes[34].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*KeyBlockedRequest); i {
+			switch v := v.(*RevokeCertificateRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3101,7 +3309,7 @@ func file_sa_proto_init() {
 			}
 		}
 		file_sa_proto_msgTypes[35].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ValidAuthorizations_MapElement); i {
+			switch v := v.(*FinalizeAuthorizationRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3113,7 +3321,7 @@ func file_sa_proto_init() {
 			}
 		}
 		file_sa_proto_msgTypes[36].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CountByNames_MapElement); i {
+			switch v := v.(*AddBlockedKeyRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -3125,6 +3333,42 @@ func file_sa_proto_init() {
 			}
 		}
 		file_sa_proto_msgTypes[37].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*KeyBlockedRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_sa_proto_msgTypes[38].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*ValidAuthorizations_MapElement); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_sa_proto_msgTypes[39].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*CountByNames_MapElement); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_sa_proto_msgTypes[40].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*Authorizations_MapElement); i {
 			case 0:
 				return &v.state
@@ -3143,7 +3387,7 @@ func file_sa_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_sa_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   38,
+			NumMessages:   41,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

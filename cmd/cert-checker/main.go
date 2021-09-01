@@ -9,7 +9,6 @@ import (
 	"os"
 	"reflect"
 	"regexp"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -336,14 +335,6 @@ type config struct {
 
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
-
-	// TODO(#5489): Remove these deprecated flags.
-	_ = flag.Int("workers", runtime.NumCPU(), "The number of concurrent workers used to process certificates")
-	_ = flag.Bool("bad-results-only", false, "Only collect and display bad results")
-	_ = flag.String("db-connect", "", "SQL URI if not provided in the configuration file")
-	_ = flag.Duration("check-period", time.Hour*2160, "How far back to check")
-	_ = flag.Bool("unexpired-only", false, "Only check currently unexpired certificates")
-
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()

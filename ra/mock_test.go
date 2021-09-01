@@ -2,7 +2,6 @@ package ra
 
 import (
 	"context"
-	"time"
 
 	"github.com/letsencrypt/boulder/mocks"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -13,8 +12,8 @@ type mockInvalidAuthorizationsAuthority struct {
 	domainWithFailures string
 }
 
-func (sa *mockInvalidAuthorizationsAuthority) CountOrders(ctx context.Context, _ int64, _ time.Time, _ time.Time) (int, error) {
-	return 0, nil
+func (sa *mockInvalidAuthorizationsAuthority) CountOrders(ctx context.Context, _ *sapb.CountOrdersRequest) (*sapb.Count, error) {
+	return &sapb.Count{}, nil
 }
 
 func (sa *mockInvalidAuthorizationsAuthority) PreviousCertificateExists(

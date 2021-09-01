@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"errors"
-	"fmt"
 	"math/big"
 	"testing"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
@@ -134,8 +134,10 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
-	status, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
-	test.AssertNotError(t, err, "Couldn't get the core.CertificateStatus from the database")
+	statusPB, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: core.SerialToString(parsedCert.SerialNumber)})
+	test.AssertNotError(t, err, "Couldn't get the certificateStatus from the database")
+	status, err := bgrpc.PBToCertStatus(statusPB)
+	test.AssertNotError(t, err, "Count't convert the certificateStatus from a PB")
 
 	meta, err := updater.generateResponse(ctx, status)
 	test.AssertNotError(t, err, "Couldn't generate OCSP response")
@@ -227,8 +229,10 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't find status")
 	test.AssertEquals(t, len(statuses), 1)
 
-	status, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
-	test.AssertNotError(t, err, "Couldn't get the core.Certificate from the database")
+	statusPB, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: core.SerialToString(parsedCert.SerialNumber)})
+	test.AssertNotError(t, err, "Couldn't get the certificateStatus from the database")
+	status, err := bgrpc.PBToCertStatus(statusPB)
+	test.AssertNotError(t, err, "Count't convert the certificateStatus from a PB")
 
 	// Generate and store an updated response, which will update the
 	// ocspLastUpdate field for this cert.
@@ -331,8 +335,11 @@ func TestOldOCSPResponsesTickIsExpired(t *testing.T) {
 
 	// The certificate isn't expired, so the certificate status should have
 	// a false `IsExpired` and it should show up as stale.
-	cs, err := sa.GetCertificateStatus(ctx, serial)
-	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get certificate status for %q", serial))
+	statusPB, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	test.AssertNotError(t, err, "Couldn't get the certificateStatus from the database")
+	cs, err := bgrpc.PBToCertStatus(statusPB)
+	test.AssertNotError(t, err, "Count't convert the certificateStatus from a PB")
+
 	test.AssertEquals(t, cs.IsExpired, false)
 	statuses, err := updater.findStaleOCSPResponses(earliest, 10)
 	test.AssertNotError(t, err, "Couldn't find status")
@@ -350,8 +357,11 @@ func TestOldOCSPResponsesTickIsExpired(t *testing.T) {
 
 	// Since we advanced the fakeclock beyond our test certificate's NotAfter we
 	// expect the certificate status has been updated to have a true `IsExpired`
-	cs, err = sa.GetCertificateStatus(ctx, serial)
-	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get certificate status for %q", serial))
+	statusPB, err = sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	test.AssertNotError(t, err, "Couldn't get the certificateStatus from the database")
+	cs, err = bgrpc.PBToCertStatus(statusPB)
+	test.AssertNotError(t, err, "Count't convert the certificateStatus from a PB")
+
 	test.AssertEquals(t, cs.IsExpired, true)
 	statuses, err = updater.findStaleOCSPResponses(earliest, 10)
 	test.AssertNotError(t, err, "Couldn't find status")
@@ -374,8 +384,10 @@ func TestStoreResponseGuard(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
-	status, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
-	test.AssertNotError(t, err, "Failed to get certificate status")
+	statusPB, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: core.SerialToString(parsedCert.SerialNumber)})
+	test.AssertNotError(t, err, "Couldn't get the certificateStatus from the database")
+	status, err := bgrpc.PBToCertStatus(statusPB)
+	test.AssertNotError(t, err, "Count't convert the certificateStatus from a PB")
 
 	serialStr := core.SerialToString(parsedCert.SerialNumber)
 	reason := int64(0)
@@ -395,9 +407,9 @@ func TestStoreResponseGuard(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to update certificate status")
 
 	// Make sure the OCSP response hasn't actually changed
-	unchangedStatus, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
+	unchangedStatus, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: core.SerialToString(parsedCert.SerialNumber)})
 	test.AssertNotError(t, err, "Failed to get certificate status")
-	test.AssertEquals(t, string(unchangedStatus.OCSPResponse), "fakeocspbytes")
+	test.AssertEquals(t, string(unchangedStatus.OcspResponse), "fakeocspbytes")
 
 	// Changing the status to the stored status should allow the update to occur
 	status.Status = core.OCSPStatusRevoked
@@ -405,9 +417,9 @@ func TestStoreResponseGuard(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to updated certificate status")
 
 	// Make sure the OCSP response has been updated
-	changedStatus, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
+	changedStatus, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: core.SerialToString(parsedCert.SerialNumber)})
 	test.AssertNotError(t, err, "Failed to get certificate status")
-	test.AssertEquals(t, string(changedStatus.OCSPResponse), "newfakeocspbytes")
+	test.AssertEquals(t, string(changedStatus.OcspResponse), "newfakeocspbytes")
 }
 
 func TestGenerateOCSPResponsePrecert(t *testing.T) {

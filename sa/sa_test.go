@@ -27,7 +27,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
-	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
@@ -282,16 +281,23 @@ func TestCountCertificatesByNames(t *testing.T) {
 	// hour to account for rounding.
 	clk.Add(time.Hour - clk.Now().Sub(cert.NotBefore))
 	now := clk.Now()
-	yesterday := clk.Now().Add(-24 * time.Hour)
-	twoDaysAgo := clk.Now().Add(-48 * time.Hour)
-	tomorrow := clk.Now().Add(24 * time.Hour)
+	yesterday := clk.Now().Add(-24 * time.Hour).UnixNano()
+	twoDaysAgo := clk.Now().Add(-48 * time.Hour).UnixNano()
+	tomorrow := clk.Now().Add(24 * time.Hour).UnixNano()
 
 	// Count for a name that doesn't have any certs
-	counts, err := sa.CountCertificatesByNames(ctx, []string{"example.com"}, yesterday, now)
+	req := &sapb.CountCertificatesByNamesRequest{
+		Names: []string{"example.com"},
+		Range: &sapb.Range{
+			Earliest: yesterday,
+			Latest:   now.UnixNano(),
+		},
+	}
+	counts, err := sa.CountCertificatesByNames(ctx, req)
 	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, len(counts), 1)
-	test.AssertEquals(t, counts[0].Name, "example.com")
-	test.AssertEquals(t, counts[0].Count, int64(0))
+	test.AssertEquals(t, len(counts.CountByNames), 1)
+	test.AssertEquals(t, counts.CountByNames[0].Name, "example.com")
+	test.AssertEquals(t, counts.CountByNames[0].Count, int64(0))
 
 	// Add the test cert and query for its names.
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -304,26 +310,30 @@ func TestCountCertificatesByNames(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 
 	// Time range including now should find the cert
-	counts, err = sa.CountCertificatesByNames(ctx, []string{"example.com"}, yesterday, now)
+	counts, err = sa.CountCertificatesByNames(ctx, req)
 	test.AssertNotError(t, err, "sa.CountCertificatesByName failed")
-	test.AssertEquals(t, len(counts), 1)
-	test.AssertEquals(t, counts[0].Name, "example.com")
-	test.AssertEquals(t, counts[0].Count, int64(1))
+	test.AssertEquals(t, len(counts.CountByNames), 1)
+	test.AssertEquals(t, counts.CountByNames[0].Name, "example.com")
+	test.AssertEquals(t, counts.CountByNames[0].Count, int64(1))
 
 	// Time range between two days ago and yesterday should not.
-	counts, err = sa.CountCertificatesByNames(ctx, []string{"example.com"}, twoDaysAgo, yesterday)
+	req.Range.Earliest = twoDaysAgo
+	req.Range.Latest = yesterday
+	counts, err = sa.CountCertificatesByNames(ctx, req)
 	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, len(counts), 1)
-	test.AssertEquals(t, counts[0].Name, "example.com")
-	test.AssertEquals(t, counts[0].Count, int64(0))
+	test.AssertEquals(t, len(counts.CountByNames), 1)
+	test.AssertEquals(t, counts.CountByNames[0].Name, "example.com")
+	test.AssertEquals(t, counts.CountByNames[0].Count, int64(0))
 
 	// Time range between now and tomorrow also should not (time ranges are
 	// inclusive at the tail end, but not the beginning end).
-	counts, err = sa.CountCertificatesByNames(ctx, []string{"example.com"}, now, tomorrow)
+	req.Range.Earliest = now.UnixNano()
+	req.Range.Latest = tomorrow
+	counts, err = sa.CountCertificatesByNames(ctx, req)
 	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, len(counts), 1)
-	test.AssertEquals(t, counts[0].Name, "example.com")
-	test.AssertEquals(t, counts[0].Count, int64(0))
+	test.AssertEquals(t, len(counts.CountByNames), 1)
+	test.AssertEquals(t, counts.CountByNames[0].Name, "example.com")
+	test.AssertEquals(t, counts.CountByNames[0].Count, int64(0))
 
 	// Add a second test cert (for example.co.bn) and query for multiple names.
 	names := []string{"example.com", "foo.com", "example.co.bn"}
@@ -335,10 +345,10 @@ func TestCountCertificatesByNames(t *testing.T) {
 	interlocker.Add(len(names))
 	sa.parallelismPerRPC = len(names)
 	oldCertCountFunc := sa.countCertificatesByName
-	sa.countCertificatesByName = func(sel db.Selector, domain string, earliest, latest time.Time) (int, error) {
+	sa.countCertificatesByName = func(sel db.Selector, domain string, timeRange *sapb.Range) (int64, error) {
 		interlocker.Done()
 		interlocker.Wait()
-		return oldCertCountFunc(sel, domain, earliest, latest)
+		return oldCertCountFunc(sel, domain, timeRange)
 	}
 
 	certDER2, err := ioutil.ReadFile("test-cert2.der")
@@ -349,16 +359,19 @@ func TestCountCertificatesByNames(t *testing.T) {
 		Issued: issued.UnixNano(),
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
-	counts, err = sa.CountCertificatesByNames(ctx, names, yesterday, now.Add(10000*time.Hour))
+	req.Names = names
+	req.Range.Earliest = yesterday
+	req.Range.Latest = now.Add(10000 * time.Hour).UnixNano()
+	counts, err = sa.CountCertificatesByNames(ctx, req)
 	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, len(counts), 3)
+	test.AssertEquals(t, len(counts.CountByNames), 3)
 
 	expected := map[string]int{
 		"example.co.bn": 1,
 		"foo.com":       0,
 		"example.com":   1,
 	}
-	for _, entry := range counts {
+	for _, entry := range counts.CountByNames {
 		domain := entry.Name
 		actualCount := entry.Count
 		expectedCount := int64(expected[domain])
@@ -399,34 +412,43 @@ func TestCountRegistrationsByIP(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
 
-	earliest := fc.Now().Add(-time.Hour * 24)
-	latest := fc.Now()
+	req := &sapb.CountRegistrationsByIPRequest{
+		Ip: net.ParseIP("1.1.1.1"),
+		Range: &sapb.Range{
+			Earliest: fc.Now().Add(-time.Hour * 24).UnixNano(),
+			Latest:   fc.Now().UnixNano(),
+		},
+	}
 
 	// There should be 0 registrations for an IPv4 address we didn't add
 	// a registration for
-	count, err := sa.CountRegistrationsByIP(ctx, net.ParseIP("1.1.1.1"), earliest, latest)
+	count, err := sa.CountRegistrationsByIP(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 0)
+	test.AssertEquals(t, count.Count, int64(0))
 	// There should be 1 registration for the IPv4 address we did add
-	// a registration for
-	count, err = sa.CountRegistrationsByIP(ctx, net.ParseIP("43.34.43.34"), earliest, latest)
+	// a registration for.
+	req.Ip = net.ParseIP("43.34.43.34")
+	count, err = sa.CountRegistrationsByIP(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 1)
+	test.AssertEquals(t, count.Count, int64(1))
 	// There should be 1 registration for the first IPv6 address we added
 	// a registration for
-	count, err = sa.CountRegistrationsByIP(ctx, net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"), earliest, latest)
+	req.Ip = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652")
+	count, err = sa.CountRegistrationsByIP(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 1)
+	test.AssertEquals(t, count.Count, int64(1))
 	// There should be 1 registration for the second IPv6 address we added
 	// a registration for as well
-	count, err = sa.CountRegistrationsByIP(ctx, net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653"), earliest, latest)
+	req.Ip = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653")
+	count, err = sa.CountRegistrationsByIP(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 1)
+	test.AssertEquals(t, count.Count, int64(1))
 	// There should be 0 registrations for an IPv6 address in the same /48 as the
 	// two IPv6 addresses with registrations
-	count, err = sa.CountRegistrationsByIP(ctx, net.ParseIP("2001:cdba:1234:0000:0000:0000:0000:0000"), earliest, latest)
+	req.Ip = net.ParseIP("2001:cdba:1234:0000:0000:0000:0000:0000")
+	count, err = sa.CountRegistrationsByIP(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 0)
+	test.AssertEquals(t, count.Count, int64(0))
 }
 
 func TestCountRegistrationsByIPRange(t *testing.T) {
@@ -462,34 +484,44 @@ func TestCountRegistrationsByIPRange(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
 
-	earliest := fc.Now().Add(-time.Hour * 24)
-	latest := fc.Now()
+	req := &sapb.CountRegistrationsByIPRequest{
+		Ip: net.ParseIP("1.1.1.1"),
+		Range: &sapb.Range{
+			Earliest: fc.Now().Add(-time.Hour * 24).UnixNano(),
+			Latest:   fc.Now().UnixNano(),
+		},
+	}
 
 	// There should be 0 registrations in the range for an IPv4 address we didn't
 	// add a registration for
-	count, err := sa.CountRegistrationsByIPRange(ctx, net.ParseIP("1.1.1.1"), earliest, latest)
+	req.Ip = net.ParseIP("1.1.1.1")
+	count, err := sa.CountRegistrationsByIPRange(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 0)
+	test.AssertEquals(t, count.Count, int64(0))
 	// There should be 1 registration in the range for the IPv4 address we did
 	// add a registration for
-	count, err = sa.CountRegistrationsByIPRange(ctx, net.ParseIP("43.34.43.34"), earliest, latest)
+	req.Ip = net.ParseIP("43.34.43.34")
+	count, err = sa.CountRegistrationsByIPRange(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 1)
+	test.AssertEquals(t, count.Count, int64(1))
 	// There should be 2 registrations in the range for the first IPv6 address we added
 	// a registration for because it's in the same /48
-	count, err = sa.CountRegistrationsByIPRange(ctx, net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"), earliest, latest)
+	req.Ip = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652")
+	count, err = sa.CountRegistrationsByIPRange(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 2)
+	test.AssertEquals(t, count.Count, int64(2))
 	// There should be 2 registrations in the range for the second IPv6 address
 	// we added a registration for as well, because it too is in the same /48
-	count, err = sa.CountRegistrationsByIPRange(ctx, net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653"), earliest, latest)
+	req.Ip = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653")
+	count, err = sa.CountRegistrationsByIPRange(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 2)
+	test.AssertEquals(t, count.Count, int64(2))
 	// There should also be 2 registrations in the range for an arbitrary IPv6 address in
 	// the same /48 as the registrations we added
-	count, err = sa.CountRegistrationsByIPRange(ctx, net.ParseIP("2001:cdba:1234:0000:0000:0000:0000:0000"), earliest, latest)
+	req.Ip = net.ParseIP("2001:cdba:1234:0000:0000:0000:0000:0000")
+	count, err = sa.CountRegistrationsByIPRange(ctx, req)
 	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count, 2)
+	test.AssertEquals(t, count.Count, int64(2))
 }
 
 func TestFQDNSets(t *testing.T) {
@@ -505,16 +537,21 @@ func TestFQDNSets(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to add name set")
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
-	// only one valid
 	threeHours := time.Hour * 3
-	count, err := sa.CountFQDNSets(ctx, threeHours, names)
+	req := &sapb.CountFQDNSetsRequest{
+		Domains: names,
+		Window:  threeHours.Nanoseconds(),
+	}
+	// only one valid
+	count, err := sa.CountFQDNSets(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
-	test.AssertEquals(t, count, int64(1))
+	test.AssertEquals(t, count.Count, int64(1))
 
 	// check hash isn't affected by changing name order/casing
-	count, err = sa.CountFQDNSets(ctx, threeHours, []string{"b.example.com", "A.example.COM"})
+	req.Domains = []string{"b.example.com", "A.example.COM"}
+	count, err = sa.CountFQDNSets(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
-	test.AssertEquals(t, count, int64(1))
+	test.AssertEquals(t, count.Count, int64(1))
 
 	// add another valid set
 	tx, err = sa.dbMap.Begin()
@@ -524,9 +561,10 @@ func TestFQDNSets(t *testing.T) {
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
 	// only two valid
-	count, err = sa.CountFQDNSets(ctx, threeHours, names)
+	req.Domains = names
+	count, err = sa.CountFQDNSets(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
-	test.AssertEquals(t, count, int64(2))
+	test.AssertEquals(t, count.Count, int64(2))
 
 	// add an expired set
 	tx, err = sa.dbMap.Begin()
@@ -542,9 +580,9 @@ func TestFQDNSets(t *testing.T) {
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
 	// only two valid
-	count, err = sa.CountFQDNSets(ctx, threeHours, names)
+	count, err = sa.CountFQDNSets(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
-	test.AssertEquals(t, count, int64(2))
+	test.AssertEquals(t, count.Count, int64(2))
 }
 
 func TestFQDNSetsExists(t *testing.T) {
@@ -552,9 +590,9 @@ func TestFQDNSetsExists(t *testing.T) {
 	defer cleanUp()
 
 	names := []string{"a.example.com", "B.example.com"}
-	exists, err := sa.FQDNSetExists(ctx, names)
+	exists, err := sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Domains: names})
 	test.AssertNotError(t, err, "Failed to check FQDN set existence")
-	test.Assert(t, !exists, "FQDN set shouldn't exist")
+	test.Assert(t, !exists.Exists, "FQDN set shouldn't exist")
 
 	tx, err := sa.dbMap.Begin()
 	test.AssertNotError(t, err, "Failed to open transaction")
@@ -564,9 +602,9 @@ func TestFQDNSetsExists(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to add name set")
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
-	exists, err = sa.FQDNSetExists(ctx, names)
+	exists, err = sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Domains: names})
 	test.AssertNotError(t, err, "Failed to check FQDN set existence")
-	test.Assert(t, exists, "FQDN set does exist")
+	test.Assert(t, exists.Exists, "FQDN set does exist")
 }
 
 type execRecorder struct {
@@ -981,12 +1019,11 @@ func TestNewOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't create test registration")
 
-	order, err := sa.NewOrder(context.Background(), &corepb.Order{
+	order, err := sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
 		RegistrationID:   reg.Id,
 		Expires:          1,
 		Names:            []string{"example.com", "just.another.example.com"},
 		V2Authorizations: []int64{1, 2, 3},
-		Status:           string(core.StatusPending),
 	})
 	test.AssertNotError(t, err, "sa.NewOrder failed")
 	test.AssertEquals(t, order.Id, int64(1))
@@ -1024,12 +1061,11 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		// Insert an order for four names, two of which already have authzs
-		Order: &corepb.Order{
+		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   reg.Id,
 			Expires:          1,
 			Names:            []string{"a.com", "b.com", "c.com", "d.com"},
 			V2Authorizations: []int64{1, 2},
-			Status:           string(core.StatusPending),
 		},
 		// And add new authorizations for the other two names.
 		NewAuthzs: []*corepb.Authorization{
@@ -1091,11 +1127,16 @@ func TestSetOrderProcessing(t *testing.T) {
 	}
 
 	// Add a new order in pending status with no certificate serial
-	order, err = sa.NewOrder(context.Background(), order)
+	order, err = sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
+		RegistrationID:   order.RegistrationID,
+		Expires:          order.Expires,
+		Names:            order.Names,
+		V2Authorizations: order.V2Authorizations,
+	})
 	test.AssertNotError(t, err, "NewOrder failed")
 
 	// Set the order to be processing
-	err = sa.SetOrderProcessing(context.Background(), order)
+	_, err = sa.SetOrderProcessing(context.Background(), &sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "SetOrderProcessing failed")
 
 	// Read the order by ID from the DB to check the status was correctly updated
@@ -1108,7 +1149,7 @@ func TestSetOrderProcessing(t *testing.T) {
 	test.AssertEquals(t, updatedOrder.BeganProcessing, true)
 
 	// Try to set the same order to be processing again. We should get an error.
-	err = sa.SetOrderProcessing(context.Background(), order)
+	_, err = sa.SetOrderProcessing(context.Background(), &sapb.OrderRequest{Id: order.Id})
 	test.AssertError(t, err, "Set the same order processing twice. This should have been an error.")
 	test.AssertErrorIs(t, err, berrors.OrderNotReady)
 }
@@ -1139,16 +1180,21 @@ func TestFinalizeOrder(t *testing.T) {
 	}
 
 	// Add a new order with an empty certificate serial
-	order, err = sa.NewOrder(context.Background(), order)
+	order, err = sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
+		RegistrationID:   order.RegistrationID,
+		Expires:          order.Expires,
+		Names:            order.Names,
+		V2Authorizations: order.V2Authorizations,
+	})
 	test.AssertNotError(t, err, "NewOrder failed")
 
 	// Set the order to processing so it can be finalized
-	err = sa.SetOrderProcessing(ctx, order)
+	_, err = sa.SetOrderProcessing(ctx, &sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "SetOrderProcessing failed")
 
 	// Finalize the order with a certificate serial
 	order.CertificateSerial = "eat.serial.for.breakfast"
-	err = sa.FinalizeOrder(context.Background(), order)
+	_, err = sa.FinalizeOrder(context.Background(), &sapb.FinalizeOrderRequest{Id: order.Id, CertificateSerial: order.CertificateSerial})
 	test.AssertNotError(t, err, "FinalizeOrder failed")
 
 	// Read the order by ID from the DB to check the certificate serial and status
@@ -1188,7 +1234,12 @@ func TestOrder(t *testing.T) {
 	}
 
 	// Create the order
-	order, err := sa.NewOrder(context.Background(), inputOrder)
+	order, err := sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
+		RegistrationID:   inputOrder.RegistrationID,
+		Expires:          inputOrder.Expires,
+		Names:            inputOrder.Names,
+		V2Authorizations: inputOrder.V2Authorizations,
+	})
 	test.AssertNotError(t, err, "sa.NewOrder failed")
 
 	// The Order from GetOrder should match the following expected order
@@ -1303,39 +1354,45 @@ func TestCountOrders(t *testing.T) {
 	now := sa.clk.Now()
 	expires := now.Add(24 * time.Hour)
 
-	earliest := now.Add(-time.Hour)
-	latest := now.Add(time.Second)
+	req := &sapb.CountOrdersRequest{
+		AccountID: 12345,
+		Range: &sapb.Range{
+			Earliest: now.Add(-time.Hour).UnixNano(),
+			Latest:   now.Add(time.Second).UnixNano(),
+		},
+	}
 
 	// Counting new orders for a reg ID that doesn't exist should return 0
-	count, err := sa.CountOrders(ctx, 12345, earliest, latest)
+	count, err := sa.CountOrders(ctx, req)
 	test.AssertNotError(t, err, "Couldn't count new orders for fake reg ID")
-	test.AssertEquals(t, count, 0)
+	test.AssertEquals(t, count.Count, int64(0))
 
 	// Add a pending authorization
 	authzID := createPendingAuthorization(t, sa, "example.com", expires)
 
 	// Add one pending order
-	expiresNano := expires.UnixNano()
-	order, err := sa.NewOrder(ctx, &corepb.Order{
+	order, err := sa.NewOrder(ctx, &sapb.NewOrderRequest{
 		RegistrationID:   reg.Id,
-		Expires:          expiresNano,
+		Expires:          expires.UnixNano(),
 		Names:            []string{"example.com"},
 		V2Authorizations: []int64{authzID},
 	})
 	test.AssertNotError(t, err, "Couldn't create new pending order")
 
 	// Counting new orders for the reg ID should now yield 1
-	count, err = sa.CountOrders(ctx, reg.Id, earliest, latest)
+	req.AccountID = reg.Id
+	count, err = sa.CountOrders(ctx, req)
 	test.AssertNotError(t, err, "Couldn't count new orders for reg ID")
-	test.AssertEquals(t, count, 1)
+	test.AssertEquals(t, count.Count, int64(1))
 
 	// Moving the count window to after the order was created should return the
 	// count to 0
-	earliest = time.Unix(0, order.Created).Add(time.Minute)
-	latest = earliest.Add(time.Hour)
-	count, err = sa.CountOrders(ctx, reg.Id, earliest, latest)
+	earliest := time.Unix(0, order.Created).Add(time.Minute)
+	req.Range.Earliest = earliest.UnixNano()
+	req.Range.Latest = earliest.Add(time.Hour).UnixNano()
+	count, err = sa.CountOrders(ctx, req)
 	test.AssertNotError(t, err, "Couldn't count new orders for reg ID")
-	test.AssertEquals(t, count, 0)
+	test.AssertEquals(t, count.Count, int64(0))
 }
 
 func TestFasterGetOrderForNames(t *testing.T) {
@@ -1356,7 +1413,7 @@ func TestFasterGetOrderForNames(t *testing.T) {
 	authzIDs := createPendingAuthorization(t, sa, domain, expires)
 
 	expiresNano := expires.UnixNano()
-	_, err = sa.NewOrder(ctx, &corepb.Order{
+	_, err = sa.NewOrder(ctx, &sapb.NewOrderRequest{
 		RegistrationID:   reg.Id,
 		Expires:          expiresNano,
 		V2Authorizations: []int64{authzIDs},
@@ -1364,7 +1421,7 @@ func TestFasterGetOrderForNames(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "sa.NewOrder failed")
 
-	_, err = sa.NewOrder(ctx, &corepb.Order{
+	_, err = sa.NewOrder(ctx, &sapb.NewOrderRequest{
 		RegistrationID:   reg.Id,
 		Expires:          expiresNano,
 		V2Authorizations: []int64{authzIDs},
@@ -1419,7 +1476,7 @@ func TestGetOrderForNames(t *testing.T) {
 	test.Assert(t, result == nil, "sa.GetOrderForNames for non-existent order returned non-nil result")
 
 	// Add a new order for a set of names
-	order, err := sa.NewOrder(ctx, &corepb.Order{
+	order, err := sa.NewOrder(ctx, &sapb.NewOrderRequest{
 		RegistrationID:   regA.Id,
 		Expires:          expires,
 		V2Authorizations: []int64{authzIDA, authzIDB},
@@ -1480,7 +1537,7 @@ func TestGetOrderForNames(t *testing.T) {
 
 	// Add a fresh order that uses the authorizations created above
 	names = []string{"zombo.com", "welcome.to.zombo.com"}
-	order, err = sa.NewOrder(ctx, &corepb.Order{
+	order, err = sa.NewOrder(ctx, &sapb.NewOrderRequest{
 		RegistrationID:   regA.Id,
 		Expires:          fc.Now().Add(orderLifetime).UnixNano(),
 		V2Authorizations: []int64{authzIDC, authzIDD},
@@ -1504,12 +1561,12 @@ func TestGetOrderForNames(t *testing.T) {
 	test.AssertEquals(t, result.Id, order.Id)
 
 	// Set the order processing so it can be finalized
-	err = sa.SetOrderProcessing(ctx, order)
+	_, err = sa.SetOrderProcessing(ctx, &sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "sa.SetOrderProcessing failed")
 
 	// Finalize the order
 	order.CertificateSerial = "cinnamon toast crunch"
-	err = sa.FinalizeOrder(ctx, order)
+	_, err = sa.FinalizeOrder(ctx, &sapb.FinalizeOrderRequest{Id: order.Id, CertificateSerial: order.CertificateSerial})
 	test.AssertNotError(t, err, "sa.FinalizeOrder failed")
 
 	// Call GetOrderForNames with the same account ID and set of names as
@@ -1627,23 +1684,22 @@ func TestStatusForOrder(t *testing.T) {
 			if orderExpiry == 0 {
 				orderExpiry = expiresNano
 			}
-			newOrder, err := sa.NewOrder(ctx, &corepb.Order{
+			newOrder, err := sa.NewOrder(ctx, &sapb.NewOrderRequest{
 				RegistrationID:   reg.Id,
 				Expires:          orderExpiry,
 				V2Authorizations: tc.AuthorizationIDs,
 				Names:            tc.OrderNames,
-				BeganProcessing:  false,
 			})
 			test.AssertNotError(t, err, "NewOrder errored unexpectedly")
 			// If requested, set the order to processing
 			if tc.SetProcessing {
-				err := sa.SetOrderProcessing(ctx, newOrder)
+				_, err := sa.SetOrderProcessing(ctx, &sapb.OrderRequest{Id: newOrder.Id})
 				test.AssertNotError(t, err, "Error setting order to processing status")
 			}
 			// If requested, finalize the order
 			if tc.Finalize {
 				newOrder.CertificateSerial = "lucky charms"
-				err := sa.FinalizeOrder(ctx, newOrder)
+				_, err = sa.FinalizeOrder(ctx, &sapb.FinalizeOrderRequest{Id: newOrder.Id, CertificateSerial: newOrder.CertificateSerial})
 				test.AssertNotError(t, err, "Error finalizing order")
 			}
 			// Fetch the order by ID to get its calculated status
@@ -1702,35 +1758,34 @@ func TestRevokeCertificate(t *testing.T) {
 
 	serial := "000000000000000000000000000000021bd4"
 
-	status, err := sa.GetCertificateStatus(ctx, serial)
+	status, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
 	test.AssertNotError(t, err, "GetCertificateStatus failed")
-	test.AssertEquals(t, status.Status, core.OCSPStatusGood)
+	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusGood)
 
 	fc.Add(1 * time.Hour)
 
 	now := fc.Now()
-	dateUnix := now.UnixNano()
 	reason := int64(1)
 	response := []byte{1, 2, 3}
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial:   serial,
-		Date:     dateUnix,
+		Date:     now.UnixNano(),
 		Reason:   reason,
 		Response: response,
 	})
 	test.AssertNotError(t, err, "RevokeCertificate failed")
 
-	status, err = sa.GetCertificateStatus(ctx, serial)
+	status, err = sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
 	test.AssertNotError(t, err, "GetCertificateStatus failed")
-	test.AssertEquals(t, status.Status, core.OCSPStatusRevoked)
-	test.AssertEquals(t, status.RevokedReason, revocation.Reason(reason))
-	test.AssertEquals(t, status.RevokedDate, now)
-	test.AssertEquals(t, status.OCSPLastUpdated, now)
-	test.AssertDeepEquals(t, status.OCSPResponse, response)
+	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
+	test.AssertEquals(t, status.RevokedReason, reason)
+	test.AssertEquals(t, status.RevokedDate, now.UnixNano())
+	test.AssertEquals(t, status.OcspLastUpdated, now.UnixNano())
+	test.AssertDeepEquals(t, status.OcspResponse, response)
 
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial:   serial,
-		Date:     dateUnix,
+		Date:     now.UnixNano(),
 		Reason:   reason,
 		Response: response,
 	})
@@ -1864,13 +1919,16 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create test cert C")
 
 	countName := func(t *testing.T, name string) int64 {
-		counts, err := sa.CountCertificatesByNames(
-			context.Background(),
-			[]string{name},
-			fc.Now().Add(-5*time.Hour),
-			fc.Now().Add(5*time.Hour))
+		req := &sapb.CountCertificatesByNamesRequest{
+			Names: []string{name},
+			Range: &sapb.Range{
+				Earliest: fc.Now().Add(-5 * time.Hour).UnixNano(),
+				Latest:   fc.Now().Add(5 * time.Hour).UnixNano(),
+			},
+		}
+		counts, err := sa.CountCertificatesByNames(context.Background(), req)
 		test.AssertNotError(t, err, "Unexpected err from CountCertificatesByNames")
-		for _, elem := range counts {
+		for _, elem := range counts.CountByNames {
 			if elem.Name == name {
 				return elem.Count
 			}
@@ -2244,12 +2302,11 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 	authzIDA := createFinalizedAuthorization(t, sa, identA, expires, "valid", attemptedAt)
 	authzIDB := createFinalizedAuthorization(t, sa, identB, expires, "valid", attemptedAt)
 
-	order, err := sa.NewOrder(context.Background(), &corepb.Order{
+	order, err := sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
 		RegistrationID:   reg.Id,
 		Expires:          fc.Now().Truncate(time.Second).UnixNano(),
 		Names:            []string{"a.example.com", "b.example.com"},
 		V2Authorizations: []int64{authzIDA, authzIDB},
-		Status:           string(core.StatusPending),
 	})
 	test.AssertNotError(t, err, "AddOrder failed")
 
@@ -2355,7 +2412,7 @@ func TestGetOrderExpired(t *testing.T) {
 
 	fc.Add(time.Hour * 5)
 	reg := satest.CreateWorkingRegistration(t, sa)
-	order, err := sa.NewOrder(context.Background(), &corepb.Order{
+	order, err := sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
 		RegistrationID:   reg.Id,
 		Expires:          fc.Now().Add(-time.Hour).UnixNano(),
 		Names:            []string{"example.com"},

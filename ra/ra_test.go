@@ -1291,7 +1291,7 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 			Window:    cmd.ConfigDuration{Duration: rateLimitDuration},
 			// Setting the Threshold to 0 skips applying the rate limit. Setting an
 			// override to 0 does the trick.
-			Overrides: map[string]int{
+			Overrides: map[string]int64{
 				domain: 0,
 			},
 		},
@@ -1414,13 +1414,13 @@ func TestRateLimitLiveReload(t *testing.T) {
 	test.AssertNotError(t, err, "failed to SetRateLimitPoliciesFile")
 
 	// Test some fields of the initial policy to ensure it loaded correctly
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le.wtf"], 10000)
-	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP().Overrides["127.0.0.1"], 1000000)
-	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount().Threshold, 150)
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Threshold, 6)
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Overrides["le.wtf"], 10000)
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSetFast().Threshold, 2)
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSetFast().Overrides["le.wtf"], 100)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le.wtf"], int64(10000))
+	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP().Overrides["127.0.0.1"], int64(1000000))
+	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount().Threshold, int64(150))
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Threshold, int64(6))
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Overrides["le.wtf"], int64(10000))
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSetFast().Threshold, int64(2))
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSetFast().Overrides["le.wtf"], int64(100))
 
 	// Write a different  policy YAML to the monitored file, expect a reload.
 	// Sleep a few milliseconds before writing so the timestamp isn't identical to
@@ -1436,12 +1436,12 @@ func TestRateLimitLiveReload(t *testing.T) {
 
 	// Test fields of the policy to make sure writing the new policy to the monitored file
 	// resulted in the runtime values being updated
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le.wtf"], 9999)
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le4.wtf"], 9999)
-	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP().Overrides["127.0.0.1"], 999990)
-	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount().Threshold, 999)
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Overrides["le.wtf"], 9999)
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Threshold, 99999)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le.wtf"], int64(9999))
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le4.wtf"], int64(9999))
+	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP().Overrides["127.0.0.1"], int64(999990))
+	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount().Threshold, int64(999))
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Overrides["le.wtf"], int64(9999))
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Threshold, int64(99999))
 }
 
 type mockSAWithNameCounts struct {
@@ -1451,21 +1451,22 @@ type mockSAWithNameCounts struct {
 	clk        clock.FakeClock
 }
 
-func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, names []string, earliest, latest time.Time) (ret []*sapb.CountByNames_MapElement, err error) {
-	if latest != m.clk.Now() {
-		m.t.Errorf("incorrect latest: was %s, expected %s", latest, m.clk.Now())
+func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
+	expectedLatest := m.clk.Now().UnixNano()
+	if req.Range.Latest != expectedLatest {
+		m.t.Errorf("incorrect latest: got '%d', expected '%d'", req.Range.Latest, expectedLatest)
 	}
-	expectedEarliest := m.clk.Now().Add(-23 * time.Hour)
-	if earliest != expectedEarliest {
-		m.t.Errorf("incorrect earliest: was %s, expected %s", earliest, expectedEarliest)
+	expectedEarliest := m.clk.Now().Add(-23 * time.Hour).UnixNano()
+	if req.Range.Earliest != expectedEarliest {
+		m.t.Errorf("incorrect earliest: got '%d', expected '%d'", req.Range.Earliest, expectedEarliest)
 	}
 	var results []*sapb.CountByNames_MapElement
-	for _, name := range names {
+	for _, name := range req.Names {
 		if entry, ok := m.nameCounts[name]; ok {
 			results = append(results, entry)
 		}
 	}
-	return results, nil
+	return &sapb.CountByNames{CountByNames: results}, nil
 }
 
 func nameCount(domain string, count int) *sapb.CountByNames_MapElement {
@@ -1483,7 +1484,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	rlp := ratelimit.RateLimitPolicy{
 		Threshold: 3,
 		Window:    cmd.ConfigDuration{Duration: 23 * time.Hour},
-		Overrides: map[string]int{
+		Overrides: map[string]int64{
 			"bigissuer.com":     100,
 			"smallissuer.co.uk": 1,
 		},
@@ -1727,33 +1728,33 @@ func (m mockSAWithFQDNSet) addFQDNSet(names []string) {
 }
 
 // Search for a set of domain names in the FQDN set map
-func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, names []string) (bool, error) {
-	hash := m.hashNames(names)
+func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, req *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {
+	hash := m.hashNames(req.Domains)
 	if _, exists := m.fqdnSet[hash]; exists {
-		return true, nil
+		return &sapb.Exists{Exists: true}, nil
 	}
-	return false, nil
+	return &sapb.Exists{Exists: false}, nil
 }
 
 // Return a map of domain -> certificate count.
-func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, names []string, earliest, latest time.Time) (ret []*sapb.CountByNames_MapElement, err error) {
+func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
 	var results []*sapb.CountByNames_MapElement
-	for _, name := range names {
+	for _, name := range req.Names {
 		if entry, ok := m.nameCounts[name]; ok {
 			results = append(results, entry)
 		}
 	}
-	return results, nil
+	return &sapb.CountByNames{CountByNames: results}, nil
 }
 
-func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, _ time.Duration, names []string) (int64, error) {
+func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
 	var count int64
-	for _, name := range names {
+	for _, name := range req.Domains {
 		if entry, ok := m.nameCounts[name]; ok {
 			count += entry.Count
 		}
 	}
-	return count, nil
+	return &sapb.Count{Count: count}, nil
 }
 
 // Tests for boulder issue 1925[0] - that the `checkCertificatesPerNameLimit`
@@ -2924,13 +2925,11 @@ func TestFinalizeOrder(t *testing.T) {
 
 	// Create an order with valid authzs, it should end up status ready in the
 	// resulting returned order
-	modernFinalOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
+	modernFinalOrder, err := sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
 		RegistrationID:   Registration.Id,
 		Expires:          exp.UnixNano(),
 		Names:            []string{"not-example.com", "www.not-example.com"},
 		V2Authorizations: []int64{authzIDA, authzIDB},
-		Status:           string(core.StatusReady),
-		BeganProcessing:  false,
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs, ready status")
 
@@ -3151,12 +3150,11 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, "valid")
 
 	// Create a new order to finalize with names in SAN and CN
-	mixedOrder, err := sa.NewOrder(context.Background(), &corepb.Order{
+	mixedOrder, err := sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
 		RegistrationID:   Registration.Id,
 		Expires:          exp.UnixNano(),
 		Names:            []string{"not-example.com", "www.not-example.com"},
 		V2Authorizations: []int64{authzIDA, authzIDB},
-		Status:           string(core.StatusPending),
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
 	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -3357,12 +3355,11 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	}
 
 	// Create a pending order for all of the names
-	order, err := sa.NewOrder(context.Background(), &corepb.Order{
+	order, err := sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
 		RegistrationID:   Registration.Id,
 		Expires:          exp.UnixNano(),
 		Names:            names,
 		V2Authorizations: authzIDs,
-		Status:           string(core.StatusPending),
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
 
@@ -3712,12 +3709,11 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 	}
 
 	// Create a pending order for all of the names
-	order, err := sa.NewOrder(context.Background(), &corepb.Order{
+	order, err := sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
 		RegistrationID:   Registration.Id,
 		Expires:          exp.UnixNano(),
 		Names:            names,
 		V2Authorizations: authzIDs,
-		Status:           string(core.StatusPending),
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
 
