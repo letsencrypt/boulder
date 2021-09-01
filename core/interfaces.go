@@ -8,7 +8,6 @@ import (
 
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/identifier"
-	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -47,42 +46,6 @@ type WebFrontEnd interface {
 
 	// Provide access to requests for authorization resources
 	Cert(ctx context.Context, response http.ResponseWriter, request *http.Request)
-}
-
-// RegistrationAuthority defines the public interface for the Boulder RA
-type RegistrationAuthority interface {
-	// [WebFrontEnd]
-	NewRegistration(ctx context.Context, reg *corepb.Registration) (*corepb.Registration, error)
-
-	// [WebFrontEnd]
-	NewAuthorization(ctx context.Context, req *rapb.NewAuthorizationRequest) (*corepb.Authorization, error)
-
-	// [WebFrontEnd]
-	NewCertificate(ctx context.Context, req *rapb.NewCertificateRequest) (*corepb.Certificate, error)
-
-	// [WebFrontEnd]
-	UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error)
-
-	// [WebFrontEnd]
-	PerformValidation(ctx context.Context, req *rapb.PerformValidationRequest) (*corepb.Authorization, error)
-
-	// [WebFrontEnd]
-	RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*emptypb.Empty, error)
-
-	// [WebFrontEnd]
-	DeactivateRegistration(ctx context.Context, reg *corepb.Registration) (*emptypb.Empty, error)
-
-	// [WebFrontEnd]
-	DeactivateAuthorization(ctx context.Context, auth *corepb.Authorization) (*emptypb.Empty, error)
-
-	// [WebFrontEnd]
-	NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error)
-
-	// [WebFrontEnd]
-	FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error)
-
-	// [AdminRevoker]
-	AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error)
 }
 
 // PolicyAuthority defines the public interface for the Boulder PA

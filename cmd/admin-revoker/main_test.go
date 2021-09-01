@@ -25,6 +25,7 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/boulder/test/inmem"
 	"github.com/letsencrypt/boulder/test/vars"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -83,6 +84,7 @@ func TestRevokeBatch(t *testing.T) {
 	)
 	ra.SA = ssa
 	ra.CA = &mockCA{}
+	rac := inmem.RA{Impl: ra}
 
 	serialFile, err := ioutil.TempFile("", "serials")
 	test.AssertNotError(t, err, "failed to open temp file")
@@ -113,7 +115,7 @@ func TestRevokeBatch(t *testing.T) {
 		test.AssertNotError(t, err, "failed to write serial to temp file")
 	}
 
-	err = revokeBatch(ra, log, dbMap, serialFile.Name(), 0, 2)
+	err = revokeBatch(rac, log, dbMap, serialFile.Name(), 0, 2)
 	test.AssertNotError(t, err, "revokeBatch failed")
 
 	for _, serial := range serials {
