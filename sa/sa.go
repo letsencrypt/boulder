@@ -1030,9 +1030,15 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *sap
 }
 
 // SetOrderError updates a provided Order's error field.
-func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, order *corepb.Order) error {
+func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.SetOrderErrorRequest) (*emptypb.Empty, error) {
+	if req.Id == 0 || req.Error == nil {
+		return nil, errIncompleteRequest
+	}
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
-		om, err := orderToModel(order)
+		om, err := orderToModel(&corepb.Order{
+			Id:    req.Id,
+			Error: req.Error,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -1054,7 +1060,10 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, order *corepb
 
 		return nil, nil
 	})
-	return overallError
+	if overallError != nil {
+		return nil, overallError
+	}
+	return &emptypb.Empty{}, nil
 }
 
 // FinalizeOrder finalizes a provided *corepb.Order by persisting the

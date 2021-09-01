@@ -105,9 +105,8 @@ func (sac StorageAuthorityClientWrapper) SetOrderProcessing(ctx context.Context,
 	return sac.inner.SetOrderProcessing(ctx, req)
 }
 
-func (sac StorageAuthorityClientWrapper) SetOrderError(ctx context.Context, order *corepb.Order) error {
-	_, err := sac.inner.SetOrderError(ctx, order)
-	return err
+func (sac StorageAuthorityClientWrapper) SetOrderError(ctx context.Context, request *sapb.SetOrderErrorRequest) (*emptypb.Empty, error) {
+	return sac.inner.SetOrderError(ctx, request)
 }
 
 func (sac StorageAuthorityClientWrapper) FinalizeOrder(ctx context.Context, req *sapb.FinalizeOrderRequest) (*emptypb.Empty, error) {
@@ -266,16 +265,8 @@ func (sas StorageAuthorityServerWrapper) SetOrderProcessing(ctx context.Context,
 	return sas.inner.SetOrderProcessing(ctx, req)
 }
 
-func (sas StorageAuthorityServerWrapper) SetOrderError(ctx context.Context, order *corepb.Order) (*emptypb.Empty, error) {
-	if order == nil || !orderValid(order) {
-		return nil, errIncompleteRequest
-	}
-
-	if err := sas.inner.SetOrderError(ctx, order); err != nil {
-		return nil, err
-	}
-
-	return &emptypb.Empty{}, nil
+func (sas StorageAuthorityServerWrapper) SetOrderError(ctx context.Context, request *sapb.SetOrderErrorRequest) (*emptypb.Empty, error) {
+	return sas.inner.SetOrderError(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) FinalizeOrder(ctx context.Context, req *sapb.FinalizeOrderRequest) (*emptypb.Empty, error) {

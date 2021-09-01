@@ -961,7 +961,11 @@ func (ra *RegistrationAuthorityImpl) failOrder(
 
 	// Assign the protobuf problem to the field and save it via the SA
 	order.Error = pbProb
-	if err := ra.SA.SetOrderError(ctx, order); err != nil {
+	_, err = ra.SA.SetOrderError(ctx, &sapb.SetOrderErrorRequest{
+		Id:    order.Id,
+		Error: order.Error,
+	})
+	if err != nil {
 		ra.log.AuditErrf("Could not persist order error: %q", err)
 	}
 	return order
