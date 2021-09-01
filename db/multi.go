@@ -24,6 +24,9 @@ func NewMultiInserter(table string, fields string, retCol string) (*MultiInserte
 	if len(table) == 0 || len(fields) == 0 || numFields == 0 {
 		return nil, fmt.Errorf("empty table name or fields list")
 	}
+	if strings.Contains(retCol, ",") {
+		return nil, fmt.Errorf("return column must be singular: %q", retCol)
+	}
 
 	return &MultiInserter{
 		table:     table,
@@ -78,8 +81,9 @@ func (mi *MultiInserter) Insert(exec Executor) ([]int64, error) {
 		return nil, err
 	}
 
-	ids := make([]int64, 0)
+	ids := make([]int64, len(mi.values))
 	if mi.retCol != "" {
+		i := 0
 		for rows.Next() {
 			var id int64
 			err = rows.Scan(&id)
@@ -87,7 +91,8 @@ func (mi *MultiInserter) Insert(exec Executor) ([]int64, error) {
 				rows.Close()
 				return nil, err
 			}
-			ids = append(ids, id)
+			ids[i] = id
+			i++
 		}
 	}
 
