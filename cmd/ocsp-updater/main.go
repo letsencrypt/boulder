@@ -101,7 +101,7 @@ func newUpdater(
 		}
 		c := s[0]
 		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
-			return nil, errors.New("Valid range for suffixes is [0-9a-f]")
+			return nil, errors.New("valid range for suffixes is [0-9a-f]")
 		}
 	}
 	queryBody := fmt.Sprintf(`WHERE ocspLastUpdated < ?
