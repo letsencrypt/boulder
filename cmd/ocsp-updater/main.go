@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/honeycombio/beeline-go"
@@ -56,6 +57,8 @@ type OCSPUpdater struct {
 	backoffFactor float64
 	tickFailures  int
 
+	serialSuffixes []string
+
 	// Used to calculate how far back stale OCSP responses should be looked for
 	ocspMinTimeToExpiry time.Duration
 	// Maximum number of individual OCSP updates to attempt in parallel. Making
@@ -73,6 +76,7 @@ func newUpdater(
 	clk clock.Clock,
 	dbMap ocspDB,
 	readOnlyDbMap ocspReadOnlyDB,
+	serialSuffixes []string,
 	ogc capb.OCSPGeneratorClient,
 	config OCSPUpdaterConfig,
 	log blog.Logger,
@@ -86,6 +90,15 @@ func newUpdater(
 	if config.ParallelGenerateOCSPRequests == 0 {
 		// Default to 1
 		config.ParallelGenerateOCSPRequests = 1
+	}
+	for _, s := range serialSuffixes {
+		if len(s) != 1 || strings.ToLower(s) != s {
+			return nil, fmt.Errorf("Serial suffixes must all be one lowercase character")
+		}
+		c := s[0]
+		if ! (c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return nil, fmt.Errorf("Valid range for suffixes is [0-9a-f]")
+		}
 	}
 
 	genStoreHistogram := prometheus.NewHistogram(prometheus.HistogramOpts{
@@ -132,6 +145,7 @@ func newUpdater(
 		batchSize:                    config.OldOCSPBatchSize,
 		maxBackoff:                   config.SignFailureBackoffMax.Duration,
 		backoffFactor:                config.SignFailureBackoffFactor,
+		serialSuffixes:               serialSuffixes,
 	}
 
 	return &updater, nil
@@ -302,6 +316,8 @@ type OCSPUpdaterConfig struct {
 	SignFailureBackoffFactor float64
 	SignFailureBackoffMax    cmd.ConfigDuration
 
+	SerialSuffixShards string
+
 	OCSPGeneratorService *cmd.GRPCClientConfig
 
 	Features map[string]bool
@@ -403,11 +419,19 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
 	ogc := capb.NewOCSPGeneratorClient(caConn)
 
+	var serialSuffixes []string
+	if c.OCSPUpdater.SerialSuffixShards == "" {
+		serialSuffixes = []string{"0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"}
+	} else {
+		serialSuffixes = strings.Fields(c.OCSPUpdater.SerialSuffixShards)
+	}
+
 	updater, err := newUpdater(
 		stats,
 		clk,
 		dbMap,
 		dbReadOnlyMap,
+		serialSuffixes,
 		ogc,
 		// Necessary evil for now
 		conf,
