@@ -92,15 +92,15 @@ func newUpdater(
 		config.ParallelGenerateOCSPRequests = 1
 	}
 	if len(serialSuffixes) == 0 {
-		return nil, fmt.Errorf("At least one serial suffix must be provided")
+		return nil, errors.New("at least one serial suffix must be provided")
 	}
 	for _, s := range serialSuffixes {
 		if len(s) != 1 || strings.ToLower(s) != s {
-			return nil, fmt.Errorf("Serial suffixes must all be one lowercase character: %s", s)
+			return nil, fmt.Errorf("serial suffixes must all be one lowercase character, got %q, expected %q", s, strings.ToLower(s))
 		}
 		c := s[0]
 		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
-			return nil, fmt.Errorf("Valid range for suffixes is [0-9a-f]")
+			return nil, errors.New("Valid range for suffixes is [0-9a-f]")
 		}
 	}
 
@@ -158,13 +158,6 @@ func (updater *OCSPUpdater) getQuestionsForShardList() string {
 	return strings.TrimRight(strings.Repeat("?,", len(updater.serialSuffixes)), ",")
 }
 
-func (updater *OCSPUpdater) appendShardList(params []interface{}) []interface{} {
-	for _, c := range updater.serialSuffixes {
-		params = append(params, c)
-	}
-	return params
-}
-
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
 	queryBody := fmt.Sprintf(`WHERE ocspLastUpdated < ?
 		 AND NOT isExpired
@@ -174,7 +167,9 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 
 	params := make([]interface{}, 0)
 	params = append(params, oldestLastUpdatedTime)
-	params = updater.appendShardList(params)
+	for _, c := range updater.serialSuffixes {
+		params = append(params, c)
+	}
 	params = append(params, batchSize)
 
 	statuses, err := sa.SelectCertificateStatuses(
