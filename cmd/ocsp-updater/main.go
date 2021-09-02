@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/honeycombio/beeline-go"
@@ -56,6 +57,9 @@ type OCSPUpdater struct {
 	backoffFactor float64
 	tickFailures  int
 
+	serialSuffixes []string
+	queryBody      string
+
 	// Used to calculate how far back stale OCSP responses should be looked for
 	ocspMinTimeToExpiry time.Duration
 	// Maximum number of individual OCSP updates to attempt in parallel. Making
@@ -73,6 +77,7 @@ func newUpdater(
 	clk clock.Clock,
 	dbMap ocspDB,
 	readOnlyDbMap ocspReadOnlyDB,
+	serialSuffixes []string,
 	ogc capb.OCSPGeneratorClient,
 	config OCSPUpdaterConfig,
 	log blog.Logger,
@@ -87,6 +92,24 @@ func newUpdater(
 		// Default to 1
 		config.ParallelGenerateOCSPRequests = 1
 	}
+	for _, s := range serialSuffixes {
+		if len(s) != 1 || strings.ToLower(s) != s {
+			return nil, fmt.Errorf("serial suffixes must all be one lowercase character, got %q, expected %q", s, strings.ToLower(s))
+		}
+		c := s[0]
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return nil, errors.New("valid range for suffixes is [0-9a-f]")
+		}
+	}
+
+	var queryBody strings.Builder
+	queryBody.WriteString("WHERE ocspLastUpdated < ? AND NOT isExpired ")
+	if len(serialSuffixes) > 0 {
+		fmt.Fprintf(&queryBody, "AND RIGHT(serial, 1) IN ( %s ) ",
+			getQuestionsForShardList(len(serialSuffixes)),
+		)
+	}
+	queryBody.WriteString("ORDER BY ocspLastUpdated ASC LIMIT ?")
 
 	genStoreHistogram := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name: "ocsp_updater_generate_and_store",
@@ -132,22 +155,31 @@ func newUpdater(
 		batchSize:                    config.OldOCSPBatchSize,
 		maxBackoff:                   config.SignFailureBackoffMax.Duration,
 		backoffFactor:                config.SignFailureBackoffFactor,
+		serialSuffixes:               serialSuffixes,
+		queryBody:                    queryBody.String(),
 	}
 
 	return &updater, nil
 }
 
+func getQuestionsForShardList(count int) string {
+	return strings.TrimRight(strings.Repeat("?,", count), ",")
+}
+
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
+	params := make([]interface{}, 0)
+	params = append(params, oldestLastUpdatedTime)
+
+	// If serialSuffixes is unset, this will be deliberately a no-op
+	for _, c := range updater.serialSuffixes {
+		params = append(params, c)
+	}
+	params = append(params, batchSize)
+
 	statuses, err := sa.SelectCertificateStatuses(
 		updater.readOnlyDbMap,
-		`WHERE ocspLastUpdated < :lastUpdate
-		 AND NOT isExpired
-		 ORDER BY ocspLastUpdated ASC
-		 LIMIT :limit`,
-		map[string]interface{}{
-			"lastUpdate": oldestLastUpdatedTime,
-			"limit":      batchSize,
-		},
+		updater.queryBody,
+		params...,
 	)
 	if db.IsNoRows(err) {
 		return nil, nil
@@ -302,6 +334,8 @@ type OCSPUpdaterConfig struct {
 	SignFailureBackoffFactor float64
 	SignFailureBackoffMax    cmd.ConfigDuration
 
+	SerialSuffixShards string
+
 	OCSPGeneratorService *cmd.GRPCClientConfig
 
 	Features map[string]bool
@@ -403,11 +437,17 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
 	ogc := capb.NewOCSPGeneratorClient(caConn)
 
+	var serialSuffixes []string
+	if c.OCSPUpdater.SerialSuffixShards != "" {
+		serialSuffixes = strings.Fields(c.OCSPUpdater.SerialSuffixShards)
+	}
+
 	updater, err := newUpdater(
 		stats,
 		clk,
 		dbMap,
 		dbReadOnlyMap,
+		serialSuffixes,
 		ogc,
 		// Necessary evil for now
 		conf,

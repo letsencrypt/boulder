@@ -14,6 +14,7 @@
     "ocspMinTimeToExpiry": "72h",
     "signFailureBackoffFactor": 1.2,
     "signFailureBackoffMax": "30m",
+    "serialSuffixShards": "0 1 2 3 4 5 6 7 8 9 a b c d e f",
     "debugAddr": ":8006",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
