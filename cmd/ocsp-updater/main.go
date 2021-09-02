@@ -96,7 +96,7 @@ func newUpdater(
 	}
 	for _, s := range serialSuffixes {
 		if len(s) != 1 || strings.ToLower(s) != s {
-			return nil, fmt.Errorf("Serial suffixes must all be one lowercase character")
+			return nil, fmt.Errorf("Serial suffixes must all be one lowercase character: %s", s)
 		}
 		c := s[0]
 		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
