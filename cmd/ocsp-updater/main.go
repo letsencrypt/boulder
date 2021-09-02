@@ -169,6 +169,7 @@ func getQuestionsForShardList(count int) string {
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
 	params := make([]interface{}, 0)
 	params = append(params, oldestLastUpdatedTime)
+
 	// If serialSuffixes is unset, this will be deliberately a no-op
 	for _, c := range updater.serialSuffixes {
 		params = append(params, c)
