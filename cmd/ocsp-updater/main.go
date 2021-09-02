@@ -92,9 +92,6 @@ func newUpdater(
 		// Default to 1
 		config.ParallelGenerateOCSPRequests = 1
 	}
-	if len(serialSuffixes) == 0 {
-		return nil, errors.New("at least one serial suffix must be provided")
-	}
 	for _, s := range serialSuffixes {
 		if len(s) != 1 || strings.ToLower(s) != s {
 			return nil, fmt.Errorf("serial suffixes must all be one lowercase character, got %q, expected %q", s, strings.ToLower(s))
@@ -104,11 +101,15 @@ func newUpdater(
 			return nil, errors.New("valid range for suffixes is [0-9a-f]")
 		}
 	}
-	queryBody := fmt.Sprintf(`WHERE ocspLastUpdated < ?
-	 AND NOT isExpired
-	 AND RIGHT(serial, 1) IN ( %s )
-	 ORDER BY ocspLastUpdated ASC
-	 LIMIT ?`, getQuestionsForShardList(len(serialSuffixes)))
+
+	var queryBody strings.Builder
+	queryBody.WriteString("WHERE ocspLastUpdated < ? AND NOT isExpired ")
+	if len(serialSuffixes) > 0 {
+		fmt.Fprintf(&queryBody, "AND RIGHT(serial, 1) IN ( %s ) ",
+			getQuestionsForShardList(len(serialSuffixes)),
+		)
+	}
+	queryBody.WriteString("ORDER BY ocspLastUpdated ASC LIMIT ?")
 
 	genStoreHistogram := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name: "ocsp_updater_generate_and_store",
@@ -155,7 +156,7 @@ func newUpdater(
 		maxBackoff:                   config.SignFailureBackoffMax.Duration,
 		backoffFactor:                config.SignFailureBackoffFactor,
 		serialSuffixes:               serialSuffixes,
-		queryBody:                    queryBody,
+		queryBody:                    queryBody.String(),
 	}
 
 	return &updater, nil
@@ -168,6 +169,7 @@ func getQuestionsForShardList(count int) string {
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
 	params := make([]interface{}, 0)
 	params = append(params, oldestLastUpdatedTime)
+	// If serialSuffixes is unset, this will be deliberately a no-op
 	for _, c := range updater.serialSuffixes {
 		params = append(params, c)
 	}
@@ -435,9 +437,7 @@ func main() {
 	ogc := capb.NewOCSPGeneratorClient(caConn)
 
 	var serialSuffixes []string
-	if c.OCSPUpdater.SerialSuffixShards == "" {
-		serialSuffixes = strings.Fields("0 1 2 3 4 5 6 7 8 9 a b c d e f")
-	} else {
+	if c.OCSPUpdater.SerialSuffixShards != "" {
 		serialSuffixes = strings.Fields(c.OCSPUpdater.SerialSuffixShards)
 	}
 

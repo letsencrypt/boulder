@@ -594,7 +594,7 @@ func TestUpdaterConfiguration(t *testing.T) {
 	test.AssertError(t, err, "No multi-letter shards allowed")
 
 	_, err = mkNewUpdaterWithStrings(t, []string{})
-	test.AssertError(t, err, "Shard must not be empty")
+	test.AssertNotError(t, err, "Empty should be valid, meaning use old queries")
 }
 
 func TestGetQuestionsForShardList(t *testing.T) {
