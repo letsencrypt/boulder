@@ -616,17 +616,17 @@ func TestAppendShardList(t *testing.T) {
 	u, err := mkNewUpdaterWithStrings(t, strings.Fields("0 1"))
 	test.AssertNotError(t, err, "mkNewUpdaterWithStrings failed")
 	list = u.appendShardList(list)
-	test.AssertEquals(t, list, []interface{}{"0", "1"})
+	test.AssertDeepEquals(t, list, []interface{}{"0", "1"})
 
 	list = make([]interface{}, 0)
 	u, err = mkNewUpdaterWithStrings(t, strings.Fields("f"))
 	test.AssertNotError(t, err, "mkNewUpdaterWithStrings failed")
 	list = u.appendShardList(list)
-	test.AssertEquals(t, list, []interface{}{"f"})
+	test.AssertDeepEquals(t, list, []interface{}{"f"})
 
 	list = make([]interface{}, 0)
 	u, err = mkNewUpdaterWithStrings(t, strings.Fields("0 1 2 3 4 5 6 7 8 9 a b c d e f"))
 	test.AssertNotError(t, err, "mkNewUpdaterWithStrings failed")
 	list = u.appendShardList(list)
-	test.AssertEquals(t, list, []interface{}{"0", "1"})
+	test.AssertDeepEquals(t, list, []interface{}{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f"})
 }
