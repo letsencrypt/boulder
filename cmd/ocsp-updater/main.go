@@ -99,7 +99,7 @@ func newUpdater(
 			return nil, fmt.Errorf("Serial suffixes must all be one lowercase character")
 		}
 		c := s[0]
-		if ! (c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
 			return nil, fmt.Errorf("Valid range for suffixes is [0-9a-f]")
 		}
 	}
@@ -172,7 +172,7 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 		 ORDER BY ocspLastUpdated ASC
 		 LIMIT ?`, updater.getQuestionsForShardList())
 
-	params := make([]interface{},0)
+	params := make([]interface{}, 0)
 	params = append(params, oldestLastUpdatedTime)
 	params = updater.appendShardList(params)
 	params = append(params, batchSize)
@@ -440,7 +440,7 @@ func main() {
 
 	var serialSuffixes []string
 	if c.OCSPUpdater.SerialSuffixShards == "" {
-		serialSuffixes = []string{"0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"}
+		serialSuffixes = []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f"}
 	} else {
 		serialSuffixes = strings.Fields(c.OCSPUpdater.SerialSuffixShards)
 	}
