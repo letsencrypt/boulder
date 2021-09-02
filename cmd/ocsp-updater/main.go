@@ -91,6 +91,9 @@ func newUpdater(
 		// Default to 1
 		config.ParallelGenerateOCSPRequests = 1
 	}
+	if len(serialSuffixes) == 0 {
+		return nil, fmt.Errorf("At least one serial suffix must be provided")
+	}
 	for _, s := range serialSuffixes {
 		if len(s) != 1 || strings.ToLower(s) != s {
 			return nil, fmt.Errorf("Serial suffixes must all be one lowercase character")
@@ -156,10 +159,12 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 		updater.readOnlyDbMap,
 		`WHERE ocspLastUpdated < :lastUpdate
 		 AND NOT isExpired
+		 AND RIGHT(serial, 1) IN ( :shardList )
 		 ORDER BY ocspLastUpdated ASC
 		 LIMIT :limit`,
 		map[string]interface{}{
 			"lastUpdate": oldestLastUpdatedTime,
+			"shardList":  updater.getSerialShardList(),
 			"limit":      batchSize,
 		},
 	)
@@ -291,6 +296,12 @@ func (updater *OCSPUpdater) updateOCSPResponses(ctx context.Context, batchSize i
 	}
 
 	return updater.generateOCSPResponses(ctx, statuses)
+}
+
+// getSerialShardList returns a list of the serial suffixes in SQL-ready form
+// for the call to findStaleOCSPResponses
+func (updater *OCSPUpdater) getSerialShardList() string {
+	return fmt.Sprintf("'%s'", strings.TrimRight(strings.Join(updater.serialSuffixes, "','"), ","))
 }
 
 type config struct {

@@ -550,14 +550,14 @@ func TestTickSleep(t *testing.T) {
 
 }
 
-func mkNewUpdaterWithStrings(t *testing.T, shards []string) error {
+func mkNewUpdaterWithStrings(t *testing.T, shards []string) (*OCSPUpdater, error) {
 	dbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Failed to create dbMap")
 	sa.SetSQLDebug(dbMap, log)
 
 	fc := clock.NewFake()
 
-	_, err = newUpdater(
+	updater, err := newUpdater(
 		metrics.NoopRegisterer,
 		fc,
 		dbMap,
@@ -574,22 +574,40 @@ func mkNewUpdaterWithStrings(t *testing.T, shards []string) error {
 		},
 		blog.NewMock(),
 	)
-	return err
+	return updater, err
 }
 
 func TestUpdaterConfiguration(t *testing.T) {
-	err := mkNewUpdaterWithStrings(t, strings.Fields("0 1 2 3 4 5 6 7 8 9 a B c d e f"))
+	_, err := mkNewUpdaterWithStrings(t, strings.Fields("0 1 2 3 4 5 6 7 8 9 a B c d e f"))
 	test.AssertError(t, err, "No uppercase allowed")
 
-	err = mkNewUpdaterWithStrings(t, strings.Fields("0 1 g"))
+	_, err = mkNewUpdaterWithStrings(t, strings.Fields("0 1 g"))
 	test.AssertError(t, err, "No letters > f allowed")
 
-	err = mkNewUpdaterWithStrings(t, strings.Fields("0 *"))
+	_, err = mkNewUpdaterWithStrings(t, strings.Fields("0 *"))
 	test.AssertError(t, err, "No special chars allowed")
 
-	err = mkNewUpdaterWithStrings(t, strings.Fields("0 -1"))
+	_, err = mkNewUpdaterWithStrings(t, strings.Fields("0 -1"))
 	test.AssertError(t, err, "No negative numbers allowed")
 
-	err = mkNewUpdaterWithStrings(t, strings.Fields("wazzup 0 a b c"))
+	_, err = mkNewUpdaterWithStrings(t, strings.Fields("wazzup 0 a b c"))
 	test.AssertError(t, err, "No multi-letter shards allowed")
+
+	_, err = mkNewUpdaterWithStrings(t, []string{})
+	test.AssertError(t, err, "Shard must not be empty")
+}
+
+func TestGetSerialShardList(t *testing.T) {
+	u, err := mkNewUpdaterWithStrings(t, strings.Fields("0 1"))
+	test.AssertNotError(t, err, "mkNewUpdaterWithStrings failed")
+	test.AssertEquals(t, u.getSerialShardList(), "'0','1'")
+
+	u, err = mkNewUpdaterWithStrings(t, strings.Fields("f"))
+	test.AssertNotError(t, err, "mkNewUpdaterWithStrings failed")
+	test.AssertEquals(t, u.getSerialShardList(), "'f'")
+
+	u, err = mkNewUpdaterWithStrings(t, strings.Fields("0 1 2 3 4 5 6 7 8 9 a b c d e f"))
+	test.AssertNotError(t, err, "mkNewUpdaterWithStrings failed")
+	test.AssertEquals(t, u.getSerialShardList(), "'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'")
+
 }
