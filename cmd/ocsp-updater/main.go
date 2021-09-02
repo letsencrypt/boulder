@@ -154,19 +154,33 @@ func newUpdater(
 	return &updater, nil
 }
 
+func (updater *OCSPUpdater) getQuestionsForShardList() string {
+	return strings.TrimRight(strings.Repeat("?,", len(updater.serialSuffixes)), ",")
+}
+
+func (updater *OCSPUpdater) appendShardList(params []interface{}) []interface{} {
+	for _, c := range updater.serialSuffixes {
+		params = append(params, c)
+	}
+	return params
+}
+
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
+	queryBody := fmt.Sprintf(`WHERE ocspLastUpdated < ?
+		 AND NOT isExpired
+		 AND RIGHT(serial, 1) IN ( %s )
+		 ORDER BY ocspLastUpdated ASC
+		 LIMIT ?`, updater.getQuestionsForShardList())
+
+	params := make([]interface{},0)
+	params = append(params, oldestLastUpdatedTime)
+	params = updater.appendShardList(params)
+	params = append(params, batchSize)
+
 	statuses, err := sa.SelectCertificateStatuses(
 		updater.readOnlyDbMap,
-		`WHERE ocspLastUpdated < :lastUpdate
-		 AND NOT isExpired
-		 AND RIGHT(serial, 1) IN ( :shardList )
-		 ORDER BY ocspLastUpdated ASC
-		 LIMIT :limit`,
-		map[string]interface{}{
-			"lastUpdate": oldestLastUpdatedTime,
-			"shardList":  updater.getSerialShardList(),
-			"limit":      batchSize,
-		},
+		queryBody,
+		params...,
 	)
 	if db.IsNoRows(err) {
 		return nil, nil
@@ -296,12 +310,6 @@ func (updater *OCSPUpdater) updateOCSPResponses(ctx context.Context, batchSize i
 	}
 
 	return updater.generateOCSPResponses(ctx, statuses)
-}
-
-// getSerialShardList returns a list of the serial suffixes in SQL-ready form
-// for the call to findStaleOCSPResponses
-func (updater *OCSPUpdater) getSerialShardList() string {
-	return fmt.Sprintf("'%s'", strings.TrimRight(strings.Join(updater.serialSuffixes, "','"), ","))
 }
 
 type config struct {
