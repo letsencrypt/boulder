@@ -58,6 +58,7 @@ type OCSPUpdater struct {
 	tickFailures  int
 
 	serialSuffixes []string
+	queryBody      string
 
 	// Used to calculate how far back stale OCSP responses should be looked for
 	ocspMinTimeToExpiry time.Duration
@@ -103,6 +104,11 @@ func newUpdater(
 			return nil, errors.New("Valid range for suffixes is [0-9a-f]")
 		}
 	}
+	queryBody := fmt.Sprintf(`WHERE ocspLastUpdated < ?
+	 AND NOT isExpired
+	 AND RIGHT(serial, 1) IN ( %s )
+	 ORDER BY ocspLastUpdated ASC
+	 LIMIT ?`, getQuestionsForShardList(len(serialSuffixes)))
 
 	genStoreHistogram := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name: "ocsp_updater_generate_and_store",
@@ -149,22 +155,17 @@ func newUpdater(
 		maxBackoff:                   config.SignFailureBackoffMax.Duration,
 		backoffFactor:                config.SignFailureBackoffFactor,
 		serialSuffixes:               serialSuffixes,
+		queryBody:                    queryBody,
 	}
 
 	return &updater, nil
 }
 
-func (updater *OCSPUpdater) getQuestionsForShardList() string {
-	return strings.TrimRight(strings.Repeat("?,", len(updater.serialSuffixes)), ",")
+func getQuestionsForShardList(count int) string {
+	return strings.TrimRight(strings.Repeat("?,", count), ",")
 }
 
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
-	queryBody := fmt.Sprintf(`WHERE ocspLastUpdated < ?
-		 AND NOT isExpired
-		 AND RIGHT(serial, 1) IN ( %s )
-		 ORDER BY ocspLastUpdated ASC
-		 LIMIT ?`, updater.getQuestionsForShardList())
-
 	params := make([]interface{}, 0)
 	params = append(params, oldestLastUpdatedTime)
 	for _, c := range updater.serialSuffixes {
@@ -174,7 +175,7 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 
 	statuses, err := sa.SelectCertificateStatuses(
 		updater.readOnlyDbMap,
-		queryBody,
+		updater.queryBody,
 		params...,
 	)
 	if db.IsNoRows(err) {

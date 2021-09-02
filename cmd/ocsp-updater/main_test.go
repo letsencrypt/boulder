@@ -598,15 +598,7 @@ func TestUpdaterConfiguration(t *testing.T) {
 }
 
 func TestGetQuestionsForShardList(t *testing.T) {
-	u, err := mkNewUpdaterWithStrings(t, strings.Fields("0 1"))
-	test.AssertNotError(t, err, "mkNewUpdaterWithStrings failed")
-	test.AssertEquals(t, u.getQuestionsForShardList(), "?,?")
-
-	u, err = mkNewUpdaterWithStrings(t, strings.Fields("f"))
-	test.AssertNotError(t, err, "mkNewUpdaterWithStrings failed")
-	test.AssertEquals(t, u.getQuestionsForShardList(), "?")
-
-	u, err = mkNewUpdaterWithStrings(t, strings.Fields("0 1 2 3 4 5 6 7 8 9 a b c d e f"))
-	test.AssertNotError(t, err, "mkNewUpdaterWithStrings failed")
-	test.AssertEquals(t, u.getQuestionsForShardList(), "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?")
+	test.AssertEquals(t, getQuestionsForShardList(2), "?,?")
+	test.AssertEquals(t, getQuestionsForShardList(1), "?")
+	test.AssertEquals(t, getQuestionsForShardList(16), "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?")
 }
