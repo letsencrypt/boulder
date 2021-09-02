@@ -17,7 +17,7 @@ type MultiInserter struct {
 	values    [][]interface{}
 }
 
-// newMultiInserter creates a new MultiInserter, checking for reasonable table
+// NewMultiInserter creates a new MultiInserter, checking for reasonable table
 // name and list of fields.
 func NewMultiInserter(table string, fields string, retCol string) (*MultiInserter, error) {
 	numFields := len(strings.Split(fields, ","))
@@ -37,10 +37,10 @@ func NewMultiInserter(table string, fields string, retCol string) (*MultiInserte
 	}, nil
 }
 
-// add another row to be included in the query
+// Add registers another row to be included in the Insert query.
 func (mi *MultiInserter) Add(row []interface{}) error {
 	if len(row) != mi.numFields {
-		return fmt.Errorf("field count mismatch: got %d, expected %d", len(row), mi.numFields)
+		return fmt.Errorf("field count mismatch, got %d, expected %d", len(row), mi.numFields)
 	}
 	mi.values = append(mi.values, row)
 	return nil
@@ -70,7 +70,7 @@ func (mi *MultiInserter) query() (string, []interface{}) {
 	return query, queryArgs
 }
 
-// insert performs the action represented by .query() on the provided database,
+// Insert performs the action represented by .query() on the provided database,
 // which is assumed to already have a context attached. If a non-empty retCol
 // was provided, then it returns the list of values from that column returned
 // by the query.
@@ -81,9 +81,8 @@ func (mi *MultiInserter) Insert(exec Executor) ([]int64, error) {
 		return nil, err
 	}
 
-	ids := make([]int64, len(mi.values))
+	ids := make([]int64, 0, len(mi.values))
 	if mi.retCol != "" {
-		i := 0
 		for rows.Next() {
 			var id int64
 			err = rows.Scan(&id)
@@ -91,8 +90,7 @@ func (mi *MultiInserter) Insert(exec Executor) ([]int64, error) {
 				rows.Close()
 				return nil, err
 			}
-			ids[i] = id
-			i++
+			ids = append(ids, id)
 		}
 	}
 
