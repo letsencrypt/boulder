@@ -306,18 +306,14 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, re
 	}
 	wg.Wait()
 	close(results)
-	var nameCounts []*sapb.CountByNames_MapElement
+	counts := make(map[string]int64)
 	for r := range results {
 		if r.err != nil {
 			return nil, r.err
 		}
-		nameCount := &sapb.CountByNames_MapElement{
-			Name:  r.domain,
-			Count: r.count,
-		}
-		nameCounts = append(nameCounts, nameCount)
+		counts[r.domain] = r.count
 	}
-	return &sapb.CountByNames{CountByNames: nameCounts}, nil
+	return &sapb.CountByNames{Counts: counts}, nil
 }
 
 func ReverseName(domain string) string {

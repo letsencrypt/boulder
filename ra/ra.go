@@ -67,6 +67,7 @@ type caaChecker interface {
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
+	rapb.UnimplementedRegistrationAuthorityServer
 	CA        capb.CertificateAuthorityClient
 	VA        vapb.VAClient
 	SA        core.StorageAuthority
@@ -1397,14 +1398,14 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, name
 		return nil, err
 	}
 
-	if len(response.CountByNames) == 0 {
+	if len(response.Counts) == 0 {
 		return nil, errIncompleteGRPCResponse
 	}
 
 	var badNames []string
-	for _, entry := range response.CountByNames {
-		if entry.Count >= limit.GetThreshold(entry.Name, regID) {
-			badNames = append(badNames, entry.Name)
+	for name, count := range response.Counts {
+		if count >= limit.GetThreshold(name, regID) {
+			badNames = append(badNames, name)
 		}
 	}
 	return badNames, nil
