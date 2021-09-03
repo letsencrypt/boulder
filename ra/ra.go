@@ -67,6 +67,7 @@ type caaChecker interface {
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
+	rapb.UnimplementedRegistrationAuthorityServer
 	CA        capb.CertificateAuthorityClient
 	VA        vapb.VAClient
 	SA        core.StorageAuthority

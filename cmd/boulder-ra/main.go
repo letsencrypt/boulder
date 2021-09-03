@@ -257,8 +257,7 @@ func main() {
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	grpcSrv, listener, err := bgrpc.NewServer(c.RA.GRPC, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup RA gRPC server")
-	gw := bgrpc.NewRegistrationAuthorityServer(rai)
-	rapb.RegisterRegistrationAuthorityServer(grpcSrv, gw)
+	rapb.RegisterRegistrationAuthorityServer(grpcSrv, rai)
 	hs := health.NewServer()
 	healthpb.RegisterHealthServer(grpcSrv, hs)
 

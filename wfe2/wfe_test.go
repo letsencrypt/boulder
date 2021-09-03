@@ -26,6 +26,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 	jose "gopkg.in/square/go-jose.v2"
 
@@ -209,69 +210,69 @@ type MockRegistrationAuthority struct {
 	lastRevocationReason revocation.Reason
 }
 
-func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, acct *corepb.Registration) (*corepb.Registration, error) {
-	acct.Id = 1
-	acct.CreatedAt = time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()
-	return acct, nil
+func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, in *corepb.Registration, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	in.Id = 1
+	in.CreatedAt = time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()
+	return in, nil
 }
 
-func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, request *rapb.NewAuthorizationRequest) (*corepb.Authorization, error) {
-	request.Authz.RegistrationID = request.RegID
-	request.Authz.Id = "bkrPh2u0JUf18-rVBZtOOWWb3GuIiliypL-hBM9Ak1Q"
-	return request.Authz, nil
+func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, in *rapb.NewAuthorizationRequest, _ ...grpc.CallOption) (*corepb.Authorization, error) {
+	in.Authz.RegistrationID = in.RegID
+	in.Authz.Id = "bkrPh2u0JUf18-rVBZtOOWWb3GuIiliypL-hBM9Ak1Q"
+	return in.Authz, nil
 }
 
-func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req *rapb.NewCertificateRequest) (*corepb.Certificate, error) {
+func (ra *MockRegistrationAuthority) NewCertificate(context.Context, *rapb.NewCertificateRequest, ...grpc.CallOption) (*corepb.Certificate, error) {
 	return &corepb.Certificate{}, nil
 }
 
-func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
-	if !bytes.Equal(req.Base.Key, req.Update.Key) {
-		req.Base.Key = req.Update.Key
+func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, in *rapb.UpdateRegistrationRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	if !bytes.Equal(in.Base.Key, in.Update.Key) {
+		in.Base.Key = in.Update.Key
 	}
-	return req.Base, nil
+	return in.Base, nil
 }
 
-func (ra *MockRegistrationAuthority) PerformValidation(_ context.Context, _ *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
-	return nil, nil
+func (ra *MockRegistrationAuthority) PerformValidation(context.Context, *rapb.PerformValidationRequest, ...grpc.CallOption) (*corepb.Authorization, error) {
+	return &corepb.Authorization{}, nil
 }
 
-func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*emptypb.Empty, error) {
-	ra.lastRevocationReason = revocation.Reason(req.Code)
+func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, in *rapb.RevokeCertificateWithRegRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	ra.lastRevocationReason = revocation.Reason(in.Code)
 	return &emptypb.Empty{}, nil
 }
 
-func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
+func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(context.Context, *rapb.AdministrativelyRevokeCertificateRequest, ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
-func (ra *MockRegistrationAuthority) OnValidationUpdate(ctx context.Context, authz core.Authorization) error {
+func (ra *MockRegistrationAuthority) OnValidationUpdate(context.Context, core.Authorization, ...grpc.CallOption) error {
 	return nil
 }
 
-func (ra *MockRegistrationAuthority) DeactivateAuthorization(ctx context.Context, authz *corepb.Authorization) (*emptypb.Empty, error) {
+func (ra *MockRegistrationAuthority) DeactivateAuthorization(context.Context, *corepb.Authorization, ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
-func (ra *MockRegistrationAuthority) DeactivateRegistration(ctx context.Context, _ *corepb.Registration) (*emptypb.Empty, error) {
+func (ra *MockRegistrationAuthority) DeactivateRegistration(context.Context, *corepb.Registration, ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
-func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
+func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, in *rapb.NewOrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
 	return &corepb.Order{
 		Id:               1,
-		RegistrationID:   req.RegistrationID,
+		RegistrationID:   in.RegistrationID,
 		Created:          time.Date(2021, 1, 1, 1, 1, 1, 0, time.UTC).UnixNano(),
 		Expires:          time.Date(2021, 2, 1, 1, 1, 1, 0, time.UTC).UnixNano(),
-		Names:            req.Names,
+		Names:            in.Names,
 		Status:           string(core.StatusPending),
 		V2Authorizations: []int64{1},
 	}, nil
 }
 
-func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
-	req.Order.Status = string(core.StatusProcessing)
-	return req.Order, nil
+func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, in *rapb.FinalizeOrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+	in.Order.Status = string(core.StatusProcessing)
+	return in.Order, nil
 }
 
 func makeBody(s string) io.ReadCloser {
@@ -1187,7 +1188,7 @@ type MockRAPerformValidationError struct {
 	MockRegistrationAuthority
 }
 
-func (ra *MockRAPerformValidationError) PerformValidation(_ context.Context, _ *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
+func (ra *MockRAPerformValidationError) PerformValidation(context.Context, *rapb.PerformValidationRequest, ...grpc.CallOption) (*corepb.Authorization, error) {
 	return nil, errors.New("broken on purpose")
 }
 
@@ -3290,7 +3291,7 @@ type noSCTMockRA struct {
 	MockRegistrationAuthority
 }
 
-func (ra *noSCTMockRA) FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
+func (ra *noSCTMockRA) FinalizeOrder(context.Context, *rapb.FinalizeOrderRequest, ...grpc.CallOption) (*corepb.Order, error) {
 	return nil, berrors.MissingSCTsError("noSCTMockRA missing scts error")
 }
 
