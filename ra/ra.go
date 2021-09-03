@@ -67,6 +67,7 @@ type caaChecker interface {
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
+	rapb.UnimplementedRegistrationAuthorityServer
 	CA        capb.CertificateAuthorityClient
 	VA        vapb.VAClient
 	SA        core.StorageAuthority
@@ -961,7 +962,11 @@ func (ra *RegistrationAuthorityImpl) failOrder(
 
 	// Assign the protobuf problem to the field and save it via the SA
 	order.Error = pbProb
-	if err := ra.SA.SetOrderError(ctx, order); err != nil {
+	_, err = ra.SA.SetOrderError(ctx, &sapb.SetOrderErrorRequest{
+		Id:    order.Id,
+		Error: order.Error,
+	})
+	if err != nil {
 		ra.log.AuditErrf("Could not persist order error: %q", err)
 	}
 	return order
@@ -1032,7 +1037,8 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	// Otherwise the order will be "stuck" in processing state. It can not be
 	// finalized because it isn't pending, but we aren't going to process it
 	// further because we already did and encountered an error.
-	if err := ra.SA.SetOrderProcessing(ctx, order); err != nil {
+	_, err = ra.SA.SetOrderProcessing(ctx, &sapb.OrderRequest{Id: order.Id})
+	if err != nil {
 		// Fail the order with a server internal error - we weren't able to set the
 		// status to processing and that's unexpected & weird.
 		ra.failOrder(ctx, order, probs.ServerInternal("Error setting order processing"))
@@ -1071,7 +1077,8 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 	// Finalize the order with its new CertificateSerial
 	order.CertificateSerial = core.SerialToString(parsedCertificate.SerialNumber)
-	if err := ra.SA.FinalizeOrder(ctx, order); err != nil {
+	_, err = ra.SA.FinalizeOrder(ctx, &sapb.FinalizeOrderRequest{Id: order.Id, CertificateSerial: order.CertificateSerial})
+	if err != nil {
 		// Fail the order with a server internal error. We weren't able to persist
 		// the certificate serial and that's unexpected & weird.
 		ra.failOrder(ctx, order, probs.ServerInternal("Error persisting finalized order"))
@@ -2212,9 +2219,17 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Set the order's expiry to the minimum expiry. The db doesn't store
 	// sub-second values, so truncate here.
 	order.Expires = minExpiry.Truncate(time.Second).UnixNano()
-	storedOrder, err := ra.SA.NewOrder(ctx, order)
+	storedOrder, err := ra.SA.NewOrder(ctx, &sapb.NewOrderRequest{
+		RegistrationID:   order.RegistrationID,
+		Expires:          order.Expires,
+		Names:            order.Names,
+		V2Authorizations: order.V2Authorizations,
+	})
 	if err != nil {
 		return nil, err
+	}
+	if storedOrder.Id == 0 || storedOrder.Created == 0 || storedOrder.Status == "" || storedOrder.RegistrationID == 0 || storedOrder.Expires == 0 || len(storedOrder.Names) == 0 {
+		return nil, errIncompleteGRPCResponse
 	}
 
 	return storedOrder, nil

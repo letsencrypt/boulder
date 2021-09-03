@@ -267,7 +267,7 @@ type mockRevoker struct {
 	mu      sync.Mutex
 }
 
-func (mr *mockRevoker) AdministrativelyRevokeCertificate(ctx context.Context, in *rapb.AdministrativelyRevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (mr *mockRevoker) AdministrativelyRevokeCertificate(ctx context.Context, in *rapb.AdministrativelyRevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	mr.mu.Lock()
 	defer mr.mu.Unlock()
 	mr.revoked++

@@ -97,34 +97,20 @@ func (sac StorageAuthorityClientWrapper) DeactivateRegistration(ctx context.Cont
 	return sac.inner.DeactivateRegistration(ctx, request)
 }
 
-func (sas StorageAuthorityClientWrapper) NewOrder(ctx context.Context, request *corepb.Order) (*corepb.Order, error) {
-	resp, err := sas.inner.NewOrder(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil || !orderValid(resp) {
-		return nil, errIncompleteResponse
-	}
-	return resp, nil
+func (sas StorageAuthorityClientWrapper) NewOrder(ctx context.Context, request *sapb.NewOrderRequest) (*corepb.Order, error) {
+	return sas.inner.NewOrder(ctx, request)
 }
 
-func (sac StorageAuthorityClientWrapper) SetOrderProcessing(ctx context.Context, order *corepb.Order) error {
-	if _, err := sac.inner.SetOrderProcessing(ctx, order); err != nil {
-		return err
-	}
-	return nil
+func (sac StorageAuthorityClientWrapper) SetOrderProcessing(ctx context.Context, req *sapb.OrderRequest) (*emptypb.Empty, error) {
+	return sac.inner.SetOrderProcessing(ctx, req)
 }
 
-func (sac StorageAuthorityClientWrapper) SetOrderError(ctx context.Context, order *corepb.Order) error {
-	_, err := sac.inner.SetOrderError(ctx, order)
-	return err
+func (sac StorageAuthorityClientWrapper) SetOrderError(ctx context.Context, request *sapb.SetOrderErrorRequest) (*emptypb.Empty, error) {
+	return sac.inner.SetOrderError(ctx, request)
 }
 
-func (sac StorageAuthorityClientWrapper) FinalizeOrder(ctx context.Context, order *corepb.Order) error {
-	if _, err := sac.inner.FinalizeOrder(ctx, order); err != nil {
-		return err
-	}
-	return nil
+func (sac StorageAuthorityClientWrapper) FinalizeOrder(ctx context.Context, req *sapb.FinalizeOrderRequest) (*emptypb.Empty, error) {
+	return sac.inner.FinalizeOrder(ctx, req)
 }
 
 func (sas StorageAuthorityClientWrapper) GetOrder(ctx context.Context, request *sapb.OrderRequest) (*corepb.Order, error) {
@@ -271,48 +257,20 @@ func (sas StorageAuthorityServerWrapper) DeactivateRegistration(ctx context.Cont
 	return sas.inner.DeactivateRegistration(ctx, request)
 }
 
-func (sas StorageAuthorityServerWrapper) NewOrder(ctx context.Context, request *corepb.Order) (*corepb.Order, error) {
-	if request == nil || !newOrderValid(request) {
-		return nil, errIncompleteRequest
-	}
-
+func (sas StorageAuthorityServerWrapper) NewOrder(ctx context.Context, request *sapb.NewOrderRequest) (*corepb.Order, error) {
 	return sas.inner.NewOrder(ctx, request)
 }
 
-func (sas StorageAuthorityServerWrapper) SetOrderProcessing(ctx context.Context, order *corepb.Order) (*emptypb.Empty, error) {
-	if order == nil || !orderValid(order) {
-		return nil, errIncompleteRequest
-	}
-
-	if err := sas.inner.SetOrderProcessing(ctx, order); err != nil {
-		return nil, err
-	}
-
-	return &emptypb.Empty{}, nil
+func (sas StorageAuthorityServerWrapper) SetOrderProcessing(ctx context.Context, req *sapb.OrderRequest) (*emptypb.Empty, error) {
+	return sas.inner.SetOrderProcessing(ctx, req)
 }
 
-func (sas StorageAuthorityServerWrapper) SetOrderError(ctx context.Context, order *corepb.Order) (*emptypb.Empty, error) {
-	if order == nil || !orderValid(order) {
-		return nil, errIncompleteRequest
-	}
-
-	if err := sas.inner.SetOrderError(ctx, order); err != nil {
-		return nil, err
-	}
-
-	return &emptypb.Empty{}, nil
+func (sas StorageAuthorityServerWrapper) SetOrderError(ctx context.Context, request *sapb.SetOrderErrorRequest) (*emptypb.Empty, error) {
+	return sas.inner.SetOrderError(ctx, request)
 }
 
-func (sas StorageAuthorityServerWrapper) FinalizeOrder(ctx context.Context, order *corepb.Order) (*emptypb.Empty, error) {
-	if order == nil || !orderValid(order) || order.CertificateSerial == "" {
-		return nil, errIncompleteRequest
-	}
-
-	if err := sas.inner.FinalizeOrder(ctx, order); err != nil {
-		return nil, err
-	}
-
-	return &emptypb.Empty{}, nil
+func (sas StorageAuthorityServerWrapper) FinalizeOrder(ctx context.Context, req *sapb.FinalizeOrderRequest) (*emptypb.Empty, error) {
+	return sas.inner.FinalizeOrder(ctx, req)
 }
 
 func (sas StorageAuthorityServerWrapper) GetOrder(ctx context.Context, request *sapb.OrderRequest) (*corepb.Order, error) {

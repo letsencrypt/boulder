@@ -8,7 +8,6 @@ import (
 
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/identifier"
-	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -47,42 +46,6 @@ type WebFrontEnd interface {
 
 	// Provide access to requests for authorization resources
 	Cert(ctx context.Context, response http.ResponseWriter, request *http.Request)
-}
-
-// RegistrationAuthority defines the public interface for the Boulder RA
-type RegistrationAuthority interface {
-	// [WebFrontEnd]
-	NewRegistration(ctx context.Context, reg *corepb.Registration) (*corepb.Registration, error)
-
-	// [WebFrontEnd]
-	NewAuthorization(ctx context.Context, req *rapb.NewAuthorizationRequest) (*corepb.Authorization, error)
-
-	// [WebFrontEnd]
-	NewCertificate(ctx context.Context, req *rapb.NewCertificateRequest) (*corepb.Certificate, error)
-
-	// [WebFrontEnd]
-	UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error)
-
-	// [WebFrontEnd]
-	PerformValidation(ctx context.Context, req *rapb.PerformValidationRequest) (*corepb.Authorization, error)
-
-	// [WebFrontEnd]
-	RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*emptypb.Empty, error)
-
-	// [WebFrontEnd]
-	DeactivateRegistration(ctx context.Context, reg *corepb.Registration) (*emptypb.Empty, error)
-
-	// [WebFrontEnd]
-	DeactivateAuthorization(ctx context.Context, auth *corepb.Authorization) (*emptypb.Empty, error)
-
-	// [WebFrontEnd]
-	NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error)
-
-	// [WebFrontEnd]
-	FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error)
-
-	// [AdminRevoker]
-	AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error)
 }
 
 // PolicyAuthority defines the public interface for the Boulder PA
@@ -128,10 +91,10 @@ type StorageAdder interface {
 	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error)
 	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*emptypb.Empty, error)
 	DeactivateRegistration(ctx context.Context, req *sapb.RegistrationID) (*emptypb.Empty, error)
-	NewOrder(ctx context.Context, order *corepb.Order) (*corepb.Order, error)
-	SetOrderProcessing(ctx context.Context, order *corepb.Order) error
-	FinalizeOrder(ctx context.Context, order *corepb.Order) error
-	SetOrderError(ctx context.Context, order *corepb.Order) error
+	NewOrder(ctx context.Context, req *sapb.NewOrderRequest) (*corepb.Order, error)
+	SetOrderProcessing(ctx context.Context, req *sapb.OrderRequest) (*emptypb.Empty, error)
+	FinalizeOrder(ctx context.Context, req *sapb.FinalizeOrderRequest) (*emptypb.Empty, error)
+	SetOrderError(ctx context.Context, req *sapb.SetOrderErrorRequest) (*emptypb.Empty, error)
 	RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error)
 	// New authz2 methods
 	NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error)

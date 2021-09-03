@@ -908,8 +908,13 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 }
 
 // NewOrder adds a new v2 style order to the database
-func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order) (*corepb.Order, error) {
+func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *sapb.NewOrderRequest) (*corepb.Order, error) {
 	output, err := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+		// Check new order request fields.
+		if req.RegistrationID == 0 || req.Expires == 0 || len(req.Names) == 0 {
+			return nil, errIncompleteRequest
+		}
+
 		order := &orderModel{
 			RegistrationID: req.RegistrationID,
 			Expires:        time.Unix(0, req.Expires),
@@ -987,10 +992,13 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 	return res, nil
 }
 
-// SetOrderProcessing updates a provided *corepb.Order in pending status to be
-// in processing status by updating the `beganProcessing` field of the
-// corresponding Order table row in the DB.
-func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *corepb.Order) error {
+// SetOrderProcessing updates an order from pending status to processing
+// status by updating the `beganProcessing` field of the corresponding
+// Order table row in the DB.
+func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *sapb.OrderRequest) (*emptypb.Empty, error) {
+	if req.Id == 0 {
+		return nil, errIncompleteRequest
+	}
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		result, err := txWithCtx.Exec(`
 		UPDATE orders
@@ -1011,13 +1019,22 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *cor
 
 		return nil, nil
 	})
-	return overallError
+	if overallError != nil {
+		return nil, overallError
+	}
+	return &emptypb.Empty{}, nil
 }
 
 // SetOrderError updates a provided Order's error field.
-func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, order *corepb.Order) error {
+func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.SetOrderErrorRequest) (*emptypb.Empty, error) {
+	if req.Id == 0 || req.Error == nil {
+		return nil, errIncompleteRequest
+	}
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
-		om, err := orderToModel(order)
+		om, err := orderToModel(&corepb.Order{
+			Id:    req.Id,
+			Error: req.Error,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -1039,14 +1056,20 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, order *corepb
 
 		return nil, nil
 	})
-	return overallError
+	if overallError != nil {
+		return nil, overallError
+	}
+	return &emptypb.Empty{}, nil
 }
 
 // FinalizeOrder finalizes a provided *corepb.Order by persisting the
 // CertificateSerial and a valid status to the database. No fields other than
 // CertificateSerial and the order ID on the provided order are processed (e.g.
 // this is not a generic update RPC).
-func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.Order) error {
+func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.FinalizeOrderRequest) (*emptypb.Empty, error) {
+	if req.Id == 0 || req.CertificateSerial == "" {
+		return nil, errIncompleteRequest
+	}
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		result, err := txWithCtx.Exec(`
 		UPDATE orders
@@ -1072,7 +1095,10 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 
 		return nil, nil
 	})
-	return overallError
+	if overallError != nil {
+		return nil, overallError
+	}
+	return &emptypb.Empty{}, nil
 }
 
 // authzForOrder retrieves the authorization IDs for an order. It returns these
