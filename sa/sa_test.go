@@ -295,9 +295,8 @@ func TestCountCertificatesByNames(t *testing.T) {
 	}
 	counts, err := sa.CountCertificatesByNames(ctx, req)
 	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, len(counts.CountByNames), 1)
-	test.AssertEquals(t, counts.CountByNames[0].Name, "example.com")
-	test.AssertEquals(t, counts.CountByNames[0].Count, int64(0))
+	test.AssertEquals(t, len(counts.Counts), 1)
+	test.AssertEquals(t, counts.Counts["example.com"], int64(0))
 
 	// Add the test cert and query for its names.
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -312,18 +311,16 @@ func TestCountCertificatesByNames(t *testing.T) {
 	// Time range including now should find the cert
 	counts, err = sa.CountCertificatesByNames(ctx, req)
 	test.AssertNotError(t, err, "sa.CountCertificatesByName failed")
-	test.AssertEquals(t, len(counts.CountByNames), 1)
-	test.AssertEquals(t, counts.CountByNames[0].Name, "example.com")
-	test.AssertEquals(t, counts.CountByNames[0].Count, int64(1))
+	test.AssertEquals(t, len(counts.Counts), 1)
+	test.AssertEquals(t, counts.Counts["example.com"], int64(1))
 
 	// Time range between two days ago and yesterday should not.
 	req.Range.Earliest = twoDaysAgo
 	req.Range.Latest = yesterday
 	counts, err = sa.CountCertificatesByNames(ctx, req)
 	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, len(counts.CountByNames), 1)
-	test.AssertEquals(t, counts.CountByNames[0].Name, "example.com")
-	test.AssertEquals(t, counts.CountByNames[0].Count, int64(0))
+	test.AssertEquals(t, len(counts.Counts), 1)
+	test.AssertEquals(t, counts.Counts["example.com"], int64(0))
 
 	// Time range between now and tomorrow also should not (time ranges are
 	// inclusive at the tail end, but not the beginning end).
@@ -331,9 +328,8 @@ func TestCountCertificatesByNames(t *testing.T) {
 	req.Range.Latest = tomorrow
 	counts, err = sa.CountCertificatesByNames(ctx, req)
 	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, len(counts.CountByNames), 1)
-	test.AssertEquals(t, counts.CountByNames[0].Name, "example.com")
-	test.AssertEquals(t, counts.CountByNames[0].Count, int64(0))
+	test.AssertEquals(t, len(counts.Counts), 1)
+	test.AssertEquals(t, counts.Counts["example.com"], int64(0))
 
 	// Add a second test cert (for example.co.bn) and query for multiple names.
 	names := []string{"example.com", "foo.com", "example.co.bn"}
@@ -364,17 +360,17 @@ func TestCountCertificatesByNames(t *testing.T) {
 	req.Range.Latest = now.Add(10000 * time.Hour).UnixNano()
 	counts, err = sa.CountCertificatesByNames(ctx, req)
 	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, len(counts.CountByNames), 3)
+	test.AssertEquals(t, len(counts.Counts), 3)
 
-	expected := map[string]int{
+	expected := map[string]int64{
 		"example.co.bn": 1,
 		"foo.com":       0,
 		"example.com":   1,
 	}
-	for _, entry := range counts.CountByNames {
-		domain := entry.Name
-		actualCount := entry.Count
-		expectedCount := int64(expected[domain])
+	for name, count := range counts.Counts {
+		domain := name
+		actualCount := count
+		expectedCount := expected[domain]
 		test.AssertEquals(t, actualCount, expectedCount)
 	}
 }
@@ -1862,9 +1858,9 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	certCDER, err := x509.CreateCertificate(rand.Reader, template, template, testKey.Public(), testKey)
 	test.AssertNotError(t, err, "Failed to create test cert C")
 
-	countName := func(t *testing.T, name string) int64 {
+	countName := func(t *testing.T, expectedName string) int64 {
 		req := &sapb.CountCertificatesByNamesRequest{
-			Names: []string{name},
+			Names: []string{expectedName},
 			Range: &sapb.Range{
 				Earliest: fc.Now().Add(-5 * time.Hour).UnixNano(),
 				Latest:   fc.Now().Add(5 * time.Hour).UnixNano(),
@@ -1872,9 +1868,9 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 		}
 		counts, err := sa.CountCertificatesByNames(context.Background(), req)
 		test.AssertNotError(t, err, "Unexpected err from CountCertificatesByNames")
-		for _, elem := range counts.CountByNames {
-			if elem.Name == name {
-				return elem.Count
+		for name, count := range counts.Counts {
+			if name == expectedName {
+				return count
 			}
 		}
 		return 0

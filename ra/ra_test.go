@@ -1446,7 +1446,7 @@ func TestRateLimitLiveReload(t *testing.T) {
 
 type mockSAWithNameCounts struct {
 	mocks.StorageAuthority
-	nameCounts map[string]*sapb.CountByNames_MapElement
+	nameCounts *sapb.CountByNames
 	t          *testing.T
 	clk        clock.FakeClock
 }
@@ -1460,21 +1460,13 @@ func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, req 
 	if req.Range.Earliest != expectedEarliest {
 		m.t.Errorf("incorrect earliest: got '%d', expected '%d'", req.Range.Earliest, expectedEarliest)
 	}
-	var results []*sapb.CountByNames_MapElement
+	counts := make(map[string]int64)
 	for _, name := range req.Names {
-		if entry, ok := m.nameCounts[name]; ok {
-			results = append(results, entry)
+		if count, ok := m.nameCounts.Counts[name]; ok {
+			counts[name] = count
 		}
 	}
-	return &sapb.CountByNames{CountByNames: results}, nil
-}
-
-func nameCount(domain string, count int) *sapb.CountByNames_MapElement {
-	pbInt := int64(count)
-	return &sapb.CountByNames_MapElement{
-		Name:  domain,
-		Count: pbInt,
-	}
+	return &sapb.CountByNames{Counts: counts}, nil
 }
 
 func TestCheckCertificatesPerNameLimit(t *testing.T) {
@@ -1491,11 +1483,9 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	}
 
 	mockSA := &mockSAWithNameCounts{
-		nameCounts: map[string]*sapb.CountByNames_MapElement{
-			"example.com": nameCount("example.com", 1),
-		},
-		clk: fc,
-		t:   t,
+		nameCounts: &sapb.CountByNames{Counts: map[string]int64{"example.com": 1}},
+		clk:        fc,
+		t:          t,
 	}
 
 	ra.SA = mockSA
@@ -1505,8 +1495,8 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	test.AssertNotError(t, err, "rate limited example.com incorrectly")
 
 	// Two base domains, one above threshold, one below
-	mockSA.nameCounts["example.com"] = nameCount("example.com", 10)
-	mockSA.nameCounts["good-example.com"] = nameCount("good-example.com", 1)
+	mockSA.nameCounts.Counts["example.com"] = 10
+	mockSA.nameCounts.Counts["good-example.com"] = 1
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "good-example.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit example.com")
 	test.AssertErrorIs(t, err, berrors.RateLimit)
@@ -1517,9 +1507,9 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	test.AssertEquals(t, len(bErr.SubErrors), 0)
 
 	// Three base domains, two above threshold, one below
-	mockSA.nameCounts["example.com"] = nameCount("example.com", 10)
-	mockSA.nameCounts["other-example.com"] = nameCount("other-example.com", 10)
-	mockSA.nameCounts["good-example.com"] = nameCount("good-example.com", 1)
+	mockSA.nameCounts.Counts["example.com"] = 10
+	mockSA.nameCounts.Counts["other-example.com"] = 10
+	mockSA.nameCounts.Counts["good-example.com"] = 1
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"example.com", "other-example.com", "good-example.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit example.com, other-example.com")
 	test.AssertErrorIs(t, err, berrors.RateLimit)
@@ -1533,20 +1523,20 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	test.AssertError(t, err, "incorrectly failed to error on misbehaving SA")
 
 	// Two base domains, one above threshold but with an override.
-	mockSA.nameCounts["example.com"] = nameCount("example.com", 0)
-	mockSA.nameCounts["bigissuer.com"] = nameCount("bigissuer.com", 50)
+	mockSA.nameCounts.Counts["example.com"] = 0
+	mockSA.nameCounts.Counts["bigissuer.com"] = 50
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertNotError(t, err, "incorrectly rate limited bigissuer")
 
 	// Two base domains, one above its override
-	mockSA.nameCounts["example.com"] = nameCount("example.com", 0)
-	mockSA.nameCounts["bigissuer.com"] = nameCount("bigissuer.com", 100)
+	mockSA.nameCounts.Counts["example.com"] = 10
+	mockSA.nameCounts.Counts["bigissuer.com"] = 100
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit bigissuer")
 	test.AssertErrorIs(t, err, berrors.RateLimit)
 
 	// One base domain, above its override (which is below threshold)
-	mockSA.nameCounts["smallissuer.co.uk"] = nameCount("smallissuer.co.uk", 1)
+	mockSA.nameCounts.Counts["smallissuer.co.uk"] = 1
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.smallissuer.co.uk"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit smallissuer")
 	test.AssertErrorIs(t, err, berrors.RateLimit)
@@ -1568,10 +1558,12 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 	// Create a mock SA that has a count of already issued certificates for some
 	// test names
 	mockSA := &mockSAWithFQDNSet{
-		nameCounts: map[string]*sapb.CountByNames_MapElement{
-			"under.example.com": nameCount("under.example.com", dupeCertLimit-1),
-			"equal.example.com": nameCount("equal.example.com", dupeCertLimit),
-			"over.example.com":  nameCount("over.example.com", dupeCertLimit+1),
+		nameCounts: &sapb.CountByNames{
+			Counts: map[string]int64{
+				"under.example.com": dupeCertLimit - 1,
+				"equal.example.com": dupeCertLimit,
+				"over.example.com":  dupeCertLimit + 1,
+			},
 		},
 		t: t,
 	}
@@ -1709,7 +1701,7 @@ func TestRegistrationKeyUpdate(t *testing.T) {
 type mockSAWithFQDNSet struct {
 	mocks.StorageAuthority
 	fqdnSet    map[string]bool
-	nameCounts map[string]*sapb.CountByNames_MapElement
+	nameCounts *sapb.CountByNames
 	t          *testing.T
 }
 
@@ -1738,23 +1730,23 @@ func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, req *sapb.FQDNSetExi
 
 // Return a map of domain -> certificate count.
 func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
-	var results []*sapb.CountByNames_MapElement
+	counts := make(map[string]int64)
 	for _, name := range req.Names {
-		if entry, ok := m.nameCounts[name]; ok {
-			results = append(results, entry)
+		if count, ok := m.nameCounts.Counts[name]; ok {
+			counts[name] = count
 		}
 	}
-	return &sapb.CountByNames{CountByNames: results}, nil
+	return &sapb.CountByNames{Counts: counts}, nil
 }
 
 func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
-	var count int64
+	var total int64
 	for _, name := range req.Domains {
-		if entry, ok := m.nameCounts[name]; ok {
-			count += entry.Count
+		if count, ok := m.nameCounts.Counts[name]; ok {
+			total += count
 		}
 	}
-	return &sapb.Count{Count: count}, nil
+	return &sapb.Count{Count: total}, nil
 }
 
 // Tests for boulder issue 1925[0] - that the `checkCertificatesPerNameLimit`
@@ -1776,9 +1768,8 @@ func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
 
 	// Create a mock SA that has both name counts and an FQDN set
 	mockSA := &mockSAWithFQDNSet{
-		nameCounts: map[string]*sapb.CountByNames_MapElement{
-			"example.com": nameCount("example.com", 100),
-			"zombo.com":   nameCount("zombo.com", 100),
+		nameCounts: &sapb.CountByNames{
+			Counts: map[string]int64{"example.com": 100, "zombo.com": 100},
 		},
 		fqdnSet: map[string]bool{},
 		t:       t,
@@ -1828,12 +1819,14 @@ func TestExactPublicSuffixCertLimit(t *testing.T) {
 	//   - test2.dedyn.io (once)
 	//   - dynv6.net (twice)
 	mockSA := &mockSAWithNameCounts{
-		nameCounts: map[string]*sapb.CountByNames_MapElement{
-			"test.dedyn.io":  nameCount("test.dedyn.io", 1),
-			"test2.dedyn.io": nameCount("test2.dedyn.io", 1),
-			"test3.dedyn.io": nameCount("test3.dedyn.io", 0),
-			"dedyn.io":       nameCount("dedyn.io", 0),
-			"dynv6.net":      nameCount("dynv6.net", 2),
+		nameCounts: &sapb.CountByNames{
+			Counts: map[string]int64{
+				"test.dedyn.io":  1,
+				"test2.dedyn.io": 1,
+				"test3.dedyn.io": 0,
+				"dedyn.io":       0,
+				"dynv6.net":      2,
+			},
 		},
 		clk: fc,
 		t:   t,
