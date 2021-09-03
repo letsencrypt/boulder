@@ -101,6 +101,10 @@ func (sas StorageAuthorityClientWrapper) NewOrder(ctx context.Context, request *
 	return sas.inner.NewOrder(ctx, request)
 }
 
+func (sas StorageAuthorityClientWrapper) NewOrderAndAuthzs(ctx context.Context, request *sapb.NewOrderAndAuthzsRequest) (*corepb.Order, error) {
+	return sas.inner.NewOrderAndAuthzs(ctx, request)
+}
+
 func (sac StorageAuthorityClientWrapper) SetOrderProcessing(ctx context.Context, req *sapb.OrderRequest) (*emptypb.Empty, error) {
 	return sac.inner.SetOrderProcessing(ctx, req)
 }
@@ -259,6 +263,10 @@ func (sas StorageAuthorityServerWrapper) DeactivateRegistration(ctx context.Cont
 
 func (sas StorageAuthorityServerWrapper) NewOrder(ctx context.Context, request *sapb.NewOrderRequest) (*corepb.Order, error) {
 	return sas.inner.NewOrder(ctx, request)
+}
+
+func (sas StorageAuthorityServerWrapper) NewOrderAndAuthzs(ctx context.Context, request *sapb.NewOrderAndAuthzsRequest) (*corepb.Order, error) {
+	return sas.inner.NewOrderAndAuthzs(ctx, request)
 }
 
 func (sas StorageAuthorityServerWrapper) SetOrderProcessing(ctx context.Context, req *sapb.OrderRequest) (*emptypb.Empty, error) {

@@ -38,6 +38,7 @@ service StorageAuthority {
   rpc AddSerial(AddSerialRequest) returns (google.protobuf.Empty) {}
   rpc DeactivateRegistration(RegistrationID) returns (google.protobuf.Empty) {}
   rpc NewOrder(NewOrderRequest) returns (core.Order) {}
+  rpc NewOrderAndAuthzs(NewOrderAndAuthzsRequest) returns (core.Order) {}
   rpc SetOrderProcessing(OrderRequest) returns (google.protobuf.Empty) {}
   rpc SetOrderError(SetOrderErrorRequest) returns (google.protobuf.Empty) {}
   rpc FinalizeOrder(FinalizeOrderRequest) returns (google.protobuf.Empty) {}
@@ -174,6 +175,11 @@ message NewOrderRequest {
   int64 expires = 2;
   repeated string names = 3;
   repeated int64 v2Authorizations = 4;
+}
+
+message NewOrderAndAuthzsRequest {
+  NewOrderRequest newOrder = 1;
+  repeated core.Authorization newAuthzs = 2;
 }
 
 message SetOrderErrorRequest {

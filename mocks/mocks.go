@@ -421,6 +421,11 @@ func (sa *StorageAuthority) NewOrder(_ context.Context, req *sapb.NewOrderReques
 	return response, nil
 }
 
+// NewOrderAndAuthzs is a mock
+func (sa *StorageAuthority) NewOrderAndAuthzs(_ context.Context, req *sapb.NewOrderAndAuthzsRequest) (*corepb.Order, error) {
+	return sa.NewOrder(context.TODO(), req.NewOrder)
+}
+
 // SetOrderProcessing is a mock
 func (sa *StorageAuthority) SetOrderProcessing(_ context.Context, req *sapb.OrderRequest) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil

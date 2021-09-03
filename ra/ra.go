@@ -2020,30 +2020,30 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, errIncompleteGRPCRequest
 	}
 
-	order := &corepb.Order{
+	newOrder := &sapb.NewOrderRequest{
 		RegistrationID: req.RegistrationID,
 		Names:          core.UniqueLowerNames(req.Names),
 	}
 
-	if len(order.Names) > ra.maxNames {
+	if len(newOrder.Names) > ra.maxNames {
 		return nil, berrors.MalformedError(
 			"Order cannot contain more than %d DNS names", ra.maxNames)
 	}
 
 	// Validate that our policy allows issuing for each of the names in the order
-	if err := ra.checkOrderNames(order.Names); err != nil {
+	if err := ra.checkOrderNames(newOrder.Names); err != nil {
 		return nil, err
 	}
 
-	if err := wildcardOverlap(order.Names); err != nil {
+	if err := wildcardOverlap(newOrder.Names); err != nil {
 		return nil, err
 	}
 
 	// See if there is an existing unexpired pending (or ready) order that can be reused
 	// for this account
 	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
-		AcctID: order.RegistrationID,
-		Names:  order.Names,
+		AcctID: newOrder.RegistrationID,
+		Names:  newOrder.Names,
 	})
 	// If there was an error and it wasn't an acceptable "NotFound" error, return
 	// immediately
@@ -2062,13 +2062,13 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Check if there is rate limit space for a new order within the current window
-	if err := ra.checkNewOrdersPerAccountLimit(ctx, order.RegistrationID); err != nil {
+	if err := ra.checkNewOrdersPerAccountLimit(ctx, newOrder.RegistrationID); err != nil {
 		return nil, err
 	}
 	// Check if there is rate limit space for issuing a certificate for the new
 	// order's names. If there isn't then it doesn't make sense to allow creating
 	// an order - it will just fail when finalization checks the same limits.
-	if err := ra.checkLimits(ctx, order.Names, order.RegistrationID); err != nil {
+	if err := ra.checkLimits(ctx, newOrder.Names, newOrder.RegistrationID); err != nil {
 		return nil, err
 	}
 
@@ -2082,9 +2082,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	authzExpiryCutoff := ra.clk.Now().AddDate(0, 0, 1).UnixNano()
 
 	getAuthReq := &sapb.GetAuthorizationsRequest{
-		RegistrationID: order.RegistrationID,
+		RegistrationID: newOrder.RegistrationID,
 		Now:            authzExpiryCutoff,
-		Domains:        order.Names,
+		Domains:        newOrder.Names,
 	}
 	existingAuthz, err := ra.SA.GetAuthorizations2(ctx, getAuthReq)
 	if err != nil {
@@ -2093,7 +2093,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	// Collect up the authorizations we found into a map keyed by the domains the
 	// authorizations correspond to
-	nameToExistingAuthz := make(map[string]*corepb.Authorization, len(order.Names))
+	nameToExistingAuthz := make(map[string]*corepb.Authorization, len(newOrder.Names))
 	for _, v := range existingAuthz.Authz {
 		// Don't reuse a valid authorization if the reuseValidAuthz flag is
 		// disabled.
@@ -2107,7 +2107,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// existing authz, append it to the order to reuse it. Otherwise track
 	// that there is a missing authz for that name.
 	var missingAuthzNames []string
-	for _, name := range order.Names {
+	for _, name := range newOrder.Names {
 		// If there isn't an existing authz, note that its missing and continue
 		if _, exists := nameToExistingAuthz[name]; !exists {
 			missingAuthzNames = append(missingAuthzNames, name)
@@ -2125,7 +2125,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			if err != nil {
 				return nil, err
 			}
-			order.V2Authorizations = append(order.V2Authorizations, authzID)
+			newOrder.V2Authorizations = append(newOrder.V2Authorizations, authzID)
 			continue
 		} else if !strings.HasPrefix(name, "*.") {
 			// If the identifier isn't a wildcard, we can reuse any authz
@@ -2133,7 +2133,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			if err != nil {
 				return nil, err
 			}
-			order.V2Authorizations = append(order.V2Authorizations, authzID)
+			newOrder.V2Authorizations = append(newOrder.V2Authorizations, authzID)
 			continue
 		}
 
@@ -2147,10 +2147,10 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// If the order isn't fully authorized we need to check that the client has
 	// rate limit room for more pending authorizations
 	if len(missingAuthzNames) > 0 {
-		if err := ra.checkPendingAuthorizationLimit(ctx, order.RegistrationID); err != nil {
+		if err := ra.checkPendingAuthorizationLimit(ctx, newOrder.RegistrationID); err != nil {
 			return nil, err
 		}
-		if err := ra.checkInvalidAuthorizationLimits(ctx, order.RegistrationID, missingAuthzNames); err != nil {
+		if err := ra.checkInvalidAuthorizationLimits(ctx, newOrder.RegistrationID, missingAuthzNames); err != nil {
 			return nil, err
 		}
 	}
@@ -2159,7 +2159,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// authorization for each.
 	var newAuthzs []*corepb.Authorization
 	for _, name := range missingAuthzNames {
-		pb, err := ra.createPendingAuthz(ctx, order.RegistrationID, identifier.ACMEIdentifier{
+		pb, err := ra.createPendingAuthz(ctx, newOrder.RegistrationID, identifier.ACMEIdentifier{
 			Type:  identifier.DNS,
 			Value: name,
 		})
@@ -2189,48 +2189,52 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			minExpiry = authzExpiry
 		}
 	}
-
-	// If new authorizations are needed, call AddPendingAuthorizations. Also check
-	// whether the newly created pending authz's have an expiry lower than minExpiry
+	// If the newly created pending authz's have an expiry closer than the
+	// minExpiry the minExpiry is the pending authz expiry.
 	if len(newAuthzs) > 0 {
-		req := sapb.AddPendingAuthorizationsRequest{Authz: newAuthzs}
-		authzIDs, err := ra.SA.NewAuthorizations2(ctx, &req)
-		if err != nil {
-			return nil, err
-		}
-		if len(authzIDs.Ids) == 0 {
-			// This should never happen.
-			return nil, errors.New("received 0 authzIDs after requesting new authzs")
-		}
-		order.V2Authorizations = append(order.V2Authorizations, authzIDs.Ids...)
-		// If the newly created pending authz's have an expiry closer than the
-		// minExpiry the minExpiry is the pending authz expiry.
 		newPendingAuthzExpires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
 		if newPendingAuthzExpires.Before(minExpiry) {
 			minExpiry = newPendingAuthzExpires
 		}
 	}
-
-	// Note how many names are being requested in this certificate order.
-	ra.namesPerCert.With(
-		prometheus.Labels{"type": "requested"},
-	).Observe(float64(len(order.Names)))
-
 	// Set the order's expiry to the minimum expiry. The db doesn't store
 	// sub-second values, so truncate here.
-	order.Expires = minExpiry.Truncate(time.Second).UnixNano()
-	storedOrder, err := ra.SA.NewOrder(ctx, &sapb.NewOrderRequest{
-		RegistrationID:   order.RegistrationID,
-		Expires:          order.Expires,
-		Names:            order.Names,
-		V2Authorizations: order.V2Authorizations,
-	})
+	newOrder.Expires = minExpiry.Truncate(time.Second).UnixNano()
+
+	var storedOrder *corepb.Order
+	if features.Enabled(features.StreamlineOrderAndAuthzs) {
+		newOrderAndAuthzsReq := &sapb.NewOrderAndAuthzsRequest{
+			NewOrder:  newOrder,
+			NewAuthzs: newAuthzs,
+		}
+		storedOrder, err = ra.SA.NewOrderAndAuthzs(ctx, newOrderAndAuthzsReq)
+	} else {
+		// If new authorizations are needed, call AddPendingAuthorizations. Also check
+		// whether the newly created pending authz's have an expiry lower than minExpiry
+		if len(newAuthzs) > 0 {
+			req := sapb.AddPendingAuthorizationsRequest{Authz: newAuthzs}
+			authzIDs, err := ra.SA.NewAuthorizations2(ctx, &req)
+			if err != nil {
+				return nil, err
+			}
+			if len(authzIDs.Ids) == 0 {
+				// This should never happen.
+				return nil, errors.New("received 0 authzIDs after requesting new authzs")
+			}
+			newOrder.V2Authorizations = append(newOrder.V2Authorizations, authzIDs.Ids...)
+		}
+
+		storedOrder, err = ra.SA.NewOrder(ctx, newOrder)
+	}
 	if err != nil {
 		return nil, err
 	}
 	if storedOrder.Id == 0 || storedOrder.Created == 0 || storedOrder.Status == "" || storedOrder.RegistrationID == 0 || storedOrder.Expires == 0 || len(storedOrder.Names) == 0 {
 		return nil, errIncompleteGRPCResponse
 	}
+
+	// Note how many names are being requested in this certificate order.
+	ra.namesPerCert.With(prometheus.Labels{"type": "requested"}).Observe(float64(len(storedOrder.Names)))
 
 	return storedOrder, nil
 }

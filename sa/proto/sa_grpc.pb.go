@@ -51,6 +51,7 @@ type StorageAuthorityClient interface {
 	AddSerial(ctx context.Context, in *AddSerialRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DeactivateRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	NewOrder(ctx context.Context, in *NewOrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
+	NewOrderAndAuthzs(ctx context.Context, in *NewOrderAndAuthzsRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	SetOrderProcessing(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	SetOrderError(ctx context.Context, in *SetOrderErrorRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	FinalizeOrder(ctx context.Context, in *FinalizeOrderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -314,6 +315,15 @@ func (c *storageAuthorityClient) NewOrder(ctx context.Context, in *NewOrderReque
 	return out, nil
 }
 
+func (c *storageAuthorityClient) NewOrderAndAuthzs(ctx context.Context, in *NewOrderAndAuthzsRequest, opts ...grpc.CallOption) (*proto.Order, error) {
+	out := new(proto.Order)
+	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/NewOrderAndAuthzs", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *storageAuthorityClient) SetOrderProcessing(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/SetOrderProcessing", in, out, opts...)
@@ -439,6 +449,7 @@ type StorageAuthorityServer interface {
 	AddSerial(context.Context, *AddSerialRequest) (*emptypb.Empty, error)
 	DeactivateRegistration(context.Context, *RegistrationID) (*emptypb.Empty, error)
 	NewOrder(context.Context, *NewOrderRequest) (*proto.Order, error)
+	NewOrderAndAuthzs(context.Context, *NewOrderAndAuthzsRequest) (*proto.Order, error)
 	SetOrderProcessing(context.Context, *OrderRequest) (*emptypb.Empty, error)
 	SetOrderError(context.Context, *SetOrderErrorRequest) (*emptypb.Empty, error)
 	FinalizeOrder(context.Context, *FinalizeOrderRequest) (*emptypb.Empty, error)
@@ -536,6 +547,9 @@ func (UnimplementedStorageAuthorityServer) DeactivateRegistration(context.Contex
 }
 func (UnimplementedStorageAuthorityServer) NewOrder(context.Context, *NewOrderRequest) (*proto.Order, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NewOrder not implemented")
+}
+func (UnimplementedStorageAuthorityServer) NewOrderAndAuthzs(context.Context, *NewOrderAndAuthzsRequest) (*proto.Order, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method NewOrderAndAuthzs not implemented")
 }
 func (UnimplementedStorageAuthorityServer) SetOrderProcessing(context.Context, *OrderRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetOrderProcessing not implemented")
@@ -1066,6 +1080,24 @@ func _StorageAuthority_NewOrder_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StorageAuthority_NewOrderAndAuthzs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NewOrderAndAuthzsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).NewOrderAndAuthzs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/sa.StorageAuthority/NewOrderAndAuthzs",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).NewOrderAndAuthzs(ctx, req.(*NewOrderAndAuthzsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _StorageAuthority_SetOrderProcessing_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(OrderRequest)
 	if err := dec(in); err != nil {
@@ -1360,6 +1392,10 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "NewOrder",
 			Handler:    _StorageAuthority_NewOrder_Handler,
+		},
+		{
+			MethodName: "NewOrderAndAuthzs",
+			Handler:    _StorageAuthority_NewOrderAndAuthzs_Handler,
 		},
 		{
 			MethodName: "SetOrderProcessing",

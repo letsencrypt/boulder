@@ -1034,11 +1034,67 @@ func TestNewOrder(t *testing.T) {
 	test.AssertNotError(t, err, "namesForOrder errored")
 	test.AssertEquals(t, len(names), 2)
 	test.AssertDeepEquals(t, names, []string{"com.example", "com.example.another.just"})
+}
 
-	names, err = sa.namesForOrder(context.Background(), order.Id)
+func TestNewOrderAndAuthzs(t *testing.T) {
+	sa, _, cleanup := initSA(t)
+	defer cleanup()
+
+	// Create a test registration to reference
+	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
+	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
+	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
+	})
+	test.AssertNotError(t, err, "Couldn't create test registration")
+
+	// Insert two pre-existing authorizations to reference
+	idA := createPendingAuthorization(t, sa, "a.com", sa.clk.Now().Add(time.Hour))
+	idB := createPendingAuthorization(t, sa, "b.com", sa.clk.Now().Add(time.Hour))
+	test.AssertEquals(t, idA, int64(1))
+	test.AssertEquals(t, idB, int64(2))
+
+	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		// Insert an order for four names, two of which already have authzs
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:   reg.Id,
+			Expires:          1,
+			Names:            []string{"a.com", "b.com", "c.com", "d.com"},
+			V2Authorizations: []int64{1, 2},
+		},
+		// And add new authorizations for the other two names.
+		NewAuthzs: []*corepb.Authorization{
+			{
+				Identifier:     "c.com",
+				RegistrationID: reg.Id,
+				Expires:        sa.clk.Now().Add(time.Hour).UnixNano(),
+				Status:         "pending",
+				Challenges:     []*corepb.Challenge{{Token: core.NewToken()}},
+			},
+			{
+				Identifier:     "d.com",
+				RegistrationID: reg.Id,
+				Expires:        sa.clk.Now().Add(time.Hour).UnixNano(),
+				Status:         "pending",
+				Challenges:     []*corepb.Challenge{{Token: core.NewToken()}},
+			},
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewOrder failed")
+	test.AssertEquals(t, order.Id, int64(1))
+	test.AssertDeepEquals(t, order.V2Authorizations, []int64{1, 2, 3, 4})
+
+	var authzIDs []int64
+	_, err = sa.dbMap.Select(&authzIDs, "SELECT authzID FROM orderToAuthz2 WHERE orderID = ?;", order.Id)
+	test.AssertNotError(t, err, "Failed to count orderToAuthz entries")
+	test.AssertEquals(t, len(authzIDs), 4)
+	test.AssertDeepEquals(t, authzIDs, []int64{1, 2, 3, 4})
+
+	names, err := sa.namesForOrder(context.Background(), order.Id)
 	test.AssertNotError(t, err, "namesForOrder errored")
-	test.AssertEquals(t, len(names), 2)
-	test.AssertDeepEquals(t, names, []string{"com.example", "com.example.another.just"})
+	test.AssertEquals(t, len(names), 4)
+	test.AssertDeepEquals(t, names, []string{"com.a", "com.b", "com.c", "com.d"})
 }
 
 func TestSetOrderProcessing(t *testing.T) {

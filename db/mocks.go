@@ -59,6 +59,7 @@ type Executor interface {
 	Delete(...interface{}) (int64, error)
 	Get(interface{}, ...interface{}) (interface{}, error)
 	Update(...interface{}) (int64, error)
+	Query(string, ...interface{}) (*sql.Rows, error)
 }
 
 // Transaction extends an Executor and adds Rollback, Commit, and WithContext.

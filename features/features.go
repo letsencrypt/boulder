@@ -48,6 +48,9 @@ const (
 	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
 	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
 	ECDSAForAll
+	// StreamlineOrderAndAuthzs enables the use of a new SA gRPC method that
+	// combines creating new Authzs and the new Order into a single operations.
+	StreamlineOrderAndAuthzs
 )
 
 // List of features and their default value, protected by fMu
@@ -68,6 +71,7 @@ var features = map[FeatureFlag]bool{
 	FasterNewOrdersRateLimit: false,
 	NonCFSSLSigner:           false,
 	ECDSAForAll:              false,
+	StreamlineOrderAndAuthzs: false,
 }
 
 var fMu = new(sync.RWMutex)
