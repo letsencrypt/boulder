@@ -25,7 +25,7 @@ func NewMultiInserter(table string, fields string, retCol string) (*MultiInserte
 		return nil, fmt.Errorf("empty table name or fields list")
 	}
 	if strings.Contains(retCol, ",") {
-		return nil, fmt.Errorf("return column must be singular: %q", retCol)
+		return nil, fmt.Errorf("return column must be singular, but got %q", retCol)
 	}
 
 	return &MultiInserter{
