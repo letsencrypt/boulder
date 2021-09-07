@@ -1403,8 +1403,11 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, name
 	}
 
 	var badNames []string
-	for name, count := range response.Counts {
-		if count >= limit.GetThreshold(name, regID) {
+	// Find the names that have counts at or over the threshold. Range
+	// over the names slice input to ensure the order of badNames will
+	// return the badNames in the same order they were input.
+	for _, name := range names {
+		if response.Counts[name] >= limit.GetThreshold(name, regID) {
 			badNames = append(badNames, name)
 		}
 	}
