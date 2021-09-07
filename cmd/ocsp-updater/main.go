@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
@@ -404,8 +405,18 @@ func main() {
 		dbDSN, err := databaseConfig.URL()
 		cmd.FailOnError(err, "Couldn't load DB URL")
 
+		conf, err := mysql.ParseDSN(dbDSN)
+		cmd.FailOnError(err, "Couldn't parse DB URL as DSN")
+
+		// Set transaction isolation level to READ UNCOMMITTED. This trades
+		// consistency for performance.
+		if len(conf.Params) == 0 {
+			conf.Params = make(map[string]string)
+		}
+		conf.Params["tx_isolation"] = "'READ-UNCOMMITTED'"
+		dbDSN = conf.FormatDSN()
 		dbMap, err := sa.NewDbMap(dbDSN, dbSettings)
-		cmd.FailOnError(err, "Couldn't connect to SA database")
+		cmd.FailOnError(err, "Could not connect to database")
 
 		dbAddr, dbUser, err := databaseConfig.DSNAddressAndUser()
 		cmd.FailOnError(err, "Could not determine address or user of DB DSN")
