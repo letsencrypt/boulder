@@ -110,8 +110,29 @@ func SelectCertificates(s db.Selector, q string, args map[string]interface{}) ([
 	return models, err
 }
 
+func certStatusMetadataFields() []string {
+	return []string{"serial", "status", "ocspLastUpdated", "revokedDate", "revokedReason", "lastExpirationNagSent", "notAfter", "isExpired", "issuerID"}
+}
+
+func certStatusMetadataFieldsSelect(restOfQuery string) string {
+	fields := strings.Join(certStatusFields(), ",")
+	return fmt.Sprintf("SELECT %s FROM certificateStatus %s", fields, restOfQuery)
+}
+
+// SelectCertificateStatusMetadata selects all non-OCSPResponse fields of
+// multiple certificate status objects.
+func SelectCertificateStatusMetadata(s db.Selector, q string, args ...interface{}) ([]core.CertificateStatus, error) {
+	var models []core.CertificateStatus
+	_, err := s.Select(
+		&models,
+		certStatusMetadataFieldsSelect(q),
+		args...,
+	)
+	return models, err
+}
+
 func certStatusFields() []string {
-	return []string{"serial", "status", "ocspLastUpdated", "revokedDate", "revokedReason", "lastExpirationNagSent", "ocspResponse", "notAfter", "isExpired", "issuerID"}
+	return append(certStatusMetadataFields(), "ocspResponse")
 }
 
 func certStatusFieldsSelect(restOfQuery string) string {
@@ -129,18 +150,6 @@ func SelectCertificateStatus(s db.OneSelector, serial string) (core.CertificateS
 		serial,
 	)
 	return model, err
-}
-
-// SelectCertificateStatuses selects all fields of multiple certificate status
-// objects
-func SelectCertificateStatuses(s db.Selector, q string, args ...interface{}) ([]core.CertificateStatus, error) {
-	var models []core.CertificateStatus
-	_, err := s.Select(
-		&models,
-		certStatusFieldsSelect(q),
-		args...,
-	)
-	return models, err
 }
 
 var mediumBlobSize = int(math.Pow(2, 24))
