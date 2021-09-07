@@ -176,7 +176,7 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	}
 	params = append(params, batchSize)
 
-	statuses, err := sa.SelectCertificateStatuses(
+	statuses, err := sa.SelectCertificateStatusMetadata(
 		updater.readOnlyDbMap,
 		updater.queryBody,
 		params...,
