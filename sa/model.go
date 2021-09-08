@@ -115,7 +115,7 @@ func certStatusMetadataFields() []string {
 }
 
 func certStatusMetadataFieldsSelect(restOfQuery string) string {
-	fields := strings.Join(certStatusFields(), ",")
+	fields := strings.Join(certStatusMetadataFields(), ",")
 	return fmt.Sprintf("SELECT %s FROM certificateStatus %s", fields, restOfQuery)
 }
 
