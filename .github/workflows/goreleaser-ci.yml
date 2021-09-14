@@ -1,10 +1,10 @@
-
 name: GoReleaser CI
 
 on:
   push:
     branches: 
       - main
+      - release-branch-*
   pull_request:
     branches:
       - '**'
@@ -15,19 +15,18 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: [1.17.1]
+        go-version: [1.17.0]
 
     steps:
-      - 
-        name: Install go
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install go
         uses: actions/setup-go@v2
         with:
           go-version: ${{ matrix.go-version }}
-      - 
-        name: Checkout code
-        uses: actions/checkout@v2
-      - 
-        name: Run GoReleaser
+
+      - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v2
         with:
           distribution: goreleaser
