@@ -1,0 +1,34 @@
+name: GoReleaser CI
+
+on:
+  push:
+    branches: 
+      - main
+      - release-branch-*
+  pull_request:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+jobs:
+  goreleaser_ci_build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: [1.17.0]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install go
+        uses: actions/setup-go@v2
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v2
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --rm-dist --skip-publish --skip-sign --skip-validate
