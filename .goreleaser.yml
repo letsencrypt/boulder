@@ -222,6 +222,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: akamai-purger-package
     package_name: boulder-akamai-purger
@@ -231,6 +234,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: bad-key-revoker-package
     package_name: boulder-bad-key-revoker
@@ -240,6 +246,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: boulder-ca-package
     package_name: boulder-ca
@@ -249,6 +258,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: boulder-observer-package
     package_name: boulder-observer
@@ -258,6 +270,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: boulder-publisher-package
     package_name: boulder-publisher
@@ -267,6 +282,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: boulder-ra-package
     package_name: boulder-ra
@@ -276,6 +294,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: boulder-sa-package
     package_name: boulder-sa
@@ -285,6 +306,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: boulder-va-package
     package_name: boulder-va
@@ -294,6 +318,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: boulder-wfe-package
     package_name: boulder-wfe
@@ -303,6 +330,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: boulder-wfe2-package
     package_name: boulder-wfe2
@@ -312,6 +342,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: caa-log-checker-package
     package_name: boulder-caa-log-checker
@@ -321,6 +354,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: ceremony-package
     package_name: boulder-ceremony
@@ -330,6 +366,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: cert-checker-package
     package_name: boulder-cert-checker
@@ -339,6 +378,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: contact-auditor-package
     package_name: boulder-contact-auditor
@@ -348,6 +390,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: expiration-mailer-package
     package_name: boulder-expiration-mailer
@@ -357,6 +402,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: id-exporter-package
     package_name: boulder-id-exporter
@@ -366,6 +414,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: log-validator-package
     package_name: boulder-log-validator
@@ -375,6 +426,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: nonce-service-package
     package_name: boulder-nonce-service
@@ -384,6 +438,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: notify-mailer-package
     package_name: boulder-notify-mailer
@@ -393,6 +450,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: ocsp-responder-package
     package_name: boulder-ocsp-responder
@@ -402,6 +462,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: ocsp-updater-package
     package_name: boulder-ocsp-updater
@@ -411,6 +474,9 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
 
   - id: orphan-finder-package
     package_name: boulder-orphan-finder
@@ -420,3 +486,6 @@ nfpms:
       - rpm
       - deb
     bindir: /opt/boulder/bin
+    maintainer: Boulder <boulder@letsencrypt.org>
+    vendor: Let's Encrypt
+    homepage: https://letsencrypt.org/
