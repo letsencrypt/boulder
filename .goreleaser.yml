@@ -9,7 +9,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: akamai-purger
     main: ./cmd/akamai-purger
@@ -21,7 +23,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: bad-key-revoker
     main: ./cmd/bad-key-revoker
@@ -33,7 +37,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: boulder-ca
     main: ./cmd/boulder-ca
@@ -43,7 +49,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: boulder-observer
     main: ./cmd/boulder-observer
@@ -55,7 +63,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: boulder-publisher
     main: ./cmd/boulder-publisher
@@ -65,7 +75,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: boulder-ra
     main: ./cmd/boulder-ra
@@ -75,7 +87,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: boulder-sa
     main: ./cmd/boulder-sa
@@ -87,7 +101,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: boulder-va
     main: ./cmd/boulder-va
@@ -99,7 +115,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: boulder-wfe
     main: ./cmd/boulder-wfe
@@ -109,7 +127,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: boulder-wfe2
     main: ./cmd/boulder-wfe2
@@ -119,7 +139,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: caa-log-checker
     main: ./cmd/caa-log-checker
@@ -131,7 +153,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: ceremony
     main: ./cmd/ceremony
@@ -141,7 +165,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: cert-checker
     main: ./cmd/cert-checker
@@ -153,7 +179,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: contact-auditor
     main: ./cmd/contact-auditor
@@ -165,7 +193,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: expiration-mailer
     main: ./cmd/expiration-mailer
@@ -177,7 +207,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: id-exporter
     main: ./cmd/id-exporter
@@ -189,7 +221,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: log-validator
     main: ./cmd/log-validator
@@ -201,7 +235,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: nonce-service
     main: ./cmd/nonce-service
@@ -213,7 +249,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: notify-mailer
     main: ./cmd/notify-mailer
@@ -225,7 +263,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: ocsp-responder
     main: ./cmd/ocsp-responder
@@ -235,7 +275,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: ocsp-updater
     main: ./cmd/ocsp-updater
@@ -247,7 +289,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
   - id: orphan-finder
     main: ./cmd/orphan-finder
@@ -257,7 +301,9 @@ builds:
     goos:
         - linux
     ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildHost={{ .Env.USER }}@{{ .Env.HOSTNAME }}"
+      - -X "github.com/letsencrypt/boulder/core.BuildTime={{ .Date }}"
 
 nfpms:
   - id: admin-revoker-package
