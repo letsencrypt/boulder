@@ -1,4 +1,6 @@
 builds:
+  - ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
   - id: admin-revoker
     main: ./cmd/admin-revoker
     binary: admin-revoker
