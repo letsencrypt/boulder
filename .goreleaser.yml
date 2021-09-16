@@ -1,6 +1,4 @@
 builds:
-  - ldflags:
-    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
   - id: admin-revoker
     main: ./cmd/admin-revoker
     binary: admin-revoker
@@ -10,6 +8,8 @@ builds:
         - CGO_ENABLED=0
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: akamai-purger
     main: ./cmd/akamai-purger
@@ -20,6 +20,8 @@ builds:
         - CGO_ENABLED=0
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: bad-key-revoker
     main: ./cmd/bad-key-revoker
@@ -30,6 +32,8 @@ builds:
         - CGO_ENABLED=0
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: boulder-ca
     main: ./cmd/boulder-ca
@@ -38,6 +42,8 @@ builds:
         - amd64
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: boulder-observer
     main: ./cmd/boulder-observer
@@ -48,6 +54,8 @@ builds:
         - CGO_ENABLED=0
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: boulder-publisher
     main: ./cmd/boulder-publisher
@@ -56,6 +64,8 @@ builds:
         - amd64
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: boulder-ra
     main: ./cmd/boulder-ra
@@ -64,6 +74,8 @@ builds:
         - amd64
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: boulder-sa
     main: ./cmd/boulder-sa
@@ -74,6 +86,8 @@ builds:
         - CGO_ENABLED=0
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: boulder-va
     main: ./cmd/boulder-va
@@ -84,6 +98,8 @@ builds:
         - CGO_ENABLED=0
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: boulder-wfe
     main: ./cmd/boulder-wfe
@@ -92,6 +108,8 @@ builds:
         - amd64
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: boulder-wfe2
     main: ./cmd/boulder-wfe2
@@ -100,6 +118,8 @@ builds:
         - amd64
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: caa-log-checker
     main: ./cmd/caa-log-checker
@@ -110,6 +130,8 @@ builds:
         - CGO_ENABLED=0
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: ceremony
     main: ./cmd/ceremony
@@ -118,6 +140,8 @@ builds:
         - amd64
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: cert-checker
     main: ./cmd/cert-checker
@@ -128,6 +152,8 @@ builds:
         - CGO_ENABLED=0
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: contact-auditor
     main: ./cmd/contact-auditor
@@ -138,6 +164,8 @@ builds:
         - CGO_ENABLED=0
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: expiration-mailer
     main: ./cmd/expiration-mailer
@@ -148,6 +176,8 @@ builds:
         - CGO_ENABLED=0
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: id-exporter
     main: ./cmd/id-exporter
@@ -158,6 +188,8 @@ builds:
         - CGO_ENABLED=0
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: log-validator
     main: ./cmd/log-validator
@@ -168,6 +200,8 @@ builds:
         - CGO_ENABLED=0
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: nonce-service
     main: ./cmd/nonce-service
@@ -178,6 +212,8 @@ builds:
         - CGO_ENABLED=0
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: notify-mailer
     main: ./cmd/notify-mailer
@@ -188,6 +224,8 @@ builds:
         - CGO_ENABLED=0
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: ocsp-responder
     main: ./cmd/ocsp-responder
@@ -196,6 +234,8 @@ builds:
         - amd64
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: ocsp-updater
     main: ./cmd/ocsp-updater
@@ -206,6 +246,8 @@ builds:
         - CGO_ENABLED=0
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
   - id: orphan-finder
     main: ./cmd/orphan-finder
@@ -214,6 +256,8 @@ builds:
         - amd64
     goos:
         - linux
+    ldflags:
+    - -X "github.com/letsencrypt/boulder/core.BuildID={{ .ShortCommit }}"
 
 nfpms:
   - id: admin-revoker-package
