@@ -315,7 +315,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: akamai-purger-package
@@ -327,7 +327,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: bad-key-revoker-package
@@ -339,7 +339,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: boulder-ca-package
@@ -351,7 +351,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: boulder-observer-package
@@ -363,7 +363,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: boulder-publisher-package
@@ -375,7 +375,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: boulder-ra-package
@@ -387,7 +387,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: boulder-sa-package
@@ -399,7 +399,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: boulder-va-package
@@ -411,7 +411,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: boulder-wfe-package
@@ -423,7 +423,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: boulder-wfe2-package
@@ -435,7 +435,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: caa-log-checker-package
@@ -447,7 +447,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: ceremony-package
@@ -459,7 +459,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: cert-checker-package
@@ -471,7 +471,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: contact-auditor-package
@@ -483,7 +483,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: expiration-mailer-package
@@ -495,7 +495,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: id-exporter-package
@@ -507,7 +507,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: log-validator-package
@@ -519,7 +519,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: nonce-service-package
@@ -531,7 +531,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: notify-mailer-package
@@ -543,7 +543,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: ocsp-responder-package
@@ -555,7 +555,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: ocsp-updater-package
@@ -567,7 +567,7 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
 
   - id: orphan-finder-package
@@ -579,5 +579,5 @@ nfpms:
       - deb
     bindir: /opt/boulder/bin
     maintainer: Boulder <boulder@letsencrypt.org>
-    vendor: Let's Encrypt
+    vendor: ISRG
     homepage: https://letsencrypt.org/
