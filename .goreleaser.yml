@@ -215,7 +215,7 @@ builds:
 
 nfpms:
   - id: admin-revoker-package
-    package_name: admin-revoker
+    package_name: boulder-admin-revoker
     builds:
       - admin-revoker
     formats:
@@ -224,7 +224,7 @@ nfpms:
     bindir: /opt/boulder/bin
 
   - id: akamai-purger-package
-    package_name: akamai-purger
+    package_name: boulder-akamai-purger
     builds:
       - akamai-purger
     formats:
@@ -233,7 +233,7 @@ nfpms:
     bindir: /opt/boulder/bin
 
   - id: bad-key-revoker-package
-    package_name: bad-key-revoker
+    package_name: boulder-bad-key-revoker
     builds:
       - bad-key-revoker
     formats:
@@ -314,7 +314,7 @@ nfpms:
     bindir: /opt/boulder/bin
 
   - id: caa-log-checker-package
-    package_name: caa-log-checker
+    package_name: boulder-caa-log-checker
     builds:
       - caa-log-checker
     formats:
@@ -323,7 +323,7 @@ nfpms:
     bindir: /opt/boulder/bin
 
   - id: ceremony-package
-    package_name: ceremony
+    package_name: boulder-ceremony
     builds:
       - ceremony
     formats:
@@ -332,7 +332,7 @@ nfpms:
     bindir: /opt/boulder/bin
 
   - id: cert-checker-package
-    package_name: cert-checker
+    package_name: boulder-cert-checker
     builds:
       - cert-checker
     formats:
@@ -341,7 +341,7 @@ nfpms:
     bindir: /opt/boulder/bin
 
   - id: contact-auditor-package
-    package_name: contact-auditor
+    package_name: boulder-contact-auditor
     builds:
       - contact-auditor
     formats:
@@ -350,7 +350,7 @@ nfpms:
     bindir: /opt/boulder/bin
 
   - id: expiration-mailer-package
-    package_name: expiration-mailer
+    package_name: boulder-expiration-mailer
     builds:
       - expiration-mailer
     formats:
@@ -359,7 +359,7 @@ nfpms:
     bindir: /opt/boulder/bin
 
   - id: id-exporter-package
-    package_name: id-exporter
+    package_name: boulder-id-exporter
     builds:
       - id-exporter
     formats:
@@ -368,7 +368,7 @@ nfpms:
     bindir: /opt/boulder/bin
 
   - id: log-validator-package
-    package_name: log-validator
+    package_name: boulder-log-validator
     builds:
       - log-validator
     formats:
@@ -377,7 +377,7 @@ nfpms:
     bindir: /opt/boulder/bin
 
   - id: nonce-service-package
-    package_name: nonce-service
+    package_name: boulder-nonce-service
     builds:
       - nonce-service
     formats:
@@ -386,7 +386,7 @@ nfpms:
     bindir: /opt/boulder/bin
 
   - id: notify-mailer-package
-    package_name: notify-mailer
+    package_name: boulder-notify-mailer
     builds:
       - notify-mailer
     formats:
@@ -395,7 +395,7 @@ nfpms:
     bindir: /opt/boulder/bin
 
   - id: ocsp-responder-package
-    package_name: ocsp-responder
+    package_name: boulder-ocsp-responder
     builds:
       - ocsp-responder
     formats:
@@ -404,7 +404,7 @@ nfpms:
     bindir: /opt/boulder/bin
 
   - id: ocsp-updater-package
-    package_name: ocsp-updater
+    package_name: boulder-ocsp-updater
     builds:
       - ocsp-updater
     formats:
@@ -413,7 +413,7 @@ nfpms:
     bindir: /opt/boulder/bin
 
   - id: orphan-finder-package
-    package_name: orphan-finder
+    package_name: boulder-orphan-finder
     builds:
       - orphan-finder
     formats:
