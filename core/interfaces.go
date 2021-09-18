@@ -4,11 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"google.golang.org/protobuf/types/known/emptypb"
-
-	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/identifier"
-	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 // A WebFrontEnd object supplies methods that can be hooked into
@@ -54,60 +50,4 @@ type PolicyAuthority interface {
 	WillingToIssueWildcards(identifiers []identifier.ACMEIdentifier) error
 	ChallengesFor(domain identifier.ACMEIdentifier) ([]Challenge, error)
 	ChallengeTypeEnabled(t AcmeChallenge) bool
-}
-
-// StorageGetter are the Boulder SA's read-only methods
-type StorageGetter interface {
-	GetRegistration(ctx context.Context, req *sapb.RegistrationID) (*corepb.Registration, error)
-	GetRegistrationByKey(ctx context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error)
-	GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
-	GetPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
-	GetCertificateStatus(ctx context.Context, req *sapb.Serial) (*corepb.CertificateStatus, error)
-	CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error)
-	CountRegistrationsByIP(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error)
-	CountRegistrationsByIPRange(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error)
-	CountOrders(ctx context.Context, req *sapb.CountOrdersRequest) (*sapb.Count, error)
-	CountFQDNSets(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Count, error)
-	FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest) (*sapb.Exists, error)
-	PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (exists *sapb.Exists, err error)
-	GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error)
-	GetOrderForNames(ctx context.Context, req *sapb.GetOrderForNamesRequest) (*corepb.Order, error)
-	// New authz2 methods
-	GetAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Authorization, error)
-	GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error)
-	GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error)
-	CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error)
-	GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error)
-	CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error)
-	GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error)
-	KeyBlocked(ctx context.Context, req *sapb.KeyBlockedRequest) (*sapb.Exists, error)
-}
-
-// StorageAdder are the Boulder SA's write/update methods
-type StorageAdder interface {
-	NewRegistration(ctx context.Context, req *corepb.Registration) (*corepb.Registration, error)
-	UpdateRegistration(ctx context.Context, req *corepb.Registration) (*emptypb.Empty, error)
-	AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error)
-	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error)
-	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*emptypb.Empty, error)
-	DeactivateRegistration(ctx context.Context, req *sapb.RegistrationID) (*emptypb.Empty, error)
-	NewOrder(ctx context.Context, req *sapb.NewOrderRequest) (*corepb.Order, error)
-	NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest) (*corepb.Order, error)
-	SetOrderProcessing(ctx context.Context, req *sapb.OrderRequest) (*emptypb.Empty, error)
-	FinalizeOrder(ctx context.Context, req *sapb.FinalizeOrderRequest) (*emptypb.Empty, error)
-	SetOrderError(ctx context.Context, req *sapb.SetOrderErrorRequest) (*emptypb.Empty, error)
-	RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error)
-	// New authz2 methods
-	NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error)
-	FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) (*emptypb.Empty, error)
-	DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*emptypb.Empty, error)
-	AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest) (*emptypb.Empty, error)
-}
-
-// StorageAuthority interface represents a simple key/value
-// store. The add and get interfaces contained within are divided
-// for privilege separation.
-type StorageAuthority interface {
-	StorageGetter
-	StorageAdder
 }

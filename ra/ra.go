@@ -70,7 +70,7 @@ type RegistrationAuthorityImpl struct {
 	rapb.UnimplementedRegistrationAuthorityServer
 	CA        capb.CertificateAuthorityClient
 	VA        vapb.VAClient
-	SA        core.StorageAuthority
+	SA        sapb.StorageAuthorityClient
 	PA        core.PolicyAuthority
 	publisher pubpb.PublisherClient
 	caa       caaChecker
@@ -274,7 +274,7 @@ const noRegistrationID = -1
 
 // registrationCounter is a type to abstract the use of `CountRegistrationsByIP`
 // or `CountRegistrationsByIPRange` SA methods.
-type registrationCounter func(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error)
+type registrationCounter func(context.Context, *sapb.CountRegistrationsByIPRequest, ...grpc.CallOption) (*sapb.Count, error)
 
 // checkRegistrationIPLimit checks a specific registraton limit by using the
 // provided registrationCounter function to determine if the limit has been
@@ -2212,7 +2212,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		}
 		storedOrder, err = ra.SA.NewOrderAndAuthzs(ctx, newOrderAndAuthzsReq)
 	} else {
-		// If new authorizations are needed, call AddPendingAuthorizations. Also check
+		// If new authorizations are needed, call NewAuthorizations2. Also check
 		// whether the newly created pending authz's have an expiry lower than minExpiry
 		if len(newAuthzs) > 0 {
 			req := sapb.AddPendingAuthorizationsRequest{Authz: newAuthzs}

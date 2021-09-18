@@ -60,7 +60,7 @@ type config struct {
 	Syslog cmd.SyslogConfig
 }
 
-func setupContext(c config) (rapb.RegistrationAuthorityClient, blog.Logger, *db.WrappedMap, core.StorageAuthority) {
+func setupContext(c config) (rapb.RegistrationAuthorityClient, blog.Logger, *db.WrappedMap, sapb.StorageAuthorityClient) {
 	logger := cmd.NewLogger(c.Syslog)
 
 	tlsConfig, err := c.Revoker.TLS.Load()
@@ -86,7 +86,7 @@ func setupContext(c config) (rapb.RegistrationAuthorityClient, blog.Logger, *db.
 
 	saConn, err := bgrpc.ClientSetup(c.Revoker.SAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
+	sac := sapb.NewStorageAuthorityClient(saConn)
 
 	return rac, logger, dbMap, sac
 }

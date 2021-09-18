@@ -15,6 +15,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"google.golang.org/grpc"
 
 	"github.com/titanous/rocacheck"
 )
@@ -54,7 +55,7 @@ func badKey(msg string, args ...interface{}) error {
 // BlockedKeyCheckFunc is used to pass in the sa.BlockedKey method to KeyPolicy,
 // rather than storing a full sa.SQLStorageAuthority. This makes testing
 // significantly simpler.
-type BlockedKeyCheckFunc func(context.Context, *sapb.KeyBlockedRequest) (*sapb.Exists, error)
+type BlockedKeyCheckFunc func(context.Context, *sapb.KeyBlockedRequest, ...grpc.CallOption) (*sapb.Exists, error)
 
 // KeyPolicy determines which types of key may be used with various boulder
 // operations.

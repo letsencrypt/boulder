@@ -10,7 +10,6 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -32,7 +31,7 @@ func TestAddPrecertificate(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 
 	addPrecert := func(expectIssuedNamesUpdate bool) {
 		// Create a throw-away self signed certificate with a random name and
@@ -92,7 +91,7 @@ func TestAddPreCertificateDuplicate(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 
 	_, testCert := test.ThrowAwayCert(t, 1)
 
@@ -118,7 +117,7 @@ func TestAddPrecertificateIncomplete(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 
 	// Create a throw-away self signed certificate with a random name and
 	// serial number
@@ -141,7 +140,7 @@ func TestAddPrecertificateIncomplete(t *testing.T) {
 func TestAddPrecertificateKeyHash(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 
 	serial, testCert := test.ThrowAwayCert(t, 1)
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{

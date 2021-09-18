@@ -76,7 +76,7 @@ var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 // for HTTPS requests for the various ACME functions.
 type WebFrontEndImpl struct {
 	RA    rapb.RegistrationAuthorityClient
-	SA    core.StorageGetter
+	SA    sapb.StorageAuthorityGetterClient
 	log   blog.Logger
 	clk   clock.Clock
 	stats wfe2Stats

@@ -27,6 +27,7 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
+	isa "github.com/letsencrypt/boulder/test/inmem/sa"
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
@@ -277,7 +278,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 		DNSNames:              []string{"not-blacklisted.com"},
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 	}
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := satest.CreateWorkingRegistration(t, isa.SA{Impl: sa})
 	test.AssertNotError(t, err, "Couldn't create registration")
 	for i := int64(0); i < 5; i++ {
 		rawCert.SerialNumber = big.NewInt(mrand.Int63())

@@ -203,11 +203,11 @@ func main() {
 	cmd.FailOnError(err, "TLS config")
 
 	clk := cmd.Clock()
-
 	clientMetrics := bgrpc.NewClientMetrics(scope)
+
 	conn, err := bgrpc.ClientSetup(c.CA.SAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sa := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+	sa := sapb.NewStorageAuthorityClient(conn)
 
 	kp, err := goodkey.NewKeyPolicy(c.CA.WeakKeyFile, c.CA.BlockedKeyFile, sa.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
@@ -240,7 +240,6 @@ func main() {
 	var wg sync.WaitGroup
 
 	ocspi, err := ca.NewOCSPImpl(
-		sa,
 		boulderIssuers,
 		c.CA.LifespanOCSP.Duration,
 		c.CA.OCSPLogMaxLength,

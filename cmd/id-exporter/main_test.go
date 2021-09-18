@@ -21,7 +21,9 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
+	isa "github.com/letsencrypt/boulder/test/inmem/sa"
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
@@ -238,7 +240,7 @@ func Test_unmarshalHostnames(t *testing.T) {
 
 type testCtx struct {
 	c       idExporter
-	ssa     core.StorageAdder
+	ssa     sapb.StorageAuthorityClient
 	cleanUp func()
 }
 
@@ -458,7 +460,7 @@ func setup(t *testing.T) testCtx {
 			log:   log,
 			clk:   fc,
 		},
-		ssa:     ssa,
+		ssa:     isa.SA{Impl: ssa},
 		cleanUp: cleanUp,
 	}
 }

@@ -33,7 +33,7 @@ type mockSA struct {
 	clk             clock.FakeClock
 }
 
-func (m *mockSA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
+func (m *mockSA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*sapb.AddCertificateResponse, error) {
 	parsed, err := x509.ParseCertificate(req.Der)
 	if err != nil {
 		return nil, err
@@ -48,7 +48,7 @@ func (m *mockSA) AddCertificate(ctx context.Context, req *sapb.AddCertificateReq
 	return nil, nil
 }
 
-func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	if len(m.certificates) == 0 {
 		return nil, berrors.NotFoundError("no certs stored")
 	}
@@ -60,7 +60,7 @@ func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.
 	return nil, berrors.NotFoundError("no cert stored for requested serial")
 }
 
-func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
+func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(req.Der, req.Issued, req.RegID, req.IssuerID) {
 		return nil, berrors.InternalServerError("Incomplete request")
 	}
@@ -82,7 +82,7 @@ func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificate
 	return &emptypb.Empty{}, nil
 }
 
-func (m *mockSA) GetPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+func (m *mockSA) GetPrecertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	if len(m.precertificates) == 0 {
 		return nil, berrors.NotFoundError("no precerts stored")
 	}
@@ -92,6 +92,10 @@ func (m *mockSA) GetPrecertificate(ctx context.Context, req *sapb.Serial) (*core
 		}
 	}
 	return nil, berrors.NotFoundError("no precert stored for requested serial")
+}
+
+func (m *mockSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
 type mockCA struct{}
