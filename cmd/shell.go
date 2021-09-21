@@ -237,6 +237,8 @@ func ReadConfigFile(filename string, out interface{}) error {
 	if err != nil {
 		return err
 	}
+	defer file.Close()
+
 	decoder := json.NewDecoder(file)
 	decoder.DisallowUnknownFields()
 	return decoder.Decode(out)
