@@ -13,6 +13,11 @@ on:
 jobs:
   goreleaser_ci_build:
     runs-on: ubuntu-latest
+    
+    env:
+      USER: "github"
+      HOSTNAME: "github.com"
+    
     strategy:
       matrix:
         go-version: [1.17.0]
