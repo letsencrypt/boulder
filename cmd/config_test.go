@@ -117,14 +117,6 @@ func TestSampler(t *testing.T) {
 		// At sample rate 100, neither of these should be sampled.
 		{100, map[string]interface{}{"trace.trace_id": "foo"}, false, 100},
 		{100, map[string]interface{}{"trace.trace_id": ""}, false, 100},
-		// A span with meta.type grpc_client should never be sampled.
-		{1, map[string]interface{}{"trace.trace_id": "foo", "meta.type": "grpc_client"}, false, 0},
-		{100, map[string]interface{}{"trace.trace_id": "foo", "meta.type": "grpc_client"}, false, 0},
-		// Any other meta.type should not affect sampling.
-		{1, map[string]interface{}{"trace.trace_id": "foo", "meta.type": "grpc_server"}, true, 1},
-		{1, map[string]interface{}{"trace.trace_id": "foo", "meta.type": 123}, true, 1},
-		{100, map[string]interface{}{"trace.trace_id": "foo", "meta.type": "grpc_server"}, false, 100},
-		{100, map[string]interface{}{"trace.trace_id": "foo", "meta.type": 123}, false, 100},
 		// A missing or non-string trace_id should result in sampling.
 		{100, map[string]interface{}{}, true, 1},
 		{100, map[string]interface{}{"trace.trace_id": 123}, true, 1},
