@@ -122,10 +122,10 @@ func TestReadConfigFile(t *testing.T) {
 
 	type config struct {
 		NotifyMailer struct {
-			DBConfig
-			PasswordConfig
+			DB DBConfig
 			SMTPConfig
 		}
+		Syslog SyslogConfig
 	}
 	var c config
 	err = ReadConfigFile("../test/config/notify-mailer.json", &c)

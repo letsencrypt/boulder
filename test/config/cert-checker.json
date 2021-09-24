@@ -9,7 +9,7 @@
     "unexpiredOnly": true,
     "badResultsOnly": true,
     "checkPeriod": "72h",
-    "acceptableValidityPeriods": [7775999, 7776000],
+    "acceptableValidityDurations": ["7775999s", "7776000s"],
     "ignoredLints": [
       "n_subject_common_name_included"
     ]

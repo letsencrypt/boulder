@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"expvar"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"log/syslog"
 	"net/http"
@@ -230,13 +229,19 @@ func FailOnError(err error, msg string) {
 
 // ReadConfigFile takes a file path as an argument and attempts to
 // unmarshal the content of the file into a struct containing a
-// configuration of a boulder component.
+// configuration of a boulder component. Any config keys in the JSON
+// file which do not correspond to expected keys in the config struct
+// will result in errors.
 func ReadConfigFile(filename string, out interface{}) error {
-	configData, err := ioutil.ReadFile(filename)
+	file, err := os.Open(filename)
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(configData, out)
+	defer file.Close()
+
+	decoder := json.NewDecoder(file)
+	decoder.DisallowUnknownFields()
+	return decoder.Decode(out)
 }
 
 // VersionString produces a friendly Application version string.
