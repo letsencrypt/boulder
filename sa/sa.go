@@ -699,7 +699,10 @@ func (ssa *SQLStorageAuthority) checkFQDNSetExists(selector oneSelectorFunc, nam
 		// if a given issuance is a renewal, and for that we care about 90 days
 		// worth of data, not just 7 days like the current fqdnSets table holds.
 		// TODO(): Remove this union when the partitioning is fixed.
-		`SELECT COUNT(1) FROM fqdnSets UNION SELECT COUNT(1) FROM fqdnSets_old
+		`SELECT COUNT(1) FROM fqdnSets 
+		WHERE setHash = ?
+		UNION
+		SELECT COUNT(1) FROM fqdnSets_old
 		WHERE setHash = ?
 		LIMIT 1`,
 		hashNames(names),
