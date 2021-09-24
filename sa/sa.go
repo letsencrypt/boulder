@@ -656,6 +656,10 @@ func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, req *sapb.Cou
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
+		// We don't do a select across both fqdnSets and fqdnSets_old here because
+		// this method is only used for rate-limiting and we don't care to spend the
+		// extra CPU cycles checking the old table.
+		// TODO(#5670): Remove this comment when the partitioning is fixed.
 		`SELECT COUNT(1) FROM fqdnSets
 		WHERE setHash = ?
 		AND issued > ?`,
@@ -667,119 +671,6 @@ func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, req *sapb.Cou
 
 // setHash is a []byte representing the hash of an FQDN Set
 type setHash []byte
-
-// getFQDNSetsBySerials finds the setHashes corresponding to a set of
-// certificate serials. These serials can be used to check whether any
-// certificates have been issued for the same set of names previously.
-func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(
-	dbMap db.Selector,
-	serials []string,
-) ([]setHash, error) {
-	var fqdnSets []setHash
-
-	// It is unexpected that this function would be called with no serials
-	if len(serials) == 0 {
-		err := fmt.Errorf("getFQDNSetsBySerials called with no serials")
-		ssa.log.AuditErr(err.Error())
-		return nil, err
-	}
-
-	qmarks := make([]string, len(serials))
-	params := make([]interface{}, len(serials))
-	for i, serial := range serials {
-		params[i] = serial
-		qmarks[i] = "?"
-	}
-	query := "SELECT setHash FROM fqdnSets " +
-		"WHERE serial IN (" + strings.Join(qmarks, ",") + ")"
-	_, err := dbMap.Select(
-		&fqdnSets,
-		query,
-		params...)
-
-	if err != nil {
-		return nil, err
-	}
-
-	// The serials existed when we found them in issuedNames, they should continue
-	// to exist here. Otherwise an internal consistency violation occurred and
-	// needs to be audit logged
-	if db.IsNoRows(err) {
-		err := fmt.Errorf("getFQDNSetsBySerials returned no rows - internal consistency violation")
-		ssa.log.AuditErr(err.Error())
-		return nil, err
-	}
-	return fqdnSets, nil
-}
-
-// getNewIssuancesByFQDNSet returns a count of new issuances (renewals are not
-// included) for a given slice of fqdnSets that occurred after the earliest
-// parameter.
-func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(
-	dbMap db.Selector,
-	fqdnSets []setHash,
-	earliest time.Time,
-) (int, error) {
-	var results []struct {
-		Serial  string
-		SetHash setHash
-		Issued  time.Time
-	}
-
-	qmarks := make([]string, len(fqdnSets))
-	params := make([]interface{}, len(fqdnSets))
-	for i, setHash := range fqdnSets {
-		// We have to cast the setHash back to []byte here since the sql package
-		// isn't able to convert `sa.setHash` for the parameter value itself
-		params[i] = []byte(setHash)
-		qmarks[i] = "?"
-	}
-
-	query := "SELECT serial, setHash, issued FROM fqdnSets " +
-		"WHERE setHash IN (" + strings.Join(qmarks, ",") + ") " +
-		"ORDER BY setHash, issued"
-
-	// First, find the serial, sethash and issued date from the fqdnSets table for
-	// the given fqdn set hashes
-	_, err := dbMap.Select(
-		&results,
-		query,
-		params...)
-	if err != nil {
-		// If there are no results we have encountered a major error and
-		// should loudly complain
-		if db.IsNoRows(err) {
-			ssa.log.AuditErrf("Found no results from fqdnSets for setHashes known to exist: %#v", fqdnSets)
-			return 0, err
-		}
-		return -1, err
-	}
-
-	processedSetHashes := make(map[string]bool)
-	issuanceCount := 0
-	// Loop through each set hash result, counting issuances per unique set hash
-	// that are within the window specified by the earliest parameter
-	for _, result := range results {
-		key := string(result.SetHash)
-		// Skip set hashes that we have already processed - we only care about the
-		// first issuance
-		if processedSetHashes[key] {
-			continue
-		}
-
-		// If the issued date is before our earliest cutoff then skip it
-		if result.Issued.Before(earliest) {
-			continue
-		}
-
-		// Otherwise note the issuance and mark the set hash as processed
-		issuanceCount++
-		processedSetHashes[key] = true
-	}
-
-	// Return the count of how many non-renewal issuances there were
-	return issuanceCount, nil
-}
 
 // FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
 // exists in the database
@@ -801,15 +692,20 @@ type oneSelectorFunc func(holder interface{}, query string, args ...interface{})
 // checkFQDNSetExists uses the given oneSelectorFunc to check whether an fqdnSet
 // for the given names exists.
 func (ssa *SQLStorageAuthority) checkFQDNSetExists(selector oneSelectorFunc, names []string) (bool, error) {
-	var count int64
+	namehash := hashNames(names)
+	var exists bool
 	err := selector(
-		&count,
-		`SELECT COUNT(1) FROM fqdnSets
-		WHERE setHash = ?
-		LIMIT 1`,
-		hashNames(names),
+		&exists,
+		// We select on both tables here because this function is used to determine
+		// if a given issuance is a renewal, and for that we care about 90 days
+		// worth of data, not just 7 days like the current fqdnSets table holds.
+		// TODO(#5670): Remove this OR when the partitioning is fixed.
+		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? LIMIT 1)
+		OR EXISTS (SELECT id FROM fqdnSets_old WHERE setHash = ? LIMIT 1)`,
+		namehash,
+		namehash,
 	)
-	return count > 0, err
+	return exists, err
 }
 
 // PreviousCertificateExists returns true iff there was at least one certificate
