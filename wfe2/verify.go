@@ -634,12 +634,17 @@ func (wfe *WebFrontEndImpl) validPOSTAsGETForAccount(
 // is only used for creating new accounts or revoking a certificate by signing
 // the request with the private key corresponding to the certificate's public
 // key and embedding that public key in the JWS. All other request should be
-// validated using `validJWSforAccount`. If the JWS validates (e.g. the JWS is
-// well formed, verifies with the JWK embedded in it, the JWK meets
-// policy/algorithm requirements, has the correct URL and includes a valid
-// nonce) then `validSelfAuthenticatedJWS` returns the validated JWS body and
-// the JWK that was embedded in the JWS. Otherwise if the valid JWS conditions
-// are not met or an error occurs only a problem is returned
+// validated using `validJWSforAccount`.
+// If the JWS validates (e.g. the JWS is well formed, verifies with the JWK
+// embedded in it, has the correct URL, and includes a valid nonce) then
+// `validSelfAuthenticatedJWS` returns the validated JWS body and the JWK that
+// was embedded in the JWS. Otherwise if the valid JWS conditions are not met or
+// an error occurs only a problem is returned.
+// Note that this function does *not* enforce that the JWK abides by our goodkey
+// policies. This is because this method is used by the RevokeCertificate path,
+// which must allow JWKs which are signed by blocklisted (i.e. already revoked
+// due to compromise) keys, in case multiple clients attempt to revoke the same
+// cert.
 func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
 	ctx context.Context,
 	jws *jose.JSONWebSignature,
@@ -649,12 +654,6 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
 	pubKey, prob := wfe.extractJWK(jws)
 	if prob != nil {
 		return nil, nil, prob
-	}
-
-	// If the key doesn't meet the GoodKey policy return a problem immediately
-	if err := wfe.keyPolicy.GoodKey(ctx, pubKey.Key); err != nil {
-		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWKRejectedByGoodKey"}).Inc()
-		return nil, nil, probs.BadPublicKey(err.Error())
 	}
 
 	// Verify the JWS with the embedded JWK
@@ -667,7 +666,8 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
 }
 
 // validSelfAuthenticatedPOST checks that a given POST request has a valid JWS
-// using `validSelfAuthenticatedJWS`.
+// using `validSelfAuthenticatedJWS`. It enforces that the JWK abides by our
+// goodkey policies (key algorithm, length, blocklist, etc).
 func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	ctx context.Context,
 	request *http.Request,
@@ -677,8 +677,20 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	if prob != nil {
 		return nil, nil, prob
 	}
+
 	// Extract and validate the embedded JWK from the parsed JWS
-	return wfe.validSelfAuthenticatedJWS(ctx, jws, request, logEvent)
+	payload, pubKey, prob := wfe.validSelfAuthenticatedJWS(ctx, jws, request, logEvent)
+	if prob != nil {
+		return nil, nil, prob
+	}
+
+	// If the key doesn't meet the GoodKey policy return a problem
+	if err := wfe.keyPolicy.GoodKey(ctx, pubKey.Key); err != nil {
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWKRejectedByGoodKey"}).Inc()
+		return nil, nil, probs.BadPublicKey(err.Error())
+	}
+
+	return payload, pubKey, nil
 }
 
 // rolloverRequest is a client request to change the key for the account ID
