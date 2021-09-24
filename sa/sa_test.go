@@ -1,6 +1,7 @@
 package sa
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -2393,4 +2394,31 @@ func TestBlockedKeyRevokedBy(t *testing.T) {
 		RevokedBy: 1,
 	})
 	test.AssertNotError(t, err, "AddBlockedKey failed")
+}
+
+func TestHashNames(t *testing.T) {
+	// Test that it is deterministic
+	h1 := HashNames([]string{"a"})
+	h2 := HashNames([]string{"a"})
+	test.AssertByteEquals(t, h1, h2)
+
+	// Test that it differentiates
+	h1 = HashNames([]string{"a"})
+	h2 = HashNames([]string{"b"})
+	test.Assert(t, !bytes.Equal(h1, h2), "Should have been different")
+
+	// Test that it is not subject to ordering
+	h1 = HashNames([]string{"a", "b"})
+	h2 = HashNames([]string{"b", "a"})
+	test.AssertByteEquals(t, h1, h2)
+
+	// Test that it is not subject to case
+	h1 = HashNames([]string{"a", "b"})
+	h2 = HashNames([]string{"A", "B"})
+	test.AssertByteEquals(t, h1, h2)
+
+	// Test that it is not subject to duplication
+	h1 = HashNames([]string{"a", "a"})
+	h2 = HashNames([]string{"a"})
+	test.AssertByteEquals(t, h1, h2)
 }
