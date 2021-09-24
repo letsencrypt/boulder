@@ -181,6 +181,8 @@ var serial5 = big.NewInt(0x1340)
 var serial5String = core.SerialToString(serial5)
 var serial6 = big.NewInt(0x1341)
 var serial7 = big.NewInt(0x1342)
+var serial8 = big.NewInt(0x1343)
+var serial9 = big.NewInt(0x1344)
 
 var testKey = rsa.PrivateKey{
 	PublicKey: rsa.PublicKey{N: n, E: e},
@@ -343,13 +345,13 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		DER:            certDerD,
 	}
 	fqdnStatusD := &core.FQDNSet{
-		SetHash: []byte("hash of D"),
+		SetHash: sa.HashNames(rawCertD.DNSNames),
 		Serial:  serial4String,
 		Issued:  ctx.fc.Now().AddDate(0, 0, -87),
 		Expires: ctx.fc.Now().AddDate(0, 0, 3),
 	}
 	fqdnStatusDRenewed := &core.FQDNSet{
-		SetHash: []byte("hash of D"),
+		SetHash: sa.HashNames(rawCertD.DNSNames),
 		Serial:  serial5String,
 		Issued:  ctx.fc.Now().AddDate(0, 0, -3),
 		Expires: ctx.fc.Now().AddDate(0, 0, 87),
@@ -429,8 +431,7 @@ func TestCertIsRenewed(t *testing.T) {
 	testCerts := []*struct {
 		Serial       *big.Int
 		stringSerial string
-		FQDNHash     []byte
-		DNS          string
+		DNS          []string
 		NotBefore    time.Time
 		NotAfter     time.Time
 		// this field is the test assertion
@@ -438,58 +439,65 @@ func TestCertIsRenewed(t *testing.T) {
 	}{
 		{
 			Serial:    serial1,
-			FQDNHash:  []byte("hash of A"),
-			DNS:       "a.example.com",
+			DNS:       []string{"a.example.com", "a2.example.com"},
 			NotBefore: testCtx.fc.Now().Add((-1 * 24) * time.Hour),
 			NotAfter:  testCtx.fc.Now().Add((89 * 24) * time.Hour),
 			IsRenewed: true,
 		},
 		{
 			Serial:    serial2,
-			FQDNHash:  []byte("hash of A"),
-			DNS:       "a.example.com",
+			DNS:       []string{"a.example.com", "a2.example.com"},
 			NotBefore: testCtx.fc.Now().Add((0 * 24) * time.Hour),
 			NotAfter:  testCtx.fc.Now().Add((90 * 24) * time.Hour),
 			IsRenewed: false,
 		},
 		{
 			Serial:    serial3,
-			FQDNHash:  []byte("hash of B"),
-			DNS:       "b.example.net",
+			DNS:       []string{"b.example.net"},
 			NotBefore: testCtx.fc.Now().Add((0 * 24) * time.Hour),
 			NotAfter:  testCtx.fc.Now().Add((90 * 24) * time.Hour),
 			IsRenewed: false,
 		},
 		{
 			Serial:    serial4,
-			FQDNHash:  []byte("hash of C"),
-			DNS:       "c.example.org",
+			DNS:       []string{"c.example.org"},
 			NotBefore: testCtx.fc.Now().Add((-100 * 24) * time.Hour),
 			NotAfter:  testCtx.fc.Now().Add((-10 * 24) * time.Hour),
 			IsRenewed: true,
 		},
 		{
 			Serial:    serial5,
-			FQDNHash:  []byte("hash of C"),
-			DNS:       "c.example.org",
+			DNS:       []string{"c.example.org"},
 			NotBefore: testCtx.fc.Now().Add((-80 * 24) * time.Hour),
 			NotAfter:  testCtx.fc.Now().Add((10 * 24) * time.Hour),
 			IsRenewed: true,
 		},
 		{
 			Serial:    serial6,
-			FQDNHash:  []byte("hash of C"),
-			DNS:       "c.example.org",
+			DNS:       []string{"c.example.org"},
 			NotBefore: testCtx.fc.Now().Add((-75 * 24) * time.Hour),
 			NotAfter:  testCtx.fc.Now().Add((15 * 24) * time.Hour),
 			IsRenewed: true,
 		},
 		{
 			Serial:    serial7,
-			FQDNHash:  []byte("hash of C"),
-			DNS:       "c.example.org",
+			DNS:       []string{"c.example.org"},
 			NotBefore: testCtx.fc.Now().Add((-1 * 24) * time.Hour),
 			NotAfter:  testCtx.fc.Now().Add((89 * 24) * time.Hour),
+			IsRenewed: false,
+		},
+		{
+			Serial:    serial8,
+			DNS:       []string{"d.example.com", "d2.example.com"},
+			NotBefore: testCtx.fc.Now().Add((-1 * 24) * time.Hour),
+			NotAfter:  testCtx.fc.Now().Add((89 * 24) * time.Hour),
+			IsRenewed: false,
+		},
+		{
+			Serial:    serial9,
+			DNS:       []string{"d.example.com", "d2.example.com", "d3.example.com"},
+			NotBefore: testCtx.fc.Now().Add((0 * 24) * time.Hour),
+			NotAfter:  testCtx.fc.Now().Add((90 * 24) * time.Hour),
 			IsRenewed: false,
 		},
 	}
@@ -504,11 +512,11 @@ func TestCertIsRenewed(t *testing.T) {
 
 		rawCert := x509.Certificate{
 			Subject: pkix.Name{
-				CommonName: testData.DNS,
+				CommonName: testData.DNS[0],
 			},
 			NotBefore:    testData.NotBefore,
 			NotAfter:     testData.NotAfter,
-			DNSNames:     []string{testData.DNS},
+			DNSNames:     testData.DNS,
 			SerialNumber: testData.Serial,
 		}
 		certDer, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, &testKey)
@@ -523,7 +531,7 @@ func TestCertIsRenewed(t *testing.T) {
 			DER:            certDer,
 		}
 		fqdnStatus := &core.FQDNSet{
-			SetHash: testData.FQDNHash,
+			SetHash: sa.HashNames(testData.DNS),
 			Serial:  testData.stringSerial,
 			Issued:  testData.NotBefore,
 			Expires: testData.NotAfter,
@@ -538,7 +546,7 @@ func TestCertIsRenewed(t *testing.T) {
 	}
 
 	for _, testData := range testCerts {
-		renewed, err := testCtx.m.certIsRenewed(testData.stringSerial)
+		renewed, err := testCtx.m.certIsRenewed(testData.DNS, testData.NotBefore)
 		if err != nil {
 			t.Errorf("error checking renewal state for %s: %v", testData.stringSerial, err)
 			continue

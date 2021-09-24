@@ -157,21 +157,21 @@ func (m *mailer) updateCertStatus(serial string) error {
 	return err
 }
 
-func (m *mailer) certIsRenewed(serial string) (renewed bool, err error) {
-	present, err := m.dbMap.SelectInt(`
-		SELECT b.serial IS NOT NULL
-		FROM fqdnSets a
-		LEFT OUTER JOIN fqdnSets b
-			ON a.setHash = b.setHash
-			AND a.issued < b.issued
-		WHERE a.serial = :serial
-		LIMIT 1`,
-		map[string]interface{}{"serial": serial},
+func (m *mailer) certIsRenewed(names []string, issued time.Time) (bool, error) {
+	namehash := sa.HashNames(names)
+
+	var present bool
+	err := m.dbMap.SelectOne(
+		&present,
+		// TODO(#5670): Remove this OR when the partitioning is fixed.
+		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? AND issued > ? LIMIT 1)
+		OR EXISTS (SELECT id FROM fqdnSets_old WHERE setHash = ? AND issued > ? LIMIT 1)`,
+		namehash,
+		issued,
+		namehash,
+		issued,
 	)
-	if present == 1 {
-		m.log.Debugf("Cert %s is already renewed", serial)
-	}
-	return present == 1, err
+	return present, err
 }
 
 func (m *mailer) processCerts(allCerts []core.Certificate) {
@@ -212,11 +212,12 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 				continue
 			}
 
-			renewed, err := m.certIsRenewed(cert.Serial)
+			renewed, err := m.certIsRenewed(parsedCert.DNSNames, parsedCert.NotBefore)
 			if err != nil {
 				m.log.AuditErrf("expiration-mailer: error fetching renewal state: %v", err)
 				// assume not renewed
 			} else if renewed {
+				m.log.Debugf("Cert %s is already renewed", cert.Serial)
 				m.stats.renewalCount.With(prometheus.Labels{}).Inc()
 				if err := m.updateCertStatus(cert.Serial); err != nil {
 					m.log.AuditErrf("Error updating certificate status for %s: %s", cert.Serial, err)

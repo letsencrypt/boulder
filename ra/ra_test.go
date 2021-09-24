@@ -1705,8 +1705,9 @@ type mockSAWithFQDNSet struct {
 	t          *testing.T
 }
 
-// Construct the FQDN Set key the same way as the SA - by using
-// `core.UniqueLowerNames`, joining the names with a `,` and hashing them.
+// Construct the FQDN Set key the same way as the SA (by using
+// `core.UniqueLowerNames`, joining the names with a `,` and hashing them)
+// but return a string so it can be used as a key in m.fqdnSet.
 func (m mockSAWithFQDNSet) hashNames(names []string) string {
 	names = core.UniqueLowerNames(names)
 	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
