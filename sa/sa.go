@@ -656,10 +656,10 @@ func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, req *sapb.Cou
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
-		// We don't do `UNION SELECT COUNT(1) FROM fqdnSets_old` here because this
-		// method is only used for rate-limiting and we don't care to spend the
+		// We don't do a select across both fqdnSets and fqdnSets_old here because
+		// this method is only used for rate-limiting and we don't care to spend the
 		// extra CPU cycles checking the old table.
-		// TODO(): Remove this comment when the partitioning is fixed.
+		// TODO(#5670): Remove this comment when the partitioning is fixed.
 		`SELECT COUNT(1) FROM fqdnSets
 		WHERE setHash = ?
 		AND issued > ?`,
@@ -699,7 +699,7 @@ func (ssa *SQLStorageAuthority) checkFQDNSetExists(selector oneSelectorFunc, nam
 		// We select on both tables here because this function is used to determine
 		// if a given issuance is a renewal, and for that we care about 90 days
 		// worth of data, not just 7 days like the current fqdnSets table holds.
-		// TODO(): Remove this OR when the partitioning is fixed.
+		// TODO(#5670): Remove this OR when the partitioning is fixed.
 		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? LIMIT 1)
 		OR EXISTS (SELECT id FROM fqdnSets_old WHERE setHash = ? LIMIT 1)`,
 		namehash,

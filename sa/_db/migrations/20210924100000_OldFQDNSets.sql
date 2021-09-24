@@ -1,3 +1,4 @@
+-- TODO(#5670): Remove this file and the _db-next pointer to it.
 
 -- +goose Up
 -- SQL in section 'Up' is executed when this migration is applied
