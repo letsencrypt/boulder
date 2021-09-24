@@ -692,22 +692,19 @@ type oneSelectorFunc func(holder interface{}, query string, args ...interface{})
 // checkFQDNSetExists uses the given oneSelectorFunc to check whether an fqdnSet
 // for the given names exists.
 func (ssa *SQLStorageAuthority) checkFQDNSetExists(selector oneSelectorFunc, names []string) (bool, error) {
-	var count int64
+	var exists bool
 	err := selector(
-		&count,
-		// We select on the UNION here because this function is used to determine
+		&exists,
+		// We select on both tables here because this function is used to determine
 		// if a given issuance is a renewal, and for that we care about 90 days
 		// worth of data, not just 7 days like the current fqdnSets table holds.
-		// TODO(): Remove this union when the partitioning is fixed.
-		`SELECT COUNT(1) FROM fqdnSets 
-		WHERE setHash = ?
-		UNION
-		SELECT COUNT(1) FROM fqdnSets_old
-		WHERE setHash = ?
-		LIMIT 1`,
+		// TODO(): Remove this OR when the partitioning is fixed.
+		`SELECT EXISTS (SELECT COUNT(1) FROM fqdnSets WHERE setHash = ? LIMIT 1)
+		OR EXISTS (SELECT COUNT(1) FROM fqdnSets_old WHERE setHash = ? LIMIT 1)`,
+		hashNames(names),
 		hashNames(names),
 	)
-	return count > 0, err
+	return exists, err
 }
 
 // PreviousCertificateExists returns true iff there was at least one certificate
