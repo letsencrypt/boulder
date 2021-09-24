@@ -564,9 +564,9 @@ func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, req *sapb.Count
 	return &sapb.Count{Count: count}, nil
 }
 
-// hashNames returns a hash of the names requested. This is intended for use
+// HashNames returns a hash of the names requested. This is intended for use
 // when interacting with the orderFqdnSets table.
-func hashNames(names []string) []byte {
+func HashNames(names []string) []byte {
 	names = core.UniqueLowerNames(names)
 	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
 	return hash[:]
@@ -574,7 +574,7 @@ func hashNames(names []string) []byte {
 
 func addFQDNSet(db db.Inserter, names []string, serial string, issued time.Time, expires time.Time) error {
 	return db.Insert(&core.FQDNSet{
-		SetHash: hashNames(names),
+		SetHash: HashNames(names),
 		Serial:  serial,
 		Issued:  issued,
 		Expires: expires,
@@ -592,7 +592,7 @@ func addOrderFQDNSet(
 	regID int64,
 	expires time.Time) error {
 	return db.Insert(&orderFQDNSet{
-		SetHash:        hashNames(names),
+		SetHash:        HashNames(names),
 		OrderID:        orderID,
 		RegistrationID: regID,
 		Expires:        expires,
@@ -663,7 +663,7 @@ func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, req *sapb.Cou
 		`SELECT COUNT(1) FROM fqdnSets
 		WHERE setHash = ?
 		AND issued > ?`,
-		hashNames(req.Domains),
+		HashNames(req.Domains),
 		ssa.clk.Now().Add(-time.Duration(req.Window)),
 	)
 	return &sapb.Count{Count: count}, err
@@ -692,7 +692,7 @@ type oneSelectorFunc func(holder interface{}, query string, args ...interface{})
 // checkFQDNSetExists uses the given oneSelectorFunc to check whether an fqdnSet
 // for the given names exists.
 func (ssa *SQLStorageAuthority) checkFQDNSetExists(selector oneSelectorFunc, names []string) (bool, error) {
-	namehash := hashNames(names)
+	namehash := HashNames(names)
 	var exists bool
 	err := selector(
 		&exists,
@@ -1400,7 +1400,7 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	}
 
 	// Hash the names requested for lookup in the orderFqdnSets table
-	fqdnHash := hashNames(req.Names)
+	fqdnHash := HashNames(req.Names)
 
 	// Find a possibly-suitable order. We don't include the account ID or order
 	// status in this query because there's no index that includes those, so
