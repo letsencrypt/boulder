@@ -692,6 +692,7 @@ type oneSelectorFunc func(holder interface{}, query string, args ...interface{})
 // checkFQDNSetExists uses the given oneSelectorFunc to check whether an fqdnSet
 // for the given names exists.
 func (ssa *SQLStorageAuthority) checkFQDNSetExists(selector oneSelectorFunc, names []string) (bool, error) {
+	namehash := hashNames(names)
 	var exists bool
 	err := selector(
 		&exists,
@@ -699,10 +700,10 @@ func (ssa *SQLStorageAuthority) checkFQDNSetExists(selector oneSelectorFunc, nam
 		// if a given issuance is a renewal, and for that we care about 90 days
 		// worth of data, not just 7 days like the current fqdnSets table holds.
 		// TODO(): Remove this OR when the partitioning is fixed.
-		`SELECT EXISTS (SELECT COUNT(1) FROM fqdnSets WHERE setHash = ? LIMIT 1)
-		OR EXISTS (SELECT COUNT(1) FROM fqdnSets_old WHERE setHash = ? LIMIT 1)`,
-		hashNames(names),
-		hashNames(names),
+		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? LIMIT 1)
+		OR EXISTS (SELECT id FROM fqdnSets_old WHERE setHash = ? LIMIT 1)`,
+		namehash,
+		namehash,
 	)
 	return exists, err
 }
