@@ -19,6 +19,7 @@ import (
 
 	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
+	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -40,7 +41,7 @@ const (
 )
 
 type regStore interface {
-	GetRegistration(ctx context.Context, req *sapb.RegistrationID) (*corepb.Registration, error)
+	GetRegistration(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*corepb.Registration, error)
 }
 
 type mailer struct {
@@ -510,7 +511,7 @@ func main() {
 	clientMetrics := bgrpc.NewClientMetrics(scope)
 	conn, err := bgrpc.ClientSetup(c.Mailer.SAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+	sac := sapb.NewStorageAuthorityClient(conn)
 
 	var smtpRoots *x509.CertPool
 	if c.Mailer.SMTPTrustedRootFile != "" {

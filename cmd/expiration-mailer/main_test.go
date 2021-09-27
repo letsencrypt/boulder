@@ -27,9 +27,11 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
+	isa "github.com/letsencrypt/boulder/test/inmem/sa"
 	"github.com/letsencrypt/boulder/test/vars"
 	"github.com/prometheus/client_golang/prometheus"
 	io_prometheus_client "github.com/prometheus/client_model/go"
+	"google.golang.org/grpc"
 )
 
 func bigIntFromB64(b64 string) *big.Int {
@@ -47,7 +49,7 @@ type fakeRegStore struct {
 	RegByID map[int64]*corepb.Registration
 }
 
-func (f fakeRegStore) GetRegistration(ctx context.Context, req *sapb.RegistrationID) (*corepb.Registration, error) {
+func (f fakeRegStore) GetRegistration(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	r, ok := f.RegByID[req.Id]
 	if !ok {
 		return r, berrors.NotFoundError("no registration found for %q", req.Id)
@@ -773,7 +775,7 @@ func TestDedupOnRegistration(t *testing.T) {
 
 type testCtx struct {
 	dbMap   *db.WrappedMap
-	ssa     core.StorageAdder
+	ssa     sapb.StorageAuthorityClient
 	mc      *mocks.Mailer
 	fc      clock.FakeClock
 	m       *mailer
@@ -808,7 +810,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 		emailTemplate:   tmpl,
 		subjectTemplate: subjTmpl,
 		dbMap:           dbMap,
-		rs:              ssa,
+		rs:              isa.SA{Impl: ssa},
 		nagTimes:        offsetNags,
 		limit:           100,
 		clk:             fc,
@@ -816,7 +818,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	}
 	return &testCtx{
 		dbMap:   dbMap,
-		ssa:     ssa,
+		ssa:     isa.SA{Impl: ssa},
 		mc:      mc,
 		fc:      fc,
 		m:       m,

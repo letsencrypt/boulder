@@ -10,7 +10,6 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -52,7 +51,7 @@ const (
 )
 
 // GetRegistration is a mock
-func (sa *StorageAuthority) GetRegistration(_ context.Context, req *sapb.RegistrationID) (*corepb.Registration, error) {
+func (sa *StorageAuthority) GetRegistration(_ context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	if req.Id == 100 {
 		// Tag meaning "Missing"
 		return nil, errors.New("missing")
@@ -112,7 +111,7 @@ func (sa *StorageAuthority) GetRegistration(_ context.Context, req *sapb.Registr
 }
 
 // GetRegistrationByKey is a mock
-func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error) {
+func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	test5KeyBytes, err := ioutil.ReadFile("../test/test-key-5.der")
 	if err != nil {
 		return nil, err
@@ -184,53 +183,8 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, req *sapb.JS
 	}, nil
 }
 
-// GetAuthorization is a mock
-func (sa *StorageAuthority) GetAuthorization(_ context.Context, id string) (core.Authorization, error) {
-	authz := core.Authorization{
-		ID:             "valid",
-		Status:         core.StatusValid,
-		RegistrationID: 1,
-		Identifier:     identifier.DNSIdentifier("not-an-example.com"),
-		Challenges: []core.Challenge{
-			{
-				Token: "token",
-				Type:  "dns",
-			},
-		},
-	}
-	// Strip a leading `/` to make working with fake URLs in signed JWS tests easier.
-	id = strings.TrimPrefix(id, "/")
-
-	if id == "valid" {
-		exp := sa.clk.Now().AddDate(100, 0, 0)
-		authz.Expires = &exp
-		authz.Challenges[0].URI = "http://localhost:4300/acme/challenge/valid/23"
-		return authz, nil
-	} else if id == "pending" {
-		exp := sa.clk.Now().AddDate(100, 0, 0)
-		authz.Expires = &exp
-		authz.Status = core.StatusPending
-		return authz, nil
-	} else if id == "expired" {
-		exp := sa.clk.Now().AddDate(0, -1, 0)
-		authz.Expires = &exp
-		authz.Challenges[0].URI = "http://localhost:4300/acme/challenge/expired/23"
-		return authz, nil
-	} else if id == "error_result" {
-		return core.Authorization{}, fmt.Errorf("Unspecified database error")
-	} else if id == "diff_acct" {
-		exp := sa.clk.Now().AddDate(100, 0, 0)
-		authz.RegistrationID = 2
-		authz.Expires = &exp
-		authz.Challenges[0].URI = "http://localhost:4300/acme/challenge/valid/23"
-		return authz, nil
-	}
-
-	return core.Authorization{}, berrors.NotFoundError("no authorization found with id %q", id)
-}
-
 // GetCertificate is a mock
-func (sa *StorageAuthority) GetCertificate(_ context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+func (sa *StorageAuthority) GetCertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	// Serial ee == 238.crt
 	if req.Serial == "0000000000000000000000000000000000ee" {
 		certPemBytes, _ := ioutil.ReadFile("test/238.crt")
@@ -256,12 +210,12 @@ func (sa *StorageAuthority) GetCertificate(_ context.Context, req *sapb.Serial) 
 }
 
 // GetPrecertificate is a mock
-func (sa *StorageAuthority) GetPrecertificate(_ context.Context, _ *sapb.Serial) (*corepb.Certificate, error) {
+func (sa *StorageAuthority) GetPrecertificate(_ context.Context, _ *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	return nil, nil
 }
 
 // GetCertificateStatus is a mock
-func (sa *StorageAuthority) GetCertificateStatus(_ context.Context, req *sapb.Serial) (*corepb.CertificateStatus, error) {
+func (sa *StorageAuthority) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
 	// Serial ee == 238.crt
 	if req.Serial == "0000000000000000000000000000000000ee" {
 		return &corepb.CertificateStatus{
@@ -277,133 +231,71 @@ func (sa *StorageAuthority) GetCertificateStatus(_ context.Context, req *sapb.Se
 }
 
 // AddPrecertificate is a mock
-func (sa *StorageAuthority) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (empty *emptypb.Empty, err error) {
+func (sa *StorageAuthority) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (empty *emptypb.Empty, err error) {
 	return
 }
 
 // AddSerial is a mock
-func (sa *StorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (empty *emptypb.Empty, err error) {
+func (sa *StorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSerialRequest, _ ...grpc.CallOption) (empty *emptypb.Empty, err error) {
 	return
 }
 
 // AddCertificate is a mock
-func (sa *StorageAuthority) AddCertificate(_ context.Context, _ *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
+func (sa *StorageAuthority) AddCertificate(_ context.Context, _ *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*sapb.AddCertificateResponse, error) {
 	return nil, nil
 }
 
-// FinalizeAuthorization is a mock
-func (sa *StorageAuthority) FinalizeAuthorization(_ context.Context, authz core.Authorization) (err error) {
-	return
-}
-
-// NewPendingAuthorization is a mock
-func (sa *StorageAuthority) NewPendingAuthorization(_ context.Context, authz core.Authorization) (core.Authorization, error) {
-	return authz, nil
-}
-
 // NewRegistration is a mock
-func (sa *StorageAuthority) NewRegistration(_ context.Context, _ *corepb.Registration) (*corepb.Registration, error) {
+func (sa *StorageAuthority) NewRegistration(_ context.Context, _ *corepb.Registration, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	return &corepb.Registration{}, nil
 }
 
 // UpdateRegistration is a mock
-func (sa *StorageAuthority) UpdateRegistration(_ context.Context, _ *corepb.Registration) (*emptypb.Empty, error) {
+func (sa *StorageAuthority) UpdateRegistration(_ context.Context, _ *corepb.Registration, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
 // CountFQDNSets is a mock
-func (sa *StorageAuthority) CountFQDNSets(_ context.Context, _ *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
+func (sa *StorageAuthority) CountFQDNSets(_ context.Context, _ *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
 	return &sapb.Count{}, nil
 }
 
 // FQDNSetExists is a mock
-func (sa *StorageAuthority) FQDNSetExists(_ context.Context, _ *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {
+func (sa *StorageAuthority) FQDNSetExists(_ context.Context, _ *sapb.FQDNSetExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
 	return &sapb.Exists{Exists: false}, nil
 }
 
-func (sa *StorageAuthority) PreviousCertificateExists(
-	_ context.Context,
-	_ *sapb.PreviousCertificateExistsRequest,
-) (*sapb.Exists, error) {
-	return &sapb.Exists{
-		Exists: false,
-	}, nil
-}
-
-func (sa *StorageAuthority) GetPendingAuthorization(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*core.Authorization, error) {
-	return nil, nil
-}
-
-// GetValidAuthorizations is a mock
-func (sa *StorageAuthority) GetValidAuthorizations(_ context.Context, regID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
-	if regID == 1 {
-		auths := make(map[string]*core.Authorization)
-		for _, name := range names {
-			if sa.authorizedDomains[name] || name == "not-an-example.com" {
-				exp := now.AddDate(100, 0, 0)
-				auths[name] = &core.Authorization{
-					Status:         core.StatusValid,
-					RegistrationID: 1,
-					Expires:        &exp,
-					Identifier: identifier.ACMEIdentifier{
-						Type:  "dns",
-						Value: name,
-					},
-					Challenges: []core.Challenge{
-						{
-							Status: core.StatusValid,
-							Type:   core.ChallengeTypeDNS01,
-						},
-					},
-				}
-			}
-		}
-		return auths, nil
-	} else if regID == 2 {
-		return map[string]*core.Authorization{}, nil
-	} else if regID == 5 || regID == 4 {
-		return map[string]*core.Authorization{"bad.example.com": nil}, nil
-	}
-	return nil, nil
+func (sa *StorageAuthority) PreviousCertificateExists(_ context.Context, _ *sapb.PreviousCertificateExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
+	return &sapb.Exists{Exists: false}, nil
 }
 
 // CountCertificatesByNames is a mock
-func (sa *StorageAuthority) CountCertificatesByNames(_ context.Context, _ *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
+func (sa *StorageAuthority) CountCertificatesByNames(_ context.Context, _ *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
 	return &sapb.CountByNames{}, nil
 }
 
 // CountRegistrationsByIP is a mock
-func (sa *StorageAuthority) CountRegistrationsByIP(_ context.Context, _ *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
+func (sa *StorageAuthority) CountRegistrationsByIP(_ context.Context, _ *sapb.CountRegistrationsByIPRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
 	return &sapb.Count{}, nil
 }
 
 // CountRegistrationsByIPRange is a mock
-func (sa *StorageAuthority) CountRegistrationsByIPRange(_ context.Context, _ *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
+func (sa *StorageAuthority) CountRegistrationsByIPRange(_ context.Context, _ *sapb.CountRegistrationsByIPRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
 	return &sapb.Count{}, nil
-}
-
-// CountPendingAuthorizations is a mock
-func (sa *StorageAuthority) CountPendingAuthorizations(_ context.Context, _ int64) (int, error) {
-	return 0, nil
 }
 
 // CountOrders is a mock
-func (sa *StorageAuthority) CountOrders(_ context.Context, _ *sapb.CountOrdersRequest) (*sapb.Count, error) {
+func (sa *StorageAuthority) CountOrders(_ context.Context, _ *sapb.CountOrdersRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
 	return &sapb.Count{}, nil
 }
 
-// DeactivateAuthorization is a mock
-func (sa *StorageAuthority) DeactivateAuthorization(_ context.Context, _ string) error {
-	return nil
-}
-
 // DeactivateRegistration is a mock
-func (sa *StorageAuthority) DeactivateRegistration(_ context.Context, _ *sapb.RegistrationID) (*emptypb.Empty, error) {
+func (sa *StorageAuthority) DeactivateRegistration(_ context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
 // NewOrder is a mock
-func (sa *StorageAuthority) NewOrder(_ context.Context, req *sapb.NewOrderRequest) (*corepb.Order, error) {
+func (sa *StorageAuthority) NewOrder(_ context.Context, req *sapb.NewOrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
 	rand.Seed(time.Now().UnixNano())
 	response := &corepb.Order{
 		// Fields from the input new order request.
@@ -422,27 +314,27 @@ func (sa *StorageAuthority) NewOrder(_ context.Context, req *sapb.NewOrderReques
 }
 
 // NewOrderAndAuthzs is a mock
-func (sa *StorageAuthority) NewOrderAndAuthzs(_ context.Context, req *sapb.NewOrderAndAuthzsRequest) (*corepb.Order, error) {
+func (sa *StorageAuthority) NewOrderAndAuthzs(_ context.Context, req *sapb.NewOrderAndAuthzsRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
 	return sa.NewOrder(context.TODO(), req.NewOrder)
 }
 
 // SetOrderProcessing is a mock
-func (sa *StorageAuthority) SetOrderProcessing(_ context.Context, req *sapb.OrderRequest) (*emptypb.Empty, error) {
+func (sa *StorageAuthority) SetOrderProcessing(_ context.Context, req *sapb.OrderRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
 // SetOrderError is a mock
-func (sa *StorageAuthority) SetOrderError(_ context.Context, req *sapb.SetOrderErrorRequest) (*emptypb.Empty, error) {
+func (sa *StorageAuthority) SetOrderError(_ context.Context, req *sapb.SetOrderErrorRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
 // FinalizeOrder is a mock
-func (sa *StorageAuthority) FinalizeOrder(_ context.Context, req *sapb.FinalizeOrderRequest) (*emptypb.Empty, error) {
+func (sa *StorageAuthority) FinalizeOrder(_ context.Context, req *sapb.FinalizeOrderRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
 // GetOrder is a mock
-func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
+func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
 	if req.Id == 2 {
 		return nil, berrors.NotFoundError("bad")
 	} else if req.Id == 3 {
@@ -496,55 +388,36 @@ func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest) 
 	return validOrder, nil
 }
 
-func (sa *StorageAuthority) GetOrderForNames(_ context.Context, _ *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
+func (sa *StorageAuthority) GetOrderForNames(_ context.Context, _ *sapb.GetOrderForNamesRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
 	return nil, nil
-}
-
-func (sa *StorageAuthority) GetValidOrderAuthorizations(_ context.Context, _ *sapb.GetValidOrderAuthorizationsRequest) (map[string]*core.Authorization, error) {
-	return nil, nil
-}
-
-// GetAuthorizations is a mock
-func (sa *StorageAuthority) GetAuthorizations(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	return &sapb.Authorizations{}, nil
-}
-
-// CountInvalidAuthorizations is a mock
-func (sa *StorageAuthority) CountInvalidAuthorizations(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (count *sapb.Count, err error) {
-	return &sapb.Count{}, nil
-}
-
-// AddPendingAuthorizations is a mock
-func (sa *StorageAuthority) AddPendingAuthorizations(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
-	return &sapb.AuthorizationIDs{}, nil
 }
 
 // NewAuthorizations is a mock
-func (sa *StorageAuthority) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
+func (sa *StorageAuthority) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorization2IDs, error) {
 	return &sapb.Authorization2IDs{}, nil
 }
 
-func (sa *StorageAuthority) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) (*emptypb.Empty, error) {
+func (sa *StorageAuthority) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
-func (sa *StorageAuthority) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*emptypb.Empty, error) {
+func (sa *StorageAuthority) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return nil, nil
 }
 
-func (sa *StorageAuthority) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error) {
+func (sa *StorageAuthority) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Count, error) {
 	return &sapb.Count{}, nil
 }
 
-func (sa *StorageAuthority) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
+func (sa *StorageAuthority) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	return nil, nil
 }
 
-func (sa *StorageAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
+func (sa *StorageAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
 	return &sapb.Count{}, nil
 }
 
-func (sa *StorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
+func (sa *StorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	if req.RegistrationID != 1 && req.RegistrationID != 5 && req.RegistrationID != 4 {
 		return &sapb.Authorizations{}, nil
 	}
@@ -581,11 +454,11 @@ func (sa *StorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sa
 	return auths, nil
 }
 
-func (sa *StorageAuthority) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
+func (sa *StorageAuthority) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	return &sapb.Authorizations{}, nil
 }
 
-func (sa *StorageAuthority) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
+func (sa *StorageAuthority) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest, _ ...grpc.CallOption) (*corepb.Authorization, error) {
 	return nil, nil
 }
 
@@ -598,7 +471,7 @@ var (
 )
 
 // GetAuthorization2 is a mock
-func (sa *StorageAuthority) GetAuthorization2(ctx context.Context, id *sapb.AuthorizationID2) (*corepb.Authorization, error) {
+func (sa *StorageAuthority) GetAuthorization2(ctx context.Context, id *sapb.AuthorizationID2, _ ...grpc.CallOption) (*corepb.Authorization, error) {
 	authz := core.Authorization{
 		Status:         core.StatusValid,
 		RegistrationID: 1,
@@ -643,17 +516,17 @@ func (sa *StorageAuthority) GetAuthorization2(ctx context.Context, id *sapb.Auth
 }
 
 // RevokeCertificate is a mock
-func (sa *StorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error) {
+func (sa *StorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return nil, nil
 }
 
 // AddBlockedKey is a mock
-func (sa *StorageAuthority) AddBlockedKey(context.Context, *sapb.AddBlockedKeyRequest) (*emptypb.Empty, error) {
+func (sa *StorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
 // KeyBlocked is a mock
-func (sa *StorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlockedRequest) (*sapb.Exists, error) {
+func (sa *StorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlockedRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
 	return &sapb.Exists{Exists: false}, nil
 }
 
@@ -714,7 +587,7 @@ type SAWithFailedChallenges struct {
 	Clk clock.FakeClock
 }
 
-func (sa *SAWithFailedChallenges) GetAuthorization2(ctx context.Context, id *sapb.AuthorizationID2) (*corepb.Authorization, error) {
+func (sa *SAWithFailedChallenges) GetAuthorization2(ctx context.Context, id *sapb.AuthorizationID2, _ ...grpc.CallOption) (*corepb.Authorization, error) {
 	authz := core.Authorization{
 		ID:             "55",
 		Status:         core.StatusValid,

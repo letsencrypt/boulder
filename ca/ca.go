@@ -18,7 +18,6 @@ import (
 	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
-	"google.golang.org/protobuf/types/known/emptypb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
@@ -41,13 +40,6 @@ const (
 	csrExtensionOther             = "other"
 )
 
-type certificateStorage interface {
-	AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error)
-	GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
-	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error)
-	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*emptypb.Empty, error)
-}
-
 type certificateType string
 
 const (
@@ -69,7 +61,7 @@ type issuerMaps struct {
 type certificateAuthorityImpl struct {
 	capb.UnimplementedCertificateAuthorityServer
 	capb.UnimplementedOCSPGeneratorServer
-	sa      certificateStorage
+	sa      sapb.StorageAuthorityCertificateClient
 	pa      core.PolicyAuthority
 	ocsp    *ocspImpl
 	issuers issuerMaps
@@ -116,7 +108,7 @@ func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
 // from any number of issuance.Issuers according to their profiles, and can sign
 // OCSP (via delegation to an ocspImpl and its issuers).
 func NewCertificateAuthorityImpl(
-	sa certificateStorage,
+	sa sapb.StorageAuthorityCertificateClient,
 	pa core.PolicyAuthority,
 	ocsp *ocspImpl,
 	boulderIssuers []*issuance.Issuer,

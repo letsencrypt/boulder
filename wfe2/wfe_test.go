@@ -1115,8 +1115,6 @@ func TestChallenge(t *testing.T) {
 		return makePostRequestWithPath(path, jwsBody)
 	}
 
-	// See mocks/mocks.go StorageAuthority.GetAuthorization for the "expired/"
-	// "error_result/" path handling.
 	testCases := []struct {
 		Name            string
 		Request         *http.Request
@@ -1757,12 +1755,12 @@ func TestAccount(t *testing.T) {
 }
 
 type mockSAWithCert struct {
-	core.StorageGetter
+	sapb.StorageAuthorityGetterClient
 	cert   *x509.Certificate
 	status core.OCSPStatus
 }
 
-func newMockSAWithCert(t *testing.T, sa core.StorageGetter, status core.OCSPStatus) *mockSAWithCert {
+func newMockSAWithCert(t *testing.T, sa sapb.StorageAuthorityGetterClient, status core.OCSPStatus) *mockSAWithCert {
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
 	test.AssertNotError(t, err, "Failed to load test cert")
 	return &mockSAWithCert{sa, cert, status}
@@ -1770,7 +1768,7 @@ func newMockSAWithCert(t *testing.T, sa core.StorageGetter, status core.OCSPStat
 
 // GetCertificate returns the mock SA's hard-coded certificate, issued by the
 // account with regID 1, if the given serial matches. Otherwise, returns not found.
-func (sa *mockSAWithCert) GetCertificate(_ context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+func (sa *mockSAWithCert) GetCertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	if req.Serial != core.SerialToString(sa.cert.SerialNumber) {
 		return nil, berrors.NotFoundError("Certificate with serial %q not found", req.Serial)
 	}
@@ -1787,7 +1785,7 @@ func (sa *mockSAWithCert) GetCertificate(_ context.Context, req *sapb.Serial) (*
 
 // GetCertificateStatus returns the mock SA's status, if the given serial matches.
 // Otherwise, returns not found.
-func (sa *mockSAWithCert) GetCertificateStatus(_ context.Context, req *sapb.Serial) (*corepb.CertificateStatus, error) {
+func (sa *mockSAWithCert) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
 	if req.Serial != core.SerialToString(sa.cert.SerialNumber) {
 		return nil, berrors.NotFoundError("Status for certificate with serial %q not found", req.Serial)
 	}
@@ -2000,11 +1998,11 @@ func TestGetCertificate(t *testing.T) {
 }
 
 type mockSAWithNewCert struct {
-	core.StorageGetter
+	sapb.StorageAuthorityGetterClient
 	clk clock.Clock
 }
 
-func (sa *mockSAWithNewCert) GetCertificate(_ context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+func (sa *mockSAWithNewCert) GetCertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	issuer, err := core.LoadCert("../test/hierarchy/int-e1.cert.pem")
 	if err != nil {
 		return nil, fmt.Errorf("failed to load test issuer cert: %w", err)
@@ -2186,10 +2184,10 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 }
 
 type mockSAWithError struct {
-	core.StorageGetter
+	sapb.StorageAuthorityGetterClient
 }
 
-func (sa *mockSAWithError) GetCertificate(_ context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+func (sa *mockSAWithError) GetCertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	return nil, errors.New("Oops")
 }
 
@@ -3067,12 +3065,12 @@ func TestRevokeCertificateIssuingAccount(t *testing.T) {
 }
 
 type mockSAWithValidAuthz struct {
-	core.StorageGetter
+	sapb.StorageAuthorityGetterClient
 }
 
 // GetValidAuthorizations says that all accounts have a valid authorization to
 // issue for the DNS name contained in ee-r3.cert.pem
-func (sa mockSAWithValidAuthz) GetValidAuthorizations2(_ context.Context, _ *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
+func (sa mockSAWithValidAuthz) GetValidAuthorizations2(_ context.Context, _ *sapb.GetValidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	res := sapb.Authorizations{}
 	res.Authz = append(res.Authz, &sapb.Authorizations_MapElement{
 		Domain: "ee.int-r3.boulder.test",
@@ -3173,10 +3171,10 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 }
 
 type mockSAGetRegByKeyFails struct {
-	core.StorageGetter
+	sapb.StorageAuthorityGetterClient
 }
 
-func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error) {
+func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	return nil, fmt.Errorf("whoops")
 }
 
@@ -3204,10 +3202,10 @@ func TestNewAccountWhenGetRegByKeyFails(t *testing.T) {
 }
 
 type mockSAGetRegByKeyNotFound struct {
-	core.StorageGetter
+	sapb.StorageAuthorityGetterClient
 }
 
-func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error) {
+func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	return nil, berrors.NotFoundError("not found")
 }
 

@@ -24,6 +24,7 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
+	isa "github.com/letsencrypt/boulder/test/inmem/sa"
 	"github.com/letsencrypt/boulder/test/vars"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
@@ -42,7 +43,7 @@ func (ca *mockOCSP) GenerateOCSP(_ context.Context, req *capb.GenerateOCSPReques
 
 var log = blog.UseMock()
 
-func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *db.WrappedMap, clock.FakeClock, func()) {
+func setup(t *testing.T) (*OCSPUpdater, sapb.StorageAuthorityClient, *db.WrappedMap, clock.FakeClock, func()) {
 	dbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Failed to create dbMap")
 	sa.SetSQLDebug(dbMap, log)
@@ -74,7 +75,7 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *db.WrappedMap, c
 	)
 	test.AssertNotError(t, err, "Failed to create newUpdater")
 
-	return updater, sa, dbMap, fc, cleanUp
+	return updater, isa.SA{Impl: sa}, dbMap, fc, cleanUp
 }
 
 func nowNano(fc clock.Clock) int64 {

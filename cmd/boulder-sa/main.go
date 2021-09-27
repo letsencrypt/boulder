@@ -115,8 +115,7 @@ func main() {
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	grpcSrv, listener, err := bgrpc.NewServer(c.SA.GRPC, tls, serverMetrics, clk, bgrpc.NoCancelInterceptor)
 	cmd.FailOnError(err, "Unable to setup SA gRPC server")
-	gw := bgrpc.NewStorageAuthorityServer(sai)
-	sapb.RegisterStorageAuthorityServer(grpcSrv, gw)
+	sapb.RegisterStorageAuthorityServer(grpcSrv, sai)
 	hs := health.NewServer()
 	healthpb.RegisterHealthServer(grpcSrv, hs)
 

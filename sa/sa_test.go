@@ -7,6 +7,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"math/big"
@@ -29,7 +30,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 	jose "gopkg.in/square/go-jose.v2"
@@ -37,6 +37,19 @@ import (
 
 var log = blog.UseMock()
 var ctx = context.Background()
+
+var (
+	theKey = `{
+    "kty": "RSA",
+    "n": "n4EPtAOCc9AlkeQHPzHStgAbgs7bTZLwUBZdR8_KuKPEHLd4rHVTeT-O-XV2jRojdNhxJWTDvNd7nqQ0VEiZQHz_AJmSCpMaJMRBSFKrKb2wqVwGU_NsYOYL-QtiWN2lbzcEe6XC0dApr5ydQLrHqkHHig3RBordaZ6Aj-oBHqFEHYpPe7Tpe-OfVfHd1E6cS6M1FZcD1NNLYD5lFHpPI9bTwJlsde3uhGqC0ZCuEHg8lhzwOHrtIQbS0FVbb9k3-tVTU4fg_3L_vniUFAKwuCLqKnS2BYwdq_mzSnbLY7h_qixoR7jig3__kRhuaxwUkRz5iaiQkqgc5gHdrNP5zw",
+    "e": "AQAB"
+}`
+	anotherKey = `{
+	"kty":"RSA",
+	"n": "vd7rZIoTLEe-z1_8G1FcXSw9CQFEJgV4g9V277sER7yx5Qjz_Pkf2YVth6wwwFJEmzc0hoKY-MMYFNwBE4hQHw",
+	"e":"AQAB"
+}`
+)
 
 // initSA constructs a SQLStorageAuthority and a clean up function
 // that should be defer'ed to the end of the test.
@@ -60,7 +73,24 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	return sa, fc, cleanUp
 }
 
-func createPendingAuthorization(t *testing.T, sa core.StorageAuthority, domain string, exp time.Time) int64 {
+// CreateWorkingTestRegistration inserts a new, correct Registration into the
+// given SA.
+func createWorkingRegistration(t *testing.T, sa *SQLStorageAuthority) *corepb.Registration {
+	initialIP, _ := net.ParseIP("88.77.66.11").MarshalText()
+	reg, err := sa.NewRegistration(context.Background(), &corepb.Registration{
+		Key:       []byte(theKey),
+		Contact:   []string{"mailto:foo@example.com"},
+		InitialIP: initialIP,
+		CreatedAt: time.Date(2003, 5, 10, 0, 0, 0, 0, time.UTC).UnixNano(),
+		Status:    string(core.StatusValid),
+	})
+	if err != nil {
+		t.Fatalf("Unable to create new registration: %s", err)
+	}
+	return reg
+}
+
+func createPendingAuthorization(t *testing.T, sa *SQLStorageAuthority, domain string, exp time.Time) int64 {
 	t.Helper()
 
 	authz := core.Authorization{
@@ -85,7 +115,7 @@ func createPendingAuthorization(t *testing.T, sa core.StorageAuthority, domain s
 	return ids.Ids[0]
 }
 
-func createFinalizedAuthorization(t *testing.T, sa core.StorageAuthority, domain string, exp time.Time,
+func createFinalizedAuthorization(t *testing.T, sa *SQLStorageAuthority, domain string, exp time.Time,
 	status string, attemptedAt time.Time) int64 {
 	t.Helper()
 	pendingID := createPendingAuthorization(t, sa, domain, exp)
@@ -103,19 +133,20 @@ func createFinalizedAuthorization(t *testing.T, sa core.StorageAuthority, domain
 	return pendingID
 }
 
-var (
-	anotherKey = `{
-	"kty":"RSA",
-	"n": "vd7rZIoTLEe-z1_8G1FcXSw9CQFEJgV4g9V277sER7yx5Qjz_Pkf2YVth6wwwFJEmzc0hoKY-MMYFNwBE4hQHw",
-	"e":"AQAB"
-}`
-)
+func goodTestJWK() *jose.JSONWebKey {
+	var jwk jose.JSONWebKey
+	err := json.Unmarshal([]byte(theKey), &jwk)
+	if err != nil {
+		panic("known-good theKey is no longer known-good")
+	}
+	return &jwk
+}
 
 func TestAddRegistration(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
-	jwk := satest.GoodJWK()
+	jwk := goodTestJWK()
 	jwkJSON, _ := jwk.MarshalJSON()
 
 	contacts := []string{"mailto:foo@example.com"}
@@ -169,7 +200,7 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 	_, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: 100})
 	test.AssertErrorIs(t, err, berrors.NotFound)
 
-	jwk := satest.GoodJWK()
+	jwk := goodTestJWK()
 	jwkJSON, _ := jwk.MarshalJSON()
 
 	_, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: jwkJSON})
@@ -183,7 +214,7 @@ func TestAddCertificate(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 
 	// An example cert taken from EFF's website
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
@@ -245,7 +276,7 @@ func TestAddCertificateDuplicate(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 
 	_, testCert := test.ThrowAwayCert(t, 1)
 
@@ -300,7 +331,7 @@ func TestCountCertificatesByNames(t *testing.T) {
 	test.AssertEquals(t, counts.Counts["example.com"], int64(0))
 
 	// Add the test cert and query for its names.
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 	issued := sa.clk.Now()
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    certDER,
@@ -721,7 +752,7 @@ func TestPreviousCertificateExists(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 
 	// An example cert taken from EFF's website
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
@@ -789,7 +820,7 @@ func TestDeactivateAccount(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 
 	_, err := sa.DeactivateRegistration(context.Background(), &sapb.RegistrationID{Id: reg.Id})
 	test.AssertNotError(t, err, "DeactivateRegistration failed")
@@ -1148,9 +1179,9 @@ func TestOrder(t *testing.T) {
 	test.AssertDeepEquals(t, storedOrder, expectedOrder)
 }
 
-// TestGetAuthorizationNoRows ensures that the GetAuthorization function returns
+// TestGetAuthorization2NoRows ensures that the GetAuthorization2 function returns
 // the correct error when there are no results for the provided ID.
-func TestGetAuthorizationNoRows(t *testing.T) {
+func TestGetAuthorization2NoRows(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -1165,7 +1196,7 @@ func TestGetAuthorizations2(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 	exp := fc.Now().AddDate(0, 0, 10).UTC()
 	attemptedAt := fc.Now()
 
@@ -1230,7 +1261,7 @@ func TestCountOrders(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 	now := sa.clk.Now()
 	expires := now.Add(24 * time.Hour)
 
@@ -1282,7 +1313,7 @@ func TestFasterGetOrderForNames(t *testing.T) {
 	domain := "example.com"
 	expires := fc.Now().Add(time.Hour)
 
-	key, _ := satest.GoodJWK().MarshalJSON()
+	key, _ := goodTestJWK().MarshalJSON()
 	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
 	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
 		Key:       key,
@@ -1325,7 +1356,7 @@ func TestGetOrderForNames(t *testing.T) {
 	expires := fc.Now().Add(orderLifetime).UnixNano()
 
 	// Create two test registrations to associate with orders
-	key, _ := satest.GoodJWK().MarshalJSON()
+	key, _ := goodTestJWK().MarshalJSON()
 	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
 	regA, err := sa.NewRegistration(ctx, &corepb.Registration{
 		Key:       key,
@@ -1475,7 +1506,7 @@ func TestStatusForOrder(t *testing.T) {
 	attemptedAt := fc.Now()
 
 	// Create a registration to work with
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 
 	// Create a pending authz, an expired authz, an invalid authz, a deactivated authz,
 	// and a valid authz
@@ -1623,7 +1654,7 @@ func TestRevokeCertificate(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 	// Add a cert to the DB to test with.
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
@@ -1676,7 +1707,7 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 
 	// An example cert taken from EFF's website
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
@@ -1763,7 +1794,7 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	defer cleanUp()
 
 	// Create a test registration
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 
 	// Create a small throw away key for the test certificates.
 	testKey, err := rsa.GenerateKey(rand.Reader, 512)
@@ -1858,7 +1889,7 @@ func TestNewAuthorizations2(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
 	apbA := &corepb.Authorization{
 		Identifier:     "aaa",
@@ -1892,7 +1923,7 @@ func TestNewAuthorizations2(t *testing.T) {
 	test.AssertEquals(t, len(ids.Ids), 2)
 	for i, id := range ids.Ids {
 		dbVer, err := sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: id})
-		test.AssertNotError(t, err, "sa.GetAuthorization failed")
+		test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 
 		// Everything but ID should match.
 		req.Authz[i].Id = dbVer.Id
@@ -1904,7 +1935,7 @@ func TestNewAuthorizations2_100(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 	expires := fc.Now().Add(time.Hour).UnixNano()
 
 	allAuthz := make([]*corepb.Authorization, 100)
@@ -1930,7 +1961,7 @@ func TestNewAuthorizations2_100(t *testing.T) {
 	test.AssertEquals(t, len(ids.Ids), 100)
 	for i, id := range ids.Ids {
 		dbVer, err := sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: id})
-		test.AssertNotError(t, err, "sa.GetAuthorization failed")
+		test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 		// Everything but the ID should match.
 		req.Authz[i].Id = dbVer.Id
 		test.AssertDeepEquals(t, req.Authz[i], dbVer)
@@ -1941,7 +1972,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 
 	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
 	apb := &corepb.Authorization{
@@ -2173,7 +2204,7 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 	defer cleanup()
 
 	// Create two new valid authorizations
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 	identA := "a.example.com"
 	identB := "b.example.com"
 	expires := fc.Now().Add(time.Hour * 24 * 7).UTC()
@@ -2239,7 +2270,7 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 
 	// Create two authorizations, one pending, one invalid
 	fc.Add(time.Hour)
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 	ident := "aaa"
 	expiresA := fc.Now().Add(time.Hour).UTC()
 	expiresB := fc.Now().Add(time.Hour * 3).UTC()
@@ -2291,7 +2322,7 @@ func TestGetOrderExpired(t *testing.T) {
 	defer cleanUp()
 
 	fc.Add(time.Hour * 5)
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 	order, err := sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
 		RegistrationID:   reg.Id,
 		Expires:          fc.Now().Add(-time.Hour).UnixNano(),

@@ -36,6 +36,7 @@ type certCountFunc func(db db.Selector, domain string, timeRange *sapb.Range) (i
 
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
+	sapb.UnimplementedStorageAuthorityServer
 	dbMap         *db.WrappedMap
 	dbReadOnlyMap *db.WrappedMap
 	clk           clock.Clock
@@ -1532,8 +1533,7 @@ func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sap
 }
 
 // GetAuthorization2 returns the authz2 style authorization identified by the provided ID or an error.
-// If no authorization is found matching the ID a berrors.NotFound type error is returned. This method
-// is intended to deprecate GetAuthorization.
+// If no authorization is found matching the ID a berrors.NotFound type error is returned.
 func (ssa *SQLStorageAuthority) GetAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Authorization, error) {
 	if req.Id == 0 {
 		return nil, errIncompleteRequest
@@ -1661,7 +1661,6 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 // FinalizeAuthorization2 moves a pending authorization to either the valid or invalid status. If
 // the authorization is being moved to invalid the validationError field must be set. If the
 // authorization is being moved to valid the validationRecord and expires fields must be set.
-// This method is intended to deprecate the FinalizeAuthorization method.
 func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) (*emptypb.Empty, error) {
 	if req.Status == "" || req.Attempted == "" || req.Expires == 0 || req.Id == 0 {
 		return nil, errIncompleteRequest
@@ -1779,8 +1778,7 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 }
 
 // GetPendingAuthorization2 returns the most recent Pending authorization with
-// the given identifier, if available. This method is intended to deprecate
-// GetPendingAuthorization. This method only supports DNS identifier types.
+// the given identifier, if available. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
 	if req.RegistrationID == 0 || req.IdentifierValue == "" || req.ValidUntil == 0 {
 		return nil, errIncompleteRequest
@@ -1839,8 +1837,7 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations2(ctx context.Context,
 }
 
 // GetValidOrderAuthorizations2 is used to find the valid, unexpired authorizations
-// associated with a specific order and account ID. This method is intended to
-// deprecate GetValidOrderAuthorizations.
+// associated with a specific order and account ID.
 func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
 	if req.AcctID == 0 || req.Id == 0 {
 		return nil, errIncompleteRequest
@@ -1883,8 +1880,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 }
 
 // CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
-// in a given time range. This method is intended to deprecate CountInvalidAuthorizations.
-// This method only supports DNS identifier types.
+// in a given time range. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
 	if req.RegistrationID == 0 || req.Hostname == "" || req.Range.Earliest == 0 || req.Range.Latest == 0 {
 		return nil, errIncompleteRequest

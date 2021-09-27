@@ -24,6 +24,7 @@ import (
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -150,21 +151,25 @@ type mockSA struct {
 	certificate core.Certificate
 }
 
-func (m *mockSA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
+func (m *mockSA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*sapb.AddCertificateResponse, error) {
 	m.certificate.DER = req.Der
 	return nil, nil
 }
 
-func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
+func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
-func (m *mockSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*emptypb.Empty, error) {
+func (m *mockSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
-func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	return nil, berrors.NotFoundError("cannot find the cert")
+}
+
+func (m *mockSA) GetPrecertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	return nil, berrors.NotFoundError("cannot find the precert")
 }
 
 var caKey crypto.Signer
@@ -257,7 +262,6 @@ func setup(t *testing.T) *testCtx {
 	}, []string{"type"})
 
 	ocsp, err := NewOCSPImpl(
-		&mockSA{},
 		boulderIssuers,
 		time.Hour,
 		0,
@@ -810,7 +814,7 @@ type dupeSA struct {
 	mockSA
 }
 
-func (m *dupeSA) GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+func (m *dupeSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	return nil, nil
 }
 
@@ -819,7 +823,7 @@ type getCertErrorSA struct {
 	mockSA
 }
 
-func (m *getCertErrorSA) GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+func (m *getCertErrorSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	return nil, fmt.Errorf("i don't like it")
 }
 
@@ -912,7 +916,7 @@ type queueSA struct {
 	issuedPrecert time.Time
 }
 
-func (qsa *queueSA) AddCertificate(_ context.Context, req *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
+func (qsa *queueSA) AddCertificate(_ context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*sapb.AddCertificateResponse, error) {
 	if qsa.fail {
 		return nil, errors.New("bad")
 	} else if qsa.duplicate {
@@ -922,7 +926,7 @@ func (qsa *queueSA) AddCertificate(_ context.Context, req *sapb.AddCertificateRe
 	return nil, nil
 }
 
-func (qsa *queueSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
+func (qsa *queueSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	if qsa.fail {
 		return nil, errors.New("bad")
 	} else if qsa.duplicate {

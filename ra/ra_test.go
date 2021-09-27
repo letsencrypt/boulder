@@ -51,6 +51,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
+	isa "github.com/letsencrypt/boulder/test/inmem/sa"
 	"github.com/letsencrypt/boulder/test/vars"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/prometheus/client_golang/prometheus"
@@ -61,7 +62,7 @@ import (
 	jose "gopkg.in/square/go-jose.v2"
 )
 
-func createPendingAuthorization(t *testing.T, sa core.StorageAuthority, domain string, exp time.Time) int64 {
+func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time) int64 {
 	t.Helper()
 
 	authz := core.Authorization{
@@ -86,7 +87,7 @@ func createPendingAuthorization(t *testing.T, sa core.StorageAuthority, domain s
 	return ids.Ids[0]
 }
 
-func createFinalizedAuthorization(t *testing.T, sa core.StorageAuthority, domain string, exp time.Time, status string) int64 {
+func createFinalizedAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time, status string) int64 {
 	t.Helper()
 	pendingID := createPendingAuthorization(t, sa, domain, exp)
 	_, err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
@@ -99,7 +100,7 @@ func createFinalizedAuthorization(t *testing.T, sa core.StorageAuthority, domain
 	return pendingID
 }
 
-func getAuthorization(t *testing.T, id string, sa core.StorageAuthority) *corepb.Authorization {
+func getAuthorization(t *testing.T, id string, sa sapb.StorageAuthorityClient) *corepb.Authorization {
 	t.Helper()
 	idInt, err := strconv.ParseInt(id, 10, 64)
 	test.AssertNotError(t, err, "strconv.ParseInt failed")
@@ -281,7 +282,7 @@ func newAcctKey(t *testing.T) []byte {
 	return acctKey
 }
 
-func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
+func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAuthorityClient, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	err = json.Unmarshal(AccountKeyJSONB, &AccountKeyB)
@@ -307,6 +308,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
+	sa := &isa.SA{Impl: ssa}
 
 	saDBCleanUp := test.ResetSATestDatabase(t)
 
@@ -346,13 +348,13 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		log,
 		stats,
 		1, testKeyPolicy, 100, true, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0, ctp, nil, nil)
-	ra.SA = ssa
+	ra.SA = sa
 	ra.VA = va
 	ra.CA = ca
 	ra.PA = pa
 	ra.reuseValidAuthz = true
 
-	return va, ssa, ra, fc, cleanUp
+	return va, sa, ra, fc, cleanUp
 }
 
 func assertAuthzEqual(t *testing.T, a1, a2 *corepb.Authorization) {
@@ -535,7 +537,7 @@ type mockSAFailsNewRegistration struct {
 	mocks.StorageAuthority
 }
 
-func (sa *mockSAFailsNewRegistration) NewRegistration(_ context.Context, _ *corepb.Registration) (*corepb.Registration, error) {
+func (sa *mockSAFailsNewRegistration) NewRegistration(_ context.Context, _ *corepb.Registration, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	return &corepb.Registration{}, fmt.Errorf("too bad")
 }
 
@@ -679,7 +681,7 @@ type NoUpdateSA struct {
 	mocks.StorageAuthority
 }
 
-func (sa NoUpdateSA) UpdateRegistration(_ context.Context, _ *corepb.Registration) (*emptypb.Empty, error) {
+func (sa NoUpdateSA) UpdateRegistration(_ context.Context, _ *corepb.Registration, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return nil, fmt.Errorf("UpdateRegistration() is mocked to always error")
 }
 
@@ -844,17 +846,7 @@ type mockSAWithBadGetValidAuthz struct {
 	mocks.StorageAuthority
 }
 
-func (m mockSAWithBadGetValidAuthz) GetValidAuthorizations(
-	ctx context.Context,
-	registrationID int64,
-	names []string,
-	now time.Time) (map[string]*core.Authorization, error) {
-	return nil, fmt.Errorf("mockSAWithBadGetValidAuthz always errors!")
-}
-
-func (m mockSAWithBadGetValidAuthz) GetValidAuthorizations2(
-	ctx context.Context,
-	_ *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
+func (m mockSAWithBadGetValidAuthz) GetValidAuthorizations2(ctx context.Context, _ *sapb.GetValidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	return nil, fmt.Errorf("mockSAWithBadGetValidAuthz always errors!")
 }
 
@@ -867,8 +859,7 @@ func TestReuseAuthorizationFaultySA(t *testing.T) {
 
 	// Use a mock SA that always fails `GetValidAuthorizations` and
 	// `GetValidAuthorizations2`
-	mockSA := &mockSAWithBadGetValidAuthz{}
-	ra.SA = mockSA
+	ra.SA = &mockSAWithBadGetValidAuthz{}
 
 	// We expect that calling NewAuthorization will fail gracefully with an error
 	// about the existing validations
@@ -1451,7 +1442,7 @@ type mockSAWithNameCounts struct {
 	clk        clock.FakeClock
 }
 
-func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
+func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
 	expectedLatest := m.clk.Now().UnixNano()
 	if req.Range.Latest != expectedLatest {
 		m.t.Errorf("incorrect latest: got '%d', expected '%d'", req.Range.Latest, expectedLatest)
@@ -1557,7 +1548,7 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 
 	// Create a mock SA that has a count of already issued certificates for some
 	// test names
-	mockSA := &mockSAWithFQDNSet{
+	ra.SA = &mockSAWithFQDNSet{
 		nameCounts: &sapb.CountByNames{
 			Counts: map[string]int64{
 				"under.example.com": dupeCertLimit - 1,
@@ -1567,7 +1558,6 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 		},
 		t: t,
 	}
-	ra.SA = mockSA
 
 	testCases := []struct {
 		Name        string
@@ -1721,7 +1711,7 @@ func (m mockSAWithFQDNSet) addFQDNSet(names []string) {
 }
 
 // Search for a set of domain names in the FQDN set map
-func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, req *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {
+func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, req *sapb.FQDNSetExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
 	hash := m.hashNames(req.Domains)
 	if _, exists := m.fqdnSet[hash]; exists {
 		return &sapb.Exists{Exists: true}, nil
@@ -1730,7 +1720,7 @@ func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, req *sapb.FQDNSetExi
 }
 
 // Return a map of domain -> certificate count.
-func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
+func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
 	counts := make(map[string]int64)
 	for _, name := range req.Names {
 		if count, ok := m.nameCounts.Counts[name]; ok {
@@ -1740,7 +1730,7 @@ func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, req *sa
 	return &sapb.CountByNames{Counts: counts}, nil
 }
 
-func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
+func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, req *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
 	var total int64
 	for _, name := range req.Domains {
 		if count, ok := m.nameCounts.Counts[name]; ok {
@@ -1960,15 +1950,7 @@ func newMockSAWithRecentAndOlder(recent, older time.Time) *mockSAWithRecentAndOl
 	}
 }
 
-func (m *mockSAWithRecentAndOlder) GetValidAuthorizations(
-	ctx context.Context,
-	registrationID int64,
-	names []string,
-	now time.Time) (map[string]*core.Authorization, error) {
-	return m.authzMap, nil
-}
-
-func (m *mockSAWithRecentAndOlder) GetValidAuthorizations2(_ context.Context, _ *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
+func (m *mockSAWithRecentAndOlder) GetValidAuthorizations2(_ context.Context, _ *sapb.GetValidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	return sa.AuthzMapToPB(m.authzMap)
 }
 
@@ -2404,64 +2386,11 @@ type mockSAUnsafeAuthzReuse struct {
 	mocks.StorageAuthority
 }
 
-// GetAuthorizations returns a _bizarre_ authorization for "*.zombo.com" that
+// GetAuthorizations2 returns a _bizarre_ authorization for "*.zombo.com" that
 // was validated by HTTP-01. This should never happen in real life since the
 // name is a wildcard. We use this mock to test that we reject this bizarre
 // situation correctly.
-func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations(
-	ctx context.Context,
-	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	expires := time.Now()
-	authzs := map[string]*core.Authorization{
-		"*.zombo.com": {
-			// A static fake ID we can check for in a unit test
-			ID:             "bad-bad-not-good",
-			Identifier:     identifier.DNSIdentifier("*.zombo.com"),
-			RegistrationID: req.RegistrationID,
-			// Authz is valid
-			Status:  "valid",
-			Expires: &expires,
-			Challenges: []core.Challenge{
-				// HTTP-01 challenge is valid
-				{
-					Type:   core.ChallengeTypeHTTP01, // The dreaded HTTP-01! X__X
-					Status: core.StatusValid,
-				},
-				// DNS-01 challenge is pending
-				{
-					Type:   core.ChallengeTypeDNS01,
-					Status: core.StatusPending,
-				},
-			},
-		},
-		"zombo.com": {
-			// A static fake ID we can check for in a unit test
-			ID:             "reused-valid-authz",
-			Identifier:     identifier.DNSIdentifier("zombo.com"),
-			RegistrationID: req.RegistrationID,
-			// Authz is valid
-			Status:  "valid",
-			Expires: &expires,
-			Challenges: []core.Challenge{
-				// HTTP-01 challenge is valid
-				{
-					Type:   core.ChallengeTypeHTTP01,
-					Status: core.StatusValid,
-				},
-				// DNS-01 challenge is pending
-				{
-					Type:   core.ChallengeTypeDNS01,
-					Status: core.StatusPending,
-				},
-			},
-		},
-	}
-	return sa.AuthzMapToPB(authzs)
-}
-
-func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations2(
-	ctx context.Context,
-	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
+func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	expires := time.Now()
 	authzs := map[string]*core.Authorization{
 		"*.zombo.com": {
@@ -2511,19 +2440,7 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations2(
 
 }
 
-// AddPendingAuthorizations is a mock that just returns a fake pending authz ID
-// that is != "bad-bad-not-good"
-func (sa *mockSAUnsafeAuthzReuse) AddPendingAuthorizations(
-	_ context.Context,
-	_ *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
-	return &sapb.AuthorizationIDs{
-		Ids: []string{
-			"abcdefg",
-		},
-	}, nil
-}
-
-func (sa *mockSAUnsafeAuthzReuse) NewAuthorizations2(_ context.Context, _ *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
+func (sa *mockSAUnsafeAuthzReuse) NewAuthorizations2(_ context.Context, _ *sapb.AddPendingAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorization2IDs, error) {
 	return &sapb.Authorization2IDs{
 		Ids: []int64{5},
 	}, nil
@@ -2762,33 +2679,9 @@ type mockSANearExpiredAuthz struct {
 	expiry time.Time
 }
 
-// GetAuthorizations is a mock that always returns a valid authorization for
+// GetAuthorizations2 is a mock that always returns a valid authorization for
 // "zombo.com" very near to expiry
-func (msa *mockSANearExpiredAuthz) GetAuthorizations(
-	ctx context.Context,
-	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	authzs := map[string]*core.Authorization{
-		"zombo.com": {
-			// A static fake ID we can check for in a unit test
-			ID:             "near-expired-authz",
-			Identifier:     identifier.DNSIdentifier("zombo.com"),
-			RegistrationID: req.RegistrationID,
-			Expires:        &msa.expiry,
-			Status:         "valid",
-			Challenges: []core.Challenge{
-				{
-					Type:   core.ChallengeTypeHTTP01,
-					Status: core.StatusValid,
-				},
-			},
-		},
-	}
-	return sa.AuthzMapToPB(authzs)
-}
-
-func (msa *mockSANearExpiredAuthz) GetAuthorizations2(
-	ctx context.Context,
-	req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
+func (msa *mockSANearExpiredAuthz) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	authzs := map[string]*core.Authorization{
 		"zombo.com": {
 			// A static fake ID we can check for in a unit test
@@ -2808,19 +2701,7 @@ func (msa *mockSANearExpiredAuthz) GetAuthorizations2(
 	return sa.AuthzMapToPB(authzs)
 }
 
-// AddPendingAuthorizations is a mock that just returns a fake pending authz ID
-// that is != "near-expired-authz"
-func (msa *mockSANearExpiredAuthz) AddPendingAuthorizations(
-	_ context.Context,
-	_ *sapb.AddPendingAuthorizationsRequest) (*sapb.AuthorizationIDs, error) {
-	return &sapb.AuthorizationIDs{
-		Ids: []string{
-			"abcdefg",
-		},
-	}, nil
-}
-
-func (msa *mockSANearExpiredAuthz) NewAuthorizations2(_ context.Context, _ *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
+func (msa *mockSANearExpiredAuthz) NewAuthorizations2(_ context.Context, _ *sapb.AddPendingAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorization2IDs, error) {
 	return &sapb.Authorization2IDs{
 		Ids: []int64{5},
 	}, nil
@@ -3802,23 +3683,19 @@ type mockSAPreviousValidations struct {
 	existsDomain string
 }
 
-func (ms *mockSAPreviousValidations) PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (*sapb.Exists, error) {
+func (ms *mockSAPreviousValidations) PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
 	return &sapb.Exists{Exists: req.Domain == ms.existsDomain}, nil
 }
 
-func (ms *mockSAPreviousValidations) GetPendingAuthorization(_ context.Context, _ *sapb.GetPendingAuthorizationRequest) (*core.Authorization, error) {
-	return nil, berrors.NotFoundError("")
-}
-
-func (ms *mockSAPreviousValidations) GetValidAuthorizations2(_ context.Context, _ *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
+func (ms *mockSAPreviousValidations) GetValidAuthorizations2(_ context.Context, _ *sapb.GetValidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	return &sapb.Authorizations{}, nil
 }
 
-func (ms *mockSAPreviousValidations) GetPendingAuthorization2(_ context.Context, _ *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
+func (ms *mockSAPreviousValidations) GetPendingAuthorization2(_ context.Context, _ *sapb.GetPendingAuthorizationRequest, _ ...grpc.CallOption) (*corepb.Authorization, error) {
 	return nil, berrors.NotFoundError("")
 }
 
-func (ms *mockSAPreviousValidations) NewAuthorizations2(_ context.Context, _ *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
+func (ms *mockSAPreviousValidations) NewAuthorizations2(_ context.Context, _ *sapb.AddPendingAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorization2IDs, error) {
 	return &sapb.Authorization2IDs{
 		Ids: []int64{1},
 	}, nil
@@ -3827,10 +3704,9 @@ func (ms *mockSAPreviousValidations) NewAuthorizations2(_ context.Context, _ *sa
 func TestDisableNewV1Validations(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ms := mockSAPreviousValidations{
+	ra.SA = &mockSAPreviousValidations{
 		existsDomain: "bloop-example.com",
 	}
-	ra.SA = &ms
 
 	_ = features.Set(map[string]bool{"V1DisableNewValidations": true})
 	defer features.Reset()
@@ -3931,7 +3807,7 @@ type mockSABlockedKey struct {
 	added *sapb.AddBlockedKeyRequest
 }
 
-func (msabk *mockSABlockedKey) AddBlockedKey(_ context.Context, req *sapb.AddBlockedKeyRequest) (*emptypb.Empty, error) {
+func (msabk *mockSABlockedKey) AddBlockedKey(_ context.Context, req *sapb.AddBlockedKeyRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	msabk.added = req
 	return &emptypb.Empty{}, nil
 }

@@ -41,7 +41,7 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/letsencrypt/boulder/test/inmem"
+	ira "github.com/letsencrypt/boulder/test/inmem/ra"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
@@ -927,7 +927,7 @@ func TestIssueCertificate(t *testing.T) {
 		PEM: mockCertPEM,
 	}
 	ra.PA = &mockPA{}
-	wfe.RA = inmem.RA{Impl: ra}
+	wfe.RA = ira.RA{Impl: ra}
 	responseWriter := httptest.NewRecorder()
 
 	// GET instead of POST should be rejected
@@ -1535,10 +1535,10 @@ func makeRevokeRequestJSON(reason *revocation.Reason) ([]byte, error) {
 // registration when GetRegistrationByKey is called, and we want to get a
 // berrors.NotFound type error for tests that pass regCheck = false to verifyPOST.
 type mockSANoSuchRegistration struct {
-	core.StorageGetter
+	sapb.StorageAuthorityGetterClient
 }
 
-func (msa mockSANoSuchRegistration) GetRegistrationByKey(_ context.Context, _ *sapb.JSONWebKey) (*corepb.Registration, error) {
+func (msa mockSANoSuchRegistration) GetRegistrationByKey(_ context.Context, _ *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	return nil, berrors.NotFoundError("reg not found")
 }
 
@@ -2274,10 +2274,10 @@ func TestRequestTooLong(t *testing.T) {
 }
 
 type mockSAGetRegByKeyFails struct {
-	core.StorageGetter
+	sapb.StorageAuthorityGetterClient
 }
 
-func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(_ context.Context, _ *sapb.JSONWebKey) (*corepb.Registration, error) {
+func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(_ context.Context, _ *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	return nil, errors.New("whoops")
 }
 
@@ -2316,10 +2316,10 @@ func TestNewRegWhenGetRegByKeyFails(t *testing.T) {
 }
 
 type mockSAGetRegByKeyNotFound struct {
-	core.StorageGetter
+	sapb.StorageAuthorityGetterClient
 }
 
-func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(_ context.Context, _ *sapb.JSONWebKey) (*corepb.Registration, error) {
+func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(_ context.Context, _ *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	return nil, berrors.NotFoundError("not found")
 }
 
@@ -2367,10 +2367,10 @@ func TestLogPayload(t *testing.T) {
 }
 
 type mockSADifferentStoredKey struct {
-	core.StorageGetter
+	sapb.StorageAuthorityGetterClient
 }
 
-func (sa mockSADifferentStoredKey) GetRegistrationByKey(_ context.Context, _ *sapb.JSONWebKey) (*corepb.Registration, error) {
+func (sa mockSADifferentStoredKey) GetRegistrationByKey(_ context.Context, _ *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	return &corepb.Registration{
 		Key: []byte(test2KeyPublicJSON),
 	}, nil
@@ -2719,14 +2719,14 @@ func TestNewCertificateSCTError(t *testing.T) {
 }
 
 type mockSAGetRegByKeyNotFoundAfterVerify struct {
-	core.StorageGetter
+	sapb.StorageAuthorityGetterClient
 	verified bool
 }
 
-func (sa *mockSAGetRegByKeyNotFoundAfterVerify) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error) {
+func (sa *mockSAGetRegByKeyNotFoundAfterVerify) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	if !sa.verified {
 		sa.verified = true
-		return sa.StorageGetter.GetRegistrationByKey(ctx, req)
+		return sa.StorageAuthorityGetterClient.GetRegistrationByKey(ctx, req)
 	}
 	return nil, errors.New("broke")
 }

@@ -80,7 +80,7 @@ type config struct {
 	}
 }
 
-func setupWFE(c config, logger blog.Logger, stats prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, core.StorageAuthority, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient) {
+func setupWFE(c config, logger blog.Logger, stats prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityClient, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient) {
 	tlsConfig, err := c.WFE.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
@@ -91,7 +91,7 @@ func setupWFE(c config, logger blog.Logger, stats prometheus.Registerer, clk clo
 
 	saConn, err := bgrpc.ClientSetup(c.WFE.SAService, tlsConfig, clientMetrics, clk, grpc.CancelTo408Interceptor)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
+	sac := sapb.NewStorageAuthorityClient(saConn)
 
 	var rns noncepb.NonceServiceClient
 	npm := map[string]noncepb.NonceServiceClient{}

@@ -1,4 +1,4 @@
-package inmem
+package ra
 
 import (
 	"context"
@@ -12,7 +12,8 @@ import (
 )
 
 // RA meets the `rapb.RegistrationAuthorityClient` interface and acts as a
-// wrapper for an inner `*ra.RegistrationAuthorityImpl`. Only methods used by
+// wrapper for an inner `*ra.RegistrationAuthorityImpl` (which in turn meets
+// the `rapb.RegistrationAuthorityServer` interface). Only methods used by
 // unit tests need to be implemented.
 type RA struct {
 	rapb.RegistrationAuthorityClient
@@ -20,11 +21,11 @@ type RA struct {
 }
 
 // AdministrativelyRevokeCertificate is a wrapper for `*ra.RegistrationAuthorityImpl.AdministrativelyRevokeCertificate`.
-func (ra RA) AdministrativelyRevokeCertificate(ctx context.Context, in *rapb.AdministrativelyRevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	return ra.Impl.AdministrativelyRevokeCertificate(ctx, in)
+func (ra RA) AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return ra.Impl.AdministrativelyRevokeCertificate(ctx, req)
 }
 
 // NewCertificate is a wrapper for `*ra.RegistrationAuthorityImpl.NewCertificate`.
-func (ra RA) NewCertificate(ctx context.Context, in *rapb.NewCertificateRequest, _ ...grpc.CallOption) (*proto.Certificate, error) {
-	return ra.Impl.NewCertificate(ctx, in)
+func (ra RA) NewCertificate(ctx context.Context, req *rapb.NewCertificateRequest, _ ...grpc.CallOption) (*proto.Certificate, error) {
+	return ra.Impl.NewCertificate(ctx, req)
 }

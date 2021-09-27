@@ -25,7 +25,8 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/letsencrypt/boulder/test/inmem"
+	ira "github.com/letsencrypt/boulder/test/inmem/ra"
+	isa "github.com/letsencrypt/boulder/test/inmem/sa"
 	"github.com/letsencrypt/boulder/test/vars"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -59,7 +60,7 @@ func TestRevokeBatch(t *testing.T) {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
 	defer test.ResetSATestDatabase(t)
-	reg := satest.CreateWorkingRegistration(t, ssa)
+	reg := satest.CreateWorkingRegistration(t, isa.SA{Impl: ssa})
 
 	issuer, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
 	test.AssertNotError(t, err, "Failed to load test issuer")
@@ -82,9 +83,9 @@ func TestRevokeBatch(t *testing.T) {
 		&mockPurger{},
 		[]*issuance.Certificate{issuer},
 	)
-	ra.SA = ssa
+	ra.SA = isa.SA{Impl: ssa}
 	ra.CA = &mockCA{}
-	rac := inmem.RA{Impl: ra}
+	rac := ira.RA{Impl: ra}
 
 	serialFile, err := ioutil.TempFile("", "serials")
 	test.AssertNotError(t, err, "failed to open temp file")
