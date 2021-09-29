@@ -2204,31 +2204,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// sub-second values, so truncate here.
 	newOrder.Expires = minExpiry.Truncate(time.Second).UnixNano()
 
-	var storedOrder *corepb.Order
-	if features.Enabled(features.StreamlineOrderAndAuthzs) {
-		newOrderAndAuthzsReq := &sapb.NewOrderAndAuthzsRequest{
-			NewOrder:  newOrder,
-			NewAuthzs: newAuthzs,
-		}
-		storedOrder, err = ra.SA.NewOrderAndAuthzs(ctx, newOrderAndAuthzsReq)
-	} else {
-		// If new authorizations are needed, call NewAuthorizations2. Also check
-		// whether the newly created pending authz's have an expiry lower than minExpiry
-		if len(newAuthzs) > 0 {
-			req := sapb.AddPendingAuthorizationsRequest{Authz: newAuthzs}
-			authzIDs, err := ra.SA.NewAuthorizations2(ctx, &req)
-			if err != nil {
-				return nil, err
-			}
-			if len(authzIDs.Ids) == 0 {
-				// This should never happen.
-				return nil, errors.New("received 0 authzIDs after requesting new authzs")
-			}
-			newOrder.V2Authorizations = append(newOrder.V2Authorizations, authzIDs.Ids...)
-		}
-
-		storedOrder, err = ra.SA.NewOrder(ctx, newOrder)
+	newOrderAndAuthzsReq := &sapb.NewOrderAndAuthzsRequest{
+		NewOrder:  newOrder,
+		NewAuthzs: newAuthzs,
 	}
+	storedOrder, err := ra.SA.NewOrderAndAuthzs(ctx, newOrderAndAuthzsReq)
 	if err != nil {
 		return nil, err
 	}
