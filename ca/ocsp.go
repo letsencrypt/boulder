@@ -135,7 +135,7 @@ func (oi *ocspImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequ
 		Status:       ocspStatusToCode[req.Status],
 		SerialNumber: serial,
 		ThisUpdate:   now,
-		NextUpdate:   now.Add(oi.ocspLifetime),
+		NextUpdate:   now.Add(oi.ocspLifetime - time.Second),
 	}
 	if tbsResponse.Status == ocsp.Revoked {
 		tbsResponse.RevokedAt = time.Unix(0, req.RevokedAt)
