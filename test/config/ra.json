@@ -47,7 +47,9 @@
       ]
     },
     "features": {
-      "StoreRevokerInfo": true
+      "StoreRevokerInfo": true,
+      "RestrictRSAKeySizes": true,
+      "StreamlineOrderAndAuthzs": true
     },
     "CTLogGroups2": [
       {
