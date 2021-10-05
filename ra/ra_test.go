@@ -2445,7 +2445,7 @@ func (sa *mockSAUnsafeAuthzReuse) NewAuthorizations2(_ context.Context, _ *sapb.
 
 func (sa *mockSAUnsafeAuthzReuse) NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
 	r := req.NewOrder
-	for _ = range req.NewAuthzs {
+	for range req.NewAuthzs {
 		r.V2Authorizations = append(r.V2Authorizations, mrand.Int63())
 	}
 	return sa.NewOrder(ctx, r)
