@@ -66,6 +66,8 @@ const (
 	getAuthzPath     = getAPIPrefix + "authz-v3/"
 	getChallengePath = getAPIPrefix + "chall-v3/"
 	getCertPath      = getAPIPrefix + "cert/"
+
+	renewalInfoPath = getAPIPrefix + "renewalInfo/"
 )
 
 var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
@@ -393,6 +395,10 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	wfe.HandleFunc(m, getAuthzPath, wfe.Authorization, "GET")
 	wfe.HandleFunc(m, getChallengePath, wfe.Challenge, "GET")
 	wfe.HandleFunc(m, getCertPath, wfe.Certificate, "GET")
+	// Endpoint for draft-aaron-ari
+	if features.Enabled(features.ServeRenewalInfo) {
+		wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, "GET")
+	}
 
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
@@ -464,6 +470,10 @@ func (wfe *WebFrontEndImpl) Directory(
 		"revokeCert": revokeCertPath,
 		"newOrder":   newOrderPath,
 		"keyChange":  rolloverPath,
+	}
+
+	if features.Enabled(features.ServeRenewalInfo) {
+		directoryEndpoints["renewalInfo"] = renewalInfoPath
 	}
 
 	if request.Method == http.MethodPost {
@@ -2315,6 +2325,53 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to write finalize order response"), err)
+		return
+	}
+}
+
+// RenewalInfo is used to get information about the suggested renewal window
+// for the given certificate. It only accepts unauthenticated GET requests.
+func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	if !features.Enabled(features.ServeRenewalInfo) {
+		wfe.sendError(response, logEvent, probs.NotFound("Feature not enabled"), nil)
+		return
+	}
+
+	uid := strings.SplitN(request.URL.Path, "/", 3)
+	if len(uid) != 3 {
+		wfe.sendError(response, logEvent, probs.Malformed("Path did not include exactly issuerKeyHash, issuerNameHash, and serialNumber"), nil)
+		return
+	}
+
+	// For now, discard issuerKeyHash and issuerNameHash, because *we* know
+	// (Boulder implementation-specific) that we do not re-use the same serial
+	// number across multiple different issuers.
+	serial := uid[2]
+	if !core.ValidSerial(serial) {
+		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
+		return
+	}
+	logEvent.Extra["RequestedSerial"] = serial
+	beeline.AddFieldToTrace(ctx, "request.serial", serial)
+
+	cert, err := wfe.SA.GetCertificate(ctx, &sapb.Serial{Serial: serial})
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
+	}
+
+	validitySeconds := (cert.Expires + 1) - cert.Issued
+	renewalOffset := time.Duration(int64(0.66 * float64(validitySeconds)))
+	idealRenewal := time.Unix(0, cert.Expires).UTC().Add(-renewalOffset)
+	ri := core.RenewalInfo{
+		SuggestedWindow: core.SuggestedWindow{
+			Start: idealRenewal.Add(-24 * time.Hour),
+			End:   idealRenewal.Add(24 * time.Hour),
+		},
+	}
+
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, ri)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
 		return
 	}
 }
