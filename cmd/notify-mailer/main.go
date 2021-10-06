@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"encoding/csv"
@@ -572,4 +572,8 @@ func main() {
 	cmd.FailOnError(err, "Couldn't complete")
 
 	log.Info("Completed successfully")
+}
+
+func init() {
+	cmd.RegisterCommand("notify-mailer", main)
 }

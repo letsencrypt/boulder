@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"bufio"
@@ -254,4 +254,8 @@ func main() {
 		logger.AuditErrf("The following issuances were missing CAA checks:\n%s", errStr)
 		os.Exit(1)
 	}
+}
+
+func init() {
+	cmd.RegisterCommand("caa-log-checker", main)
 }

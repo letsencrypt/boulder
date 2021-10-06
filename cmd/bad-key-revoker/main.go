@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"bytes"
@@ -538,4 +538,8 @@ func (bkr *badKeyRevoker) backoff() {
 // reset sets the backoff ticker and duration to zero.
 func (bkr *badKeyRevoker) backoffReset() {
 	bkr.backoffTicker = 0
+}
+
+func init() {
+	cmd.RegisterCommand("bad-key-revoker", main)
 }

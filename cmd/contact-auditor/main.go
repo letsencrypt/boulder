@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"database/sql"
@@ -222,4 +222,8 @@ func main() {
 		resultsFile.Close()
 	}
 
+}
+
+func init() {
+	cmd.RegisterCommand("contact-auditor", main)
 }

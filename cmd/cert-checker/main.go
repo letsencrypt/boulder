@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"bytes"
@@ -446,4 +446,8 @@ func main() {
 	)
 	err = checker.issuedReport.dump()
 	cmd.FailOnError(err, "Failed to dump results: %s\n")
+}
+
+func init() {
+	cmd.RegisterCommand("cert-checker", main)
 }

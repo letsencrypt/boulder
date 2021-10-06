@@ -106,6 +106,9 @@ def main():
     if not (args.run_chisel or args.custom  or args.run_go is not None):
         raise(Exception("must run at least one of the letsencrypt or chisel tests with --chisel, --gotest, or --custom"))
 
+    if not startservers.install(race_detection=race_detection):
+        raise(Exception("failed to build"))
+
     # Setup issuance hierarchy
     startservers.setupHierarchy()
 
@@ -113,19 +116,19 @@ def main():
         now = datetime.datetime.utcnow()
 
         six_months_ago = now+datetime.timedelta(days=-30*6)
-        if not startservers.start(race_detection=race_detection, fakeclock=fakeclock(six_months_ago)):
+        if not startservers.start(fakeclock=fakeclock(six_months_ago)):
             raise(Exception("startservers failed (mocking six months ago)"))
         v1_integration.caa_client = caa_client = chisel.make_client()
         setup_six_months_ago()
         startservers.stop()
 
         twenty_days_ago = now+datetime.timedelta(days=-20)
-        if not startservers.start(race_detection=race_detection, fakeclock=fakeclock(twenty_days_ago)):
+        if not startservers.start(fakeclock=fakeclock(twenty_days_ago)):
             raise(Exception("startservers failed (mocking twenty days ago)"))
         setup_twenty_days_ago()
         startservers.stop()
 
-    if not startservers.start(race_detection=race_detection, fakeclock=None):
+    if not startservers.start(fakeclock=None):
         raise(Exception("startservers failed"))
 
     if args.run_chisel:

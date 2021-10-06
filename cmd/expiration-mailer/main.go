@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"bytes"
@@ -630,4 +630,8 @@ func main() {
 		err = m.findExpiringCertificates()
 		cmd.FailOnError(err, "expiration-mailer has failed")
 	}
+}
+
+func init() {
+	cmd.RegisterCommand("expiration-mailer", main)
 }

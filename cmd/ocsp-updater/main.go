@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"context"
@@ -472,4 +472,8 @@ func main() {
 	for {
 		updater.tick()
 	}
+}
+
+func init() {
+	cmd.RegisterCommand("ocsp-updater", main)
 }
