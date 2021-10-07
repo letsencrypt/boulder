@@ -321,7 +321,7 @@ func TestRequestValid(t *testing.T) {
 				NotBefore: fc.Now(),
 				NotAfter:  fc.Now().Add(time.Hour),
 			},
-			expectedError: "serial must be between 8 and 20 bytes",
+			expectedError: "serial must be between 8 and 19 bytes",
 		},
 		{
 			name: "serial too long",
@@ -333,9 +333,9 @@ func TestRequestValid(t *testing.T) {
 				PublicKey: &ecdsa.PublicKey{},
 				NotBefore: fc.Now(),
 				NotAfter:  fc.Now().Add(time.Hour),
-				Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 8, 9, 0},
+				Serial:    []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 			},
-			expectedError: "serial must be between 8 and 20 bytes",
+			expectedError: "serial must be between 8 and 19 bytes",
 		},
 		{
 			name: "good",
