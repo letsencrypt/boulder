@@ -561,7 +561,7 @@ func logDNSError(
 			}
 		}
 
-		logger.Errf(
+		logger.Infof(
 			"logDNSError ID mismatch chosenServer=[%s] hostname=[%s] respHostname=[%s] queryType=[%s] err=[%s] msg=[%s] resp=[%s]",
 			chosenServer,
 			hostname,
@@ -572,7 +572,7 @@ func logDNSError(
 			encodedResp)
 	} else {
 		// Otherwise log a general DNS error
-		logger.Errf("logDNSError chosenServer=[%s] hostname=[%s] queryType=[%s] err=[%s]",
+		logger.Infof("logDNSError chosenServer=[%s] hostname=[%s] queryType=[%s] err=[%s]",
 			chosenServer,
 			hostname,
 			queryType,
