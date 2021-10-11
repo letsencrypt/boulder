@@ -52,6 +52,10 @@ func TestWillingToIssue(t *testing.T) {
 		{`www.-ombo.com`, errInvalidDNSCharacter}, // Label starts with '-'
 		{`www.zomb-.com`, errInvalidDNSCharacter}, // Label ends with '-'
 		{`xn--.net`, errInvalidDNSCharacter},      // Label ends with '-'
+		{`-0b.net`, errInvalidDNSCharacter},       // First label begins with '-'
+		{`-0.net`, errInvalidDNSCharacter},        // First label begins with '-'
+		{`-.net`, errInvalidDNSCharacter},         // First label is only '-'
+		{`---.net`, errInvalidDNSCharacter},       // First label is only hyphens
 		{`0`, errTooFewLabels},
 		{`1`, errTooFewLabels},
 		{`*`, errInvalidDNSCharacter},
@@ -93,6 +97,10 @@ func TestWillingToIssue(t *testing.T) {
 		{`www.zombo.163`, errNonPublic},
 		{`xn--109-3veba6djs1bfxlfmx6c9g.xn--f1awi.xn--p1ai`, errMalformedIDN}, // Not in Unicode NFC
 		{`bq--abwhky3f6fxq.jakacomo.com`, errInvalidRLDH},
+		// Three hyphens starting at third second char of first label.
+		{`bq---abwhky3f6fxq.jakacomo.com`, errInvalidRLDH},
+		// Three hyphens starting at second char of first label.
+		{`h---test.hk2yz.org`, errInvalidRLDH},
 	}
 
 	shouldBeTLDError := []string{
