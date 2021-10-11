@@ -110,15 +110,13 @@ func SelectCertificates(s db.Selector, q string, args map[string]interface{}) ([
 	return models, err
 }
 
-// CertStatusMetadataFields returns a slice of column names for rows in the
-// certificateStatus table.
-func CertStatusMetadataFields() []string {
+func certStatusMetadataFields() []string {
 	return []string{"serial", "status", "ocspLastUpdated", "revokedDate", "revokedReason", "lastExpirationNagSent", "notAfter", "isExpired", "issuerID"}
 }
 
 // TODO(#5655) Remove once #5642 has been deployed to staging and production.
 func certStatusMetadataFieldsSelect(restOfQuery string) string {
-	fields := strings.Join(CertStatusMetadataFields(), ",")
+	fields := strings.Join(certStatusMetadataFields(), ",")
 	return fmt.Sprintf("SELECT %s FROM certificateStatus %s", fields, restOfQuery)
 }
 
@@ -137,7 +135,7 @@ func SelectCertificateStatusMetadata(s db.Selector, q string, args ...interface{
 }
 
 func certStatusFields() []string {
-	return append(CertStatusMetadataFields(), "ocspResponse")
+	return append(certStatusMetadataFields(), "ocspResponse")
 }
 
 func certStatusFieldsSelect(restOfQuery string) string {
