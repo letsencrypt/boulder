@@ -164,7 +164,7 @@ const (
 
 var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,62}$")
 var punycodeRegexp = regexp.MustCompile("^xn--")
-var idnReservedRegexp = regexp.MustCompile("^[a-z0-9]{2}--")
+var idnReservedRegexp = regexp.MustCompile("^[a-z0-9-]{2}--")
 
 func isDNSCharacter(ch byte) bool {
 	return ('a' <= ch && ch <= 'z') ||
