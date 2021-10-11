@@ -13,23 +13,23 @@ func _() {
 	_ = x[StripDefaultSchemePort-2]
 	_ = x[NonCFSSLSigner-3]
 	_ = x[StoreIssuerInfo-4]
-	_ = x[CAAValidationMethods-5]
-	_ = x[CAAAccountURI-6]
-	_ = x[EnforceMultiVA-7]
-	_ = x[MultiVAFullResults-8]
-	_ = x[MandatoryPOSTAsGET-9]
-	_ = x[AllowV1Registration-10]
-	_ = x[V1DisableNewValidations-11]
-	_ = x[StoreRevokerInfo-12]
-	_ = x[RestrictRSAKeySizes-13]
-	_ = x[FasterNewOrdersRateLimit-14]
-	_ = x[ECDSAForAll-15]
-	_ = x[StreamlineOrderAndAuthzs-16]
+	_ = x[StreamlineOrderAndAuthzs-5]
+	_ = x[CAAValidationMethods-6]
+	_ = x[CAAAccountURI-7]
+	_ = x[EnforceMultiVA-8]
+	_ = x[MultiVAFullResults-9]
+	_ = x[MandatoryPOSTAsGET-10]
+	_ = x[AllowV1Registration-11]
+	_ = x[V1DisableNewValidations-12]
+	_ = x[StoreRevokerInfo-13]
+	_ = x[RestrictRSAKeySizes-14]
+	_ = x[FasterNewOrdersRateLimit-15]
+	_ = x[ECDSAForAll-16]
 }
 
-const _FeatureFlag_name = "unusedPrecertificateRevocationStripDefaultSchemePortNonCFSSLSignerStoreIssuerInfoCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationV1DisableNewValidationsStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimitECDSAForAllStreamlineOrderAndAuthzs"
+const _FeatureFlag_name = "unusedPrecertificateRevocationStripDefaultSchemePortNonCFSSLSignerStoreIssuerInfoStreamlineOrderAndAuthzsCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationV1DisableNewValidationsStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimitECDSAForAll"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 30, 52, 66, 81, 101, 114, 128, 146, 164, 183, 206, 222, 241, 265, 276, 300}
+var _FeatureFlag_index = [...]uint16{0, 6, 30, 52, 66, 81, 105, 125, 138, 152, 170, 188, 207, 230, 246, 265, 289, 300}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {
