@@ -21,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/sa"
 )
 
 // ocspDB and ocspReadOnlyDB are interfaces collecting the `sql.DB` methods that
@@ -175,21 +176,10 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	}
 	args = append(args, batchSize)
 
-	certStatusMetadataFields := []string{
-		"serial",
-		"status",
-		"ocspLastUpdated",
-		"revokedDate",
-		"revokedReason",
-		"notAfter",
-		"isExpired",
-		"issuerID",
-	}
-
 	rows, err := updater.readOnlyDb.Query(
 		fmt.Sprintf(
 			"SELECT %s FROM certificateStatus %s",
-			strings.Join(certStatusMetadataFields, ","),
+			strings.Join(sa.CertStatusMetadataFields(), ","),
 			updater.queryBody,
 		),
 		args...,
@@ -207,6 +197,7 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 			&status.OCSPLastUpdated,
 			&status.RevokedDate,
 			&status.RevokedReason,
+			&status.LastExpirationNagSent,
 			&status.NotAfter,
 			&status.IsExpired,
 			&status.IssuerID,
