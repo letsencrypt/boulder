@@ -29,7 +29,7 @@
             "emailTemplate": "test/example-bad-key-revoker-template"
         },
         "maximumRevocations": 15,
-        "maximumReplicationLag": "15m",
+        "maximumReplicationLag": "1s",
         "findCertificatesBatchSize": 10,
         "interval": "1s",
         "backoffIntervalMax": "60s"

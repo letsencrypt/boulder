@@ -213,12 +213,12 @@ func TestBadKeyRevoker(t *testing.T) {
 	test.AssertNotError(t, err, "ReqDER failed")
 
 	for _, cert := range certs {
-		for i := 0; i < 5; i++ {
+		for i := 0; i < 10; i++ {
 			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			if err == nil {
 				break
 			}
-			if i == 5 {
+			if i == 9 {
 				t.Fatal("timed out waiting for revoked OCSP status")
 			}
 			time.Sleep(time.Second)
