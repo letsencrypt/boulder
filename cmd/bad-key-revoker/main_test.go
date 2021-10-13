@@ -54,9 +54,10 @@ func TestSelectUncheckedRows(t *testing.T) {
 	fc := clock.NewFake()
 
 	bkr := &badKeyRevoker{
-		dbMap:  dbMap,
-		logger: blog.NewMock(),
-		clk:    fc,
+		dbMap:         dbMap,
+		dbReadOnlyMap: dbMap,
+		logger:        blog.NewMock(),
+		clk:           fc,
 	}
 
 	hashA, hashB, hashC := randHash(t), randHash(t), randHash(t)
@@ -184,7 +185,7 @@ func TestFindUnrevokedNoRows(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
 
-	bkr := &badKeyRevoker{dbMap: dbMap, serialBatchSize: 1, maxRevocations: 10, clk: fc}
+	bkr := &badKeyRevoker{dbMap: dbMap, dbReadOnlyMap: dbMap, serialBatchSize: 1, maxRevocations: 10, clk: fc}
 	_, err = bkr.findUnrevoked(uncheckedBlockedKey{KeyHash: hashA})
 	test.Assert(t, db.IsNoRows(err), "expected NoRows error")
 }
@@ -198,7 +199,7 @@ func TestFindUnrevoked(t *testing.T) {
 
 	regID := insertRegistration(t, dbMap, fc)
 
-	bkr := &badKeyRevoker{dbMap: dbMap, serialBatchSize: 1, maxRevocations: 10, clk: fc}
+	bkr := &badKeyRevoker{dbMap: dbMap, dbReadOnlyMap: dbMap, serialBatchSize: 1, maxRevocations: 10, clk: fc}
 
 	hashA := randHash(t)
 	// insert valid, unexpired
@@ -228,7 +229,7 @@ func TestResolveContacts(t *testing.T) {
 
 	fc := clock.NewFake()
 
-	bkr := &badKeyRevoker{dbMap: dbMap, clk: fc}
+	bkr := &badKeyRevoker{dbMap: dbMap, dbReadOnlyMap: dbMap, clk: fc}
 
 	regIDA := insertRegistration(t, dbMap, fc)
 	regIDB := insertRegistration(t, dbMap, fc, "example.com", "example-2.com")
@@ -282,7 +283,7 @@ func TestRevokeCerts(t *testing.T) {
 	fc := clock.NewFake()
 	mm := &mocks.Mailer{}
 	mr := &mockRevoker{}
-	bkr := &badKeyRevoker{dbMap: dbMap, raClient: mr, mailer: mm, emailSubject: "testing", emailTemplate: testTemplate, clk: fc}
+	bkr := &badKeyRevoker{dbMap: dbMap, dbReadOnlyMap: dbMap, raClient: mr, mailer: mm, emailSubject: "testing", emailTemplate: testTemplate, clk: fc}
 
 	err = bkr.revokeCerts([]string{"revoker@example.com", "revoker-b@example.com"}, map[string][]unrevokedCertificate{
 		"revoker@example.com":   {{ID: 0, Serial: "ff"}},
@@ -320,6 +321,7 @@ func TestCertificateAbsent(t *testing.T) {
 
 	bkr := &badKeyRevoker{
 		dbMap:           dbMap,
+		dbReadOnlyMap:   dbMap,
 		maxRevocations:  1,
 		serialBatchSize: 1,
 		raClient:        &mockRevoker{},
@@ -344,6 +346,7 @@ func TestInvoke(t *testing.T) {
 	mr := &mockRevoker{}
 	bkr := &badKeyRevoker{
 		dbMap:           dbMap,
+		dbReadOnlyMap:   dbMap,
 		maxRevocations:  10,
 		serialBatchSize: 1,
 		raClient:        mr,
@@ -414,6 +417,7 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 	mm := &mocks.Mailer{}
 	mr := &mockRevoker{}
 	bkr := &badKeyRevoker{dbMap: dbMap,
+		dbReadOnlyMap:   dbMap,
 		maxRevocations:  10,
 		serialBatchSize: 1,
 		raClient:        mr,

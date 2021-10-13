@@ -4,6 +4,10 @@
             "dbConnectFile": "test/secrets/badkeyrevoker_dburl",
             "maxOpenConns": 10
         },
+        "readOnlyDb": {
+            "dbConnectFile": "test/secrets/badkeyrevoker_readonlydburl",
+            "maxOpenConns": 10
+        },
         "debugAddr": ":8020",
         "tls": {
             "caCertFile": "test/grpc-creds/minica.pem",

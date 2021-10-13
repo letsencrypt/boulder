@@ -51,6 +51,7 @@ type revoker interface {
 
 type badKeyRevoker struct {
 	dbMap               *db.WrappedMap
+	dbReadOnlyMap       *db.WrappedMap
 	maxRevocations      int
 	serialBatchSize     int
 	raClient            revoker
@@ -78,7 +79,7 @@ func (ubk uncheckedBlockedKey) String() string {
 
 func (bkr *badKeyRevoker) selectUncheckedKey() (uncheckedBlockedKey, error) {
 	var row uncheckedBlockedKey
-	err := bkr.dbMap.SelectOne(
+	err := bkr.dbReadOnlyMap.SelectOne(
 		&row,
 		`SELECT keyHash, revokedBy
 		FROM blockedKeys
@@ -114,9 +115,9 @@ func (bkr *badKeyRevoker) findUnrevoked(unchecked uncheckedBlockedKey) ([]unrevo
 			ID         int
 			CertSerial string
 		}
-		_, err := bkr.dbMap.Select(
+		_, err := bkr.dbReadOnlyMap.Select(
 			&batch,
-			"SELECT id, certSerial FROM keyHashToSerial WHERE keyHash = ? AND id > ? AND certNotAfter > ? ORDER BY id LIMIT ?",
+			"SELECT id, certSerial FROM keyHashToSerial WHERE keyHash = ? AND id > ? AND certNotAfter > ? LIMIT ?",
 			unchecked.KeyHash,
 			initialID,
 			bkr.clk.Now(),
@@ -131,7 +132,7 @@ func (bkr *badKeyRevoker) findUnrevoked(unchecked uncheckedBlockedKey) ([]unrevo
 		initialID = batch[len(batch)-1].ID
 		for _, serial := range batch {
 			var unrevokedCert unrevokedCertificate
-			err = bkr.dbMap.SelectOne(
+			err = bkr.dbReadOnlyMap.SelectOne(
 				&unrevokedCert,
 				`SELECT cs.id, cs.serial, c.registrationID, c.der, cs.status, cs.isExpired
 				FROM certificateStatus AS cs
@@ -169,7 +170,7 @@ func (bkr *badKeyRevoker) resolveContacts(ids []int64) (map[int64][]string, erro
 		var emails struct {
 			Contact []string
 		}
-		err := bkr.dbMap.SelectOne(&emails, "SELECT contact FROM registrations WHERE id = ?", id)
+		err := bkr.dbReadOnlyMap.SelectOne(&emails, "SELECT contact FROM registrations WHERE id = ?", id)
 		if err != nil {
 			// ErrNoRows is not acceptable here since there should always be a
 			// row for the registration, even if there are no contacts
@@ -343,11 +344,40 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 	return false, nil
 }
 
+func makeDbMap(conf cmd.DBConfig, scope prometheus.Registerer, logger blog.Logger) (*db.WrappedMap, error) {
+	dbURL, err := conf.URL()
+	if err != nil {
+		return nil, err
+	}
+
+	dbAddr, dbUser, err := conf.DSNAddressAndUser()
+	if err != nil {
+		return nil, err
+	}
+
+	dbSettings := sa.DbSettings{
+		MaxOpenConns:    conf.MaxOpenConns,
+		MaxIdleConns:    conf.MaxIdleConns,
+		ConnMaxLifetime: conf.ConnMaxLifetime.Duration,
+		ConnMaxIdleTime: conf.ConnMaxIdleTime.Duration,
+	}
+	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
+	if err != nil {
+		return nil, err
+	}
+
+	sa.InitDBMetrics(dbMap, scope, dbSettings, dbAddr, dbUser)
+	sa.SetSQLDebug(dbMap, logger)
+
+	return dbMap, nil
+}
+
 func main() {
 	var config struct {
 		BadKeyRevoker struct {
-			DB        cmd.DBConfig
-			DebugAddr string
+			DB         cmd.DBConfig
+			ReadOnlyDB *cmd.DBConfig
+			DebugAddr  string
 
 			TLS       cmd.TLSConfig
 			RAService *cmd.GRPCClientConfig
@@ -408,23 +438,16 @@ func main() {
 	scope.MustRegister(certsRevoked)
 	scope.MustRegister(mailErrors)
 
-	dbURL, err := config.BadKeyRevoker.DB.URL()
-	cmd.FailOnError(err, "Couldn't load DB URL")
+	dbMap, err := makeDbMap(config.BadKeyRevoker.DB, scope, logger)
+	cmd.FailOnError(err, "loading DB config")
 
-	dbSettings := sa.DbSettings{
-		MaxOpenConns:    config.BadKeyRevoker.DB.MaxOpenConns,
-		MaxIdleConns:    config.BadKeyRevoker.DB.MaxIdleConns,
-		ConnMaxLifetime: config.BadKeyRevoker.DB.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: config.BadKeyRevoker.DB.ConnMaxIdleTime.Duration,
+	var dbReadOnlyMap *db.WrappedMap
+	if config.BadKeyRevoker.ReadOnlyDB != nil {
+		dbReadOnlyMap, err = makeDbMap(*config.BadKeyRevoker.ReadOnlyDB, scope, logger)
+		cmd.FailOnError(err, "loading read-only DB config")
+	} else {
+		dbReadOnlyMap = dbMap
 	}
-	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
-	cmd.FailOnError(err, "Could not connect to database")
-	sa.SetSQLDebug(dbMap, logger)
-
-	dbAddr, dbUser, err := config.BadKeyRevoker.DB.DSNAddressAndUser()
-	cmd.FailOnError(err, "Could not determine address or user of DB DSN")
-
-	sa.InitDBMetrics(dbMap, scope, dbSettings, dbAddr, dbUser)
 
 	tlsConfig, err := config.BadKeyRevoker.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
@@ -472,6 +495,7 @@ func main() {
 
 	bkr := &badKeyRevoker{
 		dbMap:               dbMap,
+		dbReadOnlyMap:       dbReadOnlyMap,
 		maxRevocations:      config.BadKeyRevoker.MaximumRevocations,
 		serialBatchSize:     config.BadKeyRevoker.FindCertificatesBatchSize,
 		raClient:            rac,
