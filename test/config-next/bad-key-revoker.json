@@ -5,7 +5,7 @@
             "maxOpenConns": 10
         },
         "readOnlyDb": {
-            "dbConnectFile": "test/secrets/badkeyrevoker_readonlydburl",
+            "dbConnectFile": "test/secrets/badkeyrevoker_ro_dburl",
             "maxOpenConns": 10
         },
         "debugAddr": ":8020",

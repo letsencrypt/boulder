@@ -14,6 +14,7 @@ CREATE USER IF NOT EXISTS 'ocsp_update'@'localhost';
 CREATE USER IF NOT EXISTS 'ocsp_update_ro'@'localhost';
 CREATE USER IF NOT EXISTS 'test_setup'@'localhost';
 CREATE USER IF NOT EXISTS 'badkeyrevoker'@'localhost';
+CREATE USER IF NOT EXISTS 'badkeyrevoker_ro'@'localhost';
 
 -- Storage Authority
 GRANT SELECT,INSERT ON certificates TO 'sa'@'localhost';
@@ -75,11 +76,13 @@ GRANT SELECT ON fqdnSets TO 'mailer'@'localhost';
 GRANT SELECT ON certificates TO 'cert_checker'@'localhost';
 
 -- Bad Key Revoker
-GRANT SELECT,UPDATE ON blockedKeys TO 'badkeyrevoker'@'localhost';
-GRANT SELECT ON keyHashToSerial TO 'badkeyrevoker'@'localhost';
-GRANT SELECT ON certificateStatus TO 'badkeyrevoker'@'localhost';
-GRANT SELECT ON precertificates TO 'badkeyrevoker'@'localhost';
-GRANT SELECT ON registrations TO 'badkeyrevoker'@'localhost';
+GRANT UPDATE ON blockedKeys TO 'badkeyrevoker'@'localhost';
+
+GRANT SELECT ON blockedKeys TO 'badkeyrevoker_ro'@'localhost';
+GRANT SELECT ON keyHashToSerial TO 'badkeyrevoker_ro'@'localhost';
+GRANT SELECT ON certificateStatus TO 'badkeyrevoker_ro'@'localhost';
+GRANT SELECT ON precertificates TO 'badkeyrevoker_ro'@'localhost';
+GRANT SELECT ON registrations TO 'badkeyrevoker_ro'@'localhost';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';
