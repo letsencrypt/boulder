@@ -209,6 +209,11 @@ func TestFindUnrevoked(t *testing.T) {
 	hashA := randHash(t)
 	// insert valid, unexpired
 	insertCert(t, dbMap, fc, hashA, "ff", regID, Unexpired, Unrevoked)
+	insertCert(t, dbMap, fc, hashA, "fe", regID, Unexpired, Unrevoked)
+	insertCert(t, dbMap, fc, hashA, "fd", regID, Unexpired, Unrevoked)
+	insertCert(t, dbMap, fc, hashA, "fc", regID, Unexpired, Unrevoked)
+	insertCert(t, dbMap, fc, hashA, "fb", regID, Unexpired, Unrevoked)
+	insertCert(t, dbMap, fc, hashA, "fa", regID, Unexpired, Unrevoked)
 	// insert valid, expired
 	insertCert(t, dbMap, fc, hashA, "ee", regID, Expired, Unrevoked)
 	// insert revoked
@@ -218,15 +223,15 @@ func TestFindUnrevoked(t *testing.T) {
 
 	rows, err := bkr.findUnrevoked(uncheckedBlockedKey{KeyHash: hashA})
 	test.AssertNotError(t, err, "findUnrevoked failed")
-	test.AssertEquals(t, len(rows), 1)
+	test.AssertEquals(t, len(rows), 6)
 	test.AssertEquals(t, rows[0].Serial, "ff")
 	test.AssertEquals(t, rows[0].RegistrationID, int64(1))
 	test.AssertByteEquals(t, rows[0].DER, []byte{1, 2, 3})
 
-	bkr.maxRevocations = 0
+	bkr.maxRevocations = 5
 	_, err = bkr.findUnrevoked(uncheckedBlockedKey{KeyHash: hashA})
 	test.AssertError(t, err, "findUnrevoked didn't fail with 0 maxRevocations")
-	test.AssertEquals(t, err.Error(), fmt.Sprintf("too many certificates to revoke associated with %x: got 1, max 0", hashA))
+	test.AssertEquals(t, err.Error(), fmt.Sprintf("too many certificates to revoke associated with %x: got 6, max 5", hashA))
 }
 
 func TestResolveContacts(t *testing.T) {
