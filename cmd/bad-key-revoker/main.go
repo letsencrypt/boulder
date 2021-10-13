@@ -112,49 +112,45 @@ func (uc unrevokedCertificate) String() string {
 // If the number of certificates it finds is larger than bkr.maxRevocations it'll error out.
 func (bkr *badKeyRevoker) findUnrevoked(unchecked uncheckedBlockedKey) ([]unrevokedCertificate, error) {
 	var unrevokedCerts []unrevokedCertificate
-	initialID := 0
-	for {
-		var batch []struct {
-			ID         int
-			CertSerial string
-		}
-		_, err := bkr.dbReadOnlyMap.Select(
-			&batch,
-			"SELECT id, certSerial FROM keyHashToSerial WHERE keyHash = ? AND id > ? AND certNotAfter > ? LIMIT ?",
-			unchecked.KeyHash,
-			initialID,
-			bkr.clk.Now(),
-			bkr.serialBatchSize,
-		)
-		if err != nil {
-			return nil, err
-		}
-		if len(batch) == 0 {
-			break
-		}
-		initialID = batch[len(batch)-1].ID
-		for _, serial := range batch {
-			var unrevokedCert unrevokedCertificate
-			err = bkr.dbReadOnlyMap.SelectOne(
-				&unrevokedCert,
-				`SELECT cs.id, cs.serial, c.registrationID, c.der, cs.status, cs.isExpired
+	var batch []struct {
+		ID         int
+		CertSerial string
+	}
+	_, err := bkr.dbReadOnlyMap.Select(
+		&batch,
+		"SELECT id, certSerial FROM keyHashToSerial WHERE keyHash = ? AND certNotAfter > ? LIMIT ?",
+		unchecked.KeyHash,
+		bkr.clk.Now(),
+		bkr.maxRevocations+1,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(batch) == 0 {
+		return nil, nil
+	}
+	if len(batch) > bkr.maxRevocations {
+		return nil, fmt.Errorf("too many certificates to revoke associated with %x: got %d, max %d", unchecked.KeyHash, len(batch), bkr.maxRevocations)
+	}
+
+	for _, serial := range batch {
+		var unrevokedCert unrevokedCertificate
+		err = bkr.dbReadOnlyMap.SelectOne(
+			&unrevokedCert,
+			`SELECT cs.id, cs.serial, c.registrationID, c.der, cs.status, cs.isExpired
 				FROM certificateStatus AS cs
 				JOIN precertificates AS c
 				ON cs.serial = c.serial
 				WHERE cs.serial = ?`,
-				serial.CertSerial,
-			)
-			if err != nil {
-				return nil, err
-			}
-			if unrevokedCert.IsExpired || unrevokedCert.Status == core.OCSPStatusRevoked {
-				continue
-			}
-			unrevokedCerts = append(unrevokedCerts, unrevokedCert)
+			serial.CertSerial,
+		)
+		if err != nil {
+			return nil, err
 		}
-	}
-	if len(unrevokedCerts) > bkr.maxRevocations {
-		return nil, fmt.Errorf("too many certificates to revoke associated with %x: got %d, max %d", unchecked.KeyHash, len(unrevokedCerts), bkr.maxRevocations)
+		if unrevokedCert.IsExpired || unrevokedCert.Status == core.OCSPStatusRevoked {
+			continue
+		}
+		unrevokedCerts = append(unrevokedCerts, unrevokedCert)
 	}
 	return unrevokedCerts, nil
 }

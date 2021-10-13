@@ -190,7 +190,9 @@ func TestFindUnrevokedNoRows(t *testing.T) {
 
 	bkr := &badKeyRevoker{dbMap: dbMap, dbReadOnlyMap: dbMap, serialBatchSize: 1, maxRevocations: 10, clk: fc}
 	_, err = bkr.findUnrevoked(uncheckedBlockedKey{KeyHash: hashA})
-	test.Assert(t, db.IsNoRows(err), "expected NoRows error")
+	if !db.IsNoRows(err) {
+		t.Errorf("expected NoRows error, got %q", err)
+	}
 }
 
 func TestFindUnrevoked(t *testing.T) {
@@ -211,6 +213,8 @@ func TestFindUnrevoked(t *testing.T) {
 	insertCert(t, dbMap, fc, hashA, "ee", regID, Expired, Unrevoked)
 	// insert revoked
 	insertCert(t, dbMap, fc, hashA, "dd", regID, Unexpired, Revoked)
+
+	fc.Sleep(15 * time.Minute)
 
 	rows, err := bkr.findUnrevoked(uncheckedBlockedKey{KeyHash: hashA})
 	test.AssertNotError(t, err, "findUnrevoked failed")
