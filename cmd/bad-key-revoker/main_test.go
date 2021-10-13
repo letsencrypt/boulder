@@ -67,6 +67,9 @@ func TestSelectUncheckedRows(t *testing.T) {
 	test.Assert(t, db.IsNoRows(err), "returned error is not sql.ErrNoRows")
 	insertBlockedRow(t, dbMap, fc, hashB, 1, false)
 	insertBlockedRow(t, dbMap, fc, hashC, 1, false)
+
+	fc.Sleep(15 * time.Minute)
+
 	row, err = bkr.selectUncheckedKey()
 	test.AssertNotError(t, err, "selectUncheckKey failed")
 	test.AssertByteEquals(t, row.KeyHash, hashB)
@@ -309,6 +312,8 @@ func TestCertificateAbsent(t *testing.T) {
 	hashA := randHash(t)
 	insertBlockedRow(t, dbMap, fc, hashA, regIDA, false)
 
+	fc.Sleep(15 * time.Minute)
+
 	// Add an entry to keyHashToSerial but not to certificateStatus or certificate
 	// status, and expect an error.
 	_, err = dbMap.Exec(
@@ -369,6 +374,8 @@ func TestInvoke(t *testing.T) {
 	insertGoodCert(t, dbMap, fc, hashA, "dd", regIDC)
 	insertGoodCert(t, dbMap, fc, hashA, "cc", regIDD)
 
+	fc.Sleep(15 * time.Minute)
+
 	noWork, err := bkr.invoke()
 	test.AssertNotError(t, err, "invoke failed")
 	test.AssertEquals(t, noWork, false)
@@ -387,6 +394,8 @@ func TestInvoke(t *testing.T) {
 	hashB := randHash(t)
 	insertBlockedRow(t, dbMap, fc, hashB, regIDC, false)
 	insertCert(t, dbMap, fc, hashB, "bb", regIDA, Expired, Revoked)
+
+	fc.Sleep(15 * time.Minute)
 
 	noWork, err = bkr.invoke()
 	test.AssertNotError(t, err, "invoke failed")
@@ -442,12 +451,52 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 	insertGoodCert(t, dbMap, fc, hashA, "cc", regIDC)
 	insertGoodCert(t, dbMap, fc, hashA, "bb", regIDC)
 
+	fc.Sleep(15 * time.Minute)
+
 	noWork, err := bkr.invoke()
 	test.AssertNotError(t, err, "invoke failed")
 	test.AssertEquals(t, noWork, false)
 	test.AssertEquals(t, mr.revoked, 4)
 	test.AssertEquals(t, len(mm.Messages), 1)
 	test.AssertEquals(t, mm.Messages[0].To, "b@example.com")
+}
+
+func TestPatience(t *testing.T) {
+	// This test checks that we don't process extant certificates until an entry
+	// has been in blockedKeys for at least maxReplicationLag.
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
+	test.AssertNotError(t, err, "failed setting up db client")
+	defer test.ResetSATestDatabase(t)()
+
+	fc := clock.NewFake()
+
+	mm := &mocks.Mailer{}
+	mr := &mockRevoker{}
+	bkr := &badKeyRevoker{dbMap: dbMap,
+		dbReadOnlyMap:     dbMap,
+		maxRevocations:    10,
+		maxReplicationLag: 20 * time.Minute,
+		serialBatchSize:   1,
+		raClient:          mr,
+		mailer:            mm,
+		emailSubject:      "testing",
+		emailTemplate:     testTemplate,
+		logger:            blog.NewMock(),
+		clk:               fc,
+	}
+
+	// populate DB with all the test data
+	regIDA := insertRegistration(t, dbMap, fc, "a@example.com")
+	hashA := randHash(t)
+	insertBlockedRow(t, dbMap, fc, hashA, regIDA, false)
+
+	fc.Sleep(15 * time.Minute)
+
+	noWork, err := bkr.invoke()
+	test.AssertNotError(t, err, "invoke failed")
+	test.AssertEquals(t, noWork, true)
+	test.AssertEquals(t, mr.revoked, 0)
+	test.AssertEquals(t, len(mm.Messages), 0)
 }
 
 func TestBackoffPolicy(t *testing.T) {

@@ -53,6 +53,7 @@ type badKeyRevoker struct {
 	dbMap               *db.WrappedMap
 	dbReadOnlyMap       *db.WrappedMap
 	maxRevocations      int
+	maxReplicationLag   time.Duration
 	serialBatchSize     int
 	raClient            revoker
 	mailer              mail.Mailer
@@ -84,7 +85,9 @@ func (bkr *badKeyRevoker) selectUncheckedKey() (uncheckedBlockedKey, error) {
 		`SELECT keyHash, revokedBy
 		FROM blockedKeys
 		WHERE extantCertificatesChecked = false
+		AND added < ?
 		LIMIT 1`,
+		bkr.clk.Now().Add(-bkr.maxReplicationLag),
 	)
 	return row, err
 }
@@ -387,6 +390,18 @@ func main() {
 			// is higher than MaximumRevocations bad-key-revoker will error out and refuse to
 			// progress until this is addressed.
 			MaximumRevocations int
+
+			// MaximumReplicationLag specifies an upper bound on how much replication
+			// lag we will see in production. bad-key-revoker will wait this long
+			// after a key is added to blockedKeys before performing a revocation
+			// pass. That ensures that there are no new certificates coming in that
+			// were issued with the blocked key. Setting this high means it takes
+			// longer for revocation to happen. Setting it low means we have to be
+			// careful to not let replication lag higher than the value we set it to.
+			// This should be set higher than our thresholds for alerting on
+			// replication lag.
+			MaximumReplicationLag cmd.ConfigDuration
+
 			// FindCertificatesBatchSize specifies the maximum number of serials to select from the
 			// keyHashToSerial table at once
 			FindCertificatesBatchSize int
@@ -497,6 +512,7 @@ func main() {
 		dbMap:               dbMap,
 		dbReadOnlyMap:       dbReadOnlyMap,
 		maxRevocations:      config.BadKeyRevoker.MaximumRevocations,
+		maxReplicationLag:   config.BadKeyRevoker.MaximumReplicationLag.Duration,
 		serialBatchSize:     config.BadKeyRevoker.FindCertificatesBatchSize,
 		raClient:            rac,
 		mailer:              mailClient,
