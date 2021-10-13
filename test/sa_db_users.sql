@@ -76,7 +76,7 @@ GRANT SELECT ON fqdnSets TO 'mailer'@'localhost';
 GRANT SELECT ON certificates TO 'cert_checker'@'localhost';
 
 -- Bad Key Revoker
-GRANT UPDATE ON blockedKeys TO 'badkeyrevoker'@'localhost';
+GRANT SELECT,UPDATE ON blockedKeys TO 'badkeyrevoker'@'localhost';
 
 GRANT SELECT ON blockedKeys TO 'badkeyrevoker_ro'@'localhost';
 GRANT SELECT ON keyHashToSerial TO 'badkeyrevoker_ro'@'localhost';
