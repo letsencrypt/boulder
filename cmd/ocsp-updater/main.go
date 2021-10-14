@@ -128,14 +128,15 @@ func newUpdater(
 	}, []string{"result"})
 	stats.MustRegister(storedCounter)
 	tickHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name: "ocsp_updater_ticks",
-		Help: "A histogram of ocsp-updater tick latencies labelled by result and whether the tick was considered longer than expected",
+		Name:    "ocsp_updater_ticks",
+		Help:    "A histogram of ocsp-updater tick latencies labelled by result and whether the tick was considered longer than expected",
+		Buckets: []float64{0.01, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000},
 	}, []string{"result", "long"})
 	stats.MustRegister(tickHistogram)
 	stalenessHistogram := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "ocsp_status_staleness",
 		Help:    "How long past the refresh time a status is when we try to refresh it. Will always be > 0, but must stay well below 12 hours.",
-		Buckets: []float64{10, 100, 1000, 10000, 21600, 32400, 36000, 39600, 43200, 54000, 64800, 75600, 86400},
+		Buckets: []float64{10, 100, 1000, 10000, 21600, 32400, 36000, 39600, 43200, 54000, 64800, 75600, 86400, 108000, 129600, 172800},
 	})
 	stats.MustRegister(stalenessHistogram)
 
