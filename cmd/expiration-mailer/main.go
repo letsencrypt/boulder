@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -140,9 +141,29 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 		m.stats.errorCount.With(prometheus.Labels{"type": "TemplateFailure"}).Inc()
 		return err
 	}
+
+	logItem := struct {
+		Rcpt             []string
+		Serials          []string
+		DaysToExpiration int
+		DNSNames         []string
+	}{
+		Rcpt:             emails,
+		Serials:          serials,
+		DaysToExpiration: email.DaysToExpiration,
+		DNSNames:         domains,
+	}
+	logStr, err := json.Marshal(logItem)
+	if err != nil {
+		m.log.Errf("logItem could not be serialized to JSON. Raw: %+v", logItem)
+		return err
+	}
+	m.log.Infof("attempting send JSON=%s", string(logStr))
+
 	startSending := m.clk.Now()
 	err = m.mailer.SendMail(emails, subjBuf.String(), msgBuf.String())
 	if err != nil {
+		m.log.Errf("failed send JSON=%s", string(logStr))
 		return err
 	}
 	finishSending := m.clk.Now()

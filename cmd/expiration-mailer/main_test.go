@@ -120,6 +120,7 @@ func TestSendNags(t *testing.T) {
 	}
 
 	cert := &x509.Certificate{
+		SerialNumber: big.NewInt(0x0304),
 		Subject: pkix.Name{
 			CommonName: "happy",
 		},
@@ -156,12 +157,21 @@ func TestSendNags(t *testing.T) {
 	test.AssertNotError(t, err, "Not an error to pass no email contacts")
 	test.AssertEquals(t, len(mc.Messages), 0)
 
-	templates, err := template.ParseGlob("../../data/*.template")
-	test.AssertNotError(t, err, "Failed to parse templates")
-	for _, template := range templates.Templates() {
-		m.emailTemplate = template
-		err = m.sendNags(nil, []*x509.Certificate{cert})
-		test.AssertNotError(t, err, "failed to send nag")
+	sendLogs := log.GetAllMatching("INFO: attempting send JSON=.*")
+	if len(sendLogs) != 2 {
+		t.Errorf("expected 2 'attempting send' log line, got %d: %s", len(sendLogs), strings.Join(sendLogs, "\n"))
+	}
+	if !strings.Contains(sendLogs[0], `"Rcpt":["rolandshoemaker@gmail.com"]`) {
+		t.Errorf("expected first 'attempting send' log line to have one address, got %q", sendLogs[0])
+	}
+	if !strings.Contains(sendLogs[0], `"Serials":["000000000000000000000000000000000304"]`) {
+		t.Errorf("expected first 'attempting send' log line to have one serial, got %q", sendLogs[0])
+	}
+	if !strings.Contains(sendLogs[0], `"DaysToExpiration":2`) {
+		t.Errorf("expected first 'attempting send' log line to have 2 days to expiration, got %q", sendLogs[0])
+	}
+	if !strings.Contains(sendLogs[0], `"DNSNames":["example.com"]`) {
+		t.Errorf("expected first 'attempting send' log line to have 1 domain, 'example.com', got %q", sendLogs[0])
 	}
 }
 
