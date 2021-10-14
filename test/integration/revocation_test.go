@@ -1,3 +1,4 @@
+//go:build integration
 // +build integration
 
 package integration
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/eggsampler/acme/v3"
 	"github.com/letsencrypt/boulder/test"
 	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
 	"golang.org/x/crypto/ocsp"
@@ -153,9 +155,9 @@ func TestRevokeWithKeyCompromise(t *testing.T) {
 	cert := res.certs[0]
 
 	err = c.RevokeCertificate(
-		c.Account,
+		acme.Account{},
 		cert,
-		c.Account.PrivateKey,
+		certKey,
 		ocsp.KeyCompromise,
 	)
 	test.AssertNotError(t, err, "failed to revoke certificate")
@@ -202,9 +204,9 @@ func TestBadKeyRevoker(t *testing.T) {
 	}
 
 	err = cA.RevokeCertificate(
-		cA.Account,
+		acme.Account{},
 		badCert.certs[0],
-		cA.Account.PrivateKey,
+		certKey,
 		ocsp.KeyCompromise,
 	)
 	test.AssertNotError(t, err, "failed to revoke certificate")
@@ -243,5 +245,5 @@ func TestBadKeyRevoker(t *testing.T) {
 	defer func() { _ = zeroCountResp.Body.Close() }()
 	body, err = ioutil.ReadAll(zeroCountResp.Body)
 	test.AssertNotError(t, err, "failed to read body")
-	test.AssertEquals(t, string(body), "0\n")
+	test.AssertEquals(t, string(body), "1\n")
 }
