@@ -204,7 +204,7 @@ func TestBadKeyRevoker(t *testing.T) {
 	}
 
 	err = cA.RevokeCertificate(
-		cA.Account,
+		acme.Account{},
 		badCert.certs[0],
 		cA.Account.PrivateKey,
 		ocsp.KeyCompromise,
