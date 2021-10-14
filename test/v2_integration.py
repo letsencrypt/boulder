@@ -1565,8 +1565,8 @@ def ocsp_resigning_setup():
 
     cert = OpenSSL.crypto.load_certificate(
         OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-    # Revoke for reason 1: keyCompromise
-    client.revoke(josepy.ComparableX509(cert), 1)
+    # Revoke for reason 3: affiliationChanged
+    client.revoke(josepy.ComparableX509(cert), 3)
 
     ocsp_response, reason = get_ocsp_response_and_reason(
         cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
