@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# -e Stops execution in the instance of a command or pipeline error -u Treat
-# unset variables as an error and exit immediately
+# -e Stops execution in the instance of a command or pipeline error.
+# -u Treat unset variables as an error and exit immediately.
 set -eu
 
 STATUS="FAILURE"
@@ -29,36 +29,22 @@ function print_heading {
 # On EXIT, trap and print outcome.
 trap "print_outcome" EXIT
 
-print_heading "Fetching SHA of the latest publicsuffix-go commit"
+print_heading "Updating weppos/publicsuffix-go to the latest commit"
 
-# Uses git ls-remote to pull the heads of the publicsuffix-go repo, searches for
-# master and captures the commit SHA.
-SHA=$(git ls-remote --heads https://github.com/weppos/publicsuffix-go.git | grep "refs/heads/master"| cut -c1-12)
+# Fetches the latest version of weppos/publicsuffix-go and updates the go.mod
+# and go.sum files.
+go get "github.com/weppos/publicsuffix-go@master"
 
-# Make sure the commit SHA that we think we captured actually exists.
-if [ -z "$SHA" ]
-then
-    exit_msg "Couldn't find the SHA of most recent commit to the master branch of https://github.com/weppos/publicsuffix-go.git"
-else
-    echo "OK"
-    print_heading "Fetching weppos/publicsuffix-go@$SHA"
-    
-    # Fetches the latest version of the dependency at the commit SHA, updates
-    # the go.mod and go.sum files.
-    go get "github.com/weppos/publicsuffix-go@$SHA"
-    
-    # Updates the contents of boulder's (vendored) copy of
-    # weppos/publicsuffix-go.
-    go mod vendor
-    
-    # Counts additions and removals using git diff and concatenates it with
-    # labels using awk.
-    git diff --numstat | grep "vendor/github.com/weppos/publicsuffix-go/publicsuffix/rules.go" | awk '{ print $1 " additions and " $2 " removals" }'
+# Updates the contents of boulder's (vendored) copy of weppos/publicsuffix-go.
+go mod vendor
 
-    # Stages the only files that should be committed.
-    git add vendor go.mod go.sum
+# Counts additions and removals using git diff and concatenates it with labels
+# using awk. This count is used in the PR body and commit message.
+git diff --numstat | grep "vendor/github.com/weppos/publicsuffix-go/publicsuffix/rules.go" | awk '{ print $1 " additions and " $2 " removals" }'
 
-    # Because set -e stops execution in the instance of a command or pipeline
-    # error; if we got here we assume success
-    STATUS="SUCCESS"
-fi
+# Stages the only files that should be committed.
+git add vendor go.mod go.sum
+
+# Because set -e stops execution in the instance of a command or pipeline error;
+# if we got here we assume success
+STATUS="SUCCESS"
