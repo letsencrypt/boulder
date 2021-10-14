@@ -77,6 +77,11 @@ GRANT SELECT ON certificates TO 'cert_checker'@'localhost';
 
 -- Bad Key Revoker
 GRANT SELECT,UPDATE ON blockedKeys TO 'badkeyrevoker'@'localhost';
+GRANT SELECT ON blockedKeys TO 'badkeyrevoker'@'localhost';
+GRANT SELECT ON keyHashToSerial TO 'badkeyrevoker'@'localhost';
+GRANT SELECT ON certificateStatus TO 'badkeyrevoker'@'localhost';
+GRANT SELECT ON precertificates TO 'badkeyrevoker'@'localhost';
+GRANT SELECT ON registrations TO 'badkeyrevoker'@'localhost';
 
 GRANT SELECT ON blockedKeys TO 'badkeyrevoker_ro'@'localhost';
 GRANT SELECT ON keyHashToSerial TO 'badkeyrevoker_ro'@'localhost';
