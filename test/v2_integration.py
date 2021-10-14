@@ -1596,5 +1596,5 @@ def test_ocsp_resigning():
     if reason != ocsp_resigning_setup_data['reason']:
         raise(Exception("re-signed ocsp response has different reason %s expected %s" % (
             reason, ocsp_resigning_setup_data['reason'])))
-    if reason != "keyCompromise":
+    if reason != "affiliationChanged":
         raise(Exception("re-signed ocsp response has wrong reason %s" % reason))
