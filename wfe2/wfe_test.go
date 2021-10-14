@@ -26,6 +26,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 	jose "gopkg.in/square/go-jose.v2"
@@ -2934,6 +2935,56 @@ func TestRevokeCertificateValid(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Body.String(), "")
 }
 
+// A revocation request with reason == keyCompromise should only succeed
+// if it was signed by the private key.
+func TestRevokeCertificateKeyCompromiseValid(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
+
+	mockLog := wfe.log.(*blog.Mock)
+	mockLog.Clear()
+
+	keyPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-r3.key.pem")
+	test.AssertNotError(t, err, "Failed to load key")
+	key := loadKey(t, keyPemBytes)
+
+	revocationReason := revocation.Reason(ocsp.KeyCompromise)
+	revokeRequestJSON, err := makeRevokeRequestJSON(&revocationReason)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
+	_, _, jwsBody := signRequestEmbed(t,
+		key, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+
+	responseWriter := httptest.NewRecorder()
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath("revoke-cert", jwsBody))
+	test.AssertEquals(t, responseWriter.Code, 200)
+	test.AssertEquals(t, responseWriter.Body.String(), "")
+	test.AssertDeepEquals(t, mockLog.GetAllMatching("Authorizing revocation"), []string{
+		`INFO: [AUDIT] Authorizing revocation JSON={"Serial":"000000000000000000001d72443db5189821","Reason":1,"RegID":0,"Method":"privkey"}`,
+	})
+}
+
+func TestRevokeCertificateKeyCompromiseInvalid(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
+
+	revocationReason := revocation.Reason(ocsp.KeyCompromise)
+	revokeRequestJSON, err := makeRevokeRequestJSON(&revocationReason)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
+	// NOTE: this account doesn't have any authorizations for the
+	// names in the cert, but it is the account that issued it
+	// originally
+	_, _, jwsBody := signRequestKeyID(
+		t, 1, nil, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+
+	responseWriter := httptest.NewRecorder()
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath("revoke-cert", jwsBody))
+
+	test.AssertEquals(t, responseWriter.Code, 403)
+	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"type\": \"urn:ietf:params:acme:error:unauthorized\",\n  \"detail\": \"Revocation with reason keyCompromise is only supported by signing with the certificate private key\",\n  \"status\": 403\n}")
+}
+
 // Invalid revocation request: although signed with the cert key, the cert
 // wasn't issued by any issuer the Boulder is aware of.
 func TestRevokeCertificateNotIssued(t *testing.T) {
@@ -3048,6 +3099,9 @@ func TestRevokeCertificateIssuingAccount(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
 
+	mockLog := wfe.log.(*blog.Mock)
+	mockLog.Clear()
+
 	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 	// NOTE: this account doesn't have any authorizations for the
@@ -3062,6 +3116,9 @@ func TestRevokeCertificateIssuingAccount(t *testing.T) {
 
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
+	test.AssertDeepEquals(t, mockLog.GetAllMatching("Authorizing revocation"), []string{
+		`INFO: [AUDIT] Authorizing revocation JSON={"Serial":"000000000000000000001d72443db5189821","Reason":0,"RegID":1,"Method":"owner"}`,
+	})
 }
 
 type mockSAWithValidAuthz struct {
@@ -3085,6 +3142,9 @@ func TestRevokeCertificateWithAuthorizations(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	wfe.SA = mockSAWithValidAuthz{newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)}
 
+	mockLog := wfe.log.(*blog.Mock)
+	mockLog.Clear()
+
 	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
@@ -3099,6 +3159,9 @@ func TestRevokeCertificateWithAuthorizations(t *testing.T) {
 		makePostRequestWithPath("revoke-cert", jwsBody))
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
+	test.AssertDeepEquals(t, mockLog.GetAllMatching("Authorizing revocation"), []string{
+		`INFO: [AUDIT] Authorizing revocation JSON={"Serial":"000000000000000000001d72443db5189821","Reason":0,"RegID":5,"Method":"authorizations"}`,
+	})
 }
 
 // A revocation request signed by an unauthorized key.
