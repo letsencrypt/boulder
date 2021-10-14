@@ -1,3 +1,4 @@
+//go:build integration
 // +build integration
 
 package integration
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/eggsampler/acme/v3"
 	"github.com/letsencrypt/boulder/test"
 	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
 	"golang.org/x/crypto/ocsp"
@@ -153,7 +155,7 @@ func TestRevokeWithKeyCompromise(t *testing.T) {
 	cert := res.certs[0]
 
 	err = c.RevokeCertificate(
-		c.Account,
+		acme.Account{},
 		cert,
 		c.Account.PrivateKey,
 		ocsp.KeyCompromise,
