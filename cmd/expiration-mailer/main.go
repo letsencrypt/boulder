@@ -155,7 +155,7 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 	}
 	logStr, err := json.Marshal(logItem)
 	if err != nil {
-		m.log.Errf("logItem could not be serialized to JSON. Raw: %+v", logStr)
+		m.log.Errf("logItem could not be serialized to JSON. Raw: %+v", logItem)
 		return err
 	}
 	m.log.Infof("attempting send JSON=%s", string(logStr))
