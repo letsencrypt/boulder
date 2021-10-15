@@ -1,6 +1,7 @@
 package sa
 
 import (
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -113,7 +114,35 @@ func SelectCertificates(s db.Selector, q string, args map[string]interface{}) ([
 // CertStatusMetadataFields returns a slice of column names for rows in the
 // certificateStatus table.
 func CertStatusMetadataFields() []string {
-	return []string{"serial", "status", "ocspLastUpdated", "revokedDate", "revokedReason", "lastExpirationNagSent", "notAfter", "isExpired", "issuerID"}
+	return []string{
+		"serial",
+		"status",
+		"ocspLastUpdated",
+		"revokedDate",
+		"revokedReason",
+		"lastExpirationNagSent",
+		"notAfter",
+		"isExpired",
+		"issuerID",
+	}
+}
+
+func ScanCertStatusRow(rows *sql.Rows, status *core.CertificateStatus) error {
+	err := rows.Scan(
+		&status.Serial,
+		&status.Status,
+		&status.OCSPLastUpdated,
+		&status.RevokedDate,
+		&status.RevokedReason,
+		&status.LastExpirationNagSent,
+		&status.NotAfter,
+		&status.IsExpired,
+		&status.IssuerID,
+	)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // TODO(#5655) Remove once #5642 has been deployed to staging and production.

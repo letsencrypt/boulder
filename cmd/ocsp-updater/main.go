@@ -191,17 +191,7 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	var statuses []core.CertificateStatus
 	for rows.Next() {
 		var status core.CertificateStatus
-		err := rows.Scan(
-			&status.Serial,
-			&status.Status,
-			&status.OCSPLastUpdated,
-			&status.RevokedDate,
-			&status.RevokedReason,
-			&status.LastExpirationNagSent,
-			&status.NotAfter,
-			&status.IsExpired,
-			&status.IssuerID,
-		)
+		err := sa.ScanCertStatusRow(rows, &status)
 		if err != nil {
 			rows.Close()
 			return nil, err
@@ -460,13 +450,24 @@ func main() {
 	db, err := configureDb(conf.DB)
 	cmd.FailOnError(err, "Failed to create database client")
 
+	dbAddr, dbUser, err := conf.DB.DSNAddressAndUser()
+	cmd.FailOnError(err, "Failed to parse DB config")
+
+	sa.InitDBMetrics(db, stats, sa.NewDbSettingsFromDBConfig(conf.DB), dbAddr, dbUser)
+
 	var readOnlyDb *sql.DB
 	readOnlyDbDSN, _ := conf.ReadOnlyDB.URL()
 	if readOnlyDbDSN == "" {
 		readOnlyDb = db
+
 	} else {
 		readOnlyDb, err = configureDb(conf.ReadOnlyDB)
 		cmd.FailOnError(err, "Failed to create read-only database client")
+
+		dbAddr, dbUser, err := conf.ReadOnlyDB.DSNAddressAndUser()
+		cmd.FailOnError(err, "Failed to parse read-only DB config")
+
+		sa.InitDBMetrics(readOnlyDb, stats, sa.NewDbSettingsFromDBConfig(conf.DB), dbAddr, dbUser)
 	}
 
 	clk := cmd.Clock()

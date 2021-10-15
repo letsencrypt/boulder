@@ -1,12 +1,13 @@
 package sa
 
 import (
-	"github.com/letsencrypt/boulder/db"
+	"database/sql"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 type dbMetricsCollector struct {
-	dbMap      *db.WrappedMap
+	db         *sql.DB
 	dbSettings DbSettings
 
 	maxOpenConns      *prometheus.Desc
@@ -46,7 +47,7 @@ func (dbc dbMetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	// Translate the DBMap's db.DBStats counter values into Prometheus metrics.
-	dbMapStats := dbc.dbMap.Db.Stats()
+	dbMapStats := dbc.db.Stats()
 	writeGauge(dbc.maxOpenConns, float64(dbMapStats.MaxOpenConnections))
 	writeGauge(dbc.maxIdleConns, float64(dbc.dbSettings.MaxIdleConns))
 	writeGauge(dbc.connMaxLifetime, float64(dbc.dbSettings.ConnMaxLifetime))
@@ -63,9 +64,9 @@ func (dbc dbMetricsCollector) Collect(ch chan<- prometheus.Metric) {
 // InitDBMetrics will register a Collector that translates the provided dbMap's
 // stats and DbSettings into Prometheus metrics on the fly. The stat values will
 // be translated from the gorp dbMap's inner sql.DBMap's DBStats structure values
-func InitDBMetrics(dbMap *db.WrappedMap, stats prometheus.Registerer, dbSettings DbSettings, address string, user string) {
+func InitDBMetrics(db *sql.DB, stats prometheus.Registerer, dbSettings DbSettings, address string, user string) {
 	// Create a dbMetricsCollector and register it
-	dbc := dbMetricsCollector{dbMap: dbMap, dbSettings: dbSettings}
+	dbc := dbMetricsCollector{db: db, dbSettings: dbSettings}
 
 	labels := prometheus.Labels{"address": address, "user": user}
 
