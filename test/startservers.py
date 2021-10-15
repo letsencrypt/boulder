@@ -146,10 +146,10 @@ processes = []
 challSrvProcess = None
 
 def setupHierarchy():
+    """Set up the issuance hierarchy. Must have called install() before this."""
     e = os.environ.copy()
     e.setdefault("GOBIN", "%s/bin" % os.getcwd())
     try:
-        subprocess.check_output(["go", "install", "./cmd/ceremony"], env=e)
         subprocess.check_output(["go", "run", "test/cert-ceremonies/generate.go"], env=e)
     except subprocess.CalledProcessError as e:
         print(e.output)
@@ -166,7 +166,7 @@ def install(race_detection):
 
     return subprocess.call(cmd, shell=True) == 0
 
-def run(cmd, race_detection, fakeclock):
+def run(cmd, fakeclock):
     e = os.environ.copy()
     e.setdefault("GORACE", "halt_on_error=1")
     if fakeclock:
@@ -175,7 +175,7 @@ def run(cmd, race_detection, fakeclock):
     p.cmd = cmd
     return p
 
-def start(race_detection, fakeclock):
+def start(fakeclock):
     """Return True if everything builds and starts.
 
     Give up and return False if anything fails to build, or dies at
@@ -184,8 +184,6 @@ def start(race_detection, fakeclock):
     """
     signal.signal(signal.SIGTERM, lambda _, __: stop())
     signal.signal(signal.SIGINT, lambda _, __: stop())
-    if not install(race_detection):
-        return False
 
     # Start the pebble-challtestsrv first so it can be used to resolve DNS for
     # gRPC.
@@ -198,7 +196,7 @@ def start(race_detection, fakeclock):
         print("Starting service", service.name)
         try:
             global processes
-            p = run(service.cmd, race_detection, fakeclock)
+            p = run(service.cmd, fakeclock)
             processes.append(p)
             if service.grpc_addr is not None:
                 waithealth(' '.join(p.args), service.grpc_addr)
@@ -256,7 +254,7 @@ def startChallSrv():
         '--http01', '10.77.77.77:5002',
         '-https01', '10.77.77.77:5001',
         '--tlsalpn01', '10.88.88.88:5001'],
-        False, None)
+        None)
     # Wait for the pebble-challtestsrv management port.
     if not waitport(8055, ' '.join(challSrvProcess.args)):
         return False
