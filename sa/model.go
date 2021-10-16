@@ -112,7 +112,8 @@ func SelectCertificates(s db.Selector, q string, args map[string]interface{}) ([
 }
 
 // CertStatusMetadataFields returns a slice of column names for rows in the
-// certificateStatus table.
+// certificateStatus table. Changes to the ordering of this list returned by
+// this function should also be made in `ScanCertStatusRow()`.
 func CertStatusMetadataFields() []string {
 	return []string{
 		"serial",
@@ -127,6 +128,10 @@ func CertStatusMetadataFields() []string {
 	}
 }
 
+// ScanCertStatusRow is a helper function expored from SA so that we can readily
+// check that there's a 1:1 correspondence between the column name in the DB,
+// `CertStatusMetadataFields()`, and the `*core.CerticateStatus` field name
+// being copied to.
 func ScanCertStatusRow(rows *sql.Rows, status *core.CertificateStatus) error {
 	err := rows.Scan(
 		&status.Serial,

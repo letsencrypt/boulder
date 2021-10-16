@@ -459,7 +459,6 @@ func main() {
 	readOnlyDbDSN, _ := conf.ReadOnlyDB.URL()
 	if readOnlyDbDSN == "" {
 		readOnlyDb = db
-
 	} else {
 		readOnlyDb, err = configureDb(conf.ReadOnlyDB)
 		cmd.FailOnError(err, "Failed to create read-only database client")
