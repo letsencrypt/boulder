@@ -207,8 +207,7 @@ func getQuestionsForShardList(count int) string {
 }
 
 // findStaleOCSPResponses sends a goroutine to fetch rows of stale OCSP
-// responses from the database. Returns results on a channel and pipelined
-// to the next step.
+// responses from the database and returns results on a channel.
 func (updater *OCSPUpdater) findStaleOCSPResponses(ctx context.Context, oldestLastUpdatedTime time.Time, batchSize int) <-chan core.CertificateStatus {
 	// staleStatusesOut channel contains all stale ocsp responses that need
 	// updating.
@@ -451,7 +450,7 @@ func (updater *OCSPUpdater) tick() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	oldestLastUpdatedTime := updater.clk.Now().UTC().Add(-updater.ocspMinTimeToExpiry)
+	oldestLastUpdatedTime := updater.clk.Now().Add(-updater.ocspMinTimeToExpiry)
 
 	// Run pipeline
 	updater.generateOCSPResponses(ctx, updater.processExpired(ctx, updater.findStaleOCSPResponses(ctx, oldestLastUpdatedTime, updater.batchSize)))
