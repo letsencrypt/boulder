@@ -365,7 +365,7 @@ func makeDbMap(conf cmd.DBConfig, scope prometheus.Registerer, logger blog.Logge
 		return nil, err
 	}
 
-	sa.InitDBMetrics(dbMap, scope, dbSettings, dbAddr, dbUser)
+	sa.InitDBMetrics(dbMap.Db, scope, dbSettings, dbAddr, dbUser)
 	sa.SetSQLDebug(dbMap, logger)
 
 	return dbMap, nil
