@@ -582,7 +582,7 @@ func TestTickSleep(t *testing.T) {
 
 	// Test when findStaleResponses works the failure counter is reset to
 	// zero and the clock only moves by updater.tickWindow
-	updater.readOnlyDbMap = dbMap
+	updater.readOnlyDb = dbMap
 	before = fc.Now()
 	updater.tick()
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
@@ -595,7 +595,7 @@ func TestFindOCSPResponsesSleep(t *testing.T) {
 	updater, _, dbMap, fc, cleanUp := setup(t)
 	defer cleanUp()
 	m := &brokenDB{}
-	updater.readOnlyDbMap = m
+	updater.readOnlyDb = m
 
 	// Test when updateOCSPResponses fails the failure counter is incremented
 	// and the clock moved forward by more than updater.tickWindow
