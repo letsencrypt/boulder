@@ -1,6 +1,7 @@
 package sa
 
 import (
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -110,17 +111,55 @@ func SelectCertificates(s db.Selector, q string, args map[string]interface{}) ([
 	return models, err
 }
 
-func certStatusMetadataFields() []string {
-	return []string{"serial", "status", "ocspLastUpdated", "revokedDate", "revokedReason", "lastExpirationNagSent", "notAfter", "isExpired", "issuerID"}
+// CertStatusMetadataFields returns a slice of column names for rows in the
+// certificateStatus table. Changes to the ordering of this list returned by
+// this function should also be made in `ScanCertStatusRow()`.
+func CertStatusMetadataFields() []string {
+	return []string{
+		"serial",
+		"status",
+		"ocspLastUpdated",
+		"revokedDate",
+		"revokedReason",
+		"lastExpirationNagSent",
+		"notAfter",
+		"isExpired",
+		"issuerID",
+	}
 }
 
+// ScanCertStatusRow is a helper function expored from SA so that we can readily
+// check that there's a 1:1 correspondence between the column name in the DB,
+// `CertStatusMetadataFields()`, and the `*core.CerticateStatus` field name
+// being copied to.
+func ScanCertStatusRow(rows *sql.Rows, status *core.CertificateStatus) error {
+	err := rows.Scan(
+		&status.Serial,
+		&status.Status,
+		&status.OCSPLastUpdated,
+		&status.RevokedDate,
+		&status.RevokedReason,
+		&status.LastExpirationNagSent,
+		&status.NotAfter,
+		&status.IsExpired,
+		&status.IssuerID,
+	)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// TODO(#5655) Remove once #5642 has been deployed to staging and production.
 func certStatusMetadataFieldsSelect(restOfQuery string) string {
-	fields := strings.Join(certStatusMetadataFields(), ",")
+	fields := strings.Join(CertStatusMetadataFields(), ",")
 	return fmt.Sprintf("SELECT %s FROM certificateStatus %s", fields, restOfQuery)
 }
 
 // SelectCertificateStatusMetadata selects all non-OCSPResponse fields of
 // multiple certificate status objects.
+//
+// TODO(#5655) Remove once #5642 has been deployed to staging and production.
 func SelectCertificateStatusMetadata(s db.Selector, q string, args ...interface{}) ([]core.CertificateStatus, error) {
 	var models []core.CertificateStatus
 	_, err := s.Select(
@@ -132,7 +171,7 @@ func SelectCertificateStatusMetadata(s db.Selector, q string, args ...interface{
 }
 
 func certStatusFields() []string {
-	return append(certStatusMetadataFields(), "ocspResponse")
+	return append(CertStatusMetadataFields(), "ocspResponse")
 }
 
 func certStatusFieldsSelect(restOfQuery string) string {

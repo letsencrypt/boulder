@@ -18,25 +18,24 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
 )
 
-// ocspDB and ocspReadOnlyDB are interfaces collecting the gorp.DbMap functions that
+// ocspDB and ocspReadOnlyDB are interfaces collecting the `sql.DB` methods that
 // the various parts of OCSPUpdater rely on. Using this adapter shim allows tests to
-// swap out the dbMap implementation.
+// swap out the `sql.DB` implementation.
 
-// ocspReadOnlyDB provides only read-only portions of the gorp.DbMap interface
-type ocspReadOnlyDB interface {
-	Select(i interface{}, query string, args ...interface{}) ([]interface{}, error)
+// ocspReadOnlyDb provides only read-only portions of the `sql.DB` interface.
+type ocspReadOnlyDb interface {
+	Query(query string, args ...interface{}) (*sql.Rows, error)
 }
 
-// ocspDB provides read-write portions of the gorp.DbMap interface
-type ocspDB interface {
-	ocspReadOnlyDB
+// ocspDb provides read-write portions of the `sql.DB` interface.
+type ocspDb interface {
+	ocspReadOnlyDb
 	Exec(query string, args ...interface{}) (sql.Result, error)
 }
 
@@ -45,8 +44,8 @@ type OCSPUpdater struct {
 	log blog.Logger
 	clk clock.Clock
 
-	dbMap         ocspDB
-	readOnlyDbMap ocspReadOnlyDB
+	db         ocspDb
+	readOnlyDb ocspReadOnlyDb
 
 	ogc capb.OCSPGeneratorClient
 
@@ -76,8 +75,8 @@ type OCSPUpdater struct {
 func newUpdater(
 	stats prometheus.Registerer,
 	clk clock.Clock,
-	dbMap ocspDB,
-	readOnlyDbMap ocspReadOnlyDB,
+	db ocspDb,
+	readOnlyDb ocspReadOnlyDb,
 	serialSuffixes []string,
 	ogc capb.OCSPGeneratorClient,
 	config OCSPUpdaterConfig,
@@ -142,8 +141,8 @@ func newUpdater(
 
 	updater := OCSPUpdater{
 		clk:                          clk,
-		dbMap:                        dbMap,
-		readOnlyDbMap:                readOnlyDbMap,
+		db:                           db,
+		readOnlyDb:                   readOnlyDb,
 		ogc:                          ogc,
 		log:                          log,
 		ocspMinTimeToExpiry:          config.OCSPMinTimeToExpiry.Duration,
@@ -169,27 +168,45 @@ func getQuestionsForShardList(count int) string {
 }
 
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
-	params := make([]interface{}, 0)
-	params = append(params, oldestLastUpdatedTime)
+	args := make([]interface{}, 0)
+	args = append(args, oldestLastUpdatedTime)
 
-	// If serialSuffixes is unset, this will be deliberately a no-op
+	// If serialSuffixes is unset, this will be deliberately a no-op.
 	for _, c := range updater.serialSuffixes {
-		params = append(params, c)
+		args = append(args, c)
 	}
-	params = append(params, batchSize)
+	args = append(args, batchSize)
 
-	statuses, err := sa.SelectCertificateStatusMetadata(
-		updater.readOnlyDbMap,
-		updater.queryBody,
-		params...,
+	rows, err := updater.readOnlyDb.Query(
+		fmt.Sprintf(
+			"SELECT %s FROM certificateStatus %s",
+			strings.Join(sa.CertStatusMetadataFields(), ","),
+			updater.queryBody,
+		),
+		args...,
 	)
-	if db.IsNoRows(err) {
-		return nil, nil
+	if err != nil {
+		return nil, err
 	}
 
-	for _, status := range statuses {
-		staleness := oldestLastUpdatedTime.Sub(status.OCSPLastUpdated).Seconds()
-		updater.stalenessHistogram.Observe(staleness)
+	var statuses []core.CertificateStatus
+	for rows.Next() {
+		var status core.CertificateStatus
+		err := sa.ScanCertStatusRow(rows, &status)
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		statuses = append(statuses, status)
+
+		updater.stalenessHistogram.Observe(
+			oldestLastUpdatedTime.Sub(status.OCSPLastUpdated).Seconds(),
+		)
+	}
+	// Ensure the query wasn't interrupted before it could complete.
+	err = rows.Close()
+	if err != nil {
+		return nil, err
 	}
 
 	return statuses, err
@@ -222,7 +239,7 @@ func (updater *OCSPUpdater) storeResponse(status *core.CertificateStatus) error 
 	// Update the certificateStatus table with the new OCSP response, the status
 	// WHERE is used make sure we don't overwrite a revoked response with a one
 	// containing a 'good' status.
-	_, err := updater.dbMap.Exec(
+	_, err := updater.db.Exec(
 		`UPDATE certificateStatus
 		 SET ocspResponse=?,ocspLastUpdated=?
 		 WHERE serial=?
@@ -237,7 +254,7 @@ func (updater *OCSPUpdater) storeResponse(status *core.CertificateStatus) error 
 
 // markExpired updates a given CertificateStatus to have `isExpired` set.
 func (updater *OCSPUpdater) markExpired(status core.CertificateStatus) error {
-	_, err := updater.dbMap.Exec(
+	_, err := updater.db.Exec(
 		`UPDATE certificateStatus
  		SET isExpired = TRUE
  		WHERE serial = ?`,
@@ -369,6 +386,43 @@ func (updater *OCSPUpdater) tick() {
 	updater.clk.Sleep(sleepDur)
 }
 
+func configureDb(dbConfig cmd.DBConfig) (*sql.DB, error) {
+	dsn, err := dbConfig.URL()
+	if err != nil {
+		return nil, fmt.Errorf("while loading DSN from 'DBConnectFile': %s", err)
+	}
+
+	conf, err := mysql.ParseDSN(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("while parsing DSN from 'DBConnectFile': %s", err)
+	}
+
+	// Transaction isolation level 'READ-UNCOMMITTED' trades consistency for
+	// performance.
+	if len(conf.Params) == 0 {
+		conf.Params = map[string]string{
+			"tx_isolation":      "'READ-UNCOMMITTED'",
+			"interpolateParams": "true",
+			"parseTime":         "true",
+		}
+	} else {
+		conf.Params["tx_isolation"] = "'READ-UNCOMMITTED'"
+		conf.Params["interpolateParams"] = "true"
+		conf.Params["parseTime"] = "true"
+	}
+
+	db, err := sql.Open("mysql", conf.FormatDSN())
+	if err != nil {
+		return nil, fmt.Errorf("couldn't setup database client: %s", err)
+	}
+
+	db.SetMaxOpenConns(dbConfig.MaxOpenConns)
+	db.SetMaxIdleConns(dbConfig.MaxIdleConns)
+	db.SetConnMaxLifetime(dbConfig.ConnMaxLifetime.Duration)
+	db.SetConnMaxIdleTime(dbConfig.ConnMaxIdleTime.Duration)
+	return db, nil
+}
+
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
@@ -394,50 +448,26 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	// Configure DB
-	configureDb := func(scope prometheus.Registerer, databaseConfig cmd.DBConfig) *db.WrappedMap {
-		dbSettings := sa.DbSettings{
-			MaxOpenConns:    databaseConfig.MaxOpenConns,
-			MaxIdleConns:    databaseConfig.MaxIdleConns,
-			ConnMaxLifetime: databaseConfig.ConnMaxLifetime.Duration,
-			ConnMaxIdleTime: databaseConfig.ConnMaxIdleTime.Duration,
-		}
+	db, err := configureDb(conf.DB)
+	cmd.FailOnError(err, "Failed to create database client")
 
-		dbDSN, err := databaseConfig.URL()
-		cmd.FailOnError(err, "Couldn't load DB URL")
+	dbAddr, dbUser, err := conf.DB.DSNAddressAndUser()
+	cmd.FailOnError(err, "Failed to parse DB config")
 
-		conf, err := mysql.ParseDSN(dbDSN)
-		cmd.FailOnError(err, "Couldn't parse DB URL as DSN")
+	sa.InitDBMetrics(db, stats, sa.NewDbSettingsFromDBConfig(conf.DB), dbAddr, dbUser)
 
-		// Set transaction isolation level to READ UNCOMMITTED. This trades
-		// consistency for performance.
-		if len(conf.Params) == 0 {
-			conf.Params = make(map[string]string)
-		}
-		conf.Params["tx_isolation"] = "'READ-UNCOMMITTED'"
-		dbDSN = conf.FormatDSN()
-		dbMap, err := sa.NewDbMap(dbDSN, dbSettings)
-		cmd.FailOnError(err, "Could not connect to database")
-
-		dbAddr, dbUser, err := databaseConfig.DSNAddressAndUser()
-		cmd.FailOnError(err, "Could not determine address or user of DB DSN")
-
-		// Collect and periodically report DB metrics using the DBMap and prometheus scope.
-		sa.InitDBMetrics(dbMap, scope, dbSettings, dbAddr, dbUser)
-
-		return dbMap
-	}
-
-	dbMap := configureDb(stats, conf.DB)
-
-	dbReadOnlyURL, err := conf.ReadOnlyDB.URL()
-	cmd.FailOnError(err, "Couldn't load read-only DB URL")
-
-	var dbReadOnlyMap *db.WrappedMap
-	if dbReadOnlyURL == "" {
-		dbReadOnlyMap = dbMap
+	var readOnlyDb *sql.DB
+	readOnlyDbDSN, _ := conf.ReadOnlyDB.URL()
+	if readOnlyDbDSN == "" {
+		readOnlyDb = db
 	} else {
-		dbReadOnlyMap = configureDb(stats, conf.ReadOnlyDB)
+		readOnlyDb, err = configureDb(conf.ReadOnlyDB)
+		cmd.FailOnError(err, "Failed to create read-only database client")
+
+		dbAddr, dbUser, err := conf.ReadOnlyDB.DSNAddressAndUser()
+		cmd.FailOnError(err, "Failed to parse read-only DB config")
+
+		sa.InitDBMetrics(readOnlyDb, stats, sa.NewDbSettingsFromDBConfig(conf.DB), dbAddr, dbUser)
 	}
 
 	clk := cmd.Clock()
@@ -457,8 +487,8 @@ func main() {
 	updater, err := newUpdater(
 		stats,
 		clk,
-		dbMap,
-		dbReadOnlyMap,
+		db,
+		readOnlyDb,
 		serialSuffixes,
 		ogc,
 		// Necessary evil for now

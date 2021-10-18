@@ -424,7 +424,7 @@ func main() {
 	dbAddr, dbUser, err := config.BadKeyRevoker.DB.DSNAddressAndUser()
 	cmd.FailOnError(err, "Could not determine address or user of DB DSN")
 
-	sa.InitDBMetrics(dbMap, scope, dbSettings, dbAddr, dbUser)
+	sa.InitDBMetrics(dbMap.Db, scope, dbSettings, dbAddr, dbUser)
 
 	tlsConfig, err := config.BadKeyRevoker.TLS.Load()
 	cmd.FailOnError(err, "TLS config")

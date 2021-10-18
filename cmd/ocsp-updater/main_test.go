@@ -56,11 +56,25 @@ func setup(t *testing.T) (*OCSPUpdater, sapb.StorageAuthorityClient, *db.Wrapped
 
 	cleanUp := test.ResetSATestDatabase(t)
 
+	db, err := configureDb(
+		cmd.DBConfig{
+			DBConnect: vars.DBConnSAOcspUpdate,
+		},
+	)
+	test.AssertNotError(t, err, "Failed to create database client")
+
+	readOnlyDb, err := configureDb(
+		cmd.DBConfig{
+			DBConnect: vars.DBConnSAOcspUpdateRO,
+		},
+	)
+	test.AssertNotError(t, err, "Failed to create read-only database client")
+
 	updater, err := newUpdater(
 		metrics.NoopRegisterer,
 		fc,
-		dbMap,
-		dbMap,
+		db,
+		readOnlyDb,
 		strings.Fields("0 1 2 3 4 5 6 7 8 9 a b c d e f"),
 		&mockOCSP{},
 		OCSPUpdaterConfig{
@@ -515,11 +529,8 @@ func TestIssuerInfo(t *testing.T) {
 
 type brokenDB struct{}
 
-func (bdb *brokenDB) Select(i interface{}, query string, args ...interface{}) ([]interface{}, error) {
+func (bdb *brokenDB) Query(query string, args ...interface{}) (*sql.Rows, error) {
 	return nil, errors.New("broken")
-}
-func (bdb *brokenDB) SelectOne(holder interface{}, query string, args ...interface{}) error {
-	return errors.New("broken")
 }
 func (bdb *brokenDB) Exec(query string, args ...interface{}) (sql.Result, error) {
 	return nil, errors.New("broken")
@@ -529,7 +540,7 @@ func TestTickSleep(t *testing.T) {
 	updater, _, dbMap, fc, cleanUp := setup(t)
 	defer cleanUp()
 	m := &brokenDB{}
-	updater.readOnlyDbMap = m
+	updater.readOnlyDb = m
 
 	// Test when updateOCSPResponses fails the failure counter is incremented
 	// and the clock moved forward by more than updater.tickWindow
@@ -542,7 +553,7 @@ func TestTickSleep(t *testing.T) {
 
 	// Test when updateOCSPResponses works the failure counter is reset to zero
 	// and the clock only moves by updater.tickWindow
-	updater.readOnlyDbMap = dbMap
+	updater.readOnlyDb = dbMap
 	before = fc.Now()
 	updater.tick()
 	test.AssertEquals(t, updater.tickFailures, 0)

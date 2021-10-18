@@ -391,7 +391,7 @@ func main() {
 	dbAddr, dbUser, err := config.CertChecker.DB.DSNAddressAndUser()
 	cmd.FailOnError(err, "Could not determine address or user of DB DSN")
 
-	sa.InitDBMetrics(saDbMap, prometheus.DefaultRegisterer, dbSettings, dbAddr, dbUser)
+	sa.InitDBMetrics(saDbMap.Db, prometheus.DefaultRegisterer, dbSettings, dbAddr, dbUser)
 	checkerLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name: "cert_checker_latency",
 		Help: "Histogram of latencies a cert-checker worker takes to complete a batch",
