@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -39,6 +40,30 @@ type ocspDb interface {
 	Exec(query string, args ...interface{}) (sql.Result, error)
 }
 
+// failCounter provides a concurrent safe counter.
+type failCounter struct {
+	mu    sync.Mutex
+	count int
+}
+
+func (c *failCounter) Add(i int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.count += i
+}
+
+func (c *failCounter) Reset() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.count = 0
+}
+
+func (c *failCounter) Value() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.count
+}
+
 // OCSPUpdater contains the useful objects for the Updater
 type OCSPUpdater struct {
 	log blog.Logger
@@ -55,7 +80,7 @@ type OCSPUpdater struct {
 
 	maxBackoff    time.Duration
 	backoffFactor float64
-	tickFailures  int
+	readFailures  failCounter
 
 	serialSuffixes []string
 	queryBody      string
@@ -66,10 +91,12 @@ type OCSPUpdater struct {
 	// these requests in parallel allows us to get higher total throughput.
 	parallelGenerateOCSPRequests int
 
-	stalenessHistogram prometheus.Histogram
-	genStoreHistogram  prometheus.Histogram
-	generatedCounter   *prometheus.CounterVec
-	storedCounter      *prometheus.CounterVec
+	stalenessHistogram   prometheus.Histogram
+	genStoreHistogram    prometheus.Histogram
+	generatedCounter     *prometheus.CounterVec
+	storedCounter        *prometheus.CounterVec
+	markExpiredCounter   *prometheus.CounterVec
+	findStaleOCSPCounter *prometheus.CounterVec
 }
 
 func newUpdater(
@@ -118,12 +145,12 @@ func newUpdater(
 	stats.MustRegister(genStoreHistogram)
 	generatedCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "ocsp_updater_generated",
-		Help: "A counter of OCSP response generation calls labelled by result",
+		Help: "A counter of OCSP response generation calls labeled by result",
 	}, []string{"result"})
 	stats.MustRegister(generatedCounter)
 	storedCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "ocsp_updater_stored",
-		Help: "A counter of OCSP response storage calls labelled by result",
+		Help: "A counter of OCSP response storage calls labeled by result",
 	}, []string{"result"})
 	stats.MustRegister(storedCounter)
 	tickHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -138,6 +165,16 @@ func newUpdater(
 		Buckets: []float64{10, 100, 1000, 10000, 21600, 32400, 36000, 39600, 43200, 54000, 64800, 75600, 86400, 108000, 129600, 172800},
 	})
 	stats.MustRegister(stalenessHistogram)
+	markExpiredCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "mark_expired",
+		Help: "A counter of mark expired calls labeled by result",
+	}, []string{"result"})
+	stats.MustRegister(markExpiredCounter)
+	findStaleOCSPCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "find_stale_ocsp",
+		Help: "A counter of query for stale OCSP responses labeled by result",
+	}, []string{"result"})
+	stats.MustRegister(findStaleOCSPCounter)
 
 	updater := OCSPUpdater{
 		clk:                          clk,
@@ -150,6 +187,8 @@ func newUpdater(
 		genStoreHistogram:            genStoreHistogram,
 		generatedCounter:             generatedCounter,
 		storedCounter:                storedCounter,
+		markExpiredCounter:           markExpiredCounter,
+		findStaleOCSPCounter:         findStaleOCSPCounter,
 		stalenessHistogram:           stalenessHistogram,
 		tickHistogram:                tickHistogram,
 		tickWindow:                   config.OldOCSPWindow.Duration,
@@ -167,7 +206,13 @@ func getQuestionsForShardList(count int) string {
 	return strings.TrimRight(strings.Repeat("?,", count), ",")
 }
 
-func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
+// findStaleOCSPResponses sends a goroutine to fetch rows of stale OCSP
+// responses from the database and returns results on a channel.
+func (updater *OCSPUpdater) findStaleOCSPResponses(ctx context.Context, oldestLastUpdatedTime time.Time, batchSize int) <-chan core.CertificateStatus {
+	// staleStatusesOut channel contains all stale ocsp responses that need
+	// updating.
+	staleStatusesOut := make(chan core.CertificateStatus)
+
 	args := make([]interface{}, 0)
 	args = append(args, oldestLastUpdatedTime)
 
@@ -177,41 +222,63 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 	}
 	args = append(args, batchSize)
 
-	rows, err := updater.readOnlyDb.Query(
-		fmt.Sprintf(
-			"SELECT %s FROM certificateStatus %s",
-			strings.Join(sa.CertStatusMetadataFields(), ","),
-			updater.queryBody,
-		),
-		args...,
-	)
-	if err != nil {
-		return nil, err
-	}
+	go func() {
+		defer close(staleStatusesOut)
 
-	var statuses []core.CertificateStatus
-	for rows.Next() {
-		var status core.CertificateStatus
-		err := sa.ScanCertStatusRow(rows, &status)
-		if err != nil {
-			rows.Close()
-			return nil, err
-		}
-		statuses = append(statuses, status)
-
-		updater.stalenessHistogram.Observe(
-			oldestLastUpdatedTime.Sub(status.OCSPLastUpdated).Seconds(),
+		rows, err := updater.readOnlyDb.Query(
+			fmt.Sprintf(
+				"SELECT %s FROM certificateStatus %s",
+				strings.Join(sa.CertStatusMetadataFields(), ","),
+				updater.queryBody,
+			),
+			args...,
 		)
-	}
-	// Ensure the query wasn't interrupted before it could complete.
-	err = rows.Close()
-	if err != nil {
-		return nil, err
-	}
 
-	return statuses, err
+		// If error, log and increment retries for backoff. Else no
+		// error, proceed to push statuses to channel.
+		if err != nil {
+			updater.log.AuditErrf("Failed to find stale OCSP responses: %s", err)
+			updater.findStaleOCSPCounter.WithLabelValues("failed").Inc()
+			updater.readFailures.Add(1)
+			return
+		}
+
+		for rows.Next() {
+			var status core.CertificateStatus
+			err := sa.ScanCertStatusRow(rows, &status)
+			if err != nil {
+				rows.Close()
+				updater.log.AuditErrf("Failed to find stale OCSP responses: %s", err)
+				updater.findStaleOCSPCounter.WithLabelValues("failed").Inc()
+				updater.readFailures.Add(1)
+				return
+			}
+			staleness := oldestLastUpdatedTime.Sub(status.OCSPLastUpdated).Seconds()
+			updater.stalenessHistogram.Observe(staleness)
+			select {
+			case <-ctx.Done():
+				return
+			case staleStatusesOut <- status:
+			}
+		}
+		// Ensure the query wasn't interrupted before it could complete.
+		err = rows.Close()
+		if err != nil {
+			updater.log.AuditErrf("Failed to find stale OCSP responses: %s", err)
+			updater.findStaleOCSPCounter.WithLabelValues("failed").Inc()
+			updater.readFailures.Add(1)
+			return
+		}
+
+		updater.findStaleOCSPCounter.WithLabelValues("success").Inc()
+		updater.readFailures.Reset()
+	}()
+
+	return staleStatusesOut
 }
 
+// generateResponse signs an new OCSP response for a given
+// `core.CertificateStatus` entry.
 func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.CertificateStatus) (*core.CertificateStatus, error) {
 	if status.IssuerID == 0 {
 		return nil, errors.New("cert status has 0 IssuerID")
@@ -235,6 +302,7 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.Ce
 	return &status, nil
 }
 
+// storeResponse stores a given CertificateStatus in the database.
 func (updater *OCSPUpdater) storeResponse(status *core.CertificateStatus) error {
 	// Update the certificateStatus table with the new OCSP response, the status
 	// WHERE is used make sure we don't overwrite a revoked response with a one
@@ -263,7 +331,39 @@ func (updater *OCSPUpdater) markExpired(status core.CertificateStatus) error {
 	return err
 }
 
-func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses []core.CertificateStatus) error {
+// processExpired is a pipeline step to process a channel of
+// `core.CertificateStatus` and set `isExpired` in the database.
+func (updater *OCSPUpdater) processExpired(ctx context.Context, staleStatusesIn <-chan core.CertificateStatus) <-chan core.CertificateStatus {
+	tickStart := updater.clk.Now()
+	staleStatusesOut := make(chan core.CertificateStatus)
+	go func() {
+		defer close(staleStatusesOut)
+		for status := range staleStatusesIn {
+			if !status.IsExpired && tickStart.After(status.NotAfter) {
+				err := updater.markExpired(status)
+				if err != nil {
+					// Update error counters and log
+					updater.log.AuditErrf("Failed to set certificate expired: %s", err)
+					updater.markExpiredCounter.WithLabelValues("failed").Inc()
+				} else {
+					updater.markExpiredCounter.WithLabelValues("success").Inc()
+				}
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case staleStatusesOut <- status:
+			}
+		}
+	}()
+
+	return staleStatusesOut
+}
+
+// generateOCSPResponses is the final stage of a pipeline. It takes a
+// channel of `core.CertificateStatus` and sends a goroutine for each to
+// obtain a new OCSP response and update the status in the database.
+func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, staleStatusesIn <-chan core.CertificateStatus) {
 	// Use the semaphore pattern from
 	// https://github.com/golang/go/wiki/BoundingResourceUse to send a number of
 	// GenerateOCSP / storeResponse requests in parallel, while limiting the total number of
@@ -278,8 +378,11 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 		updater.genStoreHistogram.Observe(time.Since(start).Seconds())
 	}
 
+	// Work runs as a goroutine per ocsp response to obtain a new ocsp
+	// response and store it in the database.
 	work := func(status core.CertificateStatus) {
 		defer done(updater.clk.Now())
+
 		meta, err := updater.generateResponse(ctx, status)
 		if err != nil {
 			updater.log.AuditErrf("Failed to generate OCSP response: %s", err)
@@ -287,6 +390,7 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 			return
 		}
 		updater.generatedCounter.WithLabelValues("success").Inc()
+
 		err = updater.storeResponse(meta)
 		if err != nil {
 			updater.log.AuditErrf("Failed to store OCSP response: %s", err)
@@ -296,38 +400,18 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, statuses 
 		updater.storedCounter.WithLabelValues("success").Inc()
 	}
 
-	for _, status := range statuses {
+	// Consume the stale statuses channel and send off a sign/store request
+	// for each stale response.
+	for status := range staleStatusesIn {
 		wait()
 		go work(status)
 	}
-	// Block until the channel reaches its full capacity again, indicating each
-	// goroutine has completed.
+
+	// Block until the sem channel reaches its full capacity again,
+	// indicating each goroutine has completed.
 	for i := 0; i < updater.parallelGenerateOCSPRequests; i++ {
 		wait()
 	}
-	return nil
-}
-
-// updateOCSPResponses looks for certificates with stale OCSP responses and
-// generates/stores new ones
-func (updater *OCSPUpdater) updateOCSPResponses(ctx context.Context, batchSize int) error {
-	tickStart := updater.clk.Now()
-	statuses, err := updater.findStaleOCSPResponses(tickStart.Add(-updater.ocspMinTimeToExpiry), batchSize)
-	if err != nil {
-		updater.log.AuditErrf("Failed to find stale OCSP responses: %s", err)
-		return err
-	}
-
-	for _, s := range statuses {
-		if !s.IsExpired && tickStart.After(s.NotAfter) {
-			err := updater.markExpired(s)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	return updater.generateOCSPResponses(ctx, statuses)
 }
 
 type config struct {
@@ -362,25 +446,35 @@ type OCSPUpdaterConfig struct {
 
 func (updater *OCSPUpdater) tick() {
 	start := updater.clk.Now()
-	err := updater.updateOCSPResponses(context.Background(), updater.batchSize)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	oldestLastUpdatedTime := updater.clk.Now().Add(-updater.ocspMinTimeToExpiry)
+
+	// Run pipeline
+	updater.generateOCSPResponses(ctx, updater.processExpired(ctx, updater.findStaleOCSPResponses(ctx, oldestLastUpdatedTime, updater.batchSize)))
+
 	end := updater.clk.Now()
 	took := end.Sub(start)
 	long, state := "false", "success"
 	if took > updater.tickWindow {
 		long = "true"
 	}
+
+	// Set sleep duration to the configured tickWindow.
 	sleepDur := start.Add(updater.tickWindow).Sub(end)
-	if err != nil {
-		state = "failed"
-		updater.tickFailures++
+
+	// Set sleep duration higher to backoff starting the next tick and
+	// reading from the database if the last read failed.
+	readFails := updater.readFailures.Value()
+	if readFails > 0 {
 		sleepDur = core.RetryBackoff(
-			updater.tickFailures,
+			readFails,
 			updater.tickWindow,
 			updater.maxBackoff,
 			updater.backoffFactor,
 		)
-	} else if updater.tickFailures > 0 {
-		updater.tickFailures = 0
 	}
 	updater.tickHistogram.WithLabelValues(state, long).Observe(took.Seconds())
 	updater.clk.Sleep(sleepDur)
@@ -498,7 +592,6 @@ func main() {
 	cmd.FailOnError(err, "Failed to create updater")
 
 	go cmd.CatchSignals(logger, nil)
-
 	for {
 		updater.tick()
 	}
