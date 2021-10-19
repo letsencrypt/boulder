@@ -248,6 +248,11 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	updater, sa, _, fc, cleanUp := setup(t)
 	defer cleanUp()
 
+	// With no rows in the CertificateStatus table we shouldn't get an error.
+	statuses := findStaleOCSPResponsesBuffered(ctx, updater, fc.Now(), 10)
+	test.AssertEquals(t, updater.readFailures.Value(), 0)
+	test.AssertEquals(t, len(statuses), 0)
+
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
@@ -266,7 +271,7 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	earliest := fc.Now().Add(-time.Hour)
 
 	// We should have 1 stale response now.
-	statuses := findStaleOCSPResponsesBuffered(ctx, updater, earliest, 10)
+	statuses = findStaleOCSPResponsesBuffered(ctx, updater, earliest, 10)
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
 	test.AssertEquals(t, len(statuses), 1)
 

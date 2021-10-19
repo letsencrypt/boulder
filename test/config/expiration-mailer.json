@@ -9,7 +9,8 @@
       "dbConnectFile": "test/secrets/mailer_dburl",
       "maxOpenConns": 10
     },
-    "nagTimes": ["24h", "72h", "168h", "336h"],
+    "certLimit": 100000,
+    "nagTimes": ["480h", "240h"],
     "nagCheckInterval": "24h",
     "emailTemplate": "test/example-expiration-template",
     "debugAddr": ":8008",
