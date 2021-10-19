@@ -219,7 +219,7 @@ func New(
 			Name: "dns_timeout",
 			Help: "Counter of various types of DNS query timeouts",
 		},
-		[]string{"qtype", "type", "resolver"},
+		[]string{"qtype", "type", "resolver", "isTLD"},
 	)
 	idMismatchCounter := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -338,12 +338,14 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 					"qtype":    qtypeStr,
 					"type":     "deadline exceeded",
 					"resolver": chosenServer,
+					"isTLD":    isTLD(hostname),
 				}).Inc()
 			} else if ctx.Err() == context.Canceled {
 				dnsClient.timeoutCounter.With(prometheus.Labels{
 					"qtype":    qtypeStr,
 					"type":     "canceled",
 					"resolver": chosenServer,
+					"isTLD":    isTLD(hostname),
 				}).Inc()
 			} else {
 				dnsClient.timeoutCounter.With(prometheus.Labels{
@@ -374,6 +376,7 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 						"qtype":    qtypeStr,
 						"type":     "out of retries",
 						"resolver": chosenServer,
+						"isTLD":    isTLD(hostname),
 					}).Inc()
 				}
 			}
@@ -382,6 +385,17 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 		}
 	}
 
+}
+
+// isTLD returns a simplified view of whether something is a TLD: does it have
+// any dots in it? This returns true or false as a string, and is meant solely
+// for Prometheus metrics.
+func isTLD(hostname string) string {
+	if strings.Contains(hostname, ".") {
+		return "false"
+	} else {
+		return "true"
+	}
 }
 
 type dnsResp struct {
