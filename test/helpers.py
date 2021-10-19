@@ -86,7 +86,7 @@ def ocsp_verify(cert_file, issuer_file, ocsp_response):
             '-issuer', issuer_file,
             '-cert', cert_file,
             '-verify_other', issuer_file,
-            '-CAfile', '/tmp/root-cert-rsa.pem',
+            '-CAfile', '/hierarchy/root-cert-rsa.pem',
             '-respin', f.name], stderr=subprocess.STDOUT).decode()
     # OpenSSL doesn't always return non-zero when response verify fails, so we
     # also look for the string "Response Verify Failure"

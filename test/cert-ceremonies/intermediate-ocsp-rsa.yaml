@@ -5,10 +5,10 @@ pkcs11:
     signing-key-slot: {{ .SlotID}}
     signing-key-label: root signing key (rsa)
 inputs:
-    certificate-path: /tmp/intermediate-cert-rsa-a.pem
-    issuer-certificate-path: /tmp/root-cert-rsa.pem
+    certificate-path: /hierarchy/intermediate-cert-rsa-a.pem
+    issuer-certificate-path: /hierarchy/root-cert-rsa.pem
 outputs:
-    response-path: /tmp/intermediate-ocsp-rsa.b64
+    response-path: /hierarchy/intermediate-ocsp-rsa.b64
 ocsp-profile:
     this-update: 2020-01-01 12:00:00
     next-update: 2039-01-01 12:00:00
