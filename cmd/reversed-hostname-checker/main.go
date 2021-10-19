@@ -25,7 +25,7 @@ func main() {
 	}
 	for scanner.Scan() {
 		n := sa.ReverseName(string(scanner.Bytes()))
-		if err := pa.WillingToIssue(identifier.DNSIdentifier(n)); err != nil {
+		if err := pa.WillingToIssueWildcards([]identifier.ACMEIdentifier{identifier.DNSIdentifier(n)}); err != nil {
 			fmt.Println(n, err)
 		}
 	}
