@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 )
 
@@ -38,5 +39,6 @@ func AvailableCommands() []string {
 	for name := range registry.commands {
 		avail = append(avail, name)
 	}
+	sort.Strings(avail)
 	return avail
 }
