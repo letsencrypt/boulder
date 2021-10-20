@@ -74,7 +74,6 @@ func genCert(path string) error {
 }
 
 func main() {
-	fmt.Println("HI")
 	// If one of the output files already exists, assume this ran once
 	// already for the container and don't re-run.
 	outputFile := "/hierarchy/root-signing-pub-rsa.pem"
