@@ -49,7 +49,7 @@ jobs:
           # docker-compose.next.yml`.
           - "./tn.sh --integration"
           - "./t.sh --unit --enable-race-detection"
-          - "./tn.sh ./test.sh --unit --enable-race-detection"
+          - "./tn.sh --unit --enable-race-detection"
           - "./t.sh --start-py"
           # gomod-vendor runs with a separate network access definition
           # because it needs to fetch packages from GitHub et. al., which
