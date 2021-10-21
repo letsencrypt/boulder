@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"bytes"
@@ -371,4 +371,8 @@ func mux(stats prometheus.Registerer, responderPath string, source bocsp.Source,
 		stripPrefix.ServeHTTP(w, r)
 	})
 	return hnynethttp.WrapHandler(measured_http.New(&ocspMux{h}, cmd.Clock(), stats))
+}
+
+func init() {
+	cmd.RegisterCommand("ocsp-responder", main)
 }

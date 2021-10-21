@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"bufio"
@@ -321,4 +321,8 @@ func main() {
 
 	err = results.writeToFile(*outFile)
 	cmd.FailOnError(err, fmt.Sprintf("Could not write result to outfile %q", *outFile))
+}
+
+func init() {
+	cmd.RegisterCommand("id-exporter", main)
 }

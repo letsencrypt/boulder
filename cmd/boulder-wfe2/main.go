@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"bytes"
@@ -458,4 +458,8 @@ func main() {
 	// immediately return ErrServerClosed. Make sure the program doesn't exit and
 	// waits instead for Shutdown to return.
 	<-done
+}
+
+func init() {
+	cmd.RegisterCommand("boulder-wfe2", main)
 }

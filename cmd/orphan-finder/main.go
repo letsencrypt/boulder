@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"context"
@@ -439,4 +439,8 @@ func main() {
 	default:
 		usage()
 	}
+}
+
+func init() {
+	cmd.RegisterCommand("orphan-finder", main)
 }
