@@ -364,13 +364,7 @@ func main() {
 	saDbURL, err := config.CertChecker.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 
-	dbSettings := sa.DbSettings{
-		MaxOpenConns:    config.CertChecker.DB.MaxOpenConns,
-		MaxIdleConns:    config.CertChecker.DB.MaxIdleConns,
-		ConnMaxLifetime: config.CertChecker.DB.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: config.CertChecker.DB.ConnMaxIdleTime.Duration,
-	}
-
+	dbSettings := sa.NewDbSettingsFromDBConfig(config.CertChecker.DB)
 	conf, err := mysql.ParseDSN(saDbURL)
 	cmd.FailOnError(err, "Couldn't parse DB URL as DSN")
 

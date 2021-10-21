@@ -285,13 +285,7 @@ func main() {
 		dbURL = conf.FormatDSN()
 	}
 
-	dbSettings := sa.DbSettings{
-		MaxOpenConns:    cfg.ContactExporter.DB.MaxOpenConns,
-		MaxIdleConns:    cfg.ContactExporter.DB.MaxIdleConns,
-		ConnMaxLifetime: cfg.ContactExporter.DB.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: cfg.ContactExporter.DB.ConnMaxIdleTime.Duration,
-	}
-
+	dbSettings := sa.NewDbSettingsFromDBConfig(cfg.ContactExporter.DB)
 	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")
 

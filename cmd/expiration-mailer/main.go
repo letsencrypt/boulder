@@ -508,12 +508,8 @@ func main() {
 	// Configure DB
 	dbURL, err := c.Mailer.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
-	dbSettings := sa.DbSettings{
-		MaxOpenConns:    c.Mailer.DB.MaxOpenConns,
-		MaxIdleConns:    c.Mailer.DB.MaxIdleConns,
-		ConnMaxLifetime: c.Mailer.DB.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: c.Mailer.DB.ConnMaxIdleTime.Duration,
-	}
+
+	dbSettings := sa.NewDbSettingsFromDBConfig(c.Mailer.DB)
 	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")
 	sa.SetSQLDebug(dbMap, logger)

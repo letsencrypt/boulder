@@ -67,12 +67,7 @@ func main() {
 	logger.Info(cmd.VersionString())
 
 	configureDb := func(scope prometheus.Registerer, databaseConfig cmd.DBConfig) *db.WrappedMap {
-		dbSettings := sa.DbSettings{
-			MaxOpenConns:    databaseConfig.MaxOpenConns,
-			MaxIdleConns:    databaseConfig.MaxIdleConns,
-			ConnMaxLifetime: databaseConfig.ConnMaxLifetime.Duration,
-			ConnMaxIdleTime: databaseConfig.ConnMaxIdleTime.Duration,
-		}
+		dbSettings := sa.NewDbSettingsFromDBConfig(databaseConfig)
 
 		dbDSN, err := databaseConfig.URL()
 		cmd.FailOnError(err, "Couldn't load DB URL")

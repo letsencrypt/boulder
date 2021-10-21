@@ -75,12 +75,8 @@ func setupContext(c config) (rapb.RegistrationAuthorityClient, blog.Logger, *db.
 
 	dbURL, err := c.Revoker.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
-	dbSettings := sa.DbSettings{
-		MaxOpenConns:    c.Revoker.DB.MaxOpenConns,
-		MaxIdleConns:    c.Revoker.DB.MaxIdleConns,
-		ConnMaxLifetime: c.Revoker.DB.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: c.Revoker.DB.ConnMaxIdleTime.Duration,
-	}
+
+	dbSettings := sa.NewDbSettingsFromDBConfig(c.Revoker.DB)
 	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
 	cmd.FailOnError(err, "Couldn't setup database connection")
 

@@ -503,13 +503,7 @@ func main() {
 	}
 	conf.Params["tx_isolation"] = "'READ-UNCOMMITTED'"
 
-	dbSettings := sa.DbSettings{
-		MaxOpenConns:    cfg.NotifyMailer.DB.MaxOpenConns,
-		MaxIdleConns:    cfg.NotifyMailer.DB.MaxIdleConns,
-		ConnMaxLifetime: cfg.NotifyMailer.DB.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: cfg.NotifyMailer.DB.ConnMaxIdleTime.Duration,
-	}
-
+	dbSettings := sa.NewDbSettingsFromDBConfig(cfg.NotifyMailer.DB)
 	dbMap, err := sa.NewDbMap(conf.FormatDSN(), dbSettings)
 	cmd.FailOnError(err, "Couldn't create database connection")
 

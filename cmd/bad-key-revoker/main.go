@@ -411,12 +411,7 @@ func main() {
 	dbURL, err := config.BadKeyRevoker.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 
-	dbSettings := sa.DbSettings{
-		MaxOpenConns:    config.BadKeyRevoker.DB.MaxOpenConns,
-		MaxIdleConns:    config.BadKeyRevoker.DB.MaxIdleConns,
-		ConnMaxLifetime: config.BadKeyRevoker.DB.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: config.BadKeyRevoker.DB.ConnMaxIdleTime.Duration,
-	}
+	dbSettings := sa.NewDbSettingsFromDBConfig(config.BadKeyRevoker.DB)
 	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
 	cmd.FailOnError(err, "Could not connect to database")
 	sa.SetSQLDebug(dbMap, logger)
