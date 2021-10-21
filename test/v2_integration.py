@@ -683,7 +683,7 @@ def test_revoke_by_account():
     reset_akamai_purges()
     client.revoke(josepy.ComparableX509(cert), 0)
 
-    verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
     verify_akamai_purge()
 
 def test_revoke_by_issuer():
@@ -695,7 +695,7 @@ def test_revoke_by_issuer():
     reset_akamai_purges()
     client.revoke(josepy.ComparableX509(cert), 0)
 
-    verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
     verify_akamai_purge()
 
 def test_revoke_by_authz():
@@ -711,7 +711,7 @@ def test_revoke_by_authz():
     reset_akamai_purges()
     client.revoke(josepy.ComparableX509(cert), 0)
 
-    verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
     verify_akamai_purge()
 
 def test_revoke_by_privkey():
@@ -745,7 +745,7 @@ def test_revoke_by_privkey():
     cert_file.write(OpenSSL.crypto.dump_certificate(
         OpenSSL.crypto.FILETYPE_PEM, cert).decode())
     cert_file.close()
-    verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
     verify_akamai_purge()
 
 def test_sct_embedding():
@@ -1159,7 +1159,7 @@ def test_ocsp():
 
     # As OCSP-Updater is generating responses independently of the CA we sit in a loop
     # checking OCSP until we either see a good response or we timeout (5s).
-    verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "good")
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "good")
 
 def test_ct_submission():
     hostname = random_domain()
@@ -1215,7 +1215,7 @@ def ocsp_exp_unauth_setup():
     # Since our servers are pretending to be in the past, but the openssl cli
     # isn't, we'll get an expired OCSP response. Just check that it exists;
     # don't do the full verification (which would fail).
-    check_ocsp_basic_oid(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
+    check_ocsp_basic_oid(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002")
     global ocsp_exp_unauth_setup_data
     ocsp_exp_unauth_setup_data['cert_file'] = cert_file.name
 
@@ -1226,7 +1226,7 @@ def test_ocsp_exp_unauth():
     cert_file = ocsp_exp_unauth_setup_data['cert_file']
     while tries < 5:
         try:
-            verify_ocsp(cert_file, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "XXX")
+            verify_ocsp(cert_file, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "XXX")
             raise(Exception("Unexpected return from verify_ocsp"))
         except subprocess.CalledProcessError as cpe:
             if cpe.output == b"Responder Error: unauthorized (6)\n":
@@ -1476,7 +1476,7 @@ def test_admin_revoker_cert():
         '%x' % parsed_cert.serial_number, '1'])
 
     # Wait for OCSP response to indicate revocation took place
-    verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
     verify_akamai_purge()
 
 def test_admin_revoker_batched():
@@ -1497,7 +1497,7 @@ def test_admin_revoker_batched():
         serialFile.name, '0', '2'])
 
     for cert_file in cert_files:
-        verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
 
 def test_sct_embedding():
     order = chisel2.auth_and_issue([random_domain()])
@@ -1569,7 +1569,7 @@ def ocsp_resigning_setup():
     client.revoke(josepy.ComparableX509(cert), 3)
 
     ocsp_response, reason = get_ocsp_response_and_reason(
-        cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
+        cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002")
     global ocsp_resigning_setup_data
     ocsp_resigning_setup_data = {
         'cert_file': cert_file.name,
@@ -1585,7 +1585,7 @@ def test_ocsp_resigning():
     tries = 0
     while tries < 5:
         resp, reason = get_ocsp_response_and_reason(
-            ocsp_resigning_setup_data['cert_file'], "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002")
+            ocsp_resigning_setup_data['cert_file'], "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002")
         if resp != ocsp_resigning_setup_data['response']:
             break
         tries += 1

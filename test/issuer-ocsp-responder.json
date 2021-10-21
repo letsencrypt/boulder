@@ -1,10 +1,10 @@
 {
   "ocspResponder": {
-    "source": "file:///tmp/intermediate-ocsp-rsa.b64",
+    "source": "file:///hierarchy/intermediate-ocsp-rsa.b64",
     "path": "/",
     "listenAddress": "0.0.0.0:4003",
     "issuerCerts": [
-      "/tmp/intermediate-cert-rsa-a.pem"
+      "/hierarchy/intermediate-cert-rsa-a.pem"
     ],
     "maxAge": "10s",
     "timeout": "4.9s",

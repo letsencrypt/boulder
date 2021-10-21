@@ -62,7 +62,7 @@ def test_single_ocsp():
 
     # Verify that the static OCSP responder, which answers with a
     # pre-signed, long-lived response for the CA cert, works.
-    verify_ocsp("/tmp/intermediate-cert-rsa-a.pem", "/tmp/root-cert-rsa.pem", "http://localhost:4003", "good")
+    verify_ocsp("/hierarchy/intermediate-cert-rsa-a.pem", "/hierarchy/root-cert-rsa.pem", "http://localhost:4003", "good")
 
     p.send_signal(signal.SIGTERM)
     p.wait()

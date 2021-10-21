@@ -52,6 +52,6 @@
   },
 
   "common": {
-    "issuerCert": "/tmp/intermediate-cert-rsa-a.pem"
+    "issuerCert": "/hierarchy/intermediate-cert-rsa-a.pem"
   }
 }

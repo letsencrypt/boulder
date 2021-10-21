@@ -8,8 +8,8 @@ key:
     type: ecdsa
     ecdsa-curve: P-384
 outputs:
-    public-key-path: /tmp/root-signing-pub-ecdsa.pem
-    certificate-path: /tmp/root-cert-ecdsa.pem
+    public-key-path: /hierarchy/root-signing-pub-ecdsa.pem
+    certificate-path: /hierarchy/root-cert-ecdsa.pem
 certificate-profile:
     signature-algorithm: ECDSAWithSHA384
     common-name: CA root (ECDSA)
