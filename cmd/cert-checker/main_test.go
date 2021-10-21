@@ -258,6 +258,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	fc := clock.NewFake()
+	fc.Set(fc.Now().Add(time.Hour))
 
 	checker := newChecker(saDbMap, fc, pa, time.Hour, testValidityDurations)
 	sa, err := sa.NewSQLStorageAuthority(saDbMap, saDbMap, fc, blog.NewMock(), metrics.NoopRegisterer, 1)
@@ -287,7 +288,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 		_, err = sa.AddCertificate(context.Background(), &sapb.AddCertificateRequest{
 			Der:    certDER,
 			RegID:  reg.Id,
-			Issued: fc.Now().Add(time.Hour).UnixNano(),
+			Issued: fc.Now().UnixNano(),
 		})
 		test.AssertNotError(t, err, "Couldn't add certificate")
 	}
