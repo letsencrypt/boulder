@@ -31,7 +31,7 @@ unzip /tmp/protoc.zip -d /usr/local/protoc
 export GOBIN=/usr/local/bin GOCACHE=/tmp/gocache
 
 # Install golangci-lint
-curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $GOBIN v1.29.0
+curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $GOBIN v1.42.1
 
 # Install protobuf and testing/dev tools.
 # Note: The version of golang/protobuf is partially tied to the version of grpc
