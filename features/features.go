@@ -16,6 +16,7 @@ const (
 	StripDefaultSchemePort
 	NonCFSSLSigner
 	StoreIssuerInfo
+	StreamlineOrderAndAuthzs
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -68,6 +69,7 @@ var features = map[FeatureFlag]bool{
 	FasterNewOrdersRateLimit: false,
 	NonCFSSLSigner:           false,
 	ECDSAForAll:              false,
+	StreamlineOrderAndAuthzs: false,
 }
 
 var fMu = new(sync.RWMutex)

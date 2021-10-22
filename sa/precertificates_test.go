@@ -10,7 +10,6 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -32,7 +31,7 @@ func TestAddPrecertificate(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 
 	addPrecert := func(expectIssuedNamesUpdate bool) {
 		// Create a throw-away self signed certificate with a random name and
@@ -53,18 +52,14 @@ func TestAddPrecertificate(t *testing.T) {
 		test.AssertNotError(t, err, "Couldn't add test cert")
 
 		// It should have the expected certificate status
-		certStatus, err := sa.GetCertificateStatus(ctx, serial)
+		certStatus, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
 		test.AssertNotError(t, err, "Couldn't get status for test cert")
 		test.Assert(
 			t,
-			bytes.Compare(certStatus.OCSPResponse, ocspResp) == 0,
-			fmt.Sprintf("OCSP responses don't match, expected: %x, got %x", certStatus.OCSPResponse, ocspResp),
+			bytes.Compare(certStatus.OcspResponse, ocspResp) == 0,
+			fmt.Sprintf("OCSP responses don't match, expected: %x, got %x", certStatus.OcspResponse, ocspResp),
 		)
-		test.Assert(
-			t,
-			clk.Now().Equal(certStatus.OCSPLastUpdated),
-			fmt.Sprintf("OCSPLastUpdated doesn't match, expected %s, got %s", clk.Now(), certStatus.OCSPLastUpdated),
-		)
+		test.AssertEquals(t, clk.Now().UnixNano(), certStatus.OcspLastUpdated)
 
 		issuedNamesSerial, err := findIssuedName(sa.dbMap, testCert.DNSNames[0])
 		if expectIssuedNamesUpdate {
@@ -76,7 +71,11 @@ func TestAddPrecertificate(t *testing.T) {
 			// We should also be able to call AddCertificate with the same cert
 			// without it being an error. The duplicate err on inserting to
 			// issuedNames should be ignored.
-			_, err := sa.AddCertificate(ctx, testCert.Raw, regID, nil, &issuedTime)
+			_, err := sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+				Der:    testCert.Raw,
+				RegID:  regID,
+				Issued: issuedTime.UnixNano(),
+			})
 			test.AssertNotError(t, err, "unexpected err adding final cert after precert")
 		} else {
 			// Otherwise we expect an ErrDatabaseOp that indicates NoRows because
@@ -92,7 +91,7 @@ func TestAddPreCertificateDuplicate(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 
 	_, testCert := test.ThrowAwayCert(t, 1)
 
@@ -118,7 +117,7 @@ func TestAddPrecertificateIncomplete(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 
 	// Create a throw-away self signed certificate with a random name and
 	// serial number
@@ -141,7 +140,7 @@ func TestAddPrecertificateIncomplete(t *testing.T) {
 func TestAddPrecertificateKeyHash(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := createWorkingRegistration(t, sa)
 
 	serial, testCert := test.ThrowAwayCert(t, 1)
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{

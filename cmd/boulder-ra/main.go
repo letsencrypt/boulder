@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"flag"
@@ -152,8 +152,8 @@ func main() {
 	cmd.FailOnError(err, "TLS config")
 
 	clk := cmd.Clock()
-
 	clientMetrics := bgrpc.NewClientMetrics(scope)
+
 	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Unable to create VA client")
 	vac := vapb.NewVAClient(vaConn)
@@ -162,6 +162,10 @@ func main() {
 	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Unable to create CA client")
 	cac := capb.NewCertificateAuthorityClient(caConn)
+
+	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, clientMetrics, clk)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+	sac := sapb.NewStorageAuthorityClient(saConn)
 
 	var ctp *ctpolicy.CTPolicy
 	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics, clk)
@@ -204,10 +208,6 @@ func main() {
 		}
 	}
 	ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.InformationalCTLogs, logger, scope)
-
-	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, clientMetrics, clk)
-	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
 
 	// TODO(patf): remove once RA.authorizationLifetimeDays is deployed
 	authorizationLifetime := 300 * 24 * time.Hour
@@ -257,8 +257,7 @@ func main() {
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	grpcSrv, listener, err := bgrpc.NewServer(c.RA.GRPC, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup RA gRPC server")
-	gw := bgrpc.NewRegistrationAuthorityServer(rai)
-	rapb.RegisterRegistrationAuthorityServer(grpcSrv, gw)
+	rapb.RegisterRegistrationAuthorityServer(grpcSrv, rai)
 	hs := health.NewServer()
 	healthpb.RegisterHealthServer(grpcSrv, hs)
 
@@ -269,4 +268,8 @@ func main() {
 
 	err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
 	cmd.FailOnError(err, "RA gRPC service failed")
+}
+
+func init() {
+	cmd.RegisterCommand("boulder-ra", main)
 }

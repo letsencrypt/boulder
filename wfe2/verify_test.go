@@ -14,7 +14,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	"github.com/letsencrypt/boulder/grpc"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/probs"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -22,6 +22,7 @@ import (
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"google.golang.org/grpc"
 	"gopkg.in/square/go-jose.v2"
 )
 
@@ -1014,7 +1015,7 @@ func TestLookupJWK(t *testing.T) {
 
 	validJWS, validKey, validJWSBody := signRequestKeyID(t, 1, nil, "", "", wfe.nonceService)
 	validAccountPB, _ := wfe.SA.GetRegistration(context.Background(), &sapb.RegistrationID{Id: 1})
-	validAccount, _ := grpc.PbToRegistration(validAccountPB)
+	validAccount, _ := bgrpc.PbToRegistration(validAccountPB)
 
 	// good key, log event requester is set
 
@@ -1269,7 +1270,7 @@ func TestValidPOSTForAccount(t *testing.T) {
 
 	validJWS, _, validJWSBody := signRequestKeyID(t, 1, nil, "http://localhost/test", `{"test":"passed"}`, wfe.nonceService)
 	validAccountPB, _ := wfe.SA.GetRegistration(context.Background(), &sapb.RegistrationID{Id: 1})
-	validAccount, _ := grpc.PbToRegistration(validAccountPB)
+	validAccount, _ := bgrpc.PbToRegistration(validAccountPB)
 
 	// ID 102 is mocked to return missing
 	_, _, missingJWSBody := signRequestKeyID(t, 102, nil, "http://localhost/test", "{}", wfe.nonceService)
@@ -1415,12 +1416,12 @@ func TestValidPOSTAsGETForAccount(t *testing.T) {
 }
 
 type mockSADifferentStoredKey struct {
-	core.StorageGetter
+	sapb.StorageAuthorityGetterClient
 }
 
 // mockSADifferentStoredKey has a GetRegistration that will always return an
 // account with the test 2 key, no matter the provided ID
-func (sa mockSADifferentStoredKey) GetRegistration(_ context.Context, _ *sapb.RegistrationID) (*corepb.Registration, error) {
+func (sa mockSADifferentStoredKey) GetRegistration(_ context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	return &corepb.Registration{
 		Key:    []byte(test2KeyPublicJSON),
 		Status: string(core.StatusValid),

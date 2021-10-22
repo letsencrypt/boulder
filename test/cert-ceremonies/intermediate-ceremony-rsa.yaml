@@ -5,8 +5,8 @@ pkcs11:
     signing-key-slot: {{ .SlotID}}
     signing-key-label: root signing key (rsa)
 inputs:
-    public-key-path: /tmp/intermediate-signing-pub-rsa.pem
-    issuer-certificate-path: /tmp/root-cert-rsa.pem
+    public-key-path: /hierarchy/intermediate-signing-pub-rsa.pem
+    issuer-certificate-path: /hierarchy/root-cert-rsa.pem
 outputs:
     certificate-path: {{ .CertPath }}
 certificate-profile:

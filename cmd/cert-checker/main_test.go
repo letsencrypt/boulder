@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"context"
@@ -24,8 +24,10 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
+	isa "github.com/letsencrypt/boulder/test/inmem/sa"
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
@@ -256,6 +258,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	fc := clock.NewFake()
+	fc.Set(fc.Now().Add(time.Hour))
 
 	checker := newChecker(saDbMap, fc, pa, time.Hour, testValidityDurations)
 	sa, err := sa.NewSQLStorageAuthority(saDbMap, saDbMap, fc, blog.NewMock(), metrics.NoopRegisterer, 1)
@@ -276,14 +279,17 @@ func TestGetAndProcessCerts(t *testing.T) {
 		DNSNames:              []string{"not-blacklisted.com"},
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 	}
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := satest.CreateWorkingRegistration(t, isa.SA{Impl: sa})
 	test.AssertNotError(t, err, "Couldn't create registration")
 	for i := int64(0); i < 5; i++ {
 		rawCert.SerialNumber = big.NewInt(mrand.Int63())
 		certDER, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 		test.AssertNotError(t, err, "Couldn't create certificate")
-		issued := fc.Now()
-		_, err = sa.AddCertificate(context.Background(), certDER, reg.Id, nil, &issued)
+		_, err = sa.AddCertificate(context.Background(), &sapb.AddCertificateRequest{
+			Der:    certDER,
+			RegID:  reg.Id,
+			Issued: fc.Now().UnixNano(),
+		})
 		test.AssertNotError(t, err, "Couldn't add certificate")
 	}
 

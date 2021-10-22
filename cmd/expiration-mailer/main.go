@@ -1,9 +1,10 @@
-package main
+package notmain
 
 import (
 	"bytes"
 	"context"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
+	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -40,7 +42,7 @@ const (
 )
 
 type regStore interface {
-	GetRegistration(ctx context.Context, req *sapb.RegistrationID) (*corepb.Registration, error)
+	GetRegistration(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*corepb.Registration, error)
 }
 
 type mailer struct {
@@ -139,9 +141,29 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 		m.stats.errorCount.With(prometheus.Labels{"type": "TemplateFailure"}).Inc()
 		return err
 	}
+
+	logItem := struct {
+		Rcpt             []string
+		Serials          []string
+		DaysToExpiration int
+		DNSNames         []string
+	}{
+		Rcpt:             emails,
+		Serials:          serials,
+		DaysToExpiration: email.DaysToExpiration,
+		DNSNames:         domains,
+	}
+	logStr, err := json.Marshal(logItem)
+	if err != nil {
+		m.log.Errf("logItem could not be serialized to JSON. Raw: %+v", logItem)
+		return err
+	}
+	m.log.Infof("attempting send JSON=%s", string(logStr))
+
 	startSending := m.clk.Now()
 	err = m.mailer.SendMail(emails, subjBuf.String(), msgBuf.String())
 	if err != nil {
+		m.log.Errf("failed send JSON=%s", string(logStr))
 		return err
 	}
 	finishSending := m.clk.Now()
@@ -157,21 +179,21 @@ func (m *mailer) updateCertStatus(serial string) error {
 	return err
 }
 
-func (m *mailer) certIsRenewed(serial string) (renewed bool, err error) {
-	present, err := m.dbMap.SelectInt(`
-		SELECT b.serial IS NOT NULL
-		FROM fqdnSets a
-		LEFT OUTER JOIN fqdnSets b
-			ON a.setHash = b.setHash
-			AND a.issued < b.issued
-		WHERE a.serial = :serial
-		LIMIT 1`,
-		map[string]interface{}{"serial": serial},
+func (m *mailer) certIsRenewed(names []string, issued time.Time) (bool, error) {
+	namehash := sa.HashNames(names)
+
+	var present bool
+	err := m.dbMap.SelectOne(
+		&present,
+		// TODO(#5670): Remove this OR when the partitioning is fixed.
+		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? AND issued > ? LIMIT 1)
+		OR EXISTS (SELECT id FROM fqdnSets_old WHERE setHash = ? AND issued > ? LIMIT 1)`,
+		namehash,
+		issued,
+		namehash,
+		issued,
 	)
-	if present == 1 {
-		m.log.Debugf("Cert %s is already renewed", serial)
-	}
-	return present == 1, err
+	return present, err
 }
 
 func (m *mailer) processCerts(allCerts []core.Certificate) {
@@ -212,11 +234,12 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 				continue
 			}
 
-			renewed, err := m.certIsRenewed(cert.Serial)
+			renewed, err := m.certIsRenewed(parsedCert.DNSNames, parsedCert.NotBefore)
 			if err != nil {
 				m.log.AuditErrf("expiration-mailer: error fetching renewal state: %v", err)
 				// assume not renewed
 			} else if renewed {
+				m.log.Debugf("Cert %s is already renewed", cert.Serial)
 				m.stats.renewalCount.With(prometheus.Labels{}).Inc()
 				if err := m.updateCertStatus(cert.Serial); err != nil {
 					m.log.AuditErrf("Error updating certificate status for %s: %s", cert.Serial, err)
@@ -296,6 +319,21 @@ func (m *mailer) findExpiringCertificates() error {
 			return err
 		}
 
+		// If the number of rows was exactly `m.limit` rows we need to increment
+		// a stat indicating that this nag group is at capacity based on the
+		// configured cert limit. If this condition continually occurs across mailer
+		// runs then we will not catch up, resulting in under-sending expiration
+		// mails. The effects of this were initially described in issue #2002[0].
+		//
+		// 0: https://github.com/letsencrypt/boulder/issues/2002
+		atCapacity := float64(0)
+		if len(serials) == m.limit {
+			m.log.Infof("nag group %s expiring certificates at configured capacity (select limit %d)",
+				expiresIn.String(), m.limit)
+			atCapacity = float64(1)
+		}
+		m.stats.nagsAtCapacity.With(prometheus.Labels{"nag_group": expiresIn.String()}).Set(atCapacity)
+
 		// Now we can sequentially retrieve the certificate details for each of the
 		// certificate status rows
 		var certs []core.Certificate
@@ -318,21 +356,6 @@ func (m *mailer) findExpiringCertificates() error {
 
 		m.log.Infof("Found %d certificates expiring between %s and %s", len(certs),
 			left.Format("2006-01-02 03:04"), right.Format("2006-01-02 03:04"))
-
-		// If the `certs` result was exactly `m.limit` rows we need to increment
-		// a stat indicating that this nag group is at capacity based on the
-		// configured cert limit. If this condition continually occurs across mailer
-		// runs then we will not catch up, resulting in under-sending expiration
-		// mails. The effects of this were initially described in issue #2002[0].
-		//
-		// 0: https://github.com/letsencrypt/boulder/issues/2002
-		atCapacity := float64(0)
-		if len(certs) == m.limit {
-			m.log.Infof("nag group %s expiring certificates at configured capacity (cert limit %d)",
-				expiresIn.String(), m.limit)
-			atCapacity = float64(1)
-		}
-		m.stats.nagsAtCapacity.With(prometheus.Labels{"nag_group": expiresIn.String()}).Set(atCapacity)
 
 		if len(certs) == 0 {
 			continue // nothing to do
@@ -499,7 +522,7 @@ func main() {
 	cmd.FailOnError(err, "Could not determine address or user of DB DSN")
 
 	// Collect and periodically report DB metrics using the DBMap and prometheus scope.
-	sa.InitDBMetrics(dbMap, scope, dbSettings, dbAddr, dbUser)
+	sa.InitDBMetrics(dbMap.Db, scope, dbSettings, dbAddr, dbUser)
 
 	tlsConfig, err := c.Mailer.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
@@ -509,7 +532,7 @@ func main() {
 	clientMetrics := bgrpc.NewClientMetrics(scope)
 	conn, err := bgrpc.ClientSetup(c.Mailer.SAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(conn))
+	sac := sapb.NewStorageAuthorityClient(conn)
 
 	var smtpRoots *x509.CertPool
 	if c.Mailer.SMTPTrustedRootFile != "" {
@@ -607,4 +630,8 @@ func main() {
 		err = m.findExpiringCertificates()
 		cmd.FailOnError(err, "expiration-mailer has failed")
 	}
+}
+
+func init() {
+	cmd.RegisterCommand("expiration-mailer", main)
 }

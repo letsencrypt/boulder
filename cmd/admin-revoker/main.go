@@ -1,16 +1,15 @@
-package main
+package notmain
 
 import (
+	"bufio"
 	"context"
 	"crypto/x509"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/user"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -60,7 +59,7 @@ type config struct {
 	Syslog cmd.SyslogConfig
 }
 
-func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *db.WrappedMap, core.StorageAuthority) {
+func setupContext(c config) (rapb.RegistrationAuthorityClient, blog.Logger, *db.WrappedMap, sapb.StorageAuthorityClient) {
 	logger := cmd.NewLogger(c.Syslog)
 
 	tlsConfig, err := c.Revoker.TLS.Load()
@@ -71,7 +70,7 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *db.Wrappe
 	clientMetrics := bgrpc.NewClientMetrics(metrics.NoopRegisterer)
 	raConn, err := bgrpc.ClientSetup(c.Revoker.RAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
-	rac := bgrpc.NewRegistrationAuthorityClient(rapb.NewRegistrationAuthorityClient(raConn))
+	rac := rapb.NewRegistrationAuthorityClient(raConn)
 
 	dbURL, err := c.Revoker.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
@@ -86,12 +85,12 @@ func setupContext(c config) (core.RegistrationAuthority, blog.Logger, *db.Wrappe
 
 	saConn, err := bgrpc.ClientSetup(c.Revoker.SAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
+	sac := sapb.NewStorageAuthorityClient(saConn)
 
 	return rac, logger, dbMap, sac
 }
 
-func revokeCertificate(ctx context.Context, certObj core.Certificate, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger) error {
+func revokeCertificate(ctx context.Context, certObj core.Certificate, reasonCode revocation.Reason, rac rapb.RegistrationAuthorityClient, logger blog.Logger) error {
 	if reasonCode < 0 || reasonCode == 7 || reasonCode > 10 {
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
@@ -115,7 +114,7 @@ func revokeCertificate(ctx context.Context, certObj core.Certificate, reasonCode
 	return nil
 }
 
-func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, dbMap db.Executor) error {
+func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac rapb.RegistrationAuthorityClient, logger blog.Logger, dbMap db.Executor) error {
 	certObj, err := sa.SelectCertificate(dbMap, serial)
 	if err != nil {
 		if db.IsNoRows(err) {
@@ -126,7 +125,7 @@ func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Re
 	return revokeCertificate(ctx, certObj, reasonCode, rac, logger)
 }
 
-func revokeByReg(ctx context.Context, regID int64, reasonCode revocation.Reason, rac core.RegistrationAuthority, logger blog.Logger, dbMap db.Executor) error {
+func revokeByReg(ctx context.Context, regID int64, reasonCode revocation.Reason, rac rapb.RegistrationAuthorityClient, logger blog.Logger, dbMap db.Executor) error {
 	certObjs, err := sa.SelectCertificates(dbMap, "WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
 	if err != nil {
 		return err
@@ -140,11 +139,17 @@ func revokeByReg(ctx context.Context, regID int64, reasonCode revocation.Reason,
 	return nil
 }
 
-func revokeBatch(rac core.RegistrationAuthority, logger blog.Logger, dbMap *db.WrappedMap, serialPath string, reasonCode revocation.Reason, parallelism int) error {
-	serials, err := ioutil.ReadFile(serialPath)
+func revokeBatch(rac rapb.RegistrationAuthorityClient, logger blog.Logger, dbMap *db.WrappedMap, serialPath string, reasonCode revocation.Reason, parallelism int) error {
+	file, err := os.Open(serialPath)
 	if err != nil {
 		return err
 	}
+
+	scanner := bufio.NewScanner(file)
+	if err != nil {
+		return err
+	}
+
 	wg := new(sync.WaitGroup)
 	work := make(chan string, parallelism)
 	for i := 0; i < parallelism; i++ {
@@ -163,7 +168,9 @@ func revokeBatch(rac core.RegistrationAuthority, logger blog.Logger, dbMap *db.W
 			}
 		}()
 	}
-	for _, serial := range strings.Split(string(serials), "\n") {
+
+	for scanner.Scan() {
+		serial := scanner.Text()
 		if serial == "" {
 			continue
 		}
@@ -273,4 +280,8 @@ func main() {
 	default:
 		usage()
 	}
+}
+
+func init() {
+	cmd.RegisterCommand("admin-revoker", main)
 }

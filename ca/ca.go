@@ -18,7 +18,6 @@ import (
 	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
-	"google.golang.org/protobuf/types/known/emptypb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
@@ -41,13 +40,6 @@ const (
 	csrExtensionOther             = "other"
 )
 
-type certificateStorage interface {
-	AddCertificate(context.Context, []byte, int64, []byte, *time.Time) (string, error)
-	GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
-	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error)
-	AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*emptypb.Empty, error)
-}
-
 type certificateType string
 
 const (
@@ -69,7 +61,7 @@ type issuerMaps struct {
 type certificateAuthorityImpl struct {
 	capb.UnimplementedCertificateAuthorityServer
 	capb.UnimplementedOCSPGeneratorServer
-	sa      certificateStorage
+	sa      sapb.StorageAuthorityCertificateClient
 	pa      core.PolicyAuthority
 	ocsp    *ocspImpl
 	issuers issuerMaps
@@ -116,7 +108,7 @@ func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
 // from any number of issuance.Issuers according to their profiles, and can sign
 // OCSP (via delegation to an ocspImpl and its issuers).
 func NewCertificateAuthorityImpl(
-	sa certificateStorage,
+	sa sapb.StorageAuthorityCertificateClient,
 	pa core.PolicyAuthority,
 	ocsp *ocspImpl,
 	boulderIssuers []*issuance.Issuer,
@@ -483,8 +475,11 @@ func (ca *certificateAuthorityImpl) storeCertificate(
 	certDER []byte,
 	issuerID int64) error {
 	var err error
-	now := ca.clk.Now()
-	_, err = ca.sa.AddCertificate(ctx, certDER, regID, nil, &now)
+	_, err = ca.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    certDER,
+		RegID:  regID,
+		Issued: ca.clk.Now().UnixNano(),
+	})
 	if err != nil {
 		ca.orphanCount.With(prometheus.Labels{"type": "cert"}).Inc()
 		err = berrors.InternalServerError(err.Error())
@@ -560,19 +555,22 @@ func (ca *certificateAuthorityImpl) integrateOrphan() error {
 	// we reverse the process and add ca.backdate.
 	issued := cert.NotBefore.Add(ca.backdate)
 	if orphan.Precert {
-		issuedNanos := issued.UnixNano()
 		_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 			Der:      orphan.DER,
 			RegID:    orphan.RegID,
 			Ocsp:     orphan.OCSPResp,
-			Issued:   issuedNanos,
+			Issued:   issued.UnixNano(),
 			IssuerID: orphan.IssuerID,
 		})
 		if err != nil && !errors.Is(err, berrors.Duplicate) {
 			return fmt.Errorf("failed to store orphaned precertificate: %s", err)
 		}
 	} else {
-		_, err = ca.sa.AddCertificate(context.Background(), orphan.DER, orphan.RegID, nil, &issued)
+		_, err = ca.sa.AddCertificate(context.Background(), &sapb.AddCertificateRequest{
+			Der:    orphan.DER,
+			RegID:  orphan.RegID,
+			Issued: issued.UnixNano(),
+		})
 		if err != nil && !errors.Is(err, berrors.Duplicate) {
 			return fmt.Errorf("failed to store orphaned certificate: %s", err)
 		}

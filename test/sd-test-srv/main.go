@@ -27,14 +27,7 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 		return
 	}
 
-	if !strings.HasSuffix(r.Question[0].Name, ".boulder.") {
-		m.Rcode = dns.RcodeServerFailure
-		err := w.WriteMsg(m)
-		if err != nil {
-			log.Printf("ERROR: Failed to write message %q: %v", m, err)
-		}
-		return
-	}
+	qname := r.Question[0].Name
 
 	if r.Question[0].Qtype == dns.TypeA {
 		hdr := dns.RR_Header{
@@ -47,13 +40,27 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 		// in docker-compose.yml. In our Docker setup, boulder is present on two
 		// networks, rednet and bluenet, with a different IP address on each. This
 		// allows us to test load balance across gRPC backends.
-		m.Answer = append(m.Answer, &dns.A{
-			A:   net.ParseIP("10.77.77.77"),
-			Hdr: hdr,
-		}, &dns.A{
-			A:   net.ParseIP("10.88.88.88"),
-			Hdr: hdr,
-		})
+		if strings.HasSuffix(qname, "1.boulder.") {
+			m.Answer = append(m.Answer, &dns.A{
+				A:   net.ParseIP("10.77.77.77"),
+				Hdr: hdr,
+			})
+		} else if strings.HasSuffix(qname, "2.boulder.") {
+			m.Answer = append(m.Answer, &dns.A{
+				A:   net.ParseIP("10.88.88.88"),
+				Hdr: hdr,
+			})
+		} else if strings.HasSuffix(qname, ".boulder.") || qname == "boulder." {
+			m.Answer = append(m.Answer, &dns.A{
+				A:   net.ParseIP("10.77.77.77"),
+				Hdr: hdr,
+			}, &dns.A{
+				A:   net.ParseIP("10.88.88.88"),
+				Hdr: hdr,
+			})
+		} else {
+			m.Rcode = dns.RcodeServerFailure
+		}
 		err := w.WriteMsg(m)
 		if err != nil {
 			log.Printf("ERROR: Failed to write message %q: %v", m, err)
@@ -96,7 +103,6 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 	if err != nil {
 		log.Printf("ERROR: Failed to write message %q: %v", m, err)
 	}
-	return
 }
 
 func main() {

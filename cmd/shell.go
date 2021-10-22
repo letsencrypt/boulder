@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"expvar"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"log/syslog"
 	"net/http"
@@ -72,21 +71,24 @@ func (log grpcLogger) Fatalln(args ...interface{}) {
 	os.Exit(1)
 }
 
-func (log grpcLogger) Error(args ...interface{}) {
-	log.Logger.AuditErr(fmt.Sprint(args...))
-}
-func (log grpcLogger) Errorf(format string, args ...interface{}) {
-	output := fmt.Sprintf(format, args...)
+func (log grpcLogger) error(output string) {
 	if output == `ccResolverWrapper: error parsing service config: no JSON service config provided` {
 		return
 	}
-	if output == `grpc: Server.processUnaryRPC failed to write status: connection error: desc = "transport is closing"` {
+	if strings.Contains(output, `Server.processUnaryRPC failed to write status: connection error: desc = "transport is closing"`) {
 		return
 	}
 	log.Logger.AuditErr(output)
 }
+
+func (log grpcLogger) Error(args ...interface{}) {
+	log.error(fmt.Sprint(args...))
+}
+func (log grpcLogger) Errorf(format string, args ...interface{}) {
+	log.error(fmt.Sprintf(format, args...))
+}
 func (log grpcLogger) Errorln(args ...interface{}) {
-	log.Logger.AuditErr(fmt.Sprint(args...))
+	log.error(fmt.Sprint(args...))
 }
 
 func (log grpcLogger) Warning(args ...interface{}) {
@@ -230,13 +232,19 @@ func FailOnError(err error, msg string) {
 
 // ReadConfigFile takes a file path as an argument and attempts to
 // unmarshal the content of the file into a struct containing a
-// configuration of a boulder component.
+// configuration of a boulder component. Any config keys in the JSON
+// file which do not correspond to expected keys in the config struct
+// will result in errors.
 func ReadConfigFile(filename string, out interface{}) error {
-	configData, err := ioutil.ReadFile(filename)
+	file, err := os.Open(filename)
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(configData, out)
+	defer file.Close()
+
+	decoder := json.NewDecoder(file)
+	decoder.DisallowUnknownFields()
+	return decoder.Decode(out)
 }
 
 // VersionString produces a friendly Application version string.
@@ -259,18 +267,11 @@ func CatchSignals(logger blog.Logger, callback func()) {
 	signal.Notify(sigChan, syscall.SIGINT)
 	signal.Notify(sigChan, syscall.SIGHUP)
 
-	sig := <-sigChan
-	if logger != nil {
-		logger.Infof("Caught %s", signalToName[sig])
-	}
-
+	<-sigChan
 	if callback != nil {
 		callback()
 	}
 
-	if logger != nil {
-		logger.Info("Exiting")
-	}
 	os.Exit(0)
 }
 

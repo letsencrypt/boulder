@@ -17,15 +17,18 @@
         "grpc": {
           "address": ":9199",
           "clientNames": [
+            "health-checker.boulder",
             "ra.boulder"
           ]
         }
     },
+
     "syslog": {
       "stdoutlevel": 6,
       "sysloglevel": 6
     },
-    "common": {
-      "issuerCert": "/tmp/intermediate-cert-rsa-a.pem"
+    "beeline": {
+        "mute": true,
+        "dataset": "Test"
     }
 }

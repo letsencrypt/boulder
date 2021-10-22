@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"context"
@@ -19,7 +19,6 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -28,7 +27,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 var usageString = `
@@ -58,13 +56,6 @@ type config struct {
 	// to form OCSP generation requests.
 	IssuerCerts []string
 	Features    map[string]bool
-}
-
-type certificateStorage interface {
-	AddCertificate(context.Context, []byte, int64, []byte, *time.Time) (string, error)
-	AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error)
-	GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
-	GetPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error)
 }
 
 type ocspGenerator interface {
@@ -137,7 +128,7 @@ func orphanTypeForCert(cert *x509.Certificate) orphanType {
 // provided DER. If there is a matching precert/cert serial then
 // errAlreadyExists and the orphanType are returned. If there is no matching
 // precert/cert serial then the parsed certificate and orphanType are returned.
-func checkDER(sai certificateStorage, der []byte) (*x509.Certificate, orphanType, error) {
+func checkDER(sai sapb.StorageAuthorityCertificateClient, der []byte) (*x509.Certificate, orphanType, error) {
 	ctx := context.Background()
 	orphan, err := x509.ParseCertificate(der)
 	if err != nil {
@@ -199,7 +190,7 @@ func parseLogLine(line string, logger blog.Logger) (parsedLine, error) {
 }
 
 type orphanFinder struct {
-	sa       certificateStorage
+	sa       sapb.StorageAuthorityCertificateClient
 	ca       ocspGenerator
 	logger   blog.Logger
 	issuers  map[issuance.IssuerNameID]*issuance.Certificate
@@ -222,7 +213,7 @@ func newOrphanFinder(configFile string) *orphanFinder {
 	clientMetrics := bgrpc.NewClientMetrics(metrics.NoopRegisterer)
 	saConn, err := bgrpc.ClientSetup(conf.SAService, tlsConfig, clientMetrics, cmd.Clock())
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sac := bgrpc.NewStorageAuthorityClient(sapb.NewStorageAuthorityClient(saConn))
+	sac := sapb.NewStorageAuthorityClient(saConn)
 
 	caConn, err := bgrpc.ClientSetup(conf.OCSPGeneratorService, tlsConfig, clientMetrics, cmd.Clock())
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
@@ -328,7 +319,12 @@ func (opf *orphanFinder) storeLogLine(ctx context.Context, line string) (found b
 	issuedDate := cert.NotBefore.Add(opf.backdate)
 	switch typ {
 	case certOrphan:
-		_, err = opf.sa.AddCertificate(ctx, parsed.certDER, parsed.regID, response, &issuedDate)
+		_, err = opf.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+			Der:    parsed.certDER,
+			RegID:  parsed.regID,
+			Ocsp:   response,
+			Issued: issuedDate.UnixNano(),
+		})
 	case precertOrphan:
 		_, err = opf.sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:      parsed.certDER,
@@ -363,14 +359,18 @@ func (opf *orphanFinder) parseDER(derPath string, regID int64) {
 
 	switch typ {
 	case certOrphan:
-		_, err = opf.sa.AddCertificate(ctx, der, regID, response, &issuedDate)
+		_, err = opf.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+			Der:    der,
+			RegID:  regID,
+			Ocsp:   response,
+			Issued: issuedDate.UnixNano(),
+		})
 	case precertOrphan:
-		issued := issuedDate.UnixNano()
 		_, err = opf.sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:    der,
 			RegID:  regID,
 			Ocsp:   response,
-			Issued: issued,
+			Issued: issuedDate.UnixNano(),
 		})
 	default:
 		err = errors.New("unknown orphan type")
@@ -439,4 +439,8 @@ func main() {
 	default:
 		usage()
 	}
+}
+
+func init() {
+	cmd.RegisterCommand("orphan-finder", main)
 }

@@ -50,10 +50,11 @@ type StorageAuthorityClient interface {
 	AddPrecertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AddSerial(ctx context.Context, in *AddSerialRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DeactivateRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	NewOrder(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*proto.Order, error)
-	SetOrderProcessing(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	SetOrderError(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	FinalizeOrder(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	NewOrder(ctx context.Context, in *NewOrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
+	NewOrderAndAuthzs(ctx context.Context, in *NewOrderAndAuthzsRequest, opts ...grpc.CallOption) (*proto.Order, error)
+	SetOrderProcessing(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	SetOrderError(ctx context.Context, in *SetOrderErrorRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	FinalizeOrder(ctx context.Context, in *FinalizeOrderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetOrder(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	GetOrderForNames(ctx context.Context, in *GetOrderForNamesRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	RevokeCertificate(ctx context.Context, in *RevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -305,7 +306,7 @@ func (c *storageAuthorityClient) DeactivateRegistration(ctx context.Context, in 
 	return out, nil
 }
 
-func (c *storageAuthorityClient) NewOrder(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*proto.Order, error) {
+func (c *storageAuthorityClient) NewOrder(ctx context.Context, in *NewOrderRequest, opts ...grpc.CallOption) (*proto.Order, error) {
 	out := new(proto.Order)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/NewOrder", in, out, opts...)
 	if err != nil {
@@ -314,7 +315,16 @@ func (c *storageAuthorityClient) NewOrder(ctx context.Context, in *proto.Order, 
 	return out, nil
 }
 
-func (c *storageAuthorityClient) SetOrderProcessing(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *storageAuthorityClient) NewOrderAndAuthzs(ctx context.Context, in *NewOrderAndAuthzsRequest, opts ...grpc.CallOption) (*proto.Order, error) {
+	out := new(proto.Order)
+	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/NewOrderAndAuthzs", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageAuthorityClient) SetOrderProcessing(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/SetOrderProcessing", in, out, opts...)
 	if err != nil {
@@ -323,7 +333,7 @@ func (c *storageAuthorityClient) SetOrderProcessing(ctx context.Context, in *pro
 	return out, nil
 }
 
-func (c *storageAuthorityClient) SetOrderError(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *storageAuthorityClient) SetOrderError(ctx context.Context, in *SetOrderErrorRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/SetOrderError", in, out, opts...)
 	if err != nil {
@@ -332,7 +342,7 @@ func (c *storageAuthorityClient) SetOrderError(ctx context.Context, in *proto.Or
 	return out, nil
 }
 
-func (c *storageAuthorityClient) FinalizeOrder(ctx context.Context, in *proto.Order, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *storageAuthorityClient) FinalizeOrder(ctx context.Context, in *FinalizeOrderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/FinalizeOrder", in, out, opts...)
 	if err != nil {
@@ -438,10 +448,11 @@ type StorageAuthorityServer interface {
 	AddPrecertificate(context.Context, *AddCertificateRequest) (*emptypb.Empty, error)
 	AddSerial(context.Context, *AddSerialRequest) (*emptypb.Empty, error)
 	DeactivateRegistration(context.Context, *RegistrationID) (*emptypb.Empty, error)
-	NewOrder(context.Context, *proto.Order) (*proto.Order, error)
-	SetOrderProcessing(context.Context, *proto.Order) (*emptypb.Empty, error)
-	SetOrderError(context.Context, *proto.Order) (*emptypb.Empty, error)
-	FinalizeOrder(context.Context, *proto.Order) (*emptypb.Empty, error)
+	NewOrder(context.Context, *NewOrderRequest) (*proto.Order, error)
+	NewOrderAndAuthzs(context.Context, *NewOrderAndAuthzsRequest) (*proto.Order, error)
+	SetOrderProcessing(context.Context, *OrderRequest) (*emptypb.Empty, error)
+	SetOrderError(context.Context, *SetOrderErrorRequest) (*emptypb.Empty, error)
+	FinalizeOrder(context.Context, *FinalizeOrderRequest) (*emptypb.Empty, error)
 	GetOrder(context.Context, *OrderRequest) (*proto.Order, error)
 	GetOrderForNames(context.Context, *GetOrderForNamesRequest) (*proto.Order, error)
 	RevokeCertificate(context.Context, *RevokeCertificateRequest) (*emptypb.Empty, error)
@@ -534,16 +545,19 @@ func (UnimplementedStorageAuthorityServer) AddSerial(context.Context, *AddSerial
 func (UnimplementedStorageAuthorityServer) DeactivateRegistration(context.Context, *RegistrationID) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeactivateRegistration not implemented")
 }
-func (UnimplementedStorageAuthorityServer) NewOrder(context.Context, *proto.Order) (*proto.Order, error) {
+func (UnimplementedStorageAuthorityServer) NewOrder(context.Context, *NewOrderRequest) (*proto.Order, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NewOrder not implemented")
 }
-func (UnimplementedStorageAuthorityServer) SetOrderProcessing(context.Context, *proto.Order) (*emptypb.Empty, error) {
+func (UnimplementedStorageAuthorityServer) NewOrderAndAuthzs(context.Context, *NewOrderAndAuthzsRequest) (*proto.Order, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method NewOrderAndAuthzs not implemented")
+}
+func (UnimplementedStorageAuthorityServer) SetOrderProcessing(context.Context, *OrderRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetOrderProcessing not implemented")
 }
-func (UnimplementedStorageAuthorityServer) SetOrderError(context.Context, *proto.Order) (*emptypb.Empty, error) {
+func (UnimplementedStorageAuthorityServer) SetOrderError(context.Context, *SetOrderErrorRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetOrderError not implemented")
 }
-func (UnimplementedStorageAuthorityServer) FinalizeOrder(context.Context, *proto.Order) (*emptypb.Empty, error) {
+func (UnimplementedStorageAuthorityServer) FinalizeOrder(context.Context, *FinalizeOrderRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FinalizeOrder not implemented")
 }
 func (UnimplementedStorageAuthorityServer) GetOrder(context.Context, *OrderRequest) (*proto.Order, error) {
@@ -1049,7 +1063,7 @@ func _StorageAuthority_DeactivateRegistration_Handler(srv interface{}, ctx conte
 }
 
 func _StorageAuthority_NewOrder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(proto.Order)
+	in := new(NewOrderRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -1061,13 +1075,31 @@ func _StorageAuthority_NewOrder_Handler(srv interface{}, ctx context.Context, de
 		FullMethod: "/sa.StorageAuthority/NewOrder",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).NewOrder(ctx, req.(*proto.Order))
+		return srv.(StorageAuthorityServer).NewOrder(ctx, req.(*NewOrderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageAuthority_NewOrderAndAuthzs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NewOrderAndAuthzsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).NewOrderAndAuthzs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/sa.StorageAuthority/NewOrderAndAuthzs",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).NewOrderAndAuthzs(ctx, req.(*NewOrderAndAuthzsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _StorageAuthority_SetOrderProcessing_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(proto.Order)
+	in := new(OrderRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -1079,13 +1111,13 @@ func _StorageAuthority_SetOrderProcessing_Handler(srv interface{}, ctx context.C
 		FullMethod: "/sa.StorageAuthority/SetOrderProcessing",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).SetOrderProcessing(ctx, req.(*proto.Order))
+		return srv.(StorageAuthorityServer).SetOrderProcessing(ctx, req.(*OrderRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _StorageAuthority_SetOrderError_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(proto.Order)
+	in := new(SetOrderErrorRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -1097,13 +1129,13 @@ func _StorageAuthority_SetOrderError_Handler(srv interface{}, ctx context.Contex
 		FullMethod: "/sa.StorageAuthority/SetOrderError",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).SetOrderError(ctx, req.(*proto.Order))
+		return srv.(StorageAuthorityServer).SetOrderError(ctx, req.(*SetOrderErrorRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _StorageAuthority_FinalizeOrder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(proto.Order)
+	in := new(FinalizeOrderRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -1115,7 +1147,7 @@ func _StorageAuthority_FinalizeOrder_Handler(srv interface{}, ctx context.Contex
 		FullMethod: "/sa.StorageAuthority/FinalizeOrder",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).FinalizeOrder(ctx, req.(*proto.Order))
+		return srv.(StorageAuthorityServer).FinalizeOrder(ctx, req.(*FinalizeOrderRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1360,6 +1392,10 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "NewOrder",
 			Handler:    _StorageAuthority_NewOrder_Handler,
+		},
+		{
+			MethodName: "NewOrderAndAuthzs",
+			Handler:    _StorageAuthority_NewOrderAndAuthzs_Handler,
 		},
 		{
 			MethodName: "SetOrderProcessing",

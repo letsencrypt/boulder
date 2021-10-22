@@ -76,7 +76,7 @@ func genCert(path string) error {
 func main() {
 	// If one of the output files already exists, assume this ran once
 	// already for the container and don't re-run.
-	outputFile := "/tmp/root-signing-pub-rsa.pem"
+	outputFile := "/hierarchy/root-signing-pub-rsa.pem"
 	if loc, err := os.Stat(outputFile); err == nil && loc.Mode().IsRegular() {
 		fmt.Println("skipping certificate generation: already exists")
 		return
@@ -113,13 +113,13 @@ func main() {
 	// signing key slots and IDs
 	rsaTmpIntermediateA, err := rewriteConfig("test/cert-ceremonies/intermediate-ceremony-rsa.yaml", map[string]string{
 		"SlotID":     rsaRootKeySlot,
-		"CertPath":   "/tmp/intermediate-cert-rsa-a.pem",
+		"CertPath":   "/hierarchy/intermediate-cert-rsa-a.pem",
 		"CommonName": "CA intermediate (RSA) A",
 	})
 	cmd.FailOnError(err, "failed to rewrite RSA intermediate cert config with key ID")
 	ecdsaTmpIntermediateA, err := rewriteConfig("test/cert-ceremonies/intermediate-ceremony-ecdsa.yaml", map[string]string{
 		"SlotID":     ecdsaRootKeySlot,
-		"CertPath":   "/tmp/intermediate-cert-ecdsa-a.pem",
+		"CertPath":   "/hierarchy/intermediate-cert-ecdsa-a.pem",
 		"CommonName": "CA intermediate (ECDSA) A",
 	})
 	cmd.FailOnError(err, "failed to rewrite ECDSA intermediate cert config with key ID")
@@ -134,13 +134,13 @@ func main() {
 	// signing key slots and IDs
 	rsaTmpIntermediateB, err := rewriteConfig("test/cert-ceremonies/intermediate-ceremony-rsa.yaml", map[string]string{
 		"SlotID":     rsaRootKeySlot,
-		"CertPath":   "/tmp/intermediate-cert-rsa-b.pem",
+		"CertPath":   "/hierarchy/intermediate-cert-rsa-b.pem",
 		"CommonName": "CA intermediate (RSA) B",
 	})
 	cmd.FailOnError(err, "failed to rewrite RSA intermediate cert config with key ID")
 	ecdsaTmpIntermediateB, err := rewriteConfig("test/cert-ceremonies/intermediate-ceremony-ecdsa.yaml", map[string]string{
 		"SlotID":     ecdsaRootKeySlot,
-		"CertPath":   "/tmp/intermediate-cert-ecdsa-b.pem",
+		"CertPath":   "/hierarchy/intermediate-cert-ecdsa-b.pem",
 		"CommonName": "CA intermediate (ECDSA) B",
 	})
 	cmd.FailOnError(err, "failed to rewrite ECDSA intermediate cert config with key ID")

@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"flag"
@@ -84,7 +84,7 @@ func main() {
 		cmd.FailOnError(err, "Could not determine address or user of DB DSN")
 
 		// Collect and periodically report DB metrics using the DBMap and prometheus scope.
-		sa.InitDBMetrics(dbMap, scope, dbSettings, dbAddr, dbUser)
+		sa.InitDBMetrics(dbMap.Db, scope, dbSettings, dbAddr, dbUser)
 
 		return dbMap
 	}
@@ -115,8 +115,7 @@ func main() {
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	grpcSrv, listener, err := bgrpc.NewServer(c.SA.GRPC, tls, serverMetrics, clk, bgrpc.NoCancelInterceptor)
 	cmd.FailOnError(err, "Unable to setup SA gRPC server")
-	gw := bgrpc.NewStorageAuthorityServer(sai)
-	sapb.RegisterStorageAuthorityServer(grpcSrv, gw)
+	sapb.RegisterStorageAuthorityServer(grpcSrv, sai)
 	hs := health.NewServer()
 	healthpb.RegisterHealthServer(grpcSrv, hs)
 
@@ -127,4 +126,8 @@ func main() {
 
 	err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
 	cmd.FailOnError(err, "SA gRPC service failed")
+}
+
+func init() {
+	cmd.RegisterCommand("boulder-sa", main)
 }

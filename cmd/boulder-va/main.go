@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"flag"
@@ -202,4 +202,11 @@ func main() {
 
 	err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
 	cmd.FailOnError(err, "VA gRPC service failed")
+}
+
+func init() {
+	cmd.RegisterCommand("boulder-va", main)
+	// We register under two different names, because it's convenient for the
+	// remote VAs to show up under a different program name when looking at logs.
+	cmd.RegisterCommand("boulder-remoteva", main)
 }

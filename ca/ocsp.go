@@ -29,7 +29,6 @@ type ocspIssuerMaps struct {
 // ocspImpl provides a backing implementation for the OCSP gRPC service.
 type ocspImpl struct {
 	capb.UnimplementedOCSPGeneratorServer
-	sa             certificateStorage
 	issuers        ocspIssuerMaps
 	ocspLifetime   time.Duration
 	ocspLogQueue   *ocspLogQueue
@@ -54,7 +53,6 @@ func makeOCSPIssuerMaps(issuers []*issuance.Issuer) (ocspIssuerMaps, error) {
 }
 
 func NewOCSPImpl(
-	sa certificateStorage,
 	issuers []*issuance.Issuer,
 	ocspLifetime time.Duration,
 	ocspLogMaxLength int,
@@ -81,7 +79,6 @@ func NewOCSPImpl(
 	}
 
 	oi := &ocspImpl{
-		sa:             sa,
 		issuers:        issuerMaps,
 		ocspLifetime:   ocspLifetime,
 		ocspLogQueue:   ocspLogQueue,
@@ -138,7 +135,7 @@ func (oi *ocspImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequ
 		Status:       ocspStatusToCode[req.Status],
 		SerialNumber: serial,
 		ThisUpdate:   now,
-		NextUpdate:   now.Add(oi.ocspLifetime),
+		NextUpdate:   now.Add(oi.ocspLifetime - time.Second),
 	}
 	if tbsResponse.Status == ocsp.Revoked {
 		tbsResponse.RevokedAt = time.Unix(0, req.RevokedAt)

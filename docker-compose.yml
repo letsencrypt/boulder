@@ -1,7 +1,7 @@
 version: '3'
 services:
   boulder:
-    image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.16.6_2021-07-12}
+    image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.17_2021-08-26}
     environment:
       FAKE_DNS: 10.77.77.77
       BOULDER_CONFIG_DIR: test/config
@@ -9,29 +9,13 @@ services:
     volumes:
       - .:/go/src/github.com/letsencrypt/boulder:cached
       - ./.gocache:/root/.cache/go-build:cached
+      - ./.hierarchy:/hierarchy/:cached
+      - ./.softhsm-tokens/:/var/lib/softhsm/tokens/:cached
     networks:
       bluenet:
         ipv4_address: 10.77.77.77
-        aliases:
-          - sa1.boulder
-          - ca1.boulder
-          - ra1.boulder
-          - va1.boulder
-          - publisher1.boulder
-          - ocsp-updater.boulder
-          - admin-revoker.boulder
-          - nonce1.boulder
-          - dns1.boulder
       rednet:
         ipv4_address: 10.88.88.88
-        aliases:
-          - sa2.boulder
-          - ca2.boulder
-          - ra2.boulder
-          - va2.boulder
-          - publisher2.boulder
-          - nonce2.boulder
-          - dns2.boulder
     # Use sd-test-srv as a backup to Docker's embedded DNS server
     # (https://docs.docker.com/config/containers/container-networking/#dns-services).
     # If there's a name Docker's DNS server doesn't know about, it will

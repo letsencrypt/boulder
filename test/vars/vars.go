@@ -21,6 +21,10 @@ var (
 	DBConnSAFullPerms = fmt.Sprintf(dbURL, "test_setup", "boulder_sa_test")
 	// DBConnSAOcspResp is the sa ocsp_resp database connection
 	DBConnSAOcspResp = fmt.Sprintf(dbURL, "ocsp_resp", "boulder_sa_test")
+	// DBConnSAOcspUpdate is the sa ocsp_update database connection
+	DBConnSAOcspUpdate = fmt.Sprintf(dbURL, "ocsp_update", "boulder_sa_test")
+	// DBConnSAOcspUpdateRO is the sa ocsp_update_ro database connection
+	DBConnSAOcspUpdateRO = fmt.Sprintf(dbURL, "ocsp_update_ro", "boulder_sa_test")
 	// DBInfoSchemaRoot is the root user and the information_schema connection.
 	DBInfoSchemaRoot = fmt.Sprintf(dbURL, "root", "information_schema")
 )

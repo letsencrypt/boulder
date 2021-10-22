@@ -36,6 +36,7 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
 	"google.golang.org/protobuf/types/known/emptypb"
 	jose "gopkg.in/square/go-jose.v2"
 )
@@ -68,13 +69,15 @@ const (
 	getCertPath      = getAPIPrefix + "cert/"
 )
 
+var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
+
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
 // i.e., ACME.  Its members configure the paths for various ACME functions,
 // plus a few other data items used in ACME.  Its methods are primarily handlers
 // for HTTPS requests for the various ACME functions.
 type WebFrontEndImpl struct {
-	RA    core.RegistrationAuthority
-	SA    core.StorageGetter
+	RA    rapb.RegistrationAuthorityClient
+	SA    sapb.StorageAuthorityGetterClient
 	log   blog.Logger
 	clk   clock.Clock
 	stats wfe2Stats
@@ -769,7 +772,7 @@ func (wfe *WebFrontEndImpl) acctHoldsAuthorizations(ctx context.Context, acctID 
 // revoke the certificate a problem is returned. It is expected to be a closure
 // containing additional state (an account ID or key) that will be used to make
 // the decision.
-type authorizedToRevokeCert func(*x509.Certificate) *probs.ProblemDetails
+type authorizedToRevokeCert func(*x509.Certificate, revocation.Reason) *probs.ProblemDetails
 
 // processRevocation accepts the payload for a revocation request along with
 // an account ID and a callback used to decide if the requester is authorized to
@@ -833,21 +836,15 @@ func (wfe *WebFrontEndImpl) processRevocation(
 
 	// Check the certificate status for the provided certificate to see if it is
 	// already revoked
-	certStatus, err := wfe.SA.GetCertificateStatus(ctx, serial)
-	if err != nil {
+	certStatus, err := wfe.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	if err != nil || certStatus.Status == "" {
 		return probs.ServerInternal("Failed to get certificate status")
 	}
 	logEvent.Extra["CertificateStatus"] = certStatus.Status
 	beeline.AddFieldToTrace(ctx, "cert.status", certStatus.Status)
 
-	if certStatus.Status == core.OCSPStatusRevoked {
+	if core.OCSPStatus(certStatus.Status) == core.OCSPStatusRevoked {
 		return probs.AlreadyRevoked("Certificate already revoked")
-	}
-
-	// Validate that the requester is authenticated to revoke the given certificate
-	prob := authorizedToRevoke(parsedCertificate)
-	if prob != nil {
-		return prob
 	}
 
 	// Verify the revocation reason supplied is allowed
@@ -867,6 +864,12 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		reason = *revokeRequest.Reason
 	}
 
+	// Validate that the requester is authenticated to revoke the given certificate
+	prob := authorizedToRevoke(parsedCertificate, reason)
+	if prob != nil {
+		return prob
+	}
+
 	// Revoke the certificate. AcctID may be 0 if there is no associated account
 	// (e.g. it was a self-authenticated JWS using the certificate public key)
 	_, err = wfe.RA.RevokeCertificateWithReg(ctx, &rapb.RevokeCertificateWithRegRequest{
@@ -880,11 +883,11 @@ func (wfe *WebFrontEndImpl) processRevocation(
 			// performing the revocation, a parallel request happened and revoked the
 			// cert. In this case, just retrieve the certificate status again and
 			// return the alreadyRevoked status.
-			certStatus, err = wfe.SA.GetCertificateStatus(ctx, serial)
-			if err != nil {
+			certStatus, err = wfe.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+			if err != nil || certStatus.Status == "" {
 				return probs.ServerInternal("Failed to get certificate status")
 			}
-			if certStatus.Status == core.OCSPStatusRevoked {
+			if core.OCSPStatus(certStatus.Status) == core.OCSPStatusRevoked {
 				return probs.AlreadyRevoked("Certificate already revoked")
 			}
 		}
@@ -893,6 +896,13 @@ func (wfe *WebFrontEndImpl) processRevocation(
 
 	wfe.log.Debugf("Revoked %v", serial)
 	return nil
+}
+
+type revocationEvidence struct {
+	Serial string
+	Reason revocation.Reason
+	RegID  int64
+	Method string
 }
 
 // revokeCertByKeyID processes an outer JWS as a revocation request that is
@@ -911,7 +921,12 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 	// For Key ID revocations we decide if an account is able to revoke a specific
 	// certificate by checking that the account has valid authorizations for all
 	// of the names in the certificate or was the issuing account
-	authorizedToRevoke := func(parsedCertificate *x509.Certificate) *probs.ProblemDetails {
+	authorizedToRevoke := func(parsedCertificate *x509.Certificate, reason revocation.Reason) *probs.ProblemDetails {
+		// If revocation reason is keyCompromise, reject the request.
+		if reason == revocation.Reason(ocsp.KeyCompromise) {
+			return probs.Unauthorized("Revocation with reason keyCompromise is only supported by signing with the certificate private key")
+		}
+
 		// Try to find a stored final certificate for the serial number
 		serial := core.SerialToString(parsedCertificate.SerialNumber)
 		cert, err := wfe.SA.GetCertificate(ctx, &sapb.Serial{Serial: serial})
@@ -936,6 +951,12 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 		// If the cert/precert is owned by the requester then return nil, it is an
 		// authorized revocation.
 		if cert.RegistrationID == acct.ID {
+			wfe.log.AuditObject("Authorizing revocation", revocationEvidence{
+				Serial: core.SerialToString(parsedCertificate.SerialNumber),
+				Reason: reason,
+				RegID:  acct.ID,
+				Method: "owner",
+			})
 			return nil
 		}
 		// Otherwise check if the account, while not the owner, has equivalent authorizations
@@ -948,6 +969,12 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 			return probs.Unauthorized(
 				"The key ID specified in the revocation request does not hold valid authorizations for all names in the certificate to be revoked")
 		}
+		wfe.log.AuditObject("Authorizing revocation", revocationEvidence{
+			Serial: core.SerialToString(parsedCertificate.SerialNumber),
+			Reason: reason,
+			RegID:  acct.ID,
+			Method: "authorizations",
+		})
 		// If it does, return nil. It is an an authorized revocation.
 		return nil
 	}
@@ -978,11 +1005,17 @@ func (wfe *WebFrontEndImpl) revokeCertByJWK(
 	// For embedded JWK revocations we decide if a requester is able to revoke a specific
 	// certificate by checking that to-be-revoked certificate has the same public
 	// key as the JWK that was used to authenticate the request
-	authorizedToRevoke := func(parsedCertificate *x509.Certificate) *probs.ProblemDetails {
+	authorizedToRevoke := func(parsedCertificate *x509.Certificate, reason revocation.Reason) *probs.ProblemDetails {
 		if !core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) {
 			return probs.Unauthorized(
 				"JWK embedded in revocation request must be the same public key as the cert to be revoked")
 		}
+		wfe.log.AuditObject("Authorizing revocation", revocationEvidence{
+			Serial: core.SerialToString(parsedCertificate.SerialNumber),
+			Reason: reason,
+			RegID:  0,
+			Method: "privkey",
+		})
 		return nil
 	}
 	// We use `0` as the account ID provided to `processRevocation` because this
@@ -1080,6 +1113,13 @@ func (wfe *WebFrontEndImpl) Challenge(
 		}
 		return
 	}
+
+	// Ensure gRPC response is complete.
+	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
+		return
+	}
+
 	authz, err := bgrpc.PBToAuthz(authzPB)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
@@ -1535,6 +1575,12 @@ func (wfe *WebFrontEndImpl) Authorization(
 		return
 	}
 
+	// Ensure gRPC response is complete.
+	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
+		return
+	}
+
 	if identifier.IdentifierType(authzPB.Identifier) == identifier.DNS {
 		logEvent.DNSName = authzPB.Identifier
 		beeline.AddFieldToTrace(ctx, "authz.dnsname", authzPB.Identifier)
@@ -1543,7 +1589,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 	beeline.AddFieldToTrace(ctx, "authz.status", authzPB.Status)
 
 	// After expiring, authorizations are inaccessible
-	if authzPB.Expires == 0 || time.Unix(0, authzPB.Expires).Before(wfe.clk.Now()) {
+	if time.Unix(0, authzPB.Expires).Before(wfe.clk.Now()) {
 		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
 		return
 	}
@@ -2139,6 +2185,11 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
+	if order.Id == 0 || order.Created == 0 || order.Status == "" || order.RegistrationID == 0 || order.Expires == 0 || len(order.Names) == 0 {
+		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
+		return
+	}
+
 	if requiredStale(request, logEvent) {
 		if prob := wfe.staleEnoughToGETOrder(order); prob != nil {
 			wfe.sendError(response, logEvent, prob, nil)
@@ -2205,6 +2256,11 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 			return
 		}
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
+		return
+	}
+
+	if order.Id == 0 || order.Created == 0 || order.Status == "" || order.RegistrationID == 0 || order.Expires == 0 || len(order.Names) == 0 {
+		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
 	}
 
@@ -2278,8 +2334,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 	if updatedOrder == nil || order.Id == 0 || order.Created == 0 || order.RegistrationID == 0 || order.Expires == 0 || len(order.Names) == 0 {
-		err = errors.New("Incomplete gRPC response message")
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
 		return
 	}
 

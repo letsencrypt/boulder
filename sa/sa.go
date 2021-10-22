@@ -30,10 +30,13 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-type certCountFunc func(db db.Selector, domain string, earliest, latest time.Time) (int, error)
+var errIncompleteRequest = errors.New("incomplete gRPC request message")
+
+type certCountFunc func(db db.Selector, domain string, timeRange *sapb.Range) (int64, error)
 
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
+	sapb.UnimplementedStorageAuthorityServer
 	dbMap         *db.WrappedMap
 	dbReadOnlyMap *db.WrappedMap
 	clk           clock.Clock
@@ -194,7 +197,11 @@ func ipRange(ip net.IP) (net.IP, net.IP) {
 
 // CountRegistrationsByIP returns the number of registrations created in the
 // time range for a single IP address.
-func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest time.Time, latest time.Time) (int, error) {
+func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
+	if len(req.Ip) == 0 || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
@@ -204,23 +211,27 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, ip n
 		 :earliest < createdAt AND
 		 createdAt <= :latest`,
 		map[string]interface{}{
-			"ip":       []byte(ip),
-			"earliest": earliest,
-			"latest":   latest,
+			"ip":       req.Ip,
+			"earliest": time.Unix(0, req.Range.Earliest),
+			"latest":   time.Unix(0, req.Range.Latest),
 		})
 	if err != nil {
-		return -1, err
+		return &sapb.Count{Count: -1}, err
 	}
-	return int(count), nil
+	return &sapb.Count{Count: count}, nil
 }
 
 // CountRegistrationsByIPRange returns the number of registrations created in
 // the time range in an IP range. For IPv4 addresses, that range is limited to
 // the single IP. For IPv6 addresses, that range is a /48, since it's not
 // uncommon for one person to have a /48 to themselves.
-func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context, ip net.IP, earliest time.Time, latest time.Time) (int, error) {
+func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
+	if len(req.Ip) == 0 || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	var count int64
-	beginIP, endIP := ipRange(ip)
+	beginIP, endIP := ipRange(req.Ip)
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM registrations
@@ -230,15 +241,15 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context,
 		 :earliest < createdAt AND
 		 createdAt <= :latest`,
 		map[string]interface{}{
-			"earliest": earliest,
-			"latest":   latest,
-			"beginIP":  []byte(beginIP),
-			"endIP":    []byte(endIP),
+			"earliest": time.Unix(0, req.Range.Earliest),
+			"latest":   time.Unix(0, req.Range.Latest),
+			"beginIP":  beginIP,
+			"endIP":    endIP,
 		})
 	if err != nil {
-		return -1, err
+		return &sapb.Count{Count: -1}, err
 	}
-	return int(count), nil
+	return &sapb.Count{Count: count}, nil
 }
 
 // CountCertificatesByNames counts, for each input domain, the number of
@@ -247,15 +258,19 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context,
 // contain an entry for each input domain, so long as err is nil.
 // Queries will be run in parallel. If any of them error, only one error will
 // be returned.
-func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) ([]*sapb.CountByNames_MapElement, error) {
-	work := make(chan string, len(domains))
+func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
+	if len(req.Names) == 0 || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+		return nil, errIncompleteRequest
+	}
+
+	work := make(chan string, len(req.Names))
 	type result struct {
 		err    error
-		count  int
+		count  int64
 		domain string
 	}
-	results := make(chan result, len(domains))
-	for _, domain := range domains {
+	results := make(chan result, len(req.Names))
+	for _, domain := range req.Names {
 		work <- domain
 	}
 	close(work)
@@ -276,8 +291,7 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, do
 					return
 				default:
 				}
-				currentCount, err := ssa.countCertificatesByName(
-					ssa.dbReadOnlyMap.WithContext(ctx), domain, earliest, latest)
+				currentCount, err := ssa.countCertificatesByName(ssa.dbReadOnlyMap.WithContext(ctx), domain, req.Range)
 				if err != nil {
 					results <- result{err: err}
 					// Skip any further work
@@ -293,19 +307,14 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, do
 	}
 	wg.Wait()
 	close(results)
-	var ret []*sapb.CountByNames_MapElement
+	counts := make(map[string]int64)
 	for r := range results {
 		if r.err != nil {
 			return nil, r.err
 		}
-		name := string(r.domain)
-		pbCount := int64(r.count)
-		ret = append(ret, &sapb.CountByNames_MapElement{
-			Name:  name,
-			Count: pbCount,
-		})
+		counts[r.domain] = r.count
 	}
-	return ret, nil
+	return &sapb.CountByNames{Counts: counts}, nil
 }
 
 func ReverseName(domain string) string {
@@ -339,18 +348,21 @@ func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, req *sapb.Se
 // GetCertificateStatus takes a hexadecimal string representing the full 128-bit serial
 // number of a certificate and returns data about that certificate's current
 // validity.
-func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial string) (core.CertificateStatus, error) {
-	if !core.ValidSerial(serial) {
-		err := fmt.Errorf("Invalid certificate serial %s", serial)
-		return core.CertificateStatus{}, err
+func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, req *sapb.Serial) (*corepb.CertificateStatus, error) {
+	if req.Serial == "" {
+		return nil, errIncompleteRequest
+	}
+	if !core.ValidSerial(req.Serial) {
+		err := fmt.Errorf("Invalid certificate serial %s", req.Serial)
+		return nil, err
 	}
 
-	certStatus, err := SelectCertificateStatus(ssa.dbMap.WithContext(ctx), serial)
+	certStatus, err := SelectCertificateStatus(ssa.dbMap.WithContext(ctx), req.Serial)
 	if err != nil {
-		return core.CertificateStatus{}, err
+		return nil, err
 	}
 
-	return certStatus, nil
+	return bgrpc.CertStatusToPB(certStatus), nil
 }
 
 // NewRegistration stores a new Registration
@@ -419,25 +431,23 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *cor
 
 // AddCertificate stores an issued certificate and returns the digest as
 // a string, or an error if any occurred.
-func (ssa *SQLStorageAuthority) AddCertificate(
-	ctx context.Context,
-	certDER []byte,
-	regID int64,
-	ocspResponse []byte,
-	issued *time.Time) (string, error) {
-	parsedCertificate, err := x509.ParseCertificate(certDER)
-	if err != nil {
-		return "", err
+func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
+	if len(req.Der) == 0 || req.RegID == 0 || req.Issued == 0 {
+		return nil, errIncompleteRequest
 	}
-	digest := core.Fingerprint256(certDER)
+	parsedCertificate, err := x509.ParseCertificate(req.Der)
+	if err != nil {
+		return nil, err
+	}
+	digest := core.Fingerprint256(req.Der)
 	serial := core.SerialToString(parsedCertificate.SerialNumber)
 
 	cert := &core.Certificate{
-		RegistrationID: regID,
+		RegistrationID: req.RegID,
 		Serial:         serial,
 		Digest:         digest,
-		DER:            certDER,
-		Issued:         *issued,
+		DER:            req.Der,
+		Issued:         time.Unix(0, req.Issued),
 		Expires:        parsedCertificate.NotAfter,
 	}
 
@@ -474,14 +484,14 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		return isRenewal, err
 	})
 	if overallError != nil {
-		return "", overallError
+		return nil, overallError
 	}
 
 	// Recast the interface{} return from db.WithTransaction as a bool, returning
 	// an error if we can't.
 	var isRenewal bool
 	if boolVal, ok := isRenewalRaw.(bool); !ok {
-		return "", fmt.Errorf(
+		return nil, fmt.Errorf(
 			"AddCertificate db.WithTransaction returned %T out var, expected bool",
 			isRenewalRaw)
 	} else {
@@ -523,32 +533,41 @@ func (ssa *SQLStorageAuthority) AddCertificate(
 		ssa.log.AuditErrf("failed AddCertificate ratelimit update transaction: %v", rlTransactionErr)
 	}
 
-	return digest, nil
+	return &sapb.AddCertificateResponse{Digest: digest}, nil
 }
 
-func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, acctID int64, earliest, latest time.Time) (int, error) {
-	if features.Enabled(features.FasterNewOrdersRateLimit) {
-		return countNewOrders(ctx, ssa.dbReadOnlyMap, acctID, earliest, latest)
+func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, req *sapb.CountOrdersRequest) (*sapb.Count, error) {
+	if req.AccountID == 0 || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+		return nil, errIncompleteRequest
 	}
 
-	var count int
-	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(&count,
+	if features.Enabled(features.FasterNewOrdersRateLimit) {
+		return countNewOrders(ctx, ssa.dbReadOnlyMap, req)
+	}
+
+	var count int64
+	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
+		&count,
 		`SELECT count(1) FROM orders
 		WHERE registrationID = :acctID AND
-		created >= :windowLeft AND
-		created < :windowRight`,
+		created >= :earliest AND
+		created < :latest`,
 		map[string]interface{}{
-			"acctID":      acctID,
-			"windowLeft":  earliest,
-			"windowRight": latest,
-		})
+			"acctID":   req.AccountID,
+			"earliest": time.Unix(0, req.Range.Earliest),
+			"latest":   time.Unix(0, req.Range.Latest),
+		},
+	)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return count, nil
+
+	return &sapb.Count{Count: count}, nil
 }
 
-func hashNames(names []string) []byte {
+// HashNames returns a hash of the names requested. This is intended for use
+// when interacting with the orderFqdnSets table.
+func HashNames(names []string) []byte {
 	names = core.UniqueLowerNames(names)
 	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
 	return hash[:]
@@ -556,7 +575,7 @@ func hashNames(names []string) []byte {
 
 func addFQDNSet(db db.Inserter, names []string, serial string, issued time.Time, expires time.Time) error {
 	return db.Insert(&core.FQDNSet{
-		SetHash: hashNames(names),
+		SetHash: HashNames(names),
 		Serial:  serial,
 		Issued:  issued,
 		Expires: expires,
@@ -574,7 +593,7 @@ func addOrderFQDNSet(
 	regID int64,
 	expires time.Time) error {
 	return db.Insert(&orderFQDNSet{
-		SetHash:        hashNames(names),
+		SetHash:        HashNames(names),
 		OrderID:        orderID,
 		RegistrationID: regID,
 		Expires:        expires,
@@ -628,147 +647,43 @@ func addIssuedNames(db db.Execer, cert *x509.Certificate, isRenewal bool) error 
 	return err
 }
 
-// CountFQDNSets returns the number of sets with hash |setHash| within the window
-// |window|
-func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, window time.Duration, names []string) (int64, error) {
+// CountFQDNSets counts the total number of issuances, for a set of domains,
+// that occurred during a given window of time.
+func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
+	if req.Window == 0 || len(req.Domains) == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
+		// We don't do a select across both fqdnSets and fqdnSets_old here because
+		// this method is only used for rate-limiting and we don't care to spend the
+		// extra CPU cycles checking the old table.
+		// TODO(#5670): Remove this comment when the partitioning is fixed.
 		`SELECT COUNT(1) FROM fqdnSets
 		WHERE setHash = ?
 		AND issued > ?`,
-		hashNames(names),
-		ssa.clk.Now().Add(-window),
+		HashNames(req.Domains),
+		ssa.clk.Now().Add(-time.Duration(req.Window)),
 	)
-	return count, err
+	return &sapb.Count{Count: count}, err
 }
 
 // setHash is a []byte representing the hash of an FQDN Set
 type setHash []byte
 
-// getFQDNSetsBySerials finds the setHashes corresponding to a set of
-// certificate serials. These serials can be used to check whether any
-// certificates have been issued for the same set of names previously.
-func (ssa *SQLStorageAuthority) getFQDNSetsBySerials(
-	dbMap db.Selector,
-	serials []string,
-) ([]setHash, error) {
-	var fqdnSets []setHash
-
-	// It is unexpected that this function would be called with no serials
-	if len(serials) == 0 {
-		err := fmt.Errorf("getFQDNSetsBySerials called with no serials")
-		ssa.log.AuditErr(err.Error())
-		return nil, err
-	}
-
-	qmarks := make([]string, len(serials))
-	params := make([]interface{}, len(serials))
-	for i, serial := range serials {
-		params[i] = serial
-		qmarks[i] = "?"
-	}
-	query := "SELECT setHash FROM fqdnSets " +
-		"WHERE serial IN (" + strings.Join(qmarks, ",") + ")"
-	_, err := dbMap.Select(
-		&fqdnSets,
-		query,
-		params...)
-
-	if err != nil {
-		return nil, err
-	}
-
-	// The serials existed when we found them in issuedNames, they should continue
-	// to exist here. Otherwise an internal consistency violation occurred and
-	// needs to be audit logged
-	if db.IsNoRows(err) {
-		err := fmt.Errorf("getFQDNSetsBySerials returned no rows - internal consistency violation")
-		ssa.log.AuditErr(err.Error())
-		return nil, err
-	}
-	return fqdnSets, nil
-}
-
-// getNewIssuancesByFQDNSet returns a count of new issuances (renewals are not
-// included) for a given slice of fqdnSets that occurred after the earliest
-// parameter.
-func (ssa *SQLStorageAuthority) getNewIssuancesByFQDNSet(
-	dbMap db.Selector,
-	fqdnSets []setHash,
-	earliest time.Time,
-) (int, error) {
-	var results []struct {
-		Serial  string
-		SetHash setHash
-		Issued  time.Time
-	}
-
-	qmarks := make([]string, len(fqdnSets))
-	params := make([]interface{}, len(fqdnSets))
-	for i, setHash := range fqdnSets {
-		// We have to cast the setHash back to []byte here since the sql package
-		// isn't able to convert `sa.setHash` for the parameter value itself
-		params[i] = []byte(setHash)
-		qmarks[i] = "?"
-	}
-
-	query := "SELECT serial, setHash, issued FROM fqdnSets " +
-		"WHERE setHash IN (" + strings.Join(qmarks, ",") + ") " +
-		"ORDER BY setHash, issued"
-
-	// First, find the serial, sethash and issued date from the fqdnSets table for
-	// the given fqdn set hashes
-	_, err := dbMap.Select(
-		&results,
-		query,
-		params...)
-	if err != nil {
-		// If there are no results we have encountered a major error and
-		// should loudly complain
-		if db.IsNoRows(err) {
-			ssa.log.AuditErrf("Found no results from fqdnSets for setHashes known to exist: %#v", fqdnSets)
-			return 0, err
-		}
-		return -1, err
-	}
-
-	processedSetHashes := make(map[string]bool)
-	issuanceCount := 0
-	// Loop through each set hash result, counting issuances per unique set hash
-	// that are within the window specified by the earliest parameter
-	for _, result := range results {
-		key := string(result.SetHash)
-		// Skip set hashes that we have already processed - we only care about the
-		// first issuance
-		if processedSetHashes[key] {
-			continue
-		}
-
-		// If the issued date is before our earliest cutoff then skip it
-		if result.Issued.Before(earliest) {
-			continue
-		}
-
-		// Otherwise note the issuance and mark the set hash as processed
-		issuanceCount++
-		processedSetHashes[key] = true
-	}
-
-	// Return the count of how many non-renewal issuances there were
-	return issuanceCount, nil
-}
-
 // FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
 // exists in the database
-func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []string) (bool, error) {
-	exists, err := ssa.checkFQDNSetExists(
-		ssa.dbMap.WithContext(ctx).SelectOne,
-		names)
-	if err != nil {
-		return false, err
+func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {
+	if len(req.Domains) == 0 {
+		return nil, errIncompleteRequest
 	}
-	return exists, nil
+	exists, err := ssa.checkFQDNSetExists(ssa.dbMap.WithContext(ctx).SelectOne, req.Domains)
+	if err != nil {
+		return nil, err
+	}
+	return &sapb.Exists{Exists: exists}, nil
 }
 
 // oneSelectorFunc is a func type that matches both gorp.Transaction.SelectOne
@@ -778,15 +693,20 @@ type oneSelectorFunc func(holder interface{}, query string, args ...interface{})
 // checkFQDNSetExists uses the given oneSelectorFunc to check whether an fqdnSet
 // for the given names exists.
 func (ssa *SQLStorageAuthority) checkFQDNSetExists(selector oneSelectorFunc, names []string) (bool, error) {
-	var count int64
+	namehash := HashNames(names)
+	var exists bool
 	err := selector(
-		&count,
-		`SELECT COUNT(1) FROM fqdnSets
-		WHERE setHash = ?
-		LIMIT 1`,
-		hashNames(names),
+		&exists,
+		// We select on both tables here because this function is used to determine
+		// if a given issuance is a renewal, and for that we care about 90 days
+		// worth of data, not just 7 days like the current fqdnSets table holds.
+		// TODO(#5670): Remove this OR when the partitioning is fixed.
+		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? LIMIT 1)
+		OR EXISTS (SELECT id FROM fqdnSets_old WHERE setHash = ? LIMIT 1)`,
+		namehash,
+		namehash,
 	)
-	return count > 0, err
+	return exists, err
 }
 
 // PreviousCertificateExists returns true iff there was at least one certificate
@@ -795,10 +715,11 @@ func (ssa *SQLStorageAuthority) checkFQDNSetExists(selector oneSelectorFunc, nam
 // used to determine if a certificate has previously been issued for a given
 // domain name in order to determine if validations should be allowed during
 // the v1 API shutoff.
-func (ssa *SQLStorageAuthority) PreviousCertificateExists(
-	ctx context.Context,
-	req *sapb.PreviousCertificateExistsRequest,
-) (*sapb.Exists, error) {
+func (ssa *SQLStorageAuthority) PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (*sapb.Exists, error) {
+	if req.Domain == "" || req.RegID == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	exists := &sapb.Exists{Exists: true}
 	notExists := &sapb.Exists{Exists: false}
 
@@ -864,6 +785,10 @@ func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, req 
 // DeactivateAuthorization2 deactivates a currently valid or pending authorization.
 // This method is intended to deprecate DeactivateAuthorization.
 func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*emptypb.Empty, error) {
+	if req.Id == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	_, err := ssa.dbMap.Exec(
 		`UPDATE authz2 SET status = :deactivated WHERE id = :id and status IN (:valid,:pending)`,
 		map[string]interface{}{
@@ -880,8 +805,13 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 }
 
 // NewOrder adds a new v2 style order to the database
-func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order) (*corepb.Order, error) {
+func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *sapb.NewOrderRequest) (*corepb.Order, error) {
 	output, err := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+		// Check new order request fields.
+		if req.RegistrationID == 0 || req.Expires == 0 || len(req.Names) == 0 {
+			return nil, errIncompleteRequest
+		}
+
 		order := &orderModel{
 			RegistrationID: req.RegistrationID,
 			Expires:        time.Unix(0, req.Expires),
@@ -959,10 +889,154 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *corepb.Order)
 	return res, nil
 }
 
-// SetOrderProcessing updates a provided *corepb.Order in pending status to be
-// in processing status by updating the `beganProcessing` field of the
-// corresponding Order table row in the DB.
-func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *corepb.Order) error {
+// NewOrderAndAuthzs adds the given authorizations to the database, adds their
+// autogenerated IDs to the given order, and then adds the order to the db.
+// This is done inside a single transaction to prevent situations where new
+// authorizations are created, but then their corresponding order is never
+// created, leading to "invisible" pending authorizations.
+func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest) (*corepb.Order, error) {
+	output, err := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+		// First, insert all of the new authorizations and record their IDs.
+		newAuthzIDs := make([]int64, 0)
+		if len(req.NewAuthzs) != 0 {
+			inserter, err := db.NewMultiInserter("authz2", authzFields, "id")
+			if err != nil {
+				return nil, err
+			}
+			for _, authz := range req.NewAuthzs {
+				if authz.Status != string(core.StatusPending) {
+					return nil, berrors.InternalServerError("authorization must be pending")
+				}
+				am, err := authzPBToModel(authz)
+				if err != nil {
+					return nil, err
+				}
+				err = inserter.Add([]interface{}{
+					am.ID,
+					am.IdentifierType,
+					am.IdentifierValue,
+					am.RegistrationID,
+					am.Status,
+					am.Expires,
+					am.Challenges,
+					am.Attempted,
+					am.Token,
+					am.ValidationError,
+					am.ValidationRecord,
+				})
+				if err != nil {
+					return nil, err
+				}
+			}
+			newAuthzIDs, err = inserter.Insert(txWithCtx)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		// Second, insert the new order.
+		order := &orderModel{
+			RegistrationID: req.NewOrder.RegistrationID,
+			Expires:        time.Unix(0, req.NewOrder.Expires),
+			Created:        ssa.clk.Now(),
+		}
+		if err := txWithCtx.Insert(order); err != nil {
+			return nil, err
+		}
+
+		// Third, insert all of the orderToAuthz relations.
+		inserter, err := db.NewMultiInserter("orderToAuthz2", "orderID, authzID", "")
+		if err != nil {
+			return nil, err
+		}
+		for _, id := range req.NewOrder.V2Authorizations {
+			err = inserter.Add([]interface{}{order.ID, id})
+			if err != nil {
+				return nil, err
+			}
+		}
+		for _, id := range newAuthzIDs {
+			err = inserter.Add([]interface{}{order.ID, id})
+			if err != nil {
+				return nil, err
+			}
+		}
+		_, err = inserter.Insert(txWithCtx)
+		if err != nil {
+			return nil, err
+		}
+
+		// Fourth, insert all of the requestedNames.
+		inserter, err = db.NewMultiInserter("requestedNames", "orderID, reversedName", "")
+		if err != nil {
+			return nil, err
+		}
+		for _, name := range req.NewOrder.Names {
+			err = inserter.Add([]interface{}{order.ID, ReverseName(name)})
+			if err != nil {
+				return nil, err
+			}
+		}
+		_, err = inserter.Insert(txWithCtx)
+		if err != nil {
+			return nil, err
+		}
+
+		// Fifth, insert the FQDNSet entry for the order.
+		err = addOrderFQDNSet(txWithCtx, req.NewOrder.Names, order.ID, order.RegistrationID, order.Expires)
+		if err != nil {
+			return nil, err
+		}
+
+		// Finally, build the overall Order PB and return it.
+		return &corepb.Order{
+			// ID and Created were auto-populated on the order model when it was inserted.
+			Id:      order.ID,
+			Created: order.Created.UnixNano(),
+			// These are carried over from the original request unchanged.
+			RegistrationID: req.NewOrder.RegistrationID,
+			Expires:        req.NewOrder.Expires,
+			Names:          req.NewOrder.Names,
+			// Have to combine the already-associated and newly-reacted authzs.
+			V2Authorizations: append(req.NewOrder.V2Authorizations, newAuthzIDs...),
+			// A new order is never processing because it can't be finalized yet.
+			BeganProcessing: false,
+		}, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	order, ok := output.(*corepb.Order)
+	if !ok {
+		return nil, fmt.Errorf("casting error in NewOrderAndAuthzs")
+	}
+
+	if features.Enabled(features.FasterNewOrdersRateLimit) {
+		// Increment the order creation count
+		if err := addNewOrdersRateLimit(ctx, ssa.dbMap, req.NewOrder.RegistrationID, ssa.clk.Now().Truncate(time.Minute)); err != nil {
+			return nil, err
+		}
+	}
+
+	// Calculate the order status before returning it. Since it may have reused all
+	// valid authorizations the order may be "born" in a ready status.
+	status, err := ssa.statusForOrder(ctx, order)
+	if err != nil {
+		return nil, err
+	}
+	order.Status = status
+
+	return order, nil
+}
+
+// SetOrderProcessing updates an order from pending status to processing
+// status by updating the `beganProcessing` field of the corresponding
+// Order table row in the DB.
+func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *sapb.OrderRequest) (*emptypb.Empty, error) {
+	if req.Id == 0 {
+		return nil, errIncompleteRequest
+	}
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		result, err := txWithCtx.Exec(`
 		UPDATE orders
@@ -983,13 +1057,22 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *cor
 
 		return nil, nil
 	})
-	return overallError
+	if overallError != nil {
+		return nil, overallError
+	}
+	return &emptypb.Empty{}, nil
 }
 
 // SetOrderError updates a provided Order's error field.
-func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, order *corepb.Order) error {
+func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.SetOrderErrorRequest) (*emptypb.Empty, error) {
+	if req.Id == 0 || req.Error == nil {
+		return nil, errIncompleteRequest
+	}
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
-		om, err := orderToModel(order)
+		om, err := orderToModel(&corepb.Order{
+			Id:    req.Id,
+			Error: req.Error,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -1011,14 +1094,20 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, order *corepb
 
 		return nil, nil
 	})
-	return overallError
+	if overallError != nil {
+		return nil, overallError
+	}
+	return &emptypb.Empty{}, nil
 }
 
 // FinalizeOrder finalizes a provided *corepb.Order by persisting the
 // CertificateSerial and a valid status to the database. No fields other than
 // CertificateSerial and the order ID on the provided order are processed (e.g.
 // this is not a generic update RPC).
-func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.Order) error {
+func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.FinalizeOrderRequest) (*emptypb.Empty, error) {
+	if req.Id == 0 || req.CertificateSerial == "" {
+		return nil, errIncompleteRequest
+	}
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		result, err := txWithCtx.Exec(`
 		UPDATE orders
@@ -1044,7 +1133,10 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *corepb.O
 
 		return nil, nil
 	})
-	return overallError
+	if overallError != nil {
+		return nil, overallError
+	}
+	return &emptypb.Empty{}, nil
 }
 
 // authzForOrder retrieves the authorization IDs for an order. It returns these
@@ -1078,6 +1170,10 @@ func (ssa *SQLStorageAuthority) namesForOrder(ctx context.Context, orderID int64
 
 // GetOrder is used to retrieve an already existing order object
 func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
+	if req == nil || req.Id == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	omObj, err := ssa.dbMap.WithContext(ctx).Get(orderModel{}, req.Id)
 	if err != nil {
 		if db.IsNoRows(err) {
@@ -1300,8 +1396,12 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	ctx context.Context,
 	req *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
 
+	if req.AcctID == 0 || len(req.Names) == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	// Hash the names requested for lookup in the orderFqdnSets table
-	fqdnHash := hashNames(req.Names)
+	fqdnHash := HashNames(req.Names)
 
 	// Find a possibly-suitable order. We don't include the account ID or order
 	// status in this query because there's no index that includes those, so
@@ -1364,10 +1464,13 @@ func AuthzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error
 	return resp, nil
 }
 
-// NewAuthorizations2 adds a set of new style authorizations to the database and returns
-// either the IDs of the authorizations or an error. It will only process corepb.Authorization
-// objects if the V2 field is set. This method is intended to deprecate AddPendingAuthorizations
+// NewAuthorizations2 adds a set of new style authorizations to the database and
+// returns either the IDs of the authorizations or an error.
 func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
+	if len(req.Authz) == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	ids := &sapb.Authorization2IDs{}
 	var queryArgs []interface{}
 	var questionsBuf strings.Builder
@@ -1430,15 +1533,17 @@ func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sap
 }
 
 // GetAuthorization2 returns the authz2 style authorization identified by the provided ID or an error.
-// If no authorization is found matching the ID a berrors.NotFound type error is returned. This method
-// is intended to deprecate GetAuthorization.
-func (ssa *SQLStorageAuthority) GetAuthorization2(ctx context.Context, id *sapb.AuthorizationID2) (*corepb.Authorization, error) {
-	obj, err := ssa.dbMap.Get(authzModel{}, id.Id)
+// If no authorization is found matching the ID a berrors.NotFound type error is returned.
+func (ssa *SQLStorageAuthority) GetAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Authorization, error) {
+	if req.Id == 0 {
+		return nil, errIncompleteRequest
+	}
+	obj, err := ssa.dbMap.Get(authzModel{}, req.Id)
 	if err != nil {
 		return nil, err
 	}
 	if obj == nil {
-		return nil, berrors.NotFoundError("authorization %d not found", id.Id)
+		return nil, berrors.NotFoundError("authorization %d not found", req.Id)
 	}
 	return modelToAuthzPB(*(obj.(*authzModel)))
 }
@@ -1464,6 +1569,9 @@ func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 // WFE v2 API (in GetAuthorizations this feature was, now somewhat confusingly, called RequireV2Authzs).
 // This method is intended to deprecate GetAuthorizations. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
+	if len(req.Domains) == 0 || req.RegistrationID == 0 || req.Now == 0 {
+		return nil, errIncompleteRequest
+	}
 	var authzModels []authzModel
 	params := []interface{}{
 		req.RegistrationID,
@@ -1553,10 +1661,13 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 // FinalizeAuthorization2 moves a pending authorization to either the valid or invalid status. If
 // the authorization is being moved to invalid the validationError field must be set. If the
 // authorization is being moved to valid the validationRecord and expires fields must be set.
-// This method is intended to deprecate the FinalizeAuthorization method.
-func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) error {
+func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) (*emptypb.Empty, error) {
+	if req.Status == "" || req.Attempted == "" || req.Expires == 0 || req.Id == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	if req.Status != string(core.StatusValid) && req.Status != string(core.StatusInvalid) {
-		return berrors.InternalServerError("authorization must have status valid or invalid")
+		return nil, berrors.InternalServerError("authorization must have status valid or invalid")
 	}
 	query := `UPDATE authz2 SET
 		status = :status,
@@ -1570,23 +1681,23 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 	for _, recordPB := range req.ValidationRecords {
 		record, err := bgrpc.PBToValidationRecord(recordPB)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		validationRecords = append(validationRecords, record)
 	}
 	vrJSON, err := json.Marshal(validationRecords)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var veJSON []byte
 	if req.ValidationError != nil {
 		validationError, err := bgrpc.PBToProblemDetails(req.ValidationError)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		j, err := json.Marshal(validationError)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		veJSON = j
 	}
@@ -1614,23 +1725,26 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 
 	res, err := ssa.dbMap.Exec(query, params)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	rows, err := res.RowsAffected()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if rows == 0 {
-		return berrors.NotFoundError("authorization with id %d not found", req.Id)
+		return nil, berrors.NotFoundError("authorization with id %d not found", req.Id)
 	} else if rows > 1 {
-		return berrors.InternalServerError("multiple rows updated for authorization id %d", req.Id)
+		return nil, berrors.InternalServerError("multiple rows updated for authorization id %d", req.Id)
 	}
-	return nil
+	return &emptypb.Empty{}, nil
 }
 
 // RevokeCertificate stores revocation information about a certificate. It will only store this
 // information if the certificate is not already marked as revoked.
-func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) error {
+func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error) {
+	if req.Serial == "" || req.Date == 0 || req.Response == nil {
+		return nil, errIncompleteRequest
+	}
 	revokedDate := time.Unix(0, req.Date)
 	res, err := ssa.dbMap.Exec(
 		`UPDATE certificateStatus SET
@@ -1649,24 +1763,26 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 		string(core.OCSPStatusRevoked),
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	rows, err := res.RowsAffected()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if rows == 0 {
 		// InternalServerError because we expected this certificate status to exist and
 		// not be revoked.
-		return berrors.InternalServerError("no certificate with serial %s and status other than %s", req.Serial, string(core.OCSPStatusRevoked))
+		return nil, berrors.InternalServerError("no certificate with serial %s and status other than %s", req.Serial, string(core.OCSPStatusRevoked))
 	}
-	return nil
+	return &emptypb.Empty{}, nil
 }
 
 // GetPendingAuthorization2 returns the most recent Pending authorization with
-// the given identifier, if available. This method is intended to deprecate
-// GetPendingAuthorization. This method only supports DNS identifier types.
+// the given identifier, if available. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
+	if req.RegistrationID == 0 || req.IdentifierValue == "" || req.ValidUntil == 0 {
+		return nil, errIncompleteRequest
+	}
 	var am authzModel
 	err := ssa.dbMap.WithContext(ctx).SelectOne(
 		&am,
@@ -1698,6 +1814,10 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, re
 // CountPendingAuthorizations2 returns the number of pending, unexpired authorizations
 // for the given registration. This method is intended to deprecate CountPendingAuthorizations.
 func (ssa *SQLStorageAuthority) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error) {
+	if req.Id == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(&count,
 		`SELECT COUNT(1) FROM authz2 WHERE
@@ -1717,9 +1837,12 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations2(ctx context.Context,
 }
 
 // GetValidOrderAuthorizations2 is used to find the valid, unexpired authorizations
-// associated with a specific order and account ID. This method is intended to
-// deprecate GetValidOrderAuthorizations.
+// associated with a specific order and account ID.
 func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
+	if req.AcctID == 0 || req.Id == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	var ams []authzModel
 	_, err := ssa.dbMap.WithContext(ctx).Select(
 		&ams,
@@ -1757,9 +1880,12 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 }
 
 // CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
-// in a given time range. This method is intended to deprecate CountInvalidAuthorizations.
-// This method only supports DNS identifier types.
+// in a given time range. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
+	if req.RegistrationID == 0 || req.Hostname == "" || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
@@ -1790,6 +1916,10 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context,
 // intended to deprecate GetValidAuthorizations. This method only supports
 // DNS identifier types.
 func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
+	if len(req.Domains) == 0 || req.RegistrationID == 0 || req.Now == 0 {
+		return nil, errIncompleteRequest
+	}
+
 	var authzModels []authzModel
 	params := []interface{}{
 		req.RegistrationID,

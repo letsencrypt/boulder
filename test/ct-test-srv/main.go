@@ -36,6 +36,7 @@ type integrationSrv struct {
 	key             *ecdsa.PrivateKey
 	latencySchedule []float64
 	latencyItem     int
+	userAgent       string
 }
 
 func readJSON(w http.ResponseWriter, r *http.Request, output interface{}) error {
@@ -110,7 +111,7 @@ func (is *integrationSrv) addPreChain(w http.ResponseWriter, r *http.Request) {
 }
 
 func (is *integrationSrv) addChainOrPre(w http.ResponseWriter, r *http.Request, precert bool) {
-	if r.UserAgent() != "boulder/1.0" {
+	if is.userAgent != "" && r.UserAgent() != is.userAgent {
 		http.Error(w, "invalid user-agent", http.StatusBadRequest)
 		return
 	}
@@ -189,6 +190,8 @@ type config struct {
 }
 
 type Personality struct {
+	// If present, the expected UserAgent of the reporter to this test CT log.
+	UserAgent string
 	// Port (and optionally IP) to listen on
 	Addr string
 	// Private key for signing SCTs
@@ -218,6 +221,7 @@ func runPersonality(p Personality) {
 		latencySchedule: p.LatencySchedule,
 		submissions:     make(map[string]int64),
 		rejectHosts:     make(map[string]bool),
+		userAgent:       p.UserAgent,
 	}
 	m := http.NewServeMux()
 	m.HandleFunc("/submissions", is.getSubmissions)
