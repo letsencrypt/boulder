@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"context"
@@ -214,4 +214,8 @@ func main() {
 	// while we still have a goroutine purging the last elements from the queue.
 	// Once that's done, CatchSignals will call os.Exit().
 	select {}
+}
+
+func init() {
+	cmd.RegisterCommand("akamai-purger", main)
 }

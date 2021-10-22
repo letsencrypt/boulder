@@ -8,4 +8,4 @@ key:
     type: ecdsa
     ecdsa-curve: P-384
 outputs:
-    public-key-path: /tmp/intermediate-signing-pub-ecdsa.pem
+    public-key-path: /hierarchy/intermediate-signing-pub-ecdsa.pem

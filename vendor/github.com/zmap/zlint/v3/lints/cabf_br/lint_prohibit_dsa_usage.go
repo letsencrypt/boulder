@@ -29,12 +29,12 @@ func init() {
 		Citation:      "BRs: v1.7.1",
 		Source:        lint.CABFBaselineRequirements,
 		EffectiveDate: util.CABFBRs_1_7_1_Date,
-		Lint:          &prohibitDSAUsage{},
+		Lint:          NewProhibitDSAUsage,
 	})
 }
 
-func (l *prohibitDSAUsage) Initialize() error {
-	return nil
+func NewProhibitDSAUsage() lint.LintInterface {
+	return &prohibitDSAUsage{}
 }
 
 func (l *prohibitDSAUsage) CheckApplies(c *x509.Certificate) bool {

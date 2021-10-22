@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"flag"
@@ -111,4 +111,8 @@ func main() {
 
 	err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
 	cmd.FailOnError(err, "Publisher gRPC service failed")
+}
+
+func init() {
+	cmd.RegisterCommand("boulder-publisher", main)
 }

@@ -127,25 +127,12 @@ func (e errDuplicateName) Error() string {
 		e.lintName)
 }
 
-// errBadInit is returned from registry.Register if the provided lint's
-// Initialize function returned an error.
-type errBadInit struct {
-	lintName string
-	err      error
-}
-
-func (e errBadInit) Error() string {
-	return fmt.Sprintf(
-		"failed to register lint with name %q - failed to Initialize: %q",
-		e.lintName, e.err)
-}
-
 // register adds the provided lint to the Registry. If initialize is true then
 // the lint's Initialize() function will be called before registering the lint.
 //
 // An error is returned if the lint or lint's Lint pointer is nil, if the Lint
 // has an empty Name or if the Name was previously registered.
-func (r *registryImpl) register(l *Lint, initialize bool) error {
+func (r *registryImpl) register(l *Lint) error {
 	if l == nil {
 		return errNilLint
 	}
@@ -157,11 +144,6 @@ func (r *registryImpl) register(l *Lint, initialize bool) error {
 	}
 	if existing := r.ByName(l.Name); existing != nil {
 		return &errDuplicateName{l.Name}
-	}
-	if initialize {
-		if err := l.Lint.Initialize(); err != nil {
-			return &errBadInit{l.Name, err}
-		}
 	}
 	r.Lock()
 	defer r.Unlock()
@@ -290,7 +272,7 @@ func (r *registryImpl) Filter(opts FilterOptions) (Registry, error) {
 
 		// when adding lints to a filtered registry we do not want Initialize() to
 		// be called a second time, so provide false as the initialize argument.
-		if err := filteredRegistry.register(l, false); err != nil {
+		if err := filteredRegistry.register(l); err != nil {
 			return nil, err
 		}
 	}
@@ -335,7 +317,7 @@ func RegisterLint(l *Lint) {
 	// RegisterLint always sets initialize to true. It's assumed this is called by
 	// the package init() functions and therefore must be doing the first
 	// initialization of a lint.
-	if err := globalRegistry.register(l, true); err != nil {
+	if err := globalRegistry.register(l); err != nil {
 		panic(fmt.Sprintf("RegisterLint error: %v\n", err.Error()))
 	}
 }

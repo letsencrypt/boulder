@@ -40,12 +40,12 @@
       }
     },
     "certificateChains": {
-      "http://boulder:4430/acme/issuer-cert": [ "/tmp/intermediate-cert-rsa-a.pem" ],
-      "http://127.0.0.1:4000/acme/issuer-cert": [ "/tmp/intermediate-cert-rsa-a.pem" ]
+      "http://boulder:4430/acme/issuer-cert": [ "/hierarchy/intermediate-cert-rsa-a.pem" ],
+      "http://127.0.0.1:4000/acme/issuer-cert": [ "/hierarchy/intermediate-cert-rsa-a.pem" ]
     },
     "alternateCertificateChains": {
-      "http://boulder:4430/acme/issuer-cert": [ "/tmp/intermediate-cert-rsa-a.pem" ],
-      "http://127.0.0.1:4000/acme/issuer-cert": [ "/tmp/intermediate-cert-rsa-a.pem" ]
+      "http://boulder:4430/acme/issuer-cert": [ "/hierarchy/intermediate-cert-rsa-a.pem" ],
+      "http://127.0.0.1:4000/acme/issuer-cert": [ "/hierarchy/intermediate-cert-rsa-a.pem" ]
     },
     "staleTimeout": "5m",
     "authorizationLifetimeDays": 30,

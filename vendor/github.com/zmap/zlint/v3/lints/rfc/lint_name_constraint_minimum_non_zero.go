@@ -40,12 +40,12 @@ func init() {
 		Citation:      "RFC 5280: 4.2.1.10",
 		Source:        lint.RFC5280,
 		EffectiveDate: util.RFC2459Date,
-		Lint:          &nameConstMin{},
+		Lint:          NewNameConstMin,
 	})
 }
 
-func (l *nameConstMin) Initialize() error {
-	return nil
+func NewNameConstMin() lint.LintInterface {
+	return &nameConstMin{}
 }
 
 func (l *nameConstMin) CheckApplies(c *x509.Certificate) bool {

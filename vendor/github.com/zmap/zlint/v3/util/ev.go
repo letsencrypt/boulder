@@ -15,7 +15,7 @@
 package util
 
 import (
-	"encoding/asn1"
+	"github.com/zmap/zcrypto/encoding/asn1"
 )
 
 var evoids = map[string]bool{

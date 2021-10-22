@@ -649,6 +649,7 @@ func TestRetry(t *testing.T) {
 						"qtype":    "TXT",
 						"type":     "out of retries",
 						"resolver": dnsLoopbackAddr,
+						"isTLD":    "false",
 					}, tc.metricsAllRetries)
 			}
 		})
@@ -699,6 +700,15 @@ func TestRetry(t *testing.T) {
 			"type":     "deadline exceeded",
 			"resolver": dnsLoopbackAddr,
 		}, 2)
+}
+
+func TestIsTLD(t *testing.T) {
+	if isTLD("com") != "true" {
+		t.Errorf("expected 'com' to be a TLD, got %q", isTLD("com"))
+	}
+	if isTLD("example.com") != "false" {
+		t.Errorf("expected 'example.com' to not a TLD, got %q", isTLD("example.com"))
+	}
 }
 
 type tempError bool

@@ -9,7 +9,7 @@ import (
 	"github.com/letsencrypt/boulder/linter/lints"
 )
 
-type anyCertValidityNotRound struct{}
+type certValidityNotRound struct{}
 
 func init() {
 	lint.RegisterLint(&lint.Lint{
@@ -18,19 +18,19 @@ func init() {
 		Citation:      "CPS: 7.1",
 		Source:        lints.LetsEncryptCPSAll,
 		EffectiveDate: lints.CPSV33Date,
-		Lint:          &anyCertValidityNotRound{},
+		Lint:          NewCertValidityNotRound,
 	})
 }
 
-func (l *anyCertValidityNotRound) Initialize() error {
-	return nil
+func NewCertValidityNotRound() lint.LintInterface {
+	return &certValidityNotRound{}
 }
 
-func (l *anyCertValidityNotRound) CheckApplies(c *x509.Certificate) bool {
+func (l *certValidityNotRound) CheckApplies(c *x509.Certificate) bool {
 	return true
 }
 
-func (l *anyCertValidityNotRound) Execute(c *x509.Certificate) *lint.LintResult {
+func (l *certValidityNotRound) Execute(c *x509.Certificate) *lint.LintResult {
 	// RFC 5280 4.1.2.5: "The validity period for a certificate is the period
 	// of time from notBefore through notAfter, inclusive."
 	certValidity := c.NotAfter.Add(time.Second).Sub(c.NotBefore)

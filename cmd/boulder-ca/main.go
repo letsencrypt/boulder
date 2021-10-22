@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"flag"
@@ -310,4 +310,8 @@ func main() {
 	})
 
 	select {}
+}
+
+func init() {
+	cmd.RegisterCommand("boulder-ca", main)
 }

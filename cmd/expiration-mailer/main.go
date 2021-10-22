@@ -1,9 +1,10 @@
-package main
+package notmain
 
 import (
 	"bytes"
 	"context"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -140,9 +141,29 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 		m.stats.errorCount.With(prometheus.Labels{"type": "TemplateFailure"}).Inc()
 		return err
 	}
+
+	logItem := struct {
+		Rcpt             []string
+		Serials          []string
+		DaysToExpiration int
+		DNSNames         []string
+	}{
+		Rcpt:             emails,
+		Serials:          serials,
+		DaysToExpiration: email.DaysToExpiration,
+		DNSNames:         domains,
+	}
+	logStr, err := json.Marshal(logItem)
+	if err != nil {
+		m.log.Errf("logItem could not be serialized to JSON. Raw: %+v", logItem)
+		return err
+	}
+	m.log.Infof("attempting send JSON=%s", string(logStr))
+
 	startSending := m.clk.Now()
 	err = m.mailer.SendMail(emails, subjBuf.String(), msgBuf.String())
 	if err != nil {
+		m.log.Errf("failed send JSON=%s", string(logStr))
 		return err
 	}
 	finishSending := m.clk.Now()
@@ -501,7 +522,7 @@ func main() {
 	cmd.FailOnError(err, "Could not determine address or user of DB DSN")
 
 	// Collect and periodically report DB metrics using the DBMap and prometheus scope.
-	sa.InitDBMetrics(dbMap, scope, dbSettings, dbAddr, dbUser)
+	sa.InitDBMetrics(dbMap.Db, scope, dbSettings, dbAddr, dbUser)
 
 	tlsConfig, err := c.Mailer.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
@@ -609,4 +630,8 @@ func main() {
 		err = m.findExpiringCertificates()
 		cmd.FailOnError(err, "expiration-mailer has failed")
 	}
+}
+
+func init() {
+	cmd.RegisterCommand("expiration-mailer", main)
 }

@@ -12,9 +12,9 @@
     "blockedKeyFile": "test/example-blocked-keys.yaml",
     "orderLifetime": "168h",
     "issuerCerts": [
-      "/tmp/intermediate-cert-rsa-a.pem",
-      "/tmp/intermediate-cert-rsa-b.pem",
-      "/tmp/intermediate-cert-ecdsa-a.pem"
+      "/hierarchy/intermediate-cert-rsa-a.pem",
+      "/hierarchy/intermediate-cert-rsa-b.pem",
+      "/hierarchy/intermediate-cert-ecdsa-a.pem"
     ],
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
