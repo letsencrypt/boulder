@@ -68,7 +68,7 @@ const (
 	getChallengePath = getAPIPrefix + "chall-v3/"
 	getCertPath      = getAPIPrefix + "cert/"
 
-	renewalInfoPath = getAPIPrefix + "renewalInfo/"
+	renewalInfoPath = getAPIPrefix + "draft-aaron-ari/renewalInfo/"
 )
 
 var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
@@ -396,6 +396,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	wfe.HandleFunc(m, getAuthzPath, wfe.Authorization, "GET")
 	wfe.HandleFunc(m, getChallengePath, wfe.Challenge, "GET")
 	wfe.HandleFunc(m, getCertPath, wfe.Certificate, "GET")
+
 	// Endpoint for draft-aaron-ari
 	if features.Enabled(features.ServeRenewalInfo) {
 		wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, "GET")
@@ -2385,13 +2386,22 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	logEvent.Extra["RequestedSerial"] = serial
 	beeline.AddFieldToTrace(ctx, "request.serial", serial)
 
+	// We use GetCertificate, not GetPrecertificate, because we don't intend to
+	// serve ARI for certs that never made it past the precert stage.
 	cert, err := wfe.SA.GetCertificate(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
+		if errors.Is(err, berrors.NotFound) {
+			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
+		} else {
+			wfe.sendError(response, logEvent, probs.ServerInternal("Unable to get certificate"), err)
+		}
+		return
 	}
 
-	validitySeconds := (cert.Expires + 1) - cert.Issued
-	renewalOffset := time.Duration(int64(0.66 * float64(validitySeconds)))
+	// This is a very simple renewal calculation: Calculate a point 2/3rds of the
+	// way through the validity period, then give a 2-day window around that.
+	validity := time.Unix(0, cert.Expires).Add(time.Second).Sub(time.Unix(0, cert.Issued))
+	renewalOffset := time.Duration(int64(0.33 * float64(validity.Seconds())))
 	idealRenewal := time.Unix(0, cert.Expires).UTC().Add(-renewalOffset)
 	ri := core.RenewalInfo{
 		SuggestedWindow: core.SuggestedWindow{
