@@ -338,6 +338,11 @@ func (m *mailer) findExpiringCertificates() error {
 			continue // nothing to do
 		}
 
+		// Wrap every serial in quotes so they can be interpolated into the query.
+		for i, s := range serials {
+			serials[i] = fmt.Sprintf("'%s'", s)
+		}
+
 		// Now we can retrieve the certificate details for all of the status rows.
 		certWithIDs, err := sa.SelectCertificates(
 			m.dbMap,
